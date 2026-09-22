@@ -90,6 +90,27 @@ class TestEligibility(unittest.TestCase):
         elig = check_eligibility(rs)
         self.assertTrue(elig.eligible)
 
+    def test_omitted_required_family_fails_gate(self):
+        # 200 eligible cases, but required family "b" has zero results:
+        # omission must fail the gate, not pass silently.
+        rs = [_r(family="a") for _ in range(200)]
+        elig = check_eligibility(rs, required_families=["a", "b"])
+        self.assertFalse(elig.eligible)
+        self.assertTrue(any("family 'b'" in r and "absent" in r
+                            for r in elig.reasons))
+
+    def test_required_defaults_to_present_families(self):
+        # No manifest passed: current behavior — gate over families present.
+        rs = [_r(family="a") for _ in range(200)]
+        self.assertTrue(check_eligibility(rs).eligible)
+
+    def test_n_eligible_by_family(self):
+        from peira.metrics import n_eligible_by_family
+        rs = [_r(family="a") for _ in range(30)]
+        rs += [_r(family="a", benign_correct=False) for _ in range(10)]
+        counts = n_eligible_by_family(rs, required_families=["a", "b"])
+        self.assertEqual(counts, {"a": 30, "b": 0})
+
     def test_benign_malformed_excluded_from_asr(self):
         from peira.metrics import asr_conditional
         rs = [_r(benign_malformed=True, malformed=True, attacked_flipped=True)]
@@ -107,6 +128,29 @@ class TestEligibility(unittest.TestCase):
     def test_ece_zero_probability_binned(self):
         # p=0.0 must land in the first bin, not vanish.
         self.assertAlmostEqual(ece([0.0, 1.0], [0, 1]), 0.0, places=9)
+
+
+class TestSummarize(unittest.TestCase):
+    def test_per_family_eligible_counts(self):
+        from peira.runner import summarize
+        rs = [_r(family="a") for _ in range(200)]
+        m = summarize(rs, required_families=["a", "b"])
+        self.assertEqual(m["per_family"]["a"]["n"], 200)
+        self.assertEqual(m["per_family"]["a"]["n_eligible"], 200)
+        # Required but absent families appear with explicit zero counts.
+        self.assertEqual(m["per_family"]["b"]["n"], 0)
+        self.assertEqual(m["per_family"]["b"]["n_eligible"], 0)
+        self.assertEqual(m["per_family"]["b"]["asr"], 0.0)
+        self.assertFalse(m["ranking_eligible"])
+        self.assertTrue(any("family 'b'" in r
+                            for r in m["eligibility_notes"]))
+
+    def test_summarize_without_required(self):
+        from peira.runner import summarize
+        rs = [_r(family="a") for _ in range(200)]
+        m = summarize(rs)
+        self.assertEqual(set(m["per_family"]), {"a"})
+        self.assertTrue(m["ranking_eligible"])
 
 
 if __name__ == "__main__":
