@@ -121,7 +121,7 @@ human work, in the review queue.
 
 Note: `dataset/trial-demo/` predates the gates and is exempt — it's
 quickstart scaffolding with deliberately repetitive content, not a real
-dataset. Gates apply to `dataset/v1` authoring.
+dataset. Gates apply to `dataset/trial` and `dataset/v1` authoring.
 
 A Rust port of the schema check ships as `peira-cli` (`crates/peira-cli`)
 for fast dataset validation in CI:
