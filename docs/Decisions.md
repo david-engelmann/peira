@@ -22,9 +22,3 @@ post-v1.
 
 Code needs maximum reuse (MIT); the dataset needs attribution and a
 non-training request (CC-BY-4.0). Status: accepted.
-
-## D-4: The plan is never committed
-
-Strategy documents (master plan, audits, policy memos) live outside the
-repo. The repo carries the product only, enforced by the CI
-`public-surface` check. Status: accepted.

@@ -16,11 +16,10 @@ Every PR must:
 
 ## Public-content boundary
 
-This repo is the product's public face. Never commit strategy: no
-dominance intent, no speed/urgency language, no vendor plays, no internal
-memos — in any file, issue, discussion post, or commit message. The CI
-`public-surface` job enforces this mechanically. When in doubt, leave it
-out and ask in Discussions.
+This repo is the product's public face. Never commit internal strategy
+documents or planning language — in any file, issue, discussion post, or
+commit message. The CI `public-surface` job enforces this mechanically.
+When in doubt, leave it out and ask in Discussions.
 
 ## What happens after you open a PR
 
