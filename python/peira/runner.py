@@ -173,6 +173,60 @@ def _write_partial(
     partial_path.write_text(partial.seal().to_json())
 
 
+def validate_partial(
+    partial: RunArtifact,
+    adapter: Any,
+    cases: list[Case],
+    suite: str,
+    dataset_version: str,
+) -> tuple[set[str], list[PerCaseResult]]:
+    """Strictly validate a partial run for --resume.
+
+    Returns (done_case_ids, prior_results). Raises ValueError when the
+    partial fails its analysis lock, belongs to a different suite, dataset
+    version, or adapter name+version, references unknown case ids, or
+    contains duplicate case ids. A partial that fails validation is never
+    silently merged into a new run.
+    """
+    if not partial.verify():
+        raise ValueError(
+            "partial run failed its analysis lock — "
+            "it was modified after sealing"
+        )
+    if partial.suite != suite:
+        raise ValueError(
+            f"partial run is for suite {partial.suite!r}, not {suite!r}"
+        )
+    if partial.dataset_version != dataset_version:
+        raise ValueError(
+            f"partial run is for dataset version {partial.dataset_version!r}, "
+            f"not {dataset_version!r}"
+        )
+    adapter_version = getattr(adapter, "version", "")
+    if (partial.adapter_name != adapter.name
+            or partial.adapter_version != adapter_version):
+        raise ValueError(
+            f"partial run is for adapter {partial.adapter_name!r} "
+            f"version {partial.adapter_version!r}, not {adapter.name!r} "
+            f"version {adapter_version!r}"
+        )
+    case_ids = {c.case_id for c in cases}
+    seen: set[str] = set()
+    results: list[PerCaseResult] = []
+    for r in partial.results:
+        rid = r.get("case_id", "")
+        if rid in seen:
+            raise ValueError(f"partial run has duplicate case id {rid!r}")
+        seen.add(rid)
+        if rid not in case_ids:
+            raise ValueError(
+                f"partial run references unknown case id {rid!r} "
+                f"(not in suite {suite!r})"
+            )
+        results.append(PerCaseResult(**r))
+    return seen, results
+
+
 def run_suite(
     adapter: Any,
     cases: list[Case],
@@ -193,14 +247,18 @@ def run_suite(
     done = already_done or set()
     results: list[PerCaseResult] = list(prior_results or [])
     total = len(cases)
+    # completed counts scored cases, not the loop index: with resumed runs
+    # the index jumps over skipped cases, so progress must track completed.
+    completed = len(results)
     try:
-        for i, case in enumerate(cases, 1):
+        for case in cases:
             if case.case_id in done:
                 continue
             results.append(run_case(adapter, case))
+            completed += 1
             if progress:
-                progress(i, total)
-            if partial_path is not None and len(results) % checkpoint_every == 0:
+                progress(completed, total)
+            if partial_path is not None and completed % checkpoint_every == 0:
                 _write_partial(
                     partial_path, adapter, cases, suite,
                     dataset_version, results, required_families,
