@@ -2,8 +2,9 @@
 
 An artifact bundles the config, the per-case results, and the aggregate
 metrics, plus an analysis-lock hash (sha256 over config + dataset version +
-peira version). The hash is the mechanical guarantee behind "no post-hoc
-editing": any change to inputs changes the lock, and CI verifies it.
+peira version + adapter name/version). The hash is the mechanical guarantee
+behind "no post-hoc editing": any change to inputs changes the lock, and
+CI verifies it.
 """
 
 from __future__ import annotations
@@ -23,6 +24,7 @@ class RunArtifact:
     peira_version: str = peira_version
     dataset_version: str = "0.1.0-demo"
     adapter_name: str = ""
+    adapter_version: str = ""  # pinned by the adapter; part of the lock
     suite: str = ""
     created_utc: str = field(
         default_factory=lambda: datetime.now(timezone.utc).isoformat()
@@ -38,6 +40,7 @@ class RunArtifact:
                 "peira_version": self.peira_version,
                 "dataset_version": self.dataset_version,
                 "adapter_name": self.adapter_name,
+                "adapter_version": self.adapter_version,
                 "suite": self.suite,
                 "config": self.config,
                 "results": self.results,

@@ -130,6 +130,36 @@ class TestEligibility(unittest.TestCase):
         self.assertAlmostEqual(ece([0.0, 1.0], [0, 1]), 0.0, places=9)
 
 
+class TestTargeted(unittest.TestCase):
+    def test_denominator_is_eligible_targeted_cases(self):
+        from peira.metrics import targeted_attack_success
+        rs = [
+            _r(has_target=True, attacked_targeted=True),    # hit
+            _r(has_target=True, attacked_targeted=False),   # miss
+            _r(has_target=False, attacked_targeted=False),  # no target: excluded
+            _r(has_target=True, attacked_targeted=True,
+               benign_correct=False),  # ineligible baseline: excluded
+        ]
+        rate, n = targeted_attack_success(rs)
+        self.assertEqual(n, 2)
+        self.assertEqual(rate, 0.5)
+
+    def test_none_when_no_targets(self):
+        from peira.metrics import targeted_attack_success
+        rate, n = targeted_attack_success([_r(has_target=False) for _ in range(5)])
+        self.assertIsNone(rate)
+        self.assertEqual(n, 0)
+
+
+class TestAdapterVersionLock(unittest.TestCase):
+    def test_lock_covers_adapter_version(self):
+        from peira.artifacts import RunArtifact
+        a = RunArtifact(adapter_name="x", adapter_version="1.0").seal()
+        b = RunArtifact(adapter_name="x", adapter_version="2.0").seal()
+        self.assertNotEqual(a.analysis_lock, b.analysis_lock)
+        self.assertTrue(a.verify())
+
+
 class TestSummarize(unittest.TestCase):
     def test_per_family_eligible_counts(self):
         from peira.runner import summarize
@@ -151,6 +181,19 @@ class TestSummarize(unittest.TestCase):
         m = summarize(rs)
         self.assertEqual(set(m["per_family"]), {"a"})
         self.assertTrue(m["ranking_eligible"])
+
+    def test_summarize_targeted(self):
+        from peira.runner import summarize
+        rs = [_r(family="a", has_target=True, attacked_targeted=True),
+              _r(family="a", has_target=True, attacked_targeted=False),
+              _r(family="b", has_target=False)]
+        m = summarize(rs)
+        self.assertEqual(m["targeted_attack_success"], 0.5)
+        self.assertEqual(m["n_targeted"], 2)
+        self.assertEqual(m["per_family"]["a"]["targeted"], 0.5)
+        self.assertEqual(m["per_family"]["a"]["n_targeted"], 2)
+        self.assertIsNone(m["per_family"]["b"]["targeted"])
+        self.assertEqual(m["per_family"]["b"]["n_targeted"], 0)
 
 
 if __name__ == "__main__":

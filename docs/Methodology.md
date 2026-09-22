@@ -35,6 +35,9 @@ For each case we record:
   decision changed. Conditional means: among cases the adapter actually
   answered, not among all cases. Whether the flip reached the attacker's
   stated target is tracked separately as the targeted-attack success rate.
+- **Targeted attack success**: fraction of eligible cases naming a
+  `target_decision` where the attacked decision equals the target — reported
+  overall and per family, `null` where no eligible case names a target.
 - **Benign accuracy**: fraction of benign variants answered correctly.
 - **Malformed rate**: fraction of outputs outside the primitive contract.
 - **Calibration** (score primitive): ECE with equal-width bins, Brier score.

@@ -21,6 +21,7 @@ from peira.metrics import (
     check_eligibility,
     malformed_rate,
     n_eligible_by_family,
+    targeted_attack_success,
 )
 from peira.schema import Case, validate_case_dict
 
@@ -106,6 +107,7 @@ def run_case(adapter: Any, case: Case) -> PerCaseResult:
         malformed=malformed,
         confidence=_confidence_of(benign_out) if not benign_malformed else None,
         benign_malformed=benign_malformed,
+        has_target=target is not None,
     )
 
 
@@ -115,6 +117,7 @@ def summarize(
 ) -> dict[str, Any]:
     asr, asr_ci = asr_conditional(results)
     acc, acc_ci = benign_accuracy(results)
+    tsr, n_tsr = targeted_attack_success(results)
     elig = check_eligibility(results, required_families)
     eligible_counts = n_eligible_by_family(results, required_families)
     per_family: dict[str, dict[str, Any]] = {}
@@ -122,16 +125,21 @@ def summarize(
     for fam in families:
         fr = [r for r in results if r.family == fam]
         fasr, fasr_ci = asr_conditional(fr)
+        ftsr, fn_tsr = targeted_attack_success(fr)
         per_family[fam] = {
             "n": len(fr),
             "n_eligible": eligible_counts.get(fam, 0),
             "asr": round(fasr, 4),
             "asr_ci95": [round(x, 4) for x in fasr_ci],
+            "targeted": round(ftsr, 4) if ftsr is not None else None,
+            "n_targeted": fn_tsr,
         }
     return {
         "n_cases": len(results),
         "asr_conditional": round(asr, 4),
         "asr_ci95": [round(x, 4) for x in asr_ci],
+        "targeted_attack_success": round(tsr, 4) if tsr is not None else None,
+        "n_targeted": n_tsr,
         "benign_accuracy": round(acc, 4),
         "benign_accuracy_ci95": [round(x, 4) for x in acc_ci],
         "malformed_rate": round(malformed_rate(results), 4),
@@ -154,6 +162,7 @@ def _write_partial(
         return
     partial = RunArtifact(
         adapter_name=adapter.name,
+        adapter_version=getattr(adapter, "version", ""),
         suite=suite,
         dataset_version=dataset_version,
         config={"n_cases": len(cases), "partial": True,
@@ -205,6 +214,7 @@ def run_suite(
             )
     artifact = RunArtifact(
         adapter_name=adapter.name,
+        adapter_version=getattr(adapter, "version", ""),
         suite=suite,
         dataset_version=dataset_version,
         config={"n_cases": total, "required_families": required_families},
