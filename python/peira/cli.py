@@ -18,7 +18,7 @@ from peira import __version__
 from peira.adapters.mock import MockAdapter
 from peira.artifacts import RunArtifact
 from peira.metrics import PerCaseResult
-from peira.runner import SUITE_DIRS, load_cases, run_suite
+from peira.runner import SUITE_DIRS, load_cases, run_suite, validate_partial
 
 EXIT_OK = 0
 EXIT_USER_ERROR = 1
@@ -138,17 +138,29 @@ def cmd_run(args: argparse.Namespace) -> int:
     already_done: set[str] = set()
     prior_results: list[PerCaseResult] = []
     slug = _safe_adapter_slug(args.adapter)
+    dataset_version = "0.1.0-demo"
     partial_path = out_dir / f"{slug}-{suite}.partial.json"
-    if args.resume and partial_path.exists():
-        try:
-            partial = RunArtifact.from_json(partial_path.read_text())
-            prior_results = [PerCaseResult(**r) for r in partial.results]
-            already_done = {r.case_id for r in prior_results}
-            print(f"resuming: {len(already_done)} cases already done, "
-                  f"{len(cases) - len(already_done)} remaining.")
-        except Exception as e:
-            print(f"warning: could not read partial run ({e}); starting fresh.",
+    if args.resume:
+        if not partial_path.exists():
+            print(f"warning: no partial run at {partial_path}; starting fresh.",
                   file=sys.stderr)
+        else:
+            try:
+                partial = RunArtifact.from_json(partial_path.read_text())
+            except Exception as e:
+                print(f"warning: could not read partial run ({e}); "
+                      f"starting fresh.", file=sys.stderr)
+                partial = None
+            if partial is not None:
+                try:
+                    already_done, prior_results = validate_partial(
+                        partial, adapter, cases, suite, dataset_version)
+                except ValueError as e:
+                    print(f"error: {e} — delete {partial_path} or drop "
+                          f"--resume and re-run.", file=sys.stderr)
+                    return EXIT_USER_ERROR
+                print(f"resuming: {len(already_done)} cases already done, "
+                      f"{len(cases) - len(already_done)} remaining.")
 
     def progress(i: int, total: int) -> None:
         if args.json_progress:
@@ -159,7 +171,7 @@ def cmd_run(args: argparse.Namespace) -> int:
 
     try:
         artifact = run_suite(
-            adapter, cases, suite, "0.1.0-demo",
+            adapter, cases, suite, dataset_version,
             progress=progress, already_done=already_done,
             prior_results=prior_results, partial_path=partial_path,
         )
