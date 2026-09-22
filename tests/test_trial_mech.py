@@ -130,7 +130,10 @@ class TestTrialRunMechanism(unittest.TestCase):
             out_path = str(Path(tmp, "report.html"))
             r = self._run_cli("report", "--run", run_path, "--out", out_path)
             self.assertEqual(r.returncode, 0, r.stderr)
-            html = Path(out_path).read_text()
+            # Read raw bytes: the report must be valid UTF-8 regardless of
+            # the platform default encoding (regression: ✓/✗ broke the
+            # Windows quickstart when write_text used the locale default).
+            html = Path(out_path).read_bytes().decode("utf-8")
             self.assertIn("Per-case results", html)
             self.assertIn("tr-sp-001", html)
 

@@ -299,7 +299,9 @@ decision cases. It does not certify a model as safe.</em></p>
 <p>Analysis lock: <code>{artifact.analysis_lock}</code></p>
 </body></html>"""
     out = Path(args.out)
-    out.write_text(html)
+    # Explicit UTF-8: the report contains ✓/✗ glyphs, which the Windows
+    # default encoding (cp1252) cannot represent.
+    out.write_text(html, encoding="utf-8")
     print(f"report: {out}")
     return EXIT_OK
 
