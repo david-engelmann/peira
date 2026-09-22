@@ -124,10 +124,41 @@ to `choice`).
 The templates remove blank-page friction. They don't judge difficulty or
 quality — that's the review queue's job.
 
-## Pipeline stages
+## Review queue
 
-The manifest is stage one, gates stage two, templates stage three.
-Landing next:
+Automation checks structure; humans judge quality. The review queue
+tracks human review state per case in `<dataset-dir>/review.json` and
+enforces the project rule: **100% of critical-severity cases are
+human-reviewed before release** (severity is graded with
+`docs/SeverityRubric.md`).
 
-1. **Review queue** — tracks human review state per case; 100% of
-   critical-severity cases get human review before release.
+A case needs review when it is critical-severity and not approved, or
+when it carries gate warnings (G6 pii-scan) and is not approved.
+
+```
+peira dataset review --dir dataset/v1          # list pending + coverage
+peira dataset review --dir dataset/v1 --check  # exit 1 if anything pending
+peira dataset review approve --dir dataset/v1 --id sp-001 --reviewer dg --notes "..."
+peira dataset review reject --dir dataset/v1 --id sp-002 --reviewer dg --notes "rework: ..."
+```
+
+`rejected` means sent back for rework — it does not count as reviewed.
+The release gate is `peira dataset build-manifest --require-reviews`,
+which refuses to write a manifest while any reviews are pending:
+
+```
+peira dataset build-manifest --dir dataset/v1 --version 1.0.0 --require-reviews
+```
+
+The authoring loop, end to end:
+
+```
+peira dataset new --family state_poisoning --id sp-042 --out dataset/v1/cases.jsonl
+# ... fill in the {{PLACEHOLDERS}} ...
+peira dataset gates --dir dataset/v1
+peira dataset review --dir dataset/v1 --check
+peira dataset build-manifest --dir dataset/v1 --version 1.0.0 --require-reviews
+```
+
+`review.json` is committed alongside the cases — review decisions are
+part of the dataset's provenance.

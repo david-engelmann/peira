@@ -89,3 +89,22 @@ the list in the error — `state_poisoning`, `criteria_smuggling`,
 **`error: cannot write to ...` from `peira dataset new --out`**
 Cause: the output file's directory doesn't exist or isn't writable. Fix:
 create the directory first, or drop `--out` to print to stdout.
+
+**`error: unknown case id 'x' in ...`**
+Cause: `peira dataset review approve/reject` got a case id that isn't in
+the dataset directory. Fix: check the id — `peira dataset review --dir
+<dir>` lists pending case ids.
+
+**`error: unreadable review state: ...`**
+Cause: `review.json` is corrupt. Fix: restore it from git (review
+decisions are committed). If it was never created, there's nothing to
+restore — an absent `review.json` simply means nothing reviewed yet.
+
+**`error: N reviews pending — manifest not written`**
+Cause: `build-manifest --require-reviews` found unreviewed cases. Fix:
+review them (`peira dataset review --dir <dir>`), or drop
+`--require-reviews` for a draft manifest (never release one).
+
+**`error: --dir is required`**
+Cause: `peira dataset review` without `--dir`. Fix: pass
+`--dir <dataset-dir>`.

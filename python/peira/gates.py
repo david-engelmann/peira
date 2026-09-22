@@ -18,7 +18,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from peira.dataset import CASE_SUFFIX
+from peira.dataset import iter_case_lines
 from peira.schema import CANONICAL_FAMILIES, validate_case_dict
 
 
@@ -32,19 +32,6 @@ class GateResult:
     @property
     def passed(self) -> bool:
         return not self.errors
-
-
-def _iter_raw_cases(dataset_dir: Path):
-    """Yield (path, lineno, case_dict_or_None, json_error_or_None)."""
-    for path in sorted(dataset_dir.glob(f"*{CASE_SUFFIX}")):
-        with open(path, encoding="utf-8") as f:
-            for lineno, line in enumerate(f, 1):
-                if not line.strip():
-                    continue
-                try:
-                    yield path, lineno, json.loads(line), None
-                except json.JSONDecodeError as e:
-                    yield path, lineno, None, f"invalid JSON ({e})"
 
 
 def _canon_input(variant: dict[str, Any]) -> str:
@@ -159,7 +146,7 @@ def gate_pii_scan(valid_cases) -> GateResult:
 
 def run_gates(dataset_dir: Path) -> list[GateResult]:
     """Run all gates over a dataset directory, in order."""
-    raw = list(_iter_raw_cases(dataset_dir))
+    raw = list(iter_case_lines(dataset_dir))
     results = [gate_schema(raw)]
     valid = [(p, n, c) for p, n, c, e in raw
              if e is None and not validate_case_dict(c)]
