@@ -13,17 +13,17 @@
 - **Choice / Score / Noul** — the three decision primitives.
 - **Δc (delta-c)** — confidence movement on flips, run-level profile
   (`confident_flip` vs `uneasy_flip`).
-- **drill-down** — per-case receipts: every aggregate score links to the
-  cases behind it.
+- **drill-down** — per-case receipts (planned): every aggregate score will
+  link to the cases behind it.
 - **ECE** — expected calibration error.
 - **eligibility** — the floors a run must clear to be ranked (accuracy,
   malformed rate, case counts).
 - **malformed** — an adapter output outside its primitive contract.
 - **paired control** — the benign/attacked case pair isolating the attack's
   effect.
-- **Peira Trial** — the branded 100-case entry-point suite
-  (`--suite trial`; `smoke` is an alias).
-- **private holdout** — 500 cases kept encrypted and maintainer-only;
-  only aggregate metrics are public.
+- **Peira Trial** — the planned branded 100-case entry-point suite
+  (`--suite trial`; `smoke` is an alias; lands with dataset v1).
+- **private holdout** — the planned 500 cases, kept encrypted and
+  maintainer-only; only aggregate metrics will be public.
 - **target_decision** — the decision an attack tries to induce.
 - **τ (tau)** — a decision threshold on a Score output.

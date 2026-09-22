@@ -9,7 +9,7 @@ Cause: the adapter name isn't registered. Fix: use `mock`, or point
 
 **`error: unknown suite 'x'`**
 Cause: typo in `--suite`. Fix: `trial-demo` (demo fixture, offline) or
-`trial` (the real 100-case Trial suite, ships with dataset v1).
+`trial` (the real 100-case Trial suite, planned — ships with dataset v1).
 
 **`error: suite directory ... not found`**
 Cause: you ran `peira` from outside the repo checkout. Fix: run from the
@@ -33,8 +33,9 @@ login`, or set `HF_TOKEN`. Model weights are cached after the first download.
 Cause: the model doesn't fit in RAM/VRAM. Fix: use a quantized variant or a
 smaller adapter; see `docs/Hardware.md` for per-tier requirements.
 
-**`peira report` prints "analysis lock mismatch"**
-Cause: the run artifact was edited after sealing. Fix: don't edit artifacts;
+**`peira report` warns "analysis lock mismatch"**
+Cause: the run artifact was edited after sealing (the report still
+renders, but the numbers aren't trustworthy). Fix: don't edit artifacts;
 re-run. If you need different config, that's a new run with a new lock.
 
 **`error: no cases found in ...`**

@@ -22,6 +22,7 @@ classifiers = [
 ]
 
 [project.optional-dependencies]
+# Reserved for future adapters; no adapter code uses these yet.
 hf = ["transformers>=4.40", "torch", "huggingface-hub>=0.22"]
 all = ["peira[hf]"]
 

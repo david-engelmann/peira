@@ -3,7 +3,7 @@
 An adapter wraps any decision-making system (a guardrail model, an LLM with
 structured output, a rules engine) and exposes it through one typed method
 per primitive. Adapters declare which primitives they support; partial
-coverage is fine and is reported honestly on the leaderboard.
+coverage is fine and will be reported honestly on the leaderboard.
 """
 
 from __future__ import annotations

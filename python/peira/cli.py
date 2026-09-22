@@ -1,7 +1,7 @@
 """peira CLI: run evaluations, validate datasets, render reports.
 
 Exit codes: 0 clean, 1 user error (bad config/adapter), 2 infrastructure
-error (OOM, network, crash), 3 run completed but ranking-ineligible
+error (resource, network, crash), 3 run completed but ranking-ineligible
 (eligibility notes are warnings, not failures).
 """
 
@@ -46,7 +46,7 @@ def cmd_run(args: argparse.Namespace) -> int:
 
     suite = args.suite
     if suite == "smoke":
-        suite = "trial"  # smoke is the Trial alias (§19.10)
+        suite = "trial"  # smoke is the Trial alias
     if suite not in SUITE_DIRS:
         print(f"error: unknown suite {args.suite!r} (available: trial-demo, trial/smoke)",
               file=sys.stderr)

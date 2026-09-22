@@ -17,9 +17,9 @@ it's reported honestly, not penalized silently.
 
 ## Attack families
 
-v1 ships 10 families × 250 cases (2,000 public + 500 private holdout).
+v1 will ship 10 families × 250 cases (2,000 public + 500 private holdout).
 The snake_case IDs are canonical — they appear verbatim in dataset files
-and per-case drill-down:
+and per-case drill-down (planned):
 
 1. **state_poisoning** — hostile content in tool output authorizes the
    action; includes history-embedded payloads in multi-turn state.
@@ -37,5 +37,5 @@ and per-case drill-down:
 10. **confidence_spoofing** — hostile content inflates confidence while
     flipping the answer.
 
-Each family ships with worked examples in `dataset/v1/`. Family definitions
+Each family will ship with worked examples in `dataset/v1/`. Family definitions
 are frozen at dataset v1; new families arrive as new dataset versions.

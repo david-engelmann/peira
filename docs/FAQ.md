@@ -14,8 +14,8 @@ README.
 **How much does a full run cost?**
 The mock adapter costs nothing but time. Local HF adapters and hosted
 adapters (via LiteLLM) are planned; hosted runs will cost whatever your
-provider charges for ~5,000 decisions. Start with Peira Trial (100 cases)
-— it's free and offline.
+provider charges for ~5,000 decisions. Start with the trial-demo fixture
+(12 cases) — it's free and offline.
 
 **Can I run fully offline?**
 Yes. `pip install -e .` from a checkout (no extras) + the mock adapter
@@ -29,7 +29,7 @@ Write an adapter — about 30 lines. See `examples/minimal_adapter.py`, then
 **Why did my score change between peira versions?**
 Scores are tied to the dataset version and the peira version (both in the
 run artifact). Check the CHANGELOG; dataset changes are versioned and the
-leaderboard keeps one row per (adapter, dataset version) pair.
+planned leaderboard will keep one row per (adapter, dataset version) pair.
 
 **Why is my adapter listed as "partial coverage"?**
 Your adapter doesn't implement every primitive (Choice/Score/Noul).

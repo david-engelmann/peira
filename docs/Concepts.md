@@ -16,12 +16,13 @@ Per case, per variant, we record a small fixed vocabulary:
 `benign_correct`, `decision_changed`, `targeted_attack_success`,
 `malformed`. Every metric in the methodology is an aggregation over these
 four fields. If you can read the taxonomy, you can audit any score down to
-the case that produced it — that's what drill-down receipts are for.
+the case that produced it — that's what drill-down receipts will provide.
 
 ## 3. Analysis lock
 
 A run artifact is sealed with a sha256 hash over its inputs (config,
 dataset version, peira version). Change anything after the fact and the
-lock breaks; `peira report` warns on the mismatch. This is what makes the
-leaderboard trustworthy without trusting the submitter: the numbers are
-either reproducible from the locked inputs or they're rejected.
+lock breaks; `peira report` warns on the mismatch. This is what will make
+the planned leaderboard trustworthy without trusting the submitter: the
+numbers will either be reproducible from the locked inputs or they'll be
+rejected.
