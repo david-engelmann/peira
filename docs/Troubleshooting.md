@@ -135,3 +135,27 @@ Cause: a case file changed after the manifest was built (hash mismatch,
 or counts like `n_cases` drifted). Each mismatch is listed as
 `  - <file>: <what changed>`. Fix: don't edit released case files —
 cut a new dataset version instead. For a draft, rebuild the manifest.
+
+**`error: the 'cargo' binary was not found on PATH.`**
+Cause: you ran `scripts/build_core_ext.py` without the Rust toolchain.
+Fix: install it (https://rustup.rs) — or skip the build entirely. The
+extension is an optional accelerator; peira runs on the pure-Python
+reference implementation without it.
+
+**`error: cargo build failed (exit N).`**
+Cause: the PyO3 extension failed to compile. Fix: check you have a
+Python 3.10+ interpreter with development headers (`Python.h`) — on
+Debian/Ubuntu that's `python3-dev`. Then re-run
+`python scripts/build_core_ext.py`.
+
+**`error: no cdylib found in target/...`**
+Cause: cargo finished but produced no shared library (wrong target dir
+or an interrupted build). Fix: `cargo clean -p peira-python` and rebuild
+with `python scripts/build_core_ext.py`.
+
+**`error: built extension failed to import:`**
+Cause: the compiled `peira._core` doesn't load in your Python (usually a
+version mismatch — the extension is built for the interpreter that ran
+the script). Fix: rebuild with the Python you actually use, and make
+sure no stale `_core*.so` / `_core*.pyd` from another interpreter sits in
+`python/peira/`.

@@ -10,6 +10,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
+from peira._rust import _impl as _rust
+
 PRIMITIVES = ("choice", "score", "noul")
 SEVERITIES = ("critical", "high", "medium", "low")
 
@@ -121,8 +123,8 @@ class Case:
         )
 
 
-def validate_case_dict(d: dict[str, Any]) -> list[str]:
-    """Return a list of schema violations (empty = valid)."""
+def _validate_case_dict_py(d: dict[str, Any]) -> list[str]:
+    """Reference implementation of :func:`validate_case_dict` (pure Python)."""
     errors: list[str] = []
     for key in CASE_JSON_SCHEMA["required"]:
         if key not in d:
@@ -138,3 +140,20 @@ def validate_case_dict(d: dict[str, Any]) -> list[str]:
         if "expected_decision" not in d.get("benign", {}):
             errors.append("benign variant needs 'expected_decision'")
     return errors
+
+
+def validate_case_dict(d: dict[str, Any]) -> list[str]:
+    """Return a list of schema violations (empty = valid).
+
+    Uses the compiled Rust core when it is installed; otherwise the
+    pure-Python reference implementation. Both return identical errors.
+    """
+    if _rust is not None:
+        try:
+            return _rust.validate_case_dict(d)
+        except (TypeError, ValueError):
+            # Values with no JSON representation (non-finite floats,
+            # integers wider than u64, non-string keys) cannot cross the
+            # boundary; validate them with the reference implementation.
+            pass
+    return _validate_case_dict_py(d)
