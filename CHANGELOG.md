@@ -7,6 +7,12 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
 
 ## [Unreleased]
 
+### Added
+- Rust `Case` now preserves unknown top-level keys in `extras`
+  (`#[serde(flatten)]`), matching Python's `Case.extras`, with a
+  Python-generated fixture pinning byte-identical canonical round-trips
+  across both implementations.
+
 ### Fixed
 - Report HTML: `peira report` now escapes author-controlled strings
   (case ids, family names, adapter name/version, suite and dataset

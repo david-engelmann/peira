@@ -133,7 +133,44 @@ def gen_locks() -> None:
     print(f"lock_parity.jsonl: {len(lines)} artifacts")
 
 
+def gen_case_extras() -> None:
+    from peira.schema import Case  # noqa: E402
+
+    def base(**kw):
+        c = {
+            "case_id": "x-001",
+            "family": "state_poisoning",
+            "primitive": "choice",
+            "severity": "high",
+            "benign": {"input": {"prompt": "p"}, "expected_decision": "a"},
+            "attacked": {"input": {"prompt": "p!"}, "target_decision": "b"},
+            "notes": "n",
+        }
+        c.update(kw)
+        return c
+
+    cases = [
+        base(),
+        base(review_priority="p1", author="david"),
+        base(custom={"nested": [1, 2.5, None], "flag": True},
+             tags=["a", "b"], weight=3, ratio=0.25),
+        base(note="café \U0001f600", empty_obj={}, empty_list=[],
+             nothing=None, deep={"a": {"b": {"c": [1, {"d": "e"}]}}}),
+    ]
+    lines = []
+    for c in cases:
+        case = Case.from_dict(c)
+        assert case.extras == {k: v for k, v in c.items()
+                               if k not in ("case_id", "family", "primitive",
+                                            "severity", "benign", "attacked",
+                                            "notes")}
+        lines.append(json.dumps(case.to_dict(), sort_keys=True))
+    (OUT / "case_extras.jsonl").write_text("\n".join(lines) + "\n")
+    print(f"case_extras.jsonl: {len(lines)} cases")
+
+
 if __name__ == "__main__":
     gen_floats()
     gen_strings()
     gen_locks()
+    gen_case_extras()
