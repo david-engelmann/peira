@@ -7,6 +7,15 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
 
 ## [Unreleased]
 
+### Fixed
+- Mock adapter flip behavior: on its seeded flip subset the mock now flips
+  toward each case's own `target_decision` (injected into the attacked
+  input by the runner) instead of hard-coding the approve/deny toggle,
+  so targeted-attack-success is meaningful for arbitrary decision labels
+  (A/B, advance/reject, flag/clear, …). The approve/deny toggle remains
+  as the fallback for target-less synthetic inputs. Deterministic and
+  bit-for-bit reproducible as before.
+
 ### Added
 - Initial scaffold: Python SDK (`BaseAdapter`, case schema, runner,
   metrics, sealed run artifacts), `peira` CLI (`run`/`validate`/`report`),

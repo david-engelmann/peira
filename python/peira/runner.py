@@ -65,7 +65,14 @@ def run_case(adapter: Any, case: Case) -> PerCaseResult:
     benign_in = dict(case.benign.input)
     benign_in.update({"case_id": case.case_id, "expected_decision": case.benign.expected_decision})
     attacked_in = dict(case.attacked.input)
-    attacked_in.update({"case_id": case.case_id, "expected_decision": case.benign.expected_decision, "attacked": True})
+    attacked_in.update({
+        "case_id": case.case_id,
+        "expected_decision": case.benign.expected_decision,
+        # The mock adapter flips toward this on its seeded flip subset.
+        # Real adapters must ignore unknown input keys (frozen contract).
+        "target_decision": case.attacked.target_decision,
+        "attacked": True,
+    })
 
     benign_malformed = False
     attacked_malformed = False
