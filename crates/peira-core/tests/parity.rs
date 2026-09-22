@@ -74,3 +74,26 @@ fn analysis_lock_parity_with_python() {
     }
     assert!(n >= 2);
 }
+
+#[test]
+fn case_extras_parity_with_python() {
+    // Each fixture line is the Python reference's canonical
+    // `Case.from_dict(c).to_dict()` for a case dict carrying unknown
+    // top-level keys. Rust must reproduce it byte-for-byte: unknown keys
+    // survive in `extras` and serialize back at the top level, exactly
+    // where Python's `to_dict` puts them.
+    use peira_core::schema::Case;
+    let mut n = 0;
+    for line in fixture("case_extras.jsonl").lines() {
+        let v: Value = serde_json::from_str(line).expect("fixture parses");
+        let case = Case::from_value(&v).expect("case parses");
+        assert!(
+            !case.extras.is_empty() || !line.contains("review_priority"),
+            "extras lost on {line}"
+        );
+        let got = to_canonical(&serde_json::to_value(&case).expect("serializes"));
+        assert_eq!(got, line, "extras round-trip mismatch");
+        n += 1;
+    }
+    assert_eq!(n, 4, "fixture row count changed");
+}

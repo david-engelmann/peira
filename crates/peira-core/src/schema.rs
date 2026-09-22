@@ -10,6 +10,7 @@
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use std::collections::HashMap;
 
 /// The three decision primitives.
 pub const PRIMITIVES: &[&str] = &["choice", "score", "noul"];
@@ -79,6 +80,11 @@ pub struct Case {
     pub attacked: AttackedVariant,
     #[serde(default)]
     pub notes: String,
+    /// Unknown top-level keys, preserved on round-trip. Mirrors Python
+    /// `Case.extras`: future per-case configuration rides the pipeline
+    /// with no refactoring, on both implementations.
+    #[serde(flatten)]
+    pub extras: HashMap<String, Value>,
 }
 
 impl Case {
@@ -280,5 +286,46 @@ mod tests {
     #[test]
     fn canonical_families_count() {
         assert_eq!(CANONICAL_FAMILIES.len(), 10);
+    }
+
+    #[test]
+    fn unknown_keys_land_in_extras() {
+        let mut d = valid_case();
+        d["review_priority"] = json!("p1");
+        d["custom"] = json!({"nested": [1, 2, 3], "flag": true});
+        let case = Case::from_value(&d).unwrap();
+        assert_eq!(case.extras.len(), 2);
+        assert_eq!(case.extras["review_priority"], json!("p1"));
+        assert_eq!(case.extras["custom"]["nested"], json!([1, 2, 3]));
+        // Known keys never leak into extras.
+        for k in [
+            "case_id",
+            "family",
+            "primitive",
+            "severity",
+            "benign",
+            "attacked",
+            "notes",
+        ] {
+            assert!(!case.extras.contains_key(k), "{k} leaked into extras");
+        }
+    }
+
+    #[test]
+    fn extras_round_trip_at_top_level() {
+        let mut d = valid_case();
+        d["review_priority"] = json!("p1");
+        let case = Case::from_value(&d).unwrap();
+        let back = serde_json::to_value(&case).unwrap();
+        assert_eq!(back["review_priority"], json!("p1"));
+        assert_eq!(back["case_id"], json!("sp-001"));
+    }
+
+    #[test]
+    fn no_unknown_keys_means_empty_extras() {
+        let case = Case::from_value(&valid_case()).unwrap();
+        assert!(case.extras.is_empty());
+        let back = serde_json::to_value(&case).unwrap();
+        assert_eq!(back.as_object().unwrap().len(), 7);
     }
 }

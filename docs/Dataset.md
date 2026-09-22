@@ -33,10 +33,14 @@ run → report).
 The frozen schema requires `case_id`, `family`, `primitive`, `severity`,
 `benign`, and `attacked` — and nothing else. Validators ignore unknown
 top-level fields, and `Case.from_dict` preserves them on `Case.extras`,
-so new per-case configuration rides through the whole pipeline (load →
-run → artifact) without touching the schema, the loader, the gates, or
-the artifact format. Only the consumer of a new field needs to know
-about it. The trial starter suite uses this for its `canary` field.
+so new per-case configuration survives `from_dict` → `to_dict`
+round-trips and stays available on the case object during the run,
+without touching the schema, the loader, or the gates. Run artifacts
+record per-case *results*, not full case dicts, so extras don't land in
+artifacts by themselves — adapter-visible configuration belongs inside
+the variant `input`, which already passes through unchanged. Only the
+consumer of a new field needs to know about it. The trial starter suite
+uses this for its `canary` field.
 
 The 500-case private holdout is **never** committed to this repo. It lives
 encrypted and maintainer-only; only aggregate metrics are published. Its
