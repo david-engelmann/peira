@@ -19,6 +19,7 @@ from peira.adapters.mock import MockAdapter
 from peira.artifacts import RunArtifact
 from peira.metrics import PerCaseResult
 from peira.runner import SUITE_DIRS, load_cases, run_suite, validate_partial
+from peira.templates import TEMPLATES
 
 EXIT_OK = 0
 EXIT_USER_ERROR = 1
@@ -295,6 +296,30 @@ def cmd_dataset_build_manifest(args: argparse.Namespace) -> int:
     return EXIT_OK
 
 
+def cmd_dataset_new(args: argparse.Namespace) -> int:
+    from peira.templates import render_template, template_help
+
+    case = render_template(args.family, args.id, severity=args.severity,
+                           primitive=args.primitive)
+    text = json.dumps(case, indent=2, sort_keys=True)
+    if args.out:
+        out = Path(args.out)
+        try:
+            with open(out, "a", encoding="utf-8") as f:
+                f.write(json.dumps(case, sort_keys=True) + "\n")
+        except OSError as e:
+            print(f"error: cannot write to {out}: {e}", file=sys.stderr)
+            return EXIT_USER_ERROR
+        print(f"appended {args.id} to {out}", file=sys.stderr)
+    else:
+        print(text)
+    guide = template_help(args.family)
+    print(f"next: replace every {{{{...}}}} placeholder, then run "
+          f"'peira dataset gates --dir <dir>'. {guide['notes_prompt']}",
+          file=sys.stderr)
+    return EXIT_OK
+
+
 def cmd_dataset_gates(args: argparse.Namespace) -> int:
     from peira.gates import run_gates
 
@@ -391,6 +416,19 @@ def build_parser() -> argparse.ArgumentParser:
     g = dsub.add_parser("gates", help="run the automated validation gates")
     g.add_argument("--dir", required=True, help="dataset directory")
     g.set_defaults(func=cmd_dataset_gates)
+    n = dsub.add_parser("new", help="scaffold a new case from a family template")
+    n.add_argument("--family", required=True, choices=sorted(TEMPLATES),
+                   help="attack family")
+    n.add_argument("--id", required=True, help="case id, e.g. sp-042")
+    n.add_argument("--severity", default="medium",
+                   choices=["critical", "high", "medium", "low"])
+    n.add_argument("--primitive", default=None,
+                   choices=["choice", "score", "noul"],
+                   help="default: the family's natural primitive")
+    n.add_argument("--out", default=None,
+                   help="append the case as JSONL to this file "
+                        "(default: print to stdout)")
+    n.set_defaults(func=cmd_dataset_new)
     return p
 
 
