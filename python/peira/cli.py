@@ -18,6 +18,7 @@ from pathlib import Path
 from peira import __version__
 from peira.adapters.mock import MockAdapter
 from peira.artifacts import RunArtifact
+from peira.dataset import sha256_file, verify_manifest
 from peira.metrics import PerCaseResult
 from peira.runner import SUITE_DIRS, load_cases, run_suite, validate_partial
 from peira.templates import TEMPLATES
@@ -98,6 +99,37 @@ def _load_dotted_adapter(spec: str):
     return adapter
 
 
+def _suite_dataset_identity(suite_dir: Path) -> tuple[str, str]:
+    """Return (dataset_version, manifest_sha256) for a suite directory.
+
+    The manifest is verified against the directory *before* anything is
+    scored. A mismatch fails closed with ValueError: scoring a tampered
+    dataset would seal a lie into the analysis lock. A missing or
+    unreadable manifest is not tampering — it yields the fallback label
+    and an empty digest, i.e. an explicitly unbound run.
+    """
+    manifest_path = suite_dir / "manifest.json"
+    if not manifest_path.is_file():
+        return "0.1.0-demo", ""
+    try:
+        errors = verify_manifest(suite_dir)
+    except (OSError, ValueError) as e:
+        print(f"warning: unreadable manifest at {manifest_path} ({e}); "
+              f"recording dataset_version='0.1.0-demo'.",
+              file=sys.stderr)
+        return "0.1.0-demo", ""
+    if errors:
+        raise ValueError(
+            "dataset manifest verification failed:\n  "
+            + "\n  ".join(errors)
+            + "\nrefusing to score: the dataset changed since its manifest "
+              "was built — rebuild the manifest or restore the files."
+        )
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    dataset_version = str(manifest.get("dataset_version", "0.1.0-demo"))
+    return dataset_version, sha256_file(manifest_path)
+
+
 def cmd_run(args: argparse.Namespace) -> int:
     root = _repo_root()
     try:
@@ -139,21 +171,15 @@ def cmd_run(args: argparse.Namespace) -> int:
     already_done: set[str] = set()
     prior_results: list[PerCaseResult] = []
     slug = _safe_adapter_slug(args.adapter)
-    # The dataset version is part of the analysis lock: read it from the
-    # suite's manifest when one exists, so runs always bind the exact
-    # dataset bytes they scored.
-    dataset_version = "0.1.0-demo"
-    manifest_path = suite_dir / "manifest.json"
-    if manifest_path.is_file():
-        try:
-            dataset_version = str(
-                json.loads(manifest_path.read_text(encoding="utf-8"))
-                .get("dataset_version", dataset_version)
-            )
-        except (OSError, ValueError) as e:
-            print(f"warning: unreadable manifest at {manifest_path} ({e}); "
-                  f"recording dataset_version={dataset_version!r}.",
-                  file=sys.stderr)
+    # Dataset identity is sealed into the analysis lock: the manifest is
+    # verified before anything is scored, and its SHA-256 is recorded, so
+    # the artifact proves the exact bytes scored — not just the version
+    # label. A verification mismatch fails closed (nothing is scored).
+    try:
+        dataset_version, manifest_sha256 = _suite_dataset_identity(suite_dir)
+    except ValueError as e:
+        print(f"error: {e}", file=sys.stderr)
+        return EXIT_USER_ERROR
     partial_path = out_dir / f"{slug}-{suite}.partial.json"
     if args.resume:
         if not partial_path.exists():
@@ -169,7 +195,8 @@ def cmd_run(args: argparse.Namespace) -> int:
             if partial is not None:
                 try:
                     already_done, prior_results = validate_partial(
-                        partial, adapter, cases, suite, dataset_version)
+                        partial, adapter, cases, suite, dataset_version,
+                        manifest_sha256)
                 except ValueError as e:
                     print(f"error: {e} — delete {partial_path} or drop "
                           f"--resume and re-run.", file=sys.stderr)
@@ -189,6 +216,7 @@ def cmd_run(args: argparse.Namespace) -> int:
             adapter, cases, suite, dataset_version,
             progress=progress, already_done=already_done,
             prior_results=prior_results, partial_path=partial_path,
+            manifest_sha256=manifest_sha256,
         )
     except KeyboardInterrupt:
         print("\ninterrupted — partial run saved; re-run with --resume.",
@@ -301,6 +329,7 @@ be mislabeled.</p>
 <p><em>A peira score measures robustness on this benchmark's paired
 decision cases. It does not certify a model as safe.</em></p>
 <p>Analysis lock: <code>{artifact.analysis_lock}</code></p>
+<p>Manifest SHA-256: <code>{artifact.manifest_sha256 or "unbound — suite ships no manifest"}</code></p>
 </body></html>"""
     out = Path(args.out)
     # Explicit UTF-8: the report contains ✓/✗ glyphs, which the Windows

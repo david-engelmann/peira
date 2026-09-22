@@ -8,6 +8,14 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
 ## [Unreleased]
 
 ### Added
+- Byte-proof dataset identity (H4): `peira run` verifies the suite
+  manifest before scoring and seals the manifest's SHA-256 into the
+  analysis lock, so an artifact proves the exact dataset bytes scored —
+  not just the version label. A verification mismatch fails closed
+  (nothing is scored), and `peira run --resume` refuses a partial run
+  recorded against a different dataset snapshot. The Rust
+  `RunArtifact`/`lock_payload` mirror the new sealed field, with
+  regenerated parity fixtures.
 - Rust `Case` now preserves unknown top-level keys in `extras`
   (`#[serde(flatten)]`), matching Python's `Case.extras`, with a
   Python-generated fixture pinning byte-identical canonical round-trips
