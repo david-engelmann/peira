@@ -101,6 +101,19 @@ Note: `dataset/trial-demo/` predates the gates and is exempt — it's
 quickstart scaffolding with deliberately repetitive content, not a real
 dataset. Gates apply to `dataset/v1` authoring.
 
+A Rust port of the schema check ships as `peira-cli` (`crates/peira-cli`)
+for fast dataset validation in CI:
+
+```
+peira-cli validate --dir dataset/v1          # G1 schema check, in Rust
+peira-cli verify-manifest --dir dataset/v1   # manifest integrity, in Rust
+```
+
+Both commands are read-only and exit 1 on failure. The Rust core
+(`crates/peira-core`) also ports the metrics, run artifacts, and the
+canonical JSON behind analysis locks — byte-identical to the Python
+reference, so either side verifies the other's artifacts.
+
 ## Generator templates
 
 New cases start from a family template — never a blank file:
