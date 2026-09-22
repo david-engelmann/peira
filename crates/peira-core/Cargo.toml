@@ -1,0 +1,10 @@
+[package]
+name = "peira-core"
+version = "0.1.0"
+edition = "2021"
+description = "Rust core for peira: fast scoring and metrics for the empirical trial for decision models."
+license = "MIT"
+
+[lib]
+name = "peira_core"
+crate-type = ["cdylib", "rlib"]
