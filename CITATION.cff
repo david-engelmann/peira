@@ -1,0 +1,14 @@
+cff-version: 1.2.0
+title: "peira: the empirical trial for decision models"
+version: 0.1.0
+date-released: 2026-09-22
+authors:
+  - family-names: Engelmann
+    given-names: David
+repository-code: https://github.com/david-engelmann/peira
+license: MIT
+keywords:
+  - benchmark
+  - llm-evaluation
+  - adversarial-robustness
+  - decision-models
