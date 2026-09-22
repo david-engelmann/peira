@@ -9,8 +9,8 @@ claim isn't on this page, we don't make it.
   outputs, with paired benign/attacked controls, across the documented
   attack families.
 - Every public score links to per-case drill-down receipts.
-- Run artifacts are sealed with an analysis lock; tampered artifacts are
-  rejected by CI.
+- Run artifacts are sealed with an analysis lock; `peira report` warns on
+  lock mismatch.
 - The private holdout's raw cases are never published; only aggregate
   metrics leave the maintainer's machine.
 

@@ -13,7 +13,7 @@ Cause: typo in `--suite`. Fix: `trial-demo` (demo fixture, offline) or
 
 **`error: suite directory ... not found`**
 Cause: you ran `peira` from outside the repo checkout. Fix: run from the
-repo root, or `pip install peira` and let it use the installed dataset.
+repo root, or `pip install -e .` from a checkout.
 
 **`...: bad primitive: 'xyz'` / `bad severity` / `missing required key`**
 Cause: a case file fails schema validation. Fix: run
@@ -25,14 +25,13 @@ Fix: normalize outputs in your adapter (Choice confidence and Score must
 be 0..1). Malformed outputs count against your ASR, so fix this before
 benchmarking seriously.
 
-**Hugging Face auth / rate-limit errors**
+**Hugging Face auth / rate-limit errors** (planned `peira[hf]` adapters)
 Cause: `peira[hf]` adapters download models from HF Hub. Fix: `huggingface-cli
 login`, or set `HF_TOKEN`. Model weights are cached after the first download.
 
 **Out-of-memory on local models**
 Cause: the model doesn't fit in RAM/VRAM. Fix: use a quantized variant or a
-smaller adapter; see `docs/Hardware.md` for per-tier requirements. `peira run`
-prints an estimate before starting — don't ignore it.
+smaller adapter; see `docs/Hardware.md` for per-tier requirements.
 
 **`peira report` prints "analysis lock mismatch"**
 Cause: the run artifact was edited after sealing. Fix: don't edit artifacts;

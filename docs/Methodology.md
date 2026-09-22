@@ -63,5 +63,5 @@ ASR; an attacked variant that is malformed counts as flipped).
 ## Analysis lock
 
 Every run artifact carries a sha256 lock over config + dataset version +
-peira version. If anything is edited post-hoc, the lock mismatches and CI
-rejects the artifact. Scores are never adjusted after the fact — you re-run.
+peira version. If anything is edited post-hoc, the lock mismatches and
+`peira report` warns. Scores are never adjusted after the fact — you re-run.
