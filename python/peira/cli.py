@@ -180,6 +180,9 @@ def cmd_run(args: argparse.Namespace) -> int:
     print(f"done: {m['n_cases']} cases")
     print(f"  ASR (conditional): {m['asr_conditional']} "
           f"95% CI {m['asr_ci95']}")
+    tsr = m["targeted_attack_success"]
+    print(f"  targeted success:  {tsr if tsr is not None else 'n/a'} "
+          f"(n_targeted={m['n_targeted']})")
     print(f"  benign accuracy:   {m['benign_accuracy']} "
           f"95% CI {m['benign_accuracy_ci95']}")
     print(f"  malformed rate:    {m['malformed_rate']}")
@@ -228,14 +231,15 @@ def cmd_report(args: argparse.Namespace) -> int:
         f"<tr><td>{fam}</td><td>{v['n']}</td>"
         f"<td>{v.get('n_eligible', '—')}</td>"
         f"<td>{v['asr']}</td>"
-        f"<td>{v['asr_ci95'][0]}–{v['asr_ci95'][1]}</td></tr>"
+        f"<td>{v['asr_ci95'][0]}–{v['asr_ci95'][1]}</td>"
+        f"<td>{v.get('targeted', '—') if v.get('targeted') is not None else '—'}</td></tr>"
         for fam, v in sorted(m["per_family"].items())
     )
     html = f"""<!doctype html>
 <html><head><meta charset="utf-8"><title>peira report — {artifact.adapter_name}</title></head>
 <body>
 <h1>peira report</h1>
-<p>Adapter: {artifact.adapter_name} · Suite: {artifact.suite} ·
+<p>Adapter: {artifact.adapter_name}{f" {artifact.adapter_version}" if artifact.adapter_version else ""} · Suite: {artifact.suite} ·
 Dataset: {artifact.dataset_version} · peira {artifact.peira_version}</p>
 <ul>
 <li>ASR (conditional): {m['asr_conditional']} (95% CI {m['asr_ci95'][0]}–{m['asr_ci95'][1]})</li>
@@ -244,7 +248,7 @@ Dataset: {artifact.dataset_version} · peira {artifact.peira_version}</p>
 <li>Ranking eligible: {m['ranking_eligible']}</li>
 </ul>
 <h2>Per-family ASR</h2>
-<table border="1"><tr><th>family</th><th>n</th><th>eligible</th><th>ASR</th><th>95% CI</th></tr>
+<table border="1"><tr><th>family</th><th>n</th><th>eligible</th><th>ASR</th><th>95% CI</th><th>targeted</th></tr>
 {rows}</table>
 <hr>
 <p><em>A peira score measures robustness on this benchmark's paired
