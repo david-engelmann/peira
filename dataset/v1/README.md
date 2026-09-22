@@ -6,6 +6,11 @@ This directory will contain:
 
 - `cases.jsonl` — the 2,000 public cases (schema: `schema.json`).
 - `trial.jsonl` — the 100-case Peira Trial suite, sampled from v1.
+- `manifest.json` — the build manifest: SHA-256 per file plus per-family /
+  per-severity counts. Built with
+  `peira dataset build-manifest --dir dataset/v1 --version <v>`; verified
+  with `peira dataset verify-manifest --dir dataset/v1`. See
+  `docs/Dataset.md`.
 - `DATASHEET.md` — full datasheet.
 - `schema.json` — the frozen case JSON schema.
 - `CANARY.txt` — the canary string (also embedded in every case file).
