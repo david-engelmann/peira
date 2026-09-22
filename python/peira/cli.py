@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
 import traceback
 from pathlib import Path
@@ -30,10 +31,69 @@ def _repo_root() -> Path:
     return Path(__file__).resolve().parents[2]
 
 
+def _safe_adapter_slug(name: str) -> str:
+    return re.sub(r"[^A-Za-z0-9_.-]", "_", name)
+
+
 def _get_adapter(name: str):
     if name == "mock":
         return MockAdapter()
-    raise ValueError(f"unknown adapter: {name!r} (available: mock)")
+    return _load_dotted_adapter(name)
+
+
+def _load_dotted_adapter(spec: str):
+    """Load an adapter from a dotted path.
+
+    Accepted forms:
+      package.module             module-level ``adapter`` object
+      package.module:ClassName   class, instantiated with no arguments
+      package.module.ClassName   class, instantiated with no arguments
+
+    The working directory is prepended to sys.path so adapters next to the
+    checkout (e.g. ``examples/``) resolve when the console script is used.
+    """
+    import importlib
+
+    module_name, sep, attr = spec.partition(":")
+    cwd = str(Path.cwd())
+    if cwd not in sys.path:
+        sys.path.insert(0, cwd)
+    try:
+        module = importlib.import_module(module_name)
+    except ImportError as first_err:
+        module = None
+        if "." in module_name and not sep:
+            parent, attr = module_name.rsplit(".", 1)
+            try:
+                module = importlib.import_module(parent)
+            except ImportError:
+                module = None
+        if module is None:
+            raise ValueError(
+                f"unknown adapter: {spec!r} (available: 'mock' or a dotted "
+                f"path like 'examples.minimal_adapter')"
+            ) from first_err
+    if not attr:
+        candidate = getattr(module, "adapter", None)
+        if candidate is None:
+            raise ValueError(
+                f"adapter module {module_name!r} has no top-level `adapter`; "
+                f"use 'module:ClassName' to name a class"
+            )
+    else:
+        candidate = getattr(module, attr, None)
+        if candidate is None:
+            raise ValueError(
+                f"adapter module {module.__name__!r} has no attribute {attr!r}"
+            )
+    adapter = candidate() if isinstance(candidate, type) else candidate
+    for field in ("name", "version", "supported_primitives", "decide"):
+        if not hasattr(adapter, field):
+            raise ValueError(
+                f"adapter {spec!r} is missing {field!r} "
+                f"(see BaseAdapter in python/peira/adapters/base.py)"
+            )
+    return adapter
 
 
 def cmd_run(args: argparse.Namespace) -> int:
@@ -77,7 +137,8 @@ def cmd_run(args: argparse.Namespace) -> int:
 
     already_done: set[str] = set()
     prior_results: list[PerCaseResult] = []
-    partial_path = out_dir / f"{args.adapter}-{suite}.partial.json"
+    slug = _safe_adapter_slug(args.adapter)
+    partial_path = out_dir / f"{slug}-{suite}.partial.json"
     if args.resume and partial_path.exists():
         try:
             partial = RunArtifact.from_json(partial_path.read_text())
@@ -110,7 +171,7 @@ def cmd_run(args: argparse.Namespace) -> int:
         traceback.print_exc()
         return EXIT_INFRA_ERROR
 
-    out_path = out_dir / f"{args.adapter}-{suite}.json"
+    out_path = out_dir / f"{slug}-{suite}.json"
     out_path.write_text(artifact.to_json())
     if partial_path.exists():
         partial_path.unlink()
@@ -200,7 +261,10 @@ def build_parser() -> argparse.ArgumentParser:
     sub = p.add_subparsers(dest="command", required=True)
 
     r = sub.add_parser("run", help="run a suite through an adapter")
-    r.add_argument("--adapter", default="mock")
+    r.add_argument("--adapter", default="mock",
+                   help="'mock', or a dotted path: package.module (with a "
+                   "top-level `adapter`), package.module:ClassName, or "
+                   "package.module.ClassName")
     r.add_argument("--suite", default="trial-demo",
                    choices=list(SUITE_DIRS) + ["smoke"],
                    help="smoke is an alias for trial")

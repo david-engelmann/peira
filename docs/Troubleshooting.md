@@ -4,8 +4,11 @@ An error catalog: exact error → cause → fix. New user-facing errors get an
 entry here in the same PR that introduces them.
 
 **`error: unknown adapter: 'x'`**
-Cause: the adapter name isn't registered. Fix: use `mock`, or point
-`--adapter` at your adapter module (see `examples/minimal_adapter.py`).
+Cause: the adapter name didn't resolve. Fix: use `mock`, or pass a dotted
+path — `package.module` (with a top-level `adapter`),
+`package.module:ClassName`, or `package.module.ClassName` (see
+`examples/minimal_adapter.py`). Run from the directory your adapter module
+lives under.
 
 **`error: unknown suite 'x'`**
 Cause: typo in `--suite`. Fix: `trial-demo` (demo fixture, offline) or
