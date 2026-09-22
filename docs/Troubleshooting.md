@@ -108,3 +108,30 @@ review them (`peira dataset review --dir <dir>`), or drop
 **`error: --dir is required`**
 Cause: `peira dataset review` without `--dir`. Fix: pass
 `--dir <dataset-dir>`.
+
+**`peira-cli validate`: `validate: FAILED (N errors in M cases)`**
+Cause: the Rust validator (`crates/peira-cli`, used in CI) found cases
+that fail schema validation. Each offending line is printed as
+`file:line: <rule>` above the summary. Fix: same as the Python
+`peira dataset gates` failures — fix the case file. Error rules are
+identical across both implementations.
+
+**`peira-cli`: `error: dataset directory ... not found`**
+Cause: `peira-cli validate` / `verify-manifest` got a `--dir` that
+doesn't exist. Fix: check the path.
+
+**`peira-cli`: `error: no manifest.json in ... — run 'peira dataset build-manifest' first`**
+Cause: `peira-cli verify-manifest` needs a manifest to check against.
+Fix: build one with the Python CLI first — the Rust side verifies
+manifests, it doesn't author them.
+
+**`peira-cli`: `error: unreadable manifest: ...`**
+Cause: `manifest.json` is missing, corrupt, or not the expected shape.
+Fix: restore it from git, or rebuild with
+`peira dataset build-manifest`.
+
+**`peira-cli`: `error: ... does not match manifest.json:`**
+Cause: a case file changed after the manifest was built (hash mismatch,
+or counts like `n_cases` drifted). Each mismatch is listed as
+`  - <file>: <what changed>`. Fix: don't edit released case files —
+cut a new dataset version instead. For a draft, rebuild the manifest.
