@@ -1,0 +1,17 @@
+[package]
+name = "peira-python"
+version = "0.1.0"
+edition = "2021"
+description = "PyO3 bindings exposing peira-core to Python as peira._core."
+license = "MIT"
+
+[lib]
+# The leading underscore matches the Python-side module name: the built
+# cdylib is renamed to _core.<ext-suffix> by scripts/build_core_ext.py.
+name = "_core"
+crate-type = ["cdylib"]
+
+[dependencies]
+peira-core = { path = "../peira-core" }
+pyo3 = { version = "0.29", features = ["extension-module"] }
+serde_json = "1"

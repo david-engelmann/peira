@@ -32,6 +32,24 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - run: cargo test --workspace
 
+  test-python-rust:
+    # The optional PyO3 accelerator: build peira._core and run the Python
+    # suite against the Rust backend, then again with PEIRA_NO_RUST=1 to
+    # prove the pure-Python fallback. (test-python covers the fallback on
+    # a fresh checkout, where the extension is never built.)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: dtolnay/rust-toolchain@stable
+      - run: pip install -e .
+      - run: python scripts/build_core_ext.py
+      - run: python -c "from peira._rust import RUST_AVAILABLE; assert RUST_AVAILABLE"
+      - run: python -m unittest discover tests -v
+      - run: PEIRA_NO_RUST=1 python -m unittest discover tests
+
   quickstart:
     # The README quickstart must work verbatim, offline, on every PR.
     runs-on: ${{ matrix.os }}

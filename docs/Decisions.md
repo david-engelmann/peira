@@ -10,6 +10,10 @@ CLI, and dataset tooling are Python. Rationale: contributors write adapters
 in Python (zero friction), while the harness stays fast enough for
 2,500-case runs on a laptop. Status: accepted; the Python reference
 implementation freezes the interfaces first (Phase 0).
+Update 2026-09-22: PyO3 wiring landed — `crates/peira-python` builds the
+optional `peira._core` accelerator (`scripts/build_core_ext.py`);
+`peira.metrics` / `peira.schema` dispatch to it with a pure-Python
+fallback, and `tests/test_rust_backend.py` pins backend parity.
 
 ## D-2: No human baseline in v1
 
