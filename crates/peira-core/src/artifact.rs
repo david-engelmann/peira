@@ -2,9 +2,10 @@
 //!
 //! Mirrors `python/peira/artifacts.py`. An artifact bundles the config,
 //! the per-case results, and the aggregate metrics, plus an analysis-lock
-//! hash (SHA-256 over config + dataset version + peira version + adapter
-//! name/version). The hash is the mechanical guarantee behind "no
-//! post-hoc editing": any change to inputs changes the lock.
+//! hash (SHA-256 over config + dataset version + manifest SHA-256 +
+//! peira version + adapter name/version). The hash is the mechanical
+//! guarantee behind "no post-hoc editing": any change to inputs changes
+//! the lock.
 //!
 //! The lock payload is serialized with [`crate::canonical`] so locks are
 //! byte-identical across the Python and Rust implementations.
@@ -24,6 +25,11 @@ pub struct RunArtifact {
     pub artifact_version: String,
     pub peira_version: String,
     pub dataset_version: String,
+    /// SHA-256 of the suite manifest.json bytes, verified before scoring.
+    /// Empty when the suite ships no manifest — the run is then explicitly
+    /// unbound, not silently bound.
+    #[serde(default)]
+    pub manifest_sha256: String,
     #[serde(default)]
     pub adapter_name: String,
     #[serde(default)]
@@ -53,6 +59,7 @@ impl RunArtifact {
         lock_payload(
             &self.peira_version,
             &self.dataset_version,
+            &self.manifest_sha256,
             &self.adapter_name,
             &self.adapter_version,
             &self.suite,
@@ -83,12 +90,16 @@ impl RunArtifact {
     }
 }
 
-/// Compute the analysis lock from the seven payload fields. Exposed so
+/// Compute the analysis lock from the eight payload fields. Exposed so
 /// tests (and future verifiers) can lock payloads built outside a
 /// [`RunArtifact`], e.g. from a JSON fixture produced by the Python side.
+// Eight positional params mirror the frozen lock-payload field list;
+// a struct would just rename the problem.
+#[allow(clippy::too_many_arguments)]
 pub fn lock_payload(
     peira_version: &str,
     dataset_version: &str,
+    manifest_sha256: &str,
     adapter_name: &str,
     adapter_version: &str,
     suite: &str,
@@ -100,6 +111,10 @@ pub fn lock_payload(
     map.insert(
         "dataset_version".into(),
         Value::String(dataset_version.into()),
+    );
+    map.insert(
+        "manifest_sha256".into(),
+        Value::String(manifest_sha256.into()),
     );
     map.insert("adapter_name".into(), Value::String(adapter_name.into()));
     map.insert(
@@ -125,6 +140,7 @@ mod tests {
             artifact_version: "1".into(),
             peira_version: "0.1.0".into(),
             dataset_version: "0.1.0-demo".into(),
+            manifest_sha256: "abc123".into(),
             adapter_name: "dummy".into(),
             adapter_version: "1".into(),
             suite: "trial-demo".into(),
@@ -153,6 +169,20 @@ mod tests {
         assert!(!a.verify()); // empty lock never verifies
         a.seal();
         assert!(a.verify());
+    }
+
+    #[test]
+    fn lock_covers_manifest_sha256() {
+        // Byte-proof dataset identity: two artifacts that differ only in
+        // the recorded manifest digest seal different locks.
+        let mut a = sample();
+        a.seal();
+        let mut b = sample();
+        b.manifest_sha256 = "def456".into();
+        b.seal();
+        assert_ne!(a.analysis_lock, b.analysis_lock);
+        assert!(a.verify());
+        assert!(b.verify());
     }
 
     #[test]

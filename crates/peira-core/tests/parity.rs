@@ -54,6 +54,7 @@ fn analysis_lock_parity_with_python() {
         let got = lock_payload(
             art["peira_version"].as_str().unwrap(),
             art["dataset_version"].as_str().unwrap(),
+            art["manifest_sha256"].as_str().unwrap(),
             art["adapter_name"].as_str().unwrap(),
             art["adapter_version"].as_str().unwrap(),
             art["suite"].as_str().unwrap(),

@@ -41,6 +41,23 @@ Cause: the run artifact was edited after sealing (the report still
 renders, but the numbers aren't trustworthy). Fix: don't edit artifacts;
 re-run. If you need different config, that's a new run with a new lock.
 
+**`error: dataset manifest verification failed:`**
+Cause: `peira run` verifies the suite manifest before scoring, and a
+case file changed after the manifest was built (hash mismatch, or
+counts like `n_cases` drifted). Each mismatch is listed after the
+colon. Nothing is scored — the run fails closed so a tampered dataset
+can never seal a clean-looking artifact. Fix: don't edit released case
+files — cut a new dataset version instead. For a draft, rebuild the
+manifest with `peira dataset build-manifest --dir <suite-dir>` and
+re-run.
+
+**`error: partial run was recorded against a different dataset snapshot ...`**
+Cause: `peira run --resume` found a partial run whose sealed manifest
+digest doesn't match the current suite manifest — the dataset changed
+between the interrupted run and the resume. Merging old partial results
+with a new dataset would corrupt the run. Fix: delete the
+`<adapter>-<suite>.partial.json` file and re-run without `--resume`.
+
 **`error: no cases found in ...`**
 Cause: the suite directory has no `.jsonl` files. Fix: check the path;
 `dataset/trial-demo/cases.jsonl` ships with the repo.

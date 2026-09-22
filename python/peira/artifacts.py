@@ -33,6 +33,11 @@ class RunArtifact:
     results: list[dict] = field(default_factory=list)
     metrics: dict = field(default_factory=dict)
     analysis_lock: str = ""
+    # SHA-256 of the suite manifest.json bytes as verified before scoring.
+    # A label (`dataset_version`) says which dataset this claims to be;
+    # this digest proves the exact bytes. Empty when the suite ships no
+    # manifest — the run is then explicitly unbound, not silently bound.
+    manifest_sha256: str = ""
 
     def compute_lock(self) -> str:
         payload = json.dumps(
@@ -44,6 +49,7 @@ class RunArtifact:
                 "suite": self.suite,
                 "config": self.config,
                 "results": self.results,
+                "manifest_sha256": self.manifest_sha256,
             },
             sort_keys=True,
         )

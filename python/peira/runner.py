@@ -164,6 +164,7 @@ def _write_partial(
     dataset_version: str,
     results: list[PerCaseResult],
     required_families: list[str],
+    manifest_sha256: str = "",
 ) -> None:
     if partial_path is None:
         return
@@ -172,6 +173,7 @@ def _write_partial(
         adapter_version=getattr(adapter, "version", ""),
         suite=suite,
         dataset_version=dataset_version,
+        manifest_sha256=manifest_sha256,
         config={"n_cases": len(cases), "partial": True,
                 "required_families": required_families},
         results=results_to_dicts(results),
@@ -186,14 +188,15 @@ def validate_partial(
     cases: list[Case],
     suite: str,
     dataset_version: str,
+    manifest_sha256: str = "",
 ) -> tuple[set[str], list[PerCaseResult]]:
     """Strictly validate a partial run for --resume.
 
     Returns (done_case_ids, prior_results). Raises ValueError when the
     partial fails its analysis lock, belongs to a different suite, dataset
-    version, or adapter name+version, references unknown case ids, or
-    contains duplicate case ids. A partial that fails validation is never
-    silently merged into a new run.
+    version, dataset snapshot, or adapter name+version, references unknown
+    case ids, or contains duplicate case ids. A partial that fails
+    validation is never silently merged into a new run.
     """
     if not partial.verify():
         raise ValueError(
@@ -208,6 +211,14 @@ def validate_partial(
         raise ValueError(
             f"partial run is for dataset version {partial.dataset_version!r}, "
             f"not {dataset_version!r}"
+        )
+    if partial.manifest_sha256 != manifest_sha256:
+        old = partial.manifest_sha256[:12] or "none"
+        new = manifest_sha256[:12] or "none"
+        raise ValueError(
+            "partial run was recorded against a different dataset snapshot "
+            f"(manifest sha256 {old}…, now {new}…) — the dataset changed "
+            "since the partial was written"
         )
     adapter_version = getattr(adapter, "version", "")
     if (partial.adapter_name != adapter.name
@@ -245,6 +256,7 @@ def run_suite(
     partial_path: Path | None = None,
     checkpoint_every: int = 25,
     required_families: list[str] | None = None,
+    manifest_sha256: str = "",
 ) -> RunArtifact:
     # The required-family manifest defaults to the families present in the
     # suite's case files: the gate is evaluated over the full suite, so a
@@ -269,6 +281,7 @@ def run_suite(
                 _write_partial(
                     partial_path, adapter, cases, suite,
                     dataset_version, results, required_families,
+                    manifest_sha256,
                 )
     finally:
         # Always leave a resumable checkpoint behind, even on interrupt.
@@ -276,12 +289,14 @@ def run_suite(
             _write_partial(
                 partial_path, adapter, cases, suite,
                 dataset_version, results, required_families,
+                manifest_sha256,
             )
     artifact = RunArtifact(
         adapter_name=adapter.name,
         adapter_version=getattr(adapter, "version", ""),
         suite=suite,
         dataset_version=dataset_version,
+        manifest_sha256=manifest_sha256,
         config={"n_cases": total, "required_families": required_families},
         results=results_to_dicts(results),
     )
