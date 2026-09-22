@@ -71,3 +71,10 @@ Cause: a dataset file changed after the manifest was built. Fix: if the
 change is intentional, that's a new dataset version — rebuild the manifest
 with the bumped version. If not, restore the file (manifests are committed
 to git for exactly this reason).
+
+**`peira dataset gates` reports failures (exit 1)**
+Cause: one or more gates found errors — file, line, and rule are printed
+per gate. Fix: address each error (duplicate case ids/content, unknown
+family id, attacked input identical to benign, incoherent target), then
+re-run. Warnings (e.g. G6 pii-scan) don't fail the suite but go to the
+human review queue.

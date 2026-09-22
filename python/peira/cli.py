@@ -295,6 +295,31 @@ def cmd_dataset_build_manifest(args: argparse.Namespace) -> int:
     return EXIT_OK
 
 
+def cmd_dataset_gates(args: argparse.Namespace) -> int:
+    from peira.gates import run_gates
+
+    dataset_dir = Path(args.dir)
+    if not dataset_dir.is_dir():
+        print(f"error: dataset directory {dataset_dir} not found",
+              file=sys.stderr)
+        return EXIT_USER_ERROR
+    results = run_gates(dataset_dir)
+    n_err = sum(len(r.errors) for r in results)
+    n_warn = sum(len(r.warnings) for r in results)
+    for r in results:
+        status = "pass" if r.passed else "FAIL"
+        print(f"{r.gate_id} {r.name}: {status} "
+              f"({len(r.errors)} errors, {len(r.warnings)} warnings)")
+        for e in r.errors:
+            print(f"  error: {e}")
+        for w in r.warnings:
+            print(f"  warning: {w}")
+    n_pass = sum(1 for r in results if r.passed)
+    print(f"gates: {n_pass}/{len(results)} passed, "
+          f"{n_err} errors, {n_warn} warnings")
+    return EXIT_USER_ERROR if n_err else EXIT_OK
+
+
 def cmd_dataset_verify_manifest(args: argparse.Namespace) -> int:
     from peira.dataset import MANIFEST_NAME, verify_manifest
 
@@ -363,6 +388,9 @@ def build_parser() -> argparse.ArgumentParser:
                          help="verify a dataset directory against its manifest.json")
     vm.add_argument("--dir", required=True, help="dataset directory")
     vm.set_defaults(func=cmd_dataset_verify_manifest)
+    g = dsub.add_parser("gates", help="run the automated validation gates")
+    g.add_argument("--dir", required=True, help="dataset directory")
+    g.set_defaults(func=cmd_dataset_gates)
     return p
 
 
