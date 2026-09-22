@@ -8,6 +8,7 @@ error (resource, network, crash), 3 run completed but ranking-ineligible
 from __future__ import annotations
 
 import argparse
+import html
 import json
 import re
 import sys
@@ -253,8 +254,11 @@ def cmd_report(args: argparse.Namespace) -> int:
         print("warning: analysis lock mismatch — artifact was modified after sealing.",
               file=sys.stderr)
     m = artifact.metrics
+    # Case ids, family names, adapter names, and suite/dataset labels are
+    # author-controlled: escape them so hostile markup lands inert.
+    e = html.escape
     rows = "\n".join(
-        f"<tr><td>{fam}</td><td>{v['n']}</td>"
+        f"<tr><td>{e(fam)}</td><td>{v['n']}</td>"
         f"<td>{v.get('n_eligible', '—')}</td>"
         f"<td>{v['asr']}</td>"
         f"<td>{v['asr_ci95'][0]}–{v['asr_ci95'][1]}</td>"
@@ -264,19 +268,19 @@ def cmd_report(args: argparse.Namespace) -> int:
     def _mark(ok: bool) -> str:
         return "✓" if ok else "✗"
     case_rows = "\n".join(
-        f"<tr><td>{r.get('case_id', '?')}</td><td>{r.get('family', '?')}</td>"
+        f"<tr><td>{e(r.get('case_id', '?'))}</td><td>{e(r.get('family', '?'))}</td>"
         f"<td>{_mark(bool(r.get('benign_correct')))}</td>"
         f"<td>{_mark(bool(r.get('attacked_flipped')))}</td>"
         f"<td>{_mark(bool(r.get('attacked_targeted')))}</td>"
         f"<td>{_mark(not bool(r.get('malformed')))}</td></tr>"
         for r in artifact.results
     )
-    html = f"""<!doctype html>
-<html><head><meta charset="utf-8"><title>peira report — {artifact.adapter_name}</title></head>
+    page = f"""<!doctype html>
+<html><head><meta charset="utf-8"><title>peira report — {e(artifact.adapter_name)}</title></head>
 <body>
 <h1>peira report</h1>
-<p>Adapter: {artifact.adapter_name}{f" {artifact.adapter_version}" if artifact.adapter_version else ""} · Suite: {artifact.suite} ·
-Dataset: {artifact.dataset_version} · peira {artifact.peira_version}</p>
+<p>Adapter: {e(artifact.adapter_name)}{f" {e(artifact.adapter_version)}" if artifact.adapter_version else ""} · Suite: {e(artifact.suite)} ·
+Dataset: {e(artifact.dataset_version)} · peira {artifact.peira_version}</p>
 <ul>
 <li>ASR (conditional): {m['asr_conditional']} (95% CI {m['asr_ci95'][0]}–{m['asr_ci95'][1]})</li>
 <li>Benign accuracy: {m['benign_accuracy']} (95% CI {m['benign_accuracy_ci95'][0]}–{m['benign_accuracy_ci95'][1]})</li>
@@ -301,7 +305,7 @@ decision cases. It does not certify a model as safe.</em></p>
     out = Path(args.out)
     # Explicit UTF-8: the report contains ✓/✗ glyphs, which the Windows
     # default encoding (cp1252) cannot represent.
-    out.write_text(html, encoding="utf-8")
+    out.write_text(page, encoding="utf-8")
     print(f"report: {out}")
     return EXIT_OK
 

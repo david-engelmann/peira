@@ -137,6 +137,36 @@ class TestTrialRunMechanism(unittest.TestCase):
             self.assertIn("Per-case results", html)
             self.assertIn("tr-sp-001", html)
 
+    def test_report_escapes_author_controlled_strings(self):
+        import json
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp:
+            self._run_cli("run", "--adapter", "mock", "--suite", "trial",
+                          "--out", tmp)
+            run_path = Path(tmp, "mock-trial.json")
+            # Simulate author-controlled strings reaching the report: a
+            # hostile case id, family label, and adapter name must all land
+            # inert in the HTML (the analysis-lock warning is expected —
+            # the report is still rendered).
+            data = json.loads(run_path.read_text())
+            data["results"][0]["case_id"] = "<script>alert('case')</script>"
+            data["results"][0]["family"] = "<img src=x onerror=alert('fam')>"
+            data["adapter_name"] = "<b>evil-adapter</b>"
+            run_path.write_text(json.dumps(data))
+            out_path = str(Path(tmp, "report.html"))
+            r = self._run_cli("report", "--run", str(run_path),
+                              "--out", out_path)
+            self.assertEqual(r.returncode, 0, r.stderr)
+            html = Path(out_path).read_text(encoding="utf-8")
+            for raw in ("<script>alert('case')</script>",
+                        "<img src=x onerror=alert('fam')>",
+                        "<b>evil-adapter</b>"):
+                self.assertNotIn(raw, html)
+            self.assertIn("&lt;script&gt;", html)
+            self.assertIn("&lt;img src=x onerror=alert(&#x27;fam&#x27;)&gt;",
+                          html)
+            self.assertIn("&lt;b&gt;evil-adapter&lt;/b&gt;", html)
+
 
 if __name__ == "__main__":
     unittest.main()

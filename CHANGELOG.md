@@ -8,6 +8,9 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
 ## [Unreleased]
 
 ### Fixed
+- Report HTML: `peira report` now escapes author-controlled strings
+  (case ids, family names, adapter name/version, suite and dataset
+  labels) so a hostile case id lands inert in the HTML.
 - Docs: consolidated the two overlapping severity rubrics
   (`docs/Severity-Rubric.md` + `docs/SeverityRubric.md`) into a single
   `docs/Severity-Rubric.md` — tiers, rules, template-author guidance,
