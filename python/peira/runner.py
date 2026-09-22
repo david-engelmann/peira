@@ -20,6 +20,7 @@ from peira.metrics import (
     benign_accuracy,
     check_eligibility,
     malformed_rate,
+    n_eligible_by_family,
 )
 from peira.schema import Case, validate_case_dict
 
@@ -108,17 +109,22 @@ def run_case(adapter: Any, case: Case) -> PerCaseResult:
     )
 
 
-def summarize(results: list[PerCaseResult]) -> dict[str, Any]:
+def summarize(
+    results: list[PerCaseResult],
+    required_families: list[str] | None = None,
+) -> dict[str, Any]:
     asr, asr_ci = asr_conditional(results)
     acc, acc_ci = benign_accuracy(results)
-    elig = check_eligibility(results)
+    elig = check_eligibility(results, required_families)
+    eligible_counts = n_eligible_by_family(results, required_families)
     per_family: dict[str, dict[str, Any]] = {}
-    families = sorted({r.family for r in results})
+    families = sorted(set(eligible_counts) | {r.family for r in results})
     for fam in families:
         fr = [r for r in results if r.family == fam]
         fasr, fasr_ci = asr_conditional(fr)
         per_family[fam] = {
             "n": len(fr),
+            "n_eligible": eligible_counts.get(fam, 0),
             "asr": round(fasr, 4),
             "asr_ci95": [round(x, 4) for x in fasr_ci],
         }
@@ -142,6 +148,7 @@ def _write_partial(
     suite: str,
     dataset_version: str,
     results: list[PerCaseResult],
+    required_families: list[str],
 ) -> None:
     if partial_path is None:
         return
@@ -149,10 +156,11 @@ def _write_partial(
         adapter_name=adapter.name,
         suite=suite,
         dataset_version=dataset_version,
-        config={"n_cases": len(cases), "partial": True},
+        config={"n_cases": len(cases), "partial": True,
+                "required_families": required_families},
         results=results_to_dicts(results),
     )
-    partial.metrics = summarize(results)
+    partial.metrics = summarize(results, required_families)
     partial_path.write_text(partial.seal().to_json())
 
 
@@ -166,7 +174,13 @@ def run_suite(
     prior_results: list[PerCaseResult] | None = None,
     partial_path: Path | None = None,
     checkpoint_every: int = 25,
+    required_families: list[str] | None = None,
 ) -> RunArtifact:
+    # The required-family manifest defaults to the families present in the
+    # suite's case files: the gate is evaluated over the full suite, so a
+    # family with zero results in a run fails instead of vanishing.
+    if required_families is None:
+        required_families = sorted({c.family for c in cases})
     done = already_done or set()
     results: list[PerCaseResult] = list(prior_results or [])
     total = len(cases)
@@ -180,21 +194,21 @@ def run_suite(
             if partial_path is not None and len(results) % checkpoint_every == 0:
                 _write_partial(
                     partial_path, adapter, cases, suite,
-                    dataset_version, results,
+                    dataset_version, results, required_families,
                 )
     finally:
         # Always leave a resumable checkpoint behind, even on interrupt.
         if partial_path is not None and len(results) < total:
             _write_partial(
                 partial_path, adapter, cases, suite,
-                dataset_version, results,
+                dataset_version, results, required_families,
             )
     artifact = RunArtifact(
         adapter_name=adapter.name,
         suite=suite,
         dataset_version=dataset_version,
-        config={"n_cases": total},
+        config={"n_cases": total, "required_families": required_families},
         results=results_to_dicts(results),
     )
-    artifact.metrics = summarize(results)
+    artifact.metrics = summarize(results, required_families)
     return artifact.seal()

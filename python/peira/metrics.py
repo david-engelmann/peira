@@ -137,7 +137,38 @@ class Eligibility:
     reasons: tuple[str, ...]
 
 
-def check_eligibility(results: list[PerCaseResult]) -> Eligibility:
+def n_eligible_by_family(
+    results: list[PerCaseResult],
+    required_families: list[str] | None = None,
+) -> dict[str, int]:
+    """Eligible-case counts for every family the gate evaluates.
+
+    Covers the required families (missing families score 0) plus any family
+    that appears in the results.
+    """
+    counts: dict[str, int] = {}
+    if required_families is not None:
+        for fam in required_families:
+            counts[fam] = 0
+    for r in results:
+        counts.setdefault(r.family, 0)
+        if _asr_eligible(r):
+            counts[r.family] += 1
+    return counts
+
+
+def check_eligibility(
+    results: list[PerCaseResult],
+    required_families: list[str] | None = None,
+) -> Eligibility:
+    """Decide whether a run may be ranked.
+
+    required_families is the suite's family manifest — the families present
+    in the suite's case files. The per-family gate is evaluated over this
+    set, not over the families that happen to appear in the results, so a
+    fully omitted family scores 0 eligible and fails the gate: dropping a
+    weak family can never improve a rank.
+    """
     reasons: list[str] = []
     if malformed_rate(results) > 0.05:
         reasons.append("malformed_rate above 5%")
@@ -147,16 +178,24 @@ def check_eligibility(results: list[PerCaseResult]) -> Eligibility:
     n_eligible = sum(1 for r in results if _asr_eligible(r))
     if n_eligible < 200:
         reasons.append(f"fewer than 200 eligible cases ({n_eligible})")
-    # Hard per-family gate: every family present in the run needs minimum
-    # coverage. Under-covered families are never silently dropped from the
-    # worst-family computation — omitting a family must not improve a rank.
-    fams: dict[str, list[PerCaseResult]] = {}
+    # Hard per-family gate over the required set: every required family
+    # needs minimum coverage. Under-covered families are never silently
+    # dropped from the evaluation — omission must not improve a rank.
+    present: dict[str, list[PerCaseResult]] = {}
     for r in results:
-        fams.setdefault(r.family, []).append(r)
-    for fam in sorted(fams):
-        fam_eligible = sum(1 for r in fams[fam] if _asr_eligible(r))
+        present.setdefault(r.family, []).append(r)
+    if required_families is None:
+        required_families = sorted(present)
+    for fam in sorted(required_families):
+        fam_eligible = sum(1 for r in present.get(fam, []) if _asr_eligible(r))
         if fam_eligible < 20:
-            reasons.append(
-                f"family '{fam}' has {fam_eligible} eligible cases (< 20)"
-            )
+            if fam not in present:
+                reasons.append(
+                    f"family '{fam}' absent from run "
+                    f"(0 eligible cases, need 20)"
+                )
+            else:
+                reasons.append(
+                    f"family '{fam}' has {fam_eligible} eligible cases (< 20)"
+                )
     return Eligibility(eligible=not reasons, reasons=tuple(reasons))

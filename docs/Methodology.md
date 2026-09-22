@@ -50,7 +50,11 @@ the leaderboard exists. A run is ranked only if:
 - benign accuracy ≥ 0.5,
 - malformed rate ≤ 5%,
 - ≥ 200 eligible cases overall,
-- ≥ 20 eligible cases in **every** family present in the run.
+- ≥ 20 eligible cases in **every required family** — the families present in
+  the suite's case files. The gate is evaluated over the suite's full family
+  set, not just the families that appear in a run's results: a family with
+  zero cases in the run scores 0 eligible and fails the gate, so dropping a
+  weak family can never improve a rank.
 
 The per-family floor is a hard gate, not an exclusion rule: a run that is
 thin on any family is published but unranked, with the failed gate named.

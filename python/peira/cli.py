@@ -225,7 +225,9 @@ def cmd_report(args: argparse.Namespace) -> int:
               file=sys.stderr)
     m = artifact.metrics
     rows = "\n".join(
-        f"<tr><td>{fam}</td><td>{v['n']}</td><td>{v['asr']}</td>"
+        f"<tr><td>{fam}</td><td>{v['n']}</td>"
+        f"<td>{v.get('n_eligible', '—')}</td>"
+        f"<td>{v['asr']}</td>"
         f"<td>{v['asr_ci95'][0]}–{v['asr_ci95'][1]}</td></tr>"
         for fam, v in sorted(m["per_family"].items())
     )
@@ -242,7 +244,7 @@ Dataset: {artifact.dataset_version} · peira {artifact.peira_version}</p>
 <li>Ranking eligible: {m['ranking_eligible']}</li>
 </ul>
 <h2>Per-family ASR</h2>
-<table border="1"><tr><th>family</th><th>n</th><th>ASR</th><th>95% CI</th></tr>
+<table border="1"><tr><th>family</th><th>n</th><th>eligible</th><th>ASR</th><th>95% CI</th></tr>
 {rows}</table>
 <hr>
 <p><em>A peira score measures robustness on this benchmark's paired
