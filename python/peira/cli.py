@@ -282,6 +282,19 @@ def cmd_dataset_build_manifest(args: argparse.Namespace) -> int:
         print(f"error: dataset directory {dataset_dir} not found",
               file=sys.stderr)
         return EXIT_USER_ERROR
+    if args.require_reviews:
+        from peira.review import pending_reviews
+        try:
+            pending = pending_reviews(dataset_dir)
+        except ValueError as e:
+            print(f"error: unreadable review state: {e}", file=sys.stderr)
+            return EXIT_USER_ERROR
+        if pending:
+            print(f"error: {len(pending)} reviews pending — "
+                  f"manifest not written", file=sys.stderr)
+            for p in pending:
+                print(f"  - {p['case_id']} [{p['severity']}]", file=sys.stderr)
+            return EXIT_USER_ERROR
     try:
         manifest = build_manifest(dataset_dir, args.version,
                                   dataset_name=args.name,
@@ -317,6 +330,60 @@ def cmd_dataset_new(args: argparse.Namespace) -> int:
     print(f"next: replace every {{{{...}}}} placeholder, then run "
           f"'peira dataset gates --dir <dir>'. {guide['notes_prompt']}",
           file=sys.stderr)
+    return EXIT_OK
+
+
+def cmd_dataset_review(args: argparse.Namespace) -> int:
+    from peira.review import (mark_reviewed, pending_reviews,
+                              review_coverage)
+
+    if not args.dir:
+        print("error: --dir is required", file=sys.stderr)
+        return EXIT_USER_ERROR
+    dataset_dir = Path(args.dir)
+    if not dataset_dir.is_dir():
+        print(f"error: dataset directory {dataset_dir} not found",
+              file=sys.stderr)
+        return EXIT_USER_ERROR
+    try:
+        command = args.review_command
+    except AttributeError:
+        command = None
+    if command in ("approve", "reject"):
+        status = "approved" if command == "approve" else "rejected"
+        try:
+            mark_reviewed(dataset_dir, args.id, status,
+                          reviewer=args.reviewer or "",
+                          notes=args.notes or "")
+        except KeyError as e:
+            print(f"error: {e}", file=sys.stderr)
+            return EXIT_USER_ERROR
+        except ValueError as e:
+            print(f"error: unreadable review state: {e}", file=sys.stderr)
+            return EXIT_USER_ERROR
+        print(f"{args.id}: marked {status}")
+        return EXIT_OK
+    try:
+        pending = pending_reviews(dataset_dir)
+        cov = review_coverage(dataset_dir)
+    except ValueError as e:
+        print(f"error: unreadable review state: {e}", file=sys.stderr)
+        return EXIT_USER_ERROR
+    if pending:
+        print(f"pending reviews ({len(pending)}):")
+        for p in pending:
+            print(f"  {p['case_id']} [{p['severity']}]")
+            for reason in p["reasons"]:
+                print(f"    - {reason}")
+    else:
+        print("pending reviews (0): queue is clear")
+    cc = cov["critical_coverage"]
+    cc_str = f"{cc:.0%}" if cc is not None else "n/a (no critical cases)"
+    print(f"review coverage: {cov['n_critical_approved']}/"
+          f"{cov['n_critical']} critical approved ({cc_str}); "
+          f"{cov['n_cases']} cases total")
+    if args.check and pending:
+        return EXIT_USER_ERROR
     return EXIT_OK
 
 
@@ -408,6 +475,8 @@ def build_parser() -> argparse.ArgumentParser:
     bm.add_argument("--version", required=True,
                     help="dataset version, e.g. 1.0.0")
     bm.add_argument("--name", default="peira-v1", help="dataset name")
+    bm.add_argument("--require-reviews", action="store_true",
+                    help="refuse to build while any human reviews are pending")
     bm.set_defaults(func=cmd_dataset_build_manifest)
     vm = dsub.add_parser("verify-manifest",
                          help="verify a dataset directory against its manifest.json")
@@ -429,6 +498,24 @@ def build_parser() -> argparse.ArgumentParser:
                    help="append the case as JSONL to this file "
                         "(default: print to stdout)")
     n.set_defaults(func=cmd_dataset_new)
+    dir_opt = argparse.ArgumentParser(add_help=False)
+    dir_opt.add_argument("--dir", default=None, help="dataset directory")
+    dir_req = argparse.ArgumentParser(add_help=False)
+    dir_req.add_argument("--dir", required=True, help="dataset directory")
+    rv = dsub.add_parser("review", parents=[dir_opt],
+                         help="human review queue")
+    rv.add_argument("--check", action="store_true",
+                    help="exit 1 if any reviews are pending")
+    rv.set_defaults(func=cmd_dataset_review, review_command=None)
+    rvsub = rv.add_subparsers(dest="review_command")
+    for sub_name, sub_help in (("approve", "mark a case reviewed and approved"),
+                               ("reject", "mark a case reviewed and rejected")):
+        sp = rvsub.add_parser(sub_name, parents=[dir_req], help=sub_help)
+        sp.add_argument("--id", required=True, help="case id")
+        sp.add_argument("--reviewer", default="",
+                        help="who reviewed (name or initials)")
+        sp.add_argument("--notes", default="", help="review notes")
+        sp.set_defaults(func=cmd_dataset_review)
     return p
 
 

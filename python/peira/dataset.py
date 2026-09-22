@@ -33,6 +33,21 @@ def sha256_file(path: Path) -> str:
     return h.hexdigest()
 
 
+def iter_case_lines(dataset_dir: Path):
+    """Yield (path, lineno, case_dict_or_None, json_error_or_None) for
+    every non-blank line of every ``*.jsonl`` file in the dataset
+    directory root."""
+    for path in sorted(dataset_dir.glob(f"*{CASE_SUFFIX}")):
+        with open(path, encoding="utf-8") as f:
+            for lineno, line in enumerate(f, 1):
+                if not line.strip():
+                    continue
+                try:
+                    yield path, lineno, json.loads(line), None
+                except json.JSONDecodeError as e:
+                    yield path, lineno, None, f"invalid JSON ({e})"
+
+
 def summarize_cases(path: Path) -> dict[str, Any]:
     """Validate a JSONL case file and count its cases.
 
