@@ -114,9 +114,8 @@ def cmd_run(args: argparse.Namespace) -> int:
         return EXIT_USER_ERROR
     suite_dir = root / SUITE_DIRS[suite]
     if not suite_dir.exists():
-        print(f"error: suite directory {suite_dir} not found "
-              f"(the real Trial suite lands with dataset v1; "
-              f"use --suite trial-demo for now)", file=sys.stderr)
+        print(f"error: suite directory {suite_dir} not found",
+              file=sys.stderr)
         return EXIT_USER_ERROR
 
     try:
@@ -139,7 +138,21 @@ def cmd_run(args: argparse.Namespace) -> int:
     already_done: set[str] = set()
     prior_results: list[PerCaseResult] = []
     slug = _safe_adapter_slug(args.adapter)
+    # The dataset version is part of the analysis lock: read it from the
+    # suite's manifest when one exists, so runs always bind the exact
+    # dataset bytes they scored.
     dataset_version = "0.1.0-demo"
+    manifest_path = suite_dir / "manifest.json"
+    if manifest_path.is_file():
+        try:
+            dataset_version = str(
+                json.loads(manifest_path.read_text(encoding="utf-8"))
+                .get("dataset_version", dataset_version)
+            )
+        except (OSError, ValueError) as e:
+            print(f"warning: unreadable manifest at {manifest_path} ({e}); "
+                  f"recording dataset_version={dataset_version!r}.",
+                  file=sys.stderr)
     partial_path = out_dir / f"{slug}-{suite}.partial.json"
     if args.resume:
         if not partial_path.exists():
@@ -248,6 +261,16 @@ def cmd_report(args: argparse.Namespace) -> int:
         f"<td>{v.get('targeted', '—') if v.get('targeted') is not None else '—'}</td></tr>"
         for fam, v in sorted(m["per_family"].items())
     )
+    def _mark(ok: bool) -> str:
+        return "✓" if ok else "✗"
+    case_rows = "\n".join(
+        f"<tr><td>{r.get('case_id', '?')}</td><td>{r.get('family', '?')}</td>"
+        f"<td>{_mark(bool(r.get('benign_correct')))}</td>"
+        f"<td>{_mark(bool(r.get('attacked_flipped')))}</td>"
+        f"<td>{_mark(bool(r.get('attacked_targeted')))}</td>"
+        f"<td>{_mark(not bool(r.get('malformed')))}</td></tr>"
+        for r in artifact.results
+    )
     html = f"""<!doctype html>
 <html><head><meta charset="utf-8"><title>peira report — {artifact.adapter_name}</title></head>
 <body>
@@ -263,6 +286,13 @@ Dataset: {artifact.dataset_version} · peira {artifact.peira_version}</p>
 <h2>Per-family ASR</h2>
 <table border="1"><tr><th>family</th><th>n</th><th>eligible</th><th>ASR</th><th>95% CI</th><th>targeted</th></tr>
 {rows}</table>
+<h2>Per-case results</h2>
+<p>✓ = benign correct / attacked flipped / reached target / well-formed.
+The flip column is the one to drill into when iterating on cases: a case
+the adapter never flips may be too weak; a case every adapter flips may
+be mislabeled.</p>
+<table border="1"><tr><th>case</th><th>family</th><th>benign ok</th><th>flipped</th><th>targeted</th><th>well-formed</th></tr>
+{case_rows}</table>
 <hr>
 <p><em>A peira score measures robustness on this benchmark's paired
 decision cases. It does not certify a model as safe.</em></p>

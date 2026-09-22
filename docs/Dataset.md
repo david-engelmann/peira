@@ -10,6 +10,8 @@ machine-checkable artifact.
 ```
 dataset/
   trial-demo/        # 12-case offline demo fixture (scaffolding, not v1)
+  trial/             # 20-case Trial starter suite (scaffolding, not v1)
+                     # exercises the harness end to end via --suite trial
   v1/
     README.md
     cases.jsonl      # the 2,000 public cases (lands via the pipeline)
@@ -19,6 +21,22 @@ dataset/
     schema.json      # the frozen case JSON schema
     manifest.json    # the build manifest (this doc)
 ```
+
+`trial-demo` and `trial` are both scaffolding: small case sets that let
+the harness run offline before v1 lands. `trial-demo` predates the gates
+and is exempt from them; `trial` passes all six gates and carries a
+manifest, so it exercises the full mechanism (load → gate → manifest →
+run → report).
+
+## Case schema: closed for required fields, open for extension
+
+The frozen schema requires `case_id`, `family`, `primitive`, `severity`,
+`benign`, and `attacked` — and nothing else. Validators ignore unknown
+top-level fields, and `Case.from_dict` preserves them on `Case.extras`,
+so new per-case configuration rides through the whole pipeline (load →
+run → artifact) without touching the schema, the loader, the gates, or
+the artifact format. Only the consumer of a new field needs to know
+about it. The trial starter suite uses this for its `canary` field.
 
 The 500-case private holdout is **never** committed to this repo. It lives
 encrypted and maintainer-only; only aggregate metrics are published. Its
