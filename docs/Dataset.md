@@ -101,11 +101,33 @@ Note: `dataset/trial-demo/` predates the gates and is exempt — it's
 quickstart scaffolding with deliberately repetitive content, not a real
 dataset. Gates apply to `dataset/v1` authoring.
 
+## Generator templates
+
+New cases start from a family template — never a blank file:
+
+```
+peira dataset new --family state_poisoning --id sp-042 --severity high
+```
+
+This prints a schema-valid case skeleton with `{{PLACEHOLDERS}}` for the
+author to fill in. Each of the ten templates encodes its family's attack
+pattern (documented in `python/peira/templates.py`): the state_poisoning
+skeleton has the poisoned tool-output slot, option_order has the reordered
+options, score_anchoring has the anchor context field, and so on. G1 and
+G4 pass on a fresh skeleton; the author supplies only content.
+
+With `--out cases.jsonl` the case is appended as JSONL instead of
+printed. `--primitive` overrides the family's natural primitive
+(score_anchoring defaults to `score`, negation_games to `noul`, the rest
+to `choice`).
+
+The templates remove blank-page friction. They don't judge difficulty or
+quality — that's the review queue's job.
+
 ## Pipeline stages
 
-The manifest is stage one, gates stage two. Landing next, in order:
+The manifest is stage one, gates stage two, templates stage three.
+Landing next:
 
-1. **Generator templates** — one per attack family, so new cases start from
-   a correct skeleton instead of a blank file.
-2. **Review queue** — tracks human review state per case; 100% of
+1. **Review queue** — tracks human review state per case; 100% of
    critical-severity cases get human review before release.

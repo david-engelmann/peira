@@ -78,3 +78,14 @@ per gate. Fix: address each error (duplicate case ids/content, unknown
 family id, attacked input identical to benign, incoherent target), then
 re-run. Warnings (e.g. G6 pii-scan) don't fail the suite but go to the
 human review queue.
+
+**`peira dataset new: error: argument --family: invalid choice: 'x'`**
+Cause: the family id isn't one of the ten canonical ids. Fix: pick from
+the list in the error — `state_poisoning`, `criteria_smuggling`,
+`option_order`, `distractor_flooding`, `score_anchoring`,
+`literal_reading`, `negation_games`, `policy_paraphrase`, `indirection`,
+`confidence_spoofing` (see `docs/Taxonomy.md`).
+
+**`error: cannot write to ...` from `peira dataset new --out`**
+Cause: the output file's directory doesn't exist or isn't writable. Fix:
+create the directory first, or drop `--out` to print to stdout.
