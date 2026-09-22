@@ -273,6 +273,55 @@ decision cases. It does not certify a model as safe.</em></p>
     return EXIT_OK
 
 
+def cmd_dataset_build_manifest(args: argparse.Namespace) -> int:
+    from peira.dataset import MANIFEST_NAME, build_manifest, write_manifest
+
+    dataset_dir = Path(args.dir)
+    if not dataset_dir.is_dir():
+        print(f"error: dataset directory {dataset_dir} not found",
+              file=sys.stderr)
+        return EXIT_USER_ERROR
+    try:
+        manifest = build_manifest(dataset_dir, args.version,
+                                  dataset_name=args.name,
+                                  peira_version=__version__)
+    except ValueError as e:
+        print(f"error: invalid cases, manifest not written:\n{e}",
+              file=sys.stderr)
+        return EXIT_USER_ERROR
+    out = write_manifest(dataset_dir, manifest)
+    n = sum(f.get("n_cases", 0) for f in manifest["files"].values())
+    print(f"manifest: {out} ({n} cases, version {args.version})")
+    return EXIT_OK
+
+
+def cmd_dataset_verify_manifest(args: argparse.Namespace) -> int:
+    from peira.dataset import MANIFEST_NAME, verify_manifest
+
+    dataset_dir = Path(args.dir)
+    if not dataset_dir.is_dir():
+        print(f"error: dataset directory {dataset_dir} not found",
+              file=sys.stderr)
+        return EXIT_USER_ERROR
+    try:
+        errors = verify_manifest(dataset_dir)
+    except FileNotFoundError:
+        print(f"error: no {MANIFEST_NAME} in {dataset_dir} — run "
+              f"'peira dataset build-manifest' first", file=sys.stderr)
+        return EXIT_USER_ERROR
+    except ValueError as e:
+        print(f"error: unreadable manifest: {e}", file=sys.stderr)
+        return EXIT_USER_ERROR
+    if errors:
+        print(f"error: {dataset_dir} does not match {MANIFEST_NAME}:",
+              file=sys.stderr)
+        for e in errors:
+            print(f"  - {e}", file=sys.stderr)
+        return EXIT_USER_ERROR
+    print(f"manifest ok: {dataset_dir} matches {MANIFEST_NAME}")
+    return EXIT_OK
+
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="peira", description="The empirical trial for decision models.")
     p.add_argument("--version", action="version", version=f"peira {__version__}")
@@ -300,6 +349,20 @@ def build_parser() -> argparse.ArgumentParser:
     rp.add_argument("--run", required=True)
     rp.add_argument("--out", default="report.html")
     rp.set_defaults(func=cmd_report)
+
+    d = sub.add_parser("dataset", help="dataset build tooling")
+    dsub = d.add_subparsers(dest="dataset_command", required=True)
+    bm = dsub.add_parser("build-manifest",
+                         help="build manifest.json for a dataset directory")
+    bm.add_argument("--dir", required=True, help="dataset directory")
+    bm.add_argument("--version", required=True,
+                    help="dataset version, e.g. 1.0.0")
+    bm.add_argument("--name", default="peira-v1", help="dataset name")
+    bm.set_defaults(func=cmd_dataset_build_manifest)
+    vm = dsub.add_parser("verify-manifest",
+                         help="verify a dataset directory against its manifest.json")
+    vm.add_argument("--dir", required=True, help="dataset directory")
+    vm.set_defaults(func=cmd_dataset_verify_manifest)
     return p
 
 

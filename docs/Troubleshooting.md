@@ -51,3 +51,23 @@ the Methodology eligibility floors failed; the notes are printed with the
 results). Fix: none needed for a demo; for a real submission, clear the
 named gate. Exit codes: 0 clean, 1 user error, 2 infrastructure error,
 3 completed but unranked.
+
+**`error: dataset directory ... not found`**
+Cause: `peira dataset build-manifest` / `verify-manifest` got a `--dir`
+that doesn't exist. Fix: check the path — dataset directories live under
+`dataset/` (e.g. `dataset/v1`).
+
+**`error: invalid cases, manifest not written`**
+Cause: `build-manifest` validates every case before writing — one or more
+lines failed schema validation (file, line, and rule are printed). Fix:
+fix the cases, then rebuild. A manifest is never written for invalid data.
+
+**`error: no manifest.json in ... — run 'peira dataset build-manifest' first`**
+Cause: `verify-manifest` needs a manifest to check against. Fix: build one
+with `peira dataset build-manifest --dir <dir> --version <v>`.
+
+**`error: ... does not match manifest.json` (sha256 mismatch / missing on disk)**
+Cause: a dataset file changed after the manifest was built. Fix: if the
+change is intentional, that's a new dataset version — rebuild the manifest
+with the bumped version. If not, restore the file (manifests are committed
+to git for exactly this reason).
