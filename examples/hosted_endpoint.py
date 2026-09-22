@@ -1,8 +1,8 @@
 """Hosted-endpoint adapter pattern.
 
-Point peira at any HTTP decision endpoint. SSRF protections apply: only
-https URLs, no credentials in the case files, timeouts enforced. Copy this
-pattern for your own hosted model.
+Point peira at any HTTP decision endpoint. Protect your endpoint as you
+would any public API: only https URLs, no credentials in the case files,
+timeouts enforced. Copy this pattern for your own hosted model.
 """
 
 import json

@@ -5,7 +5,7 @@ reasoning stays with the repo.
 
 ## D-1: Rust core + Python SDK via PyO3
 
-The hot paths (scoring, metrics, validation) live in Rust; the adapter SDK,
+The hot paths (scoring, metrics, validation) will live in Rust; the adapter SDK,
 CLI, and dataset tooling are Python. Rationale: contributors write adapters
 in Python (zero friction), while the harness stays fast enough for
 2,500-case runs on a laptop. Status: accepted; the Python reference

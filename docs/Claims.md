@@ -1,18 +1,18 @@
 # Claims
 
-What peira claims, what it doesn't, and what's still unverified. If a
-claim isn't on this page, we don't make it.
+What peira claims, what it doesn't, and what's still unverified. This page
+indexes the load-bearing claims; detail lives in the linked docs.
 
 ## We claim
 
 - peira measures whether hostile input manipulations change typed decision
   outputs, with paired benign/attacked controls, across the documented
   attack families.
-- Every public score links to per-case drill-down receipts.
+- Every public score will link to per-case drill-down receipts.
 - Run artifacts are sealed with an analysis lock; `peira report` warns on
   lock mismatch.
-- The private holdout's raw cases are never published; only aggregate
-  metrics leave the maintainer's machine.
+- The private holdout's raw cases will never be published; only aggregate
+  metrics will leave the maintainer's machine.
 
 ## We don't claim
 

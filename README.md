@@ -21,13 +21,13 @@ When the v1 dataset ships, swap `--suite trial-demo` for `--suite trial`
 
 Whether hostile manipulations of the input change a decision model's typed
 output — Choice, Score, or Noul — measured with paired benign/attacked
-controls across 10 attack families. Every score links to per-case
+controls across 10 attack families. Every score will link to per-case
 drill-down receipts, and every run is sealed against post-hoc editing.
 
 ## Leaderboard
 
-Coming with the v1 dataset. One row per (adapter, dataset version); partial
-primitive coverage is reported honestly, not hidden.
+Coming with the v1 dataset. One row per (adapter, dataset version);
+partial primitive coverage will be reported honestly, not hidden.
 
 ## Add your model
 

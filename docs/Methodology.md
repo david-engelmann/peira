@@ -44,7 +44,8 @@ For each case we record:
 
 ## Ranking eligibility
 
-A run is ranked only if:
+The ranking protocol below is frozen; it will govern the leaderboard once
+the leaderboard exists. A run is ranked only if:
 
 - benign accuracy ≥ 0.5,
 - malformed rate ≤ 5%,
