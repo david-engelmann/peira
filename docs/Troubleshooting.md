@@ -159,3 +159,11 @@ version mismatch — the extension is built for the interpreter that ran
 the script). Fix: rebuild with the Python you actually use, and make
 sure no stale `_core*.so` / `_core*.pyd` from another interpreter sits in
 `python/peira/`.
+
+**`warning: unreadable manifest at ... (…); recording dataset_version='0.1.0-demo'.`**
+Cause: `peira run` found a `manifest.json` in the suite directory but
+couldn't parse it, so the run artifact records the fallback dataset
+version instead of the real one. Fix: rebuild it with
+`peira dataset build-manifest --dir <suite-dir> --version <v>` and re-run.
+(The analysis lock still seals whatever version was recorded — this
+warning is about accuracy of the label, not integrity of the run.)

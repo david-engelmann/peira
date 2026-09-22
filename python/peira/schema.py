@@ -3,6 +3,15 @@
 A Case is one decision scenario with a benign variant and an attacked
 variant (paired control). Severity is consequence-based and assigned at
 authoring time; it never depends on any model's behavior.
+
+Forward compatibility: the schema is closed for required fields but open
+for extension. Validators ignore unknown top-level fields, and
+:meth:`Case.from_dict` preserves them on :attr:`Case.extras` so they
+survive the whole pipeline (load → run → artifact) without any code
+changes. Future per-case configuration (new top-level fields) therefore
+needs no refactoring: only the consumer of the new field has to know
+about it. Adapters receive the variant ``input`` dicts unchanged, so
+advanced configuration can also live inside ``input`` today.
 """
 
 from __future__ import annotations
@@ -80,6 +89,11 @@ class Case:
     benign: BenignVariant
     attacked: AttackedVariant
     notes: str = ""
+    # Unknown top-level fields from the source dict, preserved verbatim.
+    # This is the forward-compatibility mechanism: new per-case
+    # configuration rides here without touching the schema, the loader,
+    # the gates, or the artifact format.
+    extras: dict[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         if self.primitive not in PRIMITIVES:
@@ -88,7 +102,7 @@ class Case:
             raise ValueError(f"unknown severity: {self.severity!r}")
 
     def to_dict(self) -> dict[str, Any]:
-        return {
+        d: dict[str, Any] = {
             "case_id": self.case_id,
             "family": self.family,
             "primitive": self.primitive,
@@ -103,9 +117,15 @@ class Case:
             },
             "notes": self.notes,
         }
+        d.update(self.extras)
+        return d
 
     @classmethod
     def from_dict(cls, d: dict[str, Any]) -> "Case":
+        known = {
+            "case_id", "family", "primitive", "severity",
+            "benign", "attacked", "notes",
+        }
         return cls(
             case_id=d["case_id"],
             family=d["family"],
@@ -120,6 +140,7 @@ class Case:
                 target_decision=d["attacked"].get("target_decision"),
             ),
             notes=d.get("notes", ""),
+            extras={k: v for k, v in d.items() if k not in known},
         )
 
 

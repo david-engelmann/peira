@@ -26,3 +26,11 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
   Rust toolchain. Backend parity is pinned by
   `tests/test_rust_backend.py`; the `test-python-rust` CI job builds the
   extension and runs the Python suite against both backends.
+- Trial-suite mechanism: `dataset/trial/` starter suite (20 scaffolding
+  cases, 2 per family, all six gates green, manifest `0.1.0-trial`) wired
+  to `peira run --suite trial`. Case schema is now forward-compatible:
+  validators ignore unknown top-level fields and `Case.from_dict`
+  preserves them on `Case.extras`, so future per-case configuration needs
+  no pipeline refactoring. `peira run` records the suite's manifest
+  dataset version in the artifact (part of the analysis lock); `peira
+  report` gains a per-case results table for drilling into flips.
