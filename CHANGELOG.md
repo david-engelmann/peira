@@ -8,6 +8,10 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
 ## [Unreleased]
 
 ### Fixed
+- Docs: consolidated the two overlapping severity rubrics
+  (`docs/Severity-Rubric.md` + `docs/SeverityRubric.md`) into a single
+  `docs/Severity-Rubric.md` — tiers, rules, template-author guidance,
+  and the confidence-movement disambiguation in one place.
 - Mock adapter flip behavior: on its seeded flip subset the mock now flips
   toward each case's own `target_decision` (injected into the attacked
   input by the runner) instead of hard-coding the approve/deny toggle,

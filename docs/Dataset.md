@@ -161,7 +161,7 @@ Automation checks structure; humans judge quality. The review queue
 tracks human review state per case in `<dataset-dir>/review.json` and
 enforces the project rule: **100% of critical-severity cases are
 human-reviewed before release** (severity is graded with
-`docs/SeverityRubric.md`).
+`docs/Severity-Rubric.md`).
 
 A case needs review when it is critical-severity and not approved, or
 when it carries gate warnings (G6 pii-scan) and is not approved.
