@@ -1,7 +1,8 @@
 """peira CLI: run evaluations, validate datasets, render reports.
 
 Exit codes: 0 clean, 1 user error (bad config/adapter), 2 infrastructure
-error (OOM, network, crash).
+error (OOM, network, crash), 3 run completed but ranking-ineligible
+(eligibility notes are warnings, not failures).
 """
 
 from __future__ import annotations
@@ -15,11 +16,13 @@ from pathlib import Path
 from peira import __version__
 from peira.adapters.mock import MockAdapter
 from peira.artifacts import RunArtifact
+from peira.metrics import PerCaseResult
 from peira.runner import SUITE_DIRS, load_cases, run_suite
 
 EXIT_OK = 0
 EXIT_USER_ERROR = 1
 EXIT_INFRA_ERROR = 2
+EXIT_GATE_NOTE = 3  # ran fine, but the run is not ranking-eligible
 
 
 def _repo_root() -> Path:
@@ -41,13 +44,18 @@ def cmd_run(args: argparse.Namespace) -> int:
         print(f"error: {e}", file=sys.stderr)
         return EXIT_USER_ERROR
 
-    if args.suite not in SUITE_DIRS:
-        print(f"error: unknown suite {args.suite!r} (available: {', '.join(SUITE_DIRS)})",
+    suite = args.suite
+    if suite == "smoke":
+        suite = "trial"  # smoke is the Trial alias (§19.10)
+    if suite not in SUITE_DIRS:
+        print(f"error: unknown suite {args.suite!r} (available: trial-demo, trial/smoke)",
               file=sys.stderr)
         return EXIT_USER_ERROR
-    suite_dir = root / SUITE_DIRS[args.suite]
+    suite_dir = root / SUITE_DIRS[suite]
     if not suite_dir.exists():
-        print(f"error: suite directory {suite_dir} not found", file=sys.stderr)
+        print(f"error: suite directory {suite_dir} not found "
+              f"(the real Trial suite lands with dataset v1; "
+              f"use --suite trial-demo for now)", file=sys.stderr)
         return EXIT_USER_ERROR
 
     try:
@@ -68,11 +76,13 @@ def cmd_run(args: argparse.Namespace) -> int:
         return EXIT_OK
 
     already_done: set[str] = set()
-    partial_path = out_dir / f"{args.adapter}-{args.suite}.partial.json"
+    prior_results: list[PerCaseResult] = []
+    partial_path = out_dir / f"{args.adapter}-{suite}.partial.json"
     if args.resume and partial_path.exists():
         try:
             partial = RunArtifact.from_json(partial_path.read_text())
-            already_done = {r["case_id"] for r in partial.results}
+            prior_results = [PerCaseResult(**r) for r in partial.results]
+            already_done = {r.case_id for r in prior_results}
             print(f"resuming: {len(already_done)} cases already done, "
                   f"{len(cases) - len(already_done)} remaining.")
         except Exception as e:
@@ -88,17 +98,19 @@ def cmd_run(args: argparse.Namespace) -> int:
 
     try:
         artifact = run_suite(
-            adapter, cases, args.suite, "0.1.0-demo",
+            adapter, cases, suite, "0.1.0-demo",
             progress=progress, already_done=already_done,
+            prior_results=prior_results, partial_path=partial_path,
         )
     except KeyboardInterrupt:
-        print("\ninterrupted", file=sys.stderr)
+        print("\ninterrupted — partial run saved; re-run with --resume.",
+              file=sys.stderr)
         return EXIT_INFRA_ERROR
     except Exception:
         traceback.print_exc()
         return EXIT_INFRA_ERROR
 
-    out_path = out_dir / f"{args.adapter}-{args.suite}.json"
+    out_path = out_dir / f"{args.adapter}-{suite}.json"
     out_path.write_text(artifact.to_json())
     if partial_path.exists():
         partial_path.unlink()
@@ -114,6 +126,8 @@ def cmd_run(args: argparse.Namespace) -> int:
           + (f" ({'; '.join(m['eligibility_notes'])})" if m['eligibility_notes'] else ""))
     print(f"artifact: {out_path}")
     print(f"analysis lock: {artifact.analysis_lock[:16]}…")
+    if not m["ranking_eligible"]:
+        return EXIT_GATE_NOTE
     return EXIT_OK
 
 
@@ -187,7 +201,9 @@ def build_parser() -> argparse.ArgumentParser:
 
     r = sub.add_parser("run", help="run a suite through an adapter")
     r.add_argument("--adapter", default="mock")
-    r.add_argument("--suite", default="trial-demo", choices=list(SUITE_DIRS))
+    r.add_argument("--suite", default="trial-demo",
+                   choices=list(SUITE_DIRS) + ["smoke"],
+                   help="smoke is an alias for trial")
     r.add_argument("--out", default="runs")
     r.add_argument("--dry-run", action="store_true", help="validate config without scoring")
     r.add_argument("--json-progress", action="store_true", help="machine-readable progress on stdout")

@@ -11,6 +11,7 @@ from peira.adapters.base import ScoreOutput
 
 class ThresholdAdapter:
     name = "threshold-demo"
+    version = "1.0.0-pinned"  # exact — never an alias
     supported_primitives = frozenset({"score"})
 
     def __init__(self, tau: float = 0.5):

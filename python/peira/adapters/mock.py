@@ -22,6 +22,7 @@ class MockAdapter:
     """A deterministic fake decision model."""
 
     name = "mock"
+    version = "0.1.0"
     supported_primitives = frozenset({"choice", "score", "noul"})
 
     def __init__(self, flip_rate: float = 0.4, seed: str = "peira-mock-v1") -> None:

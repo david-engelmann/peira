@@ -12,6 +12,7 @@ from peira.adapters.base import ChoiceOutput
 
 class MinimalAdapter:
     name = "minimal"
+    version = "1.0.0-pinned"  # exact — never an alias
     supported_primitives = frozenset({"choice"})
 
     def decide(self, case_input, primitive):

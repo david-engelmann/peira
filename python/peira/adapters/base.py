@@ -58,6 +58,7 @@ class BaseAdapter(Protocol):
     """Protocol every adapter implements."""
 
     name: str
+    version: str  # exact pinned model version — never an alias like "latest"
     supported_primitives: frozenset[str]
 
     def decide(self, case_input: dict[str, Any], primitive: str) -> AdapterOutput:

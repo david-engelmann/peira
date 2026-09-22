@@ -78,6 +78,36 @@ class TestEligibility(unittest.TestCase):
         elig = check_eligibility([_r() for _ in range(200)])
         self.assertTrue(elig.eligible)
 
+    def test_family_gate_hard(self):
+        # 200 eligible overall, but one family under-covered: unranked.
+        rs = [_r(family="a") for _ in range(190)] + [_r(family="b") for _ in range(10)]
+        elig = check_eligibility(rs)
+        self.assertFalse(elig.eligible)
+        self.assertTrue(any("family 'b'" in r for r in elig.reasons))
+
+    def test_family_gate_passes(self):
+        rs = [_r(family="a") for _ in range(100)] + [_r(family="b") for _ in range(100)]
+        elig = check_eligibility(rs)
+        self.assertTrue(elig.eligible)
+
+    def test_benign_malformed_excluded_from_asr(self):
+        from peira.metrics import asr_conditional
+        rs = [_r(benign_malformed=True, malformed=True, attacked_flipped=True)]
+        rs += [_r(attacked_flipped=False) for _ in range(4)]
+        rate, _ = asr_conditional(rs)
+        self.assertEqual(rate, 0.0)  # denominator is the 4 eligible cases
+
+    def test_attacked_malformed_counts_as_flip(self):
+        from peira.metrics import asr_conditional
+        rs = [_r(malformed=True, attacked_flipped=True)]
+        rs += [_r(attacked_flipped=False) for _ in range(3)]
+        rate, _ = asr_conditional(rs)
+        self.assertEqual(rate, 0.25)
+
+    def test_ece_zero_probability_binned(self):
+        # p=0.0 must land in the first bin, not vanish.
+        self.assertAlmostEqual(ece([0.0, 1.0], [0, 1]), 0.0, places=9)
+
 
 if __name__ == "__main__":
     unittest.main()

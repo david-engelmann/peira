@@ -41,3 +41,10 @@ re-run. If you need different config, that's a new run with a new lock.
 **`error: no cases found in ...`**
 Cause: the suite directory has no `.jsonl` files. Fix: check the path;
 `dataset/trial-demo/cases.jsonl` ships with the repo.
+
+**`peira run` exits with code 3**
+Cause: none — the run completed. Exit 3 means ranking-ineligible (one of
+the Methodology eligibility floors failed; the notes are printed with the
+results). Fix: none needed for a demo; for a real submission, clear the
+named gate. Exit codes: 0 clean, 1 user error, 2 infrastructure error,
+3 completed but unranked.

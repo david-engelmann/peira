@@ -45,6 +45,9 @@ jobs:
           python-version: "3.12"
       - run: pip install -e .
       - run: peira run --adapter mock --suite trial-demo --dry-run
-      - run: peira run --adapter mock --suite trial-demo --out runs
+      # Exit 3 = ran fine but ranking-ineligible (the 12-case demo never
+      # clears the 200-case / per-family floors); that is expected here.
+      - run: peira run --adapter mock --suite trial-demo --out runs || [ $? -eq 3 ]
+        shell: bash
       - run: peira validate --dataset dataset/trial-demo
       - run: peira report --run runs/mock-trial-demo.json --out report.html
