@@ -7,7 +7,7 @@
 ## 30-second quickstart
 
 ```bash
-pip install peira
+pip install -e .   # from a peira checkout (PyPI release pending)
 peira run --adapter mock --suite trial-demo   # offline, no keys
 peira report --run runs/mock-trial-demo.json --out report.html
 ```
@@ -48,10 +48,13 @@ See `examples/minimal_adapter.py` (30 lines, runs in CI), then read
 
 ## Install
 
+peira isn't on PyPI yet — until it is, `pip install -e .` from a repo
+checkout stands in for `pip install peira` below.
+
 | Tier | Command | What you get |
 |---|---|---|
 | `peira` | `pip install peira` | Core, SDK, CLI, offline mock |
-| `peira[hf]` | `pip install peira[hf]` | + Hugging Face adapters |
+| `peira[hf]` | `pip install peira[hf]` | + Hugging Face adapters (planned) |
 | `peira[all]` | `pip install peira[all]` | + everything optional |
 
 Hardware guidance per tier: `docs/Hardware.md`. No telemetry — the harness

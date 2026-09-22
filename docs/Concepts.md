@@ -22,6 +22,6 @@ the case that produced it — that's what drill-down receipts are for.
 
 A run artifact is sealed with a sha256 hash over its inputs (config,
 dataset version, peira version). Change anything after the fact and the
-lock breaks; CI rejects the artifact. This is what makes the leaderboard
-trustworthy without trusting the submitter: the numbers are either
-reproducible from the locked inputs or they're rejected.
+lock breaks; `peira report` warns on the mismatch. This is what makes the
+leaderboard trustworthy without trusting the submitter: the numbers are
+either reproducible from the locked inputs or they're rejected.
