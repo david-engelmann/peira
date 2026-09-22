@@ -13,6 +13,22 @@ from typing import Any
 PRIMITIVES = ("choice", "score", "noul")
 SEVERITIES = ("critical", "high", "medium", "low")
 
+# The ten canonical attack families (docs/Taxonomy.md). The frozen case
+# schema accepts any family string at runtime; the dataset gates (the
+# authoring-time contract) require these IDs.
+CANONICAL_FAMILIES = (
+    "state_poisoning",
+    "criteria_smuggling",
+    "option_order",
+    "distractor_flooding",
+    "score_anchoring",
+    "literal_reading",
+    "negation_games",
+    "policy_paraphrase",
+    "indirection",
+    "confidence_spoofing",
+)
+
 # JSON-schema-shaped description of a serialized case, used by
 # `peira validate --dataset`. Kept as plain data so validation needs no
 # third-party dependency.
