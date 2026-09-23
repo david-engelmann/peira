@@ -227,8 +227,8 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
   other decided label). The buckets partition each arm's cases.
 - New `refusal_rate_delta(results)` — attacked-minus-benign refusal
   rate with a paired-bootstrap 95% CI (backend-independent Python
-  PRNG). Empty results return `(0.0, (0.0, 0.0))`, like the other
-  rate functions.
+  PRNG), returned as a `DeltaEstimate`. Withheld (None delta/CI)
+  below 30 cases, like the other delta statistics.
 
 ### Added — ASR extras (A3 S4)
 
