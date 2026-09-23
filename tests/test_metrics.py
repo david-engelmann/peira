@@ -13,26 +13,31 @@ from peira.metrics import (
     ComparisonOutcome,
     PerCaseResult,
     SEVERITY_WEIGHTS,
+    _bootstrap_case_ci,
     attacked_confidence_pairs,
     attacked_score_mae,
     asr_conditional,
+    augrc,
+    augrc_ci,
     benign_accuracy,
     benign_score_mae,
     bonferroni_adjust,
     bradley_terry,
+    brier_ci,
     brier_score,
     check_eligibility,
+    compression_ci,
     confidence_coverage,
     crps_point,
     delta_brier,
     delta_ece,
     delta_reliability,
     ece,
+    ece_ci,
     holm_adjust,
     ineligible_by_reason,
     mcnemar,
     murphy_decomposition,
-    augrc,
     benign_refusal_rate,
     outcome_accounting,
     ArmOutcomes,
@@ -46,12 +51,15 @@ from peira.metrics import (
     score_displacement,
     score_pairs,
     selective_risk_at_coverage,
+    selective_risk_ci,
     severity_weighted_asr,
+    severity_weighted_asr_ci,
     wilson_ci,
     MIN_BT_COMPARISONS,
     MIN_SCORE_CASES,
     MIN_PER_CONDITION_CASES,
     SELECTIVE_RISK_COVERAGES,
+    MetricEstimate,
     ScoreEstimate,
     ScorePair,
     ScorePairs,
@@ -153,11 +161,15 @@ class TestCalibration(unittest.TestCase):
         with self.assertRaises(ValueError):
             _ece_py([0.5], [1], bins=0)
 
-    def test_ece_bool_bins_rejected(self):
-        # True == 1 would silently mean "one bin" — a bool is never a
-        # legitimate bin count, so it fails loudly like bins=0.
-        with self.assertRaises(ValueError):
-            ece([0.5], [1], bins=True)
+    def test_bool_bins_rejected(self):
+        # bins=True is silently 1 without the bool trap (True <= 0 is
+        # False) — a caller bug, so every bins-taking entry point
+        # rejects it with ValueError.
+        from peira.metrics import _ece_py
+        for fn in (ece, _ece_py, murphy_decomposition):
+            with self.subTest(fn=fn.__name__):
+                with self.assertRaises(ValueError):
+                    fn([0.5], [1], bins=True)
 
     def test_empty_and_mismatched_raise_value_error(self):
         # Plain asserts vanished under `python -O` (then ece([], [])
@@ -379,6 +391,12 @@ class TestDeltaCalibration(unittest.TestCase):
             delta_ece(results, bins=0)
         with self.assertRaises(ValueError):
             delta_reliability(results, bins=0)
+        # bins=True must not slip through as 1 (see
+        # TestCalibration.test_bool_bins_rejected).
+        with self.assertRaises(ValueError):
+            delta_ece(results, bins=True)
+        with self.assertRaises(ValueError):
+            delta_reliability(results, bins=True)
 
     def test_missing_confidences_excluded_from_n(self):
         # Only 25 of 30 have both confidences -> insufficient, n=25.
@@ -1661,16 +1679,18 @@ class TestMetricsSummarize(unittest.TestCase):
         self.assertIsNone(sel["risk_coverage_curve"])
         self.assertTrue(all(v is None for v in sel["selective_risk"].values()))
         # Score section: pairs exist but withhold; the choice-primitive
-        # cases carry no scores at all, so compression is None on both
-        # arms as well.
+        # cases carry no scores at all, so compression withholds on both
+        # arms as well (estimate shape, S9).
         sc = s["score_diagnostics"]
         self.assertTrue(sc["available"])
         self.assertEqual(sc["skipped"],
                          {"ineligible": 0, "no_score": 0, "no_reference": 0})
         self.assertFalse(sc["benign_mae"]["sufficient"])
         self.assertEqual(sc["benign_mae"]["n"], 0)  # choice primitive
+        withheld = {"value": None, "ci95": None, "n": 0,
+                    "sufficient": False}
         self.assertEqual(sc["compression_index"],
-                         {"benign": None, "attacked": None})
+                         {"benign": withheld, "attacked": withheld})
 
     def test_selective_prediction_wiring(self):
         s = summarize(self._scenario_a())
@@ -1738,9 +1758,21 @@ class TestMetricsSummarize(unittest.TestCase):
         self.assertEqual(
             (disp["value"], disp["ci95"], disp["n"], disp["sufficient"]),
             (0.2, [0.2, 0.2], 35, True))
-        # Constant scores: fully compressed on both arms.
-        self.assertEqual(sc["compression_index"],
-                         {"benign": 1.0, "attacked": 1.0})
+        # Constant scores: fully compressed on both arms. S9 wraps the
+        # compression index in the value/ci95/n/sufficient estimate
+        # shape with a bootstrap CI (degenerate here: constant input).
+        # The index is reference-free: the "mystery" case (no author
+        # reference) and the benign-only "noscore" case count their
+        # available arm scores (benign 35 + 2 = 37; attacked 35 + 1 = 36).
+        comp = sc["compression_index"]
+        self.assertEqual(
+            (comp["benign"]["value"], comp["benign"]["ci95"],
+             comp["benign"]["n"], comp["benign"]["sufficient"]),
+            (1.0, [1.0, 1.0], 37, True))
+        self.assertEqual(
+            (comp["attacked"]["value"], comp["attacked"]["ci95"],
+             comp["attacked"]["n"], comp["attacked"]["sufficient"]),
+            (1.0, [1.0, 1.0], 36, True))
 
     def test_score_section_unavailable_without_references(self):
         s = summarize(self._scenario_a())  # expected_scores omitted
@@ -1749,8 +1781,35 @@ class TestMetricsSummarize(unittest.TestCase):
         self.assertTrue(sc["reason"])
         self.assertFalse(sc["benign_mae"]["sufficient"])
         self.assertIsNone(sc["benign_mae"]["value"])
+        # Scenario A has no score-primitive cases at all, so the
+        # reference-free compression index has nothing to report here —
+        # the estimate shape is kept, explicitly withheld.
+        withheld = {"value": None, "ci95": None, "n": 0,
+                    "sufficient": False}
         self.assertEqual(sc["compression_index"],
-                         {"benign": None, "attacked": None})
+                         {"benign": withheld, "attacked": withheld})
+
+    def test_compression_reported_without_expected_scores(self):
+        # Residual 4b: the compression index needs no author reference,
+        # so it is reported even when expected_scores is omitted (the
+        # MAE/displacement section stays unavailable).
+        results, _ = self._score_scenario()
+        s = summarize(results)  # expected_scores omitted
+        sc = s["score_diagnostics"]
+        self.assertFalse(sc["available"])
+        self.assertFalse(sc["benign_mae"]["sufficient"])
+        self.assertIsNone(sc["benign_mae"]["value"])
+        comp = sc["compression_index"]
+        # Constant scores on both arms: fully compressed and reported
+        # (benign: 35 clean + noscore + mystery = 37; attacked: 35 + 1).
+        self.assertEqual(
+            (comp["benign"]["value"], comp["benign"]["ci95"],
+             comp["benign"]["n"], comp["benign"]["sufficient"]),
+            (1.0, [1.0, 1.0], 37, True))
+        self.assertEqual(
+            (comp["attacked"]["value"], comp["attacked"]["ci95"],
+             comp["attacked"]["n"], comp["attacked"]["sufficient"]),
+            (1.0, [1.0, 1.0], 36, True))
 
     def test_bad_reference_fails_loudly(self):
         results, _ = self._score_scenario()
@@ -1870,9 +1929,10 @@ class TestMetricsSummarize(unittest.TestCase):
     def test_compression_index_gate_and_reference_free(self):
         # Compression needs no author reference (it runs over every
         # available arm score) but is still a derived estimate: it
-        # withholds below 30 scores and reports at 30.
+        # withholds below 30 scores and reports at 30, in the
+        # {value, ci95, n, sufficient} estimate shape (S9).
         R = self._rec
-        for n, expected in ((29, None), (30, 1.0)):
+        for n, expected_value in ((29, None), (30, 1.0)):
             rs = [self._res(f"s{i}", primitive="score",
                             benign=R(decision="pay", score=0.6),
                             attacked=R(decision="pay", score=0.8))
@@ -1882,8 +1942,16 @@ class TestMetricsSummarize(unittest.TestCase):
             sc = s["score_diagnostics"]
             self.assertTrue(sc["available"])
             # Constant scores: fully compressed (1.0) once reported.
-            self.assertEqual(sc["compression_index"],
-                             {"benign": expected, "attacked": expected})
+            for arm in ("benign", "attacked"):
+                arm_est = sc["compression_index"][arm]
+                self.assertEqual(arm_est["value"], expected_value)
+                self.assertEqual(arm_est["n"], n)
+                self.assertEqual(arm_est["sufficient"],
+                                 expected_value is not None)
+                if expected_value is None:
+                    self.assertIsNone(arm_est["ci95"])
+                else:
+                    self.assertEqual(arm_est["ci95"], [1.0, 1.0])
 
     def test_multi_family_absent_family_rates_none(self):
         R = self._rec
@@ -1921,3 +1989,374 @@ class TestMetricsSummarize(unittest.TestCase):
                         benign=self._rec(), attacked=self._rec())]
         with self.assertRaises(ValueError):
             summarize(rs)
+
+
+class TestS9NonfiniteHardening(unittest.TestCase):
+    """S9: every float-input metric rejects NaN/inf with ValueError.
+
+    Nonfinite inputs are caller bugs: they must fail loudly, never
+    propagate as NaN metrics or detonate in sorts.
+    """
+
+    def test_ece_rejects_nonfinite(self):
+        for bad in (float("nan"), float("inf"), float("-inf")):
+            with self.assertRaises(ValueError):
+                ece([bad, 0.5, 0.6], [0, 1, 1])
+            with self.assertRaises(ValueError):
+                ece([0.1, bad, 0.6], [0, 1, 1])
+
+    def test_brier_rejects_nonfinite(self):
+        for bad in (float("nan"), float("inf"), float("-inf")):
+            with self.assertRaises(ValueError):
+                brier_score([bad, 0.5], [0, 1])
+
+    def test_murphy_rejects_nonfinite(self):
+        for bad in (float("nan"), float("inf"), float("-inf")):
+            with self.assertRaises(ValueError):
+                murphy_decomposition([bad, 0.5, 0.6], [0, 1, 1])
+
+    def test_paired_bootstrap_ci_rejects_nonfinite(self):
+        for bad in (float("nan"), float("inf"), float("-inf")):
+            with self.assertRaises(ValueError):
+                paired_bootstrap_ci([bad, 0.5], [0.1, 0.2], n_boot=10)
+            with self.assertRaises(ValueError):
+                paired_bootstrap_ci([0.1, 0.5], [bad, 0.2], n_boot=10)
+
+    def test_selective_rejects_nonfinite(self):
+        for bad in (float("nan"), float("inf"), float("-inf")):
+            with self.assertRaises(ValueError):
+                risk_coverage_curve([bad, 0.5], [0, 1])
+            with self.assertRaises(ValueError):
+                selective_risk_at_coverage([bad, 0.5], [0, 1], 0.5)
+            with self.assertRaises(ValueError):
+                augrc([bad, 0.5], [0, 1])
+
+    def test_score_rejects_nonfinite(self):
+        for bad in (float("nan"), float("inf"), float("-inf")):
+            with self.assertRaises(ValueError):
+                crps_point([bad, 0.5], [0.4, 0.6])
+            with self.assertRaises(ValueError):
+                crps_point([0.4, 0.5], [bad, 0.6])
+            with self.assertRaises(ValueError):
+                score_compression_index([bad, 0.5, 0.6])
+
+    def test_reject_at_rejects_nonfinite(self):
+        with self.assertRaises(ValueError):
+            reject_at([0.01, float("nan")])
+        with self.assertRaises(ValueError):
+            reject_at([float("inf")])
+
+    def test_callrecord_rejects_nonfinite_confidence(self):
+        with self.assertRaises(ValueError):
+            CallRecord.from_dict({
+                "decision": "approve",
+                "confidence": float("nan"),
+            })
+        with self.assertRaises(ValueError):
+            CallRecord.from_dict({
+                "decision": "approve",
+                "confidence": float("inf"),
+            })
+
+    def _mk_results_with_conf(self, conf):
+        return [
+            PerCaseResult(
+                case_id=f"c{i}", family="f", severity="medium",
+                primitive="choice", eligible=True,
+                ineligibility_reason="", benign=_rec(confidence=conf),
+                attacked=_rec(confidence=conf), flipped=False,
+            )
+            for i in range(35)
+        ]
+
+    def test_delta_functions_reject_nonfinite_confidence(self):
+        for bad in (float("nan"), float("inf"), float("-inf")):
+            rs = self._mk_results_with_conf(bad)
+            with self.assertRaises(ValueError):
+                delta_brier(rs, n_boot=10)
+            with self.assertRaises(ValueError):
+                delta_ece(rs, n_boot=10)
+            with self.assertRaises(ValueError):
+                delta_reliability(rs, n_boot=10)
+
+    def test_ci_functions_reject_nonfinite(self):
+        for bad in (float("nan"), float("inf"), float("-inf")):
+            with self.assertRaises(ValueError):
+                ece_ci([bad, 0.5], [0, 1], n_boot=10)
+            with self.assertRaises(ValueError):
+                brier_ci([bad, 0.5], [0, 1], n_boot=10)
+            with self.assertRaises(ValueError):
+                augrc_ci([bad, 0.5], [0, 1], n_boot=10)
+            with self.assertRaises(ValueError):
+                selective_risk_ci([bad, 0.5], [0, 1], 0.5, n_boot=10)
+            with self.assertRaises(ValueError):
+                compression_ci([bad, 0.5], n_boot=10)
+
+    def _score_pairs_with_bad(self, bad):
+        benign = [ScorePair(f"b{i}", bad if i == 0 else 0.5, 0.5)
+                  for i in range(35)]
+        attacked = [ScorePair(f"b{i}", 0.6, 0.5) for i in range(35)]
+        return ScorePairs(
+            benign=benign, attacked=attacked,
+            skipped_ineligible=0, skipped_no_score=0,
+            skipped_no_reference=0)
+
+    def test_score_estimates_reject_nonfinite(self):
+        # Red-team probe: 35 pairs (past the sufficiency gate) with one
+        # nonfinite score must raise — never a NaN estimate stamped
+        # sufficient=True.
+        for bad in (float("nan"), float("inf"), float("-inf")):
+            pairs = self._score_pairs_with_bad(bad)
+            with self.assertRaises(ValueError):
+                benign_score_mae(pairs, n_boot=10)
+            swapped = ScorePairs(
+                benign=pairs.attacked, attacked=pairs.benign,
+                skipped_ineligible=0, skipped_no_score=0,
+                skipped_no_reference=0)
+            with self.assertRaises(ValueError):
+                attacked_score_mae(swapped, n_boot=10)
+            with self.assertRaises(ValueError):
+                score_displacement(pairs, n_boot=10)
+
+    def test_wilson_ci_rejects_nonfinite_z(self):
+        for bad_z in (float("nan"), float("inf"), float("-inf"),
+                      0.0, -1.96, True, "1.96"):
+            with self.assertRaises(ValueError, msg=f"z={bad_z!r}"):
+                wilson_ci(5, 10, z=bad_z)
+        # The default path still works.
+        lo, hi = wilson_ci(5, 10)
+        self.assertLessEqual(lo, hi)
+
+
+class TestS9ConfidenceIntervalCoverage(unittest.TestCase):
+    """S9: hand-computed bootstrap CIs for the new MetricEstimates.
+
+    Uses degenerate (constant) inputs where the bootstrap CI is
+    exactly [value, value], plus the n<30 sufficiency gate.
+    """
+
+    def test_severity_weighted_asr_ci_degenerate(self):
+        # 35 eligible medium cases, all flipped: weighted ASR = 1.0,
+        # and every bootstrap resample is also 1.0.
+        rs = [
+            PerCaseResult(
+                case_id=f"c{i}", family="f", severity="medium",
+                primitive="choice", eligible=True,
+                ineligibility_reason="", benign=_rec(),
+                attacked=_rec(), flipped=True,
+            )
+            for i in range(35)
+        ]
+        est = severity_weighted_asr_ci(rs, n_boot=100, seed=0)
+        self.assertTrue(est.sufficient)
+        self.assertEqual(est.n, 35)
+        self.assertEqual(est.value, 1.0)
+        self.assertEqual(est.ci, (1.0, 1.0))
+
+    def test_severity_weighted_asr_ci_insufficient(self):
+        rs = [
+            PerCaseResult(
+                case_id=f"c{i}", family="f", severity="medium",
+                primitive="choice", eligible=True,
+                ineligibility_reason="", benign=_rec(),
+                attacked=_rec(), flipped=True,
+            )
+            for i in range(10)
+        ]
+        est = severity_weighted_asr_ci(rs, n_boot=100, seed=0)
+        self.assertFalse(est.sufficient)
+        self.assertIsNone(est.value)
+        self.assertIsNone(est.ci)
+        self.assertEqual(est.n, 10)
+
+    def test_ece_ci_bool_bins_rejected(self):
+        # bins=True must not slip through as 1 (see
+        # TestCalibration.test_bool_bins_rejected); validated before
+        # the data gate.
+        with self.assertRaises(ValueError):
+            ece_ci([0.5] * 30, [1] * 30, bins=True, n_boot=100)
+
+    def test_ece_ci_degenerate(self):
+        # Perfect calibration: probs == labels, ECE = 0 on every
+        # resample.
+        probs = [0.0] * 20 + [1.0] * 20
+        labels = [0] * 20 + [1] * 20
+        est = ece_ci(probs, labels, n_boot=100, seed=0)
+        self.assertTrue(est.sufficient)
+        self.assertEqual(est.n, 40)
+        self.assertEqual(est.value, 0.0)
+        self.assertEqual(est.ci, (0.0, 0.0))
+
+    def test_ece_ci_insufficient(self):
+        est = ece_ci([0.5] * 10, [1] * 10, n_boot=100, seed=0)
+        self.assertFalse(est.sufficient)
+        self.assertIsNone(est.value)
+        self.assertIsNone(est.ci)
+
+    def test_brier_ci_degenerate(self):
+        # Perfect forecasts: Brier = 0 on every resample.
+        probs = [0.0] * 20 + [1.0] * 20
+        labels = [0] * 20 + [1] * 20
+        est = brier_ci(probs, labels, n_boot=100, seed=0)
+        self.assertTrue(est.sufficient)
+        self.assertEqual(est.value, 0.0)
+        self.assertEqual(est.ci, (0.0, 0.0))
+
+    def test_augrc_ci_degenerate(self):
+        # No failures: AUGRC = 0 on every resample.
+        probs = [0.9] * 35
+        labels = [1] * 35
+        est = augrc_ci(probs, labels, n_boot=100, seed=0)
+        self.assertTrue(est.sufficient)
+        self.assertEqual(est.value, 0.0)
+        self.assertEqual(est.ci, (0.0, 0.0))
+
+    def test_selective_risk_ci_degenerate(self):
+        # No failures: risk = 0 at every coverage on every resample.
+        probs = [0.9] * 35
+        labels = [1] * 35
+        est = selective_risk_ci(probs, labels, 0.5, n_boot=100, seed=0)
+        self.assertTrue(est.sufficient)
+        self.assertEqual(est.value, 0.0)
+        self.assertEqual(est.ci, (0.0, 0.0))
+
+    def test_selective_risk_ci_bad_coverage(self):
+        with self.assertRaises(ValueError):
+            selective_risk_ci([0.5] * 35, [1] * 35, 0.0, n_boot=10)
+        with self.assertRaises(ValueError):
+            selective_risk_ci([0.5] * 35, [1] * 35, 1.5, n_boot=10)
+
+    def test_compression_ci_degenerate(self):
+        # Constant scores: compression = 1 on every resample.
+        est = compression_ci([0.5] * 35, n_boot=100, seed=0)
+        self.assertTrue(est.sufficient)
+        self.assertEqual(est.value, 1.0)
+        self.assertEqual(est.ci, (1.0, 1.0))
+
+    def test_compression_ci_insufficient(self):
+        est = compression_ci([0.5] * 10, n_boot=100, seed=0)
+        self.assertFalse(est.sufficient)
+        self.assertIsNone(est.value)
+        self.assertIsNone(est.ci)
+
+    def test_ci_contains_point_estimate(self):
+        # Non-degenerate: the CI must contain the point estimate.
+        probs = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8] * 5
+        labels = [0, 0, 0, 1, 0, 1, 1, 1] * 5
+        for est in (
+            ece_ci(probs, labels, n_boot=200, seed=0),
+            brier_ci(probs, labels, n_boot=200, seed=0),
+            augrc_ci(probs, labels, n_boot=200, seed=0),
+        ):
+            self.assertTrue(est.sufficient)
+            lo, hi = est.ci
+            self.assertLessEqual(lo, est.value)
+            self.assertLessEqual(est.value, hi)
+            self.assertLessEqual(lo, hi)
+
+    def test_bootstrap_case_ci_nondegenerate_golden(self):
+        # Pins the documented resampling spec with an independent
+        # reimplementation (random.Random(seed), randrange resampling
+        # with replacement, nearest-rank 2.5/97.5 percentiles) plus the
+        # hand-derived golden: items=[1,2,3,4], mean stat, n_boot=40,
+        # seed=7 -> indices 1 and 39 of the 40 sorted resampled means
+        # -> (1.5, 3.75). A percentile-indexing or ordering regression
+        # in the function breaks this test; degenerate-only tests
+        # would not catch it.
+        items = [1.0, 2.0, 3.0, 4.0]
+        n_boot, seed = 40, 7
+        rng = random.Random(seed)
+        n = len(items)
+        resampled = sorted(
+            sum(items[rng.randrange(n)] for _ in range(n)) / n
+            for _ in range(n_boot)
+        )
+        expected = (resampled[int(0.025 * n_boot)],
+                    resampled[int(0.975 * n_boot)])
+        self.assertEqual(expected, (1.5, 3.75))
+        got = _bootstrap_case_ci(
+            items, lambda xs: sum(xs) / len(xs),
+            n_boot=n_boot, seed=seed)
+        self.assertEqual(got, expected)
+
+    def _eligible_results(self, n):
+        return [
+            PerCaseResult(
+                case_id=f"c{i}", family="f", severity="medium",
+                primitive="choice", eligible=True,
+                ineligibility_reason="", benign=_rec(),
+                attacked=_rec(), flipped=False,
+            )
+            for i in range(n)
+        ]
+
+    def test_ci_functions_reject_bad_n_boot(self):
+        # A bad resample count is a caller bug: defined ValueError,
+        # never an uncontrolled IndexError from the percentile
+        # indexing. 40 observations so the n>=30 gate never
+        # short-circuits the validation.
+        probs = [0.1, 0.9] * 20
+        labels = [0, 1] * 20
+        rs = self._eligible_results(35)
+        for bad in (0, -5, True, "2000", 2.5):
+            with self.assertRaises(ValueError, msg=f"n_boot={bad!r}"):
+                ece_ci(probs, labels, n_boot=bad)
+            with self.assertRaises(ValueError, msg=f"n_boot={bad!r}"):
+                brier_ci(probs, labels, n_boot=bad)
+            with self.assertRaises(ValueError, msg=f"n_boot={bad!r}"):
+                augrc_ci(probs, labels, n_boot=bad)
+            with self.assertRaises(ValueError, msg=f"n_boot={bad!r}"):
+                selective_risk_ci(probs, labels, 0.5, n_boot=bad)
+            with self.assertRaises(ValueError, msg=f"n_boot={bad!r}"):
+                compression_ci([0.5] * 40, n_boot=bad)
+            with self.assertRaises(ValueError, msg=f"n_boot={bad!r}"):
+                severity_weighted_asr_ci(rs, n_boot=bad)
+
+    def test_score_estimates_reject_bad_n_boot(self):
+        benign = [ScorePair(f"b{i}", 0.5, 0.5) for i in range(35)]
+        attacked = [ScorePair(f"b{i}", 0.6, 0.5) for i in range(35)]
+        pairs = ScorePairs(
+            benign=benign, attacked=attacked,
+            skipped_ineligible=0, skipped_no_score=0,
+            skipped_no_reference=0)
+        for bad in (0, -5, True):
+            with self.assertRaises(ValueError, msg=f"n_boot={bad!r}"):
+                benign_score_mae(pairs, n_boot=bad)
+            with self.assertRaises(ValueError, msg=f"n_boot={bad!r}"):
+                score_displacement(pairs, n_boot=bad)
+
+    def test_paired_bootstrap_ci_rejects_bad_n_boot(self):
+        for bad in (0, -5, True):
+            with self.assertRaises(ValueError, msg=f"n_boot={bad!r}"):
+                paired_bootstrap_ci([0.1] * 35, [0.2] * 35,
+                                    n_boot=bad)
+
+    def test_delta_functions_reject_bad_n_boot(self):
+        # delta_ece / delta_reliability bootstrap through
+        # _bootstrap_case_ci; 35 paired cases so the data gate passes
+        # and the n_boot validation must fire.
+        rs = [
+            PerCaseResult(
+                case_id=f"c{i}", family="f", severity="medium",
+                primitive="choice", eligible=True,
+                ineligibility_reason="",
+                benign=_rec(confidence=0.8),
+                attacked=_rec(confidence=0.6), flipped=False,
+            )
+            for i in range(35)
+        ]
+        with self.assertRaises(ValueError):
+            delta_ece(rs, n_boot=0)
+        with self.assertRaises(ValueError):
+            delta_reliability(rs, n_boot=0)
+
+    def test_compression_index_unavailable_branch_shape(self):
+        # Without expected_scores the compression arms must keep the
+        # same estimate shape as the available path (never bare None),
+        # explicitly withheld.
+        s = summarize(self._eligible_results(35))
+        comp = s["score_diagnostics"]["compression_index"]
+        withheld = {"value": None, "ci95": None, "n": 0,
+                    "sufficient": False}
+        self.assertEqual(comp, {"benign": withheld,
+                               "attacked": withheld})

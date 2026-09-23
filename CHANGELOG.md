@@ -7,6 +7,42 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
 
 ## [Unreleased]
 
+### Added — confidence-interval coverage and nonfinite hardening (A3 S9)
+
+- New `peira.metrics.MetricEstimate` (value/ci/n/sufficient) and
+  bootstrap 95% CI functions for derived estimates that lacked them:
+  `severity_weighted_asr_ci`, `ece_ci`, `brier_ci`, `augrc_ci`,
+  `selective_risk_ci` (per fixed coverage), and `compression_ci`.
+  All withhold below 30 observations (None + `sufficient: False`,
+  never NaN); all intervals use the Python PRNG (backend-independent).
+  Display-only, never rankers.
+- `summarize()` now reports `severity_weighted_asr_ci95`,
+  per-condition `ece_ci95`/`brier_ci95`, `augrc_ci95`,
+  per-coverage `selective_risk_ci95`, and compression-index CIs
+  (the compression block is now a value/ci95/n/sufficient estimate
+  with the n>=30 gate, instead of a bare ungated float).
+- Nonfinite hardening: every float-input metric in
+  `python/peira/metrics.py` and `crates/peira-core/src/metrics.rs`
+  rejects NaN/±inf with `ValueError` (Python) or a clear panic
+  (Rust, D-11) — never silent NaN, never an uncontrolled panic.
+  Includes the score estimates (`benign_score_mae`,
+  `attacked_score_mae`, `score_displacement`), `wilson_ci`'s `z`
+  parameter, and the Rust `paired_bootstrap_ci` sort hazard (NaN
+  detonated `partial_cmp().unwrap()`). Bootstrap entry points
+  (`paired_bootstrap_ci`, the delta functions, the six S9 CI
+  functions, the score estimates) also reject non-positive or
+  non-integer `n_boot` with `ValueError` instead of an uncontrolled
+  `IndexError`. `CallRecord.from_dict` now validates `confidence` in
+  0..1.
+- `summarize()`'s per-condition `ece`/`brier` point values now come
+  from the pure-Python reference inside `ece_ci`/`brier_ci` rather
+  than the Rust-dispatched `ece()`/`brier_score()` — backend-
+  independent by construction; the values agree to ~1 ulp (the
+  documented non-identity), invisible after 4-decimal rounding except
+  at pathological rounding boundaries.
+- `docs/Methodology.md`: new section on nonfinite handling and CI
+  coverage. New ADR D-29 (reject, don't clamp).
+
 ### Added — Bradley–Terry compare-view strengths (A3 S7, ADR D-28)
 
 - New display-only `bradley_terry(comparisons)` in `peira.metrics`
@@ -227,7 +263,7 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
   as the "average risk of undetected failures". All three are
   display-only diagnostics, never rankers (D2), intended for
   attacked-arm correctness pairs from `attacked_confidence_pairs`.
-  Python-reference only; the Rust port lands in S9.
+  Python-reference only; Rust port deferred.
 
 ### Added — real day-one adapters (A2)
 - New `python/peira/adapters/hf.py` behind `peira[hf]`: Shieldstral

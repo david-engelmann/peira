@@ -21,6 +21,23 @@
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
+/// Panic with a clear message on nonfinite input.
+///
+/// Nonfinite inputs are caller bugs (D-11), like empty or mismatched
+/// inputs: a NaN would otherwise propagate silently through means
+/// (yielding a NaN metric) or detonate inside
+/// [`paired_bootstrap_ci`]'s sort (``partial_cmp`` returns ``None`` for
+/// NaN, and the ``unwrap()`` would panic with an unhelpful message).
+/// The Python reference raises ``ValueError`` on the same input — both
+/// backends refuse loudly, neither computes on garbage (message text
+/// differs: the ``ValueError`` names the offending value; the refusal
+/// is identical).
+fn assert_finite(values: &[f64], name: &str) {
+    if values.iter().any(|v| !v.is_finite()) {
+        panic!("{name} must be finite (got NaN or infinite value)");
+    }
+}
+
 /// Per-call resource accounting, mirroring the Python CallUsage dataclass.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -231,6 +248,7 @@ pub fn malformed_rate(results: &[PerCaseResult]) -> f64 {
 pub fn ece(probs: &[f64], labels: &[i64], bins: usize) -> f64 {
     assert!(!probs.is_empty() && probs.len() == labels.len());
     assert!(bins > 0, "bins must be positive");
+    assert_finite(probs, "probs");
     let mut order: Vec<usize> = (0..probs.len()).collect();
     order.sort_by(|&a, &b| {
         probs[a]
@@ -263,6 +281,7 @@ pub fn ece(probs: &[f64], labels: &[i64], bins: usize) -> f64 {
 /// `ValueError` on the same inputs (validated before dispatch — D-11).
 pub fn brier_score(probs: &[f64], labels: &[i64]) -> f64 {
     assert!(!probs.is_empty() && probs.len() == labels.len());
+    assert_finite(probs, "probs");
     probs
         .iter()
         .zip(labels.iter())
@@ -291,6 +310,8 @@ pub fn brier_score(probs: &[f64], labels: &[i64]) -> f64 {
 /// `ValueError` on the same inputs (validated before dispatch — D-11).
 pub fn crps_point(scores: &[f64], refs: &[f64]) -> f64 {
     assert!(!scores.is_empty() && scores.len() == refs.len());
+    assert_finite(scores, "scores");
+    assert_finite(refs, "refs");
     scores
         .iter()
         .zip(refs.iter())
@@ -315,6 +336,7 @@ pub fn crps_point(scores: &[f64], refs: &[f64]) -> f64 {
 /// (validated before dispatch — D-11).
 pub fn score_compression_index(scores: &[f64]) -> f64 {
     assert!(!scores.is_empty());
+    assert_finite(scores, "scores");
     let n = scores.len() as f64;
     let mean = scores.iter().sum::<f64>() / n;
     let var = scores.iter().map(|&x| (x - mean).powi(2)).sum::<f64>() / n;
@@ -360,6 +382,39 @@ fn davidson_loglik(pi: &[f64], nu: f64, pairs: &[(usize, usize, u64, u64, u64)])
         }
     }
     ll
+}
+
+/// Items with no comparison path to the rest of the graph.
+///
+/// Weak connectivity over undirected comparison edges: an edge exists
+/// whenever the pair was actually compared (`wij>0 || wji>0 || tij>0`).
+/// Strengths are only identified up to a per-component constant, so a
+/// disconnected graph has no basis for relative strengths. The Python
+/// reference rejects disconnected graphs pre-dispatch with its own
+/// `ValueError`; `bradley_terry_fit` panics with a loud message for
+/// direct Rust callers — D-11. Returns the sorted indices of the items
+/// unreachable from item 0, empty when the graph is connected.
+fn bt_disconnected_items(n_items: usize, pairs: &[(usize, usize, u64, u64, u64)]) -> Vec<usize> {
+    let mut neighbours: Vec<Vec<usize>> = vec![Vec::new(); n_items];
+    for &(i, j, wij, wji, tij) in pairs {
+        if (wij > 0 || wji > 0 || tij > 0) && !neighbours[i].contains(&j) {
+            neighbours[i].push(j);
+            neighbours[j].push(i);
+        }
+    }
+    // n_items > 0 is asserted by the caller before this runs.
+    let mut seen = vec![false; n_items];
+    let mut stack = vec![0usize];
+    seen[0] = true;
+    while let Some(u) = stack.pop() {
+        for &v in &neighbours[u] {
+            if !seen[v] {
+                seen[v] = true;
+                stack.push(v);
+            }
+        }
+    }
+    (0..n_items).filter(|&k| !seen[k]).collect()
 }
 
 /// Names a group with unbounded relative strength, if one exists.
@@ -463,11 +518,13 @@ fn bt_source_component(
 /// returning an arbitrary max-iteration artifact.
 ///
 /// Panics on empty input, out-of-range pair indices, non-positive or
-/// non-finite `max_iter`/`tol`, when an item never won-or-tied or never
-/// lost-or-tied, and when a group won every cross-group comparison
-/// outright (backstop — the Python reference raises `ValueError` there
-/// instead of returning an arbitrary max-iteration artifact; both
-/// backends refuse loudly — D-11).
+/// non-finite `max_iter`/`tol`, when the comparison graph is disconnected
+/// (items with no comparison path to the rest have no basis for relative
+/// strengths — checked before the Ford condition, with its own message),
+/// when an item never won-or-tied or never lost-or-tied, and when a group
+/// won every cross-group comparison outright (backstop — the Python
+/// reference raises `ValueError` there instead of returning an arbitrary
+/// max-iteration artifact; both backends refuse loudly — D-11).
 pub fn bradley_terry_fit(
     n_items: usize,
     pairs: &[(usize, usize, u64, u64, u64)],
@@ -493,7 +550,7 @@ pub fn bradley_terry_fit(
     // Effective (wins + ties/2) records. The per-item backstop: every
     // item must have a win-or-tie and a loss-or-tie (the exact Ford
     // strong-connectivity condition is validated before dispatch in
-    // Python — D-11 — and asserted here only in its per-item form).
+    // Python — D-11 — and asserted here in full below).
     let mut w_eff = vec![0.0f64; n_items];
     let mut l_eff = vec![0.0f64; n_items];
     let mut total_ties: u128 = 0;
@@ -513,6 +570,23 @@ pub fn bradley_terry_fit(
         assert!(
             l_eff[k] > 0.0,
             "bradley_terry_fit: item never lost or tied — strengths unbounded"
+        );
+    }
+    // Identifiability needs a connected comparison graph first: strengths
+    // are only identified up to a per-component constant, so items with
+    // no comparison path to the rest have no basis for relative
+    // strengths. The Python reference rejects this pre-dispatch; a
+    // direct Rust caller gets the same loud refusal here, with its own
+    // message (the group-separation wording below would be wrong: these
+    // groups played no comparisons at all). Checked before the exact
+    // Ford condition, mirroring the Python validation order — D-11.
+    let missing = bt_disconnected_items(n_items, pairs);
+    if !missing.is_empty() {
+        panic!(
+            "bradley_terry_fit: comparison graph is disconnected — items \
+             {:?} share no comparison path with the rest; relative \
+             strengths are unidentified",
+            missing
         );
     }
     // Exact Ford condition: the win/tie digraph must be strongly
@@ -594,6 +668,13 @@ pub fn mcnemar(b: u64, c: u64) -> f64 {
 /// 95% bootstrap CI for mean(xs) - mean(ys), paired resampling (SplitMix64).
 pub fn paired_bootstrap_ci(xs: &[f64], ys: &[f64], n_boot: usize, seed: u64) -> (f64, f64) {
     assert!(!xs.is_empty() && xs.len() == ys.len());
+    // NaN-safe (S9): a NaN input would otherwise propagate into the
+    // resampled diffs and detonate in the sort below — `partial_cmp`
+    // returns `None` for NaN and the `unwrap()` panics with an
+    // unhelpful message. Reject upfront with a clear caller-bug
+    // panic, matching the Python reference's ValueError (D-11).
+    assert_finite(xs, "xs");
+    assert_finite(ys, "ys");
     let mut rng = SplitMix64(seed);
     let n = xs.len();
     let mut diffs: Vec<f64> = (0..n_boot)
@@ -1030,6 +1111,36 @@ mod tests {
     }
 
     #[test]
+    #[should_panic(expected = "no comparison path")]
+    fn bt_disconnected_graph_panics_with_its_own_message() {
+        // Two isolated pairs: every item has wins and losses, so the
+        // per-item backstop passes, and the win/tie digraph is not
+        // strongly connected — but the comparison graph is
+        // disconnected, so the disconnected-graph panic (not the
+        // group-separation one) must fire. The separation wording
+        // ("won every comparison played") would be wrong here: the
+        // groups played no comparisons at all.
+        let pairs = [(0, 1, 10, 5, 0), (2, 3, 10, 5, 0)];
+        bradley_terry_fit(4, &pairs, 1000, 1e-10);
+    }
+
+    #[test]
+    fn bt_disconnected_items_connectivity() {
+        // Connected chain: nothing missing.
+        let chain = [(0, 1, 10, 5, 0), (1, 2, 10, 5, 0), (2, 3, 10, 5, 0)];
+        assert!(bt_disconnected_items(4, &chain).is_empty());
+        // Two isolated pairs: items 2 and 3 unreachable from item 0.
+        let split = [(0, 1, 10, 5, 0), (2, 3, 10, 5, 0)];
+        assert_eq!(bt_disconnected_items(4, &split), vec![2, 3]);
+        // A ties-only edge still connects (ties are comparisons).
+        let tie_edge = [(0, 1, 0, 0, 30)];
+        assert!(bt_disconnected_items(2, &tie_edge).is_empty());
+        // A zero-count pair is not a comparison edge.
+        let empty_edge = [(0, 1, 0, 0, 0)];
+        assert_eq!(bt_disconnected_items(2, &empty_edge), vec![1]);
+    }
+
+    #[test]
     fn bt_source_component_matches_python_reference() {
         // Strongly connected digraph: no source component.
         let connected = [(0, 1, 15, 15, 0), (1, 2, 15, 15, 0), (0, 2, 10, 10, 5)];
@@ -1158,5 +1269,73 @@ mod tests {
         let e = check_eligibility(&rs, Some(&["f".to_string(), "g".to_string()]));
         assert!(!e.eligible);
         assert!(e.reasons.iter().any(|x| x.contains("'g' absent")));
+    }
+
+    // S9: nonfinite inputs panic with a clear message (D-11: caller
+    // bug), never silently producing NaN or an uncontrolled panic.
+    #[test]
+    #[should_panic(expected = "probs must be finite")]
+    fn ece_rejects_nan() {
+        let probs = [f64::NAN, 0.5, 0.6];
+        let labels = [0, 1, 1];
+        ece(&probs, &labels, 15);
+    }
+
+    #[test]
+    #[should_panic(expected = "probs must be finite")]
+    fn ece_rejects_inf() {
+        let probs = [f64::INFINITY, 0.5, 0.6];
+        let labels = [0, 1, 1];
+        ece(&probs, &labels, 15);
+    }
+
+    #[test]
+    #[should_panic(expected = "probs must be finite")]
+    fn brier_rejects_nan() {
+        let probs = [0.1, f64::NAN];
+        let labels = [0, 1];
+        brier_score(&probs, &labels);
+    }
+
+    #[test]
+    #[should_panic(expected = "scores must be finite")]
+    fn crps_rejects_nan() {
+        let scores = [f64::NAN, 0.5];
+        let refs = [0.4, 0.6];
+        crps_point(&scores, &refs);
+    }
+
+    #[test]
+    #[should_panic(expected = "refs must be finite")]
+    fn crps_rejects_inf_ref() {
+        let scores = [0.4, 0.5];
+        let refs = [f64::NEG_INFINITY, 0.6];
+        crps_point(&scores, &refs);
+    }
+
+    #[test]
+    #[should_panic(expected = "scores must be finite")]
+    fn compression_rejects_nan() {
+        let scores = [0.5, f64::NAN, 0.6];
+        score_compression_index(&scores);
+    }
+
+    #[test]
+    #[should_panic(expected = "xs must be finite")]
+    fn bootstrap_rejects_nan() {
+        // Before S9 this detonated inside the sort's `unwrap()` on
+        // `partial_cmp` with an unhelpful message; now it fails
+        // upfront with a clear caller-bug panic.
+        let xs = [f64::NAN, 0.5];
+        let ys = [0.1, 0.2];
+        paired_bootstrap_ci(&xs, &ys, 10, 0);
+    }
+
+    #[test]
+    #[should_panic(expected = "ys must be finite")]
+    fn bootstrap_rejects_inf() {
+        let xs = [0.1, 0.5];
+        let ys = [f64::INFINITY, 0.2];
+        paired_bootstrap_ci(&xs, &ys, 10, 0);
     }
 }

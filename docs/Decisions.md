@@ -967,3 +967,34 @@ benchmark whose credibility rests on the display).
 **To revisit:** observed-information quasi-SEs for the strengths are
 the well-defined uncertainty extension if the compare view needs
 intervals; the ν update already exposes everything they need.
+
+## D-29: Nonfinite metric inputs are rejected, not clamped
+
+**Decision.** Every metric function taking float inputs rejects NaN
+and ±infinity with a defined error — `ValueError` in Python, a panic
+with a clear message in the Rust core — instead of clamping them into
+range or letting them propagate.
+
+**Why reject.** A NaN confidence is not a low confidence; an infinite
+score is not a high score. Clamping invents data: the metric would
+return a plausible-looking number that measures nothing, and the
+corruption would be invisible downstream. Peira's metrics are
+reported to four decimals on a public leaderboard; a silent NaN
+laundered into 0.0 is a credibility bug. The inputs are also
+unambiguously caller bugs — confidences and scores are validated to
+0..1 at the schema boundary — so failing loudly is correct.
+
+**What lands (S9).** `_check_finite` in `python/peira/metrics.py`,
+called by every public float-input metric before backend dispatch;
+`assert_finite` in `crates/peira-core/src/metrics.rs`, called by the
+Rust `ece`, `brier_score`, `crps_point`, `score_compression_index`,
+and `paired_bootstrap_ci` (the last fixes a real hazard: NaN in the
+bootstrap's sort detonated `partial_cmp().unwrap()` with an unhelpful
+panic). `CallRecord.from_dict` now validates `confidence` in 0..1,
+closing the gap the score-validation comment had flagged as S1's
+follow-up.
+
+**Alternatives.** Clamp to [0, 1] (rejected: invents data);
+propagate NaN (rejected: silent garbage); return an insufficient
+estimate (rejected: nonfinite input is a bug, not a small sample —
+conflating the two hides bugs).
