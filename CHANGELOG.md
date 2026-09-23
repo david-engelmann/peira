@@ -14,6 +14,18 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
   means release-ready (no gate errors, no pending reviews, manifest
   verifies clean); anything else is exit 1. Documented in
   `docs/Dataset.md`, including the authoring loop.
+- Public decision records: `docs/Decisions.md` now records the locked
+  methodology decisions as ADRs (D-4 decision-change ASR with targeted
+  success secondary; D-5 asymmetric malformed handling; D-6 hard
+  per-family ranking gate with exit code 3 for unranked runs; D-7 100%
+  human review of critical cases; D-8 trial suites stay off the
+  leaderboard; D-9 benchmark before thresholds library; D-10 no vendor
+  pre-briefs). Each names the alternatives considered and what would
+  trigger a revisit.
+- Docs link check: `scripts/check_doc_links.py` fails CI on dead
+  internal links (new `docs` job), so the growing docs set can't rot
+  silently.
+- GitHub issue templates for bug reports and feature requests.
 - Authoring pipeline, second slice (T1b): the release seal in
   `peira dataset build-manifest`. The build now refuses when
   `--version` isn't semver, when any critical-severity case lacks a
