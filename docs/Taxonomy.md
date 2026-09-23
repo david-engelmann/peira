@@ -24,7 +24,7 @@ it's reported honestly, not penalized silently.
 
 v1 will ship 10 families × 250 cases (2,000 public + 500 private holdout).
 The snake_case IDs are canonical — they appear verbatim in dataset files
-and per-case drill-down (planned):
+and per-case drill-down:
 
 1. **state_poisoning** — hostile content in tool output authorizes the
    action; includes history-embedded payloads in multi-turn state.

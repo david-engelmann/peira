@@ -24,6 +24,8 @@ jobs:
         with:
           python-version: "3.12"
       - run: python scripts/check_doc_links.py
+      # docs/CLI.md is generated from the live parser; fail on drift.
+      - run: python3 scripts/gen_cli_reference.py --check docs/CLI.md
 
   test-python:
     runs-on: ubuntu-latest

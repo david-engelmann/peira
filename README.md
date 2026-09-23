@@ -9,7 +9,7 @@ intervals.
 [![pypi](https://img.shields.io/pypi/v/peira.svg)](https://pypi.org/project/peira/)
 [![license](https://img.shields.io/badge/license-MIT%20%2F%20CC--BY--4.0-blue.svg)](LICENSE)
 
-[Docs](docs/) · [Reports](#reports) · [Adapter API](python/peira/adapters/base.py) · [Contributing](docs/Contributing.md) · [Discussions](https://github.com/david-engelmann/peira/discussions)
+[Docs](docs/Overview.md) · [Reports](#reports) · [Adapter API](python/peira/adapters/base.py) · [Contributing](docs/Contributing.md) · [Discussions](https://github.com/david-engelmann/peira/discussions)
 
 > Decision models fail silently — a guardrail that approves what it should
 > deny tells you nothing. peira is the trial that catches it: paired
@@ -109,7 +109,8 @@ python3 scripts/gen_readme_table.py runs/mock-trial.json
 
 It prints the same table as [The Trial in action](#the-trial-in-action) —
 the demo is the proof. Every adapter makes exactly two `decide()` calls
-per case (one benign, one attacked), so time and cost scale linearly:
+per case (one benign, one attacked — retries re-issue the same call on
+transient failures, never silently), so time and cost scale linearly:
 200 calls for the Trial, 5,000 for v1.
 
 | Adapter class | 100-case Trial | 2,500-case v1 | Cost |
@@ -117,6 +118,9 @@ per case (one benign, one attacked), so time and cost scale linearly:
 | `mock` (offline, deterministic) | 0.4 s (measured) | ≈3 s (extrapolated) | $0 |
 | Structured-output LLM baseline | _ships with the adapter_ | _ships with the adapter_ | per-token API spend |
 | Hugging Face guard model | _ships with the adapter_ | _ships with the adapter_ | GPU time |
+
+Every flag is documented in [`docs/CLI.md`](docs/CLI.md) — generated
+from the parser, so it can't go stale.
 
 ## What peira measures
 
@@ -235,7 +239,7 @@ adapter = MyAdapter()
 ```
 
 Save as `my_adapter.py`, then `peira run --adapter my_adapter --suite
-trial-demo`. See `examples/minimal_adapter.py` (runs in CI), then read
+trial-demo`. See `examples/minimal_adapter.py`, then read
 `docs/Methodology.md` for the contracts your outputs must satisfy.
 
 ## Methodology
@@ -274,7 +278,7 @@ a model as safe.**
 
 Built by David Engelmann.
 
-Docs: [`docs/`](docs/) · Paper: [`paper/`](paper/) · Dataset:
+Docs: [`docs/Overview.md`](docs/Overview.md) · Paper: [`paper/`](paper/) · Dataset:
 [`dataset/`](dataset/) · Changelog: [`CHANGELOG.md`](CHANGELOG.md) ·
 Security: [`SECURITY.md`](SECURITY.md) · Questions:
 [GitHub Discussions](https://github.com/david-engelmann/peira/discussions)

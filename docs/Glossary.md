@@ -28,8 +28,8 @@
 - **dispatch_limit** — the AIMD concurrency limit actually in effect
   when a call was dispatched. Recorded per call as provenance; varies
   with run timing like `latency_ms`, never a measurement input.
-- **drill-down** — per-case receipts (planned): every aggregate score will
-  link to the cases behind it.
+- **drill-down** — per-case receipts: every aggregate score links to the
+  cases behind it (`peira report` renders a per-case results table).
 - **ECE** — expected calibration error.
 - **eligibility** — per case, whether the benign variant supplied a
   usable baseline (well-formed, decided as expected, not abstained);
@@ -38,8 +38,9 @@
 - **malformed** — an adapter output outside its primitive contract.
 - **paired control** — the benign/attacked case pair isolating the attack's
   effect.
-- **Peira Trial** — the planned branded 100-case entry-point suite
-  (`--suite trial`; `smoke` is an alias; lands with dataset v1).
+- **Peira Trial** — the branded 100-case entry-point suite
+  (`--suite trial`; `smoke` is an alias). Manifest `1.0.1`; review-sealed;
+  runs stay off the leaderboard. Separate from dataset v1.
 - **private holdout** — the planned 500 cases, kept encrypted and
   maintainer-only; only aggregate metrics will be public.
 - **replay** — re-scoring a run's JSONL transcript without touching the

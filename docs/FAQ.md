@@ -13,8 +13,8 @@ README.
 
 **How much does a full run cost?**
 The mock adapter costs nothing but time. Local HF adapters and hosted
-adapters (via LiteLLM) are planned; hosted runs will cost whatever your
-provider charges for ~5,000 decisions. Start with the trial-demo fixture
+adapters are planned; hosted runs will cost whatever your provider
+charges for ~5,000 decisions. Start with the trial-demo fixture
 (12 cases) — it's free and offline.
 
 **Can I run fully offline?**
@@ -23,7 +23,8 @@ never touches the network. (Local HF adapters are planned.) Only hosted
 adapters need API access.
 
 **How do I add my model?**
-Write an adapter — about 30 lines. See `examples/minimal_adapter.py`, then
+Write an adapter — about 30 lines. See `examples/minimal_adapter.py`,
+then save yours as `my_adapter.py` and run
 `peira run --adapter my_adapter --suite trial-demo`.
 
 **Why did my score change between peira versions?**

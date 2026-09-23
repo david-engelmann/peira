@@ -48,10 +48,11 @@ backoff; permanent failures never retry.
 
 The key guarantee: **concurrency never changes what's measured.** Case
 order, dispatch indices, and result sealing are deterministic; two runs
-with different `--max-concurrency` produce identical records — only
-timing differs. Each call record carries `dispatch_limit`, the
-concurrency limit actually in effect when it was dispatched, so the
-performance conditions of every measurement are on the record.
+with different `--max-concurrency` produce identical measurements —
+only timing and the per-call `dispatch_limit` provenance differ. Each
+call record carries `dispatch_limit`, the concurrency limit actually in
+effect when it was dispatched, so the performance conditions of every
+measurement are on the record.
 
 ## 5. Transcripts: every number traces to a request
 
