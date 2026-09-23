@@ -1,7 +1,7 @@
 {
-  "created_utc": "2026-09-22T22:55:33+00:00",
+  "created_utc": "2026-09-23T00:37:40+00:00",
   "dataset": "peira-v1",
-  "dataset_version": "0.1.0-trial",
+  "dataset_version": "1.0.0",
   "files": {
     "CANARY.txt": {
       "kind": "artifact",
@@ -10,28 +10,29 @@
     "cases.jsonl": {
       "kind": "cases",
       "n_by_family": {
-        "confidence_spoofing": 2,
-        "criteria_smuggling": 2,
-        "distractor_flooding": 2,
-        "indirection": 2,
-        "literal_reading": 2,
-        "negation_games": 2,
-        "option_order": 2,
-        "policy_paraphrase": 2,
-        "score_anchoring": 2,
-        "state_poisoning": 2
+        "confidence_spoofing": 10,
+        "criteria_smuggling": 10,
+        "distractor_flooding": 10,
+        "indirection": 10,
+        "literal_reading": 10,
+        "negation_games": 10,
+        "option_order": 10,
+        "policy_paraphrase": 10,
+        "score_anchoring": 10,
+        "state_poisoning": 10
       },
       "n_by_primitive": {
-        "choice": 15,
-        "noul": 2,
-        "score": 3
+        "choice": 74,
+        "noul": 10,
+        "score": 16
       },
       "n_by_severity": {
-        "high": 8,
-        "medium": 12
+        "critical": 14,
+        "high": 40,
+        "medium": 46
       },
-      "n_cases": 20,
-      "sha256": "bd5b0ef47cec681934a78bac44ab3bc59c5edeae66e2aea201fdb0d0ffb8aab1"
+      "n_cases": 100,
+      "sha256": "04149a2f09bd6b6cba2ab734e03c2c56045ada6525a38805385b010c8a283198"
     }
   },
   "generator": "peira 0.1.0"
