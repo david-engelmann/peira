@@ -10,8 +10,8 @@ machine-checkable artifact.
 ```
 dataset/
   trial-demo/        # 12-case offline demo fixture (scaffolding, not v1)
-  trial/             # 20-case Trial starter suite (scaffolding, not v1)
-                     # exercises the harness end to end via --suite trial
+  trial/             # the branded 100-case Peira Trial (v1-quality pilot)
+                     # 10 cases per family; runs via --suite trial
   v1/
     README.md
     cases.jsonl      # the 2,000 public cases (lands via the pipeline)
@@ -22,11 +22,12 @@ dataset/
     manifest.json    # the build manifest (this doc)
 ```
 
-`trial-demo` and `trial` are both scaffolding: small case sets that let
-the harness run offline before v1 lands. `trial-demo` predates the gates
-and is exempt from them; `trial` passes all six gates and carries a
-manifest, so it exercises the full mechanism (load → gate → manifest →
-run → report).
+`trial-demo` is scaffolding: a 12-case fixture that lets the harness run
+offline. It predates the gates and is exempt from them. `trial` is the
+branded 100-case Peira Trial — 100 v1-quality cases (10 per family)
+authored through the full pipeline: all six gates green, 100% of critical
+cases human-reviewed, manifest sealed at 1.0.0. Trial runs stay off the
+public leaderboard.
 
 ## Case schema: closed for required fields, open for extension
 
@@ -39,7 +40,7 @@ without touching the schema, the loader, or the gates. Run artifacts
 record per-case *results*, not full case dicts, so extras don't land in
 artifacts by themselves — adapter-visible configuration belongs inside
 the variant `input`, which already passes through unchanged. Only the
-consumer of a new field needs to know about it. The trial starter suite
+consumer of a new field needs to know about it. The Trial suite
 uses this for its `canary` field.
 
 The 500-case private holdout is **never** committed to this repo. It lives

@@ -14,14 +14,28 @@ peira report --run runs/mock-trial-demo.json --out report.html
 
 That's a full evaluation: 12 demo cases through the mock adapter, scored
 with the real metrics, sealed with an analysis lock, rendered as HTML.
-When the v1 dataset ships, swap `--suite trial-demo` for `--suite trial`
-(the branded 100-case Peira Trial) or run the full 2,500.
+For the real thing, swap `--suite trial-demo` for `--suite trial` — the
+branded 100-case Peira Trial (100 v1-quality cases, 10 per attack family,
+with 100% of critical cases human-reviewed). The full v1 dataset (2,500
+cases) ships later.
+
+### What a run costs
+
+Every adapter makes exactly two `decide()` calls per case — one benign,
+one attacked — so time and cost scale linearly with suite size: 200 calls
+for the Trial, 5,000 for v1.
+
+| Adapter class | 100-case Trial | 2,500-case v1 | Cost |
+|---|---|---|---|
+| `mock` (offline, deterministic) | <1 s (measured) | ≈3 s (extrapolated) | $0 |
+| Structured-output LLM baseline | _ships with the adapter_ | _ships with the adapter_ | per-token API spend |
+| Hugging Face guard model | _ships with the adapter_ | _ships with the adapter_ | GPU time |
 
 ## What peira measures
 
 Whether hostile manipulations of the input change a decision model's typed
 output — Choice, Score, or Noul — measured with paired benign/attacked
-controls across 10 attack families. Every score will link to per-case
+controls across 10 attack families. Every report carries per-case
 drill-down receipts, and every run is sealed against post-hoc editing.
 
 ## Leaderboard
