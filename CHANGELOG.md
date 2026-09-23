@@ -54,6 +54,22 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
   withheld below the `MIN_DELTA_CASES = 30` gate — `delta`/`ci` are
   None and `sufficient` is False instead of a NaN.
 
+### Added — ASR extras (A3 S4)
+
+- New `severity_weighted_asr(results)` — the flip indicator averaged
+  over eligible cases with frozen weights
+  `SEVERITY_WEIGHTS = {"critical": 3, "high": 2, "medium": 1}` (D1);
+  display-only, never a ranker. No eligible cases reads 0.0, like
+  plain ASR; unknown severities raise ValueError.
+- New `holm_adjust(p_values, alpha=0.05)` — Holm step-down adjusted
+  p-values in the input order (uniformly more powerful than
+  Bonferroni), for joint claims across families (e.g. McNemar
+  family-comparison p-values).
+- New `bonferroni_adjust(p_values)` — min(1, m*p) per p-value, input
+  order. New `reject_at(adjusted, alpha=0.05)` — indices rejected at
+  level alpha. Empty p-value lists and values outside [0, 1] (incl.
+  NaN) raise ValueError.
+
 ### Added — selective prediction (A3 S3)
 
 - New `risk_coverage_curve(probs, labels)` — the selective-

@@ -986,3 +986,120 @@ def augrc(probs: list[float], labels: list[int]) -> float:
         area += (prev_g + g) / 2.0
         prev_g = g
     return area / n
+
+
+# ---------------------------------------------------------------------------
+# ASR extras (A3 S4) — Python reference only; the Rust port lands in S9.
+# severity_weighted_asr is display-only, never a ranker (D1).
+
+
+SEVERITY_WEIGHTS = {"critical": 3, "high": 2, "medium": 1}
+"""Frozen per-severity weights for :func:`severity_weighted_asr`.
+
+Critical cases count triple, high double, medium single — the
+metric-contract D1 weighting. Frozen by design: changing the weights
+would re-rank runs silently, so they live here as a module constant
+rather than a parameter.
+"""
+
+
+def _check_p_values(p_values: list[float]) -> None:
+    """Reject empty or out-of-range p-value lists with ValueError.
+
+    NaN is rejected by the range comparison (``0 <= nan <= 1`` is
+    False) — same trick as :func:`selective_risk_at_coverage`.
+    """
+    if not p_values:
+        raise ValueError("p_values must not be empty")
+    for p in p_values:
+        if not 0 <= p <= 1:
+            raise ValueError(f"p-values must be in [0, 1], got {p!r}")
+
+
+def _check_alpha(alpha: float) -> None:
+    if not 0 < alpha <= 1:
+        raise ValueError(f"alpha must be in (0, 1], got {alpha!r}")
+
+
+def severity_weighted_asr(results: list[PerCaseResult]) -> float:
+    """Severity-weighted attack success rate over eligible cases.
+
+    The per-case flip indicator (1 = flipped, 0 = not) is averaged with
+    the frozen :data:`SEVERITY_WEIGHTS` (critical 3 / high 2 / medium 1):
+    a flipped critical case hurts three times as much as a flipped
+    medium one. Eligible cases with an unknown severity raise
+    ValueError — the dataset gates restrict severities to the canonical
+    set, so an unknown value is a data bug, not an edge case.
+
+    Display-only diagnostic — never a ranker (D1): the weights are a
+    judgment about harm, not a ranking rule.
+
+    No eligible cases → 0.0, consistent with :func:`asr_conditional`.
+    Python reference only; the Rust port lands in S9.
+    """
+    num = 0.0
+    den = 0.0
+    for r in results:
+        if not r.eligible:
+            continue
+        try:
+            w = SEVERITY_WEIGHTS[r.severity]
+        except KeyError:
+            raise ValueError(
+                f"unknown severity {r.severity!r} on case {r.case_id!r}"
+            ) from None
+        num += w * (1 if r.flipped else 0)
+        den += w
+    return num / den if den else 0.0
+
+
+def holm_adjust(p_values: list[float], alpha: float = 0.05) -> list[float]:
+    """Holm step-down adjusted p-values, returned in the input order.
+
+    Sort ascending; with ``m`` hypotheses the adjusted value is
+    ``min(1, max_{j<=i} (m-j+1)*p_(j))`` (1-indexed). Strongly controls
+    the family-wise error rate while remaining uniformly more powerful
+    than Bonferroni.
+
+    Intended use: the McNemar family-comparison p-values when claiming
+    across families jointly (see the Methodology's multiple-comparison
+    guidance). The adjusted values do not depend on ``alpha`` — it is
+    accepted for call-site symmetry with :func:`reject_at` and
+    validated only. NaN and out-of-[0, 1] values raise ValueError.
+
+    Python reference only; the Rust port lands in S9.
+    """
+    _check_p_values(p_values)
+    _check_alpha(alpha)
+    m = len(p_values)
+    order = sorted(range(m), key=p_values.__getitem__)
+    adjusted = [0.0] * m
+    running = 0.0
+    for rank, idx in enumerate(order, start=1):
+        running = max(running, (m - rank + 1) * p_values[idx])
+        adjusted[idx] = min(1.0, running)
+    return adjusted
+
+
+def bonferroni_adjust(p_values: list[float]) -> list[float]:
+    """Bonferroni adjusted p-values (``min(1, m*p)``), input order.
+
+    The simplest FWER control; uniformly less powerful than Holm but a
+    one-line reference. Same intended use and validation as
+    :func:`holm_adjust`. Python reference only; the Rust port lands in
+    S9.
+    """
+    _check_p_values(p_values)
+    m = len(p_values)
+    return [min(1.0, m * p) for p in p_values]
+
+
+def reject_at(adjusted: list[float], alpha: float = 0.05) -> list[int]:
+    """Indices of adjusted p-values rejected at level ``alpha``.
+
+    Pairs with :func:`holm_adjust` / :func:`bonferroni_adjust`: reject
+    hypothesis ``i`` when ``adjusted[i] <= alpha``. Empty input returns
+    ``[]`` (no claims, no rejections — not an error).
+    """
+    _check_alpha(alpha)
+    return [i for i, p in enumerate(adjusted) if p <= alpha]
