@@ -8,6 +8,13 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
 ## [Unreleased]
 
 ### Added
+- Decision records D-16–D-18: `Case.extras` are tooling metadata and are
+  never passed to adapters (adapter-facing configuration lives in the
+  variant `input` dicts; the frozen `decide()` contract is untouched);
+  `dataset_version` is the human-readable release label while the sealed
+  manifest SHA-256 supplies byte identity; the mock adapter is a
+  deterministic mechanism exerciser and no benchmark claim may rest on
+  its numbers.
 - Simplicity + scripts + CI hardening (H7): one shared `iter_cases()`
   generator replaces the three duplicated JSONL open/enumerate/parse
   loops (`dataset.summarize_cases`, `review._valid_cases`,
