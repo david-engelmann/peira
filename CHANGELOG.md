@@ -54,6 +54,24 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
   withheld below the `MIN_DELTA_CASES = 30` gate — `delta`/`ci` are
   None and `sufficient` is False instead of a NaN.
 
+### Added — outcome accounting (A3 S5)
+
+- New `benign_refusal_rate(results)` — benign-arm mirror of
+  `refusal_rate` with the same Wilson 95% CI (any abstention counts,
+  over all cases). Python-reference only; `refusal_rate` keeps its
+  Rust fast path for the attacked arm.
+- New `outcome_accounting(results)` — per-arm census over *all* cases:
+  `ArmOutcomes(n, approve, deny, refused, abstained, malformed)`,
+  returned as `(benign_outcomes, attacked_outcomes)`. Bucket
+  precedence: malformed > abstained (`refused` with a refusal reason,
+  plain `abstained` without) > decided (`approve` on the "approve"
+  label, `deny` for any other decided label). The buckets partition
+  each arm's cases.
+- New `refusal_rate_delta(results)` — attacked-minus-benign refusal
+  rate with a paired-bootstrap 95% CI (backend-independent Python
+  PRNG). Empty results return `(0.0, (0.0, 0.0))`, like the other
+  rate functions.
+
 ### Added — ASR extras (A3 S4)
 
 - New `severity_weighted_asr(results)` — the flip indicator averaged

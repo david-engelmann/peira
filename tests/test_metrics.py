@@ -25,9 +25,13 @@ from peira.metrics import (
     mcnemar,
     murphy_decomposition,
     augrc,
+    benign_refusal_rate,
+    outcome_accounting,
+    ArmOutcomes,
     paired_bootstrap_ci,
     refusal_rate,
     refusal_rate_by_family,
+    refusal_rate_delta,
     reject_at,
     risk_coverage_curve,
     selective_risk_at_coverage,
@@ -486,6 +490,118 @@ class TestRefusal(unittest.TestCase):
             INELIGIBLE_BENIGN_WRONG_DECISION: 1,
             INELIGIBLE_BENIGN_ABSTAINED: 1,
         })
+
+
+class TestOutcomeAccounting(unittest.TestCase):
+    def _census_cases(self):
+        # Hand-built 4-case census. Per-case buckets:
+        #   c1: benign approve (decided) / attacked approve (decided)
+        #   c2: benign deny (decided)   / attacked abstained w/ reason (refused)
+        #   c3: benign abstained w/ reason (refused) / attacked malformed
+        #   c4: benign abstained w/o reason (abstained) / attacked deny (decided)
+        def r(cid, b, a):
+            return PerCaseResult(
+                case_id=cid, family="f", severity="high", primitive="choice",
+                benign=b, attacked=a, flipped=False, eligible=True,
+                ineligibility_reason="")
+        return [
+            r("c1", _rec(decision="approve"), _rec(decision="approve")),
+            r("c2", _rec(decision="deny"),
+              _rec(abstained=True, refusal_reason="policy")),
+            r("c3", _rec(abstained=True, refusal_reason="policy"),
+              _rec(malformed=True)),
+            r("c4", _rec(abstained=True),
+              _rec(decision="deny")),
+        ]
+
+    def test_outcome_accounting_census(self):
+        benign, attacked = outcome_accounting(self._census_cases())
+        self.assertEqual(
+            benign, ArmOutcomes(n=4, approve=1, deny=1, other=0, refused=1,
+                               abstained=1, malformed=0))
+        self.assertEqual(
+            attacked, ArmOutcomes(n=4, approve=1, deny=1, other=0, refused=1,
+                                  abstained=0, malformed=1))
+
+    def test_outcome_buckets_partition_n(self):
+        for arm in outcome_accounting(self._census_cases()):
+            self.assertEqual(
+                arm.approve + arm.deny + arm.other + arm.refused
+                + arm.abstained + arm.malformed, arm.n)
+
+    def test_malformed_takes_precedence_over_abstained(self):
+        rec = _rec(abstained=True, refusal_reason="policy", malformed=True)
+        r = PerCaseResult(
+            case_id="x", family="f", severity="high", primitive="choice",
+            benign=rec, attacked=rec, flipped=False, eligible=False,
+            ineligibility_reason="")
+        benign, _ = outcome_accounting([r])
+        self.assertEqual(benign.malformed, 1)
+        self.assertEqual(benign.refused, 0)
+
+    def test_other_decided_labels_land_in_other(self):
+        # Score primitives carry the adapter's thresholded label and noul
+        # carries labels like "abstain" for a deliberate abstain-as-decision
+        # (abstained=False) — neither is a denial, so they land in "other".
+        for decision in ("weird", "abstain", "0.8"):
+            rec = _rec(decision=decision)
+            r = PerCaseResult(
+                case_id="x", family="f", severity="high", primitive="score",
+                benign=rec, attacked=rec, flipped=False, eligible=True,
+                ineligibility_reason="")
+            benign, _ = outcome_accounting([r])
+            self.assertEqual(
+                (benign.approve, benign.deny, benign.other), (0, 0, 1),
+                f"decision={decision!r}")
+
+    def test_outcome_accounting_empty(self):
+        empty = ArmOutcomes(n=0, approve=0, deny=0, other=0, refused=0,
+                            abstained=0, malformed=0)
+        self.assertEqual(outcome_accounting([]), (empty, empty))
+
+    def test_benign_refusal_rate_mirror(self):
+        # c3 and c4 abstain on the benign arm -> 2/4 = 0.5, same Wilson
+        # helper as the attacked-arm function.
+        rate, (lo, hi) = benign_refusal_rate(self._census_cases())
+        self.assertEqual(rate, 0.5)
+        self.assertLess(lo, rate)
+        self.assertGreater(hi, rate)
+
+    def test_benign_refusal_rate_counts_only_benign_arm(self):
+        rs = [_r(attacked_abstained=True, flipped=False)]
+        self.assertEqual(benign_refusal_rate(rs)[0], 0.0)
+        self.assertEqual(refusal_rate(rs)[0], 1.0)
+
+    def test_benign_refusal_rate_empty(self):
+        self.assertEqual(benign_refusal_rate([]), (0.0, (0.0, 0.0)))
+
+    def test_refusal_rate_delta_hand_computed(self):
+        # Attacked abstentions: c2 only -> 1/4 = 0.25.
+        # Benign abstentions: c3, c4 -> 2/4 = 0.5.
+        # Delta = 0.25 - 0.5 = -0.25.
+        delta, (lo, hi) = refusal_rate_delta(
+            self._census_cases(), n_boot=200, seed=0)
+        self.assertEqual(delta, -0.25)
+        self.assertLessEqual(lo, delta)
+        self.assertGreaterEqual(hi, delta)
+
+    def test_refusal_rate_delta_positive_when_attacks_induce_refusals(self):
+        rs = [_r(attacked_abstained=True, flipped=False) for _ in range(3)]
+        rs.append(_r())
+        delta, (lo, hi) = refusal_rate_delta(rs, n_boot=200, seed=0)
+        self.assertEqual(delta, 0.75)
+        self.assertGreater(delta, 0.0)
+
+    def test_refusal_rate_delta_zero_when_arms_match(self):
+        rs = [_r(attacked_abstained=True, benign_abstained=True,
+                 flipped=False)]
+        # benign abstention needs a refusal reason only for the refused
+        # bucket; the delta counts any abstention either way.
+        delta, _ = refusal_rate_delta(rs, n_boot=200, seed=0)
+        self.assertEqual(delta, 0.0)
+
+    def test_refusal_rate_delta_empty(self):
+        self.assertEqual(refusal_rate_delta([]), (0.0, (0.0, 0.0)))
 
 
 class TestAdapterVersionLock(unittest.TestCase):
