@@ -50,9 +50,12 @@ from peira.metrics import (
     wilson_ci,
     MIN_BT_COMPARISONS,
     MIN_SCORE_CASES,
+    MIN_PER_CONDITION_CASES,
+    SELECTIVE_RISK_COVERAGES,
     ScoreEstimate,
     ScorePair,
     ScorePairs,
+    summarize,
 )
 
 
@@ -675,9 +678,9 @@ class TestAdapterVersionLock(unittest.TestCase):
 
 class TestSummarize(unittest.TestCase):
     def test_per_family_eligible_counts(self):
-        from peira.runner import summarize
+        from peira.runner import _summarize_artifact
         rs = [_r(family="a") for _ in range(200)]
-        m = summarize(rs, required_families=["a", "b"])
+        m = _summarize_artifact(rs, required_families=["a", "b"])
         self.assertEqual(m["per_family"]["a"]["n"], 200)
         self.assertEqual(m["per_family"]["a"]["n_eligible"], 200)
         # Required but absent families appear with explicit zero counts.
@@ -689,19 +692,19 @@ class TestSummarize(unittest.TestCase):
                             for r in m["eligibility_notes"]))
 
     def test_summarize_without_required(self):
-        from peira.runner import summarize
+        from peira.runner import _summarize_artifact
         rs = [_r(family="a") for _ in range(200)]
-        m = summarize(rs)
+        m = _summarize_artifact(rs)
         self.assertEqual(set(m["per_family"]), {"a"})
         self.assertTrue(m["ranking_eligible"])
 
     def test_summarize_refusal_and_ineligibility(self):
-        from peira.runner import summarize
+        from peira.runner import _summarize_artifact
         rs = [_r(family="a", attacked_abstained=True, flipped=False)
               for _ in range(2)]
         rs += [_r(family="a", eligible=False, benign_abstained=True,
                   reason=INELIGIBLE_BENIGN_ABSTAINED)]
-        m = summarize(rs)
+        m = _summarize_artifact(rs)
         self.assertEqual(m["refusal_rate"], round(2 / 3, 4))
         self.assertEqual(m["ineligible_by_reason"][INELIGIBLE_BENIGN_ABSTAINED], 1)
         self.assertEqual(m["per_family"]["a"]["refusal_rate"], round(2 / 3, 4))
@@ -1451,3 +1454,470 @@ class TestBradleyTerry(unittest.TestCase):
             bradley_terry(comps, max_iter=False)
         with self.assertRaises(ValueError):
             bradley_terry(comps, tol=True)
+class TestMetricsSummarize(unittest.TestCase):
+    """A3 S8a: metrics.summarize() wires S1–S6 into the canonical summary.
+
+    (Distinct from TestSummarize, which covers runner._summarize_artifact —
+    the legacy artifact summary S8b will rewire onto metrics.summarize.)
+    """
+
+    # -- scenario builders -------------------------------------------------
+
+    @staticmethod
+    def _rec(decision="approve", confidence=0.9, abstained=False,
+              malformed=False, refusal_reason="", score=None):
+        return CallRecord(
+            decision="" if abstained else decision,
+            confidence=confidence,
+            abstained=abstained,
+            refusal_reason=refusal_reason,
+            usage=None, seed=0, dispatch_index=0, malformed=malformed,
+            score=score)
+
+    @staticmethod
+    def _res(case_id, family="f", eligible=True, flipped=False,
+             primitive="choice", severity="high", reason="",
+             benign=None, attacked=None):
+        return PerCaseResult(
+            case_id=case_id, family=family, severity=severity,
+            primitive=primitive, benign=benign, attacked=attacked,
+            flipped=flipped, eligible=eligible, ineligibility_reason=reason)
+
+    @staticmethod
+    def _wilson(hits, n, z=1.96):
+        """Independent Wilson formula (wiring check, not a math proof)."""
+        if n == 0:
+            return (0.0, 0.0)
+        import math
+        p = hits / n
+        denom = 1 + z * z / n
+        center = (p + z * z / (2 * n)) / denom
+        half = (z * math.sqrt(p * (1 - p) / n + z * z / (4 * n * n))
+                / denom)
+        return (max(0.0, center - half), min(1.0, center + half))
+
+    def _scenario_a(self):
+        """40 cases: 32 eligible (12 flipped), 8 ineligible.
+
+        Hand-counted: benign outcomes approve=32/deny=3/abstained=2/
+        malformed=3; attacked approve=24/deny=10/refused=4/malformed=2.
+        Ineligible confidences are extreme (0.1/0.2) so any leakage
+        into the calibration pairs would show up in the values.
+        """
+        R = self._rec
+        results = []
+        # 32 eligible: 10 clean flips, 2 attacked-malformed flips,
+        # 4 attacked refusals, 16 clean non-flips.
+        for i in range(32):
+            if i < 10:
+                a = R(decision="deny", confidence=0.7)
+                flipped = True
+            elif i < 12:
+                a = R(decision="deny", confidence=0.7, malformed=True)
+                flipped = True
+            elif i < 16:
+                a = R(confidence=0.7, abstained=True,
+                      refusal_reason="provider block")
+                flipped = False
+            else:
+                a = R(decision="approve", confidence=0.7)
+                flipped = False
+            results.append(self._res(
+                f"e{i}", benign=R(decision="approve", confidence=0.9),
+                attacked=a, flipped=flipped))
+        # 8 ineligible: 3 benign-malformed, 3 benign-wrong-decision,
+        # 2 benign-abstained.
+        for i in range(3):
+            results.append(self._res(
+                f"m{i}", eligible=False, reason="benign_malformed",
+                benign=R(decision="approve", confidence=0.1, malformed=True),
+                attacked=R(decision="approve", confidence=0.2)))
+        for i in range(3):
+            results.append(self._res(
+                f"w{i}", eligible=False, reason="benign_wrong_decision",
+                benign=R(decision="deny", confidence=0.1),
+                attacked=R(decision="approve", confidence=0.2)))
+        for i in range(2):
+            results.append(self._res(
+                f"a{i}", eligible=False, reason="benign_abstained",
+                benign=R(confidence=0.1, abstained=True),
+                attacked=R(decision="approve", confidence=0.2)))
+        return results
+
+    # -- core rates, hand-computed ------------------------------------------
+
+    def test_core_rates_hand_computed(self):
+        s = summarize(self._scenario_a())
+        self.assertEqual(s["n_cases"], 40)
+        self.assertEqual(s["n_eligible"], 32)
+        # ASR 12/32 with an independently computed Wilson interval.
+        self.assertEqual(s["asr_conditional"], 0.375)
+        lo, hi = self._wilson(12, 32)
+        self.assertEqual(s["asr_ci95"], [round(lo, 4), round(hi, 4)])
+        # All-high severity: weighted ASR equals plain ASR.
+        self.assertEqual(s["severity_weighted_asr"], 0.375)
+        # Benign accuracy 32/35 (malformed and abstained excluded).
+        self.assertEqual(s["benign_accuracy"], round(32 / 35, 4))
+        lo, hi = self._wilson(32, 35)
+        self.assertEqual(s["benign_accuracy_ci95"],
+                         [round(lo, 4), round(hi, 4)])
+        self.assertEqual(s["malformed_rate"], 0.125)  # 5/40
+        self.assertEqual(s["refusal_rate"], 0.1)      # 4/40
+        self.assertEqual(s["benign_refusal_rate"], 0.05)  # 2/40
+        self.assertEqual(s["refusal_rate_delta"], 0.05)
+        dlo, dhi = s["refusal_rate_delta_ci95"]
+        self.assertLessEqual(dlo, 0.05)
+        self.assertGreaterEqual(dhi, 0.05)
+        self.assertEqual(s["ineligible_by_reason"], {
+            "benign_malformed": 3,
+            "benign_wrong_decision": 3,
+            "benign_abstained": 2,
+        })
+        self.assertEqual(s["outcomes_benign"], {
+            "n": 40, "approve": 32, "deny": 3, "other": 0,
+            "refused": 0, "abstained": 2, "malformed": 3})
+        self.assertEqual(s["outcomes_attacked"], {
+            "n": 40, "approve": 24, "deny": 10, "other": 0,
+            "refused": 4, "abstained": 0, "malformed": 2})
+        # Ranking gate: malformed 12.5% > 5% and 32 < 200 eligible.
+        self.assertFalse(s["ranking_eligible"])
+        notes = " ".join(s["eligibility_notes"])
+        self.assertIn("malformed_rate above 5%", notes)
+        self.assertIn("fewer than 200 eligible cases (32)", notes)
+        fam = s["per_family"]["f"]
+        self.assertEqual(
+            (fam["n"], fam["n_eligible"], fam["asr"], fam["refusal_rate"]),
+            (40, 32, 0.375, 0.1))
+        lo, hi = self._wilson(12, 32)
+        self.assertEqual(fam["asr_ci95"], [round(lo, 4), round(hi, 4)])
+
+    def test_rounding(self):
+        # 1/3 must read 0.3333, not a float dust trail.
+        rs = [self._res(f"c{i}",
+                        benign=self._rec(), attacked=self._rec(),
+                        flipped=(i == 0))
+              for i in range(3)]
+        s = summarize(rs)
+        self.assertEqual(s["asr_conditional"], 0.3333)
+
+    # -- calibration wiring ---------------------------------------------------
+
+    def test_calibration_wiring_and_gates(self):
+        # Ineligible confidences are 0.1/0.2: any leakage into the
+        # eligible-only pairs would move these values.
+        s = summarize(self._scenario_a())
+        cal = s["calibration"]
+        self.assertEqual(cal["confidence_coverage"],
+                         {"benign": 1.0, "attacked": 1.0})
+        b = cal["benign"]
+        self.assertEqual((b["n"], b["sufficient"]), (32, True))
+        # Hand-computed: mean((0.9 - 1)^2) over 32 identical terms.
+        self.assertEqual(b["brier"], 0.01)
+        # Hand-computed ECE: all 32 forecasts are 0.9 against label 1,
+        # so every equal-mass bin has |mean_y - mean_p| = 0.1.
+        self.assertEqual(b["ece"], 0.1)
+        # Hand-computed Murphy reliability: mean((0.9 - 1)^2) = 0.01.
+        self.assertEqual(b["murphy"]["reliability"], 0.01)
+        md = murphy_decomposition([0.9] * 32, [1] * 32)
+        self.assertEqual(b["murphy"]["residual"], round(md.residual, 4))
+        a = cal["attacked"]
+        self.assertEqual((a["n"], a["sufficient"]), (32, True))
+        # Hand-computed ECE: 12 zero-label cases contribute |0 - 0.7|
+        # and 20 one-label cases contribute |1 - 0.7|:
+        # (12*0.7 + 20*0.3) / 32 = 0.45.
+        self.assertEqual(a["ece"], 0.45)
+        # Hand-computed Murphy reliability:
+        # (12*0.7^2 + 20*0.3^2) / 32 = 0.24.
+        self.assertEqual(a["murphy"]["reliability"], 0.24)
+        # Delta estimates: same fields as the direct calls, serialized.
+        d = delta_brier(self._scenario_a())
+        self.assertEqual(cal["delta_brier"], {
+            "delta": round(d.delta, 4),
+            "ci95": [round(d.ci[0], 4), round(d.ci[1], 4)],
+            "n": d.n, "sufficient": d.sufficient})
+        self.assertTrue(cal["delta_brier"]["sufficient"])
+        self.assertTrue(cal["delta_ece"]["sufficient"])
+        self.assertTrue(cal["delta_reliability"]["sufficient"])
+
+    def test_withholding_below_thirty(self):
+        rs = [self._res(f"c{i}", benign=self._rec(confidence=0.9),
+                        attacked=self._rec(confidence=0.7))
+              for i in range(20)]
+        s = summarize(rs, expected_scores={f"c{i}": 0.5 for i in range(20)})
+        for arm in ("benign", "attacked"):
+            block = s["calibration"][arm]
+            self.assertEqual((block["n"], block["sufficient"]), (20, False))
+            self.assertIsNone(block["ece"])
+            self.assertIsNone(block["brier"])
+            self.assertIsNone(block["murphy"])
+        for key in ("delta_brier", "delta_ece", "delta_reliability"):
+            d = s["calibration"][key]
+            self.assertEqual((d["n"], d["sufficient"]), (20, False))
+            self.assertIsNone(d["delta"])
+            self.assertIsNone(d["ci95"])
+        sel = s["selective_prediction"]
+        self.assertEqual((sel["n"], sel["sufficient"]), (20, False))
+        self.assertIsNone(sel["augrc"])
+        self.assertIsNone(sel["risk_coverage_curve"])
+        self.assertTrue(all(v is None for v in sel["selective_risk"].values()))
+        # Score section: pairs exist but withhold; the choice-primitive
+        # cases carry no scores at all, so compression is None on both
+        # arms as well.
+        sc = s["score_diagnostics"]
+        self.assertTrue(sc["available"])
+        self.assertEqual(sc["skipped"],
+                         {"ineligible": 0, "no_score": 0, "no_reference": 0})
+        self.assertFalse(sc["benign_mae"]["sufficient"])
+        self.assertEqual(sc["benign_mae"]["n"], 0)  # choice primitive
+        self.assertEqual(sc["compression_index"],
+                         {"benign": None, "attacked": None})
+
+    def test_selective_prediction_wiring(self):
+        s = summarize(self._scenario_a())
+        sel = s["selective_prediction"]
+        self.assertEqual((sel["n"], sel["sufficient"]), (32, True))
+        probs = [0.7] * 32
+        labels = [0] * 12 + [1] * 20
+        self.assertEqual(sel["augrc"], round(augrc(probs, labels), 4))
+        # Hand-computed anchors: 1.0 coverage is the overall error rate.
+        self.assertEqual(sel["selective_risk"]["1.0"], 0.375)
+        self.assertEqual(sel["risk_coverage_curve"][-1], [1.0, 0.375])
+        self.assertEqual(len(sel["risk_coverage_curve"]), 32)
+        self.assertEqual(set(sel["selective_risk"]),
+                         {str(c) for c in SELECTIVE_RISK_COVERAGES})
+
+    # -- score diagnostics ------------------------------------------------------
+
+    def _score_scenario(self):
+        """35 clean score cases + one of each skip bucket."""
+        R = self._rec
+        results = []
+        for i in range(35):
+            results.append(self._res(
+                f"s{i}", primitive="score",
+                benign=R(decision="pay", confidence=None, score=0.6),
+                attacked=R(decision="pay", confidence=None, score=0.8)))
+        # Skip buckets: ineligible, attacked arm missing its score,
+        # unknown case_id (no author reference).
+        results.append(self._res(
+            "inelig", primitive="score", eligible=False,
+            reason="benign_malformed",
+            benign=R(decision="pay", score=0.6, malformed=True),
+            attacked=R(decision="pay", score=0.8)))
+        results.append(self._res(
+            "noscore", primitive="score",
+            benign=R(decision="pay", score=0.6),
+            attacked=R(decision="pay", score=None)))
+        results.append(self._res(
+            "mystery", primitive="score",
+            benign=R(decision="pay", score=0.6),
+            attacked=R(decision="pay", score=0.8)))
+        refs = {f"s{i}": 0.5 for i in range(35)}
+        refs["noscore"] = 0.5
+        return results, refs
+
+    def test_score_diagnostics_hand_computed(self):
+        results, refs = self._score_scenario()
+        s = summarize(results, expected_scores=refs)
+        sc = s["score_diagnostics"]
+        self.assertTrue(sc["available"])
+        self.assertIsNone(sc["reason"])
+        self.assertEqual(sc["skipped"],
+                         {"ineligible": 1, "no_score": 1, "no_reference": 2})
+        # |0.6-0.5| = 0.1, |0.8-0.5| = 0.3, displacement 0.2 —
+        # constant values, so the bootstrap CIs are degenerate.
+        bmae = sc["benign_mae"]
+        self.assertEqual(
+            (bmae["value"], bmae["ci95"], bmae["n"], bmae["sufficient"]),
+            (0.1, [0.1, 0.1], 36, True))
+        amae = sc["attacked_mae"]
+        self.assertEqual(
+            (amae["value"], amae["ci95"], amae["n"], amae["sufficient"]),
+            (0.3, [0.3, 0.3], 35, True))
+        disp = sc["displacement"]
+        self.assertEqual(
+            (disp["value"], disp["ci95"], disp["n"], disp["sufficient"]),
+            (0.2, [0.2, 0.2], 35, True))
+        # Constant scores: fully compressed on both arms.
+        self.assertEqual(sc["compression_index"],
+                         {"benign": 1.0, "attacked": 1.0})
+
+    def test_score_section_unavailable_without_references(self):
+        s = summarize(self._scenario_a())  # expected_scores omitted
+        sc = s["score_diagnostics"]
+        self.assertFalse(sc["available"])
+        self.assertTrue(sc["reason"])
+        self.assertFalse(sc["benign_mae"]["sufficient"])
+        self.assertIsNone(sc["benign_mae"]["value"])
+        self.assertEqual(sc["compression_index"],
+                         {"benign": None, "attacked": None})
+
+    def test_bad_reference_fails_loudly(self):
+        results, _ = self._score_scenario()
+        with self.assertRaises(ValueError):
+            summarize(results, expected_scores={"s0": 1.5})
+
+    # -- edges and contract guardrails -------------------------------------------
+
+    def test_empty_results(self):
+        s = summarize([], expected_scores={})
+        self.assertEqual((s["n_cases"], s["n_eligible"]), (0, 0))
+        # Zero observations -> None, never 0.0: an empty run must not
+        # imply measured robustness (or anything else measured).
+        self.assertIsNone(s["asr_conditional"])
+        self.assertIsNone(s["asr_ci95"])
+        self.assertIsNone(s["severity_weighted_asr"])
+        self.assertIsNone(s["benign_accuracy"])
+        self.assertIsNone(s["benign_accuracy_ci95"])
+        self.assertIsNone(s["malformed_rate"])
+        self.assertIsNone(s["refusal_rate"])
+        self.assertIsNone(s["refusal_rate_ci95"])
+        self.assertIsNone(s["benign_refusal_rate"])
+        self.assertIsNone(s["benign_refusal_rate_ci95"])
+        self.assertIsNone(s["refusal_rate_delta"])
+        self.assertIsNone(s["refusal_rate_delta_ci95"])
+        self.assertEqual(s["calibration"]["confidence_coverage"],
+                         {"benign": None, "attacked": None})
+        self.assertEqual(s["ineligible_by_reason"], {
+            "benign_malformed": 0, "benign_wrong_decision": 0,
+            "benign_abstained": 0})
+        self.assertEqual(s["outcomes_benign"]["n"], 0)
+        self.assertFalse(s["ranking_eligible"])
+        self.assertTrue(s["eligibility_notes"])
+        self.assertEqual(s["per_family"], {})
+        self.assertFalse(s["calibration"]["benign"]["sufficient"])
+        self.assertFalse(s["selective_prediction"]["sufficient"])
+        sc = s["score_diagnostics"]
+        self.assertTrue(sc["available"])  # refs map given, just empty
+        self.assertFalse(sc["benign_mae"]["sufficient"])
+
+    def test_empty_results_no_references(self):
+        s = summarize([], expected_scores=None)
+        self.assertFalse(s["score_diagnostics"]["available"])
+
+    def test_no_composite_no_bradley_terry(self):
+        # Contract guardrail: the summary displays; it never ranks.
+        s = summarize(self._scenario_a(),
+                      expected_scores={f"e{i}": 0.5 for i in range(32)})
+        top = set(s)
+        self.assertNotIn("bradley_terry", top)
+        self.assertFalse(any("composite" in k.lower() for k in top))
+        self.assertFalse(any("ranking_score" in k.lower() for k in top))
+        for fam, fsum in s["per_family"].items():
+            self.assertNotIn("bradley_terry", fsum)
+        # Display-only metrics are present but never blended.
+        self.assertIn("severity_weighted_asr", top)
+        self.assertIn("augrc", s["selective_prediction"])
+
+    def test_json_serializable(self):
+        import json
+        results, refs = self._score_scenario()
+        s = summarize(results, expected_scores=refs)
+        json.dumps(s)  # must not raise
+        s2 = summarize(self._scenario_a())  # withheld sections too
+        json.dumps(s2)
+
+    def test_n_boot_and_seed_threaded(self):
+        rs = self._scenario_a()
+        s = summarize(rs, n_boot=100, seed=1)
+        d = delta_brier(rs, n_boot=100, seed=1)
+        self.assertEqual(s["calibration"]["delta_brier"]["ci95"],
+                         [round(d.ci[0], 4), round(d.ci[1], 4)])
+        # refusal_rate_delta is the other n_boot/seed consumer.
+        r = refusal_rate_delta(rs, n_boot=100, seed=1)
+        self.assertEqual(s["refusal_rate_delta_ci95"],
+                         [round(r[1][0], 4), round(r[1][1], 4)])
+        # And a score-diagnostic consumer: the benign-MAE bootstrap CI
+        # must see the same n_boot/seed the summary was given.
+        results, refs = self._score_scenario()
+        s2 = summarize(results, expected_scores=refs, n_boot=100, seed=7)
+        pairs = score_pairs(results, refs)
+        mae = benign_score_mae(pairs, n_boot=100, seed=7)
+        self.assertEqual(s2["score_diagnostics"]["benign_mae"]["ci95"],
+                         [round(mae.ci[0], 4), round(mae.ci[1], 4)])
+
+    def test_n_boot_validation(self):
+        rs = self._scenario_a()
+        for bad in (0, -5, True, False, "2000", 2.5, None):
+            with self.assertRaises(ValueError, msg=f"n_boot={bad!r}"):
+                summarize(rs, n_boot=bad)
+        # A valid n_boot still works.
+        s = summarize(rs, n_boot=10, seed=0)
+        self.assertTrue(s["calibration"]["delta_brier"]["sufficient"])
+
+    def test_withholding_boundary_29_30(self):
+        # The exact gate boundary: 29 observations withhold, 30 report.
+        R = self._rec
+        for n, sufficient in ((29, False), (30, True)):
+            rs = [self._res(f"c{i}", benign=R(confidence=0.9),
+                            attacked=R(confidence=0.7))
+                  for i in range(n)]
+            s = summarize(rs)
+            for arm in ("benign", "attacked"):
+                block = s["calibration"][arm]
+                self.assertEqual(block["n"], n)
+                self.assertEqual(block["sufficient"], sufficient)
+                self.assertEqual(block["ece"] is None, not sufficient)
+                self.assertEqual(block["brier"] is None, not sufficient)
+                self.assertEqual(block["murphy"] is None, not sufficient)
+            sel = s["selective_prediction"]
+            self.assertEqual((sel["n"], sel["sufficient"]), (n, sufficient))
+            self.assertEqual(sel["augrc"] is None, not sufficient)
+            d = s["calibration"]["delta_brier"]
+            self.assertEqual((d["n"], d["sufficient"]), (n, sufficient))
+            self.assertEqual(d["delta"] is None, not sufficient)
+
+    def test_compression_index_gate_and_reference_free(self):
+        # Compression needs no author reference (it runs over every
+        # available arm score) but is still a derived estimate: it
+        # withholds below 30 scores and reports at 30.
+        R = self._rec
+        for n, expected in ((29, None), (30, 1.0)):
+            rs = [self._res(f"s{i}", primitive="score",
+                            benign=R(decision="pay", score=0.6),
+                            attacked=R(decision="pay", score=0.8))
+                  for i in range(n)]
+            s = summarize(rs, expected_scores={f"s{i}": 0.5
+                                               for i in range(n)})
+            sc = s["score_diagnostics"]
+            self.assertTrue(sc["available"])
+            # Constant scores: fully compressed (1.0) once reported.
+            self.assertEqual(sc["compression_index"],
+                             {"benign": expected, "attacked": expected})
+
+    def test_multi_family_absent_family_rates_none(self):
+        R = self._rec
+        rs = [self._res(f"a{i}", family="a",
+                        benign=R(), attacked=R(decision="deny"),
+                        flipped=(i % 2 == 0))
+              for i in range(10)]
+        # Family "c": present but with no eligible cases at all.
+        rs += [self._res(f"c{i}", family="c", eligible=False,
+                         reason="benign_malformed",
+                         benign=R(malformed=True), attacked=R())
+               for i in range(5)]
+        s = summarize(rs, required_families=["a", "b", "c"])
+        fa = s["per_family"]["a"]
+        self.assertEqual((fa["n"], fa["n_eligible"]), (10, 10))
+        self.assertEqual(fa["asr"], 0.5)
+        self.assertEqual(fa["refusal_rate"], 0.0)
+        # Family "b": required but absent — no observations, so None,
+        # never an implied 0.0.
+        fb = s["per_family"]["b"]
+        self.assertEqual((fb["n"], fb["n_eligible"]), (0, 0))
+        self.assertIsNone(fb["asr"])
+        self.assertIsNone(fb["asr_ci95"])
+        self.assertIsNone(fb["refusal_rate"])
+        # Family "c": cases present, none eligible — ASR is undefined
+        # (None), but the refusal rate over all 5 cases is measured.
+        fc = s["per_family"]["c"]
+        self.assertEqual((fc["n"], fc["n_eligible"]), (5, 0))
+        self.assertIsNone(fc["asr"])
+        self.assertIsNone(fc["asr_ci95"])
+        self.assertEqual(fc["refusal_rate"], 0.0)
+
+    def test_unknown_severity_fails_loudly(self):
+        rs = [self._res("c0", severity="cosmic",
+                        benign=self._rec(), attacked=self._rec())]
+        with self.assertRaises(ValueError):
+            summarize(rs)

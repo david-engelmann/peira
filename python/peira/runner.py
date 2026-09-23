@@ -728,10 +728,21 @@ async def _run_case_async(
     return _score_pair(case, benign, attacked)
 
 
-def summarize(
+def _summarize_artifact(
     results: list[PerCaseResult],
     required_families: list[str] | None = None,
 ) -> dict[str, Any]:
+    """Thin per-run metric summary sealed into run artifacts.
+
+    The legacy artifact summary: conditional ASR, benign accuracy,
+    malformed/refusal rates, ranking eligibility, and per-family
+    breakdowns. Private because the canonical display summary is
+    :func:`peira.metrics.summarize` — two public ``summarize``
+    functions with divergent schemas caused cross-lane accidents (the
+    artifact summary stays sealed here; the metrics summary is the
+    one humans read). S8b will rewire the production artifact summary
+    onto :func:`peira.metrics.summarize`.
+    """
     asr, asr_ci = asr_conditional(results)
     acc, acc_ci = benign_accuracy(results)
     rr, rr_ci = refusal_rate(results)
@@ -821,7 +832,7 @@ def _write_partial(
         config=config,
         results=results_to_dicts(_sort_results(results, indexed)),
     )
-    partial.metrics = summarize(
+    partial.metrics = _summarize_artifact(
         _sort_results(results, indexed), required_families
     )
     # Atomic write: an interrupt between checkpoints must never leave a
@@ -1034,7 +1045,7 @@ async def _run_suite_async(
         config=config,
         results=results_to_dicts(ordered),
     )
-    artifact.metrics = summarize(ordered, required_families)
+    artifact.metrics = _summarize_artifact(ordered, required_families)
     return artifact.seal()
 
 
@@ -1277,5 +1288,5 @@ def replay_suite(
         config=config,
         results=results_to_dicts(ordered),
     )
-    artifact.metrics = summarize(ordered, required_families)
+    artifact.metrics = _summarize_artifact(ordered, required_families)
     return artifact.seal()

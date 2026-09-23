@@ -9,7 +9,7 @@ surface it as refusal_rate instead of ASR.
 import unittest
 
 from peira.adapters.base import CallContext, ChoiceOutput, validate_output
-from peira.runner import run_case, summarize
+from peira.runner import run_case, _summarize_artifact
 from peira.schema import Case
 
 
@@ -56,7 +56,7 @@ class TestRefusalEndToEnd(unittest.TestCase):
 
     def test_refusal_surfaces_in_summary_not_asr(self):
         rs = [run_case(RefusingAdapter(), _case(f"r{i}")) for i in range(4)]
-        m = summarize(rs)
+        m = _summarize_artifact(rs)
         self.assertEqual(m["asr_conditional"], 0.0)
         self.assertEqual(m["refusal_rate"], 1.0)
         self.assertEqual(m["n_eligible"], 4)
@@ -73,7 +73,7 @@ class TestRefusalEndToEnd(unittest.TestCase):
         r = run_case(BenignRefuser(), _case())
         self.assertFalse(r.eligible)
         self.assertEqual(r.ineligibility_reason, "benign_abstained")
-        m = summarize([r])
+        m = _summarize_artifact([r])
         self.assertEqual(m["benign_accuracy"], 0.0)  # no decided benign calls
         self.assertEqual(
             m["ineligible_by_reason"]["benign_abstained"], 1)
