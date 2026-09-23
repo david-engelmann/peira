@@ -222,7 +222,7 @@ authoring flow — gates, review queue, and manifest in one view:
 $ peira dataset status --dir dataset/v1
 dataset: dataset/v1
 gates: 6/6 passed (0 errors, 2 warnings)
-review: 1 pending, critical coverage 100%
+review: 0 pending, critical coverage 100%
 manifest: current
 status: release-ready
 ```
