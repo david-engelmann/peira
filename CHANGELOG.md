@@ -35,9 +35,11 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
 - Pricing table now carries pinned prices for the adapter models
   (`gpt-5.6-sol` corrected to $4/$20, verified 2026-09-23 against
   OpenAI's pricing page; `claude-opus-5.5` replaced by the real
-  `claude-opus-5` at $5/$25; `jev-1.13.0` at TypeSafe's published
-  $0.042/1M input, output free — the old "no public pricing" note
-  was wrong); Anthropic/Google rates are still unverified —
+  `claude-opus-5` at $5/$25; `jev-1.13.0` at $0.042/1M input,
+  output free, secondary-sourced via gateway announcements — not
+  confirmed on an official TypeSafe pricing page (the old "no public
+  pricing" note was wrong); Anthropic/Google rates are still
+  unverified —
   re-check before launch.
 - New `docs/Adapters.md`: install extras, API keys, pinned models, and
   per-adapter measurement notes. README adapter table updated
@@ -82,9 +84,10 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
   known Gemini 3.8 Flash step-up to the table ($1.50/$7.50 per 1M from
   2027-01-01).
 - `pyproject.toml`: `peira[hf]` pins `transformers>=4.40,<5` — the v5
-  major's breaking changes (default dtype, hub client, CLI) are
-  unverified against the pinned HF revisions; the cap lifts after a
-  v5 verification pass.
+  major's breaking changes (TF/JAX removal, weight-loading and
+  tokenization refactors, hub client and CLI changes) are unverified
+  against the pinned HF revisions; the cap lifts after a v5
+  verification pass.
 - Verified, no change needed: the Google adapter uses classic
   `generateContent` + `responseSchema` (unaffected by the Interactions
   API migration); Shieldstral 1.0, ProtectAI, and Prompt Guard 2 are
