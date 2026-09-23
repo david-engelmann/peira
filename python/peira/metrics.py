@@ -1148,7 +1148,6 @@ def risk_coverage_curve(
     Empty, mismatched, or nonfinite inputs raise ValueError — a NaN
     confidence would otherwise sort arbitrarily and corrupt the risk
     ordering.
->>>>>>> 5ba613a (A3 S9: confidence-interval coverage and nonfinite hardening)
     """
     _check_paired(probs, labels, "probs", "labels")
     _check_finite(probs, "probs")
@@ -1228,7 +1227,6 @@ def augrc(probs: list[float], labels: list[int]) -> float:
     Display-only diagnostic — never a ranker.
 
     Empty, mismatched, or nonfinite inputs raise ValueError.
->>>>>>> 5ba613a (A3 S9: confidence-interval coverage and nonfinite hardening)
     """
     _check_paired(probs, labels, "probs", "labels")
     _check_finite(probs, "probs")
@@ -2288,7 +2286,7 @@ def _selective_prediction(
 ) -> dict[str, Any]:
     """Selective-prediction diagnostics on attacked-arm correctness pairs.
 
-    Display-only (D2): AUGRC, selective risk at the fixed working
+    Display-only: AUGRC, selective risk at the fixed working
     points, and the full risk-coverage curve — each point estimate
     with its bootstrap 95% CI (S9). Withheld below
     ``MIN_PER_CONDITION_CASES`` attacked pairs — every field present
