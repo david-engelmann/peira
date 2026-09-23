@@ -911,3 +911,59 @@ ranking signal, and the contract is display-until-proven).
 **To revisit:** if `ScoreOutput` ever carries a forecast
 distribution, `crps_point` generalizes to the integral CRPS — the
 name was chosen for that.
+
+## D-28: Davidson tie model for compare-view Bradley–Terry
+
+**Decision.** The contract specifies "Bradley-Terry with ties for the
+compare view only" without naming the tie model. S7 uses Davidson
+(1970): one extra parameter ν ≥ 0, the tie propensity, with
+P(tie) = ν√(πᵢπⱼ) / (πᵢ + πⱼ + ν√(πᵢπⱼ)). ν = 0 recovers plain
+Bradley-Terry, so the model degrades gracefully on tie-free comparison
+sets instead of needing a separate code path.
+
+**Why Davidson.** It is the standard generative extension of
+Bradley-Terry to ties: a single parameter with a direct reading
+(larger ν = ties more common), and the tie probability scales with the
+geometric mean of the two strengths, so ties are most likely between
+evenly-matched items — the right qualitative behavior for a compare
+view. It also admits a simple monotone block-MM fitting algorithm
+(Hunter-style, 2004) with no third-party dependencies, run
+Gauss-Seidel: the π block minorizes −log D by its supporting
+hyperplane and majorizes the √πᵢ inside D by its tangent (concave √·,
+equivalently weighted AM-GM), the ν block minorizes in ν at the fresh
+π (D is linear in ν). Each block update provably increases the
+log-likelihood, so the joint iteration is monotone, and fixed points
+satisfy the score equations (verified empirically: the solver's
+likelihood beats an independent brute-force grid, and central finite
+differences of the model-definition likelihood are ~0 at the
+solution).
+
+**Display-only, with teeth.** BT strengths never feed ranking, never
+appear on the leaderboard, never blend into a composite. Two
+consequences are enforced in code rather than left to convention:
+perfect separation raises `ValueError` instead of returning an
+arbitrary max-iteration artifact, and estimates are withheld below
+`MIN_BT_COMPARISONS = 30` (same convention as the other derived
+metrics). The separation check is the exact Ford condition — strong
+connectivity of the win/tie digraph (wins as directed edges, ties as
+bidirectional edges): an item that never won-or-tied (or never
+lost-or-tied) is the familiar special case, but a *group* that won
+every cross-group comparison outright has equally unbounded relative
+strengths even when every item has wins and losses, and is refused just
+as loudly. When every comparison is a tie the strengths are
+unidentified; the convention reports all zeros with ν = +∞. S7
+reports point estimates only, no intervals: bootstrap resamples of
+near-separated data are themselves perfectly separated, which would
+silently bias resampling-based intervals.
+
+**Alternatives.** Rao–Kupper's threshold model (the tie parameter is a
+threshold with a less direct reading — rejected); scoring ties as
+half-wins in plain BT (ad hoc, no generative model, and it cannot
+represent tie-prone comparison sets — rejected); Elo (excluded by the
+contract); quietly truncating under separation (rejected: arbitrary
+finite strengths presented as estimates would be dishonest in a
+benchmark whose credibility rests on the display).
+
+**To revisit:** observed-information quasi-SEs for the strengths are
+the well-defined uncertainty extension if the compare view needs
+intervals; the ν update already exposes everything they need.

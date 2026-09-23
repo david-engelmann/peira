@@ -7,6 +7,35 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
 
 ## [Unreleased]
 
+### Added — Bradley–Terry compare-view strengths (A3 S7, ADR D-28)
+
+- New display-only `bradley_terry(comparisons)` in `peira.metrics`
+  (compare view only — never a ranker, never on the leaderboard, never
+  blended into any composite): Davidson (1970) Bradley-Terry strengths
+  with ties, fit by maximum likelihood via a monotone block-MM
+  algorithm. Takes `ComparisonOutcome(a, b, outcome)` head-to-head
+  results (`outcome` in `"a"`/`"b"`/`"tie"`) and returns
+  `BradleyTerryEstimate(strengths, nu, n, sufficient)` — centered
+  log-strengths (only differences meaningful) plus the fitted tie
+  propensity `nu` (`0.0` recovers plain Bradley-Terry).
+- Withheld below `MIN_BT_COMPARISONS = 30` (`strengths=None`,
+  `nu=None`, `sufficient=False`); `ValueError` on malformed input,
+  disconnected comparison graphs, and perfect separation — the exact
+  Ford condition (strong connectivity of the win/tie digraph): an item
+  that never won-or-tied, or a group that won every cross-group
+  comparison outright, has unbounded relative strength, so a sweep is
+  displayed as counts, not strengths; all-ties reports equal strengths
+  with `nu = +inf`. Point estimates only, no intervals (see ADR D-28
+  for why bootstrap CIs are deferred).
+- The MM fit ships in the Rust core (`crates/peira-core`) with PyO3
+  dispatch parity; validation, aggregation, and gating stay in Python
+  (validated before dispatch — D-11). The identifiability checks —
+  the per-item backstop and the exact Ford strong-connectivity
+  condition — run in Python pre-dispatch (`ValueError`) and are
+  asserted in the Rust core too (panic), so both backends refuse loudly
+  on group-separated data; the all-ties convention (equal strengths,
+  `nu = +inf`) is implemented in both backends.
+
 ### Added — score diagnostics (A3 S6, ADR D-27)
 
 - New optional case-author field `benign.expected_score: float | None`

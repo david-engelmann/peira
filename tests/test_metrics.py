@@ -1,12 +1,16 @@
 """Unit tests for peira metrics (run with: python -m unittest discover tests)."""
 
+import math
+import random
 import unittest
 
 from peira.metrics import (
     INELIGIBLE_BENIGN_ABSTAINED,
     INELIGIBLE_BENIGN_MALFORMED,
     INELIGIBLE_BENIGN_WRONG_DECISION,
+    BradleyTerryEstimate,
     CallRecord,
+    ComparisonOutcome,
     PerCaseResult,
     SEVERITY_WEIGHTS,
     attacked_confidence_pairs,
@@ -15,6 +19,7 @@ from peira.metrics import (
     benign_accuracy,
     benign_score_mae,
     bonferroni_adjust,
+    bradley_terry,
     brier_score,
     check_eligibility,
     confidence_coverage,
@@ -43,6 +48,7 @@ from peira.metrics import (
     selective_risk_at_coverage,
     severity_weighted_asr,
     wilson_ci,
+    MIN_BT_COMPARISONS,
     MIN_SCORE_CASES,
     ScoreEstimate,
     ScorePair,
@@ -1128,3 +1134,320 @@ class TestScoreDiagnostics(unittest.TestCase):
             {"paired": 0.5, "solo": 0.5})
         attacked_by_id = {p.case_id for p in pairs.attacked}
         self.assertNotIn("solo", attacked_by_id)
+
+
+class TestBradleyTerry(unittest.TestCase):
+    """A3 S7: Davidson Bradley-Terry strengths — compare view only."""
+
+    @staticmethod
+    def _comps(a_wins, b_wins, ties=0, a="A", b="B"):
+        return ([ComparisonOutcome(a, b, "a")] * a_wins
+                + [ComparisonOutcome(a, b, "b")] * b_wins
+                + [ComparisonOutcome(a, b, "tie")] * ties)
+
+    @staticmethod
+    def _ll_2item(delta, tau, wa, wb, t):
+        """Independent Davidson log-likelihood, 2 items.
+
+        Transcribed straight from the model definition —
+        P(win) = pi/D, P(tie) = nu*sqrt(pi_i*pi_j)/D — not from the MM
+        derivation, so it checks the solver against the model rather
+        than against itself.
+        """
+        pa, pb, nu = math.exp(delta), 1.0, math.exp(tau)
+        g = math.sqrt(pa * pb)
+        d = pa + pb + nu * g
+        return (wa * math.log(pa / d) + wb * math.log(pb / d)
+                + t * math.log(nu * g / d))
+
+    @staticmethod
+    def _ll_items(strengths, nu, counts):
+        """Independent Davidson log-likelihood for named items.
+
+        ``counts`` maps (name_i, name_j) -> (w_ij, w_ji, t_ij). The
+        likelihood is shift-invariant in the log-strengths, so centered
+        strengths are fine.
+        """
+        pi = {k: math.exp(v) for k, v in strengths.items()}
+        ll = 0.0
+        for (a, b), (wij, wji, tij) in counts.items():
+            g = math.sqrt(pi[a] * pi[b])
+            d = pi[a] + pi[b] + nu * g
+            ll += wij * math.log(pi[a] / d) + wji * math.log(pi[b] / d)
+            if tij:
+                ll += tij * math.log(nu * g / d)
+        return ll
+
+    # -- closed form: two items, no ties, is plain Bradley-Terry --
+
+    def test_two_item_no_ties_closed_form(self):
+        # 40 A-wins, 10 B-wins: pi_A/pi_B = 40/10 = 4, so centered
+        # log-strengths are exactly +-log(2) and nu is exactly 0
+        # (Davidson reduces to plain BT with no ties).
+        est = bradley_terry(self._comps(40, 10))
+        self.assertIsInstance(est, BradleyTerryEstimate)
+        self.assertTrue(est.sufficient)
+        self.assertEqual(est.n, 50)
+        self.assertAlmostEqual(est.strengths["A"], math.log(2), places=9)
+        self.assertAlmostEqual(est.strengths["B"], -math.log(2), places=9)
+        self.assertEqual(est.nu, 0.0)
+
+    def test_two_item_no_ties_difference_is_log_win_ratio(self):
+        # s_A - s_B = log(w_ab / w_ba) for any no-tie pair.
+        est = bradley_terry(self._comps(25, 5))
+        self.assertAlmostEqual(
+            est.strengths["A"] - est.strengths["B"], math.log(5.0), places=9)
+
+    # -- with ties: independent brute-force grid search --
+
+    def test_two_item_with_ties_matches_grid_search(self):
+        wa, wb, t = 30, 10, 20
+        best_ll, best_d, best_tau = -1e300, None, None
+        d = -1.0
+        while d <= 3.0:
+            tau = -4.0
+            while tau <= 2.0:
+                ll = self._ll_2item(d, tau, wa, wb, t)
+                if ll > best_ll:
+                    best_ll, best_d, best_tau = ll, d, tau
+                tau += 0.02
+            d += 0.02
+        est = bradley_terry(self._comps(wa, wb, t))
+        solver_d = est.strengths["A"] - est.strengths["B"]
+        # Within grid resolution (0.02) plus margin.
+        self.assertLess(abs(solver_d - best_d), 0.05)
+        self.assertLess(abs(math.log(est.nu) - best_tau), 0.05)
+        # And the solver's likelihood beats the grid's best: it found a
+        # better optimum than brute force could resolve.
+        self.assertGreaterEqual(
+            self._ll_2item(solver_d, math.log(est.nu), wa, wb, t),
+            best_ll - 1e-9)
+
+    # -- three items: the solver must satisfy the score equations --
+
+    def _three_item(self):
+        return ([ComparisonOutcome("A", "B", "a")] * 12
+                + [ComparisonOutcome("A", "B", "b")] * 6
+                + [ComparisonOutcome("A", "B", "tie")] * 4
+                + [ComparisonOutcome("B", "C", "a")] * 10
+                + [ComparisonOutcome("B", "C", "b")] * 8
+                + [ComparisonOutcome("B", "C", "tie")] * 6
+                + [ComparisonOutcome("A", "C", "a")] * 9
+                + [ComparisonOutcome("A", "C", "b")] * 9
+                + [ComparisonOutcome("A", "C", "tie")] * 2)
+
+    def _three_counts(self):
+        return {("A", "B"): (12, 6, 4), ("B", "C"): (10, 8, 6),
+                ("A", "C"): (9, 9, 2)}
+
+    def test_three_item_satisfies_score_equations(self):
+        # Independent check: central finite differences of the
+        # model-definition likelihood at the solver's solution must be
+        # ~0 in every parameter direction (the MLE is stationary).
+        est = bradley_terry(self._three_item())
+        self.assertTrue(est.sufficient)
+        h = 1e-6
+        tau = math.log(est.nu)
+        for name in ("A", "B", "C"):
+            up = dict(est.strengths); up[name] += h
+            dn = dict(est.strengths); dn[name] -= h
+            grad = (self._ll_items(up, est.nu, self._three_counts())
+                    - self._ll_items(dn, est.nu, self._three_counts())) / (2 * h)
+            self.assertLess(abs(grad), 1e-3)
+        grad_tau = (self._ll_items(est.strengths, math.exp(tau + h),
+                                   self._three_counts())
+                    - self._ll_items(est.strengths, math.exp(tau - h),
+                                     self._three_counts())) / (2 * h)
+        self.assertLess(abs(grad_tau), 1e-3)
+
+    def test_three_item_is_local_maximum(self):
+        # Random perturbations of the solution must not improve the
+        # independent likelihood: the solver found a maximum, not a
+        # saddle or an arbitrary iterate.
+        est = bradley_terry(self._three_item())
+        base = self._ll_items(est.strengths, est.nu, self._three_counts())
+        rng = random.Random(7)
+        for _ in range(10):
+            pert = {k: v + rng.uniform(-0.05, 0.05)
+                    for k, v in est.strengths.items()}
+            nu_p = est.nu * math.exp(rng.uniform(-0.05, 0.05))
+            self.assertLessEqual(
+                self._ll_items(pert, nu_p, self._three_counts()),
+                base + 1e-9)
+
+    # -- tie behavior --
+
+    def test_tie_propensity_grows_with_tie_fraction(self):
+        # Same 9:1 win ratio; the tie-heavy set must fit a larger nu.
+        no_ties = bradley_terry(self._comps(27, 3, 0))
+        with_ties = bradley_terry(self._comps(18, 2, 10))
+        self.assertEqual(no_ties.nu, 0.0)
+        self.assertGreater(with_ties.nu, 0.0)
+        # And the win-ratio signal survives the ties: A still outranks B.
+        self.assertGreater(with_ties.strengths["A"],
+                           with_ties.strengths["B"])
+
+    # -- convergence: the iteration is monotone and deterministic --
+
+    def test_more_iterations_never_hurt_likelihood(self):
+        comps = self._three_item()
+        est1 = bradley_terry(comps, max_iter=1)
+        est_full = bradley_terry(comps, max_iter=1000)
+        ll1 = self._ll_items(est1.strengths, est1.nu, self._three_counts())
+        llf = self._ll_items(est_full.strengths, est_full.nu,
+                             self._three_counts())
+        self.assertGreaterEqual(llf, ll1 - 1e-12)
+
+    def test_fit_is_deterministic(self):
+        comps = self._three_item()
+        first = bradley_terry(comps)
+        second = bradley_terry(comps)
+        self.assertEqual(first.strengths, second.strengths)
+        self.assertEqual(first.nu, second.nu)
+
+    # -- structural properties --
+
+    def test_strengths_centered_to_zero_mean(self):
+        est = bradley_terry(self._three_item())
+        mean = sum(est.strengths.values()) / len(est.strengths)
+        self.assertAlmostEqual(mean, 0.0, places=12)
+
+    def test_label_swap_flips_strengths(self):
+        # Swapping the item labels (and who won) negates the strengths:
+        # the fit cannot tell A from B except through the outcomes.
+        est1 = bradley_terry(self._comps(20, 10))
+        swapped = ([ComparisonOutcome("B", "A", "a")] * 20
+                   + [ComparisonOutcome("B", "A", "b")] * 10)
+        est2 = bradley_terry(swapped)
+        self.assertAlmostEqual(est2.strengths["A"], est1.strengths["B"],
+                               places=9)
+        self.assertAlmostEqual(est2.strengths["B"], est1.strengths["A"],
+                               places=9)
+        self.assertAlmostEqual(est2.nu, est1.nu, places=12)
+
+    # -- n >= 30 gate --
+
+    def test_withheld_below_30(self):
+        est = bradley_terry(self._comps(20, 9))
+        self.assertFalse(est.sufficient)
+        self.assertIsNone(est.strengths)
+        self.assertIsNone(est.nu)
+        self.assertEqual(est.n, 29)
+
+    def test_reported_at_exactly_30(self):
+        est = bradley_terry(self._comps(20, 10))
+        self.assertTrue(est.sufficient)
+        self.assertIsNotNone(est.strengths)
+        self.assertEqual(est.n, 30)
+
+    def test_single_comparison_withheld(self):
+        est = bradley_terry([ComparisonOutcome("A", "B", "a")])
+        self.assertFalse(est.sufficient)
+        self.assertEqual(est.n, 1)
+
+    def test_min_bt_comparisons_constant(self):
+        self.assertEqual(MIN_BT_COMPARISONS, 30)
+
+    # -- edge cases --
+
+    def test_all_ties_reports_equal_strengths_and_infinite_nu(self):
+        # Every comparison tied: strengths unidentified (reported equal),
+        # tie propensity genuinely unbounded.
+        est = bradley_terry(self._comps(0, 0, 30))
+        self.assertTrue(est.sufficient)
+        self.assertEqual(est.strengths, {"A": 0.0, "B": 0.0})
+        self.assertTrue(math.isinf(est.nu) and est.nu > 0)
+
+    def test_perfect_separation_raises(self):
+        # 30-0: A's strength is unbounded — refuse loudly instead of
+        # returning a max-iteration artifact.
+        with self.assertRaises(ValueError):
+            bradley_terry(self._comps(30, 0))
+
+    def test_item_never_winning_raises(self):
+        # B loses to both others but never wins or ties across 30
+        # comparisons: its strength is unbounded below.
+        comps = ([ComparisonOutcome("A", "B", "a")] * 15
+                 + [ComparisonOutcome("A", "C", "a")] * 10
+                 + [ComparisonOutcome("A", "C", "b")] * 5
+                 + [ComparisonOutcome("B", "C", "b")] * 15)
+        with self.assertRaises(ValueError):
+            bradley_terry(comps)
+
+    def test_item_never_losing_raises(self):
+        # A never lost or tied across 30 comparisons.
+        comps = ([ComparisonOutcome("A", "B", "a")] * 15
+                 + [ComparisonOutcome("B", "C", "a")] * 15)
+        with self.assertRaises(ValueError):
+            bradley_terry(comps)
+
+    @staticmethod
+    def _group_separated():
+        # {C, D} won every cross-group comparison outright (30 each),
+        # while A/B and C/D split internally 15-15: every item has wins
+        # and losses, the graph is connected, but the win/tie digraph is
+        # not strongly connected — {C, D}'s relative strengths are
+        # unbounded (Ford's condition). 180 comparisons, all decisive.
+        comps = ([ComparisonOutcome("A", "B", "a")] * 15
+                 + [ComparisonOutcome("A", "B", "b")] * 15
+                 + [ComparisonOutcome("C", "D", "a")] * 15
+                 + [ComparisonOutcome("C", "D", "b")] * 15)
+        for x in ("A", "B"):
+            for y in ("C", "D"):
+                comps += [ComparisonOutcome(x, y, "b")] * 30
+        return comps
+
+    def test_group_separation_raises(self):
+        # The per-item win/loss check passes here — the exact Ford
+        # strong-connectivity condition is what catches it.
+        with self.assertRaises(ValueError) as ctx:
+            bradley_terry(self._group_separated())
+        self.assertIn("'C'", str(ctx.exception))
+        self.assertIn("'D'", str(ctx.exception))
+
+    def test_cross_group_ties_restore_identifiability(self):
+        # Same as above, but two A-C ties make the digraph strongly
+        # connected: the estimate must be reported, not refused.
+        comps = self._group_separated() + [ComparisonOutcome("A", "C", "tie")] * 2
+        est = bradley_terry(comps)
+        self.assertTrue(est.sufficient)
+        self.assertGreater(est.strengths["C"], est.strengths["A"])
+
+    # -- input validation --
+
+    def test_validation(self):
+        with self.assertRaises(ValueError):
+            bradley_terry([])
+        with self.assertRaises(ValueError):
+            bradley_terry("not a list")
+        with self.assertRaises(ValueError):
+            bradley_terry([("A", "B", "a")])  # raw tuple, not a NamedTuple
+        with self.assertRaises(ValueError):
+            bradley_terry([ComparisonOutcome("A", "B", "win")])
+        with self.assertRaises(ValueError):
+            bradley_terry([ComparisonOutcome("A", "A", "tie")] * 30)
+        with self.assertRaises(ValueError):
+            bradley_terry([ComparisonOutcome("", "B", "a")] * 30)
+        # Disconnected: {A, B} and {C, D} never meet.
+        with self.assertRaises(ValueError):
+            bradley_terry(self._comps(15, 0, a="A", b="B")
+                          + self._comps(15, 0, a="C", b="D"))
+        with self.assertRaises(ValueError):
+            bradley_terry(self._comps(20, 10), max_iter=0)
+        with self.assertRaises(ValueError):
+            bradley_terry(self._comps(20, 10), tol=0.0)
+        with self.assertRaises(ValueError):
+            bradley_terry(self._comps(20, 10), tol=float("nan"))
+        with self.assertRaises(ValueError):
+            bradley_terry(self._comps(20, 10), tol=float("inf"))
+
+    def test_bool_max_iter_and_tol_rejected(self):
+        # bool is an int subclass: True must not pass as max_iter=1 or
+        # tol=1.0 — an explicit bool is a caller bug, not a value.
+        comps = self._comps(20, 10)
+        with self.assertRaises(ValueError):
+            bradley_terry(comps, max_iter=True)
+        with self.assertRaises(ValueError):
+            bradley_terry(comps, max_iter=False)
+        with self.assertRaises(ValueError):
+            bradley_terry(comps, tol=True)

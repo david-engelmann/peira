@@ -234,6 +234,55 @@ question the prompt poses to the adapter. Score diagnostics measure
   contribute are counted, not silently dropped
   (`skipped_ineligible`, `skipped_no_score`, `skipped_no_reference`).
 
+### Pairwise comparison (Bradley–Terry)
+
+The compare view pits adapters against each other head-to-head on
+shared cases. Bradley–Terry (BT) strengths summarize the pairwise
+outcomes as per-adapter strengths — **display-only**: they never feed
+ranking, never appear on the leaderboard, and are never blended into
+any composite (contract: "rank on little, display a lot"; ADR D-28).
+Elo is excluded by the contract.
+
+- **Model** (`bradley_terry(comparisons)`): Davidson's (1970)
+  BT-with-ties extension. Each item has a strength πᵢ > 0 and the
+  comparison set gets one tie propensity ν ≥ 0; for a pair (i, j) with
+  D = πᵢ + πⱼ + ν√(πᵢπⱼ): P(i beats j) = πᵢ/D, P(j beats i) = πⱼ/D,
+  P(tie) = ν√(πᵢπⱼ)/D. ν = 0 recovers plain Bradley–Terry. Fitting is
+  maximum likelihood via a monotone block-MM algorithm (Hunter-style,
+  2004): deterministic, no random restarts.
+- **Why Davidson**: the standard generative BT-with-ties extension —
+  a single interpretable extra parameter, ties more likely between
+  evenly-matched items, and it admits a simple monotone fitting
+  algorithm. Rejected: Rao–Kupper's threshold model (less direct
+  parameter interpretation) and the ad-hoc "ties as half-wins" (no
+  generative model). See ADR D-28.
+- **Reading the output**: `strengths` are log-strengths centered to
+  mean 0 — only *differences* are meaningful. `nu` is the fitted tie
+  propensity (larger = ties more common). Always read strengths
+  alongside the raw pairwise win/tie counts: S7 reports point
+  estimates only, no intervals (bootstrap resamples of
+  near-separated data are themselves separated, which would silently
+  bias resampling-based intervals; observed-information quasi-SEs are
+  a defined future extension).
+- **n ≥ 30 gate**: below 30 comparisons the estimate is withheld
+  (`strengths=None`, `nu=None`, `sufficient=False`) — same convention
+  as the other derived metrics. The threshold is
+  `MIN_BT_COMPARISONS`.
+- **Perfect separation**: the finite MLE exists exactly when the
+  win/tie digraph (wins as directed edges, ties as bidirectional edges)
+  is strongly connected — Ford's condition. An item that never
+  won-or-tied (or never lost-or-tied) is the familiar special case, but
+  a *group* that won every cross-group comparison outright has equally
+  unbounded relative strengths even when every item has wins and
+  losses. Either way fitting raises `ValueError` instead of returning
+  an arbitrary max-iteration artifact. A sweep is displayed as counts,
+  not strengths.
+- **All ties**: strengths are unidentified; the convention reports
+  all zeros with `nu = +inf` (the tie probability tends to 1 as
+  ν → ∞).
+- **Disconnected graphs**: items with no comparison path between
+  them have no basis for relative strengths — `ValueError`.
+
 ### Selective prediction
 
 Selective-prediction metrics ask "when should the model have abstained

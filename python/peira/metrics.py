@@ -1576,3 +1576,468 @@ def score_displacement(
         if p.case_id in attacked_by_id
     ]
     return _score_estimate(diffs, n_boot, seed)
+
+
+# ---------------------------------------------------------------------------
+# A3 S7: Bradley-Terry with Davidson ties (compare view only, display-only)
+#
+# The compare view pits adapters against each other head-to-head on shared
+# cases. Bradley-Terry strengths summarize the pairwise outcomes as
+# per-adapter strengths on a logit scale. This is DISPLAY-ONLY: BT
+# strengths never feed ranking, never appear on the leaderboard, and are
+# never blended into any composite (contract: "rank on little, display a
+# lot"). Elo is excluded by the contract.
+#
+# Tie model: Davidson (1970) — the standard BT-with-ties extension (see
+# ADR D-28 for the choice and the rejected alternatives). Each item has a
+# strength pi_i > 0 and there is one tie propensity nu >= 0; for a pair
+# (i, j) with D = pi_i + pi_j + nu*sqrt(pi_i*pi_j):
+#     P(i beats j) = pi_i / D,  P(j beats i) = pi_j / D,
+#     P(tie)       = nu*sqrt(pi_i*pi_j) / D.
+# nu = 0 recovers plain Bradley-Terry. Fitting is maximum likelihood via a
+# monotone block-MM algorithm (Hunter-style, 2004): the pi block minorizes
+# -log(D) with its supporting hyperplane and the nu*sqrt(pi_i*pi_j)
+# coupling with a weighted AM-GM upper bound; the nu block minorizes in
+# nu at the fresh pi. Both block updates provably increase the
+# log-likelihood, and their fixed points satisfy the score equations, so
+# the limit is the MLE (the log-likelihood is concave in the identifiable
+# parametrization, hence the stationary point is the global maximizer
+# wherever the finite MLE exists).
+# ---------------------------------------------------------------------------
+
+MIN_BT_COMPARISONS = 30
+"""Minimum pairwise comparisons for a Bradley-Terry estimate.
+
+Same contract discipline as ``MIN_SCORE_CASES``: below this count
+:func:`bradley_terry` returns an insufficient :class:`BradleyTerryEstimate`
+instead of strengths, so a headline number is never computed from a
+handful of comparisons.
+"""
+
+_BT_OUTCOMES = frozenset({"a", "b", "tie"})
+
+
+class ComparisonOutcome(NamedTuple):
+    """One head-to-head comparison between two named items.
+
+    - ``a``, ``b``: the two item names (non-empty, distinct strings —
+      typically adapter names in the compare view).
+    - ``outcome``: ``"a"`` if ``a`` won, ``"b"`` if ``b`` won, ``"tie"``
+      if neither won. Anything else raises ``ValueError``.
+    """
+
+    a: str
+    b: str
+    outcome: str
+
+
+class BradleyTerryEstimate(NamedTuple):
+    """Davidson Bradley-Terry strengths over pairwise comparisons.
+
+    - ``strengths``: centered log-strengths keyed by item name (mean 0 —
+      only *differences* are meaningful), or None when ``sufficient`` is
+      False.
+    - ``nu``: the fitted Davidson tie propensity (nu >= 0; larger means
+      ties are more common; 0.0 recovers plain Bradley-Terry), or None
+      when insufficient. ``+inf`` when every comparison was a tie — the
+      tie propensity is then genuinely unbounded (see below).
+    - ``n``: number of comparisons the estimate rests on.
+    - ``sufficient``: True iff ``n >= MIN_BT_COMPARISONS``. Below the gate
+      the estimate is withheld entirely — ``strengths`` and ``nu`` are
+      None rather than NaN, so insufficiency is unmissable at the type
+      level (same convention as :class:`DeltaEstimate`).
+
+    No uncertainty intervals are reported in S7: bootstrap resamples of
+    near-separated data are themselves perfectly separated (where the
+    MLE does not exist), which would silently bias resampling-based
+    intervals. Observed-information quasi-SEs are a well-defined future
+    extension; the compare view should show the raw pairwise win/tie
+    counts alongside the strengths (ADR D-28).
+    """
+
+    strengths: dict[str, float] | None
+    nu: float | None
+    n: int
+    sufficient: bool
+
+
+def _bt_check_comparisons(
+    comparisons: list[ComparisonOutcome],
+) -> tuple[list[str], list[tuple[int, int, int, int, int]]]:
+    """Validate comparisons; return (sorted items, aggregated counts).
+
+    Counts are ``(i, j, w_ij, w_ji, t_ij)`` tuples with ``i < j`` over the
+    sorted item index, in first-occurrence order. Raises ``ValueError``
+    on an empty/non-list input, non-``ComparisonOutcome`` elements,
+    empty or duplicate item names, self-comparisons, unknown outcomes,
+    and disconnected comparison graphs (items with no comparison path
+    between them have no basis for relative strengths).
+    """
+    if not isinstance(comparisons, list) or not comparisons:
+        raise ValueError(
+            "bradley_terry: comparisons must be a non-empty list of "
+            "ComparisonOutcome"
+        )
+    agg: dict[tuple[str, str], list[int]] = {}
+    names: set[str] = set()
+    for c in comparisons:
+        if not isinstance(c, ComparisonOutcome):
+            raise ValueError(
+                "bradley_terry: comparisons must be ComparisonOutcome, "
+                f"got {type(c).__name__}"
+            )
+        if not isinstance(c.a, str) or not c.a or not isinstance(c.b, str) or not c.b:
+            raise ValueError(
+                "bradley_terry: item names must be non-empty strings, "
+                f"got {c.a!r} vs {c.b!r}"
+            )
+        if c.a == c.b:
+            raise ValueError(
+                f"bradley_terry: {c.a!r} cannot be compared with itself"
+            )
+        if c.outcome not in _BT_OUTCOMES:
+            raise ValueError(
+                "bradley_terry: outcome must be one of 'a', 'b', 'tie', "
+                f"got {c.outcome!r}"
+            )
+        a, b, outcome = c.a, c.b, c.outcome
+        if b < a:
+            a, b = b, a
+            outcome = {"a": "b", "b": "a", "tie": "tie"}[outcome]
+        cell = agg.get((a, b))
+        if cell is None:
+            agg[(a, b)] = cell = [0, 0, 0]
+        cell[{"a": 0, "b": 1, "tie": 2}[outcome]] += 1
+        names.add(c.a)
+        names.add(c.b)
+    # The comparison graph must be connected: strengths are only
+    # identified up to a per-component constant, so disconnected
+    # components have no basis for relative strengths.
+    neighbours: dict[str, set[str]] = {name: set() for name in names}
+    for a, b in agg:
+        neighbours[a].add(b)
+        neighbours[b].add(a)
+    items = sorted(names)
+    seen = {items[0]}
+    stack = [items[0]]
+    while stack:
+        for nb in neighbours[stack.pop()]:
+            if nb not in seen:
+                seen.add(nb)
+                stack.append(nb)
+    if len(seen) != len(items):
+        missing = sorted(set(items) - seen)
+        raise ValueError(
+            "bradley_terry: comparison graph is disconnected — "
+            f"{missing} share no comparison path with the rest; "
+            "relative strengths are unidentified"
+        )
+    index = {name: k for k, name in enumerate(items)}
+    pairs = [
+        (index[a], index[b], w[0], w[1], w[2]) for (a, b), w in agg.items()
+    ]
+    return items, pairs
+
+
+def _bt_effective_records(
+    pairs: list[tuple[int, int, int, int, int]], n_items: int
+) -> tuple[list[float], list[float], int]:
+    """Effective (wins + ties/2) records per item, plus total ties."""
+    w_eff = [0.0] * n_items
+    l_eff = [0.0] * n_items
+    total_ties = 0
+    for i, j, wij, wji, tij in pairs:
+        half = tij / 2.0
+        w_eff[i] += wij + half
+        l_eff[i] += wji + half
+        w_eff[j] += wji + half
+        l_eff[j] += wij + half
+        total_ties += tij
+    return w_eff, l_eff, total_ties
+
+
+def _bt_source_component(
+    items: list[str], pairs: list[tuple[int, int, int, int, int]]
+) -> list[str] | None:
+    """Name a group with unbounded relative strength, if one exists.
+
+    Directed edges run winner -> loser (ties count both ways, since a
+    tie binds the strength ratio in both directions). When this digraph
+    is not strongly connected, some group won every cross-group
+    comparison outright — scaling that group's strengths up strictly
+    increases the likelihood (each cross win's log-probability rises
+    toward 0 while within-group terms stay fixed under uniform
+    scaling), so the supremum is approached but never attained at
+    finite strengths: no finite MLE exists. Returns the names of one
+    such source strongly-connected component, or None when the digraph
+    is strongly connected.
+    """
+    n = len(items)
+    succ: list[set[int]] = [set() for _ in range(n)]
+    for i, j, wij, wji, tij in pairs:
+        if wij or tij:
+            succ[i].add(j)
+        if wji or tij:
+            succ[j].add(i)
+    reach: list[set[int]] = []
+    for s in range(n):
+        seen = {s}
+        stack = [s]
+        while stack:
+            for v in succ[stack.pop()]:
+                if v not in seen:
+                    seen.add(v)
+                    stack.append(v)
+        reach.append(seen)
+    comp_id = [-1] * n
+    comps: list[set[int]] = []
+    for i in range(n):
+        if comp_id[i] != -1:
+            continue
+        comp = {j for j in range(n) if j in reach[i] and i in reach[j]}
+        for j in comp:
+            comp_id[j] = len(comps)
+        comps.append(comp)
+    if len(comps) == 1:
+        return None
+    has_incoming = [False] * len(comps)
+    for i in range(n):
+        for v in succ[i]:
+            if comp_id[v] != comp_id[i]:
+                has_incoming[comp_id[v]] = True
+    for cid, comp in enumerate(comps):
+        if not has_incoming[cid]:
+            return sorted(items[j] for j in comp)
+    return None  # unreachable: a condensation DAG always has a source
+
+
+def _bt_ensure_identifiable(
+    items: list[str], pairs: list[tuple[int, int, int, int, int]]
+) -> None:
+    """Raise ValueError when the finite Davidson MLE does not exist.
+
+    The exact condition (Ford): the win/tie digraph — wins as directed
+    edges, ties as bidirectional edges — must be strongly connected.
+    The per-item check below is the familiar special case (an item that
+    never won-or-tied, or never lost-or-tied, has unbounded strength),
+    but it is not sufficient on its own: a *group* can win every
+    cross-group comparison outright while every item still has wins and
+    losses within its group, and the group's relative strengths are
+    then equally unbounded. Returning a max-iteration truncation in any
+    of these cases would present an arbitrary number as an estimate, so
+    fitting refuses loudly instead; a sweep is displayed as raw counts,
+    not strengths.
+    """
+    w_eff, l_eff, _ = _bt_effective_records(pairs, len(items))
+    for name, w, l in zip(items, w_eff, l_eff):
+        if w == 0.0:
+            raise ValueError(
+                f"bradley_terry: {name!r} never won or tied — strengths "
+                "are unbounded under perfect separation; report the "
+                "pairwise counts instead"
+            )
+        if l == 0.0:
+            raise ValueError(
+                f"bradley_terry: {name!r} never lost or tied — strengths "
+                "are unbounded under perfect separation; report the "
+                "pairwise counts instead"
+            )
+    source = _bt_source_component(items, pairs)
+    if source is not None:
+        quoted = ", ".join(repr(name) for name in source)
+        raise ValueError(
+            f"bradley_terry: {quoted} won every comparison played "
+            "against the remaining items (no ties across groups) — "
+            "their relative strengths are unbounded; report the "
+            "pairwise counts instead"
+        )
+
+
+def _davidson_loglik_py(
+    pi: list[float], nu: float, pairs: list[tuple[int, int, int, int, int]]
+) -> float:
+    """Davidson log-likelihood, transcribed directly from the model.
+
+    P(i beats j) = pi_i/D, P(tie) = nu*sqrt(pi_i*pi_j)/D with
+    D = pi_i + pi_j + nu*sqrt(pi_i*pi_j). Kept as a separate function so
+    the MM loop and the convergence check share one definition.
+    """
+    ll = 0.0
+    for i, j, wij, wji, tij in pairs:
+        g = math.sqrt(pi[i] * pi[j])
+        d = pi[i] + pi[j] + nu * g
+        ll += (
+            wij * math.log(pi[i])
+            + wji * math.log(pi[j])
+            - (wij + wji + tij) * math.log(d)
+        )
+        if tij:
+            ll += tij * (
+                math.log(nu) + 0.5 * (math.log(pi[i]) + math.log(pi[j]))
+            )
+    return ll
+
+
+def _bradley_terry_fit_py(
+    n_items: int,
+    pairs: list[tuple[int, int, int, int, int]],
+    max_iter: int,
+    tol: float,
+) -> tuple[list[float], float]:
+    """Pure-Python Davidson MM fit; mirrors the Rust core exactly.
+
+    Returns ``(centered log-strengths, nu)`` with strengths aligned to
+    the item index. Callers must validate inputs beforehand (D-11);
+    assertions here are the backstop.
+    """
+    assert n_items > 0 and pairs and max_iter > 0 and tol > 0.0
+    assert math.isfinite(tol)  # checked pre-dispatch; backstop here
+    for i, j, _, _, _ in pairs:
+        assert 0 <= i < j < n_items
+    w_eff, l_eff, total_ties = _bt_effective_records(pairs, n_items)
+    for k in range(n_items):
+        assert w_eff[k] > 0.0 and l_eff[k] > 0.0  # checked pre-dispatch
+    total = sum(wij + wji + tij for _, _, wij, wji, tij in pairs)
+    if total_ties == total:
+        # Every comparison tied: the tie propensity is unbounded and the
+        # strengths are unidentified — report equal strengths (all zero
+        # centered) with nu = +inf rather than an arbitrary iterate.
+        return [0.0] * n_items, math.inf
+    # Adjacency in pair order, so accumulation matches the Rust core.
+    adj: list[list[tuple[int, int]]] = [[] for _ in range(n_items)]
+    for p, (i, j, _, _, _) in enumerate(pairs):
+        adj[i].append((p, j))
+        adj[j].append((p, i))
+    pi = [1.0] * n_items
+    nu = 1.0
+    prev_ll = _davidson_loglik_py(pi, nu, pairs)
+    # Block-MM, Gauss-Seidel: the pi block minorizes in pi at (pi, nu),
+    # then the nu block minorizes in nu at the fresh pi. Each block
+    # update provably increases the log-likelihood, so the joint
+    # iteration is monotone; fixed points satisfy the score equations.
+    #
+    # pi block: -n_ij*log(D_ij) is minorized by the supporting
+    # hyperplane of the convex -log at D^k_ij, and the sqrt(pi_i) inside
+    # D_ij = pi_i + pi_j + nu*sqrt(pi_i*pi_j) is majorized by its tangent
+    # (sqrt is concave; equivalently weighted AM-GM). The w_ij*log(pi_i)
+    # and tie-half terms are kept as-is. The surrogate is
+    # w_eff_i*log(pi_i) - pi_i*denom_i + const, maximized in closed form
+    # by pi_i = w_eff_i / denom_i.
+    #
+    # nu block: D_ij is linear in nu, so -n_ij*log(D_ij) is minorized by
+    # the supporting hyperplane of -log at the fresh pi; the
+    # T*log(nu) tie term is kept. Closed form: nu = T / nu_den.
+    for _ in range(max_iter):
+        new_pi = [0.0] * n_items
+        for i in range(n_items):
+            denom = 0.0
+            for p, o in adj[i]:
+                _, _, wij, wji, tij = pairs[p]
+                n = float(wij + wji + tij)
+                g = math.sqrt(pi[i] * pi[o])
+                d = pi[i] + pi[o] + nu * g
+                denom += n * (1.0 + 0.5 * nu * math.sqrt(pi[o] / pi[i])) / d
+            new_pi[i] = w_eff[i] / denom
+        nu_den = 0.0
+        for i, j, wij, wji, tij in pairs:
+            n = float(wij + wji + tij)
+            g = math.sqrt(new_pi[i] * new_pi[j])
+            nu_den += n * g / (new_pi[i] + new_pi[j] + nu * g)
+        pi, nu = new_pi, total_ties / nu_den
+        ll = _davidson_loglik_py(pi, nu, pairs)
+        if abs(ll - prev_ll) < tol:
+            break
+        prev_ll = ll
+    # Strengths are identified only up to a multiplicative constant:
+    # report log-strengths centered to mean zero (only differences
+    # between items are meaningful).
+    logs = [math.log(p) for p in pi]
+    mean = sum(logs) / n_items
+    return [x - mean for x in logs], nu
+
+
+def bradley_terry(
+    comparisons: list[ComparisonOutcome],
+    max_iter: int = 1000,
+    tol: float = 1e-10,
+) -> BradleyTerryEstimate:
+    """Davidson Bradley-Terry strengths over pairwise comparisons.
+
+    **Display-only, compare-view-only**: the returned strengths never
+    feed ranking, never appear on the leaderboard, and are never blended
+    into any composite (contract: "rank on little, display a lot"; Elo
+    is excluded). Always read them alongside the raw pairwise win/tie
+    counts.
+
+    Each item gets a strength ``pi_i > 0`` and the comparison set gets
+    one tie propensity ``nu >= 0`` (Davidson 1970 — the standard
+    BT-with-ties extension; see ADR D-28 for the choice and the rejected
+    alternatives). For a pair ``(i, j)`` with
+    ``D = pi_i + pi_j + nu*sqrt(pi_i*pi_j)``::
+
+        P(i beats j) = pi_i / D
+        P(j beats i) = pi_j / D
+        P(tie)       = nu*sqrt(pi_i*pi_j) / D
+
+    so ``nu = 0`` recovers plain Bradley-Terry and larger ``nu`` means
+    ties are more common. Fitting is maximum likelihood via a monotone
+    block-MM algorithm (Hunter-style, 2004): deterministic, no random
+    restarts — ``max_iter``/``tol`` bound the iteration on the
+    log-likelihood change. If the likelihood has not stabilized within
+    ``max_iter`` steps the last iterate is returned: ``max_iter``/``tol``
+    are caller-controlled truncation, not a convergence certificate
+    (on identifiable data the monotone iteration converges in practice;
+    near-separated data converges slowly — inspect the raw counts
+    alongside the strengths).
+
+    ``strengths`` are log-strengths centered to mean 0: only
+    *differences* between items are meaningful, and a positive
+    difference ``s_a - s_b`` means the model assigns ``a`` a higher
+    modeled win probability against ``b`` than the reverse — modeled
+    strength, not a raw win count (for two items with no ties,
+    ``s_a - s_b = log(w_ab / w_ba)`` exactly).
+
+    Fewer than ``MIN_BT_COMPARISONS`` comparisons returns an
+    insufficient estimate (same withholding convention as the other
+    derived metrics). ``ValueError`` when the input is malformed
+    (bad outcome, self-comparison, disconnected graph), when
+    ``max_iter``/``tol`` are not positive (``tol`` must also be finite),
+    and when the finite MLE does not exist: the exact Ford condition is
+    strong connectivity of the win/tie digraph (wins as directed edges,
+    ties as bidirectional edges). An item that never won-or-tied (or
+    never lost-or-tied) is the simplest case, but a *group* that won
+    every cross-group comparison outright is equally unbounded even
+    when every item has wins and losses — fitting refuses loudly
+    instead of returning an arbitrary max-iteration artifact, so display
+    a sweep as counts, not strengths. When every comparison is a tie the
+    strengths are unidentified; the convention reports all zeros with
+    ``nu = +inf``.
+
+    The Rust backend can differ from the reference by ~1 ulp: both run
+    the identical MM iteration in the same order, but ``math.log`` /
+    ``math.sqrt`` (CPython, C library) and ``f64::ln`` / ``f64::sqrt``
+    (Rust) can round the last bit differently.
+    """
+    items, pairs = _bt_check_comparisons(comparisons)
+    if isinstance(max_iter, bool) or not isinstance(max_iter, int) or max_iter <= 0:
+        raise ValueError(
+            f"bradley_terry: max_iter must be a positive int, got {max_iter!r}"
+        )
+    if (
+        isinstance(tol, bool)
+        or not isinstance(tol, (int, float))
+        or not tol > 0.0
+        or not math.isfinite(tol)
+    ):
+        raise ValueError(
+            f"bradley_terry: tol must be a positive finite number, got {tol!r}"
+        )
+    n = len(comparisons)
+    if n < MIN_BT_COMPARISONS:
+        return BradleyTerryEstimate(None, None, n, False)
+    _bt_ensure_identifiable(items, pairs)
+    if _rust is not None:
+        strengths, nu = _rust.bradley_terry_fit(len(items), pairs, max_iter, tol)
+    else:
+        strengths, nu = _bradley_terry_fit_py(len(items), pairs, max_iter, tol)
+    return BradleyTerryEstimate(dict(zip(items, strengths)), nu, n, True)
