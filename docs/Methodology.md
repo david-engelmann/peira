@@ -113,6 +113,19 @@ ASR; an attacked variant that is malformed counts as flipped).
 
 ## Analysis lock
 
-Every run artifact carries a sha256 lock over config + dataset version +
-peira version. If anything is edited post-hoc, the lock mismatches and
-`peira report` warns. Scores are never adjusted after the fact — you re-run.
+Every run artifact carries a sha256 lock over the full measurement
+record: config, per-case results, aggregate metrics, dataset version,
+the suite manifest's SHA-256, peira version, pricing provenance, seed,
+and adapter identity. If anything is edited post-hoc, the lock
+mismatches and `peira report` refuses to render (exit 1); pass
+`--force` to render anyway, with an embedded UNTRUSTED banner marking
+the numbers as unverified. Scores are never
+adjusted after the fact — you re-run.
+
+The lock is unkeyed deterministic SHA-256: tamper-evidence against
+accidents and casual edits, not forgery-resistance. Anyone can
+recompute a valid lock for edited content, so lock verification must
+never be the sole basis for trusting an artifact from an untrusted
+party. Leaderboard ingestion must re-score from the sealed transcripts
+or require signatures; relying on `verify()` alone is a documented
+non-goal.

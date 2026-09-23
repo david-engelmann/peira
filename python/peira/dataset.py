@@ -26,6 +26,21 @@ CANARY_NAME = "CANARY.txt"
 CASE_SUFFIX = ".jsonl"
 
 
+def _is_case_file(path: Path) -> bool:
+    """The canonical case-file predicate.
+
+    A case file is a regular file (following symlinks) whose name ends
+    in ``.jsonl``. This ONE predicate is the security invariant behind
+    manifest completeness: the runner, ``build_manifest``, and the
+    manifest sweep must all agree on what a case file is, or an
+    unlisted file could be scored but never flagged. (``Path.suffix``
+    is the wrong test here: a file named exactly ``.jsonl`` has an
+    empty suffix yet is matched by the runner's old ``*.jsonl`` glob;
+    ``name.endswith`` matches glob semantics for every sane name.)
+    """
+    return path.name.endswith(CASE_SUFFIX) and path.is_file()
+
+
 def sha256_file(path: Path) -> str:
     """SHA-256 hex digest of a file's bytes."""
     h = hashlib.sha256()
@@ -191,7 +206,7 @@ def build_manifest(dataset_dir: Path, dataset_version: str,
     for path in sorted(dataset_dir.iterdir()):
         if path.name == MANIFEST_NAME or not path.is_file():
             continue
-        if path.suffix == CASE_SUFFIX:
+        if _is_case_file(path):
             files[path.name] = summarize_cases(path)
         elif path.name == CANARY_NAME:
             files[path.name] = {"kind": "artifact", "sha256": sha256_file(path)}
@@ -254,6 +269,18 @@ def _read_manifest_sealed(dataset_dir: Path) -> tuple[dict[str, Any], str]:
         raise ValueError(f"{MANIFEST_NAME} is not valid JSON ({e})") from e
     if not isinstance(manifest, dict) or "files" not in manifest:
         raise ValueError(f"{MANIFEST_NAME} is missing the 'files' section")
+    files = manifest["files"]
+    if not isinstance(files, dict):
+        raise ValueError(
+            f"{MANIFEST_NAME} has a malformed 'files' section "
+            f"(expected an object, got {type(files).__name__})"
+        )
+    for name, entry in files.items():
+        if not isinstance(entry, dict):
+            raise ValueError(
+                f"{MANIFEST_NAME}: entry for {name!r} is malformed "
+                f"(expected an object, got {type(entry).__name__})"
+            )
     return manifest, digest
 
 
@@ -267,11 +294,16 @@ def read_manifest(dataset_dir: Path) -> dict[str, Any]:
 def _verify_manifest_dict(
     manifest: dict[str, Any], dataset_dir: Path
 ) -> list[str]:
-    """Per-file verification of an already-read manifest.
+    """Per-file verification of an already-read manifest, plus a
+    directory sweep for unlisted files.
 
     Every file is read exactly once: the digest and (for case files) the
     parse share the same bytes, so verification can never hash one
-    version of a file and summarize another.
+    version of a file and summarize another. After the per-entry loop,
+    any file on disk that `build_manifest` would include (*.jsonl,
+    CANARY.txt) but that the manifest does not list is reported — the
+    sweep is what makes "the directory matches the manifest exactly"
+    true.
     """
     errors: list[str] = []
     for name, entry in manifest.get("files", {}).items():
@@ -305,6 +337,20 @@ def _verify_manifest_dict(
                     errors.append(
                         f"{name}: {key} changed "
                         f"(manifest {entry.get(key)}, disk {summary[key]})")
+    # P0: files build_manifest() would include (*.jsonl case files,
+    # CANARY.txt) that are on disk but not listed must be flagged —
+    # otherwise unlisted case files would be silently unscored, and the
+    # "directory matches the manifest exactly" guarantee would be false.
+    # Names are compared as strings only; unlisted files are never
+    # opened, so unsafe on-disk names cannot escape the directory.
+    listed = set(manifest.get("files", {}).keys())
+    for path in sorted(dataset_dir.iterdir()):
+        if path.name == MANIFEST_NAME or not path.is_file():
+            continue
+        if not _is_case_file(path) and path.name != CANARY_NAME:
+            continue
+        if path.name not in listed:
+            errors.append(f"{path.name}: on disk but not listed in manifest")
     return errors
 
 

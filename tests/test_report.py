@@ -79,7 +79,10 @@ class TestReportEscapesHostileMetrics(unittest.TestCase):
                 a.pricing_source = "<script>alert('price')</script>"
             run_path = _write_artifact(tmp, poison)
             out = str(Path(tmp) / "report.html")
-            rc = cmd_report(argparse.Namespace(run=run_path, out=out))
+            # The poison runs after seal (and overwrites analysis_lock),
+            # so the artifact cannot verify by construction: render via
+            # --force to exercise the escaping of hostile values.
+            rc = cmd_report(argparse.Namespace(run=run_path, out=out, force=True))
             self.assertEqual(rc, 0)
             html = Path(out).read_text(encoding="utf-8")
             for raw in (
@@ -107,7 +110,7 @@ class TestReportEscapesHostileMetrics(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             run_path = _write_artifact(tmp)
             out = str(Path(tmp) / "report.html")
-            rc = cmd_report(argparse.Namespace(run=run_path, out=out))
+            rc = cmd_report(argparse.Namespace(run=run_path, out=out, force=False))
             self.assertEqual(rc, 0)
             html = Path(out).read_text(encoding="utf-8")
             self.assertIn("0.5000", html)  # floats: four decimals
@@ -129,7 +132,7 @@ class TestReportUserErrors(unittest.TestCase):
             bad.write_text("not json{{{", encoding="utf-8")
             out = str(Path(tmp) / "report.html")
             rc, err = self._stderr(
-                cmd_report, argparse.Namespace(run=str(bad), out=out))
+                cmd_report, argparse.Namespace(run=str(bad), out=out, force=False))
             self.assertEqual(rc, EXIT_USER_ERROR)
             self.assertIn("not a valid run artifact", err)
             self.assertNotIn("Traceback", err)
@@ -140,7 +143,7 @@ class TestReportUserErrors(unittest.TestCase):
             bad.write_text(json.dumps({"nope": True}), encoding="utf-8")
             out = str(Path(tmp) / "report.html")
             rc, err = self._stderr(
-                cmd_report, argparse.Namespace(run=str(bad), out=out))
+                cmd_report, argparse.Namespace(run=str(bad), out=out, force=False))
             self.assertEqual(rc, EXIT_USER_ERROR)
             self.assertIn("not a valid run artifact", err)
 
@@ -154,7 +157,7 @@ class TestReportUserErrors(unittest.TestCase):
                                        "results": []}), encoding="utf-8")
             out = str(Path(tmp) / "report.html")
             rc, err = self._stderr(
-                cmd_report, argparse.Namespace(run=str(bad), out=out))
+                cmd_report, argparse.Namespace(run=str(bad), out=out, force=False))
             self.assertEqual(rc, EXIT_USER_ERROR)
             self.assertIn("not a valid run artifact", err)
             self.assertNotIn("Traceback", err)
@@ -164,7 +167,8 @@ class TestReportUserErrors(unittest.TestCase):
             rc, err = self._stderr(
                 cmd_report,
                 argparse.Namespace(run=str(Path(tmp) / "nope.json"),
-                                   out=str(Path(tmp) / "r.html")))
+                                   out=str(Path(tmp) / "r.html"),
+                                   force=False))
             self.assertEqual(rc, EXIT_USER_ERROR)
             self.assertIn("not found", err)
 
@@ -173,10 +177,86 @@ class TestReportUserErrors(unittest.TestCase):
             run_path = _write_artifact(tmp)
             out = str(Path(tmp) / "no-such-dir" / "report.html")
             rc, err = self._stderr(
-                cmd_report, argparse.Namespace(run=run_path, out=out))
+                cmd_report, argparse.Namespace(run=run_path, out=out, force=False))
             self.assertEqual(rc, EXIT_USER_ERROR)
             self.assertIn("cannot write report to", err)
             self.assertNotIn("Traceback", err)
+
+
+class TestReportLockMismatchFailsClosed(unittest.TestCase):
+    def _stderr(self, fn, *args):
+        import contextlib
+        import io
+        buf = io.StringIO()
+        with contextlib.redirect_stderr(buf):
+            rc = fn(*args)
+        return rc, buf.getvalue()
+
+    def _tampered(self, tmp):
+        # Seal, then tamper the metrics keeping the original lock: the
+        # report must fail closed because metrics are now lock inputs.
+        def tamper(a):
+            a.metrics["asr_conditional"] = 0.9999
+        return _write_artifact(tmp, mutate=tamper)
+
+    def test_lock_mismatch_exits_1(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            run_path = self._tampered(tmp)
+            out = str(Path(tmp) / "report.html")
+            rc, err = self._stderr(
+                cmd_report,
+                argparse.Namespace(run=run_path, out=out, force=False))
+            self.assertEqual(rc, EXIT_USER_ERROR)
+            self.assertIn("failed analysis-lock verification", err)
+            self.assertFalse(Path(out).exists())
+
+    def test_lock_mismatch_force_renders(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            run_path = self._tampered(tmp)
+            out = str(Path(tmp) / "report.html")
+            rc, err = self._stderr(
+                cmd_report,
+                argparse.Namespace(run=run_path, out=out, force=True))
+            self.assertEqual(rc, 0)
+            self.assertIn("failed analysis-lock verification", err)
+            html = Path(out).read_text(encoding="utf-8")
+            self.assertIn("0.9999", html)  # the untrusted numbers render
+
+    def test_force_render_carries_untrusted_banner(self):
+        # P2: the --force HTML must not look like a trusted report: the
+        # banner is the warning that travels with the file itself.
+        with tempfile.TemporaryDirectory() as tmp:
+            run_path = self._tampered(tmp)
+            out = str(Path(tmp) / "report.html")
+            rc, _ = self._stderr(
+                cmd_report,
+                argparse.Namespace(run=run_path, out=out, force=True))
+            self.assertEqual(rc, 0)
+            html = Path(out).read_text(encoding="utf-8")
+            self.assertIn("UNTRUSTED", html)
+            self.assertIn("analysis lock mismatch", html)
+            self.assertIn("--force", html)
+
+    def test_valid_lock_render_has_no_untrusted_banner(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            run_path = _write_artifact(tmp)
+            out = str(Path(tmp) / "report.html")
+            rc, _ = self._stderr(
+                cmd_report,
+                argparse.Namespace(run=run_path, out=out, force=False))
+            self.assertEqual(rc, 0)
+            html = Path(out).read_text(encoding="utf-8")
+            self.assertNotIn("UNTRUSTED", html)
+
+    def test_valid_lock_still_renders(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            run_path = _write_artifact(tmp)
+            out = str(Path(tmp) / "report.html")
+            rc, _ = self._stderr(
+                cmd_report,
+                argparse.Namespace(run=run_path, out=out, force=False))
+            self.assertEqual(rc, 0)
+            self.assertTrue(Path(out).exists())
 
 
 if __name__ == "__main__":

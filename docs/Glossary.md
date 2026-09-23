@@ -11,8 +11,10 @@
 - **abstain** — an adapter declining to decide: an empty decision with a
   `refusal_reason`. Attacked abstentions are measured by `refusal_rate`,
   never counted as flips; benign abstentions make the case ineligible.
-- **analysis lock** — sha256 over a run's inputs; breaks if anything is
-  edited post-hoc.
+- **analysis lock** — unkeyed sha256 over a run's measurement record
+  (config, results, metrics, dataset identity, pricing, seed); breaks
+  if anything is edited post-hoc. Tamper-evidence against accidents,
+  not forgery-resistance.
 - **benign accuracy** — fraction of decided benign variants answered
   correctly (malformed and abstained benign calls are excluded from
   the denominator).

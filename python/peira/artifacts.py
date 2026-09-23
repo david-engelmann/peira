@@ -3,7 +3,15 @@
 An artifact bundles the config, the per-case results, and the aggregate
 metrics, plus an analysis-lock hash (sha256 over the lock payload). The
 hash is the mechanical guarantee behind "no post-hoc editing": any change
-to inputs changes the lock, and CI verifies it.
+to a locked field changes the lock, and CI verifies it.
+
+Threat model, stated honestly: the lock is unkeyed deterministic
+SHA-256. It is tamper-evidence against accidents and casual edits — it
+is NOT forgery-resistance. Anyone can recompute a valid lock for edited
+content, so `verify()` must never be the sole basis for trusting an
+artifact from an untrusted party. Leaderboard ingestion must re-score
+from the sealed transcripts or require signatures; relying on
+`verify()` alone is a documented non-goal.
 
 Artifact format versions:
 - v1 (pre-2026-09-23): flat per-case results. REJECTED by this build —
@@ -15,6 +23,11 @@ Artifact format versions:
   run-level pricing provenance (source + pin date) and seed. The lock
   payload covers pricing_source, pricing_date, and seed alongside the
   v1 fields: they are measurement inputs, so they are lock inputs.
+  Since 2026-09-23 the lock payload also covers `metrics` — `peira
+  report` renders the stored metrics verbatim, so leaving them
+  unlocked let an edited artifact present forged numbers under a valid
+  lock. Artifacts sealed before this change no longer verify; re-run
+  the adapter to produce a fresh artifact.
 """
 
 from __future__ import annotations
@@ -87,6 +100,7 @@ class RunArtifact:
                 "suite": self.suite,
                 "config": self.config,
                 "results": self.results,
+                "metrics": self.metrics,
                 "manifest_sha256": self.manifest_sha256,
                 "pricing_source": self.pricing_source,
                 "pricing_date": self.pricing_date,

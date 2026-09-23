@@ -82,6 +82,13 @@ peira dataset verify-manifest --dir dataset/v1
 Any mismatch (edited file, missing file, count drift) fails with details.
 Manifests are committed to git; CI treats a mismatch as a build failure.
 
+A case file is a regular file (following symlinks) whose name ends in
+`.jsonl`. That single predicate is the security invariant behind manifest
+completeness: the runner, the manifest build, and the manifest sweep all
+use it, so a file can never be scored without being manifested and
+verified. In particular the sweep flags symlinked case files (the runner
+scores through symlinks, so the sweep must see them too).
+
 ## Versioning
 
 `dataset_version` follows semver:

@@ -62,6 +62,7 @@ render an HTML report from a run artifact
 |---|---|---|---|
 | `--run` | yes | — |  |
 | `--out` |  | `'report.html'` |  |
+| `--force` |  | `False` | render even when the analysis lock mismatches (the HTML then carries an embedded UNTRUSTED banner) |
 
 ## peira dataset
 

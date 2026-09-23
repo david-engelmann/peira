@@ -9,8 +9,9 @@ indexes the load-bearing claims; detail lives in the linked docs.
   outputs, with paired benign/attacked controls, across the documented
   attack families.
 - Every public score will link to per-case drill-down receipts.
-- Run artifacts are sealed with an analysis lock; `peira report` warns on
-  lock mismatch.
+- Run artifacts are sealed with an analysis lock; `peira report` fails
+  closed (exit 1) on lock mismatch. `--force` renders the numbers anyway,
+  but the HTML carries an embedded UNTRUSTED banner.
 - The private holdout's raw cases will never be published; only aggregate
   metrics will leave the maintainer's machine.
 
