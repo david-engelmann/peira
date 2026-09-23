@@ -84,6 +84,22 @@ jobs:
       # generated, never hand-edited).
       - run: python3 scripts/gen_readme_table.py runs/mock-trial.json
 
+  readme-table:
+    # The README "Trial in action" table is generated, never hand-edited:
+    # this job fails if the committed copy drifts from generator output.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -e .
+      - name: regenerate the sample table and diff it against the README
+        shell: bash
+        run: |
+          peira run --adapter mock --suite trial --seed 0 --out /tmp/readme-table || [ $? -eq 3 ]
+          python3 scripts/check_readme_table.py README.md /tmp/readme-table/mock-trial.json
+
   dataset-checks:
     # The authoring pipeline's release seal, enforced in CI: the Trial
     # starter suite must pass all six validation gates and its committed
