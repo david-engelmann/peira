@@ -52,6 +52,7 @@ from typing import Any
 
 from peira.adapters.base import (
     AdapterOutput,
+    CallContext,
     CallUsage,
     ChoiceOutput,
     NoulOutput,
@@ -251,7 +252,7 @@ class _HFAdapterBase:
     # -- decide -----------------------------------------------------
 
     def decide(
-        self, case_input: dict[str, Any], primitive: str
+        self, case_input: dict[str, Any], primitive: str, context: CallContext
     ) -> AdapterOutput:
         if primitive not in self.supported_primitives:
             raise ValueError(
@@ -260,8 +261,9 @@ class _HFAdapterBase:
             )
         raw_prompt = case_input.get("prompt", "")
         text = raw_prompt if isinstance(raw_prompt, str) else str(raw_prompt)
-        # Unknown input keys (target_decision, attacked, ...) are ignored.
-        expected = case_input.get("expected_decision") or "approve"
+        # The benign baseline is the case's expected decision, from the
+        # trial context — the input dict carries no trial bookkeeping.
+        expected = context.expected_decision or "approve"
         if not isinstance(expected, str):
             expected = "approve"
 

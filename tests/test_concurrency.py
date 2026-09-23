@@ -31,9 +31,11 @@ from peira.runner import (
     _run_suite_async,
     load_cases,
     replay_suite,
+    run_case,
     run_suite,
 )
 from peira.pricing import load_pricing_table
+from peira.schema import Case
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
@@ -303,11 +305,11 @@ class CountingAdapter(MockAdapter):
         self.calls = 0
         self.failures: list = []  # exceptions to raise, in order
 
-    def decide(self, case_input, primitive):
+    def decide(self, case_input, primitive, context):
         self.calls += 1
         if self.failures:
             raise self.failures.pop(0)
-        return super().decide(case_input, primitive)
+        return super().decide(case_input, primitive, context)
 
 
 class TestRunnerRetry(unittest.TestCase):
@@ -395,10 +397,10 @@ class TestRunnerRetry(unittest.TestCase):
 
     def test_call_timeout_is_transient(self):
         class SlowAdapter(MockAdapter):
-            def decide(self, case_input, primitive):
+            def decide(self, case_input, primitive, context):
                 import time as _t
                 _t.sleep(0.3)
-                return super().decide(case_input, primitive)
+                return super().decide(case_input, primitive, context)
 
         art = run_suite(SlowAdapter(), _demo_cases(1), "trial-demo",
                         "0.1.0-demo", call_timeout=0.05, max_attempts=2,
@@ -416,15 +418,13 @@ class TestAtomicTranscriptCapture(unittest.TestCase):
         # entry with no hook and no thread-local bookkeeping — even with
         # 8 concurrent calls sharing one adapter instance.
         class TranscriptAdapter(MockAdapter):
-            def decide(self, case_input, primitive):
-                out = super().decide(case_input, primitive)
+            def decide(self, case_input, primitive, context):
+                out = super().decide(case_input, primitive, context)
                 return dataclasses.replace(
                     out,
                     transcript={
-                        "case_id": case_input.get("case_id", ""),
-                        "variant": "attacked"
-                        if case_input.get("attacked")
-                        else "benign",
+                        "case_id": context.case_id,
+                        "variant": context.arm,
                     },
                 )
 
@@ -453,8 +453,8 @@ class TestAtomicTranscriptCapture(unittest.TestCase):
         # the output is malformed, but the transcript read itself never
         # fails the run.
         class BadTranscriptAdapter(MockAdapter):
-            def decide(self, case_input, primitive):
-                out = super().decide(case_input, primitive)
+            def decide(self, case_input, primitive, context):
+                out = super().decide(case_input, primitive, context)
                 return dataclasses.replace(out, transcript="oops")
 
         with TemporaryDirectory() as tmp:
@@ -475,7 +475,7 @@ class TestAtomicTranscriptCapture(unittest.TestCase):
         # A failed call has no completed provider call to attribute raw
         # payloads to — the transcript must say None, never guess.
         class ExplodingAdapter(MockAdapter):
-            def decide(self, case_input, primitive):
+            def decide(self, case_input, primitive, context):
                 raise RuntimeError("kaput")
 
         with TemporaryDirectory() as tmp:
@@ -496,11 +496,11 @@ class TestAtomicTranscriptCapture(unittest.TestCase):
 class TestDeterministicOrdering(unittest.TestCase):
     def test_results_in_suite_order(self):
         class JitterAdapter(MockAdapter):
-            def decide(self, case_input, primitive):
+            def decide(self, case_input, primitive, context):
                 import time as _t
-                rng = random.Random(case_input.get("case_id", ""))
+                rng = random.Random(context.case_id)
                 _t.sleep(rng.uniform(0, 0.005))
-                return super().decide(case_input, primitive)
+                return super().decide(case_input, primitive, context)
 
         cases = _demo_cases(8)
         art = run_suite(JitterAdapter(), cases, "trial-demo", "0.1.0-demo",
@@ -611,7 +611,7 @@ class TestTranscriptAndReplay(unittest.TestCase):
 
     def test_transcript_error_entry(self):
         class BoomAdapter(MockAdapter):
-            def decide(self, case_input, primitive):
+            def decide(self, case_input, primitive, context):
                 raise RuntimeError("kaput")
 
         with TemporaryDirectory() as tmp:
@@ -685,7 +685,7 @@ class TestTranscriptAndReplay(unittest.TestCase):
         # records the original run sealed — replay never invents a
         # decision for a call that produced none.
         class BoomAdapter(MockAdapter):
-            def decide(self, case_input, primitive):
+            def decide(self, case_input, primitive, context):
                 raise RuntimeError("kaput")
 
         with TemporaryDirectory() as tmp:
@@ -825,21 +825,36 @@ class TestResponseCache(unittest.TestCase):
                              art1.metrics["benign_accuracy"])
 
     def test_cache_key_sensitivity(self):
-        inp = {"prompt": "x", "case_id": "c1"}
+        inp = {"prompt": "x"}
         k1 = cache_key(adapter_name="a", adapter_version="1",
                        cache_namespace="", primitive="choice",
+                       variant="benign", case_id="c1",
                        case_input=inp, manifest_sha256="m")
         k2 = cache_key(adapter_name="a", adapter_version="2",
                        cache_namespace="", primitive="choice",
+                       variant="benign", case_id="c1",
                        case_input=inp, manifest_sha256="m")
         k3 = cache_key(adapter_name="a", adapter_version="1",
                        cache_namespace="temp0", primitive="choice",
+                       variant="benign", case_id="c1",
                        case_input=inp, manifest_sha256="m")
         k4 = cache_key(adapter_name="a", adapter_version="1",
                        cache_namespace="", primitive="choice",
-                       case_input={"prompt": "y", "case_id": "c1"},
+                       variant="benign", case_id="c1",
+                       case_input={"prompt": "y"},
                        manifest_sha256="m")
-        self.assertEqual(len({k1, k2, k3, k4}), 4)
+        k5 = cache_key(adapter_name="a", adapter_version="1",
+                       cache_namespace="", primitive="choice",
+                       variant="attacked", case_id="c1",
+                       case_input=inp, manifest_sha256="m")
+        # Same input bytes, different case: separate entries (an
+        # adapter's output may depend on trial bookkeeping, e.g. the
+        # mock's per-case seeded flip).
+        k6 = cache_key(adapter_name="a", adapter_version="1",
+                       cache_namespace="", primitive="choice",
+                       variant="benign", case_id="c2",
+                       case_input=inp, manifest_sha256="m")
+        self.assertEqual(len({k1, k2, k3, k4, k5, k6}), 6)
 
     def test_different_mock_config_does_not_collide(self):
         with TemporaryDirectory() as tmp:
@@ -882,12 +897,12 @@ class TestCancellation(unittest.TestCase):
                 super().__init__()
                 self.started = 0
 
-            def decide(self, case_input, primitive):
+            def decide(self, case_input, primitive, context):
                 self.started += 1
                 if self.started == 1:
                     entered.set()
                     assert release.wait(timeout=30)
-                return super().decide(case_input, primitive)
+                return super().decide(case_input, primitive, context)
 
         cases = _demo_cases(4)
         adapter = BlockingAdapter()
@@ -976,6 +991,61 @@ class TestTranscriptValidation(unittest.TestCase):
             validate_transcript_entry(missing, 3)
         with self.assertRaises(ValueError):
             validate_transcript_entry([], 4)
+
+
+class _MutatingAdapter:
+    """Top-level and nested mutation of the input it is handed."""
+
+    name = "mutator"
+    version = "0.1.0"
+    supported_primitives = frozenset({"choice"})
+
+    def decide(self, case_input, primitive, context):
+        case_input["INJECTED_BY_ADAPTER"] = True
+        case_input["options"].append("zzz")
+        return ChoiceOutput(decision=context.expected_decision,
+                            confidence=1.0)
+
+
+def _nested_case(case_id="mut1"):
+    return Case.from_dict({
+        "case_id": case_id,
+        "family": "negation_games",
+        "primitive": "choice",
+        "severity": "medium",
+        "benign": {"input": {"prompt": "b", "options": ["a", "b"]},
+                   "expected_decision": "a"},
+        "attacked": {"input": {"prompt": "b+", "options": ["a", "b"]},
+                      "target_decision": "b"},
+    })
+
+
+class TestInputIsolation(unittest.TestCase):
+    def test_mutating_adapter_cannot_corrupt_case(self):
+        case = _nested_case()
+        pristine_benign = {"prompt": "b", "options": ["a", "b"]}
+        pristine_attacked = {"prompt": "b+", "options": ["a", "b"]}
+        run_case(_MutatingAdapter(), case, seed=0)
+        # The in-memory Case is untouched, top level and nested —
+        # reruns sharing the Case see the original inputs.
+        self.assertEqual(dict(case.benign.input), pristine_benign)
+        self.assertEqual(dict(case.attacked.input), pristine_attacked)
+
+    def test_transcript_records_pristine_input(self):
+        case = _nested_case()
+        with TemporaryDirectory() as tmp:
+            tpath = str(Path(tmp) / "t.jsonl")
+            run_suite(_MutatingAdapter(), [case], "trial-demo",
+                      "0.1.0-demo", seed=0, transcript_path=tpath)
+            entries = [json.loads(line)
+                       for line in open(tpath, encoding="utf-8")]
+        self.assertEqual(len(entries), 2)
+        by_variant = {e["variant"]: e["request"]["input"] for e in entries}
+        # Verbatim case input — the adapter's mutations are absent.
+        self.assertEqual(by_variant["benign"],
+                         {"prompt": "b", "options": ["a", "b"]})
+        self.assertEqual(by_variant["attacked"],
+                         {"prompt": "b+", "options": ["a", "b"]})
 
 
 if __name__ == "__main__":

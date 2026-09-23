@@ -314,6 +314,13 @@ adapter-facing dicts from the variant `input` dicts only
 stay available to tooling (gates, review, future case-level
 configuration) without ever crossing the adapter boundary.
 
+  **Amendment (2026-09-23, D-25).** The runner-injected keys are gone:
+  the adapter-facing dicts are now exact copies of the variant `input`
+  dicts, and the bookkeeping the injected keys carried travels on the
+  typed `CallContext` third argument to `decide()` instead. The
+  "extras never cross the adapter boundary" half of this decision is
+  unchanged; only the injection mechanism was removed.
+
 **Alternatives.** Pass extras through to `decide()` so adapters can read
 future per-case configuration directly. That silently widens the frozen
 `decide()` contract: every adapter would need to tolerate (or
@@ -431,6 +438,11 @@ artifacts whose numbers were computed under weaker semantics.
   "success" against an arbitrary target is not a property peira scores).
   The mock still flips toward targets (D-18); the leaderboard ranks on
   decision-change ASR only.
+
+  **Amendment (2026-09-23, D-25).** The parenthetical above describes
+  the pre-D-25 mechanism: the runner no longer injects anything into
+  the input — the target travels on `CallContext`, and the mock reads
+  it from there.
 
 **Why this:** v1 results could not answer the questions the methodology
 needs — whether an adapter refused, what it cost, whether the benign
@@ -711,3 +723,57 @@ the runner-owned retry policy is what keeps the AIMD signal honest.
 
 **To revisit:** model ids get bumped by editing the pin and the pricing
 table together, with the date — never silently.
+
+## D-25: Pure adapter inputs; trial bookkeeping on a typed `CallContext`
+
+**Decision.** What the adapter sees as `case_input` is now an exact
+copy of the case-defined input — `dict(case.benign.input)` /
+`dict(case.attacked.input)` — nothing added. The runner used to inject
+`case_id`, `expected_decision`, `target_decision`, and `attacked` into
+the input dict; that is gone. Trial bookkeeping travels on a typed
+third argument instead:
+
+```python
+@dataclass(frozen=True)
+class CallContext:
+    case_id: str
+    arm: Literal["benign", "attacked"]
+    expected_decision: str
+    target_decision: str | None = None
+```
+
+`BaseAdapter.decide()` is `decide(self, case_input, primitive, context)`.
+There is no compatibility shim: this is a pre-launch contract break,
+made deliberately while breaking changes are still free, so the final
+design doesn't carry a deprecated path. Honest adapters read their
+labels from the context (structured-output enums, guardrail veto
+baselines) and their prompt from the input; the mock adapter reads all
+trial bookkeeping from the context and raises if it is absent rather
+than falling back to input keys. The response cache key now includes
+the variant arm and the case id, because two cases can share
+byte-identical inputs and the context can legitimately change the
+decision.
+
+**What this does not fix.** A deliberately malicious adapter can still
+echo `context.expected_decision` — peira has an open decision
+vocabulary, so honest adapters need the labels too. P0 removes
+accidental/magic key leakage; deliberate benchmark gaming is addressed
+by holdouts, probes, and enforcement, not by hiding labels.
+
+**Alternatives.** Keep injecting keys into the input (the old
+behavior — the input then isn't what the case author wrote, and any
+adapter can silently depend on magic keys); pass bookkeeping as
+untyped kwargs (no contract, no IDE help); keep the two-arg signature
+and attach the context to the adapter instance (shared mutable state
+across concurrent calls — wrong under D-20's async runner).
+
+**Why this:** the input should be the case, exactly the case, and
+nothing but the case. If a case author writes `{"prompt": ...}`, the
+adapter receives `{"prompt": ...}` — no surprises, no hidden channels,
+and the transcript's recorded input is byte-for-byte what the case
+defined. Anything else is trial machinery, and machinery gets its own
+typed argument.
+
+**To revisit:** if the open-vocabulary label problem ever gets a
+better answer (e.g. a closed label registry per suite), the context
+can shrink — but the input stays pure regardless.

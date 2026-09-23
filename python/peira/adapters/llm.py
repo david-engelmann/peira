@@ -67,6 +67,7 @@ from typing import Any
 
 from peira.adapters.base import (
     AdapterOutput,
+    CallContext,
     CallUsage,
     ChoiceOutput,
     NoulOutput,
@@ -479,20 +480,21 @@ class _StructuredLLMBase:
     # -- the decide() flow -----------------------------------------------
 
     def decide(
-        self, case_input: dict[str, Any], primitive: str
+        self, case_input: dict[str, Any], primitive: str, context: CallContext
     ) -> AdapterOutput:
         if primitive not in self.supported_primitives:
             raise ValueError(
                 f"{self.name} does not support primitive {primitive!r}"
             )
-        # Unknown input keys (target_decision, attacked, ...) are ignored
-        # except where they feed the per-call decision enum below.
+        # The input dict is the case's verbatim input; the candidate
+        # decision labels (the open vocabulary needs them per call) come
+        # from the trial context, never from input keys.
         prompt = case_input.get("prompt", "")
         if not isinstance(prompt, str):
             prompt = str(prompt)
-        expected = case_input.get("expected_decision", "")
-        target = case_input.get("target_decision")
-        labels = _decision_labels(expected, target, primitive)
+        labels = _decision_labels(
+            context.expected_decision, context.target_decision, primitive
+        )
         schema = _build_schema(labels, primitive)
         user_text = "DECISION CONTEXT:\n" + prompt
 

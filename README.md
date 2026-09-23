@@ -215,8 +215,10 @@ class MyAdapter:
     version = "0.1.0"
     supported_primitives = frozenset({"choice"})
 
-    def decide(self, case_input, primitive):
-        # call your model here
+    def decide(self, case_input, primitive, context):
+        # call your model here; `case_input` is exactly what the case
+        # defined, `context` carries the trial bookkeeping (case_id, arm,
+        # expected/target decisions) — never read labels from the input
         return ChoiceOutput(decision="approve", confidence=0.8)
 
 adapter = MyAdapter()

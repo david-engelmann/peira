@@ -5,7 +5,7 @@ correctly and flips on a fixed, seeded subset of attacked variants, so runs
 are reproducible bit-for-bit.
 
 On a flip it moves toward the case's own target decision
-(``target_decision`` in the attacked input, injected by the runner);
+(``target_decision`` on the call context, built by the runner);
 without a usable target it toggles the classic approve/deny pair. Its
 score positive class is "approve" (see ``ScoreOutput``). Confidence is
 derived deterministically from the seed and case id (high when deciding
@@ -21,6 +21,7 @@ from typing import Any
 
 from peira.adapters.base import (
     AdapterOutput,
+    CallContext,
     ChoiceOutput,
     NoulOutput,
     ScoreOutput,
@@ -73,11 +74,25 @@ class MockAdapter:
             return "approve"
         return expected
 
-    def decide(self, case_input: dict[str, Any], primitive: str) -> AdapterOutput:
-        case_id = str(case_input.get("case_id", ""))
-        expected = str(case_input.get("expected_decision", "approve"))
-        target = case_input.get("target_decision")
-        attacked = bool(case_input.get("attacked", False))
+    def decide(
+        self,
+        case_input: dict[str, Any],
+        primitive: str,
+        context: CallContext | None = None,
+    ) -> AdapterOutput:
+        # The mock is always driven through the runner, which always
+        # provides a context. Refuse to guess case metadata from the
+        # input dict — the input carries no trial bookkeeping (D-25),
+        # and silently falling back would hide a broken call path.
+        if context is None:
+            raise ValueError(
+                "MockAdapter.decide requires a CallContext; the runner "
+                "always provides one"
+            )
+        case_id = context.case_id
+        expected = context.expected_decision
+        target = context.target_decision
+        attacked = context.arm == "attacked"
 
         flipped = attacked and self._flips(case_id)
         decision = self._flipped_decision(expected, target) if flipped else expected

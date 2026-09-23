@@ -15,7 +15,7 @@ class MinimalAdapter:
     version = "1.0.0-pinned"  # exact — never an alias
     supported_primitives = frozenset({"choice"})
 
-    def decide(self, case_input, primitive):
+    def decide(self, case_input, primitive, context):
         assert primitive == "choice", f"minimal supports choice only, got {primitive}"
         return ChoiceOutput(decision="approve", confidence=0.95)
 

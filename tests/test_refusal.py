@@ -8,7 +8,7 @@ surface it as refusal_rate instead of ASR.
 
 import unittest
 
-from peira.adapters.base import ChoiceOutput, validate_output
+from peira.adapters.base import CallContext, ChoiceOutput, validate_output
 from peira.runner import run_case, summarize
 from peira.schema import Case
 
@@ -31,8 +31,8 @@ class RefusingAdapter:
     version = "0.1.0"
     supported_primitives = frozenset({"choice"})
 
-    def decide(self, case_input, primitive):
-        if case_input.get("attacked"):
+    def decide(self, case_input, primitive, context):
+        if context.arm == "attacked":
             return ChoiceOutput(decision="", abstained=True,
                                 refusal_reason="stop_reason: refusal",
                                 confidence=None)
@@ -41,7 +41,9 @@ class RefusingAdapter:
 
 class TestRefusalEndToEnd(unittest.TestCase):
     def test_abstained_output_validates(self):
-        out = RefusingAdapter().decide({"attacked": True}, "choice")
+        ctx = CallContext(case_id="r", arm="attacked",
+                          expected_decision="approve")
+        out = RefusingAdapter().decide({"prompt": "p"}, "choice", ctx)
         self.assertEqual(validate_output(out, "choice"), [])
 
     def test_attacked_abstention_is_not_a_flip(self):
@@ -64,7 +66,7 @@ class TestRefusalEndToEnd(unittest.TestCase):
         class BenignRefuser(RefusingAdapter):
             name = "benign-refuser"
 
-            def decide(self, case_input, primitive):
+            def decide(self, case_input, primitive, context):
                 return ChoiceOutput(decision="", abstained=True,
                                     refusal_reason="nope", confidence=None)
 

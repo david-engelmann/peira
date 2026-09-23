@@ -250,15 +250,24 @@ def cache_key(
     adapter_version: str,
     cache_namespace: str,
     primitive: str,
+    variant: str,
+    case_id: str,
     case_input: dict[str, Any],
     manifest_sha256: str,
 ) -> str:
     """Content-hash key for one adapter call.
 
     Covers the adapter identity + its declared sampling namespace, the
-    primitive, the exact input bytes, and the dataset snapshot: any
-    change to what is computed changes the key. The key does NOT cover
-    the peira version — a runner upgrade must not silently reuse
+    primitive, the variant arm (``"benign"``/``"attacked"``), the case
+    id, the exact input bytes, and the dataset snapshot: any change to
+    what is computed changes the key. The arm is key material on its own
+    because the input dicts are the case's verbatim inputs — a case
+    whose benign and attacked inputs are identical would otherwise
+    collide across arms. The case id is key material because an
+    adapter's output may legitimately depend on trial bookkeeping it
+    receives (the mock's seeded flip is per case id); two cases with
+    byte-identical inputs still get separate entries. The key does NOT
+    cover the peira version — a runner upgrade must not silently reuse
     entries recorded under different runner semantics; operators
     clearing the cache on upgrade is the documented practice.
     """
@@ -268,6 +277,8 @@ def cache_key(
             "adapter_version": adapter_version,
             "cache_namespace": cache_namespace,
             "primitive": primitive,
+            "variant": variant,
+            "case_id": case_id,
             "input": case_input,
             "manifest_sha256": manifest_sha256,
         },
