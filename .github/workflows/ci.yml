@@ -39,7 +39,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@1.98.1
       - run: cargo test --workspace
 
   test-python-rust:
@@ -53,7 +53,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@1.98.1
       - run: pip install -e .
       - run: python scripts/build_core_ext.py
       - run: python -c "from peira._rust import RUST_AVAILABLE; assert RUST_AVAILABLE"
@@ -93,9 +93,11 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+      - uses: dtolnay/rust-toolchain@1.98.1
       - run: pip install -e .
       - run: peira dataset gates --dir dataset/trial
       - run: peira dataset verify-manifest --dir dataset/trial
+      - run: cargo run -q -p peira-cli -- validate --dir dataset/trial
       - name: gates on dataset/v1 (when cases exist)
         shell: bash
         run: |

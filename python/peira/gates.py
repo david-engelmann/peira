@@ -38,14 +38,19 @@ def _canon_input(variant: dict[str, Any]) -> str:
     return json.dumps(variant.get("input", {}), sort_keys=True)
 
 
-def gate_schema(cases) -> GateResult:
-    """G1: every case parses and satisfies the frozen schema."""
+def gate_schema(checked) -> GateResult:
+    """G1: every case parses and satisfies the frozen schema.
+
+    `checked` is (path, lineno, case_or_None, error_or_None) with the
+    error pre-computed by the caller (see `run_gates`): validation runs
+    once per case, and G1 only reports. `path` may be None in unit
+    tests.
+    """
     r = GateResult("G1", "schema")
-    for path, lineno, case, json_error in cases:
-        if json_error:
-            r.errors.append(f"{path.name}:{lineno}: {json_error}")
-        elif (errors := validate_case_dict(case)):
-            r.errors.append(f"{path.name}:{lineno}: {'; '.join(errors)}")
+    for path, lineno, _case, error in checked:
+        if error:
+            where = f"{path.name}:{lineno}" if path is not None else f"case:{lineno}"
+            r.errors.append(f"{where}: {error}")
     return r
 
 
@@ -146,10 +151,20 @@ def gate_pii_scan(valid_cases) -> GateResult:
 
 def run_gates(dataset_dir: Path) -> list[GateResult]:
     """Run all gates over a dataset directory, in order."""
-    raw = list(iter_case_lines(dataset_dir))
-    results = [gate_schema(raw)]
-    valid = [(p, n, c) for p, n, c, e in raw
-             if e is None and not validate_case_dict(c)]
+    # One pass: every line is parsed and validated exactly once. Each
+    # entry is (path, lineno, case_or_None, error_or_None) — G1 reports
+    # the collected errors, G2–G6 consume the valid subset, so no case
+    # is ever validated twice.
+    checked: list[tuple[Path, int, Any, str | None]] = []
+    for path, lineno, case, json_error in iter_case_lines(dataset_dir):
+        if json_error is not None:
+            checked.append((path, lineno, None, json_error))
+            continue
+        errors = validate_case_dict(case)
+        checked.append((path, lineno, case,
+                        "; ".join(errors) if errors else None))
+    results = [gate_schema(checked)]
+    valid = [(p, n, c) for p, n, c, e in checked if e is None]
     results.append(gate_paired_variants(valid))
     results.append(gate_dedup(valid))
     results.append(gate_families(valid))

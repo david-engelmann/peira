@@ -14,6 +14,7 @@ from peira.adapters.base import (
     validate_output,
 )
 from peira.artifacts import RunArtifact, results_to_dicts
+from peira.dataset import atomic_write_text
 from peira.metrics import (
     PerCaseResult,
     asr_conditional,
@@ -181,7 +182,10 @@ def _write_partial(
         results=results_to_dicts(results),
     )
     partial.metrics = summarize(results, required_families)
-    partial_path.write_text(partial.seal().to_json())
+    # Atomic write: an interrupt between checkpoints must never leave a
+    # half-written partial behind (a corrupt partial fails --resume
+    # validation instead of silently merging).
+    atomic_write_text(partial_path, partial.seal().to_json())
 
 
 def validate_partial(

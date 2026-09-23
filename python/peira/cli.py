@@ -10,6 +10,7 @@ from __future__ import annotations
 import argparse
 import html
 import json
+import os
 import re
 import sys
 import traceback
@@ -19,7 +20,7 @@ from typing import Any
 from peira import __version__
 from peira.adapters.mock import MockAdapter
 from peira.artifacts import RunArtifact
-from peira.dataset import verify_manifest, verify_manifest_sealed
+from peira.dataset import atomic_write_text, verify_manifest, verify_manifest_sealed
 from peira.metrics import PerCaseResult
 from peira.runner import SUITE_DIRS, load_cases, run_suite, validate_partial
 from peira.templates import TEMPLATES
@@ -68,6 +69,15 @@ def _get_adapter(name: str):
     return _load_dotted_adapter(name)
 
 
+def _unknown_adapter(spec: str) -> ValueError:
+    # One wording for every unresolvable adapter, so the Troubleshooting
+    # catalog pins a single message.
+    return ValueError(
+        f"unknown adapter: {spec!r} (available: 'mock' or a dotted "
+        f"path like 'examples.minimal_adapter')"
+    )
+
+
 def _load_dotted_adapter(spec: str):
     """Load an adapter from a dotted path.
 
@@ -78,10 +88,17 @@ def _load_dotted_adapter(spec: str):
 
     The working directory is prepended to sys.path so adapters next to the
     checkout (e.g. ``examples/``) resolve when the console script is used.
+    Only load adapter paths you trust: the module is imported — and
+    therefore executed — on load (see docs/Troubleshooting.md).
     """
     import importlib
 
     module_name, sep, attr = spec.partition(":")
+    if not module_name:
+        # import_module("") raises ValueError("Empty module name"), which
+        # the ImportError handler below would miss — reject the empty
+        # module up front with the standard unknown-adapter message.
+        raise _unknown_adapter(spec)
     cwd = str(Path.cwd())
     if cwd not in sys.path:
         sys.path.insert(0, cwd)
@@ -96,10 +113,7 @@ def _load_dotted_adapter(spec: str):
             except ImportError:
                 module = None
         if module is None:
-            raise ValueError(
-                f"unknown adapter: {spec!r} (available: 'mock' or a dotted "
-                f"path like 'examples.minimal_adapter')"
-            ) from first_err
+            raise _unknown_adapter(spec) from first_err
     if not attr:
         candidate = getattr(module, "adapter", None)
         if candidate is None:
@@ -186,12 +200,15 @@ def cmd_run(args: argparse.Namespace) -> int:
         return EXIT_USER_ERROR
 
     out_dir = Path(args.out)
-    out_dir.mkdir(parents=True, exist_ok=True)
 
     if args.dry_run:
         print(f"dry run: {len(cases)} cases, adapter={adapter.name}, "
               f"suite={args.suite} — config valid, nothing scored.")
         return EXIT_OK
+
+    # The output directory is created after the dry-run return: a dry
+    # run must have zero side effects.
+    out_dir.mkdir(parents=True, exist_ok=True)
 
     already_done: set[str] = set()
     prior_results: list[PerCaseResult] = []
@@ -252,7 +269,9 @@ def cmd_run(args: argparse.Namespace) -> int:
         return EXIT_INFRA_ERROR
 
     out_path = out_dir / f"{slug}-{suite}.json"
-    out_path.write_text(artifact.to_json())
+    # Atomic write: a crash mid-write must never leave a corrupt
+    # artifact behind.
+    atomic_write_text(out_path, artifact.to_json())
     if partial_path.exists():
         partial_path.unlink()
 
@@ -417,7 +436,7 @@ def cmd_dataset_build_manifest(args: argparse.Namespace) -> int:
     try:
         missing_notes = critical_cases_missing_notes(dataset_dir)
     except ValueError as e:
-        print(f"error: unreadable case data: {e}", file=sys.stderr)
+        print(f"error: {e}", file=sys.stderr)
         return EXIT_USER_ERROR
     if missing_notes:
         print(f"error: {len(missing_notes)} critical case(s) missing "
@@ -431,7 +450,7 @@ def cmd_dataset_build_manifest(args: argparse.Namespace) -> int:
         try:
             pending = pending_reviews(dataset_dir)
         except ValueError as e:
-            print(f"error: unreadable review state: {e}", file=sys.stderr)
+            print(f"error: {e}", file=sys.stderr)
             return EXIT_USER_ERROR
         if pending:
             print(f"error: {len(pending)} reviews pending — "
@@ -479,7 +498,18 @@ def cmd_dataset_new(args: argparse.Namespace) -> int:
     if args.out:
         out = Path(args.out)
         try:
+            # A hand-edited file may not end with a newline; appending
+            # blindly would glue the new case onto the last line and
+            # corrupt both. Check the last byte first.
+            if out.is_file() and out.stat().st_size > 0:
+                with open(out, "rb") as f:
+                    f.seek(-1, os.SEEK_END)
+                    needs_newline = f.read(1) != b"\n"
+            else:
+                needs_newline = False
             with open(out, "a", encoding="utf-8") as f:
+                if needs_newline:
+                    f.write("\n")
                 f.write(json.dumps(case, sort_keys=True) + "\n")
         except OSError as e:
             print(f"error: cannot write to {out}: {e}", file=sys.stderr)
@@ -507,10 +537,10 @@ def cmd_dataset_review(args: argparse.Namespace) -> int:
         print(f"error: dataset directory {dataset_dir} not found",
               file=sys.stderr)
         return EXIT_USER_ERROR
-    try:
-        command = args.review_command
-    except AttributeError:
-        command = None
+    # review_command always exists: the parser sets review_command=None
+    # by default, and the approve/reject subparsers set it via
+    # dest="review_command" — no AttributeError fallback needed.
+    command = args.review_command
     if command in ("approve", "reject"):
         status = "approved" if command == "approve" else "rejected"
         try:
@@ -521,7 +551,7 @@ def cmd_dataset_review(args: argparse.Namespace) -> int:
             print(f"error: {e}", file=sys.stderr)
             return EXIT_USER_ERROR
         except ValueError as e:
-            print(f"error: unreadable review state: {e}", file=sys.stderr)
+            print(f"error: {e}", file=sys.stderr)
             return EXIT_USER_ERROR
         print(f"{args.id}: marked {status}")
         return EXIT_OK
@@ -529,7 +559,7 @@ def cmd_dataset_review(args: argparse.Namespace) -> int:
         pending = pending_reviews(dataset_dir)
         cov = review_coverage(dataset_dir)
     except ValueError as e:
-        print(f"error: unreadable review state: {e}", file=sys.stderr)
+        print(f"error: {e}", file=sys.stderr)
         return EXIT_USER_ERROR
     if pending:
         print(f"pending reviews ({len(pending)}):")
@@ -576,7 +606,7 @@ def cmd_dataset_status(args: argparse.Namespace) -> int:
         cov = review_coverage(dataset_dir)
         missing_notes = critical_cases_missing_notes(dataset_dir)
     except ValueError as e:
-        print(f"error: unreadable review state: {e}", file=sys.stderr)
+        print(f"error: {e}", file=sys.stderr)
         return EXIT_USER_ERROR
 
     manifest_path = dataset_dir / MANIFEST_NAME
@@ -680,7 +710,9 @@ def build_parser() -> argparse.ArgumentParser:
     r.add_argument("--adapter", default="mock",
                    help="'mock', or a dotted path: package.module (with a "
                    "top-level `adapter`), package.module:ClassName, or "
-                   "package.module.ClassName")
+                   "package.module.ClassName. Only load adapter paths you "
+                   "trust: the module is imported — and therefore executed "
+                   "— with the working directory first on sys.path")
     r.add_argument("--suite", default="trial-demo",
                    choices=list(SUITE_DIRS) + ["smoke"],
                    help="smoke is an alias for trial")

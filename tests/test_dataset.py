@@ -385,6 +385,74 @@ class TestDatasetStatus(unittest.TestCase):
         self.assertEqual(rc, 1)
 
 
+class TestIterCases(unittest.TestCase):
+    """The shared case-file walk: one loop, fail-fast with file:line."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.dir = Path(self.tmp.name)
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def _write(self, name, text):
+        (self.dir / name).write_text(text, encoding="utf-8")
+
+    def test_yields_path_lineno_and_case(self):
+        from peira.dataset import iter_cases
+        self._write("b.jsonl", json.dumps(_case("c2")) + "\n")
+        self._write("a.jsonl",
+                    "\n" + json.dumps(_case("c1")) + "\n"
+                    + json.dumps(_case("c3")) + "\n")
+        got = [(p.name, n, c["case_id"]) for p, n, c in iter_cases(self.dir)]
+        # Files in sorted order; blank lines skipped; line numbers are
+        # the file's own (the leading blank is line 1).
+        self.assertEqual(got, [("a.jsonl", 2, "c1"), ("a.jsonl", 3, "c3"),
+                               ("b.jsonl", 1, "c2")])
+
+    def test_invalid_json_raises_with_file_and_line(self):
+        from peira.dataset import iter_cases
+        self._write("cases.jsonl",
+                    json.dumps(_case("c1")) + "\n{bad json}\n")
+        with self.assertRaises(ValueError) as ctx:
+            list(iter_cases(self.dir))
+        self.assertIn("cases.jsonl:2: invalid JSON", str(ctx.exception))
+
+    def test_schema_violation_raises_with_file_and_line(self):
+        from peira.dataset import iter_cases
+        bad = _case("c1")
+        del bad["severity"]
+        self._write("cases.jsonl", json.dumps(bad) + "\n")
+        with self.assertRaises(ValueError) as ctx:
+            list(iter_cases(self.dir))
+        self.assertIn("cases.jsonl:1:", str(ctx.exception))
+
+
+class TestAtomicWriteText(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.dir = Path(self.tmp.name)
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def test_write_and_overwrite(self):
+        from peira.dataset import atomic_write_text
+        target = self.dir / "out.txt"
+        atomic_write_text(target, "one")
+        self.assertEqual(target.read_text(encoding="utf-8"), "one")
+        atomic_write_text(target, "two")
+        self.assertEqual(target.read_text(encoding="utf-8"), "two")
+        # No temp files left behind.
+        self.assertEqual([p.name for p in self.dir.iterdir()], ["out.txt"])
+
+    def test_missing_parent_dir_fails_clean(self):
+        from peira.dataset import atomic_write_text
+        with self.assertRaises(OSError):
+            atomic_write_text(self.dir / "nope" / "out.txt", "x")
+        self.assertFalse((self.dir / "nope").exists())
+
+
 class TestDatasetCIChecks(unittest.TestCase):
     """The dataset-checks CI job (gates + manifest verification) must stay
     green on the committed Trial suite — the same checks the job

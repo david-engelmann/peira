@@ -10,6 +10,14 @@ path — `package.module` (with a top-level `adapter`),
 `examples/minimal_adapter.py`). Run from the directory your adapter module
 lives under.
 
+**Loading an adapter runs its code — only use paths you trust**
+Cause: `peira run --adapter some.module` imports that module to get the
+adapter, and importing a module executes it. The working directory is
+prepended to `sys.path` first, so a local file can shadow an installed
+package of the same name. Fix: only load adapter paths you trust, and
+run from a directory whose files you control. The bundled `mock`
+adapter is safe.
+
 **`error: unknown suite 'x'`**
 Cause: typo in `--suite`. Fix: `trial-demo` (demo fixture, offline) or
 `trial` (the branded 100-case Peira Trial, sealed `1.0.0`).
@@ -133,6 +141,15 @@ family id, attacked input identical to benign, incoherent target), then
 re-run. Warnings (e.g. G6 pii-scan) don't fail the suite but go to the
 human review queue.
 
+**`peira dataset status` exits 1**
+Cause: none — exit 1 here is a status signal, not a failure. It means
+the dataset is not release-ready: gates report errors, reviews are
+pending, or the manifest is absent or stale. The detail is printed above
+the `status: not release-ready` line. Fix: address what is listed — fix
+gate errors, complete pending reviews (`peira dataset review --dir
+<dir>`), build or refresh the manifest (`peira dataset build-manifest
+--dir <dir> --version <v>`) — then re-run.
+
 **`peira dataset new: error: argument --family: invalid choice: 'x'`**
 Cause: the family id isn't one of the ten canonical ids. Fix: pick from
 the list in the error — `state_poisoning`, `criteria_smuggling`,
@@ -153,6 +170,14 @@ the dataset directory. Fix: check the id — `peira dataset review --dir
 Cause: `review.json` is corrupt. Fix: restore it from git (review
 decisions are committed). If it was never created, there's nothing to
 restore — an absent `review.json` simply means nothing reviewed yet.
+
+**`error: unreadable case data: <file>:<line>: ...`**
+Cause: a review, status, or build-manifest command hit a case-file line
+that isn't valid JSON or fails schema validation. Review decisions are
+never computed over a partially-read dataset, so the command stops
+instead of silently skipping the line. Fix: run
+`peira validate --dataset <dir>` — it prints file, line, and rule for
+every bad line. Fix the lines, then re-run.
 
 **`error: N reviews pending — manifest not written`**
 Cause: `build-manifest --require-reviews` found unreviewed cases. Fix:

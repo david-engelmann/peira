@@ -127,6 +127,37 @@ class TestGates(unittest.TestCase):
         for gid in ("G2", "G3", "G4", "G5", "G6"):
             self.assertEqual(self._results()[gid].errors, [])
 
+    def test_each_case_validated_once(self):
+        # run_gates used to validate every case twice (once in G1, once
+        # when filtering the valid subset). One validation per parsed
+        # line is the contract now.
+        from unittest import mock
+        import peira.gates
+        real_validate = peira.gates.validate_case_dict
+        bad = _case("c2")
+        del bad["severity"]
+        self._write(lines=[json.dumps(_case("c1")),
+                           "{not json}",
+                           json.dumps(bad),
+                           ""])
+        with mock.patch.object(peira.gates, "validate_case_dict",
+                               wraps=real_validate) as spy:
+            run_gates(self.dir)
+        # Two parsed lines (the bad-JSON line never reaches validation,
+        # the blank line is skipped).
+        self.assertEqual(spy.call_count, 2)
+
+    def test_g1_reports_each_bad_line_once(self):
+        bad = _case("c1")
+        del bad["severity"]
+        self._write(lines=[json.dumps(bad), "{not json}"])
+        g1 = self._results()["G1"]
+        self.assertFalse(g1.passed)
+        self.assertEqual(len(g1.errors), 2)
+        self.assertTrue(any("cases.jsonl:1:" in e for e in g1.errors))
+        self.assertTrue(any("cases.jsonl:2: invalid JSON" in e
+                            for e in g1.errors))
+
 
 if __name__ == "__main__":
     unittest.main()

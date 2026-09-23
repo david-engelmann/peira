@@ -129,5 +129,89 @@ class TestCaseFilesReadAsUtf8(unittest.TestCase):
             self.assertIn("utf8 ok", r.stdout)
 
 
+class TestAdapterLoading(unittest.TestCase):
+    def test_empty_module_name_is_unknown_adapter(self):
+        # --adapter :Foo used to die with "ValueError: Empty module name"
+        # (a traceback, exit 2). It is a user error: the documented
+        # unknown-adapter message, exit 1 at the CLI layer.
+        from peira.cli import _load_dotted_adapter
+        for spec in (":Foo", ""):
+            with self.assertRaises(ValueError) as ctx:
+                _load_dotted_adapter(spec)
+            self.assertIn(f"unknown adapter: {spec!r}", str(ctx.exception))
+
+    def test_unknown_module_is_unknown_adapter(self):
+        from peira.cli import _load_dotted_adapter
+        with self.assertRaises(ValueError) as ctx:
+            _load_dotted_adapter("no_such_module_xyz")
+        self.assertIn("unknown adapter: 'no_such_module_xyz'",
+                      str(ctx.exception))
+
+    def test_empty_module_via_cli_is_exit_1(self):
+        import contextlib
+        import io
+        from peira.cli import cmd_run
+        out, err = io.StringIO(), io.StringIO()
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            rc = cmd_run(argparse.Namespace(adapter=":Foo", suite="trial-demo",
+                                            out="runs", dry_run=False,
+                                            json_progress=False, resume=False))
+        self.assertEqual(rc, EXIT_USER_ERROR)
+        self.assertIn("error: unknown adapter: ':Foo'", err.getvalue())
+        self.assertNotIn("Traceback", out.getvalue() + err.getvalue())
+
+
+class TestDatasetNewAppend(unittest.TestCase):
+    def _run_new(self, out_path):
+        import contextlib
+        import io
+        from peira.cli import cmd_dataset_new
+        args = argparse.Namespace(family="state_poisoning", id="sp-042",
+                                  severity="medium", primitive=None,
+                                  out=str(out_path))
+        buf_out, buf_err = io.StringIO(), io.StringIO()
+        with contextlib.redirect_stdout(buf_out), contextlib.redirect_stderr(buf_err):
+            rc = cmd_dataset_new(args)
+        return rc, buf_out.getvalue(), buf_err.getvalue()
+
+    def _case_line(self):
+        from peira.templates import render_template
+        return json.dumps(render_template("state_poisoning", "sp-001",
+                                          severity="medium"))
+
+    def test_append_without_trailing_newline_stays_parseable(self):
+        # A hand-edited file missing its trailing newline must not get
+        # the new case glued onto its last line.
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp) / "cases.jsonl"
+            target.write_text(self._case_line(), encoding="utf-8")  # no \n
+            rc, _, _ = self._run_new(target)
+            self.assertEqual(rc, 0)
+            lines = [ln for ln in target.read_text(encoding="utf-8")
+                     .splitlines() if ln.strip()]
+            self.assertEqual(len(lines), 2)
+            for ln in lines:
+                json.loads(ln)  # each line parses on its own
+            self.assertEqual(json.loads(lines[1])["case_id"], "sp-042")
+
+    def test_append_with_trailing_newline_unchanged(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp) / "cases.jsonl"
+            target.write_text(self._case_line() + "\n", encoding="utf-8")
+            rc, _, _ = self._run_new(target)
+            self.assertEqual(rc, 0)
+            lines = [ln for ln in target.read_text(encoding="utf-8")
+                     .splitlines() if ln.strip()]
+            self.assertEqual(len(lines), 2)
+
+    def test_append_to_new_file(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp) / "cases.jsonl"
+            rc, _, _ = self._run_new(target)
+            self.assertEqual(rc, 0)
+            self.assertEqual(json.loads(target.read_text(
+                encoding="utf-8"))["case_id"], "sp-042")
+
+
 if __name__ == "__main__":
     unittest.main()
