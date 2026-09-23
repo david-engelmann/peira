@@ -8,6 +8,13 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
 ## [Unreleased]
 
 ### Added
+- Trial-demo disposition (T3): `dataset/trial-demo` confirmed as the
+  12-case offline quickstart fixture (gate-exempt, contents frozen for
+  the quickstart). Stale "starter suite" / "lands at v1" wording swept
+  from `AGENTS.md`, `docs/Troubleshooting.md`, `docs/Decisions.md`, and
+  the dataset docstring; `dataset/README.md` now lists the branded
+  Trial; D-8's "to revisit" note resolved — Trial runs stay off the
+  leaderboard (below the hard 20-case ranking gate).
 - Branded 100-case Peira Trial (T2): `dataset/trial` now holds 100
   v1-quality cases (10 per attack family; 14 critical / 40 high / 46
   medium) authored through the full pipeline — all six gates green,
