@@ -7,6 +7,45 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
 
 ## [Unreleased]
 
+### Added — real day-one adapters (A2)
+- New `python/peira/adapters/hf.py` behind `peira[hf]`: Shieldstral
+  (`mistralai/Shieldstral-1.0-3B`, pinned revision), ProtectAI
+  prompt-injection v2 (pinned revision, documented false-positive
+  tendency on system-prompt-style content), and Llama Prompt Guard 2
+  86M (pinned revision, binary BENIGN/MALICIOUS, gated-license caveat,
+  512-token segmentation). All map verdicts to choice/noul with
+  `|2p−1|` confidence; thread-safe lazy model load; pinned revisions as
+  tested class constants, never `main`.
+- New `python/peira/adapters/llm.py` with one adapter per provider —
+  `peira[openai]` (default `gpt-5.6-luna`), `peira[anthropic]` (default
+  `claude-sonnet-5`), `peira[google]` (default `gemini-3.8-flash`).
+  One JSON schema template sent to provider-native constrained
+  decoding (strict `json_schema` / forced tool choice / `responseSchema`)
+  plus stdlib client-side revalidation; per-call decision enum built
+  from the case's own labels; temperature 0 with pinned seed where
+  supported; verbalized confidence flagged uncalibrated; refusal
+  pipeline (stop reason → GCG prefixes → one schema-repair retry, then
+  terminal); SDK retries
+  disabled — the runner owns retries.
+- New `python/peira/adapters/jev.py` (stdlib-only, no extra): TypeSafe
+  Jev System One adapter pinned to `jev-1.13.0`, one POST per call with
+  no internal retries, `TYPESAFE_API_KEY` required with an actionable
+  error, 429/529/5xx and transport timeouts surfaced as retryable
+  `ProviderError` for the runner while 401/422 stay terminal.
+- Pricing table now carries pinned prices for the adapter models
+  (`gpt-5.6-sol` corrected to $4/$20, verified 2026-09-23 against
+  OpenAI's pricing page; `claude-opus-5.5` replaced by the real
+  `claude-opus-5` at $5/$25; `jev-1.13.0` at TypeSafe's published
+  $0.042/1M input, output free — the old "no public pricing" note
+  was wrong); Anthropic/Google rates are still unverified —
+  re-check before launch.
+- New `docs/Adapters.md`: install extras, API keys, pinned models, and
+  per-adapter measurement notes. README adapter table updated
+  (shipped vs planned vs measured). ADRs D-21–D-24: optional-dependency
+  isolation, provider-native schema + client validation,
+  confidence/refusal normalization, model/revision pinning and Jev
+  transport.
+
 ### Changed — README v2 (docs slice D1)
 - Rewrote `README.md` around proof-first structure: a real generated
   per-family results table (from `peira run --adapter mock --suite trial`)

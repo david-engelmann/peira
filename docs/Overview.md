@@ -20,13 +20,15 @@ below, or browse the full map.
 
 1. [Add your model](../README.md#add-your-model) — the 12-line adapter
    snippet.
-2. [examples/minimal_adapter.py](../examples/minimal_adapter.py) — the
+2. [Adapters](Adapters.md) — the day-one adapters: install extras, API
+   keys, pinned models, and what each one actually measures.
+3. [examples/minimal_adapter.py](../examples/minimal_adapter.py) — the
    runnable version, ~30 lines.
-3. [Taxonomy](Taxonomy.md) — the three primitives and the ten attack
+4. [Taxonomy](Taxonomy.md) — the three primitives and the ten attack
    families your adapter will face.
-4. [Methodology](Methodology.md) — the contracts your `decide()` output
+5. [Methodology](Methodology.md) — the contracts your `decide()` output
    must satisfy, and what makes a case eligible.
-5. [CLI reference](CLI.md) — `--adapter` takes a dotted path;
+6. [CLI reference](CLI.md) — `--adapter` takes a dotted path;
    `--max-concurrency`, `--transcript`, and `--cache-dir` are the flags
    you'll actually use.
 
@@ -71,6 +73,8 @@ below, or browse the full map.
 
 - [CLI](CLI.md) — every command and flag, generated from the parser.
   Never hand-edited, never stale.
+- [Adapters](Adapters.md) — the day-one adapters: extras, keys, pinned
+  models, and what each one measures.
 - [Troubleshooting](Troubleshooting.md) — exact error → cause → fix.
   Every user-facing CLI error lives here.
 - [FAQ](FAQ.md) — the questions everyone asks first.

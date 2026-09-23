@@ -22,9 +22,14 @@ classifiers = [
 ]
 
 [project.optional-dependencies]
-# Reserved for future adapters; no adapter code uses these yet.
-hf = ["transformers>=4.40", "torch", "huggingface-hub>=0.22"]
-all = ["peira[hf]"]
+# Optional: Hugging Face guardrail adapters (python/peira/adapters/hf.py).
+hf = ["transformers>=4.40", "torch>=2.2"]
+# Optional: structured-output LLM baseline adapters
+# (python/peira/adapters/llm.py).
+openai = ["openai>=1.40"]
+anthropic = ["anthropic>=0.34"]
+google = ["google-genai>=1.0"]
+all = ["peira[hf]", "peira[openai]", "peira[anthropic]", "peira[google]"]
 
 [project.scripts]
 peira = "peira.cli:main"
