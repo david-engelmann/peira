@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="640" viewBox="0 0 1280 640">
+  <defs>
+    <linearGradient id="marble" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#f5f1e8"/>
+      <stop offset="1" stop-color="#ece5d3"/>
+    </linearGradient>
+  </defs>
+  <rect width="1280" height="640" fill="url(#marble)"/>
+  <rect x="60" y="60" width="1160" height="520" fill="none" stroke="#d8cfb8" stroke-width="2"/>
+  <text x="120" y="300" font-family="Georgia, 'Times New Roman', serif" font-size="150" fill="#1e3a2b">peira</text>
+  <text x="124" y="380" font-family="Georgia, 'Times New Roman', serif" font-size="40" font-style="italic" fill="#3c5a47">the empirical trial for decision models</text>
+  <rect x="124" y="420" width="72" height="6" fill="#c58a2d"/>
+    <rect x="840" y="420" width="180" height="16" rx="8" fill="#c58a2d" opacity="0.28"/>
+    <rect x="840" y="454" width="260" height="16" rx="8" fill="#c58a2d" opacity="0.28"/>
+    <rect x="840" y="488" width="330" height="16" rx="8" fill="#c58a2d" opacity="0.28"/>
+    <rect x="840" y="522" width="430" height="16" rx="8" fill="#c58a2d" opacity="0.28"/>
+    <rect x="840" y="556" width="520" height="16" rx="8" fill="#c58a2d" opacity="0.28"/>
+  <text x="120" y="544" font-family="Verdana, sans-serif" font-size="22" fill="#3c5a47">adversarial-robustness benchmark for LLM guardrails · MIT / CC-BY-4.0</text>
+</svg>
+
