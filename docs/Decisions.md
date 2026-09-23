@@ -537,3 +537,166 @@ provider twice.
 caps) once real adapters exist and providers' actual limits are known;
 checkpointing AIMD state across resume if resumed-run provenance drift
 ever matters.
+
+## D-21: Optional dependencies are install extras, never import-time requirements
+
+**Decision.** The base `peira` install stays zero-third-party-dependency.
+Every adapter with third-party needs ships behind a named extra, and the
+SDK import happens lazily — at adapter construction, never at `import
+peira` time:
+
+- `peira[hf]` → torch + transformers (Shieldstral, ProtectAI, Prompt
+  Guard 2)
+- `peira[openai]` → openai SDK
+- `peira[anthropic]` → anthropic SDK
+- `peira[google]` → google-genai SDK
+- Jev needs no extra: its transport is stdlib `urllib`.
+
+Constructing an adapter without its extra (or without its API key)
+raises `ValueError` with a message naming the extra and the env var —
+the CLI already surfaces `ValueError` cleanly, and every such message
+is cataloged in `docs/Troubleshooting.md`. There is no fallback, no
+degraded mode, and no auto-install: a missing dependency is a
+configuration error, and the error says exactly which `pip install`
+fixes it.
+
+**Alternatives.** Eager imports with try/except at module top (turns a
+clear config error into import-order puzzles); one `peira[all]` mega
+extra as the only path (forces a GPU torch install on someone measuring
+an API baseline); vendoring SDKs (a maintenance burden for a solo
+maintainer).
+
+**Why this:** the quickstart must stay `pip install peira` with nothing
+else — a benchmark nobody can install in 60 seconds is a benchmark
+nobody runs. Lazy construction keeps the failure at the point of use
+with the fix in the message.
+
+**To revisit:** if an adapter ever needs a native extension, it gets its
+own extra with platform pins; the base tier never gains compiled
+dependencies.
+
+## D-22: Provider-native constrained decoding plus client-side revalidation
+
+**Decision.** The structured-output LLM adapters define one JSON schema
+template and enforce it twice: first by the provider's native
+constrained decoding (OpenAI strict `json_schema`, Anthropic forced
+tool choice, Gemini `responseSchema`), then by a hand-written stdlib
+validator on the client before the output is accepted. The two layers
+catch different failures — the provider layer keeps the model on
+schema, the client layer keeps the provider honest (and keeps peira
+independent of provider schema bugs).
+
+Two corollaries:
+
+1. **The decision enum is per-call, not fixed.** peira cases use an open
+   decision vocabulary (`deny`, `emergency-dept`, `choose A`, … — 40+
+   labels in the trial suite alone). A fixed `["approve", "reject",
+   "other"]` enum would make nearly every case ineligible on a
+   technicality (`benign_wrong_decision`), laundering a schema choice
+   into a benchmark result. The adapter builds the enum from the case's
+   own labels — expected, plus target on attacked variants, plus
+   `"other"` — and documents why.
+2. **One repair attempt, then the refusal pipeline decides.** A schema
+   failure gets a single re-ask ("return only the JSON object"); a
+   second failure goes through the refusal checks, not a retry loop.
+   Malformed-after-repair is a terminal measurement outcome, never
+   retried into compliance.
+
+**Alternatives.** Client-side validation only (lets the model ramble
+and hopes the parser survives); provider-side only (trusts the
+provider's schema enforcement, which has had bugs); regex/JSON repair
+heuristics instead of one clean re-ask (repairs invent content).
+
+**Why this:** constrained decoding without client validation trusts the
+provider; validation without constrained decoding trusts the model.
+Both have failed in production. The per-call enum is the subtler point:
+a benchmark must never let its harness silently disqualify cases.
+
+**To revisit:** if providers add token-level constrained grammars with
+stronger guarantees, the client layer stays anyway — defense in depth
+is the point.
+
+## D-23: Confidence and refusal normalization across adapter kinds
+
+**Decision.** Every adapter reports confidence on the same 0..1 scale,
+but the *meaning* differs by kind, and the docs say so plainly:
+
+- **Guardrails** (Shieldstral, ProtectAI, Prompt Guard 2): confidence =
+  `|2p − 1|` from the detector's maliciousness probability — distance
+  from the decision boundary, not calibration. Their verdict mapping is
+  fixed: benign content keeps the case's expected decision (the
+  guardrail vetoes nothing), malicious content becomes the adapter's
+  veto label `"reject"`. That mapping is what makes ASR read as the
+  guardrail's detection rate; it is documented on the adapter, not
+  hidden.
+- **Structured LLM baselines**: confidence is the model's *verbalized*
+  confidence, plus the decision-token logprob where the provider
+  exposes one (Anthropic exposes none — recorded as null, not zero).
+  Verbalized confidence is **uncalibrated until measured**: peira
+  reports the number and computes ECE/Brier against it, but never
+  claims it means what it says.
+- **Jev**: confidence comes from the API's per-answer probabilities —
+  the only adapter whose confidence is a stated probability rather
+  than a verbalization or a boundary distance.
+
+Refusals are normalized the same way everywhere: a detected refusal
+(provider stop/finish reason, then the GCG refusal-prefix scan)
+becomes `abstained=True` with a reason and an empty
+decision — counted in `refusal_rate`, never in ASR (D-19). A 0% ASR via
+100% refusal is not robustness, and the normalization keeps it visible.
+
+**Alternatives.** One confidence semantics for all adapters (lies —
+the three kinds genuinely differ); dropping verbalized confidence
+entirely (throws away the only uncertainty signal chat models offer);
+mapping guardrail verdicts onto fixed approve/reject labels (makes
+benign accuracy measure label coincidence instead of detection).
+
+**Why this:** the leaderboard compares adapters, so the numbers must
+share a scale — but sharing a scale without documenting the different
+meanings would be a comparability lie. Normalize the representation,
+document the semantics.
+
+**To revisit:** when calibration data exists for a baseline, its
+confidence track can graduate from "verbalized" to "measured" — with
+the reliability curve published, not asserted.
+
+## D-24: Model and revision pinning; Jev's stdlib transport
+
+**Decision.** Every adapter names its exact model, and the name travels
+on `CallUsage.model` into the run artifact:
+
+- HF guardrails pin the Hub commit SHA (e.g. Shieldstral
+  `003ec7e2…`), never `main` or a tag. The SHA is a class constant,
+  asserted by tests, and recorded in the transcript with
+  `"revision_source": "pinned"`.
+- LLM baselines pin the provider model id (`gpt-5.6-luna`,
+  `claude-sonnet-5`, `gemini-3.8-flash`); Jev pins `jev-1.13` and
+  rejects floating tags (`jev-latest`) at construction with an
+  explicit error.
+- The pricing table carries pre-launch provisional prices for exactly
+  these ids (not yet verified against provider pricing pages —
+  verify before launch); `jev-1.13` is 0.0 because TypeSafe
+  publishes no public pricing, and unknown models price at 0.0,
+  never estimated.
+
+Jev's transport is stdlib `urllib`, one POST per call, zero internal
+retries. The adapter maps HTTP semantics for the runner: 429/529/5xx
+(plus `Retry-After`) → `ProviderError` with `status_code`/`retry_after`
+for the runner's transient-retry path; 401/422 → terminal with an
+actionable message (401 names the key and where to get access; 422 is
+declared an adapter bug, not retried). Timeouts and connection errors
+are transient with no status. The API key travels only in the
+`Authorization` header — never in the payload, the transcript, or an
+error message.
+
+**Alternatives.** Floating model tags (a leaderboard row that silently
+changes meaning when the provider swaps the weights); per-adapter
+retry loops (fights the runner's AIMD controller, D-20); a third-party
+HTTP client for Jev (a dependency for one POST).
+
+**Why this:** a measurement names its instrument or it isn't a
+measurement. Pinning is what lets two runs months apart be compared;
+the runner-owned retry policy is what keeps the AIMD signal honest.
+
+**To revisit:** model ids get bumped by editing the pin and the pricing
+table together, with the date — never silently.

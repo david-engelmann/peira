@@ -40,9 +40,13 @@ Fix: normalize outputs in your adapter (Choice confidence and Score must
 be 0..1). Malformed outputs count against your ASR, so fix this before
 benchmarking seriously.
 
-**Hugging Face auth / rate-limit errors** (planned `peira[hf]` adapters)
-Cause: `peira[hf]` adapters download models from HF Hub. Fix: `huggingface-cli
-login`, or set `HF_TOKEN`. Model weights are cached after the first download.
+**Hugging Face auth / rate-limit errors** (`peira[hf]` adapters)
+Cause: `peira[hf]` adapters download models from HF Hub. Gated models
+(Llama Prompt Guard 2) additionally require a license click-through.
+Fix: `huggingface-cli login`, or set `HF_TOKEN`; for gated models,
+accept the license on the model's HF page first. Model weights are
+cached after the first download. Revisions are pinned — a download
+failure never silently falls back to another revision.
 
 **Out-of-memory on local models**
 Cause: the model doesn't fit in RAM/VRAM. Fix: use a quantized variant or a
@@ -365,3 +369,125 @@ measured is lost. Fix: re-run the same command with `--resume` — or
 drop the `--resume` and the stale `.partial.json` to start over.
 In-flight provider calls can't be force-cancelled; they are abandoned
 and their cases re-run on resume.
+
+## A2 adapter errors
+
+**`this adapter requires the 'hf' extra (torch and transformers): install it with: pip install 'peira[hf]'`**
+Cause: you instantiated a Hugging Face adapter (`shieldstral`,
+`protectai-prompt-injection`, `llama-prompt-guard-2`) without the
+optional dependency. Fix: `pip install "peira[hf]"` (the base package
+stays dependency-free by design). The same shape applies to the LLM
+baselines: `error: the peira[openai] extra is required for
+OpenAIAdapter — install it with: pip install "peira[openai]"` (and
+`peira[anthropic]`, `peira[google]` for the other two).
+
+**`...: hf_revision must be a pinned commit hash, never 'main'/'latest'`**
+Cause: internal sanity check — an adapter was constructed with a
+floating revision. You can't hit this through the bundled adapters
+(their revisions are pinned constants); it fires only for a subclass
+that overrides the pin with something unpinned. Fix: pin the exact
+commit hash.
+
+**`Cannot download gated model '...' (HTTP ...). Accept the model license on its Hugging Face page ...`**
+Cause: Llama Prompt Guard 2 is gated — you haven't accepted the Meta
+Llama 4 Community License on the model's HF page, or `huggingface-cli
+login` / `HF_TOKEN` isn't set. Fix: accept the license (one click on
+the model repo), then authenticate locally. The download is a one-time
+cost; weights are cached afterwards.
+
+**`Transient Hugging Face Hub error (HTTP ...) while loading '...' — safe to retry.`**
+Cause: the model download hit a transient Hub error (rate limit or
+5xx). This is raised with retry metadata, so `peira run` retries it
+under `--max-attempts` like any transient provider failure. Fix: wait
+and re-run; no action needed beyond the retry.
+
+**`<adapter> does not support primitive 'score'`** (HF adapters)
+Cause: the HF guardrail adapters are classifiers — they support
+`choice` and `noul` only. A `score` case fails closed as malformed
+rather than being force-fit. Fix: none for the adapter; the Trial's
+score cases are measured by the LLM and Jev adapters.
+
+**`tokenizer for '...' has no single-token id for yes (tried ...) ...`**
+Cause: Shieldstral reads its verdict from the first-token logprobs of
+` yes`/` no` — the loaded tokenizer has no single-token id for either
+spelling, so the probability can't be read honestly. This is a
+tokenizer/model mismatch, not a retryable failure. Fix: check the
+pinned revision actually matches `mistralai/Shieldstral-1.0-3B`;
+don't substitute tokenizers.
+
+**`error: OPENAI_API_KEY is not set — OpenAIAdapter needs it (and the peira[openai] extra)`**
+Cause: no API key found in the environment (or the explicit `api_key=`
+argument). Anthropic reads `ANTHROPIC_API_KEY`; Google reads
+`GOOGLE_API_KEY` with fallback to `GEMINI_API_KEY`. Fix: export the
+key; keys never appear in transcripts or artifacts.
+
+**`<name> does not support primitive 'x'`** (LLM baselines)
+Cause: the adapter was asked for a primitive outside `choice`, `score`,
+`noul`. You can't hit this through the bundled adapters on the Trial
+(they cover all three) — it fires only for a genuinely unknown
+primitive string. Fix: check the primitive name.
+
+**`<name>: model output failed schema validation twice: ...`**
+Cause: the provider returned output that didn't validate against the
+constrained-decoding schema on both the first attempt and the single
+schema-repair retry. The message quotes both validation errors. Fix:
+this is usually provider-side flakiness — re-run (the runner retries
+transient failures). If it persists for a model, report it: the schema
+is per-call and the provider claims to honor it.
+
+**`OpenAI request timed out: ...` / `Anthropic request timed out: ...`**
+Cause: the provider SDK's own timeout fired (mapped to status 408 so
+the runner treats it as transient and retries). Fix: re-run; sustained
+timeouts mean the provider is degraded.
+
+**`OpenAI returned no choices`**
+Cause: the provider answered with an empty choices list — a malformed
+provider response, not a retryable failure. Fix: re-run; if it
+persists, the provider is misbehaving.
+
+**`jev adapter needs a TypeSafe API key: set the TYPESAFE_API_KEY environment variable (or pass api_key=...)`**
+Cause: no Jev API key. Jev is gated on access — the message says where
+to request it. Fix: `export TYPESAFE_API_KEY=...`.
+
+**`jev adapter pins model 'jev-1.13'; got '...'`**
+Cause: a floating or wrong model id was passed. Jev measurements must
+name the exact model — `jev-latest` and friends are rejected. Fix:
+don't pass `model=` at all (the default is the pin), or pass the exact
+pinned id.
+
+**`jev: HTTP 401 ... — check that TYPESAFE_API_KEY is valid and the account has Jev access.`**
+Cause: bad or unauthorized key. Terminal — the runner won't retry it.
+Fix: check the key and your Jev access.
+
+**`jev: HTTP 422 ... — the request was rejected; this is an adapter bug, not a retryable failure.`**
+Cause: Jev rejected the request shape. The adapter validates questions
+client-side before sending, so this means API drift. Fix: report it —
+don't retry.
+
+**`jev: HTTP 429/529/5xx ...`**
+Cause: rate limit, overload, or provider error. Raised with
+`retry_after` (from the `Retry-After` header or a 1s default), so
+`peira run` backs off and retries under `--max-attempts`. Fix: none —
+but if every attempt 429s, lower `--max-concurrency`.
+
+**`jev returned non-JSON response (HTTP ...)` / `jev returned a non-object JSON response`**
+Cause: the transport returned something that isn't the documented JSON
+object. Terminal (API drift or a broken transport). Fix: check for a
+proxy mangling responses; otherwise report it.
+
+**`jev response missing 'answers' object` / `jev response missing answer 'decision'`**
+Cause: the response lacks the per-question answers the API promises.
+Terminal. Fix: same as above — likely API drift.
+
+**`jev returned option 'x' outside the offered labels [...] — adapter bug or API drift.`**
+Cause: Jev returned a choice option that wasn't among the labels sent.
+The adapter refuses to map it to anything (guessing would corrupt the
+measurement). Terminal. Fix: report it.
+
+**`jev score answer has no numeric value: ...` / `jev noul answer has no probability of yes: ...`**
+Cause: the score/noul answer is missing its numeric field. Terminal —
+same drift handling as above.
+
+**`jev returned non-numeric confidence: ...`**
+Cause: a confidence/probability field wasn't a number. Clamped only
+when numeric; non-numeric is terminal. Fix: report it.

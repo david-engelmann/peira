@@ -34,7 +34,7 @@ intervals.
 - [What peira measures](#what-peira-measures)
 - [What brings you here](#what-brings-you-here)
 - [Leaderboard](#leaderboard)
-- [Planned adapters](#planned-adapters)
+- [Adapters](#adapters)
 - [How peira differs](#how-peira-differs)
 - [When peira isn't the tool](#when-peira-isnt-the-tool)
 - [Install](#install)
@@ -140,7 +140,7 @@ is evidence about the attack, not noise.
 
 - **test my guardrail** → run the quickstart above, then read
   `docs/Methodology.md`.
-- **claim a leaderboard row** → [Planned adapters](#planned-adapters),
+- **claim a leaderboard row** → [Adapters](#adapters),
   then [Add your model](#add-your-model).
 - **write attack cases** → [`docs/Dataset.md`](docs/Dataset.md):
   templates, gates, and the review queue.
@@ -155,13 +155,16 @@ family present, or the run is published but unranked — omission never
 improves a rank. Partial primitive coverage is reported honestly, not
 hidden.
 
-## Planned adapters
+## Adapters
 
 | Adapter | Status |
 |---|---|
 | `mock` (reference mechanism exerciser) | measured — the tables above |
-| Shieldstral (Mistral) | planned |
-| Llama Prompt Guard 2 (Meta) | planned |
+| Shieldstral (Mistral) | shipped — `peira[hf]`, not yet measured |
+| ProtectAI prompt injection | shipped — `peira[hf]`, not yet measured |
+| Llama Prompt Guard 2 86M (Meta) | shipped — `peira[hf]`, not yet measured |
+| Structured-output LLM baselines (OpenAI / Anthropic / Gemini) | shipped — `peira[openai]` / `peira[anthropic]` / `peira[google]`, not yet measured |
+| TypeSafe Jev | shipped — gated on access, not yet measured |
 | Llama Guard 4 (Meta) | planned |
 | LlamaFirewall (Meta) | planned |
 | NVIDIA NeMo Guardrails | planned |
@@ -169,11 +172,11 @@ hidden.
 | Protect AI LLM Guard (now Palo Alto Networks) | planned |
 | Lakera Guard (now Check Point) | planned |
 | Operant AI Semantic Firewall | planned |
-| TypeSafe Jev | planned (gated on access) |
-| Structured-output LLM baselines (OpenAI / Anthropic / Gemini) | planned |
 
-"Planned" means not measured yet. Nothing ships a number here until it's
-measured with name + version + run date.
+"Shipped" means the adapter exists and is tested — see
+[`docs/Adapters.md`](docs/Adapters.md) for install, keys, and pinned
+models. "Planned" means not built yet. Nothing ships a number here
+until it's measured with name + version + run date.
 
 ## How peira differs
 
