@@ -6,7 +6,8 @@ input flip a decision model's typed output, and it says so with confidence
 intervals.
 
 [![ci](https://github.com/david-engelmann/peira/actions/workflows/ci.yml/badge.svg)](https://github.com/david-engelmann/peira/actions/workflows/ci.yml)
-[![pypi](https://img.shields.io/pypi/v/peira.svg)](https://pypi.org/project/peira/)
+<!-- PyPI badge held until the first release: the page 404s meanwhile.
+     Restore: [![pypi](https://img.shields.io/pypi/v/peira.svg)](https://pypi.org/project/peira/) -->
 [![license](https://img.shields.io/badge/license-MIT%20%2F%20CC--BY--4.0-blue.svg)](LICENSE)
 
 [Docs](docs/Overview.md) · [Reports](#reports) · [Adapter API](python/peira/adapters/base.py) · [Contributing](docs/Contributing.md) · [Discussions](https://github.com/david-engelmann/peira/discussions)
@@ -19,10 +20,11 @@ intervals.
 ## 📰 News
 
 - **2026-09-23** — Measurement contract v2: every adapter output is now a
-  full call record (confidence, abstention, token usage, cost); run
+  full call record (confidence, abstention, token usage; cost is recomputed
+  by the runner from the pinned pricing table, not recorded); run
   artifacts are format v2 with a pinned pricing table in the seal.
 - **2026-09-23** — Trial dataset 1.0.1: five case fixes from the 100-case
-  quality audit (zero critical or major findings).
+  quality audit (all minor).
 - **2026-09-22** — The Peira Trial 1.0.0: 100 v1-quality cases, 10 per
   attack family, 100% of critical cases human-reviewed.
 
@@ -95,6 +97,15 @@ done: 100 cases (100 eligible)
 artifact: runs/mock-trial.json
 analysis lock: e3f2ea4e74d9babd…
 ```
+(excerpt — the run also prints its full `ranking eligible: False (…)`
+note, which names every gate the Trial misses, and an `analysis lock`
+hash.)
+
+The command exits 3 — that's not an error. Exit 3 means the run
+completed but the Trial is ranking-ineligible by design (100 eligible
+cases against a 200-case, ≥20-per-family floor). Exit codes: 0 clean,
+1 user error, 2 infrastructure error, 3 completed but unranked. The
+full list is in [docs/Troubleshooting.md](docs/Troubleshooting.md).
 
 `peira run` exits 3 here: ran fine, ranking-ineligible — the Trial's
 100 cases sit below the 200-case floor. Expected, not an error. In an
@@ -104,8 +115,7 @@ the shell treats 3 as failure, so call the report step explicitly.
 The per-family table:
 
 ```bash
-python3 scripts/gen_readme_table.py runs/mock-trial.json
-```
+python3 scripts/gen_readme_table.py runs/mock-trial.json```
 
 It prints the same table as [The Trial in action](#the-trial-in-action) —
 the demo is the proof. Every adapter makes exactly two `decide()` calls
@@ -116,8 +126,8 @@ transient failures, never silently), so time and cost scale linearly:
 | Adapter class | 100-case Trial | 2,500-case v1 | Cost |
 |---|---|---|---|
 | `mock` (offline, deterministic) | 0.4 s (measured) | ≈3 s (extrapolated) | $0 |
-| Structured-output LLM baseline | _ships with the adapter_ | _ships with the adapter_ | per-token API spend |
-| Hugging Face guard model | _ships with the adapter_ | _ships with the adapter_ | GPU time |
+| Structured-output LLM baseline | _timed when the adapter lands_ | _timed when the adapter lands_ | per-token API spend |
+| Hugging Face guard model | _timed when the adapter lands_ | _timed when the adapter lands_ | GPU time |
 
 Every flag is documented in [`docs/CLI.md`](docs/CLI.md) — generated
 from the parser, so it can't go stale.
@@ -125,7 +135,7 @@ from the parser, so it can't go stale.
 ## What peira measures
 
 Whether hostile manipulations of the input change a decision model's
-typed output — approve/deny (choice), a numeric risk (score), or abstain
+typed output — approve/deny (choice), a numeric output (score), or abstain
 (noul) — using paired benign/attacked controls across 10 attack
 families. Decision-change ASR is the headline metric, reported with
 Wilson 95% confidence intervals; ECE and Brier cover confidence quality.
@@ -142,18 +152,18 @@ is evidence about the attack, not noise.
   `docs/Methodology.md`.
 - **claim a leaderboard row** → [Planned adapters](#planned-adapters),
   then [Add your model](#add-your-model).
-- **write attack cases** → [`docs/Dataset.md`](docs/Dataset.md):
-  templates, gates, and the review queue.
-- **compare harnesses** → [How peira differs](#how-peira-differs).
+- **write attack cases** → [the authoring guide](docs/Dataset.md)
+  ("The authoring loop, end to end").- **compare harnesses** → [How peira differs](#how-peira-differs).
 
 ## Leaderboard
 
 One row per (adapter, dataset version). The leaderboard opens with the v1
 dataset: 2,500 cases (2,000 public + 500 private holdout), 250 per attack
-family. The bar is mechanical, not editorial: ≥20 eligible cases in every
-family present, or the run is published but unranked — omission never
-improves a rank. Partial primitive coverage is reported honestly, not
-hidden.
+family. The bar is mechanical, not editorial: malformed rate ≤ 5%,
+benign accuracy ≥ 0.5, ≥ 200 eligible cases overall, and ≥ 20 eligible
+cases in every family present — or the run is published but unranked.
+Omission never improves a rank. Partial primitive coverage is reported
+honestly, not hidden.
 
 ## Planned adapters
 
@@ -203,24 +213,6 @@ ASR here says nothing about the attacks peira doesn't cover. Use
 broader tooling (garak, HarmBench) when you need coverage rather than
 a single decision-robustness number.
 
-## Install
-
-Requires Python 3.10+.
-
-```bash
-pip install -e .   # from a checkout; becomes `pip install peira` at release
-```
-
-| Tier | Command | What you get |
-|---|---|---|
-| `peira` | `pip install peira` | Core, SDK, CLI, offline mock |
-| `peira[hf]` | `pip install peira[hf]` | + Hugging Face adapters (planned) |
-| `peira[all]` | `pip install peira[all]` | + everything optional |
-
-Hardware guidance per tier: `docs/Hardware.md`. No telemetry — the
-harness makes no network calls except the ones you configure
-([FAQ](docs/FAQ.md)).
-
 ## Add your model
 
 ```python
@@ -241,6 +233,27 @@ adapter = MyAdapter()
 Save as `my_adapter.py`, then `peira run --adapter my_adapter --suite
 trial-demo`. See `examples/minimal_adapter.py`, then read
 `docs/Methodology.md` for the contracts your outputs must satisfy.
+
+## Install
+
+Requires Python 3.10+.
+
+peira isn't on PyPI yet — until it is, `pip install -e .` from a checkout
+stands in for `pip install peira` below.
+
+```bash
+pip install -e .   # from a checkout; becomes `pip install peira` at release
+```
+
+| Tier | Command | What you get |
+|---|---|---|
+| `peira` | `pip install peira` _(at release)_ | Core, SDK, CLI, offline mock |
+| `peira[hf]` | `pip install peira[hf]` | + Hugging Face adapters (planned) |
+| `peira[all]` | `pip install peira[all]` | + everything optional |
+
+Hardware guidance per tier: `docs/Hardware.md`. No telemetry — the
+harness makes no network calls except the ones you configure
+([FAQ](docs/FAQ.md)).
 
 ## Methodology
 
