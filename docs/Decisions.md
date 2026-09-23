@@ -293,3 +293,74 @@ tests on both sides.
 
 **To revisit:** never silently — if either implementation's escaping
 changes, the parity tests fail and both sides must change together.
+
+## D-16: Case.extras are metadata, never adapter input
+
+**Decision.** Unknown top-level case fields are preserved verbatim on
+`Case.extras` (Python) / the flattened `extras` map (Rust) through load
+→ run, but they are **not** passed to adapters. `run_case` builds the
+adapter-facing dicts from the variant `input` dicts only
+(`case.benign.input`, `case.attacked.input`), plus runner-injected keys
+(`case_id`, `expected_decision`, `target_decision`, `attacked`). Extras
+stay available to tooling (gates, review, future case-level
+configuration) without ever crossing the adapter boundary.
+
+**Alternatives.** Pass extras through to `decide()` so adapters can read
+future per-case configuration directly. That silently widens the frozen
+`decide()` contract: every adapter would need to tolerate (or
+implement) new keys, and a case field added for tooling could change
+adapter behavior.
+
+**Why this:** the `BaseAdapter.decide()` contract is frozen. Adapter-
+facing configuration already has a home — the variant `input` dicts,
+which adapters receive unchanged. Keeping extras on the tooling side
+means new case fields never require adapter changes. If adapters ever
+need extras, that's a contract revision with a version bump, not a
+silent addition.
+
+**To revisit:** only alongside a `decide()` contract revision.
+
+## D-17: dataset_version is the label; the manifest SHA-256 is the identity
+
+**Decision.** The `dataset_version` recorded in a run artifact is the
+manifest's declared version string — a human-readable label sealed
+inside the analysis lock, not a proof of byte-identity. Byte-proof
+binding is supplied separately by H4: `peira run` verifies the suite
+manifest before scoring and seals the manifest file's SHA-256 into the
+lock alongside the label, failing closed on mismatch; `--resume`
+refuses partials recorded against a different dataset snapshot.
+
+**Alternatives.** Treat the version string as the identity (cheap, but a
+label can be re-applied to different bytes), or drop the label and seal
+only the hash (loses the human-readable release lineage the reports and
+leaderboard need).
+
+**Why this:** both pieces do different jobs. The label answers "which
+release is this" for humans and the leaderboard; the hash answers "are
+these the exact bytes" for verification. Recording both keeps the
+artifact readable and the lock tamper-evident.
+
+**To revisit:** if manifests ever gain signed releases, the signature
+joins the lock — the label/hash split stays.
+
+## D-18: The mock adapter is a mechanism exerciser, never a baseline
+
+**Decision.** `MockAdapter` flips toward each case's own target decision
+on a seeded subset (H1) — it exists to exercise the run → score →
+report machinery deterministically, not to measure anything. No
+benchmark claim, headline number, or leaderboard row may rest on
+mock-adapter output. The mock's numbers (e.g. ASR 0.41 on the Trial)
+prove the pipeline works; they say nothing about decision-model
+robustness.
+
+**Alternatives.** Treat the mock as a lower-bound baseline. That would
+be misleading: the mock is designed to flip, so its ASR reflects the
+flip rate, not robustness.
+
+**Why this:** a benchmark's credibility rests on what its numbers mean.
+The mock is scaffolding for development and CI (offline, instant, free);
+real claims need real adapters (A2). Keeping that line explicit in an
+ADR stops the mock's numbers from leaking into reports or marketing.
+
+**To revisit:** never — if a "dumb baseline" is ever wanted, it ships as
+a separate, honestly-named adapter, not as the mock wearing a new hat.
