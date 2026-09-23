@@ -206,8 +206,28 @@ peira dataset new --family state_poisoning --id sp-042 --out dataset/v1/cases.js
 # ... fill in the {{PLACEHOLDERS}} ...
 peira dataset gates --dir dataset/v1
 peira dataset review --dir dataset/v1 --check
+peira dataset status --dir dataset/v1      # where things stand; exit 0 = release-ready
 peira dataset build-manifest --dir dataset/v1 --version 1.0.0 --require-reviews
 ```
 
 `review.json` is committed alongside the cases — review decisions are
 part of the dataset's provenance.
+
+## Pipeline status
+
+`peira dataset status --dir <dir>` shows where a dataset stands in the
+authoring flow — gates, review queue, and manifest in one view:
+
+```
+$ peira dataset status --dir dataset/v1
+dataset: dataset/v1
+gates: 6/6 passed (0 errors, 2 warnings)
+review: 0 pending, critical coverage 100%
+manifest: current
+status: release-ready
+```
+
+Exit 0 means release-ready: the gates report no errors, no human
+reviews are pending, and a manifest exists that verifies clean against
+the directory. Anything else is exit 1 — a status signal, not an
+error. Run it any time to see what's left before the next release.

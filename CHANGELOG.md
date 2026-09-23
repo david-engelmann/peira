@@ -8,6 +8,12 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
 ## [Unreleased]
 
 ### Added
+- Authoring pipeline, third slice (T1c): `peira dataset status --dir
+  <dir>` — one view of the generate → gate → review → manifest flow
+  (per-gate results, review pending/coverage, manifest state). Exit 0
+  means release-ready (no gate errors, no pending reviews, manifest
+  verifies clean); anything else is exit 1. Documented in
+  `docs/Dataset.md`, including the authoring loop.
 - Public decision records: `docs/Decisions.md` now records the locked
   methodology decisions as ADRs (D-4 decision-change ASR with targeted
   success secondary; D-5 asymmetric malformed handling; D-6 hard
