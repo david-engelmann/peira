@@ -85,7 +85,7 @@ class TestTrialSuite(unittest.TestCase):
 
     def test_manifest_version(self):
         manifest = json.loads((TRIAL_DIR / "manifest.json").read_text())
-        self.assertEqual(manifest["dataset_version"], "1.0.0")
+        self.assertEqual(manifest["dataset_version"], "1.0.1")
         self.assertEqual(manifest["files"]["cases.jsonl"]["n_cases"], 100)
 
     def test_canary_embedded(self):
@@ -117,7 +117,7 @@ class TestTrialRunMechanism(unittest.TestCase):
             self.assertIn(r.returncode, (0, 3), r.stderr)  # 3 = ineligible, fine
             artifact = RunArtifact.from_json(
                 Path(tmp, "mock-trial.json").read_text())
-            self.assertEqual(artifact.dataset_version, "1.0.0")
+            self.assertEqual(artifact.dataset_version, "1.0.1")
             self.assertTrue(artifact.verify())
             self.assertEqual(len(artifact.results), 100)
 
