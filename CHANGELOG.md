@@ -54,6 +54,24 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
   withheld below the `MIN_DELTA_CASES = 30` gate — `delta`/`ci` are
   None and `sufficient` is False instead of a NaN.
 
+### Added — selective prediction (A3 S3)
+
+- New `risk_coverage_curve(probs, labels)` — the selective-
+  classification risk-coverage curve (Geifman & El-Yaniv 2017):
+  `(coverage=k/n, risk)` for k = 1..n over the confidence-descending
+  ranking, stable ties.
+- New `selective_risk_at_coverage(probs, labels, coverage)` — error
+  rate of the top `ceil(coverage*n)` predictions; `coverage` must be
+  in (0, 1].
+- New `augrc(probs, labels)` — Area Under the Generalized Risk
+  Coverage curve (Traub et al. 2024, arXiv:2407.01032), the
+  trapezoid-rule area under the (coverage, generalized-risk) curve,
+  satisfying the paper's Eq. (7) identity and the [0, ½] bound; reads
+  as the "average risk of undetected failures". All three are
+  display-only diagnostics, never rankers (D2), intended for
+  attacked-arm correctness pairs from `attacked_confidence_pairs`.
+  Python-reference only; the Rust port lands in S9.
+
 ### Added — real day-one adapters (A2)
 - New `python/peira/adapters/hf.py` behind `peira[hf]`: Shieldstral
   (`mistralai/Shieldstral-1.0-3B`, pinned revision), ProtectAI

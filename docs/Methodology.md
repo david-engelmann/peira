@@ -150,6 +150,45 @@ against correctness labels (1 = correct benign decision):
   — insufficiency is explicit at the type level, never a NaN. The
   threshold is `MIN_DELTA_CASES`.
 
+### Selective prediction
+
+Selective-prediction metrics ask "when should the model have abstained
+under attack", computed on the attacked-arm correctness pairs from
+`attacked_confidence_pairs` (labels are 1 = correct). All three are
+**display-only diagnostics — never rankers** (D2).
+
+- **Risk-coverage curve** (`risk_coverage_curve(probs, labels)`): the
+  classic selective-classification curve (Geifman & El-Yaniv 2017).
+  Predictions are sorted by confidence descending; for k = 1..n the
+  curve holds `(coverage=k/n, risk)` where risk is the error rate among
+  the k most confident predictions. Lower is better: a good confidence
+  function ranks its failures last, so risk stays low until coverage
+  approaches 1. The k = n point is the overall error rate. Confidence
+  ties keep input order (stable sort), so the curve is deterministic.
+- **Selective risk at fixed coverage**
+  (`selective_risk_at_coverage(probs, labels, coverage)`): the
+  working-point view — the error rate of the top
+  `ceil(coverage*n)` predictions. `coverage` must be in (0, 1];
+  anything else raises `ValueError`. `coverage=1.0` is the overall
+  error rate.
+- **AUGRC** (`augrc(probs, labels)`): the Area Under the Generalized
+  Risk Coverage curve (Traub et al. 2024, "Overcoming Common Flaws in
+  the Evaluation of Selective Classification Systems", NeurIPS 2024,
+  arXiv:2407.01032). Where the risk-coverage curve conditions on the
+  accepted set, the *generalized* risk is the joint probability of
+  misclassification *and* acceptance — the risk of a silent failure
+  before any rejection decision is made. AUGRC integrates it over all
+  working points and reads as the "average risk of undetected
+  failures": for a random pair of predictions, the chance both are
+  failures plus the chance a failure outranks a correct prediction.
+  Empirically it is the trapezoid-rule area under the
+  (coverage, generalized-risk) curve, which satisfies the paper's
+  identity AUGRC = (1−AUROC_f)·acc·(1−acc) + ½(1−acc)² and the stated
+  [0, ½] bound (see the `augrc` docstring for the discretization note).
+  Lower is better: 0.0 iff there are no failures; a perfect ranker
+  scores ½(1−acc)²; a random confidence function scores ½(1−acc) in
+  expectation.
+
 ## Ranking eligibility
 
 The ranking protocol below is frozen; it will govern the leaderboard once

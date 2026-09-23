@@ -866,3 +866,123 @@ def check_eligibility(
         eligible, reasons = _rust.check_eligibility(results, required_families)
         return Eligibility(eligible=eligible, reasons=tuple(reasons))
     return _check_eligibility_py(results, required_families)
+
+
+# ---------------------------------------------------------------------------
+# Selective prediction (A3 S3) — Python reference only; the Rust port lands
+# in S9. All three are display-only diagnostics, never rankers (D2).
+
+
+def _ranked_failures(probs: list[float], labels: list[int]) -> list[int]:
+    """Failure indicators (1 = wrong prediction) in descending-confidence order.
+
+    Precondition: ``probs``/``labels`` are non-empty and equal-length —
+    callers validate first (see :func:`_check_paired`). The sort is stable
+    and descending, so confidence ties keep input order and every
+    selective-prediction number below is deterministic.
+    """
+    order = sorted(range(len(probs)), key=probs.__getitem__, reverse=True)
+    return [1 - labels[i] for i in order]
+
+
+def risk_coverage_curve(
+    probs: list[float], labels: list[int]
+) -> list[tuple[float, float]]:
+    """Selective-classification risk-coverage curve (Geifman & El-Yaniv 2017).
+
+    Sorts by confidence descending; for k = 1..n returns
+    ``(coverage=k/n, risk)`` where risk is the error rate among the k
+    most confident predictions. Lower is better: a good confidence
+    function ranks its failures last, so risk stays low until coverage
+    approaches 1. The k = n point is the overall error rate.
+
+    Intended use: attacked-arm correctness pairs from
+    :func:`attacked_confidence_pairs` (labels are 1 = correct), where the
+    selective-prediction story is "when should the model have abstained
+    under attack".
+
+    Display-only diagnostic — never a ranker (D2).
+    """
+    _check_paired(probs, labels, "probs", "labels")
+    ranked = _ranked_failures(probs, labels)
+    n = len(ranked)
+    curve: list[tuple[float, float]] = []
+    errors = 0
+    for k, failed in enumerate(ranked, start=1):
+        errors += failed
+        curve.append((k / n, errors / k))
+    return curve
+
+
+def selective_risk_at_coverage(
+    probs: list[float], labels: list[int], coverage: float
+) -> float:
+    """Selective risk at one fixed coverage in (0, 1].
+
+    Takes the top ``ceil(coverage*n)`` predictions by confidence and
+    returns their error rate — the working-point view: "had we kept only
+    this fraction of predictions, what fraction would be wrong".
+    ``coverage=1.0`` is the overall error rate. ``coverage`` outside
+    (0, 1] raises ValueError.
+
+    Display-only diagnostic — never a ranker (D2).
+    """
+    if not 0 < coverage <= 1:
+        raise ValueError(f"coverage must be in (0, 1], got {coverage!r}")
+    _check_paired(probs, labels, "probs", "labels")
+    n = len(probs)
+    k = math.ceil(coverage * n)
+    return sum(_ranked_failures(probs, labels)[:k]) / k
+
+
+def augrc(probs: list[float], labels: list[int]) -> float:
+    """Area Under the Generalized Risk Coverage curve (Traub et al. 2024).
+
+    AUGRC = ∫₀¹ P(Y_f=1, g(x) ≥ τ) dP(g(x) ≥ τ) — Eq. (6) of Traub et al.,
+    "Overcoming Common Flaws in the Evaluation of Selective
+    Classification Systems" (NeurIPS 2024, arXiv:2407.01032): the
+    *generalized* risk, the joint probability of misclassification *and*
+    acceptance, averaged over all working points. It reads as the
+    "average risk of undetected failures": for a random ordered pair of
+    predictions, half the chance both are failures plus the chance the
+    first is a failure that outranks a correct second prediction (Eq. 7).
+
+    Empirical estimator: predictions are stably sorted by confidence
+    descending; with G(t) = (# failures among the top-t) / n the
+    generalized risk at coverage t/n, AUGRC is the trapezoid-rule area
+    under the (coverage, generalized risk) curve,
+    Σ_{t=1..n} (G(t-1) + G(t)) / (2n) with G(0) = 0. The trapezoid rule —
+    not a plain average over the n coverage points — is the
+    discretization consistent with the paper's identity AUGRC =
+    (1 − AUROC_f)·acc·(1−acc) + ½(1−acc)² (Eq. 7) and with the stated
+    [0, ½] bound (a plain average overshoots ½ when every prediction
+    fails). The per-failure contribution "(N−t*−1)/N²" printed in
+    Appendix A.1.1 satisfies neither and appears to be a typo: under the
+    trapezoid rule a failure at 1-indexed rank t* contributes
+    (N − t* + ½)/N². Ties keep input order (stable sort), so the value
+    is deterministic.
+
+    Bounded in [0, ½]; lower is better. 0.0 iff there are no failures; a
+    perfect ranker (every failure ranked below every correct prediction)
+    scores ½(1−acc)² — the paper's minimum for that accuracy — and a
+    random confidence function scores ½(1−acc) in expectation.
+
+    Intended use: attacked-arm correctness pairs from
+    :func:`attacked_confidence_pairs` (labels are 1 = correct), as the
+    holistic selective-prediction companion to the fixed-coverage
+    working points.
+
+    Display-only diagnostic — never a ranker (D2).
+    """
+    _check_paired(probs, labels, "probs", "labels")
+    ranked = _ranked_failures(probs, labels)
+    n = len(ranked)
+    area = 0.0
+    prev_g = 0.0
+    cum_fail = 0
+    for t in range(1, n + 1):
+        cum_fail += ranked[t - 1]
+        g = cum_fail / n
+        area += (prev_g + g) / 2.0
+        prev_g = g
+    return area / n
