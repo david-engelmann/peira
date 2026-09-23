@@ -141,7 +141,7 @@ cases are real.
 v1-quality suite, its disposition gets its own decision.
 
 **Update (2026-09-23).** The branded 100-case Trial has landed
-(`dataset/trial`, manifest `1.0.0`, review-sealed). Its disposition:
+(`dataset/trial`, manifest `1.0.1`, review-sealed). Its disposition:
 runs stay off the leaderboard, per the decision above. The Trial is
 a v1-quality pilot, but at 10 cases per family it sits below the
 hard 20-case ranking gate, and the leaderboard starts with v1.

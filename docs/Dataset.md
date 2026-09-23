@@ -26,7 +26,7 @@ dataset/
 offline. It predates the gates and is exempt from them. `trial` is the
 branded 100-case Peira Trial — 100 v1-quality cases (10 per family)
 authored through the full pipeline: all six gates green, 100% of critical
-cases human-reviewed, manifest sealed at 1.0.0. Trial runs stay off the
+cases human-reviewed, manifest sealed at 1.0.1. Trial runs stay off the
 public leaderboard.
 
 ## Case schema: closed for required fields, open for extension
