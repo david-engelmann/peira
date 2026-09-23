@@ -72,7 +72,10 @@ target semantics the result contract deliberately does not carry.
 - **Calibration** (score primitive): ECE with equal-mass bins (K=15
   default; lower is better, 0.0 is perfect), Brier score with its
   Murphy decomposition (reliability / resolution / uncertainty /
-  residual), and confidence coverage.
+  residual), confidence coverage, and attacked-minus-benign
+  **delta-calibration** statistics (ΔBrier headline, ΔECE,
+  Δreliability) with paired-bootstrap 95% intervals — withheld below
+  30 paired cases.
 - **Uncertainty**: Wilson 95% intervals on rates; paired bootstrap for
   run-vs-run comparisons; McNemar for family comparisons; Bonferroni
   adjustment when claiming across families jointly.
@@ -124,6 +127,28 @@ against correctness labels (1 = correct benign decision):
   confidence is not a zero — coverage is reported alongside every
   calibration number so readers know how much of the sample the
   calibration statistics actually cover.
+- **Delta-calibration** (`delta_brier`, `delta_ece`,
+  `delta_reliability`): attacked-minus-benign calibration statistics,
+  computed on the *paired* cases — eligible cases with both
+  confidences present. **ΔBrier** is the headline: the mean per-case
+  difference `(conf_attacked − correct_attacked)² − (conf_benign −
+  1)²`. **Positive means worse under attack** (a higher Brier score);
+  zero means the attack left the Brier score unchanged. Brier mixes
+  calibration with sharpness, so ΔBrier is the summary and **ΔECE**
+  (attacked ECE minus benign ECE) and **Δreliability** (attacked minus
+  benign Murphy reliability, the pure calibration term) are the
+  calibration-specific companions. All three return a `DeltaEstimate`
+  with the point estimate, a paired-bootstrap 95% interval, and the
+  paired-case count `n`: ΔBrier bootstraps the per-case differences;
+  ΔECE/Δreliability resample *cases* with replacement (ECE and
+  reliability are not per-case statistics) and take the 2.5/97.5
+  percentiles. The bootstrap always uses the Python PRNG, so intervals
+  are backend-independent.
+- **n ≥ 30 gate**: delta-calibration statistics are withheld when
+  fewer than 30 paired cases are available. Below the gate
+  `DeltaEstimate` carries `delta=None`, `ci=None`, `sufficient=False`
+  — insufficiency is explicit at the type level, never a NaN. The
+  threshold is `MIN_DELTA_CASES`.
 
 ## Ranking eligibility
 

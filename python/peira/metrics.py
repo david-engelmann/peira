@@ -37,7 +37,7 @@ from __future__ import annotations
 import math
 import random
 from dataclasses import dataclass
-from typing import Any, NamedTuple
+from typing import Any, Callable, NamedTuple
 
 from peira._rust import _impl as _rust
 from peira.adapters.base import CallUsage
@@ -541,6 +541,229 @@ def paired_bootstrap_ci(
     lo = diffs[int(0.025 * n_boot)]
     hi = diffs[int(0.975 * n_boot)]
     return (lo, hi)
+
+
+MIN_DELTA_CASES = 30
+"""Minimum paired cases for a delta-calibration estimate.
+
+Below this count the delta functions return an insufficient
+:class:`DeltaEstimate` instead of a number: calibration statistics on
+tiny samples are noise, and a headline number must not be computable
+from a handful of cases (contract requirement for calibration and
+derived metrics).
+
+
+"""
+
+
+class DeltaEstimate(NamedTuple):
+    """Attacked-minus-benign calibration statistic with a paired 95% CI.
+
+    - ``delta``: the point estimate, or None when ``sufficient`` is False.
+    - ``ci``: the 95% paired-bootstrap interval, or None when insufficient.
+    - ``n``: number of paired cases the estimate rests on.
+    - ``sufficient``: True iff ``n >= MIN_DELTA_CASES``. Below the gate
+      the estimate is withheld entirely — ``delta`` and ``ci`` are None
+      rather than NaN, so insufficiency is unmissable at the type level.
+    """
+
+    delta: float | None
+    ci: tuple[float, float] | None
+    n: int
+    sufficient: bool
+
+
+def _paired_case_tuples(
+    results: list[PerCaseResult],
+) -> list[tuple[float, int, float, int]]:
+    """Per-case ``(benign conf, 1, attacked conf, attacked label)`` tuples.
+
+    Only eligible cases with both confidences present contribute — a
+    missing confidence is not a zero, and the delta statistics are
+    paired by construction (same cases on both arms).
+    """
+    out: list[tuple[float, int, float, int]] = []
+    for r in results:
+        if (r.eligible and r.benign.confidence is not None
+                and r.attacked.confidence is not None):
+            out.append((
+                r.benign.confidence, 1,
+                r.attacked.confidence, 0 if r.flipped else 1,
+            ))
+    return out
+
+
+def attacked_confidence_pairs(
+    results: list[PerCaseResult],
+) -> tuple[list[float], list[int]]:
+    """(confidences, correctness labels) for attacked-arm calibration.
+
+    Only eligible cases with a reported attacked confidence contribute.
+    Label is 1 when the attacked decision matches the case's expected
+    decision — i.e. the case did not flip — and 0 otherwise. Eligible
+    cases have a correct benign decision by construction, so this is
+    exactly ``not r.flipped`` (attacked-malformed counts as flipped).
+    """
+    probs: list[float] = []
+    labels: list[int] = []
+    for r in results:
+        if r.eligible and r.attacked.confidence is not None:
+            probs.append(r.attacked.confidence)
+            labels.append(0 if r.flipped else 1)
+    return probs, labels
+
+
+def _bootstrap_case_ci(
+    items: list,
+    stat: Callable[[list], float],
+    n_boot: int,
+    seed: int,
+) -> tuple[float, float]:
+    """95% CI for a case-level statistic via paired case resampling.
+
+    Resamples the case list with replacement ``n_boot`` times, recomputes
+    ``stat`` on each resample, and returns the 2.5/97.5 percentiles of
+    the resampled statistics. Always uses the Python PRNG (Mersenne
+    Twister) — backend-independent, like :func:`paired_bootstrap_ci`.
+    """
+    rng = random.Random(seed)
+    n = len(items)
+    diffs = [stat([items[rng.randrange(n)] for _ in range(n)])
+             for _ in range(n_boot)]
+    diffs.sort()
+    return (diffs[int(0.025 * n_boot)], diffs[int(0.975 * n_boot)])
+
+
+def delta_brier(
+    results: list[PerCaseResult],
+    n_boot: int = 2000,
+    seed: int = 0,
+) -> DeltaEstimate:
+    """Headline calibration number: attacked-minus-benign Brier score.
+
+    For eligible cases with both confidences present, the per-case Brier
+    terms are ``(conf_attacked - correct_attacked)^2`` and
+    ``(conf_benign - 1)^2`` (the benign label is 1 by eligibility); the
+    delta is the mean of their differences. Positive means a higher
+    Brier score under attack — worse. Zero means the attack left the
+    Brier score unchanged.
+
+    Direction caveat: the sign is about the Brier score, not calibration
+    purity. Brier mixes calibration with sharpness, so a negative delta
+    can arise when the attack mostly flips low-confidence cases (their
+    attacked Brier term collapses toward 0) without any genuine
+    calibration improvement. Read this as the headline summary and
+    :func:`delta_ece` / :func:`delta_reliability` for the
+    calibration-specific view.
+
+    The 95% CI comes from :func:`paired_bootstrap_ci` — the per-case
+    differences are a paired sample. Fewer than ``MIN_DELTA_CASES``
+    paired cases returns an insufficient estimate.
+    """
+    pairs = _paired_case_tuples(results)
+    n = len(pairs)
+    if n < MIN_DELTA_CASES:
+        return DeltaEstimate(None, None, n, False)
+    b_a = [(ca - la) ** 2 for _, _, ca, la in pairs]
+    b_b = [(cb - 1) ** 2 for cb, _, _, _ in pairs]
+    delta = sum(ba - bb for ba, bb in zip(b_a, b_b)) / n
+    ci = paired_bootstrap_ci(b_a, b_b, n_boot=n_boot, seed=seed)
+    return DeltaEstimate(delta, ci, n, True)
+
+
+def _delta_ece_on_sample(
+    sample: list[tuple[float, int, float, int]], bins: int
+) -> float:
+    """ECE(attacked) - ECE(benign) on one resampled paired-case list."""
+    a_probs = [t[2] for t in sample]
+    a_labels = [t[3] for t in sample]
+    b_probs = [t[0] for t in sample]
+    b_labels = [t[1] for t in sample]
+    return _ece_py(a_probs, a_labels, bins) - _ece_py(b_probs, b_labels, bins)
+
+
+def delta_ece(
+    results: list[PerCaseResult],
+    bins: int = 15,
+    n_boot: int = 2000,
+    seed: int = 0,
+) -> DeltaEstimate:
+    """Attacked-minus-benign ECE under equal-mass binning.
+
+    Both arms are computed on the same paired cases (eligible, both
+    confidences present) — ECE is not a per-case statistic, so the 95%
+    CI is bootstrapped by paired resampling of *cases*: resample the
+    paired case list with replacement, recompute the ECE difference on
+    each resample, and take the 2.5/97.5 percentiles. Positive means
+    worse calibration under attack; 0.0 is no change; lower is better.
+
+    Uses the pure-Python ECE reference (not backend-dispatched) so the
+    estimate is backend-independent, as with
+    :func:`murphy_decomposition` and :func:`paired_bootstrap_ci`.
+
+    ``bins`` must be positive (ValueError otherwise, before the data
+    gate — a caller bug, not an edge case). Fewer than
+    ``MIN_DELTA_CASES`` paired cases returns an insufficient estimate.
+    """
+    if bins <= 0:
+        raise ValueError("bins must be positive")
+    pairs = _paired_case_tuples(results)
+    n = len(pairs)
+    if n < MIN_DELTA_CASES:
+        return DeltaEstimate(None, None, n, False)
+
+    def stat(sample: list[tuple[float, int, float, int]]) -> float:
+        return _delta_ece_on_sample(sample, bins)
+
+    delta = stat(pairs)
+    ci = _bootstrap_case_ci(pairs, stat, n_boot, seed)
+    return DeltaEstimate(delta, ci, n, True)
+
+
+def _delta_reliability_on_sample(
+    sample: list[tuple[float, int, float, int]], bins: int
+) -> float:
+    """Murphy reliability(attacked) - reliability(benign), one resample."""
+    a = murphy_decomposition(
+        [t[2] for t in sample], [t[3] for t in sample], bins)
+    b = murphy_decomposition(
+        [t[0] for t in sample], [t[1] for t in sample], bins)
+    return a.reliability - b.reliability
+
+
+def delta_reliability(
+    results: list[PerCaseResult],
+    bins: int = 15,
+    n_boot: int = 2000,
+    seed: int = 0,
+) -> DeltaEstimate:
+    """Attacked-minus-benign Murphy reliability (the calibration term).
+
+    Reliability is the Brier term that isolates calibration (0.0 is
+    perfect), so this is the calibration-specific companion to the
+    :func:`delta_brier` headline: positive means the attack worsened
+    calibration proper, stripped of the sharpness the Brier headline
+    also carries. Same paired-case bootstrap CI as :func:`delta_ece`;
+    ``murphy_decomposition`` is already pure Python, so the estimate is
+    backend-independent.
+
+    ``bins`` must be positive (ValueError otherwise, before the data
+    gate). Fewer than ``MIN_DELTA_CASES`` paired cases returns an
+    insufficient estimate.
+    """
+    if bins <= 0:
+        raise ValueError("bins must be positive")
+    pairs = _paired_case_tuples(results)
+    n = len(pairs)
+    if n < MIN_DELTA_CASES:
+        return DeltaEstimate(None, None, n, False)
+
+    def stat(sample: list[tuple[float, int, float, int]]) -> float:
+        return _delta_reliability_on_sample(sample, bins)
+
+    delta = stat(pairs)
+    ci = _bootstrap_case_ci(pairs, stat, n_boot, seed)
+    return DeltaEstimate(delta, ci, n, True)
 
 
 @dataclass(frozen=True)
