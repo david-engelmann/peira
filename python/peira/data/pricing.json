@@ -1,5 +1,5 @@
 {
-  "_comment": "Pinned list-price table for cost accounting. Prices are USD per 1M tokens at the providers' standard (non-cached, non-batch) tier. This table is a measurement input: its source and pin date are sealed into every run artifact (pricing_source / pricing_date), so a cost figure is always traceable to the table that produced it. Update by bumping 'date' and 'source' together \u2014 never silently.",
+  "_comment": "Pinned list-price table for cost accounting. Prices are USD per 1M tokens at the providers' standard (non-cached, non-batch) tier. This table is a measurement input: its source and pin date are sealed into every run artifact (pricing_source / pricing_date), so a cost figure is always traceable to the table that produced it. Update by bumping 'date' and 'source' together — never silently.",
   "basis": "USD per 1M tokens, list price, standard tier (no prompt caching, no batch discount, no long-context surcharge)",
   "date": "2026-09-23",
   "models": {
@@ -33,12 +33,12 @@
       "usd_per_1m_out": 12.0
     },
     "jev-1.13.0": {
-      "_note": "Secondary-sourced Jev pricing: $0.042 per 1M input tokens, output free (\"too cheap to meter\") \u2014 reported via gateway announcements (Vercel/Netlify/Spring AI, Sept 2026), not confirmed on an official TypeSafe pricing page as of 2026-09-23. Re-verify before launch.",
+      "_note": "Secondary-sourced Jev pricing: $0.042 per 1M input tokens, output free (\"too cheap to meter\") — reported via gateway announcements (Vercel/Netlify/Spring AI, Sept 2026), not confirmed on an official TypeSafe pricing page as of 2026-09-23. Re-verify before launch.",
       "usd_per_1m_in": 0.042,
       "usd_per_1m_out": 0.0
     }
   },
-  "source": "Pre-launch provisional prices (2026-09-23). GPT-5.6 tiers verified 2026-09-23 against https://openai.com/api/pricing/ (post 2026-07-30 price cut); Claude Sonnet 5 corrected 2026-09-23 to $2/$10 against https://platform.claude.com/docs/en/about-claude/pricing (the scheduled Sep-2026 rise to $3/$15 was cancelled); Jev $0.042/1M in / free out is secondary-sourced (gateway announcements), not confirmed on an official TypeSafe page. Claude/Gemini entries carried over from the pre-A2 table, unverified \u2014 re-verify every rate before launch.",
+  "source": "Pre-launch provisional prices (2026-09-23). GPT-5.6 tiers verified 2026-09-23 against https://openai.com/api/pricing/ (post 2026-07-30 price cut); Claude Sonnet 5 corrected 2026-09-23 to $2/$10 against https://platform.claude.com/docs/en/about-claude/pricing (the scheduled Sep-2026 rise to $3/$15 was cancelled); Jev $0.042/1M in / free out is secondary-sourced (gateway announcements), not confirmed on an official TypeSafe page. Claude/Gemini entries carried over from the pre-A2 table, unverified — re-verify every rate before launch.",
   "source_urls": [
     "https://openai.com/api/pricing/",
     "https://www.anthropic.com/pricing",
