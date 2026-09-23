@@ -155,6 +155,7 @@ def _validate_and_record(
         dispatch_index=dispatch_index,
         malformed=False,
         dispatch_limit=dispatch_limit,
+        score=output.score if isinstance(output, ScoreOutput) else None,
     )
 
 
@@ -1124,7 +1125,7 @@ def run_suite(
 def _record_from_transcript_entry(entry: dict[str, Any]) -> CallRecord:
     """Rebuild the original CallRecord from a transcript entry.
 
-    No measurement is re-taken: decision, confidence, abstention,
+    No measurement is re-taken: decision, confidence, score, abstention,
     usage (model, tokens, latency_ms, cost_usd), seed, dispatch_index,
     and dispatch_limit all come from the recorded entry. An error-kind
     entry rebuilds the malformed blank record the original run sealed.
@@ -1138,6 +1139,11 @@ def _record_from_transcript_entry(entry: dict[str, Any]) -> CallRecord:
     out = response["output"]
     usage_dict = out.get("usage")
     usage = CallUsage(**usage_dict) if usage_dict is not None else None
+    # A score belongs only to the score primitive: `_output_to_dict`
+    # writes it for score outputs only, so a score on any other
+    # primitive's entry is foreign data (a hand-edited transcript) and
+    # must not leak into the rebuilt record.
+    score = out.get("score") if entry.get("primitive") == "score" else None
     return CallRecord(
         decision=out["decision"],
         confidence=out.get("confidence"),
@@ -1148,6 +1154,7 @@ def _record_from_transcript_entry(entry: dict[str, Any]) -> CallRecord:
         dispatch_index=dispatch_index,
         malformed=False,
         dispatch_limit=dispatch_limit,
+        score=score,
     )
 
 

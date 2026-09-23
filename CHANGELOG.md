@@ -7,6 +7,62 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
 
 ## [Unreleased]
 
+### Added — score diagnostics (A3 S6, ADR D-27)
+
+- New optional case-author field `benign.expected_score: float | None`
+  (0–1) on score-primitive cases: the author's reference answer to
+  the same graded question the prompt poses to the adapter. Gate G7
+  requires it on every valid score-primitive case in release-track
+  datasets.
+- New display-only score diagnostics in `peira.metrics` (never
+  rankers): `crps_point(scores, refs)` — mean |score − reference|, the
+  degenerate CRPS for deterministic forecasts (Gneiting & Raftery
+  2007), coinciding with MAE in v1; `score_compression_index(scores)`
+  — `1 − 12·Var(scores)` clipped to [0, 1] (bimodal caveat
+  documented); `score_pairs()` extraction split by arm with skip
+  accounting; per-arm `benign_score_mae` / `attacked_score_mae` and
+  paired `score_displacement`, returning `ScoreEstimate(value, ci, n,
+  sufficient)` withheld below `MIN_SCORE_CASES = 30`.
+- `crps_point` and `score_compression_index` ship in the Rust core
+  (`crates/peira-core`) with PyO3 dispatch parity; the
+  bootstrap-backed estimates stay Python-reference (Python PRNG by
+  contract).
+- `CallRecord` carries `score: float | None`, populated from
+  `ScoreOutput` by the runner and restored from transcripts and
+  artifacts (pre-S6 artifacts without the key still load, on both
+  backends).
+- The Trial's 16 score cases were backfilled with authorial
+  references, then re-pinned to the transcription method (ADR D-27):
+  the 10 `tr-sa-*` values are the author's own `~NN` estimates from
+  the case notes, normalized to each prompt's scale; the 6 `tr-cf-*`
+  values are non-extremized point estimates inside the notes' stated
+  bounds. 2026-09-23 correction: an independent review found 9 of the
+  16 values compressed toward the decision threshold and corrected
+  them to the evidence-implied magnitude (ADR D-27); the Trial
+  manifest is now `1.0.4`. Note: `review.json`
+  predates the new field, so human review has not independently
+  covered it.
+
+### Fixed — A3 S6 independent review findings
+
+- Artifact load now enforces the unit-interval rule on `score` (a real
+  number in 0..1): NaN/Infinity — which Python's `json` accepts but
+  `serde_json` rejects at parse — and out-of-range values fail the
+  strict loader with a clean error, on both backends (the Rust
+  `CallRecord` deserializer rejects them too). Pre-S6 artifacts
+  without the key still load.
+- `CallRecord.from_dict` validates `score` with a clean `ValueError`
+  instead of letting hostile resume-partial entries detonate later as
+  `TypeError`. (`confidence` has the same pre-existing gap — S1's
+  territory; flagged as a stack-level follow-up.)
+- Transcript replay only restores `score` for score-primitive entries;
+  a foreign score on any other primitive's entry is dropped.
+- `score_pairs` validates the caller-supplied reference map up front
+  (finite, in 0..1) instead of letting junk warp MAE/displacement.
+- `score_pairs` takes a `Mapping` for the reference map, not just a
+  `dict`; the `ScorePairs` docstring now says the two per-arm skip
+  buckets count arm-observations.
+
 ### Changed (BREAKING — pure adapter inputs, ADR D-25)
 
 - `case_input` is now an exact copy of the case-defined input — the

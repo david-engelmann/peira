@@ -41,6 +41,11 @@ pub const CANONICAL_FAMILIES: &[&str] = &[
 pub struct BenignVariant {
     pub input: Value,
     pub expected_decision: String,
+    /// The case author's reference score (0..1) for score-primitive
+    /// cases; `None` when the case carries no reference. Mirrors the
+    /// Python `BenignVariant.expected_score`.
+    #[serde(default)]
+    pub expected_score: Option<f64>,
 }
 
 /// The attacked version of the decision input (paired with benign).
@@ -198,6 +203,15 @@ pub fn validate_case_dict(d: &Value) -> Vec<String> {
                 errors.push("bad benign expected_decision: expected string".to_string())
             }
             _ => {}
+        }
+        if let Some(es) = benign.get("expected_score") {
+            let ok =
+                es.is_null() || es.as_f64().is_some_and(|v| (0.0..=1.0).contains(&v));
+            if !ok {
+                errors.push(
+                    "bad benign expected_score: expected number in [0, 1] or null".to_string(),
+                );
+            }
         }
     }
     if let Some(Value::Object(attacked)) = obj.get("attacked") {

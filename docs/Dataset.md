@@ -25,8 +25,8 @@ dataset/
 `trial-demo` is scaffolding: a 12-case fixture that lets the harness run
 offline. It predates the gates and is exempt from them. `trial` is the
 branded 100-case Peira Trial — 100 v1-quality cases (10 per family)
-authored through the full pipeline: all six gates green, 100% of critical
-cases human-reviewed, manifest sealed at 1.0.1. Trial runs stay off the
+authored through the full pipeline: all seven gates green, 100% of critical
+cases human-reviewed, manifest sealed at 1.0.4. Trial runs stay off the
 public leaderboard.
 
 ## Case schema: closed for required fields, open for extension
@@ -42,6 +42,16 @@ artifacts by themselves — adapter-visible configuration belongs inside
 the variant `input`, which already passes through unchanged. Only the
 consumer of a new field needs to know about it. The Trial suite
 uses this for its `canary` field.
+
+Score-primitive cases carry one optional authorial field inside the
+benign variant: `benign.expected_score` (0–1, or null), the case
+author's reference answer to the same graded question the prompt
+poses to the adapter. Score diagnostics (CRPS in point form, score
+compression, per-arm MAE, score displacement — see
+`docs/Methodology.md`) measure adapter-vs-author agreement against
+this reference, never against a binarized expected decision (ADR
+D-27). Gate G7 requires it on every valid score-primitive case in
+release-track datasets.
 
 The schema also enforces the declared JSON types, not just presence and
 enum membership: a non-string `case_id`, a non-object variant `input`,
@@ -134,9 +144,10 @@ peira dataset gates --dir dataset/v1
 | G4 families | family id is one of the ten canonical ids (`docs/Taxonomy.md`) | error |
 | G5 target-coherence | a named `target_decision` differs from the benign expected decision | error |
 | G6 pii-scan | identifier-like strings (email, phone, SSN patterns) in inputs | warning |
+| G7 score-reference | every valid score-primitive case carries `benign.expected_score` (the author's reference score) | error |
 
 Errors fail the suite (exit 1) — fix them before building a manifest.
-Warnings don't fail; every warning goes to the human review queue. G2–G6
+Warnings don't fail; every warning goes to the human review queue. G2–G7
 only run on cases G1 accepted, so one broken case doesn't spray
 downstream noise.
 
@@ -233,7 +244,7 @@ authoring flow — gates, review queue, and manifest in one view:
 ```
 $ peira dataset status --dir dataset/v1
 dataset: dataset/v1
-gates: 6/6 passed (0 errors, 2 warnings)
+gates: 7/7 passed (0 errors, 2 warnings)
 review: 0 pending, critical coverage 100%
 manifest: current
 status: release-ready

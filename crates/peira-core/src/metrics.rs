@@ -32,12 +32,33 @@ pub struct CallUsage {
     pub cost_usd: f64,
 }
 
+/// Deserialize `score` with the unit-interval rule, mirroring Python's
+/// `_unit_interval` check on artifact load. `serde_json` already rejects
+/// NaN/Infinity literals and f64-overflowing numbers like `1e999` at parse
+/// time ("number out of range" — Python's `json` instead yields `inf`,
+/// which its domain check then rejects; both backends refuse to load the
+/// value, with different messages). Out-of-range numbers that do parse
+/// are rejected here with a clean error instead of letting them into the
+/// diagnostics.
+fn de_score_unit_interval<'de, D>(deserializer: D) -> Result<Option<f64>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let value: Option<f64> = Option::deserialize(deserializer)?;
+    match value {
+        Some(v) if !(0.0..=1.0).contains(&v) => Err(serde::de::Error::custom(format!(
+            "score {v} outside 0..1"
+        ))),
+        ok => Ok(ok),
+    }
+}
+
 /// One measured adapter call, mirroring the Python CallRecord dataclass.
 ///
-/// Missing-key behavior mirrors Python's `from_dict`: `confidence` and
-/// `usage` default to `None`, `abstained`/`refusal_reason`/`seed`/
-/// `dispatch_index` to their zero values; everything else (including
-/// `malformed` and `dispatch_limit`) is required.
+/// Missing-key behavior mirrors Python's `from_dict`: `confidence`,
+/// `usage`, and `score` default to `None`, `abstained`/`refusal_reason`/
+/// `seed`/`dispatch_index` to their zero values; everything else
+/// (including `malformed` and `dispatch_limit`) is required.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct CallRecord {
@@ -58,6 +79,11 @@ pub struct CallRecord {
     /// AIMD concurrency limit in effect when the call was dispatched
     /// (the per-call concurrency actually used).
     pub dispatch_limit: i64,
+    /// The adapter's raw score for score-primitive calls (0..1); None
+    /// for other primitives and in pre-S6 artifacts (serde default, so
+    /// old artifacts still load under `deny_unknown_fields`).
+    #[serde(default, deserialize_with = "de_score_unit_interval")]
+    pub score: Option<f64>,
 }
 
 /// Per-case scoring result, mirroring the Python dataclass field-for-field.
@@ -245,6 +271,56 @@ pub fn brier_score(probs: &[f64], labels: &[i64]) -> f64 {
         / probs.len() as f64
 }
 
+/// Mean absolute error between point scores and author references: the
+/// degenerate Continuous Ranked Probability Score for deterministic
+/// forecasts.
+///
+/// For a deterministic forecast x and observation y, CRPS reduces to
+/// |x - y| (Gneiting & Raftery 2007, "Strictly Proper Scoring Rules,
+/// Prediction, and Estimation", JASA). Peira's ScoreOutput carries a
+/// single point score, so this is the applicable form of CRPS in v1 —
+/// it coincides with MAE, and it generalizes to the integral form if
+/// ScoreOutput ever carries a forecast distribution (ADR D-27).
+///
+/// The reference is the case author's `expected_score` — the author's
+/// answer to the case's own scoring question — never the binarized
+/// expected decision (scoring against a binary outcome would be
+/// improper: it incentivizes extremizing, not truthful reporting).
+///
+/// Empty or mismatched inputs panic; the Python reference raises
+/// `ValueError` on the same inputs (validated before dispatch — D-11).
+pub fn crps_point(scores: &[f64], refs: &[f64]) -> f64 {
+    assert!(!scores.is_empty() && scores.len() == refs.len());
+    scores
+        .iter()
+        .zip(refs.iter())
+        .map(|(&s, &r)| (s - r).abs())
+        .sum::<f64>()
+        / scores.len() as f64
+}
+
+/// How much of the 0..1 scale the scores actually use:
+/// `1 - 12 * Var(scores)` with the population variance, clipped to
+/// [0, 1].
+///
+/// Var(Uniform(0, 1)) = 1/12, so a uniform spread of scores gives 0 (no
+/// compression) and constant scores give 1 (fully compressed — the
+/// adapter reports the same score regardless of input). Needs no
+/// author reference: it is purely distributional. Bimodal caveat:
+/// scores piled at both extremes have variance above uniform, which
+/// clips to 0 ("not compressed") even though the interior of the scale
+/// goes unused — read a 0 alongside the score histogram, not alone.
+///
+/// Empty input panics; the Python reference raises `ValueError`
+/// (validated before dispatch — D-11).
+pub fn score_compression_index(scores: &[f64]) -> f64 {
+    assert!(!scores.is_empty());
+    let n = scores.len() as f64;
+    let mean = scores.iter().sum::<f64>() / n;
+    let var = scores.iter().map(|&x| (x - mean).powi(2)).sum::<f64>() / n;
+    (1.0 - 12.0 * var).clamp(0.0, 1.0)
+}
+
 /// McNemar chi-square (no continuity correction) for discordant pairs.
 ///
 /// Counts are unsigned: negatives are rejected at the type boundary on
@@ -392,6 +468,7 @@ mod tests {
             dispatch_index: 0,
             malformed: false,
             dispatch_limit: 1,
+            score: None,
         }
     }
 
@@ -512,6 +589,128 @@ mod tests {
     fn mcnemar_value() {
         assert!(((mcnemar(8, 2) - 3.6).abs()) < 1e-12);
         assert_eq!(mcnemar(0, 0), 0.0);
+    }
+
+    // -- A3 S6: score diagnostics --
+
+    #[test]
+    fn crps_point_hand_computed() {
+        // (|0.2-0.0| + |0.8-1.0|) / 2 = 0.2
+        assert!((crps_point(&[0.2, 0.8], &[0.0, 1.0]) - 0.2).abs() < 1e-12);
+    }
+
+    #[test]
+    fn crps_point_perfect_agreement_is_zero() {
+        assert_eq!(crps_point(&[0.1, 0.9], &[0.1, 0.9]), 0.0);
+    }
+
+    #[test]
+    #[should_panic]
+    fn crps_point_empty_panics() {
+        crps_point(&[], &[]);
+    }
+
+    #[test]
+    #[should_panic]
+    fn crps_point_mismatched_panics() {
+        crps_point(&[0.5], &[0.5, 0.6]);
+    }
+
+    #[test]
+    fn compression_constant_is_one() {
+        assert_eq!(score_compression_index(&[0.5; 10]), 1.0);
+    }
+
+    #[test]
+    fn compression_quarter_spread_is_half() {
+        // [0.25, 0.5, 0.75]: mean 0.5, Var = 1/24 exactly, so the index
+        // is 1 - 12/24 = 0.5 -- a mathematically exact hand check of the
+        // formula, not the clip boundary.
+        assert!((score_compression_index(&[0.25, 0.5, 0.75]) - 0.5).abs() < 1e-12);
+    }
+
+    #[test]
+    fn compression_partial() {
+        // Var = 0.02/3, so 1 - 12*Var = 0.92.
+        assert!((score_compression_index(&[0.4, 0.5, 0.6]) - 0.92).abs() < 1e-12);
+    }
+
+    #[test]
+    fn compression_bimodal_clips_at_zero() {
+        // Pile-up at both extremes: Var = 0.25 > 1/12, clips to 0.
+        let mut scores = vec![0.0; 5];
+        scores.extend(vec![1.0; 5]);
+        assert_eq!(score_compression_index(&scores), 0.0);
+    }
+
+    #[test]
+    #[should_panic]
+    fn compression_empty_panics() {
+        score_compression_index(&[]);
+    }
+
+    #[test]
+    fn call_record_score_serde() {
+        // New artifacts carry the score; pre-S6 artifacts without the
+        // key still load (serde default) under deny_unknown_fields.
+        let with: CallRecord = serde_json::from_str(
+            r#"{"decision":"pay","malformed":false,"dispatch_limit":1,"score":0.5}"#,
+        )
+        .unwrap();
+        assert_eq!(with.score, Some(0.5));
+        let without: CallRecord = serde_json::from_str(
+            r#"{"decision":"pay","malformed":false,"dispatch_limit":1}"#,
+        )
+        .unwrap();
+        assert_eq!(without.score, None);
+        // And it serializes back out.
+        assert!(serde_json::to_value(&with)
+            .unwrap()
+            .get("score")
+            .is_some());
+    }
+
+    #[test]
+    fn call_record_score_range_rejected() {
+        // The unit-interval rule is enforced at load, mirroring the
+        // Python strict loader: out-of-range scores fail with a clean
+        // domain error, while the boundaries, null, and absent keys
+        // still load.
+        for bad in ["2.5", "-0.5"] {
+            let json = format!(
+                "{{\"decision\":\"pay\",\"malformed\":false,\
+                 \"dispatch_limit\":1,\"score\":{bad}}}"
+            );
+            let err = serde_json::from_str::<CallRecord>(&json).unwrap_err();
+            assert!(
+                err.to_string().contains("outside 0..1"),
+                "unexpected error for score={bad}: {err}"
+            );
+        }
+        // 1e999 overflows f64: serde_json rejects it at parse time
+        // ("number out of range"), before the domain check runs.
+        // Python's json instead yields inf, which its `_unit_interval`
+        // check rejects — both backends refuse the value, with
+        // different messages, so assert rejection, not the message.
+        assert!(serde_json::from_str::<CallRecord>(
+            r#"{"decision":"pay","malformed":false,"dispatch_limit":1,"score":1e999}"#,
+        )
+        .is_err());
+        // NaN is not valid JSON at all: rejected at parse time.
+        assert!(serde_json::from_str::<CallRecord>(
+            r#"{"decision":"pay","malformed":false,"dispatch_limit":1,"score":NaN}"#,
+        )
+        .is_err());
+        for good in ["0.0", "1.0", "null"] {
+            let json = format!(
+                "{{\"decision\":\"pay\",\"malformed\":false,\
+                 \"dispatch_limit\":1,\"score\":{good}}}"
+            );
+            assert!(
+                serde_json::from_str::<CallRecord>(&json).is_ok(),
+                "score={good} should load"
+            );
+        }
     }
 
     #[test]

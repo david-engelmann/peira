@@ -1,13 +1,21 @@
 """Unit tests for runner resume validation and progress (run with: python -m unittest discover tests)."""
 
+import dataclasses
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
 
+from peira.adapters.base import ChoiceOutput, ScoreOutput
 from peira.adapters.mock import MockAdapter
 from peira.artifacts import RunArtifact, results_to_dicts
 from peira.metrics import CallRecord, PerCaseResult
-from peira.runner import load_cases, run_suite, validate_partial
+from peira.runner import (
+    _record_from_transcript_entry,
+    _validate_and_record,
+    load_cases,
+    run_suite,
+    validate_partial,
+)
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
@@ -179,6 +187,106 @@ class TestResumeProgress(unittest.TestCase):
                              f"case {i} attacked index")
             self.assertEqual(entry["benign"]["seed"], 3)
             self.assertEqual(entry["attacked"]["seed"], 3)
+
+
+class TestScorePlumbing(unittest.TestCase):
+    """A3 S6: the score signal survives record/transcript/artifact."""
+
+    def test_score_output_recorded(self):
+        out = ScoreOutput(score=0.73, decision="pay")
+        rec = _validate_and_record(out, [], 1.0, 0, 0, {}, 1)
+        self.assertEqual(rec.score, 0.73)
+
+    def test_choice_output_score_none(self):
+        out = ChoiceOutput(decision="pay")
+        rec = _validate_and_record(out, [], 1.0, 0, 0, {}, 1)
+        self.assertIsNone(rec.score)
+
+    def test_error_record_score_none(self):
+        rec = _validate_and_record(None, ["adapter raised"], 1.0, 0, 0,
+                                  {}, 1)
+        self.assertIsNone(rec.score)
+
+    def test_score_round_trips_record_dict(self):
+        rec = _rec(score=0.42)
+        d = dataclasses.asdict(rec)  # what the artifact seals
+        self.assertEqual(d["score"], 0.42)
+        self.assertEqual(CallRecord.from_dict(d).score, 0.42)
+
+    def test_score_absent_in_old_dicts(self):
+        # Artifacts sealed before S6 have no "score" key: from_dict
+        # must not break on them.
+        rec = _rec()
+        d = dataclasses.asdict(rec)
+        del d["score"]
+        self.assertIsNone(CallRecord.from_dict(d).score)
+
+    def test_score_restored_from_transcript(self):
+        entry = {
+            "seed": 0, "dispatch_index": 0, "dispatch_limit": 1,
+            "primitive": "score",
+            "response": {
+                "kind": "output",
+                "output": {
+                    "decision": "pay", "confidence": None,
+                    "abstained": False, "refusal_reason": "",
+                    "usage": None, "score": 0.66,
+                },
+            },
+        }
+        rec = _record_from_transcript_entry(entry)
+        self.assertEqual(rec.score, 0.66)
+
+    def test_foreign_score_on_choice_entry_dropped(self):
+        # A3 S6 review P2c: a score belongs only to the score
+        # primitive — a crafted transcript attaching one to a
+        # choice-primitive entry must not leak it into the record.
+        entry = {
+            "seed": 0, "dispatch_index": 0, "dispatch_limit": 1,
+            "primitive": "choice",
+            "response": {
+                "kind": "output",
+                "output": {
+                    "decision": "pay", "confidence": None,
+                    "abstained": False, "refusal_reason": "",
+                    "usage": None, "score": 0.66,
+                },
+            },
+        }
+        rec = _record_from_transcript_entry(entry)
+        self.assertIsNone(rec.score)
+
+    def test_transcript_without_primitive_restores_none_score(self):
+        # Entries predating the primitive field (or hand-built ones
+        # without it) restore no score rather than trusting output.
+        entry = {
+            "seed": 0, "dispatch_index": 0, "dispatch_limit": 1,
+            "response": {
+                "kind": "output",
+                "output": {
+                    "decision": "pay", "confidence": None,
+                    "abstained": False, "refusal_reason": "",
+                    "usage": None, "score": 0.66,
+                },
+            },
+        }
+        rec = _record_from_transcript_entry(entry)
+        self.assertIsNone(rec.score)
+
+    def test_transcript_without_score_restores_none(self):
+        entry = {
+            "seed": 0, "dispatch_index": 0, "dispatch_limit": 1,
+            "response": {
+                "kind": "output",
+                "output": {
+                    "decision": "pay", "confidence": None,
+                    "abstained": False, "refusal_reason": "",
+                    "usage": None,
+                },
+            },
+        }
+        rec = _record_from_transcript_entry(entry)
+        self.assertIsNone(rec.score)
 
 
 if __name__ == "__main__":

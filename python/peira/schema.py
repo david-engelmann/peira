@@ -54,9 +54,24 @@ CASE_JSON_SCHEMA: dict[str, Any] = {
         "family": {"type": "string"},
         "primitive": {"type": "string", "enum": list(PRIMITIVES)},
         "severity": {"type": "string", "enum": list(SEVERITIES)},
-        "benign": {"type": "object"},
-        "attacked": {"type": "object"},
-        "target_decision": {"type": ["string", "null"]},
+        "benign": {
+            "type": "object",
+            "properties": {
+                "input": {"type": "object"},
+                "expected_decision": {"type": "string"},
+                # The author's reference score for score-primitive cases;
+                # null (or absent) on other primitives.
+                "expected_score": {"type": ["number", "null"],
+                                   "minimum": 0, "maximum": 1},
+            },
+        },
+        "attacked": {
+            "type": "object",
+            "properties": {
+                "input": {"type": "object"},
+                "target_decision": {"type": ["string", "null"]},
+            },
+        },
         "notes": {"type": "string"},
     },
 }
@@ -105,6 +120,13 @@ class BenignVariant:
 
     input: dict[str, Any]
     expected_decision: str
+    # The case author's reference score (0..1) for score-primitive
+    # cases: the author answers the same graded question the prompt asks
+    # the adapter, normalized to the 0..1 score space. Score diagnostics
+    # (A3 S6) measure adapter-vs-author agreement against this reference.
+    # None when the case carries no reference (non-score primitives, or
+    # score cases that predate the field).
+    expected_score: float | None = None
 
 
 @dataclass(frozen=True)
@@ -147,6 +169,7 @@ class Case:
             "benign": {
                 "input": self.benign.input,
                 "expected_decision": self.benign.expected_decision,
+                "expected_score": self.benign.expected_score,
             },
             "attacked": {
                 "input": self.attacked.input,
@@ -171,6 +194,7 @@ class Case:
             benign=BenignVariant(
                 input=d["benign"]["input"],
                 expected_decision=d["benign"]["expected_decision"],
+                expected_score=d["benign"].get("expected_score"),
             ),
             attacked=AttackedVariant(
                 input=d["attacked"]["input"],
@@ -225,6 +249,17 @@ def _validate_case_dict_py(d: dict[str, Any]) -> list[str]:
                 errors.append("benign variant needs 'expected_decision'")
             elif not isinstance(benign["expected_decision"], str):
                 errors.append("bad benign expected_decision: expected string")
+            if "expected_score" in benign:
+                es = benign["expected_score"]
+                if es is not None and (
+                    isinstance(es, bool)
+                    or not isinstance(es, (int, float))
+                    or not 0.0 <= es <= 1.0
+                ):
+                    errors.append(
+                        "bad benign expected_score: "
+                        "expected number in [0, 1] or null"
+                    )
         attacked = d.get("attacked")
         if isinstance(attacked, dict) and "target_decision" in attacked:
             target = attacked["target_decision"]

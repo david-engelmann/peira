@@ -27,6 +27,7 @@ from peira.metrics import (
     benign_accuracy,
     brier_score,
     check_eligibility,
+    crps_point,
     ece,
     ineligible_by_reason,
     malformed_rate,
@@ -35,11 +36,13 @@ from peira.metrics import (
     paired_bootstrap_ci,
     refusal_rate,
     refusal_rate_by_family,
+    score_compression_index,
     wilson_ci,
     _asr_conditional_py,
     _benign_accuracy_py,
     _brier_score_py,
     _check_eligibility_py,
+    _crps_point_py,
     _ece_py,
     _ineligible_by_reason_py,
     _malformed_rate_py,
@@ -47,6 +50,7 @@ from peira.metrics import (
     _n_eligible_by_family_py,
     _refusal_rate_by_family_py,
     _refusal_rate_py,
+    _score_compression_index_py,
     _wilson_ci_py,
 )
 from peira.schema import _safe_repr, _validate_case_dict_py, validate_case_dict
@@ -178,13 +182,30 @@ class TestMetricsParity(unittest.TestCase):
                                _ece_py(self.probs, self.labels))
 
     def test_brier_score(self):
-        # ~1 ulp: the reference uses Python's compensated builtin sum().
+        # ~1 ulp: the reference computes (p - y) ** 2 through C pow(),
+        # the Rust port uses .powi(2) (exact x*x).
         self.assertAlmostEqual(brier_score(self.probs, self.labels),
                                _brier_score_py(self.probs, self.labels))
 
     def test_mcnemar(self):
         self.assertEqual(mcnemar(13, 5), _mcnemar_py(13, 5))
         self.assertEqual(mcnemar(0, 0), _mcnemar_py(0, 0))
+
+    def test_crps_point(self):
+        # ~1 ulp, like brier_score: the reference sums with Python's
+        # compensated sum() while the Rust core accumulates naively
+        # left-to-right (abs() itself is exact on both sides).
+        scores = [self.rng.random() for _ in range(200)]
+        refs = [self.rng.random() for _ in range(200)]
+        self.assertAlmostEqual(crps_point(scores, refs),
+                               _crps_point_py(scores, refs))
+
+    def test_score_compression_index(self):
+        # ~1 ulp, same as brier_score: (x - mean) ** 2 via C pow()
+        # versus Rust .powi(2).
+        scores = [self.rng.random() for _ in range(200)]
+        self.assertAlmostEqual(score_compression_index(scores),
+                               _score_compression_index_py(scores))
 
     def test_n_eligible_by_family(self):
         got = n_eligible_by_family(self.results, FAMILIES)
@@ -246,6 +267,23 @@ class TestValidateParity(unittest.TestCase):
         _valid_case(benign=5),  # not a dict at all
         _valid_case(attacked={"input": {}, "target_decision": 5}),
         _valid_case(notes=5),
+        # A3 S6: the optional authorial reference score on score cases.
+        _valid_case(benign={"input": {}, "expected_decision": "a",
+                            "expected_score": 0.5}),
+        _valid_case(benign={"input": {}, "expected_decision": "a",
+                            "expected_score": 0}),
+        _valid_case(benign={"input": {}, "expected_decision": "a",
+                            "expected_score": 1}),
+        _valid_case(benign={"input": {}, "expected_decision": "a",
+                            "expected_score": None}),
+        _valid_case(benign={"input": {}, "expected_decision": "a",
+                            "expected_score": 1}),  # int is fine
+        _valid_case(benign={"input": {}, "expected_decision": "a",
+                            "expected_score": 1.5}),  # out of range
+        _valid_case(benign={"input": {}, "expected_decision": "a",
+                            "expected_score": True}),  # bool rejected
+        _valid_case(benign={"input": {}, "expected_decision": "a",
+                            "expected_score": "high"}),  # str rejected
         5,  # scalar top-level: all six keys "missing", not a crash
         [1, 2],  # list top-level: same
     ]
@@ -273,6 +311,21 @@ class TestValidateParity(unittest.TestCase):
             ({"attacked": {"input": {}, "target_decision": 5}},
              ["bad attacked target_decision: expected string or null"]),
             ({"notes": 5}, ["bad notes: expected string"]),
+            ({"benign": {"input": {}, "expected_decision": "a",
+                         "expected_score": 1.5}},
+             ["bad benign expected_score: expected number in [0, 1] or null"]),
+            ({"benign": {"input": {}, "expected_decision": "a",
+                         "expected_score": -0.1}},
+             ["bad benign expected_score: expected number in [0, 1] or null"]),
+            ({"benign": {"input": {}, "expected_decision": "a",
+                         "expected_score": True}},
+             ["bad benign expected_score: expected number in [0, 1] or null"]),
+            ({"benign": {"input": {}, "expected_decision": "a",
+                         "expected_score": "high"}},
+             ["bad benign expected_score: expected number in [0, 1] or null"]),
+            ({"benign": {"input": {}, "expected_decision": "a",
+                         "expected_score": [0.5]}},
+             ["bad benign expected_score: expected number in [0, 1] or null"]),
         ]
         for over, want in expect:
             with self.subTest(over=over):
