@@ -493,6 +493,76 @@ def cmd_dataset_review(args: argparse.Namespace) -> int:
     return EXIT_OK
 
 
+def cmd_dataset_status(args: argparse.Namespace) -> int:
+    """One view of the authoring pipeline: gates, review queue, manifest.
+
+    Exit 0 iff the dataset is release-ready: the gates report no
+    errors, no human reviews are pending, and a manifest exists that
+    verifies clean against the directory. Anything else is exit 1 —
+    a status signal, not an error (see docs/Dataset.md).
+    """
+    from peira.dataset import MANIFEST_NAME, verify_manifest
+    from peira.gates import run_gates
+    from peira.review import (critical_cases_missing_notes, pending_reviews,
+                              review_coverage)
+
+    dataset_dir = Path(args.dir)
+    if not dataset_dir.is_dir():
+        print(f"error: dataset directory {dataset_dir} not found",
+              file=sys.stderr)
+        return EXIT_USER_ERROR
+
+    results = run_gates(dataset_dir)
+    n_err = sum(len(r.errors) for r in results)
+    n_warn = sum(len(r.warnings) for r in results)
+    try:
+        pending = pending_reviews(dataset_dir)
+        cov = review_coverage(dataset_dir)
+        missing_notes = critical_cases_missing_notes(dataset_dir)
+    except ValueError as e:
+        print(f"error: unreadable review state: {e}", file=sys.stderr)
+        return EXIT_USER_ERROR
+
+    manifest_path = dataset_dir / MANIFEST_NAME
+    manifest_errors: list[str] = []
+    if manifest_path.is_file():
+        try:
+            manifest_errors = verify_manifest(dataset_dir)
+        except ValueError as e:
+            manifest_errors = [f"unreadable manifest: {e}"]
+    manifest_ok = manifest_path.is_file() and not manifest_errors
+
+    print(f"dataset: {dataset_dir}")
+    print(f"gates: {sum(1 for r in results if r.passed)}/{len(results)} "
+          f"passed ({n_err} errors, {n_warn} warnings)")
+    for r in results:
+        if r.passed and not r.warnings:
+            continue
+        print(f"  {r.gate_id} {r.name}: "
+              f"{'pass' if r.passed else 'FAIL'} "
+              f"({len(r.errors)} errors, {len(r.warnings)} warnings)")
+        for e in r.errors:
+            print(f"    error: {e}")
+        for w in r.warnings:
+            print(f"    warning: {w}")
+    cc = cov["critical_coverage"]
+    cc_str = f"{cc:.0%}" if cc is not None else "n/a (no critical cases)"
+    print(f"review: {len(pending)} pending, critical coverage {cc_str}")
+    if missing_notes:
+        print(f"severity notes: {len(missing_notes)} critical case(s) "
+              f"missing justifications")
+    if manifest_path.is_file():
+        print(f"manifest: {'current' if manifest_ok else 'STALE'}")
+        for e in manifest_errors:
+            print(f"  - {e}")
+    else:
+        print("manifest: absent (not sealed yet)")
+
+    release_ready = n_err == 0 and not pending and manifest_ok
+    print(f"status: {'release-ready' if release_ready else 'not release-ready'}")
+    return EXIT_OK if release_ready else EXIT_USER_ERROR
+
+
 def cmd_dataset_gates(args: argparse.Namespace) -> int:
     from peira.gates import run_gates
 
@@ -622,6 +692,9 @@ def build_parser() -> argparse.ArgumentParser:
                         help="who reviewed (name or initials)")
         sp.add_argument("--notes", default="", help="review notes")
         sp.set_defaults(func=cmd_dataset_review)
+    st = dsub.add_parser("status", parents=[dir_req],
+                         help="pipeline status: gates, review queue, manifest")
+    st.set_defaults(func=cmd_dataset_status)
     return p
 
 

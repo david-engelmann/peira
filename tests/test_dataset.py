@@ -204,6 +204,83 @@ class TestBuildManifestSeal(unittest.TestCase):
         self.assertIn(hint, err.getvalue())
 
 
+class TestDatasetStatus(unittest.TestCase):
+    """`peira dataset status`: one view of the authoring pipeline."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.dir = Path(self.tmp.name)
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def _write_cases(self, cases):
+        path = self.dir / "cases.jsonl"
+        path.write_text("\n".join(json.dumps(c) for c in cases) + "\n")
+        return path
+
+    def _status(self, dir=None):
+        import argparse
+        import contextlib
+        import io
+        from peira.cli import cmd_dataset_status
+        args = argparse.Namespace(dir=str(dir or self.dir))
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out), \
+                contextlib.redirect_stderr(io.StringIO()):
+            rc = cmd_dataset_status(args)
+        return rc, out.getvalue()
+
+    def test_trial_suite_is_release_ready(self):
+        trial = Path(__file__).resolve().parents[1] / "dataset" / "trial"
+        rc, out = self._status(trial)
+        self.assertEqual(rc, 0)
+        self.assertIn("status: release-ready", out)
+        self.assertIn("gates: 6/6 passed", out)
+        self.assertIn("manifest: current", out)
+
+    def test_empty_dir_is_not_release_ready(self):
+        rc, out = self._status()
+        self.assertEqual(rc, 1)
+        self.assertIn("manifest: absent", out)
+        self.assertIn("status: not release-ready", out)
+
+    def test_gate_errors_block_release(self):
+        self._write_cases([_case("c1"), _case("c1")])  # duplicate id: G3
+        rc, out = self._status()
+        self.assertEqual(rc, 1)
+        self.assertIn("FAIL", out)
+        self.assertIn("status: not release-ready", out)
+
+    def test_pending_reviews_block_release(self):
+        self._write_cases([_case("c1", severity="critical")])
+        rc, out = self._status()
+        self.assertEqual(rc, 1)
+        self.assertIn("1 pending", out)
+        self.assertIn("status: not release-ready", out)
+
+    def test_stale_manifest_blocks_release(self):
+        from peira.cli import cmd_dataset_build_manifest
+        import argparse
+        import contextlib
+        import io
+        path = self._write_cases([_case("c1")])
+        args = argparse.Namespace(dir=str(self.dir), version="1.0.0",
+                                  name="peira-v1", require_reviews=False)
+        with contextlib.redirect_stderr(io.StringIO()):
+            self.assertEqual(cmd_dataset_build_manifest(args), 0)
+        rc, out = self._status()
+        self.assertEqual(rc, 0)
+        path.write_text(path.read_text().replace('"p!"', '"p?"'))
+        rc, out = self._status()
+        self.assertEqual(rc, 1)
+        self.assertIn("manifest: STALE", out)
+
+    def test_missing_dir_is_user_error(self):
+        rc, out = self._status(self.dir / "nope")
+        self.assertEqual(rc, 1)
+
+
 class TestDatasetCIChecks(unittest.TestCase):
     """The dataset-checks CI job (gates + manifest verification) must stay
     green on the committed Trial starter suite — the same checks the job

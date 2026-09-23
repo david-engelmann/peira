@@ -8,6 +8,12 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
 ## [Unreleased]
 
 ### Added
+- Authoring pipeline, third slice (T1c): `peira dataset status --dir
+  <dir>` — one view of the generate → gate → review → manifest flow
+  (per-gate results, review pending/coverage, manifest state). Exit 0
+  means release-ready (no gate errors, no pending reviews, manifest
+  verifies clean); anything else is exit 1. Documented in
+  `docs/Dataset.md`, including the authoring loop.
 - Authoring pipeline, second slice (T1b): the release seal in
   `peira dataset build-manifest`. The build now refuses when
   `--version` isn't semver, when any critical-severity case lacks a
