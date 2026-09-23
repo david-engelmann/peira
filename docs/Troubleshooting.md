@@ -20,7 +20,7 @@ adapter is safe.
 
 **`error: unknown suite 'x'`**
 Cause: typo in `--suite`. Fix: `trial-demo` (demo fixture, offline) or
-`trial` (the branded 100-case Peira Trial, sealed `1.0.1`).
+`trial` (the branded 100-case Peira Trial, sealed `1.0.4`).
 
 **`error: suite directory ... not found`**
 Cause: you ran `peira` from outside the repo checkout. Fix: run from the
@@ -52,14 +52,17 @@ failure never silently falls back to another revision.
 Cause: the model doesn't fit in RAM/VRAM. Fix: use a quantized variant or a
 smaller adapter; see `docs/Hardware.md` for per-tier requirements.
 
-**`error: ... failed analysis-lock verification — ...`**
-Cause: the run artifact was edited after sealing, or sealed by an older
-peira whose lock covered fewer fields (metrics joined the lock payload
-on 2026-09-23; older artifacts no longer verify — re-run). `peira
-report` fails closed with exit 1. If you understand the numbers are
-untrusted and need the render anyway, pass `--force`: the HTML then
-carries an embedded UNTRUSTED banner so the file itself never looks
-like a trusted report. Fix: don't edit artifacts; re-run.
+**`peira report` warns "analysis lock mismatch"**
+Cause: the run artifact was edited after sealing (the report still
+renders, but the numbers aren't trustworthy). Fix: don't edit artifacts;
+re-run. If you need different config, that's a new run with a new lock.
+
+**`... field 'score': score 2.5 outside 0..1` (artifact load)**
+Cause: a call record in the artifact (or partial run) carries a score
+outside the 0..1 score space — a hand-edited or corrupt artifact.
+The strict loader rejects it so neither backend can disagree about
+what an artifact may contain. Fix: don't edit artifacts; re-run.
+Scores are real numbers in 0..1, `null` for non-score-primitive calls.
 
 **`error: dataset manifest verification failed:`**
 Cause: `peira run` verifies the suite manifest before scoring, and a
@@ -164,7 +167,8 @@ need separators.
 **`peira dataset gates` reports failures (exit 1)**
 Cause: one or more gates found errors — file, line, and rule are printed
 per gate. Fix: address each error (duplicate case ids/content, unknown
-family id, attacked input identical to benign, incoherent target), then
+family id, attacked input identical to benign, incoherent target,
+missing score reference), then
 re-run. Warnings (e.g. G6 pii-scan) don't fail the suite but go to the
 human review queue.
 
@@ -269,15 +273,13 @@ the script). Fix: rebuild with the Python you actually use, and make
 sure no stale `_core*.so` / `_core*.pyd` from another interpreter sits in
 `python/peira/`.
 
-**`error: unreadable manifest at ... (...): refusing to score — ...`**
+**`warning: unreadable manifest at ... (…); recording dataset_version='0.1.0-demo'.`**
 Cause: `peira run` found a `manifest.json` in the suite directory but
-couldn't read or parse it (corrupt JSON, wrong shape). This is now a
-hard error, not a warning: silently scoring a corrupt-but-listed
-dataset as "unbound" would downgrade a bound suite with no signal. Fix:
-restore the manifest from git, or rebuild it with
-`peira dataset build-manifest --dir <suite-dir> --version <v>` and
-re-run. (A *missing* manifest is still fine — the suite ships no
-manifest, e.g. `trial-demo`, and the run is explicitly unbound.)
+couldn't parse it, so the run artifact records the fallback dataset
+version instead of the real one. Fix: rebuild it with
+`peira dataset build-manifest --dir <suite-dir> --version <v>` and re-run.
+(The analysis lock still seals whatever version was recorded — this
+warning is about accuracy of the label, not integrity of the run.)
 
 **`<path>:<line>: invalid JSON (...)`**
 Cause: `peira validate` hit a case-file line that isn't JSON. Fix: fix
@@ -531,38 +533,3 @@ same drift handling as above.
 **`jev returned non-numeric confidence: ...` / `jev returned non-numeric noul: ...`**
 Cause: a confidence/probability field wasn't a number. Clamped only
 when numeric; non-numeric is terminal. Fix: report it.
-
-## Leaderboard emitter errors (`scripts/emit_leaderboard.py`)
-
-**`not a directory: ...`**
-Cause: `--dir` was given a path that isn't a directory. Fix: point
-`--dir` at the directory holding the run artifacts, or pass artifact
-files directly.
-
-**`cannot read ...` / `cannot load ...`**
-Cause: an artifact file is unreadable or isn't valid JSON/UTF-8.
-Fix: re-fetch or re-run to regenerate the artifact.
-
-**`analysis lock verification FAILED for ...: refusing to include it`**
-Cause: the artifact's analysis lock does not verify — the sealed
-content was modified after sealing, or the file is corrupt. The
-emitter refuses the artifact rather than emitting a row from it. Fix:
-re-run to regenerate; if the file was hand-edited, don't.
-
-**`is missing sealed metrics keys: [...]`**
-Cause: the artifact predates the contracted metrics summary (e.g. a
-v1 artifact) or was sealed by an incompatible peira version. Fix:
-re-run with the current peira to produce a v2 artifact.
-
-**`has malformed sealed metric '...'`: expected ...**
-Cause: a sealed metric value has the wrong shape (e.g. a string where
-an interval was contracted). Fix: re-run; a hand-edited artifact will
-not verify anyway.
-
-**`no artifacts given: nothing to emit`**
-Cause: no input files and no `--dir`, or `--dir` matched no
-`*.json`. Fix: pass artifact paths or a directory containing them.
-Note: artifacts from excluded suites (`--exclude-suite`, default
-`trial,trial-demo`) are skipped silently apart from the stderr note
-and the `n_excluded_suites` count — an empty output with a nonzero
-excluded count means every input was a trial-suite run.

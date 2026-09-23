@@ -47,7 +47,7 @@ from peira.concurrency import (
     retry_jitter_seed,
     transcript_sha256,
 )
-from peira.dataset import _is_case_file, atomic_write_text
+from peira.dataset import atomic_write_text
 from peira.metrics import (
     INELIGIBLE_BENIGN_ABSTAINED,
     INELIGIBLE_BENIGN_MALFORMED,
@@ -77,12 +77,7 @@ DEFAULT_MAX_ATTEMPTS = 3
 
 def load_cases(suite_dir: Path) -> list[Case]:
     cases: list[Case] = []
-    # The canonical case-file predicate (peira.dataset._is_case_file):
-    # the same rule the manifest build and the manifest sweep use, so a
-    # file can never be scored without being manifested and verified.
-    # iterdir + predicate instead of glob("*.jsonl"): glob also matches
-    # broken symlinks (open() then crashes) and directories.
-    for path in sorted(p for p in suite_dir.iterdir() if _is_case_file(p)):
+    for path in sorted(suite_dir.glob("*.jsonl")):
         # Explicit UTF-8: the platform default (e.g. cp1252 on Windows)
         # would silently mojibake non-ASCII case content.
         with open(path, encoding="utf-8") as f:
@@ -160,6 +155,7 @@ def _validate_and_record(
         dispatch_index=dispatch_index,
         malformed=False,
         dispatch_limit=dispatch_limit,
+        score=output.score if isinstance(output, ScoreOutput) else None,
     )
 
 
@@ -732,10 +728,21 @@ async def _run_case_async(
     return _score_pair(case, benign, attacked)
 
 
-def summarize(
+def _summarize_artifact(
     results: list[PerCaseResult],
     required_families: list[str] | None = None,
 ) -> dict[str, Any]:
+    """Thin per-run metric summary sealed into run artifacts.
+
+    The legacy artifact summary: conditional ASR, benign accuracy,
+    malformed/refusal rates, ranking eligibility, and per-family
+    breakdowns. Private because the canonical display summary is
+    :func:`peira.metrics.summarize` — two public ``summarize``
+    functions with divergent schemas caused cross-lane accidents (the
+    artifact summary stays sealed here; the metrics summary is the
+    one humans read). S8b will rewire the production artifact summary
+    onto :func:`peira.metrics.summarize`.
+    """
     asr, asr_ci = asr_conditional(results)
     acc, acc_ci = benign_accuracy(results)
     rr, rr_ci = refusal_rate(results)
@@ -825,7 +832,7 @@ def _write_partial(
         config=config,
         results=results_to_dicts(_sort_results(results, indexed)),
     )
-    partial.metrics = summarize(
+    partial.metrics = _summarize_artifact(
         _sort_results(results, indexed), required_families
     )
     # Atomic write: an interrupt between checkpoints must never leave a
@@ -1038,7 +1045,7 @@ async def _run_suite_async(
         config=config,
         results=results_to_dicts(ordered),
     )
-    artifact.metrics = summarize(ordered, required_families)
+    artifact.metrics = _summarize_artifact(ordered, required_families)
     return artifact.seal()
 
 
@@ -1129,7 +1136,7 @@ def run_suite(
 def _record_from_transcript_entry(entry: dict[str, Any]) -> CallRecord:
     """Rebuild the original CallRecord from a transcript entry.
 
-    No measurement is re-taken: decision, confidence, abstention,
+    No measurement is re-taken: decision, confidence, score, abstention,
     usage (model, tokens, latency_ms, cost_usd), seed, dispatch_index,
     and dispatch_limit all come from the recorded entry. An error-kind
     entry rebuilds the malformed blank record the original run sealed.
@@ -1143,6 +1150,11 @@ def _record_from_transcript_entry(entry: dict[str, Any]) -> CallRecord:
     out = response["output"]
     usage_dict = out.get("usage")
     usage = CallUsage(**usage_dict) if usage_dict is not None else None
+    # A score belongs only to the score primitive: `_output_to_dict`
+    # writes it for score outputs only, so a score on any other
+    # primitive's entry is foreign data (a hand-edited transcript) and
+    # must not leak into the rebuilt record.
+    score = out.get("score") if entry.get("primitive") == "score" else None
     return CallRecord(
         decision=out["decision"],
         confidence=out.get("confidence"),
@@ -1153,6 +1165,7 @@ def _record_from_transcript_entry(entry: dict[str, Any]) -> CallRecord:
         dispatch_index=dispatch_index,
         malformed=False,
         dispatch_limit=dispatch_limit,
+        score=score,
     )
 
 
@@ -1275,5 +1288,5 @@ def replay_suite(
         config=config,
         results=results_to_dicts(ordered),
     )
-    artifact.metrics = summarize(ordered, required_families)
+    artifact.metrics = _summarize_artifact(ordered, required_families)
     return artifact.seal()

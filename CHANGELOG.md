@@ -7,39 +7,163 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
 
 ## [Unreleased]
 
-### Fixed — manifest + artifact integrity hardening (BREAKING)
+### Added — confidence-interval coverage and nonfinite hardening (A3 S9)
 
-- `verify_manifest` (Python and Rust) now flags case files and
-  `CANARY.txt` present on disk but not listed in the manifest. Previously
-  only listed files were checked, so a case file added after the manifest
-  was built would be silently unscored while verification reported a
-  clean bill of health.
-- The analysis lock now covers the `metrics` dict (Python `compute_lock`
-  and Rust `lock_payload`, thirteen fields). `peira report` renders
-  stored metrics verbatim, so unlocked metrics let a forged artifact
-  present edited numbers under a valid lock. Artifacts sealed before
-  this change no longer verify — re-run the adapter.
-- `peira report` now fails closed (exit 1) on analysis-lock mismatch
-  instead of warning and rendering; `--force` renders anyway with an
-  embedded UNTRUSTED banner so the HTML file itself never looks like a
-  trusted report.
-- The case-file predicate is now canonical and shared by the runner,
-  the manifest build, and the manifest sweep (Python and Rust): a
-  regular file (following symlinks) whose name ends in `.jsonl`. This
-  closes two gaps the sweep missed — symlinked case files (Rust) and a
-  file named exactly `.jsonl` (Python, whose `Path.suffix` is empty for
-  that name).
-- `peira run` now fails closed (exit 1) when the suite manifest exists
-  but cannot be read or parsed, instead of silently downgrading the run
-  to the unbound `0.1.0-demo` label. A *missing* manifest still yields
-  an explicitly unbound run.
-- The lock's threat model is now documented honestly: unkeyed
-  deterministic SHA-256 is tamper-evidence against accidents, not
-  forgery-resistance — leaderboard ingestion must re-score from
-  transcripts or require signatures, never rely on `verify()` alone.
-- CI hardening: top-level `permissions: contents: read`, all
-  third-party actions pinned to commit SHAs, a committed `Cargo.lock`
-  with `--locked` cargo invocations.
+- New `peira.metrics.MetricEstimate` (value/ci/n/sufficient) and
+  bootstrap 95% CI functions for derived estimates that lacked them:
+  `severity_weighted_asr_ci`, `ece_ci`, `brier_ci`, `augrc_ci`,
+  `selective_risk_ci` (per fixed coverage), and `compression_ci`.
+  All withhold below 30 observations (None + `sufficient: False`,
+  never NaN); all intervals use the Python PRNG (backend-independent).
+  Display-only, never rankers.
+- `summarize()` now reports `severity_weighted_asr_ci95`,
+  per-condition `ece_ci95`/`brier_ci95`, `augrc_ci95`,
+  per-coverage `selective_risk_ci95`, and compression-index CIs
+  (the compression block is now a value/ci95/n/sufficient estimate
+  with the n>=30 gate, instead of a bare ungated float).
+- Nonfinite hardening: every float-input metric in
+  `python/peira/metrics.py` and `crates/peira-core/src/metrics.rs`
+  rejects NaN/±inf with `ValueError` (Python) or a clear panic
+  (Rust, D-11) — never silent NaN, never an uncontrolled panic.
+  Includes the score estimates (`benign_score_mae`,
+  `attacked_score_mae`, `score_displacement`), `wilson_ci`'s `z`
+  parameter, and the Rust `paired_bootstrap_ci` sort hazard (NaN
+  detonated `partial_cmp().unwrap()`). Bootstrap entry points
+  (`paired_bootstrap_ci`, the delta functions, the six S9 CI
+  functions, the score estimates) also reject non-positive or
+  non-integer `n_boot` with `ValueError` instead of an uncontrolled
+  `IndexError`. `CallRecord.from_dict` now validates `confidence` in
+  0..1.
+- `summarize()`'s per-condition `ece`/`brier` point values now come
+  from the pure-Python reference inside `ece_ci`/`brier_ci` rather
+  than the Rust-dispatched `ece()`/`brier_score()` — backend-
+  independent by construction; the values agree to ~1 ulp (the
+  documented non-identity), invisible after 4-decimal rounding except
+  at pathological rounding boundaries.
+- `docs/Methodology.md`: new section on nonfinite handling and CI
+  coverage. New ADR D-29 (reject, don't clamp).
+
+### Added — Bradley–Terry compare-view strengths (A3 S7, ADR D-28)
+
+- New display-only `bradley_terry(comparisons)` in `peira.metrics`
+  (compare view only — never a ranker, never on the leaderboard, never
+  blended into any composite): Davidson (1970) Bradley-Terry strengths
+  with ties, fit by maximum likelihood via a monotone block-MM
+  algorithm. Takes `ComparisonOutcome(a, b, outcome)` head-to-head
+  results (`outcome` in `"a"`/`"b"`/`"tie"`) and returns
+  `BradleyTerryEstimate(strengths, nu, n, sufficient)` — centered
+  log-strengths (only differences meaningful) plus the fitted tie
+  propensity `nu` (`0.0` recovers plain Bradley-Terry).
+- Withheld below `MIN_BT_COMPARISONS = 30` (`strengths=None`,
+  `nu=None`, `sufficient=False`); `ValueError` on malformed input,
+  disconnected comparison graphs, and perfect separation — the exact
+  Ford condition (strong connectivity of the win/tie digraph): an item
+  that never won-or-tied, or a group that won every cross-group
+  comparison outright, has unbounded relative strength, so a sweep is
+  displayed as counts, not strengths; all-ties reports equal strengths
+  with `nu = +inf`. Point estimates only, no intervals (see ADR D-28
+  for why bootstrap CIs are deferred).
+- The MM fit ships in the Rust core (`crates/peira-core`) with PyO3
+  dispatch parity; validation, aggregation, gating, and the
+  identifiability/all-ties logic stay in Python (validated before
+  dispatch — D-11).
+
+### Added — run summary (A3 S8a)
+
+- New canonical `peira.metrics.summarize(results, required_families=None,
+  expected_scores=None, n_boot=2000, seed=0)`: a pure function from a
+  run's per-case records to the complete S1–S6 display summary —
+  conditional ASR + Wilson CI, severity-weighted ASR (display-only),
+  benign accuracy, refusal rates per arm + attacked-minus-benign delta,
+  per-arm outcome censuses, ranking-eligibility gate, per-condition
+  calibration (ECE/Brier/Murphy, confidence coverage,
+  ΔBrier/ΔECE/Δreliability), selective-prediction diagnostics (AUGRC,
+  fixed-coverage risk at 0.5/0.8/0.9/1.0, risk-coverage curve), and
+  score diagnostics (per-arm MAE, displacement, compression index,
+  skip accounting). Display-only throughout: no composite ranking
+  score, no ranking; Bradley-Terry is excluded by design (compare-view
+  only, S7). Derived/calibrated metrics withhold below 30 observations
+  per condition (explicit `None` + `sufficient: False`, never NaN);
+  all floats rounded to 4 decimals; JSON-serializable; deterministic
+  via the seeded Python PRNG. Sealed-artifact and report wiring land
+  in S8b.
+- `docs/Methodology.md`: new `summarize()` section documenting the
+  output schema field by field.
+
+### Changed — run summary review fixes (A3 S8a)
+
+- `peira.runner.summarize` (the legacy sealed-artifact summary) is now
+  private as `peira.runner._summarize_artifact`: two public `summarize`
+  functions with divergent schemas were a cross-lane accident waiting
+  to happen. `peira.metrics.summarize` is the public canonical
+  summary; S8b will rewire the artifact summary onto it.
+- Rates with zero observations now report `None` instead of `0.0`
+  (empty runs, required-but-absent families): a zero in the summary
+  always means "measured zero", never "no data".
+- The score compression index is computed over every available arm
+  score (no author reference needed, as documented) and now honors the
+  n≥30 gate like every other derived estimate — it is withheld below
+  30 scores instead of reporting the degenerate 1.0 a single
+  observation would give.
+- `summarize()` validates `n_boot`: non-positive, non-integer, and
+  bool values raise `ValueError` instead of dying in an `IndexError`
+  inside the bootstrap.
+
+### Added — score diagnostics (A3 S6, ADR D-27)
+
+- New optional case-author field `benign.expected_score: float | None`
+  (0–1) on score-primitive cases: the author's reference answer to
+  the same graded question the prompt poses to the adapter. Gate G7
+  requires it on every valid score-primitive case in release-track
+  datasets.
+- New display-only score diagnostics in `peira.metrics` (never
+  rankers): `crps_point(scores, refs)` — mean |score − reference|, the
+  degenerate CRPS for deterministic forecasts (Gneiting & Raftery
+  2007), coinciding with MAE in v1; `score_compression_index(scores)`
+  — `1 − 12·Var(scores)` clipped to [0, 1] (bimodal caveat
+  documented); `score_pairs()` extraction split by arm with skip
+  accounting; per-arm `benign_score_mae` / `attacked_score_mae` and
+  paired `score_displacement`, returning `ScoreEstimate(value, ci, n,
+  sufficient)` withheld below `MIN_SCORE_CASES = 30`.
+- `crps_point` and `score_compression_index` ship in the Rust core
+  (`crates/peira-core`) with PyO3 dispatch parity; the
+  bootstrap-backed estimates stay Python-reference (Python PRNG by
+  contract).
+- `CallRecord` carries `score: float | None`, populated from
+  `ScoreOutput` by the runner and restored from transcripts and
+  artifacts (pre-S6 artifacts without the key still load, on both
+  backends).
+- The Trial's 16 score cases were backfilled with authorial
+  references, then re-pinned to the transcription method (ADR D-27):
+  the 10 `tr-sa-*` values are the author's own `~NN` estimates from
+  the case notes, normalized to each prompt's scale; the 6 `tr-cf-*`
+  values are non-extremized point estimates inside the notes' stated
+  bounds. 2026-09-23 correction: an independent review found 9 of the
+  16 values compressed toward the decision threshold and corrected
+  them to the evidence-implied magnitude (ADR D-27); the Trial
+  manifest is now `1.0.4`. Note: `review.json`
+  predates the new field, so human review has not independently
+  covered it.
+
+### Fixed — A3 S6 independent review findings
+
+- Artifact load now enforces the unit-interval rule on `score` (a real
+  number in 0..1): NaN/Infinity — which Python's `json` accepts but
+  `serde_json` rejects at parse — and out-of-range values fail the
+  strict loader with a clean error, on both backends (the Rust
+  `CallRecord` deserializer rejects them too). Pre-S6 artifacts
+  without the key still load.
+- `CallRecord.from_dict` validates `score` with a clean `ValueError`
+  instead of letting hostile resume-partial entries detonate later as
+  `TypeError`. (`confidence` has the same pre-existing gap — S1's
+  territory; flagged as a stack-level follow-up.)
+- Transcript replay only restores `score` for score-primitive entries;
+  a foreign score on any other primitive's entry is dropped.
+- `score_pairs` validates the caller-supplied reference map up front
+  (finite, in 0..1) instead of letting junk warp MAE/displacement.
+- `score_pairs` takes a `Mapping` for the reference map, not just a
+  `dict`; the `ScorePairs` docstring now says the two per-arm skip
+  buckets count arm-observations.
 
 ### Changed (BREAKING — pure adapter inputs, ADR D-25)
 
@@ -70,6 +194,76 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
   residual) under the same equal-mass bins, Python-reference only.
 - New `confidence_coverage(results)` — per-arm fraction of non-None
   confidences, reported alongside every calibration number.
+
+### Added — delta-calibration (A3 S2)
+
+- New `attacked_confidence_pairs(results)` — attacked-arm mirror of
+  `eligible_confidence_pairs`: label 1 when the attacked decision
+  matches the case's expected decision (not flipped), 0 otherwise.
+- New `delta_brier(results)` — the headline calibration number:
+  attacked-minus-benign Brier score on paired cases (eligible, both
+  confidences present), with a 95% CI from `paired_bootstrap_ci`.
+  Positive means worse under attack; the docstring carries the
+  direction caveat (Brier mixes calibration with sharpness).
+- New `delta_ece(results)` / `delta_reliability(results)` —
+  attacked-minus-benign ECE and Murphy reliability on the same paired
+  cases, with 95% CIs from paired case-resampling bootstrap.
+- New `DeltaEstimate(delta, ci, n, sufficient)`: delta statistics are
+  withheld below the `MIN_DELTA_CASES = 30` gate — `delta`/`ci` are
+  None and `sufficient` is False instead of a NaN.
+
+### Added — outcome accounting (A3 S5)
+
+- New `benign_refusal_rate(results)` — benign-arm mirror of
+  `refusal_rate` with the same Wilson 95% CI (any abstention counts,
+  over all cases). Python-reference only; `refusal_rate` keeps its
+  Rust fast path for the attacked arm.
+- New `outcome_accounting(results)` — per-arm census over *all* cases:
+  `ArmOutcomes(n, approve, deny, other, refused, abstained,
+  malformed)`, returned as `(benign_outcomes, attacked_outcomes)`.
+  Bucket precedence: malformed > abstained (`refused` with a refusal
+  reason, plain `abstained` without) > decided (`approve` on the
+  "approve" label, `deny` on the exact "deny" label, `other` for any
+  other decided label). The buckets partition each arm's cases.
+- New `refusal_rate_delta(results)` — attacked-minus-benign refusal
+  rate with a paired-bootstrap 95% CI (backend-independent Python
+  PRNG). Empty results return `(0.0, (0.0, 0.0))`, like the other
+  rate functions.
+
+### Added — ASR extras (A3 S4)
+
+- New `severity_weighted_asr(results)` — the flip indicator averaged
+  over eligible cases with frozen weights
+  `SEVERITY_WEIGHTS = {"critical": 3, "high": 2, "medium": 1}` (D1);
+  display-only, never a ranker. No eligible cases reads 0.0, like
+  plain ASR; unknown severities raise ValueError.
+- New `holm_adjust(p_values, alpha=0.05)` — Holm step-down adjusted
+  p-values in the input order (uniformly more powerful than
+  Bonferroni), for joint claims across families (e.g. McNemar
+  family-comparison p-values).
+- New `bonferroni_adjust(p_values)` — min(1, m*p) per p-value, input
+  order. New `reject_at(adjusted, alpha=0.05)` — indices rejected at
+  level alpha (empty input returns `[]`; NaN and out-of-[0, 1] values
+  raise ValueError). Empty p-value lists and values outside [0, 1]
+  (incl. NaN) raise ValueError in the adjust functions.
+
+### Added — selective prediction (A3 S3)
+
+- New `risk_coverage_curve(probs, labels)` — the selective-
+  classification risk-coverage curve (Geifman & El-Yaniv 2017):
+  `(coverage=k/n, risk)` for k = 1..n over the confidence-descending
+  ranking, stable ties.
+- New `selective_risk_at_coverage(probs, labels, coverage)` — error
+  rate of the top `ceil(coverage*n)` predictions; `coverage` must be
+  in (0, 1].
+- New `augrc(probs, labels)` — Area Under the Generalized Risk
+  Coverage curve (Traub et al. 2024, arXiv:2407.01032), the
+  trapezoid-rule area under the (coverage, generalized-risk) curve,
+  satisfying the paper's Eq. (7) identity and the [0, ½] bound; reads
+  as the "average risk of undetected failures". All three are
+  display-only diagnostics, never rankers (D2), intended for
+  attacked-arm correctness pairs from `attacked_confidence_pairs`.
+  Python-reference only; Rust port deferred.
 
 ### Added — real day-one adapters (A2)
 - New `python/peira/adapters/hf.py` behind `peira[hf]`: Shieldstral
@@ -158,30 +352,6 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
   pinned to exact commit revisions; OpenAI uses strict `json_schema`;
   Anthropic uses forced tool choice (per-model confirmation required
   before adding new models like Opus 5.5).
-
-### Added — leaderboard.json emission (site pipeline)
-
-- New stdlib-only `scripts/emit_leaderboard.py`: reads one or more
-  sealed v2 run artifacts, verifies each analysis lock (unverified
-  artifacts are refused, never silently included), and emits one
-  `leaderboard.json` document — one row per artifact with run id
-  (artifact SHA-256), adapter name/version, dataset version,
-  per-family ASR with Wilson intervals, the ranking-eligibility flag,
-  and the analysis-lock fields used for trust display.
-- New `docs/LeaderboardJson.md`: the precise JSON schema (version 1),
-  the trust model, and the D-8 rule — trial-suite rows are emitted by
-  CI only to exercise the pipeline and must never be published to the
-  public leaderboard.
-- New `.github/workflows/leaderboard.yml`: runs the mock trial suite,
-  emits `leaderboard.json` from the sealed artifact, and uploads it as
-  a workflow artifact. Hardened like `ci.yml`: SHA-pinned actions,
-  `permissions: contents: read`. Additive; existing workflows untouched.
-- Review fixes: `--exclude-suite` (default `trial,trial-demo`)
-  enforces D-8 mechanically with an `n_excluded_suites` count;
-  shape-validation of sealed metric values (wrong types fail loudly);
-  atomic output write; emitter error strings in Troubleshooting;
-  trust-model caveat that the unkeyed lock is tamper evidence, not
-  authenticity.
 
 ### Planned
 - Versioned methodology pages (`docs/Methodology.md` is the single

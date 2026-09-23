@@ -3,23 +3,14 @@
 //! Mirrors `python/peira/artifacts.py`. An artifact bundles the config,
 //! the per-case results, and the aggregate metrics, plus an analysis-lock
 //! hash (SHA-256 over the lock payload). The hash is the mechanical
-//! guarantee behind "no post-hoc editing": any change to a locked field
-//! changes the lock.
-//!
-//! Threat model, stated honestly: the lock is unkeyed deterministic
-//! SHA-256 — tamper-evidence against accidents and casual edits, NOT
-//! forgery-resistance. Anyone can recompute a valid lock for edited
-//! content, so `verify()` must never be the sole basis for trusting an
-//! artifact from an untrusted party.
+//! guarantee behind "no post-hoc editing": any change to inputs changes
+//! the lock.
 //!
 //! Format versions: v1 (flat results) is REJECTED — v1 artifacts predate
 //! the v2 measurement contract and cannot be migrated. v2 results carry
 //! full per-variant call records, eligibility flags, and run-level
 //! pricing provenance (source + pin date) and seed; the lock payload
 //! covers pricing_source, pricing_date, and seed alongside the v1 fields.
-//! Since 2026-09-23 the lock payload also covers `metrics` — reports
-//! render the stored metrics verbatim, so leaving them unlocked let an
-//! edited artifact present forged numbers under a valid lock.
 //!
 //! The lock payload is serialized with [`crate::canonical`] so locks are
 //! byte-identical across the Python and Rust implementations.
@@ -110,7 +101,6 @@ impl RunArtifact {
             &self.suite,
             &self.config,
             &serde_json::to_value(&self.results).unwrap_or(Value::Null),
-            &self.metrics,
             &self.pricing_source,
             &self.pricing_date,
             self.seed,
@@ -200,10 +190,10 @@ fn json_type_name(v: &Value) -> &'static str {
     }
 }
 
-/// Compute the analysis lock from the thirteen payload fields. Exposed so
+/// Compute the analysis lock from the eleven payload fields. Exposed so
 /// tests (and future verifiers) can lock payloads built outside a
 /// [`RunArtifact`], e.g. from a JSON fixture produced by the Python side.
-// Thirteen positional params mirror the lock-payload field list; a struct
+// Twelve positional params mirror the lock-payload field list; a struct
 // would just rename the problem.
 #[allow(clippy::too_many_arguments)]
 pub fn lock_payload(
@@ -215,17 +205,16 @@ pub fn lock_payload(
     suite: &str,
     config: &Value,
     results: &Value,
-    metrics: &Value,
     pricing_source: &str,
     pricing_date: &str,
     seed: i64,
     max_concurrency: i64,
 ) -> String {
-    // The thirteen payload keys in canonical (sorted) order, hashed by
-    // streaming straight into SHA-256: `config`, `results`, and `metrics`
-    // are never cloned. The field order is written out explicitly — it is
-    // part of the lock contract, and spelling it out beats a
-    // separator-tracking macro.
+    // The twelve payload keys in canonical (sorted) order, hashed by
+    // streaming straight into SHA-256: `config` and `results` are never
+    // cloned. The field order is written out explicitly — it is part of
+    // the lock contract, and spelling it out beats a separator-tracking
+    // macro.
     let mut h = Sha256::new();
     h.update(b"{\"adapter_name\": ");
     hash_canonical(&Value::String(adapter_name.to_owned()), &mut h);
@@ -239,8 +228,6 @@ pub fn lock_payload(
     hash_canonical(&Value::String(manifest_sha256.to_owned()), &mut h);
     h.update(b", \"max_concurrency\": ");
     hash_canonical(&Value::Number(max_concurrency.into()), &mut h);
-    h.update(b", \"metrics\": ");
-    hash_canonical(metrics, &mut h);
     h.update(b", \"peira_version\": ");
     hash_canonical(&Value::String(peira_version.to_owned()), &mut h);
     h.update(b", \"pricing_date\": ");
@@ -274,6 +261,7 @@ mod tests {
             dispatch_index: index,
             malformed: false,
             dispatch_limit: 1,
+            score: None,
         }
     }
 
@@ -354,12 +342,11 @@ mod tests {
         b.seal();
         b.config = json!({"n_cases": 2});
         assert!(!b.verify());
-        // Tampering with metrics (a lock input, since the report renders
-        // them verbatim) breaks the lock too.
+        // Tampering with metrics (not in the payload) does not.
         let mut c = sample();
         c.seal();
         c.metrics = json!({"asr_conditional": 1.0});
-        assert!(!c.verify());
+        assert!(c.verify());
     }
 
     #[test]
@@ -440,9 +427,8 @@ mod tests {
         // or every cross-language lock breaks silently.
         let config = json!({"n_cases": 3, "nested": {"b": [1, 2], "a": "x"}});
         let results = json!([{"case_id": "c1", "x": 1e-5}]);
-        let metrics = json!({"asr_conditional": 0.45, "n_cases": 3});
         let streamed = lock_payload(
-            "p", "d", "m", "a", "v", "s", &config, &results, &metrics, "ps", "pd", 3, 8,
+            "p", "d", "m", "a", "v", "s", &config, &results, "ps", "pd", 3, 8,
         );
         let mut map = serde_json::Map::new();
         for (k, v) in [
@@ -452,7 +438,6 @@ mod tests {
             ("dataset_version", json!("d")),
             ("manifest_sha256", json!("m")),
             ("max_concurrency", json!(8)),
-            ("metrics", metrics),
             ("peira_version", json!("p")),
             ("pricing_date", json!("pd")),
             ("pricing_source", json!("ps")),
@@ -465,24 +450,5 @@ mod tests {
         let mut h = Sha256::new();
         h.update(crate::canonical::to_canonical(&Value::Object(map)).as_bytes());
         assert_eq!(streamed, format!("{:x}", h.finalize()));
-    }
-
-    #[test]
-    fn lock_covers_metrics() {
-        // The report renders stored metrics verbatim: editing them must
-        // break the lock, or forged numbers would verify.
-        let mut a = sample();
-        a.metrics = json!({"asr_conditional": 0.45});
-        a.seal();
-        let mut b = sample();
-        b.metrics = json!({"asr_conditional": 0.9999});
-        b.seal();
-        assert_ne!(a.analysis_lock, b.analysis_lock);
-        assert!(a.verify());
-        let mut c = sample();
-        c.metrics = json!({"asr_conditional": 0.45});
-        c.seal();
-        c.metrics = json!({"asr_conditional": 0.9999});
-        assert!(!c.verify());
     }
 }

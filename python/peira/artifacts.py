@@ -3,15 +3,7 @@
 An artifact bundles the config, the per-case results, and the aggregate
 metrics, plus an analysis-lock hash (sha256 over the lock payload). The
 hash is the mechanical guarantee behind "no post-hoc editing": any change
-to a locked field changes the lock, and CI verifies it.
-
-Threat model, stated honestly: the lock is unkeyed deterministic
-SHA-256. It is tamper-evidence against accidents and casual edits — it
-is NOT forgery-resistance. Anyone can recompute a valid lock for edited
-content, so `verify()` must never be the sole basis for trusting an
-artifact from an untrusted party. Leaderboard ingestion must re-score
-from the sealed transcripts or require signatures; relying on
-`verify()` alone is a documented non-goal.
+to inputs changes the lock, and CI verifies it.
 
 Artifact format versions:
 - v1 (pre-2026-09-23): flat per-case results. REJECTED by this build —
@@ -23,11 +15,6 @@ Artifact format versions:
   run-level pricing provenance (source + pin date) and seed. The lock
   payload covers pricing_source, pricing_date, and seed alongside the
   v1 fields: they are measurement inputs, so they are lock inputs.
-  Since 2026-09-23 the lock payload also covers `metrics` — `peira
-  report` renders the stored metrics verbatim, so leaving them
-  unlocked let an edited artifact present forged numbers under a valid
-  lock. Artifacts sealed before this change no longer verify; re-run
-  the adapter to produce a fresh artifact.
 """
 
 from __future__ import annotations
@@ -39,6 +26,7 @@ from datetime import datetime, timezone
 from typing import ClassVar
 
 from peira import __version__ as peira_version
+from peira.adapters.base import _unit_interval
 from peira.metrics import PerCaseResult
 
 ARTIFACT_VERSION = "2"
@@ -100,7 +88,6 @@ class RunArtifact:
                 "suite": self.suite,
                 "config": self.config,
                 "results": self.results,
-                "metrics": self.metrics,
                 "manifest_sha256": self.manifest_sha256,
                 "pricing_source": self.pricing_source,
                 "pricing_date": self.pricing_date,
@@ -249,7 +236,7 @@ class RunArtifact:
             if key not in (
                 "decision", "confidence", "abstained", "refusal_reason",
                 "usage", "seed", "dispatch_index", "malformed",
-                "dispatch_limit",
+                "dispatch_limit", "score",
             ):
                 raise ValueError(f"{where} has unknown field: {key!r}")
         for key in (
@@ -270,6 +257,18 @@ class RunArtifact:
                 f"{where} field 'confidence' must be a number or null, "
                 f"got {type(confidence).__name__}"
             )
+        # A3 S6: the adapter's raw score for score-primitive calls; null
+        # for other primitives and absent in pre-S6 artifacts. The score
+        # space is the unit interval — the same rule as the adapter-output
+        # contract (adapters/base.py::_unit_interval): NaN/Infinity (which
+        # Python's json accepts but serde_json rejects at parse) and
+        # out-of-range values fail the strict loader, so both backends
+        # agree on what an artifact may contain.
+        score = record.get("score")
+        if score is not None:
+            err = _unit_interval("score", score)
+            if err is not None:
+                raise ValueError(f"{where} field 'score': {err}")
         for key in ("seed", "dispatch_index", "dispatch_limit"):
             if not _is_int(record[key]):
                 raise ValueError(

@@ -35,7 +35,8 @@ compiled Rust core via the `peira._core` PyO3 extension. It is purely an
 accelerator: every function falls back to the pure-Python reference
 implementation when the extension is absent, so `pip install peira` never
 needs a Rust toolchain, and both backends produce the same values (up to
-~1 ulp of float summation order; `paired_bootstrap_ci` always uses the
+~1 ulp where the reference squares terms via `** 2` and the Rust core
+uses exact multiplication; `paired_bootstrap_ci` always uses the
 Python PRNG so reported intervals never depend on the backend).
 
 To build it in a checkout:

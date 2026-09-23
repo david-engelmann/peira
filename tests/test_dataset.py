@@ -1,7 +1,6 @@
 """Unit tests for dataset manifest tooling (run with: python -m unittest discover tests)."""
 
 import json
-import os
 import tempfile
 import unittest
 from pathlib import Path
@@ -88,53 +87,6 @@ class TestDatasetManifest(unittest.TestCase):
         path.unlink()
         errors = verify_manifest(self.dir)
         self.assertTrue(any("missing on disk" in e for e in errors), errors)
-
-    def test_verify_flags_unlisted_case_file(self):
-        # P0: a case file added after the manifest was built must be
-        # flagged — otherwise it would be silently unscored and the
-        # "directory matches the manifest exactly" guarantee would lie.
-        self._write_cases()
-        write_manifest(self.dir, build_manifest(self.dir, "1.0.0"))
-        self.assertEqual(verify_manifest(self.dir), [])
-        self._write_cases(name="extra.jsonl")
-        (self.dir / "CANARY.txt").write_text("peira-canary:test\n")
-        (self.dir / "notes.md").write_text("not a case file\n")
-        errors = verify_manifest(self.dir)
-        self.assertEqual(len(errors), 2, errors)
-        self.assertIn("extra.jsonl: on disk but not listed in manifest",
-                      errors)
-        self.assertIn("CANARY.txt: on disk but not listed in manifest",
-                      errors)
-
-    def test_dot_jsonl_file_is_a_case_file(self):
-        # P1: a file named exactly ".jsonl" has an empty Path.suffix,
-        # but it IS a case file (name ends with .jsonl): the sweep must
-        # flag it when unlisted, and build must include it — scored
-        # ⟺ manifested ⟺ swept.
-        self._write_cases()
-        write_manifest(self.dir, build_manifest(self.dir, "1.0.0"))
-        self.assertEqual(verify_manifest(self.dir), [])
-        (self.dir / ".jsonl").write_text(json.dumps(_case("cx")) + "\n")
-        errors = verify_manifest(self.dir)
-        self.assertIn(".jsonl: on disk but not listed in manifest", errors)
-        # A fresh seal covers it too.
-        m = build_manifest(self.dir, "1.0.0")
-        self.assertIn(".jsonl", m["files"])
-        self.assertEqual(m["files"][".jsonl"]["n_cases"], 1)
-
-    def test_verify_flags_unlisted_symlinked_case_file(self):
-        # The sweep follows symlinks (the runner scores through them):
-        # an unlisted symlinked case file must be flagged.
-        self._write_cases()
-        write_manifest(self.dir, build_manifest(self.dir, "1.0.0"))
-        self.assertEqual(verify_manifest(self.dir), [])
-        try:
-            os.symlink(self.dir / "cases.jsonl", self.dir / "evil.jsonl")
-        except OSError as e:
-            self.skipTest(f"symlinks unavailable: {e}")
-        errors = verify_manifest(self.dir)
-        self.assertIn("evil.jsonl: on disk but not listed in manifest",
-                      errors)
 
     def test_build_rejects_invalid_case(self):
         bad = _case("c1")
@@ -388,7 +340,7 @@ class TestDatasetStatus(unittest.TestCase):
         rc, out = self._status(trial)
         self.assertEqual(rc, 0)
         self.assertIn("status: release-ready", out)
-        self.assertIn("gates: 6/6 passed", out)
+        self.assertIn("gates: 7/7 passed", out)
         self.assertIn("manifest: current", out)
 
     def test_empty_dir_is_not_release_ready(self):

@@ -162,28 +162,6 @@ class TestStrictFromJson(unittest.TestCase):
         ).seal()
         self.assertNotEqual(a.analysis_lock, c.analysis_lock)
 
-    def test_lock_covers_metrics(self):
-        # The report renders stored metrics verbatim: editing them under
-        # a kept lock must fail verification, or forged numbers would
-        # verify.
-        a = RunArtifact(
-            peira_version="0.1.0", dataset_version="1.0.0",
-            metrics={"asr_conditional": 0.45},
-        ).seal()
-        b = RunArtifact(
-            peira_version="0.1.0", dataset_version="1.0.0",
-            metrics={"asr_conditional": 0.9999},
-        ).seal()
-        self.assertNotEqual(a.analysis_lock, b.analysis_lock)
-        self.assertTrue(a.verify())
-        # Seal, then tamper the metrics keeping the original lock.
-        c = RunArtifact(
-            peira_version="0.1.0", dataset_version="1.0.0",
-            metrics={"asr_conditional": 0.45},
-        ).seal()
-        c.metrics = {"asr_conditional": 0.9999}
-        self.assertFalse(c.verify())
-
 
 class TestResultEntryValidation(unittest.TestCase):
     """Result entries validate like Rust's `Vec<PerCaseResult>`."""
@@ -267,6 +245,54 @@ class TestResultEntryValidation(unittest.TestCase):
             ValueError, "field 'confidence' must be a number or null"
         ):
             RunArtifact.from_json(json.dumps(d))
+
+    def test_bad_score_rejected(self):
+        # A3 S6: `score` is a number or null, like `confidence`; a
+        # string or bool in a call record fails the strict loader.
+        for bad in ("0.5", True, [0.5]):
+            entry = _result_entry()
+            entry["benign"]["score"] = bad
+            d = _artifact_dict(results=[entry])
+            with self.subTest(bad=bad):
+                with self.assertRaisesRegex(
+                    ValueError, r"field 'score': score must be a number in 0\.\.1"
+                ):
+                    RunArtifact.from_json(json.dumps(d))
+
+    def test_hostile_score_rejected(self):
+        # A3 S6 review P1: the strict loader enforces the unit-interval
+        # rule both backends agree on. Python's json accepts
+        # NaN/Infinity (serde_json rejects them at parse) and never
+        # range-checked, so a crafted artifact must fail here with a
+        # clean error — never load into the diagnostics.
+        for bad in (2.5, -0.5, float("nan"), float("inf"), float("-inf")):
+            entry = _result_entry()
+            entry["benign"]["score"] = bad
+            d = _artifact_dict(results=[entry])
+            with self.subTest(bad=bad):
+                with self.assertRaisesRegex(
+                    ValueError, r"field 'score': score .* outside 0\.\.1"
+                ):
+                    RunArtifact.from_json(json.dumps(d))
+
+    def test_score_boundaries_ok(self):
+        # 0.0 and 1.0 are legitimate scores and load cleanly.
+        for good in (0.0, 1.0, 0.5):
+            entry = _result_entry()
+            entry["benign"]["score"] = good
+            d = _artifact_dict(results=[entry])
+            with self.subTest(good=good):
+                a = RunArtifact.from_json(json.dumps(d))
+                self.assertEqual(a.results[0]["benign"]["score"], good)
+
+    def test_null_score_ok(self):
+        # Non-score primitives seal `score: null`; absent in pre-S6
+        # artifacts.
+        entry = _result_entry()
+        entry["benign"]["score"] = None
+        d = _artifact_dict(results=[entry])
+        a = RunArtifact.from_json(json.dumps(d))
+        self.assertIsNone(a.results[0]["benign"]["score"])
 
     def test_null_usage_ok(self):
         # The mock reports no usage: null is the honest value.

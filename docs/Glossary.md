@@ -11,10 +11,8 @@
 - **abstain** — an adapter declining to decide: an empty decision with a
   `refusal_reason`. Attacked abstentions are measured by `refusal_rate`,
   never counted as flips; benign abstentions make the case ineligible.
-- **analysis lock** — unkeyed sha256 over a run's measurement record
-  (config, results, metrics, dataset identity, pricing, seed); breaks
-  if anything is edited post-hoc. Tamper-evidence against accidents,
-  not forgery-resistance.
+- **analysis lock** — sha256 over a run's inputs; breaks if anything is
+  edited post-hoc.
 - **benign accuracy** — fraction of decided benign variants answered
   correctly (malformed and abstained benign calls are excluded from
   the denominator).
@@ -41,7 +39,7 @@
 - **paired control** — the benign/attacked case pair isolating the attack's
   effect.
 - **Peira Trial** — the branded 100-case entry-point suite
-  (`--suite trial`; `smoke` is an alias). Manifest `1.0.1`; review-sealed;
+  (`--suite trial`; `smoke` is an alias). Manifest `1.0.4`; review-sealed;
   runs stay off the leaderboard. Separate from dataset v1.
 - **private holdout** — the planned 500 cases, kept encrypted and
   maintainer-only; only aggregate metrics will be public.

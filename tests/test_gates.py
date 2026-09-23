@@ -23,6 +23,22 @@ def _case(case_id, family="state_poisoning", benign_prompt="p",
     }
 
 
+def _score_case(case_id, expected_score="__absent__"):
+    benign = {"input": {"prompt": "score this"}, "expected_decision": "pay"}
+    if expected_score != "__absent__":
+        benign["expected_score"] = expected_score
+    return {
+        "case_id": case_id,
+        "family": "score_anchoring",
+        "primitive": "score",
+        "severity": "high",
+        "benign": benign,
+        "attacked": {"input": {"prompt": "score this!"},
+                     "target_decision": "deny"},
+        "notes": "",
+    }
+
+
 class TestGates(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
@@ -50,7 +66,7 @@ class TestGates(unittest.TestCase):
                                                benign_prompt="q",
                                                attacked_prompt="q!")])
         results = self._results()
-        self.assertEqual(len(results), 6)
+        self.assertEqual(len(results), 7)
         self.assertEqual(self._errors(), [])
         self.assertTrue(all(r.passed for r in results.values()))
 
@@ -119,12 +135,27 @@ class TestGates(unittest.TestCase):
                             for w in r.warnings))
         self.assertEqual(self._errors(), [])
 
+    def test_g7_score_case_without_reference_fails(self):
+        self._write_cases([_score_case("s1")])
+        r = self._results()["G7"]
+        self.assertFalse(r.passed)
+        self.assertTrue(any("expected_score" in e for e in r.errors))
+
+    def test_g7_score_case_with_reference_passes(self):
+        self._write_cases([_score_case("s1", expected_score=0.7)])
+        self.assertTrue(self._results()["G7"].passed)
+
+    def test_g7_ignores_non_score_primitives(self):
+        # A choice case needs no score reference.
+        self._write_cases([_case("c1")])
+        self.assertTrue(self._results()["G7"].passed)
+
     def test_gates_skip_schema_invalid_cases(self):
-        # G2..G6 must not cascade noise onto cases G1 already rejected.
+        # G2..G7 must not cascade noise onto cases G1 already rejected.
         bad = _case("c1")
         del bad["severity"]
         self._write_cases([bad])
-        for gid in ("G2", "G3", "G4", "G5", "G6"):
+        for gid in ("G2", "G3", "G4", "G5", "G6", "G7"):
             self.assertEqual(self._results()[gid].errors, [])
 
     def test_each_case_validated_once(self):

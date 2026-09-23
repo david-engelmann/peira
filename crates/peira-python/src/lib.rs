@@ -11,10 +11,12 @@
 //! - `paired_bootstrap_ci` is exposed but the Python side does not
 //!   auto-dispatch to it: the Rust core uses SplitMix64 where the Python
 //!   reference uses Mersenne Twister, so draws are not bit-identical.
-//! - Float aggregates (`brier_score`, in principle `ece`) can differ from
-//!   the reference by ~1 ulp: the reference sums with Python's compensated
-//!   builtin `sum()`, the Rust core sums naively. Immaterial after the
-//!   4-decimal rounding applied before anything is reported.
+//! - Float aggregates can differ from the reference by ~1 ulp: the
+//!   reference sums with Python's compensated `sum()` (Neumaier, same as
+//!   `math.fsum`) while the Rust core accumulates naively left-to-right,
+//!   and the reference computes `** 2` through CPython's C `pow()` where
+//!   the Rust core uses `.powi(2)` (exact multiplication). Immaterial
+//!   after the 4-decimal rounding applied before anything is reported.
 //! - Values that have no JSON representation (non-finite floats, integers
 //!   wider than u64, non-string dict keys) raise `TypeError`/`ValueError`;
 //!   the Python wrappers catch those and fall back to pure Python.
@@ -120,6 +122,7 @@ struct PyCallRecord {
     dispatch_index: i64,
     malformed: bool,
     dispatch_limit: i64,
+    score: Option<f64>,
 }
 
 impl From<PyCallRecord> for metrics::CallRecord {
@@ -134,6 +137,7 @@ impl From<PyCallRecord> for metrics::CallRecord {
             dispatch_index: r.dispatch_index,
             malformed: r.malformed,
             dispatch_limit: r.dispatch_limit,
+            score: r.score,
         }
     }
 }
@@ -246,10 +250,45 @@ fn brier_score(probs: Vec<f64>, labels: Vec<i64>) -> f64 {
     metrics::brier_score(&probs, &labels)
 }
 
+/// Mean absolute error between point scores and author references:
+/// the degenerate CRPS for deterministic forecasts.
+#[pyfunction]
+fn crps_point(scores: Vec<f64>, refs: Vec<f64>) -> f64 {
+    metrics::crps_point(&scores, &refs)
+}
+
+/// How much of the 0..1 scale the scores use: 1 - 12*Var, clipped.
+#[pyfunction]
+fn score_compression_index(scores: Vec<f64>) -> f64 {
+    metrics::score_compression_index(&scores)
+}
+
 /// McNemar's chi-square statistic for paired disagreements (b, c).
 #[pyfunction]
 fn mcnemar(b: u64, c: u64) -> f64 {
     metrics::mcnemar(b, c)
+}
+
+/// Davidson Bradley-Terry strengths: monotone MM fit over aggregated
+/// pair counts.
+///
+/// `pairs` holds `(i, j, w_ij, w_ji, t_ij)` with `i < j`; returns
+/// `(centered log-strengths, nu)`. Compare-view only, display-only —
+/// never a ranker. Panics (the Python side raises `ValueError` before
+/// dispatch) on empty input, bad indices, non-positive or non-finite
+/// `max_iter`/`tol`, when an item never won-or-tied or never
+/// lost-or-tied (per-item backstop), and when a group won every
+/// cross-group comparison outright (exact Ford strong-connectivity
+/// check — asserted in both backends, D-11).
+#[pyfunction]
+#[pyo3(signature = (n_items, pairs, max_iter=1000, tol=1e-10))]
+fn bradley_terry_fit(
+    n_items: usize,
+    pairs: Vec<(usize, usize, u64, u64, u64)>,
+    max_iter: usize,
+    tol: f64,
+) -> (Vec<f64>, f64) {
+    metrics::bradley_terry_fit(n_items, &pairs, max_iter, tol)
 }
 
 /// 95% bootstrap CI for mean(xs) - mean(ys), paired resampling.
@@ -311,7 +350,10 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(malformed_rate, m)?)?;
     m.add_function(wrap_pyfunction!(ece, m)?)?;
     m.add_function(wrap_pyfunction!(brier_score, m)?)?;
+    m.add_function(wrap_pyfunction!(crps_point, m)?)?;
+    m.add_function(wrap_pyfunction!(score_compression_index, m)?)?;
     m.add_function(wrap_pyfunction!(mcnemar, m)?)?;
+    m.add_function(wrap_pyfunction!(bradley_terry_fit, m)?)?;
     m.add_function(wrap_pyfunction!(paired_bootstrap_ci, m)?)?;
     m.add_function(wrap_pyfunction!(n_eligible_by_family, m)?)?;
     m.add_function(wrap_pyfunction!(check_eligibility, m)?)?;

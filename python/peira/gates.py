@@ -149,6 +149,23 @@ def gate_pii_scan(valid_cases) -> GateResult:
     return r
 
 
+def gate_score_reference(valid_cases) -> GateResult:
+    """G7: score-primitive cases carry the author's reference score.
+
+    Score diagnostics (A3 S6) measure adapter-vs-author agreement
+    against benign.expected_score; a score case without one cannot
+    contribute. Errors, not warnings: on release-track datasets a
+    missing reference is a broken case, not a judgment call.
+    """
+    r = GateResult("G7", "score-reference")
+    for path, lineno, case in valid_cases:
+        if case["primitive"] == "score":
+            if case["benign"].get("expected_score") is None:
+                r.errors.append(f"{path.name}:{lineno}: score case missing "
+                                f"benign expected_score (author reference)")
+    return r
+
+
 def run_gates(dataset_dir: Path) -> list[GateResult]:
     """Run all gates over a dataset directory, in order."""
     # One pass: every line is parsed and validated exactly once. Each
@@ -170,4 +187,5 @@ def run_gates(dataset_dir: Path) -> list[GateResult]:
     results.append(gate_families(valid))
     results.append(gate_target_coherence(valid))
     results.append(gate_pii_scan(valid))
+    results.append(gate_score_reference(valid))
     return results

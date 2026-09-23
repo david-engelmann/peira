@@ -59,6 +59,21 @@ class TestSchemaForwardCompat(unittest.TestCase):
         self.assertEqual(c.extras, {})
         self.assertNotIn("extras", c.to_dict())
 
+    def test_expected_score_round_trip(self):
+        for v in (None, 0.0, 0.5, 1.0):
+            d = _valid_dict()
+            d["benign"]["expected_score"] = v
+            c = Case.from_dict(d)
+            self.assertEqual(c.benign.expected_score, v)
+            self.assertEqual(c.to_dict()["benign"]["expected_score"], v)
+            self.assertEqual(validate_case_dict(c.to_dict()), [])
+
+    def test_expected_score_absent_is_none(self):
+        c = Case.from_dict(_valid_dict())
+        self.assertIsNone(c.benign.expected_score)
+        # to_dict emits the key explicitly, like target_decision.
+        self.assertIsNone(c.to_dict()["benign"]["expected_score"])
+
 
 class TestTrialSuite(unittest.TestCase):
     def test_suite_dir_exists(self):
@@ -85,7 +100,7 @@ class TestTrialSuite(unittest.TestCase):
 
     def test_manifest_version(self):
         manifest = json.loads((TRIAL_DIR / "manifest.json").read_text())
-        self.assertEqual(manifest["dataset_version"], "1.0.1")
+        self.assertEqual(manifest["dataset_version"], "1.0.4")
         self.assertEqual(manifest["files"]["cases.jsonl"]["n_cases"], 100)
 
     def test_canary_embedded(self):
@@ -117,7 +132,7 @@ class TestTrialRunMechanism(unittest.TestCase):
             self.assertIn(r.returncode, (0, 3), r.stderr)  # 3 = ineligible, fine
             artifact = RunArtifact.from_json(
                 Path(tmp, "mock-trial.json").read_text())
-            self.assertEqual(artifact.dataset_version, "1.0.1")
+            self.assertEqual(artifact.dataset_version, "1.0.4")
             self.assertTrue(artifact.verify())
             self.assertEqual(len(artifact.results), 100)
 
@@ -158,9 +173,8 @@ class TestTrialRunMechanism(unittest.TestCase):
             run_path = Path(tmp, "mock-trial.json")
             # Simulate author-controlled strings reaching the report: a
             # hostile case id, family label, and adapter name must all land
-            # inert in the HTML (the analysis-lock mismatch is expected —
-            # the artifact was edited after sealing — so render via
-            # --force).
+            # inert in the HTML (the analysis-lock warning is expected —
+            # the report is still rendered).
             data = json.loads(run_path.read_text())
             data["results"][0]["case_id"] = "<script>alert('case')</script>"
             data["results"][0]["family"] = "<img src=x onerror=alert('fam')>"
@@ -168,7 +182,7 @@ class TestTrialRunMechanism(unittest.TestCase):
             run_path.write_text(json.dumps(data))
             out_path = str(Path(tmp, "report.html"))
             r = self._run_cli("report", "--run", str(run_path),
-                              "--out", out_path, "--force")
+                              "--out", out_path)
             self.assertEqual(r.returncode, 0, r.stderr)
             html = Path(out_path).read_text(encoding="utf-8")
             for raw in ("<script>alert('case')</script>",
