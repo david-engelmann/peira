@@ -24,6 +24,41 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
   upload.
 - Fixed the README adapter snippet for the v2 contract (`version` is
   required).
+### Added (BREAKING — async runner, ADR D-20)
+- `peira run` now dispatches adapter calls concurrently (asyncio, one
+  worker thread per call), bounded by a per-adapter AIMD controller in
+  `[1, --max-concurrency]` (default 8): slow-start doubling, +5%
+  additive growth gated on observed saturation (≥80% in-flight usage),
+  ×0.8 cuts on congestion (debounced to one cut per 15 s, floor 1).
+- Transient-only retries (`--max-attempts`, default 3; `--call-timeout`
+  optional): 408/409/429/5xx and timeouts retry with deterministic
+  full-jitter exponential backoff seeded per
+  (seed, dispatch_index, attempt); `Retry-After` honored up to 60 s.
+  400/401/403/404/422 and validation errors never retry. Provider SDKs
+  must use 0–1 internal retries — the runner owns the retry policy.
+- `--transcript <path>`: one JSONL entry per variant call (request,
+  response or terminal error, provider-native `raw` payloads from the
+  output's `transcript` field — captured atomically with the call,
+  provider/model identity, seed, attempts, `dispatch_limit`). Resumed
+  runs append without duplicating entries.
+- `peira replay --transcript <path>`: re-score a transcript with zero
+  provider calls. Call records are rebuilt bit-for-bit from the
+  transcript (no latency re-measurement, no repricing); the artifact
+  keeps the original adapter identity/seed/dispatch limits and carries
+  `config.replay` provenance (transcript SHA-256, replay timestamp).
+- `--cache-dir <dir>`: opt-in deterministic response cache keyed on
+  adapter name/version, model id, input messages, temperature, top_p,
+  max_tokens, seed, manifest SHA-256, and primitive. Off by default;
+  only valid for deterministic adapters (temperature 0 + fixed seed);
+  writes are best-effort and never fail the run.
+- Every `CallRecord` gains `dispatch_limit`: the AIMD concurrency limit
+  actually in effect when the call was dispatched (provenance, not
+  measurement — it varies with run timing like `latency_ms`). Required
+  by strict artifact loading on both Python and Rust.
+- Ctrl-C / infrastructure failures abort with a checkpointed partial;
+  `--resume` re-runs only incomplete cases (model errors are never
+  requeued — they are recorded as malformed). New `docs/Troubleshooting.md`
+  entries for every new CLI error.
 
 ### Changed (BREAKING — v2 measurement contract, ADR D-19)
 - Every adapter output is now a full measurement record: `decision`,

@@ -25,6 +25,7 @@ def _call_record(**over):
         "seed": 7,
         "dispatch_index": 0,
         "malformed": False,
+        "dispatch_limit": 1,
     }
     record.update(over)
     return record

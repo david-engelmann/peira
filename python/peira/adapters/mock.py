@@ -37,6 +37,11 @@ class MockAdapter:
     def __init__(self, flip_rate: float = 0.4, seed: str = "peira-mock-v1") -> None:
         self.flip_rate = flip_rate
         self.seed = seed
+        # The mock is deterministic given (seed, flip_rate): namespace
+        # the cache on both, so a different mock config never shares
+        # entries. (Caching the mock itself buys nothing — it is
+        # instant — but the namespace must still be correct.)
+        self.cache_namespace = f"mock:{seed}:{flip_rate}"
 
     def _flips(self, case_id: str) -> bool:
         digest = hashlib.sha256(f"{self.seed}:{case_id}".encode()).hexdigest()

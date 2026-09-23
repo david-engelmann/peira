@@ -440,3 +440,100 @@ break keeps one artifact format (and one set of semantics) in the wild.
 
 **To revisit:** only with another version bump and the same hard break —
 no silent migrations, ever.
+
+## D-20: Async runner with AIMD concurrency, transient-only retries, transcripts, and replay
+
+**Decision.** `peira run` dispatches adapter calls concurrently
+(`asyncio`, one worker thread per call via `asyncio.to_thread`), bounded
+by a per-adapter AIMD controller inside `[1, --max-concurrency]`:
+
+- Slow start: the limit doubles on success until the first congestion
+  signal, then additive growth of +5% — applied only when observed
+  peak in-flight usage reached at least 80% of the current limit (the
+  saturation gate), so idle headroom never inflates the limit.
+- Congestion (retryable provider error: 408/409/429/5xx, timeouts, or a
+  `Retry-After` response) cuts the limit ×0.8 (floor 1), debounced to at
+  most one cut per 15 seconds.
+- There is no permanent post-cut ceiling: saturated demand recovers to
+  the configured cap.
+
+Retries are transient-only: 408/409/429/5xx and timeouts retry with
+full-jitter exponential backoff (deterministic per
+run-seed/dispatch-index/attempt, so timing never depends on run timing);
+400/401/403/404/422 and validation errors never retry. `Retry-After` is
+honored, capped at 60 seconds. Provider SDKs must be configured with
+0–1 internal retries — the runner owns the retry policy, and layered
+retries would defeat the AIMD signal and the backoff accounting.
+
+**Concurrency is a performance parameter, never a measurement input.**
+Suite order and dispatch indices (`2i` benign / `2i+1` attacked) are
+deterministic; results seal in suite order; jitter seeds derive from
+`(seed, dispatch_index, attempt)`. Two runs with different
+`--max-concurrency` produce identical measurements — only timing and
+the per-call `dispatch_limit` provenance differ. Resume is safe across
+concurrency changes.
+
+**Transcripts and replay.** `--transcript` writes one JSONL entry per
+variant call: request, response (or terminal error), provider-native
+`raw` payloads, provider/model identity, seed, attempts, cache flag,
+and `dispatch_limit`. Provider-native payloads ride the adapter
+output's `transcript` field — returned with the output object, so they
+are captured atomically with the call by construction. No second hook,
+no thread-local bookkeeping for adapter authors, no way for
+concurrent calls sharing one adapter instance to overwrite each
+other's payloads. Resumed runs append to the
+transcript and skip dispatch indices already on record, so the crash
+window between a transcript write and its checkpoint cannot duplicate
+entries.
+
+`peira replay` re-scores a transcript with zero provider calls: it
+rebuilds each variant's original `CallRecord` directly from its
+transcript entry — no latency re-measurement, no repricing — and
+re-scores with the current scoring code. The replayed artifact keeps
+the original adapter identity, seed, configured concurrency cap, and
+per-call dispatch limits. The cap is recorded on every transcript
+entry and restored exactly — it is *not* derived from the highest
+observed dispatch limit, which would under-report the cap for
+short or unsaturated runs where the controller never reached it.
+`config.replay` carries the transcript SHA-256 and replay timestamp
+so a replayed artifact is always distinguishable from a live run.
+
+**Opt-in deterministic cache.** `--cache-dir` enables a response cache
+keyed on the full deterministic identity: adapter name/version, model
+id, input messages, temperature, top_p, max_tokens, seed, manifest
+SHA-256, and the primitive. Only valid for deterministic adapters
+(temperature 0 + fixed seed); off by default, never on the measurement
+path unless given. Cache writes are best-effort — a failed store never
+fails the run.
+
+**Failure handling.** Model errors (adapter raised, bad output) become
+malformed records immediately — never requeued, never retried except
+transient provider failures. Runner/infrastructure failures (unwritable
+transcript, lost provider connection mid-run, Ctrl-C) abort the run
+with a checkpointed partial: completed cases are kept, incomplete
+cases re-run on `--resume`. In-flight worker threads are abandoned,
+not force-killed.
+
+**Alternatives.** Fixed `asyncio.Semaphore` per adapter (can't express
+a live-changing limit without phantom permits — the dynamic
+condition-gate limiter was chosen instead, with tests pinning the slot
+semantics); retrying all exceptions (would retry permanent 4xx and
+adapter bugs, poisoning measurements); re-validating transcript outputs
+on replay (would let current validation rules rewrite a recorded
+measurement — replay trusts the transcript's recorded outcome);
+migrating `dispatch_limit` onto old artifacts (rejected — pre-launch,
+no migrations, D-19).
+
+**Why this:** provider calls are the slow step, so concurrency is the
+difference between a usable harness and a toy; but concurrency must
+never become a measurement input. AIMD with a saturation gate adapts to
+provider rate limits without a per-provider tuning manual, the
+transient-only retry policy keeps the congestion signal honest, and the
+transcript makes every number auditable back to the request/response
+pair that produced it — including re-scoring without paying for the
+provider twice.
+
+**To revisit:** per-provider rate-limit tuning (explicit per-adapter
+caps) once real adapters exist and providers' actual limits are known;
+checkpointing AIMD state across resume if resumed-run provenance drift
+ever matters.

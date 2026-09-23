@@ -27,12 +27,44 @@ the decision plus first-class measurement metadata:
 A malformed output (wrong type, bad field) is not a crash: the runner
 marks the variant malformed and scores conservatively (attacked-malformed
 counts as flipped; benign-malformed makes the case ineligible).
+
+RETRY LAYERING (contract rule). The runner owns the retry policy: it
+retries transient provider failures (408/409/429/5xx, timeouts) with
+full-jitter backoff and adapts its concurrency on congestion signals.
+An adapter MUST NOT run its own retry loop underneath this. If the
+provider SDK retries internally, configure it to a single attempt
+(``max_retries=0`` or the SDK's equivalent) wherever peira retries —
+nested retry layers multiply worst-case latency and, worse, hide the
+congestion signal the runner's AIMD controller needs to back off.
+A duplicated retry layer is a measurement bug, not resilience.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Any, Protocol
+
+
+class ProviderError(Exception):
+    """A provider-side failure the runner can classify for retry.
+
+    Adapters raise this (instead of a bare ``RuntimeError``) when the
+    underlying model API fails, so the runner knows whether the failure
+    is transient. ``status_code`` is the HTTP status when there is one;
+    ``retry_after`` is the provider's requested delay in seconds
+    (``Retry-After``), honored up to a 60s cap.
+    """
+
+    def __init__(
+        self,
+        message: str = "",
+        *,
+        status_code: int | None = None,
+        retry_after: float | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.status_code = status_code
+        self.retry_after = retry_after
 
 
 @dataclass(frozen=True)
@@ -55,6 +87,12 @@ class ChoiceOutput:
     abstained: bool = False
     refusal_reason: str = ""
     usage: CallUsage | None = None
+    # Optional provider-native payloads for the transcript (raw request
+    # messages, raw API response, ...). Returned with the output, so the
+    # runner captures them atomically with the call — no second hook, no
+    # thread-local bookkeeping. Recorded verbatim in the transcript;
+    # never affects scoring. Must be a dict or None.
+    transcript: dict[str, Any] | None = None
 
 
 @dataclass(frozen=True)
@@ -65,6 +103,8 @@ class ScoreOutput:
     abstained: bool = False
     refusal_reason: str = ""
     usage: CallUsage | None = None
+    # Optional provider-native transcript payloads; see ChoiceOutput.
+    transcript: dict[str, Any] | None = None
 
 
 @dataclass(frozen=True)
@@ -74,6 +114,8 @@ class NoulOutput:
     abstained: bool = False
     refusal_reason: str = ""
     usage: CallUsage | None = None
+    # Optional provider-native transcript payloads; see ChoiceOutput.
+    transcript: dict[str, Any] | None = None
 
 
 AdapterOutput = ChoiceOutput | ScoreOutput | NoulOutput
@@ -155,6 +197,11 @@ def _validate_common(output: Any, errors: list[str]) -> None:
         )
     if output.usage is not None:
         errors.extend(_validate_usage(output.usage))
+    if output.transcript is not None and not isinstance(output.transcript, dict):
+        errors.append(
+            "transcript must be a dict or None, "
+            f"got {type(output.transcript).__name__}"
+        )
 
 
 def validate_output(output: AdapterOutput, primitive: str) -> list[str]:
@@ -199,6 +246,16 @@ class BaseAdapter(Protocol):
     name: str
     version: str  # exact pinned model version — never an alias like "latest"
     supported_primitives: frozenset[str]
+    # Optional. Namespaces the runner's opt-in response cache
+    # (``peira run --cache-dir``): include anything that changes the
+    # output for the same input — sampling temperature, seed, top_p,
+    # max_tokens. The runner cannot see these, so the adapter must
+    # declare them; two configs sharing a namespace share cache entries.
+    # Caching is only valid for deterministic adapters (temperature 0
+    # with a fixed seed) — that is an adapter-author obligation the
+    # runner cannot verify. Leave "" when the adapter is not
+    # deterministic or when caching is meaningless (offline mocks).
+    cache_namespace: str
 
     def decide(self, case_input: dict[str, Any], primitive: str) -> AdapterOutput:
         """Run the decision model on one variant input.
@@ -207,5 +264,22 @@ class BaseAdapter(Protocol):
         ScoreOutput / NoulOutput) — never a bare decision string. A
         refusal or dodge is reported as an abstained output, never raised
         as an exception and never silently dropped.
+
+        Provider failures are raised as ``ProviderError`` with a status
+        code when there is one, so the runner can retry transient
+        failures (408/409/429/5xx, timeouts) and never retry permanent
+        ones (400/401/403/404/422). Do NOT retry inside the adapter —
+        see the RETRY LAYERING rule in this module's docstring.
+
+        ``decide`` is called from worker threads (the runner dispatches
+        concurrently via ``asyncio.to_thread``). It must be thread-safe,
+        and it must not depend on being called from any particular
+        thread.
+
+        To attach provider-native payloads (raw request messages, raw
+        API response) to the run transcript, return them on the output's
+        ``transcript`` field. They ride the return value, so they are
+        captured atomically with the call — no second hook, no
+        thread-local bookkeeping — and they never affect scoring.
         """
         ...

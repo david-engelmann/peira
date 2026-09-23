@@ -314,3 +314,54 @@ Cause: a case-file line nests `[`/`{` deeper than 256 levels
 construction — unbounded nesting is a stack-overflow vector. Fix:
 flatten the input; no real case nests anywhere near that deep (see
 `docs/Dataset.md`).
+
+**`error: max_concurrency must be >= 1, got N` / `max_attempts must be >= 1` / `call_timeout must be > 0`**
+Cause: `peira run` got a non-positive `--max-concurrency`,
+`--max-attempts`, or `--call-timeout`. Fix: pass a positive value
+(`--max-concurrency 8`, `--max-attempts 3`).
+
+**`error: cannot write transcript to <path>: <reason>`**
+Cause: `peira run --transcript` points somewhere unwritable — a missing
+parent directory or a permissions problem. The runner probes the path
+before dispatching anything, so a bad path fails fast instead of
+mid-run. Fix: create the directory first, or pick a writable path.
+
+**`error: cannot use cache directory <dir>: <reason>` / `error: cache directory <dir> is not writable: <reason>`**
+Cause: `peira run --cache-dir` points somewhere unusable or unwritable.
+Like the transcript path, the cache directory is probed before the run
+starts. Fix: create the directory first, or pick a writable path. A
+cache write that fails *mid-run* is silently skipped — the cache is a
+pure optimization, never load-bearing for the measurement.
+
+**`error: transcript <path> has no entries`**
+Cause: `peira replay` got an empty transcript file. Fix: replay the
+transcript written by a real run (`peira run --transcript <path>`).
+
+**`error: transcript <path> covers N adapters (...); a replay transcript must come from a single adapter run`**
+Cause: the transcript mixes entries from different adapters (or
+adapter versions) — e.g. two runs appended to one file by hand. Replay
+re-scores one measurement, so it refuses a mixed transcript. Fix: replay
+each run's transcript separately.
+
+**`error: transcript <path> has conflicting seeds [...]; a replay transcript must come from a single run`**
+Cause: the transcript mixes entries recorded under different run seeds.
+Fix: replay each run's transcript separately.
+
+**`error: transcript <path> has duplicate entry for case 'x' variant 'y'`**
+Cause: the transcript has two entries for one variant call — the file
+was edited by hand or concatenated. Fix: replay the original transcript
+file; resumed runs never duplicate entries (the runner skips dispatch
+indices already on record).
+
+**`error: transcript <path> is missing N case(s): ... — replay needs the full suite transcript`**
+Cause: the transcript doesn't cover every case in `--suite` — it is a
+partial run's transcript, or from a different suite. Fix: replay with
+the matching `--suite`, or replay the completed run's transcript.
+
+**`interrupted — partial run saved; re-run with --resume.`**
+Cause: Ctrl-C during `peira run`. The runner checkpoints completed
+cases (and closes the transcript cleanly) before exiting, so nothing
+measured is lost. Fix: re-run the same command with `--resume` — or
+drop the `--resume` and the stale `.partial.json` to start over.
+In-flight provider calls can't be force-cancelled; they are abandoned
+and their cases re-run on resume.

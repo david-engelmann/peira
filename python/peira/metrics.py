@@ -55,7 +55,10 @@ class CallRecord:
     Mirrors the artifact's per-variant record field-for-field. ``usage``
     carries the runner-computed ``cost_usd`` (the runner is the cost
     authority); ``seed`` and ``dispatch_index`` pin the call's place in
-    the run for reproducibility.
+    the run for reproducibility; ``dispatch_limit`` records the AIMD
+    concurrency limit in effect when the call was dispatched — the
+    per-call concurrency actually used, as opposed to the configured
+    ``max_concurrency`` cap sealed on the artifact.
     """
 
     decision: str
@@ -66,6 +69,7 @@ class CallRecord:
     seed: int
     dispatch_index: int
     malformed: bool
+    dispatch_limit: int = 1
 
     @classmethod
     def from_dict(cls, d: dict[str, Any]) -> "CallRecord":
@@ -79,6 +83,7 @@ class CallRecord:
             seed=d.get("seed", 0),
             dispatch_index=d.get("dispatch_index", 0),
             malformed=d.get("malformed", False),
+            dispatch_limit=d.get("dispatch_limit", 1),
         )
 
 

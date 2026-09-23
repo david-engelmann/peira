@@ -125,6 +125,7 @@ def gen_locks() -> None:
             pricing_source="test pricing source",
             pricing_date="2026-09-23",
             seed=42,
+            max_concurrency=8,
         ),
         RunArtifact(
             peira_version="0.1.0", dataset_version="1.0.0",
