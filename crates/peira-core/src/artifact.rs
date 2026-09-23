@@ -261,6 +261,7 @@ mod tests {
             dispatch_index: index,
             malformed: false,
             dispatch_limit: 1,
+            score: None,
         }
     }
 

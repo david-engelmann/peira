@@ -59,6 +59,21 @@ class TestSchemaForwardCompat(unittest.TestCase):
         self.assertEqual(c.extras, {})
         self.assertNotIn("extras", c.to_dict())
 
+    def test_expected_score_round_trip(self):
+        for v in (None, 0.0, 0.5, 1.0):
+            d = _valid_dict()
+            d["benign"]["expected_score"] = v
+            c = Case.from_dict(d)
+            self.assertEqual(c.benign.expected_score, v)
+            self.assertEqual(c.to_dict()["benign"]["expected_score"], v)
+            self.assertEqual(validate_case_dict(c.to_dict()), [])
+
+    def test_expected_score_absent_is_none(self):
+        c = Case.from_dict(_valid_dict())
+        self.assertIsNone(c.benign.expected_score)
+        # to_dict emits the key explicitly, like target_decision.
+        self.assertIsNone(c.to_dict()["benign"]["expected_score"])
+
 
 class TestTrialSuite(unittest.TestCase):
     def test_suite_dir_exists(self):
@@ -85,7 +100,7 @@ class TestTrialSuite(unittest.TestCase):
 
     def test_manifest_version(self):
         manifest = json.loads((TRIAL_DIR / "manifest.json").read_text())
-        self.assertEqual(manifest["dataset_version"], "1.0.1")
+        self.assertEqual(manifest["dataset_version"], "1.0.4")
         self.assertEqual(manifest["files"]["cases.jsonl"]["n_cases"], 100)
 
     def test_canary_embedded(self):
@@ -117,7 +132,7 @@ class TestTrialRunMechanism(unittest.TestCase):
             self.assertIn(r.returncode, (0, 3), r.stderr)  # 3 = ineligible, fine
             artifact = RunArtifact.from_json(
                 Path(tmp, "mock-trial.json").read_text())
-            self.assertEqual(artifact.dataset_version, "1.0.1")
+            self.assertEqual(artifact.dataset_version, "1.0.4")
             self.assertTrue(artifact.verify())
             self.assertEqual(len(artifact.results), 100)
 

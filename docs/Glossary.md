@@ -39,7 +39,7 @@
 - **paired control** — the benign/attacked case pair isolating the attack's
   effect.
 - **Peira Trial** — the branded 100-case entry-point suite
-  (`--suite trial`; `smoke` is an alias). Manifest `1.0.1`; review-sealed;
+  (`--suite trial`; `smoke` is an alias). Manifest `1.0.4`; review-sealed;
   runs stay off the leaderboard. Separate from dataset v1.
 - **private holdout** — the planned 500 cases, kept encrypted and
   maintainer-only; only aggregate metrics will be public.

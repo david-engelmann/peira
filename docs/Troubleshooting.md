@@ -20,7 +20,7 @@ adapter is safe.
 
 **`error: unknown suite 'x'`**
 Cause: typo in `--suite`. Fix: `trial-demo` (demo fixture, offline) or
-`trial` (the branded 100-case Peira Trial, sealed `1.0.1`).
+`trial` (the branded 100-case Peira Trial, sealed `1.0.4`).
 
 **`error: suite directory ... not found`**
 Cause: you ran `peira` from outside the repo checkout. Fix: run from the
@@ -56,6 +56,13 @@ smaller adapter; see `docs/Hardware.md` for per-tier requirements.
 Cause: the run artifact was edited after sealing (the report still
 renders, but the numbers aren't trustworthy). Fix: don't edit artifacts;
 re-run. If you need different config, that's a new run with a new lock.
+
+**`... field 'score': score 2.5 outside 0..1` (artifact load)**
+Cause: a call record in the artifact (or partial run) carries a score
+outside the 0..1 score space — a hand-edited or corrupt artifact.
+The strict loader rejects it so neither backend can disagree about
+what an artifact may contain. Fix: don't edit artifacts; re-run.
+Scores are real numbers in 0..1, `null` for non-score-primitive calls.
 
 **`error: dataset manifest verification failed:`**
 Cause: `peira run` verifies the suite manifest before scoring, and a
@@ -160,7 +167,8 @@ need separators.
 **`peira dataset gates` reports failures (exit 1)**
 Cause: one or more gates found errors — file, line, and rule are printed
 per gate. Fix: address each error (duplicate case ids/content, unknown
-family id, attacked input identical to benign, incoherent target), then
+family id, attacked input identical to benign, incoherent target,
+missing score reference), then
 re-run. Warnings (e.g. G6 pii-scan) don't fail the suite but go to the
 human review queue.
 

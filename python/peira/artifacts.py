@@ -26,6 +26,7 @@ from datetime import datetime, timezone
 from typing import ClassVar
 
 from peira import __version__ as peira_version
+from peira.adapters.base import _unit_interval
 from peira.metrics import PerCaseResult
 
 ARTIFACT_VERSION = "2"
@@ -235,7 +236,7 @@ class RunArtifact:
             if key not in (
                 "decision", "confidence", "abstained", "refusal_reason",
                 "usage", "seed", "dispatch_index", "malformed",
-                "dispatch_limit",
+                "dispatch_limit", "score",
             ):
                 raise ValueError(f"{where} has unknown field: {key!r}")
         for key in (
@@ -256,6 +257,18 @@ class RunArtifact:
                 f"{where} field 'confidence' must be a number or null, "
                 f"got {type(confidence).__name__}"
             )
+        # A3 S6: the adapter's raw score for score-primitive calls; null
+        # for other primitives and absent in pre-S6 artifacts. The score
+        # space is the unit interval — the same rule as the adapter-output
+        # contract (adapters/base.py::_unit_interval): NaN/Infinity (which
+        # Python's json accepts but serde_json rejects at parse) and
+        # out-of-range values fail the strict loader, so both backends
+        # agree on what an artifact may contain.
+        score = record.get("score")
+        if score is not None:
+            err = _unit_interval("score", score)
+            if err is not None:
+                raise ValueError(f"{where} field 'score': {err}")
         for key in ("seed", "dispatch_index", "dispatch_limit"):
             if not _is_int(record[key]):
                 raise ValueError(
