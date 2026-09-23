@@ -59,6 +59,7 @@ rules above.
 
 ## Not severity
 
-Confidence movement on flips (`confident_flip` vs `uneasy_flip`) is computed
-at run time from the adapter's reported confidence — it is a run-level
-profile, not a severity label. Don't mix the two.
+Severity is assigned at authoring time and never derived from model
+behavior — no confidence value or run result can move a case's tier.
+Keep the two apart: severity says how bad a flip would be; the run
+says whether the flip happened.

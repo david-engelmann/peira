@@ -1,0 +1,5 @@
+# Byte-proof dataset identity (H4): the manifest SHA-256 is computed
+# over exact file bytes, so dataset files must check out identically
+# on every platform. Without this, core.autocrlf on Windows rewrites
+# line endings and manifest verification fails on a clean clone.
+dataset/** text eol=lf

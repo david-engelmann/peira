@@ -9,7 +9,7 @@ intervals.
 [![pypi](https://img.shields.io/pypi/v/peira.svg)](https://pypi.org/project/peira/)
 [![license](https://img.shields.io/badge/license-MIT%20%2F%20CC--BY--4.0-blue.svg)](LICENSE)
 
-[Docs](docs/) · [Reports](#reports) · [Adapter API](python/peira/adapters/base.py) · [Discussions](https://github.com/david-engelmann/peira/discussions)
+[Docs](docs/) · [Reports](#reports) · [Adapter API](python/peira/adapters/base.py) · [Contributing](docs/Contributing.md) · [Discussions](https://github.com/david-engelmann/peira/discussions)
 
 > Decision models fail silently — a guardrail that approves what it should
 > deny tells you nothing. peira is the trial that catches it: paired
@@ -36,8 +36,9 @@ intervals.
 - [Leaderboard](#leaderboard)
 - [Planned adapters](#planned-adapters)
 - [How peira differs](#how-peira-differs)
-- [Add your model](#add-your-model)
+- [When peira isn't the tool](#when-peira-isnt-the-tool)
 - [Install](#install)
+- [Add your model](#add-your-model)
 - [Methodology](#methodology)
 - [Reports](#reports)
 - [Citation](#citation)
@@ -90,28 +91,20 @@ done: 100 cases (100 eligible)
   malformed rate:    0.0
   refusal rate:      0.0 95% CI [0.0, 0.037]
   ineligible:        0 (benign_malformed=0, benign_wrong_decision=0, benign_abstained=0)
+  ranking eligible:  False (fewer than 200 eligible cases (100); family 'confidence_spoofing' has 10 eligible cases (< 20); family 'criteria_smuggling' has 10 eligible cases (< 20); family 'distractor_flooding' has 10 eligible cases (< 20); family 'indirection' has 10 eligible cases (< 20); family 'literal_reading' has 10 eligible cases (< 20); family 'negation_games' has 10 eligible cases (< 20); family 'option_order' has 10 eligible cases (< 20); family 'policy_paraphrase' has 10 eligible cases (< 20); family 'score_anchoring' has 10 eligible cases (< 20); family 'state_poisoning' has 10 eligible cases (< 20))
 artifact: runs/mock-trial.json
+analysis lock: e3f2ea4e74d9babd…
 ```
+
+`peira run` exits 3 here: ran fine, ranking-ineligible — the Trial's
+100 cases sit below the 200-case floor. Expected, not an error. In an
+interactive shell just run the `peira report` step next; under `set -e`
+the shell treats 3 as failure, so call the report step explicitly.
 
 The per-family table:
 
 ```bash
-python3 - <<'EOF'
-import json
-from peira.metrics import wilson_ci
-a = json.load(open("runs/mock-trial.json"))
-fams = {}
-for r in a["results"]:
-    d = fams.setdefault(r["family"], [0, 0])
-    d[1] += 1
-    d[0] += r["flipped"]
-print("| family | ASR | 95% CI | n |")
-print("|---|---|---|---|")
-for f in sorted(fams):
-    nf, n = fams[f]
-    lo, hi = wilson_ci(nf, n)
-    print(f"| `{f}` | {nf/n:.2f} | [{lo:.3f}, {hi:.3f}] | {n} |")
-EOF
+python3 scripts/gen_readme_table.py runs/mock-trial.json
 ```
 
 It prints the same table as [The Trial in action](#the-trial-in-action) —
@@ -135,7 +128,9 @@ Wilson 95% confidence intervals; ECE and Brier cover confidence quality.
 Benign-validity gates eligibility: a case counts only when its benign
 variant gives a usable baseline, so a model can't look robust by failing
 the control. Every report carries per-case drill-down receipts, and every
-run is sealed against post-hoc editing.
+run is sealed against post-hoc editing. Built for red teams evaluating
+decision models: every attack is paired with a clean control, so a flip
+is evidence about the attack, not noise.
 
 ## What brings you here
 
@@ -143,7 +138,8 @@ run is sealed against post-hoc editing.
   `docs/Methodology.md`.
 - **claim a leaderboard row** → [Planned adapters](#planned-adapters),
   then [Add your model](#add-your-model).
-- **write attack cases** → `docs/Dataset.md` and the authoring guide.
+- **write attack cases** → [`docs/Dataset.md`](docs/Dataset.md):
+  templates, gates, and the review queue.
 - **compare harnesses** → [How peira differs](#how-peira-differs).
 
 ## Leaderboard
@@ -185,13 +181,41 @@ measured with name + version + run date.
 | Analysis freeze (no post-hoc edits) | yes, mechanical | rarely |
 | Scale (v1) | 2,500 cases | varies |
 
-Rows are verifiable facts; the methodology is in `docs/Methodology.md`.
-The differentiator, stated plainly: decision-change ASR plus a hard
-≥20-eligible-cases-per-family ranking gate is simpler and more auditable
-than composite-index leaderboards. For broad red-teaming look at garak,
+The peira column is verifiable from this repo; the right-hand column is
+a rough sketch, not a scorecard — check each project's own docs before
+quoting it. The differentiator, stated plainly: decision-change ASR plus
+a hard ≥20-eligible-cases-per-family ranking gate is simpler and more
+auditable than composite-index leaderboards. For broad red-teaming look at garak,
 HarmBench, or JailbreakBench; for general-purpose harnesses, Inspect AI,
 promptfoo, or HELM. peira is the decision-model layer — approve/deny,
 score, abstain.
+
+## When peira isn't the tool
+
+peira measures whether hostile input flips a decision model's typed
+output on paired cases. It is not a general red-teaming harness, not a
+jailbreak or refusal benchmark, and not a safety certification: a low
+ASR here says nothing about the attacks peira doesn't cover. Use
+broader tooling (garak, HarmBench) when you need coverage rather than
+a single decision-robustness number.
+
+## Install
+
+Requires Python 3.10+.
+
+```bash
+pip install -e .   # from a checkout; becomes `pip install peira` at release
+```
+
+| Tier | Command | What you get |
+|---|---|---|
+| `peira` | `pip install peira` | Core, SDK, CLI, offline mock |
+| `peira[hf]` | `pip install peira[hf]` | + Hugging Face adapters (planned) |
+| `peira[all]` | `pip install peira[all]` | + everything optional |
+
+Hardware guidance per tier: `docs/Hardware.md`. No telemetry — the
+harness makes no network calls except the ones you configure
+([FAQ](docs/FAQ.md)).
 
 ## Add your model
 
@@ -213,21 +237,6 @@ adapter = MyAdapter()
 Save as `my_adapter.py`, then `peira run --adapter my_adapter --suite
 trial-demo`. See `examples/minimal_adapter.py` (runs in CI), then read
 `docs/Methodology.md` for the contracts your outputs must satisfy.
-
-## Install
-
-```bash
-pip install -e .   # from a checkout; becomes `pip install peira` at release
-```
-
-| Tier | Command | What you get |
-|---|---|---|
-| `peira` | `pip install peira` | Core, SDK, CLI, offline mock |
-| `peira[hf]` | `pip install peira[hf]` | + Hugging Face adapters (planned) |
-| `peira[all]` | `pip install peira[all]` | + everything optional |
-
-Hardware guidance per tier: `docs/Hardware.md`. No telemetry — the
-harness makes no network calls except the ones you configure (see FAQ).
 
 ## Methodology
 

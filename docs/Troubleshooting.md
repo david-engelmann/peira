@@ -20,7 +20,7 @@ adapter is safe.
 
 **`error: unknown suite 'x'`**
 Cause: typo in `--suite`. Fix: `trial-demo` (demo fixture, offline) or
-`trial` (the branded 100-case Peira Trial, sealed `1.0.0`).
+`trial` (the branded 100-case Peira Trial, sealed `1.0.1`).
 
 **`error: suite directory ... not found`**
 Cause: you ran `peira` from outside the repo checkout. Fix: run from the
@@ -70,7 +70,7 @@ between the interrupted run and the resume. Merging old partial results
 with a new dataset would corrupt the run. Fix: delete the
 `<adapter>-<suite>.partial.json` file and re-run without `--resume`.
 
-**`error: partial run seed N != requested seed M — re-run with the same --seed or delete the partial`**
+**`error: partial run was recorded with seed N, not M — re-run with the same --seed or drop --resume`**
 Cause: `peira run --resume` found a partial run recorded with a different
 `--seed` than the one requested. Seeds are part of every call record and
 of the analysis lock, so mixing seeds would make the artifact lie about
@@ -207,7 +207,7 @@ review them (`peira dataset review --dir <dir>`), or drop
 Cause: `peira dataset review` without `--dir`. Fix: pass
 `--dir <dataset-dir>`.
 
-**`peira-cli validate`: `validate: FAILED (N errors in M cases)`**
+**`peira-cli validate`: `validated N cases, M invalid`**
 Cause: the Rust validator (`crates/peira-cli`, used in CI) found cases
 that fail schema validation. Each offending line is printed as
 `file:line: <rule>` above the summary. Fix: same as the Python

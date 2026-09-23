@@ -24,6 +24,9 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
   upload.
 - Fixed the README adapter snippet for the v2 contract (`version` is
   required).
+### Planned
+- Versioned methodology pages (`docs/Methodology.md` is the single
+  current page; dated per-release snapshots land with the v1 dataset).
 ### Added (BREAKING — async runner, ADR D-20)
 - `peira run` now dispatches adapter calls concurrently (asyncio, one
   worker thread per call), bounded by a per-adapter AIMD controller in
