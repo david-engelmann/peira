@@ -17,20 +17,8 @@ intervals.
 > benign/attacked cases across 10 attack families, scored with
 > decision-change ASR. No post-hoc edits; every run is sealed.
 
-## 📰 News
-
-- **2026-09-23** — Measurement contract v2: every adapter output is now a
-  full call record (confidence, abstention, token usage; cost is recomputed
-  by the runner from the pinned pricing table, not recorded); run
-  artifacts are format v2 with a pinned pricing table in the seal.
-- **2026-09-23** — Trial dataset 1.0.1: five case fixes from the 100-case
-  quality audit (all minor).
-- **2026-09-22** — The Peira Trial 1.0.0: 100 v1-quality cases, 10 per
-  attack family, 100% of critical cases human-reviewed.
-
 ## Contents
 
-- [📰 News](#-news)
 - [The Trial in action](#the-trial-in-action)
 - [60-second quickstart](#60-second-quickstart)
 - [What peira measures](#what-peira-measures)
