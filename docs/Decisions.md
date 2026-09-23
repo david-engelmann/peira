@@ -805,7 +805,9 @@ is the within-bin forecast-spread term, zero when every bin's
 forecasts are identical) and `confidence_coverage()` (per-arm fraction
 of non-None confidences, reported alongside every calibration number).
 Both are Python-reference only for now; later A3 slices port them to
-Rust.
+Rust. (Update: the A3 slices ultimately deferred all remaining Rust
+ports — the deferred functions are documented as "Rust port deferred"
+in their docstrings.)
 
 **Alternatives.** Keep equal-width (higher bias on clustered
 forecasts); add a `mode=` parameter (a second code path to maintain

@@ -88,6 +88,14 @@ class TestWilson(unittest.TestCase):
     def test_empty(self):
         self.assertEqual(wilson_ci(0, 0), (0.0, 0.0))
 
+    def test_negative_counts_rejected(self):
+        # Caller bug: both backends must agree on ValueError (the Rust
+        # core would otherwise OverflowError at the PyO3 boundary).
+        with self.assertRaises(ValueError):
+            wilson_ci(-1, 10)
+        with self.assertRaises(ValueError):
+            wilson_ci(5, -10)
+
 
 class TestCalibration(unittest.TestCase):
     def test_ece_perfect(self):
@@ -125,6 +133,12 @@ class TestCalibration(unittest.TestCase):
             ece([0.5], [1], bins=0)
         with self.assertRaises(ValueError):
             _ece_py([0.5], [1], bins=0)
+
+    def test_ece_bool_bins_rejected(self):
+        # True == 1 would silently mean "one bin" — a bool is never a
+        # legitimate bin count, so it fails loudly like bins=0.
+        with self.assertRaises(ValueError):
+            ece([0.5], [1], bins=True)
 
     def test_empty_and_mismatched_raise_value_error(self):
         # Plain asserts vanished under `python -O` (then ece([], [])
@@ -370,6 +384,14 @@ class TestBootstrap(unittest.TestCase):
         with self.assertRaises(ValueError):
             paired_bootstrap_ci([1.0], [1.0, 2.0])
 
+    def test_nonpositive_n_boot_rejected(self):
+        # n_boot=0 dies in IndexError without the guard — a caller bug
+        # must fail loudly as ValueError (D-11).
+        with self.assertRaises(ValueError):
+            paired_bootstrap_ci([1.0, 2.0], [1.0, 1.0], n_boot=0)
+        with self.assertRaises(ValueError):
+            paired_bootstrap_ci([1.0, 2.0], [1.0, 1.0], n_boot=-5)
+
 
 class TestEligibility(unittest.TestCase):
     def test_small_run_ineligible(self):
@@ -467,6 +489,13 @@ class TestRefusal(unittest.TestCase):
 
     def test_refusal_rate_empty(self):
         self.assertEqual(refusal_rate([]), (0.0, (0.0, 0.0)))
+
+    def test_refusal_rate_arm_rejects_bad_arm(self):
+        # A typo'd arm string must not silently compute the attacked
+        # arm — fail closed on the private helper too.
+        from peira.metrics import _refusal_rate_arm_py
+        with self.assertRaises(ValueError):
+            _refusal_rate_arm_py([], "attakced")
 
     def test_refusal_rate_by_family(self):
         rs = [_r(family="a"), _r(family="a", attacked_abstained=True)]
@@ -576,32 +605,47 @@ class TestOutcomeAccounting(unittest.TestCase):
         self.assertEqual(benign_refusal_rate([]), (0.0, (0.0, 0.0)))
 
     def test_refusal_rate_delta_hand_computed(self):
-        # Attacked abstentions: c2 only -> 1/4 = 0.25.
-        # Benign abstentions: c3, c4 -> 2/4 = 0.5.
+        # 8x the 4-case census pattern (32 cases, above the n>=30 gate).
+        # Attacked abstentions: c2 only -> 8/32 = 0.25.
+        # Benign abstentions: c3, c4 -> 16/32 = 0.5.
         # Delta = 0.25 - 0.5 = -0.25.
-        delta, (lo, hi) = refusal_rate_delta(
-            self._census_cases(), n_boot=200, seed=0)
-        self.assertEqual(delta, -0.25)
-        self.assertLessEqual(lo, delta)
-        self.assertGreaterEqual(hi, delta)
+        rs = self._census_cases() * 8
+        est = refusal_rate_delta(rs, n_boot=200, seed=0)
+        self.assertTrue(est.sufficient)
+        self.assertEqual(est.n, 32)
+        self.assertEqual(est.delta, -0.25)
+        lo, hi = est.ci
+        self.assertLessEqual(lo, est.delta)
+        self.assertGreaterEqual(hi, est.delta)
 
     def test_refusal_rate_delta_positive_when_attacks_induce_refusals(self):
-        rs = [_r(attacked_abstained=True, flipped=False) for _ in range(3)]
-        rs.append(_r())
-        delta, (lo, hi) = refusal_rate_delta(rs, n_boot=200, seed=0)
-        self.assertEqual(delta, 0.75)
-        self.assertGreater(delta, 0.0)
+        rs = [_r(attacked_abstained=True, flipped=False) for _ in range(24)]
+        rs += [_r() for _ in range(8)]
+        est = refusal_rate_delta(rs, n_boot=200, seed=0)
+        self.assertTrue(est.sufficient)
+        self.assertEqual(est.delta, 0.75)
+        self.assertGreater(est.delta, 0.0)
 
     def test_refusal_rate_delta_zero_when_arms_match(self):
         rs = [_r(attacked_abstained=True, benign_abstained=True,
-                 flipped=False)]
+                 flipped=False) for _ in range(30)]
         # benign abstention needs a refusal reason only for the refused
         # bucket; the delta counts any abstention either way.
-        delta, _ = refusal_rate_delta(rs, n_boot=200, seed=0)
-        self.assertEqual(delta, 0.0)
+        est = refusal_rate_delta(rs, n_boot=200, seed=0)
+        self.assertTrue(est.sufficient)
+        self.assertEqual(est.delta, 0.0)
 
-    def test_refusal_rate_delta_empty(self):
-        self.assertEqual(refusal_rate_delta([]), (0.0, (0.0, 0.0)))
+    def test_refusal_rate_delta_insufficient_below_gate(self):
+        # Below MIN_DELTA_CASES the estimate is withheld, like the
+        # other delta statistics — no number, no interval.
+        est = refusal_rate_delta(self._census_cases())
+        self.assertFalse(est.sufficient)
+        self.assertIsNone(est.delta)
+        self.assertIsNone(est.ci)
+        self.assertEqual(est.n, 4)
+        empty = refusal_rate_delta([])
+        self.assertFalse(empty.sufficient)
+        self.assertEqual(empty.n, 0)
 
 
 class TestAdapterVersionLock(unittest.TestCase):
@@ -835,6 +879,13 @@ class TestAsrExtras(unittest.TestCase):
         self.assertEqual(reject_at(adj, alpha=0.05), [0])
         self.assertEqual(reject_at(adj, alpha=0.1), [0, 1, 2])
         self.assertEqual(reject_at([], alpha=0.05), [])
+
+    def test_reject_at_rejects_bad_values(self):
+        # NaN silently never rejects (nan <= alpha is False) and
+        # out-of-range values are caller bugs — fail loudly.
+        for bad in (float("nan"), -0.1, 1.5):
+            with self.assertRaises(ValueError):
+                reject_at([0.01, bad])
 
     def test_p_value_validation(self):
         for fn in (holm_adjust, bonferroni_adjust):

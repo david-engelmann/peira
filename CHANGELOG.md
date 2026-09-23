@@ -61,12 +61,12 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
   over all cases). Python-reference only; `refusal_rate` keeps its
   Rust fast path for the attacked arm.
 - New `outcome_accounting(results)` — per-arm census over *all* cases:
-  `ArmOutcomes(n, approve, deny, refused, abstained, malformed)`,
-  returned as `(benign_outcomes, attacked_outcomes)`. Bucket
-  precedence: malformed > abstained (`refused` with a refusal reason,
-  plain `abstained` without) > decided (`approve` on the "approve"
-  label, `deny` for any other decided label). The buckets partition
-  each arm's cases.
+  `ArmOutcomes(n, approve, deny, other, refused, abstained,
+  malformed)`, returned as `(benign_outcomes, attacked_outcomes)`.
+  Bucket precedence: malformed > abstained (`refused` with a refusal
+  reason, plain `abstained` without) > decided (`approve` on the
+  "approve" label, `deny` on the exact "deny" label, `other` for any
+  other decided label). The buckets partition each arm's cases.
 - New `refusal_rate_delta(results)` — attacked-minus-benign refusal
   rate with a paired-bootstrap 95% CI (backend-independent Python
   PRNG). Empty results return `(0.0, (0.0, 0.0))`, like the other
@@ -85,8 +85,9 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
   family-comparison p-values).
 - New `bonferroni_adjust(p_values)` — min(1, m*p) per p-value, input
   order. New `reject_at(adjusted, alpha=0.05)` — indices rejected at
-  level alpha. Empty p-value lists and values outside [0, 1] (incl.
-  NaN) raise ValueError.
+  level alpha (empty input returns `[]`; NaN and out-of-[0, 1] values
+  raise ValueError). Empty p-value lists and values outside [0, 1]
+  (incl. NaN) raise ValueError in the adjust functions.
 
 ### Added — selective prediction (A3 S3)
 
