@@ -25,10 +25,10 @@ classifiers = [
 # Optional: Hugging Face guardrail adapters (python/peira/adapters/hf.py).
 # transformers is capped below v5: the v5 major (Jan 2026) removed the
 # TF/JAX backends, refactored dynamic weight loading and tokenization,
-# moved the hub client from requests to httpx, shipped new typer-based
-# CLIs, and dropped legacy env vars — and the adapters are unverified
-# against it. Lift the cap only after verifying the pinned revisions load
-# and score identically under v5.
+# shipped new typer-based CLIs, and dropped legacy env vars (the hub
+# client moved from requests to httpx in huggingface_hub v1.0) — and the
+# adapters are unverified against it. Lift the cap only after verifying
+# the pinned revisions load and score identically under v5.
 hf = ["transformers>=4.40,<5", "torch>=2.2"]
 # Optional: structured-output LLM baseline adapters
 # (python/peira/adapters/llm.py).

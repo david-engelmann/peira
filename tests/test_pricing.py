@@ -66,6 +66,13 @@ class TestPricingTable(unittest.TestCase):
         # TypeSafe pricing page): $0.042/1M input, output free.
         got = cost_usd("jev-1.13.0", 1_000_000, 500_000, table)
         self.assertAlmostEqual(got, 0.042, places=9)
+        # Provenance wording is load-bearing: the rate is
+        # secondary-sourced, never "TypeSafe's published".
+        note = table["models"]["jev-1.13.0"].get("_note", "")
+        self.assertIn("secondary-sourced", note.lower())
+        self.assertNotIn("published", note.lower())
+        for url in table.get("source_urls", []):
+            self.assertNotIn("typesafe.ai/jev", url)
 
     def test_unknown_model_costs_zero(self):
         table = load_pricing_table()
