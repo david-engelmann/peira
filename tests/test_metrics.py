@@ -21,9 +21,12 @@ from peira.metrics import (
     ineligible_by_reason,
     mcnemar,
     murphy_decomposition,
+    augrc,
     paired_bootstrap_ci,
     refusal_rate,
     refusal_rate_by_family,
+    risk_coverage_curve,
+    selective_risk_at_coverage,
     wilson_ci,
 )
 
@@ -523,6 +526,115 @@ class TestSummarize(unittest.TestCase):
         self.assertEqual(m["per_family"]["a"]["refusal_rate"], round(2 / 3, 4))
         self.assertNotIn("targeted_attack_success", m)
         self.assertNotIn("n_targeted", m)
+
+
+class TestSelectivePrediction(unittest.TestCase):
+    # probs = [0.9, 0.7, 0.8, 0.4], labels = [1, 0, 1, 0].
+    # Ranked by confidence descending: (0.9, ok), (0.8, ok),
+    # (0.7, wrong), (0.4, wrong).
+    PROBS = [0.9, 0.7, 0.8, 0.4]
+    LABELS = [1, 0, 1, 0]
+
+    def test_risk_coverage_curve_hand_computed(self):
+        curve = risk_coverage_curve(self.PROBS, self.LABELS)
+        # k=1: top-1 all correct -> risk 0; k=2: still 0;
+        # k=3: one error in three -> 1/3; k=4: two in four -> 1/2.
+        expected = [(0.25, 0.0), (0.5, 0.0), (0.75, 1 / 3), (1.0, 0.5)]
+        self.assertEqual(len(curve), 4)
+        for (cov, risk), (e_cov, e_risk) in zip(curve, expected):
+            self.assertAlmostEqual(cov, e_cov)
+            self.assertAlmostEqual(risk, e_risk)
+
+    def test_risk_coverage_curve_monotone_coverage(self):
+        curve = risk_coverage_curve([0.3, 0.9, 0.6], [0, 1, 1])
+        self.assertEqual([c for c, _ in curve], [1 / 3, 2 / 3, 1.0])
+
+    def test_selective_risk_at_full_coverage_is_error_rate(self):
+        self.assertAlmostEqual(
+            selective_risk_at_coverage(self.PROBS, self.LABELS, 1.0), 0.5)
+
+    def test_selective_risk_at_small_coverage_separable(self):
+        # Separable: the two most confident predictions are both correct.
+        probs = [0.9, 0.8, 0.3, 0.2]
+        labels = [1, 1, 0, 0]
+        self.assertAlmostEqual(
+            selective_risk_at_coverage(probs, labels, 0.5), 0.0)
+
+    def test_selective_risk_uses_ceil(self):
+        # coverage=0.3 on n=4 keeps ceil(1.2)=2 predictions.
+        self.assertAlmostEqual(
+            selective_risk_at_coverage(self.PROBS, self.LABELS, 0.3), 0.0)
+
+    def test_augrc_hand_computed(self):
+        # Ranked failure indicators: [0, 0, 1, 1]; cumulative failures
+        # F = (0, 0, 1, 2). Trapezoid area:
+        #   ((0+0) + (0+0) + (0+1) + (1+2)) / (2*4^2) = 4/32 = 0.125.
+        # Cross-check against the paper's Eq. (7): acc = 0.5 and every
+        # correct prediction outranks every failure (AUROC_f = 1), so
+        # AUGRC = 0 + 1/2*(1-0.5)^2 = 0.125.
+        self.assertAlmostEqual(augrc(self.PROBS, self.LABELS), 0.125)
+
+    def test_augrc_nonperfect_ranker(self):
+        # probs = [0.9, 0.8, 0.7, 0.6], labels = [0, 1, 1, 0]:
+        # ranked failures [1, 0, 0, 1], F = (1, 1, 1, 2).
+        # Area = ((0+1) + (1+1) + (1+1) + (1+2)) / 32 = 8/32 = 0.25.
+        # Eq. (7): mixed pairs where the correct prediction outranks the
+        # failure: 2 of 4, so AUROC_f = 0.5 and
+        # AUGRC = 0.5*0.25 + 0.125 = 0.25.
+        self.assertAlmostEqual(
+            augrc([0.9, 0.8, 0.7, 0.6], [0, 1, 1, 0]), 0.25)
+
+    def test_augrc_perfect_ranker_is_paper_minimum(self):
+        # All failures ranked last: the paper's minimum for acc = 0.5,
+        # 1/2*(1-acc)^2 = 0.125 — not zero (zero needs zero failures).
+        self.assertAlmostEqual(
+            augrc([0.9, 0.8, 0.7, 0.6], [1, 1, 0, 0]), 0.125)
+
+    def test_augrc_no_failures_is_zero(self):
+        self.assertAlmostEqual(augrc([0.9, 0.8], [1, 1]), 0.0)
+
+    def test_augrc_matches_eq7_identity(self):
+        # Independent check of the paper's Eq. (7):
+        # AUGRC = (1-AUROC_f)*acc*(1-acc) + 1/2*(1-acc)^2, with AUROC_f
+        # computed here by the Mann-Whitney pair count (ties split).
+        cases = [
+            ([0.9, 0.7, 0.8, 0.4], [1, 0, 1, 0]),
+            ([0.9, 0.8, 0.7, 0.6], [0, 1, 1, 0]),
+            ([0.6, 0.9, 0.2, 0.8, 0.5], [1, 0, 1, 1, 0]),
+            ([0.5, 0.5, 0.5], [1, 0, 1]),  # total tie: stable order kept
+        ]
+        for probs, labels in cases:
+            n = len(probs)
+            acc = sum(labels) / n
+            correct = [p for p, l in zip(probs, labels) if l == 1]
+            failed = [p for p, l in zip(probs, labels) if l == 0]
+            pairs = sum((c > f) + 0.5 * (c == f)
+                        for c in correct for f in failed)
+            auroc_f = pairs / (len(correct) * len(failed))
+            expected = ((1 - auroc_f) * acc * (1 - acc)
+                        + 0.5 * (1 - acc) ** 2)
+            self.assertAlmostEqual(augrc(probs, labels), expected,
+                                   msg=f"probs={probs}")
+
+    def test_augrc_ties_deterministic(self):
+        # Total tie: stable sort keeps input order, failures [0, 1, 0],
+        # F = (0, 1, 1): area = ((0+0)+(0+1)+(1+1)) / 18 = 3/18 = 1/6.
+        self.assertAlmostEqual(augrc([0.5, 0.5, 0.5], [1, 0, 1]), 1 / 6)
+
+    def test_validation(self):
+        with self.assertRaises(ValueError):
+            risk_coverage_curve([], [])
+        with self.assertRaises(ValueError):
+            risk_coverage_curve([0.5], [1, 0])
+        with self.assertRaises(ValueError):
+            augrc([], [])
+        with self.assertRaises(ValueError):
+            augrc([0.5, 0.6], [1])
+        for bad in (0.0, -0.2, 1.5, float("nan")):
+            with self.assertRaises(ValueError, msg=f"coverage={bad}"):
+                selective_risk_at_coverage([0.9], [1], bad)
+        with self.assertRaises(ValueError):
+            selective_risk_at_coverage([], [], 0.5)
 
 
 if __name__ == "__main__":
