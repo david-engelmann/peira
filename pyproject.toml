@@ -23,7 +23,11 @@ classifiers = [
 
 [project.optional-dependencies]
 # Optional: Hugging Face guardrail adapters (python/peira/adapters/hf.py).
-hf = ["transformers>=4.40", "torch>=2.2"]
+# transformers is capped below v5: the v5 major (Jan 2026) changed default
+# dtype, hub client internals, and the CLI, and the adapters are unverified
+# against it. Lift the cap only after verifying the pinned revisions load
+# and score identically under v5.
+hf = ["transformers>=4.40,<5", "torch>=2.2"]
 # Optional: structured-output LLM baseline adapters
 # (python/peira/adapters/llm.py).
 openai = ["openai>=1.40"]

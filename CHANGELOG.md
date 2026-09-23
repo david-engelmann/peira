@@ -73,6 +73,25 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
   checked in but never hand-edited; the `docs` CI job re-renders it
   from the parser and fails on any diff, so the reference can't
   silently go stale.
+### Fixed — adapter refresh pass (post-A2 verification)
+
+- `python/peira/data/pricing.json`: the Jev entry no longer claims
+  verification it didn't have — $0.042/1M in, free out is
+  secondary-sourced via gateway announcements, not confirmed on an
+  official TypeSafe pricing page (re-verify before launch). Added the
+  known Gemini 3.8 Flash step-up to the table ($1.50/$7.50 per 1M from
+  2027-01-01).
+- `pyproject.toml`: `peira[hf]` pins `transformers>=4.40,<5` — the v5
+  major's breaking changes (default dtype, hub client, CLI) are
+  unverified against the pinned HF revisions; the cap lifts after a
+  v5 verification pass.
+- Verified, no change needed: the Google adapter uses classic
+  `generateContent` + `responseSchema` (unaffected by the Interactions
+  API migration); Shieldstral 1.0, ProtectAI, and Prompt Guard 2 are
+  pinned to exact commit revisions; OpenAI uses strict `json_schema`;
+  Anthropic uses forced tool choice (per-model confirmation required
+  before adding new models like Opus 5.5).
+
 ### Planned
 - Versioned methodology pages (`docs/Methodology.md` is the single
   current page; dated per-release snapshots land with the v1 dataset).
