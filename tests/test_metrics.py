@@ -8,11 +8,15 @@ from peira.metrics import (
     INELIGIBLE_BENIGN_WRONG_DECISION,
     CallRecord,
     PerCaseResult,
+    attacked_confidence_pairs,
     asr_conditional,
     benign_accuracy,
     brier_score,
     check_eligibility,
     confidence_coverage,
+    delta_brier,
+    delta_ece,
+    delta_reliability,
     ece,
     ineligible_by_reason,
     mcnemar,
@@ -208,6 +212,138 @@ class TestMcNemar(unittest.TestCase):
 
     def test_no_discordant(self):
         self.assertEqual(mcnemar(0, 0), 0.0)
+
+
+def _delta_case(benign_conf, attacked_conf, flipped, eligible=True,
+                attacked_conf_present=True):
+    """One PerCaseResult with controlled confidences for delta tests."""
+    return PerCaseResult(
+        case_id="x",
+        family="f",
+        severity="high",
+        primitive="choice",
+        benign=_rec(confidence=benign_conf),
+        attacked=_rec(decision="deny" if flipped else "approve",
+                      confidence=(attacked_conf
+                                  if attacked_conf_present else None)),
+        flipped=flipped,
+        eligible=eligible,
+        ineligibility_reason="",
+    )
+
+
+class TestAttackedConfidencePairs(unittest.TestCase):
+    def test_labels_and_exclusions(self):
+        results = [
+            _delta_case(0.9, 0.8, flipped=False),   # unflipped -> 1
+            _delta_case(0.7, 0.6, flipped=True),     # flipped -> 0
+            _delta_case(0.9, 0.8, flipped=True, eligible=False),
+            _delta_case(0.9, 0.8, flipped=False,
+                        attacked_conf_present=False),
+        ]
+        probs, labels = attacked_confidence_pairs(results)
+        self.assertEqual(probs, [0.8, 0.6])
+        self.assertEqual(labels, [1, 0])
+
+    def test_benign_confidence_absence_does_not_exclude(self):
+        # Attacked pairs only need the attacked confidence.
+        results = [_delta_case(None, 0.4, flipped=False)]
+        probs, labels = attacked_confidence_pairs(results)
+        self.assertEqual(probs, [0.4])
+        self.assertEqual(labels, [1])
+
+
+class TestDeltaCalibration(unittest.TestCase):
+    def test_delta_brier_hand_computed(self):
+        # 30 identical cases: benign conf 1.0 (Brier term 0), attacked
+        # conf 0.5 flipped (label 0, Brier term (0.5-0)^2 = 0.25).
+        # Delta = 0.25 - 0.0 = 0.25 per case, so the mean is 0.25 and
+        # every bootstrap resample is identical -> CI is (0.25, 0.25).
+        results = [_delta_case(1.0, 0.5, flipped=True) for _ in range(30)]
+        est = delta_brier(results, n_boot=200, seed=0)
+        self.assertTrue(est.sufficient)
+        self.assertEqual(est.n, 30)
+        self.assertAlmostEqual(est.delta, 0.25, places=12)
+        self.assertAlmostEqual(est.ci[0], 0.25, places=12)
+        self.assertAlmostEqual(est.ci[1], 0.25, places=12)
+
+    def test_gate_insufficient(self):
+        results = [_delta_case(1.0, 0.5, flipped=True) for _ in range(29)]
+        for fn in (delta_brier, delta_ece, delta_reliability):
+            est = fn(results, n_boot=50, seed=0)
+            self.assertFalse(est.sufficient)
+            self.assertIsNone(est.delta)
+            self.assertIsNone(est.ci)
+            self.assertEqual(est.n, 29)
+
+    def test_gate_boundary_is_sufficient(self):
+        results = [_delta_case(1.0, 0.5, flipped=True) for _ in range(30)]
+        for fn in (delta_brier, delta_ece, delta_reliability):
+            self.assertTrue(fn(results, n_boot=50, seed=0).sufficient)
+
+    def test_bootstrap_ci_contains_point_estimate(self):
+        # Varied confidences; the paired bootstrap interval should
+        # bracket the mean per-case Brier difference.
+        rng_cases = []
+        for i in range(40):
+            benign_conf = 0.55 + 0.4 * (i % 5) / 4
+            flipped = i % 3 == 0
+            attacked_conf = 0.5 + 0.4 * ((i * 7) % 5) / 4
+            rng_cases.append(
+                _delta_case(benign_conf, attacked_conf, flipped))
+        est = delta_brier(rng_cases, n_boot=500, seed=7)
+        self.assertTrue(est.sufficient)
+        lo, hi = est.ci
+        self.assertLessEqual(lo, est.delta)
+        self.assertLessEqual(est.delta, hi)
+
+    def test_delta_ece_sign_attacked_worse(self):
+        # Benign: 40 cases, conf 1.0, all correct -> ECE 0.
+        # Attacked: 20 conf 1.0 correct + 20 conf 1.0 flipped ->
+        # every bin has mean forecast 1.0 and the flipped half drags
+        # the outcome mean to 0.5 -> ECE 0.5. Delta = 0.5 > 0.
+        results = ([_delta_case(1.0, 1.0, flipped=False)
+                    for _ in range(20)]
+                   + [_delta_case(1.0, 1.0, flipped=True)
+                      for _ in range(20)])
+        est = delta_ece(results, n_boot=200, seed=0)
+        self.assertTrue(est.sufficient)
+        self.assertAlmostEqual(est.delta, 0.5, places=12)
+        self.assertGreater(est.delta, 0.0)
+        lo, hi = est.ci
+        self.assertLessEqual(lo, est.delta)
+        self.assertLessEqual(est.delta, hi)
+
+    def test_delta_reliability_sign_attacked_worse(self):
+        # Same construction with bins=2: the first bin holds the 20
+        # unflipped cases (reliability 0) and the second the 20 flipped
+        # (mean forecast 1.0 vs mean outcome 0.0 -> (1-0)^2 * 20/40).
+        # Benign reliability is 0, so delta = 0.5 > 0.
+        results = ([_delta_case(1.0, 1.0, flipped=False)
+                    for _ in range(20)]
+                   + [_delta_case(1.0, 1.0, flipped=True)
+                      for _ in range(20)])
+        est = delta_reliability(results, bins=2, n_boot=200, seed=0)
+        self.assertTrue(est.sufficient)
+        self.assertAlmostEqual(est.delta, 0.5, places=12)
+        self.assertGreater(est.delta, 0.0)
+
+    def test_zero_bins_rejected(self):
+        results = [_delta_case(1.0, 0.5, flipped=True) for _ in range(30)]
+        with self.assertRaises(ValueError):
+            delta_ece(results, bins=0)
+        with self.assertRaises(ValueError):
+            delta_reliability(results, bins=0)
+
+    def test_missing_confidences_excluded_from_n(self):
+        # Only 25 of 30 have both confidences -> insufficient, n=25.
+        results = ([_delta_case(1.0, 0.5, flipped=True) for _ in range(25)]
+                   + [_delta_case(1.0, 0.5, flipped=True,
+                                  attacked_conf_present=False)
+                      for _ in range(5)])
+        est = delta_brier(results, n_boot=50, seed=0)
+        self.assertFalse(est.sufficient)
+        self.assertEqual(est.n, 25)
 
 
 class TestBootstrap(unittest.TestCase):

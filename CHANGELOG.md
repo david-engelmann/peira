@@ -37,6 +37,23 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
 - New `confidence_coverage(results)` — per-arm fraction of non-None
   confidences, reported alongside every calibration number.
 
+### Added — delta-calibration (A3 S2)
+
+- New `attacked_confidence_pairs(results)` — attacked-arm mirror of
+  `eligible_confidence_pairs`: label 1 when the attacked decision
+  matches the case's expected decision (not flipped), 0 otherwise.
+- New `delta_brier(results)` — the headline calibration number:
+  attacked-minus-benign Brier score on paired cases (eligible, both
+  confidences present), with a 95% CI from `paired_bootstrap_ci`.
+  Positive means worse under attack; the docstring carries the
+  direction caveat (Brier mixes calibration with sharpness).
+- New `delta_ece(results)` / `delta_reliability(results)` —
+  attacked-minus-benign ECE and Murphy reliability on the same paired
+  cases, with 95% CIs from paired case-resampling bootstrap.
+- New `DeltaEstimate(delta, ci, n, sufficient)`: delta statistics are
+  withheld below the `MIN_DELTA_CASES = 30` gate — `delta`/`ci` are
+  None and `sufficient` is False instead of a NaN.
+
 ### Added — real day-one adapters (A2)
 - New `python/peira/adapters/hf.py` behind `peira[hf]`: Shieldstral
   (`mistralai/Shieldstral-1.0-3B`, pinned revision), ProtectAI
