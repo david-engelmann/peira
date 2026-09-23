@@ -323,6 +323,55 @@ under attack", computed on the attacked-arm correctness pairs from
   scores ½(1−acc)²; a random confidence function scores ½(1−acc) in
   expectation.
 
+## Nonfinite inputs and confidence-interval coverage (S9)
+
+**Nonfinite hardening.** Every metric function taking float inputs
+rejects NaN and ±infinity with a defined error — `ValueError` in
+Python, a panic with a clear message in the Rust core (D-11: caller
+bug) — never a silent NaN metric, never an uncontrolled panic. The
+list: `ece`, `brier_score`, `murphy_decomposition`,
+`paired_bootstrap_ci`, `risk_coverage_curve`,
+`selective_risk_at_coverage`, `augrc`, `crps_point`,
+`score_compression_index`, the score estimates (`benign_score_mae`,
+`attacked_score_mae`, `score_displacement`), `wilson_ci` (its `z`
+parameter), the delta functions (via their paired confidence tuples),
+the S9 CI functions, and `reject_at`. The bootstrap entry points
+(`paired_bootstrap_ci`, the delta functions, the six S9 CI functions,
+and the score estimates) also validate `n_boot` as a positive integer
+(bool rejected) — a zero or negative count would otherwise fail with
+an uncontrolled `IndexError` from the percentile indexing. The public
+Python wrappers validate before dispatching, so both backends refuse
+identically; the Rust core also checks directly (it can be called via
+PyO3). `CallRecord.from_dict` validates `confidence` in 0..1 (NaN
+rejected by the range check) — the resume-partial path treats result
+entries as hostile input. Design decision: **reject, don't clamp**
+(ADR D-29). Clamping a NaN to 0 or an inf to 1 would invent data;
+the metric would look valid while measuring nothing.
+
+**CI coverage.** The S1–S6 slices left several derived estimates as
+bare point numbers. S9 adds bootstrap 95% CIs, following the
+`DeltaEstimate`/`ScoreEstimate` pattern (`MetricEstimate` with an
+explicit `sufficient` flag, withheld below 30 observations):
+`severity_weighted_asr_ci`, `ece_ci`, `brier_ci`, `augrc_ci`,
+`selective_risk_ci` (per fixed coverage), and `compression_ci`.
+`summarize()` reports each CI alongside its point estimate. All
+intervals use the Python PRNG (backend-independent). The
+risk-coverage *curve* itself carries no per-point CIs — it's a
+diagnostic plot, not a set of claims.
+
+**Empty-input convention.** The six CI functions disagree on empty
+input by design, not by accident. `ece_ci`, `brier_ci`, `augrc_ci`,
+and `selective_risk_ci` take paired float lists and raise `ValueError`
+on empty input via `_check_paired` — empty paired data is a caller
+bug, like mismatched lengths. `compression_ci` raises its own
+explicit `ValueError("scores must be non-empty")` before the
+sufficiency gate, for the same reason. `severity_weighted_asr_ci`
+instead takes case records and withholds: zero (or fewer than 30)
+eligible cases returns `MetricEstimate(None, None, n, False)` — an
+empty arm is an edge case a summary must report, not a caller bug.
+The split follows the input shape: raw float vectors refuse, record
+lists withhold.
+
 ## summarize()
 
 `summarize(results, required_families=None, expected_scores=None,
@@ -343,11 +392,11 @@ score, never a rank.
   a reference) — omit it and the score-diagnostics section reports
   itself *unavailable* rather than guessing.
 - **Headline and gates**: `n_cases`, `n_eligible`,
-  `asr_conditional` + Wilson 95% CI, `severity_weighted_asr`
-  (display-only, D3), `benign_accuracy` + CI, `malformed_rate`,
+  `asr_conditional` + Wilson 95% CI, `severity_weighted_asr` +
+  `severity_weighted_asr_ci95` (display-only, D3), `benign_accuracy` + CI, `malformed_rate`,
   `refusal_rate` (attacked arm) + CI, `benign_refusal_rate` + CI,
   `refusal_rate_delta` (attacked-minus-benign, paired bootstrap) +
-  CI, `ineligible_by_reason`, per-arm `outcomes_benign` /
+  `refusal_rate_delta_ci95`, `ineligible_by_reason`, per-arm `outcomes_benign` /
   `outcomes_attacked` censuses (the `ArmOutcomes` buckets, which always
   partition the arm), `ranking_eligible` + `eligibility_notes`, and
   `per_family` (`n`, `n_eligible`, `asr` + CI, `refusal_rate`;
@@ -356,28 +405,32 @@ score, never a rank.
   a confidence, per arm — accompanies every calibration number;
   `None` per arm on an empty run); per-condition `benign` / `attacked`
   blocks with `n`, `sufficient` (`False` with `ece`, `brier`, and
-  `murphy` all `None` below 30 observations), `ece`, `brier`, and the
-  `murphy` decomposition (reliability / resolution /
-  uncertainty / residual); and the paired `delta_brier` (headline),
-  `delta_ece`, `delta_reliability` estimates as
+  `murphy` all `None` below 30 observations), `ece` + `ece_ci95`,
+  `brier` + `brier_ci95`, and the `murphy` decomposition (reliability /
+  resolution / uncertainty / residual); and the paired `delta_brier`
+  (headline), `delta_ece`, `delta_reliability` estimates as
   `{delta, ci95, n, sufficient}`.
 - **Selective prediction** (attacked arm, display-only, D2): `n`,
   `sufficient` (`False` with `augrc`, `selective_risk`, and
-  `risk_coverage_curve` all `None` below 30 attacked pairs), `augrc`,
-  `selective_risk` at the fixed working points 0.5 / 0.8 /
-  0.9 / 1.0 ("had we kept only this fraction of predictions, what
-  fraction would be wrong"; 1.0 is the overall error rate), and the
-  full `risk_coverage_curve` as `[coverage, risk]` pairs.
+  `risk_coverage_curve` all `None` below 30 attacked pairs), `augrc` +
+  `augrc_ci95`, `selective_risk` + `selective_risk_ci95` at the fixed
+  working points 0.5 / 0.8 / 0.9 / 1.0 ("had we kept only this fraction
+  of predictions, what fraction would be wrong"; 1.0 is the overall
+  error rate), and the full `risk_coverage_curve` as `[coverage, risk]`
+  pairs.
 - **Score diagnostics** (display-only, ADR D-27): `available` (False
   with an explicit `reason` when `expected_scores` was omitted),
   `skipped` counts (`ineligible` / `no_score` / `no_reference` —
   counted, never silently dropped), per-arm `benign_mae` /
   `attacked_mae` and paired `displacement` as
-  `{value, ci95, n, sufficient}`, and the `compression_index` per arm.
-  The compression index needs no author reference — it is computed
-  over every available arm score — but it is still a derived
-  estimate, so it withholds (`None`) below 30 scores per arm rather
-  than reporting the degenerate 1.0 a single observation would give.
+  `{value, ci95, n, sufficient}`, and the `compression_index` per arm
+  as `{value, ci95, n, sufficient}` with the n≥30 gate (S9; was an
+  ungated bare float in S6). The compression index needs no author
+  reference — it is computed over every available arm score — so it is
+  reported even when the section is unavailable. When the section is
+  unavailable every other estimate keeps the same shape with
+  `value: None`, `ci95: None`, `n: 0`, `sufficient: False`.
+
 - **Sample-size discipline**: derived/calibrated metrics are withheld
   below 30 observations per condition — per-condition ECE/Brier/
   Murphy and selective prediction via `MIN_PER_CONDITION_CASES`; the

@@ -516,6 +516,28 @@ class TestNoRustFallback(unittest.TestCase):
         self.assertEqual(b.returncode, 0, b.stderr)
         self.assertEqual(a.stdout, b.stdout)
 
+    def test_metrics_summarize_backend_parity(self):
+        # metrics.summarize (the canonical per-run summary wiring
+        # S1-S6 with the S9 bootstrap CIs) must produce identical
+        # output under both backends, end to end. Exact JSON equality
+        # is the right bar: every Rust-dispatched component in the
+        # summary path (including wilson_ci) has an exact parity pin,
+        # and the bootstrap stats recompute through the pure-Python
+        # kernels (_ece_py / _brier_score_py), so the intervals are
+        # backend-independent by construction.
+        code = (
+            "import json; "
+            "from peira import metrics; "
+            "from tests.test_rust_backend import _corpus; "
+            "print(json.dumps(metrics.summarize(_corpus(), seed=0), "
+            "sort_keys=True))"
+        )
+        a = self._run(code)
+        b = self._run(code, {"PEIRA_NO_RUST": "1"})
+        self.assertEqual(a.returncode, 0, a.stderr)
+        self.assertEqual(b.returncode, 0, b.stderr)
+        self.assertEqual(a.stdout, b.stdout)
+
 
 if __name__ == "__main__":
     unittest.main()
