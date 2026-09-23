@@ -148,9 +148,13 @@ def _suite_dataset_identity(suite_dir: Path) -> tuple[str, str]:
 
     The manifest is verified against the directory *before* anything is
     scored. A mismatch fails closed with ValueError: scoring a tampered
-    dataset would seal a lie into the analysis lock. A missing or
-    unreadable manifest is not tampering — it yields the fallback label
-    and an empty digest, i.e. an explicitly unbound run.
+    dataset would seal a lie into the analysis lock. A *missing*
+    manifest is not tampering — it yields the fallback label and an
+    empty digest, i.e. an explicitly unbound run. But a manifest that
+    exists and cannot be read or parsed is a hard error: an
+    explicitly-listed-but-corrupt dataset must never score silently as
+    unbound, or a truncated write / disk fault would downgrade a
+    bound suite into an unbound one with no signal.
     """
     manifest_path = suite_dir / "manifest.json"
     if not manifest_path.is_file():
@@ -159,11 +163,18 @@ def _suite_dataset_identity(suite_dir: Path) -> tuple[str, str]:
         # Sealed read: the digest below is computed over the same bytes
         # that were verified — never a re-read that raced a swap.
         manifest, manifest_sha256, errors = verify_manifest_sealed(suite_dir)
-    except (OSError, ValueError) as e:
-        print(f"warning: unreadable manifest at {manifest_path} ({e}); "
-              f"recording dataset_version='0.1.0-demo'.",
-              file=sys.stderr)
+    except FileNotFoundError:
+        # The manifest vanished between the is_file() check and the
+        # read: same as missing — an explicitly unbound run. (File
+        # races on listed case files report "missing on disk" via the
+        # is_file() check inside verification instead of raising.)
         return "0.1.0-demo", ""
+    except (OSError, ValueError) as e:
+        raise ValueError(
+            f"unreadable manifest at {manifest_path} ({e}): refusing to "
+            f"score — restore the manifest or rebuild it with "
+            f"`peira dataset build-manifest --dir {suite_dir} --version <v>`"
+        ) from e
     if errors:
         raise ValueError(
             "dataset manifest verification failed:\n  "
@@ -434,8 +445,13 @@ def cmd_report(args: argparse.Namespace) -> int:
               file=sys.stderr)
         return EXIT_USER_ERROR
     if not artifact.verify():
-        print("warning: analysis lock mismatch — artifact was modified after sealing.",
+        print(f"error: {run_path} failed analysis-lock verification — "
+              f"the artifact was modified after sealing (or sealed by an "
+              f"older peira whose lock covered fewer fields); re-run, or "
+              f"pass --force to render the untrusted numbers anyway.",
               file=sys.stderr)
+        if not args.force:
+            return EXIT_USER_ERROR
     # Metric access is also hostile input: a well-formed-JSON artifact
     # with the wrong shape must still exit 1, not traceback.
     try:
@@ -867,6 +883,9 @@ def build_parser() -> argparse.ArgumentParser:
     rp = sub.add_parser("report", help="render an HTML report from a run artifact")
     rp.add_argument("--run", required=True)
     rp.add_argument("--out", default="report.html")
+    rp.add_argument("--force", action="store_true",
+                    help="render even when the analysis lock mismatches "
+                         "(the numbers are then untrusted)")
     rp.set_defaults(func=cmd_report)
 
     d = sub.add_parser("dataset", help="dataset build tooling")

@@ -88,6 +88,23 @@ class TestDatasetManifest(unittest.TestCase):
         errors = verify_manifest(self.dir)
         self.assertTrue(any("missing on disk" in e for e in errors), errors)
 
+    def test_verify_flags_unlisted_case_file(self):
+        # P0: a case file added after the manifest was built must be
+        # flagged — otherwise it would be silently unscored and the
+        # "directory matches the manifest exactly" guarantee would lie.
+        self._write_cases()
+        write_manifest(self.dir, build_manifest(self.dir, "1.0.0"))
+        self.assertEqual(verify_manifest(self.dir), [])
+        self._write_cases(name="extra.jsonl")
+        (self.dir / "CANARY.txt").write_text("peira-canary:test\n")
+        (self.dir / "notes.md").write_text("not a case file\n")
+        errors = verify_manifest(self.dir)
+        self.assertEqual(len(errors), 2, errors)
+        self.assertIn("extra.jsonl: on disk but not listed in manifest",
+                      errors)
+        self.assertIn("CANARY.txt: on disk but not listed in manifest",
+                      errors)
+
     def test_build_rejects_invalid_case(self):
         bad = _case("c1")
         del bad["severity"]

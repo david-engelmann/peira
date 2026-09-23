@@ -520,6 +520,40 @@ pub fn verify_manifest(dataset_dir: &Path) -> Result<Vec<String>, ManifestError>
             }
         }
     }
+    // P0: files build_manifest would include (*.jsonl case files,
+    // CANARY.txt) that are on disk but not listed must be flagged —
+    // otherwise unlisted case files would be silently unscored, and the
+    // "directory matches the manifest exactly" guarantee would be false.
+    // Names are compared as strings only; unlisted files are never
+    // opened, so unsafe on-disk names cannot escape the directory.
+    let listed: std::collections::HashSet<&str> =
+        manifest.files.keys().map(|s| s.as_str()).collect();
+    let mut on_disk: Vec<String> = Vec::new();
+    let read_dir = fs::read_dir(dataset_dir).map_err(|e| ManifestError::Unreadable {
+        reason: format!("cannot list {}: {e}", dataset_dir.display()),
+    })?;
+    for entry in read_dir {
+        let entry = entry.map_err(|e| ManifestError::Unreadable {
+            reason: format!("cannot list {}: {e}", dataset_dir.display()),
+        })?;
+        let name = entry.file_name().to_string_lossy().into_owned();
+        if name == MANIFEST_NAME {
+            continue;
+        }
+        if !entry.file_type().map(|t| t.is_file()).unwrap_or(false) {
+            continue;
+        }
+        if !(name.ends_with(CASE_SUFFIX) || name == CANARY_NAME) {
+            continue;
+        }
+        on_disk.push(name);
+    }
+    on_disk.sort();
+    for name in on_disk {
+        if !listed.contains(name.as_str()) {
+            errors.push(format!("{name}: on disk but not listed in manifest"));
+        }
+    }
     Ok(errors)
 }
 
@@ -709,6 +743,41 @@ mod tests {
         let errors = verify_manifest(dir.path()).unwrap();
         assert_eq!(errors.len(), 1, "{errors:?}");
         assert!(errors[0].contains("sha256 mismatch"), "{}", errors[0]);
+    }
+
+    #[test]
+    fn verify_manifest_flags_unlisted_case_file() {
+        // P0: a case file added after the manifest was built must be
+        // flagged — otherwise it would be silently unscored and the
+        // "directory matches the manifest exactly" guarantee would lie.
+        let dir = tempfile::tempdir().unwrap();
+        fs::write(dir.path().join("c.jsonl"), format!("{CASE}\n")).unwrap();
+        let manifest = build_manifest(dir.path(), "1.0.0", "d", "0.1.0").unwrap();
+        fs::write(
+            dir.path().join("manifest.json"),
+            serde_json::to_string(&manifest).unwrap(),
+        )
+        .unwrap();
+        assert!(verify_manifest(dir.path()).unwrap().is_empty());
+        // Unlisted case file and canary are flagged; a non-case file is
+        // ignored, mirroring build_manifest's inclusion rule.
+        fs::write(dir.path().join("extra.jsonl"), format!("{CASE}\n")).unwrap();
+        fs::write(dir.path().join("CANARY.txt"), "canary\n").unwrap();
+        fs::write(dir.path().join("notes.md"), "not a case file\n").unwrap();
+        let errors = verify_manifest(dir.path()).unwrap();
+        assert_eq!(errors.len(), 2, "{errors:?}");
+        assert!(
+            errors
+                .iter()
+                .any(|e| e == "extra.jsonl: on disk but not listed in manifest"),
+            "{errors:?}"
+        );
+        assert!(
+            errors
+                .iter()
+                .any(|e| e == "CANARY.txt: on disk but not listed in manifest"),
+            "{errors:?}"
+        );
     }
 
     #[test]

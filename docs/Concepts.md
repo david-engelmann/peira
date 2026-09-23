@@ -29,12 +29,16 @@ produced it — that's what drill-down receipts provide.
 
 ## 3. Analysis lock
 
-A run artifact is sealed with a sha256 hash over its inputs (config,
-dataset version, peira version). Change anything after the fact and the
-lock breaks; `peira report` warns on the mismatch. This is what will make
-the planned leaderboard trustworthy without trusting the submitter: the
-numbers will either be reproducible from the locked inputs or they'll be
-rejected.
+A run artifact is sealed with a sha256 hash over its measurement
+record (config, results, metrics, dataset version + manifest digest,
+peira version, pricing provenance, seed). Change anything after the
+fact and the lock breaks; `peira report` fails closed (exit 1) on the
+mismatch. This is what will make the planned leaderboard trustworthy
+without trusting the submitter: the numbers will either be
+reproducible from the locked inputs or they'll be rejected. The lock
+is unkeyed SHA-256 — tamper-evidence against accidents, not
+forgery-resistance — so ingestion must re-score from transcripts or
+require signatures, never rely on `verify()` alone.
 
 ## 4. Concurrency is performance, not measurement
 

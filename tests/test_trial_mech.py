@@ -158,8 +158,9 @@ class TestTrialRunMechanism(unittest.TestCase):
             run_path = Path(tmp, "mock-trial.json")
             # Simulate author-controlled strings reaching the report: a
             # hostile case id, family label, and adapter name must all land
-            # inert in the HTML (the analysis-lock warning is expected —
-            # the report is still rendered).
+            # inert in the HTML (the analysis-lock mismatch is expected —
+            # the artifact was edited after sealing — so render via
+            # --force).
             data = json.loads(run_path.read_text())
             data["results"][0]["case_id"] = "<script>alert('case')</script>"
             data["results"][0]["family"] = "<img src=x onerror=alert('fam')>"
@@ -167,7 +168,7 @@ class TestTrialRunMechanism(unittest.TestCase):
             run_path.write_text(json.dumps(data))
             out_path = str(Path(tmp, "report.html"))
             r = self._run_cli("report", "--run", str(run_path),
-                              "--out", out_path)
+                              "--out", out_path, "--force")
             self.assertEqual(r.returncode, 0, r.stderr)
             html = Path(out_path).read_text(encoding="utf-8")
             for raw in ("<script>alert('case')</script>",

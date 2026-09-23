@@ -267,11 +267,16 @@ def read_manifest(dataset_dir: Path) -> dict[str, Any]:
 def _verify_manifest_dict(
     manifest: dict[str, Any], dataset_dir: Path
 ) -> list[str]:
-    """Per-file verification of an already-read manifest.
+    """Per-file verification of an already-read manifest, plus a
+    directory sweep for unlisted files.
 
     Every file is read exactly once: the digest and (for case files) the
     parse share the same bytes, so verification can never hash one
-    version of a file and summarize another.
+    version of a file and summarize another. After the per-entry loop,
+    any file on disk that `build_manifest` would include (*.jsonl,
+    CANARY.txt) but that the manifest does not list is reported — the
+    sweep is what makes "the directory matches the manifest exactly"
+    true.
     """
     errors: list[str] = []
     for name, entry in manifest.get("files", {}).items():
@@ -305,6 +310,20 @@ def _verify_manifest_dict(
                     errors.append(
                         f"{name}: {key} changed "
                         f"(manifest {entry.get(key)}, disk {summary[key]})")
+    # P0: files build_manifest() would include (*.jsonl case files,
+    # CANARY.txt) that are on disk but not listed must be flagged —
+    # otherwise unlisted case files would be silently unscored, and the
+    # "directory matches the manifest exactly" guarantee would be false.
+    # Names are compared as strings only; unlisted files are never
+    # opened, so unsafe on-disk names cannot escape the directory.
+    listed = set(manifest.get("files", {}).keys())
+    for path in sorted(dataset_dir.iterdir()):
+        if path.name == MANIFEST_NAME or not path.is_file():
+            continue
+        if path.suffix != CASE_SUFFIX and path.name != CANARY_NAME:
+            continue
+        if path.name not in listed:
+            errors.append(f"{path.name}: on disk but not listed in manifest")
     return errors
 
 

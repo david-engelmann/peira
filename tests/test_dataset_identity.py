@@ -73,6 +73,22 @@ class TestSuiteDatasetIdentity(unittest.TestCase):
         self.assertEqual(version, "0.1.0-demo")
         self.assertEqual(digest, "")
 
+    def test_corrupt_manifest_is_hard_error(self):
+        # An existing-but-unreadable manifest must fail closed, not
+        # silently downgrade the suite to an unbound run.
+        self._write_dataset()
+        (self.dir / "manifest.json").write_text("NOT JSON{{{")
+        with self.assertRaises(ValueError) as ctx:
+            _suite_dataset_identity(self.dir)
+        self.assertIn("unreadable manifest", str(ctx.exception))
+
+    def test_wrong_shape_manifest_is_hard_error(self):
+        self._write_dataset()
+        (self.dir / "manifest.json").write_text(json.dumps({"nope": []}))
+        with self.assertRaises(ValueError) as ctx:
+            _suite_dataset_identity(self.dir)
+        self.assertIn("unreadable manifest", str(ctx.exception))
+
     def test_lock_covers_manifest_sha256(self):
         a = RunArtifact(dataset_version="1.0.0", manifest_sha256="a" * 64)
         b = RunArtifact(dataset_version="1.0.0", manifest_sha256="b" * 64)

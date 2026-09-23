@@ -52,10 +52,14 @@ failure never silently falls back to another revision.
 Cause: the model doesn't fit in RAM/VRAM. Fix: use a quantized variant or a
 smaller adapter; see `docs/Hardware.md` for per-tier requirements.
 
-**`peira report` warns "analysis lock mismatch"**
-Cause: the run artifact was edited after sealing (the report still
-renders, but the numbers aren't trustworthy). Fix: don't edit artifacts;
-re-run. If you need different config, that's a new run with a new lock.
+**`error: ... failed analysis-lock verification — ...`**
+Cause: the run artifact was edited after sealing, or sealed by an older
+peira whose lock covered fewer fields (metrics joined the lock payload
+on 2026-09-23; older artifacts no longer verify — re-run). `peira
+report` fails closed with exit 1 so a tampered artifact can never render
+trusted-looking numbers. Fix: don't edit artifacts; re-run. If you
+understand the numbers are untrusted and need the render anyway, pass
+`--force`.
 
 **`error: dataset manifest verification failed:`**
 Cause: `peira run` verifies the suite manifest before scoring, and a
@@ -265,13 +269,15 @@ the script). Fix: rebuild with the Python you actually use, and make
 sure no stale `_core*.so` / `_core*.pyd` from another interpreter sits in
 `python/peira/`.
 
-**`warning: unreadable manifest at ... (…); recording dataset_version='0.1.0-demo'.`**
+**`error: unreadable manifest at ... (...): refusing to score — ...`**
 Cause: `peira run` found a `manifest.json` in the suite directory but
-couldn't parse it, so the run artifact records the fallback dataset
-version instead of the real one. Fix: rebuild it with
-`peira dataset build-manifest --dir <suite-dir> --version <v>` and re-run.
-(The analysis lock still seals whatever version was recorded — this
-warning is about accuracy of the label, not integrity of the run.)
+couldn't read or parse it (corrupt JSON, wrong shape). This is now a
+hard error, not a warning: silently scoring a corrupt-but-listed
+dataset as "unbound" would downgrade a bound suite with no signal. Fix:
+restore the manifest from git, or rebuild it with
+`peira dataset build-manifest --dir <suite-dir> --version <v>` and
+re-run. (A *missing* manifest is still fine — the suite ships no
+manifest, e.g. `trial-demo`, and the run is explicitly unbound.)
 
 **`<path>:<line>: invalid JSON (...)`**
 Cause: `peira validate` hit a case-file line that isn't JSON. Fix: fix
