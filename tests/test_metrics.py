@@ -701,10 +701,11 @@ class TestSummarize(unittest.TestCase):
         m = _summarize_artifact(rs, required_families=["a", "b"])
         self.assertEqual(m["per_family"]["a"]["n"], 200)
         self.assertEqual(m["per_family"]["a"]["n_eligible"], 200)
-        # Required but absent families appear with explicit zero counts.
+        # Required but absent families appear with explicit zero counts
+        # and None (never 0.0) rates — a zero would claim "measured zero".
         self.assertEqual(m["per_family"]["b"]["n"], 0)
         self.assertEqual(m["per_family"]["b"]["n_eligible"], 0)
-        self.assertEqual(m["per_family"]["b"]["asr"], 0.0)
+        self.assertIsNone(m["per_family"]["b"]["asr"])
         self.assertFalse(m["ranking_eligible"])
         self.assertTrue(any("family 'b'" in r
                             for r in m["eligibility_notes"]))

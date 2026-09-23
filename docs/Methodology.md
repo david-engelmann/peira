@@ -446,6 +446,14 @@ score, never a rank.
   trades CI precision for speed. Unknown severities on eligible cases
   and out-of-range author references raise `ValueError` — invalid
   inputs fail loudly rather than producing a look-alike summary.
+- **Production wiring (S8b)**: the runner seals exactly this summary
+  into every run artifact's `metrics` (via a private
+  `_summarize_artifact` adapter that forwards the run's cases for
+  `expected_score` references and the run seed for determinism). The
+  HTML report (`peira report`) renders these sections directly;
+  withheld (`None`) values display as "insufficient data", never 0.
+  The Rust core does not seal metrics — the Python summary is the
+  reference.
 
 ## Ranking eligibility
 

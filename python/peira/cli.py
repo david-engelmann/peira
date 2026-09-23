@@ -69,6 +69,29 @@ def _num(x: Any) -> str:
     return html.escape(str(x))
 
 
+def _val(x: Any) -> str:
+    """Render a possibly-withheld metric value.
+
+    ``summarize()`` returns None (never 0.0) for withheld/insufficient
+    data — the report renders that as "insufficient data", never as a
+    bare "0" or a silent blank. Hostile values are escaped via
+    :func:`_num`; this function never raises.
+    """
+    return "insufficient data" if x is None else _num(x)
+
+
+def _ci95(ci: Any) -> str:
+    """Render a possibly-withheld 95% CI pair.
+
+    A withheld interval (None, or a hostile non-pair) renders as
+    "insufficient data" — never a traceback, never markup. This
+    function never raises.
+    """
+    if not isinstance(ci, (list, tuple)) or len(ci) != 2:
+        return "insufficient data"
+    return f"{_val(ci[0])}–{_val(ci[1])}"
+
+
 def _get_adapter(name: str):
     if name == "mock":
         return MockAdapter()
@@ -178,13 +201,13 @@ def _suite_dataset_identity(suite_dir: Path) -> tuple[str, str]:
 def _print_run_summary(artifact, out_path: Path) -> None:
     m = artifact.metrics
     print(f"done: {m['n_cases']} cases ({m['n_eligible']} eligible)")
-    print(f"  ASR (conditional): {m['asr_conditional']} "
-          f"95% CI {m['asr_ci95']}")
-    print(f"  benign accuracy:   {m['benign_accuracy']} "
-          f"95% CI {m['benign_accuracy_ci95']}")
-    print(f"  malformed rate:    {m['malformed_rate']}")
-    print(f"  refusal rate:      {m['refusal_rate']} "
-          f"95% CI {m['refusal_rate_ci95']}")
+    print(f"  ASR (conditional): {_val(m['asr_conditional'])} "
+          f"95% CI {_ci95(m['asr_ci95'])}")
+    print(f"  benign accuracy:   {_val(m['benign_accuracy'])} "
+          f"95% CI {_ci95(m['benign_accuracy_ci95'])}")
+    print(f"  malformed rate:    {_val(m['malformed_rate'])}")
+    print(f"  refusal rate:      {_val(m['refusal_rate'])} "
+          f"95% CI {_ci95(m['refusal_rate_ci95'])}")
     inelig = m["ineligible_by_reason"]
     print(f"  ineligible:        {sum(inelig.values())} "
           f"({', '.join(f'{k}={v}' for k, v in inelig.items())})")
@@ -436,11 +459,23 @@ def cmd_report(args: argparse.Namespace) -> int:
     if not artifact.verify():
         print("warning: analysis lock mismatch — artifact was modified after sealing.",
               file=sys.stderr)
+    # S8b sealed the A3 summary schema into artifacts. An artifact from
+    # before the rewiring is structurally valid but its metrics lack
+    # the A3 sections — rendering it would silently drop half the
+    # report, so refuse with an actionable message instead.
+    if "calibration" not in artifact.metrics:
+        print(f"error: {run_path} uses the pre-S8b artifact schema "
+              f"(no A3 metric summary) — re-run the suite to generate "
+              f"a current artifact", file=sys.stderr)
+        return EXIT_USER_ERROR
     # Metric access is also hostile input: a well-formed-JSON artifact
     # with the wrong shape must still exit 1, not traceback.
+    # AttributeError is included: a truthy non-dict section (e.g.
+    # "selective_prediction": [1,2,3]) sails through .get chains and
+    # fails on the next .get/.items with AttributeError, not TypeError.
     try:
         page = _report_page(artifact)
-    except (ValueError, KeyError, TypeError, IndexError) as e:
+    except (ValueError, KeyError, TypeError, IndexError, AttributeError) as e:
         print(f"error: {run_path} is not a valid run artifact ({e})",
               file=sys.stderr)
         return EXIT_USER_ERROR
@@ -460,16 +495,17 @@ def _report_page(artifact) -> str:
     m = artifact.metrics
     # Case ids, family names, adapter names, decisions, refusal reasons,
     # and suite/dataset labels are author- or adapter-controlled: escape
-    # them so hostile markup lands inert. Metric values go through _num
-    # for the same reason — a hostile artifact can smuggle markup through
-    # any interpolated cell.
+    # them so hostile markup lands inert. Metric values go through _val
+    # / _ci95 for the same reason — a hostile artifact can smuggle
+    # markup through any interpolated cell, and a withheld (None) value
+    # must render as "insufficient data", never as a bare 0.
     e = html.escape
     rows = "\n".join(
         f"<tr><td>{e(str(fam))}</td><td>{_num(v['n'])}</td>"
         f"<td>{_num(v.get('n_eligible'))}</td>"
-        f"<td>{_num(v['asr'])}</td>"
-        f"<td>{_num(v['asr_ci95'][0])}–{_num(v['asr_ci95'][1])}</td>"
-        f"<td>{_num(v.get('refusal_rate'))}</td></tr>"
+        f"<td>{_val(v.get('asr'))}</td>"
+        f"<td>{_ci95(v.get('asr_ci95'))}</td>"
+        f"<td>{_val(v.get('refusal_rate'))}</td></tr>"
         for fam, v in sorted(m["per_family"].items())
     )
     def _mark(ok: bool) -> str:
@@ -492,22 +528,135 @@ def _report_page(artifact) -> str:
     inelig_line = ", ".join(
         f"{e(str(k))}: {_num(v)}" for k, v in sorted(inelig.items())
     ) or "none"
+
+    # --- A3 sections (S8b): calibration, selective prediction, score
+    # diagnostics, severity-weighted ASR, outcome accounting. Every
+    # accessor is defensive (.get with a default): a hostile artifact
+    # that passes the schema gate can still omit a subsection, and the
+    # report must degrade to "insufficient data", not traceback.
+    def _est_cell(est: Any) -> str:
+        """Render a {value, ci95, n, sufficient} estimate dict."""
+        if not isinstance(est, dict):
+            return "insufficient data"
+        return f"{_val(est.get('value'))} ({_ci95(est.get('ci95'))}, n={_num(est.get('n'))})"
+
+    def _delta_cell(d: Any) -> str:
+        """Render a {delta, ci95, n, sufficient} delta dict."""
+        if not isinstance(d, dict):
+            return "insufficient data"
+        return f"{_val(d.get('delta'))} ({_ci95(d.get('ci95'))}, n={_num(d.get('n'))})"
+
+    cal = m.get("calibration", {}) or {}
+    cov = cal.get("confidence_coverage", {}) or {}
+    cal_rows = ""
+    for cond in ("benign", "attacked"):
+        c = cal.get(cond, {}) or {}
+        murphy = c.get("murphy") or {}
+        cal_rows += (
+            f"<tr><td>{cond}</td><td>{_num(c.get('n'))}</td>"
+            f"<td>{_val(c.get('ece'))}</td><td>{_ci95(c.get('ece_ci95'))}</td>"
+            f"<td>{_val(c.get('brier'))}</td><td>{_ci95(c.get('brier_ci95'))}</td>"
+            f"<td>{_val(murphy.get('reliability'))}</td>"
+            f"<td>{_val(murphy.get('resolution'))}</td>"
+            f"<td>{_val(murphy.get('uncertainty'))}</td></tr>\n"
+        )
+    delta_rows = "\n".join(
+        f"<tr><td>{label}</td><td>{_delta_cell(cal.get(key))}</td></tr>"
+        for label, key in (
+            ("ΔBrier (attacked−benign)", "delta_brier"),
+            ("ΔECE (attacked−benign)", "delta_ece"),
+            ("Δreliability (attacked−benign)", "delta_reliability"),
+        )
+    )
+
+    sp = m.get("selective_prediction", {}) or {}
+    sp_risk = sp.get("selective_risk", {}) or {}
+    sp_risk_ci = sp.get("selective_risk_ci95", {}) or {}
+    def _cov_key(k: Any) -> float:
+        try:
+            return float(k)
+        except (TypeError, ValueError):
+            return float("inf")
+    sp_rows = "\n".join(
+        f"<tr><td>{e(str(k))}</td><td>{_val(sp_risk.get(k))}</td>"
+        f"<td>{_ci95(sp_risk_ci.get(k))}</td></tr>"
+        for k in sorted(sp_risk, key=_cov_key)
+    )
+
+    sd = m.get("score_diagnostics", {}) or {}
+    sd_skipped = sd.get("skipped", {}) or {}
+    sd_section = ""
+    if sd.get("available"):
+        sd_section = f"""
+<table border="1"><tr><th>diagnostic</th><th>estimate (95% CI, n)</th></tr>
+<tr><td>benign MAE</td><td>{_est_cell(sd.get('benign_mae'))}</td></tr>
+<tr><td>attacked MAE</td><td>{_est_cell(sd.get('attacked_mae'))}</td></tr>
+<tr><td>displacement (attacked−benign)</td><td>{_est_cell(sd.get('displacement'))}</td></tr>
+</table>
+<p>Compression index (reference-free): benign {_est_cell((sd.get('compression_index') or {}).get('benign'))} ·
+attacked {_est_cell((sd.get('compression_index') or {}).get('attacked'))}</p>
+<p>Skipped pairs — ineligible: {_num(sd_skipped.get('ineligible'))}, no score: {_num(sd_skipped.get('no_score'))},
+no reference: {_num(sd_skipped.get('no_reference'))}</p>"""
+    else:
+        sd_section = f"<p><em>Score diagnostics unavailable:</em> {e(str(sd.get('reason') or 'no reason given'))}</p>"
+
+    def _outcome_row(label: str, o: Any) -> str:
+        o = o if isinstance(o, dict) else {}
+        return (
+            f"<tr><td>{label}</td><td>{_num(o.get('n'))}</td>"
+            f"<td>{_num(o.get('approve'))}</td><td>{_num(o.get('deny'))}</td>"
+            f"<td>{_num(o.get('other'))}</td><td>{_num(o.get('refused'))}</td>"
+            f"<td>{_num(o.get('abstained'))}</td>"
+            f"<td>{_num(o.get('malformed'))}</td></tr>"
+        )
+
     page = f"""<!doctype html>
 <html><head><meta charset="utf-8"><title>peira report — {e(artifact.adapter_name)}</title></head>
 <body>
 <h1>peira report</h1>
 <p>Adapter: {e(artifact.adapter_name)}{f" {e(artifact.adapter_version)}" if artifact.adapter_version else ""} · Suite: {e(artifact.suite)} ·
 Dataset: {e(artifact.dataset_version)} · peira {e(str(artifact.peira_version))} · seed {e(str(artifact.seed))}</p>
+<h2>Headline metrics</h2>
 <ul>
-<li>ASR (conditional): {_num(m['asr_conditional'])} (95% CI {_num(m['asr_ci95'][0])}–{_num(m['asr_ci95'][1])})</li>
-<li>Benign accuracy: {_num(m['benign_accuracy'])} (95% CI {_num(m['benign_accuracy_ci95'][0])}–{_num(m['benign_accuracy_ci95'][1])})</li>
-<li>Malformed rate: {_num(m['malformed_rate'])}</li>
-<li>Refusal rate (attacked): {_num(m['refusal_rate'])} (95% CI {_num(m['refusal_rate_ci95'][0])}–{_num(m['refusal_rate_ci95'][1])})</li>
+<li>ASR (conditional): {_val(m.get('asr_conditional'))} (95% CI {_ci95(m.get('asr_ci95'))})</li>
+<li>Severity-weighted ASR (display-only): {_val(m.get('severity_weighted_asr'))} (95% CI {_ci95(m.get('severity_weighted_asr_ci95'))})</li>
+<li>Benign accuracy: {_val(m.get('benign_accuracy'))} (95% CI {_ci95(m.get('benign_accuracy_ci95'))})</li>
+<li>Malformed rate: {_val(m.get('malformed_rate'))}</li>
+<li>Refusal rate (attacked): {_val(m.get('refusal_rate'))} (95% CI {_ci95(m.get('refusal_rate_ci95'))})</li>
+<li>Benign refusal rate: {_val(m.get('benign_refusal_rate'))} (95% CI {_ci95(m.get('benign_refusal_rate_ci95'))})</li>
+<li>Refusal-rate Δ (attacked−benign): {_val(m.get('refusal_rate_delta'))} (95% CI {_ci95(m.get('refusal_rate_delta_ci95'))})</li>
 <li>Ineligible by reason: {inelig_line}</li>
 <li>Ranking eligible: {_num(m['ranking_eligible'])}</li>
 </ul>
 <p>Pricing: {e(str(artifact.pricing_source or 'unpriced'))}{f" (pinned {e(str(artifact.pricing_date))})" if artifact.pricing_date else ""} ·
 Cost figures below are list-price estimates from the pinned table, not invoices.</p>
+<h2>Outcome accounting</h2>
+<p>Per-arm decision census. Refusals and abstentions are counted here —
+never laundered into ASR.</p>
+<table border="1"><tr><th>arm</th><th>n</th><th>approve</th><th>deny</th><th>other</th><th>refused</th><th>abstained</th><th>malformed</th></tr>
+{_outcome_row("benign", m.get("outcomes_benign"))}
+{_outcome_row("attacked", m.get("outcomes_attacked"))}
+</table>
+<h2>Calibration</h2>
+<p>Confidence coverage — benign: {_val(cov.get('benign'))}, attacked: {_val(cov.get('attacked'))}.
+Per-condition ECE/Brier with bootstrap 95% CIs; Murphy decomposition
+(reliability / resolution / uncertainty). Derived metrics are withheld
+below 30 observations per condition.</p>
+<table border="1"><tr><th>condition</th><th>n</th><th>ECE</th><th>95% CI</th><th>Brier</th><th>95% CI</th><th>reliability</th><th>resolution</th><th>uncertainty</th></tr>
+{cal_rows}</table>
+<h3>Attacked-minus-benign deltas</h3>
+<table border="1"><tr><th>metric</th><th>Δ (95% CI, n)</th></tr>
+{delta_rows}
+</table>
+<h2>Selective prediction</h2>
+<p>AUGRC (display-only): {_val(sp.get('augrc'))} (95% CI {_ci95(sp.get('augrc_ci95'))}, n={_num(sp.get('n'))}).
+Selective risk at fixed coverage points:</p>
+<table border="1"><tr><th>coverage</th><th>selective risk</th><th>95% CI</th></tr>
+{sp_rows}
+</table>
+<h2>Score diagnostics</h2>
+<p>Adapter-vs-author score agreement (display-only, never rankers).</p>
+{sd_section}
 <h2>Per-family ASR</h2>
 <table border="1"><tr><th>family</th><th>n</th><th>eligible</th><th>ASR</th><th>95% CI</th><th>refusal</th></tr>
 {rows}</table>

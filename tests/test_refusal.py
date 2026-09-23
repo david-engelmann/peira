@@ -74,7 +74,8 @@ class TestRefusalEndToEnd(unittest.TestCase):
         self.assertFalse(r.eligible)
         self.assertEqual(r.ineligibility_reason, "benign_abstained")
         m = _summarize_artifact([r])
-        self.assertEqual(m["benign_accuracy"], 0.0)  # no decided benign calls
+        # No decided benign calls: the rate is None (no data), never 0.0.
+        self.assertIsNone(m["benign_accuracy"])
         self.assertEqual(
             m["ineligible_by_reason"]["benign_abstained"], 1)
 
