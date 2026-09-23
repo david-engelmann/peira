@@ -62,6 +62,13 @@ between the interrupted run and the resume. Merging old partial results
 with a new dataset would corrupt the run. Fix: delete the
 `<adapter>-<suite>.partial.json` file and re-run without `--resume`.
 
+**`error: partial run has malformed result entry at index N ...`**
+Cause: `peira run --resume` found a partial run whose `results` entry at
+position N isn't a well-formed result object (a scalar, or an object with
+the wrong fields) — the file was hand-edited or corrupted. The resume
+refuses to guess what the entry meant. Fix: delete the
+`<adapter>-<suite>.partial.json` file and re-run without `--resume`.
+
 **`error: no cases found in ...`**
 Cause: the suite directory has no `.jsonl` files. Fix: check the path;
 `dataset/trial-demo/cases.jsonl` ships with the repo.
@@ -111,6 +118,14 @@ change is intentional, that's a new dataset version — rebuild the manifest
 with the bumped version. If not, restore the file (manifests are committed
 to git for exactly this reason).
 
+**`...: unsafe file name in manifest (path separators, '..', and absolute paths are not allowed)`**
+Cause: the manifest lists a file whose name would escape the dataset
+directory (`../`, a subdirectory, or an absolute path). Verification
+reports the name instead of opening it — a manifest is not trusted to
+choose filesystem paths. Fix: rebuild the manifest from files that live
+directly in the dataset directory; case files are `<id>.jsonl` and never
+need separators.
+
 **`peira dataset gates` reports failures (exit 1)**
 Cause: one or more gates found errors — file, line, and rule are printed
 per gate. Fix: address each error (duplicate case ids/content, unknown
@@ -157,7 +172,10 @@ identical across both implementations.
 
 **`peira-cli`: `error: dataset directory ... not found`**
 Cause: `peira-cli validate` / `verify-manifest` got a `--dir` that
-doesn't exist. Fix: check the path.
+doesn't exist — or that exists but isn't a directory. The Rust CLI
+rejects a file passed as `--dir` outright; the Python CLI would instead
+validate zero cases and exit 0. Fix: check the path — point `--dir` at
+the suite directory (e.g. `dataset/trial`), not at a file inside it.
 
 **`peira-cli`: `error: no manifest.json in ... — run 'peira dataset build-manifest' first`**
 Cause: `peira-cli verify-manifest` needs a manifest to check against.
@@ -218,6 +236,17 @@ Cause: `peira report` couldn't parse the artifact file — corrupt JSON,
 or JSON with the wrong shape. Fix: re-run to regenerate the artifact;
 don't hand-edit artifact files (the analysis lock exists precisely so
 edits are detectable).
+
+The parenthetical names the exact problem: `artifact is missing required
+field: 'dataset_version'` (the lock is meaningless without the
+identifiers it binds — `peira_version` and `dataset_version` are
+required), `unknown artifact field: '...'` (the frozen format rejects
+fields it doesn't know rather than silently ignoring them),
+`artifact field 'config' must be dict, got str` (wrong JSON type), or
+`artifact results entry 3 is missing required field: 'family'` (a
+malformed result object — same strictness as the Rust core's typed
+results vector). A minimal artifact with just the two required fields
+loads fine — every other field has a documented default (see ADR D-12).
 
 **`error: cannot write report to <out> (...)`**
 Cause: `peira report --out` points somewhere unwritable — a missing

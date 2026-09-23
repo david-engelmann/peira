@@ -13,6 +13,7 @@
 pub mod artifact;
 pub mod dataset;
 pub mod metrics;
+pub mod py_repr;
 pub mod schema;
 
 pub mod canonical;

@@ -9,7 +9,9 @@ from peira.dataset import (
     MANIFEST_NAME,
     build_manifest,
     read_manifest,
+    sha256_file,
     verify_manifest,
+    verify_manifest_sealed,
     write_manifest,
 )
 
@@ -108,6 +110,108 @@ class TestDatasetManifest(unittest.TestCase):
     def test_build_missing_dir(self):
         with self.assertRaises(FileNotFoundError):
             build_manifest(self.dir / "nope", "1.0.0")
+
+
+class TestManifestTrustBoundary(unittest.TestCase):
+    """Path traversal and single-read verification (H6)."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.dir = Path(self.tmp.name)
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def _write_manifest(self, files):
+        write_manifest(self.dir, {"files": files})
+
+    def test_dotdot_entry_is_reported_not_followed(self):
+        # A manifest entry for ../outside.jsonl must not hash a file
+        # outside the dataset root — it is reported, not followed.
+        outside = self.dir.parent / "outside.jsonl"
+        outside.write_text("trap\n")
+        try:
+            self._write_manifest(
+                {"../outside.jsonl": {"kind": "cases", "sha256": "0" * 64}})
+            errors = verify_manifest(self.dir)
+            self.assertEqual(len(errors), 1, errors)
+            self.assertIn("unsafe file name in manifest", errors[0])
+        finally:
+            outside.unlink(missing_ok=True)
+
+    def test_separators_and_absolute_paths_rejected(self):
+        for evil in ["sub/dir.jsonl", "back\\slash.jsonl", "/abs.jsonl",
+                     "a..b.jsonl", ""]:
+            with self.subTest(evil=evil):
+                self._write_manifest(
+                    {evil: {"kind": "cases", "sha256": "0" * 64}})
+                errors = verify_manifest(self.dir)
+                self.assertTrue(
+                    any("unsafe file name in manifest" in e for e in errors),
+                    (evil, errors))
+
+    def test_sealed_verify_returns_digest_of_verified_bytes(self):
+        # verify_manifest_sealed returns the parsed manifest and the
+        # digest of the same bytes it verified: callers seal that digest
+        # into the analysis lock with no re-read in between.
+        cases = self.dir / "cases.jsonl"
+        cases.write_text(
+            json.dumps(_case("c1")) + "\n")
+        write_manifest(self.dir, build_manifest(self.dir, "1.0.0"))
+        manifest, digest, errors = verify_manifest_sealed(self.dir)
+        self.assertEqual(errors, [])
+        self.assertEqual(digest, sha256_file(self.dir / MANIFEST_NAME))
+        self.assertEqual(manifest["dataset_version"], "1.0.0")
+
+    def test_minimal_manifest_accepted(self):
+        # read_manifest only requires the `files` section, like Python.
+        (self.dir / MANIFEST_NAME).write_text('{"files": {}}')
+        self.assertEqual(read_manifest(self.dir), {"files": {}})
+
+    def test_modified_file_reports_mismatch_not_parse_error(self):
+        # Hash-before-parse from the same bytes: a modified file reports a
+        # digest mismatch and is never parsed, so garbage bytes that could
+        # not parse still surface as exactly one mismatch error.
+        cases = self.dir / "cases.jsonl"
+        cases.write_text(json.dumps(_case("c1")) + "\n")
+        write_manifest(self.dir, build_manifest(self.dir, "1.0.0"))
+        cases.write_bytes(b"\x00\x01not json at all\xff\n")
+        errors = verify_manifest(self.dir)
+        self.assertEqual(len(errors), 1, errors)
+        self.assertIn("sha256 mismatch", errors[0])
+        self.assertNotIn("invalid JSON", errors[0])
+
+    def test_entry_without_sha256_is_mismatch_not_crash(self):
+        # A hand-written entry missing `sha256` (Python tolerates it)
+        # reports a mismatch — it never crashes and never parses first.
+        cases = self.dir / "cases.jsonl"
+        cases.write_text(json.dumps(_case("c1")) + "\n")
+        self._write_manifest({"cases.jsonl": {"kind": "cases"}})
+        errors = verify_manifest(self.dir)
+        self.assertEqual(len(errors), 1, errors)
+        self.assertIn("sha256 mismatch", errors[0])
+
+    def test_verify_reads_each_file_exactly_once(self):
+        # Single-read contract: verifying one case file performs exactly
+        # two reads total (the manifest, then the case file) — the digest
+        # and the parse share the case file's bytes.
+        from unittest import mock
+
+        cases = self.dir / "cases.jsonl"
+        cases.write_text(json.dumps(_case("c1")) + "\n")
+        write_manifest(self.dir, build_manifest(self.dir, "1.0.0"))
+        real_read_bytes = Path.read_bytes
+        reads: list[str] = []
+
+        def counting(self):
+            reads.append(self.name)
+            return real_read_bytes(self)
+
+        with mock.patch.object(Path, "read_bytes", autospec=True,
+                               side_effect=counting):
+            errors = verify_manifest(self.dir)
+        self.assertEqual(errors, [])
+        self.assertEqual(sorted(reads), ["cases.jsonl", "manifest.json"])
 
     def test_empty_dir_builds(self):
         m = build_manifest(self.dir, "0.0.0")

@@ -8,6 +8,8 @@
 //! Error strings from [`validate_case_dict`] are kept identical to the
 //! Python reference so CLI output matches across implementations.
 
+use crate::py_repr::{py_repr_str, py_repr_value};
+use serde::de::Error as _;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::HashMap;
@@ -89,45 +91,26 @@ pub struct Case {
 
 impl Case {
     /// Build a `Case` from a JSON value that already passed
-    /// [`validate_case_dict`]. Mirrors `Case.from_dict`.
+    /// [`validate_case_dict`]. Mirrors `Case.from_dict`, including its
+    /// enum checks: a value that slips past validation (e.g. a
+    /// hand-built `Value`) is still rejected here with the same
+    /// `unknown primitive: ...` / `unknown severity: ...` errors the
+    /// Python `Case.__post_init__` raises.
     pub fn from_value(v: &Value) -> Result<Self, serde_json::Error> {
-        serde_json::from_value(v.clone())
-    }
-}
-
-/// Python `repr()` for a string, used in error messages that mirror the
-/// reference implementation. Handles the realistic inputs (identifiers);
-/// falls back to double quotes when the string contains a single quote.
-fn py_repr_str(s: &str) -> String {
-    let mut esc = String::with_capacity(s.len() + 2);
-    for c in s.chars() {
-        match c {
-            '\\' => esc.push_str("\\\\"),
-            '\n' => esc.push_str("\\n"),
-            '\r' => esc.push_str("\\r"),
-            '\t' => esc.push_str("\\t"),
-            '\'' => esc.push_str("\\'"),
-            c => esc.push(c),
+        let case: Self = serde_json::from_value(v.clone())?;
+        if !PRIMITIVES.contains(&case.primitive.as_str()) {
+            return Err(serde_json::Error::custom(format!(
+                "unknown primitive: {}",
+                py_repr_str(&case.primitive)
+            )));
         }
-    }
-    if s.contains('\'') && !s.contains('"') {
-        format!("\"{}\"", esc.replace("\\'", "'"))
-    } else {
-        format!("'{esc}'")
-    }
-}
-
-/// Python `repr()` for a JSON value, for the `bad primitive` / `bad
-/// severity` messages. Strings get Python quoting; `null`/`true`/`false`
-/// get Python spellings; anything else renders as JSON (numbers, arrays,
-/// and objects never occur here in practice).
-fn py_repr_value(v: &Value) -> String {
-    match v {
-        Value::String(s) => py_repr_str(s),
-        Value::Null => "None".to_string(),
-        Value::Bool(true) => "True".to_string(),
-        Value::Bool(false) => "False".to_string(),
-        _ => v.to_string(),
+        if !SEVERITIES.contains(&case.severity.as_str()) {
+            return Err(serde_json::Error::custom(format!(
+                "unknown severity: {}",
+                py_repr_str(&case.severity)
+            )));
+        }
+        Ok(case)
     }
 }
 
@@ -276,6 +259,27 @@ mod tests {
             errors,
             vec!["bad primitive: 'bogus'", "bad severity: 'extreme'"]
         );
+    }
+
+    #[test]
+    fn from_value_rejects_invalid_enums_like_python_post_init() {
+        // validate_case_dict would already flag these, but from_value is
+        // the last line of defense for hand-built Values — it must raise
+        // the same `unknown primitive: ...` / `unknown severity: ...`
+        // errors as Python's Case.__post_init__.
+        let mut d = valid_case();
+        d["primitive"] = json!("bogus");
+        let err = Case::from_value(&d).unwrap_err().to_string();
+        assert_eq!(err, "unknown primitive: 'bogus'");
+        let mut d = valid_case();
+        d["severity"] = json!("extreme");
+        let err = Case::from_value(&d).unwrap_err().to_string();
+        assert_eq!(err, "unknown severity: 'extreme'");
+        // Tricky values go through the shared repr on both sides.
+        let mut d = valid_case();
+        d["primitive"] = json!("it's");
+        let err = Case::from_value(&d).unwrap_err().to_string();
+        assert_eq!(err, "unknown primitive: \"it's\"");
     }
 
     #[test]

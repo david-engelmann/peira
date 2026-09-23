@@ -19,7 +19,7 @@ from typing import Any
 from peira import __version__
 from peira.adapters.mock import MockAdapter
 from peira.artifacts import RunArtifact
-from peira.dataset import sha256_file, verify_manifest
+from peira.dataset import verify_manifest, verify_manifest_sealed
 from peira.metrics import PerCaseResult
 from peira.runner import SUITE_DIRS, load_cases, run_suite, validate_partial
 from peira.templates import TEMPLATES
@@ -136,7 +136,9 @@ def _suite_dataset_identity(suite_dir: Path) -> tuple[str, str]:
     if not manifest_path.is_file():
         return "0.1.0-demo", ""
     try:
-        errors = verify_manifest(suite_dir)
+        # Sealed read: the digest below is computed over the same bytes
+        # that were verified — never a re-read that raced a swap.
+        manifest, manifest_sha256, errors = verify_manifest_sealed(suite_dir)
     except (OSError, ValueError) as e:
         print(f"warning: unreadable manifest at {manifest_path} ({e}); "
               f"recording dataset_version='0.1.0-demo'.",
@@ -149,9 +151,8 @@ def _suite_dataset_identity(suite_dir: Path) -> tuple[str, str]:
             + "\nrefusing to score: the dataset changed since its manifest "
               "was built — rebuild the manifest or restore the files."
         )
-    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     dataset_version = str(manifest.get("dataset_version", "0.1.0-demo"))
-    return dataset_version, sha256_file(manifest_path)
+    return dataset_version, manifest_sha256
 
 
 def cmd_run(args: argparse.Namespace) -> int:
@@ -311,11 +312,11 @@ def cmd_report(args: argparse.Namespace) -> int:
         print(f"error: {run_path} not found", file=sys.stderr)
         return EXIT_USER_ERROR
     # A corrupt artifact is a user error (exit 1), not an infrastructure
-    # failure: from_json does no validation, so anything it can raise on
-    # hostile input is caught here.
+    # failure: from_json validates strictly, raising ValueError on any
+    # malformed shape, which is caught here.
     try:
         artifact = RunArtifact.from_json(run_path.read_text(encoding="utf-8"))
-    except (OSError, ValueError, KeyError, TypeError) as e:
+    except (OSError, ValueError) as e:
         print(f"error: {run_path} is not a valid run artifact ({e})",
               file=sys.stderr)
         return EXIT_USER_ERROR

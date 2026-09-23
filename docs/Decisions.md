@@ -199,6 +199,14 @@ both backends, and the loud one:
 - `mcnemar` with negative counts: raises `ValueError` in Python; the
   Rust signature takes `u64`, so the same call through the PyO3 layer
   is rejected at the boundary. Discordant-pair counts can't be negative.
+- Empty or mismatched paired inputs (`ece([], [])`,
+  `brier_score([], [])`, `paired_bootstrap_ci([], [])`, and the
+  length-mismatched variants): raise `ValueError` in Python. The old
+  plain `assert`s vanished under `python -O` — then `ece([], [])`
+  silently returned 0.0 and `brier_score([], [])` died in
+  `ZeroDivisionError`. Explicit checks survive `-O` and run before
+  backend dispatch, so both backends raise the same error; the Rust core
+  asserts on the same caller bugs.
 
 **Alternatives.** Keep each backend's accidental behavior (Rust's silent
 `0.0` for `bins=0`, Python's `ZeroDivisionError`, Python's `9.0` for
@@ -213,3 +221,75 @@ both languages can share for caller bugs.
 **To revisit:** if a caller ever needs a *defined* value for these
 inputs (none exists today — no CLI path reaches them), define it
 explicitly in both backends and pin it in the parity tests.
+
+## D-12: Run artifacts load strictly
+
+**Decision.** `RunArtifact.from_json` validates instead of blindly
+spreading the parsed dict into the constructor:
+
+- the top level must be a JSON object;
+- `peira_version` and `dataset_version` are required — the analysis lock
+  is meaningless without the identifiers it binds;
+- unknown fields are rejected rather than silently ignored or preserved;
+- every field's JSON type is checked (`config`/`metrics` must be objects,
+  `results` a list, the rest strings);
+- every `results` entry must be an object with the `PerCaseResult`
+  required fields at the right JSON types (mirroring the Rust core's
+  `Vec<PerCaseResult>`; `confidence` is optional and nullable, unknown
+  entry fields are ignored like serde's default — the lock still binds
+  the full entry, so a newer field fails verification loudly instead of
+  verifying under changed semantics);
+- every other field defaults exactly like the Rust core
+  (`config`/`metrics` become `{}`, `results` `[]`, the rest `""`,
+  `artifact_version` `"1"`), so a minimal artifact loads identically on
+  both backends.
+
+The Rust core already enforced the strict half (`deny_unknown_fields`,
+required lock identifiers); Python now matches it, and both raise a
+clear `ValueError` (Python) / serde error (Rust) instead of leaking a
+raw `TypeError` or silently defaulting.
+
+**Alternatives.** Keep the old lenient load (silently default everything,
+leak `TypeError` on unknown fields), or preserve unknown fields for
+forward compatibility.
+
+**Why this:** a lenient loader lets a newer artifact with renamed fields
+"verify" against a lock computed over different semantics — on a frozen
+format, strictness is the safe default. Preserving unknown fields has
+the same hole in reverse. Requiring the lock identifiers makes a corrupt
+artifact fail at load time with a clear message instead of halfway
+through a report.
+
+**To revisit:** if the artifact format ever versions forward
+(`artifact_version: "2"`), the loader needs an explicit migration table —
+unknown-field rejection stays, but "unknown" is judged per format
+version.
+
+## D-13: Error strings use a fixed escaping rule, not repr()
+
+**Decision.** Schema and dataset error messages interpolate values with
+a fixed escaping rule implemented independently in both languages
+(Python `_safe_repr` in `python/peira/schema.py`, Rust `py_repr` in
+`crates/peira-core/src/py_repr.rs`) — not with CPython's `repr()`.
+
+The rule: single quotes unless the string contains `'` but not `"`;
+`\n`, `\r`, `\t`, `\\`, and the active quote get short escapes; every
+C0/DEL/C1 control renders as `\xNN`; everything else passes through raw.
+For all realistic inputs (ASCII case fields) the output equals `repr()`
+exactly.
+
+**Alternatives.** Use `repr()` on the Python side and approximate it in
+Rust. That leaves a real gap: `repr()` escapes non-printable non-ASCII
+(e.g. U+200B ZERO WIDTH SPACE) as `\uNNNN`, which the Rust side cannot
+reproduce without a Unicode database — so error strings would differ by
+language on adversarial input.
+
+**Why this:** the backends must be indistinguishable (D-1), and "both
+sides implement the same documented rule" is exact where "Rust
+approximates CPython" is not. The deliberate difference from `repr()`
+only affects non-ASCII non-printables outside C1 — inputs that never
+appear in legitimate case fields — and it is pinned by cross-language
+tests on both sides.
+
+**To revisit:** never silently — if either implementation's escaping
+changes, the parity tests fail and both sides must change together.

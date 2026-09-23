@@ -50,7 +50,12 @@ ECE requires a positive bin count (`ValueError("bins must be positive")`
 in Python, a panic with the same message in Rust), and McNemar requires
 non-negative discordant-pair counts (`ValueError` in Python; the Rust
 signature takes `u64`, so the PyO3 layer rejects negatives at the
-boundary). The paired bootstrap never panics on NaN input — NaN sorts
+boundary). Paired inputs must be non-empty and equal-length —
+`ece([], [])`, `brier_score([], [])`, and `paired_bootstrap_ci([], [])`
+raise `ValueError` in Python (explicit checks, which survive `python -O`
+where the old asserts vanished; validated before backend dispatch so both
+backends agree, while the Rust core asserts on the same caller bugs).
+The paired bootstrap never panics on NaN input — NaN sorts
 last — but values computed from non-finite input are not guaranteed
 across backends. See ADR D-11 in `docs/Decisions.md`.
 

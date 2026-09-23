@@ -10,7 +10,7 @@
 //! Exit codes mirror the Python CLI: 0 = ok, 1 = validation/user error,
 //! 2 = usage error.
 
-use peira_core::dataset::{iter_case_lines, read_manifest, verify_manifest, MANIFEST_NAME};
+use peira_core::dataset::{iter_case_lines, verify_manifest, ManifestError, MANIFEST_NAME};
 use peira_core::schema::validate_case_dict;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
@@ -36,6 +36,10 @@ fn usage() -> String {
 }
 
 fn cmd_validate(dir: &Path) -> u8 {
+    // Intentionally stricter than the Python CLI here: a file passed as
+    // --dir is a user error, not an empty dataset ("validated 0 cases,
+    // 0 invalid", exit 0). The Rust CLI is a CI tool; failing loudly on
+    // a wrong-typed path is the safer default.
     if !dir.is_dir() {
         eprintln!("error: dataset directory {} not found", dir.display());
         return EXIT_USER_ERROR;
@@ -51,30 +55,33 @@ fn cmd_validate(dir: &Path) -> u8 {
     let mut n_errors = 0;
     for line in &lines {
         n_cases += 1;
-        let name = line
-            .path
-            .file_name()
-            .and_then(|n| n.to_str())
-            .unwrap_or("?");
+        // Full path, like the Python CLI (`{path}:{lineno}`), not just
+        // the file name: in a CI log the directory context matters.
         let d = match &line.result {
             Ok(d) => d,
             Err(e) => {
-                println!("{name}:{}: {e}", line.lineno);
+                println!("{}:{}: {e}", line.path.display(), line.lineno);
                 n_errors += 1;
                 continue;
             }
         };
         let errors = validate_case_dict(d);
         if !errors.is_empty() {
-            println!("{name}:{}: {}", line.lineno, errors.join("; "));
+            println!(
+                "{}:{}: {}",
+                line.path.display(),
+                line.lineno,
+                errors.join("; ")
+            );
             n_errors += 1;
         }
     }
+    // Summary line mirrors the Python CLI exactly
+    // ("validated {n} cases, {bad} invalid").
+    println!("validated {n_cases} cases, {n_errors} invalid");
     if n_errors > 0 {
-        println!("validate: FAILED ({n_errors} errors in {n_cases} cases)");
         EXIT_USER_ERROR
     } else {
-        println!("validate: OK ({n_cases} cases)");
         EXIT_OK
     }
 }
@@ -84,22 +91,19 @@ fn cmd_verify_manifest(dir: &Path) -> u8 {
         eprintln!("error: dataset directory {} not found", dir.display());
         return EXIT_USER_ERROR;
     }
-    // Distinguish "no manifest" from "unreadable manifest" for the same
-    // messages the Python CLI emits.
-    if let Err(e) = read_manifest(dir) {
-        if e.starts_with(&format!("no {MANIFEST_NAME}")) {
+    // Typed discrimination: "no manifest" vs "unreadable manifest" comes
+    // from the core's ManifestError enum, not from string-matching its
+    // error text. One call, one manifest read.
+    let errors = match verify_manifest(dir) {
+        Ok(e) => e,
+        Err(ManifestError::NotFound { .. }) => {
             eprintln!(
                 "error: no {MANIFEST_NAME} in {} — run \
                  'peira dataset build-manifest' first",
                 dir.display()
             );
-        } else {
-            eprintln!("error: unreadable manifest: {e}");
+            return EXIT_USER_ERROR;
         }
-        return EXIT_USER_ERROR;
-    }
-    let errors = match verify_manifest(dir) {
-        Ok(e) => e,
         Err(e) => {
             eprintln!("error: unreadable manifest: {e}");
             return EXIT_USER_ERROR;
@@ -144,7 +148,14 @@ fn main() -> ExitCode {
     let mut dir: Option<PathBuf> = None;
     let mut it = rest.iter().peekable();
     while let Some(a) = it.next() {
-        if a == "--dir" {
+        if let Some(v) = a.strip_prefix("--dir=") {
+            // Accept --dir=<path> like the Python CLI (argparse) does.
+            if v.is_empty() {
+                eprintln!("error: --dir needs a value\n\n{}", usage());
+                return ExitCode::from(EXIT_USAGE);
+            }
+            dir = Some(PathBuf::from(v));
+        } else if a == "--dir" {
             match it.next() {
                 Some(v) => dir = Some(PathBuf::from(v)),
                 None => {
