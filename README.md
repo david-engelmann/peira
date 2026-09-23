@@ -153,7 +153,8 @@ is evidence about the attack, not noise.
 - **claim a leaderboard row** → [Adapters](#adapters),
   then [Add your model](#add-your-model).
 - **write attack cases** → [the authoring guide](docs/Dataset.md)
-  ("The authoring loop, end to end").- **compare harnesses** → [How peira differs](#how-peira-differs).
+  ("The authoring loop, end to end").
+- **compare harnesses** → [How peira differs](#how-peira-differs).
 
 ## Leaderboard
 
