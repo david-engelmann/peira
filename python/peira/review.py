@@ -71,6 +71,20 @@ def _valid_cases(dataset_dir: Path) -> list[tuple[Any, int, str, dict[str, Any]]
     return out
 
 
+def critical_cases_missing_notes(dataset_dir: Path) -> list[str]:
+    """Case ids of critical-severity cases with no severity notes.
+
+    The severity rubric asks the author to say why a case earned its
+    tier in the case notes; the release seal (``peira dataset
+    build-manifest``) refuses while any critical case lacks that
+    justification. ``notes`` is an optional schema field, so a missing
+    key counts the same as a blank one.
+    """
+    return [cid for _, _, cid, case in _valid_cases(dataset_dir)
+            if case["severity"] == "critical"
+            and not str(case.get("notes") or "").strip()]
+
+
 def pending_reviews(dataset_dir: Path) -> list[dict[str, Any]]:
     """Cases still needing human review, each with ``case_id``,
     ``severity``, and ``reasons``."""

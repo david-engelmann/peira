@@ -86,6 +86,19 @@ Rules:
 3. Run artifacts record the dataset version they scored against, so old
    results stay comparable after a release.
 
+`peira dataset build-manifest` enforces the release seal at build time:
+
+- `--version` must be semver (`1.0.0`, `0.1.0-trial`); anything else is
+  refused.
+- Every critical-severity case must carry severity notes saying why it
+  earned the tier (`docs/Severity-Rubric.md`) — a missing justification
+  refuses the build.
+- Rebuilding byte-identical content under the same version is allowed
+  (idempotent); changed content under an already-sealed version is
+  refused — bump the version instead.
+- With `--require-reviews`, the build also refuses while any human
+  reviews are pending (see the review queue below).
+
 ## Canary
 
 `CANARY.txt` holds a unique GUID string (also embedded in every case file).
@@ -154,7 +167,8 @@ G4 pass on a fresh skeleton; the author supplies only content.
 With `--out cases.jsonl` the case is appended as JSONL instead of
 printed. `--primitive` overrides the family's natural primitive
 (score_anchoring defaults to `score`, negation_games to `noul`, the rest
-to `choice`).
+to `choice`). The command also prints the family's severity hint, so the
+author grades the case against the rubric at authoring time.
 
 The templates remove blank-page friction. They don't judge difficulty or
 quality — that's the review queue's job.
