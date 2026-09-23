@@ -8,6 +8,35 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
 ## [Unreleased]
 
 ### Added
+- Backend parity + robustness (H6): `RunArtifact.from_json` now validates
+  strictly on both backends — top-level object required,
+  `peira_version`/`dataset_version` required, unknown fields rejected,
+  every field's JSON type checked (`config`/`metrics` must be objects on
+  the Rust side too), every `results` entry validated as a
+  `PerCaseResult`-shaped object, and all other fields defaulting
+  exactly like the Rust core (missing `config`/`metrics` become `{}`, not
+  `null`), instead of silently defaulting or leaking `TypeError`
+  (new ADR D-12). Malformed `--resume` partial entries (scalar or
+  wrong-shaped result objects) raise a clear `ValueError` naming the entry
+  index instead of `AttributeError`/`TypeError`. The `ece` / `brier_score`
+  / `paired_bootstrap_ci` input asserts are explicit `ValueError`s
+  (non-empty, equal-length) that survive `python -O` and are validated
+  before backend dispatch so both backends agree (D-11 extended;
+  `docs/Methodology.md` updated). Manifest verification rejects file
+  names containing `..`, separators, or absolute paths before touching
+  the filesystem, and reads `manifest.json` exactly once — the digest
+  sealed into the analysis lock is always the digest of the verified
+  bytes (no verify-then-reread race). Schema error strings now use a
+  fixed escaping rule implemented identically in both languages
+  (`_safe_repr` / `py_repr`) instead of `repr()`, making them
+  byte-identical for every input (new ADR D-13). The Rust analysis lock
+  streams canonical bytes straight into SHA-256 (no more deep-clone of
+  `config`/`results`), case files are read+hashed in one pass, and
+  canonical output sorts object keys explicitly. The Rust CLI matches the
+  Python CLI's `validate` summary text (`validated N cases, M invalid`),
+  full-path `file:line` errors, exit codes, and `--dir=` form, and types
+  manifest errors instead of string-matching them. New user-facing errors
+  are catalogued in `docs/Troubleshooting.md`.
 - Trust-boundary hardening (H5): `peira report` now formats every
   metric cell through a single `_num` formatter (floats render with four
   decimals, anything unexpected is escaped) and escapes the artifact

@@ -62,6 +62,43 @@ CASE_JSON_SCHEMA: dict[str, Any] = {
 }
 
 
+def _safe_repr(s: str) -> str:
+    """String rendering with a fixed escaping rule shared with the Rust core.
+
+    This is repr() with one deliberate difference: CPython escapes
+    non-printable non-ASCII (e.g. U+200B ZERO WIDTH SPACE) as ``\\uNNNN``,
+    which the Rust side cannot reproduce without a Unicode database. This
+    helper escapes exactly the C0/DEL/C1 controls (as ``\\xNN``),
+    backslash, and the active quote — everything else passes through raw —
+    so schema error strings are byte-identical no matter which language
+    produced them. The rule is implemented independently in
+    ``crates/peira-core/src/py_repr.rs``; the two must stay in sync.
+
+    For all realistic inputs (ASCII case fields) the output equals
+    repr().
+    """
+    quote = '"' if ("'" in s and '"' not in s) else "'"
+    out = [quote]
+    for ch in s:
+        o = ord(ch)
+        if ch == quote:
+            out.append("\\" + quote)
+        elif ch == "\\":
+            out.append("\\\\")
+        elif ch == "\n":
+            out.append("\\n")
+        elif ch == "\r":
+            out.append("\\r")
+        elif ch == "\t":
+            out.append("\\t")
+        elif o < 0x20 or 0x7F <= o <= 0x9F:
+            out.append(f"\\x{o:02x}")
+        else:
+            out.append(ch)
+    out.append(quote)
+    return "".join(out)
+
+
 @dataclass(frozen=True)
 class BenignVariant:
     """The unattacked version of the decision input."""
@@ -97,9 +134,9 @@ class Case:
 
     def __post_init__(self) -> None:
         if self.primitive not in PRIMITIVES:
-            raise ValueError(f"unknown primitive: {self.primitive!r}")
+            raise ValueError(f"unknown primitive: {_safe_repr(self.primitive)}")
         if self.severity not in SEVERITIES:
-            raise ValueError(f"unknown severity: {self.severity!r}")
+            raise ValueError(f"unknown severity: {_safe_repr(self.severity)}")
 
     def to_dict(self) -> dict[str, Any]:
         d: dict[str, Any] = {
@@ -171,15 +208,15 @@ def _validate_case_dict_py(d: dict[str, Any]) -> list[str]:
         if not isinstance(d["primitive"], str):
             errors.append("bad primitive: expected string")
         elif d["primitive"] not in PRIMITIVES:
-            errors.append(f"bad primitive: {d['primitive']!r}")
+            errors.append(f"bad primitive: {_safe_repr(d['primitive'])}")
         if not isinstance(d["severity"], str):
             errors.append("bad severity: expected string")
         elif d["severity"] not in SEVERITIES:
-            errors.append(f"bad severity: {d['severity']!r}")
+            errors.append(f"bad severity: {_safe_repr(d['severity'])}")
         for variant in ("benign", "attacked"):
             v = d.get(variant)
             if not isinstance(v, dict) or "input" not in v:
-                errors.append(f"bad variant {variant!r}: need an object with 'input'")
+                errors.append(f"bad variant {_safe_repr(variant)}: need an object with 'input'")
             elif not isinstance(v["input"], dict):
                 errors.append(f"bad {variant} input: expected object")
         benign = d.get("benign")

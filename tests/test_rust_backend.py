@@ -41,7 +41,7 @@ from peira.metrics import (
     _targeted_attack_success_py,
     _wilson_ci_py,
 )
-from peira.schema import _validate_case_dict_py, validate_case_dict
+from peira.schema import _safe_repr, _validate_case_dict_py, validate_case_dict
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 FAMILIES = ["state_poisoning", "criteria_smuggling", "option_order", "literal_reading"]
@@ -239,6 +239,77 @@ class TestValidateParity(unittest.TestCase):
             with self.subTest(d=str(d)[:40]):
                 self.assertEqual(validate_case_dict(d),
                                  _validate_case_dict_py(d))
+
+
+class TestSafeRepr(unittest.TestCase):
+    """The fixed escaping rule shared with the Rust core (py_repr.rs).
+
+    `_safe_repr` is repr() with one deliberate difference: non-printable
+    non-ASCII outside C1 (e.g. U+200B) passes through raw instead of
+    backslash-u escapes, because the Rust side has no Unicode database.
+    Error strings stay byte-identical across languages for every input.
+    """
+
+    def test_exact_escaping(self):
+        cases = [
+            ("bogus", "'bogus'"),
+            # No \b / \f short escapes; every control -> \xNN.
+            ("\x08\x0c\x01\x7f", r"'\x08\x0c\x01\x7f'"),
+            ("it's", "\"it's\""),
+            ('say "hi"', '\'say "hi"\''),
+            # Both quote types: single quotes win, singles escaped.
+            ("both'\"", "'both\\'\"'"),
+            ("a\\b", "'a\\\\b'"),
+            ("line\nbreak", "'line\\nbreak'"),
+            ("tab\there", "'tab\\there'"),
+            ("carriage\rret", "'carriage\\rret'"),
+            # Printable non-ASCII passes through raw.
+            ("café", "'café'"),
+            ("😀", "'😀'"),
+            # C1 controls -> \xNN.
+            ("\x80\x9f", "'\\x80\\x9f'"),
+            # Non-printable non-ASCII outside C1: raw, unlike repr().
+            ("a\u200bb", "'a\u200bb'"),
+            ("", "''"),
+            ("plain-id_123", "'plain-id_123'"),
+        ]
+        for s, want in cases:
+            with self.subTest(s=s):
+                self.assertEqual(_safe_repr(s), want)
+
+    def test_matches_repr_on_realistic_inputs(self):
+        # For ASCII case fields the output equals repr() exactly.
+        for s in ["bogus", "it's", 'say "hi"', "both'\"", "a\\b",
+                  "line\nbreak", "plain-id_123", ""]:
+            self.assertEqual(_safe_repr(s), repr(s), f"for {s!r}")
+
+    def test_tricky_values_byte_identical_across_backends(self):
+        # Values that stress the escaping rule must produce identical
+        # error strings from the dispatched (possibly Rust) validator
+        # and the pure-Python reference.
+        cases = [
+            (_valid_case(primitive="ch\x01oice"),
+             ["bad primitive: 'ch\\x01oice'"]),
+            (_valid_case(primitive="it's"),
+             ["bad primitive: \"it's\""]),
+            (_valid_case(primitive="both'\""),
+             ["bad primitive: 'both\\'\"'"]),
+            (_valid_case(severity="a\u200bb"),
+             ["bad severity: 'a\u200bb'"]),
+        ]
+        for d, want in cases:
+            with self.subTest(d=d["primitive"] if "primitive" in d else d["severity"]):
+                self.assertEqual(validate_case_dict(d), want)
+                self.assertEqual(_validate_case_dict_py(d), want)
+
+    def test_benign_string_rejected_on_both_backends(self):
+        # Deliberate parity choice: `benign` must be an object with
+        # 'input'. A bare string is rejected on both backends — the old
+        # substring quirk is not reproduced in Rust.
+        d = _valid_case(benign="just a string")
+        want = ["bad variant 'benign': need an object with 'input'"]
+        self.assertEqual(validate_case_dict(d), want)
+        self.assertEqual(_validate_case_dict_py(d), want)
 
 
 @unittest.skipUnless(_rust.RUST_AVAILABLE, "peira._core not built")

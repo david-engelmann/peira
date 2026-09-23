@@ -53,6 +53,20 @@ class TestCalibration(unittest.TestCase):
         with self.assertRaises(ValueError):
             _ece_py([0.5], [1], 0)
 
+    def test_empty_and_mismatched_raise_value_error(self):
+        # Plain asserts vanished under `python -O` (then ece([], [])
+        # silently returned 0.0 and brier_score([], []) died in
+        # ZeroDivisionError). Explicit ValueErrors survive -O and are
+        # raised before backend dispatch, so both backends agree.
+        from peira.metrics import _brier_score_py, _ece_py
+        for fn in (ece, _ece_py, brier_score, _brier_score_py):
+            with self.subTest(fn=fn.__name__, kind="empty"):
+                with self.assertRaises(ValueError):
+                    fn([], [])
+            with self.subTest(fn=fn.__name__, kind="mismatched"):
+                with self.assertRaises(ValueError):
+                    fn([0.5, 0.5], [1])
+
 
 class TestMcNemar(unittest.TestCase):
     def test_no_discordant(self):
@@ -78,6 +92,14 @@ class TestBootstrap(unittest.TestCase):
         lo, hi = paired_bootstrap_ci(xs, ys, n_boot=200, seed=1)
         self.assertLess(lo, 0.5)
         self.assertGreater(hi, 0.5)
+
+    def test_empty_and_mismatched_raise_value_error(self):
+        # The old assert vanished under `python -O`, ending in
+        # ZeroDivisionError; now an explicit ValueError.
+        with self.assertRaises(ValueError):
+            paired_bootstrap_ci([], [])
+        with self.assertRaises(ValueError):
+            paired_bootstrap_ci([1.0], [1.0, 2.0])
 
 
 class TestEligibility(unittest.TestCase):

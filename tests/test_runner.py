@@ -87,6 +87,30 @@ class TestValidatePartial(unittest.TestCase):
             validate_partial(p, MockAdapter(), _cases("c1"),
                              "trial-demo", "0.1.0-demo")
 
+    def test_scalar_result_entry_is_value_error(self):
+        # A hand-edited partial with a scalar entry used to die in
+        # AttributeError on r.get; it is now a clear ValueError.
+        p = _partial([_r("c1")])
+        p.results.append("bogus")
+        p.seal()  # re-seal so the lock passes and the entry is reached
+        with self.assertRaisesRegex(
+            ValueError, "partial run has malformed result entry at index 1"
+        ):
+            validate_partial(p, MockAdapter(), _cases("c1"),
+                             "trial-demo", "0.1.0-demo")
+
+    def test_wrong_shaped_result_dict_is_value_error(self):
+        # A dict entry that PerCaseResult rejects is hostile input too:
+        # TypeError becomes ValueError with the entry's position.
+        p = _partial([_r("c1")])
+        p.results.append({"case_id": "c2", "bogus_key": 1})
+        p.seal()
+        with self.assertRaisesRegex(
+            ValueError, "partial run has malformed result entry at index 1"
+        ):
+            validate_partial(p, MockAdapter(), _cases("c1", "c2"),
+                             "trial-demo", "0.1.0-demo")
+
 
 class TestResumeProgress(unittest.TestCase):
     def test_progress_counts_completed_not_index(self):

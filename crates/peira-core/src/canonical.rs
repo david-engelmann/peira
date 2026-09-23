@@ -4,8 +4,10 @@
 //! must serialize identically or they can't verify each other's artifacts.
 //! The rules replicate CPython exactly:
 //!
-//! - Objects: keys sorted by Unicode code point (`BTreeMap` order on UTF-8
-//!   is the same), `"key": value` separators (colon + space), `", "`
+//! - Objects: keys sorted by Unicode code point (sorted explicitly on
+//!   every object — never trusted to the map's iteration order, so a
+//!   `preserve_order` feature unification can't silently change canonical
+//!   bytes), `"key": value` separators (colon + space), `", "`
 //!   between items, `{}` when empty.
 //! - Arrays: `[a, b]` separators, `[]` when empty.
 //! - Strings: `ensure_ascii` escaping — `"` and `\` escaped, the short
@@ -29,55 +31,80 @@
 //! (no trailing space), `": "` key separators.
 
 use serde_json::Value;
+use sha2::{Digest, Sha256};
 
 pub fn to_canonical(v: &Value) -> String {
     let mut out = String::new();
-    write_canonical(v, &mut out);
+    write_canonical(v, &mut |s| out.push_str(s));
     out
 }
 
 pub fn to_pretty(v: &Value) -> String {
     let mut out = String::new();
-    write_pretty(v, &mut out, 0);
+    write_pretty(v, &mut |s| out.push_str(s), 0);
     out
 }
 
-fn write_canonical(v: &Value, out: &mut String) {
+/// Feed the canonical JSON bytes of `v` straight into a SHA-256 hasher,
+/// without building the intermediate string.
+///
+/// Emits exactly the bytes [`to_canonical`] would return (one shared
+/// writer, so the two cannot drift): the analysis lock hashes large
+/// `config`/`results` payloads in a single pass with no transient clone
+/// of the value tree.
+pub fn hash_canonical(v: &Value, h: &mut Sha256) {
+    write_canonical(v, &mut |s| h.update(s.as_bytes()));
+}
+
+fn write_canonical(v: &Value, emit: &mut dyn FnMut(&str)) {
     match v {
-        Value::Null => out.push_str("null"),
-        Value::Bool(true) => out.push_str("true"),
-        Value::Bool(false) => out.push_str("false"),
+        Value::Null => emit("null"),
+        Value::Bool(true) => emit("true"),
+        Value::Bool(false) => emit("false"),
         Value::Number(n) => {
             if let Some(i) = n.as_i64() {
-                out.push_str(&i.to_string());
+                emit(&i.to_string());
             } else if let Some(u) = n.as_u64() {
-                out.push_str(&u.to_string());
+                emit(&u.to_string());
             } else if let Some(f) = n.as_f64() {
-                write_float(f, out);
+                write_float(f, emit);
             }
         }
-        Value::String(s) => write_escaped(s, out),
+        Value::String(s) => {
+            let mut tmp = String::with_capacity(s.len() + 2);
+            write_escaped(s, &mut tmp);
+            emit(&tmp);
+        }
         Value::Array(items) => {
-            out.push('[');
+            emit("[");
             for (i, item) in items.iter().enumerate() {
                 if i > 0 {
-                    out.push_str(", ");
+                    emit(", ");
                 }
-                write_canonical(item, out);
+                write_canonical(item, emit);
             }
-            out.push(']');
+            emit("]");
         }
         Value::Object(map) => {
-            out.push('{');
-            for (i, (k, val)) in map.iter().enumerate() {
+            emit("{");
+            // Explicit code-point sort on every object. serde_json::Map
+            // iterates in BTreeMap order by default, but a `preserve_order`
+            // feature unification anywhere in the dependency graph would
+            // silently change canonical bytes — and every cross-language
+            // lock — with no compile error. Sort here; trust nothing.
+            let mut keys: Vec<&String> = map.keys().collect();
+            keys.sort();
+            for (i, k) in keys.iter().enumerate() {
                 if i > 0 {
-                    out.push_str(", ");
+                    emit(", ");
                 }
-                write_escaped(k, out);
-                out.push_str(": ");
-                write_canonical(val, out);
+                let mut tmp = String::with_capacity(k.len() + 2);
+                write_escaped(k, &mut tmp);
+                emit(&tmp);
+                emit(": ");
+                write_canonical(&map[*k], emit);
             }
-            out.push('}');
+            emit("}");
         }
     }
 }
@@ -114,17 +141,17 @@ fn write_escaped(s: &str, out: &mut String) {
 
 /// Shortest round-trip digits from ryu, re-emitted with Python's notation
 /// decision and exponent style.
-fn write_float(f: f64, out: &mut String) {
+fn write_float(f: f64, emit: &mut dyn FnMut(&str)) {
     if f.is_nan() {
-        out.push_str("NaN");
+        emit("NaN");
         return;
     }
     if f.is_infinite() {
-        out.push_str(if f > 0.0 { "Infinity" } else { "-Infinity" });
+        emit(if f > 0.0 { "Infinity" } else { "-Infinity" });
         return;
     }
     let mut buf = ryu::Buffer::new();
-    out.push_str(&python_float_repr(buf.format_finite(f)));
+    emit(&python_float_repr(buf.format_finite(f)));
 }
 
 /// Re-emit a ryu shortest-digits string with Python `repr` formatting.
@@ -132,7 +159,10 @@ fn write_float(f: f64, out: &mut String) {
 /// Parses the ryu output into (negative, digit string, decpt) where
 /// value = 0.digits × 10^decpt, then applies CPython's rule: scientific
 /// notation iff `decpt <= -4 || decpt > 16`.
-fn python_float_repr(ryu: &str) -> String {
+///
+/// `pub(crate)` so [`crate::py_repr`] can render floats exactly like
+/// `repr()`; also used by [`write_float`] above.
+pub(crate) fn python_float_repr(ryu: &str) -> String {
     let (neg, rest) = match ryu.strip_prefix('-') {
         Some(r) => (true, r),
         None => (false, ryu),
@@ -200,38 +230,44 @@ fn python_float_repr(ryu: &str) -> String {
     s
 }
 
-fn write_pretty(v: &Value, out: &mut String, indent: usize) {
+fn write_pretty(v: &Value, emit: &mut dyn FnMut(&str), indent: usize) {
     match v {
         Value::Array(items) if !items.is_empty() => {
-            out.push_str("[\n");
+            emit("[\n");
             for (i, item) in items.iter().enumerate() {
                 if i > 0 {
-                    out.push_str(",\n");
+                    emit(",\n");
                 }
-                out.push_str(&"  ".repeat(indent + 1));
-                write_pretty(item, out, indent + 1);
+                emit(&"  ".repeat(indent + 1));
+                write_pretty(item, emit, indent + 1);
             }
-            out.push('\n');
-            out.push_str(&"  ".repeat(indent));
-            out.push(']');
+            emit("\n");
+            emit(&"  ".repeat(indent));
+            emit("]");
         }
         Value::Object(map) if !map.is_empty() => {
-            out.push_str("{\n");
-            for (i, (k, val)) in map.iter().enumerate() {
+            emit("{\n");
+            // Same explicit sort as write_canonical (see the
+            // `preserve_order` note there).
+            let mut keys: Vec<&String> = map.keys().collect();
+            keys.sort();
+            for (i, k) in keys.iter().enumerate() {
                 if i > 0 {
-                    out.push_str(",\n");
+                    emit(",\n");
                 }
-                out.push_str(&"  ".repeat(indent + 1));
-                write_escaped(k, out);
-                out.push_str(": ");
-                write_pretty(val, out, indent + 1);
+                emit(&"  ".repeat(indent + 1));
+                let mut tmp = String::with_capacity(k.len() + 2);
+                write_escaped(k, &mut tmp);
+                emit(&tmp);
+                emit(": ");
+                write_pretty(&map[*k], emit, indent + 1);
             }
-            out.push('\n');
-            out.push_str(&"  ".repeat(indent));
-            out.push('}');
+            emit("\n");
+            emit(&"  ".repeat(indent));
+            emit("}");
         }
         // Empty containers and scalars render inline, like Python.
-        _ => write_canonical(v, out),
+        _ => write_canonical(v, emit),
     }
 }
 
@@ -295,7 +331,7 @@ mod tests {
             (f64::NAN, "NaN"),
         ] {
             let mut s = String::new();
-            write_float(f, &mut s);
+            write_float(f, &mut |t| s.push_str(t));
             assert_eq!(s, want);
         }
     }
@@ -312,5 +348,22 @@ mod tests {
             to_pretty(&v),
             "{\n  \"a\": 1,\n  \"b\": [\n    1,\n    {\n      \"x\": []\n    }\n  ]\n}"
         );
+    }
+
+    #[test]
+    fn hash_canonical_matches_to_canonical_bytes() {
+        // The streaming hasher must emit exactly the bytes to_canonical
+        // returns; a drift here silently breaks every cross-language lock.
+        let v = json!({
+            "z": [1, 1.5, "s", null, true, {"k": "v"}],
+            "a": {"nested": [1e-5, -0.0]},
+            "m": "caf\u{e9}\u{1f600}",
+        });
+        let mut h = Sha256::new();
+        hash_canonical(&v, &mut h);
+        let streamed = format!("{:x}", h.finalize());
+        let mut h2 = Sha256::new();
+        h2.update(to_canonical(&v).as_bytes());
+        assert_eq!(streamed, format!("{:x}", h2.finalize()));
     }
 }

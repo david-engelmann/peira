@@ -150,9 +150,27 @@ def malformed_rate(results: list[PerCaseResult]) -> float:
     return _malformed_rate_py(results)
 
 
+def _check_paired(xs: list, ys: list, xname: str, yname: str) -> None:
+    """Reject empty or mismatched paired inputs with ValueError.
+
+    These are caller bugs, not edge cases: a plain ``assert`` would
+    vanish under ``python -O`` (then ``ece([], [])`` silently returned
+    0.0 and ``brier_score([], [])`` died in ZeroDivisionError). The Rust
+    core asserts on the same conditions (D-11); the public wrappers call
+    this before dispatching so both backends raise the same ValueError.
+    """
+    if len(xs) != len(ys):
+        raise ValueError(
+            f"{xname} and {yname} must have the same length "
+            f"({len(xs)} != {len(ys)})"
+        )
+    if not xs:
+        raise ValueError(f"{xname} and {yname} must not be empty")
+
+
 def _ece_py(probs: list[float], labels: list[int], bins: int = 15) -> float:
     """Reference implementation of :func:`ece` (pure Python)."""
-    assert len(probs) == len(labels) and probs
+    _check_paired(probs, labels, "probs", "labels")
     if bins <= 0:
         raise ValueError("bins must be positive")
     edges = [i / bins for i in range(bins + 1)]
@@ -177,12 +195,14 @@ def ece(probs: list[float], labels: list[int], bins: int = 15) -> float:
     lands in a bin instead of being silently dropped.
 
     `bins` must be positive: `bins=0` raises ValueError instead of
-    silently returning 0.0. The Rust core panics with the same message
-    on the same input — zero bins is a caller bug, and both backends
-    refuse it loudly (D-11).
+    silently returning 0.0. Empty or mismatched inputs also raise
+    ValueError — validated here, before dispatch, so the error is the
+    same whether or not the Rust backend is installed (the Rust core
+    itself asserts on these caller bugs; D-11).
     """
     if bins <= 0:
         raise ValueError("bins must be positive")
+    _check_paired(probs, labels, "probs", "labels")
     if _rust is not None:
         return _rust.ece(probs, labels, bins)
     return _ece_py(probs, labels, bins)
@@ -190,7 +210,7 @@ def ece(probs: list[float], labels: list[int], bins: int = 15) -> float:
 
 def _brier_score_py(probs: list[float], labels: list[int]) -> float:
     """Reference implementation of :func:`brier_score` (pure Python)."""
-    assert len(probs) == len(labels) and probs
+    _check_paired(probs, labels, "probs", "labels")
     return sum((p - y) ** 2 for p, y in zip(probs, labels)) / len(probs)
 
 
@@ -199,7 +219,11 @@ def brier_score(probs: list[float], labels: list[int]) -> float:
 
     The Rust backend may differ from the reference by ~1 ulp: the
     reference sums with Python's compensated builtin `sum()`.
+
+    Empty or mismatched inputs raise ValueError on both backends
+    (validated before dispatch; the Rust core asserts — D-11).
     """
+    _check_paired(probs, labels, "probs", "labels")
     if _rust is not None:
         return _rust.brier_score(probs, labels)
     return _brier_score_py(probs, labels)
@@ -240,8 +264,10 @@ def paired_bootstrap_ci(
     Always uses the Python PRNG (Mersenne Twister), even when the Rust core
     is installed: the Rust core draws from a different stream, so
     dispatching here would make reported intervals depend on the backend.
+
+    Empty or mismatched inputs raise ValueError.
     """
-    assert len(xs) == len(ys) and xs
+    _check_paired(xs, ys, "xs", "ys")
     rng = random.Random(seed)
     diffs = []
     n = len(xs)

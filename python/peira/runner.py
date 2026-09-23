@@ -233,7 +233,16 @@ def validate_partial(
     case_ids = {c.case_id for c in cases}
     seen: set[str] = set()
     results: list[PerCaseResult] = []
-    for r in partial.results:
+    for i, r in enumerate(partial.results):
+        # Result entries are hostile input (a hand-edited partial): a
+        # scalar entry would die in AttributeError on r.get, and a
+        # wrong-shaped dict in TypeError inside PerCaseResult — both
+        # become ValueError with the entry's position.
+        if not isinstance(r, dict):
+            raise ValueError(
+                f"partial run has malformed result entry at index {i}: "
+                f"expected an object, got {type(r).__name__}"
+            )
         rid = r.get("case_id", "")
         if rid in seen:
             raise ValueError(f"partial run has duplicate case id {rid!r}")
@@ -243,7 +252,12 @@ def validate_partial(
                 f"partial run references unknown case id {rid!r} "
                 f"(not in suite {suite!r})"
             )
-        results.append(PerCaseResult(**r))
+        try:
+            results.append(PerCaseResult(**r))
+        except TypeError as e:
+            raise ValueError(
+                f"partial run has malformed result entry at index {i}: {e}"
+            ) from e
     return seen, results
 
 
