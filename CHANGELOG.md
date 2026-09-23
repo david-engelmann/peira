@@ -144,6 +144,30 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
   Anthropic uses forced tool choice (per-model confirmation required
   before adding new models like Opus 5.5).
 
+### Added — leaderboard.json emission (site pipeline)
+
+- New stdlib-only `scripts/emit_leaderboard.py`: reads one or more
+  sealed v2 run artifacts, verifies each analysis lock (unverified
+  artifacts are refused, never silently included), and emits one
+  `leaderboard.json` document — one row per artifact with run id
+  (artifact SHA-256), adapter name/version, dataset version,
+  per-family ASR with Wilson intervals, the ranking-eligibility flag,
+  and the analysis-lock fields used for trust display.
+- New `docs/LeaderboardJson.md`: the precise JSON schema (version 1),
+  the trust model, and the D-8 rule — trial-suite rows are emitted by
+  CI only to exercise the pipeline and must never be published to the
+  public leaderboard.
+- New `.github/workflows/leaderboard.yml`: runs the mock trial suite,
+  emits `leaderboard.json` from the sealed artifact, and uploads it as
+  a workflow artifact. Hardened like `ci.yml`: SHA-pinned actions,
+  `permissions: contents: read`. Additive; existing workflows untouched.
+- Review fixes: `--exclude-suite` (default `trial,trial-demo`)
+  enforces D-8 mechanically with an `n_excluded_suites` count;
+  shape-validation of sealed metric values (wrong types fail loudly);
+  atomic output write; emitter error strings in Troubleshooting;
+  trust-model caveat that the unkeyed lock is tamper evidence, not
+  authenticity.
+
 ### Planned
 - Versioned methodology pages (`docs/Methodology.md` is the single
   current page; dated per-release snapshots land with the v1 dataset).

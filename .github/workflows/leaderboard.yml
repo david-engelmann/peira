@@ -1,0 +1,40 @@
+name: leaderboard
+
+# Least privilege: jobs only read the repo unless they say otherwise.
+permissions:
+  contents: read
+
+# Pipeline smoke test for leaderboard.json emission: run the mock trial
+# suite, emit the leaderboard document from the sealed artifact, upload
+# it. Per D-8 (docs/Decisions.md), trial-suite rows are never published
+# to the public leaderboard — this exercises the emission pipeline and
+# nothing more.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  emit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # tag: v4
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # tag: v5
+        with:
+          python-version: "3.12"
+      - run: pip install -e .
+      # Exit 3 = ran fine but ranking-ineligible (the 100-case Trial sits
+      # below the 200-case / per-family floors). Assert it — don't swallow
+      # other failures.
+      - run: peira run --adapter mock --suite trial --seed 0 --out runs || [ $? -eq 3 ]
+        shell: bash
+      - run: python3 scripts/emit_leaderboard.py --dir runs --out leaderboard.json --exclude-suite=
+        # --exclude-suite= (empty): the smoke run uses the trial suite,
+        # which the emitter excludes by default per D-8.
+      - run: python3 -m json.tool leaderboard.json > /dev/null
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # tag: v4
+        with:
+          name: leaderboard-json
+          path: leaderboard.json

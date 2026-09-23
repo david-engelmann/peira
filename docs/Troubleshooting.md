@@ -531,3 +531,38 @@ same drift handling as above.
 **`jev returned non-numeric confidence: ...` / `jev returned non-numeric noul: ...`**
 Cause: a confidence/probability field wasn't a number. Clamped only
 when numeric; non-numeric is terminal. Fix: report it.
+
+## Leaderboard emitter errors (`scripts/emit_leaderboard.py`)
+
+**`not a directory: ...`**
+Cause: `--dir` was given a path that isn't a directory. Fix: point
+`--dir` at the directory holding the run artifacts, or pass artifact
+files directly.
+
+**`cannot read ...` / `cannot load ...`**
+Cause: an artifact file is unreadable or isn't valid JSON/UTF-8.
+Fix: re-fetch or re-run to regenerate the artifact.
+
+**`analysis lock verification FAILED for ...: refusing to include it`**
+Cause: the artifact's analysis lock does not verify — the sealed
+content was modified after sealing, or the file is corrupt. The
+emitter refuses the artifact rather than emitting a row from it. Fix:
+re-run to regenerate; if the file was hand-edited, don't.
+
+**`is missing sealed metrics keys: [...]`**
+Cause: the artifact predates the contracted metrics summary (e.g. a
+v1 artifact) or was sealed by an incompatible peira version. Fix:
+re-run with the current peira to produce a v2 artifact.
+
+**`has malformed sealed metric '...'`: expected ...**
+Cause: a sealed metric value has the wrong shape (e.g. a string where
+an interval was contracted). Fix: re-run; a hand-edited artifact will
+not verify anyway.
+
+**`no artifacts given: nothing to emit`**
+Cause: no input files and no `--dir`, or `--dir` matched no
+`*.json`. Fix: pass artifact paths or a directory containing them.
+Note: artifacts from excluded suites (`--exclude-suite`, default
+`trial,trial-demo`) are skipped silently apart from the stderr note
+and the `n_excluded_suites` count — an empty output with a nonzero
+excluded count means every input was a trial-suite run.
