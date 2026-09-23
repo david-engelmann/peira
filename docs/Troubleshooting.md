@@ -307,6 +307,15 @@ core's typed results vector). A minimal artifact with just the two
 required fields loads fine — the remaining defaults are documented in
 ADR D-12.
 
+**`error: <run> uses the pre-S8b artifact schema (no A3 metric summary)`**
+Cause: the artifact was sealed before the S8b rewiring, so its
+`metrics` lack the A3 summary sections (`calibration`,
+`selective_prediction`, `score_diagnostics`, …) the report renders.
+The artifact itself is valid — it's just from an older schema — so
+`peira report` refuses with this message instead of rendering a
+half-empty page or calling the artifact corrupt. Fix: re-run the
+suite to generate a current artifact.
+
 **`error: unsupported artifact_version '1': ...`**
 Cause: the artifact was produced before the v2 measurement contract.
 Peira never migrates v1 artifacts — the numbers were computed under

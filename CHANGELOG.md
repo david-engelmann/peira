@@ -7,6 +7,21 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
 
 ## [Unreleased]
 
+### Added — production report rewiring (A3 S8b)
+
+- The runner's artifact summary is now the canonical
+  `peira.metrics.summarize()` (S1–S6): sealed run artifacts carry the
+  full A3 metric sections — calibration (per-condition ECE/Brier/
+  Murphy, ΔBrier/ΔECE/Δreliability, confidence coverage), selective
+  prediction (AUGRC, fixed-coverage risk), score diagnostics (MAE,
+  displacement, compression), severity-weighted ASR, and refusal/
+  outcome accounting. `peira report` renders all sections; withheld
+  values display as "insufficient data", never 0. Pre-S8b artifacts
+  are rejected with an actionable "re-run the suite" error.
+- `cmd_report` now also catches `AttributeError` from hostile-shaped
+  metric sections (wrong-type truthy values), preserving the
+  "exit 1, not traceback" contract.
+
 ### Added — confidence-interval coverage and nonfinite hardening (A3 S9)
 
 - New `peira.metrics.MetricEstimate` (value/ci/n/sufficient) and

@@ -54,14 +54,7 @@ from peira.metrics import (
     INELIGIBLE_BENIGN_WRONG_DECISION,
     CallRecord,
     PerCaseResult,
-    asr_conditional,
-    benign_accuracy,
-    check_eligibility,
-    ineligible_by_reason,
-    malformed_rate,
-    n_eligible_by_family,
-    refusal_rate,
-    refusal_rate_by_family,
+    summarize as _metrics_summarize,
 )
 from peira.pricing import cost_usd, load_pricing_table
 from peira.schema import Case, validate_case_dict
@@ -731,51 +724,36 @@ async def _run_case_async(
 def _summarize_artifact(
     results: list[PerCaseResult],
     required_families: list[str] | None = None,
+    cases: list[Case] | None = None,
+    seed: int = 0,
 ) -> dict[str, Any]:
     """Thin per-run metric summary sealed into run artifacts.
 
-    The legacy artifact summary: conditional ASR, benign accuracy,
-    malformed/refusal rates, ranking eligibility, and per-family
-    breakdowns. Private because the canonical display summary is
-    :func:`peira.metrics.summarize` — two public ``summarize``
-    functions with divergent schemas caused cross-lane accidents (the
-    artifact summary stays sealed here; the metrics summary is the
-    one humans read). S8b will rewire the production artifact summary
-    onto :func:`peira.metrics.summarize`.
+    Adapter onto :func:`peira.metrics.summarize` — the canonical
+    per-run summary over slices S1–S6 (S8b rewiring). Kept private and
+    deliberately NOT named ``summarize``: the metrics summary is the
+    one humans read; this one is sealed into the artifact's analysis
+    lock, and two public ``summarize`` functions with divergent schemas
+    caused cross-lane accidents.
+
+    ``cases`` supplies the case authors' ``expected_score`` references
+    so score diagnostics are computed in production; omit them (or pass
+    cases without references) and the score-diagnostics section
+    reports itself unavailable rather than guessing. ``seed`` drives
+    the summary's bootstrap PRNG — the same seed and results always
+    produce the same summary, which is what the analysis lock seals.
     """
-    asr, asr_ci = asr_conditional(results)
-    acc, acc_ci = benign_accuracy(results)
-    rr, rr_ci = refusal_rate(results)
-    elig = check_eligibility(results, required_families)
-    eligible_counts = n_eligible_by_family(results, required_families)
-    fam_refusal = refusal_rate_by_family(results)
-    per_family: dict[str, dict[str, Any]] = {}
-    families = sorted(set(eligible_counts) | {r.family for r in results})
-    for fam in families:
-        fr = [r for r in results if r.family == fam]
-        fasr, fasr_ci = asr_conditional(fr)
-        per_family[fam] = {
-            "n": len(fr),
-            "n_eligible": eligible_counts.get(fam, 0),
-            "asr": round(fasr, 4),
-            "asr_ci95": [round(x, 4) for x in fasr_ci],
-            "refusal_rate": round(fam_refusal.get(fam, 0.0), 4),
-        }
-    return {
-        "n_cases": len(results),
-        "n_eligible": sum(1 for r in results if r.eligible),
-        "asr_conditional": round(asr, 4),
-        "asr_ci95": [round(x, 4) for x in asr_ci],
-        "benign_accuracy": round(acc, 4),
-        "benign_accuracy_ci95": [round(x, 4) for x in acc_ci],
-        "malformed_rate": round(malformed_rate(results), 4),
-        "refusal_rate": round(rr, 4),
-        "refusal_rate_ci95": [round(x, 4) for x in rr_ci],
-        "ineligible_by_reason": ineligible_by_reason(results),
-        "ranking_eligible": elig.eligible,
-        "eligibility_notes": list(elig.reasons),
-        "per_family": per_family,
-    }
+    expected_scores = (
+        None
+        if cases is None
+        else {c.case_id: c.benign.expected_score for c in cases}
+    )
+    return _metrics_summarize(
+        results,
+        required_families=required_families,
+        expected_scores=expected_scores,
+        seed=seed,
+    )
 
 
 def _sort_results(
@@ -833,7 +811,7 @@ def _write_partial(
         results=results_to_dicts(_sort_results(results, indexed)),
     )
     partial.metrics = _summarize_artifact(
-        _sort_results(results, indexed), required_families
+        _sort_results(results, indexed), required_families, cases, seed
     )
     # Atomic write: an interrupt between checkpoints must never leave a
     # half-written partial behind (a corrupt partial fails --resume
@@ -1045,7 +1023,9 @@ async def _run_suite_async(
         config=config,
         results=results_to_dicts(ordered),
     )
-    artifact.metrics = _summarize_artifact(ordered, required_families)
+    artifact.metrics = _summarize_artifact(
+        ordered, required_families, cases, seed
+    )
     return artifact.seal()
 
 
@@ -1288,5 +1268,7 @@ def replay_suite(
         config=config,
         results=results_to_dicts(ordered),
     )
-    artifact.metrics = _summarize_artifact(ordered, required_families)
+    artifact.metrics = _summarize_artifact(
+        ordered, required_families, cases, seed
+    )
     return artifact.seal()
