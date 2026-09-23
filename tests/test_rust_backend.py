@@ -40,6 +40,7 @@ from peira.metrics import (
     wilson_ci,
     _asr_conditional_py,
     _benign_accuracy_py,
+    _bradley_terry_fit_py,
     _brier_score_py,
     _check_eligibility_py,
     _crps_point_py,
@@ -206,6 +207,40 @@ class TestMetricsParity(unittest.TestCase):
         scores = [self.rng.random() for _ in range(200)]
         self.assertAlmostEqual(score_compression_index(scores),
                                _score_compression_index_py(scores))
+
+    @unittest.skipUnless(_rust.RUST_AVAILABLE, "peira._core not built")
+    def test_bradley_terry(self):
+        # Pin the Rust fit kernel directly against the pure-Python
+        # reference: a tied three-item sweep and a plain two-item
+        # sweep. Both backends run the identical MM iteration in the
+        # same order, so the comparison is exact.
+        tied = [(0, 1, 20, 20, 10), (0, 2, 15, 15, 10), (1, 2, 10, 10, 10)]
+        plain = [(0, 1, 40, 10, 0)]
+        for n_items, pairs in ((3, tied), (2, plain)):
+            s_rust, nu_rust = _rust._impl.bradley_terry_fit(
+                n_items, pairs, 1000, 1e-10)
+            s_py, nu_py = _bradley_terry_fit_py(n_items, pairs, 1000, 1e-10)
+            self.assertEqual(s_rust, s_py)
+            self.assertEqual(nu_rust, nu_py)
+
+    @unittest.skipUnless(_rust.RUST_AVAILABLE, "peira._core not built")
+    def test_bradley_terry_group_separation_refused_by_both(self):
+        # {2, 3} won every cross-group comparison outright (30 each);
+        # the per-item backstop passes, so only the exact Ford check
+        # refuses. The Python reference raises ValueError pre-dispatch
+        # (covered in TestBradleyTerry); the Rust core must panic on the
+        # same data — both backends refuse loudly (D-11).
+        separated = [
+            (0, 1, 15, 15, 0),
+            (2, 3, 15, 15, 0),
+            (0, 2, 0, 30, 0),
+            (0, 3, 0, 30, 0),
+            (1, 2, 0, 30, 0),
+            (1, 3, 0, 30, 0),
+        ]
+        with self.assertRaises(BaseException) as ctx:
+            _rust._impl.bradley_terry_fit(4, separated, 1000, 1e-10)
+        self.assertIn("won every comparison", str(ctx.exception))
 
     def test_n_eligible_by_family(self):
         got = n_eligible_by_family(self.results, FAMILIES)

@@ -269,6 +269,28 @@ fn mcnemar(b: u64, c: u64) -> f64 {
     metrics::mcnemar(b, c)
 }
 
+/// Davidson Bradley-Terry strengths: monotone MM fit over aggregated
+/// pair counts.
+///
+/// `pairs` holds `(i, j, w_ij, w_ji, t_ij)` with `i < j`; returns
+/// `(centered log-strengths, nu)`. Compare-view only, display-only —
+/// never a ranker. Panics (the Python side raises `ValueError` before
+/// dispatch) on empty input, bad indices, non-positive or non-finite
+/// `max_iter`/`tol`, when an item never won-or-tied or never
+/// lost-or-tied (per-item backstop), and when a group won every
+/// cross-group comparison outright (exact Ford strong-connectivity
+/// check — asserted in both backends, D-11).
+#[pyfunction]
+#[pyo3(signature = (n_items, pairs, max_iter=1000, tol=1e-10))]
+fn bradley_terry_fit(
+    n_items: usize,
+    pairs: Vec<(usize, usize, u64, u64, u64)>,
+    max_iter: usize,
+    tol: f64,
+) -> (Vec<f64>, f64) {
+    metrics::bradley_terry_fit(n_items, &pairs, max_iter, tol)
+}
+
 /// 95% bootstrap CI for mean(xs) - mean(ys), paired resampling.
 ///
 /// Exposed but not auto-dispatched by the Python side: the Rust core uses
@@ -331,6 +353,7 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(crps_point, m)?)?;
     m.add_function(wrap_pyfunction!(score_compression_index, m)?)?;
     m.add_function(wrap_pyfunction!(mcnemar, m)?)?;
+    m.add_function(wrap_pyfunction!(bradley_terry_fit, m)?)?;
     m.add_function(wrap_pyfunction!(paired_bootstrap_ci, m)?)?;
     m.add_function(wrap_pyfunction!(n_eligible_by_family, m)?)?;
     m.add_function(wrap_pyfunction!(check_eligibility, m)?)?;

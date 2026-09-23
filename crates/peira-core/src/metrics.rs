@@ -321,6 +321,264 @@ pub fn score_compression_index(scores: &[f64]) -> f64 {
     (1.0 - 12.0 * var).clamp(0.0, 1.0)
 }
 
+// ---------------------------------------------------------------------------
+// A3 S7: Bradley-Terry with Davidson ties (compare view only, display-only)
+//
+// Display-only: BT strengths never feed ranking, never appear on the
+// leaderboard, never blend into a composite. Tie model is Davidson
+// (1970) — see ADR D-28. Fitting is maximum likelihood via a monotone
+// block-MM algorithm (Hunter-style, 2004), Gauss-Seidel: the pi block
+// minorizes in pi at (pi, nu), then the nu block minorizes in nu at the
+// fresh pi. Each block update provably increases the log-likelihood, so
+// the joint iteration is monotone; fixed points satisfy the score
+// equations. The pi block minorization uses the supporting hyperplane
+// of the convex -log at D^k_ij for -n_ij*log(D_ij), and majorizes the
+// sqrt(pi_i) inside D_ij = pi_i + pi_j + nu*sqrt(pi_i*pi_j) by its
+// tangent (sqrt is concave; equivalently weighted AM-GM); the
+// w_ij*log(pi_i) and tie-half terms are kept as-is, giving the closed
+// form pi_i = w_eff_i / denom_i. The nu block uses the supporting
+// hyperplane of -log at the fresh pi (D_ij is linear in nu), giving
+// nu = total_ties / nu_den.
+// ---------------------------------------------------------------------------
+
+/// Davidson (1970) log-likelihood for strengths `pi` and tie propensity
+/// `nu`, given aggregated pair counts `(i, j, w_ij, w_ji, t_ij)` with
+/// `i < j`. Direct transcription of the model definition:
+/// P(i beats j) = pi_i / D, P(tie) = nu*sqrt(pi_i*pi_j) / D with
+/// D = pi_i + pi_j + nu*sqrt(pi_i*pi_j).
+fn davidson_loglik(pi: &[f64], nu: f64, pairs: &[(usize, usize, u64, u64, u64)]) -> f64 {
+    let mut ll = 0.0;
+    for &(i, j, wij, wji, tij) in pairs {
+        let g = (pi[i] * pi[j]).sqrt();
+        let d = pi[i] + pi[j] + nu * g;
+        // Float addition: the u64 sum could wrap on adversarial direct
+        // calls near u64::MAX; the f64 sum cannot overflow.
+        let n = wij as f64 + wji as f64 + tij as f64;
+        ll += wij as f64 * pi[i].ln() + wji as f64 * pi[j].ln() - n * d.ln();
+        if tij > 0 {
+            ll += tij as f64 * (nu.ln() + 0.5 * (pi[i].ln() + pi[j].ln()));
+        }
+    }
+    ll
+}
+
+/// Names a group with unbounded relative strength, if one exists.
+///
+/// Directed edges run winner -> loser (ties count both ways, since a
+/// tie binds the strength ratio in both directions). When this digraph
+/// is not strongly connected, some group won every cross-group
+/// comparison outright — scaling that group's strengths up strictly
+/// increases the likelihood, so no finite MLE exists. Returns the
+/// indices of one such source strongly-connected component, or `None`
+/// when the digraph is strongly connected.
+///
+/// Mirrors `_bt_source_component` in the Python reference exactly (same
+/// edge rules, same mutual-reachability components, same source-component
+/// choice); both backends refuse loudly on group-separated data — D-11.
+fn bt_source_component(
+    n_items: usize,
+    pairs: &[(usize, usize, u64, u64, u64)],
+) -> Option<Vec<usize>> {
+    let mut succ: Vec<Vec<usize>> = vec![Vec::new(); n_items];
+    for &(i, j, wij, wji, tij) in pairs {
+        if (wij > 0 || tij > 0) && !succ[i].contains(&j) {
+            succ[i].push(j);
+        }
+        if (wji > 0 || tij > 0) && !succ[j].contains(&i) {
+            succ[j].push(i);
+        }
+    }
+    // reach[s][v]: v is reachable from s.
+    let mut reach = vec![vec![false; n_items]; n_items];
+    for (s, row) in reach.iter_mut().enumerate() {
+        let mut stack = vec![s];
+        row[s] = true;
+        while let Some(u) = stack.pop() {
+            for &v in &succ[u] {
+                if !row[v] {
+                    row[v] = true;
+                    stack.push(v);
+                }
+            }
+        }
+    }
+    // Strongly-connected components by mutual reachability.
+    let mut comp_id = vec![usize::MAX; n_items];
+    let mut comps: Vec<Vec<usize>> = Vec::new();
+    for i in 0..n_items {
+        if comp_id[i] != usize::MAX {
+            continue;
+        }
+        let comp: Vec<usize> = (0..n_items)
+            .filter(|&j| reach[i][j] && reach[j][i])
+            .collect();
+        for &j in &comp {
+            comp_id[j] = comps.len();
+        }
+        comps.push(comp);
+    }
+    if comps.len() == 1 {
+        return None;
+    }
+    let mut has_incoming = vec![false; comps.len()];
+    for i in 0..n_items {
+        for &v in &succ[i] {
+            if comp_id[v] != comp_id[i] {
+                has_incoming[comp_id[v]] = true;
+            }
+        }
+    }
+    // A condensation DAG always has a source component, so this finds one.
+    comps
+        .into_iter()
+        .enumerate()
+        .find(|(cid, _)| !has_incoming[*cid])
+        .map(|(_, comp)| comp)
+}
+
+/// Maximum-likelihood Davidson Bradley-Terry strengths.
+///
+/// `pairs` holds aggregated counts `(i, j, w_ij, w_ji, t_ij)` with
+/// `i < j`. Returns `(centered log-strengths, nu)`: strengths are
+/// log-strengths centered to mean zero (only differences between items
+/// are meaningful — strengths are identified only up to a
+/// multiplicative constant), and `nu >= 0` is the Davidson tie
+/// propensity (`+inf` when every comparison was a tie: the propensity
+/// is then genuinely unbounded and the strengths unidentified, so the
+/// convention reports equal strengths rather than an arbitrary
+/// iterate).
+///
+/// Deterministic: pi and nu start at 1.0 and the MM iteration runs at
+/// most `max_iter` steps, stopping early when the log-likelihood
+/// changes by less than `tol`. If it has not stabilized within
+/// `max_iter` steps the last iterate is returned — `max_iter`/`tol` are
+/// caller-controlled truncation, not a convergence certificate.
+///
+/// The exact finite-MLE (Ford) condition — strong connectivity of the
+/// win/tie digraph, wins as directed edges and ties as bidirectional
+/// edges — is validated in the Python reference before dispatch (D-11)
+/// and asserted here too: a group that won every cross-group
+/// comparison outright panics, exactly like the Python reference raises
+/// `ValueError`, instead of drifting toward unbounded strengths and
+/// returning an arbitrary max-iteration artifact.
+///
+/// Panics on empty input, out-of-range pair indices, non-positive or
+/// non-finite `max_iter`/`tol`, when an item never won-or-tied or never
+/// lost-or-tied, and when a group won every cross-group comparison
+/// outright (backstop — the Python reference raises `ValueError` there
+/// instead of returning an arbitrary max-iteration artifact; both
+/// backends refuse loudly — D-11).
+pub fn bradley_terry_fit(
+    n_items: usize,
+    pairs: &[(usize, usize, u64, u64, u64)],
+    max_iter: usize,
+    tol: f64,
+) -> (Vec<f64>, f64) {
+    assert!(n_items > 0, "bradley_terry_fit: n_items must be positive");
+    assert!(
+        !pairs.is_empty(),
+        "bradley_terry_fit: pairs must be non-empty"
+    );
+    assert!(max_iter > 0, "bradley_terry_fit: max_iter must be positive");
+    assert!(
+        tol.is_finite() && tol > 0.0,
+        "bradley_terry_fit: tol must be positive and finite"
+    );
+    for &(i, j, _, _, _) in pairs {
+        assert!(
+            i < j && j < n_items,
+            "bradley_terry_fit: pair index out of range"
+        );
+    }
+    // Effective (wins + ties/2) records. The per-item backstop: every
+    // item must have a win-or-tie and a loss-or-tie (the exact Ford
+    // strong-connectivity condition is validated before dispatch in
+    // Python — D-11 — and asserted here only in its per-item form).
+    let mut w_eff = vec![0.0f64; n_items];
+    let mut l_eff = vec![0.0f64; n_items];
+    let mut total_ties: u128 = 0;
+    for &(i, j, wij, wji, tij) in pairs {
+        let half = tij as f64 / 2.0;
+        w_eff[i] += wij as f64 + half;
+        l_eff[i] += wji as f64 + half;
+        w_eff[j] += wji as f64 + half;
+        l_eff[j] += wij as f64 + half;
+        total_ties += tij as u128;
+    }
+    for k in 0..n_items {
+        assert!(
+            w_eff[k] > 0.0,
+            "bradley_terry_fit: item never won or tied — strengths unbounded"
+        );
+        assert!(
+            l_eff[k] > 0.0,
+            "bradley_terry_fit: item never lost or tied — strengths unbounded"
+        );
+    }
+    // Exact Ford condition: the win/tie digraph must be strongly
+    // connected. Both backends refuse loudly on group-separated data
+    // (D-11); a direct Rust caller gets the same refusal the Python
+    // reference raises as ValueError.
+    if let Some(source) = bt_source_component(n_items, pairs) {
+        panic!(
+            "bradley_terry_fit: items {:?} won every comparison played \
+             against the remaining items (no ties across groups) — \
+             their relative strengths are unbounded; report the \
+             pairwise counts instead",
+            source
+        );
+    }
+    let total: u128 = pairs
+        .iter()
+        .map(|&(_, _, a, b, t)| a as u128 + b as u128 + t as u128)
+        .sum();
+    if total_ties == total {
+        return (vec![0.0; n_items], f64::INFINITY);
+    }
+    // Adjacency in pair order, so accumulation matches the Python
+    // reference exactly.
+    let mut adj: Vec<Vec<(usize, usize)>> = vec![Vec::new(); n_items];
+    for (p, &(i, j, _, _, _)) in pairs.iter().enumerate() {
+        adj[i].push((p, j));
+        adj[j].push((p, i));
+    }
+    let mut pi = vec![1.0f64; n_items];
+    let mut nu = 1.0f64;
+    let mut prev_ll = davidson_loglik(&pi, nu, pairs);
+    for _ in 0..max_iter {
+        let mut new_pi = vec![0.0f64; n_items];
+        for i in 0..n_items {
+            let mut denom = 0.0;
+            for &(p, o) in &adj[i] {
+                let (_, _, wij, wji, tij) = pairs[p];
+                let n = wij as f64 + wji as f64 + tij as f64;
+                let g = (pi[i] * pi[o]).sqrt();
+                let d = pi[i] + pi[o] + nu * g;
+                denom += n * (1.0 + 0.5 * nu * (pi[o] / pi[i]).sqrt()) / d;
+            }
+            new_pi[i] = w_eff[i] / denom;
+        }
+        // Gauss-Seidel: the nu block minorizes in nu at the fresh pi.
+        let mut nu_den = 0.0;
+        for &(i, j, wij, wji, tij) in pairs {
+            let n = wij as f64 + wji as f64 + tij as f64;
+            let g = (new_pi[i] * new_pi[j]).sqrt();
+            nu_den += n * g / (new_pi[i] + new_pi[j] + nu * g);
+        }
+        let new_nu = total_ties as f64 / nu_den;
+        pi = new_pi;
+        nu = new_nu;
+        let ll = davidson_loglik(&pi, nu, pairs);
+        if (ll - prev_ll).abs() < tol {
+            break;
+        }
+        prev_ll = ll;
+    }
+    let logs: Vec<f64> = pi.iter().map(|p| p.ln()).collect();
+    let mean = logs.iter().sum::<f64>() / n_items as f64;
+    (logs.into_iter().map(|l| l - mean).collect(), nu)
+}
+
 /// McNemar chi-square (no continuity correction) for discordant pairs.
 ///
 /// Counts are unsigned: negatives are rejected at the type boundary on
@@ -647,6 +905,177 @@ mod tests {
     #[should_panic]
     fn compression_empty_panics() {
         score_compression_index(&[]);
+    }
+
+    // -- A3 S7: Bradley-Terry with Davidson ties --
+
+    /// Independent Davidson log-likelihood for two items, transcribed
+    /// straight from the model definition (not from the MM derivation).
+    fn ll_2item(delta: f64, tau: f64, wa: u64, wb: u64, t: u64) -> f64 {
+        let pa = delta.exp();
+        let pb = 1.0;
+        let nu = tau.exp();
+        let g = (pa * pb).sqrt();
+        let d = pa + pb + nu * g;
+        wa as f64 * (pa / d).ln() + wb as f64 * (pb / d).ln() + t as f64 * (nu * g / d).ln()
+    }
+
+    #[test]
+    fn bt_two_item_no_ties_closed_form() {
+        // 40/10, no ties: pi_A/pi_B = 4, so centered log-strengths are
+        // exactly +-ln(2) and nu is exactly 0 (plain Bradley-Terry).
+        let (s, nu) = bradley_terry_fit(2, &[(0, 1, 40, 10, 0)], 1000, 1e-10);
+        assert!((s[0] - 2.0_f64.ln()).abs() < 1e-9);
+        assert!((s[1] + 2.0_f64.ln()).abs() < 1e-9);
+        assert_eq!(nu, 0.0);
+    }
+
+    #[test]
+    fn bt_two_item_with_ties_matches_grid_search() {
+        // 30/10/20: brute-force grid over (delta, tau) with the
+        // independent likelihood above; the solver must land within
+        // grid resolution and beat the grid's best likelihood.
+        let (wa, wb, t) = (30u64, 10u64, 20u64);
+        let (mut best_ll, mut best_d, mut best_tau) = (f64::NEG_INFINITY, 0.0, 0.0);
+        let mut d = -1.0;
+        while d <= 3.0 {
+            let mut tau = -4.0;
+            while tau <= 2.0 {
+                let ll = ll_2item(d, tau, wa, wb, t);
+                if ll > best_ll {
+                    best_ll = ll;
+                    best_d = d;
+                    best_tau = tau;
+                }
+                tau += 0.02;
+            }
+            d += 0.02;
+        }
+        let (s, nu) = bradley_terry_fit(2, &[(0, 1, wa, wb, t)], 1000, 1e-10);
+        let solver_d = s[0] - s[1];
+        assert!((solver_d - best_d).abs() < 0.05);
+        assert!((nu.ln() - best_tau).abs() < 0.05);
+        assert!(ll_2item(solver_d, nu.ln(), wa, wb, t) >= best_ll - 1e-9);
+    }
+
+    #[test]
+    fn bt_three_item_satisfies_score_equations() {
+        // Central finite differences of the model-definition likelihood
+        // at the solver's solution must be ~0 in every direction.
+        let pairs = [(0, 1, 12, 6, 4), (1, 2, 10, 8, 6), (0, 2, 9, 9, 2)];
+        let (s, nu) = bradley_terry_fit(3, &pairs, 1000, 1e-10);
+        let h = 1e-6;
+        let ll = |ss: &[f64], nu: f64| {
+            let pi: Vec<f64> = ss.iter().map(|x| x.exp()).collect();
+            davidson_loglik(&pi, nu, &pairs)
+        };
+        for k in 0..3 {
+            let mut up = s.clone();
+            up[k] += h;
+            let mut dn = s.clone();
+            dn[k] -= h;
+            assert!(((ll(&up, nu) - ll(&dn, nu)) / (2.0 * h)).abs() < 1e-3);
+        }
+        let g = ((ll(&s, (nu.ln() + h).exp()) - ll(&s, (nu.ln() - h).exp())) / (2.0 * h)).abs();
+        assert!(g < 1e-3);
+    }
+
+    #[test]
+    fn bt_all_ties_reports_equal_strengths_and_infinite_nu() {
+        let (s, nu) = bradley_terry_fit(2, &[(0, 1, 0, 0, 30)], 1000, 1e-10);
+        assert_eq!(s, vec![0.0, 0.0]);
+        assert!(nu.is_infinite() && nu > 0.0);
+    }
+
+    #[test]
+    fn bt_tie_propensity_grows_with_tie_fraction() {
+        let (_, nu_none) = bradley_terry_fit(2, &[(0, 1, 27, 3, 0)], 1000, 1e-10);
+        let (_, nu_ties) = bradley_terry_fit(2, &[(0, 1, 18, 2, 10)], 1000, 1e-10);
+        assert_eq!(nu_none, 0.0);
+        assert!(nu_ties > 0.0);
+    }
+
+    #[test]
+    #[should_panic(expected = "never lost or tied")]
+    fn bt_perfect_separation_panics() {
+        bradley_terry_fit(2, &[(0, 1, 30, 0, 0)], 1000, 1e-10);
+    }
+
+    #[test]
+    #[should_panic(expected = "never won or tied")]
+    fn bt_item_never_winning_panics() {
+        // Item 1 loses to both others but never wins or ties: its
+        // strength is unbounded below.
+        let pairs = [(0, 1, 15, 0, 0), (0, 2, 10, 5, 0), (1, 2, 0, 15, 0)];
+        bradley_terry_fit(3, &pairs, 1000, 1e-10);
+    }
+
+    #[test]
+    #[should_panic(expected = "won every comparison")]
+    fn bt_group_separation_panics() {
+        // {C, D} = {2, 3} won every cross-group comparison outright
+        // (30 each) while A/B and C/D split internally 15-15: every
+        // item has wins and losses, the comparison graph is connected,
+        // but the win/tie digraph is not strongly connected. The
+        // per-item backstop passes; only the exact Ford check refuses.
+        let pairs = [
+            (0, 1, 15, 15, 0),
+            (2, 3, 15, 15, 0),
+            (0, 2, 0, 30, 0),
+            (0, 3, 0, 30, 0),
+            (1, 2, 0, 30, 0),
+            (1, 3, 0, 30, 0),
+        ];
+        bradley_terry_fit(4, &pairs, 1000, 1e-10);
+    }
+
+    #[test]
+    fn bt_source_component_matches_python_reference() {
+        // Strongly connected digraph: no source component.
+        let connected = [(0, 1, 15, 15, 0), (1, 2, 15, 15, 0), (0, 2, 10, 10, 5)];
+        assert_eq!(bt_source_component(3, &connected), None);
+        // Group-separated: the source component {2, 3} won every
+        // cross-group comparison outright — matches the Python
+        // `_bt_source_component` returning the sorted source-component names.
+        let separated = [
+            (0, 1, 15, 15, 0),
+            (2, 3, 15, 15, 0),
+            (0, 2, 0, 30, 0),
+            (0, 3, 0, 30, 0),
+            (1, 2, 0, 30, 0),
+            (1, 3, 0, 30, 0),
+        ];
+        assert_eq!(bt_source_component(4, &separated), Some(vec![2, 3]));
+    }
+
+    #[test]
+    #[should_panic(expected = "pairs must be non-empty")]
+    fn bt_empty_pairs_panics() {
+        bradley_terry_fit(2, &[], 1000, 1e-10);
+    }
+
+    #[test]
+    #[should_panic(expected = "pair index out of range")]
+    fn bt_bad_index_panics() {
+        bradley_terry_fit(2, &[(0, 2, 10, 10, 0)], 1000, 1e-10);
+    }
+
+    #[test]
+    #[should_panic(expected = "max_iter must be positive")]
+    fn bt_zero_max_iter_panics() {
+        bradley_terry_fit(2, &[(0, 1, 10, 10, 0)], 0, 1e-10);
+    }
+
+    #[test]
+    #[should_panic(expected = "tol must be positive")]
+    fn bt_nonpositive_tol_panics() {
+        bradley_terry_fit(2, &[(0, 1, 10, 10, 0)], 1000, 0.0);
+    }
+
+    #[test]
+    #[should_panic(expected = "tol must be positive and finite")]
+    fn bt_infinite_tol_panics() {
+        bradley_terry_fit(2, &[(0, 1, 10, 10, 0)], 1000, f64::INFINITY);
     }
 
     #[test]
