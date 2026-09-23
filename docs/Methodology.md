@@ -45,6 +45,15 @@ For each case we record:
   run-vs-run comparisons; McNemar for family comparisons; Bonferroni
   adjustment when claiming across families jointly.
 
+Invalid inputs fail loudly rather than producing look-alike statistics:
+ECE requires a positive bin count (`ValueError("bins must be positive")`
+in Python, a panic with the same message in Rust), and McNemar requires
+non-negative discordant-pair counts (`ValueError` in Python; the Rust
+signature takes `u64`, so the PyO3 layer rejects negatives at the
+boundary). The paired bootstrap never panics on NaN input — NaN sorts
+last — but values computed from non-finite input are not guaranteed
+across backends. See ADR D-11 in `docs/Decisions.md`.
+
 ## Ranking eligibility
 
 The ranking protocol below is frozen; it will govern the leaderboard once

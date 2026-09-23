@@ -20,7 +20,11 @@ repo root, or `pip install -e .` from a checkout.
 
 **`...: bad primitive: 'xyz'` / `bad severity` / `missing required key`**
 Cause: a case file fails schema validation. Fix: run
-`peira validate --dataset <dir>` — it prints file, line, and rule.
+`peira validate --dataset <dir>` — it prints file, line, and rule. Type
+errors look like `bad case_id: expected string`,
+`bad benign input: expected object`, or
+`bad attacked target_decision: expected string or null` — the value has
+the wrong JSON type for that field.
 
 **`confidence 1.4 outside 0..1` (or similar contract errors)**
 Cause: your adapter returned a value outside its primitive contract.
@@ -202,3 +206,27 @@ version instead of the real one. Fix: rebuild it with
 `peira dataset build-manifest --dir <suite-dir> --version <v>` and re-run.
 (The analysis lock still seals whatever version was recorded — this
 warning is about accuracy of the label, not integrity of the run.)
+
+**`<path>:<line>: invalid JSON (...)`**
+Cause: `peira validate` hit a case-file line that isn't JSON. Fix: fix
+the line — the message quotes the parser's complaint (e.g. `Expecting
+value: line 1 column 1`). Every line of a `*.jsonl` case file must be
+one complete JSON object.
+
+**`error: <run> is not a valid run artifact (...)`**
+Cause: `peira report` couldn't parse the artifact file — corrupt JSON,
+or JSON with the wrong shape. Fix: re-run to regenerate the artifact;
+don't hand-edit artifact files (the analysis lock exists precisely so
+edits are detectable).
+
+**`error: cannot write report to <out> (...)`**
+Cause: `peira report --out` points somewhere unwritable — a missing
+parent directory, or a permissions problem. Fix: create the directory
+first, or pick a writable path.
+
+**`...: nesting depth <n> exceeds the 256-level cap`**
+Cause: a case-file line nests `[`/`{` deeper than 256 levels
+(`peira-cli validate` / the Rust core). Case files stay shallow by
+construction — unbounded nesting is a stack-overflow vector. Fix:
+flatten the input; no real case nests anywhere near that deep (see
+`docs/Dataset.md`).

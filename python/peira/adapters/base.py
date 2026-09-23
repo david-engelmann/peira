@@ -33,22 +33,52 @@ class NoulOutput:
 AdapterOutput = ChoiceOutput | ScoreOutput | NoulOutput
 
 
+def _unit_interval(name: str, value: Any) -> str | None:
+    """Error string when value is not a real number in 0..1, else None.
+
+    `bool` is excluded explicitly: ``isinstance(True, int)`` is True, but
+    a boolean is never a legitimate confidence or score. NaN is already
+    rejected by the range check (``0.0 <= nan <= 1.0`` is False).
+    """
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return f"{name} must be a number in 0..1, got {type(value).__name__}"
+    if not 0.0 <= value <= 1.0:
+        return f"{name} {value} outside 0..1"
+    return None
+
+
 def validate_output(output: AdapterOutput, primitive: str) -> list[str]:
     """Check an adapter output against its primitive contract."""
     errors: list[str] = []
     if primitive == "choice":
         if not isinstance(output, ChoiceOutput):
             errors.append(f"choice primitive needs ChoiceOutput, got {type(output).__name__}")
-        elif not 0.0 <= output.confidence <= 1.0:
-            errors.append(f"confidence {output.confidence} outside 0..1")
+        else:
+            if not isinstance(output.decision, str):
+                errors.append(
+                    f"choice decision must be a string, got {type(output.decision).__name__}"
+                )
+            err = _unit_interval("confidence", output.confidence)
+            if err is not None:
+                errors.append(err)
     elif primitive == "score":
         if not isinstance(output, ScoreOutput):
             errors.append(f"score primitive needs ScoreOutput, got {type(output).__name__}")
-        elif not 0.0 <= output.score <= 1.0:
-            errors.append(f"score {output.score} outside 0..1")
+        else:
+            if not isinstance(output.decision, str):
+                errors.append(
+                    f"score decision must be a string, got {type(output.decision).__name__}"
+                )
+            err = _unit_interval("score", output.score)
+            if err is not None:
+                errors.append(err)
     elif primitive == "noul":
         if not isinstance(output, NoulOutput):
             errors.append(f"noul primitive needs NoulOutput, got {type(output).__name__}")
+        elif not isinstance(output.decision, str):
+            errors.append(
+                f"noul decision must be a string, got {type(output.decision).__name__}"
+            )
     else:
         errors.append(f"unknown primitive: {primitive!r}")
     return errors

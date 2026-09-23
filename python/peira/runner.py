@@ -34,7 +34,9 @@ SUITE_DIRS = {
 def load_cases(suite_dir: Path) -> list[Case]:
     cases: list[Case] = []
     for path in sorted(suite_dir.glob("*.jsonl")):
-        with open(path) as f:
+        # Explicit UTF-8: the platform default (e.g. cp1252 on Windows)
+        # would silently mojibake non-ASCII case content.
+        with open(path, encoding="utf-8") as f:
             for lineno, line in enumerate(f, 1):
                 line = line.strip()
                 if not line:

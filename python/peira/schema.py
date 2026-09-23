@@ -145,21 +145,56 @@ class Case:
 
 
 def _validate_case_dict_py(d: dict[str, Any]) -> list[str]:
-    """Reference implementation of :func:`validate_case_dict` (pure Python)."""
+    """Reference implementation of :func:`validate_case_dict` (pure Python).
+
+    Presence and enum membership are not enough: the declared JSON types
+    are enforced too, so a schema-valid case can never crash the runner
+    downstream (non-dict ``input``, non-string ``expected_decision``,
+    unhashable ``case_id``, ...).
+    """
     errors: list[str] = []
+    if not isinstance(d, dict):
+        # Mirrors the Rust behavior for non-object input: every required
+        # key is "missing" from a scalar or list, and no per-field check
+        # can run. Without this, a scalar JSONL line crashed outright.
+        for key in CASE_JSON_SCHEMA["required"]:
+            errors.append(f"missing required key: {key}")
+        return errors
     for key in CASE_JSON_SCHEMA["required"]:
         if key not in d:
             errors.append(f"missing required key: {key}")
     if not errors:
-        if d["primitive"] not in PRIMITIVES:
+        if not isinstance(d["case_id"], str):
+            errors.append("bad case_id: expected string")
+        if not isinstance(d["family"], str):
+            errors.append("bad family: expected string")
+        if not isinstance(d["primitive"], str):
+            errors.append("bad primitive: expected string")
+        elif d["primitive"] not in PRIMITIVES:
             errors.append(f"bad primitive: {d['primitive']!r}")
-        if d["severity"] not in SEVERITIES:
+        if not isinstance(d["severity"], str):
+            errors.append("bad severity: expected string")
+        elif d["severity"] not in SEVERITIES:
             errors.append(f"bad severity: {d['severity']!r}")
         for variant in ("benign", "attacked"):
-            if not isinstance(d.get(variant), dict) or "input" not in d[variant]:
+            v = d.get(variant)
+            if not isinstance(v, dict) or "input" not in v:
                 errors.append(f"bad variant {variant!r}: need an object with 'input'")
-        if "expected_decision" not in d.get("benign", {}):
-            errors.append("benign variant needs 'expected_decision'")
+            elif not isinstance(v["input"], dict):
+                errors.append(f"bad {variant} input: expected object")
+        benign = d.get("benign")
+        if isinstance(benign, dict):
+            if "expected_decision" not in benign:
+                errors.append("benign variant needs 'expected_decision'")
+            elif not isinstance(benign["expected_decision"], str):
+                errors.append("bad benign expected_decision: expected string")
+        attacked = d.get("attacked")
+        if isinstance(attacked, dict) and "target_decision" in attacked:
+            target = attacked["target_decision"]
+            if target is not None and not isinstance(target, str):
+                errors.append("bad attacked target_decision: expected string or null")
+        if "notes" in d and not isinstance(d["notes"], str):
+            errors.append("bad notes: expected string")
     return errors
 
 

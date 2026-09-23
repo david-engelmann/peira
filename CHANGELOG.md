@@ -8,6 +8,24 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
 ## [Unreleased]
 
 ### Added
+- Trust-boundary hardening (H5): `peira report` now formats every
+  metric cell through a single `_num` formatter (floats render with four
+  decimals, anything unexpected is escaped) and escapes the artifact
+  version, analysis lock, and manifest digest — closing the
+  stored-XSS-shaped hole H2 left in the metric cells (regression-tested
+  with a hostile artifact). `peira validate` reports malformed JSON
+  lines as exit-1 user errors with `file:line` instead of tracebacks;
+  `peira report` exits 1 (not 2) on corrupt artifacts and unwritable
+  `--out`. The schema validator now enforces the declared JSON types
+  (`bad case_id: expected string`, `bad benign input: expected object`,
+  …) on both backends with byte-identical messages. `validate_output`
+  rejects non-string decisions and non-numeric confidences instead of
+  mis-scoring or raising bare `TypeError`. Case files are read as UTF-8
+  on every platform. The Rust core rejects case-file lines nesting
+  deeper than 256 levels before parsing. The three
+  `paired_bootstrap_ci` / `ece` / `mcnemar` edge divergences now fail
+  loudly and identically on both backends (new ADR D-11). New
+  user-facing errors are catalogued in `docs/Troubleshooting.md`.
 - Trial-demo disposition (T3): `dataset/trial-demo` confirmed as the
   12-case offline quickstart fixture (gate-exempt, contents frozen for
   the quickstart). Stale "starter suite" / "lands at v1" wording swept

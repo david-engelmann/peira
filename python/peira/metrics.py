@@ -153,6 +153,8 @@ def malformed_rate(results: list[PerCaseResult]) -> float:
 def _ece_py(probs: list[float], labels: list[int], bins: int = 15) -> float:
     """Reference implementation of :func:`ece` (pure Python)."""
     assert len(probs) == len(labels) and probs
+    if bins <= 0:
+        raise ValueError("bins must be positive")
     edges = [i / bins for i in range(bins + 1)]
     total = 0.0
     for b in range(bins):
@@ -173,7 +175,14 @@ def ece(probs: list[float], labels: list[int], bins: int = 15) -> float:
 
     The first bin is closed on the left so a probability of exactly 0.0
     lands in a bin instead of being silently dropped.
+
+    `bins` must be positive: `bins=0` raises ValueError instead of
+    silently returning 0.0. The Rust core panics with the same message
+    on the same input — zero bins is a caller bug, and both backends
+    refuse it loudly (D-11).
     """
+    if bins <= 0:
+        raise ValueError("bins must be positive")
     if _rust is not None:
         return _rust.ece(probs, labels, bins)
     return _ece_py(probs, labels, bins)
@@ -198,13 +207,23 @@ def brier_score(probs: list[float], labels: list[int]) -> float:
 
 def _mcnemar_py(b: int, c: int) -> float:
     """Reference implementation of :func:`mcnemar` (pure Python)."""
+    if b < 0 or c < 0:
+        raise ValueError("mcnemar counts must be non-negative")
     if b + c == 0:
         return 0.0
     return (b - c) ** 2 / (b + c)
 
 
 def mcnemar(b: int, c: int) -> float:
-    """McNemar chi-square (no continuity correction) for discordant pairs."""
+    """McNemar chi-square (no continuity correction) for discordant pairs.
+
+    Counts must be non-negative: negatives raise ValueError. The Rust
+    core takes unsigned integers, so the same call through the PyO3
+    layer is rejected at the boundary instead of silently computing —
+    both backends refuse, neither invents a statistic (D-11).
+    """
+    if b < 0 or c < 0:
+        raise ValueError("mcnemar counts must be non-negative")
     if _rust is not None:
         return _rust.mcnemar(b, c)
     return _mcnemar_py(b, c)

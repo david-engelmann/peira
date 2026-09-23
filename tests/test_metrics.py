@@ -44,6 +44,15 @@ class TestCalibration(unittest.TestCase):
         self.assertAlmostEqual(brier_score([1.0, 0.0], [1, 0]), 0.0)
         self.assertAlmostEqual(brier_score([0.5, 0.5], [1, 0]), 0.25)
 
+    def test_zero_bins_raises(self):
+        # Zero bins is a caller bug, not a measurement: both backends
+        # refuse loudly (D-11) instead of silently returning 0.0.
+        from peira.metrics import _ece_py
+        with self.assertRaises(ValueError):
+            ece([0.5], [1], 0)
+        with self.assertRaises(ValueError):
+            _ece_py([0.5], [1], 0)
+
 
 class TestMcNemar(unittest.TestCase):
     def test_no_discordant(self):
@@ -51,6 +60,15 @@ class TestMcNemar(unittest.TestCase):
 
     def test_value(self):
         self.assertAlmostEqual(mcnemar(10, 2), 64 / 12)
+
+    def test_negative_counts_raise(self):
+        # Discordant-pair counts can't be negative: both backends refuse
+        # (D-11) instead of inventing a statistic.
+        from peira.metrics import _mcnemar_py
+        with self.assertRaises(ValueError):
+            mcnemar(-1, 2)
+        with self.assertRaises(ValueError):
+            _mcnemar_py(2, -1)
 
 
 class TestBootstrap(unittest.TestCase):

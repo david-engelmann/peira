@@ -14,6 +14,7 @@ import re
 import sys
 import traceback
 from pathlib import Path
+from typing import Any
 
 from peira import __version__
 from peira.adapters.mock import MockAdapter
@@ -40,6 +41,25 @@ def _repo_root() -> Path:
 
 def _safe_adapter_slug(name: str) -> str:
     return re.sub(r"[^A-Za-z0-9_.-]", "_", name)
+
+
+def _num(x: Any) -> str:
+    """Format a metric value for the HTML report.
+
+    Metric cells land in HTML: floats render with four decimals, ints
+    (and bools) pass through as plain text, and anything else is
+    HTML-escaped — a hostile artifact must not smuggle markup through
+    a metric value. This function never raises.
+    """
+    if isinstance(x, bool):
+        return "True" if x else "False"
+    if isinstance(x, int):
+        return str(x)
+    if isinstance(x, float):
+        return f"{x:.4f}"
+    if x is None:
+        return "—"
+    return html.escape(str(x))
 
 
 def _get_adapter(name: str):
@@ -263,12 +283,21 @@ def cmd_validate(args: argparse.Namespace) -> int:
         return EXIT_USER_ERROR
     n, bad = 0, 0
     for path in sorted(dataset_dir.glob("*.jsonl")):
-        with open(path) as f:
+        # Explicit UTF-8: the platform default (e.g. cp1252 on Windows)
+        # would silently mojibake non-ASCII case content.
+        with open(path, encoding="utf-8") as f:
             for lineno, line in enumerate(f, 1):
                 if not line.strip():
                     continue
                 n += 1
-                errors = validate_case_dict(json.loads(line))
+                # Malformed JSON is a user error (exit 1 with file:line),
+                # not an infrastructure failure.
+                try:
+                    errors = validate_case_dict(json.loads(line))
+                except json.JSONDecodeError as e:
+                    bad += 1
+                    print(f"{path}:{lineno}: invalid JSON ({e})")
+                    continue
                 if errors:
                     bad += 1
                     print(f"{path}:{lineno}: {'; '.join(errors)}")
@@ -281,26 +310,57 @@ def cmd_report(args: argparse.Namespace) -> int:
     if not run_path.exists():
         print(f"error: {run_path} not found", file=sys.stderr)
         return EXIT_USER_ERROR
-    artifact = RunArtifact.from_json(run_path.read_text())
+    # A corrupt artifact is a user error (exit 1), not an infrastructure
+    # failure: from_json does no validation, so anything it can raise on
+    # hostile input is caught here.
+    try:
+        artifact = RunArtifact.from_json(run_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError, KeyError, TypeError) as e:
+        print(f"error: {run_path} is not a valid run artifact ({e})",
+              file=sys.stderr)
+        return EXIT_USER_ERROR
     if not artifact.verify():
         print("warning: analysis lock mismatch — artifact was modified after sealing.",
               file=sys.stderr)
+    # Metric access is also hostile input: a well-formed-JSON artifact
+    # with the wrong shape must still exit 1, not traceback.
+    try:
+        page = _report_page(artifact)
+    except (ValueError, KeyError, TypeError, IndexError) as e:
+        print(f"error: {run_path} is not a valid run artifact ({e})",
+              file=sys.stderr)
+        return EXIT_USER_ERROR
+    out = Path(args.out)
+    # Explicit UTF-8: the report contains ✓/✗ glyphs, which the Windows
+    # default encoding (cp1252) cannot represent.
+    try:
+        out.write_text(page, encoding="utf-8")
+    except OSError as e2:
+        print(f"error: cannot write report to {out} ({e2})", file=sys.stderr)
+        return EXIT_USER_ERROR
+    print(f"report: {out}")
+    return EXIT_OK
+
+
+def _report_page(artifact) -> str:
     m = artifact.metrics
     # Case ids, family names, adapter names, and suite/dataset labels are
     # author-controlled: escape them so hostile markup lands inert.
+    # Metric values go through _num for the same reason — a hostile
+    # artifact can smuggle markup through any interpolated cell.
     e = html.escape
     rows = "\n".join(
-        f"<tr><td>{e(fam)}</td><td>{v['n']}</td>"
-        f"<td>{v.get('n_eligible', '—')}</td>"
-        f"<td>{v['asr']}</td>"
-        f"<td>{v['asr_ci95'][0]}–{v['asr_ci95'][1]}</td>"
-        f"<td>{v.get('targeted', '—') if v.get('targeted') is not None else '—'}</td></tr>"
+        f"<tr><td>{e(str(fam))}</td><td>{_num(v['n'])}</td>"
+        f"<td>{_num(v.get('n_eligible'))}</td>"
+        f"<td>{_num(v['asr'])}</td>"
+        f"<td>{_num(v['asr_ci95'][0])}–{_num(v['asr_ci95'][1])}</td>"
+        f"<td>{_num(v.get('targeted'))}</td></tr>"
         for fam, v in sorted(m["per_family"].items())
     )
     def _mark(ok: bool) -> str:
         return "✓" if ok else "✗"
     case_rows = "\n".join(
-        f"<tr><td>{e(r.get('case_id', '?'))}</td><td>{e(r.get('family', '?'))}</td>"
+        f"<tr><td>{e(str(r.get('case_id', '?')))}</td><td>{e(str(r.get('family', '?')))}</td>"
         f"<td>{_mark(bool(r.get('benign_correct')))}</td>"
         f"<td>{_mark(bool(r.get('attacked_flipped')))}</td>"
         f"<td>{_mark(bool(r.get('attacked_targeted')))}</td>"
@@ -312,12 +372,12 @@ def cmd_report(args: argparse.Namespace) -> int:
 <body>
 <h1>peira report</h1>
 <p>Adapter: {e(artifact.adapter_name)}{f" {e(artifact.adapter_version)}" if artifact.adapter_version else ""} · Suite: {e(artifact.suite)} ·
-Dataset: {e(artifact.dataset_version)} · peira {artifact.peira_version}</p>
+Dataset: {e(artifact.dataset_version)} · peira {e(str(artifact.peira_version))}</p>
 <ul>
-<li>ASR (conditional): {m['asr_conditional']} (95% CI {m['asr_ci95'][0]}–{m['asr_ci95'][1]})</li>
-<li>Benign accuracy: {m['benign_accuracy']} (95% CI {m['benign_accuracy_ci95'][0]}–{m['benign_accuracy_ci95'][1]})</li>
-<li>Malformed rate: {m['malformed_rate']}</li>
-<li>Ranking eligible: {m['ranking_eligible']}</li>
+<li>ASR (conditional): {_num(m['asr_conditional'])} (95% CI {_num(m['asr_ci95'][0])}–{_num(m['asr_ci95'][1])})</li>
+<li>Benign accuracy: {_num(m['benign_accuracy'])} (95% CI {_num(m['benign_accuracy_ci95'][0])}–{_num(m['benign_accuracy_ci95'][1])})</li>
+<li>Malformed rate: {_num(m['malformed_rate'])}</li>
+<li>Ranking eligible: {_num(m['ranking_eligible'])}</li>
 </ul>
 <h2>Per-family ASR</h2>
 <table border="1"><tr><th>family</th><th>n</th><th>eligible</th><th>ASR</th><th>95% CI</th><th>targeted</th></tr>
@@ -332,15 +392,10 @@ be mislabeled.</p>
 <hr>
 <p><em>A peira score measures robustness on this benchmark's paired
 decision cases. It does not certify a model as safe.</em></p>
-<p>Analysis lock: <code>{artifact.analysis_lock}</code></p>
-<p>Manifest SHA-256: <code>{artifact.manifest_sha256 or "unbound — suite ships no manifest"}</code></p>
+<p>Analysis lock: <code>{e(str(artifact.analysis_lock))}</code></p>
+<p>Manifest SHA-256: <code>{e(str(artifact.manifest_sha256) if artifact.manifest_sha256 else "unbound — suite ships no manifest")}</code></p>
 </body></html>"""
-    out = Path(args.out)
-    # Explicit UTF-8: the report contains ✓/✗ glyphs, which the Windows
-    # default encoding (cp1252) cannot represent.
-    out.write_text(page, encoding="utf-8")
-    print(f"report: {out}")
-    return EXIT_OK
+    return page
 
 
 def cmd_dataset_build_manifest(args: argparse.Namespace) -> int:
