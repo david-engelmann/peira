@@ -5,7 +5,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from peira.review import (mark_reviewed, pending_reviews, review_coverage,
+from peira.review import (critical_cases_missing_notes, mark_reviewed,
+                          pending_reviews, review_coverage,
                           load_review_states)
 
 
@@ -95,6 +96,55 @@ class TestReviewQueue(unittest.TestCase):
         (self.dir / "review.json").write_text("{bad json")
         with self.assertRaises(ValueError):
             pending_reviews(self.dir)
+
+
+class TestCriticalNotes(unittest.TestCase):
+    """The release seal requires a severity justification in the notes
+    of every critical-severity case."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.dir = Path(self.tmp.name)
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def _write_cases(self, cases):
+        path = self.dir / "cases.jsonl"
+        path.write_text("\n".join(json.dumps(c) for c in cases) + "\n")
+
+    def test_critical_without_notes_is_listed(self):
+        self._write_cases([_case("c1", severity="critical")])
+        self.assertEqual(critical_cases_missing_notes(self.dir), ["c1"])
+
+    def test_critical_with_missing_notes_key_is_listed(self):
+        case = _case("c1", severity="critical")
+        del case["notes"]
+        self._write_cases([case])
+        self.assertEqual(critical_cases_missing_notes(self.dir), ["c1"])
+
+    def test_critical_with_blank_notes_is_listed(self):
+        case = _case("c1", severity="critical")
+        case["notes"] = "   "
+        self._write_cases([case])
+        self.assertEqual(critical_cases_missing_notes(self.dir), ["c1"])
+
+    def test_critical_with_notes_passes(self):
+        case = _case("c1", severity="critical")
+        case["notes"] = "wire transfer is irreversible"
+        self._write_cases([case])
+        self.assertEqual(critical_cases_missing_notes(self.dir), [])
+
+    def test_noncritical_without_notes_passes(self):
+        self._write_cases([_case("c1", severity="medium"),
+                           _case("c2", severity="high")])
+        self.assertEqual(critical_cases_missing_notes(self.dir), [])
+
+    def test_invalid_cases_are_ignored(self):
+        bad = _case("c1", severity="critical")
+        del bad["family"]
+        self._write_cases([bad])
+        self.assertEqual(critical_cases_missing_notes(self.dir), [])
 
 
 if __name__ == "__main__":

@@ -8,6 +8,15 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
 ## [Unreleased]
 
 ### Added
+- Authoring pipeline, second slice (T1b): the release seal in
+  `peira dataset build-manifest`. The build now refuses when
+  `--version` isn't semver, when any critical-severity case lacks a
+  severity justification in its notes (the rubric's "say why" rule), or
+  when the dataset changed under an already-sealed version — bump the
+  version instead (idempotent rebuilds are still fine). `peira dataset
+  new` also prints the family's severity hint so authors grade against
+  the rubric at authoring time. New errors documented in
+  `docs/Troubleshooting.md`.
 - Authoring pipeline, first slice (T1a): CI runs the dataset checks on
   every push — `peira dataset gates --dir dataset/trial` and
   `peira dataset verify-manifest --dir dataset/trial` on the committed

@@ -79,6 +79,24 @@ Cause: `build-manifest` validates every case before writing — one or more
 lines failed schema validation (file, line, and rule are printed). Fix:
 fix the cases, then rebuild. A manifest is never written for invalid data.
 
+**`error: version ... is not semver ... — manifest not written`**
+Cause: `build-manifest --version` must be a semantic version
+(`1.0.0`, `0.1.0-trial`), per the versioning rules in `docs/Dataset.md`.
+Fix: pass a semver version; prerelease suffixes like `-trial` are allowed.
+
+**`error: N critical case(s) missing severity notes — manifest not written`**
+Cause: the severity rubric asks the author to say why a case earned its
+tier in the case notes, and the release seal enforces it for
+critical-severity cases. Fix: add a severity justification to each listed
+case's `notes` field (see `docs/Severity-Rubric.md`), then rebuild.
+
+**`error: content changed since version ... was sealed — bump the version, manifest not written`**
+Cause: a manifest already exists for that version but the dataset files
+changed since — versioning rule 1 says any case added, changed, or
+removed is a new version. Rebuilding byte-identical content under the
+same version is fine; changed content is not. Fix: rebuild with the
+bumped `--version`.
+
 **`error: no manifest.json in ... — run 'peira dataset build-manifest' first`**
 Cause: `verify-manifest` needs a manifest to check against. Fix: build one
 with `peira dataset build-manifest --dir <dir> --version <v>`.

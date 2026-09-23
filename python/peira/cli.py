@@ -28,6 +28,10 @@ EXIT_USER_ERROR = 1
 EXIT_INFRA_ERROR = 2
 EXIT_GATE_NOTE = 3  # ran fine, but the run is not ranking-eligible
 
+# dataset_version follows semver (docs/Dataset.md); prerelease suffixes
+# like 0.1.0-trial are allowed.
+_SEMVER_RE = re.compile(r"\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?")
+
 
 def _repo_root() -> Path:
     # python/peira/cli.py -> repo root is three levels up.
@@ -340,12 +344,31 @@ decision cases. It does not certify a model as safe.</em></p>
 
 
 def cmd_dataset_build_manifest(args: argparse.Namespace) -> int:
-    from peira.dataset import MANIFEST_NAME, build_manifest, write_manifest
+    from peira.dataset import (MANIFEST_NAME, build_manifest, read_manifest,
+                               write_manifest)
 
     dataset_dir = Path(args.dir)
     if not dataset_dir.is_dir():
         print(f"error: dataset directory {dataset_dir} not found",
               file=sys.stderr)
+        return EXIT_USER_ERROR
+    if not _SEMVER_RE.fullmatch(args.version):
+        print(f"error: version {args.version!r} is not semver "
+              f"(expected e.g. 1.0.0 or 0.1.0-trial) — manifest not "
+              f"written", file=sys.stderr)
+        return EXIT_USER_ERROR
+    from peira.review import critical_cases_missing_notes
+    try:
+        missing_notes = critical_cases_missing_notes(dataset_dir)
+    except ValueError as e:
+        print(f"error: unreadable case data: {e}", file=sys.stderr)
+        return EXIT_USER_ERROR
+    if missing_notes:
+        print(f"error: {len(missing_notes)} critical case(s) missing "
+              f"severity notes — manifest not written", file=sys.stderr)
+        for cid in missing_notes:
+            print(f"  - {cid}: say why it earned 'critical' in the case "
+                  f"notes (docs/Severity-Rubric.md)", file=sys.stderr)
         return EXIT_USER_ERROR
     if args.require_reviews:
         from peira.review import pending_reviews
@@ -368,6 +391,23 @@ def cmd_dataset_build_manifest(args: argparse.Namespace) -> int:
         print(f"error: invalid cases, manifest not written:\n{e}",
               file=sys.stderr)
         return EXIT_USER_ERROR
+    manifest_path = dataset_dir / MANIFEST_NAME
+    if manifest_path.is_file():
+        try:
+            existing = read_manifest(dataset_dir)
+        except ValueError as e:
+            print(f"error: unreadable manifest: {e}", file=sys.stderr)
+            return EXIT_USER_ERROR
+        # Versioning rule 1 (docs/Dataset.md): any case added, changed,
+        # or removed is a new dataset version. Rebuilding byte-identical
+        # content under the same version is fine; changed content is
+        # not — that would silently rewrite a released version.
+        if (existing.get("dataset_version") == args.version
+                and existing.get("files") != manifest["files"]):
+            print(f"error: content changed since version {args.version} "
+                  f"was sealed — bump the version, manifest not written",
+                  file=sys.stderr)
+            return EXIT_USER_ERROR
     out = write_manifest(dataset_dir, manifest)
     n = sum(f.get("n_cases", 0) for f in manifest["files"].values())
     print(f"manifest: {out} ({n} cases, version {args.version})")
@@ -393,7 +433,8 @@ def cmd_dataset_new(args: argparse.Namespace) -> int:
         print(text)
     guide = template_help(args.family)
     print(f"next: replace every {{{{...}}}} placeholder, then run "
-          f"'peira dataset gates --dir <dir>'. {guide['notes_prompt']}",
+          f"'peira dataset gates --dir <dir>'. {guide['notes_prompt']}\n"
+          f"severity rubric ({args.severity}): {guide['severity_hint']}",
           file=sys.stderr)
     return EXIT_OK
 
