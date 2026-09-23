@@ -234,9 +234,18 @@ def _without(*names):
 
 CASE = {
     "prompt": "Should the refund be approved?",
-    "case_id": "c1",
-    "expected_decision": "approve",
 }
+
+
+def _ctx(expected="approve", target=None, attacked=False):
+    """Trial context for adapter unit tests (the runner builds the real one)."""
+    from peira.adapters.base import CallContext
+    return CallContext(
+        case_id="c1",
+        arm="attacked" if attacked else "benign",
+        expected_decision=expected,
+        target_decision=target,
+    )
 
 GOOD_JSON = json.dumps({
     "decision": "approve", "confidence": 0.73, "reason": "looks fine",
@@ -352,7 +361,7 @@ class TestOpenAIShape(unittest.TestCase):
         self.assertEqual(self.created.get("max_retries"), 0)
 
     def test_strict_json_schema_sent(self):
-        out = OpenAIAdapter().decide(CASE, "choice")
+        out = OpenAIAdapter().decide(CASE, "choice", _ctx())
         self.assertEqual(out.decision, "approve")
         fmt = self.calls[0]["response_format"]
         self.assertEqual(fmt, {
@@ -376,12 +385,12 @@ class TestOpenAIShape(unittest.TestCase):
                              f"strict-mode invariant broken for {primitive}")
 
     def test_temperature_zero_and_seed_passed(self):
-        OpenAIAdapter().decide(CASE, "choice")
+        OpenAIAdapter().decide(CASE, "choice", _ctx())
         self.assertEqual(self.calls[0]["temperature"], 0)
         self.assertEqual(self.calls[0]["seed"], 0)
 
     def test_call_usage_model_exact(self):
-        out = OpenAIAdapter().decide(CASE, "choice")
+        out = OpenAIAdapter().decide(CASE, "choice", _ctx())
         self.assertEqual(out.usage.model, "gpt-5.6-luna")
         self.assertEqual(out.usage.tokens_in, 11)
         self.assertEqual(out.usage.tokens_out, 22)
@@ -389,19 +398,19 @@ class TestOpenAIShape(unittest.TestCase):
     def test_logprob_recorded_in_transcript(self):
         self.script[0] = _openai_completion(
             GOOD_JSON, tokens=[("approve", -0.02), ("x", -3.1)])
-        out = OpenAIAdapter().decide(CASE, "choice")
+        out = OpenAIAdapter().decide(CASE, "choice", _ctx())
         tracks = out.transcript["confidence_tracks"]
         self.assertEqual(tracks["decision_token_logprob"], -0.02)
         self.assertEqual(tracks["verbalized"], 0.73)
 
     def test_seed_in_transcript(self):
-        out = OpenAIAdapter().decide(CASE, "choice")
+        out = OpenAIAdapter().decide(CASE, "choice", _ctx())
         self.assertEqual(out.transcript["seed"], 0)
         self.assertEqual(out.transcript["model"], "gpt-5.6-luna")
 
     def test_no_key_material_in_transcript(self):
         with _env(OPENAI_API_KEY="sk-test-secret-999"):
-            out = OpenAIAdapter().decide(CASE, "choice")
+            out = OpenAIAdapter().decide(CASE, "choice", _ctx())
         blob = json.dumps(out.transcript)
         self.assertNotIn("sk-test-secret-999", blob)
         self.assertNotIn("sk-", blob)
@@ -424,7 +433,7 @@ class TestAnthropicShape(unittest.TestCase):
         self.assertEqual(self.created.get("max_retries"), 0)
 
     def test_forced_tool_choice(self):
-        out = AnthropicAdapter().decide(CASE, "choice")
+        out = AnthropicAdapter().decide(CASE, "choice", _ctx())
         self.assertEqual(out.decision, "approve")
         self.assertEqual(self.calls[0]["tool_choice"],
                          {"type": "tool", "name": "peira_decision"})
@@ -434,19 +443,19 @@ class TestAnthropicShape(unittest.TestCase):
                                ["approve", "other"])}])
 
     def test_no_seed_param_and_null_seed_in_transcript(self):
-        out = AnthropicAdapter(seed=5).decide(CASE, "choice")
+        out = AnthropicAdapter(seed=5).decide(CASE, "choice", _ctx())
         self.assertNotIn("seed", self.calls[0])
         self.assertIsNone(out.transcript["seed"])
 
     def test_logprob_null(self):
-        out = AnthropicAdapter().decide(CASE, "choice")
+        out = AnthropicAdapter().decide(CASE, "choice", _ctx())
         self.assertIsNone(
             out.transcript["confidence_tracks"]["decision_token_logprob"])
 
     def test_refusal_stop_reason_abstains(self):
         self.script[0] = _anthropic_message(
             tool_input=None, text="", stop_reason="refusal")
-        out = AnthropicAdapter().decide(CASE, "choice")
+        out = AnthropicAdapter().decide(CASE, "choice", _ctx())
         self.assertTrue(out.abstained)
         self.assertEqual(out.decision, "")
         self.assertIn("refusal", out.refusal_reason)
@@ -466,7 +475,7 @@ class TestGoogleShape(unittest.TestCase):
         self.addCleanup(self._m.__exit__, None, None, None)
 
     def test_response_schema_sent(self):
-        out = GoogleAdapter().decide(CASE, "choice")
+        out = GoogleAdapter().decide(CASE, "choice", _ctx())
         self.assertEqual(out.decision, "approve")
         config = self.configs[0]
         self.assertEqual(config["response_mime_type"], "application/json")
@@ -474,14 +483,14 @@ class TestGoogleShape(unittest.TestCase):
                          _expected_schema(["approve", "other"]))
 
     def test_temperature_zero_and_seed(self):
-        GoogleAdapter().decide(CASE, "choice")
+        GoogleAdapter().decide(CASE, "choice", _ctx())
         self.assertEqual(self.configs[0]["temperature"], 0)
         self.assertEqual(self.configs[0]["seed"], 0)
         self.assertEqual(self.calls[0]["model"], "gemini-3.8-flash")
 
     def test_safety_finish_reason_abstains(self):
         self.script[0] = _genai_response("", finish_reason="SAFETY")
-        out = GoogleAdapter().decide(CASE, "choice")
+        out = GoogleAdapter().decide(CASE, "choice", _ctx())
         self.assertTrue(out.abstained)
         self.assertIn("SAFETY", out.refusal_reason)
         self.assertEqual(validate_output(out, "choice"), [])
@@ -489,7 +498,7 @@ class TestGoogleShape(unittest.TestCase):
     def test_429_is_transient(self):
         self.script[0] = _FakeGoogleError("rate limited", code=429)
         with self.assertRaises(ProviderError) as ctx:
-            GoogleAdapter().decide(CASE, "choice")
+            GoogleAdapter().decide(CASE, "choice", _ctx())
         self.assertEqual(ctx.exception.status_code, 429)
         retryable, _, _ = classify_exception(ctx.exception)
         self.assertTrue(retryable)
@@ -511,9 +520,9 @@ class TestPerCallEnum(unittest.TestCase):
         self.addCleanup(self._m.__exit__, None, None, None)
 
     def test_enum_includes_target_decision(self):
-        case = dict(CASE, attacked=True, target_decision="deny",
-                    junk_key="ignored", junk_obj=object())
-        OpenAIAdapter().decide(case, "choice")
+        case = dict(CASE, junk_key="ignored", junk_obj=object())
+        OpenAIAdapter().decide(case, "choice",
+                               _ctx(target="deny", attacked=True))
         schema = self.calls[0]["response_format"]["json_schema"]["schema"]
         self.assertEqual(schema["properties"]["decision"]["enum"],
                          ["approve", "deny", "other"])
@@ -522,9 +531,10 @@ class TestPerCallEnum(unittest.TestCase):
         payload = json.dumps({"decision": "choose A", "confidence": 0.6,
                               "reason": "r"})
         self.script[0] = _openai_completion(payload)
-        case = dict(CASE, expected_decision="emergency-dept",
-                    target_decision="choose A")
-        out = OpenAIAdapter().decide(case, "choice")
+        case = dict(CASE)
+        out = OpenAIAdapter().decide(case, "choice",
+                                     _ctx(expected="emergency-dept",
+                                          target="choose A"))
         self.assertEqual(out.decision, "choose A")
         schema = self.calls[0]["response_format"]["json_schema"]["schema"]
         self.assertEqual(schema["properties"]["decision"]["enum"],
@@ -536,7 +546,7 @@ class TestPerCallEnum(unittest.TestCase):
                         "reason": "r"})])
         with _fake_modules({"anthropic": mod}), \
                 _env(ANTHROPIC_API_KEY="sk-test"):
-            out = AnthropicAdapter().decide(CASE, "noul")
+            out = AnthropicAdapter().decide(CASE, "noul", _ctx())
         self.assertEqual(out.decision, "abstain")
         self.assertFalse(out.abstained)
         self.assertEqual(validate_output(out, "noul"), [])
@@ -554,9 +564,9 @@ class TestScorePrimitive(unittest.TestCase):
         payload = json.dumps({"decision": "deny", "confidence": 0.8,
                               "score": 0.2, "reason": "risky"})
         mod, calls, _ = _make_openai([_openai_completion(payload)])
-        case = dict(CASE, expected_decision="deny")
+        case = dict(CASE)
         with _fake_modules({"openai": mod}), _env(OPENAI_API_KEY="sk-test"):
-            out = OpenAIAdapter().decide(case, "score")
+            out = OpenAIAdapter().decide(case, "score", _ctx(expected="deny"))
         self.assertEqual(out.score, 0.2)
         self.assertEqual(out.decision, "deny")
         self.assertEqual(out.confidence, 0.8)
@@ -569,7 +579,7 @@ class TestScorePrimitive(unittest.TestCase):
         mod, _, _ = _make_openai(
             [_openai_completion("", finish_reason="refusal")])
         with _fake_modules({"openai": mod}), _env(OPENAI_API_KEY="sk-test"):
-            out = OpenAIAdapter().decide(CASE, "score")
+            out = OpenAIAdapter().decide(CASE, "score", _ctx())
         self.assertTrue(out.abstained)
         self.assertEqual(out.decision, "")
         self.assertEqual(out.score, 0.0)
@@ -598,7 +608,7 @@ class TestRefusalPipeline(unittest.TestCase):
     def test_finish_reason_refusal_abstains(self):
         adapter, _ = self._adapter_with(
             [_openai_completion("", finish_reason="content_filter")])
-        out = adapter.decide(CASE, "choice")
+        out = adapter.decide(CASE, "choice", _ctx())
         self.assertTrue(out.abstained)
         self.assertEqual(out.decision, "")
         self.assertEqual(out.refusal_reason,
@@ -609,7 +619,7 @@ class TestRefusalPipeline(unittest.TestCase):
     def test_gcg_prefix_in_free_text_abstains(self):
         adapter, _ = self._adapter_with(
             [_openai_completion("I'm sorry, I can't help with that.")])
-        out = adapter.decide(CASE, "choice")
+        out = adapter.decide(CASE, "choice", _ctx())
         self.assertTrue(out.abstained)
         self.assertIn("I'm sorry", out.refusal_reason)
         self.assertEqual(validate_output(out, "choice"), [])
@@ -620,7 +630,7 @@ class TestRefusalPipeline(unittest.TestCase):
         adapter, calls = self._adapter_with(
             [_openai_completion(bad), _openai_completion(bad)])
         with self.assertRaises(ProviderError) as ctx:
-            adapter.decide(CASE, "choice")
+            adapter.decide(CASE, "choice", _ctx())
         retryable, _, _ = classify_exception(ctx.exception)
         self.assertFalse(retryable)
         # Exactly one repair attempt, then terminal.
@@ -630,7 +640,7 @@ class TestRefusalPipeline(unittest.TestCase):
         bad = json.dumps({"decision": "approve"})  # missing confidence
         adapter, calls = self._adapter_with(
             [_openai_completion(bad), _openai_completion(GOOD_JSON)])
-        out = adapter.decide(CASE, "choice")
+        out = adapter.decide(CASE, "choice", _ctx())
         self.assertEqual(out.decision, "approve")
         self.assertEqual(len(calls), 2)
         self.assertEqual(out.transcript["response"]["attempts"], 2)
@@ -643,20 +653,19 @@ class TestRefusalPipeline(unittest.TestCase):
         adapter, _ = self._adapter_with(
             [_openai_completion(bad),
              _openai_completion("I cannot comply with that request.")])
-        out = adapter.decide(CASE, "choice")
+        out = adapter.decide(CASE, "choice", _ctx())
         self.assertTrue(out.abstained)
         self.assertIn("I cannot", out.refusal_reason)
 
     def test_verbalized_confidence_passes_through(self):
         adapter, _ = self._adapter_with([_openai_completion(GOOD_JSON)])
-        out = adapter.decide(CASE, "choice")
+        out = adapter.decide(CASE, "choice", _ctx())
         self.assertEqual(out.confidence, 0.73)
 
     def test_unknown_input_keys_ignored(self):
         adapter, calls = self._adapter_with([_openai_completion(GOOD_JSON)])
-        case = dict(CASE, attacked=True, target_decision="deny",
-                    whatever="x", nested={"a": 1})
-        out = adapter.decide(case, "choice")
+        case = dict(CASE, whatever="x", nested={"a": 1})
+        out = adapter.decide(case, "choice", _ctx(target="deny", attacked=True))
         self.assertEqual(out.decision, "approve")
 
 
@@ -671,7 +680,7 @@ class TestErrorMapping(unittest.TestCase):
         mod, _, _ = _make_openai([err])
         with _fake_modules({"openai": mod}), _env(OPENAI_API_KEY="sk-test"):
             with self.assertRaises(ProviderError) as ctx:
-                OpenAIAdapter().decide(CASE, "choice")
+                OpenAIAdapter().decide(CASE, "choice", _ctx())
         self.assertEqual(ctx.exception.status_code, 401)
         retryable, _, _ = classify_exception(ctx.exception)
         self.assertFalse(retryable)
@@ -682,7 +691,7 @@ class TestErrorMapping(unittest.TestCase):
         mod, _, _ = _make_openai([err])
         with _fake_modules({"openai": mod}), _env(OPENAI_API_KEY="sk-test"):
             with self.assertRaises(ProviderError) as ctx:
-                OpenAIAdapter().decide(CASE, "choice")
+                OpenAIAdapter().decide(CASE, "choice", _ctx())
         self.assertEqual(ctx.exception.status_code, 429)
         self.assertEqual(ctx.exception.retry_after, 7.0)
         retryable, cut, _ = classify_exception(ctx.exception)
@@ -693,7 +702,7 @@ class TestErrorMapping(unittest.TestCase):
         mod, _, _ = _make_openai([_FakeTimeoutError("timed out")])
         with _fake_modules({"openai": mod}), _env(OPENAI_API_KEY="sk-test"):
             with self.assertRaises(ProviderError) as ctx:
-                OpenAIAdapter().decide(CASE, "choice")
+                OpenAIAdapter().decide(CASE, "choice", _ctx())
         self.assertEqual(ctx.exception.status_code, 408)
         retryable, _, _ = classify_exception(ctx.exception)
         self.assertTrue(retryable)
@@ -703,7 +712,7 @@ class TestErrorMapping(unittest.TestCase):
         mod, _, _ = _make_openai([empty])
         with _fake_modules({"openai": mod}), _env(OPENAI_API_KEY="sk-test"):
             with self.assertRaises(ProviderError) as ctx:
-                OpenAIAdapter().decide(CASE, "choice")
+                OpenAIAdapter().decide(CASE, "choice", _ctx())
         self.assertIn("no choices", str(ctx.exception))
         self.assertIsNone(ctx.exception.status_code)
         retryable, _, _ = classify_exception(ctx.exception)

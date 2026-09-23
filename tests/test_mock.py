@@ -7,6 +7,7 @@ so targeted-success is meaningful for arbitrary decision labels.
 
 import unittest
 
+from peira.adapters.base import CallContext
 from peira.adapters.mock import MockAdapter
 from peira.runner import load_cases, run_case
 from peira.schema import Case
@@ -27,8 +28,18 @@ def _case(case_id="m1", expected="A", target="B", primitive="choice"):
     })
 
 
+def _ctx(case, arm):
+    return CallContext(
+        case_id=case.case_id,
+        arm=arm,
+        expected_decision=case.benign.expected_decision,
+        target_decision=case.attacked.target_decision
+        if arm == "attacked" else None,
+    )
+
+
 class _RecordingAdapter:
-    """Captures the input dicts the runner hands to decide()."""
+    """Captures the input dicts and contexts the runner hands to decide()."""
     name = "recorder"
     version = "0.1.0"
     supported_primitives = frozenset({"choice"})
@@ -36,10 +47,10 @@ class _RecordingAdapter:
     def __init__(self):
         self.seen = []
 
-    def decide(self, case_input, primitive):
-        self.seen.append(dict(case_input))
+    def decide(self, case_input, primitive, context):
+        self.seen.append((dict(case_input), context))
         from peira.adapters.base import ChoiceOutput
-        return ChoiceOutput(decision=case_input["expected_decision"],
+        return ChoiceOutput(decision=context.expected_decision,
                             confidence=1.0)
 
 
@@ -68,19 +79,21 @@ class TestFlippedDecision(unittest.TestCase):
 
     def test_deterministic(self):
         a, b = MockAdapter(), MockAdapter()
-        inp = {"case_id": "x", "expected_decision": "A",
-               "target_decision": "B", "attacked": True}
-        self.assertEqual(a.decide(inp, "choice").decision,
-                         b.decide(inp, "choice").decision)
+        case = _case(case_id="x", expected="A", target="B")
+        ctx = _ctx(case, "attacked")
+        inp = {"prompt": "p"}
+        self.assertEqual(a.decide(inp, "choice", ctx).decision,
+                         b.decide(inp, "choice", ctx).decision)
 
     def test_confidence_deterministic_across_primitives(self):
         # The mock reports a seeded confidence on every primitive: high
         # when deciding as expected, lower on flips — never None.
         a, b = MockAdapter(), MockAdapter()
+        case = _case(case_id="c-conf", expected="approve", target="deny")
+        ctx = _ctx(case, "benign")
         for primitive in ("choice", "score", "noul"):
-            inp = {"case_id": "c-conf", "expected_decision": "approve",
-                   "attacked": False}
-            out_a, out_b = a.decide(inp, primitive), b.decide(inp, primitive)
+            out_a = a.decide({"prompt": "p"}, primitive, ctx)
+            out_b = b.decide({"prompt": "p"}, primitive, ctx)
             self.assertIsNotNone(out_a.confidence, primitive)
             self.assertEqual(out_a.confidence, out_b.confidence, primitive)
             self.assertGreaterEqual(out_a.confidence, 0.0)
@@ -88,23 +101,79 @@ class TestFlippedDecision(unittest.TestCase):
 
     def test_mock_never_abstains_and_reports_no_usage(self):
         m = MockAdapter()
+        case = _case(case_id="c", expected="approve", target="deny")
         for primitive in ("choice", "score", "noul"):
-            out = m.decide({"case_id": "c", "expected_decision": "approve",
-                            "attacked": True},
-                           primitive)
+            out = m.decide({"prompt": "p"}, primitive, _ctx(case, "attacked"))
             self.assertFalse(out.abstained, primitive)
             self.assertIsNone(out.usage, primitive)
 
+    def test_mock_requires_context(self):
+        # Fail loud, never silently fall back to reading the input dict.
+        m = MockAdapter()
+        with self.assertRaises(ValueError):
+            m.decide({"prompt": "p"}, "choice")
 
-class TestRunnerInjection(unittest.TestCase):
-    def test_attacked_input_carries_target(self):
+
+class TestInputPurity(unittest.TestCase):
+    """D-25: the adapter-visible input is exactly the case's own input.
+
+    No injected ``case_id`` / ``expected_decision`` / ``target_decision``
+    / ``attacked`` keys — trial bookkeeping travels on the typed
+    CallContext instead.
+    """
+
+    def test_inputs_are_verbatim_case_inputs(self):
+        case = _case(expected="A", target="B")
         rec = _RecordingAdapter()
-        run_case(rec, _case(expected="A", target="B"))
-        benign_in, attacked_in = rec.seen
-        self.assertEqual(attacked_in["target_decision"], "B")
-        self.assertTrue(attacked_in["attacked"])
-        self.assertNotIn("target_decision", benign_in)
-        self.assertNotIn("attacked", benign_in)
+        run_case(rec, case)
+        self.assertEqual(len(rec.seen), 2)
+        (benign_in, benign_ctx), (attacked_in, attacked_ctx) = rec.seen
+        # Byte-identical copies of the case's own input dicts, no more.
+        self.assertEqual(benign_in, case.benign.input)
+        self.assertEqual(attacked_in, case.attacked.input)
+        self.assertEqual(set(benign_in), set(case.benign.input))
+        self.assertEqual(set(attacked_in), set(case.attacked.input))
+        for key in ("case_id", "expected_decision", "target_decision",
+                    "attacked"):
+            self.assertNotIn(key, benign_in)
+            self.assertNotIn(key, attacked_in)
+
+    def test_context_carries_trial_bookkeeping(self):
+        case = _case(case_id="m9", expected="A", target="B")
+        rec = _RecordingAdapter()
+        run_case(rec, case)
+        (_, benign_ctx), (_, attacked_ctx) = rec.seen
+        self.assertEqual(benign_ctx.case_id, "m9")
+        self.assertEqual(benign_ctx.arm, "benign")
+        self.assertEqual(benign_ctx.expected_decision, "A")
+        self.assertIsNone(benign_ctx.target_decision)
+        self.assertEqual(attacked_ctx.case_id, "m9")
+        self.assertEqual(attacked_ctx.arm, "attacked")
+        self.assertEqual(attacked_ctx.expected_decision, "A")
+        self.assertEqual(attacked_ctx.target_decision, "B")
+
+    def test_gaming_adapter_cannot_echo_from_input(self):
+        # The P0 gaming adapter: echo expected_decision straight out of
+        # the input dict. Post-D-25 the input carries no such key, so it
+        # answers garbage and scores nothing.
+        from peira.adapters.base import ChoiceOutput
+
+        class GamingAdapter:
+            name = "gaming"
+            version = "0.0.1"
+            supported_primitives = frozenset({"choice"})
+
+            def decide(self, case_input, primitive, context):
+                return ChoiceOutput(
+                    decision=case_input.get("expected_decision", "GARBAGE"),
+                    confidence=1.0,
+                )
+
+        result = run_case(GamingAdapter(), _case(expected="A", target="B"))
+        self.assertEqual(result.benign.decision, "GARBAGE")
+        self.assertEqual(result.attacked.decision, "GARBAGE")
+        # Garbage != expected on benign: no baseline, case ineligible.
+        self.assertFalse(result.eligible)
 
 
 class TestTrialSuiteFlipProperties(unittest.TestCase):

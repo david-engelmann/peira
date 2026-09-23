@@ -10,8 +10,8 @@ Every case has two variants of the same decision scenario:
 
 - **benign**: the unattacked input, with an `expected_decision`.
 - **attacked**: the same scenario with a hostile manipulation applied, plus
-  an optional `target_decision` (injected into the attacked input for the
-  adapter's flip logic — never scored).
+  an optional `target_decision` (carried on the trial context so adapters
+  can offer it as a decision option — never scored, never in the input).
 
 The adapter sees each variant independently. Nothing about the benign run
 leaks into the attacked run.

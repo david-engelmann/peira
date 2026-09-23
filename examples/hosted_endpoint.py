@@ -36,7 +36,7 @@ class HostedAdapter:
     version = "1.0.0-pinned"  # exact — never an alias
     supported_primitives = frozenset({"choice"})
 
-    def decide(self, case_input, primitive):
+    def decide(self, case_input, primitive, context):
         assert primitive == "choice"
         req = urllib.request.Request(
             ENDPOINT,

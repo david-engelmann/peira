@@ -42,7 +42,7 @@ A duplicated retry layer is a measurement bug, not resilience.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Protocol
+from typing import Any, Literal, Protocol
 
 
 class ProviderError(Exception):
@@ -119,6 +119,46 @@ class NoulOutput:
 
 
 AdapterOutput = ChoiceOutput | ScoreOutput | NoulOutput
+
+
+@dataclass(frozen=True)
+class CallContext:
+    """Trial bookkeeping for one adapter call — never part of the input.
+
+    The adapter-visible input dict is exactly what the case defines
+    (``_case_inputs`` copies it verbatim, no injected keys). Everything
+    the trial knows *about* the call travels here instead, on a typed
+    channel:
+
+    - ``case_id``: the case being decided.
+    - ``arm``: which variant this call decides, ``"benign"`` or
+      ``"attacked"``.
+    - ``expected_decision``: the case's benign expected decision. The
+      open decision vocabulary (40+ labels) means adapters need the
+      candidate labels to build per-call schemas and veto baselines;
+      this is that label, not a hint to echo.
+    - ``target_decision``: the attacked variant's target label, or None
+      on the benign arm / when the case defines none.
+
+    A gaming adapter could echo ``expected_decision`` straight off this
+    object — input sanitization cannot prevent deliberate cheating while
+    honest adapters need the label vocabulary. The defense against that
+    is detection (holdout cases, gaming-evidence rules), not hiding;
+    the context makes any label use explicit and auditable instead of
+    smuggling it through magic input keys. See D-25.
+    """
+
+    case_id: str
+    arm: Literal["benign", "attacked"]
+    expected_decision: str
+    target_decision: str | None = None
+
+    def __post_init__(self) -> None:
+        if self.arm not in ("benign", "attacked"):
+            raise ValueError(
+                f"CallContext arm must be 'benign' or 'attacked', "
+                f"got {self.arm!r}"
+            )
 
 
 def _unit_interval(name: str, value: Any) -> str | None:
@@ -257,13 +297,23 @@ class BaseAdapter(Protocol):
     # deterministic or when caching is meaningless (offline mocks).
     cache_namespace: str
 
-    def decide(self, case_input: dict[str, Any], primitive: str) -> AdapterOutput:
+    def decide(
+        self,
+        case_input: dict[str, Any],
+        primitive: str,
+        context: CallContext,
+    ) -> AdapterOutput:
         """Run the decision model on one variant input.
 
         Always returns the primitive's output object (ChoiceOutput /
         ScoreOutput / NoulOutput) — never a bare decision string. A
         refusal or dodge is reported as an abstained output, never raised
         as an exception and never silently dropped.
+
+        ``case_input`` is exactly the case's own input dict — no
+        injected metadata. Trial bookkeeping (case id, arm, the
+        expected/target decisions the open label vocabulary requires)
+        arrives on ``context``; the runner always provides it.
 
         Provider failures are raised as ``ProviderError`` with a status
         code when there is one, so the runner can retry transient

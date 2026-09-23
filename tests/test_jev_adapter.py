@@ -20,16 +20,36 @@ from peira.adapters.jev import (
 )
 
 
+# Trial-bookkeeping defaults for adapter unit tests (the runner builds
+# the real CallContext; these mirror _case_input's old metadata keys).
+_CTX_DEFAULTS = {
+    "case_id": "j1",
+    "expected_decision": "deny",
+    "target_decision": "approve",
+    "attacked": True,
+}
+
+
 def _case_input(**over):
-    d = {
-        "prompt": "Decision: approve or deny?",
-        "case_id": "j1",
-        "expected_decision": "deny",
-        "target_decision": "approve",
-        "attacked": True,
-    }
-    d.update(over)
+    # The pure case input: trial bookkeeping lives on the context now,
+    # never in the input dict.
+    d = {"prompt": "Decision: approve or deny?"}
+    for k, v in over.items():
+        if k not in _CTX_DEFAULTS:
+            d[k] = v
     return d
+
+
+def _ctx(**over):
+    from peira.adapters.base import CallContext
+    vals = dict(_CTX_DEFAULTS)
+    vals.update(over)
+    return CallContext(
+        case_id=vals["case_id"],
+        arm="attacked" if vals["attacked"] else "benign",
+        expected_decision=vals["expected_decision"],
+        target_decision=vals["target_decision"],
+    )
 
 
 def _transport_for(answers, usage=None, latency=12.5):
@@ -88,7 +108,7 @@ class TestJevChoice(unittest.TestCase):
                                            "other": 0.1},
                          "confidence": 0.7},
         })
-        out = JevAdapter(api_key="k", transport=t).decide(_case_input(), "choice")
+        out = JevAdapter(api_key="k", transport=t).decide(_case_input(), "choice", _ctx())
         self.assertEqual(validate_output(out, "choice"), [])
         self.assertEqual(out.decision, "approve")
         self.assertAlmostEqual(out.confidence, 0.7)
@@ -98,7 +118,7 @@ class TestJevChoice(unittest.TestCase):
 
     def test_choice_request_shape(self):
         t = _transport_for({"decision": {"choice": "deny", "confidence": 0.9}})
-        JevAdapter(api_key="k", transport=t).decide(_case_input(), "choice")
+        JevAdapter(api_key="k", transport=t).decide(_case_input(), "choice", _ctx())
         payload = t.seen["payload"]
         self.assertEqual(payload["model"], MODEL_ID)
         self.assertEqual(payload["state"], "Decision: approve or deny?")
@@ -113,9 +133,8 @@ class TestJevChoice(unittest.TestCase):
     def test_choice_benign_labels(self):
         t = _transport_for({"decision": {"choice": "deny", "confidence": 0.9}})
         adapter = JevAdapter(api_key="k", transport=t)
-        benign = _case_input(attacked=False)
-        del benign["target_decision"]
-        adapter.decide(benign, "choice")
+        adapter.decide(_case_input(), "choice",
+                       _ctx(attacked=False, target_decision=None))
         labels = list(t.seen["payload"]["questions"]["decision"]["criteria"])
         self.assertIn("deny", labels)
         self.assertIn("other", labels)
@@ -125,9 +144,9 @@ class TestJevChoice(unittest.TestCase):
         t = _transport_for({"decision": {"choice": "approve",
                                         "confidence": 0.9}})
         adapter = JevAdapter(api_key="k", transport=t)
-        ci = _case_input(expected_decision=None)
-        del ci["target_decision"]
-        adapter.decide(ci, "choice")
+        ci = _case_input()
+        adapter.decide(ci, "choice",
+                       _ctx(expected_decision=None, target_decision=None))
         labels = list(t.seen["payload"]["questions"]["decision"]["criteria"])
         self.assertNotIn("None", labels)
         self.assertIn("approve", labels)  # fallback, not str(None)
@@ -136,11 +155,11 @@ class TestJevChoice(unittest.TestCase):
         t = _transport_for(
             {"decision": {"choice": "maybe", "confidence": 0.5}})
         with self.assertRaises(ProviderError):
-            JevAdapter(api_key="k", transport=t).decide(_case_input(), "choice")
+            JevAdapter(api_key="k", transport=t).decide(_case_input(), "choice", _ctx())
 
     def test_unsupported_primitive(self):
         with self.assertRaises(ValueError):
-            JevAdapter(api_key="k").decide(_case_input(), "bogus")
+            JevAdapter(api_key="k").decide(_case_input(), "bogus", _ctx())
 
 
 class TestJevScore(unittest.TestCase):
@@ -153,14 +172,14 @@ class TestJevScore(unittest.TestCase):
 
     def test_score_normalized_to_unit_interval(self):
         a, _ = self._score_adapter(3.2)
-        out = a.decide(_case_input(), "score")
+        out = a.decide(_case_input(), "score", _ctx())
         self.assertEqual(validate_output(out, "score"), [])
         self.assertAlmostEqual(out.score, 3.2 / 4)  # 5 levels, 0-based
         self.assertEqual(out.decision, "deny")
 
     def test_score_clamped(self):
         a, _ = self._score_adapter(99)
-        out = a.decide(_case_input(), "score")
+        out = a.decide(_case_input(), "score", _ctx())
         self.assertEqual(out.score, 1.0)
 
     def test_score_missing_value_computed_from_probabilities(self):
@@ -169,7 +188,7 @@ class TestJevScore(unittest.TestCase):
                                         for i in range(5)}},
             "decision": {"choice": "approve", "confidence": 0.9},
         })
-        out = JevAdapter(api_key="k", transport=t).decide(_case_input(), "score")
+        out = JevAdapter(api_key="k", transport=t).decide(_case_input(), "score", _ctx())
         self.assertAlmostEqual(out.score, 1.0)
 
     def test_score_non_numeric_probabilities_is_terminal(self):
@@ -178,11 +197,11 @@ class TestJevScore(unittest.TestCase):
             "decision": {"choice": "approve", "confidence": 0.9},
         })
         with self.assertRaises(ProviderError):
-            JevAdapter(api_key="k", transport=t).decide(_case_input(), "score")
+            JevAdapter(api_key="k", transport=t).decide(_case_input(), "score", _ctx())
 
     def test_score_sends_two_questions(self):
         a, t = self._score_adapter(3)
-        a.decide(_case_input(), "score")
+        a.decide(_case_input(), "score", _ctx())
         qs = t.seen["payload"]["questions"]
         self.assertEqual(set(qs), {"score", "decision"})
         sq = qs["score"]
@@ -196,20 +215,20 @@ class TestJevScore(unittest.TestCase):
 class TestJevNoul(unittest.TestCase):
     def test_noul_yes_means_abstain(self):
         t = _transport_for({"abstain": {"noul": 0.8}})
-        out = JevAdapter(api_key="k", transport=t).decide(_case_input(), "noul")
+        out = JevAdapter(api_key="k", transport=t).decide(_case_input(), "noul", _ctx())
         self.assertEqual(validate_output(out, "noul"), [])
         self.assertEqual(out.decision, "abstain")
         self.assertAlmostEqual(out.confidence, 0.6)  # |2*.8-1|
 
     def test_noul_no_returns_expected(self):
         t = _transport_for({"abstain": {"noul": 0.2}})
-        out = JevAdapter(api_key="k", transport=t).decide(_case_input(), "noul")
+        out = JevAdapter(api_key="k", transport=t).decide(_case_input(), "noul", _ctx())
         self.assertEqual(out.decision, "deny")
         self.assertAlmostEqual(out.confidence, 0.6)
 
     def test_noul_request_shape(self):
         t = _transport_for({"abstain": {"noul": 0.1}})
-        JevAdapter(api_key="k", transport=t).decide(_case_input(), "noul")
+        JevAdapter(api_key="k", transport=t).decide(_case_input(), "noul", _ctx())
         q = t.seen["payload"]["questions"]["abstain"]
         self.assertEqual(q["type"], "noul")
         self.assertTrue(q["instructions"])
@@ -239,7 +258,7 @@ class TestJevErrors(unittest.TestCase):
         def boom(payload):
             raise ProviderError("jev API error 401", status_code=401)
         with self.assertRaises(ProviderError) as cm:
-            JevAdapter(api_key="k", transport=boom).decide(_case_input(), "choice")
+            JevAdapter(api_key="k", transport=boom).decide(_case_input(), "choice", _ctx())
         self.assertEqual(cm.exception.status_code, 401)
 
     def test_429_carries_retry_signal(self):
@@ -247,7 +266,7 @@ class TestJevErrors(unittest.TestCase):
             raise ProviderError("jev API error 429", status_code=429,
                                 retry_after=5.0)
         with self.assertRaises(ProviderError) as cm:
-            JevAdapter(api_key="k", transport=boom).decide(_case_input(), "choice")
+            JevAdapter(api_key="k", transport=boom).decide(_case_input(), "choice", _ctx())
         self.assertEqual(cm.exception.status_code, 429)
         self.assertEqual(cm.exception.retry_after, 5.0)
 
@@ -255,14 +274,14 @@ class TestJevErrors(unittest.TestCase):
         def boom(payload):
             raise ProviderError("jev API error 529", status_code=529)
         with self.assertRaises(ProviderError) as cm:
-            JevAdapter(api_key="k", transport=boom).decide(_case_input(), "choice")
+            JevAdapter(api_key="k", transport=boom).decide(_case_input(), "choice", _ctx())
         self.assertEqual(cm.exception.status_code, 529)
 
     def test_422_is_terminal(self):
         def boom(payload):
             raise ProviderError("jev API error 422", status_code=422)
         with self.assertRaises(ProviderError) as cm:
-            JevAdapter(api_key="k", transport=boom).decide(_case_input(), "choice")
+            JevAdapter(api_key="k", transport=boom).decide(_case_input(), "choice", _ctx())
         self.assertEqual(cm.exception.status_code, 422)
 
     def test_transport_timeout_maps_to_408(self):
@@ -281,7 +300,7 @@ class TestJevErrors(unittest.TestCase):
         t2 = _transport_for({"nope": {}})
         for tr in (t, t2):
             with self.assertRaises(ProviderError):
-                JevAdapter(api_key="k", transport=tr).decide(_case_input(), "choice")
+                JevAdapter(api_key="k", transport=tr).decide(_case_input(), "choice", _ctx())
 
     def test_raise_for_status_mapping(self):
         a = JevAdapter.__new__(JevAdapter)  # no network, no key needed
@@ -296,7 +315,7 @@ class TestJevErrors(unittest.TestCase):
         import json
         t = _transport_for({"decision": {"choice": "deny", "confidence": 0.9}})
         adapter = JevAdapter(api_key="sk-secret-key", transport=t)
-        out = adapter.decide(_case_input(), "choice")
+        out = adapter.decide(_case_input(), "choice", _ctx())
         blob = json.dumps(out.transcript)
         self.assertNotIn("sk-secret-key", blob)
         # key only ever travels in the Authorization header, not the payload
@@ -304,8 +323,8 @@ class TestJevErrors(unittest.TestCase):
 
     def test_unknown_keys_ignored(self):
         t = _transport_for({"decision": {"choice": "deny", "confidence": 0.9}})
-        ci = _case_input(weird_key="x", attacked=True, target_decision="approve")
-        out = JevAdapter(api_key="k", transport=t).decide(ci, "choice")
+        ci = _case_input(weird_key="x")
+        out = JevAdapter(api_key="k", transport=t).decide(ci, "choice", _ctx())
         self.assertEqual(out.decision, "deny")
 
 

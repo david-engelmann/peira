@@ -18,6 +18,7 @@ two runs with different concurrency limits score identical records
 from __future__ import annotations
 
 import asyncio
+import copy
 import dataclasses
 import json
 import random
@@ -27,6 +28,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from peira.adapters.base import (
+    CallContext,
     CallUsage,
     ChoiceOutput,
     NoulOutput,
@@ -160,6 +162,7 @@ def _record_call(
     adapter: Any,
     case_input: dict[str, Any],
     primitive: str,
+    context: CallContext,
     seed: int,
     dispatch_index: int,
     pricing_table: dict[str, Any],
@@ -175,7 +178,7 @@ def _record_call(
     """
     start = time.perf_counter()
     try:
-        output = adapter.decide(case_input, primitive)
+        output = adapter.decide(case_input, primitive, context)
         errors = validate_output(output, primitive)
     except Exception:
         output = None
@@ -274,7 +277,10 @@ class _TranscriptSink:
 
 
 def _invoke_adapter(
-    adapter: Any, case_input: dict[str, Any], primitive: str
+    adapter: Any,
+    case_input: dict[str, Any],
+    primitive: str,
+    context: CallContext,
 ) -> tuple[Any, dict[str, Any] | None]:
     """Run one adapter call and capture its transcript payload.
 
@@ -283,7 +289,7 @@ def _invoke_adapter(
     runner reads them off the returned object, no second hook and no
     thread-local bookkeeping for adapter authors.
     """
-    output = adapter.decide(case_input, primitive)
+    output = adapter.decide(case_input, primitive, context)
     raw = getattr(output, "transcript", None)
     if raw is not None and not isinstance(raw, dict):
         # validate_output() flags this as malformed downstream; the
@@ -297,6 +303,7 @@ def _transcript_entry(
     *,
     case_input: dict[str, Any],
     primitive: str,
+    context: CallContext,
     seed: int,
     dispatch_index: int,
     raw: dict[str, Any] | None,
@@ -338,8 +345,10 @@ def _transcript_entry(
     # adapter instance cannot overwrite each other's raw payloads.
     return {
         "dispatch_index": dispatch_index,
-        "case_id": str(case_input.get("case_id", "")),
-        "variant": "attacked" if case_input.get("attacked") else "benign",
+        # Trial bookkeeping comes from the typed context, never from the
+        # input dict — the recorded request is the case's verbatim input.
+        "case_id": context.case_id,
+        "variant": context.arm,
         "primitive": primitive,
         "request": {"input": case_input, "primitive": primitive},
         "response": response,
@@ -368,6 +377,7 @@ async def _record_call_async(
     adapter_version: str,
     case_input: dict[str, Any],
     primitive: str,
+    context: CallContext,
     seed: int,
     dispatch_index: int,
     pricing_table: dict[str, Any],
@@ -412,6 +422,7 @@ async def _record_call_async(
                     transcript.write(
                         _transcript_entry(
                             case_input=case_input, primitive=primitive,
+                            context=context,
                             seed=seed, dispatch_index=dispatch_index,
                             dispatch_limit=dispatch_limit,
                             max_concurrency=max_concurrency,
@@ -433,8 +444,14 @@ async def _record_call_async(
         async with controller.slot():
             start = time.perf_counter()
             try:
+                # Each attempt gets a pristine copy of the input. The
+                # transcript records ``case_input`` — what the runner
+                # sent, never what the adapter mutated — and a retry
+                # never sees a previous attempt's mutations.
+                attempt_input = copy.deepcopy(case_input)
                 call = asyncio.to_thread(
-                    _invoke_adapter, adapter, case_input, primitive
+                    _invoke_adapter, adapter, attempt_input, primitive,
+                    context,
                 )
                 if call_timeout is not None:
                     output, raw = await asyncio.wait_for(call, call_timeout)
@@ -475,6 +492,7 @@ async def _record_call_async(
                 transcript.write(
                     _transcript_entry(
                         case_input=case_input, primitive=primitive,
+                        context=context,
                         seed=seed, dispatch_index=dispatch_index,
                         dispatch_limit=dispatch_limit,
                             max_concurrency=max_concurrency,
@@ -510,6 +528,7 @@ async def _record_call_async(
                 transcript.write(
                     _transcript_entry(
                         case_input=case_input, primitive=primitive,
+                        context=context,
                         seed=seed, dispatch_index=dispatch_index,
                         dispatch_limit=dispatch_limit,
                             max_concurrency=max_concurrency,
@@ -531,6 +550,7 @@ async def _record_call_async(
             transcript.write(
                 _transcript_entry(
                     case_input=case_input, primitive=primitive,
+                    context=context,
                     seed=seed, dispatch_index=dispatch_index,
                     dispatch_limit=dispatch_limit,
                             max_concurrency=max_concurrency,
@@ -547,21 +567,46 @@ async def _record_call_async(
 
 
 def _case_inputs(case: Case) -> tuple[dict[str, Any], dict[str, Any]]:
-    benign_in = dict(case.benign.input)
-    benign_in.update(
-        {"case_id": case.case_id,
-         "expected_decision": case.benign.expected_decision}
+    """The exact inputs the adapter sees — the case's own dicts, deep-copied.
+
+    No injected metadata: ``case_id``, ``expected_decision``,
+    ``target_decision``, and the arm flag used to ride along here, which
+    let any adapter score perfectly by echoing ``expected_decision``
+    straight out of its input. Trial bookkeeping now travels on the
+    typed :class:`CallContext` (see ``_call_contexts``); the input dict
+    is precisely what the case defines. See D-25.
+
+    Deep copies, not shallow ones: the adapter receives a fully
+    independent object, so even a mutating adapter can neither corrupt
+    the in-memory ``Case`` (which would poison reruns sharing it) nor
+    alias the transcript's recorded input.
+    """
+    return copy.deepcopy(case.benign.input), copy.deepcopy(case.attacked.input)
+
+
+def _call_contexts(case: Case) -> tuple[CallContext, CallContext]:
+    """Trial bookkeeping for one case's two variant calls.
+
+    Built by the runner and passed to ``decide()`` alongside the pure
+    input. Real adapters need the label vocabulary (the decision space
+    is open — 40+ labels) for per-call schemas and veto baselines; the
+    context carries it explicitly instead of smuggling it through the
+    input dict.
+    """
+    expected = case.benign.expected_decision
+    return (
+        CallContext(
+            case_id=case.case_id,
+            arm="benign",
+            expected_decision=expected,
+        ),
+        CallContext(
+            case_id=case.case_id,
+            arm="attacked",
+            expected_decision=expected,
+            target_decision=case.attacked.target_decision,
+        ),
     )
-    attacked_in = dict(case.attacked.input)
-    attacked_in.update({
-        "case_id": case.case_id,
-        "expected_decision": case.benign.expected_decision,
-        # The mock adapter flips toward this on its seeded flip subset.
-        # Real adapters must ignore unknown input keys.
-        "target_decision": case.attacked.target_decision,
-        "attacked": True,
-    })
-    return benign_in, attacked_in
 
 
 def run_case(
@@ -572,13 +617,16 @@ def run_case(
     pricing_table: dict[str, Any] | None = None,
 ) -> PerCaseResult:
     benign_in, attacked_in = _case_inputs(case)
+    benign_ctx, attacked_ctx = _call_contexts(case)
     table = pricing_table if pricing_table is not None else load_pricing_table()
 
     benign = _record_call(
-        adapter, benign_in, case.primitive, seed, dispatch_base, table
+        adapter, benign_in, case.primitive, benign_ctx,
+        seed, dispatch_base, table,
     )
     attacked = _record_call(
-        adapter, attacked_in, case.primitive, seed, dispatch_base + 1, table
+        adapter, attacked_in, case.primitive, attacked_ctx,
+        seed, dispatch_base + 1, table,
     )
     return _score_pair(case, benign, attacked)
 
@@ -642,9 +690,10 @@ async def _run_case_async(
     # Benign before attacked, sequentially: per-case order is fixed and
     # trivially deterministic; concurrency happens across cases.
     benign_in, attacked_in = _case_inputs(case)
+    benign_ctx, attacked_ctx = _call_contexts(case)
     namespace = str(getattr(adapter, "cache_namespace", "") or "")
 
-    def key_for(case_input: dict[str, Any]) -> str | None:
+    def key_for(case_input: dict[str, Any], context: CallContext) -> str | None:
         if cache is None:
             return None
         return cache_key(
@@ -652,25 +701,28 @@ async def _run_case_async(
             adapter_version=adapter_version,
             cache_namespace=namespace,
             primitive=case.primitive,
+            variant=context.arm,
+            case_id=context.case_id,
             case_input=case_input,
             manifest_sha256=manifest_sha256,
         )
 
     benign = await _record_call_async(
-        adapter, adapter_version, benign_in, case.primitive,
+        adapter, adapter_version, benign_in, case.primitive, benign_ctx,
         seed, dispatch_base, pricing_table,
         controller=controller, max_attempts=max_attempts,
         max_concurrency=max_concurrency,
         call_timeout=call_timeout, cache=cache,
-        cache_key_str=key_for(benign_in), transcript=transcript,
+        cache_key_str=key_for(benign_in, benign_ctx), transcript=transcript,
     )
     attacked = await _record_call_async(
-        adapter, adapter_version, attacked_in, case.primitive,
+        adapter, adapter_version, attacked_in, case.primitive, attacked_ctx,
         seed, dispatch_base + 1, pricing_table,
         controller=controller, max_attempts=max_attempts,
         max_concurrency=max_concurrency,
         call_timeout=call_timeout, cache=cache,
-        cache_key_str=key_for(attacked_in), transcript=transcript,
+        cache_key_str=key_for(attacked_in, attacked_ctx),
+        transcript=transcript,
     )
     return _score_pair(case, benign, attacked)
 

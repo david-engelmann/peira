@@ -7,6 +7,21 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
 
 ## [Unreleased]
 
+### Changed (BREAKING — pure adapter inputs, ADR D-25)
+
+- `case_input` is now an exact copy of the case-defined input — the
+  runner no longer injects `case_id`, `expected_decision`,
+  `target_decision`, or `attacked` into it. Trial bookkeeping travels
+  on a typed third argument, `CallContext` (`case_id`, `arm`,
+  `expected_decision`, `target_decision`), and `BaseAdapter.decide()`
+  is `decide(self, case_input, primitive, context)` with no
+  compatibility shim. All bundled adapters, the mock, the examples,
+  and the README quickstart are migrated; the response cache key now
+  includes the variant arm and case id.
+- `docs/Methodology.md` no longer claims the target decision is
+  injected into the attacked input — it is carried on the trial
+  context.
+
 ### Added — real day-one adapters (A2)
 - New `python/peira/adapters/hf.py` behind `peira[hf]`: Shieldstral
   (`mistralai/Shieldstral-1.0-3B`, pinned revision), ProtectAI
@@ -22,7 +37,7 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
   One JSON schema template sent to provider-native constrained
   decoding (strict `json_schema` / forced tool choice / `responseSchema`)
   plus stdlib client-side revalidation; per-call decision enum built
-  from the case's own labels; temperature 0 with pinned seed where
+  from the trial context's labels; temperature 0 with pinned seed where
   supported; verbalized confidence flagged uncalibrated; refusal
   pipeline (stop reason → GCG prefixes → one schema-repair retry, then
   terminal); SDK retries

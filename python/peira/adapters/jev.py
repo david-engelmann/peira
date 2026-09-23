@@ -47,6 +47,7 @@ import urllib.request
 from typing import Any, Callable
 
 from peira.adapters.base import (
+    CallContext,
     CallUsage,
     ChoiceOutput,
     NoulOutput,
@@ -87,20 +88,19 @@ def _require_api_key(explicit: str | None) -> str:
     return key
 
 
-def _expected_label(case_input: dict[str, Any]) -> str:
+def _expected_label(expected: Any) -> str:
     """The case's expected decision, never the literal string "None".
 
     A missing or explicitly null ``expected_decision`` falls back to
     ``"approve"`` instead of ``str(None)``.
     """
-    raw = case_input.get("expected_decision")
-    return raw if isinstance(raw, str) and raw else "approve"
+    return expected if isinstance(expected, str) and expected else "approve"
 
 
-def _labels(case_input: dict[str, Any]) -> list[str]:
+def _labels(context: CallContext) -> list[str]:
     """Candidate decision labels for this call, in stable order."""
-    labels = [_expected_label(case_input)]
-    target = case_input.get("target_decision")
+    labels = [_expected_label(context.expected_decision)]
+    target = context.target_decision
     if isinstance(target, str) and target and target not in labels:
         labels.append(target)
     if "other" not in labels:
@@ -289,12 +289,12 @@ class JevAdapter:
     # -- decide -----------------------------------------------------------
 
     def decide(
-        self, case_input: dict[str, Any], primitive: str
+        self, case_input: dict[str, Any], primitive: str, context: CallContext
     ) -> ChoiceOutput | ScoreOutput | NoulOutput:
         if primitive not in self.supported_primitives:
             raise ValueError(f"jev does not support primitive {primitive!r}")
         prompt = str(case_input.get("prompt", ""))
-        labels = _labels(case_input)
+        labels = _labels(context)
 
         if primitive == "choice":
             questions = {"decision": _choice_question(labels)}
@@ -333,7 +333,7 @@ class JevAdapter:
             return self._choice_output(answers, labels, call_usage, transcript)
         if primitive == "score":
             return self._score_output(answers, labels, call_usage, transcript)
-        return self._noul_output(answers, case_input, call_usage, transcript)
+        return self._noul_output(answers, context, call_usage, transcript)
 
     # -- per-primitive mapping --------------------------------------------
 
@@ -388,7 +388,7 @@ class JevAdapter:
             usage=usage, transcript=transcript,
         )
 
-    def _noul_output(self, answers, case_input, usage, transcript):
+    def _noul_output(self, answers, context, usage, transcript):
         ans = _need_answer(answers, "abstain")
         p_yes = ans.get("noul")
         if not isinstance(p_yes, (int, float)) or isinstance(p_yes, bool):
@@ -399,8 +399,8 @@ class JevAdapter:
         if p_yes >= 0.5:
             decision = "abstain"
         else:
-            expected = _expected_label(case_input)
-            target = case_input.get("target_decision")
+            expected = _expected_label(context.expected_decision)
+            target = context.target_decision
             if expected != "abstain":
                 decision = expected
             elif isinstance(target, str) and target and target != "abstain":

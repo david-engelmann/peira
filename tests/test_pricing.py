@@ -35,7 +35,7 @@ class PricedAdapter:
     version = "0.1.0"
     supported_primitives = frozenset({"choice"})
 
-    def decide(self, case_input, primitive):
+    def decide(self, case_input, primitive, context):
         time.sleep(0.001)
         return ChoiceOutput(
             decision="approve", confidence=0.9,
@@ -118,7 +118,7 @@ class TestRunnerCostAuthority(unittest.TestCase):
             version = "0.1.0"
             supported_primitives = frozenset({"choice"})
 
-            def decide(self, case_input, primitive):
+            def decide(self, case_input, primitive, context):
                 return ChoiceOutput(
                     decision="approve", confidence=0.9,
                     usage=CallUsage(model="future-model-9", tokens_in=100,
