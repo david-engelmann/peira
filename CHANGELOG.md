@@ -28,13 +28,50 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
   with `nu = +inf`. Point estimates only, no intervals (see ADR D-28
   for why bootstrap CIs are deferred).
 - The MM fit ships in the Rust core (`crates/peira-core`) with PyO3
-  dispatch parity; validation, aggregation, and gating stay in Python
-  (validated before dispatch — D-11). The identifiability checks —
-  the per-item backstop and the exact Ford strong-connectivity
-  condition — run in Python pre-dispatch (`ValueError`) and are
-  asserted in the Rust core too (panic), so both backends refuse loudly
-  on group-separated data; the all-ties convention (equal strengths,
-  `nu = +inf`) is implemented in both backends.
+  dispatch parity; validation, aggregation, gating, and the
+  identifiability/all-ties logic stay in Python (validated before
+  dispatch — D-11).
+
+### Added — run summary (A3 S8a)
+
+- New canonical `peira.metrics.summarize(results, required_families=None,
+  expected_scores=None, n_boot=2000, seed=0)`: a pure function from a
+  run's per-case records to the complete S1–S6 display summary —
+  conditional ASR + Wilson CI, severity-weighted ASR (display-only),
+  benign accuracy, refusal rates per arm + attacked-minus-benign delta,
+  per-arm outcome censuses, ranking-eligibility gate, per-condition
+  calibration (ECE/Brier/Murphy, confidence coverage,
+  ΔBrier/ΔECE/Δreliability), selective-prediction diagnostics (AUGRC,
+  fixed-coverage risk at 0.5/0.8/0.9/1.0, risk-coverage curve), and
+  score diagnostics (per-arm MAE, displacement, compression index,
+  skip accounting). Display-only throughout: no composite ranking
+  score, no ranking; Bradley-Terry is excluded by design (compare-view
+  only, S7). Derived/calibrated metrics withhold below 30 observations
+  per condition (explicit `None` + `sufficient: False`, never NaN);
+  all floats rounded to 4 decimals; JSON-serializable; deterministic
+  via the seeded Python PRNG. Sealed-artifact and report wiring land
+  in S8b.
+- `docs/Methodology.md`: new `summarize()` section documenting the
+  output schema field by field.
+
+### Changed — run summary review fixes (A3 S8a)
+
+- `peira.runner.summarize` (the legacy sealed-artifact summary) is now
+  private as `peira.runner._summarize_artifact`: two public `summarize`
+  functions with divergent schemas were a cross-lane accident waiting
+  to happen. `peira.metrics.summarize` is the public canonical
+  summary; S8b will rewire the artifact summary onto it.
+- Rates with zero observations now report `None` instead of `0.0`
+  (empty runs, required-but-absent families): a zero in the summary
+  always means "measured zero", never "no data".
+- The score compression index is computed over every available arm
+  score (no author reference needed, as documented) and now honors the
+  n≥30 gate like every other derived estimate — it is withheld below
+  30 scores instead of reporting the degenerate 1.0 a single
+  observation would give.
+- `summarize()` validates `n_boot`: non-positive, non-integer, and
+  bool values raise `ValueError` instead of dying in an `IndexError`
+  inside the bootstrap.
 
 ### Added — score diagnostics (A3 S6, ADR D-27)
 

@@ -502,12 +502,13 @@ class TestNoRustFallback(unittest.TestCase):
         self.assertIn("ok", r.stdout)
 
     def test_summarize_backend_parity(self):
-        # runner.summarize must produce identical output under both backends.
+        # runner._summarize_artifact must produce identical output under
+        # both backends.
         code = (
             "import json, random; "
-            "from peira.runner import summarize; "
+            "from peira.runner import _summarize_artifact; "
             "from tests.test_rust_backend import _corpus; "
-            "print(json.dumps(summarize(_corpus()), sort_keys=True))"
+            "print(json.dumps(_summarize_artifact(_corpus()), sort_keys=True))"
         )
         a = self._run(code)
         b = self._run(code, {"PEIRA_NO_RUST": "1"})
