@@ -8,6 +8,27 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
 ## [Unreleased]
 
 ### Added
+- Simplicity + scripts + CI hardening (H7): one shared `iter_cases()`
+  generator replaces the three duplicated JSONL open/enumerate/parse
+  loops (`dataset.summarize_cases`, `review._valid_cases`,
+  `gates.run_gates`), and `run_gates` now validates each case exactly
+  once, threading the result to every gate instead of re-validating.
+  Review decisions fail fast on invalid case data (`error: unreadable
+  case data: <file>:<line>`) instead of silently skipping bad lines.
+  `review.json`, `--resume` partials, and run artifacts are written
+  atomically (temp file + `os.replace`; last-writer-wins is the
+  documented contract for concurrent `review approve`). `peira run
+  --dry-run` no longer creates the output directory — zero side
+  effects. `--adapter :Foo` now reports the documented "unknown
+  adapter" error instead of `ValueError: Empty module name`.
+  `scripts/check_doc_links.py` also verifies reference-style
+  (`[text][ref]`) links. `peira dataset new --out` no longer glues onto
+  a file missing its trailing newline. New Troubleshooting entries:
+  `peira dataset status` exit 1, unreadable case data, and the
+  trust note for dotted-path adapters (only load paths you trust —
+  the module is imported and executed). CI pins
+  `dtolnay/rust-toolchain` to 1.98.1 and smoke-tests the `peira-cli`
+  binary (`validate --dir dataset/trial`) in `dataset-checks`.
 - Backend parity + robustness (H6): `RunArtifact.from_json` now validates
   strictly on both backends — top-level object required,
   `peira_version`/`dataset_version` required, unknown fields rejected,

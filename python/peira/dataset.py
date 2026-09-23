@@ -13,6 +13,8 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
+import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -31,6 +33,77 @@ def sha256_file(path: Path) -> str:
         for chunk in iter(lambda: f.read(65536), b""):
             h.update(chunk)
     return h.hexdigest()
+
+
+def atomic_write_text(path: Path, text: str, encoding: str = "utf-8") -> Path:
+    """Write text to `path` atomically (stdlib only).
+
+    The bytes go to a temp file in the same directory first, then
+    `os.replace` swaps it into place: a reader never sees a half-written
+    file, even if the process dies mid-write. The temp file must live in
+    the same directory — that keeps the replace on one filesystem, which
+    is what makes it atomic on POSIX and Windows.
+
+    No locking: concurrent writers race and the last one wins. That is
+    the documented contract — callers needing exclusion must lock around
+    their own read-modify-write.
+    """
+    path = Path(path)
+    fd, tmp_name = tempfile.mkstemp(dir=str(path.parent),
+                                    prefix=path.name + ".",
+                                    suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w", encoding=encoding) as f:
+            f.write(text)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp_name, path)
+    except BaseException:
+        try:
+            os.unlink(tmp_name)
+        except OSError:
+            pass
+        raise
+    return path
+
+
+def _parse_case_line(name: str, lineno: int, line: str) -> dict[str, Any]:
+    """Parse and validate one JSONL case line.
+
+    The single home of the parse+validate step, shared by `iter_cases`
+    and `_summarize_bytes` so the parse/validate logic is never
+    re-implemented per caller. Raises ValueError with a
+    `name:lineno:`-prefixed message on invalid JSON or schema
+    violations.
+    """
+    try:
+        case = json.loads(line)
+    except json.JSONDecodeError as e:
+        raise ValueError(f"{name}:{lineno}: invalid JSON ({e})") from e
+    errors = validate_case_dict(case)
+    if errors:
+        raise ValueError(f"{name}:{lineno}: {'; '.join(errors)}") from None
+    return case
+
+
+def iter_cases(dataset_dir: Path):
+    """Yield (path, lineno, case_dict) for every valid case in a dataset
+    directory.
+
+    The shared case-file walk: open, enumerate, parse, validate — in one
+    place instead of re-implemented per caller. Raises ValueError naming
+    file and line on the first invalid line (bad JSON or schema
+    violation). Callers that must collect *every* error instead of
+    failing fast (gates G1) use `iter_case_lines`.
+    """
+    for path in sorted(dataset_dir.glob(f"*{CASE_SUFFIX}")):
+        # Explicit UTF-8: the platform default (e.g. cp1252 on Windows)
+        # would silently mojibake non-ASCII case content.
+        with open(path, encoding="utf-8") as f:
+            for lineno, line in enumerate(f, 1):
+                if not line.strip():
+                    continue
+                yield path, lineno, _parse_case_line(path.name, lineno, line)
 
 
 def iter_case_lines(dataset_dir: Path):
@@ -68,14 +141,12 @@ def _summarize_bytes(name: str, data: bytes) -> dict[str, Any]:
         if not line.strip():
             continue
         n_cases += 1
+        # Shared parse+validate (see _parse_case_line): the manifest
+        # builder reports per-line problems instead of failing fast.
         try:
-            case = json.loads(line)
-        except json.JSONDecodeError as e:
-            problems.append(f"{name}:{lineno}: invalid JSON ({e})")
-            continue
-        errors = validate_case_dict(case)
-        if errors:
-            problems.append(f"{name}:{lineno}: {'; '.join(errors)}")
+            case = _parse_case_line(name, lineno, line)
+        except ValueError as e:
+            problems.append(str(e))
             continue
         by_family[case["family"]] = by_family.get(case["family"], 0) + 1
         by_severity[case["severity"]] = by_severity.get(case["severity"], 0) + 1

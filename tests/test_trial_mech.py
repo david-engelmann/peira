@@ -121,6 +121,18 @@ class TestTrialRunMechanism(unittest.TestCase):
             self.assertTrue(artifact.verify())
             self.assertEqual(len(artifact.results), 100)
 
+    def test_dry_run_creates_no_output_dir(self):
+        # --dry-run must have zero side effects: not even the --out
+        # directory may be created.
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp:
+            out_dir = str(Path(tmp, "never-created"))
+            r = self._run_cli("run", "--adapter", "mock", "--suite",
+                              "trial-demo", "--out", out_dir, "--dry-run")
+            self.assertEqual(r.returncode, 0, r.stderr)
+            self.assertIn("dry run", r.stdout)
+            self.assertFalse(Path(out_dir).exists())
+
     def test_report_has_per_case_table(self):
         import tempfile
         with tempfile.TemporaryDirectory() as tmp:

@@ -140,11 +140,21 @@ class TestCriticalNotes(unittest.TestCase):
                            _case("c2", severity="high")])
         self.assertEqual(critical_cases_missing_notes(self.dir), [])
 
-    def test_invalid_cases_are_ignored(self):
+    def test_invalid_cases_raise(self):
+        # Invalid case data fails fast with file:line — review decisions
+        # are never computed over a partially-read dataset.
         bad = _case("c1", severity="critical")
         del bad["family"]
         self._write_cases([bad])
-        self.assertEqual(critical_cases_missing_notes(self.dir), [])
+        with self.assertRaises(ValueError) as ctx:
+            critical_cases_missing_notes(self.dir)
+        self.assertIn("cases.jsonl:1:", str(ctx.exception))
+
+    def test_invalid_json_raises(self):
+        (self.dir / "cases.jsonl").write_text("{not json}\n")
+        with self.assertRaises(ValueError) as ctx:
+            pending_reviews(self.dir)
+        self.assertIn("cases.jsonl:1: invalid JSON", str(ctx.exception))
 
 
 if __name__ == "__main__":
