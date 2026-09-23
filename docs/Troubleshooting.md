@@ -12,7 +12,7 @@ lives under.
 
 **`error: unknown suite 'x'`**
 Cause: typo in `--suite`. Fix: `trial-demo` (demo fixture, offline) or
-`trial` (the real 100-case Trial suite, planned — ships with dataset v1).
+`trial` (the branded 100-case Peira Trial, sealed `1.0.0`).
 
 **`error: suite directory ... not found`**
 Cause: you ran `peira` from outside the repo checkout. Fix: run from the

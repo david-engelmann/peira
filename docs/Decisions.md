@@ -120,15 +120,14 @@ stays.
 
 ## D-8: Trial-suite runs stay off the public leaderboard
 
-**Decision.** Runs against the trial suites (the scaffolding suites
-that exercise the harness) are never published to the leaderboard.
+**Decision.** Runs against the trial suites are never published to the leaderboard.
 The leaderboard starts with v1.
 
 **Alternatives.** Publishing trial runs with a badge, or a separate
 trial leaderboard.
 
 **Why this:** trial suites are mechanism exercisers — small,
-scaffolding case sets built to test the harness, not to measure
+case sets built to test the harness, not to measure
 models. Publishing their numbers would invite exactly the
 misreading the benchmark exists to prevent, and a parallel
 leaderboard doubles the surface for confusion. The trial's job is
@@ -137,6 +136,12 @@ cases are real.
 
 **To revisit:** when the branded 100-case Peira Trial lands as a
 v1-quality suite, its disposition gets its own decision.
+
+**Update (2026-09-23).** The branded 100-case Trial has landed
+(`dataset/trial`, manifest `1.0.0`, review-sealed). Its disposition:
+runs stay off the leaderboard, per the decision above. The Trial is
+a v1-quality pilot, but at 10 cases per family it sits below the
+hard 20-case ranking gate, and the leaderboard starts with v1.
 
 ## D-9: Benchmark first, thresholds library second
 

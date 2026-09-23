@@ -16,5 +16,5 @@ commands, architecture map, and the hard rules.
 - Keep files small and dependency-free in the core path. `peira` (base
   tier) has zero third-party runtime dependencies — protect that.
 - The demo fixture (`dataset/trial-demo/`) is scaffolding, clearly labeled.
-  The real Trial suite lands at dataset v1; don't build features that
-  depend on the fixture's exact contents.
+  The branded 100-case Trial lives in `dataset/trial/`; don't build features
+  that depend on either fixture's exact contents.

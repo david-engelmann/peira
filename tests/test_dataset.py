@@ -283,7 +283,7 @@ class TestDatasetStatus(unittest.TestCase):
 
 class TestDatasetCIChecks(unittest.TestCase):
     """The dataset-checks CI job (gates + manifest verification) must stay
-    green on the committed Trial starter suite — the same checks the job
+    green on the committed Trial suite — the same checks the job
     runs on every push."""
 
     TRIAL_DIR = str(Path(__file__).resolve().parents[1] / "dataset" / "trial")
