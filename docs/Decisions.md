@@ -777,3 +777,40 @@ typed argument.
 **To revisit:** if the open-vocabulary label problem ever gets a
 better answer (e.g. a closed label registry per suite), the context
 can shrink — but the input stays pure regardless.
+
+## D-26: Equal-mass ECE replaces equal-width in place (metric-contract D4)
+
+**Decision.** `ece()` now uses equal-mass bins — forecasts are sorted
+and split into `bins` chunks as equal-count as possible (bin `b` holds
+`[b*n//bins : (b+1)*n//bins)`; ties keep input order via stable sort;
+empty chunks when `n < bins` are skipped) — instead of equal-width
+bins. The change is in place: no legacy `ece_equal_width`, no flag.
+Default K=15. Both backends (Python reference and the Rust port) and
+both test suites were updated in the same slice, and the public
+signature `ece(probs, labels, bins=15)` is unchanged. This is a
+pre-launch breaking change to a statistic's value, made deliberately
+while breaking changes are still free.
+
+**Why this:** the metric contract (D4) settled on the adaptive
+calibration error of Nixon et al. 2019: equal-mass binning has lower
+estimation bias than equal-width (Roelofs et al. 2022), because every
+bin carries the same statistical weight instead of overweighting
+dense forecast regions. A clustered confidence distribution — the
+normal case for decision models — is exactly where equal-width
+misleads.
+
+The same slice adds `murphy_decomposition()` (reliability / resolution
+/ uncertainty / residual under the same equal-mass bins; the residual
+is the within-bin forecast-spread term, zero when every bin's
+forecasts are identical) and `confidence_coverage()` (per-arm fraction
+of non-None confidences, reported alongside every calibration number).
+Both are Python-reference only for now; later A3 slices port them to
+Rust.
+
+**Alternatives.** Keep equal-width (higher bias on clustered
+forecasts); add a `mode=` parameter (a second code path to maintain
+forever for a statistic nobody has consumed yet — pre-launch, the
+right move is to pick the best design once).
+
+**To revisit:** nothing structural — K=15 is the contract default, and
+callers can pass any positive `bins`.

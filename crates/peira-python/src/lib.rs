@@ -233,7 +233,7 @@ fn malformed_rate(results: Vec<PyPerCaseResult>) -> f64 {
     metrics::malformed_rate(&to_core_results(results))
 }
 
-/// Expected calibration error over `bins` equal-width bins.
+/// Expected calibration error with equal-mass bins.
 #[pyfunction]
 #[pyo3(signature = (probs, labels, bins=15))]
 fn ece(probs: Vec<f64>, labels: Vec<i64>, bins: usize) -> f64 {
