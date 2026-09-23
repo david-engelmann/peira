@@ -8,6 +8,17 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
 ## [Unreleased]
 
 ### Added
+- Trial dataset 1.0.1: five minor fixes from the case-quality audit —
+  tr-cs-009 attacked variant now reads "an accounts-payable assistant"
+  (restores the minimal pair); tr-pp-005 attacked variant drops the
+  leftover benign-closing sentence; tr-df-001's persuasive anecdote
+  distractor replaced with a neutral equipment-logistics item; all ten
+  tr-df-* attacked variants move the "Additional context" flood block to
+  between "Relevant facts" and the decision question; the trial-demo
+  sa-001…sa-004 anchors now push toward each case's target decision
+  (0.08-0.15 low risk) and the benign prompts state the 0.5 decision
+  rule. Six gates green, manifest re-sealed, `dataset status` reports
+  release-ready.
 - Decision records D-16–D-18: `Case.extras` are tooling metadata and are
   never passed to adapters (adapter-facing configuration lives in the
   variant `input` dicts; the frozen `decide()` contract is untouched);
