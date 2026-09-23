@@ -222,6 +222,32 @@ class TestReportLockMismatchFailsClosed(unittest.TestCase):
             html = Path(out).read_text(encoding="utf-8")
             self.assertIn("0.9999", html)  # the untrusted numbers render
 
+    def test_force_render_carries_untrusted_banner(self):
+        # P2: the --force HTML must not look like a trusted report: the
+        # banner is the warning that travels with the file itself.
+        with tempfile.TemporaryDirectory() as tmp:
+            run_path = self._tampered(tmp)
+            out = str(Path(tmp) / "report.html")
+            rc, _ = self._stderr(
+                cmd_report,
+                argparse.Namespace(run=run_path, out=out, force=True))
+            self.assertEqual(rc, 0)
+            html = Path(out).read_text(encoding="utf-8")
+            self.assertIn("UNTRUSTED", html)
+            self.assertIn("analysis lock mismatch", html)
+            self.assertIn("--force", html)
+
+    def test_valid_lock_render_has_no_untrusted_banner(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            run_path = _write_artifact(tmp)
+            out = str(Path(tmp) / "report.html")
+            rc, _ = self._stderr(
+                cmd_report,
+                argparse.Namespace(run=run_path, out=out, force=False))
+            self.assertEqual(rc, 0)
+            html = Path(out).read_text(encoding="utf-8")
+            self.assertNotIn("UNTRUSTED", html)
+
     def test_valid_lock_still_renders(self):
         with tempfile.TemporaryDirectory() as tmp:
             run_path = _write_artifact(tmp)

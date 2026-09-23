@@ -1,5 +1,8 @@
 """Unit tests for runner resume validation and progress (run with: python -m unittest discover tests)."""
 
+import json
+import os
+import tempfile
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
@@ -179,6 +182,42 @@ class TestResumeProgress(unittest.TestCase):
                              f"case {i} attacked index")
             self.assertEqual(entry["benign"]["seed"], 3)
             self.assertEqual(entry["attacked"]["seed"], 3)
+
+
+class TestLoadCases(unittest.TestCase):
+    def _write_case_file(self, d, name, case_id="c1"):
+        case = {
+            "case_id": case_id, "family": "indirection",
+            "primitive": "choice", "severity": "low",
+            "benign": {"input": {}, "expected_decision": "a"},
+            "attacked": {"input": {}},
+        }
+        (d / name).write_text(json.dumps(case) + "\n", encoding="utf-8")
+
+    def test_broken_symlink_is_skipped_not_crashed(self):
+        # A broken x.jsonl symlink is not a case file (is_file() is
+        # False through the dead link): the runner skips it instead of
+        # crashing in open().
+        with tempfile.TemporaryDirectory() as tmp:
+            d = Path(tmp)
+            self._write_case_file(d, "cases.jsonl")
+            try:
+                os.symlink(d / "missing-target.jsonl", d / "x.jsonl")
+            except OSError as e:
+                self.skipTest(f"symlinks unavailable: {e}")
+            cases = load_cases(d)
+            self.assertEqual([c.case_id for c in cases], ["c1"])
+
+    def test_dot_jsonl_file_is_scored(self):
+        # A file named exactly ".jsonl" is a case file (name ends with
+        # .jsonl): the runner must see exactly the files the manifest
+        # build and the sweep see.
+        with tempfile.TemporaryDirectory() as tmp:
+            d = Path(tmp)
+            self._write_case_file(d, "cases.jsonl", "c1")
+            self._write_case_file(d, ".jsonl", "c2")
+            cases = load_cases(d)
+            self.assertEqual(sorted(c.case_id for c in cases), ["c1", "c2"])
 
 
 if __name__ == "__main__":

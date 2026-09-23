@@ -22,6 +22,25 @@ pub const MANIFEST_NAME: &str = "manifest.json";
 pub const CANARY_NAME: &str = "CANARY.txt";
 pub const CASE_SUFFIX: &str = ".jsonl";
 
+/// The canonical case-file predicate.
+///
+/// A case file is a regular file (following symlinks) whose name ends in
+/// `.jsonl`. This ONE predicate is the security invariant behind manifest
+/// completeness: the runner, `build_manifest`, and the manifest sweep must
+/// all agree on what a case file is, or an unlisted file could be scored
+/// but never flagged. (An `extension()` check is the wrong test here: a
+/// file named exactly `.jsonl` has no extension yet must count; a
+/// `DirEntry::file_type()` check is wrong too — it does not follow
+/// symlinks, while the runner scores through them.)
+pub fn is_case_file(path: &Path) -> bool {
+    path.is_file()
+        && path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .map(|n| n.ends_with(CASE_SUFFIX))
+            .unwrap_or(false)
+}
+
 /// Maximum run of leading `[` / `{` characters accepted in one case-file
 /// line before parsing.
 ///
@@ -64,8 +83,9 @@ pub struct CaseLine {
     pub result: Result<Value, String>,
 }
 
-/// Read and collect every non-blank line of every `*.jsonl` file in the
-/// dataset directory root, in sorted filename order.
+/// Read and collect every non-blank line of every case file (see
+/// [`is_case_file`]) in the dataset directory root, in sorted filename
+/// order.
 ///
 /// Eager, not lazy, despite the `iter_` name: I/O errors surface up
 /// front as `io::Result`, and every caller needs the full line list
@@ -78,7 +98,7 @@ pub struct CaseLine {
 pub fn iter_case_lines(dataset_dir: &Path) -> io::Result<Vec<CaseLine>> {
     let mut paths: Vec<PathBuf> = fs::read_dir(dataset_dir)?
         .filter_map(|e| e.ok().map(|e| e.path()))
-        .filter(|p| p.is_file() && p.extension().and_then(|e| e.to_str()) == Some("jsonl"))
+        .filter(|p| is_case_file(p))
         .collect();
     paths.sort();
     let mut out = Vec::new();
@@ -289,9 +309,9 @@ fn civil_from_days(z: i64) -> (i64, i64, i64) {
 
 /// Build the manifest for a dataset directory.
 ///
-/// Every `*.jsonl` file in the directory root is a case file (validated
-/// and counted); `CANARY.txt` is hashed as an artifact. `manifest.json`
-/// itself is never included.
+/// Every case file in the directory root (see [`is_case_file`]) is
+/// validated and counted; `CANARY.txt` is hashed as an artifact.
+/// `manifest.json` itself is never included.
 pub fn build_manifest(
     dataset_dir: &Path,
     dataset_version: &str,
@@ -320,7 +340,7 @@ pub fn build_manifest(
     let mut files = BTreeMap::new();
     for name in names {
         let path = dataset_dir.join(&name);
-        if name.ends_with(CASE_SUFFIX) {
+        if is_case_file(&path) {
             // One read per file: summarize and hash share the bytes.
             let (summary, digest) = summarize_cases_hashed(&path)?;
             files.insert(
@@ -520,12 +540,15 @@ pub fn verify_manifest(dataset_dir: &Path) -> Result<Vec<String>, ManifestError>
             }
         }
     }
-    // P0: files build_manifest would include (*.jsonl case files,
-    // CANARY.txt) that are on disk but not listed must be flagged —
-    // otherwise unlisted case files would be silently unscored, and the
-    // "directory matches the manifest exactly" guarantee would be false.
-    // Names are compared as strings only; unlisted files are never
-    // opened, so unsafe on-disk names cannot escape the directory.
+    // P0: files build_manifest would include (case files — see
+    // is_case_file — and CANARY.txt) that are on disk but not listed
+    // must be flagged — otherwise unlisted case files would be silently
+    // unscored, and the "directory matches the manifest exactly"
+    // guarantee would be false. Names are compared as strings only;
+    // unlisted files are never opened, so unsafe on-disk names cannot
+    // escape the directory. is_file() follows symlinks, matching the
+    // runner and build_manifest: a symlinked case file is scored, so
+    // the sweep must see it too.
     let listed: std::collections::HashSet<&str> =
         manifest.files.keys().map(|s| s.as_str()).collect();
     let mut on_disk: Vec<String> = Vec::new();
@@ -540,10 +563,8 @@ pub fn verify_manifest(dataset_dir: &Path) -> Result<Vec<String>, ManifestError>
         if name == MANIFEST_NAME {
             continue;
         }
-        if !entry.file_type().map(|t| t.is_file()).unwrap_or(false) {
-            continue;
-        }
-        if !(name.ends_with(CASE_SUFFIX) || name == CANARY_NAME) {
+        let path = entry.path();
+        if !(is_case_file(&path) || (name == CANARY_NAME && path.is_file())) {
             continue;
         }
         on_disk.push(name);
@@ -778,6 +799,79 @@ mod tests {
                 .any(|e| e == "CANARY.txt: on disk but not listed in manifest"),
             "{errors:?}"
         );
+    }
+
+    #[test]
+    fn read_manifest_rejects_malformed_files_shape() {
+        // {"files": [...]} / {"files": null} / non-object entries must
+        // be clean typed errors, not a panic or a silent accept —
+        // mirroring the Python _read_manifest_sealed isinstance checks.
+        let dir = tempfile::tempdir().unwrap();
+        for bad in [
+            r#"{"files": []}"#,
+            r#"{"files": null}"#,
+            r#"{"files": {"c.jsonl": "nope"}}"#,
+            r#"{"files": {"c.jsonl": 42}}"#,
+        ] {
+            fs::write(dir.path().join("manifest.json"), bad).unwrap();
+            let err = read_manifest(dir.path()).unwrap_err();
+            assert!(
+                matches!(err, ManifestError::Invalid { .. }),
+                "for {bad}: {err:?}"
+            );
+        }
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn verify_manifest_flags_unlisted_symlinked_case_file() {
+        // P1: the sweep must follow symlinks — the runner scores through
+        // them, so an unlisted symlinked case file would be scored but
+        // never flagged. (Unix-only: creating symlinks needs privileges
+        // on Windows.)
+        let dir = tempfile::tempdir().unwrap();
+        fs::write(dir.path().join("c.jsonl"), format!("{CASE}\n")).unwrap();
+        let manifest = build_manifest(dir.path(), "1.0.0", "d", "0.1.0").unwrap();
+        fs::write(
+            dir.path().join("manifest.json"),
+            serde_json::to_string(&manifest).unwrap(),
+        )
+        .unwrap();
+        assert!(verify_manifest(dir.path()).unwrap().is_empty());
+        std::os::unix::fs::symlink("c.jsonl", dir.path().join("evil.jsonl")).unwrap();
+        let errors = verify_manifest(dir.path()).unwrap();
+        assert!(
+            errors
+                .iter()
+                .any(|e| e == "evil.jsonl: on disk but not listed in manifest"),
+            "{errors:?}"
+        );
+        // The runner scores through the link — that is exactly why the
+        // sweep must flag it: scored ⟺ manifested ⟺ swept.
+        assert_eq!(load_cases(dir.path()).unwrap().len(), 2);
+    }
+
+    #[test]
+    fn dot_jsonl_file_is_a_case_file() {
+        // A file named exactly ".jsonl" has no extension but its name
+        // ends with ".jsonl": the runner scores it, so build and the
+        // sweep must include it too (mirrors the Python predicate).
+        let dir = tempfile::tempdir().unwrap();
+        fs::write(dir.path().join("c.jsonl"), format!("{CASE}\n")).unwrap();
+        fs::write(dir.path().join(".jsonl"), format!("{CASE}\n")).unwrap();
+        let manifest = build_manifest(dir.path(), "1.0.0", "d", "0.1.0").unwrap();
+        assert!(
+            manifest.files.contains_key(".jsonl"),
+            "{:?}",
+            manifest.files.keys().collect::<Vec<_>>()
+        );
+        fs::write(
+            dir.path().join("manifest.json"),
+            serde_json::to_string(&manifest).unwrap(),
+        )
+        .unwrap();
+        assert!(verify_manifest(dir.path()).unwrap().is_empty());
+        assert_eq!(load_cases(dir.path()).unwrap().len(), 2);
     }
 
     #[test]

@@ -47,7 +47,7 @@ from peira.concurrency import (
     retry_jitter_seed,
     transcript_sha256,
 )
-from peira.dataset import atomic_write_text
+from peira.dataset import _is_case_file, atomic_write_text
 from peira.metrics import (
     INELIGIBLE_BENIGN_ABSTAINED,
     INELIGIBLE_BENIGN_MALFORMED,
@@ -77,7 +77,12 @@ DEFAULT_MAX_ATTEMPTS = 3
 
 def load_cases(suite_dir: Path) -> list[Case]:
     cases: list[Case] = []
-    for path in sorted(suite_dir.glob("*.jsonl")):
+    # The canonical case-file predicate (peira.dataset._is_case_file):
+    # the same rule the manifest build and the manifest sweep use, so a
+    # file can never be scored without being manifested and verified.
+    # iterdir + predicate instead of glob("*.jsonl"): glob also matches
+    # broken symlinks (open() then crashes) and directories.
+    for path in sorted(p for p in suite_dir.iterdir() if _is_case_file(p)):
         # Explicit UTF-8: the platform default (e.g. cp1252 on Windows)
         # would silently mojibake non-ASCII case content.
         with open(path, encoding="utf-8") as f:

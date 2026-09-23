@@ -56,10 +56,10 @@ smaller adapter; see `docs/Hardware.md` for per-tier requirements.
 Cause: the run artifact was edited after sealing, or sealed by an older
 peira whose lock covered fewer fields (metrics joined the lock payload
 on 2026-09-23; older artifacts no longer verify — re-run). `peira
-report` fails closed with exit 1 so a tampered artifact can never render
-trusted-looking numbers. Fix: don't edit artifacts; re-run. If you
-understand the numbers are untrusted and need the render anyway, pass
-`--force`.
+report` fails closed with exit 1. If you understand the numbers are
+untrusted and need the render anyway, pass `--force`: the HTML then
+carries an embedded UNTRUSTED banner so the file itself never looks
+like a trusted report. Fix: don't edit artifacts; re-run.
 
 **`error: dataset manifest verification failed:`**
 Cause: `peira run` verifies the suite manifest before scoring, and a

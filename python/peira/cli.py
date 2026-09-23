@@ -20,7 +20,12 @@ from typing import Any
 from peira import __version__
 from peira.adapters.mock import MockAdapter
 from peira.artifacts import RunArtifact
-from peira.dataset import atomic_write_text, verify_manifest, verify_manifest_sealed
+from peira.dataset import (
+    _is_case_file,
+    atomic_write_text,
+    verify_manifest,
+    verify_manifest_sealed,
+)
 from peira.metrics import PerCaseResult
 from peira.runner import (
     SUITE_DIRS,
@@ -163,11 +168,19 @@ def _suite_dataset_identity(suite_dir: Path) -> tuple[str, str]:
         # Sealed read: the digest below is computed over the same bytes
         # that were verified — never a re-read that raced a swap.
         manifest, manifest_sha256, errors = verify_manifest_sealed(suite_dir)
-    except FileNotFoundError:
+    except FileNotFoundError as e:
         # The manifest vanished between the is_file() check and the
-        # read: same as missing — an explicitly unbound run. (File
-        # races on listed case files report "missing on disk" via the
-        # is_file() check inside verification instead of raising.)
+        # read: same as missing — an explicitly unbound run. But a
+        # FileNotFoundError for anything else (a case file lost to a race
+        # inside verification, after its own is_file() check) must not
+        # be misclassified as "manifest vanished": re-check the manifest
+        # before falling back.
+        if manifest_path.is_file():
+            raise ValueError(
+                f"dataset file vanished during verification ({e}): "
+                f"refusing to score — restore the dataset or rebuild the "
+                f"manifest."
+            ) from e
         return "0.1.0-demo", ""
     except (OSError, ValueError) as e:
         raise ValueError(
@@ -407,7 +420,10 @@ def cmd_validate(args: argparse.Namespace) -> int:
         print(f"error: {dataset_dir} not found", file=sys.stderr)
         return EXIT_USER_ERROR
     n, bad = 0, 0
-    for path in sorted(dataset_dir.glob("*.jsonl")):
+    # Same canonical predicate as the runner and the manifest tooling
+    # (peira.dataset._is_case_file): validate sees exactly the files
+    # scoring would see.
+    for path in sorted(p for p in dataset_dir.iterdir() if _is_case_file(p)):
         # Explicit UTF-8: the platform default (e.g. cp1252 on Windows)
         # would silently mojibake non-ASCII case content.
         with open(path, encoding="utf-8") as f:
@@ -444,18 +460,25 @@ def cmd_report(args: argparse.Namespace) -> int:
         print(f"error: {run_path} is not a valid run artifact ({e})",
               file=sys.stderr)
         return EXIT_USER_ERROR
-    if not artifact.verify():
-        print(f"error: {run_path} failed analysis-lock verification — "
-              f"the artifact was modified after sealing (or sealed by an "
-              f"older peira whose lock covered fewer fields); re-run, or "
-              f"pass --force to render the untrusted numbers anyway.",
-              file=sys.stderr)
-        if not args.force:
+    lock_ok = artifact.verify()
+    if not lock_ok:
+        if args.force:
+            print(f"warning: {run_path} failed analysis-lock verification — "
+                  f"the artifact was modified after sealing (or sealed by an "
+                  f"older peira whose lock covered fewer fields); rendering "
+                  f"UNTRUSTED numbers.",
+                  file=sys.stderr)
+        else:
+            print(f"error: {run_path} failed analysis-lock verification — "
+                  f"the artifact was modified after sealing (or sealed by an "
+                  f"older peira whose lock covered fewer fields); re-run, or "
+                  f"pass --force to render the untrusted numbers anyway.",
+                  file=sys.stderr)
             return EXIT_USER_ERROR
     # Metric access is also hostile input: a well-formed-JSON artifact
     # with the wrong shape must still exit 1, not traceback.
     try:
-        page = _report_page(artifact)
+        page = _report_page(artifact, untrusted=not lock_ok)
     except (ValueError, KeyError, TypeError, IndexError) as e:
         print(f"error: {run_path} is not a valid run artifact ({e})",
               file=sys.stderr)
@@ -472,7 +495,7 @@ def cmd_report(args: argparse.Namespace) -> int:
     return EXIT_OK
 
 
-def _report_page(artifact) -> str:
+def _report_page(artifact, untrusted: bool = False) -> str:
     m = artifact.metrics
     # Case ids, family names, adapter names, decisions, refusal reasons,
     # and suite/dataset labels are author- or adapter-controlled: escape
@@ -508,10 +531,23 @@ def _report_page(artifact) -> str:
     inelig_line = ", ".join(
         f"{e(str(k))}: {_num(v)}" for k, v in sorted(inelig.items())
     ) or "none"
+    # --force renders of lock-mismatched artifacts carry an embedded
+    # UNTRUSTED banner: the only warning that travels with the HTML file
+    # itself. Plain text up front so it survives CSS stripping.
+    banner = ""
+    if untrusted:
+        banner = (
+            '<div style="background:#7a0000;color:#fff;padding:12px;'
+            'font-weight:bold;font-size:18px">\n'
+            "UNTRUSTED \u2014 analysis lock mismatch: this report was rendered "
+            "with --force from an artifact whose numbers could not be "
+            "verified. Do not trust these numbers.\n"
+            "</div>\n"
+        )
     page = f"""<!doctype html>
 <html><head><meta charset="utf-8"><title>peira report — {e(artifact.adapter_name)}</title></head>
 <body>
-<h1>peira report</h1>
+{banner}<h1>peira report</h1>
 <p>Adapter: {e(artifact.adapter_name)}{f" {e(artifact.adapter_version)}" if artifact.adapter_version else ""} · Suite: {e(artifact.suite)} ·
 Dataset: {e(artifact.dataset_version)} · peira {e(str(artifact.peira_version))} · seed {e(str(artifact.seed))}</p>
 <ul>
@@ -885,7 +921,8 @@ def build_parser() -> argparse.ArgumentParser:
     rp.add_argument("--out", default="report.html")
     rp.add_argument("--force", action="store_true",
                     help="render even when the analysis lock mismatches "
-                         "(the numbers are then untrusted)")
+                         "(the HTML then carries an embedded UNTRUSTED "
+                         "banner)")
     rp.set_defaults(func=cmd_report)
 
     d = sub.add_parser("dataset", help="dataset build tooling")

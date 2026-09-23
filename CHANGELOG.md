@@ -20,8 +20,15 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
   present edited numbers under a valid lock. Artifacts sealed before
   this change no longer verify — re-run the adapter.
 - `peira report` now fails closed (exit 1) on analysis-lock mismatch
-  instead of warning and rendering; `--force` renders the untrusted
-  numbers anyway.
+  instead of warning and rendering; `--force` renders anyway with an
+  embedded UNTRUSTED banner so the HTML file itself never looks like a
+  trusted report.
+- The case-file predicate is now canonical and shared by the runner,
+  the manifest build, and the manifest sweep (Python and Rust): a
+  regular file (following symlinks) whose name ends in `.jsonl`. This
+  closes two gaps the sweep missed — symlinked case files (Rust) and a
+  file named exactly `.jsonl` (Python, whose `Path.suffix` is empty for
+  that name).
 - `peira run` now fails closed (exit 1) when the suite manifest exists
   but cannot be read or parsed, instead of silently downgrading the run
   to the unbound `0.1.0-demo` label. A *missing* manifest still yields

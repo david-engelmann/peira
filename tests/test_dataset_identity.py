@@ -89,6 +89,20 @@ class TestSuiteDatasetIdentity(unittest.TestCase):
             _suite_dataset_identity(self.dir)
         self.assertIn("unreadable manifest", str(ctx.exception))
 
+    def test_malformed_files_section_is_hard_error(self):
+        # P2: {"files": [...]}, {"files": null}, and non-dict entries
+        # must be clean ValueErrors — not AttributeError tracebacks —
+        # through every manifest-reading entry point.
+        for bad in ({"files": []}, {"files": None},
+                    {"files": {"c.jsonl": "nope"}},
+                    {"files": {"c.jsonl": 42}}):
+            with self.subTest(bad=bad):
+                self._write_dataset()
+                (self.dir / "manifest.json").write_text(json.dumps(bad))
+                with self.assertRaises(ValueError) as ctx:
+                    _suite_dataset_identity(self.dir)
+                self.assertIn("unreadable manifest", str(ctx.exception))
+
     def test_lock_covers_manifest_sha256(self):
         a = RunArtifact(dataset_version="1.0.0", manifest_sha256="a" * 64)
         b = RunArtifact(dataset_version="1.0.0", manifest_sha256="b" * 64)

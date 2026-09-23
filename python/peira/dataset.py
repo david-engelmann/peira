@@ -26,6 +26,21 @@ CANARY_NAME = "CANARY.txt"
 CASE_SUFFIX = ".jsonl"
 
 
+def _is_case_file(path: Path) -> bool:
+    """The canonical case-file predicate.
+
+    A case file is a regular file (following symlinks) whose name ends
+    in ``.jsonl``. This ONE predicate is the security invariant behind
+    manifest completeness: the runner, ``build_manifest``, and the
+    manifest sweep must all agree on what a case file is, or an
+    unlisted file could be scored but never flagged. (``Path.suffix``
+    is the wrong test here: a file named exactly ``.jsonl`` has an
+    empty suffix yet is matched by the runner's old ``*.jsonl`` glob;
+    ``name.endswith`` matches glob semantics for every sane name.)
+    """
+    return path.name.endswith(CASE_SUFFIX) and path.is_file()
+
+
 def sha256_file(path: Path) -> str:
     """SHA-256 hex digest of a file's bytes."""
     h = hashlib.sha256()
@@ -191,7 +206,7 @@ def build_manifest(dataset_dir: Path, dataset_version: str,
     for path in sorted(dataset_dir.iterdir()):
         if path.name == MANIFEST_NAME or not path.is_file():
             continue
-        if path.suffix == CASE_SUFFIX:
+        if _is_case_file(path):
             files[path.name] = summarize_cases(path)
         elif path.name == CANARY_NAME:
             files[path.name] = {"kind": "artifact", "sha256": sha256_file(path)}
@@ -254,6 +269,18 @@ def _read_manifest_sealed(dataset_dir: Path) -> tuple[dict[str, Any], str]:
         raise ValueError(f"{MANIFEST_NAME} is not valid JSON ({e})") from e
     if not isinstance(manifest, dict) or "files" not in manifest:
         raise ValueError(f"{MANIFEST_NAME} is missing the 'files' section")
+    files = manifest["files"]
+    if not isinstance(files, dict):
+        raise ValueError(
+            f"{MANIFEST_NAME} has a malformed 'files' section "
+            f"(expected an object, got {type(files).__name__})"
+        )
+    for name, entry in files.items():
+        if not isinstance(entry, dict):
+            raise ValueError(
+                f"{MANIFEST_NAME}: entry for {name!r} is malformed "
+                f"(expected an object, got {type(entry).__name__})"
+            )
     return manifest, digest
 
 
@@ -320,7 +347,7 @@ def _verify_manifest_dict(
     for path in sorted(dataset_dir.iterdir()):
         if path.name == MANIFEST_NAME or not path.is_file():
             continue
-        if path.suffix != CASE_SUFFIX and path.name != CANARY_NAME:
+        if not _is_case_file(path) and path.name != CANARY_NAME:
             continue
         if path.name not in listed:
             errors.append(f"{path.name}: on disk but not listed in manifest")

@@ -118,7 +118,8 @@ record: config, per-case results, aggregate metrics, dataset version,
 the suite manifest's SHA-256, peira version, pricing provenance, seed,
 and adapter identity. If anything is edited post-hoc, the lock
 mismatches and `peira report` refuses to render (exit 1); pass
-`--force` to render the untrusted numbers anyway. Scores are never
+`--force` to render anyway, with an embedded UNTRUSTED banner marking
+the numbers as unverified. Scores are never
 adjusted after the fact — you re-run.
 
 The lock is unkeyed deterministic SHA-256: tamper-evidence against
