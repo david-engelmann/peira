@@ -8,6 +8,14 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
 ## [Unreleased]
 
 ### Added
+- Branded 100-case Peira Trial (T2): `dataset/trial` now holds 100
+  v1-quality cases (10 per attack family; 14 critical / 40 high / 46
+  medium) authored through the full pipeline — all six gates green,
+  100% of critical cases human-reviewed, manifest sealed at 1.0.0
+  (`peira dataset status` reports release-ready). The README quickstart
+  gains a per-adapter-class cost/time table, and the two stale Trial
+  claims are reworded (the Trial is here now; per-case drill-down in
+  `peira report` is real).
 - Authoring pipeline, third slice (T1c): `peira dataset status --dir
   <dir>` — one view of the generate → gate → review → manifest flow
   (per-gate results, review pending/coverage, manifest state). Exit 0

@@ -1,9 +1,9 @@
 """Tests for the Trial-suite mechanism (run with: python -m unittest discover tests).
 
-Covers the forward-compatible case schema (extras), the dataset/trial
-starter suite, dataset-version flow into run artifacts, and the per-case
-report table. The starter cases themselves are scaffolding — these tests
-pin the mechanism around them.
+Covers the forward-compatible case schema (extras), the branded 100-case
+Peira Trial in dataset/trial, dataset-version flow into run artifacts, and
+the per-case report table. The Trial cases are the real pilot set — these
+tests pin the mechanism around them.
 """
 
 import json
@@ -66,13 +66,13 @@ class TestTrialSuite(unittest.TestCase):
 
     def test_cases_load(self):
         cases = load_cases(TRIAL_DIR)
-        self.assertEqual(len(cases), 20)
+        self.assertEqual(len(cases), 100)
 
-    def test_all_families_covered_twice(self):
+    def test_all_families_covered_evenly(self):
         from collections import Counter
         counts = Counter(c.family for c in load_cases(TRIAL_DIR))
         self.assertEqual(len(counts), 10)
-        self.assertTrue(all(n == 2 for n in counts.values()), dict(counts))
+        self.assertTrue(all(n == 10 for n in counts.values()), dict(counts))
 
     def test_gates_pass(self):
         from peira.dataset import iter_case_lines
@@ -85,8 +85,8 @@ class TestTrialSuite(unittest.TestCase):
 
     def test_manifest_version(self):
         manifest = json.loads((TRIAL_DIR / "manifest.json").read_text())
-        self.assertEqual(manifest["dataset_version"], "0.1.0-trial")
-        self.assertEqual(manifest["files"]["cases.jsonl"]["n_cases"], 20)
+        self.assertEqual(manifest["dataset_version"], "1.0.0")
+        self.assertEqual(manifest["files"]["cases.jsonl"]["n_cases"], 100)
 
     def test_canary_embedded(self):
         canary = (TRIAL_DIR / "CANARY.txt").read_text().strip()
@@ -117,9 +117,9 @@ class TestTrialRunMechanism(unittest.TestCase):
             self.assertIn(r.returncode, (0, 3), r.stderr)  # 3 = ineligible, fine
             artifact = RunArtifact.from_json(
                 Path(tmp, "mock-trial.json").read_text())
-            self.assertEqual(artifact.dataset_version, "0.1.0-trial")
+            self.assertEqual(artifact.dataset_version, "1.0.0")
             self.assertTrue(artifact.verify())
-            self.assertEqual(len(artifact.results), 20)
+            self.assertEqual(len(artifact.results), 100)
 
     def test_report_has_per_case_table(self):
         import tempfile

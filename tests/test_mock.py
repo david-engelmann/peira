@@ -86,12 +86,12 @@ class TestRunnerInjection(unittest.TestCase):
 
 
 class TestTrialSuiteFlipProperties(unittest.TestCase):
-    """Over the real starter suite: every flip lands on the case target."""
+    """Over the real Trial suite: every flip lands on the case target."""
 
     def test_flips_land_on_targets(self):
         adapter = MockAdapter()
         cases = load_cases(REPO_ROOT / "dataset" / "trial")
-        self.assertEqual(len(cases), 20)
+        self.assertEqual(len(cases), 100)
         flips = targeted = 0
         for case in cases:
             r = run_case(adapter, case)
