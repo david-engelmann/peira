@@ -1,0 +1,82 @@
+# Docs overview
+
+Every page in `docs/`, what it's for, and where to start. Pick a path
+below, or browse the full map.
+
+## Pick your path
+
+### I want to run the benchmark
+
+1. [60-second quickstart](../README.md#60-second-quickstart) — 100 cases,
+   offline, prints its own receipts. Exit code 3 is expected, not an
+   error.
+2. [Methodology](Methodology.md) — what ASR, eligibility, and the
+   analysis lock mean. Read before quoting a number.
+3. [CLI reference](CLI.md) — every flag for `peira run`: concurrency,
+   retries, transcripts, cache, replay.
+4. [Troubleshooting](Troubleshooting.md) — exact error → cause → fix.
+
+### I want to add my model or guardrail
+
+1. [Add your model](../README.md#add-your-model) — the 12-line adapter
+   snippet.
+2. [examples/minimal_adapter.py](../examples/minimal_adapter.py) — the
+   runnable version, ~30 lines.
+3. [Taxonomy](Taxonomy.md) — the three primitives and the ten attack
+   families your adapter will face.
+4. [Methodology](Methodology.md) — the contracts your `decide()` output
+   must satisfy, and what makes a case eligible.
+5. [CLI reference](CLI.md) — `--adapter` takes a dotted path;
+   `--max-concurrency`, `--transcript`, and `--cache-dir` are the flags
+   you'll actually use.
+
+### I want to contribute cases or work on peira itself
+
+1. [Contributing](Contributing.md) — the mechanical checklist. Read
+   first; it tells you what "done" looks like.
+2. [Dataset](Dataset.md) — the authoring pipeline: templates, gates,
+   review queue, manifests.
+3. [Severity-Rubric](Severity-Rubric.md) — consequence-based severity,
+   assigned at authoring time, never derived from model behavior.
+4. [Decisions](Decisions.md) — the architecture decision records. Check
+   here before proposing a design change; the argument already happened.
+5. [Taxonomy](Taxonomy.md) — family definitions for case authors.
+
+## Full map
+
+**Measure** — what the numbers mean:
+
+- [Methodology](Methodology.md) — how peira measures decision robustness.
+  The measurement contract: ASR, eligibility, analysis locks.
+- [Taxonomy](Taxonomy.md) — the three primitives (choice, score, noul)
+  and the ten attack families.
+- [Concepts](Concepts.md) — the five ideas the benchmark rests on.
+- [Severity-Rubric](Severity-Rubric.md) — consequence-based severity
+  tiers, for case authors.
+- [Threat-Model](Threat-Model.md) — what peira measures, and what it
+  explicitly does not.
+- [Claims](Claims.md) — what peira claims, what it doesn't, and what's
+  still unverified.
+- [Hardware](Hardware.md) — hardware guidance per adapter tier.
+
+**Build** — datasets and project mechanics:
+
+- [Dataset](Dataset.md) — the authoring pipeline: templates, gates,
+  review queue, manifests, versioning.
+- [Compatibility](Compatibility.md) — package vs dataset versioning:
+  what works today, what's planned.
+- [Decisions](Decisions.md) — architecture decision records, D-1 onward.
+
+**Use** — day to day:
+
+- [CLI](CLI.md) — every command and flag, generated from the parser.
+  Never hand-edited, never stale.
+- [Troubleshooting](Troubleshooting.md) — exact error → cause → fix.
+  Every user-facing CLI error lives here.
+- [FAQ](FAQ.md) — the questions everyone asks first.
+- [Glossary](Glossary.md) — terms, defined once.
+
+**Project**:
+
+- [Contributing](Contributing.md) — the checklist for PRs.
+- [Overview](Overview.md) — this page.

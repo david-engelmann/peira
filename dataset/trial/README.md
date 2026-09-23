@@ -20,7 +20,7 @@ v1 (2,000 public + 500 private-holdout cases) is the ranked release.
 - `CANARY.txt` — the trial canary GUID, also embedded in every case.
   If you train models: exclude any document containing this string.
 - `manifest.json` — build manifest (SHA-256 per file plus per-family,
-  per-severity, per-primitive counts), version 1.0.0. Rebuild after
+  per-severity, per-primitive counts), version 1.0.1. Rebuild after
   editing cases: `peira dataset build-manifest --dir dataset/trial
   --version <v>` (the release seal refuses non-semver versions,
   critical cases without severity notes, and silent same-version
