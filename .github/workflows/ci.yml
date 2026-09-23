@@ -69,3 +69,36 @@ jobs:
         shell: bash
       - run: peira validate --dataset dataset/trial-demo
       - run: peira report --run runs/mock-trial-demo.json --out report.html
+
+  dataset-checks:
+    # The authoring pipeline's release seal, enforced in CI: the Trial
+    # starter suite must pass all six validation gates and its committed
+    # manifest must match its case files, so a dataset mismatch is a
+    # build failure. trial-demo is scaffolding and stays exempt (no
+    # gates, no manifest). dataset/v1 grows incrementally, so both
+    # checks run there only once there is something to check.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -e .
+      - run: peira dataset gates --dir dataset/trial
+      - run: peira dataset verify-manifest --dir dataset/trial
+      - name: gates on dataset/v1 (when cases exist)
+        shell: bash
+        run: |
+          if compgen -G "dataset/v1/*.jsonl" > /dev/null; then
+            peira dataset gates --dir dataset/v1
+          else
+            echo "no *.jsonl in dataset/v1 yet — skipping gates"
+          fi
+      - name: verify manifest on dataset/v1 (when present)
+        shell: bash
+        run: |
+          if [ -f dataset/v1/manifest.json ]; then
+            peira dataset verify-manifest --dir dataset/v1
+          else
+            echo "no manifest.json in dataset/v1 yet — skipping verify"
+          fi

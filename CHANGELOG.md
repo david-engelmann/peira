@@ -8,6 +8,13 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
 ## [Unreleased]
 
 ### Added
+- Authoring pipeline, first slice (T1a): CI runs the dataset checks on
+  every push — `peira dataset gates --dir dataset/trial` and
+  `peira dataset verify-manifest --dir dataset/trial` on the committed
+  Trial starter suite, plus conditional gates/manifest checks on
+  `dataset/v1` once it has case files. This makes the documented claim
+  true: manifests are committed to git and a mismatch is a build
+  failure. `dataset/trial-demo/` stays exempt (gate-exempt scaffolding).
 - Byte-proof dataset identity (H4): `peira run` verifies the suite
   manifest before scoring and seals the manifest's SHA-256 into the
   analysis lock, so an artifact proves the exact dataset bytes scored —

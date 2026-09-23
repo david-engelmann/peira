@@ -114,5 +114,22 @@ class TestDatasetManifest(unittest.TestCase):
         self.assertEqual(m["files"], {})
 
 
+class TestDatasetCIChecks(unittest.TestCase):
+    """The dataset-checks CI job (gates + manifest verification) must stay
+    green on the committed Trial starter suite — the same checks the job
+    runs on every push."""
+
+    TRIAL_DIR = str(Path(__file__).resolve().parents[1] / "dataset" / "trial")
+
+    def test_trial_passes_gates_and_manifest_verify(self):
+        import argparse
+        from peira.cli import cmd_dataset_gates, cmd_dataset_verify_manifest
+
+        gates_args = argparse.Namespace(dir=self.TRIAL_DIR)
+        self.assertEqual(cmd_dataset_gates(gates_args), 0)
+        verify_args = argparse.Namespace(dir=self.TRIAL_DIR)
+        self.assertEqual(cmd_dataset_verify_manifest(verify_args), 0)
+
+
 if __name__ == "__main__":
     unittest.main()
