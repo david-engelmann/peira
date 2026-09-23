@@ -89,14 +89,14 @@ class TestSuiteDatasetIdentity(unittest.TestCase):
         partial = RunArtifact(
             adapter_name=MockAdapter().name,
             adapter_version=getattr(MockAdapter(), "version", ""),
-            suite="trial", dataset_version="0.1.0-trial",
+            suite="trial", dataset_version="1.0.0",
             manifest_sha256="a" * 64,
             results=[],
         )
         partial.seal()
         with self.assertRaises(ValueError) as ctx:
             validate_partial(partial, MockAdapter(), cases,
-                             "trial", "0.1.0-trial", "b" * 64)
+                             "trial", "1.0.0", "b" * 64)
         self.assertIn("different dataset snapshot", str(ctx.exception))
 
     def test_run_records_manifest_digest(self):
