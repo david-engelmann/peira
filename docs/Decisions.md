@@ -681,6 +681,14 @@ on `CallUsage.model` into the run artifact:
   unverified — re-check every rate before launch. Unknown models
   price at 0.0, never estimated.
 
+  **Amendment (2026-09-23).** The "TypeSafe's published" phrasing above
+  is wrong and is kept only as the historical record: the $0.042/1M-in,
+  free-out Jev rate is secondary-sourced via gateway announcements
+  (Vercel/Netlify/Spring AI, Sept 2026), not confirmed on an official
+  TypeSafe pricing page. The pricing table (`python/peira/data/pricing.json`)
+  and `docs/Adapters.md` carry the corrected, caveated wording; this
+  paragraph is the stale original. Re-verify before launch.
+
 Jev's transport is stdlib `urllib`, one POST per call, zero internal
 retries. The adapter maps HTTP semantics for the runner: 429/529/5xx
 (plus `Retry-After`) → `ProviderError` with `status_code`/`retry_after`

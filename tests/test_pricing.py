@@ -60,9 +60,10 @@ class TestPricingTable(unittest.TestCase):
         got = cost_usd("gpt-5.6-sol", 1_000_000, 500_000, table)
         self.assertAlmostEqual(got, 4.0 + 10.0, places=9)
 
-    def test_jev_published_rate(self):
+    def test_jev_secondary_sourced_rate(self):
         table = load_pricing_table()
-        # TypeSafe's published Jev pricing: $0.042/1M input, output free.
+        # Secondary-sourced Jev pricing (gateway announcements, not a
+        # TypeSafe pricing page): $0.042/1M input, output free.
         got = cost_usd("jev-1.13.0", 1_000_000, 500_000, table)
         self.assertAlmostEqual(got, 0.042, places=9)
 
