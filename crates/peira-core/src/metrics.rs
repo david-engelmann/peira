@@ -189,10 +189,14 @@ pub fn malformed_rate(results: &[PerCaseResult]) -> f64 {
         / n as f64
 }
 
-/// Expected calibration error with equal-width bins.
+/// Expected calibration error with equal-mass bins.
 ///
-/// The first bin is closed on the left so a probability of exactly 0.0
-/// lands in a bin instead of being silently dropped.
+/// Indices are stably sorted by forecast — Rust's `sort_by` is stable,
+/// so ties keep input order and the binning is deterministic, exactly
+/// like the Python reference — then split into `bins` chunks as
+/// equal-count as possible: bin `b` holds `[b*n/bins .. (b+1)*n/bins)`.
+/// Empty chunks (possible when there are fewer forecasts than bins) are
+/// skipped, so every forecast lands in exactly one bin.
 ///
 /// `bins` must be positive: `bins == 0` panics with "bins must be
 /// positive" instead of silently returning 0.0. The Python reference
@@ -201,27 +205,28 @@ pub fn malformed_rate(results: &[PerCaseResult]) -> f64 {
 pub fn ece(probs: &[f64], labels: &[i64], bins: usize) -> f64 {
     assert!(!probs.is_empty() && probs.len() == labels.len());
     assert!(bins > 0, "bins must be positive");
-    let edges: Vec<f64> = (0..=bins).map(|i| i as f64 / bins as f64).collect();
+    let mut order: Vec<usize> = (0..probs.len()).collect();
+    order.sort_by(|&a, &b| {
+        probs[a]
+            .partial_cmp(&probs[b])
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
+    let n = probs.len();
     let mut total = 0.0;
     for b in 0..bins {
-        let idx: Vec<usize> = probs
-            .iter()
-            .enumerate()
-            .filter(|(_, &p)| {
-                if b == 0 {
-                    edges[b] <= p && p <= edges[b + 1]
-                } else {
-                    edges[b] < p && p <= edges[b + 1]
-                }
-            })
-            .map(|(i, _)| i)
-            .collect();
-        if idx.is_empty() {
+        let start = b * n / bins;
+        let end = (b + 1) * n / bins;
+        if start == end {
             continue;
         }
-        let acc = idx.iter().map(|&i| labels[i] as f64).sum::<f64>() / idx.len() as f64;
-        let conf = idx.iter().map(|&i| probs[i]).sum::<f64>() / idx.len() as f64;
-        total += (acc - conf).abs() * idx.len() as f64 / probs.len() as f64;
+        let mut acc = 0.0;
+        let mut conf = 0.0;
+        for &i in &order[start..end] {
+            acc += labels[i] as f64;
+            conf += probs[i];
+        }
+        let cnt = (end - start) as f64;
+        total += (acc / cnt - conf / cnt).abs() * cnt / n as f64;
     }
     total
 }
@@ -484,6 +489,17 @@ mod tests {
         let probs = vec![1.0; 10];
         let labels = vec![1; 10];
         assert!(ece(&probs, &labels, 2) < 1e-12);
+    }
+
+    #[test]
+    fn ece_equal_mass_clustered() {
+        // Nine forecasts at 0.05 (label 0) and one at 0.95 (label 1).
+        // Equal-mass bins=2 splits 5/5: bin 0 is pure 0.05, bin 1 mixes
+        // four 0.05s with the 0.95 -> 0.025 + 0.015 = 0.04. Equal-width
+        // would give 0.05 here; the binning genuinely matters.
+        let probs = vec![0.05, 0.05, 0.05, 0.05, 0.05, 0.05, 0.05, 0.05, 0.05, 0.95];
+        let labels = vec![0, 0, 0, 0, 0, 0, 0, 0, 0, 1];
+        assert!((ece(&probs, &labels, 2) - 0.04).abs() < 1e-12);
     }
 
     #[test]

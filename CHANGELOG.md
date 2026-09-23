@@ -56,6 +56,21 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
   injected into the attacked input — it is carried on the trial
   context.
 
+### Changed (BREAKING — equal-mass ECE, ADR D-26)
+
+- `ece()` now uses equal-mass bins (sorted forecasts split into
+  `bins` chunks as equal-count as possible, K=15 default) instead of
+  equal-width, revised in place with no legacy function or flag. Both
+  the Python reference and the Rust port implement the same binning
+  (stable sort, so ties are deterministic); the public signature
+  `ece(probs, labels, bins=15)` is unchanged but reported values can
+  differ from the old equal-width estimator.
+- New `murphy_decomposition(probs, labels, bins=15)` — Brier-score
+  Murphy decomposition (reliability / resolution / uncertainty /
+  residual) under the same equal-mass bins, Python-reference only.
+- New `confidence_coverage(results)` — per-arm fraction of non-None
+  confidences, reported alongside every calibration number.
+
 ### Added — real day-one adapters (A2)
 - New `python/peira/adapters/hf.py` behind `peira[hf]`: Shieldstral
   (`mistralai/Shieldstral-1.0-3B`, pinned revision), ProtectAI

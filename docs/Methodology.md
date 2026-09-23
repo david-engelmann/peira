@@ -69,7 +69,10 @@ target semantics the result contract deliberately does not carry.
   table — unknown models price at 0.0 (explicitly unaccounted, never
   silently estimated). Pricing source and pin date are sealed into the
   artifact.
-- **Calibration** (score primitive): ECE with equal-width bins, Brier score.
+- **Calibration** (score primitive): ECE with equal-mass bins (K=15
+  default; lower is better, 0.0 is perfect), Brier score with its
+  Murphy decomposition (reliability / resolution / uncertainty /
+  residual), and confidence coverage.
 - **Uncertainty**: Wilson 95% intervals on rates; paired bootstrap for
   run-vs-run comparisons; McNemar for family comparisons; Bonferroni
   adjustment when claiming across families jointly.
@@ -80,13 +83,47 @@ in Python, a panic with the same message in Rust), and McNemar requires
 non-negative discordant-pair counts (`ValueError` in Python; the Rust
 signature takes `u64`, so the PyO3 layer rejects negatives at the
 boundary). Paired inputs must be non-empty and equal-length —
-`ece([], [])`, `brier_score([], [])`, and `paired_bootstrap_ci([], [])`
+`ece([], [])`, `brier_score([], [])`, `murphy_decomposition([], [])`,
+and `paired_bootstrap_ci([], [])`
 raise `ValueError` in Python (explicit checks, which survive `python -O`
 where the old asserts vanished; validated before backend dispatch so both
 backends agree, while the Rust core asserts on the same caller bugs).
 The paired bootstrap never panics on NaN input — NaN sorts
 last — but values computed from non-finite input are not guaranteed
 across backends. See ADR D-11 in `docs/Decisions.md`.
+
+### Calibration
+
+Calibration is measured on the score primitive's reported confidences
+against correctness labels (1 = correct benign decision):
+
+- **ECE** (`ece(probs, labels, bins=15)`): expected calibration error
+  with **equal-mass bins** — forecasts are sorted and split into `bins`
+  chunks as equal-count as possible (adaptive calibration error; Nixon
+  et al. 2019), K=15 by default. Equal-mass binning has lower estimation
+  bias than equal-width (Roelofs et al. 2022): every bin carries the
+  same statistical weight instead of overweighting dense forecast
+  regions. Lower is better; 0.0 is perfect calibration. Ties keep input
+  order (stable sort), so the binning is deterministic.
+- **Murphy decomposition** (`murphy_decomposition(probs, labels,
+  bins=15)`): splits the Brier score into reliability (calibration
+  term — 0.0 is perfect), resolution (how much the bins discriminate
+  outcomes — higher is better), uncertainty (the irreducible base-rate
+  variance ȳ(1−ȳ)), and a residual, using the same equal-mass bins as
+  ECE. The identity reliability − resolution + uncertainty + residual
+  = Brier holds by construction. The residual is the within-bin
+  component — forecast spread minus twice the within-bin
+  forecast/outcome covariance. A **nonzero residual** means the bins mix
+  meaningfully different forecasts: reliability alone is hiding
+  within-bin miscalibration, so read it as a warning that the ECE bins
+  are too coarse (or the forecasts too spread) for the headline number
+  to tell the whole story. It can be negative.
+- **Confidence coverage** (`confidence_coverage(results)`): the
+  fraction of cases whose benign / attacked call record reports a
+  confidence, as `{"benign": ..., "attacked": ...}`. A missing
+  confidence is not a zero — coverage is reported alongside every
+  calibration number so readers know how much of the sample the
+  calibration statistics actually cover.
 
 ## Ranking eligibility
 

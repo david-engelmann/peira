@@ -12,9 +12,11 @@ from peira.metrics import (
     benign_accuracy,
     brier_score,
     check_eligibility,
+    confidence_coverage,
     ece,
     ineligible_by_reason,
     mcnemar,
+    murphy_decomposition,
     paired_bootstrap_ci,
     refusal_rate,
     refusal_rate_by_family,
@@ -77,8 +79,29 @@ class TestCalibration(unittest.TestCase):
             ece([1.0] * 10, [1] * 10, bins=2), 0.0, places=9)
 
     def test_ece_zero_probability_binned(self):
-        # p=0.0 must land in the first bin, not vanish.
+        # Under equal-mass binning every forecast lands in exactly one
+        # bin by construction, so p=0.0 is never dropped.
         self.assertAlmostEqual(ece([0.0, 1.0], [0, 1]), 0.0, places=9)
+
+    def test_ece_equal_mass_diverges_from_equal_width(self):
+        # Nine forecasts at 0.05 (label 0), one at 0.95 (label 1).
+        # Equal-mass bins=2 splits 5/5: bin 0 is pure 0.05
+        # (|0-0.05|*5/10 = 0.025), bin 1 mixes four 0.05s with the 0.95
+        # (mean forecast 0.23, mean outcome 0.2 -> 0.015) = 0.04.
+        # Equal-width bins=2 would report 0.05 here (0.045 + 0.005):
+        # the binning genuinely changes the estimate.
+        probs = [0.05] * 9 + [0.95]
+        labels = [0] * 9 + [1]
+        self.assertAlmostEqual(ece(probs, labels, bins=2), 0.04, places=9)
+
+    def test_ece_deterministic_under_ties(self):
+        # Tied forecasts keep input order (stable sort): the two 0.5s
+        # stay (label 0, label 1), so bin 0 is (0.1,0)+(0.5,0) and bin 1
+        # is (0.5,1)+(0.9,1) -> 0.15 + 0.15 = 0.30. An unstable tie
+        # order would give 0.20 instead.
+        self.assertAlmostEqual(
+            ece([0.5, 0.5, 0.1, 0.9], [0, 1, 0, 1], bins=2),
+            0.30, places=9)
 
     def test_ece_zero_bins_rejected(self):
         from peira.metrics import _ece_py
@@ -93,7 +116,8 @@ class TestCalibration(unittest.TestCase):
         # ZeroDivisionError). Explicit ValueErrors survive -O and are
         # raised before backend dispatch, so both backends agree.
         from peira.metrics import _brier_score_py, _ece_py
-        for fn in (ece, _ece_py, brier_score, _brier_score_py):
+        for fn in (ece, _ece_py, brier_score, _brier_score_py,
+                   murphy_decomposition):
             with self.subTest(fn=fn.__name__, kind="empty"):
                 with self.assertRaises(ValueError):
                     fn([], [])
@@ -101,9 +125,81 @@ class TestCalibration(unittest.TestCase):
                 with self.assertRaises(ValueError):
                     fn([0.5, 0.5], [1])
 
+    def test_murphy_zero_bins_rejected(self):
+        with self.assertRaises(ValueError):
+            murphy_decomposition([0.5], [1], bins=0)
+
     def test_brier_perfect(self):
         self.assertAlmostEqual(
             brier_score([1.0, 0.0], [1, 0]), 0.0, places=9)
+
+
+class TestMurphyDecomposition(unittest.TestCase):
+    def test_hand_computed_identity(self):
+        # probs=[0.1,0.4,0.6,0.9], labels=[0,0,1,1], bins=2:
+        # bin 0: mean_p=0.25, mean_y=0.0; bin 1: mean_p=0.75, mean_y=1.0.
+        # REL=(2*0.0625+2*0.0625)/4=0.0625, RES=(0.5+0.5)/4=0.25,
+        # UNC=0.25, brier=(0.01+0.16+0.16+0.01)/4=0.085,
+        # residual=0.085-(0.0625-0.25+0.25)=0.0225.
+        probs = [0.1, 0.4, 0.6, 0.9]
+        labels = [0, 0, 1, 1]
+        m = murphy_decomposition(probs, labels, bins=2)
+        self.assertAlmostEqual(m.reliability, 0.0625, places=9)
+        self.assertAlmostEqual(m.resolution, 0.25, places=9)
+        self.assertAlmostEqual(m.uncertainty, 0.25, places=9)
+        self.assertAlmostEqual(m.residual, 0.0225, places=9)
+        # The decomposition reconstructs the Brier score exactly.
+        self.assertAlmostEqual(
+            m.reliability - m.resolution + m.uncertainty + m.residual,
+            brier_score(probs, labels), places=9)
+
+    def test_zero_residual_when_bin_forecasts_identical(self):
+        # Every bin's forecasts are constant, so there is no within-bin
+        # spread for the residual to absorb.
+        m = murphy_decomposition([0.3, 0.3, 0.7, 0.7], [0, 1, 0, 1],
+                                 bins=2)
+        self.assertAlmostEqual(m.residual, 0.0, places=12)
+        self.assertAlmostEqual(
+            m.reliability - m.resolution + m.uncertainty,
+            brier_score([0.3, 0.3, 0.7, 0.7], [0, 1, 0, 1]), places=9)
+
+    def test_uses_equal_mass_bins(self):
+        # Same clustered input as the ECE divergence test: bin 1 mixes
+        # four 0.05s with the 0.95. The residual absorbs that within-bin
+        # structure — here it is -0.0792, nonzero (the residual is the
+        # within-bin spread minus twice the within-bin covariance, so
+        # it can be negative).
+        probs = [0.05] * 9 + [0.95]
+        labels = [0] * 9 + [1]
+        m = murphy_decomposition(probs, labels, bins=2)
+        self.assertAlmostEqual(m.residual, -0.0792, places=9)
+        self.assertAlmostEqual(
+            m.reliability - m.resolution + m.uncertainty + m.residual,
+            brier_score(probs, labels), places=9)
+
+
+class TestConfidenceCoverage(unittest.TestCase):
+    def test_fractions_per_arm(self):
+        # Drop the benign confidence on the first result and the
+        # attacked confidence on the second.
+        r0 = _r()
+        r1 = _r()
+        r0 = PerCaseResult(
+            **{**r0.__dict__,
+               "benign": CallRecord(**{**r0.benign.__dict__,
+                                       "confidence": None})})
+        r1 = PerCaseResult(
+            **{**r1.__dict__,
+               "attacked": CallRecord(**{**r1.attacked.__dict__,
+                                        "confidence": None})})
+        self.assertEqual(confidence_coverage([r0, r1]),
+                         {"benign": 0.5, "attacked": 0.5})
+
+    def test_all_present_and_empty(self):
+        self.assertEqual(confidence_coverage([_r(), _r()]),
+                         {"benign": 1.0, "attacked": 1.0})
+        self.assertEqual(confidence_coverage([]),
+                         {"benign": 0.0, "attacked": 0.0})
 
 
 class TestMcNemar(unittest.TestCase):

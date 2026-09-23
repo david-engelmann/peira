@@ -37,7 +37,7 @@ from __future__ import annotations
 import math
 import random
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, NamedTuple
 
 from peira._rust import _impl as _rust
 from peira.adapters.base import CallUsage
@@ -324,33 +324,62 @@ def eligible_confidence_pairs(
     return probs, labels
 
 
+def _equal_mass_bins(
+    probs: list[float], labels: list[int], bins: int
+) -> list[tuple[int, float, float]]:
+    """Per-bin ``(count, mean forecast, mean outcome)`` under equal-mass binning.
+
+    Precondition: ``probs``/``labels`` are non-empty and equal-length,
+    ``bins > 0`` — callers validate first (see :func:`_check_paired`).
+
+    Indices are stably sorted by forecast — Python's sort is stable, so
+    ties keep input order and the binning is deterministic — then split
+    into ``bins`` chunks as equal-count as possible: bin ``b`` holds
+    ``[b*n//bins : (b+1)*n//bins)``. The chunks are non-overlapping and
+    cover every index, so each forecast lands in exactly one bin. When
+    ``n < bins`` some chunks are empty; they are skipped, so the result
+    may hold fewer than ``bins`` entries.
+    """
+    order = sorted(range(len(probs)), key=probs.__getitem__)
+    n = len(probs)
+    out: list[tuple[int, float, float]] = []
+    for b in range(bins):
+        idx = order[b * n // bins:(b + 1) * n // bins]
+        if not idx:
+            continue
+        cnt = len(idx)
+        out.append((
+            cnt,
+            sum(probs[i] for i in idx) / cnt,
+            sum(labels[i] for i in idx) / cnt,
+        ))
+    return out
+
+
 def _ece_py(probs: list[float], labels: list[int], bins: int = 15) -> float:
     """Reference implementation of :func:`ece` (pure Python)."""
     _check_paired(probs, labels, "probs", "labels")
     if bins <= 0:
         raise ValueError("bins must be positive")
-    edges = [i / bins for i in range(bins + 1)]
-    total = 0.0
-    for b in range(bins):
-        if b == 0:
-            idx = [i for i, p in enumerate(probs) if edges[b] <= p <= edges[b + 1]]
-        else:
-            idx = [i for i, p in enumerate(probs) if edges[b] < p <= edges[b + 1]]
-        if not idx:
-            continue
-        acc = sum(labels[i] for i in idx) / len(idx)
-        conf = sum(probs[i] for i in idx) / len(idx)
-        total += abs(acc - conf) * len(idx) / len(probs)
-    return total
+    n = len(probs)
+    return sum(
+        cnt * abs(mean_y - mean_p) / n
+        for cnt, mean_p, mean_y in _equal_mass_bins(probs, labels, bins)
+    )
 
 
 def ece(probs: list[float], labels: list[int], bins: int = 15) -> float:
-    """Expected calibration error with equal-width bins.
+    """Expected calibration error with equal-mass bins (default K=15).
 
-    The first bin is closed on the left so a probability of exactly 0.0
-    lands in a bin instead of being silently dropped.
+    Indices are sorted by forecast and split into ``bins`` chunks as
+    equal-count as possible — the adaptive calibration error of Nixon
+    et al. 2019. Equal-mass binning has lower estimation bias than
+    equal-width (Roelofs et al. 2022): every bin carries the same
+    statistical weight instead of overweighting dense regions. Empty
+    bins (possible when there are fewer forecasts than bins) are
+    skipped. Lower is better: 0.0 is perfect calibration.
 
-    `bins` must be positive: `bins=0` raises ValueError instead of
+    ``bins`` must be positive: ``bins=0`` raises ValueError instead of
     silently returning 0.0. Empty or mismatched inputs also raise
     ValueError — validated here, before dispatch, so the error is the
     same whether or not the Rust backend is installed (the Rust core
@@ -362,6 +391,82 @@ def ece(probs: list[float], labels: list[int], bins: int = 15) -> float:
     if _rust is not None:
         return _rust.ece(probs, labels, bins)
     return _ece_py(probs, labels, bins)
+
+
+class MurphyDecomposition(NamedTuple):
+    """Murphy decomposition of the Brier score (Murphy 1973).
+
+    - ``reliability``: (1/n)Σ n_k(p̄_k − ȳ_k)² — the calibration term;
+      0.0 is perfect.
+    - ``resolution``: (1/n)Σ n_k(ȳ_k − ȳ)² — how much the bins
+      discriminate outcomes; higher is better.
+    - ``uncertainty``: ȳ(1−ȳ) — the irreducible base-rate variance.
+    - ``residual``: brier − (reliability − resolution + uncertainty) —
+      the within-bin component: forecast spread minus twice the
+      within-bin forecast/outcome covariance. Zero when every bin's
+      forecasts are identical; nonzero (possibly negative) when a bin
+      mixes very different forecasts.
+    """
+
+    reliability: float
+    resolution: float
+    uncertainty: float
+    residual: float
+
+
+def murphy_decomposition(
+    probs: list[float], labels: list[int], bins: int = 15
+) -> MurphyDecomposition:
+    """Murphy decomposition of the Brier score under equal-mass binning.
+
+    Uses the same bins as :func:`ece` (see :func:`_equal_mass_bins`).
+    The identity ``reliability − resolution + uncertainty + residual ==
+    brier_score(probs, labels)`` holds by construction: the residual is
+    exactly the within-bin forecast-spread term that reliability alone
+    cannot see.
+
+    Python reference only in this slice — no Rust dispatch yet (a later
+    A3 slice ports it); the Brier term uses the pure-Python reference
+    so the decomposition is backend-independent.
+
+    Same ValueError behavior as :func:`ece`: ``bins`` must be positive;
+    empty or mismatched inputs raise.
+    """
+    if bins <= 0:
+        raise ValueError("bins must be positive")
+    _check_paired(probs, labels, "probs", "labels")
+    n = len(probs)
+    base = sum(labels) / n
+    rel = 0.0
+    res = 0.0
+    for cnt, mean_p, mean_y in _equal_mass_bins(probs, labels, bins):
+        rel += cnt * (mean_p - mean_y) ** 2
+        res += cnt * (mean_y - base) ** 2
+    rel /= n
+    res /= n
+    unc = base * (1.0 - base)
+    residual = _brier_score_py(probs, labels) - (rel - res + unc)
+    return MurphyDecomposition(rel, res, unc, residual)
+
+
+def confidence_coverage(results: list[PerCaseResult]) -> dict[str, float]:
+    """Fraction of cases with a reported confidence, per variant arm.
+
+    Returns ``{"benign": ..., "attacked": ...}``: the fraction of
+    ``results`` whose benign (resp. attacked) call record has a
+    non-None confidence. A missing confidence is not a zero — report
+    this alongside every calibration number so readers know how much of
+    the sample the calibration statistics actually cover. Empty
+    ``results`` yields 0.0 for both arms.
+    """
+    n = len(results)
+    if n == 0:
+        return {"benign": 0.0, "attacked": 0.0}
+    return {
+        "benign": sum(1 for r in results if r.benign.confidence is not None) / n,
+        "attacked": sum(1 for r in results
+                        if r.attacked.confidence is not None) / n,
+    }
 
 
 def _brier_score_py(probs: list[float], labels: list[int]) -> float:
