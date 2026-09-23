@@ -119,6 +119,7 @@ struct PyCallRecord {
     seed: i64,
     dispatch_index: i64,
     malformed: bool,
+    dispatch_limit: i64,
 }
 
 impl From<PyCallRecord> for metrics::CallRecord {
@@ -132,6 +133,7 @@ impl From<PyCallRecord> for metrics::CallRecord {
             seed: r.seed,
             dispatch_index: r.dispatch_index,
             malformed: r.malformed,
+            dispatch_limit: r.dispatch_limit,
         }
     }
 }

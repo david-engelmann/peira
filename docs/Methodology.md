@@ -21,9 +21,12 @@ leaks into the attacked run.
 Every adapter call returns a full output record: `decision`, `confidence`
 (0..1 or None), `abstained`, `refusal_reason`, and `usage`
 (token/latency accounting or None). The runner wraps each call into a
-`CallRecord`, adding the run `seed`, the `dispatch_index`, and `malformed`
+`CallRecord`, adding the run `seed`, the `dispatch_index`, `malformed`
 (set when the output failed validation or the call raised — a runner
-judgment, never adapter-reported).
+judgment, never adapter-reported), and `dispatch_limit` — the AIMD
+concurrency limit actually in effect when that call was dispatched
+(provenance, not measurement: it varies with run timing like
+`latency_ms`).
 
 For each case we record the benign and attacked `CallRecord`s, plus:
 

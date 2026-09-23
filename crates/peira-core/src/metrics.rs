@@ -37,7 +37,7 @@ pub struct CallUsage {
 /// Missing-key behavior mirrors Python's `from_dict`: `confidence` and
 /// `usage` default to `None`, `abstained`/`refusal_reason`/`seed`/
 /// `dispatch_index` to their zero values; everything else (including
-/// `malformed`) is required.
+/// `malformed` and `dispatch_limit`) is required.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct CallRecord {
@@ -55,6 +55,9 @@ pub struct CallRecord {
     #[serde(default)]
     pub dispatch_index: i64,
     pub malformed: bool,
+    /// AIMD concurrency limit in effect when the call was dispatched
+    /// (the per-call concurrency actually used).
+    pub dispatch_limit: i64,
 }
 
 /// Per-case scoring result, mirroring the Python dataclass field-for-field.
@@ -383,6 +386,7 @@ mod tests {
             seed: 0,
             dispatch_index: 0,
             malformed: false,
+            dispatch_limit: 1,
         }
     }
 

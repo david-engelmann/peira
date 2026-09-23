@@ -22,7 +22,13 @@ from peira.adapters.mock import MockAdapter
 from peira.artifacts import RunArtifact
 from peira.dataset import atomic_write_text, verify_manifest, verify_manifest_sealed
 from peira.metrics import PerCaseResult
-from peira.runner import SUITE_DIRS, load_cases, run_suite, validate_partial
+from peira.runner import (
+    SUITE_DIRS,
+    load_cases,
+    replay_suite,
+    run_suite,
+    validate_partial,
+)
 from peira.templates import TEMPLATES
 
 EXIT_OK = 0
@@ -169,6 +175,34 @@ def _suite_dataset_identity(suite_dir: Path) -> tuple[str, str]:
     return dataset_version, manifest_sha256
 
 
+def _print_run_summary(artifact, out_path: Path) -> None:
+    m = artifact.metrics
+    print(f"done: {m['n_cases']} cases ({m['n_eligible']} eligible)")
+    print(f"  ASR (conditional): {m['asr_conditional']} "
+          f"95% CI {m['asr_ci95']}")
+    print(f"  benign accuracy:   {m['benign_accuracy']} "
+          f"95% CI {m['benign_accuracy_ci95']}")
+    print(f"  malformed rate:    {m['malformed_rate']}")
+    print(f"  refusal rate:      {m['refusal_rate']} "
+          f"95% CI {m['refusal_rate_ci95']}")
+    inelig = m["ineligible_by_reason"]
+    print(f"  ineligible:        {sum(inelig.values())} "
+          f"({', '.join(f'{k}={v}' for k, v in inelig.items())})")
+    print(f"  ranking eligible:  {m['ranking_eligible']}"
+          + (f" ({'; '.join(m['eligibility_notes'])})" if m['eligibility_notes'] else ""))
+    print(f"artifact: {out_path}")
+    print(f"analysis lock: {artifact.analysis_lock[:16]}…")
+
+
+def _write_final_artifact(out_dir: Path, slug: str, suite: str,
+                          artifact, suffix: str = "") -> Path:
+    out_path = out_dir / f"{slug}-{suite}{suffix}.json"
+    # Atomic write: a crash mid-write must never leave a corrupt
+    # artifact behind.
+    atomic_write_text(out_path, artifact.to_json())
+    return out_path
+
+
 def cmd_run(args: argparse.Namespace) -> int:
     root = _repo_root()
     try:
@@ -200,6 +234,19 @@ def cmd_run(args: argparse.Namespace) -> int:
         return EXIT_USER_ERROR
 
     out_dir = Path(args.out)
+
+    if args.max_concurrency < 1:
+        print(f"error: --max-concurrency must be >= 1 "
+              f"(got {args.max_concurrency})", file=sys.stderr)
+        return EXIT_USER_ERROR
+    if args.max_attempts < 1:
+        print(f"error: --max-attempts must be >= 1 "
+              f"(got {args.max_attempts})", file=sys.stderr)
+        return EXIT_USER_ERROR
+    if args.call_timeout is not None and args.call_timeout <= 0:
+        print(f"error: --call-timeout must be > 0 "
+              f"(got {args.call_timeout})", file=sys.stderr)
+        return EXIT_USER_ERROR
 
     if args.dry_run:
         print(f"dry run: {len(cases)} cases, adapter={adapter.name}, "
@@ -259,39 +306,84 @@ def cmd_run(args: argparse.Namespace) -> int:
             progress=progress, already_done=already_done,
             prior_results=prior_results, partial_path=partial_path,
             manifest_sha256=manifest_sha256, seed=args.seed,
+            max_concurrency=args.max_concurrency,
+            max_attempts=args.max_attempts,
+            call_timeout=args.call_timeout,
+            cache_dir=args.cache_dir,
+            transcript_path=args.transcript,
         )
     except KeyboardInterrupt:
         print("\ninterrupted — partial run saved; re-run with --resume.",
               file=sys.stderr)
         return EXIT_INFRA_ERROR
+    except ValueError as e:
+        # Config errors with actionable messages (bad cache dir,
+        # unwritable transcript path): user error, not a traceback.
+        print(f"error: {e}", file=sys.stderr)
+        return EXIT_USER_ERROR
     except Exception:
         traceback.print_exc()
         return EXIT_INFRA_ERROR
 
-    out_path = out_dir / f"{slug}-{suite}.json"
-    # Atomic write: a crash mid-write must never leave a corrupt
-    # artifact behind.
-    atomic_write_text(out_path, artifact.to_json())
+    out_path = _write_final_artifact(out_dir, slug, suite, artifact)
     if partial_path.exists():
         partial_path.unlink()
 
-    m = artifact.metrics
-    print(f"done: {m['n_cases']} cases ({m['n_eligible']} eligible)")
-    print(f"  ASR (conditional): {m['asr_conditional']} "
-          f"95% CI {m['asr_ci95']}")
-    print(f"  benign accuracy:   {m['benign_accuracy']} "
-          f"95% CI {m['benign_accuracy_ci95']}")
-    print(f"  malformed rate:    {m['malformed_rate']}")
-    print(f"  refusal rate:      {m['refusal_rate']} "
-          f"95% CI {m['refusal_rate_ci95']}")
-    inelig = m["ineligible_by_reason"]
-    print(f"  ineligible:        {sum(inelig.values())} "
-          f"({', '.join(f'{k}={v}' for k, v in inelig.items())})")
-    print(f"  ranking eligible:  {m['ranking_eligible']}"
-          + (f" ({'; '.join(m['eligibility_notes'])})" if m['eligibility_notes'] else ""))
-    print(f"artifact: {out_path}")
-    print(f"analysis lock: {artifact.analysis_lock[:16]}…")
-    if not m["ranking_eligible"]:
+    _print_run_summary(artifact, out_path)
+    if not artifact.metrics["ranking_eligible"]:
+        return EXIT_GATE_NOTE
+    return EXIT_OK
+
+
+def cmd_replay(args: argparse.Namespace) -> int:
+    """Re-score a recorded transcript without calling any provider."""
+    root = _repo_root()
+    suite = args.suite
+    if suite == "smoke":
+        suite = "trial"  # smoke is the Trial alias
+    if suite not in SUITE_DIRS:
+        print(f"error: unknown suite {args.suite!r} (available: trial-demo, trial/smoke)",
+              file=sys.stderr)
+        return EXIT_USER_ERROR
+    suite_dir = root / SUITE_DIRS[suite]
+    if not suite_dir.exists():
+        print(f"error: suite directory {suite_dir} not found",
+              file=sys.stderr)
+        return EXIT_USER_ERROR
+    try:
+        cases = load_cases(suite_dir)
+    except ValueError as e:
+        print(f"error: invalid case data: {e}", file=sys.stderr)
+        return EXIT_USER_ERROR
+    if not cases:
+        print(f"error: no cases found in {suite_dir}", file=sys.stderr)
+        return EXIT_USER_ERROR
+    try:
+        dataset_version, manifest_sha256 = _suite_dataset_identity(suite_dir)
+    except ValueError as e:
+        print(f"error: {e}", file=sys.stderr)
+        return EXIT_USER_ERROR
+
+    out_dir = Path(args.out)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    try:
+        artifact = replay_suite(
+            Path(args.transcript), cases, suite, dataset_version,
+            manifest_sha256=manifest_sha256,
+        )
+    except ValueError as e:
+        print(f"error: {e}", file=sys.stderr)
+        return EXIT_USER_ERROR
+    except Exception:
+        traceback.print_exc()
+        return EXIT_INFRA_ERROR
+
+    out_path = _write_final_artifact(
+        out_dir, _safe_adapter_slug(artifact.adapter_name), suite, artifact,
+        suffix=".replay",
+    )
+    _print_run_summary(artifact, out_path)
+    if not artifact.metrics["ranking_eligible"]:
         return EXIT_GATE_NOTE
     return EXIT_OK
 
@@ -739,7 +831,34 @@ def build_parser() -> argparse.ArgumentParser:
     r.add_argument("--resume", action="store_true", help="resume an interrupted run")
     r.add_argument("--seed", type=int, default=0,
                    help="run seed, recorded on every call record (default: 0)")
+    r.add_argument("--max-concurrency", type=int, default=8,
+                   help="cap on in-flight adapter calls; the AIMD controller "
+                   "adapts within [1, N] (default: 8)")
+    r.add_argument("--max-attempts", type=int, default=3,
+                   help="total tries per call; retries are transient-only "
+                   "(408/409/429/5xx, timeouts) (default: 3)")
+    r.add_argument("--call-timeout", type=float, default=None,
+                   help="seconds per attempt; a timeout is retried as a "
+                   "transient failure (default: no timeout)")
+    r.add_argument("--cache-dir", default=None,
+                   help="opt-in response cache directory for deterministic "
+                   "adapters (temperature 0 + fixed seed); off by default "
+                   "and never on the measurement path unless given")
+    r.add_argument("--transcript", default=None,
+                   help="write a JSONL transcript of every request/response "
+                   "to this path (for audit and `peira replay`)")
     r.set_defaults(func=cmd_run)
+
+    rp = sub.add_parser("replay",
+                        help="re-score a recorded transcript without "
+                        "calling any provider")
+    rp.add_argument("--transcript", required=True,
+                    help="transcript JSONL written by `peira run --transcript`")
+    rp.add_argument("--suite", default="trial-demo",
+                    choices=list(SUITE_DIRS) + ["smoke"],
+                    help="smoke is an alias for trial")
+    rp.add_argument("--out", default="runs")
+    rp.set_defaults(func=cmd_replay)
 
     v = sub.add_parser("validate", help="validate a dataset directory")
     v.add_argument("--dataset", required=True)

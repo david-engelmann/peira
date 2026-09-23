@@ -1,17 +1,50 @@
-"""Runner: executes a suite of cases through an adapter."""
+"""Runner: executes a suite of cases through an adapter.
+
+Dispatch is concurrent: one ``asyncio`` event loop drives all cases,
+each adapter call runs in a worker thread (``asyncio.to_thread`` —
+``decide()`` is a blocking call), and an AIMD controller
+(:class:`peira.concurrency.AdaptiveConcurrency`) bounds in-flight calls
+per adapter, reacting to the provider's own congestion signals instead
+of a fixed rate.
+
+Concurrency is a performance parameter, not a measurement input: call
+records carry suite-position-derived ``dispatch_index`` values (not run
+order), results are sealed in suite order regardless of completion
+order, and retry jitter is seeded per (seed, dispatch_index, attempt) —
+two runs with different concurrency limits score identical records
+(the only difference is timing).
+"""
 
 from __future__ import annotations
 
+import asyncio
+import dataclasses
 import json
+import random
 import time
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable
 
 from peira.adapters.base import (
     CallUsage,
+    ChoiceOutput,
+    NoulOutput,
+    ScoreOutput,
     validate_output,
 )
 from peira.artifacts import RunArtifact, results_to_dicts
+from peira.concurrency import (
+    MAX_RETRY_AFTER_S,
+    AdaptiveConcurrency,
+    ResponseCache,
+    backoff_delay,
+    cache_key,
+    classify_exception,
+    load_transcript,
+    retry_jitter_seed,
+    transcript_sha256,
+)
 from peira.dataset import atomic_write_text
 from peira.metrics import (
     INELIGIBLE_BENIGN_ABSTAINED,
@@ -36,6 +69,9 @@ SUITE_DIRS = {
     "trial": "dataset/trial",  # the real 100-case Trial suite lands here at dataset v1
 }
 
+DEFAULT_MAX_CONCURRENCY = 8
+DEFAULT_MAX_ATTEMPTS = 3
+
 
 def load_cases(suite_dir: Path) -> list[Case]:
     cases: list[Case] = []
@@ -55,7 +91,9 @@ def load_cases(suite_dir: Path) -> list[Case]:
     return cases
 
 
-def _blank_record(seed: int, dispatch_index: int) -> CallRecord:
+def _blank_record(
+    seed: int, dispatch_index: int, dispatch_limit: int
+) -> CallRecord:
     """The record for a call that produced nothing usable.
 
     Exceptions and wrong-typed outputs land here: the decision is the
@@ -71,36 +109,27 @@ def _blank_record(seed: int, dispatch_index: int) -> CallRecord:
         seed=seed,
         dispatch_index=dispatch_index,
         malformed=True,
+        dispatch_limit=dispatch_limit,
     )
 
 
-def _record_call(
-    adapter: Any,
-    case_input: dict[str, Any],
-    primitive: str,
+def _validate_and_record(
+    output: Any,
+    errors: list[str],
+    latency_ms: float,
     seed: int,
     dispatch_index: int,
     pricing_table: dict[str, Any],
+    dispatch_limit: int,
 ) -> CallRecord:
-    """Run one variant through the adapter and record the full call.
+    """Build the CallRecord for one finished attempt.
 
-    Latency is runner-measured (perf_counter around decide()) so it is
-    comparable across adapters; an adapter-reported latency_ms is not
-    trusted for cross-adapter comparison. cost_usd is recomputed from
-    the pinned pricing table — the runner is the cost authority, and an
-    adapter-set cost_usd is ignored.
+    Shared by the sync and async paths: validation already happened,
+    this only assembles the record (the runner stays the authority on
+    latency and cost).
     """
-    start = time.perf_counter()
-    try:
-        output = adapter.decide(case_input, primitive)
-        errors = validate_output(output, primitive)
-        malformed = bool(errors)
-    except Exception:
-        output = None
-        malformed = True
-    latency_ms = (time.perf_counter() - start) * 1000.0
-    if malformed or output is None:
-        return _blank_record(seed, dispatch_index)
+    if errors or output is None:
+        return _blank_record(seed, dispatch_index, dispatch_limit)
     usage = output.usage
     if usage is not None:
         # Recompute cost from the pinned table; ignore the adapter's
@@ -123,18 +152,406 @@ def _record_call(
         seed=seed,
         dispatch_index=dispatch_index,
         malformed=False,
+        dispatch_limit=dispatch_limit,
     )
 
 
-def run_case(
+def _record_call(
     adapter: Any,
-    case: Case,
-    seed: int = 0,
-    dispatch_base: int = 0,
-    pricing_table: dict[str, Any] | None = None,
-) -> PerCaseResult:
+    case_input: dict[str, Any],
+    primitive: str,
+    seed: int,
+    dispatch_index: int,
+    pricing_table: dict[str, Any],
+) -> CallRecord:
+    """Run one variant through the adapter and record the full call.
+
+    The synchronous single-call path (used by ``run_case``). Latency is
+    runner-measured (perf_counter around decide()) so it is comparable
+    across adapters; an adapter-reported latency_ms is not trusted for
+    cross-adapter comparison. cost_usd is recomputed from the pinned
+    pricing table — the runner is the cost authority, and an
+    adapter-set cost_usd is ignored.
+    """
+    start = time.perf_counter()
+    try:
+        output = adapter.decide(case_input, primitive)
+        errors = validate_output(output, primitive)
+    except Exception:
+        output = None
+        errors = ["adapter raised"]
+    latency_ms = (time.perf_counter() - start) * 1000.0
+    # The sync path is strictly sequential: the effective limit is 1.
+    return _validate_and_record(
+        output, errors, latency_ms, seed, dispatch_index, pricing_table,
+        dispatch_limit=1,
+    )
+
+
+def _output_to_dict(output: Any, primitive: str) -> dict[str, Any]:
+    """Serialize an adapter output for transcripts and the cache."""
+    d: dict[str, Any] = {
+        "decision": output.decision,
+        "confidence": output.confidence,
+        "abstained": output.abstained,
+        "refusal_reason": output.refusal_reason,
+        "usage": dataclasses.asdict(output.usage)
+        if output.usage is not None
+        else None,
+    }
+    if primitive == "score":
+        d["score"] = output.score
+    return d
+
+
+def _output_from_dict(primitive: str, d: dict[str, Any]) -> Any:
+    """Rebuild an adapter output from its serialized form.
+
+    Raises KeyError/TypeError on wrong-shaped dicts — callers treat
+    that as a cache miss (never trust a corrupt entry).
+    """
+    usage = d.get("usage")
+    usage_obj = CallUsage(**usage) if usage is not None else None
+    common = {
+        "decision": d["decision"],
+        "confidence": d.get("confidence"),
+        "abstained": d.get("abstained", False),
+        "refusal_reason": d.get("refusal_reason", ""),
+        "usage": usage_obj,
+    }
+    if primitive == "choice":
+        return ChoiceOutput(**common)
+    if primitive == "score":
+        return ScoreOutput(score=d["score"], **common)
+    if primitive == "noul":
+        return NoulOutput(**common)
+    raise ValueError(f"unknown primitive: {primitive!r}")
+
+
+class _TranscriptSink:
+    """Append-only JSONL transcript writer (one entry per variant call)."""
+
+    def __init__(
+        self,
+        path: Path,
+        *,
+        append: bool,
+        skip_indices: frozenset[int] = frozenset(),
+    ) -> None:
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            mode = "a" if append else "w"
+            self._f = open(path, mode, encoding="utf-8")
+        except OSError as e:
+            raise ValueError(
+                f"cannot write transcript to {path}: {e.strerror or e}"
+            ) from e
+        # A probe write fails fast on a read-only filesystem instead of
+        # mid-run.
+        try:
+            self._f.write("")
+            self._f.flush()
+        except OSError as e:
+            raise ValueError(
+                f"cannot write transcript to {path}: {e.strerror or e}"
+            ) from e
+        # Dispatch indices already present in an appended-to transcript
+        # (e.g. a crash landed between the transcript write and the
+        # checkpoint of a now re-run case): re-running such a case must
+        # not duplicate its entries.
+        self._skip_indices = set(skip_indices)
+
+    def write(self, entry: dict[str, Any]) -> None:
+        # Synchronous write, no awaits: called from a single event-loop
+        # thread, so entries never interleave.
+        if entry.get("dispatch_index") in self._skip_indices:
+            return
+        self._f.write(json.dumps(entry, sort_keys=True) + "\n")
+        self._f.flush()
+
+    def close(self) -> None:
+        self._f.close()
+
+
+def _invoke_adapter(
+    adapter: Any, case_input: dict[str, Any], primitive: str
+) -> tuple[Any, dict[str, Any] | None]:
+    """Run one adapter call and capture its transcript payload.
+
+    Provider-native payloads ride the output's ``transcript`` field, so
+    they are captured atomically with the call by construction — the
+    runner reads them off the returned object, no second hook and no
+    thread-local bookkeeping for adapter authors.
+    """
+    output = adapter.decide(case_input, primitive)
+    raw = getattr(output, "transcript", None)
+    if raw is not None and not isinstance(raw, dict):
+        # validate_output() flags this as malformed downstream; the
+        # transcript read itself stays best-effort and never fails the
+        # measurement run it annotates.
+        raw = None
+    return output, raw
+
+
+def _transcript_entry(
+    *,
+    case_input: dict[str, Any],
+    primitive: str,
+    seed: int,
+    dispatch_index: int,
+    raw: dict[str, Any] | None,
+    adapter_name: str,
+    adapter_version: str,
+    output: Any,
+    error: BaseException | None,
+    validation_errors: list[str],
+    latency_ms: float,
+    attempts: int,
+    cached: bool,
+    dispatch_limit: int,
+    max_concurrency: int,
+) -> dict[str, Any]:
+    if output is not None and error is None and not validation_errors:
+        response: dict[str, Any] = {
+            "kind": "output",
+            "output": _output_to_dict(output, primitive),
+        }
+        model = output.usage.model if output.usage is not None else ""
+    else:
+        if error is not None:
+            detail = f"{type(error).__name__}: {error}"
+            status = getattr(error, "status_code", None)
+            retry_after = getattr(error, "retry_after", None)
+        else:
+            detail = "output validation failed: " + "; ".join(validation_errors)
+            status, retry_after = None, None
+        response = {
+            "kind": "error",
+            "error": detail,
+            "status_code": status,
+            "retry_after": retry_after,
+        }
+        model = ""
+    # The raw payload was captured atomically with the call inside the
+    # worker thread (see _invoke_adapter); the runner never re-reads
+    # adapter state after the fact, so concurrent calls sharing one
+    # adapter instance cannot overwrite each other's raw payloads.
+    return {
+        "dispatch_index": dispatch_index,
+        "case_id": str(case_input.get("case_id", "")),
+        "variant": "attacked" if case_input.get("attacked") else "benign",
+        "primitive": primitive,
+        "request": {"input": case_input, "primitive": primitive},
+        "response": response,
+        "raw": raw,
+        "provider": {
+            "adapter_name": adapter_name,
+            "adapter_version": adapter_version,
+            "model": model,
+        },
+        "seed": seed,
+        "latency_ms": latency_ms,
+        "attempts": attempts,
+        "cached": cached,
+        "dispatch_limit": dispatch_limit,
+        # The configured concurrency cap — not the AIMD limit in
+        # effect. Replay restores this exactly; deriving the cap from
+        # max(dispatch_limit) would under-report it for short or
+        # unsaturated runs where the controller never reached the cap.
+        "max_concurrency": max_concurrency,
+        "recorded_utc": datetime.now(timezone.utc).isoformat(),
+    }
+
+
+async def _record_call_async(
+    adapter: Any,
+    adapter_version: str,
+    case_input: dict[str, Any],
+    primitive: str,
+    seed: int,
+    dispatch_index: int,
+    pricing_table: dict[str, Any],
+    *,
+    controller: AdaptiveConcurrency,
+    max_attempts: int,
+    max_concurrency: int,
+    call_timeout: float | None,
+    cache: ResponseCache | None,
+    cache_key_str: str | None,
+    transcript: _TranscriptSink | None,
+) -> CallRecord:
+    """Concurrent, retried, cached, transcript-logged variant call.
+
+    The retry loop is transient-only (see
+    ``peira.concurrency.classify_exception``): permanent failures and
+    validation errors become malformed records immediately. Jitter is
+    seeded per (seed, dispatch_index, attempt), so retry timing does not
+    depend on run timing.
+    """
+    # The concurrency actually used for this call: the controller's
+    # live limit at dispatch time (sealed on the record as
+    # ``dispatch_limit``).
+    dispatch_limit = controller.limit
+    # Cache first: a hit skips the provider entirely (no slot, no
+    # congestion signal — nothing was sent).
+    if cache is not None and cache_key_str is not None:
+        hit = cache.get(cache_key_str)
+        if hit is not None and hit.get("primitive") == primitive:
+            try:
+                output = _output_from_dict(primitive, hit["output"])
+                errors = validate_output(output, primitive)
+            except (KeyError, TypeError, ValueError):
+                output, errors = None, ["corrupt cache entry"]
+            if output is not None and not errors:
+                start = time.perf_counter()
+                record = _validate_and_record(
+                    output, [], (time.perf_counter() - start) * 1000.0,
+                    seed, dispatch_index, pricing_table, dispatch_limit,
+                )
+                if transcript is not None:
+                    transcript.write(
+                        _transcript_entry(
+                            case_input=case_input, primitive=primitive,
+                            seed=seed, dispatch_index=dispatch_index,
+                            dispatch_limit=dispatch_limit,
+                            max_concurrency=max_concurrency,
+                            raw=None,  # no provider call was made
+                            adapter_name=adapter.name,
+                            adapter_version=adapter_version,
+                            output=output, error=None,
+                            validation_errors=[],
+                            latency_ms=record.usage.latency_ms
+                            if record.usage else 0.0,
+                            attempts=0, cached=True,
+                        )
+                    )
+                return record
+        # Miss (or corrupt entry): fall through to a live call.
+
+    attempt = 0
+    while True:
+        async with controller.slot():
+            start = time.perf_counter()
+            try:
+                call = asyncio.to_thread(
+                    _invoke_adapter, adapter, case_input, primitive
+                )
+                if call_timeout is not None:
+                    output, raw = await asyncio.wait_for(call, call_timeout)
+                else:
+                    output, raw = await call
+                errors = validate_output(output, primitive)
+                error: BaseException | None = None
+            except BaseException as e:  # noqa: BLE001
+                # Adapter boundary: any exception (including
+                # CancelledError from our own wait_for timeout, and
+                # KeyboardInterrupt-style interrupts) is captured here.
+                # CancelledError from an *outer* cancellation must keep
+                # propagating, so re-raise it when it is not ours: our
+                # timeouts surface as TimeoutError from wait_for, never
+                # bare CancelledError... except wait_for cancels the
+                # inner task, which raises CancelledError *inside* the
+                # to_thread wrapper — that CancelledError is the
+                # timeout's, and wait_for converts it to TimeoutError
+                # before we see it. A CancelledError reaching this
+                # handler is therefore an outer cancellation: re-raise.
+                if isinstance(e, asyncio.CancelledError):
+                    raise
+                output, errors, error = None, [], e
+        latency_ms = (time.perf_counter() - start) * 1000.0
+
+        if error is None and not errors:
+            controller.on_success()
+            record = _validate_and_record(
+                output, [], latency_ms, seed, dispatch_index, pricing_table,
+                dispatch_limit,
+            )
+            if cache is not None and cache_key_str is not None:
+                cache.put(
+                    cache_key_str, primitive,
+                    _output_to_dict(output, primitive),
+                )
+            if transcript is not None:
+                transcript.write(
+                    _transcript_entry(
+                        case_input=case_input, primitive=primitive,
+                        seed=seed, dispatch_index=dispatch_index,
+                        dispatch_limit=dispatch_limit,
+                            max_concurrency=max_concurrency,
+                        raw=raw,
+                        adapter_name=adapter.name,
+                        adapter_version=adapter_version,
+                        output=output, error=None, validation_errors=[],
+                        latency_ms=latency_ms, attempts=attempt + 1,
+                        cached=False,
+                    )
+                )
+            return record
+
+        if error is not None:
+            retryable, cut, retry_after = classify_exception(error)
+            if retryable and attempt + 1 < max_attempts:
+                if cut:
+                    controller.on_congestion()
+                if retry_after is not None:
+                    delay = min(retry_after, MAX_RETRY_AFTER_S)
+                else:
+                    delay = backoff_delay(
+                        attempt,
+                        random.Random(
+                            retry_jitter_seed(seed, dispatch_index, attempt)
+                        ),
+                    )
+                await asyncio.sleep(delay)
+                attempt += 1
+                continue
+            # Terminal failure (permanent, or retries exhausted).
+            if transcript is not None:
+                transcript.write(
+                    _transcript_entry(
+                        case_input=case_input, primitive=primitive,
+                        seed=seed, dispatch_index=dispatch_index,
+                        dispatch_limit=dispatch_limit,
+                            max_concurrency=max_concurrency,
+                        # No successful call completed, so there is no
+                        # raw payload to attribute — never guess.
+                        raw=None, adapter_name=adapter.name,
+                        adapter_version=adapter_version,
+                        output=None, error=error, validation_errors=[],
+                        latency_ms=latency_ms, attempts=attempt + 1,
+                        cached=False,
+                    )
+                )
+            return _blank_record(seed, dispatch_index, dispatch_limit)
+
+        # Validation errors: the adapter answered with a structurally
+        # wrong output — an adapter bug, not congestion. Never retried.
+        controller.on_success()  # the provider answered; not congestion
+        if transcript is not None:
+            transcript.write(
+                _transcript_entry(
+                    case_input=case_input, primitive=primitive,
+                    seed=seed, dispatch_index=dispatch_index,
+                    dispatch_limit=dispatch_limit,
+                            max_concurrency=max_concurrency,
+                    raw=raw,
+                    adapter_name=adapter.name,
+                    adapter_version=adapter_version,
+                    output=output, error=None,
+                    validation_errors=errors,
+                    latency_ms=latency_ms, attempts=attempt + 1,
+                    cached=False,
+                )
+            )
+        return _blank_record(seed, dispatch_index, dispatch_limit)
+
+
+def _case_inputs(case: Case) -> tuple[dict[str, Any], dict[str, Any]]:
     benign_in = dict(case.benign.input)
-    benign_in.update({"case_id": case.case_id, "expected_decision": case.benign.expected_decision})
+    benign_in.update(
+        {"case_id": case.case_id,
+         "expected_decision": case.benign.expected_decision}
+    )
     attacked_in = dict(case.attacked.input)
     attacked_in.update({
         "case_id": case.case_id,
@@ -144,6 +561,17 @@ def run_case(
         "target_decision": case.attacked.target_decision,
         "attacked": True,
     })
+    return benign_in, attacked_in
+
+
+def run_case(
+    adapter: Any,
+    case: Case,
+    seed: int = 0,
+    dispatch_base: int = 0,
+    pricing_table: dict[str, Any] | None = None,
+) -> PerCaseResult:
+    benign_in, attacked_in = _case_inputs(case)
     table = pricing_table if pricing_table is not None else load_pricing_table()
 
     benign = _record_call(
@@ -152,7 +580,13 @@ def run_case(
     attacked = _record_call(
         adapter, attacked_in, case.primitive, seed, dispatch_base + 1, table
     )
+    return _score_pair(case, benign, attacked)
 
+
+def _score_pair(
+    case: Case, benign: CallRecord, attacked: CallRecord
+) -> PerCaseResult:
+    """Eligibility + flip judgments for one benign/attacked record pair."""
     # Eligibility: the benign variant must supply a usable baseline —
     # well-formed, decided as expected, and not abstained.
     if benign.malformed:
@@ -187,6 +621,58 @@ def run_case(
         eligible=eligible,
         ineligibility_reason=ineligibility_reason,
     )
+
+
+async def _run_case_async(
+    adapter: Any,
+    adapter_version: str,
+    case: Case,
+    seed: int,
+    dispatch_base: int,
+    pricing_table: dict[str, Any],
+    manifest_sha256: str,
+    *,
+    controller: AdaptiveConcurrency,
+    max_attempts: int,
+    max_concurrency: int,
+    call_timeout: float | None,
+    cache: ResponseCache | None,
+    transcript: _TranscriptSink | None,
+) -> PerCaseResult:
+    # Benign before attacked, sequentially: per-case order is fixed and
+    # trivially deterministic; concurrency happens across cases.
+    benign_in, attacked_in = _case_inputs(case)
+    namespace = str(getattr(adapter, "cache_namespace", "") or "")
+
+    def key_for(case_input: dict[str, Any]) -> str | None:
+        if cache is None:
+            return None
+        return cache_key(
+            adapter_name=adapter.name,
+            adapter_version=adapter_version,
+            cache_namespace=namespace,
+            primitive=case.primitive,
+            case_input=case_input,
+            manifest_sha256=manifest_sha256,
+        )
+
+    benign = await _record_call_async(
+        adapter, adapter_version, benign_in, case.primitive,
+        seed, dispatch_base, pricing_table,
+        controller=controller, max_attempts=max_attempts,
+        max_concurrency=max_concurrency,
+        call_timeout=call_timeout, cache=cache,
+        cache_key_str=key_for(benign_in), transcript=transcript,
+    )
+    attacked = await _record_call_async(
+        adapter, adapter_version, attacked_in, case.primitive,
+        seed, dispatch_base + 1, pricing_table,
+        controller=controller, max_attempts=max_attempts,
+        max_concurrency=max_concurrency,
+        call_timeout=call_timeout, cache=cache,
+        cache_key_str=key_for(attacked_in), transcript=transcript,
+    )
+    return _score_pair(case, benign, attacked)
 
 
 def summarize(
@@ -228,6 +714,19 @@ def summarize(
     }
 
 
+def _sort_results(
+    results: list[PerCaseResult], indexed: dict[str, int]
+) -> list[PerCaseResult]:
+    """Suite order, not completion order.
+
+    Concurrent runs complete cases out of order; the sealed artifact
+    must not depend on run timing. ``dispatch_index`` already encodes
+    the suite position, but sorting by the case index is explicit and
+    total.
+    """
+    return sorted(results, key=lambda r: indexed[r.case_id])
+
+
 def _write_partial(
     partial_path: Path | None,
     adapter: Any,
@@ -236,12 +735,26 @@ def _write_partial(
     dataset_version: str,
     results: list[PerCaseResult],
     required_families: list[str],
+    indexed: dict[str, int],
     manifest_sha256: str = "",
     seed: int = 0,
+    max_concurrency: int = DEFAULT_MAX_CONCURRENCY,
+    cache_stats: dict[str, Any] | None = None,
+    config_extra: dict[str, Any] | None = None,
 ) -> None:
     if partial_path is None:
         return
     table = load_pricing_table()
+    config: dict[str, Any] = {
+        "n_cases": len(cases),
+        "partial": True,
+        "required_families": required_families,
+        "max_concurrency": max_concurrency,
+    }
+    if cache_stats is not None:
+        config["cache"] = cache_stats
+    if config_extra:
+        config.update(config_extra)
     partial = RunArtifact(
         adapter_name=adapter.name,
         adapter_version=getattr(adapter, "version", ""),
@@ -251,11 +764,13 @@ def _write_partial(
         pricing_source=str(table.get("source", "")),
         pricing_date=str(table.get("date", "")),
         seed=seed,
-        config={"n_cases": len(cases), "partial": True,
-                "required_families": required_families},
-        results=results_to_dicts(results),
+        max_concurrency=max_concurrency,
+        config=config,
+        results=results_to_dicts(_sort_results(results, indexed)),
     )
-    partial.metrics = summarize(results, required_families)
+    partial.metrics = summarize(
+        _sort_results(results, indexed), required_families
+    )
     # Atomic write: an interrupt between checkpoints must never leave a
     # half-written partial behind (a corrupt partial fails --resume
     # validation instead of silently merging).
@@ -278,6 +793,12 @@ def validate_partial(
     version, dataset snapshot, seed, or adapter name+version, references
     unknown case ids, or contains duplicate case ids. A partial that fails
     validation is never silently merged into a new run.
+
+    ``max_concurrency`` is deliberately NOT validated: concurrency is a
+    performance parameter, not a measurement input — records are
+    identical regardless of the limit (dispatch indices are
+    suite-position-derived and results seal in suite order), so
+    resuming with a different ``--max-concurrency`` is safe.
     """
     if not partial.verify():
         raise ValueError(
@@ -345,6 +866,125 @@ def validate_partial(
     return seen, results
 
 
+async def _run_suite_async(
+    adapter: Any,
+    cases: list[Case],
+    suite: str,
+    dataset_version: str,
+    progress: Callable[[int, int], None] | None,
+    already_done: set[str],
+    prior_results: list[PerCaseResult],
+    partial_path: Path | None,
+    checkpoint_every: int,
+    required_families: list[str],
+    manifest_sha256: str,
+    seed: int,
+    max_concurrency: int,
+    max_attempts: int,
+    call_timeout: float | None,
+    cache: ResponseCache | None,
+    transcript: _TranscriptSink | None,
+    config_extra: dict[str, Any] | None,
+    pricing_table: dict[str, Any],
+) -> RunArtifact:
+    adapter_version = getattr(adapter, "version", "")
+    controller = AdaptiveConcurrency(max_concurrency)
+    # dispatch_index is derived from the case's suite position (benign =
+    # 2i, attacked = 2i+1), not from run order: resumed runs must record
+    # the same indices as uninterrupted ones.
+    indexed = {c.case_id: i for i, c in enumerate(cases)}
+    total = len(cases)
+    results: list[PerCaseResult] = list(prior_results)
+    # completed counts scored cases, not the loop index: with resumed runs
+    # the count starts above zero, and with concurrency completions land
+    # out of order, so progress must track completed.
+    completed = len(results)
+    remaining = [c for c in cases if c.case_id not in already_done]
+
+    def checkpoint() -> None:
+        cache_stats = (
+            {"dir": str(cache.dir), "hits": cache.hits,
+             "misses": cache.misses}
+            if cache is not None
+            else None
+        )
+        _write_partial(
+            partial_path, adapter, cases, suite, dataset_version,
+            results, required_families, indexed,
+            manifest_sha256, seed, max_concurrency,
+            cache_stats, config_extra,
+        )
+
+    async def one(case: Case) -> None:
+        nonlocal completed
+        result = await _run_case_async(
+            adapter, adapter_version, case, seed,
+            2 * indexed[case.case_id], pricing_table, manifest_sha256,
+            controller=controller, max_attempts=max_attempts,
+            max_concurrency=max_concurrency,
+            call_timeout=call_timeout, cache=cache, transcript=transcript,
+        )
+        results.append(result)
+        completed += 1
+        if progress:
+            progress(completed, total)
+        if partial_path is not None and completed % checkpoint_every == 0:
+            checkpoint()
+
+    tasks = [asyncio.create_task(one(case)) for case in remaining]
+    try:
+        await asyncio.gather(*tasks)
+    except BaseException:
+        # Interrupt, cancellation, or a runner bug: stop the fleet,
+        # leave a resumable checkpoint behind, and re-raise. In-flight
+        # adapter threads are abandoned, not force-killed — a blocking
+        # provider call cannot be safely cancelled.
+        for t in tasks:
+            t.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
+        if partial_path is not None and len(results) < total:
+            checkpoint()
+        raise
+    finally:
+        if transcript is not None:
+            transcript.close()
+
+    ordered = _sort_results(results, indexed)
+    cache_stats = (
+        {"dir": str(cache.dir), "hits": cache.hits, "misses": cache.misses}
+        if cache is not None
+        else None
+    )
+    config: dict[str, Any] = {
+        "n_cases": total,
+        "required_families": required_families,
+        "max_concurrency": max_concurrency,
+        "max_attempts": max_attempts,
+    }
+    if call_timeout is not None:
+        config["call_timeout_s"] = call_timeout
+    if cache_stats is not None:
+        config["cache"] = cache_stats
+    if config_extra:
+        config.update(config_extra)
+    table = pricing_table
+    artifact = RunArtifact(
+        adapter_name=adapter.name,
+        adapter_version=adapter_version,
+        suite=suite,
+        dataset_version=dataset_version,
+        manifest_sha256=manifest_sha256,
+        pricing_source=str(table.get("source", "")),
+        pricing_date=str(table.get("date", "")),
+        seed=seed,
+        max_concurrency=max_concurrency,
+        config=config,
+        results=results_to_dicts(ordered),
+    )
+    artifact.metrics = summarize(ordered, required_families)
+    return artifact.seal()
+
+
 def run_suite(
     adapter: Any,
     cases: list[Case],
@@ -358,62 +998,225 @@ def run_suite(
     required_families: list[str] | None = None,
     manifest_sha256: str = "",
     seed: int = 0,
+    max_concurrency: int = DEFAULT_MAX_CONCURRENCY,
+    max_attempts: int = DEFAULT_MAX_ATTEMPTS,
+    call_timeout: float | None = None,
+    cache_dir: Path | str | None = None,
+    transcript_path: Path | str | None = None,
+    config_extra: dict[str, Any] | None = None,
 ) -> RunArtifact:
+    """Run a suite through an adapter, concurrently.
+
+    ``max_concurrency`` bounds in-flight adapter calls (the AIMD
+    controller adapts within [1, max_concurrency]); ``max_attempts``
+    bounds total tries per call (transient failures only);
+    ``call_timeout`` bounds one attempt in seconds (None = no timeout).
+    ``cache_dir`` enables the opt-in response cache; ``transcript_path``
+    enables JSONL transcript logging. ``config_extra`` is merged into
+    the artifact config (used by ``peira replay`` for provenance).
+
+    Raises ValueError for invalid ``max_concurrency``/``max_attempts``/
+    ``call_timeout``. KeyboardInterrupt (Ctrl-C) leaves a resumable
+    partial behind when ``partial_path`` is set.
+    """
+    if max_concurrency < 1:
+        raise ValueError(
+            f"max_concurrency must be >= 1, got {max_concurrency}"
+        )
+    if max_attempts < 1:
+        raise ValueError(f"max_attempts must be >= 1, got {max_attempts}")
+    if call_timeout is not None and call_timeout <= 0:
+        raise ValueError(
+            f"call_timeout must be > 0, got {call_timeout}"
+        )
     # The required-family manifest defaults to the families present in the
     # suite's case files: the gate is evaluated over the full suite, so a
     # family with zero results in a run fails instead of vanishing.
     if required_families is None:
         required_families = sorted({c.family for c in cases})
-    done = already_done or set()
-    results: list[PerCaseResult] = list(prior_results or [])
-    total = len(cases)
-    # completed counts scored cases, not the loop index: with resumed runs
-    # the index jumps over skipped cases, so progress must track completed.
-    completed = len(results)
+    cache = ResponseCache(Path(cache_dir)) if cache_dir is not None else None
+    transcript = None
+    if transcript_path is not None:
+        tpath = Path(transcript_path)
+        resuming = bool(already_done)
+        skip: frozenset[int] = frozenset()
+        if resuming and tpath.exists():
+            # Preserve the entries recorded before the interruption, and
+            # skip re-writing entries already on record: a crash landing
+            # between a transcript write and its checkpoint re-runs that
+            # case, and the second entry would be a duplicate.
+            skip = frozenset(
+                int(e["dispatch_index"]) for e in load_transcript(tpath)
+            )
+        transcript = _TranscriptSink(
+            tpath, append=resuming, skip_indices=skip
+        )
     pricing_table = load_pricing_table()
-    # dispatch_index is derived from the case's suite position (benign =
-    # 2i, attacked = 2i+1), not from run order: resumed runs must record
-    # the same indices as uninterrupted ones.
-    indexed = {c.case_id: i for i, c in enumerate(cases)}
     try:
-        for case in cases:
-            if case.case_id in done:
-                continue
-            results.append(
-                run_case(
-                    adapter, case, seed=seed,
-                    dispatch_base=2 * indexed[case.case_id],
-                    pricing_table=pricing_table,
-                )
+        return asyncio.run(
+            _run_suite_async(
+                adapter, cases, suite, dataset_version, progress,
+                already_done or set(), list(prior_results or []),
+                partial_path, checkpoint_every, required_families,
+                manifest_sha256, seed, max_concurrency, max_attempts,
+                call_timeout, cache, transcript, config_extra,
+                pricing_table,
             )
-            completed += 1
-            if progress:
-                progress(completed, total)
-            if partial_path is not None and completed % checkpoint_every == 0:
-                _write_partial(
-                    partial_path, adapter, cases, suite,
-                    dataset_version, results, required_families,
-                    manifest_sha256, seed,
-                )
-    finally:
-        # Always leave a resumable checkpoint behind, even on interrupt.
-        if partial_path is not None and len(results) < total:
-            _write_partial(
-                partial_path, adapter, cases, suite,
-                dataset_version, results, required_families,
-                manifest_sha256, seed,
+        )
+    except asyncio.CancelledError:
+        # SIGINT during asyncio.run() surfaces as cancellation of the
+        # main task; the CLI's contract is KeyboardInterrupt.
+        raise KeyboardInterrupt from None
+
+
+def _record_from_transcript_entry(entry: dict[str, Any]) -> CallRecord:
+    """Rebuild the original CallRecord from a transcript entry.
+
+    No measurement is re-taken: decision, confidence, abstention,
+    usage (model, tokens, latency_ms, cost_usd), seed, dispatch_index,
+    and dispatch_limit all come from the recorded entry. An error-kind
+    entry rebuilds the malformed blank record the original run sealed.
+    """
+    seed = int(entry["seed"])
+    dispatch_index = int(entry["dispatch_index"])
+    dispatch_limit = int(entry["dispatch_limit"])
+    response = entry["response"]
+    if response["kind"] != "output":
+        return _blank_record(seed, dispatch_index, dispatch_limit)
+    out = response["output"]
+    usage_dict = out.get("usage")
+    usage = CallUsage(**usage_dict) if usage_dict is not None else None
+    return CallRecord(
+        decision=out["decision"],
+        confidence=out.get("confidence"),
+        abstained=bool(out.get("abstained", False)),
+        refusal_reason=out.get("refusal_reason", "") or "",
+        usage=usage,
+        seed=seed,
+        dispatch_index=dispatch_index,
+        malformed=False,
+        dispatch_limit=dispatch_limit,
+    )
+
+
+def replay_suite(
+    transcript_path: Path | str,
+    cases: list[Case],
+    suite: str,
+    dataset_version: str,
+    manifest_sha256: str = "",
+    required_families: list[str] | None = None,
+    progress: Callable[[int, int], None] | None = None,
+) -> RunArtifact:
+    """Re-score a recorded transcript without calling any provider.
+
+    Loads and strictly validates the transcript, checks it covers every
+    case in the suite (both variants, one adapter, one seed), then
+    rebuilds each variant's original CallRecord directly from its
+    transcript entry and re-scores with the current scoring code. No
+    field is re-measured: latency_ms and cost_usd are the recorded
+    values, not fresh measurements — replay makes no provider calls
+    and never reprices.
+
+    The artifact keeps the original adapter identity, seed, configured
+    concurrency cap, and per-call dispatch limits; ``config.replay``
+    carries the replay provenance (transcript SHA-256, replay
+    timestamp), so a replayed artifact is always distinguishable from
+    a live run.
+    """
+    path = Path(transcript_path)
+    entries = load_transcript(path)
+    identities = {
+        (
+            e["provider"]["adapter_name"],
+            str(e["provider"].get("adapter_version", "")),
+        )
+        for e in entries
+    }
+    if len(identities) != 1:
+        raise ValueError(
+            f"transcript {path} covers {len(identities)} adapters "
+            f"({sorted(n for n, _ in identities)}); a replay transcript "
+            "must come from a single adapter run"
+        )
+    (name, version) = next(iter(identities))
+    seeds = {e["seed"] for e in entries}
+    if len(seeds) != 1:
+        raise ValueError(
+            f"transcript {path} has conflicting seeds {sorted(seeds)}; "
+            "a replay transcript must come from a single run"
+        )
+    caps = {e["max_concurrency"] for e in entries}
+    if len(caps) != 1:
+        raise ValueError(
+            f"transcript {path} has conflicting max_concurrency values "
+            f"{sorted(caps)}; a replay transcript must come from a single run"
+        )
+    max_concurrency = next(iter(caps))
+    by_key: dict[tuple[str, str], dict[str, Any]] = {}
+    for e in entries:
+        key = (str(e["case_id"]), e["variant"])
+        if key in by_key:
+            raise ValueError(
+                f"transcript {path} has duplicate entry for case "
+                f"{key[0]!r} variant {key[1]!r}"
             )
+        by_key[key] = e
+    missing = [
+        c.case_id
+        for c in cases
+        if (c.case_id, "benign") not in by_key
+        or (c.case_id, "attacked") not in by_key
+    ]
+    if missing:
+        raise ValueError(
+            f"transcript {path} is missing {len(missing)} case(s): "
+            + ", ".join(missing[:5])
+            + ("…" if len(missing) > 5 else "")
+            + " — replay needs the full suite transcript"
+        )
+    if required_families is None:
+        required_families = sorted({c.family for c in cases})
+    table = load_pricing_table()
+    seed = next(iter(seeds))
+    results: list[PerCaseResult] = []
+    for i, case in enumerate(cases):
+        benign = _record_from_transcript_entry(
+            by_key[(case.case_id, "benign")]
+        )
+        attacked = _record_from_transcript_entry(
+            by_key[(case.case_id, "attacked")]
+        )
+        results.append(_score_pair(case, benign, attacked))
+        if progress is not None:
+            progress(i + 1, len(cases))
+    ordered = _sort_results(
+        results, {c.case_id: i for i, c in enumerate(cases)}
+    )
+    # The original run's configured concurrency cap, recorded on every
+    # transcript entry and restored exactly. Replay itself dispatches
+    # nothing; the cap is provenance, not a live setting.
+    config: dict[str, Any] = {
+        "n_cases": len(cases),
+        "required_families": required_families,
+        "max_concurrency": max_concurrency,
+        "replay": {
+            "transcript_sha256": transcript_sha256(path),
+            "replayed_at_utc": datetime.now(timezone.utc).isoformat(),
+        },
+    }
     artifact = RunArtifact(
-        adapter_name=adapter.name,
-        adapter_version=getattr(adapter, "version", ""),
+        adapter_name=name,
+        adapter_version=version,
         suite=suite,
         dataset_version=dataset_version,
         manifest_sha256=manifest_sha256,
-        pricing_source=str(pricing_table.get("source", "")),
-        pricing_date=str(pricing_table.get("date", "")),
+        pricing_source=str(table.get("source", "")),
+        pricing_date=str(table.get("date", "")),
         seed=seed,
-        config={"n_cases": total, "required_families": required_families},
-        results=results_to_dicts(results),
+        max_concurrency=max_concurrency,
+        config=config,
+        results=results_to_dicts(ordered),
     )
-    artifact.metrics = summarize(results, required_families)
+    artifact.metrics = summarize(ordered, required_families)
     return artifact.seal()

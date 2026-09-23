@@ -71,6 +71,11 @@ class RunArtifact:
     pricing_date: str = ""
     # Run seed: recorded on every call record for reproducibility.
     seed: int = 0
+    # Concurrency cap the run was dispatched with. The AIMD controller
+    # adapts within [1, max_concurrency]; it is a performance parameter,
+    # not a measurement input (records are identical for any limit),
+    # but it is sealed for provenance.
+    max_concurrency: int = 0
 
     def compute_lock(self) -> str:
         payload = json.dumps(
@@ -86,6 +91,7 @@ class RunArtifact:
                 "pricing_source": self.pricing_source,
                 "pricing_date": self.pricing_date,
                 "seed": self.seed,
+                "max_concurrency": self.max_concurrency,
             },
             sort_keys=True,
         )
@@ -123,6 +129,8 @@ class RunArtifact:
         "analysis_lock": str,
         "pricing_source": str,
         "pricing_date": str,
+        "seed": int,
+        "max_concurrency": int,
     }
     _REQUIRED_FIELDS: ClassVar[tuple] = ("peira_version", "dataset_version")
     _FIELD_DEFAULTS: ClassVar[dict] = {
@@ -139,7 +147,11 @@ class RunArtifact:
         "pricing_source": "",
         "pricing_date": "",
         "seed": 0,
+        "max_concurrency": 0,
     }
+    # Integer fields where a JSON `true` must not pass as an integer
+    # (bool subclasses int).
+    _INT_FIELDS: ClassVar[tuple] = ("seed", "max_concurrency")
 
     # v2 result entries: per-variant call records plus scoring flags.
     # Every entry field is required and strictly typed (unknown entry
@@ -223,11 +235,12 @@ class RunArtifact:
             if key not in (
                 "decision", "confidence", "abstained", "refusal_reason",
                 "usage", "seed", "dispatch_index", "malformed",
+                "dispatch_limit",
             ):
                 raise ValueError(f"{where} has unknown field: {key!r}")
         for key in (
             "decision", "abstained", "refusal_reason",
-            "seed", "dispatch_index", "malformed",
+            "seed", "dispatch_index", "malformed", "dispatch_limit",
         ):
             if key not in record:
                 raise ValueError(f"{where} is missing field: {key!r}")
@@ -243,7 +256,7 @@ class RunArtifact:
                 f"{where} field 'confidence' must be a number or null, "
                 f"got {type(confidence).__name__}"
             )
-        for key in ("seed", "dispatch_index"):
+        for key in ("seed", "dispatch_index", "dispatch_limit"):
             if not _is_int(record[key]):
                 raise ValueError(
                     f"{where} field {key!r} must be an integer, "
@@ -298,22 +311,25 @@ class RunArtifact:
         if not isinstance(d, dict):
             raise ValueError("artifact must be a JSON object")
         for key in d:
-            if key not in cls._FIELD_TYPES and key != "seed":
+            if key not in cls._FIELD_TYPES:
                 raise ValueError(f"unknown artifact field: {key!r}")
         for key in cls._REQUIRED_FIELDS:
             if key not in d:
                 raise ValueError(f"artifact is missing required field: {key!r}")
         for key, typ in cls._FIELD_TYPES.items():
+            if key in cls._INT_FIELDS:
+                continue  # checked below with the bool-rejecting message
             if key in d and not isinstance(d[key], typ):
                 raise ValueError(
                     f"artifact field {key!r} must be {typ.__name__}, "
                     f"got {type(d[key]).__name__}"
                 )
-        if "seed" in d and not _is_int(d["seed"]):
-            raise ValueError(
-                f"artifact field 'seed' must be an integer, "
-                f"got {type(d['seed']).__name__}"
-            )
+        for key in cls._INT_FIELDS:
+            if key in d and not _is_int(d[key]):
+                raise ValueError(
+                    f"artifact field {key!r} must be an integer, "
+                    f"got {type(d[key]).__name__}"
+                )
         version = d.get("artifact_version", ARTIFACT_VERSION)
         if version != ARTIFACT_VERSION:
             raise ValueError(_V1_REJECTION.format(version=version))
