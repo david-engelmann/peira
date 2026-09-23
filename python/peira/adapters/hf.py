@@ -433,12 +433,14 @@ class ProtectAIAdapter(_ClassifierBase):
     LABELS = {0: "SAFE", 1: "INJECTION"}
 
     def _score_text(self, text: str) -> tuple[float, int, dict[str, Any]]:
+        torch = self._torch
         tokenizer, model = self._ensure_loaded()
         encoded = tokenizer(
             text, return_tensors="pt", truncation=True, max_length=512
         )
         input_tokens = _batch_seq_len(encoded["input_ids"])
-        logits = _to_list(model(**encoded).logits[0])
+        with torch.no_grad():
+            logits = _to_list(model(**encoded).logits[0])
         return self._proba_for_logits([float(x) for x in logits]), \
             input_tokens, {}
 
@@ -452,8 +454,10 @@ class LlamaPromptGuard2Adapter(_ClassifierBase):
     score is the softmax probability of the MALICIOUS class.
 
     The model has a 512-token context window: longer inputs are split
-    into 512-token chunks and the maximum malicious score is taken, so
-    a buried injection cannot hide behind truncation.
+    into 510-token content chunks, each wrapped with [CLS]/[SEP] (the
+    classification head pools position 0, so the [CLS] token must be
+    present), and the maximum malicious score is taken — a buried
+    injection cannot hide behind truncation.
 
     Gated-model caveat: this repo is distributed under the Meta Llama 4
     Community License and is gated on Hugging Face. Before the first
@@ -471,11 +475,30 @@ class LlamaPromptGuard2Adapter(_ClassifierBase):
     HF_REVISION = "a8ded8e697ce7c355e395a0df51f94adb4a2fd27"
     LABELS = {0: "BENIGN", 1: "MALICIOUS"}
     CONTEXT_TOKENS = 512
+    # Content tokens per chunk: the 512-token window minus [CLS]/[SEP].
+    _CONTENT_TOKENS = CONTEXT_TOKENS - 2
 
     def _proba_for_token_ids(self, ids: list[int]) -> float:
+        """Score one content chunk, wrapped with [CLS]/[SEP].
+
+        The classification head pools position 0, so the [CLS] token
+        must be present — feeding bare content tokens would score the
+        wrong position.
+        """
         torch = self._torch
-        _tokenizer, model = self._ensure_loaded()
-        input_ids = torch.tensor([ids])
+        tokenizer, model = self._ensure_loaded()
+        cls_id = tokenizer.cls_token_id
+        sep_id = tokenizer.sep_token_id
+        if cls_id is None or sep_id is None:
+            raise ProviderError(
+                "llama-prompt-guard-2 tokenizer has no CLS/SEP token ids"
+            )
+        wrapped = (
+            [int(cls_id)]
+            + [int(i) for i in ids[: self._CONTENT_TOKENS]]
+            + [int(sep_id)]
+        )
+        input_ids = torch.tensor([wrapped])
         attention_mask = torch.ones_like(input_ids)
         with torch.no_grad():
             logits = _to_list(
@@ -496,8 +519,8 @@ class LlamaPromptGuard2Adapter(_ClassifierBase):
         if not ids:
             return 0.0, 0, {"chunks": 0}
         chunks = [
-            ids[i:i + self.CONTEXT_TOKENS]
-            for i in range(0, len(ids), self.CONTEXT_TOKENS)
+            ids[i:i + self._CONTENT_TOKENS]
+            for i in range(0, len(ids), self._CONTENT_TOKENS)
         ]
         best = 0.0
         for chunk in chunks:

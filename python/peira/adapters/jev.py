@@ -7,22 +7,30 @@ probabilities for ``choice``, a probability-weighted numeric answer for
 ``score``, and a probability-of-yes for ``noul``.
 
 Access is gated: you need a TypeSafe account and an API key. The adapter
-pins ``jev-1.13`` — never ``jev-latest`` or any floating tag — so a
+pins ``jev-1.13.0`` — never ``jev-latest`` or any floating tag — so a
 measurement always names the exact model that produced it.
 
 Endpoint: ``POST https://api.typesafe.ai/v1/systemone``
 Auth: ``Authorization: Bearer $TYPESAFE_API_KEY``
 
-The request/response shapes below follow TypeSafe's System One API
-documentation (model, state, named typed questions in; model, named
-answers, token usage out). If TypeSafe renames a field, this module is
-the one place to update.
+Wire shape (reconstructed from TypeSafe's public SDKs and API guides —
+this adapter has NOT been exercised against the live API, so treat the
+field names as our best current reading; docs/Adapters.md keeps the
+"unverified against the live API" caveat until one real call succeeds):
+requests carry ``{"model", "state", "questions": {name: {"type",
+"instructions", "criteria"}}}`` — ``criteria`` is ``{label: description}``
+for choice, an ordered list of level descriptions for score (2-10), and
+optional for noul. Answers come back per question name: ``{"choice": ...,
+"confidence": ..., "probabilities": ...}``, ``{"score": ..., ...}``,
+``{"noul": 0.0-1.0}``. If TypeSafe renames a field, this module is the
+one place to update.
 
 The adapter is stdlib-only (urllib) and performs exactly one HTTP
 attempt per call: it never retries internally. Transient failures
-(429, 529, 5xx, timeouts) are raised as ``ProviderError`` with
-``status_code``/``retry_after`` so the A1 runner — which owns the retry
-policy — can classify and retry them. 401/422 are terminal.
+(408, 429, 529, 5xx, timeouts, connection errors) are raised as
+``ProviderError`` with ``status_code``/``retry_after`` so the A1 runner
+— which owns the retry policy — can classify and retry them. 401/422
+are terminal.
 
 No ``peira[...]`` extra is needed: the transport is stdlib. What is
 needed is access: without ``TYPESAFE_API_KEY`` the adapter refuses to
@@ -46,7 +54,7 @@ from peira.adapters.base import (
     ScoreOutput,
 )
 
-MODEL_ID = "jev-1.13"
+MODEL_ID = "jev-1.13.0"
 """Pinned Jev model. Never a floating tag."""
 
 API_URL = "https://api.typesafe.ai/v1/systemone"
@@ -55,8 +63,16 @@ API_URL = "https://api.typesafe.ai/v1/systemone"
 API_KEY_ENV = "TYPESAFE_API_KEY"
 """Environment variable carrying the TypeSafe API key."""
 
-_SCORE_LEVELS = 10
-"""Number of ordered levels for score questions (API allows 2-10)."""
+_SCORE_LEVELS = [
+    "clearly the wrong decision",
+    "probably the wrong decision",
+    "uncertain — could go either way",
+    "probably the right decision",
+    "clearly the right decision",
+]
+"""Ordered score rubric, worst to best. The API takes 2-10 ordered levels
+described in words and returns ``score`` as the 0-based rubric position
+(fractional positions allowed); the adapter normalizes to 0..1."""
 
 
 def _require_api_key(explicit: str | None) -> str:
@@ -71,9 +87,19 @@ def _require_api_key(explicit: str | None) -> str:
     return key
 
 
+def _expected_label(case_input: dict[str, Any]) -> str:
+    """The case's expected decision, never the literal string "None".
+
+    A missing or explicitly null ``expected_decision`` falls back to
+    ``"approve"`` instead of ``str(None)``.
+    """
+    raw = case_input.get("expected_decision")
+    return raw if isinstance(raw, str) and raw else "approve"
+
+
 def _labels(case_input: dict[str, Any]) -> list[str]:
     """Candidate decision labels for this call, in stable order."""
-    labels = [str(case_input.get("expected_decision", "approve"))]
+    labels = [_expected_label(case_input)]
     target = case_input.get("target_decision")
     if isinstance(target, str) and target and target not in labels:
         labels.append(target)
@@ -82,48 +108,96 @@ def _labels(case_input: dict[str, Any]) -> list[str]:
     return labels
 
 
-def _choice_question(prompt: str, labels: list[str]) -> dict[str, Any]:
+def _choice_question(labels: list[str]) -> dict[str, Any]:
+    criteria = {
+        label: (
+            "None of the listed options is the correct decision."
+            if label == "other"
+            else f"Decide {label!r} for this case."
+        )
+        for label in labels
+    }
     return {
         "type": "choice",
-        "question": (
-            "Given the decision context, which option is the correct "
-            "decision? Answer with exactly one of the listed options."
+        "instructions": (
+            "Given the decision context in the request state, which "
+            "option is the correct decision? Answer with exactly one of "
+            "the listed options."
         ),
-        "options": {label: f"Decide '{label}' for this case" for label in labels},
-        "context": prompt,
+        "criteria": criteria,
     }
 
 
-def _score_question(prompt: str) -> dict[str, Any]:
+def _score_question() -> dict[str, Any]:
     return {
         "type": "score",
-        "question": (
-            "Rate this case on the ordered scale below, where 0 is the "
-            "lowest and 9 is the highest. Return the probability-weighted "
-            "numeric answer."
+        "instructions": (
+            "Rate the quality of the correct decision for this case on "
+            "the ordered scale below, from the worst to the best level."
         ),
-        "levels": [str(i) for i in range(_SCORE_LEVELS)],
-        "context": prompt,
+        "criteria": list(_SCORE_LEVELS),
     }
 
 
-def _noul_question(prompt: str) -> dict[str, Any]:
+def _noul_question() -> dict[str, Any]:
     return {
         "type": "noul",
-        "question": (
-            "Should this case be abstained — is there no confident correct "
-            "decision? Answer yes or no."
+        "instructions": (
+            "Should this case be abstained — is there no confident "
+            "correct decision?"
         ),
-        "context": prompt,
     }
+
+
+def _validate_questions(questions: dict[str, Any]) -> None:
+    """Client-side shape check before anything is sent.
+
+    Catches adapter bugs (wrong field names, bad criteria) before they
+    become API calls. A failure here is terminal and means the adapter —
+    not the API — is wrong.
+    """
+    for name, q in questions.items():
+        if not isinstance(q, dict):
+            raise ProviderError(
+                f"jev built a malformed question {name!r}: not an object"
+            )
+        qtype = q.get("type")
+        if qtype not in ("choice", "score", "noul"):
+            raise ProviderError(
+                f"jev built question {name!r} with unknown type {qtype!r}"
+            )
+        if not isinstance(q.get("instructions"), str) or not q["instructions"]:
+            raise ProviderError(
+                f"jev built question {name!r} without instructions"
+            )
+        criteria = q.get("criteria")
+        if qtype == "choice":
+            if not isinstance(criteria, dict) or not criteria:
+                raise ProviderError(
+                    f"jev built choice question {name!r} without a "
+                    "non-empty criteria map"
+                )
+        elif qtype == "score":
+            if (
+                not isinstance(criteria, list)
+                or not 2 <= len(criteria) <= 10
+                or not all(isinstance(c, str) and c for c in criteria)
+            ):
+                raise ProviderError(
+                    f"jev built score question {name!r} without 2-10 "
+                    "level descriptions"
+                )
 
 
 class JevAdapter:
     """Decision adapter for TypeSafe's Jev (System One) API."""
 
     name = "jev"
-    version = "1.13"
+    version = "1.13.0"
     supported_primitives = frozenset({"choice", "score", "noul"})
+    # Pinned model id: same input → same decision, so the runner's
+    # opt-in response cache is safe namespaced on it.
+    cache_namespace = f"jev:{MODEL_ID}"
 
     def __init__(
         self,
@@ -140,7 +214,7 @@ class JevAdapter:
                 "measurement must name the exact model."
             )
         self.model = model
-        self.api_key = _require_api_key(api_key)
+        self._api_key = _require_api_key(api_key)
         self.api_url = api_url
         self.timeout_s = timeout_s
         # Injectable transport for tests: fn(payload) -> parsed response dict.
@@ -158,7 +232,7 @@ class JevAdapter:
             method="POST",
             headers={
                 "Content-Type": "application/json",
-                "Authorization": f"Bearer {self.api_key}",
+                "Authorization": f"Bearer {self._api_key}",
             },
         )
         started = time.perf_counter()
@@ -171,8 +245,11 @@ class JevAdapter:
             self._raise_for_status(e.code, e.headers.get("Retry-After"),
                                    _read_error_body(e))
         except (urllib.error.URLError, TimeoutError, OSError) as e:
-            # Lost connection / DNS / refused: transient, no status.
-            raise ProviderError(f"jev transport error: {e}") from e
+            # Lost connection / DNS / refused / timed out: transient.
+            # Status 408 puts it on the runner's transient-retry path,
+            # the same mapping the structured-LLM adapters use.
+            raise ProviderError(f"jev transport error: {e}",
+                                status_code=408) from e
         latency_ms = (time.perf_counter() - started) * 1000.0
         try:
             parsed = json.loads(raw)
@@ -220,14 +297,15 @@ class JevAdapter:
         labels = _labels(case_input)
 
         if primitive == "choice":
-            questions = {"decision": _choice_question(prompt, labels)}
+            questions = {"decision": _choice_question(labels)}
         elif primitive == "score":
             questions = {
-                "score": _score_question(prompt),
-                "decision": _choice_question(prompt, labels),
+                "score": _score_question(),
+                "decision": _choice_question(labels),
             }
         else:  # noul
-            questions = {"abstain": _noul_question(prompt)}
+            questions = {"abstain": _noul_question()}
+        _validate_questions(questions)
 
         payload = {"model": self.model, "state": prompt, "questions": questions}
         response = self._transport(payload)
@@ -261,10 +339,10 @@ class JevAdapter:
 
     def _choice_output(self, answers, labels, usage, transcript):
         ans = _need_answer(answers, "decision")
-        option = str(ans.get("option", ""))
+        option = str(ans.get("choice", ""))
         if option not in labels:
             raise ProviderError(
-                f"jev returned option {option!r} outside the offered labels "
+                f"jev returned choice {option!r} outside the offered labels "
                 f"{labels} — adapter bug or API drift."
             )
         probs = ans.get("probabilities") or {}
@@ -277,10 +355,11 @@ class JevAdapter:
 
     def _score_output(self, answers, labels, usage, transcript):
         ans = _need_answer(answers, "score")
-        value = ans.get("value")
+        value = ans.get("score")
         if value is None and isinstance(ans.get("probabilities"), dict):
-            # Fall back to computing the weighted numeric from per-level
-            # probabilities when the API omits the weighted answer.
+            # Fall back to computing the weighted rubric position from
+            # per-level probabilities when the API omits the score.
+            # Probabilities arrive in level order (level 0 first).
             try:
                 value = sum(
                     i * float(p)
@@ -290,16 +369,16 @@ class JevAdapter:
                 value = None
         if not isinstance(value, (int, float)) or isinstance(value, bool):
             raise ProviderError(
-                f"jev score answer has no numeric value: {ans!r}")
-        score = _clamp01(float(value) / (_SCORE_LEVELS - 1), "score")
+                f"jev score answer has no numeric score: {ans!r}")
+        score = _clamp01(float(value) / (len(_SCORE_LEVELS) - 1), "score")
         # The paired decision question carries the label; the score is the
         # measurement signal. An out-of-vocabulary label is API drift —
         # fail loudly like the choice path does.
         dec_ans = _need_answer(answers, "decision")
-        option = str(dec_ans.get("option", ""))
+        option = str(dec_ans.get("choice", ""))
         if option not in labels:
             raise ProviderError(
-                f"jev returned option {option!r} outside the offered labels "
+                f"jev returned choice {option!r} outside the offered labels "
                 f"{labels} — adapter bug or API drift."
             )
         decision = option
@@ -311,16 +390,16 @@ class JevAdapter:
 
     def _noul_output(self, answers, case_input, usage, transcript):
         ans = _need_answer(answers, "abstain")
-        p_yes = ans.get("probability_yes", ans.get("probability"))
+        p_yes = ans.get("noul")
         if not isinstance(p_yes, (int, float)) or isinstance(p_yes, bool):
             raise ProviderError(
-                f"jev noul answer has no probability of yes: {ans!r}")
-        p_yes = _clamp01(float(p_yes), "probability_yes")
+                f"jev noul answer has no numeric noul value: {ans!r}")
+        p_yes = _clamp01(float(p_yes), "noul")
         confidence = _clamp01(abs(2 * p_yes - 1), "confidence")
         if p_yes >= 0.5:
             decision = "abstain"
         else:
-            expected = str(case_input.get("expected_decision", "approve"))
+            expected = _expected_label(case_input)
             target = case_input.get("target_decision")
             if expected != "abstain":
                 decision = expected

@@ -670,14 +670,16 @@ on `CallUsage.model` into the run artifact:
   asserted by tests, and recorded in the transcript with
   `"revision_source": "pinned"`.
 - LLM baselines pin the provider model id (`gpt-5.6-luna`,
-  `claude-sonnet-5`, `gemini-3.8-flash`); Jev pins `jev-1.13` and
+  `claude-sonnet-5`, `gemini-3.8-flash`); Jev pins `jev-1.13.0` and
   rejects floating tags (`jev-latest`) at construction with an
   explicit error.
-- The pricing table carries pre-launch provisional prices for exactly
-  these ids (not yet verified against provider pricing pages —
-  verify before launch); `jev-1.13` is 0.0 because TypeSafe
-  publishes no public pricing, and unknown models price at 0.0,
-  never estimated.
+- The pricing table carries the pinned rates for exactly these ids.
+  The GPT-5.6 tiers were verified against OpenAI's pricing page on
+  2026-09-23 ($4/$20 sol, $2/$12 terra, $0.20/$1.20 luna); Jev is
+  priced at TypeSafe's published $0.042 per 1M input tokens with
+  output free. The Anthropic and Google rates are carried over
+  unverified — re-check every rate before launch. Unknown models
+  price at 0.0, never estimated.
 
 Jev's transport is stdlib `urllib`, one POST per call, zero internal
 retries. The adapter maps HTTP semantics for the runner: 429/529/5xx
@@ -685,7 +687,8 @@ retries. The adapter maps HTTP semantics for the runner: 429/529/5xx
 for the runner's transient-retry path; 401/422 → terminal with an
 actionable message (401 names the key and where to get access; 422 is
 declared an adapter bug, not retried). Timeouts and connection errors
-are transient with no status. The API key travels only in the
+map to status 408 — transient, on the runner's retry path, like the
+LLM adapters. The API key travels only in the
 `Authorization` header — never in the payload, the transcript, or an
 error message.
 

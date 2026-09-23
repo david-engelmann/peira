@@ -57,6 +57,12 @@ One adapter per provider, one extra each — install only what you need:
 | Anthropic | `peira[anthropic]` | `peira.adapters.llm:AnthropicAdapter` | `claude-sonnet-5` | `ANTHROPIC_API_KEY` |
 | Google | `peira[google]` | `peira.adapters.llm:GoogleAdapter` | `gemini-3.8-flash` | `GOOGLE_API_KEY` |
 
+Default model ids are best-known guesses, not verified facts: the
+Anthropic and Google ids above haven't been confirmed against the
+live providers. If a provider rejects the default id, pass the exact
+model you want with `model=` — and let us know, so the default gets
+corrected.
+
 Each sends one JSON schema to the provider's native constrained
 decoding (OpenAI strict `json_schema`, Anthropic forced tool choice,
 Gemini `responseSchema`), then revalidates the response client-side.
@@ -89,13 +95,21 @@ peira run --adapter peira.adapters.jev:JevAdapter --suite trial-demo
 ```
 
 Jev is a decision-model API, not a chat model: the adapter sends the
-case prompt as `state` plus named typed questions and gets back chosen
-options with probabilities (choice), a probability-weighted numeric
-answer over ten ordered levels (score), or a probability-of-yes
-(noul). The model is pinned to `jev-1.13` — floating tags are rejected
-at construction. Access is gated; without a key the error tells you
-exactly where to get one. 429/529/5xx surface as retryable provider
-errors for the runner; 401/422 are terminal. See D-24.
+case prompt as `state` plus named typed questions — each question
+carries `instructions` and `criteria` — and reads back `choice`
+(choice), `score` (score), or `noul` (noul) answers. The score
+question uses five described levels ("strongly favor deny" …
+"strongly favor approve"), not raw numbers. The model is pinned to
+`jev-1.13.0` — floating tags are rejected at construction. Published
+pricing is $0.042 per 1M input tokens with output free, and the pinned
+table in `python/peira/data/pricing.json` reflects that. Access is
+gated; without a key the error tells you exactly where to get one.
+429/529/5xx and transport timeouts surface as retryable provider
+errors for the runner; 401/422 are terminal. One honest caveat: the
+request shape is built from TypeSafe's published SDK examples, but the
+adapter hasn't been exercised against the live API yet — if the
+service answers differently than documented, you'll see terminal
+provider errors, not silent mismeasurement. See D-24.
 
 ## Pricing
 

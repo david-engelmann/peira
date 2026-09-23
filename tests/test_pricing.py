@@ -55,9 +55,16 @@ class TestPricingTable(unittest.TestCase):
 
     def test_known_model_calculation(self):
         table = load_pricing_table()
-        # gpt-5.6-sol: 5.0/1M in, 30.0/1M out (provisional pre-launch price).
+        # gpt-5.6-sol: 4.0/1M in, 20.0/1M out (verified 2026-09-23
+        # against openai.com/api/pricing).
         got = cost_usd("gpt-5.6-sol", 1_000_000, 500_000, table)
-        self.assertAlmostEqual(got, 5.0 + 15.0, places=9)
+        self.assertAlmostEqual(got, 4.0 + 10.0, places=9)
+
+    def test_jev_published_rate(self):
+        table = load_pricing_table()
+        # TypeSafe's published Jev pricing: $0.042/1M input, output free.
+        got = cost_usd("jev-1.13.0", 1_000_000, 500_000, table)
+        self.assertAlmostEqual(got, 0.042, places=9)
 
     def test_unknown_model_costs_zero(self):
         table = load_pricing_table()
@@ -89,8 +96,8 @@ class TestRunnerCostAuthority(unittest.TestCase):
         self.assertNotEqual(usage.cost_usd, 12345.67)
         self.assertNotEqual(usage.latency_ms, 99999.0)
         # Cost matches the pinned table: 1000 in + 500 out of gpt-5.6-sol
-        # (5.0/1M in, 30.0/1M out — provisional pre-launch price).
-        self.assertAlmostEqual(usage.cost_usd, 0.005 + 0.015, places=9)
+        # (4.0/1M in, 20.0/1M out — verified 2026-09-23).
+        self.assertAlmostEqual(usage.cost_usd, 0.004 + 0.01, places=9)
         # Latency is a real wall-clock reading (tiny, not the adapter's).
         self.assertGreaterEqual(usage.latency_ms, 0.0)
         self.assertLess(usage.latency_ms, 1000.0)

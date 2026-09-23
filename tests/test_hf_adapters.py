@@ -64,6 +64,8 @@ class _FakeTokenizer:
     def __init__(self, encode=None, call_ids=(1, 2, 3)):
         self._encode = encode or {}
         self._call_ids = list(call_ids)
+        self.cls_token_id = 101
+        self.sep_token_id = 102
 
     def encode(self, text, add_special_tokens=False):
         if callable(self._encode):
@@ -316,7 +318,7 @@ class TestLlamaPromptGuard2(unittest.TestCase):
         self.assertEqual(out.decision, "refuse")
         self.assertEqual(validate_output(out, "choice"), [])
 
-    def test_long_input_chunked_at_512_and_max_taken(self):
+    def test_long_input_chunked_and_max_taken(self):
         tok = _FakeTokenizer(encode=lambda text: list(range(1300)))
         adapter = _make(LlamaPromptGuard2Adapter, tok, _FakeClassifier([0, 0]))
         chunk_sizes = []
@@ -328,11 +330,28 @@ class TestLlamaPromptGuard2(unittest.TestCase):
 
         adapter._proba_for_token_ids = fake_proba
         out = adapter.decide(_choice_input("x" * 5000), "choice")
-        self.assertEqual(chunk_sizes, [512, 512, 276])
+        # 510 content tokens per chunk (512 window minus [CLS]/[SEP]).
+        self.assertEqual(chunk_sizes, [510, 510, 280])
         self.assertEqual(out.decision, "reject")  # max(0.1, 0.9, 0.3)
         self.assertEqual(out.usage.tokens_in, 1300)
         self.assertEqual(out.transcript["input_tokens"], 1300)
         self.assertEqual(out.transcript["scores"]["chunks"], 3)
+
+    def test_chunks_wrapped_with_cls_sep(self):
+        tok = _FakeTokenizer(encode=lambda text: [7, 8, 9])
+        seen = {}
+
+        class _RecordingModel:
+            def __call__(self, **kwargs):
+                seen["input_ids"] = kwargs["input_ids"]
+                return SimpleNamespace(logits=[[0.1, 0.9]])
+
+        adapter = _make(LlamaPromptGuard2Adapter, tok,
+                        _RecordingModel())
+        adapter.decide(_choice_input("hello"), "choice")
+        ids = seen["input_ids"]._data[0]
+        # [CLS] + content + [SEP]: the head pools position 0.
+        self.assertEqual(ids, [101, 7, 8, 9, 102])
 
 
 # -- shared behavior ---------------------------------------------------

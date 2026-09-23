@@ -34,8 +34,9 @@ it never replaces the verbalized value.
 Retry layering
 --------------
 The A1 runner owns retries. Every provider SDK client is constructed
-with retries DISABLED (OpenAI/Anthropic ``max_retries=0``; Google genai
-has no retry config and is used as a single attempt), so a duplicated
+with retries DISABLED (OpenAI/Anthropic ``max_retries=0``; the Google
+genai client is built with no ``HttpOptions`` retry options, so it runs
+as a single attempt), so a duplicated
 retry layer can never hide the congestion signal. Transient provider
 failures surface as ``ProviderError`` (from
 ``peira.adapters.base``) carrying ``status_code``/``retry_after``; the
@@ -91,7 +92,10 @@ SCHEMA_NAME = "peira_decision"
 SCHEMA_TEMPLATE: dict[str, Any] = {
     "type": "object",
     "additionalProperties": False,
-    "required": ["decision", "confidence"],
+    # Every property must be listed in "required": OpenAI's strict mode
+    # rejects a schema with a property missing from required (HTTP 400),
+    # so a template/required skew is dead on arrival at the real API.
+    "required": ["decision", "confidence", "reason"],
     "properties": {
         # "enum" is injected per call from the case's own labels.
         "decision": {"type": "string"},
@@ -139,18 +143,13 @@ REFUSAL_PREFIXES: tuple[str, ...] = (
 
 # Provider stop/finish reasons that mean "the provider refused".
 REFUSAL_STOP_REASONS = frozenset({
-    "refusal",            # OpenAI / Anthropic
+    "refusal",            # OpenAI
     "content_filter",     # OpenAI
     "SAFETY",             # Google
     "RECITATION",         # Google
     "BLOCKLIST",          # Google
     "PROHIBITED_CONTENT", # Google
 })
-
-# Statuses that are permanent client errors: raised as ProviderError with
-# the status attached, which the runner will NOT retry (terminal).
-PERMANENT_STATUSES = frozenset({400, 401, 403, 404, 422})
-
 
 # ---------------------------------------------------------------------------
 # SDK loading (lazy: importing this module must never require the extras).
@@ -161,7 +160,7 @@ def _require_openai() -> Any:
         import openai
     except ImportError:
         raise ValueError(
-            'error: the peira[openai] extra is required for OpenAIAdapter '
+            'the peira[openai] extra is required for OpenAIAdapter '
             '— install it with: pip install "peira[openai]"'
         ) from None
     return openai
@@ -172,7 +171,7 @@ def _require_anthropic() -> Any:
         import anthropic
     except ImportError:
         raise ValueError(
-            'error: the peira[anthropic] extra is required for AnthropicAdapter '
+            'the peira[anthropic] extra is required for AnthropicAdapter '
             '— install it with: pip install "peira[anthropic]"'
         ) from None
     return anthropic
@@ -183,7 +182,7 @@ def _require_genai() -> Any:
         from google import genai
     except ImportError:
         raise ValueError(
-            'error: the peira[google] extra is required for GoogleAdapter '
+            'the peira[google] extra is required for GoogleAdapter '
             '— install it with: pip install "peira[google]"'
         ) from None
     return genai
@@ -221,7 +220,7 @@ def _build_schema(labels: list[str], primitive: str) -> dict[str, Any]:
     schema = copy.deepcopy(SCHEMA_TEMPLATE)
     schema["properties"]["decision"]["enum"] = list(labels)
     if primitive == "score":
-        schema["required"] = ["decision", "confidence", "score"]
+        schema["required"] = ["decision", "confidence", "reason", "score"]
         schema["properties"]["score"] = {
             "type": "number", "minimum": 0, "maximum": 1,
         }
@@ -472,7 +471,7 @@ class _StructuredLLMBase:
             else:
                 missing = "none of " + ", ".join(self._env_vars) + " is set"
             raise ValueError(
-                f"error: {missing} — {type(self).__name__} "
+                f"{missing} — {type(self).__name__} "
                 f"needs it (and the {self._extra} extra)"
             )
         return key
@@ -672,10 +671,13 @@ class _StructuredLLMBase:
 # ---------------------------------------------------------------------------
 
 def _openai_decision_logprob(choice: Any, decision: str) -> float | None:
-    """Best-effort: top-1 logprob of the token emitting the decision label.
+    """Best-effort: logprob of a token carrying the decision label.
 
-    The system prompt forces ``decision`` to be the first key, so in
-    practice the label appears in one of the first content tokens.
+    Takes the first token whose text merely *contains* the label (a
+    substring match — ``"deny"`` also matches ``"denying"``), so this is
+    a rough signal, not a true top-1 logprob. The system prompt forces
+    ``decision`` to be the first key, so in practice the label appears
+    in one of the first content tokens.
     """
     logprobs = getattr(choice, "logprobs", None)
     content = getattr(logprobs, "content", None) if logprobs else None
@@ -899,9 +901,10 @@ class GoogleAdapter(_StructuredLLMBase):
     """Baseline: Google genai with JSON response schema.
 
     ``GOOGLE_API_KEY`` is tried first, then ``GEMINI_API_KEY``. The genai
-    SDK exposes no retry configuration; generate_content is a single
-    attempt, which is what the runner's retry layering requires. Token
-    logprobs are not exposed by this API — recorded as null.
+    client is constructed with no ``HttpOptions`` retry options, so
+    generate_content is a single attempt, which is what the runner's
+    retry layering requires. Token logprobs are not exposed by this
+    API — recorded as null.
     """
 
     name = "google-structured"

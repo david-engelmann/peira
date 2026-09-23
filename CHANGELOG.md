@@ -28,16 +28,17 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
   terminal); SDK retries
   disabled — the runner owns retries.
 - New `python/peira/adapters/jev.py` (stdlib-only, no extra): TypeSafe
-  Jev System One adapter pinned to `jev-1.13`, one POST per call with
+  Jev System One adapter pinned to `jev-1.13.0`, one POST per call with
   no internal retries, `TYPESAFE_API_KEY` required with an actionable
-  error, 429/529/5xx surfaced as retryable `ProviderError` for the
-  runner while 401/422 stay terminal.
-- Pricing table now carries pre-launch provisional prices for the
-  adapter models (`gpt-5.6-sol` corrected to $5/$30, `claude-opus-5.5`
-  replaced by the real `claude-opus-5` at $5/$25, `jev-1.13` added at
-  0.0 — explicitly unaccounted, since TypeSafe publishes no public
-  pricing); the source line states plainly that none of these are
-  verified against provider pricing pages yet.
+  error, 429/529/5xx and transport timeouts surfaced as retryable
+  `ProviderError` for the runner while 401/422 stay terminal.
+- Pricing table now carries pinned prices for the adapter models
+  (`gpt-5.6-sol` corrected to $4/$20, verified 2026-09-23 against
+  OpenAI's pricing page; `claude-opus-5.5` replaced by the real
+  `claude-opus-5` at $5/$25; `jev-1.13.0` at TypeSafe's published
+  $0.042/1M input, output free — the old "no public pricing" note
+  was wrong); Anthropic/Google rates are still unverified —
+  re-check before launch.
 - New `docs/Adapters.md`: install extras, API keys, pinned models, and
   per-adapter measurement notes. README adapter table updated
   (shipped vs planned vs measured). ADRs D-21–D-24: optional-dependency

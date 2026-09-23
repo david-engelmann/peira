@@ -376,10 +376,13 @@ and their cases re-run on resume.
 Cause: you instantiated a Hugging Face adapter (`shieldstral`,
 `protectai-prompt-injection`, `llama-prompt-guard-2`) without the
 optional dependency. Fix: `pip install "peira[hf]"` (the base package
-stays dependency-free by design). The same shape applies to the LLM
-baselines: `error: the peira[openai] extra is required for
-OpenAIAdapter — install it with: pip install "peira[openai]"` (and
-`peira[anthropic]`, `peira[google]` for the other two).
+stays dependency-free by design). The LLM baselines fail closed the same way, naming their own
+extra: `the peira[openai] extra is required for OpenAIAdapter —
+install it with: pip install "peira[openai]"`,
+`the peira[anthropic] extra is required for AnthropicAdapter —
+install it with: pip install "peira[anthropic]"`, and
+`the peira[google] extra is required for GoogleAdapter —
+install it with: pip install "peira[google]"`.
 
 **`...: hf_revision must be a pinned commit hash, never 'main'/'latest'`**
 Cause: internal sanity check — an adapter was constructed with a
@@ -415,7 +418,14 @@ tokenizer/model mismatch, not a retryable failure. Fix: check the
 pinned revision actually matches `mistralai/Shieldstral-1.0-3B`;
 don't substitute tokenizers.
 
-**`error: OPENAI_API_KEY is not set — OpenAIAdapter needs it (and the peira[openai] extra)`**
+**`llama-prompt-guard-2 tokenizer has no CLS/SEP token ids`**
+Cause: the loaded tokenizer reports no CLS/SEP token ids, so chunks
+can't be wrapped for the classification head (which pools position
+0). This is a tokenizer/model mismatch, not retryable. Fix: check
+the pinned revision matches the Prompt Guard 2 repo; don't substitute
+tokenizers.
+
+**`OPENAI_API_KEY is not set — OpenAIAdapter needs it (and the peira[openai] extra)`**
 Cause: no API key found in the environment (or the explicit `api_key=`
 argument). Anthropic reads `ANTHROPIC_API_KEY`; Google reads
 `GOOGLE_API_KEY` with fallback to `GEMINI_API_KEY`. Fix: export the
@@ -440,35 +450,58 @@ Cause: the provider SDK's own timeout fired (mapped to status 408 so
 the runner treats it as transient and retries). Fix: re-run; sustained
 timeouts mean the provider is degraded.
 
+**`OpenAI connection failed: ...` / `Anthropic connection failed: ...`**
+Cause: the SDK hit a connection error mid-call. Raised as a builtin
+`ConnectionError` (not `ProviderError`) so the runner treats it as
+transient and retries under `--max-attempts`. Fix: re-run; sustained
+failures mean your network or the provider is down.
+
 **`OpenAI returned no choices`**
 Cause: the provider answered with an empty choices list — a malformed
 provider response, not a retryable failure. Fix: re-run; if it
 persists, the provider is misbehaving.
 
+**`jev does not support primitive 'x'`**
+Cause: Jev was asked for a primitive outside `choice`, `score`,
+`noul`. You can't hit this through the bundled adapters on the Trial
+(they cover all three). Fix: check the primitive name.
+
 **`jev adapter needs a TypeSafe API key: set the TYPESAFE_API_KEY environment variable (or pass api_key=...)`**
 Cause: no Jev API key. Jev is gated on access — the message says where
-to request it. Fix: `export TYPESAFE_API_KEY=...`.
+to request it. Fix: `export TYPESAFE_API_KEY='your-key-here'`
 
-**`jev adapter pins model 'jev-1.13'; got '...'`**
+**`jev adapter pins model 'jev-1.13.0'; got '...'`**
 Cause: a floating or wrong model id was passed. Jev measurements must
 name the exact model — `jev-latest` and friends are rejected. Fix:
 don't pass `model=` at all (the default is the pin), or pass the exact
 pinned id.
 
-**`jev: HTTP 401 ... — check that TYPESAFE_API_KEY is valid and the account has Jev access.`**
+**`jev API error 401: ... — check that TYPESAFE_API_KEY is valid and the account has Jev access.`**
 Cause: bad or unauthorized key. Terminal — the runner won't retry it.
 Fix: check the key and your Jev access.
 
-**`jev: HTTP 422 ... — the request was rejected; this is an adapter bug, not a retryable failure.`**
-Cause: Jev rejected the request shape. The adapter validates questions
-client-side before sending, so this means API drift. Fix: report it —
-don't retry.
+**`jev API error 422: ... — the request was rejected; this is an adapter bug, not a retryable failure.`**
+Cause: Jev rejected the request shape. The adapter validates every
+question client-side before sending, so this means API drift. Fix:
+report it — don't retry.
 
-**`jev: HTTP 429/529/5xx ...`**
-Cause: rate limit, overload, or provider error. Raised with
-`retry_after` (from the `Retry-After` header or a 1s default), so
-`peira run` backs off and retries under `--max-attempts`. Fix: none —
-but if every attempt 429s, lower `--max-concurrency`.
+**`jev transport error: ...` (status 408)**
+Cause: the connection dropped, DNS failed, or the request timed out.
+Raised as status 408 so `peira run` treats it as transient and retries
+under `--max-attempts`. Fix: re-run; sustained 408s mean your network
+or Jev's endpoint is degraded.
+
+**`jev API error 429` / `jev API error 529` / `jev API error 5xx`**
+Cause: rate limit, overload, or provider error. `retry_after` comes
+from the `Retry-After` response header when the API sends one —
+otherwise the runner backs off on its own schedule. Fix: none — but if
+every attempt 429s, lower `--max-concurrency`.
+
+**`jev built ... question ...` (e.g. `jev built a malformed question 'x': not an object`)**
+Cause: a question failed the adapter's client-side shape check
+(`type` + `instructions`, plus `criteria` for choice/score) before it
+was sent. You can't hit this through the bundled builders — it means
+an adapter bug. Fix: report it.
 
 **`jev returned non-JSON response (HTTP ...)` / `jev returned a non-object JSON response`**
 Cause: the transport returned something that isn't the documented JSON
@@ -476,18 +509,19 @@ object. Terminal (API drift or a broken transport). Fix: check for a
 proxy mangling responses; otherwise report it.
 
 **`jev response missing 'answers' object` / `jev response missing answer 'decision'`**
-Cause: the response lacks the per-question answers the API promises.
-Terminal. Fix: same as above — likely API drift.
+Cause: the response lacks the per-question answers the API promises
+(`choice`, `score`, or `noul` under each question name). Terminal. Fix:
+same as above — likely API drift.
 
-**`jev returned option 'x' outside the offered labels [...] — adapter bug or API drift.`**
-Cause: Jev returned a choice option that wasn't among the labels sent.
-The adapter refuses to map it to anything (guessing would corrupt the
+**`jev returned choice 'x' outside the offered labels [...] — adapter bug or API drift.`**
+Cause: Jev returned a choice that wasn't among the labels sent. The
+adapter refuses to map it to anything (guessing would corrupt the
 measurement). Terminal. Fix: report it.
 
-**`jev score answer has no numeric value: ...` / `jev noul answer has no probability of yes: ...`**
+**`jev score answer has no numeric score: ...` / `jev noul answer has no numeric noul value: ...`**
 Cause: the score/noul answer is missing its numeric field. Terminal —
 same drift handling as above.
 
-**`jev returned non-numeric confidence: ...`**
+**`jev returned non-numeric confidence: ...` / `jev returned non-numeric noul: ...`**
 Cause: a confidence/probability field wasn't a number. Clamped only
 when numeric; non-numeric is terminal. Fix: report it.

@@ -127,12 +127,12 @@ def _jev_transport_factory(cases, fail_once=False):
         if "decision" in qnames:
             decision = (case.attacked.target_decision if attacked
                         else case.benign.expected_decision)
-            answers["decision"] = {"option": decision, "confidence": 0.85,
+            answers["decision"] = {"choice": decision, "confidence": 0.85,
                                    "probabilities": {decision: 0.85}}
         if "score" in qnames:
-            answers["score"] = {"value": 7.0, "confidence": 0.8}
+            answers["score"] = {"score": 3.5, "confidence": 0.8}
         if "abstain" in qnames:
-            answers["abstain"] = {"probability_yes": 0.1, "confidence": 0.8}
+            answers["abstain"] = {"noul": 0.1}
         return {"model": JEV_MODEL, "answers": answers,
                 "usage": {"input_tokens": 50, "output_tokens": 5},
                 "_latency_ms": 1.0}

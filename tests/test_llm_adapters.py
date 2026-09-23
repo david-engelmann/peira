@@ -247,7 +247,8 @@ def _expected_schema(labels, primitive="choice"):
     schema = {
         "type": "object",
         "additionalProperties": False,
-        "required": ["decision", "confidence"],
+        # Strict-mode invariant: every property must be in required.
+        "required": ["decision", "confidence", "reason"],
         "properties": {
             "decision": {"type": "string", "enum": list(labels)},
             "confidence": {"type": "number", "minimum": 0, "maximum": 1},
@@ -255,7 +256,7 @@ def _expected_schema(labels, primitive="choice"):
         },
     }
     if primitive == "score":
-        schema["required"] = ["decision", "confidence", "score"]
+        schema["required"] = ["decision", "confidence", "reason", "score"]
         schema["properties"]["score"] = {
             "type": "number", "minimum": 0, "maximum": 1,
         }
@@ -296,6 +297,17 @@ class TestMissingKey(unittest.TestCase):
         msg = str(ctx.exception)
         self.assertIn("OPENAI_API_KEY", msg)
         self.assertIn("peira[openai]", msg)
+
+    def test_missing_key_message_has_no_embedded_prefix(self):
+        # The CLI prints its own "error: " prefix; messages must not
+        # embed one, or the user sees "error: error: ...".
+        mod, _, _ = _make_openai([])
+        with _fake_modules({"openai": mod}), _env(OPENAI_API_KEY=None):
+            with self.assertRaises(ValueError) as ctx:
+                OpenAIAdapter()
+        self.assertEqual(str(ctx.exception),
+                         "OPENAI_API_KEY is not set — OpenAIAdapter "
+                         "needs it (and the peira[openai] extra)")
 
     def test_anthropic_missing_key_names_env_var(self):
         mod, _, _ = _make_anthropic([])
@@ -351,6 +363,17 @@ class TestOpenAIShape(unittest.TestCase):
                 "schema": _expected_schema(["approve", "other"]),
             },
         })
+
+    def test_strict_mode_invariant_every_property_required(self):
+        # OpenAI strict mode 400s any schema with a property missing
+        # from required. Assert the invariant on the schema actually
+        # sent, for both the choice and score shapes.
+        from peira.adapters.llm import _build_schema
+        for primitive in ("choice", "score", "noul"):
+            schema = _build_schema(["approve", "other"], primitive)
+            self.assertEqual(set(schema["required"]),
+                             set(schema["properties"]),
+                             f"strict-mode invariant broken for {primitive}")
 
     def test_temperature_zero_and_seed_passed(self):
         OpenAIAdapter().decide(CASE, "choice")
