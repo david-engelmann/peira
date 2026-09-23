@@ -16,20 +16,25 @@ from peira.cli import EXIT_USER_ERROR, cmd_report
 def _metrics(**over):
     m = {
         "n_cases": 1,
+        "n_eligible": 1,
         "asr_conditional": 0.5,
         "asr_ci95": [0.1, 0.9],
-        "targeted_attack_success": None,
-        "n_targeted": 0,
         "benign_accuracy": 1.0,
         "benign_accuracy_ci95": [1.0, 1.0],
         "malformed_rate": 0.0,
+        "refusal_rate": 0.0,
+        "refusal_rate_ci95": [0.0, 0.5],
+        "ineligible_by_reason": {
+            "benign_malformed": 0,
+            "benign_wrong_decision": 0,
+            "benign_abstained": 0,
+        },
         "ranking_eligible": False,
         "eligibility_notes": ["only 1 case"],
         "per_family": {
             "state_poisoning": {
                 "n": 1, "n_eligible": 1, "asr": 0.5,
-                "asr_ci95": [0.1, 0.9], "targeted": None,
-                "n_targeted": 0,
+                "asr_ci95": [0.1, 0.9], "refusal_rate": 0.0,
             },
         },
     }
@@ -58,15 +63,20 @@ class TestReportEscapesHostileMetrics(unittest.TestCase):
                 a.metrics["asr_ci95"] = ["</p><script>alert('ci')</script>", 0.9]
                 a.metrics["benign_accuracy"] = "<img src=x onerror=alert('acc')>"
                 a.metrics["malformed_rate"] = "<b>zero</b>"
+                a.metrics["refusal_rate"] = "<script>alert('ref')</script>"
                 a.metrics["ranking_eligible"] = "<i>yes</i>"
+                a.metrics["ineligible_by_reason"] = {
+                    "<script>alert('reason')</script>": 1,
+                }
                 fam = a.metrics["per_family"]["state_poisoning"]
                 fam["asr"] = "<script>alert('fam')</script>"
                 fam["asr_ci95"] = [0.1, "<svg onload=alert('ci2')>"]
-                fam["targeted"] = "<script>alert('tgt')</script>"
-                # The three artifact strings render raw in the template.
+                fam["refusal_rate"] = "<script>alert('famref')</script>"
+                # The artifact strings render raw in the template.
                 a.peira_version = "9.9.9</title><script>alert('v')</script>"
                 a.analysis_lock = "</code><script>alert('lock')</script>"
                 a.manifest_sha256 = "<script>alert('sha')</script>"
+                a.pricing_source = "<script>alert('price')</script>"
             run_path = _write_artifact(tmp, poison)
             out = str(Path(tmp) / "report.html")
             rc = cmd_report(argparse.Namespace(run=run_path, out=out))
@@ -78,12 +88,15 @@ class TestReportEscapesHostileMetrics(unittest.TestCase):
                 "<img src=x onerror=alert('acc')>",
                 "<b>zero</b>",
                 "<i>yes</i>",
+                "<script>alert('ref')</script>",
+                "<script>alert('reason')</script>",
                 "<script>alert('fam')</script>",
                 "<svg onload=alert('ci2')>",
-                "<script>alert('tgt')</script>",
+                "<script>alert('famref')</script>",
                 "</title><script>alert('v')</script>",
                 "</code><script>alert('lock')</script>",
                 "<script>alert('sha')</script>",
+                "<script>alert('price')</script>",
             ):
                 self.assertNotIn(raw, html, f"unescaped payload: {raw}")
             # Spot-check the escaped forms actually render.

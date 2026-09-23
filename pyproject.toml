@@ -36,3 +36,6 @@ Repository = "https://github.com/david-engelmann/peira"
 
 [tool.setuptools.packages.find]
 where = ["python"]
+
+[tool.setuptools.package-data]
+peira = ["data/*.json"]

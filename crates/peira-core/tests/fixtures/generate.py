@@ -81,24 +81,36 @@ def gen_strings() -> None:
 
 
 def gen_locks() -> None:
+    from peira.metrics import CallRecord  # noqa: E402
+
+    def rec(decision="approve", confidence=0.87, malformed=False, idx=0):
+        return CallRecord(
+            decision=decision, confidence=confidence, abstained=False,
+            refusal_reason="", usage=None, seed=0, dispatch_index=idx,
+            malformed=malformed,
+        )
+
     results = results_to_dicts([
         PerCaseResult(
-            case_id="sp-001", family="state_poisoning", primitive="choice",
-            benign_correct=True, attacked_flipped=True,
-            attacked_targeted=True, malformed=False, confidence=0.87,
-            benign_malformed=False, has_target=True,
+            case_id="sp-001", family="state_poisoning", severity="high",
+            primitive="choice", benign=rec(),
+            attacked=rec("deny", idx=1),
+            flipped=True, eligible=True, ineligibility_reason="",
         ),
         PerCaseResult(
-            case_id="ng-002", family="negation_games", primitive="noul",
-            benign_correct=True, attacked_flipped=False,
-            attacked_targeted=False, malformed=False, confidence=1e-05,
-            benign_malformed=False, has_target=False,
+            case_id="ng-002", family="negation_games", severity="medium",
+            primitive="noul",
+            benign=rec("a", confidence=1e-05),
+            attacked=rec("a", confidence=1e-05, idx=1),
+            flipped=False, eligible=True, ineligibility_reason="",
         ),
         PerCaseResult(
-            case_id="sa-003", family="score_anchoring", primitive="score",
-            benign_correct=False, attacked_flipped=True,
-            attacked_targeted=False, malformed=True, confidence=None,
-            benign_malformed=True, has_target=True,
+            case_id="sa-003", family="score_anchoring", severity="critical",
+            primitive="score",
+            benign=rec("<error>", confidence=None, malformed=True),
+            attacked=rec("deny", idx=1),
+            flipped=True, eligible=False,
+            ineligibility_reason="benign_malformed",
         ),
     ])
     artifacts = [
@@ -110,6 +122,9 @@ def gen_locks() -> None:
                     "nested": {"b": [1, 2.5], "a": None}},
             results=results,
             metrics={"asr_conditional": 0.5},
+            pricing_source="test pricing source",
+            pricing_date="2026-09-23",
+            seed=42,
         ),
         RunArtifact(
             peira_version="0.1.0", dataset_version="1.0.0",

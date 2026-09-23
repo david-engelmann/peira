@@ -29,6 +29,9 @@ non-training request (CC-BY-4.0). Status: accepted.
 
 ## D-4: ASR is decision-change; targeted success is secondary
 
+*Status: superseded by D-19 (2026-09-23) — the targeted-attack-success
+metric was removed entirely. What follows is the historical record.*
+
 **Decision.** The primary attack-success metric is the *decision-change
 rate*: the attacked decision differs from the benign decision. Whether
 the flip reached the attacker's stated `target_decision` is tracked
@@ -222,7 +225,7 @@ both languages can share for caller bugs.
 inputs (none exists today — no CLI path reaches them), define it
 explicitly in both backends and pin it in the parity tests.
 
-## D-12: Run artifacts load strictly
+## D-12: Run artifacts load strictly (v2)
 
 **Decision.** `RunArtifact.from_json` validates instead of blindly
 spreading the parsed dict into the constructor:
@@ -230,19 +233,24 @@ spreading the parsed dict into the constructor:
 - the top level must be a JSON object;
 - `peira_version` and `dataset_version` are required — the analysis lock
   is meaningless without the identifiers it binds;
+- `artifact_version` `"1"` is rejected outright (D-19); a missing
+  `artifact_version` is treated as v2;
 - unknown fields are rejected rather than silently ignored or preserved;
 - every field's JSON type is checked (`config`/`metrics` must be objects,
   `results` a list, the rest strings);
 - every `results` entry must be an object with the `PerCaseResult`
-  required fields at the right JSON types (mirroring the Rust core's
-  `Vec<PerCaseResult>`; `confidence` is optional and nullable, unknown
-  entry fields are ignored like serde's default — the lock still binds
-  the full entry, so a newer field fails verification loudly instead of
-  verifying under changed semantics);
-- every other field defaults exactly like the Rust core
-  (`config`/`metrics` become `{}`, `results` `[]`, the rest `""`,
-  `artifact_version` `"1"`), so a minimal artifact loads identically on
-  both backends.
+  required fields at the right JSON types, and every call record must be
+  an object with the `CallRecord` required fields at the right JSON
+  types — including `malformed`, which is explicit in the artifact (not
+  inferred from a sentinel decision) so a stored record is
+  self-describing. Unknown nested fields are rejected (v1's lenient
+  serde-default tolerance was reversed in v2: silent field tolerance
+  belongs nowhere in a tamper-evident artifact);
+- top-level defaults mirror the Rust core (`config`/`metrics` become
+  `{}`, `results` `[]`, `pricing_source`/`pricing_date`/`seed` take their
+  documented defaults, result-level `benign`/`attacked` become empty
+  call records, `eligible` defaults to True), so a minimal artifact loads
+  identically on both backends.
 
 The Rust core already enforced the strict half (`deny_unknown_fields`,
 required lock identifiers); Python now matches it, and both raise a
@@ -260,10 +268,11 @@ the same hole in reverse. Requiring the lock identifiers makes a corrupt
 artifact fail at load time with a clear message instead of halfway
 through a report.
 
-**To revisit:** if the artifact format ever versions forward
-(`artifact_version: "2"`), the loader needs an explicit migration table —
-unknown-field rejection stays, but "unknown" is judged per format
-version.
+**To revisit:** the format has since versioned forward
+(`artifact_version: "2"`) — and the decision was a hard break, not a
+migration table: v1 artifacts are rejected outright (D-19). If the
+format ever versions to `"3"`, the same policy applies unless a new ADR
+records otherwise.
 
 ## D-13: Error strings use a fixed escaping rule, not repr()
 
@@ -311,11 +320,14 @@ future per-case configuration directly. That silently widens the frozen
 implement) new keys, and a case field added for tooling could change
 adapter behavior.
 
-**Why this:** the `BaseAdapter.decide()` contract is frozen. Adapter-
-facing configuration already has a home — the variant `input` dicts,
-which adapters receive unchanged. Keeping extras on the tooling side
-means new case fields never require adapter changes. If adapters ever
-need extras, that's a contract revision with a version bump, not a
+**Why this:** the `BaseAdapter.decide()` input contract is frozen: what
+`decide()` *receives* never widens silently. (The v2 measurement
+contract — D-19 — revised what `decide()` *returns*, adding required
+measurement metadata; the extras rule survived that revision intact.)
+Adapter-facing configuration already has a home — the variant `input`
+dicts, which adapters receive unchanged. Keeping extras on the tooling
+side means new case fields never require adapter changes. If adapters
+ever need extras, that's a contract revision with a version bump, not a
 silent addition.
 
 **To revisit:** only alongside a `decide()` contract revision.
@@ -364,3 +376,67 @@ ADR stops the mock's numbers from leaking into reports or marketing.
 
 **To revisit:** never — if a "dumb baseline" is ever wanted, it ships as
 a separate, honestly-named adapter, not as the mock wearing a new hat.
+
+## D-19: v2 measurement contract — full call records, hard v1 break
+
+**Decision.** `decide()` returns a full measurement record, not a bare
+decision: every output carries `decision`, `confidence` (0..1 or None),
+`abstained`, `refusal_reason`, and `usage` (token/latency accounting or
+None). The runner wraps each call into a `CallRecord` adding `seed`,
+`dispatch_index`, and `malformed`, and results carry the benign and
+attacked records side by side with `flipped`, `eligible`, and
+`ineligibility_reason`. Artifacts are format version `"2"`; v1 artifacts
+are **rejected at load with a clear error — never migrated** ("re-run
+the adapter to produce a v2 artifact"). The lock payload now also covers
+`pricing_source`, `pricing_date`, and `seed`.
+
+Eligibility is benign-validity: a case is eligible only with a usable
+benign baseline — well-formed, decided as expected, not abstained. The
+three ineligibility reasons (`benign_malformed`, `benign_wrong_decision`,
+`benign_abstained`) are counted and reported. An attacked variant that
+comes back malformed counts as flipped (conservative, D-11); an attacked
+abstention counts as **not** flipped — refusals are measured by
+`refusal_rate` (overall and per-family), never laundered into ASR. A 0%
+ASR via 100% refusal is not robustness, and the contract makes that
+visible.
+
+The runner is the authority on cost and latency: it overwrites the
+adapter-reported `latency_ms` with its own wall-clock measurement and
+recomputes `cost_usd` from the pinned pricing table
+(`python/peira/data/pricing.json`, source + pin date sealed into the
+artifact), ignoring any adapter-reported cost. Unknown models price at
+0.0 — explicitly unaccounted, never silently estimated. Cost is a
+measurement sidecar, never a blended score.
+
+**Alternatives.** Keep v1's flat results and add fields incrementally;
+migrate v1 artifacts on load. Both preserve a past nobody depends on:
+the project is pre-launch and unused, so backwards compatibility has
+**zero weight** until launch — optimizing for the best long-term
+contract beats preserving v1 shapes. A migration shim would bless
+artifacts whose numbers were computed under weaker semantics.
+
+**Design notes.**
+
+- The `malformed` flag on `CallRecord` is not adapter-reported; the
+  runner sets it when an output fails validation or raises. It is
+  explicit in the artifact (not inferred from a sentinel decision) so a
+  stored record is self-describing.
+- `benign_accuracy` is measured over benign variants that produced a
+  decision (well-formed and not abstained), not over all cases — an
+  abstention is not an incorrect decision, it is a missing one, and it
+  is already counted in the ineligibility breakdown.
+- The targeted-attack-success metric is dropped: it needed per-case
+  target semantics that the v2 result shape deliberately does not carry
+  (the runner injects `target_decision` for the mock's flip logic, but
+  "success" against an arbitrary target is not a property peira scores).
+  The mock still flips toward targets (D-18); the leaderboard ranks on
+  decision-change ASR only.
+
+**Why this:** v1 results could not answer the questions the methodology
+needs — whether an adapter refused, what it cost, whether the benign
+baseline was even usable. Recording the full call record makes every
+number auditable back to the call that produced it, and the hard v1
+break keeps one artifact format (and one set of semantics) in the wild.
+
+**To revisit:** only with another version bump and the same hard break —
+no silent migrations, ever.

@@ -60,6 +60,9 @@ fn analysis_lock_parity_with_python() {
             art["suite"].as_str().unwrap(),
             &art["config"],
             &art["results"],
+            art["pricing_source"].as_str().unwrap(),
+            art["pricing_date"].as_str().unwrap(),
+            art["seed"].as_i64().unwrap(),
         );
         assert_eq!(got, row["lock"].as_str().unwrap(), "lock mismatch");
 

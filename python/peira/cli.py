@@ -238,7 +238,7 @@ def cmd_run(args: argparse.Namespace) -> int:
                 try:
                     already_done, prior_results = validate_partial(
                         partial, adapter, cases, suite, dataset_version,
-                        manifest_sha256)
+                        manifest_sha256, seed=args.seed)
                 except ValueError as e:
                     print(f"error: {e} — delete {partial_path} or drop "
                           f"--resume and re-run.", file=sys.stderr)
@@ -258,7 +258,7 @@ def cmd_run(args: argparse.Namespace) -> int:
             adapter, cases, suite, dataset_version,
             progress=progress, already_done=already_done,
             prior_results=prior_results, partial_path=partial_path,
-            manifest_sha256=manifest_sha256,
+            manifest_sha256=manifest_sha256, seed=args.seed,
         )
     except KeyboardInterrupt:
         print("\ninterrupted — partial run saved; re-run with --resume.",
@@ -276,15 +276,17 @@ def cmd_run(args: argparse.Namespace) -> int:
         partial_path.unlink()
 
     m = artifact.metrics
-    print(f"done: {m['n_cases']} cases")
+    print(f"done: {m['n_cases']} cases ({m['n_eligible']} eligible)")
     print(f"  ASR (conditional): {m['asr_conditional']} "
           f"95% CI {m['asr_ci95']}")
-    tsr = m["targeted_attack_success"]
-    print(f"  targeted success:  {tsr if tsr is not None else 'n/a'} "
-          f"(n_targeted={m['n_targeted']})")
     print(f"  benign accuracy:   {m['benign_accuracy']} "
           f"95% CI {m['benign_accuracy_ci95']}")
     print(f"  malformed rate:    {m['malformed_rate']}")
+    print(f"  refusal rate:      {m['refusal_rate']} "
+          f"95% CI {m['refusal_rate_ci95']}")
+    inelig = m["ineligible_by_reason"]
+    print(f"  ineligible:        {sum(inelig.values())} "
+          f"({', '.join(f'{k}={v}' for k, v in inelig.items())})")
     print(f"  ranking eligible:  {m['ranking_eligible']}"
           + (f" ({'; '.join(m['eligibility_notes'])})" if m['eligibility_notes'] else ""))
     print(f"artifact: {out_path}")
@@ -364,50 +366,65 @@ def cmd_report(args: argparse.Namespace) -> int:
 
 def _report_page(artifact) -> str:
     m = artifact.metrics
-    # Case ids, family names, adapter names, and suite/dataset labels are
-    # author-controlled: escape them so hostile markup lands inert.
-    # Metric values go through _num for the same reason — a hostile
-    # artifact can smuggle markup through any interpolated cell.
+    # Case ids, family names, adapter names, decisions, refusal reasons,
+    # and suite/dataset labels are author- or adapter-controlled: escape
+    # them so hostile markup lands inert. Metric values go through _num
+    # for the same reason — a hostile artifact can smuggle markup through
+    # any interpolated cell.
     e = html.escape
     rows = "\n".join(
         f"<tr><td>{e(str(fam))}</td><td>{_num(v['n'])}</td>"
         f"<td>{_num(v.get('n_eligible'))}</td>"
         f"<td>{_num(v['asr'])}</td>"
         f"<td>{_num(v['asr_ci95'][0])}–{_num(v['asr_ci95'][1])}</td>"
-        f"<td>{_num(v.get('targeted'))}</td></tr>"
+        f"<td>{_num(v.get('refusal_rate'))}</td></tr>"
         for fam, v in sorted(m["per_family"].items())
     )
     def _mark(ok: bool) -> str:
         return "✓" if ok else "✗"
+    def _rec(r, variant: str) -> dict:
+        rec = r.get(variant, {})
+        return rec if isinstance(rec, dict) else {}
     case_rows = "\n".join(
-        f"<tr><td>{e(str(r.get('case_id', '?')))}</td><td>{e(str(r.get('family', '?')))}</td>"
-        f"<td>{_mark(bool(r.get('benign_correct')))}</td>"
-        f"<td>{_mark(bool(r.get('attacked_flipped')))}</td>"
-        f"<td>{_mark(bool(r.get('attacked_targeted')))}</td>"
-        f"<td>{_mark(not bool(r.get('malformed')))}</td></tr>"
+        f"<tr><td>{e(str(r.get('case_id', '?')))}</td>"
+        f"<td>{e(str(r.get('family', '?')))}</td>"
+        f"<td>{e(str(_rec(r, 'benign').get('decision', '?')))}</td>"
+        f"<td>{e(str(_rec(r, 'attacked').get('decision', '?')))}</td>"
+        f"<td>{_mark(bool(r.get('flipped')))}</td>"
+        f"<td>{_mark(bool(r.get('eligible')))}</td>"
+        f"<td>{e(str(r.get('ineligibility_reason') or '—'))}</td>"
+        f"<td>{_mark(bool(_rec(r, 'attacked').get('abstained')))}</td></tr>"
         for r in artifact.results
     )
+    inelig = m.get("ineligible_by_reason", {})
+    inelig_line = ", ".join(
+        f"{e(str(k))}: {_num(v)}" for k, v in sorted(inelig.items())
+    ) or "none"
     page = f"""<!doctype html>
 <html><head><meta charset="utf-8"><title>peira report — {e(artifact.adapter_name)}</title></head>
 <body>
 <h1>peira report</h1>
 <p>Adapter: {e(artifact.adapter_name)}{f" {e(artifact.adapter_version)}" if artifact.adapter_version else ""} · Suite: {e(artifact.suite)} ·
-Dataset: {e(artifact.dataset_version)} · peira {e(str(artifact.peira_version))}</p>
+Dataset: {e(artifact.dataset_version)} · peira {e(str(artifact.peira_version))} · seed {e(str(artifact.seed))}</p>
 <ul>
 <li>ASR (conditional): {_num(m['asr_conditional'])} (95% CI {_num(m['asr_ci95'][0])}–{_num(m['asr_ci95'][1])})</li>
 <li>Benign accuracy: {_num(m['benign_accuracy'])} (95% CI {_num(m['benign_accuracy_ci95'][0])}–{_num(m['benign_accuracy_ci95'][1])})</li>
 <li>Malformed rate: {_num(m['malformed_rate'])}</li>
+<li>Refusal rate (attacked): {_num(m['refusal_rate'])} (95% CI {_num(m['refusal_rate_ci95'][0])}–{_num(m['refusal_rate_ci95'][1])})</li>
+<li>Ineligible by reason: {inelig_line}</li>
 <li>Ranking eligible: {_num(m['ranking_eligible'])}</li>
 </ul>
+<p>Pricing: {e(str(artifact.pricing_source or 'unpriced'))}{f" (pinned {e(str(artifact.pricing_date))})" if artifact.pricing_date else ""} ·
+Cost figures below are list-price estimates from the pinned table, not invoices.</p>
 <h2>Per-family ASR</h2>
-<table border="1"><tr><th>family</th><th>n</th><th>eligible</th><th>ASR</th><th>95% CI</th><th>targeted</th></tr>
+<table border="1"><tr><th>family</th><th>n</th><th>eligible</th><th>ASR</th><th>95% CI</th><th>refusal</th></tr>
 {rows}</table>
 <h2>Per-case results</h2>
-<p>✓ = benign correct / attacked flipped / reached target / well-formed.
-The flip column is the one to drill into when iterating on cases: a case
+<p>Flip column is the one to drill into when iterating on cases: a case
 the adapter never flips may be too weak; a case every adapter flips may
-be mislabeled.</p>
-<table border="1"><tr><th>case</th><th>family</th><th>benign ok</th><th>flipped</th><th>targeted</th><th>well-formed</th></tr>
+be mislabeled. An attacked abstention is not a flip — it is a refusal,
+counted in the refusal column.</p>
+<table border="1"><tr><th>case</th><th>family</th><th>benign</th><th>attacked</th><th>flipped</th><th>eligible</th><th>ineligible reason</th><th>refused</th></tr>
 {case_rows}</table>
 <hr>
 <p><em>A peira score measures robustness on this benchmark's paired
@@ -720,6 +737,8 @@ def build_parser() -> argparse.ArgumentParser:
     r.add_argument("--dry-run", action="store_true", help="validate config without scoring")
     r.add_argument("--json-progress", action="store_true", help="machine-readable progress on stdout")
     r.add_argument("--resume", action="store_true", help="resume an interrupted run")
+    r.add_argument("--seed", type=int, default=0,
+                   help="run seed, recorded on every call record (default: 0)")
     r.set_defaults(func=cmd_run)
 
     v = sub.add_parser("validate", help="validate a dataset directory")
