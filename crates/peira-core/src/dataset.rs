@@ -21,6 +21,41 @@ pub const MANIFEST_NAME: &str = "manifest.json";
 pub const CANARY_NAME: &str = "CANARY.txt";
 pub const CASE_SUFFIX: &str = ".jsonl";
 
+/// Maximum run of leading `[` / `{` characters accepted in one case-file
+/// line before parsing.
+///
+/// Deeper nesting is rejected with a clear error instead of reaching the
+/// parser: unbounded nesting recurses in the JSON parser and again in
+/// the canonical serializer, so case files stay shallow by construction.
+/// The cap sits far above any realistic case (and above serde_json's own
+/// 128-level recursion limit, which remains as a second line of defense),
+/// so legitimate files never trip it. Documented in docs/Dataset.md.
+pub const MAX_JSON_NESTING: usize = 256;
+
+/// Reject a case-file line whose leading bracket run exceeds
+/// [`MAX_JSON_NESTING`]. Called before `serde_json::from_str` on every
+/// line read by [`iter_case_lines`] and [`summarize_cases`].
+fn check_line_nesting(line: &str) -> Result<(), String> {
+    let depth = line
+        .trim_start()
+        .chars()
+        .take_while(|c| *c == '[' || *c == '{')
+        .count();
+    if depth > MAX_JSON_NESTING {
+        return Err(format!(
+            "nesting depth {depth} exceeds the {MAX_JSON_NESTING}-level cap"
+        ));
+    }
+    Ok(())
+}
+
+/// Parse one case-file line: the nesting cap is checked before the
+/// line reaches the JSON parser.
+fn parse_case_line(line: &str) -> Result<Value, String> {
+    check_line_nesting(line)?;
+    serde_json::from_str(line).map_err(|e| e.to_string())
+}
+
 /// One non-blank line of a case file: the parsed JSON or the parse error.
 pub struct CaseLine {
     pub path: PathBuf,
@@ -48,7 +83,7 @@ pub fn iter_case_lines(dataset_dir: &Path) -> io::Result<Vec<CaseLine>> {
             if line.trim().is_empty() {
                 continue;
             }
-            let result = serde_json::from_str(line).map_err(|e| format!("invalid JSON ({e})"));
+            let result = parse_case_line(line).map_err(|e| format!("invalid JSON ({e})"));
             out.push(CaseLine {
                 path: path.clone(),
                 lineno: lineno + 1,
@@ -131,7 +166,7 @@ pub fn summarize_cases(path: &Path) -> Result<CaseSummary, String> {
         }
         summary.n_cases += 1;
         let lineno = lineno + 1;
-        let case: Value = match serde_json::from_str(line) {
+        let case: Value = match parse_case_line(line) {
             Ok(v) => v,
             Err(e) => {
                 problems.push(format!("{name}:{lineno}: invalid JSON ({e})"));
@@ -423,6 +458,36 @@ mod tests {
         let err = summarize_cases(&path).unwrap_err();
         assert!(err.contains("c.jsonl:1: invalid JSON"));
         assert!(err.contains("c.jsonl:2: missing required key"));
+    }
+
+    #[test]
+    fn nesting_cap_rejects_deep_lines_before_parsing() {
+        let deep = "[".repeat(MAX_JSON_NESTING + 1);
+        let (_dir, path) = write_tmp("deep.jsonl", &deep);
+        let err = summarize_cases(&path).unwrap_err();
+        assert!(
+            err.contains("exceeds the 256-level cap"),
+            "unexpected error: {err}"
+        );
+        // Leading whitespace doesn't hide the run.
+        let padded = format!("  {}", "[".repeat(MAX_JSON_NESTING + 10));
+        let (_dir, path) = write_tmp("padded.jsonl", &padded);
+        let err = summarize_cases(&path).unwrap_err();
+        assert!(err.contains("exceeds the 256-level cap"), "{err}");
+    }
+
+    #[test]
+    fn nesting_at_cap_reaches_the_parser() {
+        // Exactly at the cap the line is handed to serde_json, whose own
+        // 128-level recursion limit rejects it with a parser error —
+        // proving the cap didn't fire first.
+        let at_cap = "[".repeat(MAX_JSON_NESTING);
+        let (_dir, path) = write_tmp("atcap.jsonl", &at_cap);
+        let err = summarize_cases(&path).unwrap_err();
+        assert!(err.contains("invalid JSON"), "{err}");
+        assert!(!err.contains("level cap"), "{err}");
+        // Ordinary nesting is untouched.
+        assert!(check_line_nesting("{\"a\": [1, {\"b\": 2}]}").is_ok());
     }
 
     #[test]

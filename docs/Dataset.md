@@ -43,6 +43,17 @@ the variant `input`, which already passes through unchanged. Only the
 consumer of a new field needs to know about it. The Trial suite
 uses this for its `canary` field.
 
+The schema also enforces the declared JSON types, not just presence and
+enum membership: a non-string `case_id`, a non-object variant `input`,
+or a non-string `expected_decision` fails validation with a message
+like `bad case_id: expected string`, instead of crashing the runner
+downstream. Case files are plain UTF-8 JSONL — one complete JSON object
+per line — and are read as UTF-8 on every platform. Lines whose leading
+`[`/`{` run nests deeper than 256 levels are rejected before parsing
+(`nesting depth ... exceeds the 256-level cap`): unbounded nesting
+recurses in the parser and the canonical serializer, so case files stay
+shallow by construction. No real case nests anywhere near that deep.
+
 The 500-case private holdout is **never** committed to this repo. It lives
 encrypted and maintainer-only; only aggregate metrics are published. Its
 counts are recorded in the maintainer's private manifest, not here.

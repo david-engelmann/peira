@@ -182,3 +182,34 @@ any vendor can reproduce any number before and after publication.
 **To revisit:** if the project ever publishes something that *is*
 a vendor vulnerability rather than a benchmark score, that work
 gets its own disclosure policy.
+
+## D-11: Metric edge cases fail loudly and identically on both backends
+
+**Decision.** Three edge cases in the metrics layer get one behavior on
+both backends, and the loud one:
+
+- `paired_bootstrap_ci` on NaN/inf input: the Rust core sorts with
+  `f64::total_cmp` (NaN sorts last) instead of panicking on
+  `partial_cmp(...).unwrap()`. Python's `list.sort()` never raised, so
+  neither backend aborts; values computed from non-finite input are not
+  guaranteed across backends.
+- `ece(..., bins=0)`: raises instead of silently returning 0.0 —
+  `ValueError("bins must be positive")` in Python, a panic with the
+  same message in Rust. Zero bins is a caller bug, not a measurement.
+- `mcnemar` with negative counts: raises `ValueError` in Python; the
+  Rust signature takes `u64`, so the same call through the PyO3 layer
+  is rejected at the boundary. Discordant-pair counts can't be negative.
+
+**Alternatives.** Keep each backend's accidental behavior (Rust's silent
+`0.0` for `bins=0`, Python's `ZeroDivisionError`, Python's `9.0` for
+`mcnemar(-1, 2)` vs the PyO3 `OverflowError`) and document the
+divergence.
+
+**Why this:** a silent `0.0` and a nonsense `9.0` are the worst outcomes
+— they'd look like real statistics. The backends must be
+indistinguishable (D-1), and "both refuse loudly" is the only behavior
+both languages can share for caller bugs.
+
+**To revisit:** if a caller ever needs a *defined* value for these
+inputs (none exists today — no CLI path reaches them), define it
+explicitly in both backends and pin it in the parity tests.

@@ -181,6 +181,19 @@ class TestValidateParity(unittest.TestCase):
         _valid_case(extra="ignored", nested={"a": [1, 2.5, None, True]}),
         _valid_case(benign={"input": {"n": 2**63},  # big but valid u64
                             "expected_decision": "a"}),
+        # Declared JSON types are enforced (P1-2): each of these used to
+        # pass validation and crash or mis-score downstream.
+        _valid_case(case_id=42),
+        _valid_case(family=["x"]),
+        _valid_case(primitive=5),
+        _valid_case(severity=None),
+        _valid_case(benign={"input": "oops", "expected_decision": "a"}),
+        _valid_case(benign={"input": {}, "expected_decision": 42}),
+        _valid_case(benign=5),  # not a dict at all
+        _valid_case(attacked={"input": {}, "target_decision": 5}),
+        _valid_case(notes=5),
+        5,  # scalar top-level: all six keys "missing", not a crash
+        [1, 2],  # list top-level: same
     ]
 
     def test_parity(self):
@@ -188,6 +201,30 @@ class TestValidateParity(unittest.TestCase):
             with self.subTest(d=d):
                 self.assertEqual(validate_case_dict(d),
                                  _validate_case_dict_py(d))
+
+    def test_type_error_strings_pinned(self):
+        # The exact strings are the cross-backend contract: the Rust
+        # core must emit them byte-identically.
+        expect = [
+            ({"case_id": 42}, ["bad case_id: expected string"]),
+            ({"family": ["x"]}, ["bad family: expected string"]),
+            ({"primitive": 5}, ["bad primitive: expected string"]),
+            ({"severity": None}, ["bad severity: expected string"]),
+            ({"benign": {"input": "oops", "expected_decision": "a"}},
+             ["bad benign input: expected object"]),
+            ({"benign": {"input": {}, "expected_decision": 42}},
+             ["bad benign expected_decision: expected string"]),
+            ({"benign": 5},
+             ["bad variant 'benign': need an object with 'input'"]),
+            ({"attacked": {"input": {}, "target_decision": 5}},
+             ["bad attacked target_decision: expected string or null"]),
+            ({"notes": 5}, ["bad notes: expected string"]),
+        ]
+        for over, want in expect:
+            with self.subTest(over=over):
+                d = _valid_case(**over)
+                self.assertEqual(validate_case_dict(d), want)
+                self.assertEqual(_validate_case_dict_py(d), want)
 
     def test_unrepresentable_falls_back(self):
         # Values with no JSON representation cannot cross into Rust; the

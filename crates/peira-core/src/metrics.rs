@@ -110,8 +110,14 @@ pub fn malformed_rate(results: &[PerCaseResult]) -> f64 {
 ///
 /// The first bin is closed on the left so a probability of exactly 0.0
 /// lands in a bin instead of being silently dropped.
+///
+/// `bins` must be positive: `bins == 0` panics with "bins must be
+/// positive" instead of silently returning 0.0. The Python reference
+/// raises `ValueError` with the same message on the same input — zero
+/// bins is a caller bug, and both backends refuse it loudly (D-11).
 pub fn ece(probs: &[f64], labels: &[i64], bins: usize) -> f64 {
     assert!(!probs.is_empty() && probs.len() == labels.len());
+    assert!(bins > 0, "bins must be positive");
     let mut total = 0.0;
     for b in 0..bins {
         let lo = b as f64 / bins as f64;
@@ -149,6 +155,12 @@ pub fn brier_score(probs: &[f64], labels: &[i64]) -> f64 {
 }
 
 /// McNemar chi-square (no continuity correction) for discordant pairs.
+///
+/// Counts are `u64`: negative inputs are unrepresentable, so a negative
+/// count is rejected at the PyO3 boundary (OverflowError) while the
+/// Python reference raises `ValueError("mcnemar counts must be
+/// non-negative")` — both backends refuse, neither silently computes
+/// (D-11).
 pub fn mcnemar(b: u64, c: u64) -> f64 {
     if b + c == 0 {
         return 0.0;
@@ -174,6 +186,12 @@ impl SplitMix64 {
 }
 
 /// 95% bootstrap CI for mean(xs) - mean(ys), paired resampling.
+///
+/// The sort uses [`f64::total_cmp`]: a NaN in a resampled mean must not
+/// panic the sort the way `partial_cmp(...).unwrap()` would. Python's
+/// `list.sort()` never raises on NaN either, so neither backend aborts;
+/// NaN sorts last under `total_cmp`, but values computed from non-finite
+/// input are not guaranteed across backends (D-11).
 pub fn paired_bootstrap_ci(xs: &[f64], ys: &[f64], n_boot: usize, seed: u64) -> (f64, f64) {
     assert!(!xs.is_empty() && xs.len() == ys.len());
     let n = xs.len();
@@ -189,7 +207,7 @@ pub fn paired_bootstrap_ci(xs: &[f64], ys: &[f64], n_boot: usize, seed: u64) -> 
         }
         diffs.push(dx / n as f64 - dy / n as f64);
     }
-    diffs.sort_by(|a, b| a.partial_cmp(b).unwrap());
+    diffs.sort_by(|a, b| a.total_cmp(b));
     let lo = diffs[(0.025 * n_boot as f64) as usize];
     let hi = diffs[(0.975 * n_boot as f64) as usize];
     (lo, hi)
@@ -359,6 +377,12 @@ mod tests {
     }
 
     #[test]
+    #[should_panic(expected = "bins must be positive")]
+    fn ece_zero_bins_panics() {
+        ece(&[0.5], &[1], 0);
+    }
+
+    #[test]
     fn brier_known() {
         assert!(approx(brier_score(&[1.0, 0.0], &[1, 0]), 0.0));
         assert!(approx(brier_score(&[0.5, 0.5], &[1, 0]), 0.25));
@@ -379,6 +403,18 @@ mod tests {
         let (lo, hi) = paired_bootstrap_ci(&xs, &ys, 200, 1);
         assert!(lo <= 1.0 && 1.0 <= hi && lo <= hi);
         assert!(lo > 0.5);
+    }
+
+    #[test]
+    fn bootstrap_nan_input_does_not_panic() {
+        // One NaN poisons every resampled mean it lands in; the old
+        // partial_cmp(...).unwrap() sort panicked on it. total_cmp
+        // sorts NaN last instead — the call must return, not abort.
+        // NaN may come out (garbage in), but it must not panic.
+        let xs = vec![0.5, f64::NAN, 0.25, 0.75];
+        let ys = vec![0.4, 0.6, 0.3, 0.7];
+        let (lo, hi) = paired_bootstrap_ci(&xs, &ys, 200, 1);
+        assert!(lo <= hi || lo.is_nan() || hi.is_nan(), "lo={lo} hi={hi}");
     }
 
     #[test]

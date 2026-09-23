@@ -133,9 +133,10 @@ fn py_repr_value(v: &Value) -> String {
 
 /// Return a list of schema violations (empty = valid).
 ///
-/// Mirrors `validate_case_dict`: required keys first, then primitive /
-/// severity enums, then variant shapes. Message strings are identical to
-/// the Python reference.
+/// Mirrors `validate_case_dict`: required keys first, then the declared
+/// JSON types (`bad <field>: expected <type>`), then primitive / severity
+/// enums, then variant shapes. Message strings are identical to the
+/// Python reference.
 pub fn validate_case_dict(d: &Value) -> Vec<String> {
     let mut errors = Vec::new();
     let obj = match d.as_object() {
@@ -172,33 +173,61 @@ pub fn validate_case_dict(d: &Value) -> Vec<String> {
     if !errors.is_empty() {
         return errors;
     }
+    if !obj.get("case_id").is_some_and(|v| v.is_string()) {
+        errors.push("bad case_id: expected string".to_string());
+    }
+    if !obj.get("family").is_some_and(|v| v.is_string()) {
+        errors.push("bad family: expected string".to_string());
+    }
     if let Some(p) = obj.get("primitive") {
-        let ok = p.as_str().is_some_and(|s| PRIMITIVES.contains(&s));
-        if !ok {
+        if !p.is_string() {
+            errors.push("bad primitive: expected string".to_string());
+        } else if !PRIMITIVES.contains(&p.as_str().unwrap()) {
             errors.push(format!("bad primitive: {}", py_repr_value(p)));
         }
     }
     if let Some(s) = obj.get("severity") {
-        let ok = s.as_str().is_some_and(|s| SEVERITIES.contains(&s));
-        if !ok {
+        if !s.is_string() {
+            errors.push("bad severity: expected string".to_string());
+        } else if !SEVERITIES.contains(&s.as_str().unwrap()) {
             errors.push(format!("bad severity: {}", py_repr_value(s)));
         }
     }
     for variant in ["benign", "attacked"] {
-        let ok = matches!(obj.get(variant),
-                         Some(Value::Object(v)) if v.contains_key("input"));
-        if !ok {
-            errors.push(format!(
-                "bad variant {}: need an object with 'input'",
-                py_repr_str(variant)
-            ));
+        match obj.get(variant) {
+            Some(Value::Object(v)) if v.contains_key("input") => {
+                if !v.get("input").is_some_and(|i| i.is_object()) {
+                    errors.push(format!("bad {variant} input: expected object"));
+                }
+            }
+            _ => {
+                errors.push(format!(
+                    "bad variant {}: need an object with 'input'",
+                    py_repr_str(variant)
+                ));
+            }
         }
     }
-    let benign_ok = matches!(obj.get("benign"),
-                            Some(Value::Object(v))
-                            if v.contains_key("expected_decision"));
-    if !benign_ok {
-        errors.push("benign variant needs 'expected_decision'".to_string());
+    if let Some(Value::Object(benign)) = obj.get("benign") {
+        match benign.get("expected_decision") {
+            None => errors.push("benign variant needs 'expected_decision'".to_string()),
+            Some(v) if !v.is_string() => {
+                errors.push("bad benign expected_decision: expected string".to_string())
+            }
+            _ => {}
+        }
+    }
+    if let Some(Value::Object(attacked)) = obj.get("attacked") {
+        if let Some(t) = attacked.get("target_decision") {
+            if !t.is_null() && !t.is_string() {
+                errors.push("bad attacked target_decision: expected string or null".to_string());
+            }
+        }
+    }
+    if let Some(notes) = obj.get("notes") {
+        if !notes.is_string() {
+            errors.push("bad notes: expected string".to_string());
+        }
     }
     errors
 }
@@ -258,6 +287,61 @@ mod tests {
         assert!(errors.iter().any(|e| e.contains("bad variant 'benign'")));
         assert!(errors.iter().any(|e| e.contains("bad variant 'attacked'")));
         assert!(errors.iter().any(|e| e.contains("expected_decision")));
+    }
+
+    #[test]
+    fn wrong_types_rejected_with_clear_errors() {
+        // The schema declares JSON types; the validator enforces them so
+        // a "valid" case can never crash the runner downstream.
+        let cases: Vec<(Value, &str)> = vec![
+            (json!({"case_id": 42}), "bad case_id: expected string"),
+            (json!({"family": ["x"]}), "bad family: expected string"),
+            (json!({"primitive": 5}), "bad primitive: expected string"),
+            (
+                json!({"severity": Value::Null}),
+                "bad severity: expected string",
+            ),
+            (
+                json!({"benign": {"input": "oops", "expected_decision": "a"}}),
+                "bad benign input: expected object",
+            ),
+            (
+                json!({"benign": {"input": {}, "expected_decision": 42}}),
+                "bad benign expected_decision: expected string",
+            ),
+            (
+                json!({"attacked": {"input": {}, "target_decision": 5}}),
+                "bad attacked target_decision: expected string or null",
+            ),
+            (json!({"notes": 5}), "bad notes: expected string"),
+        ];
+        for (over, want) in cases {
+            let mut d = valid_case();
+            for (k, v) in over.as_object().unwrap() {
+                d[k] = v.clone();
+            }
+            let errors = validate_case_dict(&d);
+            assert_eq!(errors, vec![want], "for override {over}");
+        }
+    }
+
+    #[test]
+    fn null_target_still_valid() {
+        let mut d = valid_case();
+        d["attacked"]["target_decision"] = Value::Null;
+        assert!(validate_case_dict(&d).is_empty());
+    }
+
+    #[test]
+    fn non_dict_benign_is_one_error_not_a_crash() {
+        // The old Python reference raised TypeError on `in` against an
+        // int here; both backends now report one clean error.
+        let mut d = valid_case();
+        d["benign"] = json!(5);
+        assert_eq!(
+            validate_case_dict(&d),
+            vec!["bad variant 'benign': need an object with 'input'"]
+        );
     }
 
     #[test]
