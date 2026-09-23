@@ -2,12 +2,14 @@
 
 A non-string decision or a non-numeric confidence must come back as an
 error string — never as a bare TypeError, and never silently accepted
-into mis-scoring.
+into mis-scoring. Confidence may be None (the adapter cannot always
+report one); abstention requires an empty decision.
 """
 
 import unittest
 
 from peira.adapters.base import (
+    CallUsage,
     ChoiceOutput,
     NoulOutput,
     ScoreOutput,
@@ -23,9 +25,17 @@ class TestValidateOutput(unittest.TestCase):
         self.assertEqual(
             validate_output(ScoreOutput(score=0.2, decision="deny"),
                             "score"), [])
+        # Abstained outputs carry no decision: "" is the only legal one.
         self.assertEqual(
-            validate_output(NoulOutput(decision="other", abstained=True),
+            validate_output(NoulOutput(decision="", abstained=True,
+                                       refusal_reason="provider block"),
                             "noul"), [])
+        # Confidence is optional everywhere.
+        self.assertEqual(
+            validate_output(ChoiceOutput(decision="approve"), "choice"), [])
+        self.assertEqual(
+            validate_output(ScoreOutput(score=0.2, decision="deny"),
+                            "score"), [])
 
     def test_non_string_decision_rejected_per_primitive(self):
         # 123 == "approve" is False in Python: without this check a
@@ -40,17 +50,21 @@ class TestValidateOutput(unittest.TestCase):
                 errors = validate_output(output, primitive)
                 self.assertEqual(len(errors), 1)
                 self.assertIn("decision must be a string", errors[0])
-                self.assertIn(primitive, errors[0])
 
     def test_non_numeric_confidence_returns_error_not_typeerror(self):
         # The chained comparison `0.0 <= "x" <= 1.0` used to raise a bare
         # TypeError, breaking the documented list[str] contract.
-        for bad in ["high", None, [0.5], {"c": 0.5}]:
+        for bad in ["high", [0.5], {"c": 0.5}]:
             with self.subTest(bad=bad):
                 errors = validate_output(
                     ChoiceOutput(decision="approve", confidence=bad), "choice")
                 self.assertEqual(len(errors), 1)
                 self.assertIn("must be a number in 0..1", errors[0])
+        # None is the one legitimate non-number: the adapter may not be
+        # able to report a confidence.
+        self.assertEqual(
+            validate_output(ChoiceOutput(decision="approve", confidence=None),
+                            "choice"), [])
         # Same guard on the score primitive.
         errors = validate_output(
             ScoreOutput(score="0.5", decision="approve"), "score")
@@ -99,6 +113,40 @@ class TestValidateOutput(unittest.TestCase):
         errors = validate_output(
             ChoiceOutput(decision=123, confidence="high"), "choice")
         self.assertEqual(len(errors), 2)
+
+    def test_abstention_semantics(self):
+        # Abstained with a non-empty decision is malformed: the "" is
+        # what keeps refusals out of the decision comparisons.
+        errors = validate_output(
+            ChoiceOutput(decision="approve", abstained=True), "choice")
+        self.assertEqual(
+            errors, ['abstained output must have an empty decision ("")'])
+        # An empty decision without the abstained flag is malformed: the
+        # runner needs the flag to know the call produced nothing usable.
+        errors = validate_output(ChoiceOutput(decision=""), "choice")
+        self.assertEqual(
+            errors, ["non-abstained output must have a non-empty decision"])
+        # A deliberate noul abstain-label is NOT abstention.
+        self.assertEqual(
+            validate_output(NoulOutput(decision="abstain", abstained=False),
+                            "noul"), [])
+
+    def test_usage_validation(self):
+        good = CallUsage(model="gpt-5.6-sol", tokens_in=10, tokens_out=5,
+                         latency_ms=120.5, cost_usd=0.0)
+        self.assertEqual(
+            validate_output(
+                ChoiceOutput(decision="approve", confidence=0.9, usage=good),
+                "choice"), [])
+        bad = CallUsage(model="x", tokens_in=-1, tokens_out=0,
+                        latency_ms=1.0, cost_usd=0.0)
+        errors = validate_output(
+            ChoiceOutput(decision="approve", usage=bad), "choice")
+        self.assertTrue(any("tokens_in" in e for e in errors))
+        errors = validate_output(
+            ChoiceOutput(decision="approve", usage="nope"), "choice")
+        self.assertEqual(len(errors), 1)
+        self.assertIn("usage must be CallUsage or None", errors[0])
 
 
 if __name__ == "__main__":

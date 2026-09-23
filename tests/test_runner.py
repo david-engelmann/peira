@@ -6,17 +6,30 @@ from types import SimpleNamespace
 
 from peira.adapters.mock import MockAdapter
 from peira.artifacts import RunArtifact, results_to_dicts
-from peira.metrics import PerCaseResult
+from peira.metrics import CallRecord, PerCaseResult
 from peira.runner import load_cases, run_suite, validate_partial
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
 
-def _r(case_id="c1", **kw):
-    base = dict(case_id=case_id, family="f", primitive="choice",
-                benign_correct=True, attacked_flipped=False,
-                attacked_targeted=False, malformed=False, confidence=0.9)
+def _rec(**kw):
+    base = dict(decision="approve", confidence=0.9, abstained=False,
+                refusal_reason="", usage=None, seed=0, dispatch_index=0,
+                malformed=False)
     base.update(kw)
+    return CallRecord(**base)
+
+
+def _r(case_id="c1", **kw):
+    benign_kw = {k[7:]: v for k, v in kw.items() if k.startswith("benign_")}
+    attacked_kw = {k[9:]: v for k, v in kw.items() if k.startswith("attacked_")}
+    rest = {k: v for k, v in kw.items()
+            if not (k.startswith("benign_") or k.startswith("attacked_"))}
+    base = dict(case_id=case_id, family="f", severity="high",
+                primitive="choice",
+                benign=_rec(**benign_kw), attacked=_rec(**attacked_kw),
+                flipped=False, eligible=True, ineligibility_reason="")
+    base.update(rest)
     return PerCaseResult(**base)
 
 
@@ -70,7 +83,7 @@ class TestValidatePartial(unittest.TestCase):
 
     def test_tampered_lock(self):
         p = _partial([_r("c1")])
-        p.results[0]["attacked_flipped"] = True  # modify after sealing
+        p.results[0]["flipped"] = True  # modify after sealing
         with self.assertRaises(ValueError):
             validate_partial(p, MockAdapter(), _cases("c1"),
                              "trial-demo", "0.1.0-demo")
@@ -111,6 +124,22 @@ class TestValidatePartial(unittest.TestCase):
             validate_partial(p, MockAdapter(), _cases("c1", "c2"),
                              "trial-demo", "0.1.0-demo")
 
+    def test_seed_mismatch_rejected(self):
+        # Resume with a different seed would silently re-score nothing
+        # (dispatch indices and per-call seeds are seed-derived): the
+        # partial is rejected with a clear message instead.
+        p = _partial([_r("c1")])
+        p.seed = 7
+        p.seal()
+        with self.assertRaisesRegex(ValueError, "recorded with seed 7"):
+            validate_partial(p, MockAdapter(), _cases("c1", "c2"),
+                             "trial-demo", "0.1.0-demo", seed=8)
+        # Same seed resumes fine.
+        done, prior = validate_partial(
+            p, MockAdapter(), _cases("c1", "c2"),
+            "trial-demo", "0.1.0-demo", seed=7)
+        self.assertEqual(done, {"c1"})
+
 
 class TestResumeProgress(unittest.TestCase):
     def test_progress_counts_completed_not_index(self):
@@ -124,6 +153,32 @@ class TestResumeProgress(unittest.TestCase):
         # One case skipped: progress must run 1..total-1, not jump the index.
         self.assertEqual([d for d, _ in seen], list(range(1, total)))
         self.assertTrue(all(t == total for _, t in seen))
+
+    def test_dispatch_indices_are_suite_positioned_across_resume(self):
+        # Dispatch indices derive from the case's suite position
+        # (benign = 2i, attacked = 2i+1), not run order: a resumed run
+        # must record the same indices as an uninterrupted one.
+        from peira.runner import run_case
+
+        cases = load_cases(REPO_ROOT / "dataset" / "trial-demo")
+        half = len(cases) // 2
+        adapter = MockAdapter()
+        prior = [run_case(adapter, cases[i], seed=3, dispatch_base=2 * i)
+                 for i in range(half)]
+        resumed = run_suite(
+            adapter, cases, "trial-demo", "0.1.0-demo",
+            already_done={cases[i].case_id for i in range(half)},
+            prior_results=prior,
+            seed=3,
+        )
+        self.assertEqual(len(resumed.results), len(cases))
+        for i, entry in enumerate(resumed.results):
+            self.assertEqual(entry["benign"]["dispatch_index"], 2 * i,
+                             f"case {i} benign index")
+            self.assertEqual(entry["attacked"]["dispatch_index"], 2 * i + 1,
+                             f"case {i} attacked index")
+            self.assertEqual(entry["benign"]["seed"], 3)
+            self.assertEqual(entry["attacked"]["seed"], 3)
 
 
 if __name__ == "__main__":

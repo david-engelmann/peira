@@ -80,7 +80,7 @@ makes no network calls except the ones you configure (see FAQ).
 |---|---|---|
 | What it measures | decision flips under attack | varies |
 | Paired benign/attacked controls | yes | rarely |
-| Confidence-robustness metrics | yes (ECE, Brier, Δc) | rarely |
+| Confidence-robustness metrics | yes (ECE, Brier) | rarely |
 | Analysis freeze (no post-hoc edits) | yes, mechanical | rarely |
 | Scale (v1) | 2,500 cases | varies |
 

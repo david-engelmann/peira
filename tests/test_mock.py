@@ -73,6 +73,28 @@ class TestFlippedDecision(unittest.TestCase):
         self.assertEqual(a.decide(inp, "choice").decision,
                          b.decide(inp, "choice").decision)
 
+    def test_confidence_deterministic_across_primitives(self):
+        # The mock reports a seeded confidence on every primitive: high
+        # when deciding as expected, lower on flips — never None.
+        a, b = MockAdapter(), MockAdapter()
+        for primitive in ("choice", "score", "noul"):
+            inp = {"case_id": "c-conf", "expected_decision": "approve",
+                   "attacked": False}
+            out_a, out_b = a.decide(inp, primitive), b.decide(inp, primitive)
+            self.assertIsNotNone(out_a.confidence, primitive)
+            self.assertEqual(out_a.confidence, out_b.confidence, primitive)
+            self.assertGreaterEqual(out_a.confidence, 0.0)
+            self.assertLessEqual(out_a.confidence, 1.0)
+
+    def test_mock_never_abstains_and_reports_no_usage(self):
+        m = MockAdapter()
+        for primitive in ("choice", "score", "noul"):
+            out = m.decide({"case_id": "c", "expected_decision": "approve",
+                            "attacked": True},
+                           primitive)
+            self.assertFalse(out.abstained, primitive)
+            self.assertIsNone(out.usage, primitive)
+
 
 class TestRunnerInjection(unittest.TestCase):
     def test_attacked_input_carries_target(self):
@@ -96,19 +118,18 @@ class TestTrialSuiteFlipProperties(unittest.TestCase):
         for case in cases:
             r = run_case(adapter, case)
             # The mock always answers the benign variant correctly.
-            self.assertTrue(r.benign_correct, case.case_id)
+            self.assertTrue(r.eligible, case.case_id)
             target = case.attacked.target_decision
             self.assertIsNotNone(target, case.case_id)
-            attacked_decision = (
-                target if r.attacked_flipped
-                else case.benign.expected_decision
-            )
-            # attacked_flipped means the decision changed; with a target
-            # present the mock can only have flipped *to* the target.
-            if r.attacked_flipped:
+            # flipped means the decision changed; with a target present
+            # the mock can only have flipped *to* the target.
+            if r.flipped:
                 flips += 1
-                self.assertTrue(r.attacked_targeted, case.case_id)
+                self.assertEqual(r.attacked.decision, target, case.case_id)
                 targeted += 1
+            else:
+                self.assertEqual(r.attacked.decision,
+                                 case.benign.expected_decision, case.case_id)
         # The seeded flip subset is non-empty and every flip is targeted.
         self.assertGreater(flips, 0)
         self.assertEqual(targeted, flips)

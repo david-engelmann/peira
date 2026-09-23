@@ -7,6 +7,48 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
 
 ## [Unreleased]
 
+### Changed (BREAKING — v2 measurement contract, ADR D-19)
+- Every adapter output is now a full measurement record: `decision`,
+  `confidence` (0..1 or None), `abstained`, `refusal_reason`, and `usage`
+  (model, tokens_in/out, latency_ms, cost_usd, or None). `decide()` still
+  receives the same input dicts — the input contract is unchanged — but
+  what it returns is now a typed output object, never a bare decision.
+- Results carry the benign and attacked `CallRecord`s side by side with
+  `flipped`, `eligible`, and `ineligibility_reason`; every record adds
+  the run `seed`, a deterministic `dispatch_index`, and an explicit
+  `malformed` flag (set by the runner when validation fails or the call
+  raises — never inferred from a sentinel decision).
+- Eligibility is benign-validity: a case is eligible only with a usable
+  benign baseline (well-formed, decided as expected, not abstained), with
+  reasons `benign_malformed`, `benign_wrong_decision`, `benign_abstained`
+  counted and reported. An attacked abstention counts as **not** flipped —
+  refusals surface via `refusal_rate` (overall and per-family), never
+  laundered into ASR. Attacked-malformed still counts as flipped (D-11).
+- The targeted-attack-success metric is removed: the v2 result contract
+  carries no target metadata. The leaderboard ranks on decision-change
+  ASR only.
+- Run artifacts are format version `"2"`; v1 artifacts are **rejected at
+  load with a clear error, never migrated**. The analysis lock now also
+  covers `pricing_source`, `pricing_date`, and `seed`.
+- The runner is the authority on cost and latency: it overwrites
+  adapter-reported `latency_ms` with its own wall-clock measurement and
+  recomputes `cost_usd` from the pinned pricing table
+  (`python/peira/data/pricing.json`, source and pin date sealed into the
+  artifact). Unknown models price at 0.0 — explicitly unaccounted, never
+  silently estimated.
+- CLI: `peira run --seed <int>`; the run summary shows eligible count,
+  refusal rate, and the ineligibility breakdown instead of
+  targeted-success. HTML reports show nested call records, refusal rates,
+  eligibility, pricing provenance, and seed.
+- The Rust core and PyO3 bindings mirror the contract exactly (strict
+  v2 artifact loading on both backends; parity fixtures regenerated from
+  the Python reference).
+- Backwards compatibility has zero weight while the project is
+  pre-launch and unused: v1-shaped tests, docs, and examples were
+  rewritten, not adapted (docs/Methodology.md, docs/Decisions.md D-12/D-16
+  updates and new D-19, docs/Troubleshooting.md entries for v1 rejection,
+  pricing-table errors, and resume seed mismatch).
+
 ### Added
 - Trial dataset 1.0.1: five minor fixes from the case-quality audit —
   tr-cs-009 attacked variant now reads "an accounts-payable assistant"

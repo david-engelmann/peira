@@ -70,6 +70,25 @@ between the interrupted run and the resume. Merging old partial results
 with a new dataset would corrupt the run. Fix: delete the
 `<adapter>-<suite>.partial.json` file and re-run without `--resume`.
 
+**`error: partial run seed N != requested seed M — re-run with the same --seed or delete the partial`**
+Cause: `peira run --resume` found a partial run recorded with a different
+`--seed` than the one requested. Seeds are part of every call record and
+of the analysis lock, so mixing seeds would make the artifact lie about
+its own provenance. Fix: resume with the same `--seed` the partial was
+written with, or delete the `<adapter>-<suite>.partial.json` file and
+re-run from scratch.
+
+**`error: peira pricing table ...`**
+Cause: `peira run` recomputes adapter costs from the pinned pricing
+table (`peira/data/pricing.json` in the package, source and pin date
+sealed into every artifact). The exact message names the problem:
+`peira pricing table is missing or unreadable: ...` (a broken install —
+the file ships as package data), `peira pricing table is corrupt: ...`
+(not valid JSON), or `peira pricing table has the wrong shape: ...`
+(the top level must be an object with a `models` object). Fix: reinstall
+peira; if it was hand-edited, restore it — unknown models price at 0.0
+by design, so there is no reason to add entries by hand.
+
 **`error: partial run has malformed result entry at index N ...`**
 Cause: `peira run --resume` found a partial run whose `results` entry at
 position N isn't a well-formed result object (a scalar, or an object with
@@ -265,13 +284,24 @@ edits are detectable).
 The parenthetical names the exact problem: `artifact is missing required
 field: 'dataset_version'` (the lock is meaningless without the
 identifiers it binds — `peira_version` and `dataset_version` are
-required), `unknown artifact field: '...'` (the frozen format rejects
-fields it doesn't know rather than silently ignoring them),
-`artifact field 'config' must be dict, got str` (wrong JSON type), or
+required), `unknown artifact field: '...'` (the v2 format rejects fields
+it doesn't know rather than silently ignoring them),
+`artifact field 'config' must be dict, got str` (wrong JSON type),
 `artifact results entry 3 is missing required field: 'family'` (a
-malformed result object — same strictness as the Rust core's typed
-results vector). A minimal artifact with just the two required fields
-loads fine — every other field has a documented default (see ADR D-12).
+malformed result object), or
+`artifact results entry 3 call record 'benign' is missing required field:
+'malformed'` (a truncated call record — same strictness as the Rust
+core's typed results vector). A minimal artifact with just the two
+required fields loads fine — the remaining defaults are documented in
+ADR D-12.
+
+**`error: unsupported artifact_version '1': ...`**
+Cause: the artifact was produced before the v2 measurement contract.
+Peira never migrates v1 artifacts — the numbers were computed under
+weaker semantics (flat results, no call records, no refusal tracking),
+and a migration shim would bless them as v2. Fix: re-run the adapter to
+produce a v2 artifact (the suite cases are unchanged; only the harness
+outputs moved).
 
 **`error: cannot write report to <out> (...)`**
 Cause: `peira report --out` points somewhere unwritable — a missing

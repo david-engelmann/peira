@@ -1,11 +1,16 @@
-//! Run artifacts: the frozen record of one evaluation run.
+//! Run artifacts: the versioned record of one evaluation run.
 //!
 //! Mirrors `python/peira/artifacts.py`. An artifact bundles the config,
 //! the per-case results, and the aggregate metrics, plus an analysis-lock
-//! hash (SHA-256 over config + dataset version + manifest SHA-256 +
-//! peira version + adapter name/version). The hash is the mechanical
+//! hash (SHA-256 over the lock payload). The hash is the mechanical
 //! guarantee behind "no post-hoc editing": any change to inputs changes
 //! the lock.
+//!
+//! Format versions: v1 (flat results) is REJECTED — v1 artifacts predate
+//! the v2 measurement contract and cannot be migrated. v2 results carry
+//! full per-variant call records, eligibility flags, and run-level
+//! pricing provenance (source + pin date) and seed; the lock payload
+//! covers pricing_source, pricing_date, and seed alongside the v1 fields.
 //!
 //! The lock payload is serialized with [`crate::canonical`] so locks are
 //! byte-identical across the Python and Rust implementations.
@@ -14,8 +19,8 @@
 //! (`deny_unknown_fields`, mirroring Python's `from_json`, which raises
 //! `ValueError` on them) rather than silently preserved. A lenient
 //! loader would let a newer artifact with renamed fields "verify"
-//! against a lock computed over different semantics; the frozen format
-//! makes strictness the safe default, and both backends agree on it.
+//! against a lock computed over different semantics; the format makes
+//! strictness the safe default, and both backends agree on it.
 //! Missing `config`/`metrics` default to `{}` (not `null`): `config` is
 //! part of the lock payload, so a `null`-vs-`{}` default would seal
 //! different locks for the same degenerate artifact on each backend.
@@ -26,6 +31,9 @@ use sha2::{Digest, Sha256};
 
 use crate::canonical::{hash_canonical, to_pretty};
 use crate::metrics::PerCaseResult;
+
+/// Current artifact format version. Anything else is rejected at load.
+pub const ARTIFACT_VERSION: &str = "2";
 
 /// One evaluation run, sealed with an analysis lock.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -58,10 +66,18 @@ pub struct RunArtifact {
     pub metrics: Value,
     #[serde(default)]
     pub analysis_lock: String,
+    /// Pricing provenance: which pinned table priced this run's calls.
+    #[serde(default)]
+    pub pricing_source: String,
+    #[serde(default)]
+    pub pricing_date: String,
+    /// Run seed, recorded on every call record.
+    #[serde(default)]
+    pub seed: i64,
 }
 
 fn default_artifact_version() -> String {
-    "1".to_string()
+    ARTIFACT_VERSION.to_string()
 }
 
 fn default_empty_object() -> Value {
@@ -81,6 +97,9 @@ impl RunArtifact {
             &self.suite,
             &self.config,
             &serde_json::to_value(&self.results).unwrap_or(Value::Null),
+            &self.pricing_source,
+            &self.pricing_date,
+            self.seed,
         )
     }
 
@@ -103,6 +122,16 @@ impl RunArtifact {
 
     pub fn from_json(s: &str) -> Result<Self, serde_json::Error> {
         let artifact: Self = serde_json::from_str(s)?;
+        // v1 artifacts predate the v2 measurement contract: no migration,
+        // no silent acceptance — re-run to produce v2.
+        if artifact.artifact_version != ARTIFACT_VERSION {
+            return Err(serde::de::Error::custom(format!(
+                "unsupported artifact_version '{}': v1 artifacts predate the \
+                 v2 measurement contract and cannot be loaded or migrated — \
+                 re-run the adapter to produce a v2 artifact",
+                artifact.artifact_version,
+            )));
+        }
         // Python's from_json requires `config`/`metrics` to be objects;
         // the struct fields stay `Value` (the format is frozen), but the
         // trust boundary enforces the same rule here.
@@ -112,6 +141,32 @@ impl RunArtifact {
                     "artifact field '{key}' must be an object, got {}",
                     json_type_name(value)
                 )));
+            }
+        }
+        // Usage accounting is non-negative by construction (the runner's
+        // validate_output rejects negatives before scoring); a stored
+        // artifact with negative usage signals a broken producer, so
+        // strict loading rejects it like the Python reference does.
+        for (i, r) in artifact.results.iter().enumerate() {
+            for (variant, rec) in [("benign", &r.benign), ("attacked", &r.attacked)] {
+                if let Some(u) = &rec.usage {
+                    let where_ = format!("artifact results entry {i} {variant}");
+                    for (name, v) in [("tokens_in", u.tokens_in), ("tokens_out", u.tokens_out)] {
+                        if v < 0 {
+                            return Err(serde::de::Error::custom(format!(
+                                "{where_} usage field '{name}' must be non-negative, got {v}"
+                            )));
+                        }
+                    }
+                    for (name, v) in [("latency_ms", u.latency_ms), ("cost_usd", u.cost_usd)] {
+                        // NaN is rejected too: no measurement can be NaN.
+                        if v < 0.0 || v.is_nan() {
+                            return Err(serde::de::Error::custom(format!(
+                                "{where_} usage field '{name}' must be non-negative, got {v}"
+                            )));
+                        }
+                    }
+                }
             }
         }
         Ok(artifact)
@@ -130,11 +185,11 @@ fn json_type_name(v: &Value) -> &'static str {
     }
 }
 
-/// Compute the analysis lock from the eight payload fields. Exposed so
+/// Compute the analysis lock from the eleven payload fields. Exposed so
 /// tests (and future verifiers) can lock payloads built outside a
 /// [`RunArtifact`], e.g. from a JSON fixture produced by the Python side.
-// Eight positional params mirror the frozen lock-payload field list;
-// a struct would just rename the problem.
+// Eleven positional params mirror the lock-payload field list; a struct
+// would just rename the problem.
 #[allow(clippy::too_many_arguments)]
 pub fn lock_payload(
     peira_version: &str,
@@ -145,15 +200,15 @@ pub fn lock_payload(
     suite: &str,
     config: &Value,
     results: &Value,
+    pricing_source: &str,
+    pricing_date: &str,
+    seed: i64,
 ) -> String {
-    // The eight payload keys in canonical (sorted) order, hashed by
+    // The eleven payload keys in canonical (sorted) order, hashed by
     // streaming straight into SHA-256: `config` and `results` are never
-    // cloned (the old code deep-cloned both into a throwaway map, ~3x
-    // transient memory on large runs). The six short string fields go
-    // through one-shot Values; the keys themselves are static ASCII, so
-    // the quoted `"key": ` prefixes are hashed literally. The field
-    // order is written out explicitly — it is part of the frozen lock
-    // contract, and spelling it out beats a separator-tracking macro.
+    // cloned. The field order is written out explicitly — it is part of
+    // the lock contract, and spelling it out beats a separator-tracking
+    // macro.
     let mut h = Sha256::new();
     h.update(b"{\"adapter_name\": ");
     hash_canonical(&Value::String(adapter_name.to_owned()), &mut h);
@@ -167,8 +222,14 @@ pub fn lock_payload(
     hash_canonical(&Value::String(manifest_sha256.to_owned()), &mut h);
     h.update(b", \"peira_version\": ");
     hash_canonical(&Value::String(peira_version.to_owned()), &mut h);
+    h.update(b", \"pricing_date\": ");
+    hash_canonical(&Value::String(pricing_date.to_owned()), &mut h);
+    h.update(b", \"pricing_source\": ");
+    hash_canonical(&Value::String(pricing_source.to_owned()), &mut h);
     h.update(b", \"results\": ");
     hash_canonical(results, &mut h);
+    h.update(b", \"seed\": ");
+    hash_canonical(&Value::Number(seed.into()), &mut h);
     h.update(b", \"suite\": ");
     hash_canonical(&Value::String(suite.to_owned()), &mut h);
     h.update(b"}");
@@ -178,11 +239,25 @@ pub fn lock_payload(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::metrics::CallRecord;
     use serde_json::json;
+
+    fn record(decision: &str, index: i64) -> CallRecord {
+        CallRecord {
+            decision: decision.to_string(),
+            confidence: Some(0.9),
+            abstained: false,
+            refusal_reason: String::new(),
+            usage: None,
+            seed: 7,
+            dispatch_index: index,
+            malformed: false,
+        }
+    }
 
     fn sample() -> RunArtifact {
         RunArtifact {
-            artifact_version: "1".into(),
+            artifact_version: "2".into(),
             peira_version: "0.1.0".into(),
             dataset_version: "0.1.0-demo".into(),
             manifest_sha256: "abc123".into(),
@@ -194,17 +269,19 @@ mod tests {
             results: vec![PerCaseResult {
                 case_id: "c1".into(),
                 family: "indirection".into(),
+                severity: "high".into(),
                 primitive: "choice".into(),
-                benign_correct: true,
-                attacked_flipped: false,
-                attacked_targeted: false,
-                malformed: false,
-                confidence: Some(0.9),
-                benign_malformed: false,
-                has_target: false,
+                benign: record("approve", 0),
+                attacked: record("deny", 1),
+                flipped: true,
+                eligible: true,
+                ineligibility_reason: String::new(),
             }],
             metrics: json!({}),
             analysis_lock: String::new(),
+            pricing_source: "test".into(),
+            pricing_date: "2026-09-23".into(),
+            seed: 7,
         }
     }
 
@@ -218,8 +295,6 @@ mod tests {
 
     #[test]
     fn lock_covers_manifest_sha256() {
-        // Byte-proof dataset identity: two artifacts that differ only in
-        // the recorded manifest digest seal different locks.
         let mut a = sample();
         a.seal();
         let mut b = sample();
@@ -231,12 +306,27 @@ mod tests {
     }
 
     #[test]
+    fn lock_covers_pricing_and_seed() {
+        // Pricing provenance and seed are measurement inputs: changing
+        // them must change the lock.
+        let mut a = sample();
+        a.seal();
+        let mut b = sample();
+        b.pricing_date = "2026-09-24".into();
+        b.seal();
+        assert_ne!(a.analysis_lock, b.analysis_lock);
+        let mut c = sample();
+        c.seed = 8;
+        c.seal();
+        assert_ne!(a.analysis_lock, c.analysis_lock);
+    }
+
+    #[test]
     fn tampering_breaks_the_lock() {
         let mut a = sample();
         a.seal();
-        a.results[0].attacked_flipped = true;
+        a.results[0].flipped = false;
         assert!(!a.verify());
-        // Tampering with config (part of the payload) also breaks it.
         let mut b = sample();
         b.seal();
         b.config = json!({"n_cases": 2});
@@ -257,6 +347,17 @@ mod tests {
     }
 
     #[test]
+    fn v1_artifacts_rejected_with_clear_error() {
+        let mut v = serde_json::to_value(sample()).unwrap();
+        v["artifact_version"] = json!("1");
+        let err = RunArtifact::from_json(&crate::canonical::to_canonical(&v))
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("v1 artifacts"), "{err}");
+        assert!(err.contains("cannot be loaded or migrated"), "{err}");
+    }
+
+    #[test]
     fn unknown_fields_rejected_like_python() {
         let mut v = serde_json::to_value(sample()).unwrap();
         v["bogus"] = json!(1);
@@ -264,18 +365,22 @@ mod tests {
     }
 
     #[test]
+    fn unknown_entry_fields_rejected() {
+        let mut v = serde_json::to_value(sample()).unwrap();
+        v["results"][0]["bogus"] = json!(1);
+        assert!(RunArtifact::from_json(&crate::canonical::to_canonical(&v)).is_err());
+    }
+
+    #[test]
     fn minimal_artifact_defaults_match_python() {
-        // A minimal artifact (only the two required lock identifiers)
-        // loads with the same defaults as Python's from_json: missing
-        // config/metrics become {}, not null — the lock payload must
-        // agree across backends.
         let a = RunArtifact::from_json(r#"{"peira_version": "0.1.0", "dataset_version": "x"}"#)
             .unwrap();
-        assert_eq!(a.artifact_version, "1");
+        assert_eq!(a.artifact_version, "2");
         assert_eq!(a.config, json!({}));
         assert_eq!(a.metrics, json!({}));
         assert!(a.results.is_empty());
         assert_eq!(a.analysis_lock, "");
+        assert_eq!(a.seed, 0);
     }
 
     #[test]
@@ -287,8 +392,6 @@ mod tests {
 
     #[test]
     fn non_object_config_or_metrics_rejected_like_python() {
-        // Python's from_json requires config/metrics to be dicts; the
-        // Rust trust boundary enforces the same rule.
         for (key, bad) in [("config", r#""x""#), ("metrics", r#"[1]"#)] {
             let s =
                 format!(r#"{{"peira_version": "0.1.0", "dataset_version": "x", "{key}": {bad}}}"#);
@@ -298,12 +401,6 @@ mod tests {
                 "{err}"
             );
         }
-        let ok = RunArtifact::from_json(
-            r#"{"peira_version": "0.1.0", "dataset_version": "x",
-                "config": {"a": 1}, "metrics": {}}"#,
-        )
-        .unwrap();
-        assert_eq!(ok.config, json!({"a": 1}));
     }
 
     #[test]
@@ -319,7 +416,9 @@ mod tests {
         // or every cross-language lock breaks silently.
         let config = json!({"n_cases": 3, "nested": {"b": [1, 2], "a": "x"}});
         let results = json!([{"case_id": "c1", "x": 1e-5}]);
-        let streamed = lock_payload("p", "d", "m", "a", "v", "s", &config, &results);
+        let streamed = lock_payload(
+            "p", "d", "m", "a", "v", "s", &config, &results, "ps", "pd", 3,
+        );
         let mut map = serde_json::Map::new();
         for (k, v) in [
             ("adapter_name", json!("a")),
@@ -328,7 +427,10 @@ mod tests {
             ("dataset_version", json!("d")),
             ("manifest_sha256", json!("m")),
             ("peira_version", json!("p")),
+            ("pricing_date", json!("pd")),
+            ("pricing_source", json!("ps")),
             ("results", results),
+            ("seed", json!(3)),
             ("suite", json!("s")),
         ] {
             map.insert(k.into(), v);

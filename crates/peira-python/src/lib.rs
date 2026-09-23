@@ -24,6 +24,7 @@ use pyo3::exceptions::{PyTypeError, PyValueError};
 use pyo3::prelude::*;
 use pyo3::types::{PyBool, PyDict, PyFloat, PyInt, PyList, PyString, PyTuple};
 use serde_json::{Number, Value};
+use std::collections::BTreeMap;
 
 /// Convert an arbitrary Python object to `serde_json::Value`.
 ///
@@ -84,20 +85,69 @@ fn value_from_py(obj: &Bound<'_, PyAny>) -> PyResult<Value> {
     }
 }
 
-/// Mirror of the Python `PerCaseResult` dataclass, field-for-field.
+/// Mirror of the Python `CallUsage` dataclass, field-for-field.
+#[derive(FromPyObject)]
+struct PyCallUsage {
+    model: String,
+    tokens_in: i64,
+    tokens_out: i64,
+    latency_ms: f64,
+    cost_usd: f64,
+}
+
+impl From<PyCallUsage> for metrics::CallUsage {
+    fn from(u: PyCallUsage) -> Self {
+        metrics::CallUsage {
+            model: u.model,
+            tokens_in: u.tokens_in,
+            tokens_out: u.tokens_out,
+            latency_ms: u.latency_ms,
+            cost_usd: u.cost_usd,
+        }
+    }
+}
+
+/// Mirror of the Python `CallRecord` dataclass, field-for-field.
 /// Extracted from any Python object carrying those attributes.
+#[derive(FromPyObject)]
+struct PyCallRecord {
+    decision: String,
+    confidence: Option<f64>,
+    abstained: bool,
+    refusal_reason: String,
+    usage: Option<PyCallUsage>,
+    seed: i64,
+    dispatch_index: i64,
+    malformed: bool,
+}
+
+impl From<PyCallRecord> for metrics::CallRecord {
+    fn from(r: PyCallRecord) -> Self {
+        metrics::CallRecord {
+            decision: r.decision,
+            confidence: r.confidence,
+            abstained: r.abstained,
+            refusal_reason: r.refusal_reason,
+            usage: r.usage.map(metrics::CallUsage::from),
+            seed: r.seed,
+            dispatch_index: r.dispatch_index,
+            malformed: r.malformed,
+        }
+    }
+}
+
+/// Mirror of the Python `PerCaseResult` dataclass, field-for-field.
 #[derive(FromPyObject)]
 struct PyPerCaseResult {
     case_id: String,
     family: String,
+    severity: String,
     primitive: String,
-    benign_correct: bool,
-    attacked_flipped: bool,
-    attacked_targeted: bool,
-    malformed: bool,
-    confidence: Option<f64>,
-    benign_malformed: bool,
-    has_target: bool,
+    benign: PyCallRecord,
+    attacked: PyCallRecord,
+    flipped: bool,
+    eligible: bool,
+    ineligibility_reason: String,
 }
 
 impl From<PyPerCaseResult> for metrics::PerCaseResult {
@@ -105,14 +155,13 @@ impl From<PyPerCaseResult> for metrics::PerCaseResult {
         metrics::PerCaseResult {
             case_id: r.case_id,
             family: r.family,
+            severity: r.severity,
             primitive: r.primitive,
-            benign_correct: r.benign_correct,
-            attacked_flipped: r.attacked_flipped,
-            attacked_targeted: r.attacked_targeted,
-            malformed: r.malformed,
-            confidence: r.confidence,
-            benign_malformed: r.benign_malformed,
-            has_target: r.has_target,
+            benign: metrics::CallRecord::from(r.benign),
+            attacked: metrics::CallRecord::from(r.attacked),
+            flipped: r.flipped,
+            eligible: r.eligible,
+            ineligibility_reason: r.ineligibility_reason,
         }
     }
 }
@@ -146,7 +195,7 @@ fn wilson_ci(hits: u64, n: u64) -> (f64, f64) {
     metrics::wilson_ci(hits, n)
 }
 
-/// Conditional ASR: flips among ASR-eligible attacked cases, with Wilson CI.
+/// Conditional ASR: flips among eligible attacked cases, with Wilson CI.
 #[pyfunction]
 fn asr_conditional(results: Vec<PyPerCaseResult>) -> (f64, (f64, f64)) {
     metrics::asr_conditional(&to_core_results(results))
@@ -158,10 +207,22 @@ fn benign_accuracy(results: Vec<PyPerCaseResult>) -> (f64, (f64, f64)) {
     metrics::benign_accuracy(&to_core_results(results))
 }
 
-/// Targeted attack success: (rate or None, number of targeted cases).
+/// Attacked-variant refusal rate with Wilson 95% CI.
 #[pyfunction]
-fn targeted_attack_success(results: Vec<PyPerCaseResult>) -> (Option<f64>, usize) {
-    metrics::targeted_attack_success(&to_core_results(results))
+fn refusal_rate(results: Vec<PyPerCaseResult>) -> (f64, (f64, f64)) {
+    metrics::refusal_rate(&to_core_results(results))
+}
+
+/// Attacked-variant refusal rate per family, as a dict.
+#[pyfunction]
+fn refusal_rate_by_family(results: Vec<PyPerCaseResult>) -> BTreeMap<String, f64> {
+    metrics::refusal_rate_by_family(&to_core_results(results))
+}
+
+/// Ineligible-case counts by reason, as a dict.
+#[pyfunction]
+fn ineligible_by_reason(results: Vec<PyPerCaseResult>) -> BTreeMap<String, u64> {
+    metrics::ineligible_by_reason(&to_core_results(results))
 }
 
 /// Fraction of cases malformed on either variant.
@@ -206,7 +267,7 @@ fn paired_bootstrap_ci(xs: Vec<f64>, ys: Vec<f64>, n_boot: usize, seed: u64) -> 
 fn n_eligible_by_family(
     results: Vec<PyPerCaseResult>,
     required_families: Option<Vec<String>>,
-) -> std::collections::BTreeMap<String, usize> {
+) -> BTreeMap<String, usize> {
     metrics::n_eligible_by_family(&to_core_results(results), required_families.as_deref())
 }
 
@@ -242,7 +303,9 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(wilson_ci, m)?)?;
     m.add_function(wrap_pyfunction!(asr_conditional, m)?)?;
     m.add_function(wrap_pyfunction!(benign_accuracy, m)?)?;
-    m.add_function(wrap_pyfunction!(targeted_attack_success, m)?)?;
+    m.add_function(wrap_pyfunction!(refusal_rate, m)?)?;
+    m.add_function(wrap_pyfunction!(refusal_rate_by_family, m)?)?;
+    m.add_function(wrap_pyfunction!(ineligible_by_reason, m)?)?;
     m.add_function(wrap_pyfunction!(malformed_rate, m)?)?;
     m.add_function(wrap_pyfunction!(ece, m)?)?;
     m.add_function(wrap_pyfunction!(brier_score, m)?)?;

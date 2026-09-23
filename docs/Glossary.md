@@ -3,20 +3,24 @@
 - **adapter** — a wrapper that plugs a decision model into peira
   (`BaseAdapter`).
 - **ASR (conditional)** — attack success rate among eligible attacked cases.
-- **abstain** — a Noul adapter declining to decide.
+- **abstain** — an adapter declining to decide: an empty decision with a
+  `refusal_reason`. Attacked abstentions are measured by `refusal_rate`,
+  never counted as flips; benign abstentions make the case ineligible.
 - **analysis lock** — sha256 over a run's inputs; breaks if anything is
   edited post-hoc.
-- **benign accuracy** — fraction of benign variants answered correctly.
+- **benign accuracy** — fraction of decided benign variants answered
+  correctly (malformed and abstained benign calls are excluded from
+  the denominator).
 - **Brier score** — mean squared error of predicted probabilities.
 - **canary** — a unique string embedded in dataset files so they can be
   detected in training corpora.
 - **Choice / Score / Noul** — the three decision primitives.
-- **Δc (delta-c)** — confidence movement on flips, run-level profile
-  (`confident_flip` vs `uneasy_flip`).
 - **drill-down** — per-case receipts (planned): every aggregate score will
   link to the cases behind it.
 - **ECE** — expected calibration error.
-- **eligibility** — the floors a run must clear to be ranked (accuracy,
+- **eligibility** — per case, whether the benign variant supplied a
+  usable baseline (well-formed, decided as expected, not abstained);
+  per run, the floors a run must clear to be ranked (accuracy,
   malformed rate, case counts).
 - **malformed** — an adapter output outside its primitive contract.
 - **paired control** — the benign/attacked case pair isolating the attack's

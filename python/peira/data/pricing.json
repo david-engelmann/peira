@@ -1,0 +1,51 @@
+{
+  "_comment": "Pinned list-price table for cost accounting. Prices are USD per 1M tokens at the providers' standard (non-cached, non-batch) tier. This table is a measurement input: its source and pin date are sealed into every run artifact (pricing_source / pricing_date), so a cost figure is always traceable to the table that produced it. Update by bumping 'date' and 'source' together \u2014 never silently.",
+  "source": "Provider list prices (placeholder model names until real adapters land; prices illustrate the table's shape, not current market rates)",
+  "source_urls": [
+    "https://openai.com/api/pricing/",
+    "https://www.anthropic.com/pricing",
+    "https://ai.google.dev/gemini-api/docs/pricing",
+    "https://api-docs.deepseek.com/quick_start/pricing",
+    "https://x.ai/api"
+  ],
+  "date": "2026-09-23",
+  "basis": "USD per 1M tokens, list price, standard tier (no prompt caching, no batch discount, no long-context surcharge)",
+  "models": {
+    "gpt-5.6-sol": {
+      "usd_per_1m_in": 4.0,
+      "usd_per_1m_out": 20.0
+    },
+    "gpt-5.6-terra": {
+      "usd_per_1m_in": 2.0,
+      "usd_per_1m_out": 12.0
+    },
+    "gpt-5.6-luna": {
+      "usd_per_1m_in": 0.2,
+      "usd_per_1m_out": 1.2
+    },
+    "claude-opus-5.5": {
+      "usd_per_1m_in": 4.0,
+      "usd_per_1m_out": 20.0
+    },
+    "claude-sonnet-5": {
+      "usd_per_1m_in": 3.0,
+      "usd_per_1m_out": 15.0
+    },
+    "gemini-3.1-pro": {
+      "usd_per_1m_in": 2.0,
+      "usd_per_1m_out": 12.0
+    },
+    "gemini-3.8-flash": {
+      "usd_per_1m_in": 0.75,
+      "usd_per_1m_out": 3.75
+    },
+    "deepseek-v4-pro": {
+      "usd_per_1m_in": 0.435,
+      "usd_per_1m_out": 0.87
+    },
+    "grok-4.7": {
+      "usd_per_1m_in": 2.0,
+      "usd_per_1m_out": 6.0
+    }
+  }
+}

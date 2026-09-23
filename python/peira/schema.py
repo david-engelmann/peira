@@ -250,3 +250,39 @@ def validate_case_dict(d: dict[str, Any]) -> list[str]:
             # boundary; validate them with the reference implementation.
             pass
     return _validate_case_dict_py(d)
+
+
+# Adapter output contract, re-exported for convenience. The canonical
+# homes are peira.adapters.base (what decide() returns: the output
+# types, the validator, the usage record) and peira.metrics (what a
+# run measures: the call record and the per-case result). They are
+# re-exported here so the full v2 measurement contract is importable
+# from a single module.
+from peira.adapters.base import (  # noqa: E402
+    AdapterOutput,
+    CallUsage,
+    ChoiceOutput,
+    NoulOutput,
+    ScoreOutput,
+    validate_output,
+)
+from peira.metrics import CallRecord, PerCaseResult  # noqa: E402
+
+__all__ = [
+    "AdapterOutput",
+    "BenignVariant",
+    "AttackedVariant",
+    "CallRecord",
+    "CallUsage",
+    "Case",
+    "ChoiceOutput",
+    "NoulOutput",
+    "PerCaseResult",
+    "ScoreOutput",
+    "CANONICAL_FAMILIES",
+    "CASE_JSON_SCHEMA",
+    "PRIMITIVES",
+    "SEVERITIES",
+    "validate_case_dict",
+    "validate_output",
+]
