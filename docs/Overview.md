@@ -65,6 +65,10 @@ below, or browse the full map.
 
 - [Dataset](Dataset.md) — the authoring pipeline: templates, gates,
   review queue, manifests, versioning.
+- [Holdout-OpSec](Holdout-OpSec.md) — the private holdout's operating
+  rules: access, the contamination rule, freshness and rotation.
+- [Holdout-Ranking-Design](Holdout-Ranking-Design.md) — design: CI
+  re-execution against the holdout, divergence reporting, gaming policy.
 - [Compatibility](Compatibility.md) — package vs dataset versioning:
   what works today, what's planned.
 - [Decisions](Decisions.md) — architecture decision records, D-1 onward.

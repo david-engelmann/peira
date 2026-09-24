@@ -27,6 +27,8 @@ BANNED = [
     r"master plan",
     r"peira-master-plan",
     r"plan-audit",
+    r"peira-holdout",
+    r"peira-private",
     r"\baudits\b",
     r"policy memos",
     r"handoff prompt",

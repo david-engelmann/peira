@@ -11,8 +11,10 @@ indexes the load-bearing claims; detail lives in the linked docs.
 - Every public score will link to per-case drill-down receipts.
 - Run artifacts are sealed with an analysis lock; `peira report` warns on
   lock mismatch.
-- The private holdout's raw cases will never be published; only aggregate
-  metrics will leave the maintainer's machine.
+- The private holdout's raw cases will never be published while they are
+  holdout cases; aged-out cases enter the public set on the declared
+  schedule (see `Holdout-OpSec.md`), and only aggregate metrics leave the
+  maintainer's machine.
 
 ## We don't claim
 
