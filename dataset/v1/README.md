@@ -13,7 +13,7 @@ This directory will contain:
   `docs/Dataset.md`.
 - `DATASHEET.md` — full datasheet.
 - `schema.json` — the frozen case JSON schema.
-- `CANARY.txt` — the canary string (also embedded in every case file).
+- `CANARY.txt` — the canary string (added at packaging time; not embedded in v1 case files).
 
 The 500-case private holdout is **never** committed here. It lives
 encrypted, maintainer-only; only aggregate metrics are published.
