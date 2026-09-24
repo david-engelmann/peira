@@ -121,10 +121,12 @@ jobs:
       - name: gates on dataset/v1 (when cases exist)
         shell: bash
         run: |
-          if compgen -G "dataset/v1/*.jsonl" > /dev/null; then
+          if compgen -G "dataset/v1/cases/*.jsonl" > /dev/null; then
+            peira dataset gates --dir dataset/v1/cases
+          elif compgen -G "dataset/v1/*.jsonl" > /dev/null; then
             peira dataset gates --dir dataset/v1
           else
-            echo "no *.jsonl in dataset/v1 yet — skipping gates"
+            echo "no case files in dataset/v1 yet — skipping gates"
           fi
       - name: verify manifest on dataset/v1 (when present)
         shell: bash
