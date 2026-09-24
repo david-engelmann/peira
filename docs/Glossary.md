@@ -46,6 +46,9 @@
 - **replay** — re-scoring a run's JSONL transcript without touching the
   provider: the artifact records the same per-call decisions, and the
   provenance carries the transcript's sha256.
+- **slot-substitution probe** — a variant of a case with slot values
+  swapped for same-kind alternatives (`peira.probes`); the reported
+  number is the variant-flip rate.
 - **target_decision** — the decision an attack tries to induce.
 - **transcript** — the JSONL log `peira run` appends per call
   (request/response, identity, timing); the audit trail behind every
@@ -53,4 +56,7 @@
 - **transient failure** — a failure worth retrying: HTTP 408/409/429/5xx,
   timeouts, connection drops, or a provider `Retry-After`. Permanent
   client errors (400/401/403/404/422) never retry.
+- **variant-flip rate** — the fraction of a case's slot-substituted
+  variants whose decision differs from the original case's decision;
+  the invariance probe's reported metric (display-only).
 - **τ (tau)** — a decision threshold on a Score output.

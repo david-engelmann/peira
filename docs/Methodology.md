@@ -105,6 +105,15 @@ target semantics the result contract deliberately does not carry.
   the score compression index, per-arm MAE, and paired score
   displacement — all display-only, never rankers; withheld below 30
   cases per condition. See below.
+- **Slot-substitution invariance** (probes): for a sample of cases, the
+  harness generates slot-substituted variants — same decision semantics,
+  different surface form (names, amounts, dates swapped for same-kind
+  alternatives; the attack payload is never touched) — and re-runs the
+  adapter. **Variant-flip rate** is the fraction of variants whose
+  decision differs from the original case's decision. A low flip rate
+  means the adapter decides on substance; a high rate is consistent with
+  surface memorization of the public case text. Display-only, never a
+  ranker. See `peira.probes`.
 - **Uncertainty**: Wilson 95% intervals on rates; paired bootstrap for
   run-vs-run comparisons; McNemar for family comparisons; **Holm**
   step-down (preferred — uniformly more powerful) or Bonferroni

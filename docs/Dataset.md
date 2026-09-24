@@ -66,7 +66,10 @@ shallow by construction. No real case nests anywhere near that deep.
 
 The 500-case private holdout is **never** committed to this repo. It lives
 encrypted and maintainer-only; only aggregate metrics are published. Its
-counts are recorded in the maintainer's private manifest, not here.
+counts are recorded in the maintainer's private manifest, not here. The
+operating policy is in [Holdout-OpSec](Holdout-OpSec.md); the ranking and
+re-execution design is in
+[Holdout-Ranking-Design](Holdout-Ranking-Design.md).
 
 ## The manifest
 

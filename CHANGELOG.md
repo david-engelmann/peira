@@ -321,6 +321,28 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
   confidence/refusal normalization, model/revision pinning and Jev
   transport.
 
+### Added — probe workstream slice 1 (anti-gaming foundation)
+
+- New `docs/Holdout-OpSec.md`: the private 500-case holdout's operating
+  policy — who can see it (maintainer + CI, nobody else), the
+  contamination rule (holdout bytes never in the public repo, logs,
+  artifacts, or third-party payloads), per-copy canary GUIDs (a later
+  slice — no v1 canaries until the packaging phase), and the
+  freshness/rotation policy. Written as if the adversary reads it.
+- New `docs/Holdout-Ranking-Design.md` (design, not yet implemented):
+  PR-based submissions re-executed against the holdout in a private CI
+  context, aggregates-only exfiltration, per-family public-vs-holdout
+  divergence reporting with the holdout governing on disagreement,
+  blind holdout runs (decided 2026-09-23), and the gaming response ladder
+  (investigate → holdout-only dual reporting → zero/unranked).
+- New stdlib-only `peira.probes` module: `generate_variants()` produces
+  deterministic, seeded slot-substituted case variants (typed entity
+  tables, same-magnitude money swaps, single-offset date shifts,
+  conservative synonym swaps, caller-declared `SlotSpec` regexes), with
+  the attacked arm's payload spans protected via diff; `peira.probes`
+  also ships `invariance_report()` (variant-flip rate). Methodology
+  documents variant-flip rate as display-only.
+
 ### Changed — README v2 (docs slice D1)
 - Rewrote `README.md` around proof-first structure: a real generated
   per-family results table (from `peira run --adapter mock --suite trial`)
