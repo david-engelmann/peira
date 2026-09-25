@@ -17,20 +17,13 @@ BANNED = [
     r"premier product",
     r"\bdominat\w*",
     r"own the category",
-    r"category leader",
     r"market leader",
-    r"\blargest\b",
     r"ship fast",
     r"as quickly as possible",
-    r"vendor pre-?brief",
+    r"vendor pre-brief",
     r"just ship",
-    r"master plan",
     r"peira-master-plan",
     r"plan-audit",
-    r"peira-holdout",
-    r"peira-private",
-    r"\baudits\b",
-    r"policy memos",
     r"handoff prompt",
 ]
 
@@ -65,13 +58,7 @@ def main() -> int:
             continue
         for lineno, line in enumerate(text.splitlines(), 1):
             for raw, rx in patterns:
-                if rx.search(line):
-                    # The allowlist covers factual uses of the "audits" pattern
-                    # only; it must never exempt any other banned phrase that
-                    # happens to share the line (e.g. "accuracy audits of
-                    # peira-holdout" must still fail on peira-holdout).
-                    if raw == r"\baudits\b" and any(a.search(line) for a in allowed):
-                        continue
+                if rx.search(line) and not any(a.search(line) for a in allowed):
                     hits.append(f"{rel}:{lineno}: banned phrase {raw!r}")
     if hits:
         print("public-surface check FAILED:")

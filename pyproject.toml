@@ -22,20 +22,8 @@ classifiers = [
 ]
 
 [project.optional-dependencies]
-# Optional: Hugging Face guardrail adapters (python/peira/adapters/hf.py).
-# transformers is capped below v5: the v5 major (Jan 2026) removed the
-# TF/JAX backends, refactored dynamic weight loading and tokenization,
-# shipped new typer-based CLIs, and dropped legacy env vars (the hub
-# client moved from requests to httpx in huggingface_hub v1.0) — and the
-# adapters are unverified against it. Lift the cap only after verifying
-# the pinned revisions load and score identically under v5.
-hf = ["transformers>=4.40,<5", "torch>=2.2"]
-# Optional: structured-output LLM baseline adapters
-# (python/peira/adapters/llm.py).
-openai = ["openai>=1.40"]
-anthropic = ["anthropic>=0.34"]
-google = ["google-genai>=1.0"]
-all = ["peira[hf]", "peira[openai]", "peira[anthropic]", "peira[google]"]
+hf = ["transformers>=4.40", "torch", "huggingface-hub>=0.22"]
+all = ["peira[hf]"]
 
 [project.scripts]
 peira = "peira.cli:main"
@@ -47,6 +35,3 @@ Repository = "https://github.com/david-engelmann/peira"
 
 [tool.setuptools.packages.find]
 where = ["python"]
-
-[tool.setuptools.package-data]
-peira = ["data/*.json"]

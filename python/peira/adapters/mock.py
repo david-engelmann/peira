@@ -3,15 +3,6 @@
 Used for the 30-second quickstart and CI. It answers the benign variant
 correctly and flips on a fixed, seeded subset of attacked variants, so runs
 are reproducible bit-for-bit.
-
-On a flip it moves toward the case's own target decision
-(``target_decision`` on the call context, built by the runner);
-without a usable target it toggles the classic approve/deny pair. Its
-score positive class is "approve" (see ``ScoreOutput``). Confidence is
-derived deterministically from the seed and case id (high when deciding
-as expected, lower on flips). It reports no token usage (nothing real
-was called) and never abstains. This is a mechanism exerciser, not a
-baseline — no benchmark claim may rest on mock-adapter numbers.
 """
 
 from __future__ import annotations
@@ -21,7 +12,6 @@ from typing import Any
 
 from peira.adapters.base import (
     AdapterOutput,
-    CallContext,
     ChoiceOutput,
     NoulOutput,
     ScoreOutput,
@@ -29,86 +19,53 @@ from peira.adapters.base import (
 
 
 class MockAdapter:
-    """A deterministic fake decision model."""
+    """A deterministic fake decision model.
+    
+    IMPORTANT: This adapter does NOT receive gold labels via case_input.
+    For testing, pass expected decisions at construction time via gold_map.
+    The runner never provides golds in the adapter input (audit C1).
+    """
 
     name = "mock"
-    version = "0.2.0"
+    version = "0.1.0"
     supported_primitives = frozenset({"choice", "score", "noul"})
 
-    def __init__(self, flip_rate: float = 0.4, seed: str = "peira-mock-v1") -> None:
+    def __init__(
+        self,
+        flip_rate: float = 0.4,
+        seed: str = "peira-mock-v1",
+        gold_map: dict[str, str] | None = None,
+    ) -> None:
         self.flip_rate = flip_rate
         self.seed = seed
-        # The mock is deterministic given (seed, flip_rate): namespace
-        # the cache on both, so a different mock config never shares
-        # entries. (Caching the mock itself buys nothing — it is
-        # instant — but the namespace must still be correct.)
-        self.cache_namespace = f"mock:{seed}:{flip_rate}"
+        # gold_map: case_id -> expected_decision, for testing only.
+        # In production, adapters must NOT have access to golds.
+        self.gold_map = gold_map or {}
 
     def _flips(self, case_id: str) -> bool:
         digest = hashlib.sha256(f"{self.seed}:{case_id}".encode()).hexdigest()
         return (int(digest, 16) % 1000) / 1000 < self.flip_rate
 
-    def _confidence(self, case_id: str, flipped: bool) -> float:
-        # Deterministic per (seed, case): high when deciding as expected,
-        # lower on flips, with a small jitter so calibration metrics see
-        # a spread instead of two point masses.
-        digest = hashlib.sha256(
-            f"{self.seed}:conf:{case_id}".encode()
-        ).hexdigest()
-        jitter = (int(digest, 16) % 1000) / 1000
-        base = 0.5 if flipped else 0.85
-        return round(base + 0.1 * jitter, 4)
+    def decide(self, case_input: dict[str, Any], primitive: str) -> AdapterOutput:
+        case_id = str(case_input.get("case_id", ""))
+        attacked = bool(case_input.get("attacked", False))
 
-    @staticmethod
-    def _flipped_decision(expected: str, target: Any) -> str:
-        # Flip toward the case's own target when there is a usable one;
-        # otherwise toggle the classic approve/deny pair. With neither
-        # (target-less input and a non-binary label) there is nothing to
-        # flip toward, so return expected and let the metrics honestly
-        # record no flip.
-        if isinstance(target, str) and target != expected:
-            return target
-        if expected == "approve":
-            return "deny"
-        if expected == "deny":
-            return "approve"
-        return expected
-
-    def decide(
-        self,
-        case_input: dict[str, Any],
-        primitive: str,
-        context: CallContext | None = None,
-    ) -> AdapterOutput:
-        # The mock is always driven through the runner, which always
-        # provides a context. Refuse to guess case metadata from the
-        # input dict — the input carries no trial bookkeeping (D-25),
-        # and silently falling back would hide a broken call path.
-        if context is None:
-            raise ValueError(
-                "MockAdapter.decide requires a CallContext; the runner "
-                "always provides one"
-            )
-        case_id = context.case_id
-        expected = context.expected_decision
-        target = context.target_decision
-        attacked = context.arm == "attacked"
-
+        # For benign: use gold_map if provided (testing), else default.
+        # The runner does NOT pass expected_decision in case_input (audit C1).
+        expected = self.gold_map.get(case_id, "approve")
+        
         flipped = attacked and self._flips(case_id)
-        decision = self._flipped_decision(expected, target) if flipped else expected
-        confidence = self._confidence(case_id, flipped)
+        # Flip by choosing a different decision (simplified: toggle approve/deny)
+        if flipped:
+            decision = "deny" if expected == "approve" else "approve"
+        else:
+            decision = expected
 
         if primitive == "choice":
-            return ChoiceOutput(decision=decision, confidence=confidence)
+            return ChoiceOutput(decision=decision, confidence=0.9 if not flipped else 0.55)
         if primitive == "score":
             score = 0.85 if decision == "approve" else 0.15
-            return ScoreOutput(
-                score=score,
-                decision=decision,
-                # Confidence in the *decision*: a low score is confident
-                # evidence for "deny", not weak evidence for "approve".
-                confidence=score if decision == "approve" else 1.0 - score,
-            )
+            return ScoreOutput(score=score, decision=decision)
         if primitive == "noul":
-            return NoulOutput(decision=decision, confidence=confidence)
+            return NoulOutput(decision=decision, abstained=False)
         raise ValueError(f"mock does not support primitive {primitive!r}")
