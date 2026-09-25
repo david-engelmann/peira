@@ -536,7 +536,7 @@ mod tests {
         (dir, path)
     }
 
-    const CASE: &str = r#"{"case_id":"c1","family":"indirection","primitive":"choice","severity":"low","benign":{"input":{},"expected_decision":"a"},"attacked":{"input":{}}}"#;
+    const CASE: &str = r#"{"case_id":"c1","family":"indirection","primitive":"choice","severity":"low","benign":{"input":{"options":["a","b"]},"expected_decision":"a"},"attacked":{"input":{"options":["a","b"]}}}"#;
 
     #[test]
     fn civil_from_days_known_dates() {

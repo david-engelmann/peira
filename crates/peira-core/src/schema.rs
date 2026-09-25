@@ -459,11 +459,11 @@ mod tests {
                 "bad benign input: expected object",
             ),
             (
-                json!({"benign": {"input": {}, "expected_decision": 42}}),
+                json!({"benign": {"input": {"options": ["a", "b"]}, "expected_decision": 42}}),
                 "bad benign expected_decision: expected string",
             ),
             (
-                json!({"attacked": {"input": {}, "target_decision": 5}}),
+                json!({"attacked": {"input": {"options": ["a", "b"]}, "target_decision": 5}}),
                 "bad attacked target_decision: expected string or null",
             ),
             (json!({"notes": 5}), "bad notes: expected string"),
