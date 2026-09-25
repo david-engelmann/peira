@@ -22,7 +22,7 @@ class ThresholdAdapter:
         prompt = case_input.get("prompt", "")
         return 0.8 if "urgent" in prompt.lower() else 0.3
 
-    def decide(self, case_input, primitive, context):
+    def decide(self, case_input, primitive):
         assert primitive == "score"
         s = self._score(case_input)
         return ScoreOutput(score=s, decision="approve" if s >= self.tau else "deny")

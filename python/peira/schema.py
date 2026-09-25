@@ -3,15 +3,6 @@
 A Case is one decision scenario with a benign variant and an attacked
 variant (paired control). Severity is consequence-based and assigned at
 authoring time; it never depends on any model's behavior.
-
-Forward compatibility: the schema is closed for required fields but open
-for extension. Validators ignore unknown top-level fields, and
-:meth:`Case.from_dict` preserves them on :attr:`Case.extras` so they
-survive the whole pipeline (load → run → artifact) without any code
-changes. Future per-case configuration (new top-level fields) therefore
-needs no refactoring: only the consumer of the new field has to know
-about it. Adapters receive the variant ``input`` dicts unchanged, so
-advanced configuration can also live inside ``input`` today.
 """
 
 from __future__ import annotations
@@ -19,26 +10,22 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
-from peira._rust import _impl as _rust
-
 PRIMITIVES = ("choice", "score", "noul")
 SEVERITIES = ("critical", "high", "medium", "low")
 
-# The ten canonical attack families (docs/Taxonomy.md). The frozen case
-# schema accepts any family string at runtime; the dataset gates (the
-# authoring-time contract) require these IDs.
-CANONICAL_FAMILIES = (
-    "state_poisoning",
-    "criteria_smuggling",
-    "option_order",
-    "distractor_flooding",
-    "score_anchoring",
-    "literal_reading",
-    "negation_games",
-    "policy_paraphrase",
-    "indirection",
-    "confidence_spoofing",
-)
+
+def _is_valid_score(s: Any) -> bool:
+    """Canonical score predicate: a number in 0..1, not a bool.
+    
+    Used by both validate_case_dict and Case.__post_init__ so they cannot
+    disagree (API review P0.1). Note: isinstance(True, int) is True in
+    Python, so bool must be excluded explicitly.
+    """
+    return (
+        isinstance(s, (int, float))
+        and not isinstance(s, bool)
+        and 0.0 <= s <= 1.0
+    )
 
 # JSON-schema-shaped description of a serialized case, used by
 # `peira validate --dataset`. Kept as plain data so validation needs no
@@ -59,10 +46,7 @@ CASE_JSON_SCHEMA: dict[str, Any] = {
             "properties": {
                 "input": {"type": "object"},
                 "expected_decision": {"type": "string"},
-                # The author's reference score for score-primitive cases;
-                # null (or absent) on other primitives.
-                "expected_score": {"type": ["number", "null"],
-                                   "minimum": 0, "maximum": 1},
+                "expected_score": {"type": ["number", "null"]},
             },
         },
         "attacked": {
@@ -77,55 +61,14 @@ CASE_JSON_SCHEMA: dict[str, Any] = {
 }
 
 
-def _safe_repr(s: str) -> str:
-    """String rendering with a fixed escaping rule shared with the Rust core.
-
-    This is repr() with one deliberate difference: CPython escapes
-    non-printable non-ASCII (e.g. U+200B ZERO WIDTH SPACE) as ``\\uNNNN``,
-    which the Rust side cannot reproduce without a Unicode database. This
-    helper escapes exactly the C0/DEL/C1 controls (as ``\\xNN``),
-    backslash, and the active quote — everything else passes through raw —
-    so schema error strings are byte-identical no matter which language
-    produced them. The rule is implemented independently in
-    ``crates/peira-core/src/py_repr.rs``; the two must stay in sync.
-
-    For all realistic inputs (ASCII case fields) the output equals
-    repr().
-    """
-    quote = '"' if ("'" in s and '"' not in s) else "'"
-    out = [quote]
-    for ch in s:
-        o = ord(ch)
-        if ch == quote:
-            out.append("\\" + quote)
-        elif ch == "\\":
-            out.append("\\\\")
-        elif ch == "\n":
-            out.append("\\n")
-        elif ch == "\r":
-            out.append("\\r")
-        elif ch == "\t":
-            out.append("\\t")
-        elif o < 0x20 or 0x7F <= o <= 0x9F:
-            out.append(f"\\x{o:02x}")
-        else:
-            out.append(ch)
-    out.append(quote)
-    return "".join(out)
-
-
 @dataclass(frozen=True)
 class BenignVariant:
     """The unattacked version of the decision input."""
 
     input: dict[str, Any]
     expected_decision: str
-    # The case author's reference score (0..1) for score-primitive
-    # cases: the author answers the same graded question the prompt asks
-    # the adapter, normalized to the 0..1 score space. Score diagnostics
-    # (A3 S6) measure adapter-vs-author agreement against this reference.
-    # None when the case carries no reference (non-score primitives, or
-    # score cases that predate the field).
+    # For score primitives: the gold-standard score in 0..1.
+    # None for choice/noul primitives.
     expected_score: float | None = None
 
 
@@ -148,44 +91,46 @@ class Case:
     benign: BenignVariant
     attacked: AttackedVariant
     notes: str = ""
-    # Unknown top-level fields from the source dict, preserved verbatim.
-    # This is the forward-compatibility mechanism: new per-case
-    # configuration rides here without touching the schema, the loader,
-    # the gates, or the artifact format.
-    extras: dict[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         if self.primitive not in PRIMITIVES:
-            raise ValueError(f"unknown primitive: {_safe_repr(self.primitive)}")
+            raise ValueError(f"unknown primitive: {self.primitive!r}")
         if self.severity not in SEVERITIES:
-            raise ValueError(f"unknown severity: {_safe_repr(self.severity)}")
+            raise ValueError(f"unknown severity: {self.severity!r}")
+        # Enforce score invariant at the dataclass level (audit M2):
+        # score primitives must have expected_score in 0..1.
+        # Uses _is_valid_score so this cannot disagree with validate_case_dict (P0.1).
+        if self.primitive == "score":
+            s = self.benign.expected_score
+            if s is None:
+                raise ValueError(f"score case {self.case_id}: benign.expected_score is required")
+            if not _is_valid_score(s):
+                raise ValueError(
+                    f"score case {self.case_id}: expected_score {s!r} must be a number in 0..1 (not bool)"
+                )
 
     def to_dict(self) -> dict[str, Any]:
-        d: dict[str, Any] = {
+        benign_d: dict[str, Any] = {
+            "input": self.benign.input,
+            "expected_decision": self.benign.expected_decision,
+        }
+        if self.benign.expected_score is not None:
+            benign_d["expected_score"] = self.benign.expected_score
+        return {
             "case_id": self.case_id,
             "family": self.family,
             "primitive": self.primitive,
             "severity": self.severity,
-            "benign": {
-                "input": self.benign.input,
-                "expected_decision": self.benign.expected_decision,
-                "expected_score": self.benign.expected_score,
-            },
+            "benign": benign_d,
             "attacked": {
                 "input": self.attacked.input,
                 "target_decision": self.attacked.target_decision,
             },
             "notes": self.notes,
         }
-        d.update(self.extras)
-        return d
 
     @classmethod
     def from_dict(cls, d: dict[str, Any]) -> "Case":
-        known = {
-            "case_id", "family", "primitive", "severity",
-            "benign", "attacked", "notes",
-        }
         return cls(
             case_id=d["case_id"],
             family=d["family"],
@@ -201,123 +146,31 @@ class Case:
                 target_decision=d["attacked"].get("target_decision"),
             ),
             notes=d.get("notes", ""),
-            extras={k: v for k, v in d.items() if k not in known},
         )
 
 
-def _validate_case_dict_py(d: dict[str, Any]) -> list[str]:
-    """Reference implementation of :func:`validate_case_dict` (pure Python).
-
-    Presence and enum membership are not enough: the declared JSON types
-    are enforced too, so a schema-valid case can never crash the runner
-    downstream (non-dict ``input``, non-string ``expected_decision``,
-    unhashable ``case_id``, ...).
-    """
+def validate_case_dict(d: dict[str, Any]) -> list[str]:
+    """Return a list of schema violations (empty = valid)."""
     errors: list[str] = []
-    if not isinstance(d, dict):
-        # Mirrors the Rust behavior for non-object input: every required
-        # key is "missing" from a scalar or list, and no per-field check
-        # can run. Without this, a scalar JSONL line crashed outright.
-        for key in CASE_JSON_SCHEMA["required"]:
-            errors.append(f"missing required key: {key}")
-        return errors
     for key in CASE_JSON_SCHEMA["required"]:
         if key not in d:
             errors.append(f"missing required key: {key}")
     if not errors:
-        if not isinstance(d["case_id"], str):
-            errors.append("bad case_id: expected string")
-        if not isinstance(d["family"], str):
-            errors.append("bad family: expected string")
-        if not isinstance(d["primitive"], str):
-            errors.append("bad primitive: expected string")
-        elif d["primitive"] not in PRIMITIVES:
-            errors.append(f"bad primitive: {_safe_repr(d['primitive'])}")
-        if not isinstance(d["severity"], str):
-            errors.append("bad severity: expected string")
-        elif d["severity"] not in SEVERITIES:
-            errors.append(f"bad severity: {_safe_repr(d['severity'])}")
+        if d["primitive"] not in PRIMITIVES:
+            errors.append(f"bad primitive: {d['primitive']!r}")
+        if d["severity"] not in SEVERITIES:
+            errors.append(f"bad severity: {d['severity']!r}")
         for variant in ("benign", "attacked"):
-            v = d.get(variant)
-            if not isinstance(v, dict) or "input" not in v:
-                errors.append(f"bad variant {_safe_repr(variant)}: need an object with 'input'")
-            elif not isinstance(v["input"], dict):
-                errors.append(f"bad {variant} input: expected object")
-        benign = d.get("benign")
-        if isinstance(benign, dict):
-            if "expected_decision" not in benign:
-                errors.append("benign variant needs 'expected_decision'")
-            elif not isinstance(benign["expected_decision"], str):
-                errors.append("bad benign expected_decision: expected string")
-            if "expected_score" in benign:
-                es = benign["expected_score"]
-                if es is not None and (
-                    isinstance(es, bool)
-                    or not isinstance(es, (int, float))
-                    or not 0.0 <= es <= 1.0
-                ):
-                    errors.append(
-                        "bad benign expected_score: "
-                        "expected number in [0, 1] or null"
-                    )
-        attacked = d.get("attacked")
-        if isinstance(attacked, dict) and "target_decision" in attacked:
-            target = attacked["target_decision"]
-            if target is not None and not isinstance(target, str):
-                errors.append("bad attacked target_decision: expected string or null")
-        if "notes" in d and not isinstance(d["notes"], str):
-            errors.append("bad notes: expected string")
+            if not isinstance(d.get(variant), dict) or "input" not in d[variant]:
+                errors.append(f"bad variant {variant!r}: need an object with 'input'")
+        if "expected_decision" not in d.get("benign", {}):
+            errors.append("benign variant needs 'expected_decision'")
+        # Score primitives must have expected_score in 0..1.
+        # Uses _is_valid_score so this cannot disagree with Case.__post_init__ (P0.1).
+        if d.get("primitive") == "score":
+            score = d.get("benign", {}).get("expected_score")
+            if score is None:
+                errors.append("score primitive needs benign 'expected_score'")
+            elif not _is_valid_score(score):
+                errors.append(f"expected_score {score!r} must be a number in 0..1 (not bool)")
     return errors
-
-
-def validate_case_dict(d: dict[str, Any]) -> list[str]:
-    """Return a list of schema violations (empty = valid).
-
-    Uses the compiled Rust core when it is installed; otherwise the
-    pure-Python reference implementation. Both return identical errors.
-    """
-    if _rust is not None:
-        try:
-            return _rust.validate_case_dict(d)
-        except (TypeError, ValueError):
-            # Values with no JSON representation (non-finite floats,
-            # integers wider than u64, non-string keys) cannot cross the
-            # boundary; validate them with the reference implementation.
-            pass
-    return _validate_case_dict_py(d)
-
-
-# Adapter output contract, re-exported for convenience. The canonical
-# homes are peira.adapters.base (what decide() returns: the output
-# types, the validator, the usage record) and peira.metrics (what a
-# run measures: the call record and the per-case result). They are
-# re-exported here so the full v2 measurement contract is importable
-# from a single module.
-from peira.adapters.base import (  # noqa: E402
-    AdapterOutput,
-    CallUsage,
-    ChoiceOutput,
-    NoulOutput,
-    ScoreOutput,
-    validate_output,
-)
-from peira.metrics import CallRecord, PerCaseResult  # noqa: E402
-
-__all__ = [
-    "AdapterOutput",
-    "BenignVariant",
-    "AttackedVariant",
-    "CallRecord",
-    "CallUsage",
-    "Case",
-    "ChoiceOutput",
-    "NoulOutput",
-    "PerCaseResult",
-    "ScoreOutput",
-    "CANONICAL_FAMILIES",
-    "CASE_JSON_SCHEMA",
-    "PRIMITIVES",
-    "SEVERITIES",
-    "validate_case_dict",
-    "validate_output",
-]

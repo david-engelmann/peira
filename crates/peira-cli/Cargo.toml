@@ -2,15 +2,14 @@
 name = "peira-cli"
 version = "0.1.0"
 edition = "2021"
-description = "Thin Rust CLI for peira dataset validation in CI."
+description = "peira CLI: the empirical trial for decision models (Rust binary)."
 license = "MIT"
 
 [[bin]]
-name = "peira-cli"
+name = "peira"
 path = "src/main.rs"
 
 [dependencies]
 peira-core = { path = "../peira-core" }
-
-[dev-dependencies]
-tempfile = "3"
+clap = { version = "4", features = ["derive"] }
+serde_json = "1.0"

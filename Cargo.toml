@@ -1,3 +1,3 @@
 [workspace]
-members = ["crates/peira-core", "crates/peira-cli", "crates/peira-python"]
+members = ["crates/peira-core", "crates/peira-cli"]
 resolver = "2"
