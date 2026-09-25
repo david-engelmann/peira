@@ -1,22 +1,31 @@
 //! peira-core: Rust core for the empirical trial for decision models.
 //!
-//! This crate ports the frozen Python reference implementation
-//! (`python/peira/`) to Rust: case schema types and validation, dataset
-//! loading, metrics, run artifacts with analysis locks, and the canonical
-//! JSON serialization that keeps locks byte-identical across languages.
-//!
-//! [`canonical`] is the load-bearing piece: it replicates Python's
-//! `json.dumps(sort_keys=True)` byte-for-byte (separators, `ensure_ascii`
-//! escaping, float formatting), so a lock sealed by Python verifies in
-//! Rust and vice versa. See the module docs for the exact rules.
+//! This crate implements the hot paths (metrics, schema validation,
+//! artifact hashing) in Rust for performance and correctness. The Python
+//! package (`python/peira/`) provides the adapter SDK, CLI, and
+//! orchestration via PyO3 bindings.
 
-pub mod artifact;
-pub mod dataset;
+pub mod adapter_protocol;
+pub mod artifacts;
 pub mod metrics;
-pub mod py_repr;
+pub mod runner;
 pub mod schema;
 
-pub mod canonical;
+/// PyO3 bindings exposing the hot paths to Python as `peira._peira_core`.
+/// Always compiled (the `extension-module` feature keeps `cargo test`
+/// working); the extension is only *used* when the cdylib is built and
+/// placed on the Python path. See `python/peira/_rust.py`.
+pub mod python;
 
 /// Crate version, kept in sync with the Python package by CI.
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn version_is_set() {
+        assert!(!VERSION.is_empty());
+    }
+}

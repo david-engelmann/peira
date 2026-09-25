@@ -1,28 +1,42 @@
-"""Optional Rust accelerator.
+"""Optional Rust acceleration for peira hot paths (via PyO3).
 
-`peira._core` is the PyO3 extension built from `crates/peira-python`
-(see `scripts/build_core_ext.py`). It is never required: import it here,
-and every hot path in `peira.metrics` / `peira.schema` dispatches to it
-when present and falls back to the pure-Python reference implementation
-otherwise. Both backends compute the same values up to ~1 ulp of float
-summation order (see `peira.metrics`); the one larger documented exception
-is `paired_bootstrap_ci`, which the Python side never auto-dispatches
-because the two PRNGs differ.
+The compiled extension ``peira._peira_core`` is built from
+``crates/peira-core`` (see its README for the build). When the extension
+is absent — e.g. a pure-Python install — everything falls back to the
+pure-Python reference implementation. Either way ``peira`` keeps zero
+third-party *runtime* dependencies: PyO3 is a build-time dependency of
+the Rust crate only.
 
-Set `PEIRA_NO_RUST=1` to force the pure-Python backend even when the
-extension is installed — used by the backend-parity tests.
+Exposed names (only when ``available`` is True):
+    wilson_ci(hits, n, z=1.96) -> (lo, hi)
+    mcnemar(b, c) -> float
+    brier_score(probs, labels) -> float
+    ece(probs, labels, bins=15) -> float
+    sha256_hex(data: bytes) -> str
+
+All are bit-exact replacements for ``peira.metrics`` / ``hashlib``;
+see ``tests/test_rust_parity.py``. One deliberate difference: the Rust
+``ece``/``brier_score`` raise ``ValueError`` on empty or mismatched input
+where the pure-Python reference raises ``AssertionError`` (bare assert).
 """
 
 from __future__ import annotations
 
-import os
+__all__ = ["available"]
+
+available: bool = False
 
 try:
-    if os.environ.get("PEIRA_NO_RUST"):
-        raise ImportError("PEIRA_NO_RUST is set")
-    from peira import _core as _impl
-except ImportError:
-    _impl = None
+    from peira._peira_core import (  # type: ignore[import-not-found]
+        brier_score,
+        ece,
+        mcnemar,
+        sha256_hex,
+        wilson_ci,
+    )
 
-#: True when the compiled Rust core is importable in this environment.
-RUST_AVAILABLE: bool = _impl is not None
+    available = True
+    __all__ += ["brier_score", "ece", "mcnemar", "sha256_hex", "wilson_ci"]
+except ImportError:
+    # Extension not built — callers use the pure-Python reference.
+    pass
