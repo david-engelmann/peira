@@ -241,6 +241,9 @@ class TestMoonshotRequestShape(unittest.TestCase):
         req = out.transcript["request"]
         self.assertIsNone(req["seed"])
         self.assertFalse(req["logprobs"])
+        # Top-level transcript seed must also be None (not 0) since
+        # Moonshot never receives the seed — _supports_seed = False.
+        self.assertIsNone(out.transcript["seed"])
 
     def test_openai_still_sends_seed_and_logprobs(self):
         # The base OpenAI adapter is unchanged — only Moonshot omits.

@@ -869,6 +869,7 @@ class MoonshotAdapter(OpenAIAdapter):
     _extra = "peira[openai]"
     _env_vars = ("MOONSHOT_API_KEY",)
     _provider_label = "Moonshot"
+    _supports_seed = False
 
     _base_url = "https://api.moonshot.ai/v1"
 
