@@ -33,7 +33,7 @@ run artifact). Check the CHANGELOG; dataset changes are versioned and the
 planned leaderboard will keep one row per (adapter, dataset version) pair.
 
 **Why is my adapter listed as "partial coverage"?**
-Your adapter doesn't implement every primitive (Choice/Score/Noul).
+Your adapter doesn't implement every primitive (Choice/Score/Abstain).
 That's fine — coverage is reported honestly per primitive instead of
 penalized.
 

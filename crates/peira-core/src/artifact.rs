@@ -105,6 +105,7 @@ impl RunArtifact {
             &self.pricing_date,
             self.seed,
             self.max_concurrency,
+            &self.metrics,
         )
     }
 
@@ -209,8 +210,9 @@ pub fn lock_payload(
     pricing_date: &str,
     seed: i64,
     max_concurrency: i64,
+    metrics: &Value,
 ) -> String {
-    // The twelve payload keys in canonical (sorted) order, hashed by
+    // The thirteen payload keys in canonical (sorted) order, hashed by
     // streaming straight into SHA-256: `config` and `results` are never
     // cloned. The field order is written out explicitly — it is part of
     // the lock contract, and spelling it out beats a separator-tracking
@@ -228,6 +230,10 @@ pub fn lock_payload(
     hash_canonical(&Value::String(manifest_sha256.to_owned()), &mut h);
     h.update(b", \"max_concurrency\": ");
     hash_canonical(&Value::Number(max_concurrency.into()), &mut h);
+    h.update(b", \"metrics\": ");
+    // P0-1 (2026-09-25): metrics are lock-covered; forging headline
+    // numbers invalidates the lock.
+    hash_canonical(metrics, &mut h);
     h.update(b", \"peira_version\": ");
     hash_canonical(&Value::String(peira_version.to_owned()), &mut h);
     h.update(b", \"pricing_date\": ");
@@ -342,11 +348,12 @@ mod tests {
         b.seal();
         b.config = json!({"n_cases": 2});
         assert!(!b.verify());
-        // Tampering with metrics (not in the payload) does not.
+        // Tampering with metrics breaks the lock (P0-1: metrics are
+        // lock-covered; forging headline numbers invalidates the seal).
         let mut c = sample();
         c.seal();
         c.metrics = json!({"asr_conditional": 1.0});
-        assert!(c.verify());
+        assert!(!c.verify());
     }
 
     #[test]
@@ -428,7 +435,19 @@ mod tests {
         let config = json!({"n_cases": 3, "nested": {"b": [1, 2], "a": "x"}});
         let results = json!([{"case_id": "c1", "x": 1e-5}]);
         let streamed = lock_payload(
-            "p", "d", "m", "a", "v", "s", &config, &results, "ps", "pd", 3, 8,
+            "p",
+            "d",
+            "m",
+            "a",
+            "v",
+            "s",
+            &config,
+            &results,
+            "ps",
+            "pd",
+            3,
+            8,
+            &json!({"m1": 0.5}),
         );
         let mut map = serde_json::Map::new();
         for (k, v) in [
@@ -438,6 +457,7 @@ mod tests {
             ("dataset_version", json!("d")),
             ("manifest_sha256", json!("m")),
             ("max_concurrency", json!(8)),
+            ("metrics", json!({"m1": 0.5})),
             ("peira_version", json!("p")),
             ("pricing_date", json!("pd")),
             ("pricing_source", json!("ps")),

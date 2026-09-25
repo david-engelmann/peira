@@ -31,7 +31,7 @@ from peira.adapters.base import (
     CallContext,
     CallUsage,
     ChoiceOutput,
-    NoulOutput,
+    AbstainOutput,
     ScoreOutput,
     validate_output,
 )
@@ -220,8 +220,8 @@ def _output_from_dict(primitive: str, d: dict[str, Any]) -> Any:
         return ChoiceOutput(**common)
     if primitive == "score":
         return ScoreOutput(score=d["score"], **common)
-    if primitive == "noul":
-        return NoulOutput(**common)
+    if primitive == "abstain":
+        return AbstainOutput(**common)
     raise ValueError(f"unknown primitive: {primitive!r}")
 
 

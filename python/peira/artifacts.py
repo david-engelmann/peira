@@ -93,6 +93,11 @@ class RunArtifact:
                 "pricing_date": self.pricing_date,
                 "seed": self.seed,
                 "max_concurrency": self.max_concurrency,
+                # NOTE: metrics are lock-covered (P0-1, 2026-09-25). Any
+                # post-hoc edit to the headline numbers invalidates the
+                # lock. Pre-2026-09-25 artifacts sealed without metrics in
+                # the lock will fail verify() — acceptable per blank-canvas.
+                "metrics": self.metrics,
             },
             sort_keys=True,
         )

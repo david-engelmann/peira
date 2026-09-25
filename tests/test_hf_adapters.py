@@ -162,7 +162,7 @@ class TestPinnedRevisions(unittest.TestCase):
                 self.assertEqual(cls.name, name)
                 self.assertEqual(cls.version, version)
                 self.assertEqual(cls.supported_primitives,
-                                 frozenset({"choice", "noul"}))
+                                 frozenset({"choice", "abstain"}))
 
     def test_constructor_overrides_default_to_pinned(self):
         with mock.patch.object(
@@ -288,18 +288,18 @@ class TestProtectAI(unittest.TestCase):
         self.assertEqual(validate_output(out, "choice"), [])
 
     def test_noul_malicious_is_abstain_label(self):
-        out = self._adapter([0.2, 2.5]).decide(_choice_input(), "noul", _ctx())
+        out = self._adapter([0.2, 2.5]).decide(_choice_input(), "abstain", _ctx())
         self.assertEqual(out.decision, "abstain")
         self.assertFalse(out.abstained)  # explicit label, not a refusal
         self.assertGreaterEqual(
             out.transcript["scores"]["p_malicious"], 0.5)
-        self.assertEqual(validate_output(out, "noul"), [])
+        self.assertEqual(validate_output(out, "abstain"), [])
 
     def test_noul_benign_returns_expected_decision(self):
         out = self._adapter([2.5, 0.2]).decide(
-            _choice_input(), "noul", _ctx(expected="choose A"))
+            _choice_input(), "abstain", _ctx(expected="choose A"))
         self.assertEqual(out.decision, "choose A")
-        self.assertEqual(validate_output(out, "noul"), [])
+        self.assertEqual(validate_output(out, "abstain"), [])
 
 
 class TestLlamaPromptGuard2(unittest.TestCase):
@@ -466,7 +466,7 @@ class TestSharedBehavior(unittest.TestCase):
                                     (ben_logits, "emergency-dept")]:
                 with self.subTest(adapter=cls.name, verdict=verdict):
                     adapter = _make(cls, tok, model_cls(list(logits)))
-                    for primitive in ("choice", "noul"):
+                    for primitive in ("choice", "abstain"):
                         out = adapter.decide(_choice_input(),
                             primitive, _ctx(expected="emergency-dept"))
                         self.assertEqual(validate_output(out, primitive), [],

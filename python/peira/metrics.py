@@ -382,7 +382,7 @@ class ArmOutcomes(NamedTuple):
     abstained (refused when a refusal reason is present, plain abstained
     otherwise), then decided — approve/deny for those exact labels,
     ``other`` for any other decided label (score primitives carry the
-    adapter's thresholded label; noul carries labels like "abstain" for
+    adapter's thresholded label; abstain carries labels like "abstain" for
     a deliberate abstain-as-decision, which is *not* a denial).
 
     Note the relationship to :func:`refusal_rate`: that function's

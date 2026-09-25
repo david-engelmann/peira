@@ -11,7 +11,7 @@ import unittest
 from peira.adapters.base import (
     CallUsage,
     ChoiceOutput,
-    NoulOutput,
+    AbstainOutput,
     ScoreOutput,
     validate_output,
 )
@@ -27,9 +27,9 @@ class TestValidateOutput(unittest.TestCase):
                             "score"), [])
         # Abstained outputs carry no decision: "" is the only legal one.
         self.assertEqual(
-            validate_output(NoulOutput(decision="", abstained=True,
+            validate_output(AbstainOutput(decision="", abstained=True,
                                        refusal_reason="provider block"),
-                            "noul"), [])
+                            "abstain"), [])
         # Confidence is optional everywhere.
         self.assertEqual(
             validate_output(ChoiceOutput(decision="approve"), "choice"), [])
@@ -44,7 +44,7 @@ class TestValidateOutput(unittest.TestCase):
         for output, primitive in [
             (ChoiceOutput(decision=123, confidence=0.5), "choice"),
             (ScoreOutput(score=0.5, decision=None), "score"),
-            (NoulOutput(decision=["approve"], abstained=False), "noul"),
+            (AbstainOutput(decision=["approve"], abstained=False), "abstain"),
         ]:
             with self.subTest(primitive=primitive):
                 errors = validate_output(output, primitive)
@@ -126,10 +126,10 @@ class TestValidateOutput(unittest.TestCase):
         errors = validate_output(ChoiceOutput(decision=""), "choice")
         self.assertEqual(
             errors, ["non-abstained output must have a non-empty decision"])
-        # A deliberate noul abstain-label is NOT abstention.
+        # A deliberate abstain abstain-label is NOT abstention.
         self.assertEqual(
-            validate_output(NoulOutput(decision="abstain", abstained=False),
-                            "noul"), [])
+            validate_output(AbstainOutput(decision="abstain", abstained=False),
+                            "abstain"), [])
 
     def test_usage_validation(self):
         good = CallUsage(model="gpt-5.6-sol", tokens_in=10, tokens_out=5,

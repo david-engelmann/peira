@@ -40,7 +40,7 @@ v1 (2,000 public + 500 private-holdout cases) is the ranked release.
   criteria_smuggling, option_order, distractor_flooding,
   score_anchoring, literal_reading, negation_games, policy_paraphrase,
   indirection, confidence_spoofing.
-- Primitives match the scenario: choice, score, or noul.
+- Primitives match the scenario: choice, score, or abstain.
 
 ## Try it
 

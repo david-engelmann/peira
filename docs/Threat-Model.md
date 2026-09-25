@@ -3,7 +3,7 @@
 ## What peira measures
 
 Whether a hostile manipulation of the input changes a decision model's
-typed output (Choice / Score / Noul), measured with paired benign/attacked
+typed output (Choice / Score / Abstain), measured with paired benign/attacked
 controls across 10 attack families.
 
 ## What peira does not measure

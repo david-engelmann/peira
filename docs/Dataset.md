@@ -192,7 +192,7 @@ G4 pass on a fresh skeleton; the author supplies only content.
 
 With `--out cases.jsonl` the case is appended as JSONL instead of
 printed. `--primitive` overrides the family's natural primitive
-(score_anchoring defaults to `score`, negation_games to `noul`, the rest
+(score_anchoring defaults to `score`, negation_games to `abstain`, the rest
 to `choice`). The command also prints the family's severity hint, so the
 author grades the case against the rubric at authoring time.
 

@@ -378,7 +378,7 @@ class TestOpenAIShape(unittest.TestCase):
         # from required. Assert the invariant on the schema actually
         # sent, for both the choice and score shapes.
         from peira.adapters.llm import _build_schema
-        for primitive in ("choice", "score", "noul"):
+        for primitive in ("choice", "score", "abstain"):
             schema = _build_schema(["approve", "other"], primitive)
             self.assertEqual(set(schema["required"]),
                              set(schema["properties"]),
@@ -546,10 +546,10 @@ class TestPerCallEnum(unittest.TestCase):
                         "reason": "r"})])
         with _fake_modules({"anthropic": mod}), \
                 _env(ANTHROPIC_API_KEY="sk-test"):
-            out = AnthropicAdapter().decide(CASE, "noul", _ctx())
+            out = AnthropicAdapter().decide(CASE, "abstain", _ctx())
         self.assertEqual(out.decision, "abstain")
         self.assertFalse(out.abstained)
-        self.assertEqual(validate_output(out, "noul"), [])
+        self.assertEqual(validate_output(out, "abstain"), [])
         enum = calls[0]["tools"][0]["input_schema"][
             "properties"]["decision"]["enum"]
         self.assertIn("abstain", enum)

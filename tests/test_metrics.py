@@ -606,7 +606,7 @@ class TestOutcomeAccounting(unittest.TestCase):
         self.assertEqual(benign.refused, 0)
 
     def test_other_decided_labels_land_in_other(self):
-        # Score primitives carry the adapter's thresholded label and noul
+        # Score primitives carry the adapter's thresholded label and abstain
         # carries labels like "abstain" for a deliberate abstain-as-decision
         # (abstained=False) — neither is a denial, so they land in "other".
         for decision in ("weird", "abstain", "0.8"):

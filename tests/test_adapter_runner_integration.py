@@ -132,7 +132,7 @@ def _jev_transport_factory(cases, fail_once=False):
         if "score" in qnames:
             answers["score"] = {"score": 3.5, "confidence": 0.8}
         if "abstain" in qnames:
-            answers["abstain"] = {"noul": 0.1}
+            answers["abstain"] = {"abstain": 0.1}
         return {"model": JEV_MODEL, "answers": answers,
                 "usage": {"input_tokens": 50, "output_tokens": 5},
                 "_latency_ms": 1.0}
@@ -143,7 +143,7 @@ def _jev_transport_factory(cases, fail_once=False):
 
 class TestHFThroughRunner(unittest.TestCase):
     def test_protectai_suite_concurrency_and_transcript(self):
-        cases = _cases(4, primitives={"choice", "noul"})
+        cases = _cases(4, primitives={"choice", "abstain"})
         with _hf_patched(_BenignClassifier()) as adapter:
             with tempfile.TemporaryDirectory() as tmp:
                 tpath = str(Path(tmp) / "t.jsonl")

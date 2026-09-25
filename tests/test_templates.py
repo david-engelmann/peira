@@ -46,7 +46,7 @@ class TestTemplates(unittest.TestCase):
         self.assertEqual(render_template("score_anchoring", "x")["primitive"],
                          "score")
         self.assertEqual(render_template("negation_games", "x")["primitive"],
-                         "noul")
+                         "abstain")
         self.assertEqual(render_template("state_poisoning", "x")["primitive"],
                          "choice")
 

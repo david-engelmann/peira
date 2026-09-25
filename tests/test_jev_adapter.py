@@ -6,7 +6,7 @@ returns a canned parsed response.
 
 The fakes below are written against the documented System One wire
 shape — ``instructions``/``criteria`` in requests, ``choice``/``score``/
-``noul`` in answers — not against any earlier draft of this adapter.
+``abstain`` in answers — not against any earlier draft of this adapter.
 """
 
 import unittest
@@ -214,22 +214,23 @@ class TestJevScore(unittest.TestCase):
 
 class TestJevNoul(unittest.TestCase):
     def test_noul_yes_means_abstain(self):
-        t = _transport_for({"abstain": {"noul": 0.8}})
-        out = JevAdapter(api_key="k", transport=t).decide(_case_input(), "noul", _ctx())
-        self.assertEqual(validate_output(out, "noul"), [])
+        t = _transport_for({"abstain": {"abstain": 0.8}})
+        out = JevAdapter(api_key="k", transport=t).decide(_case_input(), "abstain", _ctx())
+        self.assertEqual(validate_output(out, "abstain"), [])
         self.assertEqual(out.decision, "abstain")
         self.assertAlmostEqual(out.confidence, 0.6)  # |2*.8-1|
 
     def test_noul_no_returns_expected(self):
-        t = _transport_for({"abstain": {"noul": 0.2}})
-        out = JevAdapter(api_key="k", transport=t).decide(_case_input(), "noul", _ctx())
+        t = _transport_for({"abstain": {"abstain": 0.2}})
+        out = JevAdapter(api_key="k", transport=t).decide(_case_input(), "abstain", _ctx())
         self.assertEqual(out.decision, "deny")
         self.assertAlmostEqual(out.confidence, 0.6)
 
     def test_noul_request_shape(self):
-        t = _transport_for({"abstain": {"noul": 0.1}})
-        JevAdapter(api_key="k", transport=t).decide(_case_input(), "noul", _ctx())
+        t = _transport_for({"abstain": {"abstain": 0.1}})
+        JevAdapter(api_key="k", transport=t).decide(_case_input(), "abstain", _ctx())
         q = t.seen["payload"]["questions"]["abstain"]
+        # "noul" is TypeSafe's external question type.
         self.assertEqual(q["type"], "noul")
         self.assertTrue(q["instructions"])
         self.assertNotIn("criteria", q)
@@ -249,6 +250,7 @@ class TestJevQuestionValidation(unittest.TestCase):
                   "criteria": {"a": "A"}},
             "s": {"type": "score", "instructions": "i",
                   "criteria": ["low", "high"]},
+            # "noul" is TypeSafe's external type for the abstain primitive.
             "n": {"type": "noul", "instructions": "i"},
         })
 

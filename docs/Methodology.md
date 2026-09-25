@@ -75,7 +75,7 @@ target semantics the result contract deliberately does not carry.
   `abstained` otherwise — then decided, split into `approve` /
   `deny` for those exact labels and `other` for any other decided
   label (score primitives carry the adapter's thresholded label;
-  noul's deliberate abstain-as-decision is *not* a denial). The buckets
+  abstain's deliberate abstain-as-decision is *not* a denial). The buckets
   always partition the arm's cases. Note that `refusal_rate` counts *any*
   abstention, i.e. `refused + abstained` here — the rate is the coarse
   measure, the census is the breakdown.

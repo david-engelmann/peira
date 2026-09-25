@@ -28,7 +28,7 @@ and are cached; every model is pinned to an exact commit revision, never
 **Shieldstral** is policy-adaptive: it judges content against the policy
 in its prompt, not a fixed category list. It emits a single yes/no
 token; the adapter renormalizes the yes/no first-token logprobs into a
-continuous score. Choice and noul primitives; score is not supported.
+continuous score. Choice and abstain primitives; score is not supported.
 
 **ProtectAI** is a binary prompt-injection detector (SAFE / INJECTION).
 It has a known false-positive tendency on system-prompt-style content —
@@ -99,7 +99,7 @@ peira run --adapter peira.adapters.jev:JevAdapter --suite trial-demo
 Jev is a decision-model API, not a chat model: the adapter sends the
 case prompt as `state` plus named typed questions — each question
 carries `instructions` and `criteria` — and reads back `choice`
-(choice), `score` (score), or `noul` (noul) answers. The score
+(choice), `score` (score), or `abstain` (abstain) answers. The score
 question uses five described levels ("strongly favor deny" …
 "strongly favor approve"), not raw numbers. The model is pinned to
 `jev-1.13.0` — floating tags are rejected at construction. Reported

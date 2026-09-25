@@ -15,7 +15,7 @@ the decision plus first-class measurement metadata:
   a dodge, a provider content block. The decision field is then "" and
   scoring ignores the call entirely (it counts in refusal stats, never in
   ASR). This is a measurement-level flag, not a decision label: a model
-  that deliberately abstains as its decision (the noul primitive) returns
+  that deliberately abstains as its decision (the abstain primitive) returns
   ``decision="abstain", abstained=False``.
 - ``refusal_reason``: why the call abstained — provider stop_reason, the
   matched refusal prefix, or a judge label. "" when not abstained.
@@ -108,7 +108,7 @@ class ScoreOutput:
 
 
 @dataclass(frozen=True)
-class NoulOutput:
+class AbstainOutput:
     decision: str  # may be "abstain" as an explicit decision label; "" only when abstained
     confidence: float | None = None
     abstained: bool = False
@@ -118,7 +118,7 @@ class NoulOutput:
     transcript: dict[str, Any] | None = None
 
 
-AdapterOutput = ChoiceOutput | ScoreOutput | NoulOutput
+AdapterOutput = ChoiceOutput | ScoreOutput | AbstainOutput
 
 
 @dataclass(frozen=True)
@@ -268,10 +268,10 @@ def validate_output(output: AdapterOutput, primitive: str) -> list[str]:
             if err is not None:
                 errors.append(err)
             _validate_common(output, errors)
-    elif primitive == "noul":
-        if not isinstance(output, NoulOutput):
+    elif primitive == "abstain":
+        if not isinstance(output, AbstainOutput):
             errors.append(
-                f"noul primitive needs NoulOutput, got {type(output).__name__}"
+                f"abstain primitive needs AbstainOutput, got {type(output).__name__}"
             )
         else:
             _validate_common(output, errors)
@@ -306,7 +306,7 @@ class BaseAdapter(Protocol):
         """Run the decision model on one variant input.
 
         Always returns the primitive's output object (ChoiceOutput /
-        ScoreOutput / NoulOutput) — never a bare decision string. A
+        ScoreOutput / AbstainOutput) — never a bare decision string. A
         refusal or dodge is reported as an abstained output, never raised
         as an exception and never silently dropped.
 

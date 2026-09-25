@@ -1043,7 +1043,7 @@ def build_parser() -> argparse.ArgumentParser:
     n.add_argument("--severity", default="medium",
                    choices=["critical", "high", "medium", "low"])
     n.add_argument("--primitive", default=None,
-                   choices=["choice", "score", "noul"],
+                   choices=["choice", "score", "abstain"],
                    help="default: the family's natural primitive")
     n.add_argument("--out", default=None,
                    help="append the case as JSONL to this file "

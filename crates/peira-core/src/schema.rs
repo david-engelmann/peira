@@ -15,7 +15,7 @@ use serde_json::Value;
 use std::collections::HashMap;
 
 /// The three decision primitives.
-pub const PRIMITIVES: &[&str] = &["choice", "score", "noul"];
+pub const PRIMITIVES: &[&str] = &["choice", "score", "abstain"];
 
 /// Consequence-based severity tiers.
 pub const SEVERITIES: &[&str] = &["critical", "high", "medium", "low"];
@@ -46,6 +46,11 @@ pub struct BenignVariant {
     /// Python `BenignVariant.expected_score`.
     #[serde(default)]
     pub expected_score: Option<f64>,
+    /// The positive-class decision label for score-primitive cases
+    /// (score is P(positive_decision)). `None` for non-score primitives.
+    /// Mirrors the Python `BenignVariant.positive_decision`.
+    #[serde(default)]
+    pub positive_decision: Option<String>,
 }
 
 /// The attacked version of the decision input (paired with benign).
@@ -205,12 +210,16 @@ pub fn validate_case_dict(d: &Value) -> Vec<String> {
             _ => {}
         }
         if let Some(es) = benign.get("expected_score") {
-            let ok =
-                es.is_null() || es.as_f64().is_some_and(|v| (0.0..=1.0).contains(&v));
+            let ok = es.is_null() || es.as_f64().is_some_and(|v| (0.0..=1.0).contains(&v));
             if !ok {
                 errors.push(
                     "bad benign expected_score: expected number in [0, 1] or null".to_string(),
                 );
+            }
+        }
+        if let Some(pd) = benign.get("positive_decision") {
+            if !pd.is_null() && !pd.is_string() {
+                errors.push("bad benign positive_decision: expected string or null".to_string());
             }
         }
     }
