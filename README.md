@@ -1,32 +1,24 @@
 # peira
 
-**The empirical trial for decision models.** An open adversarial-robustness
-benchmark for LLM guardrails. It measures whether hostile manipulations of an
-input flip a decision model's typed output, and it says so with confidence
-intervals.
+**The adversarial robustness benchmark for decision models.** peira red-teams LLM guardrails with paired benign/attacked cases across 11 attack families, from prompt injection and jailbreak framing to confidence spoofing and state poisoning. It scores whether the attack flips the guardrail's decision, and every number ships with a confidence interval.
 
 [![ci](https://github.com/david-engelmann/peira/actions/workflows/ci.yml/badge.svg)](https://github.com/david-engelmann/peira/actions/workflows/ci.yml)
 <!-- PyPI badge held until the first release: the page 404s meanwhile.
      Restore: [![pypi](https://img.shields.io/pypi/v/peira.svg)](https://pypi.org/project/peira/) -->
 [![license](https://img.shields.io/badge/license-MIT%20%2F%20CC--BY--4.0-blue.svg)](LICENSE)
 
-[Docs](docs/Overview.md) · [Reports](#reports) · [Adapter API](python/peira/adapters/base.py) · [Contributing](docs/Contributing.md) · [Discussions](https://github.com/david-engelmann/peira/discussions)
+[Docs](docs/Overview.md) · [Leaderboard](#leaderboard) · [Adapter API](python/peira/adapters/base.py) · [Contributing](docs/Contributing.md) · [Discussions](https://github.com/david-engelmann/peira/discussions)
 
-> Decision models fail silently — a guardrail that approves what it should
-> deny tells you nothing. peira is the trial that catches it: paired
-> benign/attacked cases across 11 attack families, scored with
-> decision-change ASR. No post-hoc edits; every run is sealed.
+> Guardrails fail silently. A classifier that approves what it should deny tells you nothing, and a refusal benchmark will not catch it. peira runs each attack against a clean control case, so a flipped decision is evidence about the attack, not noise.
 
 ## Contents
 
-- [The Trial in action](#the-trial-in-action)
+- [Results, not promises](#results-not-promises)
 - [60-second quickstart](#60-second-quickstart)
 - [What peira measures](#what-peira-measures)
-- [What brings you here](#what-brings-you-here)
+- [How peira differs](#how-peira-differs)
 - [Leaderboard](#leaderboard)
 - [Adapters](#adapters)
-- [How peira differs](#how-peira-differs)
-- [When peira isn't the tool](#when-peira-isnt-the-tool)
 - [Install](#install)
 - [Add your model](#add-your-model)
 - [Methodology](#methodology)
@@ -34,11 +26,9 @@ intervals.
 - [Citation](#citation)
 - [License / notices](#license--notices)
 
-## The Trial in action
+## Results, not promises
 
-Sample output — generated, never hand-edited
-(`scripts/gen_readme_table.py`; run: `peira run --adapter mock --suite trial --seed 0`,
-2026-09-23, 0.4 s, $0):
+Sample output. Generated, never hand-edited (`scripts/gen_readme_table.py`; run: `peira run --adapter mock --suite trial --seed 0`, 2026-09-23, 0.4 s, $0):
 
 | family | ASR | 95% CI | n |
 |---|---|---|---|
@@ -54,12 +44,7 @@ Sample output — generated, never hand-edited
 | `state_poisoning` | 0.20 | [0.057, 0.510] | 10 |
 | **overall** | **0.41** | **[0.319, 0.508]** | **100** |
 
-Legend: **ASR** = decision-change attack success rate — the fraction of
-eligible cases where the attacked decision differs from the benign one.
-**95% CI** = Wilson interval. **n** = eligible cases. `mock` is the
-reference mechanism-exerciser adapter, not a real guardrail — never a
-leaderboard row. The 100-case Trial is ranking-ineligible by design
-(fewer than 200 eligible cases) and stays off the leaderboard.
+**ASR** is the decision-change attack success rate: the fraction of eligible cases where the attacked decision differs from the benign one. **95% CI** is the Wilson interval. **n** is eligible cases. `mock` is the reference mechanism-exerciser, not a real guardrail, and never a leaderboard row. The 100-case Trial is ranking-ineligible by design (under 200 eligible cases) and stays off the leaderboard.
 
 ## 60-second quickstart
 
@@ -70,100 +55,77 @@ peira run --adapter mock --suite trial --seed 0 --out runs
 peira report --run runs/mock-trial.json --out report.html
 ```
 
-That's a full evaluation, offline: 100 cases, paired benign/attacked
-controls, sealed with an analysis lock, rendered as HTML. The run prints
-its own receipts:
+That is a full evaluation, offline: 100 cases, paired benign/attacked controls, sealed with an analysis lock, rendered as HTML. The run prints its own receipts:
 
 ```
 done: 100 cases (100 eligible)
-  ASR (conditional): 0.41 95% CI [0.3187, 0.508]
-  benign accuracy:   1.0 95% CI [0.963, 1.0]
-  malformed rate:    0.0
-  refusal rate:      0.0 95% CI [0.0, 0.037]
+  ASR (conditional): 0.4100 95% CI 0.3187–0.5080
+  benign accuracy:   1.0000 95% CI 0.9630–1.0000
+  malformed rate:    0.0000
+  refusal rate:      0.0000 95% CI 0.0000–0.0370
   ineligible:        0 (benign_malformed=0, benign_wrong_decision=0, benign_abstained=0)
-  ranking eligible:  False (fewer than 200 eligible cases (100); family 'confidence_spoofing' has 10 eligible cases (< 20); family 'criteria_smuggling' has 10 eligible cases (< 20); family 'distractor_flooding' has 10 eligible cases (< 20); family 'indirection' has 10 eligible cases (< 20); family 'literal_reading' has 10 eligible cases (< 20); family 'negation_games' has 10 eligible cases (< 20); family 'option_order' has 10 eligible cases (< 20); family 'policy_paraphrase' has 10 eligible cases (< 20); family 'score_anchoring' has 10 eligible cases (< 20); family 'state_poisoning' has 10 eligible cases (< 20))
+  ranking eligible:  False (fewer than 200 eligible cases (100); ...)
 artifact: runs/mock-trial.json
-analysis lock: e3f2ea4e74d9babd…
+analysis lock: 503fe4503e6e115d…
 ```
-(excerpt — the run also prints its full `ranking eligible: False (…)`
-note, which names every gate the Trial misses, and an `analysis lock`
-hash.)
 
-The command exits 3 — that's not an error. Exit 3 means the run
-completed but the Trial is ranking-ineligible by design (100 eligible
-cases against a 200-case, ≥20-per-family floor). Exit codes: 0 clean,
-1 user error, 2 infrastructure error, 3 completed but unranked. The
-full list is in [docs/Troubleshooting.md](docs/Troubleshooting.md).
+The command exits 3. That is not an error: it means the run completed but the Trial is ranking-ineligible by design (100 cases against a 200-case floor, with a 20-per-family minimum). Exit codes are 0 clean, 1 user error, 2 infrastructure error, 3 completed but unranked. Full list in [docs/Troubleshooting.md](docs/Troubleshooting.md). Under `set -e`, call the report step explicitly since the shell treats 3 as failure.
 
-`peira run` exits 3 here: ran fine, ranking-ineligible — the Trial's
-100 cases sit below the 200-case floor. Expected, not an error. In an
-interactive shell just run the `peira report` step next; under `set -e`
-the shell treats 3 as failure, so call the report step explicitly.
-
-The per-family table:
+Per-family table:
 
 ```bash
-python3 scripts/gen_readme_table.py runs/mock-trial.json```
+python3 scripts/gen_readme_table.py runs/mock-trial.json
+```
 
-It prints the same table as [The Trial in action](#the-trial-in-action) —
-the demo is the proof. Every adapter makes exactly two `decide()` calls
-per case (one benign, one attacked — retries re-issue the same call on
-transient failures, never silently), so time and cost scale linearly:
-200 calls for the Trial, 5,000 for v1.
+It prints the table from [Results, not promises](#results-not-promises). The demo is the proof. Every adapter makes exactly two `decide()` calls per case (one benign, one attacked; retries re-issue the same call on transient failures, never silently), so time and cost scale linearly: 200 calls for the Trial, about 4,000 for the current full dataset.
 
-| Adapter class | 100-case Trial | 2,500-case v1 | Cost |
+| Adapter class | 100-case Trial | Full dataset | Cost |
 |---|---|---|---|
-| `mock` (offline, deterministic) | 0.4 s (measured) | ≈3 s (extrapolated) | $0 |
-| Structured-output LLM baseline | _timed when the adapter lands_ | _timed when the adapter lands_ | per-token API spend |
-| Hugging Face guard model | _timed when the adapter lands_ | _timed when the adapter lands_ | GPU time |
+| `mock` (offline, deterministic) | 0.4 s (measured) | ~3 s (extrapolated) | $0 |
+| Structured-output LLM baseline | timed when measured | timed when measured | per-token API spend |
+| Hugging Face guard model | timed when measured | timed when measured | GPU time |
 
-Every flag is documented in [`docs/CLI.md`](docs/CLI.md) — generated
-from the parser, so it can't go stale.
+Every flag is documented in [`docs/CLI.md`](docs/CLI.md), generated from the parser so it cannot go stale.
 
 ## What peira measures
 
-Whether hostile manipulations of the input change a decision model's
-typed output — approve/deny (choice), a numeric output (score), or abstain
-(abstain) — using paired benign/attacked controls across 11 attack
-families. Decision-change ASR is the headline metric, reported with
-Wilson 95% confidence intervals; ECE and Brier cover confidence quality.
-Benign-validity gates eligibility: a case counts only when its benign
-variant gives a usable baseline, so a model can't look robust by failing
-the control. Every report carries per-case drill-down receipts, and every
-run is sealed against post-hoc editing. Built for red teams evaluating
-decision models: every attack is paired with a clean control, so a flip
-is evidence about the attack, not noise.
+Whether hostile input changes a decision model's typed output: approve/deny (choice), a numeric score (score), or abstain (abstain). Each attacked case ships with a benign twin, and a case only counts when its benign variant gives a usable baseline. A model cannot look sturdy by failing the control.
 
-## What brings you here
+The headline metric is decision-change ASR with Wilson 95% confidence intervals. ECE and Brier cover confidence quality. Malformed attacked outputs count as flipped (a guardrail that breaks under attack gets no benefit of the doubt). Refusals are reported as refusal rates, never folded into ASR. Cost is a sidecar, never blended into a score. Every report carries per-case drill-down receipts, and every run is sealed against post-hoc editing.
 
-- **test my guardrail** → run the quickstart above, then read
-  `docs/Methodology.md`.
-- **claim a leaderboard row** → [Adapters](#adapters),
-  then [Add your model](#add-your-model).
-- **write attack cases** → [the authoring guide](docs/Dataset.md)
-  ("The authoring loop, end to end").
-- **compare harnesses** → [How peira differs](#how-peira-differs).
+Built for teams evaluating guardrails before deployment: each attack is paired with a clean control, so a flip is evidence about the attack, not noise.
+
+## How peira differs
+
+Adjacent benchmarks (HarmBench, AIR-Bench, JailbreakBench, garak) cover broad red-teaming: refusal behavior, toxicity, jailbreak success on open-ended generation. peira covers the decision layer underneath: the approve/deny/score/abstain calls that gate agentic workflows, content pipelines, and access control.
+
+| | peira | broad red-team harnesses |
+|---|---|---|
+| Unit under test | a typed decision (approve/deny, score, abstain) | open-ended generation |
+| Controls | every attack paired with a benign twin | usually unpaired |
+| Headline metric | decision-change ASR with 95% CIs | refusal rate, toxicity score, jailbreak ASR |
+| Confidence quality | ECE and Brier, reported | rarely |
+| Post-hoc editing | sealed runs, analysis lock | varies |
+| Ranking bar | mechanical gates (eligibility floors per family) | editorial or composite |
+
+The peira column is verifiable from this repo. The right-hand column is a rough sketch, not a scorecard; check each project's docs before quoting it. For broad red-teaming, use garak, HarmBench, or JailbreakBench. For general harnesses, Inspect AI, promptfoo, or HELM. peira is the decision-model layer.
 
 ## Leaderboard
 
-One row per (adapter, dataset version). The leaderboard opens with the v1
-dataset: 2,500 cases (2,000 public + 500 private holdout), 250 per attack
-family. The bar is mechanical, not editorial: malformed rate ≤ 5%,
-benign accuracy ≥ 0.5, ≥ 200 eligible cases overall, and ≥ 20 eligible
-cases in every family present — or the run is published but unranked.
-Omission never improves a rank. Partial primitive coverage is reported
-honestly, not hidden.
+One row per (adapter, dataset version). The bar is mechanical, not editorial: malformed rate at most 5%, benign accuracy at least 0.5, at least 200 eligible cases overall with at least 20 in every family present. Miss a gate and the run is published but unranked. Omission never improves a rank, and partial primitive coverage is reported, not hidden.
+
+The current dataset holds 2,025 cases across 11 attack families (ten decision-attack families plus the safety-policy family covering prompt injection, jailbreak framing, and obfuscation). The v1 seal is pending; counts and family composition freeze at seal time.
 
 ## Adapters
 
 | Adapter | Status |
 |---|---|
-| `mock` (reference mechanism exerciser) | measured — the tables above |
-| Shieldstral (Mistral) | shipped — `peira[hf]`, not yet measured |
-| ProtectAI prompt injection | shipped — `peira[hf]`, not yet measured |
-| Llama Prompt Guard 2 86M (Meta) | shipped — `peira[hf]`, not yet measured |
-| Structured-output LLM baselines (OpenAI / Anthropic / Gemini) | shipped — `peira[openai]` / `peira[anthropic]` / `peira[google]`, not yet measured |
-| TypeSafe Jev | shipped — gated on access, not yet measured |
+| `mock` (reference mechanism exerciser) | measured, offline |
+| Shieldstral (Mistral) | shipped, not yet measured |
+| ProtectAI prompt injection | shipped, not yet measured |
+| Llama Prompt Guard 2 86M (Meta) | shipped, not yet measured |
+| Structured-output LLM baselines (OpenAI / Anthropic / Gemini) | shipped, not yet measured |
+| TypeSafe Jev | shipped, gated on access |
 | Llama Guard 4 (Meta) | planned |
 | LlamaFirewall (Meta) | planned |
 | NVIDIA NeMo Guardrails | planned |
@@ -172,38 +134,25 @@ honestly, not hidden.
 | Lakera Guard (now Check Point) | planned |
 | Operant AI Semantic Firewall | planned |
 
-"Shipped" means the adapter exists and is tested — see
-[`docs/Adapters.md`](docs/Adapters.md) for install, keys, and pinned
-models. "Planned" means not built yet. Nothing ships a number here
-until it's measured with name + version + run date.
+Shipped means the adapter exists and is tested. See [`docs/Adapters.md`](docs/Adapters.md) for install, keys, and pinned models. Planned means not built yet. Nothing gets a leaderboard number until it is measured with name, version, and run date.
 
-## How peira differs
+## Install
 
-| | peira | adjacent benchmarks |
+Requires Python 3.10+.
+
+peira is not on PyPI yet. Until it is, `pip install -e .` from a checkout stands in for `pip install peira`.
+
+```bash
+pip install -e .   # from a checkout; becomes `pip install peira` at release
+```
+
+| Tier | Command | What you get |
 |---|---|---|
-| What it measures | decision flips under attack | varies |
-| Paired benign/attacked controls | yes | rarely |
-| Confidence-robustness metrics | yes (ECE, Brier) | rarely |
-| Analysis freeze (no post-hoc edits) | yes, mechanical | rarely |
-| Scale (v1) | 2,500 cases | varies |
+| `peira` | `pip install peira` (at release) | Core, SDK, CLI, offline mock |
+| `peira[hf]` | `pip install peira[hf]` | plus Hugging Face adapters |
+| `peira[all]` | `pip install peira[all]` | plus everything optional |
 
-The peira column is verifiable from this repo; the right-hand column is
-a rough sketch, not a scorecard — check each project's own docs before
-quoting it. The differentiator, stated plainly: decision-change ASR plus
-a hard ≥20-eligible-cases-per-family ranking gate is simpler and more
-auditable than composite-index leaderboards. For broad red-teaming look at garak,
-HarmBench, or JailbreakBench; for general-purpose harnesses, Inspect AI,
-promptfoo, or HELM. peira is the decision-model layer — approve/deny,
-score, abstain.
-
-## When peira isn't the tool
-
-peira measures whether hostile input flips a decision model's typed
-output on paired cases. It is not a general red-teaming harness, not a
-jailbreak or refusal benchmark, and not a safety certification: a low
-ASR here says nothing about the attacks peira doesn't cover. Use
-broader tooling (garak, HarmBench) when you need coverage rather than
-a single decision-robustness number.
+Hardware guidance per tier: `docs/Hardware.md`. No telemetry. The harness makes no network calls except the ones you configure ([FAQ](docs/FAQ.md)).
 
 ## Add your model
 
@@ -216,55 +165,23 @@ class MyAdapter:
     supported_primitives = frozenset({"choice"})
 
     def decide(self, case_input, primitive, context):
-        # call your model here; `case_input` is exactly what the case
-        # defined, `context` carries the trial bookkeeping (case_id, arm,
-        # expected/target decisions) — never read labels from the input
+        # Call your model here. `case_input` is exactly what the case
+        # defined. `context` carries trial bookkeeping (case_id, arm,
+        # expected/target decisions). Never read labels from the input.
         return ChoiceOutput(decision="approve", confidence=0.8)
 
 adapter = MyAdapter()
 ```
 
-Save as `my_adapter.py`, then `peira run --adapter my_adapter --suite
-trial-demo`. See `examples/minimal_adapter.py`, then read
-`docs/Methodology.md` for the contracts your outputs must satisfy.
-
-## Install
-
-Requires Python 3.10+.
-
-peira isn't on PyPI yet — until it is, `pip install -e .` from a checkout
-stands in for `pip install peira` below.
-
-```bash
-pip install -e .   # from a checkout; becomes `pip install peira` at release
-```
-
-| Tier | Command | What you get |
-|---|---|---|
-| `peira` | `pip install peira` _(at release)_ | Core, SDK, CLI, offline mock |
-| `peira[hf]` | `pip install peira[hf]` | + Hugging Face adapters (planned) |
-| `peira[all]` | `pip install peira[all]` | + everything optional |
-
-Hardware guidance per tier: `docs/Hardware.md`. No telemetry — the
-harness makes no network calls except the ones you configure
-([FAQ](docs/FAQ.md)).
+Save as `my_adapter.py`, then `peira run --adapter my_adapter --suite trial-demo`. See `examples/minimal_adapter.py` for the runnable version, then read `docs/Methodology.md` for the contracts your outputs must satisfy.
 
 ## Methodology
 
-One metric, honestly computed: decision-change ASR over eligible cases
-only, with Wilson 95% confidence intervals on every figure. An attacked
-variant that comes back malformed counts as flipped — conservative on
-purpose: a guardrail that breaks under attack doesn't get the benefit of
-the doubt. Refusals are reported as refusal rates, never laundered into
-ASR; cost is a sidecar, never blended into a score. The full recipe —
-suite composition, eligibility rules, the analysis lock — is in
-`docs/Methodology.md` (versioned methodology pages land next).
+One metric, honestly computed: decision-change ASR over eligible cases only, with Wilson 95% confidence intervals on every figure. The full recipe (suite composition, eligibility rules, the analysis lock) is in `docs/Methodology.md`.
 
 ## Reports
 
-A monthly *State of Decision Robustness* from the v1 launch: the full
-leaderboard, the methodology it was scored under, and per-adapter
-receipts. No issues yet — the cadence starts when the leaderboard does.
+A monthly *State of Decision Robustness* starting at the v1 launch: the full leaderboard, the methodology it was scored under, and per-adapter receipts. No issues yet. The cadence starts when the leaderboard does.
 
 ## Citation
 
@@ -279,9 +196,7 @@ receipts. No issues yet — the cadence starts when the leaderboard does.
 
 ## License / notices
 
-MIT for code, CC-BY-4.0 for the dataset. **A peira score measures
-robustness on this benchmark's paired decision cases. It does not certify
-a model as safe.**
+MIT for code, CC-BY-4.0 for the dataset. A peira score measures decision robustness on this benchmark's paired cases. It does not certify a model as safe.
 
 Built by David Engelmann.
 
