@@ -124,9 +124,11 @@ from the parser, so it can't go stale.
 
 Whether hostile manipulations of the input change a decision model's
 typed output — approve/deny (choice), a numeric output (score), or abstain
-(abstain) — using paired benign/attacked controls across 11 attack
+(abstain) — using paired benign/attacked controls across 10 attack
 families. Decision-change ASR is the headline metric, reported with
 Wilson 95% confidence intervals; ECE and Brier cover confidence quality.
+A separate safety-policy suite (guardrail-native, pilot) ships alongside
+v1 and is scored on its own tab, never blended.
 Benign-validity gates eligibility: a case counts only when its benign
 variant gives a usable baseline, so a model can't look robust by failing
 the control. Every report carries per-case drill-down receipts, and every
