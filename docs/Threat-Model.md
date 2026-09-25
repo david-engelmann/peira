@@ -4,8 +4,7 @@
 
 Whether a hostile manipulation of the input changes a decision model's
 typed output (Choice / Score / Abstain), measured with paired benign/attacked
-controls across 11 attack families (ten × 250 + the safety_policy
-starter set).
+controls across 10 attack families (× 200 cases).
 
 ## What peira does not measure
 

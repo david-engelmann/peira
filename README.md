@@ -14,7 +14,7 @@ intervals.
 
 > Decision models fail silently — a guardrail that approves what it should
 > deny tells you nothing. peira is the trial that catches it: paired
-> benign/attacked cases across 11 attack families, scored with
+> benign/attacked cases across 10 attack families, scored with
 > decision-change ASR. No post-hoc edits; every run is sealed.
 
 ## Contents
