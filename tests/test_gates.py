@@ -24,7 +24,8 @@ def _case(case_id, family="state_poisoning", benign_prompt="p",
 
 
 def _score_case(case_id, expected_score="__absent__"):
-    benign = {"input": {"prompt": "score this"}, "expected_decision": "pay"}
+    benign = {"input": {"prompt": "score this", "options": ["pay", "deny"]},
+              "expected_decision": "pay"}
     if expected_score != "__absent__":
         benign["expected_score"] = expected_score
     return {
@@ -33,7 +34,7 @@ def _score_case(case_id, expected_score="__absent__"):
         "primitive": "score",
         "severity": "high",
         "benign": benign,
-        "attacked": {"input": {"prompt": "score this!"},
+        "attacked": {"input": {"prompt": "score this!", "options": ["pay", "deny"]},
                      "target_decision": "deny"},
         "notes": "",
     }
@@ -66,7 +67,7 @@ class TestGates(unittest.TestCase):
                                                benign_prompt="q",
                                                attacked_prompt="q!")])
         results = self._results()
-        self.assertEqual(len(results), 7)
+        self.assertEqual(len(results), 8)
         self.assertEqual(self._errors(), [])
         self.assertTrue(all(r.passed for r in results.values()))
 
@@ -84,6 +85,20 @@ class TestGates(unittest.TestCase):
         self.assertFalse(r.passed)
         self.assertTrue(any("cases.jsonl:1" in e for e in r.errors))
 
+    def test_g1_gold_must_be_in_options(self):
+        # A gold label outside the input's options can never score:
+        # G1 fails the case at load.
+        bad = _case("c1", expected="zzz")
+        self._write_cases([bad])
+        r = self._results()["G1"]
+        self.assertFalse(r.passed)
+        self.assertTrue(any("not in input options" in e for e in r.errors))
+        bad = _case("c1", target="zzz")
+        self._write_cases([bad])
+        r = self._results()["G1"]
+        self.assertFalse(r.passed)
+        self.assertTrue(any("not in input options" in e for e in r.errors))
+
     def test_g2_identical_variants(self):
         self._write_cases([_case("c1", benign_prompt="same",
                                  attacked_prompt="same")])
@@ -92,11 +107,14 @@ class TestGates(unittest.TestCase):
         self.assertTrue(any("identical to benign" in e for e in r.errors))
 
     def test_g2_empty_input(self):
+        # An empty input dict carries no options list: G1 rejects it at
+        # load, so it never reaches G2.
         c = _case("c1")
         c["attacked"]["input"] = {}
         self._write_cases([c])
-        r = self._results()["G2"]
-        self.assertTrue(any("attacked input is empty" in e for e in r.errors))
+        r = self._results()["G1"]
+        self.assertFalse(r.passed)
+        self.assertTrue(any("needs 'options'" in e for e in r.errors))
 
     def test_g3_duplicate_case_id(self):
         self._write_cases([_case("c1"), _case("c1", benign_prompt="q",
@@ -149,6 +167,35 @@ class TestGates(unittest.TestCase):
         # A choice case needs no score reference.
         self._write_cases([_case("c1")])
         self.assertTrue(self._results()["G7"].passed)
+
+    def test_g8_arm_options_must_be_identical(self):
+        # The decision vocabulary must not shift between arms. The
+        # attacked options keep the target valid so G1 passes and G8
+        # is the gate that fires.
+        c = _case("c1")
+        c["attacked"]["input"]["options"] = ["a", "b", "c"]
+        self._write_cases([c])
+        r = self._results()["G8"]
+        self.assertFalse(r.passed)
+        self.assertTrue(any("differ" in e for e in r.errors))
+
+    def test_g8_options_must_be_sorted(self):
+        c = _case("c1")
+        c["benign"]["input"]["options"] = ["b", "a"]
+        c["attacked"]["input"]["options"] = ["b", "a"]
+        self._write_cases([c])
+        r = self._results()["G8"]
+        self.assertFalse(r.passed)
+        self.assertTrue(any("sorted order" in e for e in r.errors))
+
+    def test_g8_options_must_be_unique(self):
+        c = _case("c1")
+        c["benign"]["input"]["options"] = ["a", "a", "b"]
+        c["attacked"]["input"]["options"] = ["a", "a", "b"]
+        self._write_cases([c])
+        r = self._results()["G8"]
+        self.assertFalse(r.passed)
+        self.assertTrue(any("duplicate labels" in e for e in r.errors))
 
     def test_gates_skip_schema_invalid_cases(self):
         # G2..G7 must not cascade noise onto cases G1 already rejected.

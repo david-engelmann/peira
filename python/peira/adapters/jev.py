@@ -39,12 +39,11 @@ construct, with an error that says exactly what to do.
 NOTE — abstain decision placeholder: for the abstain primitive, Jev
 only answers "should I abstain?" (a yes/no probability). It never
 produces a decision label. When the model does NOT abstain (p < 0.5),
-there is no model decision to report, so the ``decision`` field falls
-back to the case's gold label (``context.expected_decision``) as a
-placeholder — then to ``target_decision``, then to ``"other"``. This
-placeholder is NOT a model output. Flip detection for abstain cases
-works via the ``abstained`` flag (which IS a model output), not the
-``decision`` field. This is by design, not a bug: the abstain
+there is no model decision to report, so the ``decision`` field is the
+``"other"`` placeholder — an honest marker, never a gold label (under
+B2 the adapter cannot see gold anyway). Flip detection for abstain
+cases works via the ``abstained`` flag (which IS a model output), not
+the ``decision`` field. This is by design, not a bug: the abstain
 primitive measures refusal behavior, and the decision placeholder
 keeps the output schema uniform.
 """
@@ -57,6 +56,11 @@ import time
 import urllib.error
 import urllib.request
 from typing import Any, Callable
+
+from peira.adapters._labels import (
+    candidate_labels,
+    non_abstain_placeholder,
+)
 
 from peira.adapters.base import (
     CallContext,
@@ -100,24 +104,14 @@ def _require_api_key(explicit: str | None) -> str:
     return key
 
 
-def _expected_label(expected: Any) -> str:
-    """The case's expected decision, never the literal string "None".
+def _labels(case_input: dict[str, Any]) -> list[str]:
+    """Candidate decision labels for this call, in stable sorted order.
 
-    A missing or explicitly null ``expected_decision`` falls back to
-    ``"approve"`` instead of ``str(None)``.
+    Built from the case input's explicit ``options`` list (B2: the
+    adapter-visible context carries no gold labels), plus ``"other"``.
+    Shared with laya/semif via ``peira.adapters._labels``.
     """
-    return expected if isinstance(expected, str) and expected else "approve"
-
-
-def _labels(context: CallContext) -> list[str]:
-    """Candidate decision labels for this call, in stable order."""
-    labels = [_expected_label(context.expected_decision)]
-    target = context.target_decision
-    if isinstance(target, str) and target and target not in labels:
-        labels.append(target)
-    if "other" not in labels:
-        labels.append("other")
-    return labels
+    return candidate_labels(case_input, "choice")
 
 
 def _choice_question(labels: list[str]) -> dict[str, Any]:
@@ -310,7 +304,7 @@ class JevAdapter:
         if primitive not in self.supported_primitives:
             raise ValueError(f"jev does not support primitive {primitive!r}")
         prompt = str(case_input.get("prompt", ""))
-        labels = _labels(context)
+        labels = _labels(case_input)
 
         if primitive == "choice":
             questions = {"decision": _choice_question(labels)}
@@ -349,7 +343,7 @@ class JevAdapter:
             return self._choice_output(answers, labels, call_usage, transcript)
         if primitive == "score":
             return self._score_output(answers, labels, call_usage, transcript)
-        return self._noul_output(answers, context, call_usage, transcript)
+        return self._noul_output(answers, call_usage, transcript)
 
     # -- per-primitive mapping --------------------------------------------
 
@@ -404,14 +398,14 @@ class JevAdapter:
             usage=usage, transcript=transcript,
         )
 
-    def _noul_output(self, answers, context, usage, transcript):
+    def _noul_output(self, answers, usage, transcript):
         # The answer is keyed by OUR question name ("abstain"); the nested
         # "type": "noul" is TypeSafe's API field (see _noul_question).
         #
         # NOTE (abstain decision placeholder): Jev only answers
         # "should I abstain?" — it never emits a decision label. When
-        # p < 0.5 (no abstention) the `decision` below is the gold
-        # label as a placeholder, NOT a model output. Flip detection
+        # p < 0.5 (no abstention) the `decision` below is the "other"
+        # placeholder, NOT a model output and NOT gold. Flip detection
         # uses the `abstained` flag. See the module docstring.
         ans = _need_answer(answers, "abstain")
         p_yes = ans.get("abstain")
@@ -423,14 +417,7 @@ class JevAdapter:
         if p_yes >= 0.5:
             decision = "abstain"
         else:
-            expected = _expected_label(context.expected_decision)
-            target = context.target_decision
-            if expected != "abstain":
-                decision = expected
-            elif isinstance(target, str) and target and target != "abstain":
-                decision = target
-            else:
-                decision = "other"
+            decision = non_abstain_placeholder()
         return AbstainOutput(
             decision=decision, confidence=confidence,
             usage=usage, transcript=transcript,

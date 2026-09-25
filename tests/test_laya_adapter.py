@@ -24,35 +24,19 @@ from peira.adapters.laya import (
 )
 
 
-# Trial-bookkeeping defaults for adapter unit tests (the runner builds
-# the real CallContext).
-_CTX_DEFAULTS = {
-    "case_id": "l1",
-    "expected_decision": "deny",
-    "target_decision": "approve",
-    "attacked": True,
-}
-
-
+# B2 (D-25 amended): the adapter-visible context is an opaque per-call
+# handle — no case id, no arm, no gold labels. The candidate decision
+# labels come from the case input's explicit "options" list.
 def _case_input(**over):
-    # The pure case input: trial bookkeeping lives on the context now,
-    # never in the input dict.
-    d = {"prompt": "Decision: approve or deny?"}
-    for k, v in over.items():
-        if k not in _CTX_DEFAULTS:
-            d[k] = v
+    d = {"prompt": "Decision: approve or deny?",
+         "options": ["approve", "deny"]}
+    d.update(over)
     return d
 
 
 def _ctx(**over):
-    vals = dict(_CTX_DEFAULTS)
-    vals.update(over)
-    return CallContext(
-        case_id=vals["case_id"],
-        arm="attacked" if vals["attacked"] else "benign",
-        expected_decision=vals["expected_decision"],
-        target_decision=vals["target_decision"],
-    )
+    from peira.adapters.base import CallContext
+    return CallContext(call_id=over.get("call_id", "call-test"))
 
 
 class FakeAgent:
@@ -202,26 +186,23 @@ class TestLayaChoice(unittest.TestCase):
         # criteria is a dict (label -> description), per Laya's API.
         self.assertIsInstance(q["criteria"], dict)
         self.assertIn("deny", q["criteria"])
-        self.assertIn("approve", q["criteria"])  # target offered on attacked
+        self.assertIn("approve", q["criteria"])  # both input options offered
 
-    def test_choice_benign_labels(self):
+    def test_choice_labels_come_from_input_options(self):
+        # B2: the adapter cannot see the arm or gold — the criteria are
+        # exactly the input's options (sorted) plus "other".
         agent = FakeAgent({"decision": {"choice": "deny", "confidence": 0.9}})
-        _adapter(agent).decide(_case_input(), "choice",
-                               _ctx(attacked=False, target_decision=None))
+        _adapter(agent).decide(_case_input(options=["deny", "approve", "hold"]),
+                               "choice", _ctx())
         labels = list(agent.seen["questions"]["decision"]["criteria"])
-        self.assertIn("deny", labels)
-        self.assertIn("other", labels)
-        self.assertNotIn("approve", labels)
+        self.assertEqual(labels, ["approve", "deny", "hold", "other"])
 
-    def test_null_expected_decision_never_becomes_none_label(self):
-        agent = FakeAgent({"decision": {"choice": "approve",
-                                        "confidence": 0.9}})
-        _adapter(agent).decide(_case_input(), "choice",
-                               _ctx(expected_decision=None,
-                                    target_decision=None))
+    def test_choice_labels_deduplicated(self):
+        agent = FakeAgent({"decision": {"choice": "deny", "confidence": 0.9}})
+        _adapter(agent).decide(_case_input(options=["deny", "deny", "approve"]),
+                               "choice", _ctx())
         labels = list(agent.seen["questions"]["decision"]["criteria"])
-        self.assertNotIn("None", labels)
-        self.assertIn("approve", labels)  # fallback, not str(None)
+        self.assertEqual(labels, ["approve", "deny", "other"])
 
     def test_unknown_keys_ignored(self):
         agent = FakeAgent({"decision": {"choice": "deny", "confidence": 0.9}})
@@ -297,10 +278,13 @@ class TestLayaAbstainNoulBoundary(unittest.TestCase):
         self.assertEqual(out.decision, "abstain")
         self.assertAlmostEqual(out.confidence, 0.6)  # |2*.8-1|
 
-    def test_noul_no_returns_expected(self):
+    def test_noul_no_returns_other_placeholder(self):
+        # B2: no abstention means the model emitted no decision label —
+        # the placeholder is "other", never a gold label.
         out = _adapter(self._abstain_agent(0.2)).decide(_case_input(),
                                                        "abstain", _ctx())
-        self.assertEqual(out.decision, "deny")
+        self.assertEqual(out.decision, "other")
+        self.assertFalse(out.abstained)
         self.assertAlmostEqual(out.confidence, 0.6)
 
     def test_noul_answer_field_is_noul_not_abstain(self):

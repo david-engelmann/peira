@@ -23,8 +23,8 @@ def _case(case_id="p1"):
         "family": "literal_reading",
         "primitive": "choice",
         "severity": "medium",
-        "benign": {"input": {"prompt": "b"}, "expected_decision": "approve"},
-        "attacked": {"input": {"prompt": "b+"}, "target_decision": "deny"},
+        "benign": {"input": {"prompt": "b", "options": ["approve", "deny"]}, "expected_decision": "approve"},
+        "attacked": {"input": {"prompt": "b+", "options": ["approve", "deny"]}, "target_decision": "deny"},
     })
 
 

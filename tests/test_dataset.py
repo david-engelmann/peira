@@ -340,7 +340,7 @@ class TestDatasetStatus(unittest.TestCase):
         rc, out = self._status(trial)
         self.assertEqual(rc, 0)
         self.assertIn("status: release-ready", out)
-        self.assertIn("gates: 7/7 passed", out)
+        self.assertIn("gates: 8/8 passed", out)
         self.assertIn("manifest: current", out)
 
     def test_empty_dir_is_not_release_ready(self):

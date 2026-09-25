@@ -21,31 +21,19 @@ from peira.adapters.semif import (
     SemifAdapter,
 )
 
-_CTX_DEFAULTS = {
-    "case_id": "s1",
-    "expected_decision": "deny",
-    "target_decision": "approve",
-    "attacked": True,
-}
-
-
+# B2 (D-25 amended): the adapter-visible context is an opaque per-call
+# handle — no case id, no arm, no gold labels. The candidate decision
+# labels come from the case input's explicit "options" list.
 def _case_input(**over):
-    d = {"prompt": "Decision: approve or deny?"}
-    for k, v in over.items():
-        if k not in _CTX_DEFAULTS:
-            d[k] = v
+    d = {"prompt": "Decision: approve or deny?",
+         "options": ["approve", "deny"]}
+    d.update(over)
     return d
 
 
 def _ctx(**over):
-    vals = dict(_CTX_DEFAULTS)
-    vals.update(over)
-    return CallContext(
-        case_id=vals["case_id"],
-        arm="attacked" if vals["attacked"] else "benign",
-        expected_decision=vals["expected_decision"],
-        target_decision=vals["target_decision"],
-    )
+    from peira.adapters.base import CallContext
+    return CallContext(call_id=over.get("call_id", "call-test"))
 
 
 def _runner_for(rows_by_id):
@@ -245,12 +233,15 @@ class TestSemifAbstain(unittest.TestCase):
         self.assertEqual(out.decision, "abstain")
         self.assertAlmostEqual(out.confidence, 0.6)  # |2*.8-1|
 
-    def test_abstain_no_returns_expected(self):
+    def test_abstain_no_returns_other_placeholder(self):
+        # B2: no abstention means the model emitted no decision label —
+        # the placeholder is "other", never a gold label.
         r = _runner_for({"abstain": {"id": "abstain",
                                      "probabilities": {"yes": 0.2,
                                                        "no": 0.8}}})
         out = SemifAdapter(runner=r).decide(_case_input(), "abstain", _ctx())
-        self.assertEqual(out.decision, "deny")
+        self.assertEqual(out.decision, "other")
+        self.assertFalse(out.abstained)
 
     def test_abstain_input_is_yes_no_question(self):
         r = _runner_for({"abstain": {"id": "abstain",
@@ -295,9 +286,9 @@ class TestSemifOutputShapes(unittest.TestCase):
         self.assertAlmostEqual(out.confidence, 0.85)
 
     def test_bare_list_parallel_to_labels(self):
-        # [deny, approve, other] order — the labels offered on attacked.
+        # ["approve", "deny", "other"] order — sorted input options.
         r = _runner_for({"decision": {"id": "decision",
-                                      "probabilities": [0.1, 0.8, 0.1]}})
+                                      "probabilities": [0.8, 0.1, 0.1]}})
         out = SemifAdapter(runner=r).decide(_case_input(), "choice", _ctx())
         self.assertEqual(out.decision, "approve")
 

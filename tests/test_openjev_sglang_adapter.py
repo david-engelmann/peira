@@ -16,31 +16,19 @@ from peira.adapters.jev import JevAdapter
 from peira.adapters.kev import LocalSystemOneAdapter
 from peira.adapters.openjev_sglang import MODEL_ID, OpenJevSglangAdapter
 
-_CTX_DEFAULTS = {
-    "case_id": "o1",
-    "expected_decision": "deny",
-    "target_decision": "approve",
-    "attacked": True,
-}
-
-
+# B2 (D-25 amended): the adapter-visible context is an opaque per-call
+# handle — no case id, no arm, no gold labels. The candidate decision
+# labels come from the case input's explicit "options" list.
 def _case_input(**over):
-    d = {"prompt": "Decision: approve or deny?"}
-    for k, v in over.items():
-        if k not in _CTX_DEFAULTS:
-            d[k] = v
+    d = {"prompt": "Decision: approve or deny?",
+         "options": ["approve", "deny"]}
+    d.update(over)
     return d
 
 
 def _ctx(**over):
-    vals = dict(_CTX_DEFAULTS)
-    vals.update(over)
-    return CallContext(
-        case_id=vals["case_id"],
-        arm="attacked" if vals["attacked"] else "benign",
-        expected_decision=vals["expected_decision"],
-        target_decision=vals["target_decision"],
-    )
+    from peira.adapters.base import CallContext
+    return CallContext(call_id=over.get("call_id", "call-test"))
 
 
 def _transport_for(answers, latency=12.5):

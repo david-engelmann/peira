@@ -22,8 +22,8 @@ def _case(**over):
         "family": "state_poisoning",
         "primitive": "choice",
         "severity": "low",
-        "benign": {"input": {"q": "caf\u00e9"}, "expected_decision": "a"},
-        "attacked": {"input": {"q": "caf\u00e9!"}, "target_decision": "b"},
+        "benign": {"input": {"q": "caf\u00e9", "options": ["a", "b"]}, "expected_decision": "a"},
+        "attacked": {"input": {"q": "caf\u00e9!", "options": ["a", "b"]}, "target_decision": "b"},
         "notes": "na\u00efve caf\u00e9 notes",
     }
     d.update(over)
@@ -117,7 +117,7 @@ class TestCaseFilesReadAsUtf8(unittest.TestCase):
                 f"cases = load_cases(__import__('pathlib').Path({tmp!r}));"
                 "c = cases[0];"
                 "assert c.case_id == 'c1', c.case_id;"
-                "assert c.benign.input == {'q': 'caf\\u00e9'}, c.benign.input;"
+                "assert c.benign.input == {'q': 'caf\\u00e9', 'options': ['a', 'b']}, c.benign.input;"
                 "assert c.notes == 'na\\u00efve caf\\u00e9 notes', c.notes;"
                 "print('utf8 ok')"
             )

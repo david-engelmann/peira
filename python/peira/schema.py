@@ -58,6 +58,8 @@ CASE_JSON_SCHEMA: dict[str, Any] = {
         "benign": {
             "type": "object",
             "properties": {
+                # B2 (2026-09-25): the explicit decision vocabulary —
+                # required on every case input (see validate_case_dict).
                 "input": {"type": "object"},
                 "expected_decision": {"type": "string"},
                 # The author's reference score for score-primitive cases;
@@ -225,6 +227,25 @@ def _validate_case_dict_py(d: dict[str, Any]) -> list[str]:
     downstream (non-dict ``input``, non-string ``expected_decision``,
     unhashable ``case_id``, ...).
     """
+
+    def _shape_valid_options(input_obj: Any) -> list[str] | None:
+        """Return the options list when it passes the shape check.
+
+        Gold-membership is only checked against shape-valid options: a
+        malformed list already earns its own error, and piling a
+        membership error on top would blame the gold for the list's
+        defect.
+        """
+        if isinstance(input_obj, dict):
+            opts = input_obj.get("options")
+            if (
+                isinstance(opts, list)
+                and opts
+                and all(isinstance(o, str) and o for o in opts)
+            ):
+                return opts
+        return None
+
     errors: list[str] = []
     if not isinstance(d, dict):
         # Mirrors the Rust behavior for non-object input: every required
@@ -255,12 +276,53 @@ def _validate_case_dict_py(d: dict[str, Any]) -> list[str]:
                 errors.append(f"bad variant {_safe_repr(variant)}: need an object with 'input'")
             elif not isinstance(v["input"], dict):
                 errors.append(f"bad {variant} input: expected object")
+            else:
+                # B2 (2026-09-25): every case input carries an explicit
+                # options list — the decision vocabulary adapters build
+                # per-call schemas from. The adapter-visible context no
+                # longer carries gold labels, so a missing options list
+                # would silently break every adapter; fail at load.
+                # Missing and null are distinct, exactly as in the Rust
+                # port: a missing key "needs 'options'"; an explicit
+                # null (or any other non-list) is malformed options.
+                if "options" not in v["input"]:
+                    errors.append(f"{variant} input needs 'options'")
+                    continue
+                opts = v["input"]["options"]
+                if (
+                    not isinstance(opts, list)
+                    or not opts
+                    or any(
+                        not isinstance(o, str) or not o for o in opts
+                    )
+                ):
+                    errors.append(
+                        f"bad {variant} input options: expected "
+                        "non-empty list of non-empty strings"
+                    )
         benign = d.get("benign")
         if isinstance(benign, dict):
             if "expected_decision" not in benign:
                 errors.append("benign variant needs 'expected_decision'")
             elif not isinstance(benign["expected_decision"], str):
                 errors.append("bad benign expected_decision: expected string")
+            # B2: gold labels must be answerable from the decision
+            # vocabulary — a case whose expected decision is not among
+            # the input options can never score; fail at load, in both
+            # backends (byte-identical messages). Only checked against
+            # shape-valid options: a malformed list already has its own
+            # error.
+            if (
+                isinstance(benign.get("expected_decision"), str)
+                and (opts := _shape_valid_options(benign.get("input")))
+                is not None
+                and benign["expected_decision"] not in opts
+            ):
+                errors.append(
+                    "bad benign expected_decision: "
+                    f"{_safe_repr(benign['expected_decision'])} "
+                    "not in input options"
+                )
             if "expected_score" in benign:
                 es = benign["expected_score"]
                 if es is not None and (
@@ -277,6 +339,16 @@ def _validate_case_dict_py(d: dict[str, Any]) -> list[str]:
             target = attacked["target_decision"]
             if target is not None and not isinstance(target, str):
                 errors.append("bad attacked target_decision: expected string or null")
+            elif (
+                isinstance(target, str)
+                and (opts := _shape_valid_options(attacked.get("input")))
+                is not None
+                and target not in opts
+            ):
+                errors.append(
+                    "bad attacked target_decision: "
+                    f"{_safe_repr(target)} not in input options"
+                )
         if "notes" in d and not isinstance(d["notes"], str):
             errors.append("bad notes: expected string")
     return errors
