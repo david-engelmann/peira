@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import json
+import math
 import sys
 import threading
+import time
 from pathlib import Path
 from typing import Any, Callable, Iterable
 
@@ -37,6 +39,100 @@ class AdapterTimeoutError(TimeoutError):
     """adapter.decide() did not return within the per-call timeout."""
 
 
+# Orphaned worker registry: tracks daemon threads abandoned by timeouts.
+# A timed-out thread cannot be killed (Python threads have no kill), so it
+# keeps running concurrently against the same adapter until it returns or
+# the process exits. Each _decide_with_timeout call uses its own result box,
+# so an orphan can never corrupt another call's result — but concurrent
+# execution against shared adapter state (connection pools, rate limiters,
+# mutable caches) is a real hazard. We track orphans per adapter and warn
+# loudly when a new call starts while orphans are still alive.
+_orphaned_workers: dict[int, list[tuple[threading.Thread, float, str]]] = {}
+_orphans_lock = threading.Lock()
+
+
+def _register_orphan(adapter: Any, worker: threading.Thread, primitive: str) -> None:
+    """Record a timed-out worker thread as orphaned for this adapter."""
+    with _orphans_lock:
+        key = id(adapter)
+        orphans = _orphaned_workers.setdefault(key, [])
+        orphans.append((worker, time.monotonic(), primitive))
+        # Prune threads that have since finished.
+        _orphaned_workers[key] = [o for o in orphans if o[0].is_alive()]
+
+
+def _live_orphans(adapter: Any) -> list[tuple[threading.Thread, float, str]]:
+    """Return currently-alive orphaned workers for this adapter (pruning dead ones)."""
+    with _orphans_lock:
+        key = id(adapter)
+        orphans = _orphaned_workers.get(key, [])
+        live = [o for o in orphans if o[0].is_alive()]
+        if live:
+            _orphaned_workers[key] = live
+        else:
+            _orphaned_workers.pop(key, None)
+        return live
+
+
+def validate_timeout_value(timeout: float | None) -> list[str]:
+    """Validate a per-decide() timeout value.
+    
+    Returns a list of error strings; empty means valid. None disables the
+    timeout (valid). Otherwise the value must be a finite positive number —
+    NaN, infinities, zero, and negatives are all rejected.
+    """
+    if timeout is None:
+        return []
+    if isinstance(timeout, bool):
+        return [f"timeout must be a number of seconds, got bool {timeout!r}"]
+    if not isinstance(timeout, (int, float)):
+        return [f"timeout must be a number of seconds, got {type(timeout).__name__}"]
+    if not math.isfinite(timeout):
+        return [f"timeout must be finite (got {timeout!r})"]
+    if timeout <= 0:
+        return [f"timeout must be positive (got {timeout!r})"]
+    return []
+
+
+def validate_adapter(adapter: Any) -> list[str]:
+    """Check that an adapter implements the required interface, up front.
+    
+    Returns a list of error strings; empty means valid. Validates:
+    - decide() is callable
+    - name is a non-empty string
+    - version is a string
+    - supported_primitives, if present, is a frozenset/set of known primitives
+    
+    Call this at load time (not first use) so a broken adapter fails fast
+    with a clear error instead of failing mid-run after scoring N cases.
+    """
+    errors: list[str] = []
+    if not callable(getattr(adapter, "decide", None)):
+        errors.append("adapter has no callable decide() method")
+    name = getattr(adapter, "name", None)
+    if not isinstance(name, str) or not name:
+        errors.append(f"adapter.name must be a non-empty string, got {name!r}")
+    version = getattr(adapter, "version", None)
+    if not isinstance(version, str):
+        errors.append(f"adapter.version must be a string, got {version!r}")
+    sp = getattr(adapter, "supported_primitives", None)
+    if sp is not None:
+        if not isinstance(sp, (frozenset, set)):
+            errors.append(
+                f"adapter.supported_primitives must be a frozenset or set, "
+                f"got {type(sp).__name__}"
+            )
+        else:
+            valid_primitives = {"choice", "score", "noul"}
+            unknown = set(sp) - valid_primitives
+            if unknown:
+                errors.append(
+                    f"adapter.supported_primitives contains unknown primitives: "
+                    f"{sorted(unknown)} (valid: {sorted(valid_primitives)})"
+                )
+    return errors
+
+
 def _decide_with_timeout(
     adapter: Any, case_input: dict, primitive: str, timeout: float | None
 ) -> AdapterOutput:
@@ -53,6 +149,13 @@ def _decide_with_timeout(
     block the run or interpreter exit; it is simply abandoned if it outlives
     the timeout.
 
+    Orphan tracking: when a timeout fires, the abandoned thread is
+    registered in _orphaned_workers. The next call checks for live orphans
+    and warns — concurrent execution against the same adapter is a real
+    hazard for adapters with shared mutable state. Each call uses its own
+    result box, so an orphan can never corrupt another call's result; the
+    timed-out call is always marked malformed before the next one starts.
+
     Limitation: a thread cannot be forcibly killed. If decide() is stuck in
     a C extension or a tight loop that never yields the GIL, the orphaned
     daemon thread keeps running until the process exits. For a hard-kill
@@ -62,6 +165,21 @@ def _decide_with_timeout(
     """
     if timeout is None:
         return adapter.decide(case_input, primitive)
+    # Fail fast on invalid timeout values rather than joining with garbage.
+    timeout_errors = validate_timeout_value(timeout)
+    if timeout_errors:
+        raise ValueError(f"invalid timeout: {'; '.join(timeout_errors)}")
+    # Warn if previous timed-out workers are still running concurrently.
+    live_orphans = _live_orphans(adapter)
+    if live_orphans:
+        oldest_age = time.monotonic() - min(started for (_, started, _) in live_orphans)
+        print(
+            f"warning: {len(live_orphans)} timed-out adapter worker(s) still "
+            f"running (oldest abandoned {oldest_age:.1f}s ago) — concurrent "
+            f"execution against the same adapter; timed-out calls were "
+            f"already marked malformed",
+            file=sys.stderr,
+        )
     box: dict[str, Any] = {}
 
     def target() -> None:
@@ -74,6 +192,7 @@ def _decide_with_timeout(
     worker.start()
     worker.join(timeout)
     if worker.is_alive():
+        _register_orphan(adapter, worker, primitive)
         raise AdapterTimeoutError(
             f"adapter.decide() did not return within {timeout:g}s "
             f"(primitive={primitive!r})"
@@ -165,7 +284,19 @@ def run_case(adapter: Any, case: Case, timeout: float | None = 30.0) -> PerCaseR
     reported via n_skipped / primitive_coverage in the artifact. An
     adapter without ``supported_primitives`` is assumed to support all
     primitives.
+
+    The adapter interface and timeout value are validated up front; invalid
+    inputs raise ValueError immediately.
     """
+    adapter_errors = validate_adapter(adapter)
+    if adapter_errors:
+        raise ValueError(
+            f"invalid adapter {type(adapter).__name__!r}: "
+            f"{'; '.join(adapter_errors)}"
+        )
+    timeout_errors = validate_timeout_value(timeout)
+    if timeout_errors:
+        raise ValueError(f"invalid timeout: {'; '.join(timeout_errors)}")
     supported = getattr(adapter, "supported_primitives", None)
     if supported is not None and case.primitive not in supported:
         return PerCaseResult(
@@ -371,7 +502,19 @@ def run_suite(
     timeout: per-decide() wall-clock timeout in seconds, forwarded to
     run_case (default 30). Timed-out variants are marked malformed and the
     run continues. Pass None to disable.
+
+    The adapter interface is validated up front (fail fast): a broken
+    adapter raises ValueError before any case is scored, not mid-run.
     """
+    adapter_errors = validate_adapter(adapter)
+    if adapter_errors:
+        raise ValueError(
+            f"invalid adapter {type(adapter).__name__!r}: "
+            f"{'; '.join(adapter_errors)}"
+        )
+    timeout_errors = validate_timeout_value(timeout)
+    if timeout_errors:
+        raise ValueError(f"invalid timeout: {'; '.join(timeout_errors)}")
     done = already_done or set()
     results: list[PerCaseResult] = list(prior_results or [])
     total = len(cases)

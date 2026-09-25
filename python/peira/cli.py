@@ -18,7 +18,7 @@ from peira import __version__
 from peira.adapters.mock import MockAdapter
 from peira.artifacts import RunArtifact
 from peira.metrics import PerCaseResult
-from peira.runner import SUITE_DIRS, load_cases, run_suite
+from peira.runner import SUITE_DIRS, load_cases, run_suite, validate_adapter
 
 EXIT_OK = 0
 EXIT_USER_ERROR = 1
@@ -41,7 +41,13 @@ def _get_adapter(name: str):
     The adapter class must subclass BaseAdapter and take no constructor args.
     """
     if name == "mock":
-        return MockAdapter()
+        adapter = MockAdapter()
+        adapter_errors = validate_adapter(adapter)
+        if adapter_errors:  # pragma: no cover — internal invariant
+            raise ValueError(
+                f"built-in mock adapter is invalid: {'; '.join(adapter_errors)}"
+            )
+        return adapter
     
     # Dotted path: package.module:ClassName or package.module.ClassName
     if ":" in name:
@@ -69,13 +75,21 @@ def _get_adapter(name: str):
             f"module {module_path!r} has no class {class_name!r}"
         )
     
-    # Instantiate — the runner will validate the interface when decide() is called
+    # Instantiate — then validate the interface up front so a broken
+    # adapter fails fast with a clear error instead of failing mid-run.
     try:
-        return cls()
+        adapter = cls()
     except Exception as e:
         raise ValueError(
             f"cannot instantiate {class_name!r}: {e}"
         ) from e
+    adapter_errors = validate_adapter(adapter)
+    if adapter_errors:
+        raise ValueError(
+            f"adapter {class_name!r} has an invalid interface: "
+            f"{'; '.join(adapter_errors)}"
+        )
+    return adapter
 
 
 def cmd_run(args: argparse.Namespace) -> int:
@@ -109,8 +123,12 @@ def cmd_run(args: argparse.Namespace) -> int:
         print(f"error: no cases found in {suite_dir}", file=sys.stderr)
         return EXIT_USER_ERROR
 
-    if args.timeout <= 0:
-        print(f"error: --timeout must be positive (got {args.timeout})",
+    # Reject non-finite and non-positive timeouts: NaN slips past `<= 0`
+    # (nan <= 0 is False), and inf would silently disable the timeout.
+    import math
+    if not math.isfinite(args.timeout) or args.timeout <= 0:
+        print(f"error: --timeout must be a finite positive number of seconds "
+              f"(got {args.timeout})",
               file=sys.stderr)
         return EXIT_USER_ERROR
 

@@ -438,8 +438,7 @@ pub const MIN_ELIGIBLE_CASES: u64 = 200;
 pub const MIN_FAMILY_ELIGIBLE: u64 = 20;
 
 /// Round to 4 decimals, ties-to-even, mirroring Python's `round(x, 4)`
-/// in all but pathological near-tie cases (the analysis lock does not
-/// cover metrics, so this only affects display/artifact cosmetics).
+/// in all but pathological near-tie cases.
 pub fn round4(x: f64) -> f64 {
     (x * 10000.0).round_ties_even() / 10000.0
 }

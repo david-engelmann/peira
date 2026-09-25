@@ -8,12 +8,14 @@ use std::collections::HashSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::time::Duration;
 
 use clap::{Parser, Subcommand};
 use peira_core::adapter_protocol::SubprocessAdapter;
 use peira_core::artifacts::RunArtifact;
 use peira_core::metrics::PerCaseResult;
-use peira_core::runner::{self, Adapter, MockAdapter, RunOptions, DEFAULT_ADAPTER_TIMEOUT};
+use peira_core::runner::{self, Adapter, MockAdapter, RunOptions};
 use peira_core::schema::validate_case_dict;
 
 const EXIT_OK: u8 = 0;
@@ -63,6 +65,11 @@ enum Commands {
         /// Resume an interrupted run from its partial artifact
         #[arg(long)]
         resume: bool,
+        /// Per-decide() timeout in seconds for subprocess adapters; a
+        /// variant that exceeds it is marked malformed and the run
+        /// continues. Must be finite and positive (default: 30).
+        #[arg(long, default_value_t = 30.0)]
+        timeout: f64,
     },
     /// Validate a dataset directory
     Validate {
@@ -180,6 +187,61 @@ fn which(name: &str) -> Option<PathBuf> {
     })
 }
 
+/// Parse and validate `--timeout`: finite, positive seconds.
+/// Mirrors the Python CLI's rule (and its Troubleshooting entry).
+fn parse_timeout_secs(v: f64) -> Result<Duration, String> {
+    if !v.is_finite() || v <= 0.0 {
+        let got = if v.is_nan() {
+            "nan".to_string()
+        } else if v.is_infinite() {
+            if v > 0.0 {
+                "inf".to_string()
+            } else {
+                "-inf".to_string()
+            }
+        } else {
+            format!("{v}")
+        };
+        return Err(format!(
+            "error: --timeout must be a finite positive number of seconds (got {got})"
+        ));
+    }
+    Ok(Duration::from_secs_f64(v))
+}
+
+/// Cooperative interrupt flag, set by the SIGINT handler below.
+#[cfg(unix)]
+static INTERRUPTED: AtomicBool = AtomicBool::new(false);
+
+/// Async-signal-safe SIGINT handler: just flips the flag. The run loop
+/// in `peira_core::runner` checks it between cases, checkpoints, and
+/// stops — so Ctrl-C never loses completed work and never runs signal-
+/// unsafe code.
+#[cfg(unix)]
+extern "C" fn on_sigint(_sig: libc::c_int) {
+    INTERRUPTED.store(true, Ordering::Relaxed);
+}
+
+/// Install the SIGINT handler for the duration of a run.
+#[cfg(unix)]
+fn install_sigint_handler() {
+    INTERRUPTED.store(false, Ordering::Relaxed);
+    unsafe {
+        let mut sa: libc::sigaction = std::mem::zeroed();
+        sa.sa_sigaction = on_sigint as *const () as usize;
+        libc::sigemptyset(&mut sa.sa_mask);
+        sa.sa_flags = 0;
+        libc::sigaction(libc::SIGINT, &sa, std::ptr::null_mut());
+    }
+}
+
+/// Restore the default SIGINT disposition.
+#[cfg(unix)]
+fn restore_sigint_handler() {
+    unsafe {
+        libc::signal(libc::SIGINT, libc::SIG_DFL);
+    }
+}
 /// Resolve `--adapter` to a runnable adapter.
 /// - `mock` → built-in deterministic mock (version "0.1.0" unless
 ///   `--adapter-version` overrides it)
@@ -191,6 +253,7 @@ fn which(name: &str) -> Option<PathBuf> {
 fn resolve_adapter(
     name: &str,
     version_flag: Option<&str>,
+    timeout: Duration,
 ) -> Result<(Box<dyn Adapter>, String, String), String> {
     if name == "mock" {
         return Ok((
@@ -227,7 +290,7 @@ fn resolve_adapter(
              the JSON adapter protocol)"
         ));
     }
-    match SubprocessAdapter::spawn(name, &[], DEFAULT_ADAPTER_TIMEOUT) {
+    match SubprocessAdapter::spawn(name, &[], timeout) {
         Ok(a) => Ok((Box::new(a), name.to_string(), version.to_string())),
         Err(e) => Err(format!("cannot spawn adapter '{name}': {e}")),
     }
@@ -432,9 +495,17 @@ fn cmd_run(
     dry_run: bool,
     json_progress: bool,
     resume: bool,
+    timeout_arg: f64,
 ) -> u8 {
+    let timeout = match parse_timeout_secs(timeout_arg) {
+        Ok(t) => t,
+        Err(e) => {
+            eprintln!("{e}");
+            return EXIT_USER_ERROR;
+        }
+    };
     let (mut adapter, adapter_name, adapter_version) =
-        match resolve_adapter(adapter_arg, adapter_version_arg) {
+        match resolve_adapter(adapter_arg, adapter_version_arg, timeout) {
             Ok(a) => a,
             Err(e) => {
                 eprintln!("error: {e}");
@@ -609,9 +680,16 @@ fn cmd_run(
         })
     };
 
+    #[cfg(unix)]
+    install_sigint_handler();
+
     let opts = RunOptions {
         partial_path: Some(&partial_path),
         progress: Some(progress),
+        #[cfg(unix)]
+        interrupt: Some(&INTERRUPTED),
+        #[cfg(not(unix))]
+        interrupt: None,
         ..Default::default()
     };
     let artifact = runner::run_suite(
@@ -625,6 +703,18 @@ fn cmd_run(
         prior_results,
         &opts,
     );
+
+    #[cfg(unix)]
+    restore_sigint_handler();
+
+    // Ctrl-C: the run loop already checkpointed the completed cases.
+    // Report it like the Python CLI and exit 2 without writing a final
+    // artifact or deleting the partial.
+    #[cfg(unix)]
+    if INTERRUPTED.load(Ordering::Relaxed) {
+        eprintln!("\ninterrupted — partial run saved; re-run with --resume.");
+        return EXIT_INFRA_ERROR;
+    }
 
     let out_path = out.join(format!("{safe_adapter}-{suite}.json"));
     let text = match artifact.to_json() {
@@ -695,6 +785,7 @@ fn main() -> ExitCode {
             dry_run,
             json_progress,
             resume,
+            timeout,
         } => cmd_run(
             &adapter,
             adapter_version.as_deref(),
@@ -703,10 +794,54 @@ fn main() -> ExitCode {
             dry_run,
             json_progress,
             resume,
+            timeout,
         ),
         Commands::Validate { dataset } => cmd_validate(&dataset),
         Commands::Report { run, out } => cmd_report(&run, &out),
         Commands::Verify { run } => cmd_verify(&run),
     };
     ExitCode::from(code)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn timeout_validation() {
+        // Valid values pass through.
+        assert_eq!(parse_timeout_secs(30.0).unwrap(), Duration::from_secs(30));
+        assert_eq!(parse_timeout_secs(0.5).unwrap(), Duration::from_millis(500));
+        // Zero, negative, NaN, and infinities are rejected with the
+        // Troubleshooting-documented message.
+        for bad in [0.0, -1.0, f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
+            let err = parse_timeout_secs(bad).unwrap_err();
+            assert!(
+                err.starts_with(
+                    "error: --timeout must be a finite positive number of seconds (got "
+                ),
+                "unexpected message: {err}"
+            );
+        }
+        assert!(parse_timeout_secs(f64::NAN)
+            .unwrap_err()
+            .ends_with("(got nan)"));
+        assert!(parse_timeout_secs(f64::INFINITY)
+            .unwrap_err()
+            .ends_with("(got inf)"));
+    }
+
+    #[test]
+    fn external_adapter_needs_version() {
+        let err = resolve_adapter("sh", None, Duration::from_secs(1))
+            .err()
+            .expect("should fail without version");
+        assert!(err.contains("--adapter-version"), "{err}");
+        // With a version, a real program spawns (timeout threads through).
+        let (adapter, name, version) =
+            resolve_adapter("sh", Some("9.9.9"), Duration::from_millis(100)).unwrap();
+        assert_eq!(name, "sh");
+        assert_eq!(version, "9.9.9");
+        drop(adapter);
+    }
 }
