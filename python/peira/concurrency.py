@@ -171,8 +171,10 @@ class AdaptiveConcurrency:
     run — which stalls large suites of fast (local) adapters behind
     event-loop churn. Waiters re-check the predicate, so a woken waiter
     that loses the race simply waits again; no wakeup is ever missed,
-    because free slots with sleeping waiters always follow a release,
-    and every release notifies.
+    because a release is the only event that frees an in-flight slot,
+    and every release notifies. (Limit growth adds headroom without a
+    notify — transient under-utilization, self-correcting on the next
+    release.)
 
     The limit only ever *bounds* in-flight calls — it never changes
     what is computed, so concurrency is a performance parameter, not a
@@ -254,7 +256,10 @@ class AdaptiveConcurrency:
                 # per completion — every other waiter re-checks the
                 # predicate and goes back to sleep. A woken waiter that
                 # loses the race re-waits; nothing is missed because a
-                # release is the only event that creates free slots.
+                # release is the only event that frees an in-flight slot.
+                # (Limit growth via on_success() adds headroom without
+                # notifying — transient under-utilization only, picked up
+                # by the next release; never a deadlock.)
                 free = self.limit - self._in_flight
                 if free > 0:
                     self._cond.notify(free)
