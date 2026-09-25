@@ -251,6 +251,20 @@ class LayaAdapter:
     name = "laya"
     supported_primitives = frozenset({"choice", "score", "abstain"})
 
+    @classmethod
+    def doctor_requirements(cls) -> list[dict]:
+        """What `peira doctor` checks for this adapter."""
+        return [
+            {"kind": "python_package", "name": "laya",
+             "hint": "pip install laya"},
+            {"kind": "ram_gb", "min": 2.0,
+             "detail": "Laya (421M params, fp32) needs ~1.7GB RAM",
+             "hint": "free up RAM or use a bigger machine"},
+            {"kind": "disk_gb", "min": 5.0,
+             "detail": "Laya checkpoint weights need ~2GB disk",
+             "hint": "free up disk space"},
+        ]
+
     def __init__(
         self,
         checkpoint: str = DEFAULT_CHECKPOINT,

@@ -78,6 +78,24 @@ class OpenJevSglangAdapter(LocalSystemOneAdapter):
     )
     _env_vars = ("OPENJEV_API_KEY",)
 
+    @classmethod
+    def doctor_requirements(cls) -> list[dict]:
+        """What `peira doctor` checks for this adapter.
+
+        Overrides the generic ``_env_vars`` inference: the API key is
+        optional (requests go keyless without it), so its absence is not
+        a failure. The SGLang server is external (doctor makes no network
+        calls); the GPU requirement describes the serving host.
+        """
+        return [
+            {"kind": "gpu",
+             "detail": "the openjev-sglang server (SGLang + Qwen3.6-35B) "
+                       "needs an NVIDIA GPU on its host",
+             "hint": "deploy the server on a CUDA machine per "
+                     "github.com/ekzhang/openjev-sglang, then point "
+                     "api_url= at its /v1/systemone endpoint"},
+        ]
+
     def __init__(
         self,
         model: str | None = None,

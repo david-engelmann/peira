@@ -388,6 +388,20 @@ class SemifAdapter:
     # runner's opt-in response cache is safe namespaced on both.
     cache_namespace = f"semif:{MODEL_ID}@{MODEL_REVISION}"
 
+    @classmethod
+    def doctor_requirements(cls) -> list[dict]:
+        """What `peira doctor` checks for this adapter."""
+        return [
+            {"kind": "binary", "name": "semif-score",
+             "alternatives": ["openjev-score"],
+             "detail": "neither semif-score nor openjev-score on PATH",
+             "hint": "clone github.com/theoleecj/semif, create the venv, "
+                     "and run `pip install -e '.[test]'` per its README"},
+            {"kind": "ram_gb", "min": 3.0,
+             "detail": "SemIf CPU inference needs ~3GB RAM",
+             "hint": "free up RAM or use a bigger machine"},
+        ]
+
     def __init__(
         self,
         model: str | None = None,

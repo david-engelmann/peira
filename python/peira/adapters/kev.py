@@ -170,6 +170,7 @@ class LocalSystemOneAdapter(JevAdapter):
     """
 
     name = "local-systemone"  # overridden by every subclass
+    _doctor_skip = True  # abstract base: never listed by `peira doctor`
     PINNED_MODEL = ""         # overridden by every subclass
     KNOWN_MODELS: dict[str, str] = {}  # overridden by every subclass
     DEFAULT_API_URL = ""      # overridden by every subclass
@@ -307,3 +308,19 @@ class KevAdapter(LocalSystemOneAdapter):
         "github.com/jaredpalmer/kev with the serve extra installed), "
         "then retry."
     )
+
+    @classmethod
+    def doctor_requirements(cls) -> list[dict]:
+        """What `peira doctor` checks for this adapter.
+
+        The Kev server itself is external (doctor makes no network
+        calls), so this checks what the local side needs: enough RAM
+        for the smallest model the server would host. Server reachability
+        is verified by the dry-run, not by doctor.
+        """
+        return [
+            {"kind": "ram_gb", "min": 1.5,
+             "detail": "smallest Kev model (0.5b) needs ~1.5GB RAM on "
+                       "the serving host",
+             "hint": "serve Kev on a machine with more RAM"},
+        ]

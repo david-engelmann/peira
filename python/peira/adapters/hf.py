@@ -152,6 +152,20 @@ class _HFAdapterBase:
     OUTPUT_TOKENS = 0
     supported_primitives = frozenset({"choice", "abstain"})
 
+    @classmethod
+    def doctor_requirements(cls) -> list[dict]:
+        """What `peira doctor` checks for this adapter (inherited by all
+        HF guardrail adapters)."""
+        return [
+            {"kind": "python_package", "name": "torch",
+             "hint": "pip install 'peira[hf]'"},
+            {"kind": "python_package", "name": "transformers",
+             "hint": "pip install 'peira[hf]'"},
+            {"kind": "disk_gb", "min": 10.0,
+             "detail": "HF model weights need ~5-10GB disk",
+             "hint": "free up disk space"},
+        ]
+
     _load_lock = threading.Lock()
 
     def __init_subclass__(cls, **kwargs: Any) -> None:

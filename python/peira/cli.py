@@ -411,6 +411,17 @@ def cmd_replay(args: argparse.Namespace) -> int:
     return EXIT_OK
 
 
+def cmd_doctor(args: argparse.Namespace) -> int:
+    """Check local machine readiness. Read-only: no network, no writes."""
+    from peira.doctor import format_report, run_doctor  # noqa: PLC0415
+
+    report = run_doctor(_repo_root())
+    print(format_report(report))
+    # Exit 0 even when things are missing — doctor is informational, not
+    # a gate. A non-zero exit would break scripting around it.
+    return EXIT_OK
+
+
 def cmd_validate(args: argparse.Namespace) -> int:
     from peira.schema import validate_case_dict
 
@@ -1012,6 +1023,16 @@ def build_parser() -> argparse.ArgumentParser:
     v = sub.add_parser("validate", help="validate a dataset directory")
     v.add_argument("--dataset", required=True)
     v.set_defaults(func=cmd_validate)
+
+    doc = sub.add_parser(
+        "doctor",
+        help="check local machine readiness: system, datasets, adapters",
+        description="Read-only readiness check. Reports Python/RAM/disk/GPU, "
+        "verifies dataset manifests, and checks each adapter's requirements "
+        "(API keys are checked for presence only — values are never printed). "
+        "Makes no network calls, downloads nothing, writes nothing.",
+    )
+    doc.set_defaults(func=cmd_doctor)
 
     rp = sub.add_parser("report", help="render an HTML report from a run artifact")
     rp.add_argument("--run", required=True)

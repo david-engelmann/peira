@@ -215,6 +215,14 @@ class JevAdapter:
     # opt-in response cache is safe namespaced on it.
     cache_namespace = f"jev:{MODEL_ID}"
 
+    @classmethod
+    def doctor_requirements(cls) -> list[dict]:
+        """What `peira doctor` checks for this adapter."""
+        return [
+            {"kind": "env_var", "name": "TYPESAFE_API_KEY",
+             "hint": "export TYPESAFE_API_KEY=..."},
+        ]
+
     def __init__(
         self,
         model: str = MODEL_ID,
