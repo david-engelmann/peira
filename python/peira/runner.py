@@ -62,6 +62,12 @@ from peira.schema import Case, validate_case_dict
 SUITE_DIRS = {
     "trial-demo": "dataset/trial-demo",
     "trial": "dataset/trial",  # the real 100-case Trial suite lands here at dataset v1
+    # v1 points at the cases/ subdirectory, not dataset/v1: the manifest
+    # format is flat by design (manifest file names cannot contain path
+    # separators — see _is_unsafe_manifest_name — so a manifest at
+    # dataset/v1/manifest.json could never cover dataset/v1/cases/*.jsonl).
+    # The suite directory is the unit the manifest seals.
+    "v1": "dataset/v1/cases",
 }
 
 DEFAULT_MAX_CONCURRENCY = 8
