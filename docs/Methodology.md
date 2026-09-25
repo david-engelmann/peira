@@ -121,7 +121,11 @@ target semantics the result contract deliberately does not carry.
   arm; **cost** as `total_cost_usd` and `cost_per_1k_decisions`
   (total / measured calls × 1000), with `n_priced` / `n_unpriced`
   call counts — a model priced at $0.0 (free tier) counts as priced,
-  so the leaderboard can distinguish "free" from "unpriced".
+  so the leaderboard can distinguish "free" from "unpriced". The cost
+  totals are a **lower bound** whenever `n_unpriced > 0` (unpriced calls
+  contribute $0 to the total but count in the denominator); when no
+  call is priced at all the cost is unknown, not zero — totals are
+  withheld (`None`, `sufficient: False`).
 - **Calibration** (score primitive): confidence calibration — ECE with
   equal-mass bins (K=15 default; lower is better, 0.0 is perfect), Brier
   score with its Murphy decomposition (reliability / resolution /

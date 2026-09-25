@@ -89,10 +89,14 @@ class TestPricingTable(unittest.TestCase):
         orig = pricing._TABLE_PATH
         try:
             pricing._TABLE_PATH = orig.parent / "does-not-exist.json"
+            # load_pricing_table is lru-cached: clear it so the swapped
+            # path is actually read.
+            load_pricing_table.cache_clear()
             with self.assertRaises(RuntimeError):
                 load_pricing_table()
         finally:
             pricing._TABLE_PATH = orig
+            load_pricing_table.cache_clear()
 
 
 class TestRunnerCostAuthority(unittest.TestCase):

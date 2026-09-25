@@ -505,10 +505,13 @@ def _check_finite(values: list[float], name: str) -> None:
     on the same input — the Rust core panics per the D-11 caller-bug
     convention (its message text differs from this ``ValueError``'s,
     but the refusal is identical). ``inf`` is rejected too: no peira
-    metric has a defined value at infinity.
+    metric has a defined value at infinity. ``None`` is rejected as
+    well (a missing measurement is a caller bug, e.g. a hand-edited
+    artifact — it must fail loudly, not propagate as a TypeError from
+    ``math.isfinite``).
     """
     for v in values:
-        if not math.isfinite(v):
+        if v is None or not math.isfinite(v):
             raise ValueError(f"{name} must be finite, got {v!r}")
 
 
@@ -2855,8 +2858,16 @@ def cost_summary(
     ``models``: a model priced at $0.0 (free tier) counts as priced —
     only table-missing models are unpriced, so the leaderboard can
     distinguish "free" from "unpriced". Calls without usage (no
-    measurement) are in neither count. All-None with
-    ``sufficient: False`` when no call carried usage.
+    measurement) are in neither count.
+
+    The headline totals are a LOWER BOUND whenever ``n_unpriced > 0``:
+    unpriced calls contribute $0.0 to the numerator (the runner prices
+    unknown models at 0.0) but still count in the denominator, so the
+    per-1k figure dilutes toward zero as unpriced share grows. When NO
+    call is priced (``n_priced == 0``) the cost is unknown, not zero —
+    totals are None with ``sufficient: False`` (a $0.00 with a green
+    flag would be indistinguishable from a genuinely free model).
+    All-None with ``sufficient: False`` also when no call carried usage.
 
     ``pricing_table`` defaults to the pinned package table (the same
     table the runner prices with); pass an explicit table in tests.
@@ -2884,7 +2895,9 @@ def cost_summary(
                 n_unpriced += 1
     _check_finite(costs, "cost_usd")
     n_calls = len(costs)
-    sufficient = n_calls > 0
+    # Unknown cost is not zero cost: with no priced call the totals are
+    # withheld (None, sufficient False), not reported as $0.00.
+    sufficient = n_calls > 0 and n_priced > 0
     total = sum(costs)
     return {
         "total_cost_usd": _round4(total) if sufficient else None,

@@ -2665,9 +2665,40 @@ class TestPhase1BuyerAggregates(unittest.TestCase):
         self.assertEqual(c["n_priced"], 0)
         self.assertEqual(c["n_unpriced"], 0)
 
+    def test_cost_summary_all_unpriced_withheld(self):
+        # P1: all calls unpriced (model missing from table) — the cost is
+        # UNKNOWN, not $0.00. Totals withheld, counts kept for transparency.
+        R = self._urec
+        table = {"models": {"priced": {"usd_per_1m_in": 1.0}}}
+        results = [
+            self._ures(f"c{i}",
+                       R(latency_ms=1.0, cost_usd=0.0, model="unknown"),
+                       R(latency_ms=1.0, cost_usd=0.0, model="unknown"))
+            for i in range(3)
+        ]
+        c = cost_summary(results, table)
+        self.assertFalse(c["sufficient"])
+        self.assertIsNone(c["total_cost_usd"])
+        self.assertIsNone(c["cost_per_1k_decisions"])
+        self.assertEqual(c["n_calls"], 6)
+        self.assertEqual(c["n_priced"], 0)
+        self.assertEqual(c["n_unpriced"], 6)
+
+    def test_cost_summary_rejects_none_cost(self):
+        # P3: a None cost_usd (hand-edited artifact) fails loudly with
+        # ValueError, not TypeError from math.isfinite.
+        R = self._urec
+        results = [self._ures("c0",
+                              R(latency_ms=1.0, cost_usd=None, model="m"),
+                              R(latency_ms=1.0, cost_usd=0.01, model="m"))]
+        with self.assertRaises(ValueError):
+            cost_summary(results, {"models": {"m": {}}})
+
     def test_cost_summary_default_table(self):
         # No table passed: the pinned package table loads (same table
-        # the runner prices with) and every call is classified.
+        # the runner prices with) and every call is classified. The fake
+        # model names aren't in the table, so all calls are unpriced —
+        # cost unknown, totals withheld (P1), counts still reported.
         R = self._urec
         results = [self._ures(f"c{i}",
                               R(latency_ms=1.0, cost_usd=0.01,
@@ -2676,9 +2707,12 @@ class TestPhase1BuyerAggregates(unittest.TestCase):
                                 model="neither-is-this"))
                    for i in range(3)]
         c = cost_summary(results)
-        self.assertTrue(c["sufficient"])
+        self.assertFalse(c["sufficient"])
+        self.assertIsNone(c["total_cost_usd"])
+        self.assertIsNone(c["cost_per_1k_decisions"])
         self.assertEqual(c["n_calls"], 6)
-        self.assertEqual(c["n_priced"] + c["n_unpriced"], 6)
+        self.assertEqual(c["n_priced"], 0)
+        self.assertEqual(c["n_unpriced"], 6)
 
     def test_cost_summary_rejects_nonfinite(self):
         R = self._urec
