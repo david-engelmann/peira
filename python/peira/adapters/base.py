@@ -97,7 +97,12 @@ class ChoiceOutput:
 
 @dataclass(frozen=True)
 class ScoreOutput:
-    score: float  # 0..1 raw score — the measurement signal (Brier, ECE)
+    score: float  # 0..1 — P(positive_decision), the probability of the
+    # case's positive class (the score contract, 2026-09-25). The case
+    # defines positive_decision; the adapter reports its calibrated
+    # probability for that class. Peira evaluates the score's calibration
+    # (ECE/Brier) against binary gold labels: y=1 iff expected_decision
+    # == positive_decision.
     decision: str  # derived by the adapter's own threshold; "" only when abstained
     confidence: float | None = None  # 0..1 confidence in the decision; may differ from score
     abstained: bool = False
