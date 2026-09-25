@@ -44,6 +44,35 @@ def _demo_cases(n=6):
     return load_cases(REPO_ROOT / "dataset" / "trial-demo")[:n]
 
 
+# One nonce for the whole module: every scripted mock and every run in
+# these tests must share the same run namespace, or scripts match
+# nothing. (Cross-run unlinkability is covered in test_mock.py.)
+_CONC_NONCE = "concurrency-test-nonce"
+
+
+def _mock(cases, seed=0):
+    """MockAdapter with a harness-built script under the shared nonce."""
+    return MockAdapter(
+        script=MockAdapter.script_for(cases, seed=seed,
+                                      run_nonce=_CONC_NONCE))
+
+
+def _run(cases, seed=0, **kw):
+    """run_suite with a scripted mock under the shared nonce."""
+    kw.setdefault("run_nonce", _CONC_NONCE)
+    return run_suite(_mock(cases, seed=seed), cases, "trial-demo",
+                     "0.1.0-demo", seed=seed, **kw)
+
+
+def _counting(cases, seed=0, **kw):
+    """CountingAdapter with a harness-built script under the shared nonce."""
+    return CountingAdapter(
+        script=MockAdapter.script_for(cases, seed=seed,
+                                      run_nonce=_CONC_NONCE),
+        **kw,
+    )
+
+
 class FakeClock:
     def __init__(self):
         self.t = 1000.0
@@ -175,6 +204,99 @@ class TestAdaptiveConcurrency(unittest.TestCase):
     def test_invalid_max_limit(self):
         with self.assertRaises(ValueError):
             AdaptiveConcurrency(0)
+
+    def test_release_wakes_only_fillable_waiters(self):
+        # Thundering-herd regression test: with many waiters queued, a
+        # slot release must wake only as many as can actually proceed —
+        # not the whole queue. notify_all would wake ~30 waiters per
+        # release here (~hundreds total); the targeted wakeup stays
+        # O(1) per release.
+        async def go():
+            c = AdaptiveConcurrency(8, initial=2, time_fn=FakeClock())
+            woken_total = 0
+            orig_notify = c._cond.notify
+
+            def counting(n=1):
+                nonlocal woken_total
+                woken_total += n
+                return orig_notify(n)
+
+            c._cond.notify = counting
+
+            async def waiter():
+                async with c.slot():
+                    pass
+
+            # Occupy both slots, then queue 30 waiters behind them.
+            async with c.slot():
+                async with c.slot():
+                    tasks = [asyncio.create_task(waiter())
+                             for _ in range(30)]
+                    for _ in range(1000):
+                        if len(c._cond._waiters) >= 30:
+                            break
+                        await asyncio.sleep(0)
+                    self.assertEqual(len(c._cond._waiters), 30)
+                # Inner release: exactly one waiter may proceed.
+            await asyncio.gather(*tasks)
+            return woken_total
+
+        total = asyncio.run(go())
+        # 32 slot releases (2 holders + 30 waiters), each waking at most
+        # the freed slots. Generous bound; notify_all would give ~900.
+        self.assertLessEqual(total, 64)
+
+    def test_fast_workload_reaches_max_limit(self):
+        # Instant (local-adapter-like) calls must still fill the
+        # slow-start ramp: the targeted wakeup must not starve the
+        # headroom created by limit growth.
+        async def go():
+            c = AdaptiveConcurrency(8, time_fn=FakeClock())
+
+            async def worker():
+                async with c.slot():
+                    pass
+                c.on_success()
+
+            await asyncio.gather(*[worker() for _ in range(50)])
+            return c.limit
+
+        self.assertEqual(asyncio.run(go()), 8)
+
+    def test_rate_limited_provider_still_backs_off(self):
+        # API-adapter protection is unchanged: a provider that 429s
+        # above 4 concurrent calls must drive a multiplicative cut, and
+        # post-cut in-flight must respect the lowered limit.
+        async def go():
+            c = AdaptiveConcurrency(16, time_fn=FakeClock())
+            in_flight = 0
+            peak_after_cut = 0
+            cut_seen = asyncio.Event()
+
+            async def worker():
+                nonlocal in_flight, peak_after_cut
+                async with c.slot():
+                    in_flight += 1
+                    try:
+                        if in_flight > 4:
+                            # Provider 429s: congestion signal.
+                            c.on_congestion()
+                            cut_seen.set()
+                            return
+                        if cut_seen.is_set():
+                            peak_after_cut = max(peak_after_cut,
+                                                 in_flight)
+                        await asyncio.sleep(0.001)
+                    finally:
+                        in_flight -= 1
+                c.on_success()
+
+            await asyncio.gather(*[worker() for _ in range(40)])
+            return c.limit, peak_after_cut
+
+        limit, peak = asyncio.run(go())
+        self.assertLess(limit, 16)  # a cut happened
+        self.assertLessEqual(peak, limit)  # and it is respected
 
     def test_slot_bounds_in_flight(self):
         async def go():
@@ -314,31 +436,34 @@ class CountingAdapter(MockAdapter):
 
 class TestRunnerRetry(unittest.TestCase):
     def test_permanent_error_not_retried(self):
-        adapter = CountingAdapter()
+        cases = _demo_cases(2)
+        adapter = _counting(cases, seed=0)
         adapter.failures = [ProviderError("bad", status_code=400)] * 10
-        art = run_suite(adapter, _demo_cases(2), "trial-demo", "0.1.0-demo",
-                        max_attempts=3, seed=0)
+        art = run_suite(adapter, cases, "trial-demo", "0.1.0-demo",
+                        max_attempts=3, seed=0, run_nonce=_CONC_NONCE)
         # 2 cases x 2 variants, one try each: permanent errors never retry.
         self.assertEqual(adapter.calls, 4)
         for r in art.results:
             self.assertTrue(r["benign"]["malformed"])
 
     def test_transient_then_success(self):
-        adapter = CountingAdapter()
+        cases = _demo_cases(1)
+        adapter = _counting(cases, seed=0)
         adapter.failures = [ProviderError("busy", status_code=503),
                             ProviderError("busy", status_code=503)]
-        art = run_suite(adapter, _demo_cases(1), "trial-demo", "0.1.0-demo",
-                        max_attempts=3, seed=0)
+        art = run_suite(adapter, cases, "trial-demo", "0.1.0-demo",
+                        max_attempts=3, seed=0, run_nonce=_CONC_NONCE)
         # Benign: fail, fail, succeed. Attacked: no failures left.
         self.assertEqual(adapter.calls, 4)
         attacked = art.results[0]["attacked"]
         self.assertFalse(attacked["malformed"])
 
     def test_retries_exhausted(self):
-        adapter = CountingAdapter()
+        cases = _demo_cases(1)
+        adapter = _counting(cases, seed=0)
         adapter.failures = [ProviderError("down", status_code=500)] * 10
-        art = run_suite(adapter, _demo_cases(1), "trial-demo", "0.1.0-demo",
-                        max_attempts=3, seed=0)
+        art = run_suite(adapter, cases, "trial-demo", "0.1.0-demo",
+                        max_attempts=3, seed=0, run_nonce=_CONC_NONCE)
         # benign: 3 attempts; attacked: 3 attempts
         self.assertEqual(adapter.calls, 6)
         self.assertTrue(art.results[0]["benign"]["malformed"])
@@ -350,13 +475,13 @@ class TestRunnerRetry(unittest.TestCase):
         async def fake_sleep(d):
             delays.append(d)
 
-        adapter = CountingAdapter()
+        adapter = _counting(_demo_cases(1), seed=0)
         adapter.failures = [ProviderError("slow", status_code=429,
                                           retry_after=3600),
                             ProviderError("ok-now", status_code=500)]
         with mock.patch("asyncio.sleep", fake_sleep):
             run_suite(adapter, _demo_cases(1), "trial-demo", "0.1.0-demo",
-                      max_attempts=3, seed=0)
+                      max_attempts=3, seed=0, run_nonce=_CONC_NONCE)
         self.assertIn(60.0, delays)
         self.assertTrue(all(d <= MAX_RETRY_AFTER_S for d in delays))
 
@@ -368,14 +493,15 @@ class TestRunnerRetry(unittest.TestCase):
             runs.append(d)
 
         for _ in range(2):
-            adapter = CountingAdapter()
+            cases = _demo_cases(2)
+            adapter = _counting(cases, seed=99)
             # Plenty of failures: every variant fails its first attempt
             # (whatever order it runs in), retries once, then succeeds.
             adapter.failures = [ProviderError("x", status_code=500)] * 100
             with mock.patch("asyncio.sleep", fake_sleep):
-                run_suite(adapter, _demo_cases(2), "trial-demo",
+                run_suite(adapter, cases, "trial-demo",
                           "0.1.0-demo", max_attempts=2, seed=99,
-                          max_concurrency=2)
+                          max_concurrency=2, run_nonce=_CONC_NONCE)
         # 2 cases x 2 variants x 1 retry each = 4 delays per run. The
         # jitter seed is (run seed, dispatch index, attempt), so the
         # delay *set* is identical across runs even though completion
@@ -402,9 +528,13 @@ class TestRunnerRetry(unittest.TestCase):
                 _t.sleep(0.3)
                 return super().decide(case_input, primitive, context)
 
-        art = run_suite(SlowAdapter(), _demo_cases(1), "trial-demo",
-                        "0.1.0-demo", call_timeout=0.05, max_attempts=2,
-                        seed=0)
+        art = run_suite(
+            SlowAdapter(
+                script=MockAdapter.script_for(
+                    _demo_cases(1), seed=0, run_nonce=_CONC_NONCE)),
+            _demo_cases(1), "trial-demo",
+            "0.1.0-demo", call_timeout=0.05, max_attempts=2,
+            seed=0, run_nonce=_CONC_NONCE)
         # Every attempt times out -> malformed after 2 attempts x 2 variants.
         self.assertTrue(art.results[0]["benign"]["malformed"])
         self.assertTrue(art.results[0]["attacked"]["malformed"])
@@ -420,20 +550,22 @@ class TestAtomicTranscriptCapture(unittest.TestCase):
         class TranscriptAdapter(MockAdapter):
             def decide(self, case_input, primitive, context):
                 out = super().decide(case_input, primitive, context)
+                # B2: the context is opaque — the adapter only ever sees
+                # the pseudonymous call id, so that is all it can echo.
                 return dataclasses.replace(
                     out,
-                    transcript={
-                        "case_id": context.case_id,
-                        "variant": context.arm,
-                    },
+                    transcript={"call_id": context.call_id},
                 )
 
         with TemporaryDirectory() as tmp:
             tpath = str(Path(tmp) / "t.jsonl")
+            cases = _demo_cases(8)
             run_suite(
-                TranscriptAdapter(), _demo_cases(8), "trial-demo",
-                "0.1.0-demo", max_concurrency=8, seed=3,
-                transcript_path=tpath,
+                TranscriptAdapter(
+                    script=MockAdapter.script_for(
+                        cases, seed=3, run_nonce=_CONC_NONCE)),
+                cases, "trial-demo", "0.1.0-demo", max_concurrency=8,
+                seed=3, transcript_path=tpath, run_nonce=_CONC_NONCE,
             )
             entries = [
                 json.loads(line) for line in open(tpath, encoding="utf-8")
@@ -441,12 +573,10 @@ class TestAtomicTranscriptCapture(unittest.TestCase):
         self.assertEqual(len(entries), 16)  # 8 cases x 2 variants
         for entry in entries:
             self.assertIsNotNone(entry["raw"])
-            self.assertEqual(
-                entry["raw"]["case_id"], entry["case_id"]
-            )
-            self.assertEqual(
-                entry["raw"]["variant"], entry["variant"]
-            )
+            # The raw payload the adapter attached landed on the entry
+            # for the exact call the adapter saw — no cross-talk between
+            # concurrent calls sharing one adapter instance.
+            self.assertEqual(entry["raw"]["call_id"], entry["call_id"])
 
     def test_non_dict_transcript_is_malformed(self):
         # A transcript that is not a dict (or None) is an adapter bug:
@@ -459,9 +589,13 @@ class TestAtomicTranscriptCapture(unittest.TestCase):
 
         with TemporaryDirectory() as tmp:
             tpath = str(Path(tmp) / "t.jsonl")
+            cases = _demo_cases(1)
             art = run_suite(
-                BadTranscriptAdapter(), _demo_cases(1), "trial-demo",
-                "0.1.0-demo", seed=0, transcript_path=tpath,
+                BadTranscriptAdapter(
+                    script=MockAdapter.script_for(
+                        cases, seed=0, run_nonce=_CONC_NONCE)),
+                cases, "trial-demo", "0.1.0-demo", seed=0,
+                transcript_path=tpath, run_nonce=_CONC_NONCE,
             )
             entries = [
                 json.loads(line) for line in open(tpath, encoding="utf-8")
@@ -513,8 +647,7 @@ class TestDeterministicOrdering(unittest.TestCase):
 
     def test_identical_records_across_concurrency_levels(self):
         def scrubbed(concurrency):
-            art = run_suite(MockAdapter(), _demo_cases(6), "trial-demo",
-                            "0.1.0-demo", max_concurrency=concurrency, seed=5)
+            art = _run(_demo_cases(6), seed=5, max_concurrency=concurrency)
             results = json.loads(json.dumps(art.results))
             for r in results:
                 for variant in ("benign", "attacked"):
@@ -533,12 +666,12 @@ class TestDeterministicOrdering(unittest.TestCase):
 
 class TestResumeConcurrency(unittest.TestCase):
     def _partial_first_n(self, cases, n, tmp):
-        adapter = MockAdapter()
+        adapter = _mock(cases, seed=0)
         table = load_pricing_table()
         from peira.runner import _write_partial, run_case
         indexed = {c.case_id: i for i, c in enumerate(cases)}
         results = [run_case(adapter, c, seed=0, dispatch_base=2 * indexed[c.case_id],
-                            pricing_table=table)
+                            pricing_table=table, run_nonce=_CONC_NONCE)
                    for c in cases[:n]]
         partial_path = Path(tmp) / "p.partial.json"
         _write_partial(partial_path, adapter, cases, "trial-demo",
@@ -564,9 +697,8 @@ class TestResumeConcurrency(unittest.TestCase):
             from peira.runner import validate_partial
             done, prior = validate_partial(partial, MockAdapter(), cases,
                                            "trial-demo", "0.1.0-demo", seed=0)
-            art = run_suite(MockAdapter(), cases, "trial-demo", "0.1.0-demo",
-                            already_done=done, prior_results=prior,
-                            seed=0, max_concurrency=4)
+            art = _run(cases, seed=0, already_done=done,
+                       prior_results=prior, max_concurrency=4)
             ids = [r["case_id"] for r in art.results]
             self.assertEqual(ids, [c.case_id for c in cases])
             self.assertEqual(len(set(ids)), len(ids))
@@ -583,9 +715,8 @@ class TestResumeConcurrency(unittest.TestCase):
             from peira.runner import validate_partial
             done, prior = validate_partial(partial, MockAdapter(), cases,
                                            "trial-demo", "0.1.0-demo", seed=0)
-            art = run_suite(MockAdapter(), cases, "trial-demo", "0.1.0-demo",
-                            already_done=done, prior_results=prior,
-                            seed=0, max_concurrency=1)
+            art = _run(cases, seed=0, already_done=done,
+                       prior_results=prior, max_concurrency=1)
             self.assertEqual(art.max_concurrency, 1)
             self.assertEqual(len(art.results), 4)
 
@@ -594,8 +725,8 @@ class TestTranscriptAndReplay(unittest.TestCase):
     def _run_with_transcript(self, tmp, n=4, seed=11):
         cases = _demo_cases(n)
         tpath = Path(tmp) / "t.jsonl"
-        art = run_suite(MockAdapter(), cases, "trial-demo", "0.1.0-demo",
-                        seed=seed, max_concurrency=4, transcript_path=tpath)
+        art = _run(cases, seed=seed, max_concurrency=4,
+                   transcript_path=tpath)
         return cases, art, tpath
 
     def test_transcript_entries_validate(self):
@@ -653,9 +784,8 @@ class TestTranscriptAndReplay(unittest.TestCase):
         with TemporaryDirectory() as tmp:
             tpath = Path(tmp) / "t.jsonl"
             cases = _demo_cases(2)
-            art = run_suite(MockAdapter(), cases, "trial-demo",
-                            "0.1.0-demo", seed=11, max_concurrency=16,
-                            transcript_path=tpath)
+            art = _run(cases, seed=11, max_concurrency=16,
+                       transcript_path=tpath)
             entries = load_transcript(tpath)
             self.assertTrue(all(e["max_concurrency"] == 16
                                 for e in entries))
@@ -749,16 +879,12 @@ class TestTranscriptAndReplay(unittest.TestCase):
         with TemporaryDirectory() as tmp:
             tpath = Path(tmp) / "t.jsonl"
             cases = _demo_cases(4)
-            phase1 = run_suite(MockAdapter(), cases[:3], "trial-demo",
-                               "0.1.0-demo", seed=9, transcript_path=tpath)
+            phase1 = _run(cases[:3], seed=9, transcript_path=tpath)
             done = {cases[0].case_id, cases[1].case_id}
             prior = [PerCaseResult.from_dict(r)
                      for r in phase1.results[:2]]
-            resumed = run_suite(
-                MockAdapter(), cases, "trial-demo", "0.1.0-demo", seed=9,
-                already_done=done, prior_results=prior,
-                transcript_path=tpath,
-            )
+            resumed = _run(cases, seed=9, already_done=done,
+                           prior_results=prior, transcript_path=tpath)
             entries = load_transcript(tpath)
             self.assertEqual(len(entries), 8)  # 4 cases x 2 variants
             self.assertEqual(
@@ -781,8 +907,7 @@ class TestTranscriptAndReplay(unittest.TestCase):
                             usage["latency_ms"] = 0.0
                 return out
 
-            whole = run_suite(MockAdapter(), cases, "trial-demo",
-                              "0.1.0-demo", seed=9)
+            whole = _run(cases, seed=9)
             self.assertEqual(scrub(resumed.results), scrub(whole.results))
 
     def test_fresh_run_truncates_stale_transcript(self):
@@ -791,11 +916,9 @@ class TestTranscriptAndReplay(unittest.TestCase):
         with TemporaryDirectory() as tmp:
             tpath = Path(tmp) / "t.jsonl"
             cases = _demo_cases(2)
-            run_suite(MockAdapter(), cases, "trial-demo", "0.1.0-demo",
-                      seed=1, transcript_path=tpath)
+            _run(cases, seed=1, transcript_path=tpath)
             self.assertEqual(len(load_transcript(tpath)), 4)
-            run_suite(MockAdapter(), cases[:1], "trial-demo",
-                      "0.1.0-demo", seed=1, transcript_path=tpath)
+            _run(cases[:1], seed=1, transcript_path=tpath)
             entries = load_transcript(tpath)
             self.assertEqual(len(entries), 2)
             self.assertEqual(
@@ -807,14 +930,17 @@ class TestResponseCache(unittest.TestCase):
     def test_miss_then_hit(self):
         with TemporaryDirectory() as tmp:
             cache_dir = Path(tmp) / "cache"
-            a1 = CountingAdapter()
-            art1 = run_suite(a1, _demo_cases(3), "trial-demo", "0.1.0-demo",
-                             seed=0, cache_dir=cache_dir, max_concurrency=4)
+            cases = _demo_cases(3)
+            a1 = _counting(cases, seed=0)
+            art1 = run_suite(a1, cases, "trial-demo", "0.1.0-demo",
+                             seed=0, cache_dir=cache_dir, max_concurrency=4,
+                             run_nonce=_CONC_NONCE)
             first_calls = a1.calls
             self.assertGreater(first_calls, 0)
-            a2 = CountingAdapter()
-            art2 = run_suite(a2, _demo_cases(3), "trial-demo", "0.1.0-demo",
-                             seed=0, cache_dir=cache_dir, max_concurrency=4)
+            a2 = _counting(cases, seed=0)
+            art2 = run_suite(a2, cases, "trial-demo", "0.1.0-demo",
+                             seed=0, cache_dir=cache_dir, max_concurrency=4,
+                             run_nonce=_CONC_NONCE)
             self.assertEqual(a2.calls, 0)  # everything served from cache
             self.assertEqual(art2.config["cache"]["hits"], first_calls)
             self.assertEqual(art2.config["cache"]["misses"], 0)
@@ -868,8 +994,7 @@ class TestResponseCache(unittest.TestCase):
             self.assertGreater(a2.calls, 0)  # namespace differs -> misses
 
     def test_cache_disabled_by_default(self):
-        art = run_suite(MockAdapter(), _demo_cases(2), "trial-demo",
-                        "0.1.0-demo", seed=0)
+        art = _run(_demo_cases(2), seed=0)
         self.assertNotIn("cache", art.config)
 
     def test_corrupt_entry_is_miss(self):
@@ -951,8 +1076,7 @@ class TestCancellation(unittest.TestCase):
 
 class TestConcurrencyArtifact(unittest.TestCase):
     def test_max_concurrency_sealed(self):
-        art = run_suite(MockAdapter(), _demo_cases(2), "trial-demo",
-                        "0.1.0-demo", seed=0, max_concurrency=5)
+        art = _run(_demo_cases(2), seed=0, max_concurrency=5)
         self.assertEqual(art.max_concurrency, 5)
         self.assertEqual(art.config["max_concurrency"], 5)
         self.assertTrue(art.verify())
@@ -962,8 +1086,7 @@ class TestConcurrencyArtifact(unittest.TestCase):
         self.assertTrue(back.verify())
 
     def test_max_concurrency_bool_rejected(self):
-        art = run_suite(MockAdapter(), _demo_cases(1), "trial-demo",
-                        "0.1.0-demo", seed=0)
+        art = _run(_demo_cases(1), seed=0)
         d = json.loads(art.to_json())
         d["max_concurrency"] = True
         with self.assertRaisesRegex(ValueError, "must be an integer"):

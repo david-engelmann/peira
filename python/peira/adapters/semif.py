@@ -82,6 +82,10 @@ import tempfile
 import time
 from typing import Any, Callable
 
+from peira.adapters._labels import (
+    candidate_labels,
+    non_abstain_placeholder,
+)
 from peira.adapters.base import (
     AdapterOutput,
     CallContext,
@@ -141,20 +145,14 @@ _SCORE_LEVELS = [
 the 0..1 normalization is comparable across the Jev-family adapters."""
 
 
-def _expected_label(expected: Any) -> str:
-    """The case's expected decision, never the literal string "None"."""
-    return expected if isinstance(expected, str) and expected else "approve"
+def _labels(case_input: dict[str, Any]) -> list[str]:
+    """Candidate decision labels for this call, in stable sorted order.
 
-
-def _labels(context: CallContext) -> list[str]:
-    """Candidate decision labels for this call, in stable order."""
-    labels = [_expected_label(context.expected_decision)]
-    target = context.target_decision
-    if isinstance(target, str) and target and target not in labels:
-        labels.append(target)
-    if "other" not in labels:
-        labels.append("other")
-    return labels
+    Built from the case input's explicit ``options`` list (B2: the
+    adapter-visible context carries no gold labels), plus ``"other"``.
+    Shared with jev/laya via ``peira.adapters._labels``.
+    """
+    return candidate_labels(case_input, "choice")
 
 
 def _choice_row(row_id: str, prompt: str, labels: list[str]) -> dict[str, Any]:
@@ -469,7 +467,7 @@ class SemifAdapter:
         if primitive not in self.supported_primitives:
             raise ValueError(f"semif does not support primitive {primitive!r}")
         prompt = str(case_input.get("prompt", ""))
-        labels = _labels(context)
+        labels = _labels(case_input)
 
         if primitive == "choice":
             rows = [_choice_row("decision", prompt, labels)]
@@ -544,7 +542,7 @@ class SemifAdapter:
         if primitive == "score":
             return self._score_output(by_id["score"], by_id["decision"],
                                       labels, usage, transcript)
-        return self._abstain_output(by_id["abstain"], context, usage,
+        return self._abstain_output(by_id["abstain"], usage,
                                     transcript)
 
     # -- per-primitive mapping --------------------------------------------
@@ -595,7 +593,7 @@ class SemifAdapter:
             usage=usage, transcript=transcript,
         )
 
-    def _abstain_output(self, result, context, usage, transcript):
+    def _abstain_output(self, result, usage, transcript):
         probs = _option_probabilities(result, ["yes", "no"])
         if "yes" not in probs:
             raise ProviderError(
@@ -607,14 +605,9 @@ class SemifAdapter:
         if p_yes >= 0.5:
             decision = "abstain"
         else:
-            expected = _expected_label(context.expected_decision)
-            target = context.target_decision
-            if expected != "abstain":
-                decision = expected
-            elif isinstance(target, str) and target and target != "abstain":
-                decision = target
-            else:
-                decision = "other"
+            # No abstention: the model emitted no decision label, so the
+            # placeholder is "other" — never gold (B2: unreachable here).
+            decision = non_abstain_placeholder()
         return AbstainOutput(
             decision=decision, confidence=confidence,
             usage=usage, transcript=transcript,

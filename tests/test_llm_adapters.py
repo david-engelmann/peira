@@ -234,18 +234,20 @@ def _without(*names):
 
 CASE = {
     "prompt": "Should the refund be approved?",
+    # B2: the per-call decision enum is built from the input's explicit
+    # options — the adapter-visible context carries no gold labels.
+    "options": ["approve", "deny"],
 }
 
 
-def _ctx(expected="approve", target=None, attacked=False):
-    """Trial context for adapter unit tests (the runner builds the real one)."""
+def _ctx(**over):
+    """Opaque adapter-visible context for adapter unit tests.
+
+    The runner builds the real one; it carries only a pseudonymous
+    call id — no case id, no arm, no gold labels.
+    """
     from peira.adapters.base import CallContext
-    return CallContext(
-        case_id="c1",
-        arm="attacked" if attacked else "benign",
-        expected_decision=expected,
-        target_decision=target,
-    )
+    return CallContext(call_id=over.get("call_id", "call-test"))
 
 GOOD_JSON = json.dumps({
     "decision": "approve", "confidence": 0.73, "reason": "looks fine",
@@ -369,7 +371,7 @@ class TestOpenAIShape(unittest.TestCase):
             "json_schema": {
                 "name": "peira_decision",
                 "strict": True,
-                "schema": _expected_schema(["approve", "other"]),
+                "schema": _expected_schema(["approve", "deny", "other"]),
             },
         })
 
@@ -440,7 +442,7 @@ class TestAnthropicShape(unittest.TestCase):
         self.assertEqual(self.calls[0]["tools"],
                          [{"name": "peira_decision",
                            "input_schema": _expected_schema(
-                               ["approve", "other"])}])
+                               ["approve", "deny", "other"])}])
 
     def test_no_seed_param_and_null_seed_in_transcript(self):
         out = AnthropicAdapter(seed=5).decide(CASE, "choice", _ctx())
@@ -480,7 +482,7 @@ class TestGoogleShape(unittest.TestCase):
         config = self.configs[0]
         self.assertEqual(config["response_mime_type"], "application/json")
         self.assertEqual(config["response_schema"],
-                         _expected_schema(["approve", "other"]))
+                         _expected_schema(["approve", "deny", "other"]))
 
     def test_temperature_zero_and_seed(self):
         GoogleAdapter().decide(CASE, "choice", _ctx())
@@ -519,10 +521,11 @@ class TestPerCallEnum(unittest.TestCase):
         self.addCleanup(self._e.__exit__, None, None, None)
         self.addCleanup(self._m.__exit__, None, None, None)
 
-    def test_enum_includes_target_decision(self):
+    def test_enum_comes_from_input_options(self):
+        # B2: the enum is built from the input's explicit options — the
+        # opaque context carries no target to include.
         case = dict(CASE, junk_key="ignored", junk_obj=object())
-        OpenAIAdapter().decide(case, "choice",
-                               _ctx(target="deny", attacked=True))
+        OpenAIAdapter().decide(case, "choice", _ctx())
         schema = self.calls[0]["response_format"]["json_schema"]["schema"]
         self.assertEqual(schema["properties"]["decision"]["enum"],
                          ["approve", "deny", "other"])
@@ -531,14 +534,12 @@ class TestPerCallEnum(unittest.TestCase):
         payload = json.dumps({"decision": "choose A", "confidence": 0.6,
                               "reason": "r"})
         self.script[0] = _openai_completion(payload)
-        case = dict(CASE)
-        out = OpenAIAdapter().decide(case, "choice",
-                                     _ctx(expected="emergency-dept",
-                                          target="choose A"))
+        case = dict(CASE, options=["emergency-dept", "choose A"])
+        out = OpenAIAdapter().decide(case, "choice", _ctx())
         self.assertEqual(out.decision, "choose A")
         schema = self.calls[0]["response_format"]["json_schema"]["schema"]
         self.assertEqual(schema["properties"]["decision"]["enum"],
-                         ["emergency-dept", "choose A", "other"])
+                         ["choose A", "emergency-dept", "other"])
 
     def test_noul_enum_allows_abstain(self):
         mod, calls, _ = _make_anthropic([_anthropic_message(
@@ -572,7 +573,7 @@ class TestScorePrimitive(unittest.TestCase):
         self.assertEqual(out.confidence, 0.8)
         self.assertEqual(validate_output(out, "score"), [])
         schema = calls[0]["response_format"]["json_schema"]["schema"]
-        self.assertEqual(schema, _expected_schema(["deny", "other"],
+        self.assertEqual(schema, _expected_schema(["approve", "deny", "other"],
                                                  primitive="score"))
 
     def test_abstained_score_convention(self):

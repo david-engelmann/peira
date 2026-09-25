@@ -34,10 +34,17 @@ like ``["approve", "reject", "other"]`` would make nearly every case
 ineligible (benign decision != expected_decision) and silently
 invalidate the benchmark. So there is ONE canonical schema template
 (``SCHEMA_TEMPLATE``) and the ``decision`` enum is injected per call
-from labels present in ``case_input``::
+from the case input's explicit ``options`` list (B2: the
+adapter-visible context carries no gold labels)::
 
-    [expected_decision] + ([target_decision] if present and different)
-        + (["abstain"] if primitive == "abstain") + ["other"]
+    sorted(set(case_input["options"])
+           | ({"abstain"} if primitive == "abstain" else set())
+           | {"other"})
+
+``"other"`` keeps the vocabulary open (the model can always answer
+outside the listed options); ``"abstain"`` on the abstain primitive is
+a legal deliberate-abstention decision (``abstained`` stays
+``False``). See ``peira.adapters._labels``.
 
 Confidence is UNCALIBRATED
 --------------------------
@@ -82,6 +89,7 @@ import time
 from dataclasses import dataclass
 from typing import Any
 
+from peira.adapters._labels import candidate_labels
 from peira.adapters.base import (
     AdapterOutput,
     CallContext,
@@ -212,21 +220,15 @@ def _require_genai() -> Any:
 # ---------------------------------------------------------------------------
 
 def _decision_labels(
-    expected: Any, target: Any, primitive: str
+    case_input: dict[str, Any], primitive: str
 ) -> list[str]:
-    """Per-call decision enum: the case's own labels, open vocabulary."""
-    labels: list[str] = []
-    for label in (expected, target):
-        if isinstance(label, str) and label and label not in labels:
-            labels.append(label)
-    if primitive == "abstain" and "abstain" not in labels:
-        # A deliberate abstention is a legal abstain *decision* (abstained
-        # stays False); a provider refusal is a different thing and is
-        # reported via abstained=True.
-        labels.append("abstain")
-    if "other" not in labels:
-        labels.append("other")
-    return labels
+    """Per-call decision enum: the case's own options, open vocabulary.
+
+    Built from the case input's explicit ``options`` list — never from
+    trial bookkeeping (B2: the adapter-visible context carries no gold
+    labels). Sorted and deduplicated via ``peira.adapters._labels``.
+    """
+    return candidate_labels(case_input, primitive)
 
 
 def _build_schema(labels: list[str], primitive: str) -> dict[str, Any]:
@@ -511,13 +513,12 @@ class _StructuredLLMBase:
             )
         # The input dict is the case's verbatim input; the candidate
         # decision labels (the open vocabulary needs them per call) come
-        # from the trial context, never from input keys.
+        # from the input's explicit "options" list — never from trial
+        # bookkeeping (B2: the context carries no gold).
         prompt = case_input.get("prompt", "")
         if not isinstance(prompt, str):
             prompt = str(prompt)
-        labels = _decision_labels(
-            context.expected_decision, context.target_decision, primitive
-        )
+        labels = _decision_labels(case_input, primitive)
         schema = _build_schema(labels, primitive)
         user_text = "DECISION CONTEXT:\n" + prompt
 

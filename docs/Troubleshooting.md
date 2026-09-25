@@ -542,3 +542,35 @@ same drift handling as above.
 **`jev returned non-numeric confidence: ...` / `jev returned non-numeric abstain: ...`**
 Cause: a confidence/probability field wasn't a number. Clamped only
 when numeric; non-numeric is terminal. Fix: report it.
+
+**`error: <run> not found` (from `peira compare`)**
+Cause: one of the two artifact paths doesn't exist. Fix: check the
+paths — `peira compare` takes two positional artifact files.
+
+**`error: artifacts are not comparable: ...`**
+Cause: the two artifacts weren't scored under the same trial — the
+message names the mismatch: different `suite`, different
+`dataset_version`, different `artifact_version` (measurement contract),
+or different `manifest_sha256` (dataset bytes). Fix: compare runs of
+the same suite and dataset version; re-run the adapter if the dataset
+moved on. Comparing across dataset versions is refused deliberately —
+the per-case outcomes wouldn't be paired observations of the same
+trial.
+
+**`error: artifacts share no cases: nothing to compare`**
+Cause: the two artifacts have no `case_id` overlap (different case
+sets, or one run was truncated). Fix: make sure both runs covered the
+same suite; compare always uses the case-id intersection.
+
+**`error: cannot write comparison to <out> (...)`**
+Cause: `peira compare --out` points somewhere unwritable — a missing
+parent directory, or a permissions problem. Fix: create the directory
+first, or pick a writable path.
+
+**`peira compare` says "withheld" for McNemar / Bradley-Terry / deltas**
+Cause: not an error — the sample-size discipline. McNemar and
+Bradley-Terry need paired *choice*-primitive cases (score/abstain
+cases don't enter the right/wrong test); Bradley-Terry needs ≥ 30
+comparisons; deltas need ≥ 30 paired cases. Below the gates the
+estimate is withheld rather than fabricated — the head-to-head counts
+and per-family win rates still render.

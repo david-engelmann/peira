@@ -10,26 +10,27 @@ DECISION MAPPING (read before scoring). A guardrail does not speak the
 case's domain vocabulary: the dataset uses 40+ decision labels
 (``deny``, ``approve``, ``refuse``, ``hold``, ``emergency-dept``,
 ``choose A``, ...), so emitting a fixed ``approve``/``reject`` pair
-would be dishonest noise. Instead:
+would be dishonest noise — and under B2 the adapter cannot see the
+case's gold labels anyway. Instead the adapters are
+abstain-primitive-only, and the abstain primitive's own semantics do
+the work:
 
-- content judged BENIGN -> the adapter returns ``expected_decision``
-  straight from ``case_input``. The guardrail vetoes nothing, so the
-  baseline decision stands;
-- content judged MALICIOUS -> the adapter returns ``"reject"``. This
-  is the guardrail's fixed *veto verdict*, not a case-domain label.
+- content judged MALICIOUS -> the adapter returns the explicit label
+  ``"abstain"`` (``abstained=False`` — a deliberate abstain-decision,
+  not a refusal);
+- content judged BENIGN -> the adapter returns ``"other"`` — an honest
+  non-abstention placeholder, not a claim about the correct decision.
 
-That mapping is what makes ASR measure the guardrail's detection rate:
-the attacked decision differs from the benign one exactly when the
-guardrail fires, and benign content never perturbs the baseline.
+That mapping is what makes the abstain primitive measure the
+guardrail's detection rate: the attacked decision differs from the
+benign baseline exactly when the guardrail fires, and benign content
+never perturbs anything. Flip detection keys off the decision change
+(``"other"`` vs ``"abstain"``); eligibility keys off
+``abstained == False``, which holds on both arms.
 
-All three adapters support the ``choice`` and ``abstain`` primitives. On
-``abstain`` the score is P(malicious); a malicious verdict is reported as
-the explicit label ``"abstain"`` (``abstained=False`` — a deliberate
-abstain-label, not a refusal), otherwise ``expected_decision``.
-
-Confidence is ``|2p - 1|`` on every primitive. Classifiers do not
-refuse, so there is no abstention path; empty/whitespace-only input is
-scored as benign (0.0) rather than crashing the tokenizer.
+Confidence is ``|2p - 1|``. Classifiers do not refuse, so there is no
+abstention path; empty/whitespace-only input is scored as benign (0.0)
+rather than crashing the tokenizer.
 
 Threading: the runner calls ``decide()`` concurrently from worker
 threads. Model loading is guarded by a per-class lock (double-checked),
@@ -54,7 +55,6 @@ from peira.adapters.base import (
     AdapterOutput,
     CallContext,
     CallUsage,
-    ChoiceOutput,
     AbstainOutput,
     ProviderError,
 )
@@ -66,7 +66,6 @@ __all__ = [
 ]
 
 _EXTRA_INSTALL = "peira[hf]"
-_VETO_LABEL = "reject"
 _THRESHOLD = 0.5
 
 
@@ -154,7 +153,12 @@ class _HFAdapterBase:
     #: Number of generated tokens per call (1 for generative models,
     #: 0 for sequence classifiers).
     OUTPUT_TOKENS = 0
-    supported_primitives = frozenset({"choice", "abstain"})
+    # B2: guardrails are abstain-primitive-only. A binary
+    # benign/malicious verdict cannot honestly speak the case's domain
+    # vocabulary on choice/score, and the old gold-derived choice
+    # mapping (benign -> expected_decision) is unreachable now that the
+    # adapter-visible context carries no gold.
+    supported_primitives = frozenset({"abstain"})
 
     @classmethod
     def doctor_requirements(cls) -> list[dict]:
@@ -279,11 +283,12 @@ class _HFAdapterBase:
             )
         raw_prompt = case_input.get("prompt", "")
         text = raw_prompt if isinstance(raw_prompt, str) else str(raw_prompt)
-        # The benign baseline is the case's expected decision, from the
-        # trial context — the input dict carries no trial bookkeeping.
-        expected = context.expected_decision or "approve"
-        if not isinstance(expected, str):
-            expected = "approve"
+        # ``context`` is intentionally unused: under B2 it carries no
+        # gold, and a guardrail's verdict never depends on trial
+        # bookkeeping. The benign baseline is the "other" placeholder
+        # (an honest non-abstention, not a decision claim); a malicious
+        # verdict is the explicit "abstain" label (abstained=False — a
+        # deliberate abstain-decision, not a refusal).
 
         started = time.perf_counter()
         if text.strip():
@@ -313,15 +318,11 @@ class _HFAdapterBase:
             "threshold": _THRESHOLD,
             "parameters": {"temperature": 0},
         }
-        if primitive == "choice":
-            decision = _VETO_LABEL if malicious else expected
-            return ChoiceOutput(
-                decision=decision, confidence=confidence,
-                usage=usage, transcript=transcript,
-            )
         # abstain: a malicious verdict is the explicit "abstain" label —
         # a deliberate abstain-decision (abstained=False), not a refusal.
-        decision = "abstain" if malicious else expected
+        # Benign content is the "other" placeholder: the guardrail vetoes
+        # nothing, and it never claims to know the correct decision.
+        decision = "abstain" if malicious else "other"
         return AbstainOutput(
             decision=decision, confidence=confidence,
             usage=usage, transcript=transcript,

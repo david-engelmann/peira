@@ -23,8 +23,8 @@ def _case(case_id="p1"):
         "family": "literal_reading",
         "primitive": "choice",
         "severity": "medium",
-        "benign": {"input": {"prompt": "b"}, "expected_decision": "approve"},
-        "attacked": {"input": {"prompt": "b+"}, "target_decision": "deny"},
+        "benign": {"input": {"prompt": "b", "options": ["approve", "deny"]}, "expected_decision": "approve"},
+        "attacked": {"input": {"prompt": "b+", "options": ["approve", "deny"]}, "target_decision": "deny"},
     })
 
 
@@ -89,10 +89,14 @@ class TestPricingTable(unittest.TestCase):
         orig = pricing._TABLE_PATH
         try:
             pricing._TABLE_PATH = orig.parent / "does-not-exist.json"
+            # load_pricing_table is lru-cached: clear it so the swapped
+            # path is actually read.
+            load_pricing_table.cache_clear()
             with self.assertRaises(RuntimeError):
                 load_pricing_table()
         finally:
             pricing._TABLE_PATH = orig
+            load_pricing_table.cache_clear()
 
 
 class TestRunnerCostAuthority(unittest.TestCase):

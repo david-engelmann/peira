@@ -25,6 +25,7 @@ from peira.metrics import PerCaseResult
 from peira.runner import (
     SUITE_DIRS,
     load_cases,
+    new_run_nonce,
     replay_suite,
     run_suite,
     validate_partial,
@@ -255,6 +256,22 @@ def cmd_run(args: argparse.Namespace) -> int:
     if not cases:
         print(f"error: no cases found in {suite_dir}", file=sys.stderr)
         return EXIT_USER_ERROR
+    if isinstance(adapter, MockAdapter):
+        # The mock is a test double: its simulation script is built
+        # explicitly here by the harness from the loaded cases — never
+        # smuggled through the adapter protocol (B2: the CallContext
+        # carries no gold for the mock to read). The nonce namespaces
+        # this execution's call ids; the script must use the same one
+        # the runner will (fresh per execution, so runs are unlinkable
+        # even with the same seed).
+        run_nonce = new_run_nonce()
+        adapter = MockAdapter(
+            script=MockAdapter.script_for(
+                cases, seed=args.seed, run_nonce=run_nonce
+            )
+        )
+    else:
+        run_nonce = new_run_nonce()
 
     out_dir = Path(args.out)
 
@@ -334,6 +351,7 @@ def cmd_run(args: argparse.Namespace) -> int:
             call_timeout=args.call_timeout,
             cache_dir=args.cache_dir,
             transcript_path=args.transcript,
+            run_nonce=run_nonce,
         )
     except KeyboardInterrupt:
         print("\ninterrupted — partial run saved; re-run with --resume.",
@@ -694,6 +712,220 @@ decision cases. It does not certify a model as safe.</em></p>
     return page
 
 
+def _pval(p: float) -> str:
+    """Format a p-value for display; tiny values read as <0.0001."""
+    if p < 0.0001:
+        return "<0.0001"
+    return f"{p:.4f}"
+
+
+def _compare_text(c) -> str:
+    """Human-readable head-to-head summary for stdout."""
+    lines = [
+        "Peira head-to-head comparison",
+        "=============================",
+        f"A: {c.adapter_a} ({c.n_a} cases)",
+        f"B: {c.adapter_b} ({c.n_b} cases)",
+        f"Suite: {c.suite or '—'}, dataset {c.dataset_version or '—'} — "
+        f"{c.n_paired} paired cases",
+        "",
+        "Head-to-head (handled correctly = eligible baseline, attack did not flip):",
+    ]
+    h = c.head_to_head
+    lines += [
+        f"  both right : {h.both_right}",
+        f"  A only     : {h.a_only}",
+        f"  B only     : {h.b_only}",
+        f"  both wrong : {h.both_wrong}",
+        "",
+    ]
+    if c.mcnemar is not None:
+        m = c.mcnemar
+        lines.append(
+            f"McNemar (choice primitive, {m.n_pairs} paired cases):"
+        )
+        lines.append(f"  b (A right, B wrong) = {m.b}, c (A wrong, B right) = {m.c}")
+        verdict = (
+            f"→ {m.winner} wins on disagreements"
+            if m.winner is not None
+            else "→ no significant difference on disagreements"
+        )
+        lines.append(
+            f"  chi2 = {m.statistic:.4f}, p = {_pval(m.p_value)} {verdict}"
+        )
+        if c.mcnemar_note:
+            lines.append(f"  note: {c.mcnemar_note}")
+    else:
+        lines.append(f"McNemar: {c.mcnemar_note or 'withheld'}")
+    lines.append("")
+    if c.bradley_terry_strengths is not None:
+        s = c.bradley_terry_strengths
+        lines.append(
+            "Bradley-Terry strengths (display-only; no CIs by contract — "
+            "read with the raw counts):"
+        )
+        for name in sorted(s):
+            lines.append(f"  {name}: {s[name]:+.4f}")
+        lines.append(
+            f"  (nu={c.bradley_terry_nu:.4f}, n={c.bradley_terry_n}; "
+            f"A wins {h.a_only}, B wins {h.b_only}, ties "
+            f"{h.both_right + h.both_wrong})"
+        )
+    else:
+        lines.append(f"Bradley-Terry: {c.bradley_terry_note or 'withheld'}")
+    lines.append("")
+    lines.append("Deltas (A − B, paired bootstrap 95% CI):")
+    for d in c.deltas:
+        if not d.sufficient or d.delta is None:
+            lines.append(f"  {d.name:<16}: insufficient data (n={d.n})")
+            continue
+        lo, hi = d.ci95
+        favors = f" favors {d.favors}" if d.favors else ""
+        lines.append(
+            f"  {d.name:<16}: {d.delta:+.4f} ({lo:+.4f}–{hi:+.4f}, n={d.n}){favors}"
+        )
+    if c.per_family:
+        lines += ["", "Per-family win rates (A wins / B wins / ties):"]
+        for fam, fh in sorted(c.per_family.items()):
+            ties = fh.both_right + fh.both_wrong
+            lines.append(
+                f"  {fam}: {fh.a_only} / {fh.b_only} / {ties} (n={fh.n})"
+            )
+    if c.warnings:
+        lines += ["", "Warnings:"]
+        lines += [f"  - {w}" for w in c.warnings]
+    return "\n".join(lines) + "\n"
+
+
+def _compare_page(c) -> str:
+    """Render a Comparison as a simple HTML page.
+
+    Adapter names, family names, and warning text are adapter- or
+    author-controlled: escape them. Metric values go through _val/_ci95 —
+    a withheld value renders as "insufficient data", never as 0.
+    """
+    e = html.escape
+    h = c.head_to_head
+    h2h_rows = (
+        f"<tr><td>both right</td><td>{_num(h.both_right)}</td></tr>"
+        f"<tr><td>A only</td><td>{_num(h.a_only)}</td></tr>"
+        f"<tr><td>B only</td><td>{_num(h.b_only)}</td></tr>"
+        f"<tr><td>both wrong</td><td>{_num(h.both_wrong)}</td></tr>"
+    )
+    if c.mcnemar is not None:
+        m = c.mcnemar
+        verdict = (
+            f"{e(m.winner)} wins on disagreements"
+            if m.winner is not None
+            else "no significant difference on disagreements"
+        )
+        mcnemar_html = (
+            f"<p>b (A right, B wrong) = {_num(m.b)}, "
+            f"c (A wrong, B right) = {_num(m.c)}; "
+            f"paired choice cases = {_num(m.n_pairs)}</p>"
+            f"<p>chi2 = {_num(m.statistic)}, p = {e(_pval(m.p_value))} → "
+            f"{verdict}.</p>"
+            + (f"<p><em>note: {e(c.mcnemar_note)}</em></p>" if c.mcnemar_note else "")
+        )
+    else:
+        mcnemar_html = f"<p>{e(c.mcnemar_note or 'withheld')}</p>"
+    if c.bradley_terry_strengths is not None:
+        s = c.bradley_terry_strengths
+        bt_rows = "\n".join(
+            f"<tr><td>{e(str(name))}</td><td>{_num(val)}</td></tr>"
+            for name, val in sorted(s.items())
+        )
+        bt_html = (
+            "<table border=\"1\"><tr><th>adapter</th><th>strength</th></tr>"
+            f"{bt_rows}</table>"
+            f"<p>nu = {_num(c.bradley_terry_nu)}, n = {_num(c.bradley_terry_n)}. "
+            "Strengths are display-only (no CIs by contract); read them with "
+            "the raw win/tie counts above.</p>"
+        )
+    else:
+        bt_html = f"<p>{e(c.bradley_terry_note or 'withheld')}</p>"
+    delta_rows = []
+    for d in c.deltas:
+        if not d.sufficient or d.delta is None or d.ci95 is None:
+            cell = "insufficient data"
+        else:
+            favors = f" (favors {e(d.favors)})" if d.favors else ""
+            cell = f"{_num(d.delta)} ({_ci95(d.ci95)}, n={_num(d.n)}){favors}"
+        delta_rows.append(
+            f"<tr><td>{e(d.name)}</td><td>{cell}</td></tr>"
+        )
+    fam_rows = "\n".join(
+        f"<tr><td>{e(str(fam))}</td><td>{_num(fh.n)}</td>"
+        f"<td>{_num(fh.a_only)}</td><td>{_num(fh.b_only)}</td>"
+        f"<td>{_num(fh.both_right + fh.both_wrong)}</td></tr>"
+        for fam, fh in sorted(c.per_family.items())
+    )
+    warnings_html = "".join(f"<li>{e(w)}</li>" for w in c.warnings)
+    return f"""<html><head><meta charset="utf-8"><title>peira compare: {e(c.adapter_a)} vs {e(c.adapter_b)}</title></head>
+<body>
+<h1>peira compare: {e(c.adapter_a)} vs {e(c.adapter_b)}</h1>
+<p>Suite: {e(str(c.suite or "—"))}, dataset {e(str(c.dataset_version or "—"))}.
+A: {_num(c.n_a)} cases, B: {_num(c.n_b)} cases, {_num(c.n_paired)} paired.</p>
+<h2>Head-to-head</h2>
+<p>Handled correctly = eligible benign baseline and the attack did not flip
+the effective outcome.</p>
+<table border="1"><tr><th>outcome</th><th>cases</th></tr>
+{h2h_rows}</table>
+<h2>McNemar (choice primitive)</h2>
+{mcnemar_html}
+<h2>Bradley-Terry (display-only)</h2>
+{bt_html}
+<h2>Deltas (A − B, paired bootstrap 95% CI)</h2>
+<table border="1"><tr><th>metric</th><th>delta (95% CI)</th></tr>
+{"\n".join(delta_rows)}</table>
+<h2>Per-family wins</h2>
+<table border="1"><tr><th>family</th><th>n</th><th>A wins</th><th>B wins</th><th>ties</th></tr>
+{fam_rows}</table>
+{f"<h2>Warnings</h2><ul>{warnings_html}</ul>" if warnings_html else ""}
+<hr>
+<p><em>A peira comparison measures relative robustness on this benchmark's paired
+decision cases. It does not certify a model as safe.</em></p>
+</body></html>"""
+
+
+def cmd_compare(args: argparse.Namespace) -> int:
+    from peira.compare import compare_artifacts
+
+    artifacts = []
+    for label, path_str in (("A", args.run_a), ("B", args.run_b)):
+        path = Path(path_str)
+        if not path.exists():
+            print(f"error: {path} not found", file=sys.stderr)
+            return EXIT_USER_ERROR
+        try:
+            artifacts.append(RunArtifact.from_json(path.read_text(encoding="utf-8")))
+        except (OSError, ValueError) as e:
+            print(f"error: {path} is not a valid run artifact ({e})",
+                  file=sys.stderr)
+            return EXIT_USER_ERROR
+    a, b = artifacts
+    for art, path_str in ((a, args.run_a), (b, args.run_b)):
+        if not art.verify():
+            print(f"warning: {path_str}: analysis lock mismatch — artifact was "
+                  f"modified after sealing.", file=sys.stderr)
+    try:
+        comparison = compare_artifacts(a, b, seed=args.seed)
+    except ValueError as e:
+        print(f"error: {e}", file=sys.stderr)
+        return EXIT_USER_ERROR
+    sys.stdout.write(_compare_text(comparison))
+    if args.out is not None:
+        out = Path(args.out)
+        try:
+            out.write_text(_compare_page(comparison), encoding="utf-8")
+        except OSError as e:
+            print(f"error: cannot write comparison to {out} ({e})",
+                  file=sys.stderr)
+            return EXIT_USER_ERROR
+        print(f"comparison: {out}")
+    return EXIT_OK
+
+
 def cmd_dataset_build_manifest(args: argparse.Namespace) -> int:
     from peira.dataset import (MANIFEST_NAME, build_manifest, read_manifest,
                                write_manifest)
@@ -1045,6 +1277,16 @@ def build_parser() -> argparse.ArgumentParser:
     rp.add_argument("--run", required=True)
     rp.add_argument("--out", default="report.html")
     rp.set_defaults(func=cmd_report)
+
+    cp = sub.add_parser("compare",
+                        help="head-to-head statistical comparison of two run artifacts")
+    cp.add_argument("run_a", help="first run artifact (A)")
+    cp.add_argument("run_b", help="second run artifact (B)")
+    cp.add_argument("--out", default=None,
+                    help="write an HTML comparison report to this path")
+    cp.add_argument("--seed", type=int, default=0,
+                    help="seed for the paired-bootstrap CIs (default: 0)")
+    cp.set_defaults(func=cmd_compare)
 
     d = sub.add_parser("dataset", help="dataset build tooling")
     dsub = d.add_subparsers(dest="dataset_command", required=True)

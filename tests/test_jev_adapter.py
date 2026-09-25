@@ -20,36 +20,19 @@ from peira.adapters.jev import (
 )
 
 
-# Trial-bookkeeping defaults for adapter unit tests (the runner builds
-# the real CallContext; these mirror _case_input's old metadata keys).
-_CTX_DEFAULTS = {
-    "case_id": "j1",
-    "expected_decision": "deny",
-    "target_decision": "approve",
-    "attacked": True,
-}
-
-
+# B2 (D-25 amended): the adapter-visible context is an opaque per-call
+# handle — no case id, no arm, no gold labels. The candidate decision
+# labels come from the case input's explicit "options" list.
 def _case_input(**over):
-    # The pure case input: trial bookkeeping lives on the context now,
-    # never in the input dict.
-    d = {"prompt": "Decision: approve or deny?"}
-    for k, v in over.items():
-        if k not in _CTX_DEFAULTS:
-            d[k] = v
+    d = {"prompt": "Decision: approve or deny?",
+         "options": ["approve", "deny"]}
+    d.update(over)
     return d
 
 
 def _ctx(**over):
     from peira.adapters.base import CallContext
-    vals = dict(_CTX_DEFAULTS)
-    vals.update(over)
-    return CallContext(
-        case_id=vals["case_id"],
-        arm="attacked" if vals["attacked"] else "benign",
-        expected_decision=vals["expected_decision"],
-        target_decision=vals["target_decision"],
-    )
+    return CallContext(call_id=over.get("call_id", "call-test"))
 
 
 def _transport_for(answers, usage=None, latency=12.5):
@@ -128,28 +111,25 @@ class TestJevChoice(unittest.TestCase):
         self.assertEqual(q["type"], "choice")
         self.assertTrue(q["instructions"])
         self.assertIn("deny", q["criteria"])
-        self.assertIn("approve", q["criteria"])  # target offered on attacked
+        self.assertIn("approve", q["criteria"])  # both input options offered
 
-    def test_choice_benign_labels(self):
+    def test_choice_labels_come_from_input_options(self):
+        # B2: the adapter cannot see the arm or gold — the criteria are
+        # exactly the input's options (sorted) plus "other".
         t = _transport_for({"decision": {"choice": "deny", "confidence": 0.9}})
         adapter = JevAdapter(api_key="k", transport=t)
-        adapter.decide(_case_input(), "choice",
-                       _ctx(attacked=False, target_decision=None))
+        adapter.decide(_case_input(options=["deny", "approve", "hold"]),
+                       "choice", _ctx())
         labels = list(t.seen["payload"]["questions"]["decision"]["criteria"])
-        self.assertIn("deny", labels)
-        self.assertIn("other", labels)
-        self.assertNotIn("approve", labels)
+        self.assertEqual(labels, ["approve", "deny", "hold", "other"])
 
-    def test_null_expected_decision_never_becomes_none_label(self):
-        t = _transport_for({"decision": {"choice": "approve",
-                                        "confidence": 0.9}})
+    def test_choice_labels_deduplicated(self):
+        t = _transport_for({"decision": {"choice": "deny", "confidence": 0.9}})
         adapter = JevAdapter(api_key="k", transport=t)
-        ci = _case_input()
-        adapter.decide(ci, "choice",
-                       _ctx(expected_decision=None, target_decision=None))
+        adapter.decide(_case_input(options=["deny", "deny", "approve"]),
+                       "choice", _ctx())
         labels = list(t.seen["payload"]["questions"]["decision"]["criteria"])
-        self.assertNotIn("None", labels)
-        self.assertIn("approve", labels)  # fallback, not str(None)
+        self.assertEqual(labels, ["approve", "deny", "other"])
 
     def test_choice_unknown_option_is_terminal(self):
         t = _transport_for(
@@ -220,10 +200,13 @@ class TestJevNoul(unittest.TestCase):
         self.assertEqual(out.decision, "abstain")
         self.assertAlmostEqual(out.confidence, 0.6)  # |2*.8-1|
 
-    def test_noul_no_returns_expected(self):
+    def test_noul_no_returns_other_placeholder(self):
+        # B2: no abstention means the model emitted no decision label —
+        # the placeholder is "other", never a gold label.
         t = _transport_for({"abstain": {"abstain": 0.2}})
         out = JevAdapter(api_key="k", transport=t).decide(_case_input(), "abstain", _ctx())
-        self.assertEqual(out.decision, "deny")
+        self.assertEqual(out.decision, "other")
+        self.assertFalse(out.abstained)
         self.assertAlmostEqual(out.confidence, 0.6)
 
     def test_noul_request_shape(self):

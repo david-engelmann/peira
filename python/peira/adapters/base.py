@@ -42,7 +42,7 @@ A duplicated retry layer is a measurement bug, not resilience.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Literal, Protocol
+from typing import Any, Protocol
 
 
 class ProviderError(Exception):
@@ -128,42 +128,25 @@ AdapterOutput = ChoiceOutput | ScoreOutput | AbstainOutput
 
 @dataclass(frozen=True)
 class CallContext:
-    """Trial bookkeeping for one adapter call — never part of the input.
+    """Opaque per-call handle — the only trial bookkeeping an adapter sees.
 
-    The adapter-visible input dict is exactly what the case defines
-    (``_case_inputs`` copies it verbatim, no injected keys). Everything
-    the trial knows *about* the call travels here instead, on a typed
-    channel:
+    Deliberately content-free: no case id, no arm, no expected/target
+    decisions. Everything an adapter needs to *decide* arrives in
+    ``case_input`` (which carries an explicit ``options`` list, the
+    decision vocabulary for the call) and ``primitive``. The context
+    exists only so the runner can correlate the call in transcripts and
+    logs without leaking trial metadata across the adapter boundary.
 
-    - ``case_id``: the case being decided.
-    - ``arm``: which variant this call decides, ``"benign"`` or
-      ``"attacked"``.
-    - ``expected_decision``: the case's benign expected decision. The
-      open decision vocabulary (40+ labels) means adapters need the
-      candidate labels to build per-call schemas and veto baselines;
-      this is that label, not a hint to echo.
-    - ``target_decision``: the attacked variant's target label, or None
-      on the benign arm / when the case defines none.
-
-    A gaming adapter could echo ``expected_decision`` straight off this
-    object — input sanitization cannot prevent deliberate cheating while
-    honest adapters need the label vocabulary. The defense against that
-    is detection (holdout cases, gaming-evidence rules), not hiding;
-    the context makes any label use explicit and auditable instead of
-    smuggling it through magic input keys. See D-25.
+    ``call_id`` is a per-run pseudonym, deterministic in
+    ``(seed, dispatch_index)``: stable across retries of the same call,
+    opaque across runs. It reveals nothing about the case's family,
+    suite, arm, holdout status, or real case id — adapters cannot
+    detect holdout runs or echo gold, because there is no gold here to
+    echo. See D-25 (amended 2026-09-25: zero gold in adapter-visible
+    context).
     """
 
-    case_id: str
-    arm: Literal["benign", "attacked"]
-    expected_decision: str
-    target_decision: str | None = None
-
-    def __post_init__(self) -> None:
-        if self.arm not in ("benign", "attacked"):
-            raise ValueError(
-                f"CallContext arm must be 'benign' or 'attacked', "
-                f"got {self.arm!r}"
-            )
+    call_id: str
 
 
 def _unit_interval(name: str, value: Any) -> str | None:
@@ -316,9 +299,10 @@ class BaseAdapter(Protocol):
         as an exception and never silently dropped.
 
         ``case_input`` is exactly the case's own input dict — no
-        injected metadata. Trial bookkeeping (case id, arm, the
-        expected/target decisions the open label vocabulary requires)
-        arrives on ``context``; the runner always provides it.
+        injected metadata. ``context`` is an opaque per-call handle
+        (a pseudonymous call id); it carries no case id, no arm, and no
+        gold labels — trial bookkeeping never crosses the adapter
+        boundary (D-25, amended 2026-09-25).
 
         Provider failures are raised as ``ProviderError`` with a status
         code when there is one, so the runner can retry transient

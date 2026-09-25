@@ -188,7 +188,7 @@ mod tests {
     use std::fs;
     use std::io::Write;
 
-    const CASE: &str = r#"{"case_id":"c1","family":"indirection","primitive":"choice","severity":"low","benign":{"input":{},"expected_decision":"a"},"attacked":{"input":{}}}"#;
+    const CASE: &str = r#"{"case_id":"c1","family":"indirection","primitive":"choice","severity":"low","benign":{"input":{"options":["a","b"]},"expected_decision":"a"},"attacked":{"input":{"options":["a","b"]}}}"#;
 
     fn tmp_dataset(lines: &str) -> (tempfile::TempDir, PathBuf) {
         let dir = tempfile::tempdir().unwrap();

@@ -130,6 +130,24 @@ impl Case {
 /// JSON types (`bad <field>: expected <type>`), then primitive / severity
 /// enums, then variant shapes. Message strings are identical to the
 /// Python reference.
+///
+/// The options list of an input object, when it passes the shape check
+/// (non-empty list of non-empty strings). Gold-membership is only tested
+/// against shape-valid lists: a malformed list already earns its own
+/// error, and a membership error on top would blame the gold for the
+/// list's defect.
+fn shape_valid_options(input: &serde_json::Map<String, Value>) -> Option<&Vec<Value>> {
+    match input.get("options") {
+        Some(Value::Array(opts))
+            if !opts.is_empty()
+                && opts.iter().all(|o| o.as_str().is_some_and(|s| !s.is_empty())) =>
+        {
+            Some(opts)
+        }
+        _ => None,
+    }
+}
+
 pub fn validate_case_dict(d: &Value) -> Vec<String> {
     let mut errors = Vec::new();
     let obj = match d.as_object() {
@@ -191,6 +209,31 @@ pub fn validate_case_dict(d: &Value) -> Vec<String> {
             Some(Value::Object(v)) if v.contains_key("input") => {
                 if !v.get("input").is_some_and(|i| i.is_object()) {
                     errors.push(format!("bad {variant} input: expected object"));
+                } else {
+                    // B2 (2026-09-25): every case input carries an
+                    // explicit options list — the decision vocabulary
+                    // adapters build per-call schemas from. Message
+                    // strings are identical to the Python reference.
+                    let input = v.get("input").unwrap().as_object().unwrap();
+                    match input.get("options") {
+                        None => {
+                            errors.push(format!("{variant} input needs 'options'"));
+                        }
+                        Some(Value::Array(opts))
+                            if !opts.is_empty()
+                                && opts
+                                    .iter()
+                                    .all(|o| o.as_str().is_some_and(|s| !s.is_empty())) =>
+                        {
+                            // valid options list
+                        }
+                        _ => {
+                            errors.push(format!(
+                                "bad {variant} input options: expected non-empty list \
+                                 of non-empty strings"
+                            ));
+                        }
+                    }
                 }
             }
             _ => {
@@ -208,6 +251,21 @@ pub fn validate_case_dict(d: &Value) -> Vec<String> {
                 errors.push("bad benign expected_decision: expected string".to_string())
             }
             _ => {}
+        }
+        // B2: gold labels must be answerable from the decision
+        // vocabulary — a case whose expected decision is not among the
+        // input options can never score. Byte-identical to Python.
+        if let (Some(Value::String(exp)), Some(Value::Object(input))) =
+            (benign.get("expected_decision"), benign.get("input"))
+        {
+            if let Some(opts) = shape_valid_options(input) {
+                if !opts.iter().any(|o| o.as_str() == Some(exp.as_str())) {
+                    errors.push(format!(
+                        "bad benign expected_decision: {} not in input options",
+                        py_repr_str(exp),
+                    ));
+                }
+            }
         }
         if let Some(es) = benign.get("expected_score") {
             let ok = es.is_null() || es.as_f64().is_some_and(|v| (0.0..=1.0).contains(&v));
@@ -227,6 +285,20 @@ pub fn validate_case_dict(d: &Value) -> Vec<String> {
         if let Some(t) = attacked.get("target_decision") {
             if !t.is_null() && !t.is_string() {
                 errors.push("bad attacked target_decision: expected string or null".to_string());
+            }
+        }
+        // B2: the target decision must be answerable from the attacked
+        // input's options. Byte-identical to Python.
+        if let (Some(Value::String(tgt)), Some(Value::Object(input))) =
+            (attacked.get("target_decision"), attacked.get("input"))
+        {
+            if let Some(opts) = shape_valid_options(input) {
+                if !opts.iter().any(|o| o.as_str() == Some(tgt.as_str())) {
+                    errors.push(format!(
+                        "bad attacked target_decision: {} not in input options",
+                        py_repr_str(tgt),
+                    ));
+                }
             }
         }
     }
@@ -249,8 +321,8 @@ mod tests {
             "family": "state_poisoning",
             "primitive": "choice",
             "severity": "critical",
-            "benign": {"input": {"prompt": "p"}, "expected_decision": "a"},
-            "attacked": {"input": {"prompt": "p!"}, "target_decision": "b"},
+            "benign": {"input": {"prompt": "p", "options": ["a", "b"]}, "expected_decision": "a"},
+            "attacked": {"input": {"prompt": "p!", "options": ["a", "b"]}, "target_decision": "b"},
             "notes": "n",
         })
     }
@@ -282,6 +354,60 @@ mod tests {
             errors,
             vec!["bad primitive: 'bogus'", "bad severity: 'extreme'"]
         );
+    }
+
+    #[test]
+    fn options_required_on_both_inputs() {
+        // B2: every case input carries an explicit options list.
+        let mut d = valid_case();
+        d["benign"]["input"].as_object_mut().unwrap().remove("options");
+        let errors = validate_case_dict(&d);
+        assert_eq!(errors, vec!["benign input needs 'options'"]);
+
+        let mut d = valid_case();
+        d["attacked"]["input"]["options"] = json!([]);
+        let errors = validate_case_dict(&d);
+        assert_eq!(
+            errors,
+            vec!["bad attacked input options: expected non-empty list \
+                  of non-empty strings"]
+        );
+
+        let mut d = valid_case();
+        d["benign"]["input"]["options"] = json!(["a", ""]);
+        let errors = validate_case_dict(&d);
+        assert_eq!(
+            errors,
+            vec!["bad benign input options: expected non-empty list \
+                  of non-empty strings"]
+        );
+    }
+
+    #[test]
+    fn gold_labels_must_be_in_options() {
+        // B2: a gold label outside the input's options can never
+        // score — fail at load, byte-identical to Python.
+        let mut d = valid_case();
+        d["benign"]["expected_decision"] = json!("zzz");
+        let errors = validate_case_dict(&d);
+        assert_eq!(
+            errors,
+            vec!["bad benign expected_decision: 'zzz' not in input options"]
+        );
+
+        let mut d = valid_case();
+        d["attacked"]["target_decision"] = json!("zzz");
+        let errors = validate_case_dict(&d);
+        assert_eq!(
+            errors,
+            vec!["bad attacked target_decision: 'zzz' not in input options"]
+        );
+
+        // Null target is untargeted: no membership check.
+        let mut d = valid_case();
+        d["attacked"]["target_decision"] = Value::Null;
+        let errors = validate_case_dict(&d);
+        assert!(errors.is_empty());
     }
 
     #[test]
@@ -333,11 +459,11 @@ mod tests {
                 "bad benign input: expected object",
             ),
             (
-                json!({"benign": {"input": {}, "expected_decision": 42}}),
+                json!({"benign": {"input": {"options": ["a", "b"]}, "expected_decision": 42}}),
                 "bad benign expected_decision: expected string",
             ),
             (
-                json!({"attacked": {"input": {}, "target_decision": 5}}),
+                json!({"attacked": {"input": {"options": ["a", "b"]}, "target_decision": 5}}),
                 "bad attacked target_decision: expected string or null",
             ),
             (json!({"notes": 5}), "bad notes: expected string"),

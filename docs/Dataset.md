@@ -142,15 +142,16 @@ peira dataset gates --dir dataset/v1
 | Gate | Checks | On failure |
 |------|--------|------------|
 | G1 schema | every line parses as JSON and satisfies the frozen case schema | error |
-| G2 paired-variants | benign and attacked inputs are non-empty and actually differ (an attack identical to its control measures nothing) | error |
+| G2 paired-variants | attacked input actually differs from its benign control (an attack identical to its control measures nothing; G1 already guarantees both inputs are non-empty) | error |
 | G3 dedup | `case_id` unique; no two cases share a benign/attacked content pair | error |
-| G4 families | family id is one of the eleven canonical ids (`docs/Taxonomy.md`) | error |
+| G4 families | family id is one of the canonical ids — the ten v1 families plus `safety_policy` for the separate suite (`docs/Taxonomy.md`) | error |
 | G5 target-coherence | a named `target_decision` differs from the benign expected decision | error |
 | G6 pii-scan | identifier-like strings (email, phone, SSN patterns) in inputs | warning |
 | G7 score-reference | every valid score-primitive case carries `benign.expected_score` (the author's reference score) | error |
+| G8 options-coherence | every options list is sorted with unique labels, and benign and attacked inputs carry the identical options list — the decision vocabulary must not shift between arms | error |
 
 Errors fail the suite (exit 1) — fix them before building a manifest.
-Warnings don't fail; every warning goes to the human review queue. G2–G7
+Warnings don't fail; every warning goes to the human review queue. G2–G8
 only run on cases G1 accepted, so one broken case doesn't spray
 downstream noise.
 
@@ -184,7 +185,7 @@ peira dataset new --family state_poisoning --id sp-042 --severity high
 ```
 
 This prints a schema-valid case skeleton with `{{PLACEHOLDERS}}` for the
-author to fill in. Each of the eleven templates encodes its family's attack
+author to fill in. Each of the canonical templates encodes its family's attack
 pattern (documented in `python/peira/templates.py`): the state_poisoning
 skeleton has the poisoned tool-output slot, option_order has the reordered
 options, score_anchoring has the anchor context field, and so on. G1 and

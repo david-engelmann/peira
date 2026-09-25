@@ -28,8 +28,8 @@ def _valid_dict(**over):
         "family": "state_poisoning",
         "primitive": "choice",
         "severity": "high",
-        "benign": {"input": {"prompt": "b"}, "expected_decision": "deny"},
-        "attacked": {"input": {"prompt": "b plus attack"}, "target_decision": "approve"},
+        "benign": {"input": {"prompt": "b", "options": ["deny", "approve"]}, "expected_decision": "deny"},
+        "attacked": {"input": {"prompt": "b plus attack", "options": ["deny", "approve"]}, "target_decision": "approve"},
     }
     d.update(over)
     return d
@@ -100,7 +100,7 @@ class TestTrialSuite(unittest.TestCase):
 
     def test_manifest_version(self):
         manifest = json.loads((TRIAL_DIR / "manifest.json").read_text())
-        self.assertEqual(manifest["dataset_version"], "1.0.4")
+        self.assertEqual(manifest["dataset_version"], "1.0.5")
         self.assertEqual(manifest["files"]["cases.jsonl"]["n_cases"], 100)
 
     def test_canary_embedded(self):
@@ -132,7 +132,7 @@ class TestTrialRunMechanism(unittest.TestCase):
             self.assertIn(r.returncode, (0, 3), r.stderr)  # 3 = ineligible, fine
             artifact = RunArtifact.from_json(
                 Path(tmp, "mock-trial.json").read_text())
-            self.assertEqual(artifact.dataset_version, "1.0.4")
+            self.assertEqual(artifact.dataset_version, "1.0.5")
             self.assertTrue(artifact.verify())
             self.assertEqual(len(artifact.results), 100)
 

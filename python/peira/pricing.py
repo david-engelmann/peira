@@ -12,6 +12,7 @@ never silently wrong.
 
 from __future__ import annotations
 
+import functools
 import json
 from pathlib import Path
 from typing import Any
@@ -19,8 +20,15 @@ from typing import Any
 _TABLE_PATH = Path(__file__).parent / "data" / "pricing.json"
 
 
+@functools.lru_cache(maxsize=1)
 def load_pricing_table() -> dict[str, Any]:
     """Load and minimally validate the pinned pricing table.
+
+    The table is pinned package data — it never changes at runtime —
+    so the parsed result is cached (one JSON parse per process, not
+    per ``summarize()`` call). Callers that need a different table
+    pass it explicitly (e.g. ``cost_summary(..., pricing_table=...)``);
+    the cache never interferes with an explicit table.
 
     Raises RuntimeError (not ValueError: this is a packaging/installation
     bug, not a user input problem) when the table is missing or corrupt.
