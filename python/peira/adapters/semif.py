@@ -412,7 +412,9 @@ class SemifAdapter:
                 f"{revision!r}. Floating revisions are never allowed."
             )
         for arg in extra_args or []:
-            if arg in ("--input", "--output"):
+            if arg in ("--input", "--output") or arg.startswith(
+                ("--input=", "--output=")
+            ):
                 raise ValueError(
                     "semif adapter reserves --input/--output for its own "
                     f"temp files; got {arg!r} in extra_args."
