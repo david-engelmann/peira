@@ -342,7 +342,9 @@ def _delta(
     point = sum(xs) / n - sum(ys) / n
     lo, hi = paired_bootstrap_ci(xs, ys, seed=seed)
     favors: str | None = None
-    if abs(point) > 0.0:
+    if abs(point) > 0.0 and not (lo <= 0.0 <= hi):
+        # Only claim "favors" when the CI excludes zero — otherwise the
+        # data doesn't support a directional finding.
         a_wins = (point < 0.0) if lower_is_better else (point > 0.0)
         favors = "a" if a_wins else "b"
     return DeltaResult(

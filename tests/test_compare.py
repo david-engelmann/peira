@@ -128,6 +128,18 @@ class CompareArtifactsTest(unittest.TestCase):
         self.assertAlmostEqual(ba.delta, 0.0)
         self.assertIsNone(ba.favors)
 
+    def test_bradley_terry_unidentifiable_on_perfect_separation(self):
+        # A sweeps every comparison (B flips all, A flips none): the finite
+        # MLE does not exist — must refuse loudly, not invent strengths.
+        cases_a = [_case(f"c{i:03d}", flipped=False) for i in range(40)]
+        cases_b = [_case(f"c{i:03d}", flipped=True) for i in range(40)]
+        a = _artifact("alpha", cases_a)
+        b = _artifact("beta", cases_b)
+        c = compare_artifacts(a, b, seed=0)
+        self.assertIsNone(c.bradley_terry_strengths)
+        self.assertTrue(c.bradley_terry_note.startswith("unidentifiable:"))
+        self.assertEqual(c.bradley_terry_n, 40)
+
     def test_identical_adapters(self):
         cases = [_case(f"c{i:03d}", flipped=(i % 3 == 0)) for i in range(40)]
         a = _artifact("alpha", [dict(x) for x in cases])
