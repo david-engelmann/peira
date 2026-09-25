@@ -754,7 +754,7 @@ def _bootstrap_randbelow(rng: random.Random):
     ``random.Random.randrange(n)`` (n > 0) delegates to the private
     ``_randbelow(n)`` after argument processing; calling it directly
     skips that overhead while producing a bit-identical output stream
-    (verified by ``test_bootstrap_randbelow_stream``). Falls back to
+    (verified by ``test_bootstrap_randbelow_stream_identical``). Falls back to
     ``randrange`` if the private method is ever unavailable.
     """
     return getattr(rng, "_randbelow", rng.randrange)
@@ -893,11 +893,14 @@ def _bootstrap_case_ci(
     the resampled statistics. Always uses the Python PRNG (Mersenne
     Twister) — backend-independent, like :func:`paired_bootstrap_ci`.
     ``n_boot`` must be a positive integer (ValueError otherwise).
+    Empty ``items`` raises ValueError.
 
     Performance: resample indices use :func:`_bootstrap_randbelow`
     (identical stream to ``randrange``, less overhead).
     """
     _check_n_boot(n_boot)
+    if not items:
+        raise ValueError("items must be non-empty")
     rng = random.Random(seed)
     randbelow = _bootstrap_randbelow(rng)
     n = len(items)
