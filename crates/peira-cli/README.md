@@ -6,17 +6,29 @@ The `peira` command-line binary, built in Rust on top of `peira-core`.
 
 Mirrors `python/peira/cli.py` command-for-command:
 
-- `peira run --adapter <name> --suite <name> --out <dir> [--dry-run] [--json-progress] [--resume]`
+- `peira run --adapter <name> --suite <name> --out <dir> [--dry-run] [--json-progress] [--resume] [--adapter-version <ver>] [--timeout <secs>]`
 - `peira validate --dataset <dir>`
 - `peira report --run <artifact> --out <file>`
 - `peira verify --run <artifact>`
 
+`--adapter-version` pins the version of a subprocess adapter (required for
+external adapters — the Rust CLI cannot infer it; the built-in `mock`
+defaults to `0.1.0`). The version is covered by the analysis lock.
+
+`--timeout` bounds one subprocess-adapter `decide()` (request write +
+response read) in seconds; default 30. It must be finite and positive.
+A variant that exceeds it is marked malformed and the run continues; the
+adapter's whole process group is killed. Response lines are capped at
+10 MiB and lifetime output at 100 MiB (see `peira-core/src/adapter_protocol.rs`).
+
 ## Compatibility
 
-Console output, exit codes (0/1/2/3), artifact JSON, analysis locks, and
-HTML reports are byte-identical to the Python CLI (verified by differential
-testing on `dataset/trial-demo`). Artifacts are interchangeable: `peira
-verify` accepts artifacts from either CLI.
+Artifacts, analysis locks, and HTML reports are byte-identical to the
+Python CLI (verified by differential testing on `dataset/trial-demo`).
+Artifacts are interchangeable: `peira verify` accepts artifacts from either
+CLI. Console output matches except: `verify` prints the adapter version,
+and the resume line ends with a period. Exit codes are 0/1/2/3, same as
+Python.
 
 ## Adapters
 
@@ -29,22 +41,20 @@ verify` accepts artifacts from either CLI.
 
 ## Known gaps vs the Python CLI
 
-1. **No Ctrl-C checkpoint.** Python's runner writes a partial artifact on
-   `KeyboardInterrupt`; the Rust CLI relies on the periodic (every 25 cases)
-   checkpoint only. An interrupt between checkpoints loses that work.
+1. **Ctrl-C checkpoint is Unix-only.** Both CLIs write a partial artifact on
+   interrupt and exit 2; the Rust handler is installed via `sigaction`, so
+   Windows builds rely on the periodic (every 25 cases) checkpoint only.
 2. **Suite dirs resolve from CWD.** Python resolves from the repo root;
    run the Rust binary from the repo root (or set the working directory
    so `dataset/<suite>` resolves).
 3. **Artifact filenames sanitize `/` and `\` to `_`.** Python uses the raw
    `--adapter` string (which breaks for paths); the Rust CLI sanitizes.
-4. **No adapter timeout flag.** Subprocess adapters get a fixed 30s
-   per-response timeout (Python has no timeout at all).
-5. **Traceback on corrupt JSONL.** Python prints a full traceback and exits
+4. **Traceback on corrupt JSONL.** Python prints a full traceback and exits
    2 on invalid JSON in `validate`; the Rust CLI prints a one-line error
    and exits 2.
-6. **Rounding ties.** Metrics are rounded with ties-to-even on the scaled
+5. **Rounding ties.** Metrics are rounded with ties-to-even on the scaled
    value, matching Python's `round(x, 4)` in all but pathological
-   near-tie cases. The analysis lock does not cover metrics.
+   near-tie cases.
 
 ## Build
 

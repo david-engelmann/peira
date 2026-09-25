@@ -8,7 +8,7 @@
 use std::collections::{BTreeMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::time::Duration;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use sha2::{Digest, Sha256};
 
@@ -51,6 +51,7 @@ impl Adapter for SubprocessAdapter {
         match SubprocessAdapter::decide(self, &req) {
             AdapterOutcome::Ok(resp) => Ok(resp),
             AdapterOutcome::Malformed(msg) => Err(format!("malformed adapter output: {msg}")),
+            AdapterOutcome::Oversize(msg) => Err(format!("adapter output too large: {msg}")),
             AdapterOutcome::Timeout => Err("adapter response timeout".to_string()),
             AdapterOutcome::Crashed(msg) => Err(format!("adapter crashed: {msg}")),
         }
@@ -351,8 +352,11 @@ pub struct RunOptions<'a> {
     pub partial_path: Option<&'a Path>,
     /// Progress callback `(done_index_1based, total)`.
     pub progress: Option<Box<dyn Fn(usize, usize) + 'a>>,
-    /// Adapter timeout for subprocess adapters.
-    pub adapter_timeout: Duration,
+    /// Cooperative interrupt flag (set by the CLI's SIGINT handler).
+    /// Checked between cases: when set, the loop checkpoints immediately
+    /// and stops, so the caller can exit without losing completed work.
+    /// `None` disables interrupt handling (e.g. library use).
+    pub interrupt: Option<&'a AtomicBool>,
 }
 
 impl<'a> Default for RunOptions<'a> {
@@ -361,7 +365,7 @@ impl<'a> Default for RunOptions<'a> {
             checkpoint_every: 25,
             partial_path: None,
             progress: None,
-            adapter_timeout: Duration::from_secs(30),
+            interrupt: None,
         }
     }
 }
@@ -383,6 +387,26 @@ pub fn run_suite(
     let total = cases.len();
     let mut results: Vec<PerCaseResult> = prior_results;
     for (i, case) in cases.iter().enumerate() {
+        if let Some(flag) = opts.interrupt {
+            if flag.load(Ordering::Relaxed) {
+                // Interrupted (Ctrl-C): checkpoint the completed cases
+                // right now, even mid-checkpoint-interval, then stop. The
+                // caller reports the interrupt and exits without writing a
+                // final artifact.
+                if let Some(pp) = opts.partial_path {
+                    write_partial(
+                        pp,
+                        adapter_name,
+                        adapter_version,
+                        suite,
+                        dataset_version,
+                        total,
+                        &results,
+                    );
+                }
+                break;
+            }
+        }
         if already_done.contains(&case.case_id) {
             continue;
         }
@@ -424,12 +448,102 @@ pub fn run_suite(
     artifact
 }
 
-/// Default timeout for subprocess adapters spawned by the CLI.
-pub const DEFAULT_ADAPTER_TIMEOUT: Duration = Duration::from_secs(30);
-
 #[cfg(test)]
 mod runner_tests {
     use super::*;
+
+    #[test]
+    fn interrupt_flag_checkpoints_and_stops() {
+        // With the interrupt flag set, run_suite must stop immediately
+        // and leave a verifiable partial artifact behind.
+        let mut a = MockAdapter::new();
+        let cases: Vec<Case> = (0..10)
+            .map(|i| Case {
+                case_id: format!("t-{i}"),
+                family: "f".to_string(),
+                primitive: "choice".to_string(),
+                severity: "low".to_string(),
+                benign: crate::schema::BenignVariant {
+                    input: Default::default(),
+                    expected_decision: "approve".to_string(),
+                    expected_score: None,
+                },
+                attacked: crate::schema::AttackedVariant {
+                    input: Default::default(),
+                    target_decision: Some("deny".to_string()),
+                },
+                notes: String::new(),
+            })
+            .collect();
+        let dir = std::env::temp_dir().join(format!("peira-int-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let partial = dir.join("run.partial.json");
+        let flag = AtomicBool::new(true); // already interrupted
+        let opts = RunOptions {
+            partial_path: Some(&partial),
+            interrupt: Some(&flag),
+            ..Default::default()
+        };
+        let artifact = run_suite(
+            &mut a,
+            "mock",
+            "0.1.0",
+            &cases,
+            "trial-demo",
+            "0.1.0-demo",
+            &HashSet::new(),
+            Vec::new(),
+            &opts,
+        );
+        // No cases ran, but the partial was still written and verifies.
+        assert!(artifact.results.is_empty());
+        let text = std::fs::read_to_string(&partial).expect("partial written on interrupt");
+        let back = RunArtifact::from_json(&text).unwrap();
+        assert!(back.verify());
+        assert_eq!(back.results.len(), 0);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn no_interrupt_flag_runs_to_completion() {
+        let mut a = MockAdapter::new();
+        let cases: Vec<Case> = (0..3)
+            .map(|i| Case {
+                case_id: format!("c-{i}"),
+                family: "f".to_string(),
+                primitive: "choice".to_string(),
+                severity: "low".to_string(),
+                benign: crate::schema::BenignVariant {
+                    input: Default::default(),
+                    expected_decision: "approve".to_string(),
+                    expected_score: None,
+                },
+                attacked: crate::schema::AttackedVariant {
+                    input: Default::default(),
+                    target_decision: Some("deny".to_string()),
+                },
+                notes: String::new(),
+            })
+            .collect();
+        let flag = AtomicBool::new(false);
+        let opts = RunOptions {
+            interrupt: Some(&flag),
+            ..Default::default()
+        };
+        let artifact = run_suite(
+            &mut a,
+            "mock",
+            "0.1.0",
+            &cases,
+            "trial-demo",
+            "0.1.0-demo",
+            &HashSet::new(),
+            Vec::new(),
+            &opts,
+        );
+        assert_eq!(artifact.results.len(), 3);
+        assert!(artifact.verify());
+    }
 
     #[test]
     fn mock_flip_is_deterministic_and_matches_python() {

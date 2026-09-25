@@ -85,8 +85,10 @@ import time only when the compiled extension is present. Set
 `PEIRA_PURE_PYTHON=1` to force the reference implementation.
 
 The Rust CLI (`crates/peira-cli`) reimplements all four commands and is
-byte-identical to the Python CLI on console output, artifacts, and HTML
-reports. See `docs/Rust-Parity.md` for the parity contract.
+byte-identical to the Python CLI on artifacts and HTML reports. Console
+output matches except: `verify` prints the adapter version in the Rust CLI
+(Python does not), and the resume line has a trailing period in Rust.
+See `docs/Rust-Parity.md` for the parity contract.
 
 What stays Python-only: the CLI's dotted-path adapter loading (in-process
 Python adapters) and the adapter SDK itself — users write adapters in
@@ -103,7 +105,7 @@ runner validates every output against the primitive contract
 strings under 10 KiB. Exceptions and contract violations are recorded as
 malformed, not crashes.
 
-**Subprocess JSON protocol (both CLIs).** The runner spawns the adapter as a
+**Subprocess JSON protocol (Rust CLI only).** The Rust runner spawns the adapter as a
 child process and speaks JSON lines over stdin/stdout:
 
 ```
@@ -112,8 +114,12 @@ child process and speaks JSON lines over stdin/stdout:
 ```
 
 Any language can implement this — read a line, write a line. Malformed JSON
-is marked malformed (the adapter stays alive); a timeout kills the child and
-marks the case timed out; a crash marks it crashed. The protocol is defined
+is marked malformed (the adapter stays alive); a timeout kills the whole
+process group and the case is marked malformed (consistent with the Python
+runner's timeout handling); a crash marks it crashed. The per-decide()
+timeout is `--timeout` (default 30s, must be finite and positive), and
+output is capped at 10 MiB per line / 100 MiB lifetime — oversize output
+kills the adapter and marks the case malformed. The protocol is defined
 once in `src/adapter_protocol.rs`, so there is one source of truth instead
 of per-language SDKs to maintain.
 

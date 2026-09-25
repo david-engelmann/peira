@@ -14,6 +14,9 @@ serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 thiserror = "1.0"
 sha2 = "0.10"
+# Process-group management for subprocess adapters: each adapter spawns in
+# its own group (setpgid) so a timeout killpg()s grandchildren too.
+libc = "0.2"
 # PyO3: build-time only. The `extension-module` feature avoids linking
 # libpython on Linux, so `cargo test` keeps working without a Python dev
 # install. The compiled extension is an optional accelerator — the pure

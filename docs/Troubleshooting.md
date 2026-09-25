@@ -22,10 +22,27 @@ the class name matches exactly (case-sensitive).
 Cause: the adapter class constructor raised an exception. Fix: ensure the
 class takes no required arguments and its `__init__` doesn't fail.
 
-**`error: --timeout must be positive (got 0.0)`**
-Cause: `--timeout` needs a positive number of seconds. Fix: pass a positive
-value like `--timeout 30` (the default). Timed-out variants are marked
-malformed, never silently dropped.
+**`error: adapter 'Y' has an invalid interface: ...`**
+Cause: the adapter class is missing required interface members — a
+callable `decide()`, a non-empty string `name`, a string `version`, or
+`supported_primitives` contains unknown primitives. The interface is
+validated at load time so a broken adapter fails fast instead of failing
+mid-run. Fix: implement the missing members (see `docs/Adapter-Tutorial.md`).
+
+**`warning: N timed-out adapter worker(s) still running ...`**
+Cause: a previous `decide()` call timed out but its thread is still
+running — Python threads can't be forcibly killed. The timed-out call was
+already marked malformed; this warns you that the orphan is executing
+concurrently against the same adapter, which is hazardous for adapters
+with shared mutable state. Fix: make `decide()` respect the timeout, or
+use the Rust subprocess adapter protocol for a hard-kill guarantee.
+
+**`error: --timeout must be a finite positive number of seconds (got nan)`**
+Cause: `--timeout` needs a finite positive number of seconds. NaN, inf,
+zero, and negatives are all rejected — NaN slips past a naive `<= 0`
+check, and inf would silently disable the timeout. Both CLIs emit this
+exact string. Fix: pass a finite positive value like `--timeout 30` (the
+default). Timed-out variants are marked malformed, never silently dropped.
 
 **`timeout: adapter.decide() exceeded 30s on case <id> (<variant> variant) — marked malformed`**
 Cause: your adapter took longer than `--timeout` on that variant. This is a
@@ -39,8 +56,13 @@ Cause: typo in `--suite`. Fix: `trial-demo` (demo fixture, offline) or
 `trial` (the real 100-case Trial suite, ships with dataset v1).
 
 **`error: suite directory ... not found`**
-Cause: you ran `peira` from outside the repo checkout. Fix: run from the
-repo root, or `pip install peira` and let it use the installed dataset.
+Cause (Python CLI): the suite directory is missing next to the installed
+package — a deleted `dataset/`, a partial checkout, or a pip install
+without data files. The path is derived from the package location, not
+your working directory. Fix: re-clone the repo or point at a checkout.
+Cause (Rust CLI): you ran from outside the repo checkout — the Rust CLI
+resolves suite directories relative to the working directory. Fix: run
+from the repo root.
 
 **`...: bad primitive: 'xyz'` / `bad severity` / `missing required key`**
 Cause: a case file fails schema validation. Fix: run
@@ -58,8 +80,7 @@ login`, or set `HF_TOKEN`. Model weights are cached after the first download.
 
 **Out-of-memory on local models**
 Cause: the model doesn't fit in RAM/VRAM. Fix: use a quantized variant or a
-smaller adapter; see `docs/Hardware.md` for per-tier requirements. `peira run`
-prints an estimate before starting — don't ignore it.
+smaller adapter; see `docs/Hardware.md` for per-tier requirements.
 
 **`peira report` prints "analysis lock mismatch"**
 Cause: the run artifact was edited after sealing. Fix: don't edit artifacts;
@@ -100,3 +121,133 @@ Cause: the partial contains results for case IDs not in the current suite
 (stale or hand-edited file). Fix: none — peira drops them and resumes only
 the suite's own cases. If you see this unexpectedly, delete the partial and
 re-run.
+
+**`warning: could not read partial run (...); starting fresh.`**
+Cause: the `--resume` checkpoint file is corrupt or unreadable. Fix: none
+— peira starts the run from scratch. If the file matters, restore it from
+a trusted copy.
+
+**`warning: ignoring N duplicate case ID(s) in partial run.`**
+Cause: the checkpoint contains the same case ID twice (hand-edited or
+crashed mid-write). Fix: none — the first occurrence is kept.
+
+**`error: invalid case data: ...`**
+Cause: `load_cases` failed during `peira run` — a case file has a schema
+violation. Fix: run `peira validate --dataset <dir>` for the exact
+`file:line` and rule.
+
+**`error: cannot parse artifact: ...`**
+Cause: `peira verify` couldn't parse the artifact JSON. Fix: check the
+file path; the file may be corrupt or not a peira artifact.
+
+**`FAIL: <path> — analysis lock MISMATCH`**
+Cause: `peira verify` recomputed the lock and it doesn't match — the
+artifact was modified after sealing. The follow-up line ("artifact was
+modified after sealing; metrics are not trustworthy") says it plainly.
+Fix: don't edit artifacts; re-run. (Artifacts sealed before 2026-09-25
+also fail — metrics and adapter_version are now lock-covered; re-run to
+re-seal.)
+
+**`interrupted — partial run saved; re-run with --resume.`**
+Cause: you hit Ctrl-C during `peira run`. Both CLIs checkpoint the
+completed cases before exiting (Python via `finally`, Rust via a SIGINT
+handler checked between cases — Unix only), so no completed cases are
+lost. Fix: re-run with `--resume`. Exit code is 2.
+
+**`adapter output too large: ...` (Rust CLI subprocess adapters)**
+Cause: the adapter's response line exceeded 10 MiB, or its lifetime output
+exceeded 100 MiB. The adapter is killed (whole process group) and the case
+is marked malformed; the run continues but every later case will also be
+malformed since the adapter is dead. Fix: make the adapter answer with one
+short JSON line per request. These caps are a hard guarantee — a hostile
+adapter cannot OOM the runner with a newline-free gigabyte.
+
+**`skip: N 'choice' case(s) not scored (adapter declares ...)`**
+Cause: not an error — your adapter's `supported_primitives` doesn't
+include that primitive, so those cases were skipped (stderr notice).
+Fix: none; the artifact's `n_skipped`/`primitive_coverage` describe the
+gap. To score them, add the primitive to `supported_primitives`.
+
+**`error: <dir> not found` / `error: <path> not found`**
+Cause: `peira validate` got a missing dataset dir, or `peira report` /
+`peira verify` got a missing artifact path. Fix: check the path.
+
+## Adapter errors
+
+The bundled example adapters (`examples/*_adapter.py`) raise these when
+their API calls fail. They are not CLI errors — they surface as
+`cannot instantiate` or per-case tracebacks.
+
+**`no API key: set OPENROUTER_API_KEY (or pass api_key=)`**
+Cause: `Gpt6LunaAdapter`, `Gpt6SolAdapter`, `GrokAdapter`, or
+`DeepSeekAdapter` was constructed without an OpenRouter key. Fix: export
+`OPENROUTER_API_KEY="sk-or-..."` or pass `api_key=` explicitly.
+
+**`no API key: set ANTHROPIC_API_KEY (or pass api_key=)`**
+Cause: `OpusAdapter` was constructed without an Anthropic key. Fix: export
+`ANTHROPIC_API_KEY="sk-ant-..."` or pass `api_key=` explicitly.
+
+**`no API key: set TYPESAFE_API_KEY or OPENROUTER_API_KEY (or pass api_key=)`**
+Cause: `JevAdapter` was constructed without a TypeSafe or OpenRouter key.
+Fix: export `TYPESAFE_API_KEY` or `OPENROUTER_API_KEY`.
+
+**`OpenRouter HTTP 401: ...` / `Anthropic HTTP 401: ...` / `Shieldstral HTTP 401: ...`**
+Cause: the API key is invalid or revoked. These fail fast (no retry).
+Fix: check the key, check the account has credit.
+
+**`OpenRouter HTTP 429: ...` (retried, then `... failed after retries`)**
+Cause: rate-limited. The adapter retries with exponential backoff
+(1s, 2s, 4s...). Fix: lower your request rate via `min_interval=`, or wait
+and resume with `--resume`.
+
+**`OpenRouter bad response: ...` / `Anthropic bad response: ...` / `Shieldstral bad response: ...`**
+Cause: the API returned malformed JSON or an unexpected envelope. Fix:
+check the endpoint URL (`api_base=`); for Shieldstral, ensure the endpoint
+serves the Shieldstral checkpoint with logprobs enabled.
+
+**`model returned unknown choice 'x'` / `model returned unknown decision 'x'`**
+Cause: the model returned a decision string not in the case's options,
+despite the structured-output schema. Fix: none needed — the adapter
+rejects it loudly rather than scoring a hallucinated option. If it recurs,
+the model may need a stricter prompt.
+
+**`choice/score/noul needs >= 2 options, got [...]`**
+Cause: a case with fewer than 2 options reached the adapter. Fix: check
+the dataset — every case needs at least 2 options.
+
+## Rust CLI errors
+
+The Rust CLI (`crates/peira-cli`) has its own messages. Python dotted-path
+adapters (`mymodule:MyAdapter`) need the Python CLI — the Rust CLI only
+runs `mock` and JSON-protocol subprocess adapters.
+
+**`unknown adapter: 'x' (the Rust CLI runs 'mock' and JSON-protocol ...)`**
+Cause: the adapter name isn't `mock` and isn't a program on PATH. Fix: use
+`mock`, or pass a program name that speaks the JSON adapter protocol (see
+`crates/peira-core/src/adapter_protocol.rs`).
+
+**`unknown adapter: 'x' (looks like a Python dotted path, which needs ...)`**
+Cause: you passed `mymodule:MyAdapter` or `mymodule.MyAdapter` to the Rust
+CLI. Fix: use the Python CLI (`python -m peira.cli`) for dotted-path
+adapters.
+
+**`cannot spawn adapter 'x': ...`**
+Cause: the subprocess adapter program couldn't be started (not on PATH,
+not executable). Fix: check the program name and permissions.
+
+**`error: cannot read <path>: ...`**
+Cause: the Rust CLI couldn't read a dataset dir or artifact file. Fix:
+check the path and permissions.
+
+**`error: <path>:<lineno>: invalid JSON: ...`**
+Cause: a case file line isn't valid JSON (Rust `validate`). Fix: check the
+named line.
+
+**`error: cannot create <path>: ...` / `error: cannot write <path>: ...` /
+`error: cannot serialize artifact: ...`**
+Cause: the Rust CLI couldn't write its output (permissions, disk full, or
+an unserializable value). Fix: check the output path and disk space.
+
+**`warning: could not read partial run (bad result shape); starting fresh.`**
+Cause: the Rust `--resume` checkpoint has an unexpected shape. Fix: none —
+the run starts fresh.
