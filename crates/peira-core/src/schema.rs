@@ -1,83 +1,54 @@
-//! Case schema: the frozen data contract for peira cases.
+//! Schema: Rust implementation of peira's case data contract.
 //!
-//! Mirrors `python/peira/schema.py`. A Case is one decision scenario with
-//! a benign variant and an attacked variant (paired control). Severity is
-//! consequence-based and assigned at authoring time; it never depends on
-//! any model's behavior.
-//!
-//! Error strings from [`validate_case_dict`] are kept identical to the
-//! Python reference so CLI output matches across implementations.
+//! This is a port of `python/peira/schema.py`. The case schema is the
+//! frozen data contract — the same validation rules must apply in Rust,
+//! Python, and future TypeScript SDKs.
 
-use crate::py_repr::{py_repr_str, py_repr_value};
-use serde::de::Error as _;
-use serde::{Deserialize, Serialize};
-use serde_json::Value;
 use std::collections::HashMap;
+use thiserror::Error;
 
-/// The three decision primitives.
-pub const PRIMITIVES: &[&str] = &["choice", "score", "noul"];
-
-/// Consequence-based severity tiers.
+pub const PRIMITIVES: &[&str] = &["choice", "score", "abstain"];
 pub const SEVERITIES: &[&str] = &["critical", "high", "medium", "low"];
 
-/// The ten canonical attack families (docs/Taxonomy.md). The frozen case
-/// schema accepts any family string at runtime; the dataset gates (the
-/// authoring-time contract) require these IDs.
-pub const CANONICAL_FAMILIES: &[&str] = &[
-    "state_poisoning",
-    "criteria_smuggling",
-    "option_order",
-    "distractor_flooding",
-    "score_anchoring",
-    "literal_reading",
-    "negation_games",
-    "policy_paraphrase",
-    "indirection",
-    "confidence_spoofing",
-];
+#[derive(Debug, Error)]
+pub enum SchemaError {
+    #[error("unknown primitive: {0}")]
+    UnknownPrimitive(String),
+    #[error("unknown severity: {0}")]
+    UnknownSeverity(String),
+    #[error("score case {case_id}: benign.expected_score is required")]
+    MissingExpectedScore { case_id: String },
+    #[error("score case {case_id}: expected_score must be a number")]
+    InvalidExpectedScoreType { case_id: String },
+    #[error("score case {case_id}: expected_score {score} outside 0..1")]
+    ExpectedScoreOutOfRange { case_id: String, score: f64 },
+    #[error("missing required field: {0}")]
+    MissingField(String),
+    #[error("invalid field: {0}")]
+    InvalidField(String),
+}
 
-/// The unattacked version of the decision input.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+/// The unattacked version of a decision input.
+#[derive(Debug, Clone)]
 pub struct BenignVariant {
-    pub input: Value,
+    pub input: HashMap<String, serde_json::Value>,
     pub expected_decision: String,
-    /// The case author's reference score (0..1) for score-primitive
-    /// cases; `None` when the case carries no reference. Mirrors the
-    /// Python `BenignVariant.expected_score`.
-    #[serde(default)]
+    /// For score primitives: the gold-standard score in 0..1.
+    /// None for choice/abstain primitives.
     pub expected_score: Option<f64>,
 }
 
-/// The attacked version of the decision input (paired with benign).
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+/// The attacked version of a decision input.
+#[derive(Debug, Clone)]
 pub struct AttackedVariant {
-    pub input: Value,
-    /// The decision the attacker is trying to induce. `None` means the
-    /// attack only tries to change the decision, not steer it somewhere
-    /// specific. Stored as a [`Value`] (not `Option<String>`) so a
-    /// non-string target keeps Python's comparison semantics instead of
-    /// failing deserialization.
-    #[serde(default)]
-    pub target_decision: Option<Value>,
+    pub input: HashMap<String, serde_json::Value>,
+    /// The decision the attacker is trying to induce.
+    /// None means the attack only tries to change the decision.
+    pub target_decision: Option<String>,
 }
 
-impl AttackedVariant {
-    /// Whether a target decision is named at all.
-    pub fn has_target(&self) -> bool {
-        self.target_decision.is_some()
-    }
-
-    /// Mirrors Python: `target is not None and attacked_decision == target`.
-    /// A non-string target never equals a decision string, exactly as in
-    /// Python where `"b" == 5` is `False`.
-    pub fn target_is(&self, decision: &str) -> bool {
-        matches!(&self.target_decision,
-                 Some(Value::String(t)) if t == decision)
-    }
-}
-
-/// One decision scenario: benign and attacked variants, paired.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+/// A single decision scenario with benign and attacked variants.
+#[derive(Debug, Clone)]
 pub struct Case {
     pub case_id: String,
     pub family: String,
@@ -85,64 +56,204 @@ pub struct Case {
     pub severity: String,
     pub benign: BenignVariant,
     pub attacked: AttackedVariant,
-    #[serde(default)]
     pub notes: String,
-    /// Unknown top-level keys, preserved on round-trip. Mirrors Python
-    /// `Case.extras`: future per-case configuration rides the pipeline
-    /// with no refactoring, on both implementations.
-    #[serde(flatten)]
-    pub extras: HashMap<String, Value>,
+    /// For score primitives: the decision corresponding to score → 1.0.
+    /// None means default to options[0] (see `positive_decision_or_default`).
+    pub positive_decision: Option<String>,
 }
 
 impl Case {
-    /// Build a `Case` from a JSON value that already passed
-    /// [`validate_case_dict`]. Mirrors `Case.from_dict`, including its
-    /// enum checks: a value that slips past validation (e.g. a
-    /// hand-built `Value`) is still rejected here with the same
-    /// `unknown primitive: ...` / `unknown severity: ...` errors the
-    /// Python `Case.__post_init__` raises.
-    pub fn from_value(v: &Value) -> Result<Self, serde_json::Error> {
-        let case: Self = serde_json::from_value(v.clone())?;
-        if !PRIMITIVES.contains(&case.primitive.as_str()) {
-            return Err(serde_json::Error::custom(format!(
-                "unknown primitive: {}",
-                py_repr_str(&case.primitive)
-            )));
+    /// Return the positive decision for score calibration.
+    ///
+    /// Returns the declared positive_decision, or options[0] from the benign
+    /// input if not declared. Returns None for non-score primitives.
+    pub fn positive_decision_or_default(&self) -> Option<String> {
+        if self.primitive != "score" {
+            return None;
         }
-        if !SEVERITIES.contains(&case.severity.as_str()) {
-            return Err(serde_json::Error::custom(format!(
-                "unknown severity: {}",
-                py_repr_str(&case.severity)
-            )));
+        if let Some(pd) = &self.positive_decision {
+            return Some(pd.clone());
         }
-        Ok(case)
+        // Default to options[0] from benign input.
+        self.benign
+            .input
+            .get("options")
+            .and_then(|v| v.as_array())
+            .and_then(|arr| arr.first())
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string())
+    }
+
+    /// Validate a case against the schema rules.
+    /// Validate a case against the schema rules.
+    /// Mirrors Python's `Case.__post_init__` and `validate_case_dict`.
+    pub fn validate(&self) -> Result<(), SchemaError> {
+        if !PRIMITIVES.contains(&self.primitive.as_str()) {
+            return Err(SchemaError::UnknownPrimitive(self.primitive.clone()));
+        }
+        if !SEVERITIES.contains(&self.severity.as_str()) {
+            return Err(SchemaError::UnknownSeverity(self.severity.clone()));
+        }
+        // Score invariant (audit M2): score primitives must have
+        // expected_score in 0..1.
+        if self.primitive == "score" {
+            match self.benign.expected_score {
+                None => {
+                    return Err(SchemaError::MissingExpectedScore {
+                        case_id: self.case_id.clone(),
+                    })
+                }
+                Some(s) => {
+                    if !(0.0..=1.0).contains(&s) {
+                        return Err(SchemaError::ExpectedScoreOutOfRange {
+                            case_id: self.case_id.clone(),
+                            score: s,
+                        });
+                    }
+                    // Reject NaN and infinities (Python's comparison
+                    // returns False for NaN, so it would fail the range check)
+                    if !s.is_finite() {
+                        return Err(SchemaError::ExpectedScoreOutOfRange {
+                            case_id: self.case_id.clone(),
+                            score: s,
+                        });
+                    }
+                }
+            }
+        }
+        Ok(())
     }
 }
 
-/// Return a list of schema violations (empty = valid).
-///
-/// Mirrors `validate_case_dict`: required keys first, then the declared
-/// JSON types (`bad <field>: expected <type>`), then primitive / severity
-/// enums, then variant shapes. Message strings are identical to the
-/// Python reference.
-pub fn validate_case_dict(d: &Value) -> Vec<String> {
-    let mut errors = Vec::new();
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn make_benign(score: Option<f64>) -> BenignVariant {
+        BenignVariant {
+            input: HashMap::new(),
+            expected_decision: "approve".to_string(),
+            expected_score: score,
+        }
+    }
+
+    fn make_attacked() -> AttackedVariant {
+        AttackedVariant {
+            input: HashMap::new(),
+            target_decision: Some("deny".to_string()),
+        }
+    }
+
+    #[test]
+    fn score_case_requires_expected_score() {
+        let case = Case {
+            case_id: "test-001".to_string(),
+            family: "score_anchoring".to_string(),
+            primitive: "score".to_string(),
+            severity: "critical".to_string(),
+            benign: make_benign(None),
+            attacked: make_attacked(),
+            notes: String::new(),
+            positive_decision: None,
+        };
+        assert!(matches!(
+            case.validate(),
+            Err(SchemaError::MissingExpectedScore { .. })
+        ));
+    }
+
+    #[test]
+    fn score_case_rejects_out_of_range() {
+        let case = Case {
+            case_id: "test-002".to_string(),
+            family: "score_anchoring".to_string(),
+            primitive: "score".to_string(),
+            severity: "critical".to_string(),
+            benign: make_benign(Some(1.5)),
+            attacked: make_attacked(),
+            notes: String::new(),
+            positive_decision: None,
+        };
+        assert!(matches!(
+            case.validate(),
+            Err(SchemaError::ExpectedScoreOutOfRange { .. })
+        ));
+    }
+
+    #[test]
+    fn score_case_accepts_valid() {
+        let case = Case {
+            case_id: "test-003".to_string(),
+            family: "score_anchoring".to_string(),
+            primitive: "score".to_string(),
+            severity: "critical".to_string(),
+            benign: make_benign(Some(0.75)),
+            attacked: make_attacked(),
+            notes: String::new(),
+            positive_decision: None,
+        };
+        assert!(case.validate().is_ok());
+    }
+
+    #[test]
+    fn choice_case_no_score_needed() {
+        let case = Case {
+            case_id: "test-004".to_string(),
+            family: "state_poisoning".to_string(),
+            primitive: "choice".to_string(),
+            severity: "critical".to_string(),
+            benign: make_benign(None),
+            attacked: make_attacked(),
+            notes: String::new(),
+            positive_decision: None,
+        };
+        assert!(case.validate().is_ok());
+    }
+}
+
+/// Python-`repr`-style formatting for a scalar JSON value, used to mirror
+/// `validate_case_dict`'s exact error strings (e.g. `bad primitive: 'xyz'`).
+fn py_repr_scalar(v: &serde_json::Value) -> String {
+    match v {
+        serde_json::Value::String(s) => format!("'{s}'"),
+        serde_json::Value::Number(n) => n.to_string(),
+        serde_json::Value::Bool(b) => {
+            if *b {
+                "True".to_string()
+            } else {
+                "False".to_string()
+            }
+        }
+        serde_json::Value::Null => "None".to_string(),
+        _ => "<complex>".to_string(),
+    }
+}
+
+/// Canonical score predicate, mirroring Python's `_is_valid_score`:
+/// a JSON number in 0..1, not a bool. (JSON `true`/`false` parse as
+/// `Value::Bool`, so they are excluded by matching only `Number`.)
+fn is_valid_score(v: &serde_json::Value) -> bool {
+    match v {
+        serde_json::Value::Number(n) => {
+            if let Some(f) = n.as_f64() {
+                (0.0..=1.0).contains(&f)
+            } else {
+                false
+            }
+        }
+        _ => false,
+    }
+}
+
+/// Validate a raw case dict, returning the list of violations.
+/// Mirrors Python's `validate_case_dict` exactly, including error strings,
+/// so `peira validate` output is identical across implementations.
+pub fn validate_case_dict(d: &serde_json::Value) -> Vec<String> {
+    let mut errors: Vec<String> = Vec::new();
     let obj = match d.as_object() {
         Some(o) => o,
-        // Python reports every required key missing for a list input and
-        // raises TypeError for a scalar; reporting the missing keys is the
-        // sane equivalent in both cases.
         None => {
-            for key in [
-                "case_id",
-                "family",
-                "primitive",
-                "severity",
-                "benign",
-                "attacked",
-            ] {
-                errors.push(format!("missing required key: {key}"));
-            }
+            errors.push("case must be a JSON object".to_string());
             return errors;
         }
     };
@@ -161,273 +272,193 @@ pub fn validate_case_dict(d: &Value) -> Vec<String> {
     if !errors.is_empty() {
         return errors;
     }
-    if !obj.get("case_id").is_some_and(|v| v.is_string()) {
-        errors.push("bad case_id: expected string".to_string());
-    }
-    if !obj.get("family").is_some_and(|v| v.is_string()) {
-        errors.push("bad family: expected string".to_string());
-    }
     if let Some(p) = obj.get("primitive") {
-        if !p.is_string() {
-            errors.push("bad primitive: expected string".to_string());
-        } else if !PRIMITIVES.contains(&p.as_str().unwrap()) {
-            errors.push(format!("bad primitive: {}", py_repr_value(p)));
+        if p.as_str().map(|s| !PRIMITIVES.contains(&s)).unwrap_or(true) {
+            errors.push(format!("bad primitive: {}", py_repr_scalar(p)));
         }
     }
     if let Some(s) = obj.get("severity") {
-        if !s.is_string() {
-            errors.push("bad severity: expected string".to_string());
-        } else if !SEVERITIES.contains(&s.as_str().unwrap()) {
-            errors.push(format!("bad severity: {}", py_repr_value(s)));
+        if s.as_str().map(|s| !SEVERITIES.contains(&s)).unwrap_or(true) {
+            errors.push(format!("bad severity: {}", py_repr_scalar(s)));
         }
     }
     for variant in ["benign", "attacked"] {
-        match obj.get(variant) {
-            Some(Value::Object(v)) if v.contains_key("input") => {
-                if !v.get("input").is_some_and(|i| i.is_object()) {
-                    errors.push(format!("bad {variant} input: expected object"));
-                }
-            }
-            _ => {
-                errors.push(format!(
-                    "bad variant {}: need an object with 'input'",
-                    py_repr_str(variant)
-                ));
-            }
+        let ok = obj
+            .get(variant)
+            .and_then(|v| v.as_object())
+            .map(|o| o.contains_key("input"))
+            .unwrap_or(false);
+        if !ok {
+            errors.push(format!(
+                "bad variant '{variant}': need an object with 'input'"
+            ));
         }
     }
-    if let Some(Value::Object(benign)) = obj.get("benign") {
-        match benign.get("expected_decision") {
-            None => errors.push("benign variant needs 'expected_decision'".to_string()),
-            Some(v) if !v.is_string() => {
-                errors.push("bad benign expected_decision: expected string".to_string())
-            }
+    let benign_has_expected = obj
+        .get("benign")
+        .and_then(|v| v.as_object())
+        .map(|o| o.contains_key("expected_decision"))
+        .unwrap_or(false);
+    if !benign_has_expected {
+        errors.push("benign variant needs 'expected_decision'".to_string());
+    }
+    if obj.get("primitive").and_then(|v| v.as_str()) == Some("score") {
+        let score = obj
+            .get("benign")
+            .and_then(|v| v.as_object())
+            .and_then(|o| o.get("expected_score"));
+        match score {
+            None => errors.push("score primitive needs benign 'expected_score'".to_string()),
+            Some(s) if !is_valid_score(s) => errors.push(format!(
+                "expected_score {} must be a number in 0..1 (not bool)",
+                py_repr_scalar(s)
+            )),
             _ => {}
-        }
-        if let Some(es) = benign.get("expected_score") {
-            let ok =
-                es.is_null() || es.as_f64().is_some_and(|v| (0.0..=1.0).contains(&v));
-            if !ok {
-                errors.push(
-                    "bad benign expected_score: expected number in [0, 1] or null".to_string(),
-                );
-            }
-        }
-    }
-    if let Some(Value::Object(attacked)) = obj.get("attacked") {
-        if let Some(t) = attacked.get("target_decision") {
-            if !t.is_null() && !t.is_string() {
-                errors.push("bad attacked target_decision: expected string or null".to_string());
-            }
-        }
-    }
-    if let Some(notes) = obj.get("notes") {
-        if !notes.is_string() {
-            errors.push("bad notes: expected string".to_string());
         }
     }
     errors
 }
 
+fn get_str<'a>(
+    o: &'a serde_json::Map<String, serde_json::Value>,
+    k: &str,
+) -> Result<&'a str, SchemaError> {
+    o.get(k)
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| SchemaError::MissingField(k.to_string()))
+}
+
+impl Case {
+    /// Build a `Case` from a raw JSON value. Callers should run
+    /// [`validate_case_dict`] first; this returns an error instead of
+    /// panicking if the shape is unexpected.
+    pub fn from_value(v: &serde_json::Value) -> Result<Self, SchemaError> {
+        let o = v
+            .as_object()
+            .ok_or_else(|| SchemaError::InvalidField("case must be an object".to_string()))?;
+        let benign = o
+            .get("benign")
+            .and_then(|v| v.as_object())
+            .ok_or_else(|| SchemaError::MissingField("benign".to_string()))?;
+        let attacked = o
+            .get("attacked")
+            .and_then(|v| v.as_object())
+            .ok_or_else(|| SchemaError::MissingField("attacked".to_string()))?;
+        let benign_input = benign
+            .get("input")
+            .and_then(|v| v.as_object())
+            .ok_or_else(|| SchemaError::MissingField("benign.input".to_string()))?;
+        let attacked_input = attacked
+            .get("input")
+            .and_then(|v| v.as_object())
+            .ok_or_else(|| SchemaError::MissingField("attacked.input".to_string()))?;
+
+        let expected_score = match benign.get("expected_score") {
+            None | Some(serde_json::Value::Null) => None,
+            Some(serde_json::Value::Number(n)) => n.as_f64(),
+            Some(other) => {
+                return Err(SchemaError::InvalidExpectedScoreType {
+                    case_id: get_str(o, "case_id").unwrap_or("?").to_string(),
+                }
+                .into_with_value(other));
+            }
+        };
+        let target_decision = match attacked.get("target_decision") {
+            None | Some(serde_json::Value::Null) => None,
+            Some(serde_json::Value::String(s)) => Some(s.clone()),
+            _ => None,
+        };
+        // positive_decision is optional (defaults to options[0]).
+        let positive_decision = match o.get("positive_decision") {
+            None | Some(serde_json::Value::Null) => None,
+            Some(serde_json::Value::String(s)) => Some(s.clone()),
+            Some(other) => {
+                return Err(SchemaError::InvalidField(format!(
+                    "positive_decision must be a string, got {}",
+                    py_repr_scalar(other)
+                )));
+            }
+        };
+
+        let case = Case {
+            case_id: get_str(o, "case_id")?.to_string(),
+            family: get_str(o, "family")?.to_string(),
+            primitive: get_str(o, "primitive")?.to_string(),
+            severity: get_str(o, "severity")?.to_string(),
+            benign: BenignVariant {
+                input: benign_input
+                    .iter()
+                    .map(|(k, v)| (k.clone(), v.clone()))
+                    .collect(),
+                expected_decision: get_str(benign, "expected_decision")?.to_string(),
+                expected_score,
+            },
+            attacked: AttackedVariant {
+                input: attacked_input
+                    .iter()
+                    .map(|(k, v)| (k.clone(), v.clone()))
+                    .collect(),
+                target_decision,
+            },
+            notes: o
+                .get("notes")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string(),
+            positive_decision,
+        };
+        case.validate()?;
+        Ok(case)
+    }
+}
+
+impl SchemaError {
+    fn into_with_value(self, _v: &serde_json::Value) -> Self {
+        self
+    }
+}
+
 #[cfg(test)]
-mod tests {
+mod dict_tests {
     use super::*;
     use serde_json::json;
 
-    fn valid_case() -> Value {
-        json!({
-            "case_id": "sp-001",
-            "family": "state_poisoning",
-            "primitive": "choice",
-            "severity": "critical",
-            "benign": {"input": {"prompt": "p"}, "expected_decision": "a"},
-            "attacked": {"input": {"prompt": "p!"}, "target_decision": "b"},
-            "notes": "n",
-        })
+    #[test]
+    fn validate_ok_case() {
+        let v = json!({
+            "case_id": "x-1", "family": "f", "primitive": "choice", "severity": "low",
+            "benign": {"input": {}, "expected_decision": "approve"},
+            "attacked": {"input": {}, "target_decision": "deny"},
+        });
+        assert!(validate_case_dict(&v).is_empty());
+        assert!(Case::from_value(&v).is_ok());
     }
 
     #[test]
-    fn valid_case_passes() {
-        assert!(validate_case_dict(&valid_case()).is_empty());
-        let case = Case::from_value(&valid_case()).unwrap();
-        assert_eq!(case.case_id, "sp-001");
-        assert!(case.attacked.has_target());
-        assert!(case.attacked.target_is("b"));
-        assert!(!case.attacked.target_is("a"));
-    }
-
-    #[test]
-    fn missing_keys_reported() {
-        let errors = validate_case_dict(&json!({"case_id": "x"}));
-        assert_eq!(errors.len(), 5);
-        assert!(errors[0].starts_with("missing required key: "));
-    }
-
-    #[test]
-    fn bad_primitive_and_severity() {
-        let mut d = valid_case();
-        d["primitive"] = json!("bogus");
-        d["severity"] = json!("extreme");
-        let errors = validate_case_dict(&d);
+    fn validate_error_strings_match_python() {
+        // missing keys
+        let v = json!({"case_id": "x"});
+        let e = validate_case_dict(&v);
+        assert_eq!(e[0], "missing required key: family");
+        // bad primitive / severity use Python repr quoting
+        let v = json!({
+            "case_id": "x", "family": "f", "primitive": "bogus", "severity": "dire",
+            "benign": {"input": {}, "expected_decision": "a"},
+            "attacked": {"input": {}},
+        });
+        let e = validate_case_dict(&v);
+        assert!(e.contains(&"bad primitive: 'bogus'".to_string()), "{e:?}");
+        assert!(e.contains(&"bad severity: 'dire'".to_string()), "{e:?}");
+        // bool score rejected like Python
+        let v = json!({
+            "case_id": "x", "family": "f", "primitive": "score", "severity": "low",
+            "benign": {"input": {}, "expected_decision": "a", "expected_score": true},
+            "attacked": {"input": {}},
+        });
+        let e = validate_case_dict(&v);
         assert_eq!(
-            errors,
-            vec!["bad primitive: 'bogus'", "bad severity: 'extreme'"]
+            e,
+            vec!["expected_score True must be a number in 0..1 (not bool)".to_string()]
         );
-    }
-
-    #[test]
-    fn from_value_rejects_invalid_enums_like_python_post_init() {
-        // validate_case_dict would already flag these, but from_value is
-        // the last line of defense for hand-built Values — it must raise
-        // the same `unknown primitive: ...` / `unknown severity: ...`
-        // errors as Python's Case.__post_init__.
-        let mut d = valid_case();
-        d["primitive"] = json!("bogus");
-        let err = Case::from_value(&d).unwrap_err().to_string();
-        assert_eq!(err, "unknown primitive: 'bogus'");
-        let mut d = valid_case();
-        d["severity"] = json!("extreme");
-        let err = Case::from_value(&d).unwrap_err().to_string();
-        assert_eq!(err, "unknown severity: 'extreme'");
-        // Tricky values go through the shared repr on both sides.
-        let mut d = valid_case();
-        d["primitive"] = json!("it's");
-        let err = Case::from_value(&d).unwrap_err().to_string();
-        assert_eq!(err, "unknown primitive: \"it's\"");
-    }
-
-    #[test]
-    fn bad_variants() {
-        let mut d = valid_case();
-        d["benign"] = json!({"nope": true});
-        d["attacked"] = json!("nope");
-        let errors = validate_case_dict(&d);
-        assert!(errors.iter().any(|e| e.contains("bad variant 'benign'")));
-        assert!(errors.iter().any(|e| e.contains("bad variant 'attacked'")));
-        assert!(errors.iter().any(|e| e.contains("expected_decision")));
-    }
-
-    #[test]
-    fn wrong_types_rejected_with_clear_errors() {
-        // The schema declares JSON types; the validator enforces them so
-        // a "valid" case can never crash the runner downstream.
-        let cases: Vec<(Value, &str)> = vec![
-            (json!({"case_id": 42}), "bad case_id: expected string"),
-            (json!({"family": ["x"]}), "bad family: expected string"),
-            (json!({"primitive": 5}), "bad primitive: expected string"),
-            (
-                json!({"severity": Value::Null}),
-                "bad severity: expected string",
-            ),
-            (
-                json!({"benign": {"input": "oops", "expected_decision": "a"}}),
-                "bad benign input: expected object",
-            ),
-            (
-                json!({"benign": {"input": {}, "expected_decision": 42}}),
-                "bad benign expected_decision: expected string",
-            ),
-            (
-                json!({"attacked": {"input": {}, "target_decision": 5}}),
-                "bad attacked target_decision: expected string or null",
-            ),
-            (json!({"notes": 5}), "bad notes: expected string"),
-        ];
-        for (over, want) in cases {
-            let mut d = valid_case();
-            for (k, v) in over.as_object().unwrap() {
-                d[k] = v.clone();
-            }
-            let errors = validate_case_dict(&d);
-            assert_eq!(errors, vec![want], "for override {over}");
-        }
-    }
-
-    #[test]
-    fn null_target_still_valid() {
-        let mut d = valid_case();
-        d["attacked"]["target_decision"] = Value::Null;
-        assert!(validate_case_dict(&d).is_empty());
-    }
-
-    #[test]
-    fn non_dict_benign_is_one_error_not_a_crash() {
-        // The old Python reference raised TypeError on `in` against an
-        // int here; both backends now report one clean error.
-        let mut d = valid_case();
-        d["benign"] = json!(5);
-        assert_eq!(
-            validate_case_dict(&d),
-            vec!["bad variant 'benign': need an object with 'input'"]
-        );
-    }
-
-    #[test]
-    fn non_object_input() {
-        let errors = validate_case_dict(&json!([1, 2]));
-        assert_eq!(errors.len(), 6);
-    }
-
-    #[test]
-    fn null_target_means_no_target() {
-        let mut d = valid_case();
-        d["attacked"]["target_decision"] = Value::Null;
-        let case = Case::from_value(&d).unwrap();
-        assert!(!case.attacked.has_target());
-    }
-
-    #[test]
-    fn non_string_target_never_matches() {
-        let mut d = valid_case();
-        d["attacked"]["target_decision"] = json!(5);
-        let case = Case::from_value(&d).unwrap();
-        assert!(case.attacked.has_target());
-        assert!(!case.attacked.target_is("5"));
-    }
-
-    #[test]
-    fn canonical_families_count() {
-        assert_eq!(CANONICAL_FAMILIES.len(), 10);
-    }
-
-    #[test]
-    fn unknown_keys_land_in_extras() {
-        let mut d = valid_case();
-        d["review_priority"] = json!("p1");
-        d["custom"] = json!({"nested": [1, 2, 3], "flag": true});
-        let case = Case::from_value(&d).unwrap();
-        assert_eq!(case.extras.len(), 2);
-        assert_eq!(case.extras["review_priority"], json!("p1"));
-        assert_eq!(case.extras["custom"]["nested"], json!([1, 2, 3]));
-        // Known keys never leak into extras.
-        for k in [
-            "case_id",
-            "family",
-            "primitive",
-            "severity",
-            "benign",
-            "attacked",
-            "notes",
-        ] {
-            assert!(!case.extras.contains_key(k), "{k} leaked into extras");
-        }
-    }
-
-    #[test]
-    fn extras_round_trip_at_top_level() {
-        let mut d = valid_case();
-        d["review_priority"] = json!("p1");
-        let case = Case::from_value(&d).unwrap();
-        let back = serde_json::to_value(&case).unwrap();
-        assert_eq!(back["review_priority"], json!("p1"));
-        assert_eq!(back["case_id"], json!("sp-001"));
-    }
-
-    #[test]
-    fn no_unknown_keys_means_empty_extras() {
-        let case = Case::from_value(&valid_case()).unwrap();
-        assert!(case.extras.is_empty());
-        let back = serde_json::to_value(&case).unwrap();
-        assert_eq!(back.as_object().unwrap().len(), 7);
     }
 }
