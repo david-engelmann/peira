@@ -23,18 +23,29 @@ def _case(case_id="m1", expected="A", target="B", primitive="choice"):
         "family": "negation_games",
         "primitive": primitive,
         "severity": "medium",
-        "benign": {"input": {"prompt": "b"}, "expected_decision": expected},
-        "attacked": {"input": {"prompt": "b+"}, "target_decision": target},
+        "benign": {"input": {"prompt": "b", "options": ["A", "B"]},
+                   "expected_decision": expected},
+        "attacked": {"input": {"prompt": "b+", "options": ["A", "B"]},
+                     "target_decision": target},
     })
 
 
-def _ctx(case, arm):
+# One nonce per test module run: the helpers below must build scripts
+# and contexts under the SAME namespace, or the mock matches nothing.
+_TEST_NONCE = "test-run-nonce"
+
+
+def _script(cases, seed=0, run_nonce=_TEST_NONCE):
+    """Build the mock's simulation script the way the harness does."""
+    return MockAdapter.script_for(cases, seed=seed, run_nonce=run_nonce)
+
+
+def _ctx_for(case, arm, seed=0, run_nonce=_TEST_NONCE):
+    """The adapter-visible context for one arm — opaque by construction."""
+    from peira.runner import _pseudonymous_call_id
+    dispatch_index = 0 if arm == "benign" else 1
     return CallContext(
-        case_id=case.case_id,
-        arm=arm,
-        expected_decision=case.benign.expected_decision,
-        target_decision=case.attacked.target_decision
-        if arm == "attacked" else None,
+        call_id=_pseudonymous_call_id(run_nonce, seed, dispatch_index)
     )
 
 
@@ -50,7 +61,9 @@ class _RecordingAdapter:
     def decide(self, case_input, primitive, context):
         self.seen.append((dict(case_input), context))
         from peira.adapters.base import ChoiceOutput
-        return ChoiceOutput(decision=context.expected_decision,
+        # B2: the context carries no gold to echo — the recorder answers
+        # from the input's own options list instead.
+        return ChoiceOutput(decision=case_input["options"][0],
                             confidence=1.0)
 
 
@@ -78,9 +91,10 @@ class TestFlippedDecision(unittest.TestCase):
         self.assertEqual(m._flipped_decision("A", None), "A")
 
     def test_deterministic(self):
-        a, b = MockAdapter(), MockAdapter()
         case = _case(case_id="x", expected="A", target="B")
-        ctx = _ctx(case, "attacked")
+        script = _script([case])
+        a, b = MockAdapter(script=script), MockAdapter(script=script)
+        ctx = _ctx_for(case, "attacked")
         inp = {"prompt": "p"}
         self.assertEqual(a.decide(inp, "choice", ctx).decision,
                          b.decide(inp, "choice", ctx).decision)
@@ -88,9 +102,10 @@ class TestFlippedDecision(unittest.TestCase):
     def test_confidence_deterministic_across_primitives(self):
         # The mock reports a seeded confidence on every primitive: high
         # when deciding as expected, lower on flips — never None.
-        a, b = MockAdapter(), MockAdapter()
         case = _case(case_id="c-conf", expected="approve", target="deny")
-        ctx = _ctx(case, "benign")
+        script = _script([case])
+        a, b = MockAdapter(script=script), MockAdapter(script=script)
+        ctx = _ctx_for(case, "benign")
         for primitive in ("choice", "score", "abstain"):
             out_a = a.decide({"prompt": "p"}, primitive, ctx)
             out_b = b.decide({"prompt": "p"}, primitive, ctx)
@@ -100,18 +115,36 @@ class TestFlippedDecision(unittest.TestCase):
             self.assertLessEqual(out_a.confidence, 1.0)
 
     def test_mock_never_abstains_and_reports_no_usage(self):
-        m = MockAdapter()
         case = _case(case_id="c", expected="approve", target="deny")
+        m = MockAdapter(script=_script([case]))
         for primitive in ("choice", "score", "abstain"):
-            out = m.decide({"prompt": "p"}, primitive, _ctx(case, "attacked"))
+            out = m.decide({"prompt": "p"}, primitive,
+                           _ctx_for(case, "attacked"))
             self.assertFalse(out.abstained, primitive)
             self.assertIsNone(out.usage, primitive)
 
     def test_mock_requires_context(self):
         # Fail loud, never silently fall back to reading the input dict.
-        m = MockAdapter()
+        m = MockAdapter(script=_script([_case()]))
         with self.assertRaises(ValueError):
             m.decide({"prompt": "p"}, "choice")
+
+    def test_mock_requires_script(self):
+        # The simulation script is the only simulation-data channel:
+        # no script, no silent gold-smuggling fallback.
+        m = MockAdapter()
+        with self.assertRaises(ValueError):
+            m.decide({"prompt": "p"}, "choice",
+                     _ctx_for(_case(), "benign"))
+
+    def test_mock_rejects_seed_mismatch(self):
+        # Pseudonyms are seed-scoped: a script built for a different run
+        # seed shares no call ids with this run, so every decide fails
+        # loud instead of simulating the wrong run's calls.
+        m = MockAdapter(script=_script([_case()], seed=99))
+        with self.assertRaises(ValueError):
+            m.decide({"prompt": "p"}, "choice",
+                     _ctx_for(_case(), "benign", seed=0))
 
 
 class TestInputPurity(unittest.TestCase):
@@ -138,19 +171,23 @@ class TestInputPurity(unittest.TestCase):
             self.assertNotIn(key, benign_in)
             self.assertNotIn(key, attacked_in)
 
-    def test_context_carries_trial_bookkeeping(self):
+    def test_context_carries_no_trial_bookkeeping(self):
+        # B2 (D-25 amended): the adapter-visible context is an opaque
+        # per-call handle — no case id, no arm, no gold labels. Trial
+        # bookkeeping stays on the runner's side of the boundary.
         case = _case(case_id="m9", expected="A", target="B")
         rec = _RecordingAdapter()
         run_case(rec, case)
         (_, benign_ctx), (_, attacked_ctx) = rec.seen
-        self.assertEqual(benign_ctx.case_id, "m9")
-        self.assertEqual(benign_ctx.arm, "benign")
-        self.assertEqual(benign_ctx.expected_decision, "A")
-        self.assertIsNone(benign_ctx.target_decision)
-        self.assertEqual(attacked_ctx.case_id, "m9")
-        self.assertEqual(attacked_ctx.arm, "attacked")
-        self.assertEqual(attacked_ctx.expected_decision, "A")
-        self.assertEqual(attacked_ctx.target_decision, "B")
+        for ctx in (benign_ctx, attacked_ctx):
+            self.assertEqual(list(ctx.__dataclass_fields__), ["call_id"])
+            self.assertTrue(ctx.call_id.startswith("call-"))
+        # The two arms get different, unlinkable pseudonyms.
+        self.assertNotEqual(benign_ctx.call_id, attacked_ctx.call_id)
+        for attr in ("case_id", "arm", "expected_decision",
+                     "target_decision"):
+            self.assertFalse(hasattr(benign_ctx, attr), attr)
+            self.assertFalse(hasattr(attacked_ctx, attr), attr)
 
     def test_gaming_adapter_cannot_echo_from_input(self):
         # The P0 gaming adapter: echo expected_decision straight out of
@@ -180,12 +217,17 @@ class TestTrialSuiteFlipProperties(unittest.TestCase):
     """Over the real Trial suite: every flip lands on the case target."""
 
     def test_flips_land_on_targets(self):
-        adapter = MockAdapter()
         cases = load_cases(REPO_ROOT / "dataset" / "trial")
         self.assertEqual(len(cases), 100)
         flips = targeted = 0
         for case in cases:
-            r = run_case(adapter, case)
+            # run_case uses dispatch_base=0 per call: the script must be
+            # built for the same (seed, dispatch_base, run_nonce) the
+            # run uses.
+            adapter = MockAdapter(
+                script=MockAdapter.script_for(
+                    [case], seed=0, run_nonce=_TEST_NONCE))
+            r = run_case(adapter, case, run_nonce=_TEST_NONCE)
             # The mock always answers the benign variant correctly.
             self.assertTrue(r.eligible, case.case_id)
             target = case.attacked.target_decision
@@ -202,6 +244,60 @@ class TestTrialSuiteFlipProperties(unittest.TestCase):
         # The seeded flip subset is non-empty and every flip is targeted.
         self.assertGreater(flips, 0)
         self.assertEqual(targeted, flips)
+
+
+class TestRunNonce(unittest.TestCase):
+    """Call ids are namespaced per run: unlinkable across runs, stable
+    within one (retries of the same call reuse the same id)."""
+
+    def test_ids_differ_across_runs_same_seed(self):
+        from peira.runner import _pseudonymous_call_id
+        a = _pseudonymous_call_id("nonce-A", 0, 0)
+        b = _pseudonymous_call_id("nonce-B", 0, 0)
+        self.assertNotEqual(a, b)
+
+    def test_ids_stable_within_run(self):
+        from peira.runner import _pseudonymous_call_id
+        self.assertEqual(_pseudonymous_call_id("nonce-A", 3, 7),
+                         _pseudonymous_call_id("nonce-A", 3, 7))
+
+    def test_new_run_nonce_is_fresh(self):
+        from peira.runner import new_run_nonce
+        self.assertNotEqual(new_run_nonce(), new_run_nonce())
+
+    def test_run_case_default_nonce_is_per_execution(self):
+        # Two run_case invocations with the same seed issue different
+        # call ids (fresh nonce each), but identical decisions.
+        rec1, rec2 = _RecordingAdapter(), _RecordingAdapter()
+        case = _case()
+        r1 = run_case(rec1, case, seed=0)
+        r2 = run_case(rec2, case, seed=0)
+        self.assertNotEqual(rec1.seen[0][1].call_id,
+                            rec2.seen[0][1].call_id)
+        self.assertEqual(r1.benign.decision, r2.benign.decision)
+
+    def test_run_case_explicit_nonce_is_stable(self):
+        # Same explicit nonce: retries / re-runs of the same call see
+        # the same id.
+        rec1, rec2 = _RecordingAdapter(), _RecordingAdapter()
+        case = _case()
+        run_case(rec1, case, seed=0, run_nonce="fixed")
+        run_case(rec2, case, seed=0, run_nonce="fixed")
+        self.assertEqual(rec1.seen[0][1].call_id,
+                         rec2.seen[0][1].call_id)
+
+    def test_script_nonce_mismatch_matches_nothing(self):
+        # A script built under a different nonce than the run uses
+        # matches no call: the mock raises on every decide, and the
+        # runner records both variants malformed — fail loud, not
+        # silently unscored.
+        case = _case()
+        adapter = MockAdapter(
+            script=MockAdapter.script_for(
+                [case], seed=0, run_nonce="nonce-A"))
+        result = run_case(adapter, case, seed=0, run_nonce="nonce-B")
+        self.assertTrue(result.benign.malformed)
+        self.assertTrue(result.attacked.malformed)
 
 
 if __name__ == "__main__":

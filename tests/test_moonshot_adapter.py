@@ -102,18 +102,19 @@ def _without(*names):
         sys.modules.update(saved)
 
 
-CASE = {"prompt": "Should the refund be approved?"}
+CASE = {"prompt": "Should the refund be approved?",
+        # B2: the per-call decision enum is built from the input's
+        # explicit options — the context carries no gold labels.
+        "options": ["approve", "deny"]}
 
 GOOD_JSON = json.dumps({
     "decision": "approve", "confidence": 0.73, "reason": "looks fine",
 })
 
 
-def _ctx(expected="approve", target=None):
-    return CallContext(
-        case_id="c1", arm="benign",
-        expected_decision=expected, target_decision=target,
-    )
+def _ctx(**over):
+    """Opaque adapter-visible context (B2): a call id, nothing else."""
+    return CallContext(call_id=over.get("call_id", "call-test"))
 
 
 # ---------------------------------------------------------------------------
@@ -218,7 +219,7 @@ class TestMoonshotRequestShape(unittest.TestCase):
         self.assertEqual(fmt["json_schema"]["name"], "peira_decision")
         self.assertEqual(
             fmt["json_schema"]["schema"]["properties"]["decision"]["enum"],
-            ["approve", "other"],
+            ["approve", "deny", "other"],
         )
 
     def test_base_url_recorded_in_transcript(self):

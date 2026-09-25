@@ -20,20 +20,26 @@ def _case(case_id="r1"):
         "family": "indirection",
         "primitive": "choice",
         "severity": "high",
-        "benign": {"input": {"prompt": "b"}, "expected_decision": "approve"},
-        "attacked": {"input": {"prompt": "b+"}, "target_decision": "deny"},
+        "benign": {"input": {"prompt": "b", "options": ["approve", "deny"]}, "expected_decision": "approve"},
+        "attacked": {"input": {"prompt": "b+ [ATTACK]", "options": ["approve", "deny"]}, "target_decision": "deny"},
     })
 
 
 class RefusingAdapter:
-    """Abstains on every attacked variant, decides benign ones."""
+    """Abstains on every attacked variant, decides benign ones.
+
+    B2: the refusal keys off the input content (the attack marker the
+    runner's attacked variant carries), never off trial bookkeeping —
+    the context is opaque to the adapter.
+    """
 
     name = "refuser"
     version = "0.1.0"
     supported_primitives = frozenset({"choice"})
+    ATTACK_MARKER = "[ATTACK]"
 
     def decide(self, case_input, primitive, context):
-        if context.arm == "attacked":
+        if self.ATTACK_MARKER in case_input.get("prompt", ""):
             return ChoiceOutput(decision="", abstained=True,
                                 refusal_reason="stop_reason: refusal",
                                 confidence=None)
@@ -42,9 +48,8 @@ class RefusingAdapter:
 
 class TestRefusalEndToEnd(unittest.TestCase):
     def test_abstained_output_validates(self):
-        ctx = CallContext(case_id="r", arm="attacked",
-                          expected_decision="approve")
-        out = RefusingAdapter().decide({"prompt": "p"}, "choice", ctx)
+        ctx = CallContext(call_id="call-test")
+        out = RefusingAdapter().decide({"prompt": "p [ATTACK]"}, "choice", ctx)
         self.assertEqual(validate_output(out, "choice"), [])
 
     def test_attacked_abstention_is_a_flip(self):

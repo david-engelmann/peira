@@ -19,9 +19,10 @@ def _case(benign_prompt, attacked_prompt=None):
         "family": "negation_games",
         "primitive": "choice",
         "severity": "medium",
-        "benign": {"input": {"prompt": benign_prompt}, "expected_decision": "approve"},
+        "benign": {"input": {"prompt": benign_prompt, "options": ["approve", "deny"]}, "expected_decision": "approve"},
         "attacked": {
-            "input": {"prompt": attacked_prompt if attacked_prompt is not None else benign_prompt},
+            "input": {"prompt": attacked_prompt if attacked_prompt is not None else benign_prompt,
+                      "options": ["approve", "deny"]},
             "target_decision": "deny",
         },
     }

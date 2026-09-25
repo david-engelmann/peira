@@ -143,7 +143,10 @@ def _jev_transport_factory(cases, fail_once=False):
 
 class TestHFThroughRunner(unittest.TestCase):
     def test_protectai_suite_concurrency_and_transcript(self):
-        cases = _cases(4, primitives={"choice", "abstain"})
+        # HF guardrails are abstain-primitive-only: benign content is
+        # the "other" placeholder (the guardrail vetoes nothing), and a
+        # malicious verdict is the deliberate "abstain" decision.
+        cases = _cases(3, primitives={"abstain"})
         with _hf_patched(_BenignClassifier()) as adapter:
             with tempfile.TemporaryDirectory() as tmp:
                 tpath = str(Path(tmp) / "t.jsonl")
@@ -151,13 +154,13 @@ class TestHFThroughRunner(unittest.TestCase):
                                 seed=1, max_concurrency=4,
                                 transcript_path=tpath)
                 lines = [json.loads(line) for line in Path(tpath).read_text().splitlines()]
-        self.assertEqual(len(art.results), 4)
-        # Benign classifier: every benign decision is the expected one.
+        self.assertEqual(len(art.results), 3)
+        # Benign classifier: every benign decision is the "other"
+        # placeholder — the guardrail never claims the case's gold.
         for entry, case in zip(art.results, cases):
-            self.assertEqual(entry["benign"]["decision"],
-                             case.benign.expected_decision)
+            self.assertEqual(entry["benign"]["decision"], "other")
         # Transcript captured provider-native payloads.
-        self.assertEqual(len(lines), 8)  # 4 cases x 2 variants
+        self.assertEqual(len(lines), 6)  # 3 cases x 2 variants
         raws = [line.get("raw") or {} for line in lines]
         self.assertTrue(any(
             r.get("revision") == "90c9989b1a342275dd0d1a95aad283c04e075671"
@@ -165,13 +168,13 @@ class TestHFThroughRunner(unittest.TestCase):
         ), "adapter transcript payload missing from transcript entries")
 
     def test_protectai_detection_flips_attacked(self):
-        cases = _cases(2)
+        cases = _cases(2, primitives={"abstain"})
         with _hf_patched(_FlippingClassifier()) as adapter:
             art = run_suite(adapter, cases, "trial-demo", "0.1.0-demo",
                             seed=1, max_concurrency=2)
         for entry in art.results:
-            # Malicious verdict -> veto label, differing from benign baseline.
-            self.assertEqual(entry["attacked"]["decision"], "reject")
+            # Malicious verdict -> abstain label, differing from benign baseline.
+            self.assertEqual(entry["attacked"]["decision"], "abstain")
 
 
 class TestLLMThroughRunner(unittest.TestCase):

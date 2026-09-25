@@ -127,8 +127,8 @@ def _valid_case(**over):
         "family": "state_poisoning",
         "primitive": "choice",
         "severity": "high",
-        "benign": {"input": {"q": "x"}, "expected_decision": "a"},
-        "attacked": {"input": {"q": "x!"}, "target_decision": "b"},
+        "benign": {"input": {"q": "x", "options": ["a", "b"]}, "expected_decision": "a"},
+        "attacked": {"input": {"q": "x!", "options": ["a", "b"]}, "target_decision": "b"},
         "notes": "héllo",
     }
     d.update(over)
@@ -302,6 +302,28 @@ class TestValidateParity(unittest.TestCase):
         _valid_case(benign=5),  # not a dict at all
         _valid_case(attacked={"input": {}, "target_decision": 5}),
         _valid_case(notes=5),
+        # B2 options validation: missing vs null are distinct (parity
+        # with the Rust core) — missing "needs 'options'", explicit
+        # null is malformed options, exactly like any other bad list.
+        _valid_case(benign={"input": {"q": "x"},
+                            "expected_decision": "a"}),
+        _valid_case(benign={"input": {"q": "x", "options": None},
+                            "expected_decision": "a"}),
+        _valid_case(benign={"input": {"q": "x", "options": []},
+                            "expected_decision": "a"}),
+        _valid_case(benign={"input": {"q": "x", "options": ["a", ""]},
+                            "expected_decision": "a"}),
+        _valid_case(benign={"input": {"q": "x", "options": "ab"},
+                            "expected_decision": "a"}),
+        _valid_case(attacked={"input": {"q": "x!", "options": [1, 2]},
+                              "target_decision": "b"}),
+        # B2: gold labels must be members of the input options.
+        _valid_case(benign={"input": {"options": ["a", "b"]},
+                            "expected_decision": "zzz"}),
+        _valid_case(attacked={"input": {"options": ["a", "b"]},
+                              "target_decision": "zzz"}),
+        _valid_case(attacked={"input": {"options": ["a", "b"]},
+                              "target_decision": None}),
         # A3 S6: the optional authorial reference score on score cases.
         _valid_case(benign={"input": {}, "expected_decision": "a",
                             "expected_score": 0.5}),
@@ -339,28 +361,49 @@ class TestValidateParity(unittest.TestCase):
             ({"severity": None}, ["bad severity: expected string"]),
             ({"benign": {"input": "oops", "expected_decision": "a"}},
              ["bad benign input: expected object"]),
-            ({"benign": {"input": {}, "expected_decision": 42}},
+            ({"benign": {"input": {"options": ["a", "b"]}, "expected_decision": 42}},
              ["bad benign expected_decision: expected string"]),
             ({"benign": 5},
              ["bad variant 'benign': need an object with 'input'"]),
-            ({"attacked": {"input": {}, "target_decision": 5}},
+            ({"attacked": {"input": {"options": ["a", "b"]}, "target_decision": 5}},
              ["bad attacked target_decision: expected string or null"]),
             ({"notes": 5}, ["bad notes: expected string"]),
-            ({"benign": {"input": {}, "expected_decision": "a",
+            ({"benign": {"input": {"options": ["a", "b"]}, "expected_decision": "a",
                          "expected_score": 1.5}},
              ["bad benign expected_score: expected number in [0, 1] or null"]),
-            ({"benign": {"input": {}, "expected_decision": "a",
+            ({"benign": {"input": {"options": ["a", "b"]}, "expected_decision": "a",
                          "expected_score": -0.1}},
              ["bad benign expected_score: expected number in [0, 1] or null"]),
-            ({"benign": {"input": {}, "expected_decision": "a",
+            ({"benign": {"input": {"options": ["a", "b"]}, "expected_decision": "a",
                          "expected_score": True}},
              ["bad benign expected_score: expected number in [0, 1] or null"]),
-            ({"benign": {"input": {}, "expected_decision": "a",
+            ({"benign": {"input": {"options": ["a", "b"]}, "expected_decision": "a",
                          "expected_score": "high"}},
              ["bad benign expected_score: expected number in [0, 1] or null"]),
-            ({"benign": {"input": {}, "expected_decision": "a",
+            ({"benign": {"input": {"options": ["a", "b"]}, "expected_decision": "a",
                          "expected_score": [0.5]}},
              ["bad benign expected_score: expected number in [0, 1] or null"]),
+            # B2: missing vs null options are distinct, byte-identical
+            # across backends.
+            ({"benign": {"input": {"q": "x"}, "expected_decision": "a"}},
+             ["benign input needs 'options'"]),
+            ({"benign": {"input": {"q": "x", "options": None},
+                         "expected_decision": "a"}},
+             ["bad benign input options: expected non-empty list of "
+              "non-empty strings"]),
+            ({"benign": {"input": {"q": "x", "options": []},
+                         "expected_decision": "a"}},
+             ["bad benign input options: expected non-empty list of "
+              "non-empty strings"]),
+            # B2: gold labels must be answerable from the input's
+            # options — a case whose gold is outside the vocabulary can
+            # never score.
+            ({"benign": {"input": {"options": ["a", "b"]},
+                         "expected_decision": "zzz"}},
+             ["bad benign expected_decision: 'zzz' not in input options"]),
+            ({"attacked": {"input": {"options": ["a", "b"]},
+                           "target_decision": "zzz"}},
+             ["bad attacked target_decision: 'zzz' not in input options"]),
         ]
         for over, want in expect:
             with self.subTest(over=over):

@@ -55,20 +55,15 @@ def gate_schema(checked) -> GateResult:
 
 
 def gate_paired_variants(valid_cases) -> GateResult:
-    """G2: benign and attacked variants are non-empty and actually differ.
+    """G2: the attacked variant actually differs from its benign control.
 
     An attacked variant identical to its benign control is a broken case:
-    there is no attack to measure.
+    there is no attack to measure. (G1 already guarantees both inputs are
+    non-empty objects carrying options lists.)
     """
     r = GateResult("G2", "paired-variants")
     for path, lineno, case in valid_cases:
-        benign_in = case["benign"].get("input")
-        attacked_in = case["attacked"].get("input")
-        if not isinstance(benign_in, dict) or not benign_in:
-            r.errors.append(f"{path.name}:{lineno}: benign input is empty")
-        if not isinstance(attacked_in, dict) or not attacked_in:
-            r.errors.append(f"{path.name}:{lineno}: attacked input is empty")
-        elif _canon_input(case["benign"]) == _canon_input(case["attacked"]):
+        if _canon_input(case["benign"]) == _canon_input(case["attacked"]):
             r.errors.append(f"{path.name}:{lineno}: attacked input is "
                             f"identical to benign input (no attack)")
     return r
@@ -166,11 +161,56 @@ def gate_score_reference(valid_cases) -> GateResult:
     return r
 
 
+def gate_options_coherence(valid_cases) -> GateResult:
+    """G8: options lists are canonical across both variants.
+
+    Adapters build one decision enum per options list; a vocabulary
+    that shifts between arms makes the benign baseline and the
+    attacked measurement non-comparable. Every case's benign and
+    attacked inputs must therefore carry the identical options list
+    (order-sensitive), and each list must be sorted with unique
+    labels — the canonical form the dataset ships in. (G1 already
+    guarantees each list is present, non-empty, all strings, and that
+    the gold labels are members of their own list.)
+    """
+    r = GateResult("G8", "options-coherence")
+    for path, lineno, case in valid_cases:
+        loc = f"{path.name}:{lineno}"
+        opts = {}
+        for variant in ("benign", "attacked"):
+            o = case[variant].get("input", {}).get("options")
+            # G1 rejects non-list options; the gate only checks
+            # canonical form on lists.
+            if not isinstance(o, list):
+                continue
+            opts[variant] = o
+            if len(set(o)) != len(o):
+                r.errors.append(
+                    f"{loc}: {variant} input options contain "
+                    f"duplicate labels"
+                )
+            if o != sorted(o):
+                r.errors.append(
+                    f"{loc}: {variant} input options are not in "
+                    f"sorted order"
+                )
+        if (
+            "benign" in opts
+            and "attacked" in opts
+            and opts["benign"] != opts["attacked"]
+        ):
+            r.errors.append(
+                f"{loc}: benign and attacked input options differ — "
+                f"the decision vocabulary must be identical across arms"
+            )
+    return r
+
+
 def run_gates(dataset_dir: Path) -> list[GateResult]:
     """Run all gates over a dataset directory, in order."""
     # One pass: every line is parsed and validated exactly once. Each
     # entry is (path, lineno, case_or_None, error_or_None) — G1 reports
-    # the collected errors, G2–G6 consume the valid subset, so no case
+    # the collected errors, G2–G8 consume the valid subset, so no case
     # is ever validated twice.
     checked: list[tuple[Path, int, Any, str | None]] = []
     for path, lineno, case, json_error in iter_case_lines(dataset_dir):
@@ -188,4 +228,5 @@ def run_gates(dataset_dir: Path) -> list[GateResult]:
     results.append(gate_target_coherence(valid))
     results.append(gate_pii_scan(valid))
     results.append(gate_score_reference(valid))
+    results.append(gate_options_coherence(valid))
     return results

@@ -25,6 +25,7 @@ from peira.metrics import PerCaseResult
 from peira.runner import (
     SUITE_DIRS,
     load_cases,
+    new_run_nonce,
     replay_suite,
     run_suite,
     validate_partial,
@@ -255,6 +256,22 @@ def cmd_run(args: argparse.Namespace) -> int:
     if not cases:
         print(f"error: no cases found in {suite_dir}", file=sys.stderr)
         return EXIT_USER_ERROR
+    if isinstance(adapter, MockAdapter):
+        # The mock is a test double: its simulation script is built
+        # explicitly here by the harness from the loaded cases — never
+        # smuggled through the adapter protocol (B2: the CallContext
+        # carries no gold for the mock to read). The nonce namespaces
+        # this execution's call ids; the script must use the same one
+        # the runner will (fresh per execution, so runs are unlinkable
+        # even with the same seed).
+        run_nonce = new_run_nonce()
+        adapter = MockAdapter(
+            script=MockAdapter.script_for(
+                cases, seed=args.seed, run_nonce=run_nonce
+            )
+        )
+    else:
+        run_nonce = new_run_nonce()
 
     out_dir = Path(args.out)
 
@@ -334,6 +351,7 @@ def cmd_run(args: argparse.Namespace) -> int:
             call_timeout=args.call_timeout,
             cache_dir=args.cache_dir,
             transcript_path=args.transcript,
+            run_nonce=run_nonce,
         )
     except KeyboardInterrupt:
         print("\ninterrupted — partial run saved; re-run with --resume.",
