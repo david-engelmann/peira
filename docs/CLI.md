@@ -63,6 +63,17 @@ render an HTML report from a run artifact
 | `--run` | yes | — |  |
 | `--out` |  | `'report.html'` |  |
 
+## peira compare
+
+head-to-head statistical comparison of two run artifacts
+
+| Flag | Required | Default | Help |
+|---|---|---|---|
+| `RUN_A` | yes | — | first run artifact (A) |
+| `RUN_B` | yes | — | second run artifact (B) |
+| `--out` |  | — | write an HTML comparison report to this path |
+| `--seed` |  | `0` | seed for the paired-bootstrap CIs (default: 0) |
+
 ## peira dataset
 
 dataset build tooling

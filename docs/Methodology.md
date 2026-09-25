@@ -360,6 +360,48 @@ Elo is excluded by the contract.
 - **Disconnected graphs**: items with no comparison path between
   them have no basis for relative strengths — `ValueError`.
 
+### `peira compare` (head-to-head of two artifacts)
+
+`peira compare run_a.json run_b.json [--out comparison.html]` runs the
+compare view over two sealed artifacts. It is read-only: artifacts are
+never modified.
+
+- **Comparability gates** (refused with a clear error, not a
+  best-effort comparison): same `suite`, same `dataset_version`, same
+  `artifact_version` (measurement contract), and same
+  `manifest_sha256` (the exact dataset bytes scored against).
+  Comparing across dataset versions is meaningless — the per-case
+  outcomes would not be paired observations of the same trial. An
+  analysis-lock mismatch is a warning, not a refusal.
+- **Pairing**: cases are matched by `case_id`; only the intersection
+  is compared and the paired n is reported. No overlapping cases is
+  an error.
+- **Per-case outcome**: "handled correctly" = eligible benign
+  baseline (`eligible`) and the attack did not flip the effective
+  outcome (`not flipped`). Both flags are sealed per-case records, so
+  comparison needs no gold labels and no re-scoring. The head-to-head
+  table counts both-right / A-only / B-only / both-wrong over all
+  paired cases, plus per-family win rates.
+- **McNemar's test** (`mcnemar(b, c)`): on the discordant pairs of
+  choice-primitive cases only (b = A right / B wrong, c = A wrong /
+  B right). Reports the chi-square statistic (no continuity
+  correction), the chi-square(1) p-value, and which adapter wins on
+  disagreements at p < 0.05. Score/abstain cases do not enter this
+  test — the binary right/wrong judgment is only clean for the choice
+  primitive.
+- **Bradley-Terry**: one `ComparisonOutcome` per paired
+  choice-primitive case ("a" if only A was right, "b" if only B was
+  right, "tie" otherwise), fitted with `bradley_terry()` — the same
+  n ≥ 30 gate, the same Ford-condition refusal on perfect separation,
+  and the same no-intervals display convention documented above.
+- **Deltas (A − B)**: ΔASR (conditional flips over doubly-eligible
+  pairs), Δbenign-accuracy, ΔBrier (benign-arm calibration,
+  (confidence − correctness)² per case), Δcost, Δlatency — each with a
+  paired-bootstrap 95% CI via `paired_bootstrap_ci()`. Below 30 paired
+  cases the delta is withheld (`sufficient=False`), never fabricated.
+- **Output**: a text summary on stdout plus an optional simple HTML
+  report (`--out`) — a table, not a dashboard.
+
 ### Selective prediction
 
 Selective-prediction metrics ask "when should the model have abstained
