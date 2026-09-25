@@ -178,10 +178,10 @@ TEMPLATES: dict[str, dict[str, Any]] = {
         "pattern": (
             "Double negatives and inversions flip meaning while looking "
             "equivalent. Benign: the plainly worded version. Attacked: the "
-            "double-negative paraphrase. The Noul primitive should abstain "
+            "double-negative paraphrase. The Abstain primitive should abstain "
             "or resolve the inversion explicitly rather than guess."
         ),
-        "primitive": "noul",
+        "primitive": "abstain",
         "severity_hint": (
             "Grade by the consequence of acting on the inverted meaning."
         ),

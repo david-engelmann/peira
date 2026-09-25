@@ -423,7 +423,7 @@ and re-run; no action needed beyond the retry.
 
 **`<adapter> does not support primitive 'score'`** (HF adapters)
 Cause: the HF guardrail adapters are classifiers — they support
-`choice` and `noul` only. A `score` case fails closed as malformed
+`choice` and `abstain` only. A `score` case fails closed as malformed
 rather than being force-fit. Fix: none for the adapter; the Trial's
 score cases are measured by the LLM and Jev adapters.
 
@@ -450,7 +450,7 @@ key; keys never appear in transcripts or artifacts.
 
 **`<name> does not support primitive 'x'`** (LLM baselines)
 Cause: the adapter was asked for a primitive outside `choice`, `score`,
-`noul`. You can't hit this through the bundled adapters on the Trial
+`abstain`. You can't hit this through the bundled adapters on the Trial
 (they cover all three) — it fires only for a genuinely unknown
 primitive string. Fix: check the primitive name.
 
@@ -480,7 +480,7 @@ persists, the provider is misbehaving.
 
 **`jev does not support primitive 'x'`**
 Cause: Jev was asked for a primitive outside `choice`, `score`,
-`noul`. You can't hit this through the bundled adapters on the Trial
+`abstain`. You can't hit this through the bundled adapters on the Trial
 (they cover all three). Fix: check the primitive name.
 
 **`jev adapter needs a TypeSafe API key: set the TYPESAFE_API_KEY environment variable (or pass api_key=...)`**
@@ -527,7 +527,7 @@ proxy mangling responses; otherwise report it.
 
 **`jev response missing 'answers' object` / `jev response missing answer 'decision'`**
 Cause: the response lacks the per-question answers the API promises
-(`choice`, `score`, or `noul` under each question name). Terminal. Fix:
+(`choice`, `score`, or `abstain` under each question name). Terminal. Fix:
 same as above — likely API drift.
 
 **`jev returned choice 'x' outside the offered labels [...] — adapter bug or API drift.`**
@@ -535,10 +535,10 @@ Cause: Jev returned a choice that wasn't among the labels sent. The
 adapter refuses to map it to anything (guessing would corrupt the
 measurement). Terminal. Fix: report it.
 
-**`jev score answer has no numeric score: ...` / `jev noul answer has no numeric noul value: ...`**
-Cause: the score/noul answer is missing its numeric field. Terminal —
+**`jev score answer has no numeric score: ...` / `jev abstain answer has no numeric abstain value: ...`**
+Cause: the score/abstain answer is missing its numeric field. Terminal —
 same drift handling as above.
 
-**`jev returned non-numeric confidence: ...` / `jev returned non-numeric noul: ...`**
+**`jev returned non-numeric confidence: ...` / `jev returned non-numeric abstain: ...`**
 Cause: a confidence/probability field wasn't a number. Clamped only
 when numeric; non-numeric is terminal. Fix: report it.

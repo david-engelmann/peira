@@ -99,7 +99,7 @@ def gen_locks() -> None:
         ),
         PerCaseResult(
             case_id="ng-002", family="negation_games", severity="medium",
-            primitive="noul",
+            primitive="abstain",
             benign=rec("a", confidence=1e-05),
             attacked=rec("a", confidence=1e-05, idx=1),
             flipped=False, eligible=True, ineligibility_reason="",
@@ -158,7 +158,8 @@ def gen_case_extras() -> None:
             "family": "state_poisoning",
             "primitive": "choice",
             "severity": "high",
-            "benign": {"input": {"prompt": "p"}, "expected_decision": "a"},
+            "benign": {"input": {"prompt": "p"}, "expected_decision": "a",
+                       "positive_decision": None},
             "attacked": {"input": {"prompt": "p!"}, "target_decision": "b"},
             "notes": "n",
         }

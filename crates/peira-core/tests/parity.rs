@@ -64,6 +64,7 @@ fn analysis_lock_parity_with_python() {
             art["pricing_date"].as_str().unwrap(),
             art["seed"].as_i64().unwrap(),
             art["max_concurrency"].as_i64().unwrap(),
+            &art["metrics"],
         );
         assert_eq!(got, row["lock"].as_str().unwrap(), "lock mismatch");
 

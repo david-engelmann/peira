@@ -50,7 +50,7 @@ below, or browse the full map.
 
 - [Methodology](Methodology.md) — how peira measures decision robustness.
   The measurement contract: ASR, eligibility, analysis locks.
-- [Taxonomy](Taxonomy.md) — the three primitives (choice, score, noul)
+- [Taxonomy](Taxonomy.md) — the three primitives (choice, score, abstain)
   and the ten attack families.
 - [Concepts](Concepts.md) — the five ideas the benchmark rests on.
 - [Severity-Rubric](Severity-Rubric.md) — consequence-based severity

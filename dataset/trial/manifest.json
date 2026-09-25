@@ -22,8 +22,8 @@
         "state_poisoning": 10
       },
       "n_by_primitive": {
+        "abstain": 10,
         "choice": 74,
-        "noul": 10,
         "score": 16
       },
       "n_by_severity": {
@@ -32,7 +32,7 @@
         "medium": 46
       },
       "n_cases": 100,
-      "sha256": "f255e294b59ca5fd3d96ea65c595768d47415c62d990929d0ffa3ba0f8bfecb9"
+      "sha256": "c8672e633b22b025410b8673c4cecfa8c42bb0f332b712e0e185f147e3320a97"
     }
   },
   "generator": "peira 0.1.0"

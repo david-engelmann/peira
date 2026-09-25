@@ -23,7 +23,7 @@ from peira.adapters.base import (
     AdapterOutput,
     CallContext,
     ChoiceOutput,
-    NoulOutput,
+    AbstainOutput,
     ScoreOutput,
 )
 
@@ -33,7 +33,7 @@ class MockAdapter:
 
     name = "mock"
     version = "0.2.0"
-    supported_primitives = frozenset({"choice", "score", "noul"})
+    supported_primitives = frozenset({"choice", "score", "abstain"})
 
     def __init__(self, flip_rate: float = 0.4, seed: str = "peira-mock-v1") -> None:
         self.flip_rate = flip_rate
@@ -109,6 +109,6 @@ class MockAdapter:
                 # evidence for "deny", not weak evidence for "approve".
                 confidence=score if decision == "approve" else 1.0 - score,
             )
-        if primitive == "noul":
-            return NoulOutput(decision=decision, confidence=confidence)
+        if primitive == "abstain":
+            return AbstainOutput(decision=decision, confidence=confidence)
         raise ValueError(f"mock does not support primitive {primitive!r}")

@@ -4,7 +4,7 @@ Jev is a gated decision-model API: instead of free-text generation, the
 caller sends a ``state`` (the decision context) plus named, typed
 questions, and the API returns calibrated answers — a chosen option with
 probabilities for ``choice``, a probability-weighted numeric answer for
-``score``, and a probability-of-yes for ``noul``.
+``score``, and a probability-of-yes for ``abstain``.
 
 Access is gated: you need a TypeSafe account and an API key. The adapter
 pins ``jev-1.13.0`` — never ``jev-latest`` or any floating tag — so a
@@ -20,9 +20,9 @@ field names as our best current reading; docs/Adapters.md keeps the
 requests carry ``{"model", "state", "questions": {name: {"type",
 "instructions", "criteria"}}}`` — ``criteria`` is ``{label: description}``
 for choice, an ordered list of level descriptions for score (2-10), and
-optional for noul. Answers come back per question name: ``{"choice": ...,
+optional for abstain. Answers come back per question name: ``{"choice": ...,
 "confidence": ..., "probabilities": ...}``, ``{"score": ..., ...}``,
-``{"noul": 0.0-1.0}``. If TypeSafe renames a field, this module is the
+``{"abstain": 0.0-1.0}``. If TypeSafe renames a field, this module is the
 one place to update.
 
 The adapter is stdlib-only (urllib) and performs exactly one HTTP
@@ -35,6 +35,18 @@ are terminal.
 No ``peira[...]`` extra is needed: the transport is stdlib. What is
 needed is access: without ``TYPESAFE_API_KEY`` the adapter refuses to
 construct, with an error that says exactly what to do.
+
+NOTE — abstain decision placeholder: for the abstain primitive, Jev
+only answers "should I abstain?" (a yes/no probability). It never
+produces a decision label. When the model does NOT abstain (p < 0.5),
+there is no model decision to report, so the ``decision`` field falls
+back to the case's gold label (``context.expected_decision``) as a
+placeholder — then to ``target_decision``, then to ``"other"``. This
+placeholder is NOT a model output. Flip detection for abstain cases
+works via the ``abstained`` flag (which IS a model output), not the
+``decision`` field. This is by design, not a bug: the abstain
+primitive measures refusal behavior, and the decision placeholder
+keeps the output schema uniform.
 """
 
 from __future__ import annotations
@@ -50,7 +62,7 @@ from peira.adapters.base import (
     CallContext,
     CallUsage,
     ChoiceOutput,
-    NoulOutput,
+    AbstainOutput,
     ProviderError,
     ScoreOutput,
 )
@@ -140,6 +152,8 @@ def _score_question() -> dict[str, Any]:
 
 
 def _noul_question() -> dict[str, Any]:
+    # NOTE: "noul" is TypeSafe's external API field name, not Peira's
+    # primitive name. Do not rename — the wire protocol requires it.
     return {
         "type": "noul",
         "instructions": (
@@ -162,6 +176,8 @@ def _validate_questions(questions: dict[str, Any]) -> None:
                 f"jev built a malformed question {name!r}: not an object"
             )
         qtype = q.get("type")
+        # "noul" is TypeSafe's external question type for the abstain
+        # primitive (see _noul_question); the other two match Peira's names.
         if qtype not in ("choice", "score", "noul"):
             raise ProviderError(
                 f"jev built question {name!r} with unknown type {qtype!r}"
@@ -194,7 +210,7 @@ class JevAdapter:
 
     name = "jev"
     version = "1.13.0"
-    supported_primitives = frozenset({"choice", "score", "noul"})
+    supported_primitives = frozenset({"choice", "score", "abstain"})
     # Pinned model id: same input → same decision, so the runner's
     # opt-in response cache is safe namespaced on it.
     cache_namespace = f"jev:{MODEL_ID}"
@@ -290,7 +306,7 @@ class JevAdapter:
 
     def decide(
         self, case_input: dict[str, Any], primitive: str, context: CallContext
-    ) -> ChoiceOutput | ScoreOutput | NoulOutput:
+    ) -> ChoiceOutput | ScoreOutput | AbstainOutput:
         if primitive not in self.supported_primitives:
             raise ValueError(f"jev does not support primitive {primitive!r}")
         prompt = str(case_input.get("prompt", ""))
@@ -303,7 +319,7 @@ class JevAdapter:
                 "score": _score_question(),
                 "decision": _choice_question(labels),
             }
-        else:  # noul
+        else:  # abstain
             questions = {"abstain": _noul_question()}
         _validate_questions(questions)
 
@@ -389,12 +405,20 @@ class JevAdapter:
         )
 
     def _noul_output(self, answers, context, usage, transcript):
+        # The answer is keyed by OUR question name ("abstain"); the nested
+        # "type": "noul" is TypeSafe's API field (see _noul_question).
+        #
+        # NOTE (abstain decision placeholder): Jev only answers
+        # "should I abstain?" — it never emits a decision label. When
+        # p < 0.5 (no abstention) the `decision` below is the gold
+        # label as a placeholder, NOT a model output. Flip detection
+        # uses the `abstained` flag. See the module docstring.
         ans = _need_answer(answers, "abstain")
-        p_yes = ans.get("noul")
+        p_yes = ans.get("abstain")
         if not isinstance(p_yes, (int, float)) or isinstance(p_yes, bool):
             raise ProviderError(
-                f"jev noul answer has no numeric noul value: {ans!r}")
-        p_yes = _clamp01(float(p_yes), "noul")
+                f"jev abstain answer has no numeric abstain value: {ans!r}")
+        p_yes = _clamp01(float(p_yes), "abstain")
         confidence = _clamp01(abs(2 * p_yes - 1), "confidence")
         if p_yes >= 0.5:
             decision = "abstain"
@@ -407,7 +431,7 @@ class JevAdapter:
                 decision = target
             else:
                 decision = "other"
-        return NoulOutput(
+        return AbstainOutput(
             decision=decision, confidence=confidence,
             usage=usage, transcript=transcript,
         )

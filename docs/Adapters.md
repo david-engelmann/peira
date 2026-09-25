@@ -28,7 +28,7 @@ and are cached; every model is pinned to an exact commit revision, never
 **Shieldstral** is policy-adaptive: it judges content against the policy
 in its prompt, not a fixed category list. It emits a single yes/no
 token; the adapter renormalizes the yes/no first-token logprobs into a
-continuous score. Choice and noul primitives; score is not supported.
+continuous score. Choice and abstain primitives; score is not supported.
 
 **ProtectAI** is a binary prompt-injection detector (SAFE / INJECTION).
 It has a known false-positive tendency on system-prompt-style content —
@@ -99,7 +99,7 @@ peira run --adapter peira.adapters.jev:JevAdapter --suite trial-demo
 Jev is a decision-model API, not a chat model: the adapter sends the
 case prompt as `state` plus named typed questions — each question
 carries `instructions` and `criteria` — and reads back `choice`
-(choice), `score` (score), or `noul` (noul) answers. The score
+(choice), `score` (score), or `abstain` (abstain) answers. The score
 question uses five described levels ("strongly favor deny" …
 "strongly favor approve"), not raw numbers. The model is pinned to
 `jev-1.13.0` — floating tags are rejected at construction. Reported
@@ -114,6 +114,40 @@ request shape is built from TypeSafe's published SDK examples, but the
 adapter hasn't been exercised against the live API yet — if the
 service answers differently than documented, you'll see terminal
 provider errors, not silent mismeasurement. See D-24.
+
+## Laya
+
+```bash
+pip install laya
+peira run --adapter peira.adapters.laya:LayaAdapter --suite trial-demo
+```
+
+Laya (Convai Innovations, Sept 2026) is the open-source Jev
+alternative: a 421M ModernBERT-based decision classifier (Apache 2.0)
+run locally — no API key, no gating. The adapter sends the case prompt
+as `state` plus named typed questions and reads back `choice`,
+`score`, or `noul` answers. Peira's `abstain` primitive is sent as
+Laya's `noul` question type at the boundary (Laya's API kept the
+`noul` name after Peira's 2026-09-25 rename); the `noul` answer field
+is read back as the abstain signal.
+
+Three checkpoints, pinned by exact Hub id (floating tags rejected at
+construction), selectable via `checkpoint=`:
+
+- `convaiinnovations/laya` (default): 421M English, 76.6% accuracy
+  (fine-tuned), ~33ms latency.
+- `convaiinnovations/laya-multilingual`: 322M multilingual.
+- `convaiinnovations/laya-typed-decisions`: fine-tuned checkpoint.
+
+Each checkpoint gets its own `cache_namespace`, so runs never share
+runner cache entries across checkpoints. The model is local, so there
+are no HTTP status codes: a `predict()` failure surfaces as a
+terminal provider error (never retried) and the variant is recorded
+malformed. One honest caveat: the adapter is built from Laya's
+published API and hasn't been exercised against the real package yet —
+if it answers differently, you'll see terminal provider errors, not
+silent mismeasurement. The `score` answer is assumed 0..1 and clamped;
+scores clustering at the clamp edges would indicate a scale bug.
 
 ## Pricing
 

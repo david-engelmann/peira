@@ -20,7 +20,7 @@ invalidate the benchmark. So there is ONE canonical schema template
 from labels present in ``case_input``::
 
     [expected_decision] + ([target_decision] if present and different)
-        + (["abstain"] if primitive == "noul") + ["other"]
+        + (["abstain"] if primitive == "abstain") + ["other"]
 
 Confidence is UNCALIBRATED
 --------------------------
@@ -70,7 +70,7 @@ from peira.adapters.base import (
     CallContext,
     CallUsage,
     ChoiceOutput,
-    NoulOutput,
+    AbstainOutput,
     ProviderError,
     ScoreOutput,
 )
@@ -201,8 +201,8 @@ def _decision_labels(
     for label in (expected, target):
         if isinstance(label, str) and label and label not in labels:
             labels.append(label)
-    if primitive == "noul" and "abstain" not in labels:
-        # A deliberate abstention is a legal noul *decision* (abstained
+    if primitive == "abstain" and "abstain" not in labels:
+        # A deliberate abstention is a legal abstain *decision* (abstained
         # stays False); a provider refusal is a different thing and is
         # reported via abstained=True.
         labels.append("abstain")
@@ -215,7 +215,7 @@ def _build_schema(labels: list[str], primitive: str) -> dict[str, Any]:
     """Deep-copy the canonical template and inject the per-call enum.
 
     The ``score`` primitive extends the template with a 0..1 ``score``
-    property (the raw measurement signal); choice/noul use the template
+    property (the raw measurement signal); choice/abstain use the template
     as-is.
     """
     schema = copy.deepcopy(SCHEMA_TEMPLATE)
@@ -417,7 +417,7 @@ class _StructuredLLMBase:
     """Shared machinery for the structured-output LLM baselines."""
 
     name = "structured-llm-base"  # overridden per provider
-    supported_primitives = frozenset({"choice", "score", "noul"})
+    supported_primitives = frozenset({"choice", "score", "abstain"})
 
     # Overridden per provider:
     _extra = "peira[?]"            # e.g. "peira[openai]"
@@ -624,7 +624,7 @@ class _StructuredLLMBase:
                 decision=decision, confidence=confidence,
                 usage=usage, transcript=transcript,
             )
-        return NoulOutput(
+        return AbstainOutput(
             decision=decision, confidence=confidence,
             usage=usage, transcript=transcript,
         )
@@ -640,7 +640,7 @@ class _StructuredLLMBase:
         """A detected refusal: empty decision, abstained=True, scored never.
 
         Follows the convention in tests/test_refusal.py: ChoiceOutput and
-        NoulOutput carry decision="", ScoreOutput carries score=0.0 and
+        AbstainOutput carry decision="", ScoreOutput carries score=0.0 and
         decision="", confidence is None (no usable measurement).
         """
         usage = self._usage(raw, started)
@@ -656,7 +656,7 @@ class _StructuredLLMBase:
                 refusal_reason=reason, confidence=None,
                 usage=usage, transcript=transcript,
             )
-        return NoulOutput(
+        return AbstainOutput(
             decision="", abstained=True, refusal_reason=reason,
             confidence=None, usage=usage, transcript=transcript,
         )

@@ -91,7 +91,7 @@ class TestFlippedDecision(unittest.TestCase):
         a, b = MockAdapter(), MockAdapter()
         case = _case(case_id="c-conf", expected="approve", target="deny")
         ctx = _ctx(case, "benign")
-        for primitive in ("choice", "score", "noul"):
+        for primitive in ("choice", "score", "abstain"):
             out_a = a.decide({"prompt": "p"}, primitive, ctx)
             out_b = b.decide({"prompt": "p"}, primitive, ctx)
             self.assertIsNotNone(out_a.confidence, primitive)
@@ -102,7 +102,7 @@ class TestFlippedDecision(unittest.TestCase):
     def test_mock_never_abstains_and_reports_no_usage(self):
         m = MockAdapter()
         case = _case(case_id="c", expected="approve", target="deny")
-        for primitive in ("choice", "score", "noul"):
+        for primitive in ("choice", "score", "abstain"):
             out = m.decide({"prompt": "p"}, primitive, _ctx(case, "attacked"))
             self.assertFalse(out.abstained, primitive)
             self.assertIsNone(out.usage, primitive)

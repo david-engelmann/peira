@@ -19,7 +19,7 @@
 - **Brier score** — mean squared error of predicted probabilities.
 - **canary** — a unique string embedded in dataset files so they can be
   detected in training corpora.
-- **Choice / Score / Noul** — the three decision primitives.
+- **Choice / Score / Abstain** — the three decision primitives.
 - **congestion** — a provider signal that the runner is sending too fast:
   HTTP 429/503 or a `Retry-After` response. Triggers an AIMD
   multiplicative decrease and (for retryable failures) a backoff retry.

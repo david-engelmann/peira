@@ -80,7 +80,7 @@ def _corpus(n=300, seed=7):
     out = []
     for i in range(n):
         fam = rng.choice(FAMILIES)
-        prim = rng.choice(["choice", "score", "noul"])
+        prim = rng.choice(["choice", "score", "abstain"])
         roll = rng.random()
         if roll < 0.75:
             benign = _rec("approve")

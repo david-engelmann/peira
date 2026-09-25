@@ -162,6 +162,17 @@ class TestStrictFromJson(unittest.TestCase):
         ).seal()
         self.assertNotEqual(a.analysis_lock, c.analysis_lock)
 
+    def test_lock_covers_metrics(self):
+        # P0-1 (2026-09-25): headline metrics are lock-covered. Forging
+        # metrics after sealing must invalidate the lock.
+        a = RunArtifact(
+            peira_version="0.1.0", dataset_version="1.0.0",
+            metrics={"asr_conditional": 0.5},
+        ).seal()
+        self.assertTrue(a.verify())
+        a.metrics = {"asr_conditional": 1.0}
+        self.assertFalse(a.verify())
+
 
 class TestResultEntryValidation(unittest.TestCase):
     """Result entries validate like Rust's `Vec<PerCaseResult>`."""

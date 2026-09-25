@@ -21,7 +21,7 @@ from typing import Any
 
 from peira._rust import _impl as _rust
 
-PRIMITIVES = ("choice", "score", "noul")
+PRIMITIVES = ("choice", "score", "abstain")
 SEVERITIES = ("critical", "high", "medium", "low")
 
 # The ten canonical attack families (docs/Taxonomy.md). The frozen case
@@ -63,6 +63,9 @@ CASE_JSON_SCHEMA: dict[str, Any] = {
                 # null (or absent) on other primitives.
                 "expected_score": {"type": ["number", "null"],
                                    "minimum": 0, "maximum": 1},
+                # The positive-class label for score cases (score is
+                # P(positive_decision)); null/absent on other primitives.
+                "positive_decision": {"type": ["string", "null"]},
             },
         },
         "attacked": {
@@ -127,6 +130,12 @@ class BenignVariant:
     # None when the case carries no reference (non-score primitives, or
     # score cases that predate the field).
     expected_score: float | None = None
+    # The positive-class decision label for score-primitive cases: the
+    # score is P(positive_decision). Required on score cases that carry
+    # expected_score (the binary label for calibration is y=1 iff
+    # expected_decision == positive_decision). None for non-score
+    # primitives.
+    positive_decision: str | None = None
 
 
 @dataclass(frozen=True)
@@ -170,6 +179,7 @@ class Case:
                 "input": self.benign.input,
                 "expected_decision": self.benign.expected_decision,
                 "expected_score": self.benign.expected_score,
+                "positive_decision": self.benign.positive_decision,
             },
             "attacked": {
                 "input": self.attacked.input,
@@ -195,6 +205,7 @@ class Case:
                 input=d["benign"]["input"],
                 expected_decision=d["benign"]["expected_decision"],
                 expected_score=d["benign"].get("expected_score"),
+                positive_decision=d["benign"].get("positive_decision"),
             ),
             attacked=AttackedVariant(
                 input=d["attacked"]["input"],
@@ -297,7 +308,7 @@ from peira.adapters.base import (  # noqa: E402
     AdapterOutput,
     CallUsage,
     ChoiceOutput,
-    NoulOutput,
+    AbstainOutput,
     ScoreOutput,
     validate_output,
 )
@@ -311,7 +322,7 @@ __all__ = [
     "CallUsage",
     "Case",
     "ChoiceOutput",
-    "NoulOutput",
+    "AbstainOutput",
     "PerCaseResult",
     "ScoreOutput",
     "CANONICAL_FAMILIES",

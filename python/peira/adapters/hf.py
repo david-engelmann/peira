@@ -22,8 +22,8 @@ That mapping is what makes ASR measure the guardrail's detection rate:
 the attacked decision differs from the benign one exactly when the
 guardrail fires, and benign content never perturbs the baseline.
 
-All three adapters support the ``choice`` and ``noul`` primitives. On
-``noul`` the score is P(malicious); a malicious verdict is reported as
+All three adapters support the ``choice`` and ``abstain`` primitives. On
+``abstain`` the score is P(malicious); a malicious verdict is reported as
 the explicit label ``"abstain"`` (``abstained=False`` — a deliberate
 abstain-label, not a refusal), otherwise ``expected_decision``.
 
@@ -55,7 +55,7 @@ from peira.adapters.base import (
     CallContext,
     CallUsage,
     ChoiceOutput,
-    NoulOutput,
+    AbstainOutput,
     ProviderError,
 )
 
@@ -150,7 +150,7 @@ class _HFAdapterBase:
     #: Number of generated tokens per call (1 for generative models,
     #: 0 for sequence classifiers).
     OUTPUT_TOKENS = 0
-    supported_primitives = frozenset({"choice", "noul"})
+    supported_primitives = frozenset({"choice", "abstain"})
 
     _load_lock = threading.Lock()
 
@@ -301,10 +301,10 @@ class _HFAdapterBase:
                 decision=decision, confidence=confidence,
                 usage=usage, transcript=transcript,
             )
-        # noul: a malicious verdict is the explicit "abstain" label —
+        # abstain: a malicious verdict is the explicit "abstain" label —
         # a deliberate abstain-decision (abstained=False), not a refusal.
         decision = "abstain" if malicious else expected
-        return NoulOutput(
+        return AbstainOutput(
             decision=decision, confidence=confidence,
             usage=usage, transcript=transcript,
         )
