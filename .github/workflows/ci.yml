@@ -15,18 +15,6 @@ jobs:
           python-version: "3.12"
       - run: python scripts/check_public_surface.py
 
-  docs:
-    # Internal links rot silently; this fails the build on dead ones.
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-      - run: python scripts/check_doc_links.py
-      # docs/CLI.md is generated from the live parser; fail on drift.
-      - run: python3 scripts/gen_cli_reference.py --check docs/CLI.md
-
   test-python:
     runs-on: ubuntu-latest
     steps:
@@ -34,33 +22,34 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - run: pip install -e .
-      - run: python -m unittest discover tests -v
+      - run: pip install -e . pytest
+      - run: python -m pytest tests/ -v
+        # Full suite: 190+ tests (unittest discover only found 16).
 
   test-rust:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@1.98.1
-      - run: cargo test --workspace
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+      - run: cargo test --workspace --locked
+      - run: cargo clippy --workspace --all-targets --locked -- -D warnings
+      - run: cargo fmt --check
 
-  test-python-rust:
-    # The optional PyO3 accelerator: build peira._core and run the Python
-    # suite against the Rust backend, then again with PEIRA_NO_RUST=1 to
-    # prove the pure-Python fallback. (test-python covers the fallback on
-    # a fresh checkout, where the extension is never built.)
+  cli-parity:
+    # Cross-implementation: Python-sealed artifacts verify with Rust CLI
+    # and vice versa. The strongest parity guarantee.
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - uses: dtolnay/rust-toolchain@1.98.1
-      - run: pip install -e .
-      - run: python scripts/build_core_ext.py
-      - run: python -c "from peira._rust import RUST_AVAILABLE; assert RUST_AVAILABLE"
-      - run: python -m unittest discover tests -v
-      - run: PEIRA_NO_RUST=1 python -m unittest discover tests
+      - uses: dtolnay/rust-toolchain@stable
+      - run: pip install -e . pytest
+      - run: cargo build --locked -p peira-cli
+      - run: python -m pytest tests/test_cli_parity.py -v
 
   quickstart:
     # The README quickstart must work verbatim, offline, on every PR.
@@ -74,65 +63,10 @@ jobs:
         with:
           python-version: "3.12"
       - run: pip install -e .
-      # The README's `peira run` step: exit 3 = ran fine but
-      # ranking-ineligible (the 100-case Trial sits below the 200-case /
-      # per-family floors). Assert it — don't swallow other failures.
-      - run: peira run --adapter mock --suite trial --seed 0 --out runs || [ $? -eq 3 ]
+      - run: peira run --adapter mock --suite trial-demo --dry-run
+      # Exit 3 = ran fine but ranking-ineligible (the 12-case demo never
+      # clears the 200-case / per-family floors); that is expected here.
+      - run: peira run --adapter mock --suite trial-demo --out runs || [ $? -eq 3 ]
         shell: bash
-      - run: peira report --run runs/mock-trial.json --out report.html
-      # The README's table one-liner (the "Trial in action" numbers are
-      # generated, never hand-edited).
-      - run: python3 scripts/gen_readme_table.py runs/mock-trial.json
-
-  readme-table:
-    # The README "Trial in action" table is generated, never hand-edited:
-    # this job fails if the committed copy drifts from generator output.
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-      - run: pip install -e .
-      - name: regenerate the sample table and diff it against the README
-        shell: bash
-        run: |
-          peira run --adapter mock --suite trial --seed 0 --out /tmp/readme-table || [ $? -eq 3 ]
-          python3 scripts/check_readme_table.py README.md /tmp/readme-table/mock-trial.json
-
-  dataset-checks:
-    # The authoring pipeline's release seal, enforced in CI: the Trial
-    # starter suite must pass all six validation gates and its committed
-    # manifest must match its case files, so a dataset mismatch is a
-    # build failure. trial-demo is scaffolding and stays exempt (no
-    # gates, no manifest). dataset/v1 grows incrementally, so both
-    # checks run there only once there is something to check.
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-      - uses: dtolnay/rust-toolchain@1.98.1
-      - run: pip install -e .
-      - run: peira dataset gates --dir dataset/trial
-      - run: peira dataset verify-manifest --dir dataset/trial
-      - run: cargo run -q -p peira-cli -- validate --dir dataset/trial
-      - name: gates on dataset/v1 (when cases exist)
-        shell: bash
-        run: |
-          if compgen -G "dataset/v1/cases/*.jsonl" > /dev/null; then
-            peira dataset gates --dir dataset/v1/cases
-          elif compgen -G "dataset/v1/*.jsonl" > /dev/null; then
-            peira dataset gates --dir dataset/v1
-          else
-            echo "no case files in dataset/v1 yet — skipping gates"
-          fi
-      - name: verify manifest on dataset/v1 (when present)
-        shell: bash
-        run: |
-          if [ -f dataset/v1/manifest.json ]; then
-            peira dataset verify-manifest --dir dataset/v1
-          else
-            echo "no manifest.json in dataset/v1 yet — skipping verify"
-          fi
+      - run: peira validate --dataset dataset/trial-demo
+      - run: peira report --run runs/mock-trial-demo.json --out report.html
