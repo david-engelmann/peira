@@ -164,6 +164,16 @@ class AdaptiveConcurrency:
     cannot change capacity mid-run. The contract is the same — at most
     ``limit`` calls in flight — and is pinned by tests.
 
+    Wakeups are targeted, not broadcast: a slot release wakes only as
+    many waiters as can actually proceed (``limit - in_flight``). A
+    ``notify_all`` here would wake every queued waiter on every
+    completion — O(waiters) spurious wakeups per call, O(n^2) over a
+    run — which stalls large suites of fast (local) adapters behind
+    event-loop churn. Waiters re-check the predicate, so a woken waiter
+    that loses the race simply waits again; no wakeup is ever missed,
+    because free slots with sleeping waiters always follow a release,
+    and every release notifies.
+
     The limit only ever *bounds* in-flight calls — it never changes
     what is computed, so concurrency is a performance parameter, not a
     measurement input: two runs with different limits score identical
@@ -238,10 +248,16 @@ class AdaptiveConcurrency:
         finally:
             async with self._cond:
                 self._in_flight -= 1
-                # A release always follows a limit change (on_success /
-                # on_congestion are called by the task holding the
-                # slot), so waiters re-evaluate the predicate here.
-                self._cond.notify_all()
+                # Targeted wakeup: a release frees exactly
+                # ``limit - in_flight`` slots, so wake only that many
+                # waiters. Waking more (notify_all) is O(waiters) waste
+                # per completion — every other waiter re-checks the
+                # predicate and goes back to sleep. A woken waiter that
+                # loses the race re-waits; nothing is missed because a
+                # release is the only event that creates free slots.
+                free = self.limit - self._in_flight
+                if free > 0:
+                    self._cond.notify(free)
 
 
 def cache_key(
