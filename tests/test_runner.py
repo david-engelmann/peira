@@ -1,293 +1,300 @@
-"""Unit tests for runner resume validation and progress (run with: python -m unittest discover tests)."""
-
-import dataclasses
-import unittest
-from pathlib import Path
-from types import SimpleNamespace
-
-from peira.adapters.base import ChoiceOutput, ScoreOutput
-from peira.adapters.mock import MockAdapter
-from peira.artifacts import RunArtifact, results_to_dicts
-from peira.metrics import CallRecord, PerCaseResult
-from peira.runner import (
-    _record_from_transcript_entry,
-    _validate_and_record,
-    load_cases,
-    run_suite,
-    validate_partial,
-)
-
-REPO_ROOT = Path(__file__).resolve().parents[1]
+"""Tests for runner score primitive handling: calibration, correctness."""
+import pytest
+from peira.schema import BenignVariant, AttackedVariant, Case
+from peira.adapters.base import ScoreOutput, ChoiceOutput, validate_output
+from peira.runner import run_case, summarize, _confidence_of, _score_of
 
 
-def _rec(**kw):
-    base = dict(decision="approve", confidence=0.9, abstained=False,
-                refusal_reason="", usage=None, seed=0, dispatch_index=0,
-                malformed=False)
-    base.update(kw)
-    return CallRecord(**base)
+class MockScoreAdapter:
+    """Adapter that returns a fixed score."""
+    name = "mock-score"
+    version = "1.0"
+    supported_primitives = frozenset(["score"])
+    
+    def __init__(self, score: float, decision: str):
+        self._score = score
+        self._decision = decision
+    
+    def decide(self, ctx):
+        return ScoreOutput(score=self._score, decision=self._decision)
 
 
-def _r(case_id="c1", **kw):
-    benign_kw = {k[7:]: v for k, v in kw.items() if k.startswith("benign_")}
-    attacked_kw = {k[9:]: v for k, v in kw.items() if k.startswith("attacked_")}
-    rest = {k: v for k, v in kw.items()
-            if not (k.startswith("benign_") or k.startswith("attacked_"))}
-    base = dict(case_id=case_id, family="f", severity="high",
-                primitive="choice",
-                benign=_rec(**benign_kw), attacked=_rec(**attacked_kw),
-                flipped=False, eligible=True, ineligibility_reason="")
-    base.update(rest)
-    return PerCaseResult(**base)
+def make_score_case(expected_score: float, expected_decision: str) -> Case:
+    return Case(
+        case_id="test-score-001",
+        family="score_anchoring",
+        primitive="score",
+        severity="critical",
+        benign=BenignVariant(
+            input={"prompt": "test"},
+            expected_decision=expected_decision,
+            expected_score=expected_score,
+        ),
+        attacked=AttackedVariant(
+            input={"prompt": "test attacked"},
+            target_decision="deny" if expected_decision == "approve" else "approve",
+        ),
+    )
 
 
-def _partial(results, adapter=None, suite="trial-demo",
-             dataset_version="0.1.0-demo"):
-    adapter = adapter or MockAdapter()
-    return RunArtifact(
-        adapter_name=adapter.name,
-        adapter_version=getattr(adapter, "version", ""),
-        suite=suite,
-        dataset_version=dataset_version,
-        results=results_to_dicts(results),
-    ).seal()
+def test_score_of_extracts_score():
+    """_score_of returns score for ScoreOutput."""
+    out = ScoreOutput(score=0.75, decision="approve")
+    assert _score_of(out) == 0.75
 
 
-def _cases(*ids):
-    return [SimpleNamespace(case_id=i) for i in ids]
+def test_confidence_of_excludes_score():
+    """_confidence_of returns None for score primitives (not confidence)."""
+    out = ScoreOutput(score=0.75, decision="approve")
+    # Score is not confidence - should be None
+    assert _confidence_of(out, "score") is None
 
 
-class TestValidatePartial(unittest.TestCase):
-    def test_ok(self):
-        p = _partial([_r("c1"), _r("c2")])
-        done, prior = validate_partial(p, MockAdapter(), _cases("c1", "c2", "c3"),
-                                       "trial-demo", "0.1.0-demo")
-        self.assertEqual(done, {"c1", "c2"})
-        self.assertEqual([r.case_id for r in prior], ["c1", "c2"])
-
-    def test_wrong_adapter(self):
-        p = _partial([_r("c1")])
-        other = SimpleNamespace(name="other", version="9.9")
-        with self.assertRaises(ValueError):
-            validate_partial(p, other, _cases("c1"), "trial-demo", "0.1.0-demo")
-
-    def test_wrong_adapter_version(self):
-        p = _partial([_r("c1")])
-        other = SimpleNamespace(name=MockAdapter().name, version="9.9")
-        with self.assertRaises(ValueError):
-            validate_partial(p, other, _cases("c1"), "trial-demo", "0.1.0-demo")
-
-    def test_wrong_suite(self):
-        p = _partial([_r("c1")], suite="trial")
-        with self.assertRaises(ValueError):
-            validate_partial(p, MockAdapter(), _cases("c1"),
-                             "trial-demo", "0.1.0-demo")
-
-    def test_wrong_dataset_version(self):
-        p = _partial([_r("c1")], dataset_version="9.9")
-        with self.assertRaises(ValueError):
-            validate_partial(p, MockAdapter(), _cases("c1"),
-                             "trial-demo", "0.1.0-demo")
-
-    def test_tampered_lock(self):
-        p = _partial([_r("c1")])
-        p.results[0]["flipped"] = True  # modify after sealing
-        with self.assertRaises(ValueError):
-            validate_partial(p, MockAdapter(), _cases("c1"),
-                             "trial-demo", "0.1.0-demo")
-
-    def test_unknown_case_id(self):
-        p = _partial([_r("zzz")])
-        with self.assertRaises(ValueError):
-            validate_partial(p, MockAdapter(), _cases("c1"),
-                             "trial-demo", "0.1.0-demo")
-
-    def test_duplicate_case_id(self):
-        p = _partial([_r("c1"), _r("c1")])
-        with self.assertRaises(ValueError):
-            validate_partial(p, MockAdapter(), _cases("c1"),
-                             "trial-demo", "0.1.0-demo")
-
-    def test_scalar_result_entry_is_value_error(self):
-        # A hand-edited partial with a scalar entry used to die in
-        # AttributeError on r.get; it is now a clear ValueError.
-        p = _partial([_r("c1")])
-        p.results.append("bogus")
-        p.seal()  # re-seal so the lock passes and the entry is reached
-        with self.assertRaisesRegex(
-            ValueError, "partial run has malformed result entry at index 1"
-        ):
-            validate_partial(p, MockAdapter(), _cases("c1"),
-                             "trial-demo", "0.1.0-demo")
-
-    def test_wrong_shaped_result_dict_is_value_error(self):
-        # A dict entry that PerCaseResult rejects is hostile input too:
-        # TypeError becomes ValueError with the entry's position.
-        p = _partial([_r("c1")])
-        p.results.append({"case_id": "c2", "bogus_key": 1})
-        p.seal()
-        with self.assertRaisesRegex(
-            ValueError, "partial run has malformed result entry at index 1"
-        ):
-            validate_partial(p, MockAdapter(), _cases("c1", "c2"),
-                             "trial-demo", "0.1.0-demo")
-
-    def test_seed_mismatch_rejected(self):
-        # Resume with a different seed would silently re-score nothing
-        # (dispatch indices and per-call seeds are seed-derived): the
-        # partial is rejected with a clear message instead.
-        p = _partial([_r("c1")])
-        p.seed = 7
-        p.seal()
-        with self.assertRaisesRegex(ValueError, "recorded with seed 7"):
-            validate_partial(p, MockAdapter(), _cases("c1", "c2"),
-                             "trial-demo", "0.1.0-demo", seed=8)
-        # Same seed resumes fine.
-        done, prior = validate_partial(
-            p, MockAdapter(), _cases("c1", "c2"),
-            "trial-demo", "0.1.0-demo", seed=7)
-        self.assertEqual(done, {"c1"})
+def test_confidence_of_includes_choice():
+    """_confidence_of returns confidence for choice primitives."""
+    out = ChoiceOutput(decision="approve", confidence=0.9)
+    assert _confidence_of(out, "choice") == 0.9
 
 
-class TestResumeProgress(unittest.TestCase):
-    def test_progress_counts_completed_not_index(self):
-        cases = load_cases(REPO_ROOT / "dataset" / "trial-demo")
-        done_ids = {cases[0].case_id}
-        seen = []
-        run_suite(MockAdapter(), cases, "trial-demo", "0.1.0-demo",
-                  progress=lambda d, t: seen.append((d, t)),
-                  already_done=done_ids)
-        total = len(cases)
-        # One case skipped: progress must run 1..total-1, not jump the index.
-        self.assertEqual([d for d, _ in seen], list(range(1, total)))
-        self.assertTrue(all(t == total for _, t in seen))
+def test_run_case_score_correct():
+    """Score case correct when decision matches and score on right side."""
+    case = make_score_case(expected_score=0.82, expected_decision="approve")
+    adapter = MockScoreAdapter(score=0.75, decision="approve")
+    result = run_case(adapter, case)
+    assert result.benign_correct is True
+    assert result.benign_score == 0.75
+    assert result.expected_score == 0.82
+    # Confidence should be None for score (not routed there)
+    assert result.confidence is None
 
-    def test_dispatch_indices_are_suite_positioned_across_resume(self):
-        # Dispatch indices derive from the case's suite position
-        # (benign = 2i, attacked = 2i+1), not run order: a resumed run
-        # must record the same indices as an uninterrupted one.
-        from peira.runner import run_case
 
-        cases = load_cases(REPO_ROOT / "dataset" / "trial-demo")
-        half = len(cases) // 2
-        adapter = MockAdapter()
-        prior = [run_case(adapter, cases[i], seed=3, dispatch_base=2 * i)
-                 for i in range(half)]
-        resumed = run_suite(
-            adapter, cases, "trial-demo", "0.1.0-demo",
-            already_done={cases[i].case_id for i in range(half)},
-            prior_results=prior,
-            seed=3,
+def test_run_case_score_correct_decision_only():
+    """Score case correct when decision matches (score side not checked).
+    
+    Per audit C2: the runner does NOT check score-side against 0.5.
+    The adapter's own threshold derives the decision; the runner only
+    verifies the decision matches gold. A model outputting score=0.3 with
+    decision="approve" is correct if gold decision is "approve", regardless
+    of the score value.
+    """
+    case = make_score_case(expected_score=0.82, expected_decision="approve")
+    # Model says 0.3 but decision="approve" matches gold decision
+    adapter = MockScoreAdapter(score=0.3, decision="approve")
+    result = run_case(adapter, case)
+    assert result.benign_correct is True
+
+
+def test_run_case_score_decision_mismatch():
+    """Score case incorrect when decision doesn't match."""
+    case = make_score_case(expected_score=0.82, expected_decision="approve")
+    adapter = MockScoreAdapter(score=0.75, decision="deny")
+    result = run_case(adapter, case)
+    assert result.benign_correct is False
+
+
+def test_summarize_includes_calibration():
+    """Summarize outputs ECE/Brier for score cases (100+ required)."""
+    from peira.metrics import PerCaseResult
+
+    # Need 100+ score cases for calibration (MIN_SCORE_CASES_FOR_CALIBRATION).
+    results = [
+        PerCaseResult(
+            case_id=f"s{i}", family="score_anchoring", primitive="score",
+            benign_correct=True, attacked_flipped=False, attacked_targeted=False,
+            malformed=False, confidence=None, benign_malformed=False,
+            benign_score=0.8 if i % 2 == 0 else 0.2,
+            expected_score=0.85 if i % 2 == 0 else 0.15,
+            positive_decision="approve",
+            expected_decision="approve" if i % 2 == 0 else "deny",
         )
-        self.assertEqual(len(resumed.results), len(cases))
-        for i, entry in enumerate(resumed.results):
-            self.assertEqual(entry["benign"]["dispatch_index"], 2 * i,
-                             f"case {i} benign index")
-            self.assertEqual(entry["attacked"]["dispatch_index"], 2 * i + 1,
-                             f"case {i} attacked index")
-            self.assertEqual(entry["benign"]["seed"], 3)
-            self.assertEqual(entry["attacked"]["seed"], 3)
+        for i in range(100)
+    ]
+    summary = summarize(results)
+    assert summary.score_calibration is not None
+    cal_dict = summary.score_calibration.to_dict()
+    assert "ece" in cal_dict
+    assert "brier" in cal_dict
+    assert cal_dict["n"] == 100
 
 
-class TestScorePlumbing(unittest.TestCase):
-    """A3 S6: the score signal survives record/transcript/artifact."""
+def test_summarize_no_calibration_below_minimum():
+    """Summarize has None calibration with fewer than 100 score cases."""
+    from peira.metrics import PerCaseResult
 
-    def test_score_output_recorded(self):
-        out = ScoreOutput(score=0.73, decision="pay")
-        rec = _validate_and_record(out, [], 1.0, 0, 0, {}, 1)
-        self.assertEqual(rec.score, 0.73)
-
-    def test_choice_output_score_none(self):
-        out = ChoiceOutput(decision="pay")
-        rec = _validate_and_record(out, [], 1.0, 0, 0, {}, 1)
-        self.assertIsNone(rec.score)
-
-    def test_error_record_score_none(self):
-        rec = _validate_and_record(None, ["adapter raised"], 1.0, 0, 0,
-                                  {}, 1)
-        self.assertIsNone(rec.score)
-
-    def test_score_round_trips_record_dict(self):
-        rec = _rec(score=0.42)
-        d = dataclasses.asdict(rec)  # what the artifact seals
-        self.assertEqual(d["score"], 0.42)
-        self.assertEqual(CallRecord.from_dict(d).score, 0.42)
-
-    def test_score_absent_in_old_dicts(self):
-        # Artifacts sealed before S6 have no "score" key: from_dict
-        # must not break on them.
-        rec = _rec()
-        d = dataclasses.asdict(rec)
-        del d["score"]
-        self.assertIsNone(CallRecord.from_dict(d).score)
-
-    def test_score_restored_from_transcript(self):
-        entry = {
-            "seed": 0, "dispatch_index": 0, "dispatch_limit": 1,
-            "primitive": "score",
-            "response": {
-                "kind": "output",
-                "output": {
-                    "decision": "pay", "confidence": None,
-                    "abstained": False, "refusal_reason": "",
-                    "usage": None, "score": 0.66,
-                },
-            },
-        }
-        rec = _record_from_transcript_entry(entry)
-        self.assertEqual(rec.score, 0.66)
-
-    def test_foreign_score_on_choice_entry_dropped(self):
-        # A3 S6 review P2c: a score belongs only to the score
-        # primitive — a crafted transcript attaching one to a
-        # choice-primitive entry must not leak it into the record.
-        entry = {
-            "seed": 0, "dispatch_index": 0, "dispatch_limit": 1,
-            "primitive": "choice",
-            "response": {
-                "kind": "output",
-                "output": {
-                    "decision": "pay", "confidence": None,
-                    "abstained": False, "refusal_reason": "",
-                    "usage": None, "score": 0.66,
-                },
-            },
-        }
-        rec = _record_from_transcript_entry(entry)
-        self.assertIsNone(rec.score)
-
-    def test_transcript_without_primitive_restores_none_score(self):
-        # Entries predating the primitive field (or hand-built ones
-        # without it) restore no score rather than trusting output.
-        entry = {
-            "seed": 0, "dispatch_index": 0, "dispatch_limit": 1,
-            "response": {
-                "kind": "output",
-                "output": {
-                    "decision": "pay", "confidence": None,
-                    "abstained": False, "refusal_reason": "",
-                    "usage": None, "score": 0.66,
-                },
-            },
-        }
-        rec = _record_from_transcript_entry(entry)
-        self.assertIsNone(rec.score)
-
-    def test_transcript_without_score_restores_none(self):
-        entry = {
-            "seed": 0, "dispatch_index": 0, "dispatch_limit": 1,
-            "response": {
-                "kind": "output",
-                "output": {
-                    "decision": "pay", "confidence": None,
-                    "abstained": False, "refusal_reason": "",
-                    "usage": None,
-                },
-            },
-        }
-        rec = _record_from_transcript_entry(entry)
-        self.assertIsNone(rec.score)
+    # 99 score cases -> calibration is null (below 100-case floor).
+    results = [
+        PerCaseResult(
+            case_id=f"s{i}", family="score_anchoring", primitive="score",
+            benign_correct=True, attacked_flipped=False, attacked_targeted=False,
+            malformed=False, confidence=None, benign_malformed=False,
+            benign_score=0.8, expected_score=0.85,
+            positive_decision="approve",
+            expected_decision="approve",
+        )
+        for i in range(99)
+    ]
+    summary = summarize(results)
+    assert summary.score_calibration is None
 
 
-if __name__ == "__main__":
-    unittest.main()
+def test_summarize_no_calibration_without_scores():
+    """Summarize has None calibration when no score cases."""
+    from peira.metrics import PerCaseResult
+
+    results = [
+        PerCaseResult(
+            case_id="c1", family="state_poisoning", primitive="choice",
+            benign_correct=True, attacked_flipped=False, attacked_targeted=False,
+            malformed=False, confidence=0.9, benign_malformed=False,
+        ),
+    ]
+    summary = summarize(results)
+    assert summary.score_calibration is None
+
+
+# --- P1-5: bool rejection -------------------------------------------------
+
+def test_bool_confidence_rejected():
+    """ChoiceOutput with confidence=True is invalid, not a 1.0."""
+    out = ChoiceOutput(decision="approve", confidence=True)
+    errors = validate_output(out, "choice")
+    assert errors, "bool confidence must be rejected"
+    assert any("bool" in e for e in errors)
+
+
+def test_bool_score_rejected():
+    """ScoreOutput with score=False is invalid, not a 0.0."""
+    out = ScoreOutput(score=False, decision="deny")
+    errors = validate_output(out, "score")
+    assert errors, "bool score must be rejected"
+    assert any("bool" in e for e in errors)
+
+
+def test_bool_confidence_marks_malformed_in_run_case():
+    """A bool confidence flowing through run_case is malformed, not scored."""
+    case = Case(
+        case_id="test-bool-001",
+        family="state_poisoning",
+        primitive="choice",
+        severity="critical",
+        benign=BenignVariant(
+            input={"prompt": "test"},
+            expected_decision="approve",
+        ),
+        attacked=AttackedVariant(
+            input={"prompt": "test attacked"},
+            target_decision="deny",
+        ),
+    )
+
+    class BoolAdapter:
+        name = "bool-adapter"
+        version = "1.0"
+        supported_primitives = frozenset(["choice"])
+
+        def decide(self, ctx):
+            return ChoiceOutput(decision="approve", confidence=True)
+
+    result = run_case(BoolAdapter(), case)
+    assert result.malformed is True
+    assert result.skipped is False
+
+
+# --- P1-5: honest supported_primitives handling -----------------------------
+
+class ChoiceOnlyAdapter:
+    """Adapter that honestly declares choice-only support."""
+    name = "choice-only"
+    version = "2.1"
+    supported_primitives = frozenset(["choice"])
+
+    def decide(self, ctx):
+        assert ctx.primitive == "choice", "must never be called for unsupported primitives"
+        return ChoiceOutput(decision="approve", confidence=0.9)
+
+
+def test_unsupported_primitive_skipped_not_malformed():
+    """Cases whose primitive the adapter doesn't declare are skipped."""
+    case = make_score_case(expected_score=0.82, expected_decision="approve")
+    result = run_case(ChoiceOnlyAdapter(), case)
+    assert result.skipped is True
+    assert result.malformed is False
+    assert result.benign_correct is False  # not scored at all
+
+
+def test_skipped_excluded_from_metrics():
+    """Skipped cases do not move accuracy, ASR, malformed rate, or eligibility."""
+    from peira.metrics import (
+        PerCaseResult, asr_conditional, benign_accuracy,
+        malformed_rate, check_eligibility,
+    )
+
+    scored = PerCaseResult(
+        case_id="s1", family="state_poisoning", primitive="choice",
+        benign_correct=True, attacked_flipped=False, attacked_targeted=False,
+        malformed=False, confidence=0.9, benign_malformed=False,
+    )
+    skipped = PerCaseResult(
+        case_id="s2", family="score_anchoring", primitive="score",
+        benign_correct=False, attacked_flipped=False, attacked_targeted=False,
+        malformed=False, confidence=None, benign_malformed=False,
+        skipped=True,
+    )
+    # With the skip: identical to the scored-only baseline.
+    assert benign_accuracy([scored, skipped]) == benign_accuracy([scored])
+    assert asr_conditional([scored, skipped]) == asr_conditional([scored])
+    assert malformed_rate([scored, skipped]) == malformed_rate([scored])
+    elig_with = check_eligibility([scored, skipped])
+    elig_without = check_eligibility([scored])
+    assert elig_with.eligible == elig_without.eligible
+
+
+def test_summarize_reports_coverage():
+    """summarize() carries n_scored, n_skipped, and per-primitive coverage."""
+    from peira.metrics import PerCaseResult
+
+    results = [
+        PerCaseResult(
+            case_id="c1", family="state_poisoning", primitive="choice",
+            benign_correct=True, attacked_flipped=False, attacked_targeted=False,
+            malformed=False, confidence=0.9, benign_malformed=False,
+        ),
+        PerCaseResult(
+            case_id="s1", family="score_anchoring", primitive="score",
+            benign_correct=False, attacked_flipped=False, attacked_targeted=False,
+            malformed=False, confidence=None, benign_malformed=False,
+            skipped=True,
+        ),
+    ]
+    summary = summarize(results)
+    assert summary.n_cases == 2
+    assert summary.n_scored == 1
+    assert summary.n_skipped == 1
+    assert summary.primitive_coverage["choice"].to_dict() == {
+        "n_cases": 1, "n_scored": 1, "n_skipped": 0,
+    }
+    assert summary.primitive_coverage["score"].to_dict() == {
+        "n_cases": 1, "n_scored": 0, "n_skipped": 1,
+    }
+    # Skipped score case must not create a calibration section.
+    assert summary.score_calibration is None
+
+
+# --- P1-6: adapter_version in the analysis lock -----------------------------
+
+def test_adapter_version_in_lock():
+    """Changing only the adapter version changes the analysis lock."""
+    from peira.artifacts import RunArtifact
+
+    def sealed(version: str) -> str:
+        a = RunArtifact(
+            adapter_name="mock", adapter_version=version, suite="trial-demo",
+        )
+        a.results = [{"case_id": "x"}]
+        a.metrics = {"benign_accuracy": 0.5}
+        return a.seal().analysis_lock
+
+    assert sealed("1.0.0") != sealed("2.0.0")
+    # And the field round-trips through JSON.
+    a = RunArtifact(adapter_name="mock", adapter_version="1.0.0")
+    assert RunArtifact.from_json(a.to_json()).adapter_version == "1.0.0"

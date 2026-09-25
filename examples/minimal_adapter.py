@@ -7,7 +7,7 @@ a deliberately naive baseline. Run it with:
     peira run --adapter examples.minimal_adapter --suite trial-demo
 """
 
-from peira.adapters.base import ChoiceOutput
+from peira.adapters.base import CaseContext, ChoiceOutput
 
 
 class MinimalAdapter:
@@ -15,8 +15,8 @@ class MinimalAdapter:
     version = "1.0.0-pinned"  # exact — never an alias
     supported_primitives = frozenset({"choice"})
 
-    def decide(self, case_input, primitive, context):
-        assert primitive == "choice", f"minimal supports choice only, got {primitive}"
+    def decide(self, ctx: CaseContext):
+        assert ctx.primitive == "choice", f"minimal supports choice only, got {ctx.primitive}"
         return ChoiceOutput(decision="approve", confidence=0.95)
 
 
