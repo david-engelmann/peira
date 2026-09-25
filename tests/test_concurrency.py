@@ -205,6 +205,99 @@ class TestAdaptiveConcurrency(unittest.TestCase):
         with self.assertRaises(ValueError):
             AdaptiveConcurrency(0)
 
+    def test_release_wakes_only_fillable_waiters(self):
+        # Thundering-herd regression test: with many waiters queued, a
+        # slot release must wake only as many as can actually proceed —
+        # not the whole queue. notify_all would wake ~30 waiters per
+        # release here (~hundreds total); the targeted wakeup stays
+        # O(1) per release.
+        async def go():
+            c = AdaptiveConcurrency(8, initial=2, time_fn=FakeClock())
+            woken_total = 0
+            orig_notify = c._cond.notify
+
+            def counting(n=1):
+                nonlocal woken_total
+                woken_total += n
+                return orig_notify(n)
+
+            c._cond.notify = counting
+
+            async def waiter():
+                async with c.slot():
+                    pass
+
+            # Occupy both slots, then queue 30 waiters behind them.
+            async with c.slot():
+                async with c.slot():
+                    tasks = [asyncio.create_task(waiter())
+                             for _ in range(30)]
+                    for _ in range(1000):
+                        if len(c._cond._waiters) >= 30:
+                            break
+                        await asyncio.sleep(0)
+                    self.assertEqual(len(c._cond._waiters), 30)
+                # Inner release: exactly one waiter may proceed.
+            await asyncio.gather(*tasks)
+            return woken_total
+
+        total = asyncio.run(go())
+        # 32 slot releases (2 holders + 30 waiters), each waking at most
+        # the freed slots. Generous bound; notify_all would give ~900.
+        self.assertLessEqual(total, 64)
+
+    def test_fast_workload_reaches_max_limit(self):
+        # Instant (local-adapter-like) calls must still fill the
+        # slow-start ramp: the targeted wakeup must not starve the
+        # headroom created by limit growth.
+        async def go():
+            c = AdaptiveConcurrency(8, time_fn=FakeClock())
+
+            async def worker():
+                async with c.slot():
+                    pass
+                c.on_success()
+
+            await asyncio.gather(*[worker() for _ in range(50)])
+            return c.limit
+
+        self.assertEqual(asyncio.run(go()), 8)
+
+    def test_rate_limited_provider_still_backs_off(self):
+        # API-adapter protection is unchanged: a provider that 429s
+        # above 4 concurrent calls must drive a multiplicative cut, and
+        # post-cut in-flight must respect the lowered limit.
+        async def go():
+            c = AdaptiveConcurrency(16, time_fn=FakeClock())
+            in_flight = 0
+            peak_after_cut = 0
+            cut_seen = asyncio.Event()
+
+            async def worker():
+                nonlocal in_flight, peak_after_cut
+                async with c.slot():
+                    in_flight += 1
+                    try:
+                        if in_flight > 4:
+                            # Provider 429s: congestion signal.
+                            c.on_congestion()
+                            cut_seen.set()
+                            return
+                        if cut_seen.is_set():
+                            peak_after_cut = max(peak_after_cut,
+                                                 in_flight)
+                        await asyncio.sleep(0.001)
+                    finally:
+                        in_flight -= 1
+                c.on_success()
+
+            await asyncio.gather(*[worker() for _ in range(40)])
+            return c.limit, peak_after_cut
+
+        limit, peak = asyncio.run(go())
+        self.assertLess(limit, 16)  # a cut happened
+        self.assertLessEqual(peak, limit)  # and it is respected
+
     def test_slot_bounds_in_flight(self):
         async def go():
             c = AdaptiveConcurrency(8, initial=3, time_fn=FakeClock())
