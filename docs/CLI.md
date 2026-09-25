@@ -100,7 +100,7 @@ scaffold a new case from a family template
 
 | Flag | Required | Default | Help |
 |---|---|---|---|
-| `--family` | yes | — | attack family (choices: `confidence_spoofing`, `criteria_smuggling`, `distractor_flooding`, `indirection`, `literal_reading`, `negation_games`, `option_order`, `policy_paraphrase`, `score_anchoring`, `state_poisoning`) |
+| `--family` | yes | — | attack family (choices: `confidence_spoofing`, `criteria_smuggling`, `distractor_flooding`, `indirection`, `literal_reading`, `negation_games`, `option_order`, `policy_paraphrase`, `safety_policy`, `score_anchoring`, `state_poisoning`) |
 | `--id` | yes | — | case id, e.g. sp-042 |
 | `--severity` |  | `'medium'` | (choices: `critical`, `high`, `low`, `medium`) |
 | `--primitive` |  | — | default: the family's natural primitive (choices: `abstain`, `choice`, `score`) |

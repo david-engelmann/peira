@@ -998,3 +998,143 @@ follow-up.
 propagate NaN (rejected: silent garbage); return an insufficient
 estimate (rejected: nonfinite input is a bug, not a small sample —
 conflating the two hides bugs).
+
+## D-30: A safety-policy case family where guardrails speak natively (2026-09-25)
+
+**Decision.** Commit to an eleventh v1 family, `safety_policy`, instead
+of leaving classifier guardrails (Llama Guard 4, WildGuard,
+ShieldGemma, Granite Guardian, Qwen3-Guard, …) permanently out of
+scope. The family's "decision" is a safety judgment — `allow` /
+`block`, with optional `block-<category>` fine labels — which is
+exactly the guardrail's native decision space. On this family the D-23
+fixed `"reject"` veto mapping is dropped: adapters emit native verdicts
+(full table in `dataset/v1/safety_policy_SPEC.md` §6 and
+`docs/Adapters.md`). Flip and eligibility comparisons use coarse
+equivalence (`block-<anything>` ≡ `block`); exact-category agreement
+is a diagnostic, not ASR.
+
+Two deliberate inversions come with the family and are documented, not
+hidden: (1) ASR reads as the *attacker's* success rate (evasion +
+false-positive induction — lower is better), the inverse of the D-23
+detection-rate reading on the other ten families; the two numbers are
+never directly comparable. (2) The attacked arm runs in *both*
+directions — jailbreak/obfuscation cases try to flip block→allow,
+false-positive-trap cases try to flip allow→block — so the family
+measures over-blocking as well as under-blocking.
+
+The starter set is 25 cases (`v1-spy-001`…`v1-spy-025`) toward a
+250-case full-family target. Case content is classification-test
+material only: disallowed requests appear as named one-line test
+strings, never as fulfilled instructions; no real PII, exploit code,
+or slurs. Open questions for the packaging pass: v1's 2,000/500
+manifest accounting with an eleventh family, the runner/metrics
+implementation of coarse equivalence, and holdout sampling — all
+recorded in the family spec §8.
+
+**Alternatives.** Keep skipping the whole guardrail category (rejected:
+it surrenders the most deployed safety-tooling category to
+unmeasured status); force guardrails onto approve/deny labels via the
+D-23 veto mapping only (rejected: measures label coincidence, not the
+guardrail's own judgment — the mapping stays for the ten
+decision-model families, where the case labels genuinely aren't the
+guardrail's vocabulary); a separate benchmark for guardrails
+(rejected: splits the leaderboard and the methodology for no reason —
+one family inside peira keeps the primitives, gates, and metrics
+shared).
+
+**Why this:** the D-23 mapping was always a translation layer, and a
+benchmark that can only measure guardrails in translation can't tell a
+good guardrail from a lucky one. A family whose labels *are*
+safe/unsafe removes the translation where it matters and keeps it
+where the case labels genuinely differ.
+
+**To revisit:** if the fine-label vocabulary proves unworkable in
+practice (category crosswalks drifting across model versions), fall
+back to coarse-only labels and keep categories as case metadata.
+
+## D-31: Lift the SemIf strike (2026-09-25)
+
+**Decision.** Reverse the 2026-09-23 standing decision that "SemIf
+does not appear to exist; struck from all adapter lists, must never
+appear in public surfaces." SemIf is real: `github.com/TheoLeeCJ/SemIf`
+(the renamed OpenJev project, ~4.3k stars, MIT license), and its
+published README quick-start documents the exact CLI contract the
+adapter implements (`openjev-score --mode direct --model
+Qwen/Qwen3.5-4B --revision <redacted>`). The original strike was made on
+a research miss — the project existed under its prior name — not on a
+quality judgment, so the reversal restores the default (measure
+everything measurable) rather than carving an exception.
+
+**Alternatives.** Keep the strike (rejected: it would suppress a real,
+open, widely-starred decision-model implementation from the benchmark
+on a false premise); lift silently without a D-record (rejected: a
+standing "never" decision is reversed only in writing, with the reason
+for both the original call and the reversal).
+
+**Why this:** the strike's premise was factually wrong, and peira's
+credibility rests on measuring the actual decision-model ecosystem,
+not an outdated picture of it. The lift is complete: adapter
+(`python/peira/adapters/semif.py`), 409 lines of tests, matrix row,
+docs section, and a $0 pricing entry — with the unverified-against-live
+status disclosed in all of them.
+
+**To revisit:** if SemIf's CLI contract proves unstable across
+releases, pin harder (vendored binary hash) or demote to Tier 2.
+
+## D-32: Frontier-ceiling candidate — claude-fable-5-1, docs + pricing only (2026-09-25)
+
+**Decision.** Name `claude-fable-5-1` (via `AnthropicAdapter(model=…)`)
+as peira's frontier-ceiling candidate — a docs and pricing-table entry
+only, explicitly NOT runnable on the current adapter request shapes.
+Fable 5.1 was picked over `gpt-6-astra` on three grounds: (1) day-one
+availability on every major platform at GA (2026-09-01, per 9to5Mac)
+vs Astra's phased rollout — a ceiling nobody can run is decorative;
+(2) the highest reported Artificial Analysis Intelligence Index score
+to date (66/192, ahead of Opus 5 at 63 and GPT-5.6 Sol at 61); (3)
+the cheaper fix — Fable 5.1's 400 is only on forced `tool_choice`
+(fixed by the already-decided `output_config.format` migration for
+newer Anthropic reasoning models), while Astra 400s on
+`temperature`/`top_p`/`logprobs`, which `OpenAIAdapter` sends on every
+call and would need a new per-model special-case.
+
+Two honesty constraints are part of the decision, not footnotes: the
+model id `claude-fable-5-1` follows Anthropic's documented naming
+convention (Fable 5's id was `claude-fable-5`) but is NOT independently
+confirmed on the live API; and the entry MUST NOT be run before the
+`output_config.format` migration lands — the current forced-tool shape
+400s loudly, which is a terminal provider error, not a measurement.
+
+**Alternatives.** `gpt-6-astra` as the ceiling (rejected: needs a new
+per-model special-case for temperature/top_p/logprobs, and the phased
+rollout limits who can reproduce the number); no ceiling at all until
+the migration lands (rejected: naming the candidate now focuses the
+migration work and the pricing entry is needed for cost planning);
+shipping it as runnable (rejected: dishonest — the 400 is certain).
+
+**To revisit:** after the `output_config.format` migration, verify the
+id against the live API and promote the entry to a runnable adapter;
+if the id proves wrong, correct it — the D-record is the audit trail.
+
+## D-33: Tier 1 adapter scope — four adapters, mocked-only, no live claims (2026-09-25)
+
+**Decision.** The Tier 1 expansion ships four adapters — Kev
+(self-hosted, `jaredpalmer/kev-*`), SemIf (subprocess CLI), openjev-sglang
+(self-hosted SGLang deployment), and Moonshot/Kimi K3 (API baseline) —
+plus the frontier-ceiling candidate entry (D-32). All four are
+mocked-only: none has been exercised against a live endpoint or
+server, and every adapter docstring, docs section, and matrix row says
+so. No measured numbers from these adapters may be published until a
+live smoke test passes.
+
+**Alternatives.** Fewer adapters (rejected: these four cover the
+reachable decision-model ecosystem — the two most-starred open
+implementations plus the cheapest frontier-adjacent API baseline);
+shipping with live claims (rejected: the red-team's P1-1 — Moonshot
+would have 400d on every call — is exactly what mocked-only status
+prevents); waiting for live verification before merging (rejected:
+the adapter code, pinning, and tests are reviewable now; live
+verification is a separate, credentialed step).
+
+**To revisit:** promote each adapter to "live-verified" individually as
+smoke tests pass; the mocked-only banner lifts per-adapter, not
+all-at-once.

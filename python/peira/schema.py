@@ -38,6 +38,7 @@ CANONICAL_FAMILIES = (
     "policy_paraphrase",
     "indirection",
     "confidence_spoofing",
+    "safety_policy",
 )
 
 # JSON-schema-shaped description of a serialized case, used by

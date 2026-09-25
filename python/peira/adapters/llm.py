@@ -1,12 +1,29 @@
-"""Structured-output LLM baseline adapters: OpenAI, Anthropic, Google.
+"""Structured-output LLM baseline adapters: OpenAI, Anthropic, Google, Moonshot.
 
-Three provider adapters (``OpenAIAdapter``, ``AnthropicAdapter``,
-``GoogleAdapter``) sharing one base class (``_StructuredLLMBase``). Each
-sends the case prompt to its provider with provider-native constrained
-decoding (OpenAI strict JSON schema / Anthropic forced tool use / Google
-JSON response schema), then revalidates the answer client-side with a
-hand-written stdlib validator — the base package stays dependency-free,
-so there is deliberately no pydantic here.
+Four provider adapters (``OpenAIAdapter``, ``AnthropicAdapter``,
+``GoogleAdapter``, ``MoonshotAdapter``) sharing one base class
+(``_StructuredLLMBase``). Each sends the case prompt to its provider
+with provider-native constrained decoding (OpenAI strict JSON schema /
+Anthropic forced tool use / Google JSON response schema / Moonshot via
+its OpenAI-compatible endpoint), then revalidates the answer
+client-side with a hand-written stdlib validator — the base package
+stays dependency-free, so there is deliberately no pydantic here.
+
+Frontier ceiling (picked 2026-09-25): ``claude-fable-5-1`` via
+``AnthropicAdapter(model=...)`` — NOT ``gpt-6-astra``. Fable 5.1's id
+is confirmed on the live Claude API, it was available on every major
+platform on day one (vs Astra's phased rollout), and it holds the
+highest Artificial Analysis Intelligence Index score ever measured
+(66/192, ahead of Opus 5 at 63 and GPT-5.6 Sol at 61) — the strongest
+available "ceiling" evidence. Astra was rejected because it 400s on
+``temperature``/``top_p``/``logprobs``, which ``OpenAIAdapter`` sends on
+every call, so ``OpenAIAdapter(model="gpt-6-astra")`` fails without a
+new per-model special-case; Fable 5.1's 400 is only on forced
+``tool_choice``, whose fix (native ``output_config.format`` structured
+outputs) is already peira's decided direction for the newer Anthropic
+reasoning models. Caveat: neither runs on the current adapter request
+shapes unmodified — see docs/Adapters.md "Frontier ceiling". The
+frontier model is opt-in via ``model=``; defaults are unchanged.
 
 Why the decision enum is per-call, not fixed
 --------------------------------------------
@@ -81,6 +98,7 @@ __all__ = [
     "OpenAIAdapter",
     "AnthropicAdapter",
     "GoogleAdapter",
+    "MoonshotAdapter",
 ]
 
 # ---------------------------------------------------------------------------
@@ -703,6 +721,7 @@ class OpenAIAdapter(_StructuredLLMBase):
     _extra = "peira[openai]"
     _env_vars = ("OPENAI_API_KEY",)
     _supports_seed = True
+    _provider_label = "OpenAI"
 
     def __init__(
         self,
@@ -718,6 +737,32 @@ class OpenAIAdapter(_StructuredLLMBase):
         # RETRY LAYERING rule in peira.adapters.base).
         self._client = self._sdk.OpenAI(api_key=self._api_key, max_retries=0)
 
+    def _request_kwargs(
+        self, messages: list[dict[str, str]], schema: dict[str, Any]
+    ) -> dict[str, Any]:
+        """Build the ``chat.completions.create`` kwargs.
+
+        Separated so subclasses (Moonshot) can adjust the payload —
+        e.g. omitting provider-unsupported fields — without
+        duplicating the error handling or result parsing.
+        """
+        return {
+            "model": self._model,
+            "messages": messages,
+            "response_format": {
+                "type": "json_schema",
+                "json_schema": {
+                    "name": SCHEMA_NAME,
+                    "strict": True,
+                    "schema": schema,
+                },
+            },
+            "temperature": self._temperature,
+            "max_tokens": self._max_tokens,
+            "seed": self._seed,
+            "logprobs": True,
+        }
+
     def _request(
         self, user_text: str, schema: dict[str, Any], repair: bool
     ) -> _RawResult:
@@ -729,43 +774,35 @@ class OpenAIAdapter(_StructuredLLMBase):
             messages.append({"role": "user", "content": REPAIR_SUFFIX})
         try:
             resp = self._client.chat.completions.create(
-                model=self._model,
-                messages=messages,
-                response_format={
-                    "type": "json_schema",
-                    "json_schema": {
-                        "name": SCHEMA_NAME,
-                        "strict": True,
-                        "schema": schema,
-                    },
-                },
-                temperature=self._temperature,
-                max_tokens=self._max_tokens,
-                seed=self._seed,
-                logprobs=True,
+                **self._request_kwargs(messages, schema)
             )
         except self._sdk.APIStatusError as exc:
-            raise _status_error("OpenAI", exc) from exc
+            raise _status_error(self._provider_label, exc) from exc
         except self._sdk.APITimeoutError as exc:
             # A timeout has no status; 408 keeps it retryable for the runner.
             raise ProviderError(
-                f"OpenAI request timed out: {exc}", status_code=408
+                f"{self._provider_label} request timed out: {exc}",
+                status_code=408,
             ) from exc
         except self._sdk.APIConnectionError as exc:
             # Builtin ConnectionError is retryable per
             # peira.concurrency.classify_exception; wrapping it in
             # ProviderError(status_code=None) would wrongly make it
             # terminal.
-            raise ConnectionError(f"OpenAI connection failed: {exc}") from exc
+            raise ConnectionError(
+                f"{self._provider_label} connection failed: {exc}"
+            ) from exc
 
         choices = getattr(resp, "choices", None) or []
         if not choices:
             raise ProviderError(
-                "OpenAI returned no choices", status_code=None,
+                f"{self._provider_label} returned no choices",
+                status_code=None,
             )
         choice = choices[0]
         text = choice.message.content or ""
         usage = getattr(resp, "usage", None)
+        sent = self._request_kwargs(messages, schema)
         return _RawResult(
             text=text,
             stop_reason=getattr(choice, "finish_reason", None),
@@ -779,8 +816,11 @@ class OpenAIAdapter(_StructuredLLMBase):
                 "response_format": f"json_schema:{SCHEMA_NAME}:strict",
                 "temperature": self._temperature,
                 "max_tokens": self._max_tokens,
-                "seed": self._seed,
-                "logprobs": True,
+                # Only the fields actually sent — subclasses may omit
+                # seed/logprobs (Moonshot), so read them back from the
+                # kwargs rather than assuming.
+                "seed": sent.get("seed"),
+                "logprobs": sent.get("logprobs", False),
             },
             response_shape={
                 "finish_reason": getattr(choice, "finish_reason", None),
@@ -792,6 +832,85 @@ class OpenAIAdapter(_StructuredLLMBase):
         self, raw: _RawResult, decision: str
     ) -> float | None:
         return _openai_decision_logprob(raw.logprob_tokens, decision)
+
+
+# ---------------------------------------------------------------------------
+# Moonshot (Kimi) — OpenAI-compatible endpoint.
+# ---------------------------------------------------------------------------
+
+class MoonshotAdapter(OpenAIAdapter):
+    """Baseline: Moonshot Kimi through its OpenAI-compatible API.
+
+    Reuses the OpenAI request shape verbatim (strict JSON schema via
+    ``response_format``) against ``https://api.moonshot.ai/v1`` with a
+    ``MOONSHOT_API_KEY`` bearer key — the ``openai`` SDK package drives
+    the compat endpoint, so the extra stays ``peira[openai]``. The
+    request's ``base_url`` is recorded in the transcript's request
+    shape; the key itself never is.
+
+    Default model is ``kimi-k3`` (Moonshot's 2.8T open-weight flagship,
+    $3/$15 per 1M): the self-host audience's flagship model, and the
+    cheapest way to put a frontier-adjacent model on the board.
+
+    Request shape: Moonshot's API 400s on ``seed`` and ``logprobs``
+    (per third-party parameter surveys — the adapter omits both
+    fields rather than negotiating), so there is NO decision-token
+    logprob track on this adapter; the transcript honestly records
+    ``"seed": None`` and ``"logprobs": False``. Moonshot documents
+    ``temperature`` only on the 0..1 range, and whether ``json_schema``
+    ``response_format`` (vs plain ``json_object``) is honored for
+    ``kimi-k3`` is unverified. If the live endpoint rejects or ignores
+    any of these, you will see terminal provider errors, not silent
+    mismeasurement — verify against the live API before any measured
+    run. Not exercised against the live API yet.
+    """
+
+    name = "moonshot-structured"
+    _extra = "peira[openai]"
+    _env_vars = ("MOONSHOT_API_KEY",)
+    _provider_label = "Moonshot"
+    _supports_seed = False
+
+    _base_url = "https://api.moonshot.ai/v1"
+
+    def __init__(
+        self,
+        model: str = "kimi-k3",
+        temperature: float = 0.0,
+        seed: int | None = 0,
+        max_tokens: int = 512,
+        api_key: str | None = None,
+    ) -> None:
+        # Not OpenAIAdapter.__init__: that constructor pins the client
+        # to api.openai.com. Rebuild the identical client against
+        # Moonshot's OpenAI-compatible endpoint — retries still
+        # DISABLED, the runner owns the retry policy.
+        _StructuredLLMBase.__init__(
+            self, model, temperature, seed, max_tokens, api_key
+        )
+        self._sdk = _require_openai()
+        self._client = self._sdk.OpenAI(
+            api_key=self._api_key, base_url=self._base_url, max_retries=0
+        )
+
+    def _request_kwargs(
+        self, messages: list[dict[str, str]], schema: dict[str, Any]
+    ) -> dict[str, Any]:
+        kwargs = super()._request_kwargs(messages, schema)
+        # Moonshot 400s on seed and logprobs — omit both rather than
+        # negotiating. No decision-token logprob track on this adapter.
+        kwargs.pop("seed", None)
+        kwargs.pop("logprobs", None)
+        return kwargs
+
+    def _request(
+        self, user_text: str, schema: dict[str, Any], repair: bool
+    ) -> _RawResult:
+        raw = super()._request(user_text, schema, repair)
+        # The inherited request shape names the endpoint and model but
+        # not the host it was sent to — record it for traceability.
+        raw.request_shape["base_url"] = self._base_url
+        return raw
 
 
 # ---------------------------------------------------------------------------

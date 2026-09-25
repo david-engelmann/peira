@@ -8,7 +8,8 @@ are published so car makers can test cars.
 **Does a good score certify my model as safe?**
 No. A peira score measures robustness on this benchmark's paired decision
 cases. It says nothing about open-ended generation, real deployment risk,
-or attacks outside the 10 families. See the non-certification notice in the
+or attacks outside the 11 families (ten × 250 + the safety_policy
+starter set). See the non-certification notice in the
 README.
 
 **How much does a full run cost?**
