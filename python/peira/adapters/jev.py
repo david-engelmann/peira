@@ -35,6 +35,18 @@ are terminal.
 No ``peira[...]`` extra is needed: the transport is stdlib. What is
 needed is access: without ``TYPESAFE_API_KEY`` the adapter refuses to
 construct, with an error that says exactly what to do.
+
+NOTE — abstain decision placeholder: for the abstain primitive, Jev
+only answers "should I abstain?" (a yes/no probability). It never
+produces a decision label. When the model does NOT abstain (p < 0.5),
+there is no model decision to report, so the ``decision`` field falls
+back to the case's gold label (``context.expected_decision``) as a
+placeholder — then to ``target_decision``, then to ``"other"``. This
+placeholder is NOT a model output. Flip detection for abstain cases
+works via the ``abstained`` flag (which IS a model output), not the
+``decision`` field. This is by design, not a bug: the abstain
+primitive measures refusal behavior, and the decision placeholder
+keeps the output schema uniform.
 """
 
 from __future__ import annotations
@@ -395,6 +407,12 @@ class JevAdapter:
     def _noul_output(self, answers, context, usage, transcript):
         # The answer is keyed by OUR question name ("abstain"); the nested
         # "type": "noul" is TypeSafe's API field (see _noul_question).
+        #
+        # NOTE (abstain decision placeholder): Jev only answers
+        # "should I abstain?" — it never emits a decision label. When
+        # p < 0.5 (no abstention) the `decision` below is the gold
+        # label as a placeholder, NOT a model output. Flip detection
+        # uses the `abstained` flag. See the module docstring.
         ans = _need_answer(answers, "abstain")
         p_yes = ans.get("abstain")
         if not isinstance(p_yes, (int, float)) or isinstance(p_yes, bool):

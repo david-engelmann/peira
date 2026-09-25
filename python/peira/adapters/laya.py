@@ -21,6 +21,18 @@ name and Laya's wire type each stay exactly as their owners define
 them. Every place the wire type differs from peira's primitive name
 is marked with this NOTE.
 
+NOTE — abstain decision placeholder: for the abstain primitive, Laya
+only answers "should I abstain?" (a yes/no probability). It never
+produces a decision label. When the model does NOT abstain (p < 0.5),
+there is no model decision to report, so the ``decision`` field falls
+back to the case's gold label (``context.expected_decision``) as a
+placeholder — then to ``target_decision``, then to ``"other"``. This
+placeholder is NOT a model output. Flip detection for abstain cases
+works via the ``abstained`` flag (which IS a model output), not the
+``decision`` field. This is by design, not a bug: the abstain
+primitive measures refusal behavior, and the decision placeholder
+keeps the output schema uniform.
+
 Three checkpoints (all pinned by exact Hub id — never a floating tag;
 the id goes into ``cache_namespace`` so different checkpoints never
 share runner cache entries):
@@ -388,6 +400,12 @@ class LayaAdapter:
         # the nested "noul" field is Laya's API name for the abstain
         # signal (see the module docstring) — peira's primitive name
         # and Laya's wire field each stay as their owners define them.
+        #
+        # NOTE (abstain decision placeholder): Laya only answers
+        # "should I abstain?" — it never emits a decision label. When
+        # p < 0.5 (no abstention) the `decision` below is the gold
+        # label as a placeholder, NOT a model output. Flip detection
+        # uses the `abstained` flag. See the module docstring.
         ans = _need_answer(answers, "abstain")
         p_yes = ans.get("noul")
         if not isinstance(p_yes, (int, float)) or isinstance(p_yes, bool):
