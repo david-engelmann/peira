@@ -64,6 +64,8 @@ from peira.schema import Case, validate_case_dict
 SUITE_DIRS = {
     "trial-demo": "dataset/trial-demo",
     "trial": "dataset/trial",  # the real 100-case Trial suite lands here at dataset v1
+    "v1": "dataset/v1",
+    "safety-policy": "dataset/safety-policy",
 }
 
 DEFAULT_MAX_CONCURRENCY = 8
