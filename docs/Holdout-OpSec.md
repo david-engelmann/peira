@@ -11,11 +11,10 @@ The secrecy of the contents is the only secret.
 
 ## What it is
 
-- 500 cases: the ten full families × 50, the public set's severity
+- 500 cases: the ten v1 families × 50, the public set's severity
   mix, so public-vs-holdout divergence is interpretable per family.
-  (Whether the private holdout draws from the eleventh family,
-  safety_policy, is an open holdout-design question —
-  `dataset/v1/safety_policy_SPEC.md` §8.3.)
+  (The safety-policy suite designs its own holdout independently —
+  `dataset/safety-policy/SPEC.md` §8.)
 - The anti-memorization control for the public set, and the tiebreaker
   for every gaming dispute (see `Holdout-Ranking-Design.md`).
 

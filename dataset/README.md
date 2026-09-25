@@ -7,6 +7,8 @@
   pilot, manifest `1.0.1`). Gated and review-sealed; runs stay off the
   leaderboard. See `trial/README.md`.
 - `v1/` — the real v1 dataset lands here: 2,000 public cases + 500 private
-  holdout (11 attack families; the ten decision-model families × 250, plus
-  the safety-policy family), with `DATASHEET.md`, `schema.json`,
+  holdout (10 attack families × 200), with `DATASHEET.md`, `schema.json`,
   and the canary string. See `v1/README.md`.
+- `safety-policy/` — the separate guardrail-native safety suite (starter
+  set of 25 cases; not part of v1). See `safety-policy/README.md` and
+  D-34.

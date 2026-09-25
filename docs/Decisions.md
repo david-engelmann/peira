@@ -1160,3 +1160,61 @@ verification is a separate, credentialed step).
 **To revisit:** promote each adapter to "live-verified" individually as
 smoke tests pass; the mocked-only banner lifts per-adapter, not
 all-at-once.
+
+## D-34: safety_policy becomes a separate guardrail-native suite; D-30 superseded (2026-09-25)
+
+**Decision.** `safety_policy` is a **separate guardrail-native suite**,
+not the eleventh v1 family. D-30 (2026-09-25) is **superseded**. The 25
+starter cases (`v1-spy-001`…`v1-spy-025`) and the spec move from
+`dataset/v1/` to `dataset/safety-policy/`; the v1 manifest returns to a
+clean 10-family 2,000-case accounting; `docs/Taxonomy.md` loses its
+family-11 treatment.
+
+**Why — five independent reasons, any one of which is sufficient:**
+
+1. **D-30's own spec documents the metric break.** The SPEC §4 states ASR
+   on this family "reads as the *attacker's* success rate… the two
+   numbers are never directly comparable" with the other ten families.
+   D-30's stated reason for rejecting a separate suite — "keeps the
+   primitives, gates, and metrics shared" — is contradicted by the spec
+   written to implement it. A family whose headline metric carries a
+   "don't compare" footnote is two benchmarks wearing one table.
+
+2. **D-30 conflicts with B2.** D-30 drops the D-23 veto mapping so
+   guardrails emit native `allow`/`block` verdicts. B2 (decided after
+   D-30) scopes guardrail adapters to abstain-only behavior on
+   decision-model benchmarking. Both cannot be true on one family. A
+   separate suite defines its own binary-classification adapter
+   contract without touching B2.
+
+3. **External precedent is unanimous.** HarmBench, AIR-Bench, and
+   guardrail-model evaluations (WildGuard F1) are all standalone.
+   HELM's fold-in precedent doesn't apply: HELM's metrics are genuinely
+   the same computations across scenarios; here ASR is *defined
+   differently* and scoring needs different machinery (coarse
+   equivalence).
+
+4. **UK AI Security Institute 2026.** Blended safety scores can be gamed
+   "simply by blocking more requests." Peira's Direction A (evasion) /
+   Direction B (over-refusal) split must be reported separately, never
+   blended — a separate suite makes this the natural primary view.
+
+5. **Seal decoupling.** Eleventh-family path gates the v1 seal on 175
+   more public cases + 50 private + coarse-equivalence scoring +
+   manifest revision. Separate-suite path: move 25 starters out, v1
+   back to clean 10-family 2,000, zero v1 coupling.
+
+**What stays shared.** Runner, JSONL protocol, primitives, gates,
+artifact format, report tooling — all shared. A separate suite is a
+second manifest + suite entry + leaderboard view, not a second
+benchmark. One product, two tabs, zero blended numbers.
+
+**Alternatives.** Keep D-30's eleventh-family commitment (rejected: the
+five reasons above); drop safety coverage entirely (rejected: surrenders
+the most deployed safety-tooling category to unmeasured status); a
+fully separate benchmark repo (rejected: splits tooling and community
+for no reason — the shared machinery is the point).
+
+**To revisit:** David can override this decision. If the suite's
+fine-label vocabulary proves unworkable (category crosswalks drifting),
+fall back to coarse-only labels per the SPEC's own "to revisit."

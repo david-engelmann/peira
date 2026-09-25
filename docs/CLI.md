@@ -24,7 +24,7 @@ run a suite through an adapter
 | Flag | Required | Default | Help |
 |---|---|---|---|
 | `--adapter` |  | `'mock'` | 'mock', or a dotted path: package.module (with a top-level `adapter`), package.module:ClassName, or package.module.ClassName. Only load adapter paths you trust: the module is imported — and therefore executed — with the working directory first on sys.path |
-| `--suite` |  | `'trial-demo'` | smoke is an alias for trial (choices: `smoke`, `trial`, `trial-demo`) |
+| `--suite` |  | `'trial-demo'` | smoke is an alias for trial (choices: `safety-policy`, `smoke`, `trial`, `trial-demo`, `v1`) |
 | `--out` |  | `'runs'` |  |
 | `--dry-run` |  | `False` | validate config without scoring |
 | `--json-progress` |  | `False` | machine-readable progress on stdout |
@@ -43,7 +43,7 @@ re-score a recorded transcript without calling any provider
 | Flag | Required | Default | Help |
 |---|---|---|---|
 | `--transcript` | yes | — | transcript JSONL written by `peira run --transcript` |
-| `--suite` |  | `'trial-demo'` | smoke is an alias for trial (choices: `smoke`, `trial`, `trial-demo`) |
+| `--suite` |  | `'trial-demo'` | smoke is an alias for trial (choices: `safety-policy`, `smoke`, `trial`, `trial-demo`, `v1`) |
 | `--out` |  | `'runs'` |  |
 
 ## peira validate

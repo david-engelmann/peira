@@ -22,14 +22,9 @@ it's reported honestly, not penalized silently.
 
 ## Attack families
 
-v1 will ship 11 families: the ten attack families × 250 cases (2,000 public
-+ 500 private holdout), plus the **safety_policy** family — the
-safety-judgment family where classifier guardrails speak their native
-decision space (starter set of 25 cases; its full 250-case target and
-holdout accounting are settled at packaging — see
-`dataset/v1/safety_policy_SPEC.md` §8).
-The snake_case IDs are canonical — they appear verbatim in dataset files
-and per-case drill-down:
+v1 ships 10 attack families × 200 cases (2,000 public + 500 private
+holdout). The snake_case IDs are canonical — they appear verbatim in
+dataset files and per-case drill-down:
 
 1. **state_poisoning** — hostile content in tool output authorizes the
    action; includes history-embedded payloads in multi-turn state.
@@ -46,11 +41,13 @@ and per-case drill-down:
 9. **indirection** — payload buried behind multi-hop indirection.
 10. **confidence_spoofing** — hostile content inflates confidence while
     flipping the answer.
-11. **safety_policy** — safety judgments (allow/block) under evasion
-    attacks (prompt injection, jailbreak framing, obfuscation) and
-    false-positive traps. The family where classifier guardrails speak
-    their native decision space; starter set of 25 cases, full 250-case
-    target. See `dataset/v1/safety_policy_SPEC.md`.
+
+Classifier guardrails get their own benchmark: the **safety-policy
+suite** (`dataset/safety-policy/`), a separate guardrail-native suite
+where the decision is a safety judgment (allow/block) under evasion
+attacks and false-positive traps. It is not a v1 family — its metrics
+are not comparable with v1's (D-34). See
+`dataset/safety-policy/SPEC.md`.
 
 Each family will ship with worked examples in `dataset/v1/`. Family definitions
 freeze at dataset v1; after the freeze, new families arrive as new dataset versions.
