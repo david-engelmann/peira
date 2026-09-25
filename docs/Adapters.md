@@ -48,6 +48,23 @@ expected decision (the guardrail vetoes nothing); content judged
 malicious becomes the adapter's fixed veto label `"reject"`. That is
 what makes ASR read as the guardrail's detection rate. See D-23.
 
+**Exception: `safety_policy` cases.** On the safety-policy family the
+case labels *are* the guardrail's native vocabulary (`allow` / `block`),
+so the veto translation is dropped and the adapter emits native
+verdicts: safe/benign → `allow`; unsafe/malicious → `block`, or
+`block-<category>` for category classifiers (Llama Guard 4, WildGuard,
+ShieldGemma) using the category slugs in
+`dataset/v1/safety_policy_SPEC.md` §2. Policy-adaptive Shieldstral
+judges the content against the safety policy stated in the case prompt
+(violation → `block`, otherwise `allow`). Confidence stays `|2p − 1|`
+on every primitive. ASR on this family therefore reads as the
+*attacker's* success rate (evasion + false-positive induction) — lower
+is better — the inverse of the D-23 detection-rate reading on the
+other ten families; never compare the two naively. Full mapping table
+and the coarse-equivalence scoring rule (`block-<x>` ≡ `block` for
+flip/eligibility; exact-category agreement is a diagnostic) live in
+the family spec.
+
 ## Structured-output LLM baselines
 
 One adapter per provider, one extra each — install only what you need:
@@ -57,6 +74,7 @@ One adapter per provider, one extra each — install only what you need:
 | OpenAI | `peira[openai]` | `peira.adapters.llm:OpenAIAdapter` | `gpt-5.6-luna` | `OPENAI_API_KEY` |
 | Anthropic | `peira[anthropic]` | `peira.adapters.llm:AnthropicAdapter` | `claude-sonnet-5` | `ANTHROPIC_API_KEY` |
 | Google | `peira[google]` | `peira.adapters.llm:GoogleAdapter` | `gemini-3.8-flash` | `GOOGLE_API_KEY` |
+| Moonshot (Kimi) | `peira[openai]` | `peira.adapters.llm:MoonshotAdapter` | `kimi-k3` | `MOONSHOT_API_KEY` |
 
 Default model ids are best-known guesses, not verified facts: the
 Anthropic and Google ids above haven't been confirmed against the
@@ -86,6 +104,72 @@ validation failure is a terminal provider error. The
 adapter never retries — the runner owns retries, and the SDKs are
 configured for a single attempt so the runner's congestion signal stays
 honest.
+
+### Frontier ceiling
+
+The strongest model peira can measure against — the upper bound every
+other adapter is compared to. Picked 2026-09-25:
+**`claude-fable-5-1`** (Anthropic, GA 2026-09-01, $10/$50 per 1M in the
+pinned pricing table), used opt-in via
+`AnthropicAdapter(model="claude-fable-5-1")`. Defaults are unchanged —
+the ceiling is never the default.
+
+Why Fable 5.1 over GPT-6 Astra (`gpt-6-astra`, also $10/$50, GA
+2026-09-03):
+
+- **Confirmed id + availability.** `claude-fable-5-1` is the documented
+  API id on the Claude API, and the model shipped on every major
+  platform (Claude API, Bedrock, Vertex AI, Foundry, AWS) on day one.
+  Astra rolled out in phases (Daybreak program first, then API).
+- **Benchmark evidence.** Fable 5.1 holds the highest Artificial
+  Analysis Intelligence Index score ever measured (66 of 192 models —
+  ahead of Claude Opus 5 at 63, Fable 5 at 62, GPT-5.6 Sol at 61). No
+  independent comparative index score was found for Astra (its public
+  numbers, e.g. GPQA Diamond 96.1%, are vendor-adjacent).
+- **Adapter compatibility.** Neither candidate is a pure `model=`
+  drop-in, but Fable 5.1's fix is already peira's decided direction:
+  it rejects forced `tool_choice` (400), and its documented structured
+  path is native `output_config.format` JSON schema — exactly the
+  migration the adapter matrix already chose for the newer Anthropic
+  reasoning models. Astra instead 400s on `temperature`, `top_p`, and
+  `logprobs`, which `OpenAIAdapter` sends on every call, so
+  `OpenAIAdapter(model="gpt-6-astra")` fails on every call without a
+  new per-model special-case.
+
+**Honest caveat:** `claude-fable-5-1` is registered in the pricing
+table, but the current `AnthropicAdapter` still uses forced tool use —
+a live ceiling run 400s until the `output_config.format` migration
+lands. Do not run it before then; the 400 is a loud terminal provider
+error, not a silent mismeasurement.
+
+### Kimi K3 (Moonshot)
+
+```bash
+pip install "peira[openai]"
+export MOONSHOT_API_KEY=...
+peira run --adapter peira.adapters.llm:MoonshotAdapter --suite trial-demo
+```
+
+Kimi K3 (Moonshot AI, July 2026) is a 2.8T sparse mixture-of-experts
+model (16 of 896 experts active per token) with a 1M-token context
+window — the largest open-weight release to date, under the Kimi K3
+License — and at $3/$15 per 1M it is the self-host audience's flagship
+model: the cheapest way to put a frontier-adjacent model on the board.
+The adapter drives Moonshot's OpenAI-compatible endpoint
+(`https://api.moonshot.ai/v1`, model id `kimi-k3`) with the same strict
+JSON-schema request shape as `OpenAIAdapter`; the base URL is recorded
+in the transcript's request shape, and the key is never logged.
+`max_retries=0` — the runner owns retries, same as every other LLM
+baseline.
+
+Two honest caveats: the adapter is built from Moonshot's published
+docs and third-party parameter surveys, not the live API — Moonshot
+documents `temperature` only on the 0..1 range, and surveys conflict
+on whether `seed`/`logprobs` are accepted at all and whether
+`json_schema` `response_format` (vs plain `json_object`) is honored
+for `kimi-k3`. Verify against the live API before any measured run;
+mismatches surface as terminal provider errors, not silent
+mismeasurement.
 
 ## TypeSafe Jev
 
@@ -148,6 +232,121 @@ published API and hasn't been exercised against the real package yet —
 if it answers differently, you'll see terminal provider errors, not
 silent mismeasurement. The `score` answer is assumed 0..1 and clamped;
 scores clustering at the clamp edges would indicate a scale bug.
+
+## Kev
+
+```bash
+# From a clone of github.com/jaredpalmer/kev (serve extra installed):
+python -m kev.serve --run jaredpalmer/kev-4b --port 8008
+peira run --adapter peira.adapters.kev:KevAdapter --suite trial-demo
+```
+
+Kev (Jared Palmer, Apache 2.0) is an open decision model in the
+Jev/System One style: a LoRA adapter plus a pointer readout head on a
+Qwen backbone that takes one document plus typed questions and returns
+calibrated probabilities in a single forward pass. `kev.serve` exposes
+a TypeSafe-compatible `POST /v1/systemone` endpoint, so the adapter
+reuses the Jev wire logic wholesale — the same `{"model", "state",
+"questions"}` requests and `choice`/`score`/`noul` answers, including
+the abstain-to-`"noul"` boundary mapping. The differences from Jev:
+no API key (local server, no auth header), `api_url=` pointing at the
+server (default `http://127.0.0.1:8008/v1/systemone`, kev.serve's
+documented port), and the pinned model id.
+
+Four sizes, pinned by exact Hub id (verified against the
+`jaredpalmer/kev` Hugging Face collection on 2026-09-25), selectable
+via `model=` (short names accepted):
+
+- `jaredpalmer/kev-0.5b`: Qwen2.5-0.5B backbone (the original prototype).
+- `jaredpalmer/kev-0.6b`: Qwen3-0.6B-Base.
+- `jaredpalmer/kev-4b` (default): Qwen3-4B-Base.
+- `jaredpalmer/kev-8b`: Qwen3-8B-Base — the large arm.
+
+Note: early press described 0.8B/9B Kev sizes; the published
+collection lists 0.5b / 0.6b / 4b / 8b, and the adapter follows the
+collection. Floating tags like `kev-latest` are rejected at
+construction; each size gets its own `cache_namespace`.
+
+A server that cannot be reached is a terminal provider error whose
+message tells you exactly how to start it — the runner never retries
+a missing local server. HTTP error statuses keep their status codes
+for the runner's classifier. The model is local and self-hosted, so
+cost is $0. One honest caveat: the adapter is built from kev's
+published docs and hasn't been exercised against a live `kev.serve`
+instance — if the server answers differently than the shared
+TypeSafe-shaped contract, you'll see terminal provider errors, not
+silent mismeasurement.
+
+## SemIf
+
+```bash
+# Clone github.com/theoleecj/semif, create the venv, then:
+pip install -e '.[test]'
+peira run --adapter peira.adapters.semif:SemifAdapter --suite trial-demo
+```
+
+SemIf (TheoLeeCJ, MIT — formerly OpenJev, renamed ~2026-09-18, ~4.3k
+stars) reads typed option probabilities directly from a frozen open
+model in one forward pass: no answer sentence, no JSON repair, no
+decoding loop. It is the most-starred Jev-pattern open project. This
+is a subprocess adapter: each `decide()` spawns the `semif-score` CLI
+(the pre-rename `openjev-score` binary is picked up automatically if
+`semif-score` is absent) in `--mode direct`, feeding it a batch JSONL
+file of input rows (`{"id", "state", "question", "options":
+[{"id", "description"}]}`) and parsing the returned rows' typed
+option probabilities.
+
+Model and revision are both pinned and validated at construction:
+`Qwen/Qwen3.5-4B` @ `851bf6e806efd8d0a36b00ddf55e13ccb7b8cd0a` (the
+revision SemIf's own docs pin for every scoring command). Peira's
+`abstain` primitive is expressed as an ordinary yes/no question
+("Should this case be abstained?") — SemIf's CLI has no `"noul"` wire
+type, so there is no boundary translation here; the `"yes"`
+probability is the abstain signal with the same >= 0.5 threshold the
+Jev-family adapters use. The score primitive is a five-level rubric
+question plus a paired decision row, mirroring the Jev adapter's
+two-question score shape.
+
+Every CLI failure (missing binary, timeout, nonzero exit, unparseable
+output) is a terminal provider error with no status code — the runner
+never retries a broken CLI. The model is local and self-hosted, so
+cost is $0. Two honest caveats: the CLI loads the 4B weights per
+process, so per-call spawning is correct but slow on cold starts
+(`timeout_s` defaults to 600s), and the adapter hasn't been exercised
+against a real `semif-score` install — the output-row key shapes are
+parsed tolerantly from the docs' "typed option scores, timing, model
+revision, prompt hash" promise, and anything unrecognized raises a
+terminal provider error, not silent mismeasurement.
+
+## openjev-sglang
+
+```bash
+# Deploy per github.com/ekzhang/openjev-sglang (SGLang + FastAPI),
+# then point the adapter at it:
+peira run --adapter peira.adapters.openjev_sglang:OpenJevSglangAdapter --suite trial-demo
+```
+
+openjev-sglang (ekzhang) is a server implementing the TypeSafe/Jev
+HTTP API on open models with prefill-only inference: a FastAPI process
+fronts SGLang (Rust frontend, radix caching, prefill CUDA graphs) and
+exposes Jev-compatible `POST /v1/systemone` — the same `{"model",
+"state", "questions"}` → `{"answers": {...}}` shape, with the same
+typed `choice`/`score`/`noul` questions including the
+abstain-to-`"noul"` boundary mapping. The adapter reuses the
+self-hosted wire plumbing it shares with Kev: no API key,
+configurable `api_url=` (default `http://localhost:8000/v1/systemone`).
+
+The model is `Qwen/Qwen3.6-35B-A3B` MoE (verified against the
+project's published BoolQ eval report, 2026-09-18) and is baked into
+the server deployment, so the adapter accepts only that id —
+anything else is rejected at construction. The model is local and
+self-hosted, so cost is $0. One honest caveat: the adapter hasn't been
+exercised against a live openjev-sglang deployment — field names are
+our best reading of the project's documented request examples, and a
+server that answers differently produces terminal provider errors,
+not silent mismeasurement. The project's published parity number
+(95.5% vs Jev 96.3% on the aligned subset, overlapping CIs) is their
+claim, not a peira measurement.
 
 ## Pricing
 

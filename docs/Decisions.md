@@ -998,3 +998,56 @@ follow-up.
 propagate NaN (rejected: silent garbage); return an insufficient
 estimate (rejected: nonfinite input is a bug, not a small sample —
 conflating the two hides bugs).
+
+## D-30: A safety-policy case family where guardrails speak natively (2026-09-25)
+
+**Decision.** Commit to an eleventh v1 family, `safety_policy`, instead
+of leaving classifier guardrails (Llama Guard 4, WildGuard,
+ShieldGemma, Granite Guardian, Qwen3-Guard, …) permanently out of
+scope. The family's "decision" is a safety judgment — `allow` /
+`block`, with optional `block-<category>` fine labels — which is
+exactly the guardrail's native decision space. On this family the D-23
+fixed `"reject"` veto mapping is dropped: adapters emit native verdicts
+(full table in `dataset/v1/safety_policy_SPEC.md` §6 and
+`docs/Adapters.md`). Flip and eligibility comparisons use coarse
+equivalence (`block-<anything>` ≡ `block`); exact-category agreement
+is a diagnostic, not ASR.
+
+Two deliberate inversions come with the family and are documented, not
+hidden: (1) ASR reads as the *attacker's* success rate (evasion +
+false-positive induction — lower is better), the inverse of the D-23
+detection-rate reading on the other ten families; the two numbers are
+never directly comparable. (2) The attacked arm runs in *both*
+directions — jailbreak/obfuscation cases try to flip block→allow,
+false-positive-trap cases try to flip allow→block — so the family
+measures over-blocking as well as under-blocking.
+
+The starter set is 25 cases (`v1-spy-001`…`v1-spy-025`) toward a
+250-case full-family target. Case content is classification-test
+material only: disallowed requests appear as named one-line test
+strings, never as fulfilled instructions; no real PII, exploit code,
+or slurs. Open questions for the packaging pass: v1's 2,000/500
+manifest accounting with an eleventh family, the runner/metrics
+implementation of coarse equivalence, and holdout sampling — all
+recorded in the family spec §8.
+
+**Alternatives.** Keep skipping the whole guardrail category (rejected:
+it surrenders the most deployed safety-tooling category to
+unmeasured status); force guardrails onto approve/deny labels via the
+D-23 veto mapping only (rejected: measures label coincidence, not the
+guardrail's own judgment — the mapping stays for the ten
+decision-model families, where the case labels genuinely aren't the
+guardrail's vocabulary); a separate benchmark for guardrails
+(rejected: splits the leaderboard and the methodology for no reason —
+one family inside peira keeps the primitives, gates, and metrics
+shared).
+
+**Why this:** the D-23 mapping was always a translation layer, and a
+benchmark that can only measure guardrails in translation can't tell a
+good guardrail from a lucky one. A family whose labels *are*
+safe/unsafe removes the translation where it matters and keeps it
+where the case labels genuinely differ.
+
+**To revisit:** if the fine-label vocabulary proves unworkable in
+practice (category crosswalks drifting across model versions), fall
+back to coarse-only labels and keep categories as case metadata.

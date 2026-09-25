@@ -14,7 +14,7 @@ intervals.
 
 > Decision models fail silently — a guardrail that approves what it should
 > deny tells you nothing. peira is the trial that catches it: paired
-> benign/attacked cases across 10 attack families, scored with
+> benign/attacked cases across 11 attack families, scored with
 > decision-change ASR. No post-hoc edits; every run is sealed.
 
 ## Contents
@@ -124,7 +124,7 @@ from the parser, so it can't go stale.
 
 Whether hostile manipulations of the input change a decision model's
 typed output — approve/deny (choice), a numeric output (score), or abstain
-(abstain) — using paired benign/attacked controls across 10 attack
+(abstain) — using paired benign/attacked controls across 11 attack
 families. Decision-change ASR is the headline metric, reported with
 Wilson 95% confidence intervals; ECE and Brier cover confidence quality.
 Benign-validity gates eligibility: a case counts only when its benign

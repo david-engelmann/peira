@@ -1,12 +1,29 @@
-"""Structured-output LLM baseline adapters: OpenAI, Anthropic, Google.
+"""Structured-output LLM baseline adapters: OpenAI, Anthropic, Google, Moonshot.
 
-Three provider adapters (``OpenAIAdapter``, ``AnthropicAdapter``,
-``GoogleAdapter``) sharing one base class (``_StructuredLLMBase``). Each
-sends the case prompt to its provider with provider-native constrained
-decoding (OpenAI strict JSON schema / Anthropic forced tool use / Google
-JSON response schema), then revalidates the answer client-side with a
-hand-written stdlib validator — the base package stays dependency-free,
-so there is deliberately no pydantic here.
+Four provider adapters (``OpenAIAdapter``, ``AnthropicAdapter``,
+``GoogleAdapter``, ``MoonshotAdapter``) sharing one base class
+(``_StructuredLLMBase``). Each sends the case prompt to its provider
+with provider-native constrained decoding (OpenAI strict JSON schema /
+Anthropic forced tool use / Google JSON response schema / Moonshot via
+its OpenAI-compatible endpoint), then revalidates the answer
+client-side with a hand-written stdlib validator — the base package
+stays dependency-free, so there is deliberately no pydantic here.
+
+Frontier ceiling (picked 2026-09-25): ``claude-fable-5-1`` via
+``AnthropicAdapter(model=...)`` — NOT ``gpt-6-astra``. Fable 5.1's id
+is confirmed on the live Claude API, it was available on every major
+platform on day one (vs Astra's phased rollout), and it holds the
+highest Artificial Analysis Intelligence Index score ever measured
+(66/192, ahead of Opus 5 at 63 and GPT-5.6 Sol at 61) — the strongest
+available "ceiling" evidence. Astra was rejected because it 400s on
+``temperature``/``top_p``/``logprobs``, which ``OpenAIAdapter`` sends on
+every call, so ``OpenAIAdapter(model="gpt-6-astra")`` fails without a
+new per-model special-case; Fable 5.1's 400 is only on forced
+``tool_choice``, whose fix (native ``output_config.format`` structured
+outputs) is already peira's decided direction for the newer Anthropic
+reasoning models. Caveat: neither runs on the current adapter request
+shapes unmodified — see docs/Adapters.md "Frontier ceiling". The
+frontier model is opt-in via ``model=``; defaults are unchanged.
 
 Why the decision enum is per-call, not fixed
 --------------------------------------------
@@ -81,6 +98,7 @@ __all__ = [
     "OpenAIAdapter",
     "AnthropicAdapter",
     "GoogleAdapter",
+    "MoonshotAdapter",
 ]
 
 # ---------------------------------------------------------------------------
@@ -792,6 +810,71 @@ class OpenAIAdapter(_StructuredLLMBase):
         self, raw: _RawResult, decision: str
     ) -> float | None:
         return _openai_decision_logprob(raw.logprob_tokens, decision)
+
+
+# ---------------------------------------------------------------------------
+# Moonshot (Kimi) — OpenAI-compatible endpoint.
+# ---------------------------------------------------------------------------
+
+class MoonshotAdapter(OpenAIAdapter):
+    """Baseline: Moonshot Kimi through its OpenAI-compatible API.
+
+    Reuses the OpenAI request shape verbatim (strict JSON schema via
+    ``response_format``) against ``https://api.moonshot.ai/v1`` with a
+    ``MOONSHOT_API_KEY`` bearer key — the ``openai`` SDK package drives
+    the compat endpoint, so the extra stays ``peira[openai]``. The
+    request's ``base_url`` is recorded in the transcript's request
+    shape; the key itself never is.
+
+    Default model is ``kimi-k3`` (Moonshot's 2.8T open-weight flagship,
+    $3/$15 per 1M): the self-host audience's flagship model, and the
+    cheapest way to put a frontier-adjacent model on the board.
+
+    Honest caveats (not exercised against the live API yet): Moonshot
+    documents ``temperature`` only on the 0..1 range and third-party
+    parameter surveys conflict on whether ``seed`` and ``logprobs``
+    are accepted at all — and on whether ``json_schema``
+    ``response_format`` (vs plain ``json_object``) is honored for
+    ``kimi-k3`` specifically. If the live endpoint rejects or ignores
+    any of these, you will see terminal provider errors (or a missing
+    logprob track), not silent mismeasurement — verify against the
+    live API before any measured run.
+    """
+
+    name = "moonshot-structured"
+    _extra = "peira[openai]"
+    _env_vars = ("MOONSHOT_API_KEY",)
+
+    _base_url = "https://api.moonshot.ai/v1"
+
+    def __init__(
+        self,
+        model: str = "kimi-k3",
+        temperature: float = 0.0,
+        seed: int | None = 0,
+        max_tokens: int = 512,
+        api_key: str | None = None,
+    ) -> None:
+        # Not OpenAIAdapter.__init__: that constructor pins the client
+        # to api.openai.com. Rebuild the identical client against
+        # Moonshot's OpenAI-compatible endpoint — retries still
+        # DISABLED, the runner owns the retry policy.
+        _StructuredLLMBase.__init__(
+            self, model, temperature, seed, max_tokens, api_key
+        )
+        self._sdk = _require_openai()
+        self._client = self._sdk.OpenAI(
+            api_key=self._api_key, base_url=self._base_url, max_retries=0
+        )
+
+    def _request(
+        self, user_text: str, schema: dict[str, Any], repair: bool
+    ) -> _RawResult:
+        raw = super()._request(user_text, schema, repair)
+        # The inherited request shape names the endpoint and model but
+        # not the host it was sent to — record it for traceability.
+        raw.request_shape["base_url"] = self._base_url
+        return raw
 
 
 # ---------------------------------------------------------------------------
