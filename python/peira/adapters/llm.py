@@ -437,6 +437,11 @@ class _StructuredLLMBase:
     name = "structured-llm-base"  # overridden per provider
     supported_primitives = frozenset({"choice", "score", "abstain"})
 
+    # Explicit opt-out: `peira doctor` must never list this placeholder.
+    # (Checked as `cls.__dict__["_doctor_skip"]` in discover_adapters, so
+    # concrete subclasses — which don't set it — stay discoverable.)
+    _doctor_skip = True
+
     # Overridden per provider:
     _extra = "peira[?]"            # e.g. "peira[openai]"
     _env_vars: tuple[str, ...] = ()  # API key env vars, in lookup order

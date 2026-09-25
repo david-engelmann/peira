@@ -418,7 +418,14 @@ def cmd_doctor(args: argparse.Namespace) -> int:
     report = run_doctor(_repo_root())
     print(format_report(report))
     # Exit 0 even when things are missing — doctor is informational, not
-    # a gate. A non-zero exit would break scripting around it.
+    # a gate. A non-zero exit would break scripting around it. This is a
+    # permanent design choice: readiness thresholds are host- and
+    # adapter-specific (a "missing" verdict for one workflow is fine for
+    # another), so the exit code cannot encode them honestly.
+    # Scriptability and machine-readable output are deferred follow-ups
+    # (see the "Deferred" note in peira/doctor.py's module docstring):
+    # a future `--fail-on {any,missing,hardware}` flag and/or `--json`
+    # flag can add opt-in gating without changing the default.
     return EXIT_OK
 
 

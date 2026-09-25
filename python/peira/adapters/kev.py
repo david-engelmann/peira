@@ -314,13 +314,16 @@ class KevAdapter(LocalSystemOneAdapter):
         """What `peira doctor` checks for this adapter.
 
         The Kev server itself is external (doctor makes no network
-        calls), so this checks what the local side needs: enough RAM
-        for the smallest model the server would host. Server reachability
-        is verified by the dry-run, not by doctor.
+        calls), so there is nothing doctor can probe locally: the RAM
+        requirement describes the *serving host*, marked
+        ``"scope": "server"`` so the doctor reports it as an unprobed
+        server-side requirement instead of verdicting on this machine's
+        RAM. Server reachability is verified by the dry-run, not by
+        doctor.
         """
         return [
-            {"kind": "ram_gb", "min": 1.5,
+            {"kind": "ram_gb", "min": 1.5, "scope": "server",
              "detail": "smallest Kev model (0.5b) needs ~1.5GB RAM on "
-                       "the serving host",
+                     "the serving host",
              "hint": "serve Kev on a machine with more RAM"},
         ]

@@ -85,10 +85,14 @@ class OpenJevSglangAdapter(LocalSystemOneAdapter):
         Overrides the generic ``_env_vars`` inference: the API key is
         optional (requests go keyless without it), so its absence is not
         a failure. The SGLang server is external (doctor makes no network
-        calls); the GPU requirement describes the serving host.
+        calls); the GPU requirement describes the serving host, so it is
+        marked ``"scope": "server"`` — the doctor reports it as unprobed
+        rather than verdicting on this machine's GPU. The
+        ``"nvidia": True`` qualifier records that only an NVIDIA GPU
+        (CUDA) satisfies it.
         """
         return [
-            {"kind": "gpu",
+            {"kind": "gpu", "nvidia": True, "scope": "server",
              "detail": "the openjev-sglang server (SGLang + Qwen3.6-35B) "
                        "needs an NVIDIA GPU on its host",
              "hint": "deploy the server on a CUDA machine per "

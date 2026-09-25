@@ -21,23 +21,51 @@ classmethod on the adapter class::
              "detail": "smallest Kev model needs ~1.5GB RAM"},
             {"kind": "disk_gb", "min": 5,
              "detail": "Laya weights need ~5GB disk"},
-            {"kind": "gpu",
-             "detail": "openjev-sglang server needs an NVIDIA GPU",
-             "hint": "run on a CUDA machine"},
+            {"kind": "gpu", "nvidia": True, "scope": "server",
+             "detail": "openjev-sglang server needs an NVIDIA GPU on its host",
+             "hint": "deploy the server on a CUDA machine"},
         ]
 
 Requirement kinds the doctor knows how to check:
-  env_var        — os.environ has the name (value never printed)
+  env_var        — os.environ has the name (value never printed).
+                   Multiple env_var entries are treated as any-of:
+                   if ANY of them is set, every env_var entry is
+                   satisfied. This matches the adapters' real
+                   ``_resolve_api_key`` lookup-order semantics
+                   (first-set-wins). A case that needs TWO vars set
+                   would need a new requirement kind — do not overload
+                   env_var for it.
   python_package — importlib.util.find_spec(name) is not None
   binary         — shutil.which(name) is not None
-  ram_gb         — system RAM >= min (uses available RAM)
+  ram_gb         — system RAM >= min (uses available RAM when known;
+                   reports "unknown" when only total is known, e.g. macOS)
   disk_gb        — free disk on cwd volume >= min
-  gpu            — a GPU was detected (any kind)
+  gpu            — a GPU was detected; "nvidia": True requires the
+                   detected GPU string to contain "NVIDIA"
+                   (case-sensitive substring match)
+
+Optional per-requirement fields:
+  scope          — "local" (default) or "server". Hardware requirements
+                   (ram_gb, disk_gb, gpu) with "scope": "server" are NOT
+                   evaluated against this machine's measurements —
+                   the verdict is "unknown" with the detail
+                   "server-side requirement — doctor cannot probe the
+                   remote host; verify with a dry-run". Server-backed
+                   adapters (e.g. kev, openjev-sglang) also get the
+                   reachability caveat appended to their verdict detail:
+                   "server reachability not checked by doctor (no
+                   network calls) — verify with the dry-run".
+  detail / hint  — author-written strings shown to the user.
 
 When an adapter defines no ``doctor_requirements``, the doctor falls back
 to generic inference: a class-level ``_env_vars`` tuple is checked as
 env_var requirements; otherwise the adapter is reported with status
 "unknown" and a note that it declares no requirements.
+
+Deferred (deliberately not implemented):
+  --fail-on / --json — exit code stays 0 unconditionally (doctor is
+  informational, not a gate; see cmd_doctor). Scriptable thresholds and
+  machine-readable output are future flags, not bugs.
 """
 
 from __future__ import annotations
@@ -52,6 +80,20 @@ import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
+
+
+# ---------------------------------------------------------------------------
+# Shared detail strings for server-scoped requirements
+# ---------------------------------------------------------------------------
+
+_SERVER_SIDE_DETAIL = (
+    "server-side requirement — doctor cannot probe the remote host; "
+    "verify with a dry-run"
+)
+_SERVER_REACHABILITY_CAVEAT = (
+    "server reachability not checked by doctor (no network calls) — "
+    "verify with the dry-run"
+)
 
 
 # ---------------------------------------------------------------------------
@@ -117,7 +159,7 @@ def _read_ram_linux() -> tuple[float | None, float | None]:
                 elif line.startswith("MemAvailable:"):
                     available = int(line.split()[1]) / 1024 / 1024
         return total, available
-    except OSError:
+    except (OSError, ValueError):
         return None, None
 
 
@@ -168,7 +210,10 @@ def probe_system() -> SystemInfo:
     except Exception:
         pass
     info.ram_total_gb = total
-    info.ram_available_gb = available if available is not None else total
+    # Provenance matters: `available` stays None when the probe only knew
+    # total (e.g. macOS, sysconf fallback). Callers report available as
+    # unknown in that case instead of silently substituting total.
+    info.ram_available_gb = available
 
     # Disk (current volume)
     try:
@@ -205,7 +250,9 @@ def probe_gpu() -> str | None:
                     return f"NVIDIA {name} ({mem_gb:.0f}GB)"
                 except ValueError:
                     return f"NVIDIA {name}"
-            return f"NVIDIA {first}"
+            # Garbage stdout (e.g. a driver warning printed by a broken
+            # wrapper) is NOT a GPU detection — fall through to "no GPU".
+            # A strict == 2 parse is what keeps false positives out.
     except (OSError, subprocess.SubprocessError):
         pass
 
@@ -254,7 +301,12 @@ def check_system(info: SystemInfo) -> list[CheckResult]:
     # RAM
     ram = info.ram_available_gb
     if ram is None:
-        results.append(CheckResult("RAM", "unknown", "could not detect", ""))
+        detail = "could not detect"
+        if info.ram_total_gb is not None:
+            # macOS probes only know total; don't label total "available".
+            detail = (f"{info.ram_total_gb:.1f}GB total installed; "
+                      "available memory unknown")
+        results.append(CheckResult("RAM", "unknown", detail, ""))
     elif ram < 4:
         results.append(CheckResult(
             "RAM", "fail", f"{ram:.1f}GB available (need 4GB minimum)",
@@ -369,13 +421,16 @@ def check_datasets(repo_root: Path) -> list[CheckResult]:
                 f"manifest unreadable: {e}", ""))
             continue
         if errors:
+            detail = f"manifest verification failed: {errors[0]}"
+            if len(errors) > 1:
+                detail += f" (+{len(errors) - 1} more)"
             results.append(CheckResult(
-                f"dataset:{suite}", "fail",
-                f"manifest verification failed: {errors[0]}",
+                f"dataset:{suite}", "fail", detail,
                 "the dataset files do not match the manifest — "
                 "re-clone or rebuild the manifest"))
             continue
-        # Count cases (cheap: streaming line count, no parsing)
+        # Count cases (cheap: streams the file; iter_case_lines parses
+        # each line as JSON, skipping unparseable lines).
         try:
             n = sum(1 for _ in iter_case_lines(suite_dir))
         except Exception:
@@ -424,23 +479,35 @@ def check_pricing() -> list[CheckResult]:
 # Adapter discovery and requirement checking
 # ---------------------------------------------------------------------------
 
-def _adapter_modules() -> tuple[list[str], list[str]]:
-    """Importable adapter module names; (ok, failed). Never raises."""
+def _adapter_modules() -> list[str]:
+    """Importable adapter module names. Never raises.
+
+    (Returns just a list — import failures are tracked separately in
+    ``discover_adapters``, so there is no failed half to report here.)
+    """
     adapters_dir = Path(__file__).resolve().parent / "adapters"
-    ok: list[str] = []
-    failed: list[str] = []
-    for path in sorted(adapters_dir.glob("*.py")):
-        if path.name.startswith("_"):
-            continue
-        ok.append(f"peira.adapters.{path.stem}")
-    return ok, failed
+    return [
+        f"peira.adapters.{path.stem}"
+        for path in sorted(adapters_dir.glob("*.py"))
+        if not path.name.startswith("_")
+    ]
 
 
 def _iter_adapter_classes(module: Any) -> list[type]:
     """Classes in the module that look like adapters.
 
     A class counts when it defines a string ``name`` and a ``decide``
-    attribute. Base/abstract helpers (names containing "base") are skipped.
+    attribute. Abstract bases are excluded explicitly via
+    ``_doctor_skip = True`` on the base class (checked in
+    ``discover_adapters``). In addition, names containing "base" are
+    skipped as a documented backstop: intermediate abstract bases may
+    inherit a placeholder ``name`` without re-declaring the opt-out in
+    their own ``__dict__`` (e.g. ``_ClassifierBase`` before it got an
+    explicit skip), and no shipped adapter has "base" in its name — so
+    the backstop can only hide an adapter that a future author named
+    "...base...", which a failing ``discover_adapters``-count test would
+    surface. The explicit opt-out is the mechanism; the heuristic is the
+    net.
     Never raises.
     """
     found: list[type] = []
@@ -457,6 +524,7 @@ def _iter_adapter_classes(module: Any) -> list[type]:
         name = getattr(obj, "name", None)
         if not isinstance(name, str) or not name:
             continue
+        # Backstop: abstract helpers carry "base" in their placeholder name.
         if "base" in name.lower():
             continue
         if not hasattr(obj, "decide"):
@@ -466,11 +534,15 @@ def _iter_adapter_classes(module: Any) -> list[type]:
 
 
 def discover_adapters() -> tuple[list[type], list[str]]:
-    """(adapter classes, failed module names). Never raises."""
+    """(adapter classes, failed module names).
+
+    Guards are ``except Exception``, so this never raises ``Exception`` —
+    but a ``BaseException`` (KeyboardInterrupt, SystemExit) raised at
+    adapter import time would still propagate. No adapter does that today.
+    """
     classes: list[type] = []
     failed: list[str] = []
-    module_names, _ = _adapter_modules()
-    for mod_name in module_names:
+    for mod_name in _adapter_modules():
         try:
             module = importlib.import_module(mod_name)
         except Exception:
@@ -497,6 +569,20 @@ def discover_adapters() -> tuple[list[type], list[str]]:
     return concrete, failed
 
 
+def _env_var_is_set(name: str) -> bool:
+    """Presence check: empty or whitespace-only values count as missing.
+
+    A var like ``OPENAI_API_KEY=""`` (common after a bad export or a
+    redacted template) must report missing, not satisfy the requirement.
+    """
+    value = os.environ.get(name)
+    return value is not None and value.strip() != ""
+
+
+def _is_server_scoped(req: dict[str, Any]) -> bool:
+    return str(req.get("scope", "")).lower() == "server"
+
+
 def _check_requirement(req: dict[str, Any], info: SystemInfo) -> CheckResult | None:
     """Check one requirement dict. Returns None when satisfied, else a
     CheckResult describing the problem. Never raises."""
@@ -507,7 +593,7 @@ def _check_requirement(req: dict[str, Any], info: SystemInfo) -> CheckResult | N
 
     try:
         if kind == "env_var":
-            if os.environ.get(name) is not None:
+            if _env_var_is_set(name):
                 return None
             return CheckResult(
                 name, "fail", detail or f"{name} not set",
@@ -533,6 +619,10 @@ def _check_requirement(req: dict[str, Any], info: SystemInfo) -> CheckResult | N
                 hint or f"install {names[0]} and ensure it is on PATH")
 
         if kind == "ram_gb":
+            if _is_server_scoped(req):
+                # Needed on the serving host, not this machine — doctor
+                # cannot probe the remote host, so never verdict on it.
+                return CheckResult(name, "unknown", _SERVER_SIDE_DETAIL, hint)
             need = float(req.get("min", 0))
             have = info.ram_available_gb
             if have is None:
@@ -546,6 +636,8 @@ def _check_requirement(req: dict[str, Any], info: SystemInfo) -> CheckResult | N
                 hint or "free up RAM or use a bigger machine")
 
         if kind == "disk_gb":
+            if _is_server_scoped(req):
+                return CheckResult(name, "unknown", _SERVER_SIDE_DETAIL, hint)
             need = float(req.get("min", 0))
             have = info.disk_free_gb
             if have is None:
@@ -560,7 +652,20 @@ def _check_requirement(req: dict[str, Any], info: SystemInfo) -> CheckResult | N
                 hint or "free up disk space")
 
         if kind == "gpu":
-            if info.gpu:
+            if _is_server_scoped(req):
+                return CheckResult(name, "unknown", _SERVER_SIDE_DETAIL, hint)
+            gpu = info.gpu or ""
+            if req.get("nvidia"):
+                # Case-sensitive substring match on the detected GPU
+                # string, e.g. "NVIDIA GeForce ...". probe_gpu only
+                # produces such strings from real nvidia-smi output.
+                if "NVIDIA" in gpu:
+                    return None
+                return CheckResult(
+                    name, "fail",
+                    detail or "no NVIDIA GPU detected",
+                    hint or "run on a machine with an NVIDIA GPU")
+            if gpu:
                 return None
             return CheckResult(
                 name, "fail", detail or "no GPU detected",
@@ -592,7 +697,7 @@ def _generic_requirements(cls: type) -> list[dict[str, Any]]:
 
 
 def _any_env_var_set(names: list[str]) -> bool:
-    return any(os.environ.get(n) is not None for n in names)
+    return any(_env_var_is_set(n) for n in names)
 
 
 def check_adapter(cls: type, info: SystemInfo) -> AdapterReadiness:
@@ -619,6 +724,13 @@ def check_adapter(cls: type, info: SystemInfo) -> AdapterReadiness:
                 "smoke-test with "
                 f"`peira run --adapter {name} --suite trial-demo --dry-run`")
 
+        # A server-scoped requirement (e.g. RAM or an NVIDIA GPU on the
+        # serving host) is never probed locally; the verdict must say so
+        # explicitly — never let "all requirements met" be the whole story
+        # when the most important requirement was never checked.
+        server_scoped = any(
+            isinstance(r, dict) and _is_server_scoped(r) for r in reqs)
+
         # env_var groups: the adapter accepts any-of several vars, so if
         # at least one is set the whole group is satisfied.
         env_names = [str(r["name"]) for r in reqs
@@ -638,7 +750,10 @@ def check_adapter(cls: type, info: SystemInfo) -> AdapterReadiness:
                 unsatisfied.append((kind, problem))
 
         if not unsatisfied:
-            return AdapterReadiness(name, "ready", "all requirements met", "")
+            detail = "all requirements met"
+            if server_scoped:
+                detail += f"; {_SERVER_REACHABILITY_CAVEAT}"
+            return AdapterReadiness(name, "ready", detail, "")
 
         kinds = {k for k, _ in unsatisfied}
         details = "; ".join(p.detail for _, p in unsatisfied)
@@ -649,14 +764,20 @@ def check_adapter(cls: type, info: SystemInfo) -> AdapterReadiness:
             if p.hint and p.hint not in seen_hints:
                 seen_hints.append(p.hint)
         hints = "; ".join(seen_hints)
+        if server_scoped:
+            details += f"; {_SERVER_REACHABILITY_CAVEAT}"
 
+        # An unknowable measurement must not be labeled insufficient or
+        # missing: a server-side requirement, an unprobeable local value,
+        # or an unknown kind is honestly "unknown". Check this before the
+        # hardware/env classifications below.
+        if any(p.status == "unknown" for _, p in unsatisfied):
+            return AdapterReadiness(name, "unknown", details, hints)
         if kinds <= {"ram_gb", "disk_gb", "gpu"}:
             return AdapterReadiness(
                 name, "insufficient_hardware", details, hints)
         if kinds <= {"env_var"}:
             return AdapterReadiness(name, "missing_api_key", details, hints)
-        if any(p.status == "unknown" for _, p in unsatisfied):
-            return AdapterReadiness(name, "unknown", details, hints)
         return AdapterReadiness(name, "missing_dependency", details, hints)
     except Exception as e:
         return AdapterReadiness(name, "unknown",

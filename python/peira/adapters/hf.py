@@ -144,6 +144,10 @@ class _HFAdapterBase:
     """Shared machinery for the Hugging Face guardrail adapters."""
 
     name = "hf-base"
+    # Explicit opt-out: `peira doctor` must never list this placeholder.
+    # (Checked as `cls.__dict__["_doctor_skip"]` in discover_adapters, so
+    # concrete subclasses — which don't set it — stay discoverable.)
+    _doctor_skip = True
     version = "0.0"
     HF_MODEL_ID = ""
     HF_REVISION = ""
@@ -326,6 +330,11 @@ class _HFAdapterBase:
 
 class _ClassifierBase(_HFAdapterBase):
     """Shared machinery for binary sequence-classifier guardrails."""
+
+    # Abstract intermediate base: never listed by `peira doctor`.
+    # (Checked as `cls.__dict__["_doctor_skip"]` in discover_adapters, so
+    # concrete subclasses — which don't set it — stay discoverable.)
+    _doctor_skip = True
 
     #: Maps class index -> label name. Index 1 is always the malicious
     #: class; subclasses pin the exact two-label scheme.

@@ -149,6 +149,28 @@ class TestRequirements:
         # The value must never appear anywhere in the verdict.
         assert "secret" not in result.detail + result.hint
 
+    def test_empty_env_var_counts_as_missing(self, monkeypatch):
+        monkeypatch.setenv("PEIRA_DOCTOR_EMPTY_KEY", "")
+
+        class A(_FakeAdapter):
+            @classmethod
+            def doctor_requirements(cls):
+                return [{"kind": "env_var", "name": "PEIRA_DOCTOR_EMPTY_KEY"}]
+
+        result = check_adapter(A, SystemInfo())
+        assert result.status == "missing_api_key"
+
+    def test_whitespace_env_var_counts_as_missing(self, monkeypatch):
+        monkeypatch.setenv("PEIRA_DOCTOR_WS_KEY", "   ")
+
+        class A(_FakeAdapter):
+            @classmethod
+            def doctor_requirements(cls):
+                return [{"kind": "env_var", "name": "PEIRA_DOCTOR_WS_KEY"}]
+
+        result = check_adapter(A, SystemInfo())
+        assert result.status == "missing_api_key"
+
     def test_env_var_any_of_group(self, monkeypatch):
         monkeypatch.delenv("PEIRA_DOC_A", raising=False)
         monkeypatch.setenv("PEIRA_DOC_B", "x")
@@ -217,6 +239,60 @@ class TestRequirements:
         assert check_adapter(A, SystemInfo(gpu="NVIDIA X")).status == "ready"
         result = check_adapter(A, SystemInfo(gpu=None))
         assert result.status == "insufficient_hardware"
+
+    def test_gpu_nvidia_qualifier(self):
+        class A(_FakeAdapter):
+            @classmethod
+            def doctor_requirements(cls):
+                return [{"kind": "gpu", "nvidia": True}]
+
+        assert check_adapter(
+            A, SystemInfo(gpu="NVIDIA GeForce RTX 4090 (24GB)")).status == "ready"
+        # A non-NVIDIA GPU must NOT satisfy an NVIDIA-only requirement.
+        result = check_adapter(
+            A, SystemInfo(gpu="Apple M4 (integrated GPU)"))
+        assert result.status == "insufficient_hardware"
+        result = check_adapter(A, SystemInfo(gpu=None))
+        assert result.status == "insufficient_hardware"
+        # Case-sensitive: lowercase "nvidia" does not count.
+        result = check_adapter(A, SystemInfo(gpu="nvidia garbage"))
+        assert result.status == "insufficient_hardware"
+
+    def test_server_scoped_hardware_is_unknown_not_verdict(self):
+        class A(_FakeAdapter):
+            @classmethod
+            def doctor_requirements(cls):
+                return [{"kind": "ram_gb", "min": 1.5, "scope": "server"}]
+
+        # A 64GB local machine must not turn a server-side requirement
+        # into READY; a 1GB machine must not turn it into a hardware
+        # failure. Either way: honest UNKNOWN.
+        for ram in (64.0, 1.0):
+            result = check_adapter(A, SystemInfo(ram_available_gb=ram))
+            assert result.status == "unknown"
+            assert "server-side requirement" in result.detail
+            assert "cannot probe the remote host" in result.detail
+            assert "server reachability not checked by doctor" in result.detail
+
+    def test_server_scope_applies_to_gpu(self):
+        class A(_FakeAdapter):
+            @classmethod
+            def doctor_requirements(cls):
+                return [{"kind": "gpu", "nvidia": True, "scope": "server"}]
+
+        result = check_adapter(
+            A, SystemInfo(gpu="NVIDIA GeForce RTX 4090 (24GB)"))
+        assert result.status == "unknown"
+        assert "server-side requirement" in result.detail
+
+    def test_local_ram_unknown_is_unknown_not_insufficient(self):
+        class A(_FakeAdapter):
+            @classmethod
+            def doctor_requirements(cls):
+                return [{"kind": "ram_gb", "min": 1.0}]
+
+        result = check_adapter(A, SystemInfo(ram_available_gb=None))
+        assert result.status == "unknown"
 
     def test_mixed_problems_classify_as_dependency(self, monkeypatch):
         monkeypatch.delenv("PEIRA_DOCTOR_TEST_KEY", raising=False)
@@ -378,6 +454,26 @@ class TestCli:
         monkeypatch.setattr(urllib.request, "urlopen", boom)
         report = run_doctor(Path("."))
         assert report.adapters, "expected adapters to be checked"
+        # An adapter that did network I/O at import would land here —
+        # the "no network" claim is false if anything did.
+        assert not report.adapter_modules_failed, (
+            f"adapters failed to import (possible network at import): "
+            f"{report.adapter_modules_failed}")
+
+    def test_present_env_key_value_never_leaks(self, monkeypatch):
+        """A SET env var's value must appear nowhere in the report.
+
+        The missing-path test is not enough: values are never read, and
+        this test pins that property across run_doctor + format_report.
+        """
+        monkeypatch.setenv("PEIRA_TEST_SECRET", "sk-fake-12345")
+        report = run_doctor(Path("."))
+        text = format_report(report)
+        assert "sk-fake-12345" not in text
+        # The var name itself is fine (hints reference names, not values),
+        # but it must not be adjacent to its value anywhere.
+        for line in text.splitlines():
+            assert not ("PEIRA_TEST_SECRET" in line and "sk-fake-12345" in line)
 
     def test_doctor_writes_no_files(self, tmp_path, monkeypatch):
         monkeypatch.chdir(tmp_path)
