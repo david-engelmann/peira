@@ -748,6 +748,18 @@ def mcnemar(b: int, c: int) -> float:
     return _mcnemar_py(b, c)
 
 
+def _bootstrap_randbelow(rng: random.Random):
+    """Fast equivalent of ``rng.randrange`` for positive ``n``.
+
+    ``random.Random.randrange(n)`` (n > 0) delegates to the private
+    ``_randbelow(n)`` after argument processing; calling it directly
+    skips that overhead while producing a bit-identical output stream
+    (verified by ``test_bootstrap_randbelow_stream``). Falls back to
+    ``randrange`` if the private method is ever unavailable.
+    """
+    return getattr(rng, "_randbelow", rng.randrange)
+
+
 def paired_bootstrap_ci(
     xs: list[float],
     ys: list[float],
@@ -764,18 +776,27 @@ def paired_bootstrap_ci(
     positive integer (ValueError otherwise).
     Nonfinite values raise ValueError — a NaN would otherwise
     propagate through the resampled means into a NaN interval.
+
+    Performance: resample indices are drawn via
+    :func:`_bootstrap_randbelow` (identical stream to ``randrange``, less
+    overhead) and the per-resample means use ``sum(map(...__getitem__))``
+    — still the ``sum()`` builtin in the same order, so results are
+    bit-identical to the naive formulation.
     """
     _check_paired(xs, ys, "xs", "ys")
     _check_n_boot(n_boot)
     _check_finite(xs, "xs")
     _check_finite(ys, "ys")
     rng = random.Random(seed)
-    diffs = []
+    randbelow = _bootstrap_randbelow(rng)
     n = len(xs)
+    xs_get = xs.__getitem__
+    ys_get = ys.__getitem__
+    diffs = []
     for _ in range(n_boot):
-        idx = [rng.randrange(n) for _ in range(n)]
+        idx = [randbelow(n) for _ in range(n)]
         diffs.append(
-            sum(xs[i] for i in idx) / n - sum(ys[i] for i in idx) / n
+            sum(map(xs_get, idx)) / n - sum(map(ys_get, idx)) / n
         )
     diffs.sort()
     lo = diffs[int(0.025 * n_boot)]
@@ -872,11 +893,15 @@ def _bootstrap_case_ci(
     the resampled statistics. Always uses the Python PRNG (Mersenne
     Twister) — backend-independent, like :func:`paired_bootstrap_ci`.
     ``n_boot`` must be a positive integer (ValueError otherwise).
+
+    Performance: resample indices use :func:`_bootstrap_randbelow`
+    (identical stream to ``randrange``, less overhead).
     """
     _check_n_boot(n_boot)
     rng = random.Random(seed)
+    randbelow = _bootstrap_randbelow(rng)
     n = len(items)
-    diffs = [stat([items[rng.randrange(n)] for _ in range(n)])
+    diffs = [stat([items[randbelow(n)] for _ in range(n)])
              for _ in range(n_boot)]
     diffs.sort()
     return (diffs[int(0.025 * n_boot)], diffs[int(0.975 * n_boot)])

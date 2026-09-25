@@ -2280,6 +2280,46 @@ class TestS9ConfidenceIntervalCoverage(unittest.TestCase):
             n_boot=n_boot, seed=seed)
         self.assertEqual(got, expected)
 
+    def test_bootstrap_randbelow_stream_identical(self):
+        # _bootstrap_randbelow must produce a bit-identical output stream
+        # to rng.randrange(n): it is the same underlying method, but this
+        # pins the contract so a future CPython change fails loudly
+        # instead of silently shifting sealed CIs.
+        from peira.metrics import _bootstrap_randbelow
+        for seed in (0, 1, 42):
+            for n in (1, 2, 100, 2000):
+                rng1 = random.Random(seed)
+                rng2 = random.Random(seed)
+                rb = _bootstrap_randbelow(rng1)
+                for _ in range(200):
+                    self.assertEqual(rb(n), rng2.randrange(n))
+
+    def test_paired_bootstrap_ci_bit_identical_to_naive(self):
+        # The optimized paired_bootstrap_ci (fast randbelow + map/getitem)
+        # must be bit-identical to the naive formulation using
+        # rng.randrange and genexpr sum(): sealed CIs depend on it.
+        rng = random.Random(1234)
+        for n in (30, 100, 500):
+            xs = [rng.random() for _ in range(n)]
+            ys = [rng.random() - 0.5 for _ in range(n)]
+            for seed in (0, 7):
+                n_boot = 200
+                # Naive reference: randrange + genexpr sum
+                r = random.Random(seed)
+                diffs = []
+                for _ in range(n_boot):
+                    idx = [r.randrange(n) for _ in range(n)]
+                    diffs.append(
+                        sum(xs[i] for i in idx) / n
+                        - sum(ys[i] for i in idx) / n
+                    )
+                diffs.sort()
+                expected = (diffs[int(0.025 * n_boot)],
+                            diffs[int(0.975 * n_boot)])
+                got = paired_bootstrap_ci(xs, ys, n_boot=n_boot, seed=seed)
+                self.assertEqual(got, expected,
+                                 f"n={n} seed={seed}")
+
     def _eligible_results(self, n):
         return [
             PerCaseResult(
