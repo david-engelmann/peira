@@ -1,29 +1,7 @@
 {
-  "$schema": "https://peiratrial.dev/schemas/dataset-changelog-1.json",
+  "$schema_id": "https://peiratrial.dev/schemas/dataset-changelog-1.json",
   "dataset": "peira-v1",
   "dataset_version": "1.0.0",
-  "entries": [
-    {
-      "case_count": 2025,
-      "dataset_version": "1.0.0",
-      "date": "2026-09-25",
-      "description": "Initial v1 seal: 2025 cases across 11 families (10 families x 200 + safety_policy starter x 25). Public suite. Private holdout (500 cases) sealed separately.",
-      "families": {
-        "confidence_spoofing": 200,
-        "criteria_smuggling": 200,
-        "distractor_flooding": 200,
-        "indirection": 200,
-        "literal_reading": 200,
-        "negation_games": 200,
-        "option_order": 200,
-        "policy_paraphrase": 200,
-        "safety_policy": 25,
-        "score_anchoring": 200,
-        "state_poisoning": 200
-      },
-      "manifest_sha256": "2509c3f738e7ff619c7d3c1dde6d8c99f407133a40f3c440778b0b3eb5656b95",
-      "type": "seal"
-    }
-  ],
+  "entries": [],
   "format_version": "1"
 }

@@ -238,7 +238,8 @@ def cmd_run(args: argparse.Namespace) -> int:
     if suite == "smoke":
         suite = "trial"  # smoke is the Trial alias
     if suite not in SUITE_DIRS:
-        print(f"error: unknown suite {args.suite!r} (available: trial-demo, trial/smoke)",
+        _suite_names = ", ".join(["smoke"] + sorted(SUITE_DIRS))
+        print(f"error: unknown suite {args.suite!r} (available: {_suite_names})",
               file=sys.stderr)
         return EXIT_USER_ERROR
     suite_dir = root / SUITE_DIRS[suite]
@@ -365,7 +366,8 @@ def cmd_replay(args: argparse.Namespace) -> int:
     if suite == "smoke":
         suite = "trial"  # smoke is the Trial alias
     if suite not in SUITE_DIRS:
-        print(f"error: unknown suite {args.suite!r} (available: trial-demo, trial/smoke)",
+        _suite_names = ", ".join(["smoke"] + sorted(SUITE_DIRS))
+        print(f"error: unknown suite {args.suite!r} (available: {_suite_names})",
               file=sys.stderr)
         return EXIT_USER_ERROR
     suite_dir = root / SUITE_DIRS[suite]

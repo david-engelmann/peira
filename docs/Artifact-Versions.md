@@ -84,7 +84,9 @@ model version may no longer exist.
 ## Implementation Notes
 
 - The Rust core (`crates/peira-core/src/artifact.rs`) must implement the same
-  version policy. Currently it defaults `suite: "trial-demo"` — this should
-  be reviewed for v1 compatibility.
+  version policy. Currently `suite` is `#[serde(default)]`, which yields `""`
+  (an empty/unbound suite name) — the `"trial-demo"` string appears only in
+  the test `sample()` fixture (`artifact.rs:282`), not in any default path.
+  This should be reviewed for v1 compatibility.
 - `peira validate` should report the artifact version in its output.
 - Consider a `--artifact-version` flag on `peira run` for testing migrations.

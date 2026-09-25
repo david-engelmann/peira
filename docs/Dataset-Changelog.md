@@ -13,7 +13,7 @@ Humans read the `description`; tools read the structured fields.
 
 ```json
 {
-  "$schema": "https://peiratrial.dev/schemas/dataset-changelog-1.json",
+  "$schema_id": "https://peiratrial.dev/schemas/dataset-changelog-1.json",
   "format_version": "1",
   "dataset": "peira-v1",
   "dataset_version": "1.0.0",
@@ -41,7 +41,7 @@ any further change requires a new version.
 **Required fields:** `date`, `type`, `dataset_version`, `description`,
 `manifest_sha256`, `case_count`, `families`.
 
-**Example:** The initial v1.0.0 seal.
+**Example:** (none recorded yet — v1 is unsealed; see the Pre-seal checklist below).
 
 ### `add`
 
@@ -58,7 +58,9 @@ New cases added (minor version bump).
 ### `retire`
 
 Bad cases removed (minor version bump). Cases are never deleted from history —
-they're marked retired and excluded from scoring.
+they're marked retired. (Future: retired cases will be excluded from scoring —
+no retired-list is consumed by the runner today; the exclusion mechanism does
+not exist yet.)
 
 **Required fields:** `date`, `type`, `description`, `case_ids` (list of retired IDs),
 `rationale` (why each case was retired), `dataset_version` (the new version),
@@ -81,6 +83,16 @@ Typo or formatting fix that does NOT affect the correct answer (patch version bu
   not a `fix`.
 - The `manifest_sha256` will change (bytes changed) — this is expected for patch bumps.
 
+## Why Only `seal` Pins `manifest_sha256`
+
+A deliberate trust decision: only a `seal` marks a version citable as an
+official measurement. Hashing every intermediate `add`/`retire`/`fix` draft
+would pin versions nobody should cite or compare against. The seal is the
+single point where bytes and identity are bound — a changelog chain is
+verified by walking its seals, not its drafts. Intermediate entries record
+*what changed and why* (the audit trail); the seal records *exactly what
+bytes that produced* (the verifiable artifact).
+
 ## Version Bump Rules
 
 | Change | Version bump | Example |
@@ -98,3 +110,24 @@ Typo or formatting fix that does NOT affect the correct answer (patch version bu
   if content changed (forces a version bump).
 - Future: `peira dataset changelog --suite v1` will render human-readable output.
 - Future: CI will validate CHANGELOG.json against this schema.
+
+## Pre-seal Checklist (v1)
+
+v1 is **not sealed**. `entries` in `dataset/v1/cases/CHANGELOG.json` stays
+empty until the real seal. The following must land first:
+
+- [ ] Resolve the 39 score cases awaiting `positive_decision` adjudication.
+- [ ] Resolve the confirmed duplicate `v1-csm-023` / `v1-ppa-038`
+      ($95k storm-damage scenario appears twice) and the borderline cases
+      `v1-san-236`, `v1-ind-148`, `v1-lrd-197`.
+- [ ] Land the CallContext B2 `options` backfill (touches ~2,000 case files).
+- [ ] Settle the safety-policy architecture.
+- [ ] **Canary:** before the real seal, generate a fresh GUID, write it to
+      `dataset/v1/cases/CANARY.txt`, and embed it in every v1 case file
+      (the training-contamination deterrent; `docs/Dataset.md` documents the
+      practice and `dataset/trial/` follows it). Deferred to the B2 backfill
+      pass, which already touches all case inputs — doing it in the same pass
+      avoids a second full byte-rewrite. The manifest hashes `CANARY.txt` as
+      an artifact automatically, so regenerate the manifest after.
+- [ ] Regenerate `dataset/v1/cases/manifest.json` and record the `seal` entry
+      (with the real `manifest_sha256`) as the first entry in CHANGELOG.json.
