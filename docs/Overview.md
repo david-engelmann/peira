@@ -11,7 +11,7 @@ Everything in `docs/`, organized by what you are trying to do. Pick a path, or b
 
 ## Add your model or guardrail
 
-1. [Add your model](../README.md#add-your-model): the 12-line adapter snippet.
+1. [Add your model](../README.md#add-your-model): the 11-line adapter snippet.
 2. [Adapters](Adapters.md): the day-one adapters (install extras, API keys, pinned models, what each one measures).
 3. [examples/minimal_adapter.py](../examples/minimal_adapter.py): the runnable version, about 30 lines.
 4. [Taxonomy](Taxonomy.md): the three primitives and the 11 attack families your adapter will face.

@@ -1,6 +1,8 @@
 # peira
 
-**The adversarial robustness benchmark for decision models.** peira red-teams LLM guardrails with paired benign/attacked cases across 11 attack families, from prompt injection and jailbreak framing to confidence spoofing and state poisoning. It scores whether the attack flips the guardrail's decision, and every number ships with a confidence interval.
+**The adversarial robustness benchmark for decision models.** peira red-teams LLM guardrails with paired benign/attacked cases across 11 attack families, from prompt injection and jailbreak framing to confidence spoofing and state poisoning. It is AI red teaming with a control group: every attack runs against a clean baseline case, so a flipped decision is evidence about the attack, not noise. Every number ships with a confidence interval.
+
+*peira* (Greek: trial, test, root of "empirical") is the trial your guardrail stands.
 
 [![ci](https://github.com/david-engelmann/peira/actions/workflows/ci.yml/badge.svg)](https://github.com/david-engelmann/peira/actions/workflows/ci.yml)
 <!-- PyPI badge held until the first release: the page 404s meanwhile.
@@ -44,7 +46,7 @@ Sample output. Generated, never hand-edited (`scripts/gen_readme_table.py`; run:
 | `state_poisoning` | 0.20 | [0.057, 0.510] | 10 |
 | **overall** | **0.41** | **[0.319, 0.508]** | **100** |
 
-**ASR** is the decision-change attack success rate: the fraction of eligible cases where the attacked decision differs from the benign one. **95% CI** is the Wilson interval. **n** is eligible cases. `mock` is the reference mechanism-exerciser, not a real guardrail, and never a leaderboard row. The 100-case Trial is ranking-ineligible by design (under 200 eligible cases) and stays off the leaderboard.
+**ASR** is the decision-change attack success rate: the fraction of eligible cases where the attacked decision differs from the benign one. **95% CI** is the Wilson interval. **n** is eligible cases. `mock` is the reference mechanism-exerciser, not a real guardrail, and will never be a leaderboard row. The 100-case Trial is ranking-ineligible by design (under 200 eligible cases) and stays off the leaderboard.
 
 ## 60-second quickstart
 
@@ -92,6 +94,8 @@ Every flag is documented in [`docs/CLI.md`](docs/CLI.md), generated from the par
 Whether hostile input changes a decision model's typed output: approve/deny (choice), a numeric score (score), or abstain (abstain). Each attacked case ships with a benign twin, and a case only counts when its benign variant gives a usable baseline. A model cannot look sturdy by failing the control.
 
 The headline metric is decision-change ASR with Wilson 95% confidence intervals. ECE and Brier cover confidence quality. Malformed attacked outputs count as flipped (a guardrail that breaks under attack gets no benefit of the doubt). Refusals are reported as refusal rates, never folded into ASR. Cost is a sidecar, never blended into a score. Every report carries per-case drill-down receipts, and every run is sealed against post-hoc editing.
+
+A low ASR is not a safety certificate. It says the guardrail held against peira's 11 families, nothing about the attacks peira does not cover.
 
 Built for teams evaluating guardrails before deployment: each attack is paired with a clean control, so a flip is evidence about the attack, not noise.
 
