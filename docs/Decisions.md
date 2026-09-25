@@ -778,6 +778,28 @@ typed argument.
 better answer (e.g. a closed label registry per suite), the context
 can shrink — but the input stays pure regardless.
 
+**Amendment (2026-09-25, B2).** The `CallContext` above is superseded.
+Under B2, the adapter-visible context contains **no gold labels and no
+case identifier** — only an opaque per-call `call_id`:
+
+```python
+@dataclass(frozen=True)
+class CallContext:
+    call_id: str  # opaque, per-call; e.g. "call-3f9a2b1c"
+```
+
+`case_id`, `arm`, `expected_decision`, and `target_decision` are gone
+from the adapter boundary entirely. They live in runner/scoring state,
+never crossing into adapter-visible data. The decision vocabulary now
+comes from explicit unmarked `options` in the case input (backfilled on
+all choice/score/abstain cases), deterministically sorted without
+signaling correctness. Holdout IDs are pseudonymized per run with a
+fresh 128-bit nonce, unlinkable across runs and uncorrelated with
+families. The "honest adapters read their labels from the context"
+paragraph above no longer applies — adapters read labels from the
+input's `options`, and the mock adapter raises if `options` is absent.
+See the B2 implementation (branch `scaffold/callcontext-b2-20260925`).
+
 ## D-26: Equal-mass ECE replaces equal-width in place
 
 **Decision.** `ece()` now uses equal-mass bins — forecasts are sorted

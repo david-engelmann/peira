@@ -87,8 +87,8 @@ decoding (OpenAI strict `json_schema`, Anthropic forced tool choice,
 Gemini `responseSchema`), then revalidates the response client-side.
 The decision vocabulary is per-call — peira cases use open label sets
 (`deny`, `emergency-dept`, `choose A`, …), so the schema's decision
-enum is built from the trial context's labels (`CallContext`), not a
-fixed list and not the case input. Temperature
+enum is built from the case input's explicit `options` list, not a
+fixed list. Temperature
 0, pinned seed where the provider supports one (Anthropic has no seed
 parameter).
 
