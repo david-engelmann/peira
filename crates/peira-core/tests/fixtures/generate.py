@@ -158,9 +158,11 @@ def gen_case_extras() -> None:
             "family": "state_poisoning",
             "primitive": "choice",
             "severity": "high",
-            "benign": {"input": {"prompt": "p"}, "expected_decision": "a",
+            "benign": {"input": {"prompt": "p", "options": ["a", "b"]},
+                       "expected_decision": "a",
                        "positive_decision": None},
-            "attacked": {"input": {"prompt": "p!"}, "target_decision": "b"},
+            "attacked": {"input": {"prompt": "p!", "options": ["a", "b"]},
+                        "target_decision": "b"},
             "notes": "n",
         }
         c.update(kw)
