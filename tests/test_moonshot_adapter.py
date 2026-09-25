@@ -13,7 +13,7 @@ import unittest
 from contextlib import contextmanager
 from types import ModuleType, SimpleNamespace
 
-from peira.adapters.llm import MoonshotAdapter
+from peira.adapters.llm import MoonshotAdapter, OpenAIAdapter
 from peira.adapters.base import CallContext
 
 
@@ -234,6 +234,21 @@ class TestMoonshotRequestShape(unittest.TestCase):
         blob = json.dumps(out.transcript)
         self.assertNotIn("sk-moonshot-secret-999", blob)
         self.assertNotIn("sk-", blob)
+
+    def test_seed_and_logprobs_omitted_from_request(self):
+        # Moonshot 400s on seed/logprobs — the adapter must omit both.
+        out = MoonshotAdapter().decide(CASE, "choice", _ctx())
+        req = out.transcript["request"]
+        self.assertIsNone(req["seed"])
+        self.assertFalse(req["logprobs"])
+
+    def test_openai_still_sends_seed_and_logprobs(self):
+        # The base OpenAI adapter is unchanged — only Moonshot omits.
+        with _env(OPENAI_API_KEY="<redacted>"):
+            out = OpenAIAdapter().decide(CASE, "choice", _ctx())
+        req = out.transcript["request"]
+        self.assertEqual(req["seed"], 0)
+        self.assertTrue(req["logprobs"])
 
 
 if __name__ == "__main__":

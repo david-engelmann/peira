@@ -105,24 +105,26 @@ adapter never retries — the runner owns retries, and the SDKs are
 configured for a single attempt so the runner's congestion signal stays
 honest.
 
-### Frontier ceiling
+### Frontier ceiling (candidate — NOT runnable yet)
 
 The strongest model peira can measure against — the upper bound every
-other adapter is compared to. Picked 2026-09-25:
+other adapter is compared to. Candidate picked 2026-09-25:
 **`claude-fable-5-1`** (Anthropic, GA 2026-09-01, $10/$50 per 1M in the
-pinned pricing table), used opt-in via
-`AnthropicAdapter(model="claude-fable-5-1")`. Defaults are unchanged —
-the ceiling is never the default.
+pinned pricing table), to be used opt-in via
+`AnthropicAdapter(model="claude-fable-5-1")` **after** the
+`output_config.format` migration lands. Defaults are unchanged — the
+ceiling is never the default. This is a docs + pricing entry only:
+do not run it on the current adapter shapes.
 
 Why Fable 5.1 over GPT-6 Astra (`gpt-6-astra`, also $10/$50, GA
 2026-09-03):
 
-- **Confirmed id + availability.** `claude-fable-5-1` is the documented
-  API id on the Claude API, and the model shipped on every major
-  platform (Claude API, Bedrock, Vertex AI, Foundry, AWS) on day one.
-  Astra rolled out in phases (Daybreak program first, then API).
+- **Availability.** Fable 5.1 shipped on every major platform (Claude
+  API, Bedrock, Vertex AI, Foundry, AWS) on day one of GA (2026-09-01,
+  per 9to5Mac). Astra rolled out in phases (Daybreak program first,
+  then API) — a ceiling nobody can run is decorative.
 - **Benchmark evidence.** Fable 5.1 holds the highest Artificial
-  Analysis Intelligence Index score ever measured (66 of 192 models —
+  Analysis Intelligence Index score reported to date (66 of 192 models —
   ahead of Claude Opus 5 at 63, Fable 5 at 62, GPT-5.6 Sol at 61). No
   independent comparative index score was found for Astra (its public
   numbers, e.g. GPQA Diamond 96.1%, are vendor-adjacent).
@@ -136,10 +138,14 @@ Why Fable 5.1 over GPT-6 Astra (`gpt-6-astra`, also $10/$50, GA
   `OpenAIAdapter(model="gpt-6-astra")` fails on every call without a
   new per-model special-case.
 
-**Honest caveat:** `claude-fable-5-1` is registered in the pricing
-table, but the current `AnthropicAdapter` still uses forced tool use —
-a live ceiling run 400s until the `output_config.format` migration
-lands. Do not run it before then; the 400 is a loud terminal provider
+**Honest caveats:** (1) the model id `claude-fable-5-1` follows
+Anthropic's documented naming convention (Fable 5's id was
+`claude-fable-5`) but is NOT independently confirmed on the live API —
+verify before the first run; (2) the current `AnthropicAdapter` still
+uses forced tool use — a live ceiling run 400s until the
+`output_config.format` migration lands. Do not run it before then;
+the 400 is a loud terminal provider error, not a measurement. Full
+rationale is recorded as D-32 in `docs/Decisions.md`.
 error, not a silent mismeasurement.
 
 ### Kimi K3 (Moonshot)
@@ -152,7 +158,7 @@ peira run --adapter peira.adapters.llm:MoonshotAdapter --suite trial-demo
 
 Kimi K3 (Moonshot AI, July 2026) is a 2.8T sparse mixture-of-experts
 model (16 of 896 experts active per token) with a 1M-token context
-window — the largest open-weight release to date, under the Kimi K3
+window — the biggest open-weight release to date, under the Kimi K3
 License — and at $3/$15 per 1M it is the self-host audience's flagship
 model: the cheapest way to put a frontier-adjacent model on the board.
 The adapter drives Moonshot's OpenAI-compatible endpoint
@@ -164,12 +170,15 @@ baseline.
 
 Two honest caveats: the adapter is built from Moonshot's published
 docs and third-party parameter surveys, not the live API — Moonshot
-documents `temperature` only on the 0..1 range, and surveys conflict
-on whether `seed`/`logprobs` are accepted at all and whether
+documents `temperature` only on the 0..1 range, and whether
 `json_schema` `response_format` (vs plain `json_object`) is honored
-for `kimi-k3`. Verify against the live API before any measured run;
-mismatches surface as terminal provider errors, not silent
-mismeasurement.
+for `kimi-k3` is unverified. On `seed`/`logprobs` the surveys agree
+(both unsupported, both 400 when sent), so the adapter OMITS both
+fields from the request rather than negotiating — there is no
+decision-token logprob track on this adapter, and the transcript
+honestly records `"seed": None`. Verify against the live API before
+any measured run; mismatches surface as terminal provider errors, not
+silent mismeasurement.
 
 ## TypeSafe Jev
 
@@ -253,19 +262,26 @@ no API key (local server, no auth header), `api_url=` pointing at the
 server (default `http://127.0.0.1:8008/v1/systemone`, kev.serve's
 documented port), and the pinned model id.
 
-Four sizes, pinned by exact Hub id (verified against the
-`jaredpalmer/kev` Hugging Face collection on 2026-09-25), selectable
-via `model=` (short names accepted):
+Seven sizes, pinned by exact Hub id (backbones per each repo's Hub
+tags, verified live against the `jaredpalmer/kev` collection on
+2026-09-25), selectable via `model=` (short names accepted):
 
-- `jaredpalmer/kev-0.5b`: Qwen2.5-0.5B backbone (the original prototype).
-- `jaredpalmer/kev-0.6b`: Qwen3-0.6B-Base.
-- `jaredpalmer/kev-4b` (default): Qwen3-4B-Base.
-- `jaredpalmer/kev-8b`: Qwen3-8B-Base — the large arm.
+- `jaredpalmer/kev-0.5b`: Qwen2.5-0.5B — the original prototype;
+  its own card says it is superseded by 0.8B/4B/9B. Kept for
+  reproducibility.
+- `jaredpalmer/kev-0.6b`: Qwen3-0.6B — previous generation, no
+  longer developed. Kept for reproducibility.
+- `jaredpalmer/kev-0.8b`: Qwen3.5-0.8B — current family, small arm.
+- `jaredpalmer/kev-4b` (default): Qwen3.5-4B — current family.
+- `jaredpalmer/kev-8b`: Qwen3-8B — previous generation, no longer
+  developed. Kept for reproducibility.
+- `jaredpalmer/kev-9b`: Qwen3.5-9B — current family.
+- `jaredpalmer/kev-27b`: Qwen3.8-27B — newest checkpoint (2026-09-24),
+  the biggest available size, large arm.
 
-Note: early press described 0.8B/9B Kev sizes; the published
-collection lists 0.5b / 0.6b / 4b / 8b, and the adapter follows the
-collection. Floating tags like `kev-latest` are rejected at
-construction; each size gets its own `cache_namespace`.
+The current generation is Qwen3.5-based (0.8b / 4b / 9b) plus the
+newest Qwen3.8-based 27b. Floating tags like `kev-latest` are rejected
+at construction; each size gets its own `cache_namespace`.
 
 A server that cannot be reached is a terminal provider error whose
 message tells you exactly how to start it — the runner never retries
@@ -333,8 +349,12 @@ exposes Jev-compatible `POST /v1/systemone` — the same `{"model",
 "state", "questions"}` → `{"answers": {...}}` shape, with the same
 typed `choice`/`score`/`noul` questions including the
 abstain-to-`"noul"` boundary mapping. The adapter reuses the
-self-hosted wire plumbing it shares with Kev: no API key,
-configurable `api_url=` (default `http://localhost:8000/v1/systemone`).
+self-hosted wire plumbing it shares with Kev: configurable `api_url=`
+(default `http://localhost:8000/v1/systemone`), plus optional Bearer
+auth — the project's README documents `OPENJEV_API_KEY`, and the
+adapter sends it as `Authorization: Bearer <redacted>` when set
+(`api_key=` or the env var); without it, requests go keyless. The key
+never appears in transcripts.
 
 The model is `Qwen/Qwen3.6-35B-A3B` MoE (verified against the
 project's published BoolQ eval report, 2026-09-18) and is baked into

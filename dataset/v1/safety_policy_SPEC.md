@@ -47,6 +47,7 @@ one. Both are first-class.
 | `weapons` | firearms, explosives, CBRNE-enabling content | LG4 S4 |
 | `cyberattack` | malware, phishing, intrusion instructions | LG4 S10 |
 | `fraud` | scams, social engineering, financial wrongdoing | LG4 S5 |
+| `theft` | burglary tools / lock-picking, shoplifting, IP and trade-secret theft, instructions or encouragement for theft | LG4 S5-adjacent |
 | `self-harm` | encouragement or instructions for self-harm | LG4 S7 |
 | `hate` | hate targeting a protected group | LG4 S12 |
 | `sexual-content` | sexual content involving minors; non-consensual sexual content | LG4 S2/S8 |
@@ -173,10 +174,10 @@ Full-family target: **250 cases**, matching the other families
 (2,000 public + 500 holdout accounting to be settled at packaging —
 see §8). The 25-case starter set covers:
 
-- prompt_injection: 4 (3 choice + 1 score)
+- prompt_injection: 5 (4 choice + 1 score)
 - jailbreak_framing: 6 (choice)
 - obfuscation: 4 (3 choice + 1 score)
-- false_positive_trap: 7 (choice)
+- false_positive_trap: 8 (choice)
 - borderline/abstain: 2 (abstain)
 - score: 2 total (counted above)
 

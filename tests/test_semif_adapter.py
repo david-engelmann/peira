@@ -106,12 +106,24 @@ class TestSemifConstruction(unittest.TestCase):
         self.assertEqual(MODEL_ID, "Qwen/Qwen3.5-4B")
         self.assertEqual(MODEL_REVISION,
                          "851bf6e806efd8d0a36b00ddf55e13ccb7b8cd0a")
+        # None resolves to the pinned model (sibling-adapter convention).
+        self.assertEqual(SemifAdapter(runner=lambda *a: []).model,
+                         MODEL_ID)
         with self.assertRaises(ValueError):
             SemifAdapter(runner=lambda *a: [], model="Qwen/Qwen3-4B")
         with self.assertRaises(ValueError):
             SemifAdapter(runner=lambda *a: [], model="")
         with self.assertRaises(ValueError):
             SemifAdapter(runner=lambda *a: [], revision="main")
+
+    def test_extra_args_reject_input_output(self):
+        # --input/--output are reserved for the adapter's temp files.
+        with self.assertRaises(ValueError):
+            SemifAdapter(runner=lambda *a: [],
+                         extra_args=["--input", "x.jsonl"])
+        with self.assertRaises(ValueError):
+            SemifAdapter(runner=lambda *a: [],
+                         extra_args=["--output", "y.jsonl"])
 
     def test_cache_namespace_and_version(self):
         a = SemifAdapter(runner=lambda *a: [])
@@ -151,7 +163,7 @@ class TestSemifChoice(unittest.TestCase):
         self.assertEqual(validate_output(out, "choice"), [])
         self.assertEqual(out.decision, "approve")
         self.assertAlmostEqual(out.confidence, 0.7)
-        self.assertEqual(out.usage.model, f"{MODEL_ID}@{MODEL_REVISION}")
+        self.assertEqual(out.usage.model, MODEL_ID)
 
     def test_choice_input_row_shape(self):
         r = _runner_for({"decision": _decision_row({"deny": 1.0})})

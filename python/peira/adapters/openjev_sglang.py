@@ -46,6 +46,7 @@ reached is terminal with an actionable setup message.
 
 from __future__ import annotations
 
+import os
 from typing import Any
 
 from peira.adapters.kev import LocalSystemOneAdapter
@@ -55,7 +56,13 @@ MODEL_ID = "Qwen/Qwen3.6-35B-A3B"
 
 
 class OpenJevSglangAdapter(LocalSystemOneAdapter):
-    """Decision adapter for an openjev-sglang deployment."""
+    """Decision adapter for an openjev-sglang deployment.
+
+    The project's README documents an optional ``OPENJEV_API_KEY``:
+    when set (via ``api_key=`` or the env var), requests carry it as a
+    ``Bearer`` token; without it, requests go keyless. The key never
+    appears in transcripts.
+    """
 
     name = "openjev-sglang"
     supported_primitives = frozenset({"choice", "score", "abstain"})
@@ -69,6 +76,7 @@ class OpenJevSglangAdapter(LocalSystemOneAdapter):
         "Qwen/Qwen3.6-35B-A3B behind a FastAPI process), then point "
         "api_url= at its /v1/systemone endpoint."
     )
+    _env_vars = ("OPENJEV_API_KEY",)
 
     def __init__(
         self,
@@ -76,6 +84,7 @@ class OpenJevSglangAdapter(LocalSystemOneAdapter):
         api_url: str | None = None,
         timeout_s: float = 60.0,
         transport: Any = None,
+        api_key: str | None = None,
     ) -> None:
         if model is not None and model != MODEL_ID:
             raise ValueError(
@@ -86,3 +95,19 @@ class OpenJevSglangAdapter(LocalSystemOneAdapter):
             )
         super().__init__(model=model, api_url=api_url,
                          timeout_s=timeout_s, transport=transport)
+        # Optional auth: explicit api_key= wins over the env var; None
+        # means keyless requests.
+        self._api_key = api_key if api_key is not None else os.environ.get(
+            "OPENJEV_API_KEY"
+        )
+
+    def _auth_headers(self) -> dict[str, str]:
+        if self._api_key:
+            return {"Authorization": f"Bearer {self._api_key}"}
+        return {}
+
+    def _unauthorized_hint(self) -> str:
+        return (
+            "the server rejected the request as unauthorized; if this "
+            "deployment requires auth, set OPENJEV_API_KEY (or api_key=)."
+        )

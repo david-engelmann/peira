@@ -203,6 +203,47 @@ class TestOpenJevSglangErrors(unittest.TestCase):
             OpenJevSglangAdapter(transport=t).decide(
                 _case_input(), "score", _ctx())
 
+    def test_explicit_api_key_sends_bearer_header(self):
+        captured = {}
+
+        def transport(payload):
+            captured["headers"] = dict(payload.get("_headers", {}))
+            return {"answers": {"decision": {"choice": "approve",
+                                             "confidence": 0.9}}}
+
+        # Use the auth seam directly: _auth_headers must carry the key.
+        a = OpenJevSglangAdapter(transport=transport,
+                                api_key="secret-key-123")
+        self.assertEqual(a._auth_headers(),
+                         {"Authorization": "Bearer secret-key-123"})
+
+    def test_env_var_api_key_used_when_no_explicit(self):
+        with mock.patch.dict(os.environ,
+                             {"OPENJEV_API_KEY": "env-key-456"}):
+            a = OpenJevSglangAdapter(transport=lambda p: {})
+            self.assertEqual(a._auth_headers(),
+                             {"Authorization": "Bearer env-key-456"})
+
+    def test_explicit_api_key_wins_over_env(self):
+        with mock.patch.dict(os.environ,
+                             {"OPENJEV_API_KEY": "env-key-456"}):
+            a = OpenJevSglangAdapter(transport=lambda p: {},
+                                    api_key="explicit-key")
+            self.assertEqual(a._auth_headers(),
+                             {"Authorization": "Bearer explicit-key"})
+
+    def test_no_auth_by_default(self):
+        with mock.patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("OPENJEV_API_KEY", None)
+            a = OpenJevSglangAdapter(transport=lambda p: {})
+            self.assertEqual(a._auth_headers(), {})
+
+    def test_kev_stays_unauthenticated(self):
+        # Kev's server takes no auth — the base seam sends nothing.
+        from peira.adapters.kev import KevAdapter
+        a = KevAdapter(transport=lambda p: {})
+        self.assertEqual(a._auth_headers(), {})
+
 
 if __name__ == "__main__":
     unittest.main()

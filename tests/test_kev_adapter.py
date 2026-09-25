@@ -90,14 +90,32 @@ class TestKevConstruction(unittest.TestCase):
         self.assertEqual(KevAdapter(model="jaredpalmer/kev-8b").model,
                          "jaredpalmer/kev-8b")
 
-    def test_known_sizes_match_collection(self):
+    def test_known_models_match_published_repos(self):
+        # The seven pinned repos, verified live against the
+        # jaredpalmer/kev HF collection on 2026-09-25.
         self.assertEqual(set(KNOWN_MODELS.values()),
                          {"jaredpalmer/kev-0.5b", "jaredpalmer/kev-0.6b",
-                          "jaredpalmer/kev-4b", "jaredpalmer/kev-8b"})
+                          "jaredpalmer/kev-0.8b", "jaredpalmer/kev-4b",
+                          "jaredpalmer/kev-8b", "jaredpalmer/kev-9b",
+                          "jaredpalmer/kev-27b"})
+
+    def test_current_generation_resolution(self):
+        # Default is the current Qwen3.5-based 4b.
+        self.assertEqual(KevAdapter().model, "jaredpalmer/kev-4b")
+        # The newest/biggest arm is the Qwen3.8-based 27b.
+        self.assertEqual(KevAdapter(model="27b").model,
+                         "jaredpalmer/kev-27b")
+        self.assertEqual(KevAdapter(model="jaredpalmer/kev-27b").model,
+                         "jaredpalmer/kev-27b")
+        # Current-family short names resolve.
+        self.assertEqual(KevAdapter(model="0.8b").model,
+                         "jaredpalmer/kev-0.8b")
+        self.assertEqual(KevAdapter(model="9b").model,
+                         "jaredpalmer/kev-9b")
 
     def test_floating_and_unknown_models_rejected(self):
-        for bad in ("kev-latest", "", "jaredpalmer/kev-9b",
-                    "jaredpalmer/kev-0.8b", "jaredpalmer/kev-qwen3.5-4b",
+        for bad in ("kev-latest", "", "jaredpalmer/kev-99b",
+                    "jaredpalmer/kev-qwen3.5-4b",
                     "Qwen/Qwen3-4B"):
             with self.assertRaises(ValueError, msg=bad):
                 KevAdapter(model=bad)

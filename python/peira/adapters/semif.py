@@ -390,14 +390,17 @@ class SemifAdapter:
 
     def __init__(
         self,
-        model: str = MODEL_ID,
+        model: str | None = None,
         revision: str = MODEL_REVISION,
         binary: str | None = None,
         timeout_s: float = 600.0,
         extra_args: list[str] | None = None,
         runner: RunnerFn | None = None,
     ) -> None:
-        if model != MODEL_ID:
+        # None resolves to the pinned model, matching the sibling
+        # adapters' convention (Kev, openjev-sglang).
+        resolved_model = MODEL_ID if model is None else model
+        if resolved_model != MODEL_ID:
             raise ValueError(
                 f"semif adapter pins model {MODEL_ID!r}; got {model!r}. "
                 "Floating model ids are never allowed — a measurement "
@@ -408,7 +411,13 @@ class SemifAdapter:
                 f"semif adapter pins revision {MODEL_REVISION!r}; got "
                 f"{revision!r}. Floating revisions are never allowed."
             )
-        self.model = model
+        for arg in extra_args or []:
+            if arg in ("--input", "--output"):
+                raise ValueError(
+                    "semif adapter reserves --input/--output for its own "
+                    f"temp files; got {arg!r} in extra_args."
+                )
+        self.model = resolved_model
         self.revision = revision
         self.timeout_s = timeout_s
         self.extra_args = list(extra_args or [])
@@ -496,7 +505,8 @@ class SemifAdapter:
             if note is not None:
                 revision_note = note
         usage = CallUsage(
-            model=VERSION,
+            model=MODEL_ID,  # exact pricing-table key; the pinned
+            # revision stays in transcript/version/cache namespace
             tokens_in=0,  # the CLI's documented output fields carry
             tokens_out=0,  # timing, not token counts (unverified)
             latency_ms=wall_latency_ms,

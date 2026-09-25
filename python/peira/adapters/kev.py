@@ -14,20 +14,25 @@ same ``{"model", "state", "questions"}`` request shape and
 wholesale. Only the transport (local server, no auth) and the model
 pinning differ.
 
-Sizes (all pinned by exact Hub id, verified against the
-``jaredpalmer/kev`` Hugging Face collection on 2026-09-25 — repos are
-named by base-model size, checkpoint versions within a size are Hub
-tags):
+Sizes (all pinned by exact Hub id; backbones per each repo's Hub
+tags, verified live against the ``jaredpalmer/kev`` Hugging Face
+collection on 2026-09-25):
 
-- ``jaredpalmer/kev-0.5b``: Qwen2.5-0.5B backbone (the original prototype).
-- ``jaredpalmer/kev-0.6b``: Qwen3-0.6B-Base.
-- ``jaredpalmer/kev-4b`` (default): Qwen3-4B-Base.
-- ``jaredpalmer/kev-8b``: Qwen3-8B-Base — the large arm.
+- ``jaredpalmer/kev-0.5b``: Qwen2.5-0.5B — the original prototype;
+  its own card says it is superseded by 0.8B/4B/9B. Kept for
+  reproducibility.
+- ``jaredpalmer/kev-0.6b``: Qwen3-0.6B — previous generation, no
+  longer developed. Kept for reproducibility.
+- ``jaredpalmer/kev-0.8b``: Qwen3.5-0.8B — current family, small arm.
+- ``jaredpalmer/kev-4b`` (default): Qwen3.5-4B — current family.
+- ``jaredpalmer/kev-8b``: Qwen3-8B — previous generation, no longer
+  developed. Kept for reproducibility.
+- ``jaredpalmer/kev-9b``: Qwen3.5-9B — current family.
+- ``jaredpalmer/kev-27b``: Qwen3.8-27B — newest checkpoint
+  (created 2026-09-24), the biggest available size, large arm.
 
-NOTE: early coverage described 0.8B/9B Kev sizes; the published
-collection lists 0.5b / 0.6b / 4b / 8b, so ``kev-8b`` is the largest
-available size and the adapter's model map follows the collection, not
-the press.
+The current generation is Qwen3.5-based (0.8b / 4b / 9b) plus the
+newest Qwen3.8-based 27b.
 
 Unlike Jev, Kev is self-hosted: there is no API key and no account.
 ``api_url=`` points at the local server (default
@@ -78,14 +83,23 @@ KEV_MODEL_ID = "jaredpalmer/kev-4b"
 """Pinned default: the 4B Qwen3-based Kev checkpoint."""
 
 KNOWN_MODELS = {
-    "jaredpalmer/kev-0.5b": "jaredpalmer/kev-0.5b",  # Qwen2.5-0.5B backbone
-    "jaredpalmer/kev-0.6b": "jaredpalmer/kev-0.6b",  # Qwen3-0.6B-Base
-    "jaredpalmer/kev-4b": "jaredpalmer/kev-4b",      # Qwen3-4B-Base (default)
-    "jaredpalmer/kev-8b": "jaredpalmer/kev-8b",      # Qwen3-8B-Base (large arm)
+    # Full Hub id -> itself (values are the only accepted model ids).
+    # Backbones per each repo's Hub tags, verified live 2026-09-25.
+    "jaredpalmer/kev-0.5b": "jaredpalmer/kev-0.5b",  # Qwen2.5-0.5B; superseded per its card
+    "jaredpalmer/kev-0.6b": "jaredpalmer/kev-0.6b",  # Qwen3-0.6B; previous generation
+    "jaredpalmer/kev-0.8b": "jaredpalmer/kev-0.8b",  # Qwen3.5-0.8B; current family
+    "jaredpalmer/kev-4b": "jaredpalmer/kev-4b",      # Qwen3.5-4B; current family (default)
+    "jaredpalmer/kev-8b": "jaredpalmer/kev-8b",      # Qwen3-8B; previous generation
+    "jaredpalmer/kev-9b": "jaredpalmer/kev-9b",      # Qwen3.5-9B; current family
+    "jaredpalmer/kev-27b": "jaredpalmer/kev-27b",    # Qwen3.8-27B; newest (2026-09-24), large arm
+    # Short names accepted for convenience.
     "0.5b": "jaredpalmer/kev-0.5b",
     "0.6b": "jaredpalmer/kev-0.6b",
+    "0.8b": "jaredpalmer/kev-0.8b",
     "4b": "jaredpalmer/kev-4b",
     "8b": "jaredpalmer/kev-8b",
+    "9b": "jaredpalmer/kev-9b",
+    "27b": "jaredpalmer/kev-27b",
 }
 """Short size names and full Hub ids accepted for ``model=``.
 
@@ -177,8 +191,10 @@ class LocalSystemOneAdapter(JevAdapter):
         # different sizes never share cache entries.
         self.version = resolved
         self.cache_namespace = f"{self.name}:{resolved}"
-        self._api_key = None  # local servers take no auth; the key is
-        # never sent anywhere (the transport below sends no header).
+        self._api_key = None  # base: local servers take no auth; the
+        # key is never sent anywhere. Subclasses with optionally-
+        # authenticated deployments (openjev-sglang) set this from
+        # api_key=/env and send it via _auth_headers().
         self.api_url = api_url or self.DEFAULT_API_URL
         self.timeout_s = timeout_s
         # Injectable transport for tests: fn(payload) -> parsed response
@@ -187,16 +203,34 @@ class LocalSystemOneAdapter(JevAdapter):
 
     # -- transport --------------------------------------------------------
 
+    def _auth_headers(self) -> dict[str, str]:
+        """Extra HTTP headers for the request (auth seam).
+
+        The base implementation sends none — Kev's server is local and
+        unauthenticated. Subclasses with optionally-authenticated
+        deployments (openjev-sglang) override this to add an
+        ``Authorization`` header when a key is configured. The key
+        itself is never logged or placed in transcripts.
+        """
+        return {}
+
+    def _unauthorized_hint(self) -> str:
+        """Human guidance appended to 401 errors (auth seam)."""
+        return (
+            "the local server rejected the request as unauthorized; "
+            "these servers take no auth, so this is a server "
+            "misconfiguration, not a retryable failure."
+        )
+
     def _http_transport(self, payload: dict[str, Any]) -> dict[str, Any]:
         body = json.dumps(payload).encode("utf-8")
+        headers = {"Content-Type": "application/json"}
+        headers.update(self._auth_headers())
         req = urllib.request.Request(
             self.api_url,
             data=body,
             method="POST",
-            headers={"Content-Type": "application/json"},
-            # NOTE: deliberately no Authorization header — these servers
-            # are local and unauthenticated. If a deployment ever adds
-            # auth, that is a new adapter, not a parameter here.
+            headers=headers,
         )
         started = time.perf_counter()
         try:
@@ -242,9 +276,7 @@ class LocalSystemOneAdapter(JevAdapter):
                + (f": {detail}" if detail else ""))
         if status == 401:
             raise ProviderError(
-                msg + " — the local server rejected the request as "
-                "unauthorized; these servers take no auth, so this is a "
-                "server misconfiguration, not a retryable failure.",
+                msg + " — " + self._unauthorized_hint(),
                 status_code=status,
             )
         if status == 422:
