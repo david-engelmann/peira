@@ -54,6 +54,10 @@ validate a dataset directory
 |---|---|---|---|
 | `--dataset` | yes | — |  |
 
+## peira doctor
+
+check local machine readiness: system, datasets, adapters
+
 ## peira report
 
 render an HTML report from a run artifact

@@ -429,6 +429,24 @@ def cmd_replay(args: argparse.Namespace) -> int:
     return EXIT_OK
 
 
+def cmd_doctor(args: argparse.Namespace) -> int:
+    """Check local machine readiness. Read-only: no network, no writes."""
+    from peira.doctor import format_report, run_doctor  # noqa: PLC0415
+
+    report = run_doctor(_repo_root())
+    print(format_report(report))
+    # Exit 0 even when things are missing — doctor is informational, not
+    # a gate. A non-zero exit would break scripting around it. This is a
+    # permanent design choice: readiness thresholds are host- and
+    # adapter-specific (a "missing" verdict for one workflow is fine for
+    # another), so the exit code cannot encode them honestly.
+    # Scriptability and machine-readable output are deferred follow-ups
+    # (see the "Deferred" note in peira/doctor.py's module docstring):
+    # a future `--fail-on {any,missing,hardware}` flag and/or `--json`
+    # flag can add opt-in gating without changing the default.
+    return EXIT_OK
+
+
 def cmd_validate(args: argparse.Namespace) -> int:
     from peira.schema import validate_case_dict
 
@@ -1244,6 +1262,16 @@ def build_parser() -> argparse.ArgumentParser:
     v = sub.add_parser("validate", help="validate a dataset directory")
     v.add_argument("--dataset", required=True)
     v.set_defaults(func=cmd_validate)
+
+    doc = sub.add_parser(
+        "doctor",
+        help="check local machine readiness: system, datasets, adapters",
+        description="Read-only readiness check. Reports Python/RAM/disk/GPU, "
+        "verifies dataset manifests, and checks each adapter's requirements "
+        "(API keys are checked for presence only — values are never printed). "
+        "Makes no network calls, downloads nothing, writes nothing.",
+    )
+    doc.set_defaults(func=cmd_doctor)
 
     rp = sub.add_parser("report", help="render an HTML report from a run artifact")
     rp.add_argument("--run", required=True)
