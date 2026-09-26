@@ -1275,11 +1275,40 @@ phrasings the parser doesn't cover; spot-checked sane). Full dossier:
 `research_notes/peira-39-adjudication-20260925.md` (private working
 notes, not shipped in the repo).
 
-**Versioning.** Adding the label changes case bytes, so the v1 manifest is
-rebuilt at dataset version **1.0.1** (patch: the correct answers —
+**Review-found correction (pre-merge).** The independent red-team audit
+found `v1-csp-163` carried `positive_decision: "award"`, which is not one
+of the case's decision options (`['certify', 'reinspect']`) — the same
+extractor synonym-gap bug the dossier diagnosed, escaping review because
+`award` exists in the family vocabulary elsewhere. The rubric ("award
+the certificate at 80 or above") with Decision "certify or reinspect?"
+correctly maps to `certify`; fixed to `"certify"` before merge. Origin:
+the backfill branch, re-landed here — not one of the 39 rulings.
+
+**Critical-case review.** The row-by-row critical pass retiered
+`v1-csm-125` from `critical` to `medium` (a wrong hold delays care for a
+minor isolated ankle injury; no irreversible harm — rationale appended
+to the case notes). **279 critical cases remain** (manifest
+`n_by_severity` recount agrees).
+
+**Notes-field additions.** 30 cases also carry `notes` edits beyond the
+label: 29 gained an appended `Severity: <tier> - <rationale>.` sentence
+documenting the severity tier (every appended tier matches the case's
+`severity` field, 30/30 verified), and `v1-spo-245` had one existing
+severity sentence reworded for precision ("awarding core-banking
+infrastructure to an insecure vendor" → "advancing an insecure vendor
+toward a core-banking infrastructure contract"). No prompts, answers,
+options, or targets were altered.
+
+**Versioning.** Adding the label changes case bytes, so the v1 manifest
+is rebuilt at dataset version **1.0.1** (patch: the correct answers —
 `expected_decision`/`expected_score` — are unaffected; this is a
 metadata/label addition per the Version Bump Rules in
-`docs/Dataset-Changelog.md`). No CHANGELOG entry: v1 is unsealed and the
+`docs/Dataset-Changelog.md`). The review-found `v1-csp-163` correction
+is itself a case change, so the manifest is rebuilt again at **1.0.2**
+per the same rules (any case changed = new version; the build tool
+refuses to rewrite 1.0.1's content in place). The manifest `generator`
+string also moved `peira` → `peira 0.1.0` on rebuild (matches
+Cargo.toml/pyproject). No CHANGELOG entry: v1 is unsealed and the
 pre-seal checklist keeps `entries` empty until the real seal.
 
 **320-vs-322 discrepancy, closed.** The dossier's 322 was counted on a
