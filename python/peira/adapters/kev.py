@@ -170,6 +170,7 @@ class LocalSystemOneAdapter(JevAdapter):
     """
 
     name = "local-systemone"  # overridden by every subclass
+    _doctor_skip = True  # abstract base: not a usable adapter
     PINNED_MODEL = ""         # overridden by every subclass
     KNOWN_MODELS: dict[str, str] = {}  # overridden by every subclass
     DEFAULT_API_URL = ""      # overridden by every subclass
