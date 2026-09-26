@@ -1,0 +1,188 @@
+{
+  "created_utc": "2026-09-26T16:53:23+00:00",
+  "dataset": "peira-v1",
+  "dataset_version": "1.0.0",
+  "files": {
+    "confidence_spoofing.jsonl": {
+      "kind": "cases",
+      "n_by_family": {
+        "confidence_spoofing": 200
+      },
+      "n_by_primitive": {
+        "abstain": 20,
+        "choice": 148,
+        "score": 32
+      },
+      "n_by_severity": {
+        "critical": 28,
+        "high": 80,
+        "medium": 92
+      },
+      "n_cases": 200,
+      "sha256": "11e57b4b7f8a0a1635be273749c4b7ccb25d49ee3ac9d118d8b821c3e90a295b"
+    },
+    "criteria_smuggling.jsonl": {
+      "kind": "cases",
+      "n_by_family": {
+        "criteria_smuggling": 200
+      },
+      "n_by_primitive": {
+        "abstain": 20,
+        "choice": 148,
+        "score": 32
+      },
+      "n_by_severity": {
+        "critical": 28,
+        "high": 80,
+        "medium": 92
+      },
+      "n_cases": 200,
+      "sha256": "0971b155f3ce6e3c614906809510d9d1982975408230852234e3934961c1aa09"
+    },
+    "distractor_flooding.jsonl": {
+      "kind": "cases",
+      "n_by_family": {
+        "distractor_flooding": 200
+      },
+      "n_by_primitive": {
+        "abstain": 20,
+        "choice": 148,
+        "score": 32
+      },
+      "n_by_severity": {
+        "critical": 28,
+        "high": 80,
+        "medium": 92
+      },
+      "n_cases": 200,
+      "sha256": "3c8dd9218ff2a845673a02ccd7d3d6330787130f717845ff6a1cc94909eaa351"
+    },
+    "indirection.jsonl": {
+      "kind": "cases",
+      "n_by_family": {
+        "indirection": 200
+      },
+      "n_by_primitive": {
+        "abstain": 20,
+        "choice": 148,
+        "score": 32
+      },
+      "n_by_severity": {
+        "critical": 28,
+        "high": 80,
+        "medium": 92
+      },
+      "n_cases": 200,
+      "sha256": "ed16d75cd29f20297c739cd0ec8b061e17ff2756f2174edb322039d4b8b4f770"
+    },
+    "literal_reading.jsonl": {
+      "kind": "cases",
+      "n_by_family": {
+        "literal_reading": 200
+      },
+      "n_by_primitive": {
+        "abstain": 20,
+        "choice": 148,
+        "score": 32
+      },
+      "n_by_severity": {
+        "critical": 28,
+        "high": 80,
+        "medium": 92
+      },
+      "n_cases": 200,
+      "sha256": "98f16427a4020706f925524ad8f6df28dea75b57159a8ffd72f9012ef32162bb"
+    },
+    "negation_games.jsonl": {
+      "kind": "cases",
+      "n_by_family": {
+        "negation_games": 200
+      },
+      "n_by_primitive": {
+        "abstain": 20,
+        "choice": 148,
+        "score": 32
+      },
+      "n_by_severity": {
+        "critical": 28,
+        "high": 80,
+        "medium": 92
+      },
+      "n_cases": 200,
+      "sha256": "4483c7611f6908e4b60df9cfb5ac855eae31825712004417d48458d15bc38d22"
+    },
+    "option_order.jsonl": {
+      "kind": "cases",
+      "n_by_family": {
+        "option_order": 200
+      },
+      "n_by_primitive": {
+        "abstain": 20,
+        "choice": 148,
+        "score": 32
+      },
+      "n_by_severity": {
+        "critical": 28,
+        "high": 80,
+        "medium": 92
+      },
+      "n_cases": 200,
+      "sha256": "5212400cc5b888252b1733a79efaa82aaf9e1e2010678c69c99b08c644e03aa3"
+    },
+    "policy_paraphrase.jsonl": {
+      "kind": "cases",
+      "n_by_family": {
+        "policy_paraphrase": 200
+      },
+      "n_by_primitive": {
+        "abstain": 20,
+        "choice": 148,
+        "score": 32
+      },
+      "n_by_severity": {
+        "critical": 28,
+        "high": 80,
+        "medium": 92
+      },
+      "n_cases": 200,
+      "sha256": "06d66df8a4a52f5a5983287d22e62573b31d65124ad52f9b76fd1ee8fa4b4929"
+    },
+    "score_anchoring.jsonl": {
+      "kind": "cases",
+      "n_by_family": {
+        "score_anchoring": 200
+      },
+      "n_by_primitive": {
+        "abstain": 20,
+        "choice": 148,
+        "score": 32
+      },
+      "n_by_severity": {
+        "critical": 28,
+        "high": 80,
+        "medium": 92
+      },
+      "n_cases": 200,
+      "sha256": "654bbe903559aab4263758b96c9f231171c0b258db715d208db84ceff701783b"
+    },
+    "state_poisoning.jsonl": {
+      "kind": "cases",
+      "n_by_family": {
+        "state_poisoning": 200
+      },
+      "n_by_primitive": {
+        "abstain": 20,
+        "choice": 148,
+        "score": 32
+      },
+      "n_by_severity": {
+        "critical": 28,
+        "high": 80,
+        "medium": 92
+      },
+      "n_cases": 200,
+      "sha256": "e3bb78210181833f439fe34f59e827909658f6127e3be1ebe11d83826e7ef047"
+    }
+  },
+  "generator": "peira"
+}

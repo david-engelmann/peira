@@ -15,6 +15,7 @@ import hashlib
 import json
 import os
 import tempfile
+import warnings
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -184,6 +185,11 @@ def build_manifest(dataset_dir: Path, dataset_version: str,
     (validated and counted); ``CANARY.txt`` is hashed as an artifact.
     ``manifest.json`` itself is never included. Raises FileNotFoundError
     when the directory is missing and ValueError on invalid cases.
+
+    Warns (UserWarning) when no case files are found — a 0-case manifest
+    usually means the wrong directory was pointed at (e.g. the dataset
+    root instead of the suite's cases/ subdirectory), since the manifest
+    scan is non-recursive.
     """
     if not dataset_dir.is_dir():
         raise FileNotFoundError(f"dataset directory {dataset_dir} not found")
@@ -195,6 +201,13 @@ def build_manifest(dataset_dir: Path, dataset_version: str,
             files[path.name] = summarize_cases(path)
         elif path.name == CANARY_NAME:
             files[path.name] = {"kind": "artifact", "sha256": sha256_file(path)}
+    n_cases = sum(f.get("n_cases", 0) for f in files.values())
+    if n_cases == 0:
+        warnings.warn(
+            f"no case files (*{CASE_SUFFIX}) found in {dataset_dir} — "
+            "writing a 0-case manifest (is this the suite's cases/ directory?)",
+            UserWarning, stacklevel=2,
+        )
     generator = f"peira {peira_version}".strip() if peira_version else "peira"
     return {
         "dataset": dataset_name,

@@ -82,14 +82,14 @@ re-execution design is in
 Build it after authoring:
 
 ```
-peira dataset build-manifest --dir dataset/v1 --version 1.0.0
+peira dataset build-manifest --dir dataset/v1/cases --version 1.0.0
 ```
 
 The build validates every case first — a manifest is never written for
 invalid data. Verify a checkout against its manifest any time:
 
 ```
-peira dataset verify-manifest --dir dataset/v1
+peira dataset verify-manifest --dir dataset/v1/cases
 ```
 
 Any mismatch (edited file, missing file, count drift) fails with details.
@@ -136,22 +136,21 @@ machine-readable enforcement. Overlap checks against the canary back it up.
 Before a manifest is built, cases pass the automated gates:
 
 ```
-peira dataset gates --dir dataset/v1
+peira dataset gates --dir dataset/v1/cases
 ```
 
 | Gate | Checks | On failure |
 |------|--------|------------|
 | G1 schema | every line parses as JSON and satisfies the frozen case schema | error |
-| G2 paired-variants | attacked input actually differs from its benign control (an attack identical to its control measures nothing; G1 already guarantees both inputs are non-empty) | error |
+| G2 paired-variants | benign and attacked inputs are non-empty and actually differ (an attack identical to its control measures nothing) | error |
 | G3 dedup | `case_id` unique; no two cases share a benign/attacked content pair | error |
-| G4 families | family id is one of the canonical ids — the ten v1 families plus `safety_policy` for the separate suite (`docs/Taxonomy.md`) | error |
+| G4 families | family id is one of the eleven canonical ids (`docs/Taxonomy.md`) | error |
 | G5 target-coherence | a named `target_decision` differs from the benign expected decision | error |
 | G6 pii-scan | identifier-like strings (email, phone, SSN patterns) in inputs | warning |
 | G7 score-reference | every valid score-primitive case carries `benign.expected_score` (the author's reference score) | error |
-| G8 options-coherence | every options list is sorted with unique labels, and benign and attacked inputs carry the identical options list — the decision vocabulary must not shift between arms | error |
 
 Errors fail the suite (exit 1) — fix them before building a manifest.
-Warnings don't fail; every warning goes to the human review queue. G2–G8
+Warnings don't fail; every warning goes to the human review queue. G2–G7
 only run on cases G1 accepted, so one broken case doesn't spray
 downstream noise.
 
@@ -167,8 +166,8 @@ A Rust port of the schema check ships as `peira-cli` (`crates/peira-cli`)
 for fast dataset validation in CI:
 
 ```
-peira-cli validate --dir dataset/v1          # G1 schema check, in Rust
-peira-cli verify-manifest --dir dataset/v1   # manifest integrity, in Rust
+peira-cli validate --dir dataset/v1/cases          # G1 schema check, in Rust
+peira-cli verify-manifest --dir dataset/v1/cases   # manifest integrity, in Rust
 ```
 
 Both commands are read-only and exit 1 on failure. The Rust core
@@ -185,7 +184,7 @@ peira dataset new --family state_poisoning --id sp-042 --severity high
 ```
 
 This prints a schema-valid case skeleton with `{{PLACEHOLDERS}}` for the
-author to fill in. Each of the canonical templates encodes its family's attack
+author to fill in. Each of the eleven templates encodes its family's attack
 pattern (documented in `python/peira/templates.py`): the state_poisoning
 skeleton has the poisoned tool-output slot, option_order has the reordered
 options, score_anchoring has the anchor context field, and so on. G1 and
@@ -212,10 +211,10 @@ A case needs review when it is critical-severity and not approved, or
 when it carries gate warnings (G6 pii-scan) and is not approved.
 
 ```
-peira dataset review --dir dataset/v1          # list pending + coverage
-peira dataset review --dir dataset/v1 --check  # exit 1 if anything pending
-peira dataset review approve --dir dataset/v1 --id sp-001 --reviewer dg --notes "..."
-peira dataset review reject --dir dataset/v1 --id sp-002 --reviewer dg --notes "rework: ..."
+peira dataset review --dir dataset/v1/cases          # list pending + coverage
+peira dataset review --dir dataset/v1/cases --check  # exit 1 if anything pending
+peira dataset review approve --dir dataset/v1/cases --id sp-001 --reviewer dg --notes "..."
+peira dataset review reject --dir dataset/v1/cases --id sp-002 --reviewer dg --notes "rework: ..."
 ```
 
 `rejected` means sent back for rework — it does not count as reviewed.
@@ -223,18 +222,18 @@ The release gate is `peira dataset build-manifest --require-reviews`,
 which refuses to write a manifest while any reviews are pending:
 
 ```
-peira dataset build-manifest --dir dataset/v1 --version 1.0.0 --require-reviews
+peira dataset build-manifest --dir dataset/v1/cases --version 1.0.0 --require-reviews
 ```
 
 The authoring loop, end to end:
 
 ```
-peira dataset new --family state_poisoning --id sp-042 --out dataset/v1/cases.jsonl
+peira dataset new --family state_poisoning --id sp-042 --out dataset/v1/cases/state_poisoning.jsonl
 # ... fill in the {{PLACEHOLDERS}} ...
-peira dataset gates --dir dataset/v1
-peira dataset review --dir dataset/v1 --check
-peira dataset status --dir dataset/v1      # where things stand; exit 0 = release-ready
-peira dataset build-manifest --dir dataset/v1 --version 1.0.0 --require-reviews
+peira dataset gates --dir dataset/v1/cases
+peira dataset review --dir dataset/v1/cases --check
+peira dataset status --dir dataset/v1/cases      # where things stand; exit 0 = release-ready
+peira dataset build-manifest --dir dataset/v1/cases --version 1.0.0 --require-reviews
 ```
 
 `review.json` is committed alongside the cases — review decisions are
@@ -246,8 +245,8 @@ part of the dataset's provenance.
 authoring flow — gates, review queue, and manifest in one view:
 
 ```
-$ peira dataset status --dir dataset/v1
-dataset: dataset/v1
+$ peira dataset status --dir dataset/v1/cases
+dataset: dataset/v1/cases
 gates: 7/7 passed (0 errors, 2 warnings)
 review: 0 pending, critical coverage 100%
 manifest: current
