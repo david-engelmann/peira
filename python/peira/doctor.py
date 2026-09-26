@@ -1,7 +1,10 @@
 """peira doctor: local machine readiness checker.
 
-Read-only and side-effect free: no network calls, no downloads, no file
-writes. Every check is defensive — a failed probe reports "unknown",
+Read-only and side-effect free on the doctor's own account: the checks
+themselves make no network calls, no downloads, no file writes. Adapter
+discovery imports each ``peira/adapters/*.py`` module, which executes that
+file's top-level code, so the guarantee holds modulo trustworthy adapter
+files. Every check is defensive: a failed probe reports "unknown",
 never raises.
 
 Adapter authors declare requirements via an optional ``doctor_requirements``
@@ -424,9 +427,13 @@ def check_datasets(repo_root: Path) -> list[CheckResult]:
         try:
             errors = verify_manifest(suite_dir)
         except Exception as e:  # manifest unreadable/corrupt
+            # OSError text carries the absolute manifest path; report the
+            # repo-relative path so absolute locations never leak into
+            # output that users paste into issues.
+            detail = str(e).replace(str(suite_dir), rel)
             results.append(CheckResult(
                 f"dataset:{suite}", "fail",
-                f"manifest unreadable: {e}", ""))
+                f"manifest unreadable: {detail}", ""))
             continue
         if errors:
             detail = f"manifest verification failed: {errors[0]}"
@@ -507,16 +514,16 @@ def _iter_adapter_classes(module: Any) -> list[type]:
 
     A class counts when it defines a string ``name`` and a ``decide``
     attribute. Abstract bases are excluded explicitly via
-    ``_doctor_skip = True`` on the base class (checked in
-    ``discover_adapters``). In addition, names containing "base" are
-    skipped as a documented backstop: intermediate abstract bases may
-    inherit a placeholder ``name`` without re-declaring the opt-out in
-    their own ``__dict__`` (e.g. ``_ClassifierBase`` before it got an
-    explicit skip), and no shipped adapter has "base" in its name — so
-    the backstop can only hide an adapter that a future author named
-    "...base...", which a failing ``discover_adapters``-count test would
-    surface. The explicit opt-out is the mechanism; the heuristic is the
-    net.
+    ``_doctor_skip = True`` declared in the base class's own ``__dict__``
+    (checked in ``discover_adapters``); today that is the three abstract
+    adapter bases in ``hf.py``, ``kev.py``, and ``llm.py``. In addition,
+    names containing "base" are skipped as a documented backstop: an
+    intermediate abstract base may inherit a placeholder ``name`` without
+    re-declaring the opt-out, and no shipped adapter has "base" in its
+    name. The backstop can only hide a future adapter whose author names
+    it "...base..." without declaring the opt-out, so adapter authors
+    should prefer the explicit ``_doctor_skip`` marker. The explicit
+    opt-out is the mechanism; the heuristic is the net.
     Never raises.
     """
     found: list[type] = []

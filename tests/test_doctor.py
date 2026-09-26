@@ -150,6 +150,27 @@ class TestRequirements(unittest.TestCase):
             # The value must never appear anywhere in the verdict.
             assert "secret" not in result.detail + result.hint
 
+    def test_env_var_set_value_never_leaks(self):
+        # The missing-key test above is vacuous for leak purposes: the var
+        # is unset, so no value exists to leak. This test sets a distinctive
+        # secret and proves it appears nowhere user-visible, even when a
+        # *different* requirement fails and produces verdict output.
+        secret = "sk-doctor-test-secret-9f8e7d6c5b4a"
+        with mock.patch.dict(os.environ, {"PEIRA_DOCTOR_TEST_KEY": secret}):
+            class A(_FakeAdapter):
+                @classmethod
+                def doctor_requirements(cls):
+                    return [{"kind": "env_var", "name": "PEIRA_DOCTOR_TEST_KEY"},
+                            {"kind": "binary",
+                             "name": "peira-doctor-definitely-missing-bin"}]
+
+            result = check_adapter(A, SystemInfo())
+            assert result.status == "missing_dependency"
+            assert secret not in result.detail
+            assert secret not in result.hint
+            rendered = format_report(doctor.DoctorReport(adapters=[result]))
+            assert secret not in rendered
+
     def test_empty_env_var_counts_as_missing(self):
         with mock.patch.dict(os.environ, {"PEIRA_DOCTOR_EMPTY_KEY": ""}):
             class A(_FakeAdapter):

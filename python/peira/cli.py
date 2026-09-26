@@ -1271,7 +1271,8 @@ def build_parser() -> argparse.ArgumentParser:
         description="Read-only readiness check. Reports Python/RAM/disk/GPU, "
         "verifies dataset manifests, and checks each adapter's requirements "
         "(API keys are checked for presence only — values are never printed). "
-        "Makes no network calls, downloads nothing, writes nothing.",
+        "The checks themselves make no network calls, download nothing, and "
+        "write nothing; adapter discovery imports adapter modules.",
     )
     doc.set_defaults(func=cmd_doctor)
 
