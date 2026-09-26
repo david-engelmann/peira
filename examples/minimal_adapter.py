@@ -1,4 +1,4 @@
-"""Minimal peira adapter in ~30 lines.
+"""Minimal peira adapter in ~25 lines.
 
 An adapter wraps any decision model and exposes it through the typed
 primitive protocol. This one always approves with high confidence —

@@ -11,9 +11,9 @@ Everything in `docs/`, organized by what you are trying to do. Pick a path, or b
 
 ## Add your model or guardrail
 
-1. [Add your model](../README.md#add-your-model): the 11-line adapter snippet.
+1. [Add your model](../README.md#add-your-model): the 15-line adapter snippet.
 2. [Adapters](Adapters.md): the day-one adapters (install extras, API keys, pinned models, what each one measures).
-3. [examples/minimal_adapter.py](../examples/minimal_adapter.py): the runnable version, about 30 lines.
+3. [examples/minimal_adapter.py](../examples/minimal_adapter.py): the runnable version, about 25 lines.
 4. [Taxonomy](Taxonomy.md): the three primitives and the 10 attack families your adapter will face.
 5. [Methodology](Methodology.md): the contracts your `decide()` output must satisfy, and what makes a case eligible.
 6. [CLI reference](CLI.md): `--adapter` takes a dotted path. `--max-concurrency`, `--transcript`, and `--cache-dir` are the flags you will actually use.
