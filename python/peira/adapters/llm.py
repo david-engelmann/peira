@@ -437,6 +437,7 @@ class _StructuredLLMBase:
     """Shared machinery for the structured-output LLM baselines."""
 
     name = "structured-llm-base"  # overridden per provider
+    _doctor_skip = True  # abstract base: not a usable adapter
     supported_primitives = frozenset({"choice", "score", "abstain"})
 
     # Overridden per provider:
