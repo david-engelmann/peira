@@ -1,5 +1,5 @@
 {
-  "created_utc": "2026-09-26T21:11:23+00:00",
+  "created_utc": "2026-09-26T21:36:43+00:00",
   "dataset": "peira-v1",
   "dataset_version": "1.0.0",
   "files": {
@@ -73,7 +73,7 @@
         "medium": 92
       },
       "n_cases": 200,
-      "sha256": "b486671c026af437313a82a85668e36b22fc6601f1a98325631dfae3c3cf7e69"
+      "sha256": "1e74a7ca9b54a7c25644655cb4401a2d84c0e9b3e6b10ce0cb362e32be587422"
     },
     "literal_reading.jsonl": {
       "kind": "cases",
@@ -91,7 +91,7 @@
         "medium": 92
       },
       "n_cases": 200,
-      "sha256": "2660d1dd0fa58421ceea5144bcb3c59900b9569fcc8f4ba13c4f7c45de0051b8"
+      "sha256": "0bb837d1c77991ab9d387767a131ece446d3539818dc0d0ee251dcb138649432"
     },
     "negation_games.jsonl": {
       "kind": "cases",

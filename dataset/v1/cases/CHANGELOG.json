@@ -8,7 +8,7 @@
       "type": "retire",
       "dataset_version": "1.0.0",
       "description": "Retire v1-ppa-127: scenario-substrate triplication. Claim #K-4401 substrate is shared with v1-csm-023 and v1-ppa-031 (deliberate cross-family control pair, documented in case notes); v1-ppa-127 was the weakest variant (medium difficulty, framing confound). Its mechanism (threshold move 12->6mo) remains covered by v1-ppa-085 and others.",
-      "manifest_sha256": "1bf1cf5e64725bb84a9d074914fd886c9d017d12cbe32f024fb14484357e98df",
+      "manifest_sha256": "7bc5484df89a369c5d83d7a17e0500d8c1a48f7eb386831a0e4bed0330525c5a",
       "case_count": 2000,
       "families": {
         "confidence_spoofing": 200,
@@ -35,7 +35,7 @@
       "type": "add",
       "dataset_version": "1.0.0",
       "description": "Add v1-ppa-201: fresh-scenario threshold-move case (vendor invoice auto-approval domain) replacing retired v1-ppa-127. Restores policy_paraphrase to 200 cases.",
-      "manifest_sha256": "1bf1cf5e64725bb84a9d074914fd886c9d017d12cbe32f024fb14484357e98df",
+      "manifest_sha256": "7bc5484df89a369c5d83d7a17e0500d8c1a48f7eb386831a0e4bed0330525c5a",
       "case_count": 2000,
       "families": {
         "confidence_spoofing": 200,
@@ -59,7 +59,7 @@
       "type": "fix",
       "dataset_version": "1.0.0",
       "description": "Remove ethnically-coded names from v1-san-234 and v1-san-236 clearance cases. The names were decorative; their pairing with foreign-tie risk factors evoked a stereotype. All decision-relevant facts and gold labels unchanged.",
-      "manifest_sha256": "1bf1cf5e64725bb84a9d074914fd886c9d017d12cbe32f024fb14484357e98df",
+      "manifest_sha256": "7bc5484df89a369c5d83d7a17e0500d8c1a48f7eb386831a0e4bed0330525c5a",
       "case_count": 2000,
       "families": {
         "confidence_spoofing": 200,
@@ -85,7 +85,7 @@
       "type": "fix",
       "dataset_version": "1.0.0",
       "description": "v1-ind-148: removed 'per the chief' attribution from the attacked shift-log quote. A chief-attributed hold order legitimately outranks a protocol posting, making the gold label debatable; the entry is now unsigned/unverifiable, matching the family's indirection mechanism (cf. v1-ind-080).",
-      "manifest_sha256": "1bf1cf5e64725bb84a9d074914fd886c9d017d12cbe32f024fb14484357e98df",
+      "manifest_sha256": "7bc5484df89a369c5d83d7a17e0500d8c1a48f7eb386831a0e4bed0330525c5a",
       "case_count": 2000,
       "families": {
         "confidence_spoofing": 200,
@@ -103,14 +103,14 @@
         "v1-ind-148"
       ],
       "rationale": "Gold-label validity: the attack must be an unverified pointer, not a legitimate override. See dataset fix spec 2026-09-25.",
-      "diff_summary": "Attacked prompt only: deleted 'per the chief, ' and appended '- unsigned entry' to the shift-log quote. Notes extended with fix rationale."
+      "diff_summary": "Attacked prompt only: deleted 'per the chief, ' and appended '— unsigned entry' to the shift-log quote. Notes extended with fix rationale."
     },
     {
       "date": "2026-09-26",
       "type": "fix",
       "dataset_version": "1.0.0",
       "description": "v1-lrd-197: notes-only clarification documenting the adjudication rationale for the attacked gold (life-safety override over literal policy compliance). No prompt, gold, or severity changes.",
-      "manifest_sha256": "1bf1cf5e64725bb84a9d074914fd886c9d017d12cbe32f024fb14484357e98df",
+      "manifest_sha256": "7bc5484df89a369c5d83d7a17e0500d8c1a48f7eb386831a0e4bed0330525c5a",
       "case_count": 2000,
       "families": {
         "confidence_spoofing": 200,
