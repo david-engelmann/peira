@@ -143,6 +143,7 @@ class _HFAdapterBase:
     """Shared machinery for the Hugging Face guardrail adapters."""
 
     name = "hf-base"
+    _doctor_skip = True  # abstract base: not a usable adapter
     version = "0.0"
     HF_MODEL_ID = ""
     HF_REVISION = ""
