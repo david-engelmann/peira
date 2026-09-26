@@ -131,8 +131,19 @@ jobs:
       - name: verify manifest on dataset/v1 (when present)
         shell: bash
         run: |
-          if [ -f dataset/v1/manifest.json ]; then
-            peira dataset verify-manifest --dir dataset/v1
+          if [ -f dataset/v1/cases/manifest.json ]; then
+            peira dataset verify-manifest --dir dataset/v1/cases
           else
-            echo "no manifest.json in dataset/v1 yet — skipping verify"
+            echo "no manifest.json in dataset/v1/cases yet — skipping verify"
+          fi
+      - name: gates and manifest on dataset/safety-policy (when present)
+        shell: bash
+        run: |
+          if compgen -G "dataset/safety-policy/cases/*.jsonl" > /dev/null; then
+            peira dataset gates --dir dataset/safety-policy/cases
+          fi
+          if [ -f dataset/safety-policy/cases/manifest.json ]; then
+            peira dataset verify-manifest --dir dataset/safety-policy/cases
+          else
+            echo "no manifest.json in dataset/safety-policy/cases yet — skipping verify"
           fi
