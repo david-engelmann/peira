@@ -30,7 +30,7 @@
 
 ## The trial in action
 
-Sample output, generated never hand-edited (`scripts/gen_readme_table.py`; run: `peira run --adapter mock --suite trial --seed 0`):
+Sample output — generated, never hand-edited (`scripts/gen_readme_table.py`; run: `peira run --adapter mock --suite trial --seed 0`):
 
 | family | ASR | 95% CI | n |
 |---|---|---|---|
