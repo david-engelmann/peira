@@ -30,35 +30,35 @@ classmethod on the adapter class::
         ]
 
 Requirement kinds the doctor knows how to check:
-  env_var        — os.environ has the name (value never printed).
+  env_var        - os.environ has the name (value never printed).
                    Multiple env_var entries are treated as any-of:
                    if ANY of them is set, every env_var entry is
                    satisfied. This matches the adapters' real
                    ``_resolve_api_key`` lookup-order semantics
                    (first-set-wins). A case that needs TWO vars set
-                   would need a new requirement kind — do not overload
+                   would need a new requirement kind - do not overload
                    env_var for it.
-  python_package — importlib.util.find_spec(name) is not None
-  binary         — shutil.which(name) is not None
-  ram_gb         — system RAM >= min (uses available RAM when known;
+  python_package - importlib.util.find_spec(name) is not None
+  binary         - shutil.which(name) is not None
+  ram_gb         - system RAM >= min (uses available RAM when known;
                    reports "unknown" when only total is known, e.g. macOS)
-  disk_gb        — free disk on cwd volume >= min
-  gpu            — a GPU was detected; "nvidia": True requires the
+  disk_gb        - free disk on cwd volume >= min
+  gpu            - a GPU was detected; "nvidia": True requires the
                    detected GPU string to contain "NVIDIA"
                    (case-sensitive substring match)
 
 Optional per-requirement fields:
-  scope          — "local" (default) or "server". Hardware requirements
+  scope          - "local" (default) or "server". Hardware requirements
                    (ram_gb, disk_gb, gpu) with "scope": "server" are NOT
-                   evaluated against this machine's measurements —
+                   evaluated against this machine's measurements -
                    the verdict is "unknown" with the detail
-                   "server-side requirement — doctor cannot probe the
+                   "server-side requirement - doctor cannot probe the
                    remote host; verify with a dry-run". Server-backed
                    adapters (e.g. kev, openjev-sglang) also get the
                    reachability caveat appended to their verdict detail:
                    "server reachability not checked by doctor (no
-                   network calls) — verify with the dry-run".
-  detail / hint  — author-written strings shown to the user.
+                   network calls) - verify with the dry-run".
+  detail / hint  - author-written strings shown to the user.
 
 When an adapter defines no ``doctor_requirements``, the doctor falls back
 to generic inference: a class-level ``_env_vars`` tuple is checked as
@@ -66,7 +66,7 @@ env_var requirements; otherwise the adapter is reported with status
 "unknown" and a note that it declares no requirements.
 
 Deferred (deliberately not implemented):
-  --fail-on / --json — exit code stays 0 unconditionally (doctor is
+  --fail-on / --json - exit code stays 0 unconditionally (doctor is
   informational, not a gate; see cmd_doctor). Scriptable thresholds and
   machine-readable output are future flags, not bugs.
 """
@@ -90,11 +90,11 @@ from typing import Any
 # ---------------------------------------------------------------------------
 
 _SERVER_SIDE_DETAIL = (
-    "server-side requirement — doctor cannot probe the remote host; "
+    "server-side requirement - doctor cannot probe the remote host; "
     "verify with a dry-run"
 )
 _SERVER_REACHABILITY_CAVEAT = (
-    "server reachability not checked by doctor (no network calls) — "
+    "server reachability not checked by doctor (no network calls) - "
     "verify with the dry-run"
 )
 
@@ -254,7 +254,7 @@ def probe_gpu() -> str | None:
                 except ValueError:
                     return f"NVIDIA {name}"
             # Garbage stdout (e.g. a driver warning printed by a broken
-            # wrapper) is NOT a GPU detection — fall through to "no GPU".
+            # wrapper) is NOT a GPU detection - fall through to "no GPU".
             # A strict == 2 parse is what keeps false positives out.
     except (OSError, subprocess.SubprocessError):
         pass
@@ -380,7 +380,7 @@ def check_installation() -> list[CheckResult]:
             results.append(CheckResult(
                 "Rust core", "warn", "not built; pure-Python fallback active",
                 "run `python scripts/build_core_ext.py` for the accelerator "
-                "(optional — results are identical)"))
+                "(optional - results are identical)"))
     except ImportError:
         results.append(CheckResult("Rust core", "unknown",
                                    "could not probe", ""))
@@ -441,7 +441,7 @@ def check_datasets(repo_root: Path) -> list[CheckResult]:
                 detail += f" (+{len(errors) - 1} more)"
             results.append(CheckResult(
                 f"dataset:{suite}", "fail", detail,
-                "the dataset files do not match the manifest — "
+                "the dataset files do not match the manifest - "
                 "re-clone or rebuild the manifest"))
             continue
         # Count cases (cheap: streams the file; iter_case_lines yields
@@ -498,7 +498,7 @@ def check_pricing() -> list[CheckResult]:
 def _adapter_modules() -> list[str]:
     """Importable adapter module names. Never raises.
 
-    (Returns just a list — import failures are tracked separately in
+    (Returns just a list - import failures are tracked separately in
     ``discover_adapters``, so there is no failed half to report here.)
     """
     adapters_dir = Path(__file__).resolve().parent / "adapters"
@@ -552,7 +552,7 @@ def _iter_adapter_classes(module: Any) -> list[type]:
 def discover_adapters() -> tuple[list[type], list[str]]:
     """(adapter classes, failed module names).
 
-    Guards are ``except Exception``, so this never raises ``Exception`` —
+    Guards are ``except Exception``, so this never raises ``Exception`` -
     but a ``BaseException`` (KeyboardInterrupt, SystemExit) raised at
     adapter import time would still propagate. No adapter does that today.
     """
@@ -636,7 +636,7 @@ def _check_requirement(req: dict[str, Any], info: SystemInfo) -> CheckResult | N
 
         if kind == "ram_gb":
             if _is_server_scoped(req):
-                # Needed on the serving host, not this machine — doctor
+                # Needed on the serving host, not this machine - doctor
                 # cannot probe the remote host, so never verdict on it.
                 return CheckResult(name, "unknown", _SERVER_SIDE_DETAIL, hint)
             need = float(req.get("min", 0))
@@ -697,7 +697,7 @@ def _check_requirement(req: dict[str, Any], info: SystemInfo) -> CheckResult | N
 def _generic_requirements(cls: type) -> list[dict[str, Any]]:
     """Fallback requirements when the adapter declares none.
 
-    A class-level ``_env_vars`` tuple becomes env_var requirements —
+    A class-level ``_env_vars`` tuple becomes env_var requirements -
     this covers every ``_StructuredLLMBase`` subclass without per-class
     boilerplate.
     """
@@ -742,7 +742,7 @@ def check_adapter(cls: type, info: SystemInfo) -> AdapterReadiness:
 
         # A server-scoped requirement (e.g. RAM or an NVIDIA GPU on the
         # serving host) is never probed locally; the verdict must say so
-        # explicitly — never let "all requirements met" be the whole story
+        # explicitly - never let "all requirements met" be the whole story
         # when the most important requirement was never checked.
         server_scoped = any(
             isinstance(r, dict) and _is_server_scoped(r) for r in reqs)
@@ -884,7 +884,7 @@ def format_report(report: DoctorReport) -> str:
         mark = _ADAPTER_MARK.get(a.status, "?")
         status_label = a.status.upper().replace("_", " ")
         w(f"  {a.adapter_name}: {mark} {status_label}"
-          + (f" — {a.detail}" if a.detail else ""))
+          + (f" - {a.detail}" if a.detail else ""))
         if a.hint and a.status != "ready":
             w(f"    hint: {a.hint}")
     if report.adapter_modules_failed:

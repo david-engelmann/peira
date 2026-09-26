@@ -432,7 +432,9 @@ def cmd_replay(args: argparse.Namespace) -> int:
 
 
 def cmd_doctor(args: argparse.Namespace) -> int:
-    """Check local machine readiness. Read-only: no network, no writes."""
+    """Check local machine readiness. The doctor's own checks make no
+    network calls and no writes; adapter discovery imports adapter
+    modules (see peira/doctor.py)."""
     from peira.doctor import format_report, run_doctor  # noqa: PLC0415
 
     report = run_doctor(_repo_root())
