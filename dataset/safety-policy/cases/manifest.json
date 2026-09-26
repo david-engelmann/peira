@@ -1,9 +1,9 @@
 {
-  "created_utc": "2026-09-25T18:11:16+00:00",
+  "created_utc": "2026-09-26T16:53:23+00:00",
   "dataset": "peira-safety-policy",
-  "dataset_version": "0.1.0",
+  "dataset_version": "1.0.0",
   "files": {
-    "cases.jsonl": {
+    "safety_policy.jsonl": {
       "kind": "cases",
       "n_by_family": {
         "safety_policy": 25
@@ -22,5 +22,5 @@
       "sha256": "1dbfa8313d817ac987e00948fb7504fb641c76c250a9f51853a17d8a43b597ae"
     }
   },
-  "generator": "peira 0.1.0"
+  "generator": "peira"
 }
