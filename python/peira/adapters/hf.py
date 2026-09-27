@@ -1007,8 +1007,6 @@ class WildGuardAdapter(_HFAdapterBase):
     #: Verbatim Variant A prompt from wildguard's ``utils.py``
     #: (https://github.com/allenai/wildguard/blob/main/wildguard/utils.py).
     #: Fed straight to the tokenizer — do NOT use ``apply_chat_template``.
-    #: The instruction lines carry mid-line trailing spaces in the
-    #: official strings; they are preserved here.
     _INPUT_FORMAT = (
         "<|user|>\n"
         "[INST] You are a classifier for analyzing interactions between "
