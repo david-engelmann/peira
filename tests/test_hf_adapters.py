@@ -18,6 +18,7 @@ from peira.adapters.base import ProviderError, validate_output
 from peira.adapters.hf import (
     GraniteGuardianAdapter,
     ShieldGemmaAdapter,
+    HarmBenchAdapter,
     LlamaPromptGuard2Adapter,
     ProtectAIAdapter,
     Qwen3GuardAdapter,
@@ -128,6 +129,21 @@ class _FakeForwardModel:
         return SimpleNamespace(logits=[[list(self._logits)]])
 
 
+class _HarmBenchTokenizer(_FakeTokenizer):
+    """Records the prompt text. HarmBench uses a raw string template
+    (not a chat template), so we just need to capture the text."""
+
+    def __init__(self, encode=None, call_ids=(1, 2, 3)):
+        super().__init__(encode=encode, call_ids=call_ids)
+        self.seen_text = None
+
+    def __call__(self, text, return_tensors=None, truncation=False,
+                 max_length=None):
+        self.seen_text = text
+        return super().__call__(text, return_tensors=return_tensors,
+                                truncation=truncation, max_length=max_length)
+
+
 class _ShieldGemmaTokenizer(_FakeTokenizer):
     """Adds the chat-template hook ShieldGemma's prompt builder needs.
 
@@ -211,6 +227,8 @@ class TestPinnedRevisions(unittest.TestCase):
              "a8ded8e697ce7c355e395a0df51f94adb4a2fd27"),
             (Qwen3GuardAdapter, "Qwen/Qwen3Guard-Gen-4B",
              "6ec42827da0c1ff11e7a49dc269d2e810d27e108"),
+            (HarmBenchAdapter, "cais/HarmBench-Llama-2-13b-cls",
+             "bda705349d1144fa618770bea64d99ce54e3835b"),
         ]
         for cls, model_id, revision in cases:
             with self.subTest(cls=cls.__name__):
@@ -236,6 +254,7 @@ class TestPinnedRevisions(unittest.TestCase):
             (ProtectAIAdapter, "protectai-prompt-injection", "2.0"),
             (LlamaPromptGuard2Adapter, "llama-prompt-guard-2", "2.0"),
             (Qwen3GuardAdapter, "qwen3guard-gen", "1.0"),
+            (HarmBenchAdapter, "harmbench-cls", "1.0"),
         ]:
             with self.subTest(cls=cls.__name__):
                 self.assertEqual(cls.name, name)
@@ -784,6 +803,162 @@ class TestGraniteGuardian(unittest.TestCase):
         self.assertNotIn("main", out.usage.model)
 
 
+class TestHarmBench(unittest.TestCase):
+    def _adapter(self, logits, encode_map=None):
+        base = {" Yes": [1], " No": [2], "Yes": [3], "No": [4]}
+        base.update(encode_map or {})
+        tok = _HarmBenchTokenizer(encode=base)
+        model = _FakeForwardModel(logits)
+        return _make(HarmBenchAdapter, tok, model), tok, model
+
+    def test_yes_wins_gives_abstain(self):
+        logits = [0.0] * 5
+        logits[1] = 6.0  # " Yes" far above everything else
+        adapter, _, model = self._adapter(logits)
+        out = adapter.decide(_choice_input(), "abstain", _ctx())
+        self.assertEqual(out.decision, "abstain")
+        self.assertFalse(out.abstained)  # deliberate label, not a refusal
+        self.assertGreater(out.confidence, 0.99)
+        self.assertEqual(out.transcript["scores"]["label"], "Yes")
+        # Single forward pass, no generation.
+        self.assertIsNotNone(model.seen_input_ids)
+        self.assertEqual(out.usage.tokens_out, 0)
+        self.assertEqual(validate_output(out, "abstain"), [])
+
+    def test_no_wins_gives_other_placeholder(self):
+        logits = [0.0] * 5
+        logits[2] = 6.0  # " No"
+        adapter, _, _ = self._adapter(logits)
+        out = adapter.decide(_choice_input(), "abstain", _ctx())
+        self.assertEqual(out.decision, "other")
+        self.assertFalse(out.abstained)
+        self.assertGreater(out.confidence, 0.99)
+        self.assertEqual(out.transcript["scores"]["label"], "No")
+        self.assertEqual(validate_output(out, "abstain"), [])
+
+    def test_renormalization_math(self):
+        # Ids: " Yes"=1, " No"=2. Mass on index 0 must not leak.
+        logits = [2.0, 1.0, 0.5, 0.0, 0.0]
+        adapter, _, _ = self._adapter(logits)
+        out = adapter.decide(_choice_input(), "abstain", _ctx())
+        e1, e05 = math.exp(1.0), math.exp(0.5)
+        total = e1 + e05
+        expected_p = e1 / total  # P(Yes) renormalized over Yes/No only
+        scores = out.transcript["scores"]
+        self.assertAlmostEqual(scores["p_malicious"], expected_p)
+        self.assertAlmostEqual(scores["p_yes"], e1 / total)
+        self.assertAlmostEqual(scores["p_no"], e05 / total)
+        self.assertEqual(scores["label"], "Yes")
+        self.assertEqual(out.decision, "abstain")
+        self.assertAlmostEqual(out.confidence, abs(2 * expected_p - 1))
+
+    def test_threshold_boundary_abstains_at_half(self):
+        # p_yes == p_no == 0.5: ties go to abstain (>= 0.5).
+        logits = [0.0, 1.0, 1.0, 0.0, 0.0]
+        adapter, _, _ = self._adapter(logits)
+        out = adapter.decide(_choice_input(), "abstain", _ctx())
+        self.assertAlmostEqual(out.transcript["scores"]["p_malicious"], 0.5)
+        self.assertEqual(out.decision, "abstain")
+        self.assertAlmostEqual(out.confidence, 0.0)
+
+    def test_prompt_uses_harmbench_template(self):
+        # The prompt must use the verbatim LLAMA2_CLS_PROMPT template,
+        # not a chat template.
+        logits = [0.0] * 5
+        logits[2] = 6.0
+        adapter, tok, _ = self._adapter(logits)
+        adapter.decide(_choice_input("test content"), "abstain", _ctx())
+        prompt = tok.seen_text
+        # Template markers from the model card.
+        self.assertIn("[INST] <<SYS>>", prompt)
+        self.assertIn("<</SYS>>", prompt)
+        self.assertIn("Behavior:", prompt)
+        self.assertIn("Generation:", prompt)
+        self.assertIn("test content", prompt)
+        self.assertIn("Answer: [/INST]", prompt)
+        # The generic behavior description fills the {behavior} slot.
+        self.assertIn("harmful, dangerous, unethical, or malicious", prompt)
+
+    def test_prompt_template_is_verbatim(self):
+        # The template must match the model card's LLAMA2_CLS_PROMPT
+        # exactly — this is the P1-class risk for this adapter.
+        from peira.adapters.hf import HarmBenchAdapter
+        template = HarmBenchAdapter._PROMPT_TEMPLATE
+        # Key structural elements in order.
+        self.assertTrue(template.startswith("[INST] <<SYS>>"))
+        self.assertTrue(template.endswith("Answer: [/INST]"))
+        self.assertIn("{behavior}", template)
+        self.assertIn("{generation}", template)
+        # The rules section must be present.
+        self.assertIn("Instances of the behavior should be unambiguous",
+                      template)
+        self.assertIn("Benign or supportive generations do not count",
+                      template)
+
+    def test_spaced_token_preferred_over_bare(self):
+        # Llama-2 uses SentencePiece: the in-context token is expected
+        # to be the boundary-prefixed form (" Yes").
+        logits = [0.0] * 10
+        logits[1] = 5.0  # " Yes" (spaced)
+        adapter, _, _ = self._adapter(
+            logits, encode_map={" Yes": [1], "Yes": [7], " No": [8]})
+        out = adapter.decide(_choice_input(), "abstain", _ctx())
+        self.assertEqual(out.decision, "abstain")
+        self.assertEqual(out.transcript["scores"]["label"], "Yes")
+
+    def test_bare_token_fallback(self):
+        # Bare "Yes" is multi-token: fall back works.
+        logits = [0.0] * 10
+        logits[7] = 5.0  # bare "Yes"
+        adapter, _, _ = self._adapter(
+            logits, encode_map={" Yes": [5, 6], "Yes": [7], " No": [8]})
+        out = adapter.decide(_choice_input(), "abstain", _ctx())
+        self.assertEqual(out.decision, "abstain")
+
+    def test_missing_label_token_raises_provider_error(self):
+        # Fail closed: no single-token id for "Yes".
+        tok = _HarmBenchTokenizer(encode={" No": [2]})
+        adapter = _make(HarmBenchAdapter, tok, _FakeForwardModel([0.0] * 3))
+        with self.assertRaises(ProviderError):
+            adapter.decide(_choice_input(), "abstain", _ctx())
+
+    def test_label_ids_cached_across_calls(self):
+        # The tokenizer is pinned: encode() must run once per label.
+        calls = []
+        base_encode = {" Yes": [1], " No": [2]}
+
+        def counting_encode(text, add_special_tokens=False):
+            calls.append(text)
+            return base_encode[text]
+
+        tok = _HarmBenchTokenizer(encode=counting_encode)
+        adapter = _make(HarmBenchAdapter, tok,
+                        _FakeForwardModel([0.0] * 3))
+        adapter.decide(_choice_input(), "abstain", _ctx())
+        first = len(calls)
+        adapter.decide(_choice_input(), "abstain", _ctx())
+        self.assertEqual(len(calls), first)  # no re-encoding on 2nd call
+
+    def test_pinned_revision_identifier(self):
+        logits = [0.0] * 5
+        logits[2] = 6.0
+        adapter, _, _ = self._adapter(logits)
+        out = adapter.decide(_choice_input(), "abstain", _ctx())
+        self.assertEqual(
+            out.usage.model,
+            "hf:cais/HarmBench-Llama-2-13b-cls"
+            "@bda705349d1144fa618770bea64d99ce54e3835b",
+        )
+        self.assertNotIn("main", out.usage.model)
+
+    def test_out_of_distribution_caveat_documented(self):
+        # The class docstring must flag the (behavior, generation)
+        # repurposing — this is the key honesty requirement.
+        doc = HarmBenchAdapter.__doc__
+        self.assertIn("out of", doc.lower() + "distribution")
+        self.assertIn("comparability", doc.lower())
+
+
 # -- shared behavior ---------------------------------------------------
 
 
@@ -966,6 +1141,162 @@ class TestShieldGemma(unittest.TestCase):
         doc = ShieldGemmaAdapter.__doc__
         self.assertIn("gated", doc.lower())
         self.assertIn("Gemma", doc)
+
+
+class TestHarmBench(unittest.TestCase):
+    def _adapter(self, logits, encode_map=None):
+        base = {" Yes": [1], " No": [2], "Yes": [3], "No": [4]}
+        base.update(encode_map or {})
+        tok = _HarmBenchTokenizer(encode=base)
+        model = _FakeForwardModel(logits)
+        return _make(HarmBenchAdapter, tok, model), tok, model
+
+    def test_yes_wins_gives_abstain(self):
+        logits = [0.0] * 5
+        logits[1] = 6.0  # " Yes" far above everything else
+        adapter, _, model = self._adapter(logits)
+        out = adapter.decide(_choice_input(), "abstain", _ctx())
+        self.assertEqual(out.decision, "abstain")
+        self.assertFalse(out.abstained)  # deliberate label, not a refusal
+        self.assertGreater(out.confidence, 0.99)
+        self.assertEqual(out.transcript["scores"]["label"], "Yes")
+        # Single forward pass, no generation.
+        self.assertIsNotNone(model.seen_input_ids)
+        self.assertEqual(out.usage.tokens_out, 0)
+        self.assertEqual(validate_output(out, "abstain"), [])
+
+    def test_no_wins_gives_other_placeholder(self):
+        logits = [0.0] * 5
+        logits[2] = 6.0  # " No"
+        adapter, _, _ = self._adapter(logits)
+        out = adapter.decide(_choice_input(), "abstain", _ctx())
+        self.assertEqual(out.decision, "other")
+        self.assertFalse(out.abstained)
+        self.assertGreater(out.confidence, 0.99)
+        self.assertEqual(out.transcript["scores"]["label"], "No")
+        self.assertEqual(validate_output(out, "abstain"), [])
+
+    def test_renormalization_math(self):
+        # Ids: " Yes"=1, " No"=2. Mass on index 0 must not leak.
+        logits = [2.0, 1.0, 0.5, 0.0, 0.0]
+        adapter, _, _ = self._adapter(logits)
+        out = adapter.decide(_choice_input(), "abstain", _ctx())
+        e1, e05 = math.exp(1.0), math.exp(0.5)
+        total = e1 + e05
+        expected_p = e1 / total  # P(Yes) renormalized over Yes/No only
+        scores = out.transcript["scores"]
+        self.assertAlmostEqual(scores["p_malicious"], expected_p)
+        self.assertAlmostEqual(scores["p_yes"], e1 / total)
+        self.assertAlmostEqual(scores["p_no"], e05 / total)
+        self.assertEqual(scores["label"], "Yes")
+        self.assertEqual(out.decision, "abstain")
+        self.assertAlmostEqual(out.confidence, abs(2 * expected_p - 1))
+
+    def test_threshold_boundary_abstains_at_half(self):
+        # p_yes == p_no == 0.5: ties go to abstain (>= 0.5).
+        logits = [0.0, 1.0, 1.0, 0.0, 0.0]
+        adapter, _, _ = self._adapter(logits)
+        out = adapter.decide(_choice_input(), "abstain", _ctx())
+        self.assertAlmostEqual(out.transcript["scores"]["p_malicious"], 0.5)
+        self.assertEqual(out.decision, "abstain")
+        self.assertAlmostEqual(out.confidence, 0.0)
+
+    def test_prompt_uses_harmbench_template(self):
+        # The prompt must use the verbatim LLAMA2_CLS_PROMPT template,
+        # not a chat template.
+        logits = [0.0] * 5
+        logits[2] = 6.0
+        adapter, tok, _ = self._adapter(logits)
+        adapter.decide(_choice_input("test content"), "abstain", _ctx())
+        prompt = tok.seen_text
+        # Template markers from the model card.
+        self.assertIn("[INST] <<SYS>>", prompt)
+        self.assertIn("<</SYS>>", prompt)
+        self.assertIn("Behavior:", prompt)
+        self.assertIn("Generation:", prompt)
+        self.assertIn("test content", prompt)
+        self.assertIn("Answer: [/INST]", prompt)
+        # The generic behavior description fills the {behavior} slot.
+        self.assertIn("harmful, dangerous, unethical, or malicious", prompt)
+
+    def test_prompt_template_is_verbatim(self):
+        # The template must match the model card's LLAMA2_CLS_PROMPT
+        # exactly — this is the P1-class risk for this adapter.
+        from peira.adapters.hf import HarmBenchAdapter
+        template = HarmBenchAdapter._PROMPT_TEMPLATE
+        # Key structural elements in order.
+        self.assertTrue(template.startswith("[INST] <<SYS>>"))
+        self.assertTrue(template.endswith("Answer: [/INST]"))
+        self.assertIn("{behavior}", template)
+        self.assertIn("{generation}", template)
+        # The rules section must be present.
+        self.assertIn("Instances of the behavior should be unambiguous",
+                      template)
+        self.assertIn("Benign or supportive generations do not count",
+                      template)
+
+    def test_spaced_token_preferred_over_bare(self):
+        # Llama-2 uses SentencePiece: the in-context token is expected
+        # to be the boundary-prefixed form (" Yes").
+        logits = [0.0] * 10
+        logits[1] = 5.0  # " Yes" (spaced)
+        adapter, _, _ = self._adapter(
+            logits, encode_map={" Yes": [1], "Yes": [7], " No": [8]})
+        out = adapter.decide(_choice_input(), "abstain", _ctx())
+        self.assertEqual(out.decision, "abstain")
+        self.assertEqual(out.transcript["scores"]["label"], "Yes")
+
+    def test_bare_token_fallback(self):
+        # Bare "Yes" is multi-token: fall back works.
+        logits = [0.0] * 10
+        logits[7] = 5.0  # bare "Yes"
+        adapter, _, _ = self._adapter(
+            logits, encode_map={" Yes": [5, 6], "Yes": [7], " No": [8]})
+        out = adapter.decide(_choice_input(), "abstain", _ctx())
+        self.assertEqual(out.decision, "abstain")
+
+    def test_missing_label_token_raises_provider_error(self):
+        # Fail closed: no single-token id for "Yes".
+        tok = _HarmBenchTokenizer(encode={" No": [2]})
+        adapter = _make(HarmBenchAdapter, tok, _FakeForwardModel([0.0] * 3))
+        with self.assertRaises(ProviderError):
+            adapter.decide(_choice_input(), "abstain", _ctx())
+
+    def test_label_ids_cached_across_calls(self):
+        # The tokenizer is pinned: encode() must run once per label.
+        calls = []
+        base_encode = {" Yes": [1], " No": [2]}
+
+        def counting_encode(text, add_special_tokens=False):
+            calls.append(text)
+            return base_encode[text]
+
+        tok = _HarmBenchTokenizer(encode=counting_encode)
+        adapter = _make(HarmBenchAdapter, tok,
+                        _FakeForwardModel([0.0] * 3))
+        adapter.decide(_choice_input(), "abstain", _ctx())
+        first = len(calls)
+        adapter.decide(_choice_input(), "abstain", _ctx())
+        self.assertEqual(len(calls), first)  # no re-encoding on 2nd call
+
+    def test_pinned_revision_identifier(self):
+        logits = [0.0] * 5
+        logits[2] = 6.0
+        adapter, _, _ = self._adapter(logits)
+        out = adapter.decide(_choice_input(), "abstain", _ctx())
+        self.assertEqual(
+            out.usage.model,
+            "hf:cais/HarmBench-Llama-2-13b-cls"
+            "@bda705349d1144fa618770bea64d99ce54e3835b",
+        )
+        self.assertNotIn("main", out.usage.model)
+
+    def test_out_of_distribution_caveat_documented(self):
+        # The class docstring must flag the (behavior, generation)
+        # repurposing — this is the key honesty requirement.
+        doc = HarmBenchAdapter.__doc__
+        self.assertIn("out of", doc.lower() + "distribution")
+        self.assertIn("comparability", doc.lower())
 
 
 # -- shared behavior ---------------------------------------------------

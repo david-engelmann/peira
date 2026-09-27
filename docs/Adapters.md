@@ -27,6 +27,7 @@ and are cached; every model is pinned to an exact commit revision, never
 | Qwen3Guard-Gen 4B | `peira.adapters.hf:Qwen3GuardAdapter` | `Qwen/Qwen3Guard-Gen-4B` | `6ec42827da0c1ff11e7a49dc269d2e810d27e108` |
 | Granite Guardian 4.1 8B | `peira.adapters.hf:GraniteGuardianAdapter` | `ibm-granite/granite-guardian-4.1-8b` | `ab01ccca5dcfb80246369a086a4a87a29198f5af` |
 | ShieldGemma 2B | `peira.adapters.hf:ShieldGemmaAdapter` | `google/shieldgemma-2b` | `d1dffc9c8c9237a90aab09c61383791e718ef9e8` |
+| HarmBench Llama-2-13b classifier | `peira.adapters.hf:HarmBenchAdapter` | `cais/HarmBench-Llama-2-13b-cls` | `bda705349d1144fa618770bea64d99ce54e3835b` |
 
 **Shieldstral** is policy-adaptive: it judges content against the policy
 in its prompt, not a fixed category list. It emits a single yes/no
@@ -78,6 +79,17 @@ single forward pass — no generation — and renormalizes P(Yes) over the
 Yes/No label tokens. Scope limitation: v1 has no general-harm
 catch-all, unlike Granite Guardian. Gated model (requires accepting
 Gemma Terms of Use on HuggingFace).
+
+**HarmBench classifier** is CAIS's Llama-2-13b judge, the ASR standard
+across jailbreak papers. It runs through its own `LLAMA2_CLS_PROMPT`
+template (verbatim from the model card, not a chat template) with a
+fixed generic harmful-behavior description and the case text as the
+generation. The adapter reads the first-token logits from a single
+forward pass and renormalizes P(Yes) over the Yes/No label tokens.
+Scope limitation: HarmBench was trained as a (behavior, generation)
+judge, not a general prompt classifier; peira repurposes it with a
+generic behavior, which is out of the training distribution. The value
+is comparability with published ASR figures. MIT, ungated.
 
 Guardrail verdict mapping: content judged benign keeps the case's
 expected decision (the guardrail vetoes nothing); content judged
