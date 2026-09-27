@@ -18,6 +18,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from peira._rust import _impl as _rust
 from peira.dataset import iter_case_lines
 from peira.schema import CANONICAL_FAMILIES, validate_case_dict
 
@@ -38,6 +39,23 @@ def _canon_input(variant: dict[str, Any]) -> str:
     return json.dumps(variant.get("input", {}), sort_keys=True)
 
 
+def _to_rust_gate_cases(valid_cases) -> list[tuple[str, int, dict]]:
+    """Convert (path, lineno, case) tuples to Rust GateCase format.
+
+    Returns list of (path_name, lineno, case_dict) for PyO3 conversion.
+    """
+    return [
+        (path.name if hasattr(path, "name") else str(path), lineno, case)
+        for path, lineno, case in valid_cases
+    ]
+
+
+def _from_rust_gate_result(packed) -> GateResult:
+    """Convert Rust (gate_id, name, errors, warnings) to GateResult."""
+    gate_id, name, errors, warnings = packed
+    return GateResult(gate_id, name, errors=errors, warnings=warnings)
+
+
 def gate_schema(checked) -> GateResult:
     """G1: every case parses and satisfies the frozen schema.
 
@@ -54,7 +72,7 @@ def gate_schema(checked) -> GateResult:
     return r
 
 
-def gate_paired_variants(valid_cases) -> GateResult:
+def _gate_paired_variants_py(valid_cases) -> GateResult:
     """G2: the attacked variant actually differs from its benign control.
 
     An attacked variant identical to its benign control is a broken case:
@@ -69,7 +87,18 @@ def gate_paired_variants(valid_cases) -> GateResult:
     return r
 
 
-def gate_dedup(valid_cases) -> GateResult:
+def gate_paired_variants(valid_cases) -> GateResult:
+    """Dispatch to Rust when available, else the pure-Python reference."""
+    if _rust is not None:
+        try:
+            packed = _rust.gates_paired_variants(_to_rust_gate_cases(valid_cases))
+            return _from_rust_gate_result(packed)
+        except (TypeError, ValueError):
+            pass
+    return _gate_paired_variants_py(valid_cases)
+
+
+def _gate_dedup_py(valid_cases) -> GateResult:
     """G3: case ids are unique; no two cases share a content pair."""
     r = GateResult("G3", "dedup")
     seen_ids: dict[str, str] = {}
@@ -92,7 +121,18 @@ def gate_dedup(valid_cases) -> GateResult:
     return r
 
 
-def gate_families(valid_cases) -> GateResult:
+def gate_dedup(valid_cases) -> GateResult:
+    """Dispatch to Rust when available, else the pure-Python reference."""
+    if _rust is not None:
+        try:
+            packed = _rust.gates_dedup(_to_rust_gate_cases(valid_cases))
+            return _from_rust_gate_result(packed)
+        except (TypeError, ValueError):
+            pass
+    return _gate_dedup_py(valid_cases)
+
+
+def _gate_families_py(valid_cases) -> GateResult:
     """G4: every case uses a canonical attack-family id."""
     r = GateResult("G4", "families")
     for path, lineno, case in valid_cases:
@@ -102,7 +142,20 @@ def gate_families(valid_cases) -> GateResult:
     return r
 
 
-def gate_target_coherence(valid_cases) -> GateResult:
+def gate_families(valid_cases) -> GateResult:
+    """Dispatch to Rust when available, else the pure-Python reference."""
+    if _rust is not None:
+        try:
+            packed = _rust.gates_families(
+                _to_rust_gate_cases(valid_cases), list(CANONICAL_FAMILIES)
+            )
+            return _from_rust_gate_result(packed)
+        except (TypeError, ValueError):
+            pass
+    return _gate_families_py(valid_cases)
+
+
+def _gate_target_coherence_py(valid_cases) -> GateResult:
     """G5: a named target decision must differ from the benign expectation.
 
     A targeted attack aiming at the decision the benign input already
@@ -125,7 +178,18 @@ _PII_PATTERNS = [
 ]
 
 
-def gate_pii_scan(valid_cases) -> GateResult:
+def gate_target_coherence(valid_cases) -> GateResult:
+    """Dispatch to Rust when available, else the pure-Python reference."""
+    if _rust is not None:
+        try:
+            packed = _rust.gates_target_coherence(_to_rust_gate_cases(valid_cases))
+            return _from_rust_gate_result(packed)
+        except (TypeError, ValueError):
+            pass
+    return _gate_target_coherence_py(valid_cases)
+
+
+def _gate_pii_scan_py(valid_cases) -> GateResult:
     """G6: flag identifier-like strings in case inputs.
 
     Warnings, not errors: attack payloads sometimes contain synthetic
@@ -144,7 +208,18 @@ def gate_pii_scan(valid_cases) -> GateResult:
     return r
 
 
-def gate_score_reference(valid_cases) -> GateResult:
+def gate_pii_scan(valid_cases) -> GateResult:
+    """Dispatch to Rust when available, else the pure-Python reference."""
+    if _rust is not None:
+        try:
+            packed = _rust.gates_pii_scan(_to_rust_gate_cases(valid_cases))
+            return _from_rust_gate_result(packed)
+        except (TypeError, ValueError):
+            pass
+    return _gate_pii_scan_py(valid_cases)
+
+
+def _gate_score_reference_py(valid_cases) -> GateResult:
     """G7: score-primitive cases carry the author's reference score.
 
     Score diagnostics (A3 S6) measure adapter-vs-author agreement
@@ -161,7 +236,18 @@ def gate_score_reference(valid_cases) -> GateResult:
     return r
 
 
-def gate_options_coherence(valid_cases) -> GateResult:
+def gate_score_reference(valid_cases) -> GateResult:
+    """Dispatch to Rust when available, else the pure-Python reference."""
+    if _rust is not None:
+        try:
+            packed = _rust.gates_score_reference(_to_rust_gate_cases(valid_cases))
+            return _from_rust_gate_result(packed)
+        except (TypeError, ValueError):
+            pass
+    return _gate_score_reference_py(valid_cases)
+
+
+def _gate_options_coherence_py(valid_cases) -> GateResult:
     """G8: options lists are canonical across both variants.
 
     Adapters build one decision enum per options list; a vocabulary
@@ -204,6 +290,17 @@ def gate_options_coherence(valid_cases) -> GateResult:
                 f"the decision vocabulary must be identical across arms"
             )
     return r
+
+
+def gate_options_coherence(valid_cases) -> GateResult:
+    """Dispatch to Rust when available, else the pure-Python reference."""
+    if _rust is not None:
+        try:
+            packed = _rust.gates_options_coherence(_to_rust_gate_cases(valid_cases))
+            return _from_rust_gate_result(packed)
+        except (TypeError, ValueError):
+            pass
+    return _gate_options_coherence_py(valid_cases)
 
 
 def run_gates(dataset_dir: Path) -> list[GateResult]:
