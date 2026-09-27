@@ -541,9 +541,12 @@ class _GraniteGuardianTokenizer(_FakeTokenizer):
         self._template = template
         self.seen_messages = None
         self.seen_text = None
+        self.seen_add_generation_prompt = None
 
-    def apply_chat_template(self, messages, tokenize=False):
+    def apply_chat_template(self, messages, tokenize=False,
+                              add_generation_prompt=False):
         self.seen_messages = messages
+        self.seen_add_generation_prompt = add_generation_prompt
         return self._template
 
     def __call__(self, text, return_tensors=None, truncation=False,
@@ -631,16 +634,22 @@ class TestGraniteGuardian(unittest.TestCase):
         self.assertIn("universally harmful", block)
         self.assertIn("### Scoring Schema:", block)
         self.assertIn("return 'yes'", block)
+        # The Granite template only emits the assistant header with
+        # add_generation_prompt=True. Without it, the prefill attaches
+        # after <|end_of_text|> with no assistant role — out of distribution.
+        self.assertTrue(tok.seen_add_generation_prompt,
+                        "add_generation_prompt=True must be passed")
 
     def test_prefill_appends_score_prefix(self):
         # The prefill must actually be appended so the next token is the
         # verdict. Ends with ">" and no trailing space (bare yes/no).
+        # Uses literal \n (backslash-n) to match IBM's official strings.
         logits = [0.0] * 3
         logits[2] = 6.0
         adapter, tok, _ = self._adapter(logits, template="<tmpl>")
         out = adapter.decide(_choice_input("hello"), "abstain", _ctx())
         self.assertTrue(
-            tok.seen_text.endswith("<think>\n</think>\n\n<score>"),
+            tok.seen_text.endswith("<think>\\n</think>\\n\\n<score>"),
             f"prompt was {tok.seen_text!r}")
         self.assertEqual(out.transcript["scores"]["label"], "no")
 
@@ -679,7 +688,8 @@ class TestGraniteGuardian(unittest.TestCase):
 
     def test_non_text_template_raises_provider_error(self):
         class _BadTemplate(_GraniteGuardianTokenizer):
-            def apply_chat_template(self, messages, tokenize=False):
+            def apply_chat_template(self, messages, tokenize=False,
+                                    add_generation_prompt=False):
                 return ["not", "text"]
 
         tok = _BadTemplate(encode={"yes": [1], "no": [2]})
