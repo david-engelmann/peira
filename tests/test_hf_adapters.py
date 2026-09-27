@@ -16,6 +16,7 @@ from unittest import mock
 from peira.adapters import hf as hf_mod
 from peira.adapters.base import ProviderError, validate_output
 from peira.adapters.hf import (
+    GraniteGuardianAdapter,
     LlamaPromptGuard2Adapter,
     ProtectAIAdapter,
     Qwen3GuardAdapter,
@@ -527,6 +528,202 @@ class TestQwen3Guard(unittest.TestCase):
             out.usage.model,
             "hf:Qwen/Qwen3Guard-Gen-4B"
             "@6ec42827da0c1ff11e7a49dc269d2e810d27e108",
+        )
+        self.assertNotIn("main", out.usage.model)
+
+
+class _GraniteGuardianTokenizer(_FakeTokenizer):
+    """Tracks messages and prompt text for Granite Guardian's two-message
+    prompt (case text + guardian block)."""
+
+    def __init__(self, encode=None, call_ids=(1, 2), template="TEMPLATE:"):
+        super().__init__(encode=encode, call_ids=call_ids)
+        self._template = template
+        self.seen_messages = None
+        self.seen_text = None
+        self.seen_add_generation_prompt = None
+
+    def apply_chat_template(self, messages, tokenize=False,
+                              add_generation_prompt=False):
+        self.seen_messages = messages
+        self.seen_add_generation_prompt = add_generation_prompt
+        return self._template
+
+    def __call__(self, text, return_tensors=None, truncation=False,
+                 max_length=None):
+        self.seen_text = text
+        return super().__call__(text, return_tensors=return_tensors,
+                                truncation=truncation, max_length=max_length)
+
+
+class TestGraniteGuardian(unittest.TestCase):
+    def _adapter(self, logits, encode_map=None, template="TEMPLATE:"):
+        # Bare "yes"/"no" first: the prefill ends with ">" and no space.
+        base = {"yes": [1], "no": [2]}
+        base.update(encode_map or {})
+        tok = _GraniteGuardianTokenizer(encode=base, template=template)
+        model = _FakeCausalModel(logits)
+        return _make(GraniteGuardianAdapter, tok, model), tok, model
+
+    def test_yes_wins_gives_abstain(self):
+        logits = [0.0] * 3
+        logits[1] = 6.0  # "yes" far above everything else
+        adapter, _, model = self._adapter(logits)
+        out = adapter.decide(_choice_input(), "abstain", _ctx())
+        self.assertEqual(out.decision, "abstain")
+        self.assertFalse(out.abstained)  # deliberate label, not a refusal
+        self.assertGreater(out.confidence, 0.99)
+        self.assertEqual(out.transcript["scores"]["label"], "yes")
+        # Generation contract: exactly one greedy token.
+        self.assertEqual(model.generate_kwargs["max_new_tokens"], 1)
+        self.assertEqual(model.generate_kwargs["temperature"], 0)
+        self.assertEqual(out.usage.tokens_out, 1)
+        self.assertEqual(validate_output(out, "abstain"), [])
+
+    def test_no_wins_gives_other_placeholder(self):
+        logits = [0.0] * 3
+        logits[2] = 6.0  # "no"
+        adapter, _, _ = self._adapter(logits)
+        out = adapter.decide(_choice_input(), "abstain", _ctx())
+        self.assertEqual(out.decision, "other")
+        self.assertFalse(out.abstained)
+        self.assertGreater(out.confidence, 0.99)
+        self.assertEqual(out.transcript["scores"]["label"], "no")
+        self.assertEqual(validate_output(out, "abstain"), [])
+
+    def test_renormalization_math(self):
+        # Ids: yes=1, no=2. Mass on index 0 must not leak into p_malicious.
+        logits = [2.0, 1.0, 0.5]
+        adapter, _, _ = self._adapter(logits)
+        out = adapter.decide(_choice_input(), "abstain", _ctx())
+        e1, e05 = math.exp(1.0), math.exp(0.5)
+        total = e1 + e05
+        expected_p = e1 / total  # P(yes) / (P(yes) + P(no))
+        scores = out.transcript["scores"]
+        self.assertAlmostEqual(scores["p_malicious"], expected_p)
+        self.assertAlmostEqual(scores["p_yes"], e1 / total)
+        self.assertAlmostEqual(scores["p_no"], e05 / total)
+        self.assertEqual(scores["label"], "yes")  # argmax over labels
+        # 0.62 >= 0.5: threshold decides, matching the argmax here.
+        self.assertEqual(out.decision, "abstain")
+        self.assertAlmostEqual(out.confidence, abs(2 * expected_p - 1))
+
+    def test_threshold_boundary_abstains(self):
+        # p(yes) = 0.5 exactly: >= threshold, so malicious.
+        logits = [0.0, 0.0, 0.0]  # uniform over yes/no after renormalization
+        adapter, _, _ = self._adapter(logits)
+        out = adapter.decide(_choice_input(), "abstain", _ctx())
+        self.assertAlmostEqual(
+            out.transcript["scores"]["p_malicious"], 0.5)
+        self.assertEqual(out.decision, "abstain")
+
+    def test_guardian_block_structure(self):
+        # Two user messages: case text, then the guardian block with
+        # no-think instruction, Criteria, and Scoring Schema.
+        logits = [0.0] * 3
+        logits[2] = 6.0
+        adapter, tok, _ = self._adapter(logits, template="<tmpl>")
+        adapter.decide(_choice_input("hello"), "abstain", _ctx())
+        self.assertEqual(len(tok.seen_messages), 2)
+        self.assertEqual(tok.seen_messages[0],
+                         {"role": "user", "content": "hello"})
+        block = tok.seen_messages[1]["content"]
+        self.assertEqual(tok.seen_messages[1]["role"], "user")
+        self.assertIn("<no-think>", block)
+        self.assertIn("### Criteria:", block)
+        self.assertIn("universally harmful", block)
+        self.assertIn("### Scoring Schema:", block)
+        self.assertIn("return 'yes'", block)
+        # The Granite template only emits the assistant header with
+        # add_generation_prompt=True. Without it, the prefill attaches
+        # after <|end_of_text|> with no assistant role — out of distribution.
+        self.assertTrue(tok.seen_add_generation_prompt,
+                        "add_generation_prompt=True must be passed")
+
+    def test_prefill_appends_score_prefix(self):
+        # The prefill must actually be appended so the next token is the
+        # verdict. Ends with ">" and no trailing space (bare yes/no).
+        # Uses literal \n (backslash-n) to match IBM's official strings.
+        logits = [0.0] * 3
+        logits[2] = 6.0
+        adapter, tok, _ = self._adapter(logits, template="<tmpl>")
+        out = adapter.decide(_choice_input("hello"), "abstain", _ctx())
+        self.assertTrue(
+            tok.seen_text.endswith("<think>\\n</think>\\n\\n<score>"),
+            f"prompt was {tok.seen_text!r}")
+        self.assertEqual(out.transcript["scores"]["label"], "no")
+
+    def test_bare_token_preferred_over_spaced(self):
+        # Both "yes" and " yes" are single tokens: the bare spelling
+        # wins (prefill ends with ">", no space).
+        logits = [0.0] * 10
+        logits[3] = 5.0  # bare "yes"
+        logits[4] = 1.0  # spaced " yes"
+        adapter, _, _ = self._adapter(
+            logits, encode_map={"yes": [3], " yes": [4], "no": [5]})
+        out = adapter.decide(_choice_input(), "abstain", _ctx())
+        self.assertEqual(out.transcript["scores"]["label"], "yes")
+        self.assertGreater(out.transcript["scores"]["p_yes"], 0.9)
+
+    def test_spaced_token_fallback(self):
+        # Bare "yes" is multi-token: fall back to the spaced " yes" id.
+        logits = [0.0] * 10
+        logits[7] = 5.0  # spaced " yes"
+        adapter, _, _ = self._adapter(
+            logits, encode_map={"yes": [5, 6], " yes": [7], "no": [8]})
+        out = adapter.decide(_choice_input(), "abstain", _ctx())
+        self.assertEqual(out.decision, "abstain")
+        self.assertEqual(out.transcript["scores"]["label"], "yes")
+
+    def test_missing_label_token_raises_provider_error(self):
+        # No single-token id for a label: fail closed, never silently
+        # score against the wrong ids.
+        adapter, _, _ = self._adapter(
+            [0.0] * 3, encode_map={"yes": [1, 2], " yes": [3, 4]})
+        with self.assertRaises(ProviderError) as ctx:
+            adapter.decide(_choice_input(), "abstain", _ctx())
+        self.assertIn("single-token id", str(ctx.exception))
+        self.assertIn("ibm-granite/granite-guardian-4.1-8b",
+                      str(ctx.exception))
+
+    def test_non_text_template_raises_provider_error(self):
+        class _BadTemplate(_GraniteGuardianTokenizer):
+            def apply_chat_template(self, messages, tokenize=False,
+                                    add_generation_prompt=False):
+                return ["not", "text"]
+
+        tok = _BadTemplate(encode={"yes": [1], "no": [2]})
+        adapter = _make(GraniteGuardianAdapter, tok,
+                        _FakeCausalModel([0.0] * 3))
+        with self.assertRaises(ProviderError):
+            adapter.decide(_choice_input(), "abstain", _ctx())
+
+    def test_label_ids_cached_across_calls(self):
+        # Token IDs resolve once, not per call (P2 from Qwen3Guard review).
+        calls = []
+
+        def counting_encode(text):
+            calls.append(text)
+            return {"yes": [1], "no": [2]}[text]
+
+        tok = _GraniteGuardianTokenizer(encode=counting_encode)
+        adapter = _make(GraniteGuardianAdapter, tok,
+                        _FakeCausalModel([0.0] * 3))
+        adapter.decide(_choice_input(), "abstain", _ctx())
+        first_call_count = len(calls)
+        adapter.decide(_choice_input(), "abstain", _ctx())
+        # Second call adds no new encode calls for label IDs.
+        self.assertEqual(len(calls), first_call_count)
+
+    def test_usage_model_is_pinned_identifier(self):
+        logits = [0.0] * 3
+        logits[2] = 6.0
+        adapter, _, _ = self._adapter(logits)
+        out = adapter.decide(_choice_input(), "abstain", _ctx())
+        self.assertEqual(
+            out.usage.model,
+            "hf:ibm-granite/granite-guardian-4.1-8b"
+            "@ab01ccca5dcfb80246369a086a4a87a29198f5af",
         )
         self.assertNotIn("main", out.usage.model)
 

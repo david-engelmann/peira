@@ -391,7 +391,8 @@ and their cases re-run on resume.
 
 **`this adapter requires the 'hf' extra (torch and transformers): install it with: pip install 'peira[hf]'`**
 Cause: you instantiated a Hugging Face adapter (`shieldstral`,
-`protectai-prompt-injection`, `llama-prompt-guard-2`, `qwen3guard-gen`)
+`protectai-prompt-injection`, `llama-prompt-guard-2`, `qwen3guard-gen`,
+`granite-guardian`)
 without the
 optional dependency. Fix: `pip install "peira[hf]"` (the base package
 stays dependency-free by design). The LLM baselines fail closed the same way, naming their own
@@ -452,6 +453,23 @@ text, so the moderation prompt can't be built. This is a
 tokenizer/model mismatch, not a retryable failure. Fix: check the
 pinned revision actually matches `Qwen/Qwen3Guard-Gen-4B`; don't
 substitute tokenizers.
+
+**`tokenizer for 'ibm-granite/granite-guardian-4.1-8b' has no single-token id for yes (tried ...) ...`**
+Cause: Granite Guardian reads its verdict from the first-token
+logprobs of `yes`/`no` — the loaded tokenizer has no single-token id
+for either spelling (tried bare first, then with the leading space),
+so the probability can't be read honestly. This is a tokenizer/model
+mismatch, not a retryable failure. Fix: check the pinned revision
+actually matches `ibm-granite/granite-guardian-4.1-8b`; don't
+substitute tokenizers.
+
+**`chat template for 'ibm-granite/granite-guardian-4.1-8b' did not return text; cannot build the moderation prompt`**
+Cause: Granite Guardian is prompted through the model's own chat
+template (`apply_chat_template`); the template returned something
+other than text, so the moderation prompt can't be built. This is a
+tokenizer/model mismatch, not a retryable failure. Fix: check the
+pinned revision actually matches
+`ibm-granite/granite-guardian-4.1-8b`; don't substitute tokenizers.
 
 **`llama-prompt-guard-2 tokenizer has no CLS/SEP token ids`**
 Cause: the loaded tokenizer reports no CLS/SEP token ids, so chunks

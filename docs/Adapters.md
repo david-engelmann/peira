@@ -25,6 +25,7 @@ and are cached; every model is pinned to an exact commit revision, never
 | ProtectAI prompt injection | `peira.adapters.hf:ProtectAIAdapter` | `protectai/deberta-v3-base-prompt-injection-v2` | `90c9989b1a342275dd0d1a95aad283c04e075671` |
 | Llama Prompt Guard 2 86M | `peira.adapters.hf:LlamaPromptGuard2Adapter` | `meta-llama/Llama-Prompt-Guard-2-86M` | `a8ded8e697ce7c355e395a0df51f94adb4a2fd27` |
 | Qwen3Guard-Gen 4B | `peira.adapters.hf:Qwen3GuardAdapter` | `Qwen/Qwen3Guard-Gen-4B` | `6ec42827da0c1ff11e7a49dc269d2e810d27e108` |
+| Granite Guardian 4.1 8B | `peira.adapters.hf:GraniteGuardianAdapter` | `ibm-granite/granite-guardian-4.1-8b` | `ab01ccca5dcfb80246369a086a4a87a29198f5af` |
 
 **Shieldstral** is policy-adaptive: it judges content against the policy
 in its prompt, not a fixed category list. It emits a single yes/no
@@ -55,6 +56,18 @@ label is recorded in the transcript. Caveat: independent robustness
 work found Qwen3Guard accuracy collapsing on novel adversarial prompts,
 so expect below-leaderboard numbers on peira's semantic arms — that is
 signal about the guardrail, not an adapter defect. Apache-2.0, ungated.
+
+**Granite Guardian 4.1** is IBM's yes/no generative safety judge, run in
+prompt-moderation mode through its own chat template: the case text as
+the first user message, then the official guardian block (no-think
+mode, pre-baked Harm criterion, prompt-classification scoring schema)
+as the final user message, with `<think>\n</think>\n\n<score>`
+prefilled so the verdict is the next token. The adapter takes
+P(yes) / (P(yes) + P(no)) over the first-token logprobs as the
+malicious score — IBM's own logprob practice; yes means the text meets
+the Harm criterion. The Harm criterion is frozen rather than BYOC per
+family: v1 is abstain-primitive-only, so a single universal-harm test
+is the honest mapping. Apache-2.0, ungated.
 
 Guardrail verdict mapping: content judged benign keeps the case's
 expected decision (the guardrail vetoes nothing); content judged
