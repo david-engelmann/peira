@@ -39,6 +39,7 @@ from peira.adapters.base import (
     validate_output,
 )
 from peira.artifacts import RunArtifact, results_to_dicts
+from peira.env_fingerprint import collect_and_fingerprint
 from peira.concurrency import (
     MAX_RETRY_AFTER_S,
     AdaptiveConcurrency,
@@ -993,6 +994,8 @@ def _write_partial(
         config["cache"] = cache_stats
     if config_extra:
         config.update(config_extra)
+    # Environment fingerprint (Layer 1b).
+    _env, _env_sha256 = collect_and_fingerprint()
     partial = RunArtifact(
         adapter_name=adapter.name,
         adapter_version=getattr(adapter, "version", ""),
@@ -1004,6 +1007,8 @@ def _write_partial(
         seed=seed,
         max_concurrency=max_concurrency,
         config=config,
+        env=_env,
+        env_sha256=_env_sha256,
         results=results_to_dicts(_sort_results(results, indexed)),
     )
     partial.metrics = _summarize_artifact(
@@ -1215,6 +1220,8 @@ async def _run_suite_async(
     if config_extra:
         config.update(config_extra)
     table = pricing_table
+    # Environment fingerprint (Layer 1b).
+    _env, _env_sha256 = collect_and_fingerprint()
     artifact = RunArtifact(
         adapter_name=adapter.name,
         adapter_version=adapter_version,
@@ -1226,6 +1233,8 @@ async def _run_suite_async(
         seed=seed,
         max_concurrency=max_concurrency,
         config=config,
+        env=_env,
+        env_sha256=_env_sha256,
         results=results_to_dicts(ordered),
     )
     artifact.metrics = _summarize_artifact(
@@ -1465,6 +1474,8 @@ def replay_suite(
             "replayed_at_utc": datetime.now(timezone.utc).isoformat(),
         },
     }
+    # Environment fingerprint (Layer 1b).
+    _env, _env_sha256 = collect_and_fingerprint()
     artifact = RunArtifact(
         adapter_name=name,
         adapter_version=version,
@@ -1476,6 +1487,8 @@ def replay_suite(
         seed=seed,
         max_concurrency=max_concurrency,
         config=config,
+        env=_env,
+        env_sha256=_env_sha256,
         results=results_to_dicts(ordered),
     )
     artifact.metrics = _summarize_artifact(
