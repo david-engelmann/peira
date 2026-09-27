@@ -156,6 +156,16 @@ class _ShieldGemmaTokenizer(_FakeTokenizer):
         return super().__call__(text, return_tensors=return_tensors,
                                 truncation=truncation, max_length=max_length)
 
+    def get_vocab(self):
+        # Mirror the encode map as a vocab dict for get_vocab() lookups.
+        # The encode map is {token: [id]} or a callable; vocab is {token: id}.
+        if callable(self._encode):
+            return {
+                "Yes": self._encode("Yes")[0],
+                "No": self._encode("No")[0],
+            }
+        return {tok: ids[0] for tok, ids in (self._encode or {}).items()}
+
 
 class _FakeClassifier:
     def __init__(self, logits):
@@ -891,7 +901,7 @@ class TestShieldGemma(unittest.TestCase):
 
     def test_missing_label_token_raises_provider_error(self):
         # Fail closed: no single-token id for "Yes".
-        tok = _ShieldGemmaTokenizer(encode={"Yes": [5, 6], "No": [2]})
+        tok = _ShieldGemmaTokenizer(encode={"No": [2]})
         adapter = _make(ShieldGemmaAdapter, tok, _FakeForwardModel([0.0] * 3))
         with self.assertRaises(ProviderError):
             adapter.decide(_choice_input(), "abstain", _ctx())

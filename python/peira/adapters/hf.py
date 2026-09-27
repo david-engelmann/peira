@@ -923,17 +923,21 @@ class ShieldGemmaAdapter(_HFAdapterBase):
             outputs = model(input_ids)
         logits = _to_list(outputs.logits[0][-1])
         # Cache label token IDs on first use (Granite P2): the tokenizer
-        # is pinned, so the IDs never change. Avoids 2 encode calls per
-        # scored case. The official scoring snippet uses bare capitals
-        # ("Yes"/"No", no leading space), so bare-capital is tried first
-        # — the mirror image of Qwen3Guard's spaced-first order.
+        # is pinned, so the IDs never change. The official scoring snippet
+        # uses tokenizer.get_vocab()["Yes"] / ["No"] directly — we mirror
+        # that exactly (not encode(), which on SentencePiece returns the
+        # ▁-prefixed id, a different token). Fail closed on KeyError.
         if self._label_ids is None:
-            self._label_ids = {
-                label: _single_token_id(
-                    tokenizer, (label, f" {label}"), label, self.hf_model_id
-                )
-                for label in self.LABELS
-            }
+            try:
+                vocab = tokenizer.get_vocab()
+                self._label_ids = {
+                    label: vocab[label] for label in self.LABELS
+                }
+            except (KeyError, AttributeError) as exc:
+                raise ProviderError(
+                    f"tokenizer for '{self.hf_model_id}' has no vocab entry "
+                    f"for Yes/No labels: {exc}"
+                ) from exc
         ids = self._label_ids
         probs = _softmax([float(x) for x in logits])
         p_yes, p_no = probs[ids["Yes"]], probs[ids["No"]]
