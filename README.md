@@ -1,6 +1,6 @@
 # peira
 
-**AI red teaming with a control group.** peira stress-tests LLM guardrails with 2,000 paired benign/attacked cases across 10 attack families, from prompt injection and jailbreak framing to confidence spoofing and state poisoning. The leaderboard already lines up Mistral's Shieldstral, Meta's Prompt Guard 2, TypeSafe's Jev, the open SemIf, and structured-output frontier LLM baselines. Every attack runs against a clean baseline case, so a flipped decision is evidence about the attack, not noise. Every number ships with a confidence interval.
+**AI red teaming with a control group.** peira stress-tests LLM guardrails with 2,000 paired benign/attacked cases across 10 attack families, from prompt injection and jailbreak framing to confidence spoofing and state poisoning. The adapter roster already lines up Mistral's Shieldstral, Meta's Prompt Guard 2, TypeSafe's Jev, the open SemIf, and structured-output frontier LLM baselines. Every attack runs against a clean baseline case, so a flipped decision is evidence about the attack, not noise. Every number ships with a confidence interval.
 
 *peira* is Greek for trial, the root of "empirical." In Athens it meant a test you ran to find out what was true. Your guardrail says it holds up under attack. This is where it proves it.
 
