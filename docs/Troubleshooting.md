@@ -427,8 +427,8 @@ and re-run; no action needed beyond the retry.
 Cause: code asked `peira.api_pins.get_pinned_model()` for an adapter
 name the pin registry doesn't know. This is a packaging bug, not a user
 error: the registry must cover every API adapter. Fix: add the
-adapter's verified dated model id to `peira.api_pins.PINNED_API_MODELS`
-(and a dated pin entry to `python/peira/data/pricing.json`).
+adapter's verified model id to `peira.api_pins.PINNED_API_MODELS`
+(and a matching pin entry in `python/peira/data/pricing.json`).
 
 **`model '...' was retired by its vendor; use '...' instead`**
 (also raised as `pinned model '...' for adapter '...' was retired by

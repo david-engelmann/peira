@@ -99,22 +99,28 @@ One adapter per provider, one extra each — install only what you need:
 
 | Adapter | Extra | Dotted path | Default model | API key |
 |---|---|---|---|---|
-| OpenAI | `peira[openai]` | `peira.adapters.llm:OpenAIAdapter` | `gpt-5.6-luna-2026-08-01` | `OPENAI_API_KEY` |
-| Anthropic | `peira[anthropic]` | `peira.adapters.llm:AnthropicAdapter` | `claude-sonnet-5-20260915` | `ANTHROPIC_API_KEY` |
-| Google | `peira[google]` | `peira.adapters.llm:GoogleAdapter` | `gemini-3.8-flash-001` | `GOOGLE_API_KEY` |
-| Moonshot (Kimi) | `peira[openai]` | `peira.adapters.llm:MoonshotAdapter` | `kimi-k3-2026-08-01` | `MOONSHOT_API_KEY` |
+| OpenAI | `peira[openai]` | `peira.adapters.llm:OpenAIAdapter` | `gpt-5.6-luna` | `OPENAI_API_KEY` |
+| Anthropic | `peira[anthropic]` | `peira.adapters.llm:AnthropicAdapter` | `claude-sonnet-5` | `ANTHROPIC_API_KEY` |
+| Google | `peira[google]` | `peira.adapters.llm:GoogleAdapter` | `gemini-3.8-flash` | `GOOGLE_API_KEY` |
+| Moonshot (Kimi) | `peira[openai]` | `peira.adapters.llm:MoonshotAdapter` | `kimi-k3` | `MOONSHOT_API_KEY` |
 
-Default models are pinned, not floating. A bare alias like
-`gpt-5.6-luna` lets the vendor swap weights behind the same name, so
-two runs months apart can measure different models; the defaults above
-are the dated versions of those aliases (pins researched 2026-09-27,
-reviewed per release). The pin registry lives in `peira.api_pins`:
-`get_pinned_model(adapter_name)` resolves the exact id, `is_pinned_model()`
-checks one, and `peira doctor` warns when an API adapter's default is
-not the pinned version. The resolved version is sealed into the run
-artifact (`adapter_version`, part of the analysis lock), so a pinned
-run is reproducible and an unpinned one is visibly marked by its
-version string.
+Default models are pinned per each vendor's versioning scheme
+(verified 2026-09-27 against the vendor docs, re-verified per
+release). Anthropic is the strongest case: from the 4.6 generation
+onward the dateless id IS the pinned snapshot by vendor guarantee,
+with weights and config fixed for the life of the id and updates
+shipped under new ids. Google's 3.x ids carry no `-001`-style suffix
+(that convention is 1.5/2.0-era); Moonshot never published dated ids
+at all. The OpenAI pin is the honest weak spot: Luna has no snapshot
+mechanism, so `gpt-5.6-luna` is a best-effort pin — if OpenAI swaps
+the weights behind the name, nothing in peira can detect it. The pin
+registry lives in `peira.api_pins`: `get_pinned_model(adapter_name)`
+resolves the exact id, `is_pinned_model()` checks one, and
+`peira doctor` warns when an API adapter's default is not the pinned
+version. The resolved version is sealed into the run artifact
+(`adapter_version`, part of the analysis lock), so a pinned run is
+reproducible and an unpinned one is visibly marked by its version
+string.
 
 You can still pass a different model explicitly with `model=`.
 The adapter uses it verbatim and the version string records it

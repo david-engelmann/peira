@@ -860,10 +860,10 @@ class MoonshotAdapter(OpenAIAdapter):
     request's ``base_url`` is recorded in the transcript's request
     shape; the key itself never is.
 
-    Default model is ``kimi-k3-2026-08-01`` (the pinned dated version
-    of Moonshot's 2.8T open-weight flagship, $3/$15 per 1M): the
-    self-host audience's flagship model, and the cheapest way to put a
-    frontier-adjacent model on the board.
+    Default model is ``kimi-k3`` (the pinned version of Moonshot's
+    2.8T open-weight flagship, $3/$15 per 1M): the self-host audience's
+    flagship model, and the cheapest way to put a frontier-adjacent
+    model on the board.
 
     Request shape: Moonshot's API 400s on ``seed`` and ``logprobs``
     (per third-party parameter surveys — the adapter omits both

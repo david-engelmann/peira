@@ -393,7 +393,7 @@ class TestOpenAIShape(unittest.TestCase):
 
     def test_call_usage_model_exact(self):
         out = OpenAIAdapter().decide(CASE, "choice", _ctx())
-        self.assertEqual(out.usage.model, "gpt-5.6-luna-2026-08-01")
+        self.assertEqual(out.usage.model, "gpt-5.6-luna")
         self.assertEqual(out.usage.tokens_in, 11)
         self.assertEqual(out.usage.tokens_out, 22)
 
@@ -408,7 +408,7 @@ class TestOpenAIShape(unittest.TestCase):
     def test_seed_in_transcript(self):
         out = OpenAIAdapter().decide(CASE, "choice", _ctx())
         self.assertEqual(out.transcript["seed"], 0)
-        self.assertEqual(out.transcript["model"], "gpt-5.6-luna-2026-08-01")
+        self.assertEqual(out.transcript["model"], "gpt-5.6-luna")
 
     def test_no_key_material_in_transcript(self):
         with _env(OPENAI_API_KEY="sk-test-secret-999"):
@@ -488,7 +488,7 @@ class TestGoogleShape(unittest.TestCase):
         GoogleAdapter().decide(CASE, "choice", _ctx())
         self.assertEqual(self.configs[0]["temperature"], 0)
         self.assertEqual(self.configs[0]["seed"], 0)
-        self.assertEqual(self.calls[0]["model"], "gemini-3.8-flash-001")
+        self.assertEqual(self.calls[0]["model"], "gemini-3.8-flash")
 
     def test_safety_finish_reason_abstains(self):
         self.script[0] = _genai_response("", finish_reason="SAFETY")
