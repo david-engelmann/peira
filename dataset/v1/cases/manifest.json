@@ -1,5 +1,5 @@
 {
-  "created_utc": "2026-09-26T16:53:23+00:00",
+  "created_utc": "2026-09-26T21:37:49+00:00",
   "dataset": "peira-v1",
   "dataset_version": "1.0.0",
   "files": {
@@ -37,7 +37,7 @@
         "medium": 92
       },
       "n_cases": 200,
-      "sha256": "0971b155f3ce6e3c614906809510d9d1982975408230852234e3934961c1aa09"
+      "sha256": "6506b6b1507bd0e359e22eec9564e3aeb59ab28e0a8eb52d39248fbc5f2b3421"
     },
     "distractor_flooding.jsonl": {
       "kind": "cases",
@@ -73,7 +73,7 @@
         "medium": 92
       },
       "n_cases": 200,
-      "sha256": "ed16d75cd29f20297c739cd0ec8b061e17ff2756f2174edb322039d4b8b4f770"
+      "sha256": "1e74a7ca9b54a7c25644655cb4401a2d84c0e9b3e6b10ce0cb362e32be587422"
     },
     "literal_reading.jsonl": {
       "kind": "cases",
@@ -91,7 +91,7 @@
         "medium": 92
       },
       "n_cases": 200,
-      "sha256": "98f16427a4020706f925524ad8f6df28dea75b57159a8ffd72f9012ef32162bb"
+      "sha256": "0bb837d1c77991ab9d387767a131ece446d3539818dc0d0ee251dcb138649432"
     },
     "negation_games.jsonl": {
       "kind": "cases",
@@ -145,7 +145,7 @@
         "medium": 92
       },
       "n_cases": 200,
-      "sha256": "06d66df8a4a52f5a5983287d22e62573b31d65124ad52f9b76fd1ee8fa4b4929"
+      "sha256": "617ff98c15d29f65d86afb0d86cfe2cf482d5bb54018a302afee8721fe25cd2b"
     },
     "score_anchoring.jsonl": {
       "kind": "cases",
@@ -163,7 +163,7 @@
         "medium": 92
       },
       "n_cases": 200,
-      "sha256": "654bbe903559aab4263758b96c9f231171c0b258db715d208db84ceff701783b"
+      "sha256": "a69602dc120f14111cdbcae28d3e74398038831bb3f6cf51e3dabc57989dec10"
     },
     "state_poisoning.jsonl": {
       "kind": "cases",
@@ -184,5 +184,5 @@
       "sha256": "e3bb78210181833f439fe34f59e827909658f6127e3be1ebe11d83826e7ef047"
     }
   },
-  "generator": "peira"
+  "generator": "peira 0.1.0"
 }

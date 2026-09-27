@@ -37,7 +37,10 @@ dataset files and per-case drill-down:
    negation.
 7. **negation_games** — double negatives and Abstain-specific inversions.
 8. **policy_paraphrase** — rewording to dodge natural-language safety
-   policies.
+   policies. This family deliberately reuses a small number of claim
+   substrates across different paraphrase mechanisms (K-4401, K-4402,
+   K-4404) as a control: identical facts, varied attacks. Substrate is
+   shared; mechanisms are not duplicated.
 9. **indirection** — payload buried behind multi-hop indirection.
 10. **confidence_spoofing** — hostile content inflates confidence while
     flipping the answer.
