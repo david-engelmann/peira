@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "peira"
 version = "0.1.0"
-description = "AI red teaming with a control group: the LLM guardrail benchmark."
+description = "Benchmarking decision models under attack, starting with Jev, Shieldstral, Prompt Guard 2 and SemIf. 2,000 paired cases; 95% confidence intervals on every number."
 readme = "README.md"
 license = { text = "MIT" }
 requires-python = ">=3.10"

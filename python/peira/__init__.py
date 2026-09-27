@@ -1,4 +1,4 @@
-"""peira: AI red teaming with a control group."""
+"""peira: benchmarking decision models under attack."""
 
 __version__ = "0.1.0"
 

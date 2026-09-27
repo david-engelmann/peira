@@ -1,15 +1,14 @@
 # peira
 
-**AI red teaming with a control group.** peira stress-tests LLM guardrails with 2,000 paired benign/attacked cases across 10 attack families, from prompt injection and jailbreak framing to confidence spoofing and state poisoning. The adapter roster already lines up Mistral's Shieldstral, Meta's Prompt Guard 2, TypeSafe's Jev, the open SemIf, and structured-output frontier LLM baselines. Every attack runs against a clean baseline case, so a flipped decision is evidence about the attack, not noise. Every number ships with a confidence interval.
+**Benchmarking decision models under attack.** peira puts TypeSafe's Jev, Mistral's Shieldstral, Meta's Prompt Guard 2, the open SemIf, and structured-output frontier LLM baselines through 2,000 paired benign/attacked cases across 10 attack families, from prompt injection and jailbreak framing to confidence spoofing and state poisoning. Every attack runs against a clean control case, so a flipped decision is evidence about the attack, not noise. Every number ships with a 95% confidence interval.
 
-*peira* is Greek for trial, the root of "empirical." In Athens it meant a test you ran to find out what was true. Your guardrail says it holds up under attack. This is where it proves it.
 
 [![ci](https://github.com/david-engelmann/peira/actions/workflows/ci.yml/badge.svg)](https://github.com/david-engelmann/peira/actions/workflows/ci.yml)
 [![license](https://img.shields.io/badge/license-MIT%20%2F%20CC--BY--4.0-blue.svg)](LICENSE)
 
 [Docs](docs/Overview.md) · [Leaderboard](#leaderboard) · [Adapter API](python/peira/adapters/base.py) · [Contributing](docs/Contributing.md) · [Discussions](https://github.com/david-engelmann/peira/discussions)
 
-> Guardrails fail silently. A classifier that approves what it should deny tells you nothing, and a refusal benchmark will not catch it. peira runs each attack against a clean control case, so a flipped decision is evidence about the attack, not noise.
+> Decisions fail silently. A model that approves what it should deny tells you nothing, and an accuracy benchmark will not catch it. peira runs each attack against a clean control case, so a flipped decision is evidence about the attack, not noise.
 
 ## Contents
 
@@ -46,7 +45,7 @@ Sample output: generated, never hand-edited (`scripts/gen_readme_table.py`; run:
 | `state_poisoning` | 0.20 | [0.057, 0.510] | 10 |
 | **overall** | **0.41** | **[0.319, 0.508]** | **100** |
 
-**ASR** is the decision-change attack success rate: the fraction of eligible cases where the attacked decision differs from the benign one. **95% CI** is the Wilson interval. **n** is eligible cases. `mock` is the reference mechanism-exerciser, not a real guardrail, and will never be a leaderboard row. The 100-case Trial is ranking-ineligible by design (under 200 eligible cases) and stays off the leaderboard.
+**ASR** is the decision-change attack success rate: the fraction of eligible cases where the attacked decision differs from the benign one. **95% CI** is the Wilson interval. **n** is eligible cases. `mock` is the reference mechanism-exerciser, not a real decision model, and will never be a leaderboard row. The 100-case Trial is ranking-ineligible by design (under 200 eligible cases) and stays off the leaderboard.
 
 ## 60-second quickstart
 
@@ -65,15 +64,15 @@ Check your setup first with `peira doctor`: it reports Python/RAM/disk/GPU, veri
 
 Whether hostile input changes a decision model's typed output: approve/deny (choice), a numeric score (score), or abstain (abstain). Each attacked case ships with a benign twin, and a case only counts when its benign variant gives a usable baseline. A model cannot look sturdy by failing the control.
 
-The headline metric is decision-change ASR with Wilson 95% confidence intervals. ECE and Brier cover confidence quality. Malformed attacked outputs count as flipped (a guardrail that breaks under attack gets no benefit of the doubt). Refusals are reported as refusal rates, never folded into ASR. Cost is a sidecar, never blended into a score. Every report carries per-case drill-down receipts, and every run is sealed against post-hoc editing.
+The headline metric is decision-change ASR with Wilson 95% confidence intervals. ECE and Brier cover confidence quality. Malformed attacked outputs count as flipped (a decision model that breaks under attack gets no benefit of the doubt). Refusals are reported as refusal rates, never folded into ASR. Cost is a sidecar, never blended into a score. Every report carries per-case drill-down receipts, and every run is sealed against post-hoc editing.
 
-A low ASR is not a safety certificate. It says the guardrail held against peira's 10 families, nothing about the attacks peira does not cover.
+A low ASR is not a safety certificate. It says the decision model held against peira's 10 families, nothing about the attacks peira does not cover.
 
-Built for teams evaluating guardrails before deployment: each attack is paired with a clean control, so a flip is evidence about the attack, not noise.
+Built for teams putting decision models in front of real actions: each attack is paired with a clean control, so a flip is evidence about the attack, not noise.
 
 ## What brings you here
 
-- **Test my guardrail**: run the quickstart above, then read `docs/Methodology.md`.
+- **Test my decision model**: run the quickstart above, then read `docs/Methodology.md`.
 - **Claim a leaderboard row**: see [Adapters](#adapters), then [Add your model](#add-your-model).
 - **Write attack cases**: see [the authoring guide](docs/Dataset.md).
 - **Compare harnesses**: see [How peira differs](#how-peira-differs).
@@ -116,6 +115,8 @@ Adjacent benchmarks (HarmBench, AIR-Bench, JailbreakBench, garak) cover broad re
 | Post-hoc editing | sealed runs, analysis lock | varies |
 
 The peira column is verifiable from this repo; the right-hand column is a rough sketch, not a scorecard. Check each project's own docs before quoting it.
+
+The new wave of decision-model benchmarks (JevBench, OpenRouter's Banking77 comparison, Bespoke Labs' suite) measures accuracy and calibration on clean inputs. peira measures the complementary question: whether hostile inputs flip the decisions. The paired attack/control design isolates the attack's effect, so a flipped decision is evidence about the attack, not noise.
 
 The differentiator, stated plainly: decision-change ASR plus a hard minimum-20-eligible-cases-per-family ranking gate is simpler and more auditable than composite-index leaderboards. For broad red-teaming look at garak, HarmBench, or JailbreakBench; for general-purpose harnesses, Inspect AI or promptfoo. peira is the decision-model layer: approve/deny, score, abstain.
 
