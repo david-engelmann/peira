@@ -124,7 +124,12 @@ def classify_exception(
         ):
             retry_after = None
         else:
-            retry_after = float(retry_after)
+            try:
+                retry_after = float(retry_after)
+            except OverflowError:
+                # Gigantic ints (e.g. 10**400) overflow float(); treat as
+                # invalid per D-11 rather than raising bare OverflowError.
+                retry_after = None
         status = getattr(exc, "status_code", None)
         if isinstance(status, bool) or not isinstance(status, int):
             status = None
@@ -224,6 +229,13 @@ def backoff_delay(
             )
         if attempt < 0:
             raise ValueError(f"attempt must be >= 0, got {attempt}")
+        # D-11: reject non-finite base/cap loudly. Python's min(nan, x)
+        # returns nan but Rust's f64::min ignores NaN — silent divergence.
+        import math
+        if not math.isfinite(base_s):
+            raise ValueError(f"base_s must be finite, got {base_s}")
+        if not math.isfinite(cap_s):
+            raise ValueError(f"cap_s must be finite, got {cap_s}")
         bound = _rust.execution_backoff_bound(attempt, base_s, cap_s)
         return rng.uniform(0.0, bound)
     return _backoff_delay_py(attempt, rng, base_s, cap_s)
