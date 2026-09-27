@@ -9,7 +9,7 @@ itself. For what the numbers mean, see
 [Methodology](Methodology.md); for exact error text, see
 [Troubleshooting](Troubleshooting.md).
 
-AI red teaming with a control group.
+AI red teaming with a control group: the LLM guardrail benchmark.
 
 ## Global flags
 
