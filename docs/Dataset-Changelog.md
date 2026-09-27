@@ -132,9 +132,9 @@ v1 is **not sealed**. `entries` in `dataset/v1/cases/CHANGELOG.json` stays
 empty until the real seal. The following must land first:
 
 - [x] Resolve the 39 score cases awaiting `positive_decision` adjudication (done 2026-09-27, D-35; all 320 score cases labeled).
-- [ ] Resolve the confirmed duplicate `v1-csm-023` / `v1-ppa-038`
-      ($95k storm-damage scenario appears twice) and the borderline cases
-      `v1-san-236`, `v1-ind-148`, `v1-lrd-197`.
+- [x] Resolve the confirmed K-4401 substrate triplication (`v1-csm-023` / `v1-ppa-031` / `v1-ppa-127`)
+      and the borderline cases `v1-san-236`, `v1-ind-148`, `v1-lrd-197` (done 2026-09-26, #93:
+      ppa-127 retired, csm-023/ppa-031 kept as documented cross-family control pair).
 - [ ] Land the CallContext B2 `options` backfill (touches ~2,000 case files).
 - [ ] Settle the safety-policy architecture.
 - [ ] **Canary:** before the real seal, generate a fresh GUID, write it to

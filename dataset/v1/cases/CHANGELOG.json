@@ -352,7 +352,7 @@
       ],
       "dataset_version": "1.0.3",
       "date": "2026-09-27",
-      "description": "Adjudication (D-35): land positive_decision labels on all 320 score-primitive cases across the ten families, resolving the 39-case adjudication dossier under the three standing rulings. Retier v1-csm-125 to medium. Correct v1-csp-163 label to certify (was award, not in options).",
+      "description": "Adjudication (D-35): land positive_decision labels on all 320 score-primitive cases across the ten families, resolving the 39-case adjudication dossier under the three standing rulings. Retier v1-csm-125 to medium. Set v1-csp-163 label to certify (review caught an invalid award value on the pre-rebase branch; certify matches its options).",
       "families": {
         "confidence_spoofing": 200,
         "criteria_smuggling": 200,
