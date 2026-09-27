@@ -65,6 +65,7 @@ fn analysis_lock_parity_with_python() {
             art["seed"].as_i64().unwrap(),
             art["max_concurrency"].as_i64().unwrap(),
             &art["metrics"],
+            art["env_sha256"].as_str().unwrap_or(""),
         );
         assert_eq!(got, row["lock"].as_str().unwrap(), "lock mismatch");
 
