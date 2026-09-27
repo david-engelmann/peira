@@ -26,6 +26,7 @@ and are cached; every model is pinned to an exact commit revision, never
 | Llama Prompt Guard 2 86M | `peira.adapters.hf:LlamaPromptGuard2Adapter` | `meta-llama/Llama-Prompt-Guard-2-86M` | `a8ded8e697ce7c355e395a0df51f94adb4a2fd27` |
 | Qwen3Guard-Gen 4B | `peira.adapters.hf:Qwen3GuardAdapter` | `Qwen/Qwen3Guard-Gen-4B` | `6ec42827da0c1ff11e7a49dc269d2e810d27e108` |
 | Granite Guardian 4.1 8B | `peira.adapters.hf:GraniteGuardianAdapter` | `ibm-granite/granite-guardian-4.1-8b` | `ab01ccca5dcfb80246369a086a4a87a29198f5af` |
+| WildGuard 7B | `peira.adapters.hf:WildGuardAdapter` | `allenai/wildguard` | `cbba4823f3e8020e5a74a5e29bf85072def6f2ff` |
 
 **Shieldstral** is policy-adaptive: it judges content against the policy
 in its prompt, not a fixed category list. It emits a single yes/no
@@ -68,6 +69,23 @@ malicious score — IBM's own logprob practice; yes means the text meets
 the Harm criterion. The Harm criterion is frozen rather than BYOC per
 family: v1 is abstain-primitive-only, so a single universal-harm test
 is the honest mapping. Apache-2.0, ungated.
+
+**WildGuard** is AllenAI's yes/no generative safety classifier
+(Mistral-7B-v0.3 base), prompted with the official Variant A format fed
+verbatim to the tokenizer, never through the chat template: the case
+text in the `Human user:` slot, the `AI assistant:` slot left empty
+for prompt-only scoring, then `Harmful request: ` prefilled so the
+verdict is the next token. The adapter renormalizes the first-token
+logprobs over yes/no and takes P(yes) / (P(yes) + P(no)) as the
+malicious score; the argmax label is recorded in the transcript. Two
+caveats. First, the model is **gated** (auto-gated on Hugging Face):
+accept the AI2 Responsible Use Guidelines on the model page and run
+`huggingface-cli login` before first use. Second, its tokenizer is a
+slow SentencePiece tokenizer, so `sentencepiece` and `protobuf` must be
+installed alongside `peira[hf]`. Apache-2.0. Note: end-to-end scoring
+against the real weights has not been verified in a gated-free
+environment; the prompt format is pinned to the published official
+strings.
 
 Guardrail verdict mapping: content judged benign keeps the case's
 expected decision (the guardrail vetoes nothing); content judged

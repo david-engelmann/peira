@@ -411,11 +411,18 @@ that overrides the pin with something unpinned. Fix: pin the exact
 commit hash.
 
 **`Cannot download gated model '...' (HTTP ...). Accept the model license on its Hugging Face page ...`**
-Cause: Llama Prompt Guard 2 is gated — you haven't accepted the Meta
-Llama 4 Community License on the model's HF page, or `huggingface-cli
-login` / `HF_TOKEN` isn't set. Fix: accept the license (one click on
-the model repo), then authenticate locally. The download is a one-time
-cost; weights are cached afterwards.
+Cause: the model is gated: you haven't accepted the license on its HF
+page, or `huggingface-cli login` / `HF_TOKEN` isn't set. Peira's gated
+adapters: Llama Prompt Guard 2 (Meta Llama 4 Community License) and
+WildGuard (AI2 Responsible Use Guidelines; auto-gated). Fix: accept the
+license (one click on the model repo), then authenticate locally. The
+download is a one-time cost; weights are cached afterwards.
+
+**Tokenizer errors mentioning `sentencepiece` or `protobuf` when loading WildGuard**
+Cause: WildGuard's tokenizer is a slow SentencePiece tokenizer
+(Mistral-7B-v0.3 base); `sentencepiece` and `protobuf` are not part of
+the `peira[hf]` extra. Fix: `pip install sentencepiece protobuf` and
+retry. No model or peira code changes needed.
 
 **`Transient Hugging Face Hub error (HTTP ...) while loading '...' — safe to retry.`**
 Cause: the model download hit a transient Hub error (rate limit or
