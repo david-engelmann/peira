@@ -18,6 +18,7 @@ from peira.adapters.base import ProviderError, validate_output
 from peira.adapters.hf import (
     LlamaPromptGuard2Adapter,
     ProtectAIAdapter,
+    Qwen3GuardAdapter,
     ShieldstralAdapter,
 )
 from peira.concurrency import classify_exception
@@ -89,6 +90,26 @@ class _FakeCausalModel:
         return SimpleNamespace(logits=[[list(self._logits)]])
 
 
+class _Qwen3GuardTokenizer(_FakeTokenizer):
+    """Adds the chat-template hook Qwen3Guard's prompt builder needs."""
+
+    def __init__(self, encode=None, call_ids=(1, 2, 3), template="TEMPLATE:"):
+        super().__init__(encode=encode, call_ids=call_ids)
+        self._template = template
+        self.seen_messages = None
+        self.seen_text = None
+
+    def apply_chat_template(self, messages, tokenize=False):
+        self.seen_messages = messages
+        return self._template
+
+    def __call__(self, text, return_tensors=None, truncation=False,
+                 max_length=None):
+        self.seen_text = text
+        return super().__call__(text, return_tensors=return_tensors,
+                                truncation=truncation, max_length=max_length)
+
+
 class _FakeClassifier:
     def __init__(self, logits):
         self._logits = list(logits)
@@ -131,6 +152,8 @@ class TestPinnedRevisions(unittest.TestCase):
              "90c9989b1a342275dd0d1a95aad283c04e075671"),
             (LlamaPromptGuard2Adapter, "meta-llama/Llama-Prompt-Guard-2-86M",
              "a8ded8e697ce7c355e395a0df51f94adb4a2fd27"),
+            (Qwen3GuardAdapter, "Qwen/Qwen3Guard-Gen-4B",
+             "6ec42827da0c1ff11e7a49dc269d2e810d27e108"),
         ]
         for cls, model_id, revision in cases:
             with self.subTest(cls=cls.__name__):
@@ -155,6 +178,7 @@ class TestPinnedRevisions(unittest.TestCase):
             (ShieldstralAdapter, "shieldstral", "1.0"),
             (ProtectAIAdapter, "protectai-prompt-injection", "2.0"),
             (LlamaPromptGuard2Adapter, "llama-prompt-guard-2", "2.0"),
+            (Qwen3GuardAdapter, "qwen3guard-gen", "1.0"),
         ]:
             with self.subTest(cls=cls.__name__):
                 self.assertEqual(cls.name, name)
@@ -371,6 +395,142 @@ class TestLlamaPromptGuard2(unittest.TestCase):
         self.assertEqual(ids, [101, 7, 8, 9, 102])
 
 
+# -- Qwen3Guard generative scoring -------------------------------------
+
+class TestQwen3Guard(unittest.TestCase):
+    def _adapter(self, logits, encode_map=None, template="TEMPLATE:"):
+        base = {" Safe": [1], " Unsafe": [2], " Controversial": [3]}
+        base.update(encode_map or {})
+        tok = _Qwen3GuardTokenizer(encode=base, template=template)
+        model = _FakeCausalModel(logits)
+        return _make(Qwen3GuardAdapter, tok, model), tok, model
+
+    def test_unsafe_wins_gives_abstain(self):
+        logits = [0.0] * 4
+        logits[2] = 6.0  # " Unsafe" far above everything else
+        adapter, _, model = self._adapter(logits)
+        out = adapter.decide(_choice_input(), "abstain", _ctx())
+        self.assertEqual(out.decision, "abstain")
+        self.assertFalse(out.abstained)  # deliberate label, not a refusal
+        self.assertGreater(out.confidence, 0.99)
+        self.assertEqual(out.transcript["scores"]["label"], "Unsafe")
+        # Generation contract: exactly one greedy token.
+        self.assertEqual(model.generate_kwargs["max_new_tokens"], 1)
+        self.assertEqual(model.generate_kwargs["temperature"], 0)
+        self.assertEqual(out.usage.tokens_out, 1)
+        self.assertEqual(validate_output(out, "abstain"), [])
+
+    def test_safe_wins_gives_other_placeholder(self):
+        logits = [0.0] * 4
+        logits[1] = 6.0  # " Safe"
+        adapter, _, _ = self._adapter(logits)
+        out = adapter.decide(_choice_input(), "abstain", _ctx())
+        self.assertEqual(out.decision, "other")
+        self.assertFalse(out.abstained)
+        self.assertGreater(out.confidence, 0.99)
+        self.assertEqual(out.transcript["scores"]["label"], "Safe")
+        self.assertEqual(validate_output(out, "abstain"), [])
+
+    def test_controversial_counts_as_unsafe_strict_mode(self):
+        # Strict mode: Controversial is not Safe, so it vetoes.
+        logits = [0.0] * 4
+        logits[3] = 6.0  # " Controversial"
+        adapter, _, _ = self._adapter(logits)
+        out = adapter.decide(_choice_input(), "abstain", _ctx())
+        self.assertEqual(out.decision, "abstain")
+        self.assertEqual(out.transcript["scores"]["label"], "Controversial")
+        self.assertEqual(validate_output(out, "abstain"), [])
+
+    def test_renormalization_math(self):
+        # Ids: Safe=1, Unsafe=2, Controversial=3. Mass on index 0 must
+        # not leak into p_malicious.
+        logits = [2.0, 1.0, 0.5, 0.0]
+        adapter, _, _ = self._adapter(logits)
+        out = adapter.decide(_choice_input(), "abstain", _ctx())
+        e1, e05, e0 = math.exp(1.0), math.exp(0.5), math.exp(0.0)
+        total = e1 + e05 + e0
+        expected_p = (e05 + e0) / total  # P(Unsafe)+P(Controversial)
+        scores = out.transcript["scores"]
+        self.assertAlmostEqual(scores["p_malicious"], expected_p)
+        self.assertAlmostEqual(scores["p_safe"], e1 / total)
+        self.assertAlmostEqual(scores["p_unsafe"], e05 / total)
+        self.assertAlmostEqual(scores["p_controversial"], e0 / total)
+        self.assertEqual(scores["label"], "Safe")  # argmax over labels
+        # 0.38 < 0.5: Safe argmax with sub-threshold unsafe mass stays
+        # benign — the threshold, not the argmax, decides.
+        self.assertEqual(out.decision, "other")
+        self.assertAlmostEqual(out.confidence, abs(2 * expected_p - 1))
+
+    def test_strict_mode_flips_on_combined_mass(self):
+        # No single unsafe label wins, but Unsafe+Controversial mass
+        # clears 0.5: Strict mode vetoes.
+        logits = [0.0, 1.0, 1.0, 1.0]
+        adapter, _, _ = self._adapter(logits)
+        out = adapter.decide(_choice_input(), "abstain", _ctx())
+        e1 = math.exp(1.0)
+        expected_p = 2 * e1 / (3 * e1)  # = 2/3
+        self.assertAlmostEqual(
+            out.transcript["scores"]["p_malicious"], expected_p)
+        self.assertEqual(out.decision, "abstain")
+
+    def test_chat_template_prefills_safety_prefix(self):
+        logits = [0.0] * 4
+        logits[1] = 6.0
+        adapter, tok, _ = self._adapter(logits, template="<tmpl>")
+        out = adapter.decide(_choice_input("hello"), "abstain", _ctx())
+        # Prompt moderation: single user message through the template,
+        # with "Safety:" prefilled so the next token is the label.
+        self.assertEqual(tok.seen_messages,
+                         [{"role": "user", "content": "hello"}])
+        # The prefill must actually be appended to the templated prompt.
+        self.assertTrue(tok.seen_text.endswith("Safety:"),
+                        f"prompt was {tok.seen_text!r}")
+        self.assertEqual(out.transcript["scores"]["label"], "Safe")
+
+    def test_bare_token_fallback(self):
+        # " Safe" is multi-token here: fall back to the bare "Safe" id.
+        logits = [0.0] * 10
+        logits[7] = 5.0  # bare "Safe"
+        adapter, _, _ = self._adapter(
+            logits, encode_map={" Safe": [5, 6], "Safe": [7]})
+        out = adapter.decide(_choice_input(), "abstain", _ctx())
+        self.assertEqual(out.decision, "other")
+        self.assertEqual(out.transcript["scores"]["label"], "Safe")
+
+    def test_missing_label_token_raises_provider_error(self):
+        # No single-token id for a label: fail closed, never silently
+        # score against the wrong ids.
+        adapter, _, _ = self._adapter(
+            [0.0] * 4, encode_map={" Safe": [1, 2], "Safe": [3, 4]})
+        with self.assertRaises(ProviderError) as ctx:
+            adapter.decide(_choice_input(), "abstain", _ctx())
+        self.assertIn("single-token id", str(ctx.exception))
+        self.assertIn("Qwen/Qwen3Guard-Gen-4B", str(ctx.exception))
+
+    def test_non_text_template_raises_provider_error(self):
+        class _BadTemplate(_Qwen3GuardTokenizer):
+            def apply_chat_template(self, messages, tokenize=False):
+                return ["not", "text"]
+
+        tok = _BadTemplate(encode={" Safe": [1], " Unsafe": [2],
+                                   " Controversial": [3]})
+        adapter = _make(Qwen3GuardAdapter, tok, _FakeCausalModel([0.0] * 4))
+        with self.assertRaises(ProviderError):
+            adapter.decide(_choice_input(), "abstain", _ctx())
+
+    def test_usage_model_is_pinned_identifier(self):
+        logits = [0.0] * 4
+        logits[1] = 6.0
+        adapter, _, _ = self._adapter(logits)
+        out = adapter.decide(_choice_input(), "abstain", _ctx())
+        self.assertEqual(
+            out.usage.model,
+            "hf:Qwen/Qwen3Guard-Gen-4B"
+            "@6ec42827da0c1ff11e7a49dc269d2e810d27e108",
+        )
+        self.assertNotIn("main", out.usage.model)
+
+
 # -- shared behavior ---------------------------------------------------
 
 class TestSharedBehavior(unittest.TestCase):
@@ -473,6 +633,12 @@ class TestSharedBehavior(unittest.TestCase):
              [0.1, 4.0], [4.0, 0.1]),
             (LlamaPromptGuard2Adapter, _FakeTokenizer(), _FakeClassifier,
              [0.1, 4.0], [4.0, 0.1]),
+            # Qwen3Guard: three label tokens; the fake tokenizer below maps
+            # " Safe"->[1], " Unsafe"->[2], " Controversial"->[3].
+            (Qwen3GuardAdapter,
+             _Qwen3GuardTokenizer({" Safe": [1], " Unsafe": [2],
+                                   " Controversial": [3]}),
+             _FakeCausalModel, [0.1, 0.1, 4.0, 0.1], [0.1, 4.0, 0.1, 0.1]),
         ]
         for cls, tok, model_cls, mal_logits, ben_logits in specs:
             for logits, verdict in [(mal_logits, "abstain"),

@@ -391,7 +391,8 @@ and their cases re-run on resume.
 
 **`this adapter requires the 'hf' extra (torch and transformers): install it with: pip install 'peira[hf]'`**
 Cause: you instantiated a Hugging Face adapter (`shieldstral`,
-`protectai-prompt-injection`, `llama-prompt-guard-2`) without the
+`protectai-prompt-injection`, `llama-prompt-guard-2`, `qwen3guard-gen`)
+without the
 optional dependency. Fix: `pip install "peira[hf]"` (the base package
 stays dependency-free by design). The LLM baselines fail closed the same way, naming their own
 extra: `the peira[openai] extra is required for OpenAIAdapter —
@@ -434,6 +435,23 @@ spelling, so the probability can't be read honestly. This is a
 tokenizer/model mismatch, not a retryable failure. Fix: check the
 pinned revision actually matches `mistralai/Shieldstral-1.0-3B`;
 don't substitute tokenizers.
+
+**`tokenizer for 'Qwen/Qwen3Guard-Gen-4B' has no single-token id for Safe (tried ...) ...`**
+Cause: Qwen3Guard reads its verdict from the first-token logprobs of
+` Safe`/` Unsafe`/` Controversial` — the loaded tokenizer has no
+single-token id for one of the three label spellings (tried with and
+without the leading space), so the probability can't be read honestly.
+This is a tokenizer/model mismatch, not a retryable failure. Fix:
+check the pinned revision actually matches
+`Qwen/Qwen3Guard-Gen-4B`; don't substitute tokenizers.
+
+**`chat template for 'Qwen/Qwen3Guard-Gen-4B' did not return text; cannot build the moderation prompt`**
+Cause: Qwen3Guard is prompted through the model's own chat template
+(`apply_chat_template`); the template returned something other than
+text, so the moderation prompt can't be built. This is a
+tokenizer/model mismatch, not a retryable failure. Fix: check the
+pinned revision actually matches `Qwen/Qwen3Guard-Gen-4B`; don't
+substitute tokenizers.
 
 **`llama-prompt-guard-2 tokenizer has no CLS/SEP token ids`**
 Cause: the loaded tokenizer reports no CLS/SEP token ids, so chunks

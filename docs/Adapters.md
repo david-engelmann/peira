@@ -24,6 +24,7 @@ and are cached; every model is pinned to an exact commit revision, never
 | Shieldstral | `peira.adapters.hf:ShieldstralAdapter` | `mistralai/Shieldstral-1.0-3B` | `003ec7e2b0bab5f0e6307edbaf186fa5822b76f5` |
 | ProtectAI prompt injection | `peira.adapters.hf:ProtectAIAdapter` | `protectai/deberta-v3-base-prompt-injection-v2` | `90c9989b1a342275dd0d1a95aad283c04e075671` |
 | Llama Prompt Guard 2 86M | `peira.adapters.hf:LlamaPromptGuard2Adapter` | `meta-llama/Llama-Prompt-Guard-2-86M` | `a8ded8e697ce7c355e395a0df51f94adb4a2fd27` |
+| Qwen3Guard-Gen 4B | `peira.adapters.hf:Qwen3GuardAdapter` | `Qwen/Qwen3Guard-Gen-4B` | `6ec42827da0c1ff11e7a49dc269d2e810d27e108` |
 
 **Shieldstral** is policy-adaptive: it judges content against the policy
 in its prompt, not a fixed category list. It emits a single yes/no
@@ -42,6 +43,18 @@ and run `huggingface-cli login` before first use — and it ships under
 the Llama 4 Community License, not an OSI-approved license. Note this
 is v2's deliberate binary scheme; v1's three-label mapping does not
 apply.
+
+**Qwen3Guard-Gen** is a three-tier generative guard (Safe / Unsafe /
+Controversial) run in prompt-moderation mode through its own chat
+template, with `Safety: ` prefilled so the verdict is the next token.
+The adapter renormalizes the first-token logprobs over the three label
+tokens and takes P(Unsafe) + P(Controversial) as the malicious score —
+**Strict mode**: Controversial counts as unsafe, since a guardrail that
+cannot clear content as Safe has not cleared it. The model's argmax
+label is recorded in the transcript. Caveat: independent robustness
+work found Qwen3Guard accuracy collapsing on novel adversarial prompts,
+so expect below-leaderboard numbers on peira's semantic arms — that is
+signal about the guardrail, not an adapter defect. Apache-2.0, ungated.
 
 Guardrail verdict mapping: content judged benign keeps the case's
 expected decision (the guardrail vetoes nothing); content judged

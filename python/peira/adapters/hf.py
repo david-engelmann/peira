@@ -63,6 +63,7 @@ __all__ = [
     "ShieldstralAdapter",
     "ProtectAIAdapter",
     "LlamaPromptGuard2Adapter",
+    "Qwen3GuardAdapter",
 ]
 
 _EXTRA_INSTALL = "peira[hf]"
@@ -137,6 +138,34 @@ def _is_auth_error(exc: Exception, status: int | None) -> bool:
     if status in (401, 403):
         return True
     return type(exc).__name__ in ("GatedRepoError",)
+
+
+def _single_token_id(
+    tokenizer: Any,
+    candidates: tuple[str, ...],
+    what: str,
+    model_id: str,
+) -> int:
+    """Resolve a label word to its single tokenizer id.
+
+    Tries each candidate spelling in order (conventionally the
+    leading-space variant first, as subword tokenizers usually emit
+    it). Raises a descriptive ProviderError when no candidate is a
+    single token — the caller cannot read first-token logprobs then.
+    """
+    for candidate in candidates:
+        try:
+            ids = _to_list(
+                tokenizer.encode(candidate, add_special_tokens=False)
+            )
+        except Exception:
+            continue
+        if len(ids) == 1:
+            return int(ids[0])
+    raise ProviderError(
+        f"tokenizer for '{model_id}' has no single-token id for "
+        f"{what} (tried {candidates!r}); cannot read first-token logprobs"
+    )
 
 
 class _HFAdapterBase:
@@ -370,24 +399,6 @@ class ShieldstralAdapter(_HFAdapterBase):
             "Answer:"
         )
 
-    def _single_token_id(
-        self, tokenizer: Any, candidates: tuple[str, ...], what: str
-    ) -> int:
-        for candidate in candidates:
-            try:
-                ids = _to_list(
-                    tokenizer.encode(candidate, add_special_tokens=False)
-                )
-            except Exception:
-                continue
-            if len(ids) == 1:
-                return int(ids[0])
-        raise ProviderError(
-            f"tokenizer for '{self.hf_model_id}' has no single-token id for "
-            f"{what} (tried {candidates!r}); cannot read yes/no first-token "
-            "logprobs"
-        )
-
     def _score_text(self, text: str) -> tuple[float, int, dict[str, Any]]:
         torch = self._torch
         tokenizer, model = self._ensure_loaded()
@@ -404,8 +415,12 @@ class ShieldstralAdapter(_HFAdapterBase):
                 return_dict_in_generate=True,
             )
         logits = _to_list(generated.logits[0][0])
-        yes_id = self._single_token_id(tokenizer, (" yes", "yes"), "yes")
-        no_id = self._single_token_id(tokenizer, (" no", "no"), "no")
+        yes_id = _single_token_id(
+            tokenizer, (" yes", "yes"), "yes", self.hf_model_id
+        )
+        no_id = _single_token_id(
+            tokenizer, (" no", "no"), "no", self.hf_model_id
+        )
         probs = _softmax([float(x) for x in logits])
         p_yes, p_no = probs[yes_id], probs[no_id]
         denom = p_yes + p_no
@@ -532,3 +547,112 @@ class LlamaPromptGuard2Adapter(_ClassifierBase):
             if score > best:
                 best = score
         return best, len(ids), {"chunks": len(chunks)}
+
+
+class Qwen3GuardAdapter(_HFAdapterBase):
+    """Alibaba Qwen3Guard-Gen (4B): three-tier generative safety guard.
+
+    Prompted through the model's own chat template in prompt-moderation
+    mode (a single user message carrying the case text), with
+    ``"Safety:"`` prefilled so the next generated token is the verdict
+    label. The template mandates the first output line be one of
+    ``Safety: Safe`` / ``Safety: Unsafe`` / ``Safety: Controversial``,
+    so the prefill constrains generation to the trained format rather
+    than changing it.
+
+    The continuous score renormalizes the first-token logprobs over the
+    three label tokens (Safe / Unsafe / Controversial) and takes
+    ``P(Unsafe) + P(Controversial)`` as p_malicious — Strict mode: a
+    Controversial verdict counts as unsafe, because a guardrail that
+    cannot clear content as Safe has not cleared it. The model's own
+    argmax label is reported in the transcript for diagnostics.
+
+    Known limitation: an independent robustness study (Young/UNLV, Nov
+    2025, cited by OWASP AISVS) found Qwen3Guard-8B accuracy dropping
+    91.0% -> 33.8% on novel adversarial prompts. Expect below-leaderboard
+    numbers on peira's semantic/goal-hijack arms; that is signal about
+    the guardrail, not a defect in the adapter.
+
+    HF repo ``Qwen/Qwen3Guard-Gen-4B`` (Apache-2.0, ungated) at the
+    pinned revision below — never ``main`` or a floating tag.
+    """
+
+    name = "qwen3guard-gen"
+    version = "1.0"
+    HF_MODEL_ID = "Qwen/Qwen3Guard-Gen-4B"
+    HF_REVISION = "6ec42827da0c1ff11e7a49dc269d2e810d27e108"
+    OUTPUT_TOKENS = 1
+
+    #: The three verdict labels, in template order.
+    LABELS = ("Safe", "Unsafe", "Controversial")
+    #: Prefilled after the chat template so the next token is the label.
+    #: No trailing space: the space attaches to the label token (" Unsafe")
+    #: per the model's training distribution.
+    _LABEL_PREFIX = "Safety:"
+
+    def __init__(
+        self,
+        hf_model_id: str | None = None,
+        hf_revision: str | None = None,
+    ) -> None:
+        super().__init__(hf_model_id, hf_revision)
+        # Cached label token IDs, resolved on first _score_text call.
+        self._label_ids: dict[str, int] | None = None
+
+    def _model_class(self, transformers: Any) -> Any:
+        return transformers.AutoModelForCausalLM
+
+    def _build_prompt(self, text: str, tokenizer: Any) -> str:
+        templated = tokenizer.apply_chat_template(
+            [{"role": "user", "content": text}], tokenize=False
+        )
+        if not isinstance(templated, str):
+            raise ProviderError(
+                f"chat template for '{self.hf_model_id}' did not return "
+                "text; cannot build the moderation prompt"
+            )
+        return templated + self._LABEL_PREFIX
+
+    def _score_text(self, text: str) -> tuple[float, int, dict[str, Any]]:
+        torch = self._torch
+        tokenizer, model = self._ensure_loaded()
+        encoded = tokenizer(self._build_prompt(text, tokenizer),
+                            return_tensors="pt")
+        input_ids = encoded["input_ids"]
+        input_tokens = _batch_seq_len(input_ids)
+        with torch.no_grad():
+            generated = model.generate(
+                input_ids,
+                max_new_tokens=1,
+                do_sample=False,
+                temperature=0.0,
+                output_logits=True,
+                return_dict_in_generate=True,
+            )
+        logits = _to_list(generated.logits[0][0])
+        # Cache label token IDs on first use (P2): the tokenizer is pinned,
+        # so the IDs never change. Avoids 3 encode calls per scored case.
+        if self._label_ids is None:
+            self._label_ids = {
+                label: _single_token_id(
+                    tokenizer, (f" {label}", label), label, self.hf_model_id
+                )
+                for label in self.LABELS
+            }
+        ids = self._label_ids
+        probs = _softmax([float(x) for x in logits])
+        p = {label: probs[idx] for label, idx in ids.items()}
+        total = p["Safe"] + p["Unsafe"] + p["Controversial"]
+        if total > 0.0:
+            p = {label: v / total for label, v in p.items()}
+        else:  # degenerate: uniform over the label set, never NaN
+            p = {label: 1.0 / 3.0 for label in self.LABELS}
+        # Strict mode: Controversial counts as unsafe.
+        p_malicious = p["Unsafe"] + p["Controversial"]
+        label = max(self.LABELS, key=lambda l: p[l])
+        return p_malicious, input_tokens, {
+            "p_safe": p["Safe"],
+            "p_unsafe": p["Unsafe"],
+            "p_controversial": p["Controversial"],
+            "label": label,
+        }
