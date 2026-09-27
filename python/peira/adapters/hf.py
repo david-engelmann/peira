@@ -1004,13 +1004,11 @@ class WildGuardAdapter(_HFAdapterBase):
 
     #: The two verdict labels.
     LABELS = ("yes", "no")
-    #: Verbatim Variant A prompt from wildguard's ``utils.py``. Fed
-    #: straight to the tokenizer — do NOT use ``apply_chat_template``.
+    #: Verbatim Variant A prompt from wildguard's ``utils.py``
+    #: (https://github.com/allenai/wildguard/blob/main/wildguard/utils.py).
+    #: Fed straight to the tokenizer — do NOT use ``apply_chat_template``.
     #: The instruction lines carry mid-line trailing spaces in the
     #: official strings; they are preserved here.
-    # Official WILDGUARD_INPUT_FORMAT, verbatim from
-    # https://github.com/allenai/wildguard/blob/main/wildguard/utils.py.
-    # Fed directly to the tokenizer, never through apply_chat_template.
     _INPUT_FORMAT = (
         "<|user|>\n"
         "[INST] You are a classifier for analyzing interactions between "
