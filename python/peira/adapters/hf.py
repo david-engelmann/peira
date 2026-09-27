@@ -965,7 +965,7 @@ class WildGuardAdapter(_HFAdapterBase):
 
     Prompted with an input format adapted from upstream
     ``WILDGUARD_INPUT_FORMAT`` (allenai/wildguard ``utils.py``), fed to
-    the tokenizer directly — never through ``apply_chat_template``. In
+    the tokenizer directly, never through ``apply_chat_template``. In
     prompt-only mode the case text goes into the ``Human user:`` slot
     and the ``AI assistant:`` slot stays empty (the official code does
     ``item["response"] = ""`` when the response is missing). The input
@@ -1015,7 +1015,7 @@ class WildGuardAdapter(_HFAdapterBase):
     LABELS = ("yes", "no")
     #: Variant A prompt adapted from upstream ``WILDGUARD_INPUT_FORMAT``
     #: (allenai/wildguard ``wildguard/utils.py``). Byte-verification
-    #: against upstream is pending gated HF access — do not claim
+    #: against upstream is pending gated HF access; do not claim
     #: byte-identity until then.
     #: Fed straight to the tokenizer — do NOT use ``apply_chat_template``.
     _INPUT_FORMAT = (
@@ -1068,8 +1068,8 @@ class WildGuardAdapter(_HFAdapterBase):
     def _score_text(self, text: str) -> tuple[float, int, dict[str, Any]]:
         torch = self._torch
         tokenizer, model = self._ensure_loaded()
-        # The format is fed to the tokenizer directly — never through
-        # apply_chat_template — so the added ``<|user|>`` /
+        # The format is fed to the tokenizer directly, never through
+        # apply_chat_template, so the added ``<|user|>`` /
         # ``<|assistant|>`` markers reach the model exactly as written in
         # the constant above. No leading <s>: the tokenizer prepends BOS
         # itself via add_special_tokens=True.

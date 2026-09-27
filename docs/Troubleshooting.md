@@ -470,15 +470,15 @@ substitute tokenizers.
 
 **`tokenizer for 'google/shieldgemma-2b' has no vocab entry for Yes/No labels: ...`**
 Cause: ShieldGemma reads its verdict from the first-token logprobs of
-the `Yes`/`No` vocab entries (mirroring the official scoring snippet)
-— the loaded tokenizer has no such vocab entries, so the probability
+the `Yes`/`No` vocab entries (mirroring the official scoring snippet).
+The loaded tokenizer has no such vocab entries, so the probability
 can't be read honestly. This is a tokenizer/model mismatch, not a
 retryable failure. Fix: check the pinned revision actually matches
 `google/shieldgemma-2b`; don't substitute tokenizers.
 
 **`tokenizer for 'allenai/wildguard' has no single-token id for yes (tried ...) ...`**
 Cause: WildGuard reads its verdict from the first-token logprobs after
-the `"Harmful request: "` prefill — the loaded tokenizer has no
+the `"Harmful request: "` prefill. The loaded tokenizer has no
 single-token id for the yes/no label spellings (tried bare, then with
 the leading space), so the probability can't be read honestly. This is
 a tokenizer/model mismatch, not a retryable failure. Fix: check the
