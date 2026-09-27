@@ -392,7 +392,7 @@ and their cases re-run on resume.
 **`this adapter requires the 'hf' extra (torch and transformers): install it with: pip install 'peira[hf]'`**
 Cause: you instantiated a Hugging Face adapter (`shieldstral`,
 `protectai-prompt-injection`, `llama-prompt-guard-2`, `qwen3guard-gen`,
-`granite-guardian`)
+`granite-guardian`, `granite-guardian-hap`)
 without the
 optional dependency. Fix: `pip install "peira[hf]"` (the base package
 stays dependency-free by design). The LLM baselines fail closed the same way, naming their own

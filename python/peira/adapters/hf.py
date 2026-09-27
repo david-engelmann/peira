@@ -63,6 +63,7 @@ __all__ = [
     "ShieldstralAdapter",
     "ProtectAIAdapter",
     "LlamaPromptGuard2Adapter",
+    "GraniteHAPAdapter",
     "Qwen3GuardAdapter",
     "GraniteGuardianAdapter",
     "ShieldGemmaAdapter",
@@ -549,6 +550,46 @@ class LlamaPromptGuard2Adapter(_ClassifierBase):
             if score > best:
                 best = score
         return best, len(ids), {"chunks": len(chunks)}
+
+
+class GraniteHAPAdapter(_ClassifierBase):
+    """IBM Granite Guardian HAP-125M: tiny toxicity binary classifier.
+
+    A 12-layer RoBERTa sequence classifier (125M parameters) trained
+    for hateful, abusive, profane, and other toxic English content.
+    Binary scheme: label 0 = SAFE, label 1 = TOXIC. The score is the
+    softmax probability of the TOXIC class — the model's own usage
+    recipe (``torch.softmax(logits, dim=1)[:, 1]``).
+
+    Plain-text input: no chat template, no prompt formatting — the
+    case text is tokenized directly with truncation at 512 tokens.
+
+    This is the smallest guardrail in the roster and the same product
+    family as Granite Guardian 4.1, so it doubles as the low end of a
+    64x scale-contrast comparison at near-zero inference cost.
+
+    HF repo ``ibm-granite/granite-guardian-hap-125m`` (Apache-2.0,
+    ungated) at the pinned revision below — never ``main`` or a
+    floating tag.
+    """
+
+    name = "granite-guardian-hap"
+    version = "1.0"
+    HF_MODEL_ID = "ibm-granite/granite-guardian-hap-125m"
+    HF_REVISION = "a76ccfd3ddb790fa7c23db58149bfec7ba1aa57f"
+    LABELS = {0: "SAFE", 1: "TOXIC"}
+
+    def _score_text(self, text: str) -> tuple[float, int, dict[str, Any]]:
+        torch = self._torch
+        tokenizer, model = self._ensure_loaded()
+        encoded = tokenizer(
+            text, return_tensors="pt", truncation=True, max_length=512
+        )
+        input_tokens = _batch_seq_len(encoded["input_ids"])
+        with torch.no_grad():
+            logits = _to_list(model(**encoded).logits[0])
+        return self._proba_for_logits([float(x) for x in logits]), \
+            input_tokens, {}
 
 
 class Qwen3GuardAdapter(_HFAdapterBase):

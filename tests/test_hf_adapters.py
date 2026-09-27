@@ -19,6 +19,7 @@ from peira.adapters.hf import (
     GraniteGuardianAdapter,
     ShieldGemmaAdapter,
     LlamaPromptGuard2Adapter,
+    GraniteHAPAdapter,
     ProtectAIAdapter,
     Qwen3GuardAdapter,
     ShieldstralAdapter,
@@ -211,6 +212,8 @@ class TestPinnedRevisions(unittest.TestCase):
              "a8ded8e697ce7c355e395a0df51f94adb4a2fd27"),
             (Qwen3GuardAdapter, "Qwen/Qwen3Guard-Gen-4B",
              "6ec42827da0c1ff11e7a49dc269d2e810d27e108"),
+            (GraniteHAPAdapter, "ibm-granite/granite-guardian-hap-125m",
+             "a76ccfd3ddb790fa7c23db58149bfec7ba1aa57f"),
         ]
         for cls, model_id, revision in cases:
             with self.subTest(cls=cls.__name__):
@@ -236,6 +239,7 @@ class TestPinnedRevisions(unittest.TestCase):
             (ProtectAIAdapter, "protectai-prompt-injection", "2.0"),
             (LlamaPromptGuard2Adapter, "llama-prompt-guard-2", "2.0"),
             (Qwen3GuardAdapter, "qwen3guard-gen", "1.0"),
+            (GraniteHAPAdapter, "granite-guardian-hap", "1.0"),
         ]:
             with self.subTest(cls=cls.__name__):
                 self.assertEqual(cls.name, name)
@@ -380,6 +384,88 @@ class TestProtectAI(unittest.TestCase):
         self.assertEqual(validate_output(out, "abstain"), [])
 
     def test_noul_benign_returns_other_placeholder(self):
+        out = self._adapter([2.5, 0.2]).decide(
+            _choice_input(), "abstain", _ctx())
+        self.assertEqual(out.decision, "other")
+        self.assertFalse(out.abstained)
+        self.assertEqual(validate_output(out, "abstain"), [])
+
+
+class TestGraniteHAP(unittest.TestCase):
+    def _adapter(self, logits):
+        return _make(GraniteHAPAdapter, _FakeTokenizer(),
+                     _FakeClassifier(logits))
+
+    def test_labels(self):
+        self.assertEqual(GraniteHAPAdapter.LABELS,
+                         {0: "SAFE", 1: "TOXIC"})
+
+    def test_toxic_maps_to_abstain(self):
+        out = self._adapter([0.0, 4.0]).decide(
+            _choice_input("you are worthless and disgusting"),
+            "abstain", _ctx())
+        self.assertEqual(out.decision, "abstain")
+        self.assertFalse(out.abstained)
+        self.assertGreater(out.confidence, 0.9)
+        self.assertEqual(out.usage.tokens_out, 0)
+        self.assertEqual(validate_output(out, "abstain"), [])
+
+    def test_safe_maps_to_other_placeholder(self):
+        out = self._adapter([3.0, 0.5]).decide(
+            _choice_input("have a great day"), "abstain", _ctx())
+        self.assertEqual(out.decision, "other")
+        self.assertFalse(out.abstained)
+        self.assertEqual(validate_output(out, "abstain"), [])
+
+    def test_softmax_probability_of_toxic_class(self):
+        # logits [1.0, 2.0]: p(toxic) = e^2 / (e^1 + e^2).
+        out = self._adapter([1.0, 2.0]).decide(
+            _choice_input(), "abstain", _ctx())
+        e1, e2 = math.exp(1.0), math.exp(2.0)
+        expected = e2 / (e1 + e2)
+        self.assertAlmostEqual(
+            out.transcript["scores"]["p_malicious"], expected)
+        self.assertAlmostEqual(out.confidence, abs(2 * expected - 1))
+        self.assertEqual(out.decision, "abstain")  # 0.73 >= 0.5
+
+    def test_plain_text_input_no_template(self):
+        # The HAP model takes raw text: the tokenizer must receive the
+        # case text unmodified (no chat template, no prompt wrapper).
+        seen = {}
+
+        class RecordingTokenizer(_FakeTokenizer):
+            def __call__(self, text, **kwargs):
+                seen["text"] = text
+                return super().__call__(text, **kwargs)
+
+        adapter = _make(GraniteHAPAdapter, RecordingTokenizer(),
+                        _FakeClassifier([3.0, 0.5]))
+        adapter.decide(_choice_input("raw input text"), "abstain", _ctx())
+        self.assertEqual(seen["text"], "raw input text")
+
+    def test_truncation_at_512(self):
+        seen = {}
+
+        class RecordingTokenizer(_FakeTokenizer):
+            def __call__(self, text, **kwargs):
+                seen["kwargs"] = kwargs
+                return super().__call__(text, **kwargs)
+
+        adapter = _make(GraniteHAPAdapter, RecordingTokenizer(),
+                        _FakeClassifier([3.0, 0.5]))
+        adapter.decide(_choice_input("x"), "abstain", _ctx())
+        self.assertTrue(seen["kwargs"].get("truncation"))
+        self.assertEqual(seen["kwargs"].get("max_length"), 512)
+
+    def test_noul_toxic_is_abstain_label(self):
+        out = self._adapter([0.2, 2.5]).decide(_choice_input(), "abstain", _ctx())
+        self.assertEqual(out.decision, "abstain")
+        self.assertFalse(out.abstained)  # explicit label, not a refusal
+        self.assertGreaterEqual(
+            out.transcript["scores"]["p_malicious"], 0.5)
+        self.assertEqual(validate_output(out, "abstain"), [])
+
+    def test_noul_safe_returns_other_placeholder(self):
         out = self._adapter([2.5, 0.2]).decide(
             _choice_input(), "abstain", _ctx())
         self.assertEqual(out.decision, "other")

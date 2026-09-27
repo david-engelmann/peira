@@ -26,6 +26,7 @@ and are cached; every model is pinned to an exact commit revision, never
 | Llama Prompt Guard 2 86M | `peira.adapters.hf:LlamaPromptGuard2Adapter` | `meta-llama/Llama-Prompt-Guard-2-86M` | `a8ded8e697ce7c355e395a0df51f94adb4a2fd27` |
 | Qwen3Guard-Gen 4B | `peira.adapters.hf:Qwen3GuardAdapter` | `Qwen/Qwen3Guard-Gen-4B` | `6ec42827da0c1ff11e7a49dc269d2e810d27e108` |
 | Granite Guardian 4.1 8B | `peira.adapters.hf:GraniteGuardianAdapter` | `ibm-granite/granite-guardian-4.1-8b` | `ab01ccca5dcfb80246369a086a4a87a29198f5af` |
+| Granite Guardian HAP 125M | `peira.adapters.hf:GraniteHAPAdapter` | `ibm-granite/granite-guardian-hap-125m` | `a76ccfd3ddb790fa7c23db58149bfec7ba1aa57f` |
 | ShieldGemma 2B | `peira.adapters.hf:ShieldGemmaAdapter` | `google/shieldgemma-2b` | `d1dffc9c8c9237a90aab09c61383791e718ef9e8` |
 
 **Shieldstral** is policy-adaptive: it judges content against the policy
@@ -45,6 +46,14 @@ and run `huggingface-cli login` before first use — and it ships under
 the Llama 4 Community License, not an OSI-approved license. Note this
 is v2's deliberate binary scheme; v1's three-label mapping does not
 apply.
+
+**Granite Guardian HAP 125M** is IBM's tiny toxicity classifier (125M
+parameters, 12-layer RoBERTa) for hateful, abusive, profane, and toxic
+English text. Binary SAFE / TOXIC scheme; the score is the softmax
+probability of the TOXIC class. Plain-text input with no chat template
+and truncation at 512 tokens. Same product family as Granite Guardian
+4.1 at 1/64th the size, so it anchors the low end of a scale-contrast
+comparison. Apache-2.0, ungated.
 
 **Qwen3Guard-Gen** is a three-tier generative guard (Safe / Unsafe /
 Controversial) run in prompt-moderation mode through its own chat
