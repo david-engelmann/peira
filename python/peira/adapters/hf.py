@@ -64,6 +64,7 @@ __all__ = [
     "ProtectAIAdapter",
     "LlamaPromptGuard2Adapter",
     "Qwen3GuardAdapter",
+    "GraniteGuardianAdapter",
 ]
 
 _EXTRA_INSTALL = "peira[hf]"
