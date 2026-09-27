@@ -893,25 +893,21 @@ class TestShieldGemma(unittest.TestCase):
         adapter.decide(_choice_input("hello"), "abstain", _ctx())
         self.assertEqual(tok.seen_text, "<tmpl>\n\n")
 
-    def test_bare_capital_token_preferred_over_spaced(self):
-        # The official scoring snippet uses vocab['Yes'] (no leading
-        # space): bare-capital is the primary lookup.
+    def test_label_ids_come_from_vocab_lookup(self):
+        # The adapter mirrors the official scoring snippet: label ids
+        # come from tokenizer.get_vocab()["Yes"] / ["No"] directly.
+        # There is no encode() call and no spaced-variant fallback, so
+        # this test pins the lookup to the vocab ids, not to a
+        # bare-vs-spaced preference that does not exist.
         logits = [0.0] * 10
-        logits[3] = 5.0  # bare "Yes"
+        logits[3] = 5.0  # vocab["Yes"]
+        logits[8] = 1.0  # vocab["No"]
         adapter, _, _ = self._adapter(
-            logits, encode_map={"Yes": [3], " Yes": [7], "No": [8]})
+            logits, encode_map={"Yes": [3], "No": [8]})
         out = adapter.decide(_choice_input(), "abstain", _ctx())
         self.assertEqual(out.decision, "abstain")
         self.assertEqual(out.transcript["scores"]["label"], "Yes")
-
-    def test_spaced_token_fallback(self):
-        # Bare "Yes" is multi-token: fall back to the spaced " Yes" id.
-        logits = [0.0] * 10
-        logits[7] = 5.0  # spaced " Yes"
-        adapter, _, _ = self._adapter(
-            logits, encode_map={"Yes": [5, 6], " Yes": [7], "No": [8]})
-        out = adapter.decide(_choice_input(), "abstain", _ctx())
-        self.assertEqual(out.decision, "abstain")
+        self.assertGreater(out.transcript["scores"]["p_yes"], 0.9)
 
     def test_missing_label_token_raises_provider_error(self):
         # Fail closed: no single-token id for "Yes".
@@ -1053,11 +1049,13 @@ class TestWildGuard(unittest.TestCase):
             out.transcript["scores"]["p_malicious"], 0.5)
         self.assertEqual(out.decision, "abstain")
 
-    def test_verbatim_prompt_format(self):
-        # The official Variant A format, byte-for-byte from upstream
-        # wildguard/utils.py: no blank line after <|user|>, instruction
-        # is one continuous line, slots on their own lines after the
-        # labels, no blank line between [/INST] and <|assistant|>.
+    def test_prompt_format_matches_documented(self):
+        # The documented Variant A format (adapted from upstream
+        # WILDGUARD_INPUT_FORMAT; byte-verification against upstream is
+        # pending gated HF access): no blank line after <|user|>,
+        # instruction is one continuous line, slots on their own lines
+        # after the labels, no blank line between [/INST] and
+        # <|assistant|>. This pins our documented bytes, not upstream's.
         expected = (
             "<|user|>\n"
             "[INST] You are a classifier for analyzing interactions "
@@ -1112,22 +1110,27 @@ class TestWildGuard(unittest.TestCase):
             tok.seen_add_special_tokens,
             "add_special_tokens=True must be passed to the tokenizer")
 
-    def test_bare_token_preferred_over_spaced(self):
-        # Both "yes" and " yes" are single tokens: the bare spelling
-        # wins (Granite pattern: bare first).
+    def test_label_lookup_tries_bare_spelling_first(self):
+        # _single_token_id tries candidates in order; WildGuard passes
+        # (bare, spaced). The fake tokenizer distinguishes the two
+        # spellings, which the real SentencePiece tokenizer does not
+        # (both encode to the same piece) -- this pins the lookup order,
+        # not a tokenizer fact.
         logits = [0.0] * 10
-        logits[3] = 5.0  # bare "yes"
-        logits[4] = 1.0  # spaced " yes"
+        logits[3] = 5.0  # bare "yes": tried first, single token
         adapter, _, _ = self._adapter(
             logits, encode_map={"yes": [3], " yes": [4], "no": [5]})
         out = adapter.decide(_choice_input(), "abstain", _ctx())
         self.assertEqual(out.transcript["scores"]["label"], "yes")
         self.assertGreater(out.transcript["scores"]["p_yes"], 0.9)
 
-    def test_spaced_token_fallback(self):
-        # Bare "yes" is multi-token: fall back to the spaced " yes" id.
+    def test_label_lookup_falls_back_to_second_spelling(self):
+        # Same lookup-order pin as above, exercising the fallback
+        # branch: the bare spelling is not a single token, so the
+        # spaced spelling's id is used. (Real-tokenizer caveat as
+        # above: on SentencePiece this branch is unreachable.)
         logits = [0.0] * 10
-        logits[7] = 5.0  # spaced " yes"
+        logits[7] = 5.0  # spaced " yes": fallback hit
         adapter, _, _ = self._adapter(
             logits, encode_map={"yes": [5, 6], " yes": [7], "no": [8]})
         out = adapter.decide(_choice_input(), "abstain", _ctx())
@@ -1281,6 +1284,13 @@ class TestSharedBehavior(unittest.TestCase):
              _Qwen3GuardTokenizer({" Safe": [1], " Unsafe": [2],
                                    " Controversial": [3]}),
              _FakeCausalModel, [0.1, 0.1, 4.0, 0.1], [0.1, 4.0, 0.1, 0.1]),
+            # Granite Guardian: bare yes/no label tokens; the fake
+            # tokenizer below maps "yes"->[1], "no"->[2] and stubs the
+            # chat template.
+            (GraniteGuardianAdapter,
+             _GraniteGuardianTokenizer(encode={"yes": [1], "no": [2]},
+                                       template="TEMPLATE:"),
+             _FakeCausalModel, [0.1, 4.0, 0.1], [0.1, 0.1, 4.0]),
         ]
         for cls, tok, model_cls, mal_logits, ben_logits in specs:
             for logits, verdict in [(mal_logits, "abstain"),

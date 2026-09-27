@@ -2,7 +2,7 @@
 name = "peira-core"
 version = "0.1.0"
 edition = "2021"
-description = "Rust core for peira: fast scoring and metrics for AI red teaming with a control group."
+description = "Benchmarking decision models under attack, starting with Jev, Shieldstral, Prompt Guard 2 and SemIf. 2,000 paired cases; 95% confidence intervals on every number."
 license = "MIT"
 
 [lib]

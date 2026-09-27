@@ -392,9 +392,8 @@ and their cases re-run on resume.
 **`this adapter requires the 'hf' extra (torch and transformers): install it with: pip install 'peira[hf]'`**
 Cause: you instantiated a Hugging Face adapter (`shieldstral`,
 `protectai-prompt-injection`, `llama-prompt-guard-2`, `qwen3guard-gen`,
-`granite-guardian`)
-without the
-optional dependency. Fix: `pip install "peira[hf]"` (the base package
+`granite-guardian`, `shieldgemma`, `wildguard`) without the optional
+dependency. Fix: `pip install "peira[hf]"` (the base package
 stays dependency-free by design). The LLM baselines fail closed the same way, naming their own
 extra: `the peira[openai] extra is required for OpenAIAdapter —
 install it with: pip install "peira[openai]"`,
@@ -402,6 +401,12 @@ install it with: pip install "peira[openai]"`,
 install it with: pip install "peira[anthropic]"`, and
 `the peira[google] extra is required for GoogleAdapter —
 install it with: pip install "peira[google]"`.
+
+**`sentencepiece` / `protobuf` missing when loading `wildguard`**
+Cause: WildGuard's tokenizer is Mistral-7B-v0.3's SentencePiece
+tokenizer; transformers needs the `sentencepiece` and `protobuf`
+packages to load it, and neither ships with `peira[hf]`. The import
+fails at load time. Fix: `pip install sentencepiece protobuf`.
 
 **`...: hf_revision must be a pinned commit hash, never 'main'/'latest'`**
 Cause: internal sanity check — an adapter was constructed with a
@@ -462,6 +467,23 @@ so the probability can't be read honestly. This is a tokenizer/model
 mismatch, not a retryable failure. Fix: check the pinned revision
 actually matches `ibm-granite/granite-guardian-4.1-8b`; don't
 substitute tokenizers.
+
+**`tokenizer for 'google/shieldgemma-2b' has no vocab entry for Yes/No labels: ...`**
+Cause: ShieldGemma reads its verdict from the first-token logprobs of
+the `Yes`/`No` vocab entries (mirroring the official scoring snippet)
+— the loaded tokenizer has no such vocab entries, so the probability
+can't be read honestly. This is a tokenizer/model mismatch, not a
+retryable failure. Fix: check the pinned revision actually matches
+`google/shieldgemma-2b`; don't substitute tokenizers.
+
+**`tokenizer for 'allenai/wildguard' has no single-token id for yes (tried ...) ...`**
+Cause: WildGuard reads its verdict from the first-token logprobs after
+the `"Harmful request: "` prefill — the loaded tokenizer has no
+single-token id for the yes/no label spellings (tried bare, then with
+the leading space), so the probability can't be read honestly. This is
+a tokenizer/model mismatch, not a retryable failure. Fix: check the
+pinned revision actually matches `allenai/wildguard`; don't substitute
+tokenizers.
 
 **`chat template for 'ibm-granite/granite-guardian-4.1-8b' did not return text; cannot build the moderation prompt`**
 Cause: Granite Guardian is prompted through the model's own chat

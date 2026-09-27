@@ -1,6 +1,6 @@
 """Hugging Face guardrail adapters (optional ``peira[hf]`` extra).
 
-Three binary guardrail models, all loaded from pinned Hugging Face
+Seven binary guardrail models, all loaded from pinned Hugging Face
 revisions (never ``main`` or a floating tag). ``torch`` and
 ``transformers`` are imported lazily — only when an adapter is
 constructed — and the weights only on the first ``decide()`` call, so
@@ -33,9 +33,13 @@ abstention path; empty/whitespace-only input is scored as benign (0.0)
 rather than crashing the tokenizer.
 
 Threading: the runner calls ``decide()`` concurrently from worker
-threads. Model loading is guarded by a per-class lock (double-checked),
-so the weights load exactly once no matter how many threads race the
-first call; after loading, ``decide()`` only reads shared state.
+threads. Model/tokenizer loading is guarded by a per-class lock
+(double-checked), so the weights load exactly once no matter how many
+threads race the first call. Label token ids are resolved lazily on the
+first ``_score_text`` call, outside the load lock: the value is computed
+deterministically from the already-loaded tokenizer, so threads racing
+the first call all compute the same dict and the redundant writes are
+harmless.
 
 Retry layering: adapters never retry internally (see base.py). Load-time
 Hugging Face Hub failures are translated to ``ProviderError``: 429/5xx
@@ -941,17 +945,17 @@ class ShieldGemmaAdapter(_HFAdapterBase):
                     f"for Yes/No labels: {exc}"
                 ) from exc
         ids = self._label_ids
-        probs = _softmax([float(x) for x in logits])
-        p_yes, p_no = probs[ids["Yes"]], probs[ids["No"]]
-        total = p_yes + p_no
-        if total > 0.0:
-            p_malicious = p_yes / total
-        else:  # degenerate: uniform over the label set, never NaN
-            p_malicious = 0.5
+        # Softmax over the two label logits only. The full-vocab
+        # denominator cancels in the Yes/No renormalization below, so
+        # this is identical to a full-vocab softmax (verified to 1e-12)
+        # while skipping ~256k exp() calls per scoring call.
+        p_yes, p_no = _softmax([float(logits[ids["Yes"]]),
+                                float(logits[ids["No"]])])
+        p_malicious = p_yes
         label = "Yes" if p_yes >= p_no else "No"
         return p_malicious, input_tokens, {
-            "p_yes": p_yes / total if total > 0.0 else 0.5,
-            "p_no": p_no / total if total > 0.0 else 0.5,
+            "p_yes": p_yes,
+            "p_no": p_no,
             "label": label,
         }
 
@@ -959,11 +963,11 @@ class ShieldGemmaAdapter(_HFAdapterBase):
 class WildGuardAdapter(_HFAdapterBase):
     """AllenAI WildGuard (7B): yes/no generative safety classifier.
 
-    Prompted with the official Variant A input format (the package
-    constant from wildguard's ``utils.py``), fed VERBATIM to the
-    tokenizer — never through ``apply_chat_template``. In prompt-only
-    mode the case text goes into the ``Human user:`` slot and the
-    ``AI assistant:`` slot stays empty (the official code does
+    Prompted with an input format adapted from upstream
+    ``WILDGUARD_INPUT_FORMAT`` (allenai/wildguard ``utils.py``), fed to
+    the tokenizer directly — never through ``apply_chat_template``. In
+    prompt-only mode the case text goes into the ``Human user:`` slot
+    and the ``AI assistant:`` slot stays empty (the official code does
     ``item["response"] = ""`` when the response is missing). The input
     is scored by prefilling ``"Harmful request: "`` and reading the
     first-token logprobs from a single forward pass (no generation).
@@ -971,17 +975,20 @@ class WildGuardAdapter(_HFAdapterBase):
     The continuous score is ``p(yes) / (p(yes) + p(no))`` — the same
     yes/no logprob renormalization the Granite adapter uses, and the
     model's own argmax label is reported in the transcript for
-    diagnostics. Label token lookup is bare-first (``"yes"`` before
-    ``" yes"``), the mirror image of Qwen3Guard's spaced-first order
-    (Granite pattern), falling back to the spaced variant when the
-    bare spelling is not a single token.
+    diagnostics. Label token ids are resolved with an ``encode()``-based
+    lookup trying the bare spelling first, then the spaced variant. On
+    the real SentencePiece tokenizer both spellings encode to the same
+    piece, so the candidate order is immaterial there; what matters is
+    that the resolved id is the model's actual next-token piece after
+    the ``"Harmful request: "`` prefill.
 
     Tokenizer note: WildGuard is built on Mistral-7B-v0.3, whose
     tokenizer is a slow SentencePiece tokenizer. Loading the real
     tokenizer needs ``sentencepiece`` and ``protobuf`` installed
     alongside the ``peira[hf]`` extra (see docs/Troubleshooting.md);
     the format's ``<|user|>`` / ``<|assistant|>`` markers are added
-    tokens, fed verbatim in the prompt above.
+    tokens, fed to the tokenizer exactly as written in the prompt
+    constant below.
 
     Gated-model caveat: this repo is **gated** (auto-gated on Hugging
     Face). Before the first download you must accept the AI2
@@ -989,7 +996,9 @@ class WildGuardAdapter(_HFAdapterBase):
     locally with ``huggingface-cli login``. Without that, loading
     raises an auth error whose message says so. Real tokenization could
     not be verified in review (no HF auth in the test environment) —
-    the prompt format is pinned to the published official strings.
+    the prompt format below is adapted from the published official
+    strings; byte-verification against upstream is pending gated HF
+    access.
 
     HF repo ``allenai/wildguard`` (Apache-2.0, gated) at the pinned
     revision below — never ``main`` or a floating tag.
@@ -1004,8 +1013,10 @@ class WildGuardAdapter(_HFAdapterBase):
 
     #: The two verdict labels.
     LABELS = ("yes", "no")
-    #: Verbatim Variant A prompt from wildguard's ``utils.py``
-    #: (https://github.com/allenai/wildguard/blob/main/wildguard/utils.py).
+    #: Variant A prompt adapted from upstream ``WILDGUARD_INPUT_FORMAT``
+    #: (allenai/wildguard ``wildguard/utils.py``). Byte-verification
+    #: against upstream is pending gated HF access — do not claim
+    #: byte-identity until then.
     #: Fed straight to the tokenizer — do NOT use ``apply_chat_template``.
     _INPUT_FORMAT = (
         "<|user|>\n"
@@ -1029,6 +1040,9 @@ class WildGuardAdapter(_HFAdapterBase):
     )
     #: Prefilled after the prompt so the next token is the verdict:
     #: ``Harmful request: yes`` / ``Harmful request: no``.
+    #: The trailing space is load-bearing: it makes the in-context next
+    #: token the SentencePiece ▁-prefixed piece, which is what the
+    #: encode()-based label lookup resolves. Do not strip it.
     _SCORE_PREFIX = "Harmful request: "
 
     def __init__(
@@ -1054,10 +1068,11 @@ class WildGuardAdapter(_HFAdapterBase):
     def _score_text(self, text: str) -> tuple[float, int, dict[str, Any]]:
         torch = self._torch
         tokenizer, model = self._ensure_loaded()
-        # The format is fed verbatim — never through apply_chat_template —
-        # so the added ``<|user|>`` / ``<|assistant|>`` markers reach the
-        # model exactly as the official strings. No leading <s>: the
-        # tokenizer prepends BOS itself via add_special_tokens=True.
+        # The format is fed to the tokenizer directly — never through
+        # apply_chat_template — so the added ``<|user|>`` /
+        # ``<|assistant|>`` markers reach the model exactly as written in
+        # the constant above. No leading <s>: the tokenizer prepends BOS
+        # itself via add_special_tokens=True.
         encoded = tokenizer(
             self._build_prompt(text),
             return_tensors="pt",
@@ -1071,14 +1086,17 @@ class WildGuardAdapter(_HFAdapterBase):
             outputs = model(input_ids)
         logits = _to_list(outputs.logits[0][-1])
         # Cache label token IDs on first use: the tokenizer is pinned,
-        # so the IDs never change. Bare spelling first, the mirror image
-        # of Qwen3Guard's spaced-first order (Granite pattern).
+        # so the IDs never change. Candidates are tried in order (bare
+        # spelling, then the spaced variant); the first single-token
+        # hit wins.
         # Note: unlike ShieldGemma (#106), we use encode()-based lookup
         # here, not get_vocab(). The "Harmful request: " prefill ends
         # with a space, so the in-context next token is the SentencePiece
         # ▁-prefixed form (which encode() returns), not the bare form
-        # (which get_vocab() returns). This is unverified without gated
-        # tokenizer access, but the reasoning is documented.
+        # (which get_vocab() returns). On SentencePiece, encode("yes")
+        # and encode(" yes") resolve to the same piece, so the candidate
+        # order is immaterial on the real tokenizer. This is unverified
+        # without gated tokenizer access, but the reasoning is documented.
         if self._label_ids is None:
             self._label_ids = {
                 label: _single_token_id(

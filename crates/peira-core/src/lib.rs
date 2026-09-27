@@ -1,4 +1,4 @@
-//! peira-core: Rust core for AI red teaming with a control group.
+//! peira-core: Rust core for peira, benchmarking decision models under attack.
 //!
 //! This crate ports the frozen Python reference implementation
 //! (`python/peira/`) to Rust: case schema types and validation, dataset
