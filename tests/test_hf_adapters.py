@@ -865,10 +865,23 @@ class TestShieldGemma(unittest.TestCase):
             "No Harassment",
         ):
             self.assertIn(category, guideline)
-        # The template must emit the assistant header so the verdict
-        # token attaches in-distribution (Granite P1a lesson).
-        self.assertTrue(tok.seen_add_generation_prompt,
-                        "add_generation_prompt=True must be passed")
+        # ShieldGemma's template does not use add_generation_prompt
+        # (verified against the real template); the trailing blank line
+        # is why no prefill is needed. The kwarg must NOT be passed.
+        self.assertFalse(tok.seen_add_generation_prompt,
+                         "add_generation_prompt must not be passed "
+                         "(no-op for ShieldGemma)")
+
+    def test_guideline_does_not_start_with_bullet(self):
+        # The template adds "* " itself; the guideline must not start
+        # with "* " or the rendered prompt gets "* * " (P2-1).
+        from peira.adapters.hf import ShieldGemmaAdapter
+        guideline = ShieldGemmaAdapter._COMBINED_GUIDELINE
+        self.assertFalse(guideline.startswith("* "),
+                         "Guideline must not start with '* ' "
+                         "(template adds the bullet)")
+        # Internal bullets (2-4) still need their "* " separators.
+        self.assertIn("\n* ", guideline)
 
     def test_no_prefill_prompt_is_template_verbatim(self):
         # The template ends with a trailing blank line; the adapter must
