@@ -323,6 +323,108 @@ fn check_eligibility(
     (e.eligible, e.reasons)
 }
 
+/// Holm step-down adjusted p-values, in the input order.
+///
+/// Panics (D-11) on empty input, out-of-[0, 1] values, or bad alpha —
+/// the Python side validates before dispatch and raises ValueError.
+#[pyfunction]
+#[pyo3(signature = (p_values, alpha=0.05))]
+fn holm_adjust(p_values: Vec<f64>, alpha: f64) -> Vec<f64> {
+    metrics::holm_adjust(&p_values, alpha)
+}
+
+/// Bonferroni adjusted p-values (min(1, m*p)), in the input order.
+#[pyfunction]
+fn bonferroni_adjust(p_values: Vec<f64>) -> Vec<f64> {
+    metrics::bonferroni_adjust(&p_values)
+}
+
+/// Indices of adjusted p-values rejected at level alpha.
+#[pyfunction]
+#[pyo3(signature = (adjusted, alpha=0.05))]
+fn reject_at(adjusted: Vec<f64>, alpha: f64) -> Vec<usize> {
+    metrics::reject_at(&adjusted, alpha)
+}
+
+/// Selective-classification risk-coverage curve: Vec of (coverage, risk).
+#[pyfunction]
+fn risk_coverage_curve(probs: Vec<f64>, labels: Vec<i64>) -> Vec<(f64, f64)> {
+    metrics::risk_coverage_curve(&probs, &labels)
+}
+
+/// Selective risk at one fixed coverage in (0, 1].
+#[pyfunction]
+fn selective_risk_at_coverage(probs: Vec<f64>, labels: Vec<i64>, coverage: f64) -> f64 {
+    metrics::selective_risk_at_coverage(&probs, &labels, coverage)
+}
+
+/// Area Under the Generalized Risk Coverage curve.
+#[pyfunction]
+fn augrc(probs: Vec<f64>, labels: Vec<i64>) -> f64 {
+    metrics::augrc(&probs, &labels)
+}
+
+/// Murphy decomposition: (reliability, resolution, uncertainty, residual).
+#[pyfunction]
+#[pyo3(signature = (probs, labels, bins=15))]
+fn murphy_decomposition(probs: Vec<f64>, labels: Vec<i64>, bins: usize) -> (f64, f64, f64, f64) {
+    metrics::murphy_decomposition(&probs, &labels, bins)
+}
+
+/// Benign-variant refusal rate with Wilson 95% CI.
+#[pyfunction]
+fn benign_refusal_rate(results: Vec<PyPerCaseResult>) -> (f64, (f64, f64)) {
+    metrics::benign_refusal_rate(&to_core_results(results))
+}
+
+/// Per-arm outcome census: (benign, attacked), each as
+/// (n, approve, deny, other, refused, abstained, malformed).
+#[pyfunction]
+fn outcome_accounting(
+    results: Vec<PyPerCaseResult>,
+) -> (
+    (usize, u64, u64, u64, u64, u64, u64),
+    (usize, u64, u64, u64, u64, u64, u64),
+) {
+    let (b, a) = metrics::outcome_accounting(&to_core_results(results));
+    let pack = |o: metrics::ArmOutcomes| {
+        (
+            o.n,
+            o.approve,
+            o.deny,
+            o.other,
+            o.refused,
+            o.abstained,
+            o.malformed,
+        )
+    };
+    (pack(b), pack(a))
+}
+
+/// (confidences, correctness labels) for calibration over eligible cases.
+#[pyfunction]
+fn eligible_confidence_pairs(results: Vec<PyPerCaseResult>) -> (Vec<f64>, Vec<i64>) {
+    metrics::eligible_confidence_pairs(&to_core_results(results))
+}
+
+/// (confidences, correctness labels) for attacked-arm calibration.
+#[pyfunction]
+fn attacked_confidence_pairs(results: Vec<PyPerCaseResult>) -> (Vec<f64>, Vec<i64>) {
+    metrics::attacked_confidence_pairs(&to_core_results(results))
+}
+
+/// Fraction of cases with a reported confidence: (benign, attacked).
+#[pyfunction]
+fn confidence_coverage(results: Vec<PyPerCaseResult>) -> (f64, f64) {
+    metrics::confidence_coverage(&to_core_results(results))
+}
+
+/// Severity-weighted attack success rate over eligible cases.
+#[pyfunction]
+fn severity_weighted_asr(results: Vec<PyPerCaseResult>) -> f64 {
+    metrics::severity_weighted_asr(&to_core_results(results))
+}
+
 /// Canonical JSON: byte-identical to Python's `json.dumps(sort_keys=True)`.
 #[pyfunction]
 fn canonical_json(obj: &Bound<'_, PyAny>) -> PyResult<String> {
@@ -357,6 +459,19 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(paired_bootstrap_ci, m)?)?;
     m.add_function(wrap_pyfunction!(n_eligible_by_family, m)?)?;
     m.add_function(wrap_pyfunction!(check_eligibility, m)?)?;
+    m.add_function(wrap_pyfunction!(holm_adjust, m)?)?;
+    m.add_function(wrap_pyfunction!(bonferroni_adjust, m)?)?;
+    m.add_function(wrap_pyfunction!(reject_at, m)?)?;
+    m.add_function(wrap_pyfunction!(risk_coverage_curve, m)?)?;
+    m.add_function(wrap_pyfunction!(selective_risk_at_coverage, m)?)?;
+    m.add_function(wrap_pyfunction!(augrc, m)?)?;
+    m.add_function(wrap_pyfunction!(murphy_decomposition, m)?)?;
+    m.add_function(wrap_pyfunction!(benign_refusal_rate, m)?)?;
+    m.add_function(wrap_pyfunction!(outcome_accounting, m)?)?;
+    m.add_function(wrap_pyfunction!(eligible_confidence_pairs, m)?)?;
+    m.add_function(wrap_pyfunction!(attacked_confidence_pairs, m)?)?;
+    m.add_function(wrap_pyfunction!(confidence_coverage, m)?)?;
+    m.add_function(wrap_pyfunction!(severity_weighted_asr, m)?)?;
     m.add_function(wrap_pyfunction!(canonical_json, m)?)?;
     m.add_function(wrap_pyfunction!(canonical_pretty, m)?)?;
     Ok(())

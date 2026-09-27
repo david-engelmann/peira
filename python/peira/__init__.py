@@ -1,4 +1,4 @@
-"""peira: the empirical trial for decision models."""
+"""peira: AI red teaming with a control group."""
 
 __version__ = "0.1.0"
 

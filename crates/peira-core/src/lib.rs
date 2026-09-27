@@ -1,4 +1,4 @@
-//! peira-core: Rust core for the empirical trial for decision models.
+//! peira-core: Rust core for AI red teaming with a control group.
 //!
 //! This crate ports the frozen Python reference implementation
 //! (`python/peira/`) to Rust: case schema types and validation, dataset

@@ -9,7 +9,7 @@ itself. For what the numbers mean, see
 [Methodology](Methodology.md); for exact error text, see
 [Troubleshooting](Troubleshooting.md).
 
-The empirical trial for decision models.
+AI red teaming with a control group.
 
 ## Global flags
 

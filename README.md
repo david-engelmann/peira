@@ -1,8 +1,8 @@
 # peira
 
-**The adversarial robustness benchmark for decision models.** peira red-teams LLM guardrails with paired benign/attacked cases across 10 attack families, from prompt injection and jailbreak framing to confidence spoofing and state poisoning. It is AI red teaming with a control group: every attack runs against a clean baseline case, so a flipped decision is evidence about the attack, not noise. Every number ships with a confidence interval.
+**AI red teaming with a control group.** peira stress-tests LLM guardrails with 2,000 paired benign/attacked cases across 10 attack families, from prompt injection and jailbreak framing to confidence spoofing and state poisoning. The leaderboard already lines up Mistral's Shieldstral, Meta's Prompt Guard 2, TypeSafe's Jev, the open SemIf, and structured-output frontier LLM baselines. Every attack runs against a clean baseline case, so a flipped decision is evidence about the attack, not noise. Every number ships with a confidence interval.
 
-*peira* (Greek: trial, test, root of "empirical") is the trial your guardrail stands.
+*peira* is Greek for trial, the root of "empirical." In Athens it meant a test you ran to find out what was true. Your guardrail says it holds up under attack. This is where it proves it.
 
 [![ci](https://github.com/david-engelmann/peira/actions/workflows/ci.yml/badge.svg)](https://github.com/david-engelmann/peira/actions/workflows/ci.yml)
 [![license](https://img.shields.io/badge/license-MIT%20%2F%20CC--BY--4.0-blue.svg)](LICENSE)
