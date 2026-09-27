@@ -200,10 +200,10 @@ fn json_type_name(v: &Value) -> &'static str {
     }
 }
 
-/// Compute the analysis lock from the eleven payload fields. Exposed so
+/// Compute the analysis lock from the fourteen payload fields. Exposed so
 /// tests (and future verifiers) can lock payloads built outside a
 /// [`RunArtifact`], e.g. from a JSON fixture produced by the Python side.
-// Twelve positional params mirror the lock-payload field list; a struct
+// Fourteen positional params mirror the lock-payload field list; a struct
 // would just rename the problem.
 #[allow(clippy::too_many_arguments)]
 pub fn lock_payload(
@@ -222,7 +222,7 @@ pub fn lock_payload(
     metrics: &Value,
     env_sha256: &str,
 ) -> String {
-    // The thirteen payload keys in canonical (sorted) order, hashed by
+    // The fourteen payload keys in canonical (sorted) order, hashed by
     // streaming straight into SHA-256: `config` and `results` are never
     // cloned. The field order is written out explicitly — it is part of
     // the lock contract, and spelling it out beats a separator-tracking

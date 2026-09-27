@@ -3,6 +3,8 @@
 import json
 import sqlite3
 import tempfile
+import threading
+import time
 import unittest
 from pathlib import Path
 
@@ -122,6 +124,99 @@ class TestListRuns(unittest.TestCase):
             runs = list_runs(tmp)
             self.assertEqual(len(runs), 1)
             self.assertEqual(runs[0]["env_sha256"], art.env_sha256)
+
+
+class TestIndexFreshness(unittest.TestCase):
+    """Regression tests for the retrospective review of PR #105."""
+
+    def test_deleted_artifact_disappears_from_list(self):
+        # P1-1: deletions bump no mtime, so a pure "newer than index"
+        # check leaves phantom rows forever.
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            (tmp_path / "run1.json").write_text(
+                _make_artifact(adapter_name="a1").to_json()
+            )
+            (tmp_path / "run2.json").write_text(
+                _make_artifact(adapter_name="a2").to_json()
+            )
+            self.assertEqual(len(list_runs(tmp)), 2)
+            (tmp_path / "run2.json").unlink()
+            runs = list_runs(tmp)
+            self.assertEqual(len(runs), 1)
+            self.assertEqual(runs[0]["adapter_name"], "a1")
+
+    def test_modified_artifact_triggers_rescan(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            (tmp_path / "run1.json").write_text(
+                _make_artifact(adapter_name="a1").to_json()
+            )
+            self.assertEqual(len(list_runs(tmp)), 1)
+            # Rewrite with a different adapter name and force a newer mtime
+            # (some filesystems have coarse mtime granularity).
+            (tmp_path / "run1.json").write_text(
+                _make_artifact(adapter_name="a2").to_json()
+            )
+            p = tmp_path / "run1.json"
+            newer = p.stat().st_mtime + 5
+            import os
+            os.utime(p, (newer, newer))
+            runs = list_runs(tmp)
+            self.assertEqual(len(runs), 1)
+            self.assertEqual(runs[0]["adapter_name"], "a2")
+
+    def test_corrupt_index_db_rebuilds(self):
+        # P1-2: the module docstring promises deleting index.db is always
+        # safe; a truncated / non-database file must be treated the same.
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            (tmp_path / "run1.json").write_text(
+                _make_artifact(adapter_name="a1").to_json()
+            )
+            self.assertEqual(scan_runs(tmp), 1)
+            (tmp_path / "index.db").write_bytes(b"\x00" * 64)  # not a db
+            runs = list_runs(tmp)
+            self.assertEqual(len(runs), 1)
+            self.assertEqual(runs[0]["adapter_name"], "a1")
+
+    def test_corrupt_index_db_rebuilds_on_scan(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            (tmp_path / "run1.json").write_text(
+                _make_artifact(adapter_name="a1").to_json()
+            )
+            (tmp_path / "index.db").write_bytes(b"garbage, not sqlite")
+            self.assertEqual(scan_runs(tmp), 1)
+            self.assertEqual(len(list_runs(tmp)), 1)
+
+    def test_concurrent_writer_waits_instead_of_crashing(self):
+        # P2: a second writer must wait out a held write lock (timeout=30)
+        # instead of raising "database is locked" (default timeout=5).
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            (tmp_path / "run1.json").write_text(
+                _make_artifact(adapter_name="a1").to_json()
+            )
+            self.assertEqual(scan_runs(tmp), 1)
+            db_path = tmp_path / "index.db"
+            holder = sqlite3.connect(
+                str(db_path), timeout=30, check_same_thread=False
+            )
+            holder.execute("BEGIN IMMEDIATE")  # take the write lock
+
+            def release():
+                time.sleep(7)  # longer than the old 5s default timeout
+                holder.rollback()
+                holder.close()
+
+            t = threading.Thread(target=release)
+            t.start()
+            try:
+                n = scan_runs(tmp)  # must wait, not raise
+            finally:
+                t.join()
+            self.assertEqual(n, 1)
 
 
 class TestVerifyRuns(unittest.TestCase):
