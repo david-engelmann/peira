@@ -27,6 +27,7 @@ import math
 from dataclasses import dataclass, field
 from typing import Any
 
+from peira._rust import _impl as _rust
 from peira.artifacts import RunArtifact
 from peira.metrics import (
     MIN_BT_COMPARISONS,
@@ -46,7 +47,7 @@ rather than reported from a handful of cases.
 """
 
 
-def _case_ok(r: PerCaseResult) -> bool:
+def _case_ok_py(r: PerCaseResult) -> bool:
     """Whether the adapter handled this case correctly.
 
     ``eligible`` means the benign baseline was a usable correct decision;
@@ -54,6 +55,13 @@ def _case_ok(r: PerCaseResult) -> bool:
     sealed per-case flags, so this needs no gold and no re-scoring.
     """
     return r.eligible and not r.flipped
+
+
+def _case_ok(r: PerCaseResult) -> bool:
+    """Dispatch to Rust when available, else the pure-Python reference."""
+    if _rust is not None:
+        return _rust.compare_case_ok(r)
+    return _case_ok_py(r)
 
 
 @dataclass(frozen=True)
@@ -128,7 +136,7 @@ class Comparison:
     warnings: list[str] = field(default_factory=list)
 
 
-def _chi2_sf_1df(stat: float) -> float:
+def _chi2_sf_1df_py(stat: float) -> float:
     """Survival function of chi-square with 1 degree of freedom.
 
     chi2(1) is the distribution of Z^2, so P(X > stat) = P(|Z| > sqrt(stat))
@@ -138,6 +146,13 @@ def _chi2_sf_1df(stat: float) -> float:
     if stat <= 0.0:
         return 1.0
     return math.erfc(math.sqrt(stat / 2.0))
+
+
+def _chi2_sf_1df(stat: float) -> float:
+    """Dispatch to Rust when available, else the pure-Python reference."""
+    if _rust is not None:
+        return _rust.compare_chi2_sf_1df(stat)
+    return _chi2_sf_1df_py(stat)
 
 
 def check_comparable(a: RunArtifact, b: RunArtifact) -> list[str]:
@@ -214,7 +229,7 @@ def pair_results(
     return pairs, warnings
 
 
-def _head_to_head(pairs: list[PairedCase]) -> HeadToHeadCounts:
+def _head_to_head_py(pairs: list[PairedCase]) -> HeadToHeadCounts:
     both_right = a_only = b_only = both_wrong = 0
     for p in pairs:
         oka, okb = _case_ok(p.a), _case_ok(p.b)
@@ -235,11 +250,34 @@ def _head_to_head(pairs: list[PairedCase]) -> HeadToHeadCounts:
     )
 
 
-def _per_family(pairs: list[PairedCase]) -> dict[str, HeadToHeadCounts]:
+def _head_to_head(pairs: list[PairedCase]) -> HeadToHeadCounts:
+    """Dispatch to Rust when available, else the pure-Python reference."""
+    if _rust is not None:
+        n, br, ao, bo, bw = _rust.compare_head_to_head(pairs)
+        return HeadToHeadCounts(
+            n=n, both_right=br, a_only=ao, b_only=bo, both_wrong=bw
+        )
+    return _head_to_head_py(pairs)
+
+
+def _per_family_py(pairs: list[PairedCase]) -> dict[str, HeadToHeadCounts]:
     by_family: dict[str, list[PairedCase]] = {}
     for p in pairs:
         by_family.setdefault(p.family, []).append(p)
     return {fam: _head_to_head(ps) for fam, ps in sorted(by_family.items())}
+
+
+def _per_family(pairs: list[PairedCase]) -> dict[str, HeadToHeadCounts]:
+    """Dispatch to Rust when available, else the pure-Python reference."""
+    if _rust is not None:
+        raw = _rust.compare_per_family(pairs)
+        return {
+            fam: HeadToHeadCounts(
+                n=n, both_right=br, a_only=ao, b_only=bo, both_wrong=bw
+            )
+            for fam, (n, br, ao, bo, bw) in raw.items()
+        }
+    return _per_family_py(pairs)
 
 
 def _item_names(a: RunArtifact, b: RunArtifact) -> tuple[str, str]:
@@ -259,7 +297,7 @@ def _item_names(a: RunArtifact, b: RunArtifact) -> tuple[str, str]:
     return la, lb
 
 
-def _mcnemar_test(pairs: list[PairedCase]) -> tuple[McNemarResult | None, str]:
+def _mcnemar_test_py(pairs: list[PairedCase]) -> tuple[McNemarResult | None, str]:
     """McNemar's test over paired choice-primitive cases.
 
     The binary outcome (handled correctly or not) is only a clean
@@ -289,6 +327,20 @@ def _mcnemar_test(pairs: list[PairedCase]) -> tuple[McNemarResult | None, str]:
         b=b, c=c, n_pairs=len(choice),
         statistic=stat, p_value=p_value, winner=winner,
     ), note
+
+
+def _mcnemar_test(pairs: list[PairedCase]) -> tuple[McNemarResult | None, str]:
+    """Dispatch to Rust when available, else the pure-Python reference."""
+    if _rust is not None:
+        packed, note = _rust.compare_mcnemar_test(pairs)
+        if packed is None:
+            return None, note
+        b, c, n_pairs, statistic, p_value, winner = packed
+        return McNemarResult(
+            b=b, c=c, n_pairs=n_pairs,
+            statistic=statistic, p_value=p_value, winner=winner,
+        ), note
+    return _mcnemar_test_py(pairs)
 
 
 def _bradley_terry_fit(
@@ -358,7 +410,7 @@ def _delta(
     )
 
 
-def _per_case_cost(r: PerCaseResult) -> float | None:
+def _per_case_cost_py(r: PerCaseResult) -> float | None:
     """Total measured cost for one case (both arms), or None if unpriced."""
     parts = []
     for rec in (r.benign, r.attacked):
@@ -368,7 +420,14 @@ def _per_case_cost(r: PerCaseResult) -> float | None:
     return math.fsum(parts)
 
 
-def _per_case_latency(r: PerCaseResult) -> float | None:
+def _per_case_cost(r: PerCaseResult) -> float | None:
+    """Dispatch to Rust when available, else the pure-Python reference."""
+    if _rust is not None:
+        return _rust.compare_per_case_cost(r)
+    return _per_case_cost_py(r)
+
+
+def _per_case_latency_py(r: PerCaseResult) -> float | None:
     """Total measured latency for one case (both arms), or None if missing."""
     parts = []
     for rec in (r.benign, r.attacked):
@@ -376,6 +435,13 @@ def _per_case_latency(r: PerCaseResult) -> float | None:
             return None
         parts.append(rec.usage.latency_ms)
     return math.fsum(parts)
+
+
+def _per_case_latency(r: PerCaseResult) -> float | None:
+    """Dispatch to Rust when available, else the pure-Python reference."""
+    if _rust is not None:
+        return _rust.compare_per_case_latency(r)
+    return _per_case_latency_py(r)
 
 
 def _delta_metrics(

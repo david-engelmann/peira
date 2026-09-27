@@ -21,7 +21,7 @@
 //!   wider than u64, non-string dict keys) raise `TypeError`/`ValueError`;
 //!   the Python wrappers catch those and fall back to pure Python.
 
-use peira_core::{canonical, metrics, schema};
+use peira_core::{canonical, compare, gates, metrics, schema};
 use pyo3::exceptions::{PyTypeError, PyValueError};
 use pyo3::prelude::*;
 use pyo3::types::{PyBool, PyDict, PyFloat, PyInt, PyList, PyString, PyTuple};
@@ -380,12 +380,7 @@ fn benign_refusal_rate(results: Vec<PyPerCaseResult>) -> (f64, (f64, f64)) {
 /// Per-arm outcome census: (benign, attacked), each as
 /// (n, approve, deny, other, refused, abstained, malformed).
 #[pyfunction]
-fn outcome_accounting(
-    results: Vec<PyPerCaseResult>,
-) -> (
-    (usize, u64, u64, u64, u64, u64, u64),
-    (usize, u64, u64, u64, u64, u64, u64),
-) {
+fn outcome_accounting(results: Vec<PyPerCaseResult>) -> (ArmCensus, ArmCensus) {
     let (b, a) = metrics::outcome_accounting(&to_core_results(results));
     let pack = |o: metrics::ArmOutcomes| {
         (
@@ -423,6 +418,179 @@ fn confidence_coverage(results: Vec<PyPerCaseResult>) -> (f64, f64) {
 #[pyfunction]
 fn severity_weighted_asr(results: Vec<PyPerCaseResult>) -> f64 {
     metrics::severity_weighted_asr(&to_core_results(results))
+}
+
+/// Per-arm outcome census, packed as (n, approve, deny, other, refused, abstained, malformed).
+type ArmCensus = (usize, u64, u64, u64, u64, u64, u64);
+
+/// McNemar test result, packed as (b, c, n_pairs, statistic, p_value, winner).
+type McNemarPacked = (u64, u64, usize, f64, f64, Option<String>);
+
+/// Mirror of the Python `PairedCase` dataclass in `peira.compare`.
+#[derive(FromPyObject)]
+struct PyPairedCase {
+    case_id: String,
+    family: String,
+    primitive: String,
+    a: PyPerCaseResult,
+    b: PyPerCaseResult,
+}
+
+impl From<PyPairedCase> for compare::PairedCase {
+    fn from(p: PyPairedCase) -> Self {
+        compare::PairedCase {
+            case_id: p.case_id,
+            family: p.family,
+            primitive: p.primitive,
+            a: metrics::PerCaseResult::from(p.a),
+            b: metrics::PerCaseResult::from(p.b),
+        }
+    }
+}
+
+fn to_core_pairs(pairs: Vec<PyPairedCase>) -> Vec<compare::PairedCase> {
+    pairs.into_iter().map(compare::PairedCase::from).collect()
+}
+
+/// Whether the adapter handled this case correctly (eligible and not flipped).
+#[pyfunction]
+fn compare_case_ok(r: PyPerCaseResult) -> bool {
+    compare::case_ok(&metrics::PerCaseResult::from(r))
+}
+
+/// Survival function of chi-square with 1 degree of freedom.
+#[pyfunction]
+fn compare_chi2_sf_1df(stat: f64) -> f64 {
+    compare::chi2_sf_1df(stat)
+}
+
+/// Fourfold head-to-head counts: (n, both_right, a_only, b_only, both_wrong).
+#[pyfunction]
+fn compare_head_to_head(pairs: Vec<PyPairedCase>) -> (usize, u64, u64, u64, u64) {
+    let h = compare::head_to_head(&to_core_pairs(pairs));
+    (h.n, h.both_right, h.a_only, h.b_only, h.both_wrong)
+}
+
+/// Per-family head-to-head counts as a dict of (n, both_right, a_only, b_only, both_wrong).
+#[pyfunction]
+fn compare_per_family(pairs: Vec<PyPairedCase>) -> BTreeMap<String, (usize, u64, u64, u64, u64)> {
+    compare::per_family(&to_core_pairs(pairs))
+        .into_iter()
+        .map(|(fam, h)| (fam, (h.n, h.both_right, h.a_only, h.b_only, h.both_wrong)))
+        .collect()
+}
+
+/// McNemar's test over paired choice-primitive cases.
+///
+/// Returns (result, note) where result is None when there are no
+/// choice-primitive pairs, else (b, c, n_pairs, statistic, p_value, winner).
+#[pyfunction]
+fn compare_mcnemar_test(pairs: Vec<PyPairedCase>) -> (Option<McNemarPacked>, String) {
+    let (res, note) = compare::mcnemar_test(&to_core_pairs(pairs));
+    let packed = res.map(|m| (m.b, m.c, m.n_pairs, m.statistic, m.p_value, m.winner));
+    (packed, note)
+}
+
+/// Total measured cost for one case (both arms), or None if unpriced.
+#[pyfunction]
+fn compare_per_case_cost(r: PyPerCaseResult) -> Option<f64> {
+    compare::per_case_cost(&metrics::PerCaseResult::from(r))
+}
+
+/// Total measured latency for one case (both arms), or None if missing.
+#[pyfunction]
+fn compare_per_case_latency(r: PyPerCaseResult) -> Option<f64> {
+    compare::per_case_latency(&metrics::PerCaseResult::from(r))
+}
+
+/// Mirror of the Python `GateCase` tuple: (path_name, lineno, case_dict).
+/// Accepts a Python tuple of (str, int, dict).
+#[derive(FromPyObject)]
+struct PyGateCase<'a>(String, usize, Bound<'a, PyAny>);
+
+impl<'a> PyGateCase<'a> {
+    fn to_core(&self) -> PyResult<gates::GateCase> {
+        // D-11: fail loudly on non-dict cases. Python raises TypeError;
+        // the dispatch except falls back to Python, which raises loudly.
+        if self.2.cast::<PyDict>().is_err() {
+            return Err(PyTypeError::new_err(
+                "gate case must be a dict",
+            ));
+        }
+        Ok(gates::GateCase {
+            path_name: self.0.clone(),
+            lineno: self.1,
+            case: value_from_py(&self.2)?,
+        })
+    }
+}
+
+fn to_core_gate_cases(cases: Vec<PyGateCase>) -> PyResult<Vec<gates::GateCase>> {
+    cases.iter().map(|c| c.to_core()).collect()
+}
+
+/// Gate result, packed as (gate_id, name, errors, warnings).
+type GatePacked = (String, String, Vec<String>, Vec<String>);
+
+fn pack_gate_result(r: gates::GateResult) -> GatePacked {
+    (r.gate_id, r.name, r.errors, r.warnings)
+}
+
+/// G2: the attacked variant actually differs from its benign control.
+#[pyfunction]
+fn gates_paired_variants(cases: Vec<PyGateCase>) -> PyResult<GatePacked> {
+    Ok(pack_gate_result(gates::gate_paired_variants(
+        &to_core_gate_cases(cases)?,
+    )))
+}
+
+/// G3: case ids are unique; no two cases share a content pair.
+#[pyfunction]
+fn gates_dedup(cases: Vec<PyGateCase>) -> PyResult<GatePacked> {
+    Ok(pack_gate_result(gates::gate_dedup(&to_core_gate_cases(
+        cases,
+    )?)))
+}
+
+/// G4: every case uses a canonical attack-family id.
+#[pyfunction]
+fn gates_families(cases: Vec<PyGateCase>, canonical_families: Vec<String>) -> PyResult<GatePacked> {
+    Ok(pack_gate_result(gates::gate_families(
+        &to_core_gate_cases(cases)?,
+        &canonical_families,
+    )))
+}
+
+/// G5: a named target decision must differ from the benign expectation.
+#[pyfunction]
+fn gates_target_coherence(cases: Vec<PyGateCase>) -> PyResult<GatePacked> {
+    Ok(pack_gate_result(gates::gate_target_coherence(
+        &to_core_gate_cases(cases)?,
+    )))
+}
+
+/// G6: flag identifier-like strings in case inputs (warnings, not errors).
+#[pyfunction]
+fn gates_pii_scan(cases: Vec<PyGateCase>) -> PyResult<GatePacked> {
+    Ok(pack_gate_result(gates::gate_pii_scan(&to_core_gate_cases(
+        cases,
+    )?)))
+}
+
+/// G7: score-primitive cases carry the author's reference score.
+#[pyfunction]
+fn gates_score_reference(cases: Vec<PyGateCase>) -> PyResult<GatePacked> {
+    Ok(pack_gate_result(gates::gate_score_reference(
+        &to_core_gate_cases(cases)?,
+    )))
+}
+
+/// G8: options lists are canonical across both variants.
+#[pyfunction]
+fn gates_options_coherence(cases: Vec<PyGateCase>) -> PyResult<GatePacked> {
+    Ok(pack_gate_result(gates::gate_options_coherence(
+        &to_core_gate_cases(cases)?,
+    )))
 }
 
 /// Canonical JSON: byte-identical to Python's `json.dumps(sort_keys=True)`.
@@ -472,6 +640,20 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(attacked_confidence_pairs, m)?)?;
     m.add_function(wrap_pyfunction!(confidence_coverage, m)?)?;
     m.add_function(wrap_pyfunction!(severity_weighted_asr, m)?)?;
+    m.add_function(wrap_pyfunction!(compare_case_ok, m)?)?;
+    m.add_function(wrap_pyfunction!(compare_chi2_sf_1df, m)?)?;
+    m.add_function(wrap_pyfunction!(compare_head_to_head, m)?)?;
+    m.add_function(wrap_pyfunction!(compare_per_family, m)?)?;
+    m.add_function(wrap_pyfunction!(compare_mcnemar_test, m)?)?;
+    m.add_function(wrap_pyfunction!(compare_per_case_cost, m)?)?;
+    m.add_function(wrap_pyfunction!(compare_per_case_latency, m)?)?;
+    m.add_function(wrap_pyfunction!(gates_paired_variants, m)?)?;
+    m.add_function(wrap_pyfunction!(gates_dedup, m)?)?;
+    m.add_function(wrap_pyfunction!(gates_families, m)?)?;
+    m.add_function(wrap_pyfunction!(gates_target_coherence, m)?)?;
+    m.add_function(wrap_pyfunction!(gates_pii_scan, m)?)?;
+    m.add_function(wrap_pyfunction!(gates_score_reference, m)?)?;
+    m.add_function(wrap_pyfunction!(gates_options_coherence, m)?)?;
     m.add_function(wrap_pyfunction!(canonical_json, m)?)?;
     m.add_function(wrap_pyfunction!(canonical_pretty, m)?)?;
     Ok(())

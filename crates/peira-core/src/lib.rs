@@ -11,12 +11,13 @@
 //! Rust and vice versa. See the module docs for the exact rules.
 
 pub mod artifact;
+pub mod canonical;
+pub mod compare;
 pub mod dataset;
+pub mod gates;
 pub mod metrics;
 pub mod py_repr;
 pub mod schema;
-
-pub mod canonical;
 
 /// Crate version, kept in sync with the Python package by CI.
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
