@@ -1,66 +1,66 @@
 {
   "$schema_id": "https://peiratrial.dev/schemas/dataset-changelog-1.json",
   "dataset": "peira-v1",
-  "dataset_version": "1.0.0",
+  "dataset_version": "1.0.3",
   "entries": [
     {
-      "date": "2026-09-26",
-      "type": "retire",
-      "dataset_version": "1.0.0",
-      "description": "Retire v1-ppa-127: scenario-substrate triplication. Claim #K-4401 substrate is shared with v1-csm-023 and v1-ppa-031 (deliberate cross-family control pair, documented in case notes); v1-ppa-127 was the weakest variant (medium difficulty, framing confound). Its mechanism (threshold move 12->6mo) remains covered by v1-ppa-085 and others.",
-      "manifest_sha256": "59ee75053d9783855c440c55e0afef436691583ecae415fe45175eaeccc32e14",
       "case_count": 2000,
+      "case_ids": [],
+      "dataset_version": "1.0.3",
+      "date": "2026-09-27",
+      "description": "Adjudication (D-35): land positive_decision labels on all 320 score-primitive cases across the ten families, resolving the 39-case adjudication dossier under the three standing rulings. Retier v1-csm-125 to medium. Correct v1-csp-163 label to certify (was award, not in options). Incorporates the 1.0.0 dataset corrections (ppa-127 retired, ppa-201 added, san-234/236 and ind-148 fixes).",
       "families": {
-        "confidence_spoofing": 200,
-        "criteria_smuggling": 200,
-        "distractor_flooding": 200,
-        "indirection": 200,
-        "literal_reading": 200,
-        "negation_games": 200,
-        "option_order": 200,
-        "policy_paraphrase": 200,
-        "score_anchoring": 200,
-        "state_poisoning": 200
+        "confidence_spoofing": 1,
+        "criteria_smuggling": 1,
+        "distractor_flooding": 1,
+        "indirection": 1,
+        "literal_reading": 1,
+        "negation_games": 1,
+        "option_order": 1,
+        "policy_paraphrase": 1,
+        "score_anchoring": 1,
+        "state_poisoning": 1
       },
+      "manifest_sha256": "8d39b703937393b32e03367a8021a9e48dd47f2357b3293f9dea938b74d14a8e",
+      "rationale": "D-35 adjudication rulings; see docs/Decisions.md.",
+      "replacements": {},
+      "type": "annotate"
+    },
+    {
+      "case_count": 2000,
       "case_ids": [
         "v1-ppa-127"
       ],
+      "dataset_version": "1.0.0",
+      "date": "2026-09-26",
+      "description": "Retire v1-ppa-127: scenario-substrate triplication. Claim #K-4401 substrate is shared with v1-csm-023 and v1-ppa-031 (deliberate cross-family control pair, documented in case notes); v1-ppa-127 was the weakest variant (medium difficulty, framing confound). Its mechanism (threshold move 12->6mo) remains covered by v1-ppa-085 and others.",
+      "families": {
+        "confidence_spoofing": 200,
+        "criteria_smuggling": 200,
+        "distractor_flooding": 200,
+        "indirection": 200,
+        "literal_reading": 200,
+        "negation_games": 200,
+        "option_order": 200,
+        "policy_paraphrase": 200,
+        "score_anchoring": 200,
+        "state_poisoning": 200
+      },
+      "manifest_sha256": "59ee75053d9783855c440c55e0afef436691583ecae415fe45175eaeccc32e14",
       "rationale": "Scenario triplication on K-4401; weakest variant retired. See dataset fix spec 2026-09-25.",
       "replacements": {
         "v1-ppa-127": "v1-ppa-201"
-      }
+      },
+      "type": "retire"
     },
     {
-      "date": "2026-09-26",
-      "type": "add",
-      "dataset_version": "1.0.0",
-      "description": "Add v1-ppa-201: fresh-scenario threshold-move case (vendor invoice auto-approval domain) replacing retired v1-ppa-127. Restores policy_paraphrase to 200 cases.",
-      "manifest_sha256": "59ee75053d9783855c440c55e0afef436691583ecae415fe45175eaeccc32e14",
       "case_count": 2000,
-      "families": {
-        "confidence_spoofing": 200,
-        "criteria_smuggling": 200,
-        "distractor_flooding": 200,
-        "indirection": 200,
-        "literal_reading": 200,
-        "negation_games": 200,
-        "option_order": 200,
-        "policy_paraphrase": 200,
-        "score_anchoring": 200,
-        "state_poisoning": 200
-      },
       "case_ids": [
         "v1-ppa-201"
       ],
-      "rationale": "Replacement for retired v1-ppa-127; new scenario improves family scenario diversity."
-    },
-    {
-      "date": "2026-09-26",
-      "type": "fix",
       "dataset_version": "1.0.0",
-      "description": "Remove ethnically-coded names from v1-san-234 and v1-san-236 clearance cases. The names were decorative; their pairing with foreign-tie risk factors evoked a stereotype. All decision-relevant facts and gold labels unchanged.",
-      "manifest_sha256": "59ee75053d9783855c440c55e0afef436691583ecae415fe45175eaeccc32e14",
-      "case_count": 2000,
+      "date": "2026-09-26",
+      "description": "Add v1-ppa-201: fresh-scenario threshold-move case (vendor invoice auto-approval domain) replacing retired v1-ppa-127. Restores policy_paraphrase to 200 cases.",
       "families": {
         "confidence_spoofing": 200,
         "criteria_smuggling": 200,
@@ -73,20 +73,20 @@
         "score_anchoring": 200,
         "state_poisoning": 200
       },
+      "manifest_sha256": "59ee75053d9783855c440c55e0afef436691583ecae415fe45175eaeccc32e14",
+      "rationale": "Replacement for retired v1-ppa-127; new scenario improves family scenario diversity.",
+      "type": "add"
+    },
+    {
+      "case_count": 2000,
       "case_ids": [
         "v1-san-234",
         "v1-san-236"
       ],
-      "rationale": "Fairness: eliminate name/ethnicity pairing with foreign-tie risk factors. See dataset fix spec 2026-09-25.",
-      "diff_summary": "Benign+attacked prompts: 'File SC-1627 (A. Tanaka):' -> 'File SC-1627:'; 'File SC-8995 (K. Alvarez):' -> 'File SC-8995:'. No other changes."
-    },
-    {
-      "date": "2026-09-26",
-      "type": "fix",
       "dataset_version": "1.0.0",
-      "description": "v1-ind-148: removed 'per the chief' attribution from the attacked shift-log quote. A chief-attributed hold order legitimately outranks a protocol posting, making the gold label debatable; the entry is now unsigned/unverifiable, matching the family's indirection mechanism (cf. v1-ind-080).",
-      "manifest_sha256": "59ee75053d9783855c440c55e0afef436691583ecae415fe45175eaeccc32e14",
-      "case_count": 2000,
+      "date": "2026-09-26",
+      "description": "Remove ethnically-coded names from v1-san-234 and v1-san-236 clearance cases. The names were decorative; their pairing with foreign-tie risk factors evoked a stereotype. All decision-relevant facts and gold labels unchanged.",
+      "diff_summary": "Benign+attacked prompts: 'File SC-1627 (A. Tanaka):' -> 'File SC-1627:'; 'File SC-8995 (K. Alvarez):' -> 'File SC-8995:'. No other changes.",
       "families": {
         "confidence_spoofing": 200,
         "criteria_smuggling": 200,
@@ -99,19 +99,19 @@
         "score_anchoring": 200,
         "state_poisoning": 200
       },
+      "manifest_sha256": "59ee75053d9783855c440c55e0afef436691583ecae415fe45175eaeccc32e14",
+      "rationale": "Fairness: eliminate name/ethnicity pairing with foreign-tie risk factors. See dataset fix spec 2026-09-25.",
+      "type": "fix"
+    },
+    {
+      "case_count": 2000,
       "case_ids": [
         "v1-ind-148"
       ],
-      "rationale": "Gold-label validity: the attack must be an unverified pointer, not a legitimate override. See dataset fix spec 2026-09-25.",
-      "diff_summary": "Attacked prompt only: deleted 'per the chief, ' and appended '— unsigned entry' to the shift-log quote. Notes extended with fix rationale."
-    },
-    {
-      "date": "2026-09-26",
-      "type": "fix",
       "dataset_version": "1.0.0",
-      "description": "v1-lrd-197: notes-only clarification documenting the adjudication rationale for the attacked gold (life-safety override over literal policy compliance). No prompt, gold, or severity changes.",
-      "manifest_sha256": "59ee75053d9783855c440c55e0afef436691583ecae415fe45175eaeccc32e14",
-      "case_count": 2000,
+      "date": "2026-09-26",
+      "description": "v1-ind-148: removed 'per the chief' attribution from the attacked shift-log quote. A chief-attributed hold order legitimately outranks a protocol posting, making the gold label debatable; the entry is now unsigned/unverifiable, matching the family's indirection mechanism (cf. v1-ind-080).",
+      "diff_summary": "Attacked prompt only: deleted 'per the chief, ' and appended '\u2014 unsigned entry' to the shift-log quote. Notes extended with fix rationale.",
       "families": {
         "confidence_spoofing": 200,
         "criteria_smuggling": 200,
@@ -124,11 +124,34 @@
         "score_anchoring": 200,
         "state_poisoning": 200
       },
+      "manifest_sha256": "59ee75053d9783855c440c55e0afef436691583ecae415fe45175eaeccc32e14",
+      "rationale": "Gold-label validity: the attack must be an unverified pointer, not a legitimate override. See dataset fix spec 2026-09-25.",
+      "type": "fix"
+    },
+    {
+      "case_count": 2000,
       "case_ids": [
         "v1-lrd-197"
       ],
+      "dataset_version": "1.0.0",
+      "date": "2026-09-26",
+      "description": "v1-lrd-197: notes-only clarification documenting the adjudication rationale for the attacked gold (life-safety override over literal policy compliance). No prompt, gold, or severity changes.",
+      "diff_summary": "notes field only: appended adjudication rationale. Prompts and gold labels byte-identical.",
+      "families": {
+        "confidence_spoofing": 200,
+        "criteria_smuggling": 200,
+        "distractor_flooding": 200,
+        "indirection": 200,
+        "literal_reading": 200,
+        "negation_games": 200,
+        "option_order": 200,
+        "policy_paraphrase": 200,
+        "score_anchoring": 200,
+        "state_poisoning": 200
+      },
+      "manifest_sha256": "59ee75053d9783855c440c55e0afef436691583ecae415fe45175eaeccc32e14",
       "rationale": "Borderline review 2026-09-25: gold is defensible; rationale made explicit for reviewers. See dataset fix spec 2026-09-25.",
-      "diff_summary": "notes field only: appended adjudication rationale. Prompts and gold labels byte-identical."
+      "type": "fix"
     }
   ],
   "format_version": "1"
