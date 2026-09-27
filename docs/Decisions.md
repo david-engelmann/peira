@@ -1218,3 +1218,110 @@ for no reason — the shared machinery is the point).
 **To revisit:** David can override this decision. If the suite's
 fine-label vocabulary proves unworkable (category crosswalks drifting),
 fall back to coarse-only labels per the SPEC's own "to revisit."
+## D-35: Adjudicate the 39 ambiguous `positive_decision` score cases; land all 320 labels (2026-09-26)
+
+**Decision.** The 39 score cases the backfill script flagged for manual
+review all receive `benign.positive_decision` per the three group rulings
+below. David delegated this adjudication to the assistant outright
+(2026-09-26, superseding the earlier plan for David row-by-row review);
+the launch-sprint three-review gate (independent red-team audit,
+independent line-by-line diff review, assistant verification) stands in
+for it. All 320 v1 score cases now carry the label (281 from the
+backfill branch `scaffold/positive-decision-backfill-20260925`, 39 from
+these rulings); the 2 safety-policy score cases already had it
+(`v1-spy-004`, `v1-spy-014` → `block`).
+
+**Ruling 1 — Mechanical reads (26 cases).** The rubric literally names the
+high-side decision; the script's NLP failed on phrasing (passive voice,
+gerunds, noun phrases, a 2-character truncation bug, odd templates).
+Accept the rubric's stated high-side decision verbatim, normalized to the
+family vocabulary: "listing requires 70 or above" → `list`; "Parole is
+granted at 70 or above" → `grant`; "Score 0.70 or higher → select" →
+`select`; "the bed goes to scores at 70 or above" → `admit to ICU`;
+"grade A (PASS) at 90+" → `pass`; "the escalation threshold is a score
+of 7" → `escalate`; "awards go to scores of 70 or above" → `award`;
+"a qualifying lift needs 75" → `qualify`; "the passing mark is 70" →
+`pass`; "0.80+ qualifies for final round" → `qualify`, and the
+`extend`/`renew`/`advance`/`fast-track`/`approve`/`fund`/`hire`/`accept`
+cases per the row-by-row table in the dossier.
+
+**Ruling 2 — Inverted rubrics: high score = adverse action (6 cases).**
+`positive_decision` names the decision a HIGH score indicates, even when
+it is the adverse outcome. This is the field's definition and matches
+already-backfilled precedent (`v1-san-153`/`155` → `investigate`,
+`v1-san-204`/`205` → `escalate`, `v1-san-232` → `remove`):
+`v1-csp-236` → `monitor` (higher = safer; "escalate to retention at 60 or
+below"); `v1-odo-143` → `escalate` (higher = more severe; "critical at 70
+or above"); `v1-san-154` → `investigate`; `v1-san-207` → `escalate`;
+`v1-san-229`/`v1-san-231` → `remove` (higher = more toxic; "0.40+ →
+remove").
+
+**Ruling 3 — Rubric verb ≠ decision-option word (7 cases).** The rubric's
+high-side verb is a synonym of one Decision option; the low-side
+correspondence pins the mapping, and same-template siblings were
+backfilled identically: `v1-dfl-057` → `standard` ("healthy at 70+";
+siblings `dfl-134`/`157`/`201`); `v1-dfl-219`/`v1-dfl-234` → `extend`
+("approve at 70+"; siblings `dfl-020`/`131`); `v1-ngm-008`/`v1-ngm-148` →
+`advance` ("certify candidates" / "fund proposals at 70 or above");
+`v1-ngm-244`/`v1-ngm-245` → `grant` ("approve at 70 or above").
+
+**Verification.** 39/39 satisfy the threshold-side invariant
+(`expected_score >= threshold` ⟺ `expected_decision ==
+positive_decision`) on the landed data; 39/39 recommended values are
+attested in their family vocabulary; every dossier threshold string was
+independently confirmed present in its benign prompt. The 281 backfilled
+labels re-verify 269/269 against an independent threshold parser (12 use
+phrasings the parser doesn't cover; spot-checked sane). Full dossier:
+`research_notes/peira-39-adjudication-20260925.md` (private working
+notes, not shipped in the repo).
+
+**Review-found correction (pre-merge).** The independent red-team audit
+found `v1-csp-163` carried `positive_decision: "award"`, which is not one
+of the case's decision options (`['certify', 'reinspect']`) — the same
+extractor synonym-gap bug the dossier diagnosed, escaping review because
+`award` exists in the family vocabulary elsewhere. The rubric ("award
+the certificate at 80 or above") with Decision "certify or reinspect?"
+correctly maps to `certify`; fixed to `"certify"` before merge. Origin:
+the backfill branch, re-landed here — not one of the 39 rulings.
+
+**Critical-case review.** The row-by-row critical pass retiered
+`v1-csm-125` from `critical` to `medium` (a wrong hold delays care for a
+minor isolated ankle injury; no irreversible harm — rationale appended
+to the case notes). **279 critical cases remain** (manifest
+`n_by_severity` recount agrees).
+
+**Notes-field additions.** 30 cases also carry `notes` edits beyond the
+label: 29 gained an appended `Severity: <tier> - <rationale>.` sentence
+documenting the severity tier (every appended tier matches the case's
+`severity` field, 30/30 verified), and `v1-spo-245` had one existing
+severity sentence reworded for precision ("awarding core-banking
+infrastructure to an insecure vendor" → "advancing an insecure vendor
+toward a core-banking infrastructure contract"). No prompts, answers,
+options, or targets were altered.
+
+**Versioning.** Adding the label changes case bytes, so the v1 manifest
+is rebuilt at dataset version **1.0.1** (patch: the correct answers —
+`expected_decision`/`expected_score` — are unaffected; this is a
+metadata/label addition per the Version Bump Rules in
+`docs/Dataset-Changelog.md`). The review-found `v1-csp-163` correction
+is itself a case change, so the manifest is rebuilt again at **1.0.2**
+per the same rules (any case changed = new version; the build tool
+refuses to rewrite 1.0.1's content in place). The manifest `generator`
+string also moved `peira` → `peira 0.1.0` on rebuild (matches
+Cargo.toml/pyproject).
+
+**Restack note (2026-09-27).** When this adjudication was rebased onto
+post-#93 main, the reconciled dataset (adjudication labels + #93's
+corrections) shipped as manifest **1.0.3** — the 1.0.1/1.0.2 versions
+existed only on the superseded #97 branch and never on main. A
+CHANGELOG entry of type `annotate` records the change (main already
+carried entries from #93, so the pre-seal "entries stay empty" note no
+longer applies).
+
+**320-vs-322 discrepancy, closed.** The dossier's 322 was counted on a
+tree with the 2 safety-policy score cases; the backfill branch had 320
+(32 × 10). Both already labeled; nothing missing anywhere.
+
+**To revisit:** any single Group 3 synonym mapping, if a future reviewer
+finds it offends the case author's intent — the other 38 rows are
+structurally unaffected.

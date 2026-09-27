@@ -83,6 +83,20 @@ Typo or formatting fix that does NOT affect the correct answer (patch version bu
   not a `fix`.
 - The `manifest_sha256` will change (bytes changed) — this is expected for patch bumps.
 
+### `annotate`
+
+New metadata added to existing cases without changing prompts, options, or
+correct answers (patch version bump). Used for adjudication labels,
+severity rationales, and other annotation passes.
+
+**Required fields:** `date`, `type`, `description`, `case_ids` (list of
+annotated IDs), `dataset_version` (the new version), `rationale`.
+
+**Rules:**
+- Annotated fields must not alter the correct answer — if they do, it's a
+  `retire` + `add`, not an `annotate`.
+- The `manifest_sha256` will change (bytes changed) — this is expected for patch bumps.
+
 ## Why Only `seal` Pins `manifest_sha256`
 
 A deliberate trust decision: only a `seal` marks a version citable as an
@@ -99,6 +113,7 @@ bytes that produced* (the verifiable artifact).
 |--------|--------------|---------|
 | Initial seal | 1.0.0 | First release |
 | Typo fix (answer unaffected) | 1.0.1 (patch) | "recieve" → "receive" |
+| Metadata annotation (answer unaffected) | 1.0.1 (patch) | positive_decision labels added |
 | New cases added | 1.1.0 (minor) | 50 new indirection cases |
 | Cases retired | 1.1.0 (minor) | Duplicate removed |
 | Schema change | 2.0.0 (major) | New primitive added |
@@ -116,10 +131,10 @@ bytes that produced* (the verifiable artifact).
 v1 is **not sealed**. `entries` in `dataset/v1/cases/CHANGELOG.json` stays
 empty until the real seal. The following must land first:
 
-- [ ] Resolve the 39 score cases awaiting `positive_decision` adjudication.
-- [ ] Resolve the confirmed duplicate `v1-csm-023` / `v1-ppa-038`
-      ($95k storm-damage scenario appears twice) and the borderline cases
-      `v1-san-236`, `v1-ind-148`, `v1-lrd-197`.
+- [x] Resolve the 39 score cases awaiting `positive_decision` adjudication (done 2026-09-27, D-35; all 320 score cases labeled).
+- [x] Resolve the confirmed K-4401 substrate triplication (`v1-csm-023` / `v1-ppa-031` / `v1-ppa-127`)
+      and the borderline cases `v1-san-236`, `v1-ind-148`, `v1-lrd-197` (done 2026-09-26, #93:
+      ppa-127 retired, csm-023/ppa-031 kept as documented cross-family control pair).
 - [ ] Land the CallContext B2 `options` backfill (touches ~2,000 case files).
 - [ ] Settle the safety-policy architecture.
 - [ ] **Canary:** before the real seal, generate a fresh GUID, write it to
