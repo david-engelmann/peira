@@ -191,7 +191,7 @@ class TestLLMThroughRunner(unittest.TestCase):
             self.assertEqual(entry["attacked"]["decision"],
                              case.attacked.target_decision)
             usage = entry["benign"]["usage"]
-            self.assertEqual(usage["model"], "gpt-5.6-luna")
+            self.assertEqual(usage["model"], "gpt-5.6-luna-2026-08-01")
             # Runner recomputed cost from the pricing table (> 0 here).
             self.assertGreater(usage["cost_usd"], 0.0)
 

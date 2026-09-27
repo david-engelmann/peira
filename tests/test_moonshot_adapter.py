@@ -135,12 +135,12 @@ class TestMoonshotConstruction(unittest.TestCase):
     def test_name(self):
         self.assertEqual(MoonshotAdapter.name, "moonshot-structured")
 
-    def test_default_model_is_kimi_k3(self):
+    def test_default_model_is_pinned(self):
         adapter = MoonshotAdapter()
-        self.assertEqual(adapter.version, "kimi-k3")
+        self.assertEqual(adapter.version, "kimi-k3-2026-08-01")
         out = adapter.decide(CASE, "choice", _ctx())
-        self.assertEqual(out.usage.model, "kimi-k3")
-        self.assertEqual(self.calls[0]["model"], "kimi-k3")
+        self.assertEqual(out.usage.model, "kimi-k3-2026-08-01")
+        self.assertEqual(self.calls[0]["model"], "kimi-k3-2026-08-01")
 
     def test_model_override(self):
         adapter = MoonshotAdapter(model="kimi-k2.6")

@@ -423,6 +423,24 @@ Cause: the model download hit a transient Hub error (rate limit or
 under `--max-attempts` like any transient provider failure. Fix: wait
 and re-run; no action needed beyond the retry.
 
+**`no pinned model registered for adapter '...' (known: ...)`**
+Cause: code asked `peira.api_pins.get_pinned_model()` for an adapter
+name the pin registry doesn't know. This is a packaging bug, not a user
+error: the registry must cover every API adapter. Fix: add the
+adapter's verified dated model id to `peira.api_pins.PINNED_API_MODELS`
+(and a dated pin entry to `python/peira/data/pricing.json`).
+
+**`model '...' was retired by its vendor; use '...' instead`**
+(also raised as `pinned model '...' for adapter '...' was retired by
+its vendor; use '...' instead` from the pin registry itself)
+Cause: you passed an explicitly deprecated model id to an LLM baseline
+adapter (`DeprecatedPinError`), or the registry pin itself is stale.
+Deprecated ids may 404 or resolve to different weights than when they
+were pinned, so peira fails closed instead of running an
+unreproducible measurement. Fix: use the named replacement id. If you
+maintain the registry, move the old id into
+`peira.api_pins.DEPRECATED_PINS` and pin the replacement.
+
 **`<adapter> does not support primitive 'score'`** (HF adapters)
 Cause: the HF guardrail adapters are classifiers — they support
 `choice` and `abstain` only. A `score` case fails closed as malformed

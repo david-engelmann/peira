@@ -90,6 +90,11 @@ from dataclasses import dataclass
 from typing import Any
 
 from peira.adapters._labels import candidate_labels
+from peira.api_pins import (
+    DEPRECATED_PINS,
+    PINNED_API_MODELS,
+    DeprecatedPinError,
+)
 from peira.adapters.base import (
     AdapterOutput,
     CallContext,
@@ -453,6 +458,11 @@ class _StructuredLLMBase:
         max_tokens: int = 512,
         api_key: str | None = None,
     ) -> None:
+        if isinstance(model, str) and model in DEPRECATED_PINS:
+            raise DeprecatedPinError(
+                f"model {model!r} was retired by its vendor; use "
+                f"{DEPRECATED_PINS[model]!r} instead."
+            )
         self._model = model
         self._temperature = temperature
         self._seed = seed
@@ -727,7 +737,7 @@ class OpenAIAdapter(_StructuredLLMBase):
 
     def __init__(
         self,
-        model: str = "gpt-5.6-luna",
+        model: str = PINNED_API_MODELS["openai-structured"],
         temperature: float = 0.0,
         seed: int | None = 0,
         max_tokens: int = 512,
@@ -850,9 +860,10 @@ class MoonshotAdapter(OpenAIAdapter):
     request's ``base_url`` is recorded in the transcript's request
     shape; the key itself never is.
 
-    Default model is ``kimi-k3`` (Moonshot's 2.8T open-weight flagship,
-    $3/$15 per 1M): the self-host audience's flagship model, and the
-    cheapest way to put a frontier-adjacent model on the board.
+    Default model is ``kimi-k3-2026-08-01`` (the pinned dated version
+    of Moonshot's 2.8T open-weight flagship, $3/$15 per 1M): the
+    self-host audience's flagship model, and the cheapest way to put a
+    frontier-adjacent model on the board.
 
     Request shape: Moonshot's API 400s on ``seed`` and ``logprobs``
     (per third-party parameter surveys — the adapter omits both
@@ -877,7 +888,7 @@ class MoonshotAdapter(OpenAIAdapter):
 
     def __init__(
         self,
-        model: str = "kimi-k3",
+        model: str = PINNED_API_MODELS["moonshot-structured"],
         temperature: float = 0.0,
         seed: int | None = 0,
         max_tokens: int = 512,
@@ -935,7 +946,7 @@ class AnthropicAdapter(_StructuredLLMBase):
 
     def __init__(
         self,
-        model: str = "claude-sonnet-5",
+        model: str = PINNED_API_MODELS["anthropic-structured"],
         temperature: float = 0.0,
         seed: int | None = 0,
         max_tokens: int = 512,
@@ -1037,7 +1048,7 @@ class GoogleAdapter(_StructuredLLMBase):
 
     def __init__(
         self,
-        model: str = "gemini-3.8-flash",
+        model: str = PINNED_API_MODELS["google-structured"],
         temperature: float = 0.0,
         seed: int | None = 0,
         max_tokens: int = 512,

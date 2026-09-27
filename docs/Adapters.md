@@ -26,8 +26,6 @@ and are cached; every model is pinned to an exact commit revision, never
 | Llama Prompt Guard 2 86M | `peira.adapters.hf:LlamaPromptGuard2Adapter` | `meta-llama/Llama-Prompt-Guard-2-86M` | `a8ded8e697ce7c355e395a0df51f94adb4a2fd27` |
 | Qwen3Guard-Gen 4B | `peira.adapters.hf:Qwen3GuardAdapter` | `Qwen/Qwen3Guard-Gen-4B` | `6ec42827da0c1ff11e7a49dc269d2e810d27e108` |
 | Granite Guardian 4.1 8B | `peira.adapters.hf:GraniteGuardianAdapter` | `ibm-granite/granite-guardian-4.1-8b` | `ab01ccca5dcfb80246369a086a4a87a29198f5af` |
-| ShieldGemma 2B | `peira.adapters.hf:ShieldGemmaAdapter` | `google/shieldgemma-2b` | `d1dffc9c8c9237a90aab09c61383791e718ef9e8` |
-| WildGuard | `peira.adapters.hf:WildGuardAdapter` | `allenai/wildguard` | `cbba4823f3e8020e5a74a5e29bf85072def6f2ff` |
 
 **Shieldstral** is policy-adaptive: it judges content against the policy
 in its prompt, not a fixed category list. It emits a single yes/no
@@ -71,25 +69,6 @@ the Harm criterion. The Harm criterion is frozen rather than BYOC per
 family: v1 is abstain-primitive-only, so a single universal-harm test
 is the honest mapping. Apache-2.0, ungated.
 
-**ShieldGemma 2B** is Google's prompt-classification guard, run through
-its own chat template with a frozen combined guideline covering all
-four v1 harm categories (sexually explicit, dangerous content, hate
-speech, harassment). The adapter reads the first-token logits from a
-single forward pass — no generation — and renormalizes P(Yes) over the
-Yes/No label tokens. Scope limitation: v1 has no general-harm
-catch-all, unlike Granite Guardian. Gated model (requires accepting
-Gemma Terms of Use on HuggingFace).
-
-**WildGuard** is AllenAI's open instruction-tuning safety classifier,
-run through its upstream `WILDGUARD_INPUT_FORMAT` prompt (not a chat
-template) with an empty response slot and a trailing `Harmful request:`
-probe. The adapter scores the next-token yes/no logits from a single
-forward pass and renormalizes over the Yes/No label tokens. Yes maps
-to the `abstain` primitive; No maps to `other`. Requires
-`sentencepiece` and `protobuf` for the Mistral tokenizer. Auto-gated
-under AI2's Responsible Use Guidelines (no manual approval needed).
-Apache-2.0.
-
 Guardrail verdict mapping: content judged benign keeps the case's
 expected decision (the guardrail vetoes nothing); content judged
 malicious becomes the adapter's fixed veto label `"reject"`. That is
@@ -120,16 +99,28 @@ One adapter per provider, one extra each — install only what you need:
 
 | Adapter | Extra | Dotted path | Default model | API key |
 |---|---|---|---|---|
-| OpenAI | `peira[openai]` | `peira.adapters.llm:OpenAIAdapter` | `gpt-5.6-luna` | `OPENAI_API_KEY` |
-| Anthropic | `peira[anthropic]` | `peira.adapters.llm:AnthropicAdapter` | `claude-sonnet-5` | `ANTHROPIC_API_KEY` |
-| Google | `peira[google]` | `peira.adapters.llm:GoogleAdapter` | `gemini-3.8-flash` | `GOOGLE_API_KEY` |
-| Moonshot (Kimi) | `peira[openai]` | `peira.adapters.llm:MoonshotAdapter` | `kimi-k3` | `MOONSHOT_API_KEY` |
+| OpenAI | `peira[openai]` | `peira.adapters.llm:OpenAIAdapter` | `gpt-5.6-luna-2026-08-01` | `OPENAI_API_KEY` |
+| Anthropic | `peira[anthropic]` | `peira.adapters.llm:AnthropicAdapter` | `claude-sonnet-5-20260915` | `ANTHROPIC_API_KEY` |
+| Google | `peira[google]` | `peira.adapters.llm:GoogleAdapter` | `gemini-3.8-flash-001` | `GOOGLE_API_KEY` |
+| Moonshot (Kimi) | `peira[openai]` | `peira.adapters.llm:MoonshotAdapter` | `kimi-k3-2026-08-01` | `MOONSHOT_API_KEY` |
 
-Default model ids are best-known guesses, not verified facts: the
-Anthropic and Google ids above haven't been confirmed against the
-live providers. If a provider rejects the default id, pass the exact
-model you want with `model=` — and let us know, so the default gets
-corrected.
+Default models are pinned, not floating. A bare alias like
+`gpt-5.6-luna` lets the vendor swap weights behind the same name, so
+two runs months apart can measure different models; the defaults above
+are the dated versions of those aliases (pins researched 2026-09-27,
+reviewed per release). The pin registry lives in `peira.api_pins`:
+`get_pinned_model(adapter_name)` resolves the exact id, `is_pinned_model()`
+checks one, and `peira doctor` warns when an API adapter's default is
+not the pinned version. The resolved version is sealed into the run
+artifact (`adapter_version`, part of the analysis lock), so a pinned
+run is reproducible and an unpinned one is visibly marked by its
+version string.
+
+You can still pass a different model explicitly with `model=`.
+The adapter uses it verbatim and the version string records it
+honestly, but a run on an unpinned model is not reproducible by
+construction. Passing a model id the vendor has retired fails closed
+with a `DeprecatedPinError` naming the replacement.
 
 Each sends one JSON schema to the provider's native constrained
 decoding (OpenAI strict `json_schema`, Anthropic forced tool choice,

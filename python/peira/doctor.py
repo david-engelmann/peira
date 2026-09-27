@@ -75,6 +75,7 @@ from __future__ import annotations
 
 import importlib
 import importlib.util
+import inspect
 import os
 import platform
 import shutil
@@ -716,7 +717,41 @@ def _any_env_var_set(names: list[str]) -> bool:
     return any(_env_var_is_set(n) for n in names)
 
 
-def check_adapter(cls: type, info: SystemInfo) -> AdapterReadiness:
+def _api_pin_note(cls: type) -> tuple[str, str]:
+    """(detail suffix, hint) when an API adapter's default model is unpinned.
+
+    Compares the constructor's default ``model=`` against the pin
+    registry (peira.api_pins). Returns ("", "") when the adapter is not
+    a pinned API adapter, the default cannot be determined, or the
+    default matches the pin. Never raises.
+    """
+    try:
+        from peira.api_pins import PINNED_API_MODELS, pin_status
+        name = str(getattr(cls, "name", "") or "")
+        if name not in PINNED_API_MODELS:
+            return "", ""
+        try:
+            params = inspect.signature(cls.__init__).parameters
+        except (TypeError, ValueError):
+            return "", ""
+        default = params.get("model", None)
+        default = default.default if default is not None else None
+        if not isinstance(default, str):
+            return "", ""
+        status, detail = pin_status(name, default)
+        if status == "pinned":
+            return "", ""
+        pin = PINNED_API_MODELS[name]
+        return (
+            f"; API model pin: {detail}",
+            f"use model={pin!r} (the pinned version) or update the pin "
+            "registry in peira.api_pins",
+        )
+    except Exception:
+        return "", ""
+
+
+def _check_adapter_inner(cls: type, info: SystemInfo) -> AdapterReadiness:
     """Readiness verdict for one adapter class. Never raises."""
     name = str(getattr(cls, "name", cls.__name__))
     try:
@@ -798,6 +833,28 @@ def check_adapter(cls: type, info: SystemInfo) -> AdapterReadiness:
     except Exception as e:
         return AdapterReadiness(name, "unknown",
                                 f"readiness check failed: {e}", "")
+
+
+def check_adapter(cls: type, info: SystemInfo) -> AdapterReadiness:
+    """Readiness verdict for one adapter class, plus API pin warnings.
+
+    Never raises.
+    """
+    try:
+        result = _check_adapter_inner(cls, info)
+    except Exception as e:
+        return AdapterReadiness(
+            str(getattr(cls, "name", "?")), "unknown",
+            f"readiness check failed: {e}", "")
+    note, hint = _api_pin_note(cls)
+    if not note:
+        return result
+    detail = result.detail + note if result.detail else note.lstrip("; ")
+    full_hint = result.hint
+    if hint:
+        full_hint = f"{full_hint}; {hint}" if full_hint else hint
+    return AdapterReadiness(
+        result.adapter_name, result.status, detail, full_hint)
 
 
 # ---------------------------------------------------------------------------
