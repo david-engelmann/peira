@@ -930,6 +930,55 @@ def cmd_compare(args: argparse.Namespace) -> int:
     return EXIT_OK
 
 
+def cmd_runs_list(args: argparse.Namespace) -> int:
+    """List runs in the registry with optional filters."""
+    from peira.runs_registry import list_runs, scan_runs
+
+    runs_dir = Path(args.runs_dir) if args.runs_dir else None
+    # Ensure the index is built
+    n = scan_runs(runs_dir)
+    runs = list_runs(
+        runs_dir,
+        adapter=args.adapter,
+        suite=args.suite,
+        dataset_version=args.dataset_version,
+    )
+    if not runs:
+        print(f"No runs found (scanned {n} artifacts).")
+        return EXIT_OK
+    # Print a table
+    print(f"{'Run ID':<40} {'Adapter':<20} {'Suite':<10} "
+          f"{'Dataset':<12} {'Env SHA':<10} {'Lock':<8}")
+    print("-" * 100)
+    for r in runs:
+        env_short = (r["env_sha256"] or "")[:8]
+        lock = "valid" if r["lock_valid"] else "INVALID"
+        print(f"{r['run_id']:<40} {r['adapter_name']:<20} "
+              f"{r['suite']:<10} {r['dataset_version']:<12} "
+              f"{env_short:<10} {lock:<8}")
+    print(f"\n{n} run(s) total.")
+    return EXIT_OK
+
+
+def cmd_runs_verify(args: argparse.Namespace) -> int:
+    """Verify analysis locks for run artifacts."""
+    from peira.runs_registry import verify_runs
+
+    results = verify_runs(args.paths)
+    failed = 0
+    for path, valid, msg in results:
+        status = "OK" if valid else "FAIL"
+        print(f"{status}: {path} — {msg}")
+        if not valid:
+            failed += 1
+    if failed:
+        print(f"\n{failed} of {len(results)} failed verification.",
+              file=sys.stderr)
+        return EXIT_USER_ERROR
+    print(f"\nAll {len(results)} verified.")
+    return EXIT_OK
+
+
 def cmd_dataset_build_manifest(args: argparse.Namespace) -> int:
     from peira.dataset import (MANIFEST_NAME, build_manifest, read_manifest,
                                write_manifest)
@@ -1214,7 +1263,7 @@ def cmd_dataset_verify_manifest(args: argparse.Namespace) -> int:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    p = argparse.ArgumentParser(prog="peira", description="AI red teaming with a control group: the LLM guardrail benchmark.")
+    p = argparse.ArgumentParser(prog="peira", description="The empirical trial for decision models.")
     p.add_argument("--version", action="version", version=f"peira {__version__}")
     sub = p.add_subparsers(dest="command", required=True)
 
@@ -1292,6 +1341,23 @@ def build_parser() -> argparse.ArgumentParser:
     cp.add_argument("--seed", type=int, default=0,
                     help="seed for the paired-bootstrap CIs (default: 0)")
     cp.set_defaults(func=cmd_compare)
+
+    # Run registry (Layer 5a): index and query run artifacts.
+    rr = sub.add_parser("runs", help="run registry: list and verify artifacts")
+    rsub = rr.add_subparsers(dest="runs_command", required=True)
+    rl = rsub.add_parser("list", help="list runs in the registry")
+    rl.add_argument("--runs-dir", default=None,
+                    help="runs directory (default: ./runs or $PEIRA_RUNS_DIR)")
+    rl.add_argument("--adapter", default=None,
+                    help="filter by adapter name")
+    rl.add_argument("--suite", default=None,
+                    help="filter by suite")
+    rl.add_argument("--dataset-version", default=None,
+                    help="filter by dataset version")
+    rl.set_defaults(func=cmd_runs_list)
+    rv = rsub.add_parser("verify", help="verify analysis locks")
+    rv.add_argument("paths", nargs="+", help="artifact paths to verify")
+    rv.set_defaults(func=cmd_runs_verify)
 
     d = sub.add_parser("dataset", help="dataset build tooling")
     dsub = d.add_subparsers(dest="dataset_command", required=True)

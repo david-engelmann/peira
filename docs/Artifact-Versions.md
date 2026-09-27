@@ -62,6 +62,22 @@ whose results are published), the following rules take effect:
 |---------|------|---------|-----------------|
 | 1 | pre-2026-09-25 | Initial format | N/A (superseded) |
 | 2 | 2026-09-25 | Metrics included in lock (P0-1). Pre-v2 artifacts fail `verify()`. | No — rejected with clear error. Acceptable: no sealed measurements exist. |
+| 2 | 2026-09-27 | Environment fingerprint added: `env` (dict) and `env_sha256` (str) fields. The `env_sha256` is part of the analysis lock. Artifacts without these fields (empty defaults) still verify — the fields were added with backward-compatible defaults. | Yes — old v2 artifacts load with empty env fields. |
+
+## Environment Fingerprint (2026-09-27)
+
+Every artifact now records the environment it ran in:
+
+- `env`: Full environment dict (Python version, peira version, torch/transformers/numpy versions, CUDA availability, OS, architecture, Rust backend availability)
+- `env_sha256`: SHA-256 of the canonical JSON encoding of `env`
+
+The `env_sha256` is part of the analysis lock. Two runs with different
+`env_sha256` values are *explained* — the environment differed — not
+mysterious. Use `peira runs list` to see the env fingerprint for each run,
+and `peira runs compare` (future) to diff environments between runs.
+
+The fingerprint is computed by `python/peira/env_fingerprint.py` at run start
+and sealed into the artifact. See the module docstring for the full field list.
 
 ## What "Verifiable Forever" Means in Practice
 

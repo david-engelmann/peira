@@ -77,6 +77,12 @@ class RunArtifact:
     # not a measurement input (records are identical for any limit),
     # but it is sealed for provenance.
     max_concurrency: int = 0
+    # Environment fingerprint (Layer 1b): the full environment dict plus
+    # its SHA-256 digest. Recorded at run start; part of the analysis
+    # lock. Two runs with different env_sha256 are explained, not
+    # mysterious.
+    env: dict = field(default_factory=dict)
+    env_sha256: str = ""
 
     def compute_lock(self) -> str:
         payload = json.dumps(
@@ -98,6 +104,10 @@ class RunArtifact:
                 # lock. Pre-2026-09-25 artifacts sealed without metrics in
                 # the lock will fail verify() — acceptable per blank-canvas.
                 "metrics": self.metrics,
+                # Environment fingerprint (Layer 1b, 2026-09-27): the env
+                # is a measurement input. A different torch/CUDA/Python
+                # can change numbers; the lock must catch it.
+                "env_sha256": self.env_sha256,
             },
             sort_keys=True,
         )
@@ -137,6 +147,8 @@ class RunArtifact:
         "pricing_date": str,
         "seed": int,
         "max_concurrency": int,
+        "env": dict,
+        "env_sha256": str,
     }
     _REQUIRED_FIELDS: ClassVar[tuple] = ("peira_version", "dataset_version")
     _FIELD_DEFAULTS: ClassVar[dict] = {
@@ -154,6 +166,8 @@ class RunArtifact:
         "pricing_date": "",
         "seed": 0,
         "max_concurrency": 0,
+        "env": dict,
+        "env_sha256": "",
     }
     # Integer fields where a JSON `true` must not pass as an integer
     # (bool subclasses int).

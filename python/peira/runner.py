@@ -1382,6 +1382,9 @@ def replay_suite(
             "replayed_at_utc": datetime.now(timezone.utc).isoformat(),
         },
     }
+    # Environment fingerprint (Layer 1b): the replay environment, since
+    # re-scoring happens here.
+    _env, _env_sha256 = collect_and_fingerprint()
     artifact = RunArtifact(
         adapter_name=name,
         adapter_version=version,
@@ -1393,6 +1396,8 @@ def replay_suite(
         seed=seed,
         max_concurrency=max_concurrency,
         config=config,
+        env=_env,
+        env_sha256=_env_sha256,
         results=results_to_dicts(ordered),
     )
     artifact.metrics = _summarize_artifact(
