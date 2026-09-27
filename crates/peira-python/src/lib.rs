@@ -21,7 +21,7 @@
 //!   wider than u64, non-string dict keys) raise `TypeError`/`ValueError`;
 //!   the Python wrappers catch those and fall back to pure Python.
 
-use peira_core::{canonical, compare, gates, metrics, schema};
+use peira_core::{canonical, compare, execution, gates, metrics, schema};
 use pyo3::exceptions::{PyTypeError, PyValueError};
 use pyo3::prelude::*;
 use pyo3::types::{PyBool, PyDict, PyFloat, PyInt, PyList, PyString, PyTuple};
@@ -513,9 +513,7 @@ impl<'a> PyGateCase<'a> {
         // D-11: fail loudly on non-dict cases. Python raises TypeError;
         // the dispatch except falls back to Python, which raises loudly.
         if self.2.cast::<PyDict>().is_err() {
-            return Err(PyTypeError::new_err(
-                "gate case must be a dict",
-            ));
+            return Err(PyTypeError::new_err("gate case must be a dict"));
         }
         Ok(gates::GateCase {
             path_name: self.0.clone(),
@@ -593,6 +591,107 @@ fn gates_options_coherence(cases: Vec<PyGateCase>) -> PyResult<GatePacked> {
     )))
 }
 
+/// Opaque per-call id for the adapter-visible context (SHA-256).
+///
+/// Mirrors `runner._pseudonymous_call_id`. The Python wrapper validates
+/// types (rejecting bools, which would format differently in Rust).
+#[pyfunction]
+fn execution_pseudonymous_call_id(run_nonce: String, seed: i64, dispatch_index: i64) -> String {
+    execution::pseudonymous_call_id(&run_nonce, seed, dispatch_index)
+}
+
+/// Eligibility + flip judgment for one benign/attacked record pair.
+///
+/// Mirrors `runner._score_pair` with the `(Case, CallRecord, CallRecord)`
+/// triple flattened to primitives. Returns
+/// `(flipped, eligible, ineligibility_reason)`.
+#[pyfunction]
+#[allow(clippy::too_many_arguments)]
+fn execution_score_pair(
+    primitive: String,
+    expected_decision: String,
+    benign_decision: String,
+    benign_abstained: bool,
+    benign_malformed: bool,
+    attacked_decision: String,
+    attacked_abstained: bool,
+    attacked_malformed: bool,
+) -> (bool, bool, String) {
+    let out = execution::score_pair(&execution::ScorePairInput {
+        primitive,
+        expected_decision,
+        benign_decision,
+        benign_abstained,
+        benign_malformed,
+        attacked_decision,
+        attacked_abstained,
+        attacked_malformed,
+    });
+    (out.flipped, out.eligible, out.ineligibility_reason)
+}
+
+/// Content-hash cache key for one adapter call.
+///
+/// Mirrors `concurrency.cache_key`.
+#[pyfunction]
+#[allow(clippy::too_many_arguments)]
+fn execution_cache_key(
+    adapter_name: String,
+    adapter_version: String,
+    cache_namespace: String,
+    primitive: String,
+    variant: String,
+    case_id: String,
+    case_input: Bound<'_, PyAny>,
+    manifest_sha256: String,
+) -> PyResult<String> {
+    let input = value_from_py(&case_input)?;
+    Ok(execution::cache_key(
+        &adapter_name,
+        &adapter_version,
+        &cache_namespace,
+        &primitive,
+        &variant,
+        &case_id,
+        &input,
+        &manifest_sha256,
+    ))
+}
+
+/// Deterministic jitter-RNG seed string for one retry.
+///
+/// Mirrors `concurrency.retry_jitter_seed`. A `None` seed renders as
+/// `"None"`, matching Python's f-string of None.
+#[pyfunction]
+fn execution_retry_jitter_seed(seed: Option<i64>, dispatch_index: i64, attempt: i64) -> String {
+    execution::retry_jitter_seed(seed, dispatch_index, attempt)
+}
+
+/// Failure classification: `(retryable, congestion_cut, retry_after)`.
+///
+/// Mirrors `concurrency.classify_provider_error` (and the flattened core
+/// of `classify_exception`). The Python wrapper normalizes the
+/// exception's attributes before dispatch (bools/non-numerics to None).
+#[pyfunction]
+fn execution_classify_failure(
+    status_code: Option<i64>,
+    retry_after: Option<f64>,
+    is_timeout: bool,
+    is_connection_error: bool,
+) -> (bool, bool, Option<f64>) {
+    let c = execution::classify_failure(status_code, retry_after, is_timeout, is_connection_error);
+    (c.retryable, c.congestion_cut, c.retry_after)
+}
+
+/// Backoff bound: `min(cap_s, base_s * 2^attempt)`.
+///
+/// The deterministic half of `concurrency.backoff_delay`; the uniform
+/// draw stays in Python (PRNGs differ across backends).
+#[pyfunction]
+fn execution_backoff_bound(attempt: u32, base_s: f64, cap_s: f64) -> f64 {
+    execution::backoff_bound(attempt, base_s, cap_s)
+}
+
 /// Canonical JSON: byte-identical to Python's `json.dumps(sort_keys=True)`.
 #[pyfunction]
 fn canonical_json(obj: &Bound<'_, PyAny>) -> PyResult<String> {
@@ -654,6 +753,12 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(gates_pii_scan, m)?)?;
     m.add_function(wrap_pyfunction!(gates_score_reference, m)?)?;
     m.add_function(wrap_pyfunction!(gates_options_coherence, m)?)?;
+    m.add_function(wrap_pyfunction!(execution_pseudonymous_call_id, m)?)?;
+    m.add_function(wrap_pyfunction!(execution_score_pair, m)?)?;
+    m.add_function(wrap_pyfunction!(execution_cache_key, m)?)?;
+    m.add_function(wrap_pyfunction!(execution_retry_jitter_seed, m)?)?;
+    m.add_function(wrap_pyfunction!(execution_classify_failure, m)?)?;
+    m.add_function(wrap_pyfunction!(execution_backoff_bound, m)?)?;
     m.add_function(wrap_pyfunction!(canonical_json, m)?)?;
     m.add_function(wrap_pyfunction!(canonical_pretty, m)?)?;
     Ok(())

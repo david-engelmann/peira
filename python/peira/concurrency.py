@@ -39,6 +39,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
 
+from peira._rust import _impl as _rust
 from peira.adapters.base import ProviderError
 from peira.dataset import atomic_write_text
 
@@ -58,7 +59,7 @@ CONGESTION_STATUSES = frozenset({429, 503})
 MAX_RETRY_AFTER_S = 60.0
 
 
-def classify_exception(exc: BaseException) -> tuple[bool, bool, float | None]:
+def _classify_exception_py(exc: BaseException) -> tuple[bool, bool, float | None]:
     """Classify an adapter-call failure.
 
     Returns ``(retryable, congestion_cut, retry_after)``:
@@ -104,6 +105,43 @@ def classify_exception(exc: BaseException) -> tuple[bool, bool, float | None]:
     return (False, False, None)
 
 
+def classify_exception(
+    exc: BaseException,
+) -> tuple[bool, bool, float | None]:
+    """Dispatch to Rust when available, else the pure-Python reference.
+
+    D-11: the exception's attributes are normalized before dispatch —
+    bools and non-numerics become None (a bool ``retry_after`` would
+    coerce to ``1.0`` in Rust but is ignored in Python), and the
+    timeout/connection branches travel as explicit flags.
+    """
+    if _rust is not None:
+        retry_after = getattr(exc, "retry_after", None)
+        if (
+            isinstance(retry_after, bool)
+            or not isinstance(retry_after, (int, float))
+            or not retry_after >= 0
+        ):
+            retry_after = None
+        else:
+            try:
+                retry_after = float(retry_after)
+            except OverflowError:
+                # Gigantic ints (e.g. 10**400) overflow float(); treat as
+                # invalid per D-11 rather than raising bare OverflowError.
+                retry_after = None
+        status = getattr(exc, "status_code", None)
+        if isinstance(status, bool) or not isinstance(status, int):
+            status = None
+        return _rust.execution_classify_failure(
+            status,
+            retry_after,
+            isinstance(exc, (asyncio.TimeoutError, TimeoutError)),
+            isinstance(exc, ConnectionError),
+        )
+    return _classify_exception_py(exc)
+
+
 def classify_provider_error(
     status_code: int | None, retry_after: float | None = None
 ) -> tuple[bool, bool, float | None]:
@@ -113,7 +151,7 @@ def classify_provider_error(
     )
 
 
-def retry_jitter_seed(
+def retry_jitter_seed_py(
     seed: int | None, dispatch_index: int, attempt: int
 ) -> str:
     """Deterministic jitter-RNG seed for one retry.
@@ -126,7 +164,35 @@ def retry_jitter_seed(
     return f"{seed}:{dispatch_index}:{attempt}"
 
 
-def backoff_delay(
+def retry_jitter_seed(
+    seed: int | None, dispatch_index: int, attempt: int
+) -> str:
+    """Dispatch to Rust when available, else the pure-Python reference.
+
+    D-11: a bool seed would format as ``"True"`` in Python but is not
+    a valid ``Option<i64>`` — reject it loudly rather than computing
+    divergent seeds.
+    """
+    if _rust is not None:
+        if seed is not None and (
+            isinstance(seed, bool) or not isinstance(seed, int)
+        ):
+            raise TypeError(
+                f"seed must be int or None, got {type(seed).__name__}"
+            )
+        for name, value in (("dispatch_index", dispatch_index),
+                            ("attempt", attempt)):
+            if isinstance(value, bool) or not isinstance(value, int):
+                raise TypeError(
+                    f"{name} must be int, got {type(value).__name__}"
+                )
+        return _rust.execution_retry_jitter_seed(
+            seed, dispatch_index, attempt
+        )
+    return retry_jitter_seed_py(seed, dispatch_index, attempt)
+
+
+def _backoff_delay_py(
     attempt: int,
     rng: random.Random,
     base_s: float = 1.0,
@@ -141,6 +207,38 @@ def backoff_delay(
     reproducible for a given seed.
     """
     return rng.uniform(0.0, min(cap_s, base_s * (2.0**attempt)))
+
+
+def backoff_delay(
+    attempt: int,
+    rng: random.Random,
+    base_s: float = 1.0,
+    cap_s: float = 60.0,
+) -> float:
+    """Full-jitter exponential backoff for retry ``attempt`` (0-based).
+
+    Dispatches the deterministic bound (``min(cap, base * 2**attempt)``)
+    to Rust when available; the uniform draw always stays in Python —
+    the Rust core uses SplitMix64 where the reference uses Mersenne
+    Twister (PR #101 precedent), so draws are not bit-identical.
+    """
+    if _rust is not None:
+        if isinstance(attempt, bool) or not isinstance(attempt, int):
+            raise TypeError(
+                f"attempt must be int, got {type(attempt).__name__}"
+            )
+        if attempt < 0:
+            raise ValueError(f"attempt must be >= 0, got {attempt}")
+        # D-11: reject non-finite base/cap loudly. Python's min(nan, x)
+        # returns nan but Rust's f64::min ignores NaN — silent divergence.
+        import math
+        if not math.isfinite(base_s):
+            raise ValueError(f"base_s must be finite, got {base_s}")
+        if not math.isfinite(cap_s):
+            raise ValueError(f"cap_s must be finite, got {cap_s}")
+        bound = _rust.execution_backoff_bound(attempt, base_s, cap_s)
+        return rng.uniform(0.0, bound)
+    return _backoff_delay_py(attempt, rng, base_s, cap_s)
 
 
 class AdaptiveConcurrency:
@@ -265,7 +363,7 @@ class AdaptiveConcurrency:
                     self._cond.notify(free)
 
 
-def cache_key(
+def cache_key_py(
     *,
     adapter_name: str,
     adapter_version: str,
@@ -308,6 +406,64 @@ def cache_key(
         ensure_ascii=True,
     )
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+def cache_key(
+    *,
+    adapter_name: str,
+    adapter_version: str,
+    cache_namespace: str,
+    primitive: str,
+    variant: str,
+    case_id: str,
+    case_input: dict[str, Any],
+    manifest_sha256: str,
+) -> str:
+    """Dispatch to Rust when available, else the pure-Python reference.
+
+    D-11: the input dict must be JSON-shaped — the Rust core raises
+    ``TypeError`` on non-string keys or non-finite floats rather than
+    computing a divergent key.
+    """
+    if _rust is not None:
+        for name, value in (
+            ("adapter_name", adapter_name),
+            ("adapter_version", adapter_version),
+            ("cache_namespace", cache_namespace),
+            ("primitive", primitive),
+            ("variant", variant),
+            ("case_id", case_id),
+            ("manifest_sha256", manifest_sha256),
+        ):
+            if not isinstance(value, str):
+                raise TypeError(
+                    f"{name} must be str, got {type(value).__name__}"
+                )
+        if not isinstance(case_input, dict):
+            raise TypeError(
+                "case_input must be a dict, "
+                f"got {type(case_input).__name__}"
+            )
+        return _rust.execution_cache_key(
+            adapter_name,
+            adapter_version,
+            cache_namespace,
+            primitive,
+            variant,
+            case_id,
+            case_input,
+            manifest_sha256,
+        )
+    return cache_key_py(
+        adapter_name=adapter_name,
+        adapter_version=adapter_version,
+        cache_namespace=cache_namespace,
+        primitive=primitive,
+        variant=variant,
+        case_id=case_id,
+        case_input=case_input,
+        manifest_sha256=manifest_sha256,
+    )
 
 
 class ResponseCache:
