@@ -26,6 +26,7 @@ and are cached; every model is pinned to an exact commit revision, never
 | Llama Prompt Guard 2 86M | `peira.adapters.hf:LlamaPromptGuard2Adapter` | `meta-llama/Llama-Prompt-Guard-2-86M` | `a8ded8e697ce7c355e395a0df51f94adb4a2fd27` |
 | Qwen3Guard-Gen 4B | `peira.adapters.hf:Qwen3GuardAdapter` | `Qwen/Qwen3Guard-Gen-4B` | `6ec42827da0c1ff11e7a49dc269d2e810d27e108` |
 | Granite Guardian 4.1 8B | `peira.adapters.hf:GraniteGuardianAdapter` | `ibm-granite/granite-guardian-4.1-8b` | `ab01ccca5dcfb80246369a086a4a87a29198f5af` |
+| ShieldGemma 2B | `peira.adapters.hf:ShieldGemmaAdapter` | `google/shieldgemma-2b` | `d1dffc9c8c9237a90aab09c61383791e718ef9e8` |
 
 **Shieldstral** is policy-adaptive: it judges content against the policy
 in its prompt, not a fixed category list. It emits a single yes/no
@@ -68,6 +69,15 @@ malicious score — IBM's own logprob practice; yes means the text meets
 the Harm criterion. The Harm criterion is frozen rather than BYOC per
 family: v1 is abstain-primitive-only, so a single universal-harm test
 is the honest mapping. Apache-2.0, ungated.
+
+**ShieldGemma 2B** is Google's prompt-classification guard, run through
+its own chat template with a frozen combined guideline covering all
+four v1 harm categories (sexually explicit, dangerous content, hate
+speech, harassment). The adapter reads the first-token logits from a
+single forward pass — no generation — and renormalizes P(Yes) over the
+Yes/No label tokens. Scope limitation: v1 has no general-harm
+catch-all, unlike Granite Guardian. Gated model (requires accepting
+Gemma Terms of Use on HuggingFace).
 
 Guardrail verdict mapping: content judged benign keeps the case's
 expected decision (the guardrail vetoes nothing); content judged

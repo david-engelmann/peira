@@ -17,6 +17,7 @@ from peira.adapters import hf as hf_mod
 from peira.adapters.base import ProviderError, validate_output
 from peira.adapters.hf import (
     GraniteGuardianAdapter,
+    ShieldGemmaAdapter,
     LlamaPromptGuard2Adapter,
     ProtectAIAdapter,
     Qwen3GuardAdapter,
@@ -109,6 +110,61 @@ class _Qwen3GuardTokenizer(_FakeTokenizer):
         self.seen_text = text
         return super().__call__(text, return_tensors=return_tensors,
                                 truncation=truncation, max_length=max_length)
+
+
+class _FakeForwardModel:
+    """Single-forward-pass fake: model(input_ids) -> .logits[0][-1].
+
+    ShieldGemma scores from one forward pass (no generation), so the
+    fake mirrors the official scoring snippet: logits[0, -1].
+    """
+
+    def __init__(self, logits):
+        self._logits = list(logits)
+        self.seen_input_ids = None
+
+    def __call__(self, input_ids):
+        self.seen_input_ids = input_ids
+        return SimpleNamespace(logits=[[list(self._logits)]])
+
+
+class _ShieldGemmaTokenizer(_FakeTokenizer):
+    """Adds the chat-template hook ShieldGemma's prompt builder needs.
+
+    The real template takes a ``guideline=`` kwarg and honors
+    ``add_generation_prompt``; both are recorded for assertions.
+    """
+
+    def __init__(self, encode=None, call_ids=(1, 2, 3), template="TEMPLATE:"):
+        super().__init__(encode=encode, call_ids=call_ids)
+        self._template = template
+        self.seen_messages = None
+        self.seen_text = None
+        self.seen_guideline = None
+        self.seen_add_generation_prompt = None
+
+    def apply_chat_template(self, messages, tokenize=False, guideline=None,
+                            add_generation_prompt=False):
+        self.seen_messages = messages
+        self.seen_guideline = guideline
+        self.seen_add_generation_prompt = add_generation_prompt
+        return self._template
+
+    def __call__(self, text, return_tensors=None, truncation=False,
+                 max_length=None):
+        self.seen_text = text
+        return super().__call__(text, return_tensors=return_tensors,
+                                truncation=truncation, max_length=max_length)
+
+    def get_vocab(self):
+        # Mirror the encode map as a vocab dict for get_vocab() lookups.
+        # The encode map is {token: [id]} or a callable; vocab is {token: id}.
+        if callable(self._encode):
+            return {
+                "Yes": self._encode("Yes")[0],
+                "No": self._encode("No")[0],
+            }
+        return {tok: ids[0] for tok, ids in (self._encode or {}).items()}
 
 
 class _FakeClassifier:
@@ -729,6 +785,191 @@ class TestGraniteGuardian(unittest.TestCase):
 
 
 # -- shared behavior ---------------------------------------------------
+
+
+class TestShieldGemma(unittest.TestCase):
+    def _adapter(self, logits, encode_map=None, template="TEMPLATE:"):
+        base = {"Yes": [1], "No": [2]}
+        base.update(encode_map or {})
+        tok = _ShieldGemmaTokenizer(encode=base, template=template)
+        model = _FakeForwardModel(logits)
+        return _make(ShieldGemmaAdapter, tok, model), tok, model
+
+    def test_yes_wins_gives_abstain(self):
+        logits = [0.0] * 3
+        logits[1] = 6.0  # "Yes" far above everything else
+        adapter, _, model = self._adapter(logits)
+        out = adapter.decide(_choice_input(), "abstain", _ctx())
+        self.assertEqual(out.decision, "abstain")
+        self.assertFalse(out.abstained)  # deliberate label, not a refusal
+        self.assertGreater(out.confidence, 0.99)
+        self.assertEqual(out.transcript["scores"]["label"], "Yes")
+        # Single forward pass, no generation.
+        self.assertIsNotNone(model.seen_input_ids)
+        self.assertEqual(out.usage.tokens_out, 0)
+        self.assertEqual(validate_output(out, "abstain"), [])
+
+    def test_no_wins_gives_other_placeholder(self):
+        logits = [0.0] * 3
+        logits[2] = 6.0  # "No"
+        adapter, _, _ = self._adapter(logits)
+        out = adapter.decide(_choice_input(), "abstain", _ctx())
+        self.assertEqual(out.decision, "other")
+        self.assertFalse(out.abstained)
+        self.assertGreater(out.confidence, 0.99)
+        self.assertEqual(out.transcript["scores"]["label"], "No")
+        self.assertEqual(validate_output(out, "abstain"), [])
+
+    def test_renormalization_math(self):
+        # Ids: Yes=1, No=2. Mass on index 0 must not leak into p_malicious.
+        logits = [2.0, 1.0, 0.5]
+        adapter, _, _ = self._adapter(logits)
+        out = adapter.decide(_choice_input(), "abstain", _ctx())
+        e1, e05 = math.exp(1.0), math.exp(0.5)
+        total = e1 + e05
+        expected_p = e1 / total  # P(Yes) renormalized over Yes/No only
+        scores = out.transcript["scores"]
+        self.assertAlmostEqual(scores["p_malicious"], expected_p)
+        self.assertAlmostEqual(scores["p_yes"], e1 / total)
+        self.assertAlmostEqual(scores["p_no"], e05 / total)
+        self.assertEqual(scores["label"], "Yes")  # argmax over labels
+        # 0.62 >= 0.5: Yes argmax with super-threshold mass vetoes.
+        self.assertEqual(out.decision, "abstain")
+        self.assertAlmostEqual(out.confidence, abs(2 * expected_p - 1))
+
+    def test_threshold_boundary_abstains_at_half(self):
+        # p_yes == p_no == 0.5: ties go to abstain (>= 0.5).
+        logits = [0.0, 1.0, 1.0]
+        adapter, _, _ = self._adapter(logits)
+        out = adapter.decide(_choice_input(), "abstain", _ctx())
+        self.assertAlmostEqual(out.transcript["scores"]["p_malicious"], 0.5)
+        self.assertEqual(out.decision, "abstain")
+        self.assertAlmostEqual(out.confidence, 0.0)
+
+    def test_prompt_structure_single_user_message_with_guideline(self):
+        logits = [0.0] * 3
+        logits[2] = 6.0
+        adapter, tok, _ = self._adapter(logits, template="<tmpl>")
+        adapter.decide(_choice_input("hello"), "abstain", _ctx())
+        # One user message carrying the case text.
+        self.assertEqual(len(tok.seen_messages), 1)
+        self.assertEqual(tok.seen_messages[0],
+                         {"role": "user", "content": "hello"})
+        # The frozen combined guideline rides the documented kwarg.
+        guideline = tok.seen_guideline
+        self.assertIsNotNone(guideline)
+        for category in (
+            "No Sexually Explicit Information",
+            "No Dangerous Content",
+            "No Hate Speech",
+            "No Harassment",
+        ):
+            self.assertIn(category, guideline)
+        # ShieldGemma's template does not use add_generation_prompt
+        # (verified against the real template); the trailing blank line
+        # is why no prefill is needed. The kwarg must NOT be passed.
+        self.assertFalse(tok.seen_add_generation_prompt,
+                         "add_generation_prompt must not be passed "
+                         "(no-op for ShieldGemma)")
+
+    def test_guideline_does_not_start_with_bullet(self):
+        # The template adds "* " itself; the guideline must not start
+        # with "* " or the rendered prompt gets "* * " (P2-1).
+        from peira.adapters.hf import ShieldGemmaAdapter
+        guideline = ShieldGemmaAdapter._COMBINED_GUIDELINE
+        self.assertFalse(guideline.startswith("* "),
+                         "Guideline must not start with '* ' "
+                         "(template adds the bullet)")
+        # Internal bullets (2-4) still need their "* " separators.
+        self.assertIn("\n* ", guideline)
+
+    def test_no_prefill_prompt_is_template_verbatim(self):
+        # The template ends with a trailing blank line; the adapter must
+        # not append a prefill or trailing space.
+        logits = [0.0] * 3
+        logits[2] = 6.0
+        adapter, tok, _ = self._adapter(logits, template="<tmpl>\n\n")
+        adapter.decide(_choice_input("hello"), "abstain", _ctx())
+        self.assertEqual(tok.seen_text, "<tmpl>\n\n")
+
+    def test_bare_capital_token_preferred_over_spaced(self):
+        # The official scoring snippet uses vocab['Yes'] (no leading
+        # space): bare-capital is the primary lookup.
+        logits = [0.0] * 10
+        logits[3] = 5.0  # bare "Yes"
+        adapter, _, _ = self._adapter(
+            logits, encode_map={"Yes": [3], " Yes": [7], "No": [8]})
+        out = adapter.decide(_choice_input(), "abstain", _ctx())
+        self.assertEqual(out.decision, "abstain")
+        self.assertEqual(out.transcript["scores"]["label"], "Yes")
+
+    def test_spaced_token_fallback(self):
+        # Bare "Yes" is multi-token: fall back to the spaced " Yes" id.
+        logits = [0.0] * 10
+        logits[7] = 5.0  # spaced " Yes"
+        adapter, _, _ = self._adapter(
+            logits, encode_map={"Yes": [5, 6], " Yes": [7], "No": [8]})
+        out = adapter.decide(_choice_input(), "abstain", _ctx())
+        self.assertEqual(out.decision, "abstain")
+
+    def test_missing_label_token_raises_provider_error(self):
+        # Fail closed: no single-token id for "Yes".
+        tok = _ShieldGemmaTokenizer(encode={"No": [2]})
+        adapter = _make(ShieldGemmaAdapter, tok, _FakeForwardModel([0.0] * 3))
+        with self.assertRaises(ProviderError):
+            adapter.decide(_choice_input(), "abstain", _ctx())
+
+    def test_non_text_template_raises_provider_error(self):
+        class _BadTemplate(_ShieldGemmaTokenizer):
+            def apply_chat_template(self, messages, tokenize=False,
+                                    guideline=None,
+                                    add_generation_prompt=False):
+                return ["not", "text"]
+
+        tok = _BadTemplate(encode={"Yes": [1], "No": [2]})
+        adapter = _make(ShieldGemmaAdapter, tok, _FakeForwardModel([0.0] * 3))
+        with self.assertRaises(ProviderError):
+            adapter.decide(_choice_input(), "abstain", _ctx())
+
+    def test_label_ids_cached_across_calls(self):
+        # The tokenizer is pinned: encode() must run once per label.
+        calls = []
+        base_encode = {"Yes": [1], "No": [2]}
+
+        def counting_encode(text, add_special_tokens=False):
+            calls.append(text)
+            return base_encode[text]
+
+        tok = _ShieldGemmaTokenizer(encode=counting_encode)
+        adapter = _make(ShieldGemmaAdapter, tok,
+                        _FakeForwardModel([0.0] * 3))
+        adapter.decide(_choice_input(), "abstain", _ctx())
+        first = len(calls)
+        adapter.decide(_choice_input(), "abstain", _ctx())
+        self.assertEqual(len(calls), first)  # no re-encoding on 2nd call
+
+    def test_pinned_revision_identifier(self):
+        logits = [0.0] * 3
+        logits[2] = 6.0
+        adapter, _, _ = self._adapter(logits)
+        out = adapter.decide(_choice_input(), "abstain", _ctx())
+        self.assertEqual(
+            out.usage.model,
+            "hf:google/shieldgemma-2b"
+            "@d1dffc9c8c9237a90aab09c61383791e718ef9e8",
+        )
+        self.assertNotIn("main", out.usage.model)
+
+    def test_gated_model_documented(self):
+        # The class docstring must flag the gated/Gemma-license friction,
+        # unlike the Apache-2.0 adapters.
+        doc = ShieldGemmaAdapter.__doc__
+        self.assertIn("gated", doc.lower())
+        self.assertIn("Gemma", doc)
+
+
+# -- shared behavior ---------------------------------------------------
+
 
 class TestSharedBehavior(unittest.TestCase):
     def _protectai(self, logits=(3.0, 0.5)):
