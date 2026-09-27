@@ -78,6 +78,29 @@ head-to-head statistical comparison of two run artifacts
 | `--out` |  | — | write an HTML comparison report to this path |
 | `--seed` |  | `0` | seed for the paired-bootstrap CIs (default: 0) |
 
+## peira runs
+
+run registry: list and verify artifacts
+
+### peira runs list
+
+list runs in the registry
+
+| Flag | Required | Default | Help |
+|---|---|---|---|
+| `--runs-dir` |  | — | runs directory (default: ./runs or $PEIRA_RUNS_DIR) |
+| `--adapter` |  | — | filter by adapter name |
+| `--suite` |  | — | filter by suite |
+| `--dataset-version` |  | — | filter by dataset version |
+
+### peira runs verify
+
+verify analysis locks
+
+| Flag | Required | Default | Help |
+|---|---|---|---|
+| `PATHS` | yes | — | artifact paths to verify |
+
 ## peira dataset
 
 dataset build tooling

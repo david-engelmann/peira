@@ -78,6 +78,14 @@ pub struct RunArtifact {
     /// parameter, sealed for provenance).
     #[serde(default)]
     pub max_concurrency: i64,
+    /// Environment fingerprint: where the run executed (Python version,
+    /// torch/CUDA, OS, etc.). Empty object when absent.
+    #[serde(default = "default_empty_object")]
+    pub env: Value,
+    /// SHA-256 of the canonical env JSON. Part of the analysis lock —
+    /// environment changes invalidate the lock.
+    #[serde(default)]
+    pub env_sha256: String,
 }
 
 fn default_artifact_version() -> String {
@@ -106,6 +114,7 @@ impl RunArtifact {
             self.seed,
             self.max_concurrency,
             &self.metrics,
+            &self.env_sha256,
         )
     }
 
@@ -211,6 +220,7 @@ pub fn lock_payload(
     seed: i64,
     max_concurrency: i64,
     metrics: &Value,
+    env_sha256: &str,
 ) -> String {
     // The thirteen payload keys in canonical (sorted) order, hashed by
     // streaming straight into SHA-256: `config` and `results` are never
@@ -226,6 +236,8 @@ pub fn lock_payload(
     hash_canonical(config, &mut h);
     h.update(b", \"dataset_version\": ");
     hash_canonical(&Value::String(dataset_version.to_owned()), &mut h);
+    h.update(b", \"env_sha256\": ");
+    hash_canonical(&Value::String(env_sha256.to_owned()), &mut h);
     h.update(b", \"manifest_sha256\": ");
     hash_canonical(&Value::String(manifest_sha256.to_owned()), &mut h);
     h.update(b", \"max_concurrency\": ");
@@ -299,6 +311,8 @@ mod tests {
             pricing_date: "2026-09-23".into(),
             seed: 7,
             max_concurrency: 8,
+            env: json!({}),
+            env_sha256: String::new(),
         }
     }
 
@@ -448,6 +462,7 @@ mod tests {
             3,
             8,
             &json!({"m1": 0.5}),
+            "",
         );
         let mut map = serde_json::Map::new();
         for (k, v) in [
@@ -455,6 +470,7 @@ mod tests {
             ("adapter_version", json!("v")),
             ("config", config),
             ("dataset_version", json!("d")),
+            ("env_sha256", json!("")),
             ("manifest_sha256", json!("m")),
             ("max_concurrency", json!(8)),
             ("metrics", json!({"m1": 0.5})),
