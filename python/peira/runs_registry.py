@@ -66,7 +66,8 @@ def _artifact_metadata(path: Path) -> dict[str, Any] | None:
     Returns None if the file is not a valid artifact.
     """
     try:
-        data = json.loads(path.read_text())
+        text = path.read_text()
+        data = json.loads(text)
     except (json.JSONDecodeError, OSError):
         return None
     # Minimal validation: must have the required fields
@@ -76,7 +77,7 @@ def _artifact_metadata(path: Path) -> dict[str, Any] | None:
         return None
     # Verify the lock (cheap: just the hash comparison)
     try:
-        artifact = RunArtifact.from_json(path.read_text())
+        artifact = RunArtifact.from_json(text)
         lock_valid = 1 if artifact.verify() else 0
     except Exception:
         lock_valid = 0
@@ -126,7 +127,7 @@ def scan_runs(runs_dir: Path | str | None = None) -> int:
                     env_sha256, seed, max_concurrency, n_results, lock_valid)
                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
-                    str(path), mtime, meta["run_id"], meta["created_utc"],
+                    str(path.resolve()), mtime, meta["run_id"], meta["created_utc"],
                     meta["adapter_name"], meta["adapter_version"],
                     meta["suite"], meta["dataset_version"],
                     meta["manifest_sha256"], meta["env_sha256"],

@@ -62,7 +62,7 @@ whose results are published), the following rules take effect:
 |---------|------|---------|-----------------|
 | 1 | pre-2026-09-25 | Initial format | N/A (superseded) |
 | 2 | 2026-09-25 | Metrics included in lock (P0-1). Pre-v2 artifacts fail `verify()`. | No — rejected with clear error. Acceptable: no sealed measurements exist. |
-| 2 | 2026-09-27 | Environment fingerprint added: `env` (dict) and `env_sha256` (str) fields. The `env_sha256` is part of the analysis lock. Artifacts without these fields (empty defaults) still verify — the fields were added with backward-compatible defaults. | Yes — old v2 artifacts load with empty env fields. |
+| 2 | 2026-09-27 | Environment fingerprint added: `env` (dict) and `env_sha256` (str) fields. The `env_sha256` is part of the analysis lock. Pre-2026-09-27 v2 artifacts fail `verify()` (the lock payload changed); acceptable per blank-canvas, no sealed measurements exist. | No — old v2 artifacts fail verification (lock mismatch). |
 
 ## Environment Fingerprint (2026-09-27)
 

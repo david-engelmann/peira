@@ -91,5 +91,22 @@ class TestPythonVersionTuple(unittest.TestCase):
         self.assertTrue(all(isinstance(x, int) for x in v))
 
 
+class TestRustBackendInfo(unittest.TestCase):
+    def test_matches_actual_availability(self):
+        # The fingerprint must reflect reality: if the Rust extension is
+        # importable, available must be True. The old code called
+        # _rust.available() which doesn't exist, silently reporting False.
+        from peira.env_fingerprint import _rust_backend_info
+        info = _rust_backend_info()
+        try:
+            from peira._rust import _impl
+            expected = _impl is not None
+        except ImportError:
+            expected = False
+        self.assertEqual(info["available"], expected)
+        if expected:
+            self.assertIsNotNone(info["version"])
+
+
 if __name__ == "__main__":
     unittest.main()

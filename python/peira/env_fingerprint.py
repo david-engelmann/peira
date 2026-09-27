@@ -90,10 +90,10 @@ def _rust_backend_info() -> dict:
     """Whether the Rust core extension is available."""
     info: dict = {"available": False, "version": None}
     try:
-        from peira import _rust
-        info["available"] = _rust.available()
-        if info["available"]:
-            info["version"] = _rust.version()
+        from peira._rust import _impl
+        if _impl is not None:
+            info["available"] = True
+            info["version"] = _impl.version()
     except Exception:
         pass
     return info

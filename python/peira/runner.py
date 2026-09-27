@@ -38,6 +38,7 @@ from peira.adapters.base import (
     validate_output,
 )
 from peira.artifacts import RunArtifact, results_to_dicts
+from peira.env_fingerprint import collect_and_fingerprint
 from peira.concurrency import (
     MAX_RETRY_AFTER_S,
     AdaptiveConcurrency,
@@ -900,6 +901,8 @@ def _write_partial(
     if partial_path is None:
         return
     table = load_pricing_table()
+    # Environment fingerprint (Layer 1b): the checkpoint environment.
+    _env, _env_sha256 = collect_and_fingerprint()
     config: dict[str, Any] = {
         "n_cases": len(cases),
         "partial": True,
@@ -921,6 +924,8 @@ def _write_partial(
         seed=seed,
         max_concurrency=max_concurrency,
         config=config,
+        env=_env,
+        env_sha256=_env_sha256,
         results=results_to_dicts(_sort_results(results, indexed)),
     )
     partial.metrics = _summarize_artifact(
@@ -1132,6 +1137,8 @@ async def _run_suite_async(
     if config_extra:
         config.update(config_extra)
     table = pricing_table
+    # Environment fingerprint (Layer 1b): record where this run executed.
+    _env, _env_sha256 = collect_and_fingerprint()
     artifact = RunArtifact(
         adapter_name=adapter.name,
         adapter_version=adapter_version,
@@ -1143,6 +1150,8 @@ async def _run_suite_async(
         seed=seed,
         max_concurrency=max_concurrency,
         config=config,
+        env=_env,
+        env_sha256=_env_sha256,
         results=results_to_dicts(ordered),
     )
     artifact.metrics = _summarize_artifact(

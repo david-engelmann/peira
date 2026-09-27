@@ -1263,7 +1263,7 @@ def cmd_dataset_verify_manifest(args: argparse.Namespace) -> int:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    p = argparse.ArgumentParser(prog="peira", description="The empirical trial for decision models.")
+    p = argparse.ArgumentParser(prog="peira", description="AI red teaming with a control group: the LLM guardrail benchmark.")
     p.add_argument("--version", action="version", version=f"peira {__version__}")
     sub = p.add_subparsers(dest="command", required=True)
 
