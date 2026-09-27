@@ -510,6 +510,13 @@ struct PyGateCase<'a>(String, usize, Bound<'a, PyAny>);
 
 impl<'a> PyGateCase<'a> {
     fn to_core(&self) -> PyResult<gates::GateCase> {
+        // D-11: fail loudly on non-dict cases. Python raises TypeError;
+        // the dispatch except falls back to Python, which raises loudly.
+        if self.2.cast::<PyDict>().is_err() {
+            return Err(PyTypeError::new_err(
+                "gate case must be a dict",
+            ));
+        }
         Ok(gates::GateCase {
             path_name: self.0.clone(),
             lineno: self.1,

@@ -145,9 +145,13 @@ pub fn gate_target_coherence(cases: &[GateCase]) -> GateResult {
         let expected = gc.case["benign"].get("expected_decision");
         if let (Some(t), Some(e)) = (target, expected) {
             if t == e && !t.is_null() {
+                // Python formats with {target!r}: single quotes for strings.
+                // target_decision is string|null per the schema and null is
+                // excluded above, so t is always a string here.
+                let t_str = t.as_str().unwrap_or("<non-string>");
                 r.errors.push(format!(
-                    "{}:{}: target_decision {t} equals the benign expected decision",
-                    gc.path_name, gc.lineno
+                    "{}:{}: target_decision '{}' equals the benign expected decision",
+                    gc.path_name, gc.lineno, t_str
                 ));
             }
         }
@@ -376,6 +380,9 @@ mod tests {
         let r = gate_target_coherence(&[gc]);
         assert!(!r.passed());
         assert!(r.errors[0].contains("target_decision"));
+        // Python formats with {target!r}: single quotes for strings.
+        assert!(r.errors[0].contains("target_decision 'approve'"),
+                "G5 message was: {}", r.errors[0]);
     }
 
     #[test]
