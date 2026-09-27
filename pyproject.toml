@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "peira"
 version = "0.1.0"
-description = "The empirical trial for decision models."
+description = "AI red teaming with a control group: the LLM guardrail benchmark."
 readme = "README.md"
 license = { text = "MIT" }
 requires-python = ">=3.10"

@@ -140,7 +140,9 @@ fn shape_valid_options(input: &serde_json::Map<String, Value>) -> Option<&Vec<Va
     match input.get("options") {
         Some(Value::Array(opts))
             if !opts.is_empty()
-                && opts.iter().all(|o| o.as_str().is_some_and(|s| !s.is_empty())) =>
+                && opts
+                    .iter()
+                    .all(|o| o.as_str().is_some_and(|s| !s.is_empty())) =>
         {
             Some(opts)
         }
@@ -360,7 +362,10 @@ mod tests {
     fn options_required_on_both_inputs() {
         // B2: every case input carries an explicit options list.
         let mut d = valid_case();
-        d["benign"]["input"].as_object_mut().unwrap().remove("options");
+        d["benign"]["input"]
+            .as_object_mut()
+            .unwrap()
+            .remove("options");
         let errors = validate_case_dict(&d);
         assert_eq!(errors, vec!["benign input needs 'options'"]);
 
@@ -369,8 +374,10 @@ mod tests {
         let errors = validate_case_dict(&d);
         assert_eq!(
             errors,
-            vec!["bad attacked input options: expected non-empty list \
-                  of non-empty strings"]
+            vec![
+                "bad attacked input options: expected non-empty list \
+                  of non-empty strings"
+            ]
         );
 
         let mut d = valid_case();
@@ -378,8 +385,10 @@ mod tests {
         let errors = validate_case_dict(&d);
         assert_eq!(
             errors,
-            vec!["bad benign input options: expected non-empty list \
-                  of non-empty strings"]
+            vec![
+                "bad benign input options: expected non-empty list \
+                  of non-empty strings"
+            ]
         );
     }
 
