@@ -228,6 +228,10 @@ class TestAdaptiveConcurrency(unittest.TestCase):
                     pass
 
             # Occupy both slots, then queue 30 waiters behind them.
+            # NOTE: _cond._waiters is a CPython implementation detail of
+            # asyncio.Condition. If a future interpreter renames it, this
+            # test breaks while the production code is unaffected — the
+            # wait below is only a readiness probe, not the assertion.
             async with c.slot():
                 async with c.slot():
                     tasks = [asyncio.create_task(waiter())

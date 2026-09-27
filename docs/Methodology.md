@@ -386,7 +386,10 @@ never modified.
   choice-primitive cases only (b = A right / B wrong, c = A wrong /
   B right). Reports the chi-square statistic (no continuity
   correction), the chi-square(1) p-value, and which adapter wins on
-  disagreements at p < 0.05. Score/abstain cases do not enter this
+  disagreements at p < 0.05. With fewer than 10 discordant pairs the
+  chi-square approximation is anti-conservative, so the winner is
+  withheld and the reader is pointed at the raw counts.
+  Score/abstain cases do not enter this
   test — the binary right/wrong judgment is only clean for the choice
   primitive.
 - **Bradley-Terry**: one `ComparisonOutcome` per paired
@@ -399,6 +402,10 @@ never modified.
   (confidence − correctness)² per case), Δcost, Δlatency — each with a
   paired-bootstrap 95% CI via `paired_bootstrap_ci()`. Below 30 paired
   cases the delta is withheld (`sufficient=False`), never fabricated.
+  The five delta `favors` labels and the McNemar `winner` are six
+  simultaneous directional claims at roughly 0.05 each with no
+  family-wise correction — read them as per-comparison signals, not a
+  joint significance statement.
 - **Output**: a text summary on stdout plus an optional simple HTML
   report (`--out`) — a table, not a dashboard.
 

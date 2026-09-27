@@ -273,13 +273,18 @@ def _mcnemar_test(pairs: list[PairedCase]) -> tuple[McNemarResult | None, str]:
     c = sum(1 for p in choice if not _case_ok(p.a) and _case_ok(p.b))
     stat = mcnemar(b, c)
     p_value = _chi2_sf_1df(stat)
-    winner: str | None = None
-    if p_value < 0.05 and b != c:
-        winner = "a" if b > c else "b"
     note = ""
-    if b + c < 10:
+    # The chi-square approximation needs b+c >= 10. Below that it is
+    # anti-conservative (e.g. b=4, c=0 gives chi2 p=0.0455 while the exact
+    # binomial two-sided p is 0.125), so withhold the winner rather than
+    # print a verdict the test cannot support.
+    underpowered = b + c < 10
+    winner: str | None = None
+    if p_value < 0.05 and b != c and not underpowered:
+        winner = "a" if b > c else "b"
+    if underpowered:
         note = (f"low discordant-pair count (b+c={b + c}): the test is "
-                f"underpowered — read the raw counts, not the p-value")
+                f"underpowered — winner withheld, read the raw counts")
     return McNemarResult(
         b=b, c=c, n_pairs=len(choice),
         statistic=stat, p_value=p_value, winner=winner,
@@ -516,7 +521,10 @@ def comparison_to_dict(c: Comparison) -> dict[str, Any]:
         "bradley_terry": (
             {
                 "strengths": c.bradley_terry_strengths,
-                "nu": c.bradley_terry_nu,
+                # nu is +inf when every comparison was a tie (documented
+                # convention). json.dumps would emit bare `Infinity`,
+                # which is not spec-compliant JSON, so map it explicitly.
+                "nu": "inf" if c.bradley_terry_nu == float("inf") else c.bradley_terry_nu,
                 "n": c.bradley_terry_n,
             } if c.bradley_terry_strengths is not None else None
         ),

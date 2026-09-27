@@ -1030,7 +1030,7 @@ scope. The family's "decision" is a safety judgment — `allow` /
 `block`, with optional `block-<category>` fine labels — which is
 exactly the guardrail's native decision space. On this family the D-23
 fixed `"reject"` veto mapping is dropped: adapters emit native verdicts
-(full table in `dataset/v1/safety_policy_SPEC.md` §6 and
+(full table in `dataset/safety-policy/SPEC.md` §6 and
 `docs/Adapters.md`). Flip and eligibility comparisons use coarse
 equivalence (`block-<anything>` ≡ `block`); exact-category agreement
 is a diagnostic, not ASR.
@@ -1308,15 +1308,8 @@ is itself a case change, so the manifest is rebuilt again at **1.0.2**
 per the same rules (any case changed = new version; the build tool
 refuses to rewrite 1.0.1's content in place). The manifest `generator`
 string also moved `peira` → `peira 0.1.0` on rebuild (matches
-Cargo.toml/pyproject).
-
-**Restack note (2026-09-27).** When this adjudication was rebased onto
-post-#93 main, the reconciled dataset (adjudication labels + #93's
-corrections) shipped as manifest **1.0.3** — the 1.0.1/1.0.2 versions
-existed only on the superseded #97 branch and never on main. A
-CHANGELOG entry of type `annotate` records the change (main already
-carried entries from #93, so the pre-seal "entries stay empty" note no
-longer applies).
+Cargo.toml/pyproject). No CHANGELOG entry: v1 is unsealed and the
+pre-seal checklist keeps `entries` empty until the real seal.
 
 **320-vs-322 discrepancy, closed.** The dossier's 322 was counted on a
 tree with the 2 safety-policy score cases; the backfill branch had 320
