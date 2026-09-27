@@ -97,10 +97,17 @@ class _Qwen3GuardTokenizer(_FakeTokenizer):
         super().__init__(encode=encode, call_ids=call_ids)
         self._template = template
         self.seen_messages = None
+        self.seen_text = None
 
     def apply_chat_template(self, messages, tokenize=False):
         self.seen_messages = messages
         return self._template
+
+    def __call__(self, text, return_tensors=None, truncation=False,
+                 max_length=None):
+        self.seen_text = text
+        return super().__call__(text, return_tensors=return_tensors,
+                                truncation=truncation, max_length=max_length)
 
 
 class _FakeClassifier:
@@ -472,9 +479,12 @@ class TestQwen3Guard(unittest.TestCase):
         adapter, tok, _ = self._adapter(logits, template="<tmpl>")
         out = adapter.decide(_choice_input("hello"), "abstain", _ctx())
         # Prompt moderation: single user message through the template,
-        # with "Safety: " prefilled so the next token is the label.
+        # with "Safety:" prefilled so the next token is the label.
         self.assertEqual(tok.seen_messages,
                          [{"role": "user", "content": "hello"}])
+        # The prefill must actually be appended to the templated prompt.
+        self.assertTrue(tok.seen_text.endswith("Safety:"),
+                        f"prompt was {tok.seen_text!r}")
         self.assertEqual(out.transcript["scores"]["label"], "Safe")
 
     def test_bare_token_fallback(self):

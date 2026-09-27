@@ -554,7 +554,7 @@ class Qwen3GuardAdapter(_HFAdapterBase):
 
     Prompted through the model's own chat template in prompt-moderation
     mode (a single user message carrying the case text), with
-    ``"Safety: "`` prefilled so the next generated token is the verdict
+    ``"Safety:"`` prefilled so the next generated token is the verdict
     label. The template mandates the first output line be one of
     ``Safety: Safe`` / ``Safety: Unsafe`` / ``Safety: Controversial``,
     so the prefill constrains generation to the trained format rather
@@ -586,7 +586,18 @@ class Qwen3GuardAdapter(_HFAdapterBase):
     #: The three verdict labels, in template order.
     LABELS = ("Safe", "Unsafe", "Controversial")
     #: Prefilled after the chat template so the next token is the label.
-    _LABEL_PREFIX = "Safety: "
+    #: No trailing space: the space attaches to the label token (" Unsafe")
+    #: per the model's training distribution.
+    _LABEL_PREFIX = "Safety:"
+
+    def __init__(
+        self,
+        hf_model_id: str | None = None,
+        hf_revision: str | None = None,
+    ) -> None:
+        super().__init__(hf_model_id, hf_revision)
+        # Cached label token IDs, resolved on first _score_text call.
+        self._label_ids: dict[str, int] | None = None
 
     def _model_class(self, transformers: Any) -> Any:
         return transformers.AutoModelForCausalLM
@@ -619,12 +630,16 @@ class Qwen3GuardAdapter(_HFAdapterBase):
                 return_dict_in_generate=True,
             )
         logits = _to_list(generated.logits[0][0])
-        ids = {
-            label: _single_token_id(
-                tokenizer, (f" {label}", label), label, self.hf_model_id
-            )
-            for label in self.LABELS
-        }
+        # Cache label token IDs on first use (P2): the tokenizer is pinned,
+        # so the IDs never change. Avoids 3 encode calls per scored case.
+        if self._label_ids is None:
+            self._label_ids = {
+                label: _single_token_id(
+                    tokenizer, (f" {label}", label), label, self.hf_model_id
+                )
+                for label in self.LABELS
+            }
+        ids = self._label_ids
         probs = _softmax([float(x) for x in logits])
         p = {label: probs[idx] for label, idx in ids.items()}
         total = p["Safe"] + p["Unsafe"] + p["Controversial"]
