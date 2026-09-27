@@ -56,7 +56,25 @@ pub fn hash_canonical(v: &Value, h: &mut Sha256) {
     write_canonical(v, &mut |s| h.update(s.as_bytes()));
 }
 
+/// Compact canonical JSON: byte-identical to
+/// `json.dumps(sort_keys=True, separators=(",", ":"), ensure_ascii=True)`.
+///
+/// Same scalar rules as [`to_canonical`] (code-point key sort,
+/// `ensure_ascii` escaping, CPython float formatting) — only the
+/// separators change: `","` between items, `":"` between key and value.
+/// Used by execution cache keys (`concurrency.cache_key`), which hash
+/// the compact form.
+pub fn to_compact_canonical(v: &Value) -> String {
+    let mut out = String::new();
+    write_json(v, &mut |s| out.push_str(s), ",", ":");
+    out
+}
+
 fn write_canonical(v: &Value, emit: &mut dyn FnMut(&str)) {
+    write_json(v, emit, ", ", ": ")
+}
+
+fn write_json(v: &Value, emit: &mut dyn FnMut(&str), item_sep: &str, kv_sep: &str) {
     match v {
         Value::Null => emit("null"),
         Value::Bool(true) => emit("true"),
@@ -79,9 +97,9 @@ fn write_canonical(v: &Value, emit: &mut dyn FnMut(&str)) {
             emit("[");
             for (i, item) in items.iter().enumerate() {
                 if i > 0 {
-                    emit(", ");
+                    emit(item_sep);
                 }
-                write_canonical(item, emit);
+                write_json(item, emit, item_sep, kv_sep);
             }
             emit("]");
         }
@@ -96,13 +114,13 @@ fn write_canonical(v: &Value, emit: &mut dyn FnMut(&str)) {
             keys.sort();
             for (i, k) in keys.iter().enumerate() {
                 if i > 0 {
-                    emit(", ");
+                    emit(item_sep);
                 }
                 let mut tmp = String::with_capacity(k.len() + 2);
                 write_escaped(k, &mut tmp);
                 emit(&tmp);
-                emit(": ");
-                write_canonical(&map[*k], emit);
+                emit(kv_sep);
+                write_json(&map[*k], emit, item_sep, kv_sep);
             }
             emit("}");
         }

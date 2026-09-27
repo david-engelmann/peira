@@ -14,6 +14,7 @@ pub mod artifact;
 pub mod canonical;
 pub mod compare;
 pub mod dataset;
+pub mod execution;
 pub mod gates;
 pub mod metrics;
 pub mod py_repr;

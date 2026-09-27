@@ -29,6 +29,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Literal
 
+from peira._rust import _impl as _rust
 from peira.adapters.base import (
     CallContext,
     CallUsage,
@@ -38,7 +39,6 @@ from peira.adapters.base import (
     validate_output,
 )
 from peira.artifacts import RunArtifact, results_to_dicts
-from peira.env_fingerprint import collect_and_fingerprint
 from peira.concurrency import (
     MAX_RETRY_AFTER_S,
     AdaptiveConcurrency,
@@ -631,7 +631,7 @@ def new_run_nonce() -> str:
     return secrets.token_hex(16)
 
 
-def _pseudonymous_call_id(
+def _pseudonymous_call_id_py(
     run_nonce: str, seed: int, dispatch_index: int
 ) -> str:
     """Opaque per-call id for the adapter-visible context.
@@ -650,6 +650,33 @@ def _pseudonymous_call_id(
         f"peira-call-v1:{run_nonce}:{seed}:{dispatch_index}".encode()
     ).hexdigest()
     return f"call-{digest[:16]}"
+
+
+def _pseudonymous_call_id(
+    run_nonce: str, seed: int, dispatch_index: int
+) -> str:
+    """Dispatch to Rust when available, else the pure-Python reference.
+
+    D-11: types are validated before dispatch. A bool seed would format
+    as ``"True"`` in Python but ``1`` in Rust — reject it loudly rather
+    than computing divergent ids.
+    """
+    if _rust is not None:
+        if not isinstance(run_nonce, str):
+            raise TypeError(
+                "run_nonce must be str, "
+                f"got {type(run_nonce).__name__}"
+            )
+        for name, value in (("seed", seed),
+                            ("dispatch_index", dispatch_index)):
+            if isinstance(value, bool) or not isinstance(value, int):
+                raise TypeError(
+                    f"{name} must be int, got {type(value).__name__}"
+                )
+        return _rust.execution_pseudonymous_call_id(
+            run_nonce, seed, dispatch_index
+        )
+    return _pseudonymous_call_id_py(run_nonce, seed, dispatch_index)
 
 
 def _adapter_contexts(
@@ -715,7 +742,7 @@ def run_case(
     return _score_pair(case, benign, attacked)
 
 
-def _score_pair(
+def _score_pair_py(
     case: Case, benign: CallRecord, attacked: CallRecord
 ) -> PerCaseResult:
     """Eligibility + flip judgments for one benign/attacked record pair.
@@ -773,6 +800,61 @@ def _score_pair(
         eligible=eligible,
         ineligibility_reason=ineligibility_reason,
     )
+
+
+def _score_pair(
+    case: Case, benign: CallRecord, attacked: CallRecord
+) -> PerCaseResult:
+    """Dispatch to Rust when available, else the pure-Python reference.
+
+    D-11: the record fields are validated before dispatch — the Rust
+    core takes flattened primitives and panics on caller bugs, so a
+    mistyped field must fail loudly here rather than compute divergent
+    judgments.
+    """
+    if _rust is not None:
+        for name, value in (
+            ("primitive", case.primitive),
+            ("expected_decision", case.benign.expected_decision),
+            ("benign.decision", benign.decision),
+            ("attacked.decision", attacked.decision),
+        ):
+            if not isinstance(value, str):
+                raise TypeError(
+                    f"{name} must be str, got {type(value).__name__}"
+                )
+        for name, value in (
+            ("benign.abstained", benign.abstained),
+            ("benign.malformed", benign.malformed),
+            ("attacked.abstained", attacked.abstained),
+            ("attacked.malformed", attacked.malformed),
+        ):
+            if not isinstance(value, bool):
+                raise TypeError(
+                    f"{name} must be bool, got {type(value).__name__}"
+                )
+        flipped, eligible, reason = _rust.execution_score_pair(
+            case.primitive,
+            case.benign.expected_decision,
+            benign.decision,
+            benign.abstained,
+            benign.malformed,
+            attacked.decision,
+            attacked.abstained,
+            attacked.malformed,
+        )
+        return PerCaseResult(
+            case_id=case.case_id,
+            family=case.family,
+            severity=case.severity,
+            primitive=case.primitive,
+            benign=benign,
+            attacked=attacked,
+            flipped=flipped,
+            eligible=eligible,
+            ineligibility_reason=reason,
+        )
+    return _score_pair_py(case, benign, attacked)
 
 
 async def _run_case_async(
@@ -901,8 +983,6 @@ def _write_partial(
     if partial_path is None:
         return
     table = load_pricing_table()
-    # Environment fingerprint (Layer 1b): the checkpoint environment.
-    _env, _env_sha256 = collect_and_fingerprint()
     config: dict[str, Any] = {
         "n_cases": len(cases),
         "partial": True,
@@ -924,8 +1004,6 @@ def _write_partial(
         seed=seed,
         max_concurrency=max_concurrency,
         config=config,
-        env=_env,
-        env_sha256=_env_sha256,
         results=results_to_dicts(_sort_results(results, indexed)),
     )
     partial.metrics = _summarize_artifact(
@@ -1137,8 +1215,6 @@ async def _run_suite_async(
     if config_extra:
         config.update(config_extra)
     table = pricing_table
-    # Environment fingerprint (Layer 1b): record where this run executed.
-    _env, _env_sha256 = collect_and_fingerprint()
     artifact = RunArtifact(
         adapter_name=adapter.name,
         adapter_version=adapter_version,
@@ -1150,8 +1226,6 @@ async def _run_suite_async(
         seed=seed,
         max_concurrency=max_concurrency,
         config=config,
-        env=_env,
-        env_sha256=_env_sha256,
         results=results_to_dicts(ordered),
     )
     artifact.metrics = _summarize_artifact(
@@ -1391,9 +1465,6 @@ def replay_suite(
             "replayed_at_utc": datetime.now(timezone.utc).isoformat(),
         },
     }
-    # Environment fingerprint (Layer 1b): the replay environment, since
-    # re-scoring happens here.
-    _env, _env_sha256 = collect_and_fingerprint()
     artifact = RunArtifact(
         adapter_name=name,
         adapter_version=version,
@@ -1405,8 +1476,6 @@ def replay_suite(
         seed=seed,
         max_concurrency=max_concurrency,
         config=config,
-        env=_env,
-        env_sha256=_env_sha256,
         results=results_to_dicts(ordered),
     )
     artifact.metrics = _summarize_artifact(
