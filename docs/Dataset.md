@@ -182,7 +182,7 @@ peira dataset new --family state_poisoning --id sp-042 --severity high
 ```
 
 This prints a schema-valid case skeleton with `{{PLACEHOLDERS}}` for the
-author to fill in. Each of the eleven templates encodes its family's attack
+author to fill in. Each of the seventeen templates encodes its family's attack
 pattern (documented in `python/peira/templates.py`): the state_poisoning
 skeleton has the poisoned tool-output slot, option_order has the reordered
 options, score_anchoring has the anchor context field, and so on. G1 and
