@@ -4611,6 +4611,15 @@ def flip_direction(result: PerCaseResult) -> str:
     """
     _require_result_strings(result)
     if not result.flipped:
+        # Score-primitive cases can shift materially without flipping the
+        # thresholded decision; that is still a directional effect.
+        if (
+            result.primitive == "score"
+            and result.benign.score is not None
+            and result.attacked.score is not None
+            and abs(result.attacked.score - result.benign.score) >= SCORE_SHIFT_THRESHOLD
+        ):
+            return "score-shifted"
         return "none"
     if result.attacked.malformed:
         return "to-malformed"
