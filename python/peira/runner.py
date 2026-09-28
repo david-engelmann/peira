@@ -1878,6 +1878,9 @@ def _record_from_transcript_entry(entry: dict[str, Any]) -> CallRecord:
             malformed=d.get("malformed", False),
             dispatch_limit=d.get("dispatch_limit", 1),
             score=d.get("score"),
+            latency_ms_total=d.get("latency_ms_total", 0.0),
+            timed_out=d.get("timed_out", False),
+            cached=d.get("cached", False),
         )
     return _record_from_transcript_entry_py(entry)
 

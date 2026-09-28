@@ -142,6 +142,14 @@ pub fn record_from_transcript_entry(entry: &Value) -> Result<CallRecord, String>
     let seed = as_i64(get(entry, "seed")?, "seed")?;
     let dispatch_index = as_i64(get(entry, "dispatch_index")?, "dispatch_index")?;
     let dispatch_limit = as_i64(get(entry, "dispatch_limit")?, "dispatch_limit")?;
+    let timed_out = entry
+        .get("timed_out")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+    let cached = entry
+        .get("cached")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
     let response = get(entry, "response")?;
     // The reference subscripts `response["kind"]`: a non-mapping
     // response raises TypeError there (not KeyError), so the Rust side
@@ -157,7 +165,14 @@ pub fn record_from_transcript_entry(entry: &Value) -> Result<CallRecord, String>
         .as_str()
         .ok_or_else(|| "response kind must be a string".to_string())?;
     if kind != "output" {
-        return Ok(blank_record(seed, dispatch_index, dispatch_limit));
+        let latency_ms_total = entry
+            .get("latency_ms_total")
+            .and_then(|v| v.as_f64())
+            .unwrap_or(0.0);
+        let mut rec = blank_record(seed, dispatch_index, dispatch_limit);
+        rec.latency_ms_total = latency_ms_total;
+        rec.timed_out = timed_out;
+        return Ok(rec);
     }
     let out = get(response, "output")?;
     // The reference calls `out.get("usage")`: a non-object output
@@ -219,6 +234,15 @@ pub fn record_from_transcript_entry(entry: &Value) -> Result<CallRecord, String>
             return Err("output field 'refusal_reason' must be a string".to_string());
         }
     };
+    let latency_ms_total = match entry.get("latency_ms_total") {
+        None | Some(Value::Null) => match &usage {
+            Some(u) => u.latency_ms,
+            None => 0.0,
+        },
+        Some(v) => v
+            .as_f64()
+            .ok_or_else(|| "entry field 'latency_ms_total' must be a number".to_string())?,
+    };
     Ok(CallRecord {
         decision,
         confidence,
@@ -230,9 +254,9 @@ pub fn record_from_transcript_entry(entry: &Value) -> Result<CallRecord, String>
         malformed: false,
         dispatch_limit,
         score,
-        cached: false,
-        latency_ms_total: 0.0,
-        timed_out: false,
+        cached,
+        latency_ms_total,
+        timed_out,
     })
 }
 
