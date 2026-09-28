@@ -32,6 +32,14 @@ from peira.metrics import PerCaseResult
 
 ARTIFACT_VERSION = "2"
 
+#: Measurement-contract version: the semantics the run was executed
+#: under (abstention semantics, flip definition, eligibility rules).
+#: ARTIFACT_VERSION covers the schema; the contract version covers the
+#: meaning. A future semantics change bumps this (not the artifact
+#: version) so old runs stay loadable but are never silently
+#: reinterpreted under new rules.
+CONTRACT_VERSION = "1"
+
 _V1_REJECTION = (
     "unsupported artifact_version {version!r}: v1 artifacts predate the "
     "v2 measurement contract and cannot be loaded or migrated — re-run "
@@ -71,6 +79,35 @@ class RunArtifact:
     # Pricing provenance: which pinned table priced this run's calls.
     pricing_source: str = ""
     pricing_date: str = ""
+    # Machine-identifiable pricing table version (pricing.json's
+    # pricing_version, e.g. "2026-09-25.1"): a cost figure is always
+    # traceable to the exact table version that produced it. Runs are
+    # never re-priced in place: a price change ships as a new table
+    # version, and old artifacts keep their sealed numbers.
+    pricing_version: str = ""
+    # The measurement contract this run was executed under (see
+    # CONTRACT_VERSION): abstention semantics, flip definition,
+    # eligibility rules.
+    contract_version: str = CONTRACT_VERSION
+    # How the run ended: "complete" (all planned cases scored),
+    # "budget" (stopped by --budget-usd; see budget_usd/spent_usd),
+    # "timeout"/"operator" reserved for future termination causes.
+    # Budget-terminated runs are analyzable but never rank: a lucky
+    # prefix of easy cases must not top a leaderboard.
+    termination: str = "complete"
+    # Hard spend cap in USD for this run (None = uncapped). The runner
+    # enforces it pre-dispatch with a 1.5x running-mean projection and
+    # drains in-flight calls; it never kills a paid call mid-flight.
+    budget_usd: float | None = None
+    # Actual priced spend at seal time (runner-computed, same table as
+    # the call records). May overshoot budget_usd by at most one
+    # in-flight wave: dispatched calls always complete.
+    spent_usd: float = 0.0
+    # Cases scored vs planned. Equal on complete runs; on
+    # budget-terminated runs completed < planned and the artifact is
+    # partial-but-sealed (analyzable, not rankable).
+    cases_completed: int = 0
+    cases_planned: int = 0
     # Run seed: recorded on every call record for reproducibility.
     seed: int = 0
     # Concurrency cap the run was dispatched with. The AIMD controller
@@ -99,6 +136,13 @@ class RunArtifact:
                 "manifest_sha256": self.manifest_sha256,
                 "pricing_source": self.pricing_source,
                 "pricing_date": self.pricing_date,
+                "pricing_version": self.pricing_version,
+                "contract_version": self.contract_version,
+                "termination": self.termination,
+                "budget_usd": self.budget_usd,
+                "spent_usd": self.spent_usd,
+                "cases_completed": self.cases_completed,
+                "cases_planned": self.cases_planned,
                 "seed": self.seed,
                 "max_concurrency": self.max_concurrency,
                 # NOTE: metrics are lock-covered (P0-1, 2026-09-25). Any
@@ -134,6 +178,13 @@ class RunArtifact:
                     self.results,
                     self.pricing_source,
                     self.pricing_date,
+                    self.pricing_version,
+                    self.contract_version,
+                    self.termination,
+                    self.budget_usd,
+                    self.spent_usd,
+                    self.cases_completed,
+                    self.cases_planned,
                     self.seed,
                     self.max_concurrency,
                     self.metrics,
@@ -175,11 +226,21 @@ class RunArtifact:
         "analysis_lock": str,
         "pricing_source": str,
         "pricing_date": str,
+        "pricing_version": str,
+        "contract_version": str,
+        "termination": str,
+        "cases_completed": int,
+        "cases_planned": int,
         "seed": int,
         "max_concurrency": int,
         "env": dict,
         "env_sha256": str,
     }
+    # Numeric fields needing the bool-rejecting _is_num check (a JSON
+    # integer 0 must pass for spent_usd; a JSON `true` must not).
+    # budget_usd additionally allows null (uncapped run).
+    _NUM_FIELDS: ClassVar[tuple] = ("spent_usd",)
+    _NULLABLE_NUM_FIELDS: ClassVar[tuple] = ("budget_usd",)
     _REQUIRED_FIELDS: ClassVar[tuple] = ("peira_version", "dataset_version")
     _FIELD_DEFAULTS: ClassVar[dict] = {
         "artifact_version": ARTIFACT_VERSION,
@@ -194,6 +255,13 @@ class RunArtifact:
         "analysis_lock": "",
         "pricing_source": "",
         "pricing_date": "",
+        "pricing_version": "",
+        "contract_version": CONTRACT_VERSION,
+        "termination": "complete",
+        "budget_usd": None,
+        "spent_usd": 0.0,
+        "cases_completed": 0,
+        "cases_planned": 0,
         "seed": 0,
         "max_concurrency": 0,
         "env": dict,
@@ -201,7 +269,9 @@ class RunArtifact:
     }
     # Integer fields where a JSON `true` must not pass as an integer
     # (bool subclasses int).
-    _INT_FIELDS: ClassVar[tuple] = ("seed", "max_concurrency")
+    _INT_FIELDS: ClassVar[tuple] = (
+        "seed", "max_concurrency", "cases_completed", "cases_planned",
+    )
 
     # v2 result entries: per-variant call records plus scoring flags.
     # Every entry field is required and strictly typed (unknown entry
@@ -285,7 +355,8 @@ class RunArtifact:
             if key not in (
                 "decision", "confidence", "abstained", "refusal_reason",
                 "usage", "seed", "dispatch_index", "malformed",
-                "dispatch_limit", "score",
+                "dispatch_limit", "score", "latency_ms_total", "timed_out",
+                "cached",
             ):
                 raise ValueError(f"{where} has unknown field: {key!r}")
         for key in (
@@ -294,6 +365,38 @@ class RunArtifact:
         ):
             if key not in record:
                 raise ValueError(f"{where} is missing field: {key!r}")
+        for key, typ in cls._CALL_RECORD_FIELDS.items():
+            if not isinstance(record[key], typ):
+                raise ValueError(
+                    f"{where} field {key!r} must be {typ.__name__}, "
+                    f"got {type(record[key]).__name__}"
+                )
+        # timed_out is a bool flag like malformed/abstained: a JSON
+        # `true`/`false` only (bool check first: isinstance(True, int)
+        # is True, so the int fields below would accept it).
+        timed_out = record.get("timed_out", False)
+        if not isinstance(timed_out, bool):
+            raise ValueError(
+                f"{where} field 'timed_out' must be a boolean, "
+                f"got {type(timed_out).__name__}"
+            )
+        # cached marks response-cache hits (no provider call was made):
+        # same bool-only treatment as timed_out.
+        cached = record.get("cached", False)
+        if not isinstance(cached, bool):
+            raise ValueError(
+                f"{where} field 'cached' must be a boolean, "
+                f"got {type(cached).__name__}"
+            )
+        # latency_ms_total is cumulative wall-clock ms (all attempts +
+        # backoff); absent in pre-Phase-0 artifacts. Numeric, never a
+        # bool, never negative.
+        total_lat = record.get("latency_ms_total", 0.0)
+        if not _is_num(total_lat) or total_lat < 0:
+            raise ValueError(
+                f"{where} field 'latency_ms_total' must be a "
+                f"non-negative number, got {total_lat!r}"
+            )
         for key, typ in cls._CALL_RECORD_FIELDS.items():
             if not isinstance(record[key], typ):
                 raise ValueError(
@@ -373,7 +476,11 @@ class RunArtifact:
         if not isinstance(d, dict):
             raise ValueError("artifact must be a JSON object")
         for key in d:
-            if key not in cls._FIELD_TYPES:
+            if (
+                key not in cls._FIELD_TYPES
+                and key not in cls._NUM_FIELDS
+                and key not in cls._NULLABLE_NUM_FIELDS
+            ):
                 raise ValueError(f"unknown artifact field: {key!r}")
         for key in cls._REQUIRED_FIELDS:
             if key not in d:
@@ -381,9 +488,23 @@ class RunArtifact:
         for key, typ in cls._FIELD_TYPES.items():
             if key in cls._INT_FIELDS:
                 continue  # checked below with the bool-rejecting message
-            if key in d and not isinstance(d[key], typ):
+            if key not in d:
+                continue
+            if not isinstance(d[key], typ):
                 raise ValueError(
                     f"artifact field {key!r} must be {typ.__name__}, "
+                    f"got {type(d[key]).__name__}"
+                )
+        for key in cls._NUM_FIELDS:
+            if key in d and not _is_num(d[key]):
+                raise ValueError(
+                    f"artifact field {key!r} must be a number, "
+                    f"got {type(d[key]).__name__}"
+                )
+        for key in cls._NULLABLE_NUM_FIELDS:
+            if key in d and d[key] is not None and not _is_num(d[key]):
+                raise ValueError(
+                    f"artifact field {key!r} must be a number or null, "
                     f"got {type(d[key]).__name__}"
                 )
         for key in cls._INT_FIELDS:

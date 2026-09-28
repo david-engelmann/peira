@@ -115,18 +115,35 @@ target semantics the result contract deliberately does not carry.
   The runner measures wall-clock latency itself (overwriting any
   adapter-reported value) and recomputes cost from the pinned pricing
   table — unknown models price at 0.0 (explicitly unaccounted, never
-  silently estimated). Pricing source and pin date are sealed into the
-  artifact. The summary aggregates them for the buyer's operational
-  questions: **latency** as p50/p95/p99 + mean + max per arm
-  (benign/attacked) and overall, withheld below 30 observations per
-  arm; **cost** as `total_cost_usd` and `cost_per_1k_decisions`
-  (total / measured calls × 1000), with `n_priced` / `n_unpriced`
-  call counts — a model priced at $0.0 (free tier) counts as priced,
-  so the leaderboard can distinguish "free" from "unpriced". The cost
-  totals are a **lower bound** whenever `n_unpriced > 0` (unpriced calls
-  contribute $0 to the total but count in the denominator); when no
-  call is priced at all the cost is unknown, not zero — totals are
-  withheld (`None`, `sufficient: False`).
+  silently estimated). Pricing source, pin date, and pricing version
+  are sealed into the artifact, and every table entry carries a
+  confidence (`official` = verified against the vendor pricing page;
+  `secondary` = carried over unverified or gateway-reported) so the
+  dashboard can label secondary-sourced prices honestly. The summary
+  aggregates them for the buyer's operational questions: **latency** as
+  p50/p95/p99 + mean + max per arm (benign/attacked) and overall,
+  withheld below 30 observations per arm, measured as **cumulative**
+  buyer latency (every attempt plus the backoff between attempts), not
+  the final attempt alone; **timeout rate** alongside the percentiles
+  (per arm and overall, reported even when 0.0): calls whose terminal
+  failure was a per-attempt timeout are counted, never folded into the
+  percentiles. A timeout is data, not missing data. Cache-hit calls
+  (no provider call was made) are excluded from the percentiles and
+  counted separately (`n_cached`). **Cost** as `total_cost_usd` and
+  `cost_per_1k_decisions` (total / measured calls × 1000), with
+  `n_priced` / `n_unpriced` call counts. A model priced at $0.0 (free
+  tier) counts as priced, so the leaderboard can distinguish "free"
+  from "unpriced". The cost totals are a **lower bound** whenever
+  `n_unpriced > 0` (unpriced calls contribute $0 to the total but count
+  in the denominator); when no call is priced at all the cost is
+  unknown, not zero. Totals are withheld (`None`,
+  `sufficient: False`). The artifact also seals the measurement
+  **contract version** (the semantics the run executed under),
+  **termination** (`complete` / `budget` / `partial`), and, when
+  capped, **budget_usd** / **spent_usd** / **cases_completed** /
+  **cases_planned**: budget-stopped runs are analyzable but never
+  rankable, and leaderboard ingestion additionally requires an
+  explicit **cache-state declaration** (`config.cache_enabled`).
 - **Calibration** (score primitive): confidence calibration — ECE with
   equal-mass bins (K=15 default; lower is better, 0.0 is perfect), Brier
   score with its Murphy decomposition (reliability / resolution /

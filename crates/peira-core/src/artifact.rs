@@ -86,6 +86,31 @@ pub struct RunArtifact {
     /// environment changes invalidate the lock.
     #[serde(default)]
     pub env_sha256: String,
+    /// Pricing table version that priced this run. Part of the lock.
+    #[serde(default)]
+    pub pricing_version: String,
+    /// Measurement contract version. Part of the lock.
+    #[serde(default)]
+    pub contract_version: String,
+    /// How the run ended ("complete", "budget", ...). Part of the lock:
+    /// a budget-stopped run must never verify as complete.
+    #[serde(default = "default_termination")]
+    pub termination: String,
+    /// Hard spend cap in USD, if any. Part of the lock.
+    #[serde(default)]
+    pub budget_usd: Option<f64>,
+    /// Actual spend in USD. Part of the lock.
+    #[serde(default)]
+    pub spent_usd: f64,
+    /// Cases completed vs planned. Part of the lock.
+    #[serde(default)]
+    pub cases_completed: i64,
+    #[serde(default)]
+    pub cases_planned: i64,
+}
+
+fn default_termination() -> String {
+    "complete".to_string()
 }
 
 fn default_artifact_version() -> String {
@@ -111,6 +136,13 @@ impl RunArtifact {
             &serde_json::to_value(&self.results).unwrap_or(Value::Null),
             &self.pricing_source,
             &self.pricing_date,
+            &self.pricing_version,
+            &self.contract_version,
+            &self.termination,
+            self.budget_usd,
+            self.spent_usd,
+            self.cases_completed,
+            self.cases_planned,
             self.seed,
             self.max_concurrency,
             &self.metrics,
@@ -217,12 +249,19 @@ pub fn lock_payload(
     results: &Value,
     pricing_source: &str,
     pricing_date: &str,
+    pricing_version: &str,
+    contract_version: &str,
+    termination: &str,
+    budget_usd: Option<f64>,
+    spent_usd: f64,
+    cases_completed: i64,
+    cases_planned: i64,
     seed: i64,
     max_concurrency: i64,
     metrics: &Value,
     env_sha256: &str,
 ) -> String {
-    // The fourteen payload keys in canonical (sorted) order, hashed by
+    // The twenty-one payload keys in canonical (sorted) order, hashed by
     // streaming straight into SHA-256: `config` and `results` are never
     // cloned. The field order is written out explicitly — it is part of
     // the lock contract, and spelling it out beats a separator-tracking
@@ -232,8 +271,16 @@ pub fn lock_payload(
     hash_canonical(&Value::String(adapter_name.to_owned()), &mut h);
     h.update(b", \"adapter_version\": ");
     hash_canonical(&Value::String(adapter_version.to_owned()), &mut h);
+    h.update(b", \"budget_usd\": ");
+    hash_canonical(&budget_usd.map(Value::from).unwrap_or(Value::Null), &mut h);
+    h.update(b", \"cases_completed\": ");
+    hash_canonical(&Value::Number(cases_completed.into()), &mut h);
+    h.update(b", \"cases_planned\": ");
+    hash_canonical(&Value::Number(cases_planned.into()), &mut h);
     h.update(b", \"config\": ");
     hash_canonical(config, &mut h);
+    h.update(b", \"contract_version\": ");
+    hash_canonical(&Value::String(contract_version.to_owned()), &mut h);
     h.update(b", \"dataset_version\": ");
     hash_canonical(&Value::String(dataset_version.to_owned()), &mut h);
     h.update(b", \"env_sha256\": ");
@@ -252,12 +299,18 @@ pub fn lock_payload(
     hash_canonical(&Value::String(pricing_date.to_owned()), &mut h);
     h.update(b", \"pricing_source\": ");
     hash_canonical(&Value::String(pricing_source.to_owned()), &mut h);
+    h.update(b", \"pricing_version\": ");
+    hash_canonical(&Value::String(pricing_version.to_owned()), &mut h);
     h.update(b", \"results\": ");
     hash_canonical(results, &mut h);
     h.update(b", \"seed\": ");
     hash_canonical(&Value::Number(seed.into()), &mut h);
+    h.update(b", \"spent_usd\": ");
+    hash_canonical(&Value::from(spent_usd), &mut h);
     h.update(b", \"suite\": ");
     hash_canonical(&Value::String(suite.to_owned()), &mut h);
+    h.update(b", \"termination\": ");
+    hash_canonical(&Value::String(termination.to_owned()), &mut h);
     h.update(b"}");
     format!("{:x}", h.finalize())
 }
@@ -280,6 +333,9 @@ mod tests {
             malformed: false,
             dispatch_limit: 1,
             score: None,
+            cached: false,
+            latency_ms_total: 0.0,
+            timed_out: false,
         }
     }
 
@@ -309,6 +365,13 @@ mod tests {
             analysis_lock: String::new(),
             pricing_source: "test".into(),
             pricing_date: "2026-09-23".into(),
+            pricing_version: String::new(),
+            contract_version: "1".into(),
+            termination: "complete".into(),
+            budget_usd: None,
+            spent_usd: 0.0,
+            cases_completed: 0,
+            cases_planned: 0,
             seed: 7,
             max_concurrency: 8,
             env: json!({}),
@@ -459,6 +522,13 @@ mod tests {
             &results,
             "ps",
             "pd",
+            "pv",
+            "cv",
+            "complete",
+            Some(10.0),
+            1.5,
+            5,
+            10,
             3,
             8,
             &json!({"m1": 0.5}),
@@ -468,7 +538,11 @@ mod tests {
         for (k, v) in [
             ("adapter_name", json!("a")),
             ("adapter_version", json!("v")),
+            ("budget_usd", json!(10.0)),
+            ("cases_completed", json!(5)),
+            ("cases_planned", json!(10)),
             ("config", config),
+            ("contract_version", json!("cv")),
             ("dataset_version", json!("d")),
             ("env_sha256", json!("")),
             ("manifest_sha256", json!("m")),
@@ -477,9 +551,12 @@ mod tests {
             ("peira_version", json!("p")),
             ("pricing_date", json!("pd")),
             ("pricing_source", json!("ps")),
+            ("pricing_version", json!("pv")),
             ("results", results),
             ("seed", json!(3)),
+            ("spent_usd", json!(1.5)),
             ("suite", json!("s")),
+            ("termination", json!("complete")),
         ] {
             map.insert(k.into(), v);
         }

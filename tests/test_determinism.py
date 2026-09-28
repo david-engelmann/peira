@@ -35,6 +35,9 @@ def _normalize_call_record(rec):
     # The AIMD controller's live limit at dispatch time: timing-dependent
     # operational telemetry, excluded by the contract.
     rec["dispatch_limit"] = 0
+    # Wall-clock timing, excluded by the contract (Phase 0 measurement
+    # sidecar; usage.latency_ms is the legacy field).
+    rec["latency_ms_total"] = 0.0
     usage = rec.get("usage")
     if usage is not None:
         usage = dict(usage)

@@ -103,6 +103,16 @@ pub struct CallRecord {
     /// old artifacts still load under `deny_unknown_fields`).
     #[serde(default, deserialize_with = "de_score_unit_interval")]
     pub score: Option<f64>,
+    /// Response-cache hit: no provider call was made. Defaults to false
+    /// so pre-cache artifacts still load under `deny_unknown_fields`.
+    #[serde(default)]
+    pub cached: bool,
+    /// Cumulative buyer latency across all attempts plus backoff.
+    #[serde(default)]
+    pub latency_ms_total: f64,
+    /// The call's terminal failure was a per-attempt timeout.
+    #[serde(default)]
+    pub timed_out: bool,
 }
 
 /// Per-case scoring result, mirroring the Python dataclass field-for-field.
@@ -1201,6 +1211,9 @@ mod tests {
             malformed: false,
             dispatch_limit: 1,
             score: None,
+            cached: false,
+            latency_ms_total: 0.0,
+            timed_out: false,
         }
     }
 
@@ -1942,6 +1955,9 @@ mod tests {
             malformed: false,
             dispatch_limit: 0,
             score: None,
+            cached: false,
+            latency_ms_total: 0.0,
+            timed_out: false,
         };
         PerCaseResult {
             case_id: "c".to_string(),
@@ -2003,6 +2019,9 @@ mod tests {
             malformed: true,
             dispatch_limit: 0,
             score: None,
+            cached: false,
+            latency_ms_total: 0.0,
+            timed_out: false,
         };
         assert_eq!(classify_outcome(&rec), "malformed");
         // Refused (with reason) vs plain abstained.
