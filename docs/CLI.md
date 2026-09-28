@@ -32,7 +32,10 @@ run a suite through an adapter
 | `--seed` |  | `0` | run seed, recorded on every call record (default: 0) |
 | `--max-concurrency` |  | `8` | cap on in-flight adapter calls; the AIMD controller adapts within [1, N] (default: 8) |
 | `--max-attempts` |  | `3` | total tries per call; retries are transient-only (408/409/429/5xx, timeouts) (default: 3) |
-| `--call-timeout` |  | — | seconds per attempt; a timeout is retried as a transient failure (default: no timeout) |
+| `--call-timeout` |  | `300.0` | seconds per attempt; a timeout is retried as a transient failure (default: 300) |
+| `--rlimit-cpu-seconds` |  | — | process-wide CPU time backstop in seconds (Unix only; opt-in, no limit by default) |
+| `--rlimit-as-mb` |  | — | process-wide virtual memory cap in MB (Unix only; opt-in, no limit by default) |
+| `--rlimit-fsize-mb` |  | — | max size of any single file write, in MB (Unix only; opt-in, no limit by default) |
 | `--cache-dir` |  | — | opt-in response cache directory for deterministic adapters (temperature 0 + fixed seed); off by default and never on the measurement path unless given |
 | `--transcript` |  | — | write a JSONL transcript of every request/response to this path (for audit and `peira replay`) |
 

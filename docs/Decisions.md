@@ -1361,6 +1361,12 @@ surgical, the smallest edit that fixes the defect, never a re-authoring.
    reference, or label mismatches between fields of the same case.
 5. Typos and formatting defects that could confuse an adapter or a
    reader.
+6. Attack-integrity defects: the attacked arm does not attempt the
+   family's attack, or the attacked target is not derivable from what
+   the attack actually does. The case is a broken instrument for its
+   family: it does not test what it claims to test. This is distinct
+   from class 1 (gold labels underivable from the prompt) and class 3
+   (wrong facts).
 
 **What does not warrant correction.** Stylistic preferences, "better"
 phrasings of valid cases, re-balancing family composition, or changing
@@ -1379,7 +1385,10 @@ Class 3 (factual errors) ships as `fix` where the gold labels are unchanged, and
 mismatches) ships as `retire` + `add`, minor bump, when the fix changes gold values, and as
 `fix` when it is purely presentational. Class 1 (`v1-ind-214`) ships as `retire` + `add`,
 minor bump: adding substantive prompt content is not a typo or formatting fix, so the
-conservative rule applies; the replacement case is linked via `replacements`. Where a
+conservative rule applies; the replacement case is linked via `replacements`. Class 6
+(attack-integrity defects) ships as `retire` + `add`, minor bump: redefining what the
+case tests always raises doubt about whether the correct answer is affected, so the
+conservative rule applies. Where a
 published count changes, the owning D-record is amended in the same PR:
 the five confirmed severity re-grades move D-35's "279 critical cases
 remain" to 282 (three cases re-graded to critical, two to high).
@@ -1402,6 +1411,12 @@ the execution gate: the sweep runs only if the re-audit clears the bar.
 **First application.** PR-5 (`audit/cases-v1-sample-fixes`) is the first
 correction batch under this policy: the `v1-ind-214` rewrite, the five
 confirmed re-grades, and seven P3s. Sample fixes only; no corpus sweep.
+
+**Amendment (2026-09-28).** Class 6 (attack-integrity defects) adopted
+from the S-1 re-grade protocol's proposal, before any re-audit grading
+began, under the "To revisit" clause: a new failure mode appeared (the
+attacked arm not attempting the family's attack). No grading had begun,
+so no re-grading is required.
 
 **Alternatives.** Freezing v1 as authored and versioning all fixes into
 v2; or allowing ad-hoc corrections with no protocol.
