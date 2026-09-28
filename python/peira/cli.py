@@ -397,10 +397,11 @@ def cmd_run(args: argparse.Namespace) -> int:
             print(f"error: --{flag.replace('_', '-')} must be > 0 "
                   f"(got {value})", file=sys.stderr)
             return EXIT_USER_ERROR
-    if args.budget_usd is not None and not args.budget_usd > 0:
+    budget_usd = getattr(args, "budget_usd", None)
+    if budget_usd is not None and not budget_usd > 0:
         # NaN fails the > 0 comparison: a NaN cap is not a cap.
         print(f"error: --budget-usd must be > 0 "
-              f"(got {args.budget_usd})", file=sys.stderr)
+              f"(got {budget_usd})", file=sys.stderr)
         return EXIT_USER_ERROR
 
     if args.dry_run:
@@ -441,7 +442,7 @@ def cmd_run(args: argparse.Namespace) -> int:
                     already_done, prior_results = validate_partial(
                         partial, adapter, cases, suite, dataset_version,
                         manifest_sha256, seed=args.seed,
-                        budget_usd=args.budget_usd,
+                        budget_usd=getattr(args, "budget_usd", None),
                         cache_enabled=args.cache_dir is not None)
                 except ValueError as e:
                     print(f"error: {e} — delete {partial_path} or drop "
@@ -457,10 +458,11 @@ def cmd_run(args: argparse.Namespace) -> int:
         elif i == 1 or i == total or i % 50 == 0:
             print(f"  [{i}/{total}]", file=sys.stderr, flush=True)
 
-    if args.budget_usd is not None:
+    budget_usd = getattr(args, "budget_usd", None)
+    if budget_usd is not None:
         print(
             _budget_estimate_note(
-                out_dir, slug, suite, args.budget_usd,
+                out_dir, slug, suite, budget_usd,
                 len(cases) - len(already_done),
             ),
             file=sys.stderr,
@@ -482,7 +484,7 @@ def cmd_run(args: argparse.Namespace) -> int:
             rlimit_cpu_seconds=getattr(args, "rlimit_cpu_seconds", None),
             rlimit_as_mb=getattr(args, "rlimit_as_mb", None),
             rlimit_fsize_mb=getattr(args, "rlimit_fsize_mb", None),
-            budget_usd=args.budget_usd,
+            budget_usd=budget_usd,
         )
     except KeyboardInterrupt:
         print("\ninterrupted — partial run saved; re-run with --resume.",
