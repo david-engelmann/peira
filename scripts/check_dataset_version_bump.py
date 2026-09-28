@@ -78,7 +78,7 @@ def main():
         name for name in DATASETS if any(is_case_file(name, f) for f in files)
     }
     if not touched:
-        print("no dataset case files changed — version-bump check skipped")
+        print("no dataset case files changed - version-bump check skipped")
         return 0
 
     ok = True
