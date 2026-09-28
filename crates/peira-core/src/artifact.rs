@@ -107,6 +107,27 @@ pub struct RunArtifact {
     pub cases_completed: i64,
     #[serde(default)]
     pub cases_planned: i64,
+    /// Measurement framework (§3.7-3.8, §3.11-3.15): adapter
+    /// registration metadata and longitudinal provenance. All part of
+    /// the lock.
+    #[serde(default)]
+    pub model_class: String,
+    #[serde(default)]
+    pub confidence_source: String,
+    #[serde(default)]
+    pub checkpoint_hash: String,
+    #[serde(default)]
+    pub api_version: String,
+    #[serde(default)]
+    pub call_date: String,
+    #[serde(default)]
+    pub decode_params: String,
+    #[serde(default)]
+    pub template_hash: String,
+    #[serde(default)]
+    pub case_set_tag: String,
+    #[serde(default)]
+    pub cost_scenario_version: String,
 }
 
 fn default_termination() -> String {
@@ -147,6 +168,15 @@ impl RunArtifact {
             self.max_concurrency,
             &self.metrics,
             &self.env_sha256,
+            &self.model_class,
+            &self.confidence_source,
+            &self.checkpoint_hash,
+            &self.api_version,
+            &self.call_date,
+            &self.decode_params,
+            &self.template_hash,
+            &self.case_set_tag,
+            &self.cost_scenario_version,
         )
     }
 
@@ -260,8 +290,17 @@ pub fn lock_payload(
     max_concurrency: i64,
     metrics: &Value,
     env_sha256: &str,
+    model_class: &str,
+    confidence_source: &str,
+    checkpoint_hash: &str,
+    api_version: &str,
+    call_date: &str,
+    decode_params: &str,
+    template_hash: &str,
+    case_set_tag: &str,
+    cost_scenario_version: &str,
 ) -> String {
-    // The twenty-one payload keys in canonical (sorted) order, hashed by
+    // The thirty payload keys in canonical (sorted) order, hashed by
     // streaming straight into SHA-256: `config` and `results` are never
     // cloned. The field order is written out explicitly — it is part of
     // the lock contract, and spelling it out beats a separator-tracking
@@ -271,18 +310,32 @@ pub fn lock_payload(
     hash_canonical(&Value::String(adapter_name.to_owned()), &mut h);
     h.update(b", \"adapter_version\": ");
     hash_canonical(&Value::String(adapter_version.to_owned()), &mut h);
+    h.update(b", \"api_version\": ");
+    hash_canonical(&Value::String(api_version.to_owned()), &mut h);
     h.update(b", \"budget_usd\": ");
     hash_canonical(&budget_usd.map(Value::from).unwrap_or(Value::Null), &mut h);
+    h.update(b", \"call_date\": ");
+    hash_canonical(&Value::String(call_date.to_owned()), &mut h);
+    h.update(b", \"case_set_tag\": ");
+    hash_canonical(&Value::String(case_set_tag.to_owned()), &mut h);
     h.update(b", \"cases_completed\": ");
     hash_canonical(&Value::Number(cases_completed.into()), &mut h);
     h.update(b", \"cases_planned\": ");
     hash_canonical(&Value::Number(cases_planned.into()), &mut h);
+    h.update(b", \"checkpoint_hash\": ");
+    hash_canonical(&Value::String(checkpoint_hash.to_owned()), &mut h);
+    h.update(b", \"confidence_source\": ");
+    hash_canonical(&Value::String(confidence_source.to_owned()), &mut h);
     h.update(b", \"config\": ");
     hash_canonical(config, &mut h);
     h.update(b", \"contract_version\": ");
     hash_canonical(&Value::String(contract_version.to_owned()), &mut h);
+    h.update(b", \"cost_scenario_version\": ");
+    hash_canonical(&Value::String(cost_scenario_version.to_owned()), &mut h);
     h.update(b", \"dataset_version\": ");
     hash_canonical(&Value::String(dataset_version.to_owned()), &mut h);
+    h.update(b", \"decode_params\": ");
+    hash_canonical(&Value::String(decode_params.to_owned()), &mut h);
     h.update(b", \"env_sha256\": ");
     hash_canonical(&Value::String(env_sha256.to_owned()), &mut h);
     h.update(b", \"manifest_sha256\": ");
@@ -293,6 +346,8 @@ pub fn lock_payload(
     // P0-1 (2026-09-25): metrics are lock-covered; forging headline
     // numbers invalidates the lock.
     hash_canonical(metrics, &mut h);
+    h.update(b", \"model_class\": ");
+    hash_canonical(&Value::String(model_class.to_owned()), &mut h);
     h.update(b", \"peira_version\": ");
     hash_canonical(&Value::String(peira_version.to_owned()), &mut h);
     h.update(b", \"pricing_date\": ");
@@ -309,6 +364,8 @@ pub fn lock_payload(
     hash_canonical(&Value::from(spent_usd), &mut h);
     h.update(b", \"suite\": ");
     hash_canonical(&Value::String(suite.to_owned()), &mut h);
+    h.update(b", \"template_hash\": ");
+    hash_canonical(&Value::String(template_hash.to_owned()), &mut h);
     h.update(b", \"termination\": ");
     hash_canonical(&Value::String(termination.to_owned()), &mut h);
     h.update(b"}");
@@ -376,6 +433,15 @@ mod tests {
             max_concurrency: 8,
             env: json!({}),
             env_sha256: String::new(),
+            model_class: String::new(),
+            confidence_source: String::new(),
+            checkpoint_hash: String::new(),
+            api_version: String::new(),
+            call_date: String::new(),
+            decode_params: String::new(),
+            template_hash: String::new(),
+            case_set_tag: String::new(),
+            cost_scenario_version: String::new(),
         }
     }
 
@@ -533,21 +599,38 @@ mod tests {
             8,
             &json!({"m1": 0.5}),
             "",
+            "mc",
+            "cs",
+            "ch",
+            "av",
+            "cd",
+            "dp",
+            "th",
+            "cst",
+            "csv",
         );
         let mut map = serde_json::Map::new();
         for (k, v) in [
             ("adapter_name", json!("a")),
             ("adapter_version", json!("v")),
+            ("api_version", json!("av")),
             ("budget_usd", json!(10.0)),
+            ("call_date", json!("cd")),
+            ("case_set_tag", json!("cst")),
             ("cases_completed", json!(5)),
             ("cases_planned", json!(10)),
+            ("checkpoint_hash", json!("ch")),
+            ("confidence_source", json!("cs")),
             ("config", config),
             ("contract_version", json!("cv")),
+            ("cost_scenario_version", json!("csv")),
             ("dataset_version", json!("d")),
+            ("decode_params", json!("dp")),
             ("env_sha256", json!("")),
             ("manifest_sha256", json!("m")),
             ("max_concurrency", json!(8)),
             ("metrics", json!({"m1": 0.5})),
+            ("model_class", json!("mc")),
             ("peira_version", json!("p")),
             ("pricing_date", json!("pd")),
             ("pricing_source", json!("ps")),
@@ -556,6 +639,7 @@ mod tests {
             ("seed", json!(3)),
             ("spent_usd", json!(1.5)),
             ("suite", json!("s")),
+            ("template_hash", json!("th")),
             ("termination", json!("complete")),
         ] {
             map.insert(k.into(), v);

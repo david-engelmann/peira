@@ -4,6 +4,8 @@ Artifacts live as loose JSON files in runs/. This module provides:
 - A SQLite index (index.db) for fast queries without loading full results
 - `scan_runs()`: rebuild the index from the runs directory
 - `list_runs()`: query with filters
+- `get_family_results()`: per-family metrics across runs
+- `query_cases()`: per-case drill-down (flip/confidence/cost/latency filters)
 - `verify_runs()`: bulk analysis-lock verification
 - `qualifies_for_leaderboard()`: the ingestion gate
 
@@ -21,6 +23,7 @@ from pathlib import Path
 from typing import Any
 
 from peira.artifacts import RunArtifact
+from peira.metrics import SCORE_SHIFT_THRESHOLD
 
 # Default runs directory, overridable via PEIRA_RUNS_DIR env var.
 import os
@@ -62,7 +65,114 @@ CREATE TABLE IF NOT EXISTS family_results (
     PRIMARY KEY (run_path, family)
 );
 CREATE INDEX IF NOT EXISTS idx_family_results_family ON family_results(family);
+-- Per-case drill-down: one row per (run, case). Enables dashboard
+-- queries like "all cases where adapter X flipped on family Y with
+-- confidence > 0.8" without loading full artifacts. Confidence is
+-- NULL when the adapter reported none; cost/latency/tokens sum both
+-- arms (a case is one benign + one attacked call).
+--
+-- flip_direction follows the M-1 taxonomy (§3.1): approve-to-deny,
+-- deny-to-approve, to-abstain, to-malformed, score-shifted, other
+-- (flipped but unclassifiable), none.
+-- confidence_delta = attacked.confidence - benign.confidence (NULL
+-- when either missing). score_delta = attacked.score - benign.score
+-- (score primitive only, NULL otherwise). target_hit = 1 when the
+-- attacked decision equals the case's target_decision (NULL when the
+-- case defines none).
+CREATE TABLE IF NOT EXISTS case_results (
+    run_path TEXT NOT NULL,
+    case_id TEXT NOT NULL,
+    family TEXT NOT NULL,
+    severity TEXT NOT NULL,
+    primitive TEXT NOT NULL,
+    flipped INTEGER NOT NULL,       -- 1 if the outcome flipped, else 0
+    eligible INTEGER NOT NULL,      -- 1 if usable baseline, else 0
+    ineligibility_reason TEXT NOT NULL,
+    benign_decision TEXT NOT NULL,
+    attacked_decision TEXT NOT NULL,
+    benign_confidence REAL,         -- NULL when adapter reported none
+    attacked_confidence REAL,       -- NULL when adapter reported none
+    confidence_delta REAL,          -- attacked - benign, NULL if either missing
+    benign_abstained INTEGER NOT NULL,
+    attacked_abstained INTEGER NOT NULL,
+    benign_malformed INTEGER NOT NULL,
+    attacked_malformed INTEGER NOT NULL,
+    flip_direction TEXT NOT NULL,   -- M-1 taxonomy (see above)
+    target_hit INTEGER,             -- 1/0/NULL (NULL = no target_decision)
+    score_delta REAL,               -- attacked.score - benign.score, NULL if N/A
+    tokens_in INTEGER NOT NULL,
+    tokens_out INTEGER NOT NULL,
+    cost_usd REAL NOT NULL,
+    latency_ms REAL NOT NULL,       -- sum of both arms' latency_ms_total
+    PRIMARY KEY (run_path, case_id)
+);
+CREATE INDEX IF NOT EXISTS idx_case_family ON case_results(family);
+CREATE INDEX IF NOT EXISTS idx_case_flipped ON case_results(flipped);
+CREATE INDEX IF NOT EXISTS idx_case_flip_direction ON case_results(flip_direction);
+CREATE INDEX IF NOT EXISTS idx_case_adapter_family ON case_results(run_path, family);
 """
+
+# Run-level metadata columns for the measurement framework (§3.11-3.15,
+# §3.7-3.8): model_class/confidence_source (adapter registration),
+# longitudinal fields (checkpoint_hash, api_version, call_date,
+# decode_params, template_hash, case_set_tag), and
+# cost_scenario_version. Added via _ensure_registry_columns() because
+# SQLite has no ADD COLUMN IF NOT EXISTS.
+_REGISTRY_COLUMNS = (
+    ("model_class", "TEXT DEFAULT ''"),
+    ("confidence_source", "TEXT DEFAULT ''"),
+    ("checkpoint_hash", "TEXT DEFAULT ''"),
+    ("api_version", "TEXT DEFAULT ''"),
+    ("call_date", "TEXT DEFAULT ''"),
+    ("decode_params", "TEXT DEFAULT ''"),
+    ("template_hash", "TEXT DEFAULT ''"),
+    ("case_set_tag", "TEXT DEFAULT ''"),
+    ("cost_scenario_version", "TEXT DEFAULT ''"),
+)
+
+
+def _ensure_registry_columns(conn: sqlite3.Connection) -> None:
+    """Add measurement-framework columns to runs if missing (idempotent)."""
+    existing = {
+        row[1] for row in conn.execute("PRAGMA table_info(runs)").fetchall()
+    }
+    for name, ddl in _REGISTRY_COLUMNS:
+        if name not in existing:
+            conn.execute(f"ALTER TABLE runs ADD COLUMN {name} {ddl}")
+
+
+# Measurement-framework columns added to case_results after its initial
+# creation (f35661b, 2026-09-28). flip_type was renamed to flip_direction
+# (M-1 taxonomy); confidence_delta, target_hit, and score_delta are new.
+# Added via _ensure_case_result_columns() because SQLite has no
+# ADD COLUMN IF NOT EXISTS, and CREATE TABLE IF NOT EXISTS will not
+# touch a pre-existing table.
+_CASE_RESULT_COLUMNS = (
+    ("confidence_delta", "REAL"),
+    ("target_hit", "INTEGER"),
+    ("score_delta", "REAL"),
+)
+
+
+def _ensure_case_result_columns(conn: sqlite3.Connection) -> None:
+    """Migrate case_results to the measurement-framework schema (idempotent).
+
+    Renames flip_type to flip_direction when the old column is present
+    (the table is cleared and repopulated from artifacts on every scan,
+    so stale old-taxonomy values do not survive), and adds
+    confidence_delta, target_hit, and score_delta when missing.
+    """
+    existing = {
+        row[1]
+        for row in conn.execute("PRAGMA table_info(case_results)").fetchall()
+    }
+    if "flip_type" in existing and "flip_direction" not in existing:
+        conn.execute("ALTER TABLE case_results RENAME COLUMN flip_type TO flip_direction")
+        existing.discard("flip_type")
+        existing.add("flip_direction")
+    for name, ddl in _CASE_RESULT_COLUMNS:
+        if name not in existing:
+            conn.execute(f"ALTER TABLE case_results ADD COLUMN {name} {ddl}")
 
 
 def _get_runs_dir(runs_dir: Path | str | None = None) -> Path:
@@ -132,7 +242,20 @@ def _artifact_metadata(path: Path) -> dict[str, Any] | None:
         "max_concurrency": data.get("max_concurrency", 0),
         "n_results": len(data.get("results", [])),
         "lock_valid": lock_valid,
+        # M-6 measurement framework: adapter registration metadata
+        # (model_class, confidence_source) and longitudinal provenance
+        # fields. All default to "" when the artifact predates them.
+        "model_class": data.get("model_class", ""),
+        "confidence_source": data.get("confidence_source", ""),
+        "checkpoint_hash": data.get("checkpoint_hash", ""),
+        "api_version": data.get("api_version", ""),
+        "call_date": data.get("call_date", ""),
+        "decode_params": data.get("decode_params", ""),
+        "template_hash": data.get("template_hash", ""),
+        "case_set_tag": data.get("case_set_tag", ""),
+        "cost_scenario_version": data.get("cost_scenario_version", ""),
         "per_family": _per_family_rows(data),
+        "per_case": _per_case_rows(data),
     }
 
 
@@ -188,6 +311,248 @@ def _coerce_ci(value: Any) -> tuple[float | None, float | None]:
     return None, None
 
 
+def _flip_direction(entry: dict[str, Any]) -> str:
+    """M-1 flip-direction taxonomy (§3.1).
+
+    Computed per flipped case from the typed decisions:
+    - ``approve-to-deny``: benign approve → attacked deny
+    - ``deny-to-approve``: benign deny → attacked approve
+    - ``to-abstain``: attacked abstained (and benign did not)
+    - ``to-malformed``: attacked malformed (and benign was not)
+    - ``score-shifted``: score primitive with a material score shift
+      (at least ``SCORE_SHIFT_THRESHOLD``); reported even when the
+      thresholded decision did not flip, mirroring
+      ``metrics.flip_direction``.
+    - ``other``: flipped, but no typed transition above applies:
+      unknown polarity, lateral within-pole moves, both-silent flips,
+      or any flip that does not fit the 6 standard categories (e.g.
+      benign was malformed and attacked was not, an abstention
+      cleared, or a non-approve/deny decision pair changed). Reported
+      honestly rather than forced into a misleading typed label.
+    - ``none``: no flip
+
+    Malformed takes precedence over abstention (a broken decision
+    model gets no benefit of the doubt), then abstention, then the
+    typed direction. Score-primitive cases report ``score-shifted``
+    when the score moved materially (at least ``SCORE_SHIFT_THRESHOLD``),
+    even without a decision flip; a score case that also changed a
+    decision label reports the typed direction.
+    """
+    benign = entry.get("benign", {})
+    if not isinstance(benign, dict):
+        benign = {}
+    attacked = entry.get("attacked", {})
+    if not isinstance(attacked, dict):
+        attacked = {}
+    if not entry.get("flipped", False):
+        # Score-primitive cases can shift materially without flipping the
+        # thresholded decision; that is still a directional effect.
+        # Mirrors metrics.flip_direction priority 1 (as amended by #158).
+        b_score = benign.get("score")
+        a_score = attacked.get("score")
+        if (
+            isinstance(b_score, (int, float)) and not isinstance(b_score, bool)
+            and isinstance(a_score, (int, float)) and not isinstance(a_score, bool)
+            and abs(a_score - b_score) >= SCORE_SHIFT_THRESHOLD
+        ):
+            return "score-shifted"
+        return "none"
+    # Attack-induced malformed: the attacked output broke.
+    if attacked.get("malformed", False) and not benign.get("malformed", False):
+        return "to-malformed"
+    # Attack-induced abstention.
+    if attacked.get("abstained", False) and not benign.get("abstained", False):
+        return "to-abstain"
+    b_dec = benign.get("decision", "")
+    a_dec = attacked.get("decision", "")
+    if b_dec == "approve" and a_dec == "deny":
+        return "approve-to-deny"
+    if b_dec == "deny" and a_dec == "approve":
+        return "deny-to-approve"
+    # Score primitive: a score delta without a decision-label change.
+    b_score = benign.get("score")
+    a_score = attacked.get("score")
+    if (
+        isinstance(b_score, (int, float)) and not isinstance(b_score, bool)
+        and isinstance(a_score, (int, float)) and not isinstance(a_score, bool)
+        and a_score != b_score
+    ):
+        return "score-shifted"
+    # Flipped flag set but no classified typed direction (e.g. benign
+    # was malformed and attacked was not, an abstention cleared, or a
+    # non-approve/deny decision pair changed). Report honestly as
+    # "other": inventing a "<x>-to-<y>" label would assert a typed
+    # transition the taxonomy does not define.
+    return "other"
+
+
+# The documented M-1 flip-direction taxonomy. "other" is the honest
+# bucket for flips no typed transition names; "none" is the no-flip
+# value. Both classifiers (_flip_direction here and
+# dashboard._classify_flip_direction) must return only these values.
+FLIP_DIRECTIONS = (
+    "approve-to-deny",
+    "deny-to-approve",
+    "to-abstain",
+    "to-malformed",
+    "score-shifted",
+    "other",
+    "none",
+)
+
+
+def _confidence_delta(entry: dict[str, Any]) -> float | None:
+    """attacked.confidence - benign.confidence.
+
+    NULL when either confidence is missing, non-numeric, or outside
+    [0, 1] (out-of-range values are data corruption, not measurements).
+    """
+    benign = entry.get("benign", {})
+    attacked = entry.get("attacked", {})
+    b = benign.get("confidence")
+    a = attacked.get("confidence")
+    for v in (b, a):
+        if isinstance(v, bool):
+            return None
+        if not isinstance(v, (int, float)):
+            return None
+        if not 0.0 <= v <= 1.0:
+            return None
+    return float(a) - float(b)
+
+
+def _score_delta(entry: dict[str, Any]) -> float | None:
+    """attacked.score - benign.score.
+
+    Score-primitive cases only (entry["primitive"] == "score"): NULL
+    for choice-primitive cases even if score fields happen to be
+    present, and NULL when either score is missing or non-numeric.
+    """
+    if entry.get("primitive") != "score":
+        return None
+    benign = entry.get("benign", {})
+    if not isinstance(benign, dict):
+        benign = {}
+    attacked = entry.get("attacked", {})
+    if not isinstance(attacked, dict):
+        attacked = {}
+    b = benign.get("score")
+    a = attacked.get("score")
+    for v in (b, a):
+        if isinstance(v, bool):
+            return None
+        if not isinstance(v, (int, float)):
+            return None
+    return float(a) - float(b)
+
+
+def _case_usage_totals(entry: dict[str, Any]) -> tuple[int, int, float, float]:
+    """Sum tokens_in, tokens_out, cost_usd, latency_ms_total over both arms.
+
+    Missing usage (adapter reported none) contributes 0. Calls without
+    usage are not costed and carry no token accounting — the sums
+    reflect measured values only, never estimates.
+    """
+    tokens_in = 0
+    tokens_out = 0
+    cost_usd = 0.0
+    latency_ms = 0.0
+    for arm in ("benign", "attacked"):
+        rec = entry.get(arm, {})
+        usage = rec.get("usage")
+        if isinstance(usage, dict):
+            ti = usage.get("tokens_in", 0)
+            to = usage.get("tokens_out", 0)
+            if isinstance(ti, int) and ti >= 0:
+                tokens_in += ti
+            if isinstance(to, int) and to >= 0:
+                tokens_out += to
+            c = usage.get("cost_usd", 0.0)
+            if isinstance(c, (int, float)) and not isinstance(c, bool) and c >= 0:
+                cost_usd += float(c)
+        lat = rec.get("latency_ms_total", 0.0)
+        if isinstance(lat, (int, float)) and not isinstance(lat, bool) and lat >= 0:
+            latency_ms += float(lat)
+    return tokens_in, tokens_out, cost_usd, latency_ms
+
+
+def _per_case_rows(data: dict[str, Any]) -> list[tuple]:
+    """Extract per-case drill-down rows from raw artifact JSON.
+
+    One tuple per result entry, matching the case_results table column
+    order. Malformed entries are skipped (never abort the scan);
+    confidence values outside [0, 1] or non-numeric become NULL.
+    """
+    rows: list[tuple] = []
+    results = data.get("results")
+    if not isinstance(results, list):
+        return rows
+    for entry in results:
+        if not isinstance(entry, dict):
+            continue
+        case_id = entry.get("case_id")
+        family = entry.get("family")
+        if not isinstance(case_id, str) or not isinstance(family, str):
+            continue
+        severity = entry.get("severity") if isinstance(entry.get("severity"), str) else ""
+        primitive = entry.get("primitive") if isinstance(entry.get("primitive"), str) else ""
+        flipped = 1 if entry.get("flipped", False) is True else 0
+        eligible = 1 if entry.get("eligible", False) is True else 0
+        inelig = entry.get("ineligibility_reason")
+        inelig_str = inelig if isinstance(inelig, str) else ""
+        benign = entry.get("benign", {}) if isinstance(entry.get("benign"), dict) else {}
+        attacked = entry.get("attacked", {}) if isinstance(entry.get("attacked"), dict) else {}
+
+        def _conf(rec: dict) -> float | None:
+            c = rec.get("confidence")
+            if isinstance(c, bool):
+                return None
+            if isinstance(c, (int, float)) and 0.0 <= c <= 1.0:
+                # NaN fails the range check (0 <= nan is False) -> NULL.
+                return float(c)
+            return None
+
+        tokens_in, tokens_out, cost_usd, latency_ms = _case_usage_totals(entry)
+        # M-1/M-2: target_decision comes from the case record when the
+        # dataset defines one (targeted attacks); NULL target_hit when
+        # absent.
+        target_decision = entry.get("target_decision")
+        target_hit: int | None = None
+        if isinstance(target_decision, str) and target_decision:
+            attacked_decision = (
+                str(attacked.get("decision", ""))
+                if isinstance(attacked.get("decision"), str)
+                else ""
+            )
+            target_hit = 1 if attacked_decision == target_decision else 0
+        rows.append((
+            str(case_id),
+            str(family),
+            str(severity),
+            str(primitive),
+            flipped,
+            eligible,
+            str(inelig_str),
+            str(benign.get("decision", "")) if isinstance(benign.get("decision"), str) else "",
+            str(attacked.get("decision", "")) if isinstance(attacked.get("decision"), str) else "",
+            _conf(benign),
+            _conf(attacked),
+            _confidence_delta(entry),
+            1 if benign.get("abstained", False) is True else 0,
+            1 if attacked.get("abstained", False) is True else 0,
+            1 if benign.get("malformed", False) is True else 0,
+            1 if attacked.get("malformed", False) is True else 0,
+            _flip_direction(entry),
+            target_hit,
+            _score_delta(entry),
+            tokens_in,
+            tokens_out,
+            round(cost_usd, 6),
+            round(latency_ms, 3),
+        ))
+    return rows
+
+
 def _per_family_rows(data: dict[str, Any]) -> list[tuple]:
     """Extract per-family metric rows from raw artifact JSON.
 
@@ -231,9 +596,12 @@ def _scan_runs_into(conn: sqlite3.Connection, runs_dir: Path) -> int:
     connection and the corruption-recovery policy.
     """
     conn.executescript(_SCHEMA)
+    _ensure_registry_columns(conn)
+    _ensure_case_result_columns(conn)
     # Clear existing index
     conn.execute("DELETE FROM runs")
     conn.execute("DELETE FROM family_results")
+    conn.execute("DELETE FROM case_results")
 
     count = 0
     for path in sorted(runs_dir.glob("*.json")):
@@ -248,8 +616,11 @@ def _scan_runs_into(conn: sqlite3.Connection, runs_dir: Path) -> int:
             """INSERT INTO runs
                (path, mtime, run_id, created_utc, adapter_name,
                 adapter_version, suite, dataset_version, manifest_sha256,
-                env_sha256, seed, max_concurrency, n_results, lock_valid)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                env_sha256, seed, max_concurrency, n_results, lock_valid,
+                model_class, confidence_source, checkpoint_hash,
+                api_version, call_date, decode_params, template_hash,
+                case_set_tag, cost_scenario_version)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 run_path, mtime, meta["run_id"], meta["created_utc"],
                 meta["adapter_name"], meta["adapter_version"],
@@ -257,6 +628,11 @@ def _scan_runs_into(conn: sqlite3.Connection, runs_dir: Path) -> int:
                 meta["manifest_sha256"], meta["env_sha256"],
                 meta["seed"], meta["max_concurrency"],
                 meta["n_results"], meta["lock_valid"],
+                meta["model_class"], meta["confidence_source"],
+                meta["checkpoint_hash"], meta["api_version"],
+                meta["call_date"], meta["decode_params"],
+                meta["template_hash"], meta["case_set_tag"],
+                meta["cost_scenario_version"],
             ),
         )
         for family, n, n_eligible, asr, lo, hi, refusal_rate in meta["per_family"]:
@@ -267,6 +643,37 @@ def _scan_runs_into(conn: sqlite3.Connection, runs_dir: Path) -> int:
                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
                 (run_path, family, n, n_eligible, asr, lo, hi,
                  refusal_rate),
+            )
+        for (
+            case_id, family, severity, primitive, flipped, eligible,
+            ineligibility_reason, benign_decision, attacked_decision,
+            benign_confidence, attacked_confidence, confidence_delta,
+            benign_abstained, attacked_abstained,
+            benign_malformed, attacked_malformed, flip_direction,
+            target_hit, score_delta, tokens_in, tokens_out, cost_usd,
+            latency_ms,
+        ) in meta["per_case"]:
+            conn.execute(
+                """INSERT INTO case_results
+                   (run_path, case_id, family, severity, primitive,
+                    flipped, eligible, ineligibility_reason,
+                    benign_decision, attacked_decision,
+                    benign_confidence, attacked_confidence, confidence_delta,
+                    benign_abstained, attacked_abstained,
+                    benign_malformed, attacked_malformed,
+                    flip_direction, target_hit, score_delta,
+                    tokens_in, tokens_out, cost_usd, latency_ms)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    run_path, case_id, family, severity, primitive,
+                    flipped, eligible, ineligibility_reason,
+                    benign_decision, attacked_decision,
+                    benign_confidence, attacked_confidence, confidence_delta,
+                    benign_abstained, attacked_abstained,
+                    benign_malformed, attacked_malformed,
+                    flip_direction, target_hit, score_delta,
+                    tokens_in, tokens_out, cost_usd, latency_ms,
+                ),
             )
         count += 1
     conn.commit()
@@ -422,6 +829,107 @@ def get_family_results(
         query += " ORDER BY r.adapter_name, r.created_utc, f.family"
         cursor = conn.execute(query, params)
         return [dict(row) for row in cursor.fetchall()]
+    finally:
+        conn.close()
+
+
+def query_cases(
+    runs_dir: Path | str | None = None,
+    adapter: str | None = None,
+    suite: str | None = None,
+    family: str | None = None,
+    severity: str | None = None,
+    flipped: bool | None = None,
+    eligible: bool | None = None,
+    flip_direction: str | None = None,
+    min_attacked_confidence: float | None = None,
+    max_attacked_confidence: float | None = None,
+    run_path: str | None = None,
+    limit: int = 1000,
+) -> list[dict[str, Any]]:
+    """Per-case drill-down across runs, joined with run metadata.
+
+    One row per (run, case): run metadata (adapter_name,
+    adapter_version, suite, dataset_version, run_id) plus the case
+    fields (case_id, family, severity, primitive, flipped, eligible,
+    decisions, confidences, abstention/malformed flags, flip_direction,
+    tokens, cost_usd, latency_ms).
+
+    Filters compose with AND. Confidence bounds exclude NULL
+    confidences (an adapter that reported no confidence cannot satisfy
+    a confidence bound). ``limit`` caps rows (default 1000); pass
+    ``limit=0`` for no cap. The index is rebuilt if stale.
+    """
+    runs_dir = _get_runs_dir(runs_dir)
+    if not runs_dir.exists():
+        return []
+    _ensure_index_fresh(runs_dir)
+
+    conn = _connect(_index_path(runs_dir))
+    try:
+        conn.row_factory = sqlite3.Row
+        query = (
+            "SELECT r.run_id, r.adapter_name, r.adapter_version, "
+            "r.suite, r.dataset_version, r.created_utc, "
+            "c.case_id, c.family, c.severity, c.primitive, "
+            "c.flipped, c.eligible, c.ineligibility_reason, "
+            "c.benign_decision, c.attacked_decision, "
+            "c.benign_confidence, c.attacked_confidence, c.confidence_delta, "
+            "c.benign_abstained, c.attacked_abstained, "
+            "c.benign_malformed, c.attacked_malformed, c.flip_direction, "
+            "c.target_hit, c.score_delta, "
+            "c.tokens_in, c.tokens_out, c.cost_usd, c.latency_ms "
+            "FROM case_results c JOIN runs r ON c.run_path = r.path "
+            "WHERE 1=1"
+        )
+        params: list[Any] = []
+        if adapter:
+            query += " AND r.adapter_name = ?"
+            params.append(adapter)
+        if suite:
+            query += " AND r.suite = ?"
+            params.append(suite)
+        if family:
+            query += " AND c.family = ?"
+            params.append(family)
+        if severity:
+            query += " AND c.severity = ?"
+            params.append(severity)
+        if flipped is not None:
+            query += " AND c.flipped = ?"
+            params.append(1 if flipped else 0)
+        if eligible is not None:
+            query += " AND c.eligible = ?"
+            params.append(1 if eligible else 0)
+        if flip_direction:
+            query += " AND c.flip_direction = ?"
+            params.append(flip_direction)
+        if min_attacked_confidence is not None:
+            query += " AND c.attacked_confidence >= ?"
+            params.append(min_attacked_confidence)
+        if max_attacked_confidence is not None:
+            query += " AND c.attacked_confidence <= ?"
+            params.append(max_attacked_confidence)
+        if run_path:
+            query += " AND c.run_path = ?"
+            params.append(run_path)
+        query += " ORDER BY r.created_utc DESC, c.family, c.case_id"
+        if limit and limit > 0:
+            query += " LIMIT ?"
+            params.append(limit)
+        cursor = conn.execute(query, params)
+        rows = []
+        for row in cursor.fetchall():
+            d = dict(row)
+            # Convert 0/1 flags back to booleans for the API.
+            for key in (
+                "flipped", "eligible", "benign_abstained",
+                "attacked_abstained", "benign_malformed",
+                "attacked_malformed",
+            ):
+                d[key] = bool(d[key])
+            rows.append(d)
+        return rows
     finally:
         conn.close()
 
