@@ -18,7 +18,8 @@ use serde_json::Value;
 /// estimated); negative token counts are a caller bug and raise.
 ///
 /// `table` is the parsed pricing table (`{"models": {model: {"usd_per_1m_in",
-/// "usd_per_1m_out"}}}`); a missing `models` section or rate entry is a
+/// "usd_per_1m_out"}}}` or `{"models": {model: {"usd_per_call"}}}` for
+/// per-call billing); a missing `models` section or rate entry is a
 /// corrupt table and raises, matching the Python `KeyError`.
 pub fn cost_usd(
     model: &str,
@@ -45,6 +46,12 @@ pub fn cost_usd(
             .and_then(|v| v.as_f64())
             .ok_or_else(|| format!("pricing entry for {model:?} has no numeric {key:?}"))
     };
+    // Per-call billing (e.g. guardrail APIs like Lakera Guard): the
+    // entry carries usd_per_call instead of per-token rates, and one
+    // call costs that flat rate regardless of token counts.
+    if let Some(per_call) = entry.get("usd_per_call").and_then(|v| v.as_f64()) {
+        return Ok(per_call);
+    }
     let per_1m_in = rate("usd_per_1m_in")?;
     let per_1m_out = rate("usd_per_1m_out")?;
     Ok(tokens_in as f64 / 1_000_000.0 * per_1m_in + tokens_out as f64 / 1_000_000.0 * per_1m_out)
@@ -96,5 +103,14 @@ mod tests {
     #[test]
     fn zero_tokens_zero_cost() {
         assert_eq!(cost_usd("m-cheap", 0, 0, &table()).unwrap(), 0.0);
+    }
+
+    #[test]
+    fn per_call_billing_ignores_tokens() {
+        let t = json!({"models": {
+            "lakera:v2": {"usd_per_call": 0.002, "confidence": "secondary"},
+        }});
+        assert!((cost_usd("lakera:v2", 0, 0, &t).unwrap() - 0.002).abs() < 1e-12);
+        assert!((cost_usd("lakera:v2", 999_999, 999_999, &t).unwrap() - 0.002).abs() < 1e-12);
     }
 }

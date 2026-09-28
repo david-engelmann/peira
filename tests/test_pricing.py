@@ -74,6 +74,19 @@ class TestPricingTable(unittest.TestCase):
         for url in table.get("source_urls", []):
             self.assertNotIn("typesafe.ai/jev", url)
 
+    def test_per_call_billing(self):
+        table = load_pricing_table()
+        # lakera:v2 bills per call, not per token: one call costs the
+        # flat usd_per_call rate regardless of token counts.
+        self.assertAlmostEqual(cost_usd("lakera:v2", 0, 0, table), 0.002,
+                               places=9)
+        self.assertAlmostEqual(cost_usd("lakera:v2", 999_999, 999_999, table),
+                               0.002, places=9)
+        # The pricing key must match the adapter's usage.model or the
+        # runner prices it at 0.0 (explicitly unaccounted).
+        from peira.adapters.lakera import LakeraAdapter, API_VERSION
+        self.assertIn(f"lakera:{API_VERSION}", table["models"])
+
     def test_unknown_model_costs_zero(self):
         table = load_pricing_table()
         self.assertEqual(cost_usd("no-such-model", 10_000, 5_000, table), 0.0)
