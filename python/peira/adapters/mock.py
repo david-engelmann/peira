@@ -64,6 +64,8 @@ class MockAdapter:
     name = "mock"
     version = "0.2.0"
     supported_primitives = frozenset({"choice", "score", "abstain"})
+    # M-2: synthetic confidences from a hash; no real elicitation.
+    confidence_source = "none"
 
     def __init__(
         self,

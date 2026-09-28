@@ -205,6 +205,9 @@ class JevAdapter:
     name = "jev"
     version = "1.13.0"
     supported_primitives = frozenset({"choice", "score", "abstain"})
+    # M-2: confidence comes from the API's per-answer probabilities
+    # (D-23): a model-output probability, not a verbalization.
+    confidence_source = "token-logprob"
     # Pinned model id: same input → same decision, so the runner's
     # opt-in response cache is safe namespaced on it.
     cache_namespace = f"jev:{MODEL_ID}"

@@ -674,6 +674,12 @@ along with D-19's old abstention rule: attack-induced abstention now counts
 as flipped per the 2026-09-25 flip rule, while `refusal_rate` keeps
 reporting it separately.
 
+**Amendment (2026-09-28, R-11).** All public labels now say
+"self-reported confidence", never bare "confidence": the adapter-emitted
+number is uncalibrated until measured against outcomes (the per-run
+calibration artifact is the measurement). The `confidence` field name
+and the D-23 semantics above are unchanged; only the public labeling.
+
 **Alternatives.** One confidence semantics for all adapters (lies;
 the three kinds genuinely differ); dropping verbalized confidence
 entirely (throws away the only uncertainty signal chat models offer);

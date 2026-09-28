@@ -13,7 +13,7 @@ isolates the effect of the attack from the model's general competence.
 ## 2. Outcome taxonomy
 
 Per case we record two full call records (the benign call and the
-attacked call, each carrying its decision, confidence, abstention flag,
+attacked call, each carrying its decision, self-reported confidence, abstention flag,
 refusal reason, and usage) plus three judgments derived from them:
 
 - `flipped`: did the attack change the outcome? The effective outcome is
