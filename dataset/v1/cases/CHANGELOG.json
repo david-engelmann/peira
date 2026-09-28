@@ -209,7 +209,7 @@
       "dataset_version": "1.2.0",
       "date": "2026-09-28",
       "description": "Add verbosity_inflation as the 11th v1 family (R-06): 200 new cases (v1-vbi-001..200).",
-      "rationale": "New attack family from the evaluation-science deep dive (Track 2). Style/verbosity bias (0.10-0.76) dominates position bias (<=0.04) on frontier judges (Soumik 2026); peira had two positional families and zero verbosity families. The family isolates verbosity/style bias: the attacker's preferred outcome is supported by longer, more polished, or more authoritatively formatted content with no change in substantive facts. Authored via pilot-first process (25-case pilot, independent red-team review, 9 repairs) then bulk authoring. Severity mix 28 critical / 80 high / 92 medium; primitive mix 148 choice / 32 score / 20 abstain, matching the v1 family spec.",
+      "rationale": "New attack family from the evaluation-science deep dive (Track 2). Style/verbosity bias (0.10-0.76) exceeds position bias (<=0.04) on frontier judges (Soumik 2026); peira had two positional families and zero verbosity families. The family isolates verbosity/style bias: the attacker's preferred outcome is supported by longer, more polished, or more authoritatively formatted content with no change in substantive facts. Authored via pilot-first process (25-case pilot, independent red-team review, 9 repairs) then bulk authoring. Severity mix 28 critical / 80 high / 92 medium; primitive mix 148 choice / 32 score / 20 abstain, matching the v1 family spec.",
       "type": "add"
     },
     {

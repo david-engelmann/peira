@@ -168,7 +168,7 @@ _FAMILIES: tuple[FamilyInfo, ...] = (
         "kills verbosity inflation).",
         tier="v1",
         anchor="Zheng et al. 2023 (verbosity bias); Ye et al. CALM 2024 "
-        "(12 judge biases); Soumik 2026 (style bias 0.10-0.76 dominates "
+        "(12 judge biases); Soumik 2026 (style bias 0.10-0.76 exceeds "
         "position bias <=0.04)",
     ),
     # Tier 1: ships with v2.

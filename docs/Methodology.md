@@ -694,5 +694,5 @@ Two discrimination diagnostics separate this family from its neighbors:
 ASR on this family measures the decision-maker's susceptibility to
 presentation asymmetry, independent of factual content. The family is
 motivated by judge-bias literature (Zheng et al. 2023; Ye et al. CALM
-2024; Soumik 2026) finding style and verbosity effects dominate position
+2024; Soumik 2026) finding style and verbosity effects exceed position
 effects on frontier judges.
