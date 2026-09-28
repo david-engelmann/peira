@@ -15,7 +15,7 @@ README.
 **How much does a full run cost?**
 The mock adapter costs nothing but time. Local HF adapters cost nothing
 but electricity; hosted runs cost whatever your provider charges for
-~4,000 decisions (2,000 public v1 cases × benign/attacked pair). Start
+~4,400 decisions (2,200 public v1 cases × benign/attacked pair). Start
 with the trial-demo fixture (12 cases). It's free and offline.
 
 **Can I run fully offline?**

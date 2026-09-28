@@ -14,7 +14,7 @@ dataset/
                      # 10 cases per family; runs via --suite trial
   v1/
     README.md        # what lives here + license (CC-BY-4.0)
-    cases.jsonl      # the 2,000 public cases (10 families × 200)
+    cases.jsonl      # the 2,200 public cases (11 families × 200)
     cases/           # per-family case files (one JSONL per attack family)
       CHANGELOG.json # pre-seal changelog entries (not yet sealed)
       manifest.json  # sealed case-set manifest (sha256 per file)

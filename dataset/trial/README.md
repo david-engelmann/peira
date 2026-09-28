@@ -8,7 +8,7 @@ proving ground for the full 2,500-case v1 dataset.
 
 **Trial runs stay off the public leaderboard.** The Trial exists to shake
 down the harness and to calibrate the methodology — not to rank anyone.
-v1 (2,000 public + 500 private-holdout cases) is the ranked release.
+v1 (2,200 public + 500 private-holdout cases) is the ranked release.
 
 ## Contents
 

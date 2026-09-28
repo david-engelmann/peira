@@ -16,8 +16,8 @@ def _case(family: str) -> tuple:
 
 
 class TestSchemaFamilySplit(unittest.TestCase):
-    def test_twenty_canonical_families(self):
-        self.assertEqual(len(CANONICAL_FAMILIES), 20)
+    def test_twentyone_canonical_families(self):
+        self.assertEqual(len(CANONICAL_FAMILIES), 21)
         self.assertNotIn("safety_policy", CANONICAL_FAMILIES)
 
     def test_suite_ids_separate(self):
