@@ -447,6 +447,8 @@ class _StructuredLLMBase:
 
     name = "structured-llm-base"  # overridden per provider
     _doctor_skip = True  # abstract base: not a usable adapter
+    # M-2: confidence is the model's verbalized confidence (D-23).
+    confidence_source = "verbalized"
     supported_primitives = frozenset({"choice", "score", "abstain"})
 
     # Overridden per provider:

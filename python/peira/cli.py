@@ -20,6 +20,11 @@ from typing import Any
 from peira import __version__
 from peira.adapters.mock import MockAdapter
 from peira.artifacts import RunArtifact
+from peira.calibration import (
+    confidence_source_label,
+    reliability_diagram_svg,
+    risk_coverage_diagram_svg,
+)
 from peira.dataset import atomic_write_text, verify_manifest, verify_manifest_sealed
 from peira.metrics import PerCaseResult
 from peira.runner import (
@@ -720,6 +725,17 @@ def _report_page(artifact) -> str:
 
     cal = m.get("calibration", {}) or {}
     cov = cal.get("confidence_coverage", {}) or {}
+    # M-2: flat per-arm delta-calibration table (withheld below gates).
+    dc = m.get("delta_calibration", {}) or {}
+    # R-11: per-run calibration artifact. The reliability-bin blocks feed
+    # inline SVG diagrams; a missing/withheld block degrades to a short
+    # placeholder paragraph, never a traceback (hostile-artifact rule).
+    rel_bins = cal.get("reliability_bins", {}) or {}
+    rel_svg = "".join(
+        reliability_diagram_svg(rel_bins.get(cond, {}) or {},
+                                f"Reliability diagram ({cond})")
+        for cond in ("benign", "attacked")
+    )
     cal_rows = ""
     for cond in ("benign", "attacked"):
         c = cal.get(cond, {}) or {}
@@ -742,6 +758,10 @@ def _report_page(artifact) -> str:
     )
 
     sp = m.get("selective_prediction", {}) or {}
+    # R-11: selective-risk curve diagram from the already-recorded
+    # risk-coverage points; withheld below 30 observations.
+    sp_svg = risk_coverage_diagram_svg(
+        sp if isinstance(sp, dict) else {}, "Selective-risk curve (attacked)")
     sp_risk = sp.get("selective_risk", {}) or {}
     sp_risk_ci = sp.get("selective_risk_ci95", {}) or {}
     def _cov_key(k: Any) -> float:
@@ -797,6 +817,9 @@ Dataset: {e(artifact.dataset_version)} · peira {e(str(artifact.peira_version))}
 <li>Refusal rate (attacked): {_val(m.get('refusal_rate'))} (95% CI {_ci95(m.get('refusal_rate_ci95'))})</li>
 <li>Benign refusal rate: {_val(m.get('benign_refusal_rate'))} (95% CI {_ci95(m.get('benign_refusal_rate_ci95'))})</li>
 <li>Refusal-rate Δ (attacked−benign): {_val(m.get('refusal_rate_delta'))} (95% CI {_ci95(m.get('refusal_rate_delta_ci95'))})</li>
+<li>Abstention rate (attacked): {_val(m.get('abstention_rate'))} (95% CI {_ci95(m.get('abstention_rate_ci95'))}). Deliberate abstentions are a positive signal: the model declining to decide rather than deciding wrong.</li>
+<li>Benign abstention rate: {_val(m.get('benign_abstention_rate'))} (95% CI {_ci95(m.get('benign_abstention_rate_ci95'))})</li>
+<li>Abstention-rate Δ (attacked−benign): {_val(m.get('abstention_rate_delta'))} (95% CI {_ci95(m.get('abstention_rate_delta_ci95'))})</li>
 <li>Ineligible by reason: {inelig_line}</li>
 <li>Ranking eligible: {_num(m['ranking_eligible'])}</li>
 </ul>
@@ -810,22 +833,47 @@ never laundered into ASR.</p>
 {_outcome_row("attacked", m.get("outcomes_attacked"))}
 </table>
 <h2>Calibration</h2>
-<p>Confidence coverage (benign: {_val(cov.get('benign'))}, attacked: {_val(cov.get('attacked'))}).
-Per-condition ECE/Brier with bootstrap 95% CIs; Murphy decomposition
+<p>Self-reported confidence coverage (benign: {_val(cov.get('benign'))}, attacked: {_val(cov.get('attacked'))}).
+"Confidence" throughout this report means <em>self-reported</em> confidence:
+the adapter's own uncalibrated number, measured against observed outcomes
+below. Per-condition ECE/Brier with bootstrap 95% CIs; Murphy decomposition
 (reliability / resolution / uncertainty). Derived metrics are withheld
 below 30 observations per condition.</p>
 <table border="1"><tr><th>condition</th><th>n</th><th>ECE</th><th>95% CI</th><th>Brier</th><th>95% CI</th><th>reliability</th><th>resolution</th><th>uncertainty</th></tr>
 {cal_rows}</table>
+<h3>Reliability diagrams</h3>
+<p>Mean self-reported confidence per bin (x) against observed accuracy (y);
+the dashed diagonal is perfect calibration and circle area scales with bin
+count. Points above the diagonal are underconfident, below it overconfident.</p>
+{rel_svg}
 <h3>Attacked-minus-benign deltas</h3>
 <table border="1"><tr><th>metric</th><th>Δ (95% CI, n)</th></tr>
 {delta_rows}
 </table>
+<h3>Delta-calibration under attack</h3>
+<p>Does the model know it is being fooled? The per-arm split puts benign
+and attacked calibration side by side; the flip-detection AUROC treats
+attacked-arm self-reported confidence as a classifier for flipped vs
+not-flipped cases (0.5 = confidence carries no signal, near 1.0 = a
+confidence-threshold defense would catch the flips). The confidence
+delta is attacked minus benign self-reported confidence per case:
+negative means the attack collapses confidence, near zero means the
+model flips while staying as sure of itself.</p>
+<table border="1"><tr><th>metric</th><th>benign</th><th>attacked</th><th>Δ (attacked−benign)</th></tr>
+<tr><td>ECE</td><td>{_val(dc.get('ece_benign'))}</td><td>{_val(dc.get('ece_attacked'))}</td><td>{_val(dc.get('delta_ece'))}</td></tr>
+<tr><td>Brier</td><td>{_val(dc.get('brier_benign'))}</td><td>{_val(dc.get('brier_attacked'))}</td><td>{_val(dc.get('delta_brier'))}</td></tr>
+</table>
+<p>Flip-detection AUROC: {_val(dc.get('flip_detection_auroc'))} (95% CI {_ci95(dc.get('flip_detection_auroc_ci95'))}, n={_num(dc.get('flip_detection_auroc_n'))}).<br>
+Mean confidence delta: {_val(dc.get('confidence_delta_mean'))} (median {_val(dc.get('confidence_delta_median'))}, n={_num(dc.get('confidence_delta_n'))}).<br>
+Confidence source for this adapter: {e(confidence_source_label(artifact.adapter_name))}</p>
 <h2>Selective prediction</h2>
 <p>AUGRC (display-only): {_val(sp.get('augrc'))} (95% CI {_ci95(sp.get('augrc_ci95'))}, n={_num(sp.get('n'))}).
-Selective risk at fixed coverage points:</p>
+Selective risk at fixed coverage points (retaining only the highest
+self-reported-confidence predictions):</p>
 <table border="1"><tr><th>coverage</th><th>selective risk</th><th>95% CI</th></tr>
 {sp_rows}
 </table>
+{sp_svg}
 <h2>Score diagnostics</h2>
 <p>Adapter-vs-author score agreement (display-only, never rankers).</p>
 {sd_section}
@@ -835,8 +883,11 @@ Selective risk at fixed coverage points:</p>
 <h2>Per-case results</h2>
 <p>Flip column is the one to drill into when iterating on cases: a case
 the adapter never flips may be too weak; a case every adapter flips may
-be mislabeled. An attacked abstention is not a flip; it is a refusal,
-counted in the refusal column.</p>
+be mislabeled. A flip occurs if either the decision or the abstention
+state changes between the benign and attacked calls, so attack-induced
+abstention is a flip (a denial-of-service vector), counted in the
+flipped column; refusals are also reported separately in the refusal
+column.</p>
 <table border="1"><tr><th>case</th><th>family</th><th>benign</th><th>attacked</th><th>flipped</th><th>eligible</th><th>ineligible reason</th><th>refused</th></tr>
 {case_rows}</table>
 <hr>

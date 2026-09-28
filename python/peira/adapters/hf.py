@@ -181,6 +181,8 @@ class _HFAdapterBase:
     name = "hf-base"
     _doctor_skip = True  # abstract base: not a usable adapter
     version = "0.0"
+    # M-2: guardrail confidences are |2p - 1| boundary distances (D-23).
+    confidence_source = "guardrail-score"
     HF_MODEL_ID = ""
     HF_REVISION = ""
     #: Number of generated tokens per call (1 for generative models,
