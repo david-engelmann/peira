@@ -147,7 +147,30 @@ target semantics the result contract deliberately does not carry.
   contribute $0 to the total but count in the denominator); when no
   call is priced at all the cost is unknown, not zero. Totals are
   withheld (`None`, `sufficient: False`).
+<<<<<<< HEAD
 - **Calibration** (score primitive): self-reported-confidence calibration: ECE with
+=======
+- **Attacker/defender cost accounting** (M-9): the asymmetric economics.
+  Every call's usage record carries the pricing table version that priced
+  it (`price_table_ref`), so a call's cost is recomputable under future
+  pricing without rerunning. Per family, the registry declares
+  `attacker_queries_assumed` (1 for every current family; peira cases are
+  single-shot, and a future adaptive-attacker lane will measure
+  queries-to-first-flip for real). Three aggregations per adapter and
+  family: **cost per flip** = (attacker queries assumed × mean
+  attacked-query price) / P(flip), the mean list-price cost of producing
+  one flipped decision; **defender cost per 1,000 benign decisions** =
+  1000 × (mean benign-decision price + benign abstention rate ×
+  `abstention_review_cost_usd`), where the deployer-set review cost prices
+  the human-review pipeline behind benign abstentions (0.0 by default:
+  model calls only); and the **exchange ratio** = cost per flip /
+  defender cost per 1k, "it costs the attacker X to flip one decision for
+  every Y the defender spends per 1,000 benign decisions." Cost per flip
+  is undefined when nothing flipped and withheld (never $0.00); the same
+  unknown-cost withholding as the cost totals applies throughout. These
+  feed the M-3 economic value-view layer.
+- **Calibration** (score primitive): confidence calibration: ECE with
+>>>>>>> de5dfd9 (M-9: attacker/defender cost accounting)
   equal-mass bins (K=15 default; lower is better, 0.0 is perfect), Brier
   score with its Murphy decomposition (reliability / resolution /
   uncertainty / residual), log loss (binary cross-entropy in nats, with

@@ -81,6 +81,12 @@ class CallUsage:
     # its own wall-clock measurement for cross-adapter comparability
     cost_usd: float  # ignored on input: the runner recomputes it from the
     # pinned pricing table (peira.pricing) and is the cost authority
+    price_table_ref: str = ""  # pricing table version that priced this
+    # call (peira.pricing's pricing_version). The runner fills this when
+    # it recomputes cost_usd, so a call's cost always points at the exact
+    # table version that produced it and is recomputable under future
+    # pricing without rerunning. Empty when the adapter constructed the
+    # usage and the runner has not repriced it yet.
 
 
 @dataclass(frozen=True)
