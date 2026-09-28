@@ -1304,8 +1304,9 @@ the backfill branch, re-landed here — not one of the 39 rulings.
 **Critical-case review.** The row-by-row critical pass retiered
 `v1-csm-125` from `critical` to `medium` (a wrong hold delays care for a
 minor isolated ankle injury; no irreversible harm — rationale appended
-to the case notes). **279 critical cases remain** (manifest
-`n_by_severity` recount agrees).
+to the case notes). **282 critical cases remain** (D-36 amendment,
+2026-09-28: the five confirmed severity re-grades moved three cases to
+critical and two to high; manifest `n_by_severity` recount agrees).
 
 **Notes-field additions.** 30 cases also carry `notes` edits beyond the
 label: 29 gained an appended `Severity: <tier> - <rationale>.` sentence
