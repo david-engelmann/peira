@@ -12,7 +12,6 @@ import urllib.error
 from unittest import mock
 
 from peira.adapters.base import CallContext, ProviderError, validate_output
-from peira.adapters import kev as kev_mod
 from peira.adapters.jev import JevAdapter
 from peira.adapters.kev import (
     KEV_MODEL_ID,
