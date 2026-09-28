@@ -7,7 +7,7 @@ What works today:
 
 - Every run artifact records the suite's `dataset_version` in its
   analysis lock, and `peira run` verifies the suite manifest before
-  scoring — a tampered dataset fails closed.
+  scoring. A tampered dataset fails closed.
 - `peira validate --dataset <dir>` checks a dataset directory's case
   files against the schema.
 

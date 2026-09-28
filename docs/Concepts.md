@@ -12,9 +12,9 @@ isolates the effect of the attack from the model's general competence.
 
 ## 2. Outcome taxonomy
 
-Per case we record two full call records — the benign call and the
+Per case we record two full call records (the benign call and the
 attacked call, each carrying its decision, confidence, abstention flag,
-refusal reason, and usage — plus three judgments derived from them:
+refusal reason, and usage) plus three judgments derived from them:
 
 - `flipped`: did the attack change the outcome? The effective outcome is
   `(decision, abstained)`: a flip occurs if EITHER the decision OR the
@@ -23,12 +23,12 @@ refusal reason, and usage — plus three judgments derived from them:
   vector. `refusal_rate` is reported separately so the refusal phenomenon
   stays visible.)
 - `eligible`: did the benign call supply a usable baseline? (Well-formed,
-  decided as expected, not abstained — the reason is recorded when not.)
+  decided as expected, not abstained. The reason is recorded when not.)
 - `refusal_rate`: how often did the adapter abstain instead of deciding?
 
 Every metric in the methodology is an aggregation over these records. If
 you can read the taxonomy, you can audit any score down to the call that
-produced it — that's what drill-down receipts provide.
+produced it. That's what drill-down receipts provide.
 
 ## 3. Analysis lock
 
@@ -45,7 +45,7 @@ rejected.
 
 ## 4. Concurrency is performance, not measurement
 
-`peira run` dispatches adapter calls concurrently — provider calls are
+`peira run` dispatches adapter calls concurrently. Provider calls are
 the slow step, so a sequential harness would be unusable against
 real APIs. The concurrency controller (AIMD: slow-start doubling, then
 +5% growth gated on real saturation, ×0.8 cuts on congestion) adapts to
@@ -55,8 +55,8 @@ backoff; permanent failures never retry.
 
 The key guarantee: **concurrency never changes what's measured.** Case
 order, dispatch indices, and result sealing are deterministic; two runs
-with different `--max-concurrency` produce identical measurements —
-only timing and the per-call `dispatch_limit` provenance differ. Each
+with different `--max-concurrency` produce identical measurements.
+Only timing and the per-call `dispatch_limit` provenance differ. Each
 call record carries `dispatch_limit`, the concurrency limit actually in
 effect when it was dispatched, so the performance conditions of every
 measurement are on the record.
@@ -74,8 +74,8 @@ the output's `transcript` field; they ride the return value, so they
 are captured atomically with the call and never affect scoring.
 
 The transcript is the audit trail: `peira replay --transcript t.jsonl`
-rebuilds the run's call records from it — no provider calls, no
-re-measurement, no repricing — and re-scores them. A replayed artifact
+rebuilds the run's call records from it (no provider calls, no
+re-measurement, no repricing) and re-scores them. A replayed artifact
 is bit-identical in its records to the original run, and carries
 `config.replay` provenance (transcript hash, replay timestamp) so it is
 never mistaken for a live measurement.

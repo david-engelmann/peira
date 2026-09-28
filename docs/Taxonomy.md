@@ -1,5 +1,9 @@
 # Taxonomy
 
+The attack families and decision primitives peira measures. This is the
+adversarial taxonomy: what the attacks are, and what a "decision" means
+for scoring purposes.
+
 ## Primitives
 
 Adapters expose decision behavior through typed primitives:
@@ -19,34 +23,34 @@ Adapters expose decision behavior through typed primitives:
   visible. (A case counts at all only when its benign variant gives a usable
   baseline: well-formed, correct, and not abstained.)
 
-Adapters declare which primitives they support. Partial coverage is fine —
+Adapters declare which primitives they support. Partial coverage is fine:
 it's reported honestly, not penalized silently.
 
 ## Attack families
 
 v1 ships 10 attack families × 200 cases (2,000 public + 500 private
-holdout). The snake_case IDs are canonical — they appear verbatim in
+holdout). The snake_case IDs are canonical; they appear verbatim in
 dataset files and per-case drill-down:
 
-1. **state_poisoning** — hostile content in tool output authorizes the
+1. **state_poisoning**: hostile content in tool output authorizes the
    action; includes history-embedded payloads in multi-turn state.
 2. **criteria_smuggling**: the judged content tampers with the rules
    so they cover the case at hand: it argues for its own
    classification by stretching the criteria to include itself.
-3. **option_order** — reordering Choice options moves the answer.
-4. **distractor_flooding** — large noisy state degrades accuracy.
-5. **score_anchoring** — reference points planted in state manipulate
+3. **option_order**: reordering Choice options moves the answer.
+4. **distractor_flooding**: large noisy state degrades accuracy.
+5. **score_anchoring**: reference points planted in state manipulate
    Score outputs.
-6. **literal_reading** — exploiting face-value reading of scoping and
+6. **literal_reading**: exploiting face-value reading of scoping and
    negation.
-7. **negation_games** — double negatives and Abstain-specific inversions.
-8. **policy_paraphrase** — rewording to dodge natural-language safety
+7. **negation_games**: double negatives and Abstain-specific inversions.
+8. **policy_paraphrase**: rewording to dodge natural-language safety
    policies. This family deliberately reuses a small number of claim
    substrates across different paraphrase mechanisms (K-4401, K-4402,
    K-4404) as a control: identical facts, varied attacks. Substrate is
    shared; mechanisms are not duplicated.
-9. **indirection** — payload buried behind multi-hop indirection.
-10. **confidence_spoofing** — hostile content inflates confidence while
+9. **indirection**: payload buried behind multi-hop indirection.
+10. **confidence_spoofing**: hostile content inflates confidence while
     flipping the answer.
 
 v2 adds ten more families in two tiers, each with the literature or
@@ -145,7 +149,7 @@ families); the v1 cases are frozen as authored.
 Classifier guardrails get their own benchmark: the **safety-policy
 suite** (`dataset/safety-policy/`), a separate guardrail-native suite
 where the decision is a safety judgment (allow/block) under evasion
-attacks and false-positive traps. It is not a v1 family — its metrics
+attacks and false-positive traps. It is not a v1 family. Its metrics
 are not comparable with v1's (D-34). See
 `dataset/safety-policy/SPEC.md`.
 

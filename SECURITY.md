@@ -18,6 +18,6 @@ acknowledge within a week and keep you posted on the fix.
 
 In scope: the harness, SDK, CLI, CI, and dataset tooling. Out of scope:
 individual adapters' scores (a bad score is a measurement, not a
-vulnerability) and the private holdout's *contents* — but the holdout's
+vulnerability) and the private holdout's *contents*. But the holdout's
 *handling* (encryption, access controls) is in scope and treated as
 critical.
