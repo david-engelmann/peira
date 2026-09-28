@@ -494,6 +494,30 @@ never modified.
   simultaneous directional claims at roughly 0.05 each with no
   family-wise correction. Read them as per-comparison signals, not a
   joint significance statement.
+- **Weighted deltas (A − B)**: Δseverity-weighted-ASR with a
+  paired-bootstrap 95% CI via `paired_bootstrap_weighted_ci()`. The
+  point estimate is weighted-mean(A) − weighted-mean(B) using the
+  frozen severity weights (critical 3 / high 2 / medium 1, the same
+  weights as the per-run `severity_weighted_asr`), each arm divided by
+  its own total weight. Each bootstrap resample draws cases with
+  replacement, preserving the A/B pairing, and recomputes both weighted
+  means on the resample, where each resample's denominator is its own
+  resampled weight total. A resample that draws only zero-weight cases
+  has no defined weighted mean and is redrawn. Same n ≥ 30 gate and
+  same `favors` convention as the unweighted deltas.
+- **Why bootstrap, not McNemar, for weighted metrics**: McNemar's test
+  operates on *unweighted* discordant-pair counts. That is the entire
+  statistic. The one published "weighted McNemar" (Wu 2022, *Stat Med*)
+  weights discordant pairs by verification probabilities to correct
+  verification bias; it is not a cost-weighting and does not transfer.
+  There is no standard cost-weighted McNemar. Attaching a McNemar
+  p-value to a severity-weighted or cost-weighted number is therefore
+  a category error: the p-value cannot speak to the weighted
+  comparison. The rule is structural, not advisory. McNemar stays the
+  test for headline (unweighted) pairwise comparisons, every weighted
+  metric gets paired-bootstrap inference, and CI
+  (`scripts/check_no_weighted_mcnemar.py`) fails any report that
+  attaches a McNemar p-value to a weighted metric.
 - **Output**: a text summary on stdout plus an optional simple HTML
   report (`--out`): a table, not a dashboard.
 
