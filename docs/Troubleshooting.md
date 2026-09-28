@@ -642,6 +642,23 @@ when numeric; non-numeric is terminal. Fix: report it.
 Cause: one of the two artifact paths doesn't exist. Fix: check the
 paths. `peira compare` takes two positional artifact files.
 
+**`error: hardness needs at least 2 run artifacts` (from `peira hardness`)**
+Cause: fewer than two artifact paths were given. Hardness and transfer
+are cross-adapter views; one run has nothing to stratify against. Fix:
+pass two or more run artifact paths.
+
+**`error: <run> not found` (from `peira hardness`)**
+Cause: one of the artifact paths doesn't exist. Fix: check the paths.
+
+**`error: <run> is not a valid run artifact (...)` (from `peira hardness`)**
+Cause: the file isn't valid JSON or isn't a sealed run artifact. Fix:
+point at `peira run` output files.
+
+**`error: cannot write hardness report to <out> (...)`**
+Cause: `peira hardness --out` points somewhere unwritable: a missing
+parent directory, or a permissions problem. Fix: create the directory
+first, or pick a writable path.
+
 **`error: artifacts are not comparable: ...`**
 Cause: the two artifacts weren't scored under the same trial. The
 message names the mismatch: different `suite`, different

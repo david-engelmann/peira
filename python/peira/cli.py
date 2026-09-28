@@ -1062,6 +1062,55 @@ def cmd_compare(args: argparse.Namespace) -> int:
     return EXIT_OK
 
 
+def cmd_hardness(args: argparse.Namespace) -> int:
+    """Print M-4 hardness/transfer diagnostics over >= 2 run artifacts.
+
+    Diagnostic only: the tables describe hardness shape and transfer;
+    they never rank adapters.
+    """
+    from peira.hardness import analyze_runs, report_text
+
+    if len(args.runs) < 2:
+        print("error: hardness needs at least 2 run artifacts",
+              file=sys.stderr)
+        return EXIT_USER_ERROR
+    artifacts = []
+    for path_str in args.runs:
+        path = Path(path_str)
+        if not path.exists():
+            print(f"error: {path} not found", file=sys.stderr)
+            return EXIT_USER_ERROR
+        try:
+            artifacts.append(RunArtifact.from_json(path.read_text(encoding="utf-8")))
+        except (OSError, ValueError) as e:
+            print(f"error: {path} is not a valid run artifact ({e})",
+                  file=sys.stderr)
+            return EXIT_USER_ERROR
+    for art, path_str in zip(artifacts, args.runs):
+        if not art.verify():
+            print(f"warning: {path_str}: analysis lock mismatch: artifact was "
+                  f"modified after sealing.", file=sys.stderr)
+    results_by_adapter: dict[str, list] = {}
+    for art in artifacts:
+        name = art.adapter_name or "(unnamed)"
+        # Later artifacts with the same adapter name replace earlier ones;
+        # the CLI takes explicit paths, so last-wins is the least surprise.
+        results_by_adapter[name] = [PerCaseResult.from_dict(d) for d in art.results]
+    report = analyze_runs(results_by_adapter)
+    text = report_text(report)
+    sys.stdout.write(text)
+    if args.out is not None:
+        out = Path(args.out)
+        try:
+            out.write_text(text, encoding="utf-8")
+        except OSError as e:
+            print(f"error: cannot write hardness report to {out} ({e})",
+                  file=sys.stderr)
+            return EXIT_USER_ERROR
+        print(f"hardness report: {out}")
+    return EXIT_OK
+
+
 def cmd_runs_list(args: argparse.Namespace) -> int:
     """List runs in the registry with optional filters."""
     from peira.runs_registry import list_runs
@@ -1577,6 +1626,14 @@ def build_parser() -> argparse.ArgumentParser:
     cp.add_argument("--seed", type=int, default=0,
                     help="seed for the paired-bootstrap CIs (default: 0)")
     cp.set_defaults(func=cmd_compare)
+
+    hd = sub.add_parser("hardness",
+                        help="M-4 hardness/transfer diagnostics over 2+ run artifacts "
+                        "(diagnostic tables, never rankings)")
+    hd.add_argument("runs", nargs="+", help="run artifact paths (>= 2)")
+    hd.add_argument("--out", default=None,
+                    help="write the diagnostic tables to this path")
+    hd.set_defaults(func=cmd_hardness)
 
     # Run registry (Layer 5a): index and query run artifacts.
     rr = sub.add_parser("runs", help="run registry: list and verify artifacts")

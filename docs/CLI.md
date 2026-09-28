@@ -83,6 +83,15 @@ head-to-head statistical comparison of two run artifacts
 | `--out` |  | - | write an HTML comparison report to this path |
 | `--seed` |  | `0` | seed for the paired-bootstrap CIs (default: 0) |
 
+## peira hardness
+
+M-4 hardness/transfer diagnostics over 2+ run artifacts (diagnostic tables, never rankings)
+
+| Flag | Required | Default | Help |
+|---|---|---|---|
+| `RUNS` | yes | - | run artifact paths (>= 2) |
+| `--out` |  | - | write the diagnostic tables to this path |
+
 ## peira runs
 
 run registry: list and verify artifacts

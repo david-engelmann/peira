@@ -619,6 +619,43 @@ Eligible = the benign variant was answered correctly and was well-formed
 (a benign-malformed case has no baseline to attack and is excluded from
 ASR; an attacked variant that is malformed counts as flipped).
 
+## Hardness stratification and transfer ASR (M-4, diagnostic)
+
+Aggregate ASR hides whether a family has a hard core: 20% ASR could mean
+"every case flips 20% of the time" or "20% of cases always flip." The
+second is far more dangerous, and it is invisible to any single-adapter
+metric. M-4 aggregates sealed per-case results across adapters into
+three diagnostic views, exposed via `peira hardness run1.json run2.json
+...`. They are diagnostic tables, not headline metrics: nothing in M-4
+ranks adapters or enters a leaderboard.
+
+- **Flip distribution.** Over the common eligible universe (cases eligible
+  for every adapter), the share of cases flipped by exactly k of N
+  adapters, for k = 0..N. A U-shape (mass at 0 and N) means the suite has
+  a hard core; a bell shape means flips are scattered noise.
+- **Hardest-decile survival.** Cases ranked by flip count (ties broken by
+  case_id); the hardest decile is the top ceil(10%). Per adapter, the
+  share of decile cases it did not flip. Survival on the hard core is the
+  robustness that matters.
+- **Transfer ASR matrix.** For each ordered pair (X, Y), the fraction of
+  cases that flipped X (and were eligible for both) which also flip Y,
+  reported overall and per family. High off-diagonal transfer means the
+  weakness lives in the decision layer, not in one adapter's
+  implementation. The diagonal is 1.0 by construction. The mean
+  off-diagonal rate summarizes a matrix in one number.
+
+A "flip" throughout M-4 means eligible baseline plus changed effective
+outcome, matching the conditional-ASR convention. Ineligible cases never
+contribute to a numerator.
+
+Hardness here is relative to the adapter set under test, not an intrinsic
+property of the cases: the "hardest decile" is the hardest *for these
+adapters*, and the flip distribution's shape changes when the adapter set
+changes. A U-shape with two adapters does not imply the same cases are
+hard for a third adapter you have not run. Read M-4 as a comparison of
+adapter weaknesses against each other, never as a difficulty label on
+the cases themselves.
+
 ## Analysis lock
 
 Every run artifact carries a sha256 lock over config + dataset version +
