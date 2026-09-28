@@ -312,6 +312,7 @@ class RunArtifact:
         for key in usage:
             if key not in (
                 "model", "tokens_in", "tokens_out", "latency_ms", "cost_usd",
+                "price_table_ref",
             ):
                 raise ValueError(f"{where} has unknown usage field: {key!r}")
         for key in ("model", "tokens_in", "tokens_out", "latency_ms", "cost_usd"):

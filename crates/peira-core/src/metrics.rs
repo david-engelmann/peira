@@ -49,6 +49,8 @@ pub struct CallUsage {
     pub tokens_out: i64,
     pub latency_ms: f64,
     pub cost_usd: f64,
+    #[serde(default)]
+    pub price_table_ref: String,
 }
 
 /// Deserialize `score` with the unit-interval rule, mirroring Python's

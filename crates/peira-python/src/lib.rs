@@ -133,6 +133,7 @@ struct PyCallUsage {
     tokens_out: i64,
     latency_ms: f64,
     cost_usd: f64,
+    price_table_ref: String,
 }
 
 impl From<PyCallUsage> for metrics::CallUsage {
@@ -143,6 +144,7 @@ impl From<PyCallUsage> for metrics::CallUsage {
             tokens_out: u.tokens_out,
             latency_ms: u.latency_ms,
             cost_usd: u.cost_usd,
+            price_table_ref: u.price_table_ref,
         }
     }
 }
@@ -1048,11 +1050,11 @@ fn output_fields_to_value(output: &Bound<'_, PyAny>) -> PyResult<Value> {
         // wrapper does not catch). Reject both shapes with TypeError so
         // the wrapper falls back to the reference, keeping exact
         // dispatcher parity with minimal Rust change.
-        let known = ["model", "tokens_in", "tokens_out", "latency_ms", "cost_usd"];
+        let known = ["model", "tokens_in", "tokens_out", "latency_ms", "cost_usd", "price_table_ref"];
         let fields = usage.getattr("__dataclass_fields__")?;
         let dict = fields.cast::<PyDict>().map_err(|_| {
             PyTypeError::new_err(
-                "usage must be a CallUsage dataclass instance with exactly the 5 known fields",
+                "usage must be a CallUsage dataclass instance with exactly the 6 known fields",
             )
         })?;
         // `dataclasses.fields()` (which `asdict` uses) keeps only fields
@@ -1061,7 +1063,7 @@ fn output_fields_to_value(output: &Bound<'_, PyAny>) -> PyResult<Value> {
         // mere presence check is wrong, since unbound `dataclasses.field()`
         // objects carry `_field_type=None`.
         let field_marker = output.py().import("dataclasses")?.getattr("_FIELD")?;
-        let mut seen = [false; 5];
+        let mut seen = [false; 6];
         let mut shape_ok = true;
         for (key, field) in dict.iter() {
             let idx = match key.extract::<String>() {
@@ -1082,7 +1084,7 @@ fn output_fields_to_value(output: &Bound<'_, PyAny>) -> PyResult<Value> {
         }
         if !shape_ok || seen.iter().any(|s| !s) {
             return Err(PyTypeError::new_err(
-                "usage must be a CallUsage dataclass instance with exactly the 5 known fields",
+                "usage must be a CallUsage dataclass instance with exactly the 6 known fields",
             ));
         }
         // `PyCallUsage` extraction coerces `True` to `1` and `5` to
