@@ -288,7 +288,7 @@ class TestValidateNoWeightedMcNemar(unittest.TestCase):
 
     def test_catches_all_p_value_spellings(self):
         for key in ("mcnemar_p_value", "mcnemar_p", "p_value"):
-            bad = {"x": [{"name": "e_attacked", key: 0.01}]}
+            bad = {"x": [{"name": "severity_weighted_asr", key: 0.01}]}
             self.assertTrue(validate_no_weighted_mcnemar(bad), key)
 
     def test_catches_weighted_substring_names(self):

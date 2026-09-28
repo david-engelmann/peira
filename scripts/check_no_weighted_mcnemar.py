@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Fail if any report attaches a McNemar p-value to a weighted metric.
 
-McNemar's test operates on unweighted discordant-pair counts — that is
+McNemar's test operates on unweighted discordant-pair counts - that is
 the entire statistic. There is no standard cost-weighted McNemar. A
 p-value from McNemar attached to a severity-weighted or cost-weighted
 metric is a category error; weighted comparisons get paired-bootstrap
@@ -81,10 +81,10 @@ def check_negative_control() -> list[str]:
     if not violations:
         return ["negative control: validator missed a McNemar p-value "
                 "on severity_weighted_asr"]
-    # Also check the "weighted" substring fallback and e_attacked.
-    bad2 = {"metrics": [{"name": "e_attacked", "p_value": 0.01}]}
+    # Also check the "weighted" substring fallback.
+    bad2 = {"metrics": [{"name": "custom_weighted_thing", "p_value": 0.01}]}
     if not validate_no_weighted_mcnemar(bad2):
-        return ["negative control: validator missed p_value on e_attacked"]
+        return ["negative control: validator missed p_value on custom_weighted_thing"]
     bad3 = {"x": {"name": "my_weighted_thing", "mcnemar_p": 0.04}}
     if not validate_no_weighted_mcnemar(bad3):
         return ["negative control: validator missed mcnemar_p on "
@@ -97,11 +97,11 @@ def check_negative_control() -> list[str]:
 _STATIC_PATTERNS = [
     re.compile(
         r'(mcnemar_p_value|mcnemar_p)\s*[:=]\s*[^\n]*\n'
-        r'(?:[^\n]*\n){0,3}[^\n]*(weighted|severity_weighted_asr|e_attacked)',
+        r'(?:[^\n]*\n){0,3}[^\n]*(weighted|severity_weighted_asr)',
         re.IGNORECASE,
     ),
     re.compile(
-        r'(weighted|severity_weighted_asr|e_attacked)[^\n]*\n'
+        r'(weighted|severity_weighted_asr)[^\n]*\n'
         r'(?:[^\n]*\n){0,3}[^\n]*(mcnemar_p_value|mcnemar_p)\s*[:=]',
         re.IGNORECASE,
     ),

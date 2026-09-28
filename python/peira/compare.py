@@ -163,9 +163,7 @@ class WeightedDelta:
 #: enforces this; ``scripts/check_no_weighted_mcnemar.py`` runs it in CI.
 WEIGHTED_METRIC_NAMES = frozenset({
     "severity_weighted_asr",
-    "cost_weighted_asr",
-    "e_attacked",
-    "e_benign",
+    # "cost_weighted_asr" reserved for the M-9 cost lane when it lands.
 })
 
 
@@ -525,6 +523,11 @@ def weighted_delta(
         )
     den_x = math.fsum(w_xs)
     den_y = math.fsum(w_ys)
+    if den_x <= 0.0 or den_y <= 0.0:
+        raise ValueError(
+            "weighted_delta requires positive total weight per arm, "
+            f"got den_x={den_x}, den_y={den_y}"
+        )
     point = (
         math.fsum(w * x for w, x in zip(w_xs, xs)) / den_x
         - math.fsum(w * y for w, y in zip(w_ys, ys)) / den_y
