@@ -570,8 +570,12 @@ TRANSCRIPT_REQUIRED = (
 )
 
 
-def validate_transcript_entry(entry: Any, lineno: int) -> dict[str, Any]:
-    """Strictly validate one transcript JSONL entry (replay input)."""
+def validate_transcript_entry_py(entry: Any, lineno: int) -> dict[str, Any]:
+    """Reference implementation of :func:`validate_transcript_entry`
+    (pure Python).
+
+    Strictly validate one transcript JSONL entry (replay input).
+    """
     where = f"transcript line {lineno}"
     if not isinstance(entry, dict):
         raise ValueError(f"{where}: expected an object")
@@ -605,6 +609,22 @@ def validate_transcript_entry(entry: Any, lineno: int) -> dict[str, Any]:
     if not isinstance(provider, dict) or not provider.get("adapter_name"):
         raise ValueError(f"{where}: provider.adapter_name is required")
     return entry
+
+
+def validate_transcript_entry(entry: Any, lineno: int) -> dict[str, Any]:
+    """Strictly validate one transcript JSONL entry (replay input).
+
+    Dispatches to the Rust core when available; the pure-Python
+    :func:`validate_transcript_entry_py` is the reference and the
+    fallback. Returns the entry unchanged on success.
+    """
+    if _rust is not None:
+        try:
+            _rust.records_validate_transcript_entry(entry, lineno)
+        except (TypeError, ValueError, OverflowError):
+            return validate_transcript_entry_py(entry, lineno)
+        return entry
+    return validate_transcript_entry_py(entry, lineno)
 
 
 def load_transcript(path: Path) -> list[dict[str, Any]]:

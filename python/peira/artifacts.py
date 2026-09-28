@@ -26,6 +26,7 @@ from datetime import datetime, timezone
 from typing import ClassVar
 
 from peira import __version__ as peira_version
+from peira._rust import _impl as _rust
 from peira.adapters.base import _unit_interval
 from peira.metrics import PerCaseResult
 
@@ -84,7 +85,8 @@ class RunArtifact:
     env: dict = field(default_factory=dict)
     env_sha256: str = ""
 
-    def compute_lock(self) -> str:
+    def _compute_lock_py(self) -> str:
+        """Reference implementation of :meth:`compute_lock` (pure Python)."""
         payload = json.dumps(
             {
                 "peira_version": self.peira_version,
@@ -112,6 +114,34 @@ class RunArtifact:
             sort_keys=True,
         )
         return hashlib.sha256(payload.encode()).hexdigest()
+
+    def compute_lock(self) -> str:
+        """SHA-256 analysis lock over the artifact's lock-covered fields.
+
+        Dispatches to the Rust core when available; the pure-Python
+        :meth:`_compute_lock_py` is the reference and the fallback.
+        """
+        if _rust is not None:
+            try:
+                return _rust.artifact_lock_payload(
+                    self.peira_version,
+                    self.dataset_version,
+                    self.manifest_sha256,
+                    self.adapter_name,
+                    self.adapter_version,
+                    self.suite,
+                    self.config,
+                    self.results,
+                    self.pricing_source,
+                    self.pricing_date,
+                    self.seed,
+                    self.max_concurrency,
+                    self.metrics,
+                    self.env_sha256,
+                )
+            except (TypeError, ValueError, OverflowError):
+                pass
+        return self._compute_lock_py()
 
     def seal(self) -> "RunArtifact":
         self.analysis_lock = self.compute_lock()

@@ -20,6 +20,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from peira._rust import _impl as _rust
 from peira.schema import validate_case_dict
 
 MANIFEST_NAME = "manifest.json"
@@ -122,8 +123,10 @@ def iter_case_lines(dataset_dir: Path):
                     yield path, lineno, None, f"invalid JSON ({e})"
 
 
-def _summarize_bytes(name: str, data: bytes) -> dict[str, Any]:
-    """Validate JSONL case bytes, count cases, and hash the bytes.
+def _summarize_bytes_py(name: str, data: bytes) -> dict[str, Any]:
+    """Reference implementation of :func:`_summarize_bytes` (pure Python).
+
+    Validate JSONL case bytes, count cases, and hash the bytes.
 
     The SHA-256 and the parse share the single buffer: callers that
     already hold the bytes (verification) never re-read the file.
@@ -162,6 +165,24 @@ def _summarize_bytes(name: str, data: bytes) -> dict[str, Any]:
         "n_by_severity": dict(sorted(by_severity.items())),
         "n_by_primitive": dict(sorted(by_primitive.items())),
     }
+
+
+def _summarize_bytes(name: str, data: bytes) -> dict[str, Any]:
+    """Validate JSONL case bytes, count cases, and hash the bytes.
+
+    The SHA-256 and the parse share the single buffer: callers that
+    already hold the bytes (verification) never re-read the file.
+
+    Dispatches to the Rust core when available; the pure-Python
+    :func:`_summarize_bytes_py` is the reference and the fallback (so
+    per-line problem messages are always byte-identical to Python's).
+    """
+    if _rust is not None:
+        try:
+            return dict(_rust.dataset_summarize_case_bytes(name, data))
+        except (TypeError, ValueError, OverflowError):
+            pass
+    return _summarize_bytes_py(name, data)
 
 
 def summarize_cases(path: Path) -> dict[str, Any]:

@@ -14,10 +14,13 @@ pub mod artifact;
 pub mod canonical;
 pub mod compare;
 pub mod dataset;
+pub mod env;
 pub mod execution;
 pub mod gates;
 pub mod metrics;
+pub mod pricing;
 pub mod py_repr;
+pub mod records;
 pub mod schema;
 
 /// Crate version, kept in sync with the Python package by CI.

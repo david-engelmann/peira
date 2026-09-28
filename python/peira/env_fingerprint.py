@@ -25,6 +25,8 @@ import json
 import platform
 from importlib.metadata import version as _pkg_version, PackageNotFoundError
 
+from peira._rust import _impl as _rust
+
 
 def _safe_version(pkg: str) -> str | None:
     """Return the installed version of pkg, or None if not installed."""
@@ -122,8 +124,10 @@ def collect_env() -> dict:
     }
 
 
-def fingerprint_env(env: dict | None = None) -> str:
-    """Compute the SHA-256 fingerprint of an environment dict.
+def fingerprint_env_py(env: dict | None = None) -> str:
+    """Reference implementation of :func:`fingerprint_env` (pure Python).
+
+    Compute the SHA-256 fingerprint of an environment dict.
 
     Uses canonical JSON (sort_keys=True, no whitespace) so the digest
     is stable across runs and machines.
@@ -132,6 +136,26 @@ def fingerprint_env(env: dict | None = None) -> str:
         env = collect_env()
     canonical = json.dumps(env, sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+def fingerprint_env(env: dict | None = None) -> str:
+    """Compute the SHA-256 fingerprint of an environment dict.
+
+    Uses canonical JSON (sort_keys=True, no whitespace) so the digest
+    is stable across runs and machines.
+
+    Dispatches to the Rust core when available (environment collection
+    itself stays in Python — it is platform I/O); the pure-Python
+    :func:`fingerprint_env_py` is the reference and the fallback.
+    """
+    if env is None:
+        env = collect_env()
+    if _rust is not None:
+        try:
+            return _rust.env_fingerprint_env(env)
+        except (TypeError, ValueError, OverflowError):
+            pass
+    return fingerprint_env_py(env)
 
 
 def collect_and_fingerprint() -> tuple[dict, str]:

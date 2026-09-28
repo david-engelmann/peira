@@ -170,6 +170,79 @@ pub fn summarize_cases_hashed(path: &Path) -> Result<(CaseSummary, String), Stri
     summarize_case_bytes(name, &bytes)
 }
 
+/// Python `str.splitlines()` line-boundary set: `\n`, `\r`, `\r\n` (one
+/// boundary), vertical tab, form feed, `\x1c`, `\x1d`, `\x1e`, NEL
+/// (`\x85`), U+2028, U+2029. Rust's `str::lines` only splits on
+/// `\n`/`\r\n`, so JSONL bytes containing the wider set inside a JSON
+/// string would parse as one line in Rust but two fragments in Python.
+fn is_py_line_boundary(c: char) -> bool {
+    matches!(
+        c,
+        '\n' | '\r'
+            | '\u{000b}'
+            | '\u{000c}'
+            | '\u{001c}'
+            | '\u{001d}'
+            | '\u{001e}'
+            | '\u{0085}'
+            | '\u{2028}'
+            | '\u{2029}'
+    )
+}
+
+/// CPython `str.isspace()`: the blank-line test behind Python's
+/// `line.strip()`. Rust's `char::is_whitespace` misses `\x1c..\x1f`,
+/// which Python treats as whitespace.
+fn is_py_space(c: char) -> bool {
+    matches!(
+        c,
+        '\u{0009}'..='\u{000d}'
+            | '\u{0020}'
+            | '\u{001c}'..='\u{001f}'
+            | '\u{0085}'
+            | '\u{00a0}'
+            | '\u{1680}'
+            | '\u{2000}'..='\u{200a}'
+            | '\u{2028}'
+            | '\u{2029}'
+            | '\u{202f}'
+            | '\u{205f}'
+            | '\u{3000}'
+    )
+}
+
+/// Split exactly like Python's `str.splitlines()`: boundary characters
+/// are consumed (never part of a line), `\r\n` is a single boundary,
+/// and there is no trailing empty line after a final boundary.
+fn py_splitlines(text: &str) -> Vec<&str> {
+    let mut lines = Vec::new();
+    let mut start = 0;
+    let mut iter = text.char_indices().peekable();
+    while let Some((i, c)) = iter.next() {
+        if !is_py_line_boundary(c) {
+            continue;
+        }
+        lines.push(&text[start..i]);
+        let mut end = i + c.len_utf8();
+        if c == '\r' {
+            if let Some(&(_, '\n')) = iter.peek() {
+                let (j, nc) = iter.next().unwrap();
+                end = j + nc.len_utf8();
+            }
+        }
+        start = end;
+    }
+    if start < text.len() {
+        lines.push(&text[start..]);
+    }
+    lines
+}
+
+/// Python's `not line.strip()`: true for empty and whitespace-only lines.
+fn is_py_blank(line: &str) -> bool {
+    line.chars().all(is_py_space)
+}
+
 /// Validate JSONL case bytes, count the cases, and hash the bytes.
 ///
 /// The SHA-256 and the parse share the single buffer: callers that
@@ -186,8 +259,11 @@ pub fn summarize_case_bytes(name: &str, bytes: &[u8]) -> Result<(CaseSummary, St
         n_by_primitive: BTreeMap::new(),
     };
     let mut problems = Vec::new();
-    for (lineno, line) in text.lines().enumerate() {
-        if line.trim().is_empty() {
+    // Python-compatible line splitting (see `py_splitlines`): the
+    // reference iterates `text.splitlines()`, which splits on a wider
+    // boundary set than Rust's `str::lines`.
+    for (lineno, line) in py_splitlines(text).into_iter().enumerate() {
+        if is_py_blank(line) {
             continue;
         }
         summary.n_cases += 1;
@@ -527,6 +603,56 @@ pub fn verify_manifest(dataset_dir: &Path) -> Result<Vec<String>, ManifestError>
 mod tests {
     use super::*;
     use std::io::Write;
+
+    #[test]
+    fn py_splitlines_matches_python() {
+        // Vectors generated from CPython's str.splitlines().
+        let cases: &[(&str, &[&str])] = &[
+            ("", &[]),
+            ("a", &["a"]),
+            ("a\n", &["a"]),
+            ("a\n\n", &["a", ""]),
+            ("\n", &[""]),
+            ("a\r\nb", &["a", "b"]),
+            ("a\rb", &["a", "b"]),
+            ("a\r\n", &["a"]),
+            ("a\x0bb", &["a", "b"]),
+            ("a\x0cb", &["a", "b"]),
+            ("a\x1cb", &["a", "b"]),
+            ("a\x1db", &["a", "b"]),
+            ("a\x1eb", &["a", "b"]),
+            // \x1f is whitespace to Python but NOT a line boundary.
+            ("a\x1fb", &["a\x1fb"]),
+            ("a\u{85}b", &["a", "b"]),
+            ("a\u{2028}b", &["a", "b"]),
+            ("a\u{2029}b", &["a", "b"]),
+            (
+                "a\nb\r\nc\rd\u{2028}e\u{2029}f\u{85}g\x0bh\x0ci\x1cj\x1dk\x1el",
+                &["a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l"],
+            ),
+        ];
+        for (input, want) in cases {
+            assert_eq!(&py_splitlines(input), want, "input {input:?}");
+        }
+    }
+
+    #[test]
+    fn py_blank_matches_python_strip() {
+        // (input, Python `not s.strip()`)
+        for (input, want) in [
+            ("", true),
+            ("   ", true),
+            ("\t \n", true),
+            ("\x1c", true), // Rust trim() misses this; Python strip() catches it
+            ("  \x1c  ", true),
+            ("\u{85}", true),
+            ("\u{2028}", true),
+            ("x", false),
+            (" \u{200b} ", false), // zero-width space is not whitespace
+        ] {
+            assert_eq!(is_py_blank(input), want, "input {input:?}");
+        }
+    }
 
     fn write_tmp(name: &str, contents: &str) -> (tempfile::TempDir, PathBuf) {
         let dir = tempfile::tempdir().unwrap();

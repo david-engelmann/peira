@@ -21,10 +21,12 @@
 //!   wider than u64, non-string dict keys) raise `TypeError`/`ValueError`;
 //!   the Python wrappers catch those and fall back to pure Python.
 
-use peira_core::{canonical, compare, execution, gates, metrics, schema};
-use pyo3::exceptions::{PyTypeError, PyValueError};
+use peira_core::{
+    artifact, canonical, compare, dataset, env, execution, gates, metrics, pricing, records, schema,
+};
+use pyo3::exceptions::{PyAttributeError, PyKeyError, PyTypeError, PyValueError};
 use pyo3::prelude::*;
-use pyo3::types::{PyBool, PyDict, PyFloat, PyInt, PyList, PyString, PyTuple};
+use pyo3::types::{PyBool, PyDict, PyFloat, PyInt, PyList, PyString, PyTuple, PyType};
 use serde_json::{Number, Value};
 use std::collections::BTreeMap;
 
@@ -704,6 +706,495 @@ fn canonical_pretty(obj: &Bound<'_, PyAny>) -> PyResult<String> {
     Ok(canonical::to_pretty(&value_from_py(obj)?))
 }
 
+/// Convert a JSON value back into Python objects (dicts, lists, str,
+/// int, float, bool, None).
+fn value_to_py(py: Python<'_>, v: &Value) -> PyResult<Py<PyAny>> {
+    match v {
+        Value::Null => Ok(py.None()),
+        Value::Bool(b) => Ok(PyBool::new(py, *b).to_owned().into()),
+        Value::Number(n) => {
+            if let Some(i) = n.as_i64() {
+                Ok(i.into_pyobject(py)?.into())
+            } else if let Some(u) = n.as_u64() {
+                Ok(u.into_pyobject(py)?.into())
+            } else if let Some(f) = n.as_f64() {
+                Ok(f.into_pyobject(py)?.into())
+            } else {
+                Err(PyValueError::new_err("number out of range"))
+            }
+        }
+        Value::String(s) => Ok(s.into_pyobject(py)?.into()),
+        Value::Array(items) => {
+            let list = PyList::empty(py);
+            for item in items {
+                list.append(value_to_py(py, item)?)?;
+            }
+            Ok(list.into())
+        }
+        Value::Object(map) => {
+            let dict = PyDict::new(py);
+            for (k, v) in map {
+                dict.set_item(k, value_to_py(py, v)?)?;
+            }
+            Ok(dict.into())
+        }
+    }
+}
+
+/// Map a `peira_core` error string onto the exception type the Python
+/// reference raises: missing keys are `KeyError` there (dict
+/// subscription), `type error: `-prefixed messages are `TypeError`
+/// (e.g. subscripting a non-mapping), `attribute error: `-prefixed
+/// messages are `AttributeError` (e.g. `.get` on a non-object), and
+/// everything else is `ValueError`. The Python dispatch wrappers catch
+/// `ValueError` and fall back to the pure-Python reference, so any
+/// residual mismatch still ends up identical.
+fn core_err(msg: String) -> PyErr {
+    if let Some(key) = msg.strip_prefix("missing key: ") {
+        PyKeyError::new_err(key.to_string())
+    } else if let Some(detail) = msg.strip_prefix("type error: ") {
+        PyTypeError::new_err(detail.to_string())
+    } else if let Some(detail) = msg.strip_prefix("attribute error: ") {
+        PyAttributeError::new_err(detail.to_string())
+    } else {
+        PyValueError::new_err(msg)
+    }
+}
+
+/// Extract an integer binding parameter, rejecting `bool`.
+///
+/// PyO3 extracts `True`/`False` as `1`/`0` without raising, but the
+/// Python references store the bool as-is (silently changing digests
+/// and records). Raising `TypeError` triggers the wrapper fallback to
+/// the reference, so both backends agree exactly.
+fn int_param(name: &str, v: &Bound<'_, PyAny>) -> PyResult<i64> {
+    if v.is_instance_of::<PyBool>() {
+        return Err(PyTypeError::new_err(format!(
+            "{name} must be an integer, not bool"
+        )));
+    }
+    v.extract()
+}
+
+/// Extract a float binding parameter, rejecting ints, bools, and
+/// non-finite floats.
+///
+/// PyO3 extracts a Python int as `f64` without raising, but the Python
+/// references pass values through untouched (an int `latency_ms` stays
+/// an int). Raising `TypeError` triggers the wrapper fallback to the
+/// reference, so both backends agree exactly. Non-finite floats
+/// (`nan`/`inf`) are rejected with `ValueError`: `serde_json` would
+/// silently serialize them as `null`, while the reference preserves
+/// them — raising triggers the fallback instead of silent corruption.
+fn float_param(name: &str, v: &Bound<'_, PyAny>) -> PyResult<f64> {
+    if !v.is_instance_of::<PyFloat>() {
+        return Err(PyTypeError::new_err(format!("{name} must be a float")));
+    }
+    let f: f64 = v.extract()?;
+    if !f.is_finite() {
+        return Err(PyValueError::new_err(format!(
+            "{name} must be a finite float"
+        )));
+    }
+    Ok(f)
+}
+
+/// Require a `None` or `float` value, rejecting ints and bools.
+///
+/// The Rust core stores `confidence`/`score` as `Option<f64>` and would
+/// coerce ints (silently losing precision on huge ints like 2**63),
+/// while the Python reference passes values through untouched. Raising
+/// `TypeError` triggers the wrapper fallback to the reference, so both
+/// backends agree exactly.
+fn require_float_or_none(value: &Bound<'_, PyAny>, field: &str) -> PyResult<()> {
+    if !value.is_none() && !value.is_instance_of::<PyFloat>() {
+        let tname = value
+            .get_type()
+            .name()
+            .map(|n| n.to_string())
+            .unwrap_or_else(|_| "<unknown type>".to_string());
+        return Err(PyTypeError::new_err(format!(
+            "{field} must be a float or null, not {tname}"
+        )));
+    }
+    Ok(())
+}
+
+/// Best-effort `.get(key)` on a Python mapping: `None` when the object
+/// has no `.get` or the call fails. Callers use this only to look for
+/// positively-present non-float values; navigation failures are ignored
+/// because the normal conversion path raises the matching error.
+fn try_get<'py>(obj: &Bound<'py, PyAny>, key: &str) -> Option<Bound<'py, PyAny>> {
+    obj.getattr("get").ok()?.call1((key,)).ok()
+}
+
+/// records.blank_record: the malformed sentinel record for a dead call.
+#[pyfunction]
+fn records_blank_record(
+    py: Python<'_>,
+    seed: &Bound<'_, PyAny>,
+    dispatch_index: &Bound<'_, PyAny>,
+    dispatch_limit: &Bound<'_, PyAny>,
+) -> PyResult<Py<PyAny>> {
+    let record = records::blank_record(
+        int_param("seed", seed)?,
+        int_param("dispatch_index", dispatch_index)?,
+        int_param("dispatch_limit", dispatch_limit)?,
+    );
+    let v = serde_json::to_value(&record).map_err(|e| PyValueError::new_err(e.to_string()))?;
+    value_to_py(py, &v)
+}
+
+/// records.record_from_transcript_entry: rebuild a CallRecord from a
+/// transcript entry dict. Returns the record as a plain dict; the
+/// Python wrapper rebuilds the dataclass.
+#[pyfunction]
+fn records_record_from_transcript_entry(
+    py: Python<'_>,
+    entry: &Bound<'_, PyAny>,
+) -> PyResult<Py<PyAny>> {
+    // Mirror the reference's `entry["seed"]`: a non-dict entry raises
+    // TypeError (not KeyError), with CPython's exact subscript message.
+    // Dict subclasses pass through untouched; anything else raises
+    // TypeError, which the wrapper catches to fall back to the reference
+    // (so exotic mappings still behave exactly as in Python).
+    if !entry.is_instance_of::<PyDict>() {
+        let tname = entry
+            .get_type()
+            .name()
+            .map(|n| n.to_string())
+            .unwrap_or_else(|_| "<unknown type>".to_string());
+        let msg = match tname.as_str() {
+            "list" | "tuple" => {
+                format!("{tname} indices must be integers or slices, not str")
+            }
+            "str" => "string indices must be integers, not 'str'".to_string(),
+            "bytes" => "byte indices must be integers or slices, not str".to_string(),
+            "bytearray" | "range" => {
+                format!("{tname} indices must be integers or slices, not str")
+            }
+            "array" => "array indices must be integers".to_string(),
+            "memoryview" => "memoryview: invalid slice key".to_string(),
+            _ => format!("'{tname}' object is not subscriptable"),
+        };
+        return Err(PyTypeError::new_err(msg));
+    }
+    // The Rust core stores `confidence`/`score` as `Option<f64>` and
+    // would coerce ints (losing precision on huge ones), while the
+    // reference passes values through untouched. Reject non-float
+    // values here so the wrapper falls back and both backends agree
+    // exactly. A score belongs only to the score primitive, mirroring
+    // the reference.
+    if let Some(out) = try_get(entry, "response").and_then(|r| try_get(&r, "output")) {
+        if let Some(v) = try_get(&out, "confidence") {
+            require_float_or_none(&v, "confidence")?;
+        }
+        let is_score = try_get(entry, "primitive")
+            .and_then(|p| p.extract::<String>().ok())
+            .as_deref()
+            == Some("score");
+        if is_score {
+            if let Some(v) = try_get(&out, "score") {
+                require_float_or_none(&v, "score")?;
+            }
+        }
+    }
+    let entry = value_from_py(entry)?;
+    let record = records::record_from_transcript_entry(&entry).map_err(core_err)?;
+    let v = serde_json::to_value(&record).map_err(|e| PyValueError::new_err(e.to_string()))?;
+    value_to_py(py, &v)
+}
+
+/// Extract one adapter-output field map from a Python output object.
+///
+/// Mirrors the attribute reads in `runner._output_to_dict`: a missing
+/// attribute is `AttributeError`, exactly as in Python.
+fn output_fields_to_value(output: &Bound<'_, PyAny>) -> PyResult<Value> {
+    let mut map = serde_json::Map::with_capacity(6);
+    for key in ["decision", "confidence", "abstained", "refusal_reason"] {
+        // getattr raises AttributeError on a missing attribute, matching
+        // the Python reference.
+        map.insert(key.to_string(), value_from_py(&output.getattr(key)?)?);
+    }
+    let usage = output.getattr("usage")?;
+    let usage_value = if usage.is_none() {
+        Value::Null
+    } else if usage.cast::<PyDict>().is_ok() {
+        // The reference runs `dataclasses.asdict` on the usage, which
+        // raises TypeError for a dict-typed usage — mirror it so the
+        // wrapper falls back and the reference's TypeError surfaces.
+        return Err(PyTypeError::new_err(
+            "usage must be a CallUsage dataclass or None, not a dict",
+        ));
+    } else if usage.get_type().getattr("__dataclass_fields__").is_err() {
+        // `dataclasses.asdict` gates on `_is_dataclass_instance(obj)`,
+        // i.e. the *class* attribute (`hasattr(type(obj),
+        // "__dataclass_fields__")`) — an instance-level attribute of the
+        // same name does not count. Mirror it exactly so the wrapper
+        // falls back and the reference's TypeError surfaces; the naive
+        // instance `getattr` would enter the dataclass branch and die
+        // with AttributeError, which the wrapper does not catch.
+        return Err(PyTypeError::new_err(
+            "asdict() should be called on dataclass instances",
+        ));
+    } else if usage.is_instance_of::<PyType>() {
+        // A dataclass *class* whose metaclass defines
+        // `__dataclass_fields__` passes the type-attribute check above,
+        // but the reference's `asdict` raises TypeError on classes.
+        // Mirror it so the wrapper falls back and the reference's
+        // TypeError surfaces (the raw extract below would raise
+        // AttributeError, which the wrapper does not catch).
+        return Err(PyTypeError::new_err(
+            "asdict() should be called on dataclass instances",
+        ));
+    } else {
+        // A foreign dataclass carrying fields beyond the five known
+        // CallUsage fields: the reference's `asdict` preserves every
+        // field, but the Rust projection below would silently drop the
+        // extras. A foreign dataclass carrying a *subset* of the fields
+        // is the mirror image: the reference serializes it fine, but the
+        // projection below would die with AttributeError (which the
+        // wrapper does not catch). Reject both shapes with TypeError so
+        // the wrapper falls back to the reference, keeping exact
+        // dispatcher parity with minimal Rust change.
+        let known = ["model", "tokens_in", "tokens_out", "latency_ms", "cost_usd"];
+        let fields = usage.getattr("__dataclass_fields__")?;
+        let dict = fields.cast::<PyDict>().map_err(|_| {
+            PyTypeError::new_err(
+                "usage must be a CallUsage dataclass instance with exactly the 5 known fields",
+            )
+        })?;
+        // `dataclasses.fields()` (which `asdict` uses) keeps only fields
+        // whose `_field_type is dataclasses._FIELD`, excluding ClassVar /
+        // InitVar pseudo-fields. Mirror that identity check exactly: a
+        // mere presence check is wrong, since unbound `dataclasses.field()`
+        // objects carry `_field_type=None`.
+        let field_marker = output.py().import("dataclasses")?.getattr("_FIELD")?;
+        let mut seen = [false; 5];
+        let mut shape_ok = true;
+        for (key, field) in dict.iter() {
+            let idx = match key.extract::<String>() {
+                Ok(name) => known.iter().position(|k| *k == name.as_str()),
+                _ => None,
+            };
+            let real_field = match field.getattr("_field_type") {
+                Ok(ft) => ft.is(&field_marker),
+                Err(_) => false,
+            };
+            match idx {
+                Some(i) if real_field => seen[i] = true,
+                _ => {
+                    shape_ok = false;
+                    break;
+                }
+            }
+        }
+        if !shape_ok || seen.iter().any(|s| !s) {
+            return Err(PyTypeError::new_err(
+                "usage must be a CallUsage dataclass instance with exactly the 5 known fields",
+            ));
+        }
+        // `PyCallUsage` extraction coerces `True` to `1` and `5` to
+        // `5.0`, but the reference's `asdict` preserves values exactly.
+        // Reject the coerced shapes with TypeError so the wrapper falls
+        // back to the reference.
+        int_param("tokens_in", &usage.getattr("tokens_in")?)?;
+        int_param("tokens_out", &usage.getattr("tokens_out")?)?;
+        float_param("latency_ms", &usage.getattr("latency_ms")?)?;
+        float_param("cost_usd", &usage.getattr("cost_usd")?)?;
+        let u: PyCallUsage = usage.extract()?;
+        serde_json::to_value(metrics::CallUsage::from(u))
+            .map_err(|e| PyValueError::new_err(e.to_string()))?
+    };
+    map.insert("usage".to_string(), usage_value);
+    Ok(Value::Object(map))
+}
+
+/// records.output_to_dict: serialize an adapter output object for
+/// transcripts and the cache. `output` is the adapter output object;
+/// `primitive` selects whether `score` is included.
+#[pyfunction]
+fn records_output_to_dict(
+    py: Python<'_>,
+    primitive: &str,
+    output: &Bound<'_, PyAny>,
+) -> PyResult<Py<PyAny>> {
+    let mut fields = output_fields_to_value(output)?;
+    if primitive == "score" {
+        // Missing score attribute is AttributeError, as in Python.
+        let score = value_from_py(&output.getattr("score")?)?;
+        fields
+            .as_object_mut()
+            .expect("output fields are an object")
+            .insert("score".to_string(), score);
+    }
+    let d = records::output_to_dict(primitive, &fields).map_err(core_err)?;
+    value_to_py(py, &d)
+}
+
+/// records.output_from_dict: rebuild a normalized adapter output from
+/// its serialized dict. Returns a plain dict; the Python wrapper
+/// constructs the concrete output dataclass.
+#[pyfunction]
+fn records_output_from_dict(
+    py: Python<'_>,
+    primitive: &str,
+    d: &Bound<'_, PyAny>,
+) -> PyResult<Py<PyAny>> {
+    // Mirror the reference's `d.get("usage")`: a `d` without a `.get`
+    // attribute raises AttributeError (which the wrapper deliberately
+    // does not catch — the pure-Python path propagates it uncaught too).
+    // The "attribute error: " prefix maps to PyAttributeError with a
+    // CPython-identical message.
+    if let Err(e) = d.getattr("get") {
+        if e.is_instance_of::<PyAttributeError>(py) {
+            let tname = d
+                .get_type()
+                .name()
+                .map(|n| n.to_string())
+                .unwrap_or_else(|_| "<unknown type>".to_string());
+            return Err(core_err(format!(
+                "attribute error: '{tname}' object has no attribute 'get'"
+            )));
+        }
+        return Err(e);
+    }
+    // The Rust core stores `confidence`/`score` as `Option<f64>` and
+    // would coerce ints (losing precision on huge ones), while the
+    // reference passes values through untouched. Reject non-float
+    // values here so the wrapper falls back and both backends agree
+    // exactly. A stray `score` key on non-score primitives is ignored
+    // by both backends, mirroring the reference.
+    if let Some(v) = try_get(d, "confidence") {
+        require_float_or_none(&v, "confidence")?;
+    }
+    if primitive == "score" {
+        if let Some(v) = try_get(d, "score") {
+            require_float_or_none(&v, "score")?;
+        }
+    }
+    let d = value_from_py(d)?;
+    let out = records::output_from_dict(primitive, &d).map_err(core_err)?;
+    let v = serde_json::to_value(&out).map_err(|e| PyValueError::new_err(e.to_string()))?;
+    value_to_py(py, &v)
+}
+
+/// records.validate_transcript_entry: strictly validate one transcript
+/// JSONL entry. Returns None on success; raises ValueError describing
+/// the first problem, mirroring `concurrency.validate_transcript_entry`.
+#[pyfunction]
+fn records_validate_transcript_entry(
+    entry: &Bound<'_, PyAny>,
+    lineno: &Bound<'_, PyAny>,
+) -> PyResult<()> {
+    let entry = value_from_py(entry)?;
+    records::validate_transcript_entry(&entry, int_param("lineno", lineno)?)
+        .map_err(PyValueError::new_err)?;
+    Ok(())
+}
+
+/// pricing.cost_usd: list-price cost of one call in USD from the pinned
+/// table. Unknown models cost 0.0; negative token counts raise.
+#[pyfunction]
+fn pricing_cost_usd(
+    model: &str,
+    tokens_in: &Bound<'_, PyAny>,
+    tokens_out: &Bound<'_, PyAny>,
+    table: &Bound<'_, PyAny>,
+) -> PyResult<f64> {
+    let table = value_from_py(table)?;
+    pricing::cost_usd(
+        model,
+        int_param("tokens_in", tokens_in)?,
+        int_param("tokens_out", tokens_out)?,
+        &table,
+    )
+    .map_err(core_err)
+}
+
+/// env.fingerprint_env: SHA-256 of the env dict's compact canonical
+/// JSON, byte-identical to `env_fingerprint.fingerprint_env`.
+#[pyfunction]
+fn env_fingerprint_env(env: &Bound<'_, PyAny>) -> PyResult<String> {
+    Ok(env::fingerprint_env(&value_from_py(env)?))
+}
+
+/// artifact.lock_payload: the analysis-lock digest over the artifact's
+/// lock-covered fields, byte-identical to `RunArtifact.compute_lock`.
+/// Fourteen positional args mirror the lock-payload field list.
+#[pyfunction]
+#[allow(clippy::too_many_arguments)]
+fn artifact_lock_payload(
+    peira_version: &str,
+    dataset_version: &str,
+    manifest_sha256: &str,
+    adapter_name: &str,
+    adapter_version: &str,
+    suite: &str,
+    config: &Bound<'_, PyAny>,
+    results: &Bound<'_, PyAny>,
+    pricing_source: &str,
+    pricing_date: &str,
+    seed: &Bound<'_, PyAny>,
+    max_concurrency: &Bound<'_, PyAny>,
+    metrics: &Bound<'_, PyAny>,
+    env_sha256: &str,
+) -> PyResult<String> {
+    Ok(artifact::lock_payload(
+        peira_version,
+        dataset_version,
+        manifest_sha256,
+        adapter_name,
+        adapter_version,
+        suite,
+        &value_from_py(config)?,
+        &value_from_py(results)?,
+        pricing_source,
+        pricing_date,
+        int_param("seed", seed)?,
+        int_param("max_concurrency", max_concurrency)?,
+        &value_from_py(metrics)?,
+        env_sha256,
+    ))
+}
+
+/// dataset.summarize_case_bytes: validate JSONL case bytes, count the
+/// cases, and hash the bytes. Returns the summary dict
+/// (`kind`/`sha256`/`n_cases`/`n_by_*`, maps in sorted key order),
+/// mirroring `dataset._summarize_bytes`. Aggregated per-line problems
+/// raise ValueError; the Python wrapper falls back to the reference so
+/// the exact message wording is always Python's.
+#[pyfunction]
+fn dataset_summarize_case_bytes(
+    py: Python<'_>,
+    name: &str,
+    data: &Bound<'_, PyAny>,
+) -> PyResult<Py<PyAny>> {
+    let bytes: Vec<u8> = data
+        .extract()
+        .map_err(|_| PyTypeError::new_err("data must be bytes"))?;
+    let (summary, digest) =
+        dataset::summarize_case_bytes(name, &bytes).map_err(PyValueError::new_err)?;
+    let mut map = serde_json::Map::with_capacity(6);
+    map.insert("kind".to_string(), Value::String("cases".to_string()));
+    map.insert("sha256".to_string(), Value::String(digest));
+    map.insert("n_cases".to_string(), Value::Number(summary.n_cases.into()));
+    for (key, counts) in [
+        ("n_by_family", &summary.n_by_family),
+        ("n_by_severity", &summary.n_by_severity),
+        ("n_by_primitive", &summary.n_by_primitive),
+    ] {
+        // BTreeMap iterates in sorted key order, matching the Python
+        // `dict(sorted(...))`.
+        let inner: serde_json::Map<String, Value> = counts
+            .iter()
+            .map(|(k, v)| (k.clone(), Value::Number((*v).into())))
+            .collect();
+        map.insert(key.to_string(), Value::Object(inner));
+    }
+    value_to_py(py, &Value::Object(map))
+}
+
 /// peira._core: the compiled Rust core (PyO3). Optional accelerator —
 /// every function here has a pure-Python twin of identical behavior.
 #[pymodule]
@@ -761,5 +1252,14 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(execution_backoff_bound, m)?)?;
     m.add_function(wrap_pyfunction!(canonical_json, m)?)?;
     m.add_function(wrap_pyfunction!(canonical_pretty, m)?)?;
+    m.add_function(wrap_pyfunction!(records_blank_record, m)?)?;
+    m.add_function(wrap_pyfunction!(records_record_from_transcript_entry, m)?)?;
+    m.add_function(wrap_pyfunction!(records_output_to_dict, m)?)?;
+    m.add_function(wrap_pyfunction!(records_output_from_dict, m)?)?;
+    m.add_function(wrap_pyfunction!(records_validate_transcript_entry, m)?)?;
+    m.add_function(wrap_pyfunction!(pricing_cost_usd, m)?)?;
+    m.add_function(wrap_pyfunction!(env_fingerprint_env, m)?)?;
+    m.add_function(wrap_pyfunction!(artifact_lock_payload, m)?)?;
+    m.add_function(wrap_pyfunction!(dataset_summarize_case_bytes, m)?)?;
     Ok(())
 }
