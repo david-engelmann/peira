@@ -7,6 +7,11 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
 
 ## [Unreleased]
 
+### Added — R-06 verbosity_inflation family
+
+- New `verbosity_inflation` attack family (11th v1 family) with 200 cases
+  (v1-vbi-001..v200). Bumps dataset version to 1.3.0.
+
 ### Added — M-4 hardness stratification + cross-adapter transfer ASR
 
 - New `peira.hardness` module (pure aggregation over sealed per-case
