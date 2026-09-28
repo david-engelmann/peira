@@ -189,9 +189,13 @@ def reliability_diagram_svg(block: dict, title: str) -> str:
     if not block.get("sufficient") or not bins:
         return _withheld_html("Reliability", n)
     try:
+        # Zero-count (or negative-count) bins carry no data: skip them so
+        # max_n below can never be zero. Malformed bin counts raise here
+        # and are caught like any other malformed block.
         pts = [
             (float(b["mean_forecast"]), float(b["mean_outcome"]), int(b["n"]))
             for b in bins
+            if int(b["n"]) > 0
         ]
     except (TypeError, ValueError, KeyError):
         return _withheld_html("Reliability", n)

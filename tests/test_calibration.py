@@ -184,6 +184,34 @@ class TestReliabilityDiagram(unittest.TestCase):
             out = reliability_diagram_svg(bad, "t")
             self.assertNotIn("<svg", out)
 
+    def test_all_zero_count_bins_render_placeholder(self):
+        block = {
+            "bins": [
+                {"n": 0, "mean_forecast": 0.8, "mean_outcome": 0.7,
+                 "edge_lo": 0.75, "edge_hi": 0.85},
+                {"n": 0, "mean_forecast": 0.9, "mean_outcome": 0.95,
+                 "edge_lo": 0.86, "edge_hi": 1.0},
+            ],
+            "n": 0,
+            "sufficient": True,
+        }
+        out = reliability_diagram_svg(block, "t")
+        self.assertNotIn("<svg", out)
+        self.assertIn("withheld", out)
+
+    def test_zero_count_bins_are_skipped(self):
+        block = _bins_block()
+        block["bins"] = [
+            {"n": 0, "mean_forecast": 0.8, "mean_outcome": 0.7,
+             "edge_lo": 0.75, "edge_hi": 0.85},
+            {"n": 20, "mean_forecast": 0.9, "mean_outcome": 0.95,
+             "edge_lo": 0.86, "edge_hi": 1.0},
+        ]
+        svg = reliability_diagram_svg(block, "t")
+        self.assertTrue(svg.startswith("<svg"))
+        # Only the n=20 bin renders; the n=0 bin is skipped.
+        self.assertEqual(svg.count("<circle"), 1)
+
     def test_deterministic(self):
         b = _bins_block()
         self.assertEqual(reliability_diagram_svg(b, "t"),
