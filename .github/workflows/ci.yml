@@ -43,6 +43,56 @@ jobs:
       # The family registry and docs/Taxonomy.md must never drift.
       - run: python3 scripts/check_families.py
 
+  dco:
+    # Contributing.md requires Signed-off-by trailers (DCO); enforce it
+    # mechanically on every non-merge commit in the PR. Push-to-main runs
+    # are the already-gated squash result, so the PR is the enforcement point.
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    if: github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+      - name: require Signed-off-by on every PR commit
+        shell: bash
+        run: |
+          base="${{ github.event.pull_request.base.sha }}"
+          head="${{ github.event.pull_request.head.sha }}"
+          missing=0
+          count=0
+          for sha in $(git rev-list --no-merges "$base..$head"); do
+            count=$((count + 1))
+            if ! git log -1 --format=%B "$sha" | grep -q '^Signed-off-by: '; then
+              echo "missing Signed-off-by: $sha $(git log -1 --format=%s "$sha")"
+              missing=1
+            fi
+          done
+          if [ "$missing" -ne 0 ]; then
+            echo "Every commit needs a 'Signed-off-by: Name <email>' trailer (git commit -s)."
+            exit 1
+          fi
+          echo "DCO sign-off present on all $count PR commit(s)."
+
+  dataset-version:
+    # Contributing.md item 5: dataset case changes must bump the dataset
+    # version and add a CHANGELOG entry. Diff-based and mechanical; the
+    # script no-ops when no case files changed.
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    if: github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: "3.12"
+      - name: require version bump + CHANGELOG entry for dataset changes
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: python3 scripts/check_dataset_version_bump.py "$BASE_SHA"
+
   lint-rust:
     # The Rust migration is active; CI must catch a skipped local gate.
     runs-on: ubuntu-latest

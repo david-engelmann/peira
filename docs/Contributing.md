@@ -25,8 +25,8 @@ When in doubt, leave it out and ask in Discussions.
 
 CI runs (tests, public-surface check, README quickstart on three OSes).
 The maintainer reviews for correctness against `docs/Methodology.md`.
-Adapter PRs will also run the Trial suite and post the score as a comment.
-That's the whole review for a new adapter: green CI plus a posted score.
+Adapter PRs go through the same CI; the maintainer additionally reviews
+the adapter for an honest `supported_primitives` declaration.
 
 ## Rust accelerator (optional)
 
