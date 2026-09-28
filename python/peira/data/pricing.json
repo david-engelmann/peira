@@ -1,5 +1,5 @@
 {
-  "_comment": "Pinned list-price table for cost accounting. Prices are USD per 1M tokens at the providers' standard (non-cached, non-batch) tier. This table is a measurement input: its source and pin date are sealed into every run artifact (pricing_source / pricing_date), so a cost figure is always traceable to the table that produced it. Update by bumping 'date' and 'source' together — never silently.",
+  "_comment": "Pinned list-price table for cost accounting. Prices are USD per 1M tokens at the providers' standard (non-cached, non-batch) tier. This table is a measurement input: its source and pin date are sealed into every run artifact (pricing_source / pricing_date), so a cost figure is always traceable to the table that produced it. Update by bumping 'date' and 'source' together, never silently. 2026-09-27: pinned API model IDs (gpt-5.6-luna, claude-sonnet-5, gemini-3.8-flash, kimi-k3) per each vendor's actual versioning scheme (peira.api_pins); rate entries for these IDs were already in this table and are unchanged, so the API adapters' pinned defaults stay cost-accounted.",
   "basis": "USD per 1M tokens, list price, standard tier (no prompt caching, no batch discount, no long-context surcharge)",
   "date": "2026-09-25",
   "models": {
