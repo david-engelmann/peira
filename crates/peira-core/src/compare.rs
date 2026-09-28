@@ -57,8 +57,8 @@ pub struct McNemarResult {
     pub n_pairs: usize,
     /// Chi-square statistic, no continuity correction
     pub statistic: f64,
-    /// Chi-square(1) survival probability
-    pub p_value: f64,
+    /// R-07 three-tier p-value: None when 1 <= b+c < 10 (withheld)
+    pub p_value: Option<f64>,
     /// "a", "b", or None (no significant direction)
     pub winner: Option<String>,
 }
@@ -75,41 +75,6 @@ pub fn case_ok(r: &PerCaseResult) -> bool {
 
 /// Complementary error function, Abramowitz & Stegun 7.1.26.
 ///
-/// Absolute error < 1.5e-7 — plenty for a p-value. Implemented here
-/// because `std` has no `erfc` and the chi-square survival function
-/// needs it.
-fn erfc(x: f64) -> f64 {
-    // Coefficients for the rational approximation.
-    const A1: f64 = 0.254829592;
-    const A2: f64 = -0.284496736;
-    const A3: f64 = 1.421413741;
-    const A4: f64 = -1.453152027;
-    const A5: f64 = 1.061405429;
-    const P: f64 = 0.3275911;
-
-    // erf(-x) = -erf(x), so erfc(-x) = 2 - erfc(x). Compute for |x|,
-    // then reflect.
-    let sign = if x < 0.0 { -1.0 } else { 1.0 };
-    let ax = x.abs();
-    let t = 1.0 / (1.0 + P * ax);
-    let poly = ((((A5 * t + A4) * t + A3) * t + A2) * t + A1) * t;
-    let erfc_ax = poly * (-ax * ax).exp();
-    1.0 - sign + sign * erfc_ax
-}
-
-/// Survival function of chi-square with 1 degree of freedom.
-///
-/// chi2(1) is the distribution of Z^2, so P(X > stat) = P(|Z| > sqrt(stat))
-/// = erfc(sqrt(stat / 2)). `stat` comes from `mcnemar`, which is
-/// non-negative by construction.
-/// Mirrors `python/peira/compare.py::_chi2_sf_1df`.
-pub fn chi2_sf_1df(stat: f64) -> f64 {
-    if stat <= 0.0 {
-        return 1.0;
-    }
-    erfc((stat / 2.0).sqrt())
-}
-
 /// Fourfold head-to-head counts over the binary per-case outcome.
 ///
 /// Mirrors `python/peira/compare.py::_head_to_head`.
@@ -165,10 +130,11 @@ pub fn per_family(pairs: &[PairedCase]) -> BTreeMap<String, HeadToHeadCounts> {
 /// contribute to the head-to-head counts but not to this test.
 /// Returns the result (None when no choice-primitive pairs) and a note.
 ///
-/// The chi-square approximation needs b+c >= 10. Below that it is
-/// anti-conservative, so the winner is withheld rather than printing a
-/// verdict the test cannot support.
-/// Mirrors `python/peira/compare.py::_mcnemar_test`.
+/// The p-value follows the R-07 three-tier rule from
+/// `crate::metrics::mcnemar_p_value`: withheld (None) below 10
+/// discordant pairs, exact mid-p for 10-24, and the asymptotic
+/// chi-square p-value at 25 or more. The winner is only declared on a
+/// reported p-value < 0.05, mirroring the Python compare module.
 pub fn mcnemar_test(pairs: &[PairedCase]) -> (Option<McNemarResult>, String) {
     let choice: Vec<&PairedCase> = pairs
         .iter()
@@ -189,16 +155,18 @@ pub fn mcnemar_test(pairs: &[PairedCase]) -> (Option<McNemarResult>, String) {
         .filter(|p| !case_ok(&p.a) && case_ok(&p.b))
         .count() as u64;
     let stat = crate::metrics::mcnemar(b, c);
-    let p_value = chi2_sf_1df(stat);
+    let p_value = crate::metrics::mcnemar_p_value(b, c);
     let mut note = String::new();
-    let underpowered = b + c < 10;
+    let underpowered = p_value.is_none();
     let mut winner: Option<String> = None;
-    if p_value < 0.05 && b != c && !underpowered {
-        winner = Some(if b > c {
-            "a".to_string()
-        } else {
-            "b".to_string()
-        });
+    if let Some(p) = p_value {
+        if p < 0.05 && b != c {
+            winner = Some(if b > c {
+                "a".to_string()
+            } else {
+                "b".to_string()
+            });
+        }
     }
     if underpowered {
         note = format!(
@@ -316,19 +284,6 @@ mod tests {
     }
 
     #[test]
-    fn chi2_sf_1df_known_values() {
-        // stat <= 0 -> 1.0
-        assert_eq!(chi2_sf_1df(0.0), 1.0);
-        assert_eq!(chi2_sf_1df(-1.0), 1.0);
-        // chi2(1) = 3.8414588 has p = 0.05
-        let p = chi2_sf_1df(3.8414588);
-        assert!((p - 0.05).abs() < 1e-4, "p={p}");
-        // chi2(1) = 6.6348967 has p = 0.01
-        let p = chi2_sf_1df(6.6348967);
-        assert!((p - 0.01).abs() < 1e-4, "p={p}");
-    }
-
-    #[test]
     fn head_to_head_counts_fourfold() {
         let pairs = vec![
             pair(true, true),   // both_right
@@ -407,7 +362,7 @@ mod tests {
 
     #[test]
     fn mcnemar_test_withholds_winner_when_underpowered() {
-        // b=4, c=0: chi2 p=0.0455 but exact binomial p=0.125 — withhold.
+        // b=4, c=0: chi2 p=0.0455 but exact binomial p=0.125, withhold.
         let mut pairs = Vec::new();
         for _ in 0..4 {
             pairs.push(pair(true, false));

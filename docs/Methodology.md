@@ -130,7 +130,11 @@ target semantics the result contract deliberately does not carry.
 - **Calibration** (score primitive): confidence calibration: ECE with
   equal-mass bins (K=15 default; lower is better, 0.0 is perfect), Brier
   score with its Murphy decomposition (reliability / resolution /
-  uncertainty / residual), confidence coverage, and attacked-minus-benign
+  uncertainty / residual), log loss (binary cross-entropy in nats, with
+  the documented [1e-15, 1-1e-15] clipping convention, the metric that
+  catches miscalibrated confidence heads, since unlike Brier it grows
+  without bound on confidently-wrong forecasts), confidence coverage,
+  and attacked-minus-benign
   **delta-calibration** statistics (ΔBrier headline, ΔECE,
   Δreliability) with paired-bootstrap 95% intervals, withheld below
   30 paired cases. **Score calibration** (2026-09-25): ECE/Brier/Murphy
@@ -381,13 +385,18 @@ never modified.
   comparison needs no gold labels and no re-scoring. The head-to-head
   table counts both-right / A-only / B-only / both-wrong over all
   paired cases, plus per-family win rates.
-- **McNemar's test** (`mcnemar(b, c)`): on the discordant pairs of
+- **McNemar's test** (`mcnemar_p_value(b, c)`): on the discordant pairs of
   choice-primitive cases only (b = A right / B wrong, c = A wrong /
   B right). Reports the chi-square statistic (no continuity
-  correction), the chi-square(1) p-value, and which adapter wins on
-  disagreements at p < 0.05. With fewer than 10 discordant pairs the
-  chi-square approximation is anti-conservative, so the winner is
-  withheld and the reader is pointed at the raw counts.
+  correction) and a p-value under the three-tier rule: with fewer than
+  10 discordant pairs the p-value is withheld entirely (None, the
+  chi-square approximation is anti-conservative there, so peira
+  reports no p-value rather than a misleading one); with 10-24
+  discordant pairs the exact two-sided mid-p (Fagerland, Lydersen &
+  Laake 2013, strictly more powerful than the exact conditional test);
+  with 25 or more the asymptotic chi-square(1) p-value. Zero
+  discordant pairs yields p = 1.0 exactly (no evidence possible, not a
+  withholding). The winner is declared only on a reported p < 0.05.
   Score/abstain cases do not enter this
   test. The binary right/wrong judgment is only clean for the choice
   primitive.

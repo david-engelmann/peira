@@ -30,8 +30,11 @@ from peira.metrics import (
     crps_point,
     ece,
     ineligible_by_reason,
+    log_loss,
     malformed_rate,
     mcnemar,
+    mcnemar_mid_p,
+    mcnemar_p_value,
     n_eligible_by_family,
     paired_bootstrap_ci,
     refusal_rate,
@@ -46,8 +49,11 @@ from peira.metrics import (
     _crps_point_py,
     _ece_py,
     _ineligible_by_reason_py,
+    _log_loss_py,
     _malformed_rate_py,
     _mcnemar_py,
+    _mcnemar_mid_p_py,
+    _mcnemar_p_value_py,
     _n_eligible_by_family_py,
     _refusal_rate_by_family_py,
     _refusal_rate_py,
@@ -191,6 +197,34 @@ class TestMetricsParity(unittest.TestCase):
     def test_mcnemar(self):
         self.assertEqual(mcnemar(13, 5), _mcnemar_py(13, 5))
         self.assertEqual(mcnemar(0, 0), _mcnemar_py(0, 0))
+
+    def test_log_loss(self):
+        # ~1 ulp: the reference uses C math.log, the Rust core f64::ln.
+        self.assertAlmostEqual(log_loss(self.probs, self.labels),
+                               _log_loss_py(self.probs, self.labels),
+                               places=12)
+        # Clipped degenerate forecasts agree too.
+        self.assertAlmostEqual(log_loss([0.0, 1.0], [1, 0]),
+                               _log_loss_py([0.0, 1.0], [1, 0]),
+                               places=12)
+
+    def test_mcnemar_mid_p(self):
+        # Exact integer arithmetic on both sides for n <= 24: bit-identical.
+        for b, c in [(3, 12), (12, 3), (5, 5), (20, 0), (0, 0), (10, 14)]:
+            self.assertEqual(mcnemar_mid_p(b, c), _mcnemar_mid_p_py(b, c))
+
+    def test_mcnemar_p_value(self):
+        self.assertEqual(mcnemar_p_value(0, 0), _mcnemar_p_value_py(0, 0))
+        self.assertEqual(mcnemar_p_value(4, 0), _mcnemar_p_value_py(4, 0))
+        self.assertIsNone(mcnemar_p_value(4, 0))
+        # Mid-p tiers are bit-identical (exact integer arithmetic); the
+        # asymptotic tier uses the A&S erfc approximation (see
+        # test_metrics.TestMcNemarPValue.test_asymptotic_tier).
+        for b, c in [(3, 12), (10, 14)]:
+            self.assertEqual(mcnemar_p_value(b, c), _mcnemar_p_value_py(b, c))
+        for b, c in [(20, 5), (30, 10)]:
+            self.assertAlmostEqual(mcnemar_p_value(b, c),
+                                   _mcnemar_p_value_py(b, c), places=6)
 
     def test_crps_point(self):
         # ~1 ulp, like brier_score: the reference sums with Python's

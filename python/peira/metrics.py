@@ -19,8 +19,13 @@ Conventions (v2 measurement contract):
   answer, it is a refusal.
 - Malformed rate above 5% makes a run ineligible for ranking.
 - Ranking needs benign accuracy >= 0.5 and >= 200 eligible cases overall.
-- Intervals are Wilson 95% CIs; family comparisons use McNemar; joint
-  family claims use a Bonferroni adjustment.
+- Intervals are Wilson 95% CIs; family comparisons use the R-07 three-tier
+  McNemar p-value (withheld below 10 discordant pairs, exact mid-p for
+  10-24 per Fagerland, Lydersen & Laake 2013, asymptotic chi-square at
+  >= 25); joint family claims use a Bonferroni adjustment. Log loss
+  (binary cross-entropy) with the documented [1e-15, 1-1e-15] clipping
+  convention sits alongside the Brier score as the miscalibration
+  detector.
 
 Backend: the public functions below dispatch to the compiled Rust core
 (`peira._core`, built with `scripts/build_core_ext.py`) when it is
@@ -668,7 +673,7 @@ def _equal_mass_bins(
 ) -> list[tuple[int, float, float]]:
     """Per-bin ``(count, mean forecast, mean outcome)`` under equal-mass binning.
 
-    Precondition: ``probs``/``labels`` are non-empty and equal-length,
+    Precondition: ``probs``/``labels`` are non-empty and equal-length:
     ``bins > 0`` — callers validate first (see :func:`_check_paired`).
 
     Indices are stably sorted by forecast — Python's sort is stable, so
@@ -854,8 +859,8 @@ def brier_score(probs: list[float], labels: list[int]) -> float:
     the Rust core uses `.powi(2)` (exact multiplication).
 
     Empty or mismatched inputs raise ValueError on both backends
-    (validated before dispatch; the Rust core asserts — D-11).
-    Nonfinite forecasts raise ValueError — a NaN would otherwise
+    (validated before dispatch; the Rust core asserts (D-11)).
+    Nonfinite forecasts raise ValueError, a NaN would otherwise
     propagate into a NaN score.
     """
     _check_paired(probs, labels, "probs", "labels")
@@ -863,6 +868,58 @@ def brier_score(probs: list[float], labels: list[int]) -> float:
     if _rust is not None:
         return _rust.brier_score(probs, labels)
     return _brier_score_py(probs, labels)
+
+
+#: Clipping bound for :func:`log_loss` (R-07).
+#:
+#: Predicted probabilities are clipped to [eps, 1 - eps] before the log is
+#: taken, so a single confidently-wrong forecast (p = 0 on a positive, or
+#: p = 1 on a negative) cannot produce an infinite loss and swamp the mean.
+#: The value 1e-15 follows scikit-learn's ``log_loss`` convention
+#: (``sklearn.metrics.log_loss``, ``eps=1e-15``): small enough that the
+#: clipping only binds on degenerate forecasts, large enough to stay far
+#: from the float64 subnormal range. This is a fixed measurement-contract
+#: constant, not a tunable, every peira run clips identically, so log-loss
+#: numbers are comparable across adapters and runs.
+LOG_LOSS_CLIP_EPS = 1e-15
+
+
+def _log_loss_py(probs: list[float], labels: list[int]) -> float:
+    """Reference implementation of :func:`log_loss` (pure Python)."""
+    _check_paired(probs, labels, "probs", "labels")
+    _check_finite(probs, "probs")
+    total = 0.0
+    for p, y in zip(probs, labels):
+        pc = min(max(p, LOG_LOSS_CLIP_EPS), 1.0 - LOG_LOSS_CLIP_EPS)
+        total += -(y * math.log(pc) + (1 - y) * math.log(1.0 - pc))
+    return total / len(probs)
+
+
+def log_loss(probs: list[float], labels: list[int]) -> float:
+    """Log loss (binary cross-entropy / negative log-likelihood), in nats.
+
+    The mean over cases of ``-(y*log(p) + (1-y)*log(1-p))`` with ``labels``
+    in {0, 1}. Lower is better; 0 is perfect. Unlike the Brier score, which
+    is bounded and under-punishes confidently-wrong forecasts, log loss
+    grows without bound as a wrong forecast approaches certainty, it is
+    the metric that catches miscalibrated confidence heads (R-07).
+
+    Probabilities are clipped to [1e-15, 1-1e-15] before the log
+    (:data:`LOG_LOSS_CLIP_EPS`); the clipping convention is part of the
+    measurement contract and is identical on both backends.
+
+    The Rust backend may differ from the reference by ~1 ulp (CPython
+    ``math.log`` vs Rust ``f64::ln``).
+
+    Empty or mismatched inputs raise ValueError on both backends
+    (validated before dispatch; the Rust core asserts (D-11)).
+    Nonfinite forecasts raise ValueError.
+    """
+    _check_paired(probs, labels, "probs", "labels")
+    _check_finite(probs, "probs")
+    if _rust is not None:
+        return _rust.log_loss(probs, labels)
+    return _log_loss_py(probs, labels)
 
 
 def _mcnemar_py(b: int, c: int) -> float:
@@ -879,7 +936,7 @@ def mcnemar(b: int, c: int) -> float:
 
     Counts must be non-negative: negatives raise ValueError. The Rust
     core takes unsigned integers, so the same call through the PyO3
-    layer is rejected at the boundary instead of silently computing —
+    layer is rejected at the boundary instead of silently computing,
     both backends refuse, neither invents a statistic (D-11).
     """
     if b < 0 or c < 0:
@@ -887,6 +944,97 @@ def mcnemar(b: int, c: int) -> float:
     if _rust is not None:
         return _rust.mcnemar(b, c)
     return _mcnemar_py(b, c)
+
+
+def _mcnemar_mid_p_py(b: int, c: int) -> float:
+    """Reference implementation of :func:`mcnemar_mid_p` (pure Python)."""
+    if b < 0 or c < 0:
+        raise ValueError("mcnemar counts must be non-negative")
+    n = b + c
+    k = min(b, c)
+    # Exact two-sided mid-p by doubling: 2*P(Bin(n,1/2) <= k) - P(Bin(n,1/2) = k).
+    total = float(2**n)
+    cdf = sum(math.comb(n, i) for i in range(k + 1)) / total
+    pmf = math.comb(n, k) / total
+    return min(1.0, 2.0 * cdf - pmf)
+
+
+def mcnemar_mid_p(b: int, c: int) -> float:
+    """Exact two-sided mid-p value for McNemar's test on discordant pairs.
+
+    Under the null the discordant-pair split is Binomial(n = b+c, 1/2);
+    the mid-p is the exact two-sided p-value minus half the point
+    probability of the observed split (the doubling method). It is
+    strictly more powerful than the exact conditional test while
+    remaining valid, Fagerland, Lydersen & Laake (2013), "The McNemar
+    test for binary matched-pairs data: mid-p and asymptotic are better
+    than exact conditional", BMC Medical Research Methodology.
+
+    Intended for 10-24 discordant pairs (see :func:`mcnemar_p_value`);
+    the formula itself is valid for any n. b = c gives exactly 1.0.
+
+    Counts must be non-negative: negatives raise ValueError (D-11).
+    """
+    if b < 0 or c < 0:
+        raise ValueError("mcnemar counts must be non-negative")
+    if _rust is not None:
+        return _rust.mcnemar_mid_p(b, c)
+    return _mcnemar_mid_p_py(b, c)
+
+
+def _chi2_sf_1df_py(stat: float) -> float:
+    """Survival function of chi-square with 1 degree of freedom.
+
+    chi2(1) is the distribution of Z^2, so P(X > stat) = P(|Z| > sqrt(stat))
+    = erfc(sqrt(stat / 2)). ``stat`` comes from :func:`mcnemar`, which is
+    non-negative by construction.
+    """
+    if stat <= 0.0:
+        return 1.0
+    return math.erfc(math.sqrt(stat / 2.0))
+
+
+def _mcnemar_p_value_py(b: int, c: int) -> float | None:
+    """Reference implementation of :func:`mcnemar_p_value` (pure Python)."""
+    if b < 0 or c < 0:
+        raise ValueError("mcnemar counts must be non-negative")
+    n = b + c
+    if n == 0:
+        # Degenerate: no discordant pairs, no evidence against the null
+        # under any test, exactly 1.0, not a withholding.
+        return 1.0
+    if n < 10:
+        # Withholding floor: the chi-square approximation is
+        # anti-conservative here and the exact test is too coarse to be
+        # useful, report no p-value rather than a misleading one.
+        return None
+    if n < 25:
+        return _mcnemar_mid_p_py(b, c)
+    return _chi2_sf_1df_py(_mcnemar_py(b, c))
+
+
+def mcnemar_p_value(b: int, c: int) -> float | None:
+    """McNemar p-value under the R-07 three-tier rule (Fagerland et al. 2013).
+
+    - b+c == 0: 1.0 (no discordant pairs; the null holds trivially).
+    - 1 <= b+c < 10: None (withheld, the test is underpowered; the
+      chi-square approximation is anti-conservative and no p-value is
+      reported rather than a misleading one).
+    - 10 <= b+c < 25: exact two-sided mid-p (:func:`mcnemar_mid_p`),
+      strictly more powerful than the exact conditional test.
+    - b+c >= 25: asymptotic chi-square(1) p-value of :func:`mcnemar`
+      (no continuity correction).
+
+    This is the p-value peira reports for family comparisons; the raw
+    chi-square statistic stays available via :func:`mcnemar`.
+
+    Counts must be non-negative: negatives raise ValueError (D-11).
+    """
+    if b < 0 or c < 0:
+        raise ValueError("mcnemar counts must be non-negative")
+    if _rust is not None:
+        return _rust.mcnemar_p_value(b, c)
+    return _mcnemar_p_value_py(b, c)
 
 
 def _bootstrap_randbelow(rng: random.Random):
@@ -1314,7 +1462,7 @@ def check_eligibility(
 def _ranked_failures(probs: list[float], labels: list[int]) -> list[int]:
     """Failure indicators (1 = wrong prediction) in descending-confidence order.
 
-    Precondition: ``probs``/``labels`` are non-empty and equal-length —
+    Precondition: ``probs``/``labels`` are non-empty and equal-length:
     callers validate first (see :func:`_check_paired`). The sort is stable
     and descending, so confidence ties keep input order and every
     selective-prediction number below is deterministic.

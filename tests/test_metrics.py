@@ -7,6 +7,7 @@ import unittest
 from peira.adapters.base import CallUsage
 
 from peira.metrics import (
+    LOG_LOSS_CLIP_EPS,
     INELIGIBLE_BENIGN_ABSTAINED,
     INELIGIBLE_BENIGN_MALFORMED,
     INELIGIBLE_BENIGN_WRONG_DECISION,
@@ -45,7 +46,10 @@ from peira.metrics import (
     holm_adjust,
     ineligible_by_reason,
     latency_summary,
+    log_loss,
     mcnemar,
+    mcnemar_mid_p,
+    mcnemar_p_value,
     murphy_decomposition,
     benign_refusal_rate,
     outcome_accounting,
@@ -238,7 +242,7 @@ class TestMurphyDecomposition(unittest.TestCase):
     def test_uses_equal_mass_bins(self):
         # Same clustered input as the ECE divergence test: bin 1 mixes
         # four 0.05s with the 0.95. The residual absorbs that within-bin
-        # structure — here it is -0.0792, nonzero (the residual is the
+        # structure, here it is -0.0792, nonzero (the residual is the
         # within-bin spread minus twice the within-bin covariance, so
         # it can be negative).
         probs = [0.05] * 9 + [0.95]
@@ -280,6 +284,115 @@ class TestMcNemar(unittest.TestCase):
 
     def test_no_discordant(self):
         self.assertEqual(mcnemar(0, 0), 0.0)
+
+
+class TestLogLoss(unittest.TestCase):
+    def test_perfect_predictions_near_zero(self):
+        # Clipped to [1e-15, 1-1e-15]: near-zero but not zero.
+        p = log_loss([1.0, 0.0], [1, 0])
+        self.assertLess(p, 1e-14)
+        self.assertGreaterEqual(p, 0.0)
+
+    def test_hand_computed(self):
+        # -(ln 0.9 + ln(1 - 0.2)) / 2
+        expected = -(math.log(0.9) + math.log(0.8)) / 2.0
+        self.assertAlmostEqual(log_loss([0.9, 0.2], [1, 0]), expected, places=12)
+
+    def test_clipping_keeps_degenerate_finite(self):
+        # p=0 on a positive would be +inf without the clipping convention.
+        p = log_loss([0.0], [1])
+        self.assertTrue(math.isfinite(p))
+        self.assertAlmostEqual(p, -math.log(1e-15), places=9)
+
+    def test_clipping_convention_is_documented(self):
+        # The contract constant: sklearn's eps=1e-15.
+        self.assertEqual(LOG_LOSS_CLIP_EPS, 1e-15)
+
+    def test_punishes_confident_errors_more_than_brier(self):
+        # R-07 motivation: the log-loss gap between 90%-sure-and-wrong
+        # and 55%-sure-and-wrong dwarfs the Brier gap.
+        ll_gap = log_loss([0.9], [0]) - log_loss([0.55], [0])
+        brier_gap = brier_score([0.9], [0]) - brier_score([0.55], [0])
+        self.assertGreater(ll_gap, brier_gap)
+
+    def test_empty_and_mismatched_raise(self):
+        with self.assertRaises(ValueError):
+            log_loss([], [])
+        with self.assertRaises(ValueError):
+            log_loss([0.5], [1, 0])
+
+    def test_nonfinite_rejected(self):
+        with self.assertRaises(ValueError):
+            log_loss([float("nan")], [1])
+        with self.assertRaises(ValueError):
+            log_loss([float("inf")], [1])
+
+
+class TestMcNemarMidP(unittest.TestCase):
+    def test_hand_computed(self):
+        # b=3, c=12 (n=15, k=3): 2*P(B<=3) - P(B=3), B ~ Bin(15, 1/2).
+        # P(B<=3) = 576/32768, P(B=3) = 455/32768.
+        expected = 2.0 * 576.0 / 32768.0 - 455.0 / 32768.0
+        self.assertAlmostEqual(mcnemar_mid_p(3, 12), expected, places=12)
+
+    def test_symmetric_in_b_c(self):
+        self.assertEqual(mcnemar_mid_p(3, 12), mcnemar_mid_p(12, 3))
+
+    def test_tie_is_one(self):
+        self.assertEqual(mcnemar_mid_p(5, 5), 1.0)
+        self.assertEqual(mcnemar_mid_p(0, 0), 1.0)
+
+    def test_extreme_split(self):
+        # b=20, c=0: mid-p = 2^-20.
+        self.assertAlmostEqual(mcnemar_mid_p(20, 0), 2.0 ** -20, places=18)
+
+    def test_less_conservative_than_exact(self):
+        # Mid-p must not exceed the doubling exact p-value.
+        n, k = 15, 3
+        exact = min(1.0, 2.0 * sum(math.comb(n, i) for i in range(k + 1)) / 2**n)
+        self.assertLessEqual(mcnemar_mid_p(3, 12), exact)
+
+    def test_negative_counts_rejected(self):
+        with self.assertRaises(ValueError):
+            mcnemar_mid_p(-1, 5)
+
+
+class TestMcNemarPValue(unittest.TestCase):
+    def test_zero_discordant_is_one(self):
+        # Degenerate: no discordant pairs, exactly 1.0, not a withholding.
+        self.assertEqual(mcnemar_p_value(0, 0), 1.0)
+
+    def test_withholding_floor(self):
+        # 1 <= b+c < 10: None (withheld).
+        self.assertIsNone(mcnemar_p_value(4, 0))
+        self.assertIsNone(mcnemar_p_value(5, 4))
+        self.assertIsNone(mcnemar_p_value(0, 9))
+
+    def test_mid_p_tier(self):
+        # 10 <= b+c < 25: exact mid-p.
+        self.assertEqual(mcnemar_p_value(3, 12), mcnemar_mid_p(3, 12))
+        self.assertEqual(mcnemar_p_value(10, 0), mcnemar_mid_p(10, 0))
+        self.assertEqual(mcnemar_p_value(12, 12), mcnemar_mid_p(12, 12))
+
+    def test_asymptotic_tier(self):
+        # b+c >= 25: chi-square(1) survival of the McNemar statistic.
+        # Tolerance places=6: the Rust erfc is the Abramowitz & Stegun
+        # 7.1.26 rational approximation (max error ~1.5e-7), not C libm.
+        stat = mcnemar(20, 5)
+        expected = math.erfc(math.sqrt(stat / 2.0))
+        self.assertAlmostEqual(mcnemar_p_value(20, 5), expected, places=6)
+
+    def test_tier_boundaries(self):
+        # n=24 -> mid-p; n=25 -> asymptotic.
+        # places=6 on the asymptotic side: see test_asymptotic_tier.
+        self.assertEqual(mcnemar_p_value(12, 12), mcnemar_mid_p(12, 12))
+        stat = mcnemar(13, 12)
+        self.assertAlmostEqual(mcnemar_p_value(13, 12),
+                               math.erfc(math.sqrt(stat / 2.0)), places=6)
+
+    def test_negative_counts_rejected(self):
+        with self.assertRaises(ValueError):
+            mcnemar_p_value(-1, 5)
 
 
 def _delta_case(benign_conf, attacked_conf, flipped, eligible=True,
