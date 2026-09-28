@@ -1093,6 +1093,86 @@ def paired_bootstrap_ci(
     return (lo, hi)
 
 
+def _check_weights(weights: list[float], name: str) -> None:
+    """Reject negative, nonfinite, or all-zero weights with ValueError.
+
+    Negative weights would invert the meaning of the weighted mean; NaN
+    or infinite weights propagate silently; all-zero weights divide by
+    zero. These are caller bugs, not edge cases.
+    """
+    _check_finite(weights, name)
+    if any(w < 0 for w in weights):
+        raise ValueError(f"{name} must be non-negative")
+    if not any(w > 0 for w in weights):
+        raise ValueError(f"{name} must contain at least one positive weight")
+
+
+def paired_bootstrap_weighted_ci(
+    w_xs: list[float],
+    xs: list[float],
+    w_ys: list[float],
+    ys: list[float],
+    n_boot: int = 10000,
+    seed: int = 0,
+) -> tuple[float, float]:
+    """95% bootstrap CI for weighted-mean(xs) - weighted-mean(ys), paired resampling.
+
+    The weighted mean of each resample is ``sum(w*x)/sum(w)``; the two
+    arms share resample indices, so the benign/attacked (or A/B)
+    pairing is preserved exactly as in :func:`paired_bootstrap_ci`.
+    This is the valid paired inference for weighted metrics
+    (severity-weighted ASR, cost-weighted comparisons): McNemar's test
+    operates on unweighted discordant-pair counts and cannot produce
+    p-values or CIs for weighted numbers.
+
+    Always uses the Python PRNG (Mersenne Twister), even when the Rust
+    core is installed: the Rust core draws from a different stream, so
+    dispatching here would make reported intervals depend on the
+    backend. Same discipline as :func:`paired_bootstrap_ci`.
+
+    Empty or mismatched inputs raise ValueError. ``n_boot`` must be a
+    positive integer (ValueError otherwise). Nonfinite values or
+    weights raise ValueError; negative or all-zero weights raise
+    ValueError.
+    """
+    _check_paired(w_xs, xs, "w_xs", "xs")
+    _check_paired(w_ys, ys, "w_ys", "ys")
+    _check_paired(xs, ys, "xs", "ys")
+    _check_finite(xs, "xs")
+    _check_finite(ys, "ys")
+    _check_weights(w_xs, "w_xs")
+    _check_weights(w_ys, "w_ys")
+    _check_n_boot(n_boot)
+    rng = random.Random(seed)
+    randbelow = _bootstrap_randbelow(rng)
+    n = len(xs)
+    diffs = []
+    for _ in range(n_boot):
+        idx = [randbelow(n) for _ in range(n)]
+        num_x = 0.0
+        den_x = 0.0
+        num_y = 0.0
+        den_y = 0.0
+        for i in idx:
+            wx = w_xs[i]
+            wy = w_ys[i]
+            num_x += wx * xs[i]
+            den_x += wx
+            num_y += wy * ys[i]
+            den_y += wy
+        # den_x and den_y are positive: every weight list has at least
+        # one positive weight, and each resample draws n indices, so a
+        # zero denominator would require drawing only zero-weight
+        # indices n times. Guard anyway — a caller bug, not an edge.
+        if den_x <= 0.0 or den_y <= 0.0:
+            raise ValueError("resampled weights sum to zero")
+        diffs.append(num_x / den_x - num_y / den_y)
+    diffs.sort()
+    lo = diffs[int(0.025 * n_boot)]
+    hi = diffs[int(0.975 * n_boot)]
+    return (lo, hi)
+
+
 MIN_DELTA_CASES = 30
 """Minimum paired cases for a delta-calibration estimate.
 

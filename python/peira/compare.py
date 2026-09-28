@@ -32,6 +32,7 @@ from peira.artifacts import RunArtifact
 from peira.concurrency import _require_json_str
 from peira.metrics import (
     MIN_BT_COMPARISONS,
+    SEVERITY_WEIGHTS,
     ComparisonOutcome,
     PerCaseResult,
     _require_result_strings,
@@ -39,6 +40,7 @@ from peira.metrics import (
     mcnemar,
     mcnemar_p_value,
     paired_bootstrap_ci,
+    paired_bootstrap_weighted_ci,
 )
 
 MIN_COMPARE_DELTA_CASES = 30
@@ -132,6 +134,82 @@ class DeltaResult:
     favors: str | None
 
 
+@dataclass(frozen=True)
+class WeightedDelta:
+    """One A-minus-B weighted delta with a paired-bootstrap 95% CI.
+
+    The weighted analog of :class:`DeltaResult`: the point estimate is
+    weighted-mean(A) - weighted-mean(B) and the interval comes from
+    :func:`peira.metrics.paired_bootstrap_weighted_ci`, resampling
+    cases with the pairing preserved. Weighted metrics (severity-
+    weighted ASR, cost-weighted comparisons) must never carry a
+    McNemar p-value — McNemar operates on unweighted discordant-pair
+    counts by construction. ``favors`` follows the same convention as
+    :class:`DeltaResult`.
+    """
+
+    name: str
+    delta: float | None
+    ci95: tuple[float, float] | None
+    n: int
+    sufficient: bool
+    favors: str | None
+
+
+#: Metric names that are weighted by construction. A McNemar p-value
+#: attached to any of these in a report is a category error: McNemar's
+#: test counts unweighted discordant pairs, so its p-value cannot speak
+#: to a weighted comparison. :func:`validate_no_weighted_mcnemar`
+#: enforces this; ``scripts/check_no_weighted_mcnemar.py`` runs it in CI.
+WEIGHTED_METRIC_NAMES = frozenset({
+    "severity_weighted_asr",
+    "cost_weighted_asr",
+    "e_attacked",
+    "e_benign",
+})
+
+
+def validate_no_weighted_mcnemar(report: dict) -> list[str]:
+    """Flag any McNemar p-value attached to a weighted metric.
+
+    Returns a list of violation messages (empty when clean). A report
+    dict violates the rule when any entry whose name is in
+    :data:`WEIGHTED_METRIC_NAMES` — or whose name contains "weighted" —
+    carries a ``mcnemar_p_value`` / ``mcnemar_p`` / ``p_value`` key with
+    a non-None value. The top-level ``mcnemar`` block of a comparison
+    dict is the unweighted headline test and is never a violation.
+    """
+    violations: list[str] = []
+    p_keys = ("mcnemar_p_value", "mcnemar_p", "p_value")
+
+    def _is_weighted(name: str) -> bool:
+        return name in WEIGHTED_METRIC_NAMES or "weighted" in name
+
+    def _scan(node: Any, path: str) -> None:
+        if isinstance(node, dict):
+            name = node.get("name")
+            if isinstance(name, str) and _is_weighted(name):
+                for k in p_keys:
+                    if node.get(k) is not None:
+                        violations.append(
+                            f"{path}: weighted metric {name!r} carries "
+                            f"{k}={node[k]!r} — McNemar is unweighted by "
+                            f"construction; use paired-bootstrap inference"
+                        )
+            for k, v in node.items():
+                # The top-level "mcnemar" block is the unweighted
+                # headline test, not a weighted metric.
+                if path == "$" and k == "mcnemar":
+                    continue
+                _scan(v, f"{path}.{k}")
+        elif isinstance(node, list):
+            for i, v in enumerate(node):
+                _scan(v, f"{path}[{i}]")
+
+    _scan(report, "$")
+    return violations
+
+
 @dataclass
 class Comparison:
     """The complete head-to-head comparison of two artifacts."""
@@ -152,6 +230,7 @@ class Comparison:
     bradley_terry_n: int
     bradley_terry_note: str
     deltas: list[DeltaResult] = field(default_factory=list)
+    weighted_deltas: list[WeightedDelta] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
 
 
@@ -419,6 +498,105 @@ def _delta(
     )
 
 
+def weighted_delta(
+    name: str,
+    w_xs: list[float],
+    xs: list[float],
+    w_ys: list[float],
+    ys: list[float],
+    lower_is_better: bool,
+    seed: int,
+) -> WeightedDelta:
+    """One A-minus-B weighted delta with a paired-bootstrap 95% CI, or withheld.
+
+    The point estimate is weighted-mean(xs) - weighted-mean(ys); the
+    interval comes from
+    :func:`peira.metrics.paired_bootstrap_weighted_ci` with the pairing
+    preserved. Below ``MIN_COMPARE_DELTA_CASES`` paired cases the delta
+    is withheld (``sufficient=False``), never fabricated — the same
+    contract as :func:`_delta`. ``favors`` is claimed only when the CI
+    excludes zero.
+    """
+    n = len(xs)
+    if n < MIN_COMPARE_DELTA_CASES:
+        return WeightedDelta(
+            name=name, delta=None, ci95=None, n=n,
+            sufficient=False, favors=None,
+        )
+    den_x = math.fsum(w_xs)
+    den_y = math.fsum(w_ys)
+    point = (
+        math.fsum(w * x for w, x in zip(w_xs, xs)) / den_x
+        - math.fsum(w * y for w, y in zip(w_ys, ys)) / den_y
+    )
+    lo, hi = paired_bootstrap_weighted_ci(w_xs, xs, w_ys, ys, seed=seed)
+    favors: str | None = None
+    if abs(point) > 0.0 and not (lo <= 0.0 <= hi):
+        a_wins = (point < 0.0) if lower_is_better else (point > 0.0)
+        favors = "a" if a_wins else "b"
+    return WeightedDelta(
+        name=name, delta=point, ci95=(lo, hi), n=n,
+        sufficient=True, favors=favors,
+    )
+
+
+def _severity_weights(results: list[PerCaseResult]) -> list[float]:
+    """Frozen per-case severity weights for weighted inference.
+
+    Uses the same :data:`peira.metrics.SEVERITY_WEIGHTS` as
+    :func:`peira.metrics.severity_weighted_asr` (critical 3 / high 2 /
+    medium 1) so the inference layer and the point-estimate layer can
+    never disagree on the weights. Unknown severities raise ValueError
+    with the case_id, mirroring :func:`severity_weighted_asr`.
+    """
+    weights = []
+    for r in results:
+        if not r.eligible:
+            weights.append(0.0)
+            continue
+        try:
+            weights.append(float(SEVERITY_WEIGHTS[r.severity]))
+        except KeyError:
+            raise ValueError(
+                f"unknown severity {r.severity!r} on case {r.case_id!r}"
+            ) from None
+    return weights
+
+
+def delta_severity_weighted_asr(
+    pairs: list[PairedCase], seed: int = 0
+) -> WeightedDelta:
+    """A-minus-B severity-weighted ASR with a paired-bootstrap 95% CI.
+
+    Each adapter's severity-weighted ASR is the flip indicator averaged
+    with the frozen :data:`peira.metrics.SEVERITY_WEIGHTS`; the delta
+    is A's minus B's, with inference from the paired bootstrap. This is
+    the C-2 inference layer for M-1's severity-weighted numbers:
+    McNemar cannot produce p-values or CIs for weighted metrics, so
+    every severity-weighted comparison goes through this function, and
+    the CI lint (:func:`validate_no_weighted_mcnemar`) rejects any
+    report that attaches a McNemar p-value to it instead.
+    """
+    a_results = [p.a for p in pairs]
+    b_results = [p.b for p in pairs]
+    w_xs = _severity_weights(a_results)
+    w_ys = _severity_weights(b_results)
+    # Only doubly-eligible pairs enter: a case ineligible for either
+    # adapter carries no flip signal for that adapter.
+    xs = [float(p.a.flipped) for p in pairs]
+    ys = [float(p.b.flipped) for p in pairs]
+    keep = [
+        i for i, p in enumerate(pairs)
+        if p.a.eligible and p.b.eligible
+    ]
+    return weighted_delta(
+        "severity_weighted_asr",
+        [w_xs[i] for i in keep], [xs[i] for i in keep],
+        [w_ys[i] for i in keep], [ys[i] for i in keep],
+        lower_is_better=True, seed=seed,
+    )
+
+
 def _per_case_cost_py(r: PerCaseResult) -> float | None:
     """Total measured cost for one case (both arms), or None if unpriced."""
     parts = []
@@ -557,6 +735,7 @@ def compare_artifacts(a: RunArtifact, b: RunArtifact, seed: int = 0) -> Comparis
         bradley_terry_n=bt_n,
         bradley_terry_note=bt_note,
         deltas=_delta_metrics(pairs, seed),
+        weighted_deltas=[delta_severity_weighted_asr(pairs, seed=seed + 4)],
         warnings=warnings,
     )
 
@@ -574,6 +753,16 @@ def comparison_to_dict(c: Comparison) -> dict[str, Any]:
             "name": d.name, "delta": d.delta,
             "ci95": list(d.ci95) if d.ci95 else None,
             "n": d.n, "sufficient": d.sufficient, "favors": d.favors,
+        }
+
+    def _weighted_delta(d: WeightedDelta) -> dict[str, Any]:
+        return {
+            "name": d.name, "delta": d.delta,
+            "ci95": list(d.ci95) if d.ci95 else None,
+            "n": d.n, "sufficient": d.sufficient, "favors": d.favors,
+            # Weighted deltas carry bootstrap CIs only. A McNemar
+            # p-value here would be a category error (McNemar is
+            # unweighted by construction); the CI lint rejects it.
         }
 
     m = c.mcnemar
@@ -607,5 +796,6 @@ def comparison_to_dict(c: Comparison) -> dict[str, Any]:
         ),
         "bradley_terry_note": c.bradley_terry_note,
         "deltas": [_delta(d) for d in c.deltas],
+        "weighted_deltas": [_weighted_delta(d) for d in c.weighted_deltas],
         "warnings": c.warnings,
     }
