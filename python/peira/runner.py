@@ -22,6 +22,7 @@ import copy
 import dataclasses
 import hashlib
 import json
+import math
 import random
 import secrets
 import time
@@ -279,6 +280,61 @@ class _TranscriptSink:
 
     def close(self) -> None:
         self._f.close()
+
+
+def _apply_rlimits(
+    cpu_seconds: float | None,
+    as_mb: float | None,
+    fsize_mb: float | None,
+) -> None:
+    """Apply process-wide resource limits (Unix only).
+
+    These are backstops, not per-adapter isolation: ``resource.setrlimit``
+    applies to the whole runner process, and adapter code runs in-process
+    (see docs/Threat-Model.md). A memory-hungry adapter can still OOM the
+    runner before the limit bites; full isolation needs the subprocess
+    mode designed in docs/Adapter-Isolation.md.
+
+    Raises ValueError for non-positive limits, and RuntimeError on
+    non-Unix platforms (the ``resource`` module is Unix-only).
+
+    Fractional values round *up* to the limit's granularity (RLIMIT_CPU
+    counts whole seconds; the byte limits round up to the next byte), so
+    a value like 0.5 can never truncate to a zero limit that would kill
+    the process.
+    """
+    if cpu_seconds is None and as_mb is None and fsize_mb is None:
+        return
+    try:
+        import resource
+    except ImportError as e:
+        raise RuntimeError(
+            "rlimits require Unix (the resource module is unavailable)"
+        ) from e
+    for name, value in (
+        ("rlimit_cpu_seconds", cpu_seconds),
+        ("rlimit_as_mb", as_mb),
+        ("rlimit_fsize_mb", fsize_mb),
+    ):
+        if value is not None and value <= 0:
+            raise ValueError(f"{name} must be > 0, got {value}")
+    if cpu_seconds is not None:
+        # Soft and hard set together: SIGXCPU on the soft limit, SIGKILL
+        # on the hard limit one second later. RLIMIT_CPU counts whole
+        # seconds, so round up: truncating 0.5 to 0 would SIGKILL the
+        # runner immediately.
+        secs = math.ceil(cpu_seconds)
+        resource.setrlimit(resource.RLIMIT_CPU, (secs, secs))
+    if as_mb is not None:
+        # RLIMIT_AS caps virtual address space in bytes. Note RLIMIT_RSS
+        # is unenforced on Linux, so AS is the working knob.
+        as_bytes = math.ceil(as_mb * 1024 * 1024)
+        resource.setrlimit(resource.RLIMIT_AS, (as_bytes, as_bytes))
+    if fsize_mb is not None:
+        # RLIMIT_FSIZE caps any single file write in bytes (EFBIG/SIGXFSZ
+        # past the limit): bounds runaway transcript or cache writes.
+        fsize_bytes = math.ceil(fsize_mb * 1024 * 1024)
+        resource.setrlimit(resource.RLIMIT_FSIZE, (fsize_bytes, fsize_bytes))
 
 
 def _invoke_adapter(
@@ -1258,10 +1314,13 @@ def run_suite(
     seed: int = 0,
     max_concurrency: int = DEFAULT_MAX_CONCURRENCY,
     max_attempts: int = DEFAULT_MAX_ATTEMPTS,
-    call_timeout: float | None = None,
+    call_timeout: float | None = 300.0,
     cache_dir: Path | str | None = None,
     transcript_path: Path | str | None = None,
     config_extra: dict[str, Any] | None = None,
+    rlimit_cpu_seconds: float | None = None,
+    rlimit_as_mb: float | None = None,
+    rlimit_fsize_mb: float | None = None,
     run_nonce: str | None = None,
 ) -> RunArtifact:
     """Run a suite through an adapter, concurrently.
@@ -1269,7 +1328,11 @@ def run_suite(
     ``max_concurrency`` bounds in-flight adapter calls (the AIMD
     controller adapts within [1, max_concurrency]); ``max_attempts``
     bounds total tries per call (transient failures only);
-    ``call_timeout`` bounds one attempt in seconds (None = no timeout).
+    ``call_timeout`` bounds one attempt in seconds (default 300; None
+    disables the timeout, not recommended for untrusted adapters).
+    ``rlimit_cpu_seconds`` / ``rlimit_as_mb`` / ``rlimit_fsize_mb`` set
+    process-wide Unix resource backstops (all opt-in, None by default);
+    see docs/Threat-Model.md.
     ``cache_dir`` enables the opt-in response cache; ``transcript_path``
     enables JSONL transcript logging. ``config_extra`` is merged into
     the artifact config (used by ``peira replay`` for provenance).
@@ -1291,6 +1354,7 @@ def run_suite(
         raise ValueError(
             f"call_timeout must be > 0, got {call_timeout}"
         )
+    _apply_rlimits(rlimit_cpu_seconds, rlimit_as_mb, rlimit_fsize_mb)
     # The required-family manifest defaults to the families present in the
     # suite's case files: the gate is evaluated over the full suite, so a
     # family with zero results in a run fails instead of vanishing.
