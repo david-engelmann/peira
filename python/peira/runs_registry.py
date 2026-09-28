@@ -460,6 +460,12 @@ def qualifies_for_leaderboard(artifact: RunArtifact) -> tuple[bool, str]:
       malformed rate at most 5%, benign accuracy at least 0.5, at least
       200 eligible cases overall, at least 20 eligible per required
       family (computed by metrics.check_eligibility at scoring time))
+    - termination == "complete" (budget-stopped and partial runs are
+      analyzable but never rankable: a lucky prefix of easy cases must
+      not top a leaderboard)
+    - config declares cache_enabled explicitly (silent or undeclared
+      cache state is refused: cache-enabled and cache-disabled runs
+      are different measurements and must never pool silently)
 
     Note: the full reproducibility grade (Layer 3b) is not yet
     implemented; this is the minimal gate.
@@ -479,4 +485,13 @@ def qualifies_for_leaderboard(artifact: RunArtifact) -> tuple[bool, str]:
             else "ranking eligibility not recorded"
         )
         return False, f"ranking-ineligible: {detail}"
+    if artifact.termination != "complete":
+        return False, f"run terminated early: {artifact.termination}"
+    cache_enabled = artifact.config.get("cache_enabled")
+    if not isinstance(cache_enabled, bool):
+        return (
+            False,
+            "cache state undeclared (config.cache_enabled missing): "
+            "re-run with a declared cache state",
+        )
     return True, "qualifies"

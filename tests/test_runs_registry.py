@@ -31,6 +31,7 @@ def _make_artifact(adapter_name="test-adapter", **overrides):
         "max_concurrency": 8,
         "env": env,
         "env_sha256": env_sha256,
+        "config": {"cache_enabled": False},
         "results": [],
         "metrics": {"ranking_eligible": True, "eligibility_notes": []},
     }
