@@ -94,6 +94,11 @@
       "usd_per_1m_out": 0.0,
       "confidence": "secondary"
     },
+    "lakera-guard": {
+      "_note": "Secondary-sourced Lakera Guard pricing: free Community tier 10k calls/month; paid entry ~$99/month for 50k calls (~$0.002/call) - reported via third-party integration guides (Sept 2026), not confirmed on an official Lakera pricing page as of 2026-09-28. Per-call billing, not per-token: usd_per_1m_in/out are N/A. Re-verify before launch.",
+      "usd_per_call": 0.002,
+      "confidence": "secondary"
+    },
     "kimi-k3": {
       "_note": "Moonshot API list price verified 2026-09-25 against https://platform.moonshot.ai/docs/pricing/chat-k3.md: $3.00/1M input, $15.00/1M output ($0.30/1M cache-hit input not modeled here).",
       "usd_per_1m_in": 3.0,

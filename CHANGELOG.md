@@ -7,6 +7,15 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
 
 ## [Unreleased]
 
+### Added — Lakera Guard adapter
+
+- New `LakeraAdapter` (`peira.adapters.lakera`): abstain-primitive-only
+  guardrail adapter for the Lakera Guard v2 API (stdlib transport, no
+  extra needed). Maps the `flagged` boolean to the `"abstain"`/`"other"`
+  decision labels and the per-detector breakdown confidence to the
+  score. Requires `LAKERA_API_KEY`. Wire shape from the official API
+  docs; not yet exercised against the live API.
+
 ### Added — production report rewiring (A3 S8b)
 
 - The runner's artifact summary is now the canonical
