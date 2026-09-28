@@ -1,0 +1,9 @@
+# Keep the SHA-pinned GitHub Actions in ci.yml up to date. Dependabot
+# opens PRs that bump the pin; the pin comment (e.g. `# v4`) names the
+# tag the SHA was resolved from.
+version: 2
+updates:
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"

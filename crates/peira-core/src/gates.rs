@@ -381,8 +381,11 @@ mod tests {
         assert!(!r.passed());
         assert!(r.errors[0].contains("target_decision"));
         // Python formats with {target!r}: single quotes for strings.
-        assert!(r.errors[0].contains("target_decision 'approve'"),
-                "G5 message was: {}", r.errors[0]);
+        assert!(
+            r.errors[0].contains("target_decision 'approve'"),
+            "G5 message was: {}",
+            r.errors[0]
+        );
     }
 
     #[test]
