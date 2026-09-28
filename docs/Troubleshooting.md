@@ -111,6 +111,17 @@ refuses to guess what the entry meant. Fix: delete the
 Cause: the suite directory has no `.jsonl` files. Fix: check the path;
 `dataset/trial-demo/cases.jsonl` ships with the repo.
 
+**`error: unknown famil(ies): x (known families: ...)`**
+Cause: `peira run --families` got a family id that isn't in the
+registry. Fix: pick from the list in the error. The twenty canonical
+ids are in `docs/Taxonomy.md`. If the id is `safety_policy`, use
+`--suite safety-policy` instead: it is a suite, not an attack family.
+
+**`error: --families matched no cases in ...`**
+Cause: the ids are valid, but the suite has no cases for them (e.g. a
+Tier 2 family before its cases are authored). Fix: drop `--families` or
+check which families the suite covers.
+
 **`peira run` exits with code 3**
 Cause: none — the run completed. Exit 3 means ranking-ineligible (one of
 the Methodology eligibility floors failed; the notes are printed with the
@@ -182,11 +193,12 @@ gate errors, complete pending reviews (`peira dataset review --dir
 --dir <dir> --version <v>`) — then re-run.
 
 **`peira dataset new: error: argument --family: invalid choice: 'x'`**
-Cause: the family id isn't one of the ten canonical ids. Fix: pick from
-the list in the error — `state_poisoning`, `criteria_smuggling`,
-`option_order`, `distractor_flooding`, `score_anchoring`,
-`literal_reading`, `negation_games`, `policy_paraphrase`, `indirection`,
-`confidence_spoofing` (see `docs/Taxonomy.md`).
+Cause: the family id isn't one of the eleven ids `dataset new` can
+scaffold (the ten v1 families plus the safety-policy suite). A valid
+v2 family id like `instruction_override` is canonical but has no case
+template yet. Fix: pick from the list in the error; the full list
+with descriptions is in `docs/Taxonomy.md` (see
+`python/peira/families.py` for the registry).
 
 **`error: cannot write to ...` from `peira dataset new --out`**
 Cause: the output file's directory doesn't exist or isn't writable. Fix:

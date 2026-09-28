@@ -38,6 +38,8 @@ jobs:
       - run: python scripts/check_doc_links.py
       # docs/CLI.md is generated from the live parser; fail on drift.
       - run: python3 scripts/gen_cli_reference.py --check docs/CLI.md
+      # The family registry and docs/Taxonomy.md must never drift.
+      - run: python3 scripts/check_families.py
 
   lint-rust:
     # The Rust migration is active; CI must catch a skipped local gate.
