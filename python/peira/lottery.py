@@ -158,7 +158,7 @@ def stability_verdict(lottery_index: float | None) -> str:
 
     Bands: >= 0.9 "stable", >= 0.7 "mostly stable", below "fragile",
     None "undefined". The bands are coarse on purpose: the index is a
-    summary, not a gate — the per-family taus carry the detail.
+    summary, not a gate: the per-family taus carry the detail.
     """
     if lottery_index is None:
         return "undefined"

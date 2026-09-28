@@ -1160,12 +1160,20 @@ def cmd_lottery(args: argparse.Namespace) -> int:
             return EXIT_USER_ERROR
         results_by_run[run_id] = results
 
+    known_families = {r.family for rs in results_by_run.values() for r in rs}
     if args.families:
         families = [f.strip() for f in args.families.split(",") if f.strip()]
+        # Dedupe, preserving order: "--families f1,f1" means ["f1"], not a
+        # leave-one-family-out loop that strips both copies and trips the
+        # empty-families guard inside lottery_analysis.
+        families = list(dict.fromkeys(families))
+        unknown = [f for f in families if f not in known_families]
+        if unknown:
+            print(f"error: unknown families: {', '.join(unknown)} "
+                  "(not present in the given runs)", file=sys.stderr)
+            return EXIT_USER_ERROR
     else:
-        families = sorted(
-            {r.family for rs in results_by_run.values() for r in rs}
-        )
+        families = sorted(known_families)
     if not families:
         print("error: no families found in the given runs", file=sys.stderr)
         return EXIT_USER_ERROR

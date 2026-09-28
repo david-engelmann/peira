@@ -699,3 +699,14 @@ and the reduced ranking (too few eligible runs for a pairwise
 comparison). Fix: add more ranking-eligible runs; a lottery analysis
 needs at least two runs that stay eligible when any one family is
 removed.
+
+**`error: unknown families: <names> (not present in the given runs)` (from `peira lottery`)**
+Cause: `--families` names a family that appears in none of the given
+artifacts (often a typo). Fix: check the spelling against the family
+names in the runs; omit `--families` to use the union across the runs.
+
+**`error: rank_runs: families must not be empty` (from `peira lottery`)**
+Cause: `--families` left only one family to analyze, so removing it
+leaves nothing to rank on (leave-one-out needs at least two families).
+Fix: pass at least two families, or omit `--families` to use the union
+across the runs.
