@@ -15,15 +15,14 @@ def _as_valid_triples(cases):
 class TestTemplates(unittest.TestCase):
     def test_covers_scaffolded_ids(self):
         # Template scaffolding exists for the v1 families, the Tier-1
-        # v2 families, and the separate suite ids. Tier-2 families get
-        # templates when their authoring lane opens; the authoring gate
-        # (G4) already accepts their ids, so every template key must be a
-        # gate-known id.
+        # and Tier-2 v2 families, and the separate suite ids. Every
+        # template key must be a gate-known id.
         from peira.families import FAMILIES
         v1_ids = {f.id for f in FAMILIES.values() if f.tier == "v1"}
         tier1_ids = {f.id for f in FAMILIES.values() if f.tier == "1"}
+        tier2_ids = {f.id for f in FAMILIES.values() if f.tier == "2"}
         self.assertEqual(set(TEMPLATES),
-                         v1_ids | tier1_ids | set(SUITE_IDS))
+                         v1_ids | tier1_ids | tier2_ids | set(SUITE_IDS))
         self.assertTrue(set(TEMPLATES) <= set(GATE_KNOWN_IDS))
 
     def test_every_template_renders_valid_skeleton(self):
