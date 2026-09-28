@@ -687,43 +687,31 @@ comparisons; deltas need ≥ 30 paired cases. Below the gates the
 estimate is withheld rather than fabricated. The head-to-head counts
 and per-family win rates still render.
 
-**`error: <path> not found` (from `peira lottery`)**
-Cause: one of the artifact paths doesn't exist. Fix: check the
-paths. `peira lottery` takes one or more positional artifact files.
+## R-05 contamination scripts
 
-**`error: <path> is not a valid run artifact (...)` (from `peira lottery`)**
-Cause: the file isn't a sealed run artifact (bad JSON, or a JSON file
-that isn't a run artifact). Fix: point at the `.json` files `peira run`
-wrote to the runs directory.
+**`check_canary_separation.py: tier-1 canary for <suite> appears in documentation`**
+Cause: a case canary GUID was pasted into a doc, comment, or other
+prose file. The tiers must never mix. Fix: remove the GUID from the
+documentation. The case canary belongs only in `CANARY.txt` and case
+files.
 
-**`error: <path>: cannot decode per-case results (...)` (from `peira lottery`)**
-Cause: the artifact's per-case results don't decode (a hand-edited
-artifact, or an artifact from an incompatible peira version). Fix:
-re-run the adapter on the current peira; don't hand-edit artifacts.
+**`check_canary_separation.py: tier-2 doc canary appears in case file`**
+Cause: the documentation canary GUID was pasted into a case file.
+Fix: remove it from the case file. The doc canary belongs only in
+`CANARY.md` and `DATASHEET.md`.
 
-**`error: no families found in the given runs` (from `peira lottery`)**
-Cause: none of the artifacts contain any per-case results (empty
-runs). Fix: pass artifacts from completed runs.
+**`check_canary_separation.py: <suite>: no CANARY.txt yet (not sealed)`**
+Cause: not an error. The suite has not gone through canary embedding
+yet (a seal-time step). Fix: none; run `embed_canary` via the seal
+workflow when the suite is ready.
 
-**`error: cannot write lottery JSON to <out> (...)` (from `peira lottery`)**
-Cause: `peira lottery --json` points somewhere unwritable: a missing
-parent directory, or a permissions problem. Fix: create the directory
-first, or pick a writable path.
+**`holdout_query_log.py: error: <adapter> exhausted its 12 executions`**
+Cause: the adapter line used its full yearly blind-holdout budget.
+Fix: wait for the next calendar year or a holdout rotation. See
+`docs/Holdout-Query-Budget.md`.
 
-**`peira lottery` reports "Lottery index: undefined"**
-Cause: not an error. No family yields two runs ranked in both the full
-and the reduced ranking (too few eligible runs for a pairwise
-comparison). Fix: add more ranking-eligible runs; a lottery analysis
-needs at least two runs that stay eligible when any one family is
-removed.
-
-**`error: unknown families: <names> (not present in the given runs)` (from `peira lottery`)**
-Cause: `--families` names a family that appears in none of the given
-artifacts (often a typo). Fix: check the spelling against the family
-names in the runs; omit `--families` to use the union across the runs.
-
-**`error: rank_runs: families must not be empty` (from `peira lottery`)**
-Cause: `--families` left only one family to analyze, so removing it
-leaves nothing to rank on (leave-one-out needs at least two families).
-Fix: pass at least two families, or omit `--families` to use the union
-across the runs.
+**`audit_holdout_separation.py: SEPARATION VIOLATION`**
+Cause: holdout material (a case ID, prompt text, or canary GUID) was
+found in the public directory. Fix: remove the leaked content from
+the public tree immediately, then rotate the affected holdout shard
+per `docs/Holdout-OpSec.md`. The script never prints what matched.

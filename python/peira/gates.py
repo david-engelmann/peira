@@ -12,9 +12,14 @@ integrity a machine can check.
 
 from __future__ import annotations
 
+import bisect
+import hashlib
 import json
+import math
 import re
+from collections import Counter, defaultdict
 from dataclasses import dataclass, field
+from heapq import nsmallest
 from pathlib import Path
 from typing import Any
 
@@ -303,11 +308,128 @@ def gate_options_coherence(valid_cases) -> GateResult:
     return _gate_options_coherence_py(valid_cases)
 
 
+# G8: near-dedup calibration. Thresholds come from
+# scripts/calibrate_g8_threshold.py, calibrated 2026-09-28 on 50
+# hand-labeled paraphrase pairs (tests/fixtures/g8_paraphrase_pairs.jsonl):
+# 20 near-duplicates all scored >= 0.8018, 30 distinct pairs all scored
+# <= 0.7089. The warning threshold sits inside that separation gap,
+# biased toward precision (fewer false flags for human review).
+G8_WARN_THRESHOLD = 0.78
+# Near-identical texts (only trivial edits apart) fail outright. This is
+# a conservative judgment call, not a calibrated value: at 0.98 the two
+# prompts differ by at most a few characters.
+G8_ERROR_THRESHOLD = 0.98
+# Candidate blocking: a bottom-k MinHash-style sketch (k smallest md5
+# hashes of the case's trigram set) with an inverted index. A candidate
+# pair must share at least G8_MIN_OVERLAP sketch hashes. Tuned 2026-09-28
+# on the v1 corpus (2,000 cases): k=96 / overlap=38 gives 100% recall of
+# the 20 hand-labeled positives at 0.66% of all pairs as candidates
+# (~45s for 2,000 cases, stdlib only). The sketch is a heuristic filter;
+# every candidate is verified with the exact trigram-cosine, so the
+# reported findings are exact — only recall depends on the sketch.
+G8_SKETCH_K = 96
+G8_MIN_OVERLAP = 38
+
+
+def _g8_trigram_counter(text: str) -> Counter:
+    t = text.lower()
+    return Counter(t[i:i + 3] for i in range(len(t) - 2))
+
+
+def _g8_case_text(case: dict[str, Any]) -> str:
+    """Text the G8 gate compares: benign + attacked prompts.
+
+    Must match the extraction used by scripts/calibrate_g8_threshold.py;
+    the calibrated threshold is only valid for this exact text.
+    """
+    b = case.get("benign", {}).get("input", {}).get("prompt", "")
+    a = case.get("attacked", {}).get("input", {}).get("prompt", "")
+    return (b + "\n" + a).strip()
+
+
+def _g8_cosine(a: Counter, norm_a: float, b: Counter, norm_b: float) -> float:
+    if norm_a == 0.0 or norm_b == 0.0:
+        return 0.0
+    if len(a) > len(b):
+        a, b, norm_a, norm_b = b, a, norm_b, norm_a
+    get = b.get
+    dot = 0
+    for k, c in a.items():
+        d = get(k)
+        if d:
+            dot += c * d
+    return dot / (norm_a * norm_b)
+
+
+def _g8_sketch(trigrams: set[str]) -> set[int]:
+    """Bottom-k sketch: k smallest md5 hashes of the trigram set."""
+    it = (int.from_bytes(hashlib.md5(t.encode()).digest(), "little")
+          for t in trigrams)
+    return set(nsmallest(G8_SKETCH_K, it))
+
+
+def gate_near_dedup(valid_cases) -> GateResult:
+    """G8: flag near-duplicate cases via trigram-cosine similarity.
+
+    Compares the concatenated benign + attacked prompt text of every
+    case pair (stdlib only, no embedding model). Pairs at or above
+    G8_ERROR_THRESHOLD are errors (near-identical); pairs at or above
+    G8_WARN_THRESHOLD are warnings for human review.
+
+    Candidate pairs come from a bottom-k sketch inverted index (see
+    G8_SKETCH_K / G8_MIN_OVERLAP), so the exact cosine is computed for
+    well under 1% of pairs on a diverse corpus instead of O(n^2).
+    Findings are deterministic: cases are visited in input order,
+    posting lists are built in index order, and candidates are compared
+    in index order.
+    """
+    r = GateResult("G9", "near-dedup")
+    items = [(path, lineno, case) for path, lineno, case in valid_cases]
+    vecs: list[tuple[Counter, float]] = []
+    sketches: list[set[int]] = []
+    for _path, _lineno, case in items:
+        vec = _g8_trigram_counter(_g8_case_text(case))
+        norm = math.sqrt(sum(c * c for c in vec.values()))
+        vecs.append((vec, norm))
+        sketches.append(_g8_sketch(set(vec)))
+
+    # Inverted index: sketch hash -> case indices (ascending, since we
+    # append in order). bisect_right skips j <= i without scanning.
+    index: dict[int, list[int]] = defaultdict(list)
+    for i, sk in enumerate(sketches):
+        for h in sk:
+            index[h].append(i)
+
+    for i, (vec_i, norm_i) in enumerate(vecs):
+        overlap: dict[int, int] = {}
+        for h in sketches[i]:
+            post = index[h]
+            start = bisect.bisect_right(post, i)
+            for j in post[start:]:
+                overlap[j] = overlap.get(j, 0) + 1
+        for j in sorted(overlap):
+            if overlap[j] < G8_MIN_OVERLAP:
+                continue
+            vec_j, norm_j = vecs[j]
+            sim = _g8_cosine(vec_i, norm_i, vec_j, norm_j)
+            if sim < G8_WARN_THRESHOLD:
+                continue
+            loc_i = f"{items[i][0].name}:{items[i][1]}"
+            loc_j = f"{items[j][0].name}:{items[j][1]}"
+            msg = (f"{loc_i} ~ {loc_j}: trigram-cosine {sim:.3f} "
+                   f"(cases {items[i][2]['case_id']} / {items[j][2]['case_id']})")
+            if sim >= G8_ERROR_THRESHOLD:
+                r.errors.append(msg + " is near-identical; keep only one")
+            else:
+                r.warnings.append(msg + "; review for near-duplication")
+    return r
+
+
 def run_gates(dataset_dir: Path) -> list[GateResult]:
     """Run all gates over a dataset directory, in order."""
     # One pass: every line is parsed and validated exactly once. Each
     # entry is (path, lineno, case_or_None, error_or_None) — G1 reports
-    # the collected errors, G2–G8 consume the valid subset, so no case
+    # the collected errors, G2–G9 consume the valid subset, so no case
     # is ever validated twice.
     checked: list[tuple[Path, int, Any, str | None]] = []
     for path, lineno, case, json_error in iter_case_lines(dataset_dir):
@@ -326,4 +448,5 @@ def run_gates(dataset_dir: Path) -> list[GateResult]:
     results.append(gate_pii_scan(valid))
     results.append(gate_score_reference(valid))
     results.append(gate_options_coherence(valid))
+    results.append(gate_near_dedup(valid))
     return results

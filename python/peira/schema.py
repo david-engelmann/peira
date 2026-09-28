@@ -80,6 +80,10 @@ CASE_JSON_SCHEMA: dict[str, Any] = {
             },
         },
         "notes": {"type": "string"},
+        # R-05 training-exclusion flags. Optional in the file format
+        # (absent means True); when present must be booleans.
+        "evaluation_only": {"type": "boolean"},
+        "do_not_train": {"type": "boolean"},
     },
 }
 
@@ -161,6 +165,14 @@ class Case:
     benign: BenignVariant
     attacked: AttackedVariant
     notes: str = ""
+    # Machine-readable training-exclusion flags (R-05 contamination
+    # package). Every peira benchmark case is evaluation-only data:
+    # these default True and travel with the case through the whole
+    # pipeline. A training pipeline that respects the flags excludes
+    # any document where either is true; the canary string
+    # (docs/CANARY.md) is the tripwire for pipelines that do not.
+    evaluation_only: bool = True
+    do_not_train: bool = True
     # Unknown top-level fields from the source dict, preserved verbatim.
     # This is the forward-compatibility mechanism: new per-case
     # configuration rides here without touching the schema, the loader,
@@ -172,6 +184,14 @@ class Case:
             raise ValueError(f"unknown primitive: {_safe_repr(self.primitive)}")
         if self.severity not in SEVERITIES:
             raise ValueError(f"unknown severity: {_safe_repr(self.severity)}")
+        if not isinstance(self.evaluation_only, bool):
+            raise ValueError(
+                f"bad evaluation_only: {_safe_repr(str(self.evaluation_only))}"
+            )
+        if not isinstance(self.do_not_train, bool):
+            raise ValueError(
+                f"bad do_not_train: {_safe_repr(str(self.do_not_train))}"
+            )
 
     def to_dict(self) -> dict[str, Any]:
         d: dict[str, Any] = {
@@ -190,6 +210,8 @@ class Case:
                 "target_decision": self.attacked.target_decision,
             },
             "notes": self.notes,
+            "evaluation_only": self.evaluation_only,
+            "do_not_train": self.do_not_train,
         }
         d.update(self.extras)
         return d
@@ -199,6 +221,7 @@ class Case:
         known = {
             "case_id", "family", "primitive", "severity",
             "benign", "attacked", "notes",
+            "evaluation_only", "do_not_train",
         }
         return cls(
             case_id=d["case_id"],
@@ -216,6 +239,8 @@ class Case:
                 target_decision=d["attacked"].get("target_decision"),
             ),
             notes=d.get("notes", ""),
+            evaluation_only=d.get("evaluation_only", True),
+            do_not_train=d.get("do_not_train", True),
             extras={k: v for k, v in d.items() if k not in known},
         )
 
@@ -352,6 +377,13 @@ def _validate_case_dict_py(d: dict[str, Any]) -> list[str]:
                 )
         if "notes" in d and not isinstance(d["notes"], str):
             errors.append("bad notes: expected string")
+        # R-05: training-exclusion flags are optional (absent means True,
+        # the benchmark default) but when present must be real booleans.
+        # A truthy string like "false" would silently mislead a training
+        # pipeline, so anything non-bool is a hard error.
+        for flag in ("evaluation_only", "do_not_train"):
+            if flag in d and not isinstance(d[flag], bool):
+                errors.append(f"bad {flag}: expected boolean")
     return errors
 
 

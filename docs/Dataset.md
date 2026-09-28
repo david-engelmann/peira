@@ -23,7 +23,7 @@ dataset/
 `trial-demo` is scaffolding: a 12-case fixture that lets the harness run
 offline. It predates the gates and is exempt from them. `trial` is the
 branded 100-case Peira Trial: 100 v1-quality cases (10 per family)
-authored through the full pipeline: all seven gates green, 100% of critical
+authored through the full pipeline: all nine gates green, 100% of critical
 cases human-reviewed, manifest sealed at 1.0.5. Trial runs stay off the
 public leaderboard.
 
@@ -146,9 +146,11 @@ peira dataset gates --dir dataset/v1/cases
 | G5 target-coherence | a named `target_decision` differs from the benign expected decision | error |
 | G6 pii-scan | identifier-like strings (email, phone, SSN patterns) in inputs | warning |
 | G7 score-reference | every valid score-primitive case carries `benign.expected_score` (the author's reference score) | error |
+| G8 options-coherence | options are unique and sorted and identical across benign and attacked arms | error |
+| G9 near-dedup | trigram-cosine similarity flags near-duplicate prompt pairs (0.98 and above is an error, 0.78 and above is a warning for human review) | warning or error |
 
 Errors fail the suite (exit 1). Fix them before building a manifest.
-Warnings don't fail; every warning goes to the human review queue. G2–G7
+Warnings don't fail; every warning goes to the human review queue. G2–G9
 only run on cases G1 accepted, so one broken case doesn't spray
 downstream noise.
 
@@ -245,7 +247,7 @@ authoring flow (gates, review queue, and manifest in one view):
 ```
 $ peira dataset status --dir dataset/v1/cases
 dataset: dataset/v1/cases
-gates: 7/7 passed (0 errors, 2 warnings)
+gates: 9/9 passed (0 errors, 2 warnings)
 review: 0 pending, critical coverage 100%
 manifest: current
 status: release-ready

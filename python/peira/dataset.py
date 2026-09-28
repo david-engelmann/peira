@@ -247,6 +247,84 @@ def write_manifest(dataset_dir: Path, manifest: dict[str, Any]) -> Path:
     return out
 
 
+# ---------------------------------------------------------------------------
+# Canaries (R-05 contamination package, two-tier scheme; see CANARY.md)
+#
+# Tier 1 (case canary): a GUID embedded in every case file of a suite plus
+# the suite's CANARY.txt. Machine-readable: training pipelines exclude any
+# document containing the canary string.
+#
+# Tier 2 (doc canary): a *different* GUID that lives only in documentation
+# (CANARY.md, DATASHEET.md). It marks the prose *about* the dataset
+# so evaluators can distinguish "text discussing peira" from "peira cases".
+# The two tiers never mix: scripts/check_canary_separation.py asserts the
+# case GUID never appears in docs/ and the doc GUID never appears in
+# dataset case files.
+# ---------------------------------------------------------------------------
+
+import uuid as _uuid
+
+
+def generate_canary_guid() -> str:
+    """Generate a fresh canary GUID (uuid4 hex)."""
+    return _uuid.uuid4().hex
+
+
+def canary_string(suite_name: str, guid: str) -> str:
+    """Build the tier-1 case-canary string for a suite.
+
+    The ``peira-<suite>-canary:`` prefix keeps the string greppable and
+    self-describing in training-data exclusion filters.
+    """
+    return f"peira-{suite_name}-canary:{guid}"
+
+
+def read_canary_guid(cases_dir: Path) -> str | None:
+    """Read the tier-1 canary GUID from a suite's CANARY.txt.
+
+    Returns None when the suite has no CANARY.txt yet (canary embedding
+    is a seal-time step; see docs/Dataset-Changelog.md).
+    """
+    path = Path(cases_dir) / CANARY_NAME
+    if not path.is_file():
+        return None
+    return path.read_text(encoding="utf-8").strip()
+
+
+def embed_canary(cases_dir: Path, suite_name: str,
+                 guid: str | None = None) -> str:
+    """Embed the tier-1 canary in every case file of a suite.
+
+    Generates a fresh GUID (or reuses the given one), writes it to
+    ``CANARY.txt``, and stamps every ``*.jsonl`` case line with the
+    ``canary`` field plus the R-05 ``evaluation_only``/``do_not_train``
+    flags (True). Case files are rewritten with their original key order
+    preserved and the new fields appended; formatting uses the standard
+    ``json.dumps`` separators to match the checked-in files.
+
+    Returns the GUID used. This is a seal-time operation: it rewrites
+    every case file, so the manifest must be regenerated after.
+    """
+    cases_dir = Path(cases_dir)
+    guid = guid or generate_canary_guid()
+    marker = canary_string(suite_name, guid)
+    atomic_write_text(cases_dir / CANARY_NAME, guid + "\n")
+    for path in sorted(cases_dir.glob(f"*{CASE_SUFFIX}")):
+        lines = path.read_text(encoding="utf-8").splitlines()
+        out = []
+        for line in lines:
+            if not line.strip():
+                out.append(line)
+                continue
+            case = json.loads(line)
+            case["canary"] = marker
+            case["evaluation_only"] = True
+            case["do_not_train"] = True
+            out.append(json.dumps(case, ensure_ascii=False))
+        atomic_write_text(path, "\n".join(out) + "\n")
+    return guid
+
+
 def _is_unsafe_manifest_name(name: str) -> bool:
     """True when a manifest file name must not touch the filesystem.
 
