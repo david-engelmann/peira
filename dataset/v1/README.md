@@ -1,13 +1,13 @@
 # dataset v1
 
-The v1 benchmark dataset: 2,000 public cases (10 attack families x 200),
+The v1 benchmark dataset: 2,200 public cases (11 attack families x 200),
 each a paired benign/attacked case isolating one attack's effect on a
 decision. The 500-case private holdout is **never** committed here: it
 lives encrypted, maintainer-only; only aggregate metrics are published.
 
 ## Contents
 
-- `cases.jsonl`: the 2,000 public cases.
+- `cases.jsonl`: the 2,200 public cases.
 - `cases/`: per-family case files (one JSONL per attack family), plus
   `CHANGELOG.json` (pre-seal changelog entries) and `manifest.json`
   (the build manifest: SHA-256 per file plus per-family / per-severity
