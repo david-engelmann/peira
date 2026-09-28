@@ -60,16 +60,16 @@ access enabled. This is terminal: the runner will not retry it.
 
 **`lakera API error 422 ...`**
 Cause: the request was rejected as malformed. Fix: this is an adapter
-bug, not a retryable failure — report it. The runner will not retry it.
+bug, not a retryable failure. Report it. The runner will not retry it.
 
 **`lakera API error 429 ...` / `lakera API error 5xx ...`**
-Cause: rate limit or server-side failure. Fix: transient — the runner
+Cause: rate limit or server-side failure. Fix: transient. The runner
 retries with backoff (honoring `Retry-After` up to the cap) and adapts
 concurrency. If it persists, lower `--max-concurrency`.
 
 **`lakera transport error: ...`**
 Cause: the HTTPS request never completed (DNS, connection refused,
-timeout). Fix: transient — the runner retries. Check network access to
+timeout). Fix: transient. The runner retries. Check network access to
 `api.lakera.ai` if it persists.
 
 **`lakera returned non-JSON response ...`**
@@ -81,7 +81,7 @@ page, WAF block). Fix: check for a proxy or firewall between you and
 Cause: the API answered with JSON that lacks the documented `flagged`
 boolean (wire shape drift). Fix: the adapter's wire shape is from
 Lakera's published API docs and hasn't been exercised against the live
-API — report the response keys from the error so the adapter can be
+API. Report the response keys from the error so the adapter can be
 updated.
 
 **Out-of-memory on local models**
