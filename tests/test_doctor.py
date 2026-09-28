@@ -12,10 +12,17 @@ from unittest import mock
 import unittest
 
 from peira import doctor
+from peira.adapters.llm import (
+    AnthropicAdapter,
+    GoogleAdapter,
+    MoonshotAdapter,
+    OpenAIAdapter,
+)
 from peira.doctor import (
     AdapterReadiness,
     CheckResult,
     SystemInfo,
+    _api_pin_note,
     check_adapter,
     check_pricing,
     check_system,
@@ -522,6 +529,70 @@ class TestCli(unittest.TestCase):
                 assert set(tmp_path.iterdir()) == before
             finally:
                 os.chdir(old_cwd)
+
+
+# ---------------------------------------------------------------------------
+# API pin warnings: `peira doctor` flags an API adapter whose constructor
+# default `model=` has drifted from the peira.api_pins registry pin.
+# ---------------------------------------------------------------------------
+
+class _PinnedFakeAdapter:
+    """Fake pinned API adapter: default model matches the registry pin."""
+    name = "openai-structured"
+
+    def __init__(self, model="gpt-5.6-luna"):
+        self.model = model
+
+
+class _DriftedFakeAdapter:
+    """Fake API adapter whose default model drifted from the registry pin."""
+    name = "openai-structured"
+
+    def __init__(self, model="gpt-5.6-luna-2026-08-01"):
+        self.model = model
+
+
+class _NoModelParamFakeAdapter:
+    """Fake pinned API adapter with no `model` constructor parameter."""
+    name = "openai-structured"
+
+    def __init__(self):
+        pass
+
+
+class TestApiPinWarning(unittest.TestCase):
+    def test_unpinned_default_produces_warning(self):
+        note, hint = _api_pin_note(_DriftedFakeAdapter)
+        assert note.startswith("; API model pin: "), note
+        assert "is not the pinned version" in note, note
+        assert "gpt-5.6-luna" in hint, hint
+
+    def test_pinned_default_is_transparent(self):
+        assert _api_pin_note(_PinnedFakeAdapter) == ("", "")
+
+    def test_no_model_param_is_transparent(self):
+        assert _api_pin_note(_NoModelParamFakeAdapter) == ("", "")
+
+    def test_non_api_adapter_is_transparent(self):
+        # name not in the pin registry: the early-return path the old
+        # tests already covered.
+        assert _api_pin_note(_FakeAdapter) == ("", "")
+
+    def test_real_adapters_have_no_pin_warning(self):
+        # Regression lock: the real structured adapters' constructor
+        # defaults must stay exactly the registry pins.
+        for cls in (OpenAIAdapter, MoonshotAdapter,
+                    AnthropicAdapter, GoogleAdapter):
+            with self.subTest(adapter=cls.name):
+                assert _api_pin_note(cls) == ("", ""), cls.name
+
+    def test_check_adapter_includes_pin_warning(self):
+        result = check_adapter(_DriftedFakeAdapter, SystemInfo())
+        assert "API model pin:" in result.detail, result.detail
+
+    def test_check_adapter_omits_pin_warning_when_pinned(self):
+        result = check_adapter(_PinnedFakeAdapter, SystemInfo())
+        assert "API model pin:" not in result.detail, result.detail
 
 
 if __name__ == "__main__":

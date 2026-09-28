@@ -8,8 +8,9 @@ the vendor docs linked below).
 
 Per-vendor schemes:
 - OpenAI: ``gpt-5.6-luna`` (https://developers.openai.com/api/docs/models/gpt-5.6-luna).
-  Luna has NO snapshot mechanism: no dated snapshots exist, so the bare
-  ID is the only ID. The pin is therefore
+  Luna publishes no dated snapshots (the vendor docs render a Snapshots
+  section but list none; the bare ID is the only one). The pin is
+  therefore
   best-effort: the registry records the exact ID and the runner seals it
   into the run artifact, but if OpenAI swaps the weights behind the
   name, the fail-closed machinery cannot detect it. Honest about the
@@ -63,7 +64,7 @@ __all__ = [
 # ---------------------------------------------------------------------------
 #
 # Pins are the vendors' own canonical IDs, not invented dated variants:
-#   OpenAI:    gpt-5.6-luna        (bare; Luna has no snapshot mechanism)
+#   OpenAI:    gpt-5.6-luna        (bare; Luna publishes no dated snapshots)
 #   Anthropic: claude-sonnet-5     (dateless; pinned snapshot by vendor
 #                                   guarantee from the 4.6 generation on)
 #   Google:    gemini-3.8-flash    (stable model code; no -NNN suffix on 3.x)
@@ -127,9 +128,11 @@ class DeprecatedPinError(ValueError):
 #   openai:    gpt-<version>-<name>, optionally with the legacy dated
 #              suffix (cf. gpt-4o-2024-08-06).
 #   anthropic: claude-<tier>-<n>[-<m>] dateless (4.6 generation onward;
-#              pinned snapshots by vendor guarantee), or the pre-4.6
-#              dated form claude-<tier>-<m>-YYYYMMDD (kept so retired
-#              pins can be recorded in DEPRECATED_PINS).
+#              pinned snapshots by vendor guarantee), or the dated form
+#              claude-<tier>-<n>[-<m>]-YYYYMMDD (kept so retired pins
+#              can be recorded in DEPRECATED_PINS). Only the name-first
+#              dated form is accepted: the 3.x-era version-first form
+#              (claude-3-5-sonnet-20241022) does not match the regex.
 #   google:    gemini-<major>.<minor>-<name>, with the legacy -NNN
 #              suffix for 1.5/2.0-era IDs.
 #   moonshot:  kimi-k<n>, optionally with Moonshot's short -MMDD
@@ -155,7 +158,7 @@ def _passes_vendor_semantics(vendor: str, model_id: str) -> bool:
     also cover retired IDs recorded in DEPRECATED_PINS). These rules
     reject IDs no vendor ever shipped:
 
-    - openai: Luna has no snapshot mechanism, so any
+    - openai: Luna publishes no dated snapshots, so any
       ``gpt-5.6-luna-*`` suffixed ID is fabricated. Legacy dated
       snapshots (``gpt-4o-2024-08-06`` style) remain accepted.
     - anthropic: from the 4.6 generation on, dateless IDs are pinned
