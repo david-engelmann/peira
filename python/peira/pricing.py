@@ -17,6 +17,8 @@ import json
 from pathlib import Path
 from typing import Any
 
+from peira._rust import _impl as _rust
+
 _TABLE_PATH = Path(__file__).parent / "data" / "pricing.json"
 
 
@@ -51,13 +53,15 @@ def load_pricing_table() -> dict[str, Any]:
     return table
 
 
-def cost_usd(
+def cost_usd_py(
     model: str,
     tokens_in: int,
     tokens_out: int,
     table: dict[str, Any] | None = None,
 ) -> float:
-    """List-price cost of one call in USD.
+    """Reference implementation of :func:`cost_usd` (pure Python).
+
+    List-price cost of one call in USD.
 
     Unknown models cost 0.0: cost is then explicitly unaccounted rather
     than silently estimated. Negative token counts are a caller bug and
@@ -75,3 +79,29 @@ def cost_usd(
         tokens_in / 1_000_000 * float(entry["usd_per_1m_in"])
         + tokens_out / 1_000_000 * float(entry["usd_per_1m_out"])
     )
+
+
+def cost_usd(
+    model: str,
+    tokens_in: int,
+    tokens_out: int,
+    table: dict[str, Any] | None = None,
+) -> float:
+    """List-price cost of one call in USD.
+
+    Unknown models cost 0.0: cost is then explicitly unaccounted rather
+    than silently estimated. Negative token counts are a caller bug and
+    raise ValueError.
+
+    Dispatches to the Rust core when available (the table itself is
+    loaded here in Python — package-data I/O stays out of Rust); the
+    pure-Python :func:`cost_usd_py` is the reference and the fallback.
+    """
+    if table is None:
+        table = load_pricing_table()
+    if _rust is not None:
+        try:
+            return _rust.pricing_cost_usd(model, tokens_in, tokens_out, table)
+        except (TypeError, ValueError, OverflowError):
+            pass
+    return cost_usd_py(model, tokens_in, tokens_out, table)

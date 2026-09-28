@@ -99,10 +99,10 @@ def load_cases(suite_dir: Path) -> list[Case]:
     return cases
 
 
-def _blank_record(
+def _blank_record_py(
     seed: int, dispatch_index: int, dispatch_limit: int
 ) -> CallRecord:
-    """The record for a call that produced nothing usable.
+    """Reference implementation of :func:`_blank_record` (pure Python).
 
     Exceptions and wrong-typed outputs land here: the decision is the
     "<error>" sentinel (never a real decision label), confidence is
@@ -119,6 +119,38 @@ def _blank_record(
         malformed=True,
         dispatch_limit=dispatch_limit,
     )
+
+
+def _blank_record(
+    seed: int, dispatch_index: int, dispatch_limit: int
+) -> CallRecord:
+    """The record for a call that produced nothing usable.
+
+    Dispatches to the Rust core when available; the pure-Python
+    :func:`_blank_record_py` is the reference and the fallback.
+    ``TypeError``/``ValueError``/``OverflowError`` fall back, so
+    wrong-typed or out-of-range seeds behave exactly as in Python.
+    """
+    if _rust is not None:
+        try:
+            d = _rust.records_blank_record(seed, dispatch_index, dispatch_limit)
+        except (TypeError, ValueError, OverflowError):
+            pass
+        else:
+            usage = d["usage"]
+            return CallRecord(
+                decision=d["decision"],
+                confidence=d["confidence"],
+                abstained=d["abstained"],
+                refusal_reason=d["refusal_reason"],
+                usage=CallUsage(**usage) if usage is not None else None,
+                seed=d["seed"],
+                dispatch_index=d["dispatch_index"],
+                malformed=d["malformed"],
+                dispatch_limit=d["dispatch_limit"],
+                score=d["score"],
+            )
+    return _blank_record_py(seed, dispatch_index, dispatch_limit)
 
 
 def _validate_and_record(
@@ -198,8 +230,8 @@ def _record_call(
     )
 
 
-def _output_to_dict(output: Any, primitive: str) -> dict[str, Any]:
-    """Serialize an adapter output for transcripts and the cache."""
+def _output_to_dict_py(output: Any, primitive: str) -> dict[str, Any]:
+    """Reference implementation of :func:`_output_to_dict` (pure Python)."""
     d: dict[str, Any] = {
         "decision": output.decision,
         "confidence": output.confidence,
@@ -214,8 +246,28 @@ def _output_to_dict(output: Any, primitive: str) -> dict[str, Any]:
     return d
 
 
-def _output_from_dict(primitive: str, d: dict[str, Any]) -> Any:
-    """Rebuild an adapter output from its serialized form.
+def _output_to_dict(output: Any, primitive: str) -> dict[str, Any]:
+    """Serialize an adapter output for transcripts and the cache.
+
+    Dispatches to the Rust core when available; the pure-Python
+    :func:`_output_to_dict_py` is the reference and the fallback.
+    ``AttributeError`` from the Rust side propagates (it matches the
+    reference); ``TypeError``/``ValueError``/``OverflowError`` fall back,
+    so values with
+    no JSON representation behave exactly as in Python.
+    """
+    if _rust is not None:
+        try:
+            return dict(_rust.records_output_to_dict(primitive, output))
+        except (TypeError, ValueError, OverflowError):
+            pass
+    return _output_to_dict_py(output, primitive)
+
+
+def _output_from_dict_py(primitive: str, d: dict[str, Any]) -> Any:
+    """Reference implementation of :func:`_output_from_dict` (pure Python).
+
+    Rebuild an adapter output from its serialized form.
 
     Raises KeyError/TypeError on wrong-shaped dicts — callers treat
     that as a cache miss (never trust a corrupt entry).
@@ -236,6 +288,41 @@ def _output_from_dict(primitive: str, d: dict[str, Any]) -> Any:
     if primitive == "abstain":
         return AbstainOutput(**common)
     raise ValueError(f"unknown primitive: {primitive!r}")
+
+
+def _output_from_dict(primitive: str, d: dict[str, Any]) -> Any:
+    """Rebuild an adapter output from its serialized form.
+
+    Dispatches to the Rust core when available; the pure-Python
+    :func:`_output_from_dict_py` is the reference and the fallback.
+    Raises KeyError/TypeError on wrong-shaped dicts — callers treat
+    that as a cache miss (never trust a corrupt entry).
+    """
+    if _rust is not None:
+        try:
+            c = _rust.records_output_from_dict(primitive, d)
+        except (TypeError, ValueError, OverflowError):
+            return _output_from_dict_py(primitive, d)
+        usage = c.get("usage")
+        usage_obj = CallUsage(**usage) if usage is not None else None
+        common = {
+            "decision": c["decision"],
+            "confidence": c.get("confidence"),
+            "abstained": c.get("abstained", False),
+            "refusal_reason": c.get("refusal_reason", ""),
+            "usage": usage_obj,
+        }
+        if primitive == "choice":
+            return ChoiceOutput(**common)
+        if primitive == "score":
+            return ScoreOutput(score=c["score"], **common)
+        if primitive == "abstain":
+            return AbstainOutput(**common)
+        # Unreachable: the Rust core rejects unknown primitives (and the
+        # fallback above handles the rest), but keep the reference's
+        # error as a backstop.
+        raise ValueError(f"unknown primitive: {primitive!r}")
+    return _output_from_dict_py(primitive, d)
 
 
 class _TranscriptSink:
@@ -1417,8 +1504,13 @@ def run_suite(
         raise KeyboardInterrupt from None
 
 
-def _record_from_transcript_entry(entry: dict[str, Any]) -> CallRecord:
-    """Rebuild the original CallRecord from a transcript entry.
+def _record_from_transcript_entry_py(
+    entry: dict[str, Any],
+) -> CallRecord:
+    """Reference implementation of :func:`_record_from_transcript_entry`
+    (pure Python).
+
+    Rebuild the original CallRecord from a transcript entry.
 
     No measurement is re-taken: decision, confidence, score, abstention,
     usage (model, tokens, latency_ms, cost_usd), seed, dispatch_index,
@@ -1451,6 +1543,40 @@ def _record_from_transcript_entry(entry: dict[str, Any]) -> CallRecord:
         dispatch_limit=dispatch_limit,
         score=score,
     )
+
+
+def _record_from_transcript_entry(entry: dict[str, Any]) -> CallRecord:
+    """Rebuild the original CallRecord from a transcript entry.
+
+    Dispatches to the Rust core when available; the pure-Python
+    :func:`_record_from_transcript_entry_py` is the reference and the
+    fallback. ``TypeError``/``ValueError``/``OverflowError`` from the
+    Rust side fall back to the reference — this covers the ``TypeError``
+    for a non-mapping entry, which the binding raises with CPython's
+    exact subscript message before converting. ``KeyError``/
+    ``AttributeError`` propagate uncaught, matching the reference, which
+    raises them the same way (missing keys, non-mapping response,
+    non-object output).
+    """
+    if _rust is not None:
+        try:
+            d = _rust.records_record_from_transcript_entry(entry)
+        except (TypeError, ValueError, OverflowError):
+            return _record_from_transcript_entry_py(entry)
+        usage = d.get("usage")
+        return CallRecord(
+            decision=d["decision"],
+            confidence=d.get("confidence"),
+            abstained=d.get("abstained", False),
+            refusal_reason=d.get("refusal_reason", ""),
+            usage=CallUsage(**usage) if usage is not None else None,
+            seed=d["seed"],
+            dispatch_index=d["dispatch_index"],
+            malformed=d.get("malformed", False),
+            dispatch_limit=d.get("dispatch_limit", 1),
+            score=d.get("score"),
+        )
+    return _record_from_transcript_entry_py(entry)
 
 
 def replay_suite(

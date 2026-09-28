@@ -56,6 +56,12 @@ pub fn hash_canonical(v: &Value, h: &mut Sha256) {
     write_canonical(v, &mut |s| h.update(s.as_bytes()));
 }
 
+/// Compact-canonical twin of [`hash_canonical`]: feeds exactly the
+/// [`to_compact_canonical`] bytes into the hasher.
+pub fn hash_compact_canonical(v: &Value, h: &mut Sha256) {
+    write_json(v, &mut |s| h.update(s.as_bytes()), ",", ":");
+}
+
 /// Compact canonical JSON: byte-identical to
 /// `json.dumps(sort_keys=True, separators=(",", ":"), ensure_ascii=True)`.
 ///
