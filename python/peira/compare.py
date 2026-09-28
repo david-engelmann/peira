@@ -29,10 +29,12 @@ from typing import Any
 
 from peira._rust import _impl as _rust
 from peira.artifacts import RunArtifact
+from peira.concurrency import _require_json_str
 from peira.metrics import (
     MIN_BT_COMPARISONS,
     ComparisonOutcome,
     PerCaseResult,
+    _require_result_strings,
     bradley_terry,
     mcnemar,
     paired_bootstrap_ci,
@@ -59,6 +61,7 @@ def _case_ok_py(r: PerCaseResult) -> bool:
 
 def _case_ok(r: PerCaseResult) -> bool:
     """Dispatch to Rust when available, else the pure-Python reference."""
+    _require_result_strings(r)
     if _rust is not None:
         return _rust.compare_case_ok(r)
     return _case_ok_py(r)
@@ -73,6 +76,21 @@ class PairedCase:
     primitive: str
     a: PerCaseResult
     b: PerCaseResult
+
+
+def _require_pair_strings(p: PairedCase) -> None:
+    """Reject lone surrogates in every string field the Rust bindings read.
+
+    The PyO3 mirror (``PyPairedCase`` in crates/peira-python) extracts
+    ``case_id`` / ``family`` / ``primitive`` as ``String`` plus both
+    nested results. Same validated-entry-point discipline as
+    :func:`peira.metrics._require_result_strings`: called before the
+    backend branch so both backends raise the same ``ValueError``.
+    """
+    for value in (p.case_id, p.family, p.primitive):
+        _require_json_str(value)
+    _require_result_strings(p.a)
+    _require_result_strings(p.b)
 
 
 @dataclass(frozen=True)
@@ -252,6 +270,8 @@ def _head_to_head_py(pairs: list[PairedCase]) -> HeadToHeadCounts:
 
 def _head_to_head(pairs: list[PairedCase]) -> HeadToHeadCounts:
     """Dispatch to Rust when available, else the pure-Python reference."""
+    for p in pairs:
+        _require_pair_strings(p)
     if _rust is not None:
         n, br, ao, bo, bw = _rust.compare_head_to_head(pairs)
         return HeadToHeadCounts(
@@ -269,6 +289,8 @@ def _per_family_py(pairs: list[PairedCase]) -> dict[str, HeadToHeadCounts]:
 
 def _per_family(pairs: list[PairedCase]) -> dict[str, HeadToHeadCounts]:
     """Dispatch to Rust when available, else the pure-Python reference."""
+    for p in pairs:
+        _require_pair_strings(p)
     if _rust is not None:
         raw = _rust.compare_per_family(pairs)
         return {
@@ -331,6 +353,8 @@ def _mcnemar_test_py(pairs: list[PairedCase]) -> tuple[McNemarResult | None, str
 
 def _mcnemar_test(pairs: list[PairedCase]) -> tuple[McNemarResult | None, str]:
     """Dispatch to Rust when available, else the pure-Python reference."""
+    for p in pairs:
+        _require_pair_strings(p)
     if _rust is not None:
         packed, note = _rust.compare_mcnemar_test(pairs)
         if packed is None:
@@ -422,6 +446,7 @@ def _per_case_cost_py(r: PerCaseResult) -> float | None:
 
 def _per_case_cost(r: PerCaseResult) -> float | None:
     """Dispatch to Rust when available, else the pure-Python reference."""
+    _require_result_strings(r)
     if _rust is not None:
         return _rust.compare_per_case_cost(r)
     return _per_case_cost_py(r)
@@ -439,6 +464,7 @@ def _per_case_latency_py(r: PerCaseResult) -> float | None:
 
 def _per_case_latency(r: PerCaseResult) -> float | None:
     """Dispatch to Rust when available, else the pure-Python reference."""
+    _require_result_strings(r)
     if _rust is not None:
         return _rust.compare_per_case_latency(r)
     return _per_case_latency_py(r)
