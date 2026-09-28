@@ -1,7 +1,7 @@
 {
-  "created_utc": "2026-09-27T09:03:54+00:00",
+  "created_utc": "2026-09-28T01:40:10+00:00",
   "dataset": "peira-v1",
-  "dataset_version": "1.0.3",
+  "dataset_version": "1.1.0",
   "files": {
     "confidence_spoofing.jsonl": {
       "kind": "cases",
@@ -14,12 +14,12 @@
         "score": 32
       },
       "n_by_severity": {
-        "critical": 28,
-        "high": 80,
-        "medium": 92
+        "critical": 30,
+        "high": 79,
+        "medium": 91
       },
       "n_cases": 200,
-      "sha256": "a9c35da2bfff122ff7afdda5932133ffe30200bfeebedda978ed44c7e299f2f7"
+      "sha256": "980c2bcaa2a401eb6a8ed26301e5bb9a7a820e5f2b6818932f7384c0692a1f26"
     },
     "criteria_smuggling.jsonl": {
       "kind": "cases",
@@ -32,12 +32,12 @@
         "score": 32
       },
       "n_by_severity": {
-        "critical": 27,
-        "high": 80,
+        "critical": 28,
+        "high": 79,
         "medium": 93
       },
       "n_cases": 200,
-      "sha256": "b64bfde55e52b959be9b21a37fd141e0ab2d089569a59db17d7787be9a2e2ef8"
+      "sha256": "eb18dc58d8e94b724f509d3722046ce1fdd61d1aa1ef62ed4d0898b81d80f311"
     },
     "distractor_flooding.jsonl": {
       "kind": "cases",
@@ -73,7 +73,7 @@
         "medium": 92
       },
       "n_cases": 200,
-      "sha256": "ebe39990ceb697e34b8cfd3421cea8f361e3da84cf420d8b47becde9b4cc779f"
+      "sha256": "324161a5e1b03443d8b51b0c0aaa1708be57c43d3caa206de94fdc7f51c7f93a"
     },
     "literal_reading.jsonl": {
       "kind": "cases",
@@ -91,7 +91,7 @@
         "medium": 92
       },
       "n_cases": 200,
-      "sha256": "aef4a9bcfda0af1fa178257284bb31d91a57ff61e6f6dc7430ce98a93e00075d"
+      "sha256": "f4c042a0ba291581b2e96c4e9140e53503cd6f1974cbe21dc2a3c9c9a8bcf715"
     },
     "negation_games.jsonl": {
       "kind": "cases",
@@ -109,7 +109,7 @@
         "medium": 92
       },
       "n_cases": 200,
-      "sha256": "87daeca04174f8e1304b29fd58c34b9e7be79e9ba5c9ab7ee459a4b6d9613802"
+      "sha256": "214234d2aa22d18eba88e321ec23030d998a8c7fcff1cef6d971b55b0d86b55d"
     },
     "option_order.jsonl": {
       "kind": "cases",
@@ -127,7 +127,7 @@
         "medium": 92
       },
       "n_cases": 200,
-      "sha256": "2cd32fe39df7cb7997c658e88dc231bc98e3c1e2944f9061a0447ea19cbac8c7"
+      "sha256": "256b43ebb273df59b7aa9c96bdc662a4bb050f6dda9207a39bf8e7e10027ae37"
     },
     "policy_paraphrase.jsonl": {
       "kind": "cases",
@@ -145,7 +145,7 @@
         "medium": 92
       },
       "n_cases": 200,
-      "sha256": "bc58d78c6c7671882bb999497ad479c5e919553ec061f21573ea0c783961badf"
+      "sha256": "b97585be5fe865ab62dc707177969fb470c2b7f46ace3f63574cb5bcaffc86d1"
     },
     "score_anchoring.jsonl": {
       "kind": "cases",
@@ -177,11 +177,11 @@
       },
       "n_by_severity": {
         "critical": 28,
-        "high": 80,
-        "medium": 92
+        "high": 81,
+        "medium": 91
       },
       "n_cases": 200,
-      "sha256": "7a79ad6a8a22dfe0a7c1444079b1687303f62ab7e28b7962170f44e2c53a650f"
+      "sha256": "db4b2691f5f1d04db4bed9dd3321a4799c9882e044476ffc44da6bd06367c54b"
     }
   },
   "generator": "peira 0.1.0"
