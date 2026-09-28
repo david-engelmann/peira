@@ -32,7 +32,7 @@ def _make_artifact(adapter_name="test-adapter", **overrides):
         "env": env,
         "env_sha256": env_sha256,
         "results": [],
-        "metrics": {},
+        "metrics": {"ranking_eligible": True, "eligibility_notes": []},
     }
     fields.update(overrides)
     artifact = RunArtifact(**fields)
@@ -273,6 +273,24 @@ class TestQualifiesForLeaderboard(unittest.TestCase):
         qualifies, reason = qualifies_for_leaderboard(art)
         self.assertFalse(qualifies)
         self.assertIn("pinned", reason)
+
+    def test_rejects_ranking_ineligible(self):
+        art = _make_artifact(
+            metrics={
+                "ranking_eligible": False,
+                "eligibility_notes": ["benign accuracy below 0.5"],
+            }
+        )
+        qualifies, reason = qualifies_for_leaderboard(art)
+        self.assertFalse(qualifies)
+        self.assertIn("ranking-ineligible", reason)
+        self.assertIn("benign accuracy below 0.5", reason)
+
+    def test_rejects_missing_eligibility(self):
+        art = _make_artifact(metrics={})
+        qualifies, reason = qualifies_for_leaderboard(art)
+        self.assertFalse(qualifies)
+        self.assertIn("ranking-ineligible", reason)
 
 
 if __name__ == "__main__":

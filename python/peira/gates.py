@@ -20,7 +20,7 @@ from typing import Any
 
 from peira._rust import _impl as _rust
 from peira.dataset import iter_case_lines
-from peira.schema import CANONICAL_FAMILIES, validate_case_dict
+from peira.schema import GATE_KNOWN_IDS, validate_case_dict
 
 
 @dataclass
@@ -136,7 +136,7 @@ def _gate_families_py(valid_cases) -> GateResult:
     """G4: every case uses a canonical attack-family id."""
     r = GateResult("G4", "families")
     for path, lineno, case in valid_cases:
-        if case["family"] not in CANONICAL_FAMILIES:
+        if case["family"] not in GATE_KNOWN_IDS:
             r.errors.append(f"{path.name}:{lineno}: unknown family "
                             f"{case['family']!r} (see docs/Taxonomy.md)")
     return r
@@ -147,7 +147,7 @@ def gate_families(valid_cases) -> GateResult:
     if _rust is not None:
         try:
             packed = _rust.gates_families(
-                _to_rust_gate_cases(valid_cases), list(CANONICAL_FAMILIES)
+                _to_rust_gate_cases(valid_cases), list(GATE_KNOWN_IDS)
             )
             return _from_rust_gate_result(packed)
         except (TypeError, ValueError):

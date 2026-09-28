@@ -227,6 +227,34 @@ def _write_final_artifact(out_dir: Path, slug: str, suite: str,
     return out_path
 
 
+def parse_family_filter(value: str | None) -> list[str] | None:
+    """Parse a --families argument into validated family ids.
+
+    Returns None when no filter was given. Raises ValueError listing
+    the unknown ids (with the canonical list) otherwise.
+    """
+    if value is None or not value.strip():
+        return None
+    from peira.families import FAMILIES, FAMILY_IDS
+    from peira.schema import SUITE_IDS
+
+    wanted = [part.strip() for part in value.split(",")]
+    wanted = [w for w in wanted if w]
+    unknown = [w for w in wanted if w not in FAMILIES]
+    if unknown:
+        hint = ""
+        if any(w in SUITE_IDS for w in unknown):
+            hint = (" (safety_policy is a suite, not an attack family: "
+                    "use --suite safety-policy instead of --families)")
+        known = ", ".join(FAMILY_IDS)
+        raise ValueError(
+            f"unknown famil(ies): {', '.join(unknown)} "
+            f"(known families: {known}){hint}"
+        )
+    # Dedupe, preserving order: "--families a,a" means ["a"].
+    return list(dict.fromkeys(wanted))
+
+
 def cmd_run(args: argparse.Namespace) -> int:
     root = _repo_root()
     try:
@@ -257,6 +285,24 @@ def cmd_run(args: argparse.Namespace) -> int:
     if not cases:
         print(f"error: no cases found in {suite_dir}", file=sys.stderr)
         return EXIT_USER_ERROR
+    try:
+        wanted_families = parse_family_filter(getattr(args, "families", None))
+    except ValueError as e:
+        print(f"error: {e}", file=sys.stderr)
+        return EXIT_USER_ERROR
+    # The ranking gate is evaluated over the full suite's family
+    # manifest: capture it BEFORE the --families filter, and pass it to
+    # run_suite, so a subset run marks the missing families absent
+    # (ranking-ineligible, exit 3) instead of silently redefining the
+    # gate around the subset. Dropping a weak family can never improve
+    # a rank.
+    suite_families = sorted({c.family for c in cases})
+    if wanted_families is not None:
+        cases = [c for c in cases if c.family in wanted_families]
+        if not cases:
+            print(f"error: --families matched no cases in {suite_dir}",
+                  file=sys.stderr)
+            return EXIT_USER_ERROR
     if isinstance(adapter, MockAdapter):
         # The mock is a test double: its simulation script is built
         # explicitly here by the harness from the loaded cases — never
@@ -289,7 +335,7 @@ def cmd_run(args: argparse.Namespace) -> int:
               f"(got {args.call_timeout})", file=sys.stderr)
         return EXIT_USER_ERROR
     for flag in ("rlimit_cpu_seconds", "rlimit_as_mb", "rlimit_fsize_mb"):
-        value = getattr(args, flag)
+        value = getattr(args, flag, None)
         if value is not None and value <= 0:
             print(f"error: --{flag.replace('_', '-')} must be > 0 "
                   f"(got {value})", file=sys.stderr)
@@ -353,15 +399,16 @@ def cmd_run(args: argparse.Namespace) -> int:
             progress=progress, already_done=already_done,
             prior_results=prior_results, partial_path=partial_path,
             manifest_sha256=manifest_sha256, seed=args.seed,
+            required_families=suite_families,
             max_concurrency=args.max_concurrency,
             max_attempts=args.max_attempts,
             call_timeout=args.call_timeout,
             cache_dir=args.cache_dir,
             transcript_path=args.transcript,
             run_nonce=run_nonce,
-            rlimit_cpu_seconds=args.rlimit_cpu_seconds,
-            rlimit_as_mb=args.rlimit_as_mb,
-            rlimit_fsize_mb=args.rlimit_fsize_mb,
+            rlimit_cpu_seconds=getattr(args, "rlimit_cpu_seconds", None),
+            rlimit_as_mb=getattr(args, "rlimit_as_mb", None),
+            rlimit_fsize_mb=getattr(args, "rlimit_fsize_mb", None),
         )
     except KeyboardInterrupt:
         print("\ninterrupted — partial run saved; re-run with --resume.",
@@ -969,6 +1016,84 @@ def cmd_runs_list(args: argparse.Namespace) -> int:
     return EXIT_OK
 
 
+def cmd_family_summary(args: argparse.Namespace) -> int:
+    """Print the adapter x family ASR matrix from the run registry.
+
+    Rows are keyed on (adapter, version, suite, dataset version); when
+    several runs share a key, the latest run wins.
+    """
+    from peira.families import FAMILY_IDS, display_name
+    from peira.runs_registry import get_family_results
+
+    runs_dir = Path(args.runs_dir) if args.runs_dir else None
+    # get_family_results rebuilds the index when stale; no explicit
+    # scan needed here.
+    rows = get_family_results(
+        runs_dir,
+        adapter=args.adapter,
+        suite=args.suite,
+        dataset_version=args.dataset_version,
+    )
+    if not rows:
+        print("No family results found in the registry.")
+        return EXIT_OK
+
+    # One entry per (name, version, suite, dataset version); families
+    # in canonical order, then any non-registry families the data
+    # happens to carry. Rows arrive latest-created_utc-last, so
+    # repeated runs collapse to the newest one.
+    adapters: dict[tuple[str, str, str, str], dict[str, dict]] = {}
+    seen_families: list[str] = []
+    for row in rows:
+        key = (row["adapter_name"] or "", row["adapter_version"] or "",
+               row["suite"] or "", row["dataset_version"] or "")
+        cell = adapters.setdefault(key, {})
+        fam = row["family"]
+        cell[fam] = row
+        if fam not in seen_families:
+            seen_families.append(fam)
+    families = [f for f in FAMILY_IDS if f in seen_families]
+    families += [f for f in seen_families if f not in FAMILY_IDS]
+    headers = [display_name(f) for f in families]
+
+    def cell_text(cell: dict | None) -> str:
+        if cell is None:
+            return "n/a"
+        asr = cell["asr"]
+        if asr is None or isinstance(asr, bool):
+            return "n/a"
+        try:
+            return f"{float(asr):.2f}"
+        except (TypeError, ValueError):
+            return "n/a"
+
+    def row_label(key: tuple[str, str, str, str]) -> str:
+        name, version, suite, ds_version = key
+        label = f"{name} {version}".strip()
+        detail = f"{suite} {ds_version}".strip()
+        return f"{label} [{detail}]" if detail else label
+
+    adapter_width = max(
+        [len(row_label(k)) for k in adapters] + [7]
+    )
+    col_width = max([len(h) for h in headers] + [7])
+    header = f"{'Adapter':<{adapter_width}} " + " ".join(
+        f"{h:<{col_width}}" for h in headers
+    )
+    print(header)
+    print("-" * len(header))
+    for key in sorted(adapters):
+        cells = [cell_text(adapters[key].get(f)) for f in families]
+        print(
+            f"{row_label(key):<{adapter_width}} "
+            + " ".join(f"{c:<{col_width}}" for c in cells)
+        )
+    print(f"\n{len(adapters)} adapter run(s), {len(families)} famil(ies); "
+          f"n/a = withheld (below sufficiency floors); latest run wins "
+          f"per adapter/version/suite/dataset.")
+    return EXIT_OK
+
+
 def cmd_runs_verify(args: argparse.Namespace) -> int:
     """Verify analysis locks for run artifacts."""
     from peira.runs_registry import verify_runs
@@ -1286,6 +1411,16 @@ def build_parser() -> argparse.ArgumentParser:
     r.add_argument("--suite", default="trial-demo",
                    choices=list(SUITE_DIRS) + ["smoke"],
                    help="smoke is an alias for trial")
+    families_arg = r.add_argument("--families", default=None,
+                   help="comma-separated family ids: run only cases from "
+                   "these attack families (default: all families in the suite; "
+                   "an empty value also means all). Subset runs are marked "
+                   "ranking-ineligible (exit 3): the ranking gate always "
+                   "covers the full suite.")
+    # Effective default is "all families"; surface it in the generated
+    # CLI reference (scripts/gen_cli_reference.py renders display_default
+    # verbatim instead of the argparse default).
+    families_arg.display_default = "all"
     r.add_argument("--out", default="runs")
     r.add_argument("--dry-run", action="store_true", help="validate config without scoring")
     r.add_argument("--json-progress", action="store_true", help="machine-readable progress on stdout")
@@ -1376,6 +1511,28 @@ def build_parser() -> argparse.ArgumentParser:
     rv = rsub.add_parser("verify", help="verify analysis locks")
     rv.add_argument("paths", nargs="+", help="artifact paths to verify")
     rv.set_defaults(func=cmd_runs_verify)
+
+    fs = sub.add_parser(
+        "family-summary",
+        help="adapter x family ASR matrix from the run registry "
+        "(latest run wins per adapter/version/suite/dataset)",
+    )
+    fs_runs_dir = fs.add_argument("--runs-dir", default=None,
+                    help="runs directory (default: ./runs or $PEIRA_RUNS_DIR)")
+    fs_runs_dir.display_default = "`./runs`"
+    fs_adapter = fs.add_argument("--adapter", default=None,
+                    help="filter by adapter name")
+    fs_adapter.display_default = "all"
+    fs_suite = fs.add_argument("--suite", default=None,
+                    help="filter by suite")
+    fs_suite.display_default = "all"
+    fs_dataset = fs.add_argument("--dataset-version", default=None,
+                    help="filter by dataset version")
+    fs_dataset.display_default = "all"
+    # display_default: the effective defaults (None = no filter, i.e. all
+    # values) rendered verbatim by scripts/gen_cli_reference.py so the
+    # generated CLI reference shows accurate defaults.
+    fs.set_defaults(func=cmd_family_summary)
 
     d = sub.add_parser("dataset", help="dataset build tooling")
     dsub = d.add_subparsers(dest="dataset_command", required=True)

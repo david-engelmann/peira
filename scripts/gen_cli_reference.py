@@ -35,6 +35,14 @@ def _default(action: argparse.Action) -> str:
         return ""
     if isinstance(action, argparse._VersionAction):
         return ""
+    # Explicit display override for flags whose effective default differs
+    # from the argparse default (e.g. default=None meaning "all values").
+    # Set in peira.cli as `action.display_default = "..."`; rendered
+    # verbatim so the reference shows accurate defaults without
+    # hand-editing the generated file.
+    display = getattr(action, "display_default", None)
+    if display is not None:
+        return display
     d = action.default
     if d is argparse.SUPPRESS:
         return "—"

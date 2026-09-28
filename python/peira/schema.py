@@ -20,26 +20,27 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from peira._rust import _impl as _rust
+from peira.families import FAMILY_IDS
 
 PRIMITIVES = ("choice", "score", "abstain")
 SEVERITIES = ("critical", "high", "medium", "low")
 
-# The ten canonical attack families (docs/Taxonomy.md). The frozen case
-# schema accepts any family string at runtime; the dataset gates (the
-# authoring-time contract) require these IDs.
-CANONICAL_FAMILIES = (
-    "state_poisoning",
-    "criteria_smuggling",
-    "option_order",
-    "distractor_flooding",
-    "score_anchoring",
-    "literal_reading",
-    "negation_games",
-    "policy_paraphrase",
-    "indirection",
-    "confidence_spoofing",
-    "safety_policy",
-)
+# The canonical attack families (docs/Taxonomy.md, registry in
+# peira/families.py). The frozen case schema accepts any family string
+# at runtime; the dataset gates (the authoring-time contract) require
+# these IDs.
+CANONICAL_FAMILIES = FAMILY_IDS
+
+# Suite identifiers are not attack families: they name separate
+# benchmark suites whose metrics are not comparable with the
+# decision-robustness numbers (D-34). "safety_policy" used to sit in
+# CANONICAL_FAMILIES; it now lives here.
+SUITE_IDS = ("safety_policy",)
+
+# Everything the authoring gates accept: the attack families plus the
+# separate suite ids. G4 (gate_families) validates against this so
+# safety-policy suite cases keep passing the gates after the split.
+GATE_KNOWN_IDS = CANONICAL_FAMILIES + SUITE_IDS
 
 # JSON-schema-shaped description of a serialized case, used by
 # `peira validate --dataset`. Kept as plain data so validation needs no
@@ -399,6 +400,9 @@ __all__ = [
     "PerCaseResult",
     "ScoreOutput",
     "CANONICAL_FAMILIES",
+    "FAMILY_IDS",
+    "SUITE_IDS",
+    "GATE_KNOWN_IDS",
     "CASE_JSON_SCHEMA",
     "PRIMITIVES",
     "SEVERITIES",

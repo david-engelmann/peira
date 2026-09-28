@@ -25,6 +25,7 @@ run a suite through an adapter
 |---|---|---|---|
 | `--adapter` |  | `'mock'` | 'mock', or a dotted path: package.module (with a top-level `adapter`), package.module:ClassName, or package.module.ClassName. Only load adapter paths you trust: the module is imported — and therefore executed — with the working directory first on sys.path |
 | `--suite` |  | `'trial-demo'` | smoke is an alias for trial (choices: `safety-policy`, `smoke`, `trial`, `trial-demo`, `v1`) |
+| `--families` |  | all | comma-separated family ids: run only cases from these attack families (default: all families in the suite; an empty value also means all). Subset runs are marked ranking-ineligible (exit 3): the ranking gate always covers the full suite. |
 | `--out` |  | `'runs'` |  |
 | `--dry-run` |  | `False` | validate config without scoring |
 | `--json-progress` |  | `False` | machine-readable progress on stdout |
@@ -103,6 +104,17 @@ verify analysis locks
 | Flag | Required | Default | Help |
 |---|---|---|---|
 | `PATHS` | yes | — | artifact paths to verify |
+
+## peira family-summary
+
+adapter x family ASR matrix from the run registry (latest run wins per adapter/version/suite/dataset)
+
+| Flag | Required | Default | Help |
+|---|---|---|---|
+| `--runs-dir` |  | `./runs` | runs directory (default: ./runs or $PEIRA_RUNS_DIR) |
+| `--adapter` |  | all | filter by adapter name |
+| `--suite` |  | all | filter by suite |
+| `--dataset-version` |  | all | filter by dataset version |
 
 ## peira dataset
 

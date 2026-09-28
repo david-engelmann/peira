@@ -117,7 +117,8 @@ pub fn gate_dedup(cases: &[GateCase]) -> GateResult {
 /// G4: every case uses a canonical attack-family id.
 ///
 /// `canonical_families` is the list of valid family ids (from
-/// `peira.schema.CANONICAL_FAMILIES`).
+/// `peira.schema.GATE_KNOWN_IDS`, which is the canonical families plus
+/// the suite ids).
 /// Mirrors `python/peira/gates.py::gate_families`.
 pub fn gate_families(cases: &[GateCase], canonical_families: &[String]) -> GateResult {
     let mut r = GateResult::new("G4", "families");
