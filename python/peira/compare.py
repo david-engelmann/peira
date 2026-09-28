@@ -187,6 +187,7 @@ def validate_no_weighted_mcnemar(report: dict) -> list[str]:
         if isinstance(node, dict):
             name = node.get("name")
             if isinstance(name, str) and _is_weighted(name):
+                # Check direct p-value keys and nested dicts (e.g. "stats": {"p_value": ...})
                 for k in p_keys:
                     if node.get(k) is not None:
                         violations.append(
@@ -194,6 +195,25 @@ def validate_no_weighted_mcnemar(report: dict) -> list[str]:
                             f"{k}={node[k]!r} — McNemar is unweighted by "
                             f"construction; use paired-bootstrap inference"
                         )
+                for k, v in node.items():
+                    if isinstance(v, dict):
+                        for pk in p_keys:
+                            if v.get(pk) is not None:
+                                violations.append(
+                                    f"{path}.{k}: weighted metric {name!r} carries "
+                                    f"nested {pk}={v[pk]!r} — McNemar is unweighted by "
+                                    f"construction; use paired-bootstrap inference"
+                                )
+            # Metric-name-as-key shape: {"severity_weighted_asr": {"p_value": 0.01}}
+            for k, v in node.items():
+                if isinstance(k, str) and _is_weighted(k) and isinstance(v, dict):
+                    for pk in p_keys:
+                        if v.get(pk) is not None:
+                            violations.append(
+                                f"{path}.{k}: weighted metric {k!r} carries "
+                                f"{pk}={v[pk]!r} — McNemar is unweighted by "
+                                f"construction; use paired-bootstrap inference"
+                            )
             for k, v in node.items():
                 # The top-level "mcnemar" block is the unweighted
                 # headline test, not a weighted metric.
