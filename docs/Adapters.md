@@ -105,7 +105,7 @@ safe/benign → `allow`; unsafe/malicious → `block`, or
 ShieldGemma) using the category slugs in
 `dataset/safety-policy/SPEC.md` §2. Policy-adaptive Shieldstral
 judges the content against the safety policy stated in the case prompt
-(violation → `block`, otherwise `allow`). Confidence stays `|2p − 1|`
+(violation → `block`, otherwise `allow`). Self-reported confidence stays `|2p − 1|`
 on every primitive. ASR on this suite therefore reads as the
 *attacker's* success rate (evasion + false-positive induction). Lower
 is better; the inverse of the D-23 detection-rate reading on the
@@ -160,10 +160,12 @@ fixed list. Temperature
 0, pinned seed where the provider supports one (Anthropic has no seed
 parameter).
 
-Confidence is the model's **verbalized** confidence plus the
-decision-token logprob where the provider exposes one (Anthropic
-exposes none). Verbalized confidence is uncalibrated until measured;
-peira reports it, it does not vouch for it. See D-22, D-23.
+Confidence is the model's **self-reported** confidence: verbalized
+confidence plus the decision-token logprob where the provider exposes
+one (Anthropic exposes none). Self-reported confidence is uncalibrated
+until measured; peira reports it, it does not vouch for it. Every
+public label says "self-reported confidence" so no reader mistakes the
+adapter's number for a calibrated probability. See D-22, D-23.
 
 Refusals become abstentions with a reason, never silent: provider stop
 reason first, then a refusal-prefix scan. If the output validates

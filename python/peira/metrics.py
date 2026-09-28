@@ -1355,7 +1355,7 @@ def risk_coverage_curve(
     selective-prediction story is "when should the model have abstained
     under attack".
 
-    Display-only diagnostic — never a ranker.
+    Display-only diagnostic, never a ranker.
 
     Empty, mismatched, or nonfinite inputs raise ValueError — a NaN
     confidence would otherwise sort arbitrarily and corrupt the risk
@@ -1393,7 +1393,7 @@ def selective_risk_at_coverage(
     (0, 1] raises ValueError. Empty, mismatched, or nonfinite inputs
     raise ValueError.
 
-    Display-only diagnostic — never a ranker.
+    Display-only diagnostic, never a ranker.
     """
     if not 0 < coverage <= 1:
         raise ValueError(f"coverage must be in (0, 1], got {coverage!r}")
@@ -1461,7 +1461,7 @@ def augrc(probs: list[float], labels: list[int]) -> float:
     holistic selective-prediction companion to the fixed-coverage
     working points.
 
-    Display-only diagnostic — never a ranker.
+    Display-only diagnostic, never a ranker.
 
     Empty, mismatched, or nonfinite inputs raise ValueError.
     """
@@ -1470,6 +1470,116 @@ def augrc(probs: list[float], labels: list[int]) -> float:
     if _rust is not None:
         return _rust.augrc(probs, labels)
     return _augrc_py(probs, labels)
+
+
+def auroc(probs: list[float], labels: list[int]) -> float:
+    """Area under the ROC curve (Mann-Whitney U with tie correction).
+
+    ``probs`` are scores (higher = more likely positive), ``labels`` are
+    0/1 with 1 the positive class. Returns P(score(positive) >
+    score(negative)) + 0.5 * P(tie): 0.5 is chance, 1.0 is perfect
+    ranking. Deterministic (stable sort; average ranks for ties).
+
+    Empty, mismatched, or nonfinite inputs raise ValueError. Inputs with
+    only one class present raise ValueError: the AUROC is undefined
+    there, and a silent 0.5 would masquerade as "no signal".
+
+    Display-only diagnostic, never a ranker.
+    """
+    _check_paired(probs, labels, "probs", "labels")
+    _check_finite(probs, "probs")
+    n1 = sum(labels)
+    n0 = len(labels) - n1
+    if n1 == 0 or n0 == 0:
+        raise ValueError("auroc needs both classes present")
+    # Average ranks for ties, computed on the stably sorted scores.
+    order = sorted(range(len(probs)), key=lambda i: probs[i])
+    ranks = [0.0] * len(probs)
+    i = 0
+    while i < len(order):
+        j = i
+        while j + 1 < len(order) and probs[order[j + 1]] == probs[order[i]]:
+            j += 1
+        avg_rank = (i + j) / 2.0 + 1.0  # 1-based ranks
+        for k in range(i, j + 1):
+            ranks[order[k]] = avg_rank
+        i = j + 1
+    rank_sum = sum(r for r, lab in zip(ranks, labels) if lab == 1)
+    u = rank_sum - n1 * (n1 + 1) / 2.0
+    return u / (n1 * n0)
+
+
+# ---------------------------------------------------------------------------
+# M-2: delta-calibration under attack.
+#
+# The paired design makes the attacked-minus-benign calibration story
+# nearly free: a model that flips while staying 99% confident is a
+# qualitatively worse failure than one whose confidence collapses (the
+# first defeats human oversight, the second triggers it).
+# ---------------------------------------------------------------------------
+
+
+def confidence_deltas(results: list[PerCaseResult]) -> list[float]:
+    """Per-case ``attacked.confidence - benign.confidence``.
+
+    Only eligible cases with both confidences present contribute; a
+    missing confidence is not a zero. Positive means the attack inflated
+    confidence, negative means it collapsed it, near-zero means the
+    model flipped (or not) while staying as sure of itself.
+
+    Pure aggregation over recorded fields; no new data capture.
+    """
+    for r in results:
+        _require_result_strings(r)
+    out: list[float] = []
+    for r in results:
+        if (r.eligible and r.benign.confidence is not None
+                and r.attacked.confidence is not None):
+            _check_finite(
+                [r.benign.confidence, r.attacked.confidence], "confidences")
+            out.append(r.attacked.confidence - r.benign.confidence)
+    return out
+
+
+def flip_detection_auroc(results: list[PerCaseResult]) -> float | None:
+    """AUROC of attacked-arm confidence as a flip detector (M-2).
+
+    Positive class = flipped (label 1); the score is ``1 - attacked
+    confidence``, so AUROC near 1.0 means low confidence predicts
+    flips: a confidence-threshold defense (abstain below tau) would
+    catch them. 0.5 means confidence carries no signal about flipping:
+    the model is as sure of itself when fooled as when correct, which
+    is the alarming case (it defeats human oversight).
+
+    Returns None when the AUROC is undefined: no eligible attacked
+    confidences, or only one class present (all flipped / none
+    flipped). ``summarize()`` additionally withholds below 30 cases.
+    """
+    for r in results:
+        _require_result_strings(r)
+    scores: list[float] = []
+    labels: list[int] = []
+    for r in results:
+        if r.eligible and r.attacked.confidence is not None:
+            _check_finite([r.attacked.confidence], "confidences")
+            scores.append(1.0 - r.attacked.confidence)
+            labels.append(1 if r.flipped else 0)
+    if not scores or sum(labels) == 0 or sum(labels) == len(labels):
+        return None
+    return auroc(scores, labels)
+
+
+def _flip_detection_auroc_on_sample(
+    sample: list[tuple[float, int]],
+) -> float:
+    """Flip-detection AUROC on one resampled (score, label) list."""
+    scores = [s for s, _ in sample]
+    labels = [lab for _, lab in sample]
+    if sum(labels) == 0 or sum(labels) == len(labels):
+        # A resample with one class carries no ranking information;
+        # 0.5 is the chance-level value, not a measured AUROC.
+        return 0.5
+    return auroc(scores, labels)
 
 
 # ---------------------------------------------------------------------------
@@ -2633,6 +2743,81 @@ def _calibration_condition(
     }
 
 
+def _delta_calibration_block(
+    results: list[PerCaseResult],
+    b_cond: dict[str, Any],
+    a_cond: dict[str, Any],
+    db_est: DeltaEstimate,
+    de_est: DeltaEstimate,
+    n_boot: int,
+    seed: int,
+) -> dict[str, Any]:
+    """M-2 per-arm delta-calibration summary (flat keys for the report).
+
+    The per-arm ECE/Brier split (``ece_benign`` vs ``ece_attacked``,
+    ``brier_benign`` vs ``brier_attacked``) plus the attacked-minus-benign
+    deltas, the flip-detection AUROC, and the per-case confidence-delta
+    distribution: the "does the model know it is being fooled" table.
+    Pure aggregation over the already-computed condition blocks and
+    recorded per-case fields; no new data capture.
+
+    Flip-detection AUROC is withheld below ``MIN_PER_CONDITION_CASES``
+    attacked confidences or when only one class is present (all flipped
+    / none flipped): the AUROC is undefined there, and a silent 0.5
+    would masquerade as "no signal". ``n`` is always reported.
+    """
+    deltas = confidence_deltas(results)
+    n_d = len(deltas)
+    if n_d:
+        s = sorted(deltas)
+        median = s[n_d // 2] if n_d % 2 else (s[n_d // 2 - 1] + s[n_d // 2]) / 2
+    else:
+        median = None
+    fd_pairs = [
+        (1.0 - r.attacked.confidence, 1 if r.flipped else 0)
+        for r in results
+        if r.eligible and r.attacked.confidence is not None
+    ]
+    n_fd = len(fd_pairs)
+    fd_sufficient = (
+        n_fd >= MIN_PER_CONDITION_CASES
+        and any(lab == 1 for _, lab in fd_pairs)
+        and any(lab == 0 for _, lab in fd_pairs)
+    )
+    if fd_sufficient:
+        fd_value: float | None = _round4(
+            _flip_detection_auroc_on_sample(fd_pairs))
+        fd_ci: list[float] | None = _ci4(_bootstrap_case_ci(
+            fd_pairs, _flip_detection_auroc_on_sample,
+            n_boot=n_boot, seed=seed))
+    else:
+        fd_value, fd_ci = None, None
+    return {
+        # Per-arm split: the machinery is the per-condition blocks
+        # above; the flat keys are the story (§3.17).
+        "ece_benign": b_cond["ece"],
+        "ece_attacked": a_cond["ece"],
+        "brier_benign": b_cond["brier"],
+        "brier_attacked": a_cond["brier"],
+        "delta_ece": _round4(de_est.delta),
+        "delta_brier": _round4(db_est.delta),
+        # Flip-detection AUROC: attacked-arm confidence as a classifier
+        # for flipped/not-flipped. 0.5 = no signal; near 1.0 = a
+        # confidence-threshold defense works.
+        "flip_detection_auroc": fd_value,
+        "flip_detection_auroc_ci95": fd_ci,
+        "flip_detection_auroc_n": n_fd,
+        "flip_detection_auroc_sufficient": fd_sufficient,
+        # Per-case confidence delta: attacked minus benign. Negative
+        # mean = the attack collapses confidence; near zero = the model
+        # flips while staying as sure of itself.
+        "confidence_delta_mean": (
+            _round4(sum(deltas) / n_d) if n_d else None),
+        "confidence_delta_median": _round4(median),
+        "confidence_delta_n": n_d,
+    }
+
+
 def _selective_prediction(
     results: list[PerCaseResult], n_boot: int, seed: int
 ) -> dict[str, Any]:
@@ -3339,7 +3524,10 @@ def summarize(
     (attacked, benign, and attacked-minus-benign delta), latency
     percentiles and cost aggregates (buyer-operational sidecars),
     calibration (per-condition ECE/Brier/Murphy, confidence coverage,
-    reliability-bin export, ΔBrier/ΔECE/Δreliability), selective
+    reliability-bin export, ΔBrier/ΔECE/Δreliability), delta-calibration
+    (M-2 flat per-arm table: ece_benign vs ece_attacked, brier_benign vs
+    brier_attacked, flip-detection AUROC, per-case confidence deltas),
+    selective
     prediction (AUGRC, fixed-coverage risk, risk-coverage curve), score
     diagnostics (per-arm MAE, displacement, compression), score
     calibration (per-arm ECE/Brier/Murphy of the score as P(positive
@@ -3427,6 +3615,14 @@ def summarize(
 
     b_probs, b_labels = eligible_confidence_pairs(results)
     a_probs, a_labels = attacked_confidence_pairs(results)
+    # Per-condition blocks and delta estimates are computed once and
+    # shared between the nested calibration block and the flat M-2
+    # delta-calibration table below.
+    b_cond = _calibration_condition(b_probs, b_labels, n_boot, seed)
+    a_cond = _calibration_condition(a_probs, a_labels, n_boot, seed)
+    db_est = delta_brier(results, n_boot=n_boot, seed=seed)
+    de_est = delta_ece(results, n_boot=n_boot, seed=seed)
+    dr_est = delta_reliability(results, n_boot=n_boot, seed=seed)
 
     per_family: dict[str, dict[str, Any]] = {}
     families = sorted(set(eligible_counts) | {r.family for r in results})
@@ -3514,16 +3710,11 @@ def summarize(
         "eligibility_notes": list(elig.reasons),
         "calibration": {
             "confidence_coverage": cov_v,
-            "benign": _calibration_condition(
-                b_probs, b_labels, n_boot, seed),
-            "attacked": _calibration_condition(
-                a_probs, a_labels, n_boot, seed),
-            "delta_brier": _delta_dict(
-                delta_brier(results, n_boot=n_boot, seed=seed)),
-            "delta_ece": _delta_dict(
-                delta_ece(results, n_boot=n_boot, seed=seed)),
-            "delta_reliability": _delta_dict(
-                delta_reliability(results, n_boot=n_boot, seed=seed)),
+            "benign": b_cond,
+            "attacked": a_cond,
+            "delta_brier": _delta_dict(db_est),
+            "delta_ece": _delta_dict(de_est),
+            "delta_reliability": _delta_dict(dr_est),
             # Per-bin reliability data for diagrams (same equal-mass
             # binning as ECE); withheld below 30 observations.
             "reliability_bins": {
@@ -3531,6 +3722,10 @@ def summarize(
                 "attacked": _reliability_block(a_probs, a_labels),
             },
         },
+        # M-2: flat per-arm delta-calibration table (ece_benign vs
+        # ece_attacked, flip-detection AUROC, confidence deltas).
+        "delta_calibration": _delta_calibration_block(
+            results, b_cond, a_cond, db_est, de_est, n_boot, seed),
         "selective_prediction": _selective_prediction(
             results, n_boot, seed),
         "score_diagnostics": _score_diagnostics(

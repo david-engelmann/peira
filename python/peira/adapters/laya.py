@@ -243,6 +243,9 @@ class LayaAdapter:
 
     name = "laya"
     supported_primitives = frozenset({"choice", "score", "abstain"})
+    # M-2: confidence comes from the API's per-answer probabilities,
+    # like Jev: a model-output probability, not a verbalization.
+    confidence_source = "token-logprob"
 
     def __init__(
         self,
