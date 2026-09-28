@@ -1050,7 +1050,14 @@ fn output_fields_to_value(output: &Bound<'_, PyAny>) -> PyResult<Value> {
         // wrapper does not catch). Reject both shapes with TypeError so
         // the wrapper falls back to the reference, keeping exact
         // dispatcher parity with minimal Rust change.
-        let known = ["model", "tokens_in", "tokens_out", "latency_ms", "cost_usd", "price_table_ref"];
+        let known = [
+            "model",
+            "tokens_in",
+            "tokens_out",
+            "latency_ms",
+            "cost_usd",
+            "price_table_ref",
+        ];
         let fields = usage.getattr("__dataclass_fields__")?;
         let dict = fields.cast::<PyDict>().map_err(|_| {
             PyTypeError::new_err(
