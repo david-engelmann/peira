@@ -798,7 +798,7 @@ no reference: {_num(sd_skipped.get('no_reference'))})</p>"""
         shares = shares if isinstance(shares, dict) else {}
         order = (
             "deny-to-approve", "approve-to-deny", "to-abstain",
-            "to-malformed", "score-shifted", "none",
+            "to-malformed", "score-shifted", "other", "none",
         )
         dir_rows = "\n".join(
             f"<tr><td>{e(d)}</td><td>{_num(counts.get(d))}</td>"

@@ -1233,11 +1233,16 @@ def _summarize_artifact(
         None
         if cases is None
         else {
-            c.case_id: getattr(getattr(c, "attacked", None),
-                               "target_decision", None)
+            c.case_id: t
             for c in cases
+            if (t := getattr(getattr(c, "attacked", None),
+                             "target_decision", None)) is not None
         }
     )
+    # None-valued entries are dropped: a mapping of all-Nones would
+    # otherwise masquerade as "targets provided" and report a 0.0 hit
+    # rate instead of the honest unavailable. An empty mapping lets
+    # summarize() report the target-hit rate as unavailable.
     return _metrics_summarize(
         results,
         required_families=required_families,
