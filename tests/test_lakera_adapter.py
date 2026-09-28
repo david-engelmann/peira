@@ -256,5 +256,172 @@ class TestLakeraErrors(unittest.TestCase):
         self.assertEqual(cm.exception.status_code, 422)
 
 
+class TestLakeraHttpTransport(unittest.TestCase):
+    """Exercise the real stdlib transport with a mocked urlopen.
+
+    The P1 gap: every other test injects a fake transport, so the
+    urllib request-building, header, status-classification, and
+    body-parsing code had zero coverage.
+    """
+
+    def _adapter(self):
+        # Bypass __init__'s transport default only to reach the real
+        # _http_transport; urlopen itself is mocked below.
+        return LakeraAdapter(api_key="k")
+
+    def _mock_urlopen(self, *, status=200, body=b'{"flagged": false}',
+                      headers=None, error=None):
+        import urllib.request
+        from unittest import mock
+
+        class FakeHeaders(dict):
+            def get(self, k, d=None):
+                return super().get(k, d)
+
+        class FakeResp:
+            def __init__(self):
+                self.status = status
+                self.headers = FakeHeaders(headers or {})
+
+            def read(self):
+                return body
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *a):
+                return False
+
+        if error is not None:
+            return mock.patch.object(urllib.request, "urlopen",
+                                     side_effect=error)
+        return mock.patch.object(urllib.request, "urlopen",
+                                 return_value=FakeResp())
+
+    def test_request_shape_and_headers(self):
+        import urllib.request
+        from unittest import mock
+        seen = {}
+
+        class FakeResp:
+            status = 200
+
+            def __init__(self):
+                self.headers = {}
+
+            def read(self):
+                return b'{"flagged": false}'
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *a):
+                return False
+
+        def fake_urlopen(req, timeout=None):
+            seen["req"] = req
+            seen["timeout"] = timeout
+            return FakeResp()
+
+        a = self._adapter()
+        with mock.patch.object(urllib.request, "urlopen", fake_urlopen):
+            out = a._http_transport({"messages": [], "breakdown": True})
+        req = seen["req"]
+        self.assertEqual(req.full_url, API_URL)
+        self.assertEqual(req.get_header("Content-type"), "application/json")
+        self.assertEqual(req.get_header("Authorization"), "Bearer k")
+        self.assertEqual(seen["timeout"], 60.0)
+        import json
+        self.assertEqual(json.loads(req.data),
+                         {"messages": [], "breakdown": True})
+        self.assertFalse(out["flagged"])
+        self.assertIn("_latency_ms", out)
+
+    def test_401_is_terminal(self):
+        import urllib.error
+        err = urllib.error.HTTPError(API_URL, 401, "Unauthorized", {}, None)
+        with self._mock_urlopen(error=err):
+            with self.assertRaises(ProviderError) as cm:
+                self._adapter()._http_transport({})
+        self.assertEqual(cm.exception.status_code, 401)
+        self.assertIsNone(cm.exception.retry_after)
+
+    def test_422_is_terminal(self):
+        import urllib.error
+        err = urllib.error.HTTPError(API_URL, 422, "Unprocessable", {}, None)
+        with self._mock_urlopen(error=err):
+            with self.assertRaises(ProviderError) as cm:
+                self._adapter()._http_transport({})
+        self.assertEqual(cm.exception.status_code, 422)
+
+    def test_429_is_transient_with_retry_after(self):
+        import urllib.error
+        import io
+        err = urllib.error.HTTPError(
+            API_URL, 429, "Too Many Requests",
+            {"Retry-After": "30"}, io.BytesIO(b"slow down"))
+        with self._mock_urlopen(error=err):
+            with self.assertRaises(ProviderError) as cm:
+                self._adapter()._http_transport({})
+        self.assertEqual(cm.exception.status_code, 429)
+        self.assertEqual(cm.exception.retry_after, 30.0)
+
+    def test_500_is_transient(self):
+        import urllib.error
+        err = urllib.error.HTTPError(API_URL, 500, "Server Error", {}, None)
+        with self._mock_urlopen(error=err):
+            with self.assertRaises(ProviderError) as cm:
+                self._adapter()._http_transport({})
+        self.assertEqual(cm.exception.status_code, 500)
+
+    def test_urlerror_is_transient_408(self):
+        import urllib.error
+        err = urllib.error.URLError("connection refused")
+        with self._mock_urlopen(error=err):
+            with self.assertRaises(ProviderError) as cm:
+                self._adapter()._http_transport({})
+        self.assertEqual(cm.exception.status_code, 408)
+
+    def test_non_json_response_raises(self):
+        with self._mock_urlopen(body=b"not json"):
+            with self.assertRaises(ProviderError) as cm:
+                self._adapter()._http_transport({})
+        self.assertIn("non-JSON", str(cm.exception))
+
+    def test_non_object_json_raises(self):
+        with self._mock_urlopen(body=b"[1, 2, 3]"):
+            with self.assertRaises(ProviderError):
+                self._adapter()._http_transport({})
+
+    def test_custom_timeout_propagates(self):
+        import urllib.request
+        from unittest import mock
+        seen = {}
+
+        class FakeResp:
+            status = 200
+
+            def __init__(self):
+                self.headers = {}
+
+            def read(self):
+                return b'{"flagged": true}'
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *a):
+                return False
+
+        def fake_urlopen(req, timeout=None):
+            seen["timeout"] = timeout
+            return FakeResp()
+
+        a = LakeraAdapter(api_key="k", timeout_s=5.0)
+        with mock.patch.object(urllib.request, "urlopen", fake_urlopen):
+            a._http_transport({})
+        self.assertEqual(seen["timeout"], 5.0)
+
+
 if __name__ == "__main__":
     unittest.main()

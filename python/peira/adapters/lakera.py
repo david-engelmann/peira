@@ -114,12 +114,15 @@ class LakeraAdapter:
     def __init__(
         self,
         api_key: str | None = None,
-        api_url: str = API_URL,
         timeout_s: float = 60.0,
         transport: Callable[..., dict[str, Any]] | None = None,
     ) -> None:
         self._api_key = _require_api_key(api_key)
-        self.api_url = api_url
+        # The endpoint is pinned: it is part of the versioned contract
+        # (cache_namespace names it), so it is not a constructor knob.
+        # A new API version needs a new adapter revision, not a URL
+        # override at call time.
+        self.api_url = API_URL
         self.timeout_s = timeout_s
         # Injectable transport for tests: fn(payload) -> parsed response dict.
         self._transport = transport or self._http_transport
@@ -211,8 +214,12 @@ class LakeraAdapter:
         response = self._transport(payload)
         flagged = response.get("flagged")
         if not isinstance(flagged, bool):
+            # Never dump the full response: it is unbounded provider
+            # output and does not help the user act.
+            keys = sorted(response.keys()) if isinstance(response, dict) else []
             raise ProviderError(
-                f"lakera response missing boolean 'flagged': {response!r}"
+                "lakera response missing boolean 'flagged' "
+                f"(response keys: {keys})"
             )
 
         # p_malicious: the highest detector confidence from the

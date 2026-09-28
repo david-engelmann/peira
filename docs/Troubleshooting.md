@@ -48,6 +48,42 @@ accept the license on the model's HF page first. Model weights are
 cached after the first download. Revisions are pinned. A download
 failure never silently falls back to another revision.
 
+**`lakera adapter needs a Lakera API key`**
+Cause: `LAKERA_API_KEY` is not set and no `api_key=` was passed. Fix:
+`export LAKERA_API_KEY=<key>` (free Community tier: 10k requests/month
+at platform.lakera.ai), or pass `api_key=` to the adapter constructor.
+
+**`lakera API error 401 ...`**
+Cause: the API key is invalid or the account lacks Guard API access.
+Fix: check that `LAKERA_API_KEY` is valid and the account has Guard API
+access enabled. This is terminal: the runner will not retry it.
+
+**`lakera API error 422 ...`**
+Cause: the request was rejected as malformed. Fix: this is an adapter
+bug, not a retryable failure — report it. The runner will not retry it.
+
+**`lakera API error 429 ...` / `lakera API error 5xx ...`**
+Cause: rate limit or server-side failure. Fix: transient — the runner
+retries with backoff (honoring `Retry-After` up to the cap) and adapts
+concurrency. If it persists, lower `--max-concurrency`.
+
+**`lakera transport error: ...`**
+Cause: the HTTPS request never completed (DNS, connection refused,
+timeout). Fix: transient — the runner retries. Check network access to
+`api.lakera.ai` if it persists.
+
+**`lakera returned non-JSON response ...`**
+Cause: the API answered with something that is not JSON (proxy error
+page, WAF block). Fix: check for a proxy or firewall between you and
+`api.lakera.ai`; the response body is in the run transcript.
+
+**`lakera response missing boolean 'flagged' ...`**
+Cause: the API answered with JSON that lacks the documented `flagged`
+boolean (wire shape drift). Fix: the adapter's wire shape is from
+Lakera's published API docs and hasn't been exercised against the live
+API — report the response keys from the error so the adapter can be
+updated.
+
 **Out-of-memory on local models**
 Cause: the model doesn't fit in RAM/VRAM. Fix: use a quantized variant or a
 smaller adapter; see `docs/Hardware.md` for per-tier requirements.
