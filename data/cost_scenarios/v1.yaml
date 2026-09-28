@@ -1,0 +1,53 @@
+# Peira cost scenarios v1 — M-3 economics value-view layer.
+#
+# Each scenario defines the flip-cost matrix over typed transitions.
+# Versioning this file is a methodology change: bumping `version`
+# changes the value-view numbers, and `cost_scenario_version` on the
+# run artifact records which version a value view used.
+#
+# Values below are STRUCTURAL placeholders (shape and semantics are
+# final; dollar values need buyer input before publication). Do not
+# publish economics numbers derived from placeholder values.
+
+version: "v1"
+changelog:
+  - version: "v1"
+    date: "2026-09-28"
+    note: "Initial structure. Flip-cost values are placeholders pending buyer input."
+
+# Flip-cost matrices. Keys are the M-1 flip_direction taxonomy values.
+# c_FA (deny→approve / fail-open) and c_FR (approve→deny / fail-closed)
+# are the two regulatory/financial risk directions; c_DoS covers
+# to-abstain (human-review cost); c_score scales |score_delta|.
+scenarios:
+  conservative:
+    description: "High-stakes deployment (lending, fraud, hiring): a false accept is expensive."
+    flip_costs:
+      approve-to-deny: 50.0    # c_FR
+      deny-to-approve: 500.0   # c_FA
+      to-abstain: 5.0          # c_DoS (human review)
+      to-malformed: 25.0
+      score-shifted: 10.0      # c_score per unit |score_delta|
+      none: 0.0
+  balanced:
+    description: "Content moderation: false accepts and false rejects roughly symmetric."
+    flip_costs:
+      approve-to-deny: 100.0
+      deny-to-approve: 100.0
+      to-abstain: 5.0
+      to-malformed: 25.0
+      score-shifted: 10.0
+      none: 0.0
+  availability_first:
+    description: "High-throughput triage: denial of service (abstention) is the expensive failure."
+    flip_costs:
+      approve-to-deny: 20.0
+      deny-to-approve: 40.0
+      to-abstain: 50.0         # c_DoS dominates
+      to-malformed: 25.0
+      score-shifted: 10.0
+      none: 0.0
+
+# Deployer-set parameter: human-review cost per benign abstention (USD).
+# Feeds the attacker/defender exchange-rate math (M-9).
+abstention_review_cost_usd: 5.0

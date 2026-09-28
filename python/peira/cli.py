@@ -22,6 +22,7 @@ from peira.adapters.mock import MockAdapter
 from peira.artifacts import RunArtifact
 from peira.dataset import atomic_write_text, verify_manifest, verify_manifest_sealed
 from peira.metrics import PerCaseResult
+from peira.runs_registry import FLIP_DIRECTIONS
 from peira.runner import (
     SUITE_DIRS,
     load_cases,
@@ -848,14 +849,8 @@ decision cases. It does not certify a model as safe.</em></p>
     return page
 
 
-def _pval(p: float | None) -> str:
-    """Format a p-value for display; tiny values read as <0.0001.
-
-    A withheld (None) p-value, the R-07 under-10-discordant-pairs floor,
-    reads as "withheld".
-    """
-    if p is None:
-        return "withheld"
+def _pval(p: float) -> str:
+    """Format a p-value for display; tiny values read as <0.0001."""
     if p < 0.0001:
         return "<0.0001"
     return f"{p:.4f}"
@@ -1068,20 +1063,77 @@ def cmd_compare(args: argparse.Namespace) -> int:
     return EXIT_OK
 
 
-def cmd_hardness(args: argparse.Namespace) -> int:
-    """Print M-4 hardness/transfer diagnostics over >= 2 run artifacts.
+def cmd_dashboard_run(args: argparse.Namespace) -> int:
+    """Export one run artifact to dashboard-ready JSON."""
+    import json
 
-    Diagnostic only: the tables describe hardness shape and transfer;
-    they never rank adapters.
-    """
-    from peira.hardness import analyze_runs, report_text
+    from peira.dashboard import run_to_dashboard
 
-    if len(args.runs) < 2:
-        print("error: hardness needs at least 2 run artifacts",
+    run_path = Path(args.run)
+    if not run_path.exists():
+        print(f"error: {run_path} not found", file=sys.stderr)
+        return EXIT_USER_ERROR
+    try:
+        artifact = RunArtifact.from_json(run_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as e:
+        print(f"error: {run_path} is not a valid run artifact ({e})",
               file=sys.stderr)
         return EXIT_USER_ERROR
+    if not artifact.verify():
+        print("warning: analysis lock mismatch: artifact was modified after sealing.",
+              file=sys.stderr)
+    payload = run_to_dashboard(artifact)
+    # Stamp the run_id from the filename (the artifact does not carry it).
+    payload["run"]["run_id"] = run_path.stem
+    out = args.out
+    text = json.dumps(payload, indent=2, sort_keys=True)
+    if out:
+        try:
+            Path(out).write_text(text, encoding="utf-8")
+        except OSError as e:
+            print(f"error: cannot write dashboard JSON to {out} ({e})",
+                  file=sys.stderr)
+            return EXIT_USER_ERROR
+        print(f"dashboard: {out}")
+    else:
+        sys.stdout.write(text + "\n")
+    return EXIT_OK
+
+
+def cmd_dashboard_leaderboard(args: argparse.Namespace) -> int:
+    """Export the cross-adapter leaderboard to dashboard-ready JSON."""
+    import json
+
+    from peira.dashboard import leaderboard
+
+    payload = leaderboard(
+        runs_dir=args.runs_dir,
+        suite=args.suite,
+        dataset_version=args.dataset_version,
+    )
+    text = json.dumps(payload, indent=2, sort_keys=True)
+    if args.out:
+        try:
+            Path(args.out).write_text(text, encoding="utf-8")
+        except OSError as e:
+            print(f"error: cannot write leaderboard JSON to {args.out} ({e})",
+                  file=sys.stderr)
+            return EXIT_USER_ERROR
+        print(f"leaderboard: {args.out}")
+    else:
+        sys.stdout.write(text + "\n")
+    return EXIT_OK
+
+
+def cmd_dashboard_compare(args: argparse.Namespace) -> int:
+    """Export a head-to-head comparison to dashboard-ready JSON."""
+    import json
+
+    from peira.compare import compare_artifacts
+    from peira.dashboard import comparison_to_dashboard
+
     artifacts = []
-    for path_str in args.runs:
+    for label, path_str in (("A", args.run_a), ("B", args.run_b)):
         path = Path(path_str)
         if not path.exists():
             print(f"error: {path} not found", file=sys.stderr)
@@ -1092,28 +1144,24 @@ def cmd_hardness(args: argparse.Namespace) -> int:
             print(f"error: {path} is not a valid run artifact ({e})",
                   file=sys.stderr)
             return EXIT_USER_ERROR
-    for art, path_str in zip(artifacts, args.runs):
-        if not art.verify():
-            print(f"warning: {path_str}: analysis lock mismatch: artifact was "
-                  f"modified after sealing.", file=sys.stderr)
-    results_by_adapter: dict[str, list] = {}
-    for art in artifacts:
-        name = art.adapter_name or "(unnamed)"
-        # Later artifacts with the same adapter name replace earlier ones;
-        # the CLI takes explicit paths, so last-wins is the least surprise.
-        results_by_adapter[name] = [PerCaseResult.from_dict(d) for d in art.results]
-    report = analyze_runs(results_by_adapter)
-    text = report_text(report)
-    sys.stdout.write(text)
-    if args.out is not None:
-        out = Path(args.out)
+    a, b = artifacts
+    try:
+        comparison = compare_artifacts(a, b, seed=args.seed)
+    except ValueError as e:
+        print(f"error: {e}", file=sys.stderr)
+        return EXIT_USER_ERROR
+    payload = comparison_to_dashboard(comparison)
+    text = json.dumps(payload, indent=2, sort_keys=True)
+    if args.out:
         try:
-            out.write_text(text, encoding="utf-8")
+            Path(args.out).write_text(text, encoding="utf-8")
         except OSError as e:
-            print(f"error: cannot write hardness report to {out} ({e})",
+            print(f"error: cannot write comparison JSON to {args.out} ({e})",
                   file=sys.stderr)
             return EXIT_USER_ERROR
-        print(f"hardness report: {out}")
+        print(f"comparison: {args.out}")
+    else:
+        sys.stdout.write(text + "\n")
     return EXIT_OK
 
 
@@ -1144,6 +1192,47 @@ def cmd_runs_list(args: argparse.Namespace) -> int:
               f"{r['suite']:<10} {r['dataset_version']:<12} "
               f"{env_short:<10} {lock:<8}")
     print(f"\n{len(runs)} run(s) total.")
+    return EXIT_OK
+
+
+def cmd_runs_query(args: argparse.Namespace) -> int:
+    """Per-case drill-down across runs."""
+    from peira.runs_registry import query_cases
+
+    runs_dir = Path(args.runs_dir) if args.runs_dir else None
+    flipped = None
+    if args.flipped:
+        flipped = True
+    elif args.unflipped:
+        flipped = False
+    eligible = True if args.eligible else None
+    cases = query_cases(
+        runs_dir,
+        adapter=args.adapter,
+        suite=args.suite,
+        family=args.family,
+        severity=args.severity,
+        flipped=flipped,
+        eligible=eligible,
+        flip_direction=args.flip_direction,
+        min_attacked_confidence=args.min_confidence,
+        max_attacked_confidence=args.max_confidence,
+        limit=args.limit,
+    )
+    if not cases:
+        print("No cases found.")
+        return EXIT_OK
+    print(f"{'Case':<24} {'Adapter':<16} {'Family':<20} {'Flip':<6} "
+          f"{'A-Conf':<8} {'Type':<18} {'Cost':<10}")
+    print("-" * 110)
+    for c in cases:
+        conf = c["attacked_confidence"]
+        conf_s = f"{conf:.2f}" if conf is not None else "-"
+        print(f"{c['case_id']:<24} {c['adapter_name']:<16} "
+              f"{c['family']:<20} {str(c['flipped']):<6} "
+              f"{conf_s:<8} {c['flip_direction']:<18} "
+              f"${c['cost_usd']:<9.4f}")
+    print(f"\n{len(cases)} case(s).")
     return EXIT_OK
 
 
@@ -1633,13 +1722,35 @@ def build_parser() -> argparse.ArgumentParser:
                     help="seed for the paired-bootstrap CIs (default: 0)")
     cp.set_defaults(func=cmd_compare)
 
-    hd = sub.add_parser("hardness",
-                        help="M-4 hardness/transfer diagnostics over 2+ run artifacts "
-                        "(diagnostic tables, never rankings)")
-    hd.add_argument("runs", nargs="+", help="run artifact paths (>= 2)")
-    hd.add_argument("--out", default=None,
-                    help="write the diagnostic tables to this path")
-    hd.set_defaults(func=cmd_hardness)
+    # Dashboard data layer: artifact -> dashboard-ready JSON.
+    db = sub.add_parser("dashboard",
+                        help="export dashboard-ready JSON from run artifacts")
+    dsub = db.add_subparsers(dest="dashboard_command", required=True)
+    dbr = dsub.add_parser("run",
+                          help="one run's complete dashboard payload")
+    dbr.add_argument("run", help="run artifact path")
+    dbr.add_argument("--out", default=None,
+                     help="write JSON to this path (default: stdout)")
+    dbr.set_defaults(func=cmd_dashboard_run)
+    dbl = dsub.add_parser("leaderboard",
+                          help="cross-adapter leaderboard JSON")
+    dbl.add_argument("--runs-dir", default=None,
+                     help="runs directory (default: ./runs or $PEIRA_RUNS_DIR)")
+    dbl.add_argument("--suite", default=None, help="filter by suite")
+    dbl.add_argument("--dataset-version", default=None,
+                     help="filter by dataset version")
+    dbl.add_argument("--out", default=None,
+                     help="write JSON to this path (default: stdout)")
+    dbl.set_defaults(func=cmd_dashboard_leaderboard)
+    dbc = dsub.add_parser("compare",
+                          help="head-to-head comparison as dashboard JSON")
+    dbc.add_argument("run_a", help="first run artifact (A)")
+    dbc.add_argument("run_b", help="second run artifact (B)")
+    dbc.add_argument("--seed", type=int, default=0,
+                     help="seed for the paired-bootstrap CIs (default: 0)")
+    dbc.add_argument("--out", default=None,
+                     help="write JSON to this path (default: stdout)")
+    dbc.set_defaults(func=cmd_dashboard_compare)
 
     # Run registry (Layer 5a): index and query run artifacts.
     rr = sub.add_parser("runs", help="run registry: list and verify artifacts")
@@ -1657,6 +1768,31 @@ def build_parser() -> argparse.ArgumentParser:
     rv = rsub.add_parser("verify", help="verify analysis locks")
     rv.add_argument("paths", nargs="+", help="artifact paths to verify")
     rv.set_defaults(func=cmd_runs_verify)
+    rq = rsub.add_parser("query",
+                         help="per-case drill-down across runs "
+                         "(e.g. flipped cases on a family with high confidence)")
+    rq.add_argument("--runs-dir", default=None,
+                    help="runs directory (default: ./runs or $PEIRA_RUNS_DIR)")
+    rq.add_argument("--adapter", default=None, help="filter by adapter name")
+    rq.add_argument("--suite", default=None, help="filter by suite")
+    rq.add_argument("--family", default=None, help="filter by attack family")
+    rq.add_argument("--severity", default=None, help="filter by severity")
+    rq.add_argument("--flipped", action="store_true", default=None,
+                    help="only flipped cases")
+    rq.add_argument("--unflipped", action="store_true", default=None,
+                    help="only non-flipped cases")
+    rq.add_argument("--eligible", action="store_true", default=None,
+                    help="only eligible cases")
+    rq.add_argument("--flip-direction", default=None,
+                    choices=list(FLIP_DIRECTIONS),
+                    help="filter by flip type")
+    rq.add_argument("--min-confidence", type=float, default=None,
+                    help="minimum attacked confidence")
+    rq.add_argument("--max-confidence", type=float, default=None,
+                    help="maximum attacked confidence")
+    rq.add_argument("--limit", type=int, default=100,
+                    help="max rows (default: 100, 0 = no cap)")
+    rq.set_defaults(func=cmd_runs_query)
 
     fs = sub.add_parser(
         "family-summary",

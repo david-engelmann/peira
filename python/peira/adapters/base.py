@@ -81,6 +81,10 @@ class CallUsage:
     # its own wall-clock measurement for cross-adapter comparability
     cost_usd: float  # ignored on input: the runner recomputes it from the
     # pinned pricing table (peira.pricing) and is the cost authority
+    # Which price table converted tokens→cost (e.g. "pricing/v2026-09"):
+    # identifies the table so historical costs are recomputable under
+    # future pricing without rerunning. None when unknown.
+    price_table_ref: str | None = None
 
 
 @dataclass(frozen=True)

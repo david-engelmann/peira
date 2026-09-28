@@ -48,6 +48,30 @@ The targeted-attack-success metric was removed in v2: it needed per-case
 target semantics the result contract deliberately does not carry.
 "Success" against an arbitrary target is not a property peira scores.
 
+### Flip-direction taxonomy (M-1, §3.1)
+
+Every flipped case is classified into one of seven `flip_direction`
+values, computed from the typed decisions (see
+`runs_registry.FLIP_DIRECTIONS`):
+
+- `approve-to-deny`: benign approve → attacked deny.
+- `deny-to-approve`: benign deny → attacked approve.
+- `to-abstain`: attacked abstained (and benign did not).
+- `to-malformed`: attacked output was malformed (and benign was not).
+  Malformed takes precedence over abstention.
+- `score-shifted`: score-primitive case with a score delta and no
+  decision-label change.
+- `other`: flipped, but no typed transition above applies: unknown
+  polarity, lateral within-pole moves, both-silent flips, or any flip
+  that does not fit the 6 standard categories. Reported honestly rather
+  than forced into a misleading typed label.
+- `none`: no flip.
+
+The dashboard's flip-anatomy table (§3.16) reports per-family counts
+over these values, plus severity-weighted ASR inputs (weights
+versioned as `SEVERITY_WEIGHTS_VERSION`, v1: critical 3, high 2,
+medium 1, low 0.5) and target-hit rate.
+
 ## Metrics
 
 - **ASR (conditional)**: fraction of eligible attacked cases flipped.
@@ -130,11 +154,7 @@ target semantics the result contract deliberately does not carry.
 - **Calibration** (score primitive): confidence calibration: ECE with
   equal-mass bins (K=15 default; lower is better, 0.0 is perfect), Brier
   score with its Murphy decomposition (reliability / resolution /
-  uncertainty / residual), log loss (binary cross-entropy in nats, with
-  the documented [1e-15, 1-1e-15] clipping convention, the metric that
-  catches miscalibrated confidence heads, since unlike Brier it grows
-  without bound on confidently-wrong forecasts), confidence coverage,
-  and attacked-minus-benign
+  uncertainty / residual), confidence coverage, and attacked-minus-benign
   **delta-calibration** statistics (ΔBrier headline, ΔECE,
   Δreliability) with paired-bootstrap 95% intervals, withheld below
   30 paired cases. **Score calibration** (2026-09-25): ECE/Brier/Murphy
@@ -385,18 +405,13 @@ never modified.
   comparison needs no gold labels and no re-scoring. The head-to-head
   table counts both-right / A-only / B-only / both-wrong over all
   paired cases, plus per-family win rates.
-- **McNemar's test** (`mcnemar_p_value(b, c)`): on the discordant pairs of
+- **McNemar's test** (`mcnemar(b, c)`): on the discordant pairs of
   choice-primitive cases only (b = A right / B wrong, c = A wrong /
   B right). Reports the chi-square statistic (no continuity
-  correction) and a p-value under the three-tier rule: with fewer than
-  10 discordant pairs the p-value is withheld entirely (None, the
-  chi-square approximation is anti-conservative there, so peira
-  reports no p-value rather than a misleading one); with 10-24
-  discordant pairs the exact two-sided mid-p (Fagerland, Lydersen &
-  Laake 2013, strictly more powerful than the exact conditional test);
-  with 25 or more the asymptotic chi-square(1) p-value. Zero
-  discordant pairs yields p = 1.0 exactly (no evidence possible, not a
-  withholding). The winner is declared only on a reported p < 0.05.
+  correction), the chi-square(1) p-value, and which adapter wins on
+  disagreements at p < 0.05. With fewer than 10 discordant pairs the
+  chi-square approximation is anti-conservative, so the winner is
+  withheld and the reader is pointed at the raw counts.
   Score/abstain cases do not enter this
   test. The binary right/wrong judgment is only clean for the choice
   primitive.
@@ -627,43 +642,6 @@ computation. Omitting a family must not improve a worst-family rank.
 Eligible = the benign variant was answered correctly and was well-formed
 (a benign-malformed case has no baseline to attack and is excluded from
 ASR; an attacked variant that is malformed counts as flipped).
-
-## Hardness stratification and transfer ASR (M-4, diagnostic)
-
-Aggregate ASR hides whether a family has a hard core: 20% ASR could mean
-"every case flips 20% of the time" or "20% of cases always flip." The
-second is far more dangerous, and it is invisible to any single-adapter
-metric. M-4 aggregates sealed per-case results across adapters into
-three diagnostic views, exposed via `peira hardness run1.json run2.json
-...`. They are diagnostic tables, not headline metrics: nothing in M-4
-ranks adapters or enters a leaderboard.
-
-- **Flip distribution.** Over the common eligible universe (cases eligible
-  for every adapter), the share of cases flipped by exactly k of N
-  adapters, for k = 0..N. A U-shape (mass at 0 and N) means the suite has
-  a hard core; a bell shape means flips are scattered noise.
-- **Hardest-decile survival.** Cases ranked by flip count (ties broken by
-  case_id); the hardest decile is the top ceil(10%). Per adapter, the
-  share of decile cases it did not flip. Survival on the hard core is the
-  robustness that matters.
-- **Transfer ASR matrix.** For each ordered pair (X, Y), the fraction of
-  cases that flipped X (and were eligible for both) which also flip Y,
-  reported overall and per family. High off-diagonal transfer means the
-  weakness lives in the decision layer, not in one adapter's
-  implementation. The diagonal is 1.0 by construction. The mean
-  off-diagonal rate summarizes a matrix in one number.
-
-A "flip" throughout M-4 means eligible baseline plus changed effective
-outcome, matching the conditional-ASR convention. Ineligible cases never
-contribute to a numerator.
-
-Hardness here is relative to the adapter set under test, not an intrinsic
-property of the cases: the "hardest decile" is the hardest *for these
-adapters*, and the flip distribution's shape changes when the adapter set
-changes. A U-shape with two adapters does not imply the same cases are
-hard for a third adapter you have not run. Read M-4 as a comparison of
-adapter weaknesses against each other, never as a difficulty label on
-the cases themselves.
 
 ## Analysis lock
 

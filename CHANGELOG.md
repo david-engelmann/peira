@@ -7,21 +7,21 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
 
 ## [Unreleased]
 
-### Added — M-4 hardness stratification + cross-adapter transfer ASR
+### Changed: flip-direction taxonomy (M-1, BREAKING for dashboard consumers)
 
-- New `peira.hardness` module (pure aggregation over sealed per-case
-  results, no Rust port): per-example flip distribution (fraction of
-  cases flipped by exactly k of N adapters), hardest-decile survival
-  (per-adapter survival rate on the hardest 10% of cases by flip count),
-  and cross-adapter transfer ASR matrices (P(dst flips | src flipped),
-  overall and per family) with the mean off-diagonal transfer rate as a
-  one-number summary. Diagnostic tables only: nothing here ranks adapters
-  or enters a leaderboard.
-- New `peira hardness run1.json run2.json ...` CLI command printing the
-  M-4 tables to stdout (or `--out` file). Needs at least 2 artifacts.
-- `docs/Methodology.md` documents the M-4 views and their conventions;
-  `docs/CLI.md` regenerated; `docs/Troubleshooting.md` covers the new
-  error strings.
+- The dashboard per-family `flip_types` key (old 4-value taxonomy:
+  `decision_change`/`abstention_change`/`malformed`) is now
+  `flip_direction` with the 7-value M-1 taxonomy (`approve-to-deny`,
+  `deny-to-approve`, `to-abstain`, `to-malformed`, `score-shifted`,
+  `other`, `none`). The CLI flag `--flip-type` is renamed to
+  `--flip-direction`; `--flip-type` is not accepted.
+- `case_results.flip_type` is migrated to `flip_direction` in existing
+  index.db files via `_ensure_case_result_columns()` (idempotent, runs
+  on every scan); new `confidence_delta`, `target_hit`, and
+  `score_delta` columns are added when missing.
+- Unclassifiable flips now report `other` honestly instead of a
+  fabricated `<x>-to-<y>` label or a misleading `approve-to-deny`
+  fallback.
 
 ### Added — production report rewiring (A3 S8b)
 

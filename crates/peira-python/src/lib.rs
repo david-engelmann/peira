@@ -34,7 +34,7 @@ use std::collections::BTreeMap;
 ///
 /// Conversion recurses on the Rust thread stack, so unbounded nesting
 /// (cyclic or adversarially deep inputs) would overflow the stack and
-/// abort the process with SIGSEGV, uncatchable from Python. The depth
+/// abort the process with SIGSEGV — uncatchable from Python. The depth
 /// guard turns that into a catchable `ValueError` instead, matching
 /// the reference's catchable failure (`ValueError`/`RecursionError`
 /// from `json.dumps`).
@@ -294,12 +294,6 @@ fn brier_score(probs: Vec<f64>, labels: Vec<i64>) -> f64 {
     metrics::brier_score(&probs, &labels)
 }
 
-/// Log loss (binary cross-entropy) with [1e-15, 1-1e-15] clipping (R-07).
-#[pyfunction]
-fn log_loss(probs: Vec<f64>, labels: Vec<i64>) -> f64 {
-    metrics::log_loss(&probs, &labels)
-}
-
 /// Mean absolute error between point scores and author references:
 /// the degenerate CRPS for deterministic forecasts.
 #[pyfunction]
@@ -317,18 +311,6 @@ fn score_compression_index(scores: Vec<f64>) -> f64 {
 #[pyfunction]
 fn mcnemar(b: u64, c: u64) -> f64 {
     metrics::mcnemar(b, c)
-}
-
-/// Exact two-sided mid-p for McNemar's test (Fagerland et al. 2013).
-#[pyfunction]
-fn mcnemar_mid_p(b: u64, c: u64) -> f64 {
-    metrics::mcnemar_mid_p(b, c)
-}
-
-/// R-07 three-tier McNemar p-value: None when 1 <= b+c < 10 (withheld).
-#[pyfunction]
-fn mcnemar_p_value(b: u64, c: u64) -> Option<f64> {
-    metrics::mcnemar_p_value(b, c)
 }
 
 /// Davidson Bradley-Terry strengths: monotone MM fit over aggregated
@@ -486,7 +468,7 @@ fn severity_weighted_asr(results: Vec<PyPerCaseResult>) -> f64 {
 type ArmCensus = (usize, u64, u64, u64, u64, u64, u64);
 
 /// McNemar test result, packed as (b, c, n_pairs, statistic, p_value, winner).
-type McNemarPacked = (u64, u64, usize, f64, Option<f64>, Option<String>);
+type McNemarPacked = (u64, u64, usize, f64, f64, Option<String>);
 
 /// Mirror of the Python `PairedCase` dataclass in `peira.compare`.
 #[derive(FromPyObject)]
@@ -520,6 +502,12 @@ fn compare_case_ok(r: PyPerCaseResult) -> bool {
     compare::case_ok(&metrics::PerCaseResult::from(r))
 }
 
+/// Survival function of chi-square with 1 degree of freedom.
+#[pyfunction]
+fn compare_chi2_sf_1df(stat: f64) -> f64 {
+    compare::chi2_sf_1df(stat)
+}
+
 /// Fourfold head-to-head counts: (n, both_right, a_only, b_only, both_wrong).
 #[pyfunction]
 fn compare_head_to_head(pairs: Vec<PyPairedCase>) -> (usize, u64, u64, u64, u64) {
@@ -539,8 +527,7 @@ fn compare_per_family(pairs: Vec<PyPairedCase>) -> BTreeMap<String, (usize, u64,
 /// McNemar's test over paired choice-primitive cases.
 ///
 /// Returns (result, note) where result is None when there are no
-/// choice-primitive pairs, else (b, c, n_pairs, statistic, p_value, winner)
-/// with p_value None when 1 <= b+c < 10 (R-07 withholding floor).
+/// choice-primitive pairs, else (b, c, n_pairs, statistic, p_value, winner).
 #[pyfunction]
 fn compare_mcnemar_test(pairs: Vec<PyPairedCase>) -> (Option<McNemarPacked>, String) {
     let (res, note) = compare::mcnemar_test(&to_core_pairs(pairs));
@@ -1237,6 +1224,15 @@ fn artifact_lock_payload(
     max_concurrency: &Bound<'_, PyAny>,
     metrics: &Bound<'_, PyAny>,
     env_sha256: &str,
+    model_class: &str,
+    confidence_source: &str,
+    checkpoint_hash: &str,
+    api_version: &str,
+    call_date: &str,
+    decode_params: &str,
+    template_hash: &str,
+    case_set_tag: &str,
+    cost_scenario_version: &str,
 ) -> PyResult<String> {
     Ok(artifact::lock_payload(
         peira_version,
@@ -1260,6 +1256,15 @@ fn artifact_lock_payload(
         int_param("max_concurrency", max_concurrency)?,
         &value_from_py(metrics)?,
         env_sha256,
+        model_class,
+        confidence_source,
+        checkpoint_hash,
+        api_version,
+        call_date,
+        decode_params,
+        template_hash,
+        case_set_tag,
+        cost_scenario_version,
     ))
 }
 
@@ -1300,7 +1305,7 @@ fn dataset_summarize_case_bytes(
     value_to_py(py, &Value::Object(map))
 }
 
-/// peira._core: the compiled Rust core (PyO3). Optional accelerator,
+/// peira._core: the compiled Rust core (PyO3). Optional accelerator —
 /// every function here has a pure-Python twin of identical behavior.
 #[pymodule]
 fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
@@ -1315,12 +1320,9 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(malformed_rate, m)?)?;
     m.add_function(wrap_pyfunction!(ece, m)?)?;
     m.add_function(wrap_pyfunction!(brier_score, m)?)?;
-    m.add_function(wrap_pyfunction!(log_loss, m)?)?;
     m.add_function(wrap_pyfunction!(crps_point, m)?)?;
     m.add_function(wrap_pyfunction!(score_compression_index, m)?)?;
     m.add_function(wrap_pyfunction!(mcnemar, m)?)?;
-    m.add_function(wrap_pyfunction!(mcnemar_mid_p, m)?)?;
-    m.add_function(wrap_pyfunction!(mcnemar_p_value, m)?)?;
     m.add_function(wrap_pyfunction!(bradley_terry_fit, m)?)?;
     m.add_function(wrap_pyfunction!(paired_bootstrap_ci, m)?)?;
     m.add_function(wrap_pyfunction!(n_eligible_by_family, m)?)?;
@@ -1339,6 +1341,7 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(confidence_coverage, m)?)?;
     m.add_function(wrap_pyfunction!(severity_weighted_asr, m)?)?;
     m.add_function(wrap_pyfunction!(compare_case_ok, m)?)?;
+    m.add_function(wrap_pyfunction!(compare_chi2_sf_1df, m)?)?;
     m.add_function(wrap_pyfunction!(compare_head_to_head, m)?)?;
     m.add_function(wrap_pyfunction!(compare_per_family, m)?)?;
     m.add_function(wrap_pyfunction!(compare_mcnemar_test, m)?)?;
