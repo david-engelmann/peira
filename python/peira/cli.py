@@ -1227,6 +1227,141 @@ def cmd_hardness(args: argparse.Namespace) -> int:
     return EXIT_OK
 
 
+def _lottery_text(a: dict) -> str:
+    """Human-readable leave-one-family-out stability report for stdout."""
+    lines = [
+        "Peira leave-one-family-out ranking stability (lottery index)",
+        "============================================================",
+        f"Runs: {a['n_runs']} ({a['n_ranked']} ranked), "
+        f"families: {len(a['families'])}",
+        "",
+        "Full ranking (conditional ASR, ascending):",
+    ]
+    rank_no = 0
+    for d in a["full_ranking_detail"]:
+        if d["eligible"]:
+            rank_no += 1
+            lines.append(f"  {rank_no}. {d['run_id']}: ASR {d['asr']:.4f}")
+        else:
+            lines.append(
+                f"  -. {d['run_id']}: ineligible "
+                f"({'; '.join(d['reasons'])})"
+            )
+    lines.append("")
+    if a["lottery_index"] is None:
+        lines.append(
+            "Lottery index: undefined (no family yields a comparable ranking)"
+        )
+    else:
+        lines.append(
+            f"Lottery index: {a['lottery_index']:.4f} (mean Kendall's tau) "
+            f"-- rankings are {a['verdict']}"
+        )
+    if a["most_influential_family"] is not None:
+        lines.append(
+            f"Most influential family: '{a['most_influential_family']}' "
+            f"(tau {a['min_tau']:.4f} when removed)"
+        )
+    lines.append("")
+    lines.append("Per-family leave-one-out:")
+    for fam in a["families"]:
+        p = a["per_family"][fam]
+        if p["tau"] is None:
+            lines.append(
+                f"  {fam}: tau undefined "
+                f"({p['n_common']} run(s) ranked in both)"
+            )
+        else:
+            lines.append(
+                f"  {fam}: tau {p['tau']:.4f}, "
+                f"swapped pairs {p['swap_fraction']:.2%}, "
+                f"max rank displacement {p['max_rank_displacement']}"
+            )
+        if p["dropped_runs"]:
+            lines.append(
+                f"    dropped when removed: {', '.join(p['dropped_runs'])}"
+            )
+    return "\n".join(lines) + "\n"
+
+
+def cmd_lottery(args: argparse.Namespace) -> int:
+    """Leave-one-family-out ranking stability across run artifacts."""
+    import json
+
+    from peira.lottery import lottery_analysis
+    from peira.metrics import PerCaseResult
+
+    artifacts = []
+    for path_str in args.runs:
+        path = Path(path_str)
+        if not path.exists():
+            print(f"error: {path} not found", file=sys.stderr)
+            return EXIT_USER_ERROR
+        try:
+            artifacts.append(
+                RunArtifact.from_json(path.read_text(encoding="utf-8"))
+            )
+        except (OSError, ValueError) as e:
+            print(f"error: {path} is not a valid run artifact ({e})",
+                  file=sys.stderr)
+            return EXIT_USER_ERROR
+
+    results_by_run: dict[str, list] = {}
+    for art, path_str in zip(artifacts, args.runs):
+        base = art.adapter_name or Path(path_str).stem
+        run_id = base
+        i = 2
+        while run_id in results_by_run:
+            run_id = f"{base}#{i}"
+            i += 1
+        if run_id != base:
+            print(f"note: duplicate adapter name '{base}': using "
+                  f"'{run_id}' for {path_str}", file=sys.stderr)
+        try:
+            results = [PerCaseResult.from_dict(d) for d in art.results]
+        except (KeyError, ValueError, TypeError) as e:
+            print(f"error: {path_str}: cannot decode per-case results "
+                  f"({e})", file=sys.stderr)
+            return EXIT_USER_ERROR
+        results_by_run[run_id] = results
+
+    known_families = {r.family for rs in results_by_run.values() for r in rs}
+    if args.families:
+        families = [f.strip() for f in args.families.split(",") if f.strip()]
+        # Dedupe, preserving order: "--families f1,f1" means ["f1"], not a
+        # leave-one-family-out loop that strips both copies and trips the
+        # empty-families guard inside lottery_analysis.
+        families = list(dict.fromkeys(families))
+        unknown = [f for f in families if f not in known_families]
+        if unknown:
+            print(f"error: unknown families: {', '.join(unknown)} "
+                  "(not present in the given runs)", file=sys.stderr)
+            return EXIT_USER_ERROR
+    else:
+        families = sorted(known_families)
+    if not families:
+        print("error: no families found in the given runs", file=sys.stderr)
+        return EXIT_USER_ERROR
+
+    try:
+        analysis = lottery_analysis(results_by_run, families)
+    except ValueError as e:
+        print(f"error: {e}", file=sys.stderr)
+        return EXIT_USER_ERROR
+
+    sys.stdout.write(_lottery_text(analysis))
+    if args.json is not None:
+        out = Path(args.json)
+        try:
+            out.write_text(json.dumps(analysis, indent=2), encoding="utf-8")
+        except OSError as e:
+            print(f"error: cannot write lottery JSON to {out} ({e})",
+                  file=sys.stderr)
+            return EXIT_USER_ERROR
+        print(f"lottery: {out}")
+    return EXIT_OK
+
+
 def cmd_runs_list(args: argparse.Namespace) -> int:
     """List runs in the registry with optional filters."""
     from peira.runs_registry import list_runs
@@ -1750,6 +1885,23 @@ def build_parser() -> argparse.ArgumentParser:
     hd.add_argument("--out", default=None,
                     help="write the diagnostic tables to this path")
     hd.set_defaults(func=cmd_hardness)
+
+    lt = sub.add_parser(
+        "lottery",
+        help="leave-one-family-out ranking stability (lottery index) "
+        "across run artifacts",
+    )
+    lt.add_argument("runs", nargs="+", help="run artifact files (one row "
+                    "per adapter on the leaderboard)")
+    lt_families = lt.add_argument(
+        "--families", default=None,
+        help="comma-separated family manifest (default: union of "
+        "families across the runs)",
+    )
+    lt_families.display_default = "union of families in runs"
+    lt.add_argument("--json", default=None,
+                    help="write the full analysis JSON to this path")
+    lt.set_defaults(func=cmd_lottery)
 
     # Run registry (Layer 5a): index and query run artifacts.
     rr = sub.add_parser("runs", help="run registry: list and verify artifacts")

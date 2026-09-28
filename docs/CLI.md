@@ -92,6 +92,16 @@ M-4 hardness/transfer diagnostics over 2+ run artifacts (diagnostic tables, neve
 | `RUNS` | yes | - | run artifact paths (>= 2) |
 | `--out` |  | - | write the diagnostic tables to this path |
 
+## peira lottery
+
+leave-one-family-out ranking stability (lottery index) across run artifacts
+
+| Flag | Required | Default | Help |
+|---|---|---|---|
+| `RUNS` | yes | - | run artifact files (one row per adapter on the leaderboard) |
+| `--families` |  | union of families in runs | comma-separated family manifest (default: union of families across the runs) |
+| `--json` |  | - | write the full analysis JSON to this path |
+
 ## peira runs
 
 run registry: list and verify artifacts
