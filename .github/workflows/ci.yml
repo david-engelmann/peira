@@ -120,6 +120,11 @@ jobs:
     # T-P1-2: the real-tokenizer contracts in test_hf_adapters.py need
     # transformers installed; without this lane they would skip everywhere
     # and never execute. Tokenizer files only (no model weights or GPU).
+    # The grep asserts zero skips: a lane that silently skips is the same
+    # dishonesty in a new place. Deliberate tradeoff: this lane downloads
+    # from the HF Hub, so a Hub outage fails the job by design (the
+    # contract tests skip locally without network, keeping local runs
+    # green; CI is the lane that must not lie about having run them).
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -128,7 +133,10 @@ jobs:
         with:
           python-version: "3.12"
       - run: pip install -e .[hf]
-      - run: python -m unittest tests.test_hf_adapters.TestRealTokenizerContract -v
+      - run: |
+          out=$(python -m unittest tests.test_hf_adapters.TestRealTokenizerContract -v 2>&1)
+          echo "$out"
+          echo "$out" | grep -qE "^OK$" || { echo "contract tests did not all run"; exit 1; }
 
   test-rust:
     runs-on: ubuntu-latest
