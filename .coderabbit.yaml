@@ -1,0 +1,122 @@
+# CodeRabbit review settings. Schema: https://coderabbit.ai/integrations/schema.v2.json
+# CodeRabbit is advisory step 0: its comments are addressed before the three-review
+# gate, but it is not a required check. See docs/Contributing.md
+# "What happens after you open a PR".
+# yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
+language: "en-US"
+tone_instructions: "Be direct and technical. Be constructive with outside contributors. No flattery, no filler."
+
+reviews:
+  profile: "chill"  # house standard per maidan #1067; escalate only if signal justifies it
+  request_changes_workflow: false  # advisory step 0: CodeRabbit never blocks merges
+  # Peira squash-merges, so the summary goes in the walkthrough comment instead of
+  # being written into the PR description (which becomes the squash commit body).
+  high_level_summary: true
+  high_level_summary_in_walkthrough: true
+  poem: false
+  in_progress_fortune: false
+  suggested_reviewers: false  # agent-driven workflow; suggestions are noise
+  review_status: true
+
+  auto_review:
+    enabled: true
+    drafts: false
+    auto_incremental_review: true
+    auto_pause_after_reviewed_commits: 0  # never pause; agent PRs routinely exceed 5 commits (repairs, DCO fixes)
+    base_branches:
+      - ".*"  # stacked PRs use lane branches as base; "main" alone would skip them
+    ignore_title_keywords:
+      - "wip"
+
+  path_filters:
+    # Keep reviews focused on human-authored sources; CI already covers the rest.
+    - "!**/__pycache__/**"
+    - "!**/*.pyc"
+    - "!**/target/**"
+    - "!dataset/**/*.jsonl"  # large generated case files; validated by schema CI, not by prose review
+
+  path_instructions:
+    - path: "docs/**"
+      instructions: |
+        These are public docs held to a human-engineer voice standard:
+        - NEVER use em dashes (U+2014) in prose. Use colons, semicolons, or restructure.
+        - No AI-writing tells: no "delve", "moreover", "in today's fast-paced", no emoji.
+        - A sentence about what peira does must be backed by a row in docs/Claims.md;
+          flag "95% CIs on every number", performance numbers, or adapter claims without
+          a backing row or benchmark behind them.
+        - Every CLI command, flag, and error string shown must be runnable against the
+          actual CLI. Check that internal doc links resolve to real files/anchors.
+        - Prefer short, plain sentences.
+    - path: "**/*.md"
+      instructions: |
+        No em dashes (U+2014) in prose. No unbacked claims about what peira does
+        (backing rows live in docs/Claims.md). README.md, CLAUDE.md and
+        docs/Contributing.md must agree on the PR flow described in
+        docs/Contributing.md "What happens after you open a PR" and the required CI checks.
+    - path: "python/peira/**"
+      instructions: |
+        Peira is pre-1.0 blank-canvas: flag backwards-compatibility shims, deprecated
+        aliases, and "kept for compatibility" code paths; renames and deletions are
+        made outright. Comments explain a non-obvious why and do not restate code.
+        Performance paths dispatch to Rust via PyO3 with a pure-Python fallback gated
+        on PEIRA_NO_RUST=1; both paths must stay behaviorally identical. Flag any new
+        public function/class without a docstring; flag changed public behavior
+        without a docs/ update.
+    - path: "tests/**"
+      instructions: |
+        Tests use unittest.TestCase (python -m unittest discover tests), NOT pytest.
+        Every new test must assert behavior (expected vs actual). Flag tests that only
+        exercise code without assertions, or that assert on tautologies.
+        Tests must be deterministic: no network, no wall-clock dependence, no paid API calls.
+    - path: "crates/**"
+      instructions: |
+        Rust code must be clippy-clean under the workspace lints (warnings denied in CI).
+        No .unwrap()/.expect() outside #[cfg(test)] code; propagate errors.
+        Any new #[pyfunction]/#[pymethods] surface needs a Python-side fallback or an
+        explicit PEIRA_NO_RUST=1 test proving graceful degradation.
+    - path: ".github/workflows/**"
+      instructions: |
+        The required CI checks are public-surface, docs, dco, dataset-version,
+        lint-rust, test-python, test-rust, test-python-rust, quickstart, readme-table,
+        dataset-checks. Branch protection matches these job names: flag any rename or
+        removal. Minimal permissions per job, no unpinned third-party actions,
+        no secrets in logs.
+    - path: "scripts/**"
+      instructions: |
+        Shell scripts must be shellcheck-clean and must not write outside the repo
+        or /tmp without a reason stated in the PR description or a code comment.
+
+  pre_merge_checks:
+    # Everything stays at warning: CodeRabbit advises, the three-review gate decides.
+    # Doc comments are written where the why is not obvious, not to a quota.
+    docstrings:
+      mode: "off"
+    title:
+      mode: "warning"
+    description:
+      mode: "warning"
+    issue_assessment:
+      mode: "warning"
+    # Custom checks deferred until CodeRabbit Pro grant is confirmed.
+    # Without Pro, custom checks are silently inert (P2-A5/P2-R4).
+    # To enable: confirm Pro in dashboard, then add the three checks from
+    # research_notes/coderabbit-config-perfection-20260928.md section 6.
+
+  tools:
+    languagetool: { enabled: false }  # fights our human-voice docs standard; noisy
+    vale: { enabled: false }          # no checked-in Vale config; would be noise
+
+knowledge_base:
+  code_guidelines:
+    enabled: true
+    filePatterns:
+      - "**/CLAUDE.md"
+      - "docs/Contributing.md"
+      - "**/AGENTS.md"
+  learnings:
+    scope: "local"
+    approval_delay: 7  # veto window against learnings poisoning (P2-R1)
+  linked_repositories: []  # never link the private peira-holdout repo
+
+chat:
+  auto_reply: false  # avoid agent rebuttal reply loops (P2-R2)
