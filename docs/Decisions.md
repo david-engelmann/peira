@@ -1318,3 +1318,82 @@ tree with the 2 safety-policy score cases; the backfill branch had 320
 **To revisit:** any single Group 3 synonym mapping, if a future reviewer
 finds it offends the case author's intent — the other 38 rows are
 structurally unaffected.
+
+## D-36: v1 case corrections policy: the dataset is correctable, not frozen (2026-09-28)
+
+**Decision.** v1 cases may be corrected after release for defined defect
+classes. There is no "frozen as authored" rule: the everything-audit's
+fix plan assumed one, but no such freeze is documented anywhere in the
+tree, and this record supersedes the assumption. Corrections are
+surgical, the smallest edit that fixes the defect, never a re-authoring.
+
+**Defect classes that warrant correction.**
+
+1. Unfounded gold labels: `expected_score` / `expected_decision` /
+   attack targets not derivable from the prompt. Example: `v1-ind-214`,
+   whose prompt contains no candidate facts at all, yet carries a benign
+   `expected_score: 0.79` and an attacked `target_decision: reject`.
+2. Severity mislabels against the consequence-based severity rubric:
+   cases graded a tier below what the rubric's bullets require (e.g. a
+   $900k trust distribution graded `high` where the rubric's "moves
+   money" bullet demands `critical`).
+3. Factual errors in prompts, rubrics, or reference answers (a wrong date, a misquoted
+   threshold, a reference answer that contradicts the prompt's own facts). A rubric that
+   is merely debatable, or a prompt that could be clearer, is not a factual error.
+4. Schema or scale mismatches: a "Score 0-100" prompt with a 0-1
+   reference, or label mismatches between fields of the same case.
+5. Typos and formatting defects that could confuse an adapter or a
+   reader.
+
+**What does not warrant correction.** Stylistic preferences, "better"
+phrasings of valid cases, re-balancing family composition, or changing
+what the benchmark measures. If the case is a fair, correctly-labeled
+test, it stays as authored.
+
+**Correction protocol.** Every correction is recorded in `dataset/v1/cases/CHANGELOG.json`
+using the entry types in `docs/Dataset-Changelog.md`, and the schema's conservative rule
+governs: if there is any doubt whether a change affects the correct answer, it is a
+`retire` + `add`, not a `fix`. The defect classes map to entry types as follows. Class 5
+(typos and formatting, answer unaffected) ships as `fix`, patch bump, with the rationale
+explaining why the answer is unaffected. Class 2 (severity re-grades) ships as `annotate`,
+patch bump: severity does not change the decision or score labels, per the D-35 precedent.
+Class 3 (factual errors) ships as `fix` where the gold labels are unchanged, and as
+`retire` + `add` where the correction changes what the right answer is. Class 4 (scale
+mismatches) ships as `retire` + `add`, minor bump, when the fix changes gold values, and as
+`fix` when it is purely presentational. Class 1 (`v1-ind-214`) ships as `retire` + `add`,
+minor bump: adding substantive prompt content is not a typo or formatting fix, so the
+conservative rule applies; the replacement case is linked via `replacements`. Where a
+published count changes, the owning D-record is amended in the same PR:
+the five confirmed severity re-grades move D-35's "279 critical cases
+remain" to 282 (three cases re-graded to critical, two to high).
+
+**Critical re-grades clear the human-review queue.** Per D-7, every
+critical-severity case gets human review before release. Cases re-graded
+to critical enter the `peira dataset review` queue, and `peira dataset build-manifest
+--require-reviews` refuses to reseal the manifest while any review is pending.
+
+**Corpus-wide sweeps are a separate workstream (S-1), not individual
+corrections.** A sweep (the severity re-grade against the rubric's
+critical bullets; the "Score 0-100" prompt sweep) mutates many cases at
+once, making it the broadest unaudited change this dataset can undergo.
+Sweeps require a written protocol reviewed under the three-review gate
+before execution, bidirectional grading (the protocol must be able to
+move cases both up and down, not only confirm the suspected direction),
+a pre-registered defect-rate bar, and an independent sample re-audit as
+the execution gate: the sweep runs only if the re-audit clears the bar.
+
+**First application.** PR-5 (`audit/cases-v1-sample-fixes`) is the first
+correction batch under this policy: the `v1-ind-214` rewrite, the five
+confirmed re-grades, and seven P3s. Sample fixes only; no corpus sweep.
+
+**Alternatives.** Freezing v1 as authored and versioning all fixes into
+v2; or allowing ad-hoc corrections with no protocol.
+
+**Why this:** a benchmark with known-unfounded gold labels is a
+benchmark that misleads, and the seal is on the process (versioned,
+changelogged, reviewed), not on any particular byte. But mass mutation without a protocol
+is how a dataset drifts from its rubric, so the S-1 gates
+keep any sweep honest.
+
+**To revisit:** the defect classes, if new failure modes appear; the S-1
+bar, after the first sweep calibrates it.
