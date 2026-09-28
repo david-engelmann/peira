@@ -28,36 +28,72 @@ use pyo3::types::{PyBool, PyDict, PyFloat, PyInt, PyList, PyString, PyTuple};
 use serde_json::{Number, Value};
 use std::collections::BTreeMap;
 
+/// Maximum nesting depth accepted by [`value_from_py`].
+///
+/// Conversion recurses on the Rust thread stack, so unbounded nesting
+/// (cyclic or adversarially deep inputs) would overflow the stack and
+/// abort the process with SIGSEGV — uncatchable from Python. The depth
+/// guard turns that into a catchable `ValueError` instead, matching
+/// the reference's catchable failure (`ValueError`/`RecursionError`
+/// from `json.dumps`).
+const MAX_JSON_DEPTH: usize = 256;
+
 /// Convert an arbitrary Python object to `serde_json::Value`.
 ///
 /// Only JSON-shaped values are accepted: None, bool, int, float, str,
 /// list, tuple, and dicts with string keys. `bool` is checked before
 /// `int` because Python's `bool` subclasses `int`.
 fn value_from_py(obj: &Bound<'_, PyAny>) -> PyResult<Value> {
+    value_from_py_depth(obj, 0)
+}
+
+/// Depth-tracking worker for [`value_from_py`]; see `MAX_JSON_DEPTH`.
+fn value_from_py_depth(obj: &Bound<'_, PyAny>, depth: usize) -> PyResult<Value> {
+    if depth > MAX_JSON_DEPTH {
+        return Err(PyValueError::new_err(
+            "value exceeds maximum JSON nesting depth (256)",
+        ));
+    }
     if obj.is_none() {
         Ok(Value::Null)
     } else if let Ok(dict) = obj.cast::<PyDict>() {
         let mut map = serde_json::Map::with_capacity(dict.len());
         for (k, v) in dict.iter() {
             let key: String = k.extract().map_err(|_| {
-                PyTypeError::new_err("dict keys must be strings for JSON conversion")
+                if k.cast::<PyString>().is_ok() {
+                    // A str key that fails String extraction holds a
+                    // lone surrogate (PyO3 cannot render it): mirror the
+                    // Python pre-check's ValueError, not the misleading
+                    // "must be strings" TypeError.
+                    PyValueError::new_err(
+                        "strings with lone surrogates have no JSON representation",
+                    )
+                } else {
+                    PyTypeError::new_err("dict keys must be strings for JSON conversion")
+                }
             })?;
-            map.insert(key, value_from_py(&v)?);
+            map.insert(key, value_from_py_depth(&v, depth + 1)?);
         }
         Ok(Value::Object(map))
     } else if let Ok(list) = obj.cast::<PyList>() {
         list.iter()
-            .map(|item| value_from_py(&item))
+            .map(|item| value_from_py_depth(&item, depth + 1))
             .collect::<PyResult<Vec<_>>>()
             .map(Value::Array)
     } else if let Ok(tuple) = obj.cast::<PyTuple>() {
         tuple
             .iter()
-            .map(|item| value_from_py(&item))
+            .map(|item| value_from_py_depth(&item, depth + 1))
             .collect::<PyResult<Vec<_>>>()
             .map(Value::Array)
     } else if let Ok(s) = obj.cast::<PyString>() {
-        Ok(Value::String(s.extract::<String>()?))
+        // A PyString that fails String extraction holds a lone
+        // surrogate (PyO3 cannot render it): mirror the Python
+        // pre-check's ValueError message rather than leaking the
+        // codec error text.
+        s.extract::<String>().map(Value::String).map_err(|_| {
+            PyValueError::new_err("strings with lone surrogates have no JSON representation")
+        })
     } else if obj.cast::<PyBool>().is_ok() {
         Ok(Value::Bool(obj.extract::<bool>()?))
     } else if obj.cast::<PyInt>().is_ok() {
@@ -591,13 +627,34 @@ fn gates_options_coherence(cases: Vec<PyGateCase>) -> PyResult<GatePacked> {
     )))
 }
 
+/// Render a Python int exactly as the reference f-string would.
+///
+/// Python's `str(int)` and Rust's `i64` Display agree on every i64
+/// value; using the Python rendering keeps integers wider than i64
+/// hashing identically to the reference instead of raising
+/// `OverflowError` at the binding boundary.
+fn py_int_str(i: &Bound<'_, PyInt>) -> PyResult<String> {
+    i.str()?.extract()
+}
+
 /// Opaque per-call id for the adapter-visible context (SHA-256).
 ///
 /// Mirrors `runner._pseudonymous_call_id`. The Python wrapper validates
 /// types (rejecting bools, which would format differently in Rust).
+/// Integers arrive as `PyInt` and are rendered with Python's `str()`,
+/// so values wider than i64 hash exactly like the reference instead
+/// of raising `OverflowError`.
 #[pyfunction]
-fn execution_pseudonymous_call_id(run_nonce: String, seed: i64, dispatch_index: i64) -> String {
-    execution::pseudonymous_call_id(&run_nonce, seed, dispatch_index)
+fn execution_pseudonymous_call_id(
+    run_nonce: String,
+    seed: Bound<'_, PyInt>,
+    dispatch_index: Bound<'_, PyInt>,
+) -> PyResult<String> {
+    Ok(execution::pseudonymous_call_id_strs(
+        &run_nonce,
+        &py_int_str(&seed)?,
+        &py_int_str(&dispatch_index)?,
+    ))
 }
 
 /// Eligibility + flip judgment for one benign/attacked record pair.
@@ -661,10 +718,25 @@ fn execution_cache_key(
 /// Deterministic jitter-RNG seed string for one retry.
 ///
 /// Mirrors `concurrency.retry_jitter_seed`. A `None` seed renders as
-/// `"None"`, matching Python's f-string of None.
+/// `"None"`, matching Python's f-string of None. Integers arrive as
+/// `PyInt` and are rendered with Python's `str()`, so values wider
+/// than i64 format exactly like the reference instead of raising
+/// `OverflowError`.
 #[pyfunction]
-fn execution_retry_jitter_seed(seed: Option<i64>, dispatch_index: i64, attempt: i64) -> String {
-    execution::retry_jitter_seed(seed, dispatch_index, attempt)
+fn execution_retry_jitter_seed(
+    seed: Option<Bound<'_, PyInt>>,
+    dispatch_index: Bound<'_, PyInt>,
+    attempt: Bound<'_, PyInt>,
+) -> PyResult<String> {
+    let seed_s = match &seed {
+        Some(i) => py_int_str(i)?,
+        None => "None".to_owned(),
+    };
+    Ok(format!(
+        "{seed_s}:{}:{}",
+        py_int_str(&dispatch_index)?,
+        py_int_str(&attempt)?
+    ))
 }
 
 /// Failure classification: `(retryable, congestion_cut, retry_after)`.

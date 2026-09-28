@@ -40,6 +40,17 @@ use sha2::{Digest, Sha256};
 /// first 16 hex chars, prefixed with `"call-"`. Deterministic in its
 /// inputs; reveals nothing about the case.
 pub fn pseudonymous_call_id(run_nonce: &str, seed: i64, dispatch_index: i64) -> String {
+    pseudonymous_call_id_strs(run_nonce, &seed.to_string(), &dispatch_index.to_string())
+}
+
+/// String-rendered variant of [`pseudonymous_call_id`].
+///
+/// The Python binding formats integers with Python's `str()` so values
+/// wider than i64 hash exactly like the reference f-string;
+/// `i64::to_string` and Python `str(int)` agree on every i64 value, so
+/// this is byte-identical to [`pseudonymous_call_id`] for in-range
+/// inputs.
+pub fn pseudonymous_call_id_strs(run_nonce: &str, seed: &str, dispatch_index: &str) -> String {
     let mut h = Sha256::new();
     h.update(format!("peira-call-v1:{run_nonce}:{seed}:{dispatch_index}").as_bytes());
     let hex = format!("{:x}", h.finalize());
