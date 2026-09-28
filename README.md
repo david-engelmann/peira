@@ -8,7 +8,7 @@
 
 [Docs](docs/Overview.md) · [Leaderboard](#leaderboard) · [Adapter API](python/peira/adapters/base.py) · [Contributing](docs/Contributing.md) · [Discussions](https://github.com/david-engelmann/peira/discussions)
 
-> Decisions fail silently. A model that approves what it should deny tells you nothing, and an accuracy benchmark will not catch it. peira runs each attack against a clean control case, so a flipped decision is evidence about the attack, not noise.
+> Decisions fail silently. A model that approves what it should deny tells you nothing, and an accuracy benchmark will not catch attack-driven flips. peira runs each attack against a clean control case, so a flipped decision is evidence about the attack, not noise.
 
 ## Contents
 
@@ -116,7 +116,7 @@ Adjacent benchmarks (HarmBench, AIR-Bench, JailbreakBench, garak) cover broad re
 
 The peira column is verifiable from this repo; the right-hand column is a rough sketch, not a scorecard. Check each project's own docs before quoting it.
 
-The new wave of decision-model benchmarks (JevBench, OpenRouter's Banking77 comparison, Bespoke Labs' suite) measures accuracy and calibration on clean inputs. peira measures the complementary question: whether hostile inputs flip the decisions. The paired attack/control design isolates the attack's effect, so a flipped decision is evidence about the attack, not noise.
+The new wave of decision-model benchmarks (JevBench, the Banking77 Jev-vs-frontier-LLM comparisons, Bespoke Labs' suite) measures accuracy and calibration on clean inputs. peira measures the complementary question: whether hostile inputs flip the decisions. The paired attack/control design isolates the attack's effect, so a flipped decision is evidence about the attack, not noise.
 
 The differentiator, stated plainly: decision-change ASR plus a hard minimum-20-eligible-cases-per-family ranking gate is simpler and more auditable than composite-index leaderboards. For broad red-teaming look at garak, HarmBench, or JailbreakBench; for general-purpose harnesses, Inspect AI or promptfoo. peira is the decision-model layer: approve/deny, score, abstain.
 
