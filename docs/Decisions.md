@@ -1375,7 +1375,7 @@ to critical enter the `peira dataset review` queue, and `peira dataset build-man
 **Corpus-wide sweeps are a separate workstream (S-1), not individual
 corrections.** A sweep (the severity re-grade against the rubric's
 critical bullets; the "Score 0-100" prompt sweep) mutates many cases at
-once and is the largest unaudited mutation this dataset can undergo.
+once, making it the broadest unaudited change this dataset can undergo.
 Sweeps require a written protocol reviewed under the three-review gate
 before execution, bidirectional grading (the protocol must be able to
 move cases both up and down, not only confirm the suspected direction),
