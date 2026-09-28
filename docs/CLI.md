@@ -9,7 +9,7 @@ itself. For what the numbers mean, see
 [Methodology](Methodology.md); for exact error text, see
 [Troubleshooting](Troubleshooting.md).
 
-Benchmarking decision models under attack, starting with Jev, Shieldstral, Prompt Guard 2 and SemIf. 2,000 paired cases; 95% confidence intervals on every number.
+Benchmarking decision models under attack, starting with Jev, Shieldstral, Prompt Guard 2 and SemIf. 2,000 paired cases; Wilson 95% confidence intervals on reported rates.
 
 ## Global flags
 

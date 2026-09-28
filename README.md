@@ -1,6 +1,6 @@
 # peira
 
-**Benchmarking decision models under attack.** peira puts TypeSafe's Jev, Mistral's Shieldstral, Meta's Prompt Guard 2, the open SemIf, and structured-output frontier LLM baselines through 2,000 paired benign/attacked cases across 10 attack families, from prompt injection and jailbreak framing to confidence spoofing and state poisoning. Every attack runs against a clean control case, so a flipped decision is evidence about the attack, not noise. Every number ships with a 95% confidence interval.
+**Benchmarking decision models under attack.** peira puts TypeSafe's Jev, Mistral's Shieldstral, Meta's Prompt Guard 2, the open SemIf, and structured-output frontier LLM baselines through 2,000 paired benign/attacked cases across 10 attack families, from prompt injection and jailbreak framing to confidence spoofing and state poisoning. Every attack runs against a clean control case, so a flipped decision is evidence about the attack, not noise. Reported rates ship with Wilson 95% confidence intervals.
 
 
 [![ci](https://github.com/david-engelmann/peira/actions/workflows/ci.yml/badge.svg)](https://github.com/david-engelmann/peira/actions/workflows/ci.yml)
@@ -64,7 +64,7 @@ Check your setup first with `peira doctor`: it reports Python/RAM/disk/GPU, veri
 
 Whether hostile input changes a decision model's typed output: approve/deny (choice), a numeric score (score), or abstain (abstain). Each attacked case ships with a benign twin, and a case only counts when its benign variant gives a usable baseline. A model cannot look sturdy by failing the control.
 
-The headline metric is decision-change ASR with Wilson 95% confidence intervals. ECE and Brier cover confidence quality. Malformed attacked outputs count as flipped (a decision model that breaks under attack gets no benefit of the doubt). Refusals are reported as refusal rates, never folded into ASR. Cost is a sidecar, never blended into a score. Every report carries per-case drill-down receipts, and every run is sealed against post-hoc editing.
+The headline metric is decision-change ASR with Wilson 95% confidence intervals. ECE and Brier cover confidence quality. Malformed attacked outputs count as flipped (a decision model that breaks under attack gets no benefit of the doubt), and so is attack-induced abstention: a flip of the abstention state is a flip of the outcome, a DoS vector. Refusal rates are reported separately so the refusal phenomenon stays visible. Cost is a sidecar, never blended into a score. Every report carries per-case drill-down receipts, and every run is sealed against post-hoc editing.
 
 A low ASR is not a safety certificate. It says the decision model held against peira's 10 families, nothing about the attacks peira does not cover.
 
@@ -178,7 +178,7 @@ See `examples/minimal_adapter.py` for the runnable version, then read `docs/Meth
 
 ## Methodology
 
-One metric, honestly computed: decision-change ASR over eligible cases only, with Wilson 95% confidence intervals on every figure. The full recipe (suite composition, eligibility rules, the analysis lock) is in `docs/Methodology.md`.
+One metric, honestly computed: decision-change ASR over eligible cases only, with Wilson 95% confidence intervals on reported rates. The full recipe (suite composition, eligibility rules, the analysis lock) is in `docs/Methodology.md`.
 
 ## Reports
 
@@ -197,4 +197,5 @@ A monthly *State of Decision Robustness* starting at the v1 launch: the full lea
 
 ## License / notices
 
-Code: MIT. Dataset: CC-BY-4.0. See [LICENSE](LICENSE).
+Code: MIT (see [LICENSE](LICENSE)). Dataset: CC-BY-4.0 (see
+[LICENSE-CC-BY-4.0](LICENSE-CC-BY-4.0)).

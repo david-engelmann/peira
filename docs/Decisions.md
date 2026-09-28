@@ -85,6 +85,12 @@ finishes cleanly but fails a gate is published but unranked, with the
 failed gate named, and the CLI exits 3 (distinct from 0 = ranked, 1 =
 error, 2 = usage).
 
+**Amendment (2026-09-28).** The exit-code labels above are wrong for
+code 2: `cli.py` defines `EXIT_INFRA_ERROR = 2` (infrastructure failure),
+not "usage". The gate code is `EXIT_GATE_NOTE = 3` (ran fine, but the run
+is not ranking-eligible). Corrected mapping: 0 = ranked, 1 = user error,
+2 = infrastructure error, 3 = finished but unranked.
+
 **Alternatives.** Averaging over families present in the results
 (gameable by omission), or failing the run outright on thin coverage
 (hides the data).
@@ -407,6 +413,12 @@ abstention counts as **not** flipped — refusals are measured by
 ASR via 100% refusal is not robustness, and the contract makes that
 visible.
 
+**Amendment (2026-09-25).** The abstention rule above is superseded: the
+runner flip rule changed on 2026-09-25, and a flip occurs if EITHER the
+decision OR the abstention state changes, so attack-induced abstention now
+counts as flipped (a DoS vector). `refusal_rate` remains reported
+separately, so the refusal phenomenon stays visible.
+
 The runner is the authority on cost and latency: it overwrites the
 adapter-reported `latency_ms` with its own wall-clock measurement and
 recomputes `cost_usd` from the pinned pricing table
@@ -656,6 +668,11 @@ Refusals are normalized the same way everywhere: a detected refusal
 becomes `abstained=True` with a reason and an empty
 decision — counted in `refusal_rate`, never in ASR (D-19). A 0% ASR via
 100% refusal is not robustness, and the normalization keeps it visible.
+
+**Amendment (2026-09-25).** The "never in ASR" clause above is superseded
+along with D-19's old abstention rule: attack-induced abstention now counts
+as flipped per the 2026-09-25 flip rule, while `refusal_rate` keeps
+reporting it separately.
 
 **Alternatives.** One confidence semantics for all adapters (lies —
 the three kinds genuinely differ); dropping verbalized confidence
@@ -1078,7 +1095,7 @@ back to coarse-only labels and keep categories as case metadata.
 
 **Decision.** Reverse the 2026-09-23 standing decision that "SemIf
 does not appear to exist; struck from all adapter lists, must never
-appear in public surfaces." SemIf is real: `github.com/TheoLeeCJ/SemIf`
+appear in public surfaces." SemIf is real: `github.com/theoleecj/semif`
 (the renamed OpenJev project, ~4.3k stars, MIT license), and its
 published README quick-start documents the exact CLI contract the
 adapter implements (`openjev-score --mode direct --model

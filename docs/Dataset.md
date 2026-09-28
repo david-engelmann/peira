@@ -13,20 +13,18 @@ dataset/
   trial/             # the branded 100-case Peira Trial (v1-quality pilot)
                      # 10 cases per family; runs via --suite trial
   v1/
-    README.md
-    cases.jsonl      # the 2,000 public cases (lands via the pipeline)
-    trial.jsonl      # the 100-case Peira Trial suite, sampled from v1
-    CANARY.txt       # the canary string (also embedded in every case file)
-    DATASHEET.md     # full datasheet
-    schema.json      # the frozen case JSON schema
-    manifest.json    # the build manifest (this doc)
+    README.md        # what lives here + license (CC-BY-4.0)
+    cases.jsonl      # the 2,000 public cases (10 families × 200)
+    cases/           # per-family case files (one JSONL per attack family)
+      CHANGELOG.json # pre-seal changelog entries (not yet sealed)
+      manifest.json  # sealed case-set manifest (sha256 per file)
 ```
 
 `trial-demo` is scaffolding: a 12-case fixture that lets the harness run
 offline. It predates the gates and is exempt from them. `trial` is the
 branded 100-case Peira Trial — 100 v1-quality cases (10 per family)
 authored through the full pipeline: all seven gates green, 100% of critical
-cases human-reviewed, manifest sealed at 1.0.4. Trial runs stay off the
+cases human-reviewed, manifest sealed at 1.0.5. Trial runs stay off the
 public leaderboard.
 
 ## Case schema: closed for required fields, open for extension
