@@ -37,6 +37,21 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
   analysis for the dashboard pipeline).
 - Methodology.md documents the lottery index; Troubleshooting.md
   covers the new error strings; docs/CLI.md regenerated.
+### Changed: flip-direction taxonomy (M-1, BREAKING for dashboard consumers)
+
+- The dashboard per-family `flip_types` key (old 4-value taxonomy:
+  `decision_change`/`abstention_change`/`malformed`) is now
+  `flip_direction` with the 7-value M-1 taxonomy (`approve-to-deny`,
+  `deny-to-approve`, `to-abstain`, `to-malformed`, `score-shifted`,
+  `other`, `none`). The CLI flag `--flip-type` is renamed to
+  `--flip-direction`; `--flip-type` is not accepted.
+- `case_results.flip_type` is migrated to `flip_direction` in existing
+  index.db files via `_ensure_case_result_columns()` (idempotent, runs
+  on every scan); new `confidence_delta`, `target_hit`, and
+  `score_delta` columns are added when missing.
+- Unclassifiable flips now report `other` honestly instead of a
+  fabricated `<x>-to-<y>` label or a misleading `approve-to-deny`
+  fallback.
 
 ### Added — production report rewiring (A3 S8b)
 

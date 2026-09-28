@@ -49,6 +49,10 @@ pub struct CallUsage {
     pub tokens_out: i64,
     pub latency_ms: f64,
     pub cost_usd: f64,
+    /// Which price table converted tokens to cost (e.g. "pricing/v2026-09").
+    /// `None` when unknown; `#[serde(default)]` keeps old 5-field JSON loadable.
+    #[serde(default)]
+    pub price_table_ref: Option<String>,
 }
 
 /// Deserialize `score` with the unit-interval rule, mirroring Python's

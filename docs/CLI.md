@@ -83,6 +83,41 @@ head-to-head statistical comparison of two run artifacts
 | `--out` |  | - | write an HTML comparison report to this path |
 | `--seed` |  | `0` | seed for the paired-bootstrap CIs (default: 0) |
 
+## peira dashboard
+
+export dashboard-ready JSON from run artifacts
+
+### peira dashboard run
+
+one run's complete dashboard payload
+
+| Flag | Required | Default | Help |
+|---|---|---|---|
+| `RUN` | yes | - | run artifact path |
+| `--out` |  | - | write JSON to this path (default: stdout) |
+
+### peira dashboard leaderboard
+
+cross-adapter leaderboard JSON
+
+| Flag | Required | Default | Help |
+|---|---|---|---|
+| `--runs-dir` |  | - | runs directory (default: ./runs or $PEIRA_RUNS_DIR) |
+| `--suite` |  | - | filter by suite |
+| `--dataset-version` |  | - | filter by dataset version |
+| `--out` |  | - | write JSON to this path (default: stdout) |
+
+### peira dashboard compare
+
+head-to-head comparison as dashboard JSON
+
+| Flag | Required | Default | Help |
+|---|---|---|---|
+| `RUN_A` | yes | - | first run artifact (A) |
+| `RUN_B` | yes | - | second run artifact (B) |
+| `--seed` |  | `0` | seed for the paired-bootstrap CIs (default: 0) |
+| `--out` |  | - | write JSON to this path (default: stdout) |
+
 ## peira hardness
 
 M-4 hardness/transfer diagnostics over 2+ run artifacts (diagnostic tables, never rankings)
@@ -124,6 +159,25 @@ verify analysis locks
 | Flag | Required | Default | Help |
 |---|---|---|---|
 | `PATHS` | yes | - | artifact paths to verify |
+
+### peira runs query
+
+per-case drill-down across runs (e.g. flipped cases on a family with high confidence)
+
+| Flag | Required | Default | Help |
+|---|---|---|---|
+| `--runs-dir` |  | - | runs directory (default: ./runs or $PEIRA_RUNS_DIR) |
+| `--adapter` |  | - | filter by adapter name |
+| `--suite` |  | - | filter by suite |
+| `--family` |  | - | filter by attack family |
+| `--severity` |  | - | filter by severity |
+| `--flipped` |  | - | only flipped cases |
+| `--unflipped` |  | - | only non-flipped cases |
+| `--eligible` |  | - | only eligible cases |
+| `--flip-direction` |  | - | filter by flip type (choices: `approve-to-deny`, `deny-to-approve`, `none`, `other`, `score-shifted`, `to-abstain`, `to-malformed`) |
+| `--min-confidence` |  | - | minimum attacked confidence |
+| `--max-confidence` |  | - | maximum attacked confidence |
+| `--limit` |  | `100` | max rows (default: 100, 0 = no cap) |
 
 ## peira family-summary
 

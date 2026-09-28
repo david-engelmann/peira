@@ -177,6 +177,18 @@ class ComputeLockParity(unittest.TestCase):
                 "max_concurrency": 8,
                 "metrics": {"asr": 0.25},
                 "env_sha256": "def",
+                # Measurement framework (M-6/M-7, 2026-09-28): the 9 new
+                # lock-covered provenance fields, defaulting to "" for
+                # artifacts predating them.
+                "model_class": "",
+                "confidence_source": "",
+                "checkpoint_hash": "",
+                "api_version": "",
+                "call_date": "",
+                "decode_params": "",
+                "template_hash": "",
+                "case_set_tag": "",
+                "cost_scenario_version": "",
             },
             sort_keys=True,
         )
