@@ -782,6 +782,60 @@ no reference: {_num(sd_skipped.get('no_reference'))})</p>"""
             f"<td>{_num(o.get('malformed'))}</td></tr>"
         )
 
+    def _flip_anatomy_section(metrics: dict) -> str:
+        """M-1 flip-anatomy tables: direction counts, target-hit rate, matrix.
+
+        Defensive: a hostile artifact can omit the flip_anatomy block
+        (or any key inside it); render "insufficient data", never
+        traceback.
+        """
+        fa = metrics.get("flip_anatomy")
+        if not isinstance(fa, dict):
+            return "<p><em>Flip anatomy unavailable:</em> insufficient data</p>"
+        counts = fa.get("direction_counts")
+        counts = counts if isinstance(counts, dict) else {}
+        shares = fa.get("direction_shares")
+        shares = shares if isinstance(shares, dict) else {}
+        order = (
+            "deny-to-approve", "approve-to-deny", "to-abstain",
+            "to-malformed", "score-shifted", "other", "none",
+        )
+        dir_rows = "\n".join(
+            f"<tr><td>{e(d)}</td><td>{_num(counts.get(d))}</td>"
+            f"<td>{_val(shares.get(d))}</td></tr>"
+            for d in order
+        )
+        if fa.get("target_hit_available"):
+            target_line = (
+                f"Target-hit rate: {_val(fa.get('target_hit_rate'))} "
+                f"(n={_num(fa.get('target_hit_n'))} flipped cases with a known target)"
+            )
+        else:
+            target_line = "Target-hit rate: insufficient data (no target decisions provided)"
+        matrix = fa.get("transition_matrix")
+        if not isinstance(matrix, dict) or not matrix:
+            matrix_html = "<p><em>Transition matrix unavailable:</em> insufficient data</p>"
+        else:
+            cols = sorted({c for row in matrix.values() for c in row})
+            head = "".join(f"<th>{e(str(c))}</th>" for c in cols)
+            body_rows = []
+            for b in sorted(matrix):
+                cells = "".join(
+                    f"<td>{_num(matrix[b].get(c))}</td>" for c in cols
+                )
+                body_rows.append(f"<tr><td>{e(str(b))}</td>{cells}</tr>")
+            matrix_html = (
+                "<table border=\"1\"><tr><th>benign \\ attacked</th>"
+                f"{head}</tr>\n" + "\n".join(body_rows) + "</table>"
+            )
+        return f"""
+<table border="1"><tr><th>direction</th><th>count</th><th>share of flips</th></tr>
+{dir_rows}</table>
+<p>{target_line}</p>
+<h3>Benign-to-attacked transition matrix</h3>
+<p>Rows: benign outcome; columns: attacked outcome. The diagonal held.</p>
+{matrix_html}"""
+
     page = f"""<!doctype html>
 <html><head><meta charset="utf-8"><title>peira report: {e(artifact.adapter_name)}</title></head>
 <body>
@@ -809,6 +863,11 @@ never laundered into ASR.</p>
 {_outcome_row("benign", m.get("outcomes_benign"))}
 {_outcome_row("attacked", m.get("outcomes_attacked"))}
 </table>
+<h2>Flip anatomy (M-1)</h2>
+<p>Which way the flips went. <em>deny-to-approve</em> is the "bad thing got
+approved" direction; <em>approve-to-deny</em> is the "good thing got blocked"
+direction. Counts cover eligible cases (the conditional-ASR population).</p>
+{_flip_anatomy_section(m)}
 <h2>Calibration</h2>
 <p>Confidence coverage (benign: {_val(cov.get('benign'))}, attacked: {_val(cov.get('attacked'))}).
 Per-condition ECE/Brier with bootstrap 95% CIs; Murphy decomposition

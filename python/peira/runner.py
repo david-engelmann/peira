@@ -1215,7 +1215,9 @@ def _summarize_artifact(
     ``cases`` supplies the case authors' ``expected_score`` references
     so score diagnostics are computed in production; omit them (or pass
     cases without references) and the score-diagnostics section
-    reports itself unavailable rather than guessing. ``seed`` drives
+    reports itself unavailable rather than guessing. ``cases`` also
+    supplies ``target_decision`` for the flip-anatomy target-hit rate.
+    ``seed`` drives
     the summary's bootstrap PRNG — the same seed and results always
     produce the same summary, which is what the analysis lock seals.
     ``termination`` marks how the run ended: anything but "complete"
@@ -1227,10 +1229,25 @@ def _summarize_artifact(
         if cases is None
         else {c.case_id: c.benign.expected_score for c in cases}
     )
+    target_decisions = (
+        None
+        if cases is None
+        else {
+            c.case_id: t
+            for c in cases
+            if (t := getattr(getattr(c, "attacked", None),
+                             "target_decision", None)) is not None
+        }
+    )
+    # None-valued entries are dropped: a mapping of all-Nones would
+    # otherwise masquerade as "targets provided" and report a 0.0 hit
+    # rate instead of the honest unavailable. An empty mapping lets
+    # summarize() report the target-hit rate as unavailable.
     return _metrics_summarize(
         results,
         required_families=required_families,
         expected_scores=expected_scores,
+        target_decisions=target_decisions,
         seed=seed,
         termination=termination,
     )
