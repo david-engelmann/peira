@@ -7,6 +7,22 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
 
 ## [Unreleased]
 
+### Added — M-4 hardness stratification + cross-adapter transfer ASR
+
+- New `peira.hardness` module (pure aggregation over sealed per-case
+  results, no Rust port): per-example flip distribution (fraction of
+  cases flipped by exactly k of N adapters), hardest-decile survival
+  (per-adapter survival rate on the hardest 10% of cases by flip count),
+  and cross-adapter transfer ASR matrices (P(dst flips | src flipped),
+  overall and per family) with the mean off-diagonal transfer rate as a
+  one-number summary. Diagnostic tables only: nothing here ranks adapters
+  or enters a leaderboard.
+- New `peira hardness run1.json run2.json ...` CLI command printing the
+  M-4 tables to stdout (or `--out` file). Needs at least 2 artifacts.
+- `docs/Methodology.md` documents the M-4 views and their conventions;
+  `docs/CLI.md` regenerated; `docs/Troubleshooting.md` covers the new
+  error strings.
+
 ### Added — production report rewiring (A3 S8b)
 
 - The runner's artifact summary is now the canonical
