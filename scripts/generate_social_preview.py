@@ -62,10 +62,10 @@ def build() -> str:
   <rect width="{W}" height="{H}" fill="url(#marble)"/>
   <rect x="60" y="60" width="{W - 120}" height="{H - 120}" fill="none" stroke="{LINE}" stroke-width="2"/>
   <text x="120" y="300" font-family="Georgia, 'Times New Roman', serif" font-size="150" fill="{PINE}">peira</text>
-  <text x="124" y="380" font-family="Georgia, 'Times New Roman', serif" font-size="40" font-style="italic" fill="{PINE_SOFT}">{esc("Benchmarking decision models under attack, starting with Jev, Shieldstral, Prompt Guard 2 and SemIf. 2,000 paired cases; Wilson 95% confidence intervals on reported rates.")}</text>
+  <text x="124" y="380" font-family="Georgia, 'Times New Roman', serif" font-size="40" font-style="italic" fill="{PINE_SOFT}">{esc("An open-source AI safety stress-test and intelligence hub for leading models and guardrails.")}</text>
   <rect x="124" y="420" width="72" height="6" fill="{OCHRE}"/>
     {bars}
-  <text x="120" y="{H - 96}" font-family="Verdana, sans-serif" font-size="22" fill="{PINE_SOFT}">{esc("Benchmarking decision models under attack, starting with Jev, Shieldstral, Prompt Guard 2 and SemIf. 2,000 paired cases; Wilson 95% confidence intervals on reported rates.")}</text>
+  <text x="120" y="{H - 96}" font-family="Verdana, sans-serif" font-size="22" fill="{PINE_SOFT}">{esc("An open-source AI safety stress-test and intelligence hub for leading models and guardrails.")}</text>
 </svg>
 """
 

@@ -1,6 +1,6 @@
 # peira
 
-**Benchmarking decision models under attack.** peira puts TypeSafe's Jev, Mistral's Shieldstral, Meta's Prompt Guard 2, the open SemIf, and structured-output frontier LLM baselines through 2,000 paired benign/attacked cases across 10 attack families, from prompt injection and jailbreak framing to confidence spoofing and state poisoning. Every attack runs against a clean control case, so a flipped decision is evidence about the attack, not noise. Reported rates ship with Wilson 95% confidence intervals.
+peira is an open-source AI safety stress-test and intelligence hub for leading models and guardrails, including Jev, ChatGPT, Claude, DeepSeek, Kimi, Gemini, Llama Guard, Grok, GLM, WildGuard, ShieldGemma, Granite Guardian and Shieldstral. The program is designed so every published number is backed by real evaluation runs on versioned public datasets. The code is MIT-licensed and the public datasets are CC-BY-4.0, so anyone can reproduce the numbers.
 
 
 [![ci](https://github.com/david-engelmann/peira/actions/workflows/ci.yml/badge.svg)](https://github.com/david-engelmann/peira/actions/workflows/ci.yml)

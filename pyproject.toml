@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "peira"
 version = "0.1.0"
-description = "Benchmarking decision models under attack, starting with Jev, Shieldstral, Prompt Guard 2 and SemIf. 2,000 paired cases; Wilson 95% confidence intervals on reported rates."
+description = "An open-source AI safety stress-test and intelligence hub for leading models and guardrails, including Jev, ChatGPT, Claude, DeepSeek, Kimi, Gemini, Llama Guard, Grok, GLM, WildGuard, ShieldGemma, Granite Guardian and Shieldstral."
 readme = "README.md"
 license = { text = "MIT" }
 requires-python = ">=3.10"
