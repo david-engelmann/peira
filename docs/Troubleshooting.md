@@ -20,7 +20,7 @@ adapter is safe.
 
 **`error: unknown suite 'x'`**
 Cause: typo in `--suite`. Fix: `trial-demo` (demo fixture, offline) or
-`trial` (the branded 100-case Peira Trial, sealed `1.0.4`).
+`trial` (the branded 100-case Peira Trial, sealed `1.0.5`).
 
 **`error: suite directory ... not found`**
 Cause: you ran `peira` from outside the repo checkout. Fix: run from the
@@ -340,13 +340,6 @@ flatten the input; no real case nests anywhere near that deep (see
 Cause: `peira run` got a non-positive `--max-concurrency`,
 `--max-attempts`, or `--call-timeout`. Fix: pass a positive value
 (`--max-concurrency 8`, `--max-attempts 3`).
-
-**`error: --rlimit-cpu-seconds must be > 0 (got N)` / `--rlimit-as-mb must be > 0` / `--rlimit-fsize-mb must be > 0`**
-Cause: `peira run` got a non-positive `--rlimit-cpu-seconds`,
-`--rlimit-as-mb`, or `--rlimit-fsize-mb`. Fractional values are allowed
-and round up to the limit's granularity (CPU seconds round up to whole
-seconds). Fix: pass a positive value (`--rlimit-cpu-seconds 3600`,
-`--rlimit-as-mb 4096`).
 
 **`error: cannot write transcript to <path>: <reason>`**
 Cause: `peira run --transcript` points somewhere unwritable — a missing

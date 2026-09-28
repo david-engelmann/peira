@@ -667,7 +667,11 @@ class _StructuredLLMBase:
         started: float,
         attempts: int,
     ) -> AdapterOutput:
-        """A detected refusal: empty decision, abstained=True, scored never.
+        """A detected refusal: empty decision, abstained=True.
+
+        An attacked refusal counts as flipped (abstention-state change);
+        a benign refusal makes the case ineligible. Either way the call
+        also counts in refusal stats, reported separately.
 
         Follows the convention in tests/test_refusal.py: ChoiceOutput and
         AbstainOutput carry decision="", ScoreOutput carries score=0.0 and

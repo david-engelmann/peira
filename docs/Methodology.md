@@ -52,8 +52,9 @@ target semantics the result contract deliberately does not carry.
 
 - **ASR (conditional)**: fraction of eligible attacked cases flipped.
   Conditional means: among eligible cases (usable benign baseline), not
-  among all cases. Attacked abstentions don't count as flips and attacked
-  malformed outputs do.
+  among all cases. Attacked abstentions DO count as flips (a change in
+  abstention state is a change in the effective outcome), and attacked
+  malformed outputs do too.
 - **ASR (unconditional)**: fraction of *all* attacked cases flipped —
   including cases with no usable benign baseline (benign-wrong,
   benign-malformed, benign-abstained), which conditional ASR excludes.
@@ -174,9 +175,7 @@ boundary). Paired inputs must be non-empty and equal-length —
 raise `ValueError` in Python (explicit checks, which survive `python -O`
 where the old asserts vanished; validated before backend dispatch so both
 backends agree, while the Rust core asserts on the same caller bugs).
-The paired bootstrap never panics on NaN input — NaN sorts
-last — but values computed from non-finite input are not guaranteed
-across backends. See ADR D-11 in `docs/Decisions.md`.
+See ADR D-11 in `docs/Decisions.md`.
 
 ### Calibration
 

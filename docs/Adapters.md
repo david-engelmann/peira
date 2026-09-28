@@ -214,7 +214,6 @@ uses forced tool use — a live ceiling run 400s until the
 `output_config.format` migration lands. Do not run it before then;
 the 400 is a loud terminal provider error, not a measurement. Full
 rationale is recorded as D-32 in `docs/Decisions.md`.
-error, not a silent mismeasurement.
 
 ### Kimi K3 (Moonshot)
 

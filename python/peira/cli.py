@@ -288,12 +288,6 @@ def cmd_run(args: argparse.Namespace) -> int:
         print(f"error: --call-timeout must be > 0 "
               f"(got {args.call_timeout})", file=sys.stderr)
         return EXIT_USER_ERROR
-    for flag in ("rlimit_cpu_seconds", "rlimit_as_mb", "rlimit_fsize_mb"):
-        value = getattr(args, flag)
-        if value is not None and value <= 0:
-            print(f"error: --{flag.replace('_', '-')} must be > 0 "
-                  f"(got {value})", file=sys.stderr)
-            return EXIT_USER_ERROR
 
     if args.dry_run:
         print(f"dry run: {len(cases)} cases, adapter={adapter.name}, "
@@ -359,9 +353,6 @@ def cmd_run(args: argparse.Namespace) -> int:
             cache_dir=args.cache_dir,
             transcript_path=args.transcript,
             run_nonce=run_nonce,
-            rlimit_cpu_seconds=args.rlimit_cpu_seconds,
-            rlimit_as_mb=args.rlimit_as_mb,
-            rlimit_fsize_mb=args.rlimit_fsize_mb,
         )
     except KeyboardInterrupt:
         print("\ninterrupted — partial run saved; re-run with --resume.",
@@ -1272,7 +1263,7 @@ def cmd_dataset_verify_manifest(args: argparse.Namespace) -> int:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    p = argparse.ArgumentParser(prog="peira", description="Benchmarking decision models under attack, starting with Jev, Shieldstral, Prompt Guard 2 and SemIf. 2,000 paired cases; 95% confidence intervals on every number.")
+    p = argparse.ArgumentParser(prog="peira", description="Benchmarking decision models under attack, starting with Jev, Shieldstral, Prompt Guard 2 and SemIf. 2,000 paired cases; Wilson 95% confidence intervals on reported rates.")
     p.add_argument("--version", action="version", version=f"peira {__version__}")
     sub = p.add_subparsers(dest="command", required=True)
 
@@ -1298,18 +1289,9 @@ def build_parser() -> argparse.ArgumentParser:
     r.add_argument("--max-attempts", type=int, default=3,
                    help="total tries per call; retries are transient-only "
                    "(408/409/429/5xx, timeouts) (default: 3)")
-    r.add_argument("--call-timeout", type=float, default=300.0,
+    r.add_argument("--call-timeout", type=float, default=None,
                    help="seconds per attempt; a timeout is retried as a "
-                   "transient failure (default: 300)")
-    r.add_argument("--rlimit-cpu-seconds", type=float, default=None,
-                   help="process-wide CPU time backstop in seconds (Unix "
-                   "only; opt-in, no limit by default)")
-    r.add_argument("--rlimit-as-mb", type=float, default=None,
-                   help="process-wide virtual memory cap in MB (Unix only; "
-                   "opt-in, no limit by default)")
-    r.add_argument("--rlimit-fsize-mb", type=float, default=None,
-                   help="max size of any single file write, in MB (Unix "
-                   "only; opt-in, no limit by default)")
+                   "transient failure (default: no timeout)")
     r.add_argument("--cache-dir", default=None,
                    help="opt-in response cache directory for deterministic "
                    "adapters (temperature 0 + fixed seed); off by default "

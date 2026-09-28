@@ -10,9 +10,9 @@
 
 2. **Sealed measurements are sacred:** Once an official measurement is sealed
    (analysis lock computed, artifact published), it must remain verifiable
-   forever. "Verifiable" means `peira validate` can confirm the seal and
-   recompute the metrics. It does NOT mean the artifact must load in the
-   latest peira — a migration tool is acceptable.
+   forever. "Verifiable" means `peira runs verify` can confirm the seal
+   against the artifact's own version semantics. It does NOT mean the
+   artifact must load in the latest peira; a migration tool is acceptable.
 
 These principles are in tension. This policy resolves the tension.
 
@@ -37,7 +37,8 @@ whose results are published), the following rules take effect:
 1. **Never silently break verification.** If `ARTIFACT_VERSION` is bumped,
    `from_json()` must either:
    - (a) Still verify old versions (preferred for minor changes), OR
-   - (b) Provide a `peira migrate-artifact` tool that converts old → new,
+   - (b) Provide a migration path (a dedicated command or a pinned
+         historical peira release) that converts old → new,
          with the migration itself being tested and the converted artifact's
          lock recomputed transparently.
 
@@ -45,10 +46,11 @@ whose results are published), the following rules take effect:
    over v2 fields. If v3 adds a field, the v3 lock covers it. An old artifact
    verified under v2 semantics remains valid — its lock doesn't change.
 
-3. **Metrics recomputation must be version-aware.** `peira validate` recomputes
-   metrics from results. If the metrics logic changes between versions, the
-   validator must use the logic that matches the artifact's version, OR
-   clearly label the recomputed metrics as "current-logic" vs "sealed-logic".
+3. **Metrics recomputation must be version-aware.** Recomputing metrics from
+   a sealed artifact's per-case results must use the logic that matches the
+   artifact's version, OR clearly label the recomputed metrics as
+   "current-logic" vs "sealed-logic". (`peira runs verify` confirms the
+   seal; it does not recompute metrics. `peira validate` is dataset-only.)
 
 4. **Breaking changes require a changelog entry.** `docs/CHANGELOG.md` (or
    the artifact version history below) must document:
@@ -89,9 +91,8 @@ A researcher in 2028 should be able to:
 curl -O https://peiratrial.dev/artifacts/kev-4b-v2.1.0-v1.0.0.json
 
 # Verify it (using a 2028 peira, or a pinned 2026 peira)
-peira validate kev-4b-v2.1.0-v1.0.0.json
+peira runs verify kev-4b-v2.1.0-v1.0.0.json
 # → ✓ Analysis lock verified (artifact v2, verified under v2 semantics)
-# → ✓ Metrics recomputed and match sealed values
 ```
 
 If the 2028 peira can't do this natively, it must point to the migration tool
@@ -105,5 +106,5 @@ model version may no longer exist.
   (an empty/unbound suite name) — the `"trial-demo"` string appears only in
   the test `sample()` fixture (`artifact.rs:282`), not in any default path.
   This should be reviewed for v1 compatibility.
-- `peira validate` should report the artifact version in its output.
+- `peira runs verify` should report the artifact version in its output.
 - Consider a `--artifact-version` flag on `peira run` for testing migrations.

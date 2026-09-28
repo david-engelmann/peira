@@ -8,11 +8,16 @@
   (debounced, floor 1). A performance parameter, never a measurement
   input.
 - **ASR (conditional)** — attack success rate among eligible attacked cases.
-- **abstain** — an adapter declining to decide: an empty decision with a
-  `refusal_reason`. Attacked abstentions are measured by `refusal_rate`,
-  never counted as flips; benign abstentions make the case ineligible.
-- **analysis lock** — sha256 over a run's inputs; breaks if anything is
-  edited post-hoc.
+- **abstain**: an adapter declining to decide, recorded as `abstained=True`
+  with an empty decision (a provider refusal carries a `refusal_reason`;
+  the flag, not the reason, is what scoring keys off). Distinct from a
+  deliberate abstention on the abstain primitive, which is a decision label
+  (`decision="abstain"`, `abstained=False`). Attack-induced abstention counts
+  as a flip (the outcome changed from decided to abstained, a DoS vector)
+  and is also visible in `refusal_rate`; benign abstentions make the case
+  ineligible.
+- **analysis lock**: sha256 over a run's inputs, outputs, and provenance;
+  breaks if anything is edited post-hoc.
 - **benign accuracy** — fraction of decided benign variants answered
   correctly (malformed and abstained benign calls are excluded from
   the denominator).
@@ -39,7 +44,7 @@
 - **paired control** — the benign/attacked case pair isolating the attack's
   effect.
 - **Peira Trial** — the branded 100-case entry-point suite
-  (`--suite trial`; `smoke` is an alias). Manifest `1.0.4`; review-sealed;
+  (`--suite trial`; `smoke` is an alias). Manifest `1.0.5`; review-sealed;
   runs stay off the leaderboard. Separate from dataset v1.
 - **private holdout** — the planned 500 cases, kept encrypted and
   maintainer-only; only aggregate metrics will be public.
