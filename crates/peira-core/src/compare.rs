@@ -73,8 +73,6 @@ pub fn case_ok(r: &PerCaseResult) -> bool {
     r.eligible && !r.flipped
 }
 
-/// Complementary error function, Abramowitz & Stegun 7.1.26.
-///
 /// Fourfold head-to-head counts over the binary per-case outcome.
 ///
 /// Mirrors `python/peira/compare.py::_head_to_head`.
