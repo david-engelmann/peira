@@ -35,6 +35,9 @@ from peira.metrics import (
     SEVERITY_WEIGHTS,
     ComparisonOutcome,
     PerCaseResult,
+    _check_finite,
+    _check_paired,
+    _check_weights,
     _require_result_strings,
     bradley_terry,
     mcnemar,
@@ -488,6 +491,27 @@ def _bradley_terry_fit(
     return est.strengths, est.nu, est.n, ""
 
 
+def _favors_from_ci(
+    point: float,
+    lo: float,
+    hi: float,
+    lower_is_better: bool,
+) -> str | None:
+    """Name the winning arm from a delta CI, or None when withheld/tied.
+
+    Shared by :func:`_delta` and :func:`weighted_delta`: ``favors`` is
+    claimed only when the point estimate is nonzero and the 95% CI
+    excludes zero — otherwise the data does not support a directional
+    finding. Lower-is-better metrics (ASR, Brier, cost, latency) read
+    ``point < 0`` as "A wins"; higher-is-better (benign accuracy) reads
+    ``point > 0`` as "A wins".
+    """
+    if abs(point) > 0.0 and not (lo <= 0.0 <= hi):
+        a_wins = (point < 0.0) if lower_is_better else (point > 0.0)
+        return "a" if a_wins else "b"
+    return None
+
+
 def _delta(
     name: str,
     xs: list[float],
@@ -504,15 +528,10 @@ def _delta(
         )
     point = sum(xs) / n - sum(ys) / n
     lo, hi = paired_bootstrap_ci(xs, ys, seed=seed)
-    favors: str | None = None
-    if abs(point) > 0.0 and not (lo <= 0.0 <= hi):
-        # Only claim "favors" when the CI excludes zero — otherwise the
-        # data doesn't support a directional finding.
-        a_wins = (point < 0.0) if lower_is_better else (point > 0.0)
-        favors = "a" if a_wins else "b"
     return DeltaResult(
         name=name, delta=point, ci95=(lo, hi), n=n,
-        sufficient=True, favors=favors,
+        sufficient=True,
+        favors=_favors_from_ci(point, lo, hi, lower_is_better),
     )
 
 
@@ -527,14 +546,28 @@ def weighted_delta(
 ) -> WeightedDelta:
     """One A-minus-B weighted delta with a paired-bootstrap 95% CI, or withheld.
 
-    The point estimate is weighted-mean(xs) - weighted-mean(ys); the
-    interval comes from
+    The point estimate is weighted-mean(xs) - weighted-mean(ys): each
+    arm's weighted mean divides by that arm's own total weight
+    (``sum(w_xs)`` / ``sum(w_ys)``), so the denominator is the total
+    weight on the arm — for severity-weighted ASR, the total severity
+    weight over doubly-eligible cases. The interval comes from
     :func:`peira.metrics.paired_bootstrap_weighted_ci` with the pairing
     preserved. Below ``MIN_COMPARE_DELTA_CASES`` paired cases the delta
     is withheld (``sufficient=False``), never fabricated — the same
     contract as :func:`_delta`. ``favors`` is claimed only when the CI
     excludes zero.
     """
+    # Validate before any computation: a length mismatch would silently
+    # truncate under zip, nonfinite values would poison the point
+    # estimate, and bad weights would fail obscurely inside the
+    # bootstrap after the point estimate was already computed.
+    _check_paired(w_xs, xs, "w_xs", "xs")
+    _check_paired(w_ys, ys, "w_ys", "ys")
+    _check_paired(xs, ys, "xs", "ys")
+    _check_finite(xs, "xs")
+    _check_finite(ys, "ys")
+    _check_weights(w_xs, "w_xs")
+    _check_weights(w_ys, "w_ys")
     n = len(xs)
     if n < MIN_COMPARE_DELTA_CASES:
         return WeightedDelta(
@@ -543,23 +576,15 @@ def weighted_delta(
         )
     den_x = math.fsum(w_xs)
     den_y = math.fsum(w_ys)
-    if den_x <= 0.0 or den_y <= 0.0:
-        raise ValueError(
-            "weighted_delta requires positive total weight per arm, "
-            f"got den_x={den_x}, den_y={den_y}"
-        )
     point = (
         math.fsum(w * x for w, x in zip(w_xs, xs)) / den_x
         - math.fsum(w * y for w, y in zip(w_ys, ys)) / den_y
     )
     lo, hi = paired_bootstrap_weighted_ci(w_xs, xs, w_ys, ys, seed=seed)
-    favors: str | None = None
-    if abs(point) > 0.0 and not (lo <= 0.0 <= hi):
-        a_wins = (point < 0.0) if lower_is_better else (point > 0.0)
-        favors = "a" if a_wins else "b"
     return WeightedDelta(
         name=name, delta=point, ci95=(lo, hi), n=n,
-        sufficient=True, favors=favors,
+        sufficient=True,
+        favors=_favors_from_ci(point, lo, hi, lower_is_better),
     )
 
 
@@ -677,6 +702,11 @@ def _delta_metrics(
 
     # ΔBrier (benign calibration): (confidence - correctness)^2 per case,
     # over pairs where both adapters reported a benign confidence.
+    # Seed offsets (+1, +2, +3 below, +4 for the weighted delta in
+    # compare_artifacts): each metric's bootstrap gets an independent
+    # RNG stream. Without offsets, metrics computed over the same
+    # resample indices would share Monte Carlo noise, coupling their
+    # intervals; distinct streams keep the CIs independent draws.
     xs, ys = [], []
     for p in pairs:
         ca, cb = p.a.benign.confidence, p.b.benign.confidence
@@ -758,6 +788,8 @@ def compare_artifacts(a: RunArtifact, b: RunArtifact, seed: int = 0) -> Comparis
         bradley_terry_n=bt_n,
         bradley_terry_note=bt_note,
         deltas=_delta_metrics(pairs, seed),
+        # seed + 4 continues the independent-stream offsets documented
+        # in _delta_metrics.
         weighted_deltas=[delta_severity_weighted_asr(pairs, seed=seed + 4)],
         warnings=warnings,
     )

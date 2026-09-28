@@ -7,7 +7,7 @@ p-value from McNemar attached to a severity-weighted or cost-weighted
 metric is a category error; weighted comparisons get paired-bootstrap
 inference instead (C-2).
 
-This script enforces the rule two ways:
+This script enforces the rule three ways:
 
 1. Structural check: build a synthetic comparison dict through
    ``peira.compare.comparison_to_dict`` and run
@@ -92,39 +92,67 @@ def check_negative_control() -> list[str]:
     return []
 
 
-# Assignment of a McNemar p-value key inside a dict/list literal that
-# also mentions a weighted metric name, on nearby lines.
+# Assignment of a p-value key (any spelling the validator recognizes)
+# inside a dict/list literal that also mentions a weighted metric name,
+# on nearby lines. Bare ``p_value`` is included: a nested
+# ``{"stats": {"p_value": ...}}`` next to a weighted name is the same
+# category error as ``mcnemar_p_value``. The optional quote handles
+# quoted dict keys (``"p_value":``), which the earlier patterns missed
+# entirely.
 _STATIC_PATTERNS = [
     re.compile(
-        r'(mcnemar_p_value|mcnemar_p)\s*[:=]\s*[^\n]*\n'
+        r'(mcnemar_p_value|mcnemar_p|p_value)["\']?\s*[:=]\s*[^\n]*\n'
         r'(?:[^\n]*\n){0,3}[^\n]*(weighted|severity_weighted_asr)',
         re.IGNORECASE,
     ),
     re.compile(
         r'(weighted|severity_weighted_asr)[^\n]*\n'
-        r'(?:[^\n]*\n){0,3}[^\n]*(mcnemar_p_value|mcnemar_p)\s*[:=]',
+        r'(?:[^\n]*\n){0,3}[^\n]*(mcnemar_p_value|mcnemar_p|p_value)["\']?\s*[:=]',
         re.IGNORECASE,
     ),
 ]
 
 
+def _validator_line_span() -> tuple[int, int]:
+    """1-based [start, end) line span of ``validate_no_weighted_mcnemar``.
+
+    The validator's own body mentions p-value keys next to weighted
+    names by design (it is the thing doing the checking), so the static
+    check excludes exactly its body instead of substring-matching the
+    hit text.
+    """
+    path = ROOT / "python" / "peira" / "compare.py"
+    lines = path.read_text(encoding="utf-8").splitlines()
+    start = next(
+        i for i, line in enumerate(lines)
+        if line.startswith("def validate_no_weighted_mcnemar(")
+    )
+    end = next(
+        i for i in range(start + 1, len(lines))
+        if lines[i] and not lines[i][0].isspace()
+    )
+    return start + 1, end + 1
+
+
 def check_static() -> list[str]:
     """Grep for code that pairs McNemar p-values with weighted metrics."""
     hits: list[str] = []
+    v_start, v_end = _validator_line_span()
     for path in sorted((ROOT / "python" / "peira").rglob("*.py")):
         text = path.read_text(encoding="utf-8")
+        rel = str(path.relative_to(ROOT))
         for pat in _STATIC_PATTERNS:
             for m in pat.finditer(text):
                 lineno = text.count("\n", 0, m.start()) + 1
-                rel = path.relative_to(ROOT)
+                # The validator's own body is the checker, not a
+                # violation: exclude its exact line span.
+                if (rel == "python/peira/compare.py"
+                        and v_start <= lineno < v_end):
+                    continue
                 hits.append(
                     f"{rel}:{lineno}: possible McNemar p-value on a "
                     f"weighted metric"
                 )
-    # The validator itself and this script mention both terms by design.
-    hits = [h for h in hits
-            if "check_no_weighted_mcnemar.py" not in h
-            and "def validate_no_weighted_mcnemar" not in h]
     return hits
 
 

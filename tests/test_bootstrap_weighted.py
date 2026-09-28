@@ -123,6 +123,36 @@ class TestPairedBootstrapWeightedCI(unittest.TestCase):
             paired_bootstrap_weighted_ci(
                 [0.0, 0.0], [1.0, 2.0], [1.0, 1.0], [1.0, 1.0])
 
+    def test_sparse_but_supported_weights_redraw(self):
+        # One positive weight: every non-degenerate resample is pinned
+        # to the same weighted mean, so the interval is exactly the
+        # point estimate. Resamples that draw only the zero-weight case
+        # are discarded and redrawn — never returned as a degenerate
+        # result. Fully deterministic: the valid resample set admits a
+        # single value.
+        xs = [1.0, 999.0]
+        ys = [0.0, 0.0]
+        w = [1.0, 0.0]
+        lo, hi = paired_bootstrap_weighted_ci(w, xs, w, ys,
+                                             n_boot=100, seed=0)
+        self.assertEqual((lo, hi), (1.0, 1.0))
+
+    def test_sparse_weights_have_defined_behavior(self):
+        # One positive weight among 49 zeros: every non-degenerate
+        # resample is pinned to the same weighted mean, so the interval
+        # is exactly the point estimate. Resamples that draw only
+        # zero-weight indices are discarded and redrawn — the result is
+        # a defined (zero-width) interval, never silent garbage and
+        # never a mid-loop failure. Deterministic for any seed: the
+        # valid resample set admits a single value.
+        n = 50
+        w = [3.0] + [0.0] * (n - 1)
+        xs = [1.0] * n
+        ys = [0.0] * n
+        lo, hi = paired_bootstrap_weighted_ci(w, xs, w, ys,
+                                             n_boot=200, seed=0)
+        self.assertEqual((lo, hi), (1.0, 1.0))
+
     def test_rejects_bad_n_boot(self):
         with self.assertRaises(ValueError):
             paired_bootstrap_weighted_ci(
@@ -183,6 +213,25 @@ class TestWeightedDelta(unittest.TestCase):
         self.assertIsNone(d.favors)
         self.assertEqual(d.n, n)
 
+    def test_mismatched_lengths_raise_instead_of_withholding(self):
+        # Validation runs before the minimum-sample gate: a length
+        # mismatch is a caller bug, not an insufficient-data withhold.
+        # (zip would silently truncate and compute over the wrong pairs.)
+        with self.assertRaises(ValueError):
+            weighted_delta("m", [1.0, 1.0], [1.0, 1.0],
+                           [1.0], [1.0, 1.0],
+                           lower_is_better=True, seed=0)
+
+    def test_nonfinite_values_raise_before_computation(self):
+        # NaN must be rejected before the point estimate is computed,
+        # not left to detonate inside the bootstrap.
+        n = 30
+        xs = [1.0] * n
+        xs[0] = float("nan")
+        with self.assertRaises(ValueError):
+            weighted_delta("m", [1.0] * n, xs, [1.0] * n, [0.0] * n,
+                           lower_is_better=True, seed=0)
+
     def test_favors_when_ci_excludes_zero(self):
         n = 100
         # A flips everything, B flips nothing: delta = 1.0, CI far from 0.
@@ -241,11 +290,19 @@ class TestDeltaSeverityWeightedASR(unittest.TestCase):
         self.assertAlmostEqual(d.delta, 0.5, places=10)
 
     def test_doubly_eligible_only(self):
-        # Ineligible cases contribute no weight to either arm.
-        specs = [("critical", True, False)] * 40
-        pairs = _pairs(specs)
-        for p in pairs[:10]:
-            object.__setattr__(p.a, "eligible", False)
+        # Ineligible cases contribute no weight to either arm. The
+        # ineligible pairs are built directly with eligible=False
+        # instead of mutating shared fixtures in place.
+        pairs = []
+        for i in range(40):
+            pairs.append(PairedCase(
+                case_id=f"c{i}",
+                family="fam",
+                primitive="choice",
+                a=_per_case_result(f"c{i}", "critical", True,
+                                   eligible=(i >= 10)),
+                b=_per_case_result(f"c{i}", "critical", False),
+            ))
         d = delta_severity_weighted_asr(pairs, seed=0)
         # 30 doubly-eligible pairs remain: at the gate, sufficient.
         self.assertTrue(d.sufficient)
@@ -309,8 +366,34 @@ class TestValidateNoWeightedMcNemar(unittest.TestCase):
         ok = {"x": {"name": "asr", "p_value": 0.03}}
         self.assertEqual(validate_no_weighted_mcnemar(ok), [])
 
-    def test_guarded_names(self):
-        self.assertIn("severity_weighted_asr", WEIGHTED_METRIC_NAMES)
+    def test_guarded_names_enforced(self):
+        # Every name in WEIGHTED_METRIC_NAMES must actually drive the
+        # validator: attaching a p-value to any guarded name is a
+        # violation. (Checking bare set membership would pass without
+        # exercising the enforcement path.)
+        for name in WEIGHTED_METRIC_NAMES:
+            bad = {"x": {"name": name, "p_value": 0.01}}
+            violations = validate_no_weighted_mcnemar(bad)
+            self.assertTrue(violations, name)
+            self.assertIn(name, violations[0])
+
+    def test_regression_nested_p_value_dict(self):
+        # Red-team P1: {"name": "severity_weighted_asr",
+        #               "stats": {"p_value": 0.01}} slipped past the
+        # validator before the nested-dict bypass fix.
+        bad = {"x": {"name": "severity_weighted_asr",
+                     "stats": {"p_value": 0.01}}}
+        violations = validate_no_weighted_mcnemar(bad)
+        self.assertTrue(violations)
+        self.assertIn("severity_weighted_asr", violations[0])
+
+    def test_regression_metric_name_as_key(self):
+        # Red-team P1: {"severity_weighted_asr": {"p_value": 0.01}}
+        # slipped past the validator before the name-as-key bypass fix.
+        bad = {"x": {"severity_weighted_asr": {"p_value": 0.01}}}
+        violations = validate_no_weighted_mcnemar(bad)
+        self.assertTrue(violations)
+        self.assertIn("severity_weighted_asr", violations[0])
 
 
 class TestComparisonIntegration(unittest.TestCase):
