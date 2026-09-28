@@ -125,11 +125,29 @@ One adapter per provider, one extra each — install only what you need:
 | Google | `peira[google]` | `peira.adapters.llm:GoogleAdapter` | `gemini-3.8-flash` | `GOOGLE_API_KEY` |
 | Moonshot (Kimi) | `peira[openai]` | `peira.adapters.llm:MoonshotAdapter` | `kimi-k3` | `MOONSHOT_API_KEY` |
 
-Default model ids are best-known guesses, not verified facts: the
-Anthropic and Google ids above haven't been confirmed against the
-live providers. If a provider rejects the default id, pass the exact
-model you want with `model=` — and let us know, so the default gets
-corrected.
+Default models are pinned per each vendor's versioning scheme
+(verified 2026-09-27 against the vendor docs, re-verified per
+release). Anthropic is the strongest case: from the 4.6 generation
+onward the dateless id IS the pinned snapshot by vendor guarantee,
+with weights and config fixed for the life of the id and updates
+shipped under new ids. Google's 3.x ids carry no `-001`-style suffix
+(that convention is 1.5/2.0-era); Moonshot never published dated ids
+at all. The OpenAI pin is the honest weak spot: Luna has no snapshot
+mechanism, so `gpt-5.6-luna` is a best-effort pin. If OpenAI swaps
+the weights behind the name, nothing in peira can detect it. The pin
+registry lives in `peira.api_pins`: `get_pinned_model(adapter_name)`
+resolves the exact id, `is_pinned_model()` checks one, and
+`peira doctor` warns when an API adapter's default is not the pinned
+version. The resolved version is sealed into the run artifact
+(`adapter_version`, part of the analysis lock), so a pinned run is
+reproducible and an unpinned one is visibly marked by its version
+string.
+
+You can still pass a different model explicitly with `model=`.
+The adapter uses it verbatim and the version string records it
+honestly, but a run on an unpinned model is not reproducible by
+construction. Passing a model id the vendor has retired fails closed
+with a `DeprecatedPinError` naming the replacement.
 
 Each sends one JSON schema to the provider's native constrained
 decoding (OpenAI strict `json_schema`, Anthropic forced tool choice,
