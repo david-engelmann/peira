@@ -14,9 +14,13 @@ import unittest
 from peira import doctor
 from peira.adapters.llm import (
     AnthropicAdapter,
+    DeepSeekAdapter,
     GoogleAdapter,
+    MetaLlamaAdapter,
     MoonshotAdapter,
     OpenAIAdapter,
+    XAIAdapter,
+    ZaiAdapter,
 )
 from peira.doctor import (
     AdapterReadiness,
@@ -582,7 +586,9 @@ class TestApiPinWarning(unittest.TestCase):
         # Regression lock: the real structured adapters' constructor
         # defaults must stay exactly the registry pins.
         for cls in (OpenAIAdapter, MoonshotAdapter,
-                    AnthropicAdapter, GoogleAdapter):
+                    AnthropicAdapter, GoogleAdapter,
+                    XAIAdapter, DeepSeekAdapter,
+                    MetaLlamaAdapter, ZaiAdapter):
             with self.subTest(adapter=cls.name):
                 assert _api_pin_note(cls) == ("", ""), cls.name
 
