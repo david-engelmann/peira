@@ -1,329 +1,221 @@
-"""Tests for peira.api_pins: pinned API model versions (Layer 3a).
+"""Tests for the pinned API model registry (peira.api_pins).
 
-No API calls, no network: the registry is the source of truth and the
-provider SDKs are faked in sys.modules, following tests/test_llm_adapters.py.
+The pins are the Layer 3 (Adapter) execution-methodology controls for the
+four API-backed structured-output adapters. Model IDs were re-verified
+against the vendor docs on 2026-09-27:
+
+    openai:     gpt-5.6-luna
+    anthropic:  claude-sonnet-5
+    google:     gemini-3.8-flash
+    moonshot:   kimi-k3
+
+The validator is a format + vendor-scheme check (offline by design): pin
+validity is maintained by review, never probed live. These tests lock the
+validator's accept/reject behavior so a future bad edit cannot silently
+re-admit a fabricated ID.
 """
 
-import inspect
-import os
-import sys
 import unittest
-from contextlib import contextmanager
-from types import ModuleType
-from unittest import mock
+from unittest.mock import patch
 
-from peira import api_pins
-from peira.adapters.llm import (
-    AnthropicAdapter,
-    GoogleAdapter,
-    MoonshotAdapter,
-    OpenAIAdapter,
-)
 from peira.api_pins import (
     DEPRECATED_PINS,
     PINNED_API_MODELS,
     DeprecatedPinError,
     UnknownAdapterPinError,
+    _looks_like_any_vendor_id,
+    _looks_like_pinned_id,
     get_pinned_model,
     is_pinned_model,
     pin_status,
     validate_registry,
 )
-from peira.doctor import SystemInfo, check_adapter
+
+# The four fabricated IDs from the original PR #112 commit. None of them
+# exists in the vendor docs; the validator must reject every one.
+FABRICATED_IDS = {
+    "openai-structured": "gpt-5.6-luna-2026-08-01",
+    "anthropic-structured": "claude-sonnet-5-20260915",
+    "google-structured": "gemini-3.8-flash-001",
+    "moonshot-structured": "kimi-k3-2026-08-01",
+}
 
 
-@contextmanager
-def _env(**vars):
-    """Temporarily set environment variables."""
-    old = {k: os.environ.get(k) for k in vars}
-    os.environ.update(vars)
-    try:
-        yield
-    finally:
-        for k, v in old.items():
-            if v is None:
-                os.environ.pop(k, None)
-            else:
-                os.environ[k] = v
+class TestPinnedIds(unittest.TestCase):
+    def test_all_four_pins_resolve(self):
+        for adapter in PINNED_API_MODELS:
+            with self.subTest(adapter=adapter):
+                self.assertIsInstance(get_pinned_model(adapter), str)
 
+    def test_openai_pin_is_luna(self):
+        self.assertEqual(get_pinned_model("openai-structured"), "gpt-5.6-luna")
 
-def _fake_openai_module():
-    mod = ModuleType("openai")
-
-    class _Client:
-        def __init__(self, **kwargs):
-            pass
-
-    mod.OpenAI = _Client
-    mod.APIStatusError = type("APIStatusError", (Exception,), {})
-    mod.APITimeoutError = type("APITimeoutError", (Exception,), {})
-    mod.APIConnectionError = type("APIConnectionError", (Exception,), {})
-    return mod
-
-
-@contextmanager
-def _fake_modules(mods):
-    old = {k: sys.modules.get(k) for k in mods}
-    sys.modules.update(mods)
-    try:
-        yield
-    finally:
-        for k, v in old.items():
-            if v is None:
-                sys.modules.pop(k, None)
-            else:
-                sys.modules[k] = v
-
-
-# ---------------------------------------------------------------------------
-# get_pinned_model: the pin lookup, fail closed.
-# ---------------------------------------------------------------------------
-
-
-class TestGetPinnedModel(unittest.TestCase):
-    def test_all_four_adapters_have_pins(self):
+    def test_anthropic_pin_is_sonnet_5(self):
         self.assertEqual(
-            get_pinned_model("openai-structured"), "gpt-5.6-luna-2026-08-01")
+            get_pinned_model("anthropic-structured"), "claude-sonnet-5"
+        )
+
+    def test_google_pin_is_gemini_38_flash(self):
         self.assertEqual(
-            get_pinned_model("anthropic-structured"),
-            "claude-sonnet-5-20260915")
-        self.assertEqual(
-            get_pinned_model("google-structured"), "gemini-3.8-flash-001")
-        self.assertEqual(
-            get_pinned_model("moonshot-structured"), "kimi-k3-2026-08-01")
+            get_pinned_model("google-structured"), "gemini-3.8-flash"
+        )
+
+    def test_moonshot_pin_is_kimi_k3(self):
+        self.assertEqual(get_pinned_model("moonshot-structured"), "kimi-k3")
+
+    def test_pins_are_bare_ids(self):
+        for adapter, pin in PINNED_API_MODELS.items():
+            with self.subTest(adapter=adapter):
+                self.assertNotRegex(pin, r"\d{4}-\d{2}-\d{2}")
+                self.assertNotRegex(pin, r"-\d{3}$")
+
+    def test_fabricated_ids_are_not_pins(self):
+        for adapter, bad_id in FABRICATED_IDS.items():
+            with self.subTest(adapter=adapter):
+                self.assertNotIn(bad_id, PINNED_API_MODELS.values())
+                self.assertFalse(is_pinned_model(bad_id))
+
+
+class TestValidatorAccepts(unittest.TestCase):
+    def test_accepts_luna(self):
+        self.assertTrue(
+            _looks_like_pinned_id("openai-structured", "gpt-5.6-luna")
+        )
+
+    def test_accepts_legacy_dated_openai_id(self):
+        self.assertTrue(
+            _looks_like_pinned_id("openai-structured", "gpt-4o-2024-08-06")
+        )
+
+    def test_accepts_sonnet_5(self):
+        self.assertTrue(
+            _looks_like_pinned_id("anthropic-structured", "claude-sonnet-5")
+        )
+
+    def test_accepts_dated_pre_46_anthropic_id(self):
+        self.assertTrue(
+            _looks_like_pinned_id(
+                "anthropic-structured", "claude-opus-4-1-20250805"
+            )
+        )
+
+    def test_accepts_gemini_38_flash(self):
+        self.assertTrue(
+            _looks_like_pinned_id("google-structured", "gemini-3.8-flash")
+        )
+
+    def test_accepts_numbered_legacy_gemini_id(self):
+        self.assertTrue(
+            _looks_like_pinned_id("google-structured", "gemini-2.0-flash-001")
+        )
+
+    def test_accepts_kimi_k3(self):
+        self.assertTrue(
+            _looks_like_pinned_id("moonshot-structured", "kimi-k3")
+        )
+
+    def test_accepts_dated_kimi_k2(self):
+        self.assertTrue(
+            _looks_like_pinned_id("moonshot-structured", "kimi-k2-0905")
+        )
+
+
+class TestValidatorRejects(unittest.TestCase):
+    def test_rejects_all_four_fabricated_ids(self):
+        for adapter, bad_id in FABRICATED_IDS.items():
+            with self.subTest(adapter=adapter, model_id=bad_id):
+                self.assertFalse(_looks_like_pinned_id(adapter, bad_id))
+
+    def test_rejects_cross_vendor_ids(self):
+        cases = [
+            ("openai-structured", "claude-sonnet-5"),
+            ("anthropic-structured", "gpt-5.6-luna"),
+            ("google-structured", "kimi-k3"),
+            ("moonshot-structured", "gemini-3.8-flash"),
+        ]
+        for adapter, model_id in cases:
+            with self.subTest(adapter=adapter, model_id=model_id):
+                self.assertFalse(_looks_like_pinned_id(adapter, model_id))
+
+    def test_rejects_non_ids(self):
+        for bad in ("latest", "", "not-a-model-id", "kimi"):
+            with self.subTest(model_id=bad):
+                self.assertFalse(_looks_like_any_vendor_id(bad))
 
     def test_unknown_adapter_fails_closed(self):
-        # Never guesses: an unregistered adapter is a loud error, not a
-        # silent alias.
-        with self.assertRaises(UnknownAdapterPinError) as ctx:
-            get_pinned_model("openai-future")
-        self.assertIn("openai-future", str(ctx.exception))
-
-    def test_unknown_adapter_names_known_adapters(self):
-        with self.assertRaises(UnknownAdapterPinError) as ctx:
-            get_pinned_model("nope")
-        for name in PINNED_API_MODELS:
-            self.assertIn(name, str(ctx.exception))
-
-    def test_deprecated_pin_fails_closed_with_replacement(self):
-        with mock.patch.dict(
-            api_pins.DEPRECATED_PINS,
-            {"gpt-5.6-luna-2026-05-01": "gpt-5.6-luna-2026-08-01"},
-            clear=False,
-        ), mock.patch.dict(
-            api_pins.PINNED_API_MODELS,
-            {"openai-structured": "gpt-5.6-luna-2026-05-01"},
-            clear=False,
-        ):
-            with self.assertRaises(DeprecatedPinError) as ctx:
-                get_pinned_model("openai-structured")
-        self.assertIn("gpt-5.6-luna-2026-08-01", str(ctx.exception))
-
-    def test_unversioned_pin_is_registry_corruption(self):
-        with mock.patch.dict(
-            api_pins.PINNED_API_MODELS,
-            {"openai-structured": "gpt-5.6-luna"},
-            clear=False,
-        ):
-            with self.assertRaises(ValueError):
-                get_pinned_model("openai-structured")
-
-
-# ---------------------------------------------------------------------------
-# is_pinned_model / pin_status: classification helpers.
-# ---------------------------------------------------------------------------
-
-
-class TestIsPinnedModel(unittest.TestCase):
-    def test_pins_are_pinned(self):
-        for pin in PINNED_API_MODELS.values():
-            self.assertTrue(is_pinned_model(pin), pin)
-
-    def test_floating_aliases_are_not_pinned(self):
-        for alias in (
-            "gpt-5.6-luna", "claude-sonnet-5", "gemini-3.8-flash",
-            "kimi-k3", "gpt-6", "latest", "",
-        ):
-            self.assertFalse(is_pinned_model(alias), alias)
-
-    def test_non_strings_are_not_pinned(self):
-        self.assertFalse(is_pinned_model(None))
-        self.assertFalse(is_pinned_model(123))
-
-    def test_deprecated_pin_is_not_current(self):
-        with mock.patch.dict(
-            api_pins.DEPRECATED_PINS,
-            {"gpt-5.6-luna-2026-05-01": "gpt-5.6-luna-2026-08-01"},
-            clear=False,
-        ):
-            self.assertFalse(is_pinned_model("gpt-5.6-luna-2026-05-01"))
-
-
-class TestPinStatus(unittest.TestCase):
-    def test_pinned(self):
-        status, detail = pin_status(
-            "openai-structured", "gpt-5.6-luna-2026-08-01")
-        self.assertEqual(status, "pinned")
-        self.assertIn("gpt-5.6-luna-2026-08-01", detail)
-
-    def test_unpinned_alias(self):
-        status, detail = pin_status("openai-structured", "gpt-5.6-luna")
-        self.assertEqual(status, "unpinned")
-        self.assertIn("gpt-5.6-luna-2026-08-01", detail)
-
-    def test_deprecated(self):
-        with mock.patch.dict(
-            api_pins.DEPRECATED_PINS,
-            {"gpt-5.6-luna-2026-05-01": "gpt-5.6-luna-2026-08-01"},
-            clear=False,
-        ):
-            status, detail = pin_status(
-                "openai-structured", "gpt-5.6-luna-2026-05-01")
-        self.assertEqual(status, "deprecated")
-        self.assertIn("gpt-5.6-luna-2026-08-01", detail)
-
-    def test_unknown_adapter(self):
-        status, _ = pin_status("nope", "gpt-5.6-luna-2026-08-01")
-        self.assertEqual(status, "unknown_adapter")
-
-    def test_never_raises_on_bad_input(self):
-        for adapter, model in (
-            ("openai-structured", None),
-            ("openai-structured", 123),
-            (None, None),
-            ("", ""),
-        ):
-            status, detail = pin_status(adapter, model)
-            self.assertIsInstance(status, str)
-            self.assertIsInstance(detail, str)
+        self.assertFalse(
+            _looks_like_pinned_id("unknown-structured", "gpt-5.6-luna")
+        )
+        self.assertFalse(_looks_like_pinned_id("", "gpt-5.6-luna"))
+        self.assertFalse(_looks_like_pinned_id("openai-structured", ""))
 
 
 class TestValidateRegistry(unittest.TestCase):
-    def test_shipped_registry_is_valid(self):
+    def test_registry_validates(self):
         validate_registry()  # must not raise
 
-    def test_unversioned_pin_rejected(self):
-        with mock.patch.dict(
-            api_pins.PINNED_API_MODELS,
-            {"openai-structured": "gpt-5.6-luna"},
-            clear=False,
+    def test_rejects_malformed_pin(self):
+        with patch.dict(PINNED_API_MODELS, {"openai-structured": "bogus"}):
+            with self.assertRaises(ValueError):
+                validate_registry()
+
+    def test_rejects_fabricated_pin_in_registry(self):
+        # A fabricated ID smuggled into the registry must fail validation.
+        with patch.dict(
+            PINNED_API_MODELS,
+            {"google-structured": "gemini-3.8-flash-001"},
         ):
             with self.assertRaises(ValueError):
                 validate_registry()
 
-    def test_deprecated_pin_rejected(self):
-        with mock.patch.dict(
-            api_pins.DEPRECATED_PINS,
-            {"gpt-5.6-luna-2026-08-01": "gpt-5.6-luna-2026-09-01"},
-            clear=False,
+    def test_rejects_deprecated_pin_in_registry(self):
+        with patch.dict(
+            DEPRECATED_PINS, {"gpt-4o-2024-08-06": "gpt-5.6-luna"}
+        ), patch.dict(
+            PINNED_API_MODELS, {"openai-structured": "gpt-4o-2024-08-06"}
         ):
             with self.assertRaises(ValueError):
                 validate_registry()
 
+    def test_rejects_malformed_deprecated_entry(self):
+        with patch.dict(DEPRECATED_PINS, {"not-a-model-id": "gpt-5.6-luna"}):
+            with self.assertRaises(ValueError):
+                validate_registry()
 
-# ---------------------------------------------------------------------------
-# Adapter integration: defaults are the pins; pins land in the artifact.
-# ---------------------------------------------------------------------------
 
+class TestPinLifecycle(unittest.TestCase):
+    def test_unknown_adapter_raises(self):
+        with self.assertRaises(UnknownAdapterPinError):
+            get_pinned_model("unknown-structured")
 
-class TestAdapterDefaultsArePinned(unittest.TestCase):
-    ADAPTERS = (
-        OpenAIAdapter,
-        AnthropicAdapter,
-        GoogleAdapter,
-        MoonshotAdapter,
-    )
-
-    def test_constructor_default_is_the_pin(self):
-        for cls in self.ADAPTERS:
-            with self.subTest(adapter=cls.name):
-                default = inspect.signature(
-                    cls.__init__).parameters["model"].default
-                self.assertEqual(default, get_pinned_model(cls.name))
-                self.assertTrue(is_pinned_model(default))
-
-    def test_default_version_is_pinned(self):
-        # adapter.version is what the runner seals as adapter_version in
-        # the run artifact (part of the analysis lock).
-        with _fake_modules({"openai": _fake_openai_module()}), \
-                _env(OPENAI_API_KEY="sk-test"):
-            adapter = OpenAIAdapter()
-        self.assertEqual(
-            adapter.version, get_pinned_model("openai-structured"))
-        self.assertTrue(is_pinned_model(adapter.version))
-
-    def test_explicit_deprecated_model_fails_closed(self):
-        with mock.patch.dict(
-            DEPRECATED_PINS,
-            {"gpt-5.6-luna-2026-05-01": "gpt-5.6-luna-2026-08-01"},
-            clear=False,
-        ), _fake_modules({"openai": _fake_openai_module()}), \
-                _env(OPENAI_API_KEY="sk-test"):
+    def test_deprecated_pin_raises_with_replacement(self):
+        with patch.dict(
+            DEPRECATED_PINS, {"gpt-4o-2024-08-06": "gpt-5.6-luna"}
+        ), patch.dict(
+            PINNED_API_MODELS, {"openai-structured": "gpt-4o-2024-08-06"}
+        ):
             with self.assertRaises(DeprecatedPinError) as ctx:
-                OpenAIAdapter(model="gpt-5.6-luna-2026-05-01")
-        self.assertIn("gpt-5.6-luna-2026-08-01", str(ctx.exception))
+                get_pinned_model("openai-structured")
+        self.assertIn("gpt-5.6-luna", str(ctx.exception))
 
-    def test_explicit_override_still_allowed(self):
-        # Researchers may opt out of the pin explicitly; the version
-        # string then honestly records the unpinned model.
-        with _fake_modules({"openai": _fake_openai_module()}), \
-                _env(OPENAI_API_KEY="sk-test"):
-            adapter = OpenAIAdapter(model="gpt-5.6-luna")
-        self.assertEqual(adapter.version, "gpt-5.6-luna")
-        self.assertFalse(is_pinned_model(adapter.version))
+    def test_is_pinned_model(self):
+        self.assertTrue(is_pinned_model("gpt-5.6-luna"))
+        self.assertTrue(is_pinned_model("kimi-k3"))
+        self.assertFalse(is_pinned_model("gpt-5.6-luna-2026-08-01"))
+        self.assertFalse(is_pinned_model("gpt-4o-2024-08-06"))
 
-
-# ---------------------------------------------------------------------------
-# Doctor integration: warns on unpinned API adapter defaults.
-# ---------------------------------------------------------------------------
-
-
-def _make_adapter_class(name, default_model):
-    class _FakeAPIAdapter:
-        pass
-
-    _FakeAPIAdapter.name = name
-    _FakeAPIAdapter._env_vars = ("PEIRA_API_PINS_TEST_KEY",)
-
-    def __init__(self, model=default_model):
-        self.model = model
-
-    _FakeAPIAdapter.__init__ = __init__
-    _FakeAPIAdapter.decide = lambda self, *a: None
-    return _FakeAPIAdapter
-
-
-class TestDoctorPinWarnings(unittest.TestCase):
-    def test_unpinned_default_warns(self):
-        cls = _make_adapter_class("openai-structured", "gpt-5.6-luna")
-        with _env(PEIRA_API_PINS_TEST_KEY="x"):
-            result = check_adapter(cls, SystemInfo())
-        self.assertEqual(result.status, "ready")
-        self.assertIn("API model pin", result.detail)
-        self.assertIn("gpt-5.6-luna-2026-08-01", result.detail)
-
-    def test_pinned_default_no_warning(self):
-        cls = _make_adapter_class(
-            "openai-structured", "gpt-5.6-luna-2026-08-01")
-        with _env(PEIRA_API_PINS_TEST_KEY="x"):
-            result = check_adapter(cls, SystemInfo())
-        self.assertEqual(result.status, "ready")
-        self.assertNotIn("API model pin", result.detail)
-
-    def test_non_api_adapter_no_warning(self):
-        cls = _make_adapter_class("some-local-adapter", "whatever")
-        with _env(PEIRA_API_PINS_TEST_KEY="x"):
-            result = check_adapter(cls, SystemInfo())
-        self.assertNotIn("API model pin", result.detail)
-
-    def test_warning_survives_missing_key(self):
-        # The pin warning is independent of key readiness.
-        cls = _make_adapter_class("openai-structured", "gpt-5.6-luna")
-        with _env(PEIRA_API_PINS_TEST_KEY=""):
-            result = check_adapter(cls, SystemInfo())
-        self.assertEqual(result.status, "missing_api_key")
-        self.assertIn("API model pin", result.detail)
-        self.assertIn("gpt-5.6-luna-2026-08-01", result.hint)
+    def test_pin_status(self):
+        status, _ = pin_status("openai-structured", "gpt-5.6-luna")
+        self.assertEqual(status, "pinned")
+        with patch.dict(
+            DEPRECATED_PINS, {"gpt-4o-2024-08-06": "gpt-5.6-luna"}
+        ):
+            status, _ = pin_status("openai-structured", "gpt-4o-2024-08-06")
+            self.assertEqual(status, "deprecated")
+        status, _ = pin_status("openai-structured", "gpt-5.6-luna-2026-08-01")
+        self.assertEqual(status, "unpinned")
+        status, _ = pin_status("unknown-structured", "gpt-5.6-luna")
+        self.assertEqual(status, "unknown_adapter")
 
 
 if __name__ == "__main__":

@@ -123,35 +123,75 @@ class DeprecatedPinError(ValueError):
 # format check, not a proof of existence: pin validity is maintained by
 # review, never probed live (stdlib-only, offline by design).
 #
-# Acceptance rule per vendor:
+# Format rule per vendor (checked by the regexes below):
 #   openai:    gpt-<version>-<name>, optionally with the legacy dated
-#              suffix (cf. gpt-4o-2024-08-06). Note the dated form is
-#              accepted for format only: no dated Luna ID has ever
-#              existed, so a dated Luna ID in the registry is a review
-#              failure, not a validator failure.
+#              suffix (cf. gpt-4o-2024-08-06).
 #   anthropic: claude-<tier>-<n>[-<m>] dateless (4.6 generation onward;
 #              pinned snapshots by vendor guarantee), or the pre-4.6
 #              dated form claude-<tier>-<m>-YYYYMMDD (kept so retired
 #              pins can be recorded in DEPRECATED_PINS).
-#   google:    gemini-<major>.<minor>-<name> (3.x carries no -NNN
-#              suffix). The legacy -NNN form is still accepted so
-#              retired 1.5/2.0-era pins can be recorded.
-#   moonshot:  kimi-k<n> (Moonshot never published dated IDs, so any
-#              dated suffix is rejected as malformed).
+#   google:    gemini-<major>.<minor>-<name>, with the legacy -NNN
+#              suffix for 1.5/2.0-era IDs.
+#   moonshot:  kimi-k<n>, optionally with Moonshot's short -MMDD
+#              release tag (cf. kimi-k2-0905).
+#
+# Scheme rules per vendor (checked by _passes_vendor_semantics): Luna
+# never shipped dated snapshots, 5.x Anthropic IDs are dateless-only,
+# 3.x Gemini carries no -NNN suffix, and Moonshot never published
+# full-date IDs. An ID that breaks these rules is fabricated, not
+# merely oddly formatted, and is rejected.
 _VENDOR_ID_PATTERNS: dict[str, re.Pattern[str]] = {
     "openai": re.compile(r"^gpt-[0-9][a-z0-9]*(\.\d+)?(-[a-z0-9]+)*(-\d{4}-\d{2}-\d{2})?$"),
     "anthropic": re.compile(r"^claude-[a-z]+(-\d+)+(-\d{8})?$"),
     "google": re.compile(r"^gemini-\d+(\.\d+)?-[a-z]+(-\d{3})?$"),
-    "moonshot": re.compile(r"^kimi-k\d+[a-z]?(-[a-z]+)?$"),
+    "moonshot": re.compile(r"^kimi-k\d+[a-z]?(-[a-z]+|-\d{4})?$"),
 }
 
 
+def _passes_vendor_semantics(vendor: str, model_id: str) -> bool:
+    """True when the ID obeys its vendor's real versioning scheme.
+
+    The format regexes above are deliberately permissive (they must
+    also cover retired IDs recorded in DEPRECATED_PINS). These rules
+    reject IDs no vendor ever shipped:
+
+    - openai: Luna has no snapshot mechanism, so any
+      ``gpt-5.6-luna-*`` suffixed ID is fabricated. Legacy dated
+      snapshots (``gpt-4o-2024-08-06`` style) remain accepted.
+    - anthropic: from the 4.6 generation on, dateless IDs are pinned
+      snapshots, so a date suffix on a 5.x ID (``claude-sonnet-5-…``)
+      is fabricated. Pre-4.6 dated pins stay accepted.
+    - google: 3.x stable IDs carry no ``-NNN`` suffix, so
+      ``gemini-3.8-flash-001`` is fabricated. Legacy 1.5/2.0 ``-NNN``
+      IDs stay accepted.
+    - moonshot: Kimi IDs are bare (``kimi-k3``) or carry the short
+      ``-MMDD`` release tag (``kimi-k2-0905``). A full ``-YYYY-MM-DD``
+      suffix never existed and is already rejected by the format
+      regex, so Moonshot needs no extra rule here.
+    """
+    if vendor == "openai":
+        return not model_id.startswith("gpt-5.6-luna-")
+    if vendor == "anthropic":
+        dated = re.match(r"^(.*)-\d{8}$", model_id)
+        if dated and re.match(r"^claude-[a-z]+-5(-\d+)?$", dated.group(1)):
+            return False
+        return True
+    if vendor == "google":
+        return re.match(r"^gemini-3\.\d+-[a-z]+-\d{3}$", model_id) is None
+    return True
+
+
 def _looks_like_pinned_id(adapter_name: Any, model_id: Any) -> bool:
-    """True when the ID matches its vendor's real ID format.
+    """True when the ID matches its vendor's real ID format and scheme.
 
     The vendor is taken from the adapter name (``"openai-structured"``
     -> ``"openai"``). Unknown vendors fail closed: an ID for a vendor
     the registry does not know is never "probably fine".
+
+    Beyond format, each vendor's actual versioning scheme is enforced
+    (_passes_vendor_semantics), so fabricated IDs such as a dated Luna
+    snapshot or a numbered 3.x Gemini build are rejected, not merely
+    the obviously malformed strings.
     """
     if not isinstance(adapter_name, str) or not adapter_name:
         return False
@@ -161,7 +201,9 @@ def _looks_like_pinned_id(adapter_name: Any, model_id: Any) -> bool:
     pattern = _VENDOR_ID_PATTERNS.get(vendor)
     if pattern is None:
         return False
-    return pattern.match(model_id) is not None
+    if pattern.match(model_id) is None:
+        return False
+    return _passes_vendor_semantics(vendor, model_id)
 
 
 def _looks_like_any_vendor_id(model_id: Any) -> bool:

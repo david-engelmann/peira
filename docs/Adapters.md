@@ -112,7 +112,7 @@ with weights and config fixed for the life of the id and updates
 shipped under new ids. Google's 3.x ids carry no `-001`-style suffix
 (that convention is 1.5/2.0-era); Moonshot never published dated ids
 at all. The OpenAI pin is the honest weak spot: Luna has no snapshot
-mechanism, so `gpt-5.6-luna` is a best-effort pin — if OpenAI swaps
+mechanism, so `gpt-5.6-luna` is a best-effort pin. If OpenAI swaps
 the weights behind the name, nothing in peira can detect it. The pin
 registry lives in `peira.api_pins`: `get_pinned_model(adapter_name)`
 resolves the exact id, `is_pinned_model()` checks one, and
