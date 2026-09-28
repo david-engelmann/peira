@@ -848,8 +848,14 @@ decision cases. It does not certify a model as safe.</em></p>
     return page
 
 
-def _pval(p: float) -> str:
-    """Format a p-value for display; tiny values read as <0.0001."""
+def _pval(p: float | None) -> str:
+    """Format a p-value for display; tiny values read as <0.0001.
+
+    A withheld (None) p-value, the R-07 under-10-discordant-pairs floor,
+    reads as "withheld".
+    """
+    if p is None:
+        return "withheld"
     if p < 0.0001:
         return "<0.0001"
     return f"{p:.4f}"

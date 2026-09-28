@@ -477,7 +477,7 @@ pub fn ece(probs: &[f64], labels: &[i64], bins: usize) -> f64 {
 /// Mean squared error of predicted probabilities.
 ///
 /// Empty or mismatched inputs panic; the Python reference raises
-/// `ValueError` on the same inputs (validated before dispatch — D-11).
+/// `ValueError` on the same inputs (validated before dispatch (D-11)).
 pub fn brier_score(probs: &[f64], labels: &[i64]) -> f64 {
     assert!(!probs.is_empty() && probs.len() == labels.len());
     assert_finite(probs, "probs");
@@ -485,6 +485,34 @@ pub fn brier_score(probs: &[f64], labels: &[i64]) -> f64 {
         .iter()
         .zip(labels.iter())
         .map(|(&p, &y)| (p - y as f64).powi(2))
+        .sum::<f64>()
+        / probs.len() as f64
+}
+
+/// Log loss (binary cross-entropy / negative log-likelihood), in nats.
+///
+/// Mean over cases of `-(y*ln(p) + (1-y)*ln(1-p))` with labels in {0, 1}.
+/// Probabilities are clipped to [1e-15, 1-1e-15] before the log, the
+/// R-07 measurement-contract convention (mirrors
+/// `python/peira/metrics.py::LOG_LOSS_CLIP_EPS`, sklearn's `eps=1e-15`).
+/// Clipping keeps one confidently-wrong forecast from producing an
+/// infinite loss and swamping the mean.
+///
+/// Empty or mismatched inputs panic; the Python reference raises
+/// `ValueError` on the same inputs (validated before dispatch (D-11)).
+/// Nonfinite forecasts panic (D-11); the Python side raises ValueError.
+pub fn log_loss(probs: &[f64], labels: &[i64]) -> f64 {
+    assert!(!probs.is_empty() && probs.len() == labels.len());
+    assert_finite(probs, "probs");
+    const EPS: f64 = 1e-15;
+    probs
+        .iter()
+        .zip(labels.iter())
+        .map(|(&p, &y)| {
+            let pc = p.clamp(EPS, 1.0 - EPS);
+            let y = y as f64;
+            -(y * pc.ln() + (1.0 - y) * (1.0 - pc).ln())
+        })
         .sum::<f64>()
         / probs.len() as f64
 }
@@ -506,7 +534,7 @@ pub fn brier_score(probs: &[f64], labels: &[i64]) -> f64 {
 /// improper: it incentivizes extremizing, not truthful reporting).
 ///
 /// Empty or mismatched inputs panic; the Python reference raises
-/// `ValueError` on the same inputs (validated before dispatch — D-11).
+/// `ValueError` on the same inputs (validated before dispatch (D-11)).
 pub fn crps_point(scores: &[f64], refs: &[f64]) -> f64 {
     assert!(!scores.is_empty() && scores.len() == refs.len());
     assert_finite(scores, "scores");
@@ -532,7 +560,7 @@ pub fn crps_point(scores: &[f64], refs: &[f64]) -> f64 {
 /// goes unused — read a 0 alongside the score histogram, not alone.
 ///
 /// Empty input panics; the Python reference raises `ValueError`
-/// (validated before dispatch — D-11).
+/// (validated before dispatch (D-11)).
 pub fn score_compression_index(scores: &[f64]) -> f64 {
     assert!(!scores.is_empty());
     assert_finite(scores, "scores");
@@ -795,7 +823,7 @@ pub fn bradley_terry_fit(
     if let Some(source) = bt_source_component(n_items, pairs) {
         panic!(
             "bradley_terry_fit: items {:?} won every comparison played \
-             against the remaining items (no ties across groups) — \
+             against the remaining items (no ties across groups), \
              their relative strengths are unbounded; report the \
              pairwise counts instead",
             source
@@ -862,6 +890,95 @@ pub fn mcnemar(b: u64, c: u64) -> f64 {
     }
     let (b, c) = (b as f64, c as f64);
     (b - c).powi(2) / (b + c)
+}
+
+/// Exact two-sided mid-p value for McNemar's test on discordant pairs.
+///
+/// Under the null the discordant-pair split is Binomial(n = b+c, 1/2);
+/// the mid-p is the exact two-sided p-value (doubling method) minus half
+/// the point probability of the observed split: `2*P(B<=k) - P(B=k)`
+/// with k = min(b, c). Strictly more powerful than the exact conditional
+/// test while remaining valid, Fagerland, Lydersen & Laake (2013),
+/// "The McNemar test for binary matched-pairs data: mid-p and asymptotic
+/// are better than exact conditional", BMC Medical Research Methodology.
+///
+/// Intended for 10-24 discordant pairs (see [`mcnemar_p_value`]); the
+/// formula is valid for any n. b = c gives exactly 1.0. Cost is
+/// O(min(b, c)) binomial terms, trivial on the intended path.
+pub fn mcnemar_mid_p(b: u64, c: u64) -> f64 {
+    let n = b + c;
+    let k = b.min(c);
+    // P(Bin(n, 1/2) <= k) via iterative term computation:
+    // term_0 = 2^-n, term_{i+1} = term_i * (n-i)/(i+1). No big-int
+    // arithmetic needed (n <= 24 on the intended path, but this is
+    // exact for any n representable in u64).
+    let mut term = 2f64.powi(-(n as i32));
+    let mut cdf = term;
+    for i in 1..=k {
+        term *= (n - i + 1) as f64 / i as f64;
+        cdf += term;
+    }
+    (2.0 * cdf - term).min(1.0)
+}
+
+/// Complementary error function (Abramowitz & Stegun 7.1.26 rational
+/// approximation, max error 1.5e-7), `std` has no `erfc` and the
+/// chi-square survival function needs it.
+fn erfc(x: f64) -> f64 {
+    // Coefficients for the rational approximation.
+    const A1: f64 = 0.254829592;
+    const A2: f64 = -0.284496736;
+    const A3: f64 = 1.421413741;
+    const A4: f64 = -1.453152027;
+    const A5: f64 = 1.061405429;
+    const P: f64 = 0.3275911;
+
+    // erf(-x) = -erf(x), so erfc(-x) = 2 - erfc(x). Compute for |x|,
+    // then reflect.
+    let sign = if x < 0.0 { -1.0 } else { 1.0 };
+    let ax = x.abs();
+    let t = 1.0 / (1.0 + P * ax);
+    let poly = ((((A5 * t + A4) * t + A3) * t + A2) * t + A1) * t;
+    let erfc_ax = poly * (-ax * ax).exp();
+    1.0 - sign + sign * erfc_ax
+}
+
+/// Survival function of chi-square with 1 degree of freedom.
+///
+/// chi2(1) is the distribution of Z^2, so P(X > stat) = P(|Z| > sqrt(stat))
+/// = erfc(sqrt(stat / 2)). `stat` comes from [`mcnemar`], which is
+/// non-negative by construction.
+fn chi2_sf_1df(stat: f64) -> f64 {
+    if stat <= 0.0 {
+        return 1.0;
+    }
+    erfc((stat / 2.0).sqrt())
+}
+
+/// McNemar p-value under the R-07 three-tier rule.
+///
+/// - b+c == 0: 1.0 (no discordant pairs; the null holds trivially, not
+///   a withholding, the answer is exact under any test).
+/// - 1 <= b+c < 10: None (withheld, underpowered; the chi-square
+///   approximation is anti-conservative and no p-value is reported
+///   rather than a misleading one).
+/// - 10 <= b+c < 25: exact two-sided mid-p ([`mcnemar_mid_p`]).
+/// - b+c >= 25: asymptotic chi-square(1) p-value of [`mcnemar`]
+///   (no continuity correction).
+///
+/// This is the p-value peira reports for family comparisons.
+pub fn mcnemar_p_value(b: u64, c: u64) -> Option<f64> {
+    let n = b + c;
+    if n == 0 {
+        return Some(1.0);
+    }
+    if n < 10 {
+        return None;
+    }
+    if n < 25 {
+        return Some(mcnemar_mid_p(b, c));
+    }
+    Some(chi2_sf_1df(mcnemar(b, c)))
 }
 
 /// 95% bootstrap CI for mean(xs) - mean(ys), paired resampling (SplitMix64).
@@ -1057,7 +1174,7 @@ pub fn bonferroni_adjust(p_values: &[f64]) -> Vec<f64> {
 ///
 /// Pairs with [`holm_adjust`] / [`bonferroni_adjust`]: reject hypothesis
 /// `i` when `adjusted[i] <= alpha`. Empty input returns `[]` (no claims,
-/// no rejections — not an error). Each value must be in [0, 1].
+/// no rejections, not an error). Each value must be in [0, 1].
 /// Mirrors `python/peira/metrics.py::reject_at`.
 pub fn reject_at(adjusted: &[f64], alpha: f64) -> Vec<usize> {
     assert_alpha(alpha);
@@ -1334,6 +1451,99 @@ mod tests {
     fn mcnemar_value() {
         assert!(((mcnemar(8, 2) - 3.6).abs()) < 1e-12);
         assert_eq!(mcnemar(0, 0), 0.0);
+    }
+
+    #[test]
+    fn log_loss_perfect_predictions() {
+        // p=1 on positives, p=0 on negatives -> clipped to 1-1e-15 / 1e-15,
+        // loss is -ln(1-1e-15) ~= 1e-15 per case: near-zero, not zero.
+        let p = log_loss(&[1.0, 0.0], &[1, 0]);
+        let expected = -(1.0 - 1e-15f64).ln();
+        assert!((p - expected).abs() < 1e-18, "p={p}");
+        assert!(p < 1e-14);
+    }
+
+    #[test]
+    fn log_loss_hand_computed() {
+        // -(ln 0.9 + ln 0.8) / 2
+        let p = log_loss(&[0.9, 0.2], &[1, 0]);
+        let expected = -((0.9f64).ln() + (0.8f64).ln()) / 2.0;
+        assert!((p - expected).abs() < 1e-12, "p={p}");
+    }
+
+    #[test]
+    fn log_loss_punishes_confident_errors_more_than_brier() {
+        // 90%-sure-and-wrong vs 55%-sure-and-wrong: log-loss gap dwarfs
+        // the Brier gap (R-07 motivation).
+        let ll_90 = log_loss(&[0.9], &[0]);
+        let ll_55 = log_loss(&[0.55], &[0]);
+        let b_90 = brier_score(&[0.9], &[0]);
+        let b_55 = brier_score(&[0.55], &[0]);
+        assert!(ll_90 - ll_55 > b_90 - b_55);
+    }
+
+    #[test]
+    fn log_loss_clips_degenerate_forecasts() {
+        // Without clipping this would be +inf; the contract clips to
+        // [1e-15, 1-1e-15] so the loss stays finite.
+        let p = log_loss(&[0.0], &[1]);
+        assert!(p.is_finite());
+        assert!((p - -(1e-15f64).ln()).abs() < 1e-9, "p={p}");
+    }
+
+    #[test]
+    fn mcnemar_mid_p_hand_computed() {
+        // b=3, c=12 (n=15, k=3): 2*P(B<=3) - P(B=3) with B~Bin(15,1/2).
+        // P(B<=3) = (1+15+105+455)/32768, P(B=3) = 455/32768.
+        let p = mcnemar_mid_p(3, 12);
+        let expected = 2.0 * 576.0 / 32768.0 - 455.0 / 32768.0;
+        assert!((p - expected).abs() < 1e-12, "p={p}");
+        // Symmetric in b/c.
+        assert_eq!(mcnemar_mid_p(3, 12), mcnemar_mid_p(12, 3));
+    }
+
+    #[test]
+    fn mcnemar_mid_p_tie_is_one() {
+        assert_eq!(mcnemar_mid_p(5, 5), 1.0);
+        assert_eq!(mcnemar_mid_p(0, 0), 1.0);
+    }
+
+    #[test]
+    fn mcnemar_mid_p_extreme_split() {
+        // b=20, c=0: mid-p = 2^-20.
+        let p = mcnemar_mid_p(20, 0);
+        assert!((p - 2f64.powi(-20)).abs() < 1e-18, "p={p}");
+    }
+
+    #[test]
+    fn chi2_sf_1df_known_values() {
+        // stat <= 0 -> 1.0
+        assert_eq!(chi2_sf_1df(0.0), 1.0);
+        assert_eq!(chi2_sf_1df(-1.0), 1.0);
+        // chi2(1) = 3.8414588 has p = 0.05
+        let p = chi2_sf_1df(3.8414588);
+        assert!((p - 0.05).abs() < 1e-4, "p={p}");
+        // chi2(1) = 6.6348967 has p = 0.01
+        let p = chi2_sf_1df(6.6348967);
+        assert!((p - 0.01).abs() < 1e-4, "p={p}");
+    }
+
+    #[test]
+    fn mcnemar_p_value_tiers() {
+        // n = 0 -> Some(1.0), not a withholding.
+        assert_eq!(mcnemar_p_value(0, 0), Some(1.0));
+        // 1 <= n < 10 -> withheld.
+        assert_eq!(mcnemar_p_value(4, 0), None);
+        assert_eq!(mcnemar_p_value(5, 4), None);
+        // 10 <= n < 25 -> mid-p.
+        assert_eq!(mcnemar_p_value(3, 12), Some(mcnemar_mid_p(3, 12)));
+        assert_eq!(mcnemar_p_value(10, 0), Some(mcnemar_mid_p(10, 0)));
+        // n >= 25 -> asymptotic chi-square.
+        let stat = mcnemar(20, 5);
+        assert_eq!(mcnemar_p_value(20, 5), Some(chi2_sf_1df(stat)));
+        // Boundary: n = 24 -> mid-p, n = 25 -> asymptotic.
+        assert_eq!(mcnemar_p_value(12, 12), Some(mcnemar_mid_p(12, 12)));
+        assert_eq!(mcnemar_p_value(13, 12), Some(chi2_sf_1df(mcnemar(13, 12))));
     }
 
     // -- A3 S6: score diagnostics --

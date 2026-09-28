@@ -236,8 +236,10 @@ class CompareArtifactsTest(unittest.TestCase):
         self.assertIsNotNone(m)
         self.assertEqual((m.b, m.c), (4, 0))
         self.assertIn("underpowered", c.mcnemar_note)
-        # b+c < 10: chi-square approximation invalid, winner withheld.
+        # b+c < 10: chi-square approximation invalid, winner withheld,
+        # and the p-value itself is withheld (R-07) rather than reported.
         self.assertIsNone(m.winner)
+        self.assertIsNone(m.p_value)
         for d in c.deltas:
             self.assertFalse(d.sufficient)
 

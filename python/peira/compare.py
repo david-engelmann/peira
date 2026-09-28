@@ -17,8 +17,8 @@ Sample-size discipline follows the rest of the codebase: delta estimates
 carry paired-bootstrap 95% CIs only at n >= 30 (the same gate as
 ``MIN_DELTA_CASES``/``MIN_BT_COMPARISONS``); below the gate the delta is
 withheld, never fabricated. Bradley-Terry strengths are reported without
-uncertainty intervals — the :class:`BradleyTerryEstimate` contract
-explicitly excludes them — alongside the raw win/tie counts.
+uncertainty intervals, the :class:`BradleyTerryEstimate` contract
+explicitly excludes them, alongside the raw win/tie counts.
 """
 
 from __future__ import annotations
@@ -37,6 +37,7 @@ from peira.metrics import (
     _require_result_strings,
     bradley_terry,
     mcnemar,
+    mcnemar_p_value,
     paired_bootstrap_ci,
 )
 
@@ -112,7 +113,7 @@ class McNemarResult:
     c: int  # A wrong, B right
     n_pairs: int  # paired choice-primitive cases
     statistic: float  # chi-square, no continuity correction
-    p_value: float  # chi-square(1) survival
+    p_value: float | None  # R-07 three-tier p-value; None when withheld
     winner: str | None  # "a", "b", or None (no significant direction)
 
 
@@ -152,25 +153,6 @@ class Comparison:
     bradley_terry_note: str
     deltas: list[DeltaResult] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
-
-
-def _chi2_sf_1df_py(stat: float) -> float:
-    """Survival function of chi-square with 1 degree of freedom.
-
-    chi2(1) is the distribution of Z^2, so P(X > stat) = P(|Z| > sqrt(stat))
-    = erfc(sqrt(stat / 2)). ``stat`` comes from :func:`mcnemar`, which is
-    non-negative by construction.
-    """
-    if stat <= 0.0:
-        return 1.0
-    return math.erfc(math.sqrt(stat / 2.0))
-
-
-def _chi2_sf_1df(stat: float) -> float:
-    """Dispatch to Rust when available, else the pure-Python reference."""
-    if _rust is not None:
-        return _rust.compare_chi2_sf_1df(stat)
-    return _chi2_sf_1df_py(stat)
 
 
 def check_comparable(a: RunArtifact, b: RunArtifact) -> list[str]:
@@ -214,7 +196,7 @@ def pair_results(
             r = PerCaseResult.from_dict(d)
             if r.case_id in idx:
                 warnings.append(
-                    f"{label}: duplicate case_id {r.case_id!r} — "
+                    f"{label}: duplicate case_id {r.case_id!r}, "
                     "keeping the first occurrence"
                 )
                 continue
@@ -308,7 +290,7 @@ def _item_names(a: RunArtifact, b: RunArtifact) -> tuple[str, str]:
     ``ComparisonOutcome`` requires non-empty distinct item names, but two
     compared runs often share an adapter name (same adapter, different
     seed/config). Disambiguate with the pinned adapter version first,
-    then with an (A)/(B) suffix — never silently merge the two items.
+    then with an (A)/(B) suffix, never silently merge the two items.
     """
     na = a.adapter_name or "A"
     nb = b.adapter_name or "B"
@@ -325,6 +307,11 @@ def _mcnemar_test_py(pairs: list[PairedCase]) -> tuple[McNemarResult | None, str
     The binary outcome (handled correctly or not) is only a clean
     right/wrong judgment for the choice primitive; score/abstain cases
     contribute to the head-to-head counts but not to this test.
+
+    The p-value follows the R-07 three-tier rule
+    (:func:`peira.metrics.mcnemar_p_value`): withheld (None) below 10
+    discordant pairs, exact mid-p for 10-24, asymptotic chi-square at
+    >= 25. The winner is only declared on a reported p-value < 0.05.
     """
     choice = [p for p in pairs if p.a.primitive == "choice" and p.b.primitive == "choice"]
     if not choice:
@@ -332,16 +319,14 @@ def _mcnemar_test_py(pairs: list[PairedCase]) -> tuple[McNemarResult | None, str
     b = sum(1 for p in choice if _case_ok(p.a) and not _case_ok(p.b))
     c = sum(1 for p in choice if not _case_ok(p.a) and _case_ok(p.b))
     stat = mcnemar(b, c)
-    p_value = _chi2_sf_1df(stat)
-    note = ""
-    # The chi-square approximation needs b+c >= 10. Below that it is
-    # anti-conservative (e.g. b=4, c=0 gives chi2 p=0.0455 while the exact
-    # binomial two-sided p is 0.125), so withhold the winner rather than
-    # print a verdict the test cannot support.
-    underpowered = b + c < 10
+    p_value = mcnemar_p_value(b, c)
+    # R-07: p_value is None when 1 <= b+c < 10 (withheld, the test is
+    # underpowered); b+c == 0 yields p = 1.0 exactly, not a withholding.
+    underpowered = p_value is None
     winner: str | None = None
-    if p_value < 0.05 and b != c and not underpowered:
+    if p_value is not None and p_value < 0.05 and b != c:
         winner = "a" if b > c else "b"
+    note = ""
     if underpowered:
         note = (f"low discordant-pair count (b+c={b + c}): the test is "
                 f"underpowered — winner withheld, read the raw counts")
