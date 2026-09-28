@@ -73,6 +73,15 @@ fn analysis_lock_parity_with_python() {
             art["max_concurrency"].as_i64().unwrap(),
             &art["metrics"],
             art["env_sha256"].as_str().unwrap_or(""),
+            art["model_class"].as_str().unwrap_or(""),
+            art["confidence_source"].as_str().unwrap_or(""),
+            art["checkpoint_hash"].as_str().unwrap_or(""),
+            art["api_version"].as_str().unwrap_or(""),
+            art["call_date"].as_str().unwrap_or(""),
+            art["decode_params"].as_str().unwrap_or(""),
+            art["template_hash"].as_str().unwrap_or(""),
+            art["case_set_tag"].as_str().unwrap_or(""),
+            art["cost_scenario_version"].as_str().unwrap_or(""),
         );
         assert_eq!(got, row["lock"].as_str().unwrap(), "lock mismatch");
 
