@@ -73,7 +73,8 @@ Every artifact now records the environment it ran in:
 
 The `env_sha256` is part of the analysis lock. Two runs with different
 `env_sha256` values are *explained* — the environment differed — not
-mysterious. Use `peira runs list` to see the env fingerprint for each run,
+mysterious. Use `peira runs list` to see the 8-character env fingerprint
+prefix for each run,
 and `peira runs compare` (future) to diff environments between runs.
 
 The fingerprint is computed by `python/peira/env_fingerprint.py` at run start

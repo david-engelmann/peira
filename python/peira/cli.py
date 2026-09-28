@@ -932,11 +932,11 @@ def cmd_compare(args: argparse.Namespace) -> int:
 
 def cmd_runs_list(args: argparse.Namespace) -> int:
     """List runs in the registry with optional filters."""
-    from peira.runs_registry import list_runs, scan_runs
+    from peira.runs_registry import list_runs
 
     runs_dir = Path(args.runs_dir) if args.runs_dir else None
-    # Ensure the index is built
-    n = scan_runs(runs_dir)
+    # list_runs() rebuilds the index when it is stale; no explicit scan
+    # here (this is a read command and must not create the runs dir).
     runs = list_runs(
         runs_dir,
         adapter=args.adapter,
@@ -944,19 +944,19 @@ def cmd_runs_list(args: argparse.Namespace) -> int:
         dataset_version=args.dataset_version,
     )
     if not runs:
-        print(f"No runs found (scanned {n} artifacts).")
+        print("No runs found.")
         return EXIT_OK
     # Print a table
     print(f"{'Run ID':<40} {'Adapter':<20} {'Suite':<10} "
           f"{'Dataset':<12} {'Env SHA':<10} {'Lock':<8}")
-    print("-" * 100)
+    print("-" * 105)
     for r in runs:
         env_short = (r["env_sha256"] or "")[:8]
         lock = "valid" if r["lock_valid"] else "INVALID"
         print(f"{r['run_id']:<40} {r['adapter_name']:<20} "
               f"{r['suite']:<10} {r['dataset_version']:<12} "
               f"{env_short:<10} {lock:<8}")
-    print(f"\n{n} run(s) total.")
+    print(f"\n{len(runs)} run(s) total.")
     return EXIT_OK
 
 
@@ -968,7 +968,7 @@ def cmd_runs_verify(args: argparse.Namespace) -> int:
     failed = 0
     for path, valid, msg in results:
         status = "OK" if valid else "FAIL"
-        print(f"{status}: {path} — {msg}")
+        print(f"{status}: {path} - {msg}")
         if not valid:
             failed += 1
     if failed:

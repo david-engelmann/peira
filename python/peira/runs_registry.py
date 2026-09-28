@@ -60,6 +60,29 @@ def _index_path(runs_dir: Path) -> Path:
     return runs_dir / INDEX_DB_NAME
 
 
+def _connect(db_path: Path) -> sqlite3.Connection:
+    """Open the index with a patient busy timeout and WAL mode.
+
+    WAL lets readers proceed while a writer holds the lock; the 30s
+    timeout lets a second writer wait out a concurrent scan instead of
+    raising "database is locked".
+    """
+    conn = sqlite3.connect(str(db_path), timeout=30)
+    conn.execute("PRAGMA journal_mode=WAL;")
+    return conn
+
+
+def _unlink_index(db_path: Path) -> None:
+    """Remove the index and any WAL sidecars.
+
+    A manually deleted index.db (which the module docstring promises is
+    always safe) can leave stale -wal/-shm files behind; they belong to
+    a deleted database and must not be recovered.
+    """
+    for suffix in ("", "-wal", "-shm"):
+        Path(str(db_path) + suffix).unlink(missing_ok=True)
+
+
 def _artifact_metadata(path: Path) -> dict[str, Any] | None:
     """Read artifact metadata without loading full results.
 
@@ -97,64 +120,113 @@ def _artifact_metadata(path: Path) -> dict[str, Any] | None:
     }
 
 
+def _scan_runs_into(conn: sqlite3.Connection, runs_dir: Path) -> int:
+    """Index every artifact in runs_dir into an already-open connection.
+
+    Returns the number of artifacts indexed. The caller owns the
+    connection and the corruption-recovery policy.
+    """
+    conn.executescript(_SCHEMA)
+    # Clear existing index
+    conn.execute("DELETE FROM runs")
+
+    count = 0
+    for path in sorted(runs_dir.glob("*.json")):
+        if path.name == INDEX_DB_NAME:
+            continue
+        meta = _artifact_metadata(path)
+        if meta is None:
+            continue
+        mtime = path.stat().st_mtime
+        conn.execute(
+            """INSERT INTO runs
+               (path, mtime, run_id, created_utc, adapter_name,
+                adapter_version, suite, dataset_version, manifest_sha256,
+                env_sha256, seed, max_concurrency, n_results, lock_valid)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (
+                str(path.resolve()), mtime, meta["run_id"], meta["created_utc"],
+                meta["adapter_name"], meta["adapter_version"],
+                meta["suite"], meta["dataset_version"],
+                meta["manifest_sha256"], meta["env_sha256"],
+                meta["seed"], meta["max_concurrency"],
+                meta["n_results"], meta["lock_valid"],
+            ),
+        )
+        count += 1
+    conn.commit()
+    return count
+
+
 def scan_runs(runs_dir: Path | str | None = None) -> int:
     """Scan the runs directory and rebuild the SQLite index.
+
+    A missing, truncated, or otherwise corrupt index.db is unlinked and
+    rebuilt (once) rather than raising; anything worse propagates.
 
     Returns the number of artifacts indexed.
     """
     runs_dir = _get_runs_dir(runs_dir)
     runs_dir.mkdir(parents=True, exist_ok=True)
     db_path = _index_path(runs_dir)
+    if not db_path.exists():
+        _unlink_index(db_path)
 
-    conn = sqlite3.connect(db_path)
+    def _build() -> int:
+        conn = _connect(db_path)
+        try:
+            return _scan_runs_into(conn, runs_dir)
+        finally:
+            conn.close()
+
     try:
-        conn.executescript(_SCHEMA)
-        # Clear existing index
-        conn.execute("DELETE FROM runs")
+        return _build()
+    except sqlite3.DatabaseError:
+        # Corrupt index (truncated file, not a database, ...): the module
+        # docstring promises deleting index.db is always safe, so do
+        # exactly that and rebuild once.
+        _unlink_index(db_path)
+        return _build()
 
-        count = 0
-        for path in sorted(runs_dir.glob("*.json")):
-            if path.name == INDEX_DB_NAME:
-                continue
-            meta = _artifact_metadata(path)
-            if meta is None:
-                continue
-            mtime = path.stat().st_mtime
-            conn.execute(
-                """INSERT INTO runs
-                   (path, mtime, run_id, created_utc, adapter_name,
-                    adapter_version, suite, dataset_version, manifest_sha256,
-                    env_sha256, seed, max_concurrency, n_results, lock_valid)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                (
-                    str(path.resolve()), mtime, meta["run_id"], meta["created_utc"],
-                    meta["adapter_name"], meta["adapter_version"],
-                    meta["suite"], meta["dataset_version"],
-                    meta["manifest_sha256"], meta["env_sha256"],
-                    meta["seed"], meta["max_concurrency"],
-                    meta["n_results"], meta["lock_valid"],
-                ),
-            )
-            count += 1
-        conn.commit()
-        return count
+
+def _indexed_snapshot(runs_dir: Path) -> dict[str, float] | None:
+    """Return the indexed {path: mtime} snapshot.
+
+    Returns None when the index is missing or unreadable; both are
+    rebuild triggers.
+    """
+    db_path = _index_path(runs_dir)
+    if not db_path.exists():
+        return None
+    try:
+        conn = _connect(db_path)
+    except sqlite3.DatabaseError:
+        return None
+    try:
+        try:
+            rows = conn.execute("SELECT path, mtime FROM runs").fetchall()
+        except sqlite3.Error:
+            return None
+        return {str(path): float(mtime) for path, mtime in rows}
     finally:
         conn.close()
 
 
 def _ensure_index_fresh(runs_dir: Path) -> None:
-    """Rebuild the index if any artifact is newer than the index."""
-    db_path = _index_path(runs_dir)
-    if not db_path.exists():
-        scan_runs(runs_dir)
-        return
-    db_mtime = db_path.stat().st_mtime
+    """Rebuild the index when it disagrees with the runs directory.
+
+    Any mismatch triggers a rescan: added artifacts, modified artifacts,
+    and deleted artifacts (deletions bump no mtime, so a pure "newer
+    than the index" comparison would leave phantom rows forever). A
+    missing or corrupt index is also a rebuild trigger.
+    """
+    actual: dict[str, float] = {}
     for path in runs_dir.glob("*.json"):
         if path.name == INDEX_DB_NAME:
             continue
-        if path.stat().st_mtime > db_mtime:
-            scan_runs(runs_dir)
-            return
+        actual[str(path.resolve())] = path.stat().st_mtime
+    if _indexed_snapshot(runs_dir) != actual:
+        scan_runs(runs_dir)
 
 
 def list_runs(
@@ -173,7 +245,7 @@ def list_runs(
         return []
     _ensure_index_fresh(runs_dir)
 
-    conn = sqlite3.connect(_index_path(runs_dir))
+    conn = _connect(_index_path(runs_dir))
     try:
         conn.row_factory = sqlite3.Row
         query = "SELECT * FROM runs WHERE 1=1"

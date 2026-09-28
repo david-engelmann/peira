@@ -23,7 +23,6 @@ from __future__ import annotations
 import hashlib
 import json
 import platform
-import sys
 from importlib.metadata import version as _pkg_version, PackageNotFoundError
 
 
@@ -139,8 +138,3 @@ def collect_and_fingerprint() -> tuple[dict, str]:
     """Collect the environment and return (env_dict, env_sha256)."""
     env = collect_env()
     return env, fingerprint_env(env)
-
-
-def python_version_tuple() -> tuple[int, int, int]:
-    """Current Python version as (major, minor, micro)."""
-    return sys.version_info[:3]

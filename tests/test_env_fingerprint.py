@@ -8,7 +8,6 @@ from peira.env_fingerprint import (
     collect_env,
     fingerprint_env,
     collect_and_fingerprint,
-    python_version_tuple,
 )
 
 
@@ -82,13 +81,6 @@ class TestCollectAndFingerprint(unittest.TestCase):
         self.assertIsInstance(env, dict)
         self.assertIsInstance(fp, str)
         self.assertEqual(fp, fingerprint_env(env))
-
-
-class TestPythonVersionTuple(unittest.TestCase):
-    def test_returns_triple(self):
-        v = python_version_tuple()
-        self.assertEqual(len(v), 3)
-        self.assertTrue(all(isinstance(x, int) for x in v))
 
 
 class TestRustBackendInfo(unittest.TestCase):
