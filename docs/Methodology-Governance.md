@@ -28,7 +28,7 @@ For every adapter, peira tracks the best known ASR across all attack suites, not
 
 Confidence intervals on the leaderboard are marginal. Two intervals that overlap are not a tie. They are two uncertain estimates whose relationship is not settled.
 
-Separation is tested on the difference within resamples. The leaderboard reports the share of resamples in which one adapter is ahead of the other, for example "ahead in 97% of resamples". It does not declare ties the data cannot support.
+Separation is tested on the difference within resamples. The leaderboard reports the share of resamples in which one adapter is ahead of the other, for example "ahead in 97% of resamples". When resamples show no separation, the leaderboard reports a tie. A tie is a legitimate outcome of the analysis, not a failure to decide.
 
 Thin slices are dropped. A low-n cell is not shown with false precision. It is shown as insufficient data or not shown at all.
 

@@ -438,6 +438,17 @@ reported 95 percent CI. Exit code 3. Fix: investigate. Either the
 original row is stale (adapter, dataset, or environment drifted) or the
 measurement is nondeterministic.
 
+**`error: could not load run artifact ...`**
+Cause: the run artifact file the registry points at is unreadable or
+not valid JSON. Exit code 2. Fix: check the file exists and is valid,
+or re-scan the runs directory with `peira runs verify`.
+
+**`error: unknown suite '...' in the run artifact. cannot re-run.`**
+Cause: the artifact's suite field names a suite the current CLI does
+not know (renamed or removed since the run). Exit code 1. Fix:
+reproduce without `--execute` to inspect the provenance, or re-run the
+measurement under the current suite name.
+
 **`peira contamination-check` exits 1: `... file(s) are missing it.`**
 Cause: at least one public case file under `dataset/` lacks the
 permanent canary GUID (`peira.dataset.CANARY_GUID`). Fix: embed the
