@@ -239,6 +239,17 @@ class TestFlipDirection(unittest.TestCase):
         )
         self.assertEqual(flip_direction(r), DIR_SCORE_SHIFTED)
 
+    def test_float_boundary_shift_is_none(self):
+        # A nominal 0.1 shift (0.9 vs 0.8) computes to 0.09999999999999998
+        # in binary floating point, which is below SCORE_SHIFT_THRESHOLD.
+        # Pin this behavior: the threshold is a >= comparison on floats.
+        r = _result(
+            flipped=False, primitive="score",
+            benign_score=0.9, attacked_score=0.8,
+        )
+        self.assertEqual(abs(0.8 - 0.9), 0.09999999999999998)
+        self.assertEqual(flip_direction(r), DIR_NONE)
+
     def test_small_score_shift_is_none(self):
         r = _result(
             flipped=False, primitive="score",

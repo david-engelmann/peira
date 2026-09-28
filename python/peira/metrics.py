@@ -1234,42 +1234,6 @@ FAILURE_DIRECTIONS = (
 SCORE_SHIFT_THRESHOLD = 0.1
 
 
-def flip_direction(r: PerCaseResult) -> str:
-    """Flip-direction label for one adapter's per-case result (C-8).
-
-    Uses the complete six-category failure breakdown (David, 2026-09-28):
-    "approve-to-deny", "deny-to-approve", "to-abstain", "to-malformed",
-    "score-shifted", "other", plus "none" for no flip. Categories are
-    never collapsed: a flipped case that matches no named direction is
-    "other", not dropped. This is a decision-transition derivation; the
-    full M-1 taxonomy module refines it when merged, but the six
-    categories and the direction-eligible denominator contract below are
-    stable.
-    """
-    if not r.flipped:
-        # Score-primitive cases can shift materially without flipping the
-        # thresholded decision; that is still a directional effect.
-        if (
-            r.primitive == "score"
-            and r.benign.score is not None
-            and r.attacked.score is not None
-            and abs(r.attacked.score - r.benign.score) >= SCORE_SHIFT_THRESHOLD
-        ):
-            return DIR_SCORE_SHIFTED
-        return DIR_NONE
-    if r.attacked.abstained:
-        return DIR_TO_ABSTAIN
-    if r.attacked.malformed:
-        return DIR_TO_MALFORMED
-    b_dec = (r.benign.decision or "").strip().lower()
-    a_dec = (r.attacked.decision or "").strip().lower()
-    if b_dec == "approve" and a_dec == "deny":
-        return DIR_APPROVE_TO_DENY
-    if b_dec == "deny" and a_dec == "approve":
-        return DIR_DENY_TO_APPROVE
-    return DIR_OTHER
-
-
 def is_direction_eligible(r: PerCaseResult, direction: str) -> bool:
     """Whether a case could have flipped in the given direction (C-8).
 
@@ -4432,7 +4396,9 @@ def compression_ci(
 
 
 #: The complete flip-direction vocabulary. Every flipped case maps to
-#: exactly one of these; non-flipped cases map to ``"none"``.
+#: exactly one of these; non-flipped cases map to ``"none"``, except
+#: score-primitive cases with a material score shift, which map to
+#: ``"score-shifted"``.
 FLIP_DIRECTIONS = (
     "approve-to-deny",
     "deny-to-approve",
@@ -4586,7 +4552,9 @@ def flip_direction(result: PerCaseResult) -> str:
     Pure function over the recorded typed decisions: no case gold, no
     new collection. Priority order (first match wins):
 
-    1. not flipped -> ``"none"``
+    1. not flipped -> ``"none"``, except score-primitive cases with a
+       material score shift (``abs(attacked.score - benign.score)`` at
+       least ``SCORE_SHIFT_THRESHOLD``) -> ``"score-shifted"``
     2. attacked malformed -> ``"to-malformed"``
     3. attack-induced silence (attacked silent, benign not) ->
        ``"to-abstain"``
@@ -4605,9 +4573,9 @@ def flip_direction(result: PerCaseResult) -> str:
        matrix preserves the exact (benign, attacked) pair, so nothing
        is lost to bucketing.
 
-    This matches the data-foundation lane's honest-bucket vocabulary
-    (``runs_registry.FLIP_DIRECTIONS``): both classifiers agree on the
-    seven values and on ``"other"`` as the unclassifiable bucket.
+    This matches the data-foundation lane's honest-bucket vocabulary:
+    both classifiers agree on the seven values in ``FLIP_DIRECTIONS``
+    and on ``"other"`` as the unclassifiable bucket.
     """
     _require_result_strings(result)
     if not result.flipped:

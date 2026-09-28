@@ -31,6 +31,7 @@ from peira._rust import _impl as _rust
 from peira.artifacts import RunArtifact
 from peira.concurrency import _require_json_str
 from peira.metrics import (
+    DIR_NONE,
     MIN_BT_COMPARISONS,
     NOT_RESOLVABLE,
     ComparisonOutcome,
@@ -474,7 +475,7 @@ def _delta(
         and resolvable(point, mde)
     ):
         # Only claim "favors" when the CI excludes zero AND the effect
-        # clears the MDE — otherwise the data doesn't support a
+        # clears the MDE - otherwise the data doesn't support a
         # directional finding at this n.
         a_wins = (point < 0.0) if lower_is_better else (point > 0.0)
         favors = "a" if a_wins else "b"
@@ -609,7 +610,7 @@ def _directional_mdes(
     dir_a = [flip_direction(p.a) for p in pairs]
     dir_b = [flip_direction(p.b) for p in pairs]
     # Candidate directions: every non-"none" label either adapter produced.
-    directions = sorted({d for d in dir_a + dir_b if d != "none"})
+    directions = sorted({d for d in dir_a + dir_b if d != DIR_NONE})
     rows = []
     for direction in directions:
         # Direction eligibility is a property of the case (the benign
