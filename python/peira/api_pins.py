@@ -69,9 +69,17 @@ __all__ = [
 #                                   guarantee from the 4.6 generation on)
 #   Google:    gemini-3.8-flash    (stable model code; no -NNN suffix on 3.x)
 #   Moonshot:  kimi-k3             (Moonshot never published dated IDs)
+#   xAI:       grok-4              (bare; dated variants like grok-4-0709
+#                                   also exist)
+#   DeepSeek:  deepseek-flash      (vendor alias for current V4.1 Flash;
+#                                   deepseek-chat was discontinued 2026-07-24)
+#   Meta:      Llama-4-Maverick-17B-128E-Instruct-FP8 (documented compat
+#                                   endpoint example model)
+#   Zhipu:     glm-4-plus          (current paid GLM-4 flagship)
 #
 # These pins were verified 2026-09-27 against the vendor docs linked in
-# the module docstring. Re-verify against the vendor docs before each
+# the module docstring (xAI, DeepSeek, Meta, Zhipu re-verified
+# 2026-09-28). Re-verify against the vendor docs before each
 # release. Pricing rates for these IDs live in
 # python/peira/data/pricing.json under the same IDs.
 
@@ -80,6 +88,10 @@ PINNED_API_MODELS: dict[str, str] = {
     "anthropic-structured": "claude-sonnet-5",
     "google-structured": "gemini-3.8-flash",
     "moonshot-structured": "kimi-k3",
+    "xai-structured": "grok-4",
+    "deepseek-structured": "deepseek-flash",
+    "meta-structured": "Llama-4-Maverick-17B-128E-Instruct-FP8",
+    "zai-structured": "glm-4-plus",
 }
 
 # Old pins the vendors have retired: old ID -> replacement ID.
@@ -137,6 +149,13 @@ class DeprecatedPinError(ValueError):
 #              suffix for 1.5/2.0-era IDs.
 #   moonshot:  kimi-k<n>, optionally with Moonshot's short -MMDD
 #              release tag (cf. kimi-k2-0905).
+#   xai:       grok-<n>[-<m>], optionally with a dated variant
+#              (cf. grok-4-0709).
+#   deepseek:  deepseek-<name>[-<name>] (cf. deepseek-flash,
+#              deepseek-v4-flash).
+#   meta:      Llama-<n>-<Name>-... (cf.
+#              Llama-4-Maverick-17B-128E-Instruct-FP8).
+#   zai:       glm-<n>[-<name>] (cf. glm-4-plus, glm-4-flash).
 #
 # Scheme rules per vendor (checked by _passes_vendor_semantics): Luna
 # never shipped dated snapshots, 5.x Anthropic IDs are dateless-only,
@@ -148,6 +167,10 @@ _VENDOR_ID_PATTERNS: dict[str, re.Pattern[str]] = {
     "anthropic": re.compile(r"^claude-[a-z]+(-\d+)+(-\d{8})?$"),
     "google": re.compile(r"^gemini-\d+(\.\d+)?-[a-z]+(-\d{3})?$"),
     "moonshot": re.compile(r"^kimi-k\d+[a-z]?(-[a-z]+|-\d{4})?$"),
+    "xai": re.compile(r"^grok-\d+(-\d+)?(-[a-z0-9]+)*$"),
+    "deepseek": re.compile(r"^deepseek-[a-z0-9]+(-[a-z0-9]+)*$"),
+    "meta": re.compile(r"^Llama-\d+-[A-Za-z0-9]+(-[A-Za-z0-9]+)*$"),
+    "zai": re.compile(r"^glm-\d+(-[a-z0-9]+)*$"),
 }
 
 

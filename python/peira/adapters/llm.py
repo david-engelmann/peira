@@ -112,6 +112,10 @@ __all__ = [
     "AnthropicAdapter",
     "GoogleAdapter",
     "MoonshotAdapter",
+    "XAIAdapter",
+    "DeepSeekAdapter",
+    "MetaLlamaAdapter",
+    "ZaiAdapter",
 ]
 
 # ---------------------------------------------------------------------------
@@ -919,6 +923,285 @@ class MoonshotAdapter(OpenAIAdapter):
         kwargs.pop("seed", None)
         kwargs.pop("logprobs", None)
         return kwargs
+
+    def _request(
+        self, user_text: str, schema: dict[str, Any], repair: bool
+    ) -> _RawResult:
+        raw = super()._request(user_text, schema, repair)
+        # The inherited request shape names the endpoint and model but
+        # not the host it was sent to — record it for traceability.
+        raw.request_shape["base_url"] = self._base_url
+        return raw
+
+
+# ---------------------------------------------------------------------------
+# xAI (Grok) — OpenAI-compatible endpoint.
+# ---------------------------------------------------------------------------
+
+class XAIAdapter(OpenAIAdapter):
+    """Baseline: xAI Grok through its OpenAI-compatible API.
+
+    Reuses the OpenAI request shape verbatim (strict JSON schema via
+    ``response_format``) against ``https://api.x.ai/v1`` with an
+    ``XAI_API_KEY`` Bearer token — the ``openai`` SDK package drives
+    the compat endpoint, so the extra stays ``peira[openai]``. The
+    request's ``base_url`` is recorded in the transcript's request
+    shape; the key itself never is.
+
+    Default model is ``grok-4`` (xAI's current flagship; the vendor
+    also publishes dated variants such as ``grok-4-0709``).
+
+    Request shape: xAI documents ``seed`` as supported (best-effort
+    deterministic), so the seed is sent; whether ``json_schema``
+    ``response_format`` (vs plain ``json_object``) is honored for
+    ``grok-4`` is unverified. If the live endpoint rejects or ignores
+    any of these, you will see terminal provider errors, not silent
+    mismeasurement — verify against the live API before any measured
+    run. Not exercised against the live API yet.
+    """
+
+    name = "xai-structured"
+    _extra = "peira[openai]"
+    _env_vars = ("XAI_API_KEY",)
+    _provider_label = "xAI"
+    _supports_seed = True
+
+    _base_url = "https://api.x.ai/v1"
+
+    def __init__(
+        self,
+        model: str = PINNED_API_MODELS["xai-structured"],
+        temperature: float = 0.0,
+        seed: int | None = 0,
+        max_tokens: int = 512,
+        api_key: str | None = None,
+    ) -> None:
+        # Not OpenAIAdapter.__init__: that constructor pins the client
+        # to api.openai.com. Rebuild the identical client against
+        # xAI's OpenAI-compatible endpoint — retries still
+        # DISABLED, the runner owns the retry policy.
+        _StructuredLLMBase.__init__(
+            self, model, temperature, seed, max_tokens, api_key
+        )
+        self._sdk = _require_openai()
+        self._client = self._sdk.OpenAI(
+            api_key=self._api_key, base_url=self._base_url, max_retries=0
+        )
+
+    def _request(
+        self, user_text: str, schema: dict[str, Any], repair: bool
+    ) -> _RawResult:
+        raw = super()._request(user_text, schema, repair)
+        # The inherited request shape names the endpoint and model but
+        # not the host it was sent to — record it for traceability.
+        raw.request_shape["base_url"] = self._base_url
+        return raw
+
+
+# ---------------------------------------------------------------------------
+# DeepSeek — OpenAI-compatible endpoint (no /v1 suffix).
+# ---------------------------------------------------------------------------
+
+class DeepSeekAdapter(OpenAIAdapter):
+    """Baseline: DeepSeek through its OpenAI-compatible API.
+
+    Reuses the OpenAI request shape verbatim (strict JSON schema via
+    ``response_format``) against ``https://api.deepseek.com`` with a
+    ``DEEPSEEK_API_KEY`` Bearer token — the ``openai`` SDK package drives
+    the compat endpoint, so the extra stays ``peira[openai]``. The
+    request's ``base_url`` is recorded in the transcript's request
+    shape; the key itself never is.
+
+    Note the base URL carries NO ``/v1`` suffix: DeepSeek's documented
+    endpoint is ``POST https://api.deepseek.com/chat/completions``.
+
+    Default model is ``deepseek-flash`` (the vendor's alias for the
+    current DeepSeek-V4.1 Flash; the legacy ``deepseek-chat`` /
+    ``deepseek-reasoner`` IDs were discontinued 2026-07-24).
+
+    Request shape: DeepSeek's thinking mode is DISABLED
+    (``thinking: {"type": "disabled"}``) per the evaluation design —
+    reasoning traces would otherwise leak into the decision channel.
+    Whether ``json_schema`` ``response_format`` (vs plain
+    ``json_object``, which DeepSeek documents) is honored for
+    ``deepseek-flash`` is unverified. If the live endpoint rejects or
+    ignores any of these, you will see terminal provider errors, not
+    silent mismeasurement — verify against the live API before any
+    measured run. Not exercised against the live API yet.
+    """
+
+    name = "deepseek-structured"
+    _extra = "peira[openai]"
+    _env_vars = ("DEEPSEEK_API_KEY",)
+    _provider_label = "DeepSeek"
+    _supports_seed = True
+
+    _base_url = "https://api.deepseek.com"
+
+    def __init__(
+        self,
+        model: str = PINNED_API_MODELS["deepseek-structured"],
+        temperature: float = 0.0,
+        seed: int | None = 0,
+        max_tokens: int = 512,
+        api_key: str | None = None,
+    ) -> None:
+        # Not OpenAIAdapter.__init__: that constructor pins the client
+        # to api.openai.com. Rebuild the identical client against
+        # DeepSeek's OpenAI-compatible endpoint — retries still
+        # DISABLED, the runner owns the retry policy.
+        _StructuredLLMBase.__init__(
+            self, model, temperature, seed, max_tokens, api_key
+        )
+        self._sdk = _require_openai()
+        self._client = self._sdk.OpenAI(
+            api_key=self._api_key, base_url=self._base_url, max_retries=0
+        )
+
+    def _request_kwargs(
+        self, messages: list[dict[str, str]], schema: dict[str, Any]
+    ) -> dict[str, Any]:
+        kwargs = super()._request_kwargs(messages, schema)
+        # Thinking disabled per the evaluation design: reasoning traces
+        # must not leak into the decision channel.
+        kwargs["thinking"] = {"type": "disabled"}
+        return kwargs
+
+    def _request(
+        self, user_text: str, schema: dict[str, Any], repair: bool
+    ) -> _RawResult:
+        raw = super()._request(user_text, schema, repair)
+        # The inherited request shape names the endpoint and model but
+        # not the host it was sent to — record it for traceability.
+        raw.request_shape["base_url"] = self._base_url
+        return raw
+
+
+# ---------------------------------------------------------------------------
+# Meta Llama API — OpenAI-compatible endpoint (/compat/v1 path).
+# ---------------------------------------------------------------------------
+
+class MetaLlamaAdapter(OpenAIAdapter):
+    """Baseline: Meta Llama API through its OpenAI-compatible endpoint.
+
+    Reuses the OpenAI request shape verbatim (strict JSON schema via
+    ``response_format``) against ``https://api.llama.com/compat/v1``
+    with a ``META_API_KEY`` Bearer token — the ``openai`` SDK package
+    drives the compat endpoint, so the extra stays ``peira[openai]``.
+    The request's ``base_url`` is recorded in the transcript's request
+    shape; the key itself never is.
+
+    Note the ``/compat/v1`` path: Meta's native API lives at
+    ``https://api.llama.com/v1`` with a different response shape; only
+    the ``/compat/v1`` prefix speaks the OpenAI wire protocol.
+
+    Default model is ``Llama-4-Maverick-17B-128E-Instruct-FP8`` (Meta's
+    documented example model for the compat endpoint).
+
+    Request shape: Meta documents that some OpenAI client features are
+    NOT supported on the compat endpoint — whether ``json_schema``
+    ``response_format``, ``seed``, and ``logprobs`` are honored is
+    unverified. If the live endpoint rejects or ignores any of these,
+    you will see terminal provider errors, not silent mismeasurement —
+    verify against the live API before any measured run. Not exercised
+    against the live API yet.
+    """
+
+    name = "meta-structured"
+    _extra = "peira[openai]"
+    _env_vars = ("META_API_KEY",)
+    _provider_label = "Meta"
+    _supports_seed = True
+
+    _base_url = "https://api.llama.com/compat/v1"
+
+    def __init__(
+        self,
+        model: str = PINNED_API_MODELS["meta-structured"],
+        temperature: float = 0.0,
+        seed: int | None = 0,
+        max_tokens: int = 512,
+        api_key: str | None = None,
+    ) -> None:
+        # Not OpenAIAdapter.__init__: that constructor pins the client
+        # to api.openai.com. Rebuild the identical client against
+        # Meta's OpenAI-compatible endpoint — retries still
+        # DISABLED, the runner owns the retry policy.
+        _StructuredLLMBase.__init__(
+            self, model, temperature, seed, max_tokens, api_key
+        )
+        self._sdk = _require_openai()
+        self._client = self._sdk.OpenAI(
+            api_key=self._api_key, base_url=self._base_url, max_retries=0
+        )
+
+    def _request(
+        self, user_text: str, schema: dict[str, Any], repair: bool
+    ) -> _RawResult:
+        raw = super()._request(user_text, schema, repair)
+        # The inherited request shape names the endpoint and model but
+        # not the host it was sent to — record it for traceability.
+        raw.request_shape["base_url"] = self._base_url
+        return raw
+
+
+# ---------------------------------------------------------------------------
+# Zhipu Z.ai (GLM) — OpenAI-compatible endpoint.
+# ---------------------------------------------------------------------------
+
+class ZaiAdapter(OpenAIAdapter):
+    """Baseline: Zhipu GLM through its OpenAI-compatible API.
+
+    Reuses the OpenAI request shape verbatim (strict JSON schema via
+    ``response_format``) against ``https://open.bigmodel.cn/api/paas/v4``
+    with a ``ZAI_API_KEY`` Bearer token — the ``openai`` SDK package
+    drives the compat endpoint, so the extra stays ``peira[openai]``.
+    The request's ``base_url`` is recorded in the transcript's request
+    shape; the key itself never is.
+
+    Auth note: Zhipu also supports JWT auth built from the API key ID
+    plus secret, but the OpenAI-compatible endpoint accepts the API key
+    directly as the Bearer token (per Zhipu's own OpenAI-compat docs),
+    which is what this adapter uses.
+
+    Default model is ``glm-4-plus`` (Zhipu's current paid flagship in
+    the GLM-4 family).
+
+    Request shape: whether ``json_schema`` ``response_format``, ``seed``,
+    and ``logprobs`` are honored for ``glm-4-plus`` is unverified. If
+    the live endpoint rejects or ignores any of these, you will see
+    terminal provider errors, not silent mismeasurement — verify against
+    the live API before any measured run. Not exercised against the
+    live API yet.
+    """
+
+    name = "zai-structured"
+    _extra = "peira[openai]"
+    _env_vars = ("ZAI_API_KEY",)
+    _provider_label = "Zhipu"
+    _supports_seed = True
+
+    _base_url = "https://open.bigmodel.cn/api/paas/v4"
+
+    def __init__(
+        self,
+        model: str = PINNED_API_MODELS["zai-structured"],
+        temperature: float = 0.0,
+        seed: int | None = 0,
+        max_tokens: int = 512,
+        api_key: str | None = None,
+    ) -> None:
+        # Not OpenAIAdapter.__init__: that constructor pins the client
+        # to api.openai.com. Rebuild the identical client against
+        # Zhipu's OpenAI-compatible endpoint — retries still
+        # DISABLED, the runner owns the retry policy.
+        _StructuredLLMBase.__init__(
+            self, model, temperature, seed, max_tokens, api_key
+        )
+        self._sdk = _require_openai()
+        self._client = self._sdk.OpenAI(
+            api_key=self._api_key, base_url=self._base_url, max_retries=0
+        )
 
     def _request(
         self, user_text: str, schema: dict[str, Any], repair: bool

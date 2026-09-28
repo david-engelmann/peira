@@ -124,6 +124,10 @@ One adapter per provider, one extra each. Install only what you need:
 | Anthropic | `peira[anthropic]` | `peira.adapters.llm:AnthropicAdapter` | `claude-sonnet-5` | `ANTHROPIC_API_KEY` |
 | Google | `peira[google]` | `peira.adapters.llm:GoogleAdapter` | `gemini-3.8-flash` | `GOOGLE_API_KEY` |
 | Moonshot (Kimi) | `peira[openai]` | `peira.adapters.llm:MoonshotAdapter` | `kimi-k3` | `MOONSHOT_API_KEY` |
+| xAI (Grok) | `peira[openai]` | `peira.adapters.llm:XAIAdapter` | `grok-4` | `XAI_API_KEY` |
+| DeepSeek | `peira[openai]` | `peira.adapters.llm:DeepSeekAdapter` | `deepseek-flash` | `DEEPSEEK_API_KEY` |
+| Meta (Llama API) | `peira[openai]` | `peira.adapters.llm:MetaLlamaAdapter` | `Llama-4-Maverick-17B-128E-Instruct-FP8` | `META_API_KEY` |
+| Zhipu (GLM) | `peira[openai]` | `peira.adapters.llm:ZaiAdapter` | `glm-4-plus` | `ZAI_API_KEY` |
 
 Default models are pinned per each vendor's versioning scheme
 (verified 2026-09-27 against the vendor docs, re-verified per
@@ -246,6 +250,109 @@ decision-token logprob track on this adapter, and the transcript
 honestly records `"seed": None`. Verify against the live API before
 any measured run; mismatches surface as terminal provider errors, not
 silent mismeasurement.
+
+### Grok 4 (xAI)
+
+```bash
+pip install "peira[openai]"
+export XAI_API_KEY=<your-key>
+peira run --adapter peira.adapters.llm:XAIAdapter --suite trial-demo
+```
+
+Grok 4 is xAI's current flagship model. The adapter drives xAI's
+OpenAI-compatible endpoint (`https://api.x.ai/v1`, model id `grok-4`)
+with the same strict JSON-schema request shape as `OpenAIAdapter`;
+the base URL is recorded in the transcript's request shape, and the
+key is never logged. `max_retries=0`. The runner owns retries, same
+as every other LLM baseline.
+
+Honest caveat: the adapter is built from xAI's published docs, not
+the live API. xAI documents `seed` as supported (best-effort
+deterministic), so the seed is sent; whether `json_schema`
+`response_format` (vs plain `json_object`) is honored for `grok-4`
+is unverified. Verify against the live API before any measured run;
+mismatches surface as terminal provider errors, not silent
+mismeasurement.
+
+### DeepSeek V4.1 Flash (DeepSeek)
+
+```bash
+pip install "peira[openai]"
+export DEEPSEEK_API_KEY=<your-key>
+peira run --adapter peira.adapters.llm:DeepSeekAdapter --suite trial-demo
+```
+
+DeepSeek-V4.1 Flash is DeepSeek's current fast flagship (the
+`deepseek-flash` alias; the legacy `deepseek-chat` / `deepseek-reasoner`
+ids were discontinued 2026-07-24). The adapter drives DeepSeek's
+OpenAI-compatible endpoint (`https://api.deepseek.com`; note: no
+`/v1` suffix, per DeepSeek's docs) with the same strict JSON-schema
+request shape as `OpenAIAdapter`; the base URL is recorded in the
+transcript's request shape, and the key is never logged.
+`max_retries=0`. The runner owns retries, same as every other LLM
+baseline.
+
+Thinking is DISABLED (`thinking: {"type": "disabled"}`) per the
+evaluation design: reasoning traces must not leak into the decision
+channel.
+
+Honest caveat: the adapter is built from DeepSeek's published docs,
+not the live API. DeepSeek documents `response_format` as
+`json_object`; whether strict `json_schema` is honored for
+`deepseek-flash` is unverified. Verify against the live API before
+any measured run; mismatches surface as terminal provider errors, not
+silent mismeasurement.
+
+### Llama 4 Maverick (Meta Llama API)
+
+```bash
+pip install "peira[openai]"
+export META_API_KEY=<your-key>
+peira run --adapter peira.adapters.llm:MetaLlamaAdapter --suite trial-demo
+```
+
+Llama-4-Maverick-17B-128E-Instruct-FP8 via Meta's Llama API. The
+adapter drives the OpenAI-compatible endpoint
+(`https://api.llama.com/compat/v1`; note the `/compat/v1` path;
+Meta's native API at `/v1` uses a different response shape) with the
+same strict JSON-schema request shape as `OpenAIAdapter`; the base URL
+is recorded in the transcript's request shape, and the key is never
+logged. `max_retries=0`. The runner owns retries, same as every other
+LLM baseline.
+
+Honest caveat: the adapter is built from Meta's published docs, not
+the live API. Meta documents that some OpenAI client features are NOT
+supported on the compat endpoint; whether `json_schema`
+`response_format`, `seed`, and `logprobs` are honored is unverified.
+Verify against the live API before any measured run; mismatches
+surface as terminal provider errors, not silent mismeasurement.
+
+### GLM-4 Plus (Zhipu)
+
+```bash
+pip install "peira[openai]"
+export ZAI_API_KEY=<your-key>
+peira run --adapter peira.adapters.llm:ZaiAdapter --suite trial-demo
+```
+
+GLM-4 Plus is Zhipu's current paid flagship in the GLM-4 family. The
+adapter drives Zhipu's OpenAI-compatible endpoint
+(`https://open.bigmodel.cn/api/paas/v4`, model id `glm-4-plus`) with
+the same strict JSON-schema request shape as `OpenAIAdapter`; the
+base URL is recorded in the transcript's request shape, and the key
+is never logged. `max_retries=0`. The runner owns retries, same as
+every other LLM baseline.
+
+Auth note: Zhipu also supports JWT auth built from the API key ID
+plus secret, but the OpenAI-compatible endpoint accepts the API key
+directly as the Bearer token (per Zhipu's own OpenAI-compat docs),
+which is what this adapter uses.
+
+Honest caveat: the adapter is built from Zhipu's published docs, not
+the live API. Whether `json_schema` `response_format`, `seed`, and
+`logprobs` are honored for `glm-4-plus` is unverified. Verify against
+the live API before any measured run; mismatches surface as terminal
+provider errors, not silent mismeasurement.
 
 ## TypeSafe Jev
 
