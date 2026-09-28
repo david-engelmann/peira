@@ -7,7 +7,6 @@ is tested with a mocked ``subprocess.run``.
 """
 
 import json
-import os
 import subprocess
 import unittest
 from unittest import mock

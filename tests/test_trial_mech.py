@@ -90,7 +90,6 @@ class TestTrialSuite(unittest.TestCase):
         self.assertTrue(all(n == 10 for n in counts.values()), dict(counts))
 
     def test_gates_pass(self):
-        from peira.dataset import iter_case_lines
         results = run_gates(TRIAL_DIR)
         errors = [e for r in results for e in r.errors]
         self.assertEqual(errors, [])

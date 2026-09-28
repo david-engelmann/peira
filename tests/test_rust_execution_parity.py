@@ -221,8 +221,14 @@ class CacheKeyParity(unittest.TestCase):
         bad = dict(kw, case_input={"a": "\ud800"})
         with self.assertRaises((TypeError, ValueError)):
             cache_key(**bad)
-        # But the reference implementation still handles them fine.
-        self.assertEqual(cache_key_py(**bad), cache_key_py(**bad))
+        # But the reference implementation still handles them fine:
+        # it escapes the surrogate via ensure_ascii and hashes the
+        # canonical bytes. Pin the exact digest so the assertion is
+        # not a tautology.
+        self.assertEqual(
+            cache_key_py(**bad),
+            "da70d55298ea1a58aa1e0a07791e5ff9772af40f0c750e32beb82edce1a1d528",
+        )
         bad = dict(kw, adapter_name=7)
         with self.assertRaises(TypeError):
             cache_key(**bad)

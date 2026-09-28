@@ -22,7 +22,6 @@ from peira.adapters.llm import OpenAIAdapter
 from peira.runner import load_cases, run_case, run_suite
 
 from tests.test_hf_adapters import (
-    _FakeClassifier,
     _FakeTensor,
     _FakeTorch,
 )
@@ -54,14 +53,28 @@ def _choice_input(case, attacked):
 
 class _HFTokenizer:
     def __call__(self, text, **kwargs):
+        self.seen_text = text
         return {"input_ids": _FakeTensor([[1, 2, 3]])}
 
 
 class _FlippingClassifier:
-    """INJECTION logits when the text smells attacked, else SAFE."""
+    """INJECTION logits when the text smells attacked, else SAFE.
+
+    Branches on the tokenizer's recorded input text: any text not in
+    the known-benign set scores INJECTION. The test passes the benign
+    prompts explicitly, so the flip is verified against the fixture's
+    actual attacked content, not a length heuristic.
+    """
+
+    def __init__(self, tokenizer, benign_texts):
+        self._tokenizer = tokenizer
+        self._benign_texts = set(benign_texts)
 
     def __call__(self, **kwargs):
-        return SimpleNamespace(logits=[[0.2, 2.5]])
+        text = getattr(self._tokenizer, "seen_text", "")
+        if text in self._benign_texts:
+            return SimpleNamespace(logits=[[2.5, 0.2]])  # SAFE
+        return SimpleNamespace(logits=[[0.2, 2.5]])  # INJECTION
 
 
 class _BenignClassifier:
@@ -76,6 +89,22 @@ def _hf_patched(model):
     ):
         adapter = ProtectAIAdapter()
     adapter._load = lambda: (_HFTokenizer(), model)
+    yield adapter
+
+
+@contextmanager
+def _hf_patched_wired(classifier_factory):
+    """Variant of _hf_patched where the classifier needs the tokenizer.
+
+    The factory receives the tokenizer instance and returns the classifier,
+    so fakes can branch on the actual input text.
+    """
+    with mock.patch.object(
+        hf_mod, "_require_hf", return_value=(_FakeTorch(), SimpleNamespace())
+    ):
+        adapter = ProtectAIAdapter()
+    tokenizer = _HFTokenizer()
+    adapter._load = lambda: (tokenizer, classifier_factory(tokenizer))
     yield adapter
 
 
@@ -169,12 +198,19 @@ class TestHFThroughRunner(unittest.TestCase):
 
     def test_protectai_detection_flips_attacked(self):
         cases = _cases(2, primitives={"abstain"})
-        with _hf_patched(_FlippingClassifier()) as adapter:
+        benign_texts = [c.benign.input.get("prompt", "") for c in cases]
+        with _hf_patched_wired(
+            lambda tok: _FlippingClassifier(tok, benign_texts)
+        ) as adapter:
             art = run_suite(adapter, cases, "trial-demo", "0.1.0-demo",
                             seed=1, max_concurrency=2)
-        for entry in art.results:
-            # Malicious verdict -> abstain label, differing from benign baseline.
-            self.assertEqual(entry["attacked"]["decision"], "abstain")
+        for entry, case in zip(art.results, cases):
+            # Benign content: guardrail vetoes nothing ("other").
+            self.assertEqual(entry["benign"]["decision"], "other",
+                             f"benign arm flipped for {case.case_id}")
+            # Attacked content: malicious verdict -> abstain label.
+            self.assertEqual(entry["attacked"]["decision"], "abstain",
+                             f"attacked arm did not flip for {case.case_id}")
 
 
 class TestLLMThroughRunner(unittest.TestCase):
