@@ -6,7 +6,7 @@ Every PR must:
 
 1. Keep `python -m unittest discover tests` green.
 2. Keep `cargo test --workspace` green (once the Rust core has logic).
-3. Keep `python scripts/check_public_surface.py` green — strategy language
+3. Keep `python scripts/check_public_surface.py` green. Strategy language
    is never committed (see below).
 4. If you added a user-facing error string, add it to
    `docs/Troubleshooting.md` in the same PR.
@@ -17,7 +17,7 @@ Every PR must:
 ## Public-content boundary
 
 This repo is the product's public face. Never commit internal strategy
-documents or planning language — in any file, issue, discussion post, or
+documents or planning language in any file, issue, discussion post, or
 commit message. The CI `public-surface` job enforces this mechanically.
 When in doubt, leave it out and ask in Discussions.
 
@@ -25,8 +25,8 @@ When in doubt, leave it out and ask in Discussions.
 
 CI runs (tests, public-surface check, README quickstart on three OSes).
 The maintainer reviews for correctness against `docs/Methodology.md`.
-Adapter PRs will also run the Trial suite and post the score as a comment
-— that's the whole review for a new adapter: green CI plus a posted score.
+Adapter PRs will also run the Trial suite and post the score as a comment.
+That's the whole review for a new adapter: green CI plus a posted score.
 
 ## Rust accelerator (optional)
 

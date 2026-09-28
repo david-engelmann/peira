@@ -9,7 +9,7 @@ controls across 10 attack families (× 200 cases).
 ## What peira does not measure
 
 - Open-ended text generation safety (this is about *decisions*, not prose).
-- Whether the model's reasoning is correct — only whether the decision
+- Whether the model's reasoning is correct. Only whether the decision
   changed under attack.
 - Real-world deployment risk. A good peira score is evidence about the
   benchmark, not a safety certificate. See the non-certification notice in

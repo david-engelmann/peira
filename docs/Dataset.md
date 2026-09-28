@@ -22,7 +22,7 @@ dataset/
 
 `trial-demo` is scaffolding: a 12-case fixture that lets the harness run
 offline. It predates the gates and is exempt from them. `trial` is the
-branded 100-case Peira Trial — 100 v1-quality cases (10 per family)
+branded 100-case Peira Trial: 100 v1-quality cases (10 per family)
 authored through the full pipeline: all seven gates green, 100% of critical
 cases human-reviewed, manifest sealed at 1.0.5. Trial runs stay off the
 public leaderboard.
@@ -30,13 +30,13 @@ public leaderboard.
 ## Case schema: closed for required fields, open for extension
 
 The frozen schema requires `case_id`, `family`, `primitive`, `severity`,
-`benign`, and `attacked` — and nothing else. Validators ignore unknown
+`benign`, and `attacked`, and nothing else. Validators ignore unknown
 top-level fields, and `Case.from_dict` preserves them on `Case.extras`,
 so new per-case configuration survives `from_dict` → `to_dict`
 round-trips and stays available on the case object during the run,
 without touching the schema, the loader, or the gates. Run artifacts
 record per-case *results*, not full case dicts, so extras don't land in
-artifacts by themselves — adapter-visible configuration belongs inside
+artifacts by themselves. Adapter-visible configuration belongs inside
 the variant `input`, which already passes through unchanged. Only the
 consumer of a new field needs to know about it. The Trial suite
 uses this for its `canary` field.
@@ -45,7 +45,7 @@ Score-primitive cases carry one optional authorial field inside the
 benign variant: `benign.expected_score` (0–1, or null), the case
 author's reference answer to the same graded question the prompt
 poses to the adapter. Score diagnostics (CRPS in point form, score
-compression, per-arm MAE, score displacement — see
+compression, per-arm MAE, score displacement (see
 `docs/Methodology.md`) measure adapter-vs-author agreement against
 this reference, never against a binarized expected decision (ADR
 D-27). Gate G7 requires it on every valid score-primitive case in
@@ -55,8 +55,8 @@ The schema also enforces the declared JSON types, not just presence and
 enum membership: a non-string `case_id`, a non-object variant `input`,
 or a non-string `expected_decision` fails validation with a message
 like `bad case_id: expected string`, instead of crashing the runner
-downstream. Case files are plain UTF-8 JSONL — one complete JSON object
-per line — and are read as UTF-8 on every platform. Lines whose leading
+downstream. Case files are plain UTF-8 JSONL: one complete JSON object
+per line, and are read as UTF-8 on every platform. Lines whose leading
 `[`/`{` run nests deeper than 256 levels are rejected before parsing
 (`nesting depth ... exceeds the 256-level cap`): unbounded nesting
 recurses in the parser and the canonical serializer, so case files stay
@@ -73,8 +73,8 @@ re-execution design is in
 
 `manifest.json` is the dataset's build receipt. It records, per file:
 
-- `sha256` — content hash of the exact bytes shipped
-- `kind` — `cases` (a validated JSONL case file) or `artifact` (e.g. the canary)
+- `sha256`: content hash of the exact bytes shipped
+- `kind`: `cases` (a validated JSONL case file) or `artifact` (e.g. the canary)
 - for case files: `n_cases`, `n_by_family`, `n_by_severity`, `n_by_primitive`
 
 Build it after authoring:
@@ -83,7 +83,7 @@ Build it after authoring:
 peira dataset build-manifest --dir dataset/v1/cases --version 1.0.0
 ```
 
-The build validates every case first — a manifest is never written for
+The build validates every case first. A manifest is never written for
 invalid data. Verify a checkout against its manifest any time:
 
 ```
@@ -97,15 +97,15 @@ Manifests are committed to git; CI treats a mismatch as a build failure.
 
 `dataset_version` follows semver:
 
-- **major** — cases removed or semantics changed (revised expected decisions,
+- **major**: cases removed or semantics changed (revised expected decisions,
   re-cut splits)
-- **minor** — cases added
-- **patch** — metadata-only fixes (notes, formatting)
+- **minor**: cases added
+- **patch**: metadata-only fixes (notes, formatting)
 
 Rules:
 
 1. Any case added, changed, or removed → new version, new manifest.
-2. Manifests are immutable — never edit one in place; rebuild it.
+2. Manifests are immutable. Never edit one in place; rebuild it.
 3. Run artifacts record the dataset version they scored against, so old
    results stay comparable after a release.
 
@@ -114,18 +114,18 @@ Rules:
 - `--version` must be semver (`1.0.0`, `0.1.0-trial`); anything else is
   refused.
 - Every critical-severity case must carry severity notes saying why it
-  earned the tier (`docs/Severity-Rubric.md`) — a missing justification
+  earned the tier (`docs/Severity-Rubric.md`). A missing justification
   refuses the build.
 - Rebuilding byte-identical content under the same version is allowed
   (idempotent); changed content under an already-sealed version is
-  refused — bump the version instead.
+  refused. Bump the version instead.
 - With `--require-reviews`, the build also refuses while any human
   reviews are pending (see the review queue below).
 
 ## Canary
 
 `CANARY.txt` holds a unique GUID string (also embedded in every case file).
-If you train models: exclude any document containing the canary string —
+If you train models: exclude any document containing the canary string:
 the license *requests* non-training use, and the canary is the
 machine-readable enforcement. Overlap checks against the canary back it up.
 
@@ -147,16 +147,16 @@ peira dataset gates --dir dataset/v1/cases
 | G6 pii-scan | identifier-like strings (email, phone, SSN patterns) in inputs | warning |
 | G7 score-reference | every valid score-primitive case carries `benign.expected_score` (the author's reference score) | error |
 
-Errors fail the suite (exit 1) — fix them before building a manifest.
+Errors fail the suite (exit 1). Fix them before building a manifest.
 Warnings don't fail; every warning goes to the human review queue. G2–G7
 only run on cases G1 accepted, so one broken case doesn't spray
 downstream noise.
 
-The gates check structural integrity only — never case quality or
+The gates check structural integrity only, never case quality or
 difficulty. Judging whether a case is a *good* test of its family stays
 human work, in the review queue.
 
-Note: `dataset/trial-demo/` predates the gates and is exempt — it's
+Note: `dataset/trial-demo/` predates the gates and is exempt; it's
 quickstart scaffolding with deliberately repetitive content, not a real
 dataset. Gates apply to `dataset/trial` and `dataset/v1` authoring.
 
@@ -170,19 +170,19 @@ peira-cli verify-manifest --dir dataset/v1/cases   # manifest integrity, in Rust
 
 Both commands are read-only and exit 1 on failure. The Rust core
 (`crates/peira-core`) also ports the metrics, run artifacts, and the
-canonical JSON behind analysis locks — byte-identical to the Python
+canonical JSON behind analysis locks, byte-identical to the Python
 reference, so either side verifies the other's artifacts.
 
 ## Generator templates
 
-New cases start from a family template — never a blank file:
+New cases start from a family template, never a blank file:
 
 ```
 peira dataset new --family state_poisoning --id sp-042 --severity high
 ```
 
 This prints a schema-valid case skeleton with `{{PLACEHOLDERS}}` for the
-author to fill in. Each of the seventeen templates encodes its family's attack
+author to fill in. Each of the eleven templates encodes its family's attack
 pattern (documented in `python/peira/templates.py`): the state_poisoning
 skeleton has the poisoned tool-output slot, option_order has the reordered
 options, score_anchoring has the anchor context field, and so on. G1 and
@@ -195,7 +195,7 @@ to `choice`). The command also prints the family's severity hint, so the
 author grades the case against the rubric at authoring time.
 
 The templates remove blank-page friction. They don't judge difficulty or
-quality — that's the review queue's job.
+quality. That's the review queue's job.
 
 ## Review queue
 
@@ -215,7 +215,7 @@ peira dataset review approve --dir dataset/v1/cases --id sp-001 --reviewer dg --
 peira dataset review reject --dir dataset/v1/cases --id sp-002 --reviewer dg --notes "rework: ..."
 ```
 
-`rejected` means sent back for rework — it does not count as reviewed.
+`rejected` means sent back for rework; it does not count as reviewed.
 The release gate is `peira dataset build-manifest --require-reviews`,
 which refuses to write a manifest while any reviews are pending:
 
@@ -234,13 +234,13 @@ peira dataset status --dir dataset/v1/cases      # where things stand; exit 0 = 
 peira dataset build-manifest --dir dataset/v1/cases --version 1.0.0 --require-reviews
 ```
 
-`review.json` is committed alongside the cases — review decisions are
+`review.json` is committed alongside the cases. Review decisions are
 part of the dataset's provenance.
 
 ## Pipeline status
 
 `peira dataset status --dir <dir>` shows where a dataset stands in the
-authoring flow — gates, review queue, and manifest in one view:
+authoring flow (gates, review queue, and manifest in one view):
 
 ```
 $ peira dataset status --dir dataset/v1/cases
@@ -253,5 +253,5 @@ status: release-ready
 
 Exit 0 means release-ready: the gates report no errors, no human
 reviews are pending, and a manifest exists that verifies clean against
-the directory. Anything else is exit 1 — a status signal, not an
+the directory. Anything else is exit 1: a status signal, not an
 error. Run it any time to see what's left before the next release.

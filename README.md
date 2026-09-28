@@ -62,7 +62,7 @@ Check your setup first with `peira doctor`: it reports Python/RAM/disk/GPU, veri
 
 ## What peira measures
 
-Whether hostile input changes a decision model's typed output: approve/deny (choice), a numeric score (score), or abstain (abstain). Each attacked case ships with a benign twin, and a case only counts when its benign variant gives a usable baseline. A model cannot look sturdy by failing the control.
+Whether hostile input changes a decision model's typed output: approve/deny (choice), a numeric score (score), or abstain (abstain). This is adversarial robustness at the decision layer. Each attacked case ships with a benign twin, and a case only counts when its benign variant gives a usable baseline. A model cannot look sturdy by failing the control.
 
 The headline metric is decision-change ASR with Wilson 95% confidence intervals. ECE and Brier cover confidence quality. Malformed attacked outputs count as flipped (a decision model that breaks under attack gets no benefit of the doubt), and so is attack-induced abstention: a flip of the abstention state is a flip of the outcome, a DoS vector. Refusal rates are reported separately so the refusal phenomenon stays visible. Cost is a sidecar, never blended into a score. Every report carries per-case drill-down receipts, and every run is sealed against post-hoc editing.
 
@@ -93,7 +93,11 @@ A separate safety-policy suite (guardrail-native, pilot) ships alongside v1. It 
 | Shieldstral (Mistral) | shipped, not yet measured |
 | ProtectAI prompt injection | shipped, not yet measured |
 | Llama Prompt Guard 2 86M (Meta) | shipped, not yet measured |
-| Structured-output LLM baselines (OpenAI / Anthropic / Gemini) | shipped, not yet measured |
+| Qwen3Guard-Gen 4B (Qwen) | shipped, not yet measured |
+| Granite Guardian 4.1 8B (IBM) | shipped, not yet measured |
+| ShieldGemma 2B (Google) | shipped, not yet measured |
+| WildGuard (AllenAI) | shipped, not yet measured |
+| Structured-output LLM baselines (OpenAI / Anthropic / Gemini / Moonshot Kimi K3) | shipped, not yet measured |
 | TypeSafe Jev | shipped, gated on access |
 | Laya (ConvAI Innovations) | shipped, not yet measured |
 | Kev (Jared Palmer) | shipped, not yet measured |
@@ -104,7 +108,7 @@ A separate safety-policy suite (guardrail-native, pilot) ships alongside v1. It 
 
 ## How peira differs
 
-Adjacent benchmarks (HarmBench, AIR-Bench, JailbreakBench, garak) cover broad red-teaming: refusal behavior, toxicity, jailbreak success on open-ended generation. peira covers the decision layer underneath: the approve/deny/score/abstain calls that gate agentic workflows, content pipelines, and access control.
+Adjacent benchmarks (HarmBench, AIR-Bench, JailbreakBench, garak) cover broad red-teaming: refusal behavior, toxicity, jailbreak success on open-ended generation. peira covers the decision layer underneath: the approve/deny/score/abstain calls that gate agentic workflows, content pipelines, and access control. That includes LLM-as-judge deployments, where a frontier model makes the call through structured outputs.
 
 | | peira | broad red-team harnesses |
 |---|---|---|

@@ -36,6 +36,8 @@ jobs:
         with:
           python-version: "3.12"
       - run: python scripts/check_doc_links.py
+      # No em dashes in public Markdown; they are the #1 AI-writing tell.
+      - run: python3 scripts/check_no_emdashes.py
       # docs/CLI.md is generated from the live parser; fail on drift.
       - run: python3 scripts/gen_cli_reference.py --check docs/CLI.md
       # The family registry and docs/Taxonomy.md must never drift.
