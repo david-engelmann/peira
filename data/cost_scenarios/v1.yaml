@@ -43,7 +43,7 @@ scenarios:
     flip_costs:
       approve-to-deny: 20.0
       deny-to-approve: 40.0
-      to-abstain: 50.0         # c_DoS dominates
+      to-abstain: 50.0         # c_DoS is the largest cost
       to-malformed: 25.0
       score-shifted: 10.0
       none: 0.0

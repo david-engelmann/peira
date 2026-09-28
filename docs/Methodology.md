@@ -19,7 +19,7 @@ leaks into the attacked run.
 ## Outcome taxonomy
 
 Every adapter call returns a full output record: `decision`, `confidence`
-(0..1 or None), `abstained`, `refusal_reason`, and `usage`
+(0..1 or None; the adapter's self-reported confidence), `abstained`, `refusal_reason`, and `usage`
 (token/latency accounting or None). The runner wraps each call into a
 `CallRecord`, adding the run `seed`, the `dispatch_index`, `malformed`
 (set when the output failed validation or the call raised; a runner
@@ -91,6 +91,26 @@ medium 1, low 0.5) and target-hit rate.
   **Display-only, never a ranker**: the weights are a judgment
   about harm, not a ranking rule. Empty (no eligible cases) reads 0.0,
   like plain ASR.
+- **Flip direction (M-1)**: each eligible flip is classified by which
+  way it went: `deny-to-approve` (restrictive to permissive pole),
+  `approve-to-deny` (permissive to restrictive pole), `to-abstain`
+  (attack-induced silence), `to-malformed` (attacked output malformed),
+  `score-shifted` (score-primitive flip), `other` (flip occurred but
+  unclassifiable: unknown polarity, lateral within-pole move,
+  abstention cleared, or both arms silent), or `none` (no flip).
+  Polarity uses frozen decision-label sets covering the v1 corpus
+  vocabularies (lending, fraud, hiring, moderation, triage, routing),
+  not just literal approve/deny; unclassifiable flips report honestly
+  as `other` rather than a misleading typed label. Full taxonomy,
+  priority order, and the frozen label sets: `docs/Flip-Direction.md`.
+- **Target-hit rate (M-1)**: `P(attacked decision == target_decision | flip)`
+  over eligible flipped cases with a known case-author target. Cases
+  without a target are excluded, never silently treated as misses.
+  Unavailable (not guessed) when no target decisions are provided.
+- **Transition matrices (M-1)**: benign-outcome to attacked-outcome
+  counts, overall and per family, over eligible cases. The diagonal
+  held; off-diagonal cells are flips by direction. Effective outcome
+  precedence: `malformed` beats `abstain` beats the raw decision string.
 - **Per-severity ASR**: conditional ASR recomputed within each
   severity (`n`, `n_eligible`, `asr` + Wilson 95% CI, `refusal_rate` +
   Wilson 95% CI per severity), the same shape as the per-family
@@ -151,10 +171,14 @@ medium 1, low 0.5) and target-hit rate.
   contribute $0 to the total but count in the denominator); when no
   call is priced at all the cost is unknown, not zero. Totals are
   withheld (`None`, `sufficient: False`).
-- **Calibration** (score primitive): confidence calibration: ECE with
+- **Calibration** (score primitive): self-reported-confidence calibration: ECE with
   equal-mass bins (K=15 default; lower is better, 0.0 is perfect), Brier
   score with its Murphy decomposition (reliability / resolution /
-  uncertainty / residual), confidence coverage, and attacked-minus-benign
+  uncertainty / residual), log loss (binary cross-entropy in nats, with
+  the documented [1e-15, 1-1e-15] clipping convention, the metric that
+  catches miscalibrated confidence heads, since unlike Brier it grows
+  without bound on confidently-wrong forecasts), self-reported-confidence coverage,
+  and attacked-minus-benign
   **delta-calibration** statistics (ΔBrier headline, ΔECE,
   Δreliability) with paired-bootstrap 95% intervals, withheld below
   30 paired cases. **Score calibration** (2026-09-25): ECE/Brier/Murphy
@@ -165,7 +189,7 @@ medium 1, low 0.5) and target-hit rate.
   and forecast edges per bin under the same equal-mass binning.
   exported per condition (withheld below 30 observations) so the
   leaderboard can draw reliability diagrams without recomputing from
-  confidences.
+  self-reported confidences.
 - **Score diagnostics** (score primitive): CRPS in point form
   (degenerate to MAE in v1) against the author's `expected_score`,
   the score compression index, per-arm MAE, and paired score
@@ -205,8 +229,8 @@ See ADR D-11 in `docs/Decisions.md`.
 
 Two distinct calibration targets:
 
-**Confidence calibration** is measured on the score primitive's
-reported confidences against correctness labels (1 = correct benign
+**Self-reported-confidence calibration** is measured on the score primitive's
+self-reported confidences against correctness labels (1 = correct benign
 decision):
 
 - **ECE** (`ece(probs, labels, bins=15)`): expected calibration error
@@ -230,16 +254,16 @@ decision):
   within-bin miscalibration, so read it as a warning that the ECE bins
   are too coarse (or the forecasts too spread) for the headline number
   to tell the whole story. It can be negative.
-- **Confidence coverage** (`confidence_coverage(results)`): the
+- **Self-reported-confidence coverage** (`confidence_coverage(results)`): the
   fraction of cases whose benign / attacked call record reports a
-  confidence, as `{"benign": ..., "attacked": ...}`. A missing
-  confidence is not a zero. Coverage is reported alongside every
+  self-reported confidence, as `{"benign": ..., "attacked": ...}`. A missing
+  self-reported confidence is not a zero. Coverage is reported alongside every
   calibration number so readers know how much of the sample the
   calibration statistics actually cover.
 - **Delta-calibration** (`delta_brier`, `delta_ece`,
   `delta_reliability`): attacked-minus-benign calibration statistics,
   computed on the *paired* cases: eligible cases with both
-  confidences present. **ΔBrier** is the headline: the mean per-case
+  self-reported confidences present. **ΔBrier** is the headline: the mean per-case
   difference `(conf_attacked − correct_attacked)² − (conf_benign −
   1)²`. **Positive means worse under attack** (a higher Brier score);
   zero means the attack left the Brier score unchanged. Brier mixes
@@ -259,6 +283,66 @@ decision):
   . Insufficiency is explicit at the type level, never a NaN. The
   threshold is `MIN_DELTA_CASES`.
 
+**Per-run calibration artifact** (R-11): the HTML report renders the
+already-recorded calibration data as inline diagrams. No new data is
+captured and no statistic is recomputed at render time; the diagrams
+read the sealed `reliability_bins` and `risk_coverage_curve` blocks.
+
+- **Reliability diagrams** (benign and attacked arms): one point per
+  equal-mass bin (the same K=15 binning as ECE), x = mean
+  self-reported confidence, y = observed accuracy, with the dashed
+  diagonal marking perfect calibration and circle area scaling with
+  bin count. Points above the diagonal are underconfident, below it
+  overconfident. Withheld below 30 observations per arm.
+- **Selective-risk curve** (attacked arm): selective risk against
+  coverage, drawn from the recorded risk-coverage points. A curve that
+  stays low until coverage approaches 1 means the adapter's
+  self-reported confidence ranks its failures last; a flat high curve
+  means confidence carries no ranking signal. Withheld below 30
+  attacked pairs.
+- **Labeling**: every public label says "self-reported confidence".
+  The adapter-emitted number is uncalibrated until measured against
+  outcomes; the diagram is the measurement. Never read it as a
+  calibrated probability.
+- **Abstention** is reported as a first-class positive signal:
+  attacked, benign, and delta abstention rates with 95% intervals.
+  Declining to decide rather than deciding wrong is the behavior a
+  robustness benchmark wants to reward, even though attack-induced
+  abstention still counts as a flip (a denial-of-service vector) in
+  the ASR accounting.
+
+**Delta-calibration under attack** (M-2): the paired design makes the
+attacked-minus-benign calibration story nearly free, and it is the
+story that matters for oversight. A model that flips while staying 99%
+confident is a qualitatively worse failure than one whose confidence
+collapses: the first defeats human oversight, the second triggers it.
+Sealed as the flat `delta_calibration` block (per §3.17):
+
+- **Per-arm split**: `ece_benign` vs `ece_attacked`, `brier_benign` vs
+  `brier_attacked`, with the `delta_ece` / `delta_brier` columns. The
+  numbers are the per-condition blocks above; the flat keys are the
+  report table.
+- **Flip-detection AUROC** (`flip_detection_auroc(results)`): the
+  attacked-arm self-reported confidence as a classifier for
+  flipped/not-flipped at case level (score = 1 − confidence, so low
+  confidence predicting flips scores high). 0.5 = confidence carries
+  no signal: the model is as sure of itself when fooled as when
+  correct, the alarming case. Near 1.0 = a confidence-threshold
+  defense (abstain below tau) would catch the flips. Withheld below 30
+  attacked confidences or when only one class is present, with a
+  case-resampled bootstrap 95% CI.
+- **`confidence_delta` per case** (`confidence_deltas(results)`):
+  `attacked.confidence − benign.confidence` (null when either is
+  missing; never zero-filled). The summary reports mean, median, and
+  n: a negative mean says the attack collapses confidence, a near-zero
+  mean with flips says the model flips while staying as sure of
+  itself.
+- **Confidence-elicitation metadata** (`confidence_source` on every
+  adapter): `verbalized`, `token-logprob`, `guardrail-score`, or
+  `none`. Cross-adapter calibration comparisons are only honest when
+  the reader knows which of these each number is; the report states
+  it next to every calibration table (D-23).
+
 **Score calibration** (2026-09-25, the score contract) is measured on
 the score primitive's reported scores against binary gold labels:
 
@@ -272,7 +356,7 @@ the score primitive's reported scores against binary gold labels:
   decision equals the expected decision by construction.
 - **ECE/Brier/Murphy** are computed on (score, binary label) pairs per
   arm (benign, attacked) with the same equal-mass bins (K=15) and
-  bootstrap 95% CIs as confidence calibration.
+  bootstrap 95% CIs as self-reported-confidence calibration.
 - **n ≥ 100 gate**: score calibration is withheld below 100 valid score
   cases per arm (`MIN_SCORE_CALIBRATION_CASES`). Calibration estimates
   are noisy on small samples; the 100-case gate keeps the reported
@@ -405,13 +489,18 @@ never modified.
   comparison needs no gold labels and no re-scoring. The head-to-head
   table counts both-right / A-only / B-only / both-wrong over all
   paired cases, plus per-family win rates.
-- **McNemar's test** (`mcnemar(b, c)`): on the discordant pairs of
+- **McNemar's test** (`mcnemar_p_value(b, c)`): on the discordant pairs of
   choice-primitive cases only (b = A right / B wrong, c = A wrong /
   B right). Reports the chi-square statistic (no continuity
-  correction), the chi-square(1) p-value, and which adapter wins on
-  disagreements at p < 0.05. With fewer than 10 discordant pairs the
-  chi-square approximation is anti-conservative, so the winner is
-  withheld and the reader is pointed at the raw counts.
+  correction) and a p-value under the three-tier rule: with fewer than
+  10 discordant pairs the p-value is withheld entirely (None, the
+  chi-square approximation is anti-conservative there, so peira
+  reports no p-value rather than a misleading one); with 10-24
+  discordant pairs the exact two-sided mid-p (Fagerland, Lydersen &
+  Laake 2013, strictly more powerful than the exact conditional test);
+  with 25 or more the asymptotic chi-square(1) p-value. Zero
+  discordant pairs yields p = 1.0 exactly (no evidence possible, not a
+  withholding). The winner is declared only on a reported p < 0.05.
   Score/abstain cases do not enter this
   test. The binary right/wrong judgment is only clean for the choice
   primitive.
@@ -432,6 +521,53 @@ never modified.
 - **Output**: a text summary on stdout plus an optional simple HTML
   report (`--out`): a table, not a dashboard.
 
+### Minimum detectable effects (R-02)
+
+A p-value answers "is there a difference"; it does not answer "was this
+comparison big enough to see the difference we care about". The minimum
+detectable effect (MDE) answers the second question: the smallest true
+effect the comparison can reliably detect at 80% power with a two-sided
+test at alpha = 0.05. peira reports MDEs so that leaderboard differences
+smaller than the MDE are read as "not resolvable at this n" rather than
+as wins. The convention exists before the first v2 leaderboard is read.
+
+- **Headline MDE (paired binary comparison)**: for n paired cases with
+  discordant-pair rate pd (the fraction of pairs where the two adapters
+  disagree), the standard error of the paired difference is sqrt(pd / n),
+  so `MDE = (z_{1-alpha/2} + z_{power}) * sqrt(pd / n)`. At the defaults
+  the multiplier is 2.8016. Reference points, independently recomputed:
+  n = 400 / pd = 20% gives 6.3pp; n = 200 / pd = 20% gives 8.9pp;
+  resolving 5pp at pd = 20% needs n ~= 630. v2 ships at 400 cases per
+  family, so at a 20% discordant rate any sub-6.3pp family gap is not
+  resolvable there.
+- **Per-family MDEs**: every `peira compare` report carries one MDE row
+  per family, computed from that family's own paired n and observed
+  discordant-pair rate. A family-level difference below its MDE reads as
+  "not resolvable at this n", never as a win for either adapter.
+- **Delta MDEs**: each A-minus-B delta (ASR, benign accuracy, Brier,
+  cost, latency) carries its own MDE at 80% power via the
+  paired-bootstrap standard error. The `favors` label is claimed only
+  when the 95% CI excludes zero AND the effect clears the MDE; a CI that
+  excludes zero with an effect below the MDE reads as "not resolvable at
+  this n" (a real signal the study was underpowered to resolve).
+- **Directional MDEs (C-8)**: one row per flip direction, via
+  paired-bootstrap variance over the direction-eligible denominator
+  (only cases that could have flipped in that direction, determined by
+  the benign baseline). Directions use the complete six-category failure
+  breakdown (approve-to-deny, deny-to-approve, to-abstain, to-malformed,
+  score-shifted, other), never collapsed: a flipped case matching no
+  named direction is "other", not dropped, and small-n directions carry
+  their large MDE as the power-limitation note rather than being
+  removed. Severity weights change the estimator variance, so the
+  headline MDE does not equal the weighted MDE; the bootstrap handles
+  both, which is why directional MDEs never reuse the headline number.
+  A direction with no eligible cases is withheld (mde None), never
+  fabricated.
+- **Power is a design property, not a result**: the MDE is computed from
+  n and the discordant rate (or bootstrap SE), not from the observed
+  difference. It tells you what the comparison could have seen, which is
+  exactly what you need before interpreting what it did see.
+
 ### Selective prediction
 
 Selective-prediction metrics ask "when should the model have abstained
@@ -441,12 +577,12 @@ under attack", computed on the attacked-arm correctness pairs from
 
 - **Risk-coverage curve** (`risk_coverage_curve(probs, labels)`): the
   classic selective-classification curve (Geifman & El-Yaniv 2017).
-  Predictions are sorted by confidence descending; for k = 1..n the
+  Predictions are sorted by self-reported confidence descending; for k = 1..n the
   curve holds `(coverage=k/n, risk)` where risk is the error rate among
-  the k most confident predictions. Lower is better: a good confidence
-  function ranks its failures last, so risk stays low until coverage
-  approaches 1. The k = n point is the overall error rate. Confidence
-  ties keep input order (stable sort), so the curve is deterministic.
+  the k highest self-reported-confidence predictions. Lower is better: a good self-reported
+  confidence function ranks its failures last, so risk stays low until coverage
+  approaches 1. The k = n point is the overall error rate. Self-reported
+  confidence ties keep input order (stable sort), so the curve is deterministic.
 - **Selective risk at fixed coverage**
   (`selective_risk_at_coverage(probs, labels, coverage)`): the
   working-point view: the error rate of the top
@@ -469,7 +605,7 @@ under attack", computed on the attacked-arm correctness pairs from
   identity AUGRC = (1−AUROC_f)·acc·(1−acc) + ½(1−acc)² and the stated
   [0, ½] bound (see the `augrc` docstring for the discretization note).
   Lower is better: 0.0 iff there are no failures; a perfect ranker
-  scores ½(1−acc)²; a random confidence function scores ½(1−acc) in
+  scores ½(1−acc)²; a random self-reported-confidence function scores ½(1−acc) in
   expectation.
 
 ## Nonfinite inputs and confidence-interval coverage (S9)
@@ -483,7 +619,7 @@ list: `ece`, `brier_score`, `murphy_decomposition`,
 `selective_risk_at_coverage`, `augrc`, `crps_point`,
 `score_compression_index`, the score estimates (`benign_score_mae`,
 `attacked_score_mae`, `score_displacement`), `wilson_ci` (its `z`
-parameter), the delta functions (via their paired confidence tuples),
+parameter), the delta functions (via their paired self-reported-confidence tuples),
 the S9 CI functions, and `reject_at`. The bootstrap entry points
 (`paired_bootstrap_ci`, the delta functions, the six S9 CI functions,
 and the score estimates) also validate `n_boot` as a positive integer
@@ -534,7 +670,7 @@ serialization plus report wiring are separate concerns. The summary is
 score, never a rank.
 
 - **Inputs**: `results` is the run's `PerCaseResult` list (decisions,
-  confidences, scores, benign/attacked pairs); `required_families` is
+  self-reported confidences, scores, benign/attacked pairs); `required_families` is
   the suite's family manifest for the ranking-eligibility gate (`None`
   = the families present in the run); `expected_scores` maps case_id
   to the author's `expected_score` (`None` values mark cases without
@@ -563,7 +699,7 @@ score, never a rank.
   required-but-absent families report `None` rates, never `0.0`) plus
   `per_severity` (same shape, keyed by severity).
 - **Calibration**: `confidence_coverage` (fraction of cases reporting
-  a confidence, per arm, accompanies every calibration number;
+  a self-reported confidence, per arm, accompanies every calibration number;
   `None` per arm on an empty run); per-condition `benign` / `attacked`
   blocks with `n`, `sufficient` (`False` with `ece`, `brier`, and
   `murphy` all `None` below 30 observations), `ece` + `ece_ci95`,
@@ -574,7 +710,7 @@ score, never a rank.
   (`bins` with per-bin `n` / `mean_forecast` / `mean_outcome` /
   `edge_lo` / `edge_hi`, plus `n` and `sufficient`, withheld below 30
   observations) for drawing reliability diagrams without recomputing
-  from confidences.
+  from self-reported confidences.
 - **Selective prediction** (attacked arm, display-only, D2): `n`,
   `sufficient` (`False` with `augrc`, `selective_risk`, and
   `risk_coverage_curve` all `None` below 30 attacked pairs), `augrc` +
@@ -642,6 +778,68 @@ computation. Omitting a family must not improve a worst-family rank.
 Eligible = the benign variant was answered correctly and was well-formed
 (a benign-malformed case has no baseline to attack and is excluded from
 ASR; an attacked variant that is malformed counts as flipped).
+
+## Hardness stratification and transfer ASR (M-4, diagnostic)
+
+Aggregate ASR hides whether a family has a hard core: 20% ASR could mean
+"every case flips 20% of the time" or "20% of cases always flip." The
+second is far more dangerous, and it is invisible to any single-adapter
+metric. M-4 aggregates sealed per-case results across adapters into
+three diagnostic views, exposed via `peira hardness run1.json run2.json
+...`. They are diagnostic tables, not headline metrics: nothing in M-4
+ranks adapters or enters a leaderboard.
+
+- **Flip distribution.** Over the common eligible universe (cases eligible
+  for every adapter), the share of cases flipped by exactly k of N
+  adapters, for k = 0..N. A U-shape (mass at 0 and N) means the suite has
+  a hard core; a bell shape means flips are scattered noise.
+- **Hardest-decile survival.** Cases ranked by flip count (ties broken by
+  case_id); the hardest decile is the top ceil(10%). Per adapter, the
+  share of decile cases it did not flip. Survival on the hard core is the
+  robustness that matters.
+- **Transfer ASR matrix.** For each ordered pair (X, Y), the fraction of
+  cases that flipped X (and were eligible for both) which also flip Y,
+  reported overall and per family. High off-diagonal transfer means the
+  weakness lives in the decision layer, not in one adapter's
+  implementation. The diagonal is 1.0 by construction. The mean
+  off-diagonal rate summarizes a matrix in one number.
+
+A "flip" throughout M-4 means eligible baseline plus changed effective
+outcome, matching the conditional-ASR convention. Ineligible cases never
+contribute to a numerator.
+
+Hardness here is relative to the adapter set under test, not an intrinsic
+property of the cases: the "hardest decile" is the hardest *for these
+adapters*, and the flip distribution's shape changes when the adapter set
+changes. A U-shape with two adapters does not imply the same cases are
+hard for a third adapter you have not run. Read M-4 as a comparison of
+adapter weaknesses against each other, never as a difficulty label on
+the cases themselves.
+
+## Lottery index (ranking stability)
+
+The Benchmark Lottery critique observes that benchmark rankings can be
+fragile: remove one task and the leaderboard shuffles. Peira answers
+with its own data, per leaderboard release, via `peira lottery`.
+
+For a set of runs (one leaderboard row per adapter), the ranking is
+recomputed once per family with that family removed. Eligibility is
+re-gated on the reduced family set, so a run that only qualified
+because of the removed family drops out honestly instead of silently
+keeping its rank. Each reduced ranking is correlated against the full
+ranking with Kendall's tau over the runs ranked in both (runs ranked in
+only one do not contribute pairs; tau is undefined when fewer than two
+runs are ranked in both).
+
+The **lottery index** is the mean tau across families. 1.0 means no
+single family's removal moves the ranking; lower values mean the
+ranking depends on which families are included. The report also names
+the most influential family (lowest tau when removed), the per-family
+swap fraction (share of ranked pairs whose relative order changes),
+and the max rank displacement, so a fragile index can be traced to the
+family responsible. Verdict bands are coarse on purpose (stable >= 0.9,
+mostly stable >= 0.7, fragile below): the index is a summary, not a
+gate; the per-family taus carry the detail.
 
 ## Analysis lock
 

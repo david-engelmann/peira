@@ -281,6 +281,15 @@ class BaseAdapter(Protocol):
     name: str
     version: str  # exact pinned model version — never an alias like "latest"
     supported_primitives: frozenset[str]
+    # How the adapter's ``confidence`` is elicited (M-2). One of
+    # "verbalized" (the model states its confidence in words/JSON),
+    # "token-logprob" (a model-output probability: token logprobs or the
+    # API's per-answer probabilities), "guardrail-score" (distance from
+    # a detector's decision boundary, e.g. |2p - 1|), or "none" (the
+    # adapter reports no real confidence signal, e.g. test mocks).
+    # Cross-adapter calibration comparisons are only honest when the
+    # reader knows which of these each number is (D-23).
+    confidence_source: str
     # Optional. Namespaces the runner's opt-in response cache
     # (``peira run --cache-dir``): include anything that changes the
     # output for the same input — sampling temperature, seed, top_p,

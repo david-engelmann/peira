@@ -9,7 +9,7 @@ itself. For what the numbers mean, see
 [Methodology](Methodology.md); for exact error text, see
 [Troubleshooting](Troubleshooting.md).
 
-Benchmarking decision models under attack, starting with Jev, Shieldstral, Prompt Guard 2 and SemIf. 2,000 paired cases; Wilson 95% confidence intervals on reported rates.
+An open-source AI safety stress-test and intelligence hub for leading models and guardrails, including Jev, ChatGPT, Claude, DeepSeek, Kimi, Gemini, Llama Prompt Guard 2, Grok, GLM, WildGuard, ShieldGemma, Granite Guardian and Shieldstral.
 
 ## Global flags
 
@@ -117,6 +117,25 @@ head-to-head comparison as dashboard JSON
 | `RUN_B` | yes | - | second run artifact (B) |
 | `--seed` |  | `0` | seed for the paired-bootstrap CIs (default: 0) |
 | `--out` |  | - | write JSON to this path (default: stdout) |
+
+## peira hardness
+
+M-4 hardness/transfer diagnostics over 2+ run artifacts (diagnostic tables, never rankings)
+
+| Flag | Required | Default | Help |
+|---|---|---|---|
+| `RUNS` | yes | - | run artifact paths (>= 2) |
+| `--out` |  | - | write the diagnostic tables to this path |
+
+## peira lottery
+
+leave-one-family-out ranking stability (lottery index) across run artifacts
+
+| Flag | Required | Default | Help |
+|---|---|---|---|
+| `RUNS` | yes | - | run artifact files (one row per adapter on the leaderboard) |
+| `--families` |  | union of families in runs | comma-separated family manifest (default: union of families across the runs) |
+| `--json` |  | - | write the full analysis JSON to this path |
 
 ## peira runs
 

@@ -20,8 +20,13 @@ from typing import Any
 from peira import __version__
 from peira.adapters.mock import MockAdapter
 from peira.artifacts import RunArtifact
+from peira.calibration import (
+    confidence_source_label,
+    reliability_diagram_svg,
+    risk_coverage_diagram_svg,
+)
 from peira.dataset import atomic_write_text, verify_manifest, verify_manifest_sealed
-from peira.metrics import PerCaseResult
+from peira.metrics import NOT_RESOLVABLE, PerCaseResult, resolvable
 from peira.runs_registry import FLIP_DIRECTIONS
 from peira.runner import (
     SUITE_DIRS,
@@ -721,6 +726,17 @@ def _report_page(artifact) -> str:
 
     cal = m.get("calibration", {}) or {}
     cov = cal.get("confidence_coverage", {}) or {}
+    # M-2: flat per-arm delta-calibration table (withheld below gates).
+    dc = m.get("delta_calibration", {}) or {}
+    # R-11: per-run calibration artifact. The reliability-bin blocks feed
+    # inline SVG diagrams; a missing/withheld block degrades to a short
+    # placeholder paragraph, never a traceback (hostile-artifact rule).
+    rel_bins = cal.get("reliability_bins", {}) or {}
+    rel_svg = "".join(
+        reliability_diagram_svg(rel_bins.get(cond, {}) or {},
+                                f"Reliability diagram ({cond})")
+        for cond in ("benign", "attacked")
+    )
     cal_rows = ""
     for cond in ("benign", "attacked"):
         c = cal.get(cond, {}) or {}
@@ -743,6 +759,10 @@ def _report_page(artifact) -> str:
     )
 
     sp = m.get("selective_prediction", {}) or {}
+    # R-11: selective-risk curve diagram from the already-recorded
+    # risk-coverage points; withheld below 30 observations.
+    sp_svg = risk_coverage_diagram_svg(
+        sp if isinstance(sp, dict) else {}, "Selective-risk curve (attacked)")
     sp_risk = sp.get("selective_risk", {}) or {}
     sp_risk_ci = sp.get("selective_risk_ci95", {}) or {}
     def _cov_key(k: Any) -> float:
@@ -783,6 +803,60 @@ no reference: {_num(sd_skipped.get('no_reference'))})</p>"""
             f"<td>{_num(o.get('malformed'))}</td></tr>"
         )
 
+    def _flip_anatomy_section(metrics: dict) -> str:
+        """M-1 flip-anatomy tables: direction counts, target-hit rate, matrix.
+
+        Defensive: a hostile artifact can omit the flip_anatomy block
+        (or any key inside it); render "insufficient data", never
+        traceback.
+        """
+        fa = metrics.get("flip_anatomy")
+        if not isinstance(fa, dict):
+            return "<p><em>Flip anatomy unavailable:</em> insufficient data</p>"
+        counts = fa.get("direction_counts")
+        counts = counts if isinstance(counts, dict) else {}
+        shares = fa.get("direction_shares")
+        shares = shares if isinstance(shares, dict) else {}
+        order = (
+            "deny-to-approve", "approve-to-deny", "to-abstain",
+            "to-malformed", "score-shifted", "other", "none",
+        )
+        dir_rows = "\n".join(
+            f"<tr><td>{e(d)}</td><td>{_num(counts.get(d))}</td>"
+            f"<td>{_val(shares.get(d))}</td></tr>"
+            for d in order
+        )
+        if fa.get("target_hit_available"):
+            target_line = (
+                f"Target-hit rate: {_val(fa.get('target_hit_rate'))} "
+                f"(n={_num(fa.get('target_hit_n'))} flipped cases with a known target)"
+            )
+        else:
+            target_line = "Target-hit rate: insufficient data (no target decisions provided)"
+        matrix = fa.get("transition_matrix")
+        if not isinstance(matrix, dict) or not matrix:
+            matrix_html = "<p><em>Transition matrix unavailable:</em> insufficient data</p>"
+        else:
+            cols = sorted({c for row in matrix.values() for c in row})
+            head = "".join(f"<th>{e(str(c))}</th>" for c in cols)
+            body_rows = []
+            for b in sorted(matrix):
+                cells = "".join(
+                    f"<td>{_num(matrix[b].get(c))}</td>" for c in cols
+                )
+                body_rows.append(f"<tr><td>{e(str(b))}</td>{cells}</tr>")
+            matrix_html = (
+                "<table border=\"1\"><tr><th>benign \\ attacked</th>"
+                f"{head}</tr>\n" + "\n".join(body_rows) + "</table>"
+            )
+        return f"""
+<table border="1"><tr><th>direction</th><th>count</th><th>share of flips</th></tr>
+{dir_rows}</table>
+<p>{target_line}</p>
+<h3>Benign-to-attacked transition matrix</h3>
+<p>Rows: benign outcome; columns: attacked outcome. The diagonal held.</p>
+{matrix_html}"""
+
     page = f"""<!doctype html>
 <html><head><meta charset="utf-8"><title>peira report: {e(artifact.adapter_name)}</title></head>
 <body>
@@ -798,6 +872,9 @@ Dataset: {e(artifact.dataset_version)} · peira {e(str(artifact.peira_version))}
 <li>Refusal rate (attacked): {_val(m.get('refusal_rate'))} (95% CI {_ci95(m.get('refusal_rate_ci95'))})</li>
 <li>Benign refusal rate: {_val(m.get('benign_refusal_rate'))} (95% CI {_ci95(m.get('benign_refusal_rate_ci95'))})</li>
 <li>Refusal-rate Δ (attacked−benign): {_val(m.get('refusal_rate_delta'))} (95% CI {_ci95(m.get('refusal_rate_delta_ci95'))})</li>
+<li>Abstention rate (attacked): {_val(m.get('abstention_rate'))} (95% CI {_ci95(m.get('abstention_rate_ci95'))}). Deliberate abstentions are a positive signal: the model declining to decide rather than deciding wrong.</li>
+<li>Benign abstention rate: {_val(m.get('benign_abstention_rate'))} (95% CI {_ci95(m.get('benign_abstention_rate_ci95'))})</li>
+<li>Abstention-rate Δ (attacked−benign): {_val(m.get('abstention_rate_delta'))} (95% CI {_ci95(m.get('abstention_rate_delta_ci95'))})</li>
 <li>Ineligible by reason: {inelig_line}</li>
 <li>Ranking eligible: {_num(m['ranking_eligible'])}</li>
 </ul>
@@ -810,23 +887,53 @@ never laundered into ASR.</p>
 {_outcome_row("benign", m.get("outcomes_benign"))}
 {_outcome_row("attacked", m.get("outcomes_attacked"))}
 </table>
+<h2>Flip anatomy (M-1)</h2>
+<p>Which way the flips went. <em>deny-to-approve</em> is the "bad thing got
+approved" direction; <em>approve-to-deny</em> is the "good thing got blocked"
+direction. Counts cover eligible cases (the conditional-ASR population).</p>
+{_flip_anatomy_section(m)}
 <h2>Calibration</h2>
-<p>Confidence coverage (benign: {_val(cov.get('benign'))}, attacked: {_val(cov.get('attacked'))}).
-Per-condition ECE/Brier with bootstrap 95% CIs; Murphy decomposition
+<p>Self-reported confidence coverage (benign: {_val(cov.get('benign'))}, attacked: {_val(cov.get('attacked'))}).
+"Confidence" throughout this report means <em>self-reported</em> confidence:
+the adapter's own uncalibrated number, measured against observed outcomes
+below. Per-condition ECE/Brier with bootstrap 95% CIs; Murphy decomposition
 (reliability / resolution / uncertainty). Derived metrics are withheld
 below 30 observations per condition.</p>
 <table border="1"><tr><th>condition</th><th>n</th><th>ECE</th><th>95% CI</th><th>Brier</th><th>95% CI</th><th>reliability</th><th>resolution</th><th>uncertainty</th></tr>
 {cal_rows}</table>
+<h3>Reliability diagrams</h3>
+<p>Mean self-reported confidence per bin (x) against observed accuracy (y);
+the dashed diagonal is perfect calibration and circle area scales with bin
+count. Points above the diagonal are underconfident, below it overconfident.</p>
+{rel_svg}
 <h3>Attacked-minus-benign deltas</h3>
 <table border="1"><tr><th>metric</th><th>Δ (95% CI, n)</th></tr>
 {delta_rows}
 </table>
+<h3>Delta-calibration under attack</h3>
+<p>Does the model know it is being fooled? The per-arm split puts benign
+and attacked calibration side by side; the flip-detection AUROC treats
+attacked-arm self-reported confidence as a classifier for flipped vs
+not-flipped cases (0.5 = confidence carries no signal, near 1.0 = a
+confidence-threshold defense would catch the flips). The confidence
+delta is attacked minus benign self-reported confidence per case:
+negative means the attack collapses confidence, near zero means the
+model flips while staying as sure of itself.</p>
+<table border="1"><tr><th>metric</th><th>benign</th><th>attacked</th><th>Δ (attacked−benign)</th></tr>
+<tr><td>ECE</td><td>{_val(dc.get('ece_benign'))}</td><td>{_val(dc.get('ece_attacked'))}</td><td>{_val(dc.get('delta_ece'))}</td></tr>
+<tr><td>Brier</td><td>{_val(dc.get('brier_benign'))}</td><td>{_val(dc.get('brier_attacked'))}</td><td>{_val(dc.get('delta_brier'))}</td></tr>
+</table>
+<p>Flip-detection AUROC: {_val(dc.get('flip_detection_auroc'))} (95% CI {_ci95(dc.get('flip_detection_auroc_ci95'))}, n={_num(dc.get('flip_detection_auroc_n'))}).<br>
+Mean confidence delta: {_val(dc.get('confidence_delta_mean'))} (median {_val(dc.get('confidence_delta_median'))}, n={_num(dc.get('confidence_delta_n'))}).<br>
+Confidence source for this adapter: {e(confidence_source_label(artifact.adapter_name))}</p>
 <h2>Selective prediction</h2>
 <p>AUGRC (display-only): {_val(sp.get('augrc'))} (95% CI {_ci95(sp.get('augrc_ci95'))}, n={_num(sp.get('n'))}).
-Selective risk at fixed coverage points:</p>
+Selective risk at fixed coverage points (retaining only the highest
+self-reported-confidence predictions):</p>
 <table border="1"><tr><th>coverage</th><th>selective risk</th><th>95% CI</th></tr>
 {sp_rows}
 </table>
+{sp_svg}
 <h2>Score diagnostics</h2>
 <p>Adapter-vs-author score agreement (display-only, never rankers).</p>
 {sd_section}
@@ -836,8 +943,11 @@ Selective risk at fixed coverage points:</p>
 <h2>Per-case results</h2>
 <p>Flip column is the one to drill into when iterating on cases: a case
 the adapter never flips may be too weak; a case every adapter flips may
-be mislabeled. An attacked abstention is not a flip; it is a refusal,
-counted in the refusal column.</p>
+be mislabeled. A flip occurs if either the decision or the abstention
+state changes between the benign and attacked calls, so attack-induced
+abstention is a flip (a denial-of-service vector), counted in the
+flipped column; refusals are also reported separately in the refusal
+column.</p>
 <table border="1"><tr><th>case</th><th>family</th><th>benign</th><th>attacked</th><th>flipped</th><th>eligible</th><th>ineligible reason</th><th>refused</th></tr>
 {case_rows}</table>
 <hr>
@@ -849,8 +959,14 @@ decision cases. It does not certify a model as safe.</em></p>
     return page
 
 
-def _pval(p: float) -> str:
-    """Format a p-value for display; tiny values read as <0.0001."""
+def _pval(p: float | None) -> str:
+    """Format a p-value for display; tiny values read as <0.0001.
+
+    A withheld (None) p-value, the R-07 under-10-discordant-pairs floor,
+    reads as "withheld".
+    """
+    if p is None:
+        return "withheld"
     if p < 0.0001:
         return "<0.0001"
     return f"{p:.4f}"
@@ -911,22 +1027,69 @@ def _compare_text(c) -> str:
     else:
         lines.append(f"Bradley-Terry: {c.bradley_terry_note or 'withheld'}")
     lines.append("")
-    lines.append("Deltas (A − B, paired bootstrap 95% CI):")
+    lines.append("Deltas (A − B, paired bootstrap 95% CI, MDE at 80% power):")
     for d in c.deltas:
         if not d.sufficient or d.delta is None:
             lines.append(f"  {d.name:<16}: insufficient data (n={d.n})")
             continue
         lo, hi = d.ci95
-        favors = f" favors {d.favors}" if d.favors else ""
+        mde_str = f", MDE={d.mde:.4f}" if d.mde is not None else ""
+        if d.favors:
+            verdict = f" favors {d.favors}"
+        elif not (lo <= 0.0 <= hi):
+            # CI excludes zero but the effect is below the MDE: a real
+            # signal the study was underpowered to resolve.
+            verdict = f" {NOT_RESOLVABLE}"
+        else:
+            verdict = ""
         lines.append(
-            f"  {d.name:<16}: {d.delta:+.4f} ({lo:+.4f}–{hi:+.4f}, n={d.n}){favors}"
+            f"  {d.name:<16}: {d.delta:+.4f} ({lo:+.4f}–{hi:+.4f}, n={d.n}{mde_str}){verdict}"
         )
     if c.per_family:
         lines += ["", "Per-family win rates (A wins / B wins / ties):"]
+        mde_by_fam = {fm.family: fm.mde for fm in c.family_mdes}
         for fam, fh in sorted(c.per_family.items()):
             ties = fh.both_right + fh.both_wrong
+            fam_mde = mde_by_fam.get(fam)
+            diff = (fh.a_only - fh.b_only) / fh.n if fh.n else 0.0
+            note = ""
+            if (
+                fam_mde is not None
+                and fh.n > 0
+                and diff != 0.0
+                and not resolvable(diff, fam_mde)
+            ):
+                note = f" → {NOT_RESOLVABLE}"
             lines.append(
-                f"  {fam}: {fh.a_only} / {fh.b_only} / {ties} (n={fh.n})"
+                f"  {fam}: {fh.a_only} / {fh.b_only} / {ties} (n={fh.n}){note}"
+            )
+    if c.family_mdes:
+        lines += [
+            "",
+            "Per-family MDEs (R-02; 80% power; a family difference below "
+            "its MDE is not resolvable):",
+        ]
+        for fm in c.family_mdes:
+            lines.append(
+                f"  {fm.family}: n={fm.n}, "
+                f"discordant rate={fm.discordant_rate:.3f}, MDE={fm.mde:.4f}"
+            )
+    if c.directional_mdes:
+        lines += [
+            "",
+            "Directional MDEs (C-8; 80% power; direction-eligible n):",
+        ]
+        for dm in c.directional_mdes:
+            if dm.mde is None or dm.delta is None:
+                lines.append(
+                    f"  {dm.direction}: insufficient data "
+                    f"(n_eligible={dm.n_eligible})"
+                )
+                continue
+            verdict = "resolvable" if dm.resolvable else NOT_RESOLVABLE
+            lines.append(
+                f"  {dm.direction}: delta={dm.delta:+.4f}, MDE={dm.mde:.4f} "
+                f"(n_eligible={dm.n_eligible}) → {verdict}"
             )
     if c.warnings:
         lines += ["", "Warnings:"]
@@ -985,18 +1148,56 @@ def _compare_page(c) -> str:
     for d in c.deltas:
         if not d.sufficient or d.delta is None or d.ci95 is None:
             cell = "insufficient data"
+            mde_cell = "-"
         else:
-            favors = f" (favors {e(d.favors)})" if d.favors else ""
-            cell = f"{_num(d.delta)} ({_ci95(d.ci95)}, n={_num(d.n)}){favors}"
+            if d.favors:
+                verdict = f" (favors {e(d.favors)})"
+            elif not (d.ci95[0] <= 0.0 <= d.ci95[1]):
+                verdict = f" ({e(NOT_RESOLVABLE)})"
+            else:
+                verdict = ""
+            cell = f"{_num(d.delta)} ({_ci95(d.ci95)}, n={_num(d.n)}){verdict}"
+            mde_cell = _num(d.mde) if d.mde is not None else "-"
         delta_rows.append(
-            f"<tr><td>{e(d.name)}</td><td>{cell}</td></tr>"
+            f"<tr><td>{e(d.name)}</td><td>{cell}</td><td>{mde_cell}</td></tr>"
         )
-    fam_rows = "\n".join(
-        f"<tr><td>{e(str(fam))}</td><td>{_num(fh.n)}</td>"
-        f"<td>{_num(fh.a_only)}</td><td>{_num(fh.b_only)}</td>"
-        f"<td>{_num(fh.both_right + fh.both_wrong)}</td></tr>"
-        for fam, fh in sorted(c.per_family.items())
+    mde_by_fam = {fm.family: fm.mde for fm in c.family_mdes}
+    fam_rows = []
+    for fam, fh in sorted(c.per_family.items()):
+        ties = fh.both_right + fh.both_wrong
+        fam_mde = mde_by_fam.get(fam)
+        diff = (fh.a_only - fh.b_only) / fh.n if fh.n else 0.0
+        note = ""
+        if (
+            fam_mde is not None
+            and fh.n > 0
+            and diff != 0.0
+            and not resolvable(diff, fam_mde)
+        ):
+            note = f" ({e(NOT_RESOLVABLE)})"
+        fam_rows.append(
+            f"<tr><td>{e(str(fam))}</td><td>{_num(fh.n)}</td>"
+            f"<td>{_num(fh.a_only)}</td><td>{_num(fh.b_only)}</td>"
+            f"<td>{_num(ties)}</td><td>{note}</td></tr>"
+        )
+    fam_rows = "\n".join(fam_rows)
+    family_mde_rows = "\n".join(
+        f"<tr><td>{e(str(fm.family))}</td><td>{_num(fm.n)}</td>"
+        f"<td>{_num(fm.discordant_rate)}</td><td>{_num(fm.mde)}</td></tr>"
+        for fm in c.family_mdes
     )
+    dir_rows = []
+    for dm in c.directional_mdes:
+        if dm.mde is None or dm.delta is None:
+            cell = "insufficient data"
+        else:
+            verdict = "resolvable" if dm.resolvable else e(NOT_RESOLVABLE)
+            cell = f"{_num(dm.delta)} (MDE {_num(dm.mde)}) → {verdict}"
+        dir_rows.append(
+            f"<tr><td>{e(str(dm.direction))}</td>"
+            f"<td>{_num(dm.n_eligible)}</td><td>{cell}</td></tr>"
+        )
+    dir_rows = "\n".join(dir_rows)
     warnings_html = "".join(f"<li>{e(w)}</li>" for w in c.warnings)
     return f"""<html><head><meta charset="utf-8"><title>peira compare: {e(c.adapter_a)} vs {e(c.adapter_b)}</title></head>
 <body>
@@ -1013,11 +1214,19 @@ the effective outcome.</p>
 <h2>Bradley-Terry (display-only)</h2>
 {bt_html}
 <h2>Deltas (A − B, paired bootstrap 95% CI)</h2>
-<table border="1"><tr><th>metric</th><th>delta (95% CI)</th></tr>
+<table border="1"><tr><th>metric</th><th>delta (95% CI)</th><th>MDE (80% power)</th></tr>
 {"\n".join(delta_rows)}</table>
 <h2>Per-family wins</h2>
-<table border="1"><tr><th>family</th><th>n</th><th>A wins</th><th>B wins</th><th>ties</th></tr>
+<table border="1"><tr><th>family</th><th>n</th><th>A wins</th><th>B wins</th><th>ties</th><th>resolvability</th></tr>
 {fam_rows}</table>
+<h2>Per-family MDEs (R-02; 80% power)</h2>
+<p>A family-level difference below its MDE is not resolvable at this n,
+never a win.</p>
+<table border="1"><tr><th>family</th><th>n</th><th>discordant rate</th><th>MDE</th></tr>
+{family_mde_rows}</table>
+<h2>Directional MDEs (C-8; 80% power, direction-eligible n)</h2>
+<table border="1"><tr><th>direction</th><th>n eligible</th><th>delta vs MDE</th></tr>
+{dir_rows}</table>
 {f"<h2>Warnings</h2><ul>{warnings_html}</ul>" if warnings_html else ""}
 <hr>
 <p><em>A peira comparison measures relative robustness on this benchmark's paired
@@ -1162,6 +1371,190 @@ def cmd_dashboard_compare(args: argparse.Namespace) -> int:
         print(f"comparison: {args.out}")
     else:
         sys.stdout.write(text + "\n")
+    return EXIT_OK
+
+
+def cmd_hardness(args: argparse.Namespace) -> int:
+    """Print M-4 hardness/transfer diagnostics over >= 2 run artifacts.
+
+    Diagnostic only: the tables describe hardness shape and transfer;
+    they never rank adapters.
+    """
+    from peira.hardness import analyze_runs, report_text
+
+    if len(args.runs) < 2:
+        print("error: hardness needs at least 2 run artifacts",
+              file=sys.stderr)
+        return EXIT_USER_ERROR
+    artifacts = []
+    for path_str in args.runs:
+        path = Path(path_str)
+        if not path.exists():
+            print(f"error: {path} not found", file=sys.stderr)
+            return EXIT_USER_ERROR
+        try:
+            artifacts.append(RunArtifact.from_json(path.read_text(encoding="utf-8")))
+        except (OSError, ValueError) as e:
+            print(f"error: {path} is not a valid run artifact ({e})",
+                  file=sys.stderr)
+            return EXIT_USER_ERROR
+    for art, path_str in zip(artifacts, args.runs):
+        if not art.verify():
+            print(f"warning: {path_str}: analysis lock mismatch: artifact was "
+                  f"modified after sealing.", file=sys.stderr)
+    results_by_adapter: dict[str, list] = {}
+    for art in artifacts:
+        name = art.adapter_name or "(unnamed)"
+        # Later artifacts with the same adapter name replace earlier ones;
+        # the CLI takes explicit paths, so last-wins is the least surprise.
+        results_by_adapter[name] = [PerCaseResult.from_dict(d) for d in art.results]
+    report = analyze_runs(results_by_adapter)
+    text = report_text(report)
+    sys.stdout.write(text)
+    if args.out is not None:
+        out = Path(args.out)
+        try:
+            out.write_text(text, encoding="utf-8")
+        except OSError as e:
+            print(f"error: cannot write hardness report to {out} ({e})",
+                  file=sys.stderr)
+            return EXIT_USER_ERROR
+        print(f"hardness report: {out}")
+    return EXIT_OK
+
+
+def _lottery_text(a: dict) -> str:
+    """Human-readable leave-one-family-out stability report for stdout."""
+    lines = [
+        "Peira leave-one-family-out ranking stability (lottery index)",
+        "============================================================",
+        f"Runs: {a['n_runs']} ({a['n_ranked']} ranked), "
+        f"families: {len(a['families'])}",
+        "",
+        "Full ranking (conditional ASR, ascending):",
+    ]
+    rank_no = 0
+    for d in a["full_ranking_detail"]:
+        if d["eligible"]:
+            rank_no += 1
+            lines.append(f"  {rank_no}. {d['run_id']}: ASR {d['asr']:.4f}")
+        else:
+            lines.append(
+                f"  -. {d['run_id']}: ineligible "
+                f"({'; '.join(d['reasons'])})"
+            )
+    lines.append("")
+    if a["lottery_index"] is None:
+        lines.append(
+            "Lottery index: undefined (no family yields a comparable ranking)"
+        )
+    else:
+        lines.append(
+            f"Lottery index: {a['lottery_index']:.4f} (mean Kendall's tau) "
+            f"-- rankings are {a['verdict']}"
+        )
+    if a["most_influential_family"] is not None:
+        lines.append(
+            f"Most influential family: '{a['most_influential_family']}' "
+            f"(tau {a['min_tau']:.4f} when removed)"
+        )
+    lines.append("")
+    lines.append("Per-family leave-one-out:")
+    for fam in a["families"]:
+        p = a["per_family"][fam]
+        if p["tau"] is None:
+            lines.append(
+                f"  {fam}: tau undefined "
+                f"({p['n_common']} run(s) ranked in both)"
+            )
+        else:
+            lines.append(
+                f"  {fam}: tau {p['tau']:.4f}, "
+                f"swapped pairs {p['swap_fraction']:.2%}, "
+                f"max rank displacement {p['max_rank_displacement']}"
+            )
+        if p["dropped_runs"]:
+            lines.append(
+                f"    dropped when removed: {', '.join(p['dropped_runs'])}"
+            )
+    return "\n".join(lines) + "\n"
+
+
+def cmd_lottery(args: argparse.Namespace) -> int:
+    """Leave-one-family-out ranking stability across run artifacts."""
+    import json
+
+    from peira.lottery import lottery_analysis
+    from peira.metrics import PerCaseResult
+
+    artifacts = []
+    for path_str in args.runs:
+        path = Path(path_str)
+        if not path.exists():
+            print(f"error: {path} not found", file=sys.stderr)
+            return EXIT_USER_ERROR
+        try:
+            artifacts.append(
+                RunArtifact.from_json(path.read_text(encoding="utf-8"))
+            )
+        except (OSError, ValueError) as e:
+            print(f"error: {path} is not a valid run artifact ({e})",
+                  file=sys.stderr)
+            return EXIT_USER_ERROR
+
+    results_by_run: dict[str, list] = {}
+    for art, path_str in zip(artifacts, args.runs):
+        base = art.adapter_name or Path(path_str).stem
+        run_id = base
+        i = 2
+        while run_id in results_by_run:
+            run_id = f"{base}#{i}"
+            i += 1
+        if run_id != base:
+            print(f"note: duplicate adapter name '{base}': using "
+                  f"'{run_id}' for {path_str}", file=sys.stderr)
+        try:
+            results = [PerCaseResult.from_dict(d) for d in art.results]
+        except (KeyError, ValueError, TypeError) as e:
+            print(f"error: {path_str}: cannot decode per-case results "
+                  f"({e})", file=sys.stderr)
+            return EXIT_USER_ERROR
+        results_by_run[run_id] = results
+
+    known_families = {r.family for rs in results_by_run.values() for r in rs}
+    if args.families:
+        families = [f.strip() for f in args.families.split(",") if f.strip()]
+        # Dedupe, preserving order: "--families f1,f1" means ["f1"], not a
+        # leave-one-family-out loop that strips both copies and trips the
+        # empty-families guard inside lottery_analysis.
+        families = list(dict.fromkeys(families))
+        unknown = [f for f in families if f not in known_families]
+        if unknown:
+            print(f"error: unknown families: {', '.join(unknown)} "
+                  "(not present in the given runs)", file=sys.stderr)
+            return EXIT_USER_ERROR
+    else:
+        families = sorted(known_families)
+    if not families:
+        print("error: no families found in the given runs", file=sys.stderr)
+        return EXIT_USER_ERROR
+
+    try:
+        analysis = lottery_analysis(results_by_run, families)
+    except ValueError as e:
+        print(f"error: {e}", file=sys.stderr)
+        return EXIT_USER_ERROR
+
+    sys.stdout.write(_lottery_text(analysis))
+    if args.json is not None:
+        out = Path(args.json)
+        try:
+            out.write_text(json.dumps(analysis, indent=2), encoding="utf-8")
+        except OSError as e:
+            print(f"error: cannot write lottery JSON to {out} ({e})",
+                  file=sys.stderr)
+            return EXIT_USER_ERROR
+        print(f"lottery: {out}")
     return EXIT_OK
 
 
@@ -1617,7 +2010,7 @@ def cmd_dataset_verify_manifest(args: argparse.Namespace) -> int:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    p = argparse.ArgumentParser(prog="peira", description="Benchmarking decision models under attack, starting with Jev, Shieldstral, Prompt Guard 2 and SemIf. 2,000 paired cases; Wilson 95% confidence intervals on reported rates.")
+    p = argparse.ArgumentParser(prog="peira", description="An open-source AI safety stress-test and intelligence hub for leading models and guardrails, including Jev, ChatGPT, Claude, DeepSeek, Kimi, Gemini, Llama Prompt Guard 2, Grok, GLM, WildGuard, ShieldGemma, Granite Guardian and Shieldstral.")
     p.add_argument("--version", action="version", version=f"peira {__version__}")
     sub = p.add_subparsers(dest="command", required=True)
 
@@ -1751,6 +2144,31 @@ def build_parser() -> argparse.ArgumentParser:
     dbc.add_argument("--out", default=None,
                      help="write JSON to this path (default: stdout)")
     dbc.set_defaults(func=cmd_dashboard_compare)
+
+    hd = sub.add_parser("hardness",
+                        help="M-4 hardness/transfer diagnostics over 2+ run artifacts "
+                        "(diagnostic tables, never rankings)")
+    hd.add_argument("runs", nargs="+", help="run artifact paths (>= 2)")
+    hd.add_argument("--out", default=None,
+                    help="write the diagnostic tables to this path")
+    hd.set_defaults(func=cmd_hardness)
+
+    lt = sub.add_parser(
+        "lottery",
+        help="leave-one-family-out ranking stability (lottery index) "
+        "across run artifacts",
+    )
+    lt.add_argument("runs", nargs="+", help="run artifact files (one row "
+                    "per adapter on the leaderboard)")
+    lt_families = lt.add_argument(
+        "--families", default=None,
+        help="comma-separated family manifest (default: union of "
+        "families across the runs)",
+    )
+    lt_families.display_default = "union of families in runs"
+    lt.add_argument("--json", default=None,
+                    help="write the full analysis JSON to this path")
+    lt.set_defaults(func=cmd_lottery)
 
     # Run registry (Layer 5a): index and query run artifacts.
     rr = sub.add_parser("runs", help="run registry: list and verify artifacts")

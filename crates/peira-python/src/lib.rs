@@ -34,7 +34,7 @@ use std::collections::BTreeMap;
 ///
 /// Conversion recurses on the Rust thread stack, so unbounded nesting
 /// (cyclic or adversarially deep inputs) would overflow the stack and
-/// abort the process with SIGSEGV — uncatchable from Python. The depth
+/// abort the process with SIGSEGV, uncatchable from Python. The depth
 /// guard turns that into a catchable `ValueError` instead, matching
 /// the reference's catchable failure (`ValueError`/`RecursionError`
 /// from `json.dumps`).
@@ -133,6 +133,7 @@ struct PyCallUsage {
     tokens_out: i64,
     latency_ms: f64,
     cost_usd: f64,
+    price_table_ref: Option<String>,
 }
 
 impl From<PyCallUsage> for metrics::CallUsage {
@@ -143,6 +144,7 @@ impl From<PyCallUsage> for metrics::CallUsage {
             tokens_out: u.tokens_out,
             latency_ms: u.latency_ms,
             cost_usd: u.cost_usd,
+            price_table_ref: u.price_table_ref,
         }
     }
 }
@@ -294,6 +296,12 @@ fn brier_score(probs: Vec<f64>, labels: Vec<i64>) -> f64 {
     metrics::brier_score(&probs, &labels)
 }
 
+/// Log loss (binary cross-entropy) with [1e-15, 1-1e-15] clipping (R-07).
+#[pyfunction]
+fn log_loss(probs: Vec<f64>, labels: Vec<i64>) -> f64 {
+    metrics::log_loss(&probs, &labels)
+}
+
 /// Mean absolute error between point scores and author references:
 /// the degenerate CRPS for deterministic forecasts.
 #[pyfunction]
@@ -311,6 +319,18 @@ fn score_compression_index(scores: Vec<f64>) -> f64 {
 #[pyfunction]
 fn mcnemar(b: u64, c: u64) -> f64 {
     metrics::mcnemar(b, c)
+}
+
+/// Exact two-sided mid-p for McNemar's test (Fagerland et al. 2013).
+#[pyfunction]
+fn mcnemar_mid_p(b: u64, c: u64) -> f64 {
+    metrics::mcnemar_mid_p(b, c)
+}
+
+/// R-07 three-tier McNemar p-value: None when 1 <= b+c < 10 (withheld).
+#[pyfunction]
+fn mcnemar_p_value(b: u64, c: u64) -> Option<f64> {
+    metrics::mcnemar_p_value(b, c)
 }
 
 /// Davidson Bradley-Terry strengths: monotone MM fit over aggregated
@@ -468,7 +488,7 @@ fn severity_weighted_asr(results: Vec<PyPerCaseResult>) -> f64 {
 type ArmCensus = (usize, u64, u64, u64, u64, u64, u64);
 
 /// McNemar test result, packed as (b, c, n_pairs, statistic, p_value, winner).
-type McNemarPacked = (u64, u64, usize, f64, f64, Option<String>);
+type McNemarPacked = (u64, u64, usize, f64, Option<f64>, Option<String>);
 
 /// Mirror of the Python `PairedCase` dataclass in `peira.compare`.
 #[derive(FromPyObject)]
@@ -502,12 +522,6 @@ fn compare_case_ok(r: PyPerCaseResult) -> bool {
     compare::case_ok(&metrics::PerCaseResult::from(r))
 }
 
-/// Survival function of chi-square with 1 degree of freedom.
-#[pyfunction]
-fn compare_chi2_sf_1df(stat: f64) -> f64 {
-    compare::chi2_sf_1df(stat)
-}
-
 /// Fourfold head-to-head counts: (n, both_right, a_only, b_only, both_wrong).
 #[pyfunction]
 fn compare_head_to_head(pairs: Vec<PyPairedCase>) -> (usize, u64, u64, u64, u64) {
@@ -527,7 +541,8 @@ fn compare_per_family(pairs: Vec<PyPairedCase>) -> BTreeMap<String, (usize, u64,
 /// McNemar's test over paired choice-primitive cases.
 ///
 /// Returns (result, note) where result is None when there are no
-/// choice-primitive pairs, else (b, c, n_pairs, statistic, p_value, winner).
+/// choice-primitive pairs, else (b, c, n_pairs, statistic, p_value, winner)
+/// with p_value None when 1 <= b+c < 10 (R-07 withholding floor).
 #[pyfunction]
 fn compare_mcnemar_test(pairs: Vec<PyPairedCase>) -> (Option<McNemarPacked>, String) {
     let (res, note) = compare::mcnemar_test(&to_core_pairs(pairs));
@@ -1026,7 +1041,7 @@ fn output_fields_to_value(output: &Bound<'_, PyAny>) -> PyResult<Value> {
             "asdict() should be called on dataclass instances",
         ));
     } else {
-        // A foreign dataclass carrying fields beyond the five known
+        // A foreign dataclass carrying fields beyond the six known
         // CallUsage fields: the reference's `asdict` preserves every
         // field, but the Rust projection below would silently drop the
         // extras. A foreign dataclass carrying a *subset* of the fields
@@ -1035,11 +1050,18 @@ fn output_fields_to_value(output: &Bound<'_, PyAny>) -> PyResult<Value> {
         // wrapper does not catch). Reject both shapes with TypeError so
         // the wrapper falls back to the reference, keeping exact
         // dispatcher parity with minimal Rust change.
-        let known = ["model", "tokens_in", "tokens_out", "latency_ms", "cost_usd"];
+        let known = [
+            "model",
+            "tokens_in",
+            "tokens_out",
+            "latency_ms",
+            "cost_usd",
+            "price_table_ref",
+        ];
         let fields = usage.getattr("__dataclass_fields__")?;
         let dict = fields.cast::<PyDict>().map_err(|_| {
             PyTypeError::new_err(
-                "usage must be a CallUsage dataclass instance with exactly the 5 known fields",
+                "usage must be a CallUsage dataclass instance with exactly the 6 known fields",
             )
         })?;
         // `dataclasses.fields()` (which `asdict` uses) keeps only fields
@@ -1048,7 +1070,7 @@ fn output_fields_to_value(output: &Bound<'_, PyAny>) -> PyResult<Value> {
         // mere presence check is wrong, since unbound `dataclasses.field()`
         // objects carry `_field_type=None`.
         let field_marker = output.py().import("dataclasses")?.getattr("_FIELD")?;
-        let mut seen = [false; 5];
+        let mut seen = [false; 6];
         let mut shape_ok = true;
         for (key, field) in dict.iter() {
             let idx = match key.extract::<String>() {
@@ -1069,7 +1091,7 @@ fn output_fields_to_value(output: &Bound<'_, PyAny>) -> PyResult<Value> {
         }
         if !shape_ok || seen.iter().any(|s| !s) {
             return Err(PyTypeError::new_err(
-                "usage must be a CallUsage dataclass instance with exactly the 5 known fields",
+                "usage must be a CallUsage dataclass instance with exactly the 6 known fields",
             ));
         }
         // `PyCallUsage` extraction coerces `True` to `1` and `5` to
@@ -1305,7 +1327,7 @@ fn dataset_summarize_case_bytes(
     value_to_py(py, &Value::Object(map))
 }
 
-/// peira._core: the compiled Rust core (PyO3). Optional accelerator —
+/// peira._core: the compiled Rust core (PyO3). Optional accelerator,
 /// every function here has a pure-Python twin of identical behavior.
 #[pymodule]
 fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
@@ -1320,9 +1342,12 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(malformed_rate, m)?)?;
     m.add_function(wrap_pyfunction!(ece, m)?)?;
     m.add_function(wrap_pyfunction!(brier_score, m)?)?;
+    m.add_function(wrap_pyfunction!(log_loss, m)?)?;
     m.add_function(wrap_pyfunction!(crps_point, m)?)?;
     m.add_function(wrap_pyfunction!(score_compression_index, m)?)?;
     m.add_function(wrap_pyfunction!(mcnemar, m)?)?;
+    m.add_function(wrap_pyfunction!(mcnemar_mid_p, m)?)?;
+    m.add_function(wrap_pyfunction!(mcnemar_p_value, m)?)?;
     m.add_function(wrap_pyfunction!(bradley_terry_fit, m)?)?;
     m.add_function(wrap_pyfunction!(paired_bootstrap_ci, m)?)?;
     m.add_function(wrap_pyfunction!(n_eligible_by_family, m)?)?;
@@ -1341,7 +1366,6 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(confidence_coverage, m)?)?;
     m.add_function(wrap_pyfunction!(severity_weighted_asr, m)?)?;
     m.add_function(wrap_pyfunction!(compare_case_ok, m)?)?;
-    m.add_function(wrap_pyfunction!(compare_chi2_sf_1df, m)?)?;
     m.add_function(wrap_pyfunction!(compare_head_to_head, m)?)?;
     m.add_function(wrap_pyfunction!(compare_per_family, m)?)?;
     m.add_function(wrap_pyfunction!(compare_mcnemar_test, m)?)?;

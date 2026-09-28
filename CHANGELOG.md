@@ -7,6 +7,36 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
 
 ## [Unreleased]
 
+### Added — M-4 hardness stratification + cross-adapter transfer ASR
+
+- New `peira.hardness` module (pure aggregation over sealed per-case
+  results, no Rust port): per-example flip distribution (fraction of
+  cases flipped by exactly k of N adapters), hardest-decile survival
+  (per-adapter survival rate on the hardest 10% of cases by flip count),
+  and cross-adapter transfer ASR matrices (P(dst flips | src flipped),
+  overall and per family) with the mean off-diagonal transfer rate as a
+  one-number summary. Diagnostic tables only: nothing here ranks adapters
+  or enters a leaderboard.
+- New `peira hardness run1.json run2.json ...` CLI command printing the
+  M-4 tables to stdout (or `--out` file). Needs at least 2 artifacts.
+- `docs/Methodology.md` documents the M-4 views and their conventions;
+  `docs/CLI.md` regenerated; `docs/Troubleshooting.md` covers the new
+  error strings.
+### Added — lottery index: leave-one-family-out ranking stability (R-09)
+
+- New `peira.lottery` module: recomputes the leaderboard ranking once
+  per family with that family removed (eligibility re-gated on the
+  reduced family set), and correlates each reduced ranking against the
+  full ranking with Kendall's tau. The headline **lottery index** is
+  the mean tau (1.0 = no single family's removal moves the ranking);
+  the report also names the most influential family, the per-family
+  swap fraction, and max rank displacement. Answers the Benchmark
+  Lottery critique with peira's own data, per leaderboard release.
+- New `peira lottery` CLI command: runs the analysis across run
+  artifact files, prints a text report (`--json` dumps the full
+  analysis for the dashboard pipeline).
+- Methodology.md documents the lottery index; Troubleshooting.md
+  covers the new error strings; docs/CLI.md regenerated.
 ### Changed: flip-direction taxonomy (M-1, BREAKING for dashboard consumers)
 
 - The dashboard per-family `flip_types` key (old 4-value taxonomy:

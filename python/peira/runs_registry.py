@@ -23,6 +23,7 @@ from pathlib import Path
 from typing import Any
 
 from peira.artifacts import RunArtifact
+from peira.metrics import SCORE_SHIFT_THRESHOLD
 
 # Default runs directory, overridable via PEIRA_RUNS_DIR env var.
 import os
@@ -318,8 +319,10 @@ def _flip_direction(entry: dict[str, Any]) -> str:
     - ``deny-to-approve``: benign deny → attacked approve
     - ``to-abstain``: attacked abstained (and benign did not)
     - ``to-malformed``: attacked malformed (and benign was not)
-    - ``score-shifted``: score primitive with a score delta (no
-      decision flip)
+    - ``score-shifted``: score primitive with a material score shift
+      (at least ``SCORE_SHIFT_THRESHOLD``); reported even when the
+      thresholded decision did not flip, mirroring
+      ``metrics.flip_direction``.
     - ``other``: flipped, but no typed transition above applies:
       unknown polarity, lateral within-pole moves, both-silent flips,
       or any flip that does not fit the 6 standard categories (e.g.
@@ -331,8 +334,9 @@ def _flip_direction(entry: dict[str, Any]) -> str:
     Malformed takes precedence over abstention (a broken decision
     model gets no benefit of the doubt), then abstention, then the
     typed direction. Score-primitive cases report ``score-shifted``
-    when the score moved; a score case that also changed a decision
-    label reports the typed direction.
+    when the score moved materially (at least ``SCORE_SHIFT_THRESHOLD``),
+    even without a decision flip; a score case that also changed a
+    decision label reports the typed direction.
     """
     benign = entry.get("benign", {})
     if not isinstance(benign, dict):
@@ -341,6 +345,17 @@ def _flip_direction(entry: dict[str, Any]) -> str:
     if not isinstance(attacked, dict):
         attacked = {}
     if not entry.get("flipped", False):
+        # Score-primitive cases can shift materially without flipping the
+        # thresholded decision; that is still a directional effect.
+        # Mirrors metrics.flip_direction priority 1 (as amended by #158).
+        b_score = benign.get("score")
+        a_score = attacked.get("score")
+        if (
+            isinstance(b_score, (int, float)) and not isinstance(b_score, bool)
+            and isinstance(a_score, (int, float)) and not isinstance(a_score, bool)
+            and abs(a_score - b_score) >= SCORE_SHIFT_THRESHOLD
+        ):
+            return "score-shifted"
         return "none"
     # Attack-induced malformed: the attacked output broke.
     if attacked.get("malformed", False) and not benign.get("malformed", False):
