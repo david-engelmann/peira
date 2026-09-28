@@ -120,7 +120,8 @@ class TestRunFlags(unittest.TestCase):
 
     def test_cache_dir_flag_uses_cache(self):
         # --cache-dir enables the response cache; a second run with the
-        # same cache dir should hit the cache.
+        # same cache dir must hit the cache (every result arm marked
+        # cached: True, i.e. no provider call was made).
         with tempfile.TemporaryDirectory() as tmp:
             cdir = str(Path(tmp) / "cache")
             out1 = str(Path(tmp) / "out1")
@@ -137,6 +138,31 @@ class TestRunFlags(unittest.TestCase):
                 out2, "--cache-dir", cdir, "--families", "state_poisoning",
             )
             self.assertIn(r2.returncode, (0, 3))
+
+            def _cached_flags(out_dir):
+                flags = []
+
+                def walk(node):
+                    if isinstance(node, dict):
+                        for key, value in node.items():
+                            if key == "cached":
+                                flags.append(value)
+                            walk(value)
+                    elif isinstance(node, list):
+                        for item in node:
+                            walk(item)
+
+                for artifact in Path(out_dir).glob("*.json"):
+                    walk(json.loads(artifact.read_text()))
+                return flags
+
+            flags = _cached_flags(out2)
+            self.assertGreater(len(flags), 0,
+                               "no cached flags in second-run artifact")
+            self.assertTrue(
+                all(flags),
+                f"second run did not hit the cache: {flags!r}",
+            )
 
     def test_json_progress_flag_emits_json(self):
         # --json-progress emits machine-readable progress lines.
@@ -157,7 +183,7 @@ class TestRunFlags(unittest.TestCase):
                 json.loads(line)  # must be valid JSON
 
     def test_max_attempts_flag_accepted(self):
-        # --max-attempts is plumbed through (validation tested elsewhere).
+        # --max-attempts is plumbed through: a valid value runs fine.
         with tempfile.TemporaryDirectory() as tmp:
             out = str(Path(tmp) / "out")
             r = _run_cli_subprocess(
@@ -166,13 +192,37 @@ class TestRunFlags(unittest.TestCase):
             self.assertIn(r.returncode, (0, 3))
 
     def test_call_timeout_flag_accepted(self):
-        # --call-timeout is plumbed through.
+        # --call-timeout is plumbed through: a valid value runs fine.
         with tempfile.TemporaryDirectory() as tmp:
             out = str(Path(tmp) / "out")
             r = _run_cli_subprocess(
                 out, "--call-timeout", "60", "--families", "state_poisoning",
             )
             self.assertIn(r.returncode, (0, 3))
+
+    def test_max_concurrency_zero_rejected(self):
+        # --max-concurrency < 1 is rejected with exit 1 and a clear message.
+        with tempfile.TemporaryDirectory() as tmp:
+            out = str(Path(tmp) / "out")
+            r = _run_cli_subprocess(out, "--max-concurrency", "0")
+            self.assertEqual(r.returncode, 1)
+            self.assertIn("--max-concurrency must be >= 1", r.stderr)
+
+    def test_max_attempts_zero_rejected(self):
+        # --max-attempts < 1 is rejected with exit 1 and a clear message.
+        with tempfile.TemporaryDirectory() as tmp:
+            out = str(Path(tmp) / "out")
+            r = _run_cli_subprocess(out, "--max-attempts", "0")
+            self.assertEqual(r.returncode, 1)
+            self.assertIn("--max-attempts must be >= 1", r.stderr)
+
+    def test_call_timeout_zero_rejected(self):
+        # --call-timeout <= 0 is rejected with exit 1 and a clear message.
+        with tempfile.TemporaryDirectory() as tmp:
+            out = str(Path(tmp) / "out")
+            r = _run_cli_subprocess(out, "--call-timeout", "0")
+            self.assertEqual(r.returncode, 1)
+            self.assertIn("--call-timeout must be > 0", r.stderr)
 
 
 if __name__ == "__main__":
