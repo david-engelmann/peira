@@ -48,6 +48,7 @@ from typing import Any, Callable, Mapping, NamedTuple
 
 from peira._rust import _impl as _rust
 from peira.adapters.base import CallUsage, _unit_interval
+from peira.concurrency import _require_json_str
 
 # Ineligibility reasons, recorded on PerCaseResult.ineligibility_reason.
 INELIGIBLE_BENIGN_MALFORMED = "benign_malformed"
@@ -151,6 +152,32 @@ def _asr_eligible(r: PerCaseResult) -> bool:
     return r.eligible
 
 
+def _require_result_strings(r: PerCaseResult) -> None:
+    """Reject lone surrogates in every string field the Rust bindings read.
+
+    The PyO3 mirrors (``PyPerCaseResult`` / ``PyCallRecord`` /
+    ``PyCallUsage`` in crates/peira-python) extract each of these as
+    ``String``, which raises ``UnicodeEncodeError`` on a lone surrogate
+    while the pure-Python reference would compute. Every dispatched
+    metric calls this *before* the backend branch so both backends
+    raise the same ``ValueError``. The ``_xxx_py`` references stay
+    lenient; the dispatched entry points are the validated ones.
+    """
+    for value in (
+        r.case_id,
+        r.family,
+        r.severity,
+        r.primitive,
+        r.ineligibility_reason,
+    ):
+        _require_json_str(value)
+    for rec in (r.benign, r.attacked):
+        _require_json_str(rec.decision)
+        _require_json_str(rec.refusal_reason)
+        if rec.usage is not None:
+            _require_json_str(rec.usage.model)
+
+
 def _wilson_ci_py(hits: int, n: int, z: float = 1.96) -> tuple[float, float]:
     """Reference implementation of :func:`wilson_ci` (pure Python)."""
     if n == 0:
@@ -208,6 +235,8 @@ def asr_conditional(results: list[PerCaseResult]) -> tuple[float, tuple[float, f
     flipped (a DoS vector), as does forced commitment. ``refusal_rate``
     is reported separately so the refusal phenomenon stays visible.
     """
+    for r in results:
+        _require_result_strings(r)
     if _rust is not None:
         return _rust.asr_conditional(results)
     return _asr_conditional_py(results)
@@ -241,6 +270,8 @@ def benign_accuracy(results: list[PerCaseResult]) -> tuple[float, tuple[float, f
     and not abstained). A refusal is not a wrong answer — it is counted
     by the ineligibility breakdown and refusal stats instead.
     """
+    for r in results:
+        _require_result_strings(r)
     if _rust is not None:
         return _rust.benign_accuracy(results)
     return _benign_accuracy_py(results)
@@ -254,6 +285,8 @@ def refusal_rate(results: list[PerCaseResult]) -> tuple[float, tuple[float, floa
     DoS vector), and this metric reports it separately so a 0% ASR via
     100% refusal is not mistaken for robustness.
     """
+    for r in results:
+        _require_result_strings(r)
     if _rust is not None:
         return _rust.refusal_rate(results)
     return _refusal_rate_py(results)
@@ -275,6 +308,8 @@ def _refusal_rate_by_family_py(
 
 def refusal_rate_by_family(results: list[PerCaseResult]) -> dict[str, float]:
     """Attacked-variant refusal rate per family (sorted by family)."""
+    for r in results:
+        _require_result_strings(r)
     if _rust is not None:
         return dict(_rust.refusal_rate_by_family(results))
     return _refusal_rate_by_family_py(results)
@@ -295,6 +330,8 @@ def _ineligible_by_reason_py(results: list[PerCaseResult]) -> dict[str, int]:
 
 def ineligible_by_reason(results: list[PerCaseResult]) -> dict[str, int]:
     """Ineligible-case counts by reason (all three reasons always present)."""
+    for r in results:
+        _require_result_strings(r)
     if _rust is not None:
         raw = _rust.ineligible_by_reason(results)
         counts = {
@@ -324,6 +361,8 @@ def _malformed_rate_py(results: list[PerCaseResult]) -> float:
 
 def malformed_rate(results: list[PerCaseResult]) -> float:
     """Fraction of cases malformed on either variant."""
+    for r in results:
+        _require_result_strings(r)
     if _rust is not None:
         return _rust.malformed_rate(results)
     return _malformed_rate_py(results)
@@ -373,6 +412,8 @@ def benign_refusal_rate(
     the baseline against which :func:`refusal_rate_delta` measures
     attack-induced refusal.
     """
+    for r in results:
+        _require_result_strings(r)
     if _rust is not None:
         return _rust.benign_refusal_rate(results)
     return _refusal_rate_arm_py(results, "benign")
@@ -447,6 +488,8 @@ def outcome_accounting(
     malformed tells a different story than one whose attacked arm is
     40% refused).
     """
+    for r in results:
+        _require_result_strings(r)
     if _rust is not None:
         (bn, ba, bd, bo, br, bab, bm), (an, aa, ad, ao, ar, aab, am) = \
             _rust.outcome_accounting(results)
@@ -567,6 +610,8 @@ def eligible_confidence_pairs(
     (all eligible cases are correct by construction) — the interesting
     axis is the confidence distribution itself, e.g. for ECE.
     """
+    for r in results:
+        _require_result_strings(r)
     if _rust is not None:
         return _rust.eligible_confidence_pairs(results)
     return _eligible_confidence_pairs_py(results)
@@ -740,6 +785,8 @@ def confidence_coverage(results: list[PerCaseResult]) -> dict[str, float]:
     the sample the calibration statistics actually cover. Empty
     ``results`` yields 0.0 for both arms.
     """
+    for r in results:
+        _require_result_strings(r)
     if _rust is not None:
         benign, attacked = _rust.confidence_coverage(results)
         return {"benign": benign, "attacked": attacked}
@@ -932,6 +979,8 @@ def attacked_confidence_pairs(
     cases have a correct benign decision by construction, so this is
     exactly ``not r.flipped`` (attacked-malformed counts as flipped).
     """
+    for r in results:
+        _require_result_strings(r)
     if _rust is not None:
         return _rust.attacked_confidence_pairs(results)
     return _attacked_confidence_pairs_py(results)
@@ -1130,6 +1179,11 @@ def n_eligible_by_family(
     Covers the required families (missing families score 0) plus any family
     that appears in the results.
     """
+    for r in results:
+        _require_result_strings(r)
+    if required_families is not None:
+        for fam in required_families:
+            _require_json_str(fam)
     if _rust is not None:
         counts = _rust.n_eligible_by_family(results, required_families)
         # The Rust side returns counts in sorted order; restore the
@@ -1195,6 +1249,11 @@ def check_eligibility(
     fully omitted family scores 0 eligible and fails the gate: dropping a
     weak family can never improve a rank.
     """
+    for r in results:
+        _require_result_strings(r)
+    if required_families is not None:
+        for fam in required_families:
+            _require_json_str(fam)
     if _rust is not None:
         eligible, reasons = _rust.check_eligibility(results, required_families)
         return Eligibility(eligible=eligible, reasons=tuple(reasons))
@@ -1431,6 +1490,8 @@ def severity_weighted_asr(results: list[PerCaseResult]) -> float:
 
     No eligible cases → 0.0, consistent with :func:`asr_conditional`.
     """
+    for r in results:
+        _require_result_strings(r)
     # Validate severities in Python first so the error carries the
     # case_id (the Rust core panics per D-11 on this caller bug).
     for r in results:

@@ -25,7 +25,35 @@ from peira.concurrency import (
     retry_jitter_seed,
     retry_jitter_seed_py,
 )
-from peira.metrics import CallRecord
+from peira.adapters.base import CallUsage
+from peira.compare import (
+    PairedCase,
+    _case_ok,
+    _head_to_head,
+    _mcnemar_test,
+    _per_case_cost,
+    _per_case_latency,
+    _per_family,
+)
+from peira.metrics import (
+    CallRecord,
+    PerCaseResult,
+    _malformed_rate_py,
+    asr_conditional,
+    attacked_confidence_pairs,
+    benign_accuracy,
+    benign_refusal_rate,
+    check_eligibility,
+    confidence_coverage,
+    eligible_confidence_pairs,
+    ineligible_by_reason,
+    malformed_rate,
+    n_eligible_by_family,
+    outcome_accounting,
+    refusal_rate,
+    refusal_rate_by_family,
+    severity_weighted_asr,
+)
 from peira.runner import (
     _pseudonymous_call_id,
     _pseudonymous_call_id_py,
@@ -552,6 +580,146 @@ class PseudonymousCallIdNonceSurrogate(unittest.TestCase):
                     _pseudonymous_call_id(nonce, 7, 42),
                     _pseudonymous_call_id_py(nonce, 7, 42),
                 )
+# -- Metrics/compare surrogate parity (this lane) ---------------------------
+#
+# The PyO3 mirrors (PyPerCaseResult / PyCallRecord / PyCallUsage /
+# PyPairedCase) extract every string field as `String`, which raises
+# UnicodeEncodeError on a lone surrogate while the pure-Python
+# reference computes, a backend divergence. Each test below fails on
+# the pre-fix code (Rust-active: UnicodeEncodeError/TypeError; no-Rust:
+# silent compute) and passes after, in both modes. The suite runs once
+# per backend.
+
+_SURROGATE_MSG = "strings with lone surrogates have no JSON representation"
+
+
+def _usage(**kw):
+    base = dict(model="jev-1.13.0", tokens_in=10, tokens_out=5,
+                latency_ms=12.0, cost_usd=0.0)
+    base.update(kw)
+    return CallUsage(**base)
+
+
+def _srec(**kw):
+    base = dict(decision="approve", confidence=0.9, abstained=False,
+                refusal_reason="", usage=None, seed=0, dispatch_index=0,
+                malformed=False)
+    base.update(kw)
+    return CallRecord(**base)
+
+
+def _sresult(**kw):
+    base = dict(case_id="c1", family="f", severity="high",
+                primitive="choice", benign=_srec(), attacked=_srec(),
+                flipped=False, eligible=True, ineligibility_reason="")
+    base.update(kw)
+    return PerCaseResult(**base)
+
+
+def _spair(**kw):
+    base = dict(case_id="c1", family="f", primitive="choice",
+                a=_sresult(), b=_sresult())
+    base.update(kw)
+    return PairedCase(**base)
+
+
+class MetricsSurrogateResultStrings(unittest.TestCase):
+    """Lone surrogates in any PerCaseResult/CallRecord/CallUsage string
+    field must raise ValueError identically on both backends."""
+
+    # (field label, PerCaseResult kwargs with a lone surrogate in one field)
+    FIELDS = [
+        ("case_id", dict(case_id="a\ud800")),
+        ("family", dict(family="a\ud800")),
+        ("severity", dict(severity="a\ud800")),
+        ("primitive", dict(primitive="a\ud800")),
+        ("ineligibility_reason",
+         dict(eligible=False, ineligibility_reason="a\ud800")),
+        ("benign.decision", dict(benign=_srec(decision="\ud800"))),
+        ("benign.refusal_reason", dict(benign=_srec(refusal_reason="x\udc00"))),
+        ("attacked.decision", dict(attacked=_srec(decision="\ud800"))),
+        ("attacked.refusal_reason",
+         dict(attacked=_srec(refusal_reason="x\udc00"))),
+        ("benign.usage.model",
+         dict(benign=_srec(usage=_usage(model="m\ud800")))),
+        ("attacked.usage.model",
+         dict(attacked=_srec(usage=_usage(model="m\ud800")))),
+    ]
+
+    DISPATCHED = (
+        malformed_rate, refusal_rate, asr_conditional, benign_accuracy,
+        refusal_rate_by_family, ineligible_by_reason, severity_weighted_asr,
+        benign_refusal_rate, outcome_accounting, eligible_confidence_pairs,
+        confidence_coverage, attacked_confidence_pairs,
+    )
+
+    def test_each_string_field_raises_value_error(self):
+        for field, kw in self.FIELDS:
+            r = _sresult(**kw)
+            for fn in self.DISPATCHED:
+                with self.subTest(field=field, fn=fn.__name__):
+                    with self.assertRaises(ValueError) as ctx:
+                        fn([r])
+                    self.assertEqual(str(ctx.exception), _SURROGATE_MSG)
+
+    def test_reference_stays_lenient(self):
+        # The _xxx_py references are not validated entry points: they
+        # still compute over surrogate-bearing inputs.
+        r = _sresult(ineligibility_reason="a\ud800")
+        self.assertEqual(_malformed_rate_py([r]), 0.0)
+
+
+class CompareSurrogatePairStrings(unittest.TestCase):
+    """Lone surrogates in PairedCase fields (own + nested results) must
+    raise ValueError identically on both backends."""
+
+    PAIR_DISPATCHED = (_head_to_head, _per_family, _mcnemar_test)
+    SINGLE_DISPATCHED = (_case_ok, _per_case_cost, _per_case_latency)
+
+    def test_pair_own_fields_raise(self):
+        for field, kw in (("case_id", dict(case_id="a\ud800")),
+                          ("family", dict(family="a\ud800")),
+                          ("primitive", dict(primitive="a\ud800"))):
+            p = _spair(**kw)
+            for fn in self.PAIR_DISPATCHED:
+                with self.subTest(field=field, fn=fn.__name__):
+                    with self.assertRaises(ValueError) as ctx:
+                        fn([p])
+                    self.assertEqual(str(ctx.exception), _SURROGATE_MSG)
+
+    def test_pair_nested_result_fields_raise(self):
+        # A surrogate nested inside pair.a / pair.b must also be caught.
+        for side in ("a", "b"):
+            p = _spair(**{side: _sresult(family="a\ud800")})
+            for fn in self.PAIR_DISPATCHED:
+                with self.subTest(side=side, fn=fn.__name__):
+                    with self.assertRaises(ValueError) as ctx:
+                        fn([p])
+                    self.assertEqual(str(ctx.exception), _SURROGATE_MSG)
+
+    def test_single_result_dispatchers_raise(self):
+        r = _sresult(benign=_srec(decision="\ud800"))
+        for fn in self.SINGLE_DISPATCHED:
+            with self.subTest(fn=fn.__name__):
+                with self.assertRaises(ValueError) as ctx:
+                    fn(r)
+                self.assertEqual(str(ctx.exception), _SURROGATE_MSG)
+
+
+class RequiredFamiliesSurrogate(unittest.TestCase):
+    """Lone surrogates in required_families must raise ValueError
+    identically on both backends."""
+
+    def test_required_families_raise(self):
+        for fn in (n_eligible_by_family, check_eligibility):
+            with self.subTest(fn=fn.__name__):
+                with self.assertRaises(ValueError) as ctx:
+                    fn([], required_families=["fam\ud800"])
+                self.assertEqual(str(ctx.exception), _SURROGATE_MSG)
+
+    def test_clean_required_families_pass(self):
+        counts = n_eligible_by_family([], required_families=["fam"])
+        self.assertEqual(counts, {"fam": 0})
 
 
 if __name__ == "__main__":
