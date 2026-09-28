@@ -15,7 +15,7 @@ from tempfile import TemporaryDirectory
 
 from peira.adapters.base import ChoiceOutput, ProviderError
 from peira.adapters.mock import MockAdapter
-from peira.artifacts import RunArtifact, results_to_dicts
+from peira.artifacts import RunArtifact
 from peira.concurrency import (
     MAX_RETRY_AFTER_S,
     AdaptiveConcurrency,
@@ -26,7 +26,7 @@ from peira.concurrency import (
     load_transcript,
     validate_transcript_entry,
 )
-from peira.metrics import CallRecord, PerCaseResult
+from peira.metrics import PerCaseResult
 from peira.runner import (
     _run_suite_async,
     load_cases,

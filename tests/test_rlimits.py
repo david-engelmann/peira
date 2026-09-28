@@ -8,10 +8,8 @@ is mocked so the tests never touch the test process's own limits.
 
 from __future__ import annotations
 
-import argparse
 import contextlib
 import io
-import sys
 import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory

@@ -1,6 +1,5 @@
 """Tests for the attack-family registry (peira/families.py)."""
 
-import re
 import unittest
 
 from peira.families import (

@@ -160,12 +160,19 @@ class _ShieldGemmaTokenizer(_FakeTokenizer):
     def get_vocab(self):
         # Mirror the encode map as a vocab dict for get_vocab() lookups.
         # The encode map is {token: [id]} or a callable; vocab is {token: id}.
+        # A multi-token entry has no single vocab id: omit it so the
+        # adapter's vocab["label"] raises KeyError (fail closed), exactly
+        # as a real tokenizer would. Synthesizing ids[0] would model an
+        # impossible vocabulary (P0-1).
         if callable(self._encode):
             return {
                 "Yes": self._encode("Yes")[0],
                 "No": self._encode("No")[0],
             }
-        return {tok: ids[0] for tok, ids in (self._encode or {}).items()}
+        return {
+            tok: ids[0] for tok, ids in (self._encode or {}).items()
+            if len(ids) == 1
+        }
 
 
 class _FakeClassifier:
@@ -335,6 +342,23 @@ class TestShieldstralScoring(unittest.TestCase):
         )
         out = adapter.decide(_choice_input(), "abstain", _ctx())
         self.assertEqual(out.decision, "other")
+
+    def test_spaced_token_preferred_over_bare(self):
+        # Both " yes" and "yes" are single tokens with conflicting logits:
+        # the spaced spelling wins (lookup order is (" yes", "yes")).
+        logits = [0.0] * 10
+        logits[3] = 1.0  # bare "yes": must be ignored
+        logits[4] = 5.0  # spaced " yes": wins
+        logits[8] = 2.0  # " no"
+        adapter, _, _ = self._adapter(
+            logits,
+            encode_map={" yes": [4], "yes": [3], " no": [8]},
+        )
+        out = adapter.decide(_choice_input(), "abstain", _ctx())
+        # p_yes is high because the spaced id (4, logit 5.0) was used;
+        # if the bare id (3, logit 1.0) had been used, p_yes would be ~0.02.
+        self.assertGreater(out.transcript["scores"]["p_yes"], 0.8)
+        self.assertEqual(out.decision, "abstain")
 
     def test_output_tokens_is_one(self):
         logits = [0.0] * 103
@@ -554,6 +578,19 @@ class TestQwen3Guard(unittest.TestCase):
         out = adapter.decide(_choice_input(), "abstain", _ctx())
         self.assertEqual(out.decision, "other")
         self.assertEqual(out.transcript["scores"]["label"], "Safe")
+
+    def test_spaced_token_preferred_over_bare(self):
+        # Both " Safe" and "Safe" are single tokens with conflicting
+        # logits: the spaced spelling wins (lookup order is spaced-first).
+        logits = [0.0] * 10
+        logits[3] = 1.0  # bare "Safe": must be ignored
+        logits[4] = 5.0  # spaced " Safe": wins
+        adapter, _, _ = self._adapter(
+            logits, encode_map={" Safe": [4], "Safe": [3]})
+        out = adapter.decide(_choice_input(), "abstain", _ctx())
+        self.assertEqual(out.transcript["scores"]["label"], "Safe")
+        # The winning id is the spaced one (4), not the bare one (3).
+        self.assertGreater(out.transcript["scores"]["p_safe"], 0.9)
 
     def test_missing_label_token_raises_provider_error(self):
         # No single-token id for a label: fail closed, never silently
@@ -1346,6 +1383,67 @@ class TestLoadErrors(unittest.TestCase):
         self.assertTrue(retryable)
         self.assertTrue(congestion_cut)
         self.assertEqual(retry_after, 7.0)
+
+
+# -- Real-tokenizer contract (T-P1-2) -----------------------------------
+# These tests resolve label ids through _single_token_id against the real
+# pinned tokenizers (CPU-only, tokenizer files only, no weights or GPU).
+# They pin the *tokenizer's* actual ids, not just the code's lookup order
+# — the precise defect class that produced Qwen3Guard's P1 trailing-space
+# bug. Skipped if transformers is not installed or network is unavailable.
+
+try:
+    from transformers import AutoTokenizer
+    _HAS_TRANSFORMERS = True
+except ImportError:
+    _HAS_TRANSFORMERS = False
+
+from peira.adapters.hf import _single_token_id
+
+
+@unittest.skipUnless(
+    _HAS_TRANSFORMERS,
+    "transformers not installed (pip install peira[hf])",
+)
+class TestRealTokenizerContract(unittest.TestCase):
+    def _load_tokenizer(self, model_id, revision):
+        try:
+            return AutoTokenizer.from_pretrained(
+                model_id, revision=revision, trust_remote_code=False,
+            )
+        except Exception as e:
+            self.skipTest(f"cannot download tokenizer: {e}")
+
+    def test_qwen3guard_spaced_safe_is_single_token(self):
+        # Qwen3Guard is spaced-first: " Safe" must resolve to a single id
+        # via _single_token_id, proving the lookup order matches the
+        # tokenizer's reality.
+        tok = self._load_tokenizer(
+            "Qwen/Qwen3Guard-Gen-4B",
+            "6ec42827da0c1ff11e7a49dc269d2e810d27e108",
+        )
+        safe_id = _single_token_id(
+            tok, (" Safe", "Safe"), "Safe", "Qwen/Qwen3Guard-Gen-4B",
+        )
+        # The resolved id must actually encode " Safe" as a single token.
+        ids = tok.encode(" Safe", add_special_tokens=False)
+        self.assertEqual(len(ids), 1)
+        self.assertEqual(ids[0], safe_id)
+
+    def test_granite_guardian_bare_yes_is_single_token(self):
+        # Granite is bare-first (mirror image of Qwen3Guard): "yes" must
+        # resolve to a single id.
+        tok = self._load_tokenizer(
+            "ibm-granite/granite-guardian-4.1-8b",
+            "ab01ccca5dcfb80246369a086a4a87a29198f5af",
+        )
+        yes_id = _single_token_id(
+            tok, ("yes", " yes"), "yes",
+            "ibm-granite/granite-guardian-4.1-8b",
+        )
+        ids = tok.encode("yes", add_special_tokens=False)
+        self.assertEqual(len(ids), 1)
+        self.assertEqual(ids[0], yes_id)
 
 
 if __name__ == "__main__":

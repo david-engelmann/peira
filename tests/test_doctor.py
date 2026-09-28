@@ -24,7 +24,6 @@ from peira.adapters.llm import (
 )
 from peira.doctor import (
     AdapterReadiness,
-    CheckResult,
     SystemInfo,
     _api_pin_note,
     check_adapter,

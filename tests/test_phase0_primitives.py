@@ -628,7 +628,6 @@ class TestCliBudget(unittest.TestCase):
         self.assertIsNone(args.budget_usd)
 
     def test_budget_usd_nonpositive_rejected(self):
-        import sys
         from peira.cli import build_parser, cmd_run, EXIT_USER_ERROR
         for bad in ("0", "-3"):
             args = build_parser().parse_args(
