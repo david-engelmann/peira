@@ -202,6 +202,14 @@ def _suite_dataset_identity(suite_dir: Path) -> tuple[str, str]:
 def _print_run_summary(artifact, out_path: Path) -> None:
     m = artifact.metrics
     print(f"done: {m['n_cases']} cases ({m['n_eligible']} eligible)")
+    if artifact.termination != "complete":
+        print(f"  termination:     {artifact.termination} "
+              f"({artifact.cases_completed}/{artifact.cases_planned} cases)")
+    if artifact.budget_usd is not None:
+        print(f"  budget:          cap ${artifact.budget_usd:.2f}, "
+              f"spent ${artifact.spent_usd:.4f}")
+    else:
+        print(f"  spend:           ${artifact.spent_usd:.4f} (uncapped)")
     print(f"  ASR (conditional): {_val(m['asr_conditional'])} "
           f"95% CI {_ci95(m['asr_ci95'])}")
     print(f"  benign accuracy:   {_val(m['benign_accuracy'])} "
@@ -253,6 +261,55 @@ def parse_family_filter(value: str | None) -> list[str] | None:
         )
     # Dedupe, preserving order: "--families a,a" means ["a"].
     return list(dict.fromkeys(wanted))
+
+
+def _budget_estimate_note(
+    out_dir: Path, slug: str, suite: str, budget_usd: float,
+    n_remaining: int,
+) -> str:
+    """Pre-run budget note: what the cap buys, from cost history.
+
+    Looks for the newest final artifact for this adapter+suite in the
+    output directory and projects ``remaining x last_per_case_mean``
+    against the cap. Informational only: the hard enforcement is the
+    runner's pre-dispatch gate. Never fails: no history (or an
+    unreadable one) yields the honest "no history" note instead of a
+    guessed number.
+    """
+    try:
+        candidates = [
+            p for p in out_dir.glob(f"{slug}-{suite}.json")
+            if not p.name.endswith(".partial.json")
+            and not p.name.endswith(".replay.json")
+        ]
+        if not candidates:
+            raise FileNotFoundError("no prior artifacts")
+        latest = max(candidates, key=lambda p: p.stat().st_mtime)
+        d = json.loads(latest.read_text())
+        spent = float(d.get("spent_usd") or 0.0)
+        done = int(d.get("cases_completed") or 0)
+        if spent <= 0 or done <= 0:
+            raise ValueError("no priced history")
+        per_case = spent / done
+        estimate = per_case * n_remaining
+        coverable = int(budget_usd / per_case) if per_case > 0 else 0
+        verdict = (
+            "covers the run" if estimate <= budget_usd
+            else f"short by ~${estimate - budget_usd:.2f}"
+        )
+        return (
+            f"budget: ${budget_usd:.2f} cap: last run for this "
+            f"adapter/suite cost ~${per_case:.4f}/case "
+            f"({latest.name}); ~${estimate:.2f} for {n_remaining} "
+            f"remaining cases ({verdict}; ~{coverable} cases covered). "
+            f"Enforcement starts after the first completed case."
+        )
+    except Exception:
+        return (
+            f"budget: ${budget_usd:.2f} cap: no priced cost history "
+            f"for this adapter/suite; enforcement starts after the "
+            f"first completed case (projection: spent + mean x 1.5)."
+        )
 
 
 def cmd_run(args: argparse.Namespace) -> int:
@@ -340,6 +397,11 @@ def cmd_run(args: argparse.Namespace) -> int:
             print(f"error: --{flag.replace('_', '-')} must be > 0 "
                   f"(got {value})", file=sys.stderr)
             return EXIT_USER_ERROR
+    if args.budget_usd is not None and not args.budget_usd > 0:
+        # NaN fails the > 0 comparison: a NaN cap is not a cap.
+        print(f"error: --budget-usd must be > 0 "
+              f"(got {args.budget_usd})", file=sys.stderr)
+        return EXIT_USER_ERROR
 
     if args.dry_run:
         print(f"dry run: {len(cases)} cases, adapter={adapter.name}, "
@@ -378,7 +440,9 @@ def cmd_run(args: argparse.Namespace) -> int:
                 try:
                     already_done, prior_results = validate_partial(
                         partial, adapter, cases, suite, dataset_version,
-                        manifest_sha256, seed=args.seed)
+                        manifest_sha256, seed=args.seed,
+                        budget_usd=args.budget_usd,
+                        cache_enabled=args.cache_dir is not None)
                 except ValueError as e:
                     print(f"error: {e} — delete {partial_path} or drop "
                           f"--resume and re-run.", file=sys.stderr)
@@ -392,6 +456,15 @@ def cmd_run(args: argparse.Namespace) -> int:
                   flush=True)
         elif i == 1 or i == total or i % 50 == 0:
             print(f"  [{i}/{total}]", file=sys.stderr, flush=True)
+
+    if args.budget_usd is not None:
+        print(
+            _budget_estimate_note(
+                out_dir, slug, suite, args.budget_usd,
+                len(cases) - len(already_done),
+            ),
+            file=sys.stderr,
+        )
 
     try:
         artifact = run_suite(
@@ -409,6 +482,7 @@ def cmd_run(args: argparse.Namespace) -> int:
             rlimit_cpu_seconds=getattr(args, "rlimit_cpu_seconds", None),
             rlimit_as_mb=getattr(args, "rlimit_as_mb", None),
             rlimit_fsize_mb=getattr(args, "rlimit_fsize_mb", None),
+            budget_usd=args.budget_usd,
         )
     except KeyboardInterrupt:
         print("\ninterrupted — partial run saved; re-run with --resume.",
@@ -1445,6 +1519,13 @@ def build_parser() -> argparse.ArgumentParser:
     r.add_argument("--rlimit-fsize-mb", type=float, default=None,
                    help="max size of any single file write, in MB (Unix "
                    "only; opt-in, no limit by default)")
+    r.add_argument("--budget-usd", type=float, default=None,
+                   help="hard spend cap in USD: the runner projects "
+                   "spent + running-mean-case-cost x 1.5 before each new "
+                   "case dispatch and stops dispatching when the "
+                   "projection exceeds the cap; in-flight cases drain and "
+                   "the artifact seals with termination=budget "
+                   "(analyzable, never rankable) (default: no cap)")
     r.add_argument("--cache-dir", default=None,
                    help="opt-in response cache directory for deterministic "
                    "adapters (temperature 0 + fixed seed); off by default "

@@ -2,9 +2,18 @@
 
 Cost is a measurement sidecar, never a blended score: the runner fills
 ``cost_usd`` on every call record from this table so per-run cost figures
-are reproducible and traceable. The table's ``source`` and ``date`` are
-sealed into the run artifact (``pricing_source`` / ``pricing_date``), so a
-cost number always points at the table that produced it.
+are reproducible and traceable. The table's ``source``, ``date``, and
+``pricing_version`` are sealed into the run artifact
+(``pricing_source`` / ``pricing_date`` / ``pricing_version``), so a cost
+number always points at the exact table version that produced it. Runs
+are never re-priced in place: a price change ships as a new table
+version, and old artifacts keep their sealed numbers.
+
+Each entry carries ``confidence``: ``"official"`` (verified against the
+vendor's pricing page, or a first-party $0.0 assertion for self-hosted
+checkpoints) or ``"secondary"`` (carried over unverified or
+gateway-reported). The dashboard labels secondary-sourced prices; it
+never treats them as official.
 
 An unknown model prices at 0.0 — cost is then explicitly unaccounted,
 never silently wrong.
@@ -20,6 +29,9 @@ from typing import Any
 from peira._rust import _impl as _rust
 
 _TABLE_PATH = Path(__file__).parent / "data" / "pricing.json"
+
+#: Allowed per-entry pricing confidence values.
+PRICING_CONFIDENCES = ("official", "secondary")
 
 
 @functools.lru_cache(maxsize=1)
@@ -50,7 +62,43 @@ def load_pricing_table() -> dict[str, Any]:
             f"peira pricing table has the wrong shape: {_TABLE_PATH} "
             "(need an object with a 'models' object)"
         )
+    version = table.get("pricing_version")
+    if not isinstance(version, str) or not version:
+        raise RuntimeError(
+            f"peira pricing table is missing 'pricing_version': {_TABLE_PATH} "
+            "(every table version must be machine-identifiable)"
+        )
+    for model, entry in table["models"].items():
+        if not isinstance(entry, dict):
+            raise RuntimeError(
+                f"peira pricing table entry {model!r} is not an object: "
+                f"{_TABLE_PATH}"
+            )
+        confidence = entry.get("confidence")
+        if confidence not in PRICING_CONFIDENCES:
+            raise RuntimeError(
+                f"peira pricing table entry {model!r} has bad "
+                f"'confidence' {confidence!r}: {_TABLE_PATH} "
+                f"(need one of {PRICING_CONFIDENCES})"
+            )
     return table
+
+
+def pricing_confidence(
+    model: str,
+    table: dict[str, Any] | None = None,
+) -> str | None:
+    """Pricing confidence for one model: "official", "secondary", or None.
+
+    None means the model is not in the table (unpriced), distinct from
+    a secondary-sourced price. Callers that need a different table pass
+    it explicitly; the default is the pinned package table.
+    """
+    table = table if table is not None else load_pricing_table()
+    entry = table["models"].get(model)
+    if entry is None:
+        return None
+    return str(entry["confidence"])
 
 
 def cost_usd_py(

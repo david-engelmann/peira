@@ -161,6 +161,9 @@ struct PyCallRecord {
     malformed: bool,
     dispatch_limit: i64,
     score: Option<f64>,
+    cached: bool,
+    latency_ms_total: f64,
+    timed_out: bool,
 }
 
 impl From<PyCallRecord> for metrics::CallRecord {
@@ -176,6 +179,9 @@ impl From<PyCallRecord> for metrics::CallRecord {
             malformed: r.malformed,
             dispatch_limit: r.dispatch_limit,
             score: r.score,
+            cached: r.cached,
+            latency_ms_total: r.latency_ms_total,
+            timed_out: r.timed_out,
         }
     }
 }
@@ -1193,7 +1199,7 @@ fn env_fingerprint_env(env: &Bound<'_, PyAny>) -> PyResult<String> {
 
 /// artifact.lock_payload: the analysis-lock digest over the artifact's
 /// lock-covered fields, byte-identical to `RunArtifact.compute_lock`.
-/// Fourteen positional args mirror the lock-payload field list.
+/// Twenty-one positional args mirror the lock-payload field list.
 #[pyfunction]
 #[allow(clippy::too_many_arguments)]
 fn artifact_lock_payload(
@@ -1207,6 +1213,13 @@ fn artifact_lock_payload(
     results: &Bound<'_, PyAny>,
     pricing_source: &str,
     pricing_date: &str,
+    pricing_version: &str,
+    contract_version: &str,
+    termination: &str,
+    budget_usd: Option<f64>,
+    spent_usd: f64,
+    cases_completed: i64,
+    cases_planned: i64,
     seed: &Bound<'_, PyAny>,
     max_concurrency: &Bound<'_, PyAny>,
     metrics: &Bound<'_, PyAny>,
@@ -1223,6 +1236,13 @@ fn artifact_lock_payload(
         &value_from_py(results)?,
         pricing_source,
         pricing_date,
+        pricing_version,
+        contract_version,
+        termination,
+        budget_usd,
+        spent_usd,
+        cases_completed,
+        cases_planned,
         int_param("seed", seed)?,
         int_param("max_concurrency", max_concurrency)?,
         &value_from_py(metrics)?,

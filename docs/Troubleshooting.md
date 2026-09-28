@@ -348,10 +348,13 @@ construction — unbounded nesting is a stack-overflow vector. Fix:
 flatten the input; no real case nests anywhere near that deep (see
 `docs/Dataset.md`).
 
-**`error: max_concurrency must be >= 1, got N` / `max_attempts must be >= 1` / `call_timeout must be > 0`**
+**`error: max_concurrency must be >= 1, got N` / `max_attempts must be >= 1` / `call_timeout must be > 0` / `error: --budget-usd must be > 0 (got N)`**
 Cause: `peira run` got a non-positive `--max-concurrency`,
-`--max-attempts`, or `--call-timeout`. Fix: pass a positive value
-(`--max-concurrency 8`, `--max-attempts 3`).
+`--max-attempts`, `--call-timeout`, or `--budget-usd`. Fix: pass a
+positive value (`--max-concurrency 8`, `--max-attempts 3`,
+`--budget-usd 5`). A budget cap of zero or less can never dispatch a
+case honestly, so it is rejected up front instead of stopping the run
+before it starts.
 
 **`error: --rlimit-cpu-seconds must be > 0 (got N)` / `--rlimit-as-mb must be > 0` / `--rlimit-fsize-mb must be > 0`**
 Cause: `peira run` got a non-positive `--rlimit-cpu-seconds`,

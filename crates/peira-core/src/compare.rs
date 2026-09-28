@@ -275,6 +275,9 @@ mod tests {
             malformed: false,
             dispatch_limit: 1,
             score: None,
+            cached: false,
+            latency_ms_total: 0.0,
+            timed_out: false,
         }
     }
 

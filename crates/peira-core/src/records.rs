@@ -80,6 +80,9 @@ pub fn blank_record(seed: i64, dispatch_index: i64, dispatch_limit: i64) -> Call
         malformed: true,
         dispatch_limit,
         score: None,
+        cached: false,
+        latency_ms_total: 0.0,
+        timed_out: false,
     }
 }
 
@@ -227,6 +230,9 @@ pub fn record_from_transcript_entry(entry: &Value) -> Result<CallRecord, String>
         malformed: false,
         dispatch_limit,
         score,
+        cached: false,
+        latency_ms_total: 0.0,
+        timed_out: false,
     })
 }
 

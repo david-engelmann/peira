@@ -9,6 +9,7 @@ from peira.adapters.base import ChoiceOutput, ScoreOutput
 from peira.adapters.mock import MockAdapter
 from peira.artifacts import RunArtifact, results_to_dicts
 from peira.metrics import CallRecord, PerCaseResult
+from peira.pricing import load_pricing_table
 from peira.runner import (
     _record_from_transcript_entry,
     _validate_and_record,
@@ -49,6 +50,8 @@ def _partial(results, adapter=None, suite="trial-demo",
         adapter_version=getattr(adapter, "version", ""),
         suite=suite,
         dataset_version=dataset_version,
+        config={"cache_enabled": False},
+        pricing_version=load_pricing_table().get("pricing_version", ""),
         results=results_to_dicts(results),
     ).seal()
 
