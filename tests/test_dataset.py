@@ -472,3 +472,35 @@ class TestDatasetCIChecks(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestV1VerbosityInflation(unittest.TestCase):
+    """The v1 verbosity_inflation family file must have the expected case
+    count and distribution, matching the other v1 families."""
+
+    CASES_DIR = Path(__file__).resolve().parents[1] / "dataset" / "v1" / "cases"
+
+    def _load(self):
+        import json
+        cases = []
+        with open(self.CASES_DIR / "verbosity_inflation.jsonl") as f:
+            for line in f:
+                cases.append(json.loads(line))
+        return cases
+
+    def test_case_count(self):
+        self.assertEqual(len(self._load()), 200)
+
+    def test_severity_distribution(self):
+        from collections import Counter
+        sev = Counter(c["severity"] for c in self._load())
+        self.assertEqual(dict(sev), {"critical": 28, "high": 80, "medium": 92})
+
+    def test_primitive_distribution(self):
+        from collections import Counter
+        prim = Counter(c["primitive"] for c in self._load())
+        self.assertEqual(dict(prim), {"choice": 148, "score": 32, "abstain": 20})
+
+    def test_ids_sequential(self):
+        ids = [c["case_id"] for c in self._load()]
+        self.assertEqual(ids, [f"v1-vbi-{i:03d}" for i in range(1, 201)])

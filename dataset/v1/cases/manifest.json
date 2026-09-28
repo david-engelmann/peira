@@ -1,7 +1,7 @@
 {
-  "created_utc": "2026-09-28T01:40:10+00:00",
+  "created_utc": "2026-09-28T20:52:47+00:00",
   "dataset": "peira-v1",
-  "dataset_version": "1.1.0",
+  "dataset_version": "1.2.0",
   "files": {
     "confidence_spoofing.jsonl": {
       "kind": "cases",
@@ -182,6 +182,24 @@
       },
       "n_cases": 200,
       "sha256": "db4b2691f5f1d04db4bed9dd3321a4799c9882e044476ffc44da6bd06367c54b"
+    },
+    "verbosity_inflation.jsonl": {
+      "kind": "cases",
+      "n_by_family": {
+        "verbosity_inflation": 200
+      },
+      "n_by_primitive": {
+        "abstain": 20,
+        "choice": 148,
+        "score": 32
+      },
+      "n_by_severity": {
+        "critical": 28,
+        "high": 80,
+        "medium": 92
+      },
+      "n_cases": 200,
+      "sha256": "6070d3d0a458e88d4ef3cfaaac01c57944ebbc59df96cadd907c5d316992423a"
     }
   },
   "generator": "peira 0.1.0"

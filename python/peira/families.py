@@ -7,7 +7,7 @@ The registry is the single source of truth for family metadata
 carries the same list in prose; scripts/check_families.py asserts the
 two never drift apart.
 
-Tiers: "v1" is one of the ten frozen v1 families; "1" is a Tier 1 v2
+Tiers: "v1" is one of the eleven v1 families; "1" is a Tier 1 v2
 family (ships with v2); "2" is a Tier 2 v2 family (ships once case
 design is validated). See docs/Taxonomy.md for the tier plan and the
 boundary rulings that separate neighboring families.
@@ -28,6 +28,9 @@ class FamilyInfo:
     mechanism: str
     tier: str  # "v1", "1", or "2"
     anchor: str  # literature or vendor source motivating the family
+    attacker_queries_assumed: int = 1  # M-9: assumed attacker queries per
+    # case for cost accounting (N=1 for one-shot families; the honest
+    # interim until the v2 adaptive lane measures queries-to-first-flip)
 
 
 _FAMILIES: tuple[FamilyInfo, ...] = (
@@ -148,6 +151,25 @@ _FAMILIES: tuple[FamilyInfo, ...] = (
         "confidence language.",
         tier="v1",
         anchor="TypeSafe Jev limitations: no calibration guarantees",
+    ),
+    FamilyInfo(
+        id="verbosity_inflation",
+        display_name="Verbosity Inflation",
+        description="One side's evidence is longer, more polished, or more "
+        "authoritatively formatted than the other, with no change in "
+        "substantive facts.",
+        mechanism="Exploits verbosity and style biases in the "
+        "decision-maker to win close calls: the attacker's preferred "
+        "outcome is dressed in length, polish, and authoritative "
+        "formatting. Distinct from distractor_flooding (volume that "
+        "buries signal; the length-equalization test kills verbosity "
+        "inflation but not flooding) and from self_advocacy (persuasion "
+        "about the merits; stripping formatting while keeping the words "
+        "kills verbosity inflation).",
+        tier="v1",
+        anchor="Zheng et al. 2023 (verbosity bias); Ye et al. CALM 2024 "
+        "(12 judge biases); Soumik 2026 (style bias 0.10-0.76 dominates "
+        "position bias <=0.04)",
     ),
     # Tier 1: ships with v2.
     FamilyInfo(

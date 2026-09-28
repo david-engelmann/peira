@@ -40,8 +40,8 @@ class TestCheckFamilies(unittest.TestCase):
             tax = self._taxonomy_copy(
                 tmp,
                 lambda s: s.replace(
-                    "11. **instruction_override** (Tier 1)",
-                    "11. **instruction_override_missing** (Tier 1)",
+                    "12. **instruction_override** (Tier 1)",
+                    "12. **instruction_override_missing** (Tier 1)",
                 ),
             )
             problems = self._check_against(tax)
@@ -64,8 +64,8 @@ class TestCheckFamilies(unittest.TestCase):
             tax = self._taxonomy_copy(
                 tmp,
                 lambda s: s.replace(
-                    "11. **instruction_override** (Tier 1)",
-                    "11. **instruction_override** (Tier 2)",
+                    "12. **instruction_override** (Tier 1)",
+                    "12. **instruction_override** (Tier 2)",
                 ),
             )
             problems = self._check_against(tax)
@@ -81,9 +81,9 @@ class TestCheckFamilies(unittest.TestCase):
         documented = check_families.documented_families(
             REPO_ROOT / "docs" / "Taxonomy.md"
         )
-        self.assertEqual(len(documented), 20)
+        self.assertEqual(len(documented), 21)
         numbers = [n for n, _, _ in documented]
-        self.assertEqual(numbers, list(range(1, 21)))
+        self.assertEqual(numbers, list(range(1, 22)))
         tiers = {fam: tier for _, fam, tier in documented}
         self.assertEqual(tiers["state_poisoning"], "v1")
         self.assertEqual(tiers["instruction_override"], "1")

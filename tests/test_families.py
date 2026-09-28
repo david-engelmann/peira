@@ -1,5 +1,6 @@
 """Tests for the attack-family registry (peira/families.py)."""
 
+import re
 import unittest
 
 from peira.families import (
@@ -22,6 +23,7 @@ EXPECTED_V1 = (
     "policy_paraphrase",
     "indirection",
     "confidence_spoofing",
+    "verbosity_inflation",
 )
 EXPECTED_TIER1 = (
     "instruction_override",
@@ -40,12 +42,12 @@ EXPECTED_TIER2 = (
 
 
 class TestFamilyRegistry(unittest.TestCase):
-    def test_twenty_families(self):
-        self.assertEqual(len(FAMILIES), 20)
-        self.assertEqual(len(FAMILY_IDS), 20)
+    def test_twentyone_families(self):
+        self.assertEqual(len(FAMILIES), 21)
+        self.assertEqual(len(FAMILY_IDS), 21)
 
     def test_ids_unique_and_well_formed(self):
-        self.assertEqual(len(set(FAMILY_IDS)), 20)
+        self.assertEqual(len(set(FAMILY_IDS)), 21)
         for fid in FAMILY_IDS:
             self.assertRegex(fid, r"^[a-z0-9_]+$")
 
