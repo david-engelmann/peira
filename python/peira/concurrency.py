@@ -82,6 +82,14 @@ def _classify_exception_py(exc: BaseException) -> tuple[bool, bool, float | None
         or not retry_after >= 0
     ):
         retry_after = None
+    elif isinstance(retry_after, int):
+        try:
+            float(retry_after)
+        except OverflowError:
+            # Gigantic ints (e.g. 10**400) overflow float(): the Rust
+            # path normalizes these to None per D-11 rather than
+            # raising bare OverflowError — match it here.
+            retry_after = None
     status = getattr(exc, "status_code", None)
     if isinstance(status, bool):
         status = None
@@ -116,7 +124,16 @@ def classify_exception(
     timeout/connection branches travel as explicit flags.
     """
     if _rust is not None:
-        retry_after = getattr(exc, "retry_after", None)
+        raw_retry_after = getattr(exc, "retry_after", None)
+        # The reference preserves an int retry_after (5 stays 5); the
+        # Rust core returns f64, so re-attach the original int after the
+        # call for exact parity. Safe: normalization below maps every
+        # non-passthrough shape to None, and the core passes valid
+        # values through unchanged.
+        keep_int = isinstance(raw_retry_after, int) and not isinstance(
+            raw_retry_after, bool
+        )
+        retry_after = raw_retry_after
         if (
             isinstance(retry_after, bool)
             or not isinstance(retry_after, (int, float))
@@ -133,12 +150,21 @@ def classify_exception(
         status = getattr(exc, "status_code", None)
         if isinstance(status, bool) or not isinstance(status, int):
             status = None
-        return _rust.execution_classify_failure(
+        elif not -(2**63) <= status < 2**63:
+            # Outside i64 the Rust binding cannot extract it (bare
+            # OverflowError); the reference treats out-of-range
+            # statuses as unknown and non-retryable, so normalize to
+            # None here and return (False, False, None) via Rust.
+            status = None
+        retryable, congestion_cut, classified = _rust.execution_classify_failure(
             status,
             retry_after,
             isinstance(exc, (asyncio.TimeoutError, TimeoutError)),
             isinstance(exc, ConnectionError),
         )
+        if classified is not None and keep_int:
+            return (retryable, congestion_cut, raw_retry_after)
+        return (retryable, congestion_cut, classified)
     return _classify_exception_py(exc)
 
 
@@ -171,21 +197,23 @@ def retry_jitter_seed(
 
     D-11: a bool seed would format as ``"True"`` in Python but is not
     a valid ``Option<i64>`` — reject it loudly rather than computing
-    divergent seeds.
+    divergent seeds. The validation below the signature runs on both
+    backends, so a mistyped call fails identically with or without
+    the extension.
     """
-    if _rust is not None:
-        if seed is not None and (
-            isinstance(seed, bool) or not isinstance(seed, int)
-        ):
+    if seed is not None and (
+        isinstance(seed, bool) or not isinstance(seed, int)
+    ):
+        raise TypeError(
+            f"seed must be int or None, got {type(seed).__name__}"
+        )
+    for name, value in (("dispatch_index", dispatch_index),
+                        ("attempt", attempt)):
+        if isinstance(value, bool) or not isinstance(value, int):
             raise TypeError(
-                f"seed must be int or None, got {type(seed).__name__}"
+                f"{name} must be int, got {type(value).__name__}"
             )
-        for name, value in (("dispatch_index", dispatch_index),
-                            ("attempt", attempt)):
-            if isinstance(value, bool) or not isinstance(value, int):
-                raise TypeError(
-                    f"{name} must be int, got {type(value).__name__}"
-                )
+    if _rust is not None:
         return _rust.execution_retry_jitter_seed(
             seed, dispatch_index, attempt
         )
@@ -221,21 +249,31 @@ def backoff_delay(
     to Rust when available; the uniform draw always stays in Python —
     the Rust core uses SplitMix64 where the reference uses Mersenne
     Twister (PR #101 precedent), so draws are not bit-identical.
+
+    D-11 validation runs on both backends, so a mistyped or
+    out-of-range call fails identically with or without the extension.
     """
+    if isinstance(attempt, bool) or not isinstance(attempt, int):
+        raise TypeError(
+            f"attempt must be int, got {type(attempt).__name__}"
+        )
+    if attempt < 0:
+        raise ValueError(f"attempt must be >= 0, got {attempt}")
+    # D-11: reject non-finite base/cap loudly. Python's min(nan, x)
+    # returns nan but Rust's f64::min ignores NaN — silent divergence.
+    if not math.isfinite(base_s):
+        raise ValueError(f"base_s must be finite, got {base_s}")
+    if not math.isfinite(cap_s):
+        raise ValueError(f"cap_s must be finite, got {cap_s}")
+    if attempt >= 1024:
+        # D-11: the D-11 contract raises OverflowError here (2.0**attempt
+        # overflows); the Rust core would silently return the cap.
+        # Hoisted above the backend branch so the type AND message are
+        # identical with or without the extension.
+        raise OverflowError(
+            f"attempt too large for float exponent: {attempt}"
+        )
     if _rust is not None:
-        if isinstance(attempt, bool) or not isinstance(attempt, int):
-            raise TypeError(
-                f"attempt must be int, got {type(attempt).__name__}"
-            )
-        if attempt < 0:
-            raise ValueError(f"attempt must be >= 0, got {attempt}")
-        # D-11: reject non-finite base/cap loudly. Python's min(nan, x)
-        # returns nan but Rust's f64::min ignores NaN — silent divergence.
-        import math
-        if not math.isfinite(base_s):
-            raise ValueError(f"base_s must be finite, got {base_s}")
-        if not math.isfinite(cap_s):
-            raise ValueError(f"cap_s must be finite, got {cap_s}")
         bound = _rust.execution_backoff_bound(attempt, base_s, cap_s)
         return rng.uniform(0.0, bound)
     return _backoff_delay_py(attempt, rng, base_s, cap_s)
@@ -363,6 +401,70 @@ class AdaptiveConcurrency:
                     self._cond.notify(free)
 
 
+# Mirrors the Rust `value_from_py` acceptance rules
+# (crates/peira-python/src/lib.rs), including its MAX_JSON_DEPTH.
+_MAX_JSON_DEPTH = 256
+
+
+def _require_json_str(value: str) -> None:
+    try:
+        value.encode("utf-8")
+    except UnicodeEncodeError:
+        raise ValueError(
+            "strings with lone surrogates have no JSON representation"
+        ) from None
+
+
+def _require_json_shaped(value: Any, _depth: int = 0) -> None:
+    """Reject values the Rust core cannot convert to JSON.
+
+    Mirrors ``value_from_py``: non-string dict keys raise ``TypeError``;
+    non-finite floats, integers wider than u64, lone surrogates,
+    nesting deeper than 256, and circular references raise
+    ``ValueError``; anything else non-JSON-shaped raises ``TypeError``.
+
+    The dispatched :func:`cache_key` runs this on both backends, so a
+    malformed input fails identically with or without the extension.
+    The raw :func:`cache_key_py` reference stays lenient — it hashes
+    whatever ``json.dumps`` accepts.
+    """
+    if _depth > _MAX_JSON_DEPTH:
+        raise ValueError(
+            "value exceeds maximum JSON nesting depth (256)"
+        )
+    if value is None or isinstance(value, bool):
+        return
+    if isinstance(value, str):
+        _require_json_str(value)
+        return
+    if isinstance(value, int):
+        if not -(2**63) <= value <= 2**64 - 1:
+            raise ValueError("integer too large to represent in JSON")
+        return
+    if isinstance(value, float):
+        if not math.isfinite(value):
+            raise ValueError(
+                "non-finite floats have no JSON representation"
+            )
+        return
+    if isinstance(value, dict):
+        for k, v in value.items():
+            if not isinstance(k, str):
+                raise TypeError(
+                    "dict keys must be strings for JSON conversion"
+                )
+            _require_json_str(k)
+            _require_json_shaped(v, _depth + 1)
+        return
+    if isinstance(value, (list, tuple)):
+        for item in value:
+            _require_json_shaped(item, _depth + 1)
+        return
+    raise TypeError(
+        f"cannot convert {type(value).__name__} to JSON"
+    )
+
+
 def cache_key_py(
     *,
     adapter_name: str,
@@ -421,29 +523,37 @@ def cache_key(
 ) -> str:
     """Dispatch to Rust when available, else the pure-Python reference.
 
-    D-11: the input dict must be JSON-shaped — the Rust core raises
-    ``TypeError`` on non-string keys or non-finite floats rather than
-    computing a divergent key.
+    D-11: the input dict and the seven string key params must be
+    JSON-shaped. Non-string keys raise ``TypeError``; non-finite floats,
+    integers wider than u64, lone surrogates, and nesting deeper than
+    256 raise ``ValueError`` — identically on both backends. (The raw
+    ``cache_key_py`` reference still hashes whatever ``json.dumps``
+    accepts; the dispatched ``cache_key`` is the validated entry point.)
     """
-    if _rust is not None:
-        for name, value in (
-            ("adapter_name", adapter_name),
-            ("adapter_version", adapter_version),
-            ("cache_namespace", cache_namespace),
-            ("primitive", primitive),
-            ("variant", variant),
-            ("case_id", case_id),
-            ("manifest_sha256", manifest_sha256),
-        ):
-            if not isinstance(value, str):
-                raise TypeError(
-                    f"{name} must be str, got {type(value).__name__}"
-                )
-        if not isinstance(case_input, dict):
+    for name, value in (
+        ("adapter_name", adapter_name),
+        ("adapter_version", adapter_version),
+        ("cache_namespace", cache_namespace),
+        ("primitive", primitive),
+        ("variant", variant),
+        ("case_id", case_id),
+        ("manifest_sha256", manifest_sha256),
+    ):
+        if not isinstance(value, str):
             raise TypeError(
-                "case_input must be a dict, "
-                f"got {type(case_input).__name__}"
+                f"{name} must be str, got {type(value).__name__}"
             )
+        # Lone surrogates: the Rust core cannot hold them (PyO3 String
+        # extraction raises UnicodeEncodeError) while json.dumps escapes
+        # them — reject loudly here so both backends fail identically.
+        _require_json_str(value)
+    if not isinstance(case_input, dict):
+        raise TypeError(
+            "case_input must be a dict, "
+            f"got {type(case_input).__name__}"
+        )
+    _require_json_shaped(case_input)
+    if _rust is not None:
         return _rust.execution_cache_key(
             adapter_name,
             adapter_version,

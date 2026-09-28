@@ -44,6 +44,7 @@ from peira.concurrency import (
     MAX_RETRY_AFTER_S,
     AdaptiveConcurrency,
     ResponseCache,
+    _require_json_str,
     backoff_delay,
     cache_key,
     classify_exception,
@@ -660,20 +661,27 @@ def _pseudonymous_call_id(
 
     D-11: types are validated before dispatch. A bool seed would format
     as ``"True"`` in Python but ``1`` in Rust — reject it loudly rather
-    than computing divergent ids.
+    than computing divergent ids. The validation below the signature
+    runs on both backends, so a mistyped call fails identically with
+    or without the extension.
     """
-    if _rust is not None:
-        if not isinstance(run_nonce, str):
+    if not isinstance(run_nonce, str):
+        raise TypeError(
+            "run_nonce must be str, "
+            f"got {type(run_nonce).__name__}"
+        )
+    # Lone surrogates: PyO3 String extraction raises UnicodeEncodeError
+    # at position 1 (raw nonce) on the Rust path while the reference
+    # encodes the formatted string (position 15) — reject loudly here
+    # so both backends raise the identical ValueError.
+    _require_json_str(run_nonce)
+    for name, value in (("seed", seed),
+                        ("dispatch_index", dispatch_index)):
+        if isinstance(value, bool) or not isinstance(value, int):
             raise TypeError(
-                "run_nonce must be str, "
-                f"got {type(run_nonce).__name__}"
+                f"{name} must be int, got {type(value).__name__}"
             )
-        for name, value in (("seed", seed),
-                            ("dispatch_index", dispatch_index)):
-            if isinstance(value, bool) or not isinstance(value, int):
-                raise TypeError(
-                    f"{name} must be int, got {type(value).__name__}"
-                )
+    if _rust is not None:
         return _rust.execution_pseudonymous_call_id(
             run_nonce, seed, dispatch_index
         )
@@ -811,29 +819,42 @@ def _score_pair(
     D-11: the record fields are validated before dispatch — the Rust
     core takes flattened primitives and panics on caller bugs, so a
     mistyped field must fail loudly here rather than compute divergent
-    judgments.
+    judgments. The validation below the signature runs on both
+    backends, so a mistyped call fails identically with or without
+    the extension. Lone surrogates in the string fields are rejected
+    with ``ValueError`` here (the Rust core cannot hold them, while the
+    reference would compute) — the raw ``_score_pair_py`` reference
+    stays lenient; the dispatched ``_score_pair`` is the validated
+    entry point.
     """
+    for name, value in (
+        ("primitive", case.primitive),
+        ("expected_decision", case.benign.expected_decision),
+        ("benign.decision", benign.decision),
+        ("attacked.decision", attacked.decision),
+    ):
+        if not isinstance(value, str):
+            raise TypeError(
+                f"{name} must be str, got {type(value).__name__}"
+            )
+        # Lone surrogates: PyO3 String extraction raises
+        # UnicodeEncodeError on the Rust path while the reference
+        # computes — reject loudly here so both backends agree.
+        # (case.primitive cannot reach this holding a surrogate via
+        # normal construction — Case.__post_init__ rejects unknown
+        # primitives — but the check is uniform defense-in-depth.)
+        _require_json_str(value)
+    for name, value in (
+        ("benign.abstained", benign.abstained),
+        ("benign.malformed", benign.malformed),
+        ("attacked.abstained", attacked.abstained),
+        ("attacked.malformed", attacked.malformed),
+    ):
+        if not isinstance(value, bool):
+            raise TypeError(
+                f"{name} must be bool, got {type(value).__name__}"
+            )
     if _rust is not None:
-        for name, value in (
-            ("primitive", case.primitive),
-            ("expected_decision", case.benign.expected_decision),
-            ("benign.decision", benign.decision),
-            ("attacked.decision", attacked.decision),
-        ):
-            if not isinstance(value, str):
-                raise TypeError(
-                    f"{name} must be str, got {type(value).__name__}"
-                )
-        for name, value in (
-            ("benign.abstained", benign.abstained),
-            ("benign.malformed", benign.malformed),
-            ("attacked.abstained", attacked.abstained),
-            ("attacked.malformed", attacked.malformed),
-        ):
-            if not isinstance(value, bool):
-                raise TypeError(
-                    f"{name} must be bool, got {type(value).__name__}"
-                )
         flipped, eligible, reason = _rust.execution_score_pair(
             case.primitive,
             case.benign.expected_decision,
