@@ -83,6 +83,16 @@ head-to-head statistical comparison of two run artifacts
 | `--out` |  | - | write an HTML comparison report to this path |
 | `--seed` |  | `0` | seed for the paired-bootstrap CIs (default: 0) |
 
+## peira lottery
+
+leave-one-family-out ranking stability (lottery index) across run artifacts
+
+| Flag | Required | Default | Help |
+|---|---|---|---|
+| `RUNS` | yes | - | run artifact files (one row per adapter on the leaderboard) |
+| `--families` |  | union of families in runs | comma-separated family manifest (default: union of families across the runs) |
+| `--json` |  | - | write the full analysis JSON to this path |
+
 ## peira runs
 
 run registry: list and verify artifacts

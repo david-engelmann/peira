@@ -669,3 +669,33 @@ cases don't enter the right/wrong test); Bradley-Terry needs ≥ 30
 comparisons; deltas need ≥ 30 paired cases. Below the gates the
 estimate is withheld rather than fabricated. The head-to-head counts
 and per-family win rates still render.
+
+**`error: <path> not found` (from `peira lottery`)**
+Cause: one of the artifact paths doesn't exist. Fix: check the
+paths. `peira lottery` takes one or more positional artifact files.
+
+**`error: <path> is not a valid run artifact (...)` (from `peira lottery`)**
+Cause: the file isn't a sealed run artifact (bad JSON, or a JSON file
+that isn't a run artifact). Fix: point at the `.json` files `peira run`
+wrote to the runs directory.
+
+**`error: <path>: cannot decode per-case results (...)` (from `peira lottery`)**
+Cause: the artifact's per-case results don't decode (a hand-edited
+artifact, or an artifact from an incompatible peira version). Fix:
+re-run the adapter on the current peira; don't hand-edit artifacts.
+
+**`error: no families found in the given runs` (from `peira lottery`)**
+Cause: none of the artifacts contain any per-case results (empty
+runs). Fix: pass artifacts from completed runs.
+
+**`error: cannot write lottery JSON to <out> (...)` (from `peira lottery`)**
+Cause: `peira lottery --json` points somewhere unwritable: a missing
+parent directory, or a permissions problem. Fix: create the directory
+first, or pick a writable path.
+
+**`peira lottery` reports "Lottery index: undefined"**
+Cause: not an error. No family yields two runs ranked in both the full
+and the reduced ranking (too few eligible runs for a pairwise
+comparison). Fix: add more ranking-eligible runs; a lottery analysis
+needs at least two runs that stay eligible when any one family is
+removed.

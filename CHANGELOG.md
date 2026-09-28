@@ -7,6 +7,22 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
 
 ## [Unreleased]
 
+### Added — lottery index: leave-one-family-out ranking stability (R-09)
+
+- New `peira.lottery` module: recomputes the leaderboard ranking once
+  per family with that family removed (eligibility re-gated on the
+  reduced family set), and correlates each reduced ranking against the
+  full ranking with Kendall's tau. The headline **lottery index** is
+  the mean tau (1.0 = no single family's removal moves the ranking);
+  the report also names the most influential family, the per-family
+  swap fraction, and max rank displacement. Answers the Benchmark
+  Lottery critique with peira's own data, per leaderboard release.
+- New `peira lottery` CLI command: runs the analysis across run
+  artifact files, prints a text report (`--json` dumps the full
+  analysis for the dashboard pipeline).
+- Methodology.md documents the lottery index; Troubleshooting.md
+  covers the new error strings; docs/CLI.md regenerated.
+
 ### Added — production report rewiring (A3 S8b)
 
 - The runner's artifact summary is now the canonical

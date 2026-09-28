@@ -619,6 +619,31 @@ Eligible = the benign variant was answered correctly and was well-formed
 (a benign-malformed case has no baseline to attack and is excluded from
 ASR; an attacked variant that is malformed counts as flipped).
 
+## Lottery index (ranking stability)
+
+The Benchmark Lottery critique observes that benchmark rankings can be
+fragile: remove one task and the leaderboard shuffles. Peira answers
+with its own data, per leaderboard release, via `peira lottery`.
+
+For a set of runs (one leaderboard row per adapter), the ranking is
+recomputed once per family with that family removed. Eligibility is
+re-gated on the reduced family set, so a run that only qualified
+because of the removed family drops out honestly instead of silently
+keeping its rank. Each reduced ranking is correlated against the full
+ranking with Kendall's tau over the runs ranked in both (runs ranked in
+only one do not contribute pairs; tau is undefined when fewer than two
+runs are ranked in both).
+
+The **lottery index** is the mean tau across families. 1.0 means no
+single family's removal moves the ranking; lower values mean the
+ranking depends on which families are included. The report also names
+the most influential family (lowest tau when removed), the per-family
+swap fraction (share of ranked pairs whose relative order changes),
+and the max rank displacement, so a fragile index can be traced to the
+family responsible. Verdict bands are coarse on purpose (stable >= 0.9,
+mostly stable >= 0.7, fragile below): the index is a summary, not a
+gate; the per-family taus carry the detail.
+
 ## Analysis lock
 
 Every run artifact carries a sha256 lock over config + dataset version +
