@@ -497,6 +497,53 @@ never modified.
 - **Output**: a text summary on stdout plus an optional simple HTML
   report (`--out`): a table, not a dashboard.
 
+### Minimum detectable effects (R-02)
+
+A p-value answers "is there a difference"; it does not answer "was this
+comparison big enough to see the difference we care about". The minimum
+detectable effect (MDE) answers the second question: the smallest true
+effect the comparison can reliably detect at 80% power with a two-sided
+test at alpha = 0.05. peira reports MDEs so that leaderboard differences
+smaller than the MDE are read as "not resolvable at this n" rather than
+as wins. The convention exists before the first v2 leaderboard is read.
+
+- **Headline MDE (paired binary comparison)**: for n paired cases with
+  discordant-pair rate pd (the fraction of pairs where the two adapters
+  disagree), the standard error of the paired difference is sqrt(pd / n),
+  so `MDE = (z_{1-alpha/2} + z_{power}) * sqrt(pd / n)`. At the defaults
+  the multiplier is 2.8016. Reference points, independently recomputed:
+  n = 400 / pd = 20% gives 6.3pp; n = 200 / pd = 20% gives 8.9pp;
+  resolving 5pp at pd = 20% needs n ~= 630. v2 ships at 400 cases per
+  family, so at a 20% discordant rate any sub-6.3pp family gap is not
+  resolvable there.
+- **Per-family MDEs**: every `peira compare` report carries one MDE row
+  per family, computed from that family's own paired n and observed
+  discordant-pair rate. A family-level difference below its MDE reads as
+  "not resolvable at this n", never as a win for either adapter.
+- **Delta MDEs**: each A-minus-B delta (ASR, benign accuracy, Brier,
+  cost, latency) carries its own MDE at 80% power via the
+  paired-bootstrap standard error. The `favors` label is claimed only
+  when the 95% CI excludes zero AND the effect clears the MDE; a CI that
+  excludes zero with an effect below the MDE reads as "not resolvable at
+  this n" (a real signal the study was underpowered to resolve).
+- **Directional MDEs (C-8)**: one row per flip direction, via
+  paired-bootstrap variance over the direction-eligible denominator
+  (only cases that could have flipped in that direction, determined by
+  the benign baseline). Directions use the complete six-category failure
+  breakdown (approve-to-deny, deny-to-approve, to-abstain, to-malformed,
+  score-shifted, other), never collapsed: a flipped case matching no
+  named direction is "other", not dropped, and small-n directions carry
+  their large MDE as the power-limitation note rather than being
+  removed. Severity weights change the estimator variance, so the
+  headline MDE does not equal the weighted MDE; the bootstrap handles
+  both, which is why directional MDEs never reuse the headline number.
+  A direction with no eligible cases is withheld (mde None), never
+  fabricated.
+- **Power is a design property, not a result**: the MDE is computed from
+  n and the discordant rate (or bootstrap SE), not from the observed
+  difference. It tells you what the comparison could have seen, which is
+  exactly what you need before interpreting what it did see.
+
 ### Selective prediction
 
 Selective-prediction metrics ask "when should the model have abstained
