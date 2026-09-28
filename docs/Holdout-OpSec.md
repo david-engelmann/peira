@@ -2,7 +2,7 @@
 
 The private holdout is peira's ranking backstop: 500 cases across the ten
 attack families, mirroring the public set's severity mix, that are never
-published. Public cases are assumed exposed — training corpora,
+published. Public cases are assumed exposed: training corpora,
 write-ups, paraphrase. The holdout is the clean re-test.
 
 This document states the operating *policy*, never the *contents*.
@@ -13,7 +13,7 @@ The secrecy of the contents is the only secret.
 
 - 500 cases: the ten v1 families × 50, the public set's severity
   mix, so public-vs-holdout divergence is interpretable per family.
-  (The safety-policy suite designs its own holdout independently —
+  (The safety-policy suite designs its own holdout independently;
   `dataset/safety-policy/SPEC.md` §8.)
 - The anti-memorization control for the public set, and the tiebreaker
   for every gaming dispute (see `Holdout-Ranking-Design.md`).
@@ -21,7 +21,7 @@ The secrecy of the contents is the only secret.
 ## What it is not
 
 - Not purchasable, not requestable. No contributor, vendor, or researcher
-  access — ever. There is no form to fill out.
+  access, ever. There is no form to fill out.
 
 ## Access
 
@@ -30,7 +30,7 @@ Two parties, no more:
 1. The maintainer.
 2. The CI system, for the duration of a holdout re-execution run.
 
-"Just for debugging" is not access grounds — debugging uses the public
+"Just for debugging" is not access grounds. Debugging uses the public
 set. Access is never broadened temporarily; temporary access is how
 holdouts die.
 
@@ -39,8 +39,8 @@ holdouts die.
 - Encrypted at rest, maintainer-held keys. The public repo never sees the
   key, a key fragment, or anything that identifies the key.
 - Transferred only over authenticated channels to the CI runner executing
-  the holdout run — never to shared, ephemeral, or personal machines.
-- Once canary pilots land (a later slice — see `Holdout-Ranking-Design.md`
+  the holdout run, never to shared, ephemeral, or personal machines.
+- Once canary pilots land (a later slice; see `Holdout-Ranking-Design.md`
   §Non-goals; no v1 canaries until the packaging phase), every copy will
   carry a unique per-copy canary GUID, so a leak is attributable to the
   copy it came from. The canary is a tripwire, not a fence: a hit
@@ -50,7 +50,7 @@ holdouts die.
 
 Holdout bytes never appear in:
 
-- the public repo, including git history — one accidental push ends the
+- the public repo, including git history. One accidental push ends the
   holdout's useful life;
 - CI logs, artifacts, or caches of any public job;
 - error messages, transcripts, or published run artifacts;
@@ -67,13 +67,13 @@ upload their working directories.
   declared in advance (standing: quarterly top-up with newly authored
   cases). The cadence is public; the contents never are.
 - Every case carries an author timestamp. Ranked rows may be computed on
-  post-cutoff slices — only cases authored after a model's knowledge
+  post-cutoff slices. Only cases authored after a model's knowledge
   cutoff count for that model. Cutoff dates are vendor-claimed and
   treated as such: the slice is a control against accidental
   contamination, and the holdout's secrecy is the backstop against the
   adversarial case.
 - Suspected compromise rotates the affected shard immediately. The
-  rotation is disclosed publicly — that it happened and which family
+  rotation is disclosed publicly: that it happened and which family
   shard was affected. The new contents are not.
 - Cases age out of the holdout into the public set on a declared
   schedule. A holdout that never refreshes becomes the thing it was built
@@ -83,4 +83,4 @@ upload their working directories.
 
 Treat the holdout as compromised first and investigate second: rotate the
 affected shard, disclose the rotation, then determine what happened. The
-order matters — a slow response spends the one asset the holdout has.
+order matters. A slow response spends the one asset the holdout has.

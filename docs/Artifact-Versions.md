@@ -1,12 +1,12 @@
 # Artifact Version Policy
 
-**Status:** Policy — effective 2026-09-25
+**Status:** Policy (effective 2026-09-25)
 **Applies to:** `RunArtifact` (`python/peira/artifacts.py`, `crates/peira-core/src/artifact.rs`)
 
 ## The Two Principles
 
-1. **Blank-canvas:** Peira has no users. We can break anything — formats,
-   schemas, versions — to reach the best end state.
+1. **Blank-canvas:** Peira has no users. We can break anything (formats,
+   schemas, versions) to reach the best end state.
 
 2. **Sealed measurements are sacred:** Once an official measurement is sealed
    (analysis lock computed, artifact published), it must remain verifiable
@@ -44,7 +44,7 @@ whose results are published), the following rules take effect:
 
 2. **The analysis lock is version-scoped.** A v2 artifact's lock is computed
    over v2 fields. If v3 adds a field, the v3 lock covers it. An old artifact
-   verified under v2 semantics remains valid — its lock doesn't change.
+   verified under v2 semantics remains valid; its lock doesn't change.
 
 3. **Metrics recomputation must be version-aware.** Recomputing metrics from
    a sealed artifact's per-case results must use the logic that matches the
@@ -63,8 +63,8 @@ whose results are published), the following rules take effect:
 | Version | Date | Changes | Verifies older? |
 |---------|------|---------|-----------------|
 | 1 | pre-2026-09-25 | Initial format | N/A (superseded) |
-| 2 | 2026-09-25 | Metrics included in lock (P0-1). Pre-v2 artifacts fail `verify()`. | No — rejected with clear error. Acceptable: no sealed measurements exist. |
-| 2 | 2026-09-27 | Environment fingerprint added: `env` (dict) and `env_sha256` (str) fields. The `env_sha256` is part of the analysis lock. Pre-2026-09-27 v2 artifacts fail `verify()` (the lock payload changed); acceptable per blank-canvas, no sealed measurements exist. | No — old v2 artifacts fail verification (lock mismatch). |
+| 2 | 2026-09-25 | Metrics included in lock (P0-1). Pre-v2 artifacts fail `verify()`. | No; rejected with clear error. Acceptable: no sealed measurements exist. |
+| 2 | 2026-09-27 | Environment fingerprint added: `env` (dict) and `env_sha256` (str) fields. The `env_sha256` is part of the analysis lock. Pre-2026-09-27 v2 artifacts fail `verify()` (the lock payload changed); acceptable per blank-canvas, no sealed measurements exist. | No; old v2 artifacts fail verification (lock mismatch). |
 
 ## Environment Fingerprint (2026-09-27)
 
@@ -74,7 +74,7 @@ Every artifact now records the environment it ran in:
 - `env_sha256`: SHA-256 of the canonical JSON encoding of `env`
 
 The `env_sha256` is part of the analysis lock. Two runs with different
-`env_sha256` values are *explained* — the environment differed — not
+`env_sha256` values are *explained* (the environment differed), not
 mysterious. Use `peira runs list` to see the 8-character env fingerprint
 prefix for each run,
 and `peira runs compare` (future) to diff environments between runs.
@@ -96,14 +96,14 @@ peira runs verify kev-4b-v2.1.0-v1.0.0.json
 ```
 
 If the 2028 peira can't do this natively, it must point to the migration tool
-or a pinned historical version. "Just re-run it" is not an answer — the
+or a pinned historical version. "Just re-run it" is not an answer; the
 model version may no longer exist.
 
 ## Implementation Notes
 
 - The Rust core (`crates/peira-core/src/artifact.rs`) must implement the same
   version policy. Currently `suite` is `#[serde(default)]`, which yields `""`
-  (an empty/unbound suite name) — the `"trial-demo"` string appears only in
+  (an empty/unbound suite name). The `"trial-demo"` string appears only in
   the test `sample()` fixture (`artifact.rs:282`), not in any default path.
   This should be reviewed for v1 compatibility.
 - `peira runs verify` should report the artifact version in its output.

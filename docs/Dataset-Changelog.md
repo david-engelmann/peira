@@ -41,7 +41,7 @@ any further change requires a new version.
 **Required fields:** `date`, `type`, `dataset_version`, `description`,
 `manifest_sha256`, `case_count`, `families`.
 
-**Example:** (none recorded yet — v1 is unsealed; see the Pre-seal checklist below).
+**Example:** (none recorded yet; v1 is unsealed; see the Pre-seal checklist below).
 
 ### `add`
 
@@ -57,8 +57,9 @@ New cases added (minor version bump).
 
 ### `retire`
 
-Bad cases removed (minor version bump). Cases are never deleted from history —
-they're marked retired. (Future: retired cases will be excluded from scoring —
+Bad cases removed (minor version bump). Cases are never deleted from history;
+they're marked retired. (Future: retired cases will be excluded from scoring.
+
 no retired-list is consumed by the runner today; the exclusion mechanism does
 not exist yet.)
 
@@ -81,7 +82,7 @@ Typo or formatting fix that does NOT affect the correct answer (patch version bu
 **Rules:**
 - If there's ANY doubt whether the fix affects the answer, it's a `retire` + `add`,
   not a `fix`.
-- The `manifest_sha256` will change (bytes changed) — this is expected for patch bumps.
+- The `manifest_sha256` will change (bytes changed). This is expected for patch bumps.
 
 ### `annotate`
 
@@ -93,16 +94,16 @@ severity rationales, and other annotation passes.
 annotated IDs), `dataset_version` (the new version), `rationale`.
 
 **Rules:**
-- Annotated fields must not alter the correct answer — if they do, it's a
+- Annotated fields must not alter the correct answer. If they do, it's a
   `retire` + `add`, not an `annotate`.
-- The `manifest_sha256` will change (bytes changed) — this is expected for patch bumps.
+- The `manifest_sha256` will change (bytes changed). This is expected for patch bumps.
 
 ## Why Only `seal` Pins `manifest_sha256`
 
 A deliberate trust decision: only a `seal` marks a version citable as an
 official measurement. Hashing every intermediate `add`/`retire`/`fix` draft
 would pin versions nobody should cite or compare against. The seal is the
-single point where bytes and identity are bound — a changelog chain is
+single point where bytes and identity are bound. A changelog chain is
 verified by walking its seals, not its drafts. Intermediate entries record
 *what changed and why* (the audit trail); the seal records *exactly what
 bytes that produced* (the verifiable artifact).
@@ -148,7 +149,7 @@ The following must land first:
       `dataset/v1/cases/CANARY.txt`, and embed it in every v1 case file
       (the training-contamination deterrent; `docs/Dataset.md` documents the
       practice and `dataset/trial/` follows it). Deferred to the B2 backfill
-      pass, which already touches all case inputs — doing it in the same pass
+      pass, which already touches all case inputs. Doing it in the same pass
       avoids a second full byte-rewrite. The manifest hashes `CANARY.txt` as
       an artifact automatically, so regenerate the manifest after.
 - [ ] Regenerate `dataset/v1/cases/manifest.json` and record the `seal` entry

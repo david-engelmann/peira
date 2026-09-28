@@ -56,7 +56,7 @@ def _num(x: Any) -> str:
 
     Metric cells land in HTML: floats render with four decimals, ints
     (and bools) pass through as plain text, and anything else is
-    HTML-escaped — a hostile artifact must not smuggle markup through
+    HTML-escaped; a hostile artifact must not smuggle markup through
     a metric value. This function never raises.
     """
     if isinstance(x, bool):
@@ -66,7 +66,7 @@ def _num(x: Any) -> str:
     if isinstance(x, float):
         return f"{x:.4f}"
     if x is None:
-        return "—"
+        return "-"
     return html.escape(str(x))
 
 
@@ -74,7 +74,7 @@ def _val(x: Any) -> str:
     """Render a possibly-withheld metric value.
 
     ``summarize()`` returns None (never 0.0) for withheld/insufficient
-    data — the report renders that as "insufficient data", never as a
+    data; the report renders that as "insufficient data", never as a
     bare "0" or a silent blank. Hostile values are escaped via
     :func:`_num`; this function never raises.
     """
@@ -85,7 +85,7 @@ def _ci95(ci: Any) -> str:
     """Render a possibly-withheld 95% CI pair.
 
     A withheld interval (None, or a hostile non-pair) renders as
-    "insufficient data" — never a traceback, never markup. This
+    "insufficient data": never a traceback, never markup. This
     function never raises.
     """
     if not isinstance(ci, (list, tuple)) or len(ci) != 2:
@@ -118,15 +118,15 @@ def _load_dotted_adapter(spec: str):
 
     The working directory is prepended to sys.path so adapters next to the
     checkout (e.g. ``examples/``) resolve when the console script is used.
-    Only load adapter paths you trust: the module is imported — and
-    therefore executed — on load (see docs/Troubleshooting.md).
+    Only load adapter paths you trust: the module is imported (and
+    therefore executed) on load (see docs/Troubleshooting.md).
     """
     import importlib
 
     module_name, sep, attr = spec.partition(":")
     if not module_name:
         # import_module("") raises ValueError("Empty module name"), which
-        # the ImportError handler below would miss — reject the empty
+        # the ImportError handler below would miss; reject the empty
         # module up front with the standard unknown-adapter message.
         raise _unknown_adapter(spec)
     cwd = str(Path.cwd())
@@ -173,7 +173,7 @@ def _suite_dataset_identity(suite_dir: Path) -> tuple[str, str]:
     The manifest is verified against the directory *before* anything is
     scored. A mismatch fails closed with ValueError: scoring a tampered
     dataset would seal a lie into the analysis lock. A missing or
-    unreadable manifest is not tampering — it yields the fallback label
+    unreadable manifest is not tampering; it yields the fallback label
     and an empty digest, i.e. an explicitly unbound run.
     """
     manifest_path = suite_dir / "manifest.json"
@@ -181,7 +181,7 @@ def _suite_dataset_identity(suite_dir: Path) -> tuple[str, str]:
         return "0.1.0-demo", ""
     try:
         # Sealed read: the digest below is computed over the same bytes
-        # that were verified — never a re-read that raced a swap.
+        # that were verified, never a re-read that raced a swap.
         manifest, manifest_sha256, errors = verify_manifest_sealed(suite_dir)
     except (OSError, ValueError) as e:
         print(f"warning: unreadable manifest at {manifest_path} ({e}); "
@@ -193,7 +193,7 @@ def _suite_dataset_identity(suite_dir: Path) -> tuple[str, str]:
             "dataset manifest verification failed:\n  "
             + "\n  ".join(errors)
             + "\nrefusing to score: the dataset changed since its manifest "
-              "was built — rebuild the manifest or restore the files."
+              "was built; rebuild the manifest or restore the files."
         )
     dataset_version = str(manifest.get("dataset_version", "0.1.0-demo"))
     return dataset_version, manifest_sha256
@@ -362,7 +362,7 @@ def cmd_run(args: argparse.Namespace) -> int:
             return EXIT_USER_ERROR
     if isinstance(adapter, MockAdapter):
         # The mock is a test double: its simulation script is built
-        # explicitly here by the harness from the loaded cases — never
+        # explicitly here by the harness from the loaded cases; never
         # smuggled through the adapter protocol (B2: the CallContext
         # carries no gold for the mock to read). The nonce namespaces
         # this execution's call ids; the script must use the same one
@@ -406,7 +406,7 @@ def cmd_run(args: argparse.Namespace) -> int:
 
     if args.dry_run:
         print(f"dry run: {len(cases)} cases, adapter={adapter.name}, "
-              f"suite={args.suite} — config valid, nothing scored.")
+              f"suite={args.suite}; config valid, nothing scored.")
         return EXIT_OK
 
     # The output directory is created after the dry-run return: a dry
@@ -418,7 +418,7 @@ def cmd_run(args: argparse.Namespace) -> int:
     slug = _safe_adapter_slug(args.adapter)
     # Dataset identity is sealed into the analysis lock: the manifest is
     # verified before anything is scored, and its SHA-256 is recorded, so
-    # the artifact proves the exact bytes scored — not just the version
+    # the artifact proves the exact bytes scored, not just the version
     # label. A verification mismatch fails closed (nothing is scored).
     try:
         dataset_version, manifest_sha256 = _suite_dataset_identity(suite_dir)
@@ -445,7 +445,7 @@ def cmd_run(args: argparse.Namespace) -> int:
                         budget_usd=getattr(args, "budget_usd", None),
                         cache_enabled=args.cache_dir is not None)
                 except ValueError as e:
-                    print(f"error: {e} — delete {partial_path} or drop "
+                    print(f"error: {e}; delete {partial_path} or drop "
                           f"--resume and re-run.", file=sys.stderr)
                     return EXIT_USER_ERROR
                 print(f"resuming: {len(already_done)} cases already done, "
@@ -487,7 +487,7 @@ def cmd_run(args: argparse.Namespace) -> int:
             budget_usd=budget_usd,
         )
     except KeyboardInterrupt:
-        print("\ninterrupted — partial run saved; re-run with --resume.",
+        print("\ninterrupted; partial run saved; re-run with --resume.",
               file=sys.stderr)
         return EXIT_INFRA_ERROR
     except ValueError as e:
@@ -571,7 +571,7 @@ def cmd_doctor(args: argparse.Namespace) -> int:
 
     report = run_doctor(_repo_root())
     print(format_report(report))
-    # Exit 0 even when things are missing — doctor is informational, not
+    # Exit 0 even when things are missing; doctor is informational, not
     # a gate. A non-zero exit would break scripting around it. This is a
     # permanent design choice: readiness thresholds are host- and
     # adapter-specific (a "missing" verdict for one workflow is fine for
@@ -629,15 +629,15 @@ def cmd_report(args: argparse.Namespace) -> int:
               file=sys.stderr)
         return EXIT_USER_ERROR
     if not artifact.verify():
-        print("warning: analysis lock mismatch — artifact was modified after sealing.",
+        print("warning: analysis lock mismatch: artifact was modified after sealing.",
               file=sys.stderr)
     # S8b sealed the A3 summary schema into artifacts. An artifact from
     # before the rewiring is structurally valid but its metrics lack
-    # the A3 sections — rendering it would silently drop half the
+    # the A3 sections; rendering it would silently drop half the
     # report, so refuse with an actionable message instead.
     if "calibration" not in artifact.metrics:
         print(f"error: {run_path} uses the pre-S8b artifact schema "
-              f"(no A3 metric summary) — re-run the suite to generate "
+              f"(no A3 metric summary); re-run the suite to generate "
               f"a current artifact", file=sys.stderr)
         return EXIT_USER_ERROR
     # Metric access is also hostile input: a well-formed-JSON artifact
@@ -668,7 +668,7 @@ def _report_page(artifact) -> str:
     # Case ids, family names, adapter names, decisions, refusal reasons,
     # and suite/dataset labels are author- or adapter-controlled: escape
     # them so hostile markup lands inert. Metric values go through _val
-    # / _ci95 for the same reason — a hostile artifact can smuggle
+    # / _ci95 for the same reason: a hostile artifact can smuggle
     # markup through any interpolated cell, and a withheld (None) value
     # must render as "insufficient data", never as a bare 0.
     e = html.escape
@@ -692,7 +692,7 @@ def _report_page(artifact) -> str:
         f"<td>{e(str(_rec(r, 'attacked').get('decision', '?')))}</td>"
         f"<td>{_mark(bool(r.get('flipped')))}</td>"
         f"<td>{_mark(bool(r.get('eligible')))}</td>"
-        f"<td>{e(str(r.get('ineligibility_reason') or '—'))}</td>"
+        f"<td>{e(str(r.get('ineligibility_reason') or '-'))}</td>"
         f"<td>{_mark(bool(_rec(r, 'attacked').get('abstained')))}</td></tr>"
         for r in artifact.results
     )
@@ -767,8 +767,8 @@ def _report_page(artifact) -> str:
 </table>
 <p>Compression index (reference-free): benign {_est_cell((sd.get('compression_index') or {}).get('benign'))} ·
 attacked {_est_cell((sd.get('compression_index') or {}).get('attacked'))}</p>
-<p>Skipped pairs — ineligible: {_num(sd_skipped.get('ineligible'))}, no score: {_num(sd_skipped.get('no_score'))},
-no reference: {_num(sd_skipped.get('no_reference'))}</p>"""
+<p>Skipped pairs (ineligible: {_num(sd_skipped.get('ineligible'))}, no score: {_num(sd_skipped.get('no_score'))},
+no reference: {_num(sd_skipped.get('no_reference'))})</p>"""
     else:
         sd_section = f"<p><em>Score diagnostics unavailable:</em> {e(str(sd.get('reason') or 'no reason given'))}</p>"
 
@@ -783,7 +783,7 @@ no reference: {_num(sd_skipped.get('no_reference'))}</p>"""
         )
 
     page = f"""<!doctype html>
-<html><head><meta charset="utf-8"><title>peira report — {e(artifact.adapter_name)}</title></head>
+<html><head><meta charset="utf-8"><title>peira report: {e(artifact.adapter_name)}</title></head>
 <body>
 <h1>peira report</h1>
 <p>Adapter: {e(artifact.adapter_name)}{f" {e(artifact.adapter_version)}" if artifact.adapter_version else ""} · Suite: {e(artifact.suite)} ·
@@ -803,14 +803,14 @@ Dataset: {e(artifact.dataset_version)} · peira {e(str(artifact.peira_version))}
 <p>Pricing: {e(str(artifact.pricing_source or 'unpriced'))}{f" (pinned {e(str(artifact.pricing_date))})" if artifact.pricing_date else ""} ·
 Cost figures below are list-price estimates from the pinned table, not invoices.</p>
 <h2>Outcome accounting</h2>
-<p>Per-arm decision census. Refusals and abstentions are counted here —
+<p>Per-arm decision census. Refusals and abstentions are counted here:
 never laundered into ASR.</p>
 <table border="1"><tr><th>arm</th><th>n</th><th>approve</th><th>deny</th><th>other</th><th>refused</th><th>abstained</th><th>malformed</th></tr>
 {_outcome_row("benign", m.get("outcomes_benign"))}
 {_outcome_row("attacked", m.get("outcomes_attacked"))}
 </table>
 <h2>Calibration</h2>
-<p>Confidence coverage — benign: {_val(cov.get('benign'))}, attacked: {_val(cov.get('attacked'))}.
+<p>Confidence coverage (benign: {_val(cov.get('benign'))}, attacked: {_val(cov.get('attacked'))}).
 Per-condition ECE/Brier with bootstrap 95% CIs; Murphy decomposition
 (reliability / resolution / uncertainty). Derived metrics are withheld
 below 30 observations per condition.</p>
@@ -835,7 +835,7 @@ Selective risk at fixed coverage points:</p>
 <h2>Per-case results</h2>
 <p>Flip column is the one to drill into when iterating on cases: a case
 the adapter never flips may be too weak; a case every adapter flips may
-be mislabeled. An attacked abstention is not a flip — it is a refusal,
+be mislabeled. An attacked abstention is not a flip; it is a refusal,
 counted in the refusal column.</p>
 <table border="1"><tr><th>case</th><th>family</th><th>benign</th><th>attacked</th><th>flipped</th><th>eligible</th><th>ineligible reason</th><th>refused</th></tr>
 {case_rows}</table>
@@ -843,7 +843,7 @@ counted in the refusal column.</p>
 <p><em>A peira score measures robustness on this benchmark's paired
 decision cases. It does not certify a model as safe.</em></p>
 <p>Analysis lock: <code>{e(str(artifact.analysis_lock))}</code></p>
-<p>Manifest SHA-256: <code>{e(str(artifact.manifest_sha256) if artifact.manifest_sha256 else "unbound — suite ships no manifest")}</code></p>
+<p>Manifest SHA-256: <code>{e(str(artifact.manifest_sha256) if artifact.manifest_sha256 else "unbound (suite ships no manifest)")}</code></p>
 </body></html>"""
     return page
 
@@ -862,7 +862,7 @@ def _compare_text(c) -> str:
         "=============================",
         f"A: {c.adapter_a} ({c.n_a} cases)",
         f"B: {c.adapter_b} ({c.n_b} cases)",
-        f"Suite: {c.suite or '—'}, dataset {c.dataset_version or '—'} — "
+        f"Suite: {c.suite or '-'}, dataset {c.dataset_version or '-'}; "
         f"{c.n_paired} paired cases",
         "",
         "Head-to-head (handled correctly = eligible baseline, attack did not flip):",
@@ -897,7 +897,7 @@ def _compare_text(c) -> str:
     if c.bradley_terry_strengths is not None:
         s = c.bradley_terry_strengths
         lines.append(
-            "Bradley-Terry strengths (display-only; no CIs by contract — "
+            "Bradley-Terry strengths (display-only; no CIs by contract; "
             "read with the raw counts):"
         )
         for name in sorted(s):
@@ -937,7 +937,7 @@ def _compare_page(c) -> str:
     """Render a Comparison as a simple HTML page.
 
     Adapter names, family names, and warning text are adapter- or
-    author-controlled: escape them. Metric values go through _val/_ci95 —
+    author-controlled: escape them. Metric values go through _val/_ci95:
     a withheld value renders as "insufficient data", never as 0.
     """
     e = html.escape
@@ -1000,7 +1000,7 @@ def _compare_page(c) -> str:
     return f"""<html><head><meta charset="utf-8"><title>peira compare: {e(c.adapter_a)} vs {e(c.adapter_b)}</title></head>
 <body>
 <h1>peira compare: {e(c.adapter_a)} vs {e(c.adapter_b)}</h1>
-<p>Suite: {e(str(c.suite or "—"))}, dataset {e(str(c.dataset_version or "—"))}.
+<p>Suite: {e(str(c.suite or "-"))}, dataset {e(str(c.dataset_version or "-"))}.
 A: {_num(c.n_a)} cases, B: {_num(c.n_b)} cases, {_num(c.n_paired)} paired.</p>
 <h2>Head-to-head</h2>
 <p>Handled correctly = eligible benign baseline and the attack did not flip
@@ -1042,7 +1042,7 @@ def cmd_compare(args: argparse.Namespace) -> int:
     a, b = artifacts
     for art, path_str in ((a, args.run_a), (b, args.run_b)):
         if not art.verify():
-            print(f"warning: {path_str}: analysis lock mismatch — artifact was "
+            print(f"warning: {path_str}: analysis lock mismatch: artifact was "
                   f"modified after sealing.", file=sys.stderr)
     try:
         comparison = compare_artifacts(a, b, seed=args.seed)
@@ -1200,7 +1200,7 @@ def cmd_dataset_build_manifest(args: argparse.Namespace) -> int:
         return EXIT_USER_ERROR
     if not _SEMVER_RE.fullmatch(args.version):
         print(f"error: version {args.version!r} is not semver "
-              f"(expected e.g. 1.0.0 or 0.1.0-trial) — manifest not "
+              f"(expected e.g. 1.0.0 or 0.1.0-trial); manifest not "
               f"written", file=sys.stderr)
         return EXIT_USER_ERROR
     from peira.review import critical_cases_missing_notes
@@ -1211,7 +1211,7 @@ def cmd_dataset_build_manifest(args: argparse.Namespace) -> int:
         return EXIT_USER_ERROR
     if missing_notes:
         print(f"error: {len(missing_notes)} critical case(s) missing "
-              f"severity notes — manifest not written", file=sys.stderr)
+              f"severity notes; manifest not written", file=sys.stderr)
         for cid in missing_notes:
             print(f"  - {cid}: say why it earned 'critical' in the case "
                   f"notes (docs/Severity-Rubric.md)", file=sys.stderr)
@@ -1224,7 +1224,7 @@ def cmd_dataset_build_manifest(args: argparse.Namespace) -> int:
             print(f"error: {e}", file=sys.stderr)
             return EXIT_USER_ERROR
         if pending:
-            print(f"error: {len(pending)} reviews pending — "
+            print(f"error: {len(pending)} reviews pending; "
                   f"manifest not written", file=sys.stderr)
             for p in pending:
                 print(f"  - {p['case_id']} [{p['severity']}]", file=sys.stderr)
@@ -1247,11 +1247,11 @@ def cmd_dataset_build_manifest(args: argparse.Namespace) -> int:
         # Versioning rule 1 (docs/Dataset.md): any case added, changed,
         # or removed is a new dataset version. Rebuilding byte-identical
         # content under the same version is fine; changed content is
-        # not — that would silently rewrite a released version.
+        # not; that would silently rewrite a released version.
         if (existing.get("dataset_version") == args.version
                 and existing.get("files") != manifest["files"]):
             print(f"error: content changed since version {args.version} "
-                  f"was sealed — bump the version, manifest not written",
+                  f"was sealed; bump the version, manifest not written",
                   file=sys.stderr)
             return EXIT_USER_ERROR
     out = write_manifest(dataset_dir, manifest)
@@ -1310,7 +1310,7 @@ def cmd_dataset_review(args: argparse.Namespace) -> int:
         return EXIT_USER_ERROR
     # review_command always exists: the parser sets review_command=None
     # by default, and the approve/reject subparsers set it via
-    # dest="review_command" — no AttributeError fallback needed.
+    # dest="review_command"; no AttributeError fallback needed.
     command = args.review_command
     if command in ("approve", "reject"):
         status = "approved" if command == "approve" else "rejected"
@@ -1355,7 +1355,7 @@ def cmd_dataset_status(args: argparse.Namespace) -> int:
 
     Exit 0 iff the dataset is release-ready: the gates report no
     errors, no human reviews are pending, and a manifest exists that
-    verifies clean against the directory. Anything else is exit 1 —
+    verifies clean against the directory. Anything else is exit 1:
     a status signal, not an error (see docs/Dataset.md).
     """
     from peira.dataset import MANIFEST_NAME, verify_manifest
@@ -1456,7 +1456,7 @@ def cmd_dataset_verify_manifest(args: argparse.Namespace) -> int:
     try:
         errors = verify_manifest(dataset_dir)
     except FileNotFoundError:
-        print(f"error: no {MANIFEST_NAME} in {dataset_dir} — run "
+        print(f"error: no {MANIFEST_NAME} in {dataset_dir}; run "
               f"'peira dataset build-manifest' first", file=sys.stderr)
         return EXIT_USER_ERROR
     except ValueError as e:
@@ -1482,8 +1482,8 @@ def build_parser() -> argparse.ArgumentParser:
                    help="'mock', or a dotted path: package.module (with a "
                    "top-level `adapter`), package.module:ClassName, or "
                    "package.module.ClassName. Only load adapter paths you "
-                   "trust: the module is imported — and therefore executed "
-                   "— with the working directory first on sys.path")
+                   "trust: the module is imported (and therefore executed) "
+                   "with the working directory first on sys.path")
     r.add_argument("--suite", default="trial-demo",
                    choices=list(SUITE_DIRS) + ["smoke"],
                    help="smoke is an alias for trial")
@@ -1557,7 +1557,7 @@ def build_parser() -> argparse.ArgumentParser:
         help="check local machine readiness: system, datasets, adapters",
         description="Read-only readiness check. Reports Python/RAM/disk/GPU, "
         "verifies dataset manifests, and checks each adapter's requirements "
-        "(API keys are checked for presence only — values are never printed). "
+        "(API keys are checked for presence only; values are never printed). "
         "The checks themselves make no network calls, download nothing, and "
         "write nothing; adapter discovery imports adapter modules.",
     )
