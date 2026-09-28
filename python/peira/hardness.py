@@ -410,6 +410,10 @@ def report_text(report: HardnessReport) -> str:
     # 3. Transfer matrix (overall).
     t = report.transfer_overall
     L.append("Transfer ASR matrix (row flipped -> column also flips):")
+    L.append(
+        "  (src flips: cases flipped by the row adapter; each cell's rate"
+        " divides by the subset of those also eligible for the column adapter)"
+    )
     header = "  " + "".join(f"{a[:12]:>13}" for a in A)
     L.append(header)
     for src in A:

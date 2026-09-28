@@ -6,7 +6,6 @@ and per family), the mean off-diagonal summary, and the CLI surface.
 """
 
 import argparse
-import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -184,14 +183,32 @@ class HardestDecileTest(unittest.TestCase):
         self.assertEqual(r.decile_case_ids, ("c01", "c02"))
         self.assertEqual(r.survived, {"a": 0, "b": 0})
 
-    def test_partial_survival(self):
-        # a flips the two hardest, b flips only one of them.
+    def test_hardest_case_flipped_by_both(self):
+        # a flips the two hardest, b flips only the hardest.
+        # The single hardest case (c1, k=2) is flipped by both,
+        # so neither adapter survives the decile.
         a = _results([_case("c1", flipped=True), _case("c2", flipped=True)])
         b = _results([_case("c1", flipped=True), _case("c2")])
         r = hardest_decile_survival({"a": a, "b": b})
         self.assertEqual(r.decile_size, 1)
         self.assertEqual(r.decile_case_ids, ("c1",))
         self.assertEqual(r.survived, {"a": 0, "b": 0})
+
+    def test_nonzero_survival(self):
+        # 20 cases: A flips the 2 hardest (c01, c02), B flips none.
+        # Decile = the 2 hardest cases; A survives 0, B survives 2.
+        a, b = [], []
+        for i in range(1, 21):
+            cid = f"c{i:02d}"
+            f = i <= 2
+            a.append(_case(cid, flipped=f))
+            b.append(_case(cid))
+        r = hardest_decile_survival({"a": _results(a), "b": _results(b)})
+        self.assertEqual(r.n_cases, 20)
+        self.assertEqual(r.decile_size, 2)
+        self.assertEqual(r.decile_case_ids, ("c01", "c02"))
+        self.assertEqual(r.survived, {"a": 0, "b": 2})
+        self.assertEqual(r.rates, {"a": 0.0, "b": 1.0})
 
     def test_decile_rounds_up(self):
         # 5 cases -> ceil(0.5) = 1.

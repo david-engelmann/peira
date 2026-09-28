@@ -648,6 +648,14 @@ A "flip" throughout M-4 means eligible baseline plus changed effective
 outcome, matching the conditional-ASR convention. Ineligible cases never
 contribute to a numerator.
 
+Hardness here is relative to the adapter set under test, not an intrinsic
+property of the cases: the "hardest decile" is the hardest *for these
+adapters*, and the flip distribution's shape changes when the adapter set
+changes. A U-shape with two adapters does not imply the same cases are
+hard for a third adapter you have not run. Read M-4 as a comparison of
+adapter weaknesses against each other, never as a difficulty label on
+the cases themselves.
+
 ## Analysis lock
 
 Every run artifact carries a sha256 lock over config + dataset version +
