@@ -26,7 +26,7 @@ from peira.calibration import (
     risk_coverage_diagram_svg,
 )
 from peira.dataset import atomic_write_text, verify_manifest, verify_manifest_sealed
-from peira.metrics import PerCaseResult
+from peira.metrics import NOT_RESOLVABLE, PerCaseResult, resolvable
 from peira.runner import (
     SUITE_DIRS,
     load_cases,
@@ -1026,22 +1026,69 @@ def _compare_text(c) -> str:
     else:
         lines.append(f"Bradley-Terry: {c.bradley_terry_note or 'withheld'}")
     lines.append("")
-    lines.append("Deltas (A − B, paired bootstrap 95% CI):")
+    lines.append("Deltas (A − B, paired bootstrap 95% CI, MDE at 80% power):")
     for d in c.deltas:
         if not d.sufficient or d.delta is None:
             lines.append(f"  {d.name:<16}: insufficient data (n={d.n})")
             continue
         lo, hi = d.ci95
-        favors = f" favors {d.favors}" if d.favors else ""
+        mde_str = f", MDE={d.mde:.4f}" if d.mde is not None else ""
+        if d.favors:
+            verdict = f" favors {d.favors}"
+        elif not (lo <= 0.0 <= hi):
+            # CI excludes zero but the effect is below the MDE: a real
+            # signal the study was underpowered to resolve.
+            verdict = f" {NOT_RESOLVABLE}"
+        else:
+            verdict = ""
         lines.append(
-            f"  {d.name:<16}: {d.delta:+.4f} ({lo:+.4f}–{hi:+.4f}, n={d.n}){favors}"
+            f"  {d.name:<16}: {d.delta:+.4f} ({lo:+.4f}–{hi:+.4f}, n={d.n}{mde_str}){verdict}"
         )
     if c.per_family:
         lines += ["", "Per-family win rates (A wins / B wins / ties):"]
+        mde_by_fam = {fm.family: fm.mde for fm in c.family_mdes}
         for fam, fh in sorted(c.per_family.items()):
             ties = fh.both_right + fh.both_wrong
+            fam_mde = mde_by_fam.get(fam)
+            diff = (fh.a_only - fh.b_only) / fh.n if fh.n else 0.0
+            note = ""
+            if (
+                fam_mde is not None
+                and fh.n > 0
+                and diff != 0.0
+                and not resolvable(diff, fam_mde)
+            ):
+                note = f" → {NOT_RESOLVABLE}"
             lines.append(
-                f"  {fam}: {fh.a_only} / {fh.b_only} / {ties} (n={fh.n})"
+                f"  {fam}: {fh.a_only} / {fh.b_only} / {ties} (n={fh.n}){note}"
+            )
+    if c.family_mdes:
+        lines += [
+            "",
+            "Per-family MDEs (R-02; 80% power; a family difference below "
+            "its MDE is not resolvable):",
+        ]
+        for fm in c.family_mdes:
+            lines.append(
+                f"  {fm.family}: n={fm.n}, "
+                f"discordant rate={fm.discordant_rate:.3f}, MDE={fm.mde:.4f}"
+            )
+    if c.directional_mdes:
+        lines += [
+            "",
+            "Directional MDEs (C-8; 80% power; direction-eligible n):",
+        ]
+        for dm in c.directional_mdes:
+            if dm.mde is None or dm.delta is None:
+                lines.append(
+                    f"  {dm.direction}: insufficient data "
+                    f"(n_eligible={dm.n_eligible})"
+                )
+                continue
+            verdict = "resolvable" if dm.resolvable else NOT_RESOLVABLE
+            lines.append(
+                f"  {dm.direction}: delta={dm.delta:+.4f}, MDE={dm.mde:.4f} "
+                f"(n_eligible={dm.n_eligible}) → {verdict}"
             )
     if c.warnings:
         lines += ["", "Warnings:"]
@@ -1100,18 +1147,56 @@ def _compare_page(c) -> str:
     for d in c.deltas:
         if not d.sufficient or d.delta is None or d.ci95 is None:
             cell = "insufficient data"
+            mde_cell = "-"
         else:
-            favors = f" (favors {e(d.favors)})" if d.favors else ""
-            cell = f"{_num(d.delta)} ({_ci95(d.ci95)}, n={_num(d.n)}){favors}"
+            if d.favors:
+                verdict = f" (favors {e(d.favors)})"
+            elif not (d.ci95[0] <= 0.0 <= d.ci95[1]):
+                verdict = f" ({e(NOT_RESOLVABLE)})"
+            else:
+                verdict = ""
+            cell = f"{_num(d.delta)} ({_ci95(d.ci95)}, n={_num(d.n)}){verdict}"
+            mde_cell = _num(d.mde) if d.mde is not None else "-"
         delta_rows.append(
-            f"<tr><td>{e(d.name)}</td><td>{cell}</td></tr>"
+            f"<tr><td>{e(d.name)}</td><td>{cell}</td><td>{mde_cell}</td></tr>"
         )
-    fam_rows = "\n".join(
-        f"<tr><td>{e(str(fam))}</td><td>{_num(fh.n)}</td>"
-        f"<td>{_num(fh.a_only)}</td><td>{_num(fh.b_only)}</td>"
-        f"<td>{_num(fh.both_right + fh.both_wrong)}</td></tr>"
-        for fam, fh in sorted(c.per_family.items())
+    mde_by_fam = {fm.family: fm.mde for fm in c.family_mdes}
+    fam_rows = []
+    for fam, fh in sorted(c.per_family.items()):
+        ties = fh.both_right + fh.both_wrong
+        fam_mde = mde_by_fam.get(fam)
+        diff = (fh.a_only - fh.b_only) / fh.n if fh.n else 0.0
+        note = ""
+        if (
+            fam_mde is not None
+            and fh.n > 0
+            and diff != 0.0
+            and not resolvable(diff, fam_mde)
+        ):
+            note = f" ({e(NOT_RESOLVABLE)})"
+        fam_rows.append(
+            f"<tr><td>{e(str(fam))}</td><td>{_num(fh.n)}</td>"
+            f"<td>{_num(fh.a_only)}</td><td>{_num(fh.b_only)}</td>"
+            f"<td>{_num(ties)}</td><td>{note}</td></tr>"
+        )
+    fam_rows = "\n".join(fam_rows)
+    family_mde_rows = "\n".join(
+        f"<tr><td>{e(str(fm.family))}</td><td>{_num(fm.n)}</td>"
+        f"<td>{_num(fm.discordant_rate)}</td><td>{_num(fm.mde)}</td></tr>"
+        for fm in c.family_mdes
     )
+    dir_rows = []
+    for dm in c.directional_mdes:
+        if dm.mde is None or dm.delta is None:
+            cell = "insufficient data"
+        else:
+            verdict = "resolvable" if dm.resolvable else e(NOT_RESOLVABLE)
+            cell = f"{_num(dm.delta)} (MDE {_num(dm.mde)}) → {verdict}"
+        dir_rows.append(
+            f"<tr><td>{e(str(dm.direction))}</td>"
+            f"<td>{_num(dm.n_eligible)}</td><td>{cell}</td></tr>"
+        )
+    dir_rows = "\n".join(dir_rows)
     warnings_html = "".join(f"<li>{e(w)}</li>" for w in c.warnings)
     return f"""<html><head><meta charset="utf-8"><title>peira compare: {e(c.adapter_a)} vs {e(c.adapter_b)}</title></head>
 <body>
@@ -1128,11 +1213,19 @@ the effective outcome.</p>
 <h2>Bradley-Terry (display-only)</h2>
 {bt_html}
 <h2>Deltas (A − B, paired bootstrap 95% CI)</h2>
-<table border="1"><tr><th>metric</th><th>delta (95% CI)</th></tr>
+<table border="1"><tr><th>metric</th><th>delta (95% CI)</th><th>MDE (80% power)</th></tr>
 {"\n".join(delta_rows)}</table>
 <h2>Per-family wins</h2>
-<table border="1"><tr><th>family</th><th>n</th><th>A wins</th><th>B wins</th><th>ties</th></tr>
+<table border="1"><tr><th>family</th><th>n</th><th>A wins</th><th>B wins</th><th>ties</th><th>resolvability</th></tr>
 {fam_rows}</table>
+<h2>Per-family MDEs (R-02; 80% power)</h2>
+<p>A family-level difference below its MDE is not resolvable at this n,
+never a win.</p>
+<table border="1"><tr><th>family</th><th>n</th><th>discordant rate</th><th>MDE</th></tr>
+{family_mde_rows}</table>
+<h2>Directional MDEs (C-8; 80% power, direction-eligible n)</h2>
+<table border="1"><tr><th>direction</th><th>n eligible</th><th>delta vs MDE</th></tr>
+{dir_rows}</table>
 {f"<h2>Warnings</h2><ul>{warnings_html}</ul>" if warnings_html else ""}
 <hr>
 <p><em>A peira comparison measures relative robustness on this benchmark's paired

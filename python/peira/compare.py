@@ -32,13 +32,20 @@ from peira.artifacts import RunArtifact
 from peira.concurrency import _require_json_str
 from peira.metrics import (
     MIN_BT_COMPARISONS,
+    NOT_RESOLVABLE,
     ComparisonOutcome,
     PerCaseResult,
     _require_result_strings,
     bradley_terry,
+    directional_mde,
+    flip_direction,
+    is_direction_eligible,
     mcnemar,
     mcnemar_p_value,
+    mde_mcnemar,
+    mde_paired_bootstrap,
     paired_bootstrap_ci,
+    resolvable,
 )
 
 MIN_COMPARE_DELTA_CASES = 30
@@ -130,6 +137,49 @@ class DeltaResult:
     # as "A wins" when delta < 0; higher-is-better (benign accuracy) when
     # delta > 0. ``favors`` names the winner, or None when withheld/tied.
     favors: str | None
+    # R-02: the delta's minimum detectable effect at 80% power (paired
+    # bootstrap). A favors claim with abs(delta) < mde reads as
+    # "not resolvable at this n", never as a win.
+    mde: float | None = None
+
+
+@dataclass(frozen=True)
+class DirectionalMde:
+    """C-8 direction-specific MDE row: one flip direction's resolvability.
+
+    ``direction`` is the flip-direction label (see
+    :func:`peira.metrics.flip_direction`). ``n_eligible`` is the
+    direction-eligible denominator (cases that could have flipped in this
+    direction). ``delta`` is the A-minus-B directional flip-rate
+    difference; ``mde`` is its minimum detectable effect at 80% power via
+    paired-bootstrap variance. ``resolvable`` is False when
+    ``abs(delta) < mde``: the directional claim reads as
+    :data:`peira.metrics.NOT_RESOLVABLE`, never as a winner.
+    """
+
+    direction: str
+    n_eligible: int
+    delta: float | None
+    mde: float | None
+    resolvable: bool
+
+
+@dataclass(frozen=True)
+class FamilyMde:
+    """R-02 per-family minimum detectable effect.
+
+    ``n`` is the paired-case count in the family; ``discordant_rate`` is
+    the fraction of pairs where the adapters disagreed
+    ((a_only + b_only) / n); ``mde`` is the minimum detectable paired
+    difference at 80% power via :func:`peira.metrics.mde_mcnemar`. A
+    family-level difference smaller than ``mde`` is
+    :data:`peira.metrics.NOT_RESOLVABLE`.
+    """
+
+    family: str
+    n: int
+    discordant_rate: float
+    mde: float
 
 
 @dataclass
@@ -153,6 +203,12 @@ class Comparison:
     bradley_terry_note: str
     deltas: list[DeltaResult] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
+    # R-02: per-family MDEs; a family difference below its MDE is
+    # "not resolvable at this n", never a win.
+    family_mdes: list[FamilyMde] = field(default_factory=list)
+    # C-8: direction-specific MDE rows (paired-bootstrap variance,
+    # direction-eligible denominators).
+    directional_mdes: list[DirectionalMde] = field(default_factory=list)
 
 
 def check_comparable(a: RunArtifact, b: RunArtifact) -> list[str]:
@@ -403,19 +459,28 @@ def _delta(
     if n < MIN_COMPARE_DELTA_CASES:
         return DeltaResult(
             name=name, delta=None, ci95=None, n=n,
-            sufficient=False, favors=None,
+            sufficient=False, favors=None, mde=None,
         )
     point = sum(xs) / n - sum(ys) / n
     lo, hi = paired_bootstrap_ci(xs, ys, seed=seed)
+    # R-02: the delta's MDE at 80% power via paired-bootstrap SE. The
+    # favors label is only claimed when the CI excludes zero AND the
+    # effect clears the MDE; otherwise it reads as "not resolvable".
+    mde = mde_paired_bootstrap(xs, ys, seed=seed)
     favors: str | None = None
-    if abs(point) > 0.0 and not (lo <= 0.0 <= hi):
-        # Only claim "favors" when the CI excludes zero — otherwise the
-        # data doesn't support a directional finding.
+    if (
+        abs(point) > 0.0
+        and not (lo <= 0.0 <= hi)
+        and resolvable(point, mde)
+    ):
+        # Only claim "favors" when the CI excludes zero AND the effect
+        # clears the MDE — otherwise the data doesn't support a
+        # directional finding at this n.
         a_wins = (point < 0.0) if lower_is_better else (point > 0.0)
         favors = "a" if a_wins else "b"
     return DeltaResult(
         name=name, delta=point, ci95=(lo, hi), n=n,
-        sufficient=True, favors=favors,
+        sufficient=True, favors=favors, mde=mde,
     )
 
 
@@ -504,6 +569,81 @@ def _delta_metrics(
     return deltas
 
 
+def _family_mdes(per_family: dict[str, HeadToHeadCounts]) -> list[FamilyMde]:
+    """R-02 per-family MDEs from the family's own discordant-pair rate.
+
+    For each family, the discordant rate is (a_only + b_only) / n and the
+    MDE follows :func:`peira.metrics.mde_mcnemar` at 80% power. A family
+    with no discordant pairs has MDE 0.0 (nothing to resolve); a family
+    with n == 0 cannot occur here (per_family only holds non-empty
+    families).
+    """
+    out = []
+    for fam in sorted(per_family):
+        h = per_family[fam]
+        discordant = h.a_only + h.b_only
+        rate = discordant / h.n if h.n > 0 else 0.0
+        out.append(FamilyMde(
+            family=fam,
+            n=h.n,
+            discordant_rate=rate,
+            mde=mde_mcnemar(h.n, rate) if h.n > 0 else 0.0,
+        ))
+    return out
+
+
+def _directional_mdes(
+    pairs: list[PairedCase], seed: int = 0
+) -> list[DirectionalMde]:
+    """C-8 direction-specific MDE rows over all paired cases.
+
+    For each flip direction observed in either adapter's results, computes
+    the A-minus-B directional flip-rate difference and its MDE via
+    :func:`peira.metrics.directional_mde` (paired-bootstrap variance over
+    the direction-eligible denominator). Directions are sorted for stable
+    output. A direction with no eligible cases yields mde None and
+    resolvable False: the claim is withheld, never fabricated.
+    """
+    if not pairs:
+        return []
+    dir_a = [flip_direction(p.a) for p in pairs]
+    dir_b = [flip_direction(p.b) for p in pairs]
+    # Candidate directions: every non-"none" label either adapter produced.
+    directions = sorted({d for d in dir_a + dir_b if d != "none"})
+    rows = []
+    for direction in directions:
+        # Direction eligibility is a property of the case (the benign
+        # baseline), shared by both adapters' records of the pair.
+        eligible = [
+            is_direction_eligible(p.a, direction) for p in pairs
+        ]
+        mde, n_eligible = directional_mde(
+            dir_a, dir_b, direction, eligible, seed=seed
+        )
+        if n_eligible == 0 or mde is None:
+            rows.append(DirectionalMde(
+                direction=direction,
+                n_eligible=0,
+                delta=None,
+                mde=None,
+                resolvable=False,
+            ))
+            continue
+        idx = [i for i, e in enumerate(eligible) if e]
+        delta = (
+            sum(1.0 for i in idx if dir_a[i] == direction) / n_eligible
+            - sum(1.0 for i in idx if dir_b[i] == direction) / n_eligible
+        )
+        rows.append(DirectionalMde(
+            direction=direction,
+            n_eligible=n_eligible,
+            delta=delta,
+            mde=mde,
+            resolvable=resolvable(delta, mde),
+        ))
+    return rows
+
+
 def compare_artifacts(a: RunArtifact, b: RunArtifact, seed: int = 0) -> Comparison:
     """Head-to-head comparison of two sealed artifacts.
 
@@ -524,6 +664,7 @@ def compare_artifacts(a: RunArtifact, b: RunArtifact, seed: int = 0) -> Comparis
     name_b = b.adapter_name or "B"
 
     h2h = _head_to_head(pairs)
+    per_fam = _per_family(pairs)
     item_a, item_b = _item_names(a, b)
     mcnemar_res, mcnemar_note = _mcnemar_test(pairs)
     bt_strengths, bt_nu, bt_n, bt_note = _bradley_terry_fit(pairs, item_a, item_b)
@@ -549,7 +690,7 @@ def compare_artifacts(a: RunArtifact, b: RunArtifact, seed: int = 0) -> Comparis
         n_b=len(b.results),
         n_paired=len(pairs),
         head_to_head=h2h,
-        per_family=_per_family(pairs),
+        per_family=per_fam,
         mcnemar=mcnemar_res,
         mcnemar_note=mcnemar_note,
         bradley_terry_strengths=bt_strengths,
@@ -558,6 +699,8 @@ def compare_artifacts(a: RunArtifact, b: RunArtifact, seed: int = 0) -> Comparis
         bradley_terry_note=bt_note,
         deltas=_delta_metrics(pairs, seed),
         warnings=warnings,
+        family_mdes=_family_mdes(per_fam),
+        directional_mdes=_directional_mdes(pairs, seed),
     )
 
 
@@ -574,6 +717,19 @@ def comparison_to_dict(c: Comparison) -> dict[str, Any]:
             "name": d.name, "delta": d.delta,
             "ci95": list(d.ci95) if d.ci95 else None,
             "n": d.n, "sufficient": d.sufficient, "favors": d.favors,
+            "mde": d.mde,
+        }
+
+    def _family_mde(fm: FamilyMde) -> dict[str, Any]:
+        return {
+            "family": fm.family, "n": fm.n,
+            "discordant_rate": fm.discordant_rate, "mde": fm.mde,
+        }
+
+    def _directional_mde(dm: DirectionalMde) -> dict[str, Any]:
+        return {
+            "direction": dm.direction, "n_eligible": dm.n_eligible,
+            "delta": dm.delta, "mde": dm.mde, "resolvable": dm.resolvable,
         }
 
     m = c.mcnemar
@@ -607,5 +763,7 @@ def comparison_to_dict(c: Comparison) -> dict[str, Any]:
         ),
         "bradley_terry_note": c.bradley_terry_note,
         "deltas": [_delta(d) for d in c.deltas],
+        "family_mdes": [_family_mde(fm) for fm in c.family_mdes],
+        "directional_mdes": [_directional_mde(dm) for dm in c.directional_mdes],
         "warnings": c.warnings,
     }
