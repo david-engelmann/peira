@@ -116,7 +116,7 @@ knowledge_base:
   learnings:
     scope: "local"
     approval_delay: 7  # veto window against learnings poisoning (P2-R1)
-  linked_repositories: []  # never link the private peira-holdout repo
+  linked_repositories: []  # never link private companion repos
 
 chat:
   auto_reply: false  # avoid agent rebuttal reply loops (P2-R2)
