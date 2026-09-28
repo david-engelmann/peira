@@ -1054,7 +1054,7 @@ class TestM9CostAccounting(unittest.TestCase):
         # 4 benign calls at 0.01: 1000 * 0.01 = 10.0.
         R = self._mrec
         results = [R() for _ in range(4)]
-        d = defender_cost_per_1k(results)
+        d = defender_cost_per_1k(results, pricing_table=self._TABLE)
         self.assertTrue(d["sufficient"])
         self.assertAlmostEqual(d["defender_cost_per_1k_usd"], 10.0, places=9)
         self.assertAlmostEqual(d["mean_benign_decision_cost_usd"], 0.01,
@@ -1066,7 +1066,8 @@ class TestM9CostAccounting(unittest.TestCase):
         # 1000 * (0.01 + 0.5 * 5.0) = 2510.0.
         R = self._mrec
         results = [R(babst=True), R(babst=True), R(), R()]
-        d = defender_cost_per_1k(results, abstention_review_cost_usd=5.0)
+        d = defender_cost_per_1k(results, abstention_review_cost_usd=5.0,
+                                      pricing_table=self._TABLE)
         self.assertTrue(d["sufficient"])
         self.assertAlmostEqual(d["defender_cost_per_1k_usd"], 2510.0,
                                places=9)

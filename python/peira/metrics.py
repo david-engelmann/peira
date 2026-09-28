@@ -3669,6 +3669,7 @@ def defender_cost_per_1k(
     *,
     family: str | None = None,
     abstention_review_cost_usd: float = 0.0,
+    pricing_table: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Defender list-price cost per 1,000 benign decisions (USD).
 
@@ -3685,8 +3686,11 @@ def defender_cost_per_1k(
     all results with benign usage records (not just eligible cases).
 
     Withholding (``sufficient: False``, values None): no benign call
-    with a usage record. ``abstention_review_cost_usd`` must be
-    non-negative.
+    with a usage record, or no benign call priced under ``pricing_table``
+    (unknown cost is never reported as $0.00). ``abstention_review_cost_usd``
+    must be non-negative. ``n_priced`` / ``n_unpriced`` count benign calls
+    priced under the table; unpriced calls contribute $0 to the mean (lower
+    bound), matching ``cost_summary``.
 
     Python reference only; Rust port deferred.
     """
@@ -3705,7 +3709,8 @@ def defender_cost_per_1k(
     if not math.isfinite(abstention_review_cost_usd):
         raise ValueError("abstention_review_cost_usd must be finite")
     scoped = [r for r in results if family is None or r.family == family]
-    benign_costs: list[float] = []
+    models = (pricing_table or {}).get("models", {}) or {}
+    benign_costs: list[tuple[float, bool]] = []
     n_benign_abstained = 0
     n_benign_calls = 0
     for r in scoped:
@@ -3713,13 +3718,15 @@ def defender_cost_per_1k(
         if usage is None:
             continue
         _check_finite([usage.cost_usd], "cost_usd")
-        benign_costs.append(usage.cost_usd)
+        priced = usage.model in models
+        benign_costs.append((usage.cost_usd, priced))
         n_benign_calls += 1
         if r.benign.abstained:
             n_benign_abstained += 1
-    sufficient = n_benign_calls > 0
+    costs, n_priced, n_unpriced = _m9_priced_split(benign_costs)
+    sufficient = n_benign_calls > 0 and n_priced > 0
     if sufficient:
-        mean_benign = sum(benign_costs) / n_benign_calls
+        mean_benign = sum(costs) / n_benign_calls
         abstention_rate = n_benign_abstained / n_benign_calls
         per_1k = 1000 * (
             mean_benign + abstention_rate * abstention_review_cost_usd
@@ -3735,6 +3742,8 @@ def defender_cost_per_1k(
         "abstention_review_cost_usd": abstention_review_cost_usd,
         "n_benign_calls": n_benign_calls,
         "n_benign_abstained": n_benign_abstained,
+        "n_priced": n_priced,
+        "n_unpriced": n_unpriced,
         "sufficient": sufficient,
     }
 
@@ -3821,6 +3830,7 @@ def cost_exchange_rate(
             results,
             family=fam,
             abstention_review_cost_usd=abstention_review_cost_usd,
+            pricing_table=pricing_table,
         )
         cpf_v = cpf["cost_per_flip_usd"]
         def_v = def1k["defender_cost_per_1k_usd"]
@@ -3850,7 +3860,9 @@ def cost_exchange_rate(
         pricing_table=pricing_table,
     )
     all_def = defender_cost_per_1k(
-        results, abstention_review_cost_usd=abstention_review_cost_usd
+        results,
+        abstention_review_cost_usd=abstention_review_cost_usd,
+        pricing_table=pricing_table,
     )
     all_cpf_v = all_cpf["cost_per_flip_usd"]
     all_def_v = all_def["defender_cost_per_1k_usd"]

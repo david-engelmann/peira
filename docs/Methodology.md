@@ -147,9 +147,7 @@ target semantics the result contract deliberately does not carry.
   contribute $0 to the total but count in the denominator); when no
   call is priced at all the cost is unknown, not zero. Totals are
   withheld (`None`, `sufficient: False`).
-<<<<<<< HEAD
 - **Calibration** (score primitive): self-reported-confidence calibration: ECE with
-=======
 - **Attacker/defender cost accounting** (M-9): the asymmetric economics.
   Every call's usage record carries the pricing table version that priced
   it (`price_table_ref`), so a call's cost is recomputable under future
@@ -169,8 +167,6 @@ target semantics the result contract deliberately does not carry.
   is undefined when nothing flipped and withheld (never $0.00); the same
   unknown-cost withholding as the cost totals applies throughout. These
   feed the M-3 economic value-view layer.
-- **Calibration** (score primitive): confidence calibration: ECE with
->>>>>>> de5dfd9 (M-9: attacker/defender cost accounting)
   equal-mass bins (K=15 default; lower is better, 0.0 is perfect), Brier
   score with its Murphy decomposition (reliability / resolution /
   uncertainty / residual), log loss (binary cross-entropy in nats, with

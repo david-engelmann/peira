@@ -243,7 +243,7 @@ def _validate_and_record(
             cost_usd=cost_usd(
                 usage.model, usage.tokens_in, usage.tokens_out, pricing_table
             ),
-            price_table_ref=str(pricing_table.get("pricing_version", "")),
+            price_table_ref=(pricing_table.get("pricing_version") or ""),
         )
     return CallRecord(
         decision=output.decision,
