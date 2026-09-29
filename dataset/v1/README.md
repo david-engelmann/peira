@@ -14,7 +14,7 @@ lives encrypted, maintainer-only; only aggregate metrics are published.
   counts).
 
 Classifier guardrails are measured by the **separate safety-policy
-suite** (`dataset/safety-policy/`), not by v1 — see D-34.
+suite** (`dataset/safety-policy/`), not by v1 - see D-34.
 
 ## License
 

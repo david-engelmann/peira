@@ -116,6 +116,10 @@ is a diagnostic) live in the suite spec.
 
 ## Structured-output LLM baselines
 
+These are peira's LLM-as-judge adapters: each one makes a frontier model
+return a typed decision through the provider's native constrained
+decoding, rather than through a dedicated decision-model API like Jev.
+
 One adapter per provider, one extra each. Install only what you need:
 
 | Adapter | Extra | Dotted path | Default model | API key |

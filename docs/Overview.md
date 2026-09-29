@@ -30,7 +30,7 @@ Everything in `docs/`, organized by what you are trying to do. Pick a path, or b
 
 **Measure** (what the numbers mean):
 
-- [Methodology](Methodology.md): how peira measures decision robustness. The measurement contract: ASR, eligibility, analysis locks.
+- [Methodology](Methodology.md): how peira measures the adversarial robustness of decision models. The measurement contract: ASR, eligibility, analysis locks.
 - [Methodology-Governance](Methodology-Governance.md). How verified rows, the saturation trigger, adaptive attacks, and the contamination assumption are handled after the methodology is frozen.
 - [Taxonomy](Taxonomy.md): the three primitives (choice, score, abstain) and the 10 attack families.
 - [Concepts](Concepts.md): the five ideas the benchmark rests on.
@@ -51,6 +51,9 @@ Everything in `docs/`, organized by what you are trying to do. Pick a path, or b
 
 - [CLI](CLI.md): every command and flag, generated from the parser. Never hand-edited, never stale.
 - [Adapters](Adapters.md): the day-one adapters (extras, keys, pinned models, what each one measures).
+- [Local-Run-Walkthrough](Local-Run-Walkthrough.md): from install to scored run, with real output.
+- [What-Peira-Does](What-Peira-Does.md): a worked example with one real case.
+- [Compare-Report-Guide](Compare-Report-Guide.md): how to read compare and report output.
 - [Troubleshooting](Troubleshooting.md): exact error, cause, fix. Every user-facing CLI error lives here.
 - [FAQ](FAQ.md): the questions everyone asks first.
 - [Glossary](Glossary.md): terms, defined once.
