@@ -68,10 +68,13 @@ class TestTrialVersionPins(unittest.TestCase):
     def test_missing_pin_detected(self):
         tmp = self._sandbox_copy()
         try:
+            # Derive the pin text live: hardcoding today's version would make
+            # this replace() a no-op (and the test a false red) after a bump.
+            version = check_trial_version_pins.manifest_version()
             glossary = tmp / "docs" / "Glossary.md"
             glossary.write_text(
                 glossary.read_text(encoding="utf-8").replace(
-                    "Manifest `1.0.6`", "Manifest `VERSION`"
+                    f"Manifest `{version}`", "Manifest `VERSION`"
                 ),
                 encoding="utf-8",
             )
@@ -105,6 +108,16 @@ class TestTrialVersionPins(unittest.TestCase):
             problems = self._check_in(tmp)
             self.assertEqual(len(problems), 1)
             self.assertIn("manifest", problems[0])
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+
+    def test_malformed_manifest_version_reported(self):
+        tmp = self._sandbox_copy()
+        try:
+            self._bump_manifest(tmp, "not-a-version")
+            problems = self._check_in(tmp)
+            self.assertEqual(len(problems), 1)
+            self.assertIn("dataset_version", problems[0])
         finally:
             shutil.rmtree(tmp, ignore_errors=True)
 

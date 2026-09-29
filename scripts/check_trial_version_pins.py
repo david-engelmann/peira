@@ -23,14 +23,17 @@ import sys
 REPO_ROOT = pathlib.Path(__file__).resolve().parent.parent
 
 VERSION_RE = r"\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?"
+# Guard against a longer dotted version (e.g. 1.0.6.7) matching as a prefix
+# of the pinned version; a trailing ".<digit>" means this is not the pin.
+VERSION_PIN = rf"({VERSION_RE})(?!\.\d)"
 
 # (relative path, regex with capture group 1 = the pinned version)
 PINS: list[tuple[str, str]] = [
-    ("dataset/README.md", rf"manifest `({VERSION_RE})`"),
-    ("dataset/trial/README.md", rf"per-primitive counts\), version ({VERSION_RE})"),
-    ("docs/Dataset.md", rf"manifest sealed at ({VERSION_RE})"),
-    ("docs/Glossary.md", rf"Manifest `({VERSION_RE})`"),
-    ("docs/Troubleshooting.md", rf"sealed `({VERSION_RE})`"),
+    ("dataset/README.md", rf"manifest `{VERSION_PIN}`"),
+    ("dataset/trial/README.md", rf"per-primitive counts\), version {VERSION_PIN}"),
+    ("docs/Dataset.md", rf"manifest sealed at {VERSION_PIN}"),
+    ("docs/Glossary.md", rf"Manifest `{VERSION_PIN}`"),
+    ("docs/Troubleshooting.md", rf"sealed `{VERSION_PIN}`"),
 ]
 
 
@@ -68,7 +71,8 @@ def check() -> tuple[str, list[str]]:
         if not hits:
             problems.append(
                 f"{rel}: no trial-manifest version pin found "
-                f"(pattern {pattern!r} did not match)"
+                f"(pattern {pattern!r} did not match; if the pin was "
+                f"reworded, update PINS in scripts/check_trial_version_pins.py)"
             )
             continue
         for hit in hits:
