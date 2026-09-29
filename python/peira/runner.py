@@ -1394,7 +1394,7 @@ def validate_partial(
     if partial.seed != seed:
         raise ValueError(
             f"partial run was recorded with seed {partial.seed}, "
-            f"not {seed} — re-run with the same --seed or drop --resume"
+            f"not {seed}. Re-run with the same --seed or drop --resume"
         )
     adapter_version = getattr(adapter, "version", "")
     if (partial.adapter_name != adapter.name

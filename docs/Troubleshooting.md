@@ -88,7 +88,7 @@ between the interrupted run and the resume. Merging old partial results
 with a new dataset would corrupt the run. Fix: delete the
 `<adapter>-<suite>.partial.json` file and re-run without `--resume`.
 
-**`error: partial run was recorded with seed N, not M; re-run with the same --seed or drop --resume`**
+**`error: partial run was recorded with seed N, not M. Re-run with the same --seed or drop --resume`**
 Cause: `peira run --resume` found a partial run recorded with a different
 `--seed` than the one requested. Seeds are part of every call record and
 of the analysis lock, so mixing seeds would make the artifact lie about
