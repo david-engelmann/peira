@@ -29,7 +29,7 @@ peira is an open-source AI safety stress-test and intelligence hub for leading m
 
 ## The trial in action
 
-Sample output, generated, never hand-edited. From `scripts/gen_readme_table.py` (run `peira run --adapter mock --suite trial --seed 0` to reproduce).
+Sample output is generated, never hand-edited, by `scripts/gen_readme_table.py`. Run `peira run --adapter mock --suite trial --seed 0` to reproduce it.
 
 | family | ASR | 95% CI | n |
 |---|---|---|---|
@@ -56,7 +56,7 @@ peira run --adapter mock --suite trial --seed 0 --out runs
 peira report --run runs/mock-trial.json --out report.html
 ```
 
-That is a full evaluation, offline. 100 cases, paired benign/attacked controls, sealed with an analysis lock, rendered as HTML.
+That is a full offline evaluation. It covers 100 cases with paired benign and attacked controls, sealed with an analysis lock and rendered as HTML.
 
 Check your setup first with `peira doctor`: it reports Python/RAM/disk/GPU, verifies dataset manifests, and checks each adapter's requirements (API keys are checked for presence only, never printed). Read-only, no network calls.
 
