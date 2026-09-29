@@ -121,6 +121,24 @@ class RunArtifact:
     # mysterious.
     env: dict = field(default_factory=dict)
     env_sha256: str = ""
+    # Measurement framework (§3.7-3.8, §3.11-3.15): adapter registration
+    # metadata and longitudinal provenance. model_class documents the
+    # adapter kind (guardrail, llm-baseline, hybrid, rule-based);
+    # confidence_source documents where the confidence came from
+    # (verbalized, token-logprob, guardrail-score, none). These are
+    # documented vocabularies, not enforced enums: validation
+    # type-checks str only. decode_params
+    # is a JSON blob (temperature, top-p, max tokens, ...). All default
+    # to "" for artifacts predating them.
+    model_class: str = ""
+    confidence_source: str = ""
+    checkpoint_hash: str = ""
+    api_version: str = ""
+    call_date: str = ""
+    decode_params: str = ""
+    template_hash: str = ""
+    case_set_tag: str = ""
+    cost_scenario_version: str = ""
 
     def _compute_lock_py(self) -> str:
         """Reference implementation of :meth:`compute_lock` (pure Python)."""
@@ -154,6 +172,18 @@ class RunArtifact:
                 # is a measurement input. A different torch/CUDA/Python
                 # can change numbers; the lock must catch it.
                 "env_sha256": self.env_sha256,
+                # Measurement framework (M-6/M-7, 2026-09-28): adapter
+                # registration metadata and longitudinal provenance are
+                # measurement inputs; the lock must catch post-hoc edits.
+                "model_class": self.model_class,
+                "confidence_source": self.confidence_source,
+                "checkpoint_hash": self.checkpoint_hash,
+                "api_version": self.api_version,
+                "call_date": self.call_date,
+                "decode_params": self.decode_params,
+                "template_hash": self.template_hash,
+                "case_set_tag": self.case_set_tag,
+                "cost_scenario_version": self.cost_scenario_version,
             },
             sort_keys=True,
         )
@@ -189,6 +219,15 @@ class RunArtifact:
                     self.max_concurrency,
                     self.metrics,
                     self.env_sha256,
+                    self.model_class,
+                    self.confidence_source,
+                    self.checkpoint_hash,
+                    self.api_version,
+                    self.call_date,
+                    self.decode_params,
+                    self.template_hash,
+                    self.case_set_tag,
+                    self.cost_scenario_version,
                 )
             except (TypeError, ValueError, OverflowError):
                 pass
@@ -235,6 +274,17 @@ class RunArtifact:
         "max_concurrency": int,
         "env": dict,
         "env_sha256": str,
+        # Measurement framework (§3.7-3.8, §3.11-3.15): adapter
+        # registration metadata and longitudinal provenance.
+        "model_class": str,
+        "confidence_source": str,
+        "checkpoint_hash": str,
+        "api_version": str,
+        "call_date": str,
+        "decode_params": str,
+        "template_hash": str,
+        "case_set_tag": str,
+        "cost_scenario_version": str,
     }
     # Numeric fields needing the bool-rejecting _is_num check (a JSON
     # integer 0 must pass for spent_usd; a JSON `true` must not).
@@ -312,6 +362,7 @@ class RunArtifact:
         for key in usage:
             if key not in (
                 "model", "tokens_in", "tokens_out", "latency_ms", "cost_usd",
+                "price_table_ref",
             ):
                 raise ValueError(f"{where} has unknown usage field: {key!r}")
         for key in ("model", "tokens_in", "tokens_out", "latency_ms", "cost_usd"):

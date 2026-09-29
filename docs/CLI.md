@@ -24,7 +24,7 @@ run a suite through an adapter
 | Flag | Required | Default | Help |
 |---|---|---|---|
 | `--adapter` |  | `'mock'` | 'mock', or a dotted path: package.module (with a top-level `adapter`), package.module:ClassName, or package.module.ClassName. Only load adapter paths you trust: the module is imported (and therefore executed) with the working directory first on sys.path |
-| `--suite` |  | `'trial-demo'` | smoke is an alias for trial (choices: `safety-policy`, `smoke`, `trial`, `trial-demo`, `v1`) |
+| `--suite` |  | `'trial-demo'` | smoke is an alias for trial (choices: `trial-demo`, `trial`, `v1`, `safety-policy`, `smoke`) |
 | `--families` |  | all | comma-separated family ids: run only cases from these attack families (default: all families in the suite; an empty value also means all). Subset runs are marked ranking-ineligible (exit 3): the ranking gate always covers the full suite. |
 | `--out` |  | `'runs'` |  |
 | `--dry-run` |  | `False` | validate config without scoring |
@@ -48,7 +48,7 @@ re-score a recorded transcript without calling any provider
 | Flag | Required | Default | Help |
 |---|---|---|---|
 | `--transcript` | yes | - | transcript JSONL written by `peira run --transcript` |
-| `--suite` |  | `'trial-demo'` | smoke is an alias for trial (choices: `safety-policy`, `smoke`, `trial`, `trial-demo`, `v1`) |
+| `--suite` |  | `'trial-demo'` | smoke is an alias for trial (choices: `trial-demo`, `trial`, `v1`, `safety-policy`, `smoke`) |
 | `--out` |  | `'runs'` |  |
 
 ## peira validate
@@ -82,6 +82,41 @@ head-to-head statistical comparison of two run artifacts
 | `RUN_B` | yes | - | second run artifact (B) |
 | `--out` |  | - | write an HTML comparison report to this path |
 | `--seed` |  | `0` | seed for the paired-bootstrap CIs (default: 0) |
+
+## peira dashboard
+
+export dashboard-ready JSON from run artifacts
+
+### peira dashboard run
+
+one run's complete dashboard payload
+
+| Flag | Required | Default | Help |
+|---|---|---|---|
+| `RUN` | yes | - | run artifact path |
+| `--out` |  | - | write JSON to this path (default: stdout) |
+
+### peira dashboard leaderboard
+
+cross-adapter leaderboard JSON
+
+| Flag | Required | Default | Help |
+|---|---|---|---|
+| `--runs-dir` |  | - | runs directory (default: ./runs or $PEIRA_RUNS_DIR) |
+| `--suite` |  | - | filter by suite |
+| `--dataset-version` |  | - | filter by dataset version |
+| `--out` |  | - | write JSON to this path (default: stdout) |
+
+### peira dashboard compare
+
+head-to-head comparison as dashboard JSON
+
+| Flag | Required | Default | Help |
+|---|---|---|---|
+| `RUN_A` | yes | - | first run artifact (A) |
+| `RUN_B` | yes | - | second run artifact (B) |
+| `--seed` |  | `0` | seed for the paired-bootstrap CIs (default: 0) |
+| `--out` |  | - | write JSON to this path (default: stdout) |
 
 ## peira hardness
 
@@ -124,6 +159,25 @@ verify analysis locks
 | Flag | Required | Default | Help |
 |---|---|---|---|
 | `PATHS` | yes | - | artifact paths to verify |
+
+### peira runs query
+
+per-case drill-down across runs (e.g. flipped cases on a family with high confidence)
+
+| Flag | Required | Default | Help |
+|---|---|---|---|
+| `--runs-dir` |  | - | runs directory (default: ./runs or $PEIRA_RUNS_DIR) |
+| `--adapter` |  | - | filter by adapter name |
+| `--suite` |  | - | filter by suite |
+| `--family` |  | - | filter by attack family |
+| `--severity` |  | - | filter by severity |
+| `--flipped` |  | - | only flipped cases |
+| `--unflipped` |  | - | only non-flipped cases |
+| `--eligible` |  | - | only eligible cases |
+| `--flip-direction` |  | - | filter by flip direction (choices: `approve-to-deny`, `deny-to-approve`, `to-abstain`, `to-malformed`, `score-shifted`, `other`, `none`) |
+| `--min-confidence` |  | - | minimum attacked confidence |
+| `--max-confidence` |  | - | maximum attacked confidence |
+| `--limit` |  | `100` | max rows (default: 100, 0 = no cap) |
 
 ## peira family-summary
 
@@ -175,8 +229,8 @@ scaffold a new case from a family template
 |---|---|---|---|
 | `--family` | yes | - | attack family (choices: `abstain_forcing`, `authority_fabrication`, `confidence_spoofing`, `contradiction_injection`, `criteria_order`, `criteria_smuggling`, `distractor_flooding`, `encoding_evasion`, `indirect_injection`, `indirection`, `instruction_override`, `literal_reading`, `negation_games`, `option_order`, `policy_paraphrase`, `precedent_stacking`, `safety_policy`, `score_anchoring`, `self_advocacy`, `state_poisoning`, `temporal_numeric_traps`) |
 | `--id` | yes | - | case id, e.g. sp-042 |
-| `--severity` |  | `'medium'` | (choices: `critical`, `high`, `low`, `medium`) |
-| `--primitive` |  | - | default: the family's natural primitive (choices: `abstain`, `choice`, `score`) |
+| `--severity` |  | `'medium'` | (choices: `critical`, `high`, `medium`, `low`) |
+| `--primitive` |  | - | default: the family's natural primitive (choices: `choice`, `score`, `abstain`) |
 | `--out` |  | - | append the case as JSONL to this file (default: print to stdout) |
 
 ### peira dataset review

@@ -222,6 +222,7 @@ mod tests {
             tokens_out: 5,
             latency_ms: latency,
             cost_usd: cost,
+            price_table_ref: None,
         }
     }
 
