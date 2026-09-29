@@ -5236,15 +5236,21 @@ def _cost_per_flip_direction_full(
     direction-``d`` flips: the mean list-price cost of producing one flip
     of that type.
 
-    M-9's attacker-cost multiplier (1/ASR) treats all flips as the
-    attacker's product. They are not: the attacker's product is the
+    M-9's headline cost per flip (``cost_per_flip``) treats all flips as
+    the attacker's product. They are not: the attacker's product is the
     **deny-to-approve flip** (the jailbreak direction). approve-to-deny
     is vandalism, to-abstain is denial of service, and each has its own
     economics. C-9 is M-9 x M-1: the same ``cost_per_flip`` machinery
     restricted to flips in one direction. ``attempts_per_flip`` is
-    1/ASR_d, the same figure
-    :func:`peira.economics.attacker_cost_multiplier` reports for that
-    direction; ``cost_per_flip_usd`` multiplies it by the query price.
+    1/ASR_d. For the five discrete flip directions this is the same
+    figure :func:`peira.economics.attacker_cost_multiplier` reports for
+    that direction. For ``"score-shifted"`` the two differ by
+    construction: the multiplier counts non-flipped score-primitive
+    cases with a material score shift (M-1 rule 1), while cost-per-flip
+    requires an actual flip and withholds when only the shift is
+    observed. ``cost_per_flip_usd`` multiplies the attempts figure by
+    the query price. (``attacker_cost_multiplier`` has no family filter,
+    so the equality also assumes ``family=None``.)
 
     ``family`` restricts to one attack family; None uses all results.
     ``attacker_queries_assumed`` is the declared number of attacker
@@ -5366,10 +5372,11 @@ def cost_per_flip_by_direction(
     Every direction in :data:`FLIP_DIRECTIONS` appears as a key so
     callers can rely on the shape (the same convention as
     :func:`flip_direction_counts`). Directions with no observed flips
-    report ``sufficient: False`` with None values; ``"none"`` is always
-    withheld (a non-flip has no cost per flip). The six flip directions
-    partition the eligible flips, so their ``n_flips_d`` values sum to
-    the headline ``n_flips`` of :func:`cost_per_flip`.
+    report ``sufficient: False`` with the headline values
+    (``cost_per_flip_usd``, ``attempts_per_flip``) as None; ``"none"``
+    is always withheld (a non-flip has no cost per flip). The six flip
+    directions partition the eligible flips, so their ``n_flips_d``
+    values sum to the headline ``n_flips`` of :func:`cost_per_flip`.
     """
     return {
         d: cost_per_flip_direction(

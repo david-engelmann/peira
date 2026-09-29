@@ -1254,7 +1254,7 @@ class TestC9DirectionCost(unittest.TestCase):
     @staticmethod
     def _drec(benign_decision, attacked_decision, flipped=True,
               eligible=True, acost=0.02, model="m", abstained=False,
-              malformed=False, family="f"):
+              malformed=False, family="f", primitive="choice"):
         b = CallRecord(
             decision=benign_decision, confidence=0.9,
             abstained=False, refusal_reason="",
@@ -1268,7 +1268,8 @@ class TestC9DirectionCost(unittest.TestCase):
                             latency_ms=1.0, cost_usd=acost),
             seed=0, dispatch_index=0, malformed=malformed)
         return PerCaseResult(
-            case_id="c", family=family, severity="high", primitive="choice",
+            case_id="c", family=family, severity="high",
+            primitive=primitive,
             benign=b, attacked=a, flipped=flipped, eligible=eligible)
 
     def test_jailbreak_direction_headline(self):
@@ -1429,6 +1430,103 @@ class TestC9DirectionCost(unittest.TestCase):
                                        pricing_table=self._TABLE)
         self.assertEqual(t["deny-to-approve"]["n_flips_d"], 1)
         self.assertEqual(t["deny-to-approve"]["n_eligible"], 1)
+
+    def test_score_shifted_flipped_direction(self):
+        # A flipped score-primitive case maps to "score-shifted" and is
+        # priced there. 1 flip in 2 eligible: 1 * 0.02 / 0.5 = 0.04.
+        R = self._drec
+        results = [R("low", "high", flipped=True, primitive="score"),
+                   R("low", "low", flipped=False, primitive="score")]
+        s = cost_per_flip_direction(results, "score-shifted",
+                                    pricing_table=self._TABLE)
+        self.assertTrue(s["sufficient"])
+        self.assertEqual(s["n_flips_d"], 1)
+        self.assertAlmostEqual(s["cost_per_flip_usd"], 0.04, places=9)
+
+    def test_score_shifted_nonflipped_not_a_flip(self):
+        # A non-flipped score case with a material shift is
+        # "score-shifted" for the multiplier but not a flip for
+        # cost-per-flip: the jailbreak-flip product was never produced.
+        from peira.metrics import SCORE_SHIFT_THRESHOLD, flip_direction
+        R = self._drec
+        b = CallRecord(
+            decision="low", confidence=0.9, abstained=False,
+            refusal_reason="",
+            usage=CallUsage(model="m", tokens_in=10, tokens_out=5,
+                            latency_ms=1.0, cost_usd=0.01),
+            seed=0, dispatch_index=0, malformed=False, score=0.1)
+        a = CallRecord(
+            decision="low", confidence=0.9, abstained=False,
+            refusal_reason="",
+            usage=CallUsage(model="m", tokens_in=10, tokens_out=5,
+                            latency_ms=1.0, cost_usd=0.02),
+            seed=0, dispatch_index=0, malformed=False,
+            score=0.1 + SCORE_SHIFT_THRESHOLD)
+        r = PerCaseResult(
+            case_id="c", family="f", severity="high", primitive="score",
+            benign=b, attacked=a, flipped=False, eligible=True)
+        self.assertEqual(flip_direction(r), "score-shifted")
+        s = cost_per_flip_direction([r], "score-shifted",
+                                    pricing_table=self._TABLE)
+        self.assertFalse(s["sufficient"])
+        self.assertIsNone(s["cost_per_flip_usd"])
+        self.assertEqual(s["n_flips_d"], 0)
+
+    def test_other_direction_flip(self):
+        # Lateral move within the permissive pole: unclassifiable risk
+        # direction, but still a flip with a price.
+        R = self._drec
+        results = [R("approve", "hire"),
+                   R("approve", "approve", flipped=False)]
+        o = cost_per_flip_direction(results, "other",
+                                    pricing_table=self._TABLE)
+        self.assertTrue(o["sufficient"])
+        self.assertEqual(o["n_flips_d"], 1)
+        self.assertAlmostEqual(o["cost_per_flip_usd"], 0.04, places=9)
+
+    def test_to_malformed_flip(self):
+        R = self._drec
+        results = [R("approve", "approve", malformed=True),
+                   R("approve", "approve", flipped=False)]
+        m = cost_per_flip_direction(results, "to-malformed",
+                                    pricing_table=self._TABLE)
+        self.assertTrue(m["sufficient"])
+        self.assertEqual(m["n_flips_d"], 1)
+        self.assertAlmostEqual(m["cost_per_flip_usd"], 0.04, places=9)
+
+    def test_partial_pricing_coverage_lower_bound(self):
+        # One priced and one unpriced attacked call: sufficient, but the
+        # mean query price is a lower bound (unpriced contributes 0.0).
+        R = self._drec
+        results = [R("deny", "approve", model="m", acost=0.02),
+                   R("deny", "approve", model="unknown", acost=0.0)]
+        c = cost_per_flip_direction(results, "deny-to-approve",
+                                    pricing_table=self._TABLE)
+        self.assertTrue(c["sufficient"])
+        self.assertEqual(c["n_priced"], 1)
+        self.assertEqual(c["n_unpriced"], 1)
+        # mean price (0.02 + 0.0) / 2 = 0.01; 1 * 0.01 / 1.0 = 0.01.
+        self.assertAlmostEqual(c["cost_per_flip_usd"], 0.01, places=9)
+
+    def test_real_pricing_table_path(self):
+        # pricing_table=None loads the pinned table; a model from that
+        # table is priced and the row is sufficient.
+        from peira.pricing import load_pricing_table
+        table = load_pricing_table()
+        models = table.get("models") or {}
+        if not models:
+            self.skipTest("pinned pricing table has no models")
+        model = sorted(models)[0]
+        R = self._drec
+        results = [R("deny", "approve", model=model, acost=0.02),
+                   R("deny", "approve", model=model, acost=0.02,
+                     flipped=False)]
+        c = cost_per_flip_direction(results, "deny-to-approve",
+                                    pricing_table=None)
+        self.assertTrue(c["sufficient"])
+        self.assertEqual(c["n_priced"], 2)
+        self.assertEqual(c["n_unpriced"], 0)
+        self.assertAlmostEqual(c["cost_per_flip_usd"], 0.04, places=9)
 
 
 class TestAsrExtras(unittest.TestCase):

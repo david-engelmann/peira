@@ -464,6 +464,33 @@ class ValueViewTest(unittest.TestCase):
         self.assertNotIn("value_score", blob)
         self.assertNotIn("blended", blob)
 
+    def test_value_text_renders_c9_direction_table(self):
+        from peira.cli import _value_text
+        s = load_cost_scenario("standard")
+        base = [_result(f"c{i}", "deny", "approve", i < 6, cost=0.001)
+                for i in range(10)]
+        view = value_view({"base": base}, s, price_date="2026-09-28")
+        text = _value_text(view)
+        self.assertIn("attacker $/flip by direction:", text)
+        # The jailbreak direction renders first; it is the headline.
+        lines = text.splitlines()
+        first_dir = next(
+            l for l in lines if l.startswith("      ") and ":" in l)
+        self.assertIn("deny-to-approve", first_dir)
+        # Withheld directions render as "withheld", never zero.
+        self.assertIn("to-malformed: withheld", text)
+
+    def test_value_page_renders_c9_direction_table(self):
+        from peira.cli import _value_page
+        s = load_cost_scenario("standard")
+        base = [_result(f"c{i}", "deny", "approve", i < 6, cost=0.001)
+                for i in range(10)]
+        view = value_view({"base": base}, s, price_date="2026-09-28")
+        html = _value_page(view)
+        self.assertIn("Attacker cost per flip direction (C-9)", html)
+        self.assertIn("<td>deny-to-approve</td>", html)
+        self.assertIn("withheld", html)
+
 
 class ValueCliTest(unittest.TestCase):
     def _artifact(self, name, flips, cost=0.001):

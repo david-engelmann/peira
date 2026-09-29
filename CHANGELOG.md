@@ -15,7 +15,9 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
   (deny-to-approve) is the headline because the attacker's product is the
   jailbreak, not vandalism or denial of service. Each direction reports
   ASR_d, attempts per flip (1/ASR_d, matching
-  `economics.attacker_cost_multiplier`), and list-price dollars per flip
+  `economics.attacker_cost_multiplier` for the five discrete directions;
+  score-shifted differs because the multiplier also counts non-flipped
+  score cases with a material shift), and list-price dollars per flip
   from runner-recorded `CallUsage` token counts and the pinned pricing
   table. Directions with no observed flips are withheld, never $0.00.
 - The `peira value` view and the per-run HTML report now carry a

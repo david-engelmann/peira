@@ -2149,14 +2149,16 @@ def _value_text(view: dict[str, Any]) -> str:
             else "    attacker cost per jailbreak: never observed"
         )
         # C-9 (M-9 x M-1): attacker cost per flip in each direction.
+        # The jailbreak direction renders first; it is the headline.
+        _c9_order = ("deny-to-approve", "approve-to-deny", "to-abstain",
+                     "to-malformed", "score-shifted", "other")
         lines.append("    attacker $/flip by direction:")
-        for d, row in a["attacker_cost_per_direction"].items():
-            if d == "none":
-                continue
+        for d in _c9_order:
+            row = a["attacker_cost_per_direction"][d]
             cpf = row["cost_per_flip_usd"]
             att = row["attempts_per_flip"]
             if cpf is None:
-                lines.append(f"      {d}: withheld (no flips)")
+                lines.append(f"      {d}: withheld")
             else:
                 lines.append(
                     f"      {d}: ${cpf:.2f}/flip "
@@ -2236,10 +2238,12 @@ def _value_page(view: dict[str, Any]) -> str:
         return "withheld" if x is None else fmt.format(x)
 
     def _dir_rows(a):
+        # The jailbreak direction renders first; it is the headline.
+        order = ("deny-to-approve", "approve-to-deny", "to-abstain",
+                 "to-malformed", "score-shifted", "other")
         out = []
-        for d, row in a["attacker_cost_per_direction"].items():
-            if d == "none":
-                continue
+        for d in order:
+            row = a["attacker_cost_per_direction"][d]
             out.append(
                 "<tr><td>" + e(d) + "</td>"
                 "<td>" + str(row["n_flips_d"]) + "</td>"
