@@ -385,6 +385,9 @@ class SemifAdapter:
     # M-2: confidence is the model's choice probability (D-23): a
     # model-output probability, not a verbalization.
     confidence_source = "token-logprob"
+    # M-7 longitudinal provenance.
+    model_class = "guardrail"
+    checkpoint_hash = MODEL_REVISION
     # Pinned model + revision: same input → same decision, so the
     # runner's opt-in response cache is safe namespaced on both.
     cache_namespace = f"semif:{MODEL_ID}@{MODEL_REVISION}"

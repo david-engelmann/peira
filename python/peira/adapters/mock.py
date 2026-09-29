@@ -66,6 +66,8 @@ class MockAdapter:
     supported_primitives = frozenset({"choice", "score", "abstain"})
     # M-2: synthetic confidences from a hash; no real elicitation.
     confidence_source = "none"
+    # M-7 longitudinal provenance: the mock is a test double.
+    model_class = "rule-based"
 
     def __init__(
         self,

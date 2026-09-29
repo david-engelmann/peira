@@ -109,6 +109,8 @@ class LakeraAdapter:
     # M-2/D-23: confidence is the |2p - 1| guardrail boundary distance,
     # not a probability of being correct.
     confidence_source = "guardrail-score"
+    # M-7 longitudinal provenance.
+    model_class = "guardrail"
     _env_vars = (API_KEY_ENV,)
     # The policy behind the key can change server-side, but the API
     # version is pinned; the runner's opt-in cache namespaces on it.

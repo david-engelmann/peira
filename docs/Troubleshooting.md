@@ -137,6 +137,51 @@ the wrong fields). The file was hand-edited or corrupted. The resume
 refuses to guess what the entry meant. Fix: delete the
 `<adapter>-<suite>.partial.json` file and re-run without `--resume`.
 
+**`error: --seeds must be 1 or >= 3 (M-7 protocol minimum), got N`**
+Cause: `peira run --seeds N` was given a value other than 1 or at
+least 3. k = 2 can only report agreement, not stability, so the M-7
+protocol rejects it. Fix: use `--seeds 1` for a single run or
+`--seeds 3` (or more) for the stability protocol.
+
+**`error: --resume is not supported with --seeds > 1; each seed run is independent — re-run without --resume`**
+Cause: resume merges a partial run into a new execution, but
+multi-seed runs are k independent executions with no shared partial
+state. Fix: re-run without `--resume`; each seed run starts fresh.
+
+**`error: stability needs at least 2 run artifacts, got N`**
+Cause: `peira stability` compares flip outcomes across runs; with one
+run there is nothing to agree or disagree. Fix: pass two or more run
+artifacts from the same adapter, suite, and dataset version.
+
+**`error: <path> is a different adapter/suite/dataset than <first>: stability compares runs of the same adapter id`**
+Cause: `peira stability` was given runs that do not share adapter,
+suite, and dataset version. Agreement statistics are only meaningful
+over repeated runs of the same measurement. Fix: pass runs from one
+adapter id, or compare different adapters with `peira compare`
+instead.
+
+**`error: <path> did not complete (termination=T): a truncated run must not enter the agreement statistics`**
+Cause: `peira stability` was given a run artifact whose `termination`
+is not `"complete"` (for example `"budget"` after the spend cap
+stopped the run). A truncated run has no outcome for the missing
+cases, and counting them as non-flips would fake agreement. Fix:
+re-run the truncated seed to completion, or drop it and run
+`peira stability` over the completed seeds only.
+
+**`error: drift-watch compares runs of the same adapter id: <old> is 'A', <new> is 'B'`**
+Cause: `peira drift-watch` was given two runs from different
+adapters. Drift is change over time in one adapter, not a
+cross-adapter comparison. Fix: pass two runs of the same adapter, or
+use `peira compare` for cross-adapter head-to-head.
+
+**`error: multi-seed run did not complete N seeds cleanly; stability analysis withheld (see per-seed artifacts)`**
+Cause: `peira run --seeds N` finished with fewer than 3 cleanly
+completed seeds (for example the per-seed budget cap stopped some
+seeds). The per-seed artifacts are still written so no work is lost,
+but no stability claim is sealed. Fix: raise `--budget-usd` (it is
+divided evenly across seeds), re-run the terminated seeds, or run
+`peira stability` over the completed seed artifacts by hand.
+
 **`error: no cases found in ...`**
 Cause: the suite directory has no `.jsonl` files. Fix: check the path;
 `dataset/trial-demo/cases.jsonl` ships with the repo.

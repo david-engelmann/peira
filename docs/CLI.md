@@ -31,6 +31,7 @@ run a suite through an adapter
 | `--json-progress` |  | `False` | machine-readable progress on stdout |
 | `--resume` |  | `False` | resume an interrupted run |
 | `--seed` |  | `0` | run seed, recorded on every call record (default: 0) |
+| `--seeds` |  | `1` | M-7 multi-seed protocol: run the suite N times under consecutive seeds (seed .. seed+N-1) and seal a stability artifact with pass^k flip agreement and variance decomposition. 1 (default) is a single run; any other value must be >= 3. Paid adapters: N multiplies spend; check the cost pilot first (Methodology M-7) |
 | `--max-concurrency` |  | `8` | cap on in-flight adapter calls; the AIMD controller adapts within [1, N] (default: 8) |
 | `--max-attempts` |  | `3` | total tries per call; retries are transient-only (408/409/429/5xx, timeouts) (default: 3) |
 | `--call-timeout` |  | `300.0` | seconds per attempt; a timeout is retried as a transient failure (default: 300) |
@@ -88,6 +89,25 @@ head-to-head statistical comparison of two run artifacts
 | `--out` |  | - | write an HTML comparison report to this path |
 | `--seed` |  | `0` | seed for the paired-bootstrap CIs (default: 0) |
 | `--nb-threshold` |  | - | operating threshold in [0, 1) for the R-08 net-benefit head-to-head: which adapter has the higher net benefit at this threshold |
+
+## peira stability
+
+k-seed stability analysis (pass^k, variance decomposition) over existing run artifacts
+
+| Flag | Required | Default | Help |
+|---|---|---|---|
+| `RUNS` | yes | - | two or more run artifacts from the same adapter/suite (different seeds) |
+| `--out` |  | - | write a sealed stability artifact JSON to this path |
+
+## peira drift-watch
+
+drift-watch: per-family McNemar deltas between two runs of the same adapter id, reporting newly-flipping vs newly-fixed cases
+
+| Flag | Required | Default | Help |
+|---|---|---|---|
+| `--old` | yes | - | older run artifact (baseline) |
+| `--new` | yes | - | newer run artifact (candidate) |
+| `--out` |  | - | write the drift result JSON to this path |
 
 ## peira dashboard
 
@@ -186,6 +206,12 @@ list runs in the registry
 | `--dataset-version` |  | - | filter by dataset version |
 | `--cache` |  | - | filter by cache state (on/off) (choices: `on`, `off`) |
 | `--termination` |  | - | filter by termination state (complete, budget, partial, ...) |
+| `--model-class` |  | - | filter by adapter model class (llm-baseline, guardrail, mock, ...) |
+| `--checkpoint-hash` |  | - | filter by pinned model revision |
+| `--api-version` |  | - | filter by provider API version |
+| `--call-date` |  | - | filter by run UTC date (YYYY-MM-DD) |
+| `--template-hash` |  | - | filter by prompt-template hash |
+| `--case-set-tag` |  | - | filter by case-set tag (suite id) |
 
 ### peira runs verify
 

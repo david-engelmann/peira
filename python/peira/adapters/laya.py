@@ -246,6 +246,8 @@ class LayaAdapter:
     # M-2: confidence comes from the API's per-answer probabilities,
     # like Jev: a model-output probability, not a verbalization.
     confidence_source = "token-logprob"
+    # M-7 longitudinal provenance.
+    model_class = "guardrail"
 
     def __init__(
         self,
