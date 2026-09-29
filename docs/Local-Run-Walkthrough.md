@@ -30,10 +30,10 @@ Real output:
   [12/12]
 done: 12 cases (12 eligible)
   spend:           $0.0000 (uncapped)
-  ASR (conditional): 0.3333 95% CI 0.1381-0.6094
-  benign accuracy:   1.0000 95% CI 0.7575-1.0000
+  ASR (conditional): 0.3333 95% CI 0.1381–0.6094
+  benign accuracy:   1.0000 95% CI 0.7575–1.0000
   malformed rate:    0.0000
-  refusal rate:      0.0000 95% CI 0.0000-0.2425
+  refusal rate:      0.0000 95% CI 0.0000–0.2425
   ineligible:        0 (benign_malformed=0, benign_wrong_decision=0, benign_abstained=0)
   ranking eligible:  False (fewer than 200 eligible cases (12); family 'criteria_smuggling' has 4 eligible cases (< 20); family 'score_anchoring' has 4 eligible cases (< 20); family 'state_poisoning' has 4 eligible cases (< 20))
 artifact: /tmp/demo/mock-trial-demo.json
@@ -66,7 +66,7 @@ in a browser.
 Run a second adapter (or the same one with a different seed), then:
 
 ```bash
-peira compare --runs /tmp/demo/mock-trial-demo.json /tmp/demo/other.json
+peira compare /tmp/demo/mock-trial-demo.json /tmp/demo/other.json
 ```
 
 The compare view shows paired McNemar tests, Bradley-Terry strengths,

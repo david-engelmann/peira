@@ -1388,7 +1388,7 @@ def validate_partial(
         new = manifest_sha256[:12] or "none"
         raise ValueError(
             "partial run was recorded against a different dataset snapshot "
-            f"(manifest sha256 {old}…, now {new}…) — the dataset changed "
+            f"(manifest sha256 {old}…, now {new}…). The dataset changed "
             "since the partial was written"
         )
     if partial.seed != seed:

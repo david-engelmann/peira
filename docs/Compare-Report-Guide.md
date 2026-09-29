@@ -24,7 +24,7 @@ Every peira report starts with the same core metrics:
 A report might show:
 
 ```
-ASR: 0.3333 95% CI 0.1381-0.6094
+ASR: 0.3333 95% CI 0.1381–0.6094
 ```
 
 This means: the point estimate is 33%, but the true ASR could plausibly
@@ -32,10 +32,11 @@ be anywhere from 14% to 61%. With only 12 cases, the interval is wide.
 With 400 cases per family, it tightens considerably.
 
 **Overlapping intervals are not ties.** If adapter A has ASR 0.30
-(CI 0.25-0.35) and adapter B has 0.35 (CI 0.30-0.40), the intervals
-overlap but A is still probably better. Peira reports "ahead in X% of
-resamples" for this reason. See `docs/Methodology.md` for the bootstrap
-procedure.
+(CI 0.25–0.35) and adapter B has 0.35 (CI 0.30–0.40), the intervals
+overlap but A is still probably better. Peira's compare view reports a
+`favors` label when the paired-bootstrap CI excludes zero and the effect
+clears the minimum detectable effect. See `docs/Methodology.md` for the
+bootstrap procedure.
 
 ## The "not resolvable at this n" convention
 
@@ -47,7 +48,7 @@ cannot support.
 
 ## Compare view
 
-`peira compare` takes two or more run artifacts and produces:
+`peira compare` takes two run artifacts (head-to-head A vs B) and produces:
 
 - **Paired McNemar test.** For each pair of adapters on the same cases,
   tests whether their flip rates differ. Paired means the same cases,
