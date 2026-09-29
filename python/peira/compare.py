@@ -33,15 +33,18 @@ from peira.concurrency import _require_json_str
 from peira.metrics import (
     DIR_NONE,
     MIN_BT_COMPARISONS,
+    MIN_NB_CASES,
     NOT_RESOLVABLE,
     SEVERITY_WEIGHTS,
     ComparisonOutcome,
     PerCaseResult,
     _check_finite,
     _check_paired,
+    _check_threshold,
     _check_weights,
     _require_result_strings,
     bradley_terry,
+    common_net_benefit_pairs,
     directional_mde,
     flip_direction,
     is_direction_eligible,
@@ -49,6 +52,8 @@ from peira.metrics import (
     mcnemar_p_value,
     mde_mcnemar,
     mde_paired_bootstrap,
+    net_benefit_at_threshold,
+    net_benefit_pairs,
     paired_bootstrap_ci,
     paired_bootstrap_weighted_ci,
     resolvable,
@@ -275,6 +280,29 @@ def validate_no_weighted_mcnemar(report: dict) -> list[str]:
     return violations
 
 
+@dataclass(frozen=True)
+class NetBenefitComparison:
+    """Net-benefit head-to-head at one operating threshold (R-08).
+
+    Each adapter's attacked-arm net benefit at ``threshold``, computed
+    on the common analyzed cases (both adapters produced a usable
+    attacked decision with confidence on the case), so the two numbers
+    are read off the same cohort. Display-only: which adapter the buyer
+    should prefer at their operating threshold. ``winner`` is "a", "b",
+    or None (tie or withheld).
+    """
+
+    threshold: float
+    nb_a: float | None
+    nb_b: float | None
+    n: int  # common analyzed cases
+    n_a: int  # analyzed (attacked, eligible, confident) cases, A
+    n_b: int  # analyzed (attacked, eligible, confident) cases, B
+    sufficient: bool
+    winner: str | None
+    note: str
+
+
 @dataclass
 class Comparison:
     """The complete head-to-head comparison of two artifacts."""
@@ -303,6 +331,7 @@ class Comparison:
     # C-8: direction-specific MDE rows (paired-bootstrap variance,
     # direction-eligible denominators).
     directional_mdes: list[DirectionalMde] = field(default_factory=list)
+    net_benefit: NetBenefitComparison | None = None
 
 
 def check_comparable(a: RunArtifact, b: RunArtifact) -> list[str]:
@@ -887,12 +916,69 @@ def _directional_mdes(
     return rows
 
 
-def compare_artifacts(a: RunArtifact, b: RunArtifact, seed: int = 0) -> Comparison:
+def _net_benefit_comparison(
+    pairs: list[PairedCase],
+    pt: float,
+    name_a: str,
+    name_b: str,
+) -> NetBenefitComparison:
+    """Net-benefit head-to-head at one operating threshold.
+
+    Attacked-arm net benefit per adapter on the common analyzed paired
+    cases (both adapters produced a usable attacked decision with
+    confidence); the higher net benefit wins at the buyer's threshold.
+    Withheld below ``MIN_NB_CASES`` common cases.
+    """
+    _check_threshold(pt, "nb_threshold")
+    (risks_a, labels_a), (risks_b, labels_b), n_a, n_b, n = (
+        common_net_benefit_pairs([p.a for p in pairs], [p.b for p in pairs],
+                                 "attacked"))
+    if n < MIN_NB_CASES:
+        return NetBenefitComparison(
+            threshold=pt,
+            nb_a=None,
+            nb_b=None,
+            n=n,
+            n_a=n_a,
+            n_b=n_b,
+            sufficient=False,
+            winner=None,
+            note=(f"withheld: need >= {MIN_NB_CASES} common analyzed cases "
+                  f"(A: {n_a}, B: {n_b}, common: {n})"),
+        )
+    nb_a = net_benefit_at_threshold(risks_a, labels_a, pt)
+    nb_b = net_benefit_at_threshold(risks_b, labels_b, pt)
+    if nb_a > nb_b:
+        winner: str | None = "a"
+    elif nb_b > nb_a:
+        winner = "b"
+    else:
+        winner = None
+    return NetBenefitComparison(
+        threshold=pt,
+        nb_a=nb_a,
+        nb_b=nb_b,
+        n=n,
+        n_a=n_a,
+        n_b=n_b,
+        sufficient=True,
+        winner=winner,
+        note=(f"at threshold {pt}: {name_a} NB={nb_a:.4f}, "
+              f"{name_b} NB={nb_b:.4f} (n={n} common cases)"),
+    )
+
+
+def compare_artifacts(a: RunArtifact, b: RunArtifact, seed: int = 0,
+                      nb_threshold: float | None = None) -> Comparison:
     """Head-to-head comparison of two sealed artifacts.
 
     Raises ValueError when the artifacts are not comparable (different
     suite, dataset version, measurement contract, or dataset bytes) or
     share no cases. Never modifies the artifacts.
+
+    ``nb_threshold`` adds the R-08 net-benefit head-to-head at one
+    operating threshold: which adapter has the higher net benefit at
+    the buyer's threshold. Must be finite and in [0, 1) when given.
     """
     problems = check_comparable(a, b)
     if problems:
@@ -911,6 +997,9 @@ def compare_artifacts(a: RunArtifact, b: RunArtifact, seed: int = 0) -> Comparis
     item_a, item_b = _item_names(a, b)
     mcnemar_res, mcnemar_note = _mcnemar_test(pairs)
     bt_strengths, bt_nu, bt_n, bt_note = _bradley_terry_fit(pairs, item_a, item_b)
+    nb_cmp = None
+    if nb_threshold is not None:
+        nb_cmp = _net_benefit_comparison(pairs, nb_threshold, name_a, name_b)
 
     if not a.verify():
         warnings.append("warning: artifact A failed analysis-lock verification "
@@ -947,6 +1036,7 @@ def compare_artifacts(a: RunArtifact, b: RunArtifact, seed: int = 0) -> Comparis
         warnings=warnings,
         family_mdes=_family_mdes(per_fam),
         directional_mdes=_directional_mdes(pairs, seed),
+        net_benefit=nb_cmp,
     )
 
 
@@ -1022,5 +1112,18 @@ def comparison_to_dict(c: Comparison) -> dict[str, Any]:
         "family_mdes": [_family_mde(fm) for fm in c.family_mdes],
         "directional_mdes": [_directional_mde(dm) for dm in c.directional_mdes],
         "weighted_deltas": [_weighted_delta(d) for d in c.weighted_deltas],
+        "net_benefit": (
+            {
+                "threshold": c.net_benefit.threshold,
+                "nb_a": c.net_benefit.nb_a,
+                "nb_b": c.net_benefit.nb_b,
+                "n": c.net_benefit.n,
+                "n_a": c.net_benefit.n_a,
+                "n_b": c.net_benefit.n_b,
+                "sufficient": c.net_benefit.sufficient,
+                "winner": c.net_benefit.winner,
+                "note": c.net_benefit.note,
+            } if c.net_benefit is not None else None
+        ),
         "warnings": c.warnings,
     }

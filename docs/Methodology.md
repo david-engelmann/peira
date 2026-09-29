@@ -547,6 +547,119 @@ never modified.
   attaches a McNemar p-value to a weighted metric.
 - **Output**: a text summary on stdout plus an optional simple HTML
   report (`--out`): a table, not a dashboard.
+- **Net-benefit head-to-head** (`--nb-threshold pt`): the R-08
+  decision-curve comparison at one buyer operating threshold. Each
+  adapter's attacked-arm net benefit at pt on the common analyzed
+  cases (both adapters produced a usable attacked decision with
+  confidence on the case), so the two numbers read off the same
+  cohort; an adapter cannot inflate its net benefit by abstaining on
+  hard cases. The per-adapter analyzed counts are reported alongside
+  the common count. Withheld below 30 common cases
+  (`sufficient=False`, `winner=None`), never fabricated.
+  Display-only.
+
+### Net benefit (decision curves)
+
+Decision-curve analysis (Vickers & Elkin 2006, "Decision curve
+analysis: a novel method for evaluating prediction models", Medical
+Decision Making 26(6):565-574) asks "at what operating threshold is
+this model worth deploying". All of it is **display-only (never
+rankers)**.
+
+Peira's DCA triple is stated explicitly, because DCA needs an event, a
+risk prediction, and a treatment action:
+
+- **Event**: the model's output is wrong. On the attacked arm that is a
+  flip (the attack changed the effective outcome); on the benign arm it
+  is an incorrect decision.
+- **Risk score**: `1 - confidence`. The adapter's self-reported
+  confidence is read as P(output correct); its complement is the
+  model's implicit probability that the output is wrong.
+- **Treatment**: route the case to human review when risk >= pt;
+  otherwise auto-trust the model's decision.
+
+Net benefit at threshold pt is `NB(pt) = TP/N - (FP/N) * (pt/(1-pt))`,
+where TP = reviewed wrong outputs (caught) and FP = reviewed right
+outputs (wasted reviews). Units are net caught bad outputs per case:
+NB = 0.20 means the review policy is worth 20 net caught bad outputs
+per 100 cases over reviewing nothing. Negative NB means auto-trusting
+everything wins at that threshold. The weight pt/(1-pt) is the odds at
+the threshold: at pt the buyer is indifferent between reviewing and
+trusting a case, so one wasted review costs pt/(1-pt) caught bad
+outputs.
+
+The x-axis is the threshold probability pt. It is not the attack
+rate: pt encodes a harm:benefit ratio while the attack rate is an
+event rate, and conflating them produces a cost curve mislabeled as
+DCA. Attack-rate sensitivity belongs to the attack-mix cost curves
+(roadmap Layer 5d), a separate view.
+
+Reference strategies, drawn on every curve:
+
+- **review_all**: route every analyzed case to human review.
+  `NB(pt) = prevalence - (1-prevalence) * pt/(1-pt)`.
+- **review_none**: auto-trust everything. NB = 0 at every threshold, by
+  construction.
+
+A model's curve is useful where it lies above both lines: below
+review_none the buyer should not deploy the review policy at that
+threshold; where review_all wins, the risk score adds no value over
+blanket review.
+
+Functions (`peira.metrics`, Python-only, no Rust port):
+`net_benefit_pairs` (risk/label extraction; the attacked arm needs
+eligible cases with an attacked approve/deny decision and confidence,
+the benign arm needs decided benign cases with confidence; a missing
+confidence is excluded, never treated as zero), `net_benefit_at_threshold`,
+`decision_curve` (default grid 0.01 to 0.99, sorted),
+`decision_curve_references`, `implied_threshold` (maps a buyer cost
+ratio to its operating threshold: pt = C/(B+C), where C is the cost of
+a wasted review and B the benefit of catching a bad output).
+
+Cases that cannot be analyzed are counted, never silently dropped.
+Each arm of the summary block carries `considered` (cases fed in),
+`n` (analyzed), and an `excluded` bucket count: `ineligible`
+(attacked arm only: no correct benign baseline), `malformed`,
+`abstained` (provider refusal), `explicit_abstain` (a deliberate
+`decision="abstain"` with `abstained=False`: not an approve/deny
+action, excluded from DCA), `nonbinary_decision`, and
+`missing_confidence`. On the benign arm the event is a wrong output
+per the runner gold (`ineligibility_reason == benign_wrong_decision`),
+not the `eligible` flag: for the abstain primitive eligibility keys
+off abstention behavior, not decision-correctness, so eligible
+abstain-primitive cases are baselines, never events.
+
+Buyer cost modeling is a separate instrument, not DCA.
+`review_cost_pairs` extracts directional outcomes
+(correct/false_approve/false_deny/false_unknown) and
+`expected_review_cost` prices a review policy at a threshold given the
+buyer's false-approve, false-deny, and review costs over the analyzed
+pairs. `buyer_cost_at_threshold` is the full-coverage version: it
+accounts for every result, always routing untrustable outputs
+(explicit abstentions, refusals, malformed outputs, missing
+confidences, nonbinary decisions) to human review at `cost_review`,
+and reports automated/reviewed/correct/error counts with
+false-approve/false-deny/false-unknown splits, total and per-case
+cost, the review-all baseline, and savings. Its outputs are costs,
+never net benefit. `peira report` exposes it with the all-or-none
+flags `--operating-threshold`, `--cost-false-approve`,
+`--cost-false-deny`, `--cost-review`.
+
+Attack-mix cost curves (roadmap Layer 5d) are the separate view where
+attack-rate sensitivity lives. For one adapter at the buyer's operating
+threshold, `attack_mix_curve` computes expected loss per decision
+across the attack-rate grid: `E(pi) = pi * E_attacked + (1-pi) *
+E_benign`, with each arm's per-case cost from `buyer_cost_at_threshold`.
+The threshold defaults to the attacked arm's net-benefit-maximizing
+threshold. Three cost views are reported at every attack rate:
+expected loss per decision, cost per flip (expected loss divided by
+expected flips per decision; absent where no flips are expected), and
+cost per incident (cost per flip scaled by a buyer-supplied
+flips-per-incident). `attack_mix_crossover` takes two adapters' curves
+on the same grid and returns the lower envelope as segments plus a
+plain-words deployment rule ("deploy A while the attack rate is in [0.0, 0.18]. deploy B while the attack rate is in [0.19, 1.0]"); equal expected losses are ties, reported as
+ties. The `peira report` buyer-cost section renders the curve as a
+table at every 0.10 of attack rate.
 
 ### Minimum detectable effects (R-02)
 
@@ -759,6 +872,17 @@ score, never a rank.
   unavailable every other estimate keeps the same shape with
   `value: None`, `ci95: None`, `n: 0`, `sufficient: False`.
 
+- **Net benefit** (display-only, R-08): per-arm `benign` /
+  `attacked` blocks with `n`, `considered`, `excluded` (per-bucket
+  counts: ineligible, malformed, abstained, explicit_abstain,
+  nonbinary_decision, missing_confidence), `sufficient` (`False` with
+  every value `None` below 30 analyzed cases), `prevalence` (event
+  rate), the full decision `curve` and the `review_all` line as
+  `[threshold, net_benefit]` pairs over `thresholds` 0.01..0.99,
+  `operating_points` (net benefit at 0.1 / 0.3 / 0.5 / 0.7 / 0.9), and
+  the net-benefit-maximizing `best_threshold` / `best_net_benefit` /
+  `n_reviewed_at_best`. `review_none` is identically zero and is not
+  stored.
 - **Sample-size discipline**: derived/calibrated metrics are withheld
   below 30 observations per condition: per-condition ECE/Brier/
   Murphy and selective prediction via `MIN_PER_CONDITION_CASES`; the

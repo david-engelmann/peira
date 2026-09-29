@@ -48,42 +48,6 @@ accept the license on the model's HF page first. Model weights are
 cached after the first download. Revisions are pinned. A download
 failure never silently falls back to another revision.
 
-**`lakera adapter needs a Lakera API key`**
-Cause: `LAKERA_API_KEY` is not set and no `api_key=` was passed. Fix:
-`export LAKERA_API_KEY=<key>` (free Community tier: 10k requests/month
-at platform.lakera.ai), or pass `api_key=` to the adapter constructor.
-
-**`lakera API error 401 ...`**
-Cause: the API key is invalid or the account lacks Guard API access.
-Fix: check that `LAKERA_API_KEY` is valid and the account has Guard API
-access enabled. This is terminal: the runner will not retry it.
-
-**`lakera API error 422 ...`**
-Cause: the request was rejected as malformed. Fix: this is an adapter
-bug, not a retryable failure. Report it. The runner will not retry it.
-
-**`lakera API error 429 ...` / `lakera API error 5xx ...`**
-Cause: rate limit or server-side failure. Fix: transient. The runner
-retries with backoff (honoring `Retry-After` up to the cap) and adapts
-concurrency. If it persists, lower `--max-concurrency`.
-
-**`lakera transport error: ...`**
-Cause: the HTTPS request never completed (DNS, connection refused,
-timeout). Fix: transient. The runner retries. Check network access to
-`api.lakera.ai` if it persists.
-
-**`lakera returned non-JSON response ...`**
-Cause: the API answered with something that is not JSON (proxy error
-page, WAF block). Fix: check for a proxy or firewall between you and
-`api.lakera.ai`.
-
-**`lakera response missing boolean 'flagged' ...`**
-Cause: the API answered with JSON that lacks the documented `flagged`
-boolean (wire shape drift). Fix: the adapter's wire shape is from
-Lakera's published API docs and hasn't been exercised against the live
-API. Report the response keys from the error so the adapter can be
-updated.
-
 **Out-of-memory on local models**
 Cause: the model doesn't fit in RAM/VRAM. Fix: use a quantized variant or a
 smaller adapter; see `docs/Hardware.md` for per-tier requirements.
@@ -376,6 +340,22 @@ outputs moved).
 Cause: `peira report --out` points somewhere unwritable: a missing
 parent directory, or a permissions problem. Fix: create the directory
 first, or pick a writable path.
+
+**`error: --operating-threshold, --cost-false-approve, --cost-false-deny and --cost-review must be given together` (from `peira report`)**
+Cause: only some of the four buyer-cost flags were passed. Fix: pass
+all four, or none. The buyer-cost section needs the operating
+threshold and all three costs; peira refuses to invent defaults.
+
+**`error: threshold must be finite and in [0, 1)` / `error: <cost> must be finite and non-negative` (from `peira report`)**
+Cause: a buyer-cost flag got a non-numeric, NaN, infinite, negative,
+or (for the threshold) out-of-range value. Fix: pass a threshold
+strictly inside [0, 1) and non-negative costs.
+
+**`error: flips_per_incident must be a number` / `error: flips_per_incident must be finite and positive` (from `peira report`)**
+Cause: `--flips-per-incident` got a non-numeric, NaN, infinite, or
+non-positive value. Fix: pass a finite positive number of flips per
+incident, or drop the flag (the cost-per-incident column then renders
+as withheld).
 
 **`...: nesting depth <n> exceeds the 256-level cap`**
 Cause: a case-file line nests `[`/`{` deeper than 256 levels
@@ -714,6 +694,13 @@ same suite; compare always uses the case-id intersection.
 Cause: `peira compare --out` points somewhere unwritable: a missing
 parent directory, or a permissions problem. Fix: create the directory
 first, or pick a writable path.
+
+**`error: nb_threshold must be a number, got ...` or `nb_threshold must be finite and in [0, 1), got ...` (from `peira compare`)**
+Cause: `--nb-threshold` got a non-numeric value (first message), or a
+NaN, infinite, or out-of-range value (second message).
+Fix: pass a probability strictly inside [0, 1), e.g. `--nb-threshold 0.5`.
+The net-benefit head-to-head is withheld (not an error) when the two
+adapters share fewer than 30 common analyzed attacked cases.
 
 **`peira compare` says "withheld" for McNemar / Bradley-Terry / deltas**
 Cause: not an error. The sample-size discipline. McNemar and
