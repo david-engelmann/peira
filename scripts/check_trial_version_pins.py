@@ -51,12 +51,12 @@ def manifest_version() -> str:
     return version
 
 
-def check() -> list[str]:
-    """Return a list of problem strings; empty means every pin is in sync."""
+def check() -> tuple[str, list[str]]:
+    """Return (manifest version, problem strings); empty problems means in sync."""
     try:
         expected = manifest_version()
     except ValueError as exc:
-        return [str(exc)]
+        return "", [str(exc)]
     problems: list[str] = []
     for rel, pattern in PINS:
         path = REPO_ROOT / rel
@@ -77,11 +77,11 @@ def check() -> list[str]:
                     f"{rel}: pins trial version {hit}, "
                     f"manifest says {expected}"
                 )
-    return problems
+    return expected, problems
 
 
 def main() -> int:
-    problems = check()
+    expected, problems = check()
     for problem in problems:
         print(f"trial-pin-lint: {problem}", file=sys.stderr)
     if problems:
@@ -91,7 +91,7 @@ def main() -> int:
             file=sys.stderr,
         )
         return 1
-    print(f"trial-pin-lint: all pins match manifest ({manifest_version()})")
+    print(f"trial-pin-lint: all pins match manifest ({expected})")
     return 0
 
 

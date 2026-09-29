@@ -15,7 +15,14 @@ import check_trial_version_pins  # noqa: E402
 
 class TestTrialVersionPins(unittest.TestCase):
     def test_live_repo_agrees(self):
-        self.assertEqual(check_trial_version_pins.check(), [])
+        manifest_version = json.loads(
+            (REPO_ROOT / "dataset" / "trial" / "manifest.json").read_text(
+                encoding="utf-8"
+            )
+        )["dataset_version"]
+        version, problems = check_trial_version_pins.check()
+        self.assertEqual(version, manifest_version)
+        self.assertEqual(problems, [])
 
     def _sandbox_copy(self) -> Path:
         """Copy the manifest plus every pinned file into a temp dir."""
@@ -33,7 +40,8 @@ class TestTrialVersionPins(unittest.TestCase):
         orig = check_trial_version_pins.REPO_ROOT
         check_trial_version_pins.REPO_ROOT = tmp
         try:
-            return check_trial_version_pins.check()
+            _, problems = check_trial_version_pins.check()
+            return problems
         finally:
             check_trial_version_pins.REPO_ROOT = orig
 
@@ -90,7 +98,7 @@ class TestTrialVersionPins(unittest.TestCase):
         finally:
             shutil.rmtree(tmp, ignore_errors=True)
 
-    def test_unreadable_manifest_reported(self):
+    def test_missing_manifest_reported(self):
         tmp = self._sandbox_copy()
         try:
             (tmp / "dataset" / "trial" / "manifest.json").unlink()
