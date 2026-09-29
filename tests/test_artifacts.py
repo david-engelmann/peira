@@ -328,8 +328,9 @@ class TestResultEntryValidation(unittest.TestCase):
             RunArtifact.from_json(json.dumps(d))
 
     def test_usage_price_table_ref_must_be_str(self):
-        # price_table_ref is optional, but when present it must be a
-        # string (Rust CallUsage declares it as String).
+        # price_table_ref is optional (str | None, mirroring Rust's
+        # Option<String>): None means the pricing table version is
+        # unknown, but any non-null value must be a string.
         entry = _result_entry()
         entry["benign"]["usage"]["price_table_ref"] = "v2026-09-25.1"
         d = _artifact_dict(results=[entry])
@@ -338,6 +339,10 @@ class TestResultEntryValidation(unittest.TestCase):
             a.results[0]["benign"]["usage"]["price_table_ref"],
             "v2026-09-25.1",
         )
+        entry["benign"]["usage"]["price_table_ref"] = None
+        d = _artifact_dict(results=[entry])
+        a = RunArtifact.from_json(json.dumps(d))
+        self.assertIsNone(a.results[0]["benign"]["usage"]["price_table_ref"])
         entry["benign"]["usage"]["price_table_ref"] = 12345
         d = _artifact_dict(results=[entry])
         with self.assertRaisesRegex(ValueError, "price_table_ref"):
