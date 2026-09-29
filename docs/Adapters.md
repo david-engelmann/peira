@@ -544,6 +544,42 @@ not silent mismeasurement. The project's published parity number
 (95.5% vs Jev 96.3% on the aligned subset, overlapping CIs) is their
 claim, not a peira measurement.
 
+## Lakera Guard
+
+No extra needed (stdlib transport). Set `LAKERA_API_KEY` to your API key,
+then run
+
+```bash
+export LAKERA_API_KEY="<your-lakera-key>"
+peira run --adapter peira.adapters.lakera:LakeraAdapter --suite trial-demo
+```
+
+Lakera Guard (Check Point AI Guardrails) is a commercial
+threat-detection API. The adapter sends the case prompt as a single
+user message to `POST https://api.lakera.ai/v2/guard` with
+`breakdown: true` and reads back the `flagged` boolean plus
+per-detector results. Empty or whitespace-only prompts are never sent.
+The adapter returns `"other"` locally for those with no API call.
+Per B2, guardrails are abstain-primitive-only. A
+flagged verdict is the explicit `"abstain"` label (a deliberate
+abstain-decision, not a refusal). Unflagged content is the `"other"`
+placeholder (the guardrail vetoes nothing and never claims to know the
+correct decision). The score comes from the breakdown's highest
+detector confidence, mapping the ordinal levels (`l1_confident` … `l5_unlikely`) linearly to 0..1. When the breakdown is absent the
+`flagged` boolean is authoritative. 401/422 are terminal. 429/5xx and
+transport timeouts surface as retryable provider errors for the
+runner. The API version is pinned to v2. Reported pricing is a free
+Community tier (10k calls/month) with paid entry around $99/month for
+50k calls (~$0.002/call). That figure is secondary-sourced via
+third-party integration guides and not confirmed on an official Lakera
+pricing page. The pinned table in `python/peira/data/pricing.json`
+reflects that with the caveat attached. One honest caveat remains. The
+wire shape is from Lakera's published API docs
+(docs.lakera.ai/docs/api/guard) and the adapter has not been exercised
+against the live API yet. If the service answers differently than
+documented, you will see terminal provider errors, not silent
+mismeasurement.
+
 ## Pricing
 
 `peira run` recomputes cost from the pinned table in

@@ -500,11 +500,12 @@ class TestConfidenceSourceMetadata(unittest.TestCase):
     def _adapters(self):
         from peira.adapters import hf, jev, kev, laya, llm, mock, semif
         from peira.adapters import openjev_sglang
+        from peira.adapters import lakera
         return [
             hf.ShieldstralAdapter, hf.ProtectAIAdapter,
             hf.LlamaPromptGuard2Adapter, hf.Qwen3GuardAdapter,
             hf.GraniteGuardianAdapter, hf.ShieldGemmaAdapter,
-            hf.WildGuardAdapter,
+            hf.WildGuardAdapter, lakera.LakeraAdapter,
             llm.OpenAIAdapter, llm.MoonshotAdapter,
             llm.AnthropicAdapter, llm.GoogleAdapter,
             jev.JevAdapter, kev.LocalSystemOneAdapter, kev.KevAdapter,
@@ -521,10 +522,11 @@ class TestConfidenceSourceMetadata(unittest.TestCase):
 
     def test_guardrails_use_boundary_distance(self):
         from peira.adapters import hf
+        from peira.adapters import lakera
         for cls in (hf.ShieldstralAdapter, hf.ProtectAIAdapter,
                     hf.LlamaPromptGuard2Adapter, hf.Qwen3GuardAdapter,
                     hf.GraniteGuardianAdapter, hf.ShieldGemmaAdapter,
-                    hf.WildGuardAdapter):
+                    hf.WildGuardAdapter, lakera.LakeraAdapter):
             self.assertEqual(cls.confidence_source, "guardrail-score")
 
     def test_llm_baselines_verbalized(self):
