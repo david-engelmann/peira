@@ -53,25 +53,30 @@ def _choice_input(case, attacked):
 
 class _HFTokenizer:
     def __call__(self, text, **kwargs):
-        self.seen_text = text
-        return {"input_ids": _FakeTensor([[1, 2, 3]])}
+        # The text travels in the per-call encoded dict (as "text"), so
+        # the fake classifier can branch on its own call's input without
+        # shared mutable state: a seen_text attribute on the shared
+        # tokenizer instance would race across concurrently running cases.
+        # Only this fake adds the "text" key (real HF tokenizers never
+        # emit it); production reads encoded["input_ids"] and splats
+        # model(**encoded), so the extra key is inert everywhere else.
+        return {"input_ids": _FakeTensor([[1, 2, 3]]), "text": text}
 
 
 class _FlippingClassifier:
     """INJECTION logits when the text smells attacked, else SAFE.
 
-    Branches on the tokenizer's recorded input text: any text not in
-    the known-benign set scores INJECTION. The test passes the benign
-    prompts explicitly, so the flip is verified against the fixture's
-    actual attacked content, not a length heuristic.
+    Branches on the per-call input text carried in the encoded dict: any
+    text not in the known-benign set scores INJECTION. The test passes
+    the benign prompts explicitly, so the flip is verified against the
+    fixture's actual attacked content.
     """
 
-    def __init__(self, tokenizer, benign_texts):
-        self._tokenizer = tokenizer
+    def __init__(self, benign_texts):
         self._benign_texts = set(benign_texts)
 
     def __call__(self, **kwargs):
-        text = getattr(self._tokenizer, "seen_text", "")
+        text = kwargs.get("text", "")
         if text in self._benign_texts:
             return SimpleNamespace(logits=[[2.5, 0.2]])  # SAFE
         return SimpleNamespace(logits=[[0.2, 2.5]])  # INJECTION
@@ -93,18 +98,17 @@ def _hf_patched(model):
 
 
 @contextmanager
-def _hf_patched_wired(classifier_factory):
-    """Variant of _hf_patched where the classifier needs the tokenizer.
+def _hf_patched_wired(classifier):
+    """Variant of _hf_patched with a caller-supplied classifier instance.
 
-    The factory receives the tokenizer instance and returns the classifier,
-    so fakes can branch on the actual input text.
+    The fake tokenizer carries each call's text in the encoded dict, so
+    the classifier can branch on its own input with no shared state.
     """
     with mock.patch.object(
         hf_mod, "_require_hf", return_value=(_FakeTorch(), SimpleNamespace())
     ):
         adapter = ProtectAIAdapter()
-    tokenizer = _HFTokenizer()
-    adapter._load = lambda: (tokenizer, classifier_factory(tokenizer))
+    adapter._load = lambda: (_HFTokenizer(), classifier)
     yield adapter
 
 
@@ -114,7 +118,6 @@ def _hf_patched_wired(classifier_factory):
 def _openai_patched(cases):
     """Fake openai SDK: answers each call with the case's expected label."""
     import sys
-    from tests.test_llm_adapters import _FakeAPIStatusError  # noqa
 
     script = []
     for case in cases:
@@ -200,7 +203,7 @@ class TestHFThroughRunner(unittest.TestCase):
         cases = _cases(2, primitives={"abstain"})
         benign_texts = [c.benign.input.get("prompt", "") for c in cases]
         with _hf_patched_wired(
-            lambda tok: _FlippingClassifier(tok, benign_texts)
+            _FlippingClassifier(benign_texts)
         ) as adapter:
             art = run_suite(adapter, cases, "trial-demo", "0.1.0-demo",
                             seed=1, max_concurrency=2)

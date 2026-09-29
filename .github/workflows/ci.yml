@@ -184,7 +184,10 @@ jobs:
     # transformers installed; without this lane they would skip everywhere
     # and never execute. Tokenizer files only (no model weights or GPU).
     # The grep asserts zero skips: a lane that silently skips is the same
-    # dishonesty in a new place.
+    # dishonesty in a new place. Deliberate tradeoff: this lane downloads
+    # from the HF Hub, so a Hub outage fails the job by design (the
+    # contract tests skip locally without network, keeping local runs
+    # green; CI is the lane that must not lie about having run them).
     needs: check_runner
     runs-on: ${{ fromJSON(needs.check_runner.outputs.runner) }}
     timeout-minutes: 20
