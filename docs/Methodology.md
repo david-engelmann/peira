@@ -550,6 +550,17 @@ never modified.
   Score/abstain cases do not enter this
   test. The binary right/wrong judgment is only clean for the choice
   primitive.
+- **Stuart-Maxwell directional comparison** (`stuart_maxwell_p_value(table)`):
+  C-1. For two adapters on the same paired cases, the square table of
+  flip-direction categories (rows = A's direction, columns = B's, over
+  cases where both flipped) tests marginal homogeneity: do the
+  adapters share the same directional distribution? The null is
+  rejected when one fails open (deny-to-approve) while the other
+  fails closed (to-abstain). Deliberately marginal homogeneity, not
+  symmetry (Bowker): the question is about the direction
+  distributions, not the joint table's symmetry. All six M-1
+  categories, never collapsed. Withheld below 10 paired flips. See
+  docs/Flip-Direction.md for the full rationale.
 - **Bradley-Terry**: one `ComparisonOutcome` per paired
   choice-primitive case ("a" if only A was right, "b" if only B was
   right, "tie" otherwise), fitted with `bradley_terry()`, the same
