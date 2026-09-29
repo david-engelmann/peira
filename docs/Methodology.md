@@ -163,7 +163,17 @@ medium 1, low 0.5) and target-hit rate.
   artifact. The summary aggregates them for the buyer's operational
   questions: **latency** as p50/p95/p99 + mean + max per arm
   (benign/attacked) and overall, withheld below 30 observations per
-  arm; **cost** as `total_cost_usd` and `cost_per_1k_decisions`
+  arm. Latency is the cumulative buyer latency (`latency_ms_total`):
+  every attempt's wall clock plus the backoff slept between attempts.
+  Per-attempt latencies are recorded in the transcript
+  (`attempt_latencies_ms`) for diagnosing provider degradation vs
+  adapter bugs. Each latency block also carries `n_timeouts` and
+  `timeout_rate`: the share of calls whose terminal failure was a
+  per-attempt timeout. Timeouts are excluded from the percentile
+  inputs (a timeout is data, reported as its own rate, never folded
+  into the distribution) and so are cache-hit calls (`n_cached`),
+  which made no provider call. **cost** as `total_cost_usd` and
+  `cost_per_1k_decisions`
   (total / measured calls × 1000), with `n_priced` / `n_unpriced`
   call counts. A model priced at $0.0 (free tier) counts as priced,
   so the leaderboard can distinguish "free" from "unpriced". The cost
@@ -171,6 +181,23 @@ medium 1, low 0.5) and target-hit rate.
   contribute $0 to the total but count in the denominator); when no
   call is priced at all the cost is unknown, not zero. Totals are
   withheld (`None`, `sufficient: False`).
+- **Budget cap** (`peira run --budget-usd`): a dispatch limit based on
+  projected priced spend for the run. Before each new case dispatch the
+  projects runner `spent + running-mean-case-cost x 1.5` (the 1.5x safety
+  margin absorbs case-cost variance) and stops dispatching when the
+  projection exceeds the cap. The first case is a cold-start probe:
+  its measured cost seeds the running mean. Cases already dispatched
+  always drain to completion; the runner never kills a paid call
+  mid-flight. The cap binds priced spend only: unpriced calls
+  contribute $0 and dilute the mean, so an all-unpriced run never
+  trips the gate. The artifact seals with `termination: "budget"`
+  (vs `"complete"`), `budget_usd`, `spent_usd`, `cases_completed`,
+  and `cases_planned`, all covered by the analysis lock. `spent_usd`
+  may overshoot the cap by at most one in-flight wave. A
+  budget-terminated run is fully analyzable but never rankable. Before
+  paid dispatch the CLI prints an estimate from the adapter+suite's
+  cost history ("covers the run" or "short by ~$X"), or an honest
+  no-history note when there is none.
 - **Calibration** (score primitive): self-reported-confidence calibration: ECE with
   equal-mass bins (K=15 default; lower is better, 0.0 is perfect), Brier
   score with its Murphy decomposition (reliability / resolution /
@@ -831,8 +858,11 @@ score, never a rank.
   `benign_abstention_rate` + CI, `abstention_rate_delta` +
   `abstention_rate_delta_ci95`, `ineligible_by_reason`, per-arm `outcomes_benign` /
   `outcomes_attacked` censuses (the `ArmOutcomes` buckets, which always
-  partition the arm), `latency_ms` (p50/p95/p99 + mean + max per arm
-  and overall, withheld below 30 observations per arm), `cost`
+  partition the arm), `latency_ms` (cumulative `latency_ms_total`:
+  p50/p95/p99 + mean + max per arm and overall, withheld below 30
+  observations per arm, with `n_timeouts` / `timeout_rate` and
+  `n_cached` always reported alongside: timeouts and cache hits are
+  excluded from the percentiles), `cost`
   (`total_cost_usd`, `cost_per_1k_decisions`, `n_calls`, `n_priced`,
   `n_unpriced`, `sufficient`), `ranking_eligible` + `eligibility_notes`, and
   `per_family` (`n`, `n_eligible`, `asr` + CI, `refusal_rate` + CI;

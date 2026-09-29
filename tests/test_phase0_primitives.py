@@ -95,6 +95,26 @@ class TieredCostAdapter:
         return _output_for(primitive, _usage(tokens_in, tokens_out))
 
 
+class UnpricedAdapter:
+    """Adapter using a table-missing model: every call prices at 0.0.
+
+    The adapter reports a bogus cost_usd of its own; the runner's cost
+    authority must ignore it (unknown models price at 0.0, explicitly
+    unaccounted rather than silently estimated).
+    """
+
+    name = "unpriced-test"
+    version = "1.0"
+    supported_primitives = frozenset({"choice", "score", "abstain"})
+
+    def decide(self, case_input, primitive, context):
+        usage = CallUsage(
+            model="no-such-model-in-table", tokens_in=1000, tokens_out=500,
+            latency_ms=1.0, cost_usd=99.99,
+        )
+        return _output_for(primitive, usage)
+
+
 class TimeoutAdapter:
     """Raises TimeoutError the first `fail_times` calls, then succeeds."""
 
@@ -307,6 +327,46 @@ class TestBudgetEnforcement(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
+# Budget with unpriced calls: counted, never priced
+# ---------------------------------------------------------------------------
+
+class TestUnpricedBudget(unittest.TestCase):
+    def test_spent_usd_zero_calls_counted(self):
+        # Unpriced calls contribute 0.0 to spent_usd but are counted:
+        # the adapter's own cost claim is ignored by the runner, and the
+        # budget gate never trips on spend it cannot measure.
+        a = run_suite(UnpricedAdapter(), _cases(4), "trial-demo",
+                      "0.1.0-demo", budget_usd=0.001)
+        self.assertEqual(a.termination, "complete")
+        self.assertEqual(a.cases_completed, 4)
+        self.assertEqual(a.cases_planned, 4)
+        self.assertEqual(a.spent_usd, 0.0)
+        for entry in a.results:
+            for arm in ("benign", "attacked"):
+                self.assertEqual(entry[arm]["usage"]["cost_usd"], 0.0)
+        cost = a.metrics["cost"]
+        self.assertEqual(cost["n_unpriced"], 8)
+        self.assertEqual(cost["n_priced"], 0)
+        self.assertFalse(cost["sufficient"])
+        # Unknown cost is not zero cost: the headline is withheld,
+        # never reported as $0.00.
+        self.assertIsNone(cost["total_cost_usd"])
+        self.assertIsNone(cost["cost_per_1k_decisions"])
+
+    def test_unpriced_run_keeps_termination_complete(self):
+        # Unpriced spend never degrades the run's termination state: the
+        # gate only binds priced spend, so the run seals complete (its
+        # ranking eligibility still fails on the demo suite's coverage
+        # floor, which is unrelated to cost).
+        a = run_suite(UnpricedAdapter(), _cases(2), "trial-demo",
+                      "0.1.0-demo", budget_usd=0.001)
+        self.assertEqual(a.termination, "complete")
+        reasons = " ".join(a.metrics["eligibility_notes"])
+        self.assertNotIn("terminated early", reasons)
+        self.assertIsNone(a.metrics["cost"]["total_cost_usd"])
+
+
+# ---------------------------------------------------------------------------
 # Cumulative latency
 # ---------------------------------------------------------------------------
 
@@ -497,6 +557,23 @@ class TestArtifactContract(unittest.TestCase):
         a = run_suite(PricedAdapter(), _cases(1), "trial-demo", "0.1.0-demo")
         self.assertEqual(a.pricing_version, "2026-09-25.1")
 
+    def test_pricing_version_lock_covered(self):
+        a = run_suite(PricedAdapter(), _cases(1), "trial-demo", "0.1.0-demo")
+        d = json.loads(a.to_json())
+        b = RunArtifact.from_json(json.dumps(d))
+        self.assertTrue(b.verify())
+        b.pricing_version = "1999-01-01.9"
+        self.assertFalse(b.verify())
+
+    def test_cache_flag_lock_covered(self):
+        a = run_suite(PricedAdapter(), _cases(1), "trial-demo", "0.1.0-demo")
+        self.assertFalse(a.config["cache_enabled"])
+        d = json.loads(a.to_json())
+        b = RunArtifact.from_json(json.dumps(d))
+        self.assertTrue(b.verify())
+        b.config["cache_enabled"] = True
+        self.assertFalse(b.verify())
+
 
 # ---------------------------------------------------------------------------
 # Cache state declaration
@@ -642,6 +719,71 @@ class TestCliBudget(unittest.TestCase):
             ["run", "--adapter", "mock", "--suite", "trial-demo",
              "--budget-usd", "nan", "--dry-run"])
         self.assertEqual(cmd_run(args), EXIT_USER_ERROR)
+
+
+# ---------------------------------------------------------------------------
+# Pre-run budget estimate note
+# ---------------------------------------------------------------------------
+
+class TestBudgetEstimateNote(unittest.TestCase):
+    def _note(self, out_dir, slug, suite, budget_usd, n_remaining):
+        from peira.cli import _budget_estimate_note
+        return _budget_estimate_note(
+            out_dir, slug, suite, budget_usd, n_remaining)
+
+    def test_no_history_note(self):
+        with tempfile.TemporaryDirectory() as td:
+            note = self._note(Path(td), "mock-adapter", "trial-demo",
+                              5.0, 100)
+        self.assertIn("budget: $5.00 cap", note)
+        self.assertIn("no priced cost history", note)
+        self.assertIn("projection: spent + mean x 1.5", note)
+
+    def test_unreadable_history_note(self):
+        with tempfile.TemporaryDirectory() as td:
+            d = Path(td)
+            (d / "mock-adapter-trial-demo.json").write_text("not json")
+            note = self._note(d, "mock-adapter", "trial-demo", 5.0, 100)
+        self.assertIn("no priced cost history", note)
+
+    def test_zero_spent_history_note(self):
+        with tempfile.TemporaryDirectory() as td:
+            d = Path(td)
+            (d / "mock-adapter-trial-demo.json").write_text(json.dumps(
+                {"spent_usd": 0.0, "cases_completed": 10}))
+            note = self._note(d, "mock-adapter", "trial-demo", 5.0, 100)
+        self.assertIn("no priced cost history", note)
+
+    def test_history_note_covers_run(self):
+        # Prior final artifact: $0.28 over 10 cases = $0.028/case.
+        with tempfile.TemporaryDirectory() as td:
+            d = Path(td)
+            (d / "mock-adapter-trial-demo.json").write_text(json.dumps(
+                {"spent_usd": 0.28, "cases_completed": 10}))
+            note = self._note(d, "mock-adapter", "trial-demo", 5.0, 100)
+        self.assertIn("~$0.0280/case", note)
+        self.assertIn("~$2.80 for 100 remaining cases", note)
+        self.assertIn("covers the run", note)
+        self.assertIn("~178 cases covered", note)
+
+    def test_history_note_short(self):
+        with tempfile.TemporaryDirectory() as td:
+            d = Path(td)
+            (d / "mock-adapter-trial-demo.json").write_text(json.dumps(
+                {"spent_usd": 0.28, "cases_completed": 10}))
+            note = self._note(d, "mock-adapter", "trial-demo", 1.0, 100)
+        self.assertIn("short by ~$1.80", note)
+
+    def test_partial_and_replay_artifacts_ignored(self):
+        with tempfile.TemporaryDirectory() as td:
+            d = Path(td)
+            for suffix in (".partial.json", ".replay.json"):
+                (d / f"mock-adapter-trial-demo{suffix}").write_text(
+                    json.dumps({"spent_usd": 99.0, "cases_completed": 1}))
+            note = self._note(d, "mock-adapter", "trial-demo", 5.0, 100)
+        # Checkpoint and replay files are not cost history: the note must
+        # not price off them.
+        self.assertIn("no priced cost history", note)
 
 
 if __name__ == "__main__":

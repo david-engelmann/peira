@@ -1563,6 +1563,13 @@ async def _run_suite_async(
         measured cost seeds the running mean before the pipe opens, so
         the first wave cannot burn the budget blind. Uncapped runs
         (budget_usd None) always pass.
+
+        The cap binds priced spend only. Unpriced calls (model missing
+        from the pricing table) contribute 0.0 to ``spent`` and dilute
+        the running mean toward zero — the same honesty rule the cost
+        summary applies (unpriced calls are counted, never silently
+        estimated). An all-unpriced run therefore never trips the gate:
+        spend the benchmark cannot measure is spend it cannot cap.
         """
         if budget_usd is None:
             return True

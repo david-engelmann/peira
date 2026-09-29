@@ -157,6 +157,8 @@ list runs in the registry
 | `--adapter` |  | - | filter by adapter name |
 | `--suite` |  | - | filter by suite |
 | `--dataset-version` |  | - | filter by dataset version |
+| `--cache` |  | - | filter by cache state (on/off) (choices: `off`, `on`) |
+| `--termination` |  | - | filter by termination state (complete, budget, partial, ...) |
 
 ### peira runs verify
 

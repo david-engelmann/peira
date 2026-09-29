@@ -11,6 +11,13 @@ Artifacts live as loose JSON files in runs/. This module provides:
 
 The index is a cache, not a source of truth — deleting index.db is
 always safe; it will be rebuilt on next use.
+
+The index carries the two comparability dimensions the leaderboard
+segments on: `cache_enabled` (1/0, NULL when the artifact predates
+cache-state sealing) and `termination` ("complete", "budget",
+"partial", ...). Cache-enabled and cache-disabled runs are different
+measurements and must never pool silently; budget-terminated runs are
+analyzable but never rankable.
 """
 
 from __future__ import annotations
@@ -47,7 +54,11 @@ CREATE TABLE IF NOT EXISTS runs (
     seed INTEGER,
     max_concurrency INTEGER,
     n_results INTEGER,
-    lock_valid INTEGER  -- 1 if verify() passed at index time, else 0
+    lock_valid INTEGER,  -- 1 if verify() passed at index time, else 0
+    cache_enabled INTEGER,  -- 1/0; NULL when the artifact predates
+                           -- cache-state sealing (undeclared)
+    termination TEXT       -- "complete", "budget", "partial", ...;
+                           -- "" when the field is absent
 );
 CREATE INDEX IF NOT EXISTS idx_adapter ON runs(adapter_name);
 CREATE INDEX IF NOT EXISTS idx_suite ON runs(suite);
@@ -144,6 +155,27 @@ def _ensure_registry_columns(conn: sqlite3.Connection) -> None:
             conn.execute(f"ALTER TABLE runs ADD COLUMN {name} {ddl}")
 
 
+def _ensure_phase0_columns(conn: sqlite3.Connection) -> bool:
+    """Backfill Phase-0 index columns added after an index.db was first created.
+
+    The index is a cache and an existing index.db may predate new
+    columns. CREATE TABLE IF NOT EXISTS will not add them, so backfill
+    explicitly (idempotent ALTER TABLE).
+
+    Returns True if any columns were added. ALTER TABLE leaves existing
+    rows NULL for the new columns, so the caller must rescan a non-empty
+    index to populate them; otherwise filtered ``list_runs`` calls
+    silently return no rows.
+    """
+    existing_cols = {row[1] for row in conn.execute("PRAGMA table_info(runs)")}
+    added = False
+    for col, ddl in (("cache_enabled", "INTEGER"), ("termination", "TEXT")):
+        if col not in existing_cols:
+            conn.execute(f"ALTER TABLE runs ADD COLUMN {col} {ddl}")
+            added = True
+    return added
+
+
 # Measurement-framework columns added to case_results after its initial
 # creation. flip_type was renamed to flip_direction (M-1 taxonomy);
 # confidence_delta, target_hit, and score_delta are new.
@@ -232,6 +264,14 @@ def _artifact_metadata(path: Path) -> dict[str, Any] | None:
         lock_valid = 1 if artifact.verify() else 0
     except Exception:
         lock_valid = 0
+    # Comparability dimensions for leaderboard segmentation. Artifact
+    # JSON is untrusted input: coerce defensively, never raise.
+    config = data.get("config")
+    cache_raw = config.get("cache_enabled") if isinstance(config, dict) else None
+    cache_enabled = 1 if cache_raw is True else (0 if cache_raw is False else None)
+    termination = data.get("termination")
+    if not isinstance(termination, str):
+        termination = ""
     return {
         "run_id": path.stem,
         "created_utc": data.get("created_utc", ""),
@@ -257,6 +297,8 @@ def _artifact_metadata(path: Path) -> dict[str, Any] | None:
         "template_hash": data.get("template_hash", ""),
         "case_set_tag": data.get("case_set_tag", ""),
         "cost_scenario_version": data.get("cost_scenario_version", ""),
+        "cache_enabled": cache_enabled,
+        "termination": termination,
         "per_family": _per_family_rows(data),
         "per_case": _per_case_rows(data),
     }
@@ -574,6 +616,7 @@ def _scan_runs_into(conn: sqlite3.Connection, runs_dir: Path) -> int:
     conn.executescript(_SCHEMA)
     _ensure_registry_columns(conn)
     _ensure_case_result_columns(conn)
+    _ensure_phase0_columns(conn)
     # Clear existing index
     conn.execute("DELETE FROM runs")
     conn.execute("DELETE FROM family_results")
@@ -595,8 +638,9 @@ def _scan_runs_into(conn: sqlite3.Connection, runs_dir: Path) -> int:
                 env_sha256, seed, max_concurrency, n_results, lock_valid,
                 model_class, confidence_source, checkpoint_hash,
                 api_version, call_date, decode_params, template_hash,
-                case_set_tag, cost_scenario_version)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                case_set_tag, cost_scenario_version,
+                cache_enabled, termination)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 run_path, mtime, meta["run_id"], meta["created_utc"],
                 meta["adapter_name"], meta["adapter_version"],
@@ -609,6 +653,7 @@ def _scan_runs_into(conn: sqlite3.Connection, runs_dir: Path) -> int:
                 meta["call_date"], meta["decode_params"],
                 meta["template_hash"], meta["case_set_tag"],
                 meta["cost_scenario_version"],
+                meta["cache_enabled"], meta["termination"],
             ),
         )
         for family, n, n_eligible, asr, lo, hi, refusal_rate in meta["per_family"]:
@@ -725,6 +770,26 @@ def _ensure_index_fresh(runs_dir: Path) -> None:
         actual[str(path.resolve())] = path.stat().st_mtime
     if _indexed_snapshot(runs_dir) != actual:
         scan_runs(runs_dir)
+    else:
+        # Snapshot matches but the index may predate new columns: a
+        # legacy index.db with unchanged artifacts skips the rescan, so
+        # migrate its schema here (idempotent, no-op when current). If
+        # columns were added to a non-empty index, force a rescan: ALTER
+        # TABLE leaves existing rows NULL, and filtered list_runs calls
+        # would silently return no rows.
+        db_path = _index_path(runs_dir)
+        conn = _connect(db_path)
+        try:
+            added = _ensure_phase0_columns(conn)
+            conn.commit()
+            if added:
+                row_count = conn.execute("SELECT COUNT(*) FROM runs").fetchone()[0]
+                if row_count > 0:
+                    conn.close()
+                    scan_runs(runs_dir)
+                    return
+        finally:
+            conn.close()
 
 
 def list_runs(
@@ -732,11 +797,19 @@ def list_runs(
     adapter: str | None = None,
     suite: str | None = None,
     dataset_version: str | None = None,
+    cache_enabled: bool | None = None,
+    termination: str | None = None,
 ) -> list[dict[str, Any]]:
     """List runs with optional filters.
 
     Returns a list of dicts with run metadata. The index is rebuilt if
     stale.
+
+    ``cache_enabled`` segments the leaderboard's cache dimension: pass
+    True/False to list only cache-enabled/disabled runs (cache-enabled
+    and cache-disabled runs are different measurements and must never
+    pool silently). ``termination`` filters on the run's termination
+    state ("complete", "budget", "partial", ...).
     """
     runs_dir = _get_runs_dir(runs_dir)
     if not runs_dir.exists():
@@ -757,6 +830,12 @@ def list_runs(
         if dataset_version:
             query += " AND dataset_version = ?"
             params.append(dataset_version)
+        if cache_enabled is not None:
+            query += " AND cache_enabled = ?"
+            params.append(1 if cache_enabled else 0)
+        if termination is not None:
+            query += " AND termination = ?"
+            params.append(termination)
         query += " ORDER BY created_utc DESC"
         cursor = conn.execute(query, params)
         return [dict(row) for row in cursor.fetchall()]
