@@ -26,6 +26,7 @@ import json
 import math
 import random
 import secrets
+import sys
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -1933,15 +1934,15 @@ def run_multiseed(
     runs: list[tuple[int, RunArtifact | None, str | None]] = []
     for i, seed_i in enumerate(seeds):
         run_nonce = new_run_nonce()
-        run_adapter = (
-            build_adapter(seed_i, run_nonce)
-            if build_adapter is not None
-            else adapter
-        )
         extra = dict(config_extra or {})
         extra["num_seeds"] = num_seeds
         extra["seed_index"] = i
         try:
+            run_adapter = (
+                build_adapter(seed_i, run_nonce)
+                if build_adapter is not None
+                else adapter
+            )
             artifact = run_suite(
                 run_adapter,
                 cases,
@@ -1961,6 +1962,12 @@ def run_multiseed(
                 budget_usd=per_run_budget,
             )
         except Exception as e:  # noqa: BLE001 - resilience, not silence
+            # Surface the crash immediately: the CLI prints excluded
+            # seeds but cannot know the reason (no artifact exists for
+            # a crashed seed). The operator must be able to tell a
+            # provider crash from a budget termination.
+            print(f"warning: seed {seed_i} crashed: "
+                  f"{type(e).__name__}: {e}", file=sys.stderr)
             runs.append(
                 (seed_i, None, f"{type(e).__name__}: {e}")
             )
