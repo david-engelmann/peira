@@ -1510,7 +1510,7 @@ def _leaderboard_row_id(adapter_name: Any, adapter_version: Any,
 def _provenance_bundle(artifact: RunArtifact) -> dict[str, Any]:
     """Extract the re-run provenance bundle from a run artifact.
 
-    Keys: adapter_revision, dataset_version, seed, decode_config,
+    Keys: adapter_revision, dataset_version, seed, run_config,
     case_set, manifest_sha256. ``adapter_revision`` is the revision
     the adapter recorded in config when it records one. Otherwise it
     falls back to the pinned adapter_version, which embeds the
@@ -1524,7 +1524,7 @@ def _provenance_bundle(artifact: RunArtifact) -> dict[str, Any]:
             config.get("adapter_revision") or artifact.adapter_version or ""),
         "dataset_version": str(artifact.dataset_version or ""),
         "seed": artifact.seed,
-        "decode_config": dict(config),
+        "run_config": dict(config),
         "case_set": str(artifact.suite or ""),
         "manifest_sha256": str(artifact.manifest_sha256 or ""),
     }
@@ -1533,7 +1533,7 @@ def _provenance_bundle(artifact: RunArtifact) -> dict[str, Any]:
 def _provenance_gaps(bundle: dict[str, Any]) -> list[str]:
     """Names of provenance fields missing what a re-run needs.
 
-    An empty decode_config is complete (it records "adapter
+    An empty run_config is complete (it records "adapter
     defaults"). A non-dict is never complete. A missing seed is a gap:
     the seed is recorded on every call record, so a run without one is
     not reproducible.
@@ -1546,8 +1546,8 @@ def _provenance_gaps(bundle: dict[str, Any]) -> list[str]:
     seed = bundle["seed"]
     if seed is None or isinstance(seed, bool):
         gaps.append("seed")
-    if not isinstance(bundle["decode_config"], dict):
-        gaps.append("decode_config")
+    if not isinstance(bundle["run_config"], dict):
+        gaps.append("run_config")
     if not bundle["case_set"]:
         gaps.append("case_set")
     if not bundle["manifest_sha256"]:
@@ -1571,8 +1571,8 @@ def _print_provenance(row_id: str, path: str,
     print(f"  seed. {bundle['seed']}")
     print(f"  case_set. {bundle['case_set'] or '(missing)'}")
     print(f"  manifest_sha256. {bundle['manifest_sha256'] or '(missing)'}")
-    print(f"  decode_config. "
-          f"{json.dumps(bundle['decode_config'], sort_keys=True)}")
+    print(f"  run_config. "
+          f"{json.dumps(bundle['run_config'], sort_keys=True)}")
 
 
 def _repro_matches(reported: Any, lo: Any, hi: Any,
@@ -1710,7 +1710,7 @@ def cmd_reproduce(args: argparse.Namespace) -> int:
         adapter = MockAdapter(
             script=MockAdapter.script_for(
                 cases, seed=bundle["seed"], run_nonce=run_nonce))
-    config = bundle["decode_config"]
+    config = bundle["run_config"]
     try:
         rerun = run_suite(
             adapter, cases, suite, local_version,

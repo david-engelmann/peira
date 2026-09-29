@@ -420,7 +420,7 @@ known rows to stderr after the error. Fix: check the spelling, or point
 
 **`error: provenance incomplete. missing field '<field>'`**
 Cause: the run artifact is missing something a re-run needs (adapter
-revision, dataset version, seed, decode config, case set, or manifest
+revision, dataset version, seed, run config, case set, or manifest
 hash). Exit code 2. Fix: the row is not reproducible as recorded.
 Re-run the measurement with the current CLI so the artifact seals the
 full bundle, then reproduce the new row.
