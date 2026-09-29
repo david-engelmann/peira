@@ -19,7 +19,7 @@ sheets (the `severity` field carried a redaction marker instructing graders
 to assign the tier from the rubric) and graded five dimensions per case.
 Severity notes were allowed. The rubric was the sole authority. The
 severity-redaction was imperfect. The sheet generator redacted only the
-`severity` field, so 24 of the 200 run-2 sheets (21 of 200 in run 1)
+`severity` field, so 52 of the 200 run-2 sheets (49 of 200 in run 1)
 carried an explicit severity tier inside the inherited case-notes text
 (see ER-8).
 
@@ -225,7 +225,7 @@ recalibrate the graders, never as main-grading inputs.
   sample. Consider whether class 5 needs sharper detection in Sweep A or
   is genuinely rare.
 - **ER-7. Calibration/sample overlap.** One run-2 sample case,
-  v1-spo-002 (confidence_spoofing), is also a calibration case. The
+  v1-spo-002 (state_poisoning), is also a calibration case. The
   run-2 calibration exposed the sealed references (see the amended
   statement above), so the run-2 graders for this case (g3a, g3b) may
   have seen its reference tier before main grading. Both graders agreed
