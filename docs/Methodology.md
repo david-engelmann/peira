@@ -1050,6 +1050,40 @@ family responsible. Verdict bands are coarse on purpose (stable >= 0.9,
 mostly stable >= 0.7, fragile below): the index is a summary, not a
 gate; the per-family taus carry the detail.
 
+## Threshold-by-family interaction (C-7)
+
+A review policy routes a case to human review iff its risk score
+(`1 - confidence`) is >= pt. R-08 prices that policy in dollars:
+reviewed cases cost `cost_review` each; trusted cases cost nothing when
+correct and `cost_false_approve` / `cost_false_deny` when the trusted
+output is wrong in that direction. C-7 asks the interaction question:
+does the buyer do better with one global threshold or a threshold per
+attack family?
+
+For each family, `peira threshold-by-family` sweeps the threshold grid
+through R-08's buyer-cost model and takes the cost-minimizing
+threshold; it does the same once on the pooled (all-family) data. The
+interaction table prices every family at both its own optimum and the
+global optimum. The global optimum always pools every family in the
+run, even when `--families` restricts the table to a subset: the
+global threshold is the single threshold the buyer would deploy
+without family-specific tuning, so it is a property of the whole
+population, not of the filtered view. The `gain_per_case` column is
+the per-case saving from family-specific thresholding; it is always
+>= 0, because the family optimum minimizes over the same grid the
+global optimum is chosen from. Families with positive gain are the ones that justify their own
+threshold; the table carries the magnitudes so the reader judges
+materiality. There are no verdict bands: the gain is the finding.
+
+Conventions. Ties break toward the larger threshold: at equal expected
+cost the buyer prefers the fewest reviews. Families with no priced
+cases report withheld (None) optima and costs: unresolvable, not free.
+The three costs are buyer inputs, named in every output; the M-3 cost
+scenarios supply natural values (`deny-to-approve` flip cost for
+`cost_false_approve`, `approve-to-deny` for `cost_false_deny`). This is
+a cost model, not net benefit: outputs are dollars per case, never
+Vickers-Elkin net benefit.
+
 ## Economic value view (M-3, sidecar)
 
 Every robustness benchmark reports ASR as a naked percentage. The value
