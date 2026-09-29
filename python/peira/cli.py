@@ -1866,7 +1866,7 @@ def cmd_dataset_verify_manifest(args: argparse.Namespace) -> int:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    p = argparse.ArgumentParser(prog="peira", description="An open-source AI safety stress-test and intelligence hub for leading models and guardrails, including Jev, ChatGPT, Claude, DeepSeek, Kimi, Gemini, Llama Prompt Guard 2, Grok, GLM, WildGuard, ShieldGemma, Granite Guardian and Shieldstral.")
+    p = argparse.ArgumentParser(prog="peira", description="An open-source AI safety stress-test and intelligence hub for leading models and guardrails, including Jev, ChatGPT, Claude, DeepSeek, Kimi, Gemini, Llama Guard, Grok, GLM, WildGuard, ShieldGemma, Granite Guardian and Shieldstral.")
     p.add_argument("--version", action="version", version=f"peira {__version__}")
     sub = p.add_subparsers(dest="command", required=True)
 
