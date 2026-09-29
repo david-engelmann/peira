@@ -3766,6 +3766,193 @@ def decision_curve_references(
     return {"review_all": review_all, "review_none": review_none}
 
 
+def _check_probability(p: float, name: str) -> None:
+    """Validate a probability: a finite number in [0, 1]."""
+    if isinstance(p, bool) or not isinstance(p, (int, float)):
+        raise ValueError(f"{name} must be a number, got {p!r}")
+    if not math.isfinite(p) or not 0.0 <= p <= 1.0:
+        raise ValueError(
+            f"{name} must be finite and in [0, 1], got {p!r}"
+        )
+
+
+def isotonic_regression(
+    xs: list[float], ys: list[float],
+) -> list[float]:
+    """Isotonic (nondecreasing) regression via PAVA — pure Python.
+
+    Fits the nondecreasing function minimizing squared error (the pool
+    adjacent violators algorithm): sorts by ``xs``, pools samples with
+    equal ``xs`` first (identical confidences always share one fitted
+    value, independent of input order), then repeatedly pools adjacent
+    blocks whose means decrease. Returns one fitted value per input
+    point, in input order. With binary ``ys`` the fitted values are the
+    calibrated probabilities P(y=1|x) under the monotonicity constraint.
+
+    Empty or mismatched inputs raise ValueError; nonfinite ``xs`` or
+    ``ys`` raise ValueError. No third-party dependency (the base tier
+    keeps zero runtime dependencies). Python-only (C-3): no Rust port.
+    """
+    _check_paired(xs, ys, "xs", "ys")
+    _check_finite(xs, "xs")
+    _check_finite(ys, "ys")
+    n = len(xs)
+    order = sorted(range(n), key=xs.__getitem__)
+    # Pool equal confidences BEFORE PAVA: running the violator pass on
+    # raw tied samples can assign different fitted values to identical
+    # confidences depending on input order. Pooling makes the fit a pure
+    # function of the (x, y) multiset. Exact float equality: xs are
+    # already checked finite, so no NaN-key hazard.
+    block_of = [0] * n
+    pooled_sums: list[float] = []
+    pooled_counts: list[int] = []
+    last_x: float | None = None
+    for i in order:
+        x = xs[i]
+        if last_x is not None and x == last_x:
+            pooled_sums[-1] += ys[i]
+            pooled_counts[-1] += 1
+        else:
+            pooled_sums.append(ys[i])
+            pooled_counts.append(1)
+            last_x = x
+        block_of[i] = len(pooled_sums) - 1
+    # Stack of blocks; each block tracks its y-sum, count, and the
+    # pooled-block positions it covers.
+    sums: list[float] = []
+    counts: list[int] = []
+    members: list[list[int]] = []
+    for b in range(len(pooled_sums)):
+        sums.append(pooled_sums[b])
+        counts.append(pooled_counts[b])
+        members.append([b])
+        while (
+            len(sums) >= 2
+            and sums[-2] / counts[-2] > sums[-1] / counts[-1]
+        ):
+            s2 = sums.pop()
+            c2 = counts.pop()
+            m2 = members.pop()
+            sums[-1] += s2
+            counts[-1] += c2
+            members[-1].extend(m2)
+    block_value = [0.0] * len(pooled_sums)
+    for s, c, positions in zip(sums, counts, members):
+        v = s / c
+        for b in positions:
+            block_value[b] = v
+    return [block_value[block_of[i]] for i in range(n)]
+
+
+def recalibrated_decision_curve(
+    confidences: list[float],
+    correct_labels: list[int],
+    thresholds: list[float] | tuple[float, ...] | None = None,
+) -> list[tuple[float, float]]:
+    """Decision curve on isotonic-recalibrated confidences (C-3 envelope).
+
+    Fits :func:`isotonic_regression` mapping confidence to P(output
+    correct), then computes the decision curve on the recalibrated
+    risks (``1 - fitted``) with the event "output wrong"
+    (``1 - correct_labels``). This is the upper-envelope decision
+    curve: net benefit at each threshold as if the model were perfectly
+    calibrated. The vertical gap to the empirical
+    :func:`decision_curve` is the net benefit lost to miscalibration.
+
+    The envelope is an explicitly-labeled **upper bound**: the isotonic
+    fit is in-sample, so it is slightly optimistic about what
+    recalibration would recover on new cases. Never a ranker; never
+    blended into the empirical curve.
+
+    ``confidences`` must be probabilities in [0, 1];
+    ``correct_labels`` are 0/1 integers (1 = output correct). Empty or
+    mismatched inputs raise ValueError. Python-only (C-3): no Rust
+    port.
+    """
+    _check_paired(confidences, correct_labels,
+                  "confidences", "correct_labels")
+    for c in confidences:
+        _check_probability(c, "confidences")
+    _check_binary_labels(correct_labels, "correct_labels")
+    fitted = isotonic_regression(confidences, correct_labels)
+    risks_cal = [1.0 - p for p in fitted]
+    events = [1 - y for y in correct_labels]
+    return decision_curve(risks_cal, events, thresholds)
+
+
+def _calibration_envelope_block(
+    results: list[PerCaseResult],
+) -> dict[str, Any]:
+    """Attacked-arm calibration-envelope block for the run summary (C-3).
+
+    Uses exactly the attacked-arm analyzed cases from
+    :func:`net_benefit_pairs` (same exclusions, same order), so the
+    envelope is directly comparable to the empirical decision curve:
+    confidence = ``1 - risk``, correct = (outcome == "correct").
+
+    Withheld below ``MIN_NB_CASES`` analyzed cases, or when any
+    attacked-arm confidence is outside [0, 1] (a hostile artifact
+    withholds the envelope instead of raising): every value present
+    but None, ``sufficient`` False, ``n`` always reported. Otherwise
+    the recalibrated decision curve (``envelope``), the per-threshold
+    gap (``gap`` = envelope minus empirical), and the headline
+    (``max_gap`` at ``threshold_at_max_gap``): "at most this much net
+    benefit per case is recoverable by recalibration alone, without
+    retraining". ``interpretation`` is always "upper bound" — the
+    in-sample isotonic fit is optimistic by construction (roadmap C-3).
+    """
+    confs: list[float] = []
+    correct: list[int] = []
+    for exclusion, risk, outcome in _iter_arm_cases(
+        results, "attacked", None
+    ):
+        if exclusion is None:
+            assert risk is not None and outcome is not None
+            confs.append(1.0 - risk)
+            correct.append(1 if outcome == "correct" else 0)
+    n = len(confs)
+    block: dict[str, Any] = {
+        "n": n,
+        "considered": len(results),
+        "sufficient": False,
+        "envelope": None,
+        "gap": None,
+        "max_gap": None,
+        "threshold_at_max_gap": None,
+        "interpretation": "upper bound",
+    }
+    if n < MIN_NB_CASES:
+        return block
+    # Out-of-range confidences (hand-edited or buggy-adapter artifacts)
+    # are not valid probabilities for the isotonic fit. The empirical
+    # curve tolerates them with plain arithmetic, but the envelope
+    # withholds instead of raising: summarize() must never crash on a
+    # hostile artifact.
+    if not all(0.0 <= c <= 1.0 for c in confs):
+        return block
+    thresholds = list(DEFAULT_NB_THRESHOLDS)
+    risks = [1.0 - c for c in confs]
+    events = [1 - y for y in correct]
+    empirical = _decision_curve_py(risks, events, thresholds)
+    envelope = recalibrated_decision_curve(confs, correct, thresholds)
+    gaps = [
+        (pt, env_nb - emp_nb)
+        for (pt, emp_nb), (_, env_nb) in zip(empirical, envelope)
+    ]
+    max_pt, max_gap = max(gaps, key=lambda t: t[1])
+    # The headline is an "at most X recoverable" claim: a negative max
+    # gap would be nonsense, so the headline never goes below zero.
+    # Per-threshold gaps keep their raw (possibly negative) values.
+    block.update({
+        "sufficient": True,
+        "envelope": [[pt, _round4(nb)] for pt, nb in envelope],
+        "gap": [[pt, _round4(g)] for pt, g in gaps],
+        "max_gap": _round4(max(0.0, max_gap)),
+        "threshold_at_max_gap": max_pt,
+    })
+    return block
+
+
 def implied_threshold(
     cost_review: float, benefit_catch: float = 1.0,
 ) -> float:
@@ -4479,6 +4666,14 @@ def _net_benefit_arm_block(
     """
     risks, labels = net_benefit_pairs(results, arm)
     n = len(risks)
+    # C-3: the calibration envelope lives on the attacked arm only.
+    # Attacks cause miscalibration; the envelope asks how much of the
+    # attacked-arm net-benefit loss is recoverable by recalibration
+    # alone. It withholds itself below MIN_NB_CASES.
+    envelope = (
+        _calibration_envelope_block(results)
+        if arm == "attacked" else None
+    )
     block: dict[str, Any] = {
         "n": n,
         "considered": len(results),
@@ -4495,6 +4690,7 @@ def _net_benefit_arm_block(
             "best_threshold": None,
             "best_net_benefit": None,
             "n_reviewed_at_best": None,
+            "calibration_envelope": envelope,
         })
         return block
     thresholds = list(DEFAULT_NB_THRESHOLDS)
@@ -4517,6 +4713,7 @@ def _net_benefit_arm_block(
         "best_threshold": best_pt,
         "best_net_benefit": _round4(best_nb),
         "n_reviewed_at_best": n_reviewed,
+        "calibration_envelope": envelope,
     })
     return block
 
