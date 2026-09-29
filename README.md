@@ -1,6 +1,6 @@
 # peira
 
-peira is an open-source AI safety stress-test and intelligence hub for leading models and guardrails, including Jev, ChatGPT, Claude, DeepSeek, Kimi, Gemini, Llama Guard, Grok, GLM, WildGuard, ShieldGemma, Granite Guardian and Shieldstral. The program is designed so every published number is backed by real evaluation runs on versioned public datasets. The code is MIT-licensed and the public datasets are CC-BY-4.0, so anyone can reproduce the numbers.
+peira is an open-source AI safety stress-test and intelligence hub for leading models and guardrails, including Jev, ChatGPT, Claude, DeepSeek, Kimi, Gemini, Llama Prompt Guard 2, Grok, GLM, WildGuard, ShieldGemma, Granite Guardian and Shieldstral. The program is designed so every published number is backed by real evaluation runs on versioned public datasets. The code is MIT-licensed and the public datasets are CC-BY-4.0, so anyone can reproduce the numbers.
 
 
 [![ci](https://github.com/david-engelmann/peira/actions/workflows/ci.yml/badge.svg)](https://github.com/david-engelmann/peira/actions/workflows/ci.yml)
