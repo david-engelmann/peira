@@ -1099,6 +1099,21 @@ always points at the prices that produced it.
   attempts the attacker must buy for one successful flip. The jailbreak
   direction (deny-to-approve) is the headline, because the attacker's
   product is the jailbreak, not vandalism or denial of service.
+- **Attacker cost per flip direction (C-9, M-9 x M-1).** The attempt
+  multiplier priced in dollars. For each M-1 direction the table reports
+  both the unitless attempts per flip (1/ASR_d) and the list-price cost
+  per flip, which is `attacker_queries_assumed` times the mean
+  attacked-query price divided by ASR_d, computed from the
+  runner-recorded `CallUsage` token counts and the pinned pricing table. The jailbreak direction
+  (deny-to-approve) is the headline row because it prices the attacker's
+  actual product. approve-to-deny (vandalism) and to-abstain (denial of
+  service) get their own rows because they are different products with
+  different economics. A single headline number misprices the exchange
+  rate. A direction with no observed flips is withheld. Its cost is
+  unbounded, not $0.00. Partial pricing coverage makes the query price
+  a lower bound, same as M-9. Rendered in the value view and the
+  per-run report as a per-direction table with direction, flips, ASR_d,
+  attempts per flip, and dollars per flip.
 - **Gordon-Loeb tripwire.** Flags upgrades whose annualized extra cost
   exceeds 37% of the expected-loss reduction as probable
   over-investment. A rule of thumb, labeled as one.
