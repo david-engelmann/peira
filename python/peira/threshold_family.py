@@ -79,7 +79,7 @@ def _check_costs(
 def _check_grid(
     thresholds: list[float] | tuple[float, ...] | None,
 ) -> list[float]:
-    """Validate and sort the threshold grid."""
+    """Validate, dedupe, and sort the threshold grid."""
     if thresholds is None:
         return list(DEFAULT_NB_THRESHOLDS)
     grid = list(thresholds)
@@ -87,8 +87,7 @@ def _check_grid(
         raise ValueError("thresholds must be non-empty")
     for pt in grid:
         _check_threshold(pt, "thresholds")
-    grid.sort()
-    return grid
+    return sorted(set(grid))
 
 
 def _optimal_on_grid(
@@ -171,9 +170,13 @@ def family_threshold_table(
     minimizes over the same grid).
 
     ``families`` restricts the table to the given families (ValueError
-    on any family absent from ``results``); the default is the sorted
-    union present in ``results``. Families with no priced cases report
-    None costs and optima: unresolvable, not free.
+    on any family absent from ``results``, or on any non-string entry);
+    the default is the sorted union present in ``results``. The global
+    optimum always pools every family in ``results``, even when
+    ``families`` restricts the table: it is the single threshold the
+    buyer would deploy without family-specific tuning. Families with
+    no priced cases report None costs and optima: unresolvable, not
+    free.
 
     Returns a JSON-serializable dict with ``global`` (pooled optimum),
     ``families`` (per-family rows incl. the full cost curve), and
@@ -191,6 +194,12 @@ def family_threshold_table(
         wanted = present
     else:
         wanted = list(families)
+        non_strings = [f for f in wanted if not isinstance(f, str)]
+        if non_strings:
+            raise ValueError(
+                "families must be strings, got: "
+                + ", ".join(sorted({repr(f) for f in non_strings}))
+            )
         unknown = [f for f in wanted if f not in present]
         if unknown:
             raise ValueError(

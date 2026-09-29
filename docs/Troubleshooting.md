@@ -862,6 +862,17 @@ Cause: `--families` names a family absent from the artifact (often a
 typo). Fix: check the spelling against the family names in the run;
 omit `--families` to use every family in the run.
 
+**`error: --families matched no families (empty filter)` (from `peira threshold-by-family`)**
+Cause: `--families` was given but parsed to nothing (e.g.
+`--families=","`). Fix: pass at least one family name, or omit
+`--families` to use every family in the run.
+
+**`error: <name> must be finite and non-negative, got <value>` (from `peira threshold-by-family`)**
+Cause: a `--cost-*` flag got a negative, NaN, or infinite value
+(argparse `type=float` accepts `nan` and `inf`; only finite
+non-negative costs are meaningful). Fix: pass a finite USD cost >= 0
+for every `--cost-*` flag.
+
 **`error: cannot write threshold-family JSON to <out> (...)` (from `peira threshold-by-family`)**
 Cause: `--json` points somewhere unwritable: a missing parent
 directory, or a permissions problem. Fix: create the directory first,

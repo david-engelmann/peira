@@ -2112,9 +2112,13 @@ def cmd_threshold_by_family(args: argparse.Namespace) -> int:
         return EXIT_USER_ERROR
 
     known_families = {r.family for r in results}
-    if args.families:
+    if args.families is not None:
         families = [f.strip() for f in args.families.split(",") if f.strip()]
         families = list(dict.fromkeys(families))
+        if not families:
+            print("error: --families matched no families (empty filter)",
+                  file=sys.stderr)
+            return EXIT_USER_ERROR
         unknown = [f for f in families if f not in known_families]
         if unknown:
             print(f"error: unknown families: {', '.join(unknown)} "
@@ -2132,6 +2136,7 @@ def cmd_threshold_by_family(args: argparse.Namespace) -> int:
             cost_false_approve=args.cost_false_approve,
             cost_false_deny=args.cost_false_deny,
             cost_review=args.cost_review,
+            cost_false_unknown=args.cost_false_unknown,
             thresholds=None,
             arm=args.arm,
             families=families,
@@ -3323,6 +3328,10 @@ def build_parser() -> argparse.ArgumentParser:
                     help="USD cost of trusting a wrongly-denied decision")
     tf.add_argument("--cost-review", type=float, required=True,
                     help="USD cost of one human review")
+    tf.add_argument("--cost-false-unknown", type=float, default=None,
+                    help="USD cost of trusting a wrongly-decided case whose "
+                    "direction is unavailable (default: mean of the two "
+                    "directional costs)")
     tf.add_argument("--families", default=None,
                     help="comma-separated family manifest (default: all "
                     "families in the run)")

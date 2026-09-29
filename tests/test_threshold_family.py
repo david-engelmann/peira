@@ -136,6 +136,21 @@ class TestFamilyThresholdTable(unittest.TestCase):
             family_threshold_table(_fixture(), families=["no_such_family"],
                                    **_KW)
 
+    def test_mixed_type_families_rejected(self):
+        with self.assertRaises(ValueError) as cm:
+            family_threshold_table(_fixture(),
+                                   families=["negation_games", None],
+                                   **_KW)
+        self.assertIn("must be strings", str(cm.exception))
+
+    def test_duplicate_grid_points_deduped(self):
+        kw = dict(_KW, thresholds=[0.5, 0.1, 0.5, 0.99, 0.1])
+        table = family_threshold_table(_fixture(), **kw)
+        self.assertEqual(table["threshold_grid"], [0.1, 0.5, 0.99])
+        for row in list(table["families"].values()) + [table["global"]]:
+            pts = [pt for pt, _ in row["curve"]]
+            self.assertEqual(pts, [0.1, 0.5, 0.99])
+
     def test_withholding_no_priced_cases(self):
         # A family whose cases are all ineligible has no baseline to
         # price: optima and costs are None (withheld, not zero), and it
@@ -294,12 +309,14 @@ def _cwrite(art):
     return tmp.name
 
 
-def _cargs(run, families=None, arm="attacked", json=None):
+def _cargs(run, families=None, arm="attacked", json=None,
+           cost_false_unknown=None):
     return argparse.Namespace(
         run=run,
         cost_false_approve=100.0,
         cost_false_deny=10.0,
         cost_review=5.0,
+        cost_false_unknown=cost_false_unknown,
         families=families,
         arm=arm,
         json=json,
@@ -371,6 +388,39 @@ class CmdThresholdByFamilyTest(unittest.TestCase):
         out = buf.getvalue()
         self.assertIn("Option Order (option_order)", out)
         self.assertNotIn("negation_games", out)
+
+    def test_empty_families_filter(self):
+        path = _cwrite(_cartifact(_cfixture_cases()))
+        err = io.StringIO()
+        with redirect_stderr(err):
+            rc = cmd_threshold_by_family(_cargs(path, families=" , "))
+        self.assertEqual(rc, EXIT_USER_ERROR)
+        self.assertIn("--families matched no families", err.getvalue())
+
+    def test_cost_false_unknown_flag(self):
+        path = _cwrite(_cartifact(_cfixture_cases()))
+        with tempfile.NamedTemporaryFile(suffix=".json",
+                                         delete=False) as f:
+            out_path = f.name
+        buf = io.StringIO()
+        with redirect_stdout(buf):
+            rc = cmd_threshold_by_family(
+                _cargs(path, json=out_path, cost_false_unknown=7.5))
+        self.assertEqual(rc, EXIT_OK)
+        with open(out_path, encoding="utf-8") as f:
+            table = json.load(f)
+        self.assertEqual(table["costs"]["cost_false_unknown"], 7.5)
+
+    def test_cost_validation_error(self):
+        path = _cwrite(_cartifact(_cfixture_cases()))
+        args = _cargs(path)
+        args.cost_false_approve = float("nan")
+        err = io.StringIO()
+        with redirect_stderr(err):
+            rc = cmd_threshold_by_family(args)
+        self.assertEqual(rc, EXIT_USER_ERROR)
+        self.assertIn("cost_false_approve must be finite and non-negative",
+                      err.getvalue())
 
 
 if __name__ == "__main__":

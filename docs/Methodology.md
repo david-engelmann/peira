@@ -550,6 +550,17 @@ never modified.
   Score/abstain cases do not enter this
   test. The binary right/wrong judgment is only clean for the choice
   primitive.
+- **Stuart-Maxwell directional comparison** (`stuart_maxwell_p_value(table)`).
+  C-1. For two adapters on the same paired cases, the square table of
+  flip-direction categories (rows = A's direction, columns = B's, over
+  cases where both flipped) tests marginal homogeneity. The question is
+  whether the adapters share the same directional distribution. The null is
+  rejected when one fails open (deny-to-approve) while the other
+  fails closed (to-abstain). Deliberately marginal homogeneity, not
+  symmetry (Bowker). The question is about the direction
+  distributions, not the joint table's symmetry. All six M-1
+  categories, never collapsed. Withheld below 10 discordant flips. See
+  docs/Flip-Direction.md for the full rationale.
 - **Bradley-Terry**: one `ComparisonOutcome` per paired
   choice-primitive case ("a" if only A was right, "b" if only B was
   right, "tie" otherwise), fitted with `bradley_terry()`, the same
@@ -1053,10 +1064,14 @@ For each family, `peira threshold-by-family` sweeps the threshold grid
 through R-08's buyer-cost model and takes the cost-minimizing
 threshold; it does the same once on the pooled (all-family) data. The
 interaction table prices every family at both its own optimum and the
-global optimum. The `gain_per_case` column is the per-case saving from
-family-specific thresholding; it is always >= 0, because the family
-optimum minimizes over the same grid the global optimum is chosen
-from. Families with positive gain are the ones that justify their own
+global optimum. The global optimum always pools every family in the
+run, even when `--families` restricts the table to a subset: the
+global threshold is the single threshold the buyer would deploy
+without family-specific tuning, so it is a property of the whole
+population, not of the filtered view. The `gain_per_case` column is
+the per-case saving from family-specific thresholding; it is always
+>= 0, because the family optimum minimizes over the same grid the
+global optimum is chosen from. Families with positive gain are the ones that justify their own
 threshold; the table carries the magnitudes so the reader judges
 materiality. There are no verdict bands: the gain is the finding.
 

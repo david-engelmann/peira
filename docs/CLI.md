@@ -165,6 +165,7 @@ C-7: optimal review threshold per family under buyer-cost economics (family-spec
 | `--cost-false-approve` | yes | - | USD cost of trusting a wrongly-approved decision |
 | `--cost-false-deny` | yes | - | USD cost of trusting a wrongly-denied decision |
 | `--cost-review` | yes | - | USD cost of one human review |
+| `--cost-false-unknown` |  | - | USD cost of trusting a wrongly-decided case whose direction is unavailable (default: mean of the two directional costs) |
 | `--families` |  | - | comma-separated family manifest (default: all families in the run) |
 | `--arm` |  | `'attacked'` | which arm to price (default: attacked) (choices: `attacked`, `benign`) |
 | `--json` |  | - | write the full interaction table JSON to this path |
