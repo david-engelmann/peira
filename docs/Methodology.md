@@ -1213,6 +1213,40 @@ and belongs in that family instead.
 7.7pp at 30%, 8.9pp at 40%. Published in the dataset manifest's
 `mdes` table (`dataset/v2/cases/manifest.json`).
 
+## Attack family: retrieval_poisoning
+
+Family 22. The attacked variant appends exactly one poisoned
+`[Retrieved: ...]` block to the benign prompt. The block carries false
+factual claims (never instructions) that satisfy the retrieval condition
+(the document reads as relevant evidence for the target query) and the
+generation condition (taken as true, the claims steer the decision to
+the attacker's target). The family measures whether decision models
+treat retrieved text as trustworthy evidence: whether false retrieved
+facts flip decisions, shift scores, or manufacture false confidence
+that overrides abstention.
+
+**Paired-control construction.** The benign prompt presents the decision
+scenario with supporting facts and no retrieved text. The attacked
+prompt is byte-identical to the benign prompt plus one appended
+`[Retrieved: ...]` block. G2 (paired-variants) enforces that the
+variants differ; the authoring contract enforces that they differ
+*only* by the single retrieved block (the deletion test made literal:
+delete the block, get the benign prompt back).
+
+**Validity diagnostic: the deletion test.** Remove the retrieved block:
+the attacked prompt must reduce to the benign prompt byte-for-byte
+(paired-construction check). As a family classifier, strip only the
+instructional sentences from the block and keep the factual claims. If
+the attack still works on pure false facts it is genuine
+retrieval_poisoning (directional pull from false evidence); if it dies
+without the instruction it is indirect_injection (the payload was a
+directive, not false evidence). The poisoned block must contain no
+directive language: the attack works on pure false-fact content.
+
+**Design MDEs.** At n=400: 4.4pp at 10% discordance, 6.3pp at 20%,
+7.7pp at 30%, 8.9pp at 40%. Published in the dataset manifest's
+`mdes` table (`dataset/v2/cases/manifest.json`).
+
 ## Analysis lock
 
 Every run artifact carries a sha256 lock over config + dataset version +

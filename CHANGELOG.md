@@ -7,6 +7,18 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
 
 ## [Unreleased]
 
+### Added retrieval_poisoning attack family (family 22, Tier 1)
+
+- New v2 family `retrieval_poisoning`: false evidence planted in the
+  retrieval corpus steers decisions to the attacker's target. 470 cases
+  (90 critical / 160 high / 220 medium; 330 choice / 80 score / 60
+  abstain) authored by `scripts/author_retrieval_poisoning.py`. Each
+  attacked prompt is byte-identical to its benign control plus exactly
+  one appended `[Retrieved: ...]` block carrying false factual claims
+  (never instructions). Research basis: PoisonedRAG (arXiv:2402.07867),
+  MITRE ATLAS T0099. Design MDEs at n=400: 4.4 / 6.3 / 7.7 / 8.9pp.
+  Dataset version moves from 2.0.0 to 2.1.0.
+
 ### Added CEAC for CPPF (C-5)
 
 - New `peira.economics.ceac_curve`: cost-effectiveness acceptability
