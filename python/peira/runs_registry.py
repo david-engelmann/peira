@@ -607,22 +607,6 @@ def _per_family_rows(data: dict[str, Any]) -> list[tuple]:
     return rows
 
 
-def _ensure_index_columns(conn: sqlite3.Connection) -> None:
-    """Backfill index columns added after an index.db was first created.
-
-    The index is a cache and an existing index.db may predate new
-    columns. CREATE TABLE IF NOT EXISTS will not add them, so backfill
-    explicitly (idempotent ALTER TABLE). Called both on rescan and on
-    the fresh-index path: a legacy index whose artifacts are unchanged
-    would otherwise skip the rescan and keep missing the columns, and
-    filtered ``list_runs`` calls would raise ``sqlite3.OperationalError``.
-    """
-    existing_cols = {row[1] for row in conn.execute("PRAGMA table_info(runs)")}
-    for col, ddl in (("cache_enabled", "INTEGER"), ("termination", "TEXT")):
-        if col not in existing_cols:
-            conn.execute(f"ALTER TABLE runs ADD COLUMN {col} {ddl}")
-
-
 def _scan_runs_into(conn: sqlite3.Connection, runs_dir: Path) -> int:
     """Index every artifact in runs_dir into an already-open connection.
 

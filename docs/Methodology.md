@@ -183,7 +183,7 @@ medium 1, low 0.5) and target-hit rate.
   withheld (`None`, `sufficient: False`).
 - **Budget cap** (`peira run --budget-usd`): a dispatch limit based on
   projected priced spend for the run. Before each new case dispatch the
-  projects `spent + running-mean-case-cost x 1.5` (the 1.5x safety
+  projects runner `spent + running-mean-case-cost x 1.5` (the 1.5x safety
   margin absorbs case-cost variance) and stops dispatching when the
   projection exceeds the cap. The first case is a cold-start probe:
   its measured cost seeds the running mean. Cases already dispatched

@@ -458,7 +458,7 @@ class TestReportPricingLine(unittest.TestCase):
             a.seal()
         run_path = _write_artifact(tmp, mutate=mutate)
         out = Path(tmp) / "r.html"
-        rc = cmd_report(argparse.Namespace(run=run_path, out=str(out)))
+        rc = cmd_report(_report_args(run_path, str(out)))
         self.assertEqual(rc, 0)
         return out.read_text(encoding="utf-8")
 
