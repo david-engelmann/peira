@@ -68,6 +68,13 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
 - No cap on families or cases (David 2026-09-28): the 400/family
   design target is a floor, not a ceiling.
 
+### Fixed — R-05: trial dataset re-sealed with exclusion flags
+
+- Re-ran `embed_canary` on `dataset/trial` with the existing GUID, stamping
+  `evaluation_only`/`do_not_train` (True) on all 100 rows. Manifest
+  regenerated (dataset version 1.0.6). The `check_canary_separation.py`
+  maintainer check is now green on the real tree.
+
 ### Added — M-4 hardness stratification + cross-adapter transfer ASR
 
 - New `peira.hardness` module (pure aggregation over sealed per-case

@@ -1,7 +1,7 @@
 {
-  "created_utc": "2026-09-25T17:16:24+00:00",
-  "dataset": null,
-  "dataset_version": "1.0.5",
+  "created_utc": "2026-09-29T06:54:00+00:00",
+  "dataset": "peira-v1",
+  "dataset_version": "1.0.6",
   "files": {
     "CANARY.txt": {
       "kind": "artifact",
@@ -32,8 +32,8 @@
         "medium": 46
       },
       "n_cases": 100,
-      "sha256": "314ec55f1036fbce555089cbf83c9c20162f1c080a2ca79ec0a3b28c15453938"
+      "sha256": "0e25194671a8bbe8eabd730d8f8c12ad6ab7ee0349f5c5651b9394d98b224a8d"
     }
   },
-  "generator": "peira 0.1.0"
+  "generator": "peira"
 }

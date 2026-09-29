@@ -34,6 +34,13 @@ errors look like `bad case_id: expected string`,
 `bad attacked target_decision: expected string or null`: the value has
 the wrong JSON type for that field.
 
+**`bad evaluation_only: expected boolean` / `bad do_not_train: expected boolean`**
+Cause: a training-exclusion flag is present but is not a real boolean.
+A truthy string like `"false"` would silently mislead a training
+pipeline, so anything non-bool is a hard error. Fix: set the flag to
+JSON `true` or `false` (no quotes), or drop the key entirely: absent
+means `true`, the benchmark default.
+
 **`confidence 1.4 outside 0..1` (or similar contract errors)**
 Cause: your adapter returned a value outside its primitive contract.
 Fix: normalize outputs in your adapter (Choice confidence and Score must
@@ -798,6 +805,46 @@ Cause: the file isn't a sealed run artifact (bad JSON, or a JSON file
 that isn't a run artifact). Fix: point at the `.json` files `peira run`
 wrote to the runs directory.
 
+**`error: <path>: cannot decode per-case results (...)` (from `peira lottery`)**
+Cause: the artifact's per-case results don't decode (a hand-edited
+artifact, or an artifact from an incompatible peira version). Fix:
+re-run the adapter on the current peira; don't hand-edit artifacts.
+
+**`error: no families found in the given runs` (from `peira lottery`)**
+Cause: none of the artifacts contain any per-case results (empty
+runs). Fix: pass artifacts from completed runs.
+
+**`error: cannot write lottery JSON to <out> (...)` (from `peira lottery`)**
+Cause: `peira lottery --json` points somewhere unwritable: a missing
+parent directory, or a permissions problem. Fix: create the directory
+first, or pick a writable path.
+
+**`peira lottery` reports "Lottery index: undefined"**
+Cause: not an error. No family yields two runs ranked in both the full
+and the reduced ranking (too few eligible runs for a pairwise
+comparison). Fix: add more ranking-eligible runs; a lottery analysis
+needs at least two runs that stay eligible when any one family is
+removed.
+
+**`error: unknown families: <names> (not present in the given runs)` (from `peira lottery`)**
+Cause: `--families` names a family that appears in none of the given
+artifacts (often a typo). Fix: check the spelling against the family
+names in the runs; omit `--families` to use the union across the runs.
+
+**`error: rank_runs: families must not be empty` (from `peira lottery`)**
+Cause: `--families` left only one family to analyze, so removing it
+leaves nothing to rank on (leave-one-out needs at least two families).
+Fix: pass at least two families, or omit `--families` to use the union
+across the runs.
+
+## R-05 contamination scripts
+
+**`check_canary_separation.py: tier-1 canary for <suite> appears in documentation`**
+Cause: a case canary GUID was pasted into a doc, comment, or other
+prose file. The tiers must never mix. Fix: remove the GUID from the
+documentation. The case canary belongs only in `CANARY.txt` and case
+files.
+
 **`error: <path>: cannot decode per-case results (...)` (from `peira lottery`, `peira value`, `peira hardness`)**
 Cause: the artifact's per-case results don't decode (a hand-edited
 artifact, or an artifact from an incompatible peira version). Fix:
@@ -817,10 +864,27 @@ compare runs over the same case set; don't hand-edit artifacts.
 Cause: none of the artifacts contain any per-case results (empty
 runs). Fix: pass artifacts from completed runs.
 
-**`error: cannot write lottery JSON to <out> (...)` (from `peira lottery`)**
-Cause: `peira lottery --json` points somewhere unwritable: a missing
-parent directory, or a permissions problem. Fix: create the directory
-first, or pick a writable path.
+**`check_canary_separation.py: tier-2 doc canary appears outside CANARY.md/DATASHEET.md`**
+Cause: the documentation canary GUID was pasted into a case file,
+doc, source file, or fixture. Fix: remove it from that file. The doc
+canary belongs only in `CANARY.md` and `DATASHEET.md`.
+
+**`check_canary_separation.py: ... has <flag>=..., want boolean true`**
+Cause: a sealed suite has a case row whose training-exclusion flag is
+missing or not boolean true. The seal policy requires both
+`evaluation_only` and `do_not_train` to be explicit `true` on every
+row. Fix: re-run `embed_canary` for the suite (it stamps the flags),
+then regenerate the manifest.
+
+**`check_canary_separation.py: <suite>: no CANARY.txt yet (not sealed)`**
+Cause: not an error. The suite has not gone through canary embedding
+yet (a seal-time step). Fix: none; run `embed_canary` via the seal
+workflow when the suite is ready.
+
+**`holdout_query_log.py: error: <adapter> exhausted its 12 executions`**
+Cause: the adapter line used its full yearly blind-holdout budget.
+Fix: wait for the next calendar year or a holdout rotation. See
+`docs/Holdout-Query-Budget.md`.
 
 **`peira lottery` reports "Lottery index: undefined"**
 Cause: not an error. No family yields two runs ranked in both the full
@@ -881,3 +945,22 @@ cost-effective".
 Cause: `peira value --out` points somewhere unwritable: a missing
 parent directory, or a permissions problem. Fix: create the directory
 first, or pick a writable path.
+
+**`audit_holdout_separation.py: SEPARATION VIOLATION`**
+Cause: holdout material (a case ID, prompt text, or canary GUID) was
+found in the public directory. Fix: remove the leaked content from
+the public tree immediately, then rotate the affected holdout shard
+per `docs/Holdout-OpSec.md`. The script never prints what matched.
+
+**G9 near-dedup: `trigram-cosine <s> ... is near-identical; keep only one`**
+Cause: two cases have nearly identical prompt text (trigram-cosine at
+or above 0.98). The pair is a duplicate; only one should stay. Fix:
+keep the stronger-authored case and retire or rewrite the other, then
+re-run `peira dataset gates`.
+
+**G9 near-dedup: `trigram-cosine <s> ... review for near-duplication`**
+Cause: not an error. Two cases are similar enough (trigram-cosine at
+or above 0.78) that a human should check whether they test the same
+thing. Fix: none required. G9 warnings are informational and re-emit on
+every gate run; there is no review-queue clearing mechanism for G9
+(unlike G6). If the cases are genuinely distinct, no action is needed.
