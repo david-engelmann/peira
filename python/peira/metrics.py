@@ -6403,3 +6403,320 @@ def _flip_anatomy_block(
         "target_hit_available": target_available,
         "transition_matrix": flip_transition_matrix(results),
     }
+
+
+# ---------------------------------------------------------------------------
+# C-1: Stuart-Maxwell directional comparison (M-1 x R-07)
+#
+# For two adapters evaluated on the same paired cases, build the square
+# table of flip-direction categories (rows = adapter A's direction,
+# columns = adapter B's) and test marginal homogeneity: do the adapters
+# share the same *directional* distribution, or does one fail open
+# (deny-to-approve) while the other fails closed (to-abstain)?
+# ---------------------------------------------------------------------------
+
+#: The six flip-direction categories used in the C-1 square table.
+#: ``"none"`` (no flip) is excluded by design: the table is built over
+#: cases where both adapters flipped, so the test isolates the
+#: directional pattern from the flip-rate difference that McNemar
+#: (Layer 3b) already covers (red-team P2-2). David Q1: never collapse
+#: these six into fewer.
+DIRECTION_CATEGORIES = (
+    "approve-to-deny",
+    "deny-to-approve",
+    "to-abstain",
+    "to-malformed",
+    "score-shifted",
+    "other",
+)
+
+
+def direction_square_table(
+    results_a: list[PerCaseResult],
+    results_b: list[PerCaseResult],
+) -> dict[str, dict[str, int]]:
+    """Square table of flip directions for two adapters (C-1).
+
+    Rows are adapter A's :func:`flip_direction` outcome, columns are
+    adapter B's, over the same paired cases. Only eligible cases
+    where *both* adapters flipped are included. This conditions the
+    test on the directional question C-1 asks ("given flips occur,
+    do the adapters flip in different directions?") and keeps it
+    from re-answering the flip-rate question McNemar (Layer 3b)
+    already covers: the ``(none, none)`` cell would overwhelm any
+    unconditioned table, and the ``(none, X)`` / ``(X, none)`` cells
+    mix rate differences into the directional signal (red-team
+    P2-2). Every one of the six :data:`DIRECTION_CATEGORIES`
+    appears as a row and column key (zero when unobserved), so the
+    table shape is fixed. David Q1: the six categories are never
+    collapsed.
+
+    Cases are matched by ``case_id``; both lists must cover the same
+    case ids. Ineligible cases (unusable benign baseline) are skipped.
+    """
+    by_id_b = {r.case_id: r for r in results_b}
+    if len({r.case_id for r in results_a}) != len(results_a):
+        raise ValueError(
+            "direction_square_table requires unique case_ids in "
+            "results_a"
+        )
+    if len(by_id_b) != len(results_b):
+        raise ValueError(
+            "direction_square_table requires unique case_ids in "
+            "results_b"
+        )
+    if {r.case_id for r in results_a} != set(by_id_b):
+        raise ValueError(
+            "direction_square_table requires the same case_ids in both lists"
+        )
+    table: dict[str, dict[str, int]] = {
+        da: {db: 0 for db in DIRECTION_CATEGORIES}
+        for da in DIRECTION_CATEGORIES
+    }
+    for ra in results_a:
+        rb = by_id_b[ra.case_id]
+        if not ra.eligible or not rb.eligible:
+            continue
+        da = flip_direction(ra)
+        db = flip_direction(rb)
+        if da == "none" or db == "none":
+            # Condition on both flipping: the directional-pattern
+            # question is only defined where a direction exists on
+            # both sides.
+            continue
+        table[da][db] += 1
+    return table
+
+
+def _stuart_maxwell_component(
+    table: dict[str, dict[str, int]],
+    comp: list[str],
+) -> tuple[float, int]:
+    """Stuart-Maxwell statistic for one connected component.
+
+    ``comp`` holds at least two categories whose off-diagonal pairs
+    connect them (every other pair has zero off-diagonal mass, so the
+    row/column sums below are exact). Solves d' V^-1 d on the first
+    len(comp)-1 categories, where d_i = row_i - col_i and V_ii =
+    row_i + col_i - 2*n_ii, V_ij = -(n_ij + n_ji). Returns
+    (statistic, df) with df = len(comp) - 1.
+    """
+    sub = comp[:-1]
+    idx = {c: i for i, c in enumerate(sub)}
+    m = len(sub)
+    d = [0.0] * m
+    for c in sub:
+        i = idx[c]
+        row = sum(table[c][o] for o in comp)
+        col = sum(table[r][c] for r in comp)
+        d[i] = float(row - col)
+    # Covariance matrix V.
+    V = [[0.0] * m for _ in range(m)]
+    for c in sub:
+        i = idx[c]
+        row = sum(table[c][o] for o in comp)
+        col = sum(table[r][c] for r in comp)
+        V[i][i] = float(row + col - 2 * table[c][c])
+        for c2 in sub:
+            j = idx[c2]
+            if i != j:
+                V[i][j] = -float(table[c][c2] + table[c2][c])
+    # Degenerate case: all marginal differences are zero (e.g. a
+    # diagonal or symmetric component). The statistic is 0 by
+    # definition; the covariance solve would be singular.
+    if all(abs(x) < 1e-12 for x in d):
+        return 0.0, m
+    # Solve V x = d via Gaussian elimination with partial pivoting,
+    # then stat = d . x.
+    aug = [V[i][:] + [d[i]] for i in range(m)]
+    for col in range(m):
+        piv = max(range(col, m), key=lambda r: abs(aug[r][col]))
+        if abs(aug[piv][col]) < 1e-12:
+            raise ValueError(
+                "stuart_maxwell covariance matrix is singular"
+            )
+        aug[col], aug[piv] = aug[piv], aug[col]
+        pivval = aug[col][col]
+        for r in range(m):
+            if r != col:
+                factor = aug[r][col] / pivval
+                for c2 in range(col, m + 1):
+                    aug[r][c2] -= factor * aug[col][c2]
+    x = [aug[i][m] / aug[i][i] for i in range(m)]
+    stat = sum(d[i] * x[i] for i in range(m))
+    return max(0.0, stat), m
+
+
+def _stuart_maxwell_stat_py(
+    table: dict[str, dict[str, int]],
+) -> tuple[float, int]:
+    """Stuart-Maxwell chi-square statistic (pure Python).
+
+    Returns (statistic, df). Only categories with off-diagonal mass
+    are informative: a category seen purely on the diagonal carries
+    no information about marginal homogeneity and would make the
+    covariance matrix singular. The informative categories are
+    partitioned into connected components over off-diagonal pairs;
+    each component is an independent Stuart-Maxwell subproblem, and
+    the statistics and degrees of freedom sum across components.
+    Jointly solving disconnected components would singularize the
+    covariance matrix. Returns (0.0, 0) when no component holds at
+    least two informative categories.
+
+    Under marginal homogeneity the summed statistic is
+    asymptotically chi-square with the summed degrees of freedom.
+    For a single two-category component this reduces exactly to
+    McNemar's statistic (b-c)^2/(b+c).
+    """
+    cats = [c for c in DIRECTION_CATEGORIES if c in table]
+    # Informative categories: at least one off-diagonal count in the
+    # row or the column.
+    informative = [
+        c for c in cats
+        if sum(table[c][o] + table[o][c] for o in cats if o != c) > 0
+    ]
+    # Connected components over off-diagonal adjacency.
+    components: list[list[str]] = []
+    seen: set[str] = set()
+    for c in informative:
+        if c in seen:
+            continue
+        comp = []
+        stack = [c]
+        seen.add(c)
+        while stack:
+            x = stack.pop()
+            comp.append(x)
+            for o in informative:
+                if o not in seen and (table[x][o] > 0 or table[o][x] > 0):
+                    seen.add(o)
+                    stack.append(o)
+        if len(comp) >= 2:
+            components.append(comp)
+    total_stat = 0.0
+    total_df = 0
+    for comp in components:
+        stat, df = _stuart_maxwell_component(table, comp)
+        total_stat += stat
+        total_df += df
+    return max(0.0, total_stat), total_df
+
+
+def stuart_maxwell(table: dict[str, dict[str, int]]) -> tuple[float, int]:
+    """Stuart-Maxwell chi-square statistic for marginal homogeneity.
+
+    ``table`` is a square dict-of-dicts over direction categories as
+    returned by :func:`direction_square_table`. Returns
+    ``(statistic, df)``; the p-value comes from
+    :func:`stuart_maxwell_p_value`. Pure Python (no Rust backend:
+    the matrix solve is small and adapter-comparison code paths are
+    not hot).
+
+    Categories seen only on the diagonal are ignored (they carry no
+    directional information), and disconnected off-diagonal groups
+    are solved as independent subproblems. Returns ``(0.0, 0)``
+    when fewer than two informative categories remain.
+
+    Raises ValueError on negative counts, non-square tables, or
+    category keys outside :data:`DIRECTION_CATEGORIES`.
+    """
+    cats = list(table.keys())
+    unknown = set(cats) - set(DIRECTION_CATEGORIES)
+    if unknown:
+        raise ValueError(
+            "stuart_maxwell unknown direction categories: "
+            + ", ".join(sorted(unknown))
+        )
+    for c in cats:
+        if set(table[c].keys()) != set(cats):
+            raise ValueError("stuart_maxwell table must be square")
+        for o in cats:
+            if table[c][o] < 0:
+                raise ValueError("stuart_maxwell counts must be non-negative")
+    return _stuart_maxwell_stat_py(table)
+
+
+def _chi2_sf_py(stat: float, df: int) -> float:
+    """Survival function of chi-square with ``df`` degrees of freedom."""
+    if df < 1:
+        # Degenerate: no informative degrees of freedom. Mirrors the
+        # df < 1 guard in stuart_maxwell_p_value for direct callers.
+        return 1.0
+    if stat <= 0.0:
+        return 1.0
+    if df == 1:
+        return math.erfc(math.sqrt(stat / 2.0))
+    # Regularized upper incomplete gamma Q(df/2, stat/2) via the
+    # series/complement expansion (Numerical Recipes gammq).
+    a = df / 2.0
+    x = stat / 2.0
+    if x < a + 1.0:
+        # Series for P(a, x), then Q = 1 - P.
+        ap = a
+        total = 1.0 / a
+        term = total
+        for _ in range(1000):
+            ap += 1.0
+            term *= x / ap
+            total += term
+            if abs(term) < abs(total) * 1e-14:
+                break
+        p = total * math.exp(-x + a * math.log(x) - math.lgamma(a))
+        return min(1.0, max(0.0, 1.0 - p))
+    else:
+        # Continued fraction for Q(a, x) directly.
+        b = x + 1.0 - a
+        c = 1.0 / 1e-300
+        d = 1.0 / b
+        h = d
+        for i in range(1, 1000):
+            an = -i * (i - a)
+            b += 2.0
+            d = an * d + b
+            if abs(d) < 1e-300:
+                d = 1e-300
+            c = b + an / c
+            if abs(c) < 1e-300:
+                c = 1e-300
+            d = 1.0 / d
+            delta = c * d
+            h *= delta
+            if abs(delta - 1.0) < 1e-14:
+                break
+        q = math.exp(-x + a * math.log(x) - math.lgamma(a)) * h
+        return min(1.0, max(0.0, q))
+
+
+def stuart_maxwell_p_value(
+    table: dict[str, dict[str, int]],
+) -> float | None:
+    """P-value for marginal homogeneity of flip directions (C-1).
+
+    Uses the Stuart-Maxwell chi-square statistic
+    (:func:`stuart_maxwell`) with its asymptotic chi-square(df)
+    distribution. Returns None (withheld) when the table holds
+    fewer than 10 discordant (off-diagonal) flips: the chi-square
+    approximation is unreliable on thin tables, mirroring R-07's
+    <10-discordant withholding floor for McNemar. Diagonal
+    agreements cancel out of the statistic and are ancillary to
+    the test, so they do not count toward the floor. Report the
+    table and the withholding rather than a misleading p-value.
+
+    A small p-value rejects marginal homogeneity: the adapters'
+    flip-direction distributions differ (e.g. one fails open with
+    deny-to-approve while the other fails closed with to-abstain).
+    """
+    cats = list(table.keys())
+    # Discordant (off-diagonal) flips only: diagonal agreements
+    # cancel out of the Stuart-Maxwell statistic, so they are
+    # ancillary and must not count toward the floor. In the
+    # two-category reduction this is exactly R-07's b + c < 10.
+    n_discordant = sum(
+        table[c][o] for c in cats for o in cats if o != c
+    )
+    if n_discordant < 10:
+        return None
+    stat, df = stuart_maxwell(table)
+    if df < 1:
+        return 1.0
+    return _chi2_sf_py(stat, df)
