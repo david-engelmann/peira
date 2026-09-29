@@ -1039,6 +1039,34 @@ family responsible. Verdict bands are coarse on purpose (stable >= 0.9,
 mostly stable >= 0.7, fragile below): the index is a summary, not a
 gate; the per-family taus carry the detail.
 
+## Economic lottery index (C-6)
+
+The lottery index above tests whether the *robustness* ranking
+(conditional ASR) survives family removal. But the buyer's ranking is
+the *economic* ranking: expected attack cost per decision (E_attacked,
+M-3) under a versioned cost scenario, ascending. A family with rare but
+catastrophic deny-to-approve flips can dominate E_attacked while barely
+moving headline ASR, so a ranking that is lottery-stable on robustness
+can be lottery-fragile on dollars.
+
+C-6 computes leave-one-family-out stability on the economic ranking,
+once per cost scenario, and always reports the **pair**
+(robustness-stability, economic-stability): never a single lottery
+index. When the two disagree ("robustness ranking stable, economic
+ranking fragile, family X carries the dollar risk"), that disagreement
+is the finding. The paired report names the most influential family
+under each ranking; when they differ, the economic one is where the
+dollar risk concentrates.
+
+The economic ranking re-gates eligibility on each reduced family set
+exactly as R-09 does, so a run that only qualified because of the
+removed family drops out honestly. E_attacked scales every run by the
+scenario's attack rate, so the economic ranking is invariant to that
+rate; the report uses each scenario's default rate and records it.
+Run it with `peira lottery --economic` (add `--scenario <id>` to
+restrict to one cost scenario); the full per-family tables are in the
+`--json` output.
+
 ## Economic value view (M-3, sidecar)
 
 Every robustness benchmark reports ASR as a naked percentage. The value

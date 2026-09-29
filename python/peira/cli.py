@@ -1955,6 +1955,61 @@ def _lottery_text(a: dict) -> str:
     return "\n".join(lines) + "\n"
 
 
+def _economic_lottery_text(rep: dict) -> str:
+    """Human-readable C-6 paired stability report for stdout.
+
+    Always prints the pair (robustness-stability, economic-stability):
+    never a single lottery index. Per-family taus and full rankings
+    live in the JSON (--json); stdout carries the verdicts and any
+    disagreement, which is the finding.
+    """
+    lines = [
+        "Peira economic lottery index (C-6): robustness vs economic "
+        "ranking stability",
+        "==============================================================",
+        f"Runs: {rep['n_runs']}, families: {len(rep['families'])}",
+        "",
+        "Robustness ranking (R-09: conditional ASR, ascending):",
+    ]
+    rob = rep["robustness"]
+    if rob["lottery_index"] is None:
+        lines.append(
+            "  lottery index: undefined "
+            "(no family yields a comparable ranking)"
+        )
+    else:
+        lines.append(
+            f"  lottery index: {rob['lottery_index']:.4f} "
+            f"(mean Kendall's tau) -- rankings are {rob['verdict']}"
+        )
+    if rob["most_influential_family"] is not None:
+        lines.append(
+            f"  most influential family: '{rob['most_influential_family']}' "
+            f"(tau {rob['min_tau']:.4f} when removed)"
+        )
+    lines.append("")
+    lines.append("Economic ranking (E_attacked, ascending), per cost scenario:")
+    for sid, p in rep["pair"].items():
+        lines.append(f"  [{sid}] (scenario v{p['scenario_version']}):")
+        if p["economic_index"] is None:
+            lines.append("    lottery index: undefined")
+        else:
+            lines.append(
+                f"    lottery index: {p['economic_index']:.4f} "
+                f"-- rankings are {p['economic_verdict']}"
+            )
+        if p["economic_most_influential"] is not None:
+            lines.append(
+                "    most influential family: "
+                f"'{p['economic_most_influential']}'"
+            )
+        if p["disagree"]:
+            lines.append(f"    ** disagreement: {p['disagreement_note']}")
+    lines.append("")
+    lines.append("Per-family taus and full rankings are in the JSON (--json).")
+    return "\n".join(lines) + "\n"
+
+
 def cmd_lottery(args: argparse.Namespace) -> int:
     """Leave-one-family-out ranking stability across run artifacts."""
     import json
@@ -2019,6 +2074,32 @@ def cmd_lottery(args: argparse.Namespace) -> int:
     except ValueError as e:
         print(f"error: {e}", file=sys.stderr)
         return EXIT_USER_ERROR
+
+    if args.economic:
+        # C-6: pair the robustness lottery index with the economic
+        # (E_attacked) lottery index per cost scenario. Never a single
+        # index: the pair is the report.
+        from peira.economic_lottery import paired_stability_report
+
+        scenario_ids = [args.scenario] if args.scenario else None
+        try:
+            report = paired_stability_report(
+                results_by_run, families, scenario_ids
+            )
+        except ValueError as e:
+            print(f"error: {e}", file=sys.stderr)
+            return EXIT_USER_ERROR
+        sys.stdout.write(_economic_lottery_text(report))
+        if args.json is not None:
+            out = Path(args.json)
+            try:
+                out.write_text(json.dumps(report, indent=2), encoding="utf-8")
+            except OSError as e:
+                print(f"error: cannot write lottery JSON to {out} ({e})",
+                      file=sys.stderr)
+                return EXIT_USER_ERROR
+            print(f"lottery: {out}")
+        return EXIT_OK
 
     sys.stdout.write(_lottery_text(analysis))
     if args.json is not None:
@@ -3175,6 +3256,13 @@ def build_parser() -> argparse.ArgumentParser:
     lt_families.display_default = "union of families in runs"
     lt.add_argument("--json", default=None,
                     help="write the full analysis JSON to this path")
+    lt.add_argument("--economic", action="store_true",
+                    help="C-6: report the pair (robustness-stability, "
+                    "economic-stability) with the economic lottery index "
+                    "per cost scenario, instead of the robustness index alone")
+    lt.add_argument("--scenario", default=None,
+                    help="cost scenario id for --economic "
+                    "(default: all scenarios)")
     lt.set_defaults(func=cmd_lottery)
 
     vv = sub.add_parser("value",
