@@ -126,8 +126,9 @@ def cost_usd_py(
     # Per-call billing (e.g. guardrail APIs like Lakera Guard): the
     # entry carries usd_per_call instead of per-token rates, and one
     # call costs that flat rate regardless of token counts.
-    if "usd_per_call" in entry:
-        return float(entry["usd_per_call"])
+    per_call = entry.get("usd_per_call")
+    if isinstance(per_call, (int, float)) and not isinstance(per_call, bool):
+        return float(per_call)
     return (
         tokens_in / 1_000_000 * float(entry["usd_per_1m_in"])
         + tokens_out / 1_000_000 * float(entry["usd_per_1m_out"])

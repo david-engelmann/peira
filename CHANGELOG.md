@@ -62,7 +62,7 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
 - Unclassifiable flips now report `other` honestly instead of a
   fabricated `<x>-to-<y>` label or a misleading `approve-to-deny`
   fallback.
-### Added — Lakera Guard adapter
+### Added - Lakera Guard adapter
 
 - New `LakeraAdapter` (`peira.adapters.lakera`): abstain-primitive-only
   guardrail adapter for the Lakera Guard v2 API (stdlib transport, no

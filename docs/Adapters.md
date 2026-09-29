@@ -546,10 +546,11 @@ claim, not a peira measurement.
 
 ## Lakera Guard
 
-No extra needed (stdlib transport). Set `LAKERA_API_KEY` with
+No extra needed (stdlib transport). Set `LAKERA_API_KEY` to your API key,
+then run
 
 ```bash
-export LAKERA_API_KEY=<redacted>
+export LAKERA_API_KEY="<your-lakera-key>"
 peira run --adapter peira.adapters.lakera:LakeraAdapter --suite trial-demo
 ```
 
@@ -557,7 +558,9 @@ Lakera Guard (Check Point AI Guardrails) is a commercial
 threat-detection API. The adapter sends the case prompt as a single
 user message to `POST https://api.lakera.ai/v2/guard` with
 `breakdown: true` and reads back the `flagged` boolean plus
-per-detector results. Per B2, guardrails are abstain-primitive-only. A
+per-detector results. Empty or whitespace-only prompts are never sent.
+The adapter returns `"other"` locally for those with no API call.
+Per B2, guardrails are abstain-primitive-only. A
 flagged verdict is the explicit `"abstain"` label (a deliberate
 abstain-decision, not a refusal). Unflagged content is the `"other"`
 placeholder (the guardrail vetoes nothing and never claims to know the

@@ -75,7 +75,7 @@ timeout). Fix: transient. The runner retries. Check network access to
 **`lakera returned non-JSON response ...`**
 Cause: the API answered with something that is not JSON (proxy error
 page, WAF block). Fix: check for a proxy or firewall between you and
-`api.lakera.ai`. The response body is in the run transcript.
+`api.lakera.ai`.
 
 **`lakera response missing boolean 'flagged' ...`**
 Cause: the API answered with JSON that lacks the documented `flagged`
