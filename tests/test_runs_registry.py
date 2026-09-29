@@ -294,5 +294,118 @@ class TestQualifiesForLeaderboard(unittest.TestCase):
         self.assertIn("ranking-ineligible", reason)
 
 
+class TestCacheTerminationIndexing(unittest.TestCase):
+    """The registry index carries the leaderboard segmentation
+    dimensions: cache_enabled and termination."""
+
+    def _write(self, tmp, name, **over):
+        art = _make_artifact(adapter_name=name, **over)
+        (Path(tmp) / f"{name}.json").write_text(art.to_json())
+        return art
+
+    def _rows(self, tmp, **filters):
+        scan_runs(tmp)
+        return {r["adapter_name"]: r for r in list_runs(tmp, **filters)}
+
+    def test_index_carries_cache_and_termination(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            self._write(tmp, "a", config={"cache_enabled": False},
+                        termination="complete")
+            self._write(tmp, "b", config={"cache_enabled": True},
+                        termination="complete")
+            self._write(tmp, "c", config={"cache_enabled": False},
+                        termination="budget")
+            rows = self._rows(tmp)
+            self.assertEqual(rows["a"]["cache_enabled"], 0)
+            self.assertEqual(rows["a"]["termination"], "complete")
+            self.assertEqual(rows["b"]["cache_enabled"], 1)
+            self.assertEqual(rows["b"]["termination"], "complete")
+            self.assertEqual(rows["c"]["cache_enabled"], 0)
+            self.assertEqual(rows["c"]["termination"], "budget")
+
+    def test_undeclared_cache_indexes_null(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            self._write(tmp, "a", config={})
+            rows = self._rows(tmp)
+            self.assertIsNone(rows["a"]["cache_enabled"])
+
+    def test_cache_filter_segments(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            self._write(tmp, "a", config={"cache_enabled": False})
+            self._write(tmp, "b", config={"cache_enabled": True})
+            on = self._rows(tmp, cache_enabled=True)
+            off = self._rows(tmp, cache_enabled=False)
+            self.assertEqual(set(on), {"b"})
+            self.assertEqual(set(off), {"a"})
+
+    def test_termination_filter_segments(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            self._write(tmp, "a", termination="complete")
+            self._write(tmp, "b", termination="budget")
+            rows = self._rows(tmp, termination="budget")
+            self.assertEqual(set(rows), {"b"})
+
+    def test_old_schema_migrated(self):
+        import sqlite3
+        from peira.runs_registry import INDEX_DB_NAME
+        with tempfile.TemporaryDirectory() as tmp:
+            self._write(tmp, "a", config={"cache_enabled": True},
+                        termination="budget")
+            # Simulate a pre-change index.db (no new columns).
+            db = Path(tmp) / INDEX_DB_NAME
+            conn = sqlite3.connect(str(db))
+            conn.execute("""CREATE TABLE runs (
+                path TEXT PRIMARY KEY, mtime REAL NOT NULL, run_id TEXT,
+                created_utc TEXT, adapter_name TEXT, adapter_version TEXT,
+                suite TEXT, dataset_version TEXT, manifest_sha256 TEXT,
+                env_sha256 TEXT, seed INTEGER, max_concurrency INTEGER,
+                n_results INTEGER, lock_valid INTEGER)""")
+            conn.commit()
+            conn.close()
+            rows = self._rows(tmp)
+            self.assertEqual(rows["a"]["cache_enabled"], 1)
+            self.assertEqual(rows["a"]["termination"], "budget")
+
+    def test_legacy_index_with_rows_forces_rescan(self):
+        # Regression test for CodeRabbit #179 discussion r4129770883:
+        # a legacy index.db WITH ROWS but missing the new columns must
+        # trigger a rescan to populate them. ALTER TABLE alone leaves
+        # existing rows NULL, and filtered list_runs calls would silently
+        # return no rows.
+        import sqlite3
+        from peira.runs_registry import INDEX_DB_NAME, _index_path
+        with tempfile.TemporaryDirectory() as tmp:
+            art = self._write(tmp, "a", config={"cache_enabled": True},
+                              termination="budget")
+            # Build the legacy index manually: old schema WITH a row.
+            # The row's path/mtime must match the artifact so the
+            # snapshot matches and the rescan would otherwise be skipped.
+            db = Path(tmp) / INDEX_DB_NAME
+            art_path = str((Path(tmp) / "a.json").resolve())
+            mtime = (Path(tmp) / "a.json").stat().st_mtime
+            conn = sqlite3.connect(str(db))
+            conn.execute("""CREATE TABLE runs (
+                path TEXT PRIMARY KEY, mtime REAL NOT NULL, run_id TEXT,
+                created_utc TEXT, adapter_name TEXT, adapter_version TEXT,
+                suite TEXT, dataset_version TEXT, manifest_sha256 TEXT,
+                env_sha256 TEXT, seed INTEGER, max_concurrency INTEGER,
+                n_results INTEGER, lock_valid INTEGER)""")
+            conn.execute(
+                "INSERT INTO runs (path, mtime, adapter_name) VALUES (?, ?, ?)",
+                (art_path, mtime, "a"),
+            )
+            conn.commit()
+            conn.close()
+            # list_runs must rescan (not just ALTER TABLE) so the filter
+            # matches the row instead of silently returning nothing.
+            rows = list_runs(tmp, cache_enabled=True)
+            self.assertEqual(len(rows), 1)
+            self.assertEqual(rows[0]["adapter_name"], "a")
+            self.assertEqual(rows[0]["cache_enabled"], 1)
+            self.assertEqual(rows[0]["termination"], "budget")
+            rows = list_runs(tmp, termination="budget")
+            self.assertEqual(len(rows), 1)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -967,6 +967,59 @@ def _attack_mix_table(results, threshold: float, cost_false_approve: float,
     )
 
 
+def _pricing_confidence_markers(artifact) -> str:
+    """Pricing-confidence markers for the report's pricing line.
+
+    Collects the distinct ``usage.model`` values across the run's call
+    records and labels each with the pinned pricing table's confidence.
+    Only non-official models are marked (``secondary`` or ``unpriced``):
+    an all-official run needs no marker. Defensive: hostile or
+    pre-pricing artifacts degrade to an empty marker list instead of
+    raising (the caller escapes the returned text).
+    """
+    from peira.pricing import pricing_confidence
+
+    results = getattr(artifact, "results", None)
+    if not isinstance(results, list):
+        return ""
+    models: list[str] = []
+    seen: set[str] = set()
+    for entry in results:
+        if not isinstance(entry, dict):
+            continue
+        for arm in ("benign", "attacked"):
+            rec = entry.get(arm)
+            if not isinstance(rec, dict):
+                continue
+            usage = rec.get("usage")
+            if not isinstance(usage, dict):
+                continue
+            model = usage.get("model")
+            if isinstance(model, str) and model and model not in seen:
+                seen.add(model)
+                models.append(model)
+    parts = []
+    for model in sorted(models):
+        conf = pricing_confidence(model)
+        if conf != "official":
+            parts.append(f"{model} ({conf if conf else 'unpriced'})")
+    markers = ", ".join(parts)
+    # The markers are read from the pinned table at report time, while
+    # the report line shows the artifact's recorded pricing_version. If
+    # the table changed since the run, say so: the markers may not match
+    # the table the run's costs were computed from. There is no table
+    # history to resolve; the recorded version keeps the provenance.
+    recorded = getattr(artifact, "pricing_version", None)
+    try:
+        from peira.pricing import load_pricing_table
+        current = load_pricing_table().get("pricing_version")
+    except Exception:
+        current = None
+    if markers and isinstance(recorded, str) and recorded and current and recorded != current:
+        markers += f" (markers from table v{current}, run used v{recorded})"
+    return markers
+
+
 def _report_page(artifact, buyer_cost_params=None,
                  flips_per_incident=None) -> str:
     m = artifact.metrics
@@ -1005,6 +1058,24 @@ def _report_page(artifact, buyer_cost_params=None,
     inelig_line = ", ".join(
         f"{e(str(k))}: {_num(v)}" for k, v in sorted(inelig.items())
     ) or "none"
+
+    # Pricing identity: source + pin date + table version, plus a
+    # confidence marker for every non-officially-priced model used in
+    # the run (secondary-sourced prices are transparency, not a
+    # penalty). Computed here so the template below stays a pure
+    # interpolation; both values are escaped at the use site.
+    _pv = str(getattr(artifact, "pricing_version", "") or "")
+    _pin_bits = []
+    if artifact.pricing_date:
+        _pin_bits.append(f"pinned {e(str(artifact.pricing_date))}")
+    if _pv:
+        _pin_bits.append(f"table v{e(_pv)}")
+    pricing_bits = (
+        f"{e(str(artifact.pricing_source or 'unpriced'))}"
+        f"{' (' + ', '.join(_pin_bits) + ')' if _pin_bits else ''}"
+    )
+    _markers = _pricing_confidence_markers(artifact)
+    pricing_markers = f" Pricing confidence: {e(_markers)}." if _markers else ""
 
     # --- A3 sections (S8b): calibration, selective prediction, score
     # diagnostics, severity-weighted ASR, outcome accounting. Every
@@ -1187,8 +1258,8 @@ Dataset: {e(artifact.dataset_version)} · peira {e(str(artifact.peira_version))}
 <li>Ineligible by reason: {inelig_line}</li>
 <li>Ranking eligible: {_num(m['ranking_eligible'])}</li>
 </ul>
-<p>Pricing: {e(str(artifact.pricing_source or 'unpriced'))}{f" (pinned {e(str(artifact.pricing_date))})" if artifact.pricing_date else ""} ·
-Cost figures below are list-price estimates from the pinned table, not invoices.</p>
+<p>Pricing: {pricing_bits} ·
+Cost figures below are list-price estimates from the pinned table, not invoices.{pricing_markers}</p>
 <h2>Outcome accounting</h2>
 <p>Per-arm decision census. Refusals and abstentions are counted here:
 never laundered into ASR.</p>
@@ -1920,25 +1991,34 @@ def cmd_runs_list(args: argparse.Namespace) -> int:
     runs_dir = Path(args.runs_dir) if args.runs_dir else None
     # list_runs() rebuilds the index when it is stale; no explicit scan
     # here (this is a read command and must not create the runs dir).
+    cache_filter = {"on": True, "off": False}.get(getattr(args, "cache", None))
     runs = list_runs(
         runs_dir,
         adapter=args.adapter,
         suite=args.suite,
         dataset_version=args.dataset_version,
+        cache_enabled=cache_filter,
+        termination=getattr(args, "termination", None),
     )
     if not runs:
         print("No runs found.")
         return EXIT_OK
-    # Print a table
+    # Print a table. The Cache and Term columns are the leaderboard
+    # segmentation labels: cache-enabled and cache-disabled runs are
+    # different measurements and must never pool silently, and partial
+    # (budget-terminated) runs are analyzable but never rankable.
     print(f"{'Run ID':<40} {'Adapter':<20} {'Suite':<10} "
-          f"{'Dataset':<12} {'Env SHA':<10} {'Lock':<8}")
-    print("-" * 105)
+          f"{'Dataset':<12} {'Env SHA':<10} {'Cache':<6} {'Term':<9} {'Lock':<8}")
+    print("-" * 125)
     for r in runs:
         env_short = (r["env_sha256"] or "")[:8]
         lock = "valid" if r["lock_valid"] else "INVALID"
+        cache = r.get("cache_enabled")
+        cache_str = "on" if cache == 1 else ("off" if cache == 0 else "?")
+        term = r.get("termination") or "-"
         print(f"{r['run_id']:<40} {r['adapter_name']:<20} "
               f"{r['suite']:<10} {r['dataset_version']:<12} "
-              f"{env_short:<10} {lock:<8}")
+              f"{env_short:<10} {cache_str:<6} {term:<9} {lock:<8}")
     print(f"\n{len(runs)} run(s) total.")
     return EXIT_OK
 
@@ -2557,6 +2637,11 @@ def build_parser() -> argparse.ArgumentParser:
                     help="filter by suite")
     rl.add_argument("--dataset-version", default=None,
                     help="filter by dataset version")
+    rl.add_argument("--cache", default=None, choices=("on", "off"),
+                    help="filter by cache state (on/off)")
+    rl.add_argument("--termination", default=None,
+                    help="filter by termination state "
+                         "(complete, budget, partial, ...)")
     rl.set_defaults(func=cmd_runs_list)
     rv = rsub.add_parser("verify", help="verify analysis locks")
     rv.add_argument("paths", nargs="+", help="artifact paths to verify")

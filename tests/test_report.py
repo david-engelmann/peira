@@ -423,6 +423,75 @@ class TestReportBuyerCost(unittest.TestCase):
                              cost_review=1.0, flips_per_incident=-1.0))
             self.assertEqual(rc, EXIT_USER_ERROR)
             self.assertIn("flips_per_incident", err)
+def _results_with_models(*models):
+    from peira.adapters.base import CallUsage
+    from peira.artifacts import results_to_dicts
+    from peira.metrics import CallRecord, PerCaseResult
+
+    def _rec(model):
+        return CallRecord(
+            decision="approve", confidence=0.9, abstained=False,
+            refusal_reason="", malformed=False, seed=0, dispatch_index=0,
+            usage=CallUsage(model=model, tokens_in=1, tokens_out=1,
+                            latency_ms=1.0, cost_usd=0.01),
+        )
+    return results_to_dicts([
+        PerCaseResult(
+            case_id=f"c{i}", family="f", severity="high", primitive="choice",
+            benign=_rec(model), attacked=_rec(model),
+            flipped=False, eligible=True, ineligibility_reason="",
+        )
+        for i, model in enumerate(models)
+    ])
+
+
+class TestReportPricingLine(unittest.TestCase):
+    """The report's pricing line carries the table version and a
+    confidence marker for every non-officially-priced model used."""
+
+    def _page(self, tmp, models, pricing_version="2026-09-25.1"):
+        def mutate(a):
+            a.pricing_source = "test-source"
+            a.pricing_date = "2026-09-25"
+            a.pricing_version = pricing_version
+            a.results = _results_with_models(*models)
+            a.seal()
+        run_path = _write_artifact(tmp, mutate=mutate)
+        out = Path(tmp) / "r.html"
+        rc = cmd_report(argparse.Namespace(run=run_path, out=str(out)))
+        self.assertEqual(rc, 0)
+        return out.read_text(encoding="utf-8")
+
+    def test_version_and_secondary_marker(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            page = self._page(tmp, ["jev-1.13.0", "gpt-5.6-sol"])
+            self.assertIn("table v2026-09-25.1", page)
+            self.assertIn("jev-1.13.0 (secondary)", page)
+            # Officially-priced models need no marker.
+            self.assertNotIn("gpt-5.6-sol (official)", page)
+
+    def test_all_official_no_markers(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            page = self._page(tmp, ["gpt-5.6-sol"])
+            self.assertNotIn("Pricing confidence", page)
+
+    def test_unpriced_model_marked(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            page = self._page(tmp, ["no-such-model"])
+            self.assertIn("no-such-model (unpriced)", page)
+
+    def test_missing_version_omits_version_bit(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            page = self._page(tmp, ["gpt-5.6-sol"], pricing_version="")
+            self.assertNotIn("table v", page)
+            self.assertIn("pinned 2026-09-25", page)
+
+    def test_hostile_model_name_escaped(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            evil = "<script>alert('m')</script>"
+            page = self._page(tmp, [evil])
+            self.assertNotIn(evil, page)
+            self.assertIn("&lt;script&gt;", page)
 
 
 if __name__ == "__main__":

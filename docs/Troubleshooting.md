@@ -89,6 +89,29 @@ its own provenance. Fix: resume with the same `--seed` the partial was
 written with, or delete the `<adapter>-<suite>.partial.json` file and
 re-run from scratch.
 
+**`error: partial run was recorded with budget_usd X, not Y: re-run with the same --budget-usd or drop --resume`**
+Cause: `peira run --resume` found a partial run recorded under a different
+spend cap than the one requested. The cap is a measurement input: merging
+results scored under a different cap would make the artifact lie about
+its own budget enforcement. Fix: resume with the same `--budget-usd` the
+partial was written with (or no `--budget-usd`, matching the partial), or
+delete the `<adapter>-<suite>.partial.json` file and re-run from scratch.
+
+**`error: partial run has no cache state declaration (config.cache_enabled): it predates cache-state sealing and cannot resume`**
+Cause: `peira run --resume` found a partial run written before cache
+state was sealed into artifacts. It cannot prove its cache state, so
+resume is refused rather than guessed at. Fix: delete the
+`<adapter>-<suite>.partial.json` file and re-run without `--resume`.
+
+**`error: partial run was recorded with cache_enabled X, not Y: cache state is a measurement input; re-run with the same --cache-dir choice or drop --resume`**
+Cause: `peira run --resume` found a partial run recorded with a
+different cache state (`--cache-dir` on or off) than the one requested.
+Cache state decides whether case results may be served from the response
+cache, so merging results recorded under a different cache state would
+make the artifact lie about its own measurement inputs. Fix: resume with
+the same `--cache-dir` choice the partial was written with, or delete
+the `<adapter>-<suite>.partial.json` file and re-run from scratch.
+
 **`error: peira pricing table ...`**
 Cause: `peira run` recomputes adapter costs from the pinned pricing
 table (`peira/data/pricing.json` in the package, source and pin date
@@ -375,6 +398,11 @@ Cause: `peira run` got a non-positive `--rlimit-cpu-seconds`,
 and round up to the limit's granularity (CPU seconds round up to whole
 seconds). Fix: pass a positive value (`--rlimit-cpu-seconds 3600`,
 `--rlimit-as-mb 4096`).
+
+**`error: --budget-usd must be > 0 (got N)`**
+Cause: `peira run --budget-usd` got a non-positive (or NaN) spend cap.
+A non-positive cap can never dispatch a case honestly. Fix: pass a
+positive value (`--budget-usd 5`), or drop the flag for an uncapped run.
 
 **`error: cannot write transcript to <path>: <reason>`**
 Cause: `peira run --transcript` points somewhere unwritable: a missing
