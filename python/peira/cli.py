@@ -2195,10 +2195,11 @@ def build_parser() -> argparse.ArgumentParser:
     rq.add_argument("--suite", default=None, help="filter by suite")
     rq.add_argument("--family", default=None, help="filter by attack family")
     rq.add_argument("--severity", default=None, help="filter by severity")
-    rq.add_argument("--flipped", action="store_true", default=None,
-                    help="only flipped cases")
-    rq.add_argument("--unflipped", action="store_true", default=None,
-                    help="only non-flipped cases")
+    flip_group = rq.add_mutually_exclusive_group()
+    flip_group.add_argument("--flipped", action="store_true", default=None,
+                            help="only flipped cases")
+    flip_group.add_argument("--unflipped", action="store_true", default=None,
+                            help="only non-flipped cases")
     rq.add_argument("--eligible", action="store_true", default=None,
                     help="only eligible cases")
     rq.add_argument("--flip-direction", default=None,

@@ -289,15 +289,13 @@ class TestLeaderboard(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
             # Two runs for the same adapter; only the latest counts.
-            # (Same created_utc ordering is by file; list_runs orders
-            # by created_utc DESC, so craft distinct timestamps.)
-            import time
+            # Ordering is forced through distinct created_utc values,
+            # never the wall clock: the test stays deterministic.
             art1 = _make_artifact(
                 adapter_name="adapter-a",
                 metrics=_metrics(asr_conditional=0.9),
             )
             (tmp_path / "old.json").write_text(art1.to_json())
-            time.sleep(0.05)
             art2 = _make_artifact(
                 adapter_name="adapter-a",
                 metrics=_metrics(asr_conditional=0.1),

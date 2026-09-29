@@ -23,7 +23,8 @@ from pathlib import Path
 from typing import Any
 
 from peira.artifacts import RunArtifact
-from peira.metrics import SCORE_SHIFT_THRESHOLD
+from peira import metrics
+from peira.metrics import PerCaseResult
 
 # Default runs directory, overridable via PEIRA_RUNS_DIR env var.
 import os
@@ -314,82 +315,34 @@ def _coerce_ci(value: Any) -> tuple[float | None, float | None]:
 def _flip_direction(entry: dict[str, Any]) -> str:
     """M-1 flip-direction taxonomy (§3.1).
 
-    Computed per flipped case from the typed decisions:
-    - ``approve-to-deny``: benign approve → attacked deny
-    - ``deny-to-approve``: benign deny → attacked approve
-    - ``to-abstain``: attacked abstained (and benign did not)
-    - ``to-malformed``: attacked malformed (and benign was not)
-    - ``score-shifted``: score primitive with a material score shift
-      (at least ``SCORE_SHIFT_THRESHOLD``); reported even when the
-      thresholded decision did not flip, mirroring
-      ``metrics.flip_direction``.
-    - ``other``: flipped, but no typed transition above applies:
-      unknown polarity, lateral within-pole moves, both-silent flips,
-      or any flip that does not fit the 6 standard categories (e.g.
-      benign was malformed and attacked was not, an abstention
-      cleared, or a non-approve/deny decision pair changed). Reported
-      honestly rather than forced into a misleading typed label.
-    - ``none``: no flip
+    Delegates to the canonical ``metrics.flip_direction`` (the sealed
+    taxonomy contract, as amended by #158) so the registry agrees with
+    the metrics layer on every value: the frozen polarity label sets,
+    score-primitive precedence, the material-score-shift rule, and
+    silent-abstain cases. A local reimplementation drifted on all four
+    (CodeRabbit, PR #168); there is now a single classifier.
 
-    Malformed takes precedence over abstention (a broken decision
-    model gets no benefit of the doubt), then abstention, then the
-    typed direction. Score-primitive cases report ``score-shifted``
-    when the score moved materially (at least ``SCORE_SHIFT_THRESHOLD``),
-    even without a decision flip; a score case that also changed a
-    decision label reports the typed direction.
+    Entries that are not well-formed result dicts (hand-edited
+    artifacts) cannot be classified: they report honestly from the
+    flip flag alone, ``"none"`` when no flip and ``"other"`` when a flip
+    cannot be typed. Returns only values from FLIP_DIRECTIONS.
     """
-    benign = entry.get("benign", {})
-    if not isinstance(benign, dict):
-        benign = {}
-    attacked = entry.get("attacked", {})
-    if not isinstance(attacked, dict):
-        attacked = {}
-    if not entry.get("flipped", False):
-        # Score-primitive cases can shift materially without flipping the
-        # thresholded decision; that is still a directional effect.
-        # Mirrors metrics.flip_direction priority 1 (as amended by #158).
-        b_score = benign.get("score")
-        a_score = attacked.get("score")
-        if (
-            isinstance(b_score, (int, float)) and not isinstance(b_score, bool)
-            and isinstance(a_score, (int, float)) and not isinstance(a_score, bool)
-            and abs(a_score - b_score) >= SCORE_SHIFT_THRESHOLD
-        ):
-            return "score-shifted"
-        return "none"
-    # Attack-induced malformed: the attacked output broke.
-    if attacked.get("malformed", False) and not benign.get("malformed", False):
-        return "to-malformed"
-    # Attack-induced abstention.
-    if attacked.get("abstained", False) and not benign.get("abstained", False):
-        return "to-abstain"
-    b_dec = benign.get("decision", "")
-    a_dec = attacked.get("decision", "")
-    if b_dec == "approve" and a_dec == "deny":
-        return "approve-to-deny"
-    if b_dec == "deny" and a_dec == "approve":
-        return "deny-to-approve"
-    # Score primitive: a score delta without a decision-label change.
-    b_score = benign.get("score")
-    a_score = attacked.get("score")
-    if (
-        isinstance(b_score, (int, float)) and not isinstance(b_score, bool)
-        and isinstance(a_score, (int, float)) and not isinstance(a_score, bool)
-        and a_score != b_score
-    ):
-        return "score-shifted"
-    # Flipped flag set but no classified typed direction (e.g. benign
-    # was malformed and attacked was not, an abstention cleared, or a
-    # non-approve/deny decision pair changed). Report honestly as
-    # "other": inventing a "<x>-to-<y>" label would assert a typed
-    # transition the taxonomy does not define.
-    return "other"
+    if not isinstance(entry, dict):
+        return "other"
+    flipped = entry.get("flipped", False) is True
+    try:
+        return metrics.flip_direction(PerCaseResult.from_dict(entry))
+    except (AttributeError, KeyError, TypeError, ValueError):
+        # Malformed entry: from_dict rejects missing keys and
+        # hostile-typed fields; flip_direction rejects lone surrogates.
+        return "other" if flipped else "none"
 
 
 # The documented M-1 flip-direction taxonomy. "other" is the honest
 # bucket for flips no typed transition names; "none" is the no-flip
 # value. Both classifiers (_flip_direction here and
-# dashboard._classify_flip_direction) must return only these values.
+# dashboard._classify_flip_direction) delegate to the canonical
+# metrics.flip_direction, so they return only these values.
 FLIP_DIRECTIONS = (
     "approve-to-deny",
     "deny-to-approve",
@@ -406,9 +359,14 @@ def _confidence_delta(entry: dict[str, Any]) -> float | None:
 
     NULL when either confidence is missing, non-numeric, or outside
     [0, 1] (out-of-range values are data corruption, not measurements).
+    Non-dict arms (hand-edited artifacts) are treated as missing.
     """
     benign = entry.get("benign", {})
+    if not isinstance(benign, dict):
+        benign = {}
     attacked = entry.get("attacked", {})
+    if not isinstance(attacked, dict):
+        attacked = {}
     b = benign.get("confidence")
     a = attacked.get("confidence")
     for v in (b, a):
@@ -459,6 +417,10 @@ def _case_usage_totals(entry: dict[str, Any]) -> tuple[int, int, float, float]:
     latency_ms = 0.0
     for arm in ("benign", "attacked"):
         rec = entry.get(arm, {})
+        if not isinstance(rec, dict):
+            # Hand-edited artifact with a non-dict arm: contributes
+            # nothing, never aborts the scan.
+            continue
         usage = rec.get("usage")
         if isinstance(usage, dict):
             ti = usage.get("tokens_in", 0)

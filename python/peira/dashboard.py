@@ -25,7 +25,8 @@ from typing import Any
 from peira.artifacts import RunArtifact
 from peira.compare import Comparison, comparison_to_dict
 from peira.runs_registry import FLIP_DIRECTIONS
-from peira.metrics import SCORE_SHIFT_THRESHOLD
+from peira import metrics
+from peira.metrics import PerCaseResult
 
 # Severity weights for severity-weighted ASR (M-1, §3.16). Versioned:
 # any change to the weights bumps SEVERITY_WEIGHTS_VERSION so
@@ -95,6 +96,10 @@ def _per_case_cost_latency(
     for r in results:
         for arm in ("benign", "attacked"):
             rec = r.get(arm, {})
+            if not isinstance(rec, dict):
+                # Hand-edited artifact with a non-dict arm: contributes
+                # nothing, never aborts aggregation.
+                continue
             usage = rec.get("usage")
             if isinstance(usage, dict):
                 c = usage.get("cost_usd")
@@ -131,10 +136,16 @@ def _family_breakdown(results: list[dict]) -> dict[str, dict[str, Any]]:
         )
         cost, latency, n_costed, n_latency = _per_case_cost_latency(fr)
         attacked_confs = [
-            r.get("attacked", {}).get("confidence") for r in fr
+            r.get("attacked").get("confidence")
+            if isinstance(r.get("attacked"), dict)
+            else None
+            for r in fr
         ]
         benign_confs = [
-            r.get("benign", {}).get("confidence") for r in fr
+            r.get("benign").get("confidence")
+            if isinstance(r.get("benign"), dict)
+            else None
+            for r in fr
         ]
         flip_direction: dict[str, int] = {}
         for r in fr:
@@ -244,48 +255,21 @@ def _flip_anatomy(results: list[dict]) -> dict[str, dict[str, Any]]:
 def _classify_flip_direction(entry: dict) -> str:
     """M-1 flip-direction taxonomy (§3.1), computed from typed decisions.
 
-    Mirrors runs_registry._flip_direction so the dashboard payload and
-    the registry agree on the classification. Returns only values from
-    runs_registry.FLIP_DIRECTIONS; unclassifiable flips report "other"
-    honestly rather than a fabricated "<x>-to-<y>" label. Like the
-    registry version, score-primitive cases with a material score shift
-    (at least SCORE_SHIFT_THRESHOLD) report "score-shifted" even when
-    the decision did not flip.
+    Delegates to the canonical ``metrics.flip_direction`` (the sealed
+    taxonomy contract, as amended by #158) so the dashboard payload
+    agrees with the registry and the metrics layer on every value.
+    Returns only values from runs_registry.FLIP_DIRECTIONS; entries
+    that are not well-formed result dicts report "other"/"none"
+    honestly from the flip flag alone rather than a fabricated
+    "<x>-to-<y>" label.
     """
-    benign = entry.get("benign", {}) if isinstance(entry.get("benign"), dict) else {}
-    attacked = entry.get("attacked", {}) if isinstance(entry.get("attacked"), dict) else {}
-    if not entry.get("flipped", False):
-        # Score-primitive cases can shift materially without flipping the
-        # thresholded decision; that is still a directional effect.
-        # Mirrors metrics.flip_direction priority 1 (as amended by #158).
-        b_score = benign.get("score")
-        a_score = attacked.get("score")
-        if (
-            isinstance(b_score, (int, float)) and not isinstance(b_score, bool)
-            and isinstance(a_score, (int, float)) and not isinstance(a_score, bool)
-            and abs(a_score - b_score) >= SCORE_SHIFT_THRESHOLD
-        ):
-            return "score-shifted"
-        return "none"
-    if attacked.get("malformed", False) and not benign.get("malformed", False):
-        return "to-malformed"
-    if attacked.get("abstained", False) and not benign.get("abstained", False):
-        return "to-abstain"
-    b_dec = benign.get("decision", "")
-    a_dec = attacked.get("decision", "")
-    if b_dec == "approve" and a_dec == "deny":
-        return "approve-to-deny"
-    if b_dec == "deny" and a_dec == "approve":
-        return "deny-to-approve"
-    b_score = benign.get("score")
-    a_score = attacked.get("score")
-    if (
-        isinstance(b_score, (int, float)) and not isinstance(b_score, bool)
-        and isinstance(a_score, (int, float)) and not isinstance(a_score, bool)
-        and a_score != b_score
-    ):
-        return "score-shifted"
-    return "other"
+    if not isinstance(entry, dict):
+        return "other"
+    flipped = entry.get("flipped", False) is True
+    try:
+        return metrics.flip_direction(PerCaseResult.from_dict(entry))
+    except (AttributeError, KeyError, TypeError, ValueError):
+        return "other" if flipped else "none"
 
 
 def run_to_dashboard(artifact: RunArtifact) -> dict[str, Any]:

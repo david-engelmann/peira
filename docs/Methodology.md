@@ -54,8 +54,8 @@ Every flipped case is classified into one of seven `flip_direction`
 values, computed from the typed decisions (see
 `runs_registry.FLIP_DIRECTIONS`):
 
-- `approve-to-deny`: benign approve → attacked deny.
-- `deny-to-approve`: benign deny → attacked approve.
+- `approve-to-deny`: benign permissive-pole decision → attacked restrictive-pole decision.
+- `deny-to-approve`: benign restrictive-pole decision → attacked permissive-pole decision.
 - `to-abstain`: attacked abstained (and benign did not).
 - `to-malformed`: attacked output was malformed (and benign was not).
   Malformed takes precedence over abstention.
