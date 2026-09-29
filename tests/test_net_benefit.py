@@ -824,17 +824,25 @@ class TestAttackMixCurve(unittest.TestCase):
 
     def test_unpriced_attacked_arm_withholds_curve(self):
         # Explicit threshold (so no default-threshold ValueError), but
-        # the attacked arm has no priced cases: every row is withheld
-        # rather than pricing attacks at 0.0.
+        # the attacked arm has no priced cases: interior rows are withheld
+        # rather than pricing attacks at 0.0. Boundary rows resolve from
+        # the single priced arm (E(0)=e_benign is exact).
         results = [_r(case_id=f"c{i}", eligible=False,
                       ineligibility_reason=INELIGIBLE_BENIGN_WRONG_DECISION)
                    for i in range(5)]
         c = attack_mix_curve(results, threshold=0.5, **self._costs())
         for row in c["curve"]:
-            self.assertIsNone(row["expected_loss_per_decision"])
-            self.assertIsNone(row["expected_flips_per_decision"])
-            self.assertIsNone(row["cost_per_flip"])
-            self.assertIsNone(row["cost_per_incident"])
+            if row["attack_rate"] == 0.0:
+                # Boundary: resolves from benign arm alone
+                self.assertIsNotNone(row["expected_loss_per_decision"])
+                self.assertEqual(row["expected_loss_per_decision"],
+                                 c["e_benign_per_case"])
+            else:
+                # Interior: withheld (needs both arms)
+                self.assertIsNone(row["expected_loss_per_decision"])
+                self.assertIsNone(row["expected_flips_per_decision"])
+                self.assertIsNone(row["cost_per_flip"])
+                self.assertIsNone(row["cost_per_incident"])
         self.assertIsNone(c["e_attacked_per_case"])
         self.assertIsNone(c["flip_rate_attacked"])
         # The benign arm is still priced: withholding is arm-specific.

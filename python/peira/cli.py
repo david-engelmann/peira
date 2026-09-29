@@ -917,11 +917,14 @@ def _attack_mix_table(results, threshold: float, cost_false_approve: float,
         cost_false_deny=cost_false_deny,
         cost_review=cost_review,
     )
+    def _cell(x):
+        # Withheld (None) renders as "withheld", not "-" (which looks like zero)
+        return "withheld" if x is None else _num(x)
     am_rows = "\n".join(
-        f"<tr><td>{_num(r['attack_rate'])}</td>"
-        f"<td>{_num(r['expected_loss_per_decision'])}</td>"
-        f"<td>{_num(r['expected_flips_per_decision'])}</td>"
-        f"<td>{_num(r['cost_per_flip'])}</td></tr>"
+        f"<tr><td>{_cell(r['attack_rate'])}</td>"
+        f"<td>{_cell(r['expected_loss_per_decision'])}</td>"
+        f"<td>{_cell(r['expected_flips_per_decision'])}</td>"
+        f"<td>{_cell(r['cost_per_flip'])}</td></tr>"
         for r in am["curve"][::10]  # every 0.10 of attack rate
     )
     return (

@@ -4205,9 +4205,11 @@ def attack_mix_curve(
       ``flips_per_incident`` (omitted unless provided).
 
     Withholding: when either arm has no priced cases its per-case cost
-    is None (see :func:`buyer_cost_at_threshold`), and every curve row
-    is withheld (all four views None) rather than pricing the unknown
-    arm at zero. The summary ``e_attacked_per_case`` /
+    is None (see :func:`buyer_cost_at_threshold`), and interior curve rows
+    are withheld (all four views None) rather than pricing the unknown
+    arm at zero. Boundary rows resolve from the single priced arm:
+    at attack_rate=0.0 the expected loss is exactly e_benign, at
+    attack_rate=1.0 exactly e_attacked. The summary ``e_attacked_per_case`` /
     ``e_benign_per_case`` / ``flip_rate_attacked`` /
     ``flip_rate_benign`` are likewise None when their arm is unpriced.
 
@@ -4221,7 +4223,7 @@ def attack_mix_curve(
     if attack_rates is None:
         rates = list(DEFAULT_ATTACK_RATES)
     else:
-        rates = sorted(attack_rates)
+        rates = sorted(set(attack_rates))
         if not rates:
             raise ValueError("attack_rates must be non-empty")
         for pi in rates:
@@ -4266,7 +4268,31 @@ def attack_mix_curve(
     # attack_mix_crossover renders those rows as insufficient data.
     rows = []
     for pi in rates:
-        if e_attacked is None or e_benign is None:
+        # Boundary rates resolve from a single arm (exact arithmetic):
+        # E(0) = e_benign, E(1) = e_attacked. Interior rates need both arms.
+        if pi == 0.0:
+            if e_benign is None or f_benign is None:
+                rows.append({
+                    "attack_rate": pi,
+                    "expected_loss_per_decision": None,
+                    "expected_flips_per_decision": None,
+                    "cost_per_flip": None,
+                    "cost_per_incident": None,
+                })
+                continue
+            e_pi, f_pi = e_benign, f_benign
+        elif pi == 1.0:
+            if e_attacked is None or f_attacked is None:
+                rows.append({
+                    "attack_rate": pi,
+                    "expected_loss_per_decision": None,
+                    "expected_flips_per_decision": None,
+                    "cost_per_flip": None,
+                    "cost_per_incident": None,
+                })
+                continue
+            e_pi, f_pi = e_attacked, f_attacked
+        elif e_attacked is None or e_benign is None:
             rows.append({
                 "attack_rate": pi,
                 "expected_loss_per_decision": None,
@@ -4275,9 +4301,10 @@ def attack_mix_curve(
                 "cost_per_incident": None,
             })
             continue
-        assert f_attacked is not None and f_benign is not None
-        e_pi = pi * e_attacked + (1.0 - pi) * e_benign
-        f_pi = pi * f_attacked + (1.0 - pi) * f_benign
+        else:
+            assert f_attacked is not None and f_benign is not None
+            e_pi = pi * e_attacked + (1.0 - pi) * e_benign
+            f_pi = pi * f_attacked + (1.0 - pi) * f_benign
         cost_flip = _round4(e_pi / f_pi) if f_pi > 0 else None
         cost_incident = (
             _round4(cost_flip * flips_per_incident)
@@ -4399,7 +4426,7 @@ def attack_mix_crossover(
         "name_a": name_a,
         "name_b": name_b,
         "segments": segments,
-        "deployment_rule": "; ".join(words_parts),
+        "deployment_rule": ". ".join(words_parts),
     }
 
 
