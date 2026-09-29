@@ -1582,6 +1582,320 @@ def cmd_runs_verify(args: argparse.Namespace) -> int:
     return EXIT_OK
 
 
+# `peira reproduce` exit codes: 0 provenance complete (and the re-run
+# matches, when --execute), 1 row not found (or the re-run cannot be
+# performed in this environment), 2 provenance incomplete, 3
+# reproduction mismatch.
+EXIT_REPRO_MISMATCH = 3
+
+
+def _leaderboard_row_id(adapter_name: Any, adapter_version: Any,
+                        suite: Any, dataset_version: Any) -> str:
+    """Canonical leaderboard row id.
+
+    The same (adapter, version, suite, dataset version) key that
+    `peira family-summary` collapses on, with "/" between fields.
+    """
+    return "/".join(str(p or "") for p in
+                    (adapter_name, adapter_version, suite, dataset_version))
+
+
+def _provenance_bundle(artifact: RunArtifact) -> dict[str, Any]:
+    """Extract the re-run provenance bundle from a run artifact.
+
+    Keys: adapter_revision, dataset_version, seed, run_config,
+    case_set, manifest_sha256. ``adapter_revision`` is the revision
+    the adapter recorded in config when it records one. Otherwise it
+    falls back to the pinned adapter_version, which embeds the
+    revision for revision-pinned adapters (e.g. name:model@sha).
+    """
+    config = artifact.config
+    if not isinstance(config, dict):
+        config = {}
+    return {
+        "adapter_revision": str(
+            config.get("adapter_revision") or artifact.adapter_version or ""),
+        "dataset_version": str(artifact.dataset_version or ""),
+        "seed": artifact.seed,
+        "run_config": dict(config),
+        "case_set": str(artifact.suite or ""),
+        "manifest_sha256": str(artifact.manifest_sha256 or ""),
+    }
+
+
+def _provenance_gaps(bundle: dict[str, Any]) -> list[str]:
+    """Names of provenance fields missing what a re-run needs.
+
+    An empty run_config is complete (it records "adapter
+    defaults"). A non-dict is never complete. A missing seed is a gap:
+    the seed is recorded on every call record, so a run without one is
+    not reproducible.
+    """
+    gaps = []
+    if not bundle["adapter_revision"]:
+        gaps.append("adapter_revision")
+    if not bundle["dataset_version"]:
+        gaps.append("dataset_version")
+    seed = bundle["seed"]
+    if seed is None or isinstance(seed, bool):
+        gaps.append("seed")
+    if not isinstance(bundle["run_config"], dict):
+        gaps.append("run_config")
+    if not bundle["case_set"]:
+        gaps.append("case_set")
+    if not bundle["manifest_sha256"]:
+        gaps.append("manifest_sha256")
+    return gaps
+
+
+def _rerun_invocation(adapter_name: str, suite: str, seed: Any) -> str:
+    return (f"peira run --adapter {adapter_name} --suite {suite} "
+            f"--seed {seed} --out runs")
+
+
+def _print_provenance(row_id: str, path: str,
+                      bundle: dict[str, Any]) -> None:
+    print(f"Leaderboard row: {row_id}")
+    print(f"Run artifact: {path}")
+    gaps = _provenance_gaps(bundle)
+    print(f"Provenance bundle ({'complete' if not gaps else 'INCOMPLETE'}).")
+    print(f"  adapter_revision. {bundle['adapter_revision'] or '(missing)'}")
+    print(f"  dataset_version. {bundle['dataset_version'] or '(missing)'}")
+    print(f"  seed. {bundle['seed']}")
+    print(f"  case_set. {bundle['case_set'] or '(missing)'}")
+    print(f"  manifest_sha256. {bundle['manifest_sha256'] or '(missing)'}")
+    print(f"  run_config. "
+          f"{json.dumps(bundle['run_config'], sort_keys=True)}")
+
+
+def _repro_matches(reported: Any, lo: Any, hi: Any,
+                   new_asr: Any) -> bool:
+    """True when the re-run ASR reproduces the reported number.
+
+    The bar is the row's own 95 percent CI when the row carries one.
+    Without a CI the re-run must equal the reported value. The
+    epsilon absorbs float formatting noise only.
+    """
+    eps = 1e-9
+    for v in (reported, new_asr):
+        if v is None or isinstance(v, bool):
+            return False
+    if (lo is not None and hi is not None
+            and not isinstance(lo, bool) and not isinstance(hi, bool)):
+        return (lo - eps) <= new_asr <= (hi + eps)
+    return abs(new_asr - reported) <= eps
+
+
+def cmd_reproduce(args: argparse.Namespace) -> int:
+    """Verify a leaderboard row's provenance, optionally re-running it.
+
+    The default (no --execute) is honest about re-run costs: it
+    verifies provenance completeness and prints the exact invocation
+    a human would use. --execute actually re-runs the adapter on the
+    pinned dataset and compares the resulting ASR against the row.
+    """
+    from peira.runs_registry import list_runs
+
+    raw_id = args.leaderboard_row_id
+    parts = [p.strip() for p in raw_id.split("/")]
+    if len(parts) != 4 or not all(parts):
+        print(f"error: malformed leaderboard row id {raw_id!r}. Expected "
+              f"four '/'-separated fields 'adapter/version/suite/"
+              f"dataset_version' (the key `peira family-summary` "
+              f"collapses on).", file=sys.stderr)
+        return EXIT_USER_ERROR
+    adapter_name, adapter_version, suite, dataset_version = parts
+    row_id = _leaderboard_row_id(adapter_name, adapter_version, suite,
+                                dataset_version)
+
+    runs_dir = Path(args.runs_dir) if args.runs_dir else None
+    runs = list_runs(runs_dir, adapter=adapter_name, suite=suite,
+                     dataset_version=dataset_version)
+    # list_runs orders newest first, so the first version match is the
+    # latest run for this row.
+    row = next(
+        (r for r in runs if (r["adapter_version"] or "") == adapter_version),
+        None,
+    )
+    if row is None:
+        print(f"error: unknown leaderboard row {row_id!r}.",
+              file=sys.stderr)
+        known = sorted(
+            {_leaderboard_row_id(r["adapter_name"], r["adapter_version"],
+                                 r["suite"], r["dataset_version"])
+             for r in list_runs(runs_dir)}
+        )
+        if known:
+            print("Known rows (latest run wins per row).", file=sys.stderr)
+            for k in known[:20]:
+                print(f"  {k}", file=sys.stderr)
+            if len(known) > 20:
+                print(f"  ... and {len(known) - 20} more.",
+                      file=sys.stderr)
+        return EXIT_USER_ERROR
+
+    try:
+        artifact = RunArtifact.from_json(Path(row["path"]).read_text())
+    except Exception as e:
+        print(f"error: could not load run artifact {row['path']} ({e}).",
+              file=sys.stderr)
+        return EXIT_INFRA_ERROR
+
+    bundle = _provenance_bundle(artifact)
+    _print_provenance(row_id, row["path"], bundle)
+    gaps = _provenance_gaps(bundle)
+    if gaps:
+        for field in gaps:
+            print(f"error: provenance incomplete. missing field "
+                  f"'{field}'.", file=sys.stderr)
+        return EXIT_INFRA_ERROR
+
+    invocation = _rerun_invocation(adapter_name, suite, bundle["seed"])
+    if not args.execute:
+        print()
+        print("Provenance is complete. Re-run invocation:")
+        print(f"  {invocation}")
+        print(f"Dataset pin. manifest {bundle['manifest_sha256']} "
+              f"(version {bundle['dataset_version']}).")
+        print("The run config above is what the adapter ran with. "
+              "Re-run with the same adapter version and config.")
+        return EXIT_OK
+
+    # --execute: actually re-run and compare. The re-run is scored in
+    # memory only: reproduce never writes to the runs directory.
+    print()
+    print(f"Re-running. {invocation}")
+    root = _repo_root()
+    if suite not in SUITE_DIRS:
+        print(f"error: unknown suite {suite!r} in the run artifact. "
+              f"cannot re-run.", file=sys.stderr)
+        return EXIT_USER_ERROR
+    suite_dir = root / SUITE_DIRS[suite]
+    try:
+        local_version, local_manifest = _suite_dataset_identity(suite_dir)
+    except ValueError as e:
+        print(f"error: {e}", file=sys.stderr)
+        return EXIT_USER_ERROR
+    if local_manifest != bundle["manifest_sha256"]:
+        print(f"error: reproduction failed. the local {suite} dataset "
+              f"bytes do not match the run's pinned manifest "
+              f"({bundle['manifest_sha256'][:12]}). re-running on "
+              f"different bytes would not reproduce the row.",
+              file=sys.stderr)
+        return EXIT_REPRO_MISMATCH
+    try:
+        adapter = _get_adapter(adapter_name)
+    except ValueError as e:
+        print(f"error: {e}", file=sys.stderr)
+        return EXIT_USER_ERROR
+    try:
+        cases = load_cases(suite_dir)
+    except ValueError as e:
+        print(f"error: invalid case data. {e}", file=sys.stderr)
+        return EXIT_USER_ERROR
+    if not cases:
+        print(f"error: no cases found in {suite_dir}", file=sys.stderr)
+        return EXIT_USER_ERROR
+    run_nonce = new_run_nonce()
+    if isinstance(adapter, MockAdapter):
+        # Same harness wiring as `peira run`: the mock's simulation
+        # script is built explicitly from the loaded cases.
+        adapter = MockAdapter(
+            script=MockAdapter.script_for(
+                cases, seed=bundle["seed"], run_nonce=run_nonce))
+    config = bundle["run_config"]
+    try:
+        rerun = run_suite(
+            adapter, cases, suite, local_version,
+            seed=bundle["seed"],
+            manifest_sha256=local_manifest,
+            required_families=config.get("required_families"),
+            run_nonce=run_nonce,
+        )
+    except Exception:
+        traceback.print_exc()
+        return EXIT_INFRA_ERROR
+
+    metrics = artifact.metrics or {}
+    reported = metrics.get("asr_conditional")
+    ci = metrics.get("asr_ci95")
+    lo, hi = None, None
+    if isinstance(ci, (list, tuple)) and len(ci) == 2:
+        lo, hi = ci[0], ci[1]
+    new_asr = (rerun.metrics or {}).get("asr_conditional")
+    if reported is None:
+        print("error: reproduction failed. the leaderboard row has no "
+              "reported ASR to compare against.", file=sys.stderr)
+        return EXIT_REPRO_MISMATCH
+    if _repro_matches(reported, lo, hi, new_asr):
+        print(f"Reproduction matches. reported ASR {reported} "
+              f"(95 percent CI [{lo}, {hi}]), re-run ASR {new_asr}.")
+        return EXIT_OK
+    print(f"error: reproduction MISMATCH. reported ASR {reported} "
+          f"(95 percent CI [{lo}, {hi}]), re-run ASR {new_asr}.",
+          file=sys.stderr)
+    return EXIT_REPRO_MISMATCH
+
+
+def _canary_scan(dataset_dir: Path, canary: str) -> list[tuple[str, bool]]:
+    """Check every public case file for the permanent canary string.
+
+    Returns (relative path, canary present) pairs, sorted. An
+    unreadable file counts as missing: it cannot prove the canary.
+    """
+    rows = []
+    for path in sorted(dataset_dir.rglob("*.jsonl")):
+        try:
+            text = path.read_text(encoding="utf-8")
+        except OSError:
+            rows.append((str(path), False))
+            continue
+        rows.append((str(path), canary in text))
+    return rows
+
+
+def cmd_contamination_check(args: argparse.Namespace) -> int:
+    """Check that every public case file carries the permanent canary.
+
+    Public cases are assumed contaminated from day one: the canary
+    lets training pipelines filter them out. The sealed holdout is
+    the scoring authority and is never published, not even as IDs.
+    """
+    from peira.dataset import CANARY_GUID
+
+    dataset_dir = (Path(args.dataset) if args.dataset
+                   else _repo_root() / "dataset")
+    if not dataset_dir.is_dir():
+        print(f"error: dataset directory {dataset_dir} not found",
+              file=sys.stderr)
+        return EXIT_USER_ERROR
+    rows = _canary_scan(dataset_dir, CANARY_GUID)
+    missing = 0
+    for path, present in rows:
+        rel = Path(path)
+        try:
+            rel = rel.relative_to(_repo_root())
+        except ValueError:
+            pass
+        status = "present" if present else "MISSING"
+        print(f"canary {status}. {rel}")
+        if not present:
+            missing += 1
+    print()
+    print("Standing policy. public cases are assumed contaminated from "
+          "day one: the canary lets training pipelines filter them "
+          "out. The sealed 500-case holdout is the scoring authority "
+          "and is never published, not even as IDs. See "
+          "docs/Contamination-Policy.md.")
+    if missing:
+        print(f"The permanent canary ({CANARY_GUID}) must be embedded "
+              f"in every public case file. {missing} file(s) are "
+              f"missing it.", file=sys.stderr)
+        return EXIT_USER_ERROR
+    print(f"All {len(rows)} public case file(s) carry the canary.")
+    return EXIT_OK
+
+
 def cmd_dataset_build_manifest(args: argparse.Namespace) -> int:
     from peira.dataset import (MANIFEST_NAME, build_manifest, read_manifest,
                                write_manifest)
@@ -2034,6 +2348,40 @@ def build_parser() -> argparse.ArgumentParser:
     # values) rendered verbatim by scripts/gen_cli_reference.py so the
     # generated CLI reference shows accurate defaults.
     fs.set_defaults(func=cmd_family_summary)
+
+    rp = sub.add_parser(
+        "reproduce",
+        help="verify a leaderboard row's provenance, optionally re-run it",
+        description="Resolve a leaderboard row id to its run artifact, "
+        "verify the provenance bundle is complete, and (without --execute) "
+        "print the exact re-run invocation. With --execute, re-run the "
+        "adapter on the pinned dataset with the pinned seed and compare "
+        "the ASR against the row's reported ASR.",
+    )
+    rp.add_argument("leaderboard_row_id",
+                    help="row id as adapter/version/suite/dataset_version "
+                    "(the key peira family-summary collapses on)")
+    rp.add_argument("--runs-dir", default=None,
+                    help="runs directory (default is ./runs or "
+                    "$PEIRA_RUNS_DIR)")
+    rp.add_argument("--execute", action="store_true",
+                    help="actually re-run the adapter and compare ASR "
+                    "(default is provenance check plus the re-run "
+                    "invocation only)")
+    rp.set_defaults(func=cmd_reproduce)
+
+    cc = sub.add_parser(
+        "contamination-check",
+        help="check public case files for the permanent canary",
+        description="Scan every public case file under the dataset "
+        "directory for the permanent canary string. Public cases are "
+        "assumed contaminated from day one. Exits 1 when any file is "
+        "missing the canary.",
+    )
+    cc.add_argument("--dataset", default=None,
+                    help="dataset directory (default is the repo's "
+                    "dataset directory)")
+    cc.set_defaults(func=cmd_contamination_check)
 
     d = sub.add_parser("dataset", help="dataset build tooling")
     dsub = d.add_subparsers(dest="dataset_command", required=True)

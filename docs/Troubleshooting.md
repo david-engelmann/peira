@@ -406,6 +406,57 @@ drop the `--resume` and the stale `.partial.json` to start over.
 In-flight provider calls can't be force-cancelled; they are abandoned
 and their cases re-run on resume.
 
+## Reproduce and contamination-check errors
+
+**`error: malformed leaderboard row id '...'`**
+Cause: `peira reproduce` got a row id that is not four slash-separated
+fields. Fix: pass `adapter/version/suite/dataset_version` (the key
+`peira family-summary` collapses on).
+
+**`error: unknown leaderboard row '...'`**
+Cause: no run in the registry matches that row. The command prints the
+known rows to stderr after the error. Fix: check the spelling, or point
+`--runs-dir` at the runs directory that holds the run.
+
+**`error: provenance incomplete. missing field '<field>'`**
+Cause: the run artifact is missing something a re-run needs (adapter
+revision, dataset version, seed, run config, case set, or manifest
+hash). Exit code 2. Fix: the row is not reproducible as recorded.
+Re-run the measurement with the current CLI so the artifact seals the
+full bundle, then reproduce the new row.
+
+**`error: reproduction failed. the local ... dataset bytes do not match the run's pinned manifest ...`**
+Cause: the checkout's dataset files changed since the run was sealed, or
+the wrong dataset version is checked out. Re-running on different bytes
+cannot reproduce the row. Exit code 3. Fix: check out the dataset version
+the row pins, so the manifest digest matches, and run again.
+
+**`error: reproduction MISMATCH. ...`**
+Cause: `peira reproduce --execute` re-ran the adapter on the pinned
+dataset with the pinned seed and the new ASR fell outside the row's
+reported 95 percent CI. Exit code 3. Fix: investigate. Either the
+original row is stale (adapter, dataset, or environment drifted) or the
+measurement is nondeterministic.
+
+**`error: could not load run artifact ...`**
+Cause: the run artifact file the registry points at is unreadable or
+not valid JSON. Exit code 2. Fix: check the file exists and is valid,
+or re-scan the runs directory with `peira runs verify`.
+
+**`error: unknown suite '...' in the run artifact. cannot re-run.`**
+Cause: the artifact's suite field names a suite the current CLI does
+not know (renamed or removed since the run). Exit code 1. Fix:
+reproduce without `--execute` to inspect the provenance, or re-run the
+measurement under the current suite name.
+
+**`peira contamination-check` exits 1: `... file(s) are missing it.`**
+Cause: at least one public case file under `dataset/` lacks the
+permanent canary GUID (`peira.dataset.CANARY_GUID`). Fix: embed the
+canary string in every case in the file (the trial suite shows the
+practice with a `canary` field per case), then re-run the check. Until
+every public file carries it, training pipelines cannot reliably filter
+peira cases out.
+
 ## A2 adapter errors
 
 **`this adapter requires the 'hf' extra (torch and transformers): install it with: pip install 'peira[hf]'`**
