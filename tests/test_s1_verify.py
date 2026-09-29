@@ -1,4 +1,4 @@
-"""Unit tests for scripts/s1_verify.py (run with: python -m unittest discover tests).
+"""Unit tests for scripts/s1_verify.py (run with: python -m pytest tests).
 
 These drive the whole post-adjudication pipeline on fixtures:
 s1_apply -> human edits -> manifest rebuild -> s1_verify.

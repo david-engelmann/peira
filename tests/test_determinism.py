@@ -6,7 +6,7 @@ non-deterministic fields (usage.latency_ms and dispatch_limit on each
 call record). Also asserts dispatch_limit really does differ between the
 caps, so the exclusion is not vacuous.
 
-Run with: python -m unittest discover tests
+Run with: python -m pytest tests
 """
 
 import unittest

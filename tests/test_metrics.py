@@ -1,4 +1,4 @@
-"""Unit tests for peira metrics (run with: python -m unittest discover tests)."""
+"""Unit tests for peira metrics (run with: python -m pytest tests)."""
 
 import math
 import random

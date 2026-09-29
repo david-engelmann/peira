@@ -1,4 +1,4 @@
-"""Tests for the Trial-suite mechanism (run with: python -m unittest discover tests).
+"""Tests for the Trial-suite mechanism (run with: python -m pytest tests).
 
 Covers the forward-compatible case schema (extras), the branded 100-case
 Peira Trial in dataset/trial, dataset-version flow into run artifacts, and

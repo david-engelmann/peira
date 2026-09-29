@@ -1,4 +1,4 @@
-"""Unit tests for generator templates (run with: python -m unittest discover tests)."""
+"""Unit tests for generator templates (run with: python -m pytest tests)."""
 
 import json
 import unittest

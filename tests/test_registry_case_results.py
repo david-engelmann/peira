@@ -1,6 +1,6 @@
 """Tests for per-case drill-down (case_results table) and query_cases.
 
-Run with: PYTHONPATH=python python3 -m unittest discover tests
+Run with: PYTHONPATH=python python3 -m pytest tests
 """
 
 import json

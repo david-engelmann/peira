@@ -5,7 +5,7 @@ attacked arm; incorrect decision on the benign arm), risk score =
 1 - confidence, treatment = route to human review when risk >= pt.
 The x-axis is the threshold probability pt, never the attack rate.
 
-Run with: python -m unittest discover tests
+Run with: python -m pytest tests
 """
 
 import json

@@ -1,4 +1,4 @@
-"""Unit tests for scripts/holdout_query_log.py (run with: python -m unittest discover tests).
+"""Unit tests for scripts/holdout_query_log.py (run with: python -m pytest tests).
 
 Tests run against a temporary copy of the log so the real
 docs/Holdout-Query-Log.md is never touched.

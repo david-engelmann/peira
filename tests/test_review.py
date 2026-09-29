@@ -1,4 +1,4 @@
-"""Unit tests for the human review queue (run with: python -m unittest discover tests)."""
+"""Unit tests for the human review queue (run with: python -m pytest tests)."""
 
 import json
 import tempfile

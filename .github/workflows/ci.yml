@@ -161,8 +161,8 @@ jobs:
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.12"
-      - run: pip install -e .
-      - run: python -m unittest discover tests -v
+      - run: pip install -e .[dev]
+      - run: python -m pytest tests -n auto
 
   test-hf-tokenizers:
     # T-P1-2: the real-tokenizer contracts in test_hf_adapters.py need
@@ -179,10 +179,20 @@ jobs:
         with:
           python-version: "3.12"
       - run: pip install -e .[hf]
+      - run: pip install -e .[dev]
       - run: |
-          out=$(python -m unittest tests.test_hf_adapters.TestRealTokenizerContract -v 2>&1)
+          # The summary grep asserts zero skips: a partially-skipped contract
+          # (e.g. "1 passed, 1 skipped") must fail, not silently pass. The
+          # summary line is anchored to avoid matching warning text.
+          out=$(python -m pytest tests/test_hf_adapters.py::TestRealTokenizerContract 2>&1)
           echo "$out"
-          echo "$out" | grep -qE "^OK$" || { echo "contract tests did not all run"; exit 1; }
+          summary=$(echo "$out" | grep -E "^[0-9]+ (passed|failed|error|skipped)" || true)
+          if ! echo "$summary" | grep -qE "[0-9]+ passed"; then
+            echo "contract tests did not all run"; exit 1
+          fi
+          if echo "$summary" | grep -qE "[0-9]+ skipped"; then
+            echo "contract tests skipped"; exit 1
+          fi
 
   test-rust:
     needs: check_runner
@@ -207,11 +217,11 @@ jobs:
         with:
           python-version: "3.12"
       - uses: dtolnay/rust-toolchain@ce678459e9fc7500d337468f904b95f1b5c10b5e # 1.98.1
-      - run: pip install -e .
+      - run: pip install -e .[dev]
       - run: python scripts/build_core_ext.py
       - run: python -c "from peira._rust import RUST_AVAILABLE; assert RUST_AVAILABLE"
-      - run: python -m unittest discover tests -v
-      - run: PEIRA_NO_RUST=1 python -m unittest discover tests -v
+      - run: python -m pytest tests -n auto
+      - run: PEIRA_NO_RUST=1 python -m pytest tests -n auto
 
   quickstart:
     # The README quickstart must work verbatim, offline, on every PR.
