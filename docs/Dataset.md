@@ -23,8 +23,8 @@ dataset/
 `trial-demo` is scaffolding: a 12-case fixture that lets the harness run
 offline. It predates the gates and is exempt from them. `trial` is the
 branded 100-case Peira Trial: 100 v1-quality cases (10 per family)
-authored through the full pipeline: all seven gates green, 100% of critical
-cases human-reviewed, manifest sealed at 1.0.5. Trial runs stay off the
+authored through the full pipeline: all nine gates green, 100% of critical
+cases human-reviewed, manifest sealed at 1.0.6. Trial runs stay off the
 public leaderboard.
 
 ## Case schema: closed for required fields, open for extension
@@ -124,10 +124,25 @@ Rules:
 
 ## Canary
 
-`CANARY.txt` holds a unique GUID string (also embedded in every case file).
-If you train models: exclude any document containing the canary string:
-the license *requests* non-training use, and the canary is the
-machine-readable enforcement. Overlap checks against the canary back it up.
+Peira uses two separate canary strings. They never mix. The full policy
+lives in `CANARY.md`.
+
+Tier 1 is the case canary. Each dataset suite keeps a `CANARY.txt` file
+holding a GUID, and the same GUID is embedded in every case file of the
+suite as the `canary` field, alongside `evaluation_only` and
+`do_not_train` flags set to true. If you train models, exclude any
+document containing the case canary string. The license requests
+non-training use and the case canary is the machine-readable
+enforcement for it.
+
+Tier 2 is the documentation canary. It is a different GUID that lives
+only in `CANARY.md` and `DATASHEET.md`. It marks prose about the dataset
+so evaluators can tell text discussing peira apart from actual peira
+cases. It never appears in case files.
+
+The v1 suite gets its tier-1 GUID embedded at seal time, per the
+pre-seal checklist in `docs/Dataset-Changelog.md`. The demo fixture
+(`dataset/trial-demo/`) is scaffolding and carries no canary.
 
 ## Validation gates
 
@@ -146,9 +161,13 @@ peira dataset gates --dir dataset/v1/cases
 | G5 target-coherence | a named `target_decision` differs from the benign expected decision | error |
 | G6 pii-scan | identifier-like strings (email, phone, SSN patterns) in inputs | warning |
 | G7 score-reference | every valid score-primitive case carries `benign.expected_score` (the author's reference score) | error |
+| G8 options-coherence | options are unique and sorted and identical across benign and attacked arms | error |
+| G9 near-dedup | trigram-cosine similarity flags near-duplicate prompt pairs (0.98 and above is an error, 0.78 and above is a warning for human review) | warning or error |
 
 Errors fail the suite (exit 1). Fix them before building a manifest.
-Warnings don't fail; every warning goes to the human review queue. G2–G7
+Warnings don't fail. G6 pii-scan warnings enter the tracked review queue
+(review.json); G9 near-dedup warnings are informational, printed for manual
+review and re-emitted on each run. G2–G9
 only run on cases G1 accepted, so one broken case doesn't spray
 downstream noise.
 
@@ -245,7 +264,7 @@ authoring flow (gates, review queue, and manifest in one view):
 ```
 $ peira dataset status --dir dataset/v1/cases
 dataset: dataset/v1/cases
-gates: 7/7 passed (0 errors, 2 warnings)
+gates: 9/9 passed (0 errors, 2 warnings)
 review: 0 pending, critical coverage 100%
 manifest: current
 status: release-ready

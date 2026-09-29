@@ -81,6 +81,12 @@ impl AttackedVariant {
     }
 }
 
+/// Serde default for the R-05 training-exclusion flags: absent in the
+/// file format means True (the benchmark default).
+fn default_true() -> bool {
+    true
+}
+
 /// One decision scenario: benign and attacked variants, paired.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Case {
@@ -92,6 +98,13 @@ pub struct Case {
     pub attacked: AttackedVariant,
     #[serde(default)]
     pub notes: String,
+    /// R-05 training-exclusion flags. Absent in the file format means
+    /// True (the benchmark default); explicit non-booleans are rejected
+    /// by `validate_case_dict`, never coerced.
+    #[serde(default = "default_true")]
+    pub evaluation_only: bool,
+    #[serde(default = "default_true")]
+    pub do_not_train: bool,
     /// Unknown top-level keys, preserved on round-trip. Mirrors Python
     /// `Case.extras`: future per-case configuration rides the pipeline
     /// with no refactoring, on both implementations.
@@ -307,6 +320,15 @@ pub fn validate_case_dict(d: &Value) -> Vec<String> {
     if let Some(notes) = obj.get("notes") {
         if !notes.is_string() {
             errors.push("bad notes: expected string".to_string());
+        }
+    }
+    // R-05: training-exclusion flags are optional (absent means True)
+    // but when present must be real booleans. Byte-identical to Python.
+    for flag in ["evaluation_only", "do_not_train"] {
+        if let Some(v) = obj.get(flag) {
+            if !v.is_boolean() {
+                errors.push(format!("bad {flag}: expected boolean"));
+            }
         }
     }
     errors
@@ -572,6 +594,47 @@ mod tests {
         let case = Case::from_value(&valid_case()).unwrap();
         assert!(case.extras.is_empty());
         let back = serde_json::to_value(&case).unwrap();
-        assert_eq!(back.as_object().unwrap().len(), 7);
+        // 7 original fields + evaluation_only + do_not_train (R-05).
+        assert_eq!(back.as_object().unwrap().len(), 9);
+    }
+
+    #[test]
+    fn evaluation_flags_default_true() {
+        // R-05: missing flags are backward-readable as true.
+        let case = Case::from_value(&valid_case()).unwrap();
+        assert!(case.evaluation_only);
+        assert!(case.do_not_train);
+        assert!(validate_case_dict(&valid_case()).is_empty());
+    }
+
+    #[test]
+    fn evaluation_flags_explicit_values() {
+        let mut d = valid_case();
+        d["evaluation_only"] = json!(false);
+        d["do_not_train"] = json!(false);
+        let case = Case::from_value(&d).unwrap();
+        assert!(!case.evaluation_only);
+        assert!(!case.do_not_train);
+        assert!(validate_case_dict(&d).is_empty());
+    }
+
+    #[test]
+    fn evaluation_flags_reject_non_bool() {
+        let mut d = valid_case();
+        d["evaluation_only"] = json!("yes");
+        let errors = validate_case_dict(&d);
+        assert!(errors.iter().any(|e| e.contains("evaluation_only")));
+        let mut d = valid_case();
+        d["do_not_train"] = json!(1);
+        let errors = validate_case_dict(&d);
+        assert!(errors.iter().any(|e| e.contains("do_not_train")));
+    }
+
+    #[test]
+    fn evaluation_flags_not_in_extras() {
+        // R-05: the flags are schema fields, never free-form extras.
+        let case = Case::from_value(&valid_case()).unwrap();
+        assert!(!case.extras.contains_key("evaluation_only"));
+        assert!(!case.extras.contains_key("do_not_train"));
     }
 }
