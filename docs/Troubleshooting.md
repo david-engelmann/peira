@@ -868,10 +868,13 @@ directory, or a permissions problem. Fix: create the directory first,
 or pick a writable path.
 
 **`peira threshold-by-family` reports every family as withheld**
-Cause: not an error. No family has priced cases (every result
-ineligible on the priced arm), so optima and costs are unresolvable,
-not zero. Fix: check the run's eligibility; ineligible cases carry no
-baseline to price correctness against.
+Cause: not an error. No family has priced cases on the priced arm, so
+optima and costs are unresolvable, not zero. On the attacked arm that
+usually means every case is ineligible (the ineligible exclusion only
+applies to the attacked arm); on either arm it can also mean every
+case is malformed, abstained, non-binary, or missing a finite
+confidence. Fix: check the run's eligibility and record quality;
+excluded cases carry no baseline to price correctness against.
 
 ## R-05 contamination scripts
 
