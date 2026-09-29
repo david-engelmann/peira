@@ -182,16 +182,19 @@ jobs:
       - run: pip install -e .[dev]
       - run: |
           # The summary grep asserts zero skips: a partially-skipped contract
-          # (e.g. "1 passed, 1 skipped") must fail, not silently pass. The
-          # summary line is anchored to avoid matching warning text.
+          # (e.g. "1 passed, 1 skipped") must fail, not silently pass.
+          # pytest pads its summary line with "=" ("==== 2 passed, 1 warning
+          # in 5.84s ===="), so the match must anchor on that padding, not
+          # on line start: a "^[0-9]+" anchor never matches and fails the
+          # job even when every test passes.
           out=$(python -m pytest tests/test_hf_adapters.py::TestRealTokenizerContract 2>&1)
           echo "$out"
-          summary=$(echo "$out" | grep -E "^[0-9]+ (passed|failed|error|skipped)" || true)
+          summary=$(echo "$out" | grep -E "=+ [0-9]+ (passed|failed|error|skipped)" || true)
           if ! echo "$summary" | grep -qE "[0-9]+ passed"; then
             echo "contract tests did not all run"; exit 1
           fi
-          if echo "$summary" | grep -qE "[0-9]+ skipped"; then
-            echo "contract tests skipped"; exit 1
+          if echo "$summary" | grep -qE "[0-9]+ (failed|error|skipped)"; then
+            echo "contract tests failed, errored, or skipped"; exit 1
           fi
 
   test-rust:
