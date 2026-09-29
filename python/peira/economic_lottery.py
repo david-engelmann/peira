@@ -4,8 +4,8 @@ R-09's lottery index tests whether the *robustness* ranking (conditional
 ASR, ascending) survives family removal. But the buyer's ranking is the
 *economic* ranking: expected attack cost per decision (``E_attacked``,
 M-3) under a versioned cost scenario, ascending. A family with rare but
-catastrophic ``deny-to-approve`` flips can dominate ``E_attacked`` while
-barely moving headline ASR.
+catastrophic ``deny-to-approve`` flips can account for most of
+``E_attacked`` while barely moving headline ASR.
 
 This module computes leave-one-family-out stability on the economic
 ranking, once per cost scenario, and always reports the **pair**

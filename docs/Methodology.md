@@ -1057,7 +1057,7 @@ family removal. That ranking orders runs by conditional ASR. But the
 buyer's ranking is the economic ranking. It orders runs by expected
 attack cost per decision (E_attacked, M-3) under a versioned cost
 scenario, ascending. A family with rare but catastrophic deny-to-approve
-flips can dominate E_attacked while barely moving headline ASR. So a
+flips can account for most of E_attacked while barely moving headline ASR. So a
 ranking that is lottery-stable on robustness can be lottery-fragile on
 dollars.
 
