@@ -490,6 +490,10 @@ def cmd_run(args: argparse.Namespace) -> int:
             rlimit_as_mb=getattr(args, "rlimit_as_mb", None),
             rlimit_fsize_mb=getattr(args, "rlimit_fsize_mb", None),
             budget_usd=budget_usd,
+            # Persist the loader spec (e.g. "peira.adapters.jev:JevAdapter"),
+            # not just adapter.name (e.g. "jev"). cmd_reproduce needs the
+            # spec to reload the adapter; the short name is not loadable.
+            config_extra={"adapter_spec": args.adapter},
         )
     except KeyboardInterrupt:
         print("\ninterrupted; partial run saved; re-run with --resume.",
@@ -1603,11 +1607,14 @@ def _leaderboard_row_id(adapter_name: Any, adapter_version: Any,
 def _provenance_bundle(artifact: RunArtifact) -> dict[str, Any]:
     """Extract the re-run provenance bundle from a run artifact.
 
-    Keys: adapter_revision, dataset_version, seed, run_config,
+    Keys: adapter_revision, adapter_spec, dataset_version, seed, run_config,
     case_set, manifest_sha256. ``adapter_revision`` is the revision
     the adapter recorded in config when it records one. Otherwise it
     falls back to the pinned adapter_version, which embeds the
     revision for revision-pinned adapters (e.g. name:model@sha).
+    ``adapter_spec`` is the original --adapter loader spec (e.g.
+    "peira.adapters.jev:JevAdapter"), needed to reload the adapter for
+    re-runs. The short adapter.name (e.g. "jev") is not loadable.
     """
     config = artifact.config
     if not isinstance(config, dict):
@@ -1615,6 +1622,7 @@ def _provenance_bundle(artifact: RunArtifact) -> dict[str, Any]:
     return {
         "adapter_revision": str(
             config.get("adapter_revision") or artifact.adapter_version or ""),
+        "adapter_spec": str(config.get("adapter_spec") or ""),
         "dataset_version": str(artifact.dataset_version or ""),
         "seed": artifact.seed,
         "run_config": dict(config),
@@ -1645,6 +1653,8 @@ def _provenance_gaps(bundle: dict[str, Any]) -> list[str]:
         gaps.append("case_set")
     if not bundle["manifest_sha256"]:
         gaps.append("manifest_sha256")
+    if not bundle.get("adapter_spec"):
+        gaps.append("adapter_spec")
     return gaps
 
 
@@ -1750,7 +1760,7 @@ def cmd_reproduce(args: argparse.Namespace) -> int:
                   f"'{field}'.", file=sys.stderr)
         return EXIT_INFRA_ERROR
 
-    invocation = _rerun_invocation(adapter_name, suite, bundle["seed"])
+    invocation = _rerun_invocation(bundle["adapter_spec"], suite, bundle["seed"])
     if not args.execute:
         print()
         print("Provenance is complete. Re-run invocation:")
@@ -1784,7 +1794,7 @@ def cmd_reproduce(args: argparse.Namespace) -> int:
               file=sys.stderr)
         return EXIT_REPRO_MISMATCH
     try:
-        adapter = _get_adapter(adapter_name)
+        adapter = _get_adapter(bundle["adapter_spec"])
     except ValueError as e:
         print(f"error: {e}", file=sys.stderr)
         return EXIT_USER_ERROR

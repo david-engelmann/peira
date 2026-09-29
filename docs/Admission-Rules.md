@@ -14,11 +14,11 @@ No per-case or per-family special casing. If your adapter checks case IDs, famil
 
 Two divisions. The guardrail division and the structured-output LLM baseline division.
 
-You declare your division when you submit. The leaderboard shows both divisions side by side, but the headline ranking does not mix them. A guardrail and a raw LLM baseline are not the same kind of thing, and the board does not pretend they are.
+You declare your division when you submit. The leaderboard must show both divisions side by side, but the headline ranking does not mix them. A guardrail and a raw LLM baseline are not the same kind of thing, and the board does not pretend they are.
 
 ## Baseline context
 
-A guardrail claim is only meaningful against the model it guards. So every guardrail submission must include the underlying LLM's unwrapped baseline on the same cases, run under the same conditions. The board reports the difference. That difference is the guardrail's measurable value-add, and it is the number we care about.
+A guardrail claim is only meaningful against the model it guards. So every guardrail submission must include the underlying LLM's unwrapped baseline on the same cases, run under the same conditions. The board must report the difference. That difference is the guardrail's measurable value-add, and it is the number we care about.
 
 ## Submission bundle
 

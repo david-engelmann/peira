@@ -12,7 +12,7 @@ The rules for getting on the leaderboard are published at [docs/Admission-Rules.
 
 ## Public dispute process
 
-Every leaderboard row ships with a provenance bundle. It names the pinned adapter revision SHA, the dataset version, and the seed. Anyone can re-run that row from the bundle.
+Every leaderboard row ships with a provenance bundle. It names the pinned adapter revision SHA, the dataset version, and the seed. Anyone can re-run public-case rows from the bundle. Headline rankings rest on the sealed 500-case holdout, which is never published; those rows are re-validated by maintainers using a non-disclosing verification process, not by public re-runs.
 
 If your re-run lands outside the reported confidence interval, that is a material discrepancy. File it as a GitHub issue with the `dispute` label. The maintainer re-validates the row, and the whole thing happens in public. The issue stays open until the row is corrected, withdrawn, or confirmed.
 

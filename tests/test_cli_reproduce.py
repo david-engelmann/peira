@@ -56,7 +56,11 @@ def _make_artifact(**overrides):
         "max_concurrency": 8,
         "env": env,
         "env_sha256": env_sha256,
-        "config": {"cache_enabled": False, "adapter_revision": "rev-123"},
+        "config": {
+            "cache_enabled": False,
+            "adapter_revision": "rev-123",
+            "adapter_spec": "mock",
+        },
         "results": [],
         "metrics": {"ranking_eligible": True, "eligibility_notes": []},
     }
@@ -90,7 +94,8 @@ def _mock_trial_artifact_small(seed=7, n_cases=_EXECUTE_CASES):
     adapter = MockAdapter(
         script=MockAdapter.script_for(cases, seed=seed, run_nonce=nonce))
     art = run_suite(adapter, cases, "trial", dataset_version, seed=seed,
-                    manifest_sha256=manifest_sha256, run_nonce=nonce)
+                    manifest_sha256=manifest_sha256, run_nonce=nonce,
+                    config_extra={"adapter_spec": "mock"})
     return art, cases
 
 

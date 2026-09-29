@@ -8,7 +8,7 @@ A submission is a run bundle, not a claim. Nobody gets verified status on their 
 
 Before a row earns the verified badge, maintainers re-run a random subset of its cases with the bundle's pinned adapter revision, dataset version, and seed. If the re-run matches within the reported confidence interval, the row is verified.
 
-Rows that have not been through this process are labeled "peira-derived, unverified". They appear on the site. They never appear in the headline ranking.
+Rows that have not been through this process must be labeled "peira-derived, unverified". They appear on the site. They never appear in the headline ranking.
 
 ## Saturation and successor policy
 
@@ -22,15 +22,15 @@ A saturated version is not patched into relevance. A successor version ships wit
 
 Static cases are a starting point, not the whole story. External adaptive evaluations are explicitly invited.
 
-For every adapter, peira tracks the best known ASR across all attack suites, not just the static v1 cases. If your adaptive suite breaks an adapter harder than v1 does, that number counts and it is attributed to your suite. The leaderboard is a record of the strongest known attacks, not a monument to the shipped ones.
+For every adapter, the leaderboard will track the best known ASR across all attack suites, not just the static v1 cases. If your adaptive suite breaks an adapter harder than v1 does, that number counts and it is attributed to your suite. The leaderboard is a record of the strongest known attacks, not a monument to the shipped ones.
 
 ## Uncertainty discipline
 
 Confidence intervals on the leaderboard are marginal. Two intervals that overlap are not a tie. They are two uncertain estimates whose relationship is not settled.
 
-Separation is tested on the difference within resamples. The leaderboard reports the share of resamples in which one adapter is ahead of the other, for example "ahead in 97% of resamples". When resamples show no separation, the leaderboard reports a tie. A tie is a legitimate outcome of the analysis, not a failure to decide.
+Separation must be tested on the difference within resamples. The leaderboard reports the share of resamples in which one adapter is ahead of the other, for example "ahead in 97% of resamples". When resamples show no separation, the leaderboard reports a tie. A tie is a legitimate outcome of the analysis, not a failure to decide.
 
-Thin slices are dropped. A low-n cell is not shown with false precision. It is shown as insufficient data or not shown at all.
+Thin slices must be dropped. A low-n cell is not shown with false precision. It is shown as insufficient data or not shown at all.
 
 ## Contamination assumption
 

@@ -35,5 +35,6 @@ paper exists.
 ## How to cite peira after publication
 
 Cite the paper for the methodology and the results. Cite the Zenodo per
-version DOI for the exact dataset those results were computed on. The
-BibTeX entry will carry both fields, so one entry still covers everything.
+version DOI for the exact dataset those results were computed on. Use
+separate BibTeX entries with distinct citation keys, one for the paper
+and one for the dataset version, so each work can be cited independently.
