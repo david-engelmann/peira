@@ -7,6 +7,16 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
 
 ## [Unreleased]
 
+### Added CEAC for CPPF (C-5)
+
+- New `peira.economics.ceac_curve`: cost-effectiveness acceptability
+  curve, P(upgrade pays) versus willingness to pay per prevented flip.
+  Built from the same paired-bootstrap CPPF distribution as the CPPF
+  confidence interval. The x-axis is $/flip (scale to $/incident with
+  your flips-per-incident); the $0 point is P(the upgrade is
+  cost-saving). `peira value` comparisons now include the CEAC
+  curve alongside CPPF and the break-even attack rate.
+
 ### Fixed v1 scale mismatches in 241 cases (D-36 class 4)
 
 - 241 cases across 8 families mixed 0-100 scoring language with 0-1

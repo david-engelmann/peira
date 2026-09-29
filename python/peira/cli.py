@@ -10,6 +10,7 @@ from __future__ import annotations
 import argparse
 import html
 import json
+import math
 import os
 import re
 import sys
@@ -2228,6 +2229,26 @@ def cmd_value(args: argparse.Namespace) -> int:
     return EXIT_OK
 
 
+def _ceac_summary(ceac: list) -> str:
+    """Compact CEAC summary: P(pays) at $0, $0.01, $0.10, $1.00 per flip.
+
+    Anchors are matched by closeness (not exact float equality) so a
+    grid that carries the anchor values still summarizes. When the
+    grid has none of the anchors, the fallback says so explicitly
+    rather than reading as "curve unavailable".
+    """
+    anchors = [(0.0, "$0"), (0.01, "$0.01"), (0.10, "$0.10"), (1.00, "$1.00")]
+    parts = []
+    for anchor, label in anchors:
+        for threshold, prob in ceac:
+            if math.isclose(threshold, anchor, rel_tol=1e-9, abs_tol=1e-12):
+                parts.append(f"{prob:.0%} at {label}/flip")
+                break
+    if not parts:
+        return "n/a (grid has no $0/$0.01/$0.10/$1.00 anchors)"
+    return ", ".join(parts)
+
+
 def _value_text(view: dict[str, Any]) -> str:
     lines = [
         f"value view (scenario: {view['scenario']} v{view['scenario_version']}, "
@@ -2259,6 +2280,11 @@ def _value_text(view: dict[str, Any]) -> str:
     if view["cost_curve_crossovers"]:
         lines += ["", "Cost-curve crossovers:"]
         lines += [f"  - {s}" for s in view["cost_curve_crossovers"]]
+    lines += [
+        "",
+        "CEAC x-axis is $/flip (scale to $/incident with your "
+        "flips-per-incident).",
+    ]
     for name, c in sorted(view["comparisons"].items()):
         lines += [f"", f"{name} vs {c['vs']}:"]
         if c["prevents_flips"]:
@@ -2267,6 +2293,7 @@ def _value_text(view: dict[str, Any]) -> str:
             lines.append(f"  CPPF: ${c['cppf']:.4f}/prevented flip{ci_s}")
         else:
             lines.append("  CPPF: n/a (does not prevent flips)")
+        lines.append(f"  CEAC P(pays): {_ceac_summary(c['ceac'])}")
         if c["break_even_verdict"] == "at":
             ci = c["break_even_ci95"]
             ci_s = f" [{ci[0]:.3f}, {ci[1]:.3f}]" if ci else ""
@@ -2306,13 +2333,16 @@ def _value_page(view: dict[str, Any]) -> str:
     comp_rows = "\n".join(
         f"<tr><td>{e(name)}</td><td>{e(c['vs'])}</td>"
         f"<td>{_val(c['cppf'])}</td>"
-        f"<td>{c['break_even_attack_rate'] if c['break_even_attack_rate'] is not None else c['break_even_verdict']}</td></tr>"
+        f"<td>{c['break_even_attack_rate'] if c['break_even_attack_rate'] is not None else c['break_even_verdict']}</td>"
+        f"<td>{e(_ceac_summary(c['ceac']))}</td></tr>"
         for name, c in sorted(view["comparisons"].items())
     )
     comp_section = (
         f"<h3>Upgrade comparisons</h3><table border=\"1\">"
         f"<tr><th>candidate</th><th>baseline</th><th>CPPF ($/prevented flip)</th>"
-        f"<th>break-even attack rate</th></tr>{comp_rows}</table>"
+        f"<th>break-even attack rate</th><th>CEAC P(pays) ($/flip)</th></tr>{comp_rows}</table>"
+        f"<p>CEAC x-axis is $/flip: scale to $/incident with your "
+        f"flips-per-incident.</p>"
         if comp_rows else ""
     )
     return f"""<!DOCTYPE html>

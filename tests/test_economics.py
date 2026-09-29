@@ -12,6 +12,7 @@ from peira.economics import (
     _validate_scenario,
     attacker_cost_multiplier,
     break_even_attack_rate,
+    ceac_curve,
     cppf,
     drummond_holte_curves,
     e_attacked,
@@ -290,6 +291,135 @@ class CppfTest(unittest.TestCase):
         self.assertTrue(pairs[1][1].flipped)
 
 
+class CeacTest(unittest.TestCase):
+    def _paired(self, n_base_flips, n_cand_flips, base_cost=0.001, cand_cost=0.002):
+        base, cand = [], []
+        for i in range(10):
+            b_flip = i < n_base_flips
+            c_flip = i < n_cand_flips
+            base.append(_result(
+                f"c{i}", "deny" if b_flip else "approve",
+                "approve" if b_flip else "approve",
+                b_flip, cost=base_cost))
+            cand.append(_result(
+                f"c{i}", "deny" if c_flip else "approve",
+                "approve" if c_flip else "approve",
+                c_flip, cost=cand_cost))
+        return base, cand
+
+    def test_curve_monotone_and_bounded(self):
+        # Fixture-scoped: this fixture has dc > 0 constant and pf >= 0
+        # everywhere, so P(pays) is non-decreasing in lambda here.
+        # Non-decreasing P(pays) is NOT a general invariant of the
+        # incremental-net-benefit CEAC: a resample with pf < 0 and
+        # dc < 0 counts at lambda = $0 but drops out as lambda rises.
+        base, cand = self._paired(6, 2)
+        curve = ceac_curve(base, cand, n_boot=500, seed=1)
+        self.assertTrue(curve.prevents_flips)
+        self.assertAlmostEqual(curve.cppf_point, 0.002 / 0.4)
+        probs = [p.prob_upgrade_pays for p in curve.points]
+        for p in probs:
+            self.assertGreaterEqual(p, 0.0)
+            self.assertLessEqual(p, 1.0)
+        for a, b in zip(probs, probs[1:]):
+            self.assertLessEqual(a, b)  # non-decreasing in lambda
+
+    def test_default_grid_covers_zero_to_1000(self):
+        base, cand = self._paired(6, 2)
+        curve = ceac_curve(base, cand, n_boot=100, seed=1)
+        thresholds = [p.threshold_per_flip_usd for p in curve.points]
+        self.assertEqual(thresholds[0], 0.0)
+        self.assertEqual(len(thresholds), 26)
+        self.assertAlmostEqual(thresholds[-1], 1000.0)
+
+    def test_probability_near_point_estimate(self):
+        # At lambda far above the CPPF point estimate, P(upgrade pays)
+        # should be high; at lambda = 0 with a strictly costlier
+        # candidate, P(cost-saving) should be zero.
+        base, cand = self._paired(6, 2)
+        curve = ceac_curve(
+            base, cand, thresholds=[0.0, 0.005, 1000.0],
+            n_boot=2000, seed=1,
+        )
+        by_t = {p.threshold_per_flip_usd: p.prob_upgrade_pays
+                for p in curve.points}
+        self.assertEqual(by_t[0.0], 0.0)
+        self.assertGreater(by_t[1000.0], 0.9)
+        self.assertLessEqual(by_t[0.005], by_t[1000.0])
+
+    def test_cost_saving_upgrade_pays_at_zero(self):
+        # Candidate cheaper AND prevents flips: P(CPPF < 0) > 0.
+        base, cand = self._paired(6, 2, base_cost=0.002, cand_cost=0.001)
+        curve = ceac_curve(
+            base, cand, thresholds=[0.0], n_boot=500, seed=1
+        )
+        # Every resample is cost-saving, so P(pays) at $0 is exactly 1.
+        self.assertEqual(curve.points[0].prob_upgrade_pays, 1.0)
+
+    def test_cost_saving_with_no_prevention_pays_at_zero(self):
+        # Cheaper candidate, IDENTICAL flip outcomes: every resample is
+        # cost-saving with zero flips prevented. The incremental
+        # net-benefit formulation counts them, so P(pays) at $0 is 1.0;
+        # a P(CPPF < lambda) formulation would report 0.0 here. This
+        # test pins the repaired behavior.
+        base, cand = self._paired(6, 6, base_cost=0.002, cand_cost=0.001)
+        curve = ceac_curve(
+            base, cand, thresholds=[0.0, 1.0], n_boot=500, seed=1
+        )
+        self.assertFalse(curve.prevents_flips)
+        self.assertIsNone(curve.cppf_point)
+        self.assertEqual(curve.points[0].prob_upgrade_pays, 1.0)
+
+    def test_no_prevention_curve_near_zero(self):
+        base, cand = self._paired(2, 6)  # candidate flips MORE
+        curve = ceac_curve(
+            base, cand, thresholds=[0.0, 1.0, 1000.0],
+            n_boot=500, seed=1,
+        )
+        self.assertFalse(curve.prevents_flips)
+        self.assertIsNone(curve.cppf_point)
+        for p in curve.points:
+            self.assertLess(p.prob_upgrade_pays, 0.5)
+
+    def test_custom_thresholds(self):
+        base, cand = self._paired(6, 2)
+        curve = ceac_curve(
+            base, cand, thresholds=[0.01, 0.1, 1.0],
+            n_boot=200, seed=1,
+        )
+        self.assertEqual(
+            [p.threshold_per_flip_usd for p in curve.points],
+            [0.01, 0.1, 1.0],
+        )
+
+    def test_invalid_inputs_raise(self):
+        base, cand = self._paired(6, 2)
+        with self.assertRaises(ValueError):
+            ceac_curve(base, cand, n_boot=0)
+        with self.assertRaises(ValueError):
+            ceac_curve(base, cand, thresholds=[])
+        with self.assertRaises(ValueError):
+            ceac_curve(base, cand, thresholds=[-1.0])
+        with self.assertRaises(ValueError):
+            ceac_curve(base, cand, thresholds=[float("inf")])
+        with self.assertRaises(ValueError):
+            ceac_curve([_result("c1", "a", "a", False)], [])
+
+    def test_value_view_includes_ceac(self):
+        s = load_cost_scenario("standard")
+        base, cand = self._paired(6, 2)
+        vv = value_view(
+            {"base": base, "cand": cand}, s, baseline_adapter="base"
+        )
+        comp = vv["comparisons"]["cand"]
+        self.assertIn("ceac", comp)
+        self.assertEqual(len(comp["ceac"]), 26)
+        # [threshold, prob] pairs, thresholds ascending
+        thresholds = [row[0] for row in comp["ceac"]]
+        self.assertEqual(thresholds, sorted(thresholds))
+        self.assertEqual(thresholds[0], 0.0)
+
+
 class BreakEvenTest(unittest.TestCase):
     def test_break_even_in_range(self):
         s = load_cost_scenario("standard")
@@ -561,6 +691,38 @@ class ValueCliTest(unittest.TestCase):
         a = self._write(self._artifact("mock-a", 6))
         rc = cmd_value(self._ns(runs=[a, a]))
         self.assertEqual(rc, EXIT_USER_ERROR)
+
+    def test_ceac_rendered_when_no_prevention(self):
+        # CEAC must render in text and HTML even when the candidate
+        # prevents no flips (CPPF n/a). Pins the CodeRabbit repair.
+        from peira.cli import _value_page, _value_text
+        s = load_cost_scenario("standard")
+        base = [_result(f"c{i}", "deny", "approve", i < 2, cost=0.002)
+                for i in range(10)]
+        # Cheaper candidate that flips MORE: prevents_flips False,
+        # CPPF n/a, but cost-saving so CEAC at $0 is 1.0.
+        cand = [_result(f"c{i}", "deny", "approve", i < 6, cost=0.001)
+                for i in range(10)]
+        view = value_view(
+            {"base": base, "cand": cand}, s,
+            baseline_adapter="base", price_date="2026-09-28",
+        )
+        comp = view["comparisons"]["cand"]
+        self.assertFalse(comp["prevents_flips"])
+        self.assertIsNone(comp["cppf"])
+        text = _value_text(view)
+        self.assertIn("CPPF: n/a (does not prevent flips)", text)
+        self.assertIn("CEAC P(pays):", text)
+        self.assertIn("100% at $0/flip", text)
+        self.assertIn(
+            "CEAC x-axis is $/flip (scale to $/incident with your "
+            "flips-per-incident).",
+            text,
+        )
+        page = _value_page(view)
+        self.assertIn("CEAC P(pays) ($/flip)", page)
+        self.assertIn("scale to $/incident with your flips-per-incident",
+                      page)
 
 
 if __name__ == "__main__":
