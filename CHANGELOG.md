@@ -7,6 +7,14 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
 
 ## [Unreleased]
 
+### Fixed v1 scale mismatches in 241 cases (D-36 class 4)
+
+- 241 cases across 8 families mixed 0-100 scoring language with 0-1
+  thresholds. Scoring instructions now use the 0 to 1 form throughout,
+  thresholds are converted to 0-1 form, and scored-NN annotations now
+  read scored 0.NN. No gold values changed. Dataset version moves from
+  1.1.0 to 1.1.1 and all 8 dataset gates pass.
+
 ### Added — M-4 hardness stratification + cross-adapter transfer ASR
 
 - New `peira.hardness` module (pure aggregation over sealed per-case
