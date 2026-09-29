@@ -88,12 +88,12 @@ Zero of 23 sampled pairs are true near-duplicates.
 ## Conclusion
 
 The 0.78 warning band fires on same-family template siblings, not on
-corpus defects. The calibration fixture's 30 distinct pairs do not
-include same-family pairs, so the fixture cannot tell the gate where
-template siblings score. Promoting warnings to errors would force the
-removal or rewrite of roughly a quarter of the corpus (488 cases appear
-in warning pairs) while deleting legitimate coverage of distinct attack
-variants. The two-tier design is correct. Pairs at 0.98 or above are
-near-identical and fail the gate loudly through the normal CI path. Pairs
-at 0.78 or above are review candidates, and review shows the corpus is
-clean. No case changes are needed.
+corpus defects, in the reviewed sample. The calibration fixture's 30
+distinct pairs do not include same-family pairs, so the fixture cannot
+tell the gate where template siblings score. In the 23 reviewed pairs,
+promoting warnings to errors would have flagged legitimate coverage of
+distinct attack variants for rewrite or removal. The remaining 375 pairs
+are unadjudicated. The two-tier design stands. Pairs at 0.98 or above
+are near-identical and fail the gate loudly through the normal CI path.
+Pairs at 0.78 or above are review candidates. No case changes are
+indicated for the sampled pairs.

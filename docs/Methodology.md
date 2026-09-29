@@ -1180,9 +1180,9 @@ is a same-family template sibling, two legitimately distinct cases that
 share scenario boilerplate or distractor-pool text while testing
 different attacks. The full adjudication is in
 REVIEWS/g9-warning-adjudication-20260929.md. Promoting warnings to errors
-would force the removal of roughly a quarter of the corpus with no
-quality gain, so warnings stay as review signals and only the error
-band fails the gate.
+would flag 488 distinct cases for forced rewrite or removal with no
+quality gain in the reviewed sample, so warnings stay as review signals
+and only the error band fails the gate.
 
 ## Analysis lock
 
