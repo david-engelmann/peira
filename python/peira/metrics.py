@@ -63,6 +63,86 @@ INELIGIBLE_BENIGN_ABSTAINED = "benign_abstained"
 
 
 @dataclass(frozen=True)
+class CallTiming:
+    """Per-call timing decomposition (milliseconds, runner-measured).
+
+    R-12: one ``latency_ms`` number cannot separate the three authors
+    of p99 inflation under adversarial load, so the runner records the
+    decomposition on every call:
+
+    - ``admission_wait_ms``: wall time spent waiting for a concurrency
+      slot from the AIMD controller before the attempt could start.
+      This is peira's own throttling, not the provider's latency — it
+      is a function of ``max_concurrency`` and run load, so it is
+      recorded separately and never folded into the buyer-latency
+      numbers (``latency_ms_total`` deliberately excludes it).
+    - ``adapter_execution_ms``: wall time of the adapter's ``decide()``
+      call itself, summed over attempts. This is the provider-facing
+      latency: the number the latency percentiles answer for.
+    - ``harness_overhead_ms``: everything else the runner did inside
+      the slot — input deepcopy, output validation, transcript
+      serialization, record assembly.
+    - ``backoff_ms``: retry backoff sleeps between attempts (0.0 when
+      the call succeeded first try).
+
+    Invariant: ``admission_wait_ms + adapter_execution_ms +
+    harness_overhead_ms + backoff_ms`` equals the call's total
+    runner-observed wall time; ``latency_ms_total`` equals the same
+    sum minus ``admission_wait_ms``. All fields are non-negative; a
+    zero breakdown means "not measured" (pre-R-12 records,
+    response-cache hits, replayed transcripts without timing).
+    """
+
+    admission_wait_ms: float = 0.0
+    adapter_execution_ms: float = 0.0
+    harness_overhead_ms: float = 0.0
+    backoff_ms: float = 0.0
+
+    @classmethod
+    def from_dict(cls, d: Any) -> "CallTiming":
+        """Parse a timing breakdown from hostile input.
+
+        Missing entirely (pre-R-12 records) yields the zero breakdown.
+        A wrong-typed or negative component raises ValueError — timing
+        is measurement data and must fail loudly, never coerce.
+        """
+        if d is None:
+            return cls()
+        if not isinstance(d, dict):
+            raise ValueError(
+                f"CallTiming: must be a mapping, "
+                f"got {type(d).__name__}"
+            )
+        vals: dict[str, float] = {}
+        for key in (
+            "admission_wait_ms",
+            "adapter_execution_ms",
+            "harness_overhead_ms",
+            "backoff_ms",
+        ):
+            v = d.get(key, 0.0)
+            if (
+                isinstance(v, bool)
+                or not isinstance(v, (int, float))
+                or not v >= 0
+            ):
+                raise ValueError(
+                    f"CallTiming field {key!r}: must be a non-negative "
+                    f"number, got {v!r}"
+                )
+            vals[key] = float(v)
+        return cls(**vals)
+
+    def to_dict(self) -> dict[str, float]:
+        return {
+            "admission_wait_ms": self.admission_wait_ms,
+            "adapter_execution_ms": self.adapter_execution_ms,
+            "harness_overhead_ms": self.harness_overhead_ms,
+            "backoff_ms": self.backoff_ms,
+        }
+
+
+@dataclass(frozen=True)
 class CallRecord:
     """One measured adapter call (one variant of one case).
 
@@ -104,6 +184,10 @@ class CallRecord:
     # serialization carries it under the same "score" key, so
     # from_dict() recovers it on artifact load.
     score: float | None = None
+    # R-12: per-call timing decomposition (admission wait vs harness
+    # overhead vs adapter execution vs backoff). Zero on pre-R-12
+    # records; ``from_dict`` recovers it from the sealed artifact.
+    timing_ms: CallTiming = CallTiming()
 
     @classmethod
     def from_dict(cls, d: dict[str, Any]) -> "CallRecord":
@@ -155,6 +239,7 @@ class CallRecord:
                 f"CallRecord field 'cached': must be a boolean, "
                 f"got {type(cached).__name__}"
             )
+        timing_ms = CallTiming.from_dict(d.get("timing_ms"))
         return cls(
             decision=d["decision"],
             confidence=confidence,
@@ -169,6 +254,7 @@ class CallRecord:
             latency_ms_total=float(latency_ms_total),
             timed_out=timed_out,
             cached=cached,
+            timing_ms=timing_ms,
         )
 
 
