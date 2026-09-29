@@ -91,9 +91,12 @@ class RunArtifact:
     contract_version: str = CONTRACT_VERSION
     # How the run ended: "complete" (all planned cases scored),
     # "budget" (stopped by --budget-usd; see budget_usd/spent_usd),
-    # "timeout"/"operator" reserved for future termination causes.
-    # Budget-terminated runs are analyzable but never rank: a lucky
-    # prefix of easy cases must not top a leaderboard.
+    # "run_timeout" (stopped by --run-timeout; in-flight case tasks
+    # were cancelled, completed cases are checkpointed in a resumable
+    # partial), "timeout"/"operator" reserved for future termination
+    # causes. Budget- or timeout-terminated runs are analyzable but
+    # never rank: a lucky prefix of easy cases must not top a
+    # leaderboard.
     termination: str = "complete"
     # Hard spend cap in USD for this run (None = uncapped). The runner
     # enforces it pre-dispatch with a 1.5x running-mean projection and

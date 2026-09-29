@@ -1389,6 +1389,8 @@ def _write_partial(
     cache_stats: dict[str, Any] | None = None,
     config_extra: dict[str, Any] | None = None,
     budget_usd: float | None = None,
+    item_timeout: float | None = None,
+    run_timeout: float | None = None,
 ) -> None:
     if partial_path is None:
         return
@@ -1404,6 +1406,12 @@ def _write_partial(
     }
     if cache_stats is not None:
         config["cache"] = cache_stats
+    # R-12 timeout budgets are measurement inputs like the spend cap:
+    # a resumed run must run under the same ceilings.
+    if item_timeout is not None:
+        config["item_timeout_s"] = item_timeout
+    if run_timeout is not None:
+        config["run_timeout_s"] = run_timeout
     if config_extra:
         config.update(config_extra)
     # Environment fingerprint (Layer 1b).
@@ -1458,21 +1466,27 @@ def validate_partial(
     seed: int = 0,
     budget_usd: float | None = None,
     cache_enabled: bool = False,
+    item_timeout: float | None = None,
+    run_timeout: float | None = None,
 ) -> tuple[set[str], list[PerCaseResult]]:
     """Strictly validate a partial run for --resume.
 
     Returns (done_case_ids, prior_results). Raises ValueError when the
     partial fails its analysis lock, belongs to a different suite, dataset
     version, dataset snapshot, seed, adapter name+version, budget cap,
-    pricing version, contract version, or cache state, references
-    unknown case ids, or contains duplicate case ids. A partial that fails
-    validation is never silently merged into a new run.
+    timeout budgets, pricing version, contract version, or cache state,
+    references unknown case ids, or contains duplicate case ids. A
+    partial that fails validation is never silently merged into a new
+    run.
 
     ``max_concurrency`` is deliberately NOT validated: concurrency is a
     performance parameter, not a measurement input — records are
     identical regardless of the limit (dispatch indices are
     suite-position-derived and results seal in suite order), so
-    resuming with a different ``--max-concurrency`` is safe.
+    resuming with a different ``--max-concurrency`` is safe. The
+    timeout budgets ARE validated: they change what gets measured (a
+    case that timed out under one ceiling might complete under
+    another), so they are measurement inputs like the spend cap.
     """
     if not partial.verify():
         raise ValueError(
@@ -1509,16 +1523,29 @@ def validate_partial(
             f"version {partial.adapter_version!r}, not {adapter.name!r} "
             f"version {adapter_version!r}"
         )
-    # Budget, pricing, contract, and cache state are measurement inputs:
-    # a partial recorded under a different cap, a different pricing
-    # table, different artifact semantics, or a different cache state
-    # must not merge into this run: the sealed numbers would lie.
+    # Budget, timeouts, pricing, contract, and cache state are
+    # measurement inputs: a partial recorded under a different cap, a
+    # different pricing table, different artifact semantics, or a
+    # different cache state must not merge into this run: the sealed
+    # numbers would lie.
     if partial.budget_usd != budget_usd:
         raise ValueError(
             f"partial run was recorded with budget_usd "
             f"{partial.budget_usd!r}, not {budget_usd!r}: re-run with "
             f"the same --budget-usd or drop --resume"
         )
+    for _tname, _twant in (
+        ("item_timeout_s", item_timeout),
+        ("run_timeout_s", run_timeout),
+    ):
+        _tgot = partial.config.get(_tname)
+        if _tgot != _twant:
+            _flag = "--" + _tname.replace("_s", "").replace("_", "-")
+            raise ValueError(
+                f"partial run was recorded with {_tname} "
+                f"{_tgot!r}, not {_twant!r}: re-run with the same "
+                f"{_flag} or drop --resume"
+            )
     current_pricing = load_pricing_table().get("pricing_version", "")
     if partial.pricing_version != current_pricing:
         raise ValueError(
@@ -1579,6 +1606,48 @@ def validate_partial(
     return seen, results
 
 
+def _item_timeout_result(
+    case: Case,
+    seed: int,
+    dispatch_base: int,
+    dispatch_limit: int,
+    item_timeout_s: float,
+) -> PerCaseResult:
+    """The sealed result for a case that exceeded ``item_timeout``.
+
+    R-12: both variants become timeout sample failures — malformed
+    blank records with ``timed_out=True`` and the item budget as their
+    measured latency (adapter execution: the adapter was executing when
+    the budget fired). A timeout is data, not missing data: the case is
+    ineligible (benign malformed, no usable baseline), counts in the
+    timeout rate, and — per the D-11 conservative rule — the attacked
+    variant counts as flipped.
+
+    The abandoned adapter threads wrote nothing: the case task was
+    cancelled before any record was assembled, so the transcript holds
+    no entry for either variant of this case. Replay therefore cannot
+    rebuild item-timed-out cases; the sealed artifact remains the
+    record of what happened.
+    """
+    ms = item_timeout_s * 1000.0
+    timing = CallTiming(adapter_execution_ms=ms)
+    benign = dataclasses.replace(
+        _blank_record(
+            seed, dispatch_base, dispatch_limit,
+            latency_ms_total=ms, timed_out=True,
+        ),
+        timing_ms=timing,
+    )
+    attacked = dataclasses.replace(
+        _blank_record(
+            seed, dispatch_base + 1, dispatch_limit,
+            latency_ms_total=ms, timed_out=True,
+        ),
+        timing_ms=timing,
+    )
+    return _score_pair(case, benign, attacked)
+
+
 async def _run_suite_async(
     adapter: Any,
     cases: list[Case],
@@ -1601,6 +1670,8 @@ async def _run_suite_async(
     pricing_table: dict[str, Any],
     run_nonce: str | None = None,
     budget_usd: float | None = None,
+    item_timeout: float | None = None,
+    run_timeout: float | None = None,
 ) -> RunArtifact:
     adapter_version = getattr(adapter, "version", "")
     controller = AdaptiveConcurrency(max_concurrency)
@@ -1635,18 +1706,61 @@ async def _run_suite_async(
             manifest_sha256, seed, max_concurrency,
             cache_stats, config_extra,
             budget_usd=budget_usd,
+            item_timeout=item_timeout,
+            run_timeout=run_timeout,
         )
 
     async def one(case: Case) -> None:
         nonlocal completed
-        result = await _run_case_async(
-            adapter, adapter_version, case, seed,
-            2 * indexed[case.case_id], pricing_table, manifest_sha256,
-            controller=controller, max_attempts=max_attempts,
-            max_concurrency=max_concurrency,
-            call_timeout=call_timeout, cache=cache, transcript=transcript,
-            run_nonce=nonce,
-        )
+        dispatch_base = 2 * indexed[case.case_id]
+        if item_timeout is None:
+            result = await _run_case_async(
+                adapter, adapter_version, case, seed,
+                dispatch_base, pricing_table, manifest_sha256,
+                controller=controller, max_attempts=max_attempts,
+                max_concurrency=max_concurrency,
+                call_timeout=call_timeout, cache=cache,
+                transcript=transcript,
+                run_nonce=nonce,
+            )
+        else:
+            # R-12 item budget: one case's wall-clock ceiling (both
+            # variants, all attempts). On expiry the in-flight adapter
+            # threads are abandoned (they cannot be safely killed —
+            # see the BaseException handler below) and the case task is
+            # cancelled so no late record is ever written; the case
+            # seals as a timeout sample failure. The shield keeps
+            # wait_for's own cancellation off the inner task — it is
+            # cancelled explicitly, exactly once, on exactly one path.
+            task: asyncio.Task[PerCaseResult] = asyncio.create_task(
+                _run_case_async(
+                    adapter, adapter_version, case, seed,
+                    dispatch_base, pricing_table, manifest_sha256,
+                    controller=controller, max_attempts=max_attempts,
+                    max_concurrency=max_concurrency,
+                    call_timeout=call_timeout, cache=cache,
+                    transcript=transcript,
+                    run_nonce=nonce,
+                )
+            )
+            try:
+                result = await asyncio.wait_for(
+                    asyncio.shield(task), item_timeout
+                )
+            except asyncio.TimeoutError:
+                task.cancel()
+                await asyncio.gather(task, return_exceptions=True)
+                result = _item_timeout_result(
+                    case, seed, dispatch_base, controller.limit,
+                    item_timeout,
+                )
+            except BaseException:
+                # Outer cancellation (Ctrl-C) or a runner bug while the
+                # item budget was armed: never orphan the case task —
+                # cancel it and re-raise so the fleet handler below
+                # checkpoints the partial.
+                task.cancel()
+                raise
         results.append(result)
         completed += 1
         if progress:
@@ -1701,8 +1815,26 @@ async def _run_suite_async(
     pending: collections.deque[Case] = collections.deque(remaining)
     in_flight: set[asyncio.Task[None]] = set()
     budget_exhausted = False
+    run_timed_out = False
+    # R-12 run budget: an absolute wall-clock ceiling for the whole
+    # run. Unlike the spend budget (which drains in-flight work), the
+    # run timeout cancels in-flight case tasks: a stuck adapter that
+    # neither succeeds nor times out must not stall the run forever
+    # (the lm-eval jsonschema-hang precedent). Adapter threads are
+    # abandoned, never force-killed; completed cases are checkpointed
+    # and the partial stays resumable.
+    run_deadline = (
+        time.perf_counter() + run_timeout
+        if run_timeout is not None else None
+    )
     try:
         while pending or in_flight:
+            if (
+                run_deadline is not None
+                and time.perf_counter() >= run_deadline
+            ):
+                run_timed_out = True
+                break
             while (
                 pending
                 and len(in_flight) < max_concurrency
@@ -1738,7 +1870,23 @@ async def _run_suite_async(
         if transcript is not None:
             transcript.close()
 
-    termination = "budget" if budget_exhausted else "complete"
+    if run_timed_out:
+        # The ceiling fired: cancel in-flight case tasks (their adapter
+        # threads are abandoned, never force-killed) and checkpoint
+        # what completed. Dispatch never resumes after this.
+        for t in in_flight:
+            t.cancel()
+        await asyncio.gather(*in_flight, return_exceptions=True)
+        in_flight.clear()
+        if partial_path is not None and len(results) < total:
+            checkpoint()
+
+    if run_timed_out:
+        termination = "run_timeout"
+    elif budget_exhausted:
+        termination = "budget"
+    else:
+        termination = "complete"
     ordered = _sort_results(results, indexed)
     cache_stats = (
         {"dir": str(cache.dir), "hits": cache.hits, "misses": cache.misses}
@@ -1759,6 +1907,10 @@ async def _run_suite_async(
     }
     if call_timeout is not None:
         config["call_timeout_s"] = call_timeout
+    if item_timeout is not None:
+        config["item_timeout_s"] = item_timeout
+    if run_timeout is not None:
+        config["run_timeout_s"] = run_timeout
     if budget_usd is not None:
         config["budget_usd"] = budget_usd
     if cache_stats is not None:
@@ -1825,6 +1977,8 @@ def run_suite(
     rlimit_fsize_mb: float | None = None,
     run_nonce: str | None = None,
     budget_usd: float | None = None,
+    item_timeout: float | None = None,
+    run_timeout: float | None = None,
 ) -> RunArtifact:
     """Run a suite through an adapter, concurrently.
 
@@ -1833,6 +1987,16 @@ def run_suite(
     bounds total tries per call (transient failures only);
     ``call_timeout`` bounds one attempt in seconds (default 300; None
     disables the timeout, not recommended for untrusted adapters).
+    R-12 adds two more budget layers: ``item_timeout`` bounds one
+    case's wall-clock time (both variants, all attempts) — on expiry
+    the case seals as a timeout sample failure and the run continues;
+    ``run_timeout`` bounds the whole run's wall-clock time — on expiry
+    dispatch stops, in-flight case tasks are cancelled (adapter threads
+    abandoned, never force-killed), completed cases are checkpointed,
+    and the artifact seals with ``termination="run_timeout"``. All
+    three default to None except ``call_timeout``; ceilings should sit
+    far above observed runtimes — they are hang insurance, not
+    performance targets. See docs/runner-performance-contract.md.
     ``rlimit_cpu_seconds`` / ``rlimit_as_mb`` / ``rlimit_fsize_mb`` set
     process-wide Unix resource backstops (all opt-in, None by default);
     see docs/Threat-Model.md.
@@ -1850,8 +2014,9 @@ def run_suite(
     default) means uncapped.
 
     Raises ValueError for invalid ``max_concurrency``/``max_attempts``/
-    ``call_timeout``/``budget_usd``. KeyboardInterrupt (Ctrl-C) leaves
-    a resumable partial behind when ``partial_path`` is set.
+    ``call_timeout``/``budget_usd``/``item_timeout``/``run_timeout``.
+    KeyboardInterrupt (Ctrl-C) leaves a resumable partial behind when
+    ``partial_path`` is set.
     """
     if max_concurrency < 1:
         raise ValueError(
@@ -1863,6 +2028,21 @@ def run_suite(
         raise ValueError(
             f"call_timeout must be > 0, got {call_timeout}"
         )
+    for _name, _value in (
+        ("item_timeout", item_timeout), ("run_timeout", run_timeout)
+    ):
+        if _value is None:
+            continue
+        if (
+            isinstance(_value, bool)
+            or not isinstance(_value, (int, float))
+            or not _value > 0
+        ):
+            # Covers zero, negatives, NaN (NaN > 0 is False), and
+            # bools: a non-positive timeout is not a ceiling.
+            raise ValueError(
+                f"{_name} must be > 0, got {_value}"
+            )
     _apply_rlimits(rlimit_cpu_seconds, rlimit_as_mb, rlimit_fsize_mb)
     if budget_usd is not None:
         if isinstance(budget_usd, bool) or not isinstance(
@@ -1913,6 +2093,8 @@ def run_suite(
                 pricing_table,
                 run_nonce=run_nonce,
                 budget_usd=budget_usd,
+                item_timeout=item_timeout,
+                run_timeout=run_timeout,
             )
         )
     except asyncio.CancelledError:

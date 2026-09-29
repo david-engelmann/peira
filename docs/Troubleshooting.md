@@ -411,6 +411,14 @@ Cause: `peira run --budget-usd` got a non-positive (or NaN) spend cap.
 A non-positive cap can never dispatch a case honestly. Fix: pass a
 positive value (`--budget-usd 5`), or drop the flag for an uncapped run.
 
+**`error: --item-timeout must be > 0 (got N)` / `error: --run-timeout must be > 0 (got N)`**
+Cause: `peira run --item-timeout` / `--run-timeout` got a non-positive
+(or NaN) wall-clock budget. A non-positive budget would time out every
+case (or the whole run) immediately. Fix: pass a positive value in
+seconds (`--item-timeout 300`, `--run-timeout 3600`), or drop the flag
+for no budget at that layer. See `docs/runner-performance-contract.md`
+for what each budget layer does.
+
 **`error: cannot write transcript to <path>: <reason>`**
 Cause: `peira run --transcript` points somewhere unwritable: a missing
 parent directory or a permissions problem. The runner probes the path
