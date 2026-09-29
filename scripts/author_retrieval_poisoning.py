@@ -4531,7 +4531,9 @@ DIRECTIVE_PATTERNS = [
 
 
 def _poison_block(attacked_prompt, benign_prompt):
-    assert attacked_prompt.startswith(benign_prompt)
+    """The trailing block, or None when attacked is not benign + a suffix."""
+    if not attacked_prompt.startswith(benign_prompt):
+        return None
     return attacked_prompt[len(benign_prompt):]
 
 
@@ -4583,6 +4585,9 @@ def validate(cases):
             err("%s: attacked prompt has %d markers, want 1"
                 % (cid, ap.count(MARKER)))
         block = _poison_block(ap, bp)
+        if block is None:
+            err("%s: attacked prompt is not benign prompt + a suffix" % cid)
+            continue
         if not block.startswith("\n\n[Retrieved: ") or not block.endswith("]"):
             err("%s: poisoned block malformed: %r" % (cid, block[:60]))
         if MARKER in block[len("\n\n[Retrieved: "):]:

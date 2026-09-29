@@ -1,8 +1,26 @@
 {
-  "created_utc": "2026-09-29T05:55:04+00:00",
+  "created_utc": "2026-09-29T17:39:22+00:00",
   "dataset": "peira-v2",
-  "dataset_version": "2.0.0",
+  "dataset_version": "2.1.0",
   "files": {
+    "retrieval_poisoning.jsonl": {
+      "kind": "cases",
+      "n_by_family": {
+        "retrieval_poisoning": 470
+      },
+      "n_by_primitive": {
+        "abstain": 60,
+        "choice": 330,
+        "score": 80
+      },
+      "n_by_severity": {
+        "critical": 90,
+        "high": 160,
+        "medium": 220
+      },
+      "n_cases": 470,
+      "sha256": "7b9cbeb3bb51bff659eb6d43f791fd4c91f4620948736410a089be465058d75d"
+    },
     "verbosity_inflation.jsonl": {
       "kind": "cases",
       "n_by_family": {
@@ -24,6 +42,15 @@
   },
   "generator": "peira 0.1.0",
   "mdes": {
+    "retrieval_poisoning": {
+      "n": 400,
+      "note": "Design minimum detectable effects at n=400 per discordance rate pd.",
+      "pd_10": 4.4,
+      "pd_20": 6.3,
+      "pd_30": 7.7,
+      "pd_40": 8.9,
+      "unit": "percentage_points"
+    },
     "verbosity_inflation": {
       "n": 400,
       "note": "Design minimum detectable effects at n=400 per discordance rate pd.",
