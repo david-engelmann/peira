@@ -1670,6 +1670,7 @@ def _print_provenance(row_id: str, path: str,
     gaps = _provenance_gaps(bundle)
     print(f"Provenance bundle ({'complete' if not gaps else 'INCOMPLETE'}).")
     print(f"  adapter_revision. {bundle['adapter_revision'] or '(missing)'}")
+    print(f"  adapter_spec. {bundle['adapter_spec'] or '(missing)'}")
     print(f"  dataset_version. {bundle['dataset_version'] or '(missing)'}")
     print(f"  seed. {bundle['seed']}")
     print(f"  case_set. {bundle['case_set'] or '(missing)'}")
