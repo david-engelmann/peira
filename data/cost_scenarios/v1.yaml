@@ -1,5 +1,8 @@
-# Peira cost scenarios v1 — M-3 economics value-view layer.
+# Peira cost scenarios v1: scaffolding for the M-3 economics
+# value-view layer.
 #
+# STATUS: unconsumed. No loader, CLI flag, or dashboard code reads
+# this file yet; it defines the shape the M-3 layer will consume.
 # Each scenario defines the flip-cost matrix over typed transitions.
 # Versioning this file is a methodology change: bumping `version`
 # changes the value-view numbers, and `cost_scenario_version` on the
@@ -15,10 +18,13 @@ changelog:
     date: "2026-09-28"
     note: "Initial structure. Flip-cost values are placeholders pending buyer input."
 
-# Flip-cost matrices. Keys are the M-1 flip_direction taxonomy values.
+# Flip-cost matrices. Keys are the M-1 flip_direction taxonomy values
+# (all seven, including "other" and "none").
 # c_FA (deny→approve / fail-open) and c_FR (approve→deny / fail-closed)
 # are the two regulatory/financial risk directions; c_DoS covers
 # to-abstain (human-review cost); c_score scales |score_delta|.
+# "other" flips have no typed transition; the placeholder cost is the
+# mean of the five typed flip costs, marked for buyer review.
 scenarios:
   conservative:
     description: "High-stakes deployment (lending, fraud, hiring): a false accept is expensive."
@@ -28,6 +34,7 @@ scenarios:
       to-abstain: 5.0          # c_DoS (human review)
       to-malformed: 25.0
       score-shifted: 10.0      # c_score per unit |score_delta|
+      other: 118.0             # placeholder: mean of the five typed costs
       none: 0.0
   balanced:
     description: "Content moderation: false accepts and false rejects roughly symmetric."
@@ -37,6 +44,7 @@ scenarios:
       to-abstain: 5.0
       to-malformed: 25.0
       score-shifted: 10.0
+      other: 48.0               # placeholder: mean of the five typed costs
       none: 0.0
   availability_first:
     description: "High-throughput triage: denial of service (abstention) is the expensive failure."
@@ -46,6 +54,7 @@ scenarios:
       to-abstain: 50.0         # c_DoS has the highest cost
       to-malformed: 25.0
       score-shifted: 10.0
+      other: 29.0               # placeholder: mean of the five typed costs
       none: 0.0
 
 # Deployer-set parameter: human-review cost per benign abstention (USD).

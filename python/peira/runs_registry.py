@@ -143,8 +143,8 @@ def _ensure_registry_columns(conn: sqlite3.Connection) -> None:
 
 
 # Measurement-framework columns added to case_results after its initial
-# creation (f35661b, 2026-09-28). flip_type was renamed to flip_direction
-# (M-1 taxonomy); confidence_delta, target_hit, and score_delta are new.
+# creation. flip_type was renamed to flip_direction (M-1 taxonomy);
+# confidence_delta, target_hit, and score_delta are new.
 # Added via _ensure_case_result_columns() because SQLite has no
 # ADD COLUMN IF NOT EXISTS, and CREATE TABLE IF NOT EXISTS will not
 # touch a pre-existing table.
@@ -328,7 +328,7 @@ def _flip_direction(entry: dict[str, Any]) -> str:
     cannot be typed. Returns only values from FLIP_DIRECTIONS.
     """
     if not isinstance(entry, dict):
-        return "other"
+        return "none"
     flipped = entry.get("flipped", False) is True
     try:
         return metrics.flip_direction(PerCaseResult.from_dict(entry))
@@ -338,20 +338,13 @@ def _flip_direction(entry: dict[str, Any]) -> str:
         return "other" if flipped else "none"
 
 
-# The documented M-1 flip-direction taxonomy. "other" is the honest
-# bucket for flips no typed transition names; "none" is the no-flip
-# value. Both classifiers (_flip_direction here and
+# The documented M-1 flip-direction taxonomy, re-exported from the
+# canonical metrics module (single source of truth). "other" is the
+# honest bucket for flips no typed transition names; "none" is the
+# no-flip value. Both classifiers (_flip_direction here and
 # dashboard._classify_flip_direction) delegate to the canonical
 # metrics.flip_direction, so they return only these values.
-FLIP_DIRECTIONS = (
-    "approve-to-deny",
-    "deny-to-approve",
-    "to-abstain",
-    "to-malformed",
-    "score-shifted",
-    "other",
-    "none",
-)
+FLIP_DIRECTIONS = metrics.FLIP_DIRECTIONS
 
 
 def _confidence_delta(entry: dict[str, Any]) -> float | None:
@@ -408,7 +401,7 @@ def _case_usage_totals(entry: dict[str, Any]) -> tuple[int, int, float, float]:
     """Sum tokens_in, tokens_out, cost_usd, latency_ms_total over both arms.
 
     Missing usage (adapter reported none) contributes 0. Calls without
-    usage are not costed and carry no token accounting — the sums
+    usage are not costed and carry no token accounting: the sums
     reflect measured values only, never estimates.
     """
     tokens_in = 0
@@ -425,9 +418,11 @@ def _case_usage_totals(entry: dict[str, Any]) -> tuple[int, int, float, float]:
         if isinstance(usage, dict):
             ti = usage.get("tokens_in", 0)
             to = usage.get("tokens_out", 0)
-            if isinstance(ti, int) and ti >= 0:
+            # bool is a subclass of int: exclude it explicitly so
+            # tokens_in=True does not count as 1 token.
+            if isinstance(ti, int) and not isinstance(ti, bool) and ti >= 0:
                 tokens_in += ti
-            if isinstance(to, int) and to >= 0:
+            if isinstance(to, int) and not isinstance(to, bool) and to >= 0:
                 tokens_out += to
             c = usage.get("cost_usd", 0.0)
             if isinstance(c, (int, float)) and not isinstance(c, bool) and c >= 0:

@@ -15,6 +15,8 @@ from peira.dashboard import (
     comparison_to_dashboard,
     _confidence_histogram,
     _family_breakdown,
+    _per_case_cost_latency,
+    _classify_flip_direction,
 )
 from peira.env_fingerprint import collect_and_fingerprint
 from peira.runs_registry import scan_runs
@@ -149,6 +151,58 @@ class TestConfidenceHistogram(unittest.TestCase):
         self.assertEqual(h["n"], 0)
         self.assertEqual(sum(h["counts"]), 0)
 
+    def test_out_of_range_excluded(self):
+        # Negative (or > 1) confidences are corruption: excluded like a
+        # missing value, never wrapped into a bin by negative indexing.
+        h = _confidence_histogram([-0.5, 0.5, 1.5])
+        self.assertEqual(h["n"], 1)
+        self.assertEqual(h["n_missing"], 2)
+        self.assertEqual(sum(h["counts"]), 1)
+        self.assertEqual(h["counts"][5], 1)
+
+    def test_nan_excluded(self):
+        h = _confidence_histogram([float("nan"), 0.5])
+        self.assertEqual(h["n"], 1)
+        self.assertEqual(h["n_missing"], 1)
+
+
+class TestPerCaseCostLatency(unittest.TestCase):
+    def test_missing_latency_not_counted(self):
+        # A missing latency_ms_total key is not a 0.0-ms call.
+        rec = _call_record()
+        del rec["latency_ms_total"]
+        entry = _result_entry(benign=rec, attacked=rec)
+        cost, latency, n_costed, n_latency = _per_case_cost_latency([entry])
+        self.assertEqual(n_latency, 0)
+        self.assertEqual(latency, 0.0)
+        # Cost is unaffected (usage still present on both arms).
+        self.assertEqual(n_costed, 2)
+        self.assertAlmostEqual(cost, 0.002)
+
+    def test_explicit_zero_latency_counted(self):
+        rec = _call_record(latency_ms_total=0.0)
+        entry = _result_entry(benign=rec, attacked=rec)
+        _, _, _, n_latency = _per_case_cost_latency([entry])
+        self.assertEqual(n_latency, 2)
+
+    def test_negative_and_nan_cost_excluded(self):
+        benign = _call_record()
+        benign["usage"] = dict(benign["usage"], cost_usd=-5.0)
+        attacked = _call_record()
+        attacked["usage"] = dict(attacked["usage"], cost_usd=float("nan"))
+        entry = _result_entry(benign=benign, attacked=attacked)
+        cost, _, n_costed, _ = _per_case_cost_latency([entry])
+        self.assertEqual(n_costed, 0)
+        self.assertEqual(cost, 0.0)
+
+
+class TestClassifyFlipDirection(unittest.TestCase):
+    def test_non_dict_reports_none(self):
+        # A non-dict entry carries no flip evidence: "none", not "other".
+        self.assertEqual(_classify_flip_direction("not a dict"), "none")
+        self.assertEqual(_classify_flip_direction(None), "none")
+        self.assertEqual(_classify_flip_direction([1, 2]), "none")
+
 
 class TestFamilyBreakdown(unittest.TestCase):
     def test_aggregates(self):
@@ -172,7 +226,18 @@ class TestFamilyBreakdown(unittest.TestCase):
         self.assertEqual(
             ind["confidence_histogram_attacked"]["n"], 2
         )
-        self.assertEqual(ind["flip_direction"], {"approve-to-deny": 1})
+        self.assertEqual(
+            ind["flip_direction"],
+            {
+                "approve-to-deny": 1,
+                "deny-to-approve": 0,
+                "to-abstain": 0,
+                "to-malformed": 0,
+                "score-shifted": 0,
+                "other": 0,
+                "none": 0,
+            },
+        )
 
     def test_flip_direction(self):
         results = [
@@ -185,7 +250,16 @@ class TestFamilyBreakdown(unittest.TestCase):
         bd = _family_breakdown(results)
         ind = bd["indirection"]
         self.assertEqual(
-            ind["flip_direction"], {"approve-to-deny": 1, "to-malformed": 1}
+            ind["flip_direction"],
+            {
+                "approve-to-deny": 1,
+                "deny-to-approve": 0,
+                "to-abstain": 0,
+                "to-malformed": 1,
+                "score-shifted": 0,
+                "other": 0,
+                "none": 0,
+            },
         )
 
 
@@ -366,6 +440,40 @@ class TestComparisonToDashboard(unittest.TestCase):
             "tie",
         )
         json.dumps(payload)
+
+    def test_rejects_non_numeric_wins(self):
+        from peira.compare import (
+            Comparison, HeadToHeadCounts, McNemarResult,
+        )
+
+        comp = Comparison(
+            adapter_a="a",
+            adapter_b="b",
+            suite="v1",
+            dataset_version="1.0.3",
+            n_a=10,
+            n_b=10,
+            n_paired=10,
+            head_to_head=HeadToHeadCounts(
+                n=10, both_right=5, a_only=3, b_only=1, both_wrong=1
+            ),
+            per_family={
+                "indirection": HeadToHeadCounts(
+                    n=6, both_right=2, a_only="3", b_only=1, both_wrong=0
+                ),
+            },
+            mcnemar=McNemarResult(
+                b=3, c=1, n_pairs=10, statistic=6.0,
+                p_value=0.01, winner="a",
+            ),
+            mcnemar_note="",
+            bradley_terry_strengths=None,
+            bradley_terry_nu=None,
+            bradley_terry_n=0,
+            bradley_terry_note="",
+        )
+        with self.assertRaises(TypeError):
+            comparison_to_dashboard(comp)
 
 
 if __name__ == "__main__":

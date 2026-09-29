@@ -727,3 +727,24 @@ Cause: `--families` left only one family to analyze, so removing it
 leaves nothing to rank on (leave-one-out needs at least two families).
 Fix: pass at least two families, or omit `--families` to use the union
 across the runs.
+
+**`error: cannot write dashboard JSON to <out> (...)` (from `peira dashboard run`)**
+Cause: `--out` points somewhere unwritable: a missing parent
+directory, or a permissions problem. Fix: create the directory first,
+or pick a writable path.
+
+**`error: cannot write leaderboard JSON to <out> (...)` (from `peira dashboard leaderboard`)**
+Cause: `--out` points somewhere unwritable: a missing parent
+directory, or a permissions problem. Fix: create the directory first,
+or pick a writable path.
+
+**`error: cannot write comparison JSON to <out> (...)` (from `peira dashboard compare`)**
+Cause: `--out` points somewhere unwritable: a missing parent
+directory, or a permissions problem. Fix: create the directory first,
+or pick a writable path.
+
+**`No cases found.` (from `peira runs query`)**
+Cause: not an error. No indexed case rows match the filters
+(`--adapter`, `--family`, `--flip-direction`, confidence bounds, or
+`--limit`). Fix: loosen the filters and check the spelling of
+`--family` against the family names in the runs.

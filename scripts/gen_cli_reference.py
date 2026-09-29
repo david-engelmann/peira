@@ -61,10 +61,8 @@ def _flag_cell(action: argparse.Action) -> str:
 def _help_cell(action: argparse.Action) -> str:
     help_text = (action.help or "").strip()
     if action.choices and not isinstance(action, argparse._SubParsersAction):
-        try:
-            choices = ", ".join(f"`{c}`" for c in sorted(action.choices))
-        except TypeError:
-            choices = ", ".join(f"`{c}`" for c in action.choices)
+        # Preserve argparse order (matches --help output); do not sort.
+        choices = ", ".join(f"`{c}`" for c in action.choices)
         help_text = f"{help_text} (choices: {choices})".strip()
     return help_text
 

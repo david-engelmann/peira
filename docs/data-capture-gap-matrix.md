@@ -1,6 +1,6 @@
 # Peira Data-Capture Gap Matrix: Dashboard Foundation Lane
 
-**Date:** 2026-09-28 · **Branch:** `data/dashboard-foundation` · **Lane:** 7dbfd20d
+**Date:** 2026-09-28 · **Branch:** `data/foundation-v2` · **Lane:** 7dbfd20d
 **Status:** Audit of what the data layer captures vs what the dashboard needs.
 
 Every row: the field, where it comes from, what level it lives at,
@@ -102,7 +102,7 @@ invented: `""` means "not recorded", never "default".
       adapter revision, dataset version, manifest hash, pricing
       version/date, and the 9 new measurement-framework fields).
 
-## Blocking-for-big-run coverage (§4 items 1–10)
+## Blocking-for-big-run coverage (section 4 items 1 to 10)
 
 1. Flip-direction taxonomy: **done** (registry + dashboard).
 2. Per-arm ECE split: exists; flip-detection AUROC: **follow-up**.

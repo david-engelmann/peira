@@ -14,7 +14,9 @@ could need so the UI never computes from raw cases:
 
 All functions are pure (no I/O except ``leaderboard``, which reads
 the registry) and return JSON-serializable dicts. Every aggregate is
-computed from real artifact data — no placeholders, no estimates.
+computed from real artifact data, never estimated. (``run_id`` is left
+empty in the payload; the CLI backfills it from the artifact
+filename.)
 """
 
 from __future__ import annotations
@@ -58,12 +60,24 @@ def _confidence_histogram(
     """Equal-width confidence histogram over [0, 1].
 
     Returns bin edges, counts, and n. None confidences are excluded
-    (reported as n_missing). A dashboard renders this directly as a
-    bar chart; the binning is fixed so histograms are comparable
-    across runs and families.
+    (reported as n_missing), as are out-of-range values: a confidence
+    outside [0, 1] is data corruption (the registry NULLs these), not
+    a measurement, so it is excluded like a missing value rather than
+    wrapped into a bin by negative indexing. A dashboard renders this
+    directly as a bar chart; the binning is fixed so histograms are
+    comparable across runs and families.
     """
-    vals = [c for c in confidences if c is not None]
-    n_missing = len(confidences) - len(vals)
+    vals: list[float] = []
+    n_missing = 0
+    for c in confidences:
+        if isinstance(c, bool) or not isinstance(c, (int, float)):
+            n_missing += 1
+        elif not 0.0 <= c <= 1.0:
+            # Out-of-range (NaN fails the range check): corruption,
+            # excluded like a missing value.
+            n_missing += 1
+        else:
+            vals.append(float(c))
     edges = [round(i / bins, 4) for i in range(bins + 1)]
     counts = [0] * bins
     for c in vals:
@@ -87,7 +101,10 @@ def _per_case_cost_latency(
     Returns (total_cost, total_latency_ms, n_costed_calls,
     n_latency_calls). A call without usage contributes nothing to
     cost; a call without latency_ms_total contributes nothing to
-    latency. Both are measured values, never estimates.
+    latency (a missing key is not a 0.0-ms call). Negative or NaN
+    costs are corruption, not measurements, and are excluded like
+    the registry's _case_usage_totals does. Both are measured values,
+    never estimates.
     """
     total_cost = 0.0
     total_latency = 0.0
@@ -103,13 +120,24 @@ def _per_case_cost_latency(
             usage = rec.get("usage")
             if isinstance(usage, dict):
                 c = usage.get("cost_usd")
-                if isinstance(c, (int, float)) and not isinstance(c, bool):
+                if (
+                    isinstance(c, (int, float))
+                    and not isinstance(c, bool)
+                    and c >= 0
+                ):
+                    # NaN fails the >= 0 check, so it cannot poison the
+                    # total or emit invalid JSON downstream.
                     total_cost += float(c)
                     n_costed += 1
-            lat = rec.get("latency_ms_total", 0.0)
-            if isinstance(lat, (int, float)) and not isinstance(lat, bool):
-                total_latency += float(lat)
-                n_latency += 1
+            if "latency_ms_total" in rec:
+                lat = rec["latency_ms_total"]
+                if (
+                    isinstance(lat, (int, float))
+                    and not isinstance(lat, bool)
+                    and lat >= 0
+                ):
+                    total_latency += float(lat)
+                    n_latency += 1
     return total_cost, total_latency, n_costed, n_latency
 
 
@@ -130,9 +158,10 @@ def _family_breakdown(results: list[dict]) -> dict[str, dict[str, Any]]:
     for fam in sorted(families):
         fr = families[fam]
         n = len(fr)
-        n_eligible = sum(1 for r in fr if r.get("eligible", False))
+        n_eligible = sum(1 for r in fr if r.get("eligible", False) is True)
         n_flipped = sum(
-            1 for r in fr if r.get("flipped", False) and r.get("eligible", False)
+            1 for r in fr
+            if r.get("flipped", False) is True and r.get("eligible", False) is True
         )
         cost, latency, n_costed, n_latency = _per_case_cost_latency(fr)
         attacked_confs = [
@@ -147,9 +176,12 @@ def _family_breakdown(results: list[dict]) -> dict[str, dict[str, Any]]:
             else None
             for r in fr
         ]
-        flip_direction: dict[str, int] = {}
+        # Dense: every taxonomy value is always present (zero when
+        # unobserved), matching _flip_anatomy's direction_counts so
+        # consumers can rely on one shape.
+        flip_direction: dict[str, int] = {d: 0 for d in FLIP_DIRECTIONS}
         for r in fr:
-            if not r.get("flipped", False):
+            if r.get("flipped", False) is not True:
                 continue
             d = _classify_flip_direction(r)
             flip_direction[d] = flip_direction.get(d, 0) + 1
@@ -180,9 +212,10 @@ def _severity_breakdown(results: list[dict]) -> dict[str, dict[str, Any]]:
     out: dict[str, dict[str, Any]] = {}
     for sev in sorted(severities):
         sr = severities[sev]
-        n_eligible = sum(1 for r in sr if r.get("eligible", False))
+        n_eligible = sum(1 for r in sr if r.get("eligible", False) is True)
         n_flipped = sum(
-            1 for r in sr if r.get("flipped", False) and r.get("eligible", False)
+            1 for r in sr
+            if r.get("flipped", False) is True and r.get("eligible", False) is True
         )
         cost, latency, _, _ = _per_case_cost_latency(sr)
         out[sev] = {
@@ -201,9 +234,10 @@ def _flip_anatomy(results: list[dict]) -> dict[str, dict[str, Any]]:
     flip_direction values, plus severity-weighted ASR inputs and
     target-hit rate.
 
-    Every cell carries n (no pre-rounded percentages — M-6 sign-off).
-    Severity weights are versioned (SEVERITY_WEIGHTS_VERSION); the
-    value-view cost scenarios may re-weight.
+    Every cell carries n (no pre-rounded percentages, per M-6
+    sign-off). Severity weights are versioned
+    (SEVERITY_WEIGHTS_VERSION); the value-view cost scenarios may
+    re-weight.
     """
     direction_counts_template = {d: 0 for d in FLIP_DIRECTIONS}
     families: dict[str, list[dict]] = {}
@@ -212,7 +246,7 @@ def _flip_anatomy(results: list[dict]) -> dict[str, dict[str, Any]]:
     out: dict[str, dict[str, Any]] = {}
     for fam in sorted(families):
         fr = families[fam]
-        eligible = [r for r in fr if r.get("eligible", False)]
+        eligible = [r for r in fr if r.get("eligible", False) is True]
         n_eligible = len(eligible)
         direction_counts = dict(direction_counts_template)
         sev_weighted_flips = 0.0
@@ -224,7 +258,7 @@ def _flip_anatomy(results: list[dict]) -> dict[str, dict[str, Any]]:
             direction_counts[direction] = direction_counts.get(direction, 0) + 1
             w = SEVERITY_WEIGHTS.get(str(r.get("severity", "")).lower(), 1.0)
             sev_weighted_n += w
-            if r.get("flipped", False):
+            if r.get("flipped", False) is True:
                 sev_weighted_flips += w
             target = r.get("target_decision")
             if isinstance(target, str) and target:
@@ -242,7 +276,8 @@ def _flip_anatomy(results: list[dict]) -> dict[str, dict[str, Any]]:
                 round(sev_weighted_flips / sev_weighted_n, 4)
                 if sev_weighted_n else None
             ),
-            # Target-hit rate inputs: P(attacked == target | flip).
+            # Target-hit rate inputs: P(attacked == target | target
+            # defined), over eligible cases (not conditioned on flips).
             "target_hit_n": target_hits,
             "target_defined_n": target_defined,
             "target_hit_rate": (
@@ -258,13 +293,14 @@ def _classify_flip_direction(entry: dict) -> str:
     Delegates to the canonical ``metrics.flip_direction`` (the sealed
     taxonomy contract, as amended by #158) so the dashboard payload
     agrees with the registry and the metrics layer on every value.
-    Returns only values from runs_registry.FLIP_DIRECTIONS; entries
-    that are not well-formed result dicts report "other"/"none"
-    honestly from the flip flag alone rather than a fabricated
-    "<x>-to-<y>" label.
+    Returns only values from runs_registry.FLIP_DIRECTIONS. A
+    non-dict entry carries no flip evidence, so it reports ``"none"``;
+    a malformed dict reports ``"other"`` when flipped and ``"none"``
+    when not, honestly from the flip flag alone rather than a
+    fabricated "<x>-to-<y>" label.
     """
     if not isinstance(entry, dict):
-        return "other"
+        return "none"
     flipped = entry.get("flipped", False) is True
     try:
         return metrics.flip_direction(PerCaseResult.from_dict(entry))
@@ -289,8 +325,8 @@ def run_to_dashboard(artifact: RunArtifact) -> dict[str, Any]:
       from artifact.metrics for direct rendering.
 
     Drill-down to individual cases goes through
-    ``runs_registry.query_cases`` (indexed), not this payload — the
-    per-case rows would bloat the JSON by orders of magnitude.
+    ``runs_registry.query_cases`` (indexed) rather than this payload:
+    the per-case rows would bloat the JSON by orders of magnitude.
     """
     m = artifact.metrics or {}
     results = artifact.results or []
@@ -405,11 +441,11 @@ def leaderboard(
     p50/p95, calibration ECE, ranking eligibility, and the run's
     identity (run_id, created_utc) for drill-down. Adapters whose
     latest run does not qualify are listed under ``unranked`` with the
-    disqualification reason — omission never improves a rank, and the
+    disqualification reason. Omission never improves a rank, and the
     dashboard shows why.
 
     Returns JSON-serializable dict with ``ranked`` (list, sorted by
-    ASR ascending — lower is more robust) and ``unranked`` (list).
+    ASR ascending, lower is more robust) and ``unranked`` (list).
     """
     # Local import: runs_registry is stdlib+peira only, but keep the
     # dashboard module import-light for embedding contexts.
@@ -425,7 +461,6 @@ def leaderboard(
 
     ranked: list[dict[str, Any]] = []
     unranked: list[dict[str, Any]] = []
-    runs_path = Path(runs_dir) if runs_dir else Path("runs")
     for adapter in sorted(latest):
         meta = latest[adapter]
         path = Path(meta["path"])
@@ -484,14 +519,15 @@ def leaderboard(
                 "reason": reason,
             })
     # Sort ranked by ASR ascending (lower = more robust). None ASRs
-    # (withheld) sort last — a withheld number never outranks a
-    # measured one.
-    ranked.sort(
-        key=lambda r: (
-            r["asr_conditional"] is None,
-            r["asr_conditional"] if r["asr_conditional"] is not None else 0.0,
-        )
-    )
+    # (withheld) sort last, and so do non-numeric values (corrupt
+    # data never outranks a measured number).
+    def _asr_sort_key(r: dict[str, Any]) -> tuple[bool, float]:
+        v = r.get("asr_conditional")
+        if isinstance(v, bool) or not isinstance(v, (int, float)):
+            return (True, 0.0)
+        return (False, float(v))
+
+    ranked.sort(key=_asr_sort_key)
     return {
         "suite": suite,
         "dataset_version": dataset_version,
@@ -523,6 +559,12 @@ def comparison_to_dashboard(comparison: Comparison) -> dict[str, Any]:
         # with more discordant wins on that family.
         a_wins = fam_d.get("a_only", 0)
         b_wins = fam_d.get("b_only", 0)
+        for label, v in (("a_only", a_wins), ("b_only", b_wins)):
+            if isinstance(v, bool) or not isinstance(v, (int, float)):
+                raise TypeError(
+                    f"comparison per_family[{fam!r}][{label}] must be "
+                    f"numeric, got {type(v).__name__}"
+                )
         if a_wins > b_wins:
             winner = "a"
         elif b_wins > a_wins:

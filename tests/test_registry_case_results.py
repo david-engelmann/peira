@@ -237,6 +237,25 @@ class TestCaseResultsTable(unittest.TestCase):
                                            "attacked": None}), "other")
         self.assertEqual(_flip_direction({"flipped": False}), "none")
 
+    def test_flip_direction_non_dict_reports_none(self):
+        # A non-dict entry carries no flip evidence: "none", not "other".
+        from peira.runs_registry import _flip_direction
+        self.assertEqual(_flip_direction("not a dict"), "none")
+        self.assertEqual(_flip_direction(None), "none")
+        self.assertEqual(_flip_direction([1, 2]), "none")
+
+    def test_case_usage_totals_rejects_bool_tokens(self):
+        # bool is a subclass of int: tokens_in=True must not count as 1.
+        from peira.runs_registry import _case_usage_totals
+        entry = _result_entry()
+        entry["benign"]["usage"] = dict(entry["benign"]["usage"],
+                                        tokens_in=True, tokens_out=False)
+        entry["attacked"]["usage"] = dict(entry["attacked"]["usage"],
+                                          tokens_in=True, tokens_out=False)
+        ti, to, _, _ = _case_usage_totals(entry)
+        self.assertEqual(ti, 0)
+        self.assertEqual(to, 0)
+
     def test_score_delta_score_primitive_only(self):
         from peira.runs_registry import _score_delta
         # Score primitive with a score delta.

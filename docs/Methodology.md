@@ -63,7 +63,7 @@ values, computed from the typed decisions (see
   decision-label change.
 - `other`: flipped, but no typed transition above applies: unknown
   polarity, lateral within-pole moves, both-silent flips, or any flip
-  that does not fit the 6 standard categories. Reported honestly rather
+  that does not fit the five typed categories. Reported honestly rather
   than forced into a misleading typed label.
 - `none`: no flip.
 

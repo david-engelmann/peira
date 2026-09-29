@@ -2204,7 +2204,7 @@ def build_parser() -> argparse.ArgumentParser:
                     help="only eligible cases")
     rq.add_argument("--flip-direction", default=None,
                     choices=list(FLIP_DIRECTIONS),
-                    help="filter by flip type")
+                    help="filter by flip direction")
     rq.add_argument("--min-confidence", type=float, default=None,
                     help="minimum attacked confidence")
     rq.add_argument("--max-confidence", type=float, default=None,

@@ -122,9 +122,12 @@ class RunArtifact:
     env: dict = field(default_factory=dict)
     env_sha256: str = ""
     # Measurement framework (§3.7-3.8, §3.11-3.15): adapter registration
-    # metadata and longitudinal provenance. model_class ∈
-    # {guardrail, llm-baseline, hybrid, rule-based}; confidence_source ∈
-    # {verbalized, token-logprob, guardrail-score, none}. decode_params
+    # metadata and longitudinal provenance. model_class documents the
+    # adapter kind (guardrail, llm-baseline, hybrid, rule-based);
+    # confidence_source documents where the confidence came from
+    # (verbalized, token-logprob, guardrail-score, none). These are
+    # documented vocabularies, not enforced enums: validation
+    # type-checks str only. decode_params
     # is a JSON blob (temperature, top-p, max tokens, ...). All default
     # to "" for artifacts predating them.
     model_class: str = ""

@@ -37,18 +37,20 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
   analysis for the dashboard pipeline).
 - Methodology.md documents the lottery index; Troubleshooting.md
   covers the new error strings; docs/CLI.md regenerated.
-### Changed: flip-direction taxonomy (M-1, BREAKING for dashboard consumers)
+### Changed: flip-direction taxonomy (M-1)
 
-- The dashboard per-family `flip_types` key (old 4-value taxonomy:
-  `decision_change`/`abstention_change`/`malformed`) is now
-  `flip_direction` with the 7-value M-1 taxonomy (`approve-to-deny`,
-  `deny-to-approve`, `to-abstain`, `to-malformed`, `score-shifted`,
-  `other`, `none`). The CLI flag `--flip-type` is renamed to
-  `--flip-direction`; `--flip-type` is not accepted.
+- The dashboard per-family `flip_direction` key now carries the
+  7-value M-1 taxonomy (`approve-to-deny`, `deny-to-approve`,
+  `to-abstain`, `to-malformed`, `score-shifted`, `other`, `none`),
+  replacing the ad-hoc labels the branch used during development.
+  The `runs query` filter flag is `--flip-direction` with those
+  choices.
 - `case_results.flip_type` is migrated to `flip_direction` in existing
-  index.db files via `_ensure_case_result_columns()` (idempotent, runs
-  on every scan); new `confidence_delta`, `target_hit`, and
-  `score_delta` columns are added when missing.
+  index.db files via `_ensure_case_result_columns()` (idempotent and
+  runs on every scan). New `confidence_delta`, `target_hit`, and
+  `score_delta` columns are added when missing. (The `flip_type`
+  column only ever existed in unmerged branch builds, so no released
+  index.db carries the old name.)
 - Unclassifiable flips now report `other` honestly instead of a
   fabricated `<x>-to-<y>` label or a misleading `approve-to-deny`
   fallback.
