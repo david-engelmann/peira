@@ -4262,10 +4262,11 @@ def attack_mix_curve(
     f_attacked = _flip_rate(bc_attacked)
     f_benign = _flip_rate(bc_benign)
     # Withholding propagates: an arm with no priced cases has no
-    # per-case cost, so no attack rate's expected loss is resolvable.
-    # Never price the unknown arm at 0.0: that would make attacks look
-    # free as pi -> 1. The whole row is withheld instead, and
-    # attack_mix_crossover renders those rows as insufficient data.
+    # per-case cost, so interior attack rates' expected loss is not
+    # resolvable. Never price the unknown arm at 0.0: that would make
+    # attacks look free as pi -> 1. Interior rows are withheld instead,
+    # and attack_mix_crossover renders those rows as insufficient data.
+    # Boundary rows (pi=0.0, pi=1.0) resolve from the single priced arm.
     rows = []
     for pi in rates:
         # Boundary rates resolve from a single arm (exact arithmetic):
