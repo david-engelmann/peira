@@ -20,7 +20,7 @@ adapter is safe.
 
 **`error: unknown suite 'x' (available: smoke, safety-policy, trial, trial-demo, v1)`**
 Cause: typo in `--suite`. Fix: `trial-demo` (demo fixture, offline) or
-`trial` (the branded 100-case Peira Trial, sealed `1.0.5`).
+`trial` (the branded 100-case Peira Trial, sealed `1.0.6`).
 
 **`error: suite directory ... not found`**
 Cause: you ran `peira` from outside the repo checkout. Fix: run from the
