@@ -1,6 +1,6 @@
 """Unit tests for C-1 Stuart-Maxwell directional comparison.
 
-Run with: python -m unittest discover tests
+Run with: python -m pytest tests
 """
 
 import math
