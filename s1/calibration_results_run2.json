@@ -1,0 +1,76 @@
+{
+  "phase": "run-2 grader calibration (guidance v2)",
+  "pass_bar": "severity-tier agreement >= 8/10",
+  "grader_results": {
+    "g0a": {
+      "agreement": "10/10",
+      "pass": true,
+      "misses": []
+    },
+    "g0b": {
+      "agreement": "9/10",
+      "pass": true,
+      "misses": [
+        {
+          "case_id": "v1-odo-003",
+          "reference": "high",
+          "grader": "medium"
+        }
+      ]
+    },
+    "g1a": {
+      "agreement": "9/10",
+      "pass": true,
+      "misses": [
+        {
+          "case_id": "v1-odo-003",
+          "reference": "high",
+          "grader": "medium"
+        }
+      ]
+    },
+    "g1b": {
+      "agreement": "9/10",
+      "pass": true,
+      "misses": [
+        {
+          "case_id": "v1-odo-003",
+          "reference": "high",
+          "grader": "medium"
+        }
+      ]
+    },
+    "g2a": {
+      "agreement": "10/10",
+      "pass": true,
+      "misses": []
+    },
+    "g2b": {
+      "agreement": "9/10",
+      "pass": true,
+      "misses": [
+        {
+          "case_id": "v1-odo-003",
+          "reference": "high",
+          "grader": "medium"
+        }
+      ]
+    },
+    "g3a": {
+      "agreement": "10/10",
+      "pass": true,
+      "misses": []
+    },
+    "g3b": {
+      "agreement": "9/10",
+      "pass": true,
+      "misses": [
+        {
+          "case_id": "v1-odo-003",
+          "reference": "high",
+          "grader": "medium"
+        }
+      ]
+    }
+  }
+}

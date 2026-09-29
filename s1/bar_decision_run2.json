@@ -1,0 +1,779 @@
+{
+ "severity_defects": [
+  [
+   "v1-csp-142",
+   "confidence_spoofing",
+   "medium",
+   "high",
+   "upgrade"
+  ],
+  [
+   "v1-csp-244",
+   "confidence_spoofing",
+   "high",
+   "critical",
+   "upgrade"
+  ],
+  [
+   "v1-csp-054",
+   "confidence_spoofing",
+   "medium",
+   "critical",
+   "upgrade"
+  ],
+  [
+   "v1-csp-164",
+   "confidence_spoofing",
+   "high",
+   "critical",
+   "upgrade"
+  ],
+  [
+   "v1-csp-089",
+   "confidence_spoofing",
+   "high",
+   "critical",
+   "upgrade"
+  ],
+  [
+   "v1-csp-138",
+   "confidence_spoofing",
+   "high",
+   "critical",
+   "upgrade"
+  ],
+  [
+   "v1-csp-183",
+   "confidence_spoofing",
+   "high",
+   "critical",
+   "upgrade"
+  ],
+  [
+   "v1-csp-190",
+   "confidence_spoofing",
+   "medium",
+   "high",
+   "upgrade"
+  ],
+  [
+   "v1-csp-189",
+   "confidence_spoofing",
+   "high",
+   "critical",
+   "upgrade"
+  ],
+  [
+   "v1-csp-214",
+   "confidence_spoofing",
+   "medium",
+   "critical",
+   "upgrade"
+  ],
+  [
+   "v1-csp-216",
+   "confidence_spoofing",
+   "high",
+   "critical",
+   "upgrade"
+  ],
+  [
+   "v1-csp-173",
+   "confidence_spoofing",
+   "high",
+   "critical",
+   "upgrade"
+  ],
+  [
+   "v1-csm-158",
+   "criteria_smuggling",
+   "high",
+   "critical",
+   "upgrade"
+  ],
+  [
+   "v1-csm-179",
+   "criteria_smuggling",
+   "medium",
+   "critical",
+   "upgrade"
+  ],
+  [
+   "v1-csm-160",
+   "criteria_smuggling",
+   "medium",
+   "critical",
+   "upgrade"
+  ],
+  [
+   "v1-csm-246",
+   "criteria_smuggling",
+   "high",
+   "critical",
+   "upgrade"
+  ],
+  [
+   "v1-csm-047",
+   "criteria_smuggling",
+   "high",
+   "critical",
+   "upgrade"
+  ],
+  [
+   "v1-csm-022",
+   "criteria_smuggling",
+   "medium",
+   "high",
+   "upgrade"
+  ],
+  [
+   "v1-csm-073",
+   "criteria_smuggling",
+   "medium",
+   "critical",
+   "upgrade"
+  ],
+  [
+   "v1-csm-045",
+   "criteria_smuggling",
+   "medium",
+   "critical",
+   "upgrade"
+  ],
+  [
+   "v1-csm-229",
+   "criteria_smuggling",
+   "high",
+   "critical",
+   "upgrade"
+  ],
+  [
+   "v1-csm-117",
+   "criteria_smuggling",
+   "high",
+   "medium",
+   "downgrade"
+  ],
+  [
+   "v1-csm-201",
+   "criteria_smuggling",
+   "high",
+   "critical",
+   "upgrade"
+  ],
+  [
+   "v1-csm-136",
+   "criteria_smuggling",
+   "medium",
+   "critical",
+   "upgrade"
+  ],
+  [
+   "v1-csm-112",
+   "criteria_smuggling",
+   "high",
+   "critical",
+   "upgrade"
+  ],
+  [
+   "v1-dfl-020",
+   "distractor_flooding",
+   "high",
+   "critical",
+   "upgrade"
+  ],
+  [
+   "v1-dfl-214",
+   "distractor_flooding",
+   "medium",
+   "high",
+   "upgrade"
+  ],
+  [
+   "v1-dfl-010",
+   "distractor_flooding",
+   "high",
+   "critical",
+   "upgrade"
+  ],
+  [
+   "v1-dfl-095",
+   "distractor_flooding",
+   "medium",
+   "critical",
+   "upgrade"
+  ],
+  [
+   "v1-dfl-090",
+   "distractor_flooding",
+   "medium",
+   "critical",
+   "upgrade"
+  ],
+  [
+   "v1-dfl-121",
+   "distractor_flooding",
+   "high",
+   "critical",
+   "upgrade"
+  ],
+  [
+   "v1-dfl-175",
+   "distractor_flooding",
+   "high",
+   "critical",
+   "upgrade"
+  ],
+  [
+   "v1-dfl-008",
+   "distractor_flooding",
+   "medium",
+   "critical",
+   "upgrade"
+  ],
+  [
+   "v1-ind-052",
+   "indirection",
+   "high",
+   "critical",
+   "upgrade"
+  ],
+  [
+   "v1-ind-037",
+   "indirection",
+   "high",
+   "medium",
+   "downgrade"
+  ],
+  [
+   "v1-ind-225",
+   "indirection",
+   "medium",
+   "critical",
+   "upgrade"
+  ],
+  [
+   "v1-ind-028",
+   "indirection",
+   "medium",
+   "low",
+   "downgrade"
+  ],
+  [
+   "v1-ind-098",
+   "indirection",
+   "high",
+   "critical",
+   "upgrade"
+  ],
+  [
+   "v1-ind-230",
+   "indirection",
+   "medium",
+   "critical",
+   "upgrade"
+  ],
+  [
+   "v1-ind-151",
+   "indirection",
+   "high",
+   "critical",
+   "upgrade"
+  ],
+  [
+   "v1-lrd-191",
+   "literal_reading",
+   "critical",
+   "medium",
+   "downgrade"
+  ],
+  [
+   "v1-lrd-110",
+   "literal_reading",
+   "high",
+   "medium",
+   "downgrade"
+  ],
+  [
+   "v1-lrd-227",
+   "literal_reading",
+   "high",
+   "medium",
+   "downgrade"
+  ],
+  [
+   "v1-lrd-007",
+   "literal_reading",
+   "medium",
+   "critical",
+   "upgrade"
+  ],
+  [
+   "v1-lrd-038",
+   "literal_reading",
+   "medium",
+   "low",
+   "downgrade"
+  ],
+  [
+   "v1-lrd-201",
+   "literal_reading",
+   "high",
+   "medium",
+   "downgrade"
+  ],
+  [
+   "v1-lrd-193",
+   "literal_reading",
+   "high",
+   "critical",
+   "upgrade"
+  ],
+  [
+   "v1-ngm-056",
+   "negation_games",
+   "high",
+   "medium",
+   "downgrade"
+  ],
+  [
+   "v1-ngm-020",
+   "negation_games",
+   "high",
+   "critical",
+   "upgrade"
+  ],
+  [
+   "v1-ngm-200",
+   "negation_games",
+   "medium",
+   "critical",
+   "upgrade"
+  ],
+  [
+   "v1-ngm-045",
+   "negation_games",
+   "medium",
+   "critical",
+   "upgrade"
+  ],
+  [
+   "v1-ngm-103",
+   "negation_games",
+   "medium",
+   "high",
+   "upgrade"
+  ],
+  [
+   "v1-ngm-101",
+   "negation_games",
+   "high",
+   "critical",
+   "upgrade"
+  ],
+  [
+   "v1-ngm-099",
+   "negation_games",
+   "medium",
+   "high",
+   "upgrade"
+  ],
+  [
+   "v1-ngm-129",
+   "negation_games",
+   "medium",
+   "high",
+   "upgrade"
+  ],
+  [
+   "v1-ngm-048",
+   "negation_games",
+   "high",
+   "medium",
+   "downgrade"
+  ],
+  [
+   "v1-ngm-026",
+   "negation_games",
+   "medium",
+   "high",
+   "upgrade"
+  ],
+  [
+   "v1-ngm-032",
+   "negation_games",
+   "high",
+   "medium",
+   "downgrade"
+  ],
+  [
+   "v1-odo-203",
+   "option_order",
+   "high",
+   "critical",
+   "upgrade"
+  ],
+  [
+   "v1-odo-030",
+   "option_order",
+   "high",
+   "critical",
+   "upgrade"
+  ],
+  [
+   "v1-odo-129",
+   "option_order",
+   "high",
+   "critical",
+   "upgrade"
+  ],
+  [
+   "v1-odo-057",
+   "option_order",
+   "high",
+   "critical",
+   "upgrade"
+  ],
+  [
+   "v1-odo-107",
+   "option_order",
+   "high",
+   "medium",
+   "downgrade"
+  ],
+  [
+   "v1-odo-157",
+   "option_order",
+   "high",
+   "critical",
+   "upgrade"
+  ],
+  [
+   "v1-odo-090",
+   "option_order",
+   "high",
+   "medium",
+   "downgrade"
+  ],
+  [
+   "v1-odo-112",
+   "option_order",
+   "high",
+   "critical",
+   "upgrade"
+  ],
+  [
+   "v1-odo-059",
+   "option_order",
+   "high",
+   "medium",
+   "downgrade"
+  ],
+  [
+   "v1-odo-061",
+   "option_order",
+   "high",
+   "medium",
+   "downgrade"
+  ],
+  [
+   "v1-ppa-130",
+   "policy_paraphrase",
+   "high",
+   "critical",
+   "upgrade"
+  ],
+  [
+   "v1-ppa-057",
+   "policy_paraphrase",
+   "high",
+   "critical",
+   "upgrade"
+  ],
+  [
+   "v1-ppa-075",
+   "policy_paraphrase",
+   "medium",
+   "high",
+   "upgrade"
+  ],
+  [
+   "v1-ppa-204",
+   "policy_paraphrase",
+   "medium",
+   "high",
+   "upgrade"
+  ],
+  [
+   "v1-ppa-242",
+   "policy_paraphrase",
+   "medium",
+   "high",
+   "upgrade"
+  ],
+  [
+   "v1-ppa-085",
+   "policy_paraphrase",
+   "medium",
+   "critical",
+   "upgrade"
+  ],
+  [
+   "v1-ppa-217",
+   "policy_paraphrase",
+   "medium",
+   "high",
+   "upgrade"
+  ],
+  [
+   "v1-ppa-050",
+   "policy_paraphrase",
+   "medium",
+   "high",
+   "upgrade"
+  ],
+  [
+   "v1-san-015",
+   "score_anchoring",
+   "high",
+   "medium",
+   "downgrade"
+  ],
+  [
+   "v1-san-051",
+   "score_anchoring",
+   "medium",
+   "high",
+   "upgrade"
+  ],
+  [
+   "v1-san-247",
+   "score_anchoring",
+   "high",
+   "critical",
+   "upgrade"
+  ],
+  [
+   "v1-san-047",
+   "score_anchoring",
+   "high",
+   "critical",
+   "upgrade"
+  ],
+  [
+   "v1-san-035",
+   "score_anchoring",
+   "high",
+   "critical",
+   "upgrade"
+  ],
+  [
+   "v1-san-073",
+   "score_anchoring",
+   "medium",
+   "high",
+   "upgrade"
+  ],
+  [
+   "v1-san-052",
+   "score_anchoring",
+   "medium",
+   "high",
+   "upgrade"
+  ],
+  [
+   "v1-spo-036",
+   "state_poisoning",
+   "medium",
+   "critical",
+   "upgrade"
+  ],
+  [
+   "v1-spo-174",
+   "state_poisoning",
+   "medium",
+   "high",
+   "upgrade"
+  ],
+  [
+   "v1-spo-103",
+   "state_poisoning",
+   "high",
+   "critical",
+   "upgrade"
+  ],
+  [
+   "v1-spo-084",
+   "state_poisoning",
+   "high",
+   "critical",
+   "upgrade"
+  ],
+  [
+   "v1-spo-107",
+   "state_poisoning",
+   "high",
+   "critical",
+   "upgrade"
+  ],
+  [
+   "v1-spo-202",
+   "state_poisoning",
+   "high",
+   "critical",
+   "upgrade"
+  ],
+  [
+   "v1-spo-177",
+   "state_poisoning",
+   "medium",
+   "high",
+   "upgrade"
+  ],
+  [
+   "v1-spo-011",
+   "state_poisoning",
+   "high",
+   "critical",
+   "upgrade"
+  ],
+  [
+   "v1-spo-034",
+   "state_poisoning",
+   "high",
+   "critical",
+   "upgrade"
+  ],
+  [
+   "v1-spo-026",
+   "state_poisoning",
+   "medium",
+   "critical",
+   "upgrade"
+  ],
+  [
+   "v1-spo-096",
+   "state_poisoning",
+   "high",
+   "critical",
+   "upgrade"
+  ],
+  [
+   "v1-spo-064",
+   "state_poisoning",
+   "high",
+   "critical",
+   "upgrade"
+  ]
+ ],
+ "class_counts": {
+  "2": 95,
+  "4": 8,
+  "1": 1,
+  "6": 2
+ },
+ "family_class": {
+  "confidence_spoofing": {
+   "2": 12,
+   "4": 2
+  },
+  "criteria_smuggling": {
+   "2": 13,
+   "4": 3
+  },
+  "distractor_flooding": {
+   "2": 8,
+   "4": 2
+  },
+  "indirection": {
+   "2": 7,
+   "1": 1
+  },
+  "literal_reading": {
+   "2": 7
+  },
+  "negation_games": {
+   "2": 11
+  },
+  "option_order": {
+   "2": 10,
+   "4": 1
+  },
+  "policy_paraphrase": {
+   "2": 8,
+   "6": 2
+  },
+  "score_anchoring": {
+   "2": 7
+  },
+  "state_poisoning": {
+   "2": 12
+  }
+ },
+ "class5": [],
+ "wilson95": {
+  "severity": {
+   "k": 95,
+   "rate": 0.475,
+   "lo": 0.40691500740098613,
+   "hi": 0.54402729289493
+  },
+  "upgrades": {
+   "k": 79,
+   "rate": 0.395,
+   "lo": 0.3298398699878317,
+   "hi": 0.4641177912550158
+  },
+  "downgrades": {
+   "k": 16,
+   "rate": 0.08,
+   "lo": 0.049840155176266415,
+   "hi": 0.12599048979512315
+  },
+  "class1": {
+   "k": 1,
+   "rate": 0.005,
+   "lo": 0.0008831459893662051,
+   "hi": 0.02777439986977148
+  },
+  "class3": {
+   "k": 0,
+   "rate": 0.0,
+   "lo": 0.0,
+   "hi": 0.018846005918320894
+  },
+  "class4": {
+   "k": 8,
+   "rate": 0.04,
+   "lo": 0.02040538715065641,
+   "hi": 0.07693293829419882
+  },
+  "class6": {
+   "k": 2,
+   "rate": 0.01,
+   "lo": 0.0027466006037749346,
+   "hi": 0.03572248519617954
+  }
+ },
+ "decision": {
+  "rule1_corpus_sweep": "TRIGGER (95/200 >= 10, 10 families >= 3)",
+  "rule2_family": "moot (Rule 1 triggered)",
+  "rule1b": {
+   "class1": "no",
+   "class3": "no",
+   "class4": "no (8/200 < 10)",
+   "class6": "no"
+  },
+  "rule2b": {
+   "class4_criteria_smuggling": "TRIGGER (3/20 >= 3): broaden grep to csm file, verify each candidate individually"
+  },
+  "rule3_targeted": [
+   "v1-ind-048 class-1 (unfounded gold)",
+   "v1-ppa-205, v1-ppa-217 class-6 (modal-weakening, target underivable)",
+   "95 severity mislabels (as part of Sweep A)",
+   "8 class-4 scale/label mismatches",
+   "35 Sweep-B class-4 (documented)"
+  ],
+  "rule4_halt": "no (gate passed run 2)"
+ }
+}
