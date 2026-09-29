@@ -1,7 +1,7 @@
 {
-  "created_utc": "2026-09-28T01:40:10+00:00",
+  "created_utc": "2026-09-29T01:48:32+00:00",
   "dataset": "peira-v1",
-  "dataset_version": "1.1.0",
+  "dataset_version": "1.1.1",
   "files": {
     "confidence_spoofing.jsonl": {
       "kind": "cases",
@@ -19,7 +19,7 @@
         "medium": 91
       },
       "n_cases": 200,
-      "sha256": "980c2bcaa2a401eb6a8ed26301e5bb9a7a820e5f2b6818932f7384c0692a1f26"
+      "sha256": "d3e7eeee7da91a4c4f15c16d330f7639be7e6d2fbec2bbbc3674011bdd7c208a"
     },
     "criteria_smuggling.jsonl": {
       "kind": "cases",
@@ -37,7 +37,7 @@
         "medium": 93
       },
       "n_cases": 200,
-      "sha256": "eb18dc58d8e94b724f509d3722046ce1fdd61d1aa1ef62ed4d0898b81d80f311"
+      "sha256": "fe7549169ecd75950a826376cb364326e94098aa7ef1357cefd218f8b0f079ed"
     },
     "distractor_flooding.jsonl": {
       "kind": "cases",
@@ -55,7 +55,7 @@
         "medium": 92
       },
       "n_cases": 200,
-      "sha256": "dd78d5bf8615a5210ec5fa3846700f6d93200270f9d9e052f5b5df61fc3a1e4d"
+      "sha256": "53fa231ee32d4fd74f4b5215855526f2fdbdd8ff606890736cc440adb6c31c9a"
     },
     "indirection.jsonl": {
       "kind": "cases",
@@ -73,7 +73,7 @@
         "medium": 92
       },
       "n_cases": 200,
-      "sha256": "324161a5e1b03443d8b51b0c0aaa1708be57c43d3caa206de94fdc7f51c7f93a"
+      "sha256": "0e449d63431cfc171fa14dcea08a839191697ef1cd8696e132d61eccf74d7d66"
     },
     "literal_reading.jsonl": {
       "kind": "cases",
@@ -91,7 +91,7 @@
         "medium": 92
       },
       "n_cases": 200,
-      "sha256": "f4c042a0ba291581b2e96c4e9140e53503cd6f1974cbe21dc2a3c9c9a8bcf715"
+      "sha256": "f0164029fd16f22a43b25a8f139b5c4826d421d969079b6a1b46d998df5fdb5c"
     },
     "negation_games.jsonl": {
       "kind": "cases",
@@ -109,7 +109,7 @@
         "medium": 92
       },
       "n_cases": 200,
-      "sha256": "214234d2aa22d18eba88e321ec23030d998a8c7fcff1cef6d971b55b0d86b55d"
+      "sha256": "94f6b190e2529b7bf8bb74dfe23d4b48535ec4f136653975d1df73d171f76731"
     },
     "option_order.jsonl": {
       "kind": "cases",
@@ -127,7 +127,7 @@
         "medium": 92
       },
       "n_cases": 200,
-      "sha256": "256b43ebb273df59b7aa9c96bdc662a4bb050f6dda9207a39bf8e7e10027ae37"
+      "sha256": "31a2460827880ebd5388132621ec49bb94dad152c6302d5f3e962e993845a9f5"
     },
     "policy_paraphrase.jsonl": {
       "kind": "cases",
@@ -145,7 +145,7 @@
         "medium": 92
       },
       "n_cases": 200,
-      "sha256": "b97585be5fe865ab62dc707177969fb470c2b7f46ace3f63574cb5bcaffc86d1"
+      "sha256": "f193f942142e66db536eb2deea1a11782637127a1af98a06c39db8232fbbe20d"
     },
     "score_anchoring.jsonl": {
       "kind": "cases",
