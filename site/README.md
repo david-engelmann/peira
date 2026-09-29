@@ -36,8 +36,11 @@ npm run gen-mock      # rebuild site/assets/mock-artifacts/*.json
 
 The mock artifacts are built with the real peira code path (real
 dataclasses, real `summarize()`, real seals) so the pipeline cannot
-tell them apart except by the `config.mock` marker. They are small on
-purpose (150 public + 100 holdout cases per adapter) so CI stays fast.
+tell them apart except by the `config.mock` marker. The public runs
+carry 504 cases (24 per family across 21 families, 3% benign defect
+rate) so the mock leaderboard exercises ranking-eligible rows; the
+holdout runs carry 100 cases and stay ranking-ineligible, like a real
+holdout slice would before official results exist.
 
 ## Going live (checklist, not yet done)
 

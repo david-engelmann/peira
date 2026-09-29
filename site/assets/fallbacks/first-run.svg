@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="402" viewBox="0 0 960 402" role="img" aria-label="Illustrative terminal mock of the first peira run">
+  <rect width="960" height="402" rx="10" fill="#101418"/>
+  <rect width="960" height="40" rx="10" fill="#1b2129"/>
+  <rect y="20" width="960" height="20" fill="#1b2129"/>
+  <circle cx="28" cy="20" r="7" fill="#e05f5f"/>
+  <circle cx="52" cy="20" r="7" fill="#e8b34b"/>
+  <circle cx="76" cy="20" r="7" fill="#7fd79a"/>
+  <text x="104" y="26" font-family="ui-monospace, 'Cascadia Mono', Menlo, Consolas, monospace" font-size="15" fill="#a8bcb0">Terminal</text>
+  <text x="32" y="72" font-family="ui-monospace, 'Cascadia Mono', Menlo, Consolas, monospace" font-size="16"><tspan fill="#7fd79a">$ </tspan><tspan fill="#eef4ee">peira run --adapter mock --suite trial-demo --out /tmp/demo</tspan></text>
+  <text x="32" y="96" font-family="ui-monospace, 'Cascadia Mono', Menlo, Consolas, monospace" font-size="16" fill="#a8bcb0">  [1/12]</text>
+  <text x="32" y="120" font-family="ui-monospace, 'Cascadia Mono', Menlo, Consolas, monospace" font-size="16" fill="#a8bcb0">  [12/12]</text>
+  <text x="32" y="144" font-family="ui-monospace, 'Cascadia Mono', Menlo, Consolas, monospace" font-size="16" fill="#a8bcb0">done: 12 cases (12 eligible)</text>
+  <text x="32" y="168" font-family="ui-monospace, 'Cascadia Mono', Menlo, Consolas, monospace" font-size="16" fill="#a8bcb0">  spend:           $0.0000 (uncapped)</text>
+  <text x="32" y="192" font-family="ui-monospace, 'Cascadia Mono', Menlo, Consolas, monospace" font-size="16" fill="#eef4ee">  ASR (conditional): 0.3333 95% CI 0.1381-0.6094</text>
+  <text x="32" y="216" font-family="ui-monospace, 'Cascadia Mono', Menlo, Consolas, monospace" font-size="16" fill="#a8bcb0">  benign accuracy:   1.0000 95% CI 0.7575-1.0000</text>
+  <text x="32" y="240" font-family="ui-monospace, 'Cascadia Mono', Menlo, Consolas, monospace" font-size="16" fill="#a8bcb0">  malformed rate:    0.0000</text>
+  <text x="32" y="264" font-family="ui-monospace, 'Cascadia Mono', Menlo, Consolas, monospace" font-size="16" fill="#a8bcb0">  refusal rate:      0.0000 95% CI 0.0000-0.2425</text>
+  <text x="32" y="288" font-family="ui-monospace, 'Cascadia Mono', Menlo, Consolas, monospace" font-size="16" fill="#a8bcb0">  ineligible:        0</text>
+  <text x="32" y="312" font-family="ui-monospace, 'Cascadia Mono', Menlo, Consolas, monospace" font-size="16" fill="#a8bcb0">  ranking eligible:  False (needs 200 eligible cases, demo has 12)</text>
+  <text x="32" y="336" font-family="ui-monospace, 'Cascadia Mono', Menlo, Consolas, monospace" font-size="16" fill="#a8bcb0">artifact: /tmp/demo/mock-trial-demo.json</text>
+  <rect y="360" width="960" height="36" fill="#e8b34b"/>
+  <text x="480" y="384" text-anchor="middle" font-family="ui-monospace, 'Cascadia Mono', Menlo, Consolas, monospace" font-size="15" font-weight="bold" fill="#3a2b00">ILLUSTRATIVE MOCK. Based on the documented walkthrough, not a live recording.</text>
+</svg>

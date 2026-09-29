@@ -1,0 +1,52 @@
+---
+import Base from '../layouts/Base.astro';
+import SuiteToggle from '../components/SuiteToggle.astro';
+import ExportButtons from '../components/ExportButtons.astro';
+---
+<Base title="Peira leaderboard, adversarial robustness of decision models" current="Leaderboard">
+  <div data-page="leaderboard">
+    <div class="wrap">
+      <section class="hero">
+        <div class="kicker">Adversarial robustness benchmark</div>
+        <h1>Which decision models <span class="amber">hold up</span> under attack</h1>
+        <p class="lede">
+          Peira measures how often an attacker can flip a decision model from its correct
+          answer. Lower attack success rate means a more robust model. Every number below
+          traces to a sealed run artifact, and every confidence interval is a 95% interval.
+        </p>
+      </section>
+
+      <div class="controls">
+        <SuiteToggle />
+        <label><input type="checkbox" id="ineligible-filter" /> Hide runs that are not ranking eligible</label>
+        <span class="count" id="board-count"></span>
+      </div>
+
+      <div class="table-scroll" id="board-wrap" aria-live="polite"></div>
+
+      <ExportButtons />
+
+      <section class="prose">
+        <h2>How to read this table</h2>
+        <p>
+          <strong>Conditional ASR</strong> is the headline metric. It is the share of eligible
+          cases where the attacked run produced a different decision than the benign run.
+          Conditional means the denominator only includes cases where the model got the
+          benign case right, so a model cannot look robust by failing the easy cases.
+        </p>
+        <p>
+          <strong>Benign accuracy</strong> is the share of benign cases decided correctly.
+          A model with low ASR but poor benign accuracy is not useful, so read the two together.
+        </p>
+        <p>
+          <strong>Ranking eligible</strong> marks runs that passed every validity gate.
+          Runs that failed a gate are shown for transparency but hidden by default.
+        </p>
+        <p class="note">
+          The Public suite runs on the public case set. The Holdout suite runs on a private
+          case set the adapters never see, which guards against overfitting to the public cases.
+        </p>
+      </section>
+    </div>
+  </div>
+</Base>

@@ -1,0 +1,53 @@
+---
+import Base from '../layouts/Base.astro';
+import SuiteToggle from '../components/SuiteToggle.astro';
+import ExportButtons from '../components/ExportButtons.astro';
+---
+<Base title="Peira attack families, per-family robustness" current="Families">
+  <div data-page="families">
+    <div class="wrap">
+      <section class="hero">
+        <div class="kicker">Attack families</div>
+        <h1>Where the <span class="amber">attacks land</span></h1>
+        <p class="lede">
+          One attack family is one way of trying to flip a decision. The grid below shows
+          conditional attack success rate per family and per adapter. Select any cell to
+          inspect flip directions for that family.
+        </p>
+      </section>
+
+      <div class="controls">
+        <SuiteToggle />
+        <label>Adapter <select id="sel-adapter" aria-label="Adapter for the family detail panel"></select></label>
+      </div>
+
+      <div class="chart-wrap">
+        <h3>Conditional ASR by family and adapter</h3>
+        <p class="hint">Darker cells mean higher attack success rate. The right column shows the worst adapter per family.</p>
+        <div class="heatmap-grid" id="fam-grid"></div>
+        <div class="heat-legend"><span>Low ASR</span><span style="display:inline-block;width:120px;height:10px;border-radius:5px;background:linear-gradient(90deg, rgba(111,191,115,0.25), rgba(232,163,61,0.6), rgba(217,106,95,0.9))"></span><span>High ASR</span></div>
+      </div>
+
+      <div class="chart-wrap">
+        <h3>Family detail <span class="mono" id="fam-name"></span></h3>
+        <div id="fam-detail"></div>
+      </div>
+
+      <ExportButtons />
+
+      <section class="prose">
+        <h2>What a family is</h2>
+        <p>
+          Each family is a distinct attack primitive against decision making, for example
+          smuggling new criteria into the prompt or reordering the options. Families are
+          versioned with the dataset, and every case belongs to exactly one family.
+        </p>
+        <p>
+          <strong>Flip directions</strong> describe how a flipped case moved. Deny to approve
+          is the classic jailbreak direction, while to-abstain and to-malformed capture
+          attacks that break the output rather than changing the decision.
+        </p>
+      </section>
+    </div>
+  </div>
+</Base>

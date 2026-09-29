@@ -1,0 +1,60 @@
+---
+import '../styles/global.css';
+import results from '../data/results.json';
+
+const {
+  title = 'Peira, the empirical trial for decision models',
+  desc = 'Adversarial robustness benchmark for decision models. Attack success rate, calibration, cost and latency with every number traceable to a sealed artifact.',
+  current = '',
+} = Astro.props;
+
+const mock = results.mock_data === true;
+
+const links = [
+  ['Leaderboard', '/'],
+  ['Families', '/families'],
+  ['Calibration', '/calibration'],
+  ['Frontier', '/frontier'],
+  ['Compare', '/compare'],
+  ['Cases', '/cases'],
+  ['Methodology', '/methodology'],
+  ['Docs', '/docs/'],
+];
+---
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>{title}</title>
+  <meta name="description" content={desc} />
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23101014'/%3E%3Cpath d='M8 24 16 8l8 16' stroke='%23e8a33d' stroke-width='3' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E" />
+</head>
+<body>
+  {mock && (
+    <div class="mock-banner" role="alert">
+      <strong>Mock data.</strong> Every number on this site is synthetic placeholder output, generated to build the interface. Nothing here is a real measurement and nothing is citable.
+    </div>
+  )}
+  <header class="site">
+    <nav class="nav" aria-label="Primary">
+      <a class="brand" href="/">peira<em>·</em>trial</a>
+      <div class="nav-links">
+        {links.map(([label, href]) => (
+          <a href={href} aria-current={current === label ? 'page' : undefined}>{label}</a>
+        ))}
+      </div>
+    </nav>
+  </header>
+  <main><slot /></main>
+  <footer class="site">
+    <div class="wrap">
+      <span>peiratrial.dev, the empirical trial for decision models.</span>
+      <span>MIT licensed code, CC-BY-4.0 dataset, sealed artifacts only.</span>
+      {mock && <span class="badge mock">mock data</span>}
+    </div>
+  </footer>
+  <script id="site-data" type="application/json" set:html={JSON.stringify(results)} />
+  <script src="../scripts/site.js"></script>
+</body>
+</html>

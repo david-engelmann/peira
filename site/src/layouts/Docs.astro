@@ -1,0 +1,55 @@
+---
+import Base from './Base.astro';
+
+const { frontmatter } = Astro.props;
+const title = frontmatter?.title
+  ? `${frontmatter.title}, peira docs`
+  : 'Docs, peira';
+const desc = frontmatter?.description || 'peira documentation.';
+
+// Doc pages live in src/pages/docs/*.md. The list below mirrors the
+// actual doc set so the sidebar never links to a missing page.
+const sections = [
+  {
+    heading: 'Getting started',
+    pages: [
+      ['Quickstart', '/docs/quickstart'],
+    ],
+  },
+  {
+    heading: 'Concepts',
+    pages: [
+      ['Interpreting results', '/docs/interpreting-results'],
+      ['Methodology', '/methodology'],
+    ],
+  },
+  {
+    heading: 'Operations',
+    pages: [
+      ['Adapter setup', '/docs/adapter-setup'],
+      ['FAQ', '/docs/faq'],
+    ],
+  },
+];
+
+const path = Astro.url.pathname.replace(/\/$/, '') || '/docs';
+---
+<Base title={title} desc={desc} current="Docs">
+  <div class="wrap docs-shell">
+    <aside class="docs-nav" aria-label="Documentation sections">
+      {sections.map((s) => (
+        <div>
+          <h4>{s.heading}</h4>
+          <ul>
+            {s.pages.map(([label, href]) => (
+              <li><a href={href} aria-current={path === href ? 'page' : undefined}>{label}</a></li>
+            ))}
+          </ul>
+        </div>
+      ))}
+    </aside>
+    <article class="docs-body prose">
+      <slot />
+    </article>
+  </div>
+</Base>

@@ -1,0 +1,47 @@
+---
+import Base from '../layouts/Base.astro';
+import SuiteToggle from '../components/SuiteToggle.astro';
+import ExportButtons from '../components/ExportButtons.astro';
+---
+<Base title="Peira calibration, reliability of model confidence" current="Calibration">
+  <div data-page="calibration">
+    <div class="wrap">
+      <section class="hero">
+        <div class="kicker">Calibration</div>
+        <h1>Does the <span class="amber">confidence</span> mean what it says</h1>
+        <p class="lede">
+          Robustness is only half the story. A decision model that reports 90% confidence
+          should be right about 90% of the time. These reliability diagrams compare stated
+          confidence against actual outcomes on the benign and attacked arms.
+        </p>
+      </section>
+
+      <div class="controls">
+        <SuiteToggle />
+        <label>Adapter <select id="sel-adapter" aria-label="Adapter for the calibration view"></select></label>
+      </div>
+
+      <div id="cal-cards"></div>
+      <div id="cal-charts"></div>
+
+      <ExportButtons svg={true} png={true} />
+
+      <section class="prose">
+        <h2>How to read this view</h2>
+        <p>
+          <strong>ECE</strong> is expected calibration error, the average gap between stated
+          confidence and observed accuracy. Lower is better, and zero means perfectly calibrated.
+        </p>
+        <p>
+          <strong>Delta Brier</strong> measures how much worse calibration gets under attack.
+          A large positive delta means the attack does not just flip decisions, it also
+          destroys the meaning of the confidence scores.
+        </p>
+        <p class="note">
+          Bins are equal-mass over the observed confidences. Arms with fewer than 30
+          confidence-carrying observations are withheld rather than shown with noise.
+        </p>
+      </section>
+    </div>
+  </div>
+</Base>

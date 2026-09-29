@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="186" viewBox="0 0 960 186" role="img" aria-label="Illustrative terminal mock of the peira report step">
+  <rect width="960" height="186" rx="10" fill="#101418"/>
+  <rect width="960" height="40" rx="10" fill="#1b2129"/>
+  <rect y="20" width="960" height="20" fill="#1b2129"/>
+  <circle cx="28" cy="20" r="7" fill="#e05f5f"/>
+  <circle cx="52" cy="20" r="7" fill="#e8b34b"/>
+  <circle cx="76" cy="20" r="7" fill="#7fd79a"/>
+  <text x="104" y="26" font-family="ui-monospace, 'Cascadia Mono', Menlo, Consolas, monospace" font-size="15" fill="#a8bcb0">Terminal</text>
+  <text x="32" y="72" font-family="ui-monospace, 'Cascadia Mono', Menlo, Consolas, monospace" font-size="16"><tspan fill="#7fd79a">$ </tspan><tspan fill="#eef4ee">peira report --run /tmp/demo/mock-trial-demo.json --out /tmp/demo/report.html</tspan></text>
+  <text x="32" y="96" font-family="ui-monospace, 'Cascadia Mono', Menlo, Consolas, monospace" font-size="16" fill="#7fd79a">report written to /tmp/demo/report.html</text>
+  <text x="32" y="120" font-family="ui-monospace, 'Cascadia Mono', Menlo, Consolas, monospace" font-size="16"><tspan fill="#7fd79a">$ </tspan><tspan fill="#eef4ee">open /tmp/demo/report.html</tspan></text>
+  <rect y="144" width="960" height="36" fill="#e8b34b"/>
+  <text x="480" y="168" text-anchor="middle" font-family="ui-monospace, 'Cascadia Mono', Menlo, Consolas, monospace" font-size="15" font-weight="bold" fill="#3a2b00">ILLUSTRATIVE MOCK. Based on the documented walkthrough, not a live recording.</text>
+</svg>

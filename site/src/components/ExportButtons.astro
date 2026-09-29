@@ -1,0 +1,11 @@
+---
+/* Export + link buttons for data views. Props control which formats
+   appear. Handled by site.js through the data-export attributes. */
+const { csv = true, svg = false, png = false } = Astro.props;
+---
+<div class="btn-row">
+  {csv && <button class="btn" type="button" data-export="csv">Export CSV</button>}
+  {svg && <button class="btn" type="button" data-export="svg">Export SVG</button>}
+  {png && <button class="btn" type="button" data-export="png">Export PNG</button>}
+  <button class="btn" type="button" data-copylink>Copy link to this view</button>
+</div>
