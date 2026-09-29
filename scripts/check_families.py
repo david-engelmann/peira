@@ -9,7 +9,8 @@ carries the same list in prose. This check asserts:
   - no documented id is missing from the registry,
   - the (Tier 1) / (Tier 2) markers in the doc match the registry tiers
     (v1 families carry no marker),
-  - the numbering runs 1..N in order.
+  - the numbering runs 1..N in order, skipping reserved numbers held
+    for in-flight families (no documented family may occupy one).
 
 Usage:
     python3 scripts/check_families.py
@@ -110,7 +111,17 @@ EXPECTED_ENTRY_HASHES: dict[str, str] = {
     'temporal_numeric_traps': 'af7e233d73345439',
     'encoding_evasion': 'b8aa7481a261acf9',
     'abstain_forcing': 'a2524ce248716d94',
-    'verbosity_inflation': '28288f5d232a6691',
+    'verbosity_inflation': '810a780c540fefb6',
+    'crosslingual_shift': 'f9b7fd32945503be',
+}
+
+
+#: Family numbers reserved for in-flight families not yet landed in
+#: docs/Taxonomy.md. 22 -> retrieval_poisoning, 23 -> evidence_positioning.
+#: Documented entries may skip these numbers; nothing else may use them.
+RESERVED_FAMILY_NUMBERS: dict[int, str] = {
+    22: "retrieval_poisoning",
+    23: "evidence_positioning",
 }
 
 
@@ -123,13 +134,35 @@ def check() -> list[str]:
     documented = documented_families(taxonomy)
     doc_ids = [fam for _, fam, _ in documented]
 
-    # Numbering runs 1..N in order.
+    # Numbering runs 1..N in order, with reserved gaps allowed.
     numbers = [n for n, _, _ in documented]
-    if numbers != list(range(1, len(numbers) + 1)):
+    if not numbers:
         problems.append(
-            f"docs/Taxonomy.md: family numbering is not 1..{len(numbers)} "
-            f"in order (got {[n for n, _, _ in documented]})"
+            "docs/Taxonomy.md: no numbered families found under "
+            "'## Attack families'"
         )
+    else:
+        top = max(numbers)
+        expected = [
+            n
+            for n in range(1, top + 1)
+            if n not in RESERVED_FAMILY_NUMBERS
+        ]
+        if numbers != expected:
+            problems.append(
+                f"docs/Taxonomy.md: family numbering is not 1..{top} "
+                f"in order (reserved {sorted(RESERVED_FAMILY_NUMBERS)} skipped; "
+                f"got {[n for n, _, _ in documented]})"
+            )
+
+    # Nothing may occupy a reserved number.
+    for n, fam, _ in documented:
+        if n in RESERVED_FAMILY_NUMBERS:
+            problems.append(
+                f"docs/Taxonomy.md: family number {n} is reserved for "
+                f"in-flight family {RESERVED_FAMILY_NUMBERS[n]!r} "
+                f"(occupied by **{fam}**)"
+            )
 
     # No duplicates in the doc.
     seen: set[str] = set()

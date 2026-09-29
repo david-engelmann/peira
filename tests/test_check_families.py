@@ -81,15 +81,18 @@ class TestCheckFamilies(unittest.TestCase):
         documented = check_families.documented_families(
             REPO_ROOT / "docs" / "Taxonomy.md"
         )
-        # No cap on families (David 2026-09-28).
-        self.assertEqual(len(documented), 21)
+        # No cap on families (David 2026-09-28). 22 and 23 are reserved
+        # for the in-flight retrieval_poisoning and evidence_positioning
+        # families; crosslingual_shift is family 24.
+        self.assertEqual(len(documented), 22)
         numbers = [n for n, _, _ in documented]
-        self.assertEqual(numbers, list(range(1, 22)))
+        self.assertEqual(numbers, list(range(1, 22)) + [24])
         tiers = {fam: tier for _, fam, tier in documented}
         self.assertEqual(tiers["state_poisoning"], "v1")
         self.assertEqual(tiers["instruction_override"], "1")
         self.assertEqual(tiers["abstain_forcing"], "2")
         self.assertEqual(tiers["verbosity_inflation"], "1")
+        self.assertEqual(tiers["crosslingual_shift"], "1")
 
     def test_entry_prose_drift_detected(self):
         # A meaning change to one family's entry must fail the check.
@@ -116,6 +119,67 @@ class TestCheckFamilies(unittest.TestCase):
             set(check_families.EXPECTED_ENTRY_HASHES),
             set(check_families.FAMILIES),
         )
+
+    def test_reserved_number_occupied_rejected(self):
+        # 22 is reserved for in-flight retrieval_poisoning: documenting
+        # any family under it must fail with a reserved-number problem.
+        tmp = Path(tempfile.mkdtemp())
+        try:
+            (tmp / "docs").mkdir()
+            tax = self._taxonomy_copy(
+                tmp,
+                lambda s: s.replace(
+                    "24. **crosslingual_shift**",
+                    "22. **crosslingual_shift**",
+                ),
+            )
+            problems = self._check_against(tax)
+            self.assertTrue(
+                any("reserved" in p and "22" in p for p in problems),
+                f"expected a reserved-number problem, got: {problems}",
+            )
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+
+    def test_gap_outside_reserved_rejected(self):
+        # Skipping to 25 leaves a non-reserved gap: must fail numbering.
+        tmp = Path(tempfile.mkdtemp())
+        try:
+            (tmp / "docs").mkdir()
+            tax = self._taxonomy_copy(
+                tmp,
+                lambda s: s.replace(
+                    "24. **crosslingual_shift**",
+                    "25. **crosslingual_shift**",
+                ),
+            )
+            problems = self._check_against(tax)
+            self.assertTrue(
+                any("not 1..25" in p for p in problems),
+                f"expected a numbering problem, got: {problems}",
+            )
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+
+    def test_empty_attack_section_reports_cleanly(self):
+        # No numbered entries at all: a clean problem message, never
+        # a bare ValueError from max() on an empty sequence.
+        import re
+
+        tmp = Path(tempfile.mkdtemp())
+        try:
+            (tmp / "docs").mkdir()
+            tax = self._taxonomy_copy(
+                tmp,
+                lambda s: re.sub(r"(?m)^\d+\. \*\*.*\n", "", s),
+            )
+            problems = self._check_against(tax)
+            self.assertTrue(
+                any("no numbered families" in p for p in problems),
+                f"expected an empty-section problem, got: {problems}",
+            )
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
 
 
 if __name__ == "__main__":

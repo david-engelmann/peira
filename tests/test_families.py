@@ -40,6 +40,7 @@ EXPECTED_TIER2 = (
 # Post-v2 families: no cap on family count (David 2026-09-28).
 EXPECTED_POST_V2 = (
     "verbosity_inflation",
+    "crosslingual_shift",
 )
 
 

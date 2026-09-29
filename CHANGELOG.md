@@ -17,6 +17,22 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
   cost-saving). `peira value` comparisons now include the CEAC
   curve alongside CPPF and the break-even attack rate.
 
+### Added: R-06 crosslingual_shift family (family 24, dataset v2)
+
+- New attack family `crosslingual_shift`: hostile instructions or
+  justifications rendered in a non-English language (or code-switched
+  mix) to bypass safety filters trained primarily on English. The
+  attacked variant keeps the benign facts in English but shifts the
+  attack payload to Spanish, French, German, Portuguese, Italian, or
+  Dutch. Registered in `python/peira/families.py`, documented in
+  `docs/Taxonomy.md` (entry 24) and `docs/Methodology.md` (measurement
+  section with the deletion test), with an authoring script in
+  `scripts/author_crosslingual_shift.py`.
+- 420 crosslingual_shift cases (300 choice, 70 score, 50 abstain),
+  case IDs `v2-xling-0001` …. Design MDEs at n=400:
+  4.4pp/6.3pp/7.7pp/8.9pp at 10%/20%/30%/40% discordance.
+  Dataset v2 version moves from 2.0.0 to 2.1.0.
+
 ### Fixed v1 scale mismatches in 241 cases (D-36 class 4)
 
 - 241 cases across 8 families mixed 0-100 scoring language with 0-1
