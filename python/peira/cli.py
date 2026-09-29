@@ -347,8 +347,15 @@ def cmd_run(args: argparse.Namespace) -> int:
               file=sys.stderr)
         return EXIT_USER_ERROR
 
+    # The conversational suite has its own case schema, loader, and
+    # suite driver; every other suite uses the single-shot path.
+    is_conversational = suite == "conversational"
     try:
-        cases = load_cases(suite_dir)
+        if is_conversational:
+            from peira.conversation import load_conversation_cases
+            cases = load_conversation_cases(suite_dir)
+        else:
+            cases = load_cases(suite_dir)
     except ValueError as e:
         print(f"error: invalid case data: {e}", file=sys.stderr)
         return EXIT_USER_ERROR
@@ -382,11 +389,15 @@ def cmd_run(args: argparse.Namespace) -> int:
         # the runner will (fresh per execution, so runs are unlinkable
         # even with the same seed).
         run_nonce = new_run_nonce()
-        adapter = MockAdapter(
-            script=MockAdapter.script_for(
+        if is_conversational:
+            script = MockAdapter.script_for_conversation(
                 cases, seed=args.seed, run_nonce=run_nonce
             )
-        )
+        else:
+            script = MockAdapter.script_for(
+                cases, seed=args.seed, run_nonce=run_nonce
+            )
+        adapter = MockAdapter(script=script)
     else:
         run_nonce = new_run_nonce()
 
@@ -452,11 +463,20 @@ def cmd_run(args: argparse.Namespace) -> int:
                 partial = None
             if partial is not None:
                 try:
+                    from peira.conversation import (
+                        ConversationResult as _ConvResult,
+                    )
                     already_done, prior_results = validate_partial(
                         partial, adapter, cases, suite, dataset_version,
                         manifest_sha256, seed=args.seed,
                         budget_usd=getattr(args, "budget_usd", None),
-                        cache_enabled=args.cache_dir is not None)
+                        cache_enabled=args.cache_dir is not None,
+                        result_from_dict=(
+                            _ConvResult.from_dict
+                            if is_conversational
+                            else PerCaseResult.from_dict
+                        ),
+                    )
                 except ValueError as e:
                     print(f"error: {e}; delete {partial_path} or drop "
                           f"--resume and re-run.", file=sys.stderr)
@@ -482,8 +502,7 @@ def cmd_run(args: argparse.Namespace) -> int:
         )
 
     try:
-        artifact = run_suite(
-            adapter, cases, suite, dataset_version,
+        run_kwargs = dict(
             progress=progress, already_done=already_done,
             prior_results=prior_results, partial_path=partial_path,
             manifest_sha256=manifest_sha256, seed=args.seed,
@@ -503,6 +522,15 @@ def cmd_run(args: argparse.Namespace) -> int:
             # spec to reload the adapter; the short name is not loadable.
             config_extra={"adapter_spec": args.adapter},
         )
+        if is_conversational:
+            from peira.conversation import run_conversation_suite
+            artifact = run_conversation_suite(
+                adapter, cases, suite, dataset_version, **run_kwargs
+            )
+        else:
+            artifact = run_suite(
+                adapter, cases, suite, dataset_version, **run_kwargs
+            )
     except KeyboardInterrupt:
         print("\ninterrupted; partial run saved; re-run with --resume.",
               file=sys.stderr)
@@ -601,7 +629,13 @@ def cmd_doctor(args: argparse.Namespace) -> int:
 
 
 def cmd_validate(args: argparse.Namespace) -> int:
-    from peira.schema import validate_case_dict
+    kind = getattr(args, "kind", "single")
+    if kind == "conversational":
+        from peira.conversation import (
+            validate_conversation_dict as validate_case_dict,
+        )
+    else:
+        from peira.schema import validate_case_dict
 
     dataset_dir = Path(args.dataset)
     if not dataset_dir.exists():
@@ -2945,14 +2979,19 @@ def cmd_dataset_status(args: argparse.Namespace) -> int:
 
 
 def cmd_dataset_gates(args: argparse.Namespace) -> int:
-    from peira.gates import run_gates
+    kind = getattr(args, "kind", "single")
 
     dataset_dir = Path(args.dir)
     if not dataset_dir.is_dir():
         print(f"error: dataset directory {dataset_dir} not found",
               file=sys.stderr)
         return EXIT_USER_ERROR
-    results = run_gates(dataset_dir)
+    if kind == "conversational":
+        from peira.conversation import run_conversation_gates
+        results = run_conversation_gates(dataset_dir)
+    else:
+        from peira.gates import run_gates
+        results = run_gates(dataset_dir)
     n_err = sum(len(r.errors) for r in results)
     n_warn = sum(len(r.warnings) for r in results)
     for r in results:
@@ -3074,6 +3113,9 @@ def build_parser() -> argparse.ArgumentParser:
 
     v = sub.add_parser("validate", help="validate a dataset directory")
     v.add_argument("--dataset", required=True)
+    v.add_argument("--kind", default="single",
+                   choices=["single", "conversational"],
+                   help="case schema: single-shot or conversational")
     v.set_defaults(func=cmd_validate)
 
     doc = sub.add_parser(
@@ -3312,6 +3354,9 @@ def build_parser() -> argparse.ArgumentParser:
     vm.set_defaults(func=cmd_dataset_verify_manifest)
     g = dsub.add_parser("gates", help="run the automated validation gates")
     g.add_argument("--dir", required=True, help="dataset directory")
+    g.add_argument("--kind", default="single",
+                   choices=["single", "conversational"],
+                   help="case schema: single-shot or conversational")
     g.set_defaults(func=cmd_dataset_gates)
     n = dsub.add_parser("new", help="scaffold a new case from a family template")
     n.add_argument("--family", required=True, choices=sorted(TEMPLATES),
