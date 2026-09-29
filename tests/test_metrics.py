@@ -1151,6 +1151,32 @@ class TestM9CostAccounting(unittest.TestCase):
         self.assertAlmostEqual(x["all"]["cost_per_flip_usd"], 0.08,
                                places=9)
 
+    def test_cost_exchange_rate_bad_query_values(self):
+        # Dict values are validated upfront: non-int, bool, and < 1
+        # all raise.
+        for bad in ({"f": 0}, {"f": -1}, {"f": "2"}, {"f": 1.5},
+                    {"f": True}, {"f": None}):
+            with self.assertRaises(ValueError, msg=f"queries={bad}"):
+                cost_exchange_rate(
+                    [], attacker_queries_assumed=bad,
+                    pricing_table=self._TABLE)
+
+    def test_defender_cost_per_1k_default_table(self):
+        # pricing_table=None loads the pinned package table (not {}):
+        # a model priced in the pinned table is priced, not unpriced.
+        from peira.pricing import load_pricing_table
+        table = load_pricing_table()
+        models = table.get("models", {})
+        if not models:
+            self.skipTest("pinned pricing table has no models")
+        model = sorted(models)[0]
+        R = self._mrec
+        rec = R(model=model, bcost=0.01)
+        d = defender_cost_per_1k([rec, rec], pricing_table=None)
+        self.assertTrue(d["sufficient"])
+        self.assertEqual(d["n_priced"], 2)
+        self.assertEqual(d["n_unpriced"], 0)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -323,6 +323,13 @@ class RunArtifact:
                 f"{where} usage field 'model' must be str, "
                 f"got {type(usage['model']).__name__}"
             )
+        if "price_table_ref" in usage and not isinstance(
+            usage["price_table_ref"], str
+        ):
+            raise ValueError(
+                f"{where} usage field 'price_table_ref' must be str, "
+                f"got {type(usage['price_table_ref']).__name__}"
+            )
         for key in ("tokens_in", "tokens_out"):
             if not _is_int(usage[key]):
                 raise ValueError(

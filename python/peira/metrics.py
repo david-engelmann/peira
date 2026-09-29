@@ -2788,6 +2788,13 @@ def _round4(x: float | None) -> float | None:
     backends in practice — but not guaranteed: the backends may differ
     by ~1 ulp, which can flip the 4th decimal at an exact rounding
     boundary. "Almost always", not a contract.
+
+    Uses Python's built-in round(), which is banker's rounding
+    (round-half-to-even): 0.00005 rounds to 0.0000, 0.00015 rounds to
+    0.0002. Values smaller than 0.00005 in absolute value round to 0.0;
+    a reported $0.00 therefore means "less than half a ten-thousandth
+    of a dollar", not "exactly free". Distinguish from the priced /
+    unpriced counts when the distinction matters.
     """
     return None if x is None else round(x, 4)
 
@@ -3605,6 +3612,14 @@ def cost_per_flip(
     or zero flips observed (cost-per-flip is undefined when nothing
     flipped, not $0.00).
 
+    Partial coverage: when some attacked calls are unpriced
+    (``n_unpriced > 0``) the mean query price is a LOWER BOUND.
+    Unpriced calls contribute $0.0 to the numerator (the runner prices
+    unknown models at 0.0) but the flip rate in the denominator is over
+    all eligible cases. The reported figure therefore understates the
+    true cost per flip whenever ``n_unpriced > 0``; check ``n_priced`` /
+    ``n_unpriced`` before quoting the number.
+
     Python reference only; Rust port deferred.
     """
     if pricing_table is None:
@@ -3708,8 +3723,12 @@ def defender_cost_per_1k(
         )
     if not math.isfinite(abstention_review_cost_usd):
         raise ValueError("abstention_review_cost_usd must be finite")
+    if pricing_table is None:
+        from peira.pricing import load_pricing_table
+
+        pricing_table = load_pricing_table()
     scoped = [r for r in results if family is None or r.family == family]
-    models = (pricing_table or {}).get("models", {}) or {}
+    models = pricing_table.get("models", {})
     benign_costs: list[tuple[float, bool]] = []
     n_benign_abstained = 0
     n_benign_calls = 0
@@ -3788,6 +3807,18 @@ def cost_exchange_rate(
             "attacker_queries_assumed must be a dict or None, "
             f"got {attacker_queries_assumed!r}"
         )
+    if attacker_queries_assumed is not None:
+        for fam_id, queries in attacker_queries_assumed.items():
+            if not isinstance(queries, int) or isinstance(queries, bool):
+                raise ValueError(
+                    "attacker_queries_assumed values must be integers, "
+                    f"got {queries!r} for family {fam_id!r}"
+                )
+            if queries < 1:
+                raise ValueError(
+                    "attacker_queries_assumed values must be >= 1, "
+                    f"got {queries} for family {fam_id!r}"
+                )
 
     def queries_for(family_id: str) -> int:
         if attacker_queries_assumed is not None and family_id in (
