@@ -2033,6 +2033,126 @@ def cmd_lottery(args: argparse.Namespace) -> int:
     return EXIT_OK
 
 
+def _threshold_family_text(t: dict) -> str:
+    """Human-readable threshold-by-family interaction table for stdout."""
+    c = t["costs"]
+    lines = [
+        "Peira threshold-by-family interaction (C-7)",
+        "===========================================",
+        f"Arm: {t['arm']}; costs: false_approve={c['cost_false_approve']}, "
+        f"false_deny={c['cost_false_deny']}, review={c['cost_review']}, "
+        f"false_unknown={c['cost_false_unknown']}",
+        "",
+    ]
+    g = t["global"]
+    if g["optimal_threshold"] is None:
+        lines.append("Global optimum: withheld (no priced cases)")
+    else:
+        lines.append(
+            f"Global optimum: pt={g['optimal_threshold']:.2f}, "
+            f"cost/case={g['cost_per_case']:.4f} "
+            f"(n_priced={g['priced']})"
+        )
+    lines.append("")
+    lines.append(
+        "Per-family interaction (gain = saving per case from a "
+        "family-specific threshold over the global one):"
+    )
+    for fid, row in t["families"].items():
+        if row["optimal_threshold"] is None:
+            lines.append(
+                f"  {row['display_name']} ({fid}): withheld "
+                f"(n_priced=0)"
+            )
+            continue
+        lines.append(
+            f"  {row['display_name']} ({fid}): "
+            f"family pt={row['optimal_threshold']:.2f} "
+            f"cost={row['cost_at_family_optimal']:.4f}, "
+            f"at global pt cost={row['cost_at_global_threshold']:.4f}, "
+            f"gain/case={row['gain_per_case']:.4f} "
+            f"(n_priced={row['priced']})"
+        )
+    lines.append("")
+    just = t["families_justifying_specific"]
+    if just:
+        names = [t["families"][f]["display_name"] for f in just]
+        lines.append(
+            "Families justifying a family-specific threshold: "
+            + ", ".join(names)
+        )
+    else:
+        lines.append(
+            "No family justifies a family-specific threshold: the "
+            "global optimum is optimal for every family."
+        )
+    return "\n".join(lines) + "\n"
+
+
+def cmd_threshold_by_family(args: argparse.Namespace) -> int:
+    """Optimal review threshold per family under buyer-cost economics."""
+    from peira.metrics import PerCaseResult
+    from peira.threshold_family import family_threshold_table
+
+    run_path = Path(args.run)
+    if not run_path.exists():
+        print(f"error: {run_path} not found", file=sys.stderr)
+        return EXIT_USER_ERROR
+    try:
+        artifact = RunArtifact.from_json(run_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as e:
+        print(f"error: {run_path} is not a valid run artifact ({e})",
+              file=sys.stderr)
+        return EXIT_USER_ERROR
+    try:
+        results = [PerCaseResult.from_dict(d) for d in artifact.results]
+    except (KeyError, ValueError, TypeError) as e:
+        print(f"error: {run_path}: cannot decode per-case results ({e})",
+              file=sys.stderr)
+        return EXIT_USER_ERROR
+
+    known_families = {r.family for r in results}
+    if args.families:
+        families = [f.strip() for f in args.families.split(",") if f.strip()]
+        families = list(dict.fromkeys(families))
+        unknown = [f for f in families if f not in known_families]
+        if unknown:
+            print(f"error: unknown families: {', '.join(unknown)} "
+                  "(not present in the run)", file=sys.stderr)
+            return EXIT_USER_ERROR
+    else:
+        families = sorted(known_families)
+    if not families:
+        print("error: no families found in the run", file=sys.stderr)
+        return EXIT_USER_ERROR
+
+    try:
+        table = family_threshold_table(
+            results,
+            cost_false_approve=args.cost_false_approve,
+            cost_false_deny=args.cost_false_deny,
+            cost_review=args.cost_review,
+            thresholds=None,
+            arm=args.arm,
+            families=families,
+        )
+    except ValueError as e:
+        print(f"error: {e}", file=sys.stderr)
+        return EXIT_USER_ERROR
+
+    sys.stdout.write(_threshold_family_text(table))
+    if args.json is not None:
+        out = Path(args.json)
+        try:
+            out.write_text(json.dumps(table, indent=2), encoding="utf-8")
+        except OSError as e:
+            print(f"error: cannot write threshold-family JSON to {out} ({e})",
+                  file=sys.stderr)
+            return EXIT_USER_ERROR
+        print(f"threshold-by-family: {out}")
+    return EXIT_OK
+
+
 def cmd_value(args: argparse.Namespace) -> int:
     """M-3 economic value view over 1+ run artifacts.
 
@@ -3190,6 +3310,28 @@ def build_parser() -> argparse.ArgumentParser:
     vv.add_argument("--out", default=None,
                     help="write an HTML value-view report to this path")
     vv.set_defaults(func=cmd_value)
+
+    tf = sub.add_parser(
+        "threshold-by-family",
+        help="C-7: optimal review threshold per family under buyer-cost "
+        "economics (family-specific vs global threshold interaction)",
+    )
+    tf.add_argument("run", help="run artifact path")
+    tf.add_argument("--cost-false-approve", type=float, required=True,
+                    help="USD cost of trusting a wrongly-approved decision")
+    tf.add_argument("--cost-false-deny", type=float, required=True,
+                    help="USD cost of trusting a wrongly-denied decision")
+    tf.add_argument("--cost-review", type=float, required=True,
+                    help="USD cost of one human review")
+    tf.add_argument("--families", default=None,
+                    help="comma-separated family manifest (default: all "
+                    "families in the run)")
+    tf.add_argument("--arm", default="attacked",
+                    choices=("attacked", "benign"),
+                    help="which arm to price (default: attacked)")
+    tf.add_argument("--json", default=None,
+                    help="write the full interaction table JSON to this path")
+    tf.set_defaults(func=cmd_threshold_by_family)
 
     # Run registry (Layer 5a): index and query run artifacts.
     rr = sub.add_parser("runs", help="run registry: list and verify artifacts")
