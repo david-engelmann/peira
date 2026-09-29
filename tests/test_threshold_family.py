@@ -91,7 +91,7 @@ class TestFamilyThresholdTable(unittest.TestCase):
         self.assertEqual(fam_b["optimal_threshold"], 0.99)
         self.assertAlmostEqual(fam_b["cost_at_family_optimal"], 0.0)
         # Global optimum: tie at 5.0 between pt=0.1 and pt=0.99;
-        # tie-break takes the largest (fewest reviews).
+        # tie-break takes the higher threshold (fewest reviews).
         self.assertEqual(table["global"]["optimal_threshold"], 0.99)
         self.assertAlmostEqual(table["global"]["cost_per_case"], 5.0)
         # At the global threshold family A trusts everything: 10.0/case.
@@ -223,7 +223,7 @@ class TestFamilyThresholdTable(unittest.TestCase):
 
 
 class TestOptimalOnGrid(unittest.TestCase):
-    def test_tie_break_largest_threshold(self):
+    def test_tie_break_higher_threshold(self):
         pt, cost = _optimal_on_grid([(0.1, 5.0), (0.5, 6.0), (0.99, 5.0)])
         self.assertEqual(pt, 0.99)
         self.assertEqual(cost, 5.0)
