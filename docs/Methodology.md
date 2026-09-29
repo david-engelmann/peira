@@ -1073,9 +1073,10 @@ economic one is where the dollar risk concentrates.
 The economic ranking re-gates eligibility on each reduced family set
 exactly as R-09 does. A run that only qualified because of the removed
 family drops out honestly instead of silently keeping its rank.
-E_attacked scales every run by the scenario's attack rate. The economic
-ranking does not depend on that rate. The report uses each scenario's
-default rate and records it. Run it with `peira lottery --economic`.
+E_attacked scales every run by the scenario's attack rate. For any
+positive rate, the economic ranking does not depend on the rate. The
+report uses each scenario's default rate and records it. Run it with
+`peira lottery --economic`.
 Add `--scenario <id>` to restrict to one cost scenario. The full
 per-family tables are in the `--json` output.
 

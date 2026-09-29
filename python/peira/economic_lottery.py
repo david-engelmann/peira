@@ -16,8 +16,9 @@ is the finding, not a footnote.
 
 The economic ranking rule: runs are ranked by ``E_attacked`` ascending
 (a lower expected attack cost is the better deployment). ``E_attacked``
-scales every run by the scenario's attack rate, so the ranking is
-invariant to that rate; the scenario's default rate is used and
+scales every run by the scenario's attack rate, so for any positive rate
+the ranking is invariant to that rate (at rate zero every cost is zero
+and the ranking degenerates); the scenario's default rate is used and
 documented in the output. Eligibility gates are re-evaluated on each
 reduced family set exactly as in R-09, so a run that only qualified
 because of the removed family drops out honestly.
@@ -125,6 +126,12 @@ def economic_lottery_analysis(
     full ranking, the economic ``lottery_index`` (mean tau across
     families where tau is defined), the minimum tau and most
     influential family, and per-family detail.
+
+    This returns the economic half of the C-6 pair on its own: the
+    never-a-single-index invariant is enforced by
+    :func:`paired_stability_report` and by the ``peira lottery
+    --economic`` CLI, which always present this index beside the
+    robustness index.
     """
     fams = list(families)
     if not fams:
@@ -208,6 +215,21 @@ def _fmt_index(v: float | None) -> str:
     return "undefined" if v is None else f"{v:.4f}"
 
 
+def _family_clause(half: dict[str, Any], half_name: str) -> str | None:
+    """Name the family that moves one ranking most, or None.
+
+    Returns None when no family is most influential, or when the most
+    influential family's tau is 1.0: naming it would claim it "moves
+    the ranking most" when in fact nothing moved.
+    """
+    fam = half["most_influential_family"]
+    if fam is None:
+        return None
+    if half["per_family"][fam]["tau"] == 1.0:
+        return None
+    return f"removing '{fam}' moves the {half_name} ranking most"
+
+
 def _disagreement_note(
     scenario_id: str,
     robustness: dict[str, Any],
@@ -219,7 +241,7 @@ def _disagreement_note(
     stable while the other is fragile (or one is undefined). The note
     names both verdicts and the families that move each ranking most,
     because "family X carries the dollar risk" is the actionable
-    reading.
+    reading. A half whose ranking did not move at all names no family.
     """
     r_verdict = robustness["verdict"]
     e_verdict = economic["verdict"]
@@ -233,15 +255,20 @@ def _disagreement_note(
         f"economic ranking under scenario '{scenario_id}' is {e_verdict} "
         f"(index {_fmt_index(economic['lottery_index'])})"
     )
-    if r_fam is not None and e_fam is not None:
+    r_clause = _family_clause(robustness, "robustness")
+    e_clause = _family_clause(economic, "economic")
+    if r_clause is not None and e_clause is not None:
         if r_fam == e_fam:
             note += f"; removing '{r_fam}' moves both rankings most"
         else:
             note += (
-                f"; removing '{r_fam}' moves the robustness ranking most, "
-                f"removing '{e_fam}' moves the economic ranking most: "
+                f"; {r_clause}, {e_clause}: "
                 f"'{e_fam}' carries the dollar risk"
             )
+    elif e_clause is not None:
+        note += f"; {e_clause}: '{e_fam}' carries the dollar risk"
+    elif r_clause is not None:
+        note += f"; {r_clause}"
     return note
 
 

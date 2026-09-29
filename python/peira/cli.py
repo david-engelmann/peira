@@ -1992,7 +1992,10 @@ def _economic_lottery_text(rep: dict) -> str:
     for sid, p in rep["pair"].items():
         lines.append(f"  [{sid}] (scenario v{p['scenario_version']}):")
         if p["economic_index"] is None:
-            lines.append("    lottery index: undefined")
+            lines.append(
+                "    lottery index: undefined "
+                "(no family yields a comparable ranking)"
+            )
         else:
             lines.append(
                 f"    lottery index: {p['economic_index']:.4f} "
@@ -2008,6 +2011,19 @@ def _economic_lottery_text(rep: dict) -> str:
     lines.append("")
     lines.append("Per-family taus and full rankings are in the JSON (--json).")
     return "\n".join(lines) + "\n"
+
+
+def _write_lottery_json(path_str: str, payload: dict) -> int:
+    """Write a lottery report payload to --json; EXIT_OK or EXIT_USER_ERROR."""
+    out = Path(path_str)
+    try:
+        out.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+    except OSError as e:
+        print(f"error: cannot write lottery JSON to {out} ({e})",
+              file=sys.stderr)
+        return EXIT_USER_ERROR
+    print(f"lottery: {out}")
+    return EXIT_OK
 
 
 def cmd_lottery(args: argparse.Namespace) -> int:
@@ -2069,6 +2085,10 @@ def cmd_lottery(args: argparse.Namespace) -> int:
         print("error: no families found in the given runs", file=sys.stderr)
         return EXIT_USER_ERROR
 
+    if args.scenario and not args.economic:
+        print("warning: --scenario only applies with --economic; ignoring",
+              file=sys.stderr)
+
     if args.economic:
         # C-6: pair the robustness lottery index with the economic
         # (E_attacked) lottery index per cost scenario. Never a single
@@ -2085,14 +2105,7 @@ def cmd_lottery(args: argparse.Namespace) -> int:
             return EXIT_USER_ERROR
         sys.stdout.write(_economic_lottery_text(report))
         if args.json is not None:
-            out = Path(args.json)
-            try:
-                out.write_text(json.dumps(report, indent=2), encoding="utf-8")
-            except OSError as e:
-                print(f"error: cannot write lottery JSON to {out} ({e})",
-                      file=sys.stderr)
-                return EXIT_USER_ERROR
-            print(f"lottery: {out}")
+            return _write_lottery_json(args.json, report)
         return EXIT_OK
 
     try:
@@ -2103,14 +2116,7 @@ def cmd_lottery(args: argparse.Namespace) -> int:
 
     sys.stdout.write(_lottery_text(analysis))
     if args.json is not None:
-        out = Path(args.json)
-        try:
-            out.write_text(json.dumps(analysis, indent=2), encoding="utf-8")
-        except OSError as e:
-            print(f"error: cannot write lottery JSON to {out} ({e})",
-                  file=sys.stderr)
-            return EXIT_USER_ERROR
-        print(f"lottery: {out}")
+        return _write_lottery_json(args.json, analysis)
     return EXIT_OK
 
 

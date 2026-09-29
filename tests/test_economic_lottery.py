@@ -119,8 +119,8 @@ def _disagreement_runs():
     deny-to-approve jailbreaks ($1000 each under the standard scenario)
     while every other flip is a cheap $50 approve-to-deny: run-1 carries
     nearly all the dollars in the tail_risk family. Removing tail_risk
-    inverts the economic ranking (index 0.67, fragile) while the ASR
-    ranking does not move at all.
+    decorrelates the economic ranking (tau 0.0, index 0.67, fragile)
+    while the ASR ranking does not move at all.
 
     Flip totals: run-1=14, run-2=28, run-3=42, run-4=56
     -> ASR order run-1, run-2, run-3, run-4.
@@ -341,6 +341,19 @@ class CmdEconomicLotteryTest(unittest.TestCase):
         self.assertEqual(rc, EXIT_USER_ERROR)
         self.assertIn("unknown cost scenario", err.getvalue())
 
+    def test_scenario_without_economic_warns_and_ignores(self):
+        from peira.cli import EXIT_OK, cmd_lottery
+
+        a, b = self._two_runs()
+        err = io.StringIO()
+        buf = io.StringIO()
+        with redirect_stderr(err), redirect_stdout(buf):
+            rc = cmd_lottery(_cli_args(a, b, scenario="standard"))
+        self.assertEqual(rc, EXIT_OK)
+        self.assertIn("--scenario only applies with --economic", err.getvalue())
+        # Plain R-09 path ran: no economic section in stdout.
+        self.assertNotIn("Economic ranking", buf.getvalue())
+
 
 class PairedStabilityReportTest(unittest.TestCase):
     def test_always_reports_the_pair_never_a_single_index(self):
@@ -373,12 +386,23 @@ class PairedStabilityReportTest(unittest.TestCase):
         )
         p = report["pair"]["standard"]
         # Removing the tail_risk family leaves the ASR ranking untouched
-        # (flip counts are proportional) but inverts the economic ranking
-        # (run-1's dollars were concentrated there).
+        # (flip counts are proportional) but decorrelates the economic
+        # ranking (run-1's dollars were concentrated there).
         self.assertTrue(p["disagree"])
         self.assertIsNotNone(p["disagreement_note"])
         self.assertIn("tail_risk", p["disagreement_note"])
         self.assertIn("dollar risk", p["disagreement_note"])
+
+    def test_note_names_no_family_that_moved_nothing(self):
+        # The robustness ranking does not move at all here (all taus
+        # 1.0), so the note must not credit any family with moving it:
+        # "neutral" is the alphabetical argmin, but nothing moved.
+        report = paired_stability_report(
+            _disagreement_runs(), [CHEAP, JB, NEUTRAL], ["standard"]
+        )
+        note = report["pair"]["standard"]["disagreement_note"]
+        self.assertNotIn("neutral", note)
+        self.assertIn("tail_risk", note)
 
     def test_no_disagreement_when_rankings_agree(self):
         # All flips cheap: the economic ranking tracks the ASR ranking.
