@@ -511,6 +511,7 @@ def _invoke_adapter(
     case_input: dict[str, Any],
     primitive: str,
     context: CallContext,
+    _exec_ms: list[float] | None = None,
 ) -> tuple[Any, dict[str, Any] | None]:
     """Run one adapter call and capture its transcript payload.
 
@@ -518,8 +519,21 @@ def _invoke_adapter(
     they are captured atomically with the call by construction — the
     runner reads them off the returned object, no second hook and no
     thread-local bookkeeping for adapter authors.
+
+    When ``_exec_ms`` is given, ``adapter.decide()``'s wall time in
+    milliseconds is appended to it (even when decide raises): the
+    runner uses it to separate exact adapter execution from
+    thread-pool scheduling delay, which is harness overhead, not
+    provider work.
     """
-    output = adapter.decide(case_input, primitive, context)
+    if _exec_ms is None:
+        output = adapter.decide(case_input, primitive, context)
+    else:
+        t0 = time.perf_counter()
+        try:
+            output = adapter.decide(case_input, primitive, context)
+        finally:
+            _exec_ms.append((time.perf_counter() - t0) * 1000.0)
     raw = getattr(output, "transcript", None)
     if raw is not None and not isinstance(raw, dict):
         # validate_output() flags this as malformed downstream; the
@@ -775,9 +789,14 @@ async def _record_call_async(
                 # never sees a previous attempt's mutations.
                 attempt_input = copy.deepcopy(case_input)
                 t_dispatch = time.perf_counter()
+                # Exact adapter execution is measured inside the worker
+                # thread (see _invoke_adapter): the holder separates
+                # decide()'s wall time from thread-pool scheduling
+                # delay, which stays in the harness-overhead residual.
+                exec_ms: list[float] = []
                 call = asyncio.to_thread(
                     _invoke_adapter, adapter, attempt_input, primitive,
-                    context,
+                    context, exec_ms,
                 )
                 if call_timeout is not None:
                     output, raw = await asyncio.wait_for(call, call_timeout)
@@ -802,14 +821,19 @@ async def _record_call_async(
                     raise
                 output, errors, error = None, [], e
             finally:
-                # Adapter execution is the provider-facing wall time:
-                # dispatch to result (or to the timeout/exception).
-                # When deepcopy itself failed, t_dispatch is unset and
-                # the attempt contributes nothing here — the residual
-                # lands in harness overhead.
-                t_done = time.perf_counter()
+                # Adapter execution is exactly adapter.decide()'s wall
+                # time, measured inside the worker thread (see
+                # _invoke_adapter). Thread-pool scheduling delay is
+                # runner scheduling, not provider work: it stays in the
+                # harness-overhead residual via _assemble_timing. When
+                # deepcopy itself failed, t_dispatch is unset and the
+                # attempt contributes nothing here — the residual lands
+                # in harness overhead. When the attempt was cancelled
+                # before the worker started (a wait_for timeout racing
+                # a queued call), the holder is empty and the attempt
+                # contributes nothing: the adapter never executed.
                 if t_dispatch is not None:
-                    adapter_execution_ms += (t_done - t_dispatch) * 1000.0
+                    adapter_execution_ms += exec_ms[0] if exec_ms else 0.0
         latency_ms = (time.perf_counter() - start) * 1000.0
         attempt_latencies_ms.append(latency_ms)
 

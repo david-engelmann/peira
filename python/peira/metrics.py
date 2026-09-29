@@ -5109,6 +5109,157 @@ def latency_summary(
     return blocks
 
 
+# R-12: the four CallTiming components, in a fixed order reports and
+# tests can rely on.
+TIMING_COMPONENTS: tuple[str, ...] = (
+    "admission_wait_ms",
+    "harness_overhead_ms",
+    "adapter_execution_ms",
+    "backoff_ms",
+)
+# p95 needs at least this many observations; p99 needs
+# P99_MIN_OBSERVATIONS per family (R-12 policy).
+P95_MIN_OBSERVATIONS = 5
+P99_MIN_OBSERVATIONS = 100
+# A component whose coefficient of variation exceeds this fraction
+# gets investigate=True: a flag to look at the raw samples, not a
+# verdict on the adapter (R-12 policy).
+TIMING_CV_INVESTIGATE_THRESHOLD = 0.05
+
+
+def _timing_component_block(samples: list[float]) -> dict[str, Any]:
+    """One timing component's summary block (R-12 statistical policy).
+
+    ``n`` is always reported. ``min`` and ``p50`` (median) are
+    published whenever n > 0. ``p95`` is withheld (None) below
+    ``P95_MIN_OBSERVATIONS`` and ``p99`` below
+    ``P99_MIN_OBSERVATIONS`` per family: high quantiles on tiny
+    samples are noise, so they are withheld rather than published as
+    numbers. Percentiles use the module's linear-interpolation
+    ``_percentile`` (numpy 'linear').
+
+    ``samples`` retains the raw observations verbatim (4-decimal
+    rounded, like every other reported float in this module): no
+    outlier trimming, no winsorizing, ever. Extreme samples are data,
+    not noise; anyone who wants a trimmed view computes it from the
+    retained samples.
+
+    ``cv`` is the coefficient of variation (population stddev / mean):
+    a dimensionless instability measure, comparable across families
+    and components. It is None when the mean is zero (no variation to
+    relativize). ``investigate`` is True when cv exceeds
+    ``TIMING_CV_INVESTIGATE_THRESHOLD`` (5%) — a flag to look at the
+    raw samples, not a verdict.
+    """
+    _check_finite(samples, "timing component samples")
+    n = len(samples)
+    block: dict[str, Any] = {
+        "n": n,
+        "samples": [_round4(s) for s in samples],
+    }
+    if n == 0:
+        block.update({
+            "min": None, "p50": None, "p95": None, "p99": None,
+            "mean": None, "cv": None, "investigate": False,
+        })
+        return block
+    s = sorted(samples)
+    mean = sum(s) / n
+    # Population stddev: the samples are the complete observation set
+    # for this family/component, not a sample of a larger population.
+    var = sum((x - mean) ** 2 for x in s) / n
+    std = math.sqrt(var)
+    cv = (std / mean) if mean > 0 else None
+    block.update({
+        "min": _round4(s[0]),
+        "p50": _round4(_percentile(s, 0.50)),
+        "p95": (
+            _round4(_percentile(s, 0.95))
+            if n >= P95_MIN_OBSERVATIONS else None
+        ),
+        "p99": (
+            _round4(_percentile(s, 0.99))
+            if n >= P99_MIN_OBSERVATIONS else None
+        ),
+        "mean": _round4(mean),
+        "cv": _round4(cv),
+        "investigate": bool(cv is not None and cv >
+                            TIMING_CV_INVESTIGATE_THRESHOLD),
+    })
+    return block
+
+
+def timing_summary(
+    results: list[PerCaseResult],
+) -> dict[str, dict[str, Any]]:
+    """Per-family per-component timing decomposition (R-12).
+
+    Groups both arms' call records by case family and summarizes each
+    of the four CallTiming components (admission_wait_ms,
+    harness_overhead_ms, adapter_execution_ms, backoff_ms) with the
+    R-12 statistical policy (see _timing_component_block): n, min,
+    p50, p95 (withheld below 5), p99 (withheld below 100 per family),
+    mean, coefficient of variation with a 5%-investigate flag, and the
+    raw samples retained verbatim — no outlier trimming, ever.
+
+    Cache-hit calls and timed-out calls are excluded from the
+    percentile inputs (like latency_summary: a cache hit made no
+    provider call, and a timeout's adapter execution is the synthetic
+    item budget, not a measurement) and reported as ``n_cached`` /
+    ``n_timeouts`` alongside. ``n_calls`` is the total call count so
+    both rates are auditable.
+
+    Pre-R-12 records carry the zero breakdown: a family whose records
+    all predate the timing capture shows zeros, not missing data —
+    nothing was measured then.
+
+    Heterogeneous families are never averaged into a single claim:
+    this block is per family only, with no cross-family rollup.
+
+    Python reference only; Rust port deferred.
+    """
+    families: dict[str, dict[str, list[float]]] = {}
+    fam_calls: dict[str, int] = {}
+    fam_timeouts: dict[str, int] = {}
+    fam_cached: dict[str, int] = {}
+    for r in results:
+        fam = r.family
+        comps = families.setdefault(
+            fam, {c: [] for c in TIMING_COMPONENTS})
+        fam_calls.setdefault(fam, 0)
+        fam_timeouts.setdefault(fam, 0)
+        fam_cached.setdefault(fam, 0)
+        for rec in (r.benign, r.attacked):
+            fam_calls[fam] += 1
+            if rec.cached:
+                fam_cached[fam] += 1
+                continue
+            if rec.timed_out:
+                fam_timeouts[fam] += 1
+                continue
+            t = rec.timing_ms
+            comps["admission_wait_ms"].append(
+                float(t.admission_wait_ms))
+            comps["harness_overhead_ms"].append(
+                float(t.harness_overhead_ms))
+            comps["adapter_execution_ms"].append(
+                float(t.adapter_execution_ms))
+            comps["backoff_ms"].append(float(t.backoff_ms))
+    summary: dict[str, dict[str, Any]] = {}
+    for fam in sorted(families):
+        comps = families[fam]
+        summary[fam] = {
+            "n_calls": fam_calls[fam],
+            "n_timeouts": fam_timeouts[fam],
+            "n_cached": fam_cached[fam],
+            "components": {
+                c: _timing_component_block(comps[c])
+                for c in TIMING_COMPONENTS
+            },
+        }
+    return summary
+
+
 def cost_summary(
     results: list[PerCaseResult],
     pricing_table: Mapping[str, Any] | None = None,
@@ -5869,6 +6020,14 @@ def summarize(
         # Buyer-operational sidecars: latency percentiles and cost
         # accounting over the runner-measured per-call records.
         "latency_ms": latency_summary(results),
+        # R-12: per-family per-component timing decomposition
+        # (admission wait, harness overhead, adapter execution,
+        # backoff) with the R-12 statistical policy: raw samples
+        # retained, p99 withheld below 100 observations per family,
+        # no silent outlier trimming, per-family coefficient of
+        # variation with a 5%-investigate flag. Heterogeneous families
+        # are never averaged into a single claim.
+        "timing_ms": timing_summary(results),
         "cost": cost_summary(results, pricing_table),
         "ranking_eligible": elig.eligible,
         "eligibility_notes": list(elig.reasons),
