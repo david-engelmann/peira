@@ -143,7 +143,7 @@ least 3. k = 2 can only report agreement, not stability, so the M-7
 protocol rejects it. Fix: use `--seeds 1` for a single run or
 `--seeds 3` (or more) for the stability protocol.
 
-**`error: --resume is not supported with --seeds > 1; each seed run is independent — re-run without --resume`**
+**`error: --resume is not supported with --seeds > 1; each seed run is independent (re-run without --resume)`**
 Cause: resume merges a partial run into a new execution, but
 multi-seed runs are k independent executions with no shared partial
 state. Fix: re-run without `--resume`; each seed run starts fresh.

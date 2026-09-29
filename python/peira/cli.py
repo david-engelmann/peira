@@ -384,7 +384,7 @@ def cmd_run(args: argparse.Namespace) -> int:
         return EXIT_USER_ERROR
     if num_seeds > 1 and args.resume:
         print("error: --resume is not supported with --seeds > 1; "
-              "each seed run is independent — re-run without --resume",
+              "each seed run is independent (re-run without --resume)",
               file=sys.stderr)
         return EXIT_USER_ERROR
 

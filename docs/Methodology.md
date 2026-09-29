@@ -1135,7 +1135,7 @@ the adapter does not declare stay empty rather than invented.
 
 **Drift watch.** `peira drift-watch --old A --new B` compares two runs
 of the same adapter id and reports, per family: old and new ASR, the
-delta, and the two churn directions separately — **newly-flipping**
+delta, and the two churn directions separately: **newly-flipping**
 (not flipped in old, flipped in new) and **newly-fixed** (flipped in
 old, not flipped in new). A net delta alone is never reported; a +2%
 net can hide 20 regressions and 18 fixes. Paired McNemar p-values test
