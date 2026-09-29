@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "peira"
 version = "0.1.0"
-description = "An open-source AI safety stress-test and intelligence hub for leading models and guardrails, including Jev, ChatGPT, Claude, DeepSeek, Kimi, Gemini, Llama Prompt Guard 2, Grok, GLM, WildGuard, ShieldGemma, Granite Guardian and Shieldstral."
+description = "An open-source AI safety stress-test and intelligence hub for leading models and guardrails, including Jev, ChatGPT, Claude, DeepSeek, Kimi, Gemini, Llama Guard, Grok, GLM, WildGuard, ShieldGemma, Granite Guardian and Shieldstral."
 readme = "README.md"
 license = { text = "MIT" }
 requires-python = ">=3.10"
@@ -26,7 +26,7 @@ classifiers = [
 # transformers is capped below v5: the v5 major (Jan 2026) removed the
 # TF/JAX backends, refactored dynamic weight loading and tokenization,
 # shipped new typer-based CLIs, and dropped legacy env vars (the hub
-# client moved from requests to httpx in huggingface_hub v1.0) — and the
+# client moved from requests to httpx in huggingface_hub v1.0), and the
 # adapters are unverified against it. Lift the cap only after verifying
 # the pinned revisions load and score identically under v5.
 hf = ["transformers>=4.40,<5", "torch>=2.2"]

@@ -21,6 +21,10 @@ def find_hits() -> list[tuple[str, int, int, str]]:
     """Return (path, line, column, line_text) for every em dash hit."""
     targets: list[pathlib.Path] = [ROOT / "README.md"]
     targets.extend(sorted((ROOT / "docs").rglob("*.md")))
+    # pyproject.toml and Cargo.toml carry public package descriptions; an
+    # em dash shipped in pyproject.toml once and CI missed it because only
+    # the Markdown surface was scanned. Scan both manifests too.
+    targets.extend([ROOT / "pyproject.toml", ROOT / "Cargo.toml"])
 
     hits: list[tuple[str, int, int, str]] = []
     for path in targets:
@@ -43,12 +47,12 @@ def main() -> int:
     if hits:
         n = len(hits)
         print(
-            f"\n{n} em dash{'es' if n != 1 else ''} in public Markdown; "
-            "rewrite without U+2014.",
+            f"\n{n} em dash{'es' if n != 1 else ''} in public Markdown or "
+            "package metadata; rewrite without U+2014.",
             file=sys.stderr,
         )
         return 1
-    print("No em dashes in README.md or docs/.")
+    print("No em dashes in README.md, docs/, pyproject.toml, or Cargo.toml.")
     return 0
 
 

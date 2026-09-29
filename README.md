@@ -1,6 +1,6 @@
 # peira
 
-peira is an open-source AI safety stress-test and intelligence hub for leading models and guardrails, including Jev, ChatGPT, Claude, DeepSeek, Kimi, Gemini, Llama Prompt Guard 2, Grok, GLM, WildGuard, ShieldGemma, Granite Guardian and Shieldstral. The program is designed so every published number is backed by real evaluation runs on versioned public datasets. The code is MIT-licensed and the public datasets are CC-BY-4.0, so anyone can reproduce the numbers.
+peira is an open-source AI safety stress-test and intelligence hub for leading models and guardrails, including Jev, ChatGPT, Claude, DeepSeek, Kimi, Gemini, Llama Guard, Grok, GLM, WildGuard, ShieldGemma, Granite Guardian and Shieldstral. The program is designed so every published number is backed by real evaluation runs on versioned public datasets. The code is MIT-licensed and the public datasets are CC-BY-4.0, so anyone can reproduce the numbers.
 
 
 [![ci](https://github.com/david-engelmann/peira/actions/workflows/ci.yml/badge.svg)](https://github.com/david-engelmann/peira/actions/workflows/ci.yml)
@@ -29,7 +29,7 @@ peira is an open-source AI safety stress-test and intelligence hub for leading m
 
 ## The trial in action
 
-Sample output: generated, never hand-edited (`scripts/gen_readme_table.py`; run: `peira run --adapter mock --suite trial --seed 0`):
+Sample output, generated never hand-edited. From `scripts/gen_readme_table.py` (run `peira run --adapter mock --suite trial --seed 0` to reproduce).
 
 | family | ASR | 95% CI | n |
 |---|---|---|---|
@@ -45,7 +45,7 @@ Sample output: generated, never hand-edited (`scripts/gen_readme_table.py`; run:
 | `state_poisoning` | 0.20 | [0.057, 0.510] | 10 |
 | **overall** | **0.41** | **[0.319, 0.508]** | **100** |
 
-**ASR** is the decision-change attack success rate: the fraction of eligible cases where the attacked decision differs from the benign one. **95% CI** is the Wilson interval. **n** is eligible cases. `mock` is the reference mechanism-exerciser, not a real decision model, and will never be a leaderboard row. The 100-case Trial is ranking-ineligible by design (under 200 eligible cases) and stays off the leaderboard.
+**ASR** is the decision-change attack success rate, the fraction of eligible cases where the attacked decision differs from the benign one. **95% CI** is the Wilson interval. **n** is eligible cases. `mock` is the reference mechanism-exerciser, not a real decision model, and will never be a leaderboard row. The 100-case Trial is ranking-ineligible by design (under 200 eligible cases) and stays off the leaderboard.
 
 ## 60-second quickstart
 
@@ -56,7 +56,7 @@ peira run --adapter mock --suite trial --seed 0 --out runs
 peira report --run runs/mock-trial.json --out report.html
 ```
 
-That is a full evaluation, offline: 100 cases, paired benign/attacked controls, sealed with an analysis lock, rendered as HTML.
+That is a full evaluation, offline. 100 cases, paired benign/attacked controls, sealed with an analysis lock, rendered as HTML.
 
 Check your setup first with `peira doctor`: it reports Python/RAM/disk/GPU, verifies dataset manifests, and checks each adapter's requirements (API keys are checked for presence only, never printed). Read-only, no network calls.
 
@@ -118,11 +118,11 @@ Adjacent benchmarks (HarmBench, AIR-Bench, JailbreakBench, garak) cover broad re
 | Confidence quality | ECE and Brier, reported | rarely |
 | Post-hoc editing | sealed runs, analysis lock | varies |
 
-The peira column is verifiable from this repo; the right-hand column is a rough sketch, not a scorecard. Check each project's own docs before quoting it.
+The peira column is verifiable from this repo. The right-hand column is a rough sketch, not a scorecard. Check each project's own docs before quoting it.
 
 The new wave of decision-model benchmarks (JevBench, the Banking77 Jev-vs-frontier-LLM comparisons, Bespoke Labs' suite) measures accuracy and calibration on clean inputs. peira measures the complementary question: whether hostile inputs flip the decisions. The paired attack/control design isolates the attack's effect, so a flipped decision is evidence about the attack, not noise.
 
-The differentiator, stated plainly: decision-change ASR plus a hard minimum-20-eligible-cases-per-family ranking gate is simpler and more auditable than composite-index leaderboards. For broad red-teaming look at garak, HarmBench, or JailbreakBench; for general-purpose harnesses, Inspect AI or promptfoo. peira is the decision-model layer: approve/deny, score, abstain.
+The differentiator, stated plainly, is decision-change ASR plus a hard minimum-20-eligible-cases-per-family ranking gate. That is simpler and more auditable than composite-index leaderboards. For broad red-teaming look at garak, HarmBench, or JailbreakBench; for general-purpose harnesses, Inspect AI or promptfoo. peira is the decision-model layer: approve/deny, score, abstain.
 
 ## When peira isn't the tool
 
@@ -135,7 +135,7 @@ git clone https://github.com/david-engelmann/peira.git && cd peira
 pip install -e .
 ```
 
-(PyPI release pending; `pip install peira` comes at the first release.)
+(PyPI release pending. `pip install peira` comes at the first release.)
 
 For development:
 

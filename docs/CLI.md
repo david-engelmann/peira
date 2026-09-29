@@ -9,7 +9,7 @@ itself. For what the numbers mean, see
 [Methodology](Methodology.md); for exact error text, see
 [Troubleshooting](Troubleshooting.md).
 
-An open-source AI safety stress-test and intelligence hub for leading models and guardrails, including Jev, ChatGPT, Claude, DeepSeek, Kimi, Gemini, Llama Prompt Guard 2, Grok, GLM, WildGuard, ShieldGemma, Granite Guardian and Shieldstral.
+An open-source AI safety stress-test and intelligence hub for leading models and guardrails, including Jev, ChatGPT, Claude, DeepSeek, Kimi, Gemini, Llama Guard, Grok, GLM, WildGuard, ShieldGemma, Granite Guardian and Shieldstral.
 
 ## Global flags
 
