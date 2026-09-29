@@ -946,6 +946,27 @@ Cause: `peira value --out` points somewhere unwritable: a missing
 parent directory, or a permissions problem. Fix: create the directory
 first, or pick a writable path.
 
+**`error: cannot write defense report to <out> (...)`**
+Cause: `peira defense --out` points somewhere unwritable: a missing
+parent directory, or a permissions problem. Fix: create the directory
+first, or pick a writable path.
+
+**`error: review_cost_usd must be finite and non-negative, got ...` (from `peira defense`)**
+Cause: `--review-cost-usd` was negative (or non-finite, e.g. `inf`).
+Fix: pass a finite non-negative dollar cost per human review.
+
+**`error: attack_rate must be in [0, 1], got ...` (from `peira defense`)**
+Cause: `--attack-rate` was outside [0, 1]. Fix: pass a fraction, or
+omit the flag to use the scenario's baseline attack rate.
+
+**`peira defense` reports an adapter as WITHHELD**
+Cause: not an error. The Layer-4 gate withholds the defense section
+until attacked-arm calibration is reported (fewer than
+`MIN_PER_CONDITION_CASES` (30) finite attacked confidences), or the
+adapter has no eligible cases. Fix: none needed;
+the reason is printed. A withheld adapter carries no curve and no
+claim.
+
 **`audit_holdout_separation.py: SEPARATION VIOLATION`**
 Cause: holdout material (a case ID, prompt text, or canary GUID) was
 found in the public directory. Fix: remove the leaked content from

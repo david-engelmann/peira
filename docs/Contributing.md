@@ -23,10 +23,23 @@ When in doubt, leave it out and ask in Discussions.
 
 ## What happens after you open a PR
 
-CI runs (tests, public-surface check, README quickstart on three OSes).
-The maintainer reviews for correctness against `docs/Methodology.md`.
-Adapter PRs go through the same CI; the maintainer additionally reviews
-the adapter for an honest `supported_primitives` declaration.
+CodeRabbit reviews every PR automatically. It is advisory only. Read its
+comments and fix the valid ones before requesting human review. It never
+blocks a merge.
+
+Each PR then goes through three reviews. An independent red-team audit of
+the finished state. An independent line-by-line review of the diff. The
+maintainer's own verification pass with independent re-checks of the key
+claims. Fix everything the reviews find.
+
+CI must be green on the final head. The required checks are check_runner,
+coderabbit-config, public-surface, docs, dco, dataset-version, lint-rust,
+test-python, test-hf-tokenizers, test-rust, test-python-rust, quickstart,
+readme-table, and dataset-checks. Merge only when all three reviews are clean and CI is
+green. The maintainer reviews for correctness against
+`docs/Methodology.md`. Adapter PRs go through the same flow. The maintainer
+additionally reviews the adapter for an honest `supported_primitives`
+declaration.
 
 ## Rust accelerator (optional)
 

@@ -2215,6 +2215,155 @@ ASR numbers. Nothing here is blended into them.</p>
 </body></html>"""
 
 
+def cmd_defense(args: argparse.Namespace) -> int:
+    """C-4 threshold-defense economics over 1+ run artifacts.
+
+    Prints per-adapter defense optima (the attacker-cost-aware
+    operating point: threshold minimizing review spend + residual
+    priced attack cost) and a compact priced risk-coverage table.
+    ``--out`` writes the full per-threshold report as JSON.
+    """
+    from peira.economics import (
+        load_cost_scenario,
+        threshold_defense_report,
+    )
+    from peira.metrics import PerCaseResult
+
+    try:
+        scenario = load_cost_scenario(args.scenario)
+    except ValueError as e:
+        print(f"error: {e}", file=sys.stderr)
+        return EXIT_USER_ERROR
+    adapter_results: dict[str, list[PerCaseResult]] = {}
+    for path_str in args.runs:
+        path = Path(path_str)
+        if not path.exists():
+            print(f"error: {path} not found", file=sys.stderr)
+            return EXIT_USER_ERROR
+        try:
+            artifact = RunArtifact.from_json(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError) as e:
+            print(f"error: {path} is not a valid run artifact ({e})",
+                  file=sys.stderr)
+            return EXIT_USER_ERROR
+        if not artifact.verify():
+            print(f"warning: {path_str}: analysis lock mismatch: artifact was "
+                  f"modified after sealing.", file=sys.stderr)
+        name = artifact.adapter_name
+        if name in adapter_results:
+            print(f"error: duplicate adapter {name!r} ({path_str})",
+                  file=sys.stderr)
+            return EXIT_USER_ERROR
+        try:
+            adapter_results[name] = [
+                PerCaseResult.from_dict(r) for r in artifact.results
+            ]
+        except (KeyError, ValueError, TypeError) as e:
+            print(f"error: {path_str}: cannot decode per-case results "
+                  f"({e})", file=sys.stderr)
+            return EXIT_USER_ERROR
+    try:
+        report = threshold_defense_report(
+            adapter_results, scenario,
+            review_cost_usd=args.review_cost_usd,
+            attack_rate=args.attack_rate,
+        )
+    except ValueError as e:
+        print(f"error: {e}", file=sys.stderr)
+        return EXIT_USER_ERROR
+    sys.stdout.write(_defense_text(report))
+    if args.out is not None:
+        out = Path(args.out)
+        try:
+            out.write_text(json.dumps(report, indent=2), encoding="utf-8")
+        except OSError as e:
+            print(f"error: cannot write defense report to {out} ({e})",
+                  file=sys.stderr)
+            return EXIT_USER_ERROR
+        print(f"defense report: {out}")
+    return EXIT_OK
+
+
+def _defense_coverage_rows(
+    risk_coverage: list[list[float]],
+) -> list[tuple[float, float, float]]:
+    """Compact risk-coverage table: nearest curve point per decile.
+
+    For each target review rate 0.0..1.0, the curve point with the
+    closest review rate (ties toward less residual). Deduplicated so
+    unreachable targets do not repeat rows.
+    """
+    rows: list[tuple[float, float, float]] = []
+    seen: set[float] = set()
+    for i in range(11):
+        target = i / 10
+        rr, res = min(
+            risk_coverage, key=lambda p: (abs(p[0] - target), p[1]))
+        if rr in seen:
+            continue
+        seen.add(rr)
+        rows.append((target, rr, res))
+    return rows
+
+
+def _defense_text(report: dict[str, Any]) -> str:
+    lines = [
+        f"defense view (scenario: {report['scenario']} "
+        f"v{report['scenario_version']}, "
+        f"review cost: ${report['review_cost_usd']:.4f}/case, "
+        f"attack rate: {report['attack_rate']})",
+        "",
+    ]
+    for name, a in sorted(report["adapters"].items()):
+        if a["withheld"]:
+            lines.append(f"{name}: WITHHELD: {a['reason']}")
+            continue
+        lines.append(
+            f"{name}: n_eligible={a['n_eligible']} "
+            f"n_analyzed={a['n_analyzed']} "
+            f"n_always_review={a['n_always_review']}"
+        )
+        lines.append(
+            f"  attacked-arm ECE: {a['attacked_ece']:.4f} "
+            f"(n={a['ece_n']})"
+        )
+        auroc = a["flip_detection_auroc"]
+        lines.append(
+            "  flip-detection AUROC (context only): "
+            + (f"{auroc:.3f}" if auroc is not None else "n/a")
+        )
+        lines.append(
+            f"  undefended E_attacked: "
+            f"${a['e_attacked_undefended']:.4f}/decision"
+        )
+        o = a["optimum"]
+        lines.append(
+            f"  optimum: pt={o['pt']:.2f} "
+            f"review_rate={o['review_rate']:.3f} "
+            f"residual=${o['residual_e_attacked']:.4f}/decision "
+            f"review_spend=${o['review_spend_per_decision']:.4f}/decision "
+            f"total=${o['total_defender_cost_per_decision']:.4f}/decision"
+        )
+        pvd = o["prevention_value_per_review_dollar"]
+        pvd_text = (
+            f"${pvd:.2f} of attack cost prevented per $1 of review"
+            if pvd is not None
+            else (
+                "n/a (review is free)"
+                if o["review_rate"] > 0
+                else "n/a (optimum reviews nothing)"
+            )
+        )
+        lines.append(f"  prevention value: {pvd_text}")
+        lines.append("  priced risk-coverage "
+                     "(target review rate -> residual $/decision):")
+        for target, rr, res in _defense_coverage_rows(
+            a["risk_coverage_curve"]
+        ):
+            lines.append(f"    {target:.1f} -> {rr:.3f}: ${res:.4f}")
+    return "\n".join(lines) + "\n"
+
+
 def cmd_runs_list(args: argparse.Namespace) -> int:
     """List runs in the registry with optional filters."""
     from peira.runs_registry import list_runs
@@ -3190,6 +3339,24 @@ def build_parser() -> argparse.ArgumentParser:
     vv.add_argument("--out", default=None,
                     help="write an HTML value-view report to this path")
     vv.set_defaults(func=cmd_value)
+
+    # C-4 threshold-defense economics.
+    df = sub.add_parser("defense",
+                        help="C-4 threshold-defense economics over 1+ run "
+                        "artifacts (defense curves, priced risk-coverage, "
+                        "attacker-cost-aware optimum)")
+    df.add_argument("runs", nargs="+", help="run artifact paths (>= 1)")
+    df.add_argument("--scenario", default="standard",
+                    help="cost scenario id (default: standard)")
+    df.add_argument("--review-cost-usd", type=float, default=0.0,
+                    help="human review cost per case in USD "
+                    "(default: 0.0)")
+    df.add_argument("--attack-rate", type=float, default=None,
+                    help="fraction of decisions under attack "
+                    "(default: scenario baseline)")
+    df.add_argument("--out", default=None,
+                    help="write the full defense report as JSON to this path")
+    df.set_defaults(func=cmd_defense)
 
     # Run registry (Layer 5a): index and query run artifacts.
     rr = sub.add_parser("runs", help="run registry: list and verify artifacts")
