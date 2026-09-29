@@ -122,7 +122,7 @@ The peira column is verifiable from this repo. The right-hand column is a rough 
 
 The new wave of decision-model benchmarks (JevBench, the Banking77 Jev-vs-frontier-LLM comparisons, Bespoke Labs' suite) measures accuracy and calibration on clean inputs. peira measures the complementary question: whether hostile inputs flip the decisions. The paired attack/control design isolates the attack's effect, so a flipped decision is evidence about the attack, not noise.
 
-The differentiator, stated plainly, is decision-change ASR plus a hard minimum-20-eligible-cases-per-family ranking gate. That is simpler and more auditable than composite-index leaderboards. For broad red-teaming look at garak, HarmBench, or JailbreakBench; for general-purpose harnesses, Inspect AI or promptfoo. peira is the decision-model layer: approve/deny, score, abstain.
+The differentiator, stated plainly, is decision-change ASR plus a hard minimum-20-eligible-cases-per-family ranking gate. That is simpler and more auditable than composite-index leaderboards. For broad red-teaming look at garak, HarmBench, or JailbreakBench. For general-purpose harnesses, Inspect AI or promptfoo. peira covers the decision-model layer, where decisions are approve/deny, score, or abstain.
 
 ## When peira isn't the tool
 
