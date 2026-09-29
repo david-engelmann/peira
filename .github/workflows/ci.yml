@@ -90,6 +90,21 @@ jobs:
       # dataset/trial/manifest.json (PR #201 missed one).
       - run: python3 scripts/check_trial_version_pins.py
 
+  coderabbit-config:
+    # CodeRabbit is advisory step 0: it must never block merges. This job
+    # fails the build if .coderabbit.yaml stops parsing, flips
+    # request_changes_workflow on, or sneaks in an error-mode pre-merge check.
+    needs: check_runner
+    runs-on: ${{ fromJSON(needs.check_runner.outputs.runner) }}
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+      - run: pip install pyyaml
+      - run: python3 scripts/check_coderabbit_config.py
+
   dco:
     # Contributing.md requires Signed-off-by trailers (DCO); enforce it
     # mechanically on every non-merge commit in the PR. Push-to-main runs
