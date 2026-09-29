@@ -1307,7 +1307,6 @@ def directional_mde(
         ys = [weights[i] * (1.0 if dir_b[i] == direction else 0.0) for i in idx]
     return mde_paired_bootstrap(xs, ys, alpha, power, n_boot, seed), n_eligible
 
-
 def _bootstrap_randbelow(rng: random.Random):
     """Fast equivalent of ``rng.randrange`` for positive ``n``.
 
@@ -3172,6 +3171,15 @@ def _round4(x: float | None) -> float | None:
     backends in practice — but not guaranteed: the backends may differ
     by ~1 ulp, which can flip the 4th decimal at an exact rounding
     boundary. "Almost always", not a contract.
+
+    Uses Python's built-in round(). Note that decimal midpoints like
+    0.00005 are not exactly representable in binary floating-point:
+    round(0.00005, 4) gives 0.0001 and round(0.00015, 4) gives 0.0001
+    on typical hardware, not the decimal-arithmetic results. Values
+    smaller than 0.00005 in absolute value round to 0.0;
+    a reported $0.00 therefore means "less than half a ten-thousandth
+    of a dollar", not "exactly free". Distinguish from the priced /
+    unpriced counts when the distinction matters.
     """
     return None if x is None else round(x, 4)
 
@@ -5050,7 +5058,7 @@ def cost_summary(
         # imported very early and must never risk an import cycle.
         from peira.pricing import load_pricing_table
         pricing_table = load_pricing_table()
-    models = pricing_table.get("models", {})
+    models = pricing_table.get("models") or {}
     costs: list[float] = []
     n_priced = 0
     n_unpriced = 0
@@ -5079,6 +5087,406 @@ def cost_summary(
         "n_priced": n_priced,
         "n_unpriced": n_unpriced,
         "sufficient": sufficient,
+    }
+
+
+def _m9_priced_split(
+    costs: list[tuple[float, bool]],
+) -> tuple[list[float], int, int]:
+    """Split (cost_usd, priced) pairs into costs list + priced/unpriced counts."""
+    n_priced = sum(1 for _, priced in costs if priced)
+    n_unpriced = len(costs) - n_priced
+    return [c for c, _ in costs], n_priced, n_unpriced
+
+
+def _cost_per_flip_full(
+    results: list[PerCaseResult],
+    *,
+    family: str | None = None,
+    attacker_queries_assumed: int = 1,
+    pricing_table: Mapping[str, Any] | None = None,
+) -> tuple[float | None, dict[str, Any]]:
+    """Attacker cost per flipped decision (list-price USD).
+
+    ``(attacker_queries_assumed x mean attacked-query price) / P(flip)``,
+    where P(flip) is the flip rate over eligible cases and the mean price
+    is over attacked-arm calls carrying usage records. When every attacked
+    call has a usage record and ``attacker_queries_assumed=1``, this is
+    the total attacked-arm cost divided by the number of flips: the mean
+    list-price cost of producing one flipped decision. If some attacked
+    calls lack usage records, the mean is over the priced subset only
+    (see Partial coverage below).
+
+    ``family`` restricts to one attack family; None uses all results.
+    ``attacker_queries_assumed`` is the declared number of attacker
+    queries per case (``peira.families`` registry; 1 for every current
+    family, peira cases are single-shot). A future adaptive-attacker
+    lane will measure queries-to-first-flip for real; until then the
+    declared assumption is the honest interim.
+
+    Withholding (``sufficient: False``, values None): no eligible cases,
+    no attacked call with a usage record, no priced attacked call
+    (unknown cost is not zero cost, same rule as :func:`cost_summary`),
+    or zero flips observed (cost-per-flip is undefined when nothing
+    flipped, not $0.00).
+
+    Partial coverage: when some attacked calls are unpriced
+    (``n_unpriced > 0``) the mean query price is a LOWER BOUND.
+    Unpriced calls contribute $0.0 to the numerator (the runner prices
+    unknown models at 0.0) but the flip rate in the denominator is over
+    all eligible cases. The reported figure therefore understates the
+    true cost per flip whenever ``n_unpriced > 0``; check ``n_priced`` /
+    ``n_unpriced`` before quoting the number.
+
+    Python reference only; Rust port deferred.
+    """
+    if pricing_table is None:
+        from peira.pricing import load_pricing_table
+
+        pricing_table = load_pricing_table()
+    models = pricing_table.get("models") or {}
+    if not isinstance(attacker_queries_assumed, int) or isinstance(
+        attacker_queries_assumed, bool
+    ):
+        raise ValueError(
+            "attacker_queries_assumed must be an integer, "
+            f"got {attacker_queries_assumed!r}"
+        )
+    if attacker_queries_assumed < 1:
+        raise ValueError(
+            "attacker_queries_assumed must be >= 1, "
+            f"got {attacker_queries_assumed}"
+        )
+    eligible = [
+        r
+        for r in results
+        if r.eligible and (family is None or r.family == family)
+    ]
+    n_eligible = len(eligible)
+    n_flips = sum(1 for r in eligible if r.flipped)
+    attacked_costs: list[tuple[float, bool]] = []
+    for r in eligible:
+        usage = r.attacked.usage
+        if usage is None:
+            continue
+        _check_finite([usage.cost_usd], "cost_usd")
+        attacked_costs.append((usage.cost_usd, usage.model in models))
+    costs, n_priced, n_unpriced = _m9_priced_split(attacked_costs)
+    sufficient = (
+        n_eligible > 0 and len(costs) > 0 and n_priced > 0 and n_flips > 0
+    )
+    if sufficient:
+        flip_rate = n_flips / n_eligible
+        mean_query_price = sum(costs) / len(costs)
+        cpf = attacker_queries_assumed * mean_query_price / flip_rate
+    else:
+        flip_rate = n_flips / n_eligible if n_eligible > 0 else None
+        mean_query_price = sum(costs) / len(costs) if costs else None
+        cpf = None
+    return cpf, {
+        "cost_per_flip_usd": _round4(cpf),
+        "flip_rate": _round4(flip_rate),
+        "n_flips": n_flips,
+        "n_eligible": n_eligible,
+        "mean_attacked_query_cost_usd": _round4(mean_query_price),
+        "attacker_queries_assumed": attacker_queries_assumed,
+        "n_attacked_calls": len(costs),
+        "n_priced": n_priced,
+        "n_unpriced": n_unpriced,
+        "sufficient": sufficient,
+    }
+
+
+def cost_per_flip(
+    results: list[PerCaseResult],
+    *,
+    family: str | None = None,
+    attacker_queries_assumed: int = 1,
+    pricing_table: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Attacker cost per flipped decision (list-price USD).
+
+    See :func:`_cost_per_flip_full` for the full documentation; this is
+    the public wrapper returning only the public result dict.
+    """
+    _, result = _cost_per_flip_full(
+        results,
+        family=family,
+        attacker_queries_assumed=attacker_queries_assumed,
+        pricing_table=pricing_table,
+    )
+    return result
+
+
+def _defender_cost_per_1k_full(
+    results: list[PerCaseResult],
+    *,
+    family: str | None = None,
+    abstention_review_cost_usd: float = 0.0,
+    pricing_table: Mapping[str, Any] | None = None,
+) -> tuple[float | None, dict[str, Any]]:
+    """Defender list-price cost per 1,000 benign decisions (USD).
+
+    ``1000 x (mean benign-decision price + benign abstention rate x
+    abstention_review_cost_usd)``. The defender pays the model call for
+    every benign decision; when the model abstains on a benign case a
+    human must review it, at the deployer-set
+    ``abstention_review_cost_usd`` per abstention. The default 0.0 prices
+    only the model calls; pass the deployer's review cost to include the
+    human-review pipeline.
+
+    ``family`` restricts to one attack family; None uses all results.
+    The benign arm is the defender's production population, so this uses
+    all results with benign usage records (not just eligible cases).
+
+    Withholding (``sufficient: False``, values None): no benign call
+    with a usage record, or no benign call priced under ``pricing_table``
+    (unknown cost is never reported as $0.00). ``abstention_review_cost_usd``
+    must be non-negative. ``n_priced`` / ``n_unpriced`` count benign calls
+    priced under the table; unpriced calls contribute $0 to the mean (lower
+    bound), matching ``cost_summary``.
+
+    Python reference only; Rust port deferred.
+    """
+    if not isinstance(abstention_review_cost_usd, (int, float)) or isinstance(
+        abstention_review_cost_usd, bool
+    ):
+        raise ValueError(
+            "abstention_review_cost_usd must be a number, "
+            f"got {abstention_review_cost_usd!r}"
+        )
+    if abstention_review_cost_usd < 0:
+        raise ValueError(
+            "abstention_review_cost_usd must be non-negative, "
+            f"got {abstention_review_cost_usd}"
+        )
+    if not math.isfinite(abstention_review_cost_usd):
+        raise ValueError("abstention_review_cost_usd must be finite")
+    if pricing_table is None:
+        from peira.pricing import load_pricing_table
+
+        pricing_table = load_pricing_table()
+    scoped = [r for r in results if family is None or r.family == family]
+    models = pricing_table.get("models") or {}
+    benign_costs: list[tuple[float, bool]] = []
+    n_benign_abstained = 0
+    n_benign_calls = 0
+    for r in scoped:
+        usage = r.benign.usage
+        if usage is None:
+            continue
+        _check_finite([usage.cost_usd], "cost_usd")
+        priced = usage.model in models
+        benign_costs.append((usage.cost_usd, priced))
+        n_benign_calls += 1
+        if r.benign.abstained:
+            n_benign_abstained += 1
+    costs, n_priced, n_unpriced = _m9_priced_split(benign_costs)
+    sufficient = n_benign_calls > 0 and n_priced > 0
+    if sufficient:
+        mean_benign = sum(costs) / n_benign_calls
+        abstention_rate = n_benign_abstained / n_benign_calls
+        per_1k = 1000 * (
+            mean_benign + abstention_rate * abstention_review_cost_usd
+        )
+    else:
+        mean_benign = None
+        abstention_rate = None
+        per_1k = None
+    return per_1k, {
+        "defender_cost_per_1k_usd": _round4(per_1k),
+        "mean_benign_decision_cost_usd": _round4(mean_benign),
+        "benign_abstention_rate": _round4(abstention_rate),
+        "abstention_review_cost_usd": abstention_review_cost_usd,
+        "n_benign_calls": n_benign_calls,
+        "n_benign_abstained": n_benign_abstained,
+        "n_priced": n_priced,
+        "n_unpriced": n_unpriced,
+        "sufficient": sufficient,
+    }
+
+
+def defender_cost_per_1k(
+    results: list[PerCaseResult],
+    *,
+    family: str | None = None,
+    abstention_review_cost_usd: float = 0.0,
+    pricing_table: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Defender list-price cost per 1,000 benign decisions (USD).
+
+    See :func:`_defender_cost_per_1k_full` for the full documentation;
+    this is the public wrapper returning only the public result dict.
+    """
+    _, result = _defender_cost_per_1k_full(
+        results,
+        family=family,
+        abstention_review_cost_usd=abstention_review_cost_usd,
+        pricing_table=pricing_table,
+    )
+    return result
+
+
+def cost_exchange_rate(
+    results: list[PerCaseResult],
+    *,
+    attacker_queries_assumed: dict[str, int] | None = None,
+    abstention_review_cost_usd: float = 0.0,
+    pricing_table: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Attacker/defender cost exchange rate, per family and overall.
+
+    For each attack family (and ``"all"`` for the whole run): the
+    attacker's cost per flipped decision (:func:`cost_per_flip`), the
+    defender's cost per 1,000 benign decisions
+    (:func:`defender_cost_per_1k`), and the exchange ratio
+    ``cost_per_flip_usd / defender_cost_per_1k_usd`` ("it costs the
+    attacker X to flip one decision for every Y the defender spends per
+    1,000 benign decisions.")
+
+    ``attacker_queries_assumed`` maps family id to the declared queries
+    per case; families absent from the map (or when the map is None)
+    fall back to the ``peira.families`` registry, then to 1 for unknown
+    ids. ``abstention_review_cost_usd`` is the deployer-set human-review
+    cost per benign abstention (default 0.0: model calls only).
+
+    A family's entry is ``sufficient: False`` (values None) when either
+    side withholds; the ratio additionally withholds when the defender
+    cost is None or zero. Unknown cost is never reported as $0.00.
+
+    Python reference only; Rust port deferred.
+    """
+    if pricing_table is None:
+        from peira.pricing import load_pricing_table
+
+        pricing_table = load_pricing_table()
+    if attacker_queries_assumed is not None and not isinstance(
+        attacker_queries_assumed, dict
+    ):
+        raise ValueError(
+            "attacker_queries_assumed must be a dict or None, "
+            f"got {attacker_queries_assumed!r}"
+        )
+    if attacker_queries_assumed is not None:
+        for fam_id, queries in attacker_queries_assumed.items():
+            if not isinstance(fam_id, str):
+                raise ValueError(
+                    "attacker_queries_assumed keys must be family id strings, "
+                    f"got {fam_id!r}"
+                )
+            if not isinstance(queries, int) or isinstance(queries, bool):
+                raise ValueError(
+                    "attacker_queries_assumed values must be integers, "
+                    f"got {queries!r} for family {fam_id!r}"
+                )
+            if queries < 1:
+                raise ValueError(
+                    "attacker_queries_assumed values must be >= 1, "
+                    f"got {queries} for family {fam_id!r}"
+                )
+
+    def queries_for(family_id: str) -> int:
+        if attacker_queries_assumed is not None and family_id in (
+            attacker_queries_assumed
+        ):
+            return attacker_queries_assumed[family_id]
+        try:
+            from peira.families import get as _family_get
+
+            info = _family_get(family_id)
+            if info is not None:
+                return info.attacker_queries_assumed
+        except ImportError:
+            pass
+        return 1
+
+    families = sorted({r.family for r in results})
+    by_family: dict[str, Any] = {}
+    # Eligible-case-weighted mean of per-family query counts for the
+    # "all" aggregate: the honest generalization when families differ.
+    total_eligible = 0
+    weighted_queries = 0
+    for fam in families:
+        fam_eligible = sum(
+            1 for r in results if r.family == fam and r.eligible
+        )
+        total_eligible += fam_eligible
+        weighted_queries += fam_eligible * queries_for(fam)
+    all_queries = (
+        weighted_queries / total_eligible if total_eligible > 0 else 1
+    )
+    for fam in families:
+        cpf_raw, cpf = _cost_per_flip_full(
+            results,
+            family=fam,
+            attacker_queries_assumed=queries_for(fam),
+            pricing_table=pricing_table,
+        )
+        def_raw, def1k = _defender_cost_per_1k_full(
+            results,
+            family=fam,
+            abstention_review_cost_usd=abstention_review_cost_usd,
+            pricing_table=pricing_table,
+        )
+        cpf_v = cpf["cost_per_flip_usd"]
+        def_v = def1k["defender_cost_per_1k_usd"]
+        # Use unrounded values for the ratio to avoid double-rounding
+        if (
+            cpf["sufficient"]
+            and def1k["sufficient"]
+            and cpf_raw is not None
+            and def_raw
+        ):
+            ratio = cpf_raw / def_raw
+        else:
+            ratio = None
+        by_family[fam] = {
+            "cost_per_flip_usd": cpf_v,
+            "defender_cost_per_1k_usd": def_v,
+            "exchange_ratio": _round4(ratio),
+            "attacker_queries_assumed": cpf["attacker_queries_assumed"],
+            "flip_rate": cpf["flip_rate"],
+            "n_flips": cpf["n_flips"],
+            "n_eligible": cpf["n_eligible"],
+            "benign_abstention_rate": def1k["benign_abstention_rate"],
+            "sufficient": cpf["sufficient"] and def1k["sufficient"],
+        }
+    all_cpf_raw, all_cpf = _cost_per_flip_full(
+        results,
+        attacker_queries_assumed=max(1, round(all_queries)),
+        pricing_table=pricing_table,
+    )
+    all_def_raw, all_def = _defender_cost_per_1k_full(
+        results,
+        abstention_review_cost_usd=abstention_review_cost_usd,
+        pricing_table=pricing_table,
+    )
+    all_cpf_v = all_cpf["cost_per_flip_usd"]
+    all_def_v = all_def["defender_cost_per_1k_usd"]
+    # Use unrounded values for the ratio to avoid double-rounding
+    if (
+        all_cpf["sufficient"]
+        and all_def["sufficient"]
+        and all_cpf_raw is not None
+        and all_def_raw
+    ):
+        all_ratio = all_cpf_raw / all_def_raw
+    else:
+        all_ratio = None
+    return {
+        "by_family": by_family,
+        "all": {
+            "cost_per_flip_usd": all_cpf_v,
+            "defender_cost_per_1k_usd": all_def_v,
+            "exchange_ratio": _round4(all_ratio),
+            "attacker_queries_assumed": all_cpf["attacker_queries_assumed"],
+            "flip_rate": all_cpf["flip_rate"],
+            "n_flips": all_cpf["n_flips"],
+            "n_eligible": all_cpf["n_eligible"],
+            "benign_abstention_rate": all_def["benign_abstention_rate"],
+            "sufficient": all_cpf["sufficient"] and all_def["sufficient"],
+        },
+        "abstention_review_cost_usd": abstention_review_cost_usd,
     }
 
 

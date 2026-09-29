@@ -230,6 +230,10 @@ class TestLLMThroughRunner(unittest.TestCase):
             self.assertEqual(usage["model"], "gpt-5.6-luna")
             # Runner recomputed cost from the pricing table (> 0 here).
             self.assertGreater(usage["cost_usd"], 0.0)
+            # Runner seals the pricing table version onto the call.
+            self.assertEqual(usage["price_table_ref"],
+                             art.pricing_version)
+            self.assertTrue(art.pricing_version)
 
 
 class TestJevThroughRunner(unittest.TestCase):

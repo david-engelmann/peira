@@ -199,6 +199,25 @@ medium 1, low 0.5) and target-hit rate.
   cost history ("covers the run" or "short by ~$X"), or an honest
   no-history note when there is none.
 - **Calibration** (score primitive): self-reported-confidence calibration: ECE with
+- **Attacker/defender cost accounting** (M-9): the asymmetric economics.
+  Every call's usage record carries the pricing table version that priced
+  it (`price_table_ref`), so a call's cost is recomputable under future
+  pricing without rerunning. Per family, the registry declares
+  `attacker_queries_assumed` (1 for every current family; peira cases are
+  single-shot, and a future adaptive-attacker lane will measure
+  queries-to-first-flip for real). Three aggregations per adapter and
+  family: **cost per flip** = (attacker queries assumed × mean
+  attacked-query price) / P(flip), the mean list-price cost of producing
+  one flipped decision; **defender cost per 1,000 benign decisions** =
+  1000 × (mean benign-decision price + benign abstention rate ×
+  `abstention_review_cost_usd`), where the deployer-set review cost prices
+  the human-review pipeline behind benign abstentions (0.0 by default:
+  model calls only); and the **exchange ratio** = cost per flip /
+  defender cost per 1k, "it costs the attacker X to flip one decision for
+  every Y the defender spends per 1,000 benign decisions." Cost per flip
+  is undefined when nothing flipped and withheld (never $0.00); the same
+  unknown-cost withholding as the cost totals applies throughout. These
+  feed the M-3 economic value-view layer.
   equal-mass bins (K=15 default; lower is better, 0.0 is perfect), Brier
   score with its Murphy decomposition (reliability / resolution /
   uncertainty / residual), log loss (binary cross-entropy in nats, with
@@ -584,7 +603,6 @@ never modified.
   the common count. Withheld below 30 common cases
   (`sufficient=False`, `winner=None`), never fabricated.
   Display-only.
-
 ### Net benefit (decision curves)
 
 Decision-curve analysis (Vickers & Elkin 2006, "Decision curve
@@ -687,7 +705,6 @@ on the same grid and returns the lower envelope as segments plus a
 plain-words deployment rule ("deploy A while the attack rate is in [0.0, 0.18]. deploy B while the attack rate is in [0.19, 1.0]"); equal expected losses are ties, reported as
 ties. The `peira report` buyer-cost section renders the curve as a
 table at every 0.10 of attack rate.
-
 ### Minimum detectable effects (R-02)
 
 A p-value answers "is there a difference"; it does not answer "was this

@@ -233,6 +233,8 @@ def _validate_and_record(
     if usage is not None:
         # Recompute cost from the pinned table; ignore the adapter's
         # cost_usd (it cannot know which table version prices the run).
+        # price_table_ref seals the table version onto the call so its
+        # cost is recomputable under future pricing without rerunning.
         usage = CallUsage(
             model=usage.model,
             tokens_in=usage.tokens_in,
@@ -241,6 +243,7 @@ def _validate_and_record(
             cost_usd=cost_usd(
                 usage.model, usage.tokens_in, usage.tokens_out, pricing_table
             ),
+            price_table_ref=pricing_table.get("pricing_version"),
         )
     return CallRecord(
         decision=output.decision,
