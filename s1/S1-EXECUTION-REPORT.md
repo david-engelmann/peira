@@ -9,15 +9,19 @@ is excluded by D-31 and was never touched in this workstream.
 
 **Sample design.** 200 cases, 20 per family, drawn by seed `20260928` for run
 1 and seed `20260929` for run 2. Run 2 has zero overlap with run 1 and no
-calibration cases except v1-spo-002 (see ER-7). The draw excluded any case
-whose family file was touched by open correction PRs at draw time.
+calibration cases except v1-spo-002 (see ER-7). The draws excluded the
+recorded exclusion lists (50 cases for run 1, 250 for run 2).
 
-**Independent grading.** Two independent grader sets (set A, set B), 100
-cases each, 4 graders per set, 50 cases per grader. Graders received
-severity-redacted sheets (the `severity` field carried a redaction marker
-instructing graders to assign the tier from the rubric) and graded five
-dimensions per case. Severity notes were allowed. The rubric was the sole
-authority.
+**Independent grading.** Two independent grader sets (set A, set B), each
+covering all 200 cases. 4 graders per set, 50 cases per grader, 400
+assignment-validated gradings per run. Graders received severity-redacted
+sheets (the `severity` field carried a redaction marker instructing graders
+to assign the tier from the rubric) and graded five dimensions per case.
+Severity notes were allowed. The rubric was the sole authority. The
+severity-redaction was imperfect. The sheet generator redacted only the
+`severity` field, so 24 of the 200 run-2 sheets (21 of 200 in run 1)
+carried an explicit severity tier inside the inherited case-notes text
+(see ER-8).
 
 **Agreement metric.** Pre-adjudication raw agreement and Cohen's kappa on
 the severity tier, plus a two-tier disagreement rate as a diagnostic. The
@@ -26,21 +30,20 @@ disagreements < 5%.
 
 ## Phase 0 sample
 
-The re-audit sample (`s1/reaudit_sample.json`, seed `20260928`, 50 cases)
-was an early sanity check, not the re-grade itself. It found 3 severity
-defects out of 50 (6.0%, Wilson 95% CI [2.1%, 16.2%]). Those cases were
-excluded from run 1 by the draw's exclusion rule.
+The run-1 draw manifest (`s1/reaudit_sample.json`, seed `20260928`) holds
+the 200-case re-grade sample, 20 per family, with 50 cases excluded per
+protocol section 4 (the audit's sampled IDs, `s1/exclusions.json`).
 
 ## Phase 0.5 grader calibration (run 1)
 
-Ten cases, one per family, fixed at protocol adoption
-(`s1/calibration_sample.json`). The sheet generator redacted the severity
-field. Grading was blind. No grader saw the references. Each grader
-received per-case pass/fail plus their own graded tier against the sealed
-reference tier, never the reference content. The 8/10 pass bar caught one
-failure (g3b at 7/10, recalibrated to 9/10 on two fresh sheets). The
-calibration misses were dominated by option_order (v1-odo-003 missed by 4
-graders) and negation_games.
+Ten cases across eight families, fixed at protocol adoption
+(`s1/calibration_sample.json`). Criteria_smuggling and score_anchoring
+are absent. The sheet generator redacted the severity field. Grading was
+blind. No grader saw the references. Each grader received per-case
+pass/fail plus their own graded tier against the sealed reference tier,
+never the reference content. All eight graders passed the 8/10 bar (four
+at 10/10, four at 9/10). All four misses fell on v1-odo-003
+(g0b, g1a, g1b, g3a).
 
 ## Agreement gate run 1. FAIL (protocol 6.3)
 
@@ -61,8 +64,8 @@ and all six are verified excluded from the run-2 sample.
 ## Re-calibration
 
 All eight run-2 graders were recalibrated against the same ten cases with
-guidance v2 in hand. Seven scored 10/10 including g3a, and g3b scored 9/10
-with the sole miss on v1-odo-003. The run-2 calibration sheets
+guidance v2 in hand. Three scored 10/10 (g0a, g2a, g3a) and five scored
+9/10 (g0b, g1a, g1b, g2b, g3b), every miss on v1-odo-003. The run-2 calibration sheets
 (`s1/cal_sheets/`) exposed the sealed references, because
 `s1/calibration.json` carries no separate case_ids field, so the
 protocol's blind-calibration intent was not met for run 2 (see the amended
@@ -77,8 +80,9 @@ assignment-validated gradings. Raw agreement 177/200 = 88.5%, kappa
 
 ## Adjudication
 
-All 33 disputed cases went to independent adjudication. Six adjudicators,
-one per case, ruled only on the disputed dimensions (36 rulings total)
+All 33 disputed cases went to independent adjudication. Six adjudicators
+split the 33 cases, one adjudicator per case, ruling only on the disputed
+dimensions (36 rulings total)
 with `grader_id` stripped for grader blinding per protocol 6.2. One
 adjudicator (adj4) used a `verdict` key instead of `decision` in the
 nested ruling object. The normalization script mapped it and re-validated
@@ -110,10 +114,11 @@ minus 5 overlap, plus 1 gold, plus 2 attack-integrity minus 1 overlap.
 **Rule 2a. No corpus-wide class-1 sweep.** 1/200 does not reach the
 2/20 family threshold.
 
-**Rule 2b. Targeted class-4 sweep.** 8/200 reaches the threshold, and
-criteria_smuggling at 3/20 independently triggers the per-family rule.
-The correction lane therefore includes mechanical enumeration of
-criteria_smuggling class-4 instances corpus-wide.
+**Rule 2b. Targeted class-4 sweep.** The corpus-wide class-4 figure
+(8/200) does not reach its threshold. The per-family rule triggers for
+criteria_smuggling (3/20 meets the 3/20 bar). The correction lane
+therefore includes mechanical enumeration of criteria_smuggling class-4
+instances corpus-wide.
 
 **Rule 3. Class-6 targeted fixes.** v1-ppa-205 and v1-ppa-217 go to the
 correction lane individually.
@@ -144,8 +149,10 @@ from the public-copy bar.
 - `grades_run2_setA.json`, `grades_run2_setB.json`. Validated raw
   gradings, 200 each.
 - `grades_raw_run1/`. The 8 valid run-1 batch files (400 gradings).
-- `disagreements_run2.json`. 33 disputed cases, display dimension names.
-- `adjudication_sheets/`. Blinded sheets per disputed case.
+- `disagreements.json`, `disagreements_run2.json`. The run-1 (void) and
+  run-2 disputed cases, display dimension names.
+- `grades_raw_run2/`. The 8 valid run-2 batch files (400 gradings).
+- `adjudication_run2/`. Blinded sheets per disputed case, 33 files.
 - `adjudications_run2.json`. 36 rulings, 6 adjudicators.
 - `adjudicated_run2.json`. 200 final verdicts with per-dimension
   sources.
@@ -170,10 +177,11 @@ both.
 
 ## Reproducibility
 
-`s1_verify.py` re-checks batch coverage, sheet existence, calibration
-references, and agreement math from the committed artifacts. Every number
-in this report was recomputed from the artifacts, not copied from worker
-claims.
+`scripts/s1_verify.py` is the post-sweep verifier (protocol sections 9
+and 10). It checks manifest integrity, schema, ID uniqueness, retired-ID
+handling, defect coverage, changelog form, and version-bump consistency
+after the sweep PR's case edits. The quantitative claims in this report
+were recomputed from the committed artifacts during review.
 
 **Reference handling, amended.** Run 1. No run-1 grader saw the sealed
 references. Calibration feedback gave only pass/fail and the grader's own
@@ -208,8 +216,8 @@ recalibrate the graders, never as main-grading inputs.
   case still drew 5 calibration misses in run 2 (up from 4 in run 1), so
   the amendment did not observably improve that case.
 - **ER-5. Contamination risk.** The calibration sheets were regenerated
-  per run with `[REDACTED]` severity and fresh grader IDs, so graders
-  could not match run-2 sheets to run-1 verdicts. The only
+  per run with `[REDACTED]` severity and a grader-ID placeholder, so
+  graders could not match run-2 sheets to run-1 verdicts. The only
   calibration/sample overlap is v1-spo-002 (see ER-7).
 - **ER-6. D-36 class coverage.** The D-36 class-6 amendment defined six
   defect classes. Class 5 (typo/format-confusion) drew zero hits in the
@@ -225,6 +233,20 @@ recalibrate the graders, never as main-grading inputs.
   = 88.4% (gate still passes), kappa 0.8224, two-tier 4/199 = 2.0%.
   Bar counts unchanged at 95 defects. 95/199 = 47.7%, Wilson 95% CI
   [40.9%, 54.7%].
+- **ER-8. Severity hints in case notes.** The sheet generator redacted
+  only the `severity` field, so the inherited case-notes text kept
+  explicit severity assertions on some sheets. A mechanical scan finds
+  the tier named in the notes of 24 of the 200 run-2 sheets (12%) and
+  21 of the 200 run-1 sheets, every hint matching the stored tier. The
+  grading was therefore not fully blind to the current tier on those
+  sheets. Sensitivity is bounded. Excluding the 24 hinted run-2 cases,
+  raw agreement is 155/176 = 88.1% (gate still passes) and the
+  severity-defect rate is 83/176 = 47.2% (Rule 1 still triggers). On the
+  hinted cases alone, agreement is 22/24 = 91.7% and the defect rate
+  12/24 = 50.0%. No decision in this report moves under the exclusion,
+  so the remedy is disclosure here, not a re-run. Sweep A sheets should
+  redact severity assertions in notes text as well as the severity
+  field.
 
 ## Correction lanes opened by this report
 
