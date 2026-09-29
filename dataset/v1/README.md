@@ -19,6 +19,8 @@ suite** (`dataset/safety-policy/`), not by v1 — see D-34.
 ## License
 
 The v1 dataset is licensed under **CC-BY-4.0**. See
-[LICENSE-CC-BY-4.0](../../LICENSE-CC-BY-4.0) at the repo root. The canary
-(`dataset/trial/CANARY.txt` documents the practice; v1 gets its own fresh
-canary at seal time) marks the files against training ingestion.
+[LICENSE-CC-BY-4.0](../../LICENSE-CC-BY-4.0) at the repo root. The
+permanent canary (see
+[Contamination-Policy](../../docs/Contamination-Policy.md)) marks the
+files against training ingestion and is embedded in the v1 case files at
+seal time.

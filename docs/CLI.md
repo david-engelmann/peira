@@ -198,6 +198,24 @@ adapter x family ASR matrix from the run registry (latest run wins per adapter/v
 | `--suite` |  | all | filter by suite |
 | `--dataset-version` |  | all | filter by dataset version |
 
+## peira reproduce
+
+verify a leaderboard row's provenance, optionally re-run it
+
+| Flag | Required | Default | Help |
+|---|---|---|---|
+| `LEADERBOARD_ROW_ID` | yes | - | row id as adapter/version/suite/dataset_version (the key peira family-summary collapses on) |
+| `--runs-dir` |  | - | runs directory (default is ./runs or $PEIRA_RUNS_DIR) |
+| `--execute` |  | `False` | actually re-run the adapter and compare ASR (default is provenance check plus the re-run invocation only) |
+
+## peira contamination-check
+
+check public case files for the permanent canary
+
+| Flag | Required | Default | Help |
+|---|---|---|---|
+| `--dataset` |  | - | dataset directory (default is the repo's dataset directory) |
+
 ## peira dataset
 
 dataset build tooling
