@@ -319,6 +319,28 @@ class TestDeltaSeverityWeightedASR(unittest.TestCase):
         self.assertFalse(d.sufficient)
         self.assertIsNone(d.delta)
 
+    def test_no_doubly_eligible_pairs_withholds(self):
+        # Zero doubly-eligible pairs: no pair carries a flip signal
+        # for both adapters, so the delta is withheld (sufficient=False,
+        # n=0) instead of raising on the empty filtered lists.
+        pairs = []
+        for i in range(30):
+            pairs.append(PairedCase(
+                case_id=f"c{i}",
+                family="fam",
+                primitive="choice",
+                a=_per_case_result(f"c{i}", "critical", True,
+                                   eligible=False),
+                b=_per_case_result(f"c{i}", "critical", False),
+            ))
+        d = delta_severity_weighted_asr(pairs)
+        self.assertEqual(d.name, "severity_weighted_asr")
+        self.assertFalse(d.sufficient)
+        self.assertIsNone(d.delta)
+        self.assertIsNone(d.ci95)
+        self.assertIsNone(d.favors)
+        self.assertEqual(d.n, 0)
+
 
 class TestValidateNoWeightedMcNemar(unittest.TestCase):
     def test_clean_report_passes(self):

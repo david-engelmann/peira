@@ -198,8 +198,11 @@ class WeightedDelta:
     cases with the pairing preserved. Weighted metrics (severity-
     weighted ASR, cost-weighted comparisons) must never carry a
     McNemar p-value: McNemar operates on unweighted discordant-pair
-    counts by construction. ``favors`` follows the same convention as
-    :class:`DeltaResult`.
+    counts by construction. ``favors`` is claimed only when the point
+    estimate is nonzero and the 95% CI excludes zero. This is
+    deliberately weaker than :class:`DeltaResult`: the unweighted
+    ``_delta`` additionally requires the effect to clear its R-02 MDE
+    at 80% power, a gate the weighted bootstrap does not apply.
     """
 
     name: str
@@ -709,6 +712,18 @@ def delta_severity_weighted_asr(
         i for i, p in enumerate(pairs)
         if p.a.eligible and p.b.eligible
     ]
+    if not keep:
+        # Withhold, never fabricate: no doubly-eligible pair carries a
+        # flip signal for both adapters, so there is no comparison to
+        # make. Mirrors :func:`_delta`, which withholds below
+        # MIN_COMPARE_DELTA_CASES instead of raising on empty input;
+        # the empty-list ValueError in :func:`weighted_delta` stays a
+        # caller bug for its direct callers.
+        return WeightedDelta(
+            name="severity_weighted_asr",
+            delta=None, ci95=None, n=0,
+            sufficient=False, favors=None,
+        )
     return weighted_delta(
         "severity_weighted_asr",
         [w_xs[i] for i in keep], [xs[i] for i in keep],
