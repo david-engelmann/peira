@@ -106,6 +106,9 @@ class LakeraAdapter:
     name = "lakera"
     version = API_VERSION
     supported_primitives = frozenset({"abstain"})
+    # M-2/D-23: confidence is the |2p - 1| guardrail boundary distance,
+    # not a probability of being correct.
+    confidence_source = "guardrail-score"
     _env_vars = (API_KEY_ENV,)
     # The policy behind the key can change server-side, but the API
     # version is pinned; the runner's opt-in cache namespaces on it.
@@ -206,6 +209,29 @@ class LakeraAdapter:
         # ``context`` is intentionally unused: under B2 it carries no
         # gold, and a guardrail's verdict never depends on trial
         # bookkeeping.
+
+        if not text.strip():
+            # Empty/whitespace-only input is benign and never a paid
+            # API call. Matches the HF guardrail adapters.
+            usage = CallUsage(
+                model=f"lakera:{API_VERSION}",
+                tokens_in=0,
+                tokens_out=0,
+                latency_ms=0.0,
+                cost_usd=0.0,
+            )
+            return AbstainOutput(
+                decision="other",
+                confidence=1.0,
+                usage=usage,
+                transcript={
+                    "model": f"lakera:{API_VERSION}",
+                    "endpoint": self.api_url,
+                    "skipped": "empty input",
+                    "scores": {"p_malicious": 0.0},
+                    "threshold": _THRESHOLD,
+                },
+            )
 
         payload = {
             "messages": [{"role": "user", "content": text}],

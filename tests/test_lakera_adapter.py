@@ -220,6 +220,24 @@ class TestLakeraDecide(unittest.TestCase):
         req = out.transcript["request"]
         self.assertNotIn("sensitive attack text", str(req))
 
+    def test_empty_prompt_skips_api_call(self):
+        # Empty/whitespace-only input is benign without a paid API
+        # call, matching the HF guardrail adapters.
+        calls = []
+
+        def fake(payload):
+            calls.append(payload)
+            return _flagged_response(True)
+
+        for prompt in ("", "   ", "\n\t "):
+            out = LakeraAdapter(api_key="k", transport=fake).decide(
+                _case_input(prompt=prompt), "abstain", _ctx())
+            self.assertEqual(validate_output(out, "abstain"), [])
+            self.assertEqual(out.decision, "other")
+            self.assertAlmostEqual(out.confidence, 1.0)
+            self.assertEqual(out.usage.model, f"lakera:{API_VERSION}")
+        self.assertEqual(calls, [])
+
 
 class TestLakeraErrors(unittest.TestCase):
     def _adapter_with_status(self, status):
