@@ -550,6 +550,17 @@ never modified.
   Score/abstain cases do not enter this
   test. The binary right/wrong judgment is only clean for the choice
   primitive.
+- **Stuart-Maxwell directional comparison** (`stuart_maxwell_p_value(table)`).
+  C-1. For two adapters on the same paired cases, the square table of
+  flip-direction categories (rows = A's direction, columns = B's, over
+  cases where both flipped) tests marginal homogeneity. The question is
+  whether the adapters share the same directional distribution. The null is
+  rejected when one fails open (deny-to-approve) while the other
+  fails closed (to-abstain). Deliberately marginal homogeneity, not
+  symmetry (Bowker). The question is about the direction
+  distributions, not the joint table's symmetry. All six M-1
+  categories, never collapsed. Withheld below 10 discordant flips. See
+  docs/Flip-Direction.md for the full rationale.
 - **Bradley-Terry**: one `ComparisonOutcome` per paired
   choice-primitive case ("a" if only A was right, "b" if only B was
   right, "tie" otherwise), fitted with `bradley_terry()`, the same
@@ -1038,6 +1049,36 @@ and the max rank displacement, so a fragile index can be traced to the
 family responsible. Verdict bands are coarse on purpose (stable >= 0.9,
 mostly stable >= 0.7, fragile below): the index is a summary, not a
 gate; the per-family taus carry the detail.
+
+## Economic lottery index (C-6)
+
+The lottery index above tests whether the robustness ranking survives
+family removal. That ranking orders runs by conditional ASR. But the
+buyer's ranking is the economic ranking. It orders runs by expected
+attack cost per decision (E_attacked, M-3) under a versioned cost
+scenario, ascending. A family with rare but catastrophic deny-to-approve
+flips can account for most of E_attacked while barely moving headline ASR. So a
+ranking that is lottery-stable on robustness can be lottery-fragile on
+dollars.
+
+C-6 computes leave-one-family-out stability on the economic ranking,
+once per cost scenario. It always reports the pair of robustness
+stability and economic stability. It never reports a single lottery
+index. When the two disagree, that disagreement is the finding. A
+typical disagreement reads as robustness stable and economic fragile,
+with one family carrying the dollar risk. The paired report names the
+most influential family under each ranking. When they differ, the
+economic one is where the dollar risk concentrates.
+
+The economic ranking re-gates eligibility on each reduced family set
+exactly as R-09 does. A run that only qualified because of the removed
+family drops out honestly instead of silently keeping its rank.
+E_attacked scales every run by the scenario's attack rate. For any
+positive rate, the economic ranking does not depend on the rate. The
+report uses each scenario's default rate and records it. Run it with
+`peira lottery --economic`.
+Add `--scenario <id>` to restrict to one cost scenario. The full
+per-family tables are in the `--json` output.
 
 ## Economic value view (M-3, sidecar)
 

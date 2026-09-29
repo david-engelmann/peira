@@ -926,7 +926,8 @@ Cause: not an error. No indexed case rows match the filters
 `--family` against the family names in the runs.
 
 **`error: unknown cost scenario 'x' (known: [...])`**
-Cause: `peira value --scenario` named a scenario that isn't in
+Cause: `peira value --scenario` or `peira lottery --economic --scenario`
+named a scenario that isn't in
 `data/cost_scenarios/v1.yaml`. Fix: use one of the listed ids
 (`low-stakes`, `standard`, `high-stakes`).
 

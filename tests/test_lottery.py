@@ -340,8 +340,9 @@ def _lwrite(art):
     return tmp.name
 
 
-def _largs(*runs, families=None, json=None):
-    return argparse.Namespace(runs=list(runs), families=families, json=json)
+def _largs(*runs, families=None, json=None, economic=False, scenario=None):
+    return argparse.Namespace(runs=list(runs), families=families, json=json,
+                              economic=economic, scenario=scenario)
 
 
 class CmdLotteryTest(unittest.TestCase):
