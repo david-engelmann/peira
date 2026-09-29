@@ -1041,31 +1041,32 @@ gate; the per-family taus carry the detail.
 
 ## Economic lottery index (C-6)
 
-The lottery index above tests whether the *robustness* ranking
-(conditional ASR) survives family removal. But the buyer's ranking is
-the *economic* ranking: expected attack cost per decision (E_attacked,
-M-3) under a versioned cost scenario, ascending. A family with rare but
-catastrophic deny-to-approve flips can dominate E_attacked while barely
-moving headline ASR, so a ranking that is lottery-stable on robustness
-can be lottery-fragile on dollars.
+The lottery index above tests whether the robustness ranking survives
+family removal. That ranking orders runs by conditional ASR. But the
+buyer's ranking is the economic ranking. It orders runs by expected
+attack cost per decision (E_attacked, M-3) under a versioned cost
+scenario, ascending. A family with rare but catastrophic deny-to-approve
+flips can dominate E_attacked while barely moving headline ASR. So a
+ranking that is lottery-stable on robustness can be lottery-fragile on
+dollars.
 
 C-6 computes leave-one-family-out stability on the economic ranking,
-once per cost scenario, and always reports the **pair**
-(robustness-stability, economic-stability): never a single lottery
-index. When the two disagree ("robustness ranking stable, economic
-ranking fragile, family X carries the dollar risk"), that disagreement
-is the finding. The paired report names the most influential family
-under each ranking; when they differ, the economic one is where the
-dollar risk concentrates.
+once per cost scenario. It always reports the pair of robustness
+stability and economic stability. It never reports a single lottery
+index. When the two disagree, that disagreement is the finding. A
+typical disagreement reads as robustness stable and economic fragile,
+with one family carrying the dollar risk. The paired report names the
+most influential family under each ranking. When they differ, the
+economic one is where the dollar risk concentrates.
 
 The economic ranking re-gates eligibility on each reduced family set
-exactly as R-09 does, so a run that only qualified because of the
-removed family drops out honestly. E_attacked scales every run by the
-scenario's attack rate, so the economic ranking is invariant to that
-rate; the report uses each scenario's default rate and records it.
-Run it with `peira lottery --economic` (add `--scenario <id>` to
-restrict to one cost scenario); the full per-family tables are in the
-`--json` output.
+exactly as R-09 does. A run that only qualified because of the removed
+family drops out honestly instead of silently keeping its rank.
+E_attacked scales every run by the scenario's attack rate. The economic
+ranking does not depend on that rate. The report uses each scenario's
+default rate and records it. Run it with `peira lottery --economic`.
+Add `--scenario <id>` to restrict to one cost scenario. The full
+per-family tables are in the `--json` output.
 
 ## Economic value view (M-3, sidecar)
 

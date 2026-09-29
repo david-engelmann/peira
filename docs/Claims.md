@@ -15,6 +15,9 @@ indexes the load-bearing claims; detail lives in the linked docs.
   holdout cases; aged-out cases enter the public set on the declared
   schedule (see `Holdout-OpSec.md`), and only aggregate metrics leave the
   maintainer's machine.
+- The economic lottery index always reports the pair of robustness
+  stability and economic stability. It never reports the economic index
+  without the robustness index beside it (see `Methodology.md`).
 
 ## We don't claim
 

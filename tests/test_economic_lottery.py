@@ -225,7 +225,7 @@ class EconomicLotteryAnalysisTest(unittest.TestCase):
         a = economic_lottery_analysis(
             _disagreement_runs(), [CHEAP, JB, NEUTRAL], scenario
         )
-        json.dumps(a)
+        self.assertEqual(json.loads(json.dumps(a)), a)
 
 
 class CmdEconomicLotteryTest(unittest.TestCase):
@@ -407,7 +407,7 @@ class PairedStabilityReportTest(unittest.TestCase):
         report = paired_stability_report(
             _disagreement_runs(), [CHEAP, JB, NEUTRAL]
         )
-        json.dumps(report)
+        self.assertEqual(json.loads(json.dumps(report)), report)
 
 
 if __name__ == "__main__":
