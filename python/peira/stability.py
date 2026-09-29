@@ -350,10 +350,16 @@ def drift_watch(
     """
     old_map = {r.case_id: r for r in old_results}
     new_map = {r.case_id: r for r in new_results}
+    # A case whose family changed between runs is unpaired: it cannot
+    # enter either family's McNemar table (documented in
+    # docs/Methodology.md).
     paired_ids = [
         cid
         for cid, r in old_map.items()
-        if cid in new_map and r.eligible and new_map[cid].eligible
+        if cid in new_map
+        and r.eligible
+        and new_map[cid].eligible
+        and new_map[cid].family == r.family
     ]
     by_family: dict[str, list[str]] = {}
     for cid in paired_ids:

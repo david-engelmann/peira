@@ -506,6 +506,25 @@ class _StructuredLLMBase:
             params["seed"] = self._seed
         return params
 
+    def with_seed(self, seed: int | None) -> "_StructuredLLMBase":
+        """Return a copy of this adapter pinned to a provider seed.
+
+        M-7 multi-seed protocol: each seed run gets its own provider
+        sampling seed, so the k runs are independent measurements. The
+        copy shares the read-only SDK client; only the seed and the
+        seed-dependent cache namespace change.
+        """
+        import copy
+
+        new = copy.copy(self)
+        new._seed = seed
+        seed_part = f":s{seed}" if self._supports_seed else ""
+        new.cache_namespace = (
+            f"{self.name}:{self._model}:t{self._temperature}:"
+            f"mt{self._max_tokens}{seed_part}"
+        )
+        return new
+
     # -- construction helpers -------------------------------------------
 
     def _resolve_api_key(self, api_key: str | None) -> str:

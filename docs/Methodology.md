@@ -1083,12 +1083,12 @@ scenarios supply natural values (`deny-to-approve` flip cost for
 `cost_false_approve`, `approve-to-deny` for `cost_false_deny`). This is
 a cost model, not net benefit: outputs are dollars per case, never
 Vickers-Elkin net benefit.
-=======
+
 ## Multi-seed stability protocol (M-7)
 
 A single run confounds three things: the adapter's true flip rate,
 the luck of the draw on seeds, and case-level instability. The M-7
-protocol separates them. `peira run --seeds k` (k = 1 or k >= 3;
+protocol separates them. `peira run --seeds k` (k = 1 or k >= 3.
 k = 2 is rejected) executes the suite k times under consecutive seeds
 (seed .. seed+k-1), each under a fresh run nonce so call ids stay
 unlinkable. Each seed run seals its own ordinary run artifact
@@ -1122,14 +1122,22 @@ from the pilot's churn. `--budget-usd` with `--seeds k` divides the
 cap evenly across seeds. A run that hits its per-seed budget stops
 gracefully; the artifact records the termination, and that seed is
 excluded from the stability analysis rather than counted as a quiet
-non-flip.
+non-flip. A seed that crashes is excluded the same way; the completed
+seeds' artifacts are still sealed, so one bad seed never loses the
+others' work.
+
+Seed independence is enforced per adapter. The mock rebuilds its
+simulation script per seed; seed-sensitive LLM baselines are re-seeded
+per run (provider sampling seed plus cache namespace), so the k runs
+are independent measurements rather than k copies of one sampling
+decision.
 
 **Longitudinal registry.** Every run artifact carries the fields a
 future rerun needs for an apples-to-apples comparison: `model_class`
-(llm-baseline, guardrail, mock, ...), `confidence_source`,
+(llm-baseline, guardrail, rule-based, ...), `confidence_source`,
 `checkpoint_hash` (pinned model revision) or `api_version`,
 `call_date` (UTC date of the run), `decode_params` (canonical JSON),
-`prompt_template_hash`, and `case_set_tag` (the suite id; the dataset
+`template_hash`, and `case_set_tag` (the suite id; the dataset
 version travels separately). Adapters declare what they know; fields
 the adapter does not declare stay empty rather than invented.
 

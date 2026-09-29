@@ -1490,7 +1490,14 @@ def _adapter_longitudinal_provenance(
     """
     decode_params = getattr(adapter, "decode_params", None)
     if isinstance(decode_params, dict):
-        decode_params_str = json.dumps(decode_params, sort_keys=True)
+        try:
+            decode_params_str = json.dumps(
+                decode_params, sort_keys=True
+            )
+        except (TypeError, ValueError):
+            # A custom adapter may expose a non-serializable value;
+            # provenance must never break artifact creation.
+            decode_params_str = ""
     elif isinstance(decode_params, str):
         decode_params_str = decode_params
     else:
@@ -1920,7 +1927,10 @@ def run_multiseed(
     per_run_budget = (
         budget_usd / num_seeds if budget_usd is not None else None
     )
-    artifacts: list[RunArtifact] = []
+    # (seed, artifact, error): a crashed seed leaves no artifact but
+    # must not take the completed seeds down with it. KeyboardInterrupt
+    # and SystemExit are not caught: the operator's stop is final.
+    runs: list[tuple[int, RunArtifact | None, str | None]] = []
     for i, seed_i in enumerate(seeds):
         run_nonce = new_run_nonce()
         run_adapter = (
@@ -1931,37 +1941,45 @@ def run_multiseed(
         extra = dict(config_extra or {})
         extra["num_seeds"] = num_seeds
         extra["seed_index"] = i
-        artifact = run_suite(
-            run_adapter,
-            cases,
-            suite,
-            dataset_version,
-            progress=progress,
-            manifest_sha256=manifest_sha256,
-            seed=seed_i,
-            max_concurrency=max_concurrency,
-            max_attempts=max_attempts,
-            call_timeout=call_timeout,
-            config_extra=extra,
-            rlimit_cpu_seconds=rlimit_cpu_seconds,
-            rlimit_as_mb=rlimit_as_mb,
-            rlimit_fsize_mb=rlimit_fsize_mb,
-            run_nonce=run_nonce,
-            budget_usd=per_run_budget,
-        )
-        artifacts.append(artifact)
+        try:
+            artifact = run_suite(
+                run_adapter,
+                cases,
+                suite,
+                dataset_version,
+                progress=progress,
+                manifest_sha256=manifest_sha256,
+                seed=seed_i,
+                max_concurrency=max_concurrency,
+                max_attempts=max_attempts,
+                call_timeout=call_timeout,
+                config_extra=extra,
+                rlimit_cpu_seconds=rlimit_cpu_seconds,
+                rlimit_as_mb=rlimit_as_mb,
+                rlimit_fsize_mb=rlimit_fsize_mb,
+                run_nonce=run_nonce,
+                budget_usd=per_run_budget,
+            )
+        except Exception as e:  # noqa: BLE001 - resilience, not silence
+            runs.append(
+                (seed_i, None, f"{type(e).__name__}: {e}")
+            )
+            continue
+        runs.append((seed_i, artifact, None))
+    artifacts = [a for _, a, _ in runs if a is not None]
     # A truncated seed (budget termination, crash recovery) is real
     # data for its own artifact but must not enter the agreement
-    # statistics as if it ran the full case set.
+    # statistics as if it ran the full case set. A crashed seed has
+    # no artifact at all and is excluded the same way.
     complete = [
         (seed_i, artifact)
-        for seed_i, artifact in zip(seeds, artifacts)
-        if artifact.termination == "complete"
+        for seed_i, artifact, _ in runs
+        if artifact is not None and artifact.termination == "complete"
     ]
     excluded_seeds = [
         seed_i
-        for seed_i, artifact in zip(seeds, artifacts)
-        if artifact.termination != "complete"
+        for seed_i, artifact, _ in runs
+        if artifact is None or artifact.termination != "complete"
     ]
     if len(complete) < MIN_SEEDS:
         return artifacts, None

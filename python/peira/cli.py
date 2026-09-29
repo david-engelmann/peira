@@ -413,7 +413,21 @@ def cmd_run(args: argparse.Namespace) -> int:
         build_adapter = _build_mock if num_seeds > 1 else None
     else:
         run_nonce = new_run_nonce()
-        build_adapter = None
+        # M-7: seed-sensitive adapters (structured LLM baselines) must
+        # be re-seeded per run: reusing one instance would send the
+        # same provider sampling seed on every seed run, invalidating
+        # the stability measurement. with_seed shares the read-only
+        # client and re-keys the cache namespace.
+        if hasattr(adapter, "with_seed"):
+            _base_adapter = adapter
+
+            def _build_seeded(seed_i: int, run_nonce_i: str,
+                              _base=_base_adapter):
+                return _base.with_seed(seed_i)
+
+            build_adapter = _build_seeded
+        else:
+            build_adapter = None
 
     out_dir = Path(args.out)
 
@@ -610,8 +624,10 @@ def _cmd_run_multiseed(
               "withheld (see per-seed artifacts)", file=sys.stderr)
     seed_paths = []
     all_eligible = True
-    for artifact, seed_i in zip(artifacts, range(args.seed,
-                                                 args.seed + num_seeds)):
+    # Each artifact carries its own seed (RunArtifact.seed): never
+    # re-derive it from position, a crashed seed leaves a gap.
+    for artifact in artifacts:
+        seed_i = artifact.seed
         out_path = _write_final_artifact(
             out_dir, slug, suite, artifact, suffix=f"-seed{seed_i}"
         )
@@ -3640,7 +3656,7 @@ def build_parser() -> argparse.ArgumentParser:
     # provenance that makes two runs comparable.
     rl.add_argument("--model-class", default=None,
                     help="filter by adapter model class "
-                    "(llm-baseline, guardrail, mock, ...)")
+                    "(llm-baseline, guardrail, rule-based, ...)")
     rl.add_argument("--checkpoint-hash", default=None,
                     help="filter by pinned model revision")
     rl.add_argument("--api-version", default=None,

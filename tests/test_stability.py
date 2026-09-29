@@ -1,6 +1,6 @@
 """Unit tests for the M-7 multi-seed stability protocol (peira.stability).
 
-Run with: python -m pytest tests/test_stability.py
+Run with: python -m unittest discover tests -v
 """
 
 import json
@@ -359,6 +359,27 @@ class TestRunMultiseedTermination(unittest.TestCase):
         self.assertEqual(len(artifacts), 3)
         self.assertIsNone(stability)
 
+    def test_crashed_seed_does_not_lose_completed_artifacts(self):
+        from unittest.mock import patch
+
+        good = _fake_seed_artifact("complete", [True, False])
+        side_effects = [
+            good,
+            RuntimeError("provider exploded"),
+            _fake_seed_artifact("complete", [True, False]),
+            _fake_seed_artifact("complete", [True, False]),
+        ]
+        with patch("peira.runner.run_suite", side_effect=side_effects):
+            artifacts, stability = run_multiseed(
+                adapter=object(), cases=[], suite="s",
+                dataset_version="1.0.0", num_seeds=4,
+            )
+        # Three artifacts survive; the crashed seed is excluded.
+        self.assertEqual(len(artifacts), 3)
+        assert stability is not None
+        self.assertEqual(stability.seeds, [0, 2, 3])
+        self.assertEqual(stability.excluded_seeds, [1])
+
 
 class FakeAdapter:
     name = "fake"
@@ -401,6 +422,70 @@ class TestLongitudinalProvenance(unittest.TestCase):
             model_class = 123  # hostile: must not leak into the artifact
         prov = _adapter_longitudinal_provenance(Weird(), "trial")
         self.assertEqual(prov["model_class"], "")
+
+    def test_nonserializable_decode_params_falls_back_empty(self):
+        class BadParams:
+            name = "bad"
+            decode_params = {"temperature": 0.0, "weird": object()}
+        prov = _adapter_longitudinal_provenance(BadParams(), "trial")
+        self.assertEqual(prov["decode_params"], "")
+
+
+class DriftFamilyChangeTests(unittest.TestCase):
+    def _result(self, cid, family, flipped):
+        rec = _rec()
+        return PerCaseResult(
+            case_id=cid,
+            family=family,
+            severity="low",
+            primitive="choice",
+            benign=rec,
+            attacked=rec,
+            flipped=flipped,
+            eligible=True,
+        )
+
+    def test_family_change_unpairs_case(self):
+        # A case relabeled to a new family between runs must not enter
+        # either family's McNemar table.
+        old = [self._result("c1", "f1", False)]
+        new = [self._result("c1", "f2", True)]
+        res = drift_watch(old, new)
+        self.assertEqual(res.families, [])
+        self.assertEqual(res.newly_flipping, [])
+        self.assertEqual(res.newly_fixed, [])
+
+    def test_same_family_still_pairs(self):
+        old = [self._result("c1", "f1", False)]
+        new = [self._result("c1", "f1", True)]
+        res = drift_watch(old, new)
+        self.assertEqual(len(res.families), 1)
+        self.assertEqual(res.families[0].family, "f1")
+
+
+class WithSeedTests(unittest.TestCase):
+    def test_with_seed_rekeys_cache_namespace(self):
+        from peira.adapters.llm import _StructuredLLMBase
+
+        class Probe(_StructuredLLMBase):
+            name = "probe"
+            _supports_seed = True
+
+            def __init__(self, seed):
+                # Bypass provider init; only the seed machinery matters.
+                self._model = "m"
+                self._temperature = 0.0
+                self._seed = seed
+                self._max_tokens = 512
+                self.cache_namespace = f"probe:m:t0.0:mt512:s{seed}"
+
+        a = Probe(3)
+        b = a.with_seed(4)
+        self.assertEqual(b._seed, 4)
+        self.assertIn(":s4", b.cache_namespace)
+        self.assertNotIn(":s4", a.cache_namespace)
+        # The original is untouched.
+        self.assertEqual(a._seed, 3)
 
 
 if __name__ == "__main__":
