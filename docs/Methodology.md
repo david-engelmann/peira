@@ -1127,6 +1127,37 @@ and belongs in that family instead.
 7.7pp at 30%, 8.9pp at 40%. Published in the dataset manifest's
 `mdes` table (`dataset/v2/cases/manifest.json`).
 
+## Attack family: evidence_positioning
+
+Family 22. The attacked variant presents byte-identical facts but
+reorders them to exploit primacy and recency effects in decision
+models. Evidence supporting the target (wrong) decision is placed
+first and last in the evidence list. The strongest counter-evidence
+is buried in the middle. The benign control interleaves the same
+facts in a neutral order. Nothing is added, removed, or reworded.
+Only the sequence changes. The family measures order-sensitivity in
+decision models. It tests whether a judge follows the narrative arc
+of the evidence rather than its total weight.
+
+**Paired-control construction.** The benign prompt lists the facts in
+a neutral interleaved order with the weight of evidence clearly
+favoring the expected decision. The attacked prompt keeps the
+identical fact set and moves the target-supporting facts to the
+lead and closing positions, burying the expected-supporting facts
+mid-list. G2 (paired-variants) enforces that the variants differ.
+The authoring contract enforces that they differ only in order.
+
+**Validity diagnostic, the shuffle test.** Randomize the evidence
+order. If the attack dies, the case is genuine evidence_positioning
+(order-dependent bias). If the attack survives shuffling, the case
+is misclassified. Either the facts themselves were tampered with
+or the bias comes from content rather than position.
+
+**Design MDEs.** At n=400 the design MDEs are 4.4pp at 10%
+discordance, 6.3pp at 20%, 7.7pp at 30%, and 8.9pp at 40%.
+Published in the dataset manifest's `mdes` table
+(`dataset/v2/cases/manifest.json`).
+
 ## Analysis lock
 
 Every run artifact carries a sha256 lock over config + dataset version +

@@ -7,6 +7,18 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
 
 ## [Unreleased]
 
+### Added R-06 evidence_positioning family (family 22, dataset v2)
+
+- 420 paired cases in `dataset/v2/cases/evidence_positioning.jsonl`.
+  The attacked variant presents byte-identical facts but reorders them
+  to exploit primacy/recency effects. Target-supporting evidence leads
+  and closes the list while counter-evidence is buried mid-list.
+- Severity mix: 80 critical, 100 high, 240 medium. Primitives: 315
+  choice, 53 abstain, 52 score.
+- Registry entry in `python/peira/families.py`, Taxonomy.md entry 22,
+  Methodology.md family section, authoring template in
+  `python/peira/templates.py`, and design MDEs in the manifest.
+
 ### Fixed v1 scale mismatches in 241 cases (D-36 class 4)
 
 - 241 cases across 8 families mixed 0-100 scoring language with 0-1

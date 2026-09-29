@@ -110,7 +110,8 @@ EXPECTED_ENTRY_HASHES: dict[str, str] = {
     'temporal_numeric_traps': 'af7e233d73345439',
     'encoding_evasion': 'b8aa7481a261acf9',
     'abstain_forcing': 'a2524ce248716d94',
-    'verbosity_inflation': '28288f5d232a6691',
+    'verbosity_inflation': '810a780c540fefb6',
+    'evidence_positioning': '4f962fded358b8ba',
 }
 
 

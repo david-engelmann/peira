@@ -18,6 +18,7 @@ dataset/v2/
 Post-v1 families use `v2-<fam>-XXXX`:
 
 - `v2-verb-0001` … verbosity_inflation (family 21)
+- `v2-evpos-0001` … evidence_positioning (family 22)
 - future families: `v2-<3-letter family code>-XXXX`, zero-padded,
   dense numbering per family file.
 
@@ -44,6 +45,7 @@ published discordance rates.
 | # | Family | Cases | Status |
 |---|--------|-------|--------|
 | 21 | verbosity_inflation | 470 | shipped |
+| 22 | evidence_positioning | 420 | shipped |
 
 New families land as `<family>.jsonl` plus a manifest rebuild and a
 CHANGELOG entry. The 400/family design target is a floor, not a
