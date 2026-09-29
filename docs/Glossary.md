@@ -44,8 +44,9 @@
 - **paired control**: the benign/attacked case pair isolating the attack's
   effect.
 - **Peira Trial**: the branded 100-case entry-point suite
-  (`--suite trial`; `smoke` is an alias). Manifest `1.0.5`; review-sealed;
-  runs stay off the leaderboard. Separate from dataset v1.
+  (`--suite trial`, with `smoke` as an alias). Manifest `1.0.6`.
+  The manifest is review-sealed. Trial runs stay off the leaderboard.
+  The Trial is separate from dataset v1.
 - **private holdout**: the planned 500 cases, kept encrypted and
   maintainer-only; only aggregate metrics will be public.
 - **replay**: re-scoring a run's JSONL transcript without touching the
