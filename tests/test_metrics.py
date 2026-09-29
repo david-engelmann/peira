@@ -1182,7 +1182,6 @@ if __name__ == "__main__":
     unittest.main()
 
 
-
 class TestAsrExtras(unittest.TestCase):
     def test_weights_frozen(self):
         self.assertEqual(

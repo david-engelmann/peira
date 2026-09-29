@@ -1041,7 +1041,7 @@ fn output_fields_to_value(output: &Bound<'_, PyAny>) -> PyResult<Value> {
             "asdict() should be called on dataclass instances",
         ));
     } else {
-        // A foreign dataclass carrying fields beyond the five known
+        // A foreign dataclass carrying fields beyond the six known
         // CallUsage fields: the reference's `asdict` preserves every
         // field, but the Rust projection below would silently drop the
         // extras. A foreign dataclass carrying a *subset* of the fields
