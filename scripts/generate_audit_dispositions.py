@@ -198,7 +198,7 @@ FINDINGS = [
     dict(id="C-P2-2", track="ci", severity="P2",
          title="Mutable action tags (@v4) instead of SHA pins",
          disposition="fixed", fix_pr="#119", evidence_commit="959b079",
-         evidence="All third-party actions pinned to SHAs (e.g. actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1).",
+         evidence="All third-party actions pinned to SHAs. The runner-fallback-action added in #184 was tag-pinned to v1. The red-team flagged this. It is now pinned to SHA dc7732f9 in this D-record.",
          verifier="grep for uses SHAs in .github/workflows/ci.yml on main@2d234e6"),
     dict(id="C-P2-3", track="ci", severity="P2",
          title="No concurrency cancellation (stale runs burn minutes)",
