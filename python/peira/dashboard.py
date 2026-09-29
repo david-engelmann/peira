@@ -126,6 +126,10 @@ def _per_case_cost_latency(
                     and not isinstance(c, bool)
                     and c >= 0
                     and math.isfinite(c)
+                    # A finite measurement that would overflow the running
+                    # total is corrupt data (hand-edited artifact): skip it
+                    # rather than emitting an inf total as invalid JSON.
+                    and math.isfinite(total_cost + c)
                 ):
                     # NaN fails the >= 0 check; inf is rejected explicitly:
                     # neither can poison the total or emit invalid JSON
@@ -140,6 +144,7 @@ def _per_case_cost_latency(
                     and not isinstance(lat, bool)
                     and lat >= 0
                     and math.isfinite(lat)
+                    and math.isfinite(total_latency + lat)
                 ):
                     total_latency += float(lat)
                     n_latency += 1
@@ -184,8 +189,9 @@ def _family_breakdown(results: list[dict]) -> dict[str, dict[str, Any]]:
         # Dense: every taxonomy value is always present (zero when
         # unobserved), matching _flip_anatomy's direction_counts so
         # consumers can rely on one shape. Counts run over the same
-        # eligible-case population as _flip_anatomy: unflipped eligible
-        # cases classify as "none", ineligible cases are excluded.
+        # eligible-case population as _flip_anatomy (same classifier,
+        # so unflipped eligible cases land in "none" unless they show
+        # a material score shift); ineligible cases are excluded.
         flip_direction: dict[str, int] = {d: 0 for d in FLIP_DIRECTIONS}
         for r in fr:
             if r.get("eligible", False) is not True:
