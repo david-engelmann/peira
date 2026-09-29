@@ -5,7 +5,7 @@ per-attempt transcript latencies, timeout rate, pricing_version +
 model-level confidence (Jev secondary), lock-sealed contract_version,
 and explicit cache-state declarations for leaderboard ingestion.
 
-Run with: PYTHONPATH=python python3 -m unittest discover tests
+Run with: PYTHONPATH=python python3 -m pytest tests
 """
 
 import json

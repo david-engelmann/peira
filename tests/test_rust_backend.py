@@ -1,5 +1,5 @@
 """Backend parity: the Rust accelerator must be indistinguishable from the
-pure-Python reference (run with: python -m unittest discover tests).
+pure-Python reference (run with: python -m pytest tests).
 
 These tests pass whether or not `peira._core` is built: they compare the
 public dispatched functions against the `_xxx_py` reference

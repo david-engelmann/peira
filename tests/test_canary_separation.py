@@ -1,4 +1,4 @@
-"""Unit tests for scripts/check_canary_separation.py (run with: python -m unittest discover tests)."""
+"""Unit tests for scripts/check_canary_separation.py (run with: python -m pytest tests)."""
 
 import json
 import subprocess

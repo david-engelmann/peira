@@ -1,6 +1,6 @@
 """Tests for the dashboard data layer (python/peira/dashboard.py).
 
-Run with: PYTHONPATH=python python3 -m unittest discover tests
+Run with: PYTHONPATH=python python3 -m pytest tests
 """
 
 import json

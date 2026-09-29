@@ -1,5 +1,5 @@
 """Tests for R-05 contamination package: evaluation_only/do_not_train flags
-and the two-tier canary helpers (run with: python -m unittest discover tests)."""
+and the two-tier canary helpers (run with: python -m pytest tests)."""
 
 import json
 import tempfile

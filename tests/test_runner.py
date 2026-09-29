@@ -1,4 +1,4 @@
-"""Unit tests for runner resume validation and progress (run with: python -m unittest discover tests)."""
+"""Unit tests for runner resume validation and progress (run with: python -m pytest tests)."""
 
 import dataclasses
 import unittest

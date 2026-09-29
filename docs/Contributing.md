@@ -4,7 +4,8 @@
 
 Every PR must:
 
-1. Keep `python -m unittest discover tests` green.
+1. Keep `python -m pytest tests -n auto` green (install test deps first:
+   `pip install -e .[dev]`).
 2. Keep `cargo test --workspace` green (once the Rust core has logic).
 3. Keep `python scripts/check_public_surface.py` green. Strategy language
    is never committed (see below).

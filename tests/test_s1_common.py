@@ -1,4 +1,4 @@
-"""Unit tests for scripts/s1_common.py (run with: python -m unittest discover tests)."""
+"""Unit tests for scripts/s1_common.py (run with: python -m pytest tests)."""
 
 import sys
 import unittest

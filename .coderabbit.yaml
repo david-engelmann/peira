@@ -98,10 +98,14 @@ reviews:
         without a docs/ update.
     - path: "tests/**"
       instructions: |
-        Tests use unittest.TestCase (python -m unittest discover tests), NOT pytest.
-        Every new test must assert behavior (expected vs actual). Flag tests that only
-        exercise code without assertions, or that assert on tautologies.
-        Tests must be deterministic: no network, no wall-clock dependence, no paid API calls.
+        Tests run under pytest (`python -m pytest tests`, parallel with `-n auto`).
+        unittest.TestCase classes are discovered natively; new tests may use
+        plain pytest style. Every new test must assert behavior (expected vs
+        actual). Flag tests that only exercise code without assertions, or
+        that assert on tautologies. Tests must be deterministic: no network,
+        no wall-clock dependence, no paid API calls. Tests must be
+        xdist-safe: no shared mutable state or order dependence across test
+        files.
     - path: "crates/**"
       instructions: |
         Rust code must be clippy-clean under the workspace lints (warnings denied in CI).
