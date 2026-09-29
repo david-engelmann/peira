@@ -958,7 +958,8 @@ class DefenseOptimum:
     toward the highest pt (least review at equal cost).
     ``prevention_value_per_review_dollar`` is the priced attack cost
     prevented per review dollar at the optimum, None when the optimum
-    reviews nothing.
+    costs nothing to run: either it reviews nothing, or review is free
+    (``review_cost_usd == 0``) so the ratio has no denominator.
     """
 
     pt: float
@@ -983,6 +984,20 @@ def _check_review_cost_usd(review_cost_usd: float) -> float:
             f"got {review_cost_usd!r}"
         )
     return float(review_cost_usd)
+
+
+def _check_attack_rate(attack_rate: float | None) -> float:
+    """Validate the attack rate: a finite fraction in [0, 1]."""
+    if (
+        isinstance(attack_rate, bool)
+        or not isinstance(attack_rate, (int, float))
+        or not math.isfinite(attack_rate)
+        or not 0.0 <= attack_rate <= 1.0
+    ):
+        raise ValueError(
+            f"attack_rate must be in [0, 1], got {attack_rate!r}"
+        )
+    return float(attack_rate)
 
 
 def _check_defense_thresholds(
@@ -1080,14 +1095,7 @@ def defense_curve(
     grid = _check_defense_thresholds(thresholds)
     if attack_rate is None:
         attack_rate = scenario.baseline_attack_rate
-    if (
-        isinstance(attack_rate, bool)
-        or not isinstance(attack_rate, (int, float))
-        or not 0.0 <= attack_rate <= 1.0
-    ):
-        raise ValueError(
-            f"attack_rate must be in [0, 1], got {attack_rate!r}"
-        )
+    attack_rate = _check_attack_rate(attack_rate)
     analyzed, always, n_eligible = _split_defense_population(
         results, scenario
     )
@@ -1233,15 +1241,16 @@ def threshold_defense_report(
     """
     review_cost_usd = _check_review_cost_usd(review_cost_usd)
     grid = _check_defense_thresholds(thresholds)
+    attack_rate = _check_attack_rate(
+        scenario.baseline_attack_rate
+        if attack_rate is None
+        else attack_rate
+    )
     out: dict[str, Any] = {
         "scenario": scenario.scenario_id,
         "scenario_version": scenario.version,
         "review_cost_usd": review_cost_usd,
-        "attack_rate": (
-            scenario.baseline_attack_rate
-            if attack_rate is None
-            else attack_rate
-        ),
+        "attack_rate": attack_rate,
         "thresholds": grid,
         "adapters": {},
     }

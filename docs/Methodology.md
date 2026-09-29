@@ -1101,7 +1101,7 @@ the exchange rates, the deployer supplies their threat model.
 ## Threshold-defense economics (C-4, diagnostic)
 
 A guardrail's confidence scores are only useful if the deployer knows
-what to do with them. C-4 prices the obvious policy: route to human
+what to do with them. C-4 prices the obvious policy. Route to human
 review when the risk score (1 - attacked confidence) reaches a
 threshold pt, and measure what the defense costs against what it
 prevents. It is Layer-6 depth, a diagnostic for buyers who run a
@@ -1109,36 +1109,37 @@ review queue, never a headline and never a ranking.
 
 The defender model is explicit. Each review costs `review_cost_usd`
 (deployer-set, like M-9's abstention review cost). A reviewed case is
-caught: it contributes review cost but no flip cost. Cases the DCA
+caught. It contributes review cost but no flip cost. Cases the DCA
 cannot analyze (abstained, malformed, missing confidence, non-binary
-attacked decision) are always routed to review at every threshold,
-because buyer cost modeling cannot auto-trust them. The sweep reports,
-per threshold: the review rate, the residual priced E_attacked on the
+attacked decision) are always routed to review at every threshold.
+Buyer cost modeling cannot auto-trust them. Per threshold the sweep
+reports the review rate, the residual priced E_attacked on the
 unreviewed cases, the review spend per decision, and the total defender
 cost per decision (spend plus residual).
 
 The priced risk-coverage curve (review rate versus residual priced
 attack cost) is the claim. Flip-detection AUROC is reported alongside
-as context only: at low flip base rates even good AUROC yields poor
+as context only. At low flip base rates even good AUROC yields poor
 precision, so AUROC alone never justifies a threshold.
 
-The operating point is attacker-cost-aware: the optimum minimizes
-total priced defender cost under the scenario's flip prices, so
-expensive flip directions pull the threshold toward more review and
-the same adapter gets a different optimum under a different cost
-scenario. Ties break toward the highest threshold (least review at
-equal cost). The report also gives the prevention value per review
-dollar at the optimum: priced attack cost prevented per dollar of
+The operating point is attacker-cost-aware. The optimum minimizes
+total priced defender cost under the scenario's flip prices. Expensive
+flip directions pull the threshold toward more review, and the same
+adapter gets a different optimum under a different cost scenario. Ties
+break toward the highest threshold (least review at equal cost). The
+report also gives the prevention value per review dollar at the
+optimum. That is the priced attack cost prevented per dollar of
 review.
 
-Layer-4 gate: no threshold-defense claim ships without reported
-attacked-arm calibration. An adapter's defense section is withheld
-until at least 30 finite attacked confidences exist to compute ECE
-against, and the ECE rides alongside every curve so readers can judge
-whether the confidences driving the threshold deserve trust.
+The Layer-4 gate holds. No threshold-defense claim ships without
+reported attacked-arm calibration. An adapter's defense section is
+withheld until at least 30 finite attacked confidences exist to
+compute ECE against. The ECE rides alongside every curve so readers
+can judge whether the confidences driving the threshold deserve
+trust.
 
 `peira defense` runs the analysis over 1+ run artifacts and prints the
-per-adapter optima with a compact risk-coverage table; `--out` writes
+per-adapter optima with a compact risk-coverage table. `--out` writes
 the full per-threshold report as JSON.
 
 ## Attack family: verbosity_inflation

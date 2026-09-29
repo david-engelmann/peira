@@ -2345,12 +2345,16 @@ def _defense_text(report: dict[str, Any]) -> str:
             f"total=${o['total_defender_cost_per_decision']:.4f}/decision"
         )
         pvd = o["prevention_value_per_review_dollar"]
-        lines.append(
-            "  prevention value: "
-            + (f"${pvd:.2f} of attack cost prevented per $1 of review"
-               if pvd is not None
-               else "n/a (optimum reviews nothing)")
+        pvd_text = (
+            f"${pvd:.2f} of attack cost prevented per $1 of review"
+            if pvd is not None
+            else (
+                "n/a (review is free)"
+                if o["review_rate"] > 0
+                else "n/a (optimum reviews nothing)"
+            )
         )
+        lines.append(f"  prevention value: {pvd_text}")
         lines.append("  priced risk-coverage "
                      "(target review rate -> residual $/decision):")
         for target, rr, res in _defense_coverage_rows(

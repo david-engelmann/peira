@@ -690,15 +690,27 @@ class DefenseCliTest(unittest.TestCase):
         rc = cmd_defense(self._ns(runs=[a], review_cost_usd=-1.0))
         self.assertEqual(rc, EXIT_USER_ERROR)
 
+    def test_defense_free_review_message(self):
+        # review_cost_usd=0 with a reviewing optimum: the prevention
+        # value is n/a because review is free, not because nothing is
+        # reviewed.
+        from peira.cli import EXIT_OK, cmd_defense
+        import io
+        from contextlib import redirect_stdout
+        a = self._write(self._artifact("mock-a", 40))
+        buf = io.StringIO()
+        with redirect_stdout(buf):
+            rc = cmd_defense(self._ns(runs=[a], review_cost_usd=0.0))
+        self.assertEqual(rc, EXIT_OK)
+        out = buf.getvalue()
+        self.assertIn("n/a (review is free)", out)
+        self.assertNotIn("reviews nothing", out)
+
     def test_defense_duplicate_adapter(self):
         from peira.cli import EXIT_USER_ERROR, cmd_defense
         a = self._write(self._artifact("mock-a", 40))
         rc = cmd_defense(self._ns(runs=[a, a]))
         self.assertEqual(rc, EXIT_USER_ERROR)
-
-
-if __name__ == "__main__":
-    unittest.main()
 
 
 # ---------------------------------------------------------------------------
@@ -978,6 +990,18 @@ class ThresholdDefenseReportTest(unittest.TestCase):
         self.assertTrue(section["withheld"])
         self.assertIn("no eligible cases", section["reason"])
 
+    def test_bad_attack_rate_raises_even_when_all_withheld(self):
+        # The attack rate is validated before the report is built: an
+        # invalid rate must raise even when every adapter is withheld
+        # and defense_curve never runs.
+        with self.assertRaisesRegex(ValueError, "attack_rate"):
+            threshold_defense_report(
+                {"a": _defense_results(5)},
+                load_cost_scenario("standard"),
+                1.0,
+                attack_rate=1.5,
+            )
+
     def test_reports_with_calibration(self):
         report = threshold_defense_report(
             {"a": _defense_results(40), "b": _defense_results(10)},
@@ -1014,4 +1038,10 @@ class ThresholdDefenseReportTest(unittest.TestCase):
             load_cost_scenario("standard"),
             1.0,
         )
-        json.dumps(report)
+        blob = json.dumps(report)
+        self.assertIsInstance(blob, str)
+        self.assertEqual(json.loads(blob), report)
+
+
+if __name__ == "__main__":
+    unittest.main()
