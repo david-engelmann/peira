@@ -43,7 +43,16 @@ jobs:
         id: final
         run: |
           if [ -n "${{ steps.fallback.outputs.use-runner }}" ]; then
-            echo "runner=${{ steps.fallback.outputs.use-runner }}" >> "$GITHUB_OUTPUT"
+            # Convert the action's output to a JSON array for fromJSON().
+            # The action may output "self-hosted,runner-grid" (comma-separated)
+            # or '["ubuntu-latest"]' (already JSON).
+            runner='${{ steps.fallback.outputs.use-runner }}'
+            if [[ "$runner" == "["* ]]; then
+              echo "runner=$runner" >> "$GITHUB_OUTPUT"
+            else
+              json=$(python3 -c "import json,sys; print(json.dumps([s.strip() for s in '''$runner'''.split(',')]))")
+              echo "runner=$json" >> "$GITHUB_OUTPUT"
+            fi
           else
             echo 'runner=["ubuntu-latest"]' >> "$GITHUB_OUTPUT"
           fi
