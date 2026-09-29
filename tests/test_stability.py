@@ -46,7 +46,7 @@ def _r(case_id, family="f", flipped=False, eligible=True):
     )
 
 
-def _runs(flip_matrix, families=None):
+def _runs(flip_matrix, families=None, eligible=True):
     """Build per-seed result lists from a flip matrix.
 
     flip_matrix[seed][case] -> bool flipped. families optional list
@@ -57,7 +57,8 @@ def _runs(flip_matrix, families=None):
         run = []
         for i, f in enumerate(flips):
             fam = families[i] if families else "f"
-            run.append(_r(f"c{i}", family=fam, flipped=f))
+            run.append(_r(f"c{i}", family=fam, flipped=f,
+                          eligible=eligible))
         out.append(run)
     return out
 
@@ -253,12 +254,16 @@ class TestStabilityArtifact(unittest.TestCase):
             dataset_version="1.0.0",
             manifest_sha256="abc",
             seeds=[0, 1, 2],
-            run_artifact_paths=["a.json", "b.json", "c.json"],
+            run_artifact_paths={0: "a.json", 1: "b.json", 2: "c.json"},
             stability=res,
         )
         art2 = StabilityArtifact.from_json(art.to_json())
         self.assertEqual(art2.adapter_name, "mock")
         self.assertEqual(art2.seeds, [0, 1, 2])
+        self.assertEqual(
+            art2.run_artifact_paths,
+            {0: "a.json", 1: "b.json", 2: "c.json"},
+        )
         assert art2.stability is not None
         self.assertEqual(art2.stability.pass_k, res.pass_k)
         self.assertEqual(art2.stability.k, 3)
@@ -274,17 +279,47 @@ class TestStabilityArtifact(unittest.TestCase):
             dataset_version="1.0.0",
             manifest_sha256="abc",
             seeds=[0, 1],
-            run_artifact_paths=["a.json", "b.json"],
+            run_artifact_paths={0: "a.json", 1: "b.json", 2: "c.json"},
             stability=res,
         )
         art2 = StabilityArtifact.from_json(art.to_json())
         assert art2.stability is not None
         self.assertEqual(art2.stability.excluded_seeds, [2])
+        # Excluded seed 2's path is present but not in seeds.
+        self.assertEqual(art2.seeds, [0, 1])
+        self.assertIn(2, art2.run_artifact_paths)
 
     def test_wrong_kind_rejected(self):
         with self.assertRaises(ValueError):
             StabilityArtifact.from_json(
                 json.dumps({"artifact_kind": "run"}))
+
+    def test_analysis_lock_detects_tampering(self):
+        res = flip_agreement(_runs([[True, False]] * 3))
+        art = StabilityArtifact(
+            seeds=[0, 1, 2],
+            run_artifact_paths={0: "a.json"},
+            stability=res,
+        ).seal()
+        self.assertTrue(art.verify())
+        art2 = StabilityArtifact.from_json(art.to_json())
+        self.assertTrue(art2.verify())
+        # Tamper with the sealed headline.
+        import dataclasses
+        tampered = dataclasses.replace(
+            art2,
+            stability=dataclasses.replace(
+                art2.stability, pass_k=0.999
+            ),
+        )
+        self.assertFalse(tampered.verify())
+
+    def test_pass_k_withheld_when_no_eligible_cases(self):
+        # All cases ineligible: pass^k is undefined, not 0.0.
+        res = flip_agreement(_runs([[True, False]] * 3, eligible=False))
+        self.assertEqual(res.n_cases, 0)
+        self.assertIn("withheld", res.summary_text())
+        self.assertNotIn("pass^3 = 0.0%", res.summary_text())
 
 
 class TestRunMultiseedValidation(unittest.TestCase):

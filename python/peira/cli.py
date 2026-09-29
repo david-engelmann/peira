@@ -622,7 +622,7 @@ def _cmd_run_multiseed(
         print("error: multi-seed run did not complete "
               f"{num_seeds} seeds cleanly; stability analysis "
               "withheld (see per-seed artifacts)", file=sys.stderr)
-    seed_paths = []
+    seed_paths: dict[int, str] = {}
     all_eligible = True
     # Each artifact carries its own seed (RunArtifact.seed): never
     # re-derive it from position, a crashed seed leaves a gap.
@@ -631,7 +631,7 @@ def _cmd_run_multiseed(
         out_path = _write_final_artifact(
             out_dir, slug, suite, artifact, suffix=f"-seed{seed_i}"
         )
-        seed_paths.append(str(out_path))
+        seed_paths[seed_i] = str(out_path)
         print(f"seed {seed_i}: {out_path} "
               f"(termination={artifact.termination})", file=sys.stderr)
         _print_run_summary(artifact, out_path)
@@ -649,7 +649,7 @@ def _cmd_run_multiseed(
         seeds=list(stability.seeds),
         run_artifact_paths=seed_paths,
         stability=stability,
-    )
+    ).seal()
     stab_path = out_dir / f"{slug}-{suite}-stability.json"
     atomic_write_text(stab_path, stab_artifact.to_json())
     print(f"\nstability: {stab_path}", file=sys.stderr)

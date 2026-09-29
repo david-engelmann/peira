@@ -1887,7 +1887,7 @@ def run_multiseed(
     rlimit_fsize_mb: float | None = None,
     budget_usd: float | None = None,
     build_adapter: Callable[[int, str], Any] | None = None,
-) -> tuple[list[RunArtifact], Any]:
+) -> tuple[list[RunArtifact], "StabilityResult | None"]:
     """Run a suite k times under consecutive seeds (M-7 protocol).
 
     Executes ``run_suite`` ``num_seeds`` times with seeds
@@ -1923,6 +1923,12 @@ def run_multiseed(
         raise ValueError(
             f"num_seeds must be >= {MIN_SEEDS} for the M-7 protocol, "
             f"got {num_seeds}"
+        )
+    if isinstance(budget_usd, bool):
+        # bool is an int subclass: True / 3 would silently become a
+        # $0.33 budget. Reject it before the division.
+        raise ValueError(
+            f"budget_usd must be a number or None, got {budget_usd!r}"
         )
     seeds = [seed + i for i in range(num_seeds)]
     per_run_budget = (

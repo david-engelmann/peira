@@ -95,11 +95,19 @@ class StabilityResult:
         """One-line human-readable stability summary."""
         k = self.k or len(self.seeds)
         lo, hi = self.wilson_ci
+        if self.n_cases == 0:
+            # No eligible cases: pass^k is undefined, not zero.
+            # Reporting 0.0% would read as measured zero agreement.
+            agreement = f"pass^{k} withheld (no eligible cases)"
+        else:
+            agreement = (
+                f"pass^{k} = {self.pass_k:.1%} case agreement"
+            )
         return (
             f"ASR = {self.pooled_asr:.1%} "
             f"(Wilson 95% CI [{lo:.1%}, {hi:.1%}]; "
             f"run-to-run sd {self.run_sd:.1%} across {k} seeds; "
-            f"pass^{k} = {self.pass_k:.1%} case agreement; "
+            f"{agreement}; "
             f"{self.n_churn} churn cases)"
         )
 
@@ -424,6 +432,10 @@ class StabilityArtifact:
     and seals the stability analysis over them. ``created_utc`` and
     the adapter/suite/dataset identity mirror the run artifacts so
     the registry can index stability runs alongside single runs.
+
+    The ``analysis_lock`` binds the derived headline (pass^k,
+    variance components) to the inputs: hand-editing the sealed
+    numbers is detectable via ``verify()``.
     """
 
     artifact_version: str = "1.0"
@@ -433,11 +445,44 @@ class StabilityArtifact:
     dataset_version: str = ""
     manifest_sha256: str = ""
     seeds: list[int] = field(default_factory=list)
-    run_artifact_paths: list[str] = field(default_factory=list)
+    # Seed -> artifact path. A dict, not a positional list: excluded
+    # seeds leave gaps, and positional correspondence would silently
+    # misalign (a seed that crashed has no path; a truncated seed's
+    # path is present but the seed is not in `seeds`).
+    run_artifact_paths: dict[int, str] = field(default_factory=dict)
     stability: StabilityResult | None = None
     created_utc: str = field(
         default_factory=lambda: datetime.now(timezone.utc).isoformat()
     )
+    analysis_lock: str = ""
+
+    def compute_lock(self) -> str:
+        """Hash the sealed analysis content."""
+        import hashlib
+
+        payload = json.dumps(
+            {
+                "seeds": list(self.seeds),
+                "run_artifact_paths": {
+                    str(k): v
+                    for k, v in self.run_artifact_paths.items()
+                },
+                "stability": (
+                    self.stability.to_dict()
+                    if self.stability is not None
+                    else None
+                ),
+            },
+            sort_keys=True,
+        )
+        return hashlib.sha256(payload.encode()).hexdigest()
+
+    def seal(self) -> "StabilityArtifact":
+        self.analysis_lock = self.compute_lock()
+        return self
+
+    def verify(self) -> bool:
+        return self.analysis_lock == self.compute_lock()
 
     def to_json(self) -> str:
         return json.dumps(
@@ -450,13 +495,16 @@ class StabilityArtifact:
                 "dataset_version": self.dataset_version,
                 "manifest_sha256": self.manifest_sha256,
                 "seeds": list(self.seeds),
-                "run_artifact_paths": list(self.run_artifact_paths),
+                "run_artifact_paths": {
+                    str(k): v for k, v in self.run_artifact_paths.items()
+                },
                 "stability": (
                     self.stability.to_dict()
                     if self.stability is not None
                     else None
                 ),
                 "created_utc": self.created_utc,
+                "analysis_lock": self.analysis_lock,
             },
             indent=2,
             sort_keys=True,
@@ -479,13 +527,15 @@ class StabilityArtifact:
             dataset_version=str(d.get("dataset_version", "")),
             manifest_sha256=str(d.get("manifest_sha256", "")),
             seeds=[int(x) for x in d.get("seeds", [])],
-            run_artifact_paths=[
-                str(x) for x in d.get("run_artifact_paths", [])
-            ],
+            run_artifact_paths={
+                int(k): str(v)
+                for k, v in d.get("run_artifact_paths", {}).items()
+            },
             stability=(
                 StabilityResult.from_dict(stability)
                 if stability is not None
                 else None
             ),
             created_utc=str(d.get("created_utc", "")),
+            analysis_lock=str(d.get("analysis_lock", "")),
         )
