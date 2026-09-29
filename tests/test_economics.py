@@ -7,12 +7,16 @@ import unittest
 
 from peira.adapters.base import CallUsage
 from peira.economics import (
+    DEFAULT_DEFENSE_THRESHOLDS,
     FLIP_DIRECTIONS,
+    CostScenario,
+    DefenseOptimum,
     _parse_simple_yaml,
     _validate_scenario,
     attacker_cost_multiplier,
     break_even_attack_rate,
     cppf,
+    defense_curve,
     drummond_holte_curves,
     e_attacked,
     flip_direction,
@@ -20,11 +24,20 @@ from peira.economics import (
     gordon_loeb_tripwire,
     list_cost_scenarios,
     load_cost_scenario,
+    optimal_threshold,
     pareto_frontier,
+    risk_coverage_curve,
+    threshold_defense_report,
     value_view,
     _pair_results,
 )
-from peira.metrics import CallRecord, PerCaseResult
+from peira.metrics import (
+    MIN_PER_CONDITION_CASES,
+    CallRecord,
+    PerCaseResult,
+    net_benefit_at_threshold,
+    net_benefit_pairs,
+)
 
 
 def _rec(decision, abstained=False, malformed=False, cost=0.001, score=None):
@@ -565,3 +578,319 @@ class ValueCliTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+# ---------------------------------------------------------------------------
+# C-4: threshold-defense economics
+# ---------------------------------------------------------------------------
+
+
+def _crec(decision, confidence, abstained=False, malformed=False):
+    return CallRecord(
+        decision=decision,
+        confidence=confidence,
+        abstained=abstained,
+        refusal_reason="",
+        usage=None,
+        seed=0,
+        dispatch_index=0,
+        malformed=malformed,
+    )
+
+
+def _cresult(case_id, benign_decision, attacked_decision, flipped,
+             confidence, eligible=True, a_abstained=False,
+             a_malformed=False):
+    return PerCaseResult(
+        case_id=case_id,
+        family="literal_reading",
+        severity="medium",
+        primitive="choice",
+        benign=_crec(benign_decision, 0.95),
+        attacked=_crec(attacked_decision, confidence,
+                       abstained=a_abstained, malformed=a_malformed),
+        flipped=flipped,
+        eligible=eligible,
+        ineligibility_reason="" if eligible else "benign_wrong_decision",
+    )
+
+
+def _defense_results(n, flip_every=2, confidence_step=0.02):
+    """n eligible choice cases; every flip_every-th flips deny->approve.
+
+    Confidences cycle so risks spread across the threshold grid.
+    """
+    out = []
+    for i in range(n):
+        flipped = (i % flip_every == 0)
+        conf = 0.05 + (i * confidence_step % 0.9)
+        out.append(_cresult(
+            f"d{i}", "deny", "approve" if flipped else "deny",
+            flipped, round(conf, 4),
+        ))
+    return out
+
+
+class DefenseCurveTest(unittest.TestCase):
+    def test_default_grid_includes_zero(self):
+        self.assertEqual(DEFAULT_DEFENSE_THRESHOLDS[0], 0.0)
+        curve = defense_curve(
+            _defense_results(40), load_cost_scenario("standard"), 1.0,
+        )
+        self.assertEqual(curve.points[0].pt, 0.0)
+
+    def test_review_everything_endpoints(self):
+        results = _defense_results(40)
+        curve = defense_curve(
+            results, load_cost_scenario("standard"), 2.5,
+            attack_rate=1.0,
+        )
+        p0 = curve.points[0]
+        self.assertEqual(p0.review_rate, 1.0)
+        self.assertEqual(p0.residual_e_attacked, 0.0)
+        self.assertAlmostEqual(p0.review_spend_per_decision, 2.5)
+        self.assertAlmostEqual(
+            p0.total_defender_cost_per_decision, 2.5)
+
+    def test_population_mirror_matches_dca(self):
+        # The analyzed filter must mirror R-08's attacked-arm rule:
+        # analyzed count equals net_benefit_pairs output length, even
+        # with abstains, malformed, and missing confidences mixed in.
+        results = _defense_results(40)
+        results.append(_cresult("ax1", "deny", "abstain", True, 0.4,
+                               a_abstained=True))
+        results.append(_cresult("ax2", "deny", "approve", True, 0.4,
+                               a_malformed=True))
+        results.append(_cresult("ax3", "deny", "deny", False, None))
+        results.append(_cresult("ax4", "deny", "deny", False, 0.8,
+                               eligible=False))
+        curve = defense_curve(
+            results, load_cost_scenario("standard"), 1.0,
+        )
+        risks, _ = net_benefit_pairs(results, "attacked")
+        self.assertEqual(curve.n_analyzed, len(risks))
+        self.assertEqual(curve.n_eligible, 43)
+        self.assertEqual(curve.n_always_review, 3)
+        self.assertEqual(
+            curve.n_eligible, curve.n_analyzed + curve.n_always_review)
+
+    def test_always_review_routed_at_every_threshold(self):
+        results = _defense_results(20)
+        results.append(_cresult("ax1", "deny", "abstain", True, 0.99,
+                                a_abstained=True))
+        curve = defense_curve(
+            results, load_cost_scenario("standard"), 1.0,
+            thresholds=[0.99],
+        )
+        # The abstained case has risk 0.01 < 0.99 but must still be
+        # reviewed: buyer cost modeling cannot auto-trust it.
+        self.assertEqual(curve.points[0].n_reviewed, 1)
+        self.assertAlmostEqual(
+            curve.points[0].review_rate, 1 / 21)
+
+    def test_residual_monotone_in_threshold(self):
+        curve = defense_curve(
+            _defense_results(60), load_cost_scenario("standard"), 1.0,
+        )
+        pts = curve.points
+        for a, b in zip(pts, pts[1:]):
+            # Higher pt: less review, no less residual, no more spend.
+            self.assertLessEqual(b.review_rate, a.review_rate)
+            self.assertGreaterEqual(b.residual_e_attacked,
+                                    a.residual_e_attacked)
+            self.assertLessEqual(b.review_spend_per_decision,
+                                 a.review_spend_per_decision)
+
+    def test_undefended_matches_e_attacked(self):
+        results = _defense_results(50)
+        scenario = load_cost_scenario("standard")
+        curve = defense_curve(results, scenario, 1.0, attack_rate=0.7)
+        expected = e_attacked(results, scenario,
+                              attack_rate=0.7).e_attacked
+        self.assertAlmostEqual(curve.e_attacked_undefended, expected)
+
+    def test_net_benefit_column_matches_r08(self):
+        results = _defense_results(40)
+        curve = defense_curve(
+            results, load_cost_scenario("standard"), 1.0,
+            thresholds=[0.1, 0.5, 0.9],
+        )
+        risks, labels = net_benefit_pairs(results, "attacked")
+        for p in curve.points:
+            self.assertAlmostEqual(
+                p.net_benefit,
+                net_benefit_at_threshold(risks, labels, p.pt),
+            )
+
+    def test_thresholds_sorted_and_deduplicated(self):
+        curve = defense_curve(
+            _defense_results(20), load_cost_scenario("standard"), 1.0,
+            thresholds=[0.5, 0.1, 0.5, 0.9],
+        )
+        self.assertEqual(
+            [p.pt for p in curve.points], [0.1, 0.5, 0.9])
+
+    def test_validation(self):
+        results = _defense_results(20)
+        scenario = load_cost_scenario("standard")
+        with self.assertRaises(ValueError):
+            defense_curve([], scenario, 1.0)
+        with self.assertRaises(ValueError):
+            defense_curve(results, scenario, -1.0)
+        with self.assertRaises(ValueError):
+            defense_curve(results, scenario, True)
+        with self.assertRaises(ValueError):
+            defense_curve(results, scenario, 1.0, attack_rate=1.5)
+        with self.assertRaises(ValueError):
+            defense_curve(results, scenario, 1.0, thresholds=[])
+        with self.assertRaises(ValueError):
+            defense_curve(results, scenario, 1.0, thresholds=[1.0])
+        with self.assertRaises(ValueError):
+            defense_curve(results, scenario, float("nan"))
+
+
+class RiskCoverageCurveTest(unittest.TestCase):
+    def test_sorted_ascending_with_full_coverage_endpoint(self):
+        curve = defense_curve(
+            _defense_results(40), load_cost_scenario("standard"), 1.0,
+        )
+        rc = risk_coverage_curve(curve)
+        self.assertEqual(len(rc), len(curve.points))
+        for (r1, _), (r2, _) in zip(rc, rc[1:]):
+            self.assertLessEqual(r1, r2)
+        # Full coverage buys zero residual priced risk.
+        self.assertEqual(rc[-1], (1.0, 0.0))
+
+
+class OptimalThresholdTest(unittest.TestCase):
+    def test_optimum_minimizes_total_cost(self):
+        curve = defense_curve(
+            _defense_results(60), load_cost_scenario("standard"), 1.0,
+        )
+        opt = optimal_threshold(curve)
+        self.assertIsInstance(opt, DefenseOptimum)
+        self.assertAlmostEqual(
+            opt.total_defender_cost_per_decision,
+            min(p.total_defender_cost_per_decision
+                for p in curve.points),
+        )
+
+    def test_tie_breaks_toward_least_review(self):
+        # No flips anywhere: total cost is pure review spend, strictly
+        # decreasing in pt, so the optimum is the highest threshold and
+        # reviews nothing (prevention value undefined).
+        results = [
+            _cresult(f"n{i}", "deny", "deny", False, 0.5 + 0.01 * i)
+            for i in range(20)
+        ]
+        curve = defense_curve(
+            results, load_cost_scenario("standard"), 1.0,
+            thresholds=[0.1, 0.5, 0.9],
+        )
+        opt = optimal_threshold(curve)
+        self.assertEqual(opt.pt, 0.9)
+        self.assertEqual(opt.review_spend_per_decision, 0.0)
+        self.assertIsNone(opt.prevention_value_per_review_dollar)
+
+    def test_attacker_cost_aware_optimum(self):
+        # Same adapter, same confidences: expensive flips pull the
+        # optimum toward review, cheap flips toward auto-trust.
+        results = _defense_results(60, flip_every=2)
+        pricey = load_cost_scenario("standard")  # deny-to-approve $100
+        cheap = CostScenario(
+            scenario_id="cheap-test",
+            version=1,
+            description="test",
+            flip_cost_usd={d: (0.0 if d == "none" else 0.01)
+                           for d in FLIP_DIRECTIONS},
+            flips_per_incident=1.0,
+            baseline_attack_rate=0.5,
+        )
+        opt_pricey = optimal_threshold(defense_curve(
+            results, pricey, 1.0, attack_rate=0.5))
+        opt_cheap = optimal_threshold(defense_curve(
+            results, cheap, 1.0, attack_rate=0.5))
+        self.assertLess(opt_pricey.pt, opt_cheap.pt)
+        self.assertLess(opt_pricey.residual_e_attacked,
+                        opt_cheap.residual_e_attacked)
+
+    def test_prevention_value_per_review_dollar(self):
+        results = _defense_results(60, flip_every=2)
+        scenario = load_cost_scenario("standard")
+        curve = defense_curve(results, scenario, 1.0, attack_rate=0.5)
+        opt = optimal_threshold(curve)
+        self.assertGreater(opt.review_spend_per_decision, 0.0)
+        self.assertAlmostEqual(
+            opt.prevention_value_per_review_dollar,
+            (curve.e_attacked_undefended - opt.residual_e_attacked)
+            / opt.review_spend_per_decision,
+        )
+        self.assertGreaterEqual(
+            opt.prevention_value_per_review_dollar, 0.0)
+
+
+class ThresholdDefenseReportTest(unittest.TestCase):
+    def test_withholds_below_calibration_minimum(self):
+        # Layer-4 gate: no reported attacked-arm calibration, no
+        # threshold defense claim.
+        report = threshold_defense_report(
+            {"a": _defense_results(MIN_PER_CONDITION_CASES - 1)},
+            load_cost_scenario("standard"),
+            1.0,
+        )
+        section = report["adapters"]["a"]
+        self.assertTrue(section["withheld"])
+        self.assertIn("calibration", section["reason"])
+        self.assertIsNone(section["attacked_ece"])
+        self.assertNotIn("curve", section)
+        self.assertNotIn("optimum", section)
+
+    def test_withholds_no_eligible_cases(self):
+        results = [
+            _cresult(f"x{i}", "deny", "deny", False, 0.7, eligible=False)
+            for i in range(10)
+        ]
+        report = threshold_defense_report(
+            {"a": results}, load_cost_scenario("standard"), 1.0,
+        )
+        section = report["adapters"]["a"]
+        self.assertTrue(section["withheld"])
+        self.assertIn("no eligible cases", section["reason"])
+
+    def test_reports_with_calibration(self):
+        report = threshold_defense_report(
+            {"a": _defense_results(40), "b": _defense_results(10)},
+            load_cost_scenario("standard"),
+            1.0,
+        )
+        good = report["adapters"]["a"]
+        self.assertFalse(good["withheld"])
+        self.assertGreaterEqual(good["attacked_ece"], 0.0)
+        self.assertEqual(good["ece_n"], 40)
+        self.assertIn("optimum", good)
+        self.assertIn("risk_coverage_curve", good)
+        self.assertEqual(len(good["curve"]), len(report["thresholds"]))
+        # AUROC is context, present but never the claim.
+        self.assertIsNotNone(good["flip_detection_auroc"])
+        self.assertTrue(report["adapters"]["b"]["withheld"])
+
+    def test_report_metadata(self):
+        report = threshold_defense_report(
+            {"a": _defense_results(40)},
+            load_cost_scenario("high-stakes"),
+            2.0,
+            attack_rate=0.3,
+        )
+        self.assertEqual(report["scenario"], "high-stakes")
+        self.assertEqual(report["scenario_version"], 1)
+        self.assertEqual(report["review_cost_usd"], 2.0)
+        self.assertEqual(report["attack_rate"], 0.3)
+
+    def test_report_json_serializable(self):
+        import json
+        report = threshold_defense_report(
+            {"a": _defense_results(40), "b": _defense_results(5)},
+            load_cost_scenario("standard"),
+            1.0,
+        )
+        json.dumps(report)
