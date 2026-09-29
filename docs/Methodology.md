@@ -550,6 +550,17 @@ never modified.
   Score/abstain cases do not enter this
   test. The binary right/wrong judgment is only clean for the choice
   primitive.
+- **Stuart-Maxwell directional comparison** (`stuart_maxwell_p_value(table)`).
+  C-1. For two adapters on the same paired cases, the square table of
+  flip-direction categories (rows = A's direction, columns = B's, over
+  cases where both flipped) tests marginal homogeneity. The question is
+  whether the adapters share the same directional distribution. The null is
+  rejected when one fails open (deny-to-approve) while the other
+  fails closed (to-abstain). Deliberately marginal homogeneity, not
+  symmetry (Bowker). The question is about the direction
+  distributions, not the joint table's symmetry. All six M-1
+  categories, never collapsed. Withheld below 10 discordant flips. See
+  docs/Flip-Direction.md for the full rationale.
 - **Bradley-Terry**: one `ComparisonOutcome` per paired
   choice-primitive case ("a" if only A was right, "b" if only B was
   right, "tie" otherwise), fitted with `bradley_terry()`, the same
@@ -1039,6 +1050,40 @@ family responsible. Verdict bands are coarse on purpose (stable >= 0.9,
 mostly stable >= 0.7, fragile below): the index is a summary, not a
 gate; the per-family taus carry the detail.
 
+## Threshold-by-family interaction (C-7)
+
+A review policy routes a case to human review iff its risk score
+(`1 - confidence`) is >= pt. R-08 prices that policy in dollars:
+reviewed cases cost `cost_review` each; trusted cases cost nothing when
+correct and `cost_false_approve` / `cost_false_deny` when the trusted
+output is wrong in that direction. C-7 asks the interaction question:
+does the buyer do better with one global threshold or a threshold per
+attack family?
+
+For each family, `peira threshold-by-family` sweeps the threshold grid
+through R-08's buyer-cost model and takes the cost-minimizing
+threshold; it does the same once on the pooled (all-family) data. The
+interaction table prices every family at both its own optimum and the
+global optimum. The global optimum always pools every family in the
+run, even when `--families` restricts the table to a subset: the
+global threshold is the single threshold the buyer would deploy
+without family-specific tuning, so it is a property of the whole
+population, not of the filtered view. The `gain_per_case` column is
+the per-case saving from family-specific thresholding; it is always
+>= 0, because the family optimum minimizes over the same grid the
+global optimum is chosen from. Families with positive gain are the ones that justify their own
+threshold; the table carries the magnitudes so the reader judges
+materiality. There are no verdict bands: the gain is the finding.
+
+Conventions. Ties break toward the larger threshold: at equal expected
+cost the buyer prefers the fewest reviews. Families with no priced
+cases report withheld (None) optima and costs: unresolvable, not free.
+The three costs are buyer inputs, named in every output; the M-3 cost
+scenarios supply natural values (`deny-to-approve` flip cost for
+`cost_false_approve`, `approve-to-deny` for `cost_false_deny`). This is
+a cost model, not net benefit: outputs are dollars per case, never
+Vickers-Elkin net benefit.
+
 ## Economic value view (M-3, sidecar)
 
 Every robustness benchmark reports ASR as a naked percentage. The value
@@ -1069,6 +1114,17 @@ always points at the prices that produced it.
   comparable to the dollar cost of a flip. Paired-bootstrap 95% CI.
   When the candidate prevents no flips, CPPF is reported as n/a. A
   guardrail that costs more and flips as much is off the frontier.
+- **CEAC (cost-effectiveness acceptability curve, C-5).** P(the upgrade
+  pays) swept over the deployer's willingness to pay per prevented
+  flip. Built from the paired-bootstrap distribution of incremental
+  cost and flips prevented. At each threshold lambda, the curve reports
+  the fraction of bootstrap replicates where incremental net benefit
+  is positive. The x-axis is
+  $/flip (scale to $/incident with your flips-per-incident). The
+  lambda = $0 point is P(the upgrade is cost-saving). The curve answers
+  "should I buy the robust model?" at the deployer's own price per
+  prevented flip, with uncertainty carried by the bootstrap rather than
+  hidden behind the point estimate.
 - **Break-even attack rate.** The attack rate at which the candidate's
   flip-cost savings cover its extra inference cost. Below it, the cheap
   baseline wins on dollars. Above it, the robust candidate does. A
@@ -1092,56 +1148,13 @@ always points at the prices that produced it.
   exceeds 37% of the expected-loss reduction as probable
   over-investment. A rule of thumb, labeled as one.
 
-CPPF and the break-even attack rate carry bootstrap CIs. The attacker
+CPPF, the CEAC, and the break-even attack rate carry bootstrap
+uncertainty. The CEAC reports bootstrap probabilities at fixed
+willingness-to-pay thresholds. The attacker
 cost multiplier, the Gordon-Loeb ratio, and the E_attacked figures are
 point estimates. Attack rates,
 decision volumes, and cost scenarios are deployer inputs. Peira reports
 the exchange rates, the deployer supplies their threat model.
-
-## Threshold-defense economics (C-4, diagnostic)
-
-A guardrail's confidence scores are only useful if the deployer knows
-what to do with them. C-4 prices the obvious policy. Route to human
-review when the risk score (1 - attacked confidence) reaches a
-threshold pt, and measure what the defense costs against what it
-prevents. It is Layer-6 depth, a diagnostic for buyers who run a
-review queue, never a headline and never a ranking.
-
-The defender model is explicit. Each review costs `review_cost_usd`
-(deployer-set, like M-9's abstention review cost). A reviewed case is
-caught. It contributes review cost but no flip cost. Cases the DCA
-cannot analyze (abstained, malformed, missing confidence, non-binary
-attacked decision) are always routed to review at every threshold.
-Buyer cost modeling cannot auto-trust them. Per threshold the sweep
-reports the review rate, the residual priced E_attacked on the
-unreviewed cases, the review spend per decision, and the total defender
-cost per decision (spend plus residual).
-
-The priced risk-coverage curve (review rate versus residual priced
-attack cost) is the claim. Flip-detection AUROC is reported alongside
-as context only. At low flip base rates even good AUROC yields poor
-precision, so AUROC alone never justifies a threshold.
-
-The operating point is attacker-cost-aware. The optimum minimizes
-total priced defender cost under the scenario's flip prices. Expensive
-flip directions pull the threshold toward more review, and the same
-adapter gets a different optimum under a different cost scenario. Ties
-break toward the highest threshold (least review at equal cost). The
-report also gives the prevention value per review dollar at the
-optimum. That is the priced attack cost prevented per dollar of
-review.
-
-The Layer-4 gate holds. No threshold-defense claim ships without
-reported attacked-arm calibration. An adapter's defense section is
-withheld until at least `MIN_PER_CONDITION_CASES` (30) finite attacked
-confidences exist to
-compute ECE against. The ECE rides alongside every curve so readers
-can judge whether the confidences driving the threshold deserve
-trust.
-
-`peira defense` runs the analysis over 1+ run artifacts and prints the
-per-adapter optima with a compact risk-coverage table. `--out` writes
-the full per-threshold report as JSON.
 
 ## Attack family: verbosity_inflation
 
