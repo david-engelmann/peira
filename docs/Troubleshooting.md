@@ -351,6 +351,12 @@ Cause: a buyer-cost flag got a non-numeric, NaN, infinite, negative,
 or (for the threshold) out-of-range value. Fix: pass a threshold
 strictly inside [0, 1) and non-negative costs.
 
+**`error: flips_per_incident must be a number` / `error: flips_per_incident must be finite and positive` (from `peira report`)**
+Cause: `--flips-per-incident` got a non-numeric, NaN, infinite, or
+non-positive value. Fix: pass a finite positive number of flips per
+incident, or drop the flag (the cost-per-incident column then renders
+as withheld).
+
 **`...: nesting depth <n> exceeds the 256-level cap`**
 Cause: a case-file line nests `[`/`{` deeper than 256 levels
 (`peira-cli validate` / the Rust core). Case files stay shallow by

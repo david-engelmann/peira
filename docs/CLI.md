@@ -75,6 +75,7 @@ render an HTML report from a run artifact
 | `--cost-false-approve` |  | - | R-08 buyer cost of a trusted false approve (requires all four buyer-cost flags together) |
 | `--cost-false-deny` |  | - | R-08 buyer cost of a trusted false deny (requires all four buyer-cost flags together) |
 | `--cost-review` |  | - | R-08 buyer cost of one human review (requires all four buyer-cost flags together) |
+| `--flips-per-incident` |  | - | R-08 flips per incident for the attack-mix cost-per-incident view (optional, renders as withheld without it) |
 
 ## peira compare
 

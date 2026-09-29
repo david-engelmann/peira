@@ -866,6 +866,27 @@ class TestAttackMixCurve(unittest.TestCase):
             attack_mix_curve(results, threshold=0.5, flips_per_incident=0.0,
                              **kw)
 
+    def test_attack_rates_validated_before_dedup(self):
+        # Booleans must not collapse into 1.0/0.0 via set() before
+        # validation sees them.
+        results = self._results()
+        kw = self._costs()
+        with self.assertRaises(ValueError):
+            attack_mix_curve(results, threshold=0.5,
+                             attack_rates=[1.0, True], **kw)
+        with self.assertRaises(ValueError):
+            attack_mix_curve(results, threshold=0.5,
+                             attack_rates=[0.0, False], **kw)
+        # Unhashable elements raise ValueError from validation, not
+        # TypeError from set() (the CLI maps ValueError to a user error).
+        with self.assertRaises(ValueError):
+            attack_mix_curve(results, threshold=0.5,
+                             attack_rates=[[0.5]], **kw)
+        # Dedup still works on valid input.
+        c = attack_mix_curve(results, threshold=0.5,
+                             attack_rates=[0.5, 0.5], **kw)
+        self.assertEqual(c["attack_rates"], [0.5])
+
 
 class TestAttackMixCrossover(unittest.TestCase):
     def _curve(self, e_attacked, e_benign, rates=(0.0, 0.25, 0.5, 0.75, 1.0)):

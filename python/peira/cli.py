@@ -686,8 +686,26 @@ def cmd_report(args: argparse.Namespace) -> int:
         except ValueError as e:
             print(f"error: {e}", file=sys.stderr)
             return EXIT_USER_ERROR
+    # getattr: hand-built Namespaces in tests may predate the flag;
+    # the real parser always sets it (default None).
+    flips_per_incident = getattr(args, "flips_per_incident", None)
+    if flips_per_incident is not None:
+        # Same treatment for the optional flips-per-incident: a bad
+        # value is a user error, not a corrupt artifact. Validated even
+        # when the buyer-cost section is off, so typos fail fast.
+        try:
+            attack_mix_curve(
+                [], threshold=0.5,
+                cost_false_approve=0.0, cost_false_deny=0.0,
+                cost_review=0.0,
+                flips_per_incident=flips_per_incident,
+            )
+        except ValueError as e:
+            print(f"error: {e}", file=sys.stderr)
+            return EXIT_USER_ERROR
     try:
-        page = _report_page(artifact, buyer_cost_params)
+        page = _report_page(artifact, buyer_cost_params,
+                            flips_per_incident=flips_per_incident)
     except (ValueError, KeyError, TypeError, IndexError, AttributeError) as e:
         print(f"error: {run_path} is not a valid run artifact ({e})",
               file=sys.stderr)
@@ -860,7 +878,8 @@ def _net_benefit_section(m: dict) -> str:
 
 
 def _buyer_cost_section(artifact, threshold: float, cost_false_approve: float,
-                        cost_false_deny: float, cost_review: float) -> str:
+                        cost_false_deny: float, cost_review: float,
+                        flips_per_incident: float | None = None) -> str:
     """Render the R-08 buyer-cost section from the artifact's results.
 
     Prices the review policy "review iff 1 - confidence >= threshold"
@@ -900,12 +919,14 @@ def _buyer_cost_section(artifact, threshold: float, cost_false_approve: float,
         f"<tr><td>savings per case vs review-all</td><td>{_num(bc.get('savings_per_case_vs_review_all'))}</td></tr>\n"
         "</table>\n"
         + _attack_mix_table(results, threshold, cost_false_approve,
-                            cost_false_deny, cost_review)
+                            cost_false_deny, cost_review,
+                            flips_per_incident=flips_per_incident)
     )
 
 
 def _attack_mix_table(results, threshold: float, cost_false_approve: float,
-                       cost_false_deny: float, cost_review: float) -> str:
+                       cost_false_deny: float, cost_review: float,
+                       flips_per_incident: float | None = None) -> str:
     """Render the R-08 attack-mix cost curve as an HTML table.
 
     Expected loss per decision vs assumed attack rate at the same
@@ -916,6 +937,7 @@ def _attack_mix_table(results, threshold: float, cost_false_approve: float,
         cost_false_approve=cost_false_approve,
         cost_false_deny=cost_false_deny,
         cost_review=cost_review,
+        flips_per_incident=flips_per_incident,
     )
     def _cell(x):
         # Withheld (None) renders as "withheld", not "-" (which looks like zero)
@@ -924,24 +946,29 @@ def _attack_mix_table(results, threshold: float, cost_false_approve: float,
         f"<tr><td>{_cell(r['attack_rate'])}</td>"
         f"<td>{_cell(r['expected_loss_per_decision'])}</td>"
         f"<td>{_cell(r['expected_flips_per_decision'])}</td>"
-        f"<td>{_cell(r['cost_per_flip'])}</td></tr>"
+        f"<td>{_cell(r['cost_per_flip'])}</td>"
+        f"<td>{_cell(r['cost_per_incident'])}</td></tr>"
         for r in am["curve"][::10]  # every 0.10 of attack rate
     )
     return (
         "<h3>Attack-mix cost curve</h3>\n"
         "<p>Expected loss per decision vs assumed attack rate at the same "
         "operating threshold and costs. Read across: at your threat model "
-        "(attack rate), this is the expected deployment cost. Both the "
-        "$/decision and $/flip views are shown.</p>\n"
+        "(attack rate), this is the expected deployment cost. The "
+        "$/decision, $/flip, and $/incident views are shown. The "
+        "$/incident view needs --flips-per-incident and renders as "
+        "withheld without it.</p>\n"
         "<table border=\"1\">"
         "<tr><th>attack rate</th><th>expected loss / decision</th>"
-        "<th>expected flips / decision</th><th>cost / flip</th></tr>\n"
+        "<th>expected flips / decision</th><th>cost / flip</th>"
+        "<th>cost / incident</th></tr>\n"
         f"{am_rows}"
         "</table>\n"
     )
 
 
-def _report_page(artifact, buyer_cost_params=None) -> str:
+def _report_page(artifact, buyer_cost_params=None,
+                 flips_per_incident=None) -> str:
     m = artifact.metrics
     # Case ids, family names, adapter names, decisions, refusal reasons,
     # and suite/dataset labels are author- or adapter-controlled: escape
@@ -1036,7 +1063,9 @@ def _report_page(artifact, buyer_cost_params=None) -> str:
     # --- R-08: buyer cost (optional; priced from the sealed results).
     bc_section = ""
     if buyer_cost_params is not None:
-        bc_section = _buyer_cost_section(artifact, **buyer_cost_params)
+        bc_section = _buyer_cost_section(
+            artifact, flips_per_incident=flips_per_incident,
+            **buyer_cost_params)
 
     sp = m.get("selective_prediction", {}) or {}
     # R-11: selective-risk curve diagram from the already-recorded
@@ -2441,6 +2470,10 @@ def build_parser() -> argparse.ArgumentParser:
     rp.add_argument("--cost-review", type=float, default=None,
                     help="R-08 buyer cost of one human review "
                          "(requires all four buyer-cost flags together)")
+    rp.add_argument("--flips-per-incident", type=float, default=None,
+                    help="R-08 flips per incident for the attack-mix "
+                         "cost-per-incident view (optional, renders as "
+                         "withheld without it)")
     rp.set_defaults(func=cmd_report)
 
     cp = sub.add_parser("compare",

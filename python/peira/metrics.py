@@ -4223,11 +4223,15 @@ def attack_mix_curve(
     if attack_rates is None:
         rates = list(DEFAULT_ATTACK_RATES)
     else:
-        rates = sorted(set(attack_rates))
-        if not rates:
+        # Validate the raw input before dedup: set() would silently
+        # collapse True into 1.0 (skipping validation) and raise
+        # TypeError on unhashable elements instead of ValueError.
+        raw = list(attack_rates)
+        if not raw:
             raise ValueError("attack_rates must be non-empty")
-        for pi in rates:
+        for pi in raw:
             _check_attack_rate(pi, "attack_rates")
+        rates = sorted(set(raw))
     if threshold is None:
         for r in results:
             _require_result_strings(r)
@@ -4344,7 +4348,8 @@ def attack_mix_crossover(
     For each attack rate the cheaper adapter wins; consecutive rates
     with the same winner merge into segments. The headline is a
     plain-words deployment rule, e.g. "deploy A while the attack rate
-    is in [0.0, 0.18], deploy B above it". Equal expected losses are ties:
+    is in [0.0, 0.18]. deploy B while the attack rate is in [0.19, 1.0]".
+    Equal expected losses are ties:
     reported as ties with the data shown, never broken arbitrarily.
 
     Both curves must share the same attack-rate grid (ValueError
