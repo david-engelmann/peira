@@ -16,8 +16,40 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  public-surface:
+  check_runner:
+    # Picks the runner pool for all Linux jobs: David's self-hosted
+    # runner-grid when online (no queue wait), else GitHub-hosted.
+    # Fork PRs NEVER use self-hosted (untrusted code on David's laptop).
     runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      actions: read  # to check runner status
+    outputs:
+      runner: ${{ steps.final.outputs.runner }}
+    steps:
+      - name: Check if runner-grid is online
+        id: fallback
+        # Skip the API check for fork PRs; they stay on GitHub-hosted.
+        if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
+        uses: mikehardy/runner-fallback-action@v1
+        with:
+          primary-runner: "self-hosted,runner-grid"
+          fallback-runner: "ubuntu-latest"
+          primaries-required: 1
+          fallback-on-error: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Set runner output
+        id: final
+        run: |
+          if [ -n "${{ steps.fallback.outputs.use-runner }}" ]; then
+            echo "runner=${{ steps.fallback.outputs.use-runner }}" >> "$GITHUB_OUTPUT"
+          else
+            echo 'runner=["ubuntu-latest"]' >> "$GITHUB_OUTPUT"
+          fi
+  public-surface:
+    needs: check_runner
+    runs-on: ${{ fromJSON(needs.check_runner.outputs.runner) }}
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -28,7 +60,8 @@ jobs:
 
   docs:
     # Internal links rot silently; this fails the build on dead ones.
-    runs-on: ubuntu-latest
+    needs: check_runner
+    runs-on: ${{ fromJSON(needs.check_runner.outputs.runner) }}
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -47,7 +80,8 @@ jobs:
     # Contributing.md requires Signed-off-by trailers (DCO); enforce it
     # mechanically on every non-merge commit in the PR. Push-to-main runs
     # are the already-gated squash result, so the PR is the enforcement point.
-    runs-on: ubuntu-latest
+    needs: check_runner
+    runs-on: ${{ fromJSON(needs.check_runner.outputs.runner) }}
     timeout-minutes: 10
     if: github.event_name == 'pull_request'
     steps:
@@ -78,7 +112,8 @@ jobs:
     # Contributing.md item 5: dataset case changes must bump the dataset
     # version and add a CHANGELOG entry. Diff-based and mechanical; the
     # script no-ops when no case files changed.
-    runs-on: ubuntu-latest
+    needs: check_runner
+    runs-on: ${{ fromJSON(needs.check_runner.outputs.runner) }}
     timeout-minutes: 10
     if: github.event_name == 'pull_request'
     steps:
@@ -95,7 +130,8 @@ jobs:
 
   lint-rust:
     # The Rust migration is active; CI must catch a skipped local gate.
-    runs-on: ubuntu-latest
+    needs: check_runner
+    runs-on: ${{ fromJSON(needs.check_runner.outputs.runner) }}
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -106,7 +142,8 @@ jobs:
       - run: cargo fmt --all -- --check
 
   test-python:
-    runs-on: ubuntu-latest
+    needs: check_runner
+    runs-on: ${{ fromJSON(needs.check_runner.outputs.runner) }}
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -122,7 +159,8 @@ jobs:
     # and never execute. Tokenizer files only (no model weights or GPU).
     # The grep asserts zero skips: a lane that silently skips is the same
     # dishonesty in a new place.
-    runs-on: ubuntu-latest
+    needs: check_runner
+    runs-on: ${{ fromJSON(needs.check_runner.outputs.runner) }}
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -136,7 +174,8 @@ jobs:
           echo "$out" | grep -qE "^OK$" || { echo "contract tests did not all run"; exit 1; }
 
   test-rust:
-    runs-on: ubuntu-latest
+    needs: check_runner
+    runs-on: ${{ fromJSON(needs.check_runner.outputs.runner) }}
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -148,7 +187,8 @@ jobs:
     # suite against the Rust backend, then again with PEIRA_NO_RUST=1 to
     # prove the pure-Python fallback. (test-python covers the fallback on
     # a fresh checkout, where the extension is never built.)
-    runs-on: ubuntu-latest
+    needs: check_runner
+    runs-on: ${{ fromJSON(needs.check_runner.outputs.runner) }}
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -188,7 +228,8 @@ jobs:
   readme-table:
     # The README "Trial in action" table is generated, never hand-edited:
     # this job fails if the committed copy drifts from generator output.
-    runs-on: ubuntu-latest
+    needs: check_runner
+    runs-on: ${{ fromJSON(needs.check_runner.outputs.runner) }}
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -209,7 +250,8 @@ jobs:
     # build failure. trial-demo is scaffolding and stays exempt (no
     # gates, no manifest). dataset/v1 grows incrementally, so both
     # checks run there only once there is something to check.
-    runs-on: ubuntu-latest
+    needs: check_runner
+    runs-on: ${{ fromJSON(needs.check_runner.outputs.runner) }}
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
