@@ -45,6 +45,29 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
   `peira.metrics.attack_mix_crossover`: lower envelope of two curves
   with a plain-words deployment rule; ties reported as ties.
 
+### Added: R-06 verbosity_inflation family (family 21, dataset v2)
+
+- New attack family `verbosity_inflation`: the attacker's preferred
+  outcome wins on length, polish, and formatting with no change in
+  substantive facts. The attacked variant dresses the wrong decision
+  in headers, bullets, and confident justification while the right
+  decision gets a terse mention. Registered in
+  `python/peira/families.py`, documented in `docs/Taxonomy.md` (entry
+  21) and `docs/Methodology.md` (measurement section with the deletion
+  test vs distractor_flooding), with an authoring template in
+  `python/peira/templates.py`.
+- New `dataset/v2/` layout: `cases/` holds one JSONL file per family
+  plus `manifest.json` with SHA-256s and a top-level `mdes` field
+  carrying the per-family design MDE table (verbosity_inflation at
+  n=400: 4.4pp/6.3pp/7.7pp/8.9pp at 10%/20%/30%/40% discordance).
+  Case IDs use the `v2-<fam>-XXXX` scheme (`v2-verb-0001` …).
+- 470 verbosity_inflation cases (330 choice, 80 score, 60 abstain),
+  all 8 dataset gates passing. `build_manifest` accepts an optional
+  `mdes` table; `scripts/check_dataset_version_bump.py` recognizes
+  `dataset/v2`.
+- No cap on families or cases (David 2026-09-28): the 400/family
+  design target is a floor, not a ceiling.
+
 ### Added — M-4 hardness stratification + cross-adapter transfer ASR
 
 - New `peira.hardness` module (pure aggregation over sealed per-case

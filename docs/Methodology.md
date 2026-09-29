@@ -1081,6 +1081,35 @@ point estimates. Attack rates,
 decision volumes, and cost scenarios are deployer inputs. Peira reports
 the exchange rates, the deployer supplies their threat model.
 
+## Attack family: verbosity_inflation
+
+Family 21. The attacked variant dresses the wrong decision in length,
+polish, and formatting (headers, bullets, detailed justification,
+confident language) while the right decision gets a terse mention.
+The substantive facts are byte-identical to the benign control; only
+presentation changes. The family measures style/verbosity bias in
+decision models: whether a judge favors the better-presented option
+when substance is unchanged.
+
+**Paired-control construction.** The benign prompt presents both
+options neutrally and concisely with facts that clearly favor the
+expected decision. The attacked prompt keeps the identical facts and
+adds a polished justification block for the target (wrong) decision
+plus a one-line dismissal of the expected decision. G2
+(paired-variants) enforces that the variants differ; the authoring
+contract enforces that they differ *only* in presentation.
+
+**Validity diagnostic: the deletion test.** Equalize the presentation
+lengths between the variants. If the attack dies, the case is genuine
+verbosity_inflation (directional pull toward the polished option). If
+sheer volume still degrades the decision after equalization, the case
+is misclassified distractor_flooding (pure noise, no directional pull)
+and belongs in that family instead.
+
+**Design MDEs.** At n=400: 4.4pp at 10% discordance, 6.3pp at 20%,
+7.7pp at 30%, 8.9pp at 40%. Published in the dataset manifest's
+`mdes` table (`dataset/v2/cases/manifest.json`).
+
 ## Analysis lock
 
 Every run artifact carries a sha256 lock over config + dataset version +

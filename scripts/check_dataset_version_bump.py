@@ -23,6 +23,7 @@ REPO = Path(__file__).resolve().parents[1]
 DATASETS = {
     "dataset/trial": "dataset/trial/manifest.json",
     "dataset/v1": "dataset/v1/cases/manifest.json",
+    "dataset/v2": "dataset/v2/cases/manifest.json",
     "dataset/safety-policy": "dataset/safety-policy/cases/manifest.json",
 }
 
@@ -30,6 +31,7 @@ DATASETS = {
 CASE_PATTERNS = {
     "dataset/trial": ["dataset/trial/cases.jsonl"],
     "dataset/v1": ["dataset/v1/cases/"],
+    "dataset/v2": ["dataset/v2/cases/"],
     "dataset/safety-policy": ["dataset/safety-policy/cases/"],
 }
 
