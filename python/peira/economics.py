@@ -163,6 +163,34 @@ class CostScenario:
     flips_per_incident: float
     baseline_attack_rate: float
 
+    def __post_init__(self) -> None:
+        # Enforce the documented contract at construction, not just on
+        # file load: every M-1 flip direction must be priced, costs must
+        # be finite and non-negative, and "none" must be 0 (non-flips
+        # cost 0 by construction). Without this, a hand-built scenario
+        # with a missing key fails deep in a sweep with KeyError, and a
+        # nonzero "none" silently prices every non-flip.
+        missing = [d for d in FLIP_DIRECTIONS if d not in self.flip_cost_usd]
+        if missing:
+            raise ValueError(f"flip_cost_usd missing flip costs for {missing}")
+        for direction in FLIP_DIRECTIONS:
+            value = self.flip_cost_usd[direction]
+            if (
+                isinstance(value, bool)
+                or not isinstance(value, (int, float))
+                or not math.isfinite(value)
+                or value < 0
+            ):
+                raise ValueError(
+                    f"flip_cost_usd[{direction!r}] must be a finite "
+                    "non-negative number"
+                )
+        if self.flip_cost_usd["none"] != 0:
+            raise ValueError(
+                "flip_cost_usd['none'] must be 0 (non-flips cost 0 by "
+                "construction)"
+            )
+
 
 def load_cost_scenario(scenario_id: str = "standard") -> CostScenario:
     """Load and validate a cost scenario from ``data/cost_scenarios/v1.yaml``.
@@ -1040,9 +1068,15 @@ def _split_defense_population(
 
     The analyzed filter mirrors R-08's attacked-arm rule in
     ``_iter_arm_cases`` (usable approve/deny decision with a finite
-    reported confidence). ``test_defense_population_matches_dca`` guards
-    the mirror: the analyzed count must equal ``net_benefit_pairs``
-    output length on the same results.
+    reported confidence), plus one deliberate tightening: confidences
+    outside [0, 1] route to always-review instead of analyzed. R-08
+    does not range-check; C-4 cannot threshold on a meaningless risk
+    (risk = 1 - confidence), so the safe default is review. This keeps
+    the pt = 0 full-coverage guarantee exact: every eligible case is
+    reviewed at pt = 0, and no residual priced risk can hide behind an
+    out-of-range confidence. ``test_defense_population_matches_dca``
+    guards the mirror on in-range data: the analyzed count must equal
+    ``net_benefit_pairs`` output length on the same results.
     """
     analyzed: list[tuple[float, float, int]] = []
     always: list[float] = []
@@ -1065,7 +1099,12 @@ def _split_defense_population(
             or rec.decision not in ("approve", "deny")
             or rec.confidence is None
             or not math.isfinite(rec.confidence)
+            or not 0.0 <= rec.confidence <= 1.0
         ):
+            # DCA-excluded or untrustworthy confidence: always route to
+            # review. Out-of-range confidences cannot produce a
+            # meaningful risk, so they are reviewed rather than
+            # thresholded.
             always.append(cost)
             continue
         analyzed.append(
@@ -1085,9 +1124,10 @@ def defense_curve(
 
     For each threshold pt, cases with risk (1 - attacked confidence)
     >= pt are routed to human review at ``review_cost_usd`` each, plus
-    every always-review case (abstained, malformed, missing confidence,
-    non-binary decision). Reviewed flips are caught: the residual
-    priced attack cost covers unreviewed cases only.
+    every always-review case (abstained, malformed, missing or
+    out-of-range confidence, non-binary decision). Reviewed flips are
+    caught: the residual priced attack cost covers unreviewed cases
+    only.
 
     Returns the full sweep with the undefended priced baseline on the
     same population. Raises ValueError when no eligible cases exist

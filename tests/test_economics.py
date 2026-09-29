@@ -821,6 +821,43 @@ class DefenseCurveTest(unittest.TestCase):
         self.assertAlmostEqual(
             curve.points[0].review_rate, 1 / 21)
 
+    def test_out_of_range_confidence_routes_to_always_review(self):
+        # A confidence outside [0, 1] cannot produce a meaningful risk,
+        # so the case is always reviewed rather than thresholded. At
+        # pt = 0 the flipped case must be reviewed (not left in
+        # residual): the full-coverage guarantee holds.
+        results = _defense_results(20)
+        results.append(_cresult("oo1", "deny", "approve", True, 1.5))
+        results.append(_cresult("oo2", "deny", "approve", True, -0.2))
+        curve = defense_curve(
+            results, load_cost_scenario("standard"), 1.0,
+            thresholds=[0.0, 0.99],
+        )
+        self.assertEqual(curve.n_always_review, 2)
+        self.assertEqual(curve.n_analyzed, 20)
+        pt0 = curve.points[0]
+        self.assertEqual(pt0.pt, 0.0)
+        self.assertEqual(pt0.n_reviewed, 22)
+        self.assertAlmostEqual(pt0.residual_e_attacked, 0.0)
+
+    def test_cost_scenario_rejects_missing_direction(self):
+        costs = {d: 1.0 for d in FLIP_DIRECTIONS if d != "none"}
+        with self.assertRaises(ValueError):
+            CostScenario(
+                scenario_id="bad", version=1, description="bad",
+                flip_cost_usd=costs, flips_per_incident=1.0,
+                baseline_attack_rate=0.5,
+            )
+
+    def test_cost_scenario_rejects_nonzero_none(self):
+        costs = {d: (5.0 if d == "none" else 1.0) for d in FLIP_DIRECTIONS}
+        with self.assertRaises(ValueError):
+            CostScenario(
+                scenario_id="bad", version=1, description="bad",
+                flip_cost_usd=costs, flips_per_incident=1.0,
+                baseline_attack_rate=0.5,
+            )
+
     def test_residual_monotone_in_threshold(self):
         curve = defense_curve(
             _defense_results(60), load_cost_scenario("standard"), 1.0,
