@@ -13,6 +13,7 @@ import unittest
 from pathlib import Path
 
 from peira.artifacts import RunArtifact
+from peira.cli import _SEMVER_RE
 from peira.dataset import verify_manifest
 from peira.gates import run_gates
 from peira.runner import SUITE_DIRS, load_cases
@@ -99,9 +100,10 @@ class TestTrialSuite(unittest.TestCase):
 
     def test_manifest_version(self):
         manifest = json.loads((TRIAL_DIR / "manifest.json").read_text())
-        # The version must be valid semver (cli.py documents the semver
+        # The version must be valid semver (cli.py's _SEMVER_RE fullmatch
         # contract); pinning a literal here rotted on every bump.
-        self.assertRegex(manifest["dataset_version"], r"^\d+\.\d+\.\d+")
+        self.assertIsNotNone(
+            _SEMVER_RE.fullmatch(manifest["dataset_version"]))
         self.assertEqual(manifest["files"]["cases.jsonl"]["n_cases"], 100)
 
     def test_canary_embedded(self):
