@@ -206,7 +206,7 @@ list runs in the registry
 | `--dataset-version` |  | - | filter by dataset version |
 | `--cache` |  | - | filter by cache state (on/off) (choices: `on`, `off`) |
 | `--termination` |  | - | filter by termination state (complete, budget, partial, ...) |
-| `--model-class` |  | - | filter by adapter model class (llm-baseline, guardrail, mock, ...) |
+| `--model-class` |  | - | filter by adapter model class (llm-baseline, guardrail, rule-based, ...) |
 | `--checkpoint-hash` |  | - | filter by pinned model revision |
 | `--api-version` |  | - | filter by provider API version |
 | `--call-date` |  | - | filter by run UTC date (YYYY-MM-DD) |
