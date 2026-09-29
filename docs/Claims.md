@@ -11,6 +11,9 @@ indexes the load-bearing claims; detail lives in the linked docs.
 - Every public score will link to per-case drill-down receipts.
 - Run artifacts are sealed with an analysis lock; `peira report` warns on
   lock mismatch.
+- The attacked-arm decision curve carries an isotonic-recalibration
+  upper-bound envelope (C-3). It is display-only, never a ranker, and
+  slightly optimistic because the fit is in-sample.
 - The private holdout's raw cases will never be published while they are
   holdout cases; aged-out cases enter the public set on the declared
   schedule (see `Holdout-OpSec.md`), and only aggregate metrics leave the
