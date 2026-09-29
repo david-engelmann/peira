@@ -1133,7 +1133,8 @@ review.
 
 The Layer-4 gate holds. No threshold-defense claim ships without
 reported attacked-arm calibration. An adapter's defense section is
-withheld until at least 30 finite attacked confidences exist to
+withheld until at least `MIN_PER_CONDITION_CASES` (30) finite attacked
+confidences exist to
 compute ECE against. The ECE rides alongside every curve so readers
 can judge whether the confidences driving the threshold deserve
 trust.

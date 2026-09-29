@@ -961,8 +961,9 @@ omit the flag to use the scenario's baseline attack rate.
 
 **`peira defense` reports an adapter as WITHHELD**
 Cause: not an error. The Layer-4 gate withholds the defense section
-until attacked-arm calibration is reported (fewer than 30 attacked
-confidences), or the adapter has no eligible cases. Fix: none needed;
+until attacked-arm calibration is reported (fewer than
+`MIN_PER_CONDITION_CASES` (30) finite attacked confidences), or the
+adapter has no eligible cases. Fix: none needed;
 the reason is printed. A withheld adapter carries no curve and no
 claim.
 

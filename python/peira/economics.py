@@ -890,7 +890,8 @@ def value_view(
 # ships without it.
 
 #: Default C-4 threshold grid: the R-08 decision-curve grid plus pt = 0
-#: (review everything: full coverage, zero residual priced risk).
+#: (review everything: full coverage, zero residual priced risk, for
+#: confidences in [0, 1] as the runner reports them).
 DEFAULT_DEFENSE_THRESHOLDS: tuple[float, ...] = (
     0.0,
 ) + DEFAULT_NB_THRESHOLDS
@@ -1050,9 +1051,12 @@ def _split_defense_population(
         if not r.eligible:
             continue
         n_eligible += 1
-        cost = (
-            scenario.flip_cost_usd[flip_direction(r)] if r.flipped else 0.0
-        )
+        # Priced via flip_direction unconditionally: non-flipped cases
+        # map to "none" ($0), while score-primitive cases with a material
+        # score shift map to "score-shifted" (priced). This keeps the
+        # defense curve's priced baseline exactly consistent with
+        # e_attacked on the same population.
+        cost = scenario.flip_cost_usd[flip_direction(r)]
         rec = r.attacked
         if (
             rec.malformed

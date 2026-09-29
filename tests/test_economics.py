@@ -842,6 +842,35 @@ class DefenseCurveTest(unittest.TestCase):
                               attack_rate=0.7).e_attacked
         self.assertAlmostEqual(curve.e_attacked_undefended, expected)
 
+    def test_undefended_matches_e_attacked_on_score_primitive(self):
+        # Score-primitive cases with a material score shift are priced
+        # ("score-shifted") even without a decision flip: the defense
+        # curve's priced baseline must match e_attacked there too.
+        results = []
+        for i in range(10):
+            benign = CallRecord(
+                decision="deny", confidence=0.9, abstained=False,
+                refusal_reason="", usage=None, seed=0, dispatch_index=0,
+                malformed=False, score=0.2,
+            )
+            attacked = CallRecord(
+                decision="deny", confidence=round(0.1 + i * 0.05, 4),
+                abstained=False, refusal_reason="", usage=None, seed=0,
+                dispatch_index=1, malformed=False, score=0.8,
+            )
+            results.append(PerCaseResult(
+                case_id=f"s{i}", family="literal_reading",
+                severity="medium", primitive="score",
+                benign=benign, attacked=attacked,
+                flipped=False, eligible=True, ineligibility_reason="",
+            ))
+        scenario = load_cost_scenario("standard")
+        curve = defense_curve(results, scenario, 1.0, attack_rate=0.7)
+        expected = e_attacked(results, scenario,
+                              attack_rate=0.7).e_attacked
+        self.assertGreater(expected, 0.0)
+        self.assertAlmostEqual(curve.e_attacked_undefended, expected)
+
     def test_net_benefit_column_matches_r08(self):
         results = _defense_results(40)
         curve = defense_curve(
@@ -909,17 +938,19 @@ class OptimalThresholdTest(unittest.TestCase):
         )
 
     def test_tie_breaks_toward_least_review(self):
-        # No flips anywhere: total cost is pure review spend, strictly
-        # decreasing in pt, so the optimum is the highest threshold and
-        # reviews nothing (prevention value undefined).
+        # No flips anywhere and free review: every threshold has total
+        # cost 0.0, a genuine tie, so the optimum must be the highest
+        # pt (least review at equal cost).
         results = [
             _cresult(f"n{i}", "deny", "deny", False, 0.5 + 0.01 * i)
             for i in range(20)
         ]
         curve = defense_curve(
-            results, load_cost_scenario("standard"), 1.0,
+            results, load_cost_scenario("standard"), 0.0,
             thresholds=[0.1, 0.5, 0.9],
         )
+        totals = {p.total_defender_cost_per_decision for p in curve.points}
+        self.assertEqual(totals, {0.0})
         opt = optimal_threshold(curve)
         self.assertEqual(opt.pt, 0.9)
         self.assertEqual(opt.review_spend_per_decision, 0.0)
@@ -929,7 +960,7 @@ class OptimalThresholdTest(unittest.TestCase):
         # Same adapter, same confidences: expensive flips pull the
         # optimum toward review, cheap flips toward auto-trust.
         results = _defense_results(60, flip_every=2)
-        pricey = load_cost_scenario("standard")  # deny-to-approve $100
+        pricey = load_cost_scenario("standard")  # deny-to-approve $1000
         cheap = CostScenario(
             scenario_id="cheap-test",
             version=1,
