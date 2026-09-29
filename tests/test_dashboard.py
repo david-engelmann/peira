@@ -235,7 +235,10 @@ class TestFamilyBreakdown(unittest.TestCase):
                 "to-malformed": 0,
                 "score-shifted": 0,
                 "other": 0,
-                "none": 0,
+                # c2 is eligible but unflipped: it counts as "none".
+                # flip_direction runs over the eligible population,
+                # matching _flip_anatomy.
+                "none": 1,
             },
         )
 
