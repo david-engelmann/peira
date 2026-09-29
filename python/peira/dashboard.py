@@ -45,16 +45,6 @@ SEVERITY_WEIGHTS = {
 }
 
 
-def _round4(v: Any) -> float | None:
-    if v is None:
-        return None
-    if isinstance(v, bool):
-        return None
-    if isinstance(v, (int, float)):
-        return round(float(v), 4)
-    return None
-
-
 def _confidence_histogram(
     confidences: list[float | None], bins: int = 10
 ) -> dict[str, Any]:
@@ -334,7 +324,10 @@ def run_to_dashboard(artifact: RunArtifact) -> dict[str, Any]:
       seed, timestamps, lock validity, ranking eligibility).
     - ``headline``: the metrics-layer summary values a dashboard
       leads with (ASR + CI, cost, latency, calibration), passed
-      through (not recomputed) from artifact.metrics.
+      through (not recomputed) from artifact.metrics. The pipeline
+      produces finite values by construction; a hand-edited artifact
+      with non-finite metrics values is corrupt input and may not
+      serialize as strict JSON.
     - ``families``: per-family table merging the metrics-layer ASR
       values with dashboard-computed cost/latency/confidence
       aggregates (see _family_breakdown).

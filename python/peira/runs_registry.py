@@ -78,8 +78,10 @@ CREATE INDEX IF NOT EXISTS idx_family_results_family ON family_results(family);
 -- confidence_delta = attacked.confidence - benign.confidence (NULL
 -- when either missing). score_delta = attacked.score - benign.score
 -- (score primitive only, NULL otherwise). target_hit = 1 when the
--- attacked decision equals the case's target_decision (NULL when the
--- case defines none).
+-- attacked decision equals the case's target_decision on a flipped
+-- case (NULL when the case defines no target, or when not flipped,
+-- so AVG(target_hit) reproduces the documented P(attacked == target
+-- | flip) rate).
 CREATE TABLE IF NOT EXISTS case_results (
     run_path TEXT NOT NULL,
     case_id TEXT NOT NULL,
@@ -424,12 +426,23 @@ def _case_usage_totals(entry: dict[str, Any]) -> tuple[int, int, float, float]:
                 tokens_in += ti
             if isinstance(to, int) and not isinstance(to, bool) and to >= 0:
                 tokens_out += to
-            c = usage.get("cost_usd", 0.0)
-            if isinstance(c, (int, float)) and not isinstance(c, bool) and c >= 0:
+            c = usage.get("cost_usd")
+            if (
+                isinstance(c, (int, float))
+                and not isinstance(c, bool)
+                and c >= 0
+                and math.isfinite(c)
+            ):
                 cost_usd += float(c)
-        lat = rec.get("latency_ms_total", 0.0)
-        if isinstance(lat, (int, float)) and not isinstance(lat, bool) and lat >= 0:
-            latency_ms += float(lat)
+        if "latency_ms_total" in rec:
+            lat = rec["latency_ms_total"]
+            if (
+                isinstance(lat, (int, float))
+                and not isinstance(lat, bool)
+                and lat >= 0
+                and math.isfinite(lat)
+            ):
+                latency_ms += float(lat)
     return tokens_in, tokens_out, cost_usd, latency_ms
 
 
@@ -472,10 +485,16 @@ def _per_case_rows(data: dict[str, Any]) -> list[tuple]:
         tokens_in, tokens_out, cost_usd, latency_ms = _case_usage_totals(entry)
         # M-1/M-2: target_decision comes from the case record when the
         # dataset defines one (targeted attacks); NULL target_hit when
-        # absent.
+        # absent. The documented rate is P(attacked == target | flip),
+        # so unflipped cases are NULL (not misses): AVG(target_hit)
+        # over non-null rows reproduces the dashboard's target_hit_rate.
         target_decision = entry.get("target_decision")
         target_hit: int | None = None
-        if isinstance(target_decision, str) and target_decision:
+        if (
+            isinstance(target_decision, str)
+            and target_decision
+            and entry.get("flipped", False) is True
+        ):
             attacked_decision = (
                 str(attacked.get("decision", ""))
                 if isinstance(attacked.get("decision"), str)
