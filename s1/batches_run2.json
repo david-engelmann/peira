@@ -1,0 +1,33 @@
+{
+ "note": "Run-2 batch partition (sequential 50-slices of the run-2 sample). Stored in-repo to survive /tmp wipes (lesson of ER-3).",
+ "batches": {
+  "batch0": {
+   "n": 50,
+   "graders": [
+    "g0a",
+    "g0b"
+   ]
+  },
+  "batch1": {
+   "n": 50,
+   "graders": [
+    "g1a",
+    "g1b"
+   ]
+  },
+  "batch2": {
+   "n": 50,
+   "graders": [
+    "g2a",
+    "g2b"
+   ]
+  },
+  "batch3": {
+   "n": 50,
+   "graders": [
+    "g3a",
+    "g3b"
+   ]
+  }
+ }
+}

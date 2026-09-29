@@ -1,0 +1,101 @@
+{
+ "note": "Canonical batch partition as executed. The /tmp batch files created pre-execution were partially lost when /tmp was wiped; batch1 (indices 100-149) is reconstructed here as the set complement of the three surviving batch definitions. g1a/g1b first runs misassigned to batch0 and were discarded (see ER-3).",
+ "batches": {
+  "batch0": {
+   "indices": [
+    0,
+    50
+   ],
+   "graders": [
+    "g0a",
+    "g0b"
+   ],
+   "n": 50
+  },
+  "batch1": {
+   "indices": [
+    100,
+    150
+   ],
+   "graders": [
+    "g1a",
+    "g1b"
+   ],
+   "n": 50
+  },
+  "batch2": {
+   "indices": [
+    50,
+    100
+   ],
+   "graders": [
+    "g2a",
+    "g2b"
+   ],
+   "n": 50
+  },
+  "batch3": {
+   "indices": [
+    150,
+    200
+   ],
+   "graders": [
+    "g3a",
+    "g3b"
+   ],
+   "n": 50
+  }
+ },
+ "batch1_case_ids": [
+  "v1-ngm-014",
+  "v1-ngm-191",
+  "v1-ngm-250",
+  "v1-ngm-050",
+  "v1-ngm-118",
+  "v1-ngm-201",
+  "v1-ngm-031",
+  "v1-ngm-189",
+  "v1-ngm-192",
+  "v1-ngm-028",
+  "v1-ngm-196",
+  "v1-ngm-115",
+  "v1-ngm-027",
+  "v1-ngm-232",
+  "v1-ngm-062",
+  "v1-ngm-130",
+  "v1-ngm-120",
+  "v1-ngm-215",
+  "v1-ngm-092",
+  "v1-ngm-090",
+  "v1-odo-070",
+  "v1-odo-073",
+  "v1-odo-248",
+  "v1-odo-001",
+  "v1-odo-067",
+  "v1-odo-180",
+  "v1-odo-139",
+  "v1-odo-083",
+  "v1-odo-008",
+  "v1-odo-128",
+  "v1-odo-007",
+  "v1-odo-068",
+  "v1-odo-194",
+  "v1-odo-042",
+  "v1-odo-158",
+  "v1-odo-138",
+  "v1-odo-122",
+  "v1-odo-022",
+  "v1-odo-099",
+  "v1-odo-094",
+  "v1-ppa-184",
+  "v1-ppa-003",
+  "v1-ppa-043",
+  "v1-ppa-156",
+  "v1-ppa-138",
+  "v1-ppa-186",
+  "v1-ppa-232",
+  "v1-ppa-207",
+  "v1-ppa-215",
+  "v1-ppa-171"
+ ]
+}
