@@ -651,6 +651,34 @@ review_none the buyer should not deploy the review policy at that
 threshold; where review_all wins, the risk score adds no value over
 blanket review.
 
+#### Calibration envelope (upper bound)
+
+Miscalibration always reduces net benefit (Van Calster & Vickers
+2015): a model whose confidences do not mean what they say pays a
+calibration penalty inside its decision curve that the reader cannot
+see from the empirical curve alone. The calibration envelope (roadmap
+C-3) separates it. On the attacked arm, peira fits an isotonic
+regression (pool adjacent violators, pure Python, no dependencies)
+mapping attacked-arm confidence to P(output correct), recomputes the
+decision curve on the recalibrated risks, and plots it next to the
+empirical curve. The vertical gap at each threshold is the net benefit
+lost to miscalibration; the maximum gap is the headline: "at most X
+net caught bad outputs per case are recoverable by recalibration
+alone, without retraining". The envelope is an explicitly-labeled
+**upper bound**: the isotonic fit is in-sample, so it is slightly
+optimistic about what recalibration would achieve on new cases. It is
+display-only, never a ranker, and never blended into the empirical
+curve.
+
+Functions (`peira.metrics`, Python-only, no Rust port):
+`isotonic_regression` (the PAVA primitive), `recalibrated_decision_curve`
+(confidence/correctness pairs to the recalibrated curve), and the
+`calibration_envelope` block inside the attacked arm's net-benefit
+summary (`envelope`, per-threshold `gap`, `max_gap` at
+`threshold_at_max_gap`, `interpretation: "upper bound"`; withheld below
+30 analyzed cases like the rest of the block). `peira report` draws the
+envelope on the attacked-arm decision curve and prints the headline.
+
 Functions (`peira.metrics`, Python-only, no Rust port):
 `net_benefit_pairs` (risk/label extraction; the attacked arm needs
 eligible cases with an attacked approve/deny decision and confidence,

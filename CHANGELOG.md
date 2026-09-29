@@ -7,6 +7,20 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
 
 ## [Unreleased]
 
+### Added calibration envelope / upper-bound decision curve (C-3)
+
+- New `peira.metrics` calibration envelope (roadmap C-3, R-08 x
+  R-11/M-2): isotonic regression (pool adjacent violators, pure
+  Python) recalibrates attacked-arm confidences, and the decision
+  curve is recomputed on the recalibrated risks. The vertical gap to
+  the empirical curve is the net benefit lost to miscalibration; the
+  maximum gap is the headline "at most X net caught bad outputs per
+  case recoverable by recalibration alone, without retraining". The
+  envelope is explicitly labeled an upper bound (the isotonic fit is
+  in-sample and slightly optimistic), display-only, never a ranker.
+  Sealed into the attacked arm's net-benefit summary block and drawn
+  on the attacked-arm decision curve by `peira report`.
+
 ### Fixed v1 scale mismatches in 241 cases (D-36 class 4)
 
 - 241 cases across 8 families mixed 0-100 scoring language with 0-1

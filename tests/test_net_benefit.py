@@ -29,8 +29,10 @@ from peira.metrics import (
     decision_curve_references,
     expected_review_cost,
     implied_threshold,
+    isotonic_regression,
     net_benefit_at_threshold,
     net_benefit_pairs,
+    recalibrated_decision_curve,
     review_cost_pairs,
     summarize,
 )
@@ -620,6 +622,41 @@ class TestReportSection(unittest.TestCase):
         self.assertIn("review all", svg)
         self.assertEqual(_nb_curve_svg({"curve": []}, "attacked"), "")
 
+    def test_envelope_renders_upper_bound_label(self):
+        # C-3: the attacked arm renders the envelope headline with the
+        # explicit "upper bound" label; the benign arm renders nothing.
+        from peira.cli import _net_benefit_section, _envelope_line
+        s = self._summary()
+        html = _net_benefit_section(s)
+        self.assertIn("Calibration envelope (upper bound)", html)
+        self.assertIn("recalibration alone, without retraining", html)
+        self.assertIn("calibration envelope (upper bound)", html)
+        attacked = s["net_benefit"]["attacked"]
+        line = _envelope_line(attacked)
+        self.assertIn("upper bound", line)
+        # Benign arm and old artifacts render nothing, never traceback.
+        self.assertEqual(
+            _envelope_line(s["net_benefit"]["benign"]), "")
+        self.assertEqual(_envelope_line({}), "")
+        self.assertEqual(_envelope_line({"calibration_envelope": None}),
+                         "")
+        self.assertEqual(
+            _envelope_line({"calibration_envelope":
+                            {"sufficient": False}}), "")
+
+    def test_envelope_svg_draws_recalibrated_curve(self):
+        from peira.cli import _nb_curve_svg
+        block = self._summary()["net_benefit"]["attacked"]
+        svg = _nb_curve_svg(block, "attacked")
+        self.assertIn("calibration envelope (upper bound)", svg)
+        # Hostile envelope shapes degrade to no envelope line, never a
+        # traceback.
+        bad = dict(block)
+        bad["calibration_envelope"] = {"envelope": [["a", "b"]]}
+        svg = _nb_curve_svg(bad, "attacked")
+        self.assertIn("<svg", svg)
+        self.assertNotIn("calibration envelope (upper bound)", svg)
+
 
 class TestBuyerCostAtThreshold(unittest.TestCase):
     def _results(self):
@@ -942,6 +979,224 @@ class TestAttackMixCrossover(unittest.TestCase):
         b = self._curve(1.0, 1.0, rates=(0.0, 1.0))
         with self.assertRaises(ValueError):
             attack_mix_crossover(a, b)
+
+
+class TestIsotonicRegression(unittest.TestCase):
+    """PAVA isotonic regression: the C-3 recalibration primitive."""
+
+    def test_pools_adjacent_violators(self):
+        # [1, 0, 1, 0] is nowhere nondecreasing: one block, mean 0.5.
+        self.assertEqual(
+            isotonic_regression([0.1, 0.2, 0.3, 0.4], [1, 0, 1, 0]),
+            [0.5, 0.5, 0.5, 0.5])
+
+    def test_monotone_input_unchanged(self):
+        self.assertEqual(
+            isotonic_regression([0.1, 0.2, 0.3, 0.4], [0, 0, 1, 1]),
+            [0.0, 0.0, 1.0, 1.0])
+
+    def test_single_point(self):
+        self.assertEqual(isotonic_regression([0.7], [1]), [1.0])
+
+    def test_tied_x(self):
+        # Tied forecasts keep input order (stable sort); the fit stays
+        # nondecreasing in x order.
+        fitted = isotonic_regression([0.5, 0.5, 0.5], [0, 1, 0])
+        self.assertEqual(len(fitted), 3)
+        self.assertTrue(all(0.0 <= v <= 1.0 for v in fitted))
+
+    def test_output_nondecreasing_in_x_order(self):
+        import random
+        rng = random.Random(42)
+        xs = [rng.random() for _ in range(50)]
+        ys = [rng.randint(0, 1) for _ in range(50)]
+        fitted = isotonic_regression(xs, ys)
+        order = sorted(range(50), key=xs.__getitem__)
+        seq = [fitted[i] for i in order]
+        self.assertTrue(all(a <= b for a, b in zip(seq, seq[1:])))
+        # Fitted values are block means of binary labels: in [0, 1].
+        self.assertTrue(all(0.0 <= v <= 1.0 for v in fitted))
+
+    def test_preserves_mean(self):
+        # Pooling only merges blocks, so the overall mean is preserved.
+        import random
+        rng = random.Random(7)
+        xs = [rng.random() for _ in range(40)]
+        ys = [rng.random() for _ in range(40)]
+        fitted = isotonic_regression(xs, ys)
+        self.assertAlmostEqual(sum(fitted) / 40, sum(ys) / 40)
+
+    def test_validation(self):
+        with self.assertRaises(ValueError):
+            isotonic_regression([], [])
+        with self.assertRaises(ValueError):
+            isotonic_regression([0.1], [0, 1])
+        with self.assertRaises(ValueError):
+            isotonic_regression([0.1, float("nan")], [0, 1])
+        with self.assertRaises(ValueError):
+            isotonic_regression([0.1, 0.2], [0, float("inf")])
+
+
+class TestRecalibratedDecisionCurve(unittest.TestCase):
+    """The C-3 upper-envelope decision curve."""
+
+    def _calibrated(self, n=120, seed=3):
+        # Perfectly calibrated: P(correct | confidence) = confidence.
+        import random
+        rng = random.Random(seed)
+        confs, correct = [], []
+        for _ in range(n):
+            c = round(rng.random(), 3)
+            y = 1 if rng.random() < c else 0
+            confs.append(c)
+            correct.append(y)
+        return confs, correct
+
+    def _miscalibrated(self, n=120, seed=5):
+        # Inverted calibration: confident when wrong, unsure when
+        # right. Recalibration should recover large net benefit.
+        import random
+        rng = random.Random(seed)
+        confs, correct = [], []
+        for _ in range(n):
+            c = round(rng.random(), 3)
+            y = 1 if rng.random() < (1.0 - c) else 0
+            confs.append(c)
+            correct.append(y)
+        return confs, correct
+
+    def test_calibrated_model_envelope_matches_empirical(self):
+        confs, correct = self._calibrated(n=400)
+        risks = [1.0 - c for c in confs]
+        events = [1 - y for y in correct]
+        emp = decision_curve(risks, events)
+        env = recalibrated_decision_curve(confs, correct)
+        self.assertEqual(len(env), len(emp))
+        gaps = [e - m for (_, m), (_, e) in zip(emp, env)]
+        # A calibrated model has almost nothing to recover: the
+        # envelope hugs the empirical curve. The small residual gap is
+        # the in-sample optimism of the isotonic fit — the reason the
+        # envelope is labeled an upper bound, never a measurement.
+        self.assertLess(max(gaps), 0.1)
+        self.assertGreater(min(gaps), -0.05)
+
+    def test_miscalibrated_model_envelope_lifts(self):
+        confs, correct = self._miscalibrated()
+        risks = [1.0 - c for c in confs]
+        events = [1 - y for y in correct]
+        emp = decision_curve(risks, events)
+        env = recalibrated_decision_curve(confs, correct)
+        gaps = [e - m for (_, m), (_, e) in zip(emp, env)]
+        # Recalibration recovers substantial net benefit on a badly
+        # miscalibrated model.
+        self.assertGreater(max(gaps), 0.2)
+
+    def test_threshold_grid(self):
+        confs, correct = self._calibrated(n=40)
+        env = recalibrated_decision_curve(confs, correct,
+                                          thresholds=[0.2, 0.5, 0.8])
+        self.assertEqual([pt for pt, _ in env], [0.2, 0.5, 0.8])
+        default = recalibrated_decision_curve(confs, correct)
+        self.assertEqual(len(default), 99)
+
+    def test_validation(self):
+        with self.assertRaises(ValueError):
+            recalibrated_decision_curve([], [])
+        with self.assertRaises(ValueError):
+            recalibrated_decision_curve([0.5], [0, 1])
+        with self.assertRaises(ValueError):
+            recalibrated_decision_curve([1.5], [1])
+        with self.assertRaises(ValueError):
+            recalibrated_decision_curve([-0.1], [1])
+        with self.assertRaises(ValueError):
+            recalibrated_decision_curve([0.5], [2])
+
+
+class TestCalibrationEnvelopeBlock(unittest.TestCase):
+    """The C-3 summary block: envelope, gap, and upper-bound label."""
+
+    def _many(self, n, **kw):
+        return [_r(case_id=f"c{i}", **kw) for i in range(n)]
+
+    def _summarize(self, results):
+        # n_boot=100 keeps the suite fast; the envelope block itself
+        # needs no bootstrap.
+        return summarize(results, n_boot=100, seed=0)
+
+    def test_withheld_below_gate(self):
+        results = self._many(10, flipped=True)
+        s = self._summarize(results)
+        env = s["net_benefit"]["attacked"]["calibration_envelope"]
+        self.assertEqual(env["n"], 10)
+        self.assertFalse(env["sufficient"])
+        self.assertIsNone(env["envelope"])
+        self.assertIsNone(env["gap"])
+        self.assertIsNone(env["max_gap"])
+        self.assertIsNone(env["threshold_at_max_gap"])
+        # The label is present even when withheld: a reader never
+        # mistakes the envelope for an empirical measurement.
+        self.assertEqual(env["interpretation"], "upper bound")
+
+    def test_benign_arm_has_no_envelope(self):
+        results = self._many(MIN_NB_CASES, flipped=False,
+                             attacked_conf=0.9, benign_conf=0.9)
+        s = self._summarize(results)
+        self.assertIsNone(
+            s["net_benefit"]["benign"]["calibration_envelope"])
+
+    def test_sufficient_block_structure(self):
+        # Half confident-correct, half risky flips: the envelope has
+        # something to say and the block is JSON-shaped.
+        results = (
+            self._many(20, flipped=False, attacked_conf=0.9,
+                       benign_conf=0.9)
+            + [ _r(case_id=f"d{i}", flipped=True, attacked_conf=0.3,
+                    attacked_decision="deny", benign_conf=0.9)
+                 for i in range(20) ]
+        )
+        s = self._summarize(results)
+        nb = s["net_benefit"]["attacked"]
+        env = nb["calibration_envelope"]
+        self.assertTrue(env["sufficient"])
+        self.assertEqual(env["n"], 40)
+        self.assertEqual(len(env["envelope"]), 99)
+        self.assertEqual(len(env["gap"]), 99)
+        self.assertIsInstance(env["max_gap"], float)
+        self.assertIn(env["threshold_at_max_gap"],
+                      [pt for pt, _ in env["envelope"]])
+        self.assertEqual(env["interpretation"], "upper bound")
+        # Gap is envelope minus empirical, pointwise (up to the
+        # 4-decimal summary rounding).
+        for (pt, nb_emp), (_, nb_env), (_, g) in zip(
+                nb["curve"], env["envelope"], env["gap"]):
+            self.assertAlmostEqual(g, nb_env - nb_emp, places=3)
+
+    def test_max_gap_is_headline(self):
+        results = (
+            self._many(20, flipped=False, attacked_conf=0.9,
+                       benign_conf=0.9)
+            + [ _r(case_id=f"d{i}", flipped=True, attacked_conf=0.3,
+                    attacked_decision="deny", benign_conf=0.9)
+                 for i in range(20) ]
+        )
+        s = self._summarize(results)
+        env = s["net_benefit"]["attacked"]["calibration_envelope"]
+        gaps = [g for _, g in env["gap"]]
+        self.assertAlmostEqual(env["max_gap"], max(gaps), places=4)
+        at = env["threshold_at_max_gap"]
+        gap_at = dict(env["gap"])[at]
+        self.assertAlmostEqual(gap_at, env["max_gap"], places=4)
+
+    def test_envelope_json_serializable(self):
+        results = self._many(MIN_NB_CASES, flipped=True,
+                             attacked_conf=0.4, benign_conf=0.9)
+        s = self._summarize(results)
+        payload = json.dumps(s["net_benefit"])
+        back = json.loads(payload)
+        env = back["attacked"]["calibration_envelope"]
+        self.assertTrue(env["sufficient"])
+        self.assertEqual(len(env["envelope"]), 99)
+        self.assertEqual(env["interpretation"], "upper bound")
 
 
 if __name__ == "__main__":
