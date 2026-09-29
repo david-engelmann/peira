@@ -32,6 +32,7 @@ import html
 import json
 import sys
 from pathlib import Path
+from typing import NoReturn
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 SITE_ROOT = REPO_ROOT / "site"
@@ -243,6 +244,8 @@ def main() -> None:
     ap.add_argument("--top-n", type=int, default=TOP_N_DEFAULT)
     ap.add_argument("--suite", default="public", choices=("public", "holdout"))
     args = ap.parse_args()
+    if not 1 <= args.top_n <= TOP_N_DEFAULT:
+        fail(f"--top-n must be between 1 and {TOP_N_DEFAULT} (chart capacity)")
 
     data, scored = load_runs(Path(args.inp), args.suite)
     if not scored:
@@ -263,6 +266,11 @@ def main() -> None:
     if rasterize(svg, png_path):
         print(f"render_og: wrote {png_path} via cairosvg (1200x630)")
     else:
+        # Never leave a stale PNG next to fresh SVG/alt text: it could
+        # show different numbers or a different mock-data status.
+        if png_path.exists():
+            png_path.unlink()
+            print(f"render_og: removed stale {png_path}")
         print(
             "render_og: TODO: no SVG rasterizer installed "
             "(cairosvg not importable), so no PNG was produced. "

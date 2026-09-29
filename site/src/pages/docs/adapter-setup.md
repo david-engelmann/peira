@@ -1,4 +1,5 @@
 ---
+layout: ../../layouts/Docs.astro
 title: Adapter setup
 ---
 

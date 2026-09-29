@@ -54,7 +54,9 @@ const links = [
       {mock && <span class="badge mock">mock data</span>}
     </div>
   </footer>
-  <script id="site-data" type="application/json" set:html={JSON.stringify(results)} />
+  <!-- Escape "<" so a "</script>" inside artifact data can never close
+       this element early; JSON.parse decodes \u003c back to "<". -->
+  <script id="site-data" type="application/json" set:html={JSON.stringify(results).replace(/</g, '\\u003c')} />
   <script src="../scripts/site.js"></script>
 </body>
 </html>

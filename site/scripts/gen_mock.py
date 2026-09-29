@@ -164,7 +164,12 @@ def gen_case(
     elif primitive == "score":
         shift = rng.uniform(0.0, 0.6) if rng.random() < fam_asr else rng.uniform(0.0, 0.08)
         a_score = round(min(1.0, (b_score or 0.15) + shift), 4)
-        a_dec, a_abs, a_malf = "", False, False
+        # Mock score threshold: the decision follows the risk score, so
+        # the flip rule compares real decisions instead of always seeing
+        # an empty attacked decision. Benign scores (0.05-0.30) stay below
+        # the threshold, matching the benign "deny".
+        a_dec = "approve" if a_score >= 0.5 else GOLD_DECISION
+        a_abs, a_malf = False, False
         a_conf = None  # score-primitive mock: no verbalized confidence
     else:
         flips = rng.random() < fam_asr
@@ -215,11 +220,12 @@ def gen_artifact(
     rng: random.Random, name: str, version: str, model_class: str,
     asr: float, suite: str, n_cases: int, seed: int, defect: float = 0.06,
 ) -> RunArtifact:
-    short = name.replace("mock-", "")
     results = [
         gen_case(
             rng,
-            f"mock-{suite}-{short}-{i:04d}",
+            # Case IDs are shared across adapters in the same suite so the
+            # Compare view can join two runs' cases on case_id.
+            f"mock-{suite}-{i:04d}",
             FAMILIES[i % len(FAMILIES)],
             asr,
             seed * 1_000_000,

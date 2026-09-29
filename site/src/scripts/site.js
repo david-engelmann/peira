@@ -80,7 +80,11 @@
   };
   const csvCell = (v) => {
     if (v === null || v === undefined) return '';
-    const s = String(v);
+    if (typeof v === 'number') return String(v);
+    let s = String(v);
+    // CSV injection defense: a hostile cell value starting with a
+    // formula trigger must not execute as a spreadsheet formula on open.
+    if (/^[=+\-@\t\r]/.test(s)) s = "'" + s;
     return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
   };
   const rowsToCsv = (rows) => rows.map((r) => r.map(csvCell).join(',')).join('\n') + '\n';
@@ -114,16 +118,19 @@
     img.onerror = () => alert('PNG export failed for this chart.');
     img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(str);
   };
-  const bindExport = (root, getSvg, baseName) => {
+  const bindExport = (root, getSvg, getBaseName) => {
+    // getBaseName is a function so the file name reflects the state at
+    // click time, not at bind time (the suite toggle changes state
+    // without a page reload).
     const csv = root.querySelector('[data-export="csv"]');
     const svg = root.querySelector('[data-export="svg"]');
     const png = root.querySelector('[data-export="png"]');
     if (csv) csv.addEventListener('click', () => {
       const rows = root.__csvRows ? root.__csvRows() : null;
-      if (rows) download(baseName + '.csv', rowsToCsv(rows), 'text/csv');
+      if (rows) download(getBaseName() + '.csv', rowsToCsv(rows), 'text/csv');
     });
-    if (svg) svg.addEventListener('click', () => { const el = getSvg(); if (el) exportSvg(el, baseName + '.svg'); });
-    if (png) png.addEventListener('click', () => { const el = getSvg(); if (el) exportPng(el, baseName + '.png'); });
+    if (svg) svg.addEventListener('click', () => { const el = getSvg(); if (el) exportSvg(el, getBaseName() + '.svg'); });
+    if (png) png.addEventListener('click', () => { const el = getSvg(); if (el) exportPng(el, getBaseName() + '.png'); });
   };
   const copyLink = (root) => {
     const btn = root.querySelector('[data-copylink]');
@@ -267,7 +274,7 @@
       writeState(state); render();
     });
     root.querySelector('#ineligible-filter').checked = state.ineligible === 'hide';
-    bindExport(root, () => null, 'peira-leaderboard-' + state.suite);
+    bindExport(root, () => null, () => 'peira-leaderboard-' + state.suite);
     copyLink(root);
     render();
   };
@@ -348,7 +355,7 @@
 
     bindSuiteToggle(root, state, render);
     selAdapter.addEventListener('change', (e) => { state.adapter = e.target.value; writeState(state); render(); });
-    bindExport(root, () => null, 'peira-families-' + state.suite);
+    bindExport(root, () => null, () => 'peira-families-' + state.suite);
     copyLink(root);
     render();
   };
@@ -441,7 +448,7 @@
 
     bindSuiteToggle(root, state, render);
     selAdapter.addEventListener('change', (e) => { state.adapter = e.target.value; writeState(state); render(); });
-    bindExport(root, () => svgWrap.querySelector('svg.chart'), 'peira-calibration-' + state.suite);
+    bindExport(root, () => svgWrap.querySelector('svg.chart'), () => 'peira-calibration-' + state.suite);
     copyLink(root);
     render();
   };
@@ -522,7 +529,7 @@
     const logChk = root.querySelector('#logx');
     logChk.checked = state.logx === '1';
     logChk.addEventListener('change', (e) => { state.logx = e.target.checked ? '1' : '0'; writeState(state); render(); });
-    bindExport(root, () => chartEl.querySelector('svg.chart'), 'peira-frontier-' + state.suite);
+    bindExport(root, () => chartEl.querySelector('svg.chart'), () => 'peira-frontier-' + state.suite);
     copyLink(root);
     render();
   };
@@ -594,12 +601,14 @@
         for (const [ca, cb] of discord) rows.push([ca.case_id, ca.family, ca.severity, ca.flipped, cb.flipped, ca.benign_decision, ca.attacked_decision, cb.benign_decision, cb.attacked_decision]);
         return rows;
       };
-      bindExport(root, () => null, 'peira-compare-' + state.suite);
     };
 
     bindSuiteToggle(root, state, render);
     selA.addEventListener('change', (e) => { state.a = e.target.value; writeState(state); render(); });
     selB.addEventListener('change', (e) => { state.b = e.target.value; writeState(state); render(); });
+    // Bound once: render() only refreshes root.__csvRows, so a single
+    // click listener can never stack into duplicate downloads.
+    bindExport(root, () => null, () => 'peira-compare-' + state.suite);
     copyLink(root);
     render();
   };
@@ -672,7 +681,6 @@
         for (const c of filtered) rows.push([c.case_id, c.family, c.severity, c.primitive, c.benign_decision, c.attacked_decision, c.flipped, c.eligible, run.adapter_name, run.adapter_version, run.suite]);
         return rows;
       };
-      bindExport(root, () => null, 'peira-cases-' + state.suite);
     };
 
     const debounced = (() => {
@@ -687,6 +695,9 @@
     selRun.addEventListener('change', (e) => { state.run = e.target.value; state.p = '1'; writeState(state); render(); });
     qEl.addEventListener('input', () => debounced(onFilter));
     [famEl, sevEl, flipEl, eligEl].forEach((s) => s.addEventListener('change', onFilter));
+    // Bound once: render() only refreshes root.__csvRows, so a single
+    // click listener can never stack into duplicate downloads.
+    bindExport(root, () => null, () => 'peira-cases-' + state.suite);
     copyLink(root);
     render();
   };

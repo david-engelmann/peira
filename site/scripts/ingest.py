@@ -43,7 +43,9 @@ def load_artifact(path: Path, allow_mock: bool) -> RunArtifact:
         fail(f"{path.name}: artifact_version {artifact.artifact_version!r} != '2'")
     if not artifact.verify():
         fail(f"{path.name}: analysis lock does NOT verify (tampered or hand-edited?)")
-    is_mock = bool(artifact.config.get("mock"))
+    is_mock = artifact.config.get("mock", False)
+    if not isinstance(is_mock, bool):
+        fail(f"{path.name}: config.mock must be a boolean, got {is_mock!r}")
     if allow_mock and not is_mock:
         fail(f"{path.name}: --mock given but artifact is not marked mock")
     if not allow_mock and is_mock:
@@ -107,6 +109,8 @@ def main() -> None:
 
     if len(dataset_versions) != 1:
         fail(f"runs disagree on dataset_version: {sorted(dataset_versions)}")
+    if len(manifest_shas) != 1:
+        fail(f"runs disagree on manifest_sha256: {sorted(manifest_shas)}")
     runs.sort(key=lambda r: (r["suite"], r["adapter_name"]))
 
     site_data = {

@@ -13,19 +13,19 @@
     <line x1="1100.0" y1="188" x2="1100.0" y2="328" stroke="#2a3b31" stroke-width="1"/><text x="1100.0" y="180" text-anchor="middle" font-family="DejaVu Sans, Verdana, sans-serif" font-size="14" fill="#a8bcb0">100.0%</text>
     <text x="304" y="223.0" text-anchor="end" font-family="DejaVu Sans, Verdana, sans-serif" font-size="20" fill="#eef4ee">mock-guardrail mock-1</text>
     <text x="304" y="242.0" text-anchor="end" font-family="DejaVu Sans, Verdana, sans-serif" font-size="14" fill="#a8bcb0">n equals 486 eligible</text>
-    <rect x="320" y="209.0" width="131.6" height="18" rx="4" fill="#7fd79a"/>
-    <line x1="427.7" y1="218.0" x2="479.6" y2="218.0" stroke="#eef4ee" stroke-width="3"/><line x1="427.7" y1="208.0" x2="427.7" y2="228.0" stroke="#eef4ee" stroke-width="3"/><line x1="479.6" y1="208.0" x2="479.6" y2="228.0" stroke="#eef4ee" stroke-width="3"/>
-    <text x="493.6" y="225.0" font-family="DejaVu Sans, Verdana, sans-serif" font-size="20" font-weight="bold" fill="#eef4ee">16.9%</text>
+    <rect x="320" y="209.0" width="99.5" height="18" rx="4" fill="#7fd79a"/>
+    <line x1="398.6" y1="218.0" x2="445.0" y2="218.0" stroke="#eef4ee" stroke-width="3"/><line x1="398.6" y1="208.0" x2="398.6" y2="228.0" stroke="#eef4ee" stroke-width="3"/><line x1="445.0" y1="208.0" x2="445.0" y2="228.0" stroke="#eef4ee" stroke-width="3"/>
+    <text x="459.0" y="225.0" font-family="DejaVu Sans, Verdana, sans-serif" font-size="20" font-weight="bold" fill="#eef4ee">12.8%</text>
     <text x="304" y="267.0" text-anchor="end" font-family="DejaVu Sans, Verdana, sans-serif" font-size="20" fill="#eef4ee">mock-llm-judge mock-1</text>
     <text x="304" y="286.0" text-anchor="end" font-family="DejaVu Sans, Verdana, sans-serif" font-size="14" fill="#a8bcb0">n equals 486 eligible</text>
-    <rect x="320" y="253.0" width="272.8" height="18" rx="4" fill="#7fd79a"/>
-    <line x1="560.8" y1="262.0" x2="626.7" y2="262.0" stroke="#eef4ee" stroke-width="3"/><line x1="560.8" y1="252.0" x2="560.8" y2="272.0" stroke="#eef4ee" stroke-width="3"/><line x1="626.7" y1="252.0" x2="626.7" y2="272.0" stroke="#eef4ee" stroke-width="3"/>
-    <text x="640.7" y="269.0" font-family="DejaVu Sans, Verdana, sans-serif" font-size="20" font-weight="bold" fill="#eef4ee">35.0%</text>
+    <rect x="320" y="253.0" width="242.3" height="18" rx="4" fill="#7fd79a"/>
+    <line x1="531.5" y1="262.0" x2="595.5" y2="262.0" stroke="#eef4ee" stroke-width="3"/><line x1="531.5" y1="252.0" x2="531.5" y2="272.0" stroke="#eef4ee" stroke-width="3"/><line x1="595.5" y1="252.0" x2="595.5" y2="272.0" stroke="#eef4ee" stroke-width="3"/>
+    <text x="609.5" y="269.0" font-family="DejaVu Sans, Verdana, sans-serif" font-size="20" font-weight="bold" fill="#eef4ee">31.1%</text>
     <text x="304" y="311.0" text-anchor="end" font-family="DejaVu Sans, Verdana, sans-serif" font-size="20" fill="#eef4ee">mock-hybrid mock-1</text>
     <text x="304" y="330.0" text-anchor="end" font-family="DejaVu Sans, Verdana, sans-serif" font-size="14" fill="#a8bcb0">n equals 494 eligible</text>
-    <rect x="320" y="297.0" width="413.7" height="18" rx="4" fill="#7fd79a"/>
-    <line x1="699.3" y1="306.0" x2="767.7" y2="306.0" stroke="#eef4ee" stroke-width="3"/><line x1="699.3" y1="296.0" x2="699.3" y2="316.0" stroke="#eef4ee" stroke-width="3"/><line x1="767.7" y1="296.0" x2="767.7" y2="316.0" stroke="#eef4ee" stroke-width="3"/>
-    <text x="781.7" y="313.0" font-family="DejaVu Sans, Verdana, sans-serif" font-size="20" font-weight="bold" fill="#eef4ee">53.0%</text>
+    <rect x="320" y="297.0" width="386.9" height="18" rx="4" fill="#7fd79a"/>
+    <line x1="672.6" y1="306.0" x2="741.1" y2="306.0" stroke="#eef4ee" stroke-width="3"/><line x1="672.6" y1="296.0" x2="672.6" y2="316.0" stroke="#eef4ee" stroke-width="3"/><line x1="741.1" y1="296.0" x2="741.1" y2="316.0" stroke="#eef4ee" stroke-width="3"/>
+    <text x="755.1" y="313.0" font-family="DejaVu Sans, Verdana, sans-serif" font-size="20" font-weight="bold" fill="#eef4ee">49.6%</text>
   <text x="64" y="586" font-family="DejaVu Sans, Verdana, sans-serif" font-size="15" fill="#a8bcb0">peiratrial.dev</text>
   <text x="1136" y="586" text-anchor="end" font-family="DejaVu Sans, Verdana, sans-serif" font-size="15" fill="#a8bcb0">peira 0.1.0 · generated from sealed run artifacts</text>
 </svg>
