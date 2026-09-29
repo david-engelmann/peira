@@ -9,8 +9,9 @@ two never drift apart.
 
 Tiers: "v1" is one of the ten frozen v1 families; "1" is a Tier 1 v2
 family (ships with v2); "2" is a Tier 2 v2 family (ships once case
-design is validated). See docs/Taxonomy.md for the tier plan and the
-boundary rulings that separate neighboring families.
+design is validated). Post-v2 families carry tier "1". There is no cap
+on the number of families (David 2026-09-28). See docs/Taxonomy.md for
+the tier plan and the boundary rulings that separate neighboring families.
 """
 
 from __future__ import annotations
@@ -286,6 +287,27 @@ _FAMILIES: tuple[FamilyInfo, ...] = (
         tier="2",
         anchor="TypeSafe routing pattern (low confidence -> human review; "
         "operational pattern, not an empirical attack study)",
+    ),
+    # Post-v2 families: no cap on family count (David 2026-09-28).
+    FamilyInfo(
+        id="verbosity_inflation",
+        display_name="Verbosity Inflation",
+        description="The attacker's preferred outcome wins on length, "
+        "polish, and formatting with no change in substantive facts.",
+        mechanism="The attacked variant dresses the wrong decision in "
+        "length, polish, and formatting (headers, bullets, detailed "
+        "justification, confident language) while the right decision "
+        "gets a terse mention; the substantive facts are identical to "
+        "the benign control. Exploits style/verbosity bias in judges: "
+        "frontier models favor longer, better-formatted responses even "
+        "when substance is unchanged. Boundary vs distractor_flooding: "
+        "the added content has directional pull toward the polished "
+        "option. Deletion test: equalize the presentation lengths; if "
+        "the attack dies it is verbosity_inflation, if sheer volume "
+        "still degrades the decision it is distractor_flooding.",
+        tier="1",
+        anchor="Soumik, arXiv:2604.23178 (style bias 0.10-0.76 outweighs "
+        "position bias <=0.04 on frontier judges)",
     ),
 )
 

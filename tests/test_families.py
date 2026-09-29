@@ -37,21 +37,31 @@ EXPECTED_TIER2 = (
     "encoding_evasion",
     "abstain_forcing",
 )
+# Post-v2 families: no cap on family count (David 2026-09-28).
+EXPECTED_POST_V2 = (
+    "verbosity_inflation",
+)
 
 
 class TestFamilyRegistry(unittest.TestCase):
-    def test_twenty_families(self):
-        self.assertEqual(len(FAMILIES), 20)
-        self.assertEqual(len(FAMILY_IDS), 20)
+    def test_family_count(self):
+        # No cap on families (David 2026-09-28): assert the known set,
+        # not a fixed total.
+        self.assertEqual(
+            set(FAMILIES),
+            set(EXPECTED_V1 + EXPECTED_TIER1 + EXPECTED_TIER2 + EXPECTED_POST_V2),
+        )
+        self.assertEqual(len(FAMILIES), len(FAMILY_IDS))
 
     def test_ids_unique_and_well_formed(self):
-        self.assertEqual(len(set(FAMILY_IDS)), 20)
+        self.assertEqual(len(set(FAMILY_IDS)), len(FAMILY_IDS))
         for fid in FAMILY_IDS:
             self.assertRegex(fid, r"^[a-z0-9_]+$")
 
     def test_canonical_order(self):
         self.assertEqual(
-            FAMILY_IDS, EXPECTED_V1 + EXPECTED_TIER1 + EXPECTED_TIER2
+            FAMILY_IDS,
+            EXPECTED_V1 + EXPECTED_TIER1 + EXPECTED_TIER2 + EXPECTED_POST_V2,
         )
         self.assertEqual(list(FAMILIES), list(FAMILY_IDS))
 

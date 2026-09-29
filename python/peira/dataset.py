@@ -209,13 +209,18 @@ def summarize_cases(path: Path) -> dict[str, Any]:
 
 def build_manifest(dataset_dir: Path, dataset_version: str,
                    dataset_name: str = "peira-v1",
-                   peira_version: str = "") -> dict[str, Any]:
+                   peira_version: str = "",
+                   mdes: dict[str, dict[str, float]] | None = None) -> dict[str, Any]:
     """Build the manifest dict for a dataset directory.
 
     Every ``*.jsonl`` file in the directory root is treated as a case file
     (validated and counted); ``CANARY.txt`` is hashed as an artifact.
     ``manifest.json`` itself is never included. Raises FileNotFoundError
     when the directory is missing and ValueError on invalid cases.
+
+    ``mdes`` is an optional per-family minimum-detectable-effect table
+    (design MDEs in percentage points at the published discordance
+    rates), stored verbatim as the manifest's ``mdes`` field.
 
     Warns (UserWarning) when no case files are found — a 0-case manifest
     usually means the wrong directory was pointed at (e.g. the dataset
@@ -240,13 +245,16 @@ def build_manifest(dataset_dir: Path, dataset_version: str,
             UserWarning, stacklevel=2,
         )
     generator = f"peira {peira_version}".strip() if peira_version else "peira"
-    return {
+    manifest: dict[str, Any] = {
         "dataset": dataset_name,
         "dataset_version": dataset_version,
         "created_utc": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "generator": generator,
         "files": files,
     }
+    if mdes is not None:
+        manifest["mdes"] = mdes
+    return manifest
 
 
 def write_manifest(dataset_dir: Path, manifest: dict[str, Any]) -> Path:
