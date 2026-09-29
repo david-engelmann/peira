@@ -7,6 +7,21 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
 
 ## [Unreleased]
 
+### Added - attacker cost per flip direction (C-9, M-9 x M-1)
+
+- New `peira.metrics` functions `cost_per_flip_direction` and
+  `cost_per_flip_by_direction`: the M-9 attacker cost-per-flip machinery
+  restricted to flips in one M-1 direction. The jailbreak direction
+  (deny-to-approve) is the headline because the attacker's product is the
+  jailbreak, not vandalism or denial of service. Each direction reports
+  ASR_d, attempts per flip (1/ASR_d, matching
+  `economics.attacker_cost_multiplier`), and list-price dollars per flip
+  from runner-recorded `CallUsage` token counts and the pinned pricing
+  table. Directions with no observed flips are withheld, never $0.00.
+- The `peira value` view and the per-run HTML report now carry a
+  per-direction attacker-cost table per adapter. `value_view` exposes
+  the table as `attacker_cost_per_direction`.
+
 ### Fixed v1 scale mismatches in 241 cases (D-36 class 4)
 
 - 241 cases across 8 families mixed 0-100 scoring language with 0-1

@@ -25,6 +25,7 @@ from typing import Any
 
 from peira.metrics import (
     PerCaseResult,
+    cost_per_flip_by_direction,
     flip_direction,
     wilson_ci,
 )
@@ -791,7 +792,8 @@ def value_view(
     """Full value-view summary for the report tab.
 
     Returns per-adapter economics (E_attacked with both $/flip and
-    $/incident views, raw flip-type breakdown, attacker multiplier),
+    $/incident views, raw flip-type breakdown, attacker multiplier, the
+    C-9 per-direction attacker cost-per-flip table),
     the Pareto frontier, Drummond-Holte crossover statements, and, when
     ``baseline_adapter`` names the cheap reference adapter, CPPF and
     break-even attack rates for every other adapter. Economics sits next
@@ -810,6 +812,10 @@ def value_view(
                 results, "deny-to-approve"
             ),
             "mean_inference_cost_per_decision": _mean_cost_per_decision(results),
+            # C-9 (M-9 x M-1): attacker cost per flip in every M-1
+            # direction. The jailbreak-direction row is the headline: the
+            # attacker's product is the jailbreak, not vandalism or DoS.
+            "attacker_cost_per_direction": cost_per_flip_by_direction(results),
         }
     frontier = pareto_frontier(adapter_results, price_date)
     _, crossovers = drummond_holte_curves(adapter_results)

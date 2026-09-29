@@ -440,6 +440,13 @@ class ValueViewTest(unittest.TestCase):
             set(view["adapters"]["cand"]["flip_direction_counts"]),
             set(FLIP_DIRECTIONS),
         )
+        # C-9 (M-9 x M-1): per-direction attacker cost-per-flip table,
+        # every M-1 direction a key, jailbreak direction present.
+        c9 = view["adapters"]["cand"]["attacker_cost_per_direction"]
+        self.assertEqual(set(c9), set(FLIP_DIRECTIONS))
+        self.assertIn("direction", c9["deny-to-approve"])
+        self.assertEqual(c9["deny-to-approve"]["direction"],
+                         "deny-to-approve")
         self.assertTrue(view["pareto_frontier"])
         self.assertIn("cand", view["comparisons"])
         comp = view["comparisons"]["cand"]

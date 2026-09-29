@@ -38,6 +38,8 @@ from peira.metrics import (
     confidence_coverage,
     cost_exchange_rate,
     cost_per_flip,
+    cost_per_flip_by_direction,
+    cost_per_flip_direction,
     cost_summary,
     crps_point,
     defender_cost_per_1k,
@@ -1239,6 +1241,194 @@ class TestM9CostAccounting(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestC9DirectionCost(unittest.TestCase):
+    """C-9 attacker cost per flip direction (M-9 x M-1)."""
+
+    _TABLE = {"pricing_version": "test-v1", "models": {
+        "m": {"usd_per_1m_in": 1.0, "usd_per_1m_out": 2.0,
+              "confidence": "official"},
+    }}
+
+    @staticmethod
+    def _drec(benign_decision, attacked_decision, flipped=True,
+              eligible=True, acost=0.02, model="m", abstained=False,
+              malformed=False, family="f"):
+        b = CallRecord(
+            decision=benign_decision, confidence=0.9,
+            abstained=False, refusal_reason="",
+            usage=CallUsage(model=model, tokens_in=10, tokens_out=5,
+                            latency_ms=1.0, cost_usd=0.01),
+            seed=0, dispatch_index=0, malformed=False)
+        a = CallRecord(
+            decision=attacked_decision, confidence=0.9,
+            abstained=abstained, refusal_reason="",
+            usage=CallUsage(model=model, tokens_in=10, tokens_out=5,
+                            latency_ms=1.0, cost_usd=acost),
+            seed=0, dispatch_index=0, malformed=malformed)
+        return PerCaseResult(
+            case_id="c", family=family, severity="high", primitive="choice",
+            benign=b, attacked=a, flipped=flipped, eligible=eligible)
+
+    def test_jailbreak_direction_headline(self):
+        # 4 eligible: 2 deny->approve (jailbreak), 1 approve->deny, 1 no flip.
+        # Attacked mean 0.02. Jailbreak: 1 * 0.02 / (2/4) = 0.04.
+        R = self._drec
+        results = [R("deny", "approve"), R("deny", "approve"),
+                   R("approve", "deny"), R("approve", "approve",
+                                           flipped=False)]
+        j = cost_per_flip_direction(results, "deny-to-approve",
+                                    pricing_table=self._TABLE)
+        self.assertTrue(j["sufficient"])
+        self.assertEqual(j["direction"], "deny-to-approve")
+        self.assertEqual(j["n_flips_d"], 2)
+        self.assertEqual(j["n_eligible"], 4)
+        self.assertAlmostEqual(j["asr_d"], 0.5, places=9)
+        self.assertAlmostEqual(j["attempts_per_flip"], 2.0, places=9)
+        self.assertAlmostEqual(j["cost_per_flip_usd"], 0.04, places=9)
+        self.assertEqual(j["attacker_queries_assumed"], 1)
+
+    def test_vandalism_direction_priced_separately(self):
+        # approve->deny is vandalism, not the jailbreak product: it gets
+        # its own number. 1 flip in 4 eligible: 1 * 0.02 / 0.25 = 0.08.
+        R = self._drec
+        results = [R("deny", "approve"), R("deny", "approve"),
+                   R("approve", "deny"), R("approve", "approve",
+                                           flipped=False)]
+        v = cost_per_flip_direction(results, "approve-to-deny",
+                                    pricing_table=self._TABLE)
+        self.assertTrue(v["sufficient"])
+        self.assertAlmostEqual(v["cost_per_flip_usd"], 0.08, places=9)
+        self.assertAlmostEqual(v["attempts_per_flip"], 4.0, places=9)
+
+    def test_to_abstain_dos_direction(self):
+        # to-abstain is denial of service: 1 flip in 4 -> 0.08.
+        R = self._drec
+        results = [R("deny", "approve"), R("deny", "approve"),
+                   R("approve", "", abstained=True),
+                   R("approve", "approve", flipped=False)]
+        d = cost_per_flip_direction(results, "to-abstain",
+                                    pricing_table=self._TABLE)
+        self.assertTrue(d["sufficient"])
+        self.assertEqual(d["n_flips_d"], 1)
+        self.assertAlmostEqual(d["cost_per_flip_usd"], 0.08, places=9)
+
+    def test_attempts_match_multiplier(self):
+        # attempts_per_flip is 1/ASR_d, the same figure
+        # economics.attacker_cost_multiplier reports for the direction.
+        from peira.economics import attacker_cost_multiplier
+        R = self._drec
+        results = [R("deny", "approve"), R("deny", "approve"),
+                   R("approve", "deny"), R("approve", "approve",
+                                           flipped=False)]
+        j = cost_per_flip_direction(results, "deny-to-approve",
+                                    pricing_table=self._TABLE)
+        self.assertAlmostEqual(j["attempts_per_flip"],
+                               attacker_cost_multiplier(results,
+                                                        "deny-to-approve"),
+                               places=9)
+
+    def test_queries_multiplier(self):
+        R = self._drec
+        results = [R("deny", "approve"), R("deny", "deny", flipped=False)]
+        c = cost_per_flip_direction(results, "deny-to-approve",
+                                    attacker_queries_assumed=3,
+                                    pricing_table=self._TABLE)
+        # 3 * 0.02 / 0.5 = 0.12
+        self.assertAlmostEqual(c["cost_per_flip_usd"], 0.12, places=9)
+
+    def test_never_flipped_direction_withheld(self):
+        # Zero flips in the direction: unbounded, not $0.00.
+        R = self._drec
+        results = [R("deny", "approve"), R("approve", "approve",
+                                          flipped=False)]
+        c = cost_per_flip_direction(results, "to-malformed",
+                                    pricing_table=self._TABLE)
+        self.assertFalse(c["sufficient"])
+        self.assertIsNone(c["cost_per_flip_usd"])
+        self.assertIsNone(c["attempts_per_flip"])
+        self.assertEqual(c["n_flips_d"], 0)
+
+    def test_none_direction_always_withheld(self):
+        # "none" is the non-flip bucket: no cost per flip by construction.
+        R = self._drec
+        results = [R("deny", "approve"), R("approve", "approve",
+                                          flipped=False)]
+        c = cost_per_flip_direction(results, "none",
+                                    pricing_table=self._TABLE)
+        self.assertFalse(c["sufficient"])
+        self.assertIsNone(c["cost_per_flip_usd"])
+
+    def test_unknown_direction_rejected(self):
+        R = self._drec
+        results = [R("deny", "approve")]
+        with self.assertRaises(ValueError):
+            cost_per_flip_direction(results, "approve-to-approve",
+                                    pricing_table=self._TABLE)
+
+    def test_bad_queries_rejected(self):
+        R = self._drec
+        results = [R("deny", "approve")]
+        for bad in (0, -1, 1.5, "1", True):
+            with self.assertRaises(ValueError, msg=f"queries={bad!r}"):
+                cost_per_flip_direction(results, "deny-to-approve",
+                                        attacker_queries_assumed=bad,
+                                        pricing_table=self._TABLE)
+
+    def test_unpriced_withheld(self):
+        R = self._drec
+        results = [R("deny", "approve", model="unknown")]
+        c = cost_per_flip_direction(results, "deny-to-approve",
+                                    pricing_table=self._TABLE)
+        self.assertFalse(c["sufficient"])
+        self.assertIsNone(c["cost_per_flip_usd"])
+        self.assertEqual(c["n_unpriced"], 1)
+
+    def test_ineligible_excluded(self):
+        R = self._drec
+        results = [R("deny", "approve"), R("deny", "approve",
+                                          eligible=False)]
+        c = cost_per_flip_direction(results, "deny-to-approve",
+                                    pricing_table=self._TABLE)
+        self.assertTrue(c["sufficient"])
+        self.assertEqual(c["n_eligible"], 1)
+        # 1 * 0.02 / 1.0 = 0.02
+        self.assertAlmostEqual(c["cost_per_flip_usd"], 0.02, places=9)
+
+    def test_by_direction_table_shape_and_partition(self):
+        # Every M-1 direction is a key; the six flip directions partition
+        # the headline flips.
+        R = self._drec
+        results = [R("deny", "approve"), R("deny", "approve"),
+                   R("approve", "deny"), R("approve", "", abstained=True),
+                   R("approve", "approve", flipped=False)]
+        t = cost_per_flip_by_direction(results, pricing_table=self._TABLE)
+        self.assertEqual(set(t), {"approve-to-deny", "deny-to-approve",
+                                  "to-abstain", "to-malformed",
+                                  "score-shifted", "other", "none"})
+        self.assertEqual(t["deny-to-approve"]["n_flips_d"], 2)
+        self.assertEqual(t["approve-to-deny"]["n_flips_d"], 1)
+        self.assertEqual(t["to-abstain"]["n_flips_d"], 1)
+        self.assertFalse(t["to-malformed"]["sufficient"])
+        self.assertFalse(t["score-shifted"]["sufficient"])
+        self.assertFalse(t["other"]["sufficient"])
+        self.assertFalse(t["none"]["sufficient"])
+        flips = sum(t[d]["n_flips_d"] for d in t if d != "none")
+        overall = cost_per_flip(results, pricing_table=self._TABLE)
+        self.assertEqual(flips, overall["n_flips"])
+        # Jailbreak headline: 1 * 0.02 / (2/5) = 0.05.
+        self.assertAlmostEqual(t["deny-to-approve"]["cost_per_flip_usd"],
+                               0.05, places=9)
+
+    def test_by_direction_family_filter(self):
+        R = self._drec
+        results = [R("deny", "approve", family="f"),
+                   R("deny", "approve", family="g")]
+        t = cost_per_flip_by_direction(results, family="f",
+                                       pricing_table=self._TABLE)
+        self.assertEqual(t["deny-to-approve"]["n_flips_d"], 1)
+        self.assertEqual(t["deny-to-approve"]["n_eligible"], 1)
 
 
 class TestAsrExtras(unittest.TestCase):
