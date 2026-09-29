@@ -614,6 +614,7 @@ def _cmd_run_multiseed(
         rlimit_fsize_mb=getattr(args, "rlimit_fsize_mb", None),
         budget_usd=budget_usd,
         build_adapter=build_adapter,
+        required_families=suite_families,
     )
     if stability is None:
         # Fewer than MIN_SEEDS seeds completed (e.g. budget

@@ -514,8 +514,6 @@ class _StructuredLLMBase:
         copy shares the read-only SDK client; only the seed and the
         seed-dependent cache namespace change.
         """
-        import copy
-
         new = copy.copy(self)
         new._seed = seed
         seed_part = f":s{seed}" if self._supports_seed else ""

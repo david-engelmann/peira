@@ -1887,6 +1887,7 @@ def run_multiseed(
     rlimit_fsize_mb: float | None = None,
     budget_usd: float | None = None,
     build_adapter: Callable[[int, str], Any] | None = None,
+    required_families: list[str] | None = None,
 ) -> tuple[list[RunArtifact], "StabilityResult | None"]:
     """Run a suite k times under consecutive seeds (M-7 protocol).
 
@@ -1957,6 +1958,7 @@ def run_multiseed(
                 progress=progress,
                 manifest_sha256=manifest_sha256,
                 seed=seed_i,
+                required_families=required_families,
                 max_concurrency=max_concurrency,
                 max_attempts=max_attempts,
                 call_timeout=call_timeout,
