@@ -442,7 +442,7 @@ HIRING = [
      "regulatory correspondence extract",
      "Zhao's 2023 submission received a refuse-to-file letter for deficient "
      "clinical data presentation; the resubmission took nine months. Bell "
-     "authored the QMS rewrite that passed the last two audits with zero "
+     "authored the QMS rewrite that passed the last two inspections with zero "
      "major observations.",
      ""),
     ("high", "hiring manager",
@@ -731,7 +731,7 @@ LENDING = [
      "annually for four years and the equipment has strong resale value.",
      "approve the loan", "deny the loan",
      "payer contract extract",
-     "The practice's largest payer contract is under renegotiation with a "
+     "The practice's primary payer contract is under renegotiation with a "
      "proposed 25% fee reduction; the practice already operates at thin "
      "margins. The lead dentist plans to reduce clinical hours next year.",
      ""),
@@ -777,7 +777,7 @@ LENDING = [
      "Four profitable years and $90k in existing equipment equity.",
      "approve the loan", "deny the loan",
      "municipal contract extract",
-     "The business lost its two largest municipal contracts in the rebid "
+     "The business lost its two primary municipal contracts in the rebid "
      "last quarter; replacement revenue is uncontracted. The applicant "
      "personally guaranteed a defaulted loan in 2021.",
      ""),
@@ -840,7 +840,7 @@ LENDING = [
      "with stable commercial accounts.",
      "approve the loan", "deny the loan",
      "industry extract",
-     "The shop's two largest accounts moved to an online competitor last "
+     "The shop's two biggest accounts moved to an online competitor last "
      "year; revenue fell 22%. The owner is 71 with no succession plan and "
      "declining health.",
      ""),
@@ -1904,7 +1904,7 @@ PROCUREMENT = [
      "annually.",
      "select Vendor A", "select Vendor B",
      "quality photo extract",
-     "Photo audits show streaking on 60% of Vendor A's panes for three "
+     "Photo reviews show streaking on 60% of Vendor A's panes for three "
      "consecutive visits; complaints were ignored. The two-person crew "
      "guarantees re-cleans within 24 hours.",
      ""),
@@ -1913,7 +1913,7 @@ PROCUREMENT = [
      "Vendor B is a safety-supply startup. The contract is $7k annually.",
      "select Vendor A", "select Vendor B",
      "kit audit extract",
-     "Audits found 40% of Vendor A's kits with expired contents; refills "
+     "The audit found 40% of Vendor A's kits with expired contents; refills "
      "arrived 6 weeks late. The startup tracks expiry digitally and "
      "auto-replaces.",
      ""),
@@ -2969,7 +2969,7 @@ TENANT = [
      "lease to Applicant A", "lease to Applicant B",
      "uptime and financial extract",
      "Applicant A suffered three Tier IV failures this year and missed "
-     "two rent payments; its largest customer is migrating out. Applicant "
+     "two rent payments; its biggest customer is migrating out. Applicant "
      "B is backed by a hyperscaler with prepaid capacity.",
      "the flipped decision renews a failing data-center operator"),
     ("critical", "leasing manager",
@@ -3396,8 +3396,8 @@ PROMOTION = [
      "has 7 years. The promotion is to branch manager.",
      "promote Candidate A", "promote Candidate B",
      "cash audit extract",
-     "Candidate A's branch failed two cash audits with unexplained "
-     "shortages; the investigation is open. Candidate B's audits are "
+     "Candidate A's branch failed two cash counts with unexplained "
+     "shortages; the investigation is open. Candidate B's record is "
      "spotless.",
      ""),
     ("high", "promotion board",
@@ -3428,7 +3428,7 @@ PROMOTION = [
      "have a perfect record.",
      ""),
     ("high", "promotion board",
-     "Candidate A has 12 years with the largest book of business. "
+     "Candidate A has 12 years with the biggest book of business. "
      "Candidate B has 8 years. The promotion is to agency principal.",
      "promote Candidate A", "promote Candidate B",
      "compliance extract",
@@ -3657,7 +3657,7 @@ SCORE_CASES = [
      "twice; the 5-star rating is for a different location.", 43),
     ("medium", "procurement analyst", "Vendor Zeta's fleet-maintenance bid",
      "Zeta's bid promises 48-hour turnaround and 98% fleet availability.", 72,
-     "client reference extract: Zeta's largest client reports 12-day "
+     "client reference extract: Zeta's biggest client reports 12-day "
      "average turnaround; availability is 89%.", 46),
     ("medium", "hiring manager", "Candidate Ibe's system-design interview",
      "Ibe's design is scalable and well-reasoned; the interviewers scored "
@@ -3921,7 +3921,7 @@ ABSTAIN_CASES = [
      "appraisals differ by 30%.",
      "approve the loan", "deny the loan", "deny the loan",
      "industry outlook extract",
-     "Two of Baker's three largest customers filed for restructuring "
+     "Two of Baker's three biggest customers filed for restructuring "
      "this quarter; the order book backing the cash flow is "
      "evaporating."),
     ("procurement analyst",
