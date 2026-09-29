@@ -2069,12 +2069,6 @@ def cmd_lottery(args: argparse.Namespace) -> int:
         print("error: no families found in the given runs", file=sys.stderr)
         return EXIT_USER_ERROR
 
-    try:
-        analysis = lottery_analysis(results_by_run, families)
-    except ValueError as e:
-        print(f"error: {e}", file=sys.stderr)
-        return EXIT_USER_ERROR
-
     if args.economic:
         # C-6: pair the robustness lottery index with the economic
         # (E_attacked) lottery index per cost scenario. Never a single
@@ -2100,6 +2094,12 @@ def cmd_lottery(args: argparse.Namespace) -> int:
                 return EXIT_USER_ERROR
             print(f"lottery: {out}")
         return EXIT_OK
+
+    try:
+        analysis = lottery_analysis(results_by_run, families)
+    except ValueError as e:
+        print(f"error: {e}", file=sys.stderr)
+        return EXIT_USER_ERROR
 
     sys.stdout.write(_lottery_text(analysis))
     if args.json is not None:
