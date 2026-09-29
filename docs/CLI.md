@@ -155,6 +155,18 @@ M-3 economic value view over 1+ run artifacts (E_attacked, CPPF, break-even, Par
 | `--price-date` |  | - | price date stamp for the frontier (default: unknown) |
 | `--out` |  | - | write an HTML value-view report to this path |
 
+## peira defense
+
+C-4 threshold-defense economics over 1+ run artifacts (defense curves, priced risk-coverage, attacker-cost-aware optimum)
+
+| Flag | Required | Default | Help |
+|---|---|---|---|
+| `RUNS` | yes | - | run artifact paths (>= 1) |
+| `--scenario` |  | `'standard'` | cost scenario id (default: standard) |
+| `--review-cost-usd` |  | `0.0` | human review cost per case in USD (default: 0.0) |
+| `--attack-rate` |  | - | fraction of decisions under attack (default: scenario baseline) |
+| `--out` |  | - | write the full defense report as JSON to this path |
+
 ## peira runs
 
 run registry: list and verify artifacts

@@ -576,6 +576,127 @@ class ValueCliTest(unittest.TestCase):
         self.assertEqual(rc, EXIT_USER_ERROR)
 
 
+class DefenseCliTest(unittest.TestCase):
+    def _artifact(self, name, n):
+        from peira.artifacts import RunArtifact
+        cases = []
+        for i in range(n):
+            f = (i % 2 == 0)
+            cases.append({
+                "case_id": f"dc{i}",
+                "family": "literal_reading",
+                "severity": "medium",
+                "primitive": "choice",
+                "benign": {
+                    "decision": "deny",
+                    "confidence": 0.9, "abstained": False,
+                    "refusal_reason": "", "seed": 0, "dispatch_index": 0,
+                    "malformed": False, "dispatch_limit": 1,
+                    "usage": None,
+                },
+                "attacked": {
+                    "decision": "approve" if f else "deny",
+                    "confidence": round(0.05 + (i * 0.0137 % 0.9), 4),
+                    "abstained": False,
+                    "refusal_reason": "", "seed": 0, "dispatch_index": 1,
+                    "malformed": False, "dispatch_limit": 1,
+                    "usage": None,
+                },
+                "flipped": f, "eligible": True, "ineligibility_reason": "",
+            })
+        art = RunArtifact(
+            adapter_name=name, adapter_version="1.0", suite="trial-demo",
+            dataset_version="0.1.0-demo", manifest_sha256="abc123",
+            results=cases, metrics={},
+        )
+        art.seal()
+        return art
+
+    def _write(self, art):
+        import tempfile
+        tmp = tempfile.NamedTemporaryFile(
+            suffix=".json", delete=False, mode="w", encoding="utf-8")
+        tmp.write(art.to_json())
+        tmp.close()
+        return tmp.name
+
+    def _ns(self, **kw):
+        import argparse
+        ns = argparse.Namespace(
+            runs=[], scenario="standard", review_cost_usd=1.0,
+            attack_rate=None, out=None,
+        )
+        for k, v in kw.items():
+            setattr(ns, k, v)
+        return ns
+
+    def test_defense_stdout(self):
+        from peira.cli import EXIT_OK, cmd_defense
+        import io
+        from contextlib import redirect_stdout
+        a = self._write(self._artifact("mock-a", 40))
+        buf = io.StringIO()
+        with redirect_stdout(buf):
+            rc = cmd_defense(self._ns(runs=[a]))
+        self.assertEqual(rc, EXIT_OK)
+        out = buf.getvalue()
+        self.assertIn("defense view", out)
+        self.assertIn("mock-a", out)
+        self.assertIn("optimum:", out)
+        self.assertIn("risk-coverage", out)
+        self.assertIn("attacked-arm ECE", out)
+
+    def test_defense_withheld_small_n(self):
+        from peira.cli import EXIT_OK, cmd_defense
+        import io
+        from contextlib import redirect_stdout
+        a = self._write(self._artifact("mock-a", 10))
+        buf = io.StringIO()
+        with redirect_stdout(buf):
+            rc = cmd_defense(self._ns(runs=[a]))
+        self.assertEqual(rc, EXIT_OK)
+        self.assertIn("WITHHELD", buf.getvalue())
+
+    def test_defense_out_json(self):
+        from peira.cli import EXIT_OK, cmd_defense
+        import json
+        import tempfile
+        from pathlib import Path
+        a = self._write(self._artifact("mock-a", 40))
+        with tempfile.TemporaryDirectory() as td:
+            out = str(Path(td) / "defense.json")
+            rc = cmd_defense(self._ns(runs=[a], out=out))
+            self.assertEqual(rc, EXIT_OK)
+            report = json.loads(Path(out).read_text())
+            self.assertIn("adapters", report)
+            self.assertFalse(report["adapters"]["mock-a"]["withheld"])
+            self.assertIn("optimum",
+                          report["adapters"]["mock-a"])
+
+    def test_defense_bad_scenario(self):
+        from peira.cli import EXIT_USER_ERROR, cmd_defense
+        a = self._write(self._artifact("mock-a", 40))
+        rc = cmd_defense(self._ns(runs=[a], scenario="nope"))
+        self.assertEqual(rc, EXIT_USER_ERROR)
+
+    def test_defense_missing_file(self):
+        from peira.cli import EXIT_USER_ERROR, cmd_defense
+        rc = cmd_defense(self._ns(runs=["/nonexistent/x.json"]))
+        self.assertEqual(rc, EXIT_USER_ERROR)
+
+    def test_defense_negative_review_cost(self):
+        from peira.cli import EXIT_USER_ERROR, cmd_defense
+        a = self._write(self._artifact("mock-a", 40))
+        rc = cmd_defense(self._ns(runs=[a], review_cost_usd=-1.0))
+        self.assertEqual(rc, EXIT_USER_ERROR)
+
+    def test_defense_duplicate_adapter(self):
+        from peira.cli import EXIT_USER_ERROR, cmd_defense
+        a = self._write(self._artifact("mock-a", 40))
+        rc = cmd_defense(self._ns(runs=[a, a]))
+        self.assertEqual(rc, EXIT_USER_ERROR)
+
+
 if __name__ == "__main__":
     unittest.main()
 
