@@ -189,3 +189,9 @@ turn returns a primitive-valid output, which keeps one adapter protocol
 and reuses all validation and pricing machinery. Turn-level metrics
 beyond the sealed records are also future work. The records carry
 everything needed to build them.
+
+The suite-namespaced `conversational_turns` artifact field is validated
+by the Python reference implementation. The Rust core has no
+conversational runner and its strict result type rejects the field, so
+a conversational artifact does not load through the Rust core today.
+The schema ports when a Rust conversational runner lands.
