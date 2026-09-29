@@ -280,6 +280,7 @@ def validate_no_weighted_mcnemar(report: dict) -> list[str]:
     return violations
 
 
+@dataclass(frozen=True)
 class NetBenefitComparison:
     """Net-benefit head-to-head at one operating threshold (R-08).
 

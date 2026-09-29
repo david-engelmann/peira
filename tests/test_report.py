@@ -398,6 +398,32 @@ class TestReportBuyerCost(unittest.TestCase):
             self.assertEqual(rc, EXIT_USER_ERROR)
             self.assertIn("non-negative", err)
 
+    def test_flips_per_incident_column(self):
+        # R-08: --flips-per-incident adds the cost/incident column;
+        # without it the column renders as withheld.
+        with tempfile.TemporaryDirectory() as tmp:
+            run_path = _write_bc_artifact(tmp)
+            out = str(Path(tmp) / "report.html")
+            rc = cmd_report(_report_args(
+                run_path, out, operating_threshold=0.5,
+                cost_false_approve=10.0, cost_false_deny=5.0,
+                cost_review=1.0, flips_per_incident=2.0))
+            self.assertEqual(rc, 0)
+            html = Path(out).read_text(encoding="utf-8")
+            self.assertIn("<th>cost / incident</th>", html)
+
+    def test_bad_flips_per_incident_exits_1(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            run_path = _write_bc_artifact(tmp)
+            out = str(Path(tmp) / "report.html")
+            rc, err = self._stderr(
+                cmd_report,
+                _report_args(run_path, out, operating_threshold=0.5,
+                             cost_false_approve=10.0, cost_false_deny=5.0,
+                             cost_review=1.0, flips_per_incident=-1.0))
+            self.assertEqual(rc, EXIT_USER_ERROR)
+            self.assertIn("flips_per_incident", err)
+
 
 if __name__ == "__main__":
     unittest.main()
