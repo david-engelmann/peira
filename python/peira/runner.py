@@ -60,6 +60,7 @@ from peira.metrics import (
     INELIGIBLE_BENIGN_MALFORMED,
     INELIGIBLE_BENIGN_WRONG_DECISION,
     CallRecord,
+    CallTiming,
     PerCaseResult,
     summarize as _metrics_summarize,
 )
@@ -279,7 +280,12 @@ def _record_call(
     cross-adapter comparison. cost_usd is recomputed from the pinned
     pricing table — the runner is the cost authority, and an
     adapter-set cost_usd is ignored.
+
+    R-12 timing: the sync path is strictly sequential, so admission
+    wait is 0.0; adapter execution is the decide() wall time and the
+    rest is harness overhead.
     """
+    t_call_start = time.perf_counter()
     start = time.perf_counter()
     try:
         output = adapter.decide(case_input, primitive, context)
@@ -289,11 +295,19 @@ def _record_call(
         output = None
         errors = ["adapter raised"]
         timed_out = _is_timeout_error(e)
+    t_done = time.perf_counter()
+    adapter_execution_ms = (t_done - start) * 1000.0
     latency_ms = (time.perf_counter() - start) * 1000.0
+    timing = _assemble_timing(
+        t_call_start, 0.0, adapter_execution_ms, 0.0
+    )
     # The sync path is strictly sequential: the effective limit is 1.
-    return _validate_and_record(
-        output, errors, latency_ms, seed, dispatch_index, pricing_table,
-        dispatch_limit=1, timed_out=timed_out,
+    return dataclasses.replace(
+        _validate_and_record(
+            output, errors, latency_ms, seed, dispatch_index,
+            pricing_table, dispatch_limit=1, timed_out=timed_out,
+        ),
+        timing_ms=timing,
     )
 
 
@@ -537,6 +551,7 @@ def _transcript_entry(
     attempt_latencies_ms: list[float] | None = None,
     latency_ms_total: float | None = None,
     timed_out: bool = False,
+    timing_ms: dict[str, float] | None = None,
 ) -> dict[str, Any]:
     if output is not None and error is None and not validation_errors:
         response: dict[str, Any] = {
@@ -598,6 +613,11 @@ def _transcript_entry(
         # True when the terminal failure was a per-attempt timeout
         # (asyncio.TimeoutError). A timeout is data, not missing data.
         "timed_out": timed_out,
+        # R-12 per-call timing decomposition (admission wait vs harness
+        # overhead vs adapter execution vs backoff), so replay rebuilds
+        # the record's timing_ms exactly. Absent on entries written
+        # before R-12 — the rebuild then yields the zero breakdown.
+        "timing_ms": timing_ms,
         "attempts": attempts,
         "cached": cached,
         "dispatch_limit": dispatch_limit,
@@ -608,6 +628,40 @@ def _transcript_entry(
         "max_concurrency": max_concurrency,
         "recorded_utc": datetime.now(timezone.utc).isoformat(),
     }
+
+
+def _assemble_timing(
+    t_call_start: float,
+    admission_wait_ms: float,
+    adapter_execution_ms: float,
+    backoff_ms: float,
+) -> CallTiming:
+    """Assemble the R-12 per-call timing decomposition.
+
+    ``admission_wait_ms``, ``adapter_execution_ms``, and ``backoff_ms``
+    are measured directly at their sources; ``harness_overhead_ms`` is
+    the residual — everything else the runner did between call start
+    and assembly (input deepcopy, output validation, response-cache
+    write, record construction). The residual is clamped at zero
+    against float dust; a negative residual beyond dust would mean a
+    measurement bug, but failing the run on it would trade a hard
+    crash for a sub-millisecond accounting wobble — the invariant is
+    documented, not asserted.
+
+    Boundary: the decomposition covers call start through assembly
+    (cache write included). Serializing the transcript entry itself is
+    excluded — no measurement can include its own write.
+    """
+    total_ms = (time.perf_counter() - t_call_start) * 1000.0
+    harness_ms = (
+        total_ms - admission_wait_ms - adapter_execution_ms - backoff_ms
+    )
+    return CallTiming(
+        admission_wait_ms=admission_wait_ms,
+        adapter_execution_ms=adapter_execution_ms,
+        harness_overhead_ms=max(0.0, harness_ms),
+        backoff_ms=backoff_ms,
+    )
 
 
 async def _record_call_async(
@@ -641,6 +695,12 @@ async def _record_call_async(
     # live limit at dispatch time (sealed on the record as
     # ``dispatch_limit``).
     dispatch_limit = controller.limit
+    # R-12 timing decomposition: admission wait and adapter execution
+    # are measured at their sources; harness overhead is the residual
+    # (see _assemble_timing).
+    t_call_start = time.perf_counter()
+    admission_wait_ms = 0.0
+    adapter_execution_ms = 0.0
     # Cache first: a hit skips the provider entirely (no slot, no
     # congestion signal — nothing was sent).
     if cache is not None and cache_key_str is not None:
@@ -658,6 +718,14 @@ async def _record_call_async(
                     seed, dispatch_index, pricing_table, dispatch_limit,
                     cached=True,
                 )
+                # Cache hit: no slot waited, no adapter executed — the
+                # whole call was harness (lookup, validation, record
+                # assembly).
+                timing = _assemble_timing(
+                    t_call_start, admission_wait_ms,
+                    adapter_execution_ms, 0.0,
+                )
+                record = dataclasses.replace(record, timing_ms=timing)
                 if transcript is not None:
                     transcript.write(
                         _transcript_entry(
@@ -679,6 +747,7 @@ async def _record_call_async(
                             latency_ms_total=(
                                 record.latency_ms_total
                             ),
+                            timing_ms=timing.to_dict(),
                         )
                     )
                 return record
@@ -693,14 +762,19 @@ async def _record_call_async(
     backoff_ms_total = 0.0
     attempt = 0
     while True:
+        t_submit = time.perf_counter()
         async with controller.slot():
+            t_slot = time.perf_counter()
+            admission_wait_ms += (t_slot - t_submit) * 1000.0
             start = time.perf_counter()
+            t_dispatch: float | None = None
             try:
                 # Each attempt gets a pristine copy of the input. The
                 # transcript records ``case_input`` — what the runner
                 # sent, never what the adapter mutated — and a retry
                 # never sees a previous attempt's mutations.
                 attempt_input = copy.deepcopy(case_input)
+                t_dispatch = time.perf_counter()
                 call = asyncio.to_thread(
                     _invoke_adapter, adapter, attempt_input, primitive,
                     context,
@@ -727,6 +801,15 @@ async def _record_call_async(
                 if isinstance(e, asyncio.CancelledError):
                     raise
                 output, errors, error = None, [], e
+            finally:
+                # Adapter execution is the provider-facing wall time:
+                # dispatch to result (or to the timeout/exception).
+                # When deepcopy itself failed, t_dispatch is unset and
+                # the attempt contributes nothing here — the residual
+                # lands in harness overhead.
+                t_done = time.perf_counter()
+                if t_dispatch is not None:
+                    adapter_execution_ms += (t_done - t_dispatch) * 1000.0
         latency_ms = (time.perf_counter() - start) * 1000.0
         attempt_latencies_ms.append(latency_ms)
 
@@ -742,6 +825,11 @@ async def _record_call_async(
                     cache_key_str, primitive,
                     _output_to_dict(output, primitive),
                 )
+            timing = _assemble_timing(
+                t_call_start, admission_wait_ms,
+                adapter_execution_ms, backoff_ms_total,
+            )
+            record = dataclasses.replace(record, timing_ms=timing)
             if transcript is not None:
                 transcript.write(
                     _transcript_entry(
@@ -759,6 +847,7 @@ async def _record_call_async(
                         cached=False,
                         attempt_latencies_ms=attempt_latencies_ms,
                         latency_ms_total=latency_ms_total,
+                        timing_ms=timing.to_dict(),
                     )
                 )
             return record
@@ -785,6 +874,10 @@ async def _record_call_async(
             # Terminal failure (permanent, or retries exhausted).
             latency_ms_total = sum(attempt_latencies_ms) + backoff_ms_total
             timed_out = error is not None and _is_timeout_error(error)
+            timing = _assemble_timing(
+                t_call_start, admission_wait_ms,
+                adapter_execution_ms, backoff_ms_total,
+            )
             if transcript is not None:
                 transcript.write(
                     _transcript_entry(
@@ -804,17 +897,25 @@ async def _record_call_async(
                         attempt_latencies_ms=attempt_latencies_ms,
                         latency_ms_total=latency_ms_total,
                         timed_out=timed_out,
+                        timing_ms=timing.to_dict(),
                     )
                 )
-            return _blank_record(
-                seed, dispatch_index, dispatch_limit,
-                latency_ms_total=latency_ms_total, timed_out=timed_out,
+            return dataclasses.replace(
+                _blank_record(
+                    seed, dispatch_index, dispatch_limit,
+                    latency_ms_total=latency_ms_total, timed_out=timed_out,
+                ),
+                timing_ms=timing,
             )
 
         # Validation errors: the adapter answered with a structurally
         # wrong output — an adapter bug, not congestion. Never retried.
         controller.on_success()  # the provider answered; not congestion
         latency_ms_total = sum(attempt_latencies_ms) + backoff_ms_total
+        timing = _assemble_timing(
+            t_call_start, admission_wait_ms,
+            adapter_execution_ms, backoff_ms_total,
+        )
         if transcript is not None:
             transcript.write(
                 _transcript_entry(
@@ -833,11 +934,15 @@ async def _record_call_async(
                     cached=False,
                     attempt_latencies_ms=attempt_latencies_ms,
                     latency_ms_total=latency_ms_total,
+                    timing_ms=timing.to_dict(),
                 )
             )
-        return _blank_record(
-            seed, dispatch_index, dispatch_limit,
-            latency_ms_total=latency_ms_total,
+        return dataclasses.replace(
+            _blank_record(
+                seed, dispatch_index, dispatch_limit,
+                latency_ms_total=latency_ms_total,
+            ),
+            timing_ms=timing,
         )
 
 
@@ -1826,12 +1931,13 @@ def _record_from_transcript_entry_py(
 
     No measurement is re-taken: decision, confidence, score, abstention,
     usage (model, tokens, latency_ms, cost_usd), seed, dispatch_index,
-    dispatch_limit, cumulative latency, timeout state, and the cache-hit
-    flag all come from the recorded entry. An error-kind entry rebuilds
-    the malformed blank record the original run sealed. Pre-Phase-0
-    entries without the newer fields get the honest defaults
-    (timed_out=False, cached=False, latency_ms_total=the recorded
-    final-attempt latency or 0.0).
+    dispatch_limit, cumulative latency, timeout state, the timing
+    decomposition, and the cache-hit flag all come from the recorded
+    entry. An error-kind entry rebuilds the malformed blank record the
+    original run sealed. Pre-Phase-0 entries without the newer fields
+    get the honest defaults (timed_out=False, cached=False,
+    latency_ms_total=the recorded final-attempt latency or 0.0,
+    timing_ms=the zero breakdown).
     """
     seed = int(entry["seed"])
     dispatch_index = int(entry["dispatch_index"])
@@ -1858,6 +1964,11 @@ def _record_from_transcript_entry_py(
         latency_ms_total = (
             float(usage.latency_ms) if usage is not None else 0.0
         )
+    # R-12: the timing decomposition rides the transcript entry so a
+    # replayed record carries the original measurement. Entries written
+    # before R-12 have no timing_ms — the zero breakdown is honest:
+    # nothing was measured.
+    timing_ms = CallTiming.from_dict(entry.get("timing_ms"))
     return CallRecord(
         decision=out["decision"],
         confidence=out.get("confidence"),
@@ -1872,6 +1983,7 @@ def _record_from_transcript_entry_py(
         latency_ms_total=float(latency_ms_total),
         timed_out=timed_out,
         cached=cached,
+        timing_ms=timing_ms,
     )
 
 
@@ -1908,6 +2020,7 @@ def _record_from_transcript_entry(entry: dict[str, Any]) -> CallRecord:
             latency_ms_total=d.get("latency_ms_total", 0.0),
             timed_out=d.get("timed_out", False),
             cached=d.get("cached", False),
+            timing_ms=CallTiming.from_dict(d.get("timing_ms")),
         )
     return _record_from_transcript_entry_py(entry)
 
