@@ -1114,6 +1114,17 @@ always points at the prices that produced it.
   comparable to the dollar cost of a flip. Paired-bootstrap 95% CI.
   When the candidate prevents no flips, CPPF is reported as n/a. A
   guardrail that costs more and flips as much is off the frontier.
+- **CEAC (cost-effectiveness acceptability curve, C-5).** P(the upgrade
+  pays) swept over the deployer's willingness to pay per prevented
+  flip. Built from the paired-bootstrap distribution of incremental
+  cost and flips prevented. At each threshold lambda, the curve reports
+  the fraction of bootstrap replicates where incremental net benefit
+  is positive. The x-axis is
+  $/flip (scale to $/incident with your flips-per-incident). The
+  lambda = $0 point is P(the upgrade is cost-saving). The curve answers
+  "should I buy the robust model?" at the deployer's own price per
+  prevented flip, with uncertainty carried by the bootstrap rather than
+  hidden behind the point estimate.
 - **Break-even attack rate.** The attack rate at which the candidate's
   flip-cost savings cover its extra inference cost. Below it, the cheap
   baseline wins on dollars. Above it, the robust candidate does. A
@@ -1137,7 +1148,9 @@ always points at the prices that produced it.
   exceeds 37% of the expected-loss reduction as probable
   over-investment. A rule of thumb, labeled as one.
 
-CPPF and the break-even attack rate carry bootstrap CIs. The attacker
+CPPF, the CEAC, and the break-even attack rate carry bootstrap
+uncertainty. The CEAC reports bootstrap probabilities at fixed
+willingness-to-pay thresholds. The attacker
 cost multiplier, the Gordon-Loeb ratio, and the E_attacked figures are
 point estimates. Attack rates,
 decision volumes, and cost scenarios are deployer inputs. Peira reports

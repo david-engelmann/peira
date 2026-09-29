@@ -413,6 +413,97 @@ def _mean_cost_per_decision(results: list[PerCaseResult]) -> float:
     return sum(costs) / len(costs) if costs else 0.0
 
 
+def _case_cost(r: PerCaseResult) -> float:
+    """Total recorded inference cost for one paired case (both arms)."""
+    total = 0.0
+    for rec in (r.benign, r.attacked):
+        if rec.usage is not None and rec.usage.cost_usd is not None:
+            total += rec.usage.cost_usd
+    return total
+
+
+def _bootstrap_cost_flip_diffs(
+    base_costs: list[float],
+    cand_costs: list[float],
+    base_flips: list[float],
+    cand_flips: list[float],
+    n_boot: int,
+    seed: int,
+) -> list[tuple[float, float]]:
+    """Paired-bootstrap (Δcost, Δflips-prevented) per resample.
+
+    Returns one (dc, pf) tuple per bootstrap replicate, resampling
+    per-case (Δcost, Δflips) pairs with replacement.
+    """
+    n = len(base_costs)
+    rng = random.Random(seed)
+    # Per-case differences, precomputed once: each replicate then sums
+    # over resampled indices instead of re-differencing.
+    dc_cases = [c - b for b, c in zip(base_costs, cand_costs)]
+    pf_cases = [b - c for b, c in zip(base_flips, cand_flips)]
+    diffs = []
+    for _ in range(n_boot):
+        idx = [rng.randrange(n) for _ in range(n)]
+        dc = sum(dc_cases[i] for i in idx) / n
+        pf = sum(pf_cases[i] for i in idx) / n
+        diffs.append((dc, pf))
+    return diffs
+
+
+def _paired_cost_flip_parts(
+    baseline_results: list[PerCaseResult],
+    candidate_results: list[PerCaseResult],
+) -> tuple[list[float], list[float], list[float], list[float]]:
+    """Shared paired (base_costs, cand_costs, base_flips, cand_flips).
+
+    Used by the paired comparison metrics so ``value_view`` can run one
+    bootstrap pass per comparison instead of one per metric.
+    """
+    pairs = _pair_results(baseline_results, candidate_results)
+    base_costs = [_case_cost(b) for b, _ in pairs]
+    cand_costs = [_case_cost(c) for _, c in pairs]
+    base_flips = [1.0 if b.flipped else 0.0 for b, _ in pairs]
+    cand_flips = [1.0 if c.flipped else 0.0 for _, c in pairs]
+    return base_costs, cand_costs, base_flips, cand_flips
+
+
+def _cppf_from_diffs(
+    parts: tuple[list[float], list[float], list[float], list[float]],
+    diffs: list[tuple[float, float]],
+    n_boot: int,
+) -> CppfEstimate:
+    """CppfEstimate from precomputed paired-bootstrap (dc, pf) diffs."""
+    base_costs, cand_costs, base_flips, cand_flips = parts
+    n = len(base_costs)
+    delta_cost = sum(cand_costs) / n - sum(base_costs) / n
+    prevented = sum(base_flips) / n - sum(cand_flips) / n
+    if prevented <= 0:
+        return CppfEstimate(
+            cppf=None,
+            cppf_ci95=None,
+            prevents_flips=False,
+            delta_cost_per_decision=delta_cost,
+            flips_prevented_per_decision=prevented,
+        )
+    point = delta_cost / prevented
+    ratios = [dc / pf if pf > 0 else math.inf for dc, pf in diffs]
+    finite = sorted(r for r in ratios if math.isfinite(r))
+    if len(finite) < int(0.95 * n_boot):
+        ci = None  # too many degenerate resamples for a stable interval
+    else:
+        ci = (
+            finite[int(0.025 * len(finite))],
+            finite[int(0.975 * len(finite))],
+        )
+    return CppfEstimate(
+        cppf=point,
+        cppf_ci95=ci,
+        prevents_flips=True,
+        delta_cost_per_decision=delta_cost,
+        flips_prevented_per_decision=prevented,
+    )
+
+
 def cppf(
     baseline_results: list[PerCaseResult],
     candidate_results: list[PerCaseResult],
@@ -429,55 +520,136 @@ def cppf(
     """
     if n_boot <= 0:
         raise ValueError("n_boot must be positive")
-    pairs = _pair_results(baseline_results, candidate_results)
-
-    def case_cost(r: PerCaseResult) -> float:
-        total = 0.0
-        for rec in (r.benign, r.attacked):
-            if rec.usage is not None and rec.usage.cost_usd is not None:
-                total += rec.usage.cost_usd
-        return total
-
-    base_costs = [case_cost(b) for b, _ in pairs]
-    cand_costs = [case_cost(c) for _, c in pairs]
-    base_flips = [1.0 if b.flipped else 0.0 for b, _ in pairs]
-    cand_flips = [1.0 if c.flipped else 0.0 for _, c in pairs]
-    n = len(pairs)
-    delta_cost = sum(cand_costs) / n - sum(base_costs) / n
-    prevented = sum(base_flips) / n - sum(cand_flips) / n
-    if prevented <= 0:
-        return CppfEstimate(
-            cppf=None,
-            cppf_ci95=None,
-            prevents_flips=False,
-            delta_cost_per_decision=delta_cost,
-            flips_prevented_per_decision=prevented,
-        )
-    point = delta_cost / prevented
+    parts = _paired_cost_flip_parts(baseline_results, candidate_results)
     # Paired bootstrap on the ratio: resample per-case (Δcost, Δflips)
     # pairs and recompute the ratio on each resample.
-    rng = random.Random(seed)
-    ratios = []
-    for _ in range(n_boot):
-        idx = [rng.randrange(n) for _ in range(n)]
-        dc = sum(cand_costs[i] - base_costs[i] for i in idx) / n
-        pf = sum(base_flips[i] - cand_flips[i] for i in idx) / n
-        ratios.append(dc / pf if pf > 0 else math.inf)
-    finite = sorted(r for r in ratios if math.isfinite(r))
-    if len(finite) < int(0.95 * n_boot):
-        ci = None  # too many degenerate resamples for a stable interval
-    else:
-        ci = (
-            finite[int(0.025 * len(finite))],
-            finite[int(0.975 * len(finite))],
+    diffs = _bootstrap_cost_flip_diffs(*parts, n_boot, seed)
+    return _cppf_from_diffs(parts, diffs, n_boot)
+
+
+# ---------------------------------------------------------------------------
+# CEAC: cost-effectiveness acceptability curve (C-5)
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class CeacPoint:
+    """P(upgrade pays) at one willingness-to-pay threshold.
+
+    ``threshold_per_flip_usd`` is the deployer's willingness to pay per
+    prevented flip (lambda), in USD. ``prob_upgrade_pays`` is the
+    paired-bootstrap probability that incremental net benefit is
+    positive at that threshold: lambda * flips_prevented -
+    incremental_cost > 0. The x-axis unit is $/flip: scale to
+    $/incident with the scenario's flips-per-incident.
+    """
+
+    threshold_per_flip_usd: float
+    prob_upgrade_pays: float
+
+
+@dataclass(frozen=True)
+class CeacCurve:
+    """Cost-effectiveness acceptability curve: candidate versus baseline.
+
+    ``points`` sweep P(incremental net benefit > 0) over
+    willingness-to-pay thresholds, answering "should I buy the robust
+    model?" at the deployer's own price per prevented flip.
+    ``prevents_flips`` and ``cppf_point`` mirror the CPPF point
+    estimate: when the candidate prevents no flips on average,
+    ``cppf_point`` is None. The curve can still be positive if the
+    candidate is cost-saving.
+    """
+
+    points: tuple[CeacPoint, ...]
+    n_boot: int
+    prevents_flips: bool
+    cppf_point: float | None
+
+
+def _default_ceac_thresholds() -> list[float]:
+    """Default $/flip grid: zero plus 25 log-spaced points, $0.001-$1000."""
+    grid = [0.0]
+    for i in range(25):
+        grid.append(10.0 ** (-3.0 + 6.0 * i / 24.0))
+    return grid
+
+
+def _ceac_from_diffs(
+    grid: list[float],
+    diffs: list[tuple[float, float]],
+    n_boot: int,
+    prevents_flips: bool,
+    cppf_point: float | None,
+) -> CeacCurve:
+    """CeacCurve from precomputed paired-bootstrap (dc, pf) diffs."""
+    # Incremental net benefit: at threshold lambda, a resample pays if
+    # lambda * pf - dc > 0. This counts cost-saving resamples (dc < 0)
+    # at lambda = $0 even when they prevent no flips.
+    points = tuple(
+        CeacPoint(
+            threshold_per_flip_usd=t,
+            prob_upgrade_pays=sum(
+                1 for dc, pf in diffs if t * pf - dc > 0
+            ) / n_boot,
         )
-    return CppfEstimate(
-        cppf=point,
-        cppf_ci95=ci,
-        prevents_flips=True,
-        delta_cost_per_decision=delta_cost,
-        flips_prevented_per_decision=prevented,
+        for t in grid
     )
+    return CeacCurve(
+        points=points,
+        n_boot=n_boot,
+        prevents_flips=prevents_flips,
+        cppf_point=cppf_point,
+    )
+
+
+def ceac_curve(
+    baseline_results: list[PerCaseResult],
+    candidate_results: list[PerCaseResult],
+    thresholds: list[float] | None = None,
+    n_boot: int = 10000,
+    seed: int = 0,
+) -> CeacCurve:
+    """P(upgrade pays) versus willingness-to-pay per prevented flip.
+
+    Both result lists must cover the same cases (paired comparison);
+    pairing is by case_id, so the lists need not be in the same order.
+    The curve uses the paired-bootstrap distribution of incremental
+    cost and flips prevented. For each threshold lambda, P(upgrade
+    pays) is the fraction of bootstrap replicates where incremental
+    net benefit is positive: lambda * flips_prevented -
+    incremental_cost > 0.
+
+    The default threshold grid is $0 plus 25 log-spaced $/flip points
+    from $0.001 to $1000. The lambda = $0 point is P(the upgrade is
+    cost-saving): the bootstrap probability that incremental cost is
+    negative.
+
+    Custom thresholds are used in the order given; they are not
+    sorted. Pass them sorted if you want a monotone x-axis.
+    """
+    if n_boot <= 0:
+        raise ValueError("n_boot must be positive")
+    if thresholds is None:
+        grid = _default_ceac_thresholds()
+    else:
+        grid = list(thresholds)
+        if not grid:
+            raise ValueError("thresholds must not be empty")
+        for t in grid:
+            if not math.isfinite(t) or t < 0:
+                raise ValueError(
+                    "thresholds must be finite and non-negative"
+                )
+    parts = _paired_cost_flip_parts(baseline_results, candidate_results)
+    base_costs, cand_costs, base_flips, cand_flips = parts
+    n = len(base_costs)
+    prevented = sum(base_flips) / n - sum(cand_flips) / n
+    prevents = prevented > 0
+    delta_cost = sum(cand_costs) / n - sum(base_costs) / n
+    point = delta_cost / prevented if prevents else None
+    diffs = _bootstrap_cost_flip_diffs(*parts, n_boot, seed)
+    return _ceac_from_diffs(grid, diffs, n_boot, prevents, point)
 
 
 # ---------------------------------------------------------------------------
@@ -518,18 +690,11 @@ def break_even_attack_rate(
         raise ValueError("n_boot must be positive")
     pairs = _pair_results(baseline_results, candidate_results)
 
-    def case_cost(r: PerCaseResult) -> float:
-        total = 0.0
-        for rec in (r.benign, r.attacked):
-            if rec.usage is not None and rec.usage.cost_usd is not None:
-                total += rec.usage.cost_usd
-        return total
-
     def case_flip_cost(r: PerCaseResult) -> float:
         return scenario.flip_cost_usd[flip_direction(r)] if r.flipped else 0.0
 
     n = len(pairs)
-    dc = [case_cost(c) - case_cost(b) for b, c in pairs]
+    dc = [_case_cost(c) - _case_cost(b) for b, c in pairs]
     df = [case_flip_cost(b) - case_flip_cost(c) for b, c in pairs]
     mean_dc = sum(dc) / n
     mean_df = sum(df) / n
@@ -793,9 +958,10 @@ def value_view(
     Returns per-adapter economics (E_attacked with both $/flip and
     $/incident views, raw flip-type breakdown, attacker multiplier),
     the Pareto frontier, Drummond-Holte crossover statements, and, when
-    ``baseline_adapter`` names the cheap reference adapter, CPPF and
-    break-even attack rates for every other adapter. Economics sits next
-    to the headline ASR numbers; nothing here is blended into them.
+    ``baseline_adapter`` names the cheap reference adapter, CPPF,
+    CEAC curves, and break-even attack rates for every other adapter.
+    Economics sits next to the headline ASR numbers; nothing here is
+    blended into them.
     """
     adapters: dict[str, Any] = {}
     for name, results in adapter_results.items():
@@ -842,13 +1008,29 @@ def value_view(
         for name, results in adapter_results.items():
             if name == baseline_adapter:
                 continue
-            c = cppf(base, results)
+            # One paired-bootstrap pass per comparison: cppf() and
+            # ceac_curve() with default n_boot/seed draw identical
+            # resamples, so share the diffs instead of resampling twice.
+            parts = _paired_cost_flip_parts(base, results)
+            diffs = _bootstrap_cost_flip_diffs(*parts, 10000, 0)
+            c = _cppf_from_diffs(parts, diffs, 10000)
             be = break_even_attack_rate(base, results, scenario)
+            ceac = _ceac_from_diffs(
+                _default_ceac_thresholds(),
+                diffs,
+                10000,
+                c.prevents_flips,
+                c.cppf,
+            )
             out["comparisons"][name] = {
                 "vs": baseline_adapter,
                 "cppf": c.cppf,
                 "cppf_ci95": list(c.cppf_ci95) if c.cppf_ci95 else None,
                 "prevents_flips": c.prevents_flips,
+                "ceac": [
+                    [p.threshold_per_flip_usd, p.prob_upgrade_pays]
+                    for p in ceac.points
+                ],
                 "break_even_attack_rate": be.pi_star,
                 "break_even_ci95": (
                     list(be.pi_star_ci95) if be.pi_star_ci95 else None
