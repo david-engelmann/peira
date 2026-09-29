@@ -475,7 +475,8 @@ class TestDatasetCIChecks(unittest.TestCase):
         # exit non-zero (fail loudly) rather than warn. This pins the
         # enforcement at the CLI level CI consumes.
         import argparse
-        import tempfile
+        import io
+        from contextlib import redirect_stdout
         from peira.cli import cmd_dataset_gates
 
         base = ("You are a store manager handling a refund request. "
@@ -492,7 +493,13 @@ class TestDatasetCIChecks(unittest.TestCase):
             (d / "cases.jsonl").write_text(
                 "\n".join(json.dumps(c) for c in (c1, c2)) + "\n")
             args = argparse.Namespace(dir=str(d))
-            self.assertNotEqual(cmd_dataset_gates(args), 0)
+            out = io.StringIO()
+            with redirect_stdout(out):
+                rc = cmd_dataset_gates(args)
+            self.assertNotEqual(rc, 0)
+            # The failure must come from the G9 near-identical error, not
+            # from some other gate tripping on the two-case fixture.
+            self.assertIn("near-identical", out.getvalue())
 
 
 class TestPermanentCanary(unittest.TestCase):

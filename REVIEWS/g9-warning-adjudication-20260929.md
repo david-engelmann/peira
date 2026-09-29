@@ -14,7 +14,7 @@ warning band correctly routes to review without failing.
 Ran `run_gates` over `dataset/v1` with the Rust extension disabled and
 collected all 398 warning pairs with their similarity scores. Scores run
 from 0.78 to 0.933 with median 0.805. 394 of 398 pairs are same-family
-and 488 unique cases are involved. Drew a stratified sample of 23 pairs
+and 411 unique cases are involved. Drew a stratified sample of 23 pairs
 covering the full score range (the top 10 plus random pairs from each
 0.05 band) and read both cases in each pair in full, judging whether the
 two cases test the same thing (true duplicate) or test different things
@@ -88,12 +88,13 @@ Zero of 23 sampled pairs are true near-duplicates.
 ## Conclusion
 
 The 0.78 warning band fires on same-family template siblings, not on
-corpus defects, in the reviewed sample. The calibration fixture's 30
-distinct pairs do not include same-family pairs, so the fixture cannot
-tell the gate where template siblings score. In the 23 reviewed pairs,
-promoting warnings to errors would have flagged legitimate coverage of
-distinct attack variants for rewrite or removal. The remaining 375 pairs
-are unadjudicated. The two-tier design stands. Pairs at 0.98 or above
-are near-identical and fail the gate loudly through the normal CI path.
-Pairs at 0.78 or above are review candidates. No case changes are
-indicated for the sampled pairs.
+corpus defects, in the reviewed sample. The fixture does contain 16
+same-family distinct pairs, but all 30 distinct pairs score at or below
+0.7089, well under the warning band, so the fixture does not show how
+high production template siblings (which share more boilerplate) can
+score. In the 23 reviewed pairs, promoting warnings to errors would have
+flagged legitimate coverage of distinct attack variants for rewrite or
+removal. The remaining 375 pairs are unadjudicated. The two-tier design
+stands. Pairs at 0.98 or above are near-identical and fail the gate
+loudly through the normal CI path. Pairs at 0.78 or above are review
+candidates. No case changes are indicated for the sampled pairs.

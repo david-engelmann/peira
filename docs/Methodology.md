@@ -1180,7 +1180,7 @@ is a same-family template sibling, two legitimately distinct cases that
 share scenario boilerplate or distractor-pool text while testing
 different attacks. The full adjudication is in
 REVIEWS/g9-warning-adjudication-20260929.md. Promoting warnings to errors
-would flag 488 distinct cases for forced rewrite or removal with no
+would flag 411 distinct cases for forced rewrite or removal with no
 quality gain in the reviewed sample, so warnings stay as review signals
 and only the error band fails the gate.
 
