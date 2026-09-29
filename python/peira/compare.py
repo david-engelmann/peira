@@ -238,48 +238,38 @@ def validate_no_weighted_mcnemar(report: dict) -> list[str]:
     p_keys = ("mcnemar_p_value", "mcnemar_p", "p_value")
 
     def _is_weighted(name: str) -> bool:
-        return name in WEIGHTED_METRIC_NAMES or "weighted" in name
+        return name in WEIGHTED_METRIC_NAMES or "weighted" in name.lower()
 
-    def _scan(node: Any, path: str) -> None:
+    def _scan(node: Any, path: str, wctx: str | None = None) -> None:
+        # wctx is the weighted metric name inherited from an enclosing
+        # weighted "name" field or weighted name-as-key. It propagates
+        # through lists, so a list value under a weighted name (e.g.
+        # {"severity_weighted_asr": [{"p_value": 0.01}]}) cannot hide a
+        # McNemar p-value by changing the value's shape.
         if isinstance(node, dict):
             name = node.get("name")
-            if isinstance(name, str) and _is_weighted(name):
-                # Check direct p-value keys and nested dicts (e.g. "stats": {"p_value": ...})
+            here = name if (isinstance(name, str) and _is_weighted(name)) else wctx
+            if here is not None:
+                # Check direct p-value keys. Nested dicts are handled by
+                # recursion with the same context, which produces the
+                # identical message for the name-as-key shape.
                 for k in p_keys:
                     if node.get(k) is not None:
                         violations.append(
-                            f"{path}: weighted metric {name!r} carries "
+                            f"{path}: weighted metric {here!r} carries "
                             f"{k}={node[k]!r}: McNemar is unweighted by "
                             f"construction; use paired-bootstrap inference"
                         )
-                for k, v in node.items():
-                    if isinstance(v, dict):
-                        for pk in p_keys:
-                            if v.get(pk) is not None:
-                                violations.append(
-                                    f"{path}.{k}: weighted metric {name!r} carries "
-                                    f"nested {pk}={v[pk]!r}: McNemar is unweighted by "
-                                    f"construction; use paired-bootstrap inference"
-                                )
-            # Metric-name-as-key shape: {"severity_weighted_asr": {"p_value": 0.01}}
-            for k, v in node.items():
-                if isinstance(k, str) and _is_weighted(k) and isinstance(v, dict):
-                    for pk in p_keys:
-                        if v.get(pk) is not None:
-                            violations.append(
-                                f"{path}.{k}: weighted metric {k!r} carries "
-                                f"{pk}={v[pk]!r}: McNemar is unweighted by "
-                                f"construction; use paired-bootstrap inference"
-                            )
             for k, v in node.items():
                 # The top-level "mcnemar" block is the unweighted
                 # headline test, not a weighted metric.
                 if path == "$" and k == "mcnemar":
                     continue
-                _scan(v, f"{path}.{k}")
+                child_ctx = k if (isinstance(k, str) and _is_weighted(k)) else here
+                _scan(v, f"{path}.{k}", child_ctx)
         elif isinstance(node, list):
             for i, v in enumerate(node):
-                _scan(v, f"{path}[{i}]")
+                _scan(v, f"{path}[{i}]", wctx)
 
     _scan(report, "$")
     return violations

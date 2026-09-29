@@ -1425,7 +1425,7 @@ def paired_bootstrap_weighted_ci(
     positive weight a degenerate draw is never certain, so in practice
     the redraw always succeeds and the interval is defined (possibly
     zero-width when the valid resamples admit a single value, which
-    honestly reports that resampling found no variation. If 100
+    honestly reports that resampling found no variation). If 100
     consecutive redraws still draw only zero-weight indices (a safety
     net, not an expected path), ValueError is raised instead of a
     fabricated interval.

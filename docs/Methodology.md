@@ -503,8 +503,11 @@ never modified.
   replacement, preserving the A/B pairing, and recomputes both weighted
   means on the resample, where each resample's denominator is its own
   resampled weight total. A resample that draws only zero-weight cases
-  has no defined weighted mean and is redrawn. Same n ≥ 30 gate and
-  same `favors` convention as the unweighted deltas.
+  has no defined weighted mean and is redrawn. Same n ≥ 30 gate as the
+  unweighted deltas, but a deliberately weaker `favors` rule: the label
+  is claimed when the point estimate is nonzero and the 95% CI excludes
+  zero, with no MDE gate (the unweighted deltas additionally require the
+  effect to clear its R-02 MDE before claiming `favors`).
 - **Why bootstrap, not McNemar, for weighted metrics**: McNemar's test
   operates on *unweighted* discordant-pair counts. That is the entire
   statistic. The one published "weighted McNemar" (Wu 2022, *Stat Med*)
