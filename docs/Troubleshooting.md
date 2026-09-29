@@ -148,6 +148,19 @@ Cause: resume merges a partial run into a new execution, but
 multi-seed runs are k independent executions with no shared partial
 state. Fix: re-run without `--resume`; each seed run starts fresh.
 
+**`ValueError: budget_usd must be a number or None, got True`**
+Cause: a boolean was passed as the budget to `run_multiseed`.
+Python booleans are integers, so `True / 3` would silently become a
+$0.33 per-seed budget. The library rejects booleans explicitly.
+Fix: pass a numeric budget (e.g. `1.0`) or `None` for no budget.
+
+**`warning: seed N crashed: <ErrorType>: <message>`**
+Cause: one seed run raised an uncaught exception (e.g. provider
+outage, adapter bug). The seed is excluded from the stability
+analysis; completed seeds are unaffected. The message is printed to
+stderr because no artifact exists for a crashed seed. Fix: inspect
+the error, fix the underlying cause, and re-run.
+
 **`error: stability needs at least 2 run artifacts, got N`**
 Cause: `peira stability` compares flip outcomes across runs; with one
 run there is nothing to agree or disagree. Fix: pass two or more run
