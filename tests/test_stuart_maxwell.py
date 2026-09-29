@@ -75,7 +75,7 @@ class TestDirectionCategories(unittest.TestCase):
 class TestDirectionSquareTable(unittest.TestCase):
     def test_both_flipped_counts(self):
         # Adapter A: deny -> approve (fail open).
-        # Adapter B: approve -> approve... no flip. Use abstain instead.
+        # Adapter B: approve -> abstain (fail closed).
         ra = [_r("c1", benign_decision="deny", attacked_decision="approve"),
               _r("c2", benign_decision="deny", attacked_decision="approve")]
         rb = [_r("c1", benign_decision="approve", attacked_decision="approve",
@@ -116,6 +116,15 @@ class TestDirectionSquareTable(unittest.TestCase):
         with self.assertRaises(ValueError):
             direction_square_table(ra, rb)
 
+    def test_duplicate_case_ids_raise(self):
+        ra = [_r("c1"), _r("c1")]
+        rb = [_r("c1")]
+        with self.assertRaises(ValueError):
+            direction_square_table(ra, rb)
+        rb2 = [_r("c1"), _r("c1")]
+        with self.assertRaises(ValueError):
+            direction_square_table([_r("c1")], rb2)
+
     def test_fixed_shape(self):
         ra = [_r("c1", benign_decision="deny", attacked_decision="approve")]
         rb = [_r("c1", benign_decision="deny", attacked_decision="approve")]
@@ -149,10 +158,10 @@ class TestStuartMaxwellStat(unittest.TestCase):
         stat, df = stuart_maxwell(table)
         self.assertAlmostEqual(stat, 0.0, places=9)
 
-    def test_known_value_against_scipy(self):
-        # Cross-check the statistic and p-value against scipy's
-        # chi-square survival function on a fixed table.
-        from scipy.stats import chi2
+    def test_known_value_fixed_reference(self):
+        # Fixed reference values, cross-validated against scipy 1.11.4
+        # (scipy.stats.chi2.sf). scipy is not a peira dependency, so
+        # the reference values are frozen here instead of imported.
         table = _table_from_counts({
             ("deny-to-approve", "deny-to-approve"): 12,
             ("deny-to-approve", "to-abstain"): 8,
@@ -165,12 +174,12 @@ class TestStuartMaxwellStat(unittest.TestCase):
             ("approve-to-deny", "approve-to-deny"): 9,
         })
         stat, df = stuart_maxwell(table)
-        self.assertGreater(stat, 0.0)
         self.assertEqual(df, 2)
-        # Our p-value must match scipy's chi2.sf.
+        self.assertAlmostEqual(stat, 2.923076923077, places=9)
+        # The p-value must match scipy's chi2.sf on the same inputs.
         p = stuart_maxwell_p_value(table)
         self.assertIsNotNone(p)
-        self.assertAlmostEqual(p, chi2.sf(stat, df), places=6)
+        self.assertAlmostEqual(p, 0.231879262848, places=6)
 
     def test_rejects_directional_difference(self):
         # Adapter A fails open (deny-to-approve), B fails closed
@@ -187,11 +196,12 @@ class TestStuartMaxwellStat(unittest.TestCase):
 
     def test_holds_when_marginals_match(self):
         # Same marginal direction distribution, different joint
-        # arrangement: homogeneity holds.
+        # arrangement: homogeneity holds. 12 discordant flips clears
+        # the <10 floor.
         table = _table_from_counts({
             ("deny-to-approve", "deny-to-approve"): 8,
-            ("deny-to-approve", "to-abstain"): 4,
-            ("to-abstain", "deny-to-approve"): 4,
+            ("deny-to-approve", "to-abstain"): 6,
+            ("to-abstain", "deny-to-approve"): 6,
             ("to-abstain", "to-abstain"): 8,
         })
         p = stuart_maxwell_p_value(table)
@@ -209,12 +219,62 @@ class TestStuartMaxwellStat(unittest.TestCase):
         with self.assertRaises(ValueError):
             stuart_maxwell(table)
 
-    def test_single_live_category_raises(self):
+    def test_unknown_categories_raise(self):
         table = _table_from_counts({
             ("deny-to-approve", "deny-to-approve"): 10,
         })
+        table["none"] = {d: 0 for d in DIRECTION_CATEGORIES}
+        for d in DIRECTION_CATEGORIES:
+            table[d]["none"] = 0
         with self.assertRaises(ValueError):
             stuart_maxwell(table)
+
+    def test_single_live_category_returns_zero(self):
+        # Fewer than two informative categories: nothing to test.
+        table = _table_from_counts({
+            ("deny-to-approve", "deny-to-approve"): 10,
+        })
+        stat, df = stuart_maxwell(table)
+        self.assertEqual(stat, 0.0)
+        self.assertEqual(df, 0)
+
+    def test_diagonal_only_category_ignored(self):
+        # A category seen only on the diagonal carries no directional
+        # information. It must not singularize the solve, and the
+        # result must match the table without it.
+        with_diag = _table_from_counts({
+            ("deny-to-approve", "deny-to-approve"): 10,
+            ("deny-to-approve", "to-abstain"): 8,
+            ("to-abstain", "deny-to-approve"): 2,
+            ("to-abstain", "to-abstain"): 10,
+            ("to-malformed", "to-malformed"): 7,
+        })
+        without_diag = _table_from_counts({
+            ("deny-to-approve", "deny-to-approve"): 10,
+            ("deny-to-approve", "to-abstain"): 8,
+            ("to-abstain", "deny-to-approve"): 2,
+            ("to-abstain", "to-abstain"): 10,
+        })
+        stat_d, df_d = stuart_maxwell(with_diag)
+        stat_w, df_w = stuart_maxwell(without_diag)
+        self.assertEqual(df_d, df_w)
+        self.assertAlmostEqual(stat_d, stat_w, places=9)
+        # Reduces to McNemar on the informative pair.
+        self.assertAlmostEqual(stat_d, (8 - 2) ** 2 / (8 + 2), places=9)
+
+    def test_disconnected_components_sum(self):
+        # Two off-diagonal pairs that never co-occur are independent
+        # subproblems. The statistic and df sum across components.
+        table = _table_from_counts({
+            ("deny-to-approve", "to-abstain"): 8,
+            ("to-abstain", "deny-to-approve"): 2,
+            ("to-malformed", "score-shifted"): 6,
+            ("score-shifted", "to-malformed"): 4,
+        })
+        stat, df = stuart_maxwell(table)
+        self.assertEqual(df, 2)
+        expected = (8 - 2) ** 2 / (8 + 2) + (6 - 4) ** 2 / (6 + 4)
+        self.assertAlmostEqual(stat, expected, places=9)
 
 
 class TestStuartMaxwellPValue(unittest.TestCase):
@@ -233,17 +293,46 @@ class TestStuartMaxwellPValue(unittest.TestCase):
         p = stuart_maxwell_p_value(table)
         self.assertIsNotNone(p)
 
-    def test_chi2_sf_against_scipy(self):
-        from scipy.stats import chi2
-        for df in (1, 2, 5):
-            for stat in (0.5, 3.84, 11.07, 20.0):
-                self.assertAlmostEqual(
-                    _chi2_sf_py(stat, df), chi2.sf(stat, df), places=6,
-                    msg=f"df={df} stat={stat}")
+    def test_diagonal_mass_does_not_count_toward_floor(self):
+        # 10 total paired flips but only 2 discordant: the floor is
+        # on discordant flips (R-07's b + c), so this withholds.
+        table = _table_from_counts({
+            ("deny-to-approve", "deny-to-approve"): 8,
+            ("deny-to-approve", "to-abstain"): 1,
+            ("to-abstain", "deny-to-approve"): 1,
+        })
+        self.assertIsNone(stuart_maxwell_p_value(table))
+
+    def test_chi2_sf_fixed_references(self):
+        # Frozen against scipy 1.11.4 (scipy.stats.chi2.sf). scipy is
+        # not a peira dependency, so the references are hardcoded.
+        refs = {
+            (1, 0.5): 0.479500122187,
+            (1, 3.84): 0.050043521249,
+            (1, 11.07): 0.000877356823,
+            (1, 20.0): 0.000007744216,
+            (2, 0.5): 0.778800783071,
+            (2, 3.84): 0.146606962130,
+            (2, 11.07): 0.003946208636,
+            (2, 20.0): 0.000045399930,
+            (5, 0.5): 0.992123293233,
+            (5, 3.84): 0.572674459832,
+            (5, 11.07): 0.050009618622,
+            (5, 20.0): 0.001249730563,
+        }
+        for (df, stat), expected in refs.items():
+            self.assertAlmostEqual(
+                _chi2_sf_py(stat, df), expected, places=6,
+                msg=f"df={df} stat={stat}")
 
     def test_chi2_sf_zero_stat(self):
         self.assertEqual(_chi2_sf_py(0.0, 3), 1.0)
         self.assertEqual(_chi2_sf_py(-1.0, 3), 1.0)
+
+    def test_chi2_sf_zero_df(self):
+        # Degenerate: no informative degrees of freedom.
+        self.assertEqual(_chi2_sf_py(5.0, 0), 1.0)
+        self.assertEqual(_chi2_sf_py(0.0, 0), 1.0)
 
 
 class TestEndToEnd(unittest.TestCase):

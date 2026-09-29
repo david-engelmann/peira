@@ -121,62 +121,68 @@ family.
 - The HTML report renders a Flip anatomy section: direction table,
   target-hit rate, and the transition matrix.
 
-## C-1: Directional comparison between adapters (Stuart-Maxwell)
+## C-1 directional comparison between adapters (Stuart-Maxwell)
 
 Binary "which adapter flips more" is McNemar's question (R-07). C-1
-asks the directional question: *given that flips occur, do two
-adapters flip in different directions?* This is the statistical
-backbone of "guardrails fail closed, baselines fail open": a
-guardrail whose flips are mostly `to-abstain` and a baseline whose
-flips are mostly `deny-to-approve` have different directional
-distributions even at the same flip rate.
+asks the directional question. Given that flips occur, do two
+adapters flip in different directions. This is the statistical
+backbone of the fail-open versus fail-closed claim. A guardrail
+whose flips are mostly `to-abstain` and a baseline whose flips are
+mostly `deny-to-approve` have different directional distributions
+even at the same flip rate.
 
 ### The test
 
 For two adapters evaluated on the same paired cases, build the
-square table of flip-direction categories: rows are adapter A's
-direction, columns are adapter B's, over cases where *both* adapters
-flipped. The Stuart-Maxwell test (Stuart 1955; Maxwell 1970)
-assesses **marginal homogeneity**: the null is that the two
+square table of flip-direction categories. Rows are adapter A's
+direction and columns are adapter B's, over cases where *both*
+adapters flipped. The Stuart-Maxwell test (Stuart 1955 and Maxwell
+1970) assesses **marginal homogeneity**. The null is that the two
 adapters share the same marginal distribution over the six
 direction categories. For a 2x2 table the statistic reduces exactly
 to McNemar's.
 
 ### Why marginal homogeneity, not symmetry
 
-For K>2 categories, symmetry (n_ij = n_ji for all cells, tested by
-Bowker's test) and marginal homogeneity (row marginals equal column
-marginals) are different hypotheses. C-1 deliberately tests
-**marginal homogeneity** because the research question is about the
-adapters' *direction distributions*, not about the joint table's
-symmetry. A guardrail that always flips `to-abstain` while the
-baseline always flips `deny-to-approve` produces a maximally
-asymmetric table; what matters for the fail-open/fail-closed claim
-is that their marginals differ, which marginal homogeneity captures
-directly.
+For K>2 categories, symmetry and marginal homogeneity are different
+hypotheses. Symmetry means n_ij equals n_ji for all cells and is
+tested by Bowker's test. Marginal homogeneity means row marginals
+equal column marginals. C-1 deliberately tests **marginal
+homogeneity** because the research question is about the adapters'
+*direction distributions*, not about the joint table's symmetry. A
+guardrail that always flips `to-abstain` while the baseline always
+flips `deny-to-approve` produces a maximally asymmetric table. What
+matters for the fail-open versus fail-closed claim is that their
+marginals differ, and marginal homogeneity captures that directly.
 
 ### Conditioning and the six categories
 
-The table conditions on both adapters flipping (red-team P2-2):
-the `(none, none)` cell would otherwise dominate and the test would
-re-answer the flip-rate question. All six direction categories are
-retained, never collapsed (David Q1). Categories with zero marginal
-mass are dropped from the chi-square computation (they carry no
-information and would singularize the covariance matrix); at least
-two live categories are required.
+The table conditions on both adapters flipping (red-team P2-2).
+Otherwise the `(none, none)` cell would overwhelm the table and
+the test would re-answer the flip-rate question. All six direction categories are
+retained in the table and never collapsed (David Q1). The
+chi-square computation uses only categories with off-diagonal mass.
+A category seen purely on the diagonal carries no directional
+information. Off-diagonal groups that never co-occur are solved as
+independent subproblems, and their statistics and degrees of
+freedom are summed. When fewer than two informative categories
+remain, the function returns a statistic of 0.0 with 0 degrees of
+freedom.
 
 ### Withholding
 
 The p-value is withheld (None) when the table holds fewer than 10
-paired flips, mirroring R-07's <10-discordant floor for McNemar:
-the chi-square approximation is unreliable on thin tables. Report
-the table and the withholding, not a misleading p-value.
+discordant flips. This mirrors R-07's <10-discordant floor for
+McNemar. Diagonal agreements are ancillary to the test and do not
+count toward the floor. The chi-square approximation is unreliable
+on thin tables. Report the table and the withholding, not a
+misleading p-value.
 
 ### Where it appears
 
-- `peira.metrics.direction_square_table`: builds the 6x6 table from
+- `peira.metrics.direction_square_table` builds the 6x6 table from
   two same-case `PerCaseResult` lists.
-- `peira.metrics.stuart_maxwell`: the chi-square statistic and
-  degrees of freedom.
-- `peira.metrics.stuart_maxwell_p_value`: the p-value with the
-  <10 withholding rule.
+- `peira.metrics.stuart_maxwell` computes the chi-square statistic
+  and degrees of freedom.
+- `peira.metrics.stuart_maxwell_p_value` computes the p-value with
+  the <10 withholding rule.
