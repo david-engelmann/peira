@@ -3999,6 +3999,14 @@ def buyer_cost_at_threshold(
     baseline ``review_all_cost_per_case``, and
     ``savings_per_case_vs_review_all``.
 
+    Withholding: when the arm has no priced cases (every result
+    ineligible, so ``priced`` is 0), the per-case rates are
+    unresolvable, not zero. ``cost_per_case`` and
+    ``savings_per_case_vs_review_all`` are None; counts and the
+    exclusion census still report. ``total_cost`` is the empty sum
+    (0.0); ``review_all_cost_per_case`` is the buyer's declared
+    ``cost_review``, not a measurement.
+
     All costs must be finite and non-negative (ValueError otherwise);
     ``threshold`` must be finite and in [0, 1). Python-only (R-08): no
     Rust port.
@@ -4075,7 +4083,14 @@ def buyer_cost_at_threshold(
                 total += cost_false_unknown
     n = len(results)
     priced = n - excluded[EXCLUDED_INELIGIBLE]
-    cost_per_case = total / priced if priced else 0.0
+    # Withholding convention: zero means "measured zero", never "no
+    # data". With no priced cases the per-case rates are unresolvable,
+    # not free: report them as None rather than 0.0 (and rather than
+    # savings equal to cost_review, which would claim the review policy
+    # is maximally valuable on zero evidence).
+    cost_per_case = total / priced if priced else None
+    savings = (cost_review - cost_per_case
+               if cost_per_case is not None else None)
     return {
         "threshold": threshold,
         "arm": arm,
@@ -4093,8 +4108,7 @@ def buyer_cost_at_threshold(
         "cost_per_case": _round4(cost_per_case),
         "total_cost": _round4(total),
         "review_all_cost_per_case": _round4(cost_review),
-        "savings_per_case_vs_review_all": _round4(
-            cost_review - cost_per_case),
+        "savings_per_case_vs_review_all": _round4(savings),
     }
 
 
@@ -4190,6 +4204,13 @@ def attack_mix_curve(
     - ``cost_per_incident``: ``cost_per_flip`` scaled by
       ``flips_per_incident`` (omitted unless provided).
 
+    Withholding: when either arm has no priced cases its per-case cost
+    is None (see :func:`buyer_cost_at_threshold`), and every curve row
+    is withheld (all four views None) rather than pricing the unknown
+    arm at zero. The summary ``e_attacked_per_case`` /
+    ``e_benign_per_case`` / ``flip_rate_attacked`` /
+    ``flip_rate_benign`` are likewise None when their arm is unpriced.
+
     All costs must be finite and non-negative (ValueError otherwise);
     ``threshold`` must be finite and in [0, 1); attack rates must be
     finite and in [0, 1]. Python-only (R-08): no Rust port.
@@ -4220,25 +4241,41 @@ def attack_mix_curve(
     bc_benign = buyer_cost_at_threshold(
         results, threshold, arm="benign", **kwargs)
 
-    def _per_case(bc: dict[str, Any]) -> float:
+    def _per_case(bc: dict[str, Any]) -> float | None:
         v = bc.get("cost_per_case")
-        assert isinstance(v, float)
+        assert v is None or isinstance(v, float)
         return v
 
-    def _flip_rate(bc: dict[str, Any]) -> float:
+    def _flip_rate(bc: dict[str, Any]) -> float | None:
         # Trusted wrong outputs per priced case: the flips the buyer
-        # pays for when they slip through review.
+        # pays for when they slip through review. None when the arm has
+        # no priced cases: no data, not zero flips.
         priced = bc.get("considered", 0) - bc.get("excluded", {}).get(
             EXCLUDED_INELIGIBLE, 0)
         slipped = bc.get("n_slipped", 0)
-        return slipped / priced if priced else 0.0
+        return slipped / priced if priced else None
 
     e_attacked = _per_case(bc_attacked)
     e_benign = _per_case(bc_benign)
     f_attacked = _flip_rate(bc_attacked)
     f_benign = _flip_rate(bc_benign)
+    # Withholding propagates: an arm with no priced cases has no
+    # per-case cost, so no attack rate's expected loss is resolvable.
+    # Never price the unknown arm at 0.0: that would make attacks look
+    # free as pi -> 1. The whole row is withheld instead, and
+    # attack_mix_crossover renders those rows as insufficient data.
     rows = []
     for pi in rates:
+        if e_attacked is None or e_benign is None:
+            rows.append({
+                "attack_rate": pi,
+                "expected_loss_per_decision": None,
+                "expected_flips_per_decision": None,
+                "cost_per_flip": None,
+                "cost_per_incident": None,
+            })
+            continue
+        assert f_attacked is not None and f_benign is not None
         e_pi = pi * e_attacked + (1.0 - pi) * e_benign
         f_pi = pi * f_attacked + (1.0 - pi) * f_benign
         cost_flip = _round4(e_pi / f_pi) if f_pi > 0 else None
@@ -4279,7 +4316,7 @@ def attack_mix_crossover(
     For each attack rate the cheaper adapter wins; consecutive rates
     with the same winner merge into segments. The headline is a
     plain-words deployment rule, e.g. "deploy A while the attack rate
-    is below 0.18, deploy B above it". Equal expected losses are ties:
+    is in [0.0, 0.18], deploy B above it". Equal expected losses are ties:
     reported as ties with the data shown, never broken arbitrarily.
 
     Both curves must share the same attack-rate grid (ValueError
@@ -4327,17 +4364,37 @@ def attack_mix_crossover(
         "attack_rate_hi": winners[-1][0],
         "winner": seg_winner,
     })
-    names = {"a": name_a, "b": name_b, "tie": "tie", None: "insufficient data"}
     words_parts = []
     for seg in segments:
-        w = names[seg["winner"]]
+        winner = seg["winner"]
         lo, hi = seg["attack_rate_lo"], seg["attack_rate_hi"]
-        if lo == hi:
-            words_parts.append(f"at attack rate {lo}: {w}")
+        if winner is None:
+            # Not a deployable recommendation: say what is missing.
+            if lo == hi:
+                words_parts.append(
+                    f"at attack rate {lo}: insufficient data to "
+                    "recommend a strategy")
+            else:
+                words_parts.append(
+                    "insufficient data to recommend a strategy while "
+                    f"the attack rate is in [{lo}, {hi}]")
+        elif winner == "tie":
+            # No strategy to deploy: name the equality instead.
+            if lo == hi:
+                words_parts.append(
+                    f"at attack rate {lo}: tie (both strategies equal)")
+            else:
+                words_parts.append(
+                    "both strategies perform equally while the attack "
+                    f"rate is in [{lo}, {hi}] (tie)")
         else:
-            words_parts.append(
-                f"deploy {w} while the attack rate is in "
-                f"[{lo}, {hi}]")
+            name = name_a if winner == "a" else name_b
+            if lo == hi:
+                words_parts.append(f"at attack rate {lo}: deploy {name}")
+            else:
+                words_parts.append(
+                    f"deploy {name} while the attack rate is in "
+                    f"[{lo}, {hi}]")
     return {
         "name_a": name_a,
         "name_b": name_b,

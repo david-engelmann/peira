@@ -15,7 +15,7 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
   read scored 0.NN. No gold values changed. Dataset version moves from
   1.1.0 to 1.1.1 and all 8 dataset gates pass.
 
-### Added — decision-curve / net-benefit analysis (R-08)
+### Added decision-curve / net-benefit analysis (R-08)
 
 - New `peira.metrics` net-benefit section (Vickers & Elkin 2006),
   sealed into every run summary and rendered by `peira report` as an

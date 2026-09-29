@@ -522,7 +522,17 @@ class TestSummaryBlock(unittest.TestCase):
         results = self._many(MIN_NB_CASES, flipped=True,
                              attacked_conf=0.4, benign_conf=0.9)
         s = summarize(results)
-        json.dumps(s["net_benefit"])
+        payload = json.dumps(s["net_benefit"])
+        # Round-trips and keeps the headline structure: the JSON the
+        # report ships is what the artifact stores.
+        back = json.loads(payload)
+        self.assertTrue(back["attacked"]["sufficient"])
+        self.assertEqual(len(back["attacked"]["curve"]), 99)
+        self.assertEqual(len(back["attacked"]["review_all"]), 99)
+        self.assertIsInstance(back["attacked"]["best_net_benefit"], float)
+        self.assertEqual(
+            set(back["attacked"]["operating_points"]),
+            {str(pt) for pt in NB_OPERATING_POINTS})
 
     def test_attacked_high_risk_on_correct_review_none_wins(self):
         # High risk scores on correct outputs: every review is wasted,
@@ -571,13 +581,22 @@ class TestReportSection(unittest.TestCase):
 
     def test_hostile_shapes_do_not_traceback(self):
         from peira.cli import _net_benefit_section
+        # Hostile non-dict arms degrade to "insufficient data", never a
+        # traceback; the section header still renders.
         for bad in ({"net_benefit": {"benign": "x"}},
                     {"net_benefit": {"benign": None}},
-                    {"net_benefit": {"benign": {"sufficient": True}}},
-                    {"net_benefit": None},
-                    {},
-                    # sufficient but garbage numerics: skip chart/table,
-                    # never traceback.
+                    {"net_benefit": None}):
+            html = _net_benefit_section(bad)
+            self.assertIsInstance(html, str)
+            self.assertIn("<h2>Net benefit</h2>", html)
+            self.assertIn("insufficient data", html)
+        # Missing block entirely: the sealed-before-R-08 note.
+        html = _net_benefit_section({})
+        self.assertIsInstance(html, str)
+        self.assertIn("not available in this artifact", html)
+        # sufficient but garbage numerics: skip chart/table, never
+        # traceback; the arm header still renders.
+        for bad in ({"net_benefit": {"benign": {"sufficient": True}}},
                     {"net_benefit": {"benign": {
                         "sufficient": True, "curve": [["a", "b"]]}}},
                     {"net_benefit": {"benign": {
@@ -589,7 +608,9 @@ class TestReportSection(unittest.TestCase):
                     {"net_benefit": {"benign": {
                         "sufficient": True,
                         "operating_points": {None: 1}}}}):
-            _net_benefit_section(bad)  # must not raise
+            html = _net_benefit_section(bad)
+            self.assertIsInstance(html, str)
+            self.assertIn("Net benefit (benign)", html)
 
     def test_svg_scales(self):
         from peira.cli import _nb_curve_svg
@@ -669,6 +690,19 @@ class TestBuyerCostAtThreshold(unittest.TestCase):
         self.assertEqual(out["excluded"]["ineligible"], 1)
         self.assertEqual(out["n_reviewed"], 0)
         self.assertEqual(out["total_cost"], 0.0)
+
+    def test_unpriced_arm_withholds_per_case_rates(self):
+        # Zero means "measured zero", never "no data": with no priced
+        # cases the per-case rates are None, not 0.0 / cost_review.
+        results = [_r(case_id="c1", eligible=False,
+                      ineligibility_reason=INELIGIBLE_BENIGN_WRONG_DECISION)]
+        out = buyer_cost_at_threshold(
+            results, 0.5, cost_false_approve=10.0,
+            cost_false_deny=5.0, cost_review=1.0)
+        self.assertIsNone(out["cost_per_case"])
+        self.assertIsNone(out["savings_per_case_vs_review_all"])
+        self.assertEqual(out["total_cost"], 0.0)  # the empty sum
+        self.assertEqual(out["review_all_cost_per_case"], 1.0)
 
     def test_validation(self):
         results = self._results()
@@ -788,6 +822,24 @@ class TestAttackMixCurve(unittest.TestCase):
         with self.assertRaises(ValueError):
             attack_mix_curve(results, **self._costs())
 
+    def test_unpriced_attacked_arm_withholds_curve(self):
+        # Explicit threshold (so no default-threshold ValueError), but
+        # the attacked arm has no priced cases: every row is withheld
+        # rather than pricing attacks at 0.0.
+        results = [_r(case_id=f"c{i}", eligible=False,
+                      ineligibility_reason=INELIGIBLE_BENIGN_WRONG_DECISION)
+                   for i in range(5)]
+        c = attack_mix_curve(results, threshold=0.5, **self._costs())
+        for row in c["curve"]:
+            self.assertIsNone(row["expected_loss_per_decision"])
+            self.assertIsNone(row["expected_flips_per_decision"])
+            self.assertIsNone(row["cost_per_flip"])
+            self.assertIsNone(row["cost_per_incident"])
+        self.assertIsNone(c["e_attacked_per_case"])
+        self.assertIsNone(c["flip_rate_attacked"])
+        # The benign arm is still priced: withholding is arm-specific.
+        self.assertIsNotNone(c["e_benign_per_case"])
+
     def test_validation(self):
         results = self._results()
         kw = self._costs()
@@ -838,6 +890,23 @@ class TestAttackMixCrossover(unittest.TestCase):
         self.assertEqual(len(x["segments"]), 1)
         self.assertEqual(x["segments"][0]["winner"], "tie")
         self.assertIn("tie", x["deployment_rule"])
+        # A tie is not a deployment recommendation.
+        self.assertNotIn("deploy tie", x["deployment_rule"])
+
+    def test_withheld_segments_read_as_insufficient_data(self):
+        rates = (0.0, 0.5, 1.0)
+        rows = [{"attack_rate": pi,
+                 "expected_loss_per_decision": None,
+                 "expected_flips_per_decision": None,
+                 "cost_per_flip": None,
+                 "cost_per_incident": None}
+                for pi in rates]
+        a = {"attack_rates": list(rates), "curve": rows}
+        b = self._curve(5.0, 5.0, rates=rates)
+        x = attack_mix_crossover(a, b, "A", "B")
+        self.assertTrue(all(s["winner"] is None for s in x["segments"]))
+        self.assertIn("insufficient data", x["deployment_rule"])
+        self.assertNotIn("deploy insufficient", x["deployment_rule"])
 
     def test_mismatched_grids_raise(self):
         a = self._curve(1.0, 1.0, rates=(0.0, 0.5, 1.0))

@@ -689,11 +689,12 @@ Cause: `peira compare --out` points somewhere unwritable: a missing
 parent directory, or a permissions problem. Fix: create the directory
 first, or pick a writable path.
 
-**`error: nb_threshold must be a finite number in [0, 1)` (from `peira compare`)**
-Cause: `--nb-threshold` got a non-numeric, NaN, or out-of-range value.
+**`error: nb_threshold must be a number, got ...` or `nb_threshold must be finite and in [0, 1), got ...` (from `peira compare`)**
+Cause: `--nb-threshold` got a non-numeric value (first message), or a
+NaN, infinite, or out-of-range value (second message).
 Fix: pass a probability strictly inside [0, 1), e.g. `--nb-threshold 0.5`.
-The net-benefit head-to-head is withheld (not an error) when either
-adapter has fewer than 30 analyzed attacked cases.
+The net-benefit head-to-head is withheld (not an error) when the two
+adapters share fewer than 30 common analyzed attacked cases.
 
 **`peira compare` says "withheld" for McNemar / Bradley-Terry / deltas**
 Cause: not an error. The sample-size discipline. McNemar and

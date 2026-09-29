@@ -657,8 +657,7 @@ expected flips per decision; absent where no flips are expected), and
 cost per incident (cost per flip scaled by a buyer-supplied
 flips-per-incident). `attack_mix_crossover` takes two adapters' curves
 on the same grid and returns the lower envelope as segments plus a
-plain-words deployment rule ("deploy A while the attack rate is below
-0.18, deploy B above it"); equal expected losses are ties, reported as
+plain-words deployment rule ("deploy A while the attack rate is in [0.0, 0.18], deploy B above it"); equal expected losses are ties, reported as
 ties. The `peira report` buyer-cost section renders the curve as a
 table at every 0.10 of attack rate.
 
