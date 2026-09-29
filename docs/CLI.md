@@ -143,6 +143,18 @@ leave-one-family-out ranking stability (lottery index) across run artifacts
 | `--families` |  | union of families in runs | comma-separated family manifest (default: union of families across the runs) |
 | `--json` |  | - | write the full analysis JSON to this path |
 
+## peira value
+
+M-3 economic value view over 1+ run artifacts (E_attacked, CPPF, break-even, Pareto frontier)
+
+| Flag | Required | Default | Help |
+|---|---|---|---|
+| `RUNS` | yes | - | run artifact paths (>= 1) |
+| `--scenario` |  | `'standard'` | cost scenario id (default: standard) |
+| `--baseline` |  | - | baseline adapter name for CPPF / break-even comparisons |
+| `--price-date` |  | - | price date stamp for the frontier (default: unknown) |
+| `--out` |  | - | write an HTML value-view report to this path |
+
 ## peira runs
 
 run registry: list and verify artifacts
