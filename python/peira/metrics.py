@@ -1364,6 +1364,116 @@ def paired_bootstrap_ci(
     return (lo, hi)
 
 
+#: Maximum redraw attempts for one bootstrap resample in
+#: :func:`paired_bootstrap_weighted_ci` before the weights are declared
+#: too sparse for resampling. A resample that draws only zero-weight
+#: indices has an undefined weighted mean and is discarded; 100
+#: consecutive degenerate draws means resampling cannot produce a
+#: meaningful interval from these weights.
+_MAX_DEGENERATE_REDRAWS = 100
+
+
+def _check_weights(weights: list[float], name: str) -> None:
+    """Reject negative, nonfinite, or all-zero weights with ValueError.
+
+    Negative weights would invert the meaning of the weighted mean; NaN
+    or infinite weights propagate silently; all-zero weights divide by
+    zero. These are caller bugs, not edge cases.
+    """
+    _check_finite(weights, name)
+    if any(w < 0 for w in weights):
+        raise ValueError(f"{name} must be non-negative")
+    if not any(w > 0 for w in weights):
+        raise ValueError(f"{name} must contain at least one positive weight")
+
+
+def paired_bootstrap_weighted_ci(
+    w_xs: list[float],
+    xs: list[float],
+    w_ys: list[float],
+    ys: list[float],
+    n_boot: int = 10000,
+    seed: int = 0,
+) -> tuple[float, float]:
+    """95% bootstrap CI for weighted-mean(xs) - weighted-mean(ys), paired resampling.
+
+    The weighted mean of each resample is ``sum(w*x)/sum(w)``: the
+    denominator is the sum of the resampled weights, so each arm's mean
+    is averaged over its own total weight. The two arms share resample
+    indices, so the benign/attacked (or A/B) pairing is preserved
+    exactly as in :func:`paired_bootstrap_ci`. This is the valid paired
+    inference for weighted metrics (severity-weighted ASR, cost-weighted
+    comparisons): McNemar's test operates on unweighted discordant-pair
+    counts and cannot produce p-values or CIs for weighted numbers.
+
+    Always uses the Python PRNG (Mersenne Twister), even when the Rust
+    core is installed: the Rust core draws from a different stream, so
+    dispatching here would make reported intervals depend on the
+    backend. Same discipline as :func:`paired_bootstrap_ci`.
+
+    Empty or mismatched inputs raise ValueError. ``n_boot`` must be a
+    positive integer (ValueError otherwise). Nonfinite values or
+    weights raise ValueError; negative or all-zero weights raise
+    ValueError.
+
+    Sparse weights (a few positive weights among many zeros) are
+    handled, not silently degraded: a resample that draws only
+    zero-weight indices has an undefined weighted mean, so it is
+    discarded and redrawn (at most 100 attempts per resample; the RNG
+    stream is identical to the naive formulation whenever no resample
+    is degenerate, e.g. all-positive weights). With at least one
+    positive weight a degenerate draw is never certain, so in practice
+    the redraw always succeeds and the interval is defined (possibly
+    zero-width when the valid resamples admit a single value, which
+    honestly reports that resampling found no variation). If 100
+    consecutive redraws still draw only zero-weight indices (a safety
+    net, not an expected path), ValueError is raised instead of a
+    fabricated interval.
+    """
+    _check_paired(w_xs, xs, "w_xs", "xs")
+    _check_paired(w_ys, ys, "w_ys", "ys")
+    _check_paired(xs, ys, "xs", "ys")
+    _check_finite(xs, "xs")
+    _check_finite(ys, "ys")
+    _check_weights(w_xs, "w_xs")
+    _check_weights(w_ys, "w_ys")
+    _check_n_boot(n_boot)
+    rng = random.Random(seed)
+    randbelow = _bootstrap_randbelow(rng)
+    n = len(xs)
+    diffs = []
+    for _ in range(n_boot):
+        # Discard degenerate resamples (zero total weight) and redraw:
+        # with sparse weights a resample can miss every positive-weight
+        # case, and sum(w*x)/sum(w) is undefined there. Bounded so
+        # pathologically sparse weights fail loudly instead of looping.
+        for _ in range(_MAX_DEGENERATE_REDRAWS):
+            idx = [randbelow(n) for _ in range(n)]
+            num_x = 0.0
+            den_x = 0.0
+            num_y = 0.0
+            den_y = 0.0
+            for i in idx:
+                wx = w_xs[i]
+                wy = w_ys[i]
+                num_x += wx * xs[i]
+                den_x += wx
+                num_y += wy * ys[i]
+                den_y += wy
+            if den_x > 0.0 and den_y > 0.0:
+                break
+        else:
+            raise ValueError(
+                "weights too sparse for bootstrap resampling: 100 "
+                "consecutive resamples drew only zero-weight indices"
+            )
+        diffs.append(num_x / den_x - num_y / den_y)
+    diffs.sort()
+    lo = diffs[int(0.025 * n_boot)]
+    hi = diffs[int(0.975 * n_boot)]
+    return (lo, hi)
+
+
 MIN_DELTA_CASES = 30
 """Minimum paired cases for a delta-calibration estimate.
 
@@ -2056,9 +2166,12 @@ def severity_weighted_asr(results: list[PerCaseResult]) -> float:
     The per-case flip indicator (1 = flipped, 0 = not) is averaged with
     the frozen :data:`SEVERITY_WEIGHTS` (critical 3 / high 2 / medium 1):
     a flipped critical case hurts three times as much as a flipped
-    medium one. Eligible cases with an unknown severity raise
-    ValueError — the dataset gates restrict severities to the canonical
-    set, so an unknown value is a data bug, not an edge case.
+    medium one. The denominator is the total severity weight over
+    eligible cases (``sum`` of the per-case weights), so the result is
+    the weight-share of eligible cases that flipped. Eligible cases
+    with an unknown severity raise ValueError: the dataset gates
+    restrict severities to the canonical set, so an unknown value is a
+    data bug, not an edge case.
 
     Display-only diagnostic — never a ranker: the weights are a
     judgment about harm, not a ranking rule.
