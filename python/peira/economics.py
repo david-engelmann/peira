@@ -24,8 +24,15 @@ from pathlib import Path
 from typing import Any
 
 from peira.metrics import (
+    DEFAULT_NB_THRESHOLDS,
+    MIN_PER_CONDITION_CASES,
     PerCaseResult,
+    attacked_confidence_pairs,
+    ece,
+    flip_detection_auroc,
     flip_direction,
+    net_benefit_at_threshold,
+    net_benefit_pairs,
     wilson_ci,
 )
 
@@ -155,6 +162,34 @@ class CostScenario:
     flip_cost_usd: dict[str, float]
     flips_per_incident: float
     baseline_attack_rate: float
+
+    def __post_init__(self) -> None:
+        # Enforce the documented contract at construction, not just on
+        # file load: every M-1 flip direction must be priced, costs must
+        # be finite and non-negative, and "none" must be 0 (non-flips
+        # cost 0 by construction). Without this, a hand-built scenario
+        # with a missing key fails deep in a sweep with KeyError, and a
+        # nonzero "none" silently prices every non-flip.
+        missing = [d for d in FLIP_DIRECTIONS if d not in self.flip_cost_usd]
+        if missing:
+            raise ValueError(f"flip_cost_usd missing flip costs for {missing}")
+        for direction in FLIP_DIRECTIONS:
+            value = self.flip_cost_usd[direction]
+            if (
+                isinstance(value, bool)
+                or not isinstance(value, (int, float))
+                or not math.isfinite(value)
+                or value < 0
+            ):
+                raise ValueError(
+                    f"flip_cost_usd[{direction!r}] must be a finite "
+                    "non-negative number"
+                )
+        if self.flip_cost_usd["none"] != 0:
+            raise ValueError(
+                "flip_cost_usd['none'] must be 0 (non-flips cost 0 by "
+                "construction)"
+            )
 
 
 def load_cost_scenario(scenario_id: str = "standard") -> CostScenario:
@@ -413,97 +448,6 @@ def _mean_cost_per_decision(results: list[PerCaseResult]) -> float:
     return sum(costs) / len(costs) if costs else 0.0
 
 
-def _case_cost(r: PerCaseResult) -> float:
-    """Total recorded inference cost for one paired case (both arms)."""
-    total = 0.0
-    for rec in (r.benign, r.attacked):
-        if rec.usage is not None and rec.usage.cost_usd is not None:
-            total += rec.usage.cost_usd
-    return total
-
-
-def _bootstrap_cost_flip_diffs(
-    base_costs: list[float],
-    cand_costs: list[float],
-    base_flips: list[float],
-    cand_flips: list[float],
-    n_boot: int,
-    seed: int,
-) -> list[tuple[float, float]]:
-    """Paired-bootstrap (Δcost, Δflips-prevented) per resample.
-
-    Returns one (dc, pf) tuple per bootstrap replicate, resampling
-    per-case (Δcost, Δflips) pairs with replacement.
-    """
-    n = len(base_costs)
-    rng = random.Random(seed)
-    # Per-case differences, precomputed once: each replicate then sums
-    # over resampled indices instead of re-differencing.
-    dc_cases = [c - b for b, c in zip(base_costs, cand_costs)]
-    pf_cases = [b - c for b, c in zip(base_flips, cand_flips)]
-    diffs = []
-    for _ in range(n_boot):
-        idx = [rng.randrange(n) for _ in range(n)]
-        dc = sum(dc_cases[i] for i in idx) / n
-        pf = sum(pf_cases[i] for i in idx) / n
-        diffs.append((dc, pf))
-    return diffs
-
-
-def _paired_cost_flip_parts(
-    baseline_results: list[PerCaseResult],
-    candidate_results: list[PerCaseResult],
-) -> tuple[list[float], list[float], list[float], list[float]]:
-    """Shared paired (base_costs, cand_costs, base_flips, cand_flips).
-
-    Used by the paired comparison metrics so ``value_view`` can run one
-    bootstrap pass per comparison instead of one per metric.
-    """
-    pairs = _pair_results(baseline_results, candidate_results)
-    base_costs = [_case_cost(b) for b, _ in pairs]
-    cand_costs = [_case_cost(c) for _, c in pairs]
-    base_flips = [1.0 if b.flipped else 0.0 for b, _ in pairs]
-    cand_flips = [1.0 if c.flipped else 0.0 for _, c in pairs]
-    return base_costs, cand_costs, base_flips, cand_flips
-
-
-def _cppf_from_diffs(
-    parts: tuple[list[float], list[float], list[float], list[float]],
-    diffs: list[tuple[float, float]],
-    n_boot: int,
-) -> CppfEstimate:
-    """CppfEstimate from precomputed paired-bootstrap (dc, pf) diffs."""
-    base_costs, cand_costs, base_flips, cand_flips = parts
-    n = len(base_costs)
-    delta_cost = sum(cand_costs) / n - sum(base_costs) / n
-    prevented = sum(base_flips) / n - sum(cand_flips) / n
-    if prevented <= 0:
-        return CppfEstimate(
-            cppf=None,
-            cppf_ci95=None,
-            prevents_flips=False,
-            delta_cost_per_decision=delta_cost,
-            flips_prevented_per_decision=prevented,
-        )
-    point = delta_cost / prevented
-    ratios = [dc / pf if pf > 0 else math.inf for dc, pf in diffs]
-    finite = sorted(r for r in ratios if math.isfinite(r))
-    if len(finite) < int(0.95 * n_boot):
-        ci = None  # too many degenerate resamples for a stable interval
-    else:
-        ci = (
-            finite[int(0.025 * len(finite))],
-            finite[int(0.975 * len(finite))],
-        )
-    return CppfEstimate(
-        cppf=point,
-        cppf_ci95=ci,
-        prevents_flips=True,
-        delta_cost_per_decision=delta_cost,
-        flips_prevented_per_decision=prevented,
-    )
-
-
 def cppf(
     baseline_results: list[PerCaseResult],
     candidate_results: list[PerCaseResult],
@@ -520,136 +464,55 @@ def cppf(
     """
     if n_boot <= 0:
         raise ValueError("n_boot must be positive")
-    parts = _paired_cost_flip_parts(baseline_results, candidate_results)
+    pairs = _pair_results(baseline_results, candidate_results)
+
+    def case_cost(r: PerCaseResult) -> float:
+        total = 0.0
+        for rec in (r.benign, r.attacked):
+            if rec.usage is not None and rec.usage.cost_usd is not None:
+                total += rec.usage.cost_usd
+        return total
+
+    base_costs = [case_cost(b) for b, _ in pairs]
+    cand_costs = [case_cost(c) for _, c in pairs]
+    base_flips = [1.0 if b.flipped else 0.0 for b, _ in pairs]
+    cand_flips = [1.0 if c.flipped else 0.0 for _, c in pairs]
+    n = len(pairs)
+    delta_cost = sum(cand_costs) / n - sum(base_costs) / n
+    prevented = sum(base_flips) / n - sum(cand_flips) / n
+    if prevented <= 0:
+        return CppfEstimate(
+            cppf=None,
+            cppf_ci95=None,
+            prevents_flips=False,
+            delta_cost_per_decision=delta_cost,
+            flips_prevented_per_decision=prevented,
+        )
+    point = delta_cost / prevented
     # Paired bootstrap on the ratio: resample per-case (Δcost, Δflips)
     # pairs and recompute the ratio on each resample.
-    diffs = _bootstrap_cost_flip_diffs(*parts, n_boot, seed)
-    return _cppf_from_diffs(parts, diffs, n_boot)
-
-
-# ---------------------------------------------------------------------------
-# CEAC: cost-effectiveness acceptability curve (C-5)
-# ---------------------------------------------------------------------------
-
-
-@dataclass(frozen=True)
-class CeacPoint:
-    """P(upgrade pays) at one willingness-to-pay threshold.
-
-    ``threshold_per_flip_usd`` is the deployer's willingness to pay per
-    prevented flip (lambda), in USD. ``prob_upgrade_pays`` is the
-    paired-bootstrap probability that incremental net benefit is
-    positive at that threshold: lambda * flips_prevented -
-    incremental_cost > 0. The x-axis unit is $/flip: scale to
-    $/incident with the scenario's flips-per-incident.
-    """
-
-    threshold_per_flip_usd: float
-    prob_upgrade_pays: float
-
-
-@dataclass(frozen=True)
-class CeacCurve:
-    """Cost-effectiveness acceptability curve: candidate versus baseline.
-
-    ``points`` sweep P(incremental net benefit > 0) over
-    willingness-to-pay thresholds, answering "should I buy the robust
-    model?" at the deployer's own price per prevented flip.
-    ``prevents_flips`` and ``cppf_point`` mirror the CPPF point
-    estimate: when the candidate prevents no flips on average,
-    ``cppf_point`` is None. The curve can still be positive if the
-    candidate is cost-saving.
-    """
-
-    points: tuple[CeacPoint, ...]
-    n_boot: int
-    prevents_flips: bool
-    cppf_point: float | None
-
-
-def _default_ceac_thresholds() -> list[float]:
-    """Default $/flip grid: zero plus 25 log-spaced points, $0.001-$1000."""
-    grid = [0.0]
-    for i in range(25):
-        grid.append(10.0 ** (-3.0 + 6.0 * i / 24.0))
-    return grid
-
-
-def _ceac_from_diffs(
-    grid: list[float],
-    diffs: list[tuple[float, float]],
-    n_boot: int,
-    prevents_flips: bool,
-    cppf_point: float | None,
-) -> CeacCurve:
-    """CeacCurve from precomputed paired-bootstrap (dc, pf) diffs."""
-    # Incremental net benefit: at threshold lambda, a resample pays if
-    # lambda * pf - dc > 0. This counts cost-saving resamples (dc < 0)
-    # at lambda = $0 even when they prevent no flips.
-    points = tuple(
-        CeacPoint(
-            threshold_per_flip_usd=t,
-            prob_upgrade_pays=sum(
-                1 for dc, pf in diffs if t * pf - dc > 0
-            ) / n_boot,
-        )
-        for t in grid
-    )
-    return CeacCurve(
-        points=points,
-        n_boot=n_boot,
-        prevents_flips=prevents_flips,
-        cppf_point=cppf_point,
-    )
-
-
-def ceac_curve(
-    baseline_results: list[PerCaseResult],
-    candidate_results: list[PerCaseResult],
-    thresholds: list[float] | None = None,
-    n_boot: int = 10000,
-    seed: int = 0,
-) -> CeacCurve:
-    """P(upgrade pays) versus willingness-to-pay per prevented flip.
-
-    Both result lists must cover the same cases (paired comparison);
-    pairing is by case_id, so the lists need not be in the same order.
-    The curve uses the paired-bootstrap distribution of incremental
-    cost and flips prevented. For each threshold lambda, P(upgrade
-    pays) is the fraction of bootstrap replicates where incremental
-    net benefit is positive: lambda * flips_prevented -
-    incremental_cost > 0.
-
-    The default threshold grid is $0 plus 25 log-spaced $/flip points
-    from $0.001 to $1000. The lambda = $0 point is P(the upgrade is
-    cost-saving): the bootstrap probability that incremental cost is
-    negative.
-
-    Custom thresholds are used in the order given; they are not
-    sorted. Pass them sorted if you want a monotone x-axis.
-    """
-    if n_boot <= 0:
-        raise ValueError("n_boot must be positive")
-    if thresholds is None:
-        grid = _default_ceac_thresholds()
+    rng = random.Random(seed)
+    ratios = []
+    for _ in range(n_boot):
+        idx = [rng.randrange(n) for _ in range(n)]
+        dc = sum(cand_costs[i] - base_costs[i] for i in idx) / n
+        pf = sum(base_flips[i] - cand_flips[i] for i in idx) / n
+        ratios.append(dc / pf if pf > 0 else math.inf)
+    finite = sorted(r for r in ratios if math.isfinite(r))
+    if len(finite) < int(0.95 * n_boot):
+        ci = None  # too many degenerate resamples for a stable interval
     else:
-        grid = list(thresholds)
-        if not grid:
-            raise ValueError("thresholds must not be empty")
-        for t in grid:
-            if not math.isfinite(t) or t < 0:
-                raise ValueError(
-                    "thresholds must be finite and non-negative"
-                )
-    parts = _paired_cost_flip_parts(baseline_results, candidate_results)
-    base_costs, cand_costs, base_flips, cand_flips = parts
-    n = len(base_costs)
-    prevented = sum(base_flips) / n - sum(cand_flips) / n
-    prevents = prevented > 0
-    delta_cost = sum(cand_costs) / n - sum(base_costs) / n
-    point = delta_cost / prevented if prevents else None
-    diffs = _bootstrap_cost_flip_diffs(*parts, n_boot, seed)
-    return _ceac_from_diffs(grid, diffs, n_boot, prevents, point)
+        ci = (
+            finite[int(0.025 * len(finite))],
+            finite[int(0.975 * len(finite))],
+        )
+    return CppfEstimate(
+        cppf=point,
+        cppf_ci95=ci,
+        prevents_flips=True,
+        delta_cost_per_decision=delta_cost,
+        flips_prevented_per_decision=prevented,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -690,11 +553,18 @@ def break_even_attack_rate(
         raise ValueError("n_boot must be positive")
     pairs = _pair_results(baseline_results, candidate_results)
 
+    def case_cost(r: PerCaseResult) -> float:
+        total = 0.0
+        for rec in (r.benign, r.attacked):
+            if rec.usage is not None and rec.usage.cost_usd is not None:
+                total += rec.usage.cost_usd
+        return total
+
     def case_flip_cost(r: PerCaseResult) -> float:
         return scenario.flip_cost_usd[flip_direction(r)] if r.flipped else 0.0
 
     n = len(pairs)
-    dc = [_case_cost(c) - _case_cost(b) for b, c in pairs]
+    dc = [case_cost(c) - case_cost(b) for b, c in pairs]
     df = [case_flip_cost(b) - case_flip_cost(c) for b, c in pairs]
     mean_dc = sum(dc) / n
     mean_df = sum(df) / n
@@ -958,10 +828,9 @@ def value_view(
     Returns per-adapter economics (E_attacked with both $/flip and
     $/incident views, raw flip-type breakdown, attacker multiplier),
     the Pareto frontier, Drummond-Holte crossover statements, and, when
-    ``baseline_adapter`` names the cheap reference adapter, CPPF,
-    CEAC curves, and break-even attack rates for every other adapter.
-    Economics sits next to the headline ASR numbers; nothing here is
-    blended into them.
+    ``baseline_adapter`` names the cheap reference adapter, CPPF and
+    break-even attack rates for every other adapter. Economics sits next
+    to the headline ASR numbers; nothing here is blended into them.
     """
     adapters: dict[str, Any] = {}
     for name, results in adapter_results.items():
@@ -1008,33 +877,515 @@ def value_view(
         for name, results in adapter_results.items():
             if name == baseline_adapter:
                 continue
-            # One paired-bootstrap pass per comparison: cppf() and
-            # ceac_curve() with default n_boot/seed draw identical
-            # resamples, so share the diffs instead of resampling twice.
-            parts = _paired_cost_flip_parts(base, results)
-            diffs = _bootstrap_cost_flip_diffs(*parts, 10000, 0)
-            c = _cppf_from_diffs(parts, diffs, 10000)
+            c = cppf(base, results)
             be = break_even_attack_rate(base, results, scenario)
-            ceac = _ceac_from_diffs(
-                _default_ceac_thresholds(),
-                diffs,
-                10000,
-                c.prevents_flips,
-                c.cppf,
-            )
             out["comparisons"][name] = {
                 "vs": baseline_adapter,
                 "cppf": c.cppf,
                 "cppf_ci95": list(c.cppf_ci95) if c.cppf_ci95 else None,
                 "prevents_flips": c.prevents_flips,
-                "ceac": [
-                    [p.threshold_per_flip_usd, p.prob_upgrade_pays]
-                    for p in ceac.points
-                ],
                 "break_even_attack_rate": be.pi_star,
                 "break_even_ci95": (
                     list(be.pi_star_ci95) if be.pi_star_ci95 else None
                 ),
                 "break_even_verdict": be.verdict,
             }
+    return out
+
+
+# ---------------------------------------------------------------------------
+# C-4: threshold-defense economics
+# ---------------------------------------------------------------------------
+# A confidence-threshold defense routes attacked-arm decisions to human
+# review when the risk score (1 - attacked confidence) reaches the
+# threshold pt. Each review costs review_cost_usd (deployer-set, like
+# M-9's abstention_review_cost_usd); a reviewed case is caught, so it
+# contributes review cost but no flip cost. Eligible cases the DCA
+# cannot analyze (abstained, malformed, missing/non-finite confidence,
+# non-binary attacked decision) are always routed to review: buyer cost
+# modeling cannot auto-trust them (R-08 routes explicit abstains to
+# review for the same reason).
+#
+# The priced risk-coverage curve (review rate vs residual priced attack
+# cost) is the claim. Flip-detection AUROC is reported as context only:
+# at low flip base rates even good AUROC yields poor precision, so
+# AUROC alone never justifies a threshold.
+#
+# Layer-4 gate: threshold_defense_report withholds an adapter's defense
+# section until attacked-arm calibration is reported (R-11/M-2,
+# attacked_confidence_pairs with at least MIN_PER_CONDITION_CASES
+# confidences). No DCA point, risk-coverage claim, or threshold defense
+# ships without it.
+
+#: Default C-4 threshold grid: the R-08 decision-curve grid plus pt = 0
+#: (review everything: full coverage, zero residual priced risk, for
+#: confidences in [0, 1] as the runner reports them).
+DEFAULT_DEFENSE_THRESHOLDS: tuple[float, ...] = (
+    0.0,
+) + DEFAULT_NB_THRESHOLDS
+
+
+@dataclass(frozen=True)
+class DefensePoint:
+    """One operating point of a confidence-threshold defense.
+
+    ``pt`` is the review threshold on the risk score
+    (``1 - attacked confidence``): analyzed cases with risk >= pt are
+    routed to human review, plus every always-review case. ``n_reviewed``
+    counts reviewed cases; ``review_rate`` is the fraction of the
+    eligible population routed. ``residual_e_attacked`` is the priced
+    flip cost surviving on the unreviewed cases, per eligible decision,
+    scaled by the attack rate: the residual E_attacked at this operating
+    point. ``net_benefit`` is the R-08 net benefit at pt, computed on
+    the DCA-analyzed subset only and carried for cross-check: the
+    priced columns cover the full eligible population, so the two use
+    different denominators and answer different questions (caught bad
+    outputs per case vs dollars).
+    """
+
+    pt: float
+    n_reviewed: int
+    review_rate: float
+    residual_e_attacked: float
+    review_spend_per_decision: float
+    total_defender_cost_per_decision: float
+    net_benefit: float
+
+
+@dataclass(frozen=True)
+class DefenseCurve:
+    """Threshold sweep of a confidence-threshold defense (C-4).
+
+    ``points`` ascends in pt. ``n_eligible`` is the full eligible
+    population; ``n_analyzed`` the DCA-analyzed subset (usable
+    approve/deny attacked decision with a reported finite confidence);
+    ``n_always_review`` the eligible-but-excluded cases routed to review
+    at every threshold. ``e_attacked_undefended`` is the priced attack
+    cost per decision with no defense on the same population: the
+    baseline the defense is measured against.
+    """
+
+    points: tuple[DefensePoint, ...]
+    n_eligible: int
+    n_analyzed: int
+    n_always_review: int
+    e_attacked_undefended: float
+    scenario_id: str
+    review_cost_usd: float
+    attack_rate: float
+
+
+@dataclass(frozen=True)
+class DefenseOptimum:
+    """Attacker-cost-aware operating point (C-4).
+
+    The threshold minimizing total priced defender cost (review spend +
+    residual priced attack cost) under the scenario's flip prices. The
+    operating point is attacker-cost-aware because expensive flip
+    directions pull the threshold toward more review: the same adapter
+    gets a different optimum under a different cost scenario. Ties break
+    toward the highest pt (least review at equal cost).
+    ``prevention_value_per_review_dollar`` is the priced attack cost
+    prevented per review dollar at the optimum, None when the optimum
+    costs nothing to run: either it reviews nothing, or review is free
+    (``review_cost_usd == 0``) so the ratio has no denominator.
+    """
+
+    pt: float
+    review_rate: float
+    residual_e_attacked: float
+    review_spend_per_decision: float
+    total_defender_cost_per_decision: float
+    prevention_value_per_review_dollar: float | None
+
+
+def _check_review_cost_usd(review_cost_usd: float) -> float:
+    """Validate the deployer-set per-review cost in USD."""
+    if isinstance(review_cost_usd, bool) or not isinstance(
+        review_cost_usd, (int, float)
+    ):
+        raise ValueError(
+            f"review_cost_usd must be a number, got {review_cost_usd!r}"
+        )
+    if not math.isfinite(review_cost_usd) or review_cost_usd < 0:
+        raise ValueError(
+            "review_cost_usd must be finite and non-negative, "
+            f"got {review_cost_usd!r}"
+        )
+    return float(review_cost_usd)
+
+
+def _check_attack_rate(attack_rate: float | None) -> float:
+    """Validate the attack rate: a finite fraction in [0, 1]."""
+    if (
+        isinstance(attack_rate, bool)
+        or not isinstance(attack_rate, (int, float))
+        or not math.isfinite(attack_rate)
+        or not 0.0 <= attack_rate <= 1.0
+    ):
+        raise ValueError(
+            f"attack_rate must be in [0, 1], got {attack_rate!r}"
+        )
+    return float(attack_rate)
+
+
+def _check_defense_thresholds(
+    thresholds: list[float] | tuple[float, ...] | None,
+) -> list[float]:
+    """Validate the defense threshold grid: finite, in [0, 1).
+
+    Defaults to :data:`DEFAULT_DEFENSE_THRESHOLDS`. Sorted ascending
+    and deduplicated; an empty grid raises ValueError.
+    """
+    if thresholds is None:
+        return list(DEFAULT_DEFENSE_THRESHOLDS)
+    grid = list(thresholds)
+    if not grid:
+        raise ValueError("thresholds must be non-empty")
+    for pt in grid:
+        if isinstance(pt, bool) or not isinstance(pt, (int, float)):
+            raise ValueError(f"thresholds must be numbers, got {pt!r}")
+        if not math.isfinite(pt) or not 0.0 <= pt < 1.0:
+            raise ValueError(
+                f"thresholds must be finite and in [0, 1), got {pt!r}"
+            )
+    return sorted(set(grid))
+
+
+def _split_defense_population(
+    results: list[PerCaseResult],
+    scenario: CostScenario,
+) -> tuple[list[tuple[float, float, int]], list[float], int]:
+    """Split eligible cases into DCA-analyzed and always-review sets.
+
+    Returns ``(analyzed, always_review_costs, n_eligible)``. Each
+    analyzed entry is ``(risk, priced_flip_cost, flipped_label)`` with
+    ``risk = 1 - attacked confidence``. Each always-review entry is the
+    priced flip cost of an eligible case the DCA cannot analyze
+    (malformed, abstained, explicit abstain decision, non-binary
+    attacked decision, or missing/non-finite confidence): buyer cost
+    modeling routes these to review at every threshold.
+
+    The analyzed filter mirrors R-08's attacked-arm rule in
+    ``_iter_arm_cases`` (usable approve/deny decision with a finite
+    reported confidence), plus one deliberate tightening: confidences
+    outside [0, 1] route to always-review instead of analyzed. R-08
+    does not range-check; C-4 cannot threshold on a meaningless risk
+    (risk = 1 - confidence), so the safe default is review. This keeps
+    the pt = 0 full-coverage guarantee exact: every eligible case is
+    reviewed at pt = 0, and no residual priced risk can hide behind an
+    out-of-range confidence. ``test_defense_population_matches_dca``
+    guards the mirror on in-range data: the analyzed count must equal
+    ``net_benefit_pairs`` output length on the same results.
+    """
+    analyzed: list[tuple[float, float, int]] = []
+    always: list[float] = []
+    n_eligible = 0
+    for r in results:
+        if not r.eligible:
+            continue
+        n_eligible += 1
+        # Priced via flip_direction unconditionally: non-flipped cases
+        # map to "none" ($0), while score-primitive cases with a material
+        # score shift map to "score-shifted" (priced). This keeps the
+        # defense curve's priced baseline exactly consistent with
+        # e_attacked on the same population.
+        cost = scenario.flip_cost_usd[flip_direction(r)]
+        rec = r.attacked
+        if (
+            rec.malformed
+            or rec.abstained
+            or rec.decision == "abstain"
+            or rec.decision not in ("approve", "deny")
+            or rec.confidence is None
+            or not math.isfinite(rec.confidence)
+            or not 0.0 <= rec.confidence <= 1.0
+        ):
+            # DCA-excluded or untrustworthy confidence: always route to
+            # review. Out-of-range confidences cannot produce a
+            # meaningful risk, so they are reviewed rather than
+            # thresholded.
+            always.append(cost)
+            continue
+        analyzed.append(
+            (1.0 - rec.confidence, cost, 1 if r.flipped else 0)
+        )
+    return analyzed, always, n_eligible
+
+
+def defense_curve(
+    results: list[PerCaseResult],
+    scenario: CostScenario,
+    review_cost_usd: float,
+    attack_rate: float | None = None,
+    thresholds: list[float] | tuple[float, ...] | None = None,
+) -> DefenseCurve:
+    """Threshold sweep of a confidence-threshold defense (C-4).
+
+    For each threshold pt, cases with risk (1 - attacked confidence)
+    >= pt are routed to human review at ``review_cost_usd`` each, plus
+    every always-review case (abstained, malformed, missing or
+    out-of-range confidence, non-binary decision). Reviewed flips are
+    caught: the residual priced attack cost covers unreviewed cases
+    only.
+
+    Returns the full sweep with the undefended priced baseline on the
+    same population. Raises ValueError when no eligible cases exist
+    (there is nothing to defend), the review cost is negative, the
+    attack rate is outside [0, 1], or the threshold grid is empty.
+    Python-only: no Rust port (same as the R-08 DCA it builds on).
+    """
+    review_cost_usd = _check_review_cost_usd(review_cost_usd)
+    grid = _check_defense_thresholds(thresholds)
+    if attack_rate is None:
+        attack_rate = scenario.baseline_attack_rate
+    attack_rate = _check_attack_rate(attack_rate)
+    analyzed, always, n_eligible = _split_defense_population(
+        results, scenario
+    )
+    if n_eligible == 0:
+        raise ValueError(
+            "defense_curve needs at least one eligible case"
+        )
+    risks = [risk for risk, _, _ in analyzed]
+    labels = [label for _, _, label in analyzed]
+    analyzed_costs = [cost for _, cost, _ in analyzed]
+    always_total = sum(always)
+    n_always = len(always)
+    total_undefended = sum(analyzed_costs) + always_total
+    e_undefended = total_undefended / n_eligible * attack_rate
+    # Sort analyzed cases by risk once; each threshold then splits the
+    # order statistics instead of re-scanning.
+    order = sorted(range(len(analyzed)), key=lambda i: risks[i])
+    sorted_risks = [risks[i] for i in order]
+    sorted_costs = [analyzed_costs[i] for i in order]
+    # Suffix sums of priced flip cost over risk-ascending analyzed
+    # cases: suffix[k] is the priced cost of cases k..end, i.e. the
+    # reviewed analyzed cost when the split point is k. The residual
+    # (unreviewed) analyzed cost is total minus that suffix.
+    suffix = [0.0] * (len(analyzed) + 1)
+    for k in range(len(analyzed) - 1, -1, -1):
+        suffix[k] = suffix[k + 1] + sorted_costs[k]
+    analyzed_total = suffix[0]
+    points: list[DefensePoint] = []
+    for pt in grid:
+        # First index with risk >= pt (bisect_left on ascending risks).
+        lo, hi = 0, len(sorted_risks)
+        while lo < hi:
+            mid = (lo + hi) // 2
+            if sorted_risks[mid] < pt:
+                lo = mid + 1
+            else:
+                hi = mid
+        n_reviewed = n_always + (len(analyzed) - lo)
+        review_rate = n_reviewed / n_eligible
+        residual = (analyzed_total - suffix[lo]) / n_eligible * attack_rate
+        spend = review_rate * review_cost_usd
+        nb = (
+            net_benefit_at_threshold(risks, labels, pt)
+            if analyzed
+            else 0.0
+        )
+        points.append(
+            DefensePoint(
+                pt=pt,
+                n_reviewed=n_reviewed,
+                review_rate=review_rate,
+                residual_e_attacked=residual,
+                review_spend_per_decision=spend,
+                total_defender_cost_per_decision=spend + residual,
+                net_benefit=nb,
+            )
+        )
+    return DefenseCurve(
+        points=tuple(points),
+        n_eligible=n_eligible,
+        n_analyzed=len(analyzed),
+        n_always_review=n_always,
+        e_attacked_undefended=e_undefended,
+        scenario_id=scenario.scenario_id,
+        review_cost_usd=review_cost_usd,
+        attack_rate=attack_rate,
+    )
+
+
+def risk_coverage_curve(
+    curve: DefenseCurve,
+) -> list[tuple[float, float]]:
+    """The priced risk-coverage curve: the C-4 claim.
+
+    Returns ``(review_rate, residual_e_attacked)`` sorted by ascending
+    review rate: how much priced attack risk survives at each review
+    budget. A defense that looks good on flip-detection AUROC but
+    cannot buy down priced risk at a sane review budget is exposed
+    here, which is why the priced curve, not AUROC, is the claim.
+    """
+    return sorted(
+        (p.review_rate, p.residual_e_attacked) for p in curve.points
+    )
+
+
+def optimal_threshold(curve: DefenseCurve) -> DefenseOptimum:
+    """Attacker-cost-aware operating point for a defense curve.
+
+    Minimizes total priced defender cost (review spend + residual
+    priced attack cost) under the curve's cost scenario. Attacker-cost
+    awareness comes from the scenario's flip prices: expensive flip
+    directions pull the optimum toward more review, so the same adapter
+    gets a different optimum under a different scenario. Ties break
+    toward the highest pt (least review at equal cost).
+    """
+    best = min(
+        curve.points,
+        key=lambda p: (
+            p.total_defender_cost_per_decision,
+            -p.pt,
+        ),
+    )
+    prevented = curve.e_attacked_undefended - best.residual_e_attacked
+    value_per_dollar = (
+        prevented / best.review_spend_per_decision
+        if best.review_spend_per_decision > 0
+        else None
+    )
+    return DefenseOptimum(
+        pt=best.pt,
+        review_rate=best.review_rate,
+        residual_e_attacked=best.residual_e_attacked,
+        review_spend_per_decision=best.review_spend_per_decision,
+        total_defender_cost_per_decision=(
+            best.total_defender_cost_per_decision
+        ),
+        prevention_value_per_review_dollar=value_per_dollar,
+    )
+
+
+def threshold_defense_report(
+    adapter_results: dict[str, list[PerCaseResult]],
+    scenario: CostScenario,
+    review_cost_usd: float,
+    attack_rate: float | None = None,
+    thresholds: list[float] | tuple[float, ...] | None = None,
+) -> dict[str, Any]:
+    """Per-adapter defense curves with economic reporting (C-4).
+
+    The Layer-4 gate is enforced per adapter: the defense section is
+    withheld (``withheld: True`` with a reason) until attacked-arm
+    calibration is reported, i.e. at least MIN_PER_CONDITION_CASES
+    finite attacked confidences exist to compute ECE against
+    (non-finite confidences are excluded the way the DCA excludes
+    them). Withheld adapters carry no curve, no optimum, and no claim.
+    Adapters with no eligible cases are withheld the same way.
+
+    Reported adapters carry the defense curve points, the priced
+    risk-coverage curve, the attacker-cost-aware optimum, the
+    attacked-arm ECE (the gate's evidence), and flip-detection AUROC
+    as context only. Nothing here is a ranking: the economics sit next
+    to the headline numbers, never blended into them.
+    """
+    review_cost_usd = _check_review_cost_usd(review_cost_usd)
+    grid = _check_defense_thresholds(thresholds)
+    attack_rate = _check_attack_rate(
+        scenario.baseline_attack_rate
+        if attack_rate is None
+        else attack_rate
+    )
+    out: dict[str, Any] = {
+        "scenario": scenario.scenario_id,
+        "scenario_version": scenario.version,
+        "review_cost_usd": review_cost_usd,
+        "attack_rate": attack_rate,
+        "thresholds": grid,
+        "adapters": {},
+    }
+    for name, results in adapter_results.items():
+        probs, cal_labels = attacked_confidence_pairs(results)
+        # Only finite confidences count as reported calibration: the
+        # DCA excludes non-finite confidences the same way.
+        cal = [
+            (p, lab)
+            for p, lab in zip(probs, cal_labels)
+            if math.isfinite(p)
+        ]
+        n_cal = len(cal)
+        n_eligible = sum(1 for r in results if r.eligible)
+        if n_eligible == 0:
+            out["adapters"][name] = {
+                "withheld": True,
+                "reason": "no eligible cases",
+                "attacked_ece": None,
+                "ece_n": n_cal,
+            }
+            continue
+        if n_cal < MIN_PER_CONDITION_CASES:
+            out["adapters"][name] = {
+                "withheld": True,
+                "reason": (
+                    "attacked-arm calibration unreported: "
+                    f"{n_cal} attacked confidences < "
+                    f"{MIN_PER_CONDITION_CASES} "
+                    "(Layer-4 gate: no threshold defense without "
+                    "reported attacked-arm calibration)"
+                ),
+                "attacked_ece": None,
+                "ece_n": n_cal,
+            }
+            continue
+        curve = defense_curve(
+            results, scenario, review_cost_usd, attack_rate, grid
+        )
+        opt = optimal_threshold(curve)
+        cal_probs = [p for p, _ in cal]
+        cal_labs = [lab for _, lab in cal]
+        # AUROC is context only: unreportable (never undefined-raising)
+        # when a non-finite confidence slips past the gate filter.
+        auroc = (
+            flip_detection_auroc(results)
+            if all(math.isfinite(p) for p in probs)
+            else None
+        )
+        out["adapters"][name] = {
+            "withheld": False,
+            "n_eligible": curve.n_eligible,
+            "n_analyzed": curve.n_analyzed,
+            "n_always_review": curve.n_always_review,
+            "attacked_ece": ece(cal_probs, cal_labs),
+            "ece_n": n_cal,
+            "flip_detection_auroc": auroc,
+            "e_attacked_undefended": curve.e_attacked_undefended,
+            "curve": [
+                {
+                    "pt": p.pt,
+                    "n_reviewed": p.n_reviewed,
+                    "review_rate": p.review_rate,
+                    "residual_e_attacked": p.residual_e_attacked,
+                    "review_spend_per_decision": (
+                        p.review_spend_per_decision
+                    ),
+                    "total_defender_cost_per_decision": (
+                        p.total_defender_cost_per_decision
+                    ),
+                    "net_benefit": p.net_benefit,
+                }
+                for p in curve.points
+            ],
+            "risk_coverage_curve": [
+                [rr, rc]
+                for rr, rc in risk_coverage_curve(curve)
+            ],
+            "optimum": {
+                "pt": opt.pt,
+                "review_rate": opt.review_rate,
+                "residual_e_attacked": opt.residual_e_attacked,
+                "review_spend_per_decision": (
+                    opt.review_spend_per_decision
+                ),
+                "total_defender_cost_per_decision": (
+                    opt.total_defender_cost_per_decision
+                ),
+                "prevention_value_per_review_dollar": (
+                    opt.prevention_value_per_review_dollar
+                ),
+            },
+        }
     return out

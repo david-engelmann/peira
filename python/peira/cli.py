@@ -10,7 +10,6 @@ from __future__ import annotations
 import argparse
 import html
 import json
-import math
 import os
 import re
 import sys
@@ -2034,131 +2033,6 @@ def cmd_lottery(args: argparse.Namespace) -> int:
     return EXIT_OK
 
 
-def _threshold_family_text(t: dict) -> str:
-    """Human-readable threshold-by-family interaction table for stdout."""
-    c = t["costs"]
-    lines = [
-        "Peira threshold-by-family interaction (C-7)",
-        "===========================================",
-        f"Arm: {t['arm']}; costs: false_approve={c['cost_false_approve']}, "
-        f"false_deny={c['cost_false_deny']}, review={c['cost_review']}, "
-        f"false_unknown={c['cost_false_unknown']}",
-        "",
-    ]
-    g = t["global"]
-    if g["optimal_threshold"] is None:
-        lines.append("Global optimum: withheld (no priced cases)")
-    else:
-        lines.append(
-            f"Global optimum: pt={g['optimal_threshold']:.2f}, "
-            f"cost/case={g['cost_per_case']:.4f} "
-            f"(n_priced={g['priced']})"
-        )
-    lines.append("")
-    lines.append(
-        "Per-family interaction (gain = saving per case from a "
-        "family-specific threshold over the global one):"
-    )
-    for fid, row in t["families"].items():
-        if row["optimal_threshold"] is None:
-            lines.append(
-                f"  {row['display_name']} ({fid}): withheld "
-                f"(n_priced=0)"
-            )
-            continue
-        lines.append(
-            f"  {row['display_name']} ({fid}): "
-            f"family pt={row['optimal_threshold']:.2f} "
-            f"cost={row['cost_at_family_optimal']:.4f}, "
-            f"at global pt cost={row['cost_at_global_threshold']:.4f}, "
-            f"gain/case={row['gain_per_case']:.4f} "
-            f"(n_priced={row['priced']})"
-        )
-    lines.append("")
-    just = t["families_justifying_specific"]
-    if just:
-        names = [t["families"][f]["display_name"] for f in just]
-        lines.append(
-            "Families justifying a family-specific threshold: "
-            + ", ".join(names)
-        )
-    else:
-        lines.append(
-            "No family justifies a family-specific threshold: the "
-            "global optimum is optimal for every family."
-        )
-    return "\n".join(lines) + "\n"
-
-
-def cmd_threshold_by_family(args: argparse.Namespace) -> int:
-    """Optimal review threshold per family under buyer-cost economics."""
-    from peira.metrics import PerCaseResult
-    from peira.threshold_family import family_threshold_table
-
-    run_path = Path(args.run)
-    if not run_path.exists():
-        print(f"error: {run_path} not found", file=sys.stderr)
-        return EXIT_USER_ERROR
-    try:
-        artifact = RunArtifact.from_json(run_path.read_text(encoding="utf-8"))
-    except (OSError, ValueError) as e:
-        print(f"error: {run_path} is not a valid run artifact ({e})",
-              file=sys.stderr)
-        return EXIT_USER_ERROR
-    try:
-        results = [PerCaseResult.from_dict(d) for d in artifact.results]
-    except (KeyError, ValueError, TypeError) as e:
-        print(f"error: {run_path}: cannot decode per-case results ({e})",
-              file=sys.stderr)
-        return EXIT_USER_ERROR
-
-    known_families = {r.family for r in results}
-    if args.families is not None:
-        families = [f.strip() for f in args.families.split(",") if f.strip()]
-        families = list(dict.fromkeys(families))
-        if not families:
-            print("error: --families matched no families (empty filter)",
-                  file=sys.stderr)
-            return EXIT_USER_ERROR
-        unknown = [f for f in families if f not in known_families]
-        if unknown:
-            print(f"error: unknown families: {', '.join(unknown)} "
-                  "(not present in the run)", file=sys.stderr)
-            return EXIT_USER_ERROR
-    else:
-        families = sorted(known_families)
-    if not families:
-        print("error: no families found in the run", file=sys.stderr)
-        return EXIT_USER_ERROR
-
-    try:
-        table = family_threshold_table(
-            results,
-            cost_false_approve=args.cost_false_approve,
-            cost_false_deny=args.cost_false_deny,
-            cost_review=args.cost_review,
-            cost_false_unknown=args.cost_false_unknown,
-            thresholds=None,
-            arm=args.arm,
-            families=families,
-        )
-    except ValueError as e:
-        print(f"error: {e}", file=sys.stderr)
-        return EXIT_USER_ERROR
-
-    sys.stdout.write(_threshold_family_text(table))
-    if args.json is not None:
-        out = Path(args.json)
-        try:
-            out.write_text(json.dumps(table, indent=2), encoding="utf-8")
-        except OSError as e:
-            print(f"error: cannot write threshold-family JSON to {out} ({e})",
-                  file=sys.stderr)
-            return EXIT_USER_ERROR
-        print(f"threshold-by-family: {out}")
-    return EXIT_OK
-
-
 def cmd_value(args: argparse.Namespace) -> int:
     """M-3 economic value view over 1+ run artifacts.
 
@@ -2229,26 +2103,6 @@ def cmd_value(args: argparse.Namespace) -> int:
     return EXIT_OK
 
 
-def _ceac_summary(ceac: list) -> str:
-    """Compact CEAC summary: P(pays) at $0, $0.01, $0.10, $1.00 per flip.
-
-    Anchors are matched by closeness (not exact float equality) so a
-    grid that carries the anchor values still summarizes. When the
-    grid has none of the anchors, the fallback says so explicitly
-    rather than reading as "curve unavailable".
-    """
-    anchors = [(0.0, "$0"), (0.01, "$0.01"), (0.10, "$0.10"), (1.00, "$1.00")]
-    parts = []
-    for anchor, label in anchors:
-        for threshold, prob in ceac:
-            if math.isclose(threshold, anchor, rel_tol=1e-9, abs_tol=1e-12):
-                parts.append(f"{prob:.0%} at {label}/flip")
-                break
-    if not parts:
-        return "n/a (grid has no $0/$0.01/$0.10/$1.00 anchors)"
-    return ", ".join(parts)
-
-
 def _value_text(view: dict[str, Any]) -> str:
     lines = [
         f"value view (scenario: {view['scenario']} v{view['scenario_version']}, "
@@ -2280,11 +2134,6 @@ def _value_text(view: dict[str, Any]) -> str:
     if view["cost_curve_crossovers"]:
         lines += ["", "Cost-curve crossovers:"]
         lines += [f"  - {s}" for s in view["cost_curve_crossovers"]]
-    lines += [
-        "",
-        "CEAC x-axis is $/flip (scale to $/incident with your "
-        "flips-per-incident).",
-    ]
     for name, c in sorted(view["comparisons"].items()):
         lines += [f"", f"{name} vs {c['vs']}:"]
         if c["prevents_flips"]:
@@ -2293,7 +2142,6 @@ def _value_text(view: dict[str, Any]) -> str:
             lines.append(f"  CPPF: ${c['cppf']:.4f}/prevented flip{ci_s}")
         else:
             lines.append("  CPPF: n/a (does not prevent flips)")
-        lines.append(f"  CEAC P(pays): {_ceac_summary(c['ceac'])}")
         if c["break_even_verdict"] == "at":
             ci = c["break_even_ci95"]
             ci_s = f" [{ci[0]:.3f}, {ci[1]:.3f}]" if ci else ""
@@ -2333,16 +2181,13 @@ def _value_page(view: dict[str, Any]) -> str:
     comp_rows = "\n".join(
         f"<tr><td>{e(name)}</td><td>{e(c['vs'])}</td>"
         f"<td>{_val(c['cppf'])}</td>"
-        f"<td>{c['break_even_attack_rate'] if c['break_even_attack_rate'] is not None else c['break_even_verdict']}</td>"
-        f"<td>{e(_ceac_summary(c['ceac']))}</td></tr>"
+        f"<td>{c['break_even_attack_rate'] if c['break_even_attack_rate'] is not None else c['break_even_verdict']}</td></tr>"
         for name, c in sorted(view["comparisons"].items())
     )
     comp_section = (
         f"<h3>Upgrade comparisons</h3><table border=\"1\">"
         f"<tr><th>candidate</th><th>baseline</th><th>CPPF ($/prevented flip)</th>"
-        f"<th>break-even attack rate</th><th>CEAC P(pays) ($/flip)</th></tr>{comp_rows}</table>"
-        f"<p>CEAC x-axis is $/flip: scale to $/incident with your "
-        f"flips-per-incident.</p>"
+        f"<th>break-even attack rate</th></tr>{comp_rows}</table>"
         if comp_rows else ""
     )
     return f"""<!DOCTYPE html>
@@ -2368,6 +2213,155 @@ ASR numbers. Nothing here is blended into them.</p>
 <ul>{crossovers}</ul>
 {comp_section}
 </body></html>"""
+
+
+def cmd_defense(args: argparse.Namespace) -> int:
+    """C-4 threshold-defense economics over 1+ run artifacts.
+
+    Prints per-adapter defense optima (the attacker-cost-aware
+    operating point: threshold minimizing review spend + residual
+    priced attack cost) and a compact priced risk-coverage table.
+    ``--out`` writes the full per-threshold report as JSON.
+    """
+    from peira.economics import (
+        load_cost_scenario,
+        threshold_defense_report,
+    )
+    from peira.metrics import PerCaseResult
+
+    try:
+        scenario = load_cost_scenario(args.scenario)
+    except ValueError as e:
+        print(f"error: {e}", file=sys.stderr)
+        return EXIT_USER_ERROR
+    adapter_results: dict[str, list[PerCaseResult]] = {}
+    for path_str in args.runs:
+        path = Path(path_str)
+        if not path.exists():
+            print(f"error: {path} not found", file=sys.stderr)
+            return EXIT_USER_ERROR
+        try:
+            artifact = RunArtifact.from_json(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError) as e:
+            print(f"error: {path} is not a valid run artifact ({e})",
+                  file=sys.stderr)
+            return EXIT_USER_ERROR
+        if not artifact.verify():
+            print(f"warning: {path_str}: analysis lock mismatch: artifact was "
+                  f"modified after sealing.", file=sys.stderr)
+        name = artifact.adapter_name
+        if name in adapter_results:
+            print(f"error: duplicate adapter {name!r} ({path_str})",
+                  file=sys.stderr)
+            return EXIT_USER_ERROR
+        try:
+            adapter_results[name] = [
+                PerCaseResult.from_dict(r) for r in artifact.results
+            ]
+        except (KeyError, ValueError, TypeError) as e:
+            print(f"error: {path_str}: cannot decode per-case results "
+                  f"({e})", file=sys.stderr)
+            return EXIT_USER_ERROR
+    try:
+        report = threshold_defense_report(
+            adapter_results, scenario,
+            review_cost_usd=args.review_cost_usd,
+            attack_rate=args.attack_rate,
+        )
+    except ValueError as e:
+        print(f"error: {e}", file=sys.stderr)
+        return EXIT_USER_ERROR
+    sys.stdout.write(_defense_text(report))
+    if args.out is not None:
+        out = Path(args.out)
+        try:
+            out.write_text(json.dumps(report, indent=2), encoding="utf-8")
+        except OSError as e:
+            print(f"error: cannot write defense report to {out} ({e})",
+                  file=sys.stderr)
+            return EXIT_USER_ERROR
+        print(f"defense report: {out}")
+    return EXIT_OK
+
+
+def _defense_coverage_rows(
+    risk_coverage: list[list[float]],
+) -> list[tuple[float, float, float]]:
+    """Compact risk-coverage table: nearest curve point per decile.
+
+    For each target review rate 0.0..1.0, the curve point with the
+    closest review rate (ties toward less residual). Deduplicated so
+    unreachable targets do not repeat rows.
+    """
+    rows: list[tuple[float, float, float]] = []
+    seen: set[float] = set()
+    for i in range(11):
+        target = i / 10
+        rr, res = min(
+            risk_coverage, key=lambda p: (abs(p[0] - target), p[1]))
+        if rr in seen:
+            continue
+        seen.add(rr)
+        rows.append((target, rr, res))
+    return rows
+
+
+def _defense_text(report: dict[str, Any]) -> str:
+    lines = [
+        f"defense view (scenario: {report['scenario']} "
+        f"v{report['scenario_version']}, "
+        f"review cost: ${report['review_cost_usd']:.4f}/case, "
+        f"attack rate: {report['attack_rate']})",
+        "",
+    ]
+    for name, a in sorted(report["adapters"].items()):
+        if a["withheld"]:
+            lines.append(f"{name}: WITHHELD: {a['reason']}")
+            continue
+        lines.append(
+            f"{name}: n_eligible={a['n_eligible']} "
+            f"n_analyzed={a['n_analyzed']} "
+            f"n_always_review={a['n_always_review']}"
+        )
+        lines.append(
+            f"  attacked-arm ECE: {a['attacked_ece']:.4f} "
+            f"(n={a['ece_n']})"
+        )
+        auroc = a["flip_detection_auroc"]
+        lines.append(
+            "  flip-detection AUROC (context only): "
+            + (f"{auroc:.3f}" if auroc is not None else "n/a")
+        )
+        lines.append(
+            f"  undefended E_attacked: "
+            f"${a['e_attacked_undefended']:.4f}/decision"
+        )
+        o = a["optimum"]
+        lines.append(
+            f"  optimum: pt={o['pt']:.2f} "
+            f"review_rate={o['review_rate']:.3f} "
+            f"residual=${o['residual_e_attacked']:.4f}/decision "
+            f"review_spend=${o['review_spend_per_decision']:.4f}/decision "
+            f"total=${o['total_defender_cost_per_decision']:.4f}/decision"
+        )
+        pvd = o["prevention_value_per_review_dollar"]
+        pvd_text = (
+            f"${pvd:.2f} of attack cost prevented per $1 of review"
+            if pvd is not None
+            else (
+                "n/a (review is free)"
+                if o["review_rate"] > 0
+                else "n/a (optimum reviews nothing)"
+            )
+        )
+        lines.append(f"  prevention value: {pvd_text}")
+        lines.append("  priced risk-coverage "
+                     "(target review rate -> residual $/decision):")
+        for target, rr, res in _defense_coverage_rows(
+            a["risk_coverage_curve"]
+        ):
+            lines.append(f"    {target:.1f} -> {rr:.3f}: ${res:.4f}")
+    return "\n".join(lines) + "\n"
 
 
 def cmd_runs_list(args: argparse.Namespace) -> int:
@@ -3346,31 +3340,23 @@ def build_parser() -> argparse.ArgumentParser:
                     help="write an HTML value-view report to this path")
     vv.set_defaults(func=cmd_value)
 
-    tf = sub.add_parser(
-        "threshold-by-family",
-        help="C-7: optimal review threshold per family under buyer-cost "
-        "economics (family-specific vs global threshold interaction)",
-    )
-    tf.add_argument("run", help="run artifact path")
-    tf.add_argument("--cost-false-approve", type=float, required=True,
-                    help="USD cost of trusting a wrongly-approved decision")
-    tf.add_argument("--cost-false-deny", type=float, required=True,
-                    help="USD cost of trusting a wrongly-denied decision")
-    tf.add_argument("--cost-review", type=float, required=True,
-                    help="USD cost of one human review")
-    tf.add_argument("--cost-false-unknown", type=float, default=None,
-                    help="USD cost of trusting a wrongly-decided case whose "
-                    "direction is unavailable (default: mean of the two "
-                    "directional costs)")
-    tf.add_argument("--families", default=None,
-                    help="comma-separated family manifest (default: all "
-                    "families in the run)")
-    tf.add_argument("--arm", default="attacked",
-                    choices=("attacked", "benign"),
-                    help="which arm to price (default: attacked)")
-    tf.add_argument("--json", default=None,
-                    help="write the full interaction table JSON to this path")
-    tf.set_defaults(func=cmd_threshold_by_family)
+    # C-4 threshold-defense economics.
+    df = sub.add_parser("defense",
+                        help="C-4 threshold-defense economics over 1+ run "
+                        "artifacts (defense curves, priced risk-coverage, "
+                        "attacker-cost-aware optimum)")
+    df.add_argument("runs", nargs="+", help="run artifact paths (>= 1)")
+    df.add_argument("--scenario", default="standard",
+                    help="cost scenario id (default: standard)")
+    df.add_argument("--review-cost-usd", type=float, default=0.0,
+                    help="human review cost per case in USD "
+                    "(default: 0.0)")
+    df.add_argument("--attack-rate", type=float, default=None,
+                    help="fraction of decisions under attack "
+                    "(default: scenario baseline)")
+    df.add_argument("--out", default=None,
+                    help="write the full defense report as JSON to this path")
+    df.set_defaults(func=cmd_defense)
 
     # Run registry (Layer 5a): index and query run artifacts.
     rr = sub.add_parser("runs", help="run registry: list and verify artifacts")
