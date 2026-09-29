@@ -31,7 +31,7 @@ jobs:
         id: fallback
         # Skip the API check for fork PRs; they stay on GitHub-hosted.
         if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
-        uses: mikehardy/runner-fallback-action@v1
+        uses: mikehardy/runner-fallback-action@dc7732f9e532c451b2527b288ba8d58fd4b0a4ca # v1
         with:
           primary-runner: "self-hosted,runner-grid"
           fallback-runner: "ubuntu-latest"
