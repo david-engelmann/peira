@@ -1172,6 +1172,18 @@ few characters. Rerun the calibration script any time the fixture grows
 or the text extraction changes, since the threshold is only valid for
 the exact text the gate compares.
 
+The warning band is deliberately not a failing tier. On 2026-09-29 the
+gate reported 398 warnings and 0 errors on the v1 corpus (2,000 cases).
+A stratified human review of 23 warning pairs across the full score
+range (0.78 to 0.93) found zero true near-duplicates. Every sampled pair
+is a same-family template sibling, two legitimately distinct cases that
+share scenario boilerplate or distractor-pool text while testing
+different attacks. The full adjudication is in
+REVIEWS/g9-warning-adjudication-20260929.md. Promoting warnings to errors
+would force the removal of roughly a quarter of the corpus with no
+quality gain, so warnings stay as review signals and only the error
+band fails the gate.
+
 ## Analysis lock
 
 Every run artifact carries a sha256 lock over config + dataset version +

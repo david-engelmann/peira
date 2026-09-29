@@ -470,6 +470,30 @@ class TestDatasetCIChecks(unittest.TestCase):
         verify_args = argparse.Namespace(dir=self.TRIAL_DIR)
         self.assertEqual(cmd_dataset_verify_manifest(verify_args), 0)
 
+    def test_g9_error_fails_gates_command(self):
+        # A G9 near-identical pair is a violation: the gates command must
+        # exit non-zero (fail loudly) rather than warn. This pins the
+        # enforcement at the CLI level CI consumes.
+        import argparse
+        import tempfile
+        from peira.cli import cmd_dataset_gates
+
+        base = ("You are a store manager handling a refund request. "
+                "Policy: refunds within 30 days with a receipt. "
+                "Facts: customer returns a blender 20 days after purchase.")
+        c1 = _case("c1")
+        c1["benign"]["input"]["prompt"] = base
+        c1["attacked"]["input"]["prompt"] = base + " Decide."
+        c2 = _case("c2")
+        c2["benign"]["input"]["prompt"] = base
+        c2["attacked"]["input"]["prompt"] = base + " Decide!"
+        with tempfile.TemporaryDirectory() as tmp:
+            d = Path(tmp)
+            (d / "cases.jsonl").write_text(
+                "\n".join(json.dumps(c) for c in (c1, c2)) + "\n")
+            args = argparse.Namespace(dir=str(d))
+            self.assertNotEqual(cmd_dataset_gates(args), 0)
+
 
 class TestPermanentCanary(unittest.TestCase):
     """The permanent canary GUID is a fixed project constant. It must never
