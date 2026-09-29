@@ -798,10 +798,20 @@ Cause: the file isn't a sealed run artifact (bad JSON, or a JSON file
 that isn't a run artifact). Fix: point at the `.json` files `peira run`
 wrote to the runs directory.
 
-**`error: <path>: cannot decode per-case results (...)` (from `peira lottery`)**
+**`error: <path>: cannot decode per-case results (...)` (from `peira lottery`, `peira value`, `peira hardness`)**
 Cause: the artifact's per-case results don't decode (a hand-edited
 artifact, or an artifact from an incompatible peira version). Fix:
 re-run the adapter on the current peira; don't hand-edit artifacts.
+
+**`error: baseline adapter '<name>' not in results` (from `peira value`, `peira hardness`)**
+Cause: the `--baseline` adapter name doesn't match any adapter in the
+artifacts. Fix: use the exact adapter name as recorded in the run
+artifacts (see `peira run --help` for how names are recorded).
+
+**`error: case '<id>' has no candidate result` (from `peira value`, `peira hardness`)**
+Cause: the baseline artifact contains a case that the candidate
+artifact lacks (different runs, or a hand-edited artifact). Fix:
+compare runs over the same case set; don't hand-edit artifacts.
 
 **`error: no families found in the given runs` (from `peira lottery`)**
 Cause: none of the artifacts contain any per-case results (empty
@@ -850,3 +860,24 @@ Cause: not an error. No indexed case rows match the filters
 (`--adapter`, `--family`, `--flip-direction`, confidence bounds, or
 `--limit`). Fix: loosen the filters and check the spelling of
 `--family` against the family names in the runs.
+
+**`error: unknown cost scenario 'x' (known: [...])`**
+Cause: `peira value --scenario` named a scenario that isn't in
+`data/cost_scenarios/v1.yaml`. Fix: use one of the listed ids
+(`low-stakes`, `standard`, `high-stakes`).
+
+**`error: duplicate adapter 'x' (...)`**
+Cause: `peira value` got two run artifacts from the same adapter.
+Fix: pass one artifact per adapter. Re-run with distinct adapter names
+if you need two runs of the same adapter.
+
+**`peira value` says CPPF is n/a**
+Cause: not an error. The candidate prevents no flips versus the
+baseline, so cost-per-prevented-flip has no meaning. A guardrail that
+costs more and flips as much is off the frontier, not "infinitely
+cost-effective".
+
+**`error: cannot write value view to <out> (...)`**
+Cause: `peira value --out` points somewhere unwritable: a missing
+parent directory, or a permissions problem. Fix: create the directory
+first, or pick a writable path.

@@ -49,4 +49,4 @@ Repository = "https://github.com/david-engelmann/peira"
 where = ["python"]
 
 [tool.setuptools.package-data]
-peira = ["data/*.json"]
+peira = ["data/*.json", "data/cost_scenarios/*.yaml"]

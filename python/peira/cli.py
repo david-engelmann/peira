@@ -1177,6 +1177,43 @@ no reference: {_num(sd_skipped.get('no_reference'))})</p>"""
     else:
         sd_section = f"<p><em>Score diagnostics unavailable:</em> {e(str(sd.get('reason') or 'no reason given'))}</p>"
 
+    # M-3 value view: expected attack cost under the standard cost
+    # scenario. Economics sits next to the headline numbers; a missing
+    # scenario file degrades to a note, never a broken report.
+    try:
+        from peira.economics import (
+            attacker_cost_multiplier,
+            e_attacked,
+            load_cost_scenario,
+        )
+        _scenario = load_cost_scenario("standard")
+        _results = [PerCaseResult.from_dict(r) for r in artifact.results]
+        _est = e_attacked(_results, _scenario)
+        _mult = attacker_cost_multiplier(_results)
+        _mult_s = f"{_mult:.1f}x attempts" if _mult is not None else "never observed"
+        _breakdown = ", ".join(
+            f"{d}: {_est.direction_counts[d]}"
+            for d in ("deny-to-approve", "approve-to-deny", "to-abstain",
+                      "to-malformed", "score-shifted", "other")
+            if _est.direction_counts[d]
+        ) or "no flips"
+        value_section = f"""<h2>Value view (M-3)</h2>
+<p>Expected attack cost under the <em>standard</em> cost scenario
+(scenario v{_scenario.version}, re-weight with
+<code>peira value --scenario</code>). Economics is a sidecar. It never
+changes the headline ASR above.</p>
+<table border="1"><tr><th>E_attacked ($/decision)</th><th>$/flip</th>
+<th>$/incident</th><th>n eligible</th>
+<th>attacker cost per jailbreak</th></tr>
+<tr><td>${_est.e_attacked:.4f}</td><td>${_est.per_flip:.2f}</td>
+<td>${_est.per_incident:.2f}</td><td>{_est.n}</td><td>{e(_mult_s)}</td></tr></table>
+<p>Flip-type breakdown (re-weightable): {e(_breakdown)}.</p>"""
+    except Exception as exc:
+        value_section = (
+            f"<h2>Value view (M-3)</h2>"
+            f"<p><em>Value view unavailable:</em> {e(str(exc))}</p>"
+        )
+
     def _outcome_row(label: str, o: Any) -> str:
         o = o if isinstance(o, dict) else {}
         return (
@@ -1324,6 +1361,7 @@ self-reported-confidence predictions):</p>
 <h2>Per-family ASR</h2>
 <table border="1"><tr><th>family</th><th>n</th><th>eligible</th><th>ASR</th><th>95% CI</th><th>refusal</th></tr>
 {rows}</table>
+{value_section}
 <h2>Per-case results</h2>
 <p>Flip column is the one to drill into when iterating on cases: a case
 the adapter never flips may be too weak; a case every adapter flips may
@@ -1833,11 +1871,18 @@ def cmd_hardness(args: argparse.Namespace) -> int:
             print(f"warning: {path_str}: analysis lock mismatch: artifact was "
                   f"modified after sealing.", file=sys.stderr)
     results_by_adapter: dict[str, list] = {}
-    for art in artifacts:
+    for art, path_str in zip(artifacts, args.runs):
         name = art.adapter_name or "(unnamed)"
         # Later artifacts with the same adapter name replace earlier ones;
         # the CLI takes explicit paths, so last-wins is the least surprise.
-        results_by_adapter[name] = [PerCaseResult.from_dict(d) for d in art.results]
+        try:
+            results_by_adapter[name] = [
+                PerCaseResult.from_dict(d) for d in art.results
+            ]
+        except (KeyError, ValueError, TypeError) as e:
+            print(f"error: {path_str}: cannot decode per-case results "
+                  f"({e})", file=sys.stderr)
+            return EXIT_USER_ERROR
     report = analyze_runs(results_by_adapter)
     text = report_text(report)
     sys.stdout.write(text)
@@ -1986,6 +2031,188 @@ def cmd_lottery(args: argparse.Namespace) -> int:
             return EXIT_USER_ERROR
         print(f"lottery: {out}")
     return EXIT_OK
+
+
+def cmd_value(args: argparse.Namespace) -> int:
+    """M-3 economic value view over 1+ run artifacts.
+
+    Prints per-adapter expected attack cost (E_attacked) with both $/flip
+    and $/incident views, the (cost, ASR) Pareto frontier, Drummond-Holte
+    crossover statements, and -- when --baseline names the cheap
+    reference adapter -- CPPF and break-even attack rates. Economics
+    sits next to the headline ASR numbers; nothing is blended.
+    """
+    from peira.economics import (
+        load_cost_scenario,
+        value_view,
+    )
+    from peira.metrics import PerCaseResult
+
+    try:
+        scenario = load_cost_scenario(args.scenario)
+    except ValueError as e:
+        print(f"error: {e}", file=sys.stderr)
+        return EXIT_USER_ERROR
+    adapter_results: dict[str, list[PerCaseResult]] = {}
+    for path_str in args.runs:
+        path = Path(path_str)
+        if not path.exists():
+            print(f"error: {path} not found", file=sys.stderr)
+            return EXIT_USER_ERROR
+        try:
+            artifact = RunArtifact.from_json(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError) as e:
+            print(f"error: {path} is not a valid run artifact ({e})",
+                  file=sys.stderr)
+            return EXIT_USER_ERROR
+        if not artifact.verify():
+            print(f"warning: {path_str}: analysis lock mismatch: artifact was "
+                  f"modified after sealing.", file=sys.stderr)
+        name = artifact.adapter_name
+        if name in adapter_results:
+            print(f"error: duplicate adapter {name!r} ({path_str})",
+                  file=sys.stderr)
+            return EXIT_USER_ERROR
+        try:
+            adapter_results[name] = [
+                PerCaseResult.from_dict(r) for r in artifact.results
+            ]
+        except (KeyError, ValueError, TypeError) as e:
+            print(f"error: {path_str}: cannot decode per-case results "
+                  f"({e})", file=sys.stderr)
+            return EXIT_USER_ERROR
+    price_date = getattr(args, "price_date", None) or "unknown"
+    try:
+        view = value_view(
+            adapter_results, scenario,
+            baseline_adapter=args.baseline, price_date=price_date,
+        )
+    except ValueError as e:
+        print(f"error: {e}", file=sys.stderr)
+        return EXIT_USER_ERROR
+    sys.stdout.write(_value_text(view))
+    if args.out is not None:
+        out = Path(args.out)
+        try:
+            out.write_text(_value_page(view), encoding="utf-8")
+        except OSError as e:
+            print(f"error: cannot write value view to {out} ({e})",
+                  file=sys.stderr)
+            return EXIT_USER_ERROR
+        print(f"value view: {out}")
+    return EXIT_OK
+
+
+def _value_text(view: dict[str, Any]) -> str:
+    lines = [
+        f"value view (scenario: {view['scenario']} v{view['scenario_version']}, "
+        f"prices: {view['price_date']})",
+        "",
+        "E_attacked per decision (expected attack cost):",
+    ]
+    for name, a in sorted(view["adapters"].items()):
+        lines.append(
+            f"  {name}: ${a['e_attacked_per_decision']:.4f}/decision "
+            f"(${a['cost_per_flip']:.2f}/flip, "
+            f"${a['cost_per_incident']:.2f}/incident, "
+            f"n={a['n_eligible']})"
+        )
+        mult = a["attacker_cost_multiplier_jailbreak"]
+        lines.append(
+            f"    attacker cost per jailbreak: "
+            f"{mult:.1f}x attempts" if mult is not None
+            else "    attacker cost per jailbreak: never observed"
+        )
+    lines += ["", "Pareto frontier (cost, ASR):"]
+    for p in view["pareto_frontier"]:
+        lo, hi = p["asr_ci95"]
+        mark = "FRONTIER" if p["on_frontier"] else "off-frontier"
+        lines.append(
+            f"  [{mark}] {p['adapter']}: ${p['cost_per_decision_usd']:.4f}, "
+            f"ASR {p['asr']:.3f} [{lo:.3f}, {hi:.3f}] (n={p['n']})"
+        )
+    if view["cost_curve_crossovers"]:
+        lines += ["", "Cost-curve crossovers:"]
+        lines += [f"  - {s}" for s in view["cost_curve_crossovers"]]
+    for name, c in sorted(view["comparisons"].items()):
+        lines += [f"", f"{name} vs {c['vs']}:"]
+        if c["prevents_flips"]:
+            ci = c["cppf_ci95"]
+            ci_s = f" [{ci[0]:.4f}, {ci[1]:.4f}]" if ci else " (CI unstable)"
+            lines.append(f"  CPPF: ${c['cppf']:.4f}/prevented flip{ci_s}")
+        else:
+            lines.append("  CPPF: n/a (does not prevent flips)")
+        if c["break_even_verdict"] == "at":
+            ci = c["break_even_ci95"]
+            ci_s = f" [{ci[0]:.3f}, {ci[1]:.3f}]" if ci else ""
+            lines.append(
+                f"  break-even attack rate: {c['break_even_attack_rate']:.3f}{ci_s}"
+            )
+        else:
+            lines.append(
+                f"  break-even attack rate: {c['break_even_verdict']}"
+            )
+    lines.append("")
+    return "\n".join(lines)
+
+
+def _value_page(view: dict[str, Any]) -> str:
+    e = html.escape
+    rows = "\n".join(
+        f"<tr><td>{e(name)}</td>"
+        f"<td>${a['e_attacked_per_decision']:.4f}</td>"
+        f"<td>${a['cost_per_flip']:.2f}</td>"
+        f"<td>${a['cost_per_incident']:.2f}</td>"
+        f"<td>{a['n_eligible']}</td>"
+        f"<td>{_val(a['attacker_cost_multiplier_jailbreak'])}</td></tr>"
+        for name, a in sorted(view["adapters"].items())
+    )
+    frontier_rows = "\n".join(
+        f"<tr><td>{e(p['adapter'])}</td>"
+        f"<td>${p['cost_per_decision_usd']:.4f}</td>"
+        f"<td>{p['asr']:.4f}</td>"
+        f"<td>[{p['asr_ci95'][0]:.4f}, {p['asr_ci95'][1]:.4f}]</td>"
+        f"<td>{'yes' if p['on_frontier'] else 'no'}</td></tr>"
+        for p in view["pareto_frontier"]
+    )
+    crossovers = "".join(
+        f"<li>{e(s)}</li>" for s in view["cost_curve_crossovers"]
+    )
+    comp_rows = "\n".join(
+        f"<tr><td>{e(name)}</td><td>{e(c['vs'])}</td>"
+        f"<td>{_val(c['cppf'])}</td>"
+        f"<td>{c['break_even_attack_rate'] if c['break_even_attack_rate'] is not None else c['break_even_verdict']}</td></tr>"
+        for name, c in sorted(view["comparisons"].items())
+    )
+    comp_section = (
+        f"<h3>Upgrade comparisons</h3><table border=\"1\">"
+        f"<tr><th>candidate</th><th>baseline</th><th>CPPF ($/prevented flip)</th>"
+        f"<th>break-even attack rate</th></tr>{comp_rows}</table>"
+        if comp_rows else ""
+    )
+    return f"""<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>peira value view</title></head>
+<body>
+<h1>peira value view</h1>
+<p>Values use the {e(view['scenario'])} cost scenario (v{e(str(view['scenario_version']))}),
+priced {e(view['price_date'])}. Economics sits next to the headline
+ASR numbers. Nothing here is blended into them.</p>
+<h2>Expected attack cost</h2>
+<table border="1">
+<tr><th>adapter</th><th>E_attacked ($/decision)</th><th>$/flip</th>
+<th>$/incident</th><th>n</th><th>attacker cost per jailbreak (attempts)</th></tr>
+{rows}
+</table>
+<h2>Pareto frontier (cost, ASR)</h2>
+<table border="1">
+<tr><th>adapter</th><th>$/decision</th><th>ASR</th><th>ASR 95% CI</th>
+<th>on frontier</th></tr>
+{frontier_rows}
+</table>
+<h2>Cost-curve crossovers</h2>
+<ul>{crossovers}</ul>
+{comp_section}
+</body></html>"""
 
 
 def cmd_runs_list(args: argparse.Namespace) -> int:
@@ -2949,6 +3176,20 @@ def build_parser() -> argparse.ArgumentParser:
     lt.add_argument("--json", default=None,
                     help="write the full analysis JSON to this path")
     lt.set_defaults(func=cmd_lottery)
+
+    vv = sub.add_parser("value",
+                        help="M-3 economic value view over 1+ run artifacts "
+                        "(E_attacked, CPPF, break-even, Pareto frontier)")
+    vv.add_argument("runs", nargs="+", help="run artifact paths (>= 1)")
+    vv.add_argument("--scenario", default="standard",
+                    help="cost scenario id (default: standard)")
+    vv.add_argument("--baseline", default=None,
+                    help="baseline adapter name for CPPF / break-even comparisons")
+    vv.add_argument("--price-date", default=None,
+                    help="price date stamp for the frontier (default: unknown)")
+    vv.add_argument("--out", default=None,
+                    help="write an HTML value-view report to this path")
+    vv.set_defaults(func=cmd_value)
 
     # Run registry (Layer 5a): index and query run artifacts.
     rr = sub.add_parser("runs", help="run registry: list and verify artifacts")
