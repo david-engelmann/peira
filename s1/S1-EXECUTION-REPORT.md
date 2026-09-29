@@ -63,14 +63,15 @@ and all six are verified excluded from the run-2 sample.
 
 ## Re-calibration
 
-All eight run-2 graders were recalibrated against the same ten cases with
-guidance v2 in hand. Three scored 10/10 (g0a, g2a, g3a) and five scored
-9/10 (g0b, g1a, g1b, g2b, g3b), every miss on v1-odo-003. The run-2 calibration sheets
-(`s1/cal_sheets/`) exposed the sealed references, because
-`s1/calibration.json` carries no separate case_ids field, so the
-protocol's blind-calibration intent was not met for run 2 (see the amended
-statement under Reproducibility). The reference tiers were used only to
-recalibrate the graders, never as main-grading inputs.
+All eight run-2 graders were recalibrated against the same ten cases
+with guidance v2 in hand. Three scored 10/10 (g0a, g2a, g3a) and five
+scored 9/10 (g0b, g1a, g1b, g2b, g3b), every miss on v1-odo-003. The
+run-2 calibration sheets (`s1/cal_sheets/`) exposed the sealed
+references, because `s1/calibration.json` carries no separate case_ids
+field, so the protocol's blind-calibration intent was not met for run 2
+(see the amended statement under Reproducibility). The reference tiers
+were used only to recalibrate the graders, never as main-grading
+inputs.
 
 ## Run 2. PASS
 
@@ -235,18 +236,28 @@ recalibrate the graders, never as main-grading inputs.
   [40.9%, 54.7%].
 - **ER-8. Severity hints in case notes.** The sheet generator redacted
   only the `severity` field, so the inherited case-notes text kept
-  explicit severity assertions on some sheets. A mechanical scan finds
-  the tier named in the notes of 24 of the 200 run-2 sheets (12%) and
-  21 of the 200 run-1 sheets, every hint matching the stored tier. The
-  grading was therefore not fully blind to the current tier on those
-  sheets. Sensitivity is bounded. Excluding the 24 hinted run-2 cases,
-  raw agreement is 155/176 = 88.1% (gate still passes) and the
-  severity-defect rate is 83/176 = 47.2% (Rule 1 still triggers). On the
-  hinted cases alone, agreement is 22/24 = 91.7% and the defect rate
-  12/24 = 50.0%. No decision in this report moves under the exclusion,
-  so the remedy is disclosure here, not a re-run. Sweep A sheets should
-  redact severity assertions in notes text as well as the severity
-  field.
+  explicit severity assertions on some sheets. A mechanical scan for
+  three phrasings (patterns in `s1/severity_hint_patterns.json`) finds
+  the tier named in the notes of 52 of the 200 run-2 sheets (26%) and 49
+  of the 200 run-1 sheets. The three phrasings are a Severity label
+  naming the tier directly (24 run-2 sheets), the tier name right after
+  the word Severity (20 run-2 sheets, all confidence_spoofing), and the
+  tier name opening a sentence (8 run-2 sheets, all indirection). Every
+  hint matches the stored tier. The grading was therefore not fully
+  blind to the current tier on those sheets. Sensitivity is bounded.
+  Excluding all 52 hinted run-2 cases, raw agreement is 129/148 =
+  87.2% (gate still passes), kappa is 0.808, two-tier disagreements are
+  3/148 = 2.0%, and the severity-defect rate is 68/148 = 45.9% with
+  Wilson 95% CI [38.1%, 54.0%] (Rule 1 still triggers). On the hinted
+  cases alone, agreement is 48/52 = 92.3% and the defect rate 27/52 =
+  51.9%, which runs against the direction an anchoring leak would push
+  the numbers. No criteria_smuggling sheet carries a hint, so the Rule
+  2b trigger is unaffected. Six hinted cases reached adjudication. On
+  the four severity disputes the adjudicators ruled against the hinted
+  tier in every case, and the two format disputes do not touch severity.
+  No decision in this report moves under the exclusion, so the remedy is
+  disclosure here, not a re-run. Sweep A sheets should redact severity
+  assertions in notes text as well as the severity field.
 
 ## Correction lanes opened by this report
 
