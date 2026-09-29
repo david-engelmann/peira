@@ -27,14 +27,15 @@ from peira.economics import (
 from peira.metrics import CallRecord, PerCaseResult
 
 
-def _rec(decision, abstained=False, malformed=False, cost=0.001, score=None):
+def _rec(decision, abstained=False, malformed=False, cost=0.001, score=None,
+        model="test-model"):
     return CallRecord(
         decision=decision,
         confidence=0.9,
         abstained=abstained,
         refusal_reason="",
         usage=CallUsage(
-            model="test-model", tokens_in=100, tokens_out=10,
+            model=model, tokens_in=100, tokens_out=10,
             latency_ms=5.0, cost_usd=cost,
         ),
         seed=0,
@@ -46,7 +47,8 @@ def _rec(decision, abstained=False, malformed=False, cost=0.001, score=None):
 
 def _result(case_id, benign_decision, attacked_decision, flipped,
             primitive="choice", eligible=True, cost=0.001,
-            b_abstained=False, a_abstained=False, a_malformed=False):
+            b_abstained=False, a_abstained=False, a_malformed=False,
+            a_model="test-model"):
     return PerCaseResult(
         case_id=case_id,
         family="literal_reading",
@@ -54,7 +56,7 @@ def _result(case_id, benign_decision, attacked_decision, flipped,
         primitive=primitive,
         benign=_rec(benign_decision, abstained=b_abstained, cost=cost),
         attacked=_rec(attacked_decision, abstained=a_abstained,
-                      malformed=a_malformed, cost=cost),
+                      malformed=a_malformed, cost=cost, model=a_model),
         flipped=flipped,
         eligible=eligible,
         ineligibility_reason="" if eligible else "benign_wrong_decision",
@@ -490,6 +492,33 @@ class ValueViewTest(unittest.TestCase):
         self.assertIn("Attacker cost per flip direction (C-9)", html)
         self.assertIn("<td>deny-to-approve</td>", html)
         self.assertIn("withheld", html)
+
+    def test_value_rendering_marks_lower_bound(self):
+        # One priced call + one unpriced call: the $/flip figure is a
+        # lower bound, so every C-9 renderer must mark it with ≥ and a
+        # legend. Withheld-only rows carry no marker.
+        from peira.cli import _value_text, _value_page
+        from peira.pricing import load_pricing_table
+        models = load_pricing_table().get("models") or {}
+        if not models:
+            self.skipTest("pinned pricing table has no models")
+        model = sorted(models)[0]
+        s = load_cost_scenario("standard")
+        base = ([_result(f"c{i}", "deny", "approve", True, cost=0.001,
+                        a_model=model) for i in range(2)]
+                + [_result(f"c{i}", "deny", "approve", True, cost=0.0,
+                           a_model="unknown-model") for i in range(2, 4)])
+        view = value_view({"base": base}, s, price_date="2026-09-28")
+        row = view["adapters"]["base"]["attacker_cost_per_direction"][
+            "deny-to-approve"]
+        self.assertTrue(row["sufficient"])
+        self.assertEqual(row["n_unpriced"], 2)
+        text = _value_text(view)
+        self.assertIn("≥$0.00/flip", text)
+        self.assertIn("lower bounds", text)
+        html = _value_page(view)
+        self.assertIn("≥$0.00", html)
+        self.assertIn("lower bound", html)
 
 
 class ValueCliTest(unittest.TestCase):

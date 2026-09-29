@@ -1205,14 +1205,25 @@ no reference: {_num(sd_skipped.get('no_reference'))})</p>"""
         _c9 = cost_per_flip_by_direction(_results)
         def _c9_cell(x, fmt):
             return "withheld" if x is None else fmt.format(x)
+        def _c9_cost(d):
+            row = _c9[d]
+            cell = _c9_cell(row["cost_per_flip_usd"], "${:.2f}")
+            if row["cost_per_flip_usd"] is not None and row["n_unpriced"] > 0:
+                cell = "\u2265" + cell  # lower bound: unpriced calls priced at 0
+            return cell
         _c9_rows = "\n".join(
             f"<tr><td>{e(d)}</td>"
             f"<td>{_c9[d]['n_flips_d']}</td>"
             f"<td>{_c9_cell(_c9[d]['asr_d'], '{:.3f}')}</td>"
             f"<td>{_c9_cell(_c9[d]['attempts_per_flip'], '{:.1f}x')}</td>"
-            f"<td>{_c9_cell(_c9[d]['cost_per_flip_usd'], '${:.2f}')}</td></tr>"
+            f"<td>{_c9_cost(d)}</td></tr>"
             for d in ("deny-to-approve", "approve-to-deny", "to-abstain",
                       "to-malformed", "score-shifted", "other")
+        )
+        _c9_lb = any(_c9[d]["n_unpriced"] > 0 for d in _c9 if d != "none")
+        _c9_legend = (
+            "<p>A $ / flip figure marked \u2265 is a lower bound: some "
+            "attacked calls had no listed price.</p>" if _c9_lb else ""
         )
         value_section = f"""<h2>Value view (M-3)</h2>
 <p>Expected attack cost under the <em>standard</em> cost scenario
@@ -1232,7 +1243,7 @@ the headline: it is the attacker's product. Vandalism and denial of
 service are priced separately because they are different products.</p>
 <table border="1"><tr><th>direction</th><th>flips</th><th>ASR_d</th>
 <th>attempts / flip</th><th>$ / flip</th></tr>
-{_c9_rows}</table>"""
+{_c9_rows}</table>{_c9_legend}"""
     except Exception as exc:
         value_section = (
             f"<h2>Value view (M-3)</h2>"
@@ -2160,11 +2171,18 @@ def _value_text(view: dict[str, Any]) -> str:
             if cpf is None:
                 lines.append(f"      {d}: withheld")
             else:
+                lb = "\u2265" if row["n_unpriced"] > 0 else ""
                 lines.append(
-                    f"      {d}: ${cpf:.2f}/flip "
+                    f"      {d}: {lb}${cpf:.2f}/flip "
                     f"({att:.1f}x attempts, ASR_d {row['asr_d']:.3f}, "
                     f"n={row['n_flips_d']})"
                 )
+        if any(a["attacker_cost_per_direction"][d]["n_unpriced"] > 0
+               for d in _c9_order):
+            lines.append(
+                "    ($/flip figures marked \u2265 are lower bounds: some "
+                "attacked calls had no listed price)"
+            )
     lines += ["", "Pareto frontier (cost, ASR):"]
     for p in view["pareto_frontier"]:
         lo, hi = p["asr_ci95"]
@@ -2244,14 +2262,24 @@ def _value_page(view: dict[str, Any]) -> str:
         out = []
         for d in order:
             row = a["attacker_cost_per_direction"][d]
+            cpf = _fmt(row["cost_per_flip_usd"], "${:.2f}")
+            if row["cost_per_flip_usd"] is not None and row["n_unpriced"] > 0:
+                cpf = "\u2265" + cpf  # lower bound: unpriced calls at 0
             out.append(
                 "<tr><td>" + e(d) + "</td>"
                 "<td>" + str(row["n_flips_d"]) + "</td>"
                 "<td>" + _fmt(row["asr_d"], "{:.3f}") + "</td>"
                 "<td>" + _fmt(row["attempts_per_flip"], "{:.1f}x") + "</td>"
-                "<td>" + _fmt(row["cost_per_flip_usd"], "${:.2f}") + "</td></tr>"
+                "<td>" + cpf + "</td></tr>"
             )
         return "\n".join(out)
+    def _dir_legend(a):
+        if any(a["attacker_cost_per_direction"][d]["n_unpriced"] > 0
+               for d in ("deny-to-approve", "approve-to-deny", "to-abstain",
+                         "to-malformed", "score-shifted", "other")):
+            return ("<p>A $ / flip figure marked \u2265 is a lower bound: "
+                    "some attacked calls had no listed price.</p>")
+        return ""
     dir_sections = "".join(
         f"<h3>Attacker cost per flip direction: {e(name)}</h3>"
         f"<p>What one successful flip of each type costs the attacker in "
@@ -2259,7 +2287,7 @@ def _value_page(view: dict[str, Any]) -> str:
         f"(deny-to-approve) is the attacker's product.</p>"
         f"<table border=\"1\"><tr><th>direction</th><th>flips</th>"
         f"<th>ASR_d</th><th>attempts / flip</th><th>$ / flip</th></tr>"
-        f"{_dir_rows(a)}</table>"
+        f"{_dir_rows(a)}</table>{_dir_legend(a)}"
         for name, a in sorted(view["adapters"].items())
     )
     return f"""<!DOCTYPE html>

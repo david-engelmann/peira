@@ -5244,7 +5244,8 @@ def _cost_per_flip_direction_full(
     restricted to flips in one direction. ``attempts_per_flip`` is
     1/ASR_d. For the five discrete flip directions this is the same
     figure :func:`peira.economics.attacker_cost_multiplier` reports for
-    that direction. For ``"score-shifted"`` the two differ by
+    that direction (up to the four-decimal rounding applied here; the
+    multiplier is unrounded). For ``"score-shifted"`` the two differ by
     construction: the multiplier counts non-flipped score-primitive
     cases with a material score shift (M-1 rule 1), while cost-per-flip
     requires an actual flip and withholds when only the shift is
@@ -5267,6 +5268,14 @@ def _cost_per_flip_direction_full(
     construction (non-flips have no cost per flip). Partial coverage
     (``n_unpriced > 0``) makes the mean query price a LOWER BOUND, same
     as :func:`cost_per_flip`.
+
+    Field scope: ``n_flips_d``, ``asr_d``, ``attempts_per_flip`` and
+    ``cost_per_flip_usd`` are direction-scoped. ``n_eligible``,
+    ``n_attacked_calls``, ``n_priced``, ``n_unpriced`` and
+    ``mean_attacked_query_cost_usd`` are computed over all eligible
+    attacked calls: the mean query price is direction-independent by
+    design, since the attacker pays for every attempt regardless of
+    which way the flip lands.
 
     Python reference only; Rust port deferred.
     """
