@@ -71,6 +71,10 @@ render an HTML report from a run artifact
 |---|---|---|---|
 | `--run` | yes | - |  |
 | `--out` |  | `'report.html'` |  |
+| `--operating-threshold` |  | - | R-08 buyer-cost operating threshold in [0, 1): review iff 1 - confidence >= threshold |
+| `--cost-false-approve` |  | - | R-08 buyer cost of a trusted false approve (requires all four buyer-cost flags together) |
+| `--cost-false-deny` |  | - | R-08 buyer cost of a trusted false deny (requires all four buyer-cost flags together) |
+| `--cost-review` |  | - | R-08 buyer cost of one human review (requires all four buyer-cost flags together) |
 
 ## peira compare
 
@@ -82,6 +86,7 @@ head-to-head statistical comparison of two run artifacts
 | `RUN_B` | yes | - | second run artifact (B) |
 | `--out` |  | - | write an HTML comparison report to this path |
 | `--seed` |  | `0` | seed for the paired-bootstrap CIs (default: 0) |
+| `--nb-threshold` |  | - | operating threshold in [0, 1) for the R-08 net-benefit head-to-head: which adapter has the higher net benefit at this threshold |
 
 ## peira dashboard
 

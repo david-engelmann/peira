@@ -80,8 +80,9 @@ def _write(art):
     return tmp.name
 
 
-def _args(a, b, out=None, seed=0):
-    return argparse.Namespace(run_a=a, run_b=b, out=out, seed=seed)
+def _args(a, b, out=None, seed=0, nb_threshold=None):
+    return argparse.Namespace(run_a=a, run_b=b, out=out, seed=seed,
+                              nb_threshold=nb_threshold)
 
 
 class CompareArtifactsTest(unittest.TestCase):
@@ -337,6 +338,137 @@ class CmdCompareTest(unittest.TestCase):
             html_text = Path(out).read_text(encoding="utf-8")
             self.assertNotIn("<script>alert(1)</script>", html_text)
             self.assertIn("&lt;script&gt;", html_text)
+
+
+class NetBenefitCompareTest(unittest.TestCase):
+    """R-08: net-benefit head-to-head at a buyer operating threshold."""
+
+    def _adapters(self, n=40):
+        # A: discriminating risk (low risk when correct, high on flips).
+        # B: flat risk (no discrimination). Flipped cases carry an
+        # actually-changed attacked decision, consistent with the
+        # sealed flipped flag.
+        cases_a, cases_b = [], []
+        for i in range(n):
+            cid = f"c{i:03d}"
+            flipped = i < n // 4
+            attacked_decision = "deny" if flipped else "approve"
+            conf_a = 0.2 if flipped else 0.95
+            ca = _case(cid, flipped=flipped, confidence=conf_a)
+            ca["attacked"] = _rec(decision=attacked_decision,
+                                  confidence=conf_a)
+            cb = _case(cid, flipped=flipped, confidence=0.7)
+            cb["attacked"] = _rec(decision=attacked_decision,
+                                  confidence=0.7)
+            cases_a.append(ca)
+            cases_b.append(cb)
+        return _artifact("alpha", cases_a), _artifact("beta", cases_b)
+
+    def test_winner_at_threshold(self):
+        a, b = self._adapters()
+        c = compare_artifacts(a, b, seed=0, nb_threshold=0.5)
+        nb = c.net_benefit
+        self.assertIsNotNone(nb)
+        self.assertTrue(nb.sufficient)
+        self.assertAlmostEqual(nb.threshold, 0.5)
+        # A reviews exactly the 10 flips: NB = 10/40 = 0.25.
+        self.assertAlmostEqual(nb.nb_a, 0.25)
+        # B's risk (0.3) never reaches 0.5: NB = 0.
+        self.assertAlmostEqual(nb.nb_b, 0.0)
+        self.assertEqual(nb.winner, "a")
+        self.assertEqual(nb.n, 40)
+        self.assertEqual(nb.n_a, 40)
+        self.assertEqual(nb.n_b, 40)
+
+    def test_divergent_coverage_uses_common_cases(self):
+        # B abstains on ten non-flip attacked cases: they leave the
+        # common set, and B's net benefit is computed without them.
+        cases_a, cases_b = [], []
+        for i in range(40):
+            cid = f"c{i:03d}"
+            flipped = i < 10
+            attacked_decision = "deny" if flipped else "approve"
+            conf_a = 0.2 if flipped else 0.95
+            ca = _case(cid, flipped=flipped, confidence=conf_a)
+            ca["attacked"] = _rec(decision=attacked_decision,
+                                  confidence=conf_a)
+            cb = _case(cid, flipped=flipped, confidence=0.7)
+            if 10 <= i < 20:
+                cb["attacked"] = _rec(decision="abstain", confidence=0.7,
+                                      abstained=True)
+            else:
+                cb["attacked"] = _rec(decision=attacked_decision,
+                                      confidence=0.7)
+            cases_a.append(ca)
+            cases_b.append(cb)
+        c = compare_artifacts(_artifact("alpha", cases_a),
+                              _artifact("beta", cases_b),
+                              seed=0, nb_threshold=0.5)
+        nb = c.net_benefit
+        self.assertTrue(nb.sufficient)
+        self.assertEqual(nb.n_a, 40)
+        self.assertEqual(nb.n_b, 30)
+        self.assertEqual(nb.n, 30)
+        # Common cohort: 10 flips + 20 non-flips. A reviews exactly the
+        # 10 flips: NB = 10/30. B's risk never reaches 0.5: NB = 0.
+        self.assertAlmostEqual(nb.nb_a, 10 / 30)
+        self.assertAlmostEqual(nb.nb_b, 0.0)
+        self.assertEqual(nb.winner, "a")
+
+    def test_withheld_below_gate(self):
+        a, b = self._adapters(n=10)
+        c = compare_artifacts(a, b, seed=0, nb_threshold=0.5)
+        nb = c.net_benefit
+        self.assertFalse(nb.sufficient)
+        self.assertIsNone(nb.nb_a)
+        self.assertIsNone(nb.winner)
+
+    def test_absent_by_default(self):
+        a, b = self._adapters()
+        c = compare_artifacts(a, b, seed=0)
+        self.assertIsNone(c.net_benefit)
+
+    def test_bad_threshold_rejected(self):
+        a, b = self._adapters()
+        with self.assertRaises(ValueError):
+            compare_artifacts(a, b, nb_threshold=1.5)
+        with self.assertRaises(ValueError):
+            compare_artifacts(a, b, nb_threshold=float("nan"))
+
+    def test_to_dict_includes_net_benefit(self):
+        a, b = self._adapters()
+        d = comparison_to_dict(compare_artifacts(
+            a, b, seed=0, nb_threshold=0.5))
+        nb = d["net_benefit"]
+        self.assertAlmostEqual(nb["nb_a"], 0.25)
+        self.assertEqual(nb["n"], 40)
+        self.assertEqual(nb["n_a"], 40)
+        self.assertEqual(nb["n_b"], 40)
+        self.assertEqual(nb["winner"], "a")
+        json.dumps(d)
+        d2 = comparison_to_dict(compare_artifacts(a, b, seed=0))
+        self.assertIsNone(d2["net_benefit"])
+
+    def test_cli_flag_renders_section(self):
+        a, b = self._adapters()
+        pa, pb = _write(a), _write(b)
+        with tempfile.TemporaryDirectory() as td:
+            out = str(Path(td) / "cmp.html")
+            args = argparse.Namespace(
+                run_a=pa, run_b=pb, out=out, seed=0, nb_threshold=0.5)
+            rc = cmd_compare(args)
+            self.assertEqual(rc, EXIT_OK)
+            html_text = Path(out).read_text(encoding="utf-8")
+            self.assertIn("Net benefit (operating threshold)", html_text)
+            self.assertIn("alpha", html_text)
+
+    def test_cli_bad_threshold_exits_1(self):
+        a, b = self._adapters()
+        args = argparse.Namespace(
+            run_a=_write(a), run_b=_write(b), out=None, seed=0,
+            nb_threshold=2.0)
+        rc = cmd_compare(args)
+        self.assertEqual(rc, EXIT_USER_ERROR)
 
 
 if __name__ == "__main__":

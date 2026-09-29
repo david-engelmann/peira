@@ -111,6 +111,14 @@ def _write_artifact(tmp, mutate=None):
     return str(p)
 
 
+def _report_args(run_path, out, **over):
+    kw = dict(run=run_path, out=out, operating_threshold=None,
+              cost_false_approve=None, cost_false_deny=None,
+              cost_review=None)
+    kw.update(over)
+    return argparse.Namespace(**kw)
+
+
 class TestReportEscapesHostileMetrics(unittest.TestCase):
     def test_metric_cells_cannot_smuggle_markup(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -145,7 +153,7 @@ class TestReportEscapesHostileMetrics(unittest.TestCase):
                 a.pricing_source = "<script>alert('price')</script>"
             run_path = _write_artifact(tmp, poison)
             out = str(Path(tmp) / "report.html")
-            rc = cmd_report(argparse.Namespace(run=run_path, out=out))
+            rc = cmd_report(_report_args(run_path, out))
             self.assertEqual(rc, 0)
             html = Path(out).read_text(encoding="utf-8")
             for raw in (
@@ -180,7 +188,7 @@ class TestReportEscapesHostileMetrics(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             run_path = _write_artifact(tmp)
             out = str(Path(tmp) / "report.html")
-            rc = cmd_report(argparse.Namespace(run=run_path, out=out))
+            rc = cmd_report(_report_args(run_path, out))
             self.assertEqual(rc, 0)
             html = Path(out).read_text(encoding="utf-8")
             self.assertIn("0.5000", html)  # floats: four decimals
@@ -202,7 +210,7 @@ class TestReportUserErrors(unittest.TestCase):
             bad.write_text("not json{{{", encoding="utf-8")
             out = str(Path(tmp) / "report.html")
             rc, err = self._stderr(
-                cmd_report, argparse.Namespace(run=str(bad), out=out))
+                cmd_report, _report_args(str(bad), out))
             self.assertEqual(rc, EXIT_USER_ERROR)
             self.assertIn("not a valid run artifact", err)
             self.assertNotIn("Traceback", err)
@@ -213,7 +221,7 @@ class TestReportUserErrors(unittest.TestCase):
             bad.write_text(json.dumps({"nope": True}), encoding="utf-8")
             out = str(Path(tmp) / "report.html")
             rc, err = self._stderr(
-                cmd_report, argparse.Namespace(run=str(bad), out=out))
+                cmd_report, _report_args(str(bad), out))
             self.assertEqual(rc, EXIT_USER_ERROR)
             self.assertIn("not a valid run artifact", err)
 
@@ -227,7 +235,7 @@ class TestReportUserErrors(unittest.TestCase):
                                        "results": []}), encoding="utf-8")
             out = str(Path(tmp) / "report.html")
             rc, err = self._stderr(
-                cmd_report, argparse.Namespace(run=str(bad), out=out))
+                cmd_report, _report_args(str(bad), out))
             self.assertEqual(rc, EXIT_USER_ERROR)
             self.assertIn("not a valid run artifact", err)
             self.assertNotIn("Traceback", err)
@@ -246,7 +254,7 @@ class TestReportUserErrors(unittest.TestCase):
             run_path = _write_artifact(tmp, strip_a3)
             out = str(Path(tmp) / "report.html")
             rc, err = self._stderr(
-                cmd_report, argparse.Namespace(run=run_path, out=out))
+                cmd_report, _report_args(run_path, out))
             self.assertEqual(rc, EXIT_USER_ERROR)
             self.assertIn("pre-S8b artifact schema", err)
             self.assertIn("re-run the suite", err)
@@ -255,8 +263,8 @@ class TestReportUserErrors(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             rc, err = self._stderr(
                 cmd_report,
-                argparse.Namespace(run=str(Path(tmp) / "nope.json"),
-                                   out=str(Path(tmp) / "r.html")))
+                _report_args(str(Path(tmp) / "nope.json"),
+                              str(Path(tmp) / "r.html")))
             self.assertEqual(rc, EXIT_USER_ERROR)
             self.assertIn("not found", err)
 
@@ -265,10 +273,130 @@ class TestReportUserErrors(unittest.TestCase):
             run_path = _write_artifact(tmp)
             out = str(Path(tmp) / "no-such-dir" / "report.html")
             rc, err = self._stderr(
-                cmd_report, argparse.Namespace(run=run_path, out=out))
+                cmd_report, _report_args(run_path, out))
             self.assertEqual(rc, EXIT_USER_ERROR)
             self.assertIn("cannot write report to", err)
             self.assertNotIn("Traceback", err)
+
+
+def _bc_rec(decision="approve", confidence=0.9, abstained=False,
+            malformed=False):
+    return {
+        "decision": decision,
+        "confidence": confidence,
+        "abstained": abstained,
+        "refusal_reason": "",
+        "seed": 0,
+        "dispatch_index": 0,
+        "malformed": malformed,
+        "dispatch_limit": 1,
+        "usage": None,
+    }
+
+
+def _bc_case(case_id, flipped=False, attacked_confidence=0.8,
+             attacked_decision=None, attacked_abstained=False):
+    if attacked_decision is None:
+        attacked_decision = "deny" if flipped else "approve"
+    return {
+        "case_id": case_id,
+        "family": "f",
+        "severity": "high",
+        "primitive": "choice",
+        "benign": _bc_rec(confidence=0.9),
+        "attacked": _bc_rec(decision=attacked_decision,
+                            confidence=attacked_confidence,
+                            abstained=attacked_abstained),
+        "flipped": flipped,
+        "eligible": True,
+        "ineligibility_reason": "",
+    }
+
+
+def _write_bc_artifact(tmp):
+    cases = (
+        [_bc_case(f"c{i}", flipped=False) for i in range(3)]
+        + [_bc_case("d1", flipped=True, attacked_confidence=0.2)]
+        + [_bc_case("d2", flipped=True, attacked_abstained=True)]
+    )
+    a = RunArtifact(
+        adapter_name="mock", adapter_version="1", suite="trial-demo",
+        dataset_version="0.1.0-demo", config={}, results=cases,
+        metrics=_metrics(),
+    ).seal()
+    p = Path(tmp) / "run.json"
+    p.write_text(a.to_json(), encoding="utf-8")
+    return str(p)
+
+
+class TestReportBuyerCost(unittest.TestCase):
+    """R-08: peira report buyer-cost flags (all-or-none)."""
+
+    def _stderr(self, fn, *args):
+        import contextlib
+        import io
+        buf = io.StringIO()
+        with contextlib.redirect_stderr(buf):
+            rc = fn(*args)
+        return rc, buf.getvalue()
+
+    def test_full_flags_render_section(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            run_path = _write_bc_artifact(tmp)
+            out = str(Path(tmp) / "report.html")
+            rc = cmd_report(_report_args(
+                run_path, out, operating_threshold=0.5,
+                cost_false_approve=10.0, cost_false_deny=5.0,
+                cost_review=1.0))
+            self.assertEqual(rc, 0)
+            html = Path(out).read_text(encoding="utf-8")
+            self.assertIn("<h2>Buyer cost</h2>", html)
+            self.assertIn("not net benefit", html)
+            # 5 cases, 1 forced review (d2 abstained).
+            self.assertIn("cases considered</td><td>5", html)
+            # R-08 Layer 5d: attack-mix cost curve table is rendered
+            # with the buyer-cost section.
+            self.assertIn("<h3>Attack-mix cost curve</h3>", html)
+            self.assertIn("expected loss / decision", html)
+
+    def test_no_flags_no_section(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            run_path = _write_bc_artifact(tmp)
+            out = str(Path(tmp) / "report.html")
+            rc = cmd_report(_report_args(run_path, out))
+            self.assertEqual(rc, 0)
+            html = Path(out).read_text(encoding="utf-8")
+            self.assertNotIn("<h2>Buyer cost</h2>", html)
+
+    def test_partial_flags_exit_1(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            run_path = _write_bc_artifact(tmp)
+            out = str(Path(tmp) / "report.html")
+            rc, err = self._stderr(
+                cmd_report,
+                _report_args(run_path, out, operating_threshold=0.5,
+                             cost_review=1.0))
+            self.assertEqual(rc, EXIT_USER_ERROR)
+            self.assertIn("must be given together", err)
+
+    def test_bad_cost_exits_1(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            run_path = _write_bc_artifact(tmp)
+            out = str(Path(tmp) / "report.html")
+            rc, err = self._stderr(
+                cmd_report,
+                _report_args(run_path, out, operating_threshold=1.5,
+                             cost_false_approve=10.0, cost_false_deny=5.0,
+                             cost_review=1.0))
+            self.assertEqual(rc, EXIT_USER_ERROR)
+            self.assertIn("threshold", err)
+            rc, err = self._stderr(
+                cmd_report,
+                _report_args(run_path, out, operating_threshold=0.5,
+                             cost_false_approve=-1.0, cost_false_deny=5.0,
+                             cost_review=1.0))
+            self.assertEqual(rc, EXIT_USER_ERROR)
+            self.assertIn("non-negative", err)
 
 
 if __name__ == "__main__":

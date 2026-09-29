@@ -15,6 +15,36 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
   read scored 0.NN. No gold values changed. Dataset version moves from
   1.1.0 to 1.1.1 and all 8 dataset gates pass.
 
+### Added — decision-curve / net-benefit analysis (R-08)
+
+- New `peira.metrics` net-benefit section (Vickers & Elkin 2006),
+  sealed into every run summary and rendered by `peira report` as an
+  inline SVG decision curve with an accessible table. Peira's DCA
+  triple is explicit: event = wrong model output (flip on the attacked
+  arm), risk score = 1 - confidence, treatment = route to human review
+  when risk reaches the threshold. The x-axis is the threshold
+  probability, never the attack rate. Reference strategies are
+  review-all and review-none; buyer cost modeling
+  (`expected_review_cost`, plus the full-coverage
+  `buyer_cost_at_threshold` which always routes untrustable outputs to
+  review) is a separate cost instrument, not DCA. Excluded cases are
+  counted per bucket in the summary block, never silently dropped.
+- `peira compare --nb-threshold` adds the net-benefit head-to-head:
+  which adapter has the higher net benefit at the buyer's operating
+  threshold. Both adapters are read off the same common analyzed
+  cases, so one cannot win by abstaining on hard cases.
+- `peira report` renders a buyer-cost section when the all-or-none
+  flags `--operating-threshold`, `--cost-false-approve`,
+  `--cost-false-deny`, `--cost-review` are given together, including
+  the attack-mix cost curve table (expected loss per decision vs
+  assumed attack rate, with $/decision and $/flip views).
+- New `peira.metrics.attack_mix_curve` (Drummond-Holte-style attack-mix
+  cost curves, roadmap Layer 5d): expected loss per decision across
+  the attack-rate grid at the buyer's operating threshold, with
+  $/decision, $/flip, and optional $/incident views. New
+  `peira.metrics.attack_mix_crossover`: lower envelope of two curves
+  with a plain-words deployment rule; ties reported as ties.
+
 ### Added — M-4 hardness stratification + cross-adapter transfer ASR
 
 - New `peira.hardness` module (pure aggregation over sealed per-case
@@ -62,14 +92,6 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
 - Unclassifiable flips now report `other` honestly instead of a
   fabricated `<x>-to-<y>` label or a misleading `approve-to-deny`
   fallback.
-### Added - Lakera Guard adapter
-
-- New `LakeraAdapter` (`peira.adapters.lakera`): abstain-primitive-only
-  guardrail adapter for the Lakera Guard v2 API (stdlib transport, no
-  extra needed). Maps the `flagged` boolean to the `"abstain"`/`"other"`
-  decision labels and the per-detector breakdown confidence to the
-  score. Requires `LAKERA_API_KEY`. Wire shape from the official API
-  docs; not yet exercised against the live API.
 
 ### Added — production report rewiring (A3 S8b)
 

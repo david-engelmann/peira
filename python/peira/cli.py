@@ -26,7 +26,14 @@ from peira.calibration import (
     risk_coverage_diagram_svg,
 )
 from peira.dataset import atomic_write_text, verify_manifest, verify_manifest_sealed
-from peira.metrics import NOT_RESOLVABLE, PerCaseResult, resolvable
+from peira.metrics import (
+    MIN_NB_CASES,
+    NOT_RESOLVABLE,
+    PerCaseResult,
+    attack_mix_curve,
+    buyer_cost_at_threshold,
+    resolvable,
+)
 from peira.runs_registry import FLIP_DIRECTIONS
 from peira.runner import (
     SUITE_DIRS,
@@ -651,8 +658,36 @@ def cmd_report(args: argparse.Namespace) -> int:
     # AttributeError is included: a truthy non-dict section (e.g.
     # "selective_prediction": [1,2,3]) sails through .get chains and
     # fails on the next .get/.items with AttributeError, not TypeError.
+    # R-08 buyer costs are all-or-none: a partial cost configuration is
+    # a user error, not a default to invent.
+    cost_flags = (args.operating_threshold, args.cost_false_approve,
+                  args.cost_false_deny, args.cost_review)
+    if any(v is not None for v in cost_flags):
+        if any(v is None for v in cost_flags):
+            print("error: --operating-threshold, --cost-false-approve, "
+                  "--cost-false-deny and --cost-review must be given "
+                  "together", file=sys.stderr)
+            return EXIT_USER_ERROR
+        buyer_cost_params = {
+            "threshold": args.operating_threshold,
+            "cost_false_approve": args.cost_false_approve,
+            "cost_false_deny": args.cost_false_deny,
+            "cost_review": args.cost_review,
+        }
+    else:
+        buyer_cost_params = None
+    if buyer_cost_params is not None:
+        # Validate the buyer's numbers up front: bad costs are a user
+        # error with their own message, not a corrupt artifact. An
+        # empty result list exercises every ValueError path without
+        # pricing anything.
+        try:
+            buyer_cost_at_threshold([], **buyer_cost_params)
+        except ValueError as e:
+            print(f"error: {e}", file=sys.stderr)
+            return EXIT_USER_ERROR
     try:
-        page = _report_page(artifact)
+        page = _report_page(artifact, buyer_cost_params)
     except (ValueError, KeyError, TypeError, IndexError, AttributeError) as e:
         print(f"error: {run_path} is not a valid run artifact ({e})",
               file=sys.stderr)
@@ -669,7 +704,241 @@ def cmd_report(args: argparse.Namespace) -> int:
     return EXIT_OK
 
 
-def _report_page(artifact) -> str:
+def _nb_curve_svg(block: dict, arm: str) -> str:
+    """Inline SVG decision curve for one arm's net-benefit block.
+
+    Model curve vs. review-all and review-none reference lines. All
+    coordinates are computed from the block's own floats; no
+    adapter-controlled strings enter the markup.
+    """
+    e = html.escape
+    curve = block.get("curve") or []
+    review_all = block.get("review_all") or []
+    try:
+        pts = [(float(pt), float(nb)) for pt, nb in curve]
+        ra_pts = [(float(pt), float(nb)) for pt, nb in review_all]
+    except (TypeError, ValueError):
+        # Hostile artifact with non-numeric curve data: skip the chart.
+        return ""
+    if not pts:
+        return ""
+    vals = [nb for _, nb in pts] + [nb for _, nb in ra_pts] + [0.0]
+    lo = min(vals)
+    hi = max(vals)
+    if hi - lo < 1e-9:
+        lo, hi = lo - 0.05, hi + 0.05
+    pad = (hi - lo) * 0.08
+    lo -= pad
+    hi += pad
+    W, H = 620, 300
+    ml, mr, mt, mb = 56, 14, 14, 36
+
+    def X(pt: float) -> float:
+        return ml + pt * (W - ml - mr)
+
+    def Y(nb: float) -> float:
+        return mt + (1.0 - (nb - lo) / (hi - lo)) * (H - mt - mb)
+
+    # Axes.
+    parts = [
+        f'<line x1="{ml}" y1="{mt}" x2="{ml}" y2="{H - mb}" stroke="#333"/>',
+        f'<line x1="{ml}" y1="{H - mb}" x2="{W - mr}" y2="{H - mb}" stroke="#333"/>',
+    ]
+    for pt in (0.0, 0.25, 0.5, 0.75, 1.0):
+        x = X(pt)
+        parts.append(
+            f'<line x1="{x:.1f}" y1="{H - mb}" x2="{x:.1f}" y2="{H - mb + 5}" stroke="#333"/>'
+            f'<text x="{x:.1f}" y="{H - mb + 18}" font-size="11" text-anchor="middle">{pt:.2f}</text>'
+        )
+    for i in range(5):
+        v = lo + (hi - lo) * i / 4.0
+        y = Y(v)
+        parts.append(
+            f'<line x1="{ml - 5}" y1="{y:.1f}" x2="{ml}" y2="{y:.1f}" stroke="#333"/>'
+            f'<text x="{ml - 8}" y="{y + 4:.1f}" font-size="11" text-anchor="end">{v:.2f}</text>'
+        )
+    parts.append(
+        f'<text x="{ml}" y="{H - 6}" font-size="11">risk threshold (review if risk &gt;= pt)</text>'
+        f'<text x="8" y="{mt + 6}" font-size="11">net benefit</text>'
+    )
+    # Review-none (NB = 0) dashed baseline.
+    y0 = Y(0.0)
+    parts.append(
+        f'<line x1="{ml}" y1="{y0:.1f}" x2="{W - mr}" y2="{y0:.1f}" '
+        f'stroke="#000" stroke-dasharray="6,4" stroke-width="1.5"/>'
+    )
+    parts.append(
+        '<polyline points="'
+        + " ".join(f"{X(pt):.1f},{Y(nb):.1f}" for pt, nb in ra_pts)
+        + '" fill="none" stroke="#8b949e" stroke-width="1.5" stroke-dasharray="4,3"/>'
+    )
+    parts.append(
+        '<polyline points="'
+        + " ".join(f"{X(pt):.1f},{Y(nb):.1f}" for pt, nb in pts)
+        + '" fill="none" stroke="#1f6feb" stroke-width="2"/>'
+    )
+    # Legend.
+    lx = W - mr - 150
+    ly = mt + 6
+    parts.append(
+        f'<rect x="{lx}" y="{ly}" width="10" height="3" fill="#1f6feb"/>'
+        f'<text x="{lx + 14}" y="{ly + 5}" font-size="11">model ({e(arm)})</text>'
+        f'<rect x="{lx}" y="{ly + 16}" width="10" height="3" fill="#8b949e"/>'
+        f'<text x="{lx + 14}" y="{ly + 21}" font-size="11">review all</text>'
+        f'<line x1="{lx}" y1="{ly + 34}" x2="{lx + 10}" y2="{ly + 34}" stroke="#000" stroke-dasharray="6,4"/>'
+        f'<text x="{lx + 14}" y="{ly + 38}" font-size="11">review none</text>'
+    )
+    return (
+        f'<svg width="{W}" height="{H}" viewBox="0 0 {W} {H}" role="img" '
+        f'aria-label="Decision curve for {e(arm)} arm">'
+        + "".join(parts) + "</svg>"
+    )
+
+
+def _net_benefit_section(m: dict) -> str:
+    """Render the R-08 net-benefit report section from a metrics dict.
+
+    Defensive .get access: artifacts sealed before R-08 have no
+    ``net_benefit`` block and render a short note instead of
+    tracebacks. Withheld arms render "insufficient data", never 0.
+    """
+    e = html.escape
+    nbm = m.get("net_benefit", {}) or {}
+    if "net_benefit" not in m:
+        return (
+            "<h2>Net benefit</h2>\n"
+            "<p>Net-benefit analysis not available in this artifact "
+            "(computed by peira R-08 and later).</p>\n"
+        )
+    parts = ["<h2>Net benefit</h2>\n"]
+    parts.append(
+        "<p>Decision curves (Vickers &amp; Elkin 2006). Event: the "
+        "model's output is wrong (a flip on the attacked arm; an "
+        "incorrect decision on the benign arm). Risk score: 1 minus "
+        "confidence. Treatment: route to human review when risk "
+        "reaches the threshold. The horizontal axis is the threshold "
+        "probability, not the attack rate. Net benefit is net caught "
+        "bad outputs per case, vs. reviewing nothing (0) and vs. "
+        "reviewing everything. Withheld below 30 analyzed cases "
+        "per arm.</p>\n"
+    )
+    for arm in ("benign", "attacked"):
+        b = nbm.get(arm)
+        if not isinstance(b, dict):
+            b = {}
+        if not b.get("sufficient"):
+            parts.append(
+                f"<h3>Net benefit ({arm})</h3>\n"
+                f"<p>insufficient data (n={_num(b.get('n'))}; "
+                f"need {MIN_NB_CASES} analyzed cases).</p>\n"
+            )
+            continue
+        try:
+            op_items = sorted(
+                (b.get("operating_points", {}) or {}).items(),
+                key=lambda kv: float(kv[0]),
+            )
+        except (TypeError, ValueError, AttributeError):
+            op_items = []
+        op_rows = "\n".join(
+            f"<tr><td>{e(str(pt))}</td><td>{_val(nb)}</td></tr>"
+            for pt, nb in op_items
+        )
+        parts.append(
+            f"<h3>Net benefit ({arm})</h3>\n"
+            f"<p>n={_num(b.get('n'))} analyzed cases, event rate "
+            f"{_val(b.get('prevalence'))}.</p>\n"
+            f"{_nb_curve_svg(b, arm)}\n"
+            f"<p>Best threshold: {_num(b.get('best_threshold'))} "
+            f"(net benefit {_val(b.get('best_net_benefit'))}, "
+            f"{_num(b.get('n_reviewed_at_best'))} cases reviewed).</p>\n"
+            "<table border=\"1\"><tr><th>operating threshold</th>"
+            "<th>net benefit</th></tr>\n"
+            f"{op_rows}</table>\n"
+        )
+    return "".join(parts)
+
+
+def _buyer_cost_section(artifact, threshold: float, cost_false_approve: float,
+                        cost_false_deny: float, cost_review: float) -> str:
+    """Render the R-08 buyer-cost section from the artifact's results.
+
+    Prices the review policy "review iff 1 - confidence >= threshold"
+    on the attacked arm with the buyer's own costs. Untrustable
+    outputs (abstentions, refusals, malformed, missing confidence) are
+    always routed to review. This is a cost model, not net benefit.
+    """
+    results = [PerCaseResult.from_dict(d) for d in artifact.results]
+    bc = buyer_cost_at_threshold(
+        results, threshold,
+        cost_false_approve=cost_false_approve,
+        cost_false_deny=cost_false_deny,
+        cost_review=cost_review,
+        arm="attacked",
+    )
+    ex = bc.get("excluded", {}) or {}
+    ex_str = ", ".join(
+        f"{k}={_num(ex.get(k))}" for k in sorted(ex))
+    return (
+        "<h2>Buyer cost</h2>\n"
+        "<p>Expected cost per case of the review policy at operating "
+        f"threshold {_num(threshold)} (attacked arm), priced with the "
+        "buyer's costs. Cases that cannot be auto-trusted (abstentions, "
+        "refusals, malformed outputs, missing confidence) are always "
+        "routed to review. A cost model, not net benefit.</p>\n"
+        "<table border=\"1\">"
+        "<tr><th>measure</th><th>value</th></tr>\n"
+        f"<tr><td>cases considered</td><td>{_num(bc.get('considered'))}</td></tr>\n"
+        f"<tr><td>excluded</td><td>{ex_str}</td></tr>\n"
+        f"<tr><td>reviewed</td><td>{_num(bc.get('n_reviewed'))}</td></tr>\n"
+        f"<tr><td>of which forced (untrustable)</td><td>{_num(bc.get('n_forced_review'))}</td></tr>\n"
+        f"<tr><td>trusted</td><td>{_num(bc.get('n_trusted'))}</td></tr>\n"
+        f"<tr><td>slipped errors (trusted wrong)</td><td>{_num(bc.get('n_slipped'))}</td></tr>\n"
+        f"<tr><td>wasted reviews (reviewed right)</td><td>{_num(bc.get('n_wasted_reviews'))}</td></tr>\n"
+        f"<tr><td>cost per case</td><td>{_num(bc.get('cost_per_case'))}</td></tr>\n"
+        f"<tr><td>review-all cost per case</td><td>{_num(bc.get('review_all_cost_per_case'))}</td></tr>\n"
+        f"<tr><td>savings per case vs review-all</td><td>{_num(bc.get('savings_per_case_vs_review_all'))}</td></tr>\n"
+        "</table>\n"
+        + _attack_mix_table(results, threshold, cost_false_approve,
+                            cost_false_deny, cost_review)
+    )
+
+
+def _attack_mix_table(results, threshold: float, cost_false_approve: float,
+                       cost_false_deny: float, cost_review: float) -> str:
+    """Render the R-08 attack-mix cost curve as an HTML table.
+
+    Expected loss per decision vs assumed attack rate at the same
+    operating threshold and buyer costs as the buyer-cost section.
+    """
+    am = attack_mix_curve(
+        results, threshold=threshold,
+        cost_false_approve=cost_false_approve,
+        cost_false_deny=cost_false_deny,
+        cost_review=cost_review,
+    )
+    am_rows = "\n".join(
+        f"<tr><td>{_num(r['attack_rate'])}</td>"
+        f"<td>{_num(r['expected_loss_per_decision'])}</td>"
+        f"<td>{_num(r['expected_flips_per_decision'])}</td>"
+        f"<td>{_num(r['cost_per_flip'])}</td></tr>"
+        for r in am["curve"][::10]  # every 0.10 of attack rate
+    )
+    return (
+        "<h3>Attack-mix cost curve</h3>\n"
+        "<p>Expected loss per decision vs assumed attack rate at the same "
+        "operating threshold and costs. Read across: at your threat model "
+        "(attack rate), this is the expected deployment cost. Both the "
+        "$/decision and $/flip views are shown.</p>\n"
+        "<table border=\"1\">"
+        "<tr><th>attack rate</th><th>expected loss / decision</th>"
+        "<th>expected flips / decision</th><th>cost / flip</th></tr>\n"
+        f"{am_rows}"
+        "</table>\n"
+    )
+
+
+def _report_page(artifact, buyer_cost_params=None) -> str:
     m = artifact.metrics
     # Case ids, family names, adapter names, decisions, refusal reasons,
     # and suite/dataset labels are author- or adapter-controlled: escape
@@ -757,6 +1026,14 @@ def _report_page(artifact) -> str:
             ("Δreliability (attacked−benign)", "delta_reliability"),
         )
     )
+
+    # --- R-08: net benefit (decision curves); see _net_benefit_section.
+    nb_section = _net_benefit_section(m)
+
+    # --- R-08: buyer cost (optional; priced from the sealed results).
+    bc_section = ""
+    if buyer_cost_params is not None:
+        bc_section = _buyer_cost_section(artifact, **buyer_cost_params)
 
     sp = m.get("selective_prediction", {}) or {}
     # R-11: selective-risk curve diagram from the already-recorded
@@ -926,7 +1203,7 @@ model flips while staying as sure of itself.</p>
 <p>Flip-detection AUROC: {_val(dc.get('flip_detection_auroc'))} (95% CI {_ci95(dc.get('flip_detection_auroc_ci95'))}, n={_num(dc.get('flip_detection_auroc_n'))}).<br>
 Mean confidence delta: {_val(dc.get('confidence_delta_mean'))} (median {_val(dc.get('confidence_delta_median'))}, n={_num(dc.get('confidence_delta_n'))}).<br>
 Confidence source for this adapter: {e(confidence_source_label(artifact.adapter_name))}</p>
-<h2>Selective prediction</h2>
+{nb_section}{bc_section}<h2>Selective prediction</h2>
 <p>AUGRC (display-only): {_val(sp.get('augrc'))} (95% CI {_ci95(sp.get('augrc_ci95'))}, n={_num(sp.get('n'))}).
 Selective risk at fixed coverage points (retaining only the highest
 self-reported-confidence predictions):</p>
@@ -1045,6 +1322,23 @@ def _compare_text(c) -> str:
         lines.append(
             f"  {d.name:<16}: {d.delta:+.4f} ({lo:+.4f}–{hi:+.4f}, n={d.n}{mde_str}){verdict}"
         )
+    if c.net_benefit is not None:
+        nb = c.net_benefit
+        lines += ["", f"Net benefit at operating threshold {nb.threshold} "
+                        f"(review iff 1-confidence >= {nb.threshold}):"]
+        if not nb.sufficient:
+            lines.append(f"  insufficient data ({nb.note})")
+        else:
+            lines.append(f"  A: {nb.nb_a:+.4f} (analyzed {nb.n_a}, "
+                         f"common {nb.n})")
+            lines.append(f"  B: {nb.nb_b:+.4f} (analyzed {nb.n_b}, "
+                         f"common {nb.n})")
+            if nb.winner is None:
+                lines.append("  → tie: equal net benefit")
+            else:
+                winner_name = c.adapter_a if nb.winner == "a" else c.adapter_b
+                lines.append(
+                    f"  → {winner_name} has the higher net benefit")
     if c.per_family:
         lines += ["", "Per-family win rates (A wins / B wins / ties):"]
         mde_by_fam = {fm.family: fm.mde for fm in c.family_mdes}
@@ -1199,6 +1493,34 @@ def _compare_page(c) -> str:
         )
     dir_rows = "\n".join(dir_rows)
     warnings_html = "".join(f"<li>{e(w)}</li>" for w in c.warnings)
+    if c.net_benefit is not None:
+        nb = c.net_benefit
+        if not nb.sufficient:
+            nb_html = f"<p>insufficient data: {e(nb.note)}</p>"
+        else:
+            verdict = (
+                f"{e(c.adapter_a if nb.winner == 'a' else c.adapter_b)} "
+                "has the higher net benefit."
+                if nb.winner is not None
+                else "Tie: equal net benefit."
+            )
+            nb_html = (
+                f"<table border=\"1\"><tr><th>adapter</th>"
+                f"<th>net benefit</th><th>analyzed cases</th></tr>"
+                f"<tr><td>{e(c.adapter_a)}</td><td>{_num(nb.nb_a)}</td>"
+                f"<td>{_num(nb.n_a)}</td></tr>"
+                f"<tr><td>{e(c.adapter_b)}</td><td>{_num(nb.nb_b)}</td>"
+                f"<td>{_num(nb.n_b)}</td></tr></table>"
+                f"<p>At operating threshold {e(str(nb.threshold))}: {verdict} "
+                f"Both adapters are read off the same {e(str(nb.n))} "
+                f"common analyzed cases.</p>"
+            )
+        nb_section = (f"<h2>Net benefit (operating threshold)</h2>\n"
+                        f"<p>Review policy: route to human review iff "
+                        f"1&nbsp;&minus;&nbsp;confidence &gt;= threshold.</p>\n"
+                        f"{nb_html}\n")
+    else:
+        nb_section = ""
     return f"""<html><head><meta charset="utf-8"><title>peira compare: {e(c.adapter_a)} vs {e(c.adapter_b)}</title></head>
 <body>
 <h1>peira compare: {e(c.adapter_a)} vs {e(c.adapter_b)}</h1>
@@ -1216,7 +1538,7 @@ the effective outcome.</p>
 <h2>Deltas (A − B, paired bootstrap 95% CI)</h2>
 <table border="1"><tr><th>metric</th><th>delta (95% CI)</th><th>MDE (80% power)</th></tr>
 {"\n".join(delta_rows)}</table>
-<h2>Per-family wins</h2>
+{nb_section}<h2>Per-family wins</h2>
 <table border="1"><tr><th>family</th><th>n</th><th>A wins</th><th>B wins</th><th>ties</th><th>resolvability</th></tr>
 {fam_rows}</table>
 <h2>Per-family MDEs (R-02; 80% power)</h2>
@@ -1255,7 +1577,8 @@ def cmd_compare(args: argparse.Namespace) -> int:
             print(f"warning: {path_str}: analysis lock mismatch: artifact was "
                   f"modified after sealing.", file=sys.stderr)
     try:
-        comparison = compare_artifacts(a, b, seed=args.seed)
+        comparison = compare_artifacts(
+            a, b, seed=args.seed, nb_threshold=args.nb_threshold)
     except ValueError as e:
         print(f"error: {e}", file=sys.stderr)
         return EXIT_USER_ERROR
@@ -2103,6 +2426,18 @@ def build_parser() -> argparse.ArgumentParser:
     rp = sub.add_parser("report", help="render an HTML report from a run artifact")
     rp.add_argument("--run", required=True)
     rp.add_argument("--out", default="report.html")
+    rp.add_argument("--operating-threshold", type=float, default=None,
+                    help="R-08 buyer-cost operating threshold in [0, 1): "
+                         "review iff 1 - confidence >= threshold")
+    rp.add_argument("--cost-false-approve", type=float, default=None,
+                    help="R-08 buyer cost of a trusted false approve "
+                         "(requires all four buyer-cost flags together)")
+    rp.add_argument("--cost-false-deny", type=float, default=None,
+                    help="R-08 buyer cost of a trusted false deny "
+                         "(requires all four buyer-cost flags together)")
+    rp.add_argument("--cost-review", type=float, default=None,
+                    help="R-08 buyer cost of one human review "
+                         "(requires all four buyer-cost flags together)")
     rp.set_defaults(func=cmd_report)
 
     cp = sub.add_parser("compare",
@@ -2113,6 +2448,10 @@ def build_parser() -> argparse.ArgumentParser:
                     help="write an HTML comparison report to this path")
     cp.add_argument("--seed", type=int, default=0,
                     help="seed for the paired-bootstrap CIs (default: 0)")
+    cp.add_argument("--nb-threshold", type=float, default=None,
+                    help="operating threshold in [0, 1) for the R-08 "
+                         "net-benefit head-to-head: which adapter has the "
+                         "higher net benefit at this threshold")
     cp.set_defaults(func=cmd_compare)
 
     # Dashboard data layer: artifact -> dashboard-ready JSON.
