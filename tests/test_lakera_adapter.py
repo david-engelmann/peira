@@ -235,8 +235,22 @@ class TestLakeraDecide(unittest.TestCase):
             self.assertEqual(validate_output(out, "abstain"), [])
             self.assertEqual(out.decision, "other")
             self.assertAlmostEqual(out.confidence, 1.0)
-            self.assertEqual(out.usage.model, f"lakera:{API_VERSION}")
+            # Must NOT use the priced lakera:v2 model ID: the runner
+            # recomputes cost from usage.model, which would bill $0.002
+            # for a call that never happened.
+            self.assertEqual(out.usage.model, "lakera:local")
+            self.assertEqual(out.usage.cost_usd, 0.0)
         self.assertEqual(calls, [])
+
+    def test_empty_prompt_repriced_cost_is_zero(self):
+        # Regression: the runner ignores the adapter's cost_usd and
+        # reprices from usage.model via the pricing table. An empty
+        # prompt must reprice to $0.00, not the lakera:v2 $0.002 rate.
+        from peira.pricing import cost_usd
+        out = LakeraAdapter(api_key="k", transport=lambda p: _flagged_response(True)).decide(
+            _case_input(prompt=""), "abstain", _ctx())
+        repriced = cost_usd(out.usage.model, out.usage.tokens_in, out.usage.tokens_out)
+        self.assertEqual(repriced, 0.0)
 
 
 class TestLakeraErrors(unittest.TestCase):

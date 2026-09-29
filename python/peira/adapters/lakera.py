@@ -212,9 +212,13 @@ class LakeraAdapter:
 
         if not text.strip():
             # Empty/whitespace-only input is benign and never a paid
-            # API call. Matches the HF guardrail adapters.
+            # API call. Matches the HF guardrail adapters. The model ID
+            # must NOT be a priced ID: the runner recomputes cost from
+            # usage.model via the pricing table, ignoring the adapter's
+            # cost_usd. Using lakera:v2 here would bill $0.002 for a
+            # call that never happened.
             usage = CallUsage(
-                model=f"lakera:{API_VERSION}",
+                model="lakera:local",
                 tokens_in=0,
                 tokens_out=0,
                 latency_ms=0.0,
@@ -225,7 +229,7 @@ class LakeraAdapter:
                 confidence=1.0,
                 usage=usage,
                 transcript={
-                    "model": f"lakera:{API_VERSION}",
+                    "model": "lakera:local",
                     "endpoint": self.api_url,
                     "skipped": "empty input",
                     "scores": {"p_malicious": 0.0},
