@@ -89,6 +89,32 @@ class TestTrialVersionPins(unittest.TestCase):
         finally:
             shutil.rmtree(tmp, ignore_errors=True)
 
+    def test_longer_version_not_accepted_as_pin(self):
+        # Regex backtracking trap (CodeRabbit on #219): with manifest 1.0.6,
+        # the text "sealed at 1.0.60.7" must not match as pin 1.0.6. A naive
+        # (?!\.\d) guard backtracks \d+ and captures the prefix anyway.
+        tmp = self._sandbox_copy()
+        try:
+            version = check_trial_version_pins.manifest_version()
+            dataset_doc = tmp / "docs" / "Dataset.md"
+            dataset_doc.write_text(
+                dataset_doc.read_text(encoding="utf-8").replace(
+                    f"manifest sealed at {version}",
+                    f"manifest sealed at {version}0.7",
+                ),
+                encoding="utf-8",
+            )
+            problems = self._check_in(tmp)
+            # Either diagnostic is fine ("no pin found" or "pins trial
+            # version X"): what must not happen is zero problems, i.e. the
+            # trap text silently accepted as a valid pin.
+            self.assertTrue(
+                any("docs/Dataset.md" in p for p in problems),
+                problems,
+            )
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+
     def test_missing_file_detected(self):
         tmp = self._sandbox_copy()
         try:

@@ -23,9 +23,11 @@ import sys
 REPO_ROOT = pathlib.Path(__file__).resolve().parent.parent
 
 VERSION_RE = r"\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?"
-# Guard against a longer dotted version (e.g. 1.0.6.7) matching as a prefix
-# of the pinned version; a trailing ".<digit>" means this is not the pin.
-VERSION_PIN = rf"({VERSION_RE})(?!\.\d)"
+# Guard against a longer dotted version (e.g. 1.0.6.7, 1.0.60.7) matching as
+# a prefix of the pinned version. (?!\.?\d) rejects both a trailing digit
+# and a dot-digit continuation; a plain (?!\.\d) is not enough because the
+# regex engine backtracks \d+ and still captures 1.0.6 out of 1.0.60.7.
+VERSION_PIN = rf"({VERSION_RE})(?!\.?\d)"
 
 # (relative path, regex with capture group 1 = the pinned version)
 PINS: list[tuple[str, str]] = [
