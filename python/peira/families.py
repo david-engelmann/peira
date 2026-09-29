@@ -29,6 +29,13 @@ class FamilyInfo:
     mechanism: str
     tier: str  # "v1", "1", or "2"
     anchor: str  # literature or vendor source motivating the family
+    attacker_queries_assumed: int = 1  # attacker queries assumed per
+    # case when computing cost-per-flip (M-9). Peira cases are single-shot:
+    # every current family assumes exactly one attacker query per case.
+    # A future adaptive-attacker lane will measure queries-to-first-flip
+    # for real; until then this declared assumption is the honest interim.
+    # Families whose attack genuinely needs multiple queries document the
+    # higher count here instead of silently assuming one.
 
 
 _FAMILIES: tuple[FamilyInfo, ...] = (

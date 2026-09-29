@@ -36,8 +36,11 @@ from peira.metrics import (
     check_eligibility,
     compression_ci,
     confidence_coverage,
+    cost_exchange_rate,
+    cost_per_flip,
     cost_summary,
     crps_point,
+    defender_cost_per_1k,
     delta_brier,
     delta_ece,
     delta_reliability,
@@ -960,6 +963,278 @@ class TestSelectivePrediction(unittest.TestCase):
                 selective_risk_at_coverage([0.9], [1], bad)
         with self.assertRaises(ValueError):
             selective_risk_at_coverage([], [], 0.5)
+
+
+class TestM9CostAccounting(unittest.TestCase):
+    """M-9 attacker/defender cost accounting."""
+
+    _TABLE = {"pricing_version": "test-v1", "models": {
+        "m": {"usd_per_1m_in": 1.0, "usd_per_1m_out": 2.0,
+              "confidence": "official"},
+    }}
+
+    @staticmethod
+    def _mrec(family="f", flipped=False, eligible=True, bcost=0.01,
+              acost=0.02, babst=False, model="m"):
+        b = CallRecord(
+            decision="" if babst else "approve", confidence=0.9,
+            abstained=babst, refusal_reason="",
+            usage=CallUsage(model=model, tokens_in=10, tokens_out=5,
+                            latency_ms=1.0, cost_usd=bcost),
+            seed=0, dispatch_index=0, malformed=False)
+        a = CallRecord(
+            decision="deny" if flipped else "approve", confidence=0.9,
+            abstained=False, refusal_reason="",
+            usage=CallUsage(model=model, tokens_in=10, tokens_out=5,
+                            latency_ms=1.0, cost_usd=acost),
+            seed=0, dispatch_index=0, malformed=False)
+        return PerCaseResult(
+            case_id="c", family=family, severity="high", primitive="choice",
+            benign=b, attacked=a, flipped=flipped, eligible=eligible)
+
+    def test_cost_per_flip_basic(self):
+        # 4 eligible, 2 flips, attacked mean 0.02: 1 * 0.02 / 0.5 = 0.04.
+        R = self._mrec
+        results = [R(flipped=True), R(flipped=True),
+                   R(flipped=False), R(flipped=False)]
+        c = cost_per_flip(results, pricing_table=self._TABLE)
+        self.assertTrue(c["sufficient"])
+        self.assertAlmostEqual(c["cost_per_flip_usd"], 0.04, places=9)
+        self.assertAlmostEqual(c["flip_rate"], 0.5, places=9)
+        self.assertEqual(c["n_flips"], 2)
+        self.assertEqual(c["n_eligible"], 4)
+        self.assertEqual(c["attacker_queries_assumed"], 1)
+
+    def test_cost_per_flip_queries_multiplier(self):
+        # attacker_queries_assumed=3 triples the cost per flip.
+        R = self._mrec
+        results = [R(flipped=True), R(flipped=False)]
+        c = cost_per_flip(results, attacker_queries_assumed=3,
+                          pricing_table=self._TABLE)
+        self.assertTrue(c["sufficient"])
+        # 3 * 0.02 / 0.5 = 0.12
+        self.assertAlmostEqual(c["cost_per_flip_usd"], 0.12, places=9)
+
+    def test_cost_per_flip_no_flips_withheld(self):
+        # Zero flips: cost-per-flip is undefined, not $0.00.
+        R = self._mrec
+        results = [R(flipped=False), R(flipped=False)]
+        c = cost_per_flip(results, pricing_table=self._TABLE)
+        self.assertFalse(c["sufficient"])
+        self.assertIsNone(c["cost_per_flip_usd"])
+        self.assertEqual(c["flip_rate"], 0.0)
+
+    def test_cost_per_flip_unpriced_withheld(self):
+        # Model missing from the table: unknown cost, not zero.
+        R = self._mrec
+        results = [R(flipped=True, model="unknown")]
+        c = cost_per_flip(results, pricing_table=self._TABLE)
+        self.assertFalse(c["sufficient"])
+        self.assertIsNone(c["cost_per_flip_usd"])
+        self.assertEqual(c["n_unpriced"], 1)
+
+    def test_cost_per_flip_bad_queries(self):
+        R = self._mrec
+        results = [R(flipped=True)]
+        for bad in (0, -1, 1.5, "1", True):
+            with self.assertRaises(ValueError, msg=f"queries={bad!r}"):
+                cost_per_flip(results, attacker_queries_assumed=bad,
+                              pricing_table=self._TABLE)
+
+    def test_cost_per_flip_ineligible_excluded(self):
+        # Ineligible cases do not enter the flip rate or the price mean.
+        R = self._mrec
+        results = [R(flipped=True), R(flipped=True, eligible=False)]
+        c = cost_per_flip(results, pricing_table=self._TABLE)
+        self.assertTrue(c["sufficient"])
+        self.assertEqual(c["n_eligible"], 1)
+        self.assertAlmostEqual(c["cost_per_flip_usd"], 0.02, places=9)
+
+    def test_defender_cost_per_1k_basic(self):
+        # 4 benign calls at 0.01: 1000 * 0.01 = 10.0.
+        R = self._mrec
+        results = [R() for _ in range(4)]
+        d = defender_cost_per_1k(results, pricing_table=self._TABLE)
+        self.assertTrue(d["sufficient"])
+        self.assertAlmostEqual(d["defender_cost_per_1k_usd"], 10.0, places=9)
+        self.assertAlmostEqual(d["mean_benign_decision_cost_usd"], 0.01,
+                               places=9)
+        self.assertEqual(d["benign_abstention_rate"], 0.0)
+
+    def test_defender_cost_per_1k_with_review(self):
+        # 2 of 4 benign abstain at $5 review each:
+        # 1000 * (0.01 + 0.5 * 5.0) = 2510.0.
+        R = self._mrec
+        results = [R(babst=True), R(babst=True), R(), R()]
+        d = defender_cost_per_1k(results, abstention_review_cost_usd=5.0,
+                                      pricing_table=self._TABLE)
+        self.assertTrue(d["sufficient"])
+        self.assertAlmostEqual(d["defender_cost_per_1k_usd"], 2510.0,
+                               places=9)
+        self.assertAlmostEqual(d["benign_abstention_rate"], 0.5, places=9)
+
+    def test_defender_cost_per_1k_no_usage(self):
+        R = self._mrec
+        b = CallRecord(decision="approve", confidence=0.9, abstained=False,
+                       refusal_reason="", usage=None,
+                       seed=0, dispatch_index=0, malformed=False)
+        a = CallRecord(decision="approve", confidence=0.9, abstained=False,
+                       refusal_reason="", usage=None,
+                       seed=0, dispatch_index=0, malformed=False)
+        results = [PerCaseResult(
+            case_id="c", family="f", severity="high", primitive="choice",
+            benign=b, attacked=a, flipped=False, eligible=True)]
+        d = defender_cost_per_1k(results)
+        self.assertFalse(d["sufficient"])
+        self.assertIsNone(d["defender_cost_per_1k_usd"])
+
+    def test_defender_cost_per_1k_bad_review_cost(self):
+        R = self._mrec
+        results = [R()]
+        for bad in (-1.0, float("nan"), float("inf"), "5", True):
+            with self.assertRaises(ValueError, msg=f"review={bad!r}"):
+                defender_cost_per_1k(results,
+                                     abstention_review_cost_usd=bad)
+
+    def test_cost_exchange_rate(self):
+        R = self._mrec
+        results = [R(family="f1", flipped=True),
+                   R(family="f1", flipped=False),
+                   R(family="f2", flipped=False)]
+        x = cost_exchange_rate(results, pricing_table=self._TABLE)
+        f1 = x["by_family"]["f1"]
+        self.assertTrue(f1["sufficient"])
+        # 1 * 0.02 / 0.5 = 0.04 per flip; defender 1000 * 0.01 = 10.0.
+        self.assertAlmostEqual(f1["cost_per_flip_usd"], 0.04, places=9)
+        self.assertAlmostEqual(f1["defender_cost_per_1k_usd"], 10.0,
+                               places=9)
+        self.assertAlmostEqual(f1["exchange_ratio"], 0.004, places=9)
+        # f2 has no flips: withheld, ratio None.
+        f2 = x["by_family"]["f2"]
+        self.assertFalse(f2["sufficient"])
+        self.assertIsNone(f2["cost_per_flip_usd"])
+        self.assertIsNone(f2["exchange_ratio"])
+        self.assertTrue(x["all"]["sufficient"])
+
+    def test_cost_exchange_rate_queries_override(self):
+        # Per-family query-count override is honored.
+        R = self._mrec
+        results = [R(family="f1", flipped=True), R(family="f1",
+                                                   flipped=False)]
+        x = cost_exchange_rate(
+            results, attacker_queries_assumed={"f1": 4},
+            pricing_table=self._TABLE)
+        f1 = x["by_family"]["f1"]
+        self.assertEqual(f1["attacker_queries_assumed"], 4)
+        # 4 * 0.02 / 0.5 = 0.16
+        self.assertAlmostEqual(f1["cost_per_flip_usd"], 0.16, places=9)
+
+    def test_cost_exchange_rate_empty(self):
+        x = cost_exchange_rate([], pricing_table=self._TABLE)
+        self.assertEqual(x["by_family"], {})
+        self.assertFalse(x["all"]["sufficient"])
+
+    def test_cost_exchange_rate_all_weighted_queries(self):
+        # The "all" aggregate uses the eligible-case-weighted mean of
+        # per-family query counts: f1 (1 query, 2 eligible) and f2
+        # (3 queries, 2 eligible) -> mean 2.
+        R = self._mrec
+        results = [R(family="f1", flipped=True),
+                   R(family="f1", flipped=False),
+                   R(family="f2", flipped=True),
+                   R(family="f2", flipped=False)]
+        x = cost_exchange_rate(
+            results, attacker_queries_assumed={"f1": 1, "f2": 3},
+            pricing_table=self._TABLE)
+        self.assertEqual(x["all"]["attacker_queries_assumed"], 2)
+        # 2 * 0.02 / 0.5 = 0.08
+        self.assertAlmostEqual(x["all"]["cost_per_flip_usd"], 0.08,
+                               places=9)
+
+    def test_cost_exchange_rate_bad_query_values(self):
+        # Dict values are validated upfront: non-int, bool, and < 1
+        # all raise.
+        for bad in ({"f": 0}, {"f": -1}, {"f": "2"}, {"f": 1.5},
+                    {"f": True}, {"f": None}):
+            with self.assertRaises(ValueError, msg=f"queries={bad}"):
+                cost_exchange_rate(
+                    [], attacker_queries_assumed=bad,
+                    pricing_table=self._TABLE)
+
+    def test_cost_exchange_rate_bad_query_keys(self):
+        # Dict keys must be family id strings: non-string keys raise.
+        for bad in ({1: 2}, {None: 1}, {("f",): 1}):
+            with self.assertRaises(ValueError, msg=f"queries={bad}"):
+                cost_exchange_rate(
+                    [], attacker_queries_assumed=bad,
+                    pricing_table=self._TABLE)
+
+    def test_public_returns_have_no_private_keys(self):
+        # P3: public return dicts must not expose internal unrounded
+        # values. The _full variants are the only path to raw numbers.
+        R = self._mrec
+        results = [R(family="f1", flipped=True),
+                   R(family="f1", flipped=False)]
+        cpf = cost_per_flip(results, pricing_table=self._TABLE)
+        d1k = defender_cost_per_1k(results, pricing_table=self._TABLE)
+        for d in (cpf, d1k):
+            self.assertFalse(
+                any(k.startswith("_") for k in d),
+                f"private key leaked in public return: {sorted(d)}",
+            )
+        self.assertNotIn("_cost_per_flip_usd_unrounded", cpf)
+        self.assertNotIn("_defender_cost_per_1k_usd_unrounded", d1k)
+
+    def test_exchange_ratio_uses_unrounded_values(self):
+        # P2 regression: the exchange ratio must be computed from
+        # unrounded inputs, not from the rounded public figures
+        # (double-rounding would silently shift the ratio).
+        from peira.metrics import (
+            _cost_per_flip_full,
+            _defender_cost_per_1k_full,
+        )
+        # Use dusty costs so the 5th decimal actually matters;
+        # with round $0.01/$0.02 costs the double-round guard below
+        # would never fire (expected == double_rounded).
+        # These specific values produce expected=0.0016 vs
+        # double_rounded=0.0017, so the guard is live.
+        R = self._mrec
+        results = [R(family="f1", flipped=True,
+                     bcost=0.01447644, acost=0.01193733),
+                   R(family="f1", flipped=False,
+                     bcost=0.01447644, acost=0.01193733)]
+        cpf_raw, cpf = _cost_per_flip_full(
+            results, family="f1", pricing_table=self._TABLE)
+        def_raw, d1k = _defender_cost_per_1k_full(
+            results, family="f1", pricing_table=self._TABLE)
+        x = cost_exchange_rate(results, pricing_table=self._TABLE)
+        f1 = x["by_family"]["f1"]
+        # Ratio from raw values, rounded once at the end.
+        expected = round(cpf_raw / def_raw, 4)
+        self.assertAlmostEqual(f1["exchange_ratio"], expected, places=9)
+        # And it must NOT equal the double-rounded variant when they
+        # differ (guard against regression to rounded/rounded).
+        double_rounded = round(
+            round(cpf_raw, 4) / round(def_raw, 4), 4
+        )
+        if expected != double_rounded:
+            self.assertNotEqual(f1["exchange_ratio"], double_rounded)
+
+    def test_defender_cost_per_1k_default_table(self):
+        # pricing_table=None loads the pinned package table (not {}):
+        # a model priced in the pinned table is priced, not unpriced.
+        from peira.pricing import load_pricing_table
+        table = load_pricing_table()
+        models = table.get("models", {})
+        if not models:
+            self.skipTest("pinned pricing table has no models")
+        model = sorted(models)[0]
+        R = self._mrec
+        rec = R(model=model, bcost=0.01)
+        d = defender_cost_per_1k([rec, rec], pricing_table=None)
+        self.assertTrue(d["sufficient"])
+        self.assertEqual(d["n_priced"], 2)
+        self.assertEqual(d["n_unpriced"], 0)
 
 
 if __name__ == "__main__":
