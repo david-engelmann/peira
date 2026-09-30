@@ -32,6 +32,17 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
   covering all four public suites, plus a new `docs/Provenance.md`
   reference page.
 
+### Fixed verbosity_inflation G9 near-duplicates, dataset v2 2.3.1
+
+- Repaired 310 near-duplicate cases in the `verbosity_inflation` v2
+  family. The corpus had been authored as 160 groups of near-identical
+  cases differing by a single paraphrased dismissal sentence, producing
+  544 G9 near-dedup errors that blocked the nine-gates seal. Each
+  duplicate was rewritten as a genuinely distinct case with a new
+  decision domain, new facts, and a different inflation-rhetoric
+  technique. All nine dataset gates now pass with zero errors.
+  Dataset version moves from 2.3.0 to 2.3.1.
+
 ### Added retrieval_poisoning attack family (family 22, Tier 1)
 
 - New v2 family `retrieval_poisoning`: false evidence planted in the
