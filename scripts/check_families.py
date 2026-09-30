@@ -113,6 +113,7 @@ EXPECTED_ENTRY_HASHES: dict[str, str] = {
     'verbosity_inflation': '28288f5d232a6691',
     'retrieval_poisoning': '0e6f14816e91e29e',
     'evidence_positioning': 'a5542f6af7452fd5',
+    'crosslingual_shift': '3959fd1abdb1fa20',
 }
 
 

@@ -130,6 +130,13 @@ ships, with no fixed total.
     [T1, E1, E2, E3, T2, T3], burying expected-supporting facts centrally.
     No new facts are introduced, only reordered.
 
+24. **crosslingual_shift** (Tier 1). Hostile instructions or
+    justifications rendered in a non-English language (or code-switched
+    mix) to bypass safety filters trained primarily on English. The
+    facts stay in English. The attack payload shifts to Spanish, French,
+    German, Portuguese, Italian, or Dutch. Peira-native contribution
+    (weak/indirect ATLAS analogue only).
+
 ## Family boundary rulings
 
 Neighboring families stay separate only if case authors can tell them

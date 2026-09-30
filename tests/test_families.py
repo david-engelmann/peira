@@ -42,6 +42,7 @@ EXPECTED_POST_V2 = (
     "verbosity_inflation",
     "retrieval_poisoning",
     "evidence_positioning",
+    "crosslingual_shift",
 )
 
 
