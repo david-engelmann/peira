@@ -2926,6 +2926,8 @@ def cmd_runs_list(args: argparse.Namespace) -> int:
         call_date=getattr(args, "call_date", None),
         template_hash=getattr(args, "template_hash", None),
         case_set_tag=getattr(args, "case_set_tag", None),
+        effort=getattr(args, "effort", None),
+        effort_tier=getattr(args, "effort_tier", None),
     )
     if not runs:
         print("No runs found.")
@@ -2935,17 +2937,19 @@ def cmd_runs_list(args: argparse.Namespace) -> int:
     # different measurements and must never pool silently, and partial
     # (budget-terminated) runs are analyzable but never rankable.
     print(f"{'Run ID':<40} {'Adapter':<20} {'Suite':<10} "
-          f"{'Dataset':<12} {'Env SHA':<10} {'Cache':<6} {'Term':<9} {'Lock':<8}")
-    print("-" * 125)
+          f"{'Dataset':<12} {'Env SHA':<10} {'Cache':<6} {'Term':<9} "
+          f"{'Effort':<10} {'Lock':<8}")
+    print("-" * 136)
     for r in runs:
         env_short = (r["env_sha256"] or "")[:8]
         lock = "valid" if r["lock_valid"] else "INVALID"
         cache = r.get("cache_enabled")
         cache_str = "on" if cache == 1 else ("off" if cache == 0 else "?")
         term = r.get("termination") or "-"
+        effort = r.get("effort") or "-"
         print(f"{r['run_id']:<40} {r['adapter_name']:<20} "
               f"{r['suite']:<10} {r['dataset_version']:<12} "
-              f"{env_short:<10} {cache_str:<6} {term:<9} {lock:<8}")
+              f"{env_short:<10} {cache_str:<6} {term:<9} {effort:<10} {lock:<8}")
     print(f"\n{len(runs)} run(s) total.")
     return EXIT_OK
 
@@ -3085,6 +3089,87 @@ def cmd_runs_verify(args: argparse.Namespace) -> int:
               file=sys.stderr)
         return EXIT_USER_ERROR
     print(f"\nAll {len(results)} verified.")
+    return EXIT_OK
+
+
+def cmd_effort(args: argparse.Namespace) -> int:
+    """Effort analysis: curves, marginals, and crossed comparisons."""
+    import json
+    from peira.effort import summarize_effort
+    from peira.runs_registry import get_family_results, list_runs
+    from peira.artifacts import RunArtifact
+
+    runs_dir = Path(args.runs_dir) if args.runs_dir else None
+    runs = list_runs(
+        runs_dir,
+        adapter=args.adapter,
+        suite=args.suite,
+        effort=getattr(args, "effort", None),
+        effort_tier=getattr(args, "effort_tier", None),
+    )
+    if not runs:
+        print("No runs found.")
+        return EXIT_OK
+    # summarize_effort needs the metrics payload: load each artifact.
+    run_dicts = []
+    for r in runs:
+        try:
+            art = RunArtifact.from_json(
+                Path(r["path"]).read_text(encoding="utf-8"))
+        except (OSError, ValueError) as e:
+            print(f"warning: skipping {r.get('run_id')}: {e}",
+                  file=sys.stderr)
+            continue
+        d = dict(r)
+        d["metrics"] = art.metrics or {}
+        run_dicts.append(d)
+    if not run_dicts:
+        print("No runs with loadable artifacts.")
+        return EXIT_USER_ERROR
+    family_rows = None
+    try:
+        family_rows = get_family_results(runs_dir=runs_dir)
+    except Exception:
+        pass
+    summary = summarize_effort(run_dicts, family_rows=family_rows)
+    if args.json:
+        print(json.dumps(summary, indent=2, default=str))
+        return EXIT_OK
+    # Text report.
+    for key in sorted(summary["models"]):
+        m = summary["models"][key]
+        print(f"\n{m['adapter_name']} ({m['adapter_version_base']}): "
+              f"{m['n_runs']} runs")
+        print(f"  {'Effort':<12} {'ASR':<8} {'CI':<18} {'Cost USD':<10}")
+        for row in m["curve"]:
+            asr = f"{row['asr']:.3f}" if row["asr"] is not None else "-"
+            ci = ""
+            if row["asr_ci95"]:
+                ci = f"[{row['asr_ci95'][0]:.3f}, {row['asr_ci95'][1]:.3f}]"
+            cost = (f"{row['cost_usd']:.2f}"
+                    if row["cost_usd"] is not None else "-")
+            label = row["effort_native"] or "provider default"
+            print(f"  {label:<12} {asr:<8} {ci:<18} {cost:<10}")
+        if m["marginal"]:
+            print("  Marginal steps:")
+            for s in m["marginal"]:
+                if not s["comparable"]:
+                    print(f"    {s['from_effort']} -> {s['to_effort']}: "
+                          f"not comparable (different ladders)")
+                    continue
+                price = (f"${s['usd_per_asr_point']:.2f}/ASR point"
+                         if s["usd_per_asr_point"] is not None
+                         else "no price (no improvement)")
+                print(f"    {s['from_effort']} -> {s['to_effort']}: "
+                      f"dASR {s['delta_asr']:+.3f}, "
+                      f"dCost ${s['delta_cost_usd']:+.2f}, {price}")
+    if summary["crossed"]:
+        print("\nCrossed comparisons:")
+        for c in summary["crossed"]:
+            print(f"  {c['label']}: dASR {c['delta_asr']:+.3f} "
+                  f"({c['ci_overlap']}), cost ratio {c['cost_ratio']:.2f}x")
+    for note in summary["notes"]:
+        print(f"\nNote: {note}")
     return EXIT_OK
 
 
@@ -4024,10 +4109,32 @@ def build_parser() -> argparse.ArgumentParser:
                     help="filter by prompt-template hash")
     rl.add_argument("--case-set-tag", default=None,
                     help="filter by case-set tag (suite id)")
+    rl.add_argument("--effort", default=None,
+                    help="filter by provider-native effort value "
+                         "(e.g. high; empty string matches runs where "
+                         "effort was not requested)")
+    rl.add_argument("--effort-tier", default=None,
+                    help="filter by normalized effort tier "
+                         "(none, minimal, low, medium, high, xhigh, max)")
     rl.set_defaults(func=cmd_runs_list)
     rv = rsub.add_parser("verify", help="verify analysis locks")
     rv.add_argument("paths", nargs="+", help="artifact paths to verify")
     rv.set_defaults(func=cmd_runs_verify)
+    ef = sub.add_parser("effort", help="effort analysis: curves, marginal "
+                        "economics, crossed comparisons")
+    ef.add_argument("--runs-dir", default=None,
+                    help="runs directory (default: ./runs or $PEIRA_RUNS_DIR)")
+    ef.add_argument("--adapter", default=None,
+                    help="filter by adapter name")
+    ef.add_argument("--suite", default=None,
+                    help="filter by suite")
+    ef.add_argument("--effort", default=None,
+                    help="filter by provider-native effort value")
+    ef.add_argument("--effort-tier", default=None,
+                    help="filter by normalized effort tier")
+    ef.add_argument("--json", action="store_true",
+                    help="emit the full summary as JSON")
+    ef.set_defaults(func=cmd_effort)
     rq = rsub.add_parser("query",
                          help="per-case drill-down across runs "
                          "(e.g. flipped cases on a family with high confidence)")

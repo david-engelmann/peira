@@ -390,21 +390,41 @@ def marginal_table(
     extra spend per point of ASR reduction. Steps where either endpoint
     lacks ASR or cost, or where ASR did not improve, carry None for the
     ratio rather than a misleading number: a non-improvement has no
-    price.
+    price. Steps only run within one ladder (tier-to-tier or
+    budget-to-budget); a tier-to-provider-default or tier-to-budget
+    adjacency is not a step and is labeled non-comparable rather than
+    priced. The CI envelopes of both endpoints ride along so the
+    uncertainty stays visible.
     """
     levels = aggregate_levels(curve)
     steps: list[dict[str, Any]] = []
     for prev, cur in zip(levels, levels[1:]):
+        prev_tier = prev["effort_tier"] or None
+        cur_tier = cur["effort_tier"] or None
+        prev_native = prev["effort_native"] or None
+        cur_native = cur["effort_native"] or None
+        # Same ladder? Both tiered, or both budget-based. Provider
+        # default (neither) never forms a priced step with a ladder
+        # level — that adjacency invents a rank the provider never
+        # stated.
+        prev_budget = prev_native is not None and _is_budget_native(prev_native)
+        cur_budget = cur_native is not None and _is_budget_native(cur_native)
+        same_ladder = (prev_tier is not None and cur_tier is not None) or (
+            prev_budget and cur_budget
+        )
         step: dict[str, Any] = {
             "from_effort": prev["effort_native"] or "provider default",
             "to_effort": cur["effort_native"] or "provider default",
             "from_tier": prev["effort_tier"],
             "to_tier": cur["effort_tier"],
+            "from_ci": prev["ci_envelope"],
+            "to_ci": cur["ci_envelope"],
+            "comparable": same_ladder,
             "delta_asr": None,
             "delta_cost_usd": None,
             "usd_per_asr_point": None,
         }
-        if (
+        if same_ladder and (
             prev["asr"] is not None
             and cur["asr"] is not None
             and prev["cost_usd"] is not None
@@ -522,22 +542,25 @@ def per_family_effort(
     """Per-family effort curves from registry family rows.
 
     Takes rows shaped like runs_registry.get_family_results output and
-    groups them by (family, effort_native, effort_tier). Repeated runs
-    aggregate like :func:`aggregate_levels`: n and n_eligible sum, ASR
-    is the n_eligible-weighted mean, the CI is a conservative envelope,
-    and refusal_rate is the n-weighted mean. Rows sort by family then
-    effort level.
+    groups them by (adapter, family, effort_native, effort_tier).
+    The adapter is in the key because provider tiers are not
+    commensurable: "high" on Anthropic must never pool with "high" on
+    OpenAI. Repeated runs aggregate like :func:`aggregate_levels`: n
+    and n_eligible sum, ASR is the n_eligible-weighted mean, the CI is
+    a conservative envelope, and refusal_rate is the n-weighted mean.
+    Rows sort by adapter, family, then effort level.
     """
-    buckets: dict[tuple[str, str, str], list[dict[str, Any]]] = {}
+    buckets: dict[tuple[str, str, str, str], list[dict[str, Any]]] = {}
     for row in family_rows:
         key = (
+            str(row.get("adapter_name") or ""),
             str(row.get("family") or ""),
             str(row.get("effort") or ""),
             str(row.get("effort_tier") or ""),
         )
         buckets.setdefault(key, []).append(row)
     out: list[dict[str, Any]] = []
-    for (family, native, tier), rows in buckets.items():
+    for (adapter, family, native, tier), rows in buckets.items():
         n_rows = [r for r in rows if _num(r.get("n")) is not None]
         n_el_rows = [r for r in rows if _num(r.get("n_eligible")) is not None]
         n = sum(_num(r["n"]) for r in n_rows) if n_rows else None
@@ -565,6 +588,7 @@ def per_family_effort(
             ) / sum(rr_weights)
         out.append(
             {
+                "adapter_name": adapter,
                 "family": family,
                 "effort_native": native,
                 "effort_tier": tier,
@@ -578,6 +602,7 @@ def per_family_effort(
         )
     out.sort(
         key=lambda r: (
+            r["adapter_name"],
             r["family"],
             effort_sort_key(r["effort_native"] or None, r["effort_tier"] or None),
         )
@@ -589,13 +614,16 @@ def summarize_effort(
     runs: list[dict[str, Any]],
     family_rows: list[dict[str, Any]] | None = None,
     flips: dict[str, dict[str, int]] | None = None,
+    group_by: tuple[str, ...] = ("adapter_name", "model"),
 ) -> dict[str, Any]:
     """Top-level effort summary across runs.
 
     ``runs`` are registry list_runs rows each carrying a "metrics"
-    payload (see the module header). Runs group by model — adapter_name
-    plus the effort-stripped adapter version — so each model gets a
-    within-model effort curve, level aggregation, marginal economics,
+    payload (see the module header). ``group_by`` controls the model
+    key: "adapter_name" plus "model" (the effort-stripped adapter
+    version) is the default; pass ("adapter_name",) to pool versions.
+    Runs group by that key, so each model gets a within-model effort
+    curve, level aggregation, marginal economics,
     and (when ``flips`` carries an entry for that model) cost per
     prevented flip. ``flips`` maps model key (``"name:base_version"``,
     the keys of the returned ``models`` dict) to an effort_native ->
@@ -610,13 +638,26 @@ def summarize_effort(
     pool within a level, and CI envelopes are conservative, never
     recomputed intervals.
     """
-    models: dict[tuple[str, str], list[dict[str, Any]]] = {}
+    def _key(run: dict[str, Any]) -> tuple[str, ...]:
+        parts = []
+        for field in group_by:
+            if field == "model":
+                parts.append(_model_key(run)[1])
+            elif field == "adapter_name":
+                parts.append(str(run.get("adapter_name") or ""))
+            else:
+                parts.append(str(run.get(field) or ""))
+        return tuple(parts)
+
+    models: dict[tuple[str, ...], list[dict[str, Any]]] = {}
     for run in runs:
-        models.setdefault(_model_key(run), []).append(run)
+        models.setdefault(_key(run), []).append(run)
     model_summaries: dict[str, dict[str, Any]] = {}
-    for (name, base_version), model_runs in sorted(models.items()):
+    for key_tuple, model_runs in sorted(models.items()):
         curve = effort_curve(model_runs)
-        key = f"{name}:{base_version}"
+        key = ":".join(key_tuple)
+        name = key_tuple[0] if key_tuple else ""
+        base_version = key_tuple[1] if len(key_tuple) > 1 else ""
         summary: dict[str, Any] = {
             "adapter_name": name,
             "adapter_version_base": base_version,

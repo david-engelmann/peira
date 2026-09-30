@@ -365,6 +365,18 @@ class TestOpenAIShape(unittest.TestCase):
         self.addCleanup(self._e.__exit__, None, None, None)
         self.addCleanup(self._m.__exit__, None, None, None)
 
+    def test_effort_sends_reasoning_effort(self):
+        out = OpenAIAdapter(effort="high").decide(CASE, "choice", _ctx())
+        self.assertEqual(out.decision, "approve")
+        self.assertEqual(self.calls[0].get("reasoning_effort"), "high")
+        params = out.transcript["parameters"]
+        self.assertEqual(params["effort"], "high")
+        self.assertEqual(params["effort_tier"], "high")
+
+    def test_no_effort_sends_no_reasoning_effort(self):
+        OpenAIAdapter().decide(CASE, "choice", _ctx())
+        self.assertNotIn("reasoning_effort", self.calls[0])
+
     def test_retries_disabled(self):
         OpenAIAdapter()
         self.assertEqual(self.created.get("max_retries"), 0)

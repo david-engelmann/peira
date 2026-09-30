@@ -258,6 +258,7 @@ def _validate_and_record(
                 usage.model, usage.tokens_in, usage.tokens_out, pricing_table
             ),
             price_table_ref=pricing_table.get("pricing_version"),
+            reasoning_tokens=usage.reasoning_tokens,
         )
     return CallRecord(
         decision=output.decision,
@@ -2987,10 +2988,11 @@ def replay_suite(
     # the provider, so "any hit" is the measurement-honest signal.)
     replay_cache_enabled = any(bool(e.get("cached")) for e in entries)
     # Effort provenance: the original run's effort, recorded per-entry in
-    # the adapter transcript parameters. All entries of one run share
-    # it; the first reported value wins. "" when the transcript predates
-    # effort recording (or every entry was a cache hit with no raw
-    # payload) — the same "unset" semantics as a live run.
+    # the adapter transcript parameters. All entries of one run must
+    # share it — if they disagree, the transcript is corrupt and replay
+    # refuses rather than silently picking one. "" when the transcript
+    # predates effort recording (or every entry was a cache hit with no
+    # raw payload) — the same "unset" semantics as a live run.
     replay_effort = ""
     replay_effort_tier = ""
     for e in entries:
@@ -3001,11 +3003,19 @@ def replay_suite(
         eff = params.get("effort")
         tier = params.get("effort_tier")
         if isinstance(eff, str) and eff:
+            if replay_effort and replay_effort != eff:
+                raise ValueError(
+                    f"replay: transcript effort mismatch: {replay_effort!r} "
+                    f"vs {eff!r} — entries disagree, refusing to replay"
+                )
             replay_effort = eff
         if isinstance(tier, str) and tier:
+            if replay_effort_tier and replay_effort_tier != tier:
+                raise ValueError(
+                    f"replay: transcript effort_tier mismatch: "
+                    f"{replay_effort_tier!r} vs {tier!r}"
+                )
             replay_effort_tier = tier
-        if replay_effort or replay_effort_tier:
-            break
     config: dict[str, Any] = {
         "n_cases": len(cases),
         "required_families": required_families,

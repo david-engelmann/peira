@@ -329,6 +329,33 @@ class TestEffortAnalysis(unittest.TestCase):
         self.assertIsNone(steps[0]["delta_asr"])
         self.assertIsNone(steps[0]["usd_per_asr_point"])
 
+    def test_marginal_table_tier_to_default_is_not_comparable(self):
+        # A tier-to-provider-default adjacency is not a ladder step and
+        # must not be priced.
+        runs = [
+            _make_run(native="max", tier="max", run_id="a",
+                      asr=0.30, cost=10.0),
+            _make_run(native="", tier="", run_id="b",
+                      asr=0.20, cost=5.0),
+        ]
+        steps = E.marginal_table(E.effort_curve(runs))
+        self.assertEqual(len(steps), 1)
+        self.assertFalse(steps[0]["comparable"])
+        self.assertIsNone(steps[0]["delta_asr"])
+        self.assertIsNone(steps[0]["usd_per_asr_point"])
+
+    def test_marginal_table_carries_cis(self):
+        runs = [
+            _make_run(native="medium", tier="medium", run_id="a",
+                      asr=0.30, lo=0.25, hi=0.35, cost=5.0),
+            _make_run(native="high", tier="high", run_id="b",
+                      asr=0.20, lo=0.15, hi=0.25, cost=8.0),
+        ]
+        steps = E.marginal_table(E.effort_curve(runs))
+        self.assertTrue(steps[0]["comparable"])
+        self.assertEqual(steps[0]["from_ci"], [0.25, 0.35])
+        self.assertEqual(steps[0]["to_ci"], [0.15, 0.25])
+
     def test_crossed_comparison(self):
         a = _make_run(name="anthropic", version="sonnet@effort=max",
                       native="max", tier="max", asr=0.26, lo=0.20,
@@ -387,6 +414,25 @@ class TestEffortAnalysis(unittest.TestCase):
         self.assertEqual(out[0]["effort_native"], "high")
         self.assertEqual(out[1]["effort_native"], "max")
         self.assertEqual(out[2]["family"], "f2")
+
+    def test_per_family_effort_does_not_pool_across_models(self):
+        # Provider tiers are not commensurable: "high" on Anthropic must
+        # never pool with "high" on OpenAI.
+        rows = [
+            {"adapter_name": "anthropic", "family": "f1",
+             "effort": "high", "effort_tier": "high",
+             "n": 100, "n_eligible": 90, "asr": 0.20,
+             "asr_lo": 0.12, "asr_hi": 0.28},
+            {"adapter_name": "openai", "family": "f1",
+             "effort": "high", "effort_tier": "high",
+             "n": 100, "n_eligible": 90, "asr": 0.40,
+             "asr_lo": 0.30, "asr_hi": 0.50},
+        ]
+        out = E.per_family_effort(rows)
+        self.assertEqual(len(out), 2)
+        by_adapter = {r["adapter_name"]: r for r in out}
+        self.assertAlmostEqual(by_adapter["anthropic"]["asr"], 0.20)
+        self.assertAlmostEqual(by_adapter["openai"]["asr"], 0.40)
 
     def test_summarize_effort_groups_by_model(self):
         runs = [

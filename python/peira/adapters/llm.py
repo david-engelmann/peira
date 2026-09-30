@@ -590,6 +590,13 @@ class _StructuredLLMBase:
         # the effective native value rather than a fake "default".
         self.effort_requested = effort
         self.effort_native = self._resolve_effort(effort)
+        # Alias disclosure: DeepSeek xhigh -> high, etc. The adapter
+        # records the effective native value honestly, but the user asked
+        # for something else — that remap must be visible, not silent.
+        self.effort_aliased = (
+            effort is not None
+            and canonical_native(self.EFFORT_PROVIDER, effort) != effort
+        ) if self.EFFORT_PROVIDER else False
         self.effort_tier = (
             normalize_effort(self.EFFORT_PROVIDER, self.effort_native)
             if self.effort_native is not None and self.EFFORT_PROVIDER is not None
@@ -636,6 +643,8 @@ class _StructuredLLMBase:
 
         The seed is included when the provider supports one: two runs
         with different provider seeds are not the same measurement.
+        Effort is included when explicitly requested: two runs at
+        different effort levels are not the same measurement either.
         """
         params: dict[str, Any] = {
             "temperature": self._temperature,
@@ -643,6 +652,9 @@ class _StructuredLLMBase:
         }
         if self._supports_seed:
             params["seed"] = self._seed
+        if self.effort_requested is not None:
+            params["effort_native"] = self.effort_native
+            params["effort_tier"] = self.effort_tier
         return params
 
     def with_seed(self, seed: int | None) -> "_StructuredLLMBase":
@@ -656,9 +668,18 @@ class _StructuredLLMBase:
         new = copy.copy(self)
         new._seed = seed
         seed_part = f":s{seed}" if self._supports_seed else ""
+        # Effort partitions the cache: the __init__ namespace appends
+        # :e<native> when effort was explicitly requested. The copy must
+        # keep it, or --effort runs would collide with provider-default
+        # runs in a shared cache.
+        effort_part = (
+            f":e{self.effort_native}"
+            if self.effort_requested is not None
+            else ""
+        )
         new.cache_namespace = (
             f"{self.name}:{self._model}:t{self._temperature}:"
-            f"mt{self._max_tokens}{seed_part}"
+            f"mt{self._max_tokens}{seed_part}{effort_part}"
         )
         return new
 
@@ -860,8 +881,12 @@ class _StructuredLLMBase:
                 # Reasoning effort: the provider-native value actually
                 # sent (None = nothing sent, provider default applied)
                 # plus the normalized tier for cross-model grouping.
+                # effort_requested is the raw user value: when it differs
+                # from effort (an alias remap like DeepSeek xhigh->high)
+                # the transcript shows both, so the remap is visible.
                 "effort": self.effort_native,
                 "effort_tier": self.effort_tier,
+                "effort_requested": self.effort_requested,
             },
             "request": raw.request_shape,
             "response": {**raw.response_shape, "attempts": attempts},
@@ -1546,6 +1571,11 @@ class AnthropicAdapter(_StructuredLLMBase):
     Effort rides as a sibling ``output_config.effort`` field.
     Anthropic has NO seed parameter — ``seed`` is accepted for a uniform
     constructor signature but ignored, and recorded as null.
+
+    NOTE: the output_config wire shape has not been exercised against
+    the live Anthropic API in this lane (no paid provider calls). The
+    request-shape unit tests pin the intended payload; verify against
+    the live API before relying on it for real runs.
     """
 
     name = "anthropic-structured"
