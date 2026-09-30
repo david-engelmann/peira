@@ -264,6 +264,41 @@ def _build_schema(labels: list[str], primitive: str) -> dict[str, Any]:
     return schema
 
 
+def _structured_wire_schema(schema: dict[str, Any]) -> dict[str, Any]:
+    """Copy of the schema safe for Anthropic ``output_config.format``.
+
+    Anthropic's structured-outputs JSON Schema subset rejects numeric
+    constraints (``minimum``/``maximum``/``multipleOf``) with a 400;
+    the official SDKs strip them (moving the bound into the field
+    description) when using ``messages.parse``. Peira sends a raw dict
+    through ``messages.create``, so strip them here on the structured
+    path only. The forced-tool path keeps the constraints: a tool's
+    ``input_schema`` allows full JSON Schema. The 0..1 bound stays
+    enforced client-side in ``_validate_value`` either way.
+    """
+    wire = copy.deepcopy(schema)
+
+    def visit(node: Any) -> None:
+        if isinstance(node, dict):
+            lo = node.pop("minimum", None)
+            hi = node.pop("maximum", None)
+            node.pop("multipleOf", None)
+            if lo is not None or hi is not None:
+                bound = f"Must be between {lo} and {hi}."
+                desc = node.get("description")
+                node["description"] = (
+                    f"{desc} {bound}" if desc else bound
+                )
+            for value in node.values():
+                visit(value)
+        elif isinstance(node, list):
+            for item in node:
+                visit(item)
+
+    visit(wire)
+    return wire
+
+
 def _validate_value(key: str, value: Any, subschema: dict[str, Any]) -> list[str]:
     """Validate one property against its subschema (stdlib only)."""
     errors: list[str] = []
@@ -1376,8 +1411,13 @@ class AnthropicAdapter(_StructuredLLMBase):
         if self._structured_outputs:
             # Native structured outputs: no tools, no tool_choice.
             # Forced tool_choice 400s on the newer reasoning models.
+            # The wire schema is sanitized: output_config.format
+            # rejects numeric constraints (minimum/maximum) with a 400.
             kwargs["output_config"] = {
-                "format": {"type": "json_schema", "schema": schema},
+                "format": {
+                    "type": "json_schema",
+                    "schema": _structured_wire_schema(schema),
+                },
             }
         else:
             kwargs["tools"] = [

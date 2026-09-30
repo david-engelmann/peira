@@ -274,6 +274,33 @@ def _expected_schema(labels, primitive="choice"):
     return schema
 
 
+def _expected_wire_schema(labels, primitive="choice"):
+    """Expected schema on the output_config wire: Anthropic's
+    structured-outputs subset rejects numeric constraints (minimum /
+    maximum) with a 400, so the adapter strips them and moves the
+    bound into the field description (mirroring the SDK transform)."""
+    schema = _expected_schema(labels, primitive)
+    for prop in ("confidence", "score"):
+        if prop in schema["properties"]:
+            subschema = schema["properties"][prop]
+            del subschema["minimum"]
+            del subschema["maximum"]
+            subschema["description"] = "Must be between 0 and 1."
+    return schema
+
+
+def _assert_no_numeric_constraints(node, path="schema"):
+    """Recursively assert no minimum/maximum/multipleOf anywhere."""
+    if isinstance(node, dict):
+        for key in ("minimum", "maximum", "multipleOf"):
+            assert key not in node, f"{path} still has {key!r}"
+        for name, value in node.items():
+            _assert_no_numeric_constraints(value, f"{path}.{name}")
+    elif isinstance(node, list):
+        for i, item in enumerate(node):
+            _assert_no_numeric_constraints(item, f"{path}[{i}]")
+
+
 # ---------------------------------------------------------------------------
 # Missing extra / missing key.
 # ---------------------------------------------------------------------------
@@ -487,15 +514,20 @@ class TestAnthropicStructuredOutputs(unittest.TestCase):
             model="claude-fable-5-1",
         )
         self.assertEqual(out.decision, "approve")
+        wire_schema = calls[0]["output_config"]["format"]["schema"]
         self.assertEqual(
             calls[0]["output_config"],
             {"format": {
                 "type": "json_schema",
-                "schema": _expected_schema(["approve", "deny", "other"]),
+                "schema": _expected_wire_schema(
+                    ["approve", "deny", "other"]),
             }},
         )
         self.assertNotIn("tools", calls[0])
         self.assertNotIn("tool_choice", calls[0])
+        # Anthropic's structured-outputs subset rejects numeric
+        # constraints with a 400: none may reach the wire.
+        _assert_no_numeric_constraints(wire_schema)
 
     def test_default_model_keeps_forced_tool(self):
         out, calls = self._run(
@@ -503,7 +535,31 @@ class TestAnthropicStructuredOutputs(unittest.TestCase):
         self.assertEqual(out.decision, "approve")
         self.assertEqual(calls[0]["tool_choice"],
                          {"type": "tool", "name": "peira_decision"})
+        # Exact tools payload: the forced-tool path keeps the full
+        # JSON Schema, numeric constraints included.
+        self.assertEqual(calls[0]["tools"], [{
+            "name": "peira_decision",
+            "input_schema": _expected_schema(
+                ["approve", "deny", "other"]),
+        }])
         self.assertNotIn("output_config", calls[0])
+
+    def test_structured_wire_schema_strips_numeric_constraints(self):
+        schema = _expected_schema(["approve", "deny"], primitive="score")
+        wire = llm._structured_wire_schema(schema)
+        _assert_no_numeric_constraints(wire)
+        self.assertEqual(
+            wire["properties"]["confidence"]["description"],
+            "Must be between 0 and 1.")
+        self.assertEqual(
+            wire["properties"]["score"]["description"],
+            "Must be between 0 and 1.")
+        # The canonical schema is untouched: the forced-tool path
+        # keeps its constraints.
+        self.assertEqual(
+            schema["properties"]["confidence"]["minimum"], 0)
+        self.assertEqual(
+            schema["properties"]["score"]["maximum"], 1)
 
     def test_explicit_opt_in_flag(self):
         out, calls = self._run(
@@ -564,8 +620,9 @@ class TestAnthropicStructuredOutputs(unittest.TestCase):
                 model="claude-fable-5-1").decide(CASE, "score", _ctx())
         self.assertAlmostEqual(out.score, 0.8)
         self.assertEqual(validate_output(out, "score"), [])
-        self.assertIn("score", calls[0]["output_config"]["format"]
-                      ["schema"]["properties"])
+        wire_schema = calls[0]["output_config"]["format"]["schema"]
+        self.assertIn("score", wire_schema["properties"])
+        _assert_no_numeric_constraints(wire_schema)
 
     def test_structured_path_abstain_primitive(self):
         payload = json.dumps({"decision": "abstain", "confidence": 0.5,

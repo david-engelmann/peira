@@ -223,13 +223,14 @@ Why Fable 5.1 over GPT-6 Astra (`gpt-6-astra`, also $10/$50, GA
 **Honest caveats:** (1) the model id `claude-fable-5-1` follows
 Anthropic's documented naming convention (Fable 5's id was
 `claude-fable-5`) but is NOT independently confirmed on the live API.
-Verify before the first run: the request shape is now correct, but a
-wrong id fails closed as a terminal provider error, not a
-measurement; (2) no live verification has happened yet: the adapter
-path is unit-tested against mocked request/response shapes only, and
-no measured numbers from this adapter may be published until a live
-smoke test passes (D-33). Full rationale is recorded as D-32 in
-`docs/Decisions.md`.
+Verify before the first run. The adapter sends the documented
+`output_config.format` shape (numeric schema constraints stripped
+per Anthropic's published subset; the shape is asserted in mocked
+request tests only); (2) no live verification has happened yet: the
+adapter path is unit-tested against mocked request/response shapes
+only, and no measured numbers from this adapter may be published
+until a live smoke test passes (D-33). Full rationale is recorded as
+D-32 in `docs/Decisions.md`.
 
 ### Kimi K3 (Moonshot)
 

@@ -1174,6 +1174,17 @@ deliberately left untouched by the migration (no `thinking` params
 are sent; the transcript records the request shape honestly) and is
 part of that live verification.
 
+**Amendment 2 (2026-09-30, red-team P1):** Anthropic's
+`output_config.format` JSON Schema subset rejects numeric
+constraints (`minimum`/`maximum`/`multipleOf`) with a 400, and peira
+sends a raw dict through `messages.create` (no SDK-side stripping).
+`AnthropicAdapter` now sanitizes the wire schema on the structured
+path only (`_structured_wire_schema`): numeric constraints are
+removed and the bound moved into the field description, mirroring
+the official SDK transform. The forced-tool path keeps the
+constraints (a tool's `input_schema` allows full JSON Schema), and
+the 0..1 bound stays enforced client-side in `_validate_value`.
+
 ## D-33: Tier 1 adapter scope: four adapters, mocked-only, no live claims (2026-09-25)
 
 **Decision.** The Tier 1 expansion ships four adapters: Kev
