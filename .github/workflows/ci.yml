@@ -105,6 +105,28 @@ jobs:
       - run: pip install pyyaml
       - run: python3 scripts/check_coderabbit_config.py
 
+  site:
+    # The leaderboard scaffold must stay buildable: install deps, ingest
+    # the mock artifacts through the real pipeline, and run the Astro
+    # static build. Real-data ingestion is a manual pre-launch step.
+    needs: check_runner
+    runs-on: ${{ fromJSON(needs.check_runner.outputs.runner) }}
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: site/package-lock.json
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+      - run: npm ci
+        working-directory: site
+      - run: npm run build
+        working-directory: site
+
   dco:
     # Contributing.md requires Signed-off-by trailers (DCO); enforce it
     # mechanically on every non-merge commit in the PR. Push-to-main runs

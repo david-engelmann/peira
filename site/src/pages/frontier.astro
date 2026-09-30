@@ -1,0 +1,45 @@
+---
+import Base from '../layouts/Base.astro';
+import SuiteToggle from '../components/SuiteToggle.astro';
+import ExportButtons from '../components/ExportButtons.astro';
+---
+<Base title="Peira frontier, robustness against cost and latency" current="Frontier">
+  <div data-page="frontier">
+    <div class="wrap">
+      <section class="hero">
+        <div class="kicker">Cost and latency frontier</div>
+        <h1>Robustness <span class="amber">per dollar</span> and per millisecond</h1>
+        <p class="lede">
+          A guardrail that never flips but costs a fortune is a different product than a
+          cheap one that flips half the time. This view plots conditional attack success
+          rate against list-price cost, with bubble area showing p99 latency.
+        </p>
+      </section>
+
+      <div class="controls">
+        <SuiteToggle />
+        <label><input type="checkbox" id="logx" checked /> Log scale on the cost axis</label>
+      </div>
+
+      <div class="chart-wrap">
+        <div class="chart-scroll" id="frontier-chart"></div>
+        <p class="hint" id="frontier-note"></p>
+      </div>
+
+      <ExportButtons svg={true} png={true} />
+
+      <section class="prose">
+        <h2>How to read this view</h2>
+        <p>
+          The best tradeoffs sit toward the bottom left. An adapter is on the frontier when no
+          other adapter is both cheaper and more robust. Cost is list-price USD per 1,000
+          decisions from the pricing table in effect at run time.
+        </p>
+        <p class="note">
+          Cost data appears only when run artifacts include priced usage records.
+          Mock runs carry no pricing table, so the frontier is empty on mock builds.
+        </p>
+      </section>
+    </div>
+  </div>
+</Base>

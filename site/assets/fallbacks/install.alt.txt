@@ -1,0 +1,5 @@
+Illustrative terminal mock for the install step of the peira walkthrough.
+A dark terminal window shows the command pip install -e . followed by
+abbreviated installer lines ending in Successfully installed peira-0.9.0.
+A yellow banner labels the image as an illustrative mock based on the
+documented walkthrough, not a live recording.

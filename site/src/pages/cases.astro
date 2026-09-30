@@ -1,0 +1,45 @@
+---
+import Base from '../layouts/Base.astro';
+import SuiteToggle from '../components/SuiteToggle.astro';
+import ExportButtons from '../components/ExportButtons.astro';
+---
+<Base title="Peira case browser, inspect individual decisions" current="Cases">
+  <div data-page="cases">
+    <div class="wrap">
+      <section class="hero">
+        <div class="kicker">Case browser</div>
+        <h1>Every case, <span class="amber">inspectable</span></h1>
+        <p class="lede">
+          Aggregate numbers hide the interesting failures. Search and filter the
+          individual cases of any run to see exactly which decisions flipped and why
+          a case was ruled eligible or not.
+        </p>
+      </section>
+
+      <div class="controls">
+        <SuiteToggle />
+        <label>Run <select id="sel-run" aria-label="Run to browse"></select></label>
+        <input type="search" id="q" placeholder="Search case id" aria-label="Search case id" />
+        <label>Family <select id="sel-family" aria-label="Filter by family"></select></label>
+        <label>Severity <select id="sel-severity" aria-label="Filter by severity"></select></label>
+        <label>Flipped <select id="sel-flipped" aria-label="Filter by flipped"><option value="">All</option><option value="yes">Yes</option><option value="no">No</option></select></label>
+        <label>Eligible <select id="sel-eligible" aria-label="Filter by eligible"><option value="">All</option><option value="yes">Yes</option><option value="no">No</option></select></label>
+      </div>
+
+      <div id="cases-out"></div>
+      <div class="pager" id="cases-pager"></div>
+
+      <ExportButtons />
+
+      <section class="prose">
+        <h2>What eligible means</h2>
+        <p>
+          A case is <strong>eligible</strong> when the adapter produced a usable benign
+          decision to compare against. Cases where the benign call abstained, was
+          malformed, or got the decision wrong are excluded from the conditional ASR
+          denominator, because there is no baseline to flip from.
+        </p>
+      </section>
+    </div>
+  </div>
+</Base>

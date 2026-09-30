@@ -1,0 +1,83 @@
+---
+import Base from '../layouts/Base.astro';
+---
+<Base title="Peira methodology, how the numbers are computed" current="Methodology" needsData={false}>
+  <div class="wrap">
+    <section class="hero">
+      <div class="kicker">Methodology</div>
+      <h1>How the <span class="amber">numbers</span> are computed</h1>
+      <p class="lede">
+        Peira is an adversarial robustness benchmark for decision models. An adapter
+        sees a benign case and an attacked version of the same case, and peira measures
+        whether the attack flipped the decision. This page explains the metrics shown
+        across the site. The full specification lives in the docs.
+      </p>
+    </section>
+
+    <section class="prose">
+      <h2>Conditional attack success rate</h2>
+      <p>
+        The headline metric is <strong>conditional ASR</strong>. For each case, peira runs
+        the adapter on the benign version and on the attacked version. A case counts as
+        flipped when the two decisions differ. Conditional ASR is the share of flipped
+        cases among the <strong>eligible</strong> cases only.
+      </p>
+      <p>
+        Eligibility matters. A case is eligible when the benign run produced a correct,
+        well-formed, non-abstaining decision. If the adapter already fails the benign
+        case, there is no baseline to flip from, so the case is excluded from the
+        denominator. This keeps a model from looking robust by failing the easy cases.
+      </p>
+
+      <h2>Confidence intervals</h2>
+      <p>
+        Every rate on this site carries a <strong>95% confidence interval</strong>.
+        Rates use Wilson intervals and derived deltas use bootstrap intervals, so a
+        narrow gap between two adapters only means something when the intervals stop
+        overlapping. Withheld values, shown as the word withheld, mean the estimate
+        did not clear the minimum-observations gate and are never silently dropped.
+      </p>
+
+      <h2>Public and Holdout suites</h2>
+      <p>
+        The <strong>Public</strong> suite runs on the public case set. The
+        <strong>Holdout</strong> suite runs on a private case set that adapters never
+        see during development. A large gap between the two suggests the adapter was
+        tuned to the public cases rather than to the underlying skill.
+      </p>
+
+      <h2>Calibration</h2>
+      <p>
+        <strong>ECE</strong>, expected calibration error, is the average gap between
+        stated confidence and observed accuracy. <strong>Delta Brier</strong> measures
+        how much worse that calibration gets under attack. A model can be hard to flip
+        and still report meaningless confidence numbers, which is why calibration gets
+        its own view instead of being folded into the leaderboard.
+      </p>
+
+      <h2>Cost and latency</h2>
+      <p>
+        Cost is list-price USD per 1,000 decisions from the pricing table in effect at
+        run time, and latency is the p99 of buyer-observed per-call latency. Both are
+        measured by the runner, not reported by the adapter, so adapters are comparable.
+      </p>
+
+      <h2>Sealed artifacts</h2>
+      <p>
+        Every run behind this site is a sealed artifact. The artifact carries a hash
+        lock over its inputs, and the ingestion pipeline verifies that lock before any
+        number reaches the site. A run that fails verification fails the build loudly
+        instead of rendering partial numbers.
+      </p>
+
+      <h2>Mock data honesty</h2>
+      <p>
+        While the interface is under construction, every number on this site is
+        synthetic placeholder output. The banner at the top of every page says so, and
+        no build carrying mock data is ever presented as real results. When real runs
+        land, the banner goes away because the data flag flips, not because anyone
+        edited the copy.
+      </p>
+    </section>
+  </div>
+</Base>
