@@ -1240,3 +1240,62 @@ or above 0.78) that a human should check whether they test the same
 thing. Fix: none required. G9 warnings are informational and re-emit on
 every gate run; there is no review-queue clearing mechanism for G9
 (unlike G6). If the cases are genuinely distinct, no action is needed.
+
+## Site ingestion (`site/scripts/ingest.py`) errors
+
+**`ingest: error: <artifact>: v3 run_status is '<status>', not 'success' (only successful runs are ingestible)`**
+Cause: the artifact carries v3 extension blocks whose `run_status` is
+`started`, `cancelled`, `error`, or `partial`. The ingestion pipeline
+never analyzes a non-successful run (the Inspect rule): partial or
+failed runs are analyzable by hand but must not flow into the site data
+silently. Fix: re-run the adapter to completion and ingest the
+successful artifact; don't hand-edit `run_status` (the seal covers it).
+
+**`ingest: error: <artifact>: v3 block missing required keys: [...]`**
+Cause: the v3 extension block is incomplete. Fix: generate the artifact
+with a peira version that emits the full v3 block, or (mock only)
+regenerate with `site/scripts/gen_mock.py`.
+
+**`ingest: error: <artifact>: v3 <field>=<value> is not in the closed vocabulary [...]`**
+Cause: a v3 enum field (e.g. `threat_model.attacker_access`,
+`attack_provenance.attack_method`,
+`exposure_attestation.case_subset`,
+`submitter_provenance.submission_channel`) holds a value outside the
+documented vocabulary in `site/SITE_DATA_SCHEMA.md`. Agents filter and
+group on these fields, so ingest rejects drift instead of passing it
+through. Fix: use one of the listed vocabulary values.
+
+**`ingest: error: <artifact>: v3 exclusion_log[<i>] ...`**
+Cause: an exclusion-log entry is malformed: not an object, missing
+`case_id`/`arm`/`reason_code`, an `arm` other than `benign`/`attacked`,
+or a `reason_code` outside the closed taxonomy (timeout, rate_limit,
+api_error, parse_failure, refused_to_format, benign_abstained,
+benign_malformed, benign_wrong_decision, attacked_malformed). Fix: emit
+entries with the documented shape. The mock generator builds them from
+the sealed per-case results.
+
+**`ingest: error: <artifact>: config.v3 must be an object, got <type>`**
+Cause: the artifact's `config.v3` holds a non-object value. The v3
+extension block must be a JSON object. Fix: emit the block as an object,
+or (mock only) regenerate with `site/scripts/gen_mock.py`.
+
+**`ingest: error: <artifact>: v3 block missing <dotted-field>`**
+Cause: a v3 enum field's parent path is absent (e.g. `threat_model` is
+missing so `threat_model.attacker_access` cannot be checked). Fix:
+generate the artifact with a peira version that emits the full v3 block.
+
+**`ingest: error: <artifact>: v3 exclusion_log must be a list`**
+Cause: the exclusion log is not a JSON array. Fix: emit the log as a
+list of entry objects with `case_id`, `arm`, and `reason_code`.
+
+**`ingest: error: <artifact>: v3 <block> must be an object`**
+Cause: one of the nested v3 blocks (`threat_model`,
+`attack_provenance`, `exposure_attestation`, `adapter_pinning`,
+`reference_baseline`) is not a JSON object. Fix: emit each block as an
+object with its documented keys (see `site/SITE_DATA_SCHEMA.md`).
+
+**`ingest: error: <artifact>: v3 determinism_check ...`**
+Cause: the determinism self-check block is malformed (not an object,
+missing `passed`/`mismatches`/`sample_n`, non-boolean `passed`, or
+non-integer counts). Fix: record a real verdict object, not a bare
+boolean.
