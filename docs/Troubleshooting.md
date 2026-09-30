@@ -840,6 +840,25 @@ Cause: Jev rejected the request shape. The adapter validates every
 question client-side before sending, so this means API drift. Fix:
 report it; don't retry.
 
+**`openai-moderation adapter needs an OpenAI API key: set the OPENAI_API_KEY environment variable (or pass api_key=...)`**
+Cause: no OpenAI API key. The moderation endpoint is free and does
+not count toward usage quotas, but it still needs a key. Fix:
+`export OPENAI_API_KEY=<redacted>
+
+**`openai-moderation API error 401: ...; check that OPENAI_API_KEY is valid.`**
+Cause: bad or unauthorized key. Terminal: the runner won't retry it.
+Fix: check the key.
+
+**`openai-moderation API error 422: ...; the request was rejected; this is an adapter bug, not a retryable failure.`**
+Cause: the request shape was rejected. The adapter sends the
+documented `model`/`input` shape, so this means API drift. Fix:
+report it; don't retry.
+
+**`openai-moderation response missing non-empty 'results' array`**
+Cause: the API returned a response without the documented `results`
+array. This means API drift, not a retryable failure. Fix: report
+it; the wire shape is pinned in `python/peira/adapters/omni_moderation.py`.
+
 **`jev transport error: ...` (status 408)**
 Cause: the connection dropped, DNS failed, or the request timed out.
 Raised as status 408 so `peira run` treats it as transient and retries
