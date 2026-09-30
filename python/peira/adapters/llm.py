@@ -671,10 +671,13 @@ class _StructuredLLMBase:
         # Effort partitions the cache: the __init__ namespace appends
         # :e<native> when effort was explicitly requested. The copy must
         # keep it, or --effort runs would collide with provider-default
-        # runs in a shared cache.
+        # runs in a shared cache. getattr for adapters (e.g. test
+        # probes) that don't run the full __init__.
+        effort_requested = getattr(self, "effort_requested", None)
+        effort_native = getattr(self, "effort_native", None)
         effort_part = (
-            f":e{self.effort_native}"
-            if self.effort_requested is not None
+            f":e{effort_native}"
+            if effort_requested is not None and effort_native is not None
             else ""
         )
         new.cache_namespace = (
