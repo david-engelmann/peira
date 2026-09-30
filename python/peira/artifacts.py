@@ -349,6 +349,14 @@ class RunArtifact:
         "refusal_reason": str,
         "malformed": bool,
     }
+    # Suite-namespaced OPTIONAL result-entry fields. Unknown fields stay
+    # rejected (the v1 leniency hole stays closed); these are known,
+    # explicitly typed, and validated by shape below. The conversational
+    # suite seals its intermediate turn records here: single-shot
+    # tooling reads the scored final-turn pair and ignores the rest.
+    _RESULT_OPTIONAL: ClassVar[dict] = {
+        "conversational_turns": dict,
+    }
     _USAGE_FIELDS: ClassVar[dict] = {
         "model": str,
     }
@@ -547,6 +555,39 @@ class RunArtifact:
         return record
 
     @classmethod
+    def _checked_conversational_turns(
+        cls, value: object, where: str
+    ) -> dict:
+        """Validate the conversational suite's sealed turn records.
+
+        Exactly two arms, each a list of strictly-validated call
+        records. The scored final-turn pair lives in the entry's
+        ``benign``/``attacked`` fields; this section is drill-down only.
+        """
+        if not isinstance(value, dict):
+            raise ValueError(
+                f"{where} must be an object, got {type(value).__name__}"
+            )
+        if set(value) != {"benign_turns", "attacked_turns"}:
+            raise ValueError(
+                f"{where} must hold exactly 'benign_turns' and "
+                f"'attacked_turns', got {sorted(value)}"
+            )
+        clean: dict = {}
+        for arm in ("benign_turns", "attacked_turns"):
+            turns = value[arm]
+            if not isinstance(turns, list) or not turns:
+                raise ValueError(
+                    f"{where} field {arm!r} must be a non-empty list, "
+                    f"got {type(turns).__name__}"
+                )
+            clean[arm] = [
+                cls._checked_call_record(t, f"{where} {arm}[{i}]")
+                for i, t in enumerate(turns)
+            ]
+        return clean
+
+    @classmethod
     def _checked_results(cls, entries: list) -> list[dict]:
         """Validate result entries, returning clean dicts for the dataclass."""
         clean: list[dict] = []
@@ -558,7 +599,8 @@ class RunArtifact:
                     f"got {type(entry).__name__}"
                 )
             for key in entry:
-                if key not in cls._RESULT_REQUIRED:
+                if (key not in cls._RESULT_REQUIRED
+                        and key not in cls._RESULT_OPTIONAL):
                     raise ValueError(f"{where} has unknown field: {key!r}")
             known: dict = {}
             for key, typ in cls._RESULT_REQUIRED.items():
@@ -572,6 +614,20 @@ class RunArtifact:
                         f"got {type(entry[key]).__name__}"
                     )
                 known[key] = entry[key]
+            for key, typ in cls._RESULT_OPTIONAL.items():
+                if key not in entry:
+                    continue
+                if not isinstance(entry[key], typ):
+                    raise ValueError(
+                        f"{where} field {key!r} must be {typ.__name__}, "
+                        f"got {type(entry[key]).__name__}"
+                    )
+                if key == "conversational_turns":
+                    known[key] = cls._checked_conversational_turns(
+                        entry[key], f"{where} conversational_turns"
+                    )
+                else:  # pragma: no cover - future optional fields
+                    known[key] = entry[key]
             known["benign"] = cls._checked_call_record(
                 entry["benign"], f"{where} benign"
             )
@@ -643,9 +699,14 @@ class RunArtifact:
         return cls(**fields)
 
 
-def results_to_dicts(results: list[PerCaseResult]) -> list[dict]:
+def results_to_dicts(
+    results: list[PerCaseResult], to_dict=None
+) -> list[dict]:
     import dataclasses
 
     # asdict recurses into the nested CallRecord/CallUsage dataclasses,
-    # producing the plain-dict entry shape the artifact seals.
-    return [dataclasses.asdict(r) for r in results]
+    # producing the plain-dict entry shape the artifact seals. Suites
+    # with suite-namespaced entry fields (conversational) pass their own
+    # serializer; the default keeps the strict single-shot shape.
+    serialize = to_dict if to_dict is not None else dataclasses.asdict
+    return [serialize(r) for r in results]

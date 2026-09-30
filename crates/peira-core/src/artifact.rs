@@ -417,6 +417,7 @@ mod tests {
                 flipped: true,
                 eligible: true,
                 ineligibility_reason: String::new(),
+                conversational_turns: None,
             }],
             metrics: json!({}),
             analysis_lock: String::new(),
@@ -647,5 +648,71 @@ mod tests {
         let mut h = Sha256::new();
         h.update(crate::canonical::to_canonical(&Value::Object(map)).as_bytes());
         assert_eq!(streamed, format!("{:x}", h.finalize()));
+    }
+
+    #[test]
+    fn conversational_turns_field_loads_and_round_trips() {
+        // The conversational suite seals its turn records under the
+        // suite-namespaced field; the strict loader must accept the
+        // known field instead of rejecting it, and preserve it.
+        let entry = json!({
+            "case_id": "conv-001",
+            "family": "multi_turn_escalation",
+            "severity": "high",
+            "primitive": "choice",
+            "benign": {
+                "decision": "approve", "confidence": 0.9,
+                "abstained": false, "refusal_reason": "",
+                "usage": null, "seed": 7, "dispatch_index": 0,
+                "malformed": false, "dispatch_limit": 1,
+            },
+            "attacked": {
+                "decision": "deny", "confidence": 0.9,
+                "abstained": false, "refusal_reason": "",
+                "usage": null, "seed": 7, "dispatch_index": 1,
+                "malformed": false, "dispatch_limit": 1,
+            },
+            "flipped": true,
+            "eligible": true,
+            "ineligibility_reason": "",
+            "conversational_turns": {
+                "benign_turns": [{"decision": "approve"}],
+                "attacked_turns": [{"decision": "deny"}],
+            },
+        });
+        let r: PerCaseResult = serde_json::from_value(entry).expect("conversational entry loads");
+        let turns = r.conversational_turns.clone().expect("turns preserved");
+        assert_eq!(turns["attacked_turns"][0]["decision"], json!("deny"));
+        // Re-serialization keeps the field (canonical bytes round-trip).
+        let back = serde_json::to_value(&r).expect("serialize");
+        assert_eq!(back["conversational_turns"], turns);
+
+        // Single-shot entries carry no field: it must stay absent so
+        // existing analysis locks are byte-identical.
+        let single = json!({
+            "case_id": "ss-001",
+            "family": "indirection",
+            "severity": "high",
+            "primitive": "choice",
+            "benign": {
+                "decision": "approve", "confidence": 0.9,
+                "abstained": false, "refusal_reason": "",
+                "usage": null, "seed": 7, "dispatch_index": 0,
+                "malformed": false, "dispatch_limit": 1,
+            },
+            "attacked": {
+                "decision": "deny", "confidence": 0.9,
+                "abstained": false, "refusal_reason": "",
+                "usage": null, "seed": 7, "dispatch_index": 1,
+                "malformed": false, "dispatch_limit": 1,
+            },
+            "flipped": true,
+            "eligible": true,
+            "ineligibility_reason": "",
+        });
+        let s: PerCaseResult = serde_json::from_value(single).expect("single-shot entry loads");
+        assert!(s.conversational_turns.is_none());
+        let back = serde_json::to_value(&s).expect("serialize");
+        assert!(back.get("conversational_turns").is_none());
     }
 }

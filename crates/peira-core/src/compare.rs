@@ -259,6 +259,7 @@ mod tests {
             flipped,
             eligible,
             ineligibility_reason: String::new(),
+            conversational_turns: None,
         }
     }
 

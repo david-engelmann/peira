@@ -339,6 +339,16 @@ def run_to_dashboard(artifact: RunArtifact) -> dict[str, Any]:
     ``runs_registry.query_cases`` (indexed) rather than this payload:
     the per-case rows would bloat the JSON by orders of magnitude.
     """
+    # The conversational suite seals its own metric schema (see
+    # peira.conversation_metrics): the single-shot headline keys this
+    # payload passes through do not exist there. Refuse rather than
+    # export wrong-shaped numbers.
+    from peira.conversation import CONVERSATION_SUITE_ID
+    if artifact.suite == CONVERSATION_SUITE_ID:
+        raise ValueError(
+            "run_to_dashboard does not support conversational run "
+            "artifacts"
+        )
     m = artifact.metrics or {}
     results = artifact.results or []
     metrics_families = m.get("per_family", {}) if isinstance(m.get("per_family"), dict) else {}

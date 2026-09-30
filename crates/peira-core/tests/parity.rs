@@ -99,6 +99,33 @@ fn analysis_lock_parity_with_python() {
 }
 
 #[test]
+fn conversational_artifact_loads_and_verifies_in_rust() {
+    // A Python-sealed conversational artifact (suite-namespaced
+    // `conversational_turns` entries) must load under the strict
+    // parser and verify its analysis lock byte-identically.
+    let text = fixture("conversational_artifact.json");
+    let artifact = RunArtifact::from_json(&text).expect("conversational artifact parses");
+    assert_eq!(artifact.suite, "conversational");
+    assert!(
+        artifact.verify(),
+        "python-sealed conversational artifact must verify"
+    );
+    assert_eq!(artifact.results.len(), 1);
+    let turns = artifact.results[0]
+        .conversational_turns
+        .as_ref()
+        .expect("turn records preserved");
+    assert_eq!(turns["benign_turns"].as_array().unwrap().len(), 2);
+    assert_eq!(turns["attacked_turns"].as_array().unwrap().len(), 2);
+    // Round-trip through Rust's serializer keeps the field and the lock.
+    let back = RunArtifact::from_json(&artifact.to_json()).expect("rust json parses");
+    assert!(back.verify());
+    assert!(back.results[0].conversational_turns.is_some());
+    // Rust's pretty JSON is byte-identical to the Python-sealed file.
+    assert_eq!(artifact.to_json() + "\n", text);
+}
+
+#[test]
 fn case_extras_parity_with_python() {
     // Each fixture line is the Python reference's canonical
     // `Case.from_dict(c).to_dict()` for a case dict carrying unknown
