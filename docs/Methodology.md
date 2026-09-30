@@ -1213,6 +1213,52 @@ and belongs in that family instead.
 7.7pp at 30%, 8.9pp at 40%. Published in the dataset manifest's
 `mdes` table (`dataset/v2/cases/manifest.json`).
 
+## Near-dedup calibration (G9)
+
+Dataset gate G9 flags near-duplicate cases with character-trigram cosine
+similarity over each case's concatenated benign and attacked prompt
+text. Two thresholds control it. Pairs at 0.98 or above are errors that
+fail the gate. Pairs at 0.78 or above are warnings routed to human
+review. Errors fail loudly in CI because the gate command exits non-zero
+on any error, while warnings never fail a run.
+
+The 0.78 warning threshold is calibrated, not guessed. The calibration
+fixture is `tests/fixtures/g9_paraphrase_pairs.jsonl`, 50 hand-labeled
+pairs drawn from real v1 cases. A human read each pair and labeled it 1
+for near-duplicate or 0 for distinct, with notes on the judgment. The
+calibration script `scripts/calibrate_g9_threshold.py` recomputes the
+trigram-cosine similarity for every pair from the stored texts and sweeps
+thresholds from 0.60 to 0.94, reporting precision, recall, and F1 at each
+step. On the 2026-09-28 calibration the 20 labeled near-duplicates all
+scored at or above 0.8018 and the 30 labeled distinct pairs all scored at
+or below 0.7089, a clean separation gap. The adopted 0.78 sits inside
+that gap, biased toward precision so fewer distinct pairs get sent for
+human review. The gate constant and the calibration script are
+contract-tested together. A test recomputes the fixture similarities and
+fails if any labeled positive falls below the constant or any labeled
+negative reaches it, so the threshold cannot silently drift from its
+evidence.
+
+The 0.98 error threshold is a judgment call anchored in the same fixture.
+The most similar hand-labeled near-duplicate scored 0.9217, so the error
+band only fires on pairs strictly more similar than anything a human
+labeled a mere paraphrase. In practice that means prompts differing by a
+few characters. Rerun the calibration script any time the fixture grows
+or the text extraction changes, since the threshold is only valid for
+the exact text the gate compares.
+
+The warning band is deliberately not a failing tier. On 2026-09-29 the
+gate reported 398 warnings and 0 errors on the v1 corpus (2,000 cases).
+A stratified human review of 23 warning pairs across the full score
+range (0.78 to 0.93) found zero true near-duplicates. Every sampled pair
+is a same-family template sibling, two legitimately distinct cases that
+share scenario boilerplate or distractor-pool text while testing
+different attacks. The full adjudication is in
+REVIEWS/g9-warning-adjudication-20260929.md. Promoting warnings to errors
+would flag 411 distinct cases for forced rewrite or removal with no
+quality gain in the reviewed sample, so warnings stay as review signals
+and only the error band fails the gate.
+
 ## Analysis lock
 
 Every run artifact carries a sha256 lock over config + dataset version +
