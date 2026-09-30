@@ -26,6 +26,14 @@ Per-vendor schemes:
 - Moonshot: ``kimi-k3`` (https://platform.kimi.ai/docs/guide/kimi-k3-quickstart).
   Moonshot never published dated IDs; the quickstart examples all use
   ``kimi-k3``.
+- Mistral: ``mistral-large-2512`` (https://docs.mistral.ai/models).
+  Mistral publishes dated snapshots; ``mistral-large-2512`` is the
+  December 2025 snapshot behind the rolling ``mistral-large-latest``
+  alias, so the pin uses the dated ID for reproducibility.
+- Qwen: ``qwen3.8-max`` (Alibaba Model Studio, DashScope
+  compatible-mode endpoint). Qwen's ``qwen-max`` is a rolling alias
+  for the flagship tier; the pin uses the versioned
+  ``qwen3.8-max`` ID (GA 2026-08-03) for reproducibility.
 
 This module is the single source of truth for those pins. It is
 stdlib-only (the base ``peira`` tier has zero third-party runtime
@@ -76,12 +84,16 @@ __all__ = [
 #   Meta:      Llama-4-Maverick-17B-128E-Instruct-FP8 (documented compat
 #                                   endpoint example model)
 #   Zhipu:     glm-4-plus          (current paid GLM-4 flagship)
+#   Mistral:   mistral-large-2512  (dated snapshot; the rolling alias
+#                                   mistral-large-latest moves)
+#   Qwen:      qwen3.8-max         (versioned flagship ID; the qwen-max
+#                                   alias is rolling)
 #
 # These pins were verified 2026-09-27 against the vendor docs linked in
 # the module docstring (xAI, DeepSeek, Meta, Zhipu re-verified
-# 2026-09-28). Re-verify against the vendor docs before each
-# release. Pricing rates for these IDs live in
-# python/peira/data/pricing.json under the same IDs.
+# 2026-09-28; Mistral, Qwen verified 2026-09-30). Re-verify against
+# the vendor docs before each release. Pricing rates for these IDs
+# live in python/peira/data/pricing.json under the same IDs.
 
 PINNED_API_MODELS: dict[str, str] = {
     "openai-structured": "gpt-5.6-luna",
@@ -92,6 +104,8 @@ PINNED_API_MODELS: dict[str, str] = {
     "deepseek-structured": "deepseek-flash",
     "meta-structured": "Llama-4-Maverick-17B-128E-Instruct-FP8",
     "zai-structured": "glm-4-plus",
+    "mistral-structured": "mistral-large-2512",
+    "qwen-structured": "qwen3.8-max",
 }
 
 # Old pins the vendors have retired: old ID -> replacement ID.
@@ -156,6 +170,10 @@ class DeprecatedPinError(ValueError):
 #   meta:      Llama-<n>-<Name>-... (cf.
 #              Llama-4-Maverick-17B-128E-Instruct-FP8).
 #   zai:       glm-<n>[-<name>] (cf. glm-4-plus, glm-4-flash).
+#   mistral:   mistral-<name>[-<date-or-latest>] (cf.
+#              mistral-large-2512, mistral-small-latest).
+#   qwen:      qwen[<version>]-<name> (cf. qwen-max, qwen3.8-max,
+#              qwen-plus).
 #
 # Scheme rules per vendor (checked by _passes_vendor_semantics): Luna
 # never shipped dated snapshots, 5.x Anthropic IDs are dateless-only,
@@ -171,6 +189,8 @@ _VENDOR_ID_PATTERNS: dict[str, re.Pattern[str]] = {
     "deepseek": re.compile(r"^deepseek-[a-z0-9]+(-[a-z0-9]+)*$"),
     "meta": re.compile(r"^Llama-\d+-[A-Za-z0-9]+(-[A-Za-z0-9]+)*$"),
     "zai": re.compile(r"^glm-\d+(-[a-z0-9]+)*$"),
+    "mistral": re.compile(r"^mistral-[a-z]+(-\d+|-latest)?$"),
+    "qwen": re.compile(r"^qwen\d*(\.\d+)?(-[a-z0-9]+)+$"),
 }
 
 
