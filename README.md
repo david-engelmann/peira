@@ -19,7 +19,6 @@ peira is an open-source AI safety stress-test and intelligence hub for leading m
 - [Leaderboard](#leaderboard)
 - [Adapters](#adapters)
 - [How peira differs](#how-peira-differs)
-- [When peira isn't the tool](#when-peira-isnt-the-tool)
 - [Install](#install)
 - [Add your model](#add-your-model)
 - [Methodology](#methodology)
@@ -124,11 +123,7 @@ The peira column is verifiable from this repo. The right-hand column is a rough 
 
 The new wave of decision-model benchmarks (JevBench, the Banking77 Jev-vs-frontier-LLM comparisons, Bespoke Labs' suite) measures accuracy and calibration on clean inputs. peira measures the complementary question: whether hostile inputs flip the decisions. The paired attack/control design isolates the attack's effect, so a flipped decision is evidence about the attack, not noise.
 
-The differentiator, stated plainly, is decision-change ASR plus a hard minimum-20-eligible-cases-per-family ranking gate. That is simpler and more auditable than composite-index leaderboards. For broad red-teaming look at garak, HarmBench, or JailbreakBench. For general-purpose harnesses, Inspect AI or promptfoo. peira covers the decision-model layer, where decisions are approve/deny, score, or abstain.
-
-## When peira isn't the tool
-
-peira measures whether hostile input flips a decision model's typed output on paired cases. It is not a general red-teaming harness, not a jailbreak or refusal benchmark, and not a safety certification. A low ASR here says nothing about the attacks peira does not cover. Use broader tooling (garak, HarmBench) when you need coverage rather than a single decision-robustness number.
+The differentiator, stated plainly, is decision-change ASR plus a hard minimum-20-eligible-cases-per-family ranking gate. That is simpler and more auditable than composite-index leaderboards. For broad red-teaming look at garak, HarmBench, or JailbreakBench. For general-purpose harnesses, Inspect AI or promptfoo. peira covers the decision-model layer, where decisions are approve/deny, score, or abstain. It is not a safety certification.
 
 ## Install
 
