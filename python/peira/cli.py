@@ -302,16 +302,34 @@ def _write_final_artifact(out_dir: Path, slug: str, suite: str,
     return out_path
 
 
-def parse_family_filter(value: str | None) -> list[str] | None:
+def parse_family_filter(
+    value: str | None, suite: str | None = None
+) -> list[str] | None:
     """Parse a --families argument into validated family ids.
 
     Returns None when no filter was given. Raises ValueError listing
-    the unknown ids (with the canonical list) otherwise.
+    the unknown ids (with the canonical list) otherwise. When
+    ``suite`` is the conversational suite, conversational families are
+    validated against the conversational registry instead.
     """
     if value is None or not value.strip():
         return None
     from peira.families import FAMILIES, FAMILY_IDS
     from peira.schema import SUITE_IDS
+
+    if suite == "conversational":
+        from peira.conversation_schema import KNOWN_CONVERSATION_FAMILIES
+
+        wanted = [part.strip() for part in value.split(",")]
+        wanted = [w for w in wanted if w]
+        unknown = [w for w in wanted if w not in KNOWN_CONVERSATION_FAMILIES]
+        if unknown:
+            known = ", ".join(sorted(KNOWN_CONVERSATION_FAMILIES))
+            raise ValueError(
+                f"unknown conversational famil(ies): {', '.join(unknown)} "
+                f"(known conversational families: {known})"
+            )
+        return list(dict.fromkeys(wanted))
 
     wanted = [part.strip() for part in value.split(",")]
     wanted = [w for w in wanted if w]
@@ -417,7 +435,9 @@ def cmd_run(args: argparse.Namespace) -> int:
         print(f"error: no cases found in {suite_dir}", file=sys.stderr)
         return EXIT_USER_ERROR
     try:
-        wanted_families = parse_family_filter(getattr(args, "families", None))
+        wanted_families = parse_family_filter(
+            getattr(args, "families", None), suite=suite
+        )
     except ValueError as e:
         print(f"error: {e}", file=sys.stderr)
         return EXIT_USER_ERROR
@@ -3902,6 +3922,8 @@ def cmd_dataset_build_manifest(args: argparse.Namespace) -> int:
         print(f"error: dataset directory {dataset_dir} not found",
               file=sys.stderr)
         return EXIT_USER_ERROR
+    kind = getattr(args, "kind", "single") or "single"
+    is_conversational = kind == "conversational"
     if not _SEMVER_RE.fullmatch(args.version):
         print(f"error: version {args.version!r} is not semver "
               f"(expected e.g. 1.0.0 or 0.1.0-trial); manifest not "
@@ -3909,7 +3931,7 @@ def cmd_dataset_build_manifest(args: argparse.Namespace) -> int:
         return EXIT_USER_ERROR
     from peira.review import critical_cases_missing_notes
     try:
-        missing_notes = critical_cases_missing_notes(dataset_dir)
+        missing_notes = critical_cases_missing_notes(dataset_dir, kind=kind)
     except ValueError as e:
         print(f"error: {e}", file=sys.stderr)
         return EXIT_USER_ERROR
@@ -3923,7 +3945,7 @@ def cmd_dataset_build_manifest(args: argparse.Namespace) -> int:
     if args.require_reviews:
         from peira.review import pending_reviews
         try:
-            pending = pending_reviews(dataset_dir)
+            pending = pending_reviews(dataset_dir, kind=kind)
         except ValueError as e:
             print(f"error: {e}", file=sys.stderr)
             return EXIT_USER_ERROR
@@ -3933,24 +3955,42 @@ def cmd_dataset_build_manifest(args: argparse.Namespace) -> int:
             for p in pending:
                 print(f"  - {p['case_id']} [{p['severity']}]", file=sys.stderr)
             return EXIT_USER_ERROR
-    # The nine validation gates (G1 schema through G9 near-dedup) are
-    # enforced here, not just documented: any gate error refuses the
-    # seal. Warnings don't block (G6/G9 warnings go to the review
-    # queue or human review per docs/Dataset.md). This is what makes
-    # the "nine gates before sealing" claim in docs/Claims.md a
-    # code-enforced invariant rather than a procedure note.
-    from peira.gates import run_gates
-    gate_results = run_gates(dataset_dir)
-    gate_errors = sum(len(r.errors) for r in gate_results)
-    if gate_errors:
-        print(f"error: {gate_errors} gate error(s); "
-              f"manifest not written", file=sys.stderr)
-        _print_gate_results(gate_results, file=sys.stderr)
-        return EXIT_USER_ERROR
+    if is_conversational:
+        # The five conversational gates (CG1 schema through CG5
+        # near-dedup) are enforced here, mirroring the nine-gate seal
+        # for single-shot datasets: any gate error refuses the seal.
+        # Warnings don't block (CG2 role-sequence warnings go to author
+        # review per docs/Conversational-Suite.md).
+        from peira.conversation_gates import run_conversation_gates
+        gate_results = run_conversation_gates(dataset_dir)
+        gate_errors = sum(len(r.errors) for r in gate_results)
+        if gate_errors:
+            print(f"error: {gate_errors} conversational gate error(s); "
+                  f"manifest not written", file=sys.stderr)
+            for r in gate_results:
+                for e in r.errors:
+                    print(f"  [{r.gate_id}] {e}", file=sys.stderr)
+            return EXIT_USER_ERROR
+    else:
+        # The nine validation gates (G1 schema through G9 near-dedup) are
+        # enforced here, not just documented: any gate error refuses the
+        # seal. Warnings don't block (G6/G9 warnings go to the review
+        # queue or human review per docs/Dataset.md). This is what makes
+        # the "nine gates before sealing" claim in docs/Claims.md a
+        # code-enforced invariant rather than a procedure note.
+        from peira.gates import run_gates
+        gate_results = run_gates(dataset_dir)
+        gate_errors = sum(len(r.errors) for r in gate_results)
+        if gate_errors:
+            print(f"error: {gate_errors} gate error(s); "
+                  f"manifest not written", file=sys.stderr)
+            _print_gate_results(gate_results, file=sys.stderr)
+            return EXIT_USER_ERROR
     try:
         manifest = build_manifest(dataset_dir, args.version,
                                   dataset_name=args.name,
-                                  peira_version=__version__)
+                                  peira_version=__version__,
+                                  kind=kind)
     except ValueError as e:
         print(f"error: invalid cases, manifest not written:\n{e}",
               file=sys.stderr)
@@ -4656,6 +4696,9 @@ def build_parser() -> argparse.ArgumentParser:
     bm.add_argument("--name", default="peira-v1", help="dataset name")
     bm.add_argument("--require-reviews", action="store_true",
                     help="refuse to build while any human reviews are pending")
+    bm.add_argument("--kind", choices=("single", "conversational"),
+                    default="single",
+                    help="case schema: single-shot (default) or conversational")
     bm.set_defaults(func=cmd_dataset_build_manifest)
     vm = dsub.add_parser("verify-manifest",
                          help="verify a dataset directory against its manifest.json")
