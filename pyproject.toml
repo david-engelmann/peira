@@ -36,6 +36,10 @@ openai = ["openai>=1.40"]
 anthropic = ["anthropic>=0.34"]
 google = ["google-genai>=1.0"]
 all = ["peira[hf]", "peira[openai]", "peira[anthropic]", "peira[google]"]
+# Development and test tooling. The Python suite runs under pytest
+# (unittest.TestCase classes are discovered natively); pytest-xdist
+# parallelizes it across workers and pytest-timeout guards against hangs.
+dev = ["pytest>=8", "pytest-xdist>=3", "pytest-timeout>=2"]
 
 [project.scripts]
 peira = "peira.cli:main"
@@ -50,3 +54,13 @@ where = ["python"]
 
 [tool.setuptools.package-data]
 peira = ["data/*.json", "data/cost_scenarios/*.yaml"]
+
+[tool.pytest.ini_options]
+# The suite is unittest.TestCase-based; pytest discovers it natively.
+# Parallelize with `pytest -n auto` (CI does this). A per-test timeout
+# guards against hangs; thread mode avoids SIGALRM-handler conflicts and
+# works under xdist workers.
+testpaths = ["tests"]
+addopts = ["--tb=short"]
+timeout = 900
+timeout_method = "thread"

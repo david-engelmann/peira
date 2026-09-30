@@ -1,4 +1,4 @@
-"""Suite registry tests (run with: python -m unittest discover tests).
+"""Suite registry tests (run with: python -m pytest tests).
 
 Every SUITE_DIRS entry must resolve to a real suite directory, and every
 suite directory that ships a manifest.json must verify clean against it.

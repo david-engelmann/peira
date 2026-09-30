@@ -1,0 +1,45 @@
+---
+import Base from '../layouts/Base.astro';
+import SuiteToggle from '../components/SuiteToggle.astro';
+import ExportButtons from '../components/ExportButtons.astro';
+---
+<Base title="Peira run comparison, head to head flip agreement" current="Compare">
+  <div data-page="compare">
+    <div class="wrap">
+      <section class="hero">
+        <div class="kicker">Head to head</div>
+        <h1>Two runs, <span class="amber">case by case</span></h1>
+        <p class="lede">
+          Pick any two runs from the same suite. Peira joins their cases on case id and
+          shows where the flips agree and where they diverge, plus the headline ASR delta
+          with each run's own confidence interval.
+        </p>
+      </section>
+
+      <div class="controls">
+        <SuiteToggle />
+        <label>Run A <select id="sel-a" aria-label="First run to compare"></select></label>
+        <label>Run B <select id="sel-b" aria-label="Second run to compare"></select></label>
+      </div>
+
+      <div id="compare-out"></div>
+
+      <ExportButtons />
+
+      <section class="prose">
+        <h2>How to read this view</h2>
+        <p>
+          <strong>Flip agreement</strong> is the share of shared cases where both runs agree,
+          either both flipped or both held. High agreement with a large ASR delta means one
+          run is uniformly better. Low agreement means the adapters are vulnerable to
+          different attacks, which matters if you plan to layer them.
+        </p>
+        <p>
+          The <strong>discordant cases</strong> table lists every case where exactly one run
+          flipped. Those are the cases worth reading if you want to understand what one
+          adapter catches that the other misses.
+        </p>
+      </section>
+    </div>
+  </div>
+</Base>

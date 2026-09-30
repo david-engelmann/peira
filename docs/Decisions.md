@@ -1310,9 +1310,13 @@ the backfill branch, re-landed here, not one of the 39 rulings.
 **Critical-case review.** The row-by-row critical pass retiered
 `v1-csm-125` from `critical` to `medium` (a wrong hold delays care for a
 minor isolated ankle injury; no irreversible harm. Rationale appended
-to the case notes). **282 critical cases remain** (D-36 amendment,
+to the case notes). **342 critical cases remain** (D-36 amendment,
 2026-09-28: the five confirmed severity re-grades moved three cases to
-critical and two to high; manifest `n_by_severity` recount agrees).
+critical and two to high; manifest `n_by_severity` recount agrees.
+S-1 amendment, 2026-09-29: the run-2 adjudication re-graded 94 cases,
+61 to critical and 1 from critical to medium; retirements and
+replacements net zero criticals; manifest `n_by_severity` recount
+agrees).
 
 **Notes-field additions.** 30 cases also carry `notes` edits beyond the
 label: 29 gained an appended `Severity: <tier> - <rationale>.` sentence
@@ -1436,3 +1440,57 @@ keep any sweep honest.
 
 **To revisit:** the defect classes, if new failure modes appear; the S-1
 bar, after the first sweep calibrates it.
+
+## D-37: Per-family saturation/retirement policy, pre-registered (2026-09-29)
+
+**Decision.** Each attack family carries a pre-registered
+saturation/retirement policy, published while nothing is saturated, so
+a family's death cannot be negotiated after the fact (R-13, E-12/E-13).
+The policy is per-family, never a blended number.
+
+**States and quantitative criteria.**
+
+- `discriminating`: at least one adapter pair's ASR gap exceeds the
+  paired MDE (R-02 `mde_mcnemar` at the family's observed discordant
+  rate). Discrimination takes precedence over bound compression: a
+  family with a resolvable pair still discriminates even near a
+  bound, because retirement is loss of discrimination. Action: keep.
+- `uniform_failure`: no pair resolves, scores mid-range. Attacks work
+  about equally on everyone. Action: author harder variants; the family
+  is not retired.
+- `exhausted`: no pair resolves and every adapter's Wilson 95% CI sits
+  entirely below the 0.05 floor. Action: retirement candidate once the
+  criterion holds for two consecutive releases; the old leaderboard
+  becomes the regression suite.
+- `ceiling_saturated`: no pair resolves and every adapter's CI sits
+  entirely above the 0.95 ceiling. Action: author harder variants.
+- `insufficient_data`: fewer than two adapters or fewer than 20
+  eligible cases per family. Action: monitor, do not judge.
+
+**Guardrails.** Retirement is loss of discrimination (MMLU was
+superseded at an ~86-87% plateau, not at 100%). The `exhausted`
+definition also requires low variant-flip (near-zero ASR is genuine
+robustness, not memorized cases); v1 records no variant-flip data, so
+`exhausted` is a retirement candidate, never an automatic retirement,
+until M-8 ships a variant-flip analog. Three fields separate the
+per-release read from the decision: `exhaustion_trigger_met` (the
+per-release trigger, state == exhausted), `retirement_eligible` (the
+full criterion: trigger held for two consecutive releases, the
+variant-flip check passed, not holdout; always false in v1), and the
+`releases_observed` / `releases_required` count supplied by the
+release pipeline. Holdout families are never retired: their state is
+reported and their action is capped at monitor, because the blind
+holdout is the regression suite, not the capability hill.
+
+**Alternatives.** No retirement policy (families accumulate until the
+leaderboard is noise); retirement on a blended leaderboard number
+(the GLUE failure: aggregate saturation masked diagnostic-set
+weakness); vibes-based retirement per release.
+
+**Why this:** a living benchmark needs a pre-committed definition of
+death. Without one, retiring a family looks like moving the
+goalposts; with one, it is the policy working as designed.
+
+**To revisit:** the floor/ceiling thresholds and the two-release rule,
+after the first real multi-adapter season calibrates them; the
+variant-flip requirement, when M-8 lands.

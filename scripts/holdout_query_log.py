@@ -188,11 +188,16 @@ def cmd_log(args) -> int:
 
 
 def cmd_rotation(args) -> int:
-    today = date.today().isoformat()
-    line = f"- {today} | ROTATION | {args.kind} rotation announced\n"
+    when = _parse_date(args.date)
+    if when is None:
+        print(f"error: bad --date {args.date!r}: want a real "
+              f"YYYY-MM-DD date, not in the future", file=sys.stderr)
+        return 1
+    day = when.isoformat()
+    line = f"- {day} | ROTATION | {args.kind} rotation announced\n"
     text = LOG_PATH.read_text(encoding="utf-8")
     _write_log_atomically(
-        _insert_log_line(text, line, date.today().year))
+        _insert_log_line(text, line, when.year))
     print(f"logged rotation: {args.kind}")
     return 0
 
@@ -233,6 +238,8 @@ def main() -> int:
     p.add_argument("--kind", required=True,
                    choices=["scheduled", "budget", "compromise"],
                    help="rotation trigger")
+    p.add_argument("--date", default=date.today().isoformat(),
+                   help="rotation date YYYY-MM-DD (default: today)")
 
     p = sub.add_parser("status", help="show budget usage")
     p.add_argument("--adapter", default=None,

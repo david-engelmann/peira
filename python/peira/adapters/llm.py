@@ -450,6 +450,8 @@ class _StructuredLLMBase:
     # M-2: confidence is the model's verbalized confidence (D-23).
     confidence_source = "verbalized"
     supported_primitives = frozenset({"choice", "score", "abstain"})
+    # M-7 longitudinal provenance: structured-output LLM baselines.
+    model_class = "llm-baseline"
 
     # Overridden per provider:
     _extra = "peira[?]"            # e.g. "peira[openai]"
@@ -488,6 +490,38 @@ class _StructuredLLMBase:
         # so concurrent decide() calls from worker threads are safe.
         self._client: Any = None
         self._sdk: Any = None
+
+    @property
+    def decode_params(self) -> dict[str, Any]:
+        """M-7 longitudinal provenance: decode params actually sent.
+
+        The seed is included when the provider supports one: two runs
+        with different provider seeds are not the same measurement.
+        """
+        params: dict[str, Any] = {
+            "temperature": self._temperature,
+            "max_tokens": self._max_tokens,
+        }
+        if self._supports_seed:
+            params["seed"] = self._seed
+        return params
+
+    def with_seed(self, seed: int | None) -> "_StructuredLLMBase":
+        """Return a copy of this adapter pinned to a provider seed.
+
+        M-7 multi-seed protocol: each seed run gets its own provider
+        sampling seed, so the k runs are independent measurements. The
+        copy shares the read-only SDK client; only the seed and the
+        seed-dependent cache namespace change.
+        """
+        new = copy.copy(self)
+        new._seed = seed
+        seed_part = f":s{seed}" if self._supports_seed else ""
+        new.cache_namespace = (
+            f"{self.name}:{self._model}:t{self._temperature}:"
+            f"mt{self._max_tokens}{seed_part}"
+        )
+        return new
 
     # -- construction helpers -------------------------------------------
 

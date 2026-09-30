@@ -183,6 +183,8 @@ class _HFAdapterBase:
     version = "0.0"
     # M-2: guardrail confidences are |2p - 1| boundary distances (D-23).
     confidence_source = "guardrail-score"
+    # M-7 longitudinal provenance: HF guardrail adapters.
+    model_class = "guardrail"
     HF_MODEL_ID = ""
     HF_REVISION = ""
     #: Number of generated tokens per call (1 for generative models,
@@ -227,6 +229,15 @@ class _HFAdapterBase:
         self.cache_namespace = (
             f"{self.name}:{self.hf_model_id}@{self.hf_revision}"
         )
+
+    @property
+    def checkpoint_hash(self) -> str:
+        """M-7 longitudinal provenance: the pinned HF revision.
+
+        The constructor rejects unpinned revisions, so this is always
+        a commit hash, never "main"/"latest".
+        """
+        return self.hf_revision or ""
 
     # -- loading ----------------------------------------------------
 

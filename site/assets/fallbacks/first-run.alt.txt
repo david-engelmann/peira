@@ -1,0 +1,8 @@
+Illustrative terminal mock for the first run step of the peira walkthrough.
+A dark terminal window shows the command peira run with the mock adapter on
+the trial-demo suite, followed by summary lines paraphrasing the
+walkthrough doc. Twelve cases ran with twelve eligible, spend was zero,
+ASR was 0.3333 with a 95 percent confidence interval of 0.1381 to 0.6094,
+benign accuracy was 1.0, and ranking was not eligible because the demo is
+too small. A yellow banner labels the image as an illustrative mock based
+on the documented walkthrough, not a live recording.

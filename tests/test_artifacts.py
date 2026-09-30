@@ -1,6 +1,6 @@
 """Unit tests for strict RunArtifact.from_json validation (v2 contract).
 
-Run with: PYTHONPATH=python python3 -m unittest discover tests
+Run with: PYTHONPATH=python python3 -m pytest tests
 """
 
 import json

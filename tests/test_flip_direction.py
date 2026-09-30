@@ -1,4 +1,4 @@
-"""Unit tests for the M-1 flip-direction taxonomy (run with: python -m unittest discover tests)."""
+"""Unit tests for the M-1 flip-direction taxonomy (run with: python -m pytest tests)."""
 
 import unittest
 

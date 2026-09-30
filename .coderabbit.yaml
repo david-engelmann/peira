@@ -3,7 +3,7 @@
 # gate, but it is not a required check. See docs/Contributing.md
 # "What happens after you open a PR".
 #
-# REFINEMENTS (2026-09-29, from findings audit of PRs #166-#183):
+# REFINEMENTS (2026-09-29, from the effectiveness research over PRs #155-#191):
 #  R1. Global review priorities (input validation, docs-code drift, test quality,
 #      minimal-fix preference) documented here; the YAML schema has no
 #      `reviews.instructions` key, so set them in the dashboard's Custom
@@ -13,6 +13,17 @@
 #  R3. Excluded generated docs/CLI.md from review (CI fails on drift).
 #  R4. Fixed: added test-hf-tokenizers to CI job list; removed dangling
 #      research-note reference; copy bar bans colons/semicolons too.
+#  R5. (2026-09-29, effectiveness research over PRs #155-#191, 109 findings):
+#      added check_runner to the CI job list (was unnamed and unprotected);
+#      tightened both copy-bar instructions after CodeRabbit suggested a colon
+#      as an em-dash replacement on #182 (colons are banned too): never suggest
+#      a colon or semicolon as the replacement, restructure into short sentences.
+#      (A tests/** pytest update was drafted as R7 but reverted in review: the
+#      migration has not landed, CI still runs unittest discover.)
+#  R6. (2026-09-29): docs/Contributing.md "What happens after you open a PR"
+#      rewritten to describe the real flow (CodeRabbit advisory step 0, then the
+#      three-review gate); the knowledge base points CodeRabbit at that section,
+#      and the old text described a flow that does not exist.
 # yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
 language: "en-US"
 tone_instructions: "Be direct and technical. Be constructive with outside contributors. No flattery, no filler."
@@ -59,6 +70,8 @@ reviews:
         These are public docs held to a human-engineer voice standard:
         - NEVER use em dashes (U+2014) in prose. Restructure the sentence instead.
         - No colons or semicolons in public copy either. Short plain sentences.
+        - When flagging an em dash, NEVER suggest a colon or semicolon as the
+          replacement. Suggest restructuring into short plain sentences.
         - No AI-writing tells: no "delve", "moreover", "in today's fast-paced", no emoji.
         - A sentence about what peira does must be backed by a row in docs/Claims.md;
           flag "95% CIs on every number", performance numbers, or adapter claims without
@@ -68,7 +81,9 @@ reviews:
         - Prefer short, plain sentences.
     - path: "**/*.md"
       instructions: |
-        No em dashes (U+2014) in prose. No unbacked claims about what peira does
+        No em dashes (U+2014) in prose. When flagging one, never suggest a colon
+        or semicolon as the replacement. Suggest short plain sentences instead.
+        No unbacked claims about what peira does
         (backing rows live in docs/Claims.md). README.md, CLAUDE.md and
         docs/Contributing.md must agree on the PR flow described in
         docs/Contributing.md "What happens after you open a PR" and the required CI checks.
@@ -83,10 +98,14 @@ reviews:
         without a docs/ update.
     - path: "tests/**"
       instructions: |
-        Tests use unittest.TestCase (python -m unittest discover tests), NOT pytest.
-        Every new test must assert behavior (expected vs actual). Flag tests that only
-        exercise code without assertions, or that assert on tautologies.
-        Tests must be deterministic: no network, no wall-clock dependence, no paid API calls.
+        Tests run under pytest (`python -m pytest tests`, parallel with `-n auto`).
+        unittest.TestCase classes are discovered natively; new tests may use
+        plain pytest style. Every new test must assert behavior (expected vs
+        actual). Flag tests that only exercise code without assertions, or
+        that assert on tautologies. Tests must be deterministic: no network,
+        no wall-clock dependence, no paid API calls. Tests must be
+        xdist-safe: no shared mutable state or order dependence across test
+        files.
     - path: "crates/**"
       instructions: |
         Rust code must be clippy-clean under the workspace lints (warnings denied in CI).
@@ -95,7 +114,7 @@ reviews:
         explicit PEIRA_NO_RUST=1 test proving graceful degradation.
     - path: ".github/workflows/**"
       instructions: |
-        The required CI checks are public-surface, docs, dco, dataset-version,
+        The required CI checks are check_runner, coderabbit-config, public-surface, docs, dco, dataset-version,
         lint-rust, test-python, test-hf-tokenizers, test-rust, test-python-rust,
         quickstart, readme-table, dataset-checks. Flag any rename or removal of
         these job names. Minimal permissions per job, no unpinned third-party

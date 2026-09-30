@@ -15,6 +15,28 @@ indexes the load-bearing claims; detail lives in the linked docs.
   holdout cases; aged-out cases enter the public set on the declared
   schedule (see `Holdout-OpSec.md`), and only aggregate metrics leave the
   maintainer's machine.
+- The economic lottery index always reports the pair of robustness
+  stability and economic stability. It never reports the economic index
+  without the robustness index beside it (see `Methodology.md`).
+- `peira dataset build-manifest` writes Croissant 1.0 metadata as
+  `croissant.json` next to `manifest.json`, with per-file SHA-256 digests
+  and a machine-readable recordSet for the paired-case schema. Croissant
+  records ship for the v1, v2, trial, and safety-policy suites.
+- Dataset-release tags are recorded in the immutable registry at
+  `data/dataset-releases.json`, binding each tag to the manifest and
+  croissant digests at the tag. Tags are never moved and entries are never
+  edited. CI verifies the whole registry on every PR.
+- Cases may carry optional PROV-style `provenance` fields
+  (`generated_by`, `generated_at`, `was_derived_from`,
+  `was_attributed_to`), validated identically by the Python and Rust
+  backends.
+- Leaderboard rows carry a `provenance` object with the full measurement
+  tuple. It holds the adapter name, version, revision, and spec, plus the
+  suite, dataset version, manifest digest, seed, pricing version and date,
+  environment digest, and contract version.
+- Every case passes nine automated validation gates, G1 schema through G9
+  near-dedup, before sealing.
+- Every headline number ships with a 95% confidence interval.
 
 ## We don't claim
 

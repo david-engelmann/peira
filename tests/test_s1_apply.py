@@ -1,4 +1,4 @@
-"""Unit tests for scripts/s1_apply.py (run with: python -m unittest discover tests)."""
+"""Unit tests for scripts/s1_apply.py (run with: python -m pytest tests)."""
 
 import json
 import sys

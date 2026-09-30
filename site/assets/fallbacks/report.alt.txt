@@ -1,0 +1,5 @@
+Illustrative terminal mock for the report step of the peira walkthrough.
+A dark terminal window shows the peira report command writing an HTML
+report to tmp slash demo slash report.html, followed by a command to open
+it in a browser. A yellow banner labels the image as an illustrative mock
+based on the documented walkthrough, not a live recording.

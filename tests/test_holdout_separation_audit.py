@@ -1,4 +1,4 @@
-"""Unit tests for scripts/audit_holdout_separation.py (run with: python -m unittest discover tests).
+"""Unit tests for scripts/audit_holdout_separation.py (run with: python -m pytest tests).
 
 Uses synthetic holdout fixtures only. Never touches the real holdout.
 """

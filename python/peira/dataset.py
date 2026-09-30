@@ -260,10 +260,29 @@ def build_manifest(dataset_dir: Path, dataset_version: str,
 
 
 def write_manifest(dataset_dir: Path, manifest: dict[str, Any]) -> Path:
-    """Write manifest.json deterministically (sorted keys)."""
+    """Write manifest.json deterministically (sorted keys).
+
+    Also writes the R-10 croissant.json sidecar next to the manifest
+    (see peira.provenance): every manifest-build produces its
+    machine-readable dataset description at the same time, from the
+    same manifest bytes.
+
+    The sidecar record is built BEFORE either file is written: if
+    record construction fails, the previous manifest/croissant pair
+    stays untouched instead of leaving a new manifest with a missing
+    or stale sidecar.
+    """
+    # Deferred import: peira.provenance imports helpers from this
+    # module, so a top-level import would be circular.
+    from peira.provenance import (build_croissant, default_croissant_args,
+                                  write_croissant_record)
+    dataset_dir = Path(dataset_dir)
+    record = build_croissant(
+        manifest, **default_croissant_args(dataset_dir, manifest))
     out = dataset_dir / MANIFEST_NAME
-    out.write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n",
-                   encoding="utf-8")
+    atomic_write_text(
+        out, json.dumps(manifest, indent=2, sort_keys=True) + "\n")
+    write_croissant_record(dataset_dir, record)
     return out
 
 

@@ -31,6 +31,7 @@ run a suite through an adapter
 | `--json-progress` |  | `False` | machine-readable progress on stdout |
 | `--resume` |  | `False` | resume an interrupted run |
 | `--seed` |  | `0` | run seed, recorded on every call record (default: 0) |
+| `--seeds` |  | `1` | M-7 multi-seed protocol: run the suite N times under consecutive seeds (seed .. seed+N-1) and seal a stability artifact with pass^k flip agreement and variance decomposition. 1 (default) is a single run; any other value must be >= 3. Paid adapters: N multiplies spend; check the cost pilot first (Methodology M-7) |
 | `--max-concurrency` |  | `8` | cap on in-flight adapter calls; the AIMD controller adapts within [1, N] (default: 8) |
 | `--max-attempts` |  | `3` | total tries per call; retries are transient-only (408/409/429/5xx, timeouts) (default: 3) |
 | `--call-timeout` |  | `300.0` | seconds per attempt; a timeout is retried as a transient failure (default: 300) |
@@ -89,6 +90,25 @@ head-to-head statistical comparison of two run artifacts
 | `--seed` |  | `0` | seed for the paired-bootstrap CIs (default: 0) |
 | `--nb-threshold` |  | - | operating threshold in [0, 1) for the R-08 net-benefit head-to-head: which adapter has the higher net benefit at this threshold |
 
+## peira stability
+
+k-seed stability analysis (pass^k, variance decomposition) over existing run artifacts
+
+| Flag | Required | Default | Help |
+|---|---|---|---|
+| `RUNS` | yes | - | two or more run artifacts from the same adapter/suite (different seeds) |
+| `--out` |  | - | write a sealed stability artifact JSON to this path |
+
+## peira drift-watch
+
+drift-watch: per-family McNemar deltas between two runs of the same adapter id, reporting newly-flipping vs newly-fixed cases
+
+| Flag | Required | Default | Help |
+|---|---|---|---|
+| `--old` | yes | - | older run artifact (baseline) |
+| `--new` | yes | - | newer run artifact (candidate) |
+| `--out` |  | - | write the drift result JSON to this path |
+
 ## peira dashboard
 
 export dashboard-ready JSON from run artifacts
@@ -142,6 +162,20 @@ leave-one-family-out ranking stability (lottery index) across run artifacts
 | `RUNS` | yes | - | run artifact files (one row per adapter on the leaderboard) |
 | `--families` |  | union of families in runs | comma-separated family manifest (default: union of families across the runs) |
 | `--json` |  | - | write the full analysis JSON to this path |
+| `--economic` |  | `False` | C-6: report the pair (robustness-stability, economic-stability) with the economic lottery index per cost scenario, instead of the robustness index alone |
+| `--scenario` |  | - | cost scenario id for --economic (default: all scenarios) |
+
+## peira saturation
+
+per-family saturation/retirement analysis (C-10) across run artifacts
+
+| Flag | Required | Default | Help |
+|---|---|---|---|
+| `RUNS` | yes | - | run artifact files (one row per adapter on the leaderboard) |
+| `--families` |  | union of families in runs | comma-separated family manifest (default: union of families across the runs) |
+| `--holdout-families` |  | - | comma-separated families treated as holdout (state reported, action capped at monitor) |
+| `--releases-observed` |  | `1` | consecutive releases the exhaustion trigger has held (default: 1; retirement eligibility needs 2 plus the variant-flip check) |
+| `--json` |  | - | write the full analysis JSON to this path |
 
 ## peira value
 
@@ -154,6 +188,33 @@ M-3 economic value view over 1+ run artifacts (E_attacked, CPPF, break-even, Par
 | `--baseline` |  | - | baseline adapter name for CPPF / break-even comparisons |
 | `--price-date` |  | - | price date stamp for the frontier (default: unknown) |
 | `--out` |  | - | write an HTML value-view report to this path |
+
+## peira threshold-by-family
+
+C-7: optimal review threshold per family under buyer-cost economics (family-specific vs global threshold interaction)
+
+| Flag | Required | Default | Help |
+|---|---|---|---|
+| `RUN` | yes | - | run artifact path |
+| `--cost-false-approve` | yes | - | USD cost of trusting a wrongly-approved decision |
+| `--cost-false-deny` | yes | - | USD cost of trusting a wrongly-denied decision |
+| `--cost-review` | yes | - | USD cost of one human review |
+| `--cost-false-unknown` |  | - | USD cost of trusting a wrongly-decided case whose direction is unavailable (default: mean of the two directional costs) |
+| `--families` |  | - | comma-separated family manifest (default: all families in the run) |
+| `--arm` |  | `'attacked'` | which arm to price (default: attacked) (choices: `attacked`, `benign`) |
+| `--json` |  | - | write the full interaction table JSON to this path |
+
+## peira defense
+
+C-4 threshold-defense economics over 1+ run artifacts (defense curves, priced risk-coverage, attacker-cost-aware optimum)
+
+| Flag | Required | Default | Help |
+|---|---|---|---|
+| `RUNS` | yes | - | run artifact paths (>= 1) |
+| `--scenario` |  | `'standard'` | cost scenario id (default: standard) |
+| `--review-cost-usd` |  | `0.0` | human review cost per case in USD (default: 0.0) |
+| `--attack-rate` |  | - | fraction of decisions under attack (default: scenario baseline) |
+| `--out` |  | - | write the full defense report as JSON to this path |
 
 ## peira runs
 
@@ -171,6 +232,12 @@ list runs in the registry
 | `--dataset-version` |  | - | filter by dataset version |
 | `--cache` |  | - | filter by cache state (on/off) (choices: `on`, `off`) |
 | `--termination` |  | - | filter by termination state (complete, budget, partial, ...) |
+| `--model-class` |  | - | filter by adapter model class (llm-baseline, guardrail, rule-based, ...) |
+| `--checkpoint-hash` |  | - | filter by pinned model revision |
+| `--api-version` |  | - | filter by provider API version |
+| `--call-date` |  | - | filter by run UTC date (YYYY-MM-DD) |
+| `--template-hash` |  | - | filter by prompt-template hash |
+| `--case-set-tag` |  | - | filter by case-set tag (suite id) |
 
 ### peira runs verify
 

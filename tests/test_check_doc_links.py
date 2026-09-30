@@ -1,4 +1,4 @@
-"""Tests for scripts/check_doc_links.py (run with: python -m unittest discover tests).
+"""Tests for scripts/check_doc_links.py (run with: python -m pytest tests).
 
 Covers the reference-style link pass: [text][label] / [text][] links
 must resolve to a defined [label]: target, and the target itself is
