@@ -165,6 +165,18 @@ leave-one-family-out ranking stability (lottery index) across run artifacts
 | `--economic` |  | `False` | C-6: report the pair (robustness-stability, economic-stability) with the economic lottery index per cost scenario, instead of the robustness index alone |
 | `--scenario` |  | - | cost scenario id for --economic (default: all scenarios) |
 
+## peira saturation
+
+per-family saturation/retirement analysis (C-10) across run artifacts
+
+| Flag | Required | Default | Help |
+|---|---|---|---|
+| `RUNS` | yes | - | run artifact files (one row per adapter on the leaderboard) |
+| `--families` |  | union of families in runs | comma-separated family manifest (default: union of families across the runs) |
+| `--holdout-families` |  | - | comma-separated families treated as holdout (state reported, action capped at monitor) |
+| `--releases-observed` |  | `1` | consecutive releases the exhaustion trigger has held (default: 1; retirement eligibility needs 2 plus the variant-flip check) |
+| `--json` |  | - | write the full analysis JSON to this path |
+
 ## peira value
 
 M-3 economic value view over 1+ run artifacts (E_attacked, CPPF, break-even, Pareto frontier)

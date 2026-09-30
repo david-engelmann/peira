@@ -2390,6 +2390,146 @@ def cmd_lottery(args: argparse.Namespace) -> int:
     return EXIT_OK
 
 
+def _saturation_text(a: dict) -> str:
+    """Human-readable per-family saturation report for stdout."""
+    p = a["policy"]
+    lines = [
+        "Peira per-family saturation and retirement analysis (C-10)",
+        "=========================================================",
+        f"Policy D-37: floor {p['floor_threshold']:.2f}, "
+        f"ceiling {p['ceiling_threshold']:.2f}, "
+        f"retirement after {p['retirement_releases']} consecutive releases; "
+        f"variant-flip {p['variant_flip']}",
+        f"Runs: {a['n_runs']}, families: {len(a['families'])}",
+        "",
+        "Closest to retirement first:",
+    ]
+    for fam in a["closest_to_retirement"]:
+        d = a["per_family"][fam]
+        hold = " [holdout: monitor only]" if d["holdout"] else ""
+        lines.append(
+            f"  {fam}: {d['state']} -> {d['action']}{hold} "
+            f"(resolvable {d['resolvable_pairs']}/{d['total_pairs']} pairs, "
+            f"spread {d['spread']:.3f}, max pair MDE {d['max_pair_mde']:.3f})"
+        )
+        for ad in d["adapters"]:
+            lines.append(
+                f"    {ad['adapter_id']}: ASR {ad['asr']:.4f} "
+                f"[{ad['ci_lo']:.4f}, {ad['ci_hi']:.4f}] (n={ad['n']})"
+            )
+    lines.append("")
+    cands = a["retire_candidates"]
+    triggered = [
+        f for f in a["families"]
+        if a["per_family"][f]["exhaustion_trigger_met"]
+    ]
+    if cands:
+        lines.append(
+            "Retirement-eligible families: " + ", ".join(cands)
+        )
+    elif triggered:
+        lines.append(
+            "Retirement-eligible families: none. Exhaustion trigger "
+            f"met by: {', '.join(triggered)}; eligibility needs "
+            f"{p['retirement_releases']} consecutive releases plus "
+            "the variant-flip check."
+        )
+    else:
+        lines.append("Retirement-eligible families: none.")
+    return "\n".join(lines) + "\n"
+
+
+def cmd_saturation(args: argparse.Namespace) -> int:
+    """Per-family saturation/retirement analysis over run artifacts."""
+    from peira.artifacts import RunArtifact
+    from peira.metrics import PerCaseResult
+    from peira.saturation import saturation_analysis
+
+    artifacts = []
+    for path_str in args.runs:
+        path = Path(path_str)
+        if not path.exists():
+            print(f"error: {path} not found", file=sys.stderr)
+            return EXIT_USER_ERROR
+        try:
+            artifacts.append(
+                RunArtifact.from_json(path.read_text(encoding="utf-8"))
+            )
+        except (OSError, ValueError) as e:
+            print(f"error: {path} is not a valid run artifact ({e})",
+                  file=sys.stderr)
+            return EXIT_USER_ERROR
+
+    results_by_run: dict[str, list] = {}
+    for art, path_str in zip(artifacts, args.runs):
+        base = art.adapter_name or Path(path_str).stem
+        run_id = base
+        i = 2
+        while run_id in results_by_run:
+            run_id = f"{base}#{i}"
+            i += 1
+        if run_id != base:
+            print(f"note: duplicate adapter name '{base}': using "
+                  f"'{run_id}' for {path_str}", file=sys.stderr)
+        try:
+            results = [PerCaseResult.from_dict(d) for d in art.results]
+        except (KeyError, ValueError, TypeError) as e:
+            print(f"error: {path_str}: cannot decode per-case results "
+                  f"({e})", file=sys.stderr)
+            return EXIT_USER_ERROR
+        results_by_run[run_id] = results
+
+    known_families = {r.family for rs in results_by_run.values() for r in rs}
+    if args.families:
+        families = [f.strip() for f in args.families.split(",") if f.strip()]
+        families = list(dict.fromkeys(families))
+        unknown = [f for f in families if f not in known_families]
+        if unknown:
+            print(f"error: unknown families: {', '.join(unknown)} "
+                  "(not present in the given runs)", file=sys.stderr)
+            return EXIT_USER_ERROR
+    else:
+        families = sorted(known_families)
+    if not families:
+        print("error: no families found in the given runs", file=sys.stderr)
+        return EXIT_USER_ERROR
+
+    holdout_families = []
+    if args.holdout_families:
+        holdout_families = [
+            f.strip() for f in args.holdout_families.split(",") if f.strip()
+        ]
+        unknown_h = [f for f in holdout_families if f not in known_families]
+        if unknown_h:
+            print(f"error: unknown holdout families: {', '.join(unknown_h)} "
+                  "(not present in the given runs)", file=sys.stderr)
+            return EXIT_USER_ERROR
+
+    if args.releases_observed < 1:
+        print("error: --releases-observed must be >= 1",
+              file=sys.stderr)
+        return EXIT_USER_ERROR
+
+    analysis = saturation_analysis(
+        results_by_run,
+        families,
+        holdout_families=holdout_families,
+        releases_observed=args.releases_observed,
+    )
+
+    sys.stdout.write(_saturation_text(analysis))
+    if args.json is not None:
+        out = Path(args.json)
+        try:
+            out.write_text(json.dumps(analysis, indent=2), encoding="utf-8")
+        except OSError as e:
+            print(f"error: cannot write saturation JSON to {out} ({e})",
+                  file=sys.stderr)
+            return EXIT_USER_ERROR
+        print(f"saturation: {out}")
+    return EXIT_OK
+
+
 def cmd_value(args: argparse.Namespace) -> int:
     """M-3 economic value view over 1+ run artifacts.
 
@@ -3727,6 +3867,30 @@ def build_parser() -> argparse.ArgumentParser:
                     help="cost scenario id for --economic "
                     "(default: all scenarios)")
     lt.set_defaults(func=cmd_lottery)
+
+    st = sub.add_parser(
+        "saturation",
+        help="per-family saturation/retirement analysis (C-10) "
+        "across run artifacts",
+    )
+    st.add_argument("runs", nargs="+", help="run artifact files (one row "
+                    "per adapter on the leaderboard)")
+    st_families = st.add_argument(
+        "--families", default=None,
+        help="comma-separated family manifest (default: union of "
+        "families across the runs)",
+    )
+    st_families.display_default = "union of families in runs"
+    st.add_argument("--holdout-families", default=None,
+                    help="comma-separated families treated as holdout "
+                    "(state reported, action capped at monitor)")
+    st.add_argument("--releases-observed", type=int, default=1,
+                    help="consecutive releases the exhaustion trigger has "
+                    "held (default: 1; retirement eligibility needs 2 "
+                    "plus the variant-flip check)")
+    st.add_argument("--json", default=None,
+                    help="write the full analysis JSON to this path")
+    st.set_defaults(func=cmd_saturation)
 
     vv = sub.add_parser("value",
                         help="M-3 economic value view over 1+ run artifacts "

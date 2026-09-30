@@ -864,6 +864,49 @@ and per-family win rates still render.
 Cause: one of the artifact paths doesn't exist. Fix: check the
 paths. `peira lottery` takes one or more positional artifact files.
 
+**`error: <path> not found` (from `peira saturation`)**
+Cause: one of the artifact paths doesn't exist. Fix: check the
+paths. `peira saturation` takes one or more positional artifact files.
+
+**`error: <path> is not a valid run artifact (...)` (from `peira saturation`)**
+Cause: the file isn't a sealed run artifact (bad JSON, or a JSON file
+that isn't a run artifact). Fix: point at the `.json` files `peira run`
+wrote to the runs directory.
+
+**`error: <path>: cannot decode per-case results (...)` (from `peira saturation`)**
+Cause: the artifact's per-case results don't decode (a hand-edited
+artifact, or an artifact from an incompatible peira version). Fix:
+re-run the adapter on the current peira; don't hand-edit artifacts.
+
+**`error: unknown families: ...` (from `peira saturation`)**
+Cause: `--families` names a family not present in the given runs
+(typo, or a family none of the runs cover). Fix: check the spelling
+against the family names in the runs, or drop `--families` for the
+union default.
+
+**`error: unknown holdout families: ...` (from `peira saturation`)**
+Cause: `--holdout-families` names a family not present in the given
+runs. Fix: same as unknown families above.
+
+**`error: no families found in the given runs` (from `peira saturation`)**
+Cause: none of the artifacts contain any per-case results (empty
+runs). Fix: pass artifacts from completed runs.
+
+**`error: cannot write saturation JSON to <out> (...)` (from `peira saturation`)**
+Cause: `peira saturation --json` points somewhere unwritable: a missing
+parent directory, or a permissions problem. Fix: create the directory
+first, or pick a writable path.
+
+**`error: --releases-observed must be >= 1` (from `peira saturation`)**
+Cause: `--releases-observed` got 0 or a negative number. Fix: pass a
+positive count of consecutive releases the exhaustion trigger has
+held (default: 1).
+
+**`peira saturation` reports every family as `insufficient_data`**
+Cause: not an error. Fewer than two adapters, or fewer than 20
+eligible cases per family in the given runs. Fix: add more adapters;
+saturation is a comparative read and needs at least a pair.
+
 **`error: <path> is not a valid run artifact (...)` (from `peira lottery`)**
 Cause: the file isn't a sealed run artifact (bad JSON, or a JSON file
 that isn't a run artifact). Fix: point at the `.json` files `peira run`
