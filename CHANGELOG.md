@@ -105,6 +105,22 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
   your flips-per-incident); the $0 point is P(the upgrade is
   cost-saving). `peira value` comparisons now include the CEAC
   curve alongside CPPF and the break-even attack rate.
+### Added - attacker cost per flip direction (C-9, M-9 x M-1)
+
+- New `peira.metrics` functions `cost_per_flip_direction` and
+  `cost_per_flip_by_direction`. These apply the M-9 attacker
+  cost-per-flip machinery to flips in one M-1 direction. The jailbreak
+  direction (deny-to-approve) is the headline because the attacker's
+  product is the jailbreak, not vandalism or denial of service. Each
+  direction reports ASR_d, attempts per flip (1/ASR_d, matching
+  `economics.attacker_cost_multiplier` for the five discrete directions.
+  score-shifted differs because the multiplier also counts non-flipped
+  score cases with a material shift), and list-price dollars per flip
+  from runner-recorded `CallUsage` token counts and the pinned pricing
+  table. Directions with no observed flips are withheld, never $0.00.
+- The `peira value` view and the per-run HTML report now carry a
+  per-direction attacker-cost table per adapter. `value_view` exposes
+  the table as `attacker_cost_per_direction`.
 
 ### Fixed v1 scale mismatches in 241 cases (D-36 class 4)
 
