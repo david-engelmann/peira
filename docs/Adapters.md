@@ -585,12 +585,13 @@ Community tier (10k calls/month) with paid entry around $99/month for
 50k calls (~$0.002/call). That figure is secondary-sourced via
 third-party integration guides and not confirmed on an official Lakera
 pricing page. The pinned table in `python/peira/data/pricing.json`
-reflects that with the caveat attached. Live-verified 2026-09-30: two
+reflects that with the caveat attached. Live-verified 2026-09-30. Two
 real calls against `POST https://api.lakera.ai/v2/guard` returned
-HTTP 200 with the documented wire shape — `flagged` boolean,
-`breakdown` array (`detector_type`/`detected`/`result`), and
+HTTP 200 with the documented wire shape. The response carries a
+`flagged` boolean, a `breakdown` array
+(`detector_type`/`detected`/`result`), and
 `metadata.request_uuid`. A benign message came back `flagged: false`
-with all detectors at `l5_unlikely`; a prompt-injection probe came
+with all detectors at `l5_unlikely`. A prompt-injection probe came
 back `flagged: true` with `prompt_attack` at `l1_confident`. The
 response also carries `action: "enforce"` plus per-entry
 `detector_id`/`message_id`/`policy_id`/`project_id`, which the adapter
