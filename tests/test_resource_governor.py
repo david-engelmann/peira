@@ -169,16 +169,13 @@ class TestDeathHandlers(unittest.TestCase):
             self.assertIn("ts", record)
 
     def test_sigkill_cannot_be_caught(self):
-        # Documents the diagnostic boundary: a SIGKILL death leaves no
-        # last-words record. (No test process is actually killed here;
-        # the point is that install_death_handlers only arms SIGTERM
-        # and SIGINT.)
-        with mock.patch("signal.signal") as m:
-            ResourceGovernor().install_death_handlers("/tmp/x.jsonl")
-        armed = {c.args[0] for c in m.call_args_list}
-        self.assertIn(signal.SIGTERM, armed)
-        self.assertIn(signal.SIGINT, armed)
-        self.assertNotIn(signal.SIGKILL, armed)
+        # Documents the diagnostic boundary: the OS refuses to let a
+        # process arm SIGKILL, so a SIGKILL death leaves no last-words
+        # record. This asserts the real platform behaviour (no mocks):
+        # signal.signal(SIGKILL, ...) raises, which is why
+        # install_death_handlers only arms SIGTERM and SIGINT.
+        with self.assertRaises((OSError, RuntimeError, ValueError)):
+            signal.signal(signal.SIGKILL, lambda s, f: None)
 
 
 class TestActiveGovernor(unittest.TestCase):

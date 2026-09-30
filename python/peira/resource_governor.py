@@ -28,7 +28,7 @@ Design notes (read before changing the defaults):
 Death diagnostics
 -----------------
 The 2026-09-27 Jev exploratory run died at 612/4000 calls with no error
-trail and no OOM signature; the cause was never determined. To make the
+trail and no OOM signature. The cause was never determined. To make the
 next such death diagnosable, :meth:`ResourceGovernor.install_death_handlers`
 installs ``SIGTERM``/``SIGINT`` handlers that append a "last words" JSON
 record (signal, timestamp, pid) to a file before re-raising with default

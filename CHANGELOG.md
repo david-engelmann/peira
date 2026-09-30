@@ -15,8 +15,8 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
   `ResourceGovernor` covers `RLIMIT_CPU` + `RLIMIT_AS` +
   `RLIMIT_FSIZE` on the runner process and adds the missing
   `RLIMIT_NPROC` fork-bomb guard, applied to subprocess adapter
-  children (SemIf) via `preexec_fn` — never to the runner itself,
-  since `RLIMIT_NPROC` counts per UID.
+  children (SemIf) via `preexec_fn`. It is never applied to the runner
+  itself, since `RLIMIT_NPROC` counts per UID.
 - New `peira run --rlimit-nproc` flag (positive integer, Unix only).
 - `ResourceGovernor.install_death_handlers(path)` arms SIGTERM/SIGINT
   handlers that write a "last words" JSON record before the process
