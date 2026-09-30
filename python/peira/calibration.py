@@ -28,6 +28,9 @@ _ADAPTER_CONFIDENCE_SOURCES = {
     "shieldgemma": "guardrail-score",
     "wildguard": "guardrail-score",
     "lakera": "guardrail-score",
+    "harmbench": "guardrail-score",
+    "granite-guardian-hap": "guardrail-score",
+    "openai-moderation": "guardrail-score",
     # Structured LLM baselines: verbalized confidence (D-23).
     "openai-structured": "verbalized",
     "moonshot-structured": "verbalized",

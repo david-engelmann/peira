@@ -99,6 +99,12 @@
       "usd_per_call": 0.002,
       "confidence": "secondary"
     },
+    "openai:omni-moderation-latest": {
+      "_note": "OpenAI omni-moderation endpoint is free and does not count toward usage quotas (OpenAI API reference, Moderation). No per-call or per-token charge. Adapter ships live-UNVERIFIED: no real call has been made from this environment as of 2026-09-30; re-verify the wire shape and free-tier status before first measured use.",
+      "usd_per_1m_in": 0.0,
+      "usd_per_1m_out": 0.0,
+      "confidence": "secondary"
+    },
     "kimi-k3": {
       "_note": "Moonshot API list price verified 2026-09-25 against https://platform.moonshot.ai/docs/pricing/chat-k3.md: $3.00/1M input, $15.00/1M output ($0.30/1M cache-hit input not modeled here).",
       "usd_per_1m_in": 3.0,

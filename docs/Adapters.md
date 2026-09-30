@@ -28,6 +28,8 @@ and are cached; every model is pinned to an exact commit revision, never
 | Granite Guardian 4.1 8B | `peira.adapters.hf:GraniteGuardianAdapter` | `ibm-granite/granite-guardian-4.1-8b` | `ab01ccca5dcfb80246369a086a4a87a29198f5af` |
 | ShieldGemma 2B | `peira.adapters.hf:ShieldGemmaAdapter` | `google/shieldgemma-2b` | `d1dffc9c8c9237a90aab09c61383791e718ef9e8` |
 | WildGuard | `peira.adapters.hf:WildGuardAdapter` | `allenai/wildguard` | `cbba4823f3e8020e5a74a5e29bf85072def6f2ff` |
+| HarmBench classifier | `peira.adapters.hf:HarmBenchAdapter` | `cais/HarmBench-Llama-2-13b-cls` | `bda705349d1144fa618770bea64d99ce54e3835b` |
+| Granite Guardian HAP-125M | `peira.adapters.hf:GraniteGuardianHapAdapter` | `ibm-granite/granite-guardian-hap-125m` | `a76ccfd3ddb790fa7c23db58149bfec7ba1aa57f` |
 
 **Shieldstral** is policy-adaptive: it judges content against the policy
 in its prompt, not a fixed category list. It emits a single yes/no
@@ -89,6 +91,46 @@ to the `abstain` primitive; No maps to `other`. Requires
 `sentencepiece` and `protobuf` for the Mistral tokenizer. Auto-gated
 under AI2's Responsible Use Guidelines (no manual approval needed).
 Apache-2.0.
+
+**HarmBench** is the cais Llama-2-13b classifier used as the
+attack-success-rate judge across jailbreak papers. Peira uses the
+same judge with a repurposed mapping, not the (behavior,
+model-generation) pairs the published numbers use. Despite the
+`-cls` repo name it is a generative classifier (`LlamaForCausalLM`
+in the pinned config), so the adapter scores it like Shieldstral:
+greedy-generate one token and renormalize over the Yes/No
+first-token logprobs. The prompt is the model's official
+`LLAMA2_CLS_PROMPT` template from the model card, reproduced
+byte-exact. HarmBench judges (behavior, response) pairs; peira
+screens prompts, so the case text goes in the `Generation:` slot
+and `Behavior:` carries the fixed descriptor `harmful request`.
+Putting the case text in `Behavior:` with an empty generation would
+ask whether an empty string exemplifies the behavior, which is
+always no, so that mapping is deliberately not used. Caveat: the
+template's own rules discount vague behavior instances, and
+"harmful request" is vague, so this mapping is conservative (biased
+toward `No`) by construction. MIT, ungated. Live-UNVERIFIED: the
+13B weights have not been loaded in this environment; the labels
+are capitalized Yes/No because that is what the fine-tuned model
+emits (the model card's own example shows `['Yes', 'Yes', 'No',
+.....]`). Before any measured use, the first load must
+empirically confirm the Yes/No token ids resolve AND that the
+model actually emits the resolved piece as its first token on
+probe prompts. Generate a few and inspect the real first token
+id, since reading the wrong piece would silently score everything
+to one side.
+
+**Granite Guardian HAP-125M** is IBM's tiny (125M) RoBERTa
+hate/abuse/profanity classifier, the same family as the 8B
+generative Guardian 4.1 but a specialist head. Binary (safe / HAP),
+softmax over the HAP class. The 64x size contrast inside one model
+family is the point: it answers what you lose going smaller, at
+near-zero inference cost. Scope is HAP only, so expect
+underperformance on non-HAP attack families. That is signal about
+the guardrail's coverage, not an adapter defect. The pinned config
+carries no `id2label`; labels are named for the model's documented
+purpose with index 1 as the malicious class, to be confirmed at
+first load. Apache-2.0, ungated. Live-UNVERIFIED.
 
 Guardrail verdict mapping: content judged benign keeps the case's
 expected decision (the guardrail vetoes nothing); content judged
@@ -596,6 +638,45 @@ back `flagged: true` with `prompt_attack` at `l1_confident`. The
 response also carries `action: "enforce"` plus per-entry
 `detector_id`/`message_id`/`policy_id`/`project_id`, which the adapter
 ignores.
+
+## OpenAI omni-moderation
+
+No extra needed (stdlib transport). Set `OPENAI_API_KEY` to your API key,
+then run
+
+```bash
+export OPENAI_API_KEY=<redacted>
+peira run --adapter peira.adapters.omni_moderation:OmniModerationAdapter --suite trial-demo
+```
+
+OpenAI's production moderation endpoint, the industry reference for
+"content moderation in production." The adapter sends the case prompt
+to `POST https://api.openai.com/v1/moderations` with
+`{"model": "omni-moderation-latest", "input": text}` and reads back
+the `flagged` boolean plus 13 per-category confidence scores in the
+0-1 range (`harassment`, `harassment/threatening`, `hate`,
+`hate/threatening`, `illicit`, `illicit/violent`, `self-harm`,
+`self-harm/intent`, `self-harm/instructions`, `sexual`,
+`sexual/minors`, `violence`, `violence/graphic`). Empty or
+whitespace-only prompts are never sent. The adapter returns `"other"`
+locally for those with no API call. Per B2, guardrails are
+abstain-primitive-only. A flagged verdict is the explicit `"abstain"`
+label (a deliberate abstain-decision, not a refusal). Unflagged
+content is the `"other"` placeholder (the guardrail vetoes nothing
+and never claims to know the correct decision). The score is
+`max(category_scores)`, the honest aggregation when categories do
+not map 1:1 to peira's families; the `flagged` boolean is
+authoritative for the decision. The response's `model` field (what
+was actually served behind the pinned alias) is recorded in the
+transcript per call. 401/403 are terminal. 429/5xx and transport
+timeouts surface as retryable provider errors for the runner. The
+endpoint is free to use. Known blind
+spot: a 2026-04 probe found phishing-style credential-theft prompts
+can pass silently. Treat clean verdicts on credential-solicitation
+cases with skepticism. **Live-UNVERIFIED**: no real call has been
+made from this environment as of 2026-09-30. The wire shape above is
+from the official OpenAI API reference; confirm it against one live
+call before first measured use.
 
 ## Pricing
 
