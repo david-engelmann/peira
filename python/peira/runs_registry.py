@@ -145,14 +145,23 @@ _REGISTRY_COLUMNS = (
 )
 
 
-def _ensure_registry_columns(conn: sqlite3.Connection) -> None:
-    """Add measurement-framework columns to runs if missing (idempotent)."""
+def _ensure_registry_columns(conn: sqlite3.Connection) -> bool:
+    """Add measurement-framework columns to runs if missing (idempotent).
+
+    Returns True if any columns were added. ALTER TABLE leaves existing
+    rows NULL for the new columns, so the caller must rescan a
+    non-empty index to populate them; otherwise filtered ``list_runs``
+    calls would silently return no rows.
+    """
     existing = {
         row[1] for row in conn.execute("PRAGMA table_info(runs)").fetchall()
     }
+    added = False
     for name, ddl in _REGISTRY_COLUMNS:
         if name not in existing:
             conn.execute(f"ALTER TABLE runs ADD COLUMN {name} {ddl}")
+            added = True
+    return added
 
 
 def _ensure_phase0_columns(conn: sqlite3.Connection) -> bool:
@@ -607,6 +616,26 @@ def _per_family_rows(data: dict[str, Any]) -> list[tuple]:
     return rows
 
 
+def _is_stability_artifact(path: Path) -> bool:
+    """True for M-7 stability analysis records (not run records).
+
+    The `-stability.json` suffix is the marker, confirmed by content:
+    a stability artifact carries ``artifact_version`` instead of the
+    run artifact's ``peira_version``. The content check keeps a run
+    artifact from a suite literally named "stability"
+    (``{slug}-stability.json``) from being silently dropped from the
+    registry. Unparseable files return False; the caller's metadata
+    probe skips them anyway.
+    """
+    if not path.name.endswith("-stability.json"):
+        return False
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return False
+    return isinstance(data, dict) and "peira_version" not in data
+
+
 def _scan_runs_into(conn: sqlite3.Connection, runs_dir: Path) -> int:
     """Index every artifact in runs_dir into an already-open connection.
 
@@ -624,7 +653,11 @@ def _scan_runs_into(conn: sqlite3.Connection, runs_dir: Path) -> int:
 
     count = 0
     for path in sorted(runs_dir.glob("*.json")):
-        if path.name == INDEX_DB_NAME:
+        # Stability artifacts are analysis records, not run records:
+        # they lack peira_version, so _artifact_metadata skips them, but
+        # leaving them in the snapshot means the snapshot never matches
+        # the index and every list call rescans the directory.
+        if path.name == INDEX_DB_NAME or _is_stability_artifact(path):
             continue
         meta = _artifact_metadata(path)
         if meta is None:
@@ -765,7 +798,11 @@ def _ensure_index_fresh(runs_dir: Path) -> None:
     """
     actual: dict[str, float] = {}
     for path in runs_dir.glob("*.json"):
-        if path.name == INDEX_DB_NAME:
+        # Stability artifacts are analysis records, not run records:
+        # they lack peira_version, so _artifact_metadata skips them, but
+        # leaving them in the snapshot means the snapshot never matches
+        # the index and every list call rescans the directory.
+        if path.name == INDEX_DB_NAME or _is_stability_artifact(path):
             continue
         actual[str(path.resolve())] = path.stat().st_mtime
     if _indexed_snapshot(runs_dir) != actual:
@@ -781,6 +818,7 @@ def _ensure_index_fresh(runs_dir: Path) -> None:
         conn = _connect(db_path)
         try:
             added = _ensure_phase0_columns(conn)
+            added = _ensure_registry_columns(conn) or added
             conn.commit()
             if added:
                 row_count = conn.execute("SELECT COUNT(*) FROM runs").fetchone()[0]

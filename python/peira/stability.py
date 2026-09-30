@@ -278,7 +278,8 @@ class FamilyDrift:
     n_newly_flipping: int  # not flipped in old, flipped in new
     n_newly_fixed: int  # flipped in old, not flipped in new
     #: McNemar p-value on paired flip outcomes; None when withheld
-    #: (< 10 discordant pairs, too sparse to test honestly).
+    #: (1-9 discordant pairs, too sparse to test honestly). Zero
+    #: discordant pairs is 1.0, the null holds trivially.
     mcnemar_p: float | None
     #: p < DRIFT_ALPHA and ASR rose: flag for operator review.
     degraded: bool
@@ -350,8 +351,9 @@ def drift_watch(
     Pairs cases by case_id; only cases eligible in BOTH runs enter the
     paired statistics. Per family, the McNemar test runs on the
     discordant flip pairs (newly-flipping vs newly-fixed) with the
-    standard peira policy: p withheld below 10 discordant pairs,
-    exact mid-p for 10-24, asymptotic at >= 25.
+    standard peira policy: p is 1.0 with zero discordant pairs,
+    withheld with 1-9 (too sparse to test honestly), exact mid-p for
+    10-24, asymptotic at >= 25.
 
     The report leads with newly-flipping vs newly-fixed, not net
     deltas: a family whose ASR is flat can still have heavy churn.
@@ -462,6 +464,15 @@ class StabilityArtifact:
 
         payload = json.dumps(
             {
+                # Identity fields are part of the lock: relabeling the
+                # artifact to a different adapter, suite, or dataset
+                # after sealing must be detectable by verify().
+                "artifact_version": self.artifact_version,
+                "adapter_name": self.adapter_name,
+                "adapter_version": self.adapter_version,
+                "suite": self.suite,
+                "dataset_version": self.dataset_version,
+                "manifest_sha256": self.manifest_sha256,
                 "seeds": list(self.seeds),
                 "run_artifact_paths": {
                     str(k): v

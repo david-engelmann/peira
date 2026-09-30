@@ -148,11 +148,24 @@ Cause: resume merges a partial run into a new execution, but
 multi-seed runs are k independent executions with no shared partial
 state. Fix: re-run without `--resume`; each seed run starts fresh.
 
-**`error: --transcript is not supported with --seeds > 1; each seed run is independent (run with --seeds 1 to capture a transcript)`**
-Cause: a transcript captures a single run's request/response stream,
-but multi-seed runs are k independent executions. Fix: run with
-`--seeds 1` to capture a transcript, or omit `--transcript` for
-multi-seed runs.
+**`error: --transcript and --cache-dir are not supported with --seeds > 1; run each seed separately for transcripts`**
+Cause: `--seeds N` runs k independent executions, but a transcript
+or cache dir is a single shared path. Writing k runs into one
+transcript would corrupt replay, and one cache dir would entangle
+the seeds. Fix: run each seed separately (without `--seeds`) when
+you need transcripts or a cache dir.
+
+**`error: duplicate seeds across run artifacts; pass one artifact per seed (a repeated seed would collapse the agreement statistics)`**
+Cause: `peira stability` was given the same seed twice (for example
+the same artifact path twice). A repeated seed would make pass^k a
+trivial 1.0. Fix: pass one artifact per seed.
+
+**`interrupted; N completed seed artifact(s) saved under <out_dir>; run single seeds without --seeds > 1 to continue.`**
+Cause: Ctrl-C during `peira run --seeds N`. Each finished seed's
+artifact is written the moment its seed completes, so the completed
+seeds are safe; the seeds still running are lost. Multi-seed runs do
+not support `--resume`. Fix: re-run the missing seeds individually
+(without `--seeds`) if you need them, or re-run the whole command.
 
 **`ValueError: budget_usd must be a number or None, got True`**
 Cause: a boolean was passed as the budget to `run_multiseed`.
@@ -192,6 +205,32 @@ Cause: `peira drift-watch` was given two runs from different
 adapters. Drift is change over time in one adapter, not a
 cross-adapter comparison. Fix: pass two runs of the same adapter, or
 use `peira compare` for cross-adapter head-to-head.
+
+**`error: <path> did not complete (termination=T): drift-watch compares complete runs`**
+Cause: `peira drift-watch` was given a run artifact whose `termination`
+is not `"complete"`. Drift statistics need both runs' full case
+outcomes. Fix: re-run the truncated run to completion first.
+
+**`error: cannot write stability artifact to <path> (<reason>)`**
+Cause: `peira stability --out` could not write the file (for example
+the parent directory does not exist). Fix: create the parent
+directory first, or choose a writable `--out` path.
+
+**`error: cannot write drift-watch result to <path> (<reason>)`**
+Cause: `peira drift-watch --out` could not write the file (for
+example the parent directory does not exist). Fix: create the parent
+directory first, or choose a writable `--out` path.
+
+**`error: <new> is a different suite/dataset than <old>: drift-watch compares runs of the same adapter on the same suite and dataset version`**
+Cause: `peira drift-watch` was given two runs from different suites
+or dataset versions. Drift is change over time on the same
+measurement, not across different ones. Fix: compare runs on the same
+suite and dataset version.
+
+**`note: N runs is below the M-7 protocol minimum of 3: agreement reported, stability not claimed`**
+Cause: `peira stability` was given 2 run artifacts. Agreement over 2
+runs is reported, but the M-7 protocol needs at least 3 seeds before
+the pass^k headline is claimed. Fix: run a third seed and include it.
 
 **`error: multi-seed run did not complete N seeds cleanly; stability analysis withheld (see per-seed artifacts)`**
 Cause: `peira run --seeds N` finished with fewer than 3 cleanly

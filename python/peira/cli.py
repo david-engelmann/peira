@@ -378,8 +378,6 @@ def cmd_run(args: argparse.Namespace) -> int:
     # M-7: validate the seed count before doing any work. 1 is a
     # single run; anything else must clear the protocol minimum.
     num_seeds = getattr(args, "seeds", 1)
-    if num_seeds is None:
-        num_seeds = 1
     if num_seeds != 1 and num_seeds < 3:
         print(f"error: --seeds must be 1 or >= 3 (M-7 protocol minimum), "
               f"got {num_seeds}", file=sys.stderr)
@@ -389,20 +387,24 @@ def cmd_run(args: argparse.Namespace) -> int:
               "each seed run is independent (re-run without --resume)",
               file=sys.stderr)
         return EXIT_USER_ERROR
-    if num_seeds > 1 and args.transcript:
-        print("error: --transcript is not supported with --seeds > 1; "
-              "each seed run is independent (run with --seeds 1 to "
-              "capture a transcript)", file=sys.stderr)
+    if num_seeds > 1 and (args.transcript or args.cache_dir):
+        print("error: --transcript and --cache-dir are not supported "
+              "with --seeds > 1; run each seed separately for transcripts",
+              file=sys.stderr)
         return EXIT_USER_ERROR
 
     def _build_mock(seed_i: int, run_nonce_i: str) -> "MockAdapter":
         # The mock's simulation script is namespaced per (seed, nonce):
         # each seed run gets its own script built under its own nonce,
-        # exactly like the single-run path below.
+        # exactly like the single-run path below. The constructor seed
+        # is also set per seed: flip decisions are hashed from
+        # self.seed, so without this every seed run would flip the same
+        # cases and pass^k would be vacuously 1.0.
         return MockAdapter(
+            seed=str(seed_i),
             script=MockAdapter.script_for(
                 cases, seed=seed_i, run_nonce=run_nonce_i
-            )
+            ),
         )
 
     if isinstance(adapter, MockAdapter):
@@ -436,7 +438,7 @@ def cmd_run(args: argparse.Namespace) -> int:
         else:
             build_adapter = None
 
-    out_dir = Path(args.out)
+    out_dir = Path(args.out).resolve()
 
     if args.max_concurrency < 1:
         print(f"error: --max-concurrency must be >= 1 "
@@ -557,12 +559,8 @@ def cmd_run(args: argparse.Namespace) -> int:
                 num_seeds, build_adapter, budget_usd, progress,
             )
     except KeyboardInterrupt:
-        if num_seeds > 1:
-            print("\ninterrupted; completed seed artifacts are saved; "
-                  "re-run without --resume.", file=sys.stderr)
-        else:
-            print("\ninterrupted; partial run saved; re-run with --resume.",
-                  file=sys.stderr)
+        print("\ninterrupted; partial run saved; re-run with --resume.",
+              file=sys.stderr)
         return EXIT_INFRA_ERROR
     except ValueError as e:
         # Config errors with actionable messages (bad cache dir,
@@ -605,46 +603,61 @@ def _cmd_run_multiseed(
     (``{slug}-{suite}-stability.json``) references all k and seals the
     pass^k / variance-decomposition analysis. Ranking eligibility is
     per seed run; the command exits EXIT_GATE_NOTE when any seed run
-    is ineligible.
+    is ineligible. Each seed artifact is written the moment its seed
+    finishes, so an interrupt never loses completed seeds.
     """
-    artifacts, stability = run_multiseed(
-        adapter,
-        cases,
-        suite,
-        dataset_version,
-        progress=progress,
-        manifest_sha256=manifest_sha256,
-        seed=args.seed,
-        num_seeds=num_seeds,
-        max_concurrency=args.max_concurrency,
-        max_attempts=args.max_attempts,
-        call_timeout=args.call_timeout,
-        config_extra={"adapter_spec": args.adapter},
-        rlimit_cpu_seconds=getattr(args, "rlimit_cpu_seconds", None),
-        rlimit_as_mb=getattr(args, "rlimit_as_mb", None),
-        rlimit_fsize_mb=getattr(args, "rlimit_fsize_mb", None),
-        budget_usd=budget_usd,
-        build_adapter=build_adapter,
-        required_families=suite_families,
-        cache_dir=args.cache_dir,
-    )
-    if stability is None:
-        # Fewer than MIN_SEEDS seeds completed (e.g. budget
-        # termination): every seed artifact is still sealed below so
-        # the work is not lost, but no stability claim is made.
-        print("error: multi-seed run did not complete "
-              f"{num_seeds} seeds cleanly; stability analysis "
-              "withheld (see per-seed artifacts)", file=sys.stderr)
     seed_paths: dict[int, str] = {}
     all_eligible = True
-    # Each artifact carries its own seed (RunArtifact.seed): never
-    # re-derive it from position, a crashed seed leaves a gap.
-    for artifact in artifacts:
-        seed_i = artifact.seed
+
+    def _persist_seed(seed_i: int, artifact: Any) -> None:
+        # Written the moment the seed finishes: a later seed's crash
+        # or a KeyboardInterrupt must not lose finished seeds.
         out_path = _write_final_artifact(
             out_dir, slug, suite, artifact, suffix=f"-seed{seed_i}"
         )
         seed_paths[seed_i] = str(out_path)
+
+    try:
+        artifacts, stability = run_multiseed(
+            adapter,
+            cases,
+            suite,
+            dataset_version,
+            progress=progress,
+            manifest_sha256=manifest_sha256,
+            seed=args.seed,
+            num_seeds=num_seeds,
+            max_concurrency=args.max_concurrency,
+            max_attempts=args.max_attempts,
+            call_timeout=args.call_timeout,
+            config_extra={"adapter_spec": args.adapter},
+            rlimit_cpu_seconds=getattr(args, "rlimit_cpu_seconds", None),
+            rlimit_as_mb=getattr(args, "rlimit_as_mb", None),
+            rlimit_fsize_mb=getattr(args, "rlimit_fsize_mb", None),
+            budget_usd=budget_usd,
+            build_adapter=build_adapter,
+            required_families=suite_families,
+            on_artifact=_persist_seed,
+        )
+    except KeyboardInterrupt:
+        saved = len(seed_paths)
+        print(f"\ninterrupted; {saved} completed seed artifact(s) saved "
+              f"under {out_dir}; run single seeds without --seeds > 1 "
+              "to continue.", file=sys.stderr)
+        return EXIT_INFRA_ERROR
+    if stability is None:
+        # Fewer than MIN_SEEDS seeds completed (e.g. budget
+        # termination): every seed artifact was still written as its
+        # seed finished, so the work is not lost, but no stability
+        # claim is made.
+        print("error: multi-seed run did not complete "
+              f"{num_seeds} seeds cleanly; stability analysis "
+              "withheld (see per-seed artifacts)", file=sys.stderr)
+    # Each artifact carries its own seed (RunArtifact.seed): never
+    # re-derive it from position, a crashed seed leaves a gap.
+    for artifact in artifacts:
+        seed_i = artifact.seed
+        out_path = Path(seed_paths[seed_i])
         print(f"seed {seed_i}: {out_path} "
               f"(termination={artifact.termination})", file=sys.stderr)
         _print_run_summary(artifact, out_path)
@@ -1882,6 +1895,7 @@ def cmd_stability(args: argparse.Namespace) -> int:
             return EXIT_USER_ERROR
     for art, path_str in zip(artifacts[1:], args.runs[1:]):
         if (art.adapter_name != first.adapter_name
+                or art.adapter_version != first.adapter_version
                 or art.suite != first.suite
                 or art.dataset_version != first.dataset_version):
             print(f"error: {path_str} is a different adapter/suite/dataset "
@@ -1897,6 +1911,11 @@ def cmd_stability(args: argparse.Namespace) -> int:
         print(f"error: {e}", file=sys.stderr)
         return EXIT_USER_ERROR
     seeds = [a.seed for a in artifacts]
+    if len(set(seeds)) != len(seeds):
+        print("error: duplicate seeds across run artifacts; pass one "
+              "artifact per seed (a repeated seed would collapse the "
+              "agreement statistics)", file=sys.stderr)
+        return EXIT_USER_ERROR
     # dataclasses.replace: StabilityResult is frozen; the seed list is
     # owned by the caller, not the analysis.
     import dataclasses
@@ -1921,7 +1940,12 @@ def cmd_stability(args: argparse.Namespace) -> int:
             stability=stability,
         ).seal()
         out_path = Path(args.out)
-        atomic_write_text(out_path, stab_artifact.to_json())
+        try:
+            atomic_write_text(out_path, stab_artifact.to_json())
+        except OSError as e:
+            print(f"error: cannot write stability artifact to {out_path} "
+                  f"({e})", file=sys.stderr)
+            return EXIT_USER_ERROR
         print(f"wrote {out_path}", file=sys.stderr)
     return EXIT_OK
 
@@ -1950,6 +1974,19 @@ def cmd_drift_watch(args: argparse.Namespace) -> int:
               f"{args.old} is {old.adapter_name!r}, {args.new} is "
               f"{new.adapter_name!r}", file=sys.stderr)
         return EXIT_USER_ERROR
+    for art, path_str in ((old, args.old), (new, args.new)):
+        if art.termination != "complete":
+            print(f"error: {path_str} did not complete "
+                  f"(termination={art.termination}): drift-watch compares "
+                  f"complete runs", file=sys.stderr)
+            return EXIT_USER_ERROR
+    if (old.suite != new.suite
+            or old.dataset_version != new.dataset_version):
+        print(f"error: {args.new} is a different suite/dataset than "
+              f"{args.old}: drift-watch compares runs of the same adapter "
+              f"on the same suite and dataset version",
+              file=sys.stderr)
+        return EXIT_USER_ERROR
     result = drift_watch(
         [PerCaseResult.from_dict(r) for r in old.results],
         [PerCaseResult.from_dict(r) for r in new.results],
@@ -1959,10 +1996,15 @@ def cmd_drift_watch(args: argparse.Namespace) -> int:
     print(result.summary_text())
     if args.out:
         out_path = Path(args.out)
-        atomic_write_text(
-            out_path,
-            json.dumps(result.to_dict(), indent=2, sort_keys=True),
-        )
+        try:
+            atomic_write_text(
+                out_path,
+                json.dumps(result.to_dict(), indent=2, sort_keys=True),
+            )
+        except OSError as e:
+            print(f"error: cannot write drift-watch result to {out_path} "
+                  f"({e})", file=sys.stderr)
+            return EXIT_USER_ERROR
         print(f"wrote {out_path}", file=sys.stderr)
     degraded = [f.family for f in result.families if f.degraded]
     if degraded:

@@ -1,6 +1,6 @@
 """Unit tests for the M-7 multi-seed stability protocol (peira.stability).
 
-Run with: python -m pytest tests/test_stability.py -v
+Run with: python -m unittest discover tests -v
 """
 
 import json
@@ -146,7 +146,10 @@ class TestFlipAgreement(unittest.TestCase):
             [True] * 15 + [False] * 5,
         ])
         res = flip_agreement(runs)
-        self.assertGreater(res.run_sd, 0.15)
+        # ASRs are 0.5, 0.25, 0.75: the documented sample sd (k-1) is
+        # exactly 0.25; the population sd would be ~0.204. Pin the
+        # sample-sd choice, not just "spread exists".
+        self.assertAlmostEqual(res.run_sd, 0.25, places=9)
 
     def test_summary_text_format(self):
         res = flip_agreement(_runs([[True, False]] * 3))
@@ -313,6 +316,28 @@ class TestStabilityArtifact(unittest.TestCase):
             ),
         )
         self.assertFalse(tampered.verify())
+
+    def test_analysis_lock_detects_identity_relabeling(self):
+        # The lock covers the identity fields, not just the analysis:
+        # relabeling the artifact to a different adapter after sealing
+        # must be detectable.
+        res = flip_agreement(_runs([[True, False]] * 3))
+        art = StabilityArtifact(
+            adapter_name="mock",
+            adapter_version="0.2.0",
+            suite="trial-demo",
+            dataset_version="1.0.0",
+            manifest_sha256="abc",
+            seeds=[0, 1, 2],
+            run_artifact_paths={0: "a.json", 1: "b.json", 2: "c.json"},
+            stability=res,
+        ).seal()
+        self.assertTrue(art.verify())
+        import dataclasses
+        relabeled = dataclasses.replace(art, adapter_name="other-adapter")
+        self.assertFalse(relabeled.verify())
+        relabeled2 = dataclasses.replace(art, dataset_version="9.9.9")
+        self.assertFalse(relabeled2.verify())
 
     def test_pass_k_withheld_when_no_eligible_cases(self):
         # All cases ineligible: pass^k is undefined, not 0.0.

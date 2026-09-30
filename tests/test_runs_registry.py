@@ -407,5 +407,80 @@ class TestCacheTerminationIndexing(unittest.TestCase):
             self.assertEqual(len(rows), 1)
 
 
+class TestLegacyRegistryMigration(unittest.TestCase):
+    """M-7 longitudinal columns migrate a legacy index.db in place.
+
+    Regression tests for the red-team P1-6 (filtered list_runs crashed
+    with OperationalError on a pre-M-7 index) and P2-1 (stability
+    artifacts forced a rescan on every list_runs call).
+    """
+
+    def _legacy_index(self, tmp):
+        """Build an index.db whose runs table predates the M-7 columns."""
+        from peira.runs_registry import _index_path
+        scan_runs(tmp)
+        db_path = _index_path(Path(tmp))
+        conn = sqlite3.connect(db_path)
+        for col in ("model_class", "confidence_source", "checkpoint_hash",
+                    "api_version", "call_date", "decode_params",
+                    "template_hash", "case_set_tag",
+                    "cost_scenario_version"):
+            conn.execute(f"ALTER TABLE runs DROP COLUMN {col}")
+        conn.commit()
+        conn.close()
+        return db_path
+
+    def test_provenance_filter_works_on_legacy_index(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            (Path(tmp) / "a.json").write_text(
+                _make_artifact(adapter_name="a",
+                               model_class="guardrail").to_json())
+            self._legacy_index(tmp)
+            # Before the fix this raised sqlite3.OperationalError: no
+            # such column: model_class.
+            rows = list_runs(tmp, model_class="guardrail")
+            self.assertEqual(len(rows), 1)
+            self.assertEqual(rows[0]["adapter_name"], "a")
+            # The migrated index now answers the negative filter too.
+            self.assertEqual(list_runs(tmp, model_class="other"), [])
+
+    def test_stability_artifact_does_not_force_rescan(self):
+        import json as _json
+        from peira.runs_registry import _index_path
+        with tempfile.TemporaryDirectory() as tmp:
+            (Path(tmp) / "a.json").write_text(
+                _make_artifact(adapter_name="a").to_json())
+            # A sealed stability artifact in the runs dir (the default
+            # --out of peira stability).
+            (Path(tmp) / "run-stability.json").write_text(_json.dumps({
+                "artifact_version": "1.0.0",
+                "adapter_name": "a",
+                "seeds": [0, 1, 2],
+            }))
+            list_runs(tmp)
+            mtime1 = _index_path(Path(tmp)).stat().st_mtime_ns
+            time.sleep(0.02)
+            list_runs(tmp)
+            mtime2 = _index_path(Path(tmp)).stat().st_mtime_ns
+            self.assertEqual(
+                mtime1, mtime2,
+                "index.db rewritten on consecutive list_runs: the "
+                "stability artifact is poisoning the freshness snapshot",
+            )
+
+    def test_run_artifact_from_suite_named_stability_is_indexed(self):
+        # A run artifact from a suite literally named "stability"
+        # ({slug}-stability.json) is a run record, not an analysis
+        # record: the content check (peira_version present) keeps it
+        # indexed instead of silently dropping it.
+        with tempfile.TemporaryDirectory() as tmp:
+            (Path(tmp) / "mock-stability.json").write_text(
+                _make_artifact(adapter_name="mock",
+                               suite="stability").to_json())
+            rows = list_runs(tmp)
+            self.assertEqual(len(rows), 1)
+            self.assertEqual(rows[0]["suite"], "stability")
+
+
 if __name__ == "__main__":
     unittest.main()

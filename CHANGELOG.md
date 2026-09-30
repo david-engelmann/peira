@@ -7,6 +7,27 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
 
 ## [Unreleased]
 
+### Added multi-seed stability protocol (M-7)
+
+- `peira run --seeds N` executes N independent seed runs (N = 1 or
+  >= 3; `--seeds 2` is rejected) and writes one sealed per-seed
+  artifact each; `--resume`, `--transcript`, and `--cache-dir` are
+  rejected with `--seeds > 1`.
+- `peira stability` computes pass^k, churn, Wilson confidence
+  intervals, and variance components over 2+ run artifacts of the same
+  adapter id, suite, and dataset version; duplicate seeds are
+  rejected. `--out` writes a sealed `StabilityArtifact` whose
+  `analysis_lock` binds the headline numbers and the artifact
+  identity (adapter, suite, dataset version, manifest hash).
+- `peira drift-watch` compares two complete runs of the same adapter
+  id on the same suite and dataset version with a McNemar three-tier
+  policy (withheld below 10 discordant pairs).
+- Run registry gains longitudinal provenance columns (model class,
+  checkpoint hash, adapter/dataset identity) with legacy `index.db`
+  migration; `peira runs list` supports provenance filters.
+- Methodology gains the M-7 stability protocol section; CLI and
+  Troubleshooting docs cover the new commands and error strings.
+
 ### Fixed v1 scale mismatches in 241 cases (D-36 class 4)
 
 - 241 cases across 8 families mixed 0-100 scoring language with 0-1

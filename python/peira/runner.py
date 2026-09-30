@@ -30,7 +30,10 @@ import sys
 import time
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Callable, Literal
+from typing import TYPE_CHECKING, Any, Callable, Literal
+
+if TYPE_CHECKING:
+    from peira.stability import StabilityResult
 
 from peira._rust import _impl as _rust
 from peira.adapters.base import (
@@ -1888,8 +1891,8 @@ def run_multiseed(
     budget_usd: float | None = None,
     build_adapter: Callable[[int, str], Any] | None = None,
     required_families: list[str] | None = None,
-    cache_dir: str | None = None,
-) -> tuple[list[RunArtifact], "StabilityResult | None"]:
+    on_artifact: Callable[[int, RunArtifact], None] | None = None,
+) -> tuple[list[RunArtifact], StabilityResult | None]:
     """Run a suite k times under consecutive seeds (M-7 protocol).
 
     Executes ``run_suite`` ``num_seeds`` times with seeds
@@ -1909,6 +1912,10 @@ def run_multiseed(
     each seed. Raises ValueError for ``num_seeds < 3`` (the protocol
     minimum), for resume-incompatible state there is none: multi-seed
     runs do not support --resume (each seed run is independent).
+
+    ``on_artifact``, when given, is called as ``on_artifact(seed_i,
+    artifact)`` immediately after each seed run completes, so a
+    later interrupt cannot lose already-finished seeds.
 
     A seed whose run did not complete (``artifact.termination`` is not
     ``"complete"``, e.g. budget termination) is excluded from the
@@ -1969,7 +1976,6 @@ def run_multiseed(
                 rlimit_fsize_mb=rlimit_fsize_mb,
                 run_nonce=run_nonce,
                 budget_usd=per_run_budget,
-                cache_dir=cache_dir,
             )
         except Exception as e:  # noqa: BLE001 - resilience, not silence
             # Surface the crash immediately: the CLI prints excluded
@@ -1983,6 +1989,10 @@ def run_multiseed(
             )
             continue
         runs.append((seed_i, artifact, None))
+        if on_artifact is not None:
+            # Persist immediately: a later seed's crash or a
+            # KeyboardInterrupt must not lose this finished seed.
+            on_artifact(seed_i, artifact)
     artifacts = [a for _, a, _ in runs if a is not None]
     # A truncated seed (budget termination, crash recovery) is real
     # data for its own artifact but must not enter the agreement
