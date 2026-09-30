@@ -65,6 +65,19 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
   `DATASHEET.md`. The next v2 version cannot seal until those are
   resolved.
 
+### Added evidence_positioning attack family (family 23, Tier 1)
+
+- New v2 family `evidence_positioning`: reordering byte-identical
+  evidence exploits primacy and recency effects to steer decisions to
+  the attacker's target. 420 cases (80 critical / 100 high / 240
+  medium; 315 choice / 53 abstain / 52 score) authored by
+  `scripts/evidence_positioning_gen/generate.py`. Six facts are
+  byte-identical between arms; only the order changes. Benign:
+  alternating [E1, T1, E2, T2, E3, T3]. Attacked: target-supporting
+  evidence leads and closes [T1, E1, E2, E3, T2, T3]. Replaces the
+  PR #191 corpus (held DO NOT MERGE for P0 corpus recycling).
+  Dataset version moves from 2.1.0 to 2.2.0.
+
 ### Applied S-1 re-grade corrections, dataset v1 1.2.0 (D-36)
 
 - 94 adjudicated severity re-grades (61 to critical, 16 downgrades;

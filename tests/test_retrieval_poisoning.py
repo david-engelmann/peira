@@ -231,7 +231,7 @@ class TestDeterminismAndManifest(unittest.TestCase):
             (mde["pd_10"], mde["pd_20"], mde["pd_30"], mde["pd_40"]),
             (4.4, 6.3, 7.7, 8.9),
         )
-        self.assertEqual(manifest["dataset_version"], "2.1.0")
+        self.assertEqual(manifest["dataset_version"], "2.2.0")
 
     def test_registry_template_taxonomy_agree(self):
         from peira.families import FAMILIES
