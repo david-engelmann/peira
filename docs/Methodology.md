@@ -1080,6 +1080,74 @@ report uses each scenario's default rate and records it. Run it with
 Add `--scenario <id>` to restrict to one cost scenario. The full
 per-family tables are in the `--json` output.
 
+## Multi-seed stability protocol (M-7)
+
+A single run confounds three things: the adapter's true flip rate,
+the luck of the draw on seeds, and case-level instability. The M-7
+protocol separates them. `peira run --seeds k` (k = 1 or k >= 3;
+k = 2 is rejected) executes the suite k times under consecutive seeds
+(seed .. seed+k-1), each under a fresh run nonce so call ids stay
+unlinkable. Each seed run seals its own ordinary run artifact
+(`{slug}-{suite}-seedN.json`); the protocol then seals a stability
+artifact (`{slug}-{suite}-stability.json`) that references all k runs
+and carries the analysis. The same analysis is available over existing
+artifacts with `peira stability RUN1 RUN2 ... [--out]`, which requires
+all runs to share adapter, suite, and dataset version.
+
+The headline is **pass^k**: the fraction of eligible cases whose flip
+outcome is identical across all k seeds. A deterministic adapter
+scores pass^k = 1.0; a case that flips on some seeds but not others is
+a **churn case** (0 < per-case flip rate < 1) and counts against it.
+Only cases eligible in every seed enter the agreement statistics.
+
+The variance is reported as three separate components, never one
+collapsed standard deviation:
+
+- **Sampling variance**: Wilson 95% CI on the pooled ASR (k x n
+  observations). Answers "what if we ran more cases".
+- **Run variance**: sample standard deviation of the per-seed ASRs.
+  Answers "what if we ran more seeds".
+- **Item variance**: population variance of the per-case flip rates
+  across cases. Answers "do flips concentrate on a fragile subset or
+  spread evenly".
+
+**Cost gate.** k seed runs multiply provider spend by k, so the
+three-seed commitment stays behind a cost pilot: run the protocol on
+the mock or a local adapter first (zero spend) and size the real run
+from the pilot's churn. `--budget-usd` with `--seeds k` divides the
+cap evenly across seeds. A run that hits its per-seed budget stops
+gracefully; the artifact records the termination, and that seed is
+excluded from the stability analysis rather than counted as a quiet
+non-flip. A seed that crashes is excluded the same way; the completed
+seeds' artifacts are still sealed, so one bad seed never loses the
+others' work.
+
+Seed independence is enforced per adapter. The mock rebuilds its
+simulation script per seed; seed-sensitive LLM baselines are re-seeded
+per run (provider sampling seed plus cache namespace), so the k runs
+are independent measurements rather than k copies of one sampling
+decision.
+
+**Longitudinal registry.** Every run artifact carries the fields a
+future rerun needs for an apples-to-apples comparison: `model_class`
+(llm-baseline, guardrail, rule-based, ...), `confidence_source`,
+`checkpoint_hash` (pinned model revision) or `api_version`,
+`call_date` (UTC date of the run), `decode_params` (canonical JSON),
+`template_hash`, and `case_set_tag` (the suite id; the dataset
+version travels separately). Adapters declare what they know; fields
+the adapter does not declare stay empty rather than invented.
+
+**Drift watch.** `peira drift-watch --old A --new B` compares two runs
+of the same adapter id and reports, per family: old and new ASR, the
+delta, and the two churn directions separately: **newly-flipping**
+(not flipped in old, flipped in new) and **newly-fixed** (flipped in
+old, not flipped in new). A net delta alone is never reported; a +2%
+net can hide 20 regressions and 18 fixes. Paired McNemar p-values test
+each family's delta, withheld when fewer than 10 discordant pairs make
+the test meaningless. A family is flagged DEGRADED only when the delta
+is positive and p < 0.05. Only cases present in both runs are paired;
+a case whose family changed between runs is treated as unpaired.
+
 ## Economic value view (M-3, sidecar)
 
 Every robustness benchmark reports ASR as a naked percentage. The value

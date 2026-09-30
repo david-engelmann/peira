@@ -208,6 +208,8 @@ class JevAdapter:
     # M-2: confidence comes from the API's per-answer probabilities
     # (D-23): a model-output probability, not a verbalization.
     confidence_source = "token-logprob"
+    # M-7 longitudinal provenance.
+    model_class = "guardrail"
     # Pinned model id: same input → same decision, so the runner's
     # opt-in response cache is safe namespaced on it.
     cache_namespace = f"jev:{MODEL_ID}"
