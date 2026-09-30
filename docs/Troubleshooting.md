@@ -200,6 +200,25 @@ cases, and counting them as non-flips would fake agreement. Fix:
 re-run the truncated seed to completion, or drop it and run
 `peira stability` over the completed seeds only.
 
+**`error: duplicate case ids in the first seed run`**
+Cause: `peira stability` was given a run artifact whose results list
+the same case twice. Agreement is computed per case id, so a
+duplicated id is ambiguous. Fix: re-run the seed (a duplicated case
+id indicates a corrupted or hand-edited artifact).
+
+**`error: seed run N scored a different case set than seed run 0 (M cases vs K)`**
+Cause: `peira stability` was given runs that do not cover the same
+cases (for example different suite slices, or a truncated run that
+slipped past the termination check). Agreement needs the same case
+set in every seed. Fix: run all seeds over the same suite and
+dataset version.
+Cause: `peira stability` was given a run artifact whose `termination`
+is not `"complete"` (for example `"budget"` after the spend cap
+stopped the run). A truncated run has no outcome for the missing
+cases, and counting them as non-flips would fake agreement. Fix:
+re-run the truncated seed to completion, or drop it and run
+`peira stability` over the completed seeds only.
+
 **`error: drift-watch compares runs of the same adapter id: <old> is 'A', <new> is 'B'`**
 Cause: `peira drift-watch` was given two runs from different
 adapters. Drift is change over time in one adapter, not a

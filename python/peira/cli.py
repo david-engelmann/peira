@@ -1863,6 +1863,25 @@ decision cases. It does not certify a model as safe.</em></p>
 </body></html>"""
 
 
+def _load_run_artifact(path_str: str) -> RunArtifact | None:
+    """Load a run artifact for the analysis commands.
+
+    Prints a user-facing error and returns None when the path is
+    missing or the file is not a valid run artifact, so callers share
+    one copy of the existence/validity checks.
+    """
+    path = Path(path_str)
+    if not path.exists():
+        print(f"error: {path} not found", file=sys.stderr)
+        return None
+    try:
+        return RunArtifact.from_json(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as e:
+        print(f"error: {path} is not a valid run artifact ({e})",
+              file=sys.stderr)
+        return None
+
+
 def cmd_stability(args: argparse.Namespace) -> int:
     """M-7 stability analysis over existing run artifacts."""
     from peira.metrics import PerCaseResult
@@ -1874,17 +1893,10 @@ def cmd_stability(args: argparse.Namespace) -> int:
         return EXIT_USER_ERROR
     artifacts = []
     for path_str in args.runs:
-        path = Path(path_str)
-        if not path.exists():
-            print(f"error: {path} not found", file=sys.stderr)
+        artifact = _load_run_artifact(path_str)
+        if artifact is None:
             return EXIT_USER_ERROR
-        try:
-            artifacts.append(
-                RunArtifact.from_json(path.read_text(encoding="utf-8")))
-        except (OSError, ValueError) as e:
-            print(f"error: {path} is not a valid run artifact ({e})",
-                  file=sys.stderr)
-            return EXIT_USER_ERROR
+        artifacts.append(artifact)
     first = artifacts[0]
     for art, path_str in zip(artifacts, args.runs):
         if art.termination != "complete":
@@ -1956,18 +1968,11 @@ def cmd_drift_watch(args: argparse.Namespace) -> int:
     from peira.stability import drift_watch
 
     artifacts = []
-    for label, path_str in (("old", args.old), ("new", args.new)):
-        path = Path(path_str)
-        if not path.exists():
-            print(f"error: {path} not found", file=sys.stderr)
+    for path_str in (args.old, args.new):
+        artifact = _load_run_artifact(path_str)
+        if artifact is None:
             return EXIT_USER_ERROR
-        try:
-            artifacts.append(
-                RunArtifact.from_json(path.read_text(encoding="utf-8")))
-        except (OSError, ValueError) as e:
-            print(f"error: {path} is not a valid run artifact ({e})",
-                  file=sys.stderr)
-            return EXIT_USER_ERROR
+        artifacts.append(artifact)
     old, new = artifacts
     if old.adapter_name != new.adapter_name:
         print(f"error: drift-watch compares runs of the same adapter id: "

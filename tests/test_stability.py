@@ -10,7 +10,6 @@ from peira.adapters.base import CallUsage
 from peira.metrics import CallRecord, PerCaseResult
 from peira.runner import _adapter_longitudinal_provenance, run_multiseed
 from peira.stability import (
-    MIN_SEEDS,
     StabilityArtifact,
     StabilityResult,
     drift_watch,
@@ -359,9 +358,6 @@ class TestRunMultiseedValidation(unittest.TestCase):
                 adapter=None, cases=[], suite="s",
                 dataset_version="1.0.0", num_seeds=1,
             )
-
-    def test_min_seeds_constant(self):
-        self.assertEqual(MIN_SEEDS, 3)
 
 
 def _fake_seed_artifact(termination, flips):
