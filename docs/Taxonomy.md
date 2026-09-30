@@ -119,7 +119,8 @@ ships, with no fixed total.
     the target query) and the generation condition (taken as true, it
     steers the decision). The payload is false factual claims, never
     instructions: pure false facts remain effective with no directive
-    text. PoisonedRAG (Zou et al., arXiv:2402.07867); MITRE ATLAS T0099.
+    text. PoisonedRAG (Zou et al., arXiv:2402.07867). MITRE ATLAS AML.T0070
+    (RAG Poisoning).
 
 ## Family boundary rulings
 

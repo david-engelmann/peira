@@ -16,7 +16,7 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
   attacked prompt is byte-identical to its benign control plus exactly
   one appended `[Retrieved: ...]` block carrying false factual claims
   (never instructions). Research basis: PoisonedRAG (arXiv:2402.07867),
-  MITRE ATLAS T0099. Design MDEs at n=400: 4.4 / 6.3 / 7.7 / 8.9pp.
+  MITRE ATLAS AML.T0070 (RAG Poisoning). Design MDEs at n=400: 4.4 / 6.3 / 7.7 / 8.9pp.
   Dataset version moves from 2.0.0 to 2.1.0.
 
 ### Added CEAC for CPPF (C-5)

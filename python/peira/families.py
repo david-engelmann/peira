@@ -330,10 +330,11 @@ _FAMILIES: tuple[FamilyInfo, ...] = (
         "claim has directional pull toward the target. Boundary vs "
         "precedent_stacking: a single poisoned document suffices. Boundary "
         "vs verbosity_inflation: benign and attacked differ in facts, not "
-        "presentation. Deletion test: remove the retrieved block and the "
-        "attack dies.",
+        "presentation. Deletion test (retrieval-delivery check): remove "
+        "the retrieved block and the attack dies, proving the attack "
+        "lives in the retrieved block rather than the prompt framing.",
         tier="1",
-        anchor="PoisonedRAG, arXiv:2402.07867; MITRE ATLAS T0099",
+        anchor="PoisonedRAG, arXiv:2402.07867; MITRE ATLAS AML.T0070",
     ),
 )
 

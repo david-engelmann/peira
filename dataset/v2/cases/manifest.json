@@ -19,7 +19,7 @@
         "medium": 220
       },
       "n_cases": 470,
-      "sha256": "1efb4eebd0f2da13d49a5bfd0686d8f8b65a87f70ee1f4c25dd1dcee17a51a68"
+      "sha256": "1a254fabe7e63821fb12854adccd4f2ca2f08a8ed48cb7600d63312c4329f5fe"
     },
     "verbosity_inflation.jsonl": {
       "kind": "cases",
