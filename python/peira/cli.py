@@ -10,6 +10,7 @@ from __future__ import annotations
 import argparse
 import html
 import json
+import math
 import os
 import re
 import sys
@@ -878,9 +879,10 @@ def cmd_report(args: argparse.Namespace) -> int:
 def _nb_curve_svg(block: dict, arm: str) -> str:
     """Inline SVG decision curve for one arm's net-benefit block.
 
-    Model curve vs. review-all and review-none reference lines. All
-    coordinates are computed from the block's own floats; no
-    adapter-controlled strings enter the markup.
+    Model curve vs. review-all and review-none reference lines, plus
+    the C-3 calibration envelope (upper bound) on the attacked arm when
+    present. All coordinates are computed from the block's own floats;
+    no adapter-controlled strings enter the markup.
     """
     e = html.escape
     curve = block.get("curve") or []
@@ -893,7 +895,25 @@ def _nb_curve_svg(block: dict, arm: str) -> str:
         return ""
     if not pts:
         return ""
-    vals = [nb for _, nb in pts] + [nb for _, nb in ra_pts] + [0.0]
+    # C-3 envelope (attacked arm only): recalibrated decision curve,
+    # explicitly labeled an upper bound. Withheld when the block says
+    # insufficient (same contract as the headline line); non-finite
+    # points are dropped before scaling so a hostile NaN/inf cannot
+    # break the chart geometry.
+    env = block.get("calibration_envelope")
+    env_curve = []
+    if isinstance(env, dict) and env.get("sufficient"):
+        env_curve = env.get("envelope") or []
+    try:
+        env_pts = [
+            (float(pt), float(nb))
+            for pt, nb in env_curve
+            if math.isfinite(float(pt)) and math.isfinite(float(nb))
+        ]
+    except (TypeError, ValueError):
+        env_pts = []
+    vals = [nb for _, nb in pts] + [nb for _, nb in ra_pts]
+    vals += [nb for _, nb in env_pts] + [0.0]
     lo = min(vals)
     hi = max(vals)
     if hi - lo < 1e-9:
@@ -948,6 +968,12 @@ def _nb_curve_svg(block: dict, arm: str) -> str:
         + " ".join(f"{X(pt):.1f},{Y(nb):.1f}" for pt, nb in pts)
         + '" fill="none" stroke="#1f6feb" stroke-width="2"/>'
     )
+    if env_pts:
+        parts.append(
+            '<polyline points="'
+            + " ".join(f"{X(pt):.1f},{Y(nb):.1f}" for pt, nb in env_pts)
+            + '" fill="none" stroke="#1a7f37" stroke-width="1.5" stroke-dasharray="7,3"/>'
+        )
     # Legend.
     lx = W - mr - 150
     ly = mt + 6
@@ -959,6 +985,11 @@ def _nb_curve_svg(block: dict, arm: str) -> str:
         f'<line x1="{lx}" y1="{ly + 34}" x2="{lx + 10}" y2="{ly + 34}" stroke="#000" stroke-dasharray="6,4"/>'
         f'<text x="{lx + 14}" y="{ly + 38}" font-size="11">review none</text>'
     )
+    if env_pts:
+        parts.append(
+            f'<line x1="{lx}" y1="{ly + 52}" x2="{lx + 10}" y2="{ly + 52}" stroke="#1a7f37" stroke-width="1.5" stroke-dasharray="7,3"/>'
+            f'<text x="{lx + 14}" y="{ly + 56}" font-size="11">calibration envelope (upper bound)</text>'
+        )
     return (
         f'<svg width="{W}" height="{H}" viewBox="0 0 {W} {H}" role="img" '
         f'aria-label="Decision curve for {e(arm)} arm">'
@@ -1023,11 +1054,49 @@ def _net_benefit_section(m: dict) -> str:
             f"<p>Best threshold: {_num(b.get('best_threshold'))} "
             f"(net benefit {_val(b.get('best_net_benefit'))}, "
             f"{_num(b.get('n_reviewed_at_best'))} cases reviewed).</p>\n"
+            f"{_envelope_line(b)}\n"
             "<table border=\"1\"><tr><th>operating threshold</th>"
             "<th>net benefit</th></tr>\n"
             f"{op_rows}</table>\n"
         )
     return "".join(parts)
+
+
+def _envelope_line(b: dict) -> str:
+    """Render the C-3 calibration-envelope headline for one arm's block.
+
+    Attacked arm only: "at most X net caught bad outputs per case
+    recoverable by recalibration alone, without retraining". This is the
+    explicitly-labeled upper bound (roadmap C-3). Defensive .get access:
+    old artifacts and the benign arm have no envelope and render
+    nothing.
+    """
+    env = b.get("calibration_envelope")
+    if not isinstance(env, dict) or not env.get("sufficient"):
+        return ""
+    max_gap = env.get("max_gap")
+    at = env.get("threshold_at_max_gap")
+    # Loaded artifacts can carry non-numeric envelope values: from_json
+    # validates the metrics dict shape, not nested envelope fields, and
+    # the metrics producer's trusted numbers are not the only way a
+    # block gets built. Omit the headline rather than publish a
+    # malformed claim ("nan"/"inf" via _num, raw strings via _val).
+    # bool is rejected explicitly because it subclasses int in Python.
+    def _is_valid_number(v):
+        return (
+            isinstance(v, (int, float))
+            and not isinstance(v, bool)
+            and math.isfinite(v)
+        )
+    if not _is_valid_number(max_gap) or not _is_valid_number(at):
+        return ""
+    return (
+        "<p>Calibration envelope (upper bound). At most "
+        f"{_val(max_gap)} net caught bad outputs per case are "
+        "recoverable by recalibration alone, without retraining "
+        f"(at threshold {_num(at)}). The envelope is an upper bound. "
+        "The isotonic fit is in-sample and slightly optimistic.</p>\n"
+    )
 
 
 def _buyer_cost_section(artifact, threshold: float, cost_false_approve: float,

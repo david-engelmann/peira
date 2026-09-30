@@ -670,6 +670,38 @@ review_none the buyer should not deploy the review policy at that
 threshold; where review_all wins, the risk score adds no value over
 blanket review.
 
+#### Calibration envelope (upper bound)
+
+Miscalibration always reduces net benefit (Van Calster & Vickers
+2015). A model whose confidences do not mean what they say pays a
+calibration penalty inside its decision curve that the reader cannot
+see from the empirical curve alone. The calibration envelope (roadmap
+C-3) separates it. On the attacked arm, peira fits an isotonic
+regression (pool adjacent violators, pure Python, no dependencies)
+mapping attacked-arm confidence to P(output correct), recomputes the
+decision curve on the recalibrated risks, and plots it next to the
+empirical curve. The vertical gap at each threshold is the net benefit
+lost to miscalibration. The maximum gap is the headline. It reads "at
+most X net caught bad outputs per case are recoverable by
+recalibration alone, without retraining". The envelope carries an
+explicit upper bound label. The isotonic fit is in-sample, so it is
+slightly optimistic about what recalibration would achieve on new
+cases. It is display-only, never a ranker, and never blended into the
+empirical curve.
+
+The envelope functions live in `peira.metrics` (Python-only, no Rust
+port). `isotonic_regression` is the PAVA primitive.
+`recalibrated_decision_curve` maps confidence/correctness pairs to the
+recalibrated curve. The `calibration_envelope` block sits inside the
+attacked arm's net-benefit summary. It holds `envelope`, per-threshold
+`gap`, `max_gap` at `threshold_at_max_gap`, and an `interpretation`
+field set to `"upper bound"`. Like the rest of the block, it is
+withheld below 30 analyzed cases. It is also withheld when any
+attacked-arm confidence falls outside [0, 1]. An out-of-range
+confidence withholds the envelope. It does not raise an error.
+`peira report` draws the envelope on
+the attacked-arm decision curve and prints the headline.
+
 Functions (`peira.metrics`, Python-only, no Rust port):
 `net_benefit_pairs` (risk/label extraction; the attacked arm needs
 eligible cases with an attacked approve/deny decision and confidence,
@@ -678,7 +710,9 @@ confidence is excluded, never treated as zero), `net_benefit_at_threshold`,
 `decision_curve` (default grid 0.01 to 0.99, sorted),
 `decision_curve_references`, `implied_threshold` (maps a buyer cost
 ratio to its operating threshold: pt = C/(B+C), where C is the cost of
-a wasted review and B the benefit of catching a bad output).
+a wasted review and B the benefit of catching a bad output),
+`isotonic_regression` (PAVA primitive), `recalibrated_decision_curve`
+(decision curve on recalibrated risks).
 
 Cases that cannot be analyzed are counted, never silently dropped.
 Each arm of the summary block carries `considered` (cases fed in),
