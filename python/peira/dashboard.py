@@ -668,20 +668,23 @@ def pairwise_resample_ahead(
     :func:`leaderboard`), resamples the shared eligible cases with the
     same seeded paired scheme as :func:`peira.metrics.paired_bootstrap_ci`
     and reports the fraction of resamples where the row adapter's ASR is
-    strictly below the column adapter's ASR. The distributions are
-    recomputable from stored per-case data (fixed seed, deterministic
-    PRNG), which is the M-6 "stored or recomputable" requirement; the
-    function itself is the recomputation entry point the dashboard
-    calls.
+    strictly below the column adapter's ASR (``ahead_fraction``), and
+    the fraction where it is strictly above (``behind_fraction``).
+    Resample ties count for neither, so the two fractions need not sum
+    to 1. The distributions are recomputable from stored per-case data
+    (fixed seed, deterministic PRNG), which is the M-6 "stored or
+    recomputable" requirement; the function itself is the recomputation
+    entry point the dashboard calls.
 
     Pairs with fewer than 30 shared eligible cases are reported with
-    ``n_shared`` and ``ahead_fraction`` None: the resample is too thin
-    to read as a ranking claim (the "not resolvable at this n"
-    convention). Diagonal entries are 0.5 by definition.
+    ``n_shared`` and None fractions: the resample is too thin to read
+    as a ranking claim (the "not resolvable at this n" convention).
+    Diagonal entries are 0.5/0.5 by definition.
 
     Returns JSON-serializable dict with ``adapters`` (rank order),
     ``seed``, ``n_boot``, and ``pairs`` mapping
-    "adapter_a|adapter_b" -> {"ahead_fraction", "n_shared"}.
+    "adapter_a|adapter_b" -> {"ahead_fraction", "behind_fraction",
+    "n_shared"}.
     """
     import random
 
@@ -720,41 +723,55 @@ def pairwise_resample_ahead(
             n_shared = len(shared)
             key = f"{a}|{b}"
             if n_shared < 30:
-                pairs[key] = {"ahead_fraction": None, "n_shared": n_shared}
+                pairs[key] = {
+                    "ahead_fraction": None,
+                    "behind_fraction": None,
+                    "n_shared": n_shared,
+                }
                 continue
             xs = [va[c] for c in shared]
             ys = [vb[c] for c in shared]
             rng = random.Random(seed)
             randbelow = rng.randrange
             ahead = 0
+            behind = 0
             n = n_shared
             xs_get = xs.__getitem__
             ys_get = ys.__getitem__
             for _ in range(n_boot):
                 # Same draw stream as metrics.paired_bootstrap_ci's
                 # naive formulation (indices via randrange, means via
-                # sum in draw order): the fractions are bit-identical
-                # to recomputing from that interval's midpoint logic.
+                # sum in draw order).
                 idx = [randbelow(n) for _ in range(n)]
                 mean_a = sum(map(xs_get, idx)) / n
                 mean_b = sum(map(ys_get, idx)) / n
                 if mean_a < mean_b:
                     ahead += 1
+                elif mean_b < mean_a:
+                    behind += 1
+                # Ties count for neither: the mirror entry is computed
+                # from the behind count, not 1 - ahead, so the two
+                # directions stay exact when resamples tie.
             pairs[key] = {
                 "ahead_fraction": round(ahead / n_boot, 4),
+                "behind_fraction": round(behind / n_boot, 4),
                 "n_shared": n_shared,
             }
 
     out_pairs: dict[str, dict[str, Any]] = {}
     for a in adapters:
-        out_pairs[f"{a}|{a}"] = {"ahead_fraction": 0.5, "n_shared": None}
+        out_pairs[f"{a}|{a}"] = {
+            "ahead_fraction": 0.5,
+            "behind_fraction": 0.5,
+            "n_shared": None,
+        }
     out_pairs.update(pairs)
     # Mirror entries so the matrix reads both directions.
     for key, val in list(pairs.items()):
         a, b = key.split("|", 1)
-        frac = val["ahead_fraction"]
         out_pairs[f"{b}|{a}"] = {
-            "ahead_fraction": (round(1.0 - frac, 4) if frac is not None else None),
+            "ahead_fraction": val["behind_fraction"],
+            "behind_fraction": val["ahead_fraction"],
             "n_shared": val["n_shared"],
         }
     return {

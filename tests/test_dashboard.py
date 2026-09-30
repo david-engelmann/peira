@@ -561,10 +561,19 @@ class TestPairwiseResampleAhead(unittest.TestCase):
             self.assertEqual(pair["n_shared"], 40)
             # A flips far less than B: A is ahead in ~all resamples.
             self.assertGreater(pair["ahead_fraction"], 0.99)
-            # Mirror entry reads the other direction.
+            # Mirror entry reads the other direction (exact: ties were
+            # counted separately, so behind_fraction is the true
+            # reverse fraction, not 1 - ahead).
             mirror = out["pairs"]["adapter-b|adapter-a"]
             self.assertAlmostEqual(
-                mirror["ahead_fraction"], 1.0 - pair["ahead_fraction"], places=4
+                mirror["ahead_fraction"],
+                pair["behind_fraction"],
+                places=4,
+            )
+            self.assertAlmostEqual(
+                mirror["behind_fraction"],
+                pair["ahead_fraction"],
+                places=4,
             )
             # Diagonal is 0.5 by definition.
             self.assertEqual(
@@ -606,6 +615,41 @@ class TestPairwiseResampleAhead(unittest.TestCase):
             pair = out["pairs"]["thin-a|thin-b"]
             self.assertEqual(pair["n_shared"], 1)
             self.assertIsNone(pair["ahead_fraction"])
+            self.assertIsNone(pair["behind_fraction"])
+
+    def test_ties_count_for_neither(self):
+        # Identical flip vectors: every resample ties, so both
+        # directions read 0.0 (not 0.0 and 1.0).
+        from peira.dashboard import pairwise_resample_ahead
+
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            flips = [True] * 20 + [False] * 20
+            for name in ("tie-a", "tie-b"):
+                results = [
+                    _result_entry(
+                        case_id=f"shared-{i:03d}",
+                        flipped=f,
+                        attacked=_call_record(
+                            decision="deny" if f else "approve",
+                            dispatch_index=1,
+                        ),
+                    )
+                    for i, f in enumerate(flips)
+                ]
+                art = _make_dashboard_artifact(
+                    adapter_name=name, results=results
+                )
+                (tmp_path / f"{name}.json").write_text(art)
+            out = pairwise_resample_ahead(
+                runs_dir=tmp_path, n_boot=500, seed=0
+            )
+            pair = out["pairs"]["tie-a|tie-b"]
+            self.assertEqual(pair["ahead_fraction"], 0.0)
+            self.assertEqual(pair["behind_fraction"], 0.0)
+            mirror = out["pairs"]["tie-b|tie-a"]
+            self.assertEqual(mirror["ahead_fraction"], 0.0)
+            self.assertEqual(mirror["behind_fraction"], 0.0)
 
 
 def _make_dashboard_artifact(adapter_name, results):
