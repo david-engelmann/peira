@@ -8,6 +8,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from datetime import date
 from pathlib import Path
 
 REPO = Path(__file__).parent.parent
@@ -148,8 +149,10 @@ class TestHoldoutQueryLog(unittest.TestCase):
         code, out = self._run("rotation", "--kind", "scheduled")
         self.assertEqual(code, 0, out)
         # Log with the rotation date (pre-rotation dates are rejected).
+        # The rotation stamps today, so use today's date: a hardcoded
+        # past date rots into a backdated rejection the next day.
         code, out = self._run("log", "--adapter", "rot 1.0",
-                              "--date", "2026-09-29")
+                              "--date", date.today().isoformat())
         self.assertEqual(code, 0, out)
         self.assertIn("execution 1 of 12", out)
 
@@ -163,9 +166,11 @@ class TestHoldoutQueryLog(unittest.TestCase):
         self.assertEqual(code, 0, out)
         code, out = self._run("rotation", "--kind", "scheduled")
         self.assertEqual(code, 0, out)
-        # Log with the rotation date (not before it).
+        # Log with the rotation date (not before it). The rotation
+        # stamps today, so use today's date: a hardcoded past date
+        # rots into a backdated rejection the next day.
         code, out = self._run("log", "--adapter", "backdate 1.0",
-                              "--date", "2026-09-29")
+                              "--date", date.today().isoformat())
         self.assertEqual(code, 0, out)
         # Must count: status shows 1 used (the pre-rotation entry is
         # excluded, the post-rotation entry counts).
