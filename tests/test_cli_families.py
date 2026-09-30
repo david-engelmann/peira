@@ -91,6 +91,28 @@ class TestParseFamilyFilter(unittest.TestCase):
             parse_family_filter("safety_policy")
         self.assertIn("--suite safety-policy", str(ctx.exception))
 
+    def test_conversational_suite_accepts_conversation_families(self):
+        self.assertEqual(
+            parse_family_filter(
+                "multi_turn_escalation, decision_splitting",
+                suite="conversational",
+            ),
+            ["multi_turn_escalation", "decision_splitting"],
+        )
+
+    def test_conversational_suite_rejects_single_shot_families(self):
+        with self.assertRaises(ValueError) as ctx:
+            parse_family_filter("indirection", suite="conversational")
+        self.assertIn("unknown conversational famil", str(ctx.exception))
+
+    def test_conversational_suite_rejects_unknown(self):
+        with self.assertRaises(ValueError):
+            parse_family_filter("not_a_family", suite="conversational")
+
+    def test_conversational_none_and_blank(self):
+        self.assertIsNone(parse_family_filter(None, suite="conversational"))
+        self.assertIsNone(parse_family_filter("  ", suite="conversational"))
+
 
 class TestRunFamiliesFlag(unittest.TestCase):
     def test_parser_accepts_families(self):
