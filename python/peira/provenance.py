@@ -34,16 +34,47 @@ from peira.dataset import atomic_write_text, sha256_file
 CROISSANT_NAME = "croissant.json"
 RELEASES_REL = Path("data/dataset-releases.json")
 
-# Croissant 1.0 context. The "@type": "sc:Dataset" form with the
-# schema.org vocab is the Croissant 1.0 recommended serialization;
-# the context binds every prefix the record uses (spec section 2.1).
+# Croissant 1.0 context, verbatim from the canonical 1.0 example
+# (mlcommons/croissant, datasets/1.0/gpt-3/metadata.json). Bare terms
+# like recordSet, field, and dataType are Croissant terms with no
+# schema.org IRI; without these mappings they would expand through
+# @vocab to nonexistent schema.org IRIs that conformant consumers
+# silently ignore.
 CROISSANT_CONTEXT = {
     "@language": "en",
     "@vocab": "https://schema.org/",
+    "citeAs": "cr:citeAs",
+    "column": "cr:column",
+    "conformsTo": "dct:conformsTo",
     "cr": "http://mlcommons.org/croissant/",
     "rai": "http://mlcommons.org/croissant/RAI/",
-    "sc": "https://schema.org/",
+    "data": {"@id": "cr:data", "@type": "@json"},
+    "dataType": {"@id": "cr:dataType", "@type": "@vocab"},
     "dct": "http://purl.org/dc/terms/",
+    "examples": {"@id": "cr:examples", "@type": "@json"},
+    "extract": "cr:extract",
+    "field": "cr:field",
+    "fileProperty": "cr:fileProperty",
+    "fileObject": "cr:fileObject",
+    "fileSet": "cr:fileSet",
+    "format": "cr:format",
+    "includes": "cr:includes",
+    "isLiveDataset": "cr:isLiveDataset",
+    "jsonPath": "cr:jsonPath",
+    "key": "cr:key",
+    "md5": "cr:md5",
+    "parentField": "cr:parentField",
+    "path": "cr:path",
+    "recordSet": "cr:recordSet",
+    "references": "cr:references",
+    "regex": "cr:regex",
+    "repeated": "cr:repeated",
+    "replace": "cr:replace",
+    "sc": "https://schema.org/",
+    "separator": "cr:separator",
+    "source": "cr:source",
+    "subField": "cr:subField",
+    "transform": "cr:transform",
 }
 
 # Marks the record as Croissant 1.0 (spec section 2.1).
@@ -172,7 +203,7 @@ def build_croissant(manifest: dict[str, Any], *,
             continue
         n_cases = entry.get("n_cases", 0)
         dist: dict[str, Any] = {
-            "@type": "sc:FileObject",
+            "@type": "cr:FileObject",
             "@id": f"{dataset_id}/{name}",
             "name": name,
             "description": (

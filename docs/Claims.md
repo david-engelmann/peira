@@ -34,8 +34,11 @@ indexes the load-bearing claims; detail lives in the linked docs.
   tuple. It holds the adapter name, version, revision, and spec, plus the
   suite, dataset version, manifest digest, seed, pricing version and date,
   environment digest, and contract version.
-- Every case passes nine automated validation gates, G1 schema through G9
-  near-dedup, before sealing.
+- Every manifest build runs nine automated validation gates, G1 schema
+  through G9 near-dedup, and refuses the seal while any gate reports
+  an error. The v2 suite was sealed before this enforcement landed and
+  carries 544 disclosed G9 near-duplicate flags in its
+  verbosity_inflation family. See DATASHEET.md.
 - Every headline number ships with a 95% confidence interval.
 
 ## We don't claim

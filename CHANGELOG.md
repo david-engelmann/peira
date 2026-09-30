@@ -44,6 +44,27 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
   MITRE ATLAS AML.T0070 (RAG Poisoning). Design MDEs at n=400: 4.4 / 6.3 / 7.7 / 8.9pp.
   Dataset version moves from 2.0.0 to 2.1.0.
 
+### Fixed R-10 follow-up: croissant records and nine-gates enforcement
+
+- `croissant.json` distributions now use the Croissant 1.0
+  `cr:FileObject` type. The previous `sc:FileObject` is a legacy type
+  that conformant consumers silently ignore, so the machine-readable
+  digests were not indexed. All four records (v1, v2, trial,
+  safety-policy) regenerated through the pipeline.
+- `croissant.json` now carries the canonical Croissant 1.0 JSON-LD
+  context. Bare `recordSet`, `field`, `dataType`, and `conformsTo`
+  previously expanded through `@vocab` to nonexistent schema.org IRIs.
+  They now map to the `cr:` and `dct:` IRIs from the canonical 1.0
+  context.
+- `peira dataset build-manifest` now runs all nine validation gates
+  and refuses the seal while any gate reports an error. The "nine
+  gates before sealing" claim in `docs/Claims.md` is now a
+  code-enforced invariant rather than a procedure note. The v2 suite
+  was sealed before this enforcement landed. Its verbosity_inflation
+  family carries 544 G9 near-duplicate flags, disclosed in
+  `DATASHEET.md`. The next v2 version cannot seal until those are
+  resolved.
+
 ### Applied S-1 re-grade corrections, dataset v1 1.2.0 (D-36)
 
 - 94 adjudicated severity re-grades (61 to critical, 16 downgrades;
@@ -84,22 +105,6 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
   your flips-per-incident); the $0 point is P(the upgrade is
   cost-saving). `peira value` comparisons now include the CEAC
   curve alongside CPPF and the break-even attack rate.
-### Added - attacker cost per flip direction (C-9, M-9 x M-1)
-
-- New `peira.metrics` functions `cost_per_flip_direction` and
-  `cost_per_flip_by_direction`. These apply the M-9 attacker
-  cost-per-flip machinery to flips in one M-1 direction. The jailbreak
-  direction (deny-to-approve) is the headline because the attacker's
-  product is the jailbreak, not vandalism or denial of service. Each
-  direction reports ASR_d, attempts per flip (1/ASR_d, matching
-  `economics.attacker_cost_multiplier` for the five discrete directions.
-  score-shifted differs because the multiplier also counts non-flipped
-  score cases with a material shift), and list-price dollars per flip
-  from runner-recorded `CallUsage` token counts and the pinned pricing
-  table. Directions with no observed flips are withheld, never $0.00.
-- The `peira value` view and the per-run HTML report now carry a
-  per-direction attacker-cost table per adapter. `value_view` exposes
-  the table as `attacker_cost_per_direction`.
 
 ### Fixed v1 scale mismatches in 241 cases (D-36 class 4)
 
