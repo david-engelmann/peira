@@ -513,14 +513,22 @@ def repo_root() -> Path:
 
 
 def dataset_dir_for_version(
-    dataset_version: str, root: Path | None = None
+    dataset_version: str,
+    root: Path | None = None,
+    suite: str | None = None,
 ) -> Path | None:
     """Map a sealed dataset version (e.g. "2.3.1") to its dataset directory.
 
-    Returns None when the version does not map to a known dataset
-    generation (v1.x -> dataset/v1, v2.x -> dataset/v2).
+    Suite-aware: the safety-policy, trial, and conversational suites
+    live in their own dataset/ directories, not under v1/v2. Returns
+    None when the version does not map to a known dataset generation
+    (v1.x -> dataset/v1, v2.x -> dataset/v2).
     """
     root = root or repo_root()
+    s = str(suite or "").strip().lower()
+    if s in ("safety-policy", "trial", "conversational"):
+        candidate = root / "dataset" / s
+        return candidate if candidate.is_dir() else None
     major = str(dataset_version).split(".")[0]
     if major == "1":
         candidate = root / "dataset" / "v1"
@@ -536,8 +544,9 @@ def _extract_input_text(variant: Any) -> str | None:
 
     v1/v2 cases store input as a dict (``{"prompt": ..., "options": ...}``);
     the prompt is the text the adapter saw. A bare string input is
-    returned as-is. Anything else yields None (not available, never
-    empty evidence).
+    returned as-is. Conversational cases store ``{"turns": [...]}``;
+    the turns are joined as "role: text" lines. Anything else yields
+    None (not available, never empty evidence).
     """
     if not isinstance(variant, dict):
         return None
@@ -548,6 +557,18 @@ def _extract_input_text(variant: Any) -> str | None:
         prompt = raw.get("prompt")
         if isinstance(prompt, str):
             return prompt
+        turns = raw.get("turns")
+        if isinstance(turns, list):
+            lines = []
+            for t in turns:
+                if not isinstance(t, dict):
+                    continue
+                role = t.get("role", "?")
+                text = t.get("text", t.get("content", ""))
+                if isinstance(text, str) and text:
+                    lines.append(f"{role}: {text}")
+            if lines:
+                return "\n".join(lines)
     return None
 
 
@@ -563,7 +584,13 @@ def _case_text_index(dataset_dir: Path) -> dict[str, tuple[str | None, str | Non
     for search in (dataset_dir, dataset_dir / "cases"):
         if not search.is_dir():
             continue
-        for _path, _lineno, case, _err in iter_case_lines(search):
+        try:
+            lines = list(iter_case_lines(search))
+        except OSError:
+            # Unreadable directory mid-walk: skip it, don't fail the
+            # lookup. This is a best-effort drill-down aid.
+            continue
+        for _path, _lineno, case, _err in lines:
             if not isinstance(case, dict):
                 continue
             case_id = case.get("case_id")
@@ -588,21 +615,25 @@ def case_texts(
     dataset_version: str,
     case_id: str,
     root: Path | None = None,
+    suite: str | None = None,
 ) -> tuple[str | None, str | None]:
     """M-6 drill-down linkage: case_id -> (benign_text, attacked_text).
 
     Resolves against the dataset files for ``dataset_version``'s major
-    line (v1/v2 checkout directory). Minor-version pinning is nominal:
-    a historical minor (e.g. 1.2.1) resolves against today's v1 files,
-    so texts follow the current major-line files, not a per-minor
-    snapshot. Returns (None, None) when the version is unknown or the
-    case is not found: the caller (e.g. the registry drill-down) treats
-    missing texts as "not available", never as empty evidence.
+    line (v1/v2 checkout directory), or the suite's own directory when
+    ``suite`` names one (safety-policy, trial, conversational).
+    Minor-version pinning is nominal: a historical minor (e.g. 1.2.1)
+    resolves against today's v1 files, so texts follow the current
+    major-line files, not a per-minor snapshot. Returns (None, None)
+    when the version is unknown or the case is not found: the caller
+    (e.g. the registry drill-down) treats missing texts as "not
+    available", never as empty evidence.
     """
     r = repo_root() if root is None else root
-    cache_key = (str(r), str(dataset_version))
+    s = str(suite or "").strip().lower() or None
+    cache_key = (str(r), str(dataset_version).strip(), s or "")
     if cache_key not in _TEXT_INDEX_CACHE:
-        ddir = dataset_dir_for_version(str(dataset_version), r)
+        ddir = dataset_dir_for_version(str(dataset_version), r, s)
         _TEXT_INDEX_CACHE[cache_key] = (
             _case_text_index(ddir) if ddir is not None else {}
         )

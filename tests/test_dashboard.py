@@ -668,6 +668,60 @@ class TestPairwiseResampleAhead(unittest.TestCase):
                 "2026-06-01T00:00:00Z",
             )
 
+    def test_draw_stream_matches_paired_bootstrap(self):
+        # Pins the M-6 requirement 3 contract: pairwise_resample_ahead
+        # must use the same seeded paired draw stream as
+        # metrics.paired_bootstrap_ci. Replicates the draw pattern
+        # independently and asserts the fractions match exactly.
+        import random
+
+        from peira.dashboard import pairwise_resample_ahead
+
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            self._runs_dir_with_two_adapters(tmp_path)
+            seed, n_boot = 7, 1500
+            out = pairwise_resample_ahead(
+                runs_dir=tmp_path, n_boot=n_boot, seed=seed
+            )
+            pair = out["pairs"]["adapter-a|adapter-b"]
+
+            # Independent replication: shared cases sorted, same RNG
+            # stream, same mean comparison.
+            flips_a = [True] * 10 + [False] * 30
+            flips_b = [True] * 30 + [False] * 10
+            xs = [1.0 if f else 0.0 for f in flips_a]
+            ys = [1.0 if f else 0.0 for f in flips_b]
+            rng = random.Random(seed)
+            ahead = behind = 0
+            n = 40
+            for _ in range(n_boot):
+                idx = [rng.randrange(n) for _ in range(n)]
+                ma = sum(xs[j] for j in idx) / n
+                mb = sum(ys[j] for j in idx) / n
+                if ma < mb:
+                    ahead += 1
+                elif mb < ma:
+                    behind += 1
+            self.assertEqual(
+                pair["ahead_fraction"], round(ahead / n_boot, 4)
+            )
+            self.assertEqual(
+                pair["behind_fraction"], round(behind / n_boot, 4)
+            )
+
+    def test_n_boot_validation(self):
+        from peira.dashboard import pairwise_resample_ahead
+
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            self._runs_dir_with_two_adapters(tmp_path)
+            for bad in (0, -5, True, 1.5, "100"):
+                with self.assertRaises(ValueError):
+                    pairwise_resample_ahead(
+                        runs_dir=tmp_path, n_boot=bad
+                    )
+
     def test_thin_pairs_withheld(self):
         from peira.dashboard import pairwise_resample_ahead
 

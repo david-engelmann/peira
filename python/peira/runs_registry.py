@@ -1019,6 +1019,7 @@ def query_cases(
                 benign_text, attacked_text = case_texts(
                     str(d.get("dataset_version", "")),
                     str(d.get("case_id", "")),
+                    suite=d.get("suite"),
                 )
                 d["benign_text"] = benign_text
                 d["attacked_text"] = attacked_text

@@ -620,6 +620,47 @@ class TestCaseTexts(unittest.TestCase):
         )
         self.assertIsNone(dataset_dir_for_version("3.0.0"))
 
+    def test_suite_aware_mapping(self):
+        from peira.dataset import dataset_dir_for_version
+
+        self.assertTrue(
+            str(dataset_dir_for_version("1.0.0", suite="safety-policy")).endswith(
+                "dataset/safety-policy"
+            )
+        )
+        self.assertTrue(
+            str(dataset_dir_for_version("1.0.6", suite="trial")).endswith(
+                "dataset/trial"
+            )
+        )
+
+    def test_safety_policy_texts_resolve(self):
+        from peira.dataset import case_texts
+
+        benign, attacked = case_texts(
+            "1.0.0", "v1-spy-001", suite="safety-policy"
+        )
+        self.assertIsInstance(benign, str)
+        self.assertTrue(len(benign) > 0)
+        self.assertIsInstance(attacked, str)
+        self.assertTrue(len(attacked) > 0)
+        self.assertNotEqual(benign, attacked)
+
+    def test_conversational_turns_extracted(self):
+        from peira.dataset import _extract_input_text
+
+        variant = {
+            "input": {
+                "turns": [
+                    {"role": "user", "text": "Hello"},
+                    {"role": "assistant", "text": "Hi there"},
+                ]
+            }
+        }
+        text = _extract_input_text(variant)
+        self.assertIn("user: Hello", text)
+        self.assertIn("assistant: Hi there", text)
+
 
 if __name__ == "__main__":
     unittest.main()

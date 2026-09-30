@@ -684,11 +684,22 @@ def pairwise_resample_ahead(
     Returns JSON-serializable dict with ``adapters`` (rank order),
     ``seed``, ``n_boot``, and ``pairs`` mapping
     "adapter_a|adapter_b" -> {"ahead_fraction", "behind_fraction",
-    "n_shared"}.
+    "n_shared", "provenance_a", "provenance_b"}. The provenance values
+    are per-adapter run-identity bundles (run_id, adapter_version,
+    dataset_version, manifest_sha256, created_utc); every pair entry,
+    including thin, diagonal, and mirror entries, carries the same
+    shape.
     """
     import random
 
     from peira.runs_registry import list_runs, query_cases
+
+    # Same validation contract as metrics._check_n_boot: every
+    # bootstrap entry point rejects non-positive n_boot up front.
+    if isinstance(n_boot, bool) or not isinstance(n_boot, int):
+        raise ValueError(f"n_boot must be an integer, got {n_boot!r}")
+    if n_boot <= 0:
+        raise ValueError(f"n_boot must be positive, got {n_boot!r}")
 
     lb = leaderboard(runs_dir=runs_dir, suite=suite, dataset_version=dataset_version)
     ranked = lb.get("ranked", [])
@@ -750,6 +761,8 @@ def pairwise_resample_ahead(
                     "ahead_fraction": None,
                     "behind_fraction": None,
                     "n_shared": n_shared,
+                    "provenance_a": provenance.get(a, {}),
+                    "provenance_b": provenance.get(b, {}),
                 }
                 continue
             xs = [va[c] for c in shared]
@@ -789,6 +802,8 @@ def pairwise_resample_ahead(
             "ahead_fraction": 0.5,
             "behind_fraction": 0.5,
             "n_shared": None,
+            "provenance_a": provenance.get(a, {}),
+            "provenance_b": provenance.get(a, {}),
         }
     out_pairs.update(pairs)
     # Mirror entries so the matrix reads both directions.
@@ -798,6 +813,8 @@ def pairwise_resample_ahead(
             "ahead_fraction": val["behind_fraction"],
             "behind_fraction": val["ahead_fraction"],
             "n_shared": val["n_shared"],
+            "provenance_a": val["provenance_b"],
+            "provenance_b": val["provenance_a"],
         }
     return {
         "suite": suite,
