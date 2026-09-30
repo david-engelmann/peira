@@ -5,6 +5,640 @@
   "entries": [
     {
       "case_ids": [
+        "v1-csm-022",
+        "v1-csm-045",
+        "v1-csm-047",
+        "v1-csm-073",
+        "v1-csm-112",
+        "v1-csm-117",
+        "v1-csm-136",
+        "v1-csm-158",
+        "v1-csm-160",
+        "v1-csm-179",
+        "v1-csm-201",
+        "v1-csm-229",
+        "v1-csm-246",
+        "v1-csp-054",
+        "v1-csp-089",
+        "v1-csp-138",
+        "v1-csp-142",
+        "v1-csp-164",
+        "v1-csp-173",
+        "v1-csp-183",
+        "v1-csp-189",
+        "v1-csp-190",
+        "v1-csp-214",
+        "v1-csp-216",
+        "v1-csp-244",
+        "v1-dfl-008",
+        "v1-dfl-010",
+        "v1-dfl-020",
+        "v1-dfl-090",
+        "v1-dfl-095",
+        "v1-dfl-121",
+        "v1-dfl-175",
+        "v1-dfl-214",
+        "v1-ind-028",
+        "v1-ind-037",
+        "v1-ind-052",
+        "v1-ind-098",
+        "v1-ind-151",
+        "v1-ind-225",
+        "v1-ind-230",
+        "v1-lrd-007",
+        "v1-lrd-038",
+        "v1-lrd-110",
+        "v1-lrd-191",
+        "v1-lrd-193",
+        "v1-lrd-201",
+        "v1-lrd-227",
+        "v1-ngm-020",
+        "v1-ngm-026",
+        "v1-ngm-032",
+        "v1-ngm-045",
+        "v1-ngm-048",
+        "v1-ngm-056",
+        "v1-ngm-099",
+        "v1-ngm-101",
+        "v1-ngm-103",
+        "v1-ngm-129",
+        "v1-ngm-200",
+        "v1-odo-030",
+        "v1-odo-057",
+        "v1-odo-059",
+        "v1-odo-061",
+        "v1-odo-090",
+        "v1-odo-107",
+        "v1-odo-112",
+        "v1-odo-129",
+        "v1-odo-157",
+        "v1-odo-203",
+        "v1-ppa-050",
+        "v1-ppa-057",
+        "v1-ppa-075",
+        "v1-ppa-085",
+        "v1-ppa-130",
+        "v1-ppa-204",
+        "v1-ppa-242",
+        "v1-san-015",
+        "v1-san-035",
+        "v1-san-047",
+        "v1-san-051",
+        "v1-san-052",
+        "v1-san-073",
+        "v1-san-247",
+        "v1-spo-011",
+        "v1-spo-026",
+        "v1-spo-034",
+        "v1-spo-036",
+        "v1-spo-064",
+        "v1-spo-084",
+        "v1-spo-096",
+        "v1-spo-103",
+        "v1-spo-107",
+        "v1-spo-174",
+        "v1-spo-177",
+        "v1-spo-202"
+      ],
+      "dataset_version": "1.2.0",
+      "date": "2026-09-29",
+      "description": "S-1 re-grade: 94 adjudicated severity corrections (D-36 defect class 2). 61 upgrades to critical, 17 to high, 16 downgrades. Case notes' Severity sentences refreshed to the new tier. New critical cases enter the peira dataset review queue (D-7).",
+      "per_case": {
+        "v1-csm-022": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "high"
+        },
+        "v1-csm-045": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "critical"
+        },
+        "v1-csm-047": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-csm-073": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "critical"
+        },
+        "v1-csm-112": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-csm-117": {
+          "direction": "downgrade",
+          "from": "high",
+          "to": "medium"
+        },
+        "v1-csm-136": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "critical"
+        },
+        "v1-csm-158": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-csm-160": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "critical"
+        },
+        "v1-csm-179": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "critical"
+        },
+        "v1-csm-201": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-csm-229": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-csm-246": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-csp-054": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "critical"
+        },
+        "v1-csp-089": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-csp-138": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-csp-142": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "high"
+        },
+        "v1-csp-164": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-csp-173": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-csp-183": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-csp-189": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-csp-190": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "high"
+        },
+        "v1-csp-214": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "critical"
+        },
+        "v1-csp-216": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-csp-244": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-dfl-008": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "critical"
+        },
+        "v1-dfl-010": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-dfl-020": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-dfl-090": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "critical"
+        },
+        "v1-dfl-095": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "critical"
+        },
+        "v1-dfl-121": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-dfl-175": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-dfl-214": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "high"
+        },
+        "v1-ind-028": {
+          "direction": "downgrade",
+          "from": "medium",
+          "to": "low"
+        },
+        "v1-ind-037": {
+          "direction": "downgrade",
+          "from": "high",
+          "to": "medium"
+        },
+        "v1-ind-052": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-ind-098": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-ind-151": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-ind-225": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "critical"
+        },
+        "v1-ind-230": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "critical"
+        },
+        "v1-lrd-007": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "critical"
+        },
+        "v1-lrd-038": {
+          "direction": "downgrade",
+          "from": "medium",
+          "to": "low"
+        },
+        "v1-lrd-110": {
+          "direction": "downgrade",
+          "from": "high",
+          "to": "medium"
+        },
+        "v1-lrd-191": {
+          "direction": "downgrade",
+          "from": "critical",
+          "to": "medium"
+        },
+        "v1-lrd-193": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-lrd-201": {
+          "direction": "downgrade",
+          "from": "high",
+          "to": "medium"
+        },
+        "v1-lrd-227": {
+          "direction": "downgrade",
+          "from": "high",
+          "to": "medium"
+        },
+        "v1-ngm-020": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-ngm-026": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "high"
+        },
+        "v1-ngm-032": {
+          "direction": "downgrade",
+          "from": "high",
+          "to": "medium"
+        },
+        "v1-ngm-045": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "critical"
+        },
+        "v1-ngm-048": {
+          "direction": "downgrade",
+          "from": "high",
+          "to": "medium"
+        },
+        "v1-ngm-056": {
+          "direction": "downgrade",
+          "from": "high",
+          "to": "medium"
+        },
+        "v1-ngm-099": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "high"
+        },
+        "v1-ngm-101": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-ngm-103": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "high"
+        },
+        "v1-ngm-129": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "high"
+        },
+        "v1-ngm-200": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "critical"
+        },
+        "v1-odo-030": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-odo-057": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-odo-059": {
+          "direction": "downgrade",
+          "from": "high",
+          "to": "medium"
+        },
+        "v1-odo-061": {
+          "direction": "downgrade",
+          "from": "high",
+          "to": "medium"
+        },
+        "v1-odo-090": {
+          "direction": "downgrade",
+          "from": "high",
+          "to": "medium"
+        },
+        "v1-odo-107": {
+          "direction": "downgrade",
+          "from": "high",
+          "to": "medium"
+        },
+        "v1-odo-112": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-odo-129": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-odo-157": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-odo-203": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-ppa-050": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "high"
+        },
+        "v1-ppa-057": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-ppa-075": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "high"
+        },
+        "v1-ppa-085": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "critical"
+        },
+        "v1-ppa-130": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-ppa-204": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "high"
+        },
+        "v1-ppa-242": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "high"
+        },
+        "v1-san-015": {
+          "direction": "downgrade",
+          "from": "high",
+          "to": "medium"
+        },
+        "v1-san-035": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-san-047": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-san-051": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "high"
+        },
+        "v1-san-052": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "high"
+        },
+        "v1-san-073": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "high"
+        },
+        "v1-san-247": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-spo-011": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-spo-026": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "critical"
+        },
+        "v1-spo-034": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-spo-036": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "critical"
+        },
+        "v1-spo-064": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-spo-084": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-spo-096": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-spo-103": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-spo-107": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-spo-174": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "high"
+        },
+        "v1-spo-177": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "high"
+        },
+        "v1-spo-202": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        }
+      },
+      "rationale": "D-36 defect class 2 (wrong severity tier). Severity re-grades do not change prompts, options, or correct answers; recorded as annotate entries (1.1.0 precedent). Per-case from/to in per_case. Authority: s1/bar_decision_run2.json (run-2 adjudication).",
+      "type": "annotate"
+    },
+    {
+      "case_ids": [
+        "v1-ind-048",
+        "v1-ppa-205",
+        "v1-ppa-217"
+      ],
+      "dataset_version": "1.2.0",
+      "date": "2026-09-29",
+      "description": "S-1 re-grade: retire 3 defective cases (D-36 defect classes 1 and 6).",
+      "per_case": {
+        "v1-ind-048": {
+          "defect_class": 1,
+          "new_id": "v1-ind-252",
+          "summary": "Unfounded gold: neither prompt describes an actual applicant."
+        },
+        "v1-ppa-205": {
+          "defect_class": 6,
+          "new_id": "v1-ppa-250",
+          "summary": "Target deny not derivable from 'may be issued' policy."
+        },
+        "v1-ppa-217": {
+          "defect_class": 6,
+          "new_id": "v1-ppa-251",
+          "summary": "Target deny not derivable from 'may cover' policy."
+        }
+      },
+      "rationale": "D-36 defect class 1 (v1-ind-048: unfounded gold, no applicant described) and class 6 (v1-ppa-205, v1-ppa-217: modal-weakened targets not determined by the attacked input). Retired IDs never reused. Authority: s1/adjudications_run2.json.",
+      "replacements": {
+        "v1-ind-048": "v1-ind-252",
+        "v1-ppa-205": "v1-ppa-250",
+        "v1-ppa-217": "v1-ppa-251"
+      },
+      "type": "retire"
+    },
+    {
+      "case_ids": [
+        "v1-ind-252",
+        "v1-ppa-250",
+        "v1-ppa-251"
+      ],
+      "dataset_version": "1.2.0",
+      "date": "2026-09-29",
+      "description": "S-1 re-grade: add 3 replacement cases for retired class-1/6 cases.",
+      "rationale": "Replacements for retired cases (retire+add per D-36). v1-ind-252: supplier-reliability indirection with derivable gold. v1-ppa-250/251: policy paraphrases with determined targets (threshold shifts, not modal weakening). v1-ppa-251 severity high per adjudicated re-grade.",
+      "type": "add"
+    },
+    {
+      "case_ids": [
+        "v1-odo-106",
+        "v1-odo-003",
+        "v1-dfl-086"
+      ],
+      "dataset_version": "1.2.0",
+      "date": "2026-09-29",
+      "description": "S-1 re-grade: 3 presentational class-4 fixes (D-36). Option-label mismatches in v1-odo-106 ('paid-repair' -> 'paid') and v1-odo-003 ('transplant-team' -> 'transplant'); scale wording in v1-dfl-086 ('0-100' -> '0 to 1', en-dash variant missed by 1.1.1).",
+      "diff_summary": "v1-odo-106: ') paid-repair \u2014 ' -> ') paid \u2014 ' (both arms); v1-odo-003: '. transplant-team \u2014 ' -> '. transplant \u2014 ' (both arms); v1-dfl-086: 'Grade essays 0\u2013100' -> 'Grade essays 0 to 1', 'scoring 70 or above' -> 'scoring 0.70 or above' (both arms).",
+      "rationale": "D-36 defect class 4, presentational. Prompt labels aligned to schema options (v1-odo-208 precedent); scale wording aligned to the 0-1 reference convention (#175 pattern). Correct answers unchanged in all three.",
+      "type": "fix"
+    },
+    {
+      "case_ids": [
         "v1-csm-002",
         "v1-csm-016",
         "v1-csm-022",
@@ -850,640 +1484,6 @@
       },
       "manifest_sha256": "59ee75053d9783855c440c55e0afef436691583ecae415fe45175eaeccc32e14",
       "rationale": "Borderline review 2026-09-25: gold is defensible; rationale made explicit for reviewers. See dataset fix spec 2026-09-25.",
-      "type": "fix"
-    },
-    {
-      "case_ids": [
-        "v1-csm-022",
-        "v1-csm-045",
-        "v1-csm-047",
-        "v1-csm-073",
-        "v1-csm-112",
-        "v1-csm-117",
-        "v1-csm-136",
-        "v1-csm-158",
-        "v1-csm-160",
-        "v1-csm-179",
-        "v1-csm-201",
-        "v1-csm-229",
-        "v1-csm-246",
-        "v1-csp-054",
-        "v1-csp-089",
-        "v1-csp-138",
-        "v1-csp-142",
-        "v1-csp-164",
-        "v1-csp-173",
-        "v1-csp-183",
-        "v1-csp-189",
-        "v1-csp-190",
-        "v1-csp-214",
-        "v1-csp-216",
-        "v1-csp-244",
-        "v1-dfl-008",
-        "v1-dfl-010",
-        "v1-dfl-020",
-        "v1-dfl-090",
-        "v1-dfl-095",
-        "v1-dfl-121",
-        "v1-dfl-175",
-        "v1-dfl-214",
-        "v1-ind-028",
-        "v1-ind-037",
-        "v1-ind-052",
-        "v1-ind-098",
-        "v1-ind-151",
-        "v1-ind-225",
-        "v1-ind-230",
-        "v1-lrd-007",
-        "v1-lrd-038",
-        "v1-lrd-110",
-        "v1-lrd-191",
-        "v1-lrd-193",
-        "v1-lrd-201",
-        "v1-lrd-227",
-        "v1-ngm-020",
-        "v1-ngm-026",
-        "v1-ngm-032",
-        "v1-ngm-045",
-        "v1-ngm-048",
-        "v1-ngm-056",
-        "v1-ngm-099",
-        "v1-ngm-101",
-        "v1-ngm-103",
-        "v1-ngm-129",
-        "v1-ngm-200",
-        "v1-odo-030",
-        "v1-odo-057",
-        "v1-odo-059",
-        "v1-odo-061",
-        "v1-odo-090",
-        "v1-odo-107",
-        "v1-odo-112",
-        "v1-odo-129",
-        "v1-odo-157",
-        "v1-odo-203",
-        "v1-ppa-050",
-        "v1-ppa-057",
-        "v1-ppa-075",
-        "v1-ppa-085",
-        "v1-ppa-130",
-        "v1-ppa-204",
-        "v1-ppa-242",
-        "v1-san-015",
-        "v1-san-035",
-        "v1-san-047",
-        "v1-san-051",
-        "v1-san-052",
-        "v1-san-073",
-        "v1-san-247",
-        "v1-spo-011",
-        "v1-spo-026",
-        "v1-spo-034",
-        "v1-spo-036",
-        "v1-spo-064",
-        "v1-spo-084",
-        "v1-spo-096",
-        "v1-spo-103",
-        "v1-spo-107",
-        "v1-spo-174",
-        "v1-spo-177",
-        "v1-spo-202"
-      ],
-      "dataset_version": "1.2.0",
-      "date": "2026-09-29",
-      "description": "S-1 re-grade: 94 adjudicated severity corrections (D-36 defect class 2). 61 upgrades to critical, 16 downgrades. Case notes' Severity sentences refreshed to the new tier. New critical cases enter the peira dataset review queue (D-7).",
-      "per_case": {
-        "v1-csm-022": {
-          "direction": "upgrade",
-          "from": "medium",
-          "to": "high"
-        },
-        "v1-csm-045": {
-          "direction": "upgrade",
-          "from": "medium",
-          "to": "critical"
-        },
-        "v1-csm-047": {
-          "direction": "upgrade",
-          "from": "high",
-          "to": "critical"
-        },
-        "v1-csm-073": {
-          "direction": "upgrade",
-          "from": "medium",
-          "to": "critical"
-        },
-        "v1-csm-112": {
-          "direction": "upgrade",
-          "from": "high",
-          "to": "critical"
-        },
-        "v1-csm-117": {
-          "direction": "downgrade",
-          "from": "high",
-          "to": "medium"
-        },
-        "v1-csm-136": {
-          "direction": "upgrade",
-          "from": "medium",
-          "to": "critical"
-        },
-        "v1-csm-158": {
-          "direction": "upgrade",
-          "from": "high",
-          "to": "critical"
-        },
-        "v1-csm-160": {
-          "direction": "upgrade",
-          "from": "medium",
-          "to": "critical"
-        },
-        "v1-csm-179": {
-          "direction": "upgrade",
-          "from": "medium",
-          "to": "critical"
-        },
-        "v1-csm-201": {
-          "direction": "upgrade",
-          "from": "high",
-          "to": "critical"
-        },
-        "v1-csm-229": {
-          "direction": "upgrade",
-          "from": "high",
-          "to": "critical"
-        },
-        "v1-csm-246": {
-          "direction": "upgrade",
-          "from": "high",
-          "to": "critical"
-        },
-        "v1-csp-054": {
-          "direction": "upgrade",
-          "from": "medium",
-          "to": "critical"
-        },
-        "v1-csp-089": {
-          "direction": "upgrade",
-          "from": "high",
-          "to": "critical"
-        },
-        "v1-csp-138": {
-          "direction": "upgrade",
-          "from": "high",
-          "to": "critical"
-        },
-        "v1-csp-142": {
-          "direction": "upgrade",
-          "from": "medium",
-          "to": "high"
-        },
-        "v1-csp-164": {
-          "direction": "upgrade",
-          "from": "high",
-          "to": "critical"
-        },
-        "v1-csp-173": {
-          "direction": "upgrade",
-          "from": "high",
-          "to": "critical"
-        },
-        "v1-csp-183": {
-          "direction": "upgrade",
-          "from": "high",
-          "to": "critical"
-        },
-        "v1-csp-189": {
-          "direction": "upgrade",
-          "from": "high",
-          "to": "critical"
-        },
-        "v1-csp-190": {
-          "direction": "upgrade",
-          "from": "medium",
-          "to": "high"
-        },
-        "v1-csp-214": {
-          "direction": "upgrade",
-          "from": "medium",
-          "to": "critical"
-        },
-        "v1-csp-216": {
-          "direction": "upgrade",
-          "from": "high",
-          "to": "critical"
-        },
-        "v1-csp-244": {
-          "direction": "upgrade",
-          "from": "high",
-          "to": "critical"
-        },
-        "v1-dfl-008": {
-          "direction": "upgrade",
-          "from": "medium",
-          "to": "critical"
-        },
-        "v1-dfl-010": {
-          "direction": "upgrade",
-          "from": "high",
-          "to": "critical"
-        },
-        "v1-dfl-020": {
-          "direction": "upgrade",
-          "from": "high",
-          "to": "critical"
-        },
-        "v1-dfl-090": {
-          "direction": "upgrade",
-          "from": "medium",
-          "to": "critical"
-        },
-        "v1-dfl-095": {
-          "direction": "upgrade",
-          "from": "medium",
-          "to": "critical"
-        },
-        "v1-dfl-121": {
-          "direction": "upgrade",
-          "from": "high",
-          "to": "critical"
-        },
-        "v1-dfl-175": {
-          "direction": "upgrade",
-          "from": "high",
-          "to": "critical"
-        },
-        "v1-dfl-214": {
-          "direction": "upgrade",
-          "from": "medium",
-          "to": "high"
-        },
-        "v1-ind-028": {
-          "direction": "downgrade",
-          "from": "medium",
-          "to": "low"
-        },
-        "v1-ind-037": {
-          "direction": "downgrade",
-          "from": "high",
-          "to": "medium"
-        },
-        "v1-ind-052": {
-          "direction": "upgrade",
-          "from": "high",
-          "to": "critical"
-        },
-        "v1-ind-098": {
-          "direction": "upgrade",
-          "from": "high",
-          "to": "critical"
-        },
-        "v1-ind-151": {
-          "direction": "upgrade",
-          "from": "high",
-          "to": "critical"
-        },
-        "v1-ind-225": {
-          "direction": "upgrade",
-          "from": "medium",
-          "to": "critical"
-        },
-        "v1-ind-230": {
-          "direction": "upgrade",
-          "from": "medium",
-          "to": "critical"
-        },
-        "v1-lrd-007": {
-          "direction": "upgrade",
-          "from": "medium",
-          "to": "critical"
-        },
-        "v1-lrd-038": {
-          "direction": "downgrade",
-          "from": "medium",
-          "to": "low"
-        },
-        "v1-lrd-110": {
-          "direction": "downgrade",
-          "from": "high",
-          "to": "medium"
-        },
-        "v1-lrd-191": {
-          "direction": "downgrade",
-          "from": "critical",
-          "to": "medium"
-        },
-        "v1-lrd-193": {
-          "direction": "upgrade",
-          "from": "high",
-          "to": "critical"
-        },
-        "v1-lrd-201": {
-          "direction": "downgrade",
-          "from": "high",
-          "to": "medium"
-        },
-        "v1-lrd-227": {
-          "direction": "downgrade",
-          "from": "high",
-          "to": "medium"
-        },
-        "v1-ngm-020": {
-          "direction": "upgrade",
-          "from": "high",
-          "to": "critical"
-        },
-        "v1-ngm-026": {
-          "direction": "upgrade",
-          "from": "medium",
-          "to": "high"
-        },
-        "v1-ngm-032": {
-          "direction": "downgrade",
-          "from": "high",
-          "to": "medium"
-        },
-        "v1-ngm-045": {
-          "direction": "upgrade",
-          "from": "medium",
-          "to": "critical"
-        },
-        "v1-ngm-048": {
-          "direction": "downgrade",
-          "from": "high",
-          "to": "medium"
-        },
-        "v1-ngm-056": {
-          "direction": "downgrade",
-          "from": "high",
-          "to": "medium"
-        },
-        "v1-ngm-099": {
-          "direction": "upgrade",
-          "from": "medium",
-          "to": "high"
-        },
-        "v1-ngm-101": {
-          "direction": "upgrade",
-          "from": "high",
-          "to": "critical"
-        },
-        "v1-ngm-103": {
-          "direction": "upgrade",
-          "from": "medium",
-          "to": "high"
-        },
-        "v1-ngm-129": {
-          "direction": "upgrade",
-          "from": "medium",
-          "to": "high"
-        },
-        "v1-ngm-200": {
-          "direction": "upgrade",
-          "from": "medium",
-          "to": "critical"
-        },
-        "v1-odo-030": {
-          "direction": "upgrade",
-          "from": "high",
-          "to": "critical"
-        },
-        "v1-odo-057": {
-          "direction": "upgrade",
-          "from": "high",
-          "to": "critical"
-        },
-        "v1-odo-059": {
-          "direction": "downgrade",
-          "from": "high",
-          "to": "medium"
-        },
-        "v1-odo-061": {
-          "direction": "downgrade",
-          "from": "high",
-          "to": "medium"
-        },
-        "v1-odo-090": {
-          "direction": "downgrade",
-          "from": "high",
-          "to": "medium"
-        },
-        "v1-odo-107": {
-          "direction": "downgrade",
-          "from": "high",
-          "to": "medium"
-        },
-        "v1-odo-112": {
-          "direction": "upgrade",
-          "from": "high",
-          "to": "critical"
-        },
-        "v1-odo-129": {
-          "direction": "upgrade",
-          "from": "high",
-          "to": "critical"
-        },
-        "v1-odo-157": {
-          "direction": "upgrade",
-          "from": "high",
-          "to": "critical"
-        },
-        "v1-odo-203": {
-          "direction": "upgrade",
-          "from": "high",
-          "to": "critical"
-        },
-        "v1-ppa-050": {
-          "direction": "upgrade",
-          "from": "medium",
-          "to": "high"
-        },
-        "v1-ppa-057": {
-          "direction": "upgrade",
-          "from": "high",
-          "to": "critical"
-        },
-        "v1-ppa-075": {
-          "direction": "upgrade",
-          "from": "medium",
-          "to": "high"
-        },
-        "v1-ppa-085": {
-          "direction": "upgrade",
-          "from": "medium",
-          "to": "critical"
-        },
-        "v1-ppa-130": {
-          "direction": "upgrade",
-          "from": "high",
-          "to": "critical"
-        },
-        "v1-ppa-204": {
-          "direction": "upgrade",
-          "from": "medium",
-          "to": "high"
-        },
-        "v1-ppa-242": {
-          "direction": "upgrade",
-          "from": "medium",
-          "to": "high"
-        },
-        "v1-san-015": {
-          "direction": "downgrade",
-          "from": "high",
-          "to": "medium"
-        },
-        "v1-san-035": {
-          "direction": "upgrade",
-          "from": "high",
-          "to": "critical"
-        },
-        "v1-san-047": {
-          "direction": "upgrade",
-          "from": "high",
-          "to": "critical"
-        },
-        "v1-san-051": {
-          "direction": "upgrade",
-          "from": "medium",
-          "to": "high"
-        },
-        "v1-san-052": {
-          "direction": "upgrade",
-          "from": "medium",
-          "to": "high"
-        },
-        "v1-san-073": {
-          "direction": "upgrade",
-          "from": "medium",
-          "to": "high"
-        },
-        "v1-san-247": {
-          "direction": "upgrade",
-          "from": "high",
-          "to": "critical"
-        },
-        "v1-spo-011": {
-          "direction": "upgrade",
-          "from": "high",
-          "to": "critical"
-        },
-        "v1-spo-026": {
-          "direction": "upgrade",
-          "from": "medium",
-          "to": "critical"
-        },
-        "v1-spo-034": {
-          "direction": "upgrade",
-          "from": "high",
-          "to": "critical"
-        },
-        "v1-spo-036": {
-          "direction": "upgrade",
-          "from": "medium",
-          "to": "critical"
-        },
-        "v1-spo-064": {
-          "direction": "upgrade",
-          "from": "high",
-          "to": "critical"
-        },
-        "v1-spo-084": {
-          "direction": "upgrade",
-          "from": "high",
-          "to": "critical"
-        },
-        "v1-spo-096": {
-          "direction": "upgrade",
-          "from": "high",
-          "to": "critical"
-        },
-        "v1-spo-103": {
-          "direction": "upgrade",
-          "from": "high",
-          "to": "critical"
-        },
-        "v1-spo-107": {
-          "direction": "upgrade",
-          "from": "high",
-          "to": "critical"
-        },
-        "v1-spo-174": {
-          "direction": "upgrade",
-          "from": "medium",
-          "to": "high"
-        },
-        "v1-spo-177": {
-          "direction": "upgrade",
-          "from": "medium",
-          "to": "high"
-        },
-        "v1-spo-202": {
-          "direction": "upgrade",
-          "from": "high",
-          "to": "critical"
-        }
-      },
-      "rationale": "D-36 defect class 2 (wrong severity tier). Severity re-grades do not change prompts, options, or correct answers; recorded as annotate entries (1.1.0 precedent). Per-case from/to in per_case. Authority: s1/bar_decision_run2.json (run-2 adjudication).",
-      "type": "annotate"
-    },
-    {
-      "case_ids": [
-        "v1-ind-048",
-        "v1-ppa-205",
-        "v1-ppa-217"
-      ],
-      "dataset_version": "1.2.0",
-      "date": "2026-09-29",
-      "description": "S-1 re-grade: retire 3 defective cases (D-36 defect classes 1 and 6).",
-      "per_case": {
-        "v1-ind-048": {
-          "defect_class": 1,
-          "new_id": "v1-ind-252",
-          "summary": "Unfounded gold: neither prompt describes an actual applicant."
-        },
-        "v1-ppa-205": {
-          "defect_class": 6,
-          "new_id": "v1-ppa-250",
-          "summary": "Target deny not derivable from 'may be issued' policy."
-        },
-        "v1-ppa-217": {
-          "defect_class": 6,
-          "new_id": "v1-ppa-251",
-          "summary": "Target deny not derivable from 'may cover' policy."
-        }
-      },
-      "rationale": "D-36 defect class 1 (v1-ind-048: unfounded gold, no applicant described) and class 6 (v1-ppa-205, v1-ppa-217: modal-weakened targets not determined by the attacked input). Retired IDs never reused. Authority: s1/adjudications_run2.json.",
-      "replacements": {
-        "v1-ind-048": "v1-ind-252",
-        "v1-ppa-205": "v1-ppa-250",
-        "v1-ppa-217": "v1-ppa-251"
-      },
-      "type": "retire"
-    },
-    {
-      "case_ids": [
-        "v1-ind-252",
-        "v1-ppa-250",
-        "v1-ppa-251"
-      ],
-      "dataset_version": "1.2.0",
-      "date": "2026-09-29",
-      "description": "S-1 re-grade: add 3 replacement cases for retired class-1/6 cases.",
-      "rationale": "Replacements for retired cases (retire+add per D-36). v1-ind-252: supplier-reliability indirection with derivable gold. v1-ppa-250/251: policy paraphrases with determined targets (threshold shifts, not modal weakening). v1-ppa-251 severity high per adjudicated re-grade.",
-      "type": "add"
-    },
-    {
-      "case_ids": [
-        "v1-odo-106",
-        "v1-odo-003",
-        "v1-dfl-086"
-      ],
-      "dataset_version": "1.2.0",
-      "date": "2026-09-29",
-      "description": "S-1 re-grade: 3 presentational class-4 fixes (D-36). Option-label mismatches in v1-odo-106 ('paid-repair' -> 'paid') and v1-odo-003 ('transplant-team' -> 'transplant'); scale wording in v1-dfl-086 ('0-100' -> '0 to 1', en-dash variant missed by 1.1.1).",
-      "diff_summary": "v1-odo-106: ') paid-repair -- ' -> ') paid -- ' (both arms); v1-odo-003: '. transplant-team -- ' -> '. transplant -- ' (both arms); v1-dfl-086: 'Grade essays 0-100' -> 'Grade essays 0 to 1', 'scoring 70 or above' -> 'scoring 0.70 or above' (both arms).",
-      "rationale": "D-36 defect class 4, presentational. Prompt labels aligned to schema options (v1-odo-208 precedent); scale wording aligned to the 0-1 reference convention (#175 pattern). Correct answers unchanged in all three.",
       "type": "fix"
     }
   ],
