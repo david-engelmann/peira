@@ -479,5 +479,334 @@ class TestComparisonToDashboard(unittest.TestCase):
             comparison_to_dashboard(comp)
 
 
+class TestSeverityBreakdownCI(unittest.TestCase):
+    """M-6: every severity aggregate cell retains n and CI inputs."""
+
+    def test_flip_rate_carries_wilson_ci(self):
+        from peira.dashboard import _severity_breakdown
+        from peira.metrics import wilson_ci
+
+        results = [
+            _result_entry(case_id="c1", severity="high", flipped=True),
+            _result_entry(case_id="c2", severity="high", flipped=True),
+            _result_entry(case_id="c3", severity="high", flipped=False),
+            _result_entry(
+                case_id="c4", severity="high", flipped=False, eligible=False
+            ),
+        ]
+        sev = _severity_breakdown(results)["high"]
+        self.assertEqual(sev["n"], 4)
+        self.assertEqual(sev["n_eligible"], 3)
+        self.assertEqual(sev["n_flipped"], 2)
+        lo, hi = wilson_ci(2, 3)
+        self.assertEqual(
+            sev["flip_rate_ci95"], [round(lo, 4), round(hi, 4)]
+        )
+        # The point estimate stays consistent with the CI inputs.
+        self.assertAlmostEqual(sev["flip_rate_raw"], 2 / 3, places=4)
+
+    def test_empty_eligible_population(self):
+        from peira.dashboard import _severity_breakdown
+
+        results = [
+            _result_entry(case_id="c1", severity="low", flipped=False,
+                          eligible=False),
+        ]
+        sev = _severity_breakdown(results)["low"]
+        self.assertIsNone(sev["flip_rate_raw"])
+        self.assertIsNone(sev["flip_rate_ci95"])
+
+
+class TestPairwiseResampleAhead(unittest.TestCase):
+    """M-6: the rank-stability resample view is recomputable."""
+
+    def _runs_dir_with_two_adapters(self, tmp_path):
+        from peira.runs_registry import query_cases  # noqa: F401
+
+        def _results(flips):
+            out = []
+            for i, flipped in enumerate(flips):
+                entry = _result_entry(
+                    case_id=f"shared-{i:03d}",
+                    flipped=flipped,
+                    attacked=_call_record(
+                        decision="deny" if flipped else "approve",
+                        dispatch_index=1,
+                    ),
+                )
+                out.append(entry)
+            return out
+
+        # Adapter A flips 10/40, adapter B flips 30/40: A is clearly ahead.
+        flips_a = [True] * 10 + [False] * 30
+        flips_b = [True] * 30 + [False] * 10
+        for name, flips in (("adapter-a", flips_a), ("adapter-b", flips_b)):
+            art = _make_dashboard_artifact(
+                adapter_name=name, results=_results(flips)
+            )
+            (tmp_path / f"{name}.json").write_text(art)
+        return tmp_path
+
+    def test_ahead_fraction_reflects_point_estimates(self):
+        from peira.dashboard import pairwise_resample_ahead
+
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            self._runs_dir_with_two_adapters(tmp_path)
+            out = pairwise_resample_ahead(
+                runs_dir=tmp_path, n_boot=2000, seed=0
+            )
+            self.assertEqual(out["adapters"], ["adapter-a", "adapter-b"])
+            pair = out["pairs"]["adapter-a|adapter-b"]
+            self.assertEqual(pair["n_shared"], 40)
+            # A flips far less than B: A is ahead in ~all resamples.
+            self.assertGreater(pair["ahead_fraction"], 0.99)
+            # Mirror entry reads the other direction (exact: ties were
+            # counted separately, so behind_fraction is the true
+            # reverse fraction, not 1 - ahead).
+            mirror = out["pairs"]["adapter-b|adapter-a"]
+            self.assertAlmostEqual(
+                mirror["ahead_fraction"],
+                pair["behind_fraction"],
+                places=4,
+            )
+            self.assertAlmostEqual(
+                mirror["behind_fraction"],
+                pair["ahead_fraction"],
+                places=4,
+            )
+            # Diagonal is 0.5 by definition.
+            self.assertEqual(
+                out["pairs"]["adapter-a|adapter-a"]["ahead_fraction"], 0.5
+            )
+
+    def test_deterministic_across_calls(self):
+        from peira.dashboard import pairwise_resample_ahead
+
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            self._runs_dir_with_two_adapters(tmp_path)
+            first = pairwise_resample_ahead(
+                runs_dir=tmp_path, n_boot=500, seed=42
+            )
+            second = pairwise_resample_ahead(
+                runs_dir=tmp_path, n_boot=500, seed=42
+            )
+            self.assertEqual(first["pairs"], second["pairs"])
+
+    def test_uses_latest_run_per_adapter(self):
+        # Two runs for the same adapter: the vector must come from the
+        # latest qualifying run only, never a mix with stale values.
+        import json
+
+        from peira.dashboard import pairwise_resample_ahead
+
+        def _artifact_with_time(name, flips, created):
+            art = json.loads(
+                _make_dashboard_artifact(
+                    adapter_name=name,
+                    results=[
+                        _result_entry(
+                            case_id=f"c-{i:03d}",
+                            flipped=f,
+                            attacked=_call_record(
+                                decision="deny" if f else "approve",
+                                dispatch_index=1,
+                            ),
+                        )
+                        for i, f in enumerate(flips)
+                    ],
+                )
+            )
+            art["created_utc"] = created
+            return json.dumps(art)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            flips = [True] * 20 + [False] * 20
+            # Old run: adapter-a flips everything (bad).
+            (tmp_path / "a-old.json").write_text(
+                _artifact_with_time(
+                    "multi-a", [True] * 40, "2026-01-01T00:00:00Z"
+                )
+            )
+            # New run: adapter-a flips half (good). Must win.
+            (tmp_path / "a-new.json").write_text(
+                _artifact_with_time(
+                    "multi-a", flips, "2026-06-01T00:00:00Z"
+                )
+            )
+            (tmp_path / "b.json").write_text(
+                _make_dashboard_artifact(
+                    adapter_name="multi-b",
+                    results=[
+                        _result_entry(
+                            case_id=f"c-{i:03d}",
+                            flipped=(i % 2 == 0),
+                            attacked=_call_record(
+                                decision="deny" if i % 2 == 0 else "approve",
+                                dispatch_index=1,
+                            ),
+                        )
+                        for i in range(40)
+                    ],
+                )
+            )
+            out = pairwise_resample_ahead(
+                runs_dir=tmp_path, n_boot=2000, seed=0
+            )
+            # multi-a's latest run (50% ASR) vs multi-b (50% ASR):
+            # roughly tied, NOT the 100%-vs-50% blowout the stale
+            # old run would produce.
+            pair = out["pairs"]["multi-a|multi-b"]
+            self.assertEqual(pair["n_shared"], 40)
+            self.assertLess(pair["ahead_fraction"], 0.9)
+            self.assertLess(pair["behind_fraction"], 0.9)
+            # Provenance identifies the new run.
+            self.assertEqual(
+                pair["provenance_a"]["created_utc"],
+                "2026-06-01T00:00:00Z",
+            )
+
+    def test_draw_stream_matches_paired_bootstrap(self):
+        # Pins the M-6 requirement 3 contract: pairwise_resample_ahead
+        # must use the same seeded paired draw stream as
+        # metrics.paired_bootstrap_ci. Derives the expected fractions
+        # from the metrics module's own draw-stream function
+        # (_bootstrap_randbelow), so a drift in either module's stream
+        # breaks this test.
+        from peira.dashboard import pairwise_resample_ahead
+        from peira.metrics import _bootstrap_randbelow
+
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            self._runs_dir_with_two_adapters(tmp_path)
+            seed, n_boot = 7, 1500
+            out = pairwise_resample_ahead(
+                runs_dir=tmp_path, n_boot=n_boot, seed=seed
+            )
+            pair = out["pairs"]["adapter-a|adapter-b"]
+
+            # Expected fractions from the metrics module's draw stream:
+            # shared cases sorted, paired diffs via _bootstrap_randbelow.
+            import random
+
+            flips_a = [True] * 10 + [False] * 30
+            flips_b = [True] * 30 + [False] * 10
+            xs = [1.0 if f else 0.0 for f in flips_a]
+            ys = [1.0 if f else 0.0 for f in flips_b]
+            rng = random.Random(seed)
+            randbelow = _bootstrap_randbelow(rng)
+            ahead = behind = 0
+            n = 40
+            xs_get = xs.__getitem__
+            ys_get = ys.__getitem__
+            for _ in range(n_boot):
+                idx = [randbelow(n) for _ in range(n)]
+                diff = sum(map(xs_get, idx)) / n - sum(map(ys_get, idx)) / n
+                if diff < 0:
+                    ahead += 1
+                elif diff > 0:
+                    behind += 1
+            self.assertEqual(
+                pair["ahead_fraction"], round(ahead / n_boot, 4)
+            )
+            self.assertEqual(
+                pair["behind_fraction"], round(behind / n_boot, 4)
+            )
+
+    def test_n_boot_validation(self):
+        from peira.dashboard import pairwise_resample_ahead
+
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            self._runs_dir_with_two_adapters(tmp_path)
+            for bad in (0, -5, True, 1.5, "100"):
+                with self.assertRaises(ValueError):
+                    pairwise_resample_ahead(
+                        runs_dir=tmp_path, n_boot=bad
+                    )
+
+    def test_thin_pairs_withheld(self):
+        from peira.dashboard import pairwise_resample_ahead
+
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            art = _make_dashboard_artifact(
+                adapter_name="thin-a",
+                results=[_result_entry(case_id="only-1")],
+            )
+            (tmp_path / "thin-a.json").write_text(art)
+            art2 = _make_dashboard_artifact(
+                adapter_name="thin-b",
+                results=[_result_entry(case_id="only-1")],
+            )
+            (tmp_path / "thin-b.json").write_text(art2)
+            out = pairwise_resample_ahead(
+                runs_dir=tmp_path, n_boot=100, seed=0
+            )
+            pair = out["pairs"]["thin-a|thin-b"]
+            self.assertEqual(pair["n_shared"], 1)
+            self.assertIsNone(pair["ahead_fraction"])
+            self.assertIsNone(pair["behind_fraction"])
+
+    def test_ties_count_for_neither(self):
+        # Identical flip vectors: every resample ties, so both
+        # directions read 0.0 (not 0.0 and 1.0).
+        from peira.dashboard import pairwise_resample_ahead
+
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            flips = [True] * 20 + [False] * 20
+            for name in ("tie-a", "tie-b"):
+                results = [
+                    _result_entry(
+                        case_id=f"shared-{i:03d}",
+                        flipped=f,
+                        attacked=_call_record(
+                            decision="deny" if f else "approve",
+                            dispatch_index=1,
+                        ),
+                    )
+                    for i, f in enumerate(flips)
+                ]
+                art = _make_dashboard_artifact(
+                    adapter_name=name, results=results
+                )
+                (tmp_path / f"{name}.json").write_text(art)
+            out = pairwise_resample_ahead(
+                runs_dir=tmp_path, n_boot=500, seed=0
+            )
+            pair = out["pairs"]["tie-a|tie-b"]
+            self.assertEqual(pair["ahead_fraction"], 0.0)
+            self.assertEqual(pair["behind_fraction"], 0.0)
+            mirror = out["pairs"]["tie-b|tie-a"]
+            self.assertEqual(mirror["ahead_fraction"], 0.0)
+            self.assertEqual(mirror["behind_fraction"], 0.0)
+
+
+def _make_dashboard_artifact(adapter_name, results):
+    """Minimal sealed artifact JSON with real results for dashboard tests."""
+    from peira.artifacts import RunArtifact
+    from peira.env_fingerprint import collect_and_fingerprint
+
+    env, env_sha256 = collect_and_fingerprint()
+    artifact = RunArtifact(
+        adapter_name=adapter_name,
+        adapter_version="1.0-test",
+        suite="v1",
+        dataset_version="1.2.1",
+        manifest_sha256="abc123" * 10 + "abcd",
+        seed=0,
+        max_concurrency=8,
+        env=env,
+        env_sha256=env_sha256,
+        config={"cache_enabled": False},
+        results=results,
+        metrics={"ranking_eligible": True, "eligibility_notes": []},
+    )
+    return artifact.seal().to_json()
+
+
 if __name__ == "__main__":
     unittest.main()

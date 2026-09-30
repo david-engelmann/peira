@@ -502,3 +502,153 @@ def verify_manifest(dataset_dir: Path) -> list[str]:
     """
     _manifest, _digest, errors = verify_manifest_sealed(dataset_dir)
     return errors
+
+
+def repo_root() -> Path:
+    """Repo root: the directory containing ``dataset/``.
+
+    Mirrors the convention in peira.cli (two parents above the package).
+    """
+    return Path(__file__).resolve().parents[2]
+
+
+def dataset_dir_for_version(
+    dataset_version: str,
+    root: Path | None = None,
+    suite: str | None = None,
+) -> Path | None:
+    """Map a sealed dataset version (e.g. "2.3.1") to its dataset directory.
+
+    Suite-aware: the safety-policy, trial, and conversational suites
+    live in their own dataset/ directories, not under v1/v2. Returns
+    None when the version does not map to a known dataset generation
+    (v1.x -> dataset/v1, v2.x -> dataset/v2).
+    """
+    root = root or repo_root()
+    s = str(suite or "").strip().lower()
+    if s in ("safety-policy", "trial", "conversational"):
+        candidate = root / "dataset" / s
+        return candidate if candidate.is_dir() else None
+    major = str(dataset_version).split(".")[0]
+    if major == "1":
+        candidate = root / "dataset" / "v1"
+    elif major == "2":
+        candidate = root / "dataset" / "v2"
+    else:
+        return None
+    return candidate if candidate.is_dir() else None
+
+
+def _extract_input_text(variant: Any) -> str | None:
+    """Extract the display text from a case variant's ``input`` field.
+
+    v1/v2 cases store input as a dict (``{"prompt": ..., "options": ...}``);
+    the prompt plus the options list are the text the adapter saw (the
+    options are the decision vocabulary for choice-primitive cases, so
+    they are rendered as an "Options:" line rather than dropped). A bare
+    string input is returned as-is. Conversational cases store
+    ``{"turns": [...]}``; the turns are joined as "role: text" lines.
+    Anything else yields None (not available, never empty evidence).
+    """
+    if not isinstance(variant, dict):
+        return None
+    raw = variant.get("input")
+    if isinstance(raw, str):
+        return raw
+    if isinstance(raw, dict):
+        prompt = raw.get("prompt")
+        if isinstance(prompt, str):
+            options = raw.get("options")
+            if isinstance(options, list) and options:
+                opt_lines = "\n".join(
+                    f"- {o}" for o in options if isinstance(o, str)
+                )
+                if opt_lines:
+                    return f"{prompt}\nOptions:\n{opt_lines}"
+            return prompt
+        turns = raw.get("turns")
+        if isinstance(turns, list):
+            lines = []
+            for t in turns:
+                if not isinstance(t, dict):
+                    continue
+                role = t.get("role", "?")
+                text = t.get("text", t.get("content", ""))
+                if isinstance(text, str) and text:
+                    lines.append(f"{role}: {text}")
+            if lines:
+                return "\n".join(lines)
+    return None
+
+
+def _case_text_index(dataset_dir: Path) -> dict[str, tuple[str | None, str | None]]:
+    """Build {case_id: (benign_input, attacked_input)} for a dataset dir.
+
+    Reads every case file (v1's flat cases.jsonl and the per-family
+    files under cases/) via :func:`iter_case_lines`. Malformed lines are
+    skipped: this is a read-only lookup helper, not a validator (gates
+    own validation).
+    """
+    index: dict[str, tuple[str | None, str | None]] = {}
+    for search in (dataset_dir, dataset_dir / "cases"):
+        if not search.is_dir():
+            continue
+        try:
+            lines = list(iter_case_lines(search))
+        except OSError:
+            # Unreadable directory mid-walk: skip it, don't fail the
+            # lookup. This is a best-effort drill-down aid.
+            continue
+        for _path, _lineno, case, _err in lines:
+            if not isinstance(case, dict):
+                continue
+            case_id = case.get("case_id")
+            if not isinstance(case_id, str) or case_id in index:
+                continue
+            index[case_id] = (
+                _extract_input_text(case.get("benign")),
+                _extract_input_text(case.get("attacked")),
+            )
+    return index
+
+
+# Process-lifetime cache: (root, version) -> text index. This is an
+# explicit process-lifetime assumption, not an enforced invariant: the
+# cache is never re-validated against the manifest within a process.
+# It is safe for sealed dataset files (manifest-locked), but a
+# long-lived process spanning a dataset rebuild would serve stale
+# drill-down texts. Dashboard servers should restart (or clear this
+# cache) across dataset version bumps.
+_TEXT_INDEX_CACHE: dict[
+    tuple[str, str], dict[str, tuple[str | None, str | None]]
+] = {}
+
+
+def case_texts(
+    dataset_version: str,
+    case_id: str,
+    root: Path | None = None,
+    suite: str | None = None,
+) -> tuple[str | None, str | None]:
+    """M-6 drill-down linkage: case_id -> (benign_text, attacked_text).
+
+    Resolves against the dataset files for ``dataset_version``'s major
+    line (v1/v2 checkout directory), or the suite's own directory when
+    ``suite`` names one (safety-policy, trial, conversational).
+    Minor-version pinning is nominal: a historical minor (e.g. 1.2.1)
+    resolves against today's v1 files, so texts follow the current
+    major-line files, not a per-minor snapshot. Returns (None, None)
+    when the version is unknown or the case is not found: the caller
+    (e.g. the registry drill-down) treats missing texts as "not
+    available", never as empty evidence.
+    """
+    r = repo_root() if root is None else root
+    s = str(suite or "").strip().lower() or None
+    version = str(dataset_version).strip()
+    cache_key = (str(r), version, s or "")
+    if cache_key not in _TEXT_INDEX_CACHE:
+        ddir = dataset_dir_for_version(version, r, s)
+        _TEXT_INDEX_CACHE[cache_key] = (
+            _case_text_index(ddir) if ddir is not None else {}
+        )
+    return _TEXT_INDEX_CACHE[cache_key].get(case_id, (None, None))

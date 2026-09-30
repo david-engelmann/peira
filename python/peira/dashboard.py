@@ -22,6 +22,7 @@ filename.)
 from __future__ import annotations
 
 import math
+import random
 from pathlib import Path
 from typing import Any
 
@@ -208,7 +209,12 @@ def _family_breakdown(results: list[dict]) -> dict[str, dict[str, Any]]:
 
 
 def _severity_breakdown(results: list[dict]) -> dict[str, dict[str, Any]]:
-    """Per-severity dashboard aggregates."""
+    """Per-severity dashboard aggregates.
+
+    M-6: every aggregate cell retains n and CI inputs. flip_rate_raw
+    carries its Wilson 95% interval alongside the counts, so no view
+    can render a pre-rounded percentage that loses the counts.
+    """
     severities: dict[str, list[dict]] = {}
     for r in results:
         severities.setdefault(r.get("severity", ""), []).append(r)
@@ -221,11 +227,15 @@ def _severity_breakdown(results: list[dict]) -> dict[str, dict[str, Any]]:
             if r.get("flipped", False) is True and r.get("eligible", False) is True
         )
         cost, latency, _, _ = _per_case_cost_latency(sr)
+        ci_lo, ci_hi = metrics.wilson_ci(n_flipped, n_eligible)
         out[sev] = {
             "n": len(sr),
             "n_eligible": n_eligible,
             "n_flipped": n_flipped,
             "flip_rate_raw": round(n_flipped / n_eligible, 4) if n_eligible else None,
+            # No interval for an empty eligible population: [0.0, 0.0]
+            # would be false precision on nothing.
+            "flip_rate_ci95": [round(ci_lo, 4), round(ci_hi, 4)] if n_eligible else None,
             "cost_usd": round(cost, 6),
             "latency_ms_total": round(latency, 3),
         }
@@ -644,4 +654,182 @@ def comparison_to_dashboard(comparison: Comparison) -> dict[str, Any]:
             "mcnemar_p_value": p_value,
             "per_family_winners": winners,
         },
+    }
+
+
+def pairwise_resample_ahead(
+    runs_dir: Path | str | None = None,
+    suite: str | None = None,
+    dataset_version: str | None = None,
+    n_boot: int = 10000,
+    seed: int = 0,
+) -> dict[str, Any]:
+    """M-6: "ahead in X% of resamples" for every ranked adapter pair.
+
+    The rank-stability view's data contract. For each pair of ranked
+    adapters (latest qualifying run per adapter, from
+    :func:`leaderboard`), resamples the shared eligible cases with the
+    same seeded paired scheme as :func:`peira.metrics.paired_bootstrap_ci`
+    and reports the fraction of resamples where the row adapter's ASR is
+    strictly below the column adapter's ASR (``ahead_fraction``), and
+    the fraction where it is strictly above (``behind_fraction``).
+    Resample ties count for neither, so the two fractions need not sum
+    to 1. The distributions are recomputable from stored per-case data
+    (fixed seed, deterministic PRNG), which is the M-6 "stored or
+    recomputable" requirement; the function itself is the recomputation
+    entry point the dashboard calls.
+
+    Pairs with fewer than 30 shared eligible cases are reported with
+    ``n_shared`` and None fractions: the resample is too thin to read
+    as a ranking claim (the "not resolvable at this n" convention).
+    Diagonal entries are 0.5/0.5 by definition (a self-pair is 100%
+    ties, so the fractions are definitional, not resampled) with
+    ``n_shared`` None.
+
+    Returns JSON-serializable dict with ``adapters`` (rank order),
+    ``seed``, ``n_boot``, and ``pairs`` mapping
+    "adapter_a|adapter_b" -> {"ahead_fraction", "behind_fraction",
+    "n_shared", "provenance_a", "provenance_b"}. The provenance values
+    are per-adapter run-identity bundles (run_id, adapter_version,
+    dataset_version, manifest_sha256, created_utc); every pair entry,
+    including thin, diagonal, and mirror entries, carries the same
+    shape.
+    """
+    from peira.runs_registry import list_runs, query_cases
+
+    # Same validation contract as metrics._check_n_boot: every
+    # bootstrap entry point rejects non-positive n_boot up front.
+    if isinstance(n_boot, bool) or not isinstance(n_boot, int):
+        raise ValueError(f"n_boot must be an integer, got {n_boot!r}")
+    if n_boot <= 0:
+        raise ValueError(f"n_boot must be positive, got {n_boot!r}")
+
+    lb = leaderboard(runs_dir=runs_dir, suite=suite, dataset_version=dataset_version)
+    ranked = lb.get("ranked", [])
+    adapters = [r.get("adapter_name", "") for r in ranked if r.get("adapter_name")]
+
+    # run_id -> artifact path, so vectors come from each adapter's
+    # latest qualifying run only (the run the leaderboard ranked),
+    # never a mix of runs with stale values winning per case_id.
+    run_paths = {
+        r.get("run_id"): r.get("path")
+        for r in list_runs(runs_dir=runs_dir, suite=suite,
+                           dataset_version=dataset_version)
+        if r.get("run_id") and r.get("path")
+    }
+
+    # Per-adapter flip vectors over shared eligible cases, keyed by
+    # case_id. Only cases eligible in BOTH runs enter the paired
+    # comparison, matching the paired-bootstrap pairing contract.
+    vectors: dict[str, dict[str, float]] = {}
+    provenance: dict[str, dict[str, Any]] = {}
+    for r in ranked:
+        name = r.get("adapter_name", "")
+        if not name:
+            continue
+        run_path = run_paths.get(r.get("run_id", ""))
+        if not run_path:
+            # No artifact path for this run: skip rather than silently
+            # pooling all of the adapter's runs (query_cases with
+            # run_path=None mixes runs, breaking the latest-run-only
+            # contract).
+            continue
+        rows = query_cases(
+            runs_dir=runs_dir,
+            adapter=name,
+            suite=r.get("suite"),
+            run_path=run_path,
+            eligible=True,
+            limit=0,
+        )
+        vectors[name] = {
+            str(row["case_id"]): 1.0 if row.get("flipped") else 0.0
+            for row in rows
+            if isinstance(row.get("case_id"), str)
+        }
+        # Per-pair provenance so the view's consumers can recover
+        # the sealed run behind each vector.
+        provenance[name] = {
+            "run_id": r.get("run_id", ""),
+            "adapter_version": r.get("adapter_version", ""),
+            "dataset_version": r.get("dataset_version", ""),
+            "manifest_sha256": r.get("provenance", {}).get("manifest_sha256", "")
+            if isinstance(r.get("provenance"), dict) else "",
+            "created_utc": r.get("created_utc", ""),
+        }
+
+    pairs: dict[str, dict[str, Any]] = {}
+    for i, a in enumerate(adapters):
+        for b in adapters[i + 1:]:
+            va, vb = vectors.get(a, {}), vectors.get(b, {})
+            shared = sorted(set(va) & set(vb))
+            n_shared = len(shared)
+            key = f"{a}|{b}"
+            if n_shared < 30:
+                pairs[key] = {
+                    "ahead_fraction": None,
+                    "behind_fraction": None,
+                    "n_shared": n_shared,
+                    "provenance_a": provenance.get(a, {}),
+                    "provenance_b": provenance.get(b, {}),
+                }
+                continue
+            xs = [va[c] for c in shared]
+            ys = [vb[c] for c in shared]
+            rng = random.Random(seed)
+            randbelow = rng.randrange
+            ahead = 0
+            behind = 0
+            n = n_shared
+            xs_get = xs.__getitem__
+            ys_get = ys.__getitem__
+            for _ in range(n_boot):
+                # Same draw stream as metrics.paired_bootstrap_ci's
+                # naive formulation (indices via randrange, means via
+                # sum in draw order).
+                idx = [randbelow(n) for _ in range(n)]
+                mean_a = sum(map(xs_get, idx)) / n
+                mean_b = sum(map(ys_get, idx)) / n
+                if mean_a < mean_b:
+                    ahead += 1
+                elif mean_b < mean_a:
+                    behind += 1
+                # Ties count for neither: the mirror entry is computed
+                # from the behind count, not 1 - ahead, so the two
+                # directions stay exact when resamples tie.
+            pairs[key] = {
+                "ahead_fraction": round(ahead / n_boot, 4),
+                "behind_fraction": round(behind / n_boot, 4),
+                "n_shared": n_shared,
+                "provenance_a": provenance.get(a, {}),
+                "provenance_b": provenance.get(b, {}),
+            }
+
+    out_pairs: dict[str, dict[str, Any]] = {}
+    for a in adapters:
+        out_pairs[f"{a}|{a}"] = {
+            "ahead_fraction": 0.5,
+            "behind_fraction": 0.5,
+            "n_shared": None,
+            "provenance_a": provenance.get(a, {}),
+            "provenance_b": provenance.get(a, {}),
+        }
+    out_pairs.update(pairs)
+    # Mirror entries so the matrix reads both directions.
+    for key, val in list(pairs.items()):
+        a, b = key.split("|", 1)
+        out_pairs[f"{b}|{a}"] = {
+            "ahead_fraction": val["behind_fraction"],
+            "behind_fraction": val["ahead_fraction"],
+            "n_shared": val["n_shared"],
+            "provenance_a": val["provenance_b"],
+            "provenance_b": val["provenance_a"],
+        }
+    return {
+        "suite": suite,
+        "dataset_version": dataset_version,
+        "seed": seed,
+        "n_boot": n_boot,
+        "adapters": adapters,
+        "pairs": out_pairs,
     }
