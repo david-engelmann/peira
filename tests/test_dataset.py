@@ -174,18 +174,22 @@ class TestConversationalManifest(unittest.TestCase):
         self.assertEqual(verify_manifest(self.dir), [])
 
     def test_verify_uses_conversational_schema(self):
-        # A single-shot case file must NOT verify against a
-        # conversational manifest: the seal records which validator
-        # built it, and verification reuses that validator.
+        # A conversational case file must NOT verify against a manifest
+        # whose case_schema was tampered to "single": the seal records
+        # which validator built it, and verification reuses that validator.
+        # We hand-edit case_schema (keeping file bytes intact) so the
+        # failure is a schema error, not a SHA-256 mismatch.
         self._write_conv()
-        write_manifest(self.dir,
-                       build_manifest(self.dir, "1.0.0",
-                                      kind="conversational"))
-        path = self.dir / "conv.jsonl"
-        bad = _case("c1")
-        path.write_text(json.dumps(bad) + "\n")
+        manifest = build_manifest(self.dir, "1.0.0", kind="conversational")
+        manifest["case_schema"] = "single"
+        write_manifest(self.dir, manifest)
         errors = verify_manifest(self.dir)
         self.assertTrue(errors, "expected verification errors")
+        # The error must be a schema validation failure (single-shot
+        # validator rejecting conversational cases), not a hash mismatch
+        self.assertTrue(
+            any("bad variant" in e for e in errors),
+            f"expected schema validation error, got: {errors}")
 
     def test_build_rejects_invalid_conversational_case(self):
         bad = _conv_case("conv-1")

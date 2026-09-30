@@ -227,6 +227,11 @@ registry. Fix: pick from the list in the error. The twenty canonical
 ids are in `docs/Taxonomy.md`. If the id is `safety_policy`, use
 `--suite safety-policy` instead: it is a suite, not an attack family.
 
+**`error: unknown conversational famil(ies): x (known conversational families: ...)`**
+Cause: `peira run --suite conversational --families` got a family id
+that isn't in the conversational registry. Fix: pick from
+`multi_turn_escalation` or `decision_splitting`.
+
 **`error: --families matched no cases in ...`**
 Cause: the ids are valid, but the suite has no cases for them (e.g. a
 Tier 2 family before its cases are authored). Fix: drop `--families` or
@@ -342,6 +347,12 @@ Cause: `build-manifest` runs all nine validation gates before writing,
 and at least one gate reported an error. The first 20 print with their
 gate id and name, then a count of the rest. Fix: run
 `peira dataset gates --dir <dir>` for the full report, fix the errors,
+
+**`error: N conversational gate error(s); manifest not written`**
+Cause: `build-manifest --kind conversational` runs the five
+conversational gates (CG1-CG5) before writing, and at least one gate
+reported an error. Fix: check the printed gate report, fix the errors,
+then rebuild.
 then rebuild. Gate warnings never block a seal.
 
 **`error: --dir is required`**
