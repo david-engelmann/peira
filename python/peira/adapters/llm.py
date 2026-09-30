@@ -123,6 +123,8 @@ __all__ = [
     "DeepSeekAdapter",
     "MetaLlamaAdapter",
     "ZaiAdapter",
+    "MistralAdapter",
+    "QwenAdapter",
 ]
 
 # ---------------------------------------------------------------------------
@@ -875,6 +877,20 @@ class OpenAIAdapter(_StructuredLLMBase):
             "logprobs": True,
         }
 
+    def _request_shape_overrides(
+        self, sent: dict[str, Any]
+    ) -> dict[str, Any]:
+        """Extra/override keys for the transcript's request shape.
+
+        The base shape records the OpenAI wire fields. Subclasses
+        whose provider renames a parameter (Mistral's ``random_seed``)
+        or requires provider-specific body fields (Qwen's
+        ``enable_thinking``) override this so the transcript records
+        what was actually sent. Keys returned here win over the base
+        shape's keys.
+        """
+        return {}
+
     def _request(
         self, user_text: str, schema: dict[str, Any], repair: bool
     ) -> _RawResult:
@@ -933,6 +949,7 @@ class OpenAIAdapter(_StructuredLLMBase):
                 # kwargs rather than assuming.
                 "seed": sent.get("seed"),
                 "logprobs": sent.get("logprobs", False),
+                **self._request_shape_overrides(sent),
             },
             response_shape={
                 "finish_reason": getattr(choice, "finish_reason", None),
@@ -1306,6 +1323,195 @@ class ZaiAdapter(OpenAIAdapter):
 
 
 # ---------------------------------------------------------------------------
+# Mistral — OpenAI-compatible endpoint.
+# ---------------------------------------------------------------------------
+
+class MistralAdapter(OpenAIAdapter):
+    """Baseline: Mistral Large through La Plateforme's chat completions.
+
+    Reuses the OpenAI request shape (strict JSON schema via
+    ``response_format``) against ``https://api.mistral.ai/v1`` with a
+    ``MISTRAL_API_KEY`` Bearer <redacted> — the ``openai`` SDK package drives
+    the compat endpoint, so the extra stays ``peira[openai]``. The
+    request's ``base_url`` is recorded in the transcript's request
+    shape; the key itself never is.
+
+    Default model is ``mistral-large-2512`` (Mistral Large 3, the
+    December 2025 dated snapshot behind ``mistral-large-latest``;
+    $0.50/$1.50 per 1M): Mistral's open-weight flagship and the
+    European lab's frontier entry.
+
+    Request shape: Mistral names the seed parameter ``random_seed``
+    (not ``seed``), and ``logprobs`` is not documented for chat
+    completions, so the adapter sends ``random_seed`` instead of
+    ``seed`` and omits ``logprobs`` rather than negotiating. There is
+    NO decision-token logprob track on this adapter; the transcript
+    records the seed under the wire name it was sent with. If the live
+    endpoint rejects or ignores any of these, you will see terminal
+    provider errors, not silent mismeasurement — verify against the
+    live API before any measured run. Not exercised against the live
+    API yet.
+    """
+
+    name = "mistral-structured"
+    _extra = "peira[openai]"
+    _env_vars = ("MISTRAL_API_KEY",)
+    _provider_label = "Mistral"
+    _supports_seed = True
+    _base_url = "https://api.mistral.ai/v1"
+
+    def __init__(
+        self,
+        model: str = PINNED_API_MODELS["mistral-structured"],
+        temperature: float = 0.0,
+        seed: int | None = 0,
+        max_tokens: int = 512,
+        api_key: str | None = None,
+    ) -> None:
+        # Not OpenAIAdapter.__init__: that constructor pins the client
+        # to api.openai.com. Rebuild the identical client against
+        # Mistral's OpenAI-compatible endpoint — retries still
+        # DISABLED, the runner owns the retry policy.
+        _StructuredLLMBase.__init__(
+            self, model, temperature, seed, max_tokens, api_key
+        )
+        self._sdk = _require_openai()
+        self._client = self._sdk.OpenAI(
+            api_key=self._api_key,
+            base_url=self._base_url,
+            # Retries DISABLED: the runner owns the retry policy.
+            max_retries=0,
+        )
+
+    def _request_kwargs(
+        self, messages: list[dict[str, str]], schema: dict[str, Any]
+    ) -> dict[str, Any]:
+        kwargs = super()._request_kwargs(messages, schema)
+        # Mistral's wire name for the seed is ``random_seed``; the
+        # OpenAI ``seed`` field is dropped, not sent alongside it.
+        # ``logprobs`` is undocumented for chat completions — omit,
+        # don't negotiate. No decision-token logprob track.
+        kwargs.pop("seed", None)
+        kwargs.pop("logprobs", None)
+        if self._seed is not None:
+            kwargs["random_seed"] = self._seed
+        return kwargs
+
+    def _request_shape_overrides(
+        self, sent: dict[str, Any]
+    ) -> dict[str, Any]:
+        # Record the seed under the wire name it was actually sent
+        # with, so the transcript never claims an unsent ``seed``.
+        return {"seed": sent.get("random_seed")}
+
+    def _request(
+        self, user_text: str, schema: dict[str, Any], repair: bool
+    ) -> _RawResult:
+        raw = super()._request(user_text, schema, repair)
+        # The inherited request shape names the endpoint and model but
+        # not the host it was sent to — record it for traceability.
+        raw.request_shape["base_url"] = self._base_url
+        return raw
+
+
+# ---------------------------------------------------------------------------
+# Qwen — Alibaba DashScope OpenAI-compatible endpoint.
+# ---------------------------------------------------------------------------
+
+class QwenAdapter(OpenAIAdapter):
+    """Baseline: Qwen through DashScope's OpenAI-compatible endpoint.
+
+    Reuses the OpenAI request shape (strict JSON schema via
+    ``response_format``) against DashScope's compatible-mode endpoint
+    with a ``DASHSCOPE_API_KEY`` Bearer <redacted> — the ``openai`` SDK
+    package drives the compat endpoint, so the extra stays
+    ``peira[openai]``. The request's ``base_url`` is recorded in the
+    transcript's request shape; the key itself never is.
+
+    Default model is ``qwen3.8-max`` (Alibaba's August 2026 flagship,
+    2.4T MoE; $2.00/$6.00 per 1M on the international endpoint):
+    ``qwen-max`` is the rolling alias for the same tier, but the pin
+    uses the versioned id for reproducibility.
+
+    Request shape: DashScope requires ``enable_thinking`` to be set
+    explicitly on every request, and rejects the request when the
+    parameter is absent; for non-streaming calls it must be ``false``. Qwen's
+    hybrid-thinking models also reject ``response_format:
+    json_schema`` when thinking is enabled, so the adapter sets
+    ``enable_thinking: false`` via ``extra_body`` on every call —
+    thinking is off by construction, never by omission. ``seed`` is
+    passed through as documented. If the live endpoint rejects or
+    ignores any of these, you will see terminal provider errors, not
+    silent mismeasurement — verify against the live API before any
+    measured run. Not exercised against the live API yet.
+    """
+
+    name = "qwen-structured"
+    _extra = "peira[openai]"
+    _env_vars = ("DASHSCOPE_API_KEY",)
+    _provider_label = "Qwen"
+    _supports_seed = True
+    # International endpoint. China-region keys are minted per host;
+    # a key issued for dashscope.aliyuncs.com will not authenticate
+    # here — see the docs section for the regional hostnames.
+    _base_url = "https://dashscope-intl.aliyuncs.com/compatible-mode/v1"
+
+    def __init__(
+        self,
+        model: str = PINNED_API_MODELS["qwen-structured"],
+        temperature: float = 0.0,
+        seed: int | None = 0,
+        max_tokens: int = 512,
+        api_key: str | None = None,
+    ) -> None:
+        # Not OpenAIAdapter.__init__: that constructor pins the client
+        # to api.openai.com. Rebuild the identical client against
+        # DashScope's OpenAI-compatible endpoint — retries still
+        # DISABLED, the runner owns the retry policy.
+        _StructuredLLMBase.__init__(
+            self, model, temperature, seed, max_tokens, api_key
+        )
+        self._sdk = _require_openai()
+        self._client = self._sdk.OpenAI(
+            api_key=self._api_key,
+            base_url=self._base_url,
+            # Retries DISABLED: the runner owns the retry policy.
+            max_retries=0,
+        )
+
+    def _request_kwargs(
+        self, messages: list[dict[str, str]], schema: dict[str, Any]
+    ) -> dict[str, Any]:
+        kwargs = super()._request_kwargs(messages, schema)
+        # ``enable_thinking`` is not an OpenAI SDK body parameter, so
+        # it travels via ``extra_body`` (the pattern DashScope's own
+        # docs use). Explicit ``false``: the endpoint rejects requests
+        # that omit it, and json_schema is honored only with thinking
+        # disabled.
+        extra_body = dict(kwargs.get("extra_body") or {})
+        extra_body["enable_thinking"] = False
+        kwargs["extra_body"] = extra_body
+        return kwargs
+
+    def _request_shape_overrides(
+        self, sent: dict[str, Any]
+    ) -> dict[str, Any]:
+        # The thinking kill-switch is load-bearing for this adapter —
+        # record it in the transcript, not just the wire kwargs.
+        extra_body = sent.get("extra_body") or {}
+        return {"enable_thinking": extra_body.get("enable_thinking")}
+
+    def _request(
+        self, user_text: str, schema: dict[str, Any], repair: bool
+    ) -> _RawResult:
+        raw = super()._request(user_text, schema, repair)
+        # The inherited request shape names the endpoint and model but
+        # not the host it was sent to — record it for traceability.
+        raw.request_shape["base_url"] = self._base_url
+        return raw
+
+
+# ---------------------------------------------------------------------------
 # Anthropic.
 # ---------------------------------------------------------------------------
 
@@ -1317,8 +1523,31 @@ class ZaiAdapter(OpenAIAdapter):
 # ids (D-32; even ``claude-fable-5-1`` itself is still unverified
 # against the live API). Any other model opts in explicitly via
 # ``AnthropicAdapter(..., structured_outputs=True)``.
+#
+# D3 reconciliation (2026-09-30): the Opus 5.5 API id is
+# ``claude-opus-5-5`` (verified against Anthropic's model docs, AWS
+# Bedrock, and launch coverage — released 2026-09-22), and Claude
+# Sonnet 5.5 shipped 2026-09-28 as ``claude-sonnet-5-5``. Both are
+# 5.x reasoning models, so both route here. The default pin stays
+# ``claude-sonnet-5`` until a live smoke test decides D3's
+# (a)/(b)/(c); pass ``model="claude-opus-5-5"`` explicitly to measure
+# Opus 5.5. All ids in this set are live-UNVERIFIED from this
+# environment (no API calls in the authoring lane).
 _STRUCTURED_OUTPUT_MODELS = frozenset({
     "claude-fable-5-1",
+    "claude-opus-5-5",
+    "claude-sonnet-5-5",
+})
+
+
+# Anthropic rejects ``temperature``/``top_p`` with a 400 on the Opus
+# 4.6 generation and later, so the adapter omits the field for these
+# ids instead of sending it. Explicit allowlist, same discipline as
+# ``_STRUCTURED_OUTPUT_MODELS``: do NOT extend with unconfirmed ids.
+# Live-UNVERIFIED (no API calls in the authoring lane).
+_NO_TEMPERATURE_MODELS = frozenset({
+    "claude-opus-5-5",
+    "claude-sonnet-5-5",
 })
 
 
@@ -1404,10 +1633,13 @@ class AnthropicAdapter(_StructuredLLMBase):
         kwargs: dict[str, Any] = {
             "model": self._model,
             "max_tokens": self._max_tokens,
-            "temperature": self._temperature,
             "system": SYSTEM_PROMPT,
             "messages": messages,
         }
+        if self._model not in _NO_TEMPERATURE_MODELS:
+            # Opus 4.6+ rejects temperature with a 400 — omit it for
+            # those ids rather than negotiating.
+            kwargs["temperature"] = self._temperature
         if self._structured_outputs:
             # Native structured outputs: no tools, no tool_choice.
             # Forced tool_choice 400s on the newer reasoning models.
@@ -1432,10 +1664,11 @@ class AnthropicAdapter(_StructuredLLMBase):
         messages = [{"role": "user", "content": user_text}]
         if repair:
             messages.append({"role": "user", "content": REPAIR_SUFFIX})
+        # Bound once so the transcript's request shape can record the
+        # fields actually sent (temperature is omitted for some ids).
+        sent = self._request_kwargs(messages, schema)
         try:
-            resp = self._client.messages.create(
-                **self._request_kwargs(messages, schema)
-            )
+            resp = self._client.messages.create(**sent)
         except self._sdk.APIStatusError as exc:
             raise _status_error("Anthropic", exc) from exc
         except self._sdk.APITimeoutError as exc:
@@ -1471,7 +1704,9 @@ class AnthropicAdapter(_StructuredLLMBase):
                 "model": self._model,
                 "system": "peira system prompt",
                 "output_config": "json_schema",
-                "temperature": self._temperature,
+                # Only the temperature actually sent — omitted for
+                # the _NO_TEMPERATURE_MODELS ids.
+                "temperature": sent.get("temperature"),
                 "max_tokens": self._max_tokens,
             }
         else:
@@ -1481,7 +1716,7 @@ class AnthropicAdapter(_StructuredLLMBase):
                 "system": "peira system prompt",
                 "tool": SCHEMA_NAME,
                 "tool_choice": "forced",
-                "temperature": self._temperature,
+                "temperature": sent.get("temperature"),
                 "max_tokens": self._max_tokens,
             }
         return _RawResult(
