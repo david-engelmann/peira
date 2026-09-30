@@ -1335,6 +1335,7 @@ no reference: {_num(sd_skipped.get('no_reference'))})</p>"""
             e_attacked,
             load_cost_scenario,
         )
+        from peira.metrics import cost_per_flip_by_direction
         _scenario = load_cost_scenario("standard")
         _results = [PerCaseResult.from_dict(r) for r in artifact.results]
         _est = e_attacked(_results, _scenario)
@@ -1346,6 +1347,33 @@ no reference: {_num(sd_skipped.get('no_reference'))})</p>"""
                       "to-malformed", "score-shifted", "other")
             if _est.direction_counts[d]
         ) or "no flips"
+        # C-9 (M-9 x M-1): attacker cost per flip in each M-1 direction.
+        # The jailbreak direction is the attacker's product; vandalism
+        # and DoS have their own economics. Withheld rows render as
+        # "withheld", not zero.
+        _c9 = cost_per_flip_by_direction(_results)
+        def _c9_cell(x, fmt):
+            return "withheld" if x is None else fmt.format(x)
+        def _c9_cost(d):
+            row = _c9[d]
+            cell = _c9_cell(row["cost_per_flip_usd"], "${:.2f}")
+            if row["cost_per_flip_usd"] is not None and row["n_unpriced"] > 0:
+                cell = "\u2265" + cell  # lower bound: unpriced calls priced at 0
+            return cell
+        _c9_rows = "\n".join(
+            f"<tr><td>{e(d)}</td>"
+            f"<td>{_c9[d]['n_flips_d']}</td>"
+            f"<td>{_c9_cell(_c9[d]['asr_d'], '{:.3f}')}</td>"
+            f"<td>{_c9_cell(_c9[d]['attempts_per_flip'], '{:.1f}x')}</td>"
+            f"<td>{_c9_cost(d)}</td></tr>"
+            for d in ("deny-to-approve", "approve-to-deny", "to-abstain",
+                      "to-malformed", "score-shifted", "other")
+        )
+        _c9_lb = any(_c9[d]["n_unpriced"] > 0 for d in _c9 if d != "none")
+        _c9_legend = (
+            "<p>A $ / flip figure marked \u2265 is a lower bound: some "
+            "attacked calls had no listed price.</p>" if _c9_lb else ""
+        )
         value_section = f"""<h2>Value view (M-3)</h2>
 <p>Expected attack cost under the <em>standard</em> cost scenario
 (scenario v{_scenario.version}, re-weight with
@@ -1356,7 +1384,15 @@ changes the headline ASR above.</p>
 <th>attacker cost per jailbreak</th></tr>
 <tr><td>${_est.e_attacked:.4f}</td><td>${_est.per_flip:.2f}</td>
 <td>${_est.per_incident:.2f}</td><td>{_est.n}</td><td>{e(_mult_s)}</td></tr></table>
-<p>Flip-type breakdown (re-weightable): {e(_breakdown)}.</p>"""
+<p>Flip-type breakdown (re-weightable): {e(_breakdown)}.</p>
+<h3>Attacker cost per flip direction (C-9)</h3>
+<p>What one successful flip <em>of each type</em> costs the attacker in
+list-price inference spend. The jailbreak direction (deny-to-approve) is
+the headline: it is the attacker's product. Vandalism and denial of
+service are priced separately because they are different products.</p>
+<table border="1"><tr><th>direction</th><th>flips</th><th>ASR_d</th>
+<th>attempts / flip</th><th>$ / flip</th></tr>
+{_c9_rows}</table>{_c9_legend}"""
     except Exception as exc:
         value_section = (
             f"<h2>Value view (M-3)</h2>"
@@ -2745,6 +2781,30 @@ def _value_text(view: dict[str, Any]) -> str:
             f"{mult:.1f}x attempts" if mult is not None
             else "    attacker cost per jailbreak: never observed"
         )
+        # C-9 (M-9 x M-1): attacker cost per flip in each direction.
+        # The jailbreak direction renders first; it is the headline.
+        _c9_order = ("deny-to-approve", "approve-to-deny", "to-abstain",
+                     "to-malformed", "score-shifted", "other")
+        lines.append("    attacker $/flip by direction:")
+        for d in _c9_order:
+            row = a["attacker_cost_per_direction"][d]
+            cpf = row["cost_per_flip_usd"]
+            att = row["attempts_per_flip"]
+            if cpf is None:
+                lines.append(f"      {d}: withheld")
+            else:
+                lb = "\u2265" if row["n_unpriced"] > 0 else ""
+                lines.append(
+                    f"      {d}: {lb}${cpf:.2f}/flip "
+                    f"({att:.1f}x attempts, ASR_d {row['asr_d']:.3f}, "
+                    f"n={row['n_flips_d']})"
+                )
+        if any(a["attacker_cost_per_direction"][d]["n_unpriced"] > 0
+               for d in _c9_order):
+            lines.append(
+                "    ($/flip figures marked \u2265 are lower bounds: some "
+                "attacked calls had no listed price)"
+            )
     lines += ["", "Pareto frontier (cost, ASR):"]
     for p in view["pareto_frontier"]:
         lo, hi = p["asr_ci95"]
@@ -2812,6 +2872,46 @@ def _value_page(view: dict[str, Any]) -> str:
         f"<th>break-even attack rate</th></tr>{comp_rows}</table>"
         if comp_rows else ""
     )
+    # C-9 (M-9 x M-1): attacker cost per flip in each M-1 direction,
+    # one table per adapter. The jailbreak direction is the headline.
+    def _fmt(x, fmt):
+        return "withheld" if x is None else fmt.format(x)
+
+    def _dir_rows(a):
+        # The jailbreak direction renders first; it is the headline.
+        order = ("deny-to-approve", "approve-to-deny", "to-abstain",
+                 "to-malformed", "score-shifted", "other")
+        out = []
+        for d in order:
+            row = a["attacker_cost_per_direction"][d]
+            cpf = _fmt(row["cost_per_flip_usd"], "${:.2f}")
+            if row["cost_per_flip_usd"] is not None and row["n_unpriced"] > 0:
+                cpf = "\u2265" + cpf  # lower bound: unpriced calls at 0
+            out.append(
+                "<tr><td>" + e(d) + "</td>"
+                "<td>" + str(row["n_flips_d"]) + "</td>"
+                "<td>" + _fmt(row["asr_d"], "{:.3f}") + "</td>"
+                "<td>" + _fmt(row["attempts_per_flip"], "{:.1f}x") + "</td>"
+                "<td>" + cpf + "</td></tr>"
+            )
+        return "\n".join(out)
+    def _dir_legend(a):
+        if any(a["attacker_cost_per_direction"][d]["n_unpriced"] > 0
+               for d in ("deny-to-approve", "approve-to-deny", "to-abstain",
+                         "to-malformed", "score-shifted", "other")):
+            return ("<p>A $ / flip figure marked \u2265 is a lower bound: "
+                    "some attacked calls had no listed price.</p>")
+        return ""
+    dir_sections = "".join(
+        f"<h3>Attacker cost per flip direction: {e(name)}</h3>"
+        f"<p>What one successful flip of each type costs the attacker in "
+        f"list-price inference spend. The jailbreak direction "
+        f"(deny-to-approve) is the attacker's product.</p>"
+        f"<table border=\"1\"><tr><th>direction</th><th>flips</th>"
+        f"<th>ASR_d</th><th>attempts / flip</th><th>$ / flip</th></tr>"
+        f"{_dir_rows(a)}</table>{_dir_legend(a)}"
+        for name, a in sorted(view["adapters"].items())
+    )
     return f"""<!DOCTYPE html>
 <html><head><meta charset="utf-8"><title>peira value view</title></head>
 <body>
@@ -2834,6 +2934,8 @@ ASR numbers. Nothing here is blended into them.</p>
 <h2>Cost-curve crossovers</h2>
 <ul>{crossovers}</ul>
 {comp_section}
+<h2>Attacker cost per flip direction (C-9)</h2>
+{dir_sections}
 </body></html>"""
 
 
