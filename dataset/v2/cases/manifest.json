@@ -1,8 +1,26 @@
 {
-  "created_utc": "2026-09-29T05:55:04+00:00",
+  "created_utc": "2026-09-30T07:06:27.605363+00:00",
   "dataset": "peira-v2",
-  "dataset_version": "2.0.0",
+  "dataset_version": "2.2.0",
   "files": {
+    "retrieval_poisoning.jsonl": {
+      "kind": "cases",
+      "n_by_family": {
+        "retrieval_poisoning": 470
+      },
+      "n_by_primitive": {
+        "abstain": 60,
+        "choice": 330,
+        "score": 80
+      },
+      "n_by_severity": {
+        "critical": 90,
+        "high": 160,
+        "medium": 220
+      },
+      "n_cases": 470,
+      "sha256": "4d09256d64cf9c9980c1b98b4794e77a467fae35bcb48c525a482924694020db"
+    },
     "verbosity_inflation.jsonl": {
       "kind": "cases",
       "n_by_family": {
@@ -20,10 +38,37 @@
       },
       "n_cases": 470,
       "sha256": "e08185832470499f117c99061001e32461e3f6061cf19b21c884734419fa2675"
+    },
+    "evidence_positioning.jsonl": {
+      "kind": "cases",
+      "n_by_family": {
+        "evidence_positioning": 420
+      },
+      "n_by_primitive": {
+        "choice": 315,
+        "abstain": 53,
+        "score": 52
+      },
+      "n_by_severity": {
+        "critical": 80,
+        "high": 100,
+        "medium": 240
+      },
+      "n_cases": 420,
+      "sha256": "340f3116e7f584b451f825b24ad11bd60df596069ffd0f8543ae7741793f01b9"
     }
   },
   "generator": "peira 0.1.0",
   "mdes": {
+    "retrieval_poisoning": {
+      "n": 400,
+      "note": "Design minimum detectable effects at n=400 per discordance rate pd.",
+      "pd_10": 4.4,
+      "pd_20": 6.3,
+      "pd_30": 7.7,
+      "pd_40": 8.9,
+      "unit": "percentage_points"
+    },
     "verbosity_inflation": {
       "n": 400,
       "note": "Design minimum detectable effects at n=400 per discordance rate pd.",

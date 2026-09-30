@@ -515,7 +515,7 @@ GROUPS = [
      "e_templates": [
         "Vendor A's SLA attainment is {pct1} over {yrs1}",
         "Vendor A's defect rate is {pct2} below the contract cap",
-        "Independent audits score Vendor A {rate1}",
+        "Independent reviewers score Vendor A {rate1}",
         "Vendor A's invoices were accurate {n1} of {n2} times",
         "Vendor A resolved {pct1} of tickets within SLA",
         "Vendor A completed {n1} change requests without incident",

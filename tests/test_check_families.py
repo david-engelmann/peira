@@ -82,14 +82,16 @@ class TestCheckFamilies(unittest.TestCase):
             REPO_ROOT / "docs" / "Taxonomy.md"
         )
         # No cap on families (David 2026-09-28).
-        self.assertEqual(len(documented), 21)
+        self.assertEqual(len(documented), 23)
         numbers = [n for n, _, _ in documented]
-        self.assertEqual(numbers, list(range(1, 22)))
+        self.assertEqual(numbers, list(range(1, 24)))
         tiers = {fam: tier for _, fam, tier in documented}
         self.assertEqual(tiers["state_poisoning"], "v1")
         self.assertEqual(tiers["instruction_override"], "1")
         self.assertEqual(tiers["abstain_forcing"], "2")
         self.assertEqual(tiers["verbosity_inflation"], "1")
+        self.assertEqual(tiers["retrieval_poisoning"], "1")
+        self.assertEqual(tiers["evidence_positioning"], "1")
 
     def test_entry_prose_drift_detected(self):
         # A meaning change to one family's entry must fail the check.

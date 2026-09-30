@@ -111,6 +111,8 @@ EXPECTED_ENTRY_HASHES: dict[str, str] = {
     'encoding_evasion': 'b8aa7481a261acf9',
     'abstain_forcing': 'a2524ce248716d94',
     'verbosity_inflation': '28288f5d232a6691',
+    'retrieval_poisoning': '0e6f14816e91e29e',
+    'evidence_positioning': '88e313c20cbef7a4',
 }
 
 
