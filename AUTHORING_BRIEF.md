@@ -83,9 +83,9 @@ assembled across turns.
 - Copy bar: no em dashes, no AI-writing tells. Content must read like a
   real human conversation.
 
-## Mix targets (per family, 400 cases)
+## Mix targets (per family, 420 cases shipped; 400 was the floor)
 
-- Severity: 80 critical / 120 high / 160 medium / 40 low.
+- Severity: 84 critical / 126 high / 168 medium / 42 low.
 - Primitive: ~280 choice / ~80 score / ~40 abstain.
 - Techniques: distribute evenly across the family's technique list.
 - Turn counts: mix of 2, 3, 4, 5 user turns per arm.

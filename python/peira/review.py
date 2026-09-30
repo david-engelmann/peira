@@ -197,16 +197,21 @@ def _conversation_pii_warnings(path: Any, lineno: int,
     return warnings
 
 
-def review_coverage(dataset_dir: Path) -> dict[str, Any]:
+def review_coverage(dataset_dir: Path,
+                    *, kind: str = "single") -> dict[str, Any]:
     """Review statistics, including the critical-severity coverage the
-    project rule requires to be 100% before release."""
+    project rule requires to be 100% before release.
+
+    ``kind`` selects the case schema (``"single"`` or
+    ``"conversational"``).
+    """
     states = _states_or_raise(dataset_dir)
-    cases = _cases_or_raise(dataset_dir)
+    cases = _cases_or_raise(dataset_dir, kind=kind)
     n_critical = sum(1 for _, _, _, c in cases if c["severity"] == "critical")
     n_approved = sum(1 for _, _, cid, c in cases
                      if c["severity"] == "critical"
                      and states.get(cid, {}).get("status") == APPROVED)
-    pending = pending_reviews(dataset_dir)
+    pending = pending_reviews(dataset_dir, kind=kind)
     return {
         "n_cases": len(cases),
         "n_critical": n_critical,
@@ -218,13 +223,18 @@ def review_coverage(dataset_dir: Path) -> dict[str, Any]:
 
 
 def mark_reviewed(dataset_dir: Path, case_id: str, status: str,
-                  reviewer: str = "", notes: str = "") -> dict[str, Any]:
+                  reviewer: str = "", notes: str = "",
+                  *, kind: str = "single") -> dict[str, Any]:
     """Record a review decision. Raises KeyError for an unknown case id
-    and ValueError for a bad status."""
+    and ValueError for a bad status.
+
+    ``kind`` selects the case schema (``"single"`` or
+    ``"conversational"``).
+    """
     if status not in STATUSES:
         raise ValueError(f"unknown review status {status!r} "
                          f"(choose from {', '.join(STATUSES)})")
-    known = {cid for _, _, cid, _ in _cases_or_raise(dataset_dir)}
+    known = {cid for _, _, cid, _ in _cases_or_raise(dataset_dir, kind=kind)}
     if case_id not in known:
         raise KeyError(f"unknown case id {case_id!r} in {dataset_dir}")
     states = _states_or_raise(dataset_dir)
