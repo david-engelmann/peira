@@ -1,8 +1,11 @@
 """Tests for the Hugging Face guardrail adapters (python/peira/adapters/hf.py).
 
-No network, no torch: every test fakes the tokenizer/model layer through
-the module's injectable seams — the ``_require_hf`` lazy-import hook and
-the ``_load()`` method. Fakes are tiny hand-rolled classes (stdlib only).
+No torch: every test fakes the tokenizer/model layer through the
+module's injectable seams (the ``_require_hf`` lazy-import hook and
+the ``_load()`` method). Fakes are tiny hand-rolled classes (stdlib only).
+The final section (TestRealTokenizerContract) is the deliberate
+exception: it downloads the pinned real tokenizers from the Hugging
+Face Hub and pins their label-token resolution behavior.
 """
 
 import contextlib
@@ -165,10 +168,12 @@ class _ShieldGemmaTokenizer(_FakeTokenizer):
         # as a real tokenizer would. Synthesizing ids[0] would model an
         # impossible vocabulary (P0-1).
         if callable(self._encode):
-            return {
-                "Yes": self._encode("Yes")[0],
-                "No": self._encode("No")[0],
-            }
+            vocab = {}
+            for label in ("Yes", "No"):
+                ids = self._encode(label)
+                if len(ids) == 1:
+                    vocab[label] = ids[0]
+            return vocab
         return {
             tok: ids[0] for tok, ids in (self._encode or {}).items()
             if len(ids) == 1
@@ -953,6 +958,25 @@ class TestShieldGemma(unittest.TestCase):
         with self.assertRaises(ProviderError):
             adapter.decide(_choice_input(), "abstain", _ctx())
 
+    def test_multi_token_label_token_raises_provider_error(self):
+        # Fail closed: "Yes" resolves to two tokens, so it has no vocab
+        # entry; the adapter must raise, not score against a wrong id.
+        tok = _ShieldGemmaTokenizer(encode={"Yes": [3, 4], "No": [2]})
+        adapter = _make(ShieldGemmaAdapter, tok, _FakeForwardModel([0.0] * 3))
+        with self.assertRaises(ProviderError):
+            adapter.decide(_choice_input(), "abstain", _ctx())
+
+    def test_multi_token_label_token_callable_encode_raises_provider_error(
+            self):
+        # Same fail-closed behavior through the callable encode path: the
+        # callable branch of get_vocab() must also omit multi-token
+        # labels instead of synthesizing ids[0] (P3-1 hardening).
+        tok = _ShieldGemmaTokenizer(
+            encode=lambda text: [3, 4] if text == "Yes" else [2])
+        adapter = _make(ShieldGemmaAdapter, tok, _FakeForwardModel([0.0] * 3))
+        with self.assertRaises(ProviderError):
+            adapter.decide(_choice_input(), "abstain", _ctx())
+
     def test_non_text_template_raises_provider_error(self):
         class _BadTemplate(_ShieldGemmaTokenizer):
             def apply_chat_template(self, messages, tokenize=False,
@@ -1403,7 +1427,7 @@ from peira.adapters.hf import _single_token_id
 
 @unittest.skipUnless(
     _HAS_TRANSFORMERS,
-    "transformers not installed (pip install peira[hf])",
+    "transformers not installed (pip install -e .[hf])",
 )
 class TestRealTokenizerContract(unittest.TestCase):
     def _load_tokenizer(self, model_id, revision):
@@ -1415,9 +1439,11 @@ class TestRealTokenizerContract(unittest.TestCase):
             self.skipTest(f"cannot download tokenizer: {e}")
 
     def test_qwen3guard_spaced_safe_is_single_token(self):
-        # Qwen3Guard is spaced-first: " Safe" must resolve to a single id
-        # via _single_token_id, proving the lookup order matches the
-        # tokenizer's reality.
+        # Qwen3Guard's spaced-first candidate tuple must resolve to a
+        # single real id through _single_token_id: this pins the
+        # tokenizer's ground truth for the tuple the adapter uses (the
+        # adapter's own tuple is pinned separately by the mock-based
+        # conflicting-logit tests).
         tok = self._load_tokenizer(
             "Qwen/Qwen3Guard-Gen-4B",
             "6ec42827da0c1ff11e7a49dc269d2e810d27e108",
@@ -1431,8 +1457,10 @@ class TestRealTokenizerContract(unittest.TestCase):
         self.assertEqual(ids[0], safe_id)
 
     def test_granite_guardian_bare_yes_is_single_token(self):
-        # Granite is bare-first (mirror image of Qwen3Guard): "yes" must
-        # resolve to a single id.
+        # Granite's bare-first candidate tuple (mirror image of
+        # Qwen3Guard): "yes" must resolve to a single real id through
+        # _single_token_id. The adapter's tuple is pinned separately by
+        # the mock-based conflicting-logit tests.
         tok = self._load_tokenizer(
             "ibm-granite/granite-guardian-4.1-8b",
             "ab01ccca5dcfb80246369a086a4a87a29198f5af",

@@ -23,12 +23,16 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 
 def _run_cli_subprocess(tmp, *args):
     env = dict(os.environ)
-    env["PYTHONPATH"] = str(REPO_ROOT / "python")
+    # Prepend so a pre-existing PYTHONPATH keeps working (CI sets none,
+    # but a developer's shell may carry entries this file must not drop).
+    env["PYTHONPATH"] = str(REPO_ROOT / "python") + os.pathsep + env.get(
+        "PYTHONPATH", "")
     return subprocess.run(
         [sys.executable, "-m", "peira.cli", "run", *args,
          "--adapter", "mock", "--suite", "trial-demo",
          "--out", tmp, "--seed", "42"],
         capture_output=True, text=True, env=env, cwd=REPO_ROOT,
+        timeout=300,
     )
 
 
@@ -98,7 +102,7 @@ class TestRunExitCodes(unittest.TestCase):
 
 
 class TestRunFlags(unittest.TestCase):
-    """O-6: CLI flags with no direct test coverage."""
+    """O-6: direct CLI tests for previously uncovered flags."""
 
     def test_transcript_flag_writes_jsonl(self):
         # --transcript writes a JSONL transcript of every request/response.
@@ -108,8 +112,8 @@ class TestRunFlags(unittest.TestCase):
             r = _run_cli_subprocess(
                 out, "--transcript", tpath, "--families", "state_poisoning",
             )
-            # Exit 3 (ineligible) is fine; we care about the transcript.
-            self.assertIn(r.returncode, (0, 3))
+            # Exit 3: the subset run is ranking-ineligible by design; we care about the transcript.
+            self.assertEqual(r.returncode, 3)
             lines = Path(tpath).read_text().splitlines()
             # 4 cases in state_poisoning x 2 variants = 8 lines.
             self.assertEqual(len(lines), 8)
@@ -129,7 +133,7 @@ class TestRunFlags(unittest.TestCase):
             r1 = _run_cli_subprocess(
                 out1, "--cache-dir", cdir, "--families", "state_poisoning",
             )
-            self.assertIn(r1.returncode, (0, 3))
+            self.assertEqual(r1.returncode, 3)
             # Cache dir should contain entries after the first run.
             cache_files = list(Path(cdir).rglob("*"))
             self.assertGreater(len(cache_files), 0,
@@ -137,7 +141,7 @@ class TestRunFlags(unittest.TestCase):
             r2 = _run_cli_subprocess(
                 out2, "--cache-dir", cdir, "--families", "state_poisoning",
             )
-            self.assertIn(r2.returncode, (0, 3))
+            self.assertEqual(r2.returncode, 3)
 
             def _cached_flags(out_dir):
                 flags = []
@@ -171,7 +175,7 @@ class TestRunFlags(unittest.TestCase):
             r = _run_cli_subprocess(
                 out, "--json-progress", "--families", "state_poisoning",
             )
-            self.assertIn(r.returncode, (0, 3))
+            self.assertEqual(r.returncode, 3)
             # stdout should contain JSON progress objects.
             json_lines = [
                 line for line in r.stdout.splitlines()
@@ -189,7 +193,7 @@ class TestRunFlags(unittest.TestCase):
             r = _run_cli_subprocess(
                 out, "--max-attempts", "2", "--families", "state_poisoning",
             )
-            self.assertIn(r.returncode, (0, 3))
+            self.assertEqual(r.returncode, 3)
 
     def test_call_timeout_flag_accepted(self):
         # --call-timeout is plumbed through: a valid value runs fine.
@@ -198,7 +202,68 @@ class TestRunFlags(unittest.TestCase):
             r = _run_cli_subprocess(
                 out, "--call-timeout", "60", "--families", "state_poisoning",
             )
-            self.assertIn(r.returncode, (0, 3))
+            self.assertEqual(r.returncode, 3)
+
+    def test_max_concurrency_flag_accepted(self):
+        # --max-concurrency is accepted: a valid value runs fine.
+        with tempfile.TemporaryDirectory() as tmp:
+            out = str(Path(tmp) / "out")
+            r = _run_cli_subprocess(
+                out, "--max-concurrency", "2", "--families",
+                "state_poisoning",
+            )
+            self.assertEqual(r.returncode, 3)
+
+    def test_dry_run_flag_validates_without_scoring(self):
+        # --dry-run validates the config, scores nothing, exits 0, and
+        # leaves no side effects (the output dir is not even created).
+        with tempfile.TemporaryDirectory() as tmp:
+            out = str(Path(tmp) / "out")
+            r = _run_cli_subprocess(
+                out, "--dry-run", "--families", "state_poisoning",
+            )
+            self.assertEqual(r.returncode, 0)
+            self.assertIn("dry run:", r.stdout)
+            self.assertIn("nothing scored", r.stdout)
+            self.assertFalse(Path(out).exists(),
+                             "dry run must not create the output dir")
+
+    def test_resume_flag_no_partial_starts_fresh(self):
+        # --resume with no partial run file warns and starts fresh
+        # (the subset fixture is ineligible, so the fresh run exits 3).
+        with tempfile.TemporaryDirectory() as tmp:
+            out = str(Path(tmp) / "out")
+            r = _run_cli_subprocess(
+                out, "--resume", "--families", "state_poisoning",
+            )
+            self.assertEqual(r.returncode, 3)
+            self.assertIn("no partial run", r.stderr)
+            self.assertIn("starting fresh", r.stderr)
+
+    def test_flag_values_plumbed_to_run_suite(self):
+        # Unit-level: the accepted values reach run_suite as the matching
+        # kwargs (the e2e tests above prove acceptance; this proves
+        # plumbing, which an acceptance-only assertion cannot see).
+        with tempfile.TemporaryDirectory() as tmp:
+            parser = build_parser()
+            args = parser.parse_args([
+                "run", "--adapter", "mock", "--suite", "trial-demo",
+                "--out", tmp, "--seed", "42", "--max-attempts", "2",
+                "--call-timeout", "60", "--max-concurrency", "2",
+            ])
+            with mock.patch(
+                "peira.cli.run_suite",
+                return_value=_fake_artifact(eligible=False),
+            ) as m_run, mock.patch(
+                "peira.cli._write_final_artifact",
+            ), mock.patch(
+                "peira.cli._print_run_summary",
+            ):
+                cmd_run(args)
+            _, kwargs = m_run.call_args
+            self.assertEqual(kwargs["max_attempts"], 2)
+            self.assertEqual(kwargs["call_timeout"], 60.0)
+            self.assertEqual(kwargs["max_concurrency"], 2)
 
     def test_max_concurrency_zero_rejected(self):
         # --max-concurrency < 1 is rejected with exit 1 and a clear message.
