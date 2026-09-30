@@ -37,6 +37,7 @@ Everything in `docs/`, organized by what you are trying to do. Pick a path, or b
 - [Severity-Rubric](Severity-Rubric.md): consequence-based severity tiers, for case authors.
 - [Threat-Model](Threat-Model.md): what peira measures, and what it explicitly does not.
 - [Claims](Claims.md): what peira claims, what it does not, and what is still unverified.
+- [Submission-Disclosure](Submission-Disclosure.md): what peira measures and does not, the training-exclusion disclosure field, operator responsibilities, the blind-holdout protocol, and the annual transparency note.
 - [Hardware](Hardware.md): hardware guidance per adapter tier.
 
 **Build** (datasets and project mechanics):
@@ -44,6 +45,7 @@ Everything in `docs/`, organized by what you are trying to do. Pick a path, or b
 - [Dataset](Dataset.md): the authoring pipeline (templates, gates, review queue, manifests, versioning).
 - [Holdout-OpSec](Holdout-OpSec.md): the private holdout's operating rules (access, the contamination rule, freshness and rotation).
 - [Holdout-Ranking-Design](Holdout-Ranking-Design.md): CI re-execution against the holdout, divergence reporting, gaming policy.
+- [Refresh-Burn-Retirement-Policy](Refresh-Burn-Retirement-Policy.md): the refresh cadence and changelog, the two burn triggers, per-family saturation and retirement, and the pre-registered monthly analysis plan.
 - [Compatibility](Compatibility.md): package vs dataset versioning (what works today, what is planned).
 - [Decisions](Decisions.md): architecture decision records, D-1 onward.
 
