@@ -1,0 +1,184 @@
+{
+  "@context": {
+    "@language": "en",
+    "@vocab": "https://schema.org/",
+    "citeAs": "cr:citeAs",
+    "column": "cr:column",
+    "conformsTo": "dct:conformsTo",
+    "cr": "http://mlcommons.org/croissant/",
+    "data": {
+      "@id": "cr:data",
+      "@type": "@json"
+    },
+    "dataType": {
+      "@id": "cr:dataType",
+      "@type": "@vocab"
+    },
+    "dct": "http://purl.org/dc/terms/",
+    "examples": {
+      "@id": "cr:examples",
+      "@type": "@json"
+    },
+    "extract": "cr:extract",
+    "field": "cr:field",
+    "fileObject": "cr:fileObject",
+    "fileProperty": "cr:fileProperty",
+    "fileSet": "cr:fileSet",
+    "format": "cr:format",
+    "includes": "cr:includes",
+    "isLiveDataset": "cr:isLiveDataset",
+    "jsonPath": "cr:jsonPath",
+    "key": "cr:key",
+    "md5": "cr:md5",
+    "parentField": "cr:parentField",
+    "path": "cr:path",
+    "rai": "http://mlcommons.org/croissant/RAI/",
+    "recordSet": "cr:recordSet",
+    "references": "cr:references",
+    "regex": "cr:regex",
+    "repeated": "cr:repeated",
+    "replace": "cr:replace",
+    "sc": "https://schema.org/",
+    "separator": "cr:separator",
+    "source": "cr:source",
+    "subField": "cr:subField",
+    "transform": "cr:transform"
+  },
+  "@id": "peira-combo",
+  "@type": "sc:Dataset",
+  "conformsTo": "http://mlcommons.org/croissant/1.0",
+  "creator": [
+    {
+      "@type": "Person",
+      "name": "peira project",
+      "url": "https://github.com/david-engelmann/peira"
+    }
+  ],
+  "datePublished": "2026-09-30T19:04:51+00:00",
+  "description": "peira-combo. Paired adversarial decision-model cases, dataset version 1.0.0.",
+  "distribution": [
+    {
+      "@id": "peira-combo/combo-dfl-ind.jsonl",
+      "@type": "cr:FileObject",
+      "contentUrl": "https://raw.githubusercontent.com/david-engelmann/peira/main/dataset/combo/cases/combo-dfl-ind.jsonl",
+      "description": "400 paired adversarial decision cases (peira-combo 1.0.0).",
+      "encodingFormat": "application/x-ndjson",
+      "name": "combo-dfl-ind.jsonl",
+      "sha256": "724a548ccc943c005eebadde9ffa1ffd46e26e3a2ef6967a4066b574b45cc73a"
+    },
+    {
+      "@id": "peira-combo/combo-san-csp.jsonl",
+      "@type": "cr:FileObject",
+      "contentUrl": "https://raw.githubusercontent.com/david-engelmann/peira/main/dataset/combo/cases/combo-san-csp.jsonl",
+      "description": "400 paired adversarial decision cases (peira-combo 1.0.0).",
+      "encodingFormat": "application/x-ndjson",
+      "name": "combo-san-csp.jsonl",
+      "sha256": "b1fdd50beb90ede6fc6f47e74c77ff3ee4a78aa61d87394bbf99139ae556e358"
+    }
+  ],
+  "keywords": [
+    "adversarial robustness",
+    "decision models",
+    "benchmark",
+    "AI safety",
+    "jailbreak"
+  ],
+  "license": "https://creativecommons.org/licenses/by/4.0/deed.en",
+  "name": "peira-combo",
+  "recordSet": [
+    {
+      "@id": "peira-combo/paired_cases",
+      "@type": "cr:RecordSet",
+      "description": "One record per line of each JSONL distribution file. Each line is a benign decision variant paired with its attacked variant.",
+      "field": [
+        {
+          "@id": "peira-combo/paired_cases/case_id",
+          "@type": "cr:Field",
+          "dataType": "sc:Text",
+          "description": "Stable case identifier, e.g. v1-spo-001.",
+          "name": "case_id"
+        },
+        {
+          "@id": "peira-combo/paired_cases/family",
+          "@type": "cr:Field",
+          "dataType": "sc:Text",
+          "description": "Attack family id from the peira taxonomy.",
+          "name": "family"
+        },
+        {
+          "@id": "peira-combo/paired_cases/primitive",
+          "@type": "cr:Field",
+          "dataType": "sc:Text",
+          "description": "Decision primitive, either choice, score, or abstain.",
+          "name": "primitive"
+        },
+        {
+          "@id": "peira-combo/paired_cases/severity",
+          "@type": "cr:Field",
+          "dataType": "sc:Text",
+          "description": "Consequence-based severity, either critical, high, medium, or low.",
+          "name": "severity"
+        },
+        {
+          "@id": "peira-combo/paired_cases/benign.input.prompt",
+          "@type": "cr:Field",
+          "dataType": "sc:Text",
+          "description": "The unattacked decision prompt.",
+          "name": "benign.input.prompt"
+        },
+        {
+          "@id": "peira-combo/paired_cases/benign.input.options",
+          "@type": "cr:Field",
+          "dataType": "sc:Text",
+          "description": "The explicit decision vocabulary.",
+          "name": "benign.input.options"
+        },
+        {
+          "@id": "peira-combo/paired_cases/benign.expected_decision",
+          "@type": "cr:Field",
+          "dataType": "sc:Text",
+          "description": "Gold decision on the benign variant.",
+          "name": "benign.expected_decision"
+        },
+        {
+          "@id": "peira-combo/paired_cases/attacked.input.prompt",
+          "@type": "cr:Field",
+          "dataType": "sc:Text",
+          "description": "The attacked decision prompt.",
+          "name": "attacked.input.prompt"
+        },
+        {
+          "@id": "peira-combo/paired_cases/attacked.target_decision",
+          "@type": "cr:Field",
+          "dataType": "sc:Text",
+          "description": "Decision the attacker tries to induce, or null when the attack only tries to change the decision.",
+          "name": "attacked.target_decision"
+        },
+        {
+          "@id": "peira-combo/paired_cases/provenance",
+          "@type": "cr:Field",
+          "dataType": "sc:Thing",
+          "description": "Optional PROV-style object with generated_by, generated_at, was_derived_from, and was_attributed_to.",
+          "name": "provenance"
+        },
+        {
+          "@id": "peira-combo/paired_cases/evaluation_only",
+          "@type": "cr:Field",
+          "dataType": "sc:Boolean",
+          "description": "True. Benchmark data, never train on it.",
+          "name": "evaluation_only"
+        },
+        {
+          "@id": "peira-combo/paired_cases/do_not_train",
+          "@type": "cr:Field",
+          "dataType": "sc:Boolean",
+          "description": "True. Exclude from training corpora.",
+          "name": "do_not_train"
+        }
+      ],
+      "name": "paired_cases"
+    }
+  ],
+  "url": "https://github.com/david-engelmann/peira",
+  "version": "1.0.0"
+}

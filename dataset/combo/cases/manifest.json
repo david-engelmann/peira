@@ -1,0 +1,43 @@
+{
+  "case_schema": "combo",
+  "created_utc": "2026-09-30T19:04:51+00:00",
+  "dataset": "peira-combo",
+  "dataset_version": "1.0.0",
+  "files": {
+    "combo-dfl-ind.jsonl": {
+      "kind": "cases",
+      "n_by_family": {
+        "combo-dfl-ind": 400
+      },
+      "n_by_primitive": {
+        "choice": 400
+      },
+      "n_by_severity": {
+        "critical": 80,
+        "high": 120,
+        "low": 80,
+        "medium": 120
+      },
+      "n_cases": 400,
+      "sha256": "724a548ccc943c005eebadde9ffa1ffd46e26e3a2ef6967a4066b574b45cc73a"
+    },
+    "combo-san-csp.jsonl": {
+      "kind": "cases",
+      "n_by_family": {
+        "combo-san-csp": 400
+      },
+      "n_by_primitive": {
+        "choice": 400
+      },
+      "n_by_severity": {
+        "critical": 80,
+        "high": 112,
+        "low": 84,
+        "medium": 124
+      },
+      "n_cases": 400,
+      "sha256": "b1fdd50beb90ede6fc6f47e74c77ff3ee4a78aa61d87394bbf99139ae556e358"
+    }
+  },
+  "generator": "peira 0.1.0"
+}
