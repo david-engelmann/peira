@@ -652,6 +652,28 @@ class TestReportSection(unittest.TestCase):
             _envelope_line({"calibration_envelope":
                             {"sufficient": True, "max_gap": 0.05}}), "")
 
+    def test_envelope_line_omits_malformed_numbers(self):
+        # C-3: a loaded artifact can set sufficient=true with a string,
+        # bool, or non-finite max_gap/threshold_at_max_gap (from_json
+        # validates the metrics dict shape, not nested envelope fields).
+        # The headline is omitted, never a malformed published claim.
+        from peira.cli import _envelope_line
+        for bad in ("0.05", True, float("nan"), float("inf"),
+                    float("-inf")):
+            self.assertEqual(
+                _envelope_line({"calibration_envelope":
+                                {"sufficient": True, "max_gap": bad,
+                                 "threshold_at_max_gap": 0.5}}), "")
+            self.assertEqual(
+                _envelope_line({"calibration_envelope":
+                                {"sufficient": True, "max_gap": 0.05,
+                                 "threshold_at_max_gap": bad}}), "")
+        # Well-formed numbers still render.
+        line = _envelope_line({"calibration_envelope":
+                               {"sufficient": True, "max_gap": 0.05,
+                                "threshold_at_max_gap": 0.5}})
+        self.assertIn("Calibration envelope (upper bound)", line)
+
     def test_envelope_svg_draws_recalibrated_curve(self):
         from peira.cli import _nb_curve_svg
         block = self._summary()["net_benefit"]["attacked"]

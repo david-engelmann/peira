@@ -678,8 +678,9 @@ attacked arm's net-benefit summary. It holds `envelope`, per-threshold
 `gap`, `max_gap` at `threshold_at_max_gap`, and an `interpretation`
 field set to `"upper bound"`. Like the rest of the block, it is
 withheld below 30 analyzed cases. It is also withheld when any
-attacked-arm confidence falls outside [0, 1], so a hostile artifact
-can never crash the report. `peira report` draws the envelope on
+attacked-arm confidence falls outside [0, 1]. An out-of-range
+confidence withholds the envelope. It does not raise an error.
+`peira report` draws the envelope on
 the attacked-arm decision curve and prints the headline.
 
 Functions (`peira.metrics`, Python-only, no Rust port):

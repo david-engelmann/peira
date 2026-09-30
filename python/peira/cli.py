@@ -929,6 +929,16 @@ def _envelope_line(b: dict) -> str:
     at = env.get("threshold_at_max_gap")
     if max_gap is None or at is None:
         return ""
+    # Loaded artifacts can carry non-numeric envelope values: from_json
+    # validates the metrics dict shape, not nested envelope fields, and
+    # the metrics producer's trusted numbers are not the only way a
+    # block gets built. Omit the headline rather than publish a
+    # malformed claim ("nan"/"inf" via _num, raw strings via _val).
+    for v in (max_gap, at):
+        if isinstance(v, bool) or not isinstance(v, (int, float)):
+            return ""
+        if not math.isfinite(v):
+            return ""
     return (
         "<p>Calibration envelope (upper bound). At most "
         f"{_val(max_gap)} net caught bad outputs per case are "

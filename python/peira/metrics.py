@@ -3943,6 +3943,9 @@ def _calibration_envelope_block(
     # The headline is an "at most X recoverable" claim: a negative max
     # gap would be nonsense, so the headline never goes below zero.
     # Per-threshold gaps keep their raw (possibly negative) values.
+    # The clamp is defensive: the in-sample isotonic fit makes a
+    # negative max gap structurally unreachable, but the headline
+    # must never print one even if the fit ever changes.
     block.update({
         "sufficient": True,
         "envelope": [[pt, _round4(nb)] for pt, nb in envelope],
