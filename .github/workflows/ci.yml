@@ -86,6 +86,9 @@ jobs:
       - run: python3 scripts/gen_cli_reference.py --check docs/CLI.md
       # The family registry and docs/Taxonomy.md must never drift.
       - run: python3 scripts/check_families.py
+      # Docs pins of the Trial manifest version must match
+      # dataset/trial/manifest.json (PR #201 missed one).
+      - run: python3 scripts/check_trial_version_pins.py
 
   coderabbit-config:
     # CodeRabbit is advisory step 0: it must never block merges. This job
