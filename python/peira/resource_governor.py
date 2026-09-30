@@ -68,7 +68,7 @@ class ResourceGovernor:
         self.validate()
 
     def validate(self) -> None:
-        """Raise ValueError for non-positive limits."""
+        """Raise ValueError for non-positive or wrongly-typed limits."""
         for name, value in (
             ("cpu_seconds", self.cpu_seconds),
             ("as_mb", self.as_mb),
@@ -77,6 +77,10 @@ class ResourceGovernor:
         ):
             if value is not None and value <= 0:
                 raise ValueError(f"{name} must be > 0, got {value}")
+        if self.nproc is not None and (
+            isinstance(self.nproc, bool) or not isinstance(self.nproc, int)
+        ):
+            raise ValueError(f"nproc must be an integer, got {self.nproc!r}")
 
     @property
     def configured(self) -> bool:
@@ -146,13 +150,31 @@ class ResourceGovernor:
         is safe here because the child is a fresh process whose UID
         accounting starts from the child's own subprocess tree.
 
+        The returned closure refuses to run in the process that created
+        it (checked via pid): ``RLIMIT_NPROC`` counts per UID, so
+        applying it to the runner would throttle the operator's whole
+        session. It must only ever run as ``preexec_fn``, after fork.
+
         Raises RuntimeError on non-Unix platforms (no ``resource``
         module); callers should run unconfined in that case.
+
+        Thread-safety note: CPython documents ``preexec_fn`` as unsafe
+        in multithreaded programs (fork while another thread holds a
+        lock can wedge the child before exec). The runner dispatches
+        adapter calls via ``asyncio.to_thread``; the guard's preexec
+        body does no locking itself, but a wedged child is possible in
+        principle. The subprocess ``timeout`` bounds the damage.
         """
         self._require_resource()
+        parent_pid = os.getpid()
         gov = self
 
         def _preexec() -> None:
+            if os.getpid() == parent_pid:
+                raise RuntimeError(
+                    "ResourceGovernor child_preexec closure must only run "
+                    "as preexec_fn in a forked child, not in the parent"
+                )
             import resource
 
             gov._apply_limits(

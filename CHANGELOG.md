@@ -18,6 +18,8 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
   children (SemIf) via `preexec_fn`. It is never applied to the runner
   itself, since `RLIMIT_NPROC` counts per UID.
 - New `peira run --rlimit-nproc` flag (positive integer, Unix only).
+- New `peira run --death-log PATH` flag: arms the governor's
+  SIGTERM/SIGINT "last words" handler for the run.
 - `ResourceGovernor.install_death_handlers(path)` arms SIGTERM/SIGINT
   handlers that write a "last words" JSON record before the process
   dies, making the next unexplained process death (like the 2026-09-27

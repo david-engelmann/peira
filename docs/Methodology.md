@@ -1743,7 +1743,8 @@ calls with no error trail and no OOM signature, and the cause was never
 determined. `ResourceGovernor.install_death_handlers(path)` arms
 SIGTERM/SIGINT handlers that append a "last words" JSON record to
 `path` before the process dies, so the next such incident leaves
-evidence. SIGKILL cannot be caught by definition. A death with no
+evidence. Wire it via `peira run --death-log PATH` (recommended for
+long unattended runs). SIGKILL cannot be caught by definition. A death with no
 last-words record and no traceback points at an external kill
 (OOM-killer, parent death, machine restart), and the operator should
 check `dmesg` and the parent process's logs.

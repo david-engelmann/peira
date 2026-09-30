@@ -550,6 +550,16 @@ def _apply_rlimits(
     """
     from peira.resource_governor import ResourceGovernor
 
+    # Validate with the historical parameter names so the ValueError
+    # text matches what this helper always raised; ResourceGovernor
+    # re-validates with its own names (harmless, same exception type).
+    for name, value in (
+        ("rlimit_cpu_seconds", cpu_seconds),
+        ("rlimit_as_mb", as_mb),
+        ("rlimit_fsize_mb", fsize_mb),
+    ):
+        if value is not None and value <= 0:
+            raise ValueError(f"{name} must be > 0, got {value}")
     ResourceGovernor(
         cpu_seconds=cpu_seconds, as_mb=as_mb, fsize_mb=fsize_mb
     ).apply()
@@ -2492,6 +2502,7 @@ def run_suite(
     rlimit_as_mb: float | None = None,
     rlimit_fsize_mb: float | None = None,
     rlimit_nproc: int | None = None,
+    death_log_path: Path | str | None = None,
     run_nonce: str | None = None,
     budget_usd: float | None = None,
     item_timeout: float | None = None,
@@ -2526,7 +2537,10 @@ def run_suite(
     ``rlimit_nproc`` caps the process count for subprocess adapter
     children only (RLIMIT_NPROC counts per UID, so it is never applied
     to the runner itself); see docs/Threat-Model.md and
-    ``peira.resource_governor``.
+    ``peira.resource_governor``. ``death_log_path`` arms the governor's
+    SIGTERM/SIGINT "last words" handler, appending a JSON record to the
+    given path if the runner is terminated (opt-in; recommended for
+    long unattended runs).
     ``cache_dir`` enables the opt-in response cache; ``transcript_path``
     enables JSONL transcript logging. ``config_extra`` is merged into
     the artifact config (used by ``peira replay`` for provenance).
@@ -2595,7 +2609,6 @@ def run_suite(
         nproc=rlimit_nproc,
         fsize_mb=rlimit_fsize_mb,
     )
-    _governor_token = set_active_governor(_governor if _governor.configured else None)
     if budget_usd is not None:
         if isinstance(budget_usd, bool) or not isinstance(
             budget_usd, (int, float)
@@ -2636,6 +2649,14 @@ def run_suite(
     pricing_table = load_pricing_table()
     from peira.resource_governor import reset_active_governor
 
+    # Installed inside the try so every exit path (including validation
+    # errors above) resets it: a leaked governor would apply a stale
+    # nproc guard to later subprocess calls in this process.
+    _governor_token = set_active_governor(_governor if _governor.configured else None)
+    if death_log_path is not None:
+        # Arm the "last words" handler so a SIGTERM/SIGINT death leaves
+        # a JSON record (signal, pid, timestamp) at death_log_path.
+        _governor.install_death_handlers(death_log_path)
     try:
         return asyncio.run(
             _run_suite_async(
@@ -2681,6 +2702,7 @@ def run_multiseed(
     rlimit_as_mb: float | None = None,
     rlimit_fsize_mb: float | None = None,
     rlimit_nproc: int | None = None,
+    death_log_path: Path | str | None = None,
     budget_usd: float | None = None,
     build_adapter: Callable[[int, str], Any] | None = None,
     required_families: list[str] | None = None,
@@ -2764,6 +2786,7 @@ def run_multiseed(
                 rlimit_as_mb=rlimit_as_mb,
                 rlimit_fsize_mb=rlimit_fsize_mb,
                 rlimit_nproc=rlimit_nproc,
+                death_log_path=death_log_path,
                 run_nonce=run_nonce,
                 budget_usd=per_run_budget,
                 cache_dir=cache_dir,

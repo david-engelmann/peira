@@ -656,6 +656,7 @@ def cmd_run(args: argparse.Namespace) -> int:
                 rlimit_as_mb=getattr(args, "rlimit_as_mb", None),
                 rlimit_fsize_mb=getattr(args, "rlimit_fsize_mb", None),
                 rlimit_nproc=getattr(args, "rlimit_nproc", None),
+                death_log_path=getattr(args, "death_log", None),
                 budget_usd=budget_usd,
                 item_timeout=item_timeout,
                 run_timeout=run_timeout,
@@ -754,6 +755,7 @@ def _cmd_run_multiseed(
         rlimit_as_mb=getattr(args, "rlimit_as_mb", None),
         rlimit_fsize_mb=getattr(args, "rlimit_fsize_mb", None),
         rlimit_nproc=getattr(args, "rlimit_nproc", None),
+        death_log_path=getattr(args, "death_log", None),
         budget_usd=budget_usd,
         build_adapter=build_adapter,
         required_families=suite_families,
@@ -4336,6 +4338,11 @@ def build_parser() -> argparse.ArgumentParser:
                    "children (fork-bomb guard; Unix only, opt-in, no "
                    "limit by default; never applied to the runner "
                    "itself)")
+    r.add_argument("--death-log", default=None,
+                   help="path for the governor's SIGTERM/SIGINT 'last "
+                   "words' JSON record (opt-in; recommended for long "
+                   "unattended runs so an unexplained death leaves "
+                   "evidence)")
     r.add_argument("--budget-usd", type=float, default=None,
                    help="hard spend cap in USD: the runner projects "
                    "spent + running-mean-case-cost x 1.5 before each new "

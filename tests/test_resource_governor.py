@@ -66,10 +66,14 @@ class TestValidation(unittest.TestCase):
             with self.subTest(kwargs=kwargs), self.assertRaises(ValueError):
                 ResourceGovernor(**kwargs)
 
-    def test_nproc_must_be_int_sized(self):
-        # nproc is a process count: 1 is the smallest sane value.
+    def test_nproc_must_be_positive_int(self):
+        # nproc is a process count: positive integer only.
         with self.assertRaises(ValueError):
             ResourceGovernor(nproc=0)
+        with self.assertRaises(ValueError):
+            ResourceGovernor(nproc=2.5)
+        with self.assertRaises(ValueError):
+            ResourceGovernor(nproc=True)
 
 
 class TestApplyInChild(unittest.TestCase):
@@ -134,6 +138,14 @@ class TestApplyInChild(unittest.TestCase):
         # kills the process immediately. math.ceil gives (1, 1).
         self.assertEqual(proc.stdout.strip(), "(1, 1)")
 
+    def test_child_preexec_refuses_parent_process(self):
+        # The closure must only run after fork (as preexec_fn). Calling
+        # it in the creating process would apply per-UID NPROC to the
+        # operator's session; the pid guard makes that a loud error.
+        preexec = ResourceGovernor(nproc=16).child_preexec()
+        with self.assertRaises(RuntimeError):
+            preexec()
+
     def test_snapshot_reports_current_limits(self):
         g = ResourceGovernor(cpu_seconds=30)
         snap = g.snapshot()
@@ -176,6 +188,39 @@ class TestDeathHandlers(unittest.TestCase):
         # install_death_handlers only arms SIGTERM and SIGINT.
         with self.assertRaises((OSError, RuntimeError, ValueError)):
             signal.signal(signal.SIGKILL, lambda s, f: None)
+
+    def test_death_log_path_arms_handler_in_run(self):
+        # run_suite(death_log_path=...) must actually arm the handler:
+        # a SIGTERM mid-run leaves a last-words record. Uses a child
+        # process so the test runner itself is never signalled.
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "death.jsonl")
+            proc = _run_child(
+                "import signal, time\n"
+                "from peira import runner as r\n"
+                "from peira.runner import Case\n"
+                "from peira.schema import BenignVariant, AttackedVariant\n"
+                "cases = [Case(case_id='c', family='f', primitive='choice',\n"
+                "    severity='low',\n"
+                "    benign=BenignVariant(input={'t': 'b'},\n"
+                "        expected_decision='approve'),\n"
+                "    attacked=AttackedVariant(input={'t': 'a'}))]\n"
+                "class A:\n"
+                "    name = 'a'\n"
+                "    def __call__(self, c):\n"
+                "        time.sleep(30)\n"
+                "        return {'ok': True}\n"
+                "import threading\n"
+                "t = threading.Timer(1.0, lambda: "
+                "__import__('os').kill(__import__('os').getpid(), "
+                "signal.SIGTERM))\n"
+                "t.start()\n"
+                f"r.run_suite(A(), cases, 's', 'v', death_log_path={path!r})\n"
+            )
+            self.assertEqual(proc.returncode, -signal.SIGTERM, proc.stderr)
+            record = json.loads(Path(path).read_text().strip())
+            self.assertEqual(record["event"], "peira_last_words")
+            self.assertEqual(record["signal"], "SIGTERM")
 
 
 class TestActiveGovernor(unittest.TestCase):
