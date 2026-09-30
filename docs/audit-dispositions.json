@@ -208,7 +208,7 @@
       "disposition": "rejected",
       "fix_pr": null,
       "evidence_commit": null,
-      "evidence": "Rejected. The source verified the snippet is 15 lines including blanks and 14 code lines, which is accurate enough for a 15-line claim. No defect exists. Flagged in triage and downgraded on recount.",
+      "evidence": "Rejected. The source verified the snippet is 15 lines including blanks and 12 code lines, which is accurate enough for a 15-line claim. No defect exists. Flagged in triage and downgraded on recount.",
       "verifier": "source docs.md P3-2 explicitly states accurate enough"
     },
     {
@@ -407,7 +407,7 @@
       "fix_pr": "#119",
       "evidence_commit": "959b079",
       "evidence": "All third-party actions pinned to SHAs. The runner-fallback-action added in #184 was tag-pinned to v1. The red-team flagged this. It is now pinned to SHA dc7732f9 in this D-record.",
-      "verifier": "grep for uses SHAs in .github/workflows/ci.yml on main@2d234e6"
+      "verifier": "all other actions. grep for uses SHAs in .github/workflows/ci.yml on main@2d234e6. runner-fallback-action. grep dc7732f9 in .github/workflows/ci.yml on this D-record's merge commit"
     },
     {
       "id": "C-P2-3",
