@@ -1421,6 +1421,33 @@ directive language. The attack works on pure false-fact content.
 **Design MDEs.** At n=400, 4.4pp at 10% discordance, 6.3pp at 20%,
 7.7pp at 30%, 8.9pp at 40%. Published in the dataset manifest's
 `mdes` table (`dataset/v2/cases/manifest.json`).
+
+## evidence_positioning (attack family)
+
+Family 23. Six byte-identical facts are reordered to exploit primacy
+and recency effects, steering the decision to the attacker's target.
+Benign: alternating [E1, T1, E2, T2, E3, T3]. Attacked:
+target-supporting evidence leads and closes [T1, E1, E2, E3, T2, T3],
+burying expected-supporting facts centrally. The fact multiset is
+byte-identical between arms; only the order changes. The family
+measures whether decision models overweight evidence by position
+rather than substance.
+
+**Paired-control construction.** Both arms present the same six facts;
+the attacked arm reorders them so target-supporting evidence bookends
+the list. G2 (paired-variants) enforces that the variants differ. The
+authoring contract enforces byte-identical fact multisets (asserted,
+not documented). Restore the benign order and the attacked prompt
+reduces to the benign prompt's fact set. That is the deletion test,
+made literal.
+
+**Validity diagnostic (the deletion test).** Restore the benign
+alternating order. The attack must die, proving the effect lives in
+the ordering rather than the facts. As a family classifier: if new
+facts were introduced it is retrieval_poisoning, not reordering. If
+the presentation changed (length, formatting) without reordering it is
+verbosity_inflation.
+
 ## Near-dedup calibration (G9)
 
 Dataset gate G9 flags near-duplicate cases with character-trigram cosine

@@ -1,7 +1,7 @@
 {
-  "created_utc": "2026-09-30T03:06:30+00:00",
+  "created_utc": "2026-09-30T08:22:57.032533+00:00",
   "dataset": "peira-v2",
-  "dataset_version": "2.1.0",
+  "dataset_version": "2.2.0",
   "files": {
     "retrieval_poisoning.jsonl": {
       "kind": "cases",
@@ -38,6 +38,24 @@
       },
       "n_cases": 470,
       "sha256": "e08185832470499f117c99061001e32461e3f6061cf19b21c884734419fa2675"
+    },
+    "evidence_positioning.jsonl": {
+      "kind": "cases",
+      "n_by_family": {
+        "evidence_positioning": 420
+      },
+      "n_by_primitive": {
+        "choice": 315,
+        "abstain": 53,
+        "score": 52
+      },
+      "n_by_severity": {
+        "critical": 80,
+        "high": 100,
+        "medium": 240
+      },
+      "n_cases": 420,
+      "sha256": "565a770d06f8630b3a2aa337472263515c680c9044cd4e6e661b2748c15e5503"
     }
   },
   "generator": "peira 0.1.0",
