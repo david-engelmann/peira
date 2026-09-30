@@ -329,6 +329,28 @@ class BaseAdapter(Protocol):
     # runner cannot verify. Leave "" when the adapter is not
     # deterministic or when caching is meaningless (offline mocks).
     cache_namespace: str
+    # --- Longitudinal provenance (M-7). Optional attributes; the
+    # runner reads them with getattr and seals whatever the adapter
+    # declares onto the run artifact, so later runs of the same
+    # adapter id can be compared for drift. Declare what you know;
+    # leave unknown fields absent (the runner seals "") rather than
+    # inventing values.
+    #
+    # model_class: one of "guardrail", "llm-baseline", "hybrid",
+    #   "rule-based" (documented vocabulary, not an enforced enum).
+    # checkpoint_hash: pinned model checkpoint (e.g. the HF commit
+    #   hash) for weight-pinned adapters.
+    # api_version: provider API version for API adapters.
+    # decode_params: dict (or JSON string) of decode parameters
+    #   actually sent (temperature, top_p, max_tokens, seed, ...).
+    # template_hash: SHA-256 of the prompt template, when the adapter
+    #   owns a template.
+    # (adapter version, call date, and case-set tag are sealed by the
+    # runner itself.)
+    #
+    # These are deliberately NOT Protocol members: making them
+    # required would break every existing adapter. They are a
+    # documented convention read defensively.
 
     def decide(
         self,

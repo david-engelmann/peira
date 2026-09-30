@@ -252,9 +252,10 @@ class TestCaseResultsTable(unittest.TestCase):
                                         tokens_in=True, tokens_out=False)
         entry["attacked"]["usage"] = dict(entry["attacked"]["usage"],
                                           tokens_in=True, tokens_out=False)
-        ti, to, _, _ = _case_usage_totals(entry)
+        ti, to, _, _, rt = _case_usage_totals(entry)
         self.assertEqual(ti, 0)
         self.assertEqual(to, 0)
+        self.assertIsNone(rt)
 
     def test_score_delta_score_primitive_only(self):
         from peira.runs_registry import _score_delta

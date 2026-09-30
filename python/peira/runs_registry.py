@@ -841,6 +841,14 @@ def list_runs(
     dataset_version: str | None = None,
     cache_enabled: bool | None = None,
     termination: str | None = None,
+    # M-7 longitudinal filters: key a rerun comparison on the exact
+    # provenance that makes two runs comparable.
+    model_class: str | None = None,
+    checkpoint_hash: str | None = None,
+    api_version: str | None = None,
+    call_date: str | None = None,
+    template_hash: str | None = None,
+    case_set_tag: str | None = None,
     effort: str | None = None,
     effort_tier: str | None = None,
 ) -> list[dict[str, Any]]:
@@ -883,6 +891,18 @@ def list_runs(
         if termination is not None:
             query += " AND termination = ?"
             params.append(termination)
+        # M-7 longitudinal filters.
+        for column, value in (
+            ("model_class", model_class),
+            ("checkpoint_hash", checkpoint_hash),
+            ("api_version", api_version),
+            ("call_date", call_date),
+            ("template_hash", template_hash),
+            ("case_set_tag", case_set_tag),
+        ):
+            if value is not None:
+                query += f" AND {column} = ?"
+                params.append(value)
         if effort is not None:
             query += " AND effort = ?"
             params.append(effort)
