@@ -212,12 +212,6 @@ cases (for example different suite slices, or a truncated run that
 slipped past the termination check). Agreement needs the same case
 set in every seed. Fix: run all seeds over the same suite and
 dataset version.
-Cause: `peira stability` was given a run artifact whose `termination`
-is not `"complete"` (for example `"budget"` after the spend cap
-stopped the run). A truncated run has no outcome for the missing
-cases, and counting them as non-flips would fake agreement. Fix:
-re-run the truncated seed to completion, or drop it and run
-`peira stability` over the completed seeds only.
 
 **`error: drift-watch compares runs of the same adapter id: <old> is 'A', <new> is 'B'`**
 Cause: `peira drift-watch` was given two runs from different
