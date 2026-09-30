@@ -62,7 +62,7 @@ class ResourceGovernor:
     as_mb: float | None = None
     nproc: int | None = None
     fsize_mb: float | None = None
-    _death_handler_path: str | None = field(default=None, repr=False)
+    _death_handler_path: str | None = field(default=None, repr=False, init=False)
 
     def __post_init__(self) -> None:
         self.validate()
@@ -96,6 +96,35 @@ class ResourceGovernor:
             ) from e
         return resource
 
+    @staticmethod
+    def _apply_limits(resource, cpu_seconds, as_mb, nproc, fsize_mb) -> None:
+        """Apply the given limits via ``resource.setrlimit``.
+
+        Shared by :meth:`apply` (current process, no nproc) and the
+        :meth:`child_preexec` closure (child process, with nproc).
+        Fractional values round *up* to the limit's granularity.
+        """
+        if cpu_seconds is not None:
+            # Soft and hard set together: SIGXCPU on the soft limit,
+            # SIGKILL on the hard limit one second later. RLIMIT_CPU
+            # counts whole seconds, so round up: truncating 0.5 to 0
+            # would SIGKILL the process immediately.
+            secs = math.ceil(cpu_seconds)
+            resource.setrlimit(resource.RLIMIT_CPU, (secs, secs))
+        if as_mb is not None:
+            # RLIMIT_AS caps virtual address space in bytes. Note
+            # RLIMIT_RSS is unenforced on Linux, so AS is the working knob.
+            as_bytes = math.ceil(as_mb * 1024 * 1024)
+            resource.setrlimit(resource.RLIMIT_AS, (as_bytes, as_bytes))
+        if nproc is not None:
+            resource.setrlimit(resource.RLIMIT_NPROC, (nproc, nproc))
+        if fsize_mb is not None:
+            # RLIMIT_FSIZE caps any single file write in bytes
+            # (EFBIG/SIGXFSZ past the limit): bounds runaway transcript
+            # or cache writes.
+            fsize_bytes = math.ceil(fsize_mb * 1024 * 1024)
+            resource.setrlimit(resource.RLIMIT_FSIZE, (fsize_bytes, fsize_bytes))
+
     def apply(self) -> None:
         """Apply the CPU/AS/FSIZE backstops to the current process.
 
@@ -106,22 +135,9 @@ class ResourceGovernor:
         if not self.configured:
             return
         resource = self._require_resource()
-        if self.cpu_seconds is not None:
-            # Soft and hard set together: SIGXCPU on the soft limit,
-            # SIGKILL on the hard limit one second later. RLIMIT_CPU
-            # counts whole seconds, so round up: truncating 0.5 to 0
-            # would SIGKILL the runner immediately.
-            secs = math.ceil(self.cpu_seconds)
-            resource.setrlimit(resource.RLIMIT_CPU, (secs, secs))
-        if self.as_mb is not None:
-            as_bytes = math.ceil(self.as_mb * 1024 * 1024)
-            resource.setrlimit(resource.RLIMIT_AS, (as_bytes, as_bytes))
-        if self.fsize_mb is not None:
-            # RLIMIT_FSIZE caps any single file write in bytes
-            # (EFBIG/SIGXFSZ past the limit): bounds runaway transcript
-            # or cache writes.
-            fsize_bytes = math.ceil(self.fsize_mb * 1024 * 1024)
-            resource.setrlimit(resource.RLIMIT_FSIZE, (fsize_bytes, fsize_bytes))
+        self._apply_limits(
+            resource, self.cpu_seconds, self.as_mb, None, self.fsize_mb
+        )
 
     def child_preexec(self):
         """Return a ``preexec_fn`` applying all limits in a child process.
@@ -134,37 +150,31 @@ class ResourceGovernor:
         module); callers should run unconfined in that case.
         """
         self._require_resource()
-        cpu_seconds = self.cpu_seconds
-        as_mb = self.as_mb
-        nproc = self.nproc
-        fsize_mb = self.fsize_mb
+        gov = self
 
         def _preexec() -> None:
             import resource
 
-            if cpu_seconds is not None:
-                secs = math.ceil(cpu_seconds)
-                resource.setrlimit(resource.RLIMIT_CPU, (secs, secs))
-            if as_mb is not None:
-                as_bytes = math.ceil(as_mb * 1024 * 1024)
-                resource.setrlimit(resource.RLIMIT_AS, (as_bytes, as_bytes))
-            if nproc is not None:
-                resource.setrlimit(resource.RLIMIT_NPROC, (nproc, nproc))
-            if fsize_mb is not None:
-                fsize_bytes = math.ceil(fsize_mb * 1024 * 1024)
-                resource.setrlimit(resource.RLIMIT_FSIZE, (fsize_bytes, fsize_bytes))
+            gov._apply_limits(
+                resource, gov.cpu_seconds, gov.as_mb, gov.nproc, gov.fsize_mb
+            )
 
         return _preexec
 
     def snapshot(self) -> dict:
-        """Return the current process's rlimit values (for diagnostics)."""
+        """Return the current process's rlimit values (for diagnostics).
+
+        Keys name the rlimit; values are ``(soft, hard)`` in the
+        limit's native units (seconds for CPU, bytes for AS/FSIZE,
+        count for NPROC) — not the constructor's MB units.
+        """
         resource = self._require_resource()
         out = {}
         for attr, name in (
-            ("RLIMIT_CPU", "cpu_seconds"),
-            ("RLIMIT_AS", "as_mb"),
+            ("RLIMIT_CPU", "cpu"),
+            ("RLIMIT_AS", "as_bytes"),
             ("RLIMIT_NPROC", "nproc"),
-            ("RLIMIT_FSIZE", "fsize_mb"),
+            ("RLIMIT_FSIZE", "fsize_bytes"),
         ):
             soft, hard = resource.getrlimit(getattr(resource, attr))
             out[name] = {"soft": soft, "hard": hard}

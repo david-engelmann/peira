@@ -137,9 +137,14 @@ class TestApplyInChild(unittest.TestCase):
     def test_snapshot_reports_current_limits(self):
         g = ResourceGovernor(cpu_seconds=30)
         snap = g.snapshot()
-        self.assertIn("cpu_seconds", snap)
-        self.assertIn("soft", snap["cpu_seconds"])
-        self.assertIn("hard", snap["cpu_seconds"])
+        # Keys name the rlimit in native units (seconds/bytes/count),
+        # not the constructor's MB units.
+        self.assertIn("cpu", snap)
+        self.assertIn("as_bytes", snap)
+        self.assertIn("nproc", snap)
+        self.assertIn("fsize_bytes", snap)
+        self.assertIn("soft", snap["cpu"])
+        self.assertIn("hard", snap["cpu"])
 
 
 class TestDeathHandlers(unittest.TestCase):
