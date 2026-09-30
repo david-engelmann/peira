@@ -1055,6 +1055,17 @@ def qualifies_for_leaderboard(artifact: RunArtifact) -> tuple[bool, str]:
     """
     if not artifact.verify():
         return False, "analysis lock invalid"
+    # The conversational suite is a separate suite with its own metric
+    # schema and its own (future) leaderboard tab: its rows must never
+    # be ingested as single-shot leaderboard rows. Checked first so the
+    # reason names the suite, not a downstream field.
+    from peira.conversation import CONVERSATION_SUITE_ID
+    if artifact.suite == CONVERSATION_SUITE_ID:
+        return False, (
+            "conversational suite: single-shot leaderboard columns do "
+            "not apply; the conversational leaderboard tab is not "
+            "implemented yet"
+        )
     if not artifact.manifest_sha256:
         return False, "not bound to a dataset manifest"
     if not artifact.adapter_version:

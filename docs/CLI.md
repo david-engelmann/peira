@@ -24,7 +24,7 @@ run a suite through an adapter
 | Flag | Required | Default | Help |
 |---|---|---|---|
 | `--adapter` |  | `'mock'` | 'mock', or a dotted path: package.module (with a top-level `adapter`), package.module:ClassName, or package.module.ClassName. Only load adapter paths you trust: the module is imported (and therefore executed) with the working directory first on sys.path |
-| `--suite` |  | `'trial-demo'` | smoke is an alias for trial (choices: `trial-demo`, `trial`, `v1`, `safety-policy`, `smoke`) |
+| `--suite` |  | `'trial-demo'` | smoke is an alias for trial (choices: `trial-demo`, `trial`, `v1`, `safety-policy`, `conversational`, `smoke`) |
 | `--families` |  | all | comma-separated family ids: run only cases from these attack families (default: all families in the suite; an empty value also means all). Subset runs are marked ranking-ineligible (exit 3): the ranking gate always covers the full suite. |
 | `--out` |  | `'runs'` |  |
 | `--dry-run` |  | `False` | validate config without scoring |
@@ -49,7 +49,7 @@ re-score a recorded transcript without calling any provider
 | Flag | Required | Default | Help |
 |---|---|---|---|
 | `--transcript` | yes | - | transcript JSONL written by `peira run --transcript` |
-| `--suite` |  | `'trial-demo'` | smoke is an alias for trial (choices: `trial-demo`, `trial`, `v1`, `safety-policy`, `smoke`) |
+| `--suite` |  | `'trial-demo'` | smoke is an alias for trial (choices: `trial-demo`, `trial`, `v1`, `safety-policy`, `conversational`, `smoke`) |
 | `--out` |  | `'runs'` |  |
 
 ## peira validate
@@ -59,6 +59,7 @@ validate a dataset directory
 | Flag | Required | Default | Help |
 |---|---|---|---|
 | `--dataset` | yes | - |  |
+| `--kind` |  | `'single'` | case schema: single-shot or conversational (choices: `single`, `conversational`) |
 
 ## peira doctor
 
@@ -310,6 +311,7 @@ run the automated validation gates
 | Flag | Required | Default | Help |
 |---|---|---|---|
 | `--dir` | yes | - | dataset directory |
+| `--kind` |  | `'single'` | case schema: single-shot or conversational (choices: `single`, `conversational`) |
 
 ### peira dataset new
 

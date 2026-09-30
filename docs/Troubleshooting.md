@@ -520,6 +520,35 @@ Cause: the transcript doesn't cover every case in `--suite`. It is a
 partial run's transcript, or from a different suite. Fix: replay with
 the matching `--suite`, or replay the completed run's transcript.
 
+## Conversational suite errors
+
+**`error: peira replay does not support the conversational suite in R-01 (turn-level re-execution is not implemented)`**
+This happens when `peira replay --suite conversational` is requested.
+Conversational transcripts record every turn payload, but turn-by-turn
+re-execution is not implemented in R-01, so replay refuses instead of
+half replaying. To reproduce a measurement, re-run the suite with
+`peira run --suite conversational`.
+
+**`error: adapter '<name>' cannot run the conversational suite: implement decide_turn(turn_input, primitive, context) (see docs/Conversational-Suite.md)`**
+This happens when `peira run --suite conversational` is given an adapter
+that only implements the single-shot `decide()`. Conversational
+capability is explicit. The runner never silently flattens a conversation
+into one prompt. Either run the conversational suite with an adapter that
+implements `decide_turn`, or run the single-shot suites with this adapter.
+
+**`error: peira report does not render conversational run artifacts; analyze them with the conversational metrics (peira.conversation_metrics.summarize_conversation)`**
+This happens when `peira report` is given a run artifact whose suite is
+`conversational`. The single-shot report renderer has no headline keys
+on the conversational metric schema, so it refuses instead of rendering
+wrong numbers. Analyze the artifact with
+`peira.conversation_metrics.summarize_conversation`.
+
+**`error: dashboard export does not support conversational run artifacts; analyze them with the conversational metrics (peira.conversation_metrics.summarize_conversation)`**
+This happens when `peira dashboard run` is given a conversational run
+artifact. The dashboard payload passes single-shot headline keys
+through, which do not exist on the conversational metric schema. Analyze
+the artifact with `peira.conversation_metrics.summarize_conversation`.
+
 **`interrupted; partial run saved; re-run with --resume.`**
 Cause: Ctrl-C during `peira run`. The runner checkpoints completed
 cases (and closes the transcript cleanly) before exiting, so nothing

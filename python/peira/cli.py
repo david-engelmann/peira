@@ -10,7 +10,6 @@ from __future__ import annotations
 import argparse
 import html
 import json
-import math
 import os
 import re
 import sys
@@ -217,6 +216,10 @@ def _suite_dataset_identity(suite_dir: Path) -> tuple[str, str]:
 
 def _print_run_summary(artifact, out_path: Path) -> None:
     m = artifact.metrics
+    from peira.conversation import CONVERSATION_SUITE_ID
+    if artifact.suite == CONVERSATION_SUITE_ID:
+        _print_conversation_run_summary(artifact, out_path)
+        return
     print(f"done: {m['n_cases']} cases ({m['n_eligible']} eligible)")
     if artifact.termination != "complete":
         print(f"  termination:     {artifact.termination} "
@@ -240,6 +243,52 @@ def _print_run_summary(artifact, out_path: Path) -> None:
           + (f" ({'; '.join(m['eligibility_notes'])})" if m['eligibility_notes'] else ""))
     print(f"artifact: {out_path}")
     print(f"analysis lock: {artifact.analysis_lock[:16]}…")
+
+
+def _print_conversation_run_summary(artifact, out_path: Path) -> None:
+    """Console summary for a conversational run artifact.
+
+    Reads the conversational metric schema sealed by
+    ``peira.conversation_metrics.summarize_conversation_artifact``;
+    never the single-shot keys.
+    """
+    m = artifact.metrics
+    print(f"done: {m['n_cases']} cases ({m['n_eligible']} eligible)")
+    if artifact.termination != "complete":
+        print(f"  termination:     {artifact.termination} "
+              f"({artifact.cases_completed}/{artifact.cases_planned} cases)")
+    if artifact.budget_usd is not None:
+        print(f"  budget:          cap ${artifact.budget_usd:.2f}, "
+              f"spent ${artifact.spent_usd:.4f}")
+    else:
+        print(f"  spend:           ${artifact.spent_usd:.4f} (uncapped)")
+    print(f"  flip rate:       {_val(_metric_value(m['flip_rate']))} "
+          f"95% CI {_ci95(_metric_ci(m['flip_rate']))}")
+    print(f"  target hit rate: {_val(m['target_hit_rate'])}")
+    print(f"  mean user turns: benign {_val(m['mean_user_turns_benign'])}, "
+          f"attacked {_val(m['mean_user_turns_attacked'])}")
+    print(f"  intermediate malformed: "
+          f"{_val(m['intermediate_malformed_rate'])}")
+    print(f"  intermediate abstention: "
+          f"{_val(m['intermediate_abstention_rate'])}")
+    print(f"  ranking eligible:  {m['ranking_eligible']}"
+          + (f" ({'; '.join(m['eligibility_notes'])})" if m['eligibility_notes'] else ""))
+    print(f"artifact: {out_path}")
+    print(f"analysis lock: {artifact.analysis_lock[:16]}…")
+
+
+def _metric_value(triple):
+    """The value of a Wilson {"value","ci_low","ci_high"} triple (or None)."""
+    if isinstance(triple, dict):
+        return triple.get("value")
+    return None
+
+
+def _metric_ci(triple):
+    """The [low, high] pair of a Wilson triple (or None)."""
+    if isinstance(triple, dict):
+        return [triple.get("ci_low"), triple.get("ci_high")]
+    return None
 
 
 def _write_final_artifact(out_dir: Path, slug: str, suite: str,
@@ -350,8 +399,15 @@ def cmd_run(args: argparse.Namespace) -> int:
               file=sys.stderr)
         return EXIT_USER_ERROR
 
+    # The conversational suite has its own case schema, loader, and
+    # suite driver; every other suite uses the single-shot path.
+    is_conversational = suite == "conversational"
     try:
-        cases = load_cases(suite_dir)
+        if is_conversational:
+            from peira.conversation import load_conversation_cases
+            cases = load_conversation_cases(suite_dir)
+        else:
+            cases = load_cases(suite_dir)
     except ValueError as e:
         print(f"error: invalid case data: {e}", file=sys.stderr)
         return EXIT_USER_ERROR
@@ -399,9 +455,15 @@ def cmd_run(args: argparse.Namespace) -> int:
     def _build_mock(seed_i: int, run_nonce_i: str) -> "MockAdapter":
         # The mock's simulation script is namespaced per (seed, nonce):
         # each seed run gets its own script built under its own nonce,
-        # exactly like the single-run path below.
+        # exactly like the single-run path below. Conversational suites
+        # use the conversation script builder.
+        script_builder = (
+            MockAdapter.script_for_conversation
+            if is_conversational
+            else MockAdapter.script_for
+        )
         return MockAdapter(
-            script=MockAdapter.script_for(
+            script=script_builder(
                 cases, seed=seed_i, run_nonce=run_nonce_i
             )
         )
@@ -463,17 +525,6 @@ def cmd_run(args: argparse.Namespace) -> int:
         print(f"error: --budget-usd must be > 0 "
               f"(got {budget_usd})", file=sys.stderr)
         return EXIT_USER_ERROR
-    item_timeout = getattr(args, "item_timeout", None)
-    if item_timeout is not None and not item_timeout > 0:
-        # NaN fails the > 0 comparison: a NaN budget is not a budget.
-        print(f"error: --item-timeout must be > 0 "
-              f"(got {item_timeout})", file=sys.stderr)
-        return EXIT_USER_ERROR
-    run_timeout = getattr(args, "run_timeout", None)
-    if run_timeout is not None and not run_timeout > 0:
-        print(f"error: --run-timeout must be > 0 "
-              f"(got {run_timeout})", file=sys.stderr)
-        return EXIT_USER_ERROR
 
     if args.dry_run:
         print(f"dry run: {len(cases)} cases, adapter={adapter.name}, "
@@ -510,13 +561,20 @@ def cmd_run(args: argparse.Namespace) -> int:
                 partial = None
             if partial is not None:
                 try:
+                    from peira.conversation import (
+                        ConversationResult as _ConvResult,
+                    )
                     already_done, prior_results = validate_partial(
                         partial, adapter, cases, suite, dataset_version,
                         manifest_sha256, seed=args.seed,
                         budget_usd=getattr(args, "budget_usd", None),
                         cache_enabled=args.cache_dir is not None,
-                        item_timeout=item_timeout,
-                        run_timeout=run_timeout)
+                        result_from_dict=(
+                            _ConvResult.from_dict
+                            if is_conversational
+                            else PerCaseResult.from_dict
+                        ),
+                    )
                 except ValueError as e:
                     print(f"error: {e}; delete {partial_path} or drop "
                           f"--resume and re-run.", file=sys.stderr)
@@ -543,8 +601,7 @@ def cmd_run(args: argparse.Namespace) -> int:
 
     try:
         if num_seeds == 1:
-            artifact = run_suite(
-                adapter, cases, suite, dataset_version,
+            run_kwargs = dict(
                 progress=progress, already_done=already_done,
                 prior_results=prior_results, partial_path=partial_path,
                 manifest_sha256=manifest_sha256, seed=args.seed,
@@ -559,14 +616,25 @@ def cmd_run(args: argparse.Namespace) -> int:
                 rlimit_as_mb=getattr(args, "rlimit_as_mb", None),
                 rlimit_fsize_mb=getattr(args, "rlimit_fsize_mb", None),
                 budget_usd=budget_usd,
-                item_timeout=item_timeout,
-                run_timeout=run_timeout,
                 # Persist the loader spec (e.g. "peira.adapters.jev:JevAdapter"),
                 # not just adapter.name (e.g. "jev"). cmd_reproduce needs the
                 # spec to reload the adapter; the short name is not loadable.
                 config_extra={"adapter_spec": args.adapter},
             )
+            if is_conversational:
+                from peira.conversation import run_conversation_suite
+                artifact = run_conversation_suite(
+                    adapter, cases, suite, dataset_version, **run_kwargs
+                )
+            else:
+                artifact = run_suite(
+                    adapter, cases, suite, dataset_version, **run_kwargs
+                )
         else:
+            if is_conversational:
+                print("error: --seeds > 1 is not supported for the "
+                      "conversational suite", file=sys.stderr)
+                return EXIT_USER_ERROR
             return _cmd_run_multiseed(
                 args, adapter, cases, suite, suite_families,
                 dataset_version, manifest_sha256, out_dir, slug,
@@ -590,10 +658,7 @@ def cmd_run(args: argparse.Namespace) -> int:
         return EXIT_INFRA_ERROR
 
     out_path = _write_final_artifact(out_dir, slug, suite, artifact)
-    # The partial is the resumable record of an incomplete run: delete
-    # it only when the run genuinely completed. A timeout- or
-    # budget-terminated run keeps its partial so --resume can finish it.
-    if partial_path.exists() and artifact.termination == "complete":
+    if partial_path.exists():
         partial_path.unlink()
 
     _print_run_summary(artifact, out_path)
@@ -706,6 +771,16 @@ def cmd_replay(args: argparse.Namespace) -> int:
               file=sys.stderr)
         return EXIT_USER_ERROR
     suite_dir = root / SUITE_DIRS[suite]
+    if suite == "conversational":
+        # R-01: conversational transcripts record every turn payload,
+        # but turn-by-turn re-execution is not implemented yet. Fail
+        # closed with an actionable error instead of half replaying.
+        # Checked before the directory-existence guard so the message
+        # fires even though the suite's cases have not landed yet.
+        print("error: peira replay does not support the conversational "
+              "suite in R-01 (turn-level re-execution is not implemented)",
+              file=sys.stderr)
+        return EXIT_USER_ERROR
     if not suite_dir.exists():
         print(f"error: suite directory {suite_dir} not found",
               file=sys.stderr)
@@ -769,7 +844,13 @@ def cmd_doctor(args: argparse.Namespace) -> int:
 
 
 def cmd_validate(args: argparse.Namespace) -> int:
-    from peira.schema import validate_case_dict
+    kind = getattr(args, "kind", "single")
+    if kind == "conversational":
+        from peira.conversation import (
+            validate_conversation_dict as validate_case_dict,
+        )
+    else:
+        from peira.schema import validate_case_dict
 
     dataset_dir = Path(args.dataset)
     if not dataset_dir.exists():
@@ -816,6 +897,17 @@ def cmd_report(args: argparse.Namespace) -> int:
     if not artifact.verify():
         print("warning: analysis lock mismatch: artifact was modified after sealing.",
               file=sys.stderr)
+    # The conversational suite is a separate suite with its own metric
+    # schema (peira.conversation_metrics); the single-shot report
+    # renderer must not present those numbers as single-shot metrics,
+    # so refuse with an actionable message instead of rendering.
+    from peira.conversation import CONVERSATION_SUITE_ID
+    if artifact.suite == CONVERSATION_SUITE_ID:
+        print("error: peira report does not render conversational run "
+              "artifacts; analyze them with the conversational metrics "
+              "(peira.conversation_metrics.summarize_conversation)",
+              file=sys.stderr)
+        return EXIT_USER_ERROR
     # S8b sealed the A3 summary schema into artifacts. An artifact from
     # before the rewiring is structurally valid but its metrics lack
     # the A3 sections; rendering it would silently drop half the
@@ -897,10 +989,9 @@ def cmd_report(args: argparse.Namespace) -> int:
 def _nb_curve_svg(block: dict, arm: str) -> str:
     """Inline SVG decision curve for one arm's net-benefit block.
 
-    Model curve vs. review-all and review-none reference lines, plus
-    the C-3 calibration envelope (upper bound) on the attacked arm when
-    present. All coordinates are computed from the block's own floats;
-    no adapter-controlled strings enter the markup.
+    Model curve vs. review-all and review-none reference lines. All
+    coordinates are computed from the block's own floats; no
+    adapter-controlled strings enter the markup.
     """
     e = html.escape
     curve = block.get("curve") or []
@@ -913,25 +1004,7 @@ def _nb_curve_svg(block: dict, arm: str) -> str:
         return ""
     if not pts:
         return ""
-    # C-3 envelope (attacked arm only): recalibrated decision curve,
-    # explicitly labeled an upper bound. Withheld when the block says
-    # insufficient (same contract as the headline line); non-finite
-    # points are dropped before scaling so a hostile NaN/inf cannot
-    # break the chart geometry.
-    env = block.get("calibration_envelope")
-    env_curve = []
-    if isinstance(env, dict) and env.get("sufficient"):
-        env_curve = env.get("envelope") or []
-    try:
-        env_pts = [
-            (float(pt), float(nb))
-            for pt, nb in env_curve
-            if math.isfinite(float(pt)) and math.isfinite(float(nb))
-        ]
-    except (TypeError, ValueError):
-        env_pts = []
-    vals = [nb for _, nb in pts] + [nb for _, nb in ra_pts]
-    vals += [nb for _, nb in env_pts] + [0.0]
+    vals = [nb for _, nb in pts] + [nb for _, nb in ra_pts] + [0.0]
     lo = min(vals)
     hi = max(vals)
     if hi - lo < 1e-9:
@@ -986,12 +1059,6 @@ def _nb_curve_svg(block: dict, arm: str) -> str:
         + " ".join(f"{X(pt):.1f},{Y(nb):.1f}" for pt, nb in pts)
         + '" fill="none" stroke="#1f6feb" stroke-width="2"/>'
     )
-    if env_pts:
-        parts.append(
-            '<polyline points="'
-            + " ".join(f"{X(pt):.1f},{Y(nb):.1f}" for pt, nb in env_pts)
-            + '" fill="none" stroke="#1a7f37" stroke-width="1.5" stroke-dasharray="7,3"/>'
-        )
     # Legend.
     lx = W - mr - 150
     ly = mt + 6
@@ -1003,11 +1070,6 @@ def _nb_curve_svg(block: dict, arm: str) -> str:
         f'<line x1="{lx}" y1="{ly + 34}" x2="{lx + 10}" y2="{ly + 34}" stroke="#000" stroke-dasharray="6,4"/>'
         f'<text x="{lx + 14}" y="{ly + 38}" font-size="11">review none</text>'
     )
-    if env_pts:
-        parts.append(
-            f'<line x1="{lx}" y1="{ly + 52}" x2="{lx + 10}" y2="{ly + 52}" stroke="#1a7f37" stroke-width="1.5" stroke-dasharray="7,3"/>'
-            f'<text x="{lx + 14}" y="{ly + 56}" font-size="11">calibration envelope (upper bound)</text>'
-        )
     return (
         f'<svg width="{W}" height="{H}" viewBox="0 0 {W} {H}" role="img" '
         f'aria-label="Decision curve for {e(arm)} arm">'
@@ -1072,49 +1134,11 @@ def _net_benefit_section(m: dict) -> str:
             f"<p>Best threshold: {_num(b.get('best_threshold'))} "
             f"(net benefit {_val(b.get('best_net_benefit'))}, "
             f"{_num(b.get('n_reviewed_at_best'))} cases reviewed).</p>\n"
-            f"{_envelope_line(b)}\n"
             "<table border=\"1\"><tr><th>operating threshold</th>"
             "<th>net benefit</th></tr>\n"
             f"{op_rows}</table>\n"
         )
     return "".join(parts)
-
-
-def _envelope_line(b: dict) -> str:
-    """Render the C-3 calibration-envelope headline for one arm's block.
-
-    Attacked arm only: "at most X net caught bad outputs per case
-    recoverable by recalibration alone, without retraining". This is the
-    explicitly-labeled upper bound (roadmap C-3). Defensive .get access:
-    old artifacts and the benign arm have no envelope and render
-    nothing.
-    """
-    env = b.get("calibration_envelope")
-    if not isinstance(env, dict) or not env.get("sufficient"):
-        return ""
-    max_gap = env.get("max_gap")
-    at = env.get("threshold_at_max_gap")
-    # Loaded artifacts can carry non-numeric envelope values: from_json
-    # validates the metrics dict shape, not nested envelope fields, and
-    # the metrics producer's trusted numbers are not the only way a
-    # block gets built. Omit the headline rather than publish a
-    # malformed claim ("nan"/"inf" via _num, raw strings via _val).
-    # bool is rejected explicitly because it subclasses int in Python.
-    def _is_valid_number(v):
-        return (
-            isinstance(v, (int, float))
-            and not isinstance(v, bool)
-            and math.isfinite(v)
-        )
-    if not _is_valid_number(max_gap) or not _is_valid_number(at):
-        return ""
-    return (
-        "<p>Calibration envelope (upper bound). At most "
-        f"{_val(max_gap)} net caught bad outputs per case are "
-        "recoverable by recalibration alone, without retraining "
-        f"(at threshold {_num(at)}). The envelope is an upper bound. "
-        "The isotonic fit is in-sample and slightly optimistic.</p>\n"
-    )
 
 
 def _buyer_cost_section(artifact, threshold: float, cost_false_approve: float,
@@ -2152,6 +2176,16 @@ def cmd_dashboard_run(args: argparse.Namespace) -> int:
     if not artifact.verify():
         print("warning: analysis lock mismatch: artifact was modified after sealing.",
               file=sys.stderr)
+    # Same rule as cmd_report: the dashboard payload passes single-shot
+    # metric keys through, which do not exist on the conversational
+    # metric schema. Refuse rather than export wrong-shaped numbers.
+    from peira.conversation import CONVERSATION_SUITE_ID as _CONV_SUITE
+    if artifact.suite == _CONV_SUITE:
+        print("error: dashboard export does not support conversational run "
+              "artifacts; analyze them with the conversational metrics "
+              "(peira.conversation_metrics.summarize_conversation)",
+              file=sys.stderr)
+        return EXIT_USER_ERROR
     payload = run_to_dashboard(artifact)
     # Stamp the run_id from the filename (the artifact does not carry it).
     payload["run"]["run_id"] = run_path.stem
@@ -3594,10 +3628,6 @@ def cmd_reproduce(args: argparse.Namespace) -> int:
             manifest_sha256=local_manifest,
             required_families=config.get("required_families"),
             run_nonce=run_nonce,
-            # Faithful reproduction includes the timeout budgets the
-            # original run was measured under.
-            item_timeout=config.get("item_timeout_s"),
-            run_timeout=config.get("run_timeout_s"),
         )
     except Exception:
         traceback.print_exc()
@@ -3953,7 +3983,7 @@ def _print_gate_results(results, file=None):
 
 
 def cmd_dataset_gates(args: argparse.Namespace) -> int:
-    from peira.gates import run_gates
+    kind = getattr(args, "kind", "single")
 
     dataset_dir = Path(args.dir)
     if not dataset_dir.is_dir():
@@ -3961,6 +3991,12 @@ def cmd_dataset_gates(args: argparse.Namespace) -> int:
               file=sys.stderr)
         return EXIT_USER_ERROR
     results = run_gates(dataset_dir)
+    _print_gate_results(results)
+    if kind == "conversational":
+        from peira.conversation import run_conversation_gates
+        results = run_conversation_gates(dataset_dir)
+    else:
+        results = run_gates(dataset_dir)
     _print_gate_results(results)
     n_err = sum(len(r.errors) for r in results)
     return EXIT_USER_ERROR if n_err else EXIT_OK
@@ -4041,18 +4077,6 @@ def build_parser() -> argparse.ArgumentParser:
     r.add_argument("--call-timeout", type=float, default=300.0,
                    help="seconds per attempt; a timeout is retried as a "
                    "transient failure (default: 300)")
-    r.add_argument("--item-timeout", type=float, default=None,
-                   help="wall-clock budget in seconds for one case (both "
-                   "variants, all attempts); on expiry the case seals as a "
-                   "timeout sample failure and the run continues "
-                   "(no item budget by default)")
-    r.add_argument("--run-timeout", type=float, default=None,
-                   help="wall-clock budget in seconds for the whole run; "
-                   "on expiry dispatch stops, in-flight cases drain to "
-                   "completion, completed cases are checkpointed in a "
-                   "resumable partial, and the artifact seals with "
-                   "termination=timeout (analyzable, never rankable) "
-                   "(no run budget by default)")
     r.add_argument("--rlimit-cpu-seconds", type=float, default=None,
                    help="process-wide CPU time backstop in seconds (Unix "
                    "only; opt-in, no limit by default)")
@@ -4091,6 +4115,9 @@ def build_parser() -> argparse.ArgumentParser:
 
     v = sub.add_parser("validate", help="validate a dataset directory")
     v.add_argument("--dataset", required=True)
+    v.add_argument("--kind", default="single",
+                   choices=["single", "conversational"],
+                   help="case schema: single-shot or conversational")
     v.set_defaults(func=cmd_validate)
 
     doc = sub.add_parser(
@@ -4445,6 +4472,9 @@ def build_parser() -> argparse.ArgumentParser:
     vm.set_defaults(func=cmd_dataset_verify_manifest)
     g = dsub.add_parser("gates", help="run the automated validation gates")
     g.add_argument("--dir", required=True, help="dataset directory")
+    g.add_argument("--kind", default="single",
+                   choices=["single", "conversational"],
+                   help="case schema: single-shot or conversational")
     g.set_defaults(func=cmd_dataset_gates)
     n = dsub.add_parser("new", help="scaffold a new case from a family template")
     n.add_argument("--family", required=True, choices=sorted(TEMPLATES),

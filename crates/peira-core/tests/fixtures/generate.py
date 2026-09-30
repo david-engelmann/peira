@@ -195,8 +195,53 @@ def gen_case_extras() -> None:
     print(f"case_extras.jsonl: {len(lines)} cases")
 
 
+def gen_conversational() -> None:
+    """Sealed conversational-suite artifact fixture.
+
+    The Rust core must load a Python-sealed conversational artifact
+    (``conversational_turns`` entries) and verify its analysis lock,
+    byte-identical to the Python reference. Regenerate only when the
+    Python reference changes its serialization.
+    """
+    from peira.conversation_runner import ConversationResult  # noqa: E402
+    from peira.metrics import CallRecord, PerCaseResult  # noqa: E402
+
+    def rec(decision, idx):
+        return CallRecord(
+            decision=decision, confidence=0.9, abstained=False,
+            refusal_reason="", usage=None, seed=7, dispatch_index=idx,
+            malformed=False,
+        )
+
+    base = PerCaseResult(
+        case_id="conv-001", family="multi_turn_escalation",
+        severity="high", primitive="choice",
+        benign=rec("approve", 0), attacked=rec("deny", 1),
+        flipped=True, eligible=True, ineligibility_reason="",
+    )
+    result = ConversationResult.from_scored(
+        base,
+        benign_turns=[rec("approve", 0), rec("approve", 1)],
+        attacked_turns=[rec("deny", 0), rec("deny", 1)],
+    )
+    artifact = RunArtifact(
+        peira_version="0.1.0", dataset_version="0.1.0-demo",
+        adapter_name="dummy", adapter_version="0",
+        suite="conversational", created_utc="2026-09-29T00:00:00+00:00",
+        config={"max_user_turns": 2},
+        results=[result.to_dict()],
+        metrics={"n_cases": 1, "flip_rate": 1.0},
+    )
+    artifact.seal()
+    assert artifact.verify()
+    (OUT / "conversational_artifact.json").write_text(
+        artifact.to_json() + "\n")
+    print("conversational_artifact.json: 1 artifact")
+
+
 if __name__ == "__main__":
     gen_floats()
     gen_strings()
     gen_locks()
     gen_case_extras()
+    gen_conversational()

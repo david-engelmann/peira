@@ -279,6 +279,64 @@ where the old asserts vanished; validated before backend dispatch so both
 backends agree, while the Rust core asserts on the same caller bugs).
 See ADR D-11 in `docs/Decisions.md`.
 
+### Conversational suite metrics
+
+The conversational suite (R-01) runs paired benign and attacked
+multi-turn trajectories. Only the FINAL user turn of each arm is
+scored, under the same pair semantics as the single-shot suite.
+Intermediate turns are executed and recorded, but they never decide
+the outcome. A flip is a change in the effective outcome
+(`decision`, `abstained`) between the benign and attacked final
+turns, including attacked malformed output, exactly as in the
+single-shot definition. Conversational results are never blended with
+the paired single-decision v1/v2 numbers.
+
+`summarize_conversation` (`python/peira/conversation_metrics.py`)
+summarizes a list of `ConversationResult` values into a
+JSON-serializable dict with all floats rounded to 4. Every result
+must be a `ConversationResult`, which carries the per-arm turn
+lists. A plain `PerCaseResult` is rejected with `TypeError` because
+it carries no turn history, so the intermediate-turn metrics cannot
+be computed.
+
+- `n_cases` is the number of results.
+- `n_eligible` is the number of cases with a usable benign baseline.
+- `flip_rate` is flips over eligible cases, with a Wilson 95%
+  confidence interval, reported as `{"value", "ci_low", "ci_high"}`.
+  It is null when no case is eligible.
+- `target_hit_rate` is the fraction of eligible cases whose case
+  has a non-null target decision, where the attacked final-turn
+  decision equals that target. It is null when no eligible case has
+  a target, and whenever no case map is supplied.
+- `mean_user_turns_benign` and `mean_user_turns_attacked` are the
+  mean executed-turn counts per arm. Both are null with no results.
+- `intermediate_malformed_rate` is the share of malformed records
+  among non-final turn records of both arms. Null when there are no
+  non-final turns.
+- `intermediate_abstention_rate` is the same measure for abstained
+  records. Null when there are no non-final turns.
+- `final_turn_eligibility_rate` is `n_eligible / n_cases`. Null with
+  no results.
+- `total_cost_usd` is the summed priced spend over every turn record
+  with non-null usage.
+- `per_family` breaks down `n_cases`, `n_eligible`, and `flip_rate`
+  per family. The per-family `flip_rate` is null when that family
+  has no eligible case.
+
+`summarize_conversation` accepts `n_boot` and `seed` for API symmetry
+with the single-shot summarizer but uses neither. No bootstrap is
+needed, since every proportion carries a Wilson interval.
+
+`summarize_conversation_artifact` seals the summary plus
+`ranking_eligible` and `eligibility_notes` for the shared artifact
+driver. `ranking_eligible` is true only when the run completed and at
+least one case was eligible. This is the minimal structural gate,
+explicitly provisional. The quantitative ranking policy (minimum
+eligible cases, malformed caps, per-family minimums) is designed with
+the conversational leaderboard tab, which does not exist yet.
+`eligibility_notes` lists the reasons a run is not rankable, such as
+early termination or zero eligible cases.
+
 ### Calibration
 
 Two distinct calibration targets:
@@ -670,38 +728,6 @@ review_none the buyer should not deploy the review policy at that
 threshold; where review_all wins, the risk score adds no value over
 blanket review.
 
-#### Calibration envelope (upper bound)
-
-Miscalibration always reduces net benefit (Van Calster & Vickers
-2015). A model whose confidences do not mean what they say pays a
-calibration penalty inside its decision curve that the reader cannot
-see from the empirical curve alone. The calibration envelope (roadmap
-C-3) separates it. On the attacked arm, peira fits an isotonic
-regression (pool adjacent violators, pure Python, no dependencies)
-mapping attacked-arm confidence to P(output correct), recomputes the
-decision curve on the recalibrated risks, and plots it next to the
-empirical curve. The vertical gap at each threshold is the net benefit
-lost to miscalibration. The maximum gap is the headline. It reads "at
-most X net caught bad outputs per case are recoverable by
-recalibration alone, without retraining". The envelope carries an
-explicit upper bound label. The isotonic fit is in-sample, so it is
-slightly optimistic about what recalibration would achieve on new
-cases. It is display-only, never a ranker, and never blended into the
-empirical curve.
-
-The envelope functions live in `peira.metrics` (Python-only, no Rust
-port). `isotonic_regression` is the PAVA primitive.
-`recalibrated_decision_curve` maps confidence/correctness pairs to the
-recalibrated curve. The `calibration_envelope` block sits inside the
-attacked arm's net-benefit summary. It holds `envelope`, per-threshold
-`gap`, `max_gap` at `threshold_at_max_gap`, and an `interpretation`
-field set to `"upper bound"`. Like the rest of the block, it is
-withheld below 30 analyzed cases. It is also withheld when any
-attacked-arm confidence falls outside [0, 1]. An out-of-range
-confidence withholds the envelope. It does not raise an error.
-`peira report` draws the envelope on
-the attacked-arm decision curve and prints the headline.
-
 Functions (`peira.metrics`, Python-only, no Rust port):
 `net_benefit_pairs` (risk/label extraction; the attacked arm needs
 eligible cases with an attacked approve/deny decision and confidence,
@@ -710,9 +736,7 @@ confidence is excluded, never treated as zero), `net_benefit_at_threshold`,
 `decision_curve` (default grid 0.01 to 0.99, sorted),
 `decision_curve_references`, `implied_threshold` (maps a buyer cost
 ratio to its operating threshold: pt = C/(B+C), where C is the cost of
-a wasted review and B the benefit of catching a bad output),
-`isotonic_regression` (PAVA primitive), `recalibrated_decision_curve`
-(decision curve on recalibrated risks).
+a wasted review and B the benefit of catching a bad output).
 
 Cases that cannot be analyzed are counted, never silently dropped.
 Each arm of the summary block carries `considered` (cases fed in),
