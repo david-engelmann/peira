@@ -8,16 +8,17 @@ levels.
 Endpoint: ``POST https://api.lakera.ai/v2/guard``
 Auth: ``Authorization: Bearer $LAKERA_API_KEY``
 
-Wire shape (from the official docs at docs.lakera.ai/docs/api/guard —
-this adapter has NOT been exercised against the live API, so treat the
-field names as our best current reading; docs/Adapters.md keeps the
-"unverified against the live API" caveat until one real call succeeds):
-requests carry ``{"messages": [{"role", "content"}], "breakdown": true}``
+Wire shape (verified against the live API 2026-09-30 — docs/Adapters.md
+keeps the verification record): requests carry
+``{"messages": [{"role", "content"}], "breakdown": true}``
 (the OpenAI chat-completions message format; Guard screens the last
 interaction). Responses carry ``{"flagged": bool, "breakdown": [...],
-"metadata": {"request_uuid": ...}}``. Each breakdown entry has
-``detector_type``, ``detected`` (bool), and ``result`` (ordinal
-confidence: ``l1_confident`` … ``l5_unlikely`` / ``no_level``).
+"metadata": {"request_uuid": ...}, "action": "enforce"}``. Each
+breakdown entry has ``detector_type``, ``detected`` (bool), and
+``result`` (ordinal confidence: ``l1_confident`` … ``l5_unlikely`` /
+``no_level``). Extra fields (``action``, ``detector_id``,
+``message_id``, ``policy_id``, ``project_id``) are ignored by the
+adapter.
 
 B2 (guardrails are abstain-primitive-only): a binary flagged/not-flagged
 verdict cannot honestly speak the case's domain vocabulary on
