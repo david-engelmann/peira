@@ -17,7 +17,7 @@ artifacts out of real builds applies to shared images.
 
 Usage:
     python3 site/scripts/render_og.py [--in site/src/data/results.json]
-        [--out site/assets/og/og-leaderboard] [--top-n 8] [--suite public]
+        [--out site/public/og/og-leaderboard] [--top-n 8] [--suite public]
 
 Output files:
     <out>.svg        the source image
@@ -238,7 +238,7 @@ def main() -> None:
     )
     ap.add_argument(
         "--out",
-        default=str(SITE_ROOT / "assets" / "og" / "og-leaderboard"),
+        default=str(SITE_ROOT / "public" / "og" / "og-leaderboard"),
         help="output base path (no extension)",
     )
     ap.add_argument("--top-n", type=int, default=TOP_N_DEFAULT)

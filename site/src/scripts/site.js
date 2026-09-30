@@ -34,6 +34,12 @@
   };
 
   /* ---------- formatting ---------- */
+  // Escape artifact-derived strings before HTML interpolation. Artifact
+  // content is sealed for integrity, not sanitized, so every name, note,
+  // case ID, and decision that reaches innerHTML goes through esc().
+  const esc = (s) => String(s == null ? '' : s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
   const num = (x, digits) => {
     if (x === null || x === undefined || Number.isNaN(x)) return 'withheld';
     return digits === undefined ? Number(x).toLocaleString('en-US') : Number(x).toFixed(digits);
@@ -158,11 +164,6 @@
       }));
     });
   };
-  const suiteToggleHtml = () =>
-    '<div class="seg" data-suite-toggle role="group" aria-label="Result suite">' +
-    '<button type="button" data-suite="public">Public</button>' +
-    '<button type="button" data-suite="holdout">Holdout</button></div>';
-
   /* ---------- svg helpers ---------- */
   const NS = 'http://www.w3.org/2000/svg';
   const el = (tag, attrs, parent) => {
@@ -209,8 +210,10 @@
       const asc = state.dir === 'asc';
       runs = [...runs].sort((a, b) => {
         const va = col.get(a), vb = col.get(b);
-        if (va === null || va === undefined) return col.nullsLast ? 1 : -1;
-        if (vb === null || vb === undefined) return col.nullsLast ? -1 : 1;
+        const na = va === null || va === undefined, nb = vb === null || vb === undefined;
+        if (na && nb) return 0;
+        if (na) return col.nullsLast ? 1 : -1;
+        if (nb) return col.nullsLast ? -1 : 1;
         return asc ? va - vb : vb - va;
       });
 
@@ -230,9 +233,10 @@
         const asrBar = m.asr_conditional === null ? '' : `<span class="bar"><i style="width:${Math.min(100, m.asr_conditional * 100).toFixed(1)}%;background:${colorMap.get(r.adapter_name)}"></i></span>`;
         const elig = m.ranking_eligible
           ? '<span class="badge ok">ranking eligible</span>'
-          : '<span class="badge warn" title="' + (m.eligibility_notes || []).join(' ') + '">not eligible</span>';
-        html += `<tr><td class="rank num">${i + 1}</td>` +
-          `<td><span class="adapter-name">${shortName(r.adapter_name)}</span><div class="faint mono" style="font-size:11.5px">${r.adapter_version} · ${r.model_class || ''}</div></td>` +
+          : '<span class="badge warn" title="' + esc((m.eligibility_notes || []).join(' ')) + '">not eligible</span>';
+        const rankCell = m.ranking_eligible ? `<td class="rank num">${i + 1}</td>` : '<td class="rank num">–</td>';
+        html += `<tr>${rankCell}` +
+          `<td><span class="adapter-name">${esc(shortName(r.adapter_name))}</span><div class="faint mono" style="font-size:11.5px">${esc(r.adapter_version)} · ${esc(r.model_class || '')}</div></td>` +
           `<td class="num">${asrBar}${pct(m.asr_conditional)}<span class="ci">${ciText(m.asr_ci95)}</span></td>` +
           `<td class="num">${pct(m.benign_accuracy)}<span class="ci">${ciText(m.benign_accuracy_ci95)}</span></td>` +
           `<td class="num">${num(m.n_eligible)}</td>` +
@@ -286,31 +290,37 @@
     const gridEl = root.querySelector('#fam-grid');
     const detailEl = root.querySelector('#fam-detail');
     const selAdapter = root.querySelector('#sel-adapter');
-    const famList = allFamilies();
+    // P2-6: derive the family set from the selected suite only, so the
+    // view never renders rows for families absent from every run in view.
+    const famList = () => {
+      const s = new Set();
+      for (const r of runsForSuite(state.suite)) for (const f of Object.keys(r.metrics.per_family || {})) s.add(f);
+      return [...s];
+    };
 
     const render = () => {
       const suiteRuns = runsForSuite(state.suite);
       if (!suiteRuns.some((r) => runId(r) === state.adapter)) state.adapter = suiteRuns.length ? runId(suiteRuns[0]) : '';
-      if (!famList.includes(state.family)) state.family = famList[0] || '';
+      if (!famList().includes(state.family)) state.family = famList()[0] || '';
 
       selAdapter.innerHTML = suiteRuns.map((r) =>
-        `<option value="${runId(r)}"${runId(r) === state.adapter ? ' selected' : ''}>${runLabel(r)}</option>`).join('');
+        `<option value="${esc(runId(r))}"${runId(r) === state.adapter ? ' selected' : ''}>${esc(runLabel(r))}</option>`).join('');
 
       // heatmap: rows = families, columns = runs
-      const fams = [...famList].sort();
+      const fams = [...famList()].sort();
       const colCount = suiteRuns.length;
       gridEl.style.gridTemplateColumns = `200px repeat(${colCount}, 1fr) 64px`;
       let html = '<div class="fam faint" style="font-family:var(--sans);font-size:11px;text-transform:uppercase;letter-spacing:0.07em">Family</div>';
-      for (const r of suiteRuns) html += `<div class="faint" style="font-size:11px;text-align:center" title="${r.adapter_name}">${shortName(r.adapter_name)}</div>`;
+      for (const r of suiteRuns) html += `<div class="faint" style="font-size:11px;text-align:center" title="${esc(r.adapter_name)}">${esc(shortName(r.adapter_name))}</div>`;
       html += '<div></div>';
       for (const f of fams) {
-        html += `<div class="fam" data-family="${f}" style="cursor:pointer">${f}</div>`;
+        html += `<div class="fam" data-family="${esc(f)}" style="cursor:pointer">${esc(f)}</div>`;
         let worst = null;
         for (const r of suiteRuns) {
           const pf = (r.metrics.per_family || {})[f];
           const v = pf ? pf.asr : null;
           if (v !== null && (worst === null || v > worst)) worst = v;
-          html += `<div class="cell" data-family="${f}" style="cursor:pointer" title="${f} · ${shortName(r.adapter_name)} · ${pct(v)}"><i style="width:${v === null ? 0 : Math.min(100, v * 100).toFixed(1)}%;background:${heatColor(v)}"></i></div>`;
+          html += `<div class="cell" data-family="${esc(f)}" style="cursor:pointer" title="${esc(f)} · ${esc(shortName(r.adapter_name))} · ${pct(v)}"><i style="width:${v === null ? 0 : Math.min(100, v * 100).toFixed(1)}%;background:${heatColor(v)}"></i></div>`;
         }
         html += `<div class="val">${pct(worst)}</div>`;
       }
@@ -332,9 +342,9 @@
           `<div class="card"><div class="k">Eligible cases</div><div class="v">${num(pf.n_eligible)}</div><div class="sub">of ${num(pf.n)} cases in family</div></div></div>` +
           '<h3 style="margin:18px 0 8px">Flip directions, eligible cases</h3>' +
           '<div class="table-scroll"><table class="board" style="min-width:420px"><thead><tr><th class="no-sort">Direction</th><th class="no-sort">Count</th></tr></thead><tbody>' +
-          dirKeys.map((k) => `<tr><td class="mono">${k}</td><td class="num">${num(dirs[k])}</td></tr>`).join('') +
+          dirKeys.map((k) => `<tr><td class="mono">${esc(k)}</td><td class="num">${num(dirs[k])}</td></tr>`).join('') +
           '</tbody></table></div>' +
-          '<p class="note">Family ' + state.family + ', adapter ' + runLabel(run) + '. ' + (MOCK ? 'Mock values.' : '') + '</p>';
+          '<p class="note">Family ' + esc(state.family) + ', adapter ' + esc(runLabel(run)) + '. ' + (MOCK ? 'Mock values.' : '') + '</p>';
 
         root.__csvRows = () => {
           const rows = [['family', 'adapter', 'adapter_version', 'suite', 'asr', 'asr_ci95_lo', 'asr_ci95_hi',
@@ -372,7 +382,7 @@
       const suiteRuns = runsForSuite(state.suite);
       if (!suiteRuns.some((r) => runId(r) === state.adapter)) state.adapter = suiteRuns.length ? runId(suiteRuns[0]) : '';
       selAdapter.innerHTML = suiteRuns.map((r) =>
-        `<option value="${runId(r)}"${runId(r) === state.adapter ? ' selected' : ''}>${runLabel(r)}</option>`).join('');
+        `<option value="${esc(runId(r))}"${runId(r) === state.adapter ? ' selected' : ''}>${esc(runLabel(r))}</option>`).join('');
       const run = findRun(state.adapter);
       if (!run) { cardsEl.innerHTML = ''; svgWrap.innerHTML = ''; return; }
       const m = run.metrics;
@@ -543,7 +553,7 @@
     const outEl = root.querySelector('#compare-out');
 
     const fillSelects = (suiteRuns) => {
-      const opts = suiteRuns.map((r) => `<option value="${runId(r)}">${runLabel(r)}</option>`).join('');
+      const opts = suiteRuns.map((r) => `<option value="${esc(runId(r))}">${esc(runLabel(r))}</option>`).join('');
       selA.innerHTML = opts; selB.innerHTML = opts;
       if (!suiteRuns.some((r) => runId(r) === state.a)) state.a = suiteRuns[0] ? runId(suiteRuns[0]) : '';
       if (!suiteRuns.some((r) => runId(r) === state.b)) state.b = suiteRuns[1] ? runId(suiteRuns[1]) : state.a;
@@ -587,11 +597,11 @@
         '<th class="no-sort">A flipped</th><th class="no-sort">B flipped</th><th class="no-sort">A benign to attacked</th><th class="no-sort">B benign to attacked</th>' +
         '</tr></thead><tbody>' +
         shown.map(([ca, cb]) =>
-          `<tr><td class="mono">${ca.case_id}</td><td class="mono">${ca.family}</td><td>${ca.severity}</td>` +
+          `<tr><td class="mono">${esc(ca.case_id)}</td><td class="mono">${esc(ca.family)}</td><td>${esc(ca.severity)}</td>` +
           `<td>${ca.flipped ? '<span class="badge warn">flipped</span>' : 'no'}</td>` +
           `<td>${cb.flipped ? '<span class="badge warn">flipped</span>' : 'no'}</td>` +
-          `<td class="mono">${ca.benign_decision} to ${ca.attacked_decision}</td>` +
-          `<td class="mono">${cb.benign_decision} to ${cb.attacked_decision}</td></tr>`).join('') +
+          `<td class="mono">${esc(ca.benign_decision)} to ${esc(ca.attacked_decision)}</td>` +
+          `<td class="mono">${esc(cb.benign_decision)} to ${esc(cb.attacked_decision)}</td></tr>`).join('') +
         '</tbody></table></div>' +
         '<p class="note">Positive ASR delta means run A flips more often than run B. ' + (MOCK ? 'Mock values.' : '') + '</p>';
       outEl.innerHTML = html;
@@ -631,14 +641,14 @@
       const suiteRuns = runsForSuite(state.suite);
       if (!suiteRuns.some((r) => runId(r) === state.run)) state.run = suiteRuns.length ? runId(suiteRuns[0]) : '';
       selRun.innerHTML = suiteRuns.map((r) =>
-        `<option value="${runId(r)}"${runId(r) === state.run ? ' selected' : ''}>${runLabel(r)}</option>`).join('');
+        `<option value="${esc(runId(r))}"${runId(r) === state.run ? ' selected' : ''}>${esc(runLabel(r))}</option>`).join('');
       const run = findRun(state.run);
       const cases = (run && run.cases) || [];
 
       const fams = [...new Set(cases.map((c) => c.family))].sort();
       const sevs = [...new Set(cases.map((c) => c.severity))].sort();
       const fill = (sel, values, cur) => {
-        sel.innerHTML = '<option value="">All</option>' + values.map((v) => `<option${v === cur ? ' selected' : ''}>${v}</option>`).join('');
+        sel.innerHTML = '<option value="">All</option>' + values.map((v) => `<option${v === cur ? ' selected' : ''}>${esc(v)}</option>`).join('');
       };
       fill(famEl, fams, state.family);
       fill(sevEl, sevs, state.severity);
@@ -664,8 +674,8 @@
         '<th class="no-sort">Benign</th><th class="no-sort">Attacked</th><th class="no-sort">Flipped</th><th class="no-sort">Eligible</th>' +
         '</tr></thead><tbody>' +
         slice.map((c) =>
-          `<tr><td class="mono">${c.case_id}</td><td class="mono">${c.family}</td><td>${c.severity}</td>` +
-          `<td class="mono">${c.primitive || ''}</td><td class="mono">${c.benign_decision}</td><td class="mono">${c.attacked_decision}</td>` +
+          `<tr><td class="mono">${esc(c.case_id)}</td><td class="mono">${esc(c.family)}</td><td>${esc(c.severity)}</td>` +
+          `<td class="mono">${esc(c.primitive || '')}</td><td class="mono">${esc(c.benign_decision)}</td><td class="mono">${esc(c.attacked_decision)}</td>` +
           `<td>${c.flipped ? '<span class="badge warn">yes</span>' : 'no'}</td>` +
           `<td>${c.eligible ? 'yes' : '<span class="faint">no</span>'}</td></tr>`).join('') +
         '</tbody></table></div>';
@@ -703,9 +713,11 @@
   };
 
   /* ================= dispatch ================= */
+  // Deferred-module safe: run exactly once, whether the script executed
+  // during parsing or after (Astro bundles this as a deferred module).
   const pages = { leaderboard, families, calibration, frontier, compare, cases: casesPage };
   if (pages[page]) {
-    document.addEventListener('DOMContentLoaded', pages[page]);
-    if (document.readyState !== 'loading') pages[page]();
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', pages[page], { once: true });
+    else pages[page]();
   }
 })();

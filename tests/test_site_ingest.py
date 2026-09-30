@@ -1,12 +1,14 @@
-"""Tests for site/scripts/ingest.py — sealed run-artifact ingestion gates.
+"""Tests for site/scripts/ingest.py, the sealed run-artifact ingestion gates.
 
 Covers the fail-closed behavior the display pipeline depends on: broken
-locks, mock/real mixups, dataset-version disagreement, and invalid
-suites. Fixtures are built with the real peira artifact code path.
+locks, mock/real mixups, dataset-version and manifest disagreement,
+invalid suites, duplicate run identities, non-finite metrics, and the
+verbatim-metrics contract. Fixtures are built with the real peira
+artifact code path.
 """
 
-import importlib.util
 import json
+import math
 import subprocess
 import sys
 import tempfile
@@ -50,21 +52,25 @@ def _result(i, attacked_decision):
 
 
 def make_artifact(path, *, mock=True, suite="public", dataset_version="1.1.1",
-                   corrupt_lock=False):
+                   corrupt_lock=False, manifest_sha256="mock",
+                   adapter_name="mock-test", adapter_version="mock-1",
+                   metrics_tweak=None):
     results = [_result(i, "allow" if i % 2 else "deny") for i in range(24)]
     summary = summarize(results, n_boot=50)
+    if metrics_tweak:
+        metrics_tweak(summary)
     art = RunArtifact(
         artifact_version="2",
         peira_version="0.1.0",
         dataset_version=dataset_version,
-        adapter_name="mock-test",
-        adapter_version="mock-1",
+        adapter_name=adapter_name,
+        adapter_version=adapter_version,
         suite=suite,
         created_utc="2026-09-29T00:00:00+00:00",
         config={"mock": mock},
         results=results_to_dicts(results),
         metrics=summary,
-        manifest_sha256="mock",
+        manifest_sha256=manifest_sha256,
         model_class="mock",
         confidence_source="verbalized",
         termination="complete",
@@ -104,10 +110,27 @@ class IngestGatesTest(unittest.TestCase):
         r = run_ingest(self.arts, self.out, extra=["--mock"])
         self.assertEqual(r.returncode, 0, r.stderr)
         data = json.loads(self.out.read_text())
+        # top-level contract
         self.assertEqual(data["schema_version"], "1")
         self.assertTrue(data["mock_data"])
+        self.assertEqual(data["dataset"]["version"], "1.1.1")
+        self.assertEqual(data["dataset"]["manifest_sha256"], "mock")
         self.assertEqual(len(data["runs"]), 1)
-        self.assertEqual(data["runs"][0]["adapter_name"], "mock-test")
+        run = data["runs"][0]
+        self.assertEqual(run["adapter_name"], "mock-test")
+        self.assertEqual(run["suite"], "public")
+        # metrics are verbatim from the sealed artifact: recompute and compare
+        results = [_result(i, "allow" if i % 2 else "deny") for i in range(24)]
+        expected_metrics = summarize(results, n_boot=50)
+        self.assertEqual(run["metrics"], expected_metrics)
+        # case rows carry the documented schema keys, nothing else
+        self.assertEqual(len(run["cases"]), 24)
+        for c in run["cases"]:
+            self.assertEqual(
+                sorted(c.keys()),
+                ["attacked_decision", "benign_decision", "case_id", "eligible",
+                 "family", "flipped", "primitive", "severity"],
+            )
 
     def test_broken_lock_rejected(self):
         self._one(mock=True, corrupt_lock=True)
@@ -129,7 +152,8 @@ class IngestGatesTest(unittest.TestCase):
 
     def test_dataset_version_mismatch(self):
         make_artifact(self.arts / "a.json", mock=True, dataset_version="1.1.1")
-        make_artifact(self.arts / "b.json", mock=True, dataset_version="9.9.9")
+        make_artifact(self.arts / "b.json", mock=True, dataset_version="9.9.9",
+                      adapter_name="mock-test-2")
         r = run_ingest(self.arts, self.out, extra=["--mock"])
         self.assertNotEqual(r.returncode, 0)
         self.assertIn("dataset", r.stderr.lower())
@@ -138,6 +162,35 @@ class IngestGatesTest(unittest.TestCase):
         self._one(mock=True, suite="staging")
         r = run_ingest(self.arts, self.out, extra=["--mock"])
         self.assertNotEqual(r.returncode, 0)
+
+    def test_manifest_sha_mismatch_rejected(self):
+        make_artifact(self.arts / "a.json", mock=True, manifest_sha256="aaa")
+        make_artifact(self.arts / "b.json", mock=True, manifest_sha256="bbb",
+                      adapter_name="mock-test-2")
+        r = run_ingest(self.arts, self.out, extra=["--mock"])
+        self.assertNotEqual(r.returncode, 0)
+        self.assertIn("manifest", r.stderr.lower())
+
+    def test_non_boolean_mock_rejected(self):
+        self._one(mock="false")
+        r = run_ingest(self.arts, self.out, extra=["--mock"])
+        self.assertNotEqual(r.returncode, 0)
+        self.assertIn("boolean", r.stderr.lower())
+
+    def test_duplicate_run_identity_rejected(self):
+        make_artifact(self.arts / "a.json", mock=True)
+        make_artifact(self.arts / "b.json", mock=True)  # same name/version/suite
+        r = run_ingest(self.arts, self.out, extra=["--mock"])
+        self.assertNotEqual(r.returncode, 0)
+        self.assertIn("duplicate", r.stderr.lower())
+
+    def test_nan_metric_rejected(self):
+        def inject_nan(summary):
+            summary["asr_conditional"] = math.nan
+        self._one(mock=True, metrics_tweak=inject_nan)
+        r = run_ingest(self.arts, self.out, extra=["--mock"])
+        self.assertNotEqual(r.returncode, 0)
+        self.assertIn("non-finite", r.stderr.lower())
 
 
 if __name__ == "__main__":

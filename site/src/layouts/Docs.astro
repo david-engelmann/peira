@@ -34,7 +34,7 @@ const sections = [
 
 const path = Astro.url.pathname.replace(/\/$/, '') || '/docs';
 ---
-<Base title={title} desc={desc} current="Docs">
+<Base title={title} desc={desc} current="Docs" needsData={false}>
   <div class="wrap docs-shell">
     <aside class="docs-nav" aria-label="Documentation sections">
       {sections.map((s) => (

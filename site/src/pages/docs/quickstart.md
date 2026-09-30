@@ -70,7 +70,7 @@ compare the two artifacts.
 peira compare /tmp/demo/mock-trial-demo.json /tmp/demo/other.json
 ```
 
-The compare output shows paired tests, per-family win/tie/loss counts,
+The CLI compare output shows paired tests, per-family win/tie/loss counts,
 and which differences actually clear the statistical bar. The
 [interpreting results](interpreting-results) page explains how to read
 every number and when a difference counts as real.

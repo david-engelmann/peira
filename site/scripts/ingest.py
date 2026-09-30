@@ -34,6 +34,24 @@ def fail(msg: str) -> "NoReturn":
     raise SystemExit(1)
 
 
+def check_finite(value, where: str) -> None:
+    """Reject NaN/Infinity anywhere in sealed payloads.
+
+    The site schema promises withheld values are null, never NaN; a
+    non-finite float would emit nonstandard JSON that the dashboard
+    does not robustly reject. Fail closed at ingest instead.
+    """
+    if isinstance(value, float):
+        if value != value or value in (float("inf"), float("-inf")):
+            fail(f"{where}: non-finite float {value!r} rejected (use null for withheld)")
+    elif isinstance(value, dict):
+        for k, v in value.items():
+            check_finite(v, f"{where}.{k}")
+    elif isinstance(value, (list, tuple)):
+        for i, v in enumerate(value):
+            check_finite(v, f"{where}[{i}]")
+
+
 def load_artifact(path: Path, allow_mock: bool) -> RunArtifact:
     try:
         artifact = RunArtifact.from_json(path.read_text(encoding="utf-8"))
@@ -87,10 +105,21 @@ def main() -> None:
     runs = []
     dataset_versions = set()
     manifest_shas = set()
+    seen_identities = set()
     for path in files:
         a = load_artifact(path, args.mock)
         dataset_versions.add(a.dataset_version)
         manifest_shas.add(a.manifest_sha256)
+        # P2-3: the dashboard keys runs by adapter_name@adapter_version@suite;
+        # two sealed runs sharing that identity would silently shadow each
+        # other, so reject the ambiguity at ingest instead.
+        identity = (a.adapter_name, a.adapter_version, a.suite)
+        if identity in seen_identities:
+            fail(f"{path.name}: duplicate run identity {identity[0]}@{identity[1]}@{identity[2]}")
+        seen_identities.add(identity)
+        check_finite(a.metrics, f"{path.name}.metrics")
+        cases = [trim_case(e) for e in a.results]
+        check_finite(cases, f"{path.name}.cases")
         runs.append(
             {
                 "adapter_name": a.adapter_name,
@@ -103,7 +132,7 @@ def main() -> None:
                 "ranking_eligible": bool(a.metrics.get("ranking_eligible", False)),
                 "eligibility_notes": list(a.metrics.get("eligibility_notes", [])),
                 "metrics": a.metrics,
-                "cases": [trim_case(e) for e in a.results],
+                "cases": cases,
             }
         )
 
@@ -128,7 +157,10 @@ def main() -> None:
 
     out = Path(args.out)
     out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text(json.dumps(site_data, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    out.write_text(
+        json.dumps(site_data, indent=2, sort_keys=True, allow_nan=False) + "\n",
+        encoding="utf-8",
+    )
     print(
         f"ingest: {len(runs)} run(s), mock={args.mock}, "
         f"dataset={site_data['dataset']['version']} -> {out}"

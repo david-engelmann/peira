@@ -1,7 +1,7 @@
 # Peira leaderboard site (scaffold)
 
-Astro static site for **peiratrial.dev**: the peira benchmark
-leaderboard, model pages, and docs. This is a **scaffold**: every number
+Astro static site for **peiratrial.dev**, the peira benchmark
+leaderboard, model pages, and docs. This is a **scaffold**. Every number
 it renders today is synthetic mock data, and every mock surface says so.
 
 ## Develop
@@ -15,7 +15,7 @@ npm run build         # ingest mock data + static build -> dist/
 
 ## Data pipeline
 
-Real results flow through one path:
+Real results flow through one path, shown below.
 
 ```
 official run artifacts (sealed RunArtifact JSON)
@@ -28,7 +28,7 @@ official run artifacts (sealed RunArtifact JSON)
 mock/real mixup. The contract both sides honor is
 `site/SITE_DATA_SCHEMA.md`.
 
-Mock data for development:
+Mock data for development is built with the commands below.
 
 ```bash
 npm run gen-mock      # rebuild site/assets/mock-artifacts/*.json
@@ -38,24 +38,21 @@ The mock artifacts are built with the real peira code path (real
 dataclasses, real `summarize()`, real seals) so the pipeline cannot
 tell them apart except by the `config.mock` marker. The public runs
 carry 504 cases (24 per family across 21 families, 3% benign defect
-rate) so the mock leaderboard exercises ranking-eligible rows; the
+rate) so the mock leaderboard exercises ranking-eligible rows. The
 holdout runs carry 100 cases and stay ranking-ineligible, like a real
 holdout slice would before official results exist.
 
 ## Going live (checklist, not yet done)
 
-- [ ] A12/A13 official runs sealed; artifacts published with SHA-256s
+- [ ] Official evaluation runs sealed and artifacts published with SHA-256s
 - [ ] `ingest.py` run WITHOUT `--mock` against the sealed artifacts
 - [ ] `mock_data: false` verified in the built `results.json`
-- [ ] Seal verification wired into the build (recompute the analysis
-      lock over the lock payload; fail closed on mismatch)
-- [ ] D5/D6/D16 display decisions resolved with David
+- [ ] Open display decisions resolved with David before launch
 
 ## Deploy (Cloudflare Pages, when live)
 
-- Build command: `npm run build`
-- Output directory: `dist`
-- Custom domain: `peiratrial.dev` (apex)
+Build with `npm run build`. The output directory is `dist`.
+The custom domain is the `peiratrial.dev` apex.
 
 ## Views
 
