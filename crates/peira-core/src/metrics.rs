@@ -21,6 +21,7 @@
 //! same statistic; exact draw parity is not a scoring input.
 
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use std::collections::BTreeMap;
 
 /// Panic with a clear message on nonfinite input.
@@ -136,6 +137,14 @@ pub struct PerCaseResult {
     /// Why the case is ineligible ("" when eligible).
     #[serde(default)]
     pub ineligibility_reason: String,
+    /// Suite-namespaced sealed turn records (conversational suite only).
+    /// `None` for single-shot results; omitted from canonical JSON when
+    /// absent so single-shot analysis locks stay byte-identical across
+    /// backends. Kept as untyped JSON: the Rust core has no
+    /// conversational runner yet, but it must load and verify
+    /// conversational artifacts instead of rejecting a known field.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub conversational_turns: Option<Value>,
 }
 
 /// Ineligibility reason constants, mirroring the Python module.
@@ -1353,6 +1362,7 @@ mod tests {
             } else {
                 INELIGIBLE_BENIGN_WRONG_DECISION.to_string()
             },
+            conversational_turns: None,
         }
     }
 
@@ -2183,6 +2193,7 @@ mod tests {
             flipped: false,
             eligible: true,
             ineligibility_reason: String::new(),
+            conversational_turns: None,
         }
     }
 

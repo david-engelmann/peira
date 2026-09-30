@@ -360,3 +360,42 @@ class BaseAdapter(Protocol):
         thread-local bookkeeping — and they never affect scoring.
         """
         ...
+
+
+class ConversationalAdapter(BaseAdapter, Protocol):
+    """Protocol for adapters that can run the conversational suite.
+
+    Conversational capability is explicit: the conversational runner
+    only drives adapters that implement ``decide_turn``. An adapter
+    that only implements the single-shot ``decide()`` is rejected with
+    an actionable error — the runner never silently flattens a
+    conversation into one prompt, because that would measure a
+    different thing while pretending it was multi-turn.
+    """
+
+    def decide_turn(
+        self,
+        turn_input: dict[str, Any],
+        primitive: str,
+        context: CallContext,
+    ) -> AdapterOutput:
+        """Run one conversation turn through the decision model.
+
+        ``turn_input`` is the sealed turn payload: exactly the keys
+        ``messages`` (the full history, a list of ``{"role",
+        "content"}`` dicts ending with the current user turn),
+        ``options`` (the decision vocabulary), ``turn_index`` (the
+        0-based executed-turn index within the arm), and
+        ``is_final_turn``. No case id, no family, no arm label, no gold
+        labels, no attack annotations, and no holdout status ever
+        cross this boundary. ``primitive`` is the case primitive on
+        every turn, final or not; every executed turn must return a
+        primitive-valid output. Intermediate turns are recorded but
+        unscored — only the final turn of each arm is scored.
+
+        Called from worker threads (like ``decide``): it must be
+        thread-safe. Retry layering follows the same rule as
+        ``decide`` — the runner owns retries, the adapter does not
+        retry.
+        """
+        ...

@@ -220,6 +220,7 @@ impl From<PyPerCaseResult> for metrics::PerCaseResult {
             flipped: r.flipped,
             eligible: r.eligible,
             ineligibility_reason: r.ineligibility_reason,
+            conversational_turns: None,
         }
     }
 }
