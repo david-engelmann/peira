@@ -1,6 +1,5 @@
 """Unit tests for A1: async runner, AIMD controller, retry, cache,
-transcripts, replay, and cancellation (run with: python -m unittest
-discover tests)."""
+transcripts, replay, and cancellation (run with: python -m pytest tests)."""
 
 from __future__ import annotations
 

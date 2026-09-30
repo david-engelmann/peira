@@ -1477,9 +1477,10 @@ async def _run_case_with_item_budget(
 
     The abandoned adapter threads wrote nothing: the cancelled arm's
     task is settled before any record is built, so no late record is
-    ever written and the transcript holds no entry for the timed-out
-    arm. Replay rebuilds a completed benign arm from its entry; the
-    sealed artifact remains the record of the timed-out arm.
+    ever written. A synthesized transcript entry is written for the
+    timed-out arm carrying its kind and partial timing, so replay
+    rebuilds both the completed benign arm and the timed-out arm; the
+    sealed artifact remains the record of last resort.
 
     The shield keeps wait_for's own cancellation off the inner task —
     it is cancelled explicitly, exactly once, on exactly one path.
@@ -1816,6 +1817,7 @@ def _write_partial(
         env=_env,
         env_sha256=_env_sha256,
         results=results_to_dicts(ordered),
+        **_adapter_longitudinal_provenance(adapter, suite),
     )
     partial.metrics = _summarize_artifact(
         ordered, required_families, cases, seed, termination="partial"
@@ -1976,6 +1978,48 @@ def validate_partial(
     return seen, results
 
 
+def _adapter_longitudinal_provenance(
+    adapter: Any, suite: str
+) -> dict[str, str]:
+    """M-7 longitudinal registry fields for a run artifact.
+
+    Reads the adapter's declared provenance (see
+    ``adapters/base.py`` "longitudinal provenance") defensively:
+    adapters declare what they know, and unknown fields stay ""
+    rather than invented. ``case_set_tag`` is the suite id; the
+    dataset version label travels separately on the artifact.
+    ``call_date`` is the run's UTC date (the artifact's created_utc
+    carries the full timestamp).
+    """
+    decode_params = getattr(adapter, "decode_params", None)
+    if isinstance(decode_params, dict):
+        try:
+            decode_params_str = json.dumps(
+                decode_params, sort_keys=True
+            )
+        except (TypeError, ValueError):
+            # A custom adapter may expose a non-serializable value;
+            # provenance must never break artifact creation.
+            decode_params_str = ""
+    elif isinstance(decode_params, str):
+        decode_params_str = decode_params
+    else:
+        decode_params_str = ""
+
+    def _str_attr(name: str) -> str:
+        value = getattr(adapter, name, "")
+        return value if isinstance(value, str) else ""
+
+    return {
+        "model_class": _str_attr("model_class"),
+        "confidence_source": _str_attr("confidence_source"),
+        "checkpoint_hash": _str_attr("checkpoint_hash"),
+        "api_version": _str_attr("api_version"),
+        "call_date": datetime.now(timezone.utc).date().isoformat(),
+        "decode_params": decode_params_str,
+        "template_hash": _str_attr("template_hash"),
+        "case_set_tag": suite,
+    }
 def _item_timeout_record(
     seed: int,
     dispatch_index: int,
@@ -2305,6 +2349,12 @@ async def _run_suite_async(
     table = pricing_table
     # Environment fingerprint (Layer 1b).
     _env, _env_sha256 = collect_and_fingerprint()
+    # M-7 longitudinal provenance: the registry fields that let a run
+    # be compared against later runs of the same adapter id. Each is
+    # read defensively off the adapter: adapters declare what they
+    # know (see adapters/base.py "longitudinal provenance"), and
+    # unknown fields stay "" rather than invented.
+    _longitudinal = _adapter_longitudinal_provenance(adapter, suite)
     spent_usd = sum(
         (r.benign.usage.cost_usd if r.benign.usage else 0.0)
         + (r.attacked.usage.cost_usd if r.attacked.usage else 0.0)
@@ -2331,6 +2381,7 @@ async def _run_suite_async(
         env=_env,
         env_sha256=_env_sha256,
         results=results_to_dicts(ordered),
+        **_longitudinal,
     )
     artifact.metrics = _summarize_artifact(
         ordered, required_families, cases, seed, termination=termination
@@ -2487,6 +2538,152 @@ def run_suite(
         # SIGINT during asyncio.run() surfaces as cancellation of the
         # main task; the CLI's contract is KeyboardInterrupt.
         raise KeyboardInterrupt from None
+
+
+def run_multiseed(
+    adapter: Any,
+    cases: list[Case],
+    suite: str,
+    dataset_version: str,
+    progress: Callable[[int, int], None] | None = None,
+    manifest_sha256: str = "",
+    seed: int = 0,
+    num_seeds: int = 3,
+    max_concurrency: int = DEFAULT_MAX_CONCURRENCY,
+    max_attempts: int = DEFAULT_MAX_ATTEMPTS,
+    call_timeout: float | None = 300.0,
+    config_extra: dict[str, Any] | None = None,
+    rlimit_cpu_seconds: float | None = None,
+    rlimit_as_mb: float | None = None,
+    rlimit_fsize_mb: float | None = None,
+    budget_usd: float | None = None,
+    build_adapter: Callable[[int, str], Any] | None = None,
+    required_families: list[str] | None = None,
+    cache_dir: str | None = None,
+) -> tuple[list[RunArtifact], "StabilityResult | None"]:
+    """Run a suite k times under consecutive seeds (M-7 protocol).
+
+    Executes ``run_suite`` ``num_seeds`` times with seeds
+    ``seed .. seed + num_seeds - 1``, each under a fresh run nonce,
+    and returns ``(artifacts, StabilityResult)``. The stability
+    result's ``seeds`` field carries the seed list.
+
+    ``build_adapter`` is an optional hook for adapters whose
+    construction depends on the seed (e.g. the mock adapter's
+    simulation script is namespaced per seed): it is called as
+    ``build_adapter(seed_i, run_nonce)`` before each run and its
+    return value replaces ``adapter`` for that run. Omit it when the
+    adapter is seed-independent.
+
+    ``budget_usd``, when set, is divided evenly across the seed runs:
+    the cap the operator stated covers the whole multi-seed run, not
+    each seed. Raises ValueError for ``num_seeds < 3`` (the protocol
+    minimum), for resume-incompatible state there is none: multi-seed
+    runs do not support --resume (each seed run is independent).
+
+    A seed whose run did not complete (``artifact.termination`` is not
+    ``"complete"``, e.g. budget termination) is excluded from the
+    stability analysis and named in
+    ``StabilityResult.excluded_seeds``: a truncated seed must never
+    read as a quiet non-flip. When fewer than ``MIN_SEEDS`` seeds
+    complete, no stability claim can be made and the stability result
+    is None; every seed artifact is still returned so the completed
+    work is not lost.
+    """
+    from peira.stability import MIN_SEEDS, flip_agreement
+
+    if num_seeds < MIN_SEEDS:
+        raise ValueError(
+            f"num_seeds must be >= {MIN_SEEDS} for the M-7 protocol, "
+            f"got {num_seeds}"
+        )
+    if isinstance(budget_usd, bool):
+        # bool is an int subclass: True / 3 would silently become a
+        # $0.33 budget. Reject it before the division.
+        raise ValueError(
+            f"budget_usd must be a number or None, got {budget_usd!r}"
+        )
+    seeds = [seed + i for i in range(num_seeds)]
+    per_run_budget = (
+        budget_usd / num_seeds if budget_usd is not None else None
+    )
+    # (seed, artifact, error): a crashed seed leaves no artifact but
+    # must not take the completed seeds down with it. KeyboardInterrupt
+    # and SystemExit are not caught: the operator's stop is final.
+    runs: list[tuple[int, RunArtifact | None, str | None]] = []
+    for i, seed_i in enumerate(seeds):
+        run_nonce = new_run_nonce()
+        extra = dict(config_extra or {})
+        extra["num_seeds"] = num_seeds
+        extra["seed_index"] = i
+        try:
+            run_adapter = (
+                build_adapter(seed_i, run_nonce)
+                if build_adapter is not None
+                else adapter
+            )
+            artifact = run_suite(
+                run_adapter,
+                cases,
+                suite,
+                dataset_version,
+                progress=progress,
+                manifest_sha256=manifest_sha256,
+                seed=seed_i,
+                required_families=required_families,
+                max_concurrency=max_concurrency,
+                max_attempts=max_attempts,
+                call_timeout=call_timeout,
+                config_extra=extra,
+                rlimit_cpu_seconds=rlimit_cpu_seconds,
+                rlimit_as_mb=rlimit_as_mb,
+                rlimit_fsize_mb=rlimit_fsize_mb,
+                run_nonce=run_nonce,
+                budget_usd=per_run_budget,
+                cache_dir=cache_dir,
+            )
+        except Exception as e:  # noqa: BLE001 - resilience, not silence
+            # Surface the crash immediately: the CLI prints excluded
+            # seeds but cannot know the reason (no artifact exists for
+            # a crashed seed). The operator must be able to tell a
+            # provider crash from a budget termination.
+            print(f"warning: seed {seed_i} crashed: "
+                  f"{type(e).__name__}: {e}", file=sys.stderr)
+            runs.append(
+                (seed_i, None, f"{type(e).__name__}: {e}")
+            )
+            continue
+        runs.append((seed_i, artifact, None))
+    artifacts = [a for _, a, _ in runs if a is not None]
+    # A truncated seed (budget termination, crash recovery) is real
+    # data for its own artifact but must not enter the agreement
+    # statistics as if it ran the full case set. A crashed seed has
+    # no artifact at all and is excluded the same way.
+    complete = [
+        (seed_i, artifact)
+        for seed_i, artifact, _ in runs
+        if artifact is not None and artifact.termination == "complete"
+    ]
+    excluded_seeds = [
+        seed_i
+        for seed_i, artifact, _ in runs
+        if artifact is None or artifact.termination != "complete"
+    ]
+    if len(complete) < MIN_SEEDS:
+        return artifacts, None
+    stability = flip_agreement(
+        [
+            [PerCaseResult.from_dict(r) for r in a.results]
+            for _, a in complete
+        ]
+    )
+    # flip_agreement leaves seeds blank; the orchestrator owns them.
+    stability = dataclasses.replace(
+        stability,
+        seeds=[seed_i for seed_i, _ in complete],
+        excluded_seeds=excluded_seeds,
+    )
+    return artifacts, stability
 
 
 def _infer_timeout_kind(entry: dict[str, Any]) -> str | None:
