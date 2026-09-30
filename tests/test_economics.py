@@ -40,14 +40,15 @@ from peira.metrics import (
 )
 
 
-def _rec(decision, abstained=False, malformed=False, cost=0.001, score=None):
+def _rec(decision, abstained=False, malformed=False, cost=0.001, score=None,
+        model="test-model"):
     return CallRecord(
         decision=decision,
         confidence=0.9,
         abstained=abstained,
         refusal_reason="",
         usage=CallUsage(
-            model="test-model", tokens_in=100, tokens_out=10,
+            model=model, tokens_in=100, tokens_out=10,
             latency_ms=5.0, cost_usd=cost,
         ),
         seed=0,
@@ -59,7 +60,8 @@ def _rec(decision, abstained=False, malformed=False, cost=0.001, score=None):
 
 def _result(case_id, benign_decision, attacked_decision, flipped,
             primitive="choice", eligible=True, cost=0.001,
-            b_abstained=False, a_abstained=False, a_malformed=False):
+            b_abstained=False, a_abstained=False, a_malformed=False,
+            a_model="test-model"):
     return PerCaseResult(
         case_id=case_id,
         family="literal_reading",
@@ -67,7 +69,7 @@ def _result(case_id, benign_decision, attacked_decision, flipped,
         primitive=primitive,
         benign=_rec(benign_decision, abstained=b_abstained, cost=cost),
         attacked=_rec(attacked_decision, abstained=a_abstained,
-                      malformed=a_malformed, cost=cost),
+                      malformed=a_malformed, cost=cost, model=a_model),
         flipped=flipped,
         eligible=eligible,
         ineligibility_reason="" if eligible else "benign_wrong_decision",
@@ -453,6 +455,13 @@ class ValueViewTest(unittest.TestCase):
             set(view["adapters"]["cand"]["flip_direction_counts"]),
             set(FLIP_DIRECTIONS),
         )
+        # C-9 (M-9 x M-1): per-direction attacker cost-per-flip table,
+        # every M-1 direction a key, jailbreak direction present.
+        c9 = view["adapters"]["cand"]["attacker_cost_per_direction"]
+        self.assertEqual(set(c9), set(FLIP_DIRECTIONS))
+        self.assertIn("direction", c9["deny-to-approve"])
+        self.assertEqual(c9["deny-to-approve"]["direction"],
+                         "deny-to-approve")
         self.assertTrue(view["pareto_frontier"])
         self.assertIn("cand", view["comparisons"])
         comp = view["comparisons"]["cand"]
@@ -469,6 +478,60 @@ class ValueViewTest(unittest.TestCase):
         blob = json.dumps(view).lower()
         self.assertNotIn("value_score", blob)
         self.assertNotIn("blended", blob)
+
+    def test_value_text_renders_c9_direction_table(self):
+        from peira.cli import _value_text
+        s = load_cost_scenario("standard")
+        base = [_result(f"c{i}", "deny", "approve", i < 6, cost=0.001)
+                for i in range(10)]
+        view = value_view({"base": base}, s, price_date="2026-09-28")
+        text = _value_text(view)
+        self.assertIn("attacker $/flip by direction:", text)
+        # The jailbreak direction renders first; it is the headline.
+        lines = text.splitlines()
+        first_dir = next(
+            l for l in lines if l.startswith("      ") and ":" in l)
+        self.assertIn("deny-to-approve", first_dir)
+        # Withheld directions render as "withheld", never zero.
+        self.assertIn("to-malformed: withheld", text)
+
+    def test_value_page_renders_c9_direction_table(self):
+        from peira.cli import _value_page
+        s = load_cost_scenario("standard")
+        base = [_result(f"c{i}", "deny", "approve", i < 6, cost=0.001)
+                for i in range(10)]
+        view = value_view({"base": base}, s, price_date="2026-09-28")
+        html = _value_page(view)
+        self.assertIn("Attacker cost per flip direction (C-9)", html)
+        self.assertIn("<td>deny-to-approve</td>", html)
+        self.assertIn("withheld", html)
+
+    def test_value_rendering_marks_lower_bound(self):
+        # One priced call + one unpriced call: the $/flip figure is a
+        # lower bound, so every C-9 renderer must mark it with ≥ and a
+        # legend. Withheld-only rows carry no marker.
+        from peira.cli import _value_text, _value_page
+        from peira.pricing import load_pricing_table
+        models = load_pricing_table().get("models") or {}
+        if not models:
+            self.skipTest("pinned pricing table has no models")
+        model = sorted(models)[0]
+        s = load_cost_scenario("standard")
+        base = ([_result(f"c{i}", "deny", "approve", True, cost=0.001,
+                        a_model=model) for i in range(2)]
+                + [_result(f"c{i}", "deny", "approve", True, cost=0.0,
+                           a_model="unknown-model") for i in range(2, 4)])
+        view = value_view({"base": base}, s, price_date="2026-09-28")
+        row = view["adapters"]["base"]["attacker_cost_per_direction"][
+            "deny-to-approve"]
+        self.assertTrue(row["sufficient"])
+        self.assertEqual(row["n_unpriced"], 2)
+        text = _value_text(view)
+        self.assertIn("≥$0.00/flip", text)
+        self.assertIn("lower bounds", text)
+        html = _value_page(view)
+        self.assertIn("≥$0.00", html)
+        self.assertIn("lower bound", html)
 
 
 class ValueCliTest(unittest.TestCase):
