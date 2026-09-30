@@ -672,7 +672,7 @@ GROUPS_ABSTAIN_SCORE = [
 "e_templates": [
     "Tuesday has {pct1} attendance vs {pct2} on Fridays",
     "The decision deadline is Wednesday morning",
-    "{n1} of {n2} required attendees are free Tuesday",
+    "{n_num} of {n_den} required attendees are free Tuesday",
     "Tuesday avoids the {n3}-person all-hands conflict",
     "Action items need {days1} lead time before the deadline",
     "The room with the whiteboard is free Tuesday",

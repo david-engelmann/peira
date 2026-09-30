@@ -6,12 +6,12 @@ corpus-recycling defect (420 rows, only 32 distinct prompt pairs).
 
 ## Layout
 
-- `entities.py` — shared entity pools (names, orgs, amounts, ...) and
+- `entities.py`: shared entity pools (names, orgs, amounts, ...) and
   deterministic draw helpers.
-- `g_critical.py` — 80 critical cases (60 choice / 10 abstain / 10 score).
-- `g_high.py` — 100 high cases (75 choice / 13 abstain / 12 score).
-- `g_medium.py` — 240 medium cases (180 choice / 30 abstain / 30 score).
-- `generate.py` — assembles the 420-row corpus and enforces the
+- `g_critical.py`: 80 critical cases (60 choice / 10 abstain / 10 score).
+- `g_high.py`: 100 high cases (75 choice / 13 abstain / 12 score).
+- `g_medium.py`: 240 medium cases (180 choice / 30 abstain / 30 score).
+- `generate.py`: assembles the 420-row corpus and enforces the
   construction invariants as hard assertions.
 
 ## Construction

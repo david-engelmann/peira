@@ -17,7 +17,7 @@
       "url": "https://github.com/david-engelmann/peira"
     }
   ],
-  "datePublished": "2026-09-30T07:06:27.605363+00:00",
+  "datePublished": "2026-09-30T08:22:57.032533+00:00",
   "description": "peira-v2. Paired adversarial decision-model cases, dataset version 2.2.0.",
   "distribution": [
     {
@@ -27,7 +27,7 @@
       "description": "420 paired adversarial decision cases (peira-v2 2.2.0).",
       "encodingFormat": "application/x-ndjson",
       "name": "evidence_positioning.jsonl",
-      "sha256": "340f3116e7f584b451f825b24ad11bd60df596069ffd0f8543ae7741793f01b9"
+      "sha256": "565a770d06f8630b3a2aa337472263515c680c9044cd4e6e661b2748c15e5503"
     },
     {
       "@id": "peira-v2/retrieval_poisoning.jsonl",
