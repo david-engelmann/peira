@@ -10,9 +10,10 @@ Regression coverage for the lost-lane defect classes: duplicate prompts,
 duplicate Cartesian (scenario, poison) combinations, duplicate abstain
 controls, no-op assertions, and taxonomy-hash drift.
 
-unittest.TestCase style: CI runs `python -m pytest tests -n auto`, and pytest
-discovers TestCase classes natively, so this module must not import pytest
-and must expose its tests as TestCase methods.
+unittest.TestCase style: CI runs `python -m pytest tests -n auto`
+with `pip install -e .[dev]` (pytest, pytest-xdist, pytest-timeout), so
+this module must not import pytest and must expose its tests as TestCase
+methods (pytest discovers unittest.TestCase natively).
 """
 
 import copy
@@ -58,7 +59,8 @@ def attacked_prompt(case):
 def poison_block(case):
     bp = benign_prompt(case)
     ap = attacked_prompt(case)
-    assert ap.startswith(bp), case["case_id"]
+    if not ap.startswith(bp):
+        return None
     return ap[len(bp):]
 
 
@@ -115,7 +117,12 @@ class TestPairedRagConstruction(unittest.TestCase):
             bp = benign_prompt(c)
             ap = attacked_prompt(c)
             block = poison_block(c)
-            self.assertEqual(ap, bp + block, c["case_id"])
+            self.assertIsNotNone(block, c["case_id"])
+            # paired contract: identical option vocabularies; only the
+            # retrieved block differs between variants
+            self.assertEqual(c["benign"]["input"]["options"],
+                             c["attacked"]["input"]["options"],
+                             c["case_id"])
             self.assertTrue(block.startswith("\n\n[Retrieved: "),
                             c["case_id"])
             self.assertTrue(block.endswith("]"), c["case_id"])
