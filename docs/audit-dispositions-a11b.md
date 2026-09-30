@@ -15,7 +15,7 @@ Each item was checked mechanically against the current tree: string presence/abs
 | ID | Title | Verdict | How verified |
 |----|-------|---------|--------------|
 | D-P0-1 | Abstention semantics wrong in five places | VERIFIED | All five files (Concepts.md, Taxonomy.md, Glossary.md, README.md, Methodology.md) state attack-induced abstention counts as a flip. D-23 carries the amendment note in Decisions.md. |
-| D-P0-2 | False '95% CIs on every number' tagline | VERIFIED | The false string appears in none of README.md, docs/CLI.md, pyproject.toml, python/peira/cli.py, crates/peira-core/Cargo.toml, scripts/generate_social_preview.py. README.md line 187 reads 'Wilson 95% confidence intervals on reported rates'. |
+| D-P0-2 | False '95% CIs on every number' tagline | VERIFIED | The false string appears in none of README.md, docs/CLI.md, pyproject.toml, python/peira/cli.py, crates/peira-core/Cargo.toml, scripts/generate_social_preview.py. README.md now reads 'Wilson 95% confidence intervals on reported rates'. |
 | D-P0-3 | Artifact-Versions claims peira validate verifies artifacts | VERIFIED | docs/Artifact-Versions.md states peira validate is dataset-only, no migrate-artifact mandated, verification documented as peira runs verify. |
 | T-P0-1 | Dishonest ShieldGemma test | VERIFIED (stale) | No ShieldGemma test file remains in tests/. The dishonest test is gone, not merely fixed. |
 | v1-ind-214 | Unfounded golds, score-scale mismatch | VERIFIED | v1-ind-214 absent from dataset/v1/cases. Replacement v1-ind-251 present in indirection.jsonl. |
@@ -29,18 +29,18 @@ Each item was checked mechanically against the current tree: string presence/abs
 | D-P1-3 | FAQ/Hardware 'planned' adapters, phantom 27B | VERIFIED | Exactly one 'planned' occurrence (the design statement). No 27B tier. |
 | D-P1-4 | README adapter table incomplete | VERIFIED | Qwen3Guard, Granite, ShieldGemma, WildGuard, Lakera all listed. |
 | D-P1-5 | FAQ '~5,000' denominator | VERIFIED | No '5,000' string in docs/FAQ.md. |
-| D-P1-6 | Troubleshooting error strings mismatch CLI | VERIFIED | All four documented error strings present. Behavioral check: actual CLI output for unknown adapter matches the documented string byte-for-byte. |
+| D-P1-6 | Troubleshooting error strings mismatch CLI | VERIFIED | All four documented error strings present in docs/Troubleshooting.md. Behavioral check: actual CLI output for unknown adapter matches the documented string exactly. |
 | D-P1-7 | D-6 mislabels exit code 2 | VERIFIED | D-6 amendment note present, correcting to infrastructure error. |
 | D-P1-8 | Methodology.md stale NaN line | VERIFIED | Type-level insufficiency stated (delta=None, ci=None, sufficient=False). |
 | D-P1-9 | Glossary 'abstain' too narrow | VERIFIED | Deliberate abstention distinguished from provider refusal; attack-induced abstention counts as a flip. |
 | D-P1-10 | Concepts.md analysis lock only 'the hash' | VERIFIED | Full '## 3. Analysis lock' section present. |
 | D-P1-11 | README false accuracy-benchmark claim | VERIFIED | Conflation specified: accuracy benchmarks do not catch attack-driven flips. |
-| T-P1-1 | No exact exit-3 test | VERIFIED | tests/test_cli_exit_codes.py asserts exit 3. Test run: 139 passed, 3 skipped. |
+| T-P1-1 | No exact exit-3 test | VERIFIED | tests/test_cli_exit_codes.py asserts exit 3. Test run (exit-codes + hf-adapters + rust-parity): 139 passed, 3 skipped. |
 | T-P1-2 | No real-tokenizer contract test | VERIFIED | tests/test_hf_adapters.py pins greedy single-token contract. Tests green. |
 | T-P1-3 | D-11 no validation | VERIFIED | tests/test_rust_execution_parity.py compares against _py reference implementations. Tests green. |
 | C-P1-1 | No clippy/fmt in CI | VERIFIED | .github/workflows/ci.yml runs cargo clippy and cargo fmt --check. |
 | C-P1-2 | Adapter-score PR-comment promise | VERIFIED | No adapter-score promise in ci.yml. |
-| C-P1-3 | DCO unenforced | VERIFIED | DCO job present in ci.yml (line 130), requires Signed-off-by. |
+| C-P1-3 | DCO unenforced | VERIFIED | DCO job present in ci.yml, requires Signed-off-by on every non-merge commit. |
 | C-P1-4 | No version-bump guard | VERIFIED | check_dataset_version_bump.py referenced in ci.yml. |
 | R-P1-1 | Roadmap references #110/#111 | VERIFIED (stale) | No #110/#111 references in GOAL.md. |
 | R-P1-2 | Roadmap item for #112 stale | VERIFIED (stale) | Stale item gone after GOAL.md rewrite. |
