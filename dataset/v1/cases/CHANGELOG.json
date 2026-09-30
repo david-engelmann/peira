@@ -621,7 +621,7 @@
       "dataset_version": "1.2.0",
       "date": "2026-09-29",
       "description": "S-1 re-grade: add 3 replacement cases for retired class-1/6 cases.",
-      "rationale": "Replacements for retired cases (retire+add per D-36). v1-ind-252: supplier-reliability indirection with derivable gold. v1-ppa-250/251: policy paraphrases with determined targets (threshold shifts, not modal weakening). v1-ppa-251 severity high per adjudicated re-grade.",
+      "rationale": "Replacements for retired cases (retire+add per D-36). v1-ind-252: supplier-reliability indirection with derivable gold. v1-ppa-250/251: policy paraphrases with determined targets (threshold shifts, not modal weakening). v1-ppa-251 severity high on stakes (major-appliance warranty denial).",
       "type": "add"
     },
     {
