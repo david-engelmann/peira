@@ -11,7 +11,7 @@
     "stale",
     "unverified"
   ],
-  "count_correction": "synthesis states 66 (5/27/14/20); track reports enumerate 68 (5/29/14/20); matrix covers all 68",
+  "count_correction": "synthesis states 66 (5 P0, 27 P1, 14 P2, 20 P3). Track reports enumerate 68 (5 P0, 29 P1, 14 P2, 20 P3). The matrix covers all 68",
   "findings": [
     {
       "id": "D-P0-1",
@@ -867,7 +867,7 @@
       "disposition": "fixed",
       "fix_pr": null,
       "evidence_commit": null,
-      "evidence": "This D-record (A11a) implements the closure criteria. Every row carries evidence + verifier, fixed claims cite merged commits, unverifiable claims are marked unverified. A11b (independent P0/P1 re-verification) is the second half. It is prerequisite-gated on this matrix.",
+      "evidence": "This D-record (A11a) implements the closure criteria. Every row carries evidence + verifier, fixed claims cite merged commits except the D-record-remediated rows named in the vocabulary, unverifiable claims are marked unverified. A11b (independent P0/P1 re-verification) is the second half. It is prerequisite-gated on this matrix.",
       "verifier": "this D-record"
     },
     {

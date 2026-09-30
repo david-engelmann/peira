@@ -6,6 +6,7 @@ both rendered from FINDINGS below; edit the data, re-run, commit both.
 """
 
 import json
+import subprocess
 import sys
 
 # Disposition vocabulary (metareview closure standard + task wording):
@@ -411,7 +412,7 @@ FINDINGS = [
     dict(id="M-4", track="metareview", severity="P1",
          title="Insufficient closure criteria",
          disposition="fixed", fix_pr=None, evidence_commit=None,
-         evidence="This D-record (A11a) implements the closure criteria. Every row carries evidence + verifier, fixed claims cite merged commits, unverifiable claims are marked unverified. A11b (independent P0/P1 re-verification) is the second half. It is prerequisite-gated on this matrix.",
+         evidence="This D-record (A11a) implements the closure criteria. Every row carries evidence + verifier, fixed claims cite merged commits except the D-record-remediated rows named in the vocabulary, unverifiable claims are marked unverified. A11b (independent P0/P1 re-verification) is the second half. It is prerequisite-gated on this matrix.",
          verifier="this D-record"),
     dict(id="M-5", track="metareview", severity="P2",
          title="Stale roadmap findings carried as live",
@@ -436,9 +437,34 @@ EXPECTED_TRACK_COUNTS = {"docs": 20, "tests": 10, "ci": 12, "roadmap": 13, "case
 EXPECTED_SEVERITY_COUNTS = {"P0": 5, "P1": 29, "P2": 14, "P3": 20}
 EXPECTED_OMISSION_IDS = {"O-1", "O-2", "O-3", "O-4", "O-5", "O-6"}
 EXPECTED_MFINDING_IDS = {"M-1", "M-2", "M-3", "M-4", "M-5", "M-6"}
-# Metareview process findings remediated by this D-record itself (no merged
-# commit; the matrix is the fix). The vocabulary documents this exception.
+# Rows remediated by this D-record itself (no merged commit; the matrix is
+# the fix). M-3 through M-6 are metareview process findings, O-5 is a
+# metareview omission. The vocabulary documents this exception.
 DRECORD_REMEDIATED = {"M-3", "M-4", "M-5", "M-6", "O-5"}
+
+
+def _check_sha_reachable(sha: str) -> str | None:
+    """Verify sha is a commit reachable from HEAD.
+
+    Returns an error string on failure, None on success. When git
+    metadata is unavailable the check is skipped loudly: the return
+    value starts with "SKIP-" and the caller warns on stderr without
+    failing the run, so the generator stays usable outside a clone.
+    """
+    try:
+        r = subprocess.run(
+            ["git", "cat-file", "-t", sha],
+            capture_output=True, text=True, check=False)
+        if r.returncode != 0 or r.stdout.strip() != "commit":
+            return f"evidence_commit {sha!r} is not a commit object"
+        r = subprocess.run(
+            ["git", "merge-base", "--is-ancestor", sha, "HEAD"],
+            capture_output=True, text=True, check=False)
+        if r.returncode != 0:
+            return f"evidence_commit {sha!r} is not an ancestor of HEAD"
+        return None
+    except (OSError, subprocess.SubprocessError) as e:
+        return f"SKIP-SHA-CHECK (git unavailable: {e})"
 
 
 def validate():
@@ -458,6 +484,15 @@ def validate():
         if f.get("disposition") == "fixed" and not f.get("evidence_commit"):
             if f["id"] not in DRECORD_REMEDIATED:
                 errors.append(f"{f['id']}: fixed without evidence_commit")
+        if (f.get("disposition") == "fixed" and f.get("evidence_commit")
+                and f["id"] not in DRECORD_REMEDIATED):
+            sha_err = _check_sha_reachable(f["evidence_commit"])
+            if sha_err:
+                if sha_err.startswith("SKIP-"):
+                    print(f"WARNING: {f['id']}: {sha_err}",
+                          file=sys.stderr)
+                else:
+                    errors.append(f"{f['id']}: {sha_err}")
     # Historical scope invariants: the signed audit record, not derived counts.
     from collections import Counter
     original = [f for f in FINDINGS if f["track"] != "metareview"]
@@ -499,7 +534,7 @@ def render_markdown():
     L.append("")
     L.append("## Disposition vocabulary")
     L.append("")
-    L.append("- **fixed** means remediated on main. Evidence cites a merged commit reachable from main. For the metareview process findings M-3 through M-6, this D-record itself is the remediation.")
+    L.append("- **fixed** means remediated on main. Evidence cites a merged commit reachable from main. For the metareview process findings M-3 through M-6 and O-5, this D-record itself is the remediation.")
     L.append("- **stale** means the finding no longer applies. Evidence explains why.")
     L.append("- **rejected** means will not fix. Evidence gives the reasoning.")
     L.append("- **deferred** means valid but not yet addressed. Evidence names the owning lane.")
@@ -531,7 +566,7 @@ def render_markdown():
     L.append("- Family-level case patterns such as template-leak filler and score-scale wording are addressed by the S-1 re-grade workstream, that is #134 tooling and #181 execution. They are not rowed as separate findings.")
     L.append("- T-P0-1 is marked **stale**, not fixed. PR #116 resolved the P0 as stated, and the smaller fake-tokenizer remainder was fixed by PR #143.")
     L.append("- O-1 is marked **fixed**. The actionable items landed, that is the 300s call-timeout default and the threat model and opt-in rlimits. In-process imports and same-address-space API keys remain by documented design, with subprocess and JSON isolation deferred to the first third-party adapter.")
-    L.append("- The three deferred rows (T-P3-1 and T-P3-3 and C-P2-6) and the one rejected row (C-P3-2) are P3 and P2 nits with no correctness impact. They are tracked here so A11b can confirm them unresolved rather than assume them fixed.")
+    L.append("- The three deferred rows (T-P3-1 and T-P3-3 and C-P2-6) and the one rejected row (D-P3-2) are P3 and P2 nits with no correctness impact. They are tracked here so A11b can confirm them unresolved rather than assume them fixed.")
     L.append("- O-7 was verified clean by the metareview and is not a finding. It has no row.")
     L.append("")
     return "\n".join(L) + "\n"
@@ -553,7 +588,7 @@ def main():
         "main_sha": "2d234e6a",
         "date": "2026-09-29",
         "dispositions_allowed": sorted(ALLOWED),
-        "count_correction": "synthesis states 66 (5/27/14/20); track reports enumerate 68 (5/29/14/20); matrix covers all 68",
+        "count_correction": "synthesis states 66 (5 P0, 27 P1, 14 P2, 20 P3). Track reports enumerate 68 (5 P0, 29 P1, 14 P2, 20 P3). The matrix covers all 68",
         "findings": FINDINGS,
     }
     with open("docs/audit-dispositions.json", "w") as fh:

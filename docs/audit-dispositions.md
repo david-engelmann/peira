@@ -16,7 +16,7 @@ O-7 was verified clean and is out of scope per the A11a brief. It is noted here,
 
 ## Disposition vocabulary
 
-- **fixed** means remediated on main. Evidence cites a merged commit reachable from main. For the metareview process findings M-3 through M-6, this D-record itself is the remediation.
+- **fixed** means remediated on main. Evidence cites a merged commit reachable from main. For the metareview process findings M-3 through M-6 and O-5, this D-record itself is the remediation.
 - **stale** means the finding no longer applies. Evidence explains why.
 - **rejected** means will not fix. Evidence gives the reasoning.
 - **deferred** means valid but not yet addressed. Evidence names the owning lane.
@@ -113,7 +113,7 @@ O-7 was verified clean and is out of scope per the A11a brief. It is noted here,
 | M-1 | metareview | P1 | fixed | False 'zero em dashes' mechanical verification (564 real hits at the audited snapshot) | Corpus swept (PR-2 #138 and #190). Scripts/check_no_emdashes.py runs in CI. Scripts/verify_no_emdashes.py (Python codepoint scan, not grep) reports zero U+2014 hits on main@2d234e6. The mechanical-check discipline (codepoint scans, distrust of zero-hit greps) is recorded in AGENTS.md. (ref #190 @62abcf0) | run scripts/verify_no_emdashes.py on main@2d234e6 |
 | M-2 | metareview | P1 | fixed | Unjustified generalization from a 50-case sample | D-36 policy (PR #118, amended #123) re-scoped case corrections to a sampled-and-protocol-gated process. The S-1 re-grade tooling (#134) and execution (#181) replaced anecdote with the full-corpus re-grade. (ref #118 @8e174a6) | docs/Decisions.md D-36. S1/ artifacts on main@2d234e6 |
 | M-3 | metareview | P1 | fixed | Mis-scoped and incomplete fix plan | The fix plan was revised per the metareview (section e). PR-0..PR-6 rescoped, S-1/S-2 workstreams split out, T-P0-1 delegation corrected. This matrix records the revised plan's execution. (ref this D-record) | metareview-synthesis.md section (e). This D-record |
-| M-4 | metareview | P1 | fixed | Insufficient closure criteria | This D-record (A11a) implements the closure criteria. Every row carries evidence + verifier, fixed claims cite merged commits, unverifiable claims are marked unverified. A11b (independent P0/P1 re-verification) is the second half. It is prerequisite-gated on this matrix. (ref this D-record) | this D-record |
+| M-4 | metareview | P1 | fixed | Insufficient closure criteria | This D-record (A11a) implements the closure criteria. Every row carries evidence + verifier, fixed claims cite merged commits except the D-record-remediated rows named in the vocabulary, unverifiable claims are marked unverified. A11b (independent P0/P1 re-verification) is the second half. It is prerequisite-gated on this matrix. (ref this D-record) | this D-record |
 | M-5 | metareview | P2 | fixed | Stale roadmap findings carried as live | R-P1-1..6, R-P2-1..3, R-P3-1..4 are marked stale in this matrix with per-row evidence. The GOAL.md rewrite (2026-09-29) removed the stale items and tracks merged work. (ref this D-record) | this D-record. GOAL.md on 2026-09-29 |
 | M-6 | metareview | P2 | fixed | Ledger hygiene failures (T-P0-1 marked fixed while open, D-P0-3 hedged, D-P0-2 under-scoped) | Corrected in this matrix. T-P0-1 is marked stale (not fixed). D-P0-3's hedge is removed (verified fixed). D-P0-2's scope is expanded to pyproject.toml, CLI text, Cargo metadata, and social-preview generation. (ref this D-record) | this D-record |
 
@@ -122,6 +122,6 @@ O-7 was verified clean and is out of scope per the A11a brief. It is noted here,
 - Family-level case patterns such as template-leak filler and score-scale wording are addressed by the S-1 re-grade workstream, that is #134 tooling and #181 execution. They are not rowed as separate findings.
 - T-P0-1 is marked **stale**, not fixed. PR #116 resolved the P0 as stated, and the smaller fake-tokenizer remainder was fixed by PR #143.
 - O-1 is marked **fixed**. The actionable items landed, that is the 300s call-timeout default and the threat model and opt-in rlimits. In-process imports and same-address-space API keys remain by documented design, with subprocess and JSON isolation deferred to the first third-party adapter.
-- The three deferred rows (T-P3-1 and T-P3-3 and C-P2-6) and the one rejected row (C-P3-2) are P3 and P2 nits with no correctness impact. They are tracked here so A11b can confirm them unresolved rather than assume them fixed.
+- The three deferred rows (T-P3-1 and T-P3-3 and C-P2-6) and the one rejected row (D-P3-2) are P3 and P2 nits with no correctness impact. They are tracked here so A11b can confirm them unresolved rather than assume them fixed.
 - O-7 was verified clean by the metareview and is not a finding. It has no row.
 
