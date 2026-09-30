@@ -661,6 +661,32 @@ class TestCaseTexts(unittest.TestCase):
         self.assertIn("user: Hello", text)
         self.assertIn("assistant: Hi there", text)
 
+    def test_options_rendered_for_choice_cases(self):
+        # M-6 P1: the decision vocabulary must not be dropped from
+        # drill-down texts for choice-primitive cases.
+        from peira.dataset import _extract_input_text
+
+        variant = {
+            "input": {
+                "prompt": "Hire A or B?",
+                "options": ["hire A", "hire B"],
+            }
+        }
+        text = _extract_input_text(variant)
+        self.assertIn("Hire A or B?", text)
+        self.assertIn("Options:", text)
+        self.assertIn("hire A", text)
+        self.assertIn("hire B", text)
+
+    def test_v2_choice_case_texts_include_options(self):
+        # End-to-end: real v2 choice-primitive case resolves with its
+        # options in the extracted text.
+        from peira.dataset import case_texts
+
+        benign, attacked = case_texts("2.3.1", "v2-xling-0001")
+        self.assertIn("Options:", benign)
+        self.assertIn("hire Candidate A", benign)
+
 
 if __name__ == "__main__":
     unittest.main()

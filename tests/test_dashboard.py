@@ -514,7 +514,7 @@ class TestSeverityBreakdownCI(unittest.TestCase):
         ]
         sev = _severity_breakdown(results)["low"]
         self.assertIsNone(sev["flip_rate_raw"])
-        self.assertEqual(sev["flip_rate_ci95"], [0.0, 0.0])
+        self.assertIsNone(sev["flip_rate_ci95"])
 
 
 class TestPairwiseResampleAhead(unittest.TestCase):
@@ -671,11 +671,12 @@ class TestPairwiseResampleAhead(unittest.TestCase):
     def test_draw_stream_matches_paired_bootstrap(self):
         # Pins the M-6 requirement 3 contract: pairwise_resample_ahead
         # must use the same seeded paired draw stream as
-        # metrics.paired_bootstrap_ci. Replicates the draw pattern
-        # independently and asserts the fractions match exactly.
-        import random
-
+        # metrics.paired_bootstrap_ci. Derives the expected fractions
+        # from the metrics module's own draw-stream function
+        # (_bootstrap_randbelow), so a drift in either module's stream
+        # breaks this test.
         from peira.dashboard import pairwise_resample_ahead
+        from peira.metrics import _bootstrap_randbelow
 
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
@@ -686,22 +687,26 @@ class TestPairwiseResampleAhead(unittest.TestCase):
             )
             pair = out["pairs"]["adapter-a|adapter-b"]
 
-            # Independent replication: shared cases sorted, same RNG
-            # stream, same mean comparison.
+            # Expected fractions from the metrics module's draw stream:
+            # shared cases sorted, paired diffs via _bootstrap_randbelow.
+            import random
+
             flips_a = [True] * 10 + [False] * 30
             flips_b = [True] * 30 + [False] * 10
             xs = [1.0 if f else 0.0 for f in flips_a]
             ys = [1.0 if f else 0.0 for f in flips_b]
             rng = random.Random(seed)
+            randbelow = _bootstrap_randbelow(rng)
             ahead = behind = 0
             n = 40
+            xs_get = xs.__getitem__
+            ys_get = ys.__getitem__
             for _ in range(n_boot):
-                idx = [rng.randrange(n) for _ in range(n)]
-                ma = sum(xs[j] for j in idx) / n
-                mb = sum(ys[j] for j in idx) / n
-                if ma < mb:
+                idx = [randbelow(n) for _ in range(n)]
+                diff = sum(map(xs_get, idx)) / n - sum(map(ys_get, idx)) / n
+                if diff < 0:
                     ahead += 1
-                elif mb < ma:
+                elif diff > 0:
                     behind += 1
             self.assertEqual(
                 pair["ahead_fraction"], round(ahead / n_boot, 4)

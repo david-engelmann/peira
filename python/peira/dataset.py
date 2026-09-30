@@ -543,10 +543,12 @@ def _extract_input_text(variant: Any) -> str | None:
     """Extract the display text from a case variant's ``input`` field.
 
     v1/v2 cases store input as a dict (``{"prompt": ..., "options": ...}``);
-    the prompt is the text the adapter saw. A bare string input is
-    returned as-is. Conversational cases store ``{"turns": [...]}``;
-    the turns are joined as "role: text" lines. Anything else yields
-    None (not available, never empty evidence).
+    the prompt plus the options list are the text the adapter saw (the
+    options are the decision vocabulary for choice-primitive cases, so
+    they are rendered as an "Options:" line rather than dropped). A bare
+    string input is returned as-is. Conversational cases store
+    ``{"turns": [...]}``; the turns are joined as "role: text" lines.
+    Anything else yields None (not available, never empty evidence).
     """
     if not isinstance(variant, dict):
         return None
@@ -556,6 +558,13 @@ def _extract_input_text(variant: Any) -> str | None:
     if isinstance(raw, dict):
         prompt = raw.get("prompt")
         if isinstance(prompt, str):
+            options = raw.get("options")
+            if isinstance(options, list) and options:
+                opt_lines = "\n".join(
+                    f"- {o}" for o in options if isinstance(o, str)
+                )
+                if opt_lines:
+                    return f"{prompt}\nOptions:\n{opt_lines}"
             return prompt
         turns = raw.get("turns")
         if isinstance(turns, list):
@@ -603,9 +612,13 @@ def _case_text_index(dataset_dir: Path) -> dict[str, tuple[str | None, str | Non
     return index
 
 
-# Process-lifetime cache: (root, version) -> text index. The dataset
-# files are sealed (manifest-locked), so a stale cache cannot disagree
-# with the sealed bytes within a process.
+# Process-lifetime cache: (root, version) -> text index. This is an
+# explicit process-lifetime assumption, not an enforced invariant: the
+# cache is never re-validated against the manifest within a process.
+# It is safe for sealed dataset files (manifest-locked), but a
+# long-lived process spanning a dataset rebuild would serve stale
+# drill-down texts. Dashboard servers should restart (or clear this
+# cache) across dataset version bumps.
 _TEXT_INDEX_CACHE: dict[
     tuple[str, str], dict[str, tuple[str | None, str | None]]
 ] = {}
@@ -631,9 +644,10 @@ def case_texts(
     """
     r = repo_root() if root is None else root
     s = str(suite or "").strip().lower() or None
-    cache_key = (str(r), str(dataset_version).strip(), s or "")
+    version = str(dataset_version).strip()
+    cache_key = (str(r), version, s or "")
     if cache_key not in _TEXT_INDEX_CACHE:
-        ddir = dataset_dir_for_version(str(dataset_version), r, s)
+        ddir = dataset_dir_for_version(version, r, s)
         _TEXT_INDEX_CACHE[cache_key] = (
             _case_text_index(ddir) if ddir is not None else {}
         )

@@ -22,6 +22,7 @@ filename.)
 from __future__ import annotations
 
 import math
+import random
 from pathlib import Path
 from typing import Any
 
@@ -232,7 +233,9 @@ def _severity_breakdown(results: list[dict]) -> dict[str, dict[str, Any]]:
             "n_eligible": n_eligible,
             "n_flipped": n_flipped,
             "flip_rate_raw": round(n_flipped / n_eligible, 4) if n_eligible else None,
-            "flip_rate_ci95": [round(ci_lo, 4), round(ci_hi, 4)],
+            # No interval for an empty eligible population: [0.0, 0.0]
+            # would be false precision on nothing.
+            "flip_rate_ci95": [round(ci_lo, 4), round(ci_hi, 4)] if n_eligible else None,
             "cost_usd": round(cost, 6),
             "latency_ms_total": round(latency, 3),
         }
@@ -679,7 +682,9 @@ def pairwise_resample_ahead(
     Pairs with fewer than 30 shared eligible cases are reported with
     ``n_shared`` and None fractions: the resample is too thin to read
     as a ranking claim (the "not resolvable at this n" convention).
-    Diagonal entries are 0.5/0.5 by definition.
+    Diagonal entries are 0.5/0.5 by definition (a self-pair is 100%
+    ties, so the fractions are definitional, not resampled) with
+    ``n_shared`` None.
 
     Returns JSON-serializable dict with ``adapters`` (rank order),
     ``seed``, ``n_boot``, and ``pairs`` mapping
@@ -690,8 +695,6 @@ def pairwise_resample_ahead(
     including thin, diagonal, and mirror entries, carries the same
     shape.
     """
-    import random
-
     from peira.runs_registry import list_runs, query_cases
 
     # Same validation contract as metrics._check_n_boot: every
@@ -725,6 +728,12 @@ def pairwise_resample_ahead(
         if not name:
             continue
         run_path = run_paths.get(r.get("run_id", ""))
+        if not run_path:
+            # No artifact path for this run: skip rather than silently
+            # pooling all of the adapter's runs (query_cases with
+            # run_path=None mixes runs, breaking the latest-run-only
+            # contract).
+            continue
         rows = query_cases(
             runs_dir=runs_dir,
             adapter=name,
@@ -738,7 +747,7 @@ def pairwise_resample_ahead(
             for row in rows
             if isinstance(row.get("case_id"), str)
         }
-        # A3: per-pair provenance so the view's consumers can recover
+        # Per-pair provenance so the view's consumers can recover
         # the sealed run behind each vector.
         provenance[name] = {
             "run_id": r.get("run_id", ""),
