@@ -1,6 +1,6 @@
 """Unit tests for the M-7 multi-seed stability protocol (peira.stability).
 
-Run with: python -m unittest discover tests -v
+Run with: python -m pytest tests/test_stability.py -v
 """
 
 import json

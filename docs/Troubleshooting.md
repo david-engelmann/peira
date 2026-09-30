@@ -148,6 +148,12 @@ Cause: resume merges a partial run into a new execution, but
 multi-seed runs are k independent executions with no shared partial
 state. Fix: re-run without `--resume`; each seed run starts fresh.
 
+**`error: --transcript is not supported with --seeds > 1; each seed run is independent (run with --seeds 1 to capture a transcript)`**
+Cause: a transcript captures a single run's request/response stream,
+but multi-seed runs are k independent executions. Fix: run with
+`--seeds 1` to capture a transcript, or omit `--transcript` for
+multi-seed runs.
+
 **`ValueError: budget_usd must be a number or None, got True`**
 Cause: a boolean was passed as the budget to `run_multiseed`.
 Python booleans are integers, so `True / 3` would silently become a

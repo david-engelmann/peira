@@ -1888,6 +1888,7 @@ def run_multiseed(
     budget_usd: float | None = None,
     build_adapter: Callable[[int, str], Any] | None = None,
     required_families: list[str] | None = None,
+    cache_dir: str | None = None,
 ) -> tuple[list[RunArtifact], "StabilityResult | None"]:
     """Run a suite k times under consecutive seeds (M-7 protocol).
 
@@ -1968,6 +1969,7 @@ def run_multiseed(
                 rlimit_fsize_mb=rlimit_fsize_mb,
                 run_nonce=run_nonce,
                 budget_usd=per_run_budget,
+                cache_dir=cache_dir,
             )
         except Exception as e:  # noqa: BLE001 - resilience, not silence
             # Surface the crash immediately: the CLI prints excluded

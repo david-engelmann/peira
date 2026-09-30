@@ -377,7 +377,9 @@ def cmd_run(args: argparse.Namespace) -> int:
             return EXIT_USER_ERROR
     # M-7: validate the seed count before doing any work. 1 is a
     # single run; anything else must clear the protocol minimum.
-    num_seeds = getattr(args, "seeds", 1) or 1
+    num_seeds = getattr(args, "seeds", 1)
+    if num_seeds is None:
+        num_seeds = 1
     if num_seeds != 1 and num_seeds < 3:
         print(f"error: --seeds must be 1 or >= 3 (M-7 protocol minimum), "
               f"got {num_seeds}", file=sys.stderr)
@@ -386,6 +388,11 @@ def cmd_run(args: argparse.Namespace) -> int:
         print("error: --resume is not supported with --seeds > 1; "
               "each seed run is independent (re-run without --resume)",
               file=sys.stderr)
+        return EXIT_USER_ERROR
+    if num_seeds > 1 and args.transcript:
+        print("error: --transcript is not supported with --seeds > 1; "
+              "each seed run is independent (run with --seeds 1 to "
+              "capture a transcript)", file=sys.stderr)
         return EXIT_USER_ERROR
 
     def _build_mock(seed_i: int, run_nonce_i: str) -> "MockAdapter":
@@ -550,8 +557,12 @@ def cmd_run(args: argparse.Namespace) -> int:
                 num_seeds, build_adapter, budget_usd, progress,
             )
     except KeyboardInterrupt:
-        print("\ninterrupted; partial run saved; re-run with --resume.",
-              file=sys.stderr)
+        if num_seeds > 1:
+            print("\ninterrupted; completed seed artifacts are saved; "
+                  "re-run without --resume.", file=sys.stderr)
+        else:
+            print("\ninterrupted; partial run saved; re-run with --resume.",
+                  file=sys.stderr)
         return EXIT_INFRA_ERROR
     except ValueError as e:
         # Config errors with actionable messages (bad cache dir,
@@ -615,6 +626,7 @@ def _cmd_run_multiseed(
         budget_usd=budget_usd,
         build_adapter=build_adapter,
         required_families=suite_families,
+        cache_dir=args.cache_dir,
     )
     if stability is None:
         # Fewer than MIN_SEEDS seeds completed (e.g. budget

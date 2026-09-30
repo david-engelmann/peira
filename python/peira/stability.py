@@ -278,7 +278,7 @@ class FamilyDrift:
     n_newly_flipping: int  # not flipped in old, flipped in new
     n_newly_fixed: int  # flipped in old, not flipped in new
     #: McNemar p-value on paired flip outcomes; None when withheld
-    #: (< 10 discordant pairs — too sparse to test honestly).
+    #: (< 10 discordant pairs, too sparse to test honestly).
     mcnemar_p: float | None
     #: p < DRIFT_ALPHA and ASR rose: flag for operator review.
     degraded: bool

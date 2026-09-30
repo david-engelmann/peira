@@ -1088,7 +1088,7 @@ Vickers-Elkin net benefit.
 
 A single run confounds three things: the adapter's true flip rate,
 the luck of the draw on seeds, and case-level instability. The M-7
-protocol separates them. `peira run --seeds k` (k = 1 or k >= 3.
+protocol separates them. `peira run --seeds k` (k = 1 or k >= 3;
 k = 2 is rejected) executes the suite k times under consecutive seeds
 (seed .. seed+k-1), each under a fresh run nonce so call ids stay
 unlinkable. Each seed run seals its own ordinary run artifact
