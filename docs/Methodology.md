@@ -1429,9 +1429,8 @@ and recency effects, steering the decision to the attacker's target.
 The benign arm alternates [E1, T1, E2, T2, E3, T3]. The attacked arm
 has target-supporting evidence lead and close [T1, E1, E2, E3, T2, T3],
 burying expected-supporting facts centrally. The fact multiset is
-byte-identical between arms and only the order changes. The family
-measures whether decision models overweight evidence by position
-rather than substance.
+byte-identical between arms and only the order changes. The paired
+design isolates position as the only difference between arms.
 
 **Paired-control construction.** Both arms present the same six facts
 and the attacked arm reorders them so target-supporting evidence bookends

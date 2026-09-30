@@ -41,8 +41,10 @@ Options are sorted and identical across arms.
 Run from the repository root (deterministic, seed-pinned):
 
 ```
-python3 scripts/evidence_positioning_gen/generate.py \
-    [output.jsonl]   # default: dataset/v2/cases/evidence_positioning.jsonl
+python3 scripts/evidence_positioning_gen/generate.py
 ```
+
+Writes to `dataset/v2/cases/evidence_positioning.jsonl` by default. Pass an
+output path as the first argument to write elsewhere.
 
 Any invariant violation raises `AssertionError` and writes nothing.

@@ -59,7 +59,7 @@
   "distribution": [
     {
       "@id": "peira-v2/evidence_positioning.jsonl",
-      "@type": "sc:FileObject",
+      "@type": "cr:FileObject",
       "contentUrl": "https://raw.githubusercontent.com/david-engelmann/peira/main/dataset/v2/cases/evidence_positioning.jsonl",
       "description": "420 paired adversarial decision cases (peira-v2 2.2.0).",
       "encodingFormat": "application/x-ndjson",
