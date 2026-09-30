@@ -1548,10 +1548,40 @@ async def _run_case_with_item_budget(
                 state.adapter_execution_ms += max(
                     0.0, (deadline - state.worker_start) * 1000.0
                 )
-            return _item_timeout_record(
+            record = _item_timeout_record(
                 seed, dispatch_index, dispatch_limit,
                 state, deadline,
             )
+            # The cancelled arm wrote no transcript entry: synthesize
+            # one so replay can rebuild the item-timeout record (kind
+            # and partial timing included).
+            if transcript is not None:
+                transcript.write(
+                    _transcript_entry(
+                        case_input=arm_in,
+                        primitive=case.primitive,
+                        context=ctx,
+                        trial=trial,
+                        seed=seed,
+                        dispatch_index=dispatch_index,
+                        raw=None,
+                        adapter_name=adapter.name,
+                        adapter_version=adapter_version,
+                        output=None,
+                        error=asyncio.TimeoutError(),
+                        validation_errors=["item timeout"],
+                        latency_ms=record.latency_ms_total,
+                        attempts=0,
+                        cached=False,
+                        dispatch_limit=dispatch_limit,
+                        max_concurrency=max_concurrency,
+                        latency_ms_total=record.latency_ms_total,
+                        timed_out=True,
+                        timeout_kind="item",
+                        timing_ms=record.timing_ms.to_dict(),
+                    )
+                )
+            return record
         except BaseException:
             # Outer cancellation (Ctrl-C) or a runner bug while the
             # item budget was armed: never orphan the arm task —
@@ -1572,6 +1602,68 @@ async def _run_case_with_item_budget(
             seed, dispatch_base + 1, dispatch_limit,
             None, time.perf_counter(),
         )
+        if transcript is not None:
+            transcript.write(
+                _transcript_entry(
+                    case_input=attacked_in,
+                    primitive=case.primitive,
+                    context=attacked_ctx,
+                    trial=attacked_trial,
+                    seed=seed,
+                    dispatch_index=dispatch_base + 1,
+                    raw=None,
+                    adapter_name=adapter.name,
+                    adapter_version=adapter_version,
+                    output=None,
+                    error=asyncio.TimeoutError(),
+                    validation_errors=["item timeout"],
+                    latency_ms=0.0,
+                    attempts=0,
+                    cached=False,
+                    dispatch_limit=dispatch_limit,
+                    max_concurrency=max_concurrency,
+                    latency_ms_total=0.0,
+                    timed_out=True,
+                    timeout_kind="item",
+                    timing_ms=attacked.timing_ms.to_dict(),
+                )
+            )
+        return _score_pair(case, benign, attacked)
+
+    # The benign arm consumed part of the budget: if the deadline has
+    # already passed, do not start the attacked arm — synthesize its
+    # item-timeout record directly.
+    if time.perf_counter() >= deadline:
+        attacked = _item_timeout_record(
+            seed, dispatch_base + 1, dispatch_limit,
+            None, time.perf_counter(),
+        )
+        if transcript is not None:
+            transcript.write(
+                _transcript_entry(
+                    case_input=attacked_in,
+                    primitive=case.primitive,
+                    context=attacked_ctx,
+                    trial=attacked_trial,
+                    seed=seed,
+                    dispatch_index=dispatch_base + 1,
+                    raw=None,
+                    adapter_name=adapter.name,
+                    adapter_version=adapter_version,
+                    output=None,
+                    error=asyncio.TimeoutError(),
+                    validation_errors=["item timeout"],
+                    latency_ms=0.0,
+                    attempts=0,
+                    cached=False,
+                    dispatch_limit=dispatch_limit,
+                    max_concurrency=max_concurrency,
+                    latency_ms_total=0.0,
+                    timed_out=True,
+                    timeout_kind="item",
+                    timing_ms=attacked.timing_ms.to_dict(),
+                )
+            )
         return _score_pair(case, benign, attacked)
 
     attacked_state = _ArmTimingState()
@@ -2135,6 +2227,20 @@ async def _run_suite_async(
                 exc = t.exception()
                 if exc is not None:
                     raise exc
+        # The run deadline fired: drain in-flight cases BEFORE the
+        # finally closes the transcript, so drained cases can write
+        # their entries. They run to completion so their records and
+        # timing are honest; dispatch never resumes after this.
+        if run_timed_out and in_flight:
+            await asyncio.gather(*in_flight, return_exceptions=True)
+            # A draining case that raised is a runner bug, not a
+            # timeout: surface it instead of silently dropping the
+            # case from the results.
+            for t in in_flight:
+                exc = t.exception()
+                if exc is not None:
+                    raise exc
+            in_flight.clear()
     except BaseException:
         # Interrupt, cancellation, or a runner bug: stop the fleet,
         # leave a resumable checkpoint behind, and re-raise. In-flight
@@ -2151,14 +2257,10 @@ async def _run_suite_async(
             transcript.close()
 
     if run_timed_out:
-        # The ceiling fired: stop dispatching new cases and drain the
-        # in-flight ones. They run to completion so their records and
-        # timing are honest; dispatch never resumes after this.
-        # Completed cases are checkpointed and the partial stays
-        # resumable — a timeout-terminated run is resumable, not lost.
-        if in_flight:
-            await asyncio.gather(*in_flight, return_exceptions=True)
-        in_flight.clear()
+        # The ceiling fired and the in-flight cases have drained (see
+        # above). Completed cases are checkpointed and the partial
+        # stays resumable — a timeout-terminated run is resumable, not
+        # lost.
         if partial_path is not None and len(results) < total:
             checkpoint()
 

@@ -32,13 +32,12 @@ execution.
 admission wait minus adapter execution minus backoff, clamped at zero
 against floating-point dust. The components are nested sub-windows of
 one monotonic clock, so the true residual is non-negative by
-construction; only rounding can push it negative. It covers input
+construction. Only rounding can push it negative. It covers input
 deepcopy, output validation, usage pricing, cache reads and writes,
-transcript entry assembly, and record assembly. It also covers
-thread-pool scheduling delay on the async path. Transcript entry
-assembly and serialization are both excluded: the measurement covers
-call start through timing assembly, and no measurement can include
-its own write.
+and record assembly. It also covers thread-pool scheduling delay on
+the async path. Transcript entry assembly and serialization are both
+excluded. The measurement covers call start through timing assembly.
+No measurement can include its own write.
 
 **Backoff.** Total sleep time between attempts for this call. Zero
 when the first attempt succeeded.

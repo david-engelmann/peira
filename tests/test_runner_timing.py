@@ -526,20 +526,59 @@ class TestTimeoutKind(unittest.TestCase):
 
 class TestRunTimeout(unittest.TestCase):
     def test_run_timeout_stops_dispatch_drains_and_checkpoints(self):
-        # SlowAdapter sleeps 0.3s per decide(); the run budget is
-        # 0.05s. When the ceiling fires, dispatch stops and the two
-        # in-flight cases drain to completion (honest records, not
+        # Event-gated adapter: blocks until released. The run budget
+        # fires while two cases are in-flight; dispatch stops, the two
+        # drain to completion when released (honest records, not
         # cancelled); the remaining cases never dispatch. The sealed
         # artifact carries termination="timeout" and the partial is
-        # preserved as resumable.
+        # preserved as resumable. No wall-clock timing assumptions:
+        # the gate ensures exactly two cases are in-flight when the
+        # budget fires.
         cases = _demo_cases(4)
+        gate = threading.Event()
+        in_flight_count = [0]
+        count_lock = threading.Lock()
+
+        base = MockAdapter(
+            script=MockAdapter.script_for(
+                cases, seed=0, run_nonce=_R12_NONCE))
+
+        class GatedAdapter(MockAdapter):
+            def decide(self, case_input, primitive, context):
+                with count_lock:
+                    in_flight_count[0] += 1
+                try:
+                    gate.wait(timeout=10.0)
+                    return base.decide(case_input, primitive, context)
+                finally:
+                    with count_lock:
+                        in_flight_count[0] -= 1
+
         with TemporaryDirectory() as tmp:
             partial_path = Path(tmp) / "partial.json"
-            art = run_suite(
-                SlowAdapter(0.3), cases, "trial-demo",
-                "0.1.0-demo", seed=0, run_timeout=0.05,
-                max_concurrency=2, partial_path=partial_path,
-                run_nonce=_R12_NONCE)
+            # Run in a thread so the test can gate on in-flight count.
+            result = {}
+            def run():
+                result["art"] = run_suite(
+                    GatedAdapter(), cases, "trial-demo",
+                    "0.1.0-demo", seed=0, run_timeout=0.05,
+                    max_concurrency=2, partial_path=partial_path,
+                    run_nonce=_R12_NONCE)
+            t = threading.Thread(target=run)
+            t.start()
+            # Wait until two cases are in-flight (dispatched and
+            # blocked on the gate).
+            deadline = time.time() + 10.0
+            while time.time() < deadline:
+                with count_lock:
+                    if in_flight_count[0] >= 2:
+                        break
+                time.sleep(0.01)
+            # The run budget (0.05s) has fired by now: dispatch has
+            # stopped. Release the gate so the in-flight cases drain.
+            gate.set()
+            t.join(timeout=30.0)
+            art = result["art"]
             self.assertEqual(art.termination, "timeout")
             # Never presented as ranking eligible.
             self.assertFalse(art.metrics["ranking_eligible"])

@@ -256,11 +256,11 @@ medium 1, low 0.5) and target-hit rate.
   adjustment when claiming across families jointly. The adjustments
   operate on plain p-value lists and return adjusted p-values in the
   input order; reject where adjusted p ≤ alpha (`reject_at`).
-- **Timing**: every call record carries a `timing_ms` decomposition
-  (admission wait, adapter execution, harness overhead, backoff — all
+- **Timing**. Every call record carries a `timing_ms` decomposition
+  (admission wait, adapter execution, harness overhead, and backoff, all
   in milliseconds), and every run summary carries per-family timing
   blocks with raw samples, percentiles, and a coefficient of
-  variation. Timing is diagnostic, never a ranker: it describes what
+  variation. Timing is diagnostic, never a ranker. It describes what
   the run cost, not how good the adapter is. See
   `docs/runner-performance-contract.md` for the measurement boundary,
   the three timeout layers, and the statistical policy.

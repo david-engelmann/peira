@@ -520,6 +520,16 @@ class RunArtifact:
                     f"{where} field 'timing_ms' must be an object, "
                     f"got {type(timing).__name__}"
                 )
+            # Reject unknown keys: silently accepting a newer/renamed
+            # field could verify a lock under changed semantics.
+            for tkey in timing:
+                if tkey not in (
+                    "admission_wait_ms", "adapter_execution_ms",
+                    "harness_overhead_ms", "backoff_ms",
+                ):
+                    raise ValueError(
+                        f"{where} has unknown timing_ms field: {tkey!r}"
+                    )
             for tkey in (
                 "admission_wait_ms", "adapter_execution_ms",
                 "harness_overhead_ms", "backoff_ms",
