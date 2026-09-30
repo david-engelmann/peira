@@ -159,8 +159,10 @@ construction. Passing a model id the vendor has retired fails closed
 with a `DeprecatedPinError` naming the replacement.
 
 Each sends one JSON schema to the provider's native constrained
-decoding (OpenAI strict `json_schema`, Anthropic forced tool choice,
-Gemini `responseSchema`), then revalidates the response client-side.
+decoding (OpenAI strict `json_schema`, Anthropic forced tool choice on
+older models / native `output_config.format` JSON schema on the newer
+reasoning models, Gemini `responseSchema`), then revalidates the
+response client-side.
 The decision vocabulary is per-call. Peira cases use open label sets
 (`deny`, `emergency-dept`, `choose A`, …), so the schema's decision
 enum is built from the case input's explicit `options` list, not a
@@ -183,16 +185,18 @@ adapter never retries. The runner owns retries, and the SDKs are
 configured for a single attempt so the runner's congestion signal stays
 honest.
 
-### Frontier ceiling (candidate; NOT runnable yet)
+### Frontier ceiling (candidate; id unverified, not yet measured)
 
 The strongest model peira can measure against: the upper bound every
 other adapter is compared to. Candidate picked 2026-09-25:
 **`claude-fable-5-1`** (Anthropic, GA 2026-09-01, $10/$50 per 1M in the
-pinned pricing table), to be used opt-in via
-`AnthropicAdapter(model="claude-fable-5-1")` **after** the
-`output_config.format` migration lands. Defaults are unchanged; the
-ceiling is never the default. This is a docs + pricing entry only:
-do not run it on the current adapter shapes.
+pinned pricing table), used opt-in via
+`AnthropicAdapter(model="claude-fable-5-1")`. The
+`output_config.format` migration has landed (2026-09-30): Fable 5.1
+auto-routes to native JSON-schema structured outputs (no `tools`, no
+forced `tool_choice`), and the response parses through the same typed
+decision contract as every other adapter. Defaults are unchanged; the
+ceiling is never the default.
 
 Why Fable 5.1 over GPT-6 Astra (`gpt-6-astra`, also $10/$50, GA
 2026-09-03):
@@ -218,12 +222,14 @@ Why Fable 5.1 over GPT-6 Astra (`gpt-6-astra`, also $10/$50, GA
 
 **Honest caveats:** (1) the model id `claude-fable-5-1` follows
 Anthropic's documented naming convention (Fable 5's id was
-`claude-fable-5`) but is NOT independently confirmed on the live API;
-verify before the first run; (2) the current `AnthropicAdapter` still
-uses forced tool use. A live ceiling run 400s until the
-`output_config.format` migration lands. Do not run it before then;
-the 400 is a loud terminal provider error, not a measurement. Full
-rationale is recorded as D-32 in `docs/Decisions.md`.
+`claude-fable-5`) but is NOT independently confirmed on the live API.
+Verify before the first run: the request shape is now correct, but a
+wrong id fails closed as a terminal provider error, not a
+measurement; (2) no live verification has happened yet: the adapter
+path is unit-tested against mocked request/response shapes only, and
+no measured numbers from this adapter may be published until a live
+smoke test passes (D-33). Full rationale is recorded as D-32 in
+`docs/Decisions.md`.
 
 ### Kimi K3 (Moonshot)
 

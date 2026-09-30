@@ -104,7 +104,7 @@ A separate safety-policy suite (guardrail-native, pilot) ships alongside v1. It 
 | SemIf (TheoLeeCJ) | shipped, not yet measured |
 | openjev-sglang (self-hosted) | shipped, not yet measured |
 | Lakera Guard (Check Point) | shipped, gated on access |
-| claude-fable-5-1 (Anthropic, frontier-ceiling candidate) | docs only, not runnable |
+| claude-fable-5-1 (Anthropic, frontier-ceiling candidate) | shipped, id unverified, not yet measured |
 
 "Shipped" means the adapter exists and is tested. See `docs/Adapters.md` for install, keys, and pinned models. Nothing ships a number here until it is measured with name, version, and run date.
 

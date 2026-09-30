@@ -4,14 +4,18 @@ Four provider adapters (``OpenAIAdapter``, ``AnthropicAdapter``,
 ``GoogleAdapter``, ``MoonshotAdapter``) sharing one base class
 (``_StructuredLLMBase``). Each sends the case prompt to its provider
 with provider-native constrained decoding (OpenAI strict JSON schema /
-Anthropic forced tool use / Google JSON response schema / Moonshot via
-its OpenAI-compatible endpoint), then revalidates the answer
-client-side with a hand-written stdlib validator — the base package
-stays dependency-free, so there is deliberately no pydantic here.
+Anthropic forced tool use, or native ``output_config.format`` JSON
+schema on the newer Anthropic reasoning models / Google JSON response
+schema / Moonshot via its OpenAI-compatible endpoint), then
+revalidates the answer client-side with a hand-written stdlib
+validator. The base package stays dependency-free, so there is
+deliberately no pydantic here.
 
 Frontier ceiling (picked 2026-09-25): ``claude-fable-5-1`` via
 ``AnthropicAdapter(model=...)`` — NOT ``gpt-6-astra``. Fable 5.1's id
-is confirmed on the live Claude API, it was available on every major
+follows Anthropic's documented naming convention (Fable 5's id was
+``claude-fable-5``) but is NOT independently confirmed on the live API.
+Verify before the first run (D-32). It was available on every major
 platform on day one (vs Astra's phased rollout), and it holds the
 highest Artificial Analysis Intelligence Index score ever measured
 (66/192, ahead of Opus 5 at 63 and GPT-5.6 Sol at 61) — the strongest
@@ -20,10 +24,13 @@ available "ceiling" evidence. Astra was rejected because it 400s on
 every call, so ``OpenAIAdapter(model="gpt-6-astra")`` fails without a
 new per-model special-case; Fable 5.1's 400 is only on forced
 ``tool_choice``, whose fix (native ``output_config.format`` structured
-outputs) is already peira's decided direction for the newer Anthropic
-reasoning models. Caveat: neither runs on the current adapter request
-shapes unmodified — see docs/Adapters.md "Frontier ceiling". The
-frontier model is opt-in via ``model=``; defaults are unchanged.
+outputs) is the request path ``AnthropicAdapter`` now uses for the
+newer Anthropic reasoning models. Caveat: the request path is
+implemented and unit-tested, but the Fable 5.1 model id is NOT
+independently confirmed on the live API; verify before the first run
+(D-32). Astra (``gpt-6-astra``) 400s on every call and has no adapter
+support. See docs/Adapters.md "Frontier ceiling". The frontier model
+is opt-in via ``model=``; defaults are unchanged.
 
 Why the decision enum is per-call, not fixed
 --------------------------------------------
@@ -483,6 +490,7 @@ class _StructuredLLMBase:
         seed_part = f":s{seed}" if self._supports_seed else ""
         self.cache_namespace = (
             f"{self.name}:{model}:t{temperature}:mt{max_tokens}{seed_part}"
+            f"{self._cache_namespace_suffix()}"
         )
         self._api_key = self._resolve_api_key(api_key)
         # Subclasses build the SDK client here, with retries disabled.
@@ -490,6 +498,18 @@ class _StructuredLLMBase:
         # so concurrent decide() calls from worker threads are safe.
         self._client: Any = None
         self._sdk: Any = None
+
+    def _cache_namespace_suffix(self) -> str:
+        """Extra cache-namespace component for request-shape variants.
+
+        The namespace is the runner's cache-dedup identity: two
+        adapters that send different request shapes for the same model
+        must not share cache entries. The default path keeps the
+        historical namespace (empty suffix); adapters with a second
+        request shape override this. Consulted by ``__init__`` and
+        ``with_seed`` so copies keep the suffix.
+        """
+        return ""
 
     @property
     def decode_params(self) -> dict[str, Any]:
@@ -520,6 +540,7 @@ class _StructuredLLMBase:
         new.cache_namespace = (
             f"{self.name}:{self._model}:t{self._temperature}:"
             f"mt{self._max_tokens}{seed_part}"
+            f"{self._cache_namespace_suffix()}"
         )
         return new
 
@@ -1253,13 +1274,54 @@ class ZaiAdapter(OpenAIAdapter):
 # Anthropic.
 # ---------------------------------------------------------------------------
 
-class AnthropicAdapter(_StructuredLLMBase):
-    """Baseline: Anthropic messages with forced tool use.
+# Newer Anthropic reasoning models reject forced ``tool_choice``
+# (HTTP 400; only ``auto``/``none`` are accepted), so they are driven
+# through native ``output_config.format`` JSON-schema structured
+# outputs instead of the forced-tool path. This is an explicit
+# allowlist of repo-documented ids: do NOT extend it with unconfirmed
+# ids (D-32; even ``claude-fable-5-1`` itself is still unverified
+# against the live API). Any other model opts in explicitly via
+# ``AnthropicAdapter(..., structured_outputs=True)``.
+_STRUCTURED_OUTPUT_MODELS = frozenset({
+    "claude-fable-5-1",
+})
 
-    The schema is sent as a tool's ``input_schema`` with ``tool_choice``
-    forced to that tool, so the model must answer through the schema.
-    Anthropic has NO seed parameter — ``seed`` is accepted for a uniform
-    constructor signature but ignored, and recorded as null.
+
+def _wants_structured_outputs(model: str, flag: bool | None) -> bool:
+    """Route an Anthropic model to its constrained-decoding path.
+
+    An explicit ``structured_outputs=True/False`` always wins;
+    ``None`` (the default) auto-routes the known newer reasoning
+    models in ``_STRUCTURED_OUTPUT_MODELS``. Older models keep the
+    forced-tool path, so defaults are unchanged.
+    """
+    if flag is not None:
+        return flag
+    return model in _STRUCTURED_OUTPUT_MODELS
+
+
+class AnthropicAdapter(_StructuredLLMBase):
+    """Baseline: Anthropic messages with constrained decoding.
+
+    Two request paths, one typed contract. Older models use forced
+    tool use: the schema is sent as a tool's ``input_schema`` with
+    ``tool_choice`` forced to that tool, so the model must answer
+    through the schema. Newer reasoning models (``claude-fable-5-1``
+    and friends; see ``_STRUCTURED_OUTPUT_MODELS``) reject forced
+    ``tool_choice`` with a 400, so they use native
+    ``output_config.format`` JSON-schema structured outputs instead:
+    no ``tools``, no ``tool_choice``. On that path the JSON arrives in
+    text blocks and is parsed by the shared ``_parse_and_validate``,
+    so both paths produce the same typed decision contract
+    (choice/score/abstain) through the same ``_resolve`` →
+    ``_build_output`` machinery.
+
+    Routing: ``structured_outputs=None`` (default) auto-routes the
+    known newer models and keeps everything else on forced tool use;
+    pass ``True``/``False`` to force a path explicitly.
+
+    Anthropic has NO seed parameter: ``seed`` is accepted for a
+    uniform constructor signature but ignored, and recorded as null.
     """
 
     name = "anthropic-structured"
@@ -1274,13 +1336,55 @@ class AnthropicAdapter(_StructuredLLMBase):
         seed: int | None = 0,
         max_tokens: int = 512,
         api_key: str | None = None,
+        structured_outputs: bool | None = None,
     ) -> None:
+        # Set before super().__init__: the cache-namespace suffix hook
+        # reads it while the base constructor builds the namespace.
+        self._structured_outputs = _wants_structured_outputs(
+            model, structured_outputs
+        )
         super().__init__(model, temperature, seed, max_tokens, api_key)
         self._sdk = _require_anthropic()
         # Retries DISABLED: the runner owns the retry policy.
         self._client = self._sdk.Anthropic(
             api_key=self._api_key, max_retries=0
         )
+
+    def _cache_namespace_suffix(self) -> str:
+        # The constrained-decoding path is part of the measurement
+        # identity: a cached forced-tool response must never satisfy
+        # an output_config request for the same model (or vice versa).
+        # The default path keeps the historical namespace.
+        return ":so" if self._structured_outputs else ""
+
+    def _request_kwargs(
+        self, messages: list[dict[str, str]], schema: dict[str, Any]
+    ) -> dict[str, Any]:
+        """Build the ``messages.create`` kwargs for the routed path.
+
+        Separated (like ``OpenAIAdapter._request_kwargs``) so the exact
+        request shape is assertable in tests without touching the
+        response parsing.
+        """
+        kwargs: dict[str, Any] = {
+            "model": self._model,
+            "max_tokens": self._max_tokens,
+            "temperature": self._temperature,
+            "system": SYSTEM_PROMPT,
+            "messages": messages,
+        }
+        if self._structured_outputs:
+            # Native structured outputs: no tools, no tool_choice.
+            # Forced tool_choice 400s on the newer reasoning models.
+            kwargs["output_config"] = {
+                "format": {"type": "json_schema", "schema": schema},
+            }
+        else:
+            kwargs["tools"] = [
+                {"name": SCHEMA_NAME, "input_schema": schema}
+            ]
+            kwargs["tool_choice"] = {"type": "tool", "name": SCHEMA_NAME}
+        return kwargs
 
     def _request(
         self, user_text: str, schema: dict[str, Any], repair: bool
@@ -1290,13 +1394,7 @@ class AnthropicAdapter(_StructuredLLMBase):
             messages.append({"role": "user", "content": REPAIR_SUFFIX})
         try:
             resp = self._client.messages.create(
-                model=self._model,
-                max_tokens=self._max_tokens,
-                temperature=self._temperature,
-                system=SYSTEM_PROMPT,
-                messages=messages,
-                tools=[{"name": SCHEMA_NAME, "input_schema": schema}],
-                tool_choice={"type": "tool", "name": SCHEMA_NAME},
+                **self._request_kwargs(messages, schema)
             )
         except self._sdk.APIStatusError as exc:
             raise _status_error("Anthropic", exc) from exc
@@ -1327,14 +1425,17 @@ class AnthropicAdapter(_StructuredLLMBase):
                     text_parts.append(part)
         text = "".join(text_parts)
         usage = getattr(resp, "usage", None)
-        return _RawResult(
-            text=text,
-            stop_reason=stop_reason,
-            parsed=tool_input,
-            tokens_in=int(getattr(usage, "input_tokens", 0) or 0),
-            tokens_out=int(getattr(usage, "output_tokens", 0) or 0),
-            logprob_tokens=None,  # Anthropic exposes no token logprobs
-            request_shape={
+        if self._structured_outputs:
+            request_shape: dict[str, Any] = {
+                "endpoint": "messages.create",
+                "model": self._model,
+                "system": "peira system prompt",
+                "output_config": "json_schema",
+                "temperature": self._temperature,
+                "max_tokens": self._max_tokens,
+            }
+        else:
+            request_shape = {
                 "endpoint": "messages.create",
                 "model": self._model,
                 "system": "peira system prompt",
@@ -1342,7 +1443,19 @@ class AnthropicAdapter(_StructuredLLMBase):
                 "tool_choice": "forced",
                 "temperature": self._temperature,
                 "max_tokens": self._max_tokens,
-            },
+            }
+        return _RawResult(
+            text=text,
+            stop_reason=stop_reason,
+            # Forced-tool path: the answer arrives pre-parsed as tool
+            # input. Structured-outputs path: the JSON arrives in text
+            # blocks and goes through the shared _parse_and_validate.
+            # Both funnel into the same typed contract.
+            parsed=tool_input,
+            tokens_in=int(getattr(usage, "input_tokens", 0) or 0),
+            tokens_out=int(getattr(usage, "output_tokens", 0) or 0),
+            logprob_tokens=None,  # Anthropic exposes no token logprobs
+            request_shape=request_shape,
             response_shape={
                 "stop_reason": stop_reason,
                 "text": text[:4000],
