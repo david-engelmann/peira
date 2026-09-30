@@ -18,6 +18,8 @@ import unittest
 from collections import Counter
 from pathlib import Path
 
+from peira.cli import _SEMVER_RE
+
 REPO = Path(__file__).resolve().parents[1]
 CASES_PATH = REPO / "dataset" / "v2" / "cases" / "evidence_positioning.jsonl"
 
@@ -136,7 +138,11 @@ class TestManifest(unittest.TestCase):
             (mde["pd_10"], mde["pd_20"], mde["pd_30"], mde["pd_40"]),
             (4.4, 6.3, 7.7, 8.9),
         )
-        self.assertEqual(manifest["dataset_version"], "2.2.0")
+        # The version must be valid semver, using cli.py's canonical
+        # semver regex as the definition; pinning a literal here rotted
+        # on every dataset bump (it was still "2.2.0" at 2.3.x).
+        self.assertIsNotNone(
+            _SEMVER_RE.fullmatch(manifest["dataset_version"]))
 
 
 if __name__ == "__main__":
