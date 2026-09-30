@@ -214,6 +214,28 @@ jobs:
             python3 scripts/check_dataset_tags.py
           fi
 
+  disposition-drift:
+    # A11a: docs/audit-dispositions.md + .json are generated from
+    # scripts/generate_audit_dispositions.py. Re-run the generator and
+    # fail on any drift, so the committed record cannot silently
+    # diverge from its canonical source. Full history is needed for
+    # the generator's evidence-SHA reachability checks.
+    needs: check_runner
+    runs-on: ${{ fromJSON(needs.check_runner.outputs.runner) }}
+    timeout-minutes: 10
+    if: github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+      - name: regenerate disposition matrix and fail on drift
+        run: |
+          python3 scripts/generate_audit_dispositions.py
+          git diff --exit-code docs/audit-dispositions.md docs/audit-dispositions.json
+
   lint-rust:
     # The Rust migration is active; CI must catch a skipped local gate.
     needs: check_runner

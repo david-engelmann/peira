@@ -185,13 +185,6 @@ def _set_text_field(obj: dict[str, Any], path: str, value: str) -> None:
         node[last] = value
 
 
-def _get_text_field(obj: Mapping[str, Any], path: str) -> Any:
-    node: Any = obj
-    for part in path.split("."):
-        node = node[int(part)] if isinstance(node, list) else node[part]
-    return node
-
-
 def _overlaps(span: tuple[int, int], spans: Sequence[tuple[int, int]]) -> bool:
     s, e = span
     return any(s < p2 and e > p1 for p1, p2 in spans)
