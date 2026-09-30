@@ -541,6 +541,11 @@ def cmd_run(args: argparse.Namespace) -> int:
             print(f"error: --{flag.replace('_', '-')} must be > 0 "
                   f"(got {value})", file=sys.stderr)
             return EXIT_USER_ERROR
+    if getattr(args, "rlimit_nproc", None) is not None:
+        if args.rlimit_nproc < 1:
+            print(f"error: --rlimit-nproc must be >= 1 "
+                  f"(got {args.rlimit_nproc})", file=sys.stderr)
+            return EXIT_USER_ERROR
     budget_usd = getattr(args, "budget_usd", None)
     if budget_usd is not None and not budget_usd > 0:
         # NaN fails the > 0 comparison: a NaN cap is not a cap.
@@ -650,6 +655,7 @@ def cmd_run(args: argparse.Namespace) -> int:
                 rlimit_cpu_seconds=getattr(args, "rlimit_cpu_seconds", None),
                 rlimit_as_mb=getattr(args, "rlimit_as_mb", None),
                 rlimit_fsize_mb=getattr(args, "rlimit_fsize_mb", None),
+                rlimit_nproc=getattr(args, "rlimit_nproc", None),
                 budget_usd=budget_usd,
                 item_timeout=item_timeout,
                 run_timeout=run_timeout,
@@ -747,6 +753,7 @@ def _cmd_run_multiseed(
         rlimit_cpu_seconds=getattr(args, "rlimit_cpu_seconds", None),
         rlimit_as_mb=getattr(args, "rlimit_as_mb", None),
         rlimit_fsize_mb=getattr(args, "rlimit_fsize_mb", None),
+        rlimit_nproc=getattr(args, "rlimit_nproc", None),
         budget_usd=budget_usd,
         build_adapter=build_adapter,
         required_families=suite_families,
@@ -4324,6 +4331,11 @@ def build_parser() -> argparse.ArgumentParser:
     r.add_argument("--rlimit-fsize-mb", type=float, default=None,
                    help="max size of any single file write, in MB (Unix "
                    "only; opt-in, no limit by default)")
+    r.add_argument("--rlimit-nproc", type=int, default=None,
+                   help="max process count for subprocess adapter "
+                   "children (fork-bomb guard; Unix only, opt-in, no "
+                   "limit by default; never applied to the runner "
+                   "itself)")
     r.add_argument("--budget-usd", type=float, default=None,
                    help="hard spend cap in USD: the runner projects "
                    "spent + running-mean-case-cost x 1.5 before each new "

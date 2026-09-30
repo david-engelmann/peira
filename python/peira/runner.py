@@ -532,7 +532,9 @@ def _apply_rlimits(
 ) -> None:
     """Apply process-wide resource limits (Unix only).
 
-    These are backstops, not per-adapter isolation: ``resource.setrlimit``
+    Thin backward-compatible wrapper around
+    :class:`peira.resource_governor.ResourceGovernor`. These are
+    backstops, not per-adapter isolation: ``resource.setrlimit``
     applies to the whole runner process, and adapter code runs in-process
     (see docs/Threat-Model.md). A memory-hungry adapter can still OOM the
     runner before the limit bites; full isolation needs the subprocess
@@ -546,38 +548,11 @@ def _apply_rlimits(
     a value like 0.5 can never truncate to a zero limit that would kill
     the process.
     """
-    if cpu_seconds is None and as_mb is None and fsize_mb is None:
-        return
-    try:
-        import resource
-    except ImportError as e:
-        raise RuntimeError(
-            "rlimits require Unix (the resource module is unavailable)"
-        ) from e
-    for name, value in (
-        ("rlimit_cpu_seconds", cpu_seconds),
-        ("rlimit_as_mb", as_mb),
-        ("rlimit_fsize_mb", fsize_mb),
-    ):
-        if value is not None and value <= 0:
-            raise ValueError(f"{name} must be > 0, got {value}")
-    if cpu_seconds is not None:
-        # Soft and hard set together: SIGXCPU on the soft limit, SIGKILL
-        # on the hard limit one second later. RLIMIT_CPU counts whole
-        # seconds, so round up: truncating 0.5 to 0 would SIGKILL the
-        # runner immediately.
-        secs = math.ceil(cpu_seconds)
-        resource.setrlimit(resource.RLIMIT_CPU, (secs, secs))
-    if as_mb is not None:
-        # RLIMIT_AS caps virtual address space in bytes. Note RLIMIT_RSS
-        # is unenforced on Linux, so AS is the working knob.
-        as_bytes = math.ceil(as_mb * 1024 * 1024)
-        resource.setrlimit(resource.RLIMIT_AS, (as_bytes, as_bytes))
-    if fsize_mb is not None:
-        # RLIMIT_FSIZE caps any single file write in bytes (EFBIG/SIGXFSZ
-        # past the limit): bounds runaway transcript or cache writes.
-        fsize_bytes = math.ceil(fsize_mb * 1024 * 1024)
-        resource.setrlimit(resource.RLIMIT_FSIZE, (fsize_bytes, fsize_bytes))
+    from peira.resource_governor import ResourceGovernor
+
+    ResourceGovernor(
+        cpu_seconds=cpu_seconds, as_mb=as_mb, fsize_mb=fsize_mb
+    ).apply()
 
 
 
@@ -2516,6 +2491,7 @@ def run_suite(
     rlimit_cpu_seconds: float | None = None,
     rlimit_as_mb: float | None = None,
     rlimit_fsize_mb: float | None = None,
+    rlimit_nproc: int | None = None,
     run_nonce: str | None = None,
     budget_usd: float | None = None,
     item_timeout: float | None = None,
@@ -2547,7 +2523,10 @@ def run_suite(
     performance targets. See docs/runner-performance-contract.md.
     ``rlimit_cpu_seconds`` / ``rlimit_as_mb`` / ``rlimit_fsize_mb`` set
     process-wide Unix resource backstops (all opt-in, None by default);
-    see docs/Threat-Model.md.
+    ``rlimit_nproc`` caps the process count for subprocess adapter
+    children only (RLIMIT_NPROC counts per UID, so it is never applied
+    to the runner itself); see docs/Threat-Model.md and
+    ``peira.resource_governor``.
     ``cache_dir`` enables the opt-in response cache; ``transcript_path``
     enables JSONL transcript logging. ``config_extra`` is merged into
     the artifact config (used by ``peira replay`` for provenance).
@@ -2603,6 +2582,20 @@ def run_suite(
                 f"{_name} must be > 0, got {_value}"
             )
     _apply_rlimits(rlimit_cpu_seconds, rlimit_as_mb, rlimit_fsize_mb)
+    from peira.resource_governor import ResourceGovernor, set_active_governor
+
+    # The named governor (R-03): validated here, applied to this process
+    # above, and installed as the context-visible governor so subprocess
+    # adapters (e.g. SemIf) can apply the nproc fork-bomb guard to their
+    # children via child_preexec(). nproc is never applied to the runner
+    # itself (RLIMIT_NPROC counts per UID).
+    _governor = ResourceGovernor(
+        cpu_seconds=rlimit_cpu_seconds,
+        as_mb=rlimit_as_mb,
+        nproc=rlimit_nproc,
+        fsize_mb=rlimit_fsize_mb,
+    )
+    _governor_token = set_active_governor(_governor if _governor.configured else None)
     if budget_usd is not None:
         if isinstance(budget_usd, bool) or not isinstance(
             budget_usd, (int, float)
@@ -2641,6 +2634,8 @@ def run_suite(
             tpath, append=resuming, skip_indices=skip
         )
     pricing_table = load_pricing_table()
+    from peira.resource_governor import reset_active_governor
+
     try:
         return asyncio.run(
             _run_suite_async(
@@ -2665,6 +2660,8 @@ def run_suite(
         # SIGINT during asyncio.run() surfaces as cancellation of the
         # main task; the CLI's contract is KeyboardInterrupt.
         raise KeyboardInterrupt from None
+    finally:
+        reset_active_governor(_governor_token)
 
 
 def run_multiseed(
@@ -2683,6 +2680,7 @@ def run_multiseed(
     rlimit_cpu_seconds: float | None = None,
     rlimit_as_mb: float | None = None,
     rlimit_fsize_mb: float | None = None,
+    rlimit_nproc: int | None = None,
     budget_usd: float | None = None,
     build_adapter: Callable[[int, str], Any] | None = None,
     required_families: list[str] | None = None,
@@ -2765,6 +2763,7 @@ def run_multiseed(
                 rlimit_cpu_seconds=rlimit_cpu_seconds,
                 rlimit_as_mb=rlimit_as_mb,
                 rlimit_fsize_mb=rlimit_fsize_mb,
+                rlimit_nproc=rlimit_nproc,
                 run_nonce=run_nonce,
                 budget_usd=per_run_budget,
                 cache_dir=cache_dir,

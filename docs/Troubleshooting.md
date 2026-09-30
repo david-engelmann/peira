@@ -504,6 +504,13 @@ and round up to the limit's granularity (CPU seconds round up to whole
 seconds). Fix: pass a positive value (`--rlimit-cpu-seconds 3600`,
 `--rlimit-as-mb 4096`).
 
+**`error: --rlimit-nproc must be >= 1 (got N)`**
+Cause: `peira run` got a non-positive `--rlimit-nproc`. The nproc
+fork-bomb guard applies to subprocess adapter children only (RLIMIT_NPROC
+counts processes per UID, so it is never applied to the runner itself).
+Fix: pass a positive integer (`--rlimit-nproc 64`), or drop the flag
+for no child process-count limit.
+
 **`error: --budget-usd must be > 0 (got N)`**
 Cause: `peira run --budget-usd` got a non-positive (or NaN) spend cap.
 A non-positive cap can never dispatch a case honestly. Fix: pass a
