@@ -24,7 +24,7 @@ scheduling, so it falls into harness overhead. A failed attempt still
 contributes the time until it raised. An attempt cancelled before its
 worker started contributes nothing, because the adapter never ran. An
 attempt abandoned by a timeout contributes the elapsed thread time up
-to the timeout's fire time: the adapter was executing when the ceiling
+to the timeout's fire time. The adapter was executing when the ceiling
 fired. Post-abandonment event-loop delay is never counted as adapter
 execution.
 
@@ -98,28 +98,28 @@ which is not recommended for untrusted adapters.
 **Item timeout (`item_timeout`, `--item-timeout`).** Bounds one
 case's wall-clock time, covering both variants and all attempts.
 When the budget fires, the in-flight arm's task is cancelled (its
-adapter threads are abandoned; they cannot be safely killed) and the
+adapter threads are abandoned (they cannot be safely killed) and the
 arm seals as a malformed blank record with `timed_out` set and
-`timeout_kind` set to `"item"`. A completed arm is retained: if the
+`timeout_kind` set to `"item"`. A completed arm is retained. If the
 benign arm finished and the attacked arm exhausts the budget, the
 sealed case pairs the real benign record with only an attacked
 item-timeout record. If the budget fires during the benign arm, the
-attacked arm never started; its record is a typed item timeout with
+attacked arm never started. Its record is a typed item timeout with
 zero timing (nothing was measured). The timed-out arm's record
 attributes only elapsed adapter execution (up to the budget's fire
-time), never the whole item budget; admission wait, backoff, and
+time), never the whole item budget. Admission wait, backoff, and
 harness work actually incurred are preserved. The run continues with
 the next case. Item timeouts are excluded from timing percentile
 inputs and reported as their own count. No timeout budget by default.
 
 **Run timeout (`run_timeout`, `--run-timeout`).** Bounds the whole
 run's wall-clock time. When the ceiling fires, dispatch stops and the
-in-flight cases drain to completion: they finish honestly instead of
+in-flight cases drain to completion. They finish honestly instead of
 being cancelled mid-call, so their records and timing are complete.
-(Draining is bounded: every in-flight case is subject to the
+(Draining is bounded. Every in-flight case is subject to the
 per-attempt timeout, so a stuck adapter burns at most
 `max_attempts` x `call_timeout` before its case completes.)
-Completed cases are checkpointed and the partial stays resumable: a
+Completed cases are checkpointed and the partial stays resumable. A
 timeout-terminated run is resumable, not lost. The artifact seals
 with `termination` set to `"timeout"`. A run that ended this way is
 analyzable but never rankable, the same rule as the spend-budget
@@ -127,7 +127,7 @@ termination. It is hang insurance, not a performance target. No
 timeout budget by default.
 
 Timeouts are data, not missing data. Every timeout record carries an
-explicit `timeout_kind`: `"attempt"` for per-attempt exhaustion,
+explicit `timeout_kind`. `"attempt"` marks per-attempt exhaustion,
 `"item"` for the case-level item budget. The kind is what lets
 analysis distinguish "the adapter was slow on every attempt" from
 "the whole case budget fired". A timeout rate of zero is reported,
@@ -162,7 +162,7 @@ alongside it.
 
 **Raw sample retention.** Every timing summary retains the raw
 samples for each family and component, verbatim at full float
-precision: no rounding, no trimming. Rounding to four decimals is
+precision. No rounding, no trimming. Rounding to four decimals is
 presentation and applies only to the derived statistics (min, median,
 percentiles, mean, cv), never to the retained samples.
 

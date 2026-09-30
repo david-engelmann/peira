@@ -2237,6 +2237,8 @@ async def _run_suite_async(
             # timeout: surface it instead of silently dropping the
             # case from the results.
             for t in in_flight:
+                if t.cancelled():
+                    continue
                 exc = t.exception()
                 if exc is not None:
                     raise exc

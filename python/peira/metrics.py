@@ -5231,14 +5231,14 @@ def timing_summary(
     of the four CallTiming components (admission_wait_ms,
     harness_overhead_ms, adapter_execution_ms, backoff_ms) with the
     R-12 statistical policy (see _timing_component_block): n, min,
-    p50, p95 (withheld below 5), p99 (withheld below 100 per family),
+    p50, p95, p99 (withheld below 100 per family),
     mean, coefficient of variation with a 5%-investigate flag, and the
     raw samples retained verbatim — no outlier trimming, ever.
 
     Cache-hit calls and timed-out calls are excluded from the
     percentile inputs (like latency_summary: a cache hit made no
-    provider call, and a timeout's adapter execution is the synthetic
-    item budget, not a measurement) and reported as ``n_cached`` /
+    provider call, and a timeout's adapter execution is a truncated
+    measurement, not a complete one) and reported as ``n_cached`` /
     ``n_timeouts`` alongside. ``n_calls`` is the total call count so
     both rates are auditable.
 

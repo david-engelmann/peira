@@ -104,6 +104,22 @@ its own budget enforcement. Fix: resume with the same `--budget-usd` the
 partial was written with (or no `--budget-usd`, matching the partial), or
 delete the `<adapter>-<suite>.partial.json` file and re-run from scratch.
 
+**`error: partial run was recorded with item_timeout_s X, not Y: re-run with the same --item-timeout or drop --resume`**
+Cause: `peira run --resume` found a partial run recorded under a different
+item timeout than the one requested. The timeout is a measurement input:
+merging results scored under a different ceiling would make the artifact lie
+about its own timeout enforcement. Fix: resume with the same `--item-timeout`
+the partial was written with (or no `--item-timeout`, matching the partial),
+or delete the `<adapter>-<suite>.partial.json` file and re-run from scratch.
+
+**`error: partial run was recorded with run_timeout_s X, not Y: re-run with the same --run-timeout or drop --resume`**
+Cause: `peira run --resume` found a partial run recorded under a different
+run timeout than the one requested. The timeout is a measurement input:
+merging results scored under a different ceiling would make the artifact lie
+about its own timeout enforcement. Fix: resume with the same `--run-timeout`
+the partial was written with (or no `--run-timeout`, matching the partial),
+or delete the `<adapter>-<suite>.partial.json` file and re-run from scratch.
+
 **`error: partial run has no cache state declaration (config.cache_enabled): it predates cache-state sealing and cannot resume`**
 Cause: `peira run --resume` found a partial run written before cache
 state was sealed into artifacts. It cannot prove its cache state, so
