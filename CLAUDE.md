@@ -7,9 +7,9 @@ Repo conventions for coding agents working on peira.
 ```bash
 pip install -e .                    # install the Python package
 pip install -e .[dev]               # pytest, pytest-xdist, pytest-timeout
-python -m pytest tests -n auto      # Python tests — must stay green
-cargo test --workspace              # Rust tests — must stay green
-python scripts/check_public_surface.py   # strategy-language check — must stay green
+python -m pytest tests -n auto      # Python tests - must stay green
+cargo test --workspace              # Rust tests - must stay green
+python scripts/check_public_surface.py   # strategy-language check - must stay green
 peira run --adapter mock --suite trial-demo --dry-run   # CLI smoke
 ```
 
