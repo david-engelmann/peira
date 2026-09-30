@@ -1079,6 +1079,71 @@ report uses each scenario's default rate and records it. Run it with
 `peira lottery --economic`.
 Add `--scenario <id>` to restrict to one cost scenario. The full
 per-family tables are in the `--json` output.
+## Saturation and retirement (C-10, per-family)
+
+A family that no longer discriminates between adapters adds
+measurement cost without adding information. `peira saturation`
+implements the pre-registered per-family saturation/retirement policy
+(D-37), published now while nothing is saturated, so the definition
+of a family's death cannot be negotiated after the fact.
+
+For each family, every adapter's conditional ASR is computed with a
+Wilson 95% interval. Adapter pairs are compared against the paired
+MDE (R-02's `mde_mcnemar`, using the family's observed discordant
+rate), so "within MDE of each other" is a measured statement, not a
+vibe. A pair is resolvable when its ASR gap exceeds the MDE. Both the
+gap and the MDE are computed on the paired cohort (cases eligible in
+both runs), so unpaired cases cannot create a spurious gap when every
+paired outcome matches.
+
+States:
+
+- **discriminating**: at least one adapter pair resolves (its ASR
+  gap exceeds the paired MDE). The family separates adapters.
+  Discrimination takes precedence over bound compression: a
+  resolvable pair means the family still separates adapters even
+  near a bound, because retirement is loss of discrimination.
+  Action: keep.
+- **uniform_failure**: no pair resolves, scores mid-range. Attacks
+  work about equally on everyone, so the benchmark still measures
+  real vulnerability, but the family cannot rank. Action: author
+  harder variants; do not retire.
+- **exhausted**: no pair resolves and every adapter's CI sits entirely
+  below the 0.05 floor. Attacks fail on everyone with tight spread.
+  Action: retirement candidate once the criterion holds for two
+  consecutive releases; the old leaderboard becomes the regression
+  suite.
+- **ceiling_saturated**: no pair resolves and every adapter's CI sits
+  entirely above the 0.95 ceiling. Attacks succeed on everyone.
+  Action: author harder variants.
+- **insufficient_data**: fewer than two adapters or fewer than 20
+  eligible cases per family. Action: monitor, do not judge.
+
+Retirement is loss of discrimination, never a blended number: the
+MMLU precedent (superseded at an ~86-87% plateau, not at 100%) is the
+model. The report lists families closest to retirement first
+(exhausted, then ceiling-saturated, then uniform_failure, then
+discriminating; within a state, least resolvable first).
+
+Two guardrails are structural. First, the variant-flip check: an
+`exhausted` read also requires low variant-flip (the signal that
+near-zero ASR is genuine robustness, not memorized cases). Peira v1
+records no variant-flip data, so the module reports
+`variant_flip_checked: false` and treats floor-plus-tight-spread as
+necessary but not sufficient: `exhausted` sets the per-release
+`exhaustion_trigger_met` flag, but `retirement_eligible` stays false
+until the trigger holds for two consecutive releases and the
+variant-flip check passes. M-8 (score-primitive delta analytics)
+is the planned source of a variant-flip analog. Second, holdout
+families are never retired: `--holdout-families` marks them, their
+state is reported, and their action is capped at monitor, because the
+blind holdout is the regression suite, not the capability hill.
+
+A methodology pilot exercising all four states on the real v1 family
+inventory with disclosed synthetic adapters lives in
+[docs/saturation-pilot-report.md](saturation-pilot-report.md), generated
+by `scripts/saturation_pilot.py`. It is machinery validation, not a
+claim about any real family: no official multi-adapter runs exist yet.
 
 ## Multi-seed stability protocol (M-7)
 
