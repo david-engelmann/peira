@@ -1,7 +1,7 @@
 {
-  "created_utc": "2026-09-30T08:22:57.032533+00:00",
+  "created_utc": "2026-09-30T15:06:25+00:00",
   "dataset": "peira-v2",
-  "dataset_version": "2.3.0",
+  "dataset_version": "2.3.1",
   "files": {
     "crosslingual_shift.jsonl": {
       "kind": "cases",
@@ -73,7 +73,7 @@
         "medium": 270
       },
       "n_cases": 470,
-      "sha256": "e08185832470499f117c99061001e32461e3f6061cf19b21c884734419fa2675"
+      "sha256": "c9a61d86d21b33c7bee535956eede789e26afbb6cab8ecff6c7c46e75a5b53e1"
     }
   },
   "generator": "peira 0.1.0",
