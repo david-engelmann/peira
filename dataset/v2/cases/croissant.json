@@ -44,7 +44,7 @@
     "subField": "cr:subField",
     "transform": "cr:transform"
   },
-  "@id": "peira-v2",
+  "@id": "peira-v1",
   "@type": "sc:Dataset",
   "conformsTo": "http://mlcommons.org/croissant/1.0",
   "creator": [
@@ -54,44 +54,44 @@
       "url": "https://github.com/david-engelmann/peira"
     }
   ],
-  "datePublished": "2026-09-30T15:06:25+00:00",
-  "description": "peira-v2. Paired adversarial decision-model cases, dataset version 2.3.1.",
+  "datePublished": "2026-09-30T15:19:05+00:00",
+  "description": "peira-v1. Paired adversarial decision-model cases, dataset version 2.3.1.",
   "distribution": [
     {
-      "@id": "peira-v2/crosslingual_shift.jsonl",
+      "@id": "peira-v1/crosslingual_shift.jsonl",
       "@type": "cr:FileObject",
       "contentUrl": "https://raw.githubusercontent.com/david-engelmann/peira/main/dataset/v2/cases/crosslingual_shift.jsonl",
-      "description": "420 paired adversarial decision cases (peira-v2 2.3.1).",
+      "description": "420 paired adversarial decision cases (peira-v1 2.3.1).",
       "encodingFormat": "application/x-ndjson",
       "name": "crosslingual_shift.jsonl",
       "sha256": "04ffcb0f546c9f5424f78204124797cb3117df23a23fb4c6c37f2a796819357d"
     },
     {
-      "@id": "peira-v2/evidence_positioning.jsonl",
+      "@id": "peira-v1/evidence_positioning.jsonl",
       "@type": "cr:FileObject",
       "contentUrl": "https://raw.githubusercontent.com/david-engelmann/peira/main/dataset/v2/cases/evidence_positioning.jsonl",
-      "description": "420 paired adversarial decision cases (peira-v2 2.3.1).",
+      "description": "420 paired adversarial decision cases (peira-v1 2.3.1).",
       "encodingFormat": "application/x-ndjson",
       "name": "evidence_positioning.jsonl",
       "sha256": "565a770d06f8630b3a2aa337472263515c680c9044cd4e6e661b2748c15e5503"
     },
     {
-      "@id": "peira-v2/retrieval_poisoning.jsonl",
+      "@id": "peira-v1/retrieval_poisoning.jsonl",
       "@type": "cr:FileObject",
       "contentUrl": "https://raw.githubusercontent.com/david-engelmann/peira/main/dataset/v2/cases/retrieval_poisoning.jsonl",
-      "description": "470 paired adversarial decision cases (peira-v2 2.3.1).",
+      "description": "470 paired adversarial decision cases (peira-v1 2.3.1).",
       "encodingFormat": "application/x-ndjson",
       "name": "retrieval_poisoning.jsonl",
       "sha256": "4d09256d64cf9c9980c1b98b4794e77a467fae35bcb48c525a482924694020db"
     },
     {
-      "@id": "peira-v2/verbosity_inflation.jsonl",
+      "@id": "peira-v1/verbosity_inflation.jsonl",
       "@type": "cr:FileObject",
       "contentUrl": "https://raw.githubusercontent.com/david-engelmann/peira/main/dataset/v2/cases/verbosity_inflation.jsonl",
-      "description": "470 paired adversarial decision cases (peira-v2 2.3.1).",
+      "description": "470 paired adversarial decision cases (peira-v1 2.3.1).",
       "encodingFormat": "application/x-ndjson",
       "name": "verbosity_inflation.jsonl",
-      "sha256": "c9a61d86d21b33c7bee535956eede789e26afbb6cab8ecff6c7c46e75a5b53e1"
+      "sha256": "36bfa64d63f66ce02f3fc9fe8f65feda7b3a94fe2ccf7edddf52c1a56c6094ee"
     }
   ],
   "keywords": [
@@ -102,92 +102,92 @@
     "jailbreak"
   ],
   "license": "https://creativecommons.org/licenses/by/4.0/deed.en",
-  "name": "peira-v2",
+  "name": "peira-v1",
   "recordSet": [
     {
-      "@id": "peira-v2/paired_cases",
+      "@id": "peira-v1/paired_cases",
       "@type": "cr:RecordSet",
       "description": "One record per line of each JSONL distribution file. Each line is a benign decision variant paired with its attacked variant.",
       "field": [
         {
-          "@id": "peira-v2/paired_cases/case_id",
+          "@id": "peira-v1/paired_cases/case_id",
           "@type": "cr:Field",
           "dataType": "sc:Text",
           "description": "Stable case identifier, e.g. v1-spo-001.",
           "name": "case_id"
         },
         {
-          "@id": "peira-v2/paired_cases/family",
+          "@id": "peira-v1/paired_cases/family",
           "@type": "cr:Field",
           "dataType": "sc:Text",
           "description": "Attack family id from the peira taxonomy.",
           "name": "family"
         },
         {
-          "@id": "peira-v2/paired_cases/primitive",
+          "@id": "peira-v1/paired_cases/primitive",
           "@type": "cr:Field",
           "dataType": "sc:Text",
           "description": "Decision primitive, either choice, score, or abstain.",
           "name": "primitive"
         },
         {
-          "@id": "peira-v2/paired_cases/severity",
+          "@id": "peira-v1/paired_cases/severity",
           "@type": "cr:Field",
           "dataType": "sc:Text",
           "description": "Consequence-based severity, either critical, high, medium, or low.",
           "name": "severity"
         },
         {
-          "@id": "peira-v2/paired_cases/benign.input.prompt",
+          "@id": "peira-v1/paired_cases/benign.input.prompt",
           "@type": "cr:Field",
           "dataType": "sc:Text",
           "description": "The unattacked decision prompt.",
           "name": "benign.input.prompt"
         },
         {
-          "@id": "peira-v2/paired_cases/benign.input.options",
+          "@id": "peira-v1/paired_cases/benign.input.options",
           "@type": "cr:Field",
           "dataType": "sc:Text",
           "description": "The explicit decision vocabulary.",
           "name": "benign.input.options"
         },
         {
-          "@id": "peira-v2/paired_cases/benign.expected_decision",
+          "@id": "peira-v1/paired_cases/benign.expected_decision",
           "@type": "cr:Field",
           "dataType": "sc:Text",
           "description": "Gold decision on the benign variant.",
           "name": "benign.expected_decision"
         },
         {
-          "@id": "peira-v2/paired_cases/attacked.input.prompt",
+          "@id": "peira-v1/paired_cases/attacked.input.prompt",
           "@type": "cr:Field",
           "dataType": "sc:Text",
           "description": "The attacked decision prompt.",
           "name": "attacked.input.prompt"
         },
         {
-          "@id": "peira-v2/paired_cases/attacked.target_decision",
+          "@id": "peira-v1/paired_cases/attacked.target_decision",
           "@type": "cr:Field",
           "dataType": "sc:Text",
           "description": "Decision the attacker tries to induce, or null when the attack only tries to change the decision.",
           "name": "attacked.target_decision"
         },
         {
-          "@id": "peira-v2/paired_cases/provenance",
+          "@id": "peira-v1/paired_cases/provenance",
           "@type": "cr:Field",
           "dataType": "sc:Thing",
           "description": "Optional PROV-style object with generated_by, generated_at, was_derived_from, and was_attributed_to.",
           "name": "provenance"
         },
         {
-          "@id": "peira-v2/paired_cases/evaluation_only",
+          "@id": "peira-v1/paired_cases/evaluation_only",
           "@type": "cr:Field",
           "dataType": "sc:Boolean",
           "description": "True. Benchmark data, never train on it.",
           "name": "evaluation_only"
         },
         {
-          "@id": "peira-v2/paired_cases/do_not_train",
+          "@id": "peira-v1/paired_cases/do_not_train",
           "@type": "cr:Field",
           "dataType": "sc:Boolean",
           "description": "True. Exclude from training corpora.",
