@@ -65,6 +65,20 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
   `DATASHEET.md`. The next v2 version cannot seal until those are
   resolved.
 
+### Added crosslingual_shift attack family (family 24, Tier 1)
+
+- New v2 family `crosslingual_shift`: hostile instructions or
+  justifications rendered in a non-English language (or code-switched
+  mix) to bypass safety filters trained primarily on English. 420
+  cases (147 critical / 74 high / 199 medium; 300 choice / 50 abstain /
+  70 score) authored by `scripts/author_crosslingual_shift.py`, case IDs
+  `v2-xling-0001` and up. The attacked variant keeps the benign facts
+  in English but shifts the attack payload to Spanish, French, German,
+  Portuguese, Italian, or Dutch. Registered in `python/peira/families.py`,
+  documented in `docs/Taxonomy.md` (entry 24) and `docs/Methodology.md`
+  (measurement section with the deletion test). Dataset version moves
+  from 2.2.0 to 2.3.0.
+
 ### Added evidence_positioning attack family (family 23, Tier 1)
 
 - New v2 family `evidence_positioning`: reordering byte-identical
