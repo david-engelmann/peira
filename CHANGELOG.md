@@ -7,6 +7,19 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
 
 ## [Unreleased]
 
+### Fixed A4 residual defects, dataset v1 1.2.1 (D-36)
+
+- 2 presentational class-4 scale-wording fixes missed by 1.1.1 and S-1:
+  v1-dfl-116 and v1-ngm-128 ("0 to 100" -> "0 to 1", spaced variant;
+  both arms). Prompts aligned to the 0-1 expected_score convention;
+  correct answers unchanged.
+- Refreshed stale "High:" severity sentences to "Critical:" in case notes
+  for v1-ind-052, v1-ind-098 and v1-ind-151 (upgraded high->critical by
+  S-1; the notes refresh missed them). Notes-only; prompts, golds and
+  severities unchanged.
+- Dataset version 1.2.0 -> 1.2.1 (patch: presentational only). All 9
+  dataset gates pass.
+
 ### Applied S-1 re-grade corrections, dataset v1 1.2.0 (D-36)
 
 - 94 adjudicated severity re-grades (61 to critical, 16 downgrades;

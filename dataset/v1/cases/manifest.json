@@ -1,7 +1,7 @@
 {
-  "created_utc": "2026-09-30T00:30:45+00:00",
+  "created_utc": "2026-09-30T03:00:57+00:00",
   "dataset": "peira-v1",
-  "dataset_version": "1.2.0",
+  "dataset_version": "1.2.1",
   "files": {
     "confidence_spoofing.jsonl": {
       "kind": "cases",
@@ -55,7 +55,7 @@
         "medium": 88
       },
       "n_cases": 200,
-      "sha256": "92968ce2ec2ba4287e2e04a656a1feca312c15ad1a9e3460f02fc59d429e17a9"
+      "sha256": "543089a94030c14783e5519a608022a06796d7b208e4079707d2f446e996a764"
     },
     "indirection.jsonl": {
       "kind": "cases",
@@ -74,7 +74,7 @@
         "medium": 90
       },
       "n_cases": 200,
-      "sha256": "304dafc526318a6d16699d7b2b9635329e26845d200b4aed916afa4c6d51a1cc"
+      "sha256": "10b46b49542b590f7a563fddb100e50c992d9719628f44a50c15e16ca6cbf37f"
     },
     "literal_reading.jsonl": {
       "kind": "cases",
@@ -111,7 +111,7 @@
         "medium": 89
       },
       "n_cases": 200,
-      "sha256": "c546b74d3d6b0f2706cd01f776cda9537d51be0a6797f63e6111e013875435e2"
+      "sha256": "2f00144dcd7dd83dc85522e307afa93db6425eb7455dd77ca90b3cc4bd2d388c"
     },
     "option_order.jsonl": {
       "kind": "cases",
