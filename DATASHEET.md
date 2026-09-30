@@ -110,7 +110,7 @@ train/dev/test splits because the datasets are evaluation-only.
 **Are there errors, noise, or redundancies**
 
 Every case passes nine automated validation gates before sealing,
-and the project runs periodic regrade audits with pre-registered
+and the project runs periodic regrade passes with pre-registered
 defect bars. Corrections ship as versioned releases with changelog
 entries rather than silent edits. Known limitations of a release
 are recorded in its changelog entry.
