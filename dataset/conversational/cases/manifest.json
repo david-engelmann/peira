@@ -1,8 +1,8 @@
 {
   "case_schema": "conversational",
-  "created_utc": "2026-09-30T16:50:28+00:00",
+  "created_utc": "2026-09-30T17:08:30+00:00",
   "dataset": "peira-conversational",
-  "dataset_version": "1.0.0",
+  "dataset_version": "1.0.1",
   "files": {
     "decision_splitting.jsonl": {
       "kind": "cases",
@@ -21,7 +21,7 @@
         "medium": 168
       },
       "n_cases": 420,
-      "sha256": "78659dfedb9c98a24f67088517e2e7aff178ed636766ec0544591853d6663c48"
+      "sha256": "43e3b750cb05829c6a05302143a97522b2434be7e597a916e8e4fff037277409"
     },
     "multi_turn_escalation.jsonl": {
       "kind": "cases",

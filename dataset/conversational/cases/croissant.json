@@ -54,23 +54,23 @@
       "url": "https://github.com/david-engelmann/peira"
     }
   ],
-  "datePublished": "2026-09-30T16:50:28+00:00",
-  "description": "peira-conversational. Paired adversarial decision-model cases, dataset version 1.0.0.",
+  "datePublished": "2026-09-30T17:08:30+00:00",
+  "description": "peira-conversational. Paired adversarial decision-model cases, dataset version 1.0.1.",
   "distribution": [
     {
       "@id": "peira-conversational/decision_splitting.jsonl",
       "@type": "cr:FileObject",
       "contentUrl": "https://raw.githubusercontent.com/david-engelmann/peira/main/dataset/conversational/cases/decision_splitting.jsonl",
-      "description": "420 paired adversarial decision cases (peira-conversational 1.0.0).",
+      "description": "420 paired adversarial decision cases (peira-conversational 1.0.1).",
       "encodingFormat": "application/x-ndjson",
       "name": "decision_splitting.jsonl",
-      "sha256": "78659dfedb9c98a24f67088517e2e7aff178ed636766ec0544591853d6663c48"
+      "sha256": "43e3b750cb05829c6a05302143a97522b2434be7e597a916e8e4fff037277409"
     },
     {
       "@id": "peira-conversational/multi_turn_escalation.jsonl",
       "@type": "cr:FileObject",
       "contentUrl": "https://raw.githubusercontent.com/david-engelmann/peira/main/dataset/conversational/cases/multi_turn_escalation.jsonl",
-      "description": "420 paired adversarial decision cases (peira-conversational 1.0.0).",
+      "description": "420 paired adversarial decision cases (peira-conversational 1.0.1).",
       "encodingFormat": "application/x-ndjson",
       "name": "multi_turn_escalation.jsonl",
       "sha256": "786afd0c4495dea3b9855124c310b5e25a63e0c6cc76c49f997128d5804892b1"
@@ -180,5 +180,5 @@
     }
   ],
   "url": "https://github.com/david-engelmann/peira",
-  "version": "1.0.0"
+  "version": "1.0.1"
 }
