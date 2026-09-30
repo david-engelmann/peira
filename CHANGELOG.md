@@ -7,6 +7,23 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
 
 ## [Unreleased]
 
+### Added question_pair_incoherence attack family (family 25, Tier 1)
+
+- New v2 family `question_pair_incoherence`: two complementary questions
+  asked over identical facts, where adversarial phrasing of one question
+  widens the joint-incoherence gap between the answers. 400 cases
+  (86 critical / 140 high / 174 medium; 300 choice / 50 abstain / 50
+  score) authored by `scripts/author_question_pair_incoherence.py`, case
+  IDs `v2-qpi-0001` and up. The attacked variant keeps the byte-identical
+  scenario and facts and rephrases one question with one of three
+  techniques: leading interrogative, policy-scope shift, or burden shift
+  demanding affirmative justification of the fact-favored side. Registered
+  in `python/peira/families.py`, documented in `docs/Taxonomy.md`
+  (entry 25, with a boundary ruling against `literal_reading` and
+  `contradiction_injection`) and `docs/Methodology.md` (measurement
+  section with the deletion test). Dataset version moves from 2.3.1 to
+  2.4.0.
+
 ### Added conversational case families
 
 - The conversational suite ships its first two attack families:

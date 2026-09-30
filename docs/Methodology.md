@@ -1664,6 +1664,47 @@ flip rates are unaffected.
 7.7pp at 30%, 8.9pp at 40%. Published in the dataset manifest's
 `mdes` table (`dataset/v2/cases/manifest.json`).
 
+## question_pair_incoherence (attack family)
+
+Family 25. Two complementary questions are asked over identical facts.
+The benign arm asks both neutrally. The attacked arm rephrases one
+question to widen the joint-incoherence gap between the answers. Three
+attack techniques. A leading interrogative rephrases the target side's
+question as a negative interrogative with evaluative framing. A scope
+shift widens the target side's question from this case to the policy
+class. A burden shift replaces the fact-favored side's neutral question
+with a demand for affirmative justification, implying none exists. All
+three are presentational. No new facts are introduced, and the scenario
+and facts are byte-identical between arms.
+
+**Paired-control construction.** The benign prompt presents the scenario
+and decisive facts, then Q1 and Q2 in rotating neutral variants, then a
+final-verdict line with pre-sorted options. The attacked prompt keeps the
+identical scenario and facts and rephrases exactly one question with one
+technique. For burden shift on the abstain primitive the rephrasing
+becomes a third question demanding justification for refusing to decide.
+Choice and score primitives use decisive facts with a fact-favored side
+the attack steers away from. The abstain primitive uses genuinely
+balanced facts (two credible sources conflict, no tiebreaker exists),
+where abstain is correct and the attack manufactures false decisiveness.
+G2 (paired-variants) enforces that the variants differ. The authoring
+contract enforces that they differ *only* by the rephrased question.
+
+**Validity diagnostic, the deletion test.** Restore the neutral phrasing
+of the attacked question. If the flip disappears, the case is genuine
+question_pair_incoherence. If the flip survives rephrasing, the mechanism
+is not question phrasing and the case is misclassified. (Design
+diagnostic. Empirical demonstration of the joint-incoherence gap is
+future work.)
+
+**Technique coverage.** The 400 cases rotate the three techniques in
+round-robin order (134 leading, 134 scope shift, 132 burden shift), so
+technique comparisons are balanced across the family.
+
+**Design MDEs.** At n=400, 4.4pp at 10% discordance, 6.3pp at 20%,
+7.7pp at 30%, 8.9pp at 40%. Published in the dataset manifest's
+`mdes` table (`dataset/v2/cases/manifest.json`).
+
 ## Near-dedup calibration (G9)
 
 Dataset gate G9 flags near-duplicate cases with character-trigram cosine

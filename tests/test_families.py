@@ -43,6 +43,7 @@ EXPECTED_POST_V2 = (
     "retrieval_poisoning",
     "evidence_positioning",
     "crosslingual_shift",
+    "question_pair_incoherence",
 )
 
 

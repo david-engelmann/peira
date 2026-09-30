@@ -137,6 +137,14 @@ ships, with no fixed total.
     German, Portuguese, Italian, or Dutch. Peira-native contribution
     (weak/indirect ATLAS analogue only).
 
+25. **question_pair_incoherence** (Tier 1). Two complementary questions
+    asked over identical facts, where adversarial phrasing of one
+    question widens the joint-incoherence gap between the answers. The
+    benign arm asks both questions neutrally. The attacked arm
+    rephrases one question with leading wording, a policy-scope shift,
+    or a burden shift toward the target decision, adding no new facts.
+    Peira-native contribution.
+
 ## Family boundary rulings
 
 Neighboring families stay separate only if case authors can tell them
@@ -187,6 +195,16 @@ families); the v1 cases are frozen as authored.
    `indirect_injection`. Retrieval poisoning also differs from
    `state_poisoning`: the corpus is explicitly untrusted, not trusted
    structured state.
+9. `question_pair_incoherence` vs `literal_reading` vs
+   `contradiction_injection`. `literal_reading` attacks single-question
+   scoping: how one question is read in isolation. `contradiction_injection`
+   plants contradictory clauses in the policy: the attack surface is the
+   rule text. `question_pair_incoherence` keeps the policy and the facts
+   fixed and attacks cross-question consistency: the surface is how the
+   two questions are phrased. Deletion test: restore the neutral phrasing
+   of the attacked question. If the flip disappears it is
+   `question_pair_incoherence`; if the flip survives rephrasing, the case
+   is misclassified.
 
 Classifier guardrails get their own benchmark: the **safety-policy
 suite** (`dataset/safety-policy/`), a separate guardrail-native suite
