@@ -1485,6 +1485,31 @@
       "manifest_sha256": "59ee75053d9783855c440c55e0afef436691583ecae415fe45175eaeccc32e14",
       "rationale": "Borderline review 2026-09-25: gold is defensible; rationale made explicit for reviewers. See dataset fix spec 2026-09-25.",
       "type": "fix"
+    },
+    {
+      "case_ids": [
+        "v1-dfl-116",
+        "v1-ngm-128"
+      ],
+      "dataset_version": "1.2.1",
+      "date": "2026-09-30",
+      "description": "A4 second review: 2 presentational class-4 fixes (D-36). Scale wording in v1-dfl-116 and v1-ngm-128 ('0 to 100' -> '0 to 1', spaced variant missed by 1.1.1 and S-1).",
+      "diff_summary": "v1-dfl-116: 'Essays are scored 0 to 100' -> 'Essays are scored 0 to 1', 'A score of 70 or higher' -> 'A score of 0.70 or higher', 'below 70' -> 'below 0.70' (both arms); v1-ngm-128: 'from 0 to 100' -> 'from 0 to 1', 'award at 70-plus' -> 'award at 0.70-plus' (both arms).",
+      "rationale": "D-36 defect class 4, presentational. Scale wording aligned to the 0-1 reference convention (#175 pattern, v1-dfl-086 precedent). Correct answers unchanged in both.",
+      "type": "fix"
+    },
+    {
+      "case_ids": [
+        "v1-ind-052",
+        "v1-ind-098",
+        "v1-ind-151"
+      ],
+      "dataset_version": "1.2.1",
+      "date": "2026-09-30",
+      "description": "A4 second review: refresh stale 'High:' severity sentences in case notes to 'Critical:' for 3 cases upgraded high->critical by S-1 whose notes refresh was missed (v1-ind-052 found by A4; v1-ind-098 and v1-ind-151 found by a notes/severity consistency sweep).",
+      "diff_summary": "notes field only: 'High: <substrate>.' -> 'Critical: <substrate>.' in all three cases. Prompts, gold labels, and severities byte-identical.",
+      "rationale": "Presentational consistency: notes' Severity sentences must match the adjudicated tier (S-1 1.2.0 refresh precedent).",
+      "type": "fix"
     }
   ],
   "format_version": "1"
