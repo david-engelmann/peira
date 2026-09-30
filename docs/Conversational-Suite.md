@@ -1,8 +1,8 @@
 # Conversational suite
 
-**Status.** R-01. Schema, runner, gates, and mock support are in place.
-No cases ship yet. The first families to land here are
-`multi_turn_escalation` and `decision_splitting`.
+**Status.** Two attack families ship: `multi_turn_escalation` and
+`decision_splitting`, 420 cases each (840 total) under
+`dataset/conversational/cases/`, sealed at manifest v1.0.1.
 
 ## Why a separate suite
 

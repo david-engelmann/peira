@@ -4066,6 +4066,7 @@ def cmd_dataset_review(args: argparse.Namespace) -> int:
         print(f"error: dataset directory {dataset_dir} not found",
               file=sys.stderr)
         return EXIT_USER_ERROR
+    kind = getattr(args, "kind", "single") or "single"
     # review_command always exists: the parser sets review_command=None
     # by default, and the approve/reject subparsers set it via
     # dest="review_command"; no AttributeError fallback needed.
@@ -4075,7 +4076,7 @@ def cmd_dataset_review(args: argparse.Namespace) -> int:
         try:
             mark_reviewed(dataset_dir, args.id, status,
                           reviewer=args.reviewer or "",
-                          notes=args.notes or "")
+                          notes=args.notes or "", kind=kind)
         except KeyError as e:
             print(f"error: {e}", file=sys.stderr)
             return EXIT_USER_ERROR
@@ -4085,8 +4086,8 @@ def cmd_dataset_review(args: argparse.Namespace) -> int:
         print(f"{args.id}: marked {status}")
         return EXIT_OK
     try:
-        pending = pending_reviews(dataset_dir)
-        cov = review_coverage(dataset_dir)
+        pending = pending_reviews(dataset_dir, kind=kind)
+        cov = review_coverage(dataset_dir, kind=kind)
     except ValueError as e:
         print(f"error: {e}", file=sys.stderr)
         return EXIT_USER_ERROR
@@ -4117,7 +4118,6 @@ def cmd_dataset_status(args: argparse.Namespace) -> int:
     a status signal, not an error (see docs/Dataset.md).
     """
     from peira.dataset import MANIFEST_NAME, verify_manifest
-    from peira.gates import run_gates
     from peira.review import (critical_cases_missing_notes, pending_reviews,
                               review_coverage)
 
@@ -4126,14 +4126,21 @@ def cmd_dataset_status(args: argparse.Namespace) -> int:
         print(f"error: dataset directory {dataset_dir} not found",
               file=sys.stderr)
         return EXIT_USER_ERROR
+    kind = getattr(args, "kind", "single") or "single"
+    is_conversational = kind == "conversational"
 
-    results = run_gates(dataset_dir)
+    if is_conversational:
+        from peira.conversation_gates import run_conversation_gates
+        results = run_conversation_gates(dataset_dir)
+    else:
+        from peira.gates import run_gates
+        results = run_gates(dataset_dir)
     n_err = sum(len(r.errors) for r in results)
     n_warn = sum(len(r.warnings) for r in results)
     try:
-        pending = pending_reviews(dataset_dir)
-        cov = review_coverage(dataset_dir)
-        missing_notes = critical_cases_missing_notes(dataset_dir)
+        pending = pending_reviews(dataset_dir, kind=kind)
+        cov = review_coverage(dataset_dir, kind=kind)
+        missing_notes = critical_cases_missing_notes(dataset_dir, kind=kind)
     except ValueError as e:
         print(f"error: {e}", file=sys.stderr)
         return EXIT_USER_ERROR
@@ -4731,6 +4738,9 @@ def build_parser() -> argparse.ArgumentParser:
                          help="human review queue")
     rv.add_argument("--check", action="store_true",
                     help="exit 1 if any reviews are pending")
+    rv.add_argument("--kind", choices=("single", "conversational"),
+                    default="single",
+                    help="case schema: single-shot (default) or conversational")
     rv.set_defaults(func=cmd_dataset_review, review_command=None)
     rvsub = rv.add_subparsers(dest="review_command")
     for sub_name, sub_help in (("approve", "mark a case reviewed and approved"),
@@ -4740,9 +4750,15 @@ def build_parser() -> argparse.ArgumentParser:
         sp.add_argument("--reviewer", default="",
                         help="who reviewed (name or initials)")
         sp.add_argument("--notes", default="", help="review notes")
+        sp.add_argument("--kind", choices=("single", "conversational"),
+                        default="single",
+                        help="case schema: single-shot (default) or conversational")
         sp.set_defaults(func=cmd_dataset_review)
     st = dsub.add_parser("status", parents=[dir_req],
                          help="pipeline status: gates, review queue, manifest")
+    st.add_argument("--kind", choices=("single", "conversational"),
+                    default="single",
+                    help="case schema: single-shot (default) or conversational")
     st.set_defaults(func=cmd_dataset_status)
     return p
 
