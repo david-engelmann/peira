@@ -87,6 +87,38 @@ fn default_true() -> bool {
     true
 }
 
+/// R-10 per-case provenance (PROV-O inspired): where the case came from.
+/// All fields are optional; absent entirely when the case predates
+/// provenance capture. Unknown sub-fields ride `extras` so future
+/// provenance vocabulary needs no schema change on either backend.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct CaseProvenance {
+    /// The activity that generated the case (e.g. "v2-authoring-batch-3").
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub generated_by: Option<String>,
+    /// ISO-8601 UTC timestamp of generation.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub generated_at: Option<String>,
+    /// Source case_id when this case was adapted from an earlier case.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub was_derived_from: Option<String>,
+    /// The agent responsible for the case (e.g. "peira-team").
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub was_attributed_to: Option<String>,
+    /// Unknown provenance sub-fields, preserved on round-trip.
+    #[serde(flatten)]
+    pub extras: HashMap<String, Value>,
+}
+
+/// The known R-10 provenance sub-fields, in canonical order. Mirrors
+/// Python `PROVENANCE_FIELDS`; validation messages are byte-identical.
+pub const PROVENANCE_FIELDS: [&str; 4] = [
+    "generated_by",
+    "generated_at",
+    "was_derived_from",
+    "was_attributed_to",
+];
+
 /// One decision scenario: benign and attacked variants, paired.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Case {
@@ -105,6 +137,10 @@ pub struct Case {
     pub evaluation_only: bool,
     #[serde(default = "default_true")]
     pub do_not_train: bool,
+    /// R-10 per-case provenance (PROV-O inspired). None when the case
+    /// predates provenance capture; omitted from serialization when None.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub provenance: Option<CaseProvenance>,
     /// Unknown top-level keys, preserved on round-trip. Mirrors Python
     /// `Case.extras`: future per-case configuration rides the pipeline
     /// with no refactoring, on both implementations.
@@ -328,6 +364,28 @@ pub fn validate_case_dict(d: &Value) -> Vec<String> {
         if let Some(v) = obj.get(flag) {
             if !v.is_boolean() {
                 errors.push(format!("bad {flag}: expected boolean"));
+            }
+        }
+    }
+    // R-10: per-case provenance is optional, but when present must be
+    // an object whose known fields are strings. Explicit null is
+    // treated as absent (it deserializes to the None default).
+    // Byte-identical to Python.
+    if let Some(prov) = obj.get("provenance") {
+        if prov.is_null() {
+            // absent
+        } else {
+            match prov {
+                Value::Object(map) => {
+                    for field in PROVENANCE_FIELDS {
+                        if let Some(v) = map.get(field) {
+                            if !v.is_string() {
+                                errors.push(format!("bad provenance.{field}: expected string"));
+                            }
+                        }
+                    }
+                }
+                _ => errors.push("bad provenance: expected object".to_string()),
             }
         }
     }
@@ -636,5 +694,63 @@ mod tests {
         let case = Case::from_value(&valid_case()).unwrap();
         assert!(!case.extras.contains_key("evaluation_only"));
         assert!(!case.extras.contains_key("do_not_train"));
+    }
+
+    #[test]
+    fn provenance_optional_and_valid() {
+        // R-10: absent provenance is fine and stays out of extras.
+        let case = Case::from_value(&valid_case()).unwrap();
+        assert!(case.provenance.is_none());
+        assert!(!case.extras.contains_key("provenance"));
+        // A full provenance object validates and round-trips.
+        let mut d = valid_case();
+        d["provenance"] = json!({
+            "generated_by": "v2-authoring-batch-3",
+            "generated_at": "2026-09-28T12:00:00Z",
+            "was_derived_from": "v1-spo-001",
+            "was_attributed_to": "peira-team",
+        });
+        assert!(validate_case_dict(&d).is_empty());
+        let case = Case::from_value(&d).unwrap();
+        let prov = case.provenance.as_ref().expect("provenance parsed");
+        assert_eq!(prov.generated_by.as_deref(), Some("v2-authoring-batch-3"));
+        assert_eq!(prov.was_derived_from.as_deref(), Some("v1-spo-001"));
+        let back = serde_json::to_value(&case).unwrap();
+        assert_eq!(
+            back["provenance"]["generated_by"],
+            json!("v2-authoring-batch-3")
+        );
+    }
+
+    #[test]
+    fn provenance_null_is_absent() {
+        // R-10: explicit null round-trips to the None default on both
+        // backends instead of failing validation.
+        let mut d = valid_case();
+        d["provenance"] = Value::Null;
+        assert!(validate_case_dict(&d).is_empty());
+        let case = Case::from_value(&d).unwrap();
+        assert!(case.provenance.is_none());
+    }
+
+    #[test]
+    fn provenance_rejects_bad_shapes() {
+        // Non-object provenance.
+        let mut d = valid_case();
+        d["provenance"] = json!("yesterday");
+        let errors = validate_case_dict(&d);
+        assert_eq!(errors, vec!["bad provenance: expected object"]);
+        // Non-string known sub-field.
+        let mut d = valid_case();
+        d["provenance"] = json!({"generated_by": 42});
+        let errors = validate_case_dict(&d);
+        assert_eq!(errors, vec!["bad provenance.generated_by: expected string"]);
+        // Unknown sub-fields are allowed and preserved.
+        let mut d = valid_case();
+        d["provenance"] = json!({"generated_by": "x", "tool": "scribe-2"});
+        assert!(validate_case_dict(&d).is_empty());
+        let case = Case::from_value(&d).unwrap();
+        let prov = case.provenance.unwrap();
+        assert_eq!(prov.extras["tool"], json!("scribe-2"));
     }
 }

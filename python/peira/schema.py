@@ -25,6 +25,19 @@ from peira.families import FAMILY_IDS
 PRIMITIVES = ("choice", "score", "abstain")
 SEVERITIES = ("critical", "high", "medium", "low")
 
+# R-10 per-case provenance vocabulary (PROV-O inspired). The optional
+# top-level ``provenance`` object on a case records where the case came
+# from: which activity generated it, when, what it was derived from,
+# and who is responsible. All four fields are strings when present;
+# ``was_derived_from`` names the source case_id for cases adapted from
+# an earlier case (e.g. a v2 case reworked from a v1 case).
+PROVENANCE_FIELDS = (
+    "generated_by",
+    "generated_at",
+    "was_derived_from",
+    "was_attributed_to",
+)
+
 # The canonical attack families (docs/Taxonomy.md, registry in
 # peira/families.py). The frozen case schema accepts any family string
 # at runtime; the dataset gates (the authoring-time contract) require
@@ -84,6 +97,18 @@ CASE_JSON_SCHEMA: dict[str, Any] = {
         # (absent means True); when present must be booleans.
         "evaluation_only": {"type": "boolean"},
         "do_not_train": {"type": "boolean"},
+        # R-10 per-case provenance (PROV-O inspired). Optional; when
+        # present must be an object whose known fields are strings.
+        # Explicit null is allowed and means absent.
+        "provenance": {
+            "type": ["object", "null"],
+            "properties": {
+                "generated_by": {"type": "string"},
+                "generated_at": {"type": "string"},
+                "was_derived_from": {"type": "string"},
+                "was_attributed_to": {"type": "string"},
+            },
+        },
     },
 }
 
@@ -173,6 +198,10 @@ class Case:
     # (CANARY.md) is the tripwire for pipelines that do not.
     evaluation_only: bool = True
     do_not_train: bool = True
+    # R-10 per-case provenance (PROV-O inspired): where this case came
+    # from. None when the case predates provenance capture. Unknown
+    # sub-fields are preserved verbatim on round-trip.
+    provenance: dict[str, Any] | None = None
     # Unknown top-level fields from the source dict, preserved verbatim.
     # This is the forward-compatibility mechanism: new per-case
     # configuration rides here without touching the schema, the loader,
@@ -192,6 +221,17 @@ class Case:
             raise ValueError(
                 f"bad do_not_train: {_safe_repr(str(self.do_not_train))}"
             )
+        if self.provenance is not None:
+            if not isinstance(self.provenance, dict):
+                raise ValueError(
+                    f"bad provenance: {_safe_repr(str(self.provenance))}")
+            # The loader validates first, but a hand-built Case should
+            # not silently carry mistyped provenance sub-fields.
+            for field in PROVENANCE_FIELDS:
+                if (field in self.provenance
+                        and not isinstance(self.provenance[field], str)):
+                    raise ValueError(
+                        f"bad provenance.{field}: expected string")
 
     def to_dict(self) -> dict[str, Any]:
         d: dict[str, Any] = {
@@ -214,6 +254,12 @@ class Case:
             "do_not_train": self.do_not_train,
         }
         d.update(self.extras)
+        # Provenance is set after extras: it is a schema field, so a
+        # stray "provenance" key in extras cannot silently clobber it.
+        # (from_dict can never produce that state; this guards
+        # hand-built Case objects.)
+        if self.provenance is not None:
+            d["provenance"] = dict(self.provenance)
         return d
 
     @classmethod
@@ -221,7 +267,7 @@ class Case:
         known = {
             "case_id", "family", "primitive", "severity",
             "benign", "attacked", "notes",
-            "evaluation_only", "do_not_train",
+            "evaluation_only", "do_not_train", "provenance",
         }
         return cls(
             case_id=d["case_id"],
@@ -241,6 +287,9 @@ class Case:
             notes=d.get("notes", ""),
             evaluation_only=d.get("evaluation_only", True),
             do_not_train=d.get("do_not_train", True),
+            provenance=(dict(d["provenance"])
+                        if isinstance(d.get("provenance"), dict)
+                        else d.get("provenance")),
             extras={k: v for k, v in d.items() if k not in known},
         )
 
@@ -384,6 +433,22 @@ def _validate_case_dict_py(d: dict[str, Any]) -> list[str]:
         for flag in ("evaluation_only", "do_not_train"):
             if flag in d and not isinstance(d[flag], bool):
                 errors.append(f"bad {flag}: expected boolean")
+        # R-10: per-case provenance is optional, but when present must
+        # be an object whose known fields are strings. Explicit null
+        # is treated as absent (it round-trips to the None default).
+        # Unknown sub-fields are allowed (forward compatibility) and
+        # preserved.
+        if "provenance" in d:
+            prov = d["provenance"]
+            if prov is None:
+                pass
+            elif not isinstance(prov, dict):
+                errors.append("bad provenance: expected object")
+            else:
+                for field in PROVENANCE_FIELDS:
+                    if field in prov and not isinstance(prov[field], str):
+                        errors.append(
+                            f"bad provenance.{field}: expected string")
     return errors
 
 

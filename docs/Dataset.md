@@ -122,6 +122,25 @@ Rules:
 - With `--require-reviews`, the build also refuses while any human
   reviews are pending (see the review queue below).
 
+Every manifest build also writes `croissant.json` next to the
+manifest, the machine-readable dataset description (see
+docs/Provenance.md). The record is built from the manifest bytes in
+memory before either file is written, so it always describes the
+manifest being written. Each file is written atomically, but the two
+writes are not a single transaction. A crash between them can leave
+a stale sidecar, which the next build overwrites.
+
+## Releases
+
+A sealed dataset becomes a release when it is tagged and registered.
+Tag names follow `dataset-<suite>-<semver>`, e.g.
+`dataset-v1-1.0.0`. `data/dataset-releases.json` binds each tag to the
+manifest and croissant digests at that tag. Tags are never moved and
+registry entries are never edited, so a release is a permanent,
+reproducible pointer to exact dataset bytes. The full procedure is in
+docs/Provenance.md, section 3. CI verifies the whole registry on every
+PR.
+
 ## Canary
 
 Peira uses two separate canary strings. They never mix. The full policy

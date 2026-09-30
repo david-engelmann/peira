@@ -1,0 +1,138 @@
+{
+  "@context": {
+    "@language": "en",
+    "@vocab": "https://schema.org/",
+    "cr": "http://mlcommons.org/croissant/",
+    "dct": "http://purl.org/dc/terms/",
+    "rai": "http://mlcommons.org/croissant/RAI/",
+    "sc": "https://schema.org/"
+  },
+  "@id": "peira-safety-policy",
+  "@type": "sc:Dataset",
+  "conformsTo": "http://mlcommons.org/croissant/1.0",
+  "creator": [
+    {
+      "@type": "Person",
+      "name": "peira project",
+      "url": "https://github.com/david-engelmann/peira"
+    }
+  ],
+  "datePublished": "2026-09-26T16:53:23+00:00",
+  "description": "peira-safety-policy. Paired adversarial decision-model cases, dataset version 1.0.0.",
+  "distribution": [
+    {
+      "@id": "peira-safety-policy/safety_policy.jsonl",
+      "@type": "sc:FileObject",
+      "contentUrl": "https://raw.githubusercontent.com/david-engelmann/peira/main/dataset/safety-policy/cases/safety_policy.jsonl",
+      "description": "25 paired adversarial decision cases (peira-safety-policy 1.0.0).",
+      "encodingFormat": "application/x-ndjson",
+      "name": "safety_policy.jsonl",
+      "sha256": "1dbfa8313d817ac987e00948fb7504fb641c76c250a9f51853a17d8a43b597ae"
+    }
+  ],
+  "keywords": [
+    "adversarial robustness",
+    "decision models",
+    "benchmark",
+    "AI safety",
+    "jailbreak"
+  ],
+  "license": "https://creativecommons.org/licenses/by/4.0/deed.en",
+  "name": "peira-safety-policy",
+  "recordSet": [
+    {
+      "@id": "peira-safety-policy/paired_cases",
+      "@type": "cr:RecordSet",
+      "description": "One record per line of each JSONL distribution file. Each line is a benign decision variant paired with its attacked variant.",
+      "field": [
+        {
+          "@id": "peira-safety-policy/paired_cases/case_id",
+          "@type": "cr:Field",
+          "dataType": "sc:Text",
+          "description": "Stable case identifier, e.g. v1-spo-001.",
+          "name": "case_id"
+        },
+        {
+          "@id": "peira-safety-policy/paired_cases/family",
+          "@type": "cr:Field",
+          "dataType": "sc:Text",
+          "description": "Attack family id from the peira taxonomy.",
+          "name": "family"
+        },
+        {
+          "@id": "peira-safety-policy/paired_cases/primitive",
+          "@type": "cr:Field",
+          "dataType": "sc:Text",
+          "description": "Decision primitive, either choice, score, or abstain.",
+          "name": "primitive"
+        },
+        {
+          "@id": "peira-safety-policy/paired_cases/severity",
+          "@type": "cr:Field",
+          "dataType": "sc:Text",
+          "description": "Consequence-based severity, either critical, high, medium, or low.",
+          "name": "severity"
+        },
+        {
+          "@id": "peira-safety-policy/paired_cases/benign.input.prompt",
+          "@type": "cr:Field",
+          "dataType": "sc:Text",
+          "description": "The unattacked decision prompt.",
+          "name": "benign.input.prompt"
+        },
+        {
+          "@id": "peira-safety-policy/paired_cases/benign.input.options",
+          "@type": "cr:Field",
+          "dataType": "sc:Text",
+          "description": "The explicit decision vocabulary.",
+          "name": "benign.input.options"
+        },
+        {
+          "@id": "peira-safety-policy/paired_cases/benign.expected_decision",
+          "@type": "cr:Field",
+          "dataType": "sc:Text",
+          "description": "Gold decision on the benign variant.",
+          "name": "benign.expected_decision"
+        },
+        {
+          "@id": "peira-safety-policy/paired_cases/attacked.input.prompt",
+          "@type": "cr:Field",
+          "dataType": "sc:Text",
+          "description": "The attacked decision prompt.",
+          "name": "attacked.input.prompt"
+        },
+        {
+          "@id": "peira-safety-policy/paired_cases/attacked.target_decision",
+          "@type": "cr:Field",
+          "dataType": "sc:Text",
+          "description": "Decision the attacker tries to induce, or null when the attack only tries to change the decision.",
+          "name": "attacked.target_decision"
+        },
+        {
+          "@id": "peira-safety-policy/paired_cases/provenance",
+          "@type": "cr:Field",
+          "dataType": "sc:Thing",
+          "description": "Optional PROV-style object with generated_by, generated_at, was_derived_from, and was_attributed_to.",
+          "name": "provenance"
+        },
+        {
+          "@id": "peira-safety-policy/paired_cases/evaluation_only",
+          "@type": "cr:Field",
+          "dataType": "sc:Boolean",
+          "description": "True. Benchmark data, never train on it.",
+          "name": "evaluation_only"
+        },
+        {
+          "@id": "peira-safety-policy/paired_cases/do_not_train",
+          "@type": "cr:Field",
+          "dataType": "sc:Boolean",
+          "description": "True. Exclude from training corpora.",
+          "name": "do_not_train"
+        }
+      ],
+      "name": "paired_cases"
+    }
+  ],
+  "url": "https://github.com/david-engelmann/peira",
+  "version": "1.0.0"
+}

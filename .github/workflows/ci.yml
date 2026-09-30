@@ -179,6 +179,41 @@ jobs:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
         run: python3 scripts/check_dataset_version_bump.py "$BASE_SHA"
 
+  dataset-tags:
+    # R-10: the immutable tag registry (data/dataset-releases.json) is
+    # the source of truth for dataset releases. Every entry is verified
+    # against the git object store: the tag must resolve, must still
+    # point at the recorded commit (tags are never moved), and the
+    # manifest/croissant bytes at the tag must hash to the recorded
+    # digests. History must be complete for tag resolution.
+    needs: check_runner
+    runs-on: ${{ fromJSON(needs.check_runner.outputs.runner) }}
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+      - name: verify the dataset-release tag registry
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        # The registry is append-only: entries present at the merge
+        # base must be byte-identical now, so a PR cannot silently
+        # rewrite history. The merge base (not the base branch head)
+        # is the correct comparison point: main may have moved forward
+        # since the PR branched. On non-PR runs the base check is
+        # skipped.
+        run: |
+          if [ -n "$BASE_SHA" ]; then
+            MERGE_BASE=$(git merge-base HEAD "$BASE_SHA")
+            python3 scripts/check_dataset_tags.py --check-append-only "$MERGE_BASE"
+          else
+            python3 scripts/check_dataset_tags.py
+          fi
+
   lint-rust:
     # The Rust migration is active; CI must catch a skipped local gate.
     needs: check_runner

@@ -656,13 +656,11 @@ class TestDeterministicOrdering(unittest.TestCase):
                 for variant in ("benign", "attacked"):
                     # Normalize provenance that legitimately varies with
                     # concurrency: wall-clock latency (both the final
-                    # attempt and the cumulative total), the R-12 timing
-                    # decomposition, and the dispatch limit actually used
-                    # (1 vs up to 8). The measured outputs must be
-                    # identical.
+                    # attempt and the cumulative total), and the dispatch
+                    # limit actually used (1 vs up to 8). The measured
+                    # outputs must be identical.
                     r[variant]["dispatch_limit"] = 0
                     r[variant]["latency_ms_total"] = 0.0
-                    r[variant]["timing_ms"] = "excluded-by-contract"
                     usage = r[variant]["usage"]
                     if usage:
                         usage["latency_ms"] = 0.0
@@ -910,7 +908,6 @@ class TestTranscriptAndReplay(unittest.TestCase):
                     for variant in ("benign", "attacked"):
                         r[variant]["dispatch_limit"] = 0
                         r[variant]["latency_ms_total"] = 0.0
-                        r[variant]["timing_ms"] = "excluded-by-contract"
                         usage = r[variant]["usage"]
                         if usage:
                             usage["latency_ms"] = 0.0
