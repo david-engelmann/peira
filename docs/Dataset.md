@@ -122,25 +122,6 @@ Rules:
 - With `--require-reviews`, the build also refuses while any human
   reviews are pending (see the review queue below).
 
-Every manifest build also writes `croissant.json` next to the
-manifest, the machine-readable dataset description (see
-docs/Provenance.md). The record is built from the manifest bytes in
-memory before either file is written, so it always describes the
-manifest being written. Each file is written atomically, but the two
-writes are not a single transaction. A crash between them can leave
-a stale sidecar, which the next build overwrites.
-
-## Releases
-
-A sealed dataset becomes a release when it is tagged and registered.
-Tag names follow `dataset-<suite>-<semver>`, e.g.
-`dataset-v1-1.0.0`. `data/dataset-releases.json` binds each tag to the
-manifest and croissant digests at that tag. Tags are never moved and
-registry entries are never edited, so a release is a permanent,
-reproducible pointer to exact dataset bytes. The full procedure is in
-docs/Provenance.md, section 3. CI verifies the whole registry on every
-PR.
-
 ## Canary
 
 Peira uses two separate canary strings. They never mix. The full policy
@@ -220,7 +201,7 @@ peira dataset new --family state_poisoning --id sp-042 --severity high
 ```
 
 This prints a schema-valid case skeleton with `{{PLACEHOLDERS}}` for the
-author to fill in. Each of the twenty-one templates encodes its family's attack
+author to fill in. Each of the twenty-two templates encodes its family's attack
 pattern (documented in `python/peira/templates.py`): the state_poisoning
 skeleton has the poisoned tool-output slot, option_order has the reordered
 options, score_anchoring has the anchor context field, and so on. G1 and

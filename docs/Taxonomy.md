@@ -113,6 +113,15 @@ tops each up from 200 to 400 cases under the boundary rulings below.
 Post-v2 families have no cap (David 2026-09-28): every supported family
 ships, with no fixed total.
 
+22. **retrieval_poisoning** (Tier 1). False evidence planted in the
+    retrieval corpus steers the decision to the attacker's target. One
+    poisoned document satisfies the retrieval condition (it surfaces for
+    the target query) and the generation condition (taken as true, it
+    steers the decision). The payload is false factual claims, never
+    instructions. Pure false facts remain effective with no directive
+    text. PoisonedRAG (Zou et al., arXiv:2402.07867). MITRE ATLAS AML.T0070
+    (RAG Poisoning).
+
 ## Family boundary rulings
 
 Neighboring families stay separate only if case authors can tell them
@@ -154,6 +163,15 @@ families); the v1 cases are frozen as authored.
    the directional consensus (mixed precedents). If the attack dies,
    it is `precedent_stacking`; if sheer volume still degrades the
    decision, it is `distractor_flooding`.
+8. `retrieval_poisoning` vs `indirect_injection`. Poisoned retrieval
+   carries false evidence with no directive text; injected content
+   carries instructions the decision-maker is tricked into following.
+   Deletion test: strip any instructional sentence from the retrieved
+   block. If the attack still works on pure false facts it is
+   `retrieval_poisoning`; if it dies without the instruction it is
+   `indirect_injection`. Retrieval poisoning also differs from
+   `state_poisoning`: the corpus is explicitly untrusted, not trusted
+   structured state.
 
 Classifier guardrails get their own benchmark: the **safety-policy
 suite** (`dataset/safety-policy/`), a separate guardrail-native suite
