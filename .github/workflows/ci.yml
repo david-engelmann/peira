@@ -86,6 +86,46 @@ jobs:
       - run: python3 scripts/gen_cli_reference.py --check docs/CLI.md
       # The family registry and docs/Taxonomy.md must never drift.
       - run: python3 scripts/check_families.py
+      # Docs pins of the Trial manifest version must match
+      # dataset/trial/manifest.json (PR #201 missed one).
+      - run: python3 scripts/check_trial_version_pins.py
+
+  coderabbit-config:
+    # CodeRabbit is advisory step 0: it must never block merges. This job
+    # fails the build if .coderabbit.yaml stops parsing, flips
+    # request_changes_workflow on, or sneaks in an error-mode pre-merge check.
+    needs: check_runner
+    runs-on: ${{ fromJSON(needs.check_runner.outputs.runner) }}
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+      - run: pip install pyyaml
+      - run: python3 scripts/check_coderabbit_config.py
+
+  site:
+    # The leaderboard scaffold must stay buildable: install deps, ingest
+    # the mock artifacts through the real pipeline, and run the Astro
+    # static build. Real-data ingestion is a manual pre-launch step.
+    needs: check_runner
+    runs-on: ${{ fromJSON(needs.check_runner.outputs.runner) }}
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: site/package-lock.json
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+      - run: npm ci
+        working-directory: site
+      - run: npm run build
+        working-directory: site
 
   dco:
     # Contributing.md requires Signed-off-by trailers (DCO); enforce it
@@ -139,6 +179,41 @@ jobs:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
         run: python3 scripts/check_dataset_version_bump.py "$BASE_SHA"
 
+  dataset-tags:
+    # R-10: the immutable tag registry (data/dataset-releases.json) is
+    # the source of truth for dataset releases. Every entry is verified
+    # against the git object store: the tag must resolve, must still
+    # point at the recorded commit (tags are never moved), and the
+    # manifest/croissant bytes at the tag must hash to the recorded
+    # digests. History must be complete for tag resolution.
+    needs: check_runner
+    runs-on: ${{ fromJSON(needs.check_runner.outputs.runner) }}
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+      - name: verify the dataset-release tag registry
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        # The registry is append-only: entries present at the merge
+        # base must be byte-identical now, so a PR cannot silently
+        # rewrite history. The merge base (not the base branch head)
+        # is the correct comparison point: main may have moved forward
+        # since the PR branched. On non-PR runs the base check is
+        # skipped.
+        run: |
+          if [ -n "$BASE_SHA" ]; then
+            MERGE_BASE=$(git merge-base HEAD "$BASE_SHA")
+            python3 scripts/check_dataset_tags.py --check-append-only "$MERGE_BASE"
+          else
+            python3 scripts/check_dataset_tags.py
+          fi
+
   disposition-drift:
     # A11a: docs/audit-dispositions.md + .json are generated from
     # scripts/generate_audit_dispositions.py. Re-run the generator and
@@ -183,8 +258,8 @@ jobs:
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.12"
-      - run: pip install -e .
-      - run: python -m unittest discover tests -v
+      - run: pip install -e .[dev]
+      - run: python -m pytest tests -n auto
 
   test-hf-tokenizers:
     # T-P1-2: the real-tokenizer contracts in test_hf_adapters.py need
@@ -201,10 +276,23 @@ jobs:
         with:
           python-version: "3.12"
       - run: pip install -e .[hf]
+      - run: pip install -e .[dev]
       - run: |
-          out=$(python -m unittest tests.test_hf_adapters.TestRealTokenizerContract -v 2>&1)
+          # The summary grep asserts zero skips: a partially-skipped contract
+          # (e.g. "1 passed, 1 skipped") must fail, not silently pass.
+          # pytest pads its summary line with "=" ("==== 2 passed, 1 warning
+          # in 5.84s ===="), so the match must anchor on that padding, not
+          # on line start: a "^[0-9]+" anchor never matches and fails the
+          # job even when every test passes.
+          out=$(python -m pytest tests/test_hf_adapters.py::TestRealTokenizerContract 2>&1)
           echo "$out"
-          echo "$out" | grep -qE "^OK$" || { echo "contract tests did not all run"; exit 1; }
+          summary=$(echo "$out" | grep -E "=+ [0-9]+ (passed|failed|error|skipped)" || true)
+          if ! echo "$summary" | grep -qE "[0-9]+ passed"; then
+            echo "contract tests did not all run"; exit 1
+          fi
+          if echo "$summary" | grep -qE "[0-9]+ (failed|error|skipped)"; then
+            echo "contract tests failed, errored, or skipped"; exit 1
+          fi
 
   test-rust:
     needs: check_runner
@@ -229,11 +317,11 @@ jobs:
         with:
           python-version: "3.12"
       - uses: dtolnay/rust-toolchain@ce678459e9fc7500d337468f904b95f1b5c10b5e # 1.98.1
-      - run: pip install -e .
+      - run: pip install -e .[dev]
       - run: python scripts/build_core_ext.py
       - run: python -c "from peira._rust import RUST_AVAILABLE; assert RUST_AVAILABLE"
-      - run: python -m unittest discover tests -v
-      - run: PEIRA_NO_RUST=1 python -m unittest discover tests -v
+      - run: python -m pytest tests -n auto
+      - run: PEIRA_NO_RUST=1 python -m pytest tests -n auto
 
   quickstart:
     # The README quickstart must work verbatim, offline, on every PR.

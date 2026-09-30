@@ -1,4 +1,4 @@
-"""Unit tests for scripts/holdout_query_log.py (run with: python -m unittest discover tests).
+"""Unit tests for scripts/holdout_query_log.py (run with: python -m pytest tests).
 
 Tests run against a temporary copy of the log so the real
 docs/Holdout-Query-Log.md is never touched.
@@ -8,12 +8,23 @@ import subprocess
 import sys
 import tempfile
 import unittest
-from datetime import date
+from datetime import date, timedelta
 from pathlib import Path
 
 REPO = Path(__file__).parent.parent
 SCRIPT = REPO / "scripts" / "holdout_query_log.py"
 REAL_LOG = REPO / "docs" / "Holdout-Query-Log.md"
+
+
+def _iso(days_ago=0):
+    """ISO calendar date N days before today (0 = today).
+
+    Rotation-stamped dates use today, so tests that interact with
+    rotations must build their --date values relative to today rather
+    than hardcoding calendar dates (a hardcoded date becomes "before
+    the most recent rotation" as soon as the calendar moves past it).
+    """
+    return (date.today() - timedelta(days=days_ago)).isoformat()
 
 
 class TestHoldoutQueryLog(unittest.TestCase):
@@ -137,45 +148,46 @@ class TestHoldoutQueryLog(unittest.TestCase):
         self.assertIn("## 2026", text)
 
     def test_rotation_resets_budget(self):
+        yesterday = _iso(1)
+        today = _iso(0)
         for _ in range(12):
             code, _ = self._run("log", "--adapter", "rot 1.0",
-                                "--date", "2026-09-28")
+                                "--date", yesterday)
             self.assertEqual(code, 0)
         # Exhausted.
         code, _ = self._run("log", "--adapter", "rot 1.0",
-                            "--date", "2026-09-28")
+                            "--date", yesterday)
         self.assertEqual(code, 1)
         # Rotation resets the budget.
         code, out = self._run("rotation", "--kind", "scheduled")
         self.assertEqual(code, 0, out)
         # Log with the rotation date (pre-rotation dates are rejected).
-        # The rotation stamps today, so use today's date: a hardcoded
-        # past date rots into a backdated rejection the next day.
         code, out = self._run("log", "--adapter", "rot 1.0",
-                              "--date", date.today().isoformat())
+                              "--date", today)
         self.assertEqual(code, 0, out)
         self.assertIn("execution 1 of 12", out)
 
     def test_backdated_entry_after_rotation_counts(self):
-        # A same-year backdated entry logged AFTER a rotation must count
+        # A backdated entry logged AFTER a rotation must count
         # toward the post-rotation budget (not vanish). Note: dates
         # before the rotation are now rejected (see next test), so this
-        # uses a date AFTER the rotation.
+        # uses a date AFTER the rotation. Dates are relative to today so
+        # the test never goes stale as the calendar moves.
+        yesterday = _iso(1)
+        today = _iso(0)
         code, out = self._run("log", "--adapter", "backdate 1.0",
-                              "--date", "2026-09-29")
+                              "--date", yesterday)
         self.assertEqual(code, 0, out)
         code, out = self._run("rotation", "--kind", "scheduled")
         self.assertEqual(code, 0, out)
-        # Log with the rotation date (not before it). The rotation
-        # stamps today, so use today's date: a hardcoded past date
-        # rots into a backdated rejection the next day.
+        # Log with the rotation date (not before it).
         code, out = self._run("log", "--adapter", "backdate 1.0",
-                              "--date", date.today().isoformat())
+                              "--date", today)
         self.assertEqual(code, 0, out)
         # Must count: status shows 1 used (the pre-rotation entry is
         # excluded, the post-rotation entry counts).
         code, out = self._run("status", "--adapter", "backdate 1.0",
-                              "--year", "2026")
+                              "--year", str(date.today().year))
         self.assertEqual(code, 0, out)
         self.assertIn("1 of 12 used", out)
 
