@@ -8,11 +8,23 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from datetime import date, timedelta
 from pathlib import Path
 
 REPO = Path(__file__).parent.parent
 SCRIPT = REPO / "scripts" / "holdout_query_log.py"
 REAL_LOG = REPO / "docs" / "Holdout-Query-Log.md"
+
+
+def _today():
+    """Today as YYYY-MM-DD: the holdout log rotates on the wall clock,
+    so tests that interact with rotations must be date-relative, not
+    hardcoded (a hardcoded 'rotation date' rots at the next midnight)."""
+    return date.today().isoformat()
+
+
+def _yesterday():
+    return (date.today() - timedelta(days=1)).isoformat()
 
 
 class TestHoldoutQueryLog(unittest.TestCase):
@@ -138,18 +150,18 @@ class TestHoldoutQueryLog(unittest.TestCase):
     def test_rotation_resets_budget(self):
         for _ in range(12):
             code, _ = self._run("log", "--adapter", "rot 1.0",
-                                "--date", "2026-09-28")
+                                "--date", _yesterday())
             self.assertEqual(code, 0)
         # Exhausted.
         code, _ = self._run("log", "--adapter", "rot 1.0",
-                            "--date", "2026-09-28")
+                            "--date", _yesterday())
         self.assertEqual(code, 1)
         # Rotation resets the budget.
         code, out = self._run("rotation", "--kind", "scheduled")
         self.assertEqual(code, 0, out)
         # Log with the rotation date (pre-rotation dates are rejected).
         code, out = self._run("log", "--adapter", "rot 1.0",
-                              "--date", "2026-09-29")
+                              "--date", _today())
         self.assertEqual(code, 0, out)
         self.assertIn("execution 1 of 12", out)
 
@@ -159,18 +171,18 @@ class TestHoldoutQueryLog(unittest.TestCase):
         # before the rotation are now rejected (see next test), so this
         # uses a date AFTER the rotation.
         code, out = self._run("log", "--adapter", "backdate 1.0",
-                              "--date", "2026-09-29")
+                              "--date", _yesterday())
         self.assertEqual(code, 0, out)
         code, out = self._run("rotation", "--kind", "scheduled")
         self.assertEqual(code, 0, out)
         # Log with the rotation date (not before it).
         code, out = self._run("log", "--adapter", "backdate 1.0",
-                              "--date", "2026-09-29")
+                              "--date", _today())
         self.assertEqual(code, 0, out)
         # Must count: status shows 1 used (the pre-rotation entry is
         # excluded, the post-rotation entry counts).
         code, out = self._run("status", "--adapter", "backdate 1.0",
-                              "--year", "2026")
+                              "--year", str(date.today().year))
         self.assertEqual(code, 0, out)
         self.assertIn("1 of 12 used", out)
 
