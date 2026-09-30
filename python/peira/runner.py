@@ -78,6 +78,10 @@ SUITE_DIRS = {
     # The suite directory is the unit the manifest seals.
     "v1": "dataset/v1/cases",
     "safety-policy": "dataset/safety-policy/cases",
+    # The conversational suite hosts multi-turn cases (schema, runner,
+    # and gates in peira.conversation). No cases ship yet: the attack
+    # families land after R-01.
+    "conversational": "dataset/conversational/cases",
 }
 
 DEFAULT_MAX_CONCURRENCY = 8
@@ -277,6 +281,51 @@ def _validate_and_record(
     )
 
 
+def _invoke_adapter(
+    adapter: Any,
+    case_input: dict[str, Any],
+    primitive: str,
+    context: CallContext,
+    _exec_ms: list[float] | None = None,
+    _exec_start: list[float] | None = None,
+) -> tuple[Any, dict[str, Any] | None]:
+    """Run one adapter call and capture its transcript payload.
+
+    Provider-native payloads ride the output's ``transcript`` field, so
+    they are captured atomically with the call by construction — the
+    runner reads them off the returned object, no second hook and no
+    thread-local bookkeeping for adapter authors.
+
+    When ``_exec_ms`` is given, ``adapter.decide()``'s wall time in
+    milliseconds is appended to it (even when decide raises): the
+    runner uses it to separate exact adapter execution from
+    thread-pool scheduling delay, which is harness overhead, not
+    provider work. When ``_exec_start`` is given, the worker thread's
+    start time (``perf_counter``, same clock as the runner) is appended
+    at thread entry: on a ``wait_for`` timeout the thread is abandoned
+    and ``_exec_ms`` stays empty, but the start time lets the runner
+    attribute the elapsed thread time as adapter execution instead of
+    the dishonest 0.0.
+    """
+    if _exec_ms is None:
+        output = adapter.decide(case_input, primitive, context)
+    else:
+        if _exec_start is not None:
+            _exec_start.append(time.perf_counter())
+        t0 = time.perf_counter()
+        try:
+            output = adapter.decide(case_input, primitive, context)
+        finally:
+            _exec_ms.append((time.perf_counter() - t0) * 1000.0)
+    raw = getattr(output, "transcript", None)
+    if raw is not None and not isinstance(raw, dict):
+        # validate_output() flags this as malformed downstream; the
+        # transcript read itself stays best-effort and never fails the
+        # measurement run it annotates.
+        raw = None
+    return output, raw
+
+
 def _record_call(
     adapter: Any,
     case_input: dict[str, Any],
@@ -285,6 +334,10 @@ def _record_call(
     seed: int,
     dispatch_index: int,
     pricing_table: dict[str, Any],
+    *,
+    invoke: Callable[
+        ..., tuple[Any, dict[str, Any] | None]
+    ] = _invoke_adapter,
 ) -> CallRecord:
     """Run one variant through the adapter and record the full call.
 
@@ -293,7 +346,9 @@ def _record_call(
     across adapters; an adapter-reported latency_ms is not trusted for
     cross-adapter comparison. cost_usd is recomputed from the pinned
     pricing table — the runner is the cost authority, and an
-    adapter-set cost_usd is ignored.
+    adapter-set cost_usd is ignored. ``invoke`` selects the adapter
+    entry point: the single-shot ``_invoke_adapter`` (``decide()``) by
+    default, or a turn driver for the conversational suite.
 
     R-12 timing: the sync path is strictly sequential, so admission
     wait is 0.0; adapter execution is the decide() wall time and the
@@ -302,7 +357,7 @@ def _record_call(
     t_call_start = time.perf_counter()
     start = time.perf_counter()
     try:
-        output = adapter.decide(case_input, primitive, context)
+        output, _raw = invoke(adapter, case_input, primitive, context)
         errors = validate_output(output, primitive)
         timed_out = False
         timeout_kind = None
@@ -525,49 +580,6 @@ def _apply_rlimits(
         resource.setrlimit(resource.RLIMIT_FSIZE, (fsize_bytes, fsize_bytes))
 
 
-def _invoke_adapter(
-    adapter: Any,
-    case_input: dict[str, Any],
-    primitive: str,
-    context: CallContext,
-    _exec_ms: list[float] | None = None,
-    _exec_start: list[float] | None = None,
-) -> tuple[Any, dict[str, Any] | None]:
-    """Run one adapter call and capture its transcript payload.
-
-    Provider-native payloads ride the output's ``transcript`` field, so
-    they are captured atomically with the call by construction — the
-    runner reads them off the returned object, no second hook and no
-    thread-local bookkeeping for adapter authors.
-
-    When ``_exec_ms`` is given, ``adapter.decide()``'s wall time in
-    milliseconds is appended to it (even when decide raises): the
-    runner uses it to separate exact adapter execution from
-    thread-pool scheduling delay, which is harness overhead, not
-    provider work. When ``_exec_start`` is given, the worker thread's
-    start time (``perf_counter``, same clock as the runner) is appended
-    at thread entry: on a ``wait_for`` timeout the thread is abandoned
-    and ``_exec_ms`` stays empty, but the start time lets the runner
-    attribute the elapsed thread time as adapter execution instead of
-    the dishonest 0.0.
-    """
-    if _exec_ms is None:
-        output = adapter.decide(case_input, primitive, context)
-    else:
-        if _exec_start is not None:
-            _exec_start.append(time.perf_counter())
-        t0 = time.perf_counter()
-        try:
-            output = adapter.decide(case_input, primitive, context)
-        finally:
-            _exec_ms.append((time.perf_counter() - t0) * 1000.0)
-    raw = getattr(output, "transcript", None)
-    if raw is not None and not isinstance(raw, dict):
-        # validate_output() flags this as malformed downstream; the
-        # transcript read itself stays best-effort and never fails the
-        # measurement run it annotates.
-        raw = None
-    return output, raw
 
 
 def _transcript_entry(
@@ -763,6 +775,9 @@ async def _record_call_async(
     cache_key_str: str | None,
     transcript: _TranscriptSink | None,
     timing_state: _ArmTimingState | None = None,
+    invoke: Callable[
+        ..., tuple[Any, dict[str, Any] | None]
+    ] = _invoke_adapter,
 ) -> CallRecord:
     """Concurrent, retried, cached, transcript-logged variant call.
 
@@ -776,6 +791,10 @@ async def _record_call_async(
     components after every attempt (including a cancelled in-flight
     attempt): an item-timeout handler can then build an honest partial
     record from it after abandoning this call.
+
+    ``invoke`` selects the adapter entry point: the single-shot
+    ``_invoke_adapter`` (``decide()``) by default, or a turn driver
+    for the conversational suite.
     """
     # The concurrency actually used for this call: the controller's
     # live limit at dispatch time (sealed on the record as
@@ -873,7 +892,7 @@ async def _record_call_async(
                 exec_ms: list[float] = []
                 exec_start: list[float] = []
                 call = asyncio.to_thread(
-                    _invoke_adapter, adapter, attempt_input, primitive,
+                    invoke, adapter, attempt_input, primitive,
                     context, exec_ms, exec_start,
                 )
                 if timing_state is not None:
@@ -1783,9 +1802,19 @@ def _write_partial(
     budget_usd: float | None = None,
     item_timeout: float | None = None,
     run_timeout: float | None = None,
+    case_cost: Callable[[PerCaseResult], float] | None = None,
+    result_to_dict: Callable[[PerCaseResult], dict[str, Any]] | None = None,
+    summarize_artifact: Callable[..., dict[str, Any]] | None = None,
 ) -> None:
     if partial_path is None:
         return
+    summarize = (
+        summarize_artifact if summarize_artifact is not None
+        else _summarize_artifact
+    )
+    cost_of = (
+        case_cost if case_cost is not None else _default_case_cost_usd
+    )
     table = load_pricing_table()
     config: dict[str, Any] = {
         "n_cases": len(cases),
@@ -1809,11 +1838,7 @@ def _write_partial(
     # Environment fingerprint (Layer 1b).
     _env, _env_sha256 = collect_and_fingerprint()
     ordered = _sort_results(results, indexed)
-    spent_usd = sum(
-        (r.benign.usage.cost_usd if r.benign.usage else 0.0)
-        + (r.attacked.usage.cost_usd if r.attacked.usage else 0.0)
-        for r in ordered
-    )
+    spent_usd = sum(cost_of(r) for r in ordered)
     partial = RunArtifact(
         adapter_name=adapter.name,
         adapter_version=getattr(adapter, "version", ""),
@@ -1837,10 +1862,10 @@ def _write_partial(
         config=config,
         env=_env,
         env_sha256=_env_sha256,
-        results=results_to_dicts(ordered),
+        results=results_to_dicts(ordered, to_dict=result_to_dict),
         **_adapter_longitudinal_provenance(adapter, suite),
     )
-    partial.metrics = _summarize_artifact(
+    partial.metrics = summarize(
         ordered, required_families, cases, seed, termination="partial"
     )
     # Atomic write: an interrupt between checkpoints must never leave a
@@ -1861,6 +1886,9 @@ def validate_partial(
     cache_enabled: bool = False,
     item_timeout: float | None = None,
     run_timeout: float | None = None,
+    result_from_dict: Callable[
+        [dict[str, Any]], PerCaseResult
+    ] = PerCaseResult.from_dict,
 ) -> tuple[set[str], list[PerCaseResult]]:
     """Strictly validate a partial run for --resume.
 
@@ -1880,6 +1908,11 @@ def validate_partial(
     timeout budgets ARE validated: they change what gets measured (a
     case that timed out under one ceiling might complete under
     another), so they are measurement inputs like the spend cap.
+
+    ``result_from_dict`` rebuilds result entries: the single-shot
+    ``PerCaseResult.from_dict`` by default, the conversational
+    subclass for the conversational suite (its turn history must
+    survive the resume round-trip).
     """
     if not partial.verify():
         raise ValueError(
@@ -1991,7 +2024,7 @@ def validate_partial(
                 f"(not in suite {suite!r})"
             )
         try:
-            results.append(PerCaseResult.from_dict(r))
+            results.append(result_from_dict(r))
         except (KeyError, TypeError) as e:
             raise ValueError(
                 f"partial run has malformed result entry at index {i}: {e}"
@@ -2094,6 +2127,15 @@ def _item_timeout_record(
     )
 
 
+def _default_case_cost_usd(r: PerCaseResult) -> float:
+    """Priced spend for one single-shot case: its two call records."""
+    total = 0.0
+    for rec in (r.benign, r.attacked):
+        if rec.usage is not None:
+            total += rec.usage.cost_usd
+    return total
+
+
 async def _run_suite_async(
     adapter: Any,
     cases: list[Case],
@@ -2118,7 +2160,35 @@ async def _run_suite_async(
     budget_usd: float | None = None,
     item_timeout: float | None = None,
     run_timeout: float | None = None,
+    *,
+    dispatch_stride: int = 2,
+    run_one_case: Callable[
+        ..., Any
+    ] = _run_case_async,
+    case_cost: Callable[[PerCaseResult], float] | None = None,
+    result_to_dict: Callable[[PerCaseResult], dict[str, Any]] | None = None,
+    summarize_artifact: Callable[..., dict[str, Any]] | None = None,
 ) -> RunArtifact:
+    """Shared suite driver: dispatch, budget, checkpoints, artifacts.
+
+    ``dispatch_stride`` scales the suite-position-derived dispatch base
+    (2 per single-shot case; wider for suites whose cases make more
+    calls). ``run_one_case`` is the per-case coroutine (same signature
+    as :func:`_run_case_async`). ``case_cost`` overrides the per-case
+    priced-spend function used by the budget gate and spend totals
+    (defaults to the two-record sum). ``result_to_dict`` overrides the
+    artifact entry serializer (defaults to ``dataclasses.asdict``);
+    suites with suite-namespaced entry fields pass their own.
+    ``summarize_artifact`` overrides the sealed per-run metric summary
+    (defaults to :func:`_summarize_artifact`); suites with their own
+    metric schema pass their own. The conversational suite passes its
+    own five; every other caller gets the single-shot behavior.
+    """
+    summarize = (
+        summarize_artifact if summarize_artifact is not None
+        else _summarize_artifact
+    )
+    cost_of = case_cost if case_cost is not None else _default_case_cost_usd
     adapter_version = getattr(adapter, "version", "")
     controller = AdaptiveConcurrency(max_concurrency)
     # One nonce per suite execution: call ids are unlinkable across
@@ -2154,22 +2224,26 @@ async def _run_suite_async(
             budget_usd=budget_usd,
             item_timeout=item_timeout,
             run_timeout=run_timeout,
+            case_cost=case_cost,
+            result_to_dict=result_to_dict,
+            summarize_artifact=summarize_artifact,
         )
 
     async def one(case: Case) -> None:
         nonlocal completed
-        dispatch_base = 2 * indexed[case.case_id]
+        dispatch_base = dispatch_stride * indexed[case.case_id]
         if item_timeout is None:
-            result = await _run_case_async(
+            # No item budget: run the case directly.
+            result = await run_one_case(
                 adapter, adapter_version, case, seed,
-                dispatch_base, pricing_table, manifest_sha256,
+                dispatch_base, pricing_table,
+                manifest_sha256,
                 controller=controller, max_attempts=max_attempts,
                 max_concurrency=max_concurrency,
-                call_timeout=call_timeout, cache=cache,
-                transcript=transcript,
+                call_timeout=call_timeout, cache=cache, transcript=transcript,
                 run_nonce=nonce,
             )
-        else:
+        elif run_one_case is _run_case_async:
             # R-12 item budget: one case's wall-clock ceiling (both
             # variants, all attempts), with partial-arm preservation:
             # a completed arm is retained and only the arm in flight
@@ -2185,19 +2259,30 @@ async def _run_suite_async(
                 run_nonce=nonce,
                 item_timeout=item_timeout,
             )
+        else:
+            # Conversational suite with item budget: wrap the turn-driving
+            # runner in the wall-clock ceiling. asyncio.TimeoutError
+            # propagates to the driver's exception handler, which records
+            # it as an item timeout.
+            result = await asyncio.wait_for(
+                run_one_case(
+                    adapter, adapter_version, case, seed,
+                    dispatch_base, pricing_table,
+                    manifest_sha256,
+                    controller=controller, max_attempts=max_attempts,
+                    max_concurrency=max_concurrency,
+                    call_timeout=call_timeout, cache=cache,
+                    transcript=transcript,
+                    run_nonce=nonce,
+                ),
+                timeout=item_timeout,
+            )
         results.append(result)
         completed += 1
         if progress:
             progress(completed, total)
         if partial_path is not None and completed % checkpoint_every == 0:
             checkpoint()
-
-    def _case_cost_usd(r: PerCaseResult) -> float:
-        total = 0.0
-        for rec in (r.benign, r.attacked):
-            if rec.usage is not None:
-                total += rec.usage.cost_usd
-        return total
 
     def _budget_allows_dispatch(n_in_flight: int) -> bool:
         """Pre-dispatch budget gate: project, then decide.
@@ -2222,7 +2307,7 @@ async def _run_suite_async(
         n_completed = len(results)
         if n_completed == 0:
             return n_in_flight == 0
-        spent = sum(_case_cost_usd(r) for r in results)
+        spent = sum(cost_of(r) for r in results)
         mean_case_cost = spent / n_completed
         return (
             spent + mean_case_cost * BUDGET_SAFETY_MARGIN <= budget_usd
@@ -2379,11 +2464,7 @@ async def _run_suite_async(
     # know (see adapters/base.py "longitudinal provenance"), and
     # unknown fields stay "" rather than invented.
     _longitudinal = _adapter_longitudinal_provenance(adapter, suite)
-    spent_usd = sum(
-        (r.benign.usage.cost_usd if r.benign.usage else 0.0)
-        + (r.attacked.usage.cost_usd if r.attacked.usage else 0.0)
-        for r in ordered
-    )
+    spent_usd = sum(cost_of(r) for r in ordered)
     artifact = RunArtifact(
         adapter_name=adapter.name,
         adapter_version=adapter_version,
@@ -2404,10 +2485,10 @@ async def _run_suite_async(
         config=config,
         env=_env,
         env_sha256=_env_sha256,
-        results=results_to_dicts(ordered),
+        results=results_to_dicts(ordered, to_dict=result_to_dict),
         **_longitudinal,
     )
-    artifact.metrics = _summarize_artifact(
+    artifact.metrics = summarize(
         ordered, required_families, cases, seed, termination=termination
     )
     return artifact.seal()
@@ -2439,6 +2520,12 @@ def run_suite(
     budget_usd: float | None = None,
     item_timeout: float | None = None,
     run_timeout: float | None = None,
+    *,
+    dispatch_stride: int = 2,
+    run_one_case: Callable[..., Any] = _run_case_async,
+    case_cost: Callable[[PerCaseResult], float] | None = None,
+    result_to_dict: Callable[[PerCaseResult], dict[str, Any]] | None = None,
+    summarize_artifact: Callable[..., dict[str, Any]] | None = None,
 ) -> RunArtifact:
     """Run a suite through an adapter, concurrently.
 
@@ -2473,6 +2560,17 @@ def run_suite(
     killed mid-flight) and the artifact seals with
     ``termination="budget"``: analyzable, never rankable. None (the
     default) means uncapped.
+
+    ``dispatch_stride``, ``run_one_case``, ``case_cost``, and
+    ``result_to_dict`` are the suite-shape hooks: the conversational
+    suite passes its own (wider dispatch stride for multi-turn cases, a
+    turn-driving per-case coroutine, turn-aware spend, and an entry
+    serializer that nests the sealed turn records under the
+    suite-namespaced ``conversational_turns`` field). Every other caller
+    gets the single-shot behavior.
+    ``summarize_artifact`` is the fifth suite-shape hook: the
+    conversational suite seals its own metric schema instead of the
+    single-shot one.
 
     Raises ValueError for invalid ``max_concurrency``/``max_attempts``/
     ``call_timeout``/``budget_usd``/``item_timeout``/``run_timeout``.
@@ -2556,6 +2654,11 @@ def run_suite(
                 budget_usd=budget_usd,
                 item_timeout=item_timeout,
                 run_timeout=run_timeout,
+                dispatch_stride=dispatch_stride,
+                run_one_case=run_one_case,
+                case_cost=case_cost,
+                result_to_dict=result_to_dict,
+                summarize_artifact=summarize_artifact,
             )
         )
     except asyncio.CancelledError:
@@ -2864,6 +2967,7 @@ def replay_suite(
     manifest_sha256: str = "",
     required_families: list[str] | None = None,
     progress: Callable[[int, int], None] | None = None,
+    result_to_dict: Callable[[PerCaseResult], dict[str, Any]] | None = None,
 ) -> RunArtifact:
     """Re-score a recorded transcript without calling any provider.
 
@@ -2880,6 +2984,10 @@ def replay_suite(
     carries the replay provenance (transcript SHA-256, replay
     timestamp), so a replayed artifact is always distinguishable from
     a live run.
+
+    ``result_to_dict`` overrides the artifact entry serializer
+    (defaults to ``dataclasses.asdict``), matching the live-run
+    suite-shape hooks.
     """
     path = Path(transcript_path)
     entries = load_transcript(path)
@@ -2996,7 +3104,7 @@ def replay_suite(
         config=config,
         env=_env,
         env_sha256=_env_sha256,
-        results=results_to_dicts(ordered),
+        results=results_to_dicts(ordered, to_dict=result_to_dict),
     )
     artifact.metrics = _summarize_artifact(
         ordered, required_families, cases, seed, termination="complete"

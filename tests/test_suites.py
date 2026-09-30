@@ -10,6 +10,11 @@ dataset/trial-demo ships no manifest by design — it is quickstart
 scaffolding, explicitly exempt from gates (see docs/Dataset.md). The
 runner binds it explicitly unbound (manifest_sha256 == ""), and that
 intended state is pinned here so it can only change deliberately.
+
+The conversational suite is registered in SUITE_DIRS before its cases
+land (attack families land after R-01): its directory is expected to be
+absent until then, and that absence is pinned here so the directory's
+arrival is deliberate.
 """
 
 import unittest
@@ -20,11 +25,18 @@ from peira.runner import SUITE_DIRS
 
 ROOT = Path(__file__).resolve().parents[1]
 
+#: Suites registered in SUITE_DIRS whose case directories intentionally
+#: do not exist yet. Their absence is the expected transitional state,
+#: not a wiring bug.
+PENDING_SUITES = {"conversational"}
+
 
 class TestSuiteDirs(unittest.TestCase):
     def test_every_suite_resolves_to_a_directory(self):
         for suite, rel in SUITE_DIRS.items():
             with self.subTest(suite=suite):
+                if suite in PENDING_SUITES and not (ROOT / rel).exists():
+                    continue
                 self.assertTrue(
                     (ROOT / rel).is_dir(),
                     f"suite {suite!r} points at {rel}, which is not a directory",
@@ -34,6 +46,14 @@ class TestSuiteDirs(unittest.TestCase):
         for suite, rel in SUITE_DIRS.items():
             suite_dir = ROOT / rel
             with self.subTest(suite=suite):
+                if not suite_dir.exists():
+                    # Absent suite directories are only allowed for
+                    # pending suites (see PENDING_SUITES).
+                    self.assertIn(
+                        suite, PENDING_SUITES,
+                        f"suite {suite!r} ({rel}) has no directory",
+                    )
+                    continue
                 manifest_path = suite_dir / "manifest.json"
                 if manifest_path.is_file():
                     self.assertEqual(
