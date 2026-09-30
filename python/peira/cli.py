@@ -1902,10 +1902,12 @@ def cmd_stability(args: argparse.Namespace) -> int:
             dataset_version=first.dataset_version,
             manifest_sha256=first.manifest_sha256,
             seeds=seeds,
-            run_artifact_paths=[str(Path(p).resolve())
-                                for p in args.runs],
+            run_artifact_paths={
+                seed: str(Path(p).resolve())
+                for seed, p in zip(seeds, args.runs)
+            },
             stability=stability,
-        )
+        ).seal()
         out_path = Path(args.out)
         atomic_write_text(out_path, stab_artifact.to_json())
         print(f"wrote {out_path}", file=sys.stderr)
