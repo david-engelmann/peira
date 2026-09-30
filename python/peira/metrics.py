@@ -63,6 +63,92 @@ INELIGIBLE_BENIGN_ABSTAINED = "benign_abstained"
 
 
 @dataclass(frozen=True)
+class CallTiming:
+    """Per-call timing decomposition (milliseconds, runner-measured).
+
+    R-12: one ``latency_ms`` number cannot separate the three authors
+    of p99 inflation under adversarial load, so the runner records the
+    decomposition on every call:
+
+    - ``admission_wait_ms``: wall time spent waiting for a concurrency
+      slot from the AIMD controller before the attempt could start.
+      This is peira's own throttling, not the provider's latency — it
+      is a function of ``max_concurrency`` and run load, so it is
+      recorded separately and never folded into the buyer-latency
+      numbers (``latency_ms_total`` deliberately excludes it).
+    - ``adapter_execution_ms``: wall time of the adapter's ``decide()``
+      call itself, summed over attempts. This is the provider-facing
+      latency: the number the latency percentiles answer for.
+    - ``harness_overhead_ms``: everything else the runner did inside
+      the slot — input deepcopy, output validation, transcript
+      serialization, record assembly.
+    - ``backoff_ms``: retry backoff sleeps between attempts (0.0 when
+      the call succeeded first try).
+
+    Invariant: ``admission_wait_ms + adapter_execution_ms +
+    harness_overhead_ms + backoff_ms`` equals the call's total
+    runner-observed wall time; ``latency_ms_total`` equals the same
+    sum minus ``admission_wait_ms``. All fields are non-negative; a
+    zero breakdown means "not measured" (pre-R-12 records,
+    response-cache hits, replayed transcripts without timing).
+    """
+
+    admission_wait_ms: float = 0.0
+    adapter_execution_ms: float = 0.0
+    harness_overhead_ms: float = 0.0
+    backoff_ms: float = 0.0
+
+    @classmethod
+    def from_dict(cls, d: Any) -> "CallTiming":
+        """Parse a timing breakdown from hostile input.
+
+        Missing entirely (pre-R-12 records) yields the zero breakdown.
+        A partial mapping, a wrong-typed component, or a negative or
+        non-finite component raises ValueError — timing is measurement
+        data and must fail loudly, never coerce.
+        """
+        if d is None:
+            return cls()
+        if not isinstance(d, dict):
+            raise ValueError(
+                f"CallTiming: must be a mapping, "
+                f"got {type(d).__name__}"
+            )
+        vals: dict[str, float] = {}
+        for key in (
+            "admission_wait_ms",
+            "adapter_execution_ms",
+            "harness_overhead_ms",
+            "backoff_ms",
+        ):
+            if key not in d:
+                raise ValueError(
+                    f"CallTiming field {key!r}: missing"
+                )
+            v = d[key]
+            if (
+                isinstance(v, bool)
+                or not isinstance(v, (int, float))
+                or not v >= 0
+                or not math.isfinite(v)
+            ):
+                raise ValueError(
+                    f"CallTiming field {key!r}: must be a finite "
+                    f"non-negative number, got {v!r}"
+                )
+            vals[key] = float(v)
+        return cls(**vals)
+
+    def to_dict(self) -> dict[str, float]:
+        return {
+            "admission_wait_ms": self.admission_wait_ms,
+            "adapter_execution_ms": self.adapter_execution_ms,
+            "harness_overhead_ms": self.harness_overhead_ms,
+            "backoff_ms": self.backoff_ms,
+        }
+
+
+@dataclass(frozen=True)
 class CallRecord:
     """One measured adapter call (one variant of one case).
 
@@ -78,12 +164,17 @@ class CallRecord:
     wall-clock time plus the backoff between attempts (the runner times
     from before the first attempt to after the last). ``usage``'s
     ``latency_ms`` is the final attempt's latency only. ``timed_out``
-    marks calls whose terminal failure was a per-attempt timeout: a
-    timeout is data, not missing data, so the metrics layer reports the
-    timeout rate alongside the latency percentiles. ``cached`` marks
-    calls served from the response cache (no provider call was made):
-    they carry no provider latency measurement and are excluded from
-    the latency percentiles.
+    marks calls whose terminal failure was a timeout: a timeout is data,
+    not missing data, so the metrics layer reports the timeout rate
+    alongside the latency percentiles. ``timeout_kind`` types the
+    timeout explicitly: ``"attempt"`` when attempts were exhausted by
+    per-attempt timeouts, ``"item"`` when the case-level item budget
+    fired; None when the call did not time out. The kind is what lets
+    analysis distinguish "the adapter was slow on every attempt" from
+    "the whole case budget fired". ``cached`` marks calls served from
+    the response cache (no provider call was made): they carry no
+    provider latency measurement and are excluded from the latency
+    percentiles.
     """
 
     decision: str
@@ -98,12 +189,20 @@ class CallRecord:
     latency_ms_total: float = 0.0
     timed_out: bool = False
     cached: bool = False
+    # R-12: the timeout kind. None when timed_out is False; "attempt"
+    # or "item" when True. Records sealed before the kind existed infer
+    # "attempt" (every timeout then was a per-attempt timeout).
+    timeout_kind: str | None = None
     # The adapter's raw score for score-primitive calls (0..1), None for
     # other primitives and when the call produced no usable output. The
     # runner populates this from ScoreOutput; the transcript/cache
     # serialization carries it under the same "score" key, so
     # from_dict() recovers it on artifact load.
     score: float | None = None
+    # R-12: per-call timing decomposition (admission wait vs harness
+    # overhead vs adapter execution vs backoff). Zero on pre-R-12
+    # records; ``from_dict`` recovers it from the sealed artifact.
+    timing_ms: CallTiming = CallTiming()
 
     @classmethod
     def from_dict(cls, d: dict[str, Any]) -> "CallRecord":
@@ -135,6 +234,22 @@ class CallRecord:
                 f"CallRecord field 'timed_out': must be a boolean, "
                 f"got {type(timed_out).__name__}"
             )
+        # timeout_kind types the timeout explicitly. Absent on records
+        # sealed before the kind existed: a timed_out record without a
+        # kind is a per-attempt timeout (the item budget did not exist
+        # then), so "attempt" is inferred, not defaulted to None. A
+        # kind on a non-timed-out record, or an unknown kind string,
+        # is corrupt data: fail loudly.
+        timeout_kind = d.get("timeout_kind")
+        if timeout_kind is None:
+            if timed_out:
+                timeout_kind = "attempt"
+        elif not timed_out or timeout_kind not in ("attempt", "item"):
+            raise ValueError(
+                f"CallRecord field 'timeout_kind': must be 'attempt' "
+                f"or 'item' on a timed-out record, got "
+                f"{timeout_kind!r}"
+            )
         # latency_ms_total is cumulative wall-clock ms (all attempts +
         # backoff); absent in pre-Phase-0 artifacts (defaults to 0.0).
         latency_ms_total = d.get("latency_ms_total", 0.0)
@@ -155,6 +270,7 @@ class CallRecord:
                 f"CallRecord field 'cached': must be a boolean, "
                 f"got {type(cached).__name__}"
             )
+        timing_ms = CallTiming.from_dict(d.get("timing_ms"))
         return cls(
             decision=d["decision"],
             confidence=confidence,
@@ -168,7 +284,9 @@ class CallRecord:
             score=score,
             latency_ms_total=float(latency_ms_total),
             timed_out=timed_out,
+            timeout_kind=timeout_kind,
             cached=cached,
+            timing_ms=timing_ms,
         )
 
 
@@ -5023,6 +5141,158 @@ def latency_summary(
     return blocks
 
 
+# R-12: the four CallTiming components, in a fixed order reports and
+# tests can rely on.
+TIMING_COMPONENTS: tuple[str, ...] = (
+    "admission_wait_ms",
+    "harness_overhead_ms",
+    "adapter_execution_ms",
+    "backoff_ms",
+)
+# p99 needs P99_MIN_OBSERVATIONS per family (R-12 policy). p95 is
+# published whenever n > 0, like min and the median: n is always
+# reported alongside, so a high quantile on a tiny sample is
+# inspectable, not misleading. There is no p95 minimum-observation
+# gate.
+P99_MIN_OBSERVATIONS = 100
+# A component whose coefficient of variation exceeds this fraction
+# gets investigate=True: a flag to look at the raw samples, not a
+# verdict on the adapter (R-12 policy).
+TIMING_CV_INVESTIGATE_THRESHOLD = 0.05
+
+
+def _timing_component_block(samples: list[float]) -> dict[str, Any]:
+    """One timing component's summary block (R-12 statistical policy).
+
+    ``n`` is always reported. ``min``, ``p50`` (median), and ``p95``
+    are published whenever n > 0; ``p99`` is withheld (None) below
+    ``P99_MIN_OBSERVATIONS`` per family: the 99th percentile on a tiny
+    sample is noise, so it is withheld rather than published as a
+    number. Percentiles use the module's linear-interpolation
+    ``_percentile`` (numpy 'linear').
+
+    ``samples`` retains the raw observations verbatim: full float
+    precision, no rounding, no outlier trimming, no winsorizing, ever.
+    Rounding to four decimals is presentation and applies only to the
+    derived statistics (min, p50, p95, p99, mean, cv) — never to the
+    retained samples. Extreme samples are data, not noise; anyone who
+    wants a trimmed view computes it from the retained samples.
+
+    ``cv`` is the coefficient of variation (population stddev / mean):
+    a dimensionless instability measure, comparable across families
+    and components. It is None when the mean is zero (no variation to
+    relativize). ``investigate`` is True when cv exceeds
+    ``TIMING_CV_INVESTIGATE_THRESHOLD`` (5%) — a flag to look at the
+    raw samples, not a verdict.
+    """
+    _check_finite(samples, "timing component samples")
+    n = len(samples)
+    block: dict[str, Any] = {
+        "n": n,
+        # Raw samples, verbatim: rounding is presentation, applied to
+        # the derived statistics below, never to the retained data.
+        "samples": [float(s) for s in samples],
+    }
+    if n == 0:
+        block.update({
+            "min": None, "p50": None, "p95": None, "p99": None,
+            "mean": None, "cv": None, "investigate": False,
+        })
+        return block
+    s = sorted(samples)
+    mean = sum(s) / n
+    # Population stddev: the samples are the complete observation set
+    # for this family/component, not a sample of a larger population.
+    var = sum((x - mean) ** 2 for x in s) / n
+    std = math.sqrt(var)
+    cv = (std / mean) if mean > 0 else None
+    block.update({
+        "min": _round4(s[0]),
+        "p50": _round4(_percentile(s, 0.50)),
+        "p95": _round4(_percentile(s, 0.95)),
+        "p99": (
+            _round4(_percentile(s, 0.99))
+            if n >= P99_MIN_OBSERVATIONS else None
+        ),
+        "mean": _round4(mean),
+        "cv": _round4(cv),
+        "investigate": bool(cv is not None and cv >
+                            TIMING_CV_INVESTIGATE_THRESHOLD),
+    })
+    return block
+
+
+def timing_summary(
+    results: list[PerCaseResult],
+) -> dict[str, dict[str, Any]]:
+    """Per-family per-component timing decomposition (R-12).
+
+    Groups both arms' call records by case family and summarizes each
+    of the four CallTiming components (admission_wait_ms,
+    harness_overhead_ms, adapter_execution_ms, backoff_ms) with the
+    R-12 statistical policy (see _timing_component_block): n, min,
+    p50, p95, p99 (withheld below 100 per family),
+    mean, coefficient of variation with a 5%-investigate flag, and the
+    raw samples retained verbatim — no outlier trimming, ever.
+
+    Cache-hit calls and timed-out calls are excluded from the
+    percentile inputs (like latency_summary: a cache hit made no
+    provider call, and a timeout's adapter execution is a truncated
+    measurement, not a complete one) and reported as ``n_cached`` /
+    ``n_timeouts`` alongside. ``n_calls`` is the total call count so
+    both rates are auditable.
+
+    Pre-R-12 records carry the zero breakdown: a family whose records
+    all predate the timing capture shows zeros, not missing data —
+    nothing was measured then.
+
+    Heterogeneous families are never averaged into a single claim:
+    this block is per family only, with no cross-family rollup.
+
+    Python reference only; Rust port deferred.
+    """
+    families: dict[str, dict[str, list[float]]] = {}
+    fam_calls: dict[str, int] = {}
+    fam_timeouts: dict[str, int] = {}
+    fam_cached: dict[str, int] = {}
+    for r in results:
+        fam = r.family
+        comps = families.setdefault(
+            fam, {c: [] for c in TIMING_COMPONENTS})
+        fam_calls.setdefault(fam, 0)
+        fam_timeouts.setdefault(fam, 0)
+        fam_cached.setdefault(fam, 0)
+        for rec in (r.benign, r.attacked):
+            fam_calls[fam] += 1
+            if rec.cached:
+                fam_cached[fam] += 1
+                continue
+            if rec.timed_out:
+                fam_timeouts[fam] += 1
+                continue
+            t = rec.timing_ms
+            comps["admission_wait_ms"].append(
+                float(t.admission_wait_ms))
+            comps["harness_overhead_ms"].append(
+                float(t.harness_overhead_ms))
+            comps["adapter_execution_ms"].append(
+                float(t.adapter_execution_ms))
+            comps["backoff_ms"].append(float(t.backoff_ms))
+    summary: dict[str, dict[str, Any]] = {}
+    for fam in sorted(families):
+        comps = families[fam]
+        summary[fam] = {
+            "n_calls": fam_calls[fam],
+            "n_timeouts": fam_timeouts[fam],
+            "n_cached": fam_cached[fam],
+            "components": {
+                c: _timing_component_block(comps[c])
+                for c in TIMING_COMPONENTS
+            },
+        }
+    return summary
+
+
 def cost_summary(
     results: list[PerCaseResult],
     pricing_table: Mapping[str, Any] | None = None,
@@ -5783,6 +6053,14 @@ def summarize(
         # Buyer-operational sidecars: latency percentiles and cost
         # accounting over the runner-measured per-call records.
         "latency_ms": latency_summary(results),
+        # R-12: per-family per-component timing decomposition
+        # (admission wait, harness overhead, adapter execution,
+        # backoff) with the R-12 statistical policy: raw samples
+        # retained, p99 withheld below 100 observations per family,
+        # no silent outlier trimming, per-family coefficient of
+        # variation with a 5%-investigate flag. Heterogeneous families
+        # are never averaged into a single claim.
+        "timing_ms": timing_summary(results),
         "cost": cost_summary(results, pricing_table),
         "ranking_eligible": elig.eligible,
         "eligibility_notes": list(elig.reasons),
