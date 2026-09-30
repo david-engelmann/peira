@@ -22,15 +22,23 @@ measured inside the worker thread around the decide call itself.
 Thread-pool scheduling delay is not adapter execution. It is runner
 scheduling, so it falls into harness overhead. A failed attempt still
 contributes the time until it raised. An attempt cancelled before its
-worker started contributes nothing, because the adapter never ran.
+worker started contributes nothing, because the adapter never ran. An
+attempt abandoned by a timeout contributes the elapsed thread time up
+to the timeout's fire time: the adapter was executing when the ceiling
+fired. Post-abandonment event-loop delay is never counted as adapter
+execution.
 
 **Harness overhead.** The residual. Total call wall time minus
 admission wait minus adapter execution minus backoff, clamped at zero
-for floating point dust. It covers input deepcopy, output validation,
-usage pricing, cache reads and writes, transcript entry assembly, and
-record assembly. It also covers thread-pool scheduling delay on the
-async path. Transcript serialization itself is excluded, because the
-measurement cannot include its own write.
+against floating-point dust. The components are nested sub-windows of
+one monotonic clock, so the true residual is non-negative by
+construction; only rounding can push it negative. It covers input
+deepcopy, output validation, usage pricing, cache reads and writes,
+transcript entry assembly, and record assembly. It also covers
+thread-pool scheduling delay on the async path. Transcript entry
+assembly and serialization are both excluded: the measurement covers
+call start through timing assembly, and no measurement can include
+its own write.
 
 **Backoff.** Total sleep time between attempts for this call. Zero
 when the first attempt succeeded.
@@ -82,35 +90,49 @@ Three layers, three different meanings.
 **Per-attempt timeout (`call_timeout`, `--call-timeout`).** Bounds
 one attempt. A timed-out attempt fails transiently and is retried
 until `--max-attempts` is exhausted. When attempts are exhausted the
-call seals as a malformed blank record with `timed_out` set. The
-attempt's partial wall time counts as adapter execution, because the
-adapter was executing when the ceiling fired. Default 300 seconds.
-`None` disables the ceiling, which is not recommended for untrusted
-adapters.
+call seals as a malformed blank record with `timed_out` set and
+`timeout_kind` set to `"attempt"`. The attempt's partial wall time
+counts as adapter execution, because the adapter was executing when
+the ceiling fired. Default 300 seconds. `None` disables the ceiling,
+which is not recommended for untrusted adapters.
 
 **Item timeout (`item_timeout`, `--item-timeout`).** Bounds one
 case's wall-clock time, covering both variants and all attempts.
-When the budget fires, the in-flight adapter threads are abandoned
-(they cannot be safely killed) and the case task is cancelled so no
-late record is ever written. The case seals as a timeout sample
-failure. Both variants become malformed blank records with
-`timed_out` set and the item budget as their measured adapter
-execution. The run continues with the next case. Item timeouts are
-excluded from timing percentile inputs and reported as their own
-count. No timeout budget by default.
+When the budget fires, the in-flight arm's task is cancelled (its
+adapter threads are abandoned; they cannot be safely killed) and the
+arm seals as a malformed blank record with `timed_out` set and
+`timeout_kind` set to `"item"`. A completed arm is retained: if the
+benign arm finished and the attacked arm exhausts the budget, the
+sealed case pairs the real benign record with only an attacked
+item-timeout record. If the budget fires during the benign arm, the
+attacked arm never started; its record is a typed item timeout with
+zero timing (nothing was measured). The timed-out arm's record
+attributes only elapsed adapter execution (up to the budget's fire
+time), never the whole item budget; admission wait, backoff, and
+harness work actually incurred are preserved. The run continues with
+the next case. Item timeouts are excluded from timing percentile
+inputs and reported as their own count. No timeout budget by default.
 
 **Run timeout (`run_timeout`, `--run-timeout`).** Bounds the whole
-run's wall-clock time. When the ceiling fires, dispatch stops
-immediately. In-flight case tasks are cancelled, their adapter
-threads abandoned, completed cases checkpointed, and the partial
-stays resumable. The artifact seals with `termination` set to
-`run_timeout`. A run that ended this way is analyzable but never
-rankable, the same rule as the spend-budget termination. It is hang
-insurance, not a performance target. No timeout budget by default.
+run's wall-clock time. When the ceiling fires, dispatch stops and the
+in-flight cases drain to completion: they finish honestly instead of
+being cancelled mid-call, so their records and timing are complete.
+(Draining is bounded: every in-flight case is subject to the
+per-attempt timeout, so a stuck adapter burns at most
+`max_attempts` x `call_timeout` before its case completes.)
+Completed cases are checkpointed and the partial stays resumable: a
+timeout-terminated run is resumable, not lost. The artifact seals
+with `termination` set to `"timeout"`. A run that ended this way is
+analyzable but never rankable, the same rule as the spend-budget
+termination. It is hang insurance, not a performance target. No
+timeout budget by default.
 
-Timeouts are data, not missing data. A timeout rate of zero is
-reported, never withheld. The absence of timeouts is a measurement
-too.
+Timeouts are data, not missing data. Every timeout record carries an
+explicit `timeout_kind`: `"attempt"` for per-attempt exhaustion,
+`"item"` for the case-level item budget. The kind is what lets
+analysis distinguish "the adapter was slow on every attempt" from
+"the whole case budget fired". A timeout rate of zero is reported,
+never withheld. The absence of timeouts is a measurement too.
 
 ## Warmup policy
 
@@ -130,16 +152,20 @@ five rules.
 closest ranks, the same method as numpy's linear mode. It is
 deterministic and backend independent.
 
-**Observation thresholds.** `n` is always reported. Minimum and
-median are published whenever `n` is greater than zero. The 95th
-percentile needs at least 5 observations. The 99th percentile needs
-at least 100 observations per family. Below a threshold the value is
-withheld as null, not published as a number. High quantiles on tiny
-samples are noise, and publishing them would be dishonest.
+**Observation thresholds.** `n` is always reported. Minimum,
+median, and the 95th percentile are published whenever `n` is greater
+than zero. The 99th percentile needs at least 100 observations per
+family. Below a threshold the value is withheld as null, not published
+as a number. The 99th percentile on a tiny sample is noise, and
+publishing it would be dishonest. The 95th percentile on a tiny sample
+is inspectable, not misleading, because `n` is always reported
+alongside it.
 
 **Raw sample retention.** Every timing summary retains the raw
-samples for each family and component. Rounding to four decimals is
-presentation, not trimming.
+samples for each family and component, verbatim at full float
+precision: no rounding, no trimming. Rounding to four decimals is
+presentation and applies only to the derived statistics (min, median,
+percentiles, mean, cv), never to the retained samples.
 
 **No silent outlier trimming.** Extreme samples are data, not noise.
 No summary in peira trims, winsorizes, or otherwise drops extreme

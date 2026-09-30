@@ -38,6 +38,9 @@ def _normalize_call_record(rec):
     # Wall-clock timing, excluded by the contract (Phase 0 measurement
     # sidecar; usage.latency_ms is the legacy field).
     rec["latency_ms_total"] = 0.0
+    # R-12 per-call timing decomposition: wall-clock measurements,
+    # excluded by the contract like latency_ms_total.
+    rec["timing_ms"] = "excluded-by-contract"
     usage = rec.get("usage")
     if usage is not None:
         usage = dict(usage)
@@ -62,6 +65,9 @@ def _normalize_metrics(metrics):
     # The latency sidecar summarizes wall-clock measurements; the rest of
     # the summary is a pure function of (results, seed).
     metrics["latency_ms"] = "excluded-by-contract"
+    # R-12 per-family timing summaries: wall-clock measurements,
+    # excluded by the contract like the latency sidecar.
+    metrics["timing_ms"] = "excluded-by-contract"
     return metrics
 
 

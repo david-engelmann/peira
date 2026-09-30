@@ -256,6 +256,14 @@ medium 1, low 0.5) and target-hit rate.
   adjustment when claiming across families jointly. The adjustments
   operate on plain p-value lists and return adjusted p-values in the
   input order; reject where adjusted p ≤ alpha (`reject_at`).
+- **Timing**: every call record carries a `timing_ms` decomposition
+  (admission wait, adapter execution, harness overhead, backoff — all
+  in milliseconds), and every run summary carries per-family timing
+  blocks with raw samples, percentiles, and a coefficient of
+  variation. Timing is diagnostic, never a ranker: it describes what
+  the run cost, not how good the adapter is. See
+  `docs/runner-performance-contract.md` for the measurement boundary,
+  the three timeout layers, and the statistical policy.
 
 Invalid inputs fail loudly rather than producing look-alike statistics:
 ECE requires a positive bin count (`ValueError("bins must be positive")`
@@ -550,17 +558,6 @@ never modified.
   Score/abstain cases do not enter this
   test. The binary right/wrong judgment is only clean for the choice
   primitive.
-- **Stuart-Maxwell directional comparison** (`stuart_maxwell_p_value(table)`).
-  C-1. For two adapters on the same paired cases, the square table of
-  flip-direction categories (rows = A's direction, columns = B's, over
-  cases where both flipped) tests marginal homogeneity. The question is
-  whether the adapters share the same directional distribution. The null is
-  rejected when one fails open (deny-to-approve) while the other
-  fails closed (to-abstain). Deliberately marginal homogeneity, not
-  symmetry (Bowker). The question is about the direction
-  distributions, not the joint table's symmetry. All six M-1
-  categories, never collapsed. Withheld below 10 discordant flips. See
-  docs/Flip-Direction.md for the full rationale.
 - **Bradley-Terry**: one `ComparisonOutcome` per paired
   choice-primitive case ("a" if only A was right, "b" if only B was
   right, "tie" otherwise), fitted with `bradley_terry()`, the same
@@ -1108,6 +1105,51 @@ cost multiplier, the Gordon-Loeb ratio, and the E_attacked figures are
 point estimates. Attack rates,
 decision volumes, and cost scenarios are deployer inputs. Peira reports
 the exchange rates, the deployer supplies their threat model.
+
+## Threshold-defense economics (C-4, diagnostic)
+
+A guardrail's confidence scores are only useful if the deployer knows
+what to do with them. C-4 prices the obvious policy. Route to human
+review when the risk score (1 - attacked confidence) reaches a
+threshold pt, and measure what the defense costs against what it
+prevents. It is Layer-6 depth, a diagnostic for buyers who run a
+review queue, never a headline and never a ranking.
+
+The defender model is explicit. Each review costs `review_cost_usd`
+(deployer-set, like M-9's abstention review cost). A reviewed case is
+caught. It contributes review cost but no flip cost. Cases the DCA
+cannot analyze (abstained, malformed, missing confidence, non-binary
+attacked decision) are always routed to review at every threshold.
+Buyer cost modeling cannot auto-trust them. Per threshold the sweep
+reports the review rate, the residual priced E_attacked on the
+unreviewed cases, the review spend per decision, and the total defender
+cost per decision (spend plus residual).
+
+The priced risk-coverage curve (review rate versus residual priced
+attack cost) is the claim. Flip-detection AUROC is reported alongside
+as context only. At low flip base rates even good AUROC yields poor
+precision, so AUROC alone never justifies a threshold.
+
+The operating point is attacker-cost-aware. The optimum minimizes
+total priced defender cost under the scenario's flip prices. Expensive
+flip directions pull the threshold toward more review, and the same
+adapter gets a different optimum under a different cost scenario. Ties
+break toward the highest threshold (least review at equal cost). The
+report also gives the prevention value per review dollar at the
+optimum. That is the priced attack cost prevented per dollar of
+review.
+
+The Layer-4 gate holds. No threshold-defense claim ships without
+reported attacked-arm calibration. An adapter's defense section is
+withheld until at least `MIN_PER_CONDITION_CASES` (30) finite attacked
+confidences exist to
+compute ECE against. The ECE rides alongside every curve so readers
+can judge whether the confidences driving the threshold deserve
+trust.
+
+`peira defense` runs the analysis over 1+ run artifacts and prints the
+per-adapter optima with a compact risk-coverage table. `--out` writes
+the full per-threshold report as JSON.
 
 ## Attack family: verbosity_inflation
 

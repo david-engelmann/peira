@@ -103,8 +103,9 @@ class CallTiming:
         """Parse a timing breakdown from hostile input.
 
         Missing entirely (pre-R-12 records) yields the zero breakdown.
-        A wrong-typed or negative component raises ValueError — timing
-        is measurement data and must fail loudly, never coerce.
+        A partial mapping, a wrong-typed component, or a negative or
+        non-finite component raises ValueError — timing is measurement
+        data and must fail loudly, never coerce.
         """
         if d is None:
             return cls()
@@ -120,15 +121,20 @@ class CallTiming:
             "harness_overhead_ms",
             "backoff_ms",
         ):
-            v = d.get(key, 0.0)
+            if key not in d:
+                raise ValueError(
+                    f"CallTiming field {key!r}: missing"
+                )
+            v = d[key]
             if (
                 isinstance(v, bool)
                 or not isinstance(v, (int, float))
                 or not v >= 0
+                or not math.isfinite(v)
             ):
                 raise ValueError(
-                    f"CallTiming field {key!r}: must be a non-negative "
-                    f"number, got {v!r}"
+                    f"CallTiming field {key!r}: must be a finite "
+                    f"non-negative number, got {v!r}"
                 )
             vals[key] = float(v)
         return cls(**vals)
@@ -158,12 +164,17 @@ class CallRecord:
     wall-clock time plus the backoff between attempts (the runner times
     from before the first attempt to after the last). ``usage``'s
     ``latency_ms`` is the final attempt's latency only. ``timed_out``
-    marks calls whose terminal failure was a per-attempt timeout: a
-    timeout is data, not missing data, so the metrics layer reports the
-    timeout rate alongside the latency percentiles. ``cached`` marks
-    calls served from the response cache (no provider call was made):
-    they carry no provider latency measurement and are excluded from
-    the latency percentiles.
+    marks calls whose terminal failure was a timeout: a timeout is data,
+    not missing data, so the metrics layer reports the timeout rate
+    alongside the latency percentiles. ``timeout_kind`` types the
+    timeout explicitly: ``"attempt"`` when attempts were exhausted by
+    per-attempt timeouts, ``"item"`` when the case-level item budget
+    fired; None when the call did not time out. The kind is what lets
+    analysis distinguish "the adapter was slow on every attempt" from
+    "the whole case budget fired". ``cached`` marks calls served from
+    the response cache (no provider call was made): they carry no
+    provider latency measurement and are excluded from the latency
+    percentiles.
     """
 
     decision: str
@@ -178,6 +189,10 @@ class CallRecord:
     latency_ms_total: float = 0.0
     timed_out: bool = False
     cached: bool = False
+    # R-12: the timeout kind. None when timed_out is False; "attempt"
+    # or "item" when True. Records sealed before the kind existed infer
+    # "attempt" (every timeout then was a per-attempt timeout).
+    timeout_kind: str | None = None
     # The adapter's raw score for score-primitive calls (0..1), None for
     # other primitives and when the call produced no usable output. The
     # runner populates this from ScoreOutput; the transcript/cache
@@ -219,6 +234,22 @@ class CallRecord:
                 f"CallRecord field 'timed_out': must be a boolean, "
                 f"got {type(timed_out).__name__}"
             )
+        # timeout_kind types the timeout explicitly. Absent on records
+        # sealed before the kind existed: a timed_out record without a
+        # kind is a per-attempt timeout (the item budget did not exist
+        # then), so "attempt" is inferred, not defaulted to None. A
+        # kind on a non-timed-out record, or an unknown kind string,
+        # is corrupt data: fail loudly.
+        timeout_kind = d.get("timeout_kind")
+        if timeout_kind is None:
+            if timed_out:
+                timeout_kind = "attempt"
+        elif not timed_out or timeout_kind not in ("attempt", "item"):
+            raise ValueError(
+                f"CallRecord field 'timeout_kind': must be 'attempt' "
+                f"or 'item' on a timed-out record, got "
+                f"{timeout_kind!r}"
+            )
         # latency_ms_total is cumulative wall-clock ms (all attempts +
         # backoff); absent in pre-Phase-0 artifacts (defaults to 0.0).
         latency_ms_total = d.get("latency_ms_total", 0.0)
@@ -253,6 +284,7 @@ class CallRecord:
             score=score,
             latency_ms_total=float(latency_ms_total),
             timed_out=timed_out,
+            timeout_kind=timeout_kind,
             cached=cached,
             timing_ms=timing_ms,
         )
@@ -5117,9 +5149,11 @@ TIMING_COMPONENTS: tuple[str, ...] = (
     "adapter_execution_ms",
     "backoff_ms",
 )
-# p95 needs at least this many observations; p99 needs
-# P99_MIN_OBSERVATIONS per family (R-12 policy).
-P95_MIN_OBSERVATIONS = 5
+# p99 needs P99_MIN_OBSERVATIONS per family (R-12 policy). p95 is
+# published whenever n > 0, like min and the median: n is always
+# reported alongside, so a high quantile on a tiny sample is
+# inspectable, not misleading. There is no p95 minimum-observation
+# gate.
 P99_MIN_OBSERVATIONS = 100
 # A component whose coefficient of variation exceeds this fraction
 # gets investigate=True: a flag to look at the raw samples, not a
@@ -5130,19 +5164,19 @@ TIMING_CV_INVESTIGATE_THRESHOLD = 0.05
 def _timing_component_block(samples: list[float]) -> dict[str, Any]:
     """One timing component's summary block (R-12 statistical policy).
 
-    ``n`` is always reported. ``min`` and ``p50`` (median) are
-    published whenever n > 0. ``p95`` is withheld (None) below
-    ``P95_MIN_OBSERVATIONS`` and ``p99`` below
-    ``P99_MIN_OBSERVATIONS`` per family: high quantiles on tiny
-    samples are noise, so they are withheld rather than published as
-    numbers. Percentiles use the module's linear-interpolation
+    ``n`` is always reported. ``min``, ``p50`` (median), and ``p95``
+    are published whenever n > 0; ``p99`` is withheld (None) below
+    ``P99_MIN_OBSERVATIONS`` per family: the 99th percentile on a tiny
+    sample is noise, so it is withheld rather than published as a
+    number. Percentiles use the module's linear-interpolation
     ``_percentile`` (numpy 'linear').
 
-    ``samples`` retains the raw observations verbatim (4-decimal
-    rounded, like every other reported float in this module): no
-    outlier trimming, no winsorizing, ever. Extreme samples are data,
-    not noise; anyone who wants a trimmed view computes it from the
-    retained samples.
+    ``samples`` retains the raw observations verbatim: full float
+    precision, no rounding, no outlier trimming, no winsorizing, ever.
+    Rounding to four decimals is presentation and applies only to the
+    derived statistics (min, p50, p95, p99, mean, cv) — never to the
+    retained samples. Extreme samples are data, not noise; anyone who
+    wants a trimmed view computes it from the retained samples.
 
     ``cv`` is the coefficient of variation (population stddev / mean):
     a dimensionless instability measure, comparable across families
@@ -5155,7 +5189,9 @@ def _timing_component_block(samples: list[float]) -> dict[str, Any]:
     n = len(samples)
     block: dict[str, Any] = {
         "n": n,
-        "samples": [_round4(s) for s in samples],
+        # Raw samples, verbatim: rounding is presentation, applied to
+        # the derived statistics below, never to the retained data.
+        "samples": [float(s) for s in samples],
     }
     if n == 0:
         block.update({
@@ -5173,10 +5209,7 @@ def _timing_component_block(samples: list[float]) -> dict[str, Any]:
     block.update({
         "min": _round4(s[0]),
         "p50": _round4(_percentile(s, 0.50)),
-        "p95": (
-            _round4(_percentile(s, 0.95))
-            if n >= P95_MIN_OBSERVATIONS else None
-        ),
+        "p95": _round4(_percentile(s, 0.95)),
         "p99": (
             _round4(_percentile(s, 0.99))
             if n >= P99_MIN_OBSERVATIONS else None
