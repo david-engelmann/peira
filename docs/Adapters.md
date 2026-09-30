@@ -196,7 +196,8 @@ pinned pricing table), used opt-in via
 auto-routes to native JSON-schema structured outputs (no `tools`, no
 forced `tool_choice`), and the response parses through the same typed
 decision contract as every other adapter. Defaults are unchanged; the
-ceiling is never the default.
+ceiling is never the default. The `peira[anthropic]` extra requires
+`anthropic>=0.77.0` for `output_config` support.
 
 Why Fable 5.1 over GPT-6 Astra (`gpt-6-astra`, also $10/$50, GA
 2026-09-03):
