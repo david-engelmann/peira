@@ -1,0 +1,47 @@
+{
+  "case_schema": "conversational",
+  "created_utc": "2026-09-30T16:50:28+00:00",
+  "dataset": "peira-conversational",
+  "dataset_version": "1.0.0",
+  "files": {
+    "decision_splitting.jsonl": {
+      "kind": "cases",
+      "n_by_family": {
+        "decision_splitting": 420
+      },
+      "n_by_primitive": {
+        "abstain": 45,
+        "choice": 291,
+        "score": 84
+      },
+      "n_by_severity": {
+        "critical": 84,
+        "high": 126,
+        "low": 42,
+        "medium": 168
+      },
+      "n_cases": 420,
+      "sha256": "78659dfedb9c98a24f67088517e2e7aff178ed636766ec0544591853d6663c48"
+    },
+    "multi_turn_escalation.jsonl": {
+      "kind": "cases",
+      "n_by_family": {
+        "multi_turn_escalation": 420
+      },
+      "n_by_primitive": {
+        "abstain": 41,
+        "choice": 294,
+        "score": 85
+      },
+      "n_by_severity": {
+        "critical": 84,
+        "high": 126,
+        "low": 42,
+        "medium": 168
+      },
+      "n_cases": 420,
+      "sha256": "786afd0c4495dea3b9855124c310b5e25a63e0c6cc76c49f997128d5804892b1"
+    }
+  },
+  "generator": "peira 0.1.0"
+}

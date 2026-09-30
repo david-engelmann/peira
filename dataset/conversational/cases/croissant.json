@@ -1,0 +1,184 @@
+{
+  "@context": {
+    "@language": "en",
+    "@vocab": "https://schema.org/",
+    "citeAs": "cr:citeAs",
+    "column": "cr:column",
+    "conformsTo": "dct:conformsTo",
+    "cr": "http://mlcommons.org/croissant/",
+    "data": {
+      "@id": "cr:data",
+      "@type": "@json"
+    },
+    "dataType": {
+      "@id": "cr:dataType",
+      "@type": "@vocab"
+    },
+    "dct": "http://purl.org/dc/terms/",
+    "examples": {
+      "@id": "cr:examples",
+      "@type": "@json"
+    },
+    "extract": "cr:extract",
+    "field": "cr:field",
+    "fileObject": "cr:fileObject",
+    "fileProperty": "cr:fileProperty",
+    "fileSet": "cr:fileSet",
+    "format": "cr:format",
+    "includes": "cr:includes",
+    "isLiveDataset": "cr:isLiveDataset",
+    "jsonPath": "cr:jsonPath",
+    "key": "cr:key",
+    "md5": "cr:md5",
+    "parentField": "cr:parentField",
+    "path": "cr:path",
+    "rai": "http://mlcommons.org/croissant/RAI/",
+    "recordSet": "cr:recordSet",
+    "references": "cr:references",
+    "regex": "cr:regex",
+    "repeated": "cr:repeated",
+    "replace": "cr:replace",
+    "sc": "https://schema.org/",
+    "separator": "cr:separator",
+    "source": "cr:source",
+    "subField": "cr:subField",
+    "transform": "cr:transform"
+  },
+  "@id": "peira-conversational",
+  "@type": "sc:Dataset",
+  "conformsTo": "http://mlcommons.org/croissant/1.0",
+  "creator": [
+    {
+      "@type": "Person",
+      "name": "peira project",
+      "url": "https://github.com/david-engelmann/peira"
+    }
+  ],
+  "datePublished": "2026-09-30T16:50:28+00:00",
+  "description": "peira-conversational. Paired adversarial decision-model cases, dataset version 1.0.0.",
+  "distribution": [
+    {
+      "@id": "peira-conversational/decision_splitting.jsonl",
+      "@type": "cr:FileObject",
+      "contentUrl": "https://raw.githubusercontent.com/david-engelmann/peira/main/dataset/conversational/cases/decision_splitting.jsonl",
+      "description": "420 paired adversarial decision cases (peira-conversational 1.0.0).",
+      "encodingFormat": "application/x-ndjson",
+      "name": "decision_splitting.jsonl",
+      "sha256": "78659dfedb9c98a24f67088517e2e7aff178ed636766ec0544591853d6663c48"
+    },
+    {
+      "@id": "peira-conversational/multi_turn_escalation.jsonl",
+      "@type": "cr:FileObject",
+      "contentUrl": "https://raw.githubusercontent.com/david-engelmann/peira/main/dataset/conversational/cases/multi_turn_escalation.jsonl",
+      "description": "420 paired adversarial decision cases (peira-conversational 1.0.0).",
+      "encodingFormat": "application/x-ndjson",
+      "name": "multi_turn_escalation.jsonl",
+      "sha256": "786afd0c4495dea3b9855124c310b5e25a63e0c6cc76c49f997128d5804892b1"
+    }
+  ],
+  "keywords": [
+    "adversarial robustness",
+    "decision models",
+    "benchmark",
+    "AI safety",
+    "jailbreak"
+  ],
+  "license": "https://creativecommons.org/licenses/by/4.0/deed.en",
+  "name": "peira-conversational",
+  "recordSet": [
+    {
+      "@id": "peira-conversational/paired_cases",
+      "@type": "cr:RecordSet",
+      "description": "One record per line of each JSONL distribution file. Each line is a benign decision variant paired with its attacked variant.",
+      "field": [
+        {
+          "@id": "peira-conversational/paired_cases/case_id",
+          "@type": "cr:Field",
+          "dataType": "sc:Text",
+          "description": "Stable case identifier, e.g. v1-spo-001.",
+          "name": "case_id"
+        },
+        {
+          "@id": "peira-conversational/paired_cases/family",
+          "@type": "cr:Field",
+          "dataType": "sc:Text",
+          "description": "Attack family id from the peira taxonomy.",
+          "name": "family"
+        },
+        {
+          "@id": "peira-conversational/paired_cases/primitive",
+          "@type": "cr:Field",
+          "dataType": "sc:Text",
+          "description": "Decision primitive, either choice, score, or abstain.",
+          "name": "primitive"
+        },
+        {
+          "@id": "peira-conversational/paired_cases/severity",
+          "@type": "cr:Field",
+          "dataType": "sc:Text",
+          "description": "Consequence-based severity, either critical, high, medium, or low.",
+          "name": "severity"
+        },
+        {
+          "@id": "peira-conversational/paired_cases/benign.input.prompt",
+          "@type": "cr:Field",
+          "dataType": "sc:Text",
+          "description": "The unattacked decision prompt.",
+          "name": "benign.input.prompt"
+        },
+        {
+          "@id": "peira-conversational/paired_cases/benign.input.options",
+          "@type": "cr:Field",
+          "dataType": "sc:Text",
+          "description": "The explicit decision vocabulary.",
+          "name": "benign.input.options"
+        },
+        {
+          "@id": "peira-conversational/paired_cases/benign.expected_decision",
+          "@type": "cr:Field",
+          "dataType": "sc:Text",
+          "description": "Gold decision on the benign variant.",
+          "name": "benign.expected_decision"
+        },
+        {
+          "@id": "peira-conversational/paired_cases/attacked.input.prompt",
+          "@type": "cr:Field",
+          "dataType": "sc:Text",
+          "description": "The attacked decision prompt.",
+          "name": "attacked.input.prompt"
+        },
+        {
+          "@id": "peira-conversational/paired_cases/attacked.target_decision",
+          "@type": "cr:Field",
+          "dataType": "sc:Text",
+          "description": "Decision the attacker tries to induce, or null when the attack only tries to change the decision.",
+          "name": "attacked.target_decision"
+        },
+        {
+          "@id": "peira-conversational/paired_cases/provenance",
+          "@type": "cr:Field",
+          "dataType": "sc:Thing",
+          "description": "Optional PROV-style object with generated_by, generated_at, was_derived_from, and was_attributed_to.",
+          "name": "provenance"
+        },
+        {
+          "@id": "peira-conversational/paired_cases/evaluation_only",
+          "@type": "cr:Field",
+          "dataType": "sc:Boolean",
+          "description": "True. Benchmark data, never train on it.",
+          "name": "evaluation_only"
+        },
+        {
+          "@id": "peira-conversational/paired_cases/do_not_train",
+          "@type": "cr:Field",
+          "dataType": "sc:Boolean",
+          "description": "True. Exclude from training corpora.",
+          "name": "do_not_train"
+        }
+      ],
+      "name": "paired_cases"
+    }
+  ],
+  "url": "https://github.com/david-engelmann/peira",
+  "version": "1.0.0"
+}

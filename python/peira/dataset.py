@@ -135,19 +135,42 @@ def iter_case_lines(dataset_dir: Path):
                     yield path, lineno, None, f"invalid JSON ({e})"
 
 
-def _summarize_bytes_py(name: str, data: bytes) -> dict[str, Any]:
+def _summarize_bytes_py(
+    name: str, data: bytes, *, kind: str = "single"
+) -> dict[str, Any]:
     """Reference implementation of :func:`_summarize_bytes` (pure Python).
 
     Validate JSONL case bytes, count cases, and hash the bytes.
 
     The SHA-256 and the parse share the single buffer: callers that
     already hold the bytes (verification) never re-read the file.
+
+    ``kind`` selects the case schema: ``"single"`` validates with the
+    single-shot schema, ``"conversational"`` with the conversational
+    schema (paired benign/attacked trajectories).
     """
     digest = hashlib.sha256(data).hexdigest()
     try:
         text = data.decode("utf-8")
     except UnicodeDecodeError as e:
         raise ValueError(f"cannot read {name}: {e}") from e
+    if kind == "conversational":
+        from peira.conversation_schema import validate_conversation_dict
+
+        def _validate(line: str, lineno: int) -> dict[str, Any]:
+            try:
+                case = json.loads(line)
+            except json.JSONDecodeError as e:
+                raise ValueError(
+                    f"{name}:{lineno}: invalid JSON ({e})") from e
+            errors = validate_conversation_dict(case)
+            if errors:
+                raise ValueError(
+                    f"{name}:{lineno}: {'; '.join(errors)}") from None
+            return case
+    else:
+        def _validate(line: str, lineno: int) -> dict[str, Any]:
+            return _parse_case_line(name, lineno, line)
     n_cases = 0
     by_family: dict[str, int] = {}
     by_severity: dict[str, int] = {}
@@ -160,7 +183,7 @@ def _summarize_bytes_py(name: str, data: bytes) -> dict[str, Any]:
         # Shared parse+validate (see _parse_case_line): the manifest
         # builder reports per-line problems instead of failing fast.
         try:
-            case = _parse_case_line(name, lineno, line)
+            case = _validate(line, lineno)
         except ValueError as e:
             problems.append(str(e))
             continue
@@ -179,25 +202,31 @@ def _summarize_bytes_py(name: str, data: bytes) -> dict[str, Any]:
     }
 
 
-def _summarize_bytes(name: str, data: bytes) -> dict[str, Any]:
+def _summarize_bytes(
+    name: str, data: bytes, *, kind: str = "single"
+) -> dict[str, Any]:
     """Validate JSONL case bytes, count cases, and hash the bytes.
 
     The SHA-256 and the parse share the single buffer: callers that
     already hold the bytes (verification) never re-read the file.
 
-    Dispatches to the Rust core when available; the pure-Python
-    :func:`_summarize_bytes_py` is the reference and the fallback (so
-    per-line problem messages are always byte-identical to Python's).
+    Dispatches to the Rust core when available (single-shot schema
+    only — the Rust core does not know the conversational schema);
+    the pure-Python :func:`_summarize_bytes_py` is the reference and
+    the fallback (so per-line problem messages are always
+    byte-identical to Python's).
     """
+    if kind == "conversational":
+        return _summarize_bytes_py(name, data, kind=kind)
     if _rust is not None:
         try:
             return dict(_rust.dataset_summarize_case_bytes(name, data))
         except (TypeError, ValueError, OverflowError):
             pass
-    return _summarize_bytes_py(name, data)
+    return _summarize_bytes_py(name, data, kind=kind)
 
 
-def summarize_cases(path: Path) -> dict[str, Any]:
+def summarize_cases(path: Path, *, kind: str = "single") -> dict[str, Any]:
     """Validate a JSONL case file and count its cases.
 
     Returns the manifest entry for the file. Raises ValueError listing
@@ -205,14 +234,18 @@ def summarize_cases(path: Path) -> dict[str, Any]:
 
     The file is read exactly once: the SHA-256 and the parse share the
     single read instead of a hash pass plus a parse pass.
+
+    ``kind`` selects the case schema (``"single"`` or
+    ``"conversational"``).
     """
-    return _summarize_bytes(path.name, path.read_bytes())
+    return _summarize_bytes(path.name, path.read_bytes(), kind=kind)
 
 
 def build_manifest(dataset_dir: Path, dataset_version: str,
                    dataset_name: str = "peira-v1",
                    peira_version: str = "",
-                   mdes: dict[str, dict[str, float]] | None = None) -> dict[str, Any]:
+                   mdes: dict[str, dict[str, float]] | None = None,
+                   *, kind: str = "single") -> dict[str, Any]:
     """Build the manifest dict for a dataset directory.
 
     Every ``*.jsonl`` file in the directory root is treated as a case file
@@ -223,6 +256,11 @@ def build_manifest(dataset_dir: Path, dataset_version: str,
     ``mdes`` is an optional per-family minimum-detectable-effect table
     (design MDEs in percentage points at the published discordance
     rates), stored verbatim as the manifest's ``mdes`` field.
+
+    ``kind`` selects the case schema (``"single"`` or
+    ``"conversational"``) and is recorded in the manifest's
+    ``case_schema`` field so verification uses the same validator the
+    seal was built with.
 
     Warns (UserWarning) when no case files are found — a 0-case manifest
     usually means the wrong directory was pointed at (e.g. the dataset
@@ -236,7 +274,7 @@ def build_manifest(dataset_dir: Path, dataset_version: str,
         if path.name == MANIFEST_NAME or not path.is_file():
             continue
         if path.suffix == CASE_SUFFIX:
-            files[path.name] = summarize_cases(path)
+            files[path.name] = summarize_cases(path, kind=kind)
         elif path.name == CANARY_NAME:
             files[path.name] = {"kind": "artifact", "sha256": sha256_file(path)}
     n_cases = sum(f.get("n_cases", 0) for f in files.values())
@@ -250,6 +288,7 @@ def build_manifest(dataset_dir: Path, dataset_version: str,
     manifest: dict[str, Any] = {
         "dataset": dataset_name,
         "dataset_version": dataset_version,
+        "case_schema": kind,
         "created_utc": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "generator": generator,
         "files": files,
@@ -445,8 +484,14 @@ def _verify_manifest_dict(
     Every file is read exactly once: the digest and (for case files) the
     parse share the same bytes, so verification can never hash one
     version of a file and summarize another.
+
+    The manifest's ``case_schema`` field (``"single"`` or
+    ``"conversational"``; absent means ``"single"`` for manifests
+    written before the field existed) selects the validator, so
+    verification always uses the same schema the seal was built with.
     """
     errors: list[str] = []
+    case_schema = manifest.get("case_schema", "single")
     for name, entry in manifest.get("files", {}).items():
         if _is_unsafe_manifest_name(name):
             errors.append(
@@ -468,7 +513,7 @@ def _verify_manifest_dict(
             continue
         if entry.get("kind") == "cases":
             try:
-                summary = _summarize_bytes(path.name, data)
+                summary = _summarize_bytes(path.name, data, kind=case_schema)
             except ValueError as e:
                 errors.append(f"{name}: {e}")
                 continue
