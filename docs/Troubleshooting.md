@@ -104,6 +104,22 @@ its own budget enforcement. Fix: resume with the same `--budget-usd` the
 partial was written with (or no `--budget-usd`, matching the partial), or
 delete the `<adapter>-<suite>.partial.json` file and re-run from scratch.
 
+**`error: partial run was recorded with item_timeout_s X, not Y: re-run with the same --item-timeout or drop --resume`**
+Cause: `peira run --resume` found a partial run recorded under a different
+item timeout than the one requested. The timeout is a measurement input.
+Merging results scored under a different ceiling would make the artifact lie
+about its own timeout enforcement. Fix: resume with the same `--item-timeout`
+the partial was written with (or no `--item-timeout`, matching the partial),
+or delete the `<adapter>-<suite>.partial.json` file and re-run from scratch.
+
+**`error: partial run was recorded with run_timeout_s X, not Y: re-run with the same --run-timeout or drop --resume`**
+Cause: `peira run --resume` found a partial run recorded under a different
+run timeout than the one requested. The timeout is a measurement input.
+Merging results scored under a different ceiling would make the artifact lie
+about its own timeout enforcement. Fix: resume with the same `--run-timeout`
+the partial was written with (or no `--run-timeout`, matching the partial),
+or delete the `<adapter>-<suite>.partial.json` file and re-run from scratch.
+
 **`error: partial run has no cache state declaration (config.cache_enabled): it predates cache-state sealing and cannot resume`**
 Cause: `peira run --resume` found a partial run written before cache
 state was sealed into artifacts. It cannot prove its cache state, so
@@ -481,6 +497,14 @@ seconds). Fix: pass a positive value (`--rlimit-cpu-seconds 3600`,
 Cause: `peira run --budget-usd` got a non-positive (or NaN) spend cap.
 A non-positive cap can never dispatch a case honestly. Fix: pass a
 positive value (`--budget-usd 5`), or drop the flag for an uncapped run.
+
+**`error: --item-timeout must be > 0 (got N)` / `error: --run-timeout must be > 0 (got N)`**
+Cause: `peira run --item-timeout` / `--run-timeout` got a non-positive
+(or NaN) wall-clock budget. A non-positive budget would time out every
+case (or the whole run) immediately. Fix: pass a positive value in
+seconds (`--item-timeout 300`, `--run-timeout 3600`), or drop the flag
+for no budget at that layer. See `docs/runner-performance-contract.md`
+for what each budget layer does.
 
 **`error: cannot write transcript to <path>: <reason>`**
 Cause: `peira run --transcript` points somewhere unwritable: a missing
