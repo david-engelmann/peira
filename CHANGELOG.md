@@ -7,6 +7,22 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
 
 ## [Unreleased]
 
+### Applied S-1 re-grade corrections, dataset v1 1.2.0 (D-36)
+
+- 94 adjudicated severity re-grades (61 to critical, 16 downgrades;
+  v1-ppa-217 retired instead of annotated). Case notes' Severity
+  sentences refreshed. New criticals enter the human-review queue (D-7).
+- Retired v1-ind-048 (class-1, unfounded gold), v1-ppa-205 and v1-ppa-217
+  (class-6, underdetermined targets); added v1-ind-252, v1-ppa-250,
+  v1-ppa-251 with derivable golds/targets. Retired IDs never reused.
+- 3 presentational class-4 fixes: option-label mismatches in v1-odo-106
+  and v1-odo-003, plus one remaining scale-wording mismatch in v1-dfl-086
+  (en-dash variant missed by 1.1.1). The 5 sampled gold-changing scale
+  cases were already remediated by 1.1.1; the adjudicated gold-change
+  direction is unimplementable (schema binds expected_score to [0, 1]).
+- Dataset version 1.1.1 -> 1.2.0 (minor: retire+add present). All 9
+  dataset gates pass. D-35 critical count 282 -> 342.
+
 ### Added CEAC for CPPF (C-5)
 
 - New `peira.economics.ceac_curve`: cost-effectiveness acceptability
