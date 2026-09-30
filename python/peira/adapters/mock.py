@@ -50,12 +50,19 @@ class _ScriptedCall:
     it, and a stable per-case identity string used ONLY to seed the
     deterministic flip/confidence hashes. The harness keys the script
     by the adapter-visible pseudonymous call id.
+
+    ``turn_index``/``is_final`` are the conversational coordinates
+    (ignored by the single-shot path): the mock only flips the FINAL
+    turn of an attacked trajectory, so intermediate turns exercise the
+    turn machinery without deciding the outcome.
     """
 
     arm: str  # "benign" | "attacked"
     expected_decision: str
     target_decision: str | None
     hash_id: str
+    turn_index: int = 0
+    is_final: bool = True
 
 
 class MockAdapter:
@@ -170,26 +177,19 @@ class MockAdapter:
             return "approve"
         return expected
 
-    def decide(
-        self,
-        case_input: dict[str, Any],
-        primitive: str,
-        context: CallContext | None = None,
-    ) -> AdapterOutput:
+    def _lookup(self, context: CallContext | None) -> "_ScriptedCall":
         # The mock is always driven through the runner, which always
-        # provides a context. Refuse to guess case metadata from the
-        # input dict — the input carries no trial bookkeeping (D-25),
-        # and silently falling back would hide a broken call path.
+        # provides a context. Simulation inputs come from the
+        # harness-built script, keyed by the call's pseudonymous id —
+        # never from the production context, which under B2 carries no
+        # gold to read. Fail loud on a missing script or a missing
+        # entry: silently simulating the wrong call would poison the
+        # measurement.
         if context is None:
             raise ValueError(
-                "MockAdapter.decide requires a CallContext; the runner "
+                "MockAdapter requires a CallContext; the runner "
                 "always provides one"
             )
-        # Simulation inputs come from the harness-built script, keyed by
-        # the call's pseudonymous id — never from the production
-        # context, which under B2 carries no gold to read. Fail loud on
-        # a missing script or a missing entry: silently simulating the
-        # wrong call would poison the measurement.
         if self._script is None:
             raise ValueError(
                 "MockAdapter requires a simulation script; build one "
@@ -203,16 +203,12 @@ class MockAdapter:
                 f"{context.call_id!r}; the script was built for a "
                 "different seed or case list"
             )
-        attacked = sim.arm == "attacked"
+        return sim
 
-        flipped = attacked and self._flips(sim.hash_id)
-        decision = (
-            self._flipped_decision(sim.expected_decision, sim.target_decision)
-            if flipped
-            else sim.expected_decision
-        )
-        confidence = self._confidence(sim.hash_id, flipped)
-
+    def _output_for(
+        self, primitive: str, decision: str, flipped: bool, hash_id: str
+    ) -> AdapterOutput:
+        confidence = self._confidence(hash_id, flipped)
         if primitive == "choice":
             return ChoiceOutput(decision=decision, confidence=confidence)
         if primitive == "score":
@@ -227,3 +223,99 @@ class MockAdapter:
         if primitive == "abstain":
             return AbstainOutput(decision=decision, confidence=confidence)
         raise ValueError(f"mock does not support primitive {primitive!r}")
+
+    def decide(
+        self,
+        case_input: dict[str, Any],
+        primitive: str,
+        context: CallContext | None = None,
+    ) -> AdapterOutput:
+        sim = self._lookup(context)
+        attacked = sim.arm == "attacked"
+
+        flipped = attacked and self._flips(sim.hash_id)
+        decision = (
+            self._flipped_decision(sim.expected_decision, sim.target_decision)
+            if flipped
+            else sim.expected_decision
+        )
+        return self._output_for(primitive, decision, flipped, sim.hash_id)
+
+    def decide_turn(
+        self,
+        turn_input: dict[str, Any],
+        primitive: str,
+        context: CallContext | None = None,
+    ) -> AdapterOutput:
+        """Conversational entry point: one turn through the mock.
+
+        ``turn_input`` is the sealed turn payload (messages, options,
+        turn_index, is_final_turn); like ``decide()``, the mock ignores
+        it and simulates from the harness-built script (see
+        ``script_for_conversation``). Only the FINAL turn of an attacked
+        trajectory can flip: intermediate turns return the arm's
+        expected decision, so they exercise the turn machinery without
+        deciding the outcome.
+        """
+        sim = self._lookup(context)
+        attacked = sim.arm == "attacked"
+        flipped = attacked and sim.is_final and self._flips(sim.hash_id)
+        decision = (
+            self._flipped_decision(sim.expected_decision, sim.target_decision)
+            if flipped
+            else sim.expected_decision
+        )
+        return self._output_for(primitive, decision, flipped, sim.hash_id)
+
+    @staticmethod
+    def script_for_conversation(
+        cases: Any,
+        *,
+        seed: int = 0,
+        dispatch_base: int = 0,
+        run_nonce: str,
+    ) -> dict[str, _ScriptedCall]:
+        """Build a simulation script for conversational cases.
+
+        Same contract as :meth:`script_for`, but keyed by the
+        conversational dispatch scheme: case i's base is
+        ``dispatch_base + CONVERSATION_DISPATCH_STRIDE * i``; benign
+        turn t uses base + 2t, attacked turn t base + 2t + 1. Only
+        executed (user) turns get entries; fixed assistant turns make
+        no calls. ``run_nonce`` is required, same as ``script_for``.
+        """
+        # Imported here: same no-cycle rule as script_for (runner
+        # imports nothing from this module).
+        from peira.conversation import CONVERSATION_DISPATCH_STRIDE
+        from peira.runner import _pseudonymous_call_id
+
+        script: dict[str, _ScriptedCall] = {}
+        for i, case in enumerate(cases):
+            base = (
+                dispatch_base + CONVERSATION_DISPATCH_STRIDE * i
+            )
+            expected = case.benign.expected_decision
+            target = case.attacked.target_decision
+            for arm, arm_offset in (("benign", 0), ("attacked", 1)):
+                turns = (
+                    case.benign.turns
+                    if arm == "benign"
+                    else case.attacked.turns
+                )
+                user_turns = [t for t in turns if t.role == "user"]
+                for t in range(len(user_turns)):
+                    script[
+                        _pseudonymous_call_id(
+                            run_nonce, seed, base + 2 * t + arm_offset
+                        )
+                    ] = _ScriptedCall(
+                        arm=arm,
+                        expected_decision=expected,
+                        target_decision=(
+                            None if arm == "benign" else target
+                        ),
+                        hash_id=case.case_id,
+                        turn_index=t,
+                        is_final=t == len(user_turns) - 1,
+                    )
+        return script

@@ -218,6 +218,10 @@ def _suite_dataset_identity(suite_dir: Path) -> tuple[str, str]:
 
 def _print_run_summary(artifact, out_path: Path) -> None:
     m = artifact.metrics
+    from peira.conversation import CONVERSATION_SUITE_ID
+    if artifact.suite == CONVERSATION_SUITE_ID:
+        _print_conversation_run_summary(artifact, out_path)
+        return
     print(f"done: {m['n_cases']} cases ({m['n_eligible']} eligible)")
     if artifact.termination != "complete":
         print(f"  termination:     {artifact.termination} "
@@ -241,6 +245,52 @@ def _print_run_summary(artifact, out_path: Path) -> None:
           + (f" ({'; '.join(m['eligibility_notes'])})" if m['eligibility_notes'] else ""))
     print(f"artifact: {out_path}")
     print(f"analysis lock: {artifact.analysis_lock[:16]}…")
+
+
+def _print_conversation_run_summary(artifact, out_path: Path) -> None:
+    """Console summary for a conversational run artifact.
+
+    Reads the conversational metric schema sealed by
+    ``peira.conversation_metrics.summarize_conversation_artifact``;
+    never the single-shot keys.
+    """
+    m = artifact.metrics
+    print(f"done: {m['n_cases']} cases ({m['n_eligible']} eligible)")
+    if artifact.termination != "complete":
+        print(f"  termination:     {artifact.termination} "
+              f"({artifact.cases_completed}/{artifact.cases_planned} cases)")
+    if artifact.budget_usd is not None:
+        print(f"  budget:          cap ${artifact.budget_usd:.2f}, "
+              f"spent ${artifact.spent_usd:.4f}")
+    else:
+        print(f"  spend:           ${artifact.spent_usd:.4f} (uncapped)")
+    print(f"  flip rate:       {_val(_metric_value(m['flip_rate']))} "
+          f"95% CI {_ci95(_metric_ci(m['flip_rate']))}")
+    print(f"  target hit rate: {_val(m['target_hit_rate'])}")
+    print(f"  mean user turns: benign {_val(m['mean_user_turns_benign'])}, "
+          f"attacked {_val(m['mean_user_turns_attacked'])}")
+    print(f"  intermediate malformed: "
+          f"{_val(m['intermediate_malformed_rate'])}")
+    print(f"  intermediate abstention: "
+          f"{_val(m['intermediate_abstention_rate'])}")
+    print(f"  ranking eligible:  {m['ranking_eligible']}"
+          + (f" ({'; '.join(m['eligibility_notes'])})" if m['eligibility_notes'] else ""))
+    print(f"artifact: {out_path}")
+    print(f"analysis lock: {artifact.analysis_lock[:16]}…")
+
+
+def _metric_value(triple):
+    """The value of a Wilson {"value","ci_low","ci_high"} triple (or None)."""
+    if isinstance(triple, dict):
+        return triple.get("value")
+    return None
+
+
+def _metric_ci(triple):
+    """The [low, high] pair of a Wilson triple (or None)."""
+    if isinstance(triple, dict):
+        return [triple.get("ci_low"), triple.get("ci_high")]
+    return None
 
 
 def _write_final_artifact(out_dir: Path, slug: str, suite: str,
@@ -351,8 +401,15 @@ def cmd_run(args: argparse.Namespace) -> int:
               file=sys.stderr)
         return EXIT_USER_ERROR
 
+    # The conversational suite has its own case schema, loader, and
+    # suite driver; every other suite uses the single-shot path.
+    is_conversational = suite == "conversational"
     try:
-        cases = load_cases(suite_dir)
+        if is_conversational:
+            from peira.conversation import load_conversation_cases
+            cases = load_conversation_cases(suite_dir)
+        else:
+            cases = load_cases(suite_dir)
     except ValueError as e:
         print(f"error: invalid case data: {e}", file=sys.stderr)
         return EXIT_USER_ERROR
@@ -400,9 +457,15 @@ def cmd_run(args: argparse.Namespace) -> int:
     def _build_mock(seed_i: int, run_nonce_i: str) -> "MockAdapter":
         # The mock's simulation script is namespaced per (seed, nonce):
         # each seed run gets its own script built under its own nonce,
-        # exactly like the single-run path below.
+        # exactly like the single-run path below. Conversational suites
+        # use the conversation script builder.
+        script_builder = (
+            MockAdapter.script_for_conversation
+            if is_conversational
+            else MockAdapter.script_for
+        )
         return MockAdapter(
-            script=MockAdapter.script_for(
+            script=script_builder(
                 cases, seed=seed_i, run_nonce=run_nonce_i
             )
         )
@@ -511,13 +574,22 @@ def cmd_run(args: argparse.Namespace) -> int:
                 partial = None
             if partial is not None:
                 try:
+                    from peira.conversation import (
+                        ConversationResult as _ConvResult,
+                    )
                     already_done, prior_results = validate_partial(
                         partial, adapter, cases, suite, dataset_version,
                         manifest_sha256, seed=args.seed,
                         budget_usd=getattr(args, "budget_usd", None),
                         cache_enabled=args.cache_dir is not None,
                         item_timeout=item_timeout,
-                        run_timeout=run_timeout)
+                        run_timeout=run_timeout,
+                        result_from_dict=(
+                            _ConvResult.from_dict
+                            if is_conversational
+                            else PerCaseResult.from_dict
+                        ),
+                    )
                 except ValueError as e:
                     print(f"error: {e}; delete {partial_path} or drop "
                           f"--resume and re-run.", file=sys.stderr)
@@ -544,8 +616,7 @@ def cmd_run(args: argparse.Namespace) -> int:
 
     try:
         if num_seeds == 1:
-            artifact = run_suite(
-                adapter, cases, suite, dataset_version,
+            run_kwargs = dict(
                 progress=progress, already_done=already_done,
                 prior_results=prior_results, partial_path=partial_path,
                 manifest_sha256=manifest_sha256, seed=args.seed,
@@ -567,7 +638,20 @@ def cmd_run(args: argparse.Namespace) -> int:
                 # spec to reload the adapter; the short name is not loadable.
                 config_extra={"adapter_spec": args.adapter},
             )
+            if is_conversational:
+                from peira.conversation import run_conversation_suite
+                artifact = run_conversation_suite(
+                    adapter, cases, suite, dataset_version, **run_kwargs
+                )
+            else:
+                artifact = run_suite(
+                    adapter, cases, suite, dataset_version, **run_kwargs
+                )
         else:
+            if is_conversational:
+                print("error: --seeds > 1 is not supported for the "
+                      "conversational suite", file=sys.stderr)
+                return EXIT_USER_ERROR
             return _cmd_run_multiseed(
                 args, adapter, cases, suite, suite_families,
                 dataset_version, manifest_sha256, out_dir, slug,
@@ -707,6 +791,16 @@ def cmd_replay(args: argparse.Namespace) -> int:
               file=sys.stderr)
         return EXIT_USER_ERROR
     suite_dir = root / SUITE_DIRS[suite]
+    if suite == "conversational":
+        # R-01: conversational transcripts record every turn payload,
+        # but turn-by-turn re-execution is not implemented yet. Fail
+        # closed with an actionable error instead of half replaying.
+        # Checked before the directory-existence guard so the message
+        # fires even though the suite's cases have not landed yet.
+        print("error: peira replay does not support the conversational "
+              "suite in R-01 (turn-level re-execution is not implemented)",
+              file=sys.stderr)
+        return EXIT_USER_ERROR
     if not suite_dir.exists():
         print(f"error: suite directory {suite_dir} not found",
               file=sys.stderr)
@@ -770,7 +864,13 @@ def cmd_doctor(args: argparse.Namespace) -> int:
 
 
 def cmd_validate(args: argparse.Namespace) -> int:
-    from peira.schema import validate_case_dict
+    kind = getattr(args, "kind", "single")
+    if kind == "conversational":
+        from peira.conversation import (
+            validate_conversation_dict as validate_case_dict,
+        )
+    else:
+        from peira.schema import validate_case_dict
 
     dataset_dir = Path(args.dataset)
     if not dataset_dir.exists():
@@ -817,6 +917,17 @@ def cmd_report(args: argparse.Namespace) -> int:
     if not artifact.verify():
         print("warning: analysis lock mismatch: artifact was modified after sealing.",
               file=sys.stderr)
+    # The conversational suite is a separate suite with its own metric
+    # schema (peira.conversation_metrics); the single-shot report
+    # renderer must not present those numbers as single-shot metrics,
+    # so refuse with an actionable message instead of rendering.
+    from peira.conversation import CONVERSATION_SUITE_ID
+    if artifact.suite == CONVERSATION_SUITE_ID:
+        print("error: peira report does not render conversational run "
+              "artifacts; analyze them with the conversational metrics "
+              "(peira.conversation_metrics.summarize_conversation)",
+              file=sys.stderr)
+        return EXIT_USER_ERROR
     # S8b sealed the A3 summary schema into artifacts. An artifact from
     # before the rewiring is structurally valid but its metrics lack
     # the A3 sections; rendering it would silently drop half the
@@ -2241,6 +2352,16 @@ def cmd_dashboard_run(args: argparse.Namespace) -> int:
     if not artifact.verify():
         print("warning: analysis lock mismatch: artifact was modified after sealing.",
               file=sys.stderr)
+    # Same rule as cmd_report: the dashboard payload passes single-shot
+    # metric keys through, which do not exist on the conversational
+    # metric schema. Refuse rather than export wrong-shaped numbers.
+    from peira.conversation import CONVERSATION_SUITE_ID as _CONV_SUITE
+    if artifact.suite == _CONV_SUITE:
+        print("error: dashboard export does not support conversational run "
+              "artifacts; analyze them with the conversational metrics "
+              "(peira.conversation_metrics.summarize_conversation)",
+              file=sys.stderr)
+        return EXIT_USER_ERROR
     payload = run_to_dashboard(artifact)
     # Stamp the run_id from the filename (the artifact does not carry it).
     payload["run"]["run_id"] = run_path.stem
@@ -4042,14 +4163,19 @@ def _print_gate_results(results, file=None):
 
 
 def cmd_dataset_gates(args: argparse.Namespace) -> int:
-    from peira.gates import run_gates
+    kind = getattr(args, "kind", "single")
 
     dataset_dir = Path(args.dir)
     if not dataset_dir.is_dir():
         print(f"error: dataset directory {dataset_dir} not found",
               file=sys.stderr)
         return EXIT_USER_ERROR
-    results = run_gates(dataset_dir)
+    if kind == "conversational":
+        from peira.conversation import run_conversation_gates
+        results = run_conversation_gates(dataset_dir)
+    else:
+        from peira.gates import run_gates
+        results = run_gates(dataset_dir)
     _print_gate_results(results)
     n_err = sum(len(r.errors) for r in results)
     return EXIT_USER_ERROR if n_err else EXIT_OK
@@ -4180,6 +4306,9 @@ def build_parser() -> argparse.ArgumentParser:
 
     v = sub.add_parser("validate", help="validate a dataset directory")
     v.add_argument("--dataset", required=True)
+    v.add_argument("--kind", default="single",
+                   choices=["single", "conversational"],
+                   help="case schema: single-shot or conversational")
     v.set_defaults(func=cmd_validate)
 
     doc = sub.add_parser(
@@ -4534,6 +4663,9 @@ def build_parser() -> argparse.ArgumentParser:
     vm.set_defaults(func=cmd_dataset_verify_manifest)
     g = dsub.add_parser("gates", help="run the automated validation gates")
     g.add_argument("--dir", required=True, help="dataset directory")
+    g.add_argument("--kind", default="single",
+                   choices=["single", "conversational"],
+                   help="case schema: single-shot or conversational")
     g.set_defaults(func=cmd_dataset_gates)
     n = dsub.add_parser("new", help="scaffold a new case from a family template")
     n.add_argument("--family", required=True, choices=sorted(TEMPLATES),
