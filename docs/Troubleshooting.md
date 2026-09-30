@@ -20,7 +20,7 @@ adapter is safe.
 
 **`error: unknown suite 'x' (available: smoke, safety-policy, trial, trial-demo, v1)`**
 Cause: typo in `--suite`. Fix: `trial-demo` (demo fixture, offline) or
-`trial` (the branded 100-case Peira Trial, sealed `1.0.5`).
+`trial` (the branded 100-case Peira Trial, sealed `1.0.6`).
 
 **`error: suite directory ... not found`**
 Cause: you ran `peira` from outside the repo checkout. Fix: run from the
@@ -836,6 +836,57 @@ Cause: `--families` left only one family to analyze, so removing it
 leaves nothing to rank on (leave-one-out needs at least two families).
 Fix: pass at least two families, or omit `--families` to use the union
 across the runs.
+
+## `peira threshold-by-family` (C-7)
+
+**`error: <run> not found` (from `peira threshold-by-family`)**
+Cause: the artifact path doesn't exist. Fix: check the path.
+`peira threshold-by-family` takes one positional artifact file.
+
+**`error: <run> is not a valid run artifact (...)` (from `peira threshold-by-family`)**
+Cause: the file isn't a sealed run artifact (bad JSON, or a JSON file
+that isn't a run artifact). Fix: point at the `.json` files `peira run`
+wrote to the runs directory.
+
+**`error: <run>: cannot decode per-case results (...)` (from `peira threshold-by-family`)**
+Cause: the artifact's per-case results don't decode (a hand-edited
+artifact, or an artifact from an incompatible peira version). Fix:
+re-run the adapter on the current peira; don't hand-edit artifacts.
+
+**`error: no families found in the run` (from `peira threshold-by-family`)**
+Cause: the artifact contains no per-case results (an empty run). Fix:
+pass an artifact from a completed run.
+
+**`error: unknown families: <names> (not present in the run)` (from `peira threshold-by-family`)**
+Cause: `--families` names a family absent from the artifact (often a
+typo). Fix: check the spelling against the family names in the run;
+omit `--families` to use every family in the run.
+
+**`error: --families matched no families (empty filter)` (from `peira threshold-by-family`)**
+Cause: `--families` was given but parsed to nothing (e.g.
+`--families=","`). Fix: pass at least one family name, or omit
+`--families` to use every family in the run.
+
+**`error: <name> must be finite and non-negative, got <value>` (from `peira threshold-by-family`)**
+Cause: a `--cost-*` flag got a negative, NaN, or infinite value
+(argparse `type=float` accepts `nan` and `inf`; only finite
+non-negative costs are meaningful). Fix: pass a finite USD cost >= 0
+for every `--cost-*` flag.
+
+**`error: cannot write threshold-family JSON to <out> (...)` (from `peira threshold-by-family`)**
+Cause: `--json` points somewhere unwritable: a missing parent
+directory, or a permissions problem. Fix: create the directory first,
+or pick a writable path.
+
+**`peira threshold-by-family` reports every family as withheld**
+Cause: not an error. No family has priced cases on the priced arm, so
+optima and costs are unresolvable, not zero. On the attacked arm that
+usually means every case is ineligible (the ineligible exclusion only
+applies to the attacked arm); on either arm it can also mean every
+case is malformed, abstained, non-binary, or missing a finite
+confidence. Fix: check the run's eligibility and record quality;
+excluded cases carry no baseline to price correctness against.
+
 
 ## R-05 contamination scripts
 

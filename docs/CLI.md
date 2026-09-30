@@ -157,6 +157,21 @@ M-3 economic value view over 1+ run artifacts (E_attacked, CPPF, break-even, Par
 | `--price-date` |  | - | price date stamp for the frontier (default: unknown) |
 | `--out` |  | - | write an HTML value-view report to this path |
 
+## peira threshold-by-family
+
+C-7: optimal review threshold per family under buyer-cost economics (family-specific vs global threshold interaction)
+
+| Flag | Required | Default | Help |
+|---|---|---|---|
+| `RUN` | yes | - | run artifact path |
+| `--cost-false-approve` | yes | - | USD cost of trusting a wrongly-approved decision |
+| `--cost-false-deny` | yes | - | USD cost of trusting a wrongly-denied decision |
+| `--cost-review` | yes | - | USD cost of one human review |
+| `--cost-false-unknown` |  | - | USD cost of trusting a wrongly-decided case whose direction is unavailable (default: mean of the two directional costs) |
+| `--families` |  | - | comma-separated family manifest (default: all families in the run) |
+| `--arm` |  | `'attacked'` | which arm to price (default: attacked) (choices: `attacked`, `benign`) |
+| `--json` |  | - | write the full interaction table JSON to this path |
+
 ## peira defense
 
 C-4 threshold-defense economics over 1+ run artifacts (defense curves, priced risk-coverage, attacker-cost-aware optimum)
