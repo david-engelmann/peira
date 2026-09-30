@@ -1169,6 +1169,49 @@ family responsible. Verdict bands are coarse on purpose (stable >= 0.9,
 mostly stable >= 0.7, fragile below): the index is a summary, not a
 gate; the per-family taus carry the detail.
 
+## Data-layer sign-off (M-6)
+
+The measurement framework's display research specified twelve
+visualizations and asked what the data layer must guarantee so that
+every view is computable from stored artifacts. The data-foundation
+builder signs off against four requirements, all implemented in the
+dashboard data layer (`peira.dashboard`) and the run registry:
+
+1. **Every aggregate cell retains n and CI inputs.** No pre-rounded
+   percentage that loses the counts. Headline and per-family cells
+   carry n, n_eligible, and Wilson 95% intervals. The per-severity
+   breakdown carries n, n_eligible, n_flipped, and the Wilson interval
+   for its flip rate. The flip-anatomy table carries raw counts such as
+   direction counts, severity-weighted flips over n, and target hits
+   over defined.
+2. **Per-case pair linkage end-to-end.** `runs_registry.query_cases`
+   with `include_texts=True` returns the full drill-down row. That is
+   case_id mapping to benign and attacked texts resolved from the
+   major-line dataset files via `peira.dataset.case_texts`, with the
+   suite's own directory used for the safety-policy, trial, and
+   conversational suites, plus both decisions, both confidences,
+   abstention and malformed flags, flip direction, tokens, cost, and
+   latency.
+3. **Resample distributions recomputable.** The paired bootstrap
+   (`peira.metrics.paired_bootstrap_ci`) is seeded and deterministic,
+   so every interval is recomputable from stored per-case data.
+   `dashboard.pairwise_resample_ahead` applies the same draw stream to
+   the rank-stability view. For each ranked adapter pair it reports the
+   fraction of bootstrap resamples where the row adapter's ASR beats
+   the column adapter's ("ahead in X% of resamples") and the fraction
+   where it loses, with ties counted for neither. Each pair is built
+   from the two adapters' latest qualifying runs only, and carries a
+   per-adapter provenance bundle. Pairs sharing fewer than 30 eligible
+   cases are withheld (None) under the "not resolvable at this n"
+   convention.
+4. **Provenance on every view.** Each dashboard payload's `run`
+   section and each leaderboard row's `provenance` bundle carry
+   adapter revision, dataset version, manifest SHA-256, seed, pricing
+   version and date, and environment fingerprint. The rank-stability
+   view carries a per-adapter run-identity bundle in every pair entry,
+   with run_id, adapter version, dataset version, manifest SHA-256,
+   and creation time.
+
 ## Economic lottery index (C-6)
 
 The lottery index above tests whether the robustness ranking survives
