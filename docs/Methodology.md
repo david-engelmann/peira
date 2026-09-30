@@ -111,24 +111,6 @@ medium 1, low 0.5) and target-hit rate.
   counts, overall and per family, over eligible cases. The diagonal
   held; off-diagonal cells are flips by direction. Effective outcome
   precedence: `malformed` beats `abstain` beats the raw decision string.
-- **Score deltas (M-8).** Per-case `attacked.score - benign.score` for
-  score-primitive eligible cases with both scores present (missing
-  scores are reported, never imputed). The distribution artifact
-  reports mean |delta| with a bootstrap 95% CI, median |delta|, the
-  signed mean delta (directional bias, with its own bootstrap 95%
-  CI, where a CI excluding zero means the attack systematically
-  pushed scores one way), the material share (|delta| of at least
-  0.1, the M-1 score-shifted convention), the catastrophic share
-  (|delta| beyond two population standard deviations of the delta
-  distribution, which is distribution-relative by design because the
-  score contract fixes the 0..1 range but not an adapter's operating
-  spread, and a constant-shift population reports 0.0 rather than
-  applying a degenerate cutoff), the threshold-crossing rate
-  (benign and attacked on opposite sides of 0.5, the canonical
-  score-space decision threshold, where an arm at exactly 0.5 counts
-  as the positive side), and a fixed-bin histogram over [-1, 1].
-  Reported overall and by family, severity, and M-1 flip direction.
-  Derived statistics are withheld below 30 usable pairs.
 - **Per-severity ASR**: conditional ASR recomputed within each
   severity (`n`, `n_eligible`, `asr` + Wilson 95% CI, `refusal_rate` +
   Wilson 95% CI per severity), the same shape as the per-family
@@ -274,6 +256,14 @@ medium 1, low 0.5) and target-hit rate.
   adjustment when claiming across families jointly. The adjustments
   operate on plain p-value lists and return adjusted p-values in the
   input order; reject where adjusted p ≤ alpha (`reject_at`).
+- **Timing**. Every call record carries a `timing_ms` decomposition
+  (admission wait, adapter execution, harness overhead, and backoff, all
+  in milliseconds), and every run summary carries per-family timing
+  blocks with raw samples, percentiles, and a coefficient of
+  variation. Timing is diagnostic, never a ranker. It describes what
+  the run cost, not how good the adapter is. See
+  `docs/runner-performance-contract.md` for the measurement boundary,
+  the three timeout layers, and the statistical policy.
 
 Invalid inputs fail loudly rather than producing look-alike statistics:
 ECE requires a positive bin count (`ValueError("bins must be positive")`
@@ -1234,38 +1224,36 @@ a case whose family changed between runs is treated as unpaired.
 ## Threshold-by-family interaction (C-7)
 
 A review policy routes a case to human review iff its risk score
-(`1 - confidence`) is >= pt. R-08 prices that policy in dollars.
-Reviewed cases cost `cost_review` each, while trusted cases cost
-nothing when correct and `cost_false_approve` / `cost_false_deny`
-when the trusted output is wrong in that direction. C-7 asks the
-interaction question, which is whether the buyer does better with one
-global threshold or a threshold per attack family.
+(`1 - confidence`) is >= pt. R-08 prices that policy in dollars:
+reviewed cases cost `cost_review` each; trusted cases cost nothing when
+correct and `cost_false_approve` / `cost_false_deny` when the trusted
+output is wrong in that direction. C-7 asks the interaction question:
+does the buyer do better with one global threshold or a threshold per
+attack family?
 
 For each family, `peira threshold-by-family` sweeps the threshold grid
 through R-08's buyer-cost model and takes the cost-minimizing
-threshold. It does the same once on the pooled (all-family) data. The
+threshold; it does the same once on the pooled (all-family) data. The
 interaction table prices every family at both its own optimum and the
 global optimum. The global optimum always pools every family in the
-run, even when `--families` restricts the table to a subset, because
-the global threshold is the single threshold the buyer would deploy
+run, even when `--families` restricts the table to a subset: the
+global threshold is the single threshold the buyer would deploy
 without family-specific tuning, so it is a property of the whole
 population, not of the filtered view. The `gain_per_case` column is
-the per-case saving from family-specific thresholding. It is always
->= 0 because the family optimum minimizes over the same grid the
-global optimum is chosen from. Families with positive gain are the
-ones that justify their own threshold. The table carries the
-magnitudes so the reader judges materiality. There are no verdict
-bands. The gain is the finding.
+the per-case saving from family-specific thresholding; it is always
+>= 0, because the family optimum minimizes over the same grid the
+global optimum is chosen from. Families with positive gain are the ones that justify their own
+threshold; the table carries the magnitudes so the reader judges
+materiality. There are no verdict bands: the gain is the finding.
 
-Conventions. Ties break toward the larger threshold, since at equal
-expected cost the buyer prefers the fewest reviews. Families with no
-priced cases report withheld (None) optima and costs, which means
-unresolvable, not free. The three costs are buyer inputs, named in
-every output. The M-3 cost scenarios supply natural values
-(`deny-to-approve` flip cost for `cost_false_approve`,
-`approve-to-deny` for `cost_false_deny`). This is a cost model, not
-net benefit. Outputs are dollars per case, never Vickers-Elkin net
-benefit.
+Conventions. Ties break toward the larger threshold: at equal expected
+cost the buyer prefers the fewest reviews. Families with no priced
+cases report withheld (None) optima and costs: unresolvable, not free.
+The three costs are buyer inputs, named in every output; the M-3 cost
+scenarios supply natural values (`deny-to-approve` flip cost for
+`cost_false_approve`, `approve-to-deny` for `cost_false_deny`). This is
+a cost model, not net benefit: outputs are dollars per case, never
+Vickers-Elkin net benefit.
 
 ## Economic value view (M-3, sidecar)
 
@@ -1316,24 +1304,6 @@ always points at the prices that produced it.
   attempts the attacker must buy for one successful flip. The jailbreak
   direction (deny-to-approve) is the headline, because the attacker's
   product is the jailbreak, not vandalism or denial of service.
-- **Attacker cost per flip direction (C-9, M-9 x M-1).** The attempt
-  multiplier priced in dollars. For each M-1 direction the table reports
-  both the unitless attempts per flip (1/ASR_d) and the list-price cost
-  per flip, which is `attacker_queries_assumed` times the mean
-  attacked-query price divided by ASR_d, computed from the
-  runner-recorded `CallUsage` token counts and the pinned pricing table. The jailbreak direction
-  (deny-to-approve) is the headline row because it prices the attacker's
-  actual product. approve-to-deny (vandalism) and to-abstain (denial of
-  service) get their own rows because they are different products with
-  different economics. A single headline number misprices the exchange
-  rate. A direction with no observed flips is withheld. Its cost is
-  unbounded, not $0.00. Partial pricing coverage makes the query price
-  a lower bound, and the bound is stronger than M-9's. Calls with no
-  usage record count as unpriced $0 instead of being dropped from the
-  mean, so the reported figure can never exceed the true mean.
-  Rendered in the value view and the
-  per-run report as a per-direction table with direction, flips, ASR_d,
-  attempts per flip, and dollars per flip.
 - **Gordon-Loeb tripwire.** Flags upgrades whose annualized extra cost
   exceeds 37% of the expected-loss reduction as probable
   over-investment. A rule of thumb, labeled as one.
