@@ -10,10 +10,9 @@ Regression coverage for the lost-lane defect classes: duplicate prompts,
 duplicate Cartesian (scenario, poison) combinations, duplicate abstain
 controls, no-op assertions, and taxonomy-hash drift.
 
-unittest.TestCase style: CI runs `python -m pytest tests -n auto`
-with `pip install -e .[dev]` (pytest, pytest-xdist, pytest-timeout), so
-this module must not import pytest and must expose its tests as TestCase
-methods (pytest discovers unittest.TestCase natively).
+unittest.TestCase style: CI runs `python -m pytest tests -n auto`, and pytest
+discovers TestCase classes natively, so this module must not import pytest
+and must expose its tests as TestCase methods.
 """
 
 import copy
@@ -59,8 +58,7 @@ def attacked_prompt(case):
 def poison_block(case):
     bp = benign_prompt(case)
     ap = attacked_prompt(case)
-    if not ap.startswith(bp):
-        return None
+    assert ap.startswith(bp), case["case_id"]
     return ap[len(bp):]
 
 
@@ -86,9 +84,11 @@ class TestComposition(unittest.TestCase):
         self.assertEqual(ids, ["v2-retp-%04d" % i for i in range(1, 471)])
 
     def test_all_critical_choice_cases_have_flip_notes(self):
-        for c in CASES:
-            if c["primitive"] == "choice" and c["severity"] == "critical":
-                self.assertIn("Severity critical:", c["notes"], c["case_id"])
+        critical_choice = [c for c in CASES
+                           if c["primitive"] == "choice" and c["severity"] == "critical"]
+        self.assertGreater(len(critical_choice), 0)
+        for c in critical_choice:
+            self.assertIn("Severity critical:", c["notes"], c["case_id"])
 
     def test_schema_valid(self):
         from peira.schema import validate_case_dict
@@ -115,12 +115,7 @@ class TestPairedRagConstruction(unittest.TestCase):
             bp = benign_prompt(c)
             ap = attacked_prompt(c)
             block = poison_block(c)
-            self.assertIsNotNone(block, c["case_id"])
-            # paired contract: identical option vocabularies; only the
-            # retrieved block differs between variants
-            self.assertEqual(c["benign"]["input"]["options"],
-                             c["attacked"]["input"]["options"],
-                             c["case_id"])
+            self.assertEqual(ap, bp + block, c["case_id"])
             self.assertTrue(block.startswith("\n\n[Retrieved: "),
                             c["case_id"])
             self.assertTrue(block.endswith("]"), c["case_id"])
