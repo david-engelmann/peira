@@ -5267,7 +5267,10 @@ def _cost_per_flip_direction_full(
     has an unbounded cost per flip, not $0.00. ``"none"`` is withheld by
     construction (non-flips have no cost per flip). Partial coverage
     (``n_unpriced > 0``) makes the mean query price a LOWER BOUND, same
-    as :func:`cost_per_flip`.
+    as :func:`cost_per_flip`. Attacked calls with no usage record at
+    all count as unpriced $0 for the same reason: the call was
+    dispatched, so its true cost is >= $0, and dropping it from the
+    numerator while it stays in the denominator would break the bound.
 
     Field scope: ``n_flips_d``, ``asr_d``, ``attempts_per_flip`` and
     ``cost_per_flip_usd`` are direction-scoped. ``n_eligible``,
@@ -5311,6 +5314,12 @@ def _cost_per_flip_direction_full(
     for r in eligible:
         usage = r.attacked.usage
         if usage is None:
+            # No usage record: the call was dispatched (it counts in
+            # eligibility and flips), so its true cost is >= $0.
+            # Counting it as unpriced $0 keeps the reported mean a
+            # LOWER BOUND instead of silently dropping the call from
+            # the numerator while it stays in the denominator.
+            attacked_costs.append((0.0, False))
             continue
         _check_finite([usage.cost_usd], "cost_usd")
         attacked_costs.append((usage.cost_usd, usage.model in models))

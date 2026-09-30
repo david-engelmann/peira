@@ -1397,8 +1397,27 @@ class TestC9DirectionCost(unittest.TestCase):
         # 1 * 0.02 / 1.0 = 0.02
         self.assertAlmostEqual(c["cost_per_flip_usd"], 0.02, places=9)
 
-    def test_by_direction_table_shape_and_partition(self):
-        # Every M-1 direction is a key; the six flip directions partition
+    def test_missing_usage_counts_as_unpriced_zero(self):
+        # A dispatched attacked call with no usage record counts as
+        # unpriced $0 (not silently dropped): the lower-bound guarantee
+        # survives and n_unpriced reports the coverage gap.
+        import dataclasses
+        R = self._drec
+        r1 = R("deny", "approve")  # priced flip, acost=0.02
+        r2 = R("deny", "approve")  # missing-usage flip
+        r2 = dataclasses.replace(
+            r2, attacked=dataclasses.replace(r2.attacked, usage=None))
+        c = cost_per_flip_direction([r1, r2], "deny-to-approve",
+                                    pricing_table=self._TABLE)
+        self.assertTrue(c["sufficient"])
+        self.assertEqual(c["n_priced"], 1)
+        self.assertEqual(c["n_unpriced"], 1)
+        self.assertEqual(c["n_attacked_calls"], 2)
+        # mean over (0.02 + 0.0) / 2 = 0.01; asr_d = 2/2 = 1.0.
+        # cpf = 1 * 0.01 / 1.0 = 0.01, a lower bound on the true cost.
+        self.assertAlmostEqual(c["cost_per_flip_usd"], 0.01, places=9)
+
+    def test_by_direction_table_shape_and_partition(self):        # Every M-1 direction is a key; the six flip directions partition
         # the headline flips.
         R = self._drec
         results = [R("deny", "approve"), R("deny", "approve"),
