@@ -41,6 +41,7 @@ EXPECTED_TIER2 = (
 EXPECTED_POST_V2 = (
     "verbosity_inflation",
     "retrieval_poisoning",
+    "evidence_positioning",
 )
 
 
