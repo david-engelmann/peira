@@ -1179,29 +1179,34 @@ dashboard data layer (`peira.dashboard`) and the run registry:
 
 1. **Every aggregate cell retains n and CI inputs.** No pre-rounded
    percentage that loses the counts. Headline and per-family cells
-   carry n, n_eligible, and Wilson 95% intervals; the per-severity
+   carry n, n_eligible, and Wilson 95% intervals. The per-severity
    breakdown carries n, n_eligible, n_flipped, and the Wilson interval
-   for its flip rate; the flip-anatomy table carries raw counts
-   (direction counts, severity-weighted flips/n, target hits/defined).
+   for its flip rate. The flip-anatomy table carries raw counts such as
+   direction counts, severity-weighted flips over n, and target hits
+   over defined.
 2. **Per-case pair linkage end-to-end.** `runs_registry.query_cases`
-   with `include_texts=True` returns the full drill-down row:
-   case_id -> benign/attacked texts (resolved from the
-   manifest-sealed dataset files via `peira.dataset.case_texts`),
-   both decisions, both confidences, abstention/malformed flags,
-   flip direction, tokens, cost, latency.
+   with `include_texts=True` returns the full drill-down row. That is
+   case_id mapping to benign and attacked texts resolved from the
+   major-line dataset files via `peira.dataset.case_texts`, plus both
+   decisions, both confidences, abstention and malformed flags, flip
+   direction, tokens, cost, and latency.
 3. **Resample distributions recomputable.** The paired bootstrap
    (`peira.metrics.paired_bootstrap_ci`) is seeded and deterministic,
    so every interval is recomputable from stored per-case data.
    `dashboard.pairwise_resample_ahead` applies the same draw stream to
-   the rank-stability view: for each ranked adapter pair, the fraction
-   of bootstrap resamples where the row adapter's ASR beats the column
-   adapter's ("ahead in X% of resamples"). Pairs sharing fewer than 30
-   eligible cases are withheld (None) under the "not resolvable at
-   this n" convention.
+   the rank-stability view. For each ranked adapter pair it reports the
+   fraction of bootstrap resamples where the row adapter's ASR beats
+   the column adapter's ("ahead in X% of resamples") and the fraction
+   where it loses, with ties counted for neither. Each pair is built
+   from the two adapters' latest qualifying runs only, and carries a
+   per-adapter provenance bundle. Pairs sharing fewer than 30 eligible
+   cases are withheld (None) under the "not resolvable at this n"
+   convention.
 4. **Provenance on every view.** Each dashboard payload's `run`
    section and each leaderboard row's `provenance` bundle carry
    adapter revision, dataset version, manifest SHA-256, seed, pricing
-   version and date, and environment fingerprint.
+   version and date, and environment fingerprint. The rank-stability
+   view carries the same bundle per adapter in each pair.
 
 ## Economic lottery index (C-6)
 

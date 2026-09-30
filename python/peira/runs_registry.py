@@ -933,10 +933,10 @@ def query_cases(
 
     M-6 drill-down linkage: with ``include_texts=True``, each row is
     enriched with ``benign_text`` / ``attacked_text`` resolved from the
-    versioned, manifest-sealed dataset files for the row's
-    dataset_version (None when the version is unknown or the case is
-    not found). The texts complete the case_id -> both texts, both
-    decisions, confidences linkage the drill-down ladder needs.
+    dataset files for the row's dataset_version major line (None when
+    the version is unknown or the case is not found). The texts complete
+    the case_id -> both texts, both decisions, confidences linkage the
+    drill-down ladder needs.
 
     Filters compose with AND. Confidence bounds exclude NULL
     confidences (an adapter that reported no confidence cannot satisfy

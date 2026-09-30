@@ -594,6 +594,80 @@ class TestPairwiseResampleAhead(unittest.TestCase):
             )
             self.assertEqual(first["pairs"], second["pairs"])
 
+    def test_uses_latest_run_per_adapter(self):
+        # Two runs for the same adapter: the vector must come from the
+        # latest qualifying run only, never a mix with stale values.
+        import json
+
+        from peira.dashboard import pairwise_resample_ahead
+
+        def _artifact_with_time(name, flips, created):
+            art = json.loads(
+                _make_dashboard_artifact(
+                    adapter_name=name,
+                    results=[
+                        _result_entry(
+                            case_id=f"c-{i:03d}",
+                            flipped=f,
+                            attacked=_call_record(
+                                decision="deny" if f else "approve",
+                                dispatch_index=1,
+                            ),
+                        )
+                        for i, f in enumerate(flips)
+                    ],
+                )
+            )
+            art["created_utc"] = created
+            return json.dumps(art)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            flips = [True] * 20 + [False] * 20
+            # Old run: adapter-a flips everything (bad).
+            (tmp_path / "a-old.json").write_text(
+                _artifact_with_time(
+                    "multi-a", [True] * 40, "2026-01-01T00:00:00Z"
+                )
+            )
+            # New run: adapter-a flips half (good). Must win.
+            (tmp_path / "a-new.json").write_text(
+                _artifact_with_time(
+                    "multi-a", flips, "2026-06-01T00:00:00Z"
+                )
+            )
+            (tmp_path / "b.json").write_text(
+                _make_dashboard_artifact(
+                    adapter_name="multi-b",
+                    results=[
+                        _result_entry(
+                            case_id=f"c-{i:03d}",
+                            flipped=(i % 2 == 0),
+                            attacked=_call_record(
+                                decision="deny" if i % 2 == 0 else "approve",
+                                dispatch_index=1,
+                            ),
+                        )
+                        for i in range(40)
+                    ],
+                )
+            )
+            out = pairwise_resample_ahead(
+                runs_dir=tmp_path, n_boot=2000, seed=0
+            )
+            # multi-a's latest run (50% ASR) vs multi-b (50% ASR):
+            # roughly tied, NOT the 100%-vs-50% blowout the stale
+            # old run would produce.
+            pair = out["pairs"]["multi-a|multi-b"]
+            self.assertEqual(pair["n_shared"], 40)
+            self.assertLess(pair["ahead_fraction"], 0.9)
+            self.assertLess(pair["behind_fraction"], 0.9)
+            # Provenance identifies the new run.
+            self.assertEqual(
+                pair["provenance_a"]["created_utc"],
+                "2026-06-01T00:00:00Z",
+            )
+
     def test_thin_pairs_withheld(self):
         from peira.dashboard import pairwise_resample_ahead
 

@@ -688,24 +688,37 @@ def pairwise_resample_ahead(
     """
     import random
 
-    from peira.runs_registry import query_cases
+    from peira.runs_registry import list_runs, query_cases
 
     lb = leaderboard(runs_dir=runs_dir, suite=suite, dataset_version=dataset_version)
     ranked = lb.get("ranked", [])
     adapters = [r.get("adapter_name", "") for r in ranked if r.get("adapter_name")]
 
+    # run_id -> artifact path, so vectors come from each adapter's
+    # latest qualifying run only (the run the leaderboard ranked),
+    # never a mix of runs with stale values winning per case_id.
+    run_paths = {
+        r.get("run_id"): r.get("path")
+        for r in list_runs(runs_dir=runs_dir, suite=suite,
+                           dataset_version=dataset_version)
+        if r.get("run_id") and r.get("path")
+    }
+
     # Per-adapter flip vectors over shared eligible cases, keyed by
     # case_id. Only cases eligible in BOTH runs enter the paired
     # comparison, matching the paired-bootstrap pairing contract.
     vectors: dict[str, dict[str, float]] = {}
+    provenance: dict[str, dict[str, Any]] = {}
     for r in ranked:
         name = r.get("adapter_name", "")
         if not name:
             continue
+        run_path = run_paths.get(r.get("run_id", ""))
         rows = query_cases(
             runs_dir=runs_dir,
             adapter=name,
             suite=r.get("suite"),
+            run_path=run_path,
             eligible=True,
             limit=0,
         )
@@ -713,6 +726,16 @@ def pairwise_resample_ahead(
             str(row["case_id"]): 1.0 if row.get("flipped") else 0.0
             for row in rows
             if isinstance(row.get("case_id"), str)
+        }
+        # A3: per-pair provenance so the view's consumers can recover
+        # the sealed run behind each vector.
+        provenance[name] = {
+            "run_id": r.get("run_id", ""),
+            "adapter_version": r.get("adapter_version", ""),
+            "dataset_version": r.get("dataset_version", ""),
+            "manifest_sha256": r.get("provenance", {}).get("manifest_sha256", "")
+            if isinstance(r.get("provenance"), dict) else "",
+            "created_utc": r.get("created_utc", ""),
         }
 
     pairs: dict[str, dict[str, Any]] = {}
@@ -756,6 +779,8 @@ def pairwise_resample_ahead(
                 "ahead_fraction": round(ahead / n_boot, 4),
                 "behind_fraction": round(behind / n_boot, 4),
                 "n_shared": n_shared,
+                "provenance_a": provenance.get(a, {}),
+                "provenance_b": provenance.get(b, {}),
             }
 
     out_pairs: dict[str, dict[str, Any]] = {}

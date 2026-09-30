@@ -555,46 +555,33 @@ def _case_text_index(dataset_dir: Path) -> dict[str, tuple[str | None, str | Non
     """Build {case_id: (benign_input, attacked_input)} for a dataset dir.
 
     Reads every case file (v1's flat cases.jsonl and the per-family
-    files under cases/). Malformed lines are skipped: this is a
-    read-only lookup helper, not a validator (gates own validation).
+    files under cases/) via :func:`iter_case_lines`. Malformed lines are
+    skipped: this is a read-only lookup helper, not a validator (gates
+    own validation).
     """
     index: dict[str, tuple[str | None, str | None]] = {}
-    search_dirs = [dataset_dir, dataset_dir / "cases"]
-    seen: set[Path] = set()
-    for search in search_dirs:
+    for search in (dataset_dir, dataset_dir / "cases"):
         if not search.is_dir():
             continue
-        for path in sorted(search.glob(f"*{CASE_SUFFIX}")):
-            if path in seen:
+        for _path, _lineno, case, _err in iter_case_lines(search):
+            if not isinstance(case, dict):
                 continue
-            seen.add(path)
-            try:
-                text = path.read_text(encoding="utf-8")
-            except OSError:
+            case_id = case.get("case_id")
+            if not isinstance(case_id, str) or case_id in index:
                 continue
-            for line in text.splitlines():
-                if not line.strip():
-                    continue
-                try:
-                    case = json.loads(line)
-                except json.JSONDecodeError:
-                    continue
-                if not isinstance(case, dict):
-                    continue
-                case_id = case.get("case_id")
-                if not isinstance(case_id, str) or case_id in index:
-                    continue
-                index[case_id] = (
-                    _extract_input_text(case.get("benign")),
-                    _extract_input_text(case.get("attacked")),
-                )
+            index[case_id] = (
+                _extract_input_text(case.get("benign")),
+                _extract_input_text(case.get("attacked")),
+            )
     return index
 
 
-# Process-lifetime cache: dataset version -> text index. The dataset
+# Process-lifetime cache: (root, version) -> text index. The dataset
 # files are sealed (manifest-locked), so a stale cache cannot disagree
 # with the sealed bytes within a process.
-_TEXT_INDEX_CACHE: dict[str, dict[str, tuple[str | None, str | None]]] = {}
+_TEXT_INDEX_CACHE: dict[
+    tuple[str, str], dict[str, tuple[str | None, str | None]]
+] = {}
 
 
 def case_texts(
@@ -604,15 +591,18 @@ def case_texts(
 ) -> tuple[str | None, str | None]:
     """M-6 drill-down linkage: case_id -> (benign_text, attacked_text).
 
-    Resolves against the versioned, manifest-sealed dataset files for
-    ``dataset_version``. Returns (None, None) when the version is
-    unknown or the case is not found: the caller (e.g. the registry
-    drill-down) treats missing texts as "not available", never as
-    empty evidence.
+    Resolves against the dataset files for ``dataset_version``'s major
+    line (v1/v2 checkout directory). Minor-version pinning is nominal:
+    a historical minor (e.g. 1.2.1) resolves against today's v1 files,
+    so texts follow the current major-line files, not a per-minor
+    snapshot. Returns (None, None) when the version is unknown or the
+    case is not found: the caller (e.g. the registry drill-down) treats
+    missing texts as "not available", never as empty evidence.
     """
-    cache_key = str(dataset_version)
+    r = repo_root() if root is None else root
+    cache_key = (str(r), str(dataset_version))
     if cache_key not in _TEXT_INDEX_CACHE:
-        ddir = dataset_dir_for_version(str(dataset_version), root)
+        ddir = dataset_dir_for_version(str(dataset_version), r)
         _TEXT_INDEX_CACHE[cache_key] = (
             _case_text_index(ddir) if ddir is not None else {}
         )
