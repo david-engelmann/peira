@@ -145,7 +145,8 @@ class TestHoldoutQueryLog(unittest.TestCase):
                             "--date", "2026-09-28")
         self.assertEqual(code, 1)
         # Rotation resets the budget.
-        code, out = self._run("rotation", "--kind", "scheduled")
+        code, out = self._run("rotation", "--kind", "scheduled",
+                              "--date", "2026-09-29")
         self.assertEqual(code, 0, out)
         # Log with the rotation date (pre-rotation dates are rejected).
         code, out = self._run("log", "--adapter", "rot 1.0",
@@ -161,7 +162,8 @@ class TestHoldoutQueryLog(unittest.TestCase):
         code, out = self._run("log", "--adapter", "backdate 1.0",
                               "--date", "2026-09-29")
         self.assertEqual(code, 0, out)
-        code, out = self._run("rotation", "--kind", "scheduled")
+        code, out = self._run("rotation", "--kind", "scheduled",
+                              "--date", "2026-09-29")
         self.assertEqual(code, 0, out)
         # Log with the rotation date (not before it).
         code, out = self._run("log", "--adapter", "backdate 1.0",

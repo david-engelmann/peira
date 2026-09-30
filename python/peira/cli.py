@@ -2244,6 +2244,7 @@ def cmd_threshold_by_family(args: argparse.Namespace) -> int:
         print(f"threshold-by-family: {out}")
     return EXIT_OK
 
+
 def cmd_value(args: argparse.Namespace) -> int:
     """M-3 economic value view over 1+ run artifacts.
 
