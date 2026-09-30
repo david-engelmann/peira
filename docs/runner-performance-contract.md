@@ -116,9 +116,12 @@ inputs and reported as their own count. No timeout budget by default.
 run's wall-clock time. When the ceiling fires, dispatch stops and the
 in-flight cases drain to completion. They finish honestly instead of
 being cancelled mid-call, so their records and timing are complete.
-(Draining is bounded. Every in-flight case is subject to the
-per-attempt timeout, so a stuck adapter burns at most
-`max_attempts` x `call_timeout` before its case completes.)
+(Draining is bounded when `call_timeout` or `item_timeout` is set.
+Every in-flight case is then subject to a per-attempt or per-item
+ceiling, so a stuck adapter burns at most `max_attempts` x
+`call_timeout` before its case completes. With all timeouts disabled
+(`call_timeout=None`, no `item_timeout`) a hung adapter hangs the
+drain: set at least one timeout for a termination guarantee.)
 Completed cases are checkpointed and the partial stays resumable. A
 timeout-terminated run is resumable, not lost. The artifact seals
 with `termination` set to `"timeout"`. A run that ended this way is

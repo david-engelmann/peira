@@ -729,7 +729,10 @@ class _ArmTimingState:
     execution is attributed, never the whole item budget. ``t_arm_start``
     is the arm's call-start perf_counter; ``worker_start`` is the
     in-flight attempt's worker-thread start (None if the thread never
-    started); the other fields are milliseconds.
+    started); ``worker_in_flight`` tracks whether the worker await is
+    currently active (False during backoff/slot-wait between attempts,
+    so a stale worker_start from a completed attempt is never
+    misattributed); the other fields are milliseconds.
     """
 
     def __init__(self) -> None:
@@ -738,6 +741,7 @@ class _ArmTimingState:
         self.adapter_execution_ms: float = 0.0
         self.backoff_ms: float = 0.0
         self.worker_start: float | None = None
+        self.worker_in_flight: bool = False
 
 
 async def _record_call_async(
@@ -872,6 +876,8 @@ async def _record_call_async(
                     _invoke_adapter, adapter, attempt_input, primitive,
                     context, exec_ms, exec_start,
                 )
+                if timing_state is not None:
+                    timing_state.worker_in_flight = True
                 if call_timeout is not None:
                     output, raw = await asyncio.wait_for(call, call_timeout)
                 else:
@@ -938,6 +944,11 @@ async def _record_call_async(
                     timing_state.worker_start = (
                         exec_start[0] if exec_start else None
                     )
+                    # The worker await has settled (normally, by
+                    # per-attempt timeout, or by outer cancellation):
+                    # a later item-timeout firing during backoff must
+                    # not misattribute this stale worker_start.
+                    timing_state.worker_in_flight = False
                     if not isinstance(
                         sys.exception(), asyncio.CancelledError
                     ):
@@ -1543,9 +1554,19 @@ async def _run_case_with_item_budget(
             # executing when the ceiling fired. (The arm task's finally
             # deliberately skips attribution on outer cancellation —
             # see _record_call_async.)
+            # Capture whether the worker was in flight BEFORE cancelling:
+            # the arm task's finally clears worker_in_flight, so reading
+            # it after gather would always see False.
+            worker_was_in_flight = state.worker_in_flight
             arm_task.cancel()
             await asyncio.gather(arm_task, return_exceptions=True)
-            if state.worker_start is not None:
+            # Attribute only if the worker was actually in flight when
+            # the budget fired. If the arm was in backoff or slot-wait
+            # between attempts, worker_start is stale from a completed
+            # attempt (already counted in adapter_execution_ms): adding
+            # (deadline - worker_start) would double-count it and launder
+            # backoff time into adapter execution.
+            if worker_was_in_flight and state.worker_start is not None:
                 state.adapter_execution_ms += max(
                     0.0, (deadline - state.worker_start) * 1000.0
                 )
@@ -2275,6 +2296,9 @@ async def _run_suite_async(
         # finally closes the transcript, so drained cases can write
         # their entries. They run to completion so their records and
         # timing are honest; dispatch never resumes after this.
+        # The drain is bounded only when call_timeout or item_timeout
+        # is set; with all timeouts disabled a hung adapter hangs the
+        # drain (see the performance contract).
         if run_timed_out and in_flight:
             await asyncio.gather(*in_flight, return_exceptions=True)
             # A draining case that raised is a runner bug, not a
