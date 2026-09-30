@@ -7,18 +7,30 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
 
 ## [Unreleased]
 
-### Fixed A4 residual defects, dataset v1 1.2.1 (D-36)
+### Added R-10 provenance package
 
-- 2 presentational class-4 scale-wording fixes missed by 1.1.1 and S-1:
-  v1-dfl-116 and v1-ngm-128 ("0 to 100" -> "0 to 1", spaced variant;
-  both arms). Prompts aligned to the 0-1 expected_score convention;
-  correct answers unchanged.
-- Refreshed stale "High:" severity sentences to "Critical:" in case notes
-  for v1-ind-052, v1-ind-098 and v1-ind-151 (upgraded high->critical by
-  S-1; the notes refresh missed them). Notes-only; prompts, golds and
-  severities unchanged.
-- Dataset version 1.2.0 -> 1.2.1 (patch: presentational only). All 9
-  dataset gates pass.
+- Every `peira dataset build-manifest` now writes `croissant.json`
+  next to `manifest.json`. It is a Croissant 1.0 metadata record generated
+  from the sealed manifest, with per-file SHA-256 digests and a
+  machine-readable recordSet for the paired-case schema.
+  `croissant.json` records ship for the v1, v2, trial, and
+  safety-policy suites.
+- New immutable dataset-release tag registry at
+  `data/dataset-releases.json`, binding tags like
+  `dataset-v1-1.0.0` to the manifest and croissant digests at the tag.
+  Tags are never moved and entries never edited. CI verifies the
+  whole registry on every PR (`scripts/check_dataset_tags.py`), and
+  `scripts/record_dataset_release.py` records new releases.
+- Per-case PROV-style `provenance` fields (`generated_by`,
+  `generated_at`, `was_derived_from`, `was_attributed_to`), optional
+  and validated identically by the Python and Rust backends.
+- Leaderboard rows now carry a `provenance` object with the full
+  measurement tuple. It holds adapter name, version, revision, and
+  spec, plus suite, dataset version, manifest digest, seed, pricing
+  version and date, environment digest, and contract version.
+- `DATASHEET.md` rewritten as a full Datasheets for Datasets record
+  covering all four public suites, plus a new `docs/Provenance.md`
+  reference page.
 
 ### Applied S-1 re-grade corrections, dataset v1 1.2.0 (D-36)
 

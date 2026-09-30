@@ -90,12 +90,9 @@ class RunArtifact:
     # eligibility rules.
     contract_version: str = CONTRACT_VERSION
     # How the run ended: "complete" (all planned cases scored),
-    # "budget" (stopped by --budget-usd; in-flight cases drained),
-    # "timeout" (stopped by --run-timeout; dispatch stopped, in-flight
-    # cases drained to completion, completed cases checkpointed in a
-    # resumable partial), "partial" (checkpoint, not a finished run),
-    # "operator" reserved for future termination causes. Budget- or
-    # timeout-terminated runs are analyzable but never rank: a lucky
+    # "budget" (stopped by --budget-usd; see budget_usd/spent_usd),
+    # "timeout"/"operator" reserved for future termination causes.
+    # Budget-terminated runs are analyzable but never rank: a lucky
     # prefix of easy cases must not top a leaderboard.
     termination: str = "complete"
     # Hard spend cap in USD for this run (None = uncapped). The runner
@@ -416,7 +413,7 @@ class RunArtifact:
                 "decision", "confidence", "abstained", "refusal_reason",
                 "usage", "seed", "dispatch_index", "malformed",
                 "dispatch_limit", "score", "latency_ms_total", "timed_out",
-                "timeout_kind", "cached", "timing_ms",
+                "cached",
             ):
                 raise ValueError(f"{where} has unknown field: {key!r}")
         for key in (
@@ -439,24 +436,6 @@ class RunArtifact:
             raise ValueError(
                 f"{where} field 'timed_out' must be a boolean, "
                 f"got {type(timed_out).__name__}"
-            )
-        # timeout_kind types the timeout explicitly: "attempt" or
-        # "item" on a timed-out record, absent (None) otherwise. A
-        # kind on a non-timed-out record, or an unknown kind string,
-        # is corrupt data.
-        timeout_kind = record.get("timeout_kind")
-        if timeout_kind is None:
-            if timed_out:
-                # Pre-kind artifacts: every timeout then was a
-                # per-attempt timeout; the kind is inferred, not
-                # defaulted.
-                pass
-        elif (
-            not timed_out or timeout_kind not in ("attempt", "item")
-        ):
-            raise ValueError(
-                f"{where} field 'timeout_kind' must be 'attempt' or "
-                f"'item' on a timed-out record, got {timeout_kind!r}"
             )
         # cached marks response-cache hits (no provider call was made):
         # same bool-only treatment as timed_out.
@@ -508,42 +487,6 @@ class RunArtifact:
         if "usage" not in record:
             raise ValueError(f"{where} is missing field: 'usage'")
         cls._checked_usage(record["usage"], where)
-        # R-12 timing decomposition: absent in pre-R-12 artifacts (the
-        # zero breakdown is the honest reading there). When present it
-        # must be the four-component mapping of finite non-negative
-        # numbers: _is_num rejects bools, `not tval >= 0` rejects
-        # negatives and NaN, and the tuple rejects infinities.
-        timing = record.get("timing_ms")
-        if timing is not None:
-            if not isinstance(timing, dict):
-                raise ValueError(
-                    f"{where} field 'timing_ms' must be an object, "
-                    f"got {type(timing).__name__}"
-                )
-            # Reject unknown keys: silently accepting a newer/renamed
-            # field could verify a lock under changed semantics.
-            for tkey in timing:
-                if tkey not in (
-                    "admission_wait_ms", "adapter_execution_ms",
-                    "harness_overhead_ms", "backoff_ms",
-                ):
-                    raise ValueError(
-                        f"{where} has unknown timing_ms field: {tkey!r}"
-                    )
-            for tkey in (
-                "admission_wait_ms", "adapter_execution_ms",
-                "harness_overhead_ms", "backoff_ms",
-            ):
-                tval = timing.get(tkey)
-                if (
-                    not _is_num(tval)
-                    or not tval >= 0
-                    or tval in (float("inf"), float("-inf"))
-                ):
-                    raise ValueError(
-                        f"{where} field 'timing_ms.{tkey}' must be a "
-                        f"finite non-negative number, got {tval!r}"
-                    )
         return record
 
     @classmethod

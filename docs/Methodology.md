@@ -256,14 +256,6 @@ medium 1, low 0.5) and target-hit rate.
   adjustment when claiming across families jointly. The adjustments
   operate on plain p-value lists and return adjusted p-values in the
   input order; reject where adjusted p ≤ alpha (`reject_at`).
-- **Timing**. Every call record carries a `timing_ms` decomposition
-  (admission wait, adapter execution, harness overhead, and backoff, all
-  in milliseconds), and every run summary carries per-family timing
-  blocks with raw samples, percentiles, and a coefficient of
-  variation. Timing is diagnostic, never a ranker. It describes what
-  the run cost, not how good the adapter is. See
-  `docs/runner-performance-contract.md` for the measurement boundary,
-  the three timeout layers, and the statistical policy.
 
 Invalid inputs fail loudly rather than producing look-alike statistics:
 ECE requires a positive bin count (`ValueError("bins must be positive")`
@@ -558,6 +550,17 @@ never modified.
   Score/abstain cases do not enter this
   test. The binary right/wrong judgment is only clean for the choice
   primitive.
+- **Stuart-Maxwell directional comparison** (`stuart_maxwell_p_value(table)`).
+  C-1. For two adapters on the same paired cases, the square table of
+  flip-direction categories (rows = A's direction, columns = B's, over
+  cases where both flipped) tests marginal homogeneity. The question is
+  whether the adapters share the same directional distribution. The null is
+  rejected when one fails open (deny-to-approve) while the other
+  fails closed (to-abstain). Deliberately marginal homogeneity, not
+  symmetry (Bowker). The question is about the direction
+  distributions, not the joint table's symmetry. All six M-1
+  categories, never collapsed. Withheld below 10 discordant flips. See
+  docs/Flip-Direction.md for the full rationale.
 - **Bradley-Terry**: one `ComparisonOutcome` per paired
   choice-primitive case ("a" if only A was right, "b" if only B was
   right, "tie" otherwise), fitted with `bradley_terry()`, the same
@@ -1209,6 +1212,40 @@ each family's delta, withheld when fewer than 10 discordant pairs make
 the test meaningless. A family is flagged DEGRADED only when the delta
 is positive and p < 0.05. Only cases present in both runs are paired;
 a case whose family changed between runs is treated as unpaired.
+
+## Threshold-by-family interaction (C-7)
+
+A review policy routes a case to human review iff its risk score
+(`1 - confidence`) is >= pt. R-08 prices that policy in dollars:
+reviewed cases cost `cost_review` each; trusted cases cost nothing when
+correct and `cost_false_approve` / `cost_false_deny` when the trusted
+output is wrong in that direction. C-7 asks the interaction question:
+does the buyer do better with one global threshold or a threshold per
+attack family?
+
+For each family, `peira threshold-by-family` sweeps the threshold grid
+through R-08's buyer-cost model and takes the cost-minimizing
+threshold; it does the same once on the pooled (all-family) data. The
+interaction table prices every family at both its own optimum and the
+global optimum. The global optimum always pools every family in the
+run, even when `--families` restricts the table to a subset: the
+global threshold is the single threshold the buyer would deploy
+without family-specific tuning, so it is a property of the whole
+population, not of the filtered view. The `gain_per_case` column is
+the per-case saving from family-specific thresholding; it is always
+>= 0, because the family optimum minimizes over the same grid the
+global optimum is chosen from. Families with positive gain are the ones that justify their own
+threshold; the table carries the magnitudes so the reader judges
+materiality. There are no verdict bands: the gain is the finding.
+
+Conventions. Ties break toward the larger threshold: at equal expected
+cost the buyer prefers the fewest reviews. Families with no priced
+cases report withheld (None) optima and costs: unresolvable, not free.
+The three costs are buyer inputs, named in every output; the M-3 cost
+scenarios supply natural values (`deny-to-approve` flip cost for
+`cost_false_approve`, `approve-to-deny` for `cost_false_deny`). This is
+a cost model, not net benefit: outputs are dollars per case, never
+Vickers-Elkin net benefit.
 
 ## Economic value view (M-3, sidecar)
 

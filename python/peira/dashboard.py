@@ -491,6 +491,18 @@ def leaderboard(
                     attacked_lat = lat.get("attacked", {}) or {}
                     cal = payload["calibration"] or {}
                     attacked_cal = (cal.get("attacked", {}) or {})
+                    # R-10: every ranked row is bound to the full
+                    # provenance tuple. It carries adapter identity,
+                    # dataset identity, pricing version, seed, and
+                    # environment. The object is always attached with
+                    # all twelve keys; most values default to "" when
+                    # the artifact did not record them (seed defaults
+                    # to 0). manifest_sha256 and adapter_version are
+                    # required non-empty by qualifies_for_leaderboard,
+                    # so consumers should treat empty values as
+                    # "not recorded", not as verified facts.
+                    cfg = artifact.config if isinstance(
+                        artifact.config, dict) else {}
                     row = {
                         "adapter_name": adapter,
                         "adapter_version": artifact.adapter_version,
@@ -508,6 +520,23 @@ def leaderboard(
                         "latency_ms_p95_attacked": attacked_lat.get("p95"),
                         "ece_attacked": attacked_cal.get("ece"),
                         "ranking_eligible": True,
+                        "provenance": {
+                            "adapter_name": adapter,
+                            "adapter_version": artifact.adapter_version,
+                            "adapter_revision": str(
+                                cfg.get("adapter_revision")
+                                or artifact.adapter_version or ""),
+                            "adapter_spec": str(
+                                cfg.get("adapter_spec") or ""),
+                            "suite": artifact.suite,
+                            "dataset_version": artifact.dataset_version,
+                            "manifest_sha256": artifact.manifest_sha256,
+                            "seed": artifact.seed,
+                            "pricing_version": artifact.pricing_version,
+                            "pricing_date": artifact.pricing_date,
+                            "env_sha256": artifact.env_sha256,
+                            "contract_version": artifact.contract_version,
+                        },
                     }
                 else:
                     reason = why

@@ -104,22 +104,6 @@ its own budget enforcement. Fix: resume with the same `--budget-usd` the
 partial was written with (or no `--budget-usd`, matching the partial), or
 delete the `<adapter>-<suite>.partial.json` file and re-run from scratch.
 
-**`error: partial run was recorded with item_timeout_s X, not Y: re-run with the same --item-timeout or drop --resume`**
-Cause: `peira run --resume` found a partial run recorded under a different
-item timeout than the one requested. The timeout is a measurement input:
-merging results scored under a different ceiling would make the artifact lie
-about its own timeout enforcement. Fix: resume with the same `--item-timeout`
-the partial was written with (or no `--item-timeout`, matching the partial),
-or delete the `<adapter>-<suite>.partial.json` file and re-run from scratch.
-
-**`error: partial run was recorded with run_timeout_s X, not Y: re-run with the same --run-timeout or drop --resume`**
-Cause: `peira run --resume` found a partial run recorded under a different
-run timeout than the one requested. The timeout is a measurement input:
-merging results scored under a different ceiling would make the artifact lie
-about its own timeout enforcement. Fix: resume with the same `--run-timeout`
-the partial was written with (or no `--run-timeout`, matching the partial),
-or delete the `<adapter>-<suite>.partial.json` file and re-run from scratch.
-
 **`error: partial run has no cache state declaration (config.cache_enabled): it predates cache-state sealing and cannot resume`**
 Cause: `peira run --resume` found a partial run written before cache
 state was sealed into artifacts. It cannot prove its cache state, so
@@ -490,14 +474,6 @@ seconds). Fix: pass a positive value (`--rlimit-cpu-seconds 3600`,
 Cause: `peira run --budget-usd` got a non-positive (or NaN) spend cap.
 A non-positive cap can never dispatch a case honestly. Fix: pass a
 positive value (`--budget-usd 5`), or drop the flag for an uncapped run.
-
-**`error: --item-timeout must be > 0 (got N)` / `error: --run-timeout must be > 0 (got N)`**
-Cause: `peira run --item-timeout` / `--run-timeout` got a non-positive
-(or NaN) wall-clock budget. A non-positive budget would time out every
-case (or the whole run) immediately. Fix: pass a positive value in
-seconds (`--item-timeout 300`, `--run-timeout 3600`), or drop the flag
-for no budget at that layer. See `docs/runner-performance-contract.md`
-for what each budget layer does.
 
 **`error: cannot write transcript to <path>: <reason>`**
 Cause: `peira run --transcript` points somewhere unwritable: a missing
@@ -967,6 +943,57 @@ Cause: `--families` left only one family to analyze, so removing it
 leaves nothing to rank on (leave-one-out needs at least two families).
 Fix: pass at least two families, or omit `--families` to use the union
 across the runs.
+
+## `peira threshold-by-family` (C-7)
+
+**`error: <run> not found` (from `peira threshold-by-family`)**
+Cause: the artifact path doesn't exist. Fix: check the path.
+`peira threshold-by-family` takes one positional artifact file.
+
+**`error: <run> is not a valid run artifact (...)` (from `peira threshold-by-family`)**
+Cause: the file isn't a sealed run artifact (bad JSON, or a JSON file
+that isn't a run artifact). Fix: point at the `.json` files `peira run`
+wrote to the runs directory.
+
+**`error: <run>: cannot decode per-case results (...)` (from `peira threshold-by-family`)**
+Cause: the artifact's per-case results don't decode (a hand-edited
+artifact, or an artifact from an incompatible peira version). Fix:
+re-run the adapter on the current peira; don't hand-edit artifacts.
+
+**`error: no families found in the run` (from `peira threshold-by-family`)**
+Cause: the artifact contains no per-case results (an empty run). Fix:
+pass an artifact from a completed run.
+
+**`error: unknown families: <names> (not present in the run)` (from `peira threshold-by-family`)**
+Cause: `--families` names a family absent from the artifact (often a
+typo). Fix: check the spelling against the family names in the run;
+omit `--families` to use every family in the run.
+
+**`error: --families matched no families (empty filter)` (from `peira threshold-by-family`)**
+Cause: `--families` was given but parsed to nothing (e.g.
+`--families=","`). Fix: pass at least one family name, or omit
+`--families` to use every family in the run.
+
+**`error: <name> must be finite and non-negative, got <value>` (from `peira threshold-by-family`)**
+Cause: a `--cost-*` flag got a negative, NaN, or infinite value
+(argparse `type=float` accepts `nan` and `inf`; only finite
+non-negative costs are meaningful). Fix: pass a finite USD cost >= 0
+for every `--cost-*` flag.
+
+**`error: cannot write threshold-family JSON to <out> (...)` (from `peira threshold-by-family`)**
+Cause: `--json` points somewhere unwritable: a missing parent
+directory, or a permissions problem. Fix: create the directory first,
+or pick a writable path.
+
+**`peira threshold-by-family` reports every family as withheld**
+Cause: not an error. No family has priced cases on the priced arm, so
+optima and costs are unresolvable, not zero. On the attacked arm that
+usually means every case is ineligible (the ineligible exclusion only
+applies to the attacked arm); on either arm it can also mean every
+case is malformed, abstained, non-binary, or missing a finite
+confidence. Fix: check the run's eligibility and record quality;
+excluded cases carry no baseline to price correctness against.
+
 
 ## R-05 contamination scripts
 

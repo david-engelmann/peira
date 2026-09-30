@@ -61,7 +61,6 @@ from peira.metrics import (
     INELIGIBLE_BENIGN_MALFORMED,
     INELIGIBLE_BENIGN_WRONG_DECISION,
     CallRecord,
-    CallTiming,
     PerCaseResult,
     summarize as _metrics_summarize,
 )
@@ -129,7 +128,6 @@ def _blank_record_py(
     dispatch_limit: int,
     latency_ms_total: float = 0.0,
     timed_out: bool = False,
-    timeout_kind: str | None = None,
 ) -> CallRecord:
     """Reference implementation of :func:`_blank_record` (pure Python).
 
@@ -138,9 +136,7 @@ def _blank_record_py(
     unknown, and the malformed flag carries the signal. A blank record
     is still data: ``latency_ms_total`` carries the time spent before
     giving up (all attempts plus backoff), and ``timed_out`` marks the
-    calls whose terminal failure was a timeout. ``timeout_kind`` types
-    it: "attempt" for per-attempt timeout exhaustion, "item" for the
-    case-level item budget; None when the call did not time out.
+    calls whose terminal failure was a per-attempt timeout.
     """
     return CallRecord(
         decision="<error>",
@@ -154,7 +150,6 @@ def _blank_record_py(
         dispatch_limit=dispatch_limit,
         latency_ms_total=latency_ms_total,
         timed_out=timed_out,
-        timeout_kind=timeout_kind,
     )
 
 
@@ -164,7 +159,6 @@ def _blank_record(
     dispatch_limit: int,
     latency_ms_total: float = 0.0,
     timed_out: bool = False,
-    timeout_kind: str | None = None,
 ) -> CallRecord:
     """The record for a call that produced nothing usable.
 
@@ -172,10 +166,9 @@ def _blank_record(
     :func:`_blank_record_py` is the reference and the fallback.
     ``TypeError``/``ValueError``/``OverflowError`` fall back, so
     wrong-typed or out-of-range seeds behave exactly as in Python.
-    ``latency_ms_total``, ``timed_out``, and ``timeout_kind`` are
-    measurement sidecars the Rust core does not model: they are
-    overlaid in Python via ``dataclasses.replace`` after the base
-    record is built.
+    ``latency_ms_total`` and ``timed_out`` are measurement sidecars the
+    Rust core does not model: they are overlaid in Python via
+    ``dataclasses.replace`` after the base record is built.
     """
     if _rust is not None:
         try:
@@ -198,14 +191,12 @@ def _blank_record(
             )
             if latency_ms_total != 0.0 or timed_out:
                 rec = dataclasses.replace(
-                    rec, latency_ms_total=latency_ms_total,
-                    timed_out=timed_out, timeout_kind=timeout_kind,
+                    rec, latency_ms_total=latency_ms_total, timed_out=timed_out
                 )
             return rec
     return _blank_record_py(
         seed, dispatch_index, dispatch_limit,
         latency_ms_total=latency_ms_total, timed_out=timed_out,
-        timeout_kind=timeout_kind,
     )
 
 
@@ -219,7 +210,6 @@ def _validate_and_record(
     dispatch_limit: int,
     latency_ms_total: float | None = None,
     timed_out: bool = False,
-    timeout_kind: str | None = None,
     cached: bool = False,
 ) -> CallRecord:
     """Build the CallRecord for one finished attempt.
@@ -231,9 +221,7 @@ def _validate_and_record(
     latency across all attempts plus backoff. It defaults to the
     final attempt when there was only one. ``cached`` marks
     response-cache hits: no provider call was made, so the metrics
-    layer excludes them from the latency percentiles. ``timeout_kind``
-    types a timeout failure ("attempt" for per-attempt exhaustion);
-    None when the call did not time out.
+    layer excludes them from the latency percentiles.
     """
     if latency_ms_total is None:
         latency_ms_total = latency_ms
@@ -241,7 +229,6 @@ def _validate_and_record(
         return _blank_record(
             seed, dispatch_index, dispatch_limit,
             latency_ms_total=latency_ms_total, timed_out=timed_out,
-            timeout_kind=timeout_kind,
         )
     usage = output.usage
     if usage is not None:
@@ -272,7 +259,6 @@ def _validate_and_record(
         score=output.score if isinstance(output, ScoreOutput) else None,
         latency_ms_total=latency_ms_total,
         timed_out=timed_out,
-        timeout_kind=timeout_kind,
         cached=cached,
     )
 
@@ -294,39 +280,21 @@ def _record_call(
     cross-adapter comparison. cost_usd is recomputed from the pinned
     pricing table — the runner is the cost authority, and an
     adapter-set cost_usd is ignored.
-
-    R-12 timing: the sync path is strictly sequential, so admission
-    wait is 0.0; adapter execution is the decide() wall time and the
-    rest is harness overhead.
     """
-    t_call_start = time.perf_counter()
     start = time.perf_counter()
     try:
         output = adapter.decide(case_input, primitive, context)
         errors = validate_output(output, primitive)
         timed_out = False
-        timeout_kind = None
     except Exception as e:
         output = None
         errors = ["adapter raised"]
         timed_out = _is_timeout_error(e)
-        # A timeout raised by decide() itself is a per-attempt
-        # timeout: the sync path makes no further attempts.
-        timeout_kind = "attempt" if timed_out else None
-    t_done = time.perf_counter()
-    adapter_execution_ms = (t_done - start) * 1000.0
     latency_ms = (time.perf_counter() - start) * 1000.0
-    timing = _assemble_timing(
-        t_call_start, 0.0, adapter_execution_ms, 0.0
-    )
     # The sync path is strictly sequential: the effective limit is 1.
-    return dataclasses.replace(
-        _validate_and_record(
-            output, errors, latency_ms, seed, dispatch_index,
-            pricing_table, dispatch_limit=1, timed_out=timed_out,
-            timeout_kind=timeout_kind,
-        ),
-        timing_ms=timing,
+    return _validate_and_record(
+        output, errors, latency_ms, seed, dispatch_index, pricing_table,
+        dispatch_limit=1, timed_out=timed_out,
     )
 
 
@@ -530,8 +498,6 @@ def _invoke_adapter(
     case_input: dict[str, Any],
     primitive: str,
     context: CallContext,
-    _exec_ms: list[float] | None = None,
-    _exec_start: list[float] | None = None,
 ) -> tuple[Any, dict[str, Any] | None]:
     """Run one adapter call and capture its transcript payload.
 
@@ -539,28 +505,8 @@ def _invoke_adapter(
     they are captured atomically with the call by construction — the
     runner reads them off the returned object, no second hook and no
     thread-local bookkeeping for adapter authors.
-
-    When ``_exec_ms`` is given, ``adapter.decide()``'s wall time in
-    milliseconds is appended to it (even when decide raises): the
-    runner uses it to separate exact adapter execution from
-    thread-pool scheduling delay, which is harness overhead, not
-    provider work. When ``_exec_start`` is given, the worker thread's
-    start time (``perf_counter``, same clock as the runner) is appended
-    at thread entry: on a ``wait_for`` timeout the thread is abandoned
-    and ``_exec_ms`` stays empty, but the start time lets the runner
-    attribute the elapsed thread time as adapter execution instead of
-    the dishonest 0.0.
     """
-    if _exec_ms is None:
-        output = adapter.decide(case_input, primitive, context)
-    else:
-        if _exec_start is not None:
-            _exec_start.append(time.perf_counter())
-        t0 = time.perf_counter()
-        try:
-            output = adapter.decide(case_input, primitive, context)
-        finally:
-            _exec_ms.append((time.perf_counter() - t0) * 1000.0)
+    output = adapter.decide(case_input, primitive, context)
     raw = getattr(output, "transcript", None)
     if raw is not None and not isinstance(raw, dict):
         # validate_output() flags this as malformed downstream; the
@@ -592,8 +538,6 @@ def _transcript_entry(
     attempt_latencies_ms: list[float] | None = None,
     latency_ms_total: float | None = None,
     timed_out: bool = False,
-    timeout_kind: str | None = None,
-    timing_ms: dict[str, float] | None = None,
 ) -> dict[str, Any]:
     if output is not None and error is None and not validation_errors:
         response: dict[str, Any] = {
@@ -652,17 +596,9 @@ def _transcript_entry(
             latency_ms_total if latency_ms_total is not None
             else latency_ms
         ),
-        # True when the terminal failure was a timeout
-        # (asyncio.TimeoutError). "timeout_kind" types it explicitly:
-        # "attempt" for per-attempt timeout exhaustion, "item" for the
-        # case-level item budget. A timeout is data, not missing data.
+        # True when the terminal failure was a per-attempt timeout
+        # (asyncio.TimeoutError). A timeout is data, not missing data.
         "timed_out": timed_out,
-        "timeout_kind": timeout_kind,
-        # R-12 per-call timing decomposition (admission wait vs harness
-        # overhead vs adapter execution vs backoff), so replay rebuilds
-        # the record's timing_ms exactly. Absent on entries written
-        # before R-12 — the rebuild then yields the zero breakdown.
-        "timing_ms": timing_ms,
         "attempts": attempts,
         "cached": cached,
         "dispatch_limit": dispatch_limit,
@@ -673,75 +609,6 @@ def _transcript_entry(
         "max_concurrency": max_concurrency,
         "recorded_utc": datetime.now(timezone.utc).isoformat(),
     }
-
-
-def _assemble_timing(
-    t_call_start: float,
-    admission_wait_ms: float,
-    adapter_execution_ms: float,
-    backoff_ms: float,
-) -> CallTiming:
-    """Assemble the R-12 per-call timing decomposition.
-
-    ``admission_wait_ms``, ``adapter_execution_ms``, and ``backoff_ms``
-    are measured directly at their sources; ``harness_overhead_ms`` is
-    the residual — everything else the runner did between call start
-    and assembly (input deepcopy, output validation, response-cache
-    write, record construction).
-
-    The residual is clamped at zero. This is honest, not hiding
-    signal: every component is a nested sub-window of the total
-    window, all read from the same process-wide monotonic clock, so
-    the true residual is non-negative by construction — only float
-    dust (sub-microsecond rounding across the subtractions) can push
-    it negative. ``CallTiming`` validation rejects negative
-    components, so the clamp is also load-bearing for the sealed
-    record. A negative residual beyond float dust would mean the
-    components overlap — a measurement bug, not data — and clamping
-    it would hide that bug; if per-family timing summaries ever show
-    systematically zero harness overhead on calls that clearly did
-    harness work, suspect the measurement before the clamp.
-
-    Boundary: the decomposition covers call start through assembly
-    (cache write included). Transcript entry assembly and
-    serialization are both excluded — no measurement can include its
-    own write.
-    """
-    total_ms = (time.perf_counter() - t_call_start) * 1000.0
-    harness_ms = (
-        total_ms - admission_wait_ms - adapter_execution_ms - backoff_ms
-    )
-    return CallTiming(
-        admission_wait_ms=admission_wait_ms,
-        adapter_execution_ms=adapter_execution_ms,
-        harness_overhead_ms=max(0.0, harness_ms),
-        backoff_ms=backoff_ms,
-    )
-
-
-class _ArmTimingState:
-    """Mutable per-arm timing state, surviving task cancellation.
-
-    ``_record_call_async`` syncs its accumulated timing components here
-    after every attempt (including the attempt in flight when the task
-    is cancelled), so an item-timeout handler can build an honest
-    partial record after abandoning the arm: only elapsed adapter
-    execution is attributed, never the whole item budget. ``t_arm_start``
-    is the arm's call-start perf_counter; ``worker_start`` is the
-    in-flight attempt's worker-thread start (None if the thread never
-    started); ``worker_in_flight`` tracks whether the worker await is
-    currently active (False during backoff/slot-wait between attempts,
-    so a stale worker_start from a completed attempt is never
-    misattributed); the other fields are milliseconds.
-    """
-
-    def __init__(self) -> None:
-        self.t_arm_start: float = 0.0
-        self.admission_wait_ms: float = 0.0
-        self.adapter_execution_ms: float = 0.0
-        self.backoff_ms: float = 0.0
-        self.worker_start: float | None = None
-        self.worker_in_flight: bool = False
 
 
 async def _record_call_async(
@@ -762,7 +629,6 @@ async def _record_call_async(
     cache: ResponseCache | None,
     cache_key_str: str | None,
     transcript: _TranscriptSink | None,
-    timing_state: _ArmTimingState | None = None,
 ) -> CallRecord:
     """Concurrent, retried, cached, transcript-logged variant call.
 
@@ -771,24 +637,11 @@ async def _record_call_async(
     validation errors become malformed records immediately. Jitter is
     seeded per (seed, dispatch_index, attempt), so retry timing does not
     depend on run timing.
-
-    ``timing_state``, when given, receives the accumulated timing
-    components after every attempt (including a cancelled in-flight
-    attempt): an item-timeout handler can then build an honest partial
-    record from it after abandoning this call.
     """
     # The concurrency actually used for this call: the controller's
     # live limit at dispatch time (sealed on the record as
     # ``dispatch_limit``).
     dispatch_limit = controller.limit
-    # R-12 timing decomposition: admission wait and adapter execution
-    # are measured at their sources; harness overhead is the residual
-    # (see _assemble_timing).
-    t_call_start = time.perf_counter()
-    if timing_state is not None:
-        timing_state.t_arm_start = t_call_start
-    admission_wait_ms = 0.0
-    adapter_execution_ms = 0.0
     # Cache first: a hit skips the provider entirely (no slot, no
     # congestion signal — nothing was sent).
     if cache is not None and cache_key_str is not None:
@@ -806,14 +659,6 @@ async def _record_call_async(
                     seed, dispatch_index, pricing_table, dispatch_limit,
                     cached=True,
                 )
-                # Cache hit: no slot waited, no adapter executed — the
-                # whole call was harness (lookup, validation, record
-                # assembly).
-                timing = _assemble_timing(
-                    t_call_start, admission_wait_ms,
-                    adapter_execution_ms, 0.0,
-                )
-                record = dataclasses.replace(record, timing_ms=timing)
                 if transcript is not None:
                     transcript.write(
                         _transcript_entry(
@@ -835,7 +680,6 @@ async def _record_call_async(
                             latency_ms_total=(
                                 record.latency_ms_total
                             ),
-                            timing_ms=timing.to_dict(),
                         )
                     )
                 return record
@@ -850,34 +694,18 @@ async def _record_call_async(
     backoff_ms_total = 0.0
     attempt = 0
     while True:
-        t_submit = time.perf_counter()
         async with controller.slot():
-            t_slot = time.perf_counter()
-            admission_wait_ms += (t_slot - t_submit) * 1000.0
             start = time.perf_counter()
-            t_dispatch: float | None = None
             try:
                 # Each attempt gets a pristine copy of the input. The
                 # transcript records ``case_input`` — what the runner
                 # sent, never what the adapter mutated — and a retry
                 # never sees a previous attempt's mutations.
                 attempt_input = copy.deepcopy(case_input)
-                t_dispatch = time.perf_counter()
-                # Exact adapter execution is measured inside the worker
-                # thread (see _invoke_adapter): the holder separates
-                # decide()'s wall time from thread-pool scheduling
-                # delay, which stays in the harness-overhead residual.
-                # _exec_start records the thread's start time so a
-                # wait_for timeout attributes the elapsed thread time
-                # instead of 0.0.
-                exec_ms: list[float] = []
-                exec_start: list[float] = []
                 call = asyncio.to_thread(
                     _invoke_adapter, adapter, attempt_input, primitive,
-                    context, exec_ms, exec_start,
+                    context,
                 )
-                if timing_state is not None:
-                    timing_state.worker_in_flight = True
                 if call_timeout is not None:
                     output, raw = await asyncio.wait_for(call, call_timeout)
                 else:
@@ -900,61 +728,6 @@ async def _record_call_async(
                 if isinstance(e, asyncio.CancelledError):
                     raise
                 output, errors, error = None, [], e
-            finally:
-                # Adapter execution is exactly adapter.decide()'s wall
-                # time, measured inside the worker thread (see
-                # _invoke_adapter). Thread-pool scheduling delay is
-                # runner scheduling, not provider work: it stays in the
-                # harness-overhead residual via _assemble_timing. When
-                # deepcopy itself failed, t_dispatch is unset and the
-                # attempt contributes nothing here — the residual lands
-                # in harness overhead. When the worker thread started
-                # but never finished (a wait_for timeout abandoning the
-                # thread), _exec_ms is empty but _exec_start is not:
-                # attribute the elapsed thread time as adapter execution
-                # — the adapter was executing when the ceiling fired —
-                # instead of the dishonest 0.0. When the attempt was
-                # cancelled before the worker started (a wait_for
-                # timeout racing a queued call), both holders are empty
-                # and the attempt contributes nothing: the adapter never
-                # executed.
-                if t_dispatch is not None:
-                    if exec_ms:
-                        adapter_execution_ms += exec_ms[0]
-                    elif exec_start:
-                        adapter_execution_ms += max(
-                            0.0,
-                            (time.perf_counter() - exec_start[0])
-                            * 1000.0,
-                        )
-                # Sync the item-timeout state after every attempt: the
-                # finally runs on success, error, and cancellation, so
-                # an abandoned arm's handler always sees the honest
-                # partial components. On outer cancellation (item
-                # timeout, fleet shutdown) the in-flight attempt's
-                # execution is NOT attributed here: the cancelling
-                # handler attributes it using the timeout's fire time,
-                # so post-abandonment event-loop delay is never counted
-                # as adapter execution. sys.exception() distinguishes
-                # the outer CancelledError from a per-attempt
-                # TimeoutError (which attributes normally below).
-                if timing_state is not None:
-                    timing_state.admission_wait_ms = admission_wait_ms
-                    timing_state.backoff_ms = backoff_ms_total
-                    timing_state.worker_start = (
-                        exec_start[0] if exec_start else None
-                    )
-                    # The worker await has settled (normally, by
-                    # per-attempt timeout, or by outer cancellation):
-                    # a later item-timeout firing during backoff must
-                    # not misattribute this stale worker_start.
-                    timing_state.worker_in_flight = False
-                    if not isinstance(
-                        sys.exception(), asyncio.CancelledError
-                    ):
-                        timing_state.adapter_execution_ms = (
-                            adapter_execution_ms
-                        )
         latency_ms = (time.perf_counter() - start) * 1000.0
         attempt_latencies_ms.append(latency_ms)
 
@@ -970,11 +743,6 @@ async def _record_call_async(
                     cache_key_str, primitive,
                     _output_to_dict(output, primitive),
                 )
-            timing = _assemble_timing(
-                t_call_start, admission_wait_ms,
-                adapter_execution_ms, backoff_ms_total,
-            )
-            record = dataclasses.replace(record, timing_ms=timing)
             if transcript is not None:
                 transcript.write(
                     _transcript_entry(
@@ -992,7 +760,6 @@ async def _record_call_async(
                         cached=False,
                         attempt_latencies_ms=attempt_latencies_ms,
                         latency_ms_total=latency_ms_total,
-                        timing_ms=timing.to_dict(),
                     )
                 )
             return record
@@ -1019,14 +786,6 @@ async def _record_call_async(
             # Terminal failure (permanent, or retries exhausted).
             latency_ms_total = sum(attempt_latencies_ms) + backoff_ms_total
             timed_out = error is not None and _is_timeout_error(error)
-            # A timeout here exhausted the per-attempt budget: it is an
-            # explicitly typed "attempt" timeout, distinct from the
-            # case-level item budget ("item").
-            timeout_kind = "attempt" if timed_out else None
-            timing = _assemble_timing(
-                t_call_start, admission_wait_ms,
-                adapter_execution_ms, backoff_ms_total,
-            )
             if transcript is not None:
                 transcript.write(
                     _transcript_entry(
@@ -1046,27 +805,17 @@ async def _record_call_async(
                         attempt_latencies_ms=attempt_latencies_ms,
                         latency_ms_total=latency_ms_total,
                         timed_out=timed_out,
-                        timeout_kind=timeout_kind,
-                        timing_ms=timing.to_dict(),
                     )
                 )
-            return dataclasses.replace(
-                _blank_record(
-                    seed, dispatch_index, dispatch_limit,
-                    latency_ms_total=latency_ms_total, timed_out=timed_out,
-                    timeout_kind=timeout_kind,
-                ),
-                timing_ms=timing,
+            return _blank_record(
+                seed, dispatch_index, dispatch_limit,
+                latency_ms_total=latency_ms_total, timed_out=timed_out,
             )
 
         # Validation errors: the adapter answered with a structurally
         # wrong output — an adapter bug, not congestion. Never retried.
         controller.on_success()  # the provider answered; not congestion
         latency_ms_total = sum(attempt_latencies_ms) + backoff_ms_total
-        timing = _assemble_timing(
-            t_call_start, admission_wait_ms,
-            adapter_execution_ms, backoff_ms_total,
-        )
         if transcript is not None:
             transcript.write(
                 _transcript_entry(
@@ -1085,15 +834,11 @@ async def _record_call_async(
                     cached=False,
                     attempt_latencies_ms=attempt_latencies_ms,
                     latency_ms_total=latency_ms_total,
-                    timing_ms=timing.to_dict(),
                 )
             )
-        return dataclasses.replace(
-            _blank_record(
-                seed, dispatch_index, dispatch_limit,
-                latency_ms_total=latency_ms_total,
-            ),
-            timing_ms=timing,
+        return _blank_record(
+            seed, dispatch_index, dispatch_limit,
+            latency_ms_total=latency_ms_total,
         )
 
 
@@ -1455,247 +1200,6 @@ async def _run_case_async(
     return _score_pair(case, benign, attacked)
 
 
-async def _run_case_with_item_budget(
-    adapter: Any,
-    adapter_version: str,
-    case: Case,
-    seed: int,
-    dispatch_base: int,
-    pricing_table: dict[str, Any],
-    manifest_sha256: str,
-    *,
-    controller: AdaptiveConcurrency,
-    max_attempts: int,
-    max_concurrency: int,
-    call_timeout: float | None,
-    cache: ResponseCache | None,
-    transcript: _TranscriptSink | None,
-    run_nonce: str,
-    item_timeout: float,
-) -> PerCaseResult:
-    """Run one case under the R-12 item budget, preserving partial arms.
-
-    The item budget is one case's wall-clock ceiling (both variants,
-    all attempts). Each arm runs under the remaining budget; when the
-    budget fires mid-arm, that arm's task is cancelled and its
-    ``_ArmTimingState`` — synced by ``_record_call_async`` after every
-    attempt, including the abandoned one — builds an honest
-    ``timeout_kind="item"`` record (only elapsed adapter execution is
-    attributed, never the whole budget). A completed arm is retained:
-    if the benign arm finished and the attacked arm exhausts the
-    budget, the result pairs the real benign record with only an
-    attacked item-timeout record.
-
-    The abandoned adapter threads wrote nothing: the cancelled arm's
-    task is settled before any record is built, so no late record is
-    ever written. A synthesized transcript entry is written for the
-    timed-out arm carrying its kind and partial timing, so replay
-    rebuilds both the completed benign arm and the timed-out arm; the
-    sealed artifact remains the record of last resort.
-
-    The shield keeps wait_for's own cancellation off the inner task —
-    it is cancelled explicitly, exactly once, on exactly one path.
-    """
-    # Benign before attacked, sequentially: per-case order is fixed and
-    # trivially deterministic; concurrency happens across cases.
-    benign_in, attacked_in = _case_inputs(case)
-    benign_ctx, attacked_ctx = _adapter_contexts(run_nonce, seed, dispatch_base)
-    benign_trial, attacked_trial = _trial_infos(case)
-    namespace = str(getattr(adapter, "cache_namespace", "") or "")
-
-    def key_for(case_input: dict[str, Any], trial: _TrialInfo) -> str | None:
-        if cache is None:
-            return None
-        return cache_key(
-            adapter_name=adapter.name,
-            adapter_version=adapter_version,
-            cache_namespace=namespace,
-            primitive=case.primitive,
-            variant=trial.arm,
-            case_id=trial.case_id,
-            case_input=case_input,
-            manifest_sha256=manifest_sha256,
-        )
-
-    dispatch_limit = controller.limit
-    deadline = time.perf_counter() + item_timeout
-
-    async def run_arm(
-        arm_in: dict[str, Any],
-        ctx: CallContext,
-        trial: _TrialInfo,
-        dispatch_index: int,
-        state: _ArmTimingState,
-    ) -> CallRecord:
-        arm_task: asyncio.Task[CallRecord] = asyncio.create_task(
-            _record_call_async(
-                adapter, adapter_version, arm_in, case.primitive, ctx,
-                trial,
-                seed, dispatch_index, pricing_table,
-                controller=controller, max_attempts=max_attempts,
-                max_concurrency=max_concurrency,
-                call_timeout=call_timeout, cache=cache,
-                cache_key_str=key_for(arm_in, trial),
-                transcript=transcript,
-                timing_state=state,
-            )
-        )
-        try:
-            return await asyncio.wait_for(
-                asyncio.shield(arm_task),
-                timeout=max(0.0, deadline - time.perf_counter()),
-            )
-        except asyncio.TimeoutError:
-            # The budget's fire time is the deadline itself: wait_for
-            # fires via the event loop, which can overshoot the
-            # deadline under load, and post-deadline delay is not
-            # adapter execution. The abandoned in-flight attempt's
-            # execution is (deadline - worker_start): the adapter was
-            # executing when the ceiling fired. (The arm task's finally
-            # deliberately skips attribution on outer cancellation —
-            # see _record_call_async.)
-            # Capture whether the worker was in flight BEFORE cancelling:
-            # the arm task's finally clears worker_in_flight, so reading
-            # it after gather would always see False.
-            worker_was_in_flight = state.worker_in_flight
-            arm_task.cancel()
-            await asyncio.gather(arm_task, return_exceptions=True)
-            # Attribute only if the worker was actually in flight when
-            # the budget fired. If the arm was in backoff or slot-wait
-            # between attempts, worker_start is stale from a completed
-            # attempt (already counted in adapter_execution_ms): adding
-            # (deadline - worker_start) would double-count it and launder
-            # backoff time into adapter execution.
-            if worker_was_in_flight and state.worker_start is not None:
-                state.adapter_execution_ms += max(
-                    0.0, (deadline - state.worker_start) * 1000.0
-                )
-            record = _item_timeout_record(
-                seed, dispatch_index, dispatch_limit,
-                state, deadline,
-            )
-            # The cancelled arm wrote no transcript entry: synthesize
-            # one so replay can rebuild the item-timeout record (kind
-            # and partial timing included).
-            if transcript is not None:
-                transcript.write(
-                    _transcript_entry(
-                        case_input=arm_in,
-                        primitive=case.primitive,
-                        context=ctx,
-                        trial=trial,
-                        seed=seed,
-                        dispatch_index=dispatch_index,
-                        raw=None,
-                        adapter_name=adapter.name,
-                        adapter_version=adapter_version,
-                        output=None,
-                        error=asyncio.TimeoutError(),
-                        validation_errors=["item timeout"],
-                        latency_ms=record.latency_ms_total,
-                        attempts=0,
-                        cached=False,
-                        dispatch_limit=dispatch_limit,
-                        max_concurrency=max_concurrency,
-                        latency_ms_total=record.latency_ms_total,
-                        timed_out=True,
-                        timeout_kind="item",
-                        timing_ms=record.timing_ms.to_dict(),
-                    )
-                )
-            return record
-        except BaseException:
-            # Outer cancellation (Ctrl-C) or a runner bug while the
-            # item budget was armed: never orphan the arm task —
-            # cancel it and re-raise so the fleet handler checkpoints
-            # the partial.
-            arm_task.cancel()
-            raise
-
-    benign_state = _ArmTimingState()
-    benign = await run_arm(
-        benign_in, benign_ctx, benign_trial, dispatch_base, benign_state,
-    )
-    if benign.timed_out and benign.timeout_kind == "item":
-        # The budget fired during the benign arm: the attacked arm
-        # never started. Its record is an explicitly typed item
-        # timeout with zero timing — nothing was measured.
-        attacked = _item_timeout_record(
-            seed, dispatch_base + 1, dispatch_limit,
-            None, time.perf_counter(),
-        )
-        if transcript is not None:
-            transcript.write(
-                _transcript_entry(
-                    case_input=attacked_in,
-                    primitive=case.primitive,
-                    context=attacked_ctx,
-                    trial=attacked_trial,
-                    seed=seed,
-                    dispatch_index=dispatch_base + 1,
-                    raw=None,
-                    adapter_name=adapter.name,
-                    adapter_version=adapter_version,
-                    output=None,
-                    error=asyncio.TimeoutError(),
-                    validation_errors=["item timeout"],
-                    latency_ms=0.0,
-                    attempts=0,
-                    cached=False,
-                    dispatch_limit=dispatch_limit,
-                    max_concurrency=max_concurrency,
-                    latency_ms_total=0.0,
-                    timed_out=True,
-                    timeout_kind="item",
-                    timing_ms=attacked.timing_ms.to_dict(),
-                )
-            )
-        return _score_pair(case, benign, attacked)
-
-    # The benign arm consumed part of the budget: if the deadline has
-    # already passed, do not start the attacked arm — synthesize its
-    # item-timeout record directly.
-    if time.perf_counter() >= deadline:
-        attacked = _item_timeout_record(
-            seed, dispatch_base + 1, dispatch_limit,
-            None, time.perf_counter(),
-        )
-        if transcript is not None:
-            transcript.write(
-                _transcript_entry(
-                    case_input=attacked_in,
-                    primitive=case.primitive,
-                    context=attacked_ctx,
-                    trial=attacked_trial,
-                    seed=seed,
-                    dispatch_index=dispatch_base + 1,
-                    raw=None,
-                    adapter_name=adapter.name,
-                    adapter_version=adapter_version,
-                    output=None,
-                    error=asyncio.TimeoutError(),
-                    validation_errors=["item timeout"],
-                    latency_ms=0.0,
-                    attempts=0,
-                    cached=False,
-                    dispatch_limit=dispatch_limit,
-                    max_concurrency=max_concurrency,
-                    latency_ms_total=0.0,
-                    timed_out=True,
-                    timeout_kind="item",
-                    timing_ms=attacked.timing_ms.to_dict(),
-                )
-            )
-        return _score_pair(case, benign, attacked)
-
-    attacked_state = _ArmTimingState()
-    attacked = await run_arm(
-        attacked_in, attacked_ctx, attacked_trial,
-        dispatch_base + 1, attacked_state,
-    )
-    return _score_pair(case, benign, attacked)
-
-
 def _summarize_artifact(
     results: list[PerCaseResult],
     required_families: list[str] | None = None,
@@ -1781,8 +1285,6 @@ def _write_partial(
     cache_stats: dict[str, Any] | None = None,
     config_extra: dict[str, Any] | None = None,
     budget_usd: float | None = None,
-    item_timeout: float | None = None,
-    run_timeout: float | None = None,
 ) -> None:
     if partial_path is None:
         return
@@ -1798,12 +1300,6 @@ def _write_partial(
     }
     if cache_stats is not None:
         config["cache"] = cache_stats
-    # R-12 timeout budgets are measurement inputs like the spend cap:
-    # a resumed run must run under the same ceilings.
-    if item_timeout is not None:
-        config["item_timeout_s"] = item_timeout
-    if run_timeout is not None:
-        config["run_timeout_s"] = run_timeout
     if config_extra:
         config.update(config_extra)
     # Environment fingerprint (Layer 1b).
@@ -1859,27 +1355,21 @@ def validate_partial(
     seed: int = 0,
     budget_usd: float | None = None,
     cache_enabled: bool = False,
-    item_timeout: float | None = None,
-    run_timeout: float | None = None,
 ) -> tuple[set[str], list[PerCaseResult]]:
     """Strictly validate a partial run for --resume.
 
     Returns (done_case_ids, prior_results). Raises ValueError when the
     partial fails its analysis lock, belongs to a different suite, dataset
     version, dataset snapshot, seed, adapter name+version, budget cap,
-    timeout budgets, pricing version, contract version, or cache state,
-    references unknown case ids, or contains duplicate case ids. A
-    partial that fails validation is never silently merged into a new
-    run.
+    pricing version, contract version, or cache state, references
+    unknown case ids, or contains duplicate case ids. A partial that fails
+    validation is never silently merged into a new run.
 
     ``max_concurrency`` is deliberately NOT validated: concurrency is a
     performance parameter, not a measurement input — records are
     identical regardless of the limit (dispatch indices are
     suite-position-derived and results seal in suite order), so
-    resuming with a different ``--max-concurrency`` is safe. The
-    timeout budgets ARE validated: they change what gets measured (a
-    case that timed out under one ceiling might complete under
-    another), so they are measurement inputs like the spend cap.
+    resuming with a different ``--max-concurrency`` is safe.
     """
     if not partial.verify():
         raise ValueError(
@@ -1916,29 +1406,16 @@ def validate_partial(
             f"version {partial.adapter_version!r}, not {adapter.name!r} "
             f"version {adapter_version!r}"
         )
-    # Budget, timeouts, pricing, contract, and cache state are
-    # measurement inputs: a partial recorded under a different cap, a
-    # different pricing table, different artifact semantics, or a
-    # different cache state must not merge into this run: the sealed
-    # numbers would lie.
+    # Budget, pricing, contract, and cache state are measurement inputs:
+    # a partial recorded under a different cap, a different pricing
+    # table, different artifact semantics, or a different cache state
+    # must not merge into this run: the sealed numbers would lie.
     if partial.budget_usd != budget_usd:
         raise ValueError(
             f"partial run was recorded with budget_usd "
             f"{partial.budget_usd!r}, not {budget_usd!r}: re-run with "
             f"the same --budget-usd or drop --resume"
         )
-    for _tname, _twant in (
-        ("item_timeout_s", item_timeout),
-        ("run_timeout_s", run_timeout),
-    ):
-        _tgot = partial.config.get(_tname)
-        if _tgot != _twant:
-            _flag = "--" + _tname.replace("_s", "").replace("_", "-")
-            raise ValueError(
-                f"partial run was recorded with {_tname} "
-                f"{_tgot!r}, not {_twant!r}: re-run with the same "
-                f"{_flag} or drop --resume"
-            )
     current_pricing = load_pricing_table().get("pricing_version", "")
     if partial.pricing_version != current_pricing:
         raise ValueError(
@@ -2041,57 +1518,6 @@ def _adapter_longitudinal_provenance(
         "template_hash": _str_attr("template_hash"),
         "case_set_tag": suite,
     }
-def _item_timeout_record(
-    seed: int,
-    dispatch_index: int,
-    dispatch_limit: int,
-    state: _ArmTimingState | None,
-    t_fire: float,
-) -> CallRecord:
-    """The sealed record for one arm that exceeded ``item_timeout``.
-
-    R-12: an item timeout is explicitly typed (``timeout_kind="item"``,
-    distinct from per-attempt ``"attempt"`` timeouts). ``state`` carries
-    the arm's honest partial timing, accumulated by
-    ``_record_call_async`` before the arm was abandoned: admission
-    wait, backoff, and only the adapter execution that actually elapsed
-    — never the whole item budget. ``t_fire`` is the perf_counter when
-    the budget fired; the record's latency is the arm's actual wall
-    time (``t_fire - t_arm_start``), not the budget ceiling. ``state``
-    is None when the arm never started (the item budget fired during
-    the other arm): the record then carries zero timing — nothing was
-    measured — but is still an explicitly typed item timeout.
-
-    A timeout is data, not missing data: the record is a malformed
-    blank with ``timed_out=True``. Per the D-11 conservative rule the
-    case counts in the timeout rate, and an attacked item timeout
-    counts as flipped; eligibility still keys off the benign baseline.
-    """
-    if state is None:
-        timing = CallTiming()
-        latency_ms_total = 0.0
-    else:
-        latency_ms_total = (t_fire - state.t_arm_start) * 1000.0
-        harness_ms = (
-            latency_ms_total
-            - state.admission_wait_ms
-            - state.adapter_execution_ms
-            - state.backoff_ms
-        )
-        timing = CallTiming(
-            admission_wait_ms=state.admission_wait_ms,
-            adapter_execution_ms=state.adapter_execution_ms,
-            harness_overhead_ms=max(0.0, harness_ms),
-            backoff_ms=state.backoff_ms,
-        )
-    return dataclasses.replace(
-        _blank_record(
-            seed, dispatch_index, dispatch_limit,
-            latency_ms_total=latency_ms_total,
-            timed_out=True, timeout_kind="item",
-        ),
-        timing_ms=timing,
-    )
 
 
 async def _run_suite_async(
@@ -2116,8 +1542,6 @@ async def _run_suite_async(
     pricing_table: dict[str, Any],
     run_nonce: str | None = None,
     budget_usd: float | None = None,
-    item_timeout: float | None = None,
-    run_timeout: float | None = None,
 ) -> RunArtifact:
     adapter_version = getattr(adapter, "version", "")
     controller = AdaptiveConcurrency(max_concurrency)
@@ -2152,39 +1576,18 @@ async def _run_suite_async(
             manifest_sha256, seed, max_concurrency,
             cache_stats, config_extra,
             budget_usd=budget_usd,
-            item_timeout=item_timeout,
-            run_timeout=run_timeout,
         )
 
     async def one(case: Case) -> None:
         nonlocal completed
-        dispatch_base = 2 * indexed[case.case_id]
-        if item_timeout is None:
-            result = await _run_case_async(
-                adapter, adapter_version, case, seed,
-                dispatch_base, pricing_table, manifest_sha256,
-                controller=controller, max_attempts=max_attempts,
-                max_concurrency=max_concurrency,
-                call_timeout=call_timeout, cache=cache,
-                transcript=transcript,
-                run_nonce=nonce,
-            )
-        else:
-            # R-12 item budget: one case's wall-clock ceiling (both
-            # variants, all attempts), with partial-arm preservation:
-            # a completed arm is retained and only the arm in flight
-            # when the budget fires becomes an explicitly typed item
-            # timeout (see _run_case_with_item_budget).
-            result = await _run_case_with_item_budget(
-                adapter, adapter_version, case, seed,
-                dispatch_base, pricing_table, manifest_sha256,
-                controller=controller, max_attempts=max_attempts,
-                max_concurrency=max_concurrency,
-                call_timeout=call_timeout, cache=cache,
-                transcript=transcript,
-                run_nonce=nonce,
-                item_timeout=item_timeout,
-            )
+        result = await _run_case_async(
+            adapter, adapter_version, case, seed,
+            2 * indexed[case.case_id], pricing_table, manifest_sha256,
+            controller=controller, max_attempts=max_attempts,
+            max_concurrency=max_concurrency,
+            call_timeout=call_timeout, cache=cache, transcript=transcript,
+            run_nonce=nonce,
+        )
         results.append(result)
         completed += 1
         if progress:
@@ -2239,29 +1642,8 @@ async def _run_suite_async(
     pending: collections.deque[Case] = collections.deque(remaining)
     in_flight: set[asyncio.Task[None]] = set()
     budget_exhausted = False
-    run_timed_out = False
-    # R-12 run budget: an absolute wall-clock ceiling for the whole
-    # run. When the ceiling fires, dispatch stops and the in-flight
-    # cases drain: they finish honestly instead of being cancelled
-    # mid-call, so their timing and records are complete. Draining is
-    # bounded — every in-flight case is already subject to the
-    # per-attempt call timeout, so a stuck adapter burns at most
-    # max_attempts x call_timeout before its case completes as a
-    # timeout. Adapter threads abandoned by a wait_for timeout are
-    # never force-killed; completed cases are checkpointed and the
-    # partial stays resumable.
-    run_deadline = (
-        time.perf_counter() + run_timeout
-        if run_timeout is not None else None
-    )
     try:
         while pending or in_flight:
-            if (
-                run_deadline is not None
-                and time.perf_counter() >= run_deadline
-            ):
-                run_timed_out = True
-                break
             while (
                 pending
                 and len(in_flight) < max_concurrency
@@ -2274,43 +1656,14 @@ async def _run_suite_async(
                 # work remaining.
                 budget_exhausted = bool(pending)
                 break
-            # The wait carries the run deadline: without it, a fleet of
-            # hung in-flight tasks would block here forever and the
-            # ceiling would never fire (the lm-eval jsonschema-hang
-            # precedent). When the wait times out with nothing done,
-            # the loop re-checks the deadline above.
             done, _ = await asyncio.wait(
-                in_flight, return_when=asyncio.FIRST_COMPLETED,
-                timeout=(
-                    max(0.0, run_deadline - time.perf_counter())
-                    if run_deadline is not None
-                    else None
-                ),
+                in_flight, return_when=asyncio.FIRST_COMPLETED
             )
             for t in done:
                 in_flight.discard(t)
                 exc = t.exception()
                 if exc is not None:
                     raise exc
-        # The run deadline fired: drain in-flight cases BEFORE the
-        # finally closes the transcript, so drained cases can write
-        # their entries. They run to completion so their records and
-        # timing are honest; dispatch never resumes after this.
-        # The drain is bounded only when call_timeout or item_timeout
-        # is set; with all timeouts disabled a hung adapter hangs the
-        # drain (see the performance contract).
-        if run_timed_out and in_flight:
-            await asyncio.gather(*in_flight, return_exceptions=True)
-            # A draining case that raised is a runner bug, not a
-            # timeout: surface it instead of silently dropping the
-            # case from the results.
-            for t in in_flight:
-                if t.cancelled():
-                    continue
-                exc = t.exception()
-                if exc is not None:
-                    raise exc
-            in_flight.clear()
     except BaseException:
         # Interrupt, cancellation, or a runner bug: stop the fleet,
         # leave a resumable checkpoint behind, and re-raise. In-flight
@@ -2326,20 +1679,7 @@ async def _run_suite_async(
         if transcript is not None:
             transcript.close()
 
-    if run_timed_out:
-        # The ceiling fired and the in-flight cases have drained (see
-        # above). Completed cases are checkpointed and the partial
-        # stays resumable — a timeout-terminated run is resumable, not
-        # lost.
-        if partial_path is not None and len(results) < total:
-            checkpoint()
-
-    if run_timed_out:
-        termination = "timeout"
-    elif budget_exhausted:
-        termination = "budget"
-    else:
-        termination = "complete"
+    termination = "budget" if budget_exhausted else "complete"
     ordered = _sort_results(results, indexed)
     cache_stats = (
         {"dir": str(cache.dir), "hits": cache.hits, "misses": cache.misses}
@@ -2360,10 +1700,6 @@ async def _run_suite_async(
     }
     if call_timeout is not None:
         config["call_timeout_s"] = call_timeout
-    if item_timeout is not None:
-        config["item_timeout_s"] = item_timeout
-    if run_timeout is not None:
-        config["run_timeout_s"] = run_timeout
     if budget_usd is not None:
         config["budget_usd"] = budget_usd
     if cache_stats is not None:
@@ -2437,8 +1773,6 @@ def run_suite(
     rlimit_fsize_mb: float | None = None,
     run_nonce: str | None = None,
     budget_usd: float | None = None,
-    item_timeout: float | None = None,
-    run_timeout: float | None = None,
 ) -> RunArtifact:
     """Run a suite through an adapter, concurrently.
 
@@ -2447,17 +1781,6 @@ def run_suite(
     bounds total tries per call (transient failures only);
     ``call_timeout`` bounds one attempt in seconds (default 300; None
     disables the timeout, not recommended for untrusted adapters).
-    R-12 adds two more budget layers: ``item_timeout`` bounds one
-    case's wall-clock time (both variants, all attempts) — on expiry
-    the case seals as a timeout sample failure and the run continues;
-    ``run_timeout`` bounds the whole run's wall-clock time — on expiry
-    dispatch stops, in-flight cases drain to completion (their records
-    and timing stay honest), completed cases are checkpointed, and the
-    artifact seals with ``termination="timeout"``. The partial is
-    preserved: a timeout-terminated run is resumable, not lost. All
-    three default to None except ``call_timeout``; ceilings should sit
-    far above observed runtimes — they are hang insurance, not
-    performance targets. See docs/runner-performance-contract.md.
     ``rlimit_cpu_seconds`` / ``rlimit_as_mb`` / ``rlimit_fsize_mb`` set
     process-wide Unix resource backstops (all opt-in, None by default);
     see docs/Threat-Model.md.
@@ -2475,9 +1798,8 @@ def run_suite(
     default) means uncapped.
 
     Raises ValueError for invalid ``max_concurrency``/``max_attempts``/
-    ``call_timeout``/``budget_usd``/``item_timeout``/``run_timeout``.
-    KeyboardInterrupt (Ctrl-C) leaves a resumable partial behind when
-    ``partial_path`` is set.
+    ``call_timeout``/``budget_usd``. KeyboardInterrupt (Ctrl-C) leaves
+    a resumable partial behind when ``partial_path`` is set.
     """
     if max_concurrency < 1:
         raise ValueError(
@@ -2489,21 +1811,6 @@ def run_suite(
         raise ValueError(
             f"call_timeout must be > 0, got {call_timeout}"
         )
-    for _name, _value in (
-        ("item_timeout", item_timeout), ("run_timeout", run_timeout)
-    ):
-        if _value is None:
-            continue
-        if (
-            isinstance(_value, bool)
-            or not isinstance(_value, (int, float))
-            or not _value > 0
-        ):
-            # Covers zero, negatives, NaN (NaN > 0 is False), and
-            # bools: a non-positive timeout is not a ceiling.
-            raise ValueError(
-                f"{_name} must be > 0, got {_value}"
-            )
     _apply_rlimits(rlimit_cpu_seconds, rlimit_as_mb, rlimit_fsize_mb)
     if budget_usd is not None:
         if isinstance(budget_usd, bool) or not isinstance(
@@ -2554,8 +1861,6 @@ def run_suite(
                 pricing_table,
                 run_nonce=run_nonce,
                 budget_usd=budget_usd,
-                item_timeout=item_timeout,
-                run_timeout=run_timeout,
             )
         )
     except asyncio.CancelledError:
@@ -2710,26 +2015,6 @@ def run_multiseed(
     return artifacts, stability
 
 
-def _infer_timeout_kind(entry: dict[str, Any]) -> str | None:
-    """Infer/validate the timeout kind for a transcript entry.
-
-    Shared by the pure-Python and Rust replay paths: a timed-out
-    record without a kind predates the kind field (every timeout then
-    was a per-attempt timeout, so "attempt" is inferred); a kind on a
-    non-timed-out record, or an unknown kind string, is corrupt data.
-    """
-    timed_out = bool(entry.get("timed_out", False))
-    timeout_kind = entry.get("timeout_kind")
-    if timeout_kind is None:
-        return "attempt" if timed_out else None
-    if not timed_out or timeout_kind not in ("attempt", "item"):
-        raise ValueError(
-            f"transcript entry timeout_kind: must be 'attempt' or "
-            f"'item' on a timed-out record, got {timeout_kind!r}"
-        )
-    return timeout_kind
-
-
 def _record_from_transcript_entry_py(
     entry: dict[str, Any],
 ) -> CallRecord:
@@ -2740,35 +2025,24 @@ def _record_from_transcript_entry_py(
 
     No measurement is re-taken: decision, confidence, score, abstention,
     usage (model, tokens, latency_ms, cost_usd), seed, dispatch_index,
-    dispatch_limit, cumulative latency, timeout state, the timing
-    decomposition, and the cache-hit flag all come from the recorded
-    entry. An error-kind entry rebuilds the malformed blank record the
-    original run sealed. Pre-Phase-0 entries without the newer fields
-    get the honest defaults (timed_out=False, cached=False,
-    latency_ms_total=the recorded final-attempt latency or 0.0,
-    timing_ms=the zero breakdown).
+    dispatch_limit, cumulative latency, timeout state, and the cache-hit
+    flag all come from the recorded entry. An error-kind entry rebuilds
+    the malformed blank record the original run sealed. Pre-Phase-0
+    entries without the newer fields get the honest defaults
+    (timed_out=False, cached=False, latency_ms_total=the recorded
+    final-attempt latency or 0.0).
     """
     seed = int(entry["seed"])
     dispatch_index = int(entry["dispatch_index"])
     dispatch_limit = int(entry["dispatch_limit"])
     timed_out = bool(entry.get("timed_out", False))
-    timeout_kind = _infer_timeout_kind(entry)
     cached = bool(entry.get("cached", False))
     response = entry["response"]
     if response["kind"] != "output":
-        # Error-kind entry: rebuild the malformed blank record the
-        # original run sealed, preserving the timing decomposition
-        # from the entry (R-12: timing rides the transcript).
-        return dataclasses.replace(
-            _blank_record(
-                seed, dispatch_index, dispatch_limit,
-                latency_ms_total=float(
-                    entry.get("latency_ms_total") or 0.0),
-                timed_out=timed_out,
-                timeout_kind=timeout_kind,
-            ),
-            timing_ms=CallTiming.from_dict(entry.get("timing_ms")),
-            cached=cached,
+        return _blank_record(
+            seed, dispatch_index, dispatch_limit,
+            latency_ms_total=float(entry.get("latency_ms_total") or 0.0),
+            timed_out=timed_out,
         )
     out = response["output"]
     usage_dict = out.get("usage")
@@ -2783,11 +2057,6 @@ def _record_from_transcript_entry_py(
         latency_ms_total = (
             float(usage.latency_ms) if usage is not None else 0.0
         )
-    # R-12: the timing decomposition rides the transcript entry so a
-    # replayed record carries the original measurement. Entries written
-    # before R-12 have no timing_ms — the zero breakdown is honest:
-    # nothing was measured.
-    timing_ms = CallTiming.from_dict(entry.get("timing_ms"))
     return CallRecord(
         decision=out["decision"],
         confidence=out.get("confidence"),
@@ -2801,9 +2070,7 @@ def _record_from_transcript_entry_py(
         score=score,
         latency_ms_total=float(latency_ms_total),
         timed_out=timed_out,
-        timeout_kind=timeout_kind,
         cached=cached,
-        timing_ms=timing_ms,
     )
 
 
@@ -2825,16 +2092,6 @@ def _record_from_transcript_entry(entry: dict[str, Any]) -> CallRecord:
             d = _rust.records_record_from_transcript_entry(entry)
         except (TypeError, ValueError, OverflowError):
             return _record_from_transcript_entry_py(entry)
-        # R-12: the timing decomposition is a Python-owned measurement
-        # structure (timing_summary is Python-reference-only, like
-        # latency_summary). The Rust core extracts the record fields it
-        # computes on; Python overlays timing_ms from the entry so
-        # replay preserves the original measurement with Rust active.
-        # The entry is the source of truth either way. timeout_kind
-        # rides the same overlay: it is a Python-owned measurement
-        # sidecar the Rust core does not model.
-        d["timing_ms"] = entry.get("timing_ms")
-        d["timeout_kind"] = _infer_timeout_kind(entry)
         usage = d.get("usage")
         return CallRecord(
             decision=d["decision"],
@@ -2849,9 +2106,7 @@ def _record_from_transcript_entry(entry: dict[str, Any]) -> CallRecord:
             score=d.get("score"),
             latency_ms_total=d.get("latency_ms_total", 0.0),
             timed_out=d.get("timed_out", False),
-            timeout_kind=d.get("timeout_kind"),
             cached=d.get("cached", False),
-            timing_ms=CallTiming.from_dict(d.get("timing_ms")),
         )
     return _record_from_transcript_entry_py(entry)
 
