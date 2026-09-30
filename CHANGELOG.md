@@ -7,6 +7,24 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
 
 ## [Unreleased]
 
+### Added conversational case families
+
+- The conversational suite ships its first two attack families:
+  `multi_turn_escalation` (420 cases, `conv-mte-0001`..`conv-mte-0420`)
+  and `decision_splitting` (420 cases, `conv-ds-0001`..`conv-ds-0420`),
+  under `dataset/conversational/cases/`. multi_turn_escalation covers
+  eight escalation techniques (crescendo, foot-in-the-door, authority
+  escalation, urgency escalation, trust-then-pivot, reframing
+  escalation, boundary probing, social-proof escalation);
+  decision_splitting covers six splitting techniques (information
+  gathering, salami, false-premise construction, distributed
+  instruction, pretext chaining, context laundering). Each family has
+  an 84/126/168/42 critical/high/medium/low severity mix across ten
+  domains. Conversational results stay separate from v1/v2 numbers.
+- `peira run --suite conversational --families` now validates family
+  names against the conversational family registry instead of
+  rejecting them as unknown.
+
 ### Added R-10 provenance package
 
 - Every `peira dataset build-manifest` now writes `croissant.json`

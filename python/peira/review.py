@@ -63,24 +63,43 @@ def save_review_states(dataset_dir: Path,
         encoding="utf-8")
 
 
-def _valid_cases(dataset_dir: Path) -> list[tuple[Any, int, str, dict[str, Any]]]:
+def _valid_cases(dataset_dir: Path,
+                 *, kind: str = "single") -> list[tuple[Any, int, str, dict[str, Any]]]:
     """(path, lineno, case_id, case) for every schema-valid case.
 
     Invalid case data raises ValueError (via `iter_cases`) instead of
     being silently skipped: review decisions must never be computed
     over a partially-read dataset.
+
+    ``kind`` selects the case schema: ``"single"`` reads single-shot
+    cases, ``"conversational"`` reads conversational cases.
     """
+    if kind == "conversational":
+        from peira.conversation import load_conversation_cases
+
+        cases = load_conversation_cases(dataset_dir)
+        out = []
+        for i, case in enumerate(cases):
+            out.append((dataset_dir, i + 1, case.case_id, {
+                "case_id": case.case_id,
+                "family": case.family,
+                "severity": case.severity,
+                "primitive": case.primitive,
+                "notes": case.notes,
+            }))
+        return out
     return [(p, n, c["case_id"], c) for p, n, c in iter_cases(dataset_dir)]
 
 
-def _cases_or_raise(dataset_dir: Path):
+def _cases_or_raise(dataset_dir: Path,
+                    *, kind: str = "single"):
     """Valid cases, or ValueError("unreadable case data: ...").
 
     Centralizes the case-data error wording so every CLI review path
     reports it identically (see docs/Troubleshooting.md).
     """
     try:
-        return _valid_cases(dataset_dir)
+        return _valid_cases(dataset_dir, kind=kind)
     except ValueError as e:
         raise ValueError(f"unreadable case data: {e}") from e
 
@@ -93,7 +112,8 @@ def _states_or_raise(dataset_dir: Path):
         raise ValueError(f"unreadable review state: {e}") from e
 
 
-def critical_cases_missing_notes(dataset_dir: Path) -> list[str]:
+def critical_cases_missing_notes(dataset_dir: Path,
+                                   *, kind: str = "single") -> list[str]:
     """Case ids of critical-severity cases with no severity notes.
 
     The severity rubric asks the author to say why a case earned its
@@ -101,17 +121,32 @@ def critical_cases_missing_notes(dataset_dir: Path) -> list[str]:
     build-manifest``) refuses while any critical case lacks that
     justification. ``notes`` is an optional schema field, so a missing
     key counts the same as a blank one.
+
+    ``kind`` selects the case schema (``"single"`` or
+    ``"conversational"``).
     """
-    return [cid for _, _, cid, case in _cases_or_raise(dataset_dir)
+    return [cid for _, _, cid, case in _cases_or_raise(dataset_dir, kind=kind)
             if case["severity"] == "critical"
             and not str(case.get("notes") or "").strip()]
 
 
-def pending_reviews(dataset_dir: Path) -> list[dict[str, Any]]:
+def pending_reviews(dataset_dir: Path,
+                    *, kind: str = "single") -> list[dict[str, Any]]:
     """Cases still needing human review, each with ``case_id``,
-    ``severity``, and ``reasons``."""
+    ``severity``, and ``reasons``.
+
+    ``kind`` selects the case schema (``"single"`` or
+    ``"conversational"``). For conversational cases the PII scan runs
+    over the serialized turn contents of both arms.
+    """
     states = _states_or_raise(dataset_dir)
-    cases = _cases_or_raise(dataset_dir)
+    cases = _cases_or_raise(dataset_dir, kind=kind)
+    conv_by_id: dict[str, Any] = {}
+    if kind == "conversational":
+        from peira.conversation import load_conversation_cases
+
+        conv_by_id = {c.case_id: c
+                      for c in load_conversation_cases(dataset_dir)}
     pending = []
     for path, lineno, case_id, case in cases:
         if states.get(case_id, {}).get("status") == APPROVED:
@@ -119,13 +154,47 @@ def pending_reviews(dataset_dir: Path) -> list[dict[str, Any]]:
         reasons = []
         if case["severity"] == "critical":
             reasons.append("critical severity — requires human review")
-        for w in gate_pii_scan([(path, lineno, case)]).warnings:
-            reasons.append(w.split(": ", 1)[-1] if ": " in w else w)
+        if kind == "conversational":
+            conv = conv_by_id.get(case_id)
+            if conv is not None:
+                for w in _conversation_pii_warnings(
+                        path, lineno, conv):
+                    reasons.append(w)
+        else:
+            for w in gate_pii_scan([(path, lineno, case)]).warnings:
+                reasons.append(w.split(": ", 1)[-1] if ": " in w else w)
         if reasons:
             pending.append({"case_id": case_id,
                             "severity": case["severity"],
                             "reasons": reasons})
     return pending
+
+
+def _conversation_pii_warnings(path: Any, lineno: int,
+                               case: Any) -> list[str]:
+    """PII-pattern warnings over a conversational case's turn contents.
+
+    Mirrors the G6 PII scan's patterns, but over the serialized turns
+    of both arms instead of single-shot variant inputs.
+    """
+    import json as _json
+
+    from peira.gates import _PII_PATTERNS
+
+    warnings: list[str] = []
+    for arm_name, arm in (("benign", case.benign),
+                          ("attacked", case.attacked)):
+        text = _json.dumps(
+            [{"role": t.role, "content": t.content}
+             for t in arm.turns], sort_keys=True)
+        for label, pattern in _PII_PATTERNS:
+            if pattern.search(text):
+                name = path.name if hasattr(path, "name") else str(path)
+                warnings.append(
+                    f"{name}:{lineno}: possible {label} in "
+                    f"{arm_name} turns")
+                break
+    return warnings
 
 
 def review_coverage(dataset_dir: Path) -> dict[str, Any]:
