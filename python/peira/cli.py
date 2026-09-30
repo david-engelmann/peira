@@ -462,17 +462,6 @@ def cmd_run(args: argparse.Namespace) -> int:
         print(f"error: --budget-usd must be > 0 "
               f"(got {budget_usd})", file=sys.stderr)
         return EXIT_USER_ERROR
-    item_timeout = getattr(args, "item_timeout", None)
-    if item_timeout is not None and not item_timeout > 0:
-        # NaN fails the > 0 comparison: a NaN budget is not a budget.
-        print(f"error: --item-timeout must be > 0 "
-              f"(got {item_timeout})", file=sys.stderr)
-        return EXIT_USER_ERROR
-    run_timeout = getattr(args, "run_timeout", None)
-    if run_timeout is not None and not run_timeout > 0:
-        print(f"error: --run-timeout must be > 0 "
-              f"(got {run_timeout})", file=sys.stderr)
-        return EXIT_USER_ERROR
 
     if args.dry_run:
         print(f"dry run: {len(cases)} cases, adapter={adapter.name}, "
@@ -513,9 +502,7 @@ def cmd_run(args: argparse.Namespace) -> int:
                         partial, adapter, cases, suite, dataset_version,
                         manifest_sha256, seed=args.seed,
                         budget_usd=getattr(args, "budget_usd", None),
-                        cache_enabled=args.cache_dir is not None,
-                        item_timeout=item_timeout,
-                        run_timeout=run_timeout)
+                        cache_enabled=args.cache_dir is not None)
                 except ValueError as e:
                     print(f"error: {e}; delete {partial_path} or drop "
                           f"--resume and re-run.", file=sys.stderr)
@@ -558,8 +545,6 @@ def cmd_run(args: argparse.Namespace) -> int:
                 rlimit_as_mb=getattr(args, "rlimit_as_mb", None),
                 rlimit_fsize_mb=getattr(args, "rlimit_fsize_mb", None),
                 budget_usd=budget_usd,
-                item_timeout=item_timeout,
-                run_timeout=run_timeout,
                 # Persist the loader spec (e.g. "peira.adapters.jev:JevAdapter"),
                 # not just adapter.name (e.g. "jev"). cmd_reproduce needs the
                 # spec to reload the adapter; the short name is not loadable.
@@ -589,10 +574,7 @@ def cmd_run(args: argparse.Namespace) -> int:
         return EXIT_INFRA_ERROR
 
     out_path = _write_final_artifact(out_dir, slug, suite, artifact)
-    # The partial is the resumable record of an incomplete run: delete
-    # it only when the run genuinely completed. A timeout- or
-    # budget-terminated run keeps its partial so --resume can finish it.
-    if partial_path.exists() and artifact.termination == "complete":
+    if partial_path.exists():
         partial_path.unlink()
 
     _print_run_summary(artifact, out_path)
@@ -3423,10 +3405,6 @@ def cmd_reproduce(args: argparse.Namespace) -> int:
             manifest_sha256=local_manifest,
             required_families=config.get("required_families"),
             run_nonce=run_nonce,
-            # Faithful reproduction includes the timeout budgets the
-            # original run was measured under.
-            item_timeout=config.get("item_timeout_s"),
-            run_timeout=config.get("run_timeout_s"),
         )
     except Exception:
         traceback.print_exc()
@@ -3552,6 +3530,20 @@ def cmd_dataset_build_manifest(args: argparse.Namespace) -> int:
             for p in pending:
                 print(f"  - {p['case_id']} [{p['severity']}]", file=sys.stderr)
             return EXIT_USER_ERROR
+    # The nine validation gates (G1 schema through G9 near-dedup) are
+    # enforced here, not just documented: any gate error refuses the
+    # seal. Warnings don't block (G6/G9 warnings go to the review
+    # queue or human review per docs/Dataset.md). This is what makes
+    # the "nine gates before sealing" claim in docs/Claims.md a
+    # code-enforced invariant rather than a procedure note.
+    from peira.gates import run_gates
+    gate_results = run_gates(dataset_dir)
+    gate_errors = sum(len(r.errors) for r in gate_results)
+    if gate_errors:
+        print(f"error: {gate_errors} gate error(s); "
+              f"manifest not written", file=sys.stderr)
+        _print_gate_results(gate_results, file=sys.stderr)
+        return EXIT_USER_ERROR
     try:
         manifest = build_manifest(dataset_dir, args.version,
                                   dataset_name=args.name,
@@ -3743,6 +3735,30 @@ def cmd_dataset_status(args: argparse.Namespace) -> int:
     return EXIT_OK if release_ready else EXIT_USER_ERROR
 
 
+def _print_gate_results(results, file=None):
+    """Render gate results the way `peira dataset gates` does.
+
+    Shared by the standalone gates command and the manifest-build
+    seal path so a gate failure looks the same everywhere.
+    """
+    if file is None:
+        file = sys.stdout
+    n_err = sum(len(r.errors) for r in results)
+    n_warn = sum(len(r.warnings) for r in results)
+    for r in results:
+        status = "pass" if r.passed else "FAIL"
+        print(f"{r.gate_id} {r.name}: {status} "
+              f"({len(r.errors)} errors, {len(r.warnings)} warnings)",
+              file=file)
+        for e in r.errors:
+            print(f"  error: {e}", file=file)
+        for w in r.warnings:
+            print(f"  warning: {w}", file=file)
+    n_pass = sum(1 for r in results if r.passed)
+    print(f"gates: {n_pass}/{len(results)} passed, "
+          f"{n_err} errors, {n_warn} warnings", file=file)
+
+
 def cmd_dataset_gates(args: argparse.Namespace) -> int:
     from peira.gates import run_gates
 
@@ -3752,19 +3768,8 @@ def cmd_dataset_gates(args: argparse.Namespace) -> int:
               file=sys.stderr)
         return EXIT_USER_ERROR
     results = run_gates(dataset_dir)
+    _print_gate_results(results)
     n_err = sum(len(r.errors) for r in results)
-    n_warn = sum(len(r.warnings) for r in results)
-    for r in results:
-        status = "pass" if r.passed else "FAIL"
-        print(f"{r.gate_id} {r.name}: {status} "
-              f"({len(r.errors)} errors, {len(r.warnings)} warnings)")
-        for e in r.errors:
-            print(f"  error: {e}")
-        for w in r.warnings:
-            print(f"  warning: {w}")
-    n_pass = sum(1 for r in results if r.passed)
-    print(f"gates: {n_pass}/{len(results)} passed, "
-          f"{n_err} errors, {n_warn} warnings")
     return EXIT_USER_ERROR if n_err else EXIT_OK
 
 
@@ -3843,18 +3848,6 @@ def build_parser() -> argparse.ArgumentParser:
     r.add_argument("--call-timeout", type=float, default=300.0,
                    help="seconds per attempt; a timeout is retried as a "
                    "transient failure (default: 300)")
-    r.add_argument("--item-timeout", type=float, default=None,
-                   help="wall-clock budget in seconds for one case (both "
-                   "variants, all attempts); on expiry the case seals as a "
-                   "timeout sample failure and the run continues "
-                   "(no item budget by default)")
-    r.add_argument("--run-timeout", type=float, default=None,
-                   help="wall-clock budget in seconds for the whole run; "
-                   "on expiry dispatch stops, in-flight cases drain to "
-                   "completion, completed cases are checkpointed in a "
-                   "resumable partial, and the artifact seals with "
-                   "termination=timeout (analyzable, never rankable) "
-                   "(no run budget by default)")
     r.add_argument("--rlimit-cpu-seconds", type=float, default=None,
                    help="process-wide CPU time backstop in seconds (Unix "
                    "only; opt-in, no limit by default)")

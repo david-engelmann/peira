@@ -100,7 +100,7 @@ class TestCroissant(unittest.TestCase):
                 continue
             self.assertIn(name, dists)
             self.assertEqual(dists[name]["sha256"], entry["sha256"])
-            self.assertEqual(dists[name]["@type"], "sc:FileObject")
+            self.assertEqual(dists[name]["@type"], "cr:FileObject")
             self.assertEqual(dists[name]["@id"], f"peira-test/{name}")
             self.assertEqual(
                 dists[name]["contentUrl"],
@@ -128,6 +128,38 @@ class TestCroissant(unittest.TestCase):
                             content_dir=None)
         for d in c["distribution"]:
             self.assertNotIn("contentUrl", d)
+
+    def test_context_maps_croissant_terms_to_croissant_iris(self):
+        # Regression test for the R-10 follow-up P2: bare recordSet,
+        # field, dataType, and conformsTo are Croissant terms with no
+        # schema.org IRI. With only @vocab they expanded to
+        # nonexistent https://schema.org/ IRIs that conformant
+        # consumers silently ignore. The context must carry the
+        # canonical Croissant 1.0 term mappings.
+        from peira.provenance import CROISSANT_CONTEXT
+        ctx = CROISSANT_CONTEXT
+        self.assertEqual(ctx["cr"], "http://mlcommons.org/croissant/")
+        self.assertEqual(ctx["sc"], "https://schema.org/")
+        self.assertEqual(ctx["dct"], "http://purl.org/dc/terms/")
+        self.assertEqual(ctx["recordSet"], "cr:recordSet")
+        self.assertEqual(ctx["field"], "cr:field")
+        self.assertEqual(ctx["conformsTo"], "dct:conformsTo")
+        data_type = ctx["dataType"]
+        self.assertEqual(data_type["@id"], "cr:dataType")
+        # Every bare term the record actually emits must resolve to a
+        # cr: or dct: IRI, never to a schema.org IRI via @vocab.
+        record = build_croissant(
+            self._manifest(), dataset_label="peira-test",
+            description="d", version="9.9.9", content_dir="dataset/test")
+        bare_terms = {"recordSet", "field", "dataType", "conformsTo"}
+        for term in bare_terms:
+            mapped = ctx[term]
+            iri = mapped["@id"] if isinstance(mapped, dict) else mapped
+            self.assertTrue(
+                iri.startswith(("cr:", "dct:")),
+                f"{term} maps to {iri}, not a Croissant IRI")
+        self.assertIn("recordSet", record)
+        self.assertIn("field", record["recordSet"][0])
 
     def test_no_colons_or_semicolons_in_field_descriptions(self):
         # CASE_FIELDS descriptions ship verbatim into the public

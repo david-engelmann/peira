@@ -109,11 +109,16 @@ train/dev/test splits because the datasets are evaluation-only.
 
 **Are there errors, noise, or redundancies**
 
-Every case passes nine automated validation gates before sealing,
-and the project runs periodic regrade passes with pre-registered
-defect bars. Corrections ship as versioned releases with changelog
-entries rather than silent edits. Known limitations of a release
-are recorded in its changelog entry.
+Every case set sealed under the current manifest build has passed nine
+automated validation gates, G1 schema through G9 near-dedup. Any gate
+error refuses the seal, so the gates are enforced by the build itself,
+not by procedure alone. The v2 suite was sealed before this enforcement
+landed. Its verbosity_inflation family carries 544 G9 near-duplicate
+flags. The next v2 version cannot seal until those are resolved. The
+project also runs periodic regrade passes with pre-registered defect
+bars. Corrections ship as versioned releases with changelog entries
+rather than silent edits. Known limitations of a release are recorded
+in its changelog entry.
 
 **Is the dataset self-contained**
 

@@ -2,10 +2,47 @@
   "@context": {
     "@language": "en",
     "@vocab": "https://schema.org/",
+    "citeAs": "cr:citeAs",
+    "column": "cr:column",
+    "conformsTo": "dct:conformsTo",
     "cr": "http://mlcommons.org/croissant/",
+    "data": {
+      "@id": "cr:data",
+      "@type": "@json"
+    },
+    "dataType": {
+      "@id": "cr:dataType",
+      "@type": "@vocab"
+    },
     "dct": "http://purl.org/dc/terms/",
+    "examples": {
+      "@id": "cr:examples",
+      "@type": "@json"
+    },
+    "extract": "cr:extract",
+    "field": "cr:field",
+    "fileObject": "cr:fileObject",
+    "fileProperty": "cr:fileProperty",
+    "fileSet": "cr:fileSet",
+    "format": "cr:format",
+    "includes": "cr:includes",
+    "isLiveDataset": "cr:isLiveDataset",
+    "jsonPath": "cr:jsonPath",
+    "key": "cr:key",
+    "md5": "cr:md5",
+    "parentField": "cr:parentField",
+    "path": "cr:path",
     "rai": "http://mlcommons.org/croissant/RAI/",
-    "sc": "https://schema.org/"
+    "recordSet": "cr:recordSet",
+    "references": "cr:references",
+    "regex": "cr:regex",
+    "repeated": "cr:repeated",
+    "replace": "cr:replace",
+    "sc": "https://schema.org/",
+    "separator": "cr:separator",
+    "source": "cr:source",
+    "subField": "cr:subField",
+    "transform": "cr:transform"
   },
   "@id": "peira-v1",
   "@type": "sc:Dataset",
@@ -22,7 +59,7 @@
   "distribution": [
     {
       "@id": "peira-v1/confidence_spoofing.jsonl",
-      "@type": "sc:FileObject",
+      "@type": "cr:FileObject",
       "contentUrl": "https://raw.githubusercontent.com/david-engelmann/peira/main/dataset/v1/cases/confidence_spoofing.jsonl",
       "description": "200 paired adversarial decision cases (peira-v1 1.2.0).",
       "encodingFormat": "application/x-ndjson",
@@ -31,7 +68,7 @@
     },
     {
       "@id": "peira-v1/criteria_smuggling.jsonl",
-      "@type": "sc:FileObject",
+      "@type": "cr:FileObject",
       "contentUrl": "https://raw.githubusercontent.com/david-engelmann/peira/main/dataset/v1/cases/criteria_smuggling.jsonl",
       "description": "200 paired adversarial decision cases (peira-v1 1.2.0).",
       "encodingFormat": "application/x-ndjson",
@@ -40,7 +77,7 @@
     },
     {
       "@id": "peira-v1/distractor_flooding.jsonl",
-      "@type": "sc:FileObject",
+      "@type": "cr:FileObject",
       "contentUrl": "https://raw.githubusercontent.com/david-engelmann/peira/main/dataset/v1/cases/distractor_flooding.jsonl",
       "description": "200 paired adversarial decision cases (peira-v1 1.2.0).",
       "encodingFormat": "application/x-ndjson",
@@ -49,7 +86,7 @@
     },
     {
       "@id": "peira-v1/indirection.jsonl",
-      "@type": "sc:FileObject",
+      "@type": "cr:FileObject",
       "contentUrl": "https://raw.githubusercontent.com/david-engelmann/peira/main/dataset/v1/cases/indirection.jsonl",
       "description": "200 paired adversarial decision cases (peira-v1 1.2.0).",
       "encodingFormat": "application/x-ndjson",
@@ -58,7 +95,7 @@
     },
     {
       "@id": "peira-v1/literal_reading.jsonl",
-      "@type": "sc:FileObject",
+      "@type": "cr:FileObject",
       "contentUrl": "https://raw.githubusercontent.com/david-engelmann/peira/main/dataset/v1/cases/literal_reading.jsonl",
       "description": "200 paired adversarial decision cases (peira-v1 1.2.0).",
       "encodingFormat": "application/x-ndjson",
@@ -67,7 +104,7 @@
     },
     {
       "@id": "peira-v1/negation_games.jsonl",
-      "@type": "sc:FileObject",
+      "@type": "cr:FileObject",
       "contentUrl": "https://raw.githubusercontent.com/david-engelmann/peira/main/dataset/v1/cases/negation_games.jsonl",
       "description": "200 paired adversarial decision cases (peira-v1 1.2.0).",
       "encodingFormat": "application/x-ndjson",
@@ -76,7 +113,7 @@
     },
     {
       "@id": "peira-v1/option_order.jsonl",
-      "@type": "sc:FileObject",
+      "@type": "cr:FileObject",
       "contentUrl": "https://raw.githubusercontent.com/david-engelmann/peira/main/dataset/v1/cases/option_order.jsonl",
       "description": "200 paired adversarial decision cases (peira-v1 1.2.0).",
       "encodingFormat": "application/x-ndjson",
@@ -85,7 +122,7 @@
     },
     {
       "@id": "peira-v1/policy_paraphrase.jsonl",
-      "@type": "sc:FileObject",
+      "@type": "cr:FileObject",
       "contentUrl": "https://raw.githubusercontent.com/david-engelmann/peira/main/dataset/v1/cases/policy_paraphrase.jsonl",
       "description": "200 paired adversarial decision cases (peira-v1 1.2.0).",
       "encodingFormat": "application/x-ndjson",
@@ -94,7 +131,7 @@
     },
     {
       "@id": "peira-v1/score_anchoring.jsonl",
-      "@type": "sc:FileObject",
+      "@type": "cr:FileObject",
       "contentUrl": "https://raw.githubusercontent.com/david-engelmann/peira/main/dataset/v1/cases/score_anchoring.jsonl",
       "description": "200 paired adversarial decision cases (peira-v1 1.2.0).",
       "encodingFormat": "application/x-ndjson",
@@ -103,7 +140,7 @@
     },
     {
       "@id": "peira-v1/state_poisoning.jsonl",
-      "@type": "sc:FileObject",
+      "@type": "cr:FileObject",
       "contentUrl": "https://raw.githubusercontent.com/david-engelmann/peira/main/dataset/v1/cases/state_poisoning.jsonl",
       "description": "200 paired adversarial decision cases (peira-v1 1.2.0).",
       "encodingFormat": "application/x-ndjson",

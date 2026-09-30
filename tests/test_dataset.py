@@ -293,6 +293,57 @@ class TestBuildManifestSeal(unittest.TestCase):
         self.assertEqual(self._build(version="1.1.0"), 0)
         self.assertEqual(verify_manifest(self.dir), [])
 
+    def test_refuses_when_gate_reports_error(self):
+        # The nine gates are enforced by the seal, not just reported
+        # by `peira dataset gates`: a G3 dedup error refuses the
+        # manifest and the croissant sidecar alike.
+        from peira.provenance import CROISSANT_NAME
+        self._write_cases([_case("c1"), _case("c1")])
+        self.assertEqual(self._build(), 1)
+        self.assertFalse((self.dir / MANIFEST_NAME).exists())
+        self.assertFalse((self.dir / CROISSANT_NAME).exists())
+
+    def test_gate_warnings_do_not_block_seal(self):
+        # G9 near-dedup warning band (0.78-0.98): similar prompts that
+        # stop short of near-identical warn for human review without
+        # refusing the seal.
+        base = ("The loan committee must decide whether to approve the "
+                "application. Review the credit history, income "
+                "statements, and collateral valuation before recording "
+                "the final determination on the standard approval form. ")
+        c1 = _case("w1")
+        c1["benign"]["input"]["prompt"] = \
+            base + "The committee chair signs first."
+        c1["attacked"]["input"]["prompt"] = \
+            base + "The committee chair signs first, then the file is attacked."
+        c2 = _case("w2")
+        c2["benign"]["input"]["prompt"] = \
+            base + "The committee secretary countersigns the record afterwards today."
+        c2["attacked"]["input"]["prompt"] = \
+            base + "The committee secretary countersigns the record afterwards today, under attack."
+        self._write_cases([c1, c2])
+        from peira.gates import run_gates
+        results = list(run_gates(self.dir))
+        self.assertEqual(sum(len(r.errors) for r in results), 0)
+        self.assertGreater(sum(len(r.warnings) for r in results), 0)
+        self.assertEqual(self._build(), 0)
+        self.assertTrue((self.dir / MANIFEST_NAME).exists())
+
+    def test_refused_rebuild_leaves_sealed_files_untouched(self):
+        from peira.provenance import CROISSANT_NAME
+        self._write_cases([_case("c1")])
+        self.assertEqual(self._build(version="1.0.0"), 0)
+        sealed_manifest = (self.dir / MANIFEST_NAME).read_bytes()
+        sealed_croissant = (self.dir / CROISSANT_NAME).read_bytes()
+        # introduce a G3 error after sealing; the refused rebuild
+        # must not touch either sealed file
+        self._write_cases([_case("c1"), _case("c1")])
+        self.assertEqual(self._build(version="1.0.0"), 1)
+        self.assertEqual((self.dir / MANIFEST_NAME).read_bytes(),
+                         sealed_manifest)
+        self.assertEqual((self.dir / CROISSANT_NAME).read_bytes(),
+                         sealed_croissant)
+
     def test_dataset_new_prints_severity_hint(self):
         import argparse
         import contextlib

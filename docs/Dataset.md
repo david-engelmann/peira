@@ -164,8 +164,12 @@ peira dataset gates --dir dataset/v1/cases
 | G8 options-coherence | options are unique and sorted and identical across benign and attacked arms | error |
 | G9 near-dedup | trigram-cosine similarity flags near-duplicate prompt pairs (0.98 and above is an error, 0.78 and above is a warning for human review) | warning or error |
 
-Errors fail the suite (exit 1). Fix them before building a manifest.
-Warnings don't fail. G6 pii-scan warnings enter the tracked review queue
+Errors fail the suite (exit 1). `peira dataset build-manifest` runs the
+gates itself and refuses the seal while any gate reports an error, so
+a manifest sealed under this enforcement means nine gates green. The
+v2 suite was sealed before the enforcement landed and carries
+disclosed G9 near-duplicate flags; see DATASHEET.md. Fix the errors,
+then rebuild. Warnings don't fail. G6 pii-scan warnings enter the tracked review queue
 (review.json); G9 near-dedup warnings are informational, printed for manual
 review and re-emitted on each run. G2–G9
 only run on cases G1 accepted, so one broken case doesn't spray
