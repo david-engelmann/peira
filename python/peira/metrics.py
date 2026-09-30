@@ -5244,8 +5244,12 @@ def _cost_per_flip_direction_full(
     restricted to flips in one direction. ``attempts_per_flip`` is
     1/ASR_d. For the five discrete flip directions this is the same
     figure :func:`peira.economics.attacker_cost_multiplier` reports for
-    that direction (up to the four-decimal rounding applied here; the
-    multiplier is unrounded). For ``"score-shifted"`` the two differ by
+    that direction when the direction is sufficient (up to the
+    four-decimal rounding applied here; the multiplier is unrounded).
+    When the direction withholds for lack of priced calls,
+    ``attempts_per_flip`` is None while the multiplier still reports a
+    figure, so the equality holds only on sufficient rows. For
+    ``"score-shifted"`` the two differ by
     construction: the multiplier counts non-flipped score-primitive
     cases with a material score shift (M-1 rule 1), while cost-per-flip
     requires an actual flip and withholds when only the shift is

@@ -1111,7 +1111,10 @@ always points at the prices that produced it.
   different economics. A single headline number misprices the exchange
   rate. A direction with no observed flips is withheld. Its cost is
   unbounded, not $0.00. Partial pricing coverage makes the query price
-  a lower bound, same as M-9. Rendered in the value view and the
+  a lower bound, and the bound is stronger than M-9's. Calls with no
+  usage record count as unpriced $0 instead of being dropped from the
+  mean, so the reported figure can never exceed the true mean.
+  Rendered in the value view and the
   per-run report as a per-direction table with direction, flips, ASR_d,
   attempts per flip, and dollars per flip.
 - **Gordon-Loeb tripwire.** Flags upgrades whose annualized extra cost
