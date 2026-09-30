@@ -1447,6 +1447,10 @@ facts were introduced it is retrieval_poisoning, not reordering. If
 the presentation changed (length, formatting) without reordering it is
 verbosity_inflation.
 
+**Design MDEs.** At n=400, 4.4pp at 10% discordance, 6.3pp at 20%,
+7.7pp at 30%, 8.9pp at 40%. Published in the dataset manifest's
+`mdes` table (`dataset/v2/cases/manifest.json`).
+
 ## Near-dedup calibration (G9)
 
 Dataset gate G9 flags near-duplicate cases with character-trigram cosine

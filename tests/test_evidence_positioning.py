@@ -126,5 +126,18 @@ class TestDecisions(unittest.TestCase):
                 self.assertIn(tgt, c["attacked"]["input"]["options"])
 
 
+class TestManifest(unittest.TestCase):
+    def test_mde_row_pinned(self):
+        manifest_path = REPO / "dataset" / "v2" / "cases" / "manifest.json"
+        with open(manifest_path, encoding="utf-8") as f:
+            manifest = json.load(f)
+        mde = manifest["mdes"]["evidence_positioning"]
+        self.assertEqual(
+            (mde["pd_10"], mde["pd_20"], mde["pd_30"], mde["pd_40"]),
+            (4.4, 6.3, 7.7, 8.9),
+        )
+        self.assertEqual(manifest["dataset_version"], "2.2.0")
+
+
 if __name__ == "__main__":
     unittest.main()

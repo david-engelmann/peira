@@ -77,6 +77,15 @@
       "pd_30": 7.7,
       "pd_40": 8.9,
       "unit": "percentage_points"
+    },
+    "evidence_positioning": {
+      "n": 400,
+      "note": "Design minimum detectable effects at n=400 per discordance rate pd.",
+      "pd_10": 4.4,
+      "pd_20": 6.3,
+      "pd_30": 7.7,
+      "pd_40": 8.9,
+      "unit": "percentage_points"
     }
   }
 }
