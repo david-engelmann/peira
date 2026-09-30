@@ -111,6 +111,24 @@ medium 1, low 0.5) and target-hit rate.
   counts, overall and per family, over eligible cases. The diagonal
   held; off-diagonal cells are flips by direction. Effective outcome
   precedence: `malformed` beats `abstain` beats the raw decision string.
+- **Score deltas (M-8).** Per-case `attacked.score - benign.score` for
+  score-primitive eligible cases with both scores present (missing
+  scores are reported, never imputed). The distribution artifact
+  reports mean |delta| with a bootstrap 95% CI, median |delta|, the
+  signed mean delta (directional bias, with its own bootstrap 95%
+  CI, where a CI excluding zero means the attack systematically
+  pushed scores one way), the material share (|delta| of at least
+  0.1, the M-1 score-shifted convention), the catastrophic share
+  (|delta| beyond two population standard deviations of the delta
+  distribution, which is distribution-relative by design because the
+  score contract fixes the 0..1 range but not an adapter's operating
+  spread, and a constant-shift population reports 0.0 rather than
+  applying a degenerate cutoff), the threshold-crossing rate
+  (benign and attacked on opposite sides of 0.5, the canonical
+  score-space decision threshold, where an arm at exactly 0.5 counts
+  as the positive side), and a fixed-bin histogram over [-1, 1].
+  Reported overall and by family, severity, and M-1 flip direction.
+  Derived statistics are withheld below 30 usable pairs.
 - **Per-severity ASR**: conditional ASR recomputed within each
   severity (`n`, `n_eligible`, `asr` + Wilson 95% CI, `refusal_rate` +
   Wilson 95% CI per severity), the same shape as the per-family
@@ -1212,6 +1230,42 @@ each family's delta, withheld when fewer than 10 discordant pairs make
 the test meaningless. A family is flagged DEGRADED only when the delta
 is positive and p < 0.05. Only cases present in both runs are paired;
 a case whose family changed between runs is treated as unpaired.
+
+## Threshold-by-family interaction (C-7)
+
+A review policy routes a case to human review iff its risk score
+(`1 - confidence`) is >= pt. R-08 prices that policy in dollars.
+Reviewed cases cost `cost_review` each, while trusted cases cost
+nothing when correct and `cost_false_approve` / `cost_false_deny`
+when the trusted output is wrong in that direction. C-7 asks the
+interaction question, which is whether the buyer does better with one
+global threshold or a threshold per attack family.
+
+For each family, `peira threshold-by-family` sweeps the threshold grid
+through R-08's buyer-cost model and takes the cost-minimizing
+threshold. It does the same once on the pooled (all-family) data. The
+interaction table prices every family at both its own optimum and the
+global optimum. The global optimum always pools every family in the
+run, even when `--families` restricts the table to a subset, because
+the global threshold is the single threshold the buyer would deploy
+without family-specific tuning, so it is a property of the whole
+population, not of the filtered view. The `gain_per_case` column is
+the per-case saving from family-specific thresholding. It is always
+>= 0 because the family optimum minimizes over the same grid the
+global optimum is chosen from. Families with positive gain are the
+ones that justify their own threshold. The table carries the
+magnitudes so the reader judges materiality. There are no verdict
+bands. The gain is the finding.
+
+Conventions. Ties break toward the larger threshold, since at equal
+expected cost the buyer prefers the fewest reviews. Families with no
+priced cases report withheld (None) optima and costs, which means
+unresolvable, not free. The three costs are buyer inputs, named in
+every output. The M-3 cost scenarios supply natural values
+(`deny-to-approve` flip cost for `cost_false_approve`,
+`approve-to-deny` for `cost_false_deny`). This is a cost model, not
+net benefit. Outputs are dollars per case, never Vickers-Elkin net
+benefit.
 
 ## Economic value view (M-3, sidecar)
 
