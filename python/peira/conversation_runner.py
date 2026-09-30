@@ -289,6 +289,7 @@ async def _run_conversation_case_async(
     cache: Any | None,
     transcript: Any | None,
     run_nonce: str,
+    sampling_config: dict[str, Any] | None = None,
 ) -> ConversationResult:
     """Drive one conversational case, turn by turn.
 
@@ -306,14 +307,27 @@ async def _run_conversation_case_async(
     # is no cycle, and importing this module never requires the
     # runner's asyncio machinery at module scope.
     from peira.concurrency import cache_key
+    from peira.concurrency import cache_key
     from peira.runner import (
         _pseudonymous_call_id,
         _record_call_async,
         _score_pair,
         _TrialInfo,
     )
+    from peira.sampling import sampling_cache_namespace
 
     namespace = str(getattr(adapter, "cache_namespace", "") or "")
+    # R-04: fold the effective sampling config into the cache namespace
+    # so the key covers the values actually sent on the wire
+    # (lm-eval-harness #3881 class). The fragment is empty for adapters
+    # with no sampling knobs set, so their existing cache entries keep
+    # working.
+    _sampling_fragment = sampling_cache_namespace(sampling_config)
+    if _sampling_fragment:
+        namespace = (
+            f"{namespace}|{_sampling_fragment}"
+            if namespace else _sampling_fragment
+        )
     expected = case.benign.expected_decision
 
     def key_for(
@@ -398,6 +412,7 @@ async def _run_conversation_case_async(
                 cache_key_str=key_for(payload, arm_name, executed),
                 transcript=transcript,
                 invoke=_invoke_adapter_turn,
+                sampling_config=sampling_config,
             )
             records.append(record)
             history.append(user_message)

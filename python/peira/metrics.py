@@ -203,6 +203,11 @@ class CallRecord:
     # overhead vs adapter execution vs backoff). Zero on pre-R-12
     # records; ``from_dict`` recovers it from the sealed artifact.
     timing_ms: CallTiming = CallTiming()
+    # R-04: the effective sampling config actually sent on the wire
+    # (temperature, seed, max_tokens) plus the sampling_source flag.
+    # None on records sealed before R-04; ``from_dict`` recovers it
+    # from the sealed artifact or transcript entry.
+    sampling_config: dict[str, Any] | None = None
 
     @classmethod
     def from_dict(cls, d: dict[str, Any]) -> "CallRecord":
@@ -271,6 +276,28 @@ class CallRecord:
                 f"got {type(cached).__name__}"
             )
         timing_ms = CallTiming.from_dict(d.get("timing_ms"))
+        # R-04: the effective sampling config. Hostile-input treatment:
+        # a wrong-typed config must fail here with a clean ValueError,
+        # and the source must come from the closed vocabulary —
+        # anything else is corrupt data. Absent (None) on records
+        # sealed before R-04.
+        sampling_config = d.get("sampling_config")
+        if sampling_config is not None:
+            if not isinstance(sampling_config, dict):
+                raise ValueError(
+                    f"CallRecord field 'sampling_config': must be a "
+                    f"mapping or null, got "
+                    f"{type(sampling_config).__name__}"
+                )
+            from peira.sampling import SAMPLING_SOURCES
+
+            source = sampling_config.get("sampling_source")
+            if source is not None and source not in SAMPLING_SOURCES:
+                raise ValueError(
+                    f"CallRecord field 'sampling_config': unknown "
+                    f"sampling_source {source!r} (expected one of "
+                    f"{sorted(SAMPLING_SOURCES)})"
+                )
         return cls(
             decision=d["decision"],
             confidence=confidence,
@@ -287,6 +314,7 @@ class CallRecord:
             timeout_kind=timeout_kind,
             cached=cached,
             timing_ms=timing_ms,
+            sampling_config=sampling_config,
         )
 
 

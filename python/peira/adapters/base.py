@@ -314,6 +314,13 @@ class BaseAdapter(Protocol):
     # api_version: provider API version for API adapters.
     # decode_params: dict (or JSON string) of decode parameters
     #   actually sent (temperature, top_p, max_tokens, seed, ...).
+    # _supports_temperature: bool declaring whether the provider
+    #   accepts a temperature parameter (R-04). peira already had
+    #   _supports_seed; temperature gets its own flag for the provider
+    #   deprecation trend. Sampling-capable adapters
+    #   (_supports_temperature True) must expose an explicit,
+    #   non-None temperature via decode_params or the runner fails
+    #   closed before any case runs (see peira.sampling).
     # template_hash: SHA-256 of the prompt template, when the adapter
     #   owns a template.
     # (adapter version, call date, and case-set tag are sealed by the

@@ -56,6 +56,12 @@ from peira.concurrency import (
     transcript_sha256,
 )
 from peira.dataset import atomic_write_text
+from peira.sampling import (
+    SAMPLING_SOURCE_UNKNOWN,
+    effective_sampling_config,
+    sampling_cache_namespace,
+    validate_sampling_config,
+)
 from peira.metrics import (
     INELIGIBLE_BENIGN_ABSTAINED,
     INELIGIBLE_BENIGN_MALFORMED,
@@ -606,6 +612,7 @@ def _transcript_entry(
     timed_out: bool = False,
     timeout_kind: str | None = None,
     timing_ms: dict[str, float] | None = None,
+    sampling_config: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     if output is not None and error is None and not validation_errors:
         response: dict[str, Any] = {
@@ -675,6 +682,11 @@ def _transcript_entry(
         # the record's timing_ms exactly. Absent on entries written
         # before R-12 — the rebuild then yields the zero breakdown.
         "timing_ms": timing_ms,
+        # R-04: the effective sampling config actually sent on the wire
+        # (temperature, seed, max_tokens) plus the sampling_source flag
+        # from the closed vocabulary. Absent (None) on entries written
+        # before R-04; replay treats a missing key as "unknown".
+        "sampling_config": sampling_config,
         "attempts": attempts,
         "cached": cached,
         "dispatch_limit": dispatch_limit,
@@ -775,6 +787,7 @@ async def _record_call_async(
     cache_key_str: str | None,
     transcript: _TranscriptSink | None,
     timing_state: _ArmTimingState | None = None,
+    sampling_config: dict[str, Any] | None = None,
     invoke: Callable[
         ..., tuple[Any, dict[str, Any] | None]
     ] = _invoke_adapter,
@@ -832,7 +845,10 @@ async def _record_call_async(
                     t_call_start, admission_wait_ms,
                     adapter_execution_ms, 0.0,
                 )
-                record = dataclasses.replace(record, timing_ms=timing)
+                record = dataclasses.replace(
+                    record, timing_ms=timing,
+                    sampling_config=sampling_config,
+                )
                 if transcript is not None:
                     transcript.write(
                         _transcript_entry(
@@ -842,6 +858,7 @@ async def _record_call_async(
                             seed=seed, dispatch_index=dispatch_index,
                             dispatch_limit=dispatch_limit,
                             max_concurrency=max_concurrency,
+                            sampling_config=sampling_config,
                             raw=None,  # no provider call was made
                             adapter_name=adapter.name,
                             adapter_version=adapter_version,
@@ -993,7 +1010,10 @@ async def _record_call_async(
                 t_call_start, admission_wait_ms,
                 adapter_execution_ms, backoff_ms_total,
             )
-            record = dataclasses.replace(record, timing_ms=timing)
+            record = dataclasses.replace(
+                record, timing_ms=timing,
+                sampling_config=sampling_config,
+            )
             if transcript is not None:
                 transcript.write(
                     _transcript_entry(
@@ -1003,6 +1023,7 @@ async def _record_call_async(
                         seed=seed, dispatch_index=dispatch_index,
                         dispatch_limit=dispatch_limit,
                             max_concurrency=max_concurrency,
+                            sampling_config=sampling_config,
                         raw=raw,
                         adapter_name=adapter.name,
                         adapter_version=adapter_version,
@@ -1055,6 +1076,7 @@ async def _record_call_async(
                         seed=seed, dispatch_index=dispatch_index,
                         dispatch_limit=dispatch_limit,
                             max_concurrency=max_concurrency,
+                            sampling_config=sampling_config,
                         # No successful call completed, so there is no
                         # raw payload to attribute — never guess.
                         raw=None, adapter_name=adapter.name,
@@ -1076,6 +1098,7 @@ async def _record_call_async(
                     timeout_kind=timeout_kind,
                 ),
                 timing_ms=timing,
+                sampling_config=sampling_config,
             )
 
         # Validation errors: the adapter answered with a structurally
@@ -1095,6 +1118,7 @@ async def _record_call_async(
                     seed=seed, dispatch_index=dispatch_index,
                     dispatch_limit=dispatch_limit,
                             max_concurrency=max_concurrency,
+                            sampling_config=sampling_config,
                     raw=raw,
                     adapter_name=adapter.name,
                     adapter_version=adapter_version,
@@ -1113,6 +1137,7 @@ async def _record_call_async(
                 latency_ms_total=latency_ms_total,
             ),
             timing_ms=timing,
+            sampling_config=sampling_config,
         )
 
 
@@ -1430,6 +1455,7 @@ async def _run_case_async(
     cache: ResponseCache | None,
     transcript: _TranscriptSink | None,
     run_nonce: str,
+    sampling_config: dict[str, Any] | None = None,
 ) -> PerCaseResult:
     # Benign before attacked, sequentially: per-case order is fixed and
     # trivially deterministic; concurrency happens across cases.
@@ -1437,6 +1463,17 @@ async def _run_case_async(
     benign_ctx, attacked_ctx = _adapter_contexts(run_nonce, seed, dispatch_base)
     benign_trial, attacked_trial = _trial_infos(case)
     namespace = str(getattr(adapter, "cache_namespace", "") or "")
+    # R-04: fold the effective sampling config into the cache namespace
+    # so the key covers the values actually sent on the wire
+    # (lm-eval-harness #3881 class). The fragment is empty for adapters
+    # with no sampling knobs set, so their existing cache entries keep
+    # working.
+    _sampling_fragment = sampling_cache_namespace(sampling_config)
+    if _sampling_fragment:
+        namespace = (
+            f"{namespace}|{_sampling_fragment}"
+            if namespace else _sampling_fragment
+        )
 
     def key_for(case_input: dict[str, Any], trial: _TrialInfo) -> str | None:
         if cache is None:
@@ -1460,6 +1497,7 @@ async def _run_case_async(
         max_concurrency=max_concurrency,
         call_timeout=call_timeout, cache=cache,
         cache_key_str=key_for(benign_in, benign_trial), transcript=transcript,
+        sampling_config=sampling_config,
     )
     attacked = await _record_call_async(
         adapter, adapter_version, attacked_in, case.primitive, attacked_ctx,
@@ -1470,6 +1508,7 @@ async def _run_case_async(
         call_timeout=call_timeout, cache=cache,
         cache_key_str=key_for(attacked_in, attacked_trial),
         transcript=transcript,
+        sampling_config=sampling_config,
     )
     return _score_pair(case, benign, attacked)
 
@@ -1491,6 +1530,7 @@ async def _run_case_with_item_budget(
     transcript: _TranscriptSink | None,
     run_nonce: str,
     item_timeout: float,
+    sampling_config: dict[str, Any] | None = None,
 ) -> PerCaseResult:
     """Run one case under the R-12 item budget, preserving partial arms.
 
@@ -1521,6 +1561,17 @@ async def _run_case_with_item_budget(
     benign_ctx, attacked_ctx = _adapter_contexts(run_nonce, seed, dispatch_base)
     benign_trial, attacked_trial = _trial_infos(case)
     namespace = str(getattr(adapter, "cache_namespace", "") or "")
+    # R-04: fold the effective sampling config into the cache namespace
+    # so the key covers the values actually sent on the wire
+    # (lm-eval-harness #3881 class). The fragment is empty for adapters
+    # with no sampling knobs set, so their existing cache entries keep
+    # working.
+    _sampling_fragment = sampling_cache_namespace(sampling_config)
+    if _sampling_fragment:
+        namespace = (
+            f"{namespace}|{_sampling_fragment}"
+            if namespace else _sampling_fragment
+        )
 
     def key_for(case_input: dict[str, Any], trial: _TrialInfo) -> str | None:
         if cache is None:
@@ -1557,6 +1608,7 @@ async def _run_case_with_item_budget(
                 cache_key_str=key_for(arm_in, trial),
                 transcript=transcript,
                 timing_state=state,
+                sampling_config=sampling_config,
             )
         )
         try:
@@ -1616,6 +1668,7 @@ async def _run_case_with_item_budget(
                         cached=False,
                         dispatch_limit=dispatch_limit,
                         max_concurrency=max_concurrency,
+                        sampling_config=sampling_config,
                         latency_ms_total=record.latency_ms_total,
                         timed_out=True,
                         timeout_kind="item",
@@ -1663,6 +1716,7 @@ async def _run_case_with_item_budget(
                     cached=False,
                     dispatch_limit=dispatch_limit,
                     max_concurrency=max_concurrency,
+                    sampling_config=sampling_config,
                     latency_ms_total=0.0,
                     timed_out=True,
                     timeout_kind="item",
@@ -1699,6 +1753,7 @@ async def _run_case_with_item_budget(
                     cached=False,
                     dispatch_limit=dispatch_limit,
                     max_concurrency=max_concurrency,
+                    sampling_config=sampling_config,
                     latency_ms_total=0.0,
                     timed_out=True,
                     timeout_kind="item",
@@ -2168,6 +2223,7 @@ async def _run_suite_async(
     case_cost: Callable[[PerCaseResult], float] | None = None,
     result_to_dict: Callable[[PerCaseResult], dict[str, Any]] | None = None,
     summarize_artifact: Callable[..., dict[str, Any]] | None = None,
+    sampling_config: dict[str, Any] | None = None,
 ) -> RunArtifact:
     """Shared suite driver: dispatch, budget, checkpoints, artifacts.
 
@@ -2242,6 +2298,7 @@ async def _run_suite_async(
                 max_concurrency=max_concurrency,
                 call_timeout=call_timeout, cache=cache, transcript=transcript,
                 run_nonce=nonce,
+                sampling_config=sampling_config,
             )
         elif run_one_case is _run_case_async:
             # R-12 item budget: one case's wall-clock ceiling (both
@@ -2258,6 +2315,7 @@ async def _run_suite_async(
                 transcript=transcript,
                 run_nonce=nonce,
                 item_timeout=item_timeout,
+                sampling_config=sampling_config,
             )
         else:
             # Conversational suite with item budget: wrap the turn-driving
@@ -2274,6 +2332,7 @@ async def _run_suite_async(
                     call_timeout=call_timeout, cache=cache,
                     transcript=transcript,
                     run_nonce=nonce,
+                    sampling_config=sampling_config,
                 ),
                 timeout=item_timeout,
             )
@@ -2618,6 +2677,12 @@ def run_suite(
             raise ValueError(
                 f"budget_usd must be > 0, got {budget_usd}"
             )
+    # R-04: fail closed on unset temperature/seed for sampling-capable
+    # adapters, before any case runs. The resolved config rides every
+    # transcript entry so a reader always knows what sampling produced
+    # the call. SamplingConfigError is a ValueError: a config error,
+    # not a traceback.
+    sampling_config = validate_sampling_config(adapter)
     # The required-family manifest defaults to the families present in the
     # suite's case files: the gate is evaluated over the full suite, so a
     # family with zero results in a run fails instead of vanishing.
@@ -2659,6 +2724,7 @@ def run_suite(
                 case_cost=case_cost,
                 result_to_dict=result_to_dict,
                 summarize_artifact=summarize_artifact,
+                sampling_config=sampling_config,
             )
         )
     except asyncio.CancelledError:
@@ -2907,6 +2973,7 @@ def _record_from_transcript_entry_py(
         timeout_kind=timeout_kind,
         cached=cached,
         timing_ms=timing_ms,
+        sampling_config=entry.get("sampling_config"),
     )
 
 
@@ -2938,6 +3005,12 @@ def _record_from_transcript_entry(entry: dict[str, Any]) -> CallRecord:
         # sidecar the Rust core does not model.
         d["timing_ms"] = entry.get("timing_ms")
         d["timeout_kind"] = _infer_timeout_kind(entry)
+        # R-04: the effective sampling config is a Python-owned
+        # measurement sidecar the Rust core does not model (same shape
+        # as timing_ms above). The entry is the source of truth; replay
+        # preserves the original config. Absent (None) on entries
+        # written before R-04.
+        d["sampling_config"] = entry.get("sampling_config")
         usage = d.get("usage")
         return CallRecord(
             decision=d["decision"],
@@ -2955,6 +3028,7 @@ def _record_from_transcript_entry(entry: dict[str, Any]) -> CallRecord:
             timeout_kind=d.get("timeout_kind"),
             cached=d.get("cached", False),
             timing_ms=CallTiming.from_dict(d.get("timing_ms")),
+            sampling_config=d.get("sampling_config"),
         )
     return _record_from_transcript_entry_py(entry)
 

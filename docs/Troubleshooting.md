@@ -1240,3 +1240,52 @@ or above 0.78) that a human should check whether they test the same
 thing. Fix: none required. G9 warnings are informational and re-emit on
 every gate run; there is no review-queue clearing mechanism for G9
 (unlike G6). If the cases are genuinely distinct, no action is needed.
+
+## R-04 sampling config and stability probe
+
+**`error: adapter '<name>' declares _supports_temperature but its effective temperature is unset: declare an explicit temperature or set _supports_temperature = False`**
+Cause: the adapter claims temperature control but its `decode_params`
+carry no temperature — the run would silently proceed on provider
+defaults, invalidating every comparison. The runner fails closed
+before any case runs. Fix: set an explicit temperature in the
+adapter's decode params, or set `_supports_temperature = False` if
+the provider has no temperature knob.
+
+**`error: adapter '<name>' declares _supports_seed but its effective seed is unset: declare an explicit seed or set _supports_seed = False`**
+Cause: the adapter claims seed control but its `decode_params` carry
+no seed. Same fail-closed rule as temperature. Fix: set an explicit
+seed, or set `_supports_seed = False`.
+
+**`error: stability-probe supports single-shot suites only; the conversational suite has its own turn-level stability machinery`**
+Cause: `peira stability-probe --suite conversational` was passed. The
+probe analyzes per-case flip outcomes; the conversational suite's
+turn-level stability is measured by its own machinery. Fix: probe a
+single-shot suite (e.g. `trial`).
+
+**`error: --cases must be >= 1 (got <n>)` (from `peira stability-probe`)**
+Cause: `--cases 0` or a negative slice size. Fix: pass a positive
+case count, or omit `--cases` for the default 100.
+
+**`error: --trials must be >= 2 (got <n>)` (from `peira stability-probe`)**
+Cause: `--trials 1` (or 0). A stability probe needs at least two
+trials to measure flip agreement. Fix: pass `--trials 2` or more
+(default: 3).
+
+**`error: trial <t> (seed <s>): <message>` (from `peira stability-probe`)**
+Cause: trial `<t>` failed with the wrapped `<message>` — usually a
+config error (bad sampling config, bad cache dir) from that trial's
+`run_suite`. Fix: address the wrapped message the same way you would
+for `peira run`; the other trials' work is discarded so the probe
+never reports on a partial trial set.
+
+**`warning: trial <t> (seed <s>) terminated with '<kind>': its cases still enter the probe, flagged by eligibility` (from `peira stability-probe`)**
+Cause: not an error. The trial ended early (e.g. budget termination)
+but produced per-case results; ineligible cases are excluded from
+pass^k and the stability score via the eligibility flag. Fix: none
+required, but a terminated trial weakens the probe — re-run if you
+need all trials complete.
+
+**`warning: suite has <n> cases after filtering, fewer than the requested <m>; probing all of them` (from `peira stability-probe`)**
+Cause: not an error. `--cases` (or the default 100) exceeds the
+filtered suite size, so the probe runs over every available case.
+Fix: none required.

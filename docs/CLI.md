@@ -35,6 +35,8 @@ run a suite through an adapter
 | `--max-concurrency` |  | `8` | cap on in-flight adapter calls; the AIMD controller adapts within [1, N] (default: 8) |
 | `--max-attempts` |  | `3` | total tries per call; retries are transient-only (408/409/429/5xx, timeouts) (default: 3) |
 | `--call-timeout` |  | `300.0` | seconds per attempt; a timeout is retried as a transient failure (default: 300) |
+| `--item-timeout` |  | - | wall-clock budget in seconds for one case (both variants, all attempts); on expiry the case seals as a timeout sample failure and the run continues (no item budget by default) |
+| `--run-timeout` |  | - | wall-clock budget in seconds for the whole run; on expiry dispatch stops, in-flight cases drain to completion, completed cases are checkpointed in a resumable partial, and the artifact seals with termination=timeout (analyzable, never rankable) (no run budget by default) |
 | `--rlimit-cpu-seconds` |  | - | process-wide CPU time backstop in seconds (Unix only; opt-in, no limit by default) |
 | `--rlimit-as-mb` |  | - | process-wide virtual memory cap in MB (Unix only; opt-in, no limit by default) |
 | `--rlimit-fsize-mb` |  | - | max size of any single file write, in MB (Unix only; opt-in, no limit by default) |
@@ -109,6 +111,23 @@ drift-watch: per-family McNemar deltas between two runs of the same adapter id, 
 | `--old` | yes | - | older run artifact (baseline) |
 | `--new` | yes | - | newer run artifact (candidate) |
 | `--out` |  | - | write the drift result JSON to this path |
+
+## peira stability-probe
+
+stability-probe: ~100 cases x 3 trials per adapter version, reporting attacked-arm pass^k and a stability score next to accuracy
+
+| Flag | Required | Default | Help |
+|---|---|---|---|
+| `--adapter` | yes | - | adapter: 'mock' or a dotted path like 'examples.minimal_adapter' |
+| `--suite` |  | `'trial'` | suite to probe (default: trial); single-shot suites only |
+| `--out` | yes | - | output directory for stability-probe.json and borderline_cases.json |
+| `--cases` |  | - | cases in the probe slice (default: 100) |
+| `--trials` |  | `3` | trials per case (default: 3; minimum: 2) |
+| `--seed` |  | `0` | base seed; trial seeds are seed .. seed+trials-1 |
+| `--families` |  | - | family filter (same syntax as `peira run`) |
+| `--max-concurrency` |  | `4` | max concurrent calls per trial |
+| `--max-attempts` |  | `3` | max attempts per call |
+| `--call-timeout` |  | `30.0` | per-call timeout in seconds |
 
 ## peira dashboard
 
@@ -189,6 +208,21 @@ M-3 economic value view over 1+ run artifacts (E_attacked, CPPF, break-even, Par
 | `--baseline` |  | - | baseline adapter name for CPPF / break-even comparisons |
 | `--price-date` |  | - | price date stamp for the frontier (default: unknown) |
 | `--out` |  | - | write an HTML value-view report to this path |
+
+## peira threshold-by-family
+
+C-7: optimal review threshold per family under buyer-cost economics (family-specific vs global threshold interaction)
+
+| Flag | Required | Default | Help |
+|---|---|---|---|
+| `RUN` | yes | - | run artifact path |
+| `--cost-false-approve` | yes | - | USD cost of trusting a wrongly-approved decision |
+| `--cost-false-deny` | yes | - | USD cost of trusting a wrongly-denied decision |
+| `--cost-review` | yes | - | USD cost of one human review |
+| `--cost-false-unknown` |  | - | USD cost of trusting a wrongly-decided case whose direction is unavailable (default: mean of the two directional costs) |
+| `--families` |  | - | comma-separated family manifest (default: all families in the run) |
+| `--arm` |  | `'attacked'` | which arm to price (default: attacked) (choices: `attacked`, `benign`) |
+| `--json` |  | - | write the full interaction table JSON to this path |
 
 ## peira defense
 
@@ -295,6 +329,7 @@ build manifest.json for a dataset directory
 | `--version` | yes | - | dataset version, e.g. 1.0.0 |
 | `--name` |  | `'peira-v1'` | dataset name |
 | `--require-reviews` |  | `False` | refuse to build while any human reviews are pending |
+| `--kind` |  | `'single'` | case schema: single-shot (default) or conversational (choices: `single`, `conversational`) |
 
 ### peira dataset verify-manifest
 
@@ -333,6 +368,7 @@ human review queue
 |---|---|---|---|
 | `--dir` |  | - | dataset directory |
 | `--check` |  | `False` | exit 1 if any reviews are pending |
+| `--kind` |  | `'single'` | case schema: single-shot (default) or conversational (choices: `single`, `conversational`) |
 
 #### peira dataset review approve
 
@@ -344,6 +380,7 @@ mark a case reviewed and approved
 | `--id` | yes | - | case id |
 | `--reviewer` |  | `''` | who reviewed (name or initials) |
 | `--notes` |  | `''` | review notes |
+| `--kind` |  | `'single'` | case schema: single-shot (default) or conversational (choices: `single`, `conversational`) |
 
 #### peira dataset review reject
 
@@ -355,6 +392,7 @@ mark a case reviewed and rejected
 | `--id` | yes | - | case id |
 | `--reviewer` |  | `''` | who reviewed (name or initials) |
 | `--notes` |  | `''` | review notes |
+| `--kind` |  | `'single'` | case schema: single-shot (default) or conversational (choices: `single`, `conversational`) |
 
 ### peira dataset status
 
@@ -363,3 +401,4 @@ pipeline status: gates, review queue, manifest
 | Flag | Required | Default | Help |
 |---|---|---|---|
 | `--dir` | yes | - | dataset directory |
+| `--kind` |  | `'single'` | case schema: single-shot (default) or conversational (choices: `single`, `conversational`) |
