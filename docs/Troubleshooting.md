@@ -20,7 +20,7 @@ adapter is safe.
 
 **`error: unknown suite 'x' (available: smoke, safety-policy, trial, trial-demo, v1)`**
 Cause: typo in `--suite`. Fix: `trial-demo` (demo fixture, offline) or
-`trial` (the branded 100-case Peira Trial, sealed `1.0.6`).
+`trial` (the branded 100-case Peira Trial, sealed `1.0.5`).
 
 **`error: suite directory ... not found`**
 Cause: you ran `peira` from outside the repo checkout. Fix: run from the
@@ -119,6 +119,15 @@ make the artifact lie about its own measurement inputs. Fix: resume with
 the same `--cache-dir` choice the partial was written with, or delete
 the `<adapter>-<suite>.partial.json` file and re-run from scratch.
 
+**`error: partial run was recorded with effort X, not Y: effort is a measurement input; re-run with the same --effort or drop --resume`**
+Cause: `peira run --resume` found a partial run recorded at a different
+reasoning-effort level than the one requested. Effort changes what the
+provider computes and what it costs, so merging results recorded under a
+different effort level would make the artifact lie about its own
+measurement inputs. Fix: resume with the same `--effort` the partial was
+written with, or delete the `<adapter>-<suite>.partial.json` file and
+re-run from scratch.
+
 **`error: peira pricing table ...`**
 Cause: `peira run` recomputes adapter costs from the pinned pricing
 table (`peira/data/pricing.json` in the package, source and pin date
@@ -136,70 +145,6 @@ position N isn't a well-formed result object (a scalar, or an object with
 the wrong fields). The file was hand-edited or corrupted. The resume
 refuses to guess what the entry meant. Fix: delete the
 `<adapter>-<suite>.partial.json` file and re-run without `--resume`.
-
-**`error: --seeds must be 1 or >= 3 (M-7 protocol minimum), got N`**
-Cause: `peira run --seeds N` was given a value other than 1 or at
-least 3. k = 2 can only report agreement, not stability, so the M-7
-protocol rejects it. Fix: use `--seeds 1` for a single run or
-`--seeds 3` (or more) for the stability protocol.
-
-**`error: --resume is not supported with --seeds > 1; each seed run is independent (re-run without --resume)`**
-Cause: resume merges a partial run into a new execution, but
-multi-seed runs are k independent executions with no shared partial
-state. Fix: re-run without `--resume`; each seed run starts fresh.
-
-**`error: --transcript is not supported with --seeds > 1; each seed run is independent (run with --seeds 1 to capture a transcript)`**
-Cause: a transcript captures a single run's request/response stream,
-but multi-seed runs are k independent executions. Fix: run with
-`--seeds 1` to capture a transcript, or omit `--transcript` for
-multi-seed runs.
-
-**`ValueError: budget_usd must be a number or None, got True`**
-Cause: a boolean was passed as the budget to `run_multiseed`.
-Python booleans are integers, so `True / 3` would silently become a
-$0.33 per-seed budget. The library rejects booleans explicitly.
-Fix: pass a numeric budget (e.g. `1.0`) or `None` for no budget.
-
-**`warning: seed N crashed: <ErrorType>: <message>`**
-Cause: one seed run raised an uncaught exception (e.g. provider
-outage, adapter bug). The seed is excluded from the stability
-analysis; completed seeds are unaffected. The message is printed to
-stderr because no artifact exists for a crashed seed. Fix: inspect
-the error, fix the underlying cause, and re-run.
-
-**`error: stability needs at least 2 run artifacts, got N`**
-Cause: `peira stability` compares flip outcomes across runs; with one
-run there is nothing to agree or disagree. Fix: pass two or more run
-artifacts from the same adapter, suite, and dataset version.
-
-**`error: <path> is a different adapter/suite/dataset than <first>: stability compares runs of the same adapter id`**
-Cause: `peira stability` was given runs that do not share adapter,
-suite, and dataset version. Agreement statistics are only meaningful
-over repeated runs of the same measurement. Fix: pass runs from one
-adapter id, or compare different adapters with `peira compare`
-instead.
-
-**`error: <path> did not complete (termination=T): a truncated run must not enter the agreement statistics`**
-Cause: `peira stability` was given a run artifact whose `termination`
-is not `"complete"` (for example `"budget"` after the spend cap
-stopped the run). A truncated run has no outcome for the missing
-cases, and counting them as non-flips would fake agreement. Fix:
-re-run the truncated seed to completion, or drop it and run
-`peira stability` over the completed seeds only.
-
-**`error: drift-watch compares runs of the same adapter id: <old> is 'A', <new> is 'B'`**
-Cause: `peira drift-watch` was given two runs from different
-adapters. Drift is change over time in one adapter, not a
-cross-adapter comparison. Fix: pass two runs of the same adapter, or
-use `peira compare` for cross-adapter head-to-head.
-
-**`error: multi-seed run did not complete N seeds cleanly; stability analysis withheld (see per-seed artifacts)`**
-Cause: `peira run --seeds N` finished with fewer than 3 cleanly
-completed seeds (for example the per-seed budget cap stopped some
-seeds). The per-seed artifacts are still written so no work is lost,
-but no stability claim is sealed. Fix: raise `--budget-usd` (it is
-divided evenly across seeds), re-run the terminated seeds, or run
-`peira stability` over the completed seed artifacts by hand.
 
 **`error: no cases found in ...`**
 Cause: the suite directory has no `.jsonl` files. Fix: check the path;
@@ -864,49 +809,6 @@ and per-family win rates still render.
 Cause: one of the artifact paths doesn't exist. Fix: check the
 paths. `peira lottery` takes one or more positional artifact files.
 
-**`error: <path> not found` (from `peira saturation`)**
-Cause: one of the artifact paths doesn't exist. Fix: check the
-paths. `peira saturation` takes one or more positional artifact files.
-
-**`error: <path> is not a valid run artifact (...)` (from `peira saturation`)**
-Cause: the file isn't a sealed run artifact (bad JSON, or a JSON file
-that isn't a run artifact). Fix: point at the `.json` files `peira run`
-wrote to the runs directory.
-
-**`error: <path>: cannot decode per-case results (...)` (from `peira saturation`)**
-Cause: the artifact's per-case results don't decode (a hand-edited
-artifact, or an artifact from an incompatible peira version). Fix:
-re-run the adapter on the current peira; don't hand-edit artifacts.
-
-**`error: unknown families: ...` (from `peira saturation`)**
-Cause: `--families` names a family not present in the given runs
-(typo, or a family none of the runs cover). Fix: check the spelling
-against the family names in the runs, or drop `--families` for the
-union default.
-
-**`error: unknown holdout families: ...` (from `peira saturation`)**
-Cause: `--holdout-families` names a family not present in the given
-runs. Fix: same as unknown families above.
-
-**`error: no families found in the given runs` (from `peira saturation`)**
-Cause: none of the artifacts contain any per-case results (empty
-runs). Fix: pass artifacts from completed runs.
-
-**`error: cannot write saturation JSON to <out> (...)` (from `peira saturation`)**
-Cause: `peira saturation --json` points somewhere unwritable: a missing
-parent directory, or a permissions problem. Fix: create the directory
-first, or pick a writable path.
-
-**`error: --releases-observed must be >= 1` (from `peira saturation`)**
-Cause: `--releases-observed` got 0 or a negative number. Fix: pass a
-positive count of consecutive releases the exhaustion trigger has
-held (default: 1).
-
-**`peira saturation` reports every family as `insufficient_data`**
-Cause: not an error. Fewer than two adapters, or fewer than 20
-eligible cases per family in the given runs. Fix: add more adapters;
-saturation is a comparative read and needs at least a pair.
-
 **`error: <path> is not a valid run artifact (...)` (from `peira lottery`)**
 Cause: the file isn't a sealed run artifact (bad JSON, or a JSON file
 that isn't a run artifact). Fix: point at the `.json` files `peira run`
@@ -943,6 +845,37 @@ Cause: `--families` left only one family to analyze, so removing it
 leaves nothing to rank on (leave-one-out needs at least two families).
 Fix: pass at least two families, or omit `--families` to use the union
 across the runs.
+
+**`the 'mock' adapter does not accept an effort parameter`**
+Cause: `peira run --adapter mock --effort ...`. The mock adapter is not
+an LLM baseline and exposes no reasoning-effort control. Fix: drop
+`--effort`, or point `--adapter` at an LLM adapter class.
+
+**`adapter '...' resolved to a pre-built instance, which cannot take --effort '...'`**
+Cause: `--effort` needs an adapter *class* so the CLI can instantiate
+it with `effort=`. Your `--adapter` pointed at a module whose
+top-level `adapter` object is already built. Fix: configure effort
+inside that module, or point `--adapter` at the class
+(`package.module:ClassName`).
+
+**`adapter '...' does not accept an effort parameter (...)`**
+Cause: the adapter class takes no `effort` keyword (a non-LLM adapter,
+or a custom adapter without effort support). Fix: use an LLM baseline
+adapter, or add `effort` to the adapter's constructor.
+
+**`<name>: unknown effort '...' (expected one of ...)`**
+Cause: the `--effort` value is not on the provider's documented
+ladder. The value is provider-native, never normalized: Anthropic
+takes low, medium, high, xhigh, max; OpenAI takes none, minimal, low,
+medium, high, xhigh, max; DeepSeek takes none, low, high, max (aliases:
+minimal to low, medium and xhigh to high, ultra to max); Google takes
+minimal, low, medium, high; xAI takes low, medium, high, xhigh. Fix:
+pick a value from the adapter's ladder.
+
+**`<name> does not support the effort parameter: its provider exposes no reasoning-effort control`**
+Cause: `--effort` was passed for a provider whose effort control is
+not verified against primary documentation (Kimi K3, GLM, Meta Llama
+API). Fix: omit `--effort` for that adapter.
 
 ## R-05 contamination scripts
 

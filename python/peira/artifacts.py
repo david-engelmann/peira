@@ -362,7 +362,7 @@ class RunArtifact:
         for key in usage:
             if key not in (
                 "model", "tokens_in", "tokens_out", "latency_ms", "cost_usd",
-                "price_table_ref",
+                "price_table_ref", "reasoning_tokens",
             ):
                 raise ValueError(f"{where} has unknown usage field: {key!r}")
         for key in ("model", "tokens_in", "tokens_out", "latency_ms", "cost_usd"):
@@ -400,6 +400,28 @@ class RunArtifact:
                 raise ValueError(
                     f"{where} usage field {key!r} must be non-negative, "
                     f"got {usage[key]}"
+                )
+        # Provider-reported reasoning/thinking tokens: optional, a
+        # non-negative integer subset of tokens_out (billed at output
+        # rates, never double-counted). Null when the provider did not
+        # report them.
+        rt = usage.get("reasoning_tokens")
+        if rt is not None:
+            if not _is_int(rt):
+                raise ValueError(
+                    f"{where} usage field 'reasoning_tokens' must be an "
+                    f"integer or null, got {type(rt).__name__}"
+                )
+            if rt < 0:
+                raise ValueError(
+                    f"{where} usage field 'reasoning_tokens' must be "
+                    f"non-negative, got {rt}"
+                )
+            if rt > usage["tokens_out"]:
+                raise ValueError(
+                    f"{where} usage field 'reasoning_tokens' ({rt}) exceeds "
+                    f"'tokens_out' ({usage['tokens_out']}): reasoning "
+                    "tokens are a subset of output tokens"
                 )
 
     @classmethod

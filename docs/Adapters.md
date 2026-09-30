@@ -159,8 +159,9 @@ construction. Passing a model id the vendor has retired fails closed
 with a `DeprecatedPinError` naming the replacement.
 
 Each sends one JSON schema to the provider's native constrained
-decoding (OpenAI strict `json_schema`, Anthropic forced tool choice,
-Gemini `responseSchema`), then revalidates the response client-side.
+decoding (OpenAI strict `json_schema`, Anthropic native
+`output_config.format` JSON schema, Gemini `responseSchema`), then
+revalidates the response client-side.
 The decision vocabulary is per-call. Peira cases use open label sets
 (`deny`, `emergency-dept`, `choose A`, …), so the schema's decision
 enum is built from the case input's explicit `options` list, not a
@@ -183,16 +184,76 @@ adapter never retries. The runner owns retries, and the SDKs are
 configured for a single attempt so the runner's congestion signal stays
 honest.
 
+### Reasoning effort
+
+`peira run --effort <level>` sets how hard the model thinks before
+answering. Effort is a first-class primitive. It lives in the run
+config, in the adapter identity (`model@effort=high`), in the cache
+namespace, in per-call records, in the run registry, and in the
+analysis. The point is honest comparisons like opus medium versus
+opus high versus opus max, and crossed ones like haiku max versus
+opus medium.
+
+```bash
+peira run --adapter peira.adapters.llm:OpenAIAdapter --effort high
+```
+
+Effort values are normalized to the ladder `none`, `minimal`, `low`,
+`medium`, `high`, `xhigh`, `max`. `xhigh` is never collapsed into
+`high`: on providers that define both, they are distinct settings.
+Provider-native values are preserved alongside the normalized tier,
+and provider ladders are not claimed to be commensurable. High on one
+provider is not the same amount of thinking as high on another.
+
+Per-provider behavior:
+
+- **OpenAI** (`OpenAIAdapter`, `XAIAdapter`): sends `reasoning_effort`
+  on the native ladder (`none`, `minimal`, `low`, `medium`, `high`,
+  `xhigh`, `max`, model-dependent). xAI uses its own ladder (`low`,
+  `medium`, `high`, `xhigh`). Budget-style requests are not supported.
+- **Anthropic** (`AnthropicAdapter`): sends the native level as an
+  optional sibling of the JSON-schema `output_config`
+  (`output_config.effort`) on the ladder `low`, `medium`, `high`,
+  `xhigh`, `max`. Effort affects all output, not just hidden
+  reasoning.
+- **Google** (`GoogleAdapter`): sends `ThinkingConfig(thinking_level=...)`.
+  Google also exposes token budgets; a budget is recorded as
+  `budget:<n>` with no fabricated tier.
+- **DeepSeek** (`DeepSeekAdapter`): `low`, `high`, `max` with aliases.
+  The default is thinking disabled, recorded as native `none`. An
+  explicitly requested level enables thinking. Requesting any
+  effort other than the default changes the adapter identity.
+- **Meta Llama API, Moonshot, Zhipu**: no documented effort control;
+  `--effort` fails closed with an unsupported-provider error naming
+  the adapter.
+- **Grok 4.20 Multi-Agent**: effort controls the agent count, not
+  reasoning depth, and is never presented as a thinking level.
+
+Requesting effort on the mock adapter, on a prebuilt adapter
+instance, or on an adapter class whose constructor takes no `effort`
+parameter fails closed with a clear error.
+
+**Reasoning tokens.** Where the provider reports them (OpenAI
+`completion_tokens_details.reasoning_tokens`, Anthropic
+`output_tokens_details.thinking_tokens`, Google
+`thoughts_token_count`), the adapter records them on every call as
+`usage.reasoning_tokens`. They are a subset of `tokens_out`, billed
+at output rates and never priced separately, and the runner rejects
+any record where they exceed it. No provider in the matrix bills them
+as a separate line item; if one ever does, the adapter must fold them
+into `tokens_out` before reporting.
+
 ### Frontier ceiling (candidate; NOT runnable yet)
 
 The strongest model peira can measure against: the upper bound every
 other adapter is compared to. Candidate picked 2026-09-25:
 **`claude-fable-5-1`** (Anthropic, GA 2026-09-01, $10/$50 per 1M in the
 pinned pricing table), to be used opt-in via
-`AnthropicAdapter(model="claude-fable-5-1")` **after** the
-`output_config.format` migration lands. Defaults are unchanged; the
-ceiling is never the default. This is a docs + pricing entry only:
-do not run it on the current adapter shapes.
+`AnthropicAdapter(model="claude-fable-5-1")` now that the
+`output_config.format` migration has landed. Defaults are unchanged;
+the ceiling is never the default. This is a docs + pricing entry only:
+no live verification call has been made, so verify the model id and the
+request shape against the live API before any measured run.
 
 Why Fable 5.1 over GPT-6 Astra (`gpt-6-astra`, also $10/$50, GA
 2026-09-03):
@@ -219,10 +280,12 @@ Why Fable 5.1 over GPT-6 Astra (`gpt-6-astra`, also $10/$50, GA
 **Honest caveats:** (1) the model id `claude-fable-5-1` follows
 Anthropic's documented naming convention (Fable 5's id was
 `claude-fable-5`) but is NOT independently confirmed on the live API;
-verify before the first run; (2) the current `AnthropicAdapter` still
-uses forced tool use. A live ceiling run 400s until the
-`output_config.format` migration lands. Do not run it before then;
-the 400 is a loud terminal provider error, not a measurement. Full
+verify before the first run; (2) the `output_config.format` migration
+has landed in `AnthropicAdapter`, with native JSON-schema constrained
+decoding and an optional sibling `output_config.effort` instead of
+forced `tool_choice`. No live verification call has been made, so the
+first measured run must confirm the request shape against the live API
+before results are treated as real. Full
 rationale is recorded as D-32 in `docs/Decisions.md`.
 
 ### Kimi K3 (Moonshot)

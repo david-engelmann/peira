@@ -1079,139 +1079,6 @@ report uses each scenario's default rate and records it. Run it with
 `peira lottery --economic`.
 Add `--scenario <id>` to restrict to one cost scenario. The full
 per-family tables are in the `--json` output.
-## Saturation and retirement (C-10, per-family)
-
-A family that no longer discriminates between adapters adds
-measurement cost without adding information. `peira saturation`
-implements the pre-registered per-family saturation/retirement policy
-(D-37), published now while nothing is saturated, so the definition
-of a family's death cannot be negotiated after the fact.
-
-For each family, every adapter's conditional ASR is computed with a
-Wilson 95% interval. Adapter pairs are compared against the paired
-MDE (R-02's `mde_mcnemar`, using the family's observed discordant
-rate), so "within MDE of each other" is a measured statement, not a
-vibe. A pair is resolvable when its ASR gap exceeds the MDE. Both the
-gap and the MDE are computed on the paired cohort (cases eligible in
-both runs), so unpaired cases cannot create a spurious gap when every
-paired outcome matches.
-
-States:
-
-- **discriminating**: at least one adapter pair resolves (its ASR
-  gap exceeds the paired MDE). The family separates adapters.
-  Discrimination takes precedence over bound compression: a
-  resolvable pair means the family still separates adapters even
-  near a bound, because retirement is loss of discrimination.
-  Action: keep.
-- **uniform_failure**: no pair resolves, scores mid-range. Attacks
-  work about equally on everyone, so the benchmark still measures
-  real vulnerability, but the family cannot rank. Action: author
-  harder variants; do not retire.
-- **exhausted**: no pair resolves and every adapter's CI sits entirely
-  below the 0.05 floor. Attacks fail on everyone with tight spread.
-  Action: retirement candidate once the criterion holds for two
-  consecutive releases; the old leaderboard becomes the regression
-  suite.
-- **ceiling_saturated**: no pair resolves and every adapter's CI sits
-  entirely above the 0.95 ceiling. Attacks succeed on everyone.
-  Action: author harder variants.
-- **insufficient_data**: fewer than two adapters or fewer than 20
-  eligible cases per family. Action: monitor, do not judge.
-
-Retirement is loss of discrimination, never a blended number: the
-MMLU precedent (superseded at an ~86-87% plateau, not at 100%) is the
-model. The report lists families closest to retirement first
-(exhausted, then ceiling-saturated, then uniform_failure, then
-discriminating; within a state, least resolvable first).
-
-Two guardrails are structural. First, the variant-flip check: an
-`exhausted` read also requires low variant-flip (the signal that
-near-zero ASR is genuine robustness, not memorized cases). Peira v1
-records no variant-flip data, so the module reports
-`variant_flip_checked: false` and treats floor-plus-tight-spread as
-necessary but not sufficient: `exhausted` sets the per-release
-`exhaustion_trigger_met` flag, but `retirement_eligible` stays false
-until the trigger holds for two consecutive releases and the
-variant-flip check passes. M-8 (score-primitive delta analytics)
-is the planned source of a variant-flip analog. Second, holdout
-families are never retired: `--holdout-families` marks them, their
-state is reported, and their action is capped at monitor, because the
-blind holdout is the regression suite, not the capability hill.
-
-A methodology pilot exercising all four states on the real v1 family
-inventory with disclosed synthetic adapters lives in
-[docs/saturation-pilot-report.md](saturation-pilot-report.md), generated
-by `scripts/saturation_pilot.py`. It is machinery validation, not a
-claim about any real family: no official multi-adapter runs exist yet.
-
-## Multi-seed stability protocol (M-7)
-
-A single run confounds three things: the adapter's true flip rate,
-the luck of the draw on seeds, and case-level instability. The M-7
-protocol separates them. `peira run --seeds k` (k = 1 or k >= 3;
-k = 2 is rejected) executes the suite k times under consecutive seeds
-(seed .. seed+k-1), each under a fresh run nonce so call ids stay
-unlinkable. Each seed run seals its own ordinary run artifact
-(`{slug}-{suite}-seedN.json`); the protocol then seals a stability
-artifact (`{slug}-{suite}-stability.json`) that references all k runs
-and carries the analysis. The same analysis is available over existing
-artifacts with `peira stability RUN1 RUN2 ... [--out]`, which requires
-all runs to share adapter, suite, and dataset version.
-
-The headline is **pass^k**: the fraction of eligible cases whose flip
-outcome is identical across all k seeds. A deterministic adapter
-scores pass^k = 1.0; a case that flips on some seeds but not others is
-a **churn case** (0 < per-case flip rate < 1) and counts against it.
-Only cases eligible in every seed enter the agreement statistics.
-
-The variance is reported as three separate components, never one
-collapsed standard deviation:
-
-- **Sampling variance**: Wilson 95% CI on the pooled ASR (k x n
-  observations). Answers "what if we ran more cases".
-- **Run variance**: sample standard deviation of the per-seed ASRs.
-  Answers "what if we ran more seeds".
-- **Item variance**: population variance of the per-case flip rates
-  across cases. Answers "do flips concentrate on a fragile subset or
-  spread evenly".
-
-**Cost gate.** k seed runs multiply provider spend by k, so the
-three-seed commitment stays behind a cost pilot: run the protocol on
-the mock or a local adapter first (zero spend) and size the real run
-from the pilot's churn. `--budget-usd` with `--seeds k` divides the
-cap evenly across seeds. A run that hits its per-seed budget stops
-gracefully; the artifact records the termination, and that seed is
-excluded from the stability analysis rather than counted as a quiet
-non-flip. A seed that crashes is excluded the same way; the completed
-seeds' artifacts are still sealed, so one bad seed never loses the
-others' work.
-
-Seed independence is enforced per adapter. The mock rebuilds its
-simulation script per seed; seed-sensitive LLM baselines are re-seeded
-per run (provider sampling seed plus cache namespace), so the k runs
-are independent measurements rather than k copies of one sampling
-decision.
-
-**Longitudinal registry.** Every run artifact carries the fields a
-future rerun needs for an apples-to-apples comparison: `model_class`
-(llm-baseline, guardrail, rule-based, ...), `confidence_source`,
-`checkpoint_hash` (pinned model revision) or `api_version`,
-`call_date` (UTC date of the run), `decode_params` (canonical JSON),
-`template_hash`, and `case_set_tag` (the suite id; the dataset
-version travels separately). Adapters declare what they know; fields
-the adapter does not declare stay empty rather than invented.
-
-**Drift watch.** `peira drift-watch --old A --new B` compares two runs
-of the same adapter id and reports, per family: old and new ASR, the
-delta, and the two churn directions separately: **newly-flipping**
-(not flipped in old, flipped in new) and **newly-fixed** (flipped in
-old, not flipped in new). A net delta alone is never reported; a +2%
-net can hide 20 regressions and 18 fixes. Paired McNemar p-values test
-each family's delta, withheld when fewer than 10 discordant pairs make
-the test meaningless. A family is flagged DEGRADED only when the delta
-is positive and p < 0.05. Only cases present in both runs are paired;
-a case whose family changed between runs is treated as unpaired.
 
 ## Economic value view (M-3, sidecar)
 
@@ -1272,8 +1139,60 @@ point estimates. Attack rates,
 decision volumes, and cost scenarios are deployer inputs. Peira reports
 the exchange rates, the deployer supplies their threat model.
 
-## Threshold-defense economics (C-4, diagnostic)
+## Effort analysis (reasoning-effort economics)
 
+Effort is the model-side knob every frontier provider now ships. It
+is how hard the model thinks before answering. Peira treats it as a
+first-class primitive so the natural questions get honest answers.
+Does opus high beat opus medium, and is the extra spend worth it.
+Does haiku at max beat opus at medium. The analysis never compares
+across provider ladders as if the tiers were commensurable. High on
+one provider is not the same amount of thinking as high on another.
+Normalized tiers (`none` through `max`, with `xhigh` kept distinct
+from `high`) order levels within a ladder; the provider-native value
+is always reported alongside.
+
+- **Effort curve.** One row per run: effort level, ASR with its
+  Wilson 95% CI, unconditional ASR, eligible counts, and total run
+  cost in USD. Repeated runs at the same level stay as separate rows.
+  They are measurements, not a single point. Runs with no ASR are
+  listed with ASR None so gaps stay visible.
+- **Level aggregation.** Rows at one level pool: counts and costs
+  sum, ASR is the eligible-count-weighted mean. The CI is a
+  conservative envelope (min lo, max hi across the runs), labeled as
+  an envelope because it is not a recomputed interval. Levels with
+  no ASR at all keep ASR None rather than a fabricated number.
+- **Marginal table.** For each step up the ladder: the ASR delta,
+  the cost delta, and the dollars of extra spend per point of ASR
+  reduction. A step where ASR did not improve has no price. A
+  non-improvement is reported as None, never as a negative or
+  infinite ratio.
+- **Cost per prevented flip.** The cheapest level is the baseline.
+  Prevented flips at level L are the baseline flip count minus the
+  level flip count; the cost per prevented flip is the extra spend
+  divided by the flips prevented. Levels preventing nothing carry
+  None. Flip counts are scoped per model. Flips from different
+  models never mix into one ratio.
+- **Crossed comparison.** Any two (model, effort) configurations,
+  e.g. sonnet at max versus opus at medium. Reports the ASR delta,
+  whether the Wilson CIs overlap, and the cost ratio. Overlapping
+  CIs are reported as overlapping, not as ties. When a (model,
+  effort) cell has repeated runs, the first run in deterministic
+  curve order is the representative; the repeat information stays
+  visible in the curve and aggregation, it is just not folded into
+  this pairwise row. This is the weakest statistical claim in the
+  effort tooling and is labeled accordingly.
+- **Per-family curves.** Effort curves broken down by attack family,
+  from the registry's family results. Same aggregation, with
+  refusal rate as an n-weighted mean.
+
+Reasoning tokens (reported by OpenAI, Anthropic, and Google) are
+observability only. They are a subset of `tokens_out`, billed at output
+rates, already inside the run cost. They are never priced as a
+separate line item, and any record where they exceed `tokens_out`
+is rejected at validation.
+
+## Threshold-defense economics (C-4, diagnostic)
 A guardrail's confidence scores are only useful if the deployer knows
 what to do with them. C-4 prices the obvious policy. Route to human
 review when the risk score (1 - attacked confidence) reaches a
@@ -1345,52 +1264,6 @@ and belongs in that family instead.
 **Design MDEs.** At n=400: 4.4pp at 10% discordance, 6.3pp at 20%,
 7.7pp at 30%, 8.9pp at 40%. Published in the dataset manifest's
 `mdes` table (`dataset/v2/cases/manifest.json`).
-
-## Near-dedup calibration (G9)
-
-Dataset gate G9 flags near-duplicate cases with character-trigram cosine
-similarity over each case's concatenated benign and attacked prompt
-text. Two thresholds control it. Pairs at 0.98 or above are errors that
-fail the gate. Pairs at 0.78 or above are warnings routed to human
-review. Errors fail loudly in CI because the gate command exits non-zero
-on any error, while warnings never fail a run.
-
-The 0.78 warning threshold is calibrated, not guessed. The calibration
-fixture is `tests/fixtures/g9_paraphrase_pairs.jsonl`, 50 hand-labeled
-pairs drawn from real v1 cases. A human read each pair and labeled it 1
-for near-duplicate or 0 for distinct, with notes on the judgment. The
-calibration script `scripts/calibrate_g9_threshold.py` recomputes the
-trigram-cosine similarity for every pair from the stored texts and sweeps
-thresholds from 0.60 to 0.94, reporting precision, recall, and F1 at each
-step. On the 2026-09-28 calibration the 20 labeled near-duplicates all
-scored at or above 0.8018 and the 30 labeled distinct pairs all scored at
-or below 0.7089, a clean separation gap. The adopted 0.78 sits inside
-that gap, biased toward precision so fewer distinct pairs get sent for
-human review. The gate constant and the calibration script are
-contract-tested together. A test recomputes the fixture similarities and
-fails if any labeled positive falls below the constant or any labeled
-negative reaches it, so the threshold cannot silently drift from its
-evidence.
-
-The 0.98 error threshold is a judgment call anchored in the same fixture.
-The most similar hand-labeled near-duplicate scored 0.9217, so the error
-band only fires on pairs strictly more similar than anything a human
-labeled a mere paraphrase. In practice that means prompts differing by a
-few characters. Rerun the calibration script any time the fixture grows
-or the text extraction changes, since the threshold is only valid for
-the exact text the gate compares.
-
-The warning band is deliberately not a failing tier. On 2026-09-29 the
-gate reported 398 warnings and 0 errors on the v1 corpus (2,000 cases).
-A stratified human review of 23 warning pairs across the full score
-range (0.78 to 0.93) found zero true near-duplicates. Every sampled pair
-is a same-family template sibling, two legitimately distinct cases that
-share scenario boilerplate or distractor-pool text while testing
-different attacks. The full adjudication is in
-REVIEWS/g9-warning-adjudication-20260929.md. Promoting warnings to errors
-would flag 411 distinct cases for forced rewrite or removal with no
-quality gain in the reviewed sample, so warnings stay as review signals
-and only the error band fails the gate.
 
 ## Analysis lock
 

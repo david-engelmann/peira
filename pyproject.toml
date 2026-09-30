@@ -33,7 +33,7 @@ hf = ["transformers>=4.40,<5", "torch>=2.2"]
 # Optional: structured-output LLM baseline adapters
 # (python/peira/adapters/llm.py).
 openai = ["openai>=1.40"]
-anthropic = ["anthropic>=0.34"]
+anthropic = ["anthropic>=0.79.0"]
 google = ["google-genai>=1.0"]
 all = ["peira[hf]", "peira[openai]", "peira[anthropic]", "peira[google]"]
 # Development and test tooling. The Python suite runs under pytest

@@ -40,11 +40,9 @@ from peira.runner import (
     load_cases,
     new_run_nonce,
     replay_suite,
-    run_multiseed,
     run_suite,
     validate_partial,
 )
-from peira.stability import StabilityArtifact
 from peira.templates import TEMPLATES
 
 EXIT_OK = 0
@@ -108,10 +106,14 @@ def _ci95(ci: Any) -> str:
     return f"{_val(ci[0])}–{_val(ci[1])}"
 
 
-def _get_adapter(name: str):
+def _get_adapter(name: str, effort: str | None = None):
     if name == "mock":
+        if effort is not None:
+            raise ValueError(
+                "the 'mock' adapter does not accept an effort parameter"
+            )
         return MockAdapter()
-    return _load_dotted_adapter(name)
+    return _load_dotted_adapter(name, effort=effort)
 
 
 def _unknown_adapter(spec: str) -> ValueError:
@@ -123,13 +125,19 @@ def _unknown_adapter(spec: str) -> ValueError:
     )
 
 
-def _load_dotted_adapter(spec: str):
+def _load_dotted_adapter(spec: str, effort: str | None = None):
     """Load an adapter from a dotted path.
 
     Accepted forms:
       package.module             module-level ``adapter`` object
       package.module:ClassName   class, instantiated with no arguments
       package.module.ClassName   class, instantiated with no arguments
+
+    When ``effort`` is given, the spec must resolve to a class: it is
+    instantiated as ``ClassName(effort=effort)`` so the reasoning-effort
+    level is validated by the adapter. A pre-built module-level
+    ``adapter`` object cannot take ``--effort`` — configure effort in
+    the module instead.
 
     The working directory is prepended to sys.path so adapters next to the
     checkout (e.g. ``examples/``) resolve when the console script is used.
@@ -172,7 +180,22 @@ def _load_dotted_adapter(spec: str):
             raise ValueError(
                 f"adapter module {module.__name__!r} has no attribute {attr!r}"
             )
-    adapter = candidate() if isinstance(candidate, type) else candidate
+    if effort is not None:
+        if not isinstance(candidate, type):
+            raise ValueError(
+                f"adapter {spec!r} resolved to a pre-built instance, which "
+                f"cannot take --effort {effort!r}: configure effort in the "
+                f"module or point --adapter at an adapter class"
+            )
+        try:
+            adapter = candidate(effort=effort)
+        except TypeError as e:
+            raise ValueError(
+                f"adapter {spec!r} does not accept an effort parameter "
+                f"({e})"
+            ) from e
+    else:
+        adapter = candidate() if isinstance(candidate, type) else candidate
     for field in ("name", "version", "supported_primitives", "decide"):
         if not hasattr(adapter, field):
             raise ValueError(
@@ -330,7 +353,7 @@ def _budget_estimate_note(
 def cmd_run(args: argparse.Namespace) -> int:
     root = _repo_root()
     try:
-        adapter = _get_adapter(args.adapter)
+        adapter = _get_adapter(args.adapter, effort=args.effort)
     except ValueError as e:
         print(f"error: {e}", file=sys.stderr)
         return EXIT_USER_ERROR
@@ -375,36 +398,6 @@ def cmd_run(args: argparse.Namespace) -> int:
             print(f"error: --families matched no cases in {suite_dir}",
                   file=sys.stderr)
             return EXIT_USER_ERROR
-    # M-7: validate the seed count before doing any work. 1 is a
-    # single run; anything else must clear the protocol minimum.
-    num_seeds = getattr(args, "seeds", 1)
-    if num_seeds is None:
-        num_seeds = 1
-    if num_seeds != 1 and num_seeds < 3:
-        print(f"error: --seeds must be 1 or >= 3 (M-7 protocol minimum), "
-              f"got {num_seeds}", file=sys.stderr)
-        return EXIT_USER_ERROR
-    if num_seeds > 1 and args.resume:
-        print("error: --resume is not supported with --seeds > 1; "
-              "each seed run is independent (re-run without --resume)",
-              file=sys.stderr)
-        return EXIT_USER_ERROR
-    if num_seeds > 1 and args.transcript:
-        print("error: --transcript is not supported with --seeds > 1; "
-              "each seed run is independent (run with --seeds 1 to "
-              "capture a transcript)", file=sys.stderr)
-        return EXIT_USER_ERROR
-
-    def _build_mock(seed_i: int, run_nonce_i: str) -> "MockAdapter":
-        # The mock's simulation script is namespaced per (seed, nonce):
-        # each seed run gets its own script built under its own nonce,
-        # exactly like the single-run path below.
-        return MockAdapter(
-            script=MockAdapter.script_for(
-                cases, seed=seed_i, run_nonce=run_nonce_i
-            )
-        )
-
     if isinstance(adapter, MockAdapter):
         # The mock is a test double: its simulation script is built
         # explicitly here by the harness from the loaded cases; never
@@ -414,27 +407,13 @@ def cmd_run(args: argparse.Namespace) -> int:
         # the runner will (fresh per execution, so runs are unlinkable
         # even with the same seed).
         run_nonce = new_run_nonce()
-        adapter = _build_mock(args.seed, run_nonce)
-        # Multi-seed runs rebuild the mock per seed inside
-        # run_multiseed via this hook.
-        build_adapter = _build_mock if num_seeds > 1 else None
+        adapter = MockAdapter(
+            script=MockAdapter.script_for(
+                cases, seed=args.seed, run_nonce=run_nonce
+            )
+        )
     else:
         run_nonce = new_run_nonce()
-        # M-7: seed-sensitive adapters (structured LLM baselines) must
-        # be re-seeded per run: reusing one instance would send the
-        # same provider sampling seed on every seed run, invalidating
-        # the stability measurement. with_seed shares the read-only
-        # client and re-keys the cache namespace.
-        if hasattr(adapter, "with_seed"):
-            _base_adapter = adapter
-
-            def _build_seeded(seed_i: int, run_nonce_i: str,
-                              _base=_base_adapter):
-                return _base.with_seed(seed_i)
-
-            build_adapter = _build_seeded
-        else:
-            build_adapter = None
 
     out_dir = Path(args.out)
 
@@ -528,41 +507,30 @@ def cmd_run(args: argparse.Namespace) -> int:
         )
 
     try:
-        if num_seeds == 1:
-            artifact = run_suite(
-                adapter, cases, suite, dataset_version,
-                progress=progress, already_done=already_done,
-                prior_results=prior_results, partial_path=partial_path,
-                manifest_sha256=manifest_sha256, seed=args.seed,
-                required_families=suite_families,
-                max_concurrency=args.max_concurrency,
-                max_attempts=args.max_attempts,
-                call_timeout=args.call_timeout,
-                cache_dir=args.cache_dir,
-                transcript_path=args.transcript,
-                run_nonce=run_nonce,
-                rlimit_cpu_seconds=getattr(args, "rlimit_cpu_seconds", None),
-                rlimit_as_mb=getattr(args, "rlimit_as_mb", None),
-                rlimit_fsize_mb=getattr(args, "rlimit_fsize_mb", None),
-                budget_usd=budget_usd,
-                # Persist the loader spec (e.g. "peira.adapters.jev:JevAdapter"),
-                # not just adapter.name (e.g. "jev"). cmd_reproduce needs the
-                # spec to reload the adapter; the short name is not loadable.
-                config_extra={"adapter_spec": args.adapter},
-            )
-        else:
-            return _cmd_run_multiseed(
-                args, adapter, cases, suite, suite_families,
-                dataset_version, manifest_sha256, out_dir, slug,
-                num_seeds, build_adapter, budget_usd, progress,
-            )
+        artifact = run_suite(
+            adapter, cases, suite, dataset_version,
+            progress=progress, already_done=already_done,
+            prior_results=prior_results, partial_path=partial_path,
+            manifest_sha256=manifest_sha256, seed=args.seed,
+            required_families=suite_families,
+            max_concurrency=args.max_concurrency,
+            max_attempts=args.max_attempts,
+            call_timeout=args.call_timeout,
+            cache_dir=args.cache_dir,
+            transcript_path=args.transcript,
+            run_nonce=run_nonce,
+            rlimit_cpu_seconds=getattr(args, "rlimit_cpu_seconds", None),
+            rlimit_as_mb=getattr(args, "rlimit_as_mb", None),
+            rlimit_fsize_mb=getattr(args, "rlimit_fsize_mb", None),
+            budget_usd=budget_usd,
+            # Persist the loader spec (e.g. "peira.adapters.jev:JevAdapter"),
+            # not just adapter.name (e.g. "jev"). cmd_reproduce needs the
+            # spec to reload the adapter; the short name is not loadable.
+            config_extra={"adapter_spec": args.adapter},
+        )
     except KeyboardInterrupt:
-        if num_seeds > 1:
-            print("\ninterrupted; completed seed artifacts are saved; "
-                  "re-run without --resume.", file=sys.stderr)
-        else:
-            print("\ninterrupted; partial run saved; re-run with --resume.",
-                  file=sys.stderr)
+        print("\ninterrupted; partial run saved; re-run with --resume.",
+              file=sys.stderr)
         return EXIT_INFRA_ERROR
     except ValueError as e:
         # Config errors with actionable messages (bad cache dir,
@@ -579,98 +547,6 @@ def cmd_run(args: argparse.Namespace) -> int:
 
     _print_run_summary(artifact, out_path)
     if not artifact.metrics["ranking_eligible"]:
-        return EXIT_GATE_NOTE
-    return EXIT_OK
-
-
-def _cmd_run_multiseed(
-    args: argparse.Namespace,
-    adapter: Any,
-    cases: list,
-    suite: str,
-    suite_families: list[str],
-    dataset_version: str,
-    manifest_sha256: str,
-    out_dir: Path,
-    slug: str,
-    num_seeds: int,
-    build_adapter: Any,
-    budget_usd: float | None,
-    progress: Any,
-) -> int:
-    """M-7 multi-seed run: k executions, k artifacts, one stability record.
-
-    Each seed run seals its own artifact
-    (``{slug}-{suite}-seed{N}.json``); the stability artifact
-    (``{slug}-{suite}-stability.json``) references all k and seals the
-    pass^k / variance-decomposition analysis. Ranking eligibility is
-    per seed run; the command exits EXIT_GATE_NOTE when any seed run
-    is ineligible.
-    """
-    artifacts, stability = run_multiseed(
-        adapter,
-        cases,
-        suite,
-        dataset_version,
-        progress=progress,
-        manifest_sha256=manifest_sha256,
-        seed=args.seed,
-        num_seeds=num_seeds,
-        max_concurrency=args.max_concurrency,
-        max_attempts=args.max_attempts,
-        call_timeout=args.call_timeout,
-        config_extra={"adapter_spec": args.adapter},
-        rlimit_cpu_seconds=getattr(args, "rlimit_cpu_seconds", None),
-        rlimit_as_mb=getattr(args, "rlimit_as_mb", None),
-        rlimit_fsize_mb=getattr(args, "rlimit_fsize_mb", None),
-        budget_usd=budget_usd,
-        build_adapter=build_adapter,
-        required_families=suite_families,
-        cache_dir=args.cache_dir,
-    )
-    if stability is None:
-        # Fewer than MIN_SEEDS seeds completed (e.g. budget
-        # termination): every seed artifact is still sealed below so
-        # the work is not lost, but no stability claim is made.
-        print("error: multi-seed run did not complete "
-              f"{num_seeds} seeds cleanly; stability analysis "
-              "withheld (see per-seed artifacts)", file=sys.stderr)
-    seed_paths: dict[int, str] = {}
-    all_eligible = True
-    # Each artifact carries its own seed (RunArtifact.seed): never
-    # re-derive it from position, a crashed seed leaves a gap.
-    for artifact in artifacts:
-        seed_i = artifact.seed
-        out_path = _write_final_artifact(
-            out_dir, slug, suite, artifact, suffix=f"-seed{seed_i}"
-        )
-        seed_paths[seed_i] = str(out_path)
-        print(f"seed {seed_i}: {out_path} "
-              f"(termination={artifact.termination})", file=sys.stderr)
-        _print_run_summary(artifact, out_path)
-        if not artifact.metrics["ranking_eligible"]:
-            all_eligible = False
-    if stability is None:
-        return EXIT_INFRA_ERROR
-    first = artifacts[0]
-    stab_artifact = StabilityArtifact(
-        adapter_name=first.adapter_name,
-        adapter_version=first.adapter_version,
-        suite=suite,
-        dataset_version=dataset_version,
-        manifest_sha256=manifest_sha256,
-        seeds=list(stability.seeds),
-        run_artifact_paths=seed_paths,
-        stability=stability,
-    ).seal()
-    stab_path = out_dir / f"{slug}-{suite}-stability.json"
-    atomic_write_text(stab_path, stab_artifact.to_json())
-    print(f"\nstability: {stab_path}", file=sys.stderr)
-    if stability.excluded_seeds:
-        print(f"warning: excluded seeds {stability.excluded_seeds} "
-              f"(run did not complete)", file=sys.stderr)
-    print(stability.summary_text())
-    if not all_eligible:
         return EXIT_GATE_NOTE
     return EXIT_OK
 
@@ -1850,127 +1726,6 @@ decision cases. It does not certify a model as safe.</em></p>
 </body></html>"""
 
 
-def cmd_stability(args: argparse.Namespace) -> int:
-    """M-7 stability analysis over existing run artifacts."""
-    from peira.metrics import PerCaseResult
-    from peira.stability import MIN_SEEDS, flip_agreement
-
-    if len(args.runs) < 2:
-        print("error: stability needs at least 2 run artifacts, "
-              f"got {len(args.runs)}", file=sys.stderr)
-        return EXIT_USER_ERROR
-    artifacts = []
-    for path_str in args.runs:
-        path = Path(path_str)
-        if not path.exists():
-            print(f"error: {path} not found", file=sys.stderr)
-            return EXIT_USER_ERROR
-        try:
-            artifacts.append(
-                RunArtifact.from_json(path.read_text(encoding="utf-8")))
-        except (OSError, ValueError) as e:
-            print(f"error: {path} is not a valid run artifact ({e})",
-                  file=sys.stderr)
-            return EXIT_USER_ERROR
-    first = artifacts[0]
-    for art, path_str in zip(artifacts, args.runs):
-        if art.termination != "complete":
-            print(f"error: {path_str} did not complete "
-                  f"(termination={art.termination}): a truncated run "
-                  f"must not enter the agreement statistics",
-                  file=sys.stderr)
-            return EXIT_USER_ERROR
-    for art, path_str in zip(artifacts[1:], args.runs[1:]):
-        if (art.adapter_name != first.adapter_name
-                or art.suite != first.suite
-                or art.dataset_version != first.dataset_version):
-            print(f"error: {path_str} is a different adapter/suite/dataset "
-                  f"than {args.runs[0]}: stability compares runs of the "
-                  f"same adapter id", file=sys.stderr)
-            return EXIT_USER_ERROR
-    try:
-        stability = flip_agreement(
-            [[PerCaseResult.from_dict(r) for r in a.results]
-             for a in artifacts]
-        )
-    except ValueError as e:
-        print(f"error: {e}", file=sys.stderr)
-        return EXIT_USER_ERROR
-    seeds = [a.seed for a in artifacts]
-    # dataclasses.replace: StabilityResult is frozen; the seed list is
-    # owned by the caller, not the analysis.
-    import dataclasses
-    stability = dataclasses.replace(stability, seeds=seeds)
-    print(stability.summary_text())
-    if len(artifacts) < MIN_SEEDS:
-        print(f"note: {len(artifacts)} runs is below the M-7 protocol "
-              f"minimum of {MIN_SEEDS}: agreement reported, stability "
-              f"not claimed", file=sys.stderr)
-    if args.out:
-        stab_artifact = StabilityArtifact(
-            adapter_name=first.adapter_name,
-            adapter_version=first.adapter_version,
-            suite=first.suite,
-            dataset_version=first.dataset_version,
-            manifest_sha256=first.manifest_sha256,
-            seeds=seeds,
-            run_artifact_paths={
-                seed: str(Path(p).resolve())
-                for seed, p in zip(seeds, args.runs)
-            },
-            stability=stability,
-        ).seal()
-        out_path = Path(args.out)
-        atomic_write_text(out_path, stab_artifact.to_json())
-        print(f"wrote {out_path}", file=sys.stderr)
-    return EXIT_OK
-
-
-def cmd_drift_watch(args: argparse.Namespace) -> int:
-    """M-7 drift-watch between two runs of the same adapter id."""
-    from peira.metrics import PerCaseResult
-    from peira.stability import drift_watch
-
-    artifacts = []
-    for label, path_str in (("old", args.old), ("new", args.new)):
-        path = Path(path_str)
-        if not path.exists():
-            print(f"error: {path} not found", file=sys.stderr)
-            return EXIT_USER_ERROR
-        try:
-            artifacts.append(
-                RunArtifact.from_json(path.read_text(encoding="utf-8")))
-        except (OSError, ValueError) as e:
-            print(f"error: {path} is not a valid run artifact ({e})",
-                  file=sys.stderr)
-            return EXIT_USER_ERROR
-    old, new = artifacts
-    if old.adapter_name != new.adapter_name:
-        print(f"error: drift-watch compares runs of the same adapter id: "
-              f"{args.old} is {old.adapter_name!r}, {args.new} is "
-              f"{new.adapter_name!r}", file=sys.stderr)
-        return EXIT_USER_ERROR
-    result = drift_watch(
-        [PerCaseResult.from_dict(r) for r in old.results],
-        [PerCaseResult.from_dict(r) for r in new.results],
-        old_run_id=Path(args.old).stem,
-        new_run_id=Path(args.new).stem,
-    )
-    print(result.summary_text())
-    if args.out:
-        out_path = Path(args.out)
-        atomic_write_text(
-            out_path,
-            json.dumps(result.to_dict(), indent=2, sort_keys=True),
-        )
-        print(f"wrote {out_path}", file=sys.stderr)
-    degraded = [f.family for f in result.families if f.degraded]
-    if degraded:
-        print(f"degraded families: {', '.join(degraded)}", file=sys.stderr)
-        return EXIT_GATE_NOTE
-    return EXIT_OK
-
-
 def cmd_compare(args: argparse.Namespace) -> int:
     from peira.compare import compare_artifacts
 
@@ -2390,146 +2145,6 @@ def cmd_lottery(args: argparse.Namespace) -> int:
     return EXIT_OK
 
 
-def _saturation_text(a: dict) -> str:
-    """Human-readable per-family saturation report for stdout."""
-    p = a["policy"]
-    lines = [
-        "Peira per-family saturation and retirement analysis (C-10)",
-        "=========================================================",
-        f"Policy D-37: floor {p['floor_threshold']:.2f}, "
-        f"ceiling {p['ceiling_threshold']:.2f}, "
-        f"retirement after {p['retirement_releases']} consecutive releases; "
-        f"variant-flip {p['variant_flip']}",
-        f"Runs: {a['n_runs']}, families: {len(a['families'])}",
-        "",
-        "Closest to retirement first:",
-    ]
-    for fam in a["closest_to_retirement"]:
-        d = a["per_family"][fam]
-        hold = " [holdout: monitor only]" if d["holdout"] else ""
-        lines.append(
-            f"  {fam}: {d['state']} -> {d['action']}{hold} "
-            f"(resolvable {d['resolvable_pairs']}/{d['total_pairs']} pairs, "
-            f"spread {d['spread']:.3f}, max pair MDE {d['max_pair_mde']:.3f})"
-        )
-        for ad in d["adapters"]:
-            lines.append(
-                f"    {ad['adapter_id']}: ASR {ad['asr']:.4f} "
-                f"[{ad['ci_lo']:.4f}, {ad['ci_hi']:.4f}] (n={ad['n']})"
-            )
-    lines.append("")
-    cands = a["retire_candidates"]
-    triggered = [
-        f for f in a["families"]
-        if a["per_family"][f]["exhaustion_trigger_met"]
-    ]
-    if cands:
-        lines.append(
-            "Retirement-eligible families: " + ", ".join(cands)
-        )
-    elif triggered:
-        lines.append(
-            "Retirement-eligible families: none. Exhaustion trigger "
-            f"met by: {', '.join(triggered)}; eligibility needs "
-            f"{p['retirement_releases']} consecutive releases plus "
-            "the variant-flip check."
-        )
-    else:
-        lines.append("Retirement-eligible families: none.")
-    return "\n".join(lines) + "\n"
-
-
-def cmd_saturation(args: argparse.Namespace) -> int:
-    """Per-family saturation/retirement analysis over run artifacts."""
-    from peira.artifacts import RunArtifact
-    from peira.metrics import PerCaseResult
-    from peira.saturation import saturation_analysis
-
-    artifacts = []
-    for path_str in args.runs:
-        path = Path(path_str)
-        if not path.exists():
-            print(f"error: {path} not found", file=sys.stderr)
-            return EXIT_USER_ERROR
-        try:
-            artifacts.append(
-                RunArtifact.from_json(path.read_text(encoding="utf-8"))
-            )
-        except (OSError, ValueError) as e:
-            print(f"error: {path} is not a valid run artifact ({e})",
-                  file=sys.stderr)
-            return EXIT_USER_ERROR
-
-    results_by_run: dict[str, list] = {}
-    for art, path_str in zip(artifacts, args.runs):
-        base = art.adapter_name or Path(path_str).stem
-        run_id = base
-        i = 2
-        while run_id in results_by_run:
-            run_id = f"{base}#{i}"
-            i += 1
-        if run_id != base:
-            print(f"note: duplicate adapter name '{base}': using "
-                  f"'{run_id}' for {path_str}", file=sys.stderr)
-        try:
-            results = [PerCaseResult.from_dict(d) for d in art.results]
-        except (KeyError, ValueError, TypeError) as e:
-            print(f"error: {path_str}: cannot decode per-case results "
-                  f"({e})", file=sys.stderr)
-            return EXIT_USER_ERROR
-        results_by_run[run_id] = results
-
-    known_families = {r.family for rs in results_by_run.values() for r in rs}
-    if args.families:
-        families = [f.strip() for f in args.families.split(",") if f.strip()]
-        families = list(dict.fromkeys(families))
-        unknown = [f for f in families if f not in known_families]
-        if unknown:
-            print(f"error: unknown families: {', '.join(unknown)} "
-                  "(not present in the given runs)", file=sys.stderr)
-            return EXIT_USER_ERROR
-    else:
-        families = sorted(known_families)
-    if not families:
-        print("error: no families found in the given runs", file=sys.stderr)
-        return EXIT_USER_ERROR
-
-    holdout_families = []
-    if args.holdout_families:
-        holdout_families = [
-            f.strip() for f in args.holdout_families.split(",") if f.strip()
-        ]
-        unknown_h = [f for f in holdout_families if f not in known_families]
-        if unknown_h:
-            print(f"error: unknown holdout families: {', '.join(unknown_h)} "
-                  "(not present in the given runs)", file=sys.stderr)
-            return EXIT_USER_ERROR
-
-    if args.releases_observed < 1:
-        print("error: --releases-observed must be >= 1",
-              file=sys.stderr)
-        return EXIT_USER_ERROR
-
-    analysis = saturation_analysis(
-        results_by_run,
-        families,
-        holdout_families=holdout_families,
-        releases_observed=args.releases_observed,
-    )
-
-    sys.stdout.write(_saturation_text(analysis))
-    if args.json is not None:
-        out = Path(args.json)
-        try:
-            out.write_text(json.dumps(analysis, indent=2), encoding="utf-8")
-        except OSError as e:
-            print(f"error: cannot write saturation JSON to {out} ({e})",
-                  file=sys.stderr)
-            return EXIT_USER_ERROR
-        print(f"saturation: {out}")
-    return EXIT_OK
-
-
 def cmd_value(args: argparse.Namespace) -> int:
     """M-3 economic value view over 1+ run artifacts.
 
@@ -2876,12 +2491,6 @@ def cmd_runs_list(args: argparse.Namespace) -> int:
         dataset_version=args.dataset_version,
         cache_enabled=cache_filter,
         termination=getattr(args, "termination", None),
-        model_class=getattr(args, "model_class", None),
-        checkpoint_hash=getattr(args, "checkpoint_hash", None),
-        api_version=getattr(args, "api_version", None),
-        call_date=getattr(args, "call_date", None),
-        template_hash=getattr(args, "template_hash", None),
-        case_set_tag=getattr(args, "case_set_tag", None),
     )
     if not runs:
         print("No runs found.")
@@ -3660,6 +3269,14 @@ def build_parser() -> argparse.ArgumentParser:
                    "package.module.ClassName. Only load adapter paths you "
                    "trust: the module is imported (and therefore executed) "
                    "with the working directory first on sys.path")
+    r.add_argument("--effort", default=None,
+                   help="reasoning-effort level for LLM adapters that "
+                   "expose one (provider-native value, e.g. low, medium, "
+                   "high, xhigh, max for Anthropic; validated against the "
+                   "adapter's ladder). Requires --adapter to point at an "
+                   "adapter class; recorded in the run config, cache "
+                   "namespace, and transcript (default: not requested, "
+                   "the provider default applies)")
     r.add_argument("--suite", default="trial-demo",
                    choices=list(SUITE_DIRS) + ["smoke"],
                    help="smoke is an alias for trial")
@@ -3679,14 +3296,6 @@ def build_parser() -> argparse.ArgumentParser:
     r.add_argument("--resume", action="store_true", help="resume an interrupted run")
     r.add_argument("--seed", type=int, default=0,
                    help="run seed, recorded on every call record (default: 0)")
-    r.add_argument("--seeds", type=int, default=1,
-                   help="M-7 multi-seed protocol: run the suite N times "
-                   "under consecutive seeds (seed .. seed+N-1) and seal "
-                   "a stability artifact with pass^k flip agreement and "
-                   "variance decomposition. 1 (default) is a single run; "
-                   "any other value must be >= 3. Paid adapters: N "
-                   "multiplies spend; check the cost pilot first "
-                   "(Methodology M-7)")
     r.add_argument("--max-concurrency", type=int, default=8,
                    help="cap on in-flight adapter calls; the AIMD controller "
                    "adapts within [1, N] (default: 8)")
@@ -3782,30 +3391,6 @@ def build_parser() -> argparse.ArgumentParser:
                          "higher net benefit at this threshold")
     cp.set_defaults(func=cmd_compare)
 
-    # M-7: stability analysis over existing run artifacts, and
-    # drift-watch between two runs of the same adapter id.
-    st = sub.add_parser("stability",
-                        help="k-seed stability analysis (pass^k, variance "
-                        "decomposition) over existing run artifacts")
-    st.add_argument("runs", nargs="+",
-                    help="two or more run artifacts from the same "
-                    "adapter/suite (different seeds)")
-    st.add_argument("--out", default=None,
-                    help="write a sealed stability artifact JSON to this path")
-    st.set_defaults(func=cmd_stability)
-
-    dw = sub.add_parser("drift-watch",
-                        help="drift-watch: per-family McNemar deltas between "
-                        "two runs of the same adapter id, reporting "
-                        "newly-flipping vs newly-fixed cases")
-    dw.add_argument("--old", required=True,
-                    help="older run artifact (baseline)")
-    dw.add_argument("--new", required=True,
-                    help="newer run artifact (candidate)")
-    dw.add_argument("--out", default=None,
-                    help="write the drift result JSON to this path")
-    dw.set_defaults(func=cmd_drift_watch)
-
     # Dashboard data layer: artifact -> dashboard-ready JSON.
     db = sub.add_parser("dashboard",
                         help="export dashboard-ready JSON from run artifacts")
@@ -3868,30 +3453,6 @@ def build_parser() -> argparse.ArgumentParser:
                     "(default: all scenarios)")
     lt.set_defaults(func=cmd_lottery)
 
-    st = sub.add_parser(
-        "saturation",
-        help="per-family saturation/retirement analysis (C-10) "
-        "across run artifacts",
-    )
-    st.add_argument("runs", nargs="+", help="run artifact files (one row "
-                    "per adapter on the leaderboard)")
-    st_families = st.add_argument(
-        "--families", default=None,
-        help="comma-separated family manifest (default: union of "
-        "families across the runs)",
-    )
-    st_families.display_default = "union of families in runs"
-    st.add_argument("--holdout-families", default=None,
-                    help="comma-separated families treated as holdout "
-                    "(state reported, action capped at monitor)")
-    st.add_argument("--releases-observed", type=int, default=1,
-                    help="consecutive releases the exhaustion trigger has "
-                    "held (default: 1; retirement eligibility needs 2 "
-                    "plus the variant-flip check)")
-    st.add_argument("--json", default=None,
-                    help="write the full analysis JSON to this path")
-    st.set_defaults(func=cmd_saturation)
-
     vv = sub.add_parser("value",
                         help="M-3 economic value view over 1+ run artifacts "
                         "(E_attacked, CPPF, break-even, Pareto frontier)")
@@ -3941,21 +3502,6 @@ def build_parser() -> argparse.ArgumentParser:
     rl.add_argument("--termination", default=None,
                     help="filter by termination state "
                          "(complete, budget, partial, ...)")
-    # M-7 longitudinal filters: key a rerun comparison on the exact
-    # provenance that makes two runs comparable.
-    rl.add_argument("--model-class", default=None,
-                    help="filter by adapter model class "
-                    "(llm-baseline, guardrail, rule-based, ...)")
-    rl.add_argument("--checkpoint-hash", default=None,
-                    help="filter by pinned model revision")
-    rl.add_argument("--api-version", default=None,
-                    help="filter by provider API version")
-    rl.add_argument("--call-date", default=None,
-                    help="filter by run UTC date (YYYY-MM-DD)")
-    rl.add_argument("--template-hash", default=None,
-                    help="filter by prompt-template hash")
-    rl.add_argument("--case-set-tag", default=None,
-                    help="filter by case-set tag (suite id)")
     rl.set_defaults(func=cmd_runs_list)
     rv = rsub.add_parser("verify", help="verify analysis locks")
     rv.add_argument("paths", nargs="+", help="artifact paths to verify")

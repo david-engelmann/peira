@@ -93,13 +93,12 @@ def _make_openai(script):
     return mod, calls, created
 
 
-def _anthropic_message(tool_input=None, text="", stop_reason="end_turn"):
+def _anthropic_message(text="", stop_reason="end_turn"):
+    # Native output_config.format returns the schema-constrained JSON
+    # document as ordinary text blocks (no tool_use blocks).
     blocks = []
     if text:
         blocks.append(SimpleNamespace(type="text", text=text))
-    if tool_input is not None:
-        blocks.append(SimpleNamespace(
-            type="tool_use", name="peira_decision", input=tool_input))
     return SimpleNamespace(
         stop_reason=stop_reason,
         content=blocks,
@@ -147,7 +146,7 @@ def _genai_response(text, finish_reason="STOP", block_reason=None):
 
 
 def _make_google(script):
-    calls, configs = [], []
+    calls, configs, thinking_configs = [], [], []
     created = {}
 
     class _Config:
@@ -155,8 +154,16 @@ def _make_google(script):
             configs.append(kwargs)
             self.kwargs = kwargs
 
+    class _ThinkingConfig:
+        def __init__(self, **kwargs):
+            thinking_configs.append(kwargs)
+            self.kwargs = kwargs
+
     types_mod = ModuleType("google.genai.types")
     types_mod.GenerateContentConfig = _Config
+    types_mod.ThinkingConfig = _ThinkingConfig
+    # Test introspection: ThinkingConfig constructions, in order.
+    types_mod.recorded_thinking_configs = thinking_configs
 
     class _Models:
         def generate_content(self, **kwargs):
@@ -420,8 +427,7 @@ class TestOpenAIShape(unittest.TestCase):
 
 class TestAnthropicShape(unittest.TestCase):
     def setUp(self):
-        self.script = [_anthropic_message(
-            tool_input=json.loads(GOOD_JSON))]
+        self.script = [_anthropic_message(text=GOOD_JSON)]
         self.mod, self.calls, self.created = _make_anthropic(self.script)
         self._m = _fake_modules({"anthropic": self.mod})
         self._m.__enter__()
@@ -434,15 +440,63 @@ class TestAnthropicShape(unittest.TestCase):
         AnthropicAdapter()
         self.assertEqual(self.created.get("max_retries"), 0)
 
-    def test_forced_tool_choice(self):
+    def test_native_output_config_format(self):
         out = AnthropicAdapter().decide(CASE, "choice", _ctx())
         self.assertEqual(out.decision, "approve")
-        self.assertEqual(self.calls[0]["tool_choice"],
-                         {"type": "tool", "name": "peira_decision"})
-        self.assertEqual(self.calls[0]["tools"],
-                         [{"name": "peira_decision",
-                           "input_schema": _expected_schema(
-                               ["approve", "deny", "other"])}])
+        call = self.calls[0]
+        # No tools, no tool_choice: forced tool use hard-400s on the
+        # newer reasoning models.
+        self.assertNotIn("tools", call)
+        self.assertNotIn("tool_choice", call)
+        output_config = call["output_config"]
+        self.assertEqual(output_config["format"]["type"], "json_schema")
+        wire = output_config["format"]["schema"]
+        expected = _expected_schema(["approve", "deny", "other"])
+        # Anthropic's grammar rejects bound keywords: minimum/maximum
+        # are stripped from the wire copy only.
+        stripped_conf = dict(expected["properties"]["confidence"])
+        del stripped_conf["minimum"]
+        del stripped_conf["maximum"]
+        self.assertEqual(wire["properties"]["confidence"], stripped_conf)
+        self.assertEqual(wire["properties"]["decision"],
+                         expected["properties"]["decision"])
+        self.assertEqual(wire["properties"]["reason"],
+                         expected["properties"]["reason"])
+        for key in ("type", "additionalProperties", "required"):
+            self.assertEqual(wire[key], expected[key])
+        self.assertNotIn("effort", output_config)
+        shape = out.transcript["request"]
+        self.assertEqual(shape["output_format"],
+                         "json_schema:peira_decision")
+        self.assertIsNone(shape["output_config"]["effort"])
+
+    def test_effort_merges_with_format(self):
+        mod, calls, _ = _make_anthropic(
+            [_anthropic_message(text=GOOD_JSON)])
+        with _fake_modules({"anthropic": mod}), \
+                _env(ANTHROPIC_API_KEY="sk-test"):
+            out = AnthropicAdapter(effort="high").decide(CASE, "choice",
+                                                         _ctx())
+        self.assertEqual(out.decision, "approve")
+        output_config = calls[0]["output_config"]
+        self.assertEqual(output_config["effort"], "high")
+        self.assertEqual(output_config["format"]["type"], "json_schema")
+        params = out.transcript["parameters"]
+        self.assertEqual(params["effort"], "high")
+        self.assertEqual(params["effort_tier"], "high")
+
+    def test_score_wire_schema_strips_score_bounds(self):
+        payload = json.dumps({"decision": "deny", "confidence": 0.8,
+                              "score": 0.2, "reason": "risky"})
+        mod, calls, _ = _make_anthropic([_anthropic_message(text=payload)])
+        with _fake_modules({"anthropic": mod}), \
+                _env(ANTHROPIC_API_KEY="sk-test"):
+            out = AnthropicAdapter().decide(CASE, "score", _ctx())
+        self.assertEqual(out.score, 0.2)
+        wire = calls[0]["output_config"]["format"]["schema"]
+        self.assertNotIn("minimum", wire["properties"]["score"])
+        self.assertNotIn("maximum", wire["properties"]["score"])
+        self.assertNotIn("minimum", wire["properties"]["confidence"])
 
     def test_no_seed_param_and_null_seed_in_transcript(self):
         out = AnthropicAdapter(seed=5).decide(CASE, "choice", _ctx())
@@ -456,7 +510,7 @@ class TestAnthropicShape(unittest.TestCase):
 
     def test_refusal_stop_reason_abstains(self):
         self.script[0] = _anthropic_message(
-            tool_input=None, text="", stop_reason="refusal")
+            text="", stop_reason="refusal")
         out = AnthropicAdapter().decide(CASE, "choice", _ctx())
         self.assertTrue(out.abstained)
         self.assertEqual(out.decision, "")
@@ -505,6 +559,42 @@ class TestGoogleShape(unittest.TestCase):
         retryable, _, _ = classify_exception(ctx.exception)
         self.assertTrue(retryable)
 
+    def test_effort_sends_thinking_config(self):
+        mods, _, _, _ = _make_google([_genai_response(GOOD_JSON)])
+        with _fake_modules(mods), \
+                _env(GOOGLE_API_KEY="sk-test", GEMINI_API_KEY=None):
+            out = GoogleAdapter(effort="high").decide(CASE, "choice", _ctx())
+        self.assertEqual(out.decision, "approve")
+        tconfigs = mods["google.genai.types"].recorded_thinking_configs
+        self.assertEqual(tconfigs, [{"thinking_level": "high"}])
+        self.assertEqual(out.transcript["parameters"]["effort"], "high")
+        self.assertEqual(out.transcript["parameters"]["effort_tier"], "high")
+        self.assertEqual(out.transcript["request"]["thinking_level"], "high")
+
+    def test_no_effort_sends_no_thinking_config(self):
+        out = GoogleAdapter().decide(CASE, "choice", _ctx())
+        self.assertEqual(out.decision, "approve")
+        tconfigs = self.mods["google.genai.types"].recorded_thinking_configs
+        self.assertEqual(tconfigs, [])
+        self.assertIsNone(out.transcript["parameters"]["effort"])
+        self.assertIsNone(out.transcript["parameters"]["effort_tier"])
+        self.assertIsNone(out.transcript["request"]["thinking_level"])
+        # thinking_config=None is still passed through to
+        # GenerateContentConfig; the recorded shape is unchanged apart
+        # from that key.
+        self.assertIsNone(self.configs[0]["thinking_config"])
+
+    def test_thoughts_token_count_recorded(self):
+        resp = _genai_response(GOOD_JSON)
+        # A subset of candidates_token_count (9): the subset invariant.
+        resp.usage_metadata.thoughts_token_count = 5
+        mods, _, _, _ = _make_google([resp])
+        with _fake_modules(mods), \
+                _env(GOOGLE_API_KEY="sk-test", GEMINI_API_KEY=None):
+            out = GoogleAdapter().decide(CASE, "choice", _ctx())
+        self.assertEqual(out.usage.reasoning_tokens, 5)
+        self.assertEqual(validate_output(out, "choice"), [])
+
 
 # ---------------------------------------------------------------------------
 # Per-call enum (open decision vocabulary).
@@ -543,15 +633,15 @@ class TestPerCallEnum(unittest.TestCase):
 
     def test_noul_enum_allows_abstain(self):
         mod, calls, _ = _make_anthropic([_anthropic_message(
-            tool_input={"decision": "abstain", "confidence": 0.5,
-                        "reason": "r"})])
+            text=json.dumps({"decision": "abstain", "confidence": 0.5,
+                             "reason": "r"}))])
         with _fake_modules({"anthropic": mod}), \
                 _env(ANTHROPIC_API_KEY="sk-test"):
             out = AnthropicAdapter().decide(CASE, "abstain", _ctx())
         self.assertEqual(out.decision, "abstain")
         self.assertFalse(out.abstained)
         self.assertEqual(validate_output(out, "abstain"), [])
-        enum = calls[0]["tools"][0]["input_schema"][
+        enum = calls[0]["output_config"]["format"]["schema"][
             "properties"]["decision"]["enum"]
         self.assertIn("abstain", enum)
 

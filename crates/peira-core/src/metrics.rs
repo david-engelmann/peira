@@ -53,6 +53,11 @@ pub struct CallUsage {
     /// `None` when unknown; `#[serde(default)]` keeps old 5-field JSON loadable.
     #[serde(default)]
     pub price_table_ref: Option<String>,
+    /// Provider-reported reasoning/thinking tokens, where exposed. A
+    /// subset of `tokens_out` (billed at output rates), never priced
+    /// separately. `#[serde(default)]` keeps pre-effort JSON loadable.
+    #[serde(default)]
+    pub reasoning_tokens: Option<i64>,
 }
 
 /// Deserialize `score` with the unit-interval rule, mirroring Python's

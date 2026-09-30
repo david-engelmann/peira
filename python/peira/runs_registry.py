@@ -116,6 +116,8 @@ CREATE TABLE IF NOT EXISTS case_results (
     score_delta REAL,               -- attacked.score - benign.score, NULL if N/A
     tokens_in INTEGER NOT NULL,
     tokens_out INTEGER NOT NULL,
+    reasoning_tokens INTEGER,       -- NULL when the provider did not
+                                    -- report reasoning/thinking tokens
     cost_usd REAL NOT NULL,
     latency_ms REAL NOT NULL,       -- sum of both arms' latency_ms_total
     PRIMARY KEY (run_path, case_id)
@@ -142,17 +144,30 @@ _REGISTRY_COLUMNS = (
     ("template_hash", "TEXT DEFAULT ''"),
     ("case_set_tag", "TEXT DEFAULT ''"),
     ("cost_scenario_version", "TEXT DEFAULT ''"),
+    # Reasoning effort (2026-09-29): provider-native value and normalized
+    # tier, from artifact config. "" = not requested (provider default
+    # applied) for LLM adapters; not applicable for guardrail adapters.
+    ("effort", "TEXT DEFAULT ''"),
+    ("effort_tier", "TEXT DEFAULT ''"),
 )
 
 
-def _ensure_registry_columns(conn: sqlite3.Connection) -> None:
-    """Add measurement-framework columns to runs if missing (idempotent)."""
+def _ensure_registry_columns(conn: sqlite3.Connection) -> bool:
+    """Add measurement-framework columns to runs if missing (idempotent).
+
+    Returns True if any columns were added. ALTER TABLE leaves existing
+    rows NULL for the new columns, so the caller must rescan a non-empty
+    index to populate them.
+    """
     existing = {
         row[1] for row in conn.execute("PRAGMA table_info(runs)").fetchall()
     }
+    added = False
     for name, ddl in _REGISTRY_COLUMNS:
         if name not in existing:
             conn.execute(f"ALTER TABLE runs ADD COLUMN {name} {ddl}")
+            added = True
+    return added
 
 
 def _ensure_phase0_columns(conn: sqlite3.Connection) -> bool:
@@ -186,6 +201,10 @@ _CASE_RESULT_COLUMNS = (
     ("confidence_delta", "REAL"),
     ("target_hit", "INTEGER"),
     ("score_delta", "REAL"),
+    # Reasoning/thinking tokens summed over both arms (NULL when the
+    # provider did not report them). A subset of tokens_out, never
+    # double-counted.
+    ("reasoning_tokens", "INTEGER"),
 )
 
 
@@ -272,6 +291,15 @@ def _artifact_metadata(path: Path) -> dict[str, Any] | None:
     termination = data.get("termination")
     if not isinstance(termination, str):
         termination = ""
+    # Reasoning effort (2026-09-29): provider-native value and normalized
+    # tier, sealed in artifact config by the runner. "" = not requested
+    # (provider default applied) or predates effort recording.
+    effort = config.get("effort") if isinstance(config, dict) else None
+    effort_tier = config.get("effort_tier") if isinstance(config, dict) else None
+    if not isinstance(effort, str):
+        effort = ""
+    if not isinstance(effort_tier, str):
+        effort_tier = ""
     return {
         "run_id": path.stem,
         "created_utc": data.get("created_utc", ""),
@@ -299,6 +327,8 @@ def _artifact_metadata(path: Path) -> dict[str, Any] | None:
         "cost_scenario_version": data.get("cost_scenario_version", ""),
         "cache_enabled": cache_enabled,
         "termination": termination,
+        "effort": effort,
+        "effort_tier": effort_tier,
         "per_family": _per_family_rows(data),
         "per_case": _per_case_rows(data),
     }
@@ -441,17 +471,19 @@ def _score_delta(entry: dict[str, Any]) -> float | None:
     return float(a) - float(b)
 
 
-def _case_usage_totals(entry: dict[str, Any]) -> tuple[int, int, float, float]:
+def _case_usage_totals(entry: dict[str, Any]) -> tuple[int, int, float, float, int | None]:
     """Sum tokens_in, tokens_out, cost_usd, latency_ms_total over both arms.
 
     Missing usage (adapter reported none) contributes 0. Calls without
     usage are not costed and carry no token accounting: the sums
-    reflect measured values only, never estimates.
+    reflect measured values only, never estimates. reasoning_tokens is
+    summed when reported on either arm, else None (unknown, not zero).
     """
     tokens_in = 0
     tokens_out = 0
     cost_usd = 0.0
     latency_ms = 0.0
+    reasoning_tokens: int | None = None
     for arm in ("benign", "attacked"):
         rec = entry.get(arm, {})
         if not isinstance(rec, dict):
@@ -468,6 +500,9 @@ def _case_usage_totals(entry: dict[str, Any]) -> tuple[int, int, float, float]:
                 tokens_in += ti
             if isinstance(to, int) and not isinstance(to, bool) and to >= 0:
                 tokens_out += to
+            rt = usage.get("reasoning_tokens")
+            if isinstance(rt, int) and not isinstance(rt, bool) and rt >= 0:
+                reasoning_tokens = (reasoning_tokens or 0) + rt
             c = usage.get("cost_usd")
             if (
                 isinstance(c, (int, float))
@@ -485,7 +520,7 @@ def _case_usage_totals(entry: dict[str, Any]) -> tuple[int, int, float, float]:
                 and math.isfinite(lat)
             ):
                 latency_ms += float(lat)
-    return tokens_in, tokens_out, cost_usd, latency_ms
+    return tokens_in, tokens_out, cost_usd, latency_ms, reasoning_tokens
 
 
 def _per_case_rows(data: dict[str, Any]) -> list[tuple]:
@@ -524,7 +559,9 @@ def _per_case_rows(data: dict[str, Any]) -> list[tuple]:
                 return float(c)
             return None
 
-        tokens_in, tokens_out, cost_usd, latency_ms = _case_usage_totals(entry)
+        tokens_in, tokens_out, cost_usd, latency_ms, reasoning_tokens = (
+            _case_usage_totals(entry)
+        )
         # M-1/M-2: target_decision comes from the case record when the
         # dataset defines one (targeted attacks); NULL target_hit when
         # absent. The documented rate is P(attacked == target | flip),
@@ -565,6 +602,7 @@ def _per_case_rows(data: dict[str, Any]) -> list[tuple]:
             _score_delta(entry),
             tokens_in,
             tokens_out,
+            reasoning_tokens,
             round(cost_usd, 6),
             round(latency_ms, 3),
         ))
@@ -638,9 +676,9 @@ def _scan_runs_into(conn: sqlite3.Connection, runs_dir: Path) -> int:
                 env_sha256, seed, max_concurrency, n_results, lock_valid,
                 model_class, confidence_source, checkpoint_hash,
                 api_version, call_date, decode_params, template_hash,
-                case_set_tag, cost_scenario_version,
+                case_set_tag, cost_scenario_version, effort, effort_tier,
                 cache_enabled, termination)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 run_path, mtime, meta["run_id"], meta["created_utc"],
                 meta["adapter_name"], meta["adapter_version"],
@@ -653,6 +691,7 @@ def _scan_runs_into(conn: sqlite3.Connection, runs_dir: Path) -> int:
                 meta["call_date"], meta["decode_params"],
                 meta["template_hash"], meta["case_set_tag"],
                 meta["cost_scenario_version"],
+                meta["effort"], meta["effort_tier"],
                 meta["cache_enabled"], meta["termination"],
             ),
         )
@@ -671,8 +710,8 @@ def _scan_runs_into(conn: sqlite3.Connection, runs_dir: Path) -> int:
             benign_confidence, attacked_confidence, confidence_delta,
             benign_abstained, attacked_abstained,
             benign_malformed, attacked_malformed, flip_direction,
-            target_hit, score_delta, tokens_in, tokens_out, cost_usd,
-            latency_ms,
+            target_hit, score_delta, tokens_in, tokens_out, reasoning_tokens,
+            cost_usd, latency_ms,
         ) in meta["per_case"]:
             conn.execute(
                 """INSERT INTO case_results
@@ -683,8 +722,9 @@ def _scan_runs_into(conn: sqlite3.Connection, runs_dir: Path) -> int:
                     benign_abstained, attacked_abstained,
                     benign_malformed, attacked_malformed,
                     flip_direction, target_hit, score_delta,
-                    tokens_in, tokens_out, cost_usd, latency_ms)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    tokens_in, tokens_out, reasoning_tokens,
+                    cost_usd, latency_ms)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
                     run_path, case_id, family, severity, primitive,
                     flipped, eligible, ineligibility_reason,
@@ -693,7 +733,8 @@ def _scan_runs_into(conn: sqlite3.Connection, runs_dir: Path) -> int:
                     benign_abstained, attacked_abstained,
                     benign_malformed, attacked_malformed,
                     flip_direction, target_hit, score_delta,
-                    tokens_in, tokens_out, cost_usd, latency_ms,
+                    tokens_in, tokens_out, reasoning_tokens,
+                    cost_usd, latency_ms,
                 ),
             )
         count += 1
@@ -780,7 +821,8 @@ def _ensure_index_fresh(runs_dir: Path) -> None:
         db_path = _index_path(runs_dir)
         conn = _connect(db_path)
         try:
-            added = _ensure_phase0_columns(conn)
+            added = _ensure_registry_columns(conn)
+            added = _ensure_phase0_columns(conn) or added
             conn.commit()
             if added:
                 row_count = conn.execute("SELECT COUNT(*) FROM runs").fetchone()[0]
@@ -799,14 +841,8 @@ def list_runs(
     dataset_version: str | None = None,
     cache_enabled: bool | None = None,
     termination: str | None = None,
-    # M-7 longitudinal filters: key a rerun comparison on the exact
-    # provenance that makes two runs comparable.
-    model_class: str | None = None,
-    checkpoint_hash: str | None = None,
-    api_version: str | None = None,
-    call_date: str | None = None,
-    template_hash: str | None = None,
-    case_set_tag: str | None = None,
+    effort: str | None = None,
+    effort_tier: str | None = None,
 ) -> list[dict[str, Any]]:
     """List runs with optional filters.
 
@@ -817,7 +853,10 @@ def list_runs(
     True/False to list only cache-enabled/disabled runs (cache-enabled
     and cache-disabled runs are different measurements and must never
     pool silently). ``termination`` filters on the run's termination
-    state ("complete", "budget", "partial", ...).
+    state ("complete", "budget", "partial", ...). ``effort`` filters on
+    the provider-native effort value sealed in run config ("" matches
+    runs where effort was not requested or predates effort recording);
+    ``effort_tier`` filters on the normalized tier.
     """
     runs_dir = _get_runs_dir(runs_dir)
     if not runs_dir.exists():
@@ -844,18 +883,12 @@ def list_runs(
         if termination is not None:
             query += " AND termination = ?"
             params.append(termination)
-        # M-7 longitudinal filters.
-        for column, value in (
-            ("model_class", model_class),
-            ("checkpoint_hash", checkpoint_hash),
-            ("api_version", api_version),
-            ("call_date", call_date),
-            ("template_hash", template_hash),
-            ("case_set_tag", case_set_tag),
-        ):
-            if value is not None:
-                query += f" AND {column} = ?"
-                params.append(value)
+        if effort is not None:
+            query += " AND effort = ?"
+            params.append(effort)
+        if effort_tier is not None:
+            query += " AND effort_tier = ?"
+            params.append(effort_tier)
         query += " ORDER BY created_utc DESC"
         cursor = conn.execute(query, params)
         return [dict(row) for row in cursor.fetchall()]
@@ -872,9 +905,9 @@ def get_family_results(
     """Per-family metrics across runs, joined with run metadata.
 
     One row per (run, family): adapter_name, adapter_version, suite,
-    dataset_version, family, n, n_eligible, asr, asr_lo, asr_hi,
-    refusal_rate. Withheld rates come back as None (stored as NULL,
-    never 0.0). The index is rebuilt if stale.
+    dataset_version, effort, effort_tier, family, n, n_eligible, asr,
+    asr_lo, asr_hi, refusal_rate. Withheld rates come back as None
+    (stored as NULL, never 0.0). The index is rebuilt if stale.
     """
     runs_dir = _get_runs_dir(runs_dir)
     if not runs_dir.exists():
@@ -886,8 +919,8 @@ def get_family_results(
         conn.row_factory = sqlite3.Row
         query = (
             "SELECT r.adapter_name, r.adapter_version, r.suite, "
-            "r.dataset_version, f.family, f.n, f.n_eligible, f.asr, "
-            "f.asr_lo, f.asr_hi, f.refusal_rate "
+            "r.dataset_version, r.effort, r.effort_tier, f.family, f.n, "
+            "f.n_eligible, f.asr, f.asr_lo, f.asr_hi, f.refusal_rate "
             "FROM family_results f JOIN runs r ON f.run_path = r.path "
             "WHERE 1=1"
         )

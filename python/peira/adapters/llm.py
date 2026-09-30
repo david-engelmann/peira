@@ -10,20 +10,26 @@ client-side with a hand-written stdlib validator — the base package
 stays dependency-free, so there is deliberately no pydantic here.
 
 Frontier ceiling (picked 2026-09-25): ``claude-fable-5-1`` via
-``AnthropicAdapter(model=...)`` — NOT ``gpt-6-astra``. Fable 5.1's id
-is confirmed on the live Claude API, it was available on every major
-platform on day one (vs Astra's phased rollout), and it holds the
-highest Artificial Analysis Intelligence Index score ever measured
+``AnthropicAdapter(model=...)`` — NOT ``gpt-6-astra``. The id follows
+Anthropic's documented naming convention (Fable 5's id was
+``claude-fable-5``) but is NOT independently confirmed on the live
+API — verify before the first run (D-32). It was available on every
+major platform on day one (vs Astra's phased rollout), and it holds
+the highest Artificial Analysis Intelligence Index score ever measured
 (66/192, ahead of Opus 5 at 63 and GPT-5.6 Sol at 61) — the strongest
 available "ceiling" evidence. Astra was rejected because it 400s on
 ``temperature``/``top_p``/``logprobs``, which ``OpenAIAdapter`` sends on
 every call, so ``OpenAIAdapter(model="gpt-6-astra")`` fails without a
-new per-model special-case; Fable 5.1's 400 is only on forced
-``tool_choice``, whose fix (native ``output_config.format`` structured
-outputs) is already peira's decided direction for the newer Anthropic
-reasoning models. Caveat: neither runs on the current adapter request
-shapes unmodified — see docs/Adapters.md "Frontier ceiling". The
-frontier model is opt-in via ``model=``; defaults are unchanged.
+new per-model special-case; Fable 5.1's 400 was on forced
+``tool_choice``, which the native ``output_config.format`` structured
+outputs path (the decided direction for the newer Anthropic reasoning
+models) now avoids — the adapter sends no tools and no ``tool_choice``
+at all. Caveats: Astra still needs a per-model special-case for
+temperature/top_p/logprobs, so ``OpenAIAdapter(model="gpt-6-astra")``
+fails unmodified; Fable 5.1 still needs its id verified against the
+live API before the first run (D-32). See docs/Adapters.md "Frontier
+ceiling". The frontier model is opt-in via ``model=``; defaults are
+unchanged.
 
 Why the decision enum is per-call, not fixed
 --------------------------------------------
@@ -103,6 +109,12 @@ from peira.api_pins import (
     DEPRECATED_PINS,
     PINNED_API_MODELS,
     DeprecatedPinError,
+)
+from peira.effort import (
+    PROVIDER_EFFORT_ALIASES,
+    PROVIDER_EFFORT_MAP,
+    canonical_native,
+    normalize_effort,
 )
 
 __all__ = [
@@ -339,6 +351,69 @@ def _parse_and_validate(
 
 
 # ---------------------------------------------------------------------------
+# Anthropic wire-schema preparation.
+# ---------------------------------------------------------------------------
+
+# Keywords Anthropic's structured-output grammar rejects at request time
+# with HTTP 400 (official structured-outputs docs; the rejection list is
+# also enumerated in vercel/ai#13355). These are all *bound*
+# keywords: removing one only weakens the constrained-decoding
+# constraint, never changes the schema's meaning — and peira's
+# client-side validator still enforces them against the FULL schema,
+# with the repair loop as backstop.
+_ANTHROPIC_REJECTED_BOUND_KEYS = frozenset({
+    "minimum", "maximum", "exclusiveMinimum", "exclusiveMaximum",
+    "minLength", "maxLength", "pattern", "format",
+    "minItems", "maxItems", "uniqueItems",
+    "minProperties", "maxProperties",
+})
+
+# Composition keywords would change the schema's meaning if stripped,
+# so their presence is a loud adapter bug, not a silent rewrite.
+_ANTHROPIC_REJECTED_COMPOSITION_KEYS = frozenset({
+    "oneOf", "allOf", "not", "if", "then", "else", "prefixItems",
+})
+
+
+def _anthropic_wire_schema(schema: dict[str, Any]) -> dict[str, Any]:
+    """Copy of the schema safe to send as output_config.format.
+
+    Strips the bound keywords Anthropic's grammar rejects (peira's
+    template uses minimum/maximum on confidence and score). Raises
+    ValueError if a composition keyword is present: stripping those
+    would silently change what the schema means.
+    """
+    def check(node: Any) -> None:
+        if isinstance(node, dict):
+            bad = _ANTHROPIC_REJECTED_COMPOSITION_KEYS.intersection(node)
+            if bad:
+                raise ValueError(
+                    "AnthropicAdapter: schema uses composition keyword(s) "
+                    f"{sorted(bad)} rejected by output_config.format; "
+                    "the adapter cannot send this schema"
+                )
+            for value in node.values():
+                check(value)
+        elif isinstance(node, list):
+            for value in node:
+                check(value)
+
+    def strip(node: Any) -> Any:
+        if isinstance(node, dict):
+            return {
+                key: strip(value)
+                for key, value in node.items()
+                if key not in _ANTHROPIC_REJECTED_BOUND_KEYS
+            }
+        if isinstance(node, list):
+            return [strip(value) for value in node]
+        return node
+
+    check(schema)
+    return strip(schema)
+
+
+# ---------------------------------------------------------------------------
 # Refusal detection.
 # ---------------------------------------------------------------------------
 
@@ -440,6 +515,27 @@ class _RawResult:
     logprob_tokens: Any              # provider logprob payload, or None
     request_shape: dict[str, Any]     # redacted request description
     response_shape: dict[str, Any]    # provider-native response summary
+    # Provider-reported reasoning/thinking tokens, where exposed. None
+    # when the provider does not report them. Passed through to
+    # CallUsage.reasoning_tokens (a subset of tokens_out, never added).
+    # Last so the field can keep its default (dataclass field ordering).
+    reasoning_tokens: int | None = None
+
+
+def _clean_reasoning_tokens(value: Any) -> int | None:
+    """Normalize a provider-reported reasoning-token count.
+
+    None (unreported) stays None; bools are never token counts and map
+    to None; ints pass through untouched — including negatives, which
+    ``_validate_usage`` rejects loudly rather than silently sanitizing.
+    Anything else (strings, floats, dicts) maps to None: not a count the
+    provider actually reported.
+    """
+    if value is None or isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        return value
+    return None
 
 
 class _StructuredLLMBase:
@@ -450,13 +546,20 @@ class _StructuredLLMBase:
     # M-2: confidence is the model's verbalized confidence (D-23).
     confidence_source = "verbalized"
     supported_primitives = frozenset({"choice", "score", "abstain"})
-    # M-7 longitudinal provenance: structured-output LLM baselines.
-    model_class = "llm-baseline"
 
     # Overridden per provider:
     _extra = "peira[?]"            # e.g. "peira[openai]"
     _env_vars: tuple[str, ...] = ()  # API key env vars, in lookup order
     _supports_seed = True          # False where the provider has no seed
+    # Reasoning-effort support. EFFORT_PROVIDER keys into
+    # peira.effort.PROVIDER_EFFORT_MAP; EFFORT_LEVELS lists the accepted
+    # provider-native values (canonical form — aliases resolve first).
+    # Empty EFFORT_LEVELS (or None provider) means the provider exposes
+    # no effort control: passing effort= then raises. Adapters for
+    # providers whose effort support is unverified against primary docs
+    # (Kimi K3, GLM, Meta Llama API) leave these empty on purpose.
+    EFFORT_PROVIDER: str | None = None
+    EFFORT_LEVELS: tuple[str, ...] = ()
 
     def __init__(
         self,
@@ -465,6 +568,8 @@ class _StructuredLLMBase:
         seed: int | None = 0,
         max_tokens: int = 512,
         api_key: str | None = None,
+        *,
+        effort: str | None = None,
     ) -> None:
         if isinstance(model, str) and model in DEPRECATED_PINS:
             raise DeprecatedPinError(
@@ -475,14 +580,46 @@ class _StructuredLLMBase:
         self._temperature = temperature
         self._seed = seed
         self._max_tokens = max_tokens
+        # Reasoning effort: the provider-native value, validated against
+        # this adapter's documented ladder. None = not requested: the
+        # adapter sends nothing effort-related and the provider default
+        # applies — except where the adapter pins a default of its own
+        # (see _default_effort_native), which is recorded honestly as
+        # the effective native value rather than a fake "default".
+        self.effort_requested = effort
+        self.effort_native = self._resolve_effort(effort)
+        self.effort_tier = (
+            normalize_effort(self.EFFORT_PROVIDER, self.effort_native)
+            if self.effort_native is not None and self.EFFORT_PROVIDER is not None
+            else None
+        )
         # The runner's adapter contract: exact pinned model version and
         # the cache namespace. Deterministic only at temperature 0 with
         # a fixed seed — an adapter-author obligation the runner cannot
         # verify.
-        self.version = model
+        #
+        # Effort is part of the identity, but only when explicitly
+        # requested: the suffix keeps the exact model id intact
+        # (``model@effort=high``) and adapter-pinned defaults (DeepSeek's
+        # disabled thinking) keep their historic version, so existing
+        # run records and resume checks stay valid. The same rule
+        # partitions the cache namespace below: explicit is explicit.
+        self.version = (
+            f"{model}@effort={self.effort_native}"
+            if effort is not None
+            else model
+        )
         seed_part = f":s{seed}" if self._supports_seed else ""
+        # The effort suffix appears only when effort was explicitly
+        # requested: adapter-pinned defaults (DeepSeek's disabled
+        # thinking) keep their historic namespace, so existing cache
+        # entries stay valid. An explicit value always partitions the
+        # cache, even when it matches the provider default — explicit is
+        # explicit.
+        effort_part = f":e{self.effort_native}" if effort is not None else ""
         self.cache_namespace = (
-            f"{self.name}:{model}:t{temperature}:mt{max_tokens}{seed_part}"
+            f"{self.name}:{model}:t{temperature}:mt{max_tokens}"
+            f"{seed_part}{effort_part}"
         )
         self._api_key = self._resolve_api_key(api_key)
         # Subclasses build the SDK client here, with retries disabled.
@@ -491,39 +628,63 @@ class _StructuredLLMBase:
         self._client: Any = None
         self._sdk: Any = None
 
-    @property
-    def decode_params(self) -> dict[str, Any]:
-        """M-7 longitudinal provenance: decode params actually sent.
-
-        The seed is included when the provider supports one: two runs
-        with different provider seeds are not the same measurement.
-        """
-        params: dict[str, Any] = {
-            "temperature": self._temperature,
-            "max_tokens": self._max_tokens,
-        }
-        if self._supports_seed:
-            params["seed"] = self._seed
-        return params
-
-    def with_seed(self, seed: int | None) -> "_StructuredLLMBase":
-        """Return a copy of this adapter pinned to a provider seed.
-
-        M-7 multi-seed protocol: each seed run gets its own provider
-        sampling seed, so the k runs are independent measurements. The
-        copy shares the read-only SDK client; only the seed and the
-        seed-dependent cache namespace change.
-        """
-        new = copy.copy(self)
-        new._seed = seed
-        seed_part = f":s{seed}" if self._supports_seed else ""
-        new.cache_namespace = (
-            f"{self.name}:{self._model}:t{self._temperature}:"
-            f"mt{self._max_tokens}{seed_part}"
-        )
-        return new
-
     # -- construction helpers -------------------------------------------
+
+    def _default_effort_native(self) -> str | None:
+        """Adapter-pinned effort when the caller requests none.
+
+        None (the default) means the adapter sends nothing effort-related
+        and the provider default applies. An adapter that pins its own
+        default for measurement reasons overrides this to return the
+        effective native value — DeepSeek disables thinking unless
+        asked, and records "none" instead of a dishonest "default".
+        """
+        return None
+
+    def _resolve_effort(self, effort: str | None) -> str | None:
+        """Validate the effort parameter; return the effective native value."""
+        provider = self.EFFORT_PROVIDER
+        levels = self.EFFORT_LEVELS
+        if effort is None:
+            default = self._default_effort_native()
+            if default is None:
+                return None
+            return self._check_effort_value(default, provider, levels)
+        return self._check_effort_value(effort, provider, levels)
+
+    def _check_effort_value(
+        self,
+        effort: str,
+        provider: str | None,
+        levels: tuple[str, ...],
+    ) -> str:
+        if not isinstance(effort, str):
+            raise ValueError(
+                f"{self.name}: effort must be a string, "
+                f"got {type(effort).__name__}"
+            )
+        if provider is None or not levels:
+            raise ValueError(
+                f"{self.name} does not support the effort parameter: "
+                "its provider exposes no reasoning-effort control"
+            )
+        if provider not in PROVIDER_EFFORT_MAP:
+            raise ValueError(
+                f"{self.name}: unknown effort provider {provider!r} "
+                "(adapter bug: EFFORT_PROVIDER must key into "
+                "peira.effort.PROVIDER_EFFORT_MAP)"
+            )
+        native = canonical_native(provider, effort)
+        if native not in levels:
+            aliases = sorted(
+                a for a, c in PROVIDER_EFFORT_ALIASES.get(provider, {}).items()
+            )
+            hint = f" (aliases: {', '.join(aliases)})" if aliases else ""
+            raise ValueError(
+                f"{self.name}: unknown effort {effort!r} "
+                f"(expected one of {', '.join(levels)}{hint})"
+            )
+        return native
 
     def _resolve_api_key(self, api_key: str | None) -> str:
         key = api_key
@@ -637,6 +798,11 @@ class _StructuredLLMBase:
             model=self._model,  # exact pinned model id, never an alias
             tokens_in=max(0, int(raw.tokens_in or 0)),
             tokens_out=max(0, int(raw.tokens_out or 0)),
+            # Provider-reported reasoning tokens, a subset of tokens_out
+            # (billed at output rates): observability only, never priced
+            # separately. The runner's _validate_usage enforces
+            # reasoning_tokens <= tokens_out.
+            reasoning_tokens=_clean_reasoning_tokens(raw.reasoning_tokens),
             latency_ms=(time.perf_counter() - started) * 1000.0,
             cost_usd=0.0,  # the runner recomputes cost; ignored on input
         )
@@ -657,6 +823,11 @@ class _StructuredLLMBase:
             "parameters": {
                 "temperature": self._temperature,
                 "max_tokens": self._max_tokens,
+                # Reasoning effort: the provider-native value actually
+                # sent (None = nothing sent, provider default applied)
+                # plus the normalized tier for cross-model grouping.
+                "effort": self.effort_native,
+                "effort_tier": self.effort_tier,
             },
             "request": raw.request_shape,
             "response": {**raw.response_shape, "attempts": attempts},
@@ -778,6 +949,10 @@ class OpenAIAdapter(_StructuredLLMBase):
     _env_vars = ("OPENAI_API_KEY",)
     _supports_seed = True
     _provider_label = "OpenAI"
+    # OpenAI reasoning effort ladder (Responses reasoning.effort / Chat
+    # Completions reasoning_effort), per official docs 2026-09.
+    EFFORT_PROVIDER = "openai"
+    EFFORT_LEVELS = ("none", "minimal", "low", "medium", "high", "xhigh", "max")
 
     def __init__(
         self,
@@ -786,8 +961,11 @@ class OpenAIAdapter(_StructuredLLMBase):
         seed: int | None = 0,
         max_tokens: int = 512,
         api_key: str | None = None,
+        *,
+        effort: str | None = None,
     ) -> None:
-        super().__init__(model, temperature, seed, max_tokens, api_key)
+        super().__init__(model, temperature, seed, max_tokens, api_key,
+                         effort=effort)
         self._sdk = _require_openai()
         # Retries DISABLED: the runner owns the retry policy (see the
         # RETRY LAYERING rule in peira.adapters.base).
@@ -802,7 +980,7 @@ class OpenAIAdapter(_StructuredLLMBase):
         e.g. omitting provider-unsupported fields — without
         duplicating the error handling or result parsing.
         """
-        return {
+        kwargs: dict[str, Any] = {
             "model": self._model,
             "messages": messages,
             "response_format": {
@@ -818,6 +996,12 @@ class OpenAIAdapter(_StructuredLLMBase):
             "seed": self._seed,
             "logprobs": True,
         }
+        if self.effort_native is not None:
+            # Not exercised against the live API: reasoning_effort is the
+            # documented Chat Completions effort control (official
+            # reasoning guide, 2026-09). Sent only when requested.
+            kwargs["reasoning_effort"] = self.effort_native
+        return kwargs
 
     def _request(
         self, user_text: str, schema: dict[str, Any], repair: bool
@@ -859,12 +1043,17 @@ class OpenAIAdapter(_StructuredLLMBase):
         text = choice.message.content or ""
         usage = getattr(resp, "usage", None)
         sent = self._request_kwargs(messages, schema)
+        # Reasoning tokens, where the provider reports them: a subset of
+        # completion_tokens, billed at output rates (official docs).
+        details = getattr(usage, "completion_tokens_details", None)
+        reasoning_tokens = getattr(details, "reasoning_tokens", None)
         return _RawResult(
             text=text,
             stop_reason=getattr(choice, "finish_reason", None),
             parsed=None,
             tokens_in=int(getattr(usage, "prompt_tokens", 0) or 0),
             tokens_out=int(getattr(usage, "completion_tokens", 0) or 0),
+            reasoning_tokens=_clean_reasoning_tokens(reasoning_tokens),
             logprob_tokens=choice,
             request_shape={
                 "endpoint": "chat.completions.create",
@@ -877,6 +1066,7 @@ class OpenAIAdapter(_StructuredLLMBase):
                 # kwargs rather than assuming.
                 "seed": sent.get("seed"),
                 "logprobs": sent.get("logprobs", False),
+                "reasoning_effort": sent.get("reasoning_effort"),
             },
             response_shape={
                 "finish_reason": getattr(choice, "finish_reason", None),
@@ -927,6 +1117,11 @@ class MoonshotAdapter(OpenAIAdapter):
     _env_vars = ("MOONSHOT_API_KEY",)
     _provider_label = "Moonshot"
     _supports_seed = False
+    # Kimi K3's reasoning_effort is reported only in third-party adapter
+    # docs, not verified against primary docs — effort stays unsupported
+    # until that verification lands (survey, 2026-09-29).
+    EFFORT_PROVIDER = None
+    EFFORT_LEVELS: tuple[str, ...] = ()
 
     _base_url = "https://api.moonshot.ai/v1"
 
@@ -937,13 +1132,16 @@ class MoonshotAdapter(OpenAIAdapter):
         seed: int | None = 0,
         max_tokens: int = 512,
         api_key: str | None = None,
+        *,
+        effort: str | None = None,
     ) -> None:
         # Not OpenAIAdapter.__init__: that constructor pins the client
         # to api.openai.com. Rebuild the identical client against
         # Moonshot's OpenAI-compatible endpoint — retries still
         # DISABLED, the runner owns the retry policy.
         _StructuredLLMBase.__init__(
-            self, model, temperature, seed, max_tokens, api_key
+            self, model, temperature, seed, max_tokens, api_key,
+            effort=effort,
         )
         self._sdk = _require_openai()
         self._client = self._sdk.OpenAI(
@@ -1001,6 +1199,10 @@ class XAIAdapter(OpenAIAdapter):
     _env_vars = ("XAI_API_KEY",)
     _provider_label = "xAI"
     _supports_seed = True
+    # xAI reasoning_effort ladder for Grok 4.5/4.6/4.7 (official
+    # reasoning docs, 2026-09). No "none": reasoning cannot be disabled.
+    EFFORT_PROVIDER = "xai"
+    EFFORT_LEVELS = ("low", "medium", "high", "xhigh")
 
     _base_url = "https://api.x.ai/v1"
 
@@ -1011,13 +1213,16 @@ class XAIAdapter(OpenAIAdapter):
         seed: int | None = 0,
         max_tokens: int = 512,
         api_key: str | None = None,
+        *,
+        effort: str | None = None,
     ) -> None:
         # Not OpenAIAdapter.__init__: that constructor pins the client
         # to api.openai.com. Rebuild the identical client against
         # xAI's OpenAI-compatible endpoint — retries still
         # DISABLED, the runner owns the retry policy.
         _StructuredLLMBase.__init__(
-            self, model, temperature, seed, max_tokens, api_key
+            self, model, temperature, seed, max_tokens, api_key,
+            effort=effort,
         )
         self._sdk = _require_openai()
         self._client = self._sdk.OpenAI(
@@ -1071,6 +1276,13 @@ class DeepSeekAdapter(OpenAIAdapter):
     _env_vars = ("DEEPSEEK_API_KEY",)
     _provider_label = "DeepSeek"
     _supports_seed = True
+    # DeepSeek thinking control (official thinking_mode guide, 2026-09):
+    # Chat Completions takes thinking.type enabled/disabled plus
+    # reasoning_effort low/high/max ("none" disables). Documented
+    # compatibility aliases (minimal→low, medium/xhigh→high, ultra→max)
+    # resolve in the base class.
+    EFFORT_PROVIDER = "deepseek"
+    EFFORT_LEVELS = ("none", "low", "high", "max")
 
     _base_url = "https://api.deepseek.com"
 
@@ -1081,26 +1293,46 @@ class DeepSeekAdapter(OpenAIAdapter):
         seed: int | None = 0,
         max_tokens: int = 512,
         api_key: str | None = None,
+        *,
+        effort: str | None = None,
     ) -> None:
         # Not OpenAIAdapter.__init__: that constructor pins the client
         # to api.openai.com. Rebuild the identical client against
         # DeepSeek's OpenAI-compatible endpoint — retries still
         # DISABLED, the runner owns the retry policy.
         _StructuredLLMBase.__init__(
-            self, model, temperature, seed, max_tokens, api_key
+            self, model, temperature, seed, max_tokens, api_key,
+            effort=effort,
         )
         self._sdk = _require_openai()
         self._client = self._sdk.OpenAI(
             api_key=self._api_key, base_url=self._base_url, max_retries=0
         )
 
+    def _default_effort_native(self) -> str | None:
+        # The evaluation design pins thinking DISABLED unless the caller
+        # asks for effort: reasoning traces must not leak into the
+        # decision channel. Recorded honestly as "none", never as a fake
+        # "provider default".
+        return "none"
+
+    def _thinking_request(self) -> dict[str, str]:
+        if self.effort_native not in (None, "none"):
+            return {"type": "enabled"}
+        return {"type": "disabled"}
+
     def _request_kwargs(
         self, messages: list[dict[str, str]], schema: dict[str, Any]
     ) -> dict[str, Any]:
         kwargs = super()._request_kwargs(messages, schema)
-        # Thinking disabled per the evaluation design: reasoning traces
-        # must not leak into the decision channel.
-        kwargs["thinking"] = {"type": "disabled"}
+        # Thinking disabled per the evaluation design (see
+        # _default_effort_native); an explicit effort level enables it
+        # and sets reasoning_effort. The Chat Completions contract takes
+        # reasoning_effort only alongside enabled thinking — drop the
+        # "none" the OpenAI seam added. Not exercised live.
+        kwargs["thinking"] = self._thinking_request()
+        if self.effort_native in (None, "none"):
+            kwargs.pop("reasoning_effort", None)
         return kwargs
 
     def _request(
@@ -1110,6 +1342,7 @@ class DeepSeekAdapter(OpenAIAdapter):
         # The inherited request shape names the endpoint and model but
         # not the host it was sent to — record it for traceability.
         raw.request_shape["base_url"] = self._base_url
+        raw.request_shape["thinking"] = self._thinking_request()["type"]
         return raw
 
 
@@ -1148,6 +1381,10 @@ class MetaLlamaAdapter(OpenAIAdapter):
     _env_vars = ("META_API_KEY",)
     _provider_label = "Meta"
     _supports_seed = True
+    # The hosted Llama API documents no reasoning-effort control
+    # (survey, 2026-09-29): effort stays unsupported.
+    EFFORT_PROVIDER = None
+    EFFORT_LEVELS: tuple[str, ...] = ()
 
     _base_url = "https://api.llama.com/compat/v1"
 
@@ -1158,13 +1395,16 @@ class MetaLlamaAdapter(OpenAIAdapter):
         seed: int | None = 0,
         max_tokens: int = 512,
         api_key: str | None = None,
+        *,
+        effort: str | None = None,
     ) -> None:
         # Not OpenAIAdapter.__init__: that constructor pins the client
         # to api.openai.com. Rebuild the identical client against
         # Meta's OpenAI-compatible endpoint — retries still
         # DISABLED, the runner owns the retry policy.
         _StructuredLLMBase.__init__(
-            self, model, temperature, seed, max_tokens, api_key
+            self, model, temperature, seed, max_tokens, api_key,
+            effort=effort,
         )
         self._sdk = _require_openai()
         self._client = self._sdk.OpenAI(
@@ -1216,6 +1456,12 @@ class ZaiAdapter(OpenAIAdapter):
     _env_vars = ("ZAI_API_KEY",)
     _provider_label = "Zhipu"
     _supports_seed = True
+    # GLM's thinking toggle / reasoning_effort is reported only in
+    # third-party adapter docs, not verified against primary docs —
+    # effort stays unsupported until that verification lands (survey,
+    # 2026-09-29).
+    EFFORT_PROVIDER = None
+    EFFORT_LEVELS: tuple[str, ...] = ()
 
     _base_url = "https://open.bigmodel.cn/api/paas/v4"
 
@@ -1226,13 +1472,16 @@ class ZaiAdapter(OpenAIAdapter):
         seed: int | None = 0,
         max_tokens: int = 512,
         api_key: str | None = None,
+        *,
+        effort: str | None = None,
     ) -> None:
         # Not OpenAIAdapter.__init__: that constructor pins the client
         # to api.openai.com. Rebuild the identical client against
         # Zhipu's OpenAI-compatible endpoint — retries still
         # DISABLED, the runner owns the retry policy.
         _StructuredLLMBase.__init__(
-            self, model, temperature, seed, max_tokens, api_key
+            self, model, temperature, seed, max_tokens, api_key,
+            effort=effort,
         )
         self._sdk = _require_openai()
         self._client = self._sdk.OpenAI(
@@ -1254,10 +1503,13 @@ class ZaiAdapter(OpenAIAdapter):
 # ---------------------------------------------------------------------------
 
 class AnthropicAdapter(_StructuredLLMBase):
-    """Baseline: Anthropic messages with forced tool use.
+    """Baseline: Anthropic messages with native structured outputs.
 
-    The schema is sent as a tool's ``input_schema`` with ``tool_choice``
-    forced to that tool, so the model must answer through the schema.
+    The schema is sent as ``output_config.format`` (``type:
+    "json_schema"``), so the model must answer through constrained
+    decoding — no tools are defined and no ``tool_choice`` is sent
+    (forced tool choice hard-400s on the newer reasoning models).
+    Effort rides as a sibling ``output_config.effort`` field.
     Anthropic has NO seed parameter — ``seed`` is accepted for a uniform
     constructor signature but ignored, and recorded as null.
     """
@@ -1266,6 +1518,12 @@ class AnthropicAdapter(_StructuredLLMBase):
     _extra = "peira[anthropic]"
     _env_vars = ("ANTHROPIC_API_KEY",)
     _supports_seed = False
+    # Anthropic effort ladder (output_config.effort, official docs
+    # 2026-09): low/medium/high/xhigh/max, model-specific availability.
+    # Unlike other providers, effort scales ALL response output and
+    # applies even with thinking off.
+    EFFORT_PROVIDER = "anthropic"
+    EFFORT_LEVELS = ("low", "medium", "high", "xhigh", "max")
 
     def __init__(
         self,
@@ -1274,8 +1532,11 @@ class AnthropicAdapter(_StructuredLLMBase):
         seed: int | None = 0,
         max_tokens: int = 512,
         api_key: str | None = None,
+        *,
+        effort: str | None = None,
     ) -> None:
-        super().__init__(model, temperature, seed, max_tokens, api_key)
+        super().__init__(model, temperature, seed, max_tokens, api_key,
+                         effort=effort)
         self._sdk = _require_anthropic()
         # Retries DISABLED: the runner owns the retry policy.
         self._client = self._sdk.Anthropic(
@@ -1288,16 +1549,29 @@ class AnthropicAdapter(_StructuredLLMBase):
         messages = [{"role": "user", "content": user_text}]
         if repair:
             messages.append({"role": "user", "content": REPAIR_SUFFIX})
+        # Native structured outputs (GA, no beta header): the schema is
+        # constrained-decoded via output_config.format. Forced
+        # tool_choice is NOT sent — it hard-400s on the newer reasoning
+        # models (Opus 5.5, Fable 5.1). Effort is a sibling field in the
+        # same output_config dict (official effort docs, 2026-09).
+        output_config: dict[str, Any] = {
+            "format": {
+                "type": "json_schema",
+                "schema": _anthropic_wire_schema(schema),
+            },
+        }
+        if self.effort_native is not None:
+            output_config["effort"] = self.effort_native
+        create_kwargs: dict[str, Any] = {
+            "model": self._model,
+            "max_tokens": self._max_tokens,
+            "temperature": self._temperature,
+            "system": SYSTEM_PROMPT,
+            "messages": messages,
+            "output_config": output_config,
+        }
         try:
-            resp = self._client.messages.create(
-                model=self._model,
-                max_tokens=self._max_tokens,
-                temperature=self._temperature,
-                system=SYSTEM_PROMPT,
-                messages=messages,
-                tools=[{"name": SCHEMA_NAME, "input_schema": schema}],
-                tool_choice={"type": "tool", "name": SCHEMA_NAME},
-            )
+            resp = self._client.messages.create(**create_kwargs)
         except self._sdk.APIStatusError as exc:
             raise _status_error("Anthropic", exc) from exc
         except self._sdk.APITimeoutError as exc:
@@ -1311,26 +1585,25 @@ class AnthropicAdapter(_StructuredLLMBase):
 
         stop_reason = getattr(resp, "stop_reason", None)
         text_parts: list[str] = []
-        tool_input: dict[str, Any] | None = None
         for block in getattr(resp, "content", None) or []:
-            block_type = getattr(block, "type", "")
-            if (
-                block_type == "tool_use"
-                and getattr(block, "name", "") == SCHEMA_NAME
-            ):
-                candidate = getattr(block, "input", None)
-                if isinstance(candidate, dict):
-                    tool_input = candidate
-            elif block_type == "text":
+            # Native format returns the schema-constrained JSON document
+            # as ordinary text blocks — there is no tool_use block to
+            # read. parsed=None routes through _parse_and_validate on
+            # the text, and client-side revalidation still applies.
+            if getattr(block, "type", "") == "text":
                 part = getattr(block, "text", "")
                 if isinstance(part, str):
                     text_parts.append(part)
         text = "".join(text_parts)
         usage = getattr(resp, "usage", None)
+        # Thinking tokens, where reported: a subset of output_tokens,
+        # billed at output rates (official docs).
+        out_details = getattr(usage, "output_tokens_details", None)
+        thinking_tokens = getattr(out_details, "thinking_tokens", None)
         return _RawResult(
             text=text,
             stop_reason=stop_reason,
-            parsed=tool_input,
+            parsed=None,
             tokens_in=int(getattr(usage, "input_tokens", 0) or 0),
             tokens_out=int(getattr(usage, "output_tokens", 0) or 0),
             logprob_tokens=None,  # Anthropic exposes no token logprobs
@@ -1338,15 +1611,20 @@ class AnthropicAdapter(_StructuredLLMBase):
                 "endpoint": "messages.create",
                 "model": self._model,
                 "system": "peira system prompt",
-                "tool": SCHEMA_NAME,
-                "tool_choice": "forced",
+                "output_format": f"json_schema:{SCHEMA_NAME}",
                 "temperature": self._temperature,
                 "max_tokens": self._max_tokens,
+                "output_config": {
+                    "format": "json_schema",
+                    # None = not sent; the provider default applies.
+                    "effort": self.effort_native,
+                },
             },
             response_shape={
                 "stop_reason": stop_reason,
                 "text": text[:4000],
             },
+            reasoning_tokens=_clean_reasoning_tokens(thinking_tokens),
         )
 
 
@@ -1368,6 +1646,12 @@ class GoogleAdapter(_StructuredLLMBase):
     _extra = "peira[google]"
     _env_vars = ("GOOGLE_API_KEY", "GEMINI_API_KEY")
     _supports_seed = True
+    # Gemini thinking levels (official thinking docs, 2026-09):
+    # minimal/low/medium/high on Gemini 3 via thinkingConfig.thinkingLevel
+    # (new Interactions API: generation_config.thinking_level). Raw
+    # token budgets (thinkingBudget, Gemini 2.5) are not wired yet.
+    EFFORT_PROVIDER = "google"
+    EFFORT_LEVELS = ("minimal", "low", "medium", "high")
 
     def __init__(
         self,
@@ -1376,8 +1660,11 @@ class GoogleAdapter(_StructuredLLMBase):
         seed: int | None = 0,
         max_tokens: int = 512,
         api_key: str | None = None,
+        *,
+        effort: str | None = None,
     ) -> None:
-        super().__init__(model, temperature, seed, max_tokens, api_key)
+        super().__init__(model, temperature, seed, max_tokens, api_key,
+                         effort=effort)
         self._sdk = _require_genai()
         # No retry config exists on genai.Client: a single attempt, as
         # the runner's retry layering requires.
@@ -1387,6 +1674,14 @@ class GoogleAdapter(_StructuredLLMBase):
         self, user_text: str, schema: dict[str, Any], repair: bool
     ) -> _RawResult:
         genai = self._sdk
+        thinking_config = None
+        if self.effort_native is not None:
+            # thinking_level is the documented Gemini 3 effort control
+            # (official thinking docs, 2026-09). Sent only when
+            # requested. Not exercised against the live API.
+            thinking_config = genai.types.ThinkingConfig(
+                thinking_level=self.effort_native
+            )
         config = genai.types.GenerateContentConfig(
             system_instruction=SYSTEM_PROMPT,
             response_mime_type="application/json",
@@ -1394,6 +1689,7 @@ class GoogleAdapter(_StructuredLLMBase):
             temperature=self._temperature,
             max_output_tokens=self._max_tokens,
             seed=self._seed,
+            thinking_config=thinking_config,
         )
         contents = [user_text]
         if repair:
@@ -1423,12 +1719,16 @@ class GoogleAdapter(_StructuredLLMBase):
             # refusal pipeline, with the raw reason kept in the transcript.
             stop_reason = "SAFETY"
         usage = getattr(resp, "usage_metadata", None)
+        # Thought tokens, where reported: billed at output rates as part
+        # of the output total (official docs).
+        thoughts_token_count = getattr(usage, "thoughts_token_count", None)
         return _RawResult(
             text=text if isinstance(text, str) else "",
             stop_reason=stop_reason,
             parsed=None,
             tokens_in=int(getattr(usage, "prompt_token_count", 0) or 0),
             tokens_out=int(getattr(usage, "candidates_token_count", 0) or 0),
+            reasoning_tokens=_clean_reasoning_tokens(thoughts_token_count),
             logprob_tokens=None,  # not exposed by generate_content
             request_shape={
                 "endpoint": "models.generate_content",
@@ -1438,6 +1738,7 @@ class GoogleAdapter(_StructuredLLMBase):
                 "temperature": self._temperature,
                 "max_output_tokens": self._max_tokens,
                 "seed": self._seed,
+                "thinking_level": self.effort_native,
             },
             response_shape={
                 "finish_reason": finish_name,

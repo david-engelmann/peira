@@ -223,6 +223,7 @@ mod tests {
             latency_ms: latency,
             cost_usd: cost,
             price_table_ref: None,
+            reasoning_tokens: None,
         }
     }
 

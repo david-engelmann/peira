@@ -85,6 +85,15 @@ class CallUsage:
     # identifies the table so historical costs are recomputable under
     # future pricing without rerunning. None when unknown.
     price_table_ref: str | None = None
+    # Provider-reported reasoning/thinking tokens for this call, where the
+    # provider exposes them (OpenAI reasoning_tokens, Anthropic
+    # thinking_tokens, Google thoughts_token_count). Billed at output
+    # rates as a SUBSET of tokens_out on every provider with an explicit
+    # billing statement — never added to tokens_out, never priced
+    # separately. Pure observability for cost attribution ("how much of
+    # this call's $ was thinking"). None when the provider does not
+    # report it.
+    reasoning_tokens: int | None = None
 
 
 @dataclass(frozen=True)
@@ -199,6 +208,26 @@ def _validate_usage(usage: Any) -> list[str]:
         err = _nonnegative_int(name, value)
         if err is not None:
             errors.append(err)
+    # The subset comparison needs tokens_out to be a valid int first;
+    # comparing against a string/bool/None would raise TypeError and
+    # mask the real tokens_out error.
+    tokens_out_valid = _nonnegative_int("usage tokens_out", usage.tokens_out) is None
+    if usage.reasoning_tokens is not None:
+        err = _nonnegative_int("usage reasoning_tokens", usage.reasoning_tokens)
+        if err is not None:
+            errors.append(err)
+        elif tokens_out_valid and usage.reasoning_tokens > usage.tokens_out:
+            # Reasoning tokens are billed as a subset of output tokens on
+            # every provider with an explicit billing statement. More
+            # reasoning than output tokens means the adapter misaccounted
+            # (or the provider bills them separately, in which case the
+            # adapter must add them to tokens_out before reporting).
+            errors.append(
+                "usage reasoning_tokens "
+                f"({usage.reasoning_tokens}) exceeds usage tokens_out "
+                f"({usage.tokens_out}): reasoning tokens are a subset of "
+                "output tokens"
+            )
     for name, value in (("usage latency_ms", usage.latency_ms),
                         ("usage cost_usd", usage.cost_usd)):
         err = _nonnegative_number(name, value)
@@ -300,28 +329,6 @@ class BaseAdapter(Protocol):
     # runner cannot verify. Leave "" when the adapter is not
     # deterministic or when caching is meaningless (offline mocks).
     cache_namespace: str
-    # --- Longitudinal provenance (M-7). Optional attributes; the
-    # runner reads them with getattr and seals whatever the adapter
-    # declares onto the run artifact, so later runs of the same
-    # adapter id can be compared for drift. Declare what you know;
-    # leave unknown fields absent (the runner seals "") rather than
-    # inventing values.
-    #
-    # model_class: one of "guardrail", "llm-baseline", "hybrid",
-    #   "rule-based" (documented vocabulary, not an enforced enum).
-    # checkpoint_hash: pinned model checkpoint (e.g. the HF commit
-    #   hash) for weight-pinned adapters.
-    # api_version: provider API version for API adapters.
-    # decode_params: dict (or JSON string) of decode parameters
-    #   actually sent (temperature, top_p, max_tokens, seed, ...).
-    # template_hash: SHA-256 of the prompt template, when the adapter
-    #   owns a template.
-    # (adapter version, call date, and case-set tag are sealed by the
-    # runner itself.)
-    #
-    # These are deliberately NOT Protocol members: making them
-    # required would break every existing adapter. They are a
-    # documented convention read defensively.
 
     def decide(
         self,

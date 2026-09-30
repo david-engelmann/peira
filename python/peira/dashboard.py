@@ -341,6 +341,13 @@ def run_to_dashboard(artifact: RunArtifact) -> dict[str, Any]:
     """
     m = artifact.metrics or {}
     results = artifact.results or []
+    cfg = artifact.config
+    if not isinstance(cfg, dict):
+        cfg = {}
+    # Reasoning effort, sealed in run config by the runner: "" = not
+    # requested (provider default) or predates effort recording.
+    effort = cfg.get("effort") or ""
+    effort_tier = cfg.get("effort_tier") or ""
     metrics_families = m.get("per_family", {}) if isinstance(m.get("per_family"), dict) else {}
     dash_families = _family_breakdown(results)
     # Merge: metrics-layer ASR/CI values take precedence; dashboard
@@ -394,6 +401,8 @@ def run_to_dashboard(artifact: RunArtifact) -> dict[str, Any]:
             "template_hash": artifact.template_hash,
             "case_set_tag": artifact.case_set_tag,
             "cost_scenario_version": artifact.cost_scenario_version,
+            "effort": effort,
+            "effort_tier": effort_tier,
             "seed": artifact.seed,
             "created_utc": artifact.created_utc,
             "termination": artifact.termination,
@@ -463,17 +472,21 @@ def leaderboard(
     from peira.runs_registry import list_runs
 
     runs = list_runs(runs_dir=runs_dir, suite=suite, dataset_version=dataset_version)
-    # Latest run per adapter (list_runs is already created_utc DESC).
-    latest: dict[str, dict[str, Any]] = {}
+    # Latest run per (adapter name, adapter version). Explicit effort
+    # is baked into the version string ("model@effort=high"), so
+    # effort configurations stay distinct: keying on the name alone
+    # would collapse e.g. opus@medium and opus@max into one row.
+    # (list_runs is already created_utc DESC.)
+    latest: dict[tuple[str, str], dict[str, Any]] = {}
     for r in runs:
-        adapter = r.get("adapter_name", "")
-        if adapter and adapter not in latest:
-            latest[adapter] = r
+        key = (r.get("adapter_name", ""), r.get("adapter_version", ""))
+        if key[0] and key not in latest:
+            latest[key] = r
 
     ranked: list[dict[str, Any]] = []
     unranked: list[dict[str, Any]] = []
-    for adapter in sorted(latest):
-        meta = latest[adapter]
+    for adapter, _version in sorted(latest):
+        meta = latest[(adapter, _version)]
         path = Path(meta["path"])
         reason = "artifact not found"
         row: dict[str, Any] | None = None
@@ -498,6 +511,8 @@ def leaderboard(
                         "dataset_version": artifact.dataset_version,
                         "run_id": meta.get("run_id", ""),
                         "created_utc": artifact.created_utc,
+                        "effort": payload["run"].get("effort", ""),
+                        "effort_tier": payload["run"].get("effort_tier", ""),
                         "n_cases": h.get("n_cases"),
                         "n_eligible": h.get("n_eligible"),
                         "asr_conditional": h.get("asr_conditional"),
@@ -527,6 +542,8 @@ def leaderboard(
                 "adapter_version": meta.get("adapter_version", ""),
                 "run_id": meta.get("run_id", ""),
                 "created_utc": meta.get("created_utc", ""),
+                "effort": meta.get("effort", ""),
+                "effort_tier": meta.get("effort_tier", ""),
                 "reason": reason,
             })
     # Sort ranked by ASR ascending (lower = more robust). None ASRs
