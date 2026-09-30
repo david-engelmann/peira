@@ -1,14 +1,29 @@
-# Site data schema (v1)
+# Site data schema (v2)
 
 The contract between the ingestion pipeline (`site/scripts/ingest.py`)
 and the Astro site (`site/src`). Both sides must honor this file. Bump
 `schema_version` and document the change here if the shape ever changes.
 
+## Changelog
+
+- v2: runs carry the v3 extension blocks (`run.v3`): threat model,
+  attack provenance, adjudication identity, exposure attestation, and
+  the other agent-consumer fields from
+  `research_notes/peira-run-artifact-research-20260928.md`. The blocks
+  ride sealed inside the artifact's `config.v3` until the real v3
+  schema lands in `peira.artifacts` (which will move them to top-level
+  fields and update the ingest reader). Ingest now enforces the
+  run_status gate: a v3-bearing artifact whose `run_status` is not
+  `"success"` is rejected (the Inspect rule, which says never analyze a
+  non-successful run). Pure-v2 artifacts without v3 blocks
+  ingest exactly as in v1 (no `v3` key on the run object).
+- v1: initial sealed-artifact ingestion.
+
 ## Top level
 
 ```json
 {
-  "schema_version": "1",
+  "schema_version": "2",
   "generated_utc": "2026-09-29T18:00:00+00:00",
   "mock_data": true,
   "peira_version": "0.1.0",
@@ -42,6 +57,7 @@ and the Astro site (`site/src`). Both sides must honor this file. Bump
   "ranking_eligible": true,
   "eligibility_notes": [],
   "metrics": { "...": "verbatim peira.metrics.summarize() output" },
+  "v3": { "...": "verbatim v3 extension block (see below); absent on pure-v2 artifacts" },
   "cases": [
     {
       "case_id": "v1-spo-001",
@@ -79,6 +95,113 @@ and the Astro site (`site/src`). Both sides must honor this file. Bump
 - `cases` decisions are strings, while `flipped` and `eligible` are booleans.
   Withheld metric values are `null` (never NaN).
 
+## v3 block
+
+`run.v3` is the verbatim v3 extension block from the sealed artifact
+(`config.v3` until the real v3 schema lands). Every key below comes from
+`research_notes/peira-run-artifact-research-20260928.md`; the mock
+generator (`site/scripts/gen_mock.py`) exercises all of them.
+
+```json
+"v3": {
+  "run_id": "01J...",
+  "parent_run_id": null,
+  "supersedes": [],
+  "run_status": "success",
+  "metrics_version": "peira-metrics-0.1.0-contract-1",
+  "adjudication_policy_version": "peira-adjudication-1",
+  "threat_model": {
+    "attacker_access": "black_box_api",
+    "attacker_knowledge": "adapter_identity_only",
+    "query_budget_per_case": 1,
+    "adaptive": false
+  },
+  "attack_provenance": {
+    "attacker_model": "mock-attacker",
+    "attacker_model_version": "mock-1",
+    "attack_budget": { "variants_per_case": 1, "restarts_per_case": 1 },
+    "attack_method": "static_template"
+  },
+  "exclusion_log": [
+    { "case_id": "v1-spo-001", "arm": "benign", "reason_code": "benign_malformed" }
+  ],
+  "determinism_check": { "passed": true, "mismatches": 0, "sample_n": 50 },
+  "exposure_attestation": {
+    "case_subset": "public",
+    "blindness_protocol_id": "mock-blind-1",
+    "prior_exposure_attestation": "...",
+    "holdout_access_log_ref": null
+  },
+  "adapter_pinning": {
+    "provider_snapshot": null,
+    "hf_revision": null,
+    "code_sha": "mock",
+    "code_dirty": false
+  },
+  "schema_ref": "https://peiratrial.dev/schemas/run-artifact/v3.json",
+  "license": "CC-BY-4.0",
+  "access_tier": "public",
+  "retention_policy": "indefinite",
+  "reference_baseline": {
+    "undefended_asr": 0.97,
+    "clean_task_retention": 0.99,
+    "baseline_adapter": "mock-always-approve"
+  },
+  "run_group_id": "mock-group-7",
+  "repetition_index": 0,
+  "planned_repetitions": 1,
+  "uncertainty": {
+    "ci_method": "bootstrap",
+    "ci_level": 0.95,
+    "ci_unit": "per_case_bootstrap",
+    "multiple_comparison": "none",
+    "familywise_alpha": 0.05
+  },
+  "hardware": { "cpu": "mock", "gpu": null, "ram_gb": 16, "cuda": null },
+  "wall_clock": { "started_utc": "...", "ended_utc": "..." },
+  "retry_policy": {
+    "per_call_timeout_s": 30,
+    "max_retries": 0,
+    "total_retries": 0,
+    "rate_limit_hits": 0
+  },
+  "cache_policy": {
+    "cache_enabled": false,
+    "cache_key_scheme": null,
+    "cache_hits": 0
+  },
+  "per_family": [
+    { "family": "state_poisoning", "n": 24, "n_eligible": 24,
+      "asr": 0.5, "ci_lo": 0.31, "ci_hi": 0.69 }
+  ],
+  "submitter_provenance": {
+    "submitted_by": "mock-generator",
+    "submission_channel": "internal_ci",
+    "verification_level": "self_reported"
+  },
+  "dependency_lock": { "lockfile_sha256": null, "container_digest": null },
+  "threshold_policy_version": null,
+  "sampling_plan": null
+}
+```
+
+Closed vocabularies (ingest rejects anything outside these):
+`run_status` in {started, success, cancelled, error, partial};
+`threat_model.attacker_access` in {black_box_api, gray_box, white_box};
+`attack_provenance.attack_method` in {static_template, adaptive_search};
+`exposure_attestation.case_subset` in {public, private, blind};
+`access_tier` in {public, internal, confidential};
+`submitter_provenance.submission_channel` in
+{internal_ci, vendor_self_report, third_party};
+`submitter_provenance.verification_level` in
+{self_reported, independently_reproduced};
+`uncertainty.ci_method` in {bootstrap, wilson, binomial};
+`uncertainty.multiple_comparison` in {holm, bonferroni, none};
+`exclusion_log[].reason_code` in {timeout, rate_limit, api_error,
+parse_failure, refused_to_format, benign_abstained, benign_malformed,
+benign_wrong_decision, attacked_malformed};
+`exclusion_log[].arm` in {benign, attacked}.
+
 ## Ingest rules (enforced by `ingest.py`, not by convention)
 
 1. Every artifact must parse via `RunArtifact.from_json` and `verify()`
@@ -98,3 +221,15 @@ and the Astro site (`site/src`). Both sides must honor this file. Bump
    null, never NaN, and the emitted JSON is written with `allow_nan`
    off so a non-finite value fails the build instead of shipping
    nonstandard JSON.
+10. v3 extension blocks (`config.v3`) are optional on v2 artifacts. When
+    present they must be well-formed: all required keys present, every
+    enum value inside its closed vocabulary (see "v3 block" above), and
+    the exclusion log typed. A malformed block fails the build.
+11. The run_status gate: a v3-bearing artifact whose `run_status` is not
+    `"success"` is rejected. Only successful runs feed the site data;
+    partial/cancelled/error runs are analyzable by hand but must never
+    flow into the leaderboard pipeline silently.
+12. v3 blocks are carried into the site data verbatim as `run.v3` so the
+    views can read threat model, attack provenance, adjudication
+    identity, exposure attestation, and the other agent-consumer fields
+    without recomputing them. Pure-v2 artifacts have no `v3` key.

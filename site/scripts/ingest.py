@@ -26,7 +26,155 @@ sys.path.insert(0, str(REPO_ROOT / "python"))
 from peira import __version__ as peira_version  # noqa: E402
 from peira.artifacts import RunArtifact  # noqa: E402
 
-SCHEMA_VERSION = "1"
+SCHEMA_VERSION = "2"
+
+# ---------------------------------------------------------------------------
+# v3 extension blocks (research_notes/peira-run-artifact-research-20260928.md).
+#
+# The v3 schema has not landed in peira.artifacts yet, so v3 blocks ride as
+# a sealed extension inside config["v3"]; the full placement rationale
+# lives on build_v3_block() in site/scripts/gen_mock.py. When the real v3
+# lands with top-level fields and a bumped artifact_version, the v3 lane
+# updates extract_v3() to read the new layout.
+# ---------------------------------------------------------------------------
+
+# Closed vocabularies. Agents filter and group on these; a free-form string
+# that drifts silently breaks downstream joins, so ingest rejects unknown
+# values instead of passing them through.
+V3_ENUMS = {
+    "run_status": {"started", "success", "cancelled", "error", "partial"},
+    "threat_model.attacker_access": {"black_box_api", "gray_box", "white_box"},
+    "attack_provenance.attack_method": {"static_template", "adaptive_search"},
+    "exposure_attestation.case_subset": {"public", "private", "blind"},
+    "access_tier": {"public", "internal", "confidential"},
+    "submitter_provenance.submission_channel": {
+        "internal_ci", "vendor_self_report", "third_party",
+    },
+    "submitter_provenance.verification_level": {
+        "self_reported", "independently_reproduced",
+    },
+    "uncertainty.ci_method": {"bootstrap", "wilson", "binomial"},
+    "uncertainty.multiple_comparison": {"holm", "bonferroni", "none"},
+}
+
+# reason_code enum for exclusion_log entries (MUST 7): the structured
+# taxonomy for everything that did not go cleanly.
+EXCLUSION_REASON_CODES = {
+    "timeout", "rate_limit", "api_error", "parse_failure",
+    "refused_to_format", "benign_abstained", "benign_malformed",
+    "benign_wrong_decision", "attacked_malformed",
+}
+
+# Required top-level keys of the v3 block. Nested blocks are validated for
+# shape when present; only run_status is load-bearing for the gate.
+V3_REQUIRED_KEYS = {
+    "run_id", "run_status", "metrics_version",
+    "adjudication_policy_version", "threat_model", "attack_provenance",
+    "exclusion_log", "determinism_check", "exposure_attestation",
+    "adapter_pinning", "schema_ref", "license", "access_tier",
+    "reference_baseline",
+}
+
+
+def _get_path(block: dict, dotted: str):
+    """Return the value at a dotted path, or None if any hop is absent."""
+    cur = block
+    for part in dotted.split("."):
+        if not isinstance(cur, dict) or part not in cur:
+            return None
+        cur = cur[part]
+    return cur
+
+
+def _has_path(block: dict, dotted: str) -> bool:
+    """True when every hop of the dotted path exists (even if null)."""
+    cur = block
+    for part in dotted.split("."):
+        if not isinstance(cur, dict) or part not in cur:
+            return False
+        cur = cur[part]
+    return True
+
+
+def extract_v3(artifact: RunArtifact, path_name: str) -> dict | None:
+    """Return the v3 extension block, or None for pure-v2 artifacts.
+
+    Reads the sealed config["v3"] extension block. (Top-level v3 fields
+    cannot exist yet: RunArtifact.from_json rejects unknown top-level
+    fields. The v3 lane updates this when the real schema lands.)
+    """
+    raw = artifact.config.get("v3")
+    if raw is None:
+        return None
+    if not isinstance(raw, dict):
+        fail(f"{path_name}: config.v3 must be an object, got {type(raw).__name__}")
+    return raw
+
+
+def validate_v3(block: dict, path_name: str) -> None:
+    """Validate a v3 block's shape and closed vocabularies. Fail closed."""
+    missing = V3_REQUIRED_KEYS - set(block.keys())
+    if missing:
+        fail(f"{path_name}: v3 block missing required keys: {sorted(missing)}")
+
+    # The Inspect rule (research note MUST 2): never analyze a run whose
+    # status is not success. Partial/cancelled/error runs are analyzable
+    # by humans but must not feed the leaderboard pipeline silently.
+    status = block["run_status"]
+    if status != "success":
+        fail(
+            f"{path_name}: v3 run_status is {status!r}, not 'success' "
+            "(only successful runs are ingestible)"
+        )
+
+    # Nested blocks must be objects with their load-bearing keys; check
+    # shape before the enum loop so a wrong-typed block reports its own
+    # error instead of a misleading "missing <block>.<field>".
+    for dotted in ("threat_model", "attack_provenance",
+                   "exposure_attestation", "adapter_pinning",
+                   "reference_baseline"):
+        if not isinstance(_get_path(block, dotted), dict):
+            fail(f"{path_name}: v3 {dotted} must be an object")
+
+    for dotted, allowed in V3_ENUMS.items():
+        if not _has_path(block, dotted):
+            fail(f"{path_name}: v3 block missing {dotted}")
+        value = _get_path(block, dotted)
+        if value not in allowed:
+            fail(
+                f"{path_name}: v3 {dotted}={value!r} is not in the closed "
+                f"vocabulary {sorted(allowed)}"
+            )
+
+    # Exclusion log entries are typed: case_id + arm + reason_code.
+    log = block["exclusion_log"]
+    if not isinstance(log, list):
+        fail(f"{path_name}: v3 exclusion_log must be a list")
+    for i, entry in enumerate(log):
+        if not isinstance(entry, dict):
+            fail(f"{path_name}: v3 exclusion_log[{i}] must be an object")
+        for key in ("case_id", "arm", "reason_code"):
+            if key not in entry:
+                fail(f"{path_name}: v3 exclusion_log[{i}] missing {key!r}")
+        if entry["arm"] not in ("benign", "attacked"):
+            fail(f"{path_name}: v3 exclusion_log[{i}].arm={entry['arm']!r} "
+                 "must be 'benign' or 'attacked'")
+        if entry["reason_code"] not in EXCLUSION_REASON_CODES:
+            fail(f"{path_name}: v3 exclusion_log[{i}].reason_code="
+                 f"{entry['reason_code']!r} is not in the closed vocabulary")
+
+    # Determinism check must be a real verdict, not a bare boolean.
+    dc = block["determinism_check"]
+    if not isinstance(dc, dict):
+        fail(f"{path_name}: v3 determinism_check must be an object")
+    for key in ("passed", "mismatches", "sample_n"):
+        if key not in dc:
+            fail(f"{path_name}: v3 determinism_check missing {key!r}")
+    if not isinstance(dc["passed"], bool):
+        fail(f"{path_name}: v3 determinism_check.passed must be a boolean")
+    for key in ("mismatches", "sample_n"):
+        if not isinstance(dc[key], int) or isinstance(dc[key], bool):
+            fail(f"{path_name}: v3 determinism_check.{key} must be an integer")
 
 
 def fail(msg: str) -> "NoReturn":
@@ -52,7 +200,7 @@ def check_finite(value, where: str) -> None:
             check_finite(v, f"{where}[{i}]")
 
 
-def load_artifact(path: Path, allow_mock: bool) -> RunArtifact:
+def load_artifact(path: Path, allow_mock: bool) -> tuple[RunArtifact, dict | None]:
     try:
         artifact = RunArtifact.from_json(path.read_text(encoding="utf-8"))
     except Exception as exc:
@@ -72,7 +220,12 @@ def load_artifact(path: Path, allow_mock: bool) -> RunArtifact:
         fail(f"{path.name}: suite {artifact.suite!r} must be 'public' or 'holdout'")
     if not isinstance(artifact.metrics, dict) or not artifact.metrics:
         fail(f"{path.name}: artifact carries no sealed metrics")
-    return artifact
+    # v3 extension blocks are optional on v2 artifacts but, when present,
+    # are validated and gated before anything downstream sees the run.
+    v3 = extract_v3(artifact, path.name)
+    if v3 is not None:
+        validate_v3(v3, path.name)
+    return artifact, v3
 
 
 def trim_case(entry: dict) -> dict:
@@ -107,7 +260,7 @@ def main() -> None:
     manifest_shas = set()
     seen_identities = set()
     for path in files:
-        a = load_artifact(path, args.mock)
+        a, v3 = load_artifact(path, args.mock)
         dataset_versions.add(a.dataset_version)
         manifest_shas.add(a.manifest_sha256)
         # P2-3: the dashboard keys runs by adapter_name@adapter_version@suite;
@@ -120,21 +273,27 @@ def main() -> None:
         check_finite(a.metrics, f"{path.name}.metrics")
         cases = [trim_case(e) for e in a.results]
         check_finite(cases, f"{path.name}.cases")
-        runs.append(
-            {
-                "adapter_name": a.adapter_name,
-                "adapter_version": a.adapter_version,
-                "model_class": a.model_class,
-                "suite": a.suite,
-                "dataset_version": a.dataset_version,
-                "created_utc": a.created_utc,
-                "analysis_lock": a.analysis_lock,
-                "ranking_eligible": bool(a.metrics.get("ranking_eligible", False)),
-                "eligibility_notes": list(a.metrics.get("eligibility_notes", [])),
-                "metrics": a.metrics,
-                "cases": cases,
-            }
-        )
+        run = {
+            "adapter_name": a.adapter_name,
+            "adapter_version": a.adapter_version,
+            "model_class": a.model_class,
+            "suite": a.suite,
+            "dataset_version": a.dataset_version,
+            "created_utc": a.created_utc,
+            "analysis_lock": a.analysis_lock,
+            "ranking_eligible": bool(a.metrics.get("ranking_eligible", False)),
+            "eligibility_notes": list(a.metrics.get("eligibility_notes", [])),
+            "metrics": a.metrics,
+            "cases": cases,
+        }
+        # v3 blocks ride through verbatim so the views can read threat
+        # model, attack provenance, adjudication identity, exposure
+        # attestation, and the other agent-consumer fields without
+        # recomputing them. Absent on pure-v2 artifacts.
+        if v3 is not None:
+            check_finite(v3, f"{path.name}.v3")
+            run["v3"] = v3
+        runs.append(run)
 
     if len(dataset_versions) != 1:
         fail(f"runs disagree on dataset_version: {sorted(dataset_versions)}")

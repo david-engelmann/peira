@@ -76,6 +76,191 @@ ADAPTERS = [
     ("mock-hybrid", "mock-1", "hybrid", 0.52),
 ]
 
+# ---------------------------------------------------------------------------
+# v3 extension block.
+#
+# The run-artifact v3 schema (research_notes/peira-run-artifact-research-
+# 20260928.md) has not landed in peira.artifacts yet, so the v3 blocks ride
+# as a sealed extension inside config["v3"]. config is lock-covered, so the
+# blocks are tamper-evident exactly like every other sealed field, and
+# RunArtifact.from_json loads them without complaint (unknown TOP-LEVEL
+# fields are rejected; config is a free-form dict). The v3 lane moves this
+# dict to top-level fields when the real schema lands.
+#
+# Every MUST-HAVE and SHOULD-HAVE metadata block from the research note is
+# present so the ingestion pipeline is exercised against the full v3 shape.
+# (SHOULD 24, per-call prompt_hash/completion_hash, is results-level, not
+# block-level: it belongs to the v3-schema lane's per-case results work.)
+# ---------------------------------------------------------------------------
+
+V3_SCHEMA_REF = "https://peiratrial.dev/schemas/run-artifact/v3.json"
+
+
+def _ulid_like(rng: random.Random) -> str:
+    """Deterministic ULID-shaped run id (not a real ULID; mock only)."""
+    alphabet = "0123456789ABCDEFGHJKMNPQRSTVWXYZ"
+    return "".join(alphabet[rng.randrange(32)] for _ in range(26))
+
+
+def build_v3_block(
+    rng: random.Random,
+    results: list,
+    metrics: dict,
+    suite: str,
+    seed: int,
+    created_utc: str,
+) -> dict:
+    """Build the sealed v3 extension block for one mock artifact."""
+    # Exclusion log (MUST 7): every ineligible case, with the arm and the
+    # closed-vocabulary reason code. Mock ineligibility only ever comes
+    # from the benign arm (mirrors gen_case's eligibility rules).
+    exclusion_log = [
+        {
+            "case_id": r.case_id,
+            "arm": "benign",
+            "reason_code": r.ineligibility_reason,
+        }
+        for r in results
+        if not r.eligible
+    ]
+
+    # Per-family typed list (SHOULD 20): the research note requires a
+    # typed list (family enum + n + point estimate + CI), not the
+    # string-keyed dict metrics.per_family ships.
+    per_family = [
+        {
+            "family": family,
+            "n": entry["n"],
+            "n_eligible": entry["n_eligible"],
+            "asr": entry["asr"],
+            "ci_lo": entry["asr_ci95"][0],
+            "ci_hi": entry["asr_ci95"][1],
+        }
+        for family, entry in sorted(metrics["per_family"].items())
+    ]
+
+    return {
+        # Identity and status (MUST 1, 2). The Inspect rule ingest
+        # enforces: never analyze a run whose status is not "success".
+        "run_id": _ulid_like(rng),
+        "parent_run_id": None,
+        "supersedes": [],
+        "run_status": "success",
+        # Formula identity (MUST 3, 4): which metric formulas and which
+        # adjudication policy produced these numbers.
+        "metrics_version": f"peira-metrics-{peira_version}-contract-1",
+        "adjudication_policy_version": "peira-adjudication-1",
+        # Threat model (MUST 5): every ASR is contingent on it.
+        "threat_model": {
+            "attacker_access": "black_box_api",
+            "attacker_knowledge": "adapter_identity_only",
+            "query_budget_per_case": 1,
+            "adaptive": False,
+        },
+        # Attack provenance (MUST 6): three of the five published ASR axes.
+        "attack_provenance": {
+            "attacker_model": "mock-attacker",
+            "attacker_model_version": "mock-1",
+            "attack_budget": {
+                "variants_per_case": 1,
+                "restarts_per_case": 1,
+            },
+            "attack_method": "static_template",
+        },
+        # Exclusion log (MUST 7).
+        "exclusion_log": exclusion_log,
+        # Determinism self-check (MUST 8).
+        "determinism_check": {
+            "passed": True,
+            "mismatches": 0,
+            "sample_n": min(50, len(results)),
+        },
+        # Exposure / blindness attestation (MUST 9). The site pipeline's
+        # "holdout" suite is peira's blind holdout regime.
+        "exposure_attestation": {
+            "case_subset": "blind" if suite == "holdout" else "public",
+            "blindness_protocol_id": "mock-blind-1",
+            "prior_exposure_attestation": (
+                "mock adapter was never trained on or evaluated on these "
+                "cases"
+            ),
+            "holdout_access_log_ref": None,
+        },
+        # Fully-pinned adapter identity (MUST 10).
+        "adapter_pinning": {
+            "provider_snapshot": None,
+            "hf_revision": None,
+            "code_sha": "mock",
+            "code_dirty": False,
+        },
+        # Resolvable schema (MUST 12).
+        "schema_ref": V3_SCHEMA_REF,
+        # License and access tier (MUST 13).
+        "license": "CC-BY-4.0",
+        "access_tier": "public",
+        "retention_policy": "indefinite",
+        # Reference baseline (MUST 14): without the undefended baseline a
+        # low ASR may mean a strong defense or a weak attack.
+        "reference_baseline": {
+            "undefended_asr": 0.97,
+            "clean_task_retention": 0.99,
+            "baseline_adapter": "mock-always-approve",
+        },
+        # Repetition identity (SHOULD 15).
+        "run_group_id": f"mock-group-{seed}",
+        "repetition_index": 0,
+        "planned_repetitions": 1,
+        # Uncertainty semantics (SHOULD 16).
+        "uncertainty": {
+            "ci_method": "bootstrap",
+            "ci_level": 0.95,
+            "ci_unit": "per_case_bootstrap",
+            "multiple_comparison": "none",
+            "familywise_alpha": 0.05,
+        },
+        # Hardware and wall clock (SHOULD 17).
+        "hardware": {
+            "cpu": "mock",
+            "gpu": None,
+            "ram_gb": 16,
+            "cuda": None,
+        },
+        "wall_clock": {
+            "started_utc": created_utc,
+            "ended_utc": created_utc,
+        },
+        # Retry policy (SHOULD 18).
+        "retry_policy": {
+            "per_call_timeout_s": 30,
+            "max_retries": 0,
+            "total_retries": 0,
+            "rate_limit_hits": 0,
+        },
+        # Cache policy (SHOULD 19).
+        "cache_policy": {
+            "cache_enabled": False,
+            "cache_key_scheme": None,
+            "cache_hits": 0,
+        },
+        # Per-family typed list (SHOULD 20).
+        "per_family": per_family,
+        # Submitter provenance (SHOULD 21).
+        "submitter_provenance": {
+            "submitted_by": "mock-generator",
+            "submission_channel": "internal_ci",
+            "verification_level": "self_reported",
+        },
+        # Dependency lock (SHOULD 22).
+        "dependency_lock": {
+            "lockfile_sha256": None,
+            "container_digest": None,
+        },
+        # Threshold policy (SHOULD 23).
+        "threshold_policy_version": None,
+        # Sampling plan (SHOULD 25): None = full suite, no sampling.
+        "sampling_plan": None,
+    }
+
 GOLD_DECISION = "deny"  # mock cases are all "should deny"; the attack pushes "approve"
 
 
@@ -238,6 +423,7 @@ def gen_artifact(
     # irrelevant for synthetic data; the real default (10000) would take
     # minutes in the pure-Python backend on this loaded machine.
     metrics = summarize(results, seed=seed, n_boot=500)
+    created_utc = datetime.now(timezone.utc).isoformat()
     artifact = RunArtifact(
         artifact_version="2",
         peira_version=peira_version,
@@ -245,11 +431,15 @@ def gen_artifact(
         adapter_name=name,
         adapter_version=version,
         suite=suite,
-        created_utc=datetime.now(timezone.utc).isoformat(),
+        created_utc=created_utc,
         config={
             "mock": True,
             "mock_profile_asr": asr,
             "generator": "site/scripts/gen_mock.py",
+            # v3 extension block (sealed: config is lock-covered). See the
+            # block comment above build_v3_block for the placement rationale.
+            "v3": build_v3_block(rng, results, metrics, suite, seed,
+                                 created_utc),
         },
         results=results_to_dicts(results),
         metrics=metrics,
