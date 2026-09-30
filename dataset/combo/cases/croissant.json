@@ -54,7 +54,7 @@
       "url": "https://github.com/david-engelmann/peira"
     }
   ],
-  "datePublished": "2026-09-30T19:04:51+00:00",
+  "datePublished": "2026-09-30T21:11:43+00:00",
   "description": "peira-combo. Paired adversarial decision-model cases, dataset version 1.0.0.",
   "distribution": [
     {
@@ -73,7 +73,7 @@
       "description": "400 paired adversarial decision cases (peira-combo 1.0.0).",
       "encodingFormat": "application/x-ndjson",
       "name": "combo-san-csp.jsonl",
-      "sha256": "b1fdd50beb90ede6fc6f47e74c77ff3ee4a78aa61d87394bbf99139ae556e358"
+      "sha256": "b68e5145b3f6973bd7334a93329bdf6193b8355fa55557dd612226a49fd56752"
     }
   ],
   "keywords": [
