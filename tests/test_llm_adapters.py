@@ -274,6 +274,33 @@ def _expected_schema(labels, primitive="choice"):
     return schema
 
 
+def _expected_wire_schema(labels, primitive="choice"):
+    """Expected schema on the output_config wire: Anthropic's
+    structured-outputs subset rejects numeric constraints (minimum /
+    maximum) with a 400, so the adapter strips them and moves the
+    bound into the field description (mirroring the SDK transform)."""
+    schema = _expected_schema(labels, primitive)
+    for prop in ("confidence", "score"):
+        if prop in schema["properties"]:
+            subschema = schema["properties"][prop]
+            del subschema["minimum"]
+            del subschema["maximum"]
+            subschema["description"] = "Must be between 0 and 1."
+    return schema
+
+
+def _assert_no_numeric_constraints(node, path="schema"):
+    """Recursively assert no minimum/maximum/multipleOf anywhere."""
+    if isinstance(node, dict):
+        for key in ("minimum", "maximum", "multipleOf"):
+            assert key not in node, f"{path} still has {key!r}"
+        for name, value in node.items():
+            _assert_no_numeric_constraints(value, f"{path}.{name}")
+    elif isinstance(node, list):
+        for i, item in enumerate(node):
+            _assert_no_numeric_constraints(item, f"{path}[{i}]")
+
+
 # ---------------------------------------------------------------------------
 # Missing extra / missing key.
 # ---------------------------------------------------------------------------
@@ -462,6 +489,202 @@ class TestAnthropicShape(unittest.TestCase):
         self.assertEqual(out.decision, "")
         self.assertIn("refusal", out.refusal_reason)
         self.assertEqual(validate_output(out, "choice"), [])
+
+
+class TestAnthropicStructuredOutputs(unittest.TestCase):
+    """Native output_config.format path for newer Anthropic models.
+
+    Routing: ``structured_outputs=None`` auto-routes the known newer
+    reasoning models (``claude-fable-5-1``); everything else keeps the
+    forced-tool path. No live API: the SDK is faked, and the tests
+    assert the exact request shape plus response-parsing parity
+    between the two paths.
+    """
+
+    def _run(self, script, **ctor):
+        mod, calls, _ = _make_anthropic(script)
+        with _fake_modules({"anthropic": mod}), \
+                _env(ANTHROPIC_API_KEY="sk-test"):
+            out = AnthropicAdapter(**ctor).decide(CASE, "choice", _ctx())
+        return out, calls
+
+    def test_fable_auto_routes_to_output_config(self):
+        out, calls = self._run(
+            [_anthropic_message(text=GOOD_JSON)],
+            model="claude-fable-5-1",
+        )
+        self.assertEqual(out.decision, "approve")
+        wire_schema = calls[0]["output_config"]["format"]["schema"]
+        self.assertEqual(
+            calls[0]["output_config"],
+            {"format": {
+                "type": "json_schema",
+                "schema": _expected_wire_schema(
+                    ["approve", "deny", "other"]),
+            }},
+        )
+        self.assertNotIn("tools", calls[0])
+        self.assertNotIn("tool_choice", calls[0])
+        # Anthropic's structured-outputs subset rejects numeric
+        # constraints with a 400: none may reach the wire.
+        _assert_no_numeric_constraints(wire_schema)
+
+    def test_default_model_keeps_forced_tool(self):
+        out, calls = self._run(
+            [_anthropic_message(tool_input=json.loads(GOOD_JSON))])
+        self.assertEqual(out.decision, "approve")
+        self.assertEqual(calls[0]["tool_choice"],
+                         {"type": "tool", "name": "peira_decision"})
+        # Exact tools payload: the forced-tool path keeps the full
+        # JSON Schema, numeric constraints included.
+        self.assertEqual(calls[0]["tools"], [{
+            "name": "peira_decision",
+            "input_schema": _expected_schema(
+                ["approve", "deny", "other"]),
+        }])
+        self.assertNotIn("output_config", calls[0])
+
+    def test_structured_wire_schema_strips_numeric_constraints(self):
+        schema = _expected_schema(["approve", "deny"], primitive="score")
+        wire = llm._structured_wire_schema(schema)
+        _assert_no_numeric_constraints(wire)
+        self.assertEqual(
+            wire["properties"]["confidence"]["description"],
+            "Must be between 0 and 1.")
+        self.assertEqual(
+            wire["properties"]["score"]["description"],
+            "Must be between 0 and 1.")
+        # The canonical schema is untouched: the forced-tool path
+        # keeps its constraints.
+        self.assertEqual(
+            schema["properties"]["confidence"]["minimum"], 0)
+        self.assertEqual(
+            schema["properties"]["score"]["maximum"], 1)
+
+    def test_explicit_opt_in_flag(self):
+        out, calls = self._run(
+            [_anthropic_message(text=GOOD_JSON)],
+            model="claude-sonnet-5", structured_outputs=True,
+        )
+        self.assertEqual(out.decision, "approve")
+        self.assertIn("output_config", calls[0])
+        self.assertNotIn("tools", calls[0])
+
+    def test_explicit_opt_out_flag(self):
+        out, calls = self._run(
+            [_anthropic_message(tool_input=json.loads(GOOD_JSON))],
+            model="claude-fable-5-1", structured_outputs=False,
+        )
+        self.assertEqual(out.decision, "approve")
+        self.assertEqual(calls[0]["tool_choice"],
+                         {"type": "tool", "name": "peira_decision"})
+        self.assertNotIn("output_config", calls[0])
+
+    def test_routing_predicate(self):
+        self.assertTrue(
+            llm._wants_structured_outputs("claude-fable-5-1", None))
+        self.assertFalse(
+            llm._wants_structured_outputs("claude-sonnet-5", None))
+        # Explicit flag always wins over the predicate.
+        self.assertTrue(
+            llm._wants_structured_outputs("claude-sonnet-5", True))
+        self.assertFalse(
+            llm._wants_structured_outputs("claude-fable-5-1", False))
+
+    def test_parity_between_paths(self):
+        # Same payload, two constrained-decoding shapes: the typed
+        # contract must be identical.
+        forced_out, _ = self._run(
+            [_anthropic_message(tool_input=json.loads(GOOD_JSON))])
+        struct_out, _ = self._run(
+            [_anthropic_message(text=GOOD_JSON)],
+            model="claude-fable-5-1",
+        )
+        for out in (forced_out, struct_out):
+            self.assertEqual(out.decision, "approve")
+            self.assertAlmostEqual(out.confidence, 0.73)
+            self.assertEqual(validate_output(out, "choice"), [])
+        self.assertEqual(struct_out.decision, forced_out.decision)
+        self.assertEqual(struct_out.confidence, forced_out.confidence)
+
+    def test_structured_path_score_primitive(self):
+        score_json = json.dumps({
+            "decision": "approve", "confidence": 0.6,
+            "reason": "r", "score": 0.8,
+        })
+        mod, calls, _ = _make_anthropic(
+            [_anthropic_message(text=score_json)])
+        with _fake_modules({"anthropic": mod}), \
+                _env(ANTHROPIC_API_KEY="sk-test"):
+            out = AnthropicAdapter(
+                model="claude-fable-5-1").decide(CASE, "score", _ctx())
+        self.assertAlmostEqual(out.score, 0.8)
+        self.assertEqual(validate_output(out, "score"), [])
+        wire_schema = calls[0]["output_config"]["format"]["schema"]
+        self.assertIn("score", wire_schema["properties"])
+        _assert_no_numeric_constraints(wire_schema)
+
+    def test_structured_path_abstain_primitive(self):
+        payload = json.dumps({"decision": "abstain", "confidence": 0.5,
+                              "reason": "r"})
+        mod, _, _ = _make_anthropic([_anthropic_message(text=payload)])
+        with _fake_modules({"anthropic": mod}), \
+                _env(ANTHROPIC_API_KEY="sk-test"):
+            out = AnthropicAdapter(
+                model="claude-fable-5-1").decide(CASE, "abstain", _ctx())
+        self.assertEqual(out.decision, "abstain")
+        self.assertFalse(out.abstained)
+        self.assertEqual(validate_output(out, "abstain"), [])
+
+    def test_repair_retry_keeps_structured_path(self):
+        mod, calls, _ = _make_anthropic([
+            _anthropic_message(text="not json at all"),
+            _anthropic_message(text=GOOD_JSON),
+        ])
+        with _fake_modules({"anthropic": mod}), \
+                _env(ANTHROPIC_API_KEY="sk-test"):
+            out = AnthropicAdapter(
+                model="claude-fable-5-1").decide(CASE, "choice", _ctx())
+        self.assertEqual(out.decision, "approve")
+        self.assertEqual(len(calls), 2)
+        for call in calls:
+            self.assertIn("output_config", call)
+            self.assertNotIn("tools", call)
+            self.assertNotIn("tool_choice", call)
+
+    def test_refusal_on_structured_path_abstains(self):
+        out, _ = self._run(
+            [_anthropic_message(text="", stop_reason="refusal")],
+            model="claude-fable-5-1",
+        )
+        self.assertTrue(out.abstained)
+        self.assertEqual(out.decision, "")
+        self.assertEqual(validate_output(out, "choice"), [])
+
+    def test_transcript_marks_output_config(self):
+        out, _ = self._run(
+            [_anthropic_message(text=GOOD_JSON)],
+            model="claude-fable-5-1",
+        )
+        request = out.transcript["request"]
+        self.assertEqual(request["output_config"], "json_schema")
+        self.assertNotIn("tool_choice", request)
+
+    def test_cache_namespace_differs_by_path(self):
+        mod, _, _ = _make_anthropic([])
+        with _fake_modules({"anthropic": mod}), \
+                _env(ANTHROPIC_API_KEY="sk-test"):
+            default = AnthropicAdapter()
+            structured = AnthropicAdapter(model="claude-fable-5-1")
+        # The default path keeps the historical namespace exactly.
+        self.assertEqual(default.cache_namespace,
+                         "anthropic-structured:claude-sonnet-5:t0.0:mt512")
+        self.assertNotEqual(structured.cache_namespace,
+                            default.cache_namespace)
+        self.assertTrue(structured.cache_namespace.endswith(":so"))
+        # with_seed (M-7 multi-seed copies) must keep the suffix.
+        reseeded = structured.with_seed(None)
+        self.assertTrue(reseeded.cache_namespace.endswith(":so"))
 
 
 class TestGoogleShape(unittest.TestCase):

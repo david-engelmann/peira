@@ -1160,6 +1160,31 @@ shipping it as runnable (rejected: dishonest; the 400 is certain).
 id against the live API and promote the entry to a runnable adapter;
 if the id proves wrong, correct it. The D-record is the audit trail.
 
+**Amendment (2026-09-30):** the migration has landed. `AnthropicAdapter`
+now routes `claude-fable-5-1` (auto) and any model with explicit
+`structured_outputs=True` through native `output_config.format` JSON
+schema (no `tools`, no forced `tool_choice`), with the response
+parsed through the same typed decision contract as the forced-tool
+path (unit-tested request shape + parsing parity, mocked only).
+What remains is exactly the second half of the original revisit:
+verify the model id against the live API (a David-authorized paid
+step; not done) and only then treat the ceiling as runnable. The
+thinking/effort configuration for the newer reasoning models was
+deliberately left untouched by the migration (no `thinking` params
+are sent; the transcript records the request shape honestly) and is
+part of that live verification.
+
+**Amendment 2 (2026-09-30, red-team P1):** Anthropic's
+`output_config.format` JSON Schema subset rejects numeric
+constraints (`minimum`/`maximum`/`multipleOf`) with a 400, and peira
+sends a raw dict through `messages.create` (no SDK-side stripping).
+`AnthropicAdapter` now sanitizes the wire schema on the structured
+path only (`_structured_wire_schema`): numeric constraints are
+removed and the bound moved into the field description, mirroring
+the official SDK transform. The forced-tool path keeps the
+constraints (a tool's `input_schema` allows full JSON Schema), and
+the 0..1 bound stays enforced client-side in `_validate_value`.
+
 ## D-33: Tier 1 adapter scope: four adapters, mocked-only, no live claims (2026-09-25)
 
 **Decision.** The Tier 1 expansion ships four adapters: Kev
