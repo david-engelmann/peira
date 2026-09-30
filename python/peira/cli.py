@@ -27,7 +27,6 @@ from peira.calibration import (
 )
 from peira.dataset import atomic_write_text, verify_manifest, verify_manifest_sealed
 from peira.metrics import (
-    MIN_DELTA_CASES,
     MIN_NB_CASES,
     NOT_RESOLVABLE,
     PerCaseResult,
@@ -463,6 +462,17 @@ def cmd_run(args: argparse.Namespace) -> int:
         print(f"error: --budget-usd must be > 0 "
               f"(got {budget_usd})", file=sys.stderr)
         return EXIT_USER_ERROR
+    item_timeout = getattr(args, "item_timeout", None)
+    if item_timeout is not None and not item_timeout > 0:
+        # NaN fails the > 0 comparison: a NaN budget is not a budget.
+        print(f"error: --item-timeout must be > 0 "
+              f"(got {item_timeout})", file=sys.stderr)
+        return EXIT_USER_ERROR
+    run_timeout = getattr(args, "run_timeout", None)
+    if run_timeout is not None and not run_timeout > 0:
+        print(f"error: --run-timeout must be > 0 "
+              f"(got {run_timeout})", file=sys.stderr)
+        return EXIT_USER_ERROR
 
     if args.dry_run:
         print(f"dry run: {len(cases)} cases, adapter={adapter.name}, "
@@ -503,7 +513,9 @@ def cmd_run(args: argparse.Namespace) -> int:
                         partial, adapter, cases, suite, dataset_version,
                         manifest_sha256, seed=args.seed,
                         budget_usd=getattr(args, "budget_usd", None),
-                        cache_enabled=args.cache_dir is not None)
+                        cache_enabled=args.cache_dir is not None,
+                        item_timeout=item_timeout,
+                        run_timeout=run_timeout)
                 except ValueError as e:
                     print(f"error: {e}; delete {partial_path} or drop "
                           f"--resume and re-run.", file=sys.stderr)
@@ -546,6 +558,8 @@ def cmd_run(args: argparse.Namespace) -> int:
                 rlimit_as_mb=getattr(args, "rlimit_as_mb", None),
                 rlimit_fsize_mb=getattr(args, "rlimit_fsize_mb", None),
                 budget_usd=budget_usd,
+                item_timeout=item_timeout,
+                run_timeout=run_timeout,
                 # Persist the loader spec (e.g. "peira.adapters.jev:JevAdapter"),
                 # not just adapter.name (e.g. "jev"). cmd_reproduce needs the
                 # spec to reload the adapter; the short name is not loadable.
@@ -575,7 +589,10 @@ def cmd_run(args: argparse.Namespace) -> int:
         return EXIT_INFRA_ERROR
 
     out_path = _write_final_artifact(out_dir, slug, suite, artifact)
-    if partial_path.exists():
+    # The partial is the resumable record of an incomplete run: delete
+    # it only when the run genuinely completed. A timeout- or
+    # budget-terminated run keeps its partial so --resume can finish it.
+    if partial_path.exists() and artifact.termination == "complete":
         partial_path.unlink()
 
     _print_run_summary(artifact, out_path)
@@ -1336,7 +1353,6 @@ no reference: {_num(sd_skipped.get('no_reference'))})</p>"""
             e_attacked,
             load_cost_scenario,
         )
-        from peira.metrics import cost_per_flip_by_direction
         _scenario = load_cost_scenario("standard")
         _results = [PerCaseResult.from_dict(r) for r in artifact.results]
         _est = e_attacked(_results, _scenario)
@@ -1348,33 +1364,6 @@ no reference: {_num(sd_skipped.get('no_reference'))})</p>"""
                       "to-malformed", "score-shifted", "other")
             if _est.direction_counts[d]
         ) or "no flips"
-        # C-9 (M-9 x M-1): attacker cost per flip in each M-1 direction.
-        # The jailbreak direction is the attacker's product; vandalism
-        # and DoS have their own economics. Withheld rows render as
-        # "withheld", not zero.
-        _c9 = cost_per_flip_by_direction(_results)
-        def _c9_cell(x, fmt):
-            return "withheld" if x is None else fmt.format(x)
-        def _c9_cost(d):
-            row = _c9[d]
-            cell = _c9_cell(row["cost_per_flip_usd"], "${:.2f}")
-            if row["cost_per_flip_usd"] is not None and row["n_unpriced"] > 0:
-                cell = "\u2265" + cell  # lower bound: unpriced calls priced at 0
-            return cell
-        _c9_rows = "\n".join(
-            f"<tr><td>{e(d)}</td>"
-            f"<td>{_c9[d]['n_flips_d']}</td>"
-            f"<td>{_c9_cell(_c9[d]['asr_d'], '{:.3f}')}</td>"
-            f"<td>{_c9_cell(_c9[d]['attempts_per_flip'], '{:.1f}x')}</td>"
-            f"<td>{_c9_cost(d)}</td></tr>"
-            for d in ("deny-to-approve", "approve-to-deny", "to-abstain",
-                      "to-malformed", "score-shifted", "other")
-        )
-        _c9_lb = any(_c9[d]["n_unpriced"] > 0 for d in _c9 if d != "none")
-        _c9_legend = (
-            "<p>A $ / flip figure marked \u2265 is a lower bound: some "
-            "attacked calls had no listed price.</p>" if _c9_lb else ""
-        )
         value_section = f"""<h2>Value view (M-3)</h2>
 <p>Expected attack cost under the <em>standard</em> cost scenario
 (scenario v{_scenario.version}, re-weight with
@@ -1385,15 +1374,7 @@ changes the headline ASR above.</p>
 <th>attacker cost per jailbreak</th></tr>
 <tr><td>${_est.e_attacked:.4f}</td><td>${_est.per_flip:.2f}</td>
 <td>${_est.per_incident:.2f}</td><td>{_est.n}</td><td>{e(_mult_s)}</td></tr></table>
-<p>Flip-type breakdown (re-weightable): {e(_breakdown)}.</p>
-<h3>Attacker cost per flip direction (C-9)</h3>
-<p>What one successful flip <em>of each type</em> costs the attacker in
-list-price inference spend. The jailbreak direction (deny-to-approve) is
-the headline: it is the attacker's product. Vandalism and denial of
-service are priced separately because they are different products.</p>
-<table border="1"><tr><th>direction</th><th>flips</th><th>ASR_d</th>
-<th>attempts / flip</th><th>$ / flip</th></tr>
-{_c9_rows}</table>{_c9_legend}"""
+<p>Flip-type breakdown (re-weightable): {e(_breakdown)}.</p>"""
     except Exception as exc:
         value_section = (
             f"<h2>Value view (M-3)</h2>"
@@ -1464,83 +1445,6 @@ service are priced separately because they are different products.</p>
 <p>Rows: benign outcome; columns: attacked outcome. The diagonal held.</p>
 {matrix_html}"""
 
-    def _score_delta_section(metrics: dict) -> str:
-        """M-8 score-delta tables: overall, by family, by severity, by
-        flip direction.
-
-        Defensive: a hostile artifact can omit the score_delta block
-        (or any key inside it); render "insufficient data", never
-        traceback.
-        """
-        sd = metrics.get("score_delta")
-        if not isinstance(sd, dict):
-            return (
-                "<p><em>Score deltas unavailable</em> "
-                "(insufficient data)</p>"
-            )
-        overall = sd.get("overall")
-        if not isinstance(overall, dict) or not overall.get("available"):
-            n = _num(sd.get("n_score_pairs"))
-            return (
-                "<p><em>Score deltas unavailable</em> (insufficient data - "
-                f"n={n} usable score pairs, need {MIN_DELTA_CASES})</p>"
-            )
-
-        def _stats_row(label: str, s: Any) -> str:
-            s = s if isinstance(s, dict) else {}
-            ci = s.get("signed_mean_delta_ci95")
-            ci_s = f"({_ci95(ci)})" if ci else "(insufficient data)"
-            return (
-                f"<tr><td>{e(str(label))}</td><td>{_num(s.get('n'))}</td>"
-                f"<td>{_val(s.get('mean_abs_delta'))}</td>"
-                f"<td>{_val(s.get('median_abs_delta'))}</td>"
-                f"<td>{_val(s.get('signed_mean_delta'))} {ci_s}</td>"
-                f"<td>{_val(s.get('material_share'))}</td>"
-                f"<td>{_val(s.get('catastrophic_share'))}</td>"
-                f"<td>{_val(s.get('threshold_crossing_rate'))}</td></tr>"
-            )
-
-        head = (
-            '<table border="1"><tr><th>slice</th><th>n</th>'
-            "<th>mean |delta|</th><th>median |delta|</th>"
-            "<th>signed mean delta (95% CI)</th>"
-            "<th>material share</th><th>catastrophic share</th>"
-            "<th>threshold-crossing rate</th></tr>"
-        )
-        overall_rows = _stats_row("overall", overall)
-        by_family = sd.get("by_family")
-        by_family = by_family if isinstance(by_family, dict) else {}
-        fam_rows = "\n".join(
-            _stats_row(fam, by_family[fam]) for fam in sorted(by_family)
-        )
-        by_sev = sd.get("by_severity")
-        by_sev = by_sev if isinstance(by_sev, dict) else {}
-        sev_rows = "\n".join(
-            _stats_row(sev, by_sev[sev]) for sev in sorted(by_sev)
-        )
-        by_dir = sd.get("by_direction")
-        by_dir = by_dir if isinstance(by_dir, dict) else {}
-        dir_order = [d for d in FLIP_DIRECTIONS if d in by_dir]
-        dir_order += sorted(d for d in by_dir if d not in FLIP_DIRECTIONS)
-        dir_rows = "\n".join(
-            _stats_row(d, by_dir[d]) for d in dir_order
-        )
-        missing = _num(sd.get("n_missing_scores"))
-        return f"""
-{head}
-{overall_rows}</table>
-<h3>Score deltas by family</h3>
-{head}
-{fam_rows}</table>
-<h3>Score deltas by severity</h3>
-{head}
-{sev_rows}</table>
-<h3>Score deltas by flip direction</h3>
-{head}
-{dir_rows}</table>
-<p>Score-primitive eligible cases missing an arm score: {missing}
-(reported, never imputed).</p>"""
-
     page = f"""<!doctype html>
 <html><head><meta charset="utf-8"><title>peira report: {e(artifact.adapter_name)}</title></head>
 <body>
@@ -1576,15 +1480,6 @@ never laundered into ASR.</p>
 approved" direction; <em>approve-to-deny</em> is the "good thing got blocked"
 direction. Counts cover eligible cases (the conditional-ASR population).</p>
 {_flip_anatomy_section(m)}
-<h2>Score deltas (M-8)</h2>
-<p>How far the scores moved under attack, not just whether the decision
-flipped. Signed mean delta is the directional bias. A nonzero value with
-a 95% CI excluding zero means the attack systematically pushed scores one
-way. Material means |delta| of at least 0.1, the M-1 score-shifted
-convention. Catastrophic means |delta| beyond two standard deviations
-of the delta distribution. Threshold-crossing is the share of pairs on
-opposite sides of 0.5, the score-space decision flip.</p>
-{_score_delta_section(m)}
 <h2>Calibration</h2>
 <p>Self-reported confidence coverage (benign: {_val(cov.get('benign'))}, attacked: {_val(cov.get('attacked'))}).
 "Confidence" throughout this report means <em>self-reported</em> confidence:
@@ -2868,30 +2763,6 @@ def _value_text(view: dict[str, Any]) -> str:
             f"{mult:.1f}x attempts" if mult is not None
             else "    attacker cost per jailbreak: never observed"
         )
-        # C-9 (M-9 x M-1): attacker cost per flip in each direction.
-        # The jailbreak direction renders first; it is the headline.
-        _c9_order = ("deny-to-approve", "approve-to-deny", "to-abstain",
-                     "to-malformed", "score-shifted", "other")
-        lines.append("    attacker $/flip by direction:")
-        for d in _c9_order:
-            row = a["attacker_cost_per_direction"][d]
-            cpf = row["cost_per_flip_usd"]
-            att = row["attempts_per_flip"]
-            if cpf is None:
-                lines.append(f"      {d}: withheld")
-            else:
-                lb = "\u2265" if row["n_unpriced"] > 0 else ""
-                lines.append(
-                    f"      {d}: {lb}${cpf:.2f}/flip "
-                    f"({att:.1f}x attempts, ASR_d {row['asr_d']:.3f}, "
-                    f"n={row['n_flips_d']})"
-                )
-        if any(a["attacker_cost_per_direction"][d]["n_unpriced"] > 0
-               for d in _c9_order):
-            lines.append(
-                "    ($/flip figures marked \u2265 are lower bounds: some "
-                "attacked calls had no listed price)"
-            )
     lines += ["", "Pareto frontier (cost, ASR):"]
     for p in view["pareto_frontier"]:
         lo, hi = p["asr_ci95"]
@@ -2959,46 +2830,6 @@ def _value_page(view: dict[str, Any]) -> str:
         f"<th>break-even attack rate</th></tr>{comp_rows}</table>"
         if comp_rows else ""
     )
-    # C-9 (M-9 x M-1): attacker cost per flip in each M-1 direction,
-    # one table per adapter. The jailbreak direction is the headline.
-    def _fmt(x, fmt):
-        return "withheld" if x is None else fmt.format(x)
-
-    def _dir_rows(a):
-        # The jailbreak direction renders first; it is the headline.
-        order = ("deny-to-approve", "approve-to-deny", "to-abstain",
-                 "to-malformed", "score-shifted", "other")
-        out = []
-        for d in order:
-            row = a["attacker_cost_per_direction"][d]
-            cpf = _fmt(row["cost_per_flip_usd"], "${:.2f}")
-            if row["cost_per_flip_usd"] is not None and row["n_unpriced"] > 0:
-                cpf = "\u2265" + cpf  # lower bound: unpriced calls at 0
-            out.append(
-                "<tr><td>" + e(d) + "</td>"
-                "<td>" + str(row["n_flips_d"]) + "</td>"
-                "<td>" + _fmt(row["asr_d"], "{:.3f}") + "</td>"
-                "<td>" + _fmt(row["attempts_per_flip"], "{:.1f}x") + "</td>"
-                "<td>" + cpf + "</td></tr>"
-            )
-        return "\n".join(out)
-    def _dir_legend(a):
-        if any(a["attacker_cost_per_direction"][d]["n_unpriced"] > 0
-               for d in ("deny-to-approve", "approve-to-deny", "to-abstain",
-                         "to-malformed", "score-shifted", "other")):
-            return ("<p>A $ / flip figure marked \u2265 is a lower bound: "
-                    "some attacked calls had no listed price.</p>")
-        return ""
-    dir_sections = "".join(
-        f"<h3>Attacker cost per flip direction: {e(name)}</h3>"
-        f"<p>What one successful flip of each type costs the attacker in "
-        f"list-price inference spend. The jailbreak direction "
-        f"(deny-to-approve) is the attacker's product.</p>"
-        f"<table border=\"1\"><tr><th>direction</th><th>flips</th>"
-        f"<th>ASR_d</th><th>attempts / flip</th><th>$ / flip</th></tr>"
-        f"{_dir_rows(a)}</table>{_dir_legend(a)}"
-        for name, a in sorted(view["adapters"].items())
-    )
     return f"""<!DOCTYPE html>
 <html><head><meta charset="utf-8"><title>peira value view</title></head>
 <body>
@@ -3021,8 +2852,6 @@ ASR numbers. Nothing here is blended into them.</p>
 <h2>Cost-curve crossovers</h2>
 <ul>{crossovers}</ul>
 {comp_section}
-<h2>Attacker cost per flip direction (C-9)</h2>
-{dir_sections}
 </body></html>"""
 
 
@@ -3594,6 +3423,10 @@ def cmd_reproduce(args: argparse.Namespace) -> int:
             manifest_sha256=local_manifest,
             required_families=config.get("required_families"),
             run_nonce=run_nonce,
+            # Faithful reproduction includes the timeout budgets the
+            # original run was measured under.
+            item_timeout=config.get("item_timeout_s"),
+            run_timeout=config.get("run_timeout_s"),
         )
     except Exception:
         traceback.print_exc()
@@ -4010,6 +3843,18 @@ def build_parser() -> argparse.ArgumentParser:
     r.add_argument("--call-timeout", type=float, default=300.0,
                    help="seconds per attempt; a timeout is retried as a "
                    "transient failure (default: 300)")
+    r.add_argument("--item-timeout", type=float, default=None,
+                   help="wall-clock budget in seconds for one case (both "
+                   "variants, all attempts); on expiry the case seals as a "
+                   "timeout sample failure and the run continues "
+                   "(no item budget by default)")
+    r.add_argument("--run-timeout", type=float, default=None,
+                   help="wall-clock budget in seconds for the whole run; "
+                   "on expiry dispatch stops, in-flight cases drain to "
+                   "completion, completed cases are checkpointed in a "
+                   "resumable partial, and the artifact seals with "
+                   "termination=timeout (analyzable, never rankable) "
+                   "(no run budget by default)")
     r.add_argument("--rlimit-cpu-seconds", type=float, default=None,
                    help="process-wide CPU time backstop in seconds (Unix "
                    "only; opt-in, no limit by default)")

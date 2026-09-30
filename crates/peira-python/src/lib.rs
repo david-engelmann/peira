@@ -149,8 +149,14 @@ impl From<PyCallUsage> for metrics::CallUsage {
     }
 }
 
-/// Mirror of the Python `CallRecord` dataclass, field-for-field.
-/// Extracted from any Python object carrying those attributes.
+/// The record fields the Rust core computes on, extracted from any
+/// Python object carrying those attributes. This is deliberately NOT
+/// a field-for-field mirror of the Python `CallRecord`: Python owns
+/// measurement sidecars the Rust core never computes on (`timing_ms`
+/// decomposition, `timeout_kind` typing) and overlays them after the
+/// Rust call returns (see `_record_from_transcript_entry` in
+/// runner.py). Adding a field here is only warranted when the Rust
+/// core needs it for a calculation.
 #[derive(FromPyObject)]
 struct PyCallRecord {
     decision: String,
