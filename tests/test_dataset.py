@@ -573,5 +573,53 @@ class TestPermanentCanary(unittest.TestCase):
         )
 
 
+class TestCaseTexts(unittest.TestCase):
+    """M-6 drill-down linkage: case_id -> (benign_text, attacked_text)."""
+
+    def test_v2_lookup(self):
+        from peira.dataset import case_texts
+
+        benign, attacked = case_texts("2.3.1", "v2-verb-0001")
+        self.assertIsInstance(benign, str)
+        self.assertTrue(len(benign) > 0)
+        self.assertIsInstance(attacked, str)
+        self.assertTrue(len(attacked) > 0)
+        # The attacked variant carries the injection; the benign does not
+        # share its full text.
+        self.assertNotEqual(benign, attacked)
+
+    def test_v1_lookup(self):
+        from peira.dataset import case_texts
+
+        benign, attacked = case_texts("1.2.1", "v1-spo-001")
+        self.assertIsInstance(benign, str)
+        self.assertTrue(len(benign) > 0)
+        self.assertIsInstance(attacked, str)
+        self.assertTrue(len(attacked) > 0)
+
+    def test_unknown_version_returns_nones(self):
+        from peira.dataset import case_texts
+
+        self.assertEqual(case_texts("9.9.9", "v2-verb-0001"), (None, None))
+
+    def test_unknown_case_returns_nones(self):
+        from peira.dataset import case_texts
+
+        self.assertEqual(
+            case_texts("2.3.1", "no-such-case"), (None, None)
+        )
+
+    def test_version_major_mapping(self):
+        from peira.dataset import dataset_dir_for_version
+
+        self.assertTrue(
+            str(dataset_dir_for_version("1.0.0")).endswith("dataset/v1")
+        )
+        self.assertTrue(
+            str(dataset_dir_for_version("2.99.0")).endswith("dataset/v2")
+        )
+        self.assertIsNone(dataset_dir_for_version("3.0.0"))
+
+
 if __name__ == "__main__":
     unittest.main()

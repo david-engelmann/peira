@@ -921,6 +921,7 @@ def query_cases(
     max_attacked_confidence: float | None = None,
     run_path: str | None = None,
     limit: int = 1000,
+    include_texts: bool = False,
 ) -> list[dict[str, Any]]:
     """Per-case drill-down across runs, joined with run metadata.
 
@@ -929,6 +930,13 @@ def query_cases(
     fields (case_id, family, severity, primitive, flipped, eligible,
     decisions, confidences, abstention/malformed flags, flip_direction,
     tokens, cost_usd, latency_ms).
+
+    M-6 drill-down linkage: with ``include_texts=True``, each row is
+    enriched with ``benign_text`` / ``attacked_text`` resolved from the
+    versioned, manifest-sealed dataset files for the row's
+    dataset_version (None when the version is unknown or the case is
+    not found). The texts complete the case_id -> both texts, both
+    decisions, confidences linkage the drill-down ladder needs.
 
     Filters compose with AND. Confidence bounds exclude NULL
     confidences (an adapter that reported no confidence cannot satisfy
@@ -1004,6 +1012,16 @@ def query_cases(
             ):
                 d[key] = bool(d[key])
             rows.append(d)
+        if include_texts:
+            from peira.dataset import case_texts
+
+            for d in rows:
+                benign_text, attacked_text = case_texts(
+                    str(d.get("dataset_version", "")),
+                    str(d.get("case_id", "")),
+                )
+                d["benign_text"] = benign_text
+                d["attacked_text"] = attacked_text
         return rows
     finally:
         conn.close()

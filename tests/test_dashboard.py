@@ -479,5 +479,157 @@ class TestComparisonToDashboard(unittest.TestCase):
             comparison_to_dashboard(comp)
 
 
+class TestSeverityBreakdownCI(unittest.TestCase):
+    """M-6: every severity aggregate cell retains n and CI inputs."""
+
+    def test_flip_rate_carries_wilson_ci(self):
+        from peira.dashboard import _severity_breakdown
+        from peira.metrics import wilson_ci
+
+        results = [
+            _result_entry(case_id="c1", severity="high", flipped=True),
+            _result_entry(case_id="c2", severity="high", flipped=True),
+            _result_entry(case_id="c3", severity="high", flipped=False),
+            _result_entry(
+                case_id="c4", severity="high", flipped=False, eligible=False
+            ),
+        ]
+        sev = _severity_breakdown(results)["high"]
+        self.assertEqual(sev["n"], 4)
+        self.assertEqual(sev["n_eligible"], 3)
+        self.assertEqual(sev["n_flipped"], 2)
+        lo, hi = wilson_ci(2, 3)
+        self.assertEqual(
+            sev["flip_rate_ci95"], [round(lo, 4), round(hi, 4)]
+        )
+        # The point estimate stays consistent with the CI inputs.
+        self.assertAlmostEqual(sev["flip_rate_raw"], 2 / 3, places=4)
+
+    def test_empty_eligible_population(self):
+        from peira.dashboard import _severity_breakdown
+
+        results = [
+            _result_entry(case_id="c1", severity="low", flipped=False,
+                          eligible=False),
+        ]
+        sev = _severity_breakdown(results)["low"]
+        self.assertIsNone(sev["flip_rate_raw"])
+        self.assertEqual(sev["flip_rate_ci95"], [0.0, 0.0])
+
+
+class TestPairwiseResampleAhead(unittest.TestCase):
+    """M-6: the rank-stability resample view is recomputable."""
+
+    def _runs_dir_with_two_adapters(self, tmp_path):
+        from peira.runs_registry import query_cases  # noqa: F401
+
+        def _results(flips):
+            out = []
+            for i, flipped in enumerate(flips):
+                entry = _result_entry(
+                    case_id=f"shared-{i:03d}",
+                    flipped=flipped,
+                    attacked=_call_record(
+                        decision="deny" if flipped else "approve",
+                        dispatch_index=1,
+                    ),
+                )
+                out.append(entry)
+            return out
+
+        # Adapter A flips 10/40, adapter B flips 30/40: A is clearly ahead.
+        flips_a = [True] * 10 + [False] * 30
+        flips_b = [True] * 30 + [False] * 10
+        for name, flips in (("adapter-a", flips_a), ("adapter-b", flips_b)):
+            art = _make_dashboard_artifact(
+                adapter_name=name, results=_results(flips)
+            )
+            (tmp_path / f"{name}.json").write_text(art)
+        return tmp_path
+
+    def test_ahead_fraction_reflects_point_estimates(self):
+        from peira.dashboard import pairwise_resample_ahead
+
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            self._runs_dir_with_two_adapters(tmp_path)
+            out = pairwise_resample_ahead(
+                runs_dir=tmp_path, n_boot=2000, seed=0
+            )
+            self.assertEqual(out["adapters"], ["adapter-a", "adapter-b"])
+            pair = out["pairs"]["adapter-a|adapter-b"]
+            self.assertEqual(pair["n_shared"], 40)
+            # A flips far less than B: A is ahead in ~all resamples.
+            self.assertGreater(pair["ahead_fraction"], 0.99)
+            # Mirror entry reads the other direction.
+            mirror = out["pairs"]["adapter-b|adapter-a"]
+            self.assertAlmostEqual(
+                mirror["ahead_fraction"], 1.0 - pair["ahead_fraction"], places=4
+            )
+            # Diagonal is 0.5 by definition.
+            self.assertEqual(
+                out["pairs"]["adapter-a|adapter-a"]["ahead_fraction"], 0.5
+            )
+
+    def test_deterministic_across_calls(self):
+        from peira.dashboard import pairwise_resample_ahead
+
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            self._runs_dir_with_two_adapters(tmp_path)
+            first = pairwise_resample_ahead(
+                runs_dir=tmp_path, n_boot=500, seed=42
+            )
+            second = pairwise_resample_ahead(
+                runs_dir=tmp_path, n_boot=500, seed=42
+            )
+            self.assertEqual(first["pairs"], second["pairs"])
+
+    def test_thin_pairs_withheld(self):
+        from peira.dashboard import pairwise_resample_ahead
+
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            art = _make_dashboard_artifact(
+                adapter_name="thin-a",
+                results=[_result_entry(case_id="only-1")],
+            )
+            (tmp_path / "thin-a.json").write_text(art)
+            art2 = _make_dashboard_artifact(
+                adapter_name="thin-b",
+                results=[_result_entry(case_id="only-1")],
+            )
+            (tmp_path / "thin-b.json").write_text(art2)
+            out = pairwise_resample_ahead(
+                runs_dir=tmp_path, n_boot=100, seed=0
+            )
+            pair = out["pairs"]["thin-a|thin-b"]
+            self.assertEqual(pair["n_shared"], 1)
+            self.assertIsNone(pair["ahead_fraction"])
+
+
+def _make_dashboard_artifact(adapter_name, results):
+    """Minimal sealed artifact JSON with real results for dashboard tests."""
+    from peira.artifacts import RunArtifact
+    from peira.env_fingerprint import collect_and_fingerprint
+
+    env, env_sha256 = collect_and_fingerprint()
+    artifact = RunArtifact(
+        adapter_name=adapter_name,
+        adapter_version="1.0-test",
+        suite="v1",
+        dataset_version="1.2.1",
+        manifest_sha256="abc123" * 10 + "abcd",
+        seed=0,
+        max_concurrency=8,
+        env=env,
+        env_sha256=env_sha256,
+        config={"cache_enabled": False},
+        results=results,
+        metrics={"ranking_eligible": True, "eligibility_notes": []},
+    )
+    return artifact.seal().to_json()
+
+
 if __name__ == "__main__":
     unittest.main()

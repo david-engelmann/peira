@@ -15,7 +15,105 @@ from peira.runs_registry import (
     list_runs,
     verify_runs,
     qualifies_for_leaderboard,
+    query_cases,
 )
+
+
+class TestQueryCasesIncludeTexts(unittest.TestCase):
+    """M-6: the drill-down completes case_id -> texts, decisions, confidences."""
+
+    def _artifact_with_case(self, case_id, dataset_version):
+        env, env_sha256 = collect_and_fingerprint()
+        result = {
+            "case_id": case_id,
+            "family": "indirection",
+            "severity": "high",
+            "primitive": "choice",
+            "benign": {
+                "decision": "approve", "confidence": 0.9,
+                "abstained": False, "refusal_reason": "",
+                "usage": {"model": "m", "tokens_in": 10,
+                          "tokens_out": 5, "latency_ms": 100.0,
+                          "cost_usd": 0.001},
+                "seed": 0, "dispatch_index": 0, "malformed": False,
+                "dispatch_limit": 1, "latency_ms_total": 100.0,
+            },
+            "attacked": {
+                "decision": "deny", "confidence": 0.8,
+                "abstained": False, "refusal_reason": "",
+                "usage": {"model": "m", "tokens_in": 10,
+                          "tokens_out": 5, "latency_ms": 100.0,
+                          "cost_usd": 0.001},
+                "seed": 0, "dispatch_index": 1, "malformed": False,
+                "dispatch_limit": 1, "latency_ms_total": 100.0,
+            },
+            "flipped": True,
+            "eligible": True,
+            "ineligibility_reason": "",
+        }
+        artifact = RunArtifact(
+            adapter_name="text-adapter",
+            adapter_version="1.0-test",
+            suite="v1",
+            dataset_version=dataset_version,
+            manifest_sha256="abc123" * 10 + "abcd",
+            seed=0,
+            max_concurrency=8,
+            env=env,
+            env_sha256=env_sha256,
+            config={"cache_enabled": False},
+            results=[result],
+            metrics={"ranking_eligible": True, "eligibility_notes": []},
+        )
+        return artifact.seal().to_json()
+
+    def test_include_texts_enriches_row(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            (tmp_path / "run.json").write_text(
+                self._artifact_with_case("v1-spo-001", "1.2.1")
+            )
+            scan_runs(tmp)
+            rows = query_cases(
+                runs_dir=tmp, adapter="text-adapter", include_texts=True
+            )
+            self.assertEqual(len(rows), 1)
+            row = rows[0]
+            # The M-6 linkage: both texts, both decisions, confidences.
+            self.assertIsInstance(row["benign_text"], str)
+            self.assertTrue(len(row["benign_text"]) > 0)
+            self.assertIsInstance(row["attacked_text"], str)
+            self.assertTrue(len(row["attacked_text"]) > 0)
+            self.assertEqual(row["benign_decision"], "approve")
+            self.assertEqual(row["attacked_decision"], "deny")
+            self.assertAlmostEqual(row["benign_confidence"], 0.9)
+            self.assertAlmostEqual(row["attacked_confidence"], 0.8)
+
+    def test_texts_opt_in_default_off(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            (tmp_path / "run.json").write_text(
+                self._artifact_with_case("v1-spo-001", "1.2.1")
+            )
+            scan_runs(tmp)
+            rows = query_cases(runs_dir=tmp, adapter="text-adapter")
+            self.assertEqual(len(rows), 1)
+            self.assertNotIn("benign_text", rows[0])
+            self.assertNotIn("attacked_text", rows[0])
+
+    def test_unknown_case_texts_are_none(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            (tmp_path / "run.json").write_text(
+                self._artifact_with_case("not-a-real-case", "1.2.1")
+            )
+            scan_runs(tmp)
+            rows = query_cases(
+                runs_dir=tmp, adapter="text-adapter", include_texts=True
+            )
+            self.assertEqual(len(rows), 1)
+            self.assertIsNone(rows[0]["benign_text"])
+            self.assertIsNone(rows[0]["attacked_text"])
 
 
 def _make_artifact(adapter_name="test-adapter", **overrides):

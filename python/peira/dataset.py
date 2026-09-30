@@ -502,3 +502,118 @@ def verify_manifest(dataset_dir: Path) -> list[str]:
     """
     _manifest, _digest, errors = verify_manifest_sealed(dataset_dir)
     return errors
+
+
+def repo_root() -> Path:
+    """Repo root: the directory containing ``dataset/``.
+
+    Mirrors the convention in peira.cli (two parents above the package).
+    """
+    return Path(__file__).resolve().parents[2]
+
+
+def dataset_dir_for_version(
+    dataset_version: str, root: Path | None = None
+) -> Path | None:
+    """Map a sealed dataset version (e.g. "2.3.1") to its dataset directory.
+
+    Returns None when the version does not map to a known dataset
+    generation (v1.x -> dataset/v1, v2.x -> dataset/v2).
+    """
+    root = root or repo_root()
+    major = str(dataset_version).split(".")[0]
+    if major == "1":
+        candidate = root / "dataset" / "v1"
+    elif major == "2":
+        candidate = root / "dataset" / "v2"
+    else:
+        return None
+    return candidate if candidate.is_dir() else None
+
+
+def _extract_input_text(variant: Any) -> str | None:
+    """Extract the display text from a case variant's ``input`` field.
+
+    v1/v2 cases store input as a dict (``{"prompt": ..., "options": ...}``);
+    the prompt is the text the adapter saw. A bare string input is
+    returned as-is. Anything else yields None (not available, never
+    empty evidence).
+    """
+    if not isinstance(variant, dict):
+        return None
+    raw = variant.get("input")
+    if isinstance(raw, str):
+        return raw
+    if isinstance(raw, dict):
+        prompt = raw.get("prompt")
+        if isinstance(prompt, str):
+            return prompt
+    return None
+
+
+def _case_text_index(dataset_dir: Path) -> dict[str, tuple[str | None, str | None]]:
+    """Build {case_id: (benign_input, attacked_input)} for a dataset dir.
+
+    Reads every case file (v1's flat cases.jsonl and the per-family
+    files under cases/). Malformed lines are skipped: this is a
+    read-only lookup helper, not a validator (gates own validation).
+    """
+    index: dict[str, tuple[str | None, str | None]] = {}
+    search_dirs = [dataset_dir, dataset_dir / "cases"]
+    seen: set[Path] = set()
+    for search in search_dirs:
+        if not search.is_dir():
+            continue
+        for path in sorted(search.glob(f"*{CASE_SUFFIX}")):
+            if path in seen:
+                continue
+            seen.add(path)
+            try:
+                text = path.read_text(encoding="utf-8")
+            except OSError:
+                continue
+            for line in text.splitlines():
+                if not line.strip():
+                    continue
+                try:
+                    case = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if not isinstance(case, dict):
+                    continue
+                case_id = case.get("case_id")
+                if not isinstance(case_id, str) or case_id in index:
+                    continue
+                index[case_id] = (
+                    _extract_input_text(case.get("benign")),
+                    _extract_input_text(case.get("attacked")),
+                )
+    return index
+
+
+# Process-lifetime cache: dataset version -> text index. The dataset
+# files are sealed (manifest-locked), so a stale cache cannot disagree
+# with the sealed bytes within a process.
+_TEXT_INDEX_CACHE: dict[str, dict[str, tuple[str | None, str | None]]] = {}
+
+
+def case_texts(
+    dataset_version: str,
+    case_id: str,
+    root: Path | None = None,
+) -> tuple[str | None, str | None]:
+    """M-6 drill-down linkage: case_id -> (benign_text, attacked_text).
+
+    Resolves against the versioned, manifest-sealed dataset files for
+    ``dataset_version``. Returns (None, None) when the version is
+    unknown or the case is not found: the caller (e.g. the registry
+    drill-down) treats missing texts as "not available", never as
+    empty evidence.
+    """
+    cache_key = str(dataset_version)
+    if cache_key not in _TEXT_INDEX_CACHE:
+        ddir = dataset_dir_for_version(str(dataset_version), root)
+        _TEXT_INDEX_CACHE[cache_key] = (
+            _case_text_index(ddir) if ddir is not None else {}
+        )
+    return _TEXT_INDEX_CACHE[cache_key].get(case_id, (None, None))
