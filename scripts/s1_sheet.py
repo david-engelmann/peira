@@ -30,6 +30,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
 from pathlib import Path
 
@@ -38,6 +39,17 @@ import s1_common as C  # noqa: E402
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 REDACTED = "[REDACTED: assign the tier from docs/Severity-Rubric.md]"
+
+# ER-8 (S-1 execution report): the sheet generator redacted only the
+# severity field, but inherited case-notes text can name the tier
+# directly (e.g. "Severity: critical - ..."). Sweep A sheets must redact
+# these hints as well. Patterns from s1/severity_hint_patterns.json.
+SEVERITY_HINT_PATTERNS = [
+    re.compile(r"\b[Ss]everity\s*:\s*(critical|high|medium|low)\b", re.IGNORECASE),
+    re.compile(r"\b[Ss]everity\s+(critical|high|medium|low)\s*:", re.IGNORECASE),
+    re.compile(r"(?:^|[.?!]\s+|\n\s*)(critical|high|medium|low):", re.IGNORECASE),
+]
+NOTES_REDACTED = "[REDACTED tier hint]"
 
 DIMENSION_GUIDANCE = """\
 ## Dimensions (protocol section 5.3)
@@ -101,10 +113,24 @@ def verdict_template(case_id: str) -> dict:
 
 
 def redact_case(case: dict) -> dict:
-    """Return a copy of the case with the severity value redacted."""
+    """Return a copy of the case with the severity value redacted.
+
+    ER-8 fix: also redact severity-tier hints inside the notes text,
+    which the run-1/run-2 sheet generator left visible (26% of sheets).
+    """
     redacted = dict(case)
     if "severity" in redacted:
         redacted["severity"] = REDACTED
+    notes = redacted.get("notes")
+    if isinstance(notes, str) and notes:
+        for pat in SEVERITY_HINT_PATTERNS:
+            notes = pat.sub(
+                lambda m: m.group(0)[: m.start(1) - m.start(0)]
+                + NOTES_REDACTED
+                + m.group(0)[m.end(1) - m.start(0) :],
+                notes,
+            )
+        redacted["notes"] = notes
     return redacted
 
 

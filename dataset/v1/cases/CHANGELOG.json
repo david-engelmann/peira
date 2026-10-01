@@ -1,8 +1,5221 @@
 {
   "$schema_id": "https://peiratrial.dev/schemas/dataset-changelog-1.json",
   "dataset": "peira-v1",
-  "dataset_version": "1.2.0",
+  "dataset_version": "1.4.0",
   "entries": [
+    {
+      "type": "annotate",
+      "dataset_version": "1.4.0",
+      "date": "2026-10-01",
+      "description": "S-1 Sweep A: 848 severity re-grades (D-36 defect class 2).",
+      "case_ids": [
+        "v1-csm-001",
+        "v1-csm-002",
+        "v1-csm-004",
+        "v1-csm-006",
+        "v1-csm-010",
+        "v1-csm-012",
+        "v1-csm-016",
+        "v1-csm-018",
+        "v1-csm-019",
+        "v1-csm-021",
+        "v1-csm-023",
+        "v1-csm-024",
+        "v1-csm-025",
+        "v1-csm-029",
+        "v1-csm-032",
+        "v1-csm-038",
+        "v1-csm-041",
+        "v1-csm-044",
+        "v1-csm-049",
+        "v1-csm-052",
+        "v1-csm-053",
+        "v1-csm-055",
+        "v1-csm-058",
+        "v1-csm-061",
+        "v1-csm-062",
+        "v1-csm-063",
+        "v1-csm-068",
+        "v1-csm-070",
+        "v1-csm-071",
+        "v1-csm-072",
+        "v1-csm-078",
+        "v1-csm-079",
+        "v1-csm-080",
+        "v1-csm-082",
+        "v1-csm-083",
+        "v1-csm-085",
+        "v1-csm-088",
+        "v1-csm-091",
+        "v1-csm-093",
+        "v1-csm-094",
+        "v1-csm-099",
+        "v1-csm-100",
+        "v1-csm-101",
+        "v1-csm-103",
+        "v1-csm-105",
+        "v1-csm-106",
+        "v1-csm-107",
+        "v1-csm-109",
+        "v1-csm-111",
+        "v1-csm-113",
+        "v1-csm-118",
+        "v1-csm-119",
+        "v1-csm-120",
+        "v1-csm-122",
+        "v1-csm-123",
+        "v1-csm-124",
+        "v1-csm-135",
+        "v1-csm-137",
+        "v1-csm-142",
+        "v1-csm-143",
+        "v1-csm-144",
+        "v1-csm-145",
+        "v1-csm-149",
+        "v1-csm-151",
+        "v1-csm-152",
+        "v1-csm-154",
+        "v1-csm-156",
+        "v1-csm-157",
+        "v1-csm-162",
+        "v1-csm-164",
+        "v1-csm-166",
+        "v1-csm-168",
+        "v1-csm-169",
+        "v1-csm-170",
+        "v1-csm-173",
+        "v1-csm-176",
+        "v1-csm-181",
+        "v1-csm-183",
+        "v1-csm-184",
+        "v1-csm-190",
+        "v1-csm-192",
+        "v1-csm-195",
+        "v1-csm-196",
+        "v1-csm-197",
+        "v1-csm-203",
+        "v1-csm-204",
+        "v1-csm-207",
+        "v1-csm-208",
+        "v1-csm-210",
+        "v1-csm-211",
+        "v1-csm-212",
+        "v1-csm-213",
+        "v1-csm-215",
+        "v1-csm-216",
+        "v1-csm-217",
+        "v1-csm-221",
+        "v1-csm-224",
+        "v1-csm-226",
+        "v1-csm-227",
+        "v1-csm-233",
+        "v1-csm-238",
+        "v1-csm-245",
+        "v1-csm-247",
+        "v1-csp-001",
+        "v1-csp-004",
+        "v1-csp-006",
+        "v1-csp-007",
+        "v1-csp-008",
+        "v1-csp-009",
+        "v1-csp-014",
+        "v1-csp-016",
+        "v1-csp-017",
+        "v1-csp-023",
+        "v1-csp-024",
+        "v1-csp-028",
+        "v1-csp-030",
+        "v1-csp-034",
+        "v1-csp-035",
+        "v1-csp-038",
+        "v1-csp-039",
+        "v1-csp-044",
+        "v1-csp-046",
+        "v1-csp-048",
+        "v1-csp-049",
+        "v1-csp-053",
+        "v1-csp-061",
+        "v1-csp-062",
+        "v1-csp-063",
+        "v1-csp-068",
+        "v1-csp-071",
+        "v1-csp-077",
+        "v1-csp-079",
+        "v1-csp-083",
+        "v1-csp-084",
+        "v1-csp-086",
+        "v1-csp-087",
+        "v1-csp-091",
+        "v1-csp-092",
+        "v1-csp-093",
+        "v1-csp-094",
+        "v1-csp-095",
+        "v1-csp-096",
+        "v1-csp-098",
+        "v1-csp-103",
+        "v1-csp-104",
+        "v1-csp-105",
+        "v1-csp-108",
+        "v1-csp-111",
+        "v1-csp-112",
+        "v1-csp-114",
+        "v1-csp-118",
+        "v1-csp-119",
+        "v1-csp-120",
+        "v1-csp-122",
+        "v1-csp-123",
+        "v1-csp-125",
+        "v1-csp-126",
+        "v1-csp-127",
+        "v1-csp-130",
+        "v1-csp-135",
+        "v1-csp-143",
+        "v1-csp-147",
+        "v1-csp-149",
+        "v1-csp-151",
+        "v1-csp-154",
+        "v1-csp-157",
+        "v1-csp-163",
+        "v1-csp-175",
+        "v1-csp-177",
+        "v1-csp-180",
+        "v1-csp-186",
+        "v1-csp-187",
+        "v1-csp-191",
+        "v1-csp-198",
+        "v1-csp-199",
+        "v1-csp-200",
+        "v1-csp-201",
+        "v1-csp-202",
+        "v1-csp-208",
+        "v1-csp-210",
+        "v1-csp-212",
+        "v1-csp-215",
+        "v1-csp-221",
+        "v1-csp-222",
+        "v1-csp-228",
+        "v1-csp-229",
+        "v1-csp-230",
+        "v1-csp-232",
+        "v1-csp-234",
+        "v1-csp-240",
+        "v1-csp-243",
+        "v1-csp-245",
+        "v1-csp-247",
+        "v1-csp-248",
+        "v1-csp-249",
+        "v1-dfl-002",
+        "v1-dfl-003",
+        "v1-dfl-004",
+        "v1-dfl-005",
+        "v1-dfl-009",
+        "v1-dfl-012",
+        "v1-dfl-014",
+        "v1-dfl-015",
+        "v1-dfl-023",
+        "v1-dfl-025",
+        "v1-dfl-026",
+        "v1-dfl-027",
+        "v1-dfl-029",
+        "v1-dfl-030",
+        "v1-dfl-031",
+        "v1-dfl-032",
+        "v1-dfl-036",
+        "v1-dfl-037",
+        "v1-dfl-038",
+        "v1-dfl-040",
+        "v1-dfl-041",
+        "v1-dfl-043",
+        "v1-dfl-044",
+        "v1-dfl-047",
+        "v1-dfl-048",
+        "v1-dfl-049",
+        "v1-dfl-052",
+        "v1-dfl-056",
+        "v1-dfl-058",
+        "v1-dfl-061",
+        "v1-dfl-064",
+        "v1-dfl-078",
+        "v1-dfl-079",
+        "v1-dfl-080",
+        "v1-dfl-081",
+        "v1-dfl-082",
+        "v1-dfl-086",
+        "v1-dfl-087",
+        "v1-dfl-094",
+        "v1-dfl-098",
+        "v1-dfl-099",
+        "v1-dfl-102",
+        "v1-dfl-103",
+        "v1-dfl-107",
+        "v1-dfl-108",
+        "v1-dfl-109",
+        "v1-dfl-111",
+        "v1-dfl-112",
+        "v1-dfl-113",
+        "v1-dfl-114",
+        "v1-dfl-115",
+        "v1-dfl-116",
+        "v1-dfl-117",
+        "v1-dfl-120",
+        "v1-dfl-124",
+        "v1-dfl-127",
+        "v1-dfl-131",
+        "v1-dfl-132",
+        "v1-dfl-136",
+        "v1-dfl-138",
+        "v1-dfl-141",
+        "v1-dfl-145",
+        "v1-dfl-148",
+        "v1-dfl-150",
+        "v1-dfl-151",
+        "v1-dfl-163",
+        "v1-dfl-164",
+        "v1-dfl-165",
+        "v1-dfl-166",
+        "v1-dfl-167",
+        "v1-dfl-170",
+        "v1-dfl-171",
+        "v1-dfl-172",
+        "v1-dfl-173",
+        "v1-dfl-181",
+        "v1-dfl-182",
+        "v1-dfl-188",
+        "v1-dfl-197",
+        "v1-dfl-202",
+        "v1-dfl-203",
+        "v1-dfl-205",
+        "v1-dfl-206",
+        "v1-dfl-207",
+        "v1-dfl-209",
+        "v1-dfl-210",
+        "v1-dfl-215",
+        "v1-dfl-217",
+        "v1-dfl-219",
+        "v1-dfl-220",
+        "v1-dfl-221",
+        "v1-dfl-222",
+        "v1-dfl-223",
+        "v1-dfl-224",
+        "v1-dfl-225",
+        "v1-dfl-228",
+        "v1-dfl-234",
+        "v1-dfl-240",
+        "v1-dfl-241",
+        "v1-dfl-242",
+        "v1-dfl-243",
+        "v1-dfl-245",
+        "v1-dfl-246",
+        "v1-ind-003",
+        "v1-ind-004",
+        "v1-ind-011",
+        "v1-ind-013",
+        "v1-ind-014",
+        "v1-ind-015",
+        "v1-ind-019",
+        "v1-ind-023",
+        "v1-ind-026",
+        "v1-ind-027",
+        "v1-ind-030",
+        "v1-ind-031",
+        "v1-ind-035",
+        "v1-ind-041",
+        "v1-ind-043",
+        "v1-ind-045",
+        "v1-ind-046",
+        "v1-ind-053",
+        "v1-ind-057",
+        "v1-ind-058",
+        "v1-ind-059",
+        "v1-ind-060",
+        "v1-ind-065",
+        "v1-ind-066",
+        "v1-ind-076",
+        "v1-ind-082",
+        "v1-ind-084",
+        "v1-ind-085",
+        "v1-ind-087",
+        "v1-ind-094",
+        "v1-ind-095",
+        "v1-ind-099",
+        "v1-ind-100",
+        "v1-ind-101",
+        "v1-ind-102",
+        "v1-ind-103",
+        "v1-ind-104",
+        "v1-ind-105",
+        "v1-ind-108",
+        "v1-ind-112",
+        "v1-ind-114",
+        "v1-ind-115",
+        "v1-ind-116",
+        "v1-ind-117",
+        "v1-ind-119",
+        "v1-ind-120",
+        "v1-ind-123",
+        "v1-ind-124",
+        "v1-ind-125",
+        "v1-ind-132",
+        "v1-ind-136",
+        "v1-ind-138",
+        "v1-ind-139",
+        "v1-ind-142",
+        "v1-ind-143",
+        "v1-ind-145",
+        "v1-ind-146",
+        "v1-ind-150",
+        "v1-ind-156",
+        "v1-ind-158",
+        "v1-ind-159",
+        "v1-ind-162",
+        "v1-ind-166",
+        "v1-ind-171",
+        "v1-ind-174",
+        "v1-ind-175",
+        "v1-ind-177",
+        "v1-ind-182",
+        "v1-ind-184",
+        "v1-ind-187",
+        "v1-ind-188",
+        "v1-ind-191",
+        "v1-ind-192",
+        "v1-ind-194",
+        "v1-ind-195",
+        "v1-ind-196",
+        "v1-ind-197",
+        "v1-ind-200",
+        "v1-ind-201",
+        "v1-ind-202",
+        "v1-ind-203",
+        "v1-ind-205",
+        "v1-ind-208",
+        "v1-ind-209",
+        "v1-ind-211",
+        "v1-ind-215",
+        "v1-ind-216",
+        "v1-ind-217",
+        "v1-ind-218",
+        "v1-ind-219",
+        "v1-ind-224",
+        "v1-ind-228",
+        "v1-ind-236",
+        "v1-ind-238",
+        "v1-ind-240",
+        "v1-ind-245",
+        "v1-ind-247",
+        "v1-ind-249",
+        "v1-ind-250",
+        "v1-lrd-005",
+        "v1-lrd-008",
+        "v1-lrd-010",
+        "v1-lrd-012",
+        "v1-lrd-015",
+        "v1-lrd-018",
+        "v1-lrd-023",
+        "v1-lrd-026",
+        "v1-lrd-027",
+        "v1-lrd-034",
+        "v1-lrd-035",
+        "v1-lrd-037",
+        "v1-lrd-050",
+        "v1-lrd-052",
+        "v1-lrd-053",
+        "v1-lrd-056",
+        "v1-lrd-058",
+        "v1-lrd-063",
+        "v1-lrd-068",
+        "v1-lrd-069",
+        "v1-lrd-071",
+        "v1-lrd-075",
+        "v1-lrd-077",
+        "v1-lrd-082",
+        "v1-lrd-083",
+        "v1-lrd-084",
+        "v1-lrd-085",
+        "v1-lrd-087",
+        "v1-lrd-088",
+        "v1-lrd-092",
+        "v1-lrd-097",
+        "v1-lrd-098",
+        "v1-lrd-099",
+        "v1-lrd-101",
+        "v1-lrd-104",
+        "v1-lrd-105",
+        "v1-lrd-112",
+        "v1-lrd-114",
+        "v1-lrd-117",
+        "v1-lrd-118",
+        "v1-lrd-120",
+        "v1-lrd-122",
+        "v1-lrd-123",
+        "v1-lrd-125",
+        "v1-lrd-127",
+        "v1-lrd-129",
+        "v1-lrd-130",
+        "v1-lrd-131",
+        "v1-lrd-134",
+        "v1-lrd-137",
+        "v1-lrd-138",
+        "v1-lrd-139",
+        "v1-lrd-144",
+        "v1-lrd-148",
+        "v1-lrd-150",
+        "v1-lrd-155",
+        "v1-lrd-159",
+        "v1-lrd-162",
+        "v1-lrd-163",
+        "v1-lrd-166",
+        "v1-lrd-167",
+        "v1-lrd-168",
+        "v1-lrd-169",
+        "v1-lrd-171",
+        "v1-lrd-173",
+        "v1-lrd-178",
+        "v1-lrd-182",
+        "v1-lrd-183",
+        "v1-lrd-187",
+        "v1-lrd-200",
+        "v1-lrd-203",
+        "v1-lrd-204",
+        "v1-lrd-211",
+        "v1-lrd-214",
+        "v1-lrd-216",
+        "v1-lrd-222",
+        "v1-lrd-223",
+        "v1-lrd-228",
+        "v1-lrd-231",
+        "v1-lrd-232",
+        "v1-lrd-237",
+        "v1-lrd-238",
+        "v1-lrd-242",
+        "v1-lrd-244",
+        "v1-lrd-247",
+        "v1-lrd-250",
+        "v1-ngm-004",
+        "v1-ngm-005",
+        "v1-ngm-008",
+        "v1-ngm-010",
+        "v1-ngm-012",
+        "v1-ngm-014",
+        "v1-ngm-015",
+        "v1-ngm-016",
+        "v1-ngm-017",
+        "v1-ngm-022",
+        "v1-ngm-025",
+        "v1-ngm-033",
+        "v1-ngm-035",
+        "v1-ngm-040",
+        "v1-ngm-043",
+        "v1-ngm-049",
+        "v1-ngm-050",
+        "v1-ngm-051",
+        "v1-ngm-059",
+        "v1-ngm-062",
+        "v1-ngm-063",
+        "v1-ngm-064",
+        "v1-ngm-065",
+        "v1-ngm-069",
+        "v1-ngm-081",
+        "v1-ngm-090",
+        "v1-ngm-094",
+        "v1-ngm-098",
+        "v1-ngm-100",
+        "v1-ngm-111",
+        "v1-ngm-114",
+        "v1-ngm-121",
+        "v1-ngm-131",
+        "v1-ngm-132",
+        "v1-ngm-135",
+        "v1-ngm-136",
+        "v1-ngm-137",
+        "v1-ngm-139",
+        "v1-ngm-146",
+        "v1-ngm-147",
+        "v1-ngm-148",
+        "v1-ngm-153",
+        "v1-ngm-155",
+        "v1-ngm-162",
+        "v1-ngm-163",
+        "v1-ngm-164",
+        "v1-ngm-165",
+        "v1-ngm-167",
+        "v1-ngm-169",
+        "v1-ngm-174",
+        "v1-ngm-178",
+        "v1-ngm-182",
+        "v1-ngm-188",
+        "v1-ngm-191",
+        "v1-ngm-195",
+        "v1-ngm-196",
+        "v1-ngm-197",
+        "v1-ngm-199",
+        "v1-ngm-201",
+        "v1-ngm-202",
+        "v1-ngm-204",
+        "v1-ngm-205",
+        "v1-ngm-206",
+        "v1-ngm-207",
+        "v1-ngm-209",
+        "v1-ngm-210",
+        "v1-ngm-212",
+        "v1-ngm-215",
+        "v1-ngm-217",
+        "v1-ngm-219",
+        "v1-ngm-228",
+        "v1-ngm-230",
+        "v1-ngm-234",
+        "v1-ngm-237",
+        "v1-ngm-238",
+        "v1-ngm-244",
+        "v1-ngm-245",
+        "v1-ngm-246",
+        "v1-odo-001",
+        "v1-odo-006",
+        "v1-odo-008",
+        "v1-odo-009",
+        "v1-odo-010",
+        "v1-odo-015",
+        "v1-odo-018",
+        "v1-odo-020",
+        "v1-odo-022",
+        "v1-odo-031",
+        "v1-odo-037",
+        "v1-odo-039",
+        "v1-odo-041",
+        "v1-odo-046",
+        "v1-odo-047",
+        "v1-odo-054",
+        "v1-odo-062",
+        "v1-odo-063",
+        "v1-odo-066",
+        "v1-odo-067",
+        "v1-odo-068",
+        "v1-odo-070",
+        "v1-odo-081",
+        "v1-odo-082",
+        "v1-odo-087",
+        "v1-odo-093",
+        "v1-odo-095",
+        "v1-odo-099",
+        "v1-odo-102",
+        "v1-odo-103",
+        "v1-odo-105",
+        "v1-odo-111",
+        "v1-odo-126",
+        "v1-odo-130",
+        "v1-odo-132",
+        "v1-odo-133",
+        "v1-odo-134",
+        "v1-odo-137",
+        "v1-odo-138",
+        "v1-odo-139",
+        "v1-odo-141",
+        "v1-odo-142",
+        "v1-odo-146",
+        "v1-odo-148",
+        "v1-odo-155",
+        "v1-odo-159",
+        "v1-odo-160",
+        "v1-odo-171",
+        "v1-odo-173",
+        "v1-odo-179",
+        "v1-odo-182",
+        "v1-odo-184",
+        "v1-odo-185",
+        "v1-odo-188",
+        "v1-odo-193",
+        "v1-odo-196",
+        "v1-odo-205",
+        "v1-odo-206",
+        "v1-odo-207",
+        "v1-odo-221",
+        "v1-odo-224",
+        "v1-odo-226",
+        "v1-odo-229",
+        "v1-odo-232",
+        "v1-odo-233",
+        "v1-odo-238",
+        "v1-odo-240",
+        "v1-odo-241",
+        "v1-odo-246",
+        "v1-ppa-002",
+        "v1-ppa-003",
+        "v1-ppa-004",
+        "v1-ppa-007",
+        "v1-ppa-011",
+        "v1-ppa-015",
+        "v1-ppa-017",
+        "v1-ppa-018",
+        "v1-ppa-020",
+        "v1-ppa-021",
+        "v1-ppa-025",
+        "v1-ppa-030",
+        "v1-ppa-031",
+        "v1-ppa-037",
+        "v1-ppa-040",
+        "v1-ppa-041",
+        "v1-ppa-042",
+        "v1-ppa-047",
+        "v1-ppa-049",
+        "v1-ppa-055",
+        "v1-ppa-068",
+        "v1-ppa-073",
+        "v1-ppa-079",
+        "v1-ppa-083",
+        "v1-ppa-089",
+        "v1-ppa-093",
+        "v1-ppa-095",
+        "v1-ppa-098",
+        "v1-ppa-101",
+        "v1-ppa-102",
+        "v1-ppa-106",
+        "v1-ppa-111",
+        "v1-ppa-112",
+        "v1-ppa-115",
+        "v1-ppa-117",
+        "v1-ppa-120",
+        "v1-ppa-122",
+        "v1-ppa-123",
+        "v1-ppa-125",
+        "v1-ppa-126",
+        "v1-ppa-129",
+        "v1-ppa-137",
+        "v1-ppa-139",
+        "v1-ppa-140",
+        "v1-ppa-142",
+        "v1-ppa-144",
+        "v1-ppa-145",
+        "v1-ppa-146",
+        "v1-ppa-150",
+        "v1-ppa-151",
+        "v1-ppa-156",
+        "v1-ppa-166",
+        "v1-ppa-167",
+        "v1-ppa-168",
+        "v1-ppa-169",
+        "v1-ppa-172",
+        "v1-ppa-175",
+        "v1-ppa-176",
+        "v1-ppa-179",
+        "v1-ppa-186",
+        "v1-ppa-189",
+        "v1-ppa-191",
+        "v1-ppa-193",
+        "v1-ppa-194",
+        "v1-ppa-195",
+        "v1-ppa-198",
+        "v1-ppa-200",
+        "v1-ppa-201",
+        "v1-ppa-202",
+        "v1-ppa-207",
+        "v1-ppa-208",
+        "v1-ppa-209",
+        "v1-ppa-218",
+        "v1-ppa-221",
+        "v1-ppa-222",
+        "v1-ppa-226",
+        "v1-ppa-232",
+        "v1-ppa-234",
+        "v1-ppa-237",
+        "v1-ppa-238",
+        "v1-ppa-241",
+        "v1-ppa-243",
+        "v1-ppa-244",
+        "v1-ppa-246",
+        "v1-ppa-247",
+        "v1-ppa-249",
+        "v1-san-001",
+        "v1-san-002",
+        "v1-san-003",
+        "v1-san-004",
+        "v1-san-005",
+        "v1-san-007",
+        "v1-san-008",
+        "v1-san-014",
+        "v1-san-030",
+        "v1-san-031",
+        "v1-san-032",
+        "v1-san-033",
+        "v1-san-034",
+        "v1-san-037",
+        "v1-san-038",
+        "v1-san-044",
+        "v1-san-045",
+        "v1-san-046",
+        "v1-san-048",
+        "v1-san-049",
+        "v1-san-050",
+        "v1-san-058",
+        "v1-san-059",
+        "v1-san-063",
+        "v1-san-064",
+        "v1-san-071",
+        "v1-san-072",
+        "v1-san-074",
+        "v1-san-075",
+        "v1-san-102",
+        "v1-san-103",
+        "v1-san-105",
+        "v1-san-116",
+        "v1-san-117",
+        "v1-san-118",
+        "v1-san-119",
+        "v1-san-120",
+        "v1-san-149",
+        "v1-san-150",
+        "v1-san-151",
+        "v1-san-152",
+        "v1-san-175",
+        "v1-san-176",
+        "v1-san-180",
+        "v1-san-181",
+        "v1-san-182",
+        "v1-san-183",
+        "v1-san-184",
+        "v1-san-199",
+        "v1-san-200",
+        "v1-san-201",
+        "v1-san-203",
+        "v1-san-221",
+        "v1-san-222",
+        "v1-san-223",
+        "v1-san-224",
+        "v1-san-234",
+        "v1-san-236",
+        "v1-san-248",
+        "v1-san-249",
+        "v1-spo-004",
+        "v1-spo-006",
+        "v1-spo-013",
+        "v1-spo-017",
+        "v1-spo-030",
+        "v1-spo-032",
+        "v1-spo-038",
+        "v1-spo-048",
+        "v1-spo-049",
+        "v1-spo-057",
+        "v1-spo-058",
+        "v1-spo-060",
+        "v1-spo-062",
+        "v1-spo-067",
+        "v1-spo-072",
+        "v1-spo-075",
+        "v1-spo-076",
+        "v1-spo-083",
+        "v1-spo-087",
+        "v1-spo-088",
+        "v1-spo-089",
+        "v1-spo-091",
+        "v1-spo-093",
+        "v1-spo-094",
+        "v1-spo-099",
+        "v1-spo-100",
+        "v1-spo-106",
+        "v1-spo-110",
+        "v1-spo-114",
+        "v1-spo-119",
+        "v1-spo-120",
+        "v1-spo-124",
+        "v1-spo-127",
+        "v1-spo-129",
+        "v1-spo-134",
+        "v1-spo-135",
+        "v1-spo-136",
+        "v1-spo-142",
+        "v1-spo-146",
+        "v1-spo-150",
+        "v1-spo-151",
+        "v1-spo-158",
+        "v1-spo-159",
+        "v1-spo-166",
+        "v1-spo-167",
+        "v1-spo-168",
+        "v1-spo-171",
+        "v1-spo-173",
+        "v1-spo-179",
+        "v1-spo-184",
+        "v1-spo-187",
+        "v1-spo-189",
+        "v1-spo-195",
+        "v1-spo-198",
+        "v1-spo-200",
+        "v1-spo-201",
+        "v1-spo-204",
+        "v1-spo-205",
+        "v1-spo-207",
+        "v1-spo-209",
+        "v1-spo-210",
+        "v1-spo-211",
+        "v1-spo-215",
+        "v1-spo-221",
+        "v1-spo-225",
+        "v1-spo-226",
+        "v1-spo-231",
+        "v1-spo-232",
+        "v1-spo-244",
+        "v1-spo-245",
+        "v1-spo-247",
+        "v1-spo-248",
+        "v1-spo-250"
+      ],
+      "per_case": {
+        "v1-csm-001": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "critical"
+        },
+        "v1-csm-002": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "high"
+        },
+        "v1-csm-004": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "critical"
+        },
+        "v1-csm-006": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-csm-010": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "critical"
+        },
+        "v1-csm-012": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-csm-016": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "high"
+        },
+        "v1-csm-018": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "critical"
+        },
+        "v1-csm-019": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-csm-021": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "critical"
+        },
+        "v1-csm-023": {
+          "direction": "downgrade",
+          "from": "high",
+          "to": "medium"
+        },
+        "v1-csm-024": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "high"
+        },
+        "v1-csm-025": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "critical"
+        },
+        "v1-csm-029": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "high"
+        },
+        "v1-csm-032": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-csm-038": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "critical"
+        },
+        "v1-csm-041": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "critical"
+        },
+        "v1-csm-044": {
+          "direction": "downgrade",
+          "from": "high",
+          "to": "medium"
+        },
+        "v1-csm-049": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "critical"
+        },
+        "v1-csm-052": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-csm-053": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "high"
+        },
+        "v1-csm-055": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "critical"
+        },
+        "v1-csm-058": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "high"
+        },
+        "v1-csm-061": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-csm-062": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "critical"
+        },
+        "v1-csm-063": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "high"
+        },
+        "v1-csm-068": {
+          "direction": "downgrade",
+          "from": "high",
+          "to": "medium"
+        },
+        "v1-csm-070": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "high"
+        },
+        "v1-csm-071": {
+          "direction": "downgrade",
+          "from": "high",
+          "to": "medium"
+        },
+        "v1-csm-072": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-csm-078": {
+          "direction": "downgrade",
+          "from": "high",
+          "to": "medium"
+        },
+        "v1-csm-079": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-csm-080": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-csm-082": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-csm-083": {
+          "direction": "downgrade",
+          "from": "medium",
+          "to": "low"
+        },
+        "v1-csm-085": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "critical"
+        },
+        "v1-csm-088": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "high"
+        },
+        "v1-csm-091": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-csm-093": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-csm-094": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-csm-099": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "high"
+        },
+        "v1-csm-100": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-csm-101": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-csm-103": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-csm-105": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-csm-106": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "high"
+        },
+        "v1-csm-107": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-csm-109": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "high"
+        },
+        "v1-csm-111": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "high"
+        },
+        "v1-csm-113": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "critical"
+        },
+        "v1-csm-118": {
+          "direction": "downgrade",
+          "from": "high",
+          "to": "medium"
+        },
+        "v1-csm-119": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "critical"
+        },
+        "v1-csm-120": {
+          "direction": "downgrade",
+          "from": "high",
+          "to": "medium"
+        },
+        "v1-csm-122": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "critical"
+        },
+        "v1-csm-123": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-csm-124": {
+          "direction": "downgrade",
+          "from": "high",
+          "to": "medium"
+        },
+        "v1-csm-135": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "high"
+        },
+        "v1-csm-137": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "critical"
+        },
+        "v1-csm-142": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "critical"
+        },
+        "v1-csm-143": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "high"
+        },
+        "v1-csm-144": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "high"
+        },
+        "v1-csm-145": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-csm-149": {
+          "direction": "downgrade",
+          "from": "high",
+          "to": "medium"
+        },
+        "v1-csm-151": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-csm-152": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "high"
+        },
+        "v1-csm-154": {
+          "direction": "downgrade",
+          "from": "high",
+          "to": "medium"
+        },
+        "v1-csm-156": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "critical"
+        },
+        "v1-csm-157": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "high"
+        },
+        "v1-csm-162": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "high"
+        },
+        "v1-csm-164": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "high"
+        },
+        "v1-csm-166": {
+          "direction": "downgrade",
+          "from": "critical",
+          "to": "medium"
+        },
+        "v1-csm-168": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "critical"
+        },
+        "v1-csm-169": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "high"
+        },
+        "v1-csm-170": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "critical"
+        },
+        "v1-csm-173": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-csm-176": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "high"
+        },
+        "v1-csm-181": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-csm-183": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-csm-184": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "critical"
+        },
+        "v1-csm-190": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "high"
+        },
+        "v1-csm-192": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-csm-195": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "critical"
+        },
+        "v1-csm-196": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-csm-197": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-csm-203": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-csm-204": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "critical"
+        },
+        "v1-csm-207": {
+          "direction": "downgrade",
+          "from": "high",
+          "to": "medium"
+        },
+        "v1-csm-208": {
+          "direction": "downgrade",
+          "from": "high",
+          "to": "medium"
+        },
+        "v1-csm-210": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-csm-211": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-csm-212": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-csm-213": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-csm-215": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-csm-216": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "critical"
+        },
+        "v1-csm-217": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-csm-221": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "critical"
+        },
+        "v1-csm-224": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "high"
+        },
+        "v1-csm-226": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "critical"
+        },
+        "v1-csm-227": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-csm-233": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "critical"
+        },
+        "v1-csm-238": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-csm-245": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "critical"
+        },
+        "v1-csm-247": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "high"
+        },
+        "v1-csp-001": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "high"
+        },
+        "v1-csp-004": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "high"
+        },
+        "v1-csp-006": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-csp-007": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-csp-008": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-csp-009": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "high"
+        },
+        "v1-csp-014": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-csp-016": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "high"
+        },
+        "v1-csp-017": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "high"
+        },
+        "v1-csp-023": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "high"
+        },
+        "v1-csp-024": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-csp-028": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-csp-030": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "critical"
+        },
+        "v1-csp-034": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-csp-035": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "high"
+        },
+        "v1-csp-038": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-csp-039": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-csp-044": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "high"
+        },
+        "v1-csp-046": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-csp-048": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-csp-049": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-csp-053": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-csp-061": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-csp-062": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-csp-063": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-csp-068": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-csp-071": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-csp-077": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-csp-079": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "high"
+        },
+        "v1-csp-083": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-csp-084": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-csp-086": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "high"
+        },
+        "v1-csp-087": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-csp-091": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-csp-092": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-csp-093": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-csp-094": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-csp-095": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-csp-096": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "high"
+        },
+        "v1-csp-098": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "high"
+        },
+        "v1-csp-103": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-csp-104": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "high"
+        },
+        "v1-csp-105": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "critical"
+        },
+        "v1-csp-108": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-csp-111": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "high"
+        },
+        "v1-csp-112": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-csp-114": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-csp-118": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-csp-119": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "high"
+        },
+        "v1-csp-120": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-csp-122": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "high"
+        },
+        "v1-csp-123": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "critical"
+        },
+        "v1-csp-125": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-csp-126": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "high"
+        },
+        "v1-csp-127": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-csp-130": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-csp-135": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "critical"
+        },
+        "v1-csp-143": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "high"
+        },
+        "v1-csp-147": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "high"
+        },
+        "v1-csp-149": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-csp-151": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-csp-154": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-csp-157": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-csp-163": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "critical"
+        },
+        "v1-csp-175": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "critical"
+        },
+        "v1-csp-177": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "high"
+        },
+        "v1-csp-180": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "high"
+        },
+        "v1-csp-186": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-csp-187": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "high"
+        },
+        "v1-csp-191": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-csp-198": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "high"
+        },
+        "v1-csp-199": {
+          "direction": "downgrade",
+          "from": "medium",
+          "to": "low"
+        },
+        "v1-csp-200": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-csp-201": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-csp-202": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-csp-208": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-csp-210": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-csp-212": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-csp-215": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "critical"
+        },
+        "v1-csp-221": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "high"
+        },
+        "v1-csp-222": {
+          "direction": "downgrade",
+          "from": "medium",
+          "to": "low"
+        },
+        "v1-csp-228": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "critical"
+        },
+        "v1-csp-229": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "critical"
+        },
+        "v1-csp-230": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-csp-232": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "high"
+        },
+        "v1-csp-234": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-csp-240": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "high"
+        },
+        "v1-csp-243": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-csp-245": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-csp-247": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-csp-248": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-csp-249": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-dfl-002": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-dfl-003": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "critical"
+        },
+        "v1-dfl-004": {
+          "direction": "downgrade",
+          "from": "high",
+          "to": "medium"
+        },
+        "v1-dfl-005": {
+          "direction": "downgrade",
+          "from": "high",
+          "to": "medium"
+        },
+        "v1-dfl-009": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "high"
+        },
+        "v1-dfl-012": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-dfl-014": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-dfl-015": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "high"
+        },
+        "v1-dfl-023": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-dfl-025": {
+          "direction": "downgrade",
+          "from": "high",
+          "to": "medium"
+        },
+        "v1-dfl-026": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "high"
+        },
+        "v1-dfl-027": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-dfl-029": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "high"
+        },
+        "v1-dfl-030": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "high"
+        },
+        "v1-dfl-031": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-dfl-032": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-dfl-036": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "high"
+        },
+        "v1-dfl-037": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-dfl-038": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-dfl-040": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "high"
+        },
+        "v1-dfl-041": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "high"
+        },
+        "v1-dfl-043": {
+          "direction": "downgrade",
+          "from": "high",
+          "to": "medium"
+        },
+        "v1-dfl-044": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-dfl-047": {
+          "direction": "downgrade",
+          "from": "high",
+          "to": "medium"
+        },
+        "v1-dfl-048": {
+          "direction": "downgrade",
+          "from": "high",
+          "to": "medium"
+        },
+        "v1-dfl-049": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-dfl-052": {
+          "direction": "downgrade",
+          "from": "high",
+          "to": "medium"
+        },
+        "v1-dfl-056": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-dfl-058": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-dfl-061": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-dfl-064": {
+          "direction": "downgrade",
+          "from": "high",
+          "to": "medium"
+        },
+        "v1-dfl-078": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "high"
+        },
+        "v1-dfl-079": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "high"
+        },
+        "v1-dfl-080": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-dfl-081": {
+          "direction": "downgrade",
+          "from": "high",
+          "to": "medium"
+        },
+        "v1-dfl-082": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-dfl-086": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "high"
+        },
+        "v1-dfl-087": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-dfl-094": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-dfl-098": {
+          "direction": "downgrade",
+          "from": "high",
+          "to": "medium"
+        },
+        "v1-dfl-099": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "high"
+        },
+        "v1-dfl-102": {
+          "direction": "downgrade",
+          "from": "high",
+          "to": "medium"
+        },
+        "v1-dfl-103": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "high"
+        },
+        "v1-dfl-107": {
+          "direction": "downgrade",
+          "from": "high",
+          "to": "medium"
+        },
+        "v1-dfl-108": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "high"
+        },
+        "v1-dfl-109": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-dfl-111": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "high"
+        },
+        "v1-dfl-112": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "high"
+        },
+        "v1-dfl-113": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-dfl-114": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "high"
+        },
+        "v1-dfl-115": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "critical"
+        },
+        "v1-dfl-116": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "high"
+        },
+        "v1-dfl-117": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "high"
+        },
+        "v1-dfl-120": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "high"
+        },
+        "v1-dfl-124": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "critical"
+        },
+        "v1-dfl-127": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "high"
+        },
+        "v1-dfl-131": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-dfl-132": {
+          "direction": "downgrade",
+          "from": "high",
+          "to": "medium"
+        },
+        "v1-dfl-136": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-dfl-138": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-dfl-141": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "high"
+        },
+        "v1-dfl-145": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-dfl-148": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "critical"
+        },
+        "v1-dfl-150": {
+          "direction": "downgrade",
+          "from": "high",
+          "to": "medium"
+        },
+        "v1-dfl-151": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "high"
+        },
+        "v1-dfl-163": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-dfl-164": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-dfl-165": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-dfl-166": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-dfl-167": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-dfl-170": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "high"
+        },
+        "v1-dfl-171": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "high"
+        },
+        "v1-dfl-172": {
+          "direction": "downgrade",
+          "from": "critical",
+          "to": "high"
+        },
+        "v1-dfl-173": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "high"
+        },
+        "v1-dfl-181": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "high"
+        },
+        "v1-dfl-182": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-dfl-188": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-dfl-197": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-dfl-202": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-dfl-203": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "high"
+        },
+        "v1-dfl-205": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-dfl-206": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "critical"
+        },
+        "v1-dfl-207": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-dfl-209": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "critical"
+        },
+        "v1-dfl-210": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-dfl-215": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-dfl-217": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-dfl-219": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-dfl-220": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "high"
+        },
+        "v1-dfl-221": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "critical"
+        },
+        "v1-dfl-222": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "high"
+        },
+        "v1-dfl-223": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "critical"
+        },
+        "v1-dfl-224": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-dfl-225": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "critical"
+        },
+        "v1-dfl-228": {
+          "direction": "downgrade",
+          "from": "high",
+          "to": "medium"
+        },
+        "v1-dfl-234": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-dfl-240": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "high"
+        },
+        "v1-dfl-241": {
+          "direction": "downgrade",
+          "from": "critical",
+          "to": "high"
+        },
+        "v1-dfl-242": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "high"
+        },
+        "v1-dfl-243": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-dfl-245": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-dfl-246": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-ind-003": {
+          "direction": "downgrade",
+          "from": "medium",
+          "to": "low"
+        },
+        "v1-ind-004": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "critical"
+        },
+        "v1-ind-011": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-ind-013": {
+          "direction": "downgrade",
+          "from": "high",
+          "to": "medium"
+        },
+        "v1-ind-014": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "critical"
+        },
+        "v1-ind-015": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-ind-019": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "high"
+        },
+        "v1-ind-023": {
+          "direction": "downgrade",
+          "from": "medium",
+          "to": "low"
+        },
+        "v1-ind-026": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-ind-027": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-ind-030": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-ind-031": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-ind-035": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "high"
+        },
+        "v1-ind-041": {
+          "direction": "downgrade",
+          "from": "high",
+          "to": "medium"
+        },
+        "v1-ind-043": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "high"
+        },
+        "v1-ind-045": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "high"
+        },
+        "v1-ind-046": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-ind-053": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-ind-057": {
+          "direction": "downgrade",
+          "from": "high",
+          "to": "low"
+        },
+        "v1-ind-058": {
+          "direction": "downgrade",
+          "from": "high",
+          "to": "medium"
+        },
+        "v1-ind-059": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "high"
+        },
+        "v1-ind-060": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "high"
+        },
+        "v1-ind-065": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "critical"
+        },
+        "v1-ind-066": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-ind-076": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-ind-082": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-ind-084": {
+          "direction": "downgrade",
+          "from": "high",
+          "to": "medium"
+        },
+        "v1-ind-085": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-ind-087": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-ind-094": {
+          "direction": "downgrade",
+          "from": "high",
+          "to": "low"
+        },
+        "v1-ind-095": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "high"
+        },
+        "v1-ind-099": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "critical"
+        },
+        "v1-ind-100": {
+          "direction": "downgrade",
+          "from": "medium",
+          "to": "low"
+        },
+        "v1-ind-101": {
+          "direction": "downgrade",
+          "from": "high",
+          "to": "low"
+        },
+        "v1-ind-102": {
+          "direction": "downgrade",
+          "from": "high",
+          "to": "medium"
+        },
+        "v1-ind-103": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "critical"
+        },
+        "v1-ind-104": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "high"
+        },
+        "v1-ind-105": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-ind-108": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-ind-112": {
+          "direction": "downgrade",
+          "from": "critical",
+          "to": "low"
+        },
+        "v1-ind-114": {
+          "direction": "downgrade",
+          "from": "medium",
+          "to": "low"
+        },
+        "v1-ind-115": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "high"
+        },
+        "v1-ind-116": {
+          "direction": "downgrade",
+          "from": "high",
+          "to": "medium"
+        },
+        "v1-ind-117": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-ind-119": {
+          "direction": "downgrade",
+          "from": "medium",
+          "to": "low"
+        },
+        "v1-ind-120": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-ind-123": {
+          "direction": "downgrade",
+          "from": "high",
+          "to": "low"
+        },
+        "v1-ind-124": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-ind-125": {
+          "direction": "downgrade",
+          "from": "high",
+          "to": "low"
+        },
+        "v1-ind-132": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-ind-136": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-ind-138": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "critical"
+        },
+        "v1-ind-139": {
+          "direction": "downgrade",
+          "from": "medium",
+          "to": "low"
+        },
+        "v1-ind-142": {
+          "direction": "downgrade",
+          "from": "high",
+          "to": "medium"
+        },
+        "v1-ind-143": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-ind-145": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-ind-146": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "critical"
+        },
+        "v1-ind-150": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-ind-156": {
+          "direction": "downgrade",
+          "from": "high",
+          "to": "medium"
+        },
+        "v1-ind-158": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-ind-159": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "critical"
+        },
+        "v1-ind-162": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-ind-166": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "high"
+        },
+        "v1-ind-171": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-ind-174": {
+          "direction": "downgrade",
+          "from": "medium",
+          "to": "low"
+        },
+        "v1-ind-175": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-ind-177": {
+          "direction": "downgrade",
+          "from": "medium",
+          "to": "low"
+        },
+        "v1-ind-182": {
+          "direction": "downgrade",
+          "from": "high",
+          "to": "low"
+        },
+        "v1-ind-184": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "critical"
+        },
+        "v1-ind-187": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-ind-188": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "high"
+        },
+        "v1-ind-191": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-ind-192": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-ind-194": {
+          "direction": "downgrade",
+          "from": "high",
+          "to": "medium"
+        },
+        "v1-ind-195": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "critical"
+        },
+        "v1-ind-196": {
+          "direction": "downgrade",
+          "from": "high",
+          "to": "medium"
+        },
+        "v1-ind-197": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-ind-200": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-ind-201": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "critical"
+        },
+        "v1-ind-202": {
+          "direction": "downgrade",
+          "from": "high",
+          "to": "low"
+        },
+        "v1-ind-203": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-ind-205": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "critical"
+        },
+        "v1-ind-208": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-ind-209": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "critical"
+        },
+        "v1-ind-211": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "high"
+        },
+        "v1-ind-215": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-ind-216": {
+          "direction": "downgrade",
+          "from": "medium",
+          "to": "low"
+        },
+        "v1-ind-217": {
+          "direction": "downgrade",
+          "from": "high",
+          "to": "low"
+        },
+        "v1-ind-218": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-ind-219": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-ind-224": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-ind-228": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-ind-236": {
+          "direction": "downgrade",
+          "from": "medium",
+          "to": "low"
+        },
+        "v1-ind-238": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-ind-240": {
+          "direction": "downgrade",
+          "from": "critical",
+          "to": "low"
+        },
+        "v1-ind-245": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-ind-247": {
+          "direction": "downgrade",
+          "from": "medium",
+          "to": "low"
+        },
+        "v1-ind-249": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-ind-250": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "critical"
+        },
+        "v1-lrd-005": {
+          "direction": "downgrade",
+          "from": "high",
+          "to": "medium"
+        },
+        "v1-lrd-008": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "critical"
+        },
+        "v1-lrd-010": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-lrd-012": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "critical"
+        },
+        "v1-lrd-015": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-lrd-018": {
+          "direction": "downgrade",
+          "from": "high",
+          "to": "medium"
+        },
+        "v1-lrd-023": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "high"
+        },
+        "v1-lrd-026": {
+          "direction": "downgrade",
+          "from": "high",
+          "to": "medium"
+        },
+        "v1-lrd-027": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "high"
+        },
+        "v1-lrd-034": {
+          "direction": "downgrade",
+          "from": "high",
+          "to": "medium"
+        },
+        "v1-lrd-035": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-lrd-037": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-lrd-050": {
+          "direction": "downgrade",
+          "from": "high",
+          "to": "medium"
+        },
+        "v1-lrd-052": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "critical"
+        },
+        "v1-lrd-053": {
+          "direction": "downgrade",
+          "from": "high",
+          "to": "medium"
+        },
+        "v1-lrd-056": {
+          "direction": "downgrade",
+          "from": "high",
+          "to": "medium"
+        },
+        "v1-lrd-058": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-lrd-063": {
+          "direction": "downgrade",
+          "from": "high",
+          "to": "medium"
+        },
+        "v1-lrd-068": {
+          "direction": "downgrade",
+          "from": "high",
+          "to": "medium"
+        },
+        "v1-lrd-069": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-lrd-071": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-lrd-075": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-lrd-077": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-lrd-082": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-lrd-083": {
+          "direction": "downgrade",
+          "from": "high",
+          "to": "medium"
+        },
+        "v1-lrd-084": {
+          "direction": "downgrade",
+          "from": "high",
+          "to": "medium"
+        },
+        "v1-lrd-085": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-lrd-087": {
+          "direction": "downgrade",
+          "from": "high",
+          "to": "medium"
+        },
+        "v1-lrd-088": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-lrd-092": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "critical"
+        },
+        "v1-lrd-097": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-lrd-098": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "high"
+        },
+        "v1-lrd-099": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "high"
+        },
+        "v1-lrd-101": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "critical"
+        },
+        "v1-lrd-104": {
+          "direction": "downgrade",
+          "from": "high",
+          "to": "medium"
+        },
+        "v1-lrd-105": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "critical"
+        },
+        "v1-lrd-112": {
+          "direction": "downgrade",
+          "from": "high",
+          "to": "medium"
+        },
+        "v1-lrd-114": {
+          "direction": "downgrade",
+          "from": "high",
+          "to": "medium"
+        },
+        "v1-lrd-117": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-lrd-118": {
+          "direction": "downgrade",
+          "from": "high",
+          "to": "medium"
+        },
+        "v1-lrd-120": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "high"
+        },
+        "v1-lrd-122": {
+          "direction": "downgrade",
+          "from": "high",
+          "to": "medium"
+        },
+        "v1-lrd-123": {
+          "direction": "downgrade",
+          "from": "high",
+          "to": "medium"
+        },
+        "v1-lrd-125": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-lrd-127": {
+          "direction": "downgrade",
+          "from": "high",
+          "to": "medium"
+        },
+        "v1-lrd-129": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "high"
+        },
+        "v1-lrd-130": {
+          "direction": "downgrade",
+          "from": "high",
+          "to": "medium"
+        },
+        "v1-lrd-131": {
+          "direction": "downgrade",
+          "from": "high",
+          "to": "medium"
+        },
+        "v1-lrd-134": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-lrd-137": {
+          "direction": "downgrade",
+          "from": "high",
+          "to": "medium"
+        },
+        "v1-lrd-138": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "critical"
+        },
+        "v1-lrd-139": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-lrd-144": {
+          "direction": "downgrade",
+          "from": "high",
+          "to": "medium"
+        },
+        "v1-lrd-148": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-lrd-150": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "high"
+        },
+        "v1-lrd-155": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "critical"
+        },
+        "v1-lrd-159": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "high"
+        },
+        "v1-lrd-162": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "high"
+        },
+        "v1-lrd-163": {
+          "direction": "downgrade",
+          "from": "high",
+          "to": "medium"
+        },
+        "v1-lrd-166": {
+          "direction": "downgrade",
+          "from": "medium",
+          "to": "low"
+        },
+        "v1-lrd-167": {
+          "direction": "downgrade",
+          "from": "high",
+          "to": "medium"
+        },
+        "v1-lrd-168": {
+          "direction": "downgrade",
+          "from": "medium",
+          "to": "low"
+        },
+        "v1-lrd-169": {
+          "direction": "downgrade",
+          "from": "high",
+          "to": "medium"
+        },
+        "v1-lrd-171": {
+          "direction": "downgrade",
+          "from": "high",
+          "to": "medium"
+        },
+        "v1-lrd-173": {
+          "direction": "downgrade",
+          "from": "high",
+          "to": "medium"
+        },
+        "v1-lrd-178": {
+          "direction": "downgrade",
+          "from": "high",
+          "to": "medium"
+        },
+        "v1-lrd-182": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-lrd-183": {
+          "direction": "downgrade",
+          "from": "high",
+          "to": "medium"
+        },
+        "v1-lrd-187": {
+          "direction": "downgrade",
+          "from": "high",
+          "to": "medium"
+        },
+        "v1-lrd-200": {
+          "direction": "downgrade",
+          "from": "high",
+          "to": "medium"
+        },
+        "v1-lrd-203": {
+          "direction": "downgrade",
+          "from": "high",
+          "to": "medium"
+        },
+        "v1-lrd-204": {
+          "direction": "downgrade",
+          "from": "high",
+          "to": "medium"
+        },
+        "v1-lrd-211": {
+          "direction": "downgrade",
+          "from": "high",
+          "to": "medium"
+        },
+        "v1-lrd-214": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-lrd-216": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-lrd-222": {
+          "direction": "downgrade",
+          "from": "medium",
+          "to": "low"
+        },
+        "v1-lrd-223": {
+          "direction": "downgrade",
+          "from": "critical",
+          "to": "medium"
+        },
+        "v1-lrd-228": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "high"
+        },
+        "v1-lrd-231": {
+          "direction": "downgrade",
+          "from": "high",
+          "to": "medium"
+        },
+        "v1-lrd-232": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "critical"
+        },
+        "v1-lrd-237": {
+          "direction": "downgrade",
+          "from": "high",
+          "to": "medium"
+        },
+        "v1-lrd-238": {
+          "direction": "downgrade",
+          "from": "critical",
+          "to": "medium"
+        },
+        "v1-lrd-242": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-lrd-244": {
+          "direction": "downgrade",
+          "from": "high",
+          "to": "medium"
+        },
+        "v1-lrd-247": {
+          "direction": "downgrade",
+          "from": "high",
+          "to": "medium"
+        },
+        "v1-lrd-250": {
+          "direction": "downgrade",
+          "from": "critical",
+          "to": "medium"
+        },
+        "v1-ngm-004": {
+          "direction": "downgrade",
+          "from": "high",
+          "to": "medium"
+        },
+        "v1-ngm-005": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-ngm-008": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "high"
+        },
+        "v1-ngm-010": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-ngm-012": {
+          "direction": "downgrade",
+          "from": "high",
+          "to": "medium"
+        },
+        "v1-ngm-014": {
+          "direction": "downgrade",
+          "from": "high",
+          "to": "medium"
+        },
+        "v1-ngm-015": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "high"
+        },
+        "v1-ngm-016": {
+          "direction": "downgrade",
+          "from": "high",
+          "to": "medium"
+        },
+        "v1-ngm-017": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-ngm-022": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "high"
+        },
+        "v1-ngm-025": {
+          "direction": "downgrade",
+          "from": "high",
+          "to": "medium"
+        },
+        "v1-ngm-033": {
+          "direction": "downgrade",
+          "from": "high",
+          "to": "medium"
+        },
+        "v1-ngm-035": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "high"
+        },
+        "v1-ngm-040": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "high"
+        },
+        "v1-ngm-043": {
+          "direction": "downgrade",
+          "from": "high",
+          "to": "medium"
+        },
+        "v1-ngm-049": {
+          "direction": "downgrade",
+          "from": "high",
+          "to": "medium"
+        },
+        "v1-ngm-050": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "high"
+        },
+        "v1-ngm-051": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-ngm-059": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "high"
+        },
+        "v1-ngm-062": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "high"
+        },
+        "v1-ngm-063": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "high"
+        },
+        "v1-ngm-064": {
+          "direction": "downgrade",
+          "from": "high",
+          "to": "medium"
+        },
+        "v1-ngm-065": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "critical"
+        },
+        "v1-ngm-069": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "high"
+        },
+        "v1-ngm-081": {
+          "direction": "downgrade",
+          "from": "high",
+          "to": "medium"
+        },
+        "v1-ngm-090": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "high"
+        },
+        "v1-ngm-094": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-ngm-098": {
+          "direction": "downgrade",
+          "from": "high",
+          "to": "medium"
+        },
+        "v1-ngm-100": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "high"
+        },
+        "v1-ngm-111": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "high"
+        },
+        "v1-ngm-114": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "high"
+        },
+        "v1-ngm-121": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-ngm-131": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-ngm-132": {
+          "direction": "downgrade",
+          "from": "high",
+          "to": "medium"
+        },
+        "v1-ngm-135": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "high"
+        },
+        "v1-ngm-136": {
+          "direction": "downgrade",
+          "from": "high",
+          "to": "medium"
+        },
+        "v1-ngm-137": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "high"
+        },
+        "v1-ngm-139": {
+          "direction": "downgrade",
+          "from": "high",
+          "to": "medium"
+        },
+        "v1-ngm-146": {
+          "direction": "downgrade",
+          "from": "high",
+          "to": "medium"
+        },
+        "v1-ngm-147": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "high"
+        },
+        "v1-ngm-148": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "high"
+        },
+        "v1-ngm-153": {
+          "direction": "downgrade",
+          "from": "high",
+          "to": "medium"
+        },
+        "v1-ngm-155": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-ngm-162": {
+          "direction": "downgrade",
+          "from": "high",
+          "to": "medium"
+        },
+        "v1-ngm-163": {
+          "direction": "downgrade",
+          "from": "high",
+          "to": "medium"
+        },
+        "v1-ngm-164": {
+          "direction": "downgrade",
+          "from": "high",
+          "to": "medium"
+        },
+        "v1-ngm-165": {
+          "direction": "downgrade",
+          "from": "high",
+          "to": "medium"
+        },
+        "v1-ngm-167": {
+          "direction": "downgrade",
+          "from": "high",
+          "to": "medium"
+        },
+        "v1-ngm-169": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-ngm-174": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "high"
+        },
+        "v1-ngm-178": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "high"
+        },
+        "v1-ngm-182": {
+          "direction": "downgrade",
+          "from": "high",
+          "to": "medium"
+        },
+        "v1-ngm-188": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-ngm-191": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-ngm-195": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "high"
+        },
+        "v1-ngm-196": {
+          "direction": "downgrade",
+          "from": "high",
+          "to": "medium"
+        },
+        "v1-ngm-197": {
+          "direction": "downgrade",
+          "from": "high",
+          "to": "medium"
+        },
+        "v1-ngm-199": {
+          "direction": "downgrade",
+          "from": "high",
+          "to": "medium"
+        },
+        "v1-ngm-201": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "high"
+        },
+        "v1-ngm-202": {
+          "direction": "downgrade",
+          "from": "high",
+          "to": "medium"
+        },
+        "v1-ngm-204": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "critical"
+        },
+        "v1-ngm-205": {
+          "direction": "downgrade",
+          "from": "high",
+          "to": "medium"
+        },
+        "v1-ngm-206": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "high"
+        },
+        "v1-ngm-207": {
+          "direction": "downgrade",
+          "from": "high",
+          "to": "medium"
+        },
+        "v1-ngm-209": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "high"
+        },
+        "v1-ngm-210": {
+          "direction": "downgrade",
+          "from": "high",
+          "to": "medium"
+        },
+        "v1-ngm-212": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "high"
+        },
+        "v1-ngm-215": {
+          "direction": "downgrade",
+          "from": "high",
+          "to": "medium"
+        },
+        "v1-ngm-217": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-ngm-219": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-ngm-228": {
+          "direction": "downgrade",
+          "from": "high",
+          "to": "medium"
+        },
+        "v1-ngm-230": {
+          "direction": "downgrade",
+          "from": "high",
+          "to": "medium"
+        },
+        "v1-ngm-234": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-ngm-237": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "high"
+        },
+        "v1-ngm-238": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "high"
+        },
+        "v1-ngm-244": {
+          "direction": "downgrade",
+          "from": "high",
+          "to": "medium"
+        },
+        "v1-ngm-245": {
+          "direction": "downgrade",
+          "from": "high",
+          "to": "medium"
+        },
+        "v1-ngm-246": {
+          "direction": "downgrade",
+          "from": "high",
+          "to": "medium"
+        },
+        "v1-odo-001": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "high"
+        },
+        "v1-odo-006": {
+          "direction": "downgrade",
+          "from": "high",
+          "to": "medium"
+        },
+        "v1-odo-008": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "high"
+        },
+        "v1-odo-009": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "critical"
+        },
+        "v1-odo-010": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-odo-015": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-odo-018": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "critical"
+        },
+        "v1-odo-020": {
+          "direction": "downgrade",
+          "from": "high",
+          "to": "medium"
+        },
+        "v1-odo-022": {
+          "direction": "downgrade",
+          "from": "high",
+          "to": "medium"
+        },
+        "v1-odo-031": {
+          "direction": "downgrade",
+          "from": "high",
+          "to": "medium"
+        },
+        "v1-odo-037": {
+          "direction": "downgrade",
+          "from": "high",
+          "to": "medium"
+        },
+        "v1-odo-039": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-odo-041": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "high"
+        },
+        "v1-odo-046": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-odo-047": {
+          "direction": "downgrade",
+          "from": "high",
+          "to": "medium"
+        },
+        "v1-odo-054": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-odo-062": {
+          "direction": "downgrade",
+          "from": "high",
+          "to": "medium"
+        },
+        "v1-odo-063": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-odo-066": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-odo-067": {
+          "direction": "downgrade",
+          "from": "high",
+          "to": "medium"
+        },
+        "v1-odo-068": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-odo-070": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-odo-081": {
+          "direction": "downgrade",
+          "from": "high",
+          "to": "medium"
+        },
+        "v1-odo-082": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-odo-087": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-odo-093": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "critical"
+        },
+        "v1-odo-095": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "high"
+        },
+        "v1-odo-099": {
+          "direction": "downgrade",
+          "from": "high",
+          "to": "medium"
+        },
+        "v1-odo-102": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-odo-103": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-odo-105": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "critical"
+        },
+        "v1-odo-111": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-odo-126": {
+          "direction": "downgrade",
+          "from": "high",
+          "to": "medium"
+        },
+        "v1-odo-130": {
+          "direction": "downgrade",
+          "from": "high",
+          "to": "medium"
+        },
+        "v1-odo-132": {
+          "direction": "downgrade",
+          "from": "high",
+          "to": "medium"
+        },
+        "v1-odo-133": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-odo-134": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-odo-137": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-odo-138": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-odo-139": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "high"
+        },
+        "v1-odo-141": {
+          "direction": "downgrade",
+          "from": "high",
+          "to": "medium"
+        },
+        "v1-odo-142": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "high"
+        },
+        "v1-odo-146": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "critical"
+        },
+        "v1-odo-148": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "high"
+        },
+        "v1-odo-155": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "critical"
+        },
+        "v1-odo-159": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-odo-160": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "critical"
+        },
+        "v1-odo-171": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "high"
+        },
+        "v1-odo-173": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-odo-179": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-odo-182": {
+          "direction": "downgrade",
+          "from": "high",
+          "to": "medium"
+        },
+        "v1-odo-184": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-odo-185": {
+          "direction": "downgrade",
+          "from": "high",
+          "to": "medium"
+        },
+        "v1-odo-188": {
+          "direction": "downgrade",
+          "from": "high",
+          "to": "medium"
+        },
+        "v1-odo-193": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-odo-196": {
+          "direction": "downgrade",
+          "from": "high",
+          "to": "medium"
+        },
+        "v1-odo-205": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-odo-206": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "critical"
+        },
+        "v1-odo-207": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "critical"
+        },
+        "v1-odo-221": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "high"
+        },
+        "v1-odo-224": {
+          "direction": "downgrade",
+          "from": "high",
+          "to": "medium"
+        },
+        "v1-odo-226": {
+          "direction": "downgrade",
+          "from": "high",
+          "to": "medium"
+        },
+        "v1-odo-229": {
+          "direction": "downgrade",
+          "from": "high",
+          "to": "medium"
+        },
+        "v1-odo-232": {
+          "direction": "downgrade",
+          "from": "high",
+          "to": "medium"
+        },
+        "v1-odo-233": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-odo-238": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-odo-240": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "critical"
+        },
+        "v1-odo-241": {
+          "direction": "downgrade",
+          "from": "high",
+          "to": "medium"
+        },
+        "v1-odo-246": {
+          "direction": "downgrade",
+          "from": "high",
+          "to": "medium"
+        },
+        "v1-ppa-002": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "high"
+        },
+        "v1-ppa-003": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "critical"
+        },
+        "v1-ppa-004": {
+          "direction": "downgrade",
+          "from": "critical",
+          "to": "medium"
+        },
+        "v1-ppa-007": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "critical"
+        },
+        "v1-ppa-011": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-ppa-015": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "high"
+        },
+        "v1-ppa-017": {
+          "direction": "downgrade",
+          "from": "critical",
+          "to": "medium"
+        },
+        "v1-ppa-018": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "high"
+        },
+        "v1-ppa-020": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "high"
+        },
+        "v1-ppa-021": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "critical"
+        },
+        "v1-ppa-025": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-ppa-030": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-ppa-031": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-ppa-037": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-ppa-040": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "high"
+        },
+        "v1-ppa-041": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-ppa-042": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-ppa-047": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-ppa-049": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-ppa-055": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "critical"
+        },
+        "v1-ppa-068": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-ppa-073": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-ppa-079": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-ppa-083": {
+          "direction": "downgrade",
+          "from": "high",
+          "to": "medium"
+        },
+        "v1-ppa-089": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "high"
+        },
+        "v1-ppa-093": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-ppa-095": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-ppa-098": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-ppa-101": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "high"
+        },
+        "v1-ppa-102": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-ppa-106": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-ppa-111": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-ppa-112": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "high"
+        },
+        "v1-ppa-115": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-ppa-117": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-ppa-120": {
+          "direction": "downgrade",
+          "from": "high",
+          "to": "medium"
+        },
+        "v1-ppa-122": {
+          "direction": "downgrade",
+          "from": "high",
+          "to": "medium"
+        },
+        "v1-ppa-123": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-ppa-125": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "critical"
+        },
+        "v1-ppa-126": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-ppa-129": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-ppa-137": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "high"
+        },
+        "v1-ppa-139": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-ppa-140": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-ppa-142": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-ppa-144": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "critical"
+        },
+        "v1-ppa-145": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "high"
+        },
+        "v1-ppa-146": {
+          "direction": "downgrade",
+          "from": "high",
+          "to": "medium"
+        },
+        "v1-ppa-150": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-ppa-151": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-ppa-156": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-ppa-166": {
+          "direction": "downgrade",
+          "from": "high",
+          "to": "medium"
+        },
+        "v1-ppa-167": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-ppa-168": {
+          "direction": "downgrade",
+          "from": "high",
+          "to": "medium"
+        },
+        "v1-ppa-169": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "high"
+        },
+        "v1-ppa-172": {
+          "direction": "downgrade",
+          "from": "high",
+          "to": "medium"
+        },
+        "v1-ppa-175": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "high"
+        },
+        "v1-ppa-176": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "high"
+        },
+        "v1-ppa-179": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "high"
+        },
+        "v1-ppa-186": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-ppa-189": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-ppa-191": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-ppa-193": {
+          "direction": "downgrade",
+          "from": "high",
+          "to": "medium"
+        },
+        "v1-ppa-194": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-ppa-195": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "high"
+        },
+        "v1-ppa-198": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-ppa-200": {
+          "direction": "downgrade",
+          "from": "high",
+          "to": "medium"
+        },
+        "v1-ppa-201": {
+          "direction": "downgrade",
+          "from": "high",
+          "to": "medium"
+        },
+        "v1-ppa-202": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "critical"
+        },
+        "v1-ppa-207": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "high"
+        },
+        "v1-ppa-208": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-ppa-209": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-ppa-218": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "high"
+        },
+        "v1-ppa-221": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-ppa-222": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-ppa-226": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "critical"
+        },
+        "v1-ppa-232": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-ppa-234": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "high"
+        },
+        "v1-ppa-237": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-ppa-238": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "high"
+        },
+        "v1-ppa-241": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "high"
+        },
+        "v1-ppa-243": {
+          "direction": "downgrade",
+          "from": "high",
+          "to": "medium"
+        },
+        "v1-ppa-244": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-ppa-246": {
+          "direction": "downgrade",
+          "from": "high",
+          "to": "medium"
+        },
+        "v1-ppa-247": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "high"
+        },
+        "v1-ppa-249": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "high"
+        },
+        "v1-san-001": {
+          "direction": "downgrade",
+          "from": "high",
+          "to": "medium"
+        },
+        "v1-san-002": {
+          "direction": "downgrade",
+          "from": "high",
+          "to": "medium"
+        },
+        "v1-san-003": {
+          "direction": "downgrade",
+          "from": "high",
+          "to": "medium"
+        },
+        "v1-san-004": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "high"
+        },
+        "v1-san-005": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "high"
+        },
+        "v1-san-007": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "high"
+        },
+        "v1-san-008": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "high"
+        },
+        "v1-san-014": {
+          "direction": "downgrade",
+          "from": "high",
+          "to": "medium"
+        },
+        "v1-san-030": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "high"
+        },
+        "v1-san-031": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "high"
+        },
+        "v1-san-032": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "high"
+        },
+        "v1-san-033": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "high"
+        },
+        "v1-san-034": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-san-037": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-san-038": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-san-044": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-san-045": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-san-046": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-san-048": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "high"
+        },
+        "v1-san-049": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "high"
+        },
+        "v1-san-050": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "high"
+        },
+        "v1-san-058": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "critical"
+        },
+        "v1-san-059": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "critical"
+        },
+        "v1-san-063": {
+          "direction": "downgrade",
+          "from": "high",
+          "to": "medium"
+        },
+        "v1-san-064": {
+          "direction": "downgrade",
+          "from": "high",
+          "to": "medium"
+        },
+        "v1-san-071": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "high"
+        },
+        "v1-san-072": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "high"
+        },
+        "v1-san-074": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "high"
+        },
+        "v1-san-075": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "high"
+        },
+        "v1-san-102": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "high"
+        },
+        "v1-san-103": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "high"
+        },
+        "v1-san-105": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "high"
+        },
+        "v1-san-116": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "critical"
+        },
+        "v1-san-117": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "critical"
+        },
+        "v1-san-118": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "critical"
+        },
+        "v1-san-119": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "critical"
+        },
+        "v1-san-120": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "critical"
+        },
+        "v1-san-149": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "high"
+        },
+        "v1-san-150": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "high"
+        },
+        "v1-san-151": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "high"
+        },
+        "v1-san-152": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "high"
+        },
+        "v1-san-175": {
+          "direction": "downgrade",
+          "from": "critical",
+          "to": "high"
+        },
+        "v1-san-176": {
+          "direction": "downgrade",
+          "from": "critical",
+          "to": "high"
+        },
+        "v1-san-180": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "high"
+        },
+        "v1-san-181": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "high"
+        },
+        "v1-san-182": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "high"
+        },
+        "v1-san-183": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "high"
+        },
+        "v1-san-184": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "high"
+        },
+        "v1-san-199": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "high"
+        },
+        "v1-san-200": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "high"
+        },
+        "v1-san-201": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "high"
+        },
+        "v1-san-203": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "high"
+        },
+        "v1-san-221": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "high"
+        },
+        "v1-san-222": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "high"
+        },
+        "v1-san-223": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "high"
+        },
+        "v1-san-224": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "high"
+        },
+        "v1-san-234": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-san-236": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-san-248": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-san-249": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-spo-004": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "high"
+        },
+        "v1-spo-006": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-spo-013": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "critical"
+        },
+        "v1-spo-017": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "critical"
+        },
+        "v1-spo-030": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "high"
+        },
+        "v1-spo-032": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "critical"
+        },
+        "v1-spo-038": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-spo-048": {
+          "direction": "downgrade",
+          "from": "high",
+          "to": "medium"
+        },
+        "v1-spo-049": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-spo-057": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-spo-058": {
+          "direction": "downgrade",
+          "from": "high",
+          "to": "medium"
+        },
+        "v1-spo-060": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "high"
+        },
+        "v1-spo-062": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-spo-067": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-spo-072": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "critical"
+        },
+        "v1-spo-075": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "critical"
+        },
+        "v1-spo-076": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-spo-083": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-spo-087": {
+          "direction": "downgrade",
+          "from": "high",
+          "to": "medium"
+        },
+        "v1-spo-088": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-spo-089": {
+          "direction": "downgrade",
+          "from": "high",
+          "to": "medium"
+        },
+        "v1-spo-091": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-spo-093": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-spo-094": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-spo-099": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-spo-100": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "critical"
+        },
+        "v1-spo-106": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-spo-110": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-spo-114": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-spo-119": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "critical"
+        },
+        "v1-spo-120": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-spo-124": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-spo-127": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-spo-129": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-spo-134": {
+          "direction": "downgrade",
+          "from": "high",
+          "to": "medium"
+        },
+        "v1-spo-135": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-spo-136": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-spo-142": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-spo-146": {
+          "direction": "downgrade",
+          "from": "high",
+          "to": "medium"
+        },
+        "v1-spo-150": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-spo-151": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-spo-158": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-spo-159": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-spo-166": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-spo-167": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-spo-168": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-spo-171": {
+          "direction": "downgrade",
+          "from": "high",
+          "to": "medium"
+        },
+        "v1-spo-173": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-spo-179": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-spo-184": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-spo-187": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "critical"
+        },
+        "v1-spo-189": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-spo-195": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-spo-198": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "critical"
+        },
+        "v1-spo-200": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-spo-201": {
+          "direction": "downgrade",
+          "from": "high",
+          "to": "medium"
+        },
+        "v1-spo-204": {
+          "direction": "downgrade",
+          "from": "critical",
+          "to": "high"
+        },
+        "v1-spo-205": {
+          "direction": "upgrade",
+          "from": "medium",
+          "to": "high"
+        },
+        "v1-spo-207": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-spo-209": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-spo-210": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-spo-211": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-spo-215": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-spo-221": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-spo-225": {
+          "direction": "downgrade",
+          "from": "high",
+          "to": "medium"
+        },
+        "v1-spo-226": {
+          "direction": "downgrade",
+          "from": "high",
+          "to": "medium"
+        },
+        "v1-spo-231": {
+          "direction": "downgrade",
+          "from": "high",
+          "to": "medium"
+        },
+        "v1-spo-232": {
+          "direction": "downgrade",
+          "from": "high",
+          "to": "medium"
+        },
+        "v1-spo-244": {
+          "direction": "downgrade",
+          "from": "high",
+          "to": "medium"
+        },
+        "v1-spo-245": {
+          "direction": "downgrade",
+          "from": "critical",
+          "to": "high"
+        },
+        "v1-spo-247": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        },
+        "v1-spo-248": {
+          "direction": "downgrade",
+          "from": "high",
+          "to": "medium"
+        },
+        "v1-spo-250": {
+          "direction": "upgrade",
+          "from": "high",
+          "to": "critical"
+        }
+      },
+      "rationale": "S-1 Rule 1 (Sweep A): full 1,803-case re-grade found 47.3% severity defect rate. Severity re-grades do not change prompts, options, or correct answers; recorded as annotate entries. Authority: s1/sweep_a_severity_corrections.json."
+    },
+    {
+      "type": "fix",
+      "dataset_version": "1.4.0",
+      "date": "2026-10-01",
+      "description": "S-1 Sweep A: 25 class-4 presentational fixes (bare-integer scale language).",
+      "case_ids": [
+        "v1-csm-144",
+        "v1-csp-195",
+        "v1-dfl-042",
+        "v1-dfl-121",
+        "v1-dfl-147",
+        "v1-dfl-234",
+        "v1-lrd-106",
+        "v1-lrd-111",
+        "v1-ngm-114",
+        "v1-odo-201",
+        "v1-ppa-004",
+        "v1-ppa-057",
+        "v1-ppa-075",
+        "v1-ppa-082",
+        "v1-ppa-099",
+        "v1-ppa-120",
+        "v1-ppa-122",
+        "v1-ppa-151",
+        "v1-ppa-166",
+        "v1-ppa-175",
+        "v1-ppa-177",
+        "v1-ppa-193",
+        "v1-ppa-208",
+        "v1-ppa-234",
+        "v1-ppa-244"
+      ],
+      "diff_summary": "Bare-integer thresholds/scores on 0-1 rubrics -> 0.x equivalents (e.g. '70 or better' -> '0.70 or better', 'risk score 68' -> 'risk score 0.68'). Presentational only; gold values unchanged.",
+      "rationale": "S-1 Rule 2b (Sweep A): class-4 corpus-wide enumeration found 25 cases with bare-integer scale language on 0-1 rubrics. Presentational fixes only; gold values unchanged. Authority: s1/class4_enumeration.json."
+    },
+    {
+      "type": "retire",
+      "dataset_version": "1.4.0",
+      "date": "2026-10-01",
+      "description": "S-1 Sweep A: retire 5 defective cases (D-36 defect classes 1 and 6).",
+      "case_ids": [
+        "v1-ngm-107",
+        "v1-ppa-024",
+        "v1-ppa-132",
+        "v1-ppa-141",
+        "v1-ppa-230"
+      ],
+      "per_case": {
+        "v1-ngm-107": {
+          "defect_class": 1,
+          "summary": "The attacked target 'waive-cosigner' is not derivable as a mishandling outcome. The attacked facts use double negation ('It is false that the second trade reference was not provided') which LITERALLY ",
+          "new_id": "v1-ngm-251"
+        },
+        "v1-ppa-024": {
+          "defect_class": 1,
+          "summary": "",
+          "new_id": "v1-ppa-252"
+        },
+        "v1-ppa-132": {
+          "defect_class": 1,
+          "summary": "",
+          "new_id": "v1-ppa-253"
+        },
+        "v1-ppa-141": {
+          "defect_class": 1,
+          "summary": "",
+          "new_id": "v1-ppa-254"
+        },
+        "v1-ppa-230": {
+          "defect_class": 1,
+          "summary": "",
+          "new_id": "v1-ppa-255"
+        }
+      },
+      "replacements": {
+        "v1-ngm-107": "v1-ngm-251",
+        "v1-ppa-024": "v1-ppa-252",
+        "v1-ppa-132": "v1-ppa-253",
+        "v1-ppa-141": "v1-ppa-254",
+        "v1-ppa-230": "v1-ppa-255"
+      },
+      "rationale": "S-1 Rule 3 (Sweep A): 5 class-1/6 defects confirmed. Retired IDs never reused. Authority: s1/adjudicated_class16_sweepA.json."
+    },
+    {
+      "type": "add",
+      "dataset_version": "1.4.0",
+      "date": "2026-10-01",
+      "description": "S-1 Sweep A: add 5 replacement cases for retired class-1/6 defects.",
+      "case_ids": [
+        "v1-ngm-251",
+        "v1-ppa-252",
+        "v1-ppa-253",
+        "v1-ppa-254",
+        "v1-ppa-255"
+      ],
+      "per_case": {
+        "v1-ngm-251": {
+          "replaces": "v1-ngm-107"
+        },
+        "v1-ppa-252": {
+          "replaces": "v1-ppa-024"
+        },
+        "v1-ppa-253": {
+          "replaces": "v1-ppa-132"
+        },
+        "v1-ppa-254": {
+          "replaces": "v1-ppa-141"
+        },
+        "v1-ppa-255": {
+          "replaces": "v1-ppa-230"
+        }
+      },
+      "rationale": "S-1 Rule 3 (Sweep A): replacements for 5 retired class-1/6 cases. New IDs are max+1 per prefix; retired numbers never reused. Authority: s1/replacement_cases.json."
+    },
     {
       "case_ids": [
         "v1-csm-022",
