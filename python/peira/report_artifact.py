@@ -131,6 +131,7 @@ class ReportArtifact:
         "artifact_kind",
         "report_schema_version",
         "peira_version",
+        "generated_utc",
         "source",
         "report_params",
         "metrics",

@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -35,15 +36,22 @@ from peira.repro import (  # noqa: E402
 
 
 def _peira_cmd() -> list[str]:
-    binary = shutil.which("peira")
-    if binary:
-        return [binary]
-    return [sys.executable, "-m", "peira.cli"]
+    # Always drive the checkout's own code: a `peira` console script
+    # on PATH may resolve to another worktree's install. PYTHONPATH
+    # puts this repo's package first for the child process.
+    env = dict(os.environ)
+    env["PYTHONPATH"] = (
+        str(REPO_ROOT / "python")
+        + os.pathsep
+        + env.get("PYTHONPATH", "")
+    )
+    return ([sys.executable, "-m", "peira.cli"], env)
 
 
 def _run_suite(seed: int, suite: str, max_concurrency: int,
               out_dir: Path) -> Path:
-    cmd = _peira_cmd() + [
+    cmd, env = _peira_cmd()
+    cmd = cmd + [
         "run",
         "--adapter", "mock",
         "--suite", suite,
@@ -52,9 +60,12 @@ def _run_suite(seed: int, suite: str, max_concurrency: int,
         "--out", str(out_dir),
     ]
     proc = subprocess.run(
-        cmd, cwd=REPO_ROOT, capture_output=True, text=True, timeout=600
+        cmd, cwd=REPO_ROOT, capture_output=True, text=True,
+        timeout=600, env=env,
     )
-    if proc.returncode != 0:
+    # Exit 3 (EXIT_GATE_NOTE) is a completed run: the demo fixture is
+    # too small to be ranking-eligible, which is expected here.
+    if proc.returncode not in (0, 3):
         print(f"determinism check failed: rerun exited {proc.returncode}")
         print(proc.stdout[-2000:])
         print(proc.stderr[-2000:], file=sys.stderr)
