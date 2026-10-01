@@ -6,8 +6,9 @@ verification, not measurement. It answers whether the adapter
 authenticates, whether the pinned model id resolves, whether the
 provider honors the request shape the adapter sends, and whether
 decisions come back parseable and directionally sane. It does not
-produce numbers anyone may publish. The publication block (D-33) lifts
-only for adapters that pass.
+produce numbers anyone may publish. Per the D-33 policy recorded in
+`Adapters.md`, the publication block lifts only for adapters that
+pass.
 
 ## When verification is required
 
@@ -35,7 +36,9 @@ Every adapter under test needs these preconditions in place first.
 - `pip install "peira[openai]"` (all four current smoke adapters use
   the OpenAI-compatible path).
 - A cost-guard plan exists for the run (`costguard.py plan`), and the
-  paid-run authorization for the estimate is in hand.
+  paid-run authorization for the estimate is in hand. The cost-guard
+  is the operator's cost-control tooling in the agent environment. It
+  is not installed from this repo.
 
 Run one adapter at a time so spend attributes cleanly. The exact invocation per adapter follows.
 
@@ -108,14 +111,20 @@ An adapter passes when all of the following hold on its 40 calls.
 Stop the adapter immediately, without burning retries, when any of
 the following happen.
 
-- A 401 or 403 on any call. The key is wrong or unfunded. Fix the key,
-  do not retry the run.
+- A 401 or 403 on any call. Abort the adapter and record the
+  provider's error body before doing anything else. A 401 usually
+  means the key is wrong or unfunded. A 403 can also mean model access
+  or account policy. Fix the actual cause. Do not retry the run.
 - A 400 against the request shape on the first call. The wire shape is
   wrong. This needs a code fix, not more spend.
 - More than 3 consecutive 5xx responses or timeouts. The provider is
   having an incident. Try again later.
 - Projected spend for the adapter passes 5 times its estimate.
-  Something is looping. Stop everything and investigate.
+  Something is looping. The cost-guard snapshots cannot see vendor-key
+  spend, so the operator checks the vendor console after each adapter
+  and stops the remaining adapters when the threshold is hit. Where
+  the provider supports it, set a vendor-side budget cap before the
+  run as well.
 
 A failed adapter does not block the others. Passing adapters unblock.
 Failing adapters get repair lanes with their own estimates.
@@ -126,11 +135,13 @@ On a pass, append a live-verification note to the adapter's section in
 `Adapters.md`, following the Lakera precedent (date, endpoint, call
 count, wire shape observed, and the outcome against the pass criteria
 above). On a fail,
-record the failure mode and the repair needed. Then the D-33
-publication block lifts for the passing adapters only.
+record the failure mode and the repair needed. Per the D-33 policy in
+`Adapters.md`, the publication block lifts for the passing adapters
+only.
 
-The A6 smoke instance (2026-10-01) covers the four adapters above. The
-Lakera adapter was verified separately on 2026-09-30 and is not part of
-this smoke. HF gated-license acceptance for Prompt Guard 2 and
-ShieldGemma is a license click plus `huggingface-cli login`, not a paid
-call, and is tracked alongside this smoke.
+The A6 smoke instance is planned, not yet executed. It covers the four
+adapters above. The Lakera adapter was verified separately on
+2026-09-30 and is not part of this smoke. HF gated-license acceptance
+for Prompt Guard 2 and ShieldGemma is a license click plus
+`huggingface-cli login`, not a paid call, and is tracked alongside this
+smoke. Per-adapter outcomes get recorded here only after execution.
