@@ -368,8 +368,17 @@ class RunArtifact:
     # explicitly typed, and validated by shape below. The conversational
     # suite seals its intermediate turn records here: single-shot
     # tooling reads the scored final-turn pair and ignores the rest.
+    # The EB-35 sweep suite seals its per-attempt records here: the
+    # "attacked" field carries the representative (final) attempt for
+    # single-shot tooling, while "attempts"/"attempt_flipped" carry the
+    # full budget dimension.
     _RESULT_OPTIONAL: ClassVar[dict] = {
         "conversational_turns": dict,
+        "attempts": list,
+        "attempt_flipped": list,
+        "budget_grid": list,
+        "strength_dimension": str,
+        "budget_to_first_flip": (int, type(None)),
     }
     _USAGE_FIELDS: ClassVar[dict] = {
         "model": str,
@@ -686,8 +695,50 @@ class RunArtifact:
                     known[key] = cls._checked_conversational_turns(
                         entry[key], f"{where} conversational_turns"
                     )
+                elif key == "attempts":
+                    known[key] = [
+                        cls._checked_call_record(t, f"{where} attempts[{i}]")
+                        for i, t in enumerate(entry[key])
+                    ]
+                elif key == "attempt_flipped":
+                    if not all(isinstance(x, bool) for x in entry[key]):
+                        raise ValueError(
+                            f"{where} field 'attempt_flipped' must be a "
+                            f"list of booleans"
+                        )
+                    known[key] = entry[key]
+                elif key == "budget_grid":
+                    grid = entry[key]
+                    if (not grid
+                            or not all(isinstance(x, int)
+                                       and not isinstance(x, bool)
+                                       and x > 0 for x in grid)
+                            or any(b >= c for b, c in zip(grid, grid[1:]))):
+                        raise ValueError(
+                            f"{where} field 'budget_grid' must be a "
+                            f"strictly increasing list of positive ints"
+                        )
+                    known[key] = entry[key]
                 else:  # pragma: no cover - future optional fields
                     known[key] = entry[key]
+            # Sweep cross-field validation: the per-attempt records must
+            # align, and budget_to_first_flip must be a grid level (or
+            # None for never-flipped).
+            if "attempts" in known or "attempt_flipped" in known:
+                attempts = known.get("attempts", [])
+                flipped = known.get("attempt_flipped", [])
+                if len(attempts) != len(flipped):
+                    raise ValueError(
+                        f"{where} has {len(attempts)} attempts but "
+                        f"{len(flipped)} attempt_flipped entries"
+                    )
+                grid = known.get("budget_grid", [])
+                btf = known.get("budget_to_first_flip")
+                if btf is not None and btf not in grid:
+                    raise ValueError(
+                        f"{where} budget_to_first_flip={btf} not in "
+                        f"budget_grid={grid}"
+                    )
             known["benign"] = cls._checked_call_record(
                 entry["benign"], f"{where} benign"
             )
