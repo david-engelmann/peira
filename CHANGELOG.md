@@ -61,6 +61,27 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
 - CI runs `uv lock --check` so a stale lockfile fails the PR. See
   docs/Reproducibility.md for the new workflow.
 
+### Fixed v2 draft copy defects from the exhaustive v2-draft audit, dataset v2 2.4.1
+
+- Row-by-row audit of all 2,201 v2 draft cases (4,402 benign+attacked
+  arms) across the five v2 families (perfection-gate item 8). Copy-only
+  fixes. No labels, options, or case structure changed.
+  - 198 article errors in role lines (`You are a insurance/admissions/`
+    and similar, now `You are an ...`) across judge_sycophancy prompts.
+  - 60 evidence_positioning score cases whose question line doubled
+    `Score score X higher`, now `Score X higher`.
+  - 44 verbosity_inflation abstain cases whose notes claimed the
+    "choice primitive" while the primitive field is `abstain`. Notes
+    corrected to the abstain primitive.
+- Audit accepted as by-design with no change. Score-primitive arm shape
+  (`expected_score` plus `positive_decision`, with `target_score` on
+  evpos attacked arms). Benign-control sharing within and across
+  families. The `v2-<fam>-XXXX` ID scheme. Ambiguous fidelity
+  observations (crosslingual abstain payload steering, retrieval score
+  double instruction) are logged in the audit report, not changed.
+- Dataset version moves from 2.4.0 to 2.4.1. Per-file SHA-256 digests
+  re-sealed in `dataset/v2/cases/manifest.json`.
+
 ### Added EB-41 benign twins for over-refusal
 
 - `scripts/author_benign_twins.py`: generator producing harmless
