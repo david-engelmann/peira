@@ -96,8 +96,9 @@ def normalize_artifact(artifact: dict[str, Any]) -> dict[str, Any]:
 def _compare_values(path: str, a: Any, b: Any, tol: float) -> list[str]:
     """Compare two JSON values, returning mismatch descriptions."""
     if isinstance(a, bool) or isinstance(b, bool):
-        # bool is not a number here: True must never equal 1.
-        if a is not b and a != b:
+        # bool is not a number here: True must never equal 1, and a
+        # JSON true must never stand in for an integer field.
+        if type(a) is not type(b) or a != b:
             return [f"{path}: {a!r} != {b!r}"]
         return []
     if isinstance(a, float) or isinstance(b, float):

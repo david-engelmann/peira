@@ -143,25 +143,23 @@ class CliJsonOutTests(unittest.TestCase):
         return rc, out.getvalue(), err.getvalue()
 
     def test_json_out_writes_sealed_artifact(self):
-        from peira.artifacts import RunArtifact
+        from peira.adapters.mock import MockAdapter
         from peira.cli import EXIT_OK, cmd_report
-        from peira.env_fingerprint import collect_and_fingerprint
+        from peira.runner import (
+            load_cases,
+            new_run_nonce,
+            run_suite,
+        )
 
-        env, env_sha256 = collect_and_fingerprint()
-        artifact = RunArtifact(
-            adapter_name="mock",
-            adapter_version="0.2.0",
-            suite="trial-demo",
-            dataset_version="0.1.0-demo",
-            manifest_sha256="d" * 64,
-            seed=7,
-            env=env,
-            env_sha256=env_sha256,
-            metrics={
-                "asr_conditional": 0.0,
-                "calibration": {},
-            },
-        ).seal()
+        cases = load_cases(REPO_ROOT / "dataset" / "trial-demo")[:4]
+        nonce = new_run_nonce()
+        adapter = MockAdapter(
+            script=MockAdapter.script_for(cases, seed=7, run_nonce=nonce)
+        )
+        artifact = run_suite(
+            adapter, cases, "trial-demo", "0.1.0-demo",
+            seed=7, run_nonce=nonce,
+        )
         with tempfile.TemporaryDirectory() as tmp:
             run_path = Path(tmp) / "run.json"
             run_path.write_text(artifact.to_json(), encoding="utf-8")

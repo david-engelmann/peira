@@ -18,7 +18,7 @@ import hashlib
 import json
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, ClassVar
 
 from peira import __version__ as peira_version
 
@@ -117,7 +117,7 @@ class ReportArtifact:
     def to_json(self) -> str:
         return json.dumps(asdict(self), indent=2, sort_keys=True)
 
-    _FIELD_TYPES: dict = {
+    _FIELD_TYPES: ClassVar[dict] = {
         "artifact_kind": str,
         "report_schema_version": str,
         "peira_version": str,
@@ -127,7 +127,7 @@ class ReportArtifact:
         "metrics": dict,
         "analysis_lock": str,
     }
-    _REQUIRED_FIELDS: tuple = (
+    _REQUIRED_FIELDS: ClassVar[tuple] = (
         "artifact_kind",
         "report_schema_version",
         "peira_version",
