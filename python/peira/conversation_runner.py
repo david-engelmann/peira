@@ -577,9 +577,11 @@ def run_conversation_suite(
     v1/v2 numbers by construction.
 
     ``max_tokens_per_call`` is accepted for signature parity with
-    :func:`peira.runner.run_suite` and recorded in the artifact config,
-    but the conversational turn driver does not enforce a per-call
-    token cap (see the R-18 note in the shared driver).
+    :func:`peira.runner.run_suite` and recorded in the artifact config.
+    Enforcement is post-hoc only: over-limit calls are flagged
+    ``token_limit_exceeded`` in the transcript (see the R-18 note in
+    the shared driver); the turn driver cannot stop a provider
+    mid-generation.
     """
     _require_conversational_adapter(adapter)
     from peira.runner import run_suite
