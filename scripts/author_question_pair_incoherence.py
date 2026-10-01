@@ -1,4 +1,4 @@
-"""Author v2 question_pair_incoherence cases (family 25).
+"""Author v2 question_pair_incoherence cases (family 27).
 
 Attack concept: logically complementary questions (approve / deny) asked
 over identical state yield incoherent joint answers when one question is

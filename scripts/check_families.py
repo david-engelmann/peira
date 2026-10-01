@@ -9,7 +9,8 @@ carries the same list in prose. This check asserts:
   - no documented id is missing from the registry,
   - the (Tier 1) / (Tier 2) markers in the doc match the registry tiers
     (v1 families carry no marker),
-  - the numbering runs 1..N in order.
+  - the numbering is strictly increasing with no duplicates (gaps are
+    allowed: families may land out of order, e.g. 27 before 26).
 
 Usage:
     python3 scripts/check_families.py
@@ -114,7 +115,7 @@ EXPECTED_ENTRY_HASHES: dict[str, str] = {
     'retrieval_poisoning': '0e6f14816e91e29e',
     'evidence_positioning': 'a5542f6af7452fd5',
     'crosslingual_shift': '3959fd1abdb1fa20',
-    'question_pair_incoherence': '34d9e4dcde91e0f1',
+    'question_pair_incoherence': '2fb09703f2b5885c',
 }
 
 
@@ -127,12 +128,14 @@ def check() -> list[str]:
     documented = documented_families(taxonomy)
     doc_ids = [fam for _, fam, _ in documented]
 
-    # Numbering runs 1..N in order.
+    # Numbering is strictly increasing with no duplicates. Gaps are allowed:
+    # families may land out of order (e.g. 27 merging before 26), so the
+    # numbers are identifiers, not a dense sequence.
     numbers = [n for n, _, _ in documented]
-    if numbers != list(range(1, len(numbers) + 1)):
+    if numbers != sorted(numbers) or len(set(numbers)) != len(numbers):
         problems.append(
-            f"docs/Taxonomy.md: family numbering is not 1..{len(numbers)} "
-            f"in order (got {[n for n, _, _ in documented]})"
+            "docs/Taxonomy.md: family numbering is not strictly increasing "
+            f"with unique numbers (got {[n for n, _, _ in documented]})"
         )
 
     # No duplicates in the doc.

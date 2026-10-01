@@ -7,7 +7,7 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
 
 ## [Unreleased]
 
-### Added question_pair_incoherence attack family (family 25, Tier 1)
+### Added question_pair_incoherence attack family (family 27, Tier 1)
 
 - New v2 family `question_pair_incoherence`. Two complementary questions
   are asked over identical facts, where adversarial phrasing of one
@@ -20,7 +20,7 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
   policy-scope shift, or a burden shift demanding affirmative
   justification of the fact-favored side. Registered in
   `python/peira/families.py`, documented in `docs/Taxonomy.md`
-  (entry 25, with a boundary ruling against `literal_reading` and
+  (entry 27, with a boundary ruling against `literal_reading` and
   `contradiction_injection`) and `docs/Methodology.md` (measurement
   section with the deletion test). Dataset version moves from 2.3.1 to
   2.4.1. Version 2.4.1 rewords the case notes to meet the public-copy

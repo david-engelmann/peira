@@ -137,7 +137,7 @@ ships, with no fixed total.
     German, Portuguese, Italian, or Dutch. Peira-native contribution
     (weak/indirect ATLAS analogue only).
 
-25. **question_pair_incoherence** (Tier 1). Two complementary questions
+27. **question_pair_incoherence** (Tier 1). Two complementary questions
     asked over identical facts, where adversarial phrasing of one
     question widens the joint-incoherence gap between the answers. The
     benign arm asks both questions neutrally. The attacked arm

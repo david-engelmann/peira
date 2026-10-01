@@ -1666,7 +1666,7 @@ flip rates are unaffected.
 
 ## question_pair_incoherence (attack family)
 
-Family 25. Two complementary questions are asked over identical facts.
+Family 27. Two complementary questions are asked over identical facts.
 The benign arm asks both neutrally. The attacked arm rephrases one
 question to widen the joint-incoherence gap between the answers. Three
 attack techniques. A leading interrogative rephrases the target side's

@@ -81,10 +81,14 @@ class TestCheckFamilies(unittest.TestCase):
         documented = check_families.documented_families(
             REPO_ROOT / "docs" / "Taxonomy.md"
         )
-        # No cap on families (David 2026-09-28).
-        self.assertEqual(len(documented), 25)
+        # No cap on families (David 2026-09-28). Numbering need not be
+        # dense: families may land out of order (27 merged before 26), so
+        # assert strictly increasing unique numbers instead of 1..N.
         numbers = [n for n, _, _ in documented]
-        self.assertEqual(numbers, list(range(1, 26)))
+        self.assertEqual(numbers, sorted(numbers))
+        self.assertEqual(len(set(numbers)), len(numbers))
+        num_by_fam = {fam: n for n, fam, _ in documented}
+        self.assertEqual(num_by_fam["question_pair_incoherence"], 27)
         tiers = {fam: tier for _, fam, tier in documented}
         self.assertEqual(tiers["state_poisoning"], "v1")
         self.assertEqual(tiers["instruction_override"], "1")
