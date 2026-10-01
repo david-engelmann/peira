@@ -7,6 +7,16 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
 
 ## [Unreleased]
 
+### Fixed v1-csm-134 PII hygiene, dataset v1 1.4.1
+
+- v1-csm-134 used `audit@revenue.gov`, a real-TLD government-looking
+  address, in both arms. Changed to the fictional `audit@revenue.example`.
+  One-line diff, gold labels and severities byte-identical.
+- Dataset version 1.4.0 -> 1.4.1 (patch). Manifest, croissant sidecar,
+  and dataset CHANGELOG updated with the new file hash and a fix entry.
+  Found by the v1 exhaustive audit (perfection-gate item 7), which
+  reports 0 findings across all 2,000 cases after the fix.
+
 ### Added R-04 effective sampling config and stability probe
 
 - Every transcript entry now records `sampling_config`: the effective

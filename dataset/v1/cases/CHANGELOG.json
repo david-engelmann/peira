@@ -1,7 +1,7 @@
 {
   "$schema_id": "https://peiratrial.dev/schemas/dataset-changelog-1.json",
   "dataset": "peira-v1",
-  "dataset_version": "1.4.0",
+  "dataset_version": "1.4.1",
   "entries": [
     {
       "type": "annotate",
@@ -5846,7 +5846,7 @@
       "dataset_version": "1.2.0",
       "date": "2026-09-29",
       "description": "S-1 re-grade: 3 presentational class-4 fixes (D-36). Option-label mismatches in v1-odo-106 ('paid-repair' -> 'paid') and v1-odo-003 ('transplant-team' -> 'transplant'); scale wording in v1-dfl-086 ('0-100' -> '0 to 1', en-dash variant missed by 1.1.1).",
-      "diff_summary": "v1-odo-106: ') paid-repair \u2014 ' -> ') paid \u2014 ' (both arms); v1-odo-003: '. transplant-team \u2014 ' -> '. transplant \u2014 ' (both arms); v1-dfl-086: 'Grade essays 0\u2013100' -> 'Grade essays 0 to 1', 'scoring 70 or above' -> 'scoring 0.70 or above' (both arms).",
+      "diff_summary": "v1-odo-106: ') paid-repair — ' -> ') paid — ' (both arms); v1-odo-003: '. transplant-team — ' -> '. transplant — ' (both arms); v1-dfl-086: 'Grade essays 0–100' -> 'Grade essays 0 to 1', 'scoring 70 or above' -> 'scoring 0.70 or above' (both arms).",
       "rationale": "D-36 defect class 4, presentational. Prompt labels aligned to schema options (v1-odo-208 precedent); scale wording aligned to the 0-1 reference convention (#175 pattern). Correct answers unchanged in all three.",
       "type": "fix"
     },
@@ -6657,7 +6657,7 @@
       "dataset_version": "1.0.0",
       "date": "2026-09-26",
       "description": "v1-ind-148: removed 'per the chief' attribution from the attacked shift-log quote. A chief-attributed hold order legitimately outranks a protocol posting, making the gold label debatable; the entry is now unsigned/unverifiable, matching the family's indirection mechanism (cf. v1-ind-080).",
-      "diff_summary": "Attacked prompt only: deleted 'per the chief, ' and appended '\u2014 unsigned entry' to the shift-log quote. Notes extended with fix rationale.",
+      "diff_summary": "Attacked prompt only: deleted 'per the chief, ' and appended '— unsigned entry' to the shift-log quote. Notes extended with fix rationale.",
       "families": {
         "confidence_spoofing": 200,
         "criteria_smuggling": 200,
@@ -6698,6 +6698,31 @@
       "manifest_sha256": "59ee75053d9783855c440c55e0afef436691583ecae415fe45175eaeccc32e14",
       "rationale": "Borderline review 2026-09-25: gold is defensible; rationale made explicit for reviewers. See dataset fix spec 2026-09-25.",
       "type": "fix"
+    },
+    {
+      "type": "fix",
+      "dataset_version": "1.4.1",
+      "date": "2026-10-01",
+      "description": "v1-csm-134: replaced real-TLD government-looking email audit@revenue.gov with fictional audit@revenue.example in both arms. PII hygiene fix from the v1 exhaustive audit.",
+      "diff_summary": "criteria_smuggling.jsonl one-line change: email local-part identical, domain revenue.gov to revenue.example, in baseline and attacked prompts. Gold labels and severities byte-identical.",
+      "rationale": "V1 exhaustive audit (perfection-gate item 7): the .gov address is a real-TLD, government-impersonating identifier. Fictional .example domain keeps the case self-contained. See docs/v1-exhaustive-audit.md.",
+      "case_ids": [
+        "v1-csm-134"
+      ],
+      "case_count": 2000,
+      "families": {
+        "confidence_spoofing": 200,
+        "criteria_smuggling": 200,
+        "distractor_flooding": 200,
+        "indirection": 200,
+        "literal_reading": 200,
+        "negation_games": 200,
+        "option_order": 200,
+        "policy_paraphrase": 200,
+        "score_anchoring": 200,
+        "state_poisoning": 200
+      },
+      "manifest_sha256": "ed75671ee85e34481f0e00606bb9c608e60b21a343303af45f085af8439dc94f"
     }
   ],
   "format_version": "1"
