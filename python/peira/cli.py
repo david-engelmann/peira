@@ -673,6 +673,25 @@ def cmd_run(args: argparse.Namespace) -> int:
                 # spec to reload the adapter; the short name is not loadable.
                 config_extra={"adapter_spec": args.adapter},
             )
+            if is_conversational:
+                from peira.conversation import run_conversation_suite
+                artifact = run_conversation_suite(
+                    adapter, cases, suite, dataset_version, **run_kwargs
+                )
+            else:
+                artifact = run_suite(
+                    adapter, cases, suite, dataset_version, **run_kwargs
+                )
+        else:
+            if is_conversational:
+                print("error: --seeds > 1 is not supported for the "
+                      "conversational suite", file=sys.stderr)
+                return EXIT_USER_ERROR
+            return _cmd_run_multiseed(
+                args, adapter, cases, suite, suite_families,
+                dataset_version, manifest_sha256, out_dir, slug,
+                num_seeds, build_adapter, budget_usd, progress,
+            )
     except KeyboardInterrupt:
         if num_seeds > 1:
             print("\ninterrupted; completed seed artifacts are saved; "

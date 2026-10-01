@@ -388,6 +388,9 @@ class RunArtifact:
             if key not in (
                 "model", "tokens_in", "tokens_out", "latency_ms", "cost_usd",
                 "price_table_ref",
+                # R-20: per-call telemetry (finish reason, cached-input
+                # breakdown, provider response id).
+                "finish_reason", "cached_tokens_in", "provider_response_id",
             ):
                 raise ValueError(f"{where} has unknown usage field: {key!r}")
         for key in ("model", "tokens_in", "tokens_out", "latency_ms", "cost_usd"):
@@ -425,6 +428,32 @@ class RunArtifact:
                 raise ValueError(
                     f"{where} usage field {key!r} must be non-negative, "
                     f"got {usage[key]}"
+                )
+        # R-20: optional telemetry fields.
+        for key in ("finish_reason", "provider_response_id"):
+            val = usage.get(key)
+            if val is not None and not isinstance(val, str):
+                raise ValueError(
+                    f"{where} usage field {key!r} must be str or null, "
+                    f"got {type(val).__name__}"
+                )
+        cached = usage.get("cached_tokens_in")
+        if cached is not None:
+            if not _is_int(cached):
+                raise ValueError(
+                    f"{where} usage field 'cached_tokens_in' must be an "
+                    f"integer or null, got {type(cached).__name__}"
+                )
+            if cached < 0:
+                raise ValueError(
+                    f"{where} usage field 'cached_tokens_in' must be "
+                    f"non-negative, got {cached}"
+                )
+            if cached > usage["tokens_in"]:
+                raise ValueError(
+                    f"{where} usage field 'cached_tokens_in' ({cached}) "
+                    f"exceeds 'tokens_in' ({usage['tokens_in']}): cached "
+                    f"tokens are a subset of input tokens"
                 )
 
     @classmethod
