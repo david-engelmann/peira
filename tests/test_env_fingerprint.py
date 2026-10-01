@@ -142,7 +142,10 @@ class TestPerfState(unittest.TestCase):
         import os as _os
         had = hasattr(_os, "sched_affinity")
         if had:
-            _os.sched_affinity = None  # force the AttributeError path
+            # Delete the attribute to force the AttributeError path in
+            # _affinity(): setting it to None would raise TypeError on
+            # call instead, which _affinity() does not catch.
+            del _os.sched_affinity
         try:
             with self.assertWarns(UserWarning):
                 ps = ef.collect_perf_state()
