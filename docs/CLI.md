@@ -43,21 +43,13 @@ run a suite through an adapter
 | `--rlimit-nproc` |  | - | max process count for subprocess adapter children (fork-bomb guard; Unix only, opt-in, no limit by default; never applied to the runner itself) |
 | `--death-log` |  | - | path for the governor's SIGTERM/SIGINT 'last words' JSON record (opt-in; recommended for long unattended runs so an unexplained death leaves evidence) |
 | `--budget-usd` |  | - | hard spend cap in USD: the runner projects spent + running-mean-case-cost x 1.5 before each new case dispatch and stops dispatching when the projection exceeds the cap; in-flight cases drain and the artifact seals with termination=budget (analyzable, never rankable) (default: no cap) |
-| `--max-tokens-per-call` |  | - | per-call output-token cap. A call whose reported tokens_out exceeds it is marked malformed and excluded from scoring, and the transcript flags token_limit_exceeded for the call. The cap is sealed into the run artifact and covered by the analysis lock. Resume refuses a partial run recorded under a different cap (default no cap) |
+| `--max-tokens-per-call` |  | - | per-call output-token cap. A call whose reported tokens_out exceeds the cap is marked malformed and excluded from scoring, and the transcript flags token_limit_exceeded for the call (default no cap) |
 | `--cache-dir` |  | - | opt-in response cache directory for deterministic adapters (temperature 0 + fixed seed); off by default and never on the measurement path unless given |
 | `--transcript` |  | - | write a JSONL transcript of every request/response to this path (for audit and `peira replay`) |
 
 ## peira replay
 
 re-score a recorded transcript without calling any provider
-
-This is Peira's equivalent of lm-eval `--predict_only`. The transcript
-holds the exact decisions a model already made, so replay re-runs only
-the scoring and metrics layers on those recorded outputs. Metric changes,
-rubric changes, and new analyses can be evaluated with zero new provider
-calls, zero new spend, and zero new latency. The replayed artifact seals
-with termination=complete and is analyzable but never rankable, since no
-live execution backs it.
 
 | Flag | Required | Default | Help |
 |---|---|---|---|
@@ -67,16 +59,7 @@ live execution backs it.
 
 ## peira transcript-view
 
-render a run transcript as a self-contained static HTML page
-
-The viewer reads the JSONL transcript written by
-`peira run --transcript` and produces one HTML file with no external
-resources and no JavaScript. It shows a summary of the run (entries,
-outputs, errors, timeouts, token-limit violations, cache hits) and one
-row per call with the full entry available in a collapsible detail.
-Every value is HTML-escaped, so hostile case content in a transcript
-cannot break out of the page. Useful for auditing a run by hand before
-trusting its artifact.
+render a run transcript as static HTML
 
 | Flag | Required | Default | Help |
 |---|---|---|---|
@@ -180,7 +163,9 @@ cross-adapter leaderboard JSON
 | `--runs-dir` |  | - | runs directory (default: ./runs or $PEIRA_RUNS_DIR) |
 | `--suite` |  | - | filter by suite |
 | `--dataset-version` |  | - | filter by dataset version |
-| `--out` |  | - | write JSON to this path (default: stdout) |
+| `--out` |  | - | write output to this path (default: stdout) |
+| `--format` |  | `'json'` | output format: dashboard JSON (default) or a self-contained zero-JavaScript HTML report artifact (choices: `json`, `html`) |
+| `--data-source` |  | `'mock'` | banner the HTML report as official results or mock data (default: mock). A report must never present itself as official unless declared (choices: `mock`, `official`) |
 
 ### peira dashboard compare
 
@@ -201,6 +186,34 @@ M-4 hardness/transfer diagnostics over 2+ run artifacts (diagnostic tables, neve
 |---|---|---|---|
 | `RUNS` | yes | - | run artifact paths (>= 2) |
 | `--out` |  | - | write the diagnostic tables to this path |
+
+## peira tax
+
+EB-40: cross-adapter robustness-tax diagnostics (accuracy/calibration/combined taxes, ASR-tax correlations)
+
+| Flag | Required | Default | Help |
+|---|---|---|---|
+| `RUNS` | yes | - | run artifact paths (>= 2, one per adapter) |
+| `--out` |  | - | write the text report to this path (default: stdout) |
+| `--json` |  | - | write the full tax analysis JSON to this path |
+
+## peira erosion
+
+EB-23: confidence-erosion distribution on failed attacks (per-family and overall)
+
+| Flag | Required | Default | Help |
+|---|---|---|---|
+| `RUN` | yes | - | run artifact path |
+| `--out` |  | - | write the text report to this path (default: stdout) |
+
+## peira length
+
+EB-7/EB-10: length-sensitivity analysis and length de-confounding diagnostics for one run artifact
+
+| Flag | Required | Default | Help |
+|---|---|---|---|
+| `RUN` | yes | - | run artifact path |
+| `--out` |  | - | write the text report to this path (default: stdout) |
 
 ## peira lottery
 
