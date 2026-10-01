@@ -314,6 +314,13 @@ class BaseAdapter(Protocol):
     # api_version: provider API version for API adapters.
     # decode_params: dict (or JSON string) of decode parameters
     #   actually sent (temperature, top_p, max_tokens, seed, ...).
+    # generation_max_tokens: int, the adapter's declared generation
+    #   cap (EB-10). The runner seals this into the artifact config
+    #   as ``generation_max_tokens`` so cross-adapter length
+    #   comparability is checkable; declare the cap the adapter
+    #   actually enforces, or leave absent when the adapter has no
+    #   fixed cap (the runner then falls back to
+    #   decode_params["max_tokens"] when present).
     # template_hash: SHA-256 of the prompt template, when the adapter
     #   owns a template.
     # (adapter version, call date, and case-set tag are sealed by the

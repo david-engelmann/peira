@@ -928,6 +928,67 @@ Cause: `peira hardness --out` points somewhere unwritable: a missing
 parent directory, or a permissions problem. Fix: create the directory
 first, or pick a writable path.
 
+**`error: tax needs at least 2 run artifacts` (from `peira tax`)**
+Cause: fewer than two artifact paths were given. The robustness tax is
+a cross-adapter frontier view; one run has nothing to anchor against.
+Fix: pass two or more run artifact paths.
+
+**`error: <path> not found` (from `peira tax`, `peira erosion`, `peira length`)**
+Cause: one of the artifact paths doesn't exist. Fix: check the paths.
+
+**`error: <path> is not a valid run artifact (...)` (from `peira tax`, `peira erosion`, `peira length`)**
+Cause: the file isn't valid JSON or isn't a sealed run artifact. Fix:
+point at `peira run` output files.
+
+**`error: <path>: cannot decode per-case results (...)` (from `peira tax`, `peira erosion`, `peira length`)**
+Cause: the artifact's per-case results don't match the current
+measurement contract. Fix: re-run with the current `peira`; don't
+hand-edit artifacts.
+
+**`error: tax: ...` (from `peira tax`)**
+Cause: the tax analysis refused the inputs. The message names the
+reason: fewer than two adapters, no adapter with benign accuracy,
+no adapter with attacked ECE, or a shared adapter name with any
+differing reading across runs (the tax requires one frontier
+reading per adapter; give the runs distinct adapter names, or let
+the caller keep one reading). Fix: check the metrics are sealed on
+the artifacts, or rename the duplicated adapter.
+
+**`error: erosion: ...` (from `peira erosion`)**
+Cause: the per-case data failed validation: a non-finite confidence
+on an eligible non-flipped case. Fix: re-run the adapter; don't
+hand-edit artifacts.
+
+**`error: length: ...` (from `peira length`)**
+Cause: the per-case data failed validation: an invalid (negative or
+non-finite) tokens_out on an eligible case. Fix: re-run the adapter;
+don't hand-edit artifacts.
+
+**`warning: ... analysis lock mismatch` (from `peira tax`, `peira erosion`, `peira length`)**
+Cause: the run artifact was modified after sealing. The analysis
+still runs (warning, not error) but the numbers aren't trustworthy:
+treat the output as tampered until you re-run. Fix: don't edit
+artifacts; re-run. If you need different config, that's a new run
+with a new lock.
+
+**`WARNING: observed length exceeds the declared cap` (in `peira length` output)**
+Cause: at least one attacked-arm response was longer than the
+`generation_max_tokens` the artifact declares, so the cap was not
+enforced on this run. The length-sensitivity slopes then measure a
+mixture of protocol drift and real length effects. Fix: re-run with
+the cap enforced (see EB-10 in `docs/Methodology.md`); a
+non-numeric `generation_max_tokens` is treated as no declared cap.
+
+**`error: cannot write tax JSON to <out> (...)` (from `peira tax --json`)**
+Cause: `peira tax --json` points somewhere unwritable: a missing
+parent directory, or a permissions problem. Fix: create the directory
+first, or pick a writable path.
+
+**`error: cannot write robustness-tax report to <out> (...)` / `error: cannot write erosion report to <out> (...)` / `error: cannot write length report to <out> (...)`**
+Cause: `--out` points somewhere unwritable: a missing parent
+directory, or a permissions problem. Fix: create the directory first,
+or pick a writable path.
+
 **`error: artifacts are not comparable: ...`**
 Cause: the two artifacts weren't scored under the same trial. The
 message names the mismatch: different `suite`, different

@@ -6302,6 +6302,34 @@ def _reliability_block(
     }
 
 
+# ---------------------------------------------------------------------------
+# EB-23 / EB-7 / EB-10 summarize() sections (external-benchmark Tier 1).
+#
+# These live in peira.eb_analysis, which imports PerCaseResult and
+# helpers from this module: a top-level import here would be
+# circular, so the wrappers below import lazily. The import cost is
+# paid once (sys.modules cache); the wrappers keep summarize()'s
+# body free of import machinery.
+# ---------------------------------------------------------------------------
+
+
+def _eb_confidence_erosion_block(
+    results: list[PerCaseResult],
+) -> dict[str, Any]:
+    from peira.eb_analysis import confidence_erosion_block
+
+    return confidence_erosion_block(results)
+
+
+def _eb_length_diagnostics_block(
+    results: list[PerCaseResult],
+    seed: int,
+) -> dict[str, Any]:
+    from peira.eb_analysis import length_diagnostics_block
+
+    return length_diagnostics_block(results, seed=seed)
+
+
 def summarize(
     results: list[PerCaseResult],
     required_families: list[str] | None = None,
@@ -6585,6 +6613,22 @@ def summarize(
         # CI, material and catastrophic shares, threshold-crossing rate,
         # histogram) overall and by family/severity/flip-direction.
         "score_delta": _score_delta_block(results, n_boot, seed),
+        # EB-23: confidence-erosion distribution on failed attacks.
+        # Per non-flipped case, benign-minus-attacked confidence:
+        # distribution (mean/p50/p90/histogram) overall and per family,
+        # plus the near-flip fraction (large erosion, decision held).
+        # The within-case confidence view complementing M-6's Wilson
+        # CIs on severity flip rates. Function-level import: eb_analysis
+        # imports from this module, so a top-level import would cycle.
+        "confidence_erosion": _eb_confidence_erosion_block(results),
+        # EB-7/EB-10: length de-confounding diagnostics and
+        # length-sensitivity analysis. Per-family OLS slope of the flip
+        # indicator on attacked-arm tokens_out (bootstrap CI), ASR by
+        # length tertile, and Holm-adjusted de-confounding tests over
+        # attacked length + verbosity delta. A significant family gets
+        # length as a reported covariate.
+        "length_diagnostics": _eb_length_diagnostics_block(
+            results, seed),
     }
 
 
