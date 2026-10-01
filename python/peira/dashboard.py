@@ -593,6 +593,12 @@ def leaderboard(
         return (False, float(v))
 
     ranked.sort(key=_asr_sort_key)
+    # EB-40: robustness-tax column. Computed over the ranked rows'
+    # own headline values (point estimates; the full per-adapter
+    # taxes with CIs live in `peira tax`). Rows missing benign
+    # accuracy or attacked ECE get no tax: a tax from imputed
+    # components would be a guess, not a measurement.
+    _apply_robustness_tax_column(ranked)
     return {
         "suite": suite,
         "dataset_version": dataset_version,
@@ -601,6 +607,48 @@ def leaderboard(
         "ranked": ranked,
         "unranked": unranked,
     }
+
+
+def _apply_robustness_tax_column(ranked: list[dict[str, Any]]) -> None:
+    """EB-40: attach the combined-tax point estimate to each row."""
+    from peira.eb_analysis import AdapterTaxInput, robustness_tax
+
+    def _num(v: Any) -> float | None:
+        return (float(v) if isinstance(v, (int, float))
+                and not isinstance(v, bool)
+                and math.isfinite(v) else None)
+
+    inputs: list[AdapterTaxInput] = []
+    # One reading per adapter name, last row wins: mirrors cmd_tax
+    # so a duplicated adapter name cannot raise inside
+    # robustness_tax and blank the whole column.
+    seen: dict[str, AdapterTaxInput] = {}
+    for row in ranked:
+        name = str(row.get("adapter_name", ""))
+        seen[name] = AdapterTaxInput(
+            adapter=name,
+            asr=_num(row.get("asr_conditional")),
+            asr_ci=None,
+            benign_accuracy=_num(row.get("benign_accuracy")),
+            benign_accuracy_ci=None,
+            ece=_num(row.get("ece_attacked")),
+            ece_ci=None,
+        )
+    inputs = list(seen.values())
+    try:
+        report = robustness_tax(inputs)
+    except ValueError:
+        # Not enough usable readings for a frontier: every row gets
+        # the key with None, matching the success path's shape.
+        for row in ranked:
+            row["robustness_tax"] = None
+        return
+    for row in ranked:
+        tax = report["per_adapter"].get(str(row.get("adapter_name")))
+        row["robustness_tax"] = (
+            tax["combined_tax"] if tax and tax["sufficient"]
+            else None
+        )
 
 
 def comparison_to_dashboard(comparison: Comparison) -> dict[str, Any]:

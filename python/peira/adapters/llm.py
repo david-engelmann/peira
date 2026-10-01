@@ -554,6 +554,16 @@ class _StructuredLLMBase:
         return ""
 
     @property
+    def generation_max_tokens(self) -> int:
+        """EB-10(a): the adapter's declared generation cap.
+
+        This is the cap the adapter enforces on generation; the runner
+        seals it into the run artifact so length analyses can audit
+        observed lengths against the declared cap.
+        """
+        return self._max_tokens
+
+    @property
     def decode_params(self) -> dict[str, Any]:
         """M-7 longitudinal provenance: decode params actually sent.
 

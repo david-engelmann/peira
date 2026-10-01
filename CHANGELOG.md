@@ -109,6 +109,7 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
 - `docs/Reproducibility.md`: lockfile usage, Docker build/run
   reference, and regeneration instructions; linked from
   `docs/Overview.md`.
+
 ### Added threshold_edge_hunting attack family
 
 - The v2 suite ships attack family 26: `threshold_edge_hunting`
@@ -122,6 +123,27 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
   336 choice + 84 score cases. Design decision D-39: ships as fixed
   paired cases; the adaptive flip-radius variant is future measurement
   work. Dataset version 2.3.1 to 2.4.0.
+
+### Added external-benchmark Tier 1 analyses (Program A)
+
+- New `peira/eb_analysis.py`: four analysis-only cross-benchmark
+  comparisons on existing run artifacts. EB-23 confidence erosion:
+  the per-family and overall distribution of
+  `benign.confidence - attacked.confidence` on eligible non-flipped
+  cases (mean/p50/p90, histogram, near-flip fraction with Wilson CI),
+  exposed in `summarize()` as `confidence_erosion` and via
+  `peira erosion`. EB-40 robustness tax: per-adapter accuracy and
+  calibration taxes against the observed frontier, the combined tax
+  as a leaderboard column on ranked rows, and cross-adapter Spearman
+  correlations of ASR vs accuracy / ASR vs ECE with bootstrap CIs,
+  via `peira tax` (diagnostic only, never a ranking). EB-7/EB-10
+  length diagnostics: per-family OLS slope of the flip indicator on
+  attacked-arm `tokens_out` with bootstrap CI, ASR by length tertile,
+  and Holm-adjusted de-confounding tests over attacked length and the
+  verbosity delta, exposed in `summarize()` as `length_diagnostics`
+  and via `peira length`. EB-10 also seals the adapter's declared
+  `generation_max_tokens` into the artifact config, and
+  `peira length` checks it against observed max `tokens_out`.
 
 ### Added EB-44 graded flip-severity rubric judge + EB-53 targeted ASR
 
