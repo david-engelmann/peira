@@ -27,9 +27,13 @@ Run each unverified adapter over a fixed 20-case slice of the trial
 suite. The slice is `score_anchoring` plus `negation_games`, which
 together cover all three primitives (10 score, 7 abstain, 3 choice).
 The runner classifies both arms of every case, so the smoke is 40 paid
-calls per adapter in the expected case. A malformed response triggers
-one repair retry, so the ceiling is 80 calls per adapter. The 5x abort
-threshold below covers that path.
+calls per adapter in the expected case. Each adapter attempt can make
+one repair request. The command defaults to three total runner attempts
+for transient failures, so the hard upper bound is 240 requests per
+adapter (20 cases x 2 arms x 3 runner attempts x 2 adapter requests).
+The 80-request figure applies only when no transient runner retry
+occurs. The 5x abort threshold below is an operational stop, not this
+hard bound.
 
 Every adapter under test needs these preconditions in place first.
 
