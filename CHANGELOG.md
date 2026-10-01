@@ -29,7 +29,7 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
 - `docs/Reproducibility.md`: lockfile usage, Docker build/run
   reference, and regeneration instructions; linked from
   `docs/Overview.md`.
-=======
+
 ### Added EB-44 graded flip-severity rubric judge + EB-53 targeted ASR
 
 - New `peira.graded_judge` module: a StrongREJECT-style rubric scoring
@@ -51,10 +51,10 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
   `MockJudgeScorer`. Deterministic flip detection remains the primary
   metric. The graded score is a second, judge-labeled column.
 - New EB-53 targeted ASR decomposition in `peira.metrics`: benign
-  utility, utility-under-attack, and targeted ASR are always computed
-  and reported together (overall and per family, each with Wilson 95%
-  CI) in a new `targeted_asr` summary block. Target annotations were
-  already complete across v1, v2, and conversational families.
+  utility, utility-under-attack, and targeted ASR are reported together
+  (overall and per family, each with Wilson 95% CI) in a new
+  `targeted_asr` summary block. Targeted ASR is unavailable when no
+  target mapping is supplied or no flip has a known target.
 
 ### Added conversational case families
 

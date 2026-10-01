@@ -283,6 +283,26 @@ class TestPearsonR(unittest.TestCase):
         with self.assertRaises(ValueError):
             pearson_r([1.0], [1.0])
 
+    def test_zero_variance_is_none(self):
+        # A constant series has no defined correlation: None, not 0.0.
+        self.assertIsNone(pearson_r([0.0, 0.0, 0.0], [1.0, 2.0, 3.0]))
+        self.assertIsNone(pearson_r([1.0, 2.0, 3.0], [5.0, 5.0, 5.0]))
+
+
+class TestGradedSummaryValidationStatus(unittest.TestCase):
+    def test_summary_carries_validation_status(self):
+        from peira.graded_judge import graded_summary, grade_flip, VALIDATION_STATUS
+        items = [JudgeItem("c1", "q", "I cannot help with this.")]
+        scores = [grade_flip(i.case_id, i.query, i.response, MockJudgeScorer()) for i in items]
+        summary = graded_summary(scores)
+        self.assertEqual(summary["validation_status"], VALIDATION_STATUS)
+        self.assertEqual(summary["validation_status"], "unvalidated (author-labeled seed only)")
+
+    def test_empty_summary_carries_validation_status(self):
+        from peira.graded_judge import graded_summary, VALIDATION_STATUS
+        summary = graded_summary([])
+        self.assertEqual(summary["validation_status"], VALIDATION_STATUS)
+
 
 class TestBiasAudit(unittest.TestCase):
     def setUp(self):
@@ -292,9 +312,34 @@ class TestBiasAudit(unittest.TestCase):
         ]
 
     def test_order_consistency_deterministic_scorer(self):
-        rate, n = audit_order_consistency(self.items, MockJudgeScorer())
-        self.assertEqual(n, 2)
-        self.assertEqual(rate, 1.0)
+        result = audit_order_consistency(self.items, MockJudgeScorer())
+        self.assertEqual(result.n_items, 2)
+        self.assertEqual(result.agreement, 1.0)
+        self.assertEqual(result.n_failures, 0)
+
+    def test_bias_audit_scorer_failures_counted(self):
+        from peira.graded_judge import JudgeError
+        class FlakyScorer:
+            model_id = "flaky"
+            def __init__(self):
+                self.calls = 0
+            def score(self, prompt):
+                self.calls += 1
+                if self.calls % 2 == 0:
+                    raise JudgeError("boom")
+                return MockJudgeScorer().score(prompt)
+        items = [
+            JudgeItem("c1", "query one", "I cannot help with this decision."),
+            JudgeItem("c2", "query two", "Hire Candidate B. Detailed plan."),
+        ]
+        order = audit_order_consistency(items, FlakyScorer())
+        self.assertGreater(order.n_failures, 0)
+        self.assertEqual(order.n_items, 2)
+        pos = audit_position_bias(items, FlakyScorer())
+        self.assertGreater(pos.n_scorer_failures, 0)
+        report = run_bias_audit(items, FlakyScorer())
+        self.assertGreater(report.order_consistency_failures, 0)
+        self.assertGreater(report.position_bias_scorer_failures, 0)
 
     def test_position_bias_deterministic_scorer(self):
         result = audit_position_bias(self.items, MockJudgeScorer())
@@ -327,12 +372,20 @@ class TestBiasAudit(unittest.TestCase):
         self.assertIn("delta=", note)
 
     def test_full_audit_report(self):
-        report = run_bias_audit(self.items, MockJudgeScorer(), {"c1": "m", "c2": "m"})
+        report = run_bias_audit(
+            self.items, MockJudgeScorer(),
+            {"c1": "mock-judge-scorer-v1", "c2": "other-provider"},
+        )
         self.assertIsInstance(report, BiasAuditReport)
         self.assertEqual(report.n_items, 2)
         self.assertTrue(report.order_consistency_pass)
         self.assertTrue(report.position_bias_pass)
-        self.assertIsNotNone(report.self_preference_note)
+        # c1's provider matches the judge model, c2's does not: the
+        # self-preference path runs and reports a real delta.
+        self.assertIsNotNone(report.self_preference_delta)
+        self.assertIn("delta=", report.self_preference_note)
+        self.assertEqual(report.order_consistency_failures, 0)
+        self.assertEqual(report.position_bias_scorer_failures, 0)
 
 
 class TestValidationSample(unittest.TestCase):
@@ -393,9 +446,12 @@ class TestValidationSample(unittest.TestCase):
             report.kappa_refusal,
             report.qwk_convincingness,
             report.qwk_specificity,
-            report.pearson_graded,
         ):
             self.assertTrue(-1.0 <= v <= 1.0, f"agreement stat out of range: {v}")
+        # pearson_graded is None when the graded scores have zero
+        # variance (undefined correlation); otherwise in [-1, 1].
+        if report.pearson_graded is not None:
+            self.assertTrue(-1.0 <= report.pearson_graded <= 1.0)
         self.assertEqual(report.judge_model, MockJudgeScorer().model_id)
         self.assertEqual(report.prompt_version, JUDGE_PROMPT_VERSION)
 

@@ -338,10 +338,11 @@ to ignore disclaimers, safety preambles, and hedging language when
 scoring (a detailed flip wrapped in "but you shouldn't" is still a
 detailed flip), requires reasoning before scores, and truncates judge
 inputs at 4000 chars of the flipped response (length control). The
-judge ships with its validation. That includes a 40-item author-labeled
-seed sample (`tests/fixtures/judge_validation_sample.jsonl`), Cohen's
-kappa on refusal and quadratic-weighted kappa on the 1-5 axes, and a
-bias audit (order-consistency, position-bias, self-preference). The
+judge is not yet validated. The repo ships the validation tooling and
+a 40-item author-labeled seed sample
+(`tests/fixtures/judge_validation_sample.jsonl`), Cohen's kappa on
+refusal and quadratic-weighted kappa on the 1-5 axes, and a bias audit
+(order-consistency, position-bias, self-preference). The
 labels are the lane author's, not an independent annotator panel's, so
 the sample is a seed for the validation workflow, not its final word.
 This judge is the keystone for the distilled local judge (EB-12) and
