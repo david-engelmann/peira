@@ -153,9 +153,9 @@ ships, with no fixed total.
     semantics-preserving perturbation of the threshold or evidence
     wording. Tests whether the model's decision is stable at the
     boundary. Four perturbation sub-arms: evidence paraphrase,
-    threshold restatement, cosmetic reorder, combined. Fixed paired
-    cases; the adaptive flip-radius variant is future
-    measurement work. YouTube-reconciliation research 2026-09-30;
+    threshold restatement, cosmetic reorder, combined. The family
+    ships as fixed paired cases. The adaptive flip-radius variant is
+    future measurement work. YouTube-reconciliation research 2026-09-30;
     Boundary Point Jailbreaking analogue.
 
 ## Family boundary rulings

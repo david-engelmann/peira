@@ -16,7 +16,7 @@ which the author controls exactly. No model measurement is needed to
 place it. Edge proximity is held constant across arms so each pair
 isolates the perturbation's effect. The adaptive variant (sweeping
 paraphrase space per model to find the flip radius) is measurement
-work for the runner, recorded in D-38, not part of this family.
+work for the runner, recorded in D-39, not part of this family.
 
 Four perturbation classes (sub-arms):
 

@@ -1552,7 +1552,7 @@ boundary ruling 9), and ships 421 cases (v2-jsp-0001..v2-jsp-0421).
 **To revisit:** if future case growth blurs the boundary (sycophancy
 blocks that also plead merits), the boundary ruling's deletion tests
 decide case-by-case; persistent blur would reopen the fold question.
-## D-38: threshold_edge_hunting ships as fixed paired cases; adaptive boundary-finding is measurement work (2026-09-30)
+## D-39: threshold_edge_hunting ships as fixed paired cases; adaptive boundary-finding is measurement work (2026-09-30)
 
 **Decision.** The YouTube-reconciliation NEW concept threshold_edge_hunting
 becomes attack family 26 as fixed paired cases (benign + attacked), not

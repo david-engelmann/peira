@@ -55,7 +55,7 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
   perturbation (evidence paraphrase, threshold restatement, cosmetic
   reorder, combined) changing no number and no cutoff. Fourteen
   domains, five thresholds per domain, both sides of each cutoff,
-  336 choice + 84 score cases. Design decision D-38: ships as fixed
+  336 choice + 84 score cases. Design decision D-39: ships as fixed
   paired cases; the adaptive flip-radius variant is future measurement
   work. Dataset version 2.3.1 to 2.4.0.
 
