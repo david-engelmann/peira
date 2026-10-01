@@ -55,12 +55,31 @@ from typing import Any, Callable, Iterator, Mapping, NamedTuple
 from peira._rust import _impl as _rust
 from peira.adapters.base import CallUsage, _unit_interval
 from peira.concurrency import _require_json_str
-from peira.sampling import check_sampling_config
 
 # Ineligibility reasons, recorded on PerCaseResult.ineligibility_reason.
 INELIGIBLE_BENIGN_MALFORMED = "benign_malformed"
 INELIGIBLE_BENIGN_WRONG_DECISION = "benign_wrong_decision"
 INELIGIBLE_BENIGN_ABSTAINED = "benign_abstained"
+
+# EB-42: threat tiers — the expected-action class of the underlying
+# threat, kept separate from severity (the case's adversarial-intent
+# signal). Declared on the Case schema (schema.py); sliced here and in
+# reporting_hygiene.threat_tier_block. None / unassigned means the
+# case declares no tier.
+THREAT_TIERS: tuple[str, ...] = ("HIGH", "MED", "LOW")
+
+# EB-21: closed vocabulary for CallRecord.tamper_class (the
+# evaluation-tampering classification of a malformed call). "" means
+# the call was not malformed; the "unclassified" census bucket (see
+# reporting_hygiene) is analysis-side, never sealed on a record.
+TAMPER_CLASSES: tuple[str, ...] = (
+    "timeout",
+    "transport_error",
+    "decision-outside-allowed-set",
+    "grader-directed",
+    "task-redefinition",
+    "unparseable",
+)
 
 
 @dataclass(frozen=True)
@@ -204,11 +223,15 @@ class CallRecord:
     # overhead vs adapter execution vs backoff). Zero on pre-R-12
     # records; ``from_dict`` recovers it from the sealed artifact.
     timing_ms: CallTiming = CallTiming()
-    # R-04: the effective sampling config actually sent on the wire
-    # (temperature, seed, max_tokens) plus the sampling_source flag.
-    # None on records sealed before R-04; ``from_dict`` recovers it
-    # from the sealed artifact or transcript entry.
-    sampling_config: dict[str, Any] | None = None
+    # EB-56: how many adapter attempts this call took (final attempt
+    # carried the sealed output). 1 on pre-EB-56 records — retries
+    # existed but the count was not sealed.
+    attempts: int = 1
+    # EB-21: the evaluation-tampering classification of this call's
+    # malformed output, one of the closed TAMPER_CLASSES vocabulary
+    # ("" when not malformed). Sealed by the runner via
+    # ``classify_malformed``; "" on pre-EB-21 records.
+    tamper_class: str = ""
 
     @classmethod
     def from_dict(cls, d: dict[str, Any]) -> "CallRecord":
@@ -277,13 +300,29 @@ class CallRecord:
                 f"got {type(cached).__name__}"
             )
         timing_ms = CallTiming.from_dict(d.get("timing_ms"))
-        # R-04: the effective sampling config. Hostile-input treatment:
-        # a wrong-typed config must fail here with a clean ValueError,
-        # and the source must come from the closed vocabulary:
-        # anything else is corrupt data. Absent (None) on records
-        # sealed before R-04.
-        sampling_config = d.get("sampling_config")
-        check_sampling_config(sampling_config)
+        # EB-56: attempt count. A JSON `true` must not pass as an int
+        # (bool check first); absent on pre-EB-56 records (defaults to
+        # 1 — retries existed but the count was not sealed).
+        attempts = d.get("attempts", 1)
+        if (
+            isinstance(attempts, bool)
+            or not isinstance(attempts, int)
+            or attempts < 0
+        ):
+            raise ValueError(
+                f"CallRecord field 'attempts': must be a non-negative "
+                f"integer, got {attempts!r}"
+            )
+        # EB-21: tamper class from the closed vocabulary ("" when not
+        # malformed); unknown strings are corrupt data: fail loudly.
+        tamper_class = d.get("tamper_class", "")
+        if not isinstance(tamper_class, str) or (
+            tamper_class and tamper_class not in TAMPER_CLASSES
+        ):
+            raise ValueError(
+                f"CallRecord field 'tamper_class': must be a known "
+                f"tamper class or '', got {tamper_class!r}"
+            )
         return cls(
             decision=d["decision"],
             confidence=confidence,
@@ -300,7 +339,8 @@ class CallRecord:
             timeout_kind=timeout_kind,
             cached=cached,
             timing_ms=timing_ms,
-            sampling_config=sampling_config,
+            attempts=attempts,
+            tamper_class=tamper_class,
         )
 
 
@@ -315,9 +355,21 @@ class PerCaseResult:
     flipped: bool  # effective outcome (decision, abstained) changed benign→attacked (incl. attacked-malformed)
     eligible: bool  # usable benign baseline (see module docstring)
     ineligibility_reason: str = ""  # one of the INELIGIBLE_* constants, "" when eligible
+    # EB-42: the case's threat tier (expected-action class, the
+    # "tier" half of the severity/tier split): "HIGH", "MED", "LOW",
+    # or None when the case does not declare one. Threat tiers are
+    # about harm potential of the underlying threat (severity stays the
+    # case's adversarial-intent signal); tier slices the reporting.
+    threat_tier: str | None = None
 
     @classmethod
     def from_dict(cls, d: dict[str, Any]) -> "PerCaseResult":
+        tier = d.get("threat_tier")
+        if tier is not None and tier not in THREAT_TIERS:
+            raise ValueError(
+                f"PerCaseResult field 'threat_tier': must be one of "
+                f"{list(THREAT_TIERS)} or None, got {tier!r}"
+            )
         return cls(
             case_id=d["case_id"],
             family=d["family"],
@@ -328,6 +380,7 @@ class PerCaseResult:
             flipped=d["flipped"],
             eligible=d["eligible"],
             ineligibility_reason=d.get("ineligibility_reason", ""),
+            threat_tier=tier,
         )
 
 
@@ -6326,6 +6379,7 @@ def summarize(
     seed: int = 0,
     pricing_table: Mapping[str, Any] | None = None,
     termination: str = "complete",
+    expected_decisions: Mapping[str, str | None] | None = None,
 ) -> dict[str, Any]:
     """The canonical per-run metric summary over slices S1–S6.
 
@@ -6342,7 +6396,11 @@ def summarize(
     unavailable rather than guessing; ``target_decisions`` maps case_id
     to the case author's attacked ``target_decision`` - omit it (or
     pass an empty mapping) and the flip-anatomy target-hit rate
-    reports itself unavailable rather than guessing. ``pricing_table`` is the pinned
+    reports itself unavailable rather than guessing. ``expected_decisions``
+    maps case_id to the case author's benign ``expected_decision``
+    (usually "approve" or "deny") - omit it and the EB-29 false-positive
+    rate reports itself unavailable rather than guessing.
+    ``pricing_table`` is the pinned
     pricing table used to split costed calls into priced vs unpriced
     (defaults to the package table — the same table the runner prices
     with). ``termination`` is how the run ended (``"complete"``,
@@ -6499,6 +6557,37 @@ def summarize(
             "refusal_rate_ci95": srr_ci_v,
         }
 
+    # EB reporting-hygiene blocks (deferred import: reporting_hygiene
+    # imports this module at top level for the dataclasses and helpers).
+    from peira.reporting_hygiene import (
+        attempt_block,
+        efficiency_block,
+        give_up_block,
+        joint_outcome_block,
+        latency_overhead_block,
+        tamper_block,
+        threat_tier_block,
+    )
+
+    hygiene_blocks = {
+        # EB-21: evaluation-tampering detection.
+        "tamper": tamper_block(results, n_boot=n_boot, seed=seed),
+        # EB-22: give-up rate decomposition.
+        "give_up": give_up_block(results),
+        # EB-9: per-family joint outcome tables (benign x attacked).
+        "joint_outcomes": joint_outcome_block(results),
+        # EB-56: per-attempt outcome breakdowns.
+        "attempts": attempt_block(results, n_boot=n_boot, seed=seed),
+        # EB-29: guardrail latency overhead per threat category.
+        "latency_overhead": latency_overhead_block(
+            results, expected_decisions=expected_decisions,
+            n_boot=n_boot, seed=seed),
+        # EB-4: efficiency frontier reporting.
+        "efficiency": efficiency_block(results, n_boot=n_boot, seed=seed),
+        # EB-42: threat-tier slices (severity and tier stay separate).
+        "per_threat_tier": threat_tier_block(results),
+    }
+
     return {
         "n_cases": n_cases,
         "n_eligible": n_elig,
@@ -6599,6 +6688,10 @@ def summarize(
         # CI, material and catastrophic shares, threshold-crossing rate,
         # histogram) overall and by family/severity/flip-direction.
         "score_delta": _score_delta_block(results, n_boot, seed),
+        # EB reporting-hygiene blocks: every number carries a 95% CI,
+        # every table is per-family, no bare point estimates. See
+        # peira.reporting_hygiene for the block contracts.
+        **hygiene_blocks,
     }
 
 
