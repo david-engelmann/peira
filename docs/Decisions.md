@@ -1698,7 +1698,7 @@ adapter's own family.
 
 **Rationale.** Self-preference bias is measured and large (GPT-4 +10%,
 Claude-v1 +25% win-rate inflation for own outputs). peira's scoring is
-deterministic today, so the invariant is moot for scoring — and that is
+deterministic today, so the invariant is moot for scoring, and that is
 exactly why it is written down now, while violating it is impossible:
 the day any model-graded check is added, a contributor cannot violate
 it by accident. peira's blind-holdout design (pseudonymous call IDs,
@@ -1726,7 +1726,7 @@ against this record.
 **Rationale.** Path-grading punishes valid-but-unexpected solutions
 (the Opus 4.5 τ2-bench loophole); scoring only the decision keeps the
 benchmark objective and judge-free. A guardrail that blocks the attack
-for the "wrong" reason still blocked the attack — the benchmark
+for the "wrong" reason still blocked the attack. The benchmark
 measures outcomes, not reasoning aesthetics.
 
 **To revisit:** only with evidence that decision-only scoring

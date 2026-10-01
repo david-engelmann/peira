@@ -15,25 +15,25 @@ is one-directional and lossless on the fields both sides define.
 | `usage.tokens_in` | `gen_ai.usage.input_tokens` | Total input tokens. |
 | `usage.tokens_out` | `gen_ai.usage.output_tokens` | Total output tokens. |
 | `usage.cached_tokens_in` | `gen_ai.usage.cache_read.input_tokens` | Subset of `tokens_in` served from provider prompt cache. None when the provider reported no breakdown. |
-| — | `gen_ai.usage.cache_creation.input_tokens` | peira does not record cache writes separately; cache-creation tokens are inside `tokens_in`. |
+| none | `gen_ai.usage.cache_creation.input_tokens` | peira does not record cache writes separately; cache-creation tokens are inside `tokens_in`. |
 | `usage.finish_reason` | `gen_ai.response.finish_reasons` | peira stores the single provider string (`"stop"`, `"length"`, `"tool_calls"`, `"content_filter"`, ...); map to a one-element list. None when the provider did not report one. |
 | `usage.provider_response_id` | `gen_ai.response.id` | Provider response id (`chatcmpl-...`, `msg_...`); the support-debugging handle. None when not returned. |
 | `latency_ms_total` | span duration | Cumulative buyer latency: all attempts plus backoff, runner-measured wall clock. peira overwrites the adapter's self-reported `latency_ms` with its own measurement. |
-| `attempt_latencies_ms` (transcript) | — | Per-attempt breakdown of the total; no gen_ai equivalent for retried attempts — this is the field that distinguishes "slow provider" from "retry storm". |
-| `cached` | — | Response-cache hit (no provider call was made): the harness-level analogue of a cache read, but for peira's own cache, not the provider's. Excluded from latency percentiles. |
-| `usage.cost_usd` | — | Runner-recomputed from the pinned pricing table; the runner is the cost authority, not the adapter. No gen_ai cost attribute exists. |
-| `usage.price_table_ref` | — | Which table priced the call; makes historical costs recomputable without rerunning. peira-specific. |
-| `usage.tokens_in` billed | — | Cached input tokens are priced at the input rate until a model entry specifies `usd_per_1m_cached_in` (reserved key in the pricing table). |
+| `attempt_latencies_ms` (transcript) | none | Per-attempt breakdown of the total; no gen_ai equivalent for retried attempts. This is the field that distinguishes "slow provider" from "retry storm". |
+| `cached` | none | Response-cache hit (no provider call was made): the harness-level analogue of a cache read, but for peira's own cache, not the provider's. Excluded from latency percentiles. |
+| `usage.cost_usd` | none | Runner-recomputed from the pinned pricing table; the runner is the cost authority, not the adapter. No gen_ai cost attribute exists. |
+| `usage.price_table_ref` | none | Which table priced the call; makes historical costs recomputable without rerunning. peira-specific. |
+| `usage.tokens_in` billed | none | Cached input tokens are priced at the input rate until a model entry specifies `usd_per_1m_cached_in` (reserved key in the pricing table). |
 
 ## Call-level (non-usage) mapping
 
 | peira field | gen_ai.* attribute | Notes |
 |---|---|---|
-| `seed`, `dispatch_index` | — | Reproducibility pins; no gen_ai equivalent. |
-| `decision`, `confidence`, `abstained` | — | Benchmark output; peira grades decisions against gold labels. `gen_ai.output.messages` would carry the raw text, which peira keeps in the transcript instead. |
+| `seed`, `dispatch_index` | none | Reproducibility pins; no gen_ai equivalent. |
+| `decision`, `confidence`, `abstained` | none | Benchmark output; peira grades decisions against gold labels. `gen_ai.output.messages` would carry the raw text, which peira keeps in the transcript instead. |
 | `timed_out`, `timeout_kind` | span status | `"attempt"` (per-attempt timeouts exhausted) vs `"item"` (case-level item budget fired). Map to span status error + a `timeout.kind` annotation. |
-| `malformed` | — | Output failed validation (or breached `--max-tokens-per-call`); usage/cost are still recorded. |
-| `dispatch_limit` | — | AIMD concurrency limit in effect at dispatch. Harness internals; no gen_ai equivalent. |
+| `malformed` | none | Output failed validation (or breached `--max-tokens-per-call`); usage/cost are still recorded. |
+| `dispatch_limit` | none | AIMD concurrency limit in effect at dispatch. Harness internals; no gen_ai equivalent. |
 
 ## Prompt/completion text
 

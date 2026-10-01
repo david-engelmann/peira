@@ -4,7 +4,7 @@ peira's leaderboard scoring is deterministic: the adapter's *decision* is
 graded directly against gold labels, with no model in the scoring path.
 That is deliberate and load-bearing (see D-42: grade the outcome, not the
 path). This document governs the one place LLM judgment *is* used inside
-peira: internal process work — adjudicating disputed cases, triaging
+peira: internal process work such as adjudicating disputed cases, triaging
 failure modes, and QA-ing case authorship. The discipline below keeps
 those loops honest.
 
@@ -68,5 +68,5 @@ This discipline covers internal loops only: adjudication of disputed
 cases, failure-mode triage, case-authoring QA. It does not touch
 leaderboard scoring, which stays judge-free. If the safety-policy suite
 (guardrail-native, currently gold-labeled) ever needs model-graded
-scoring, this discipline pre-applies — confirm the suite stays
+scoring, this discipline pre-applies. Confirm the suite stays
 gold-labeled before reaching for a judge.
