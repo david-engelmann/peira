@@ -252,7 +252,7 @@ families); the v1 cases are frozen as authored.
    question. If the flip disappears it is `question_pair_incoherence`.
    If the flip survives rephrasing, the case is misclassified.
 
-10. `cryptographic_payload` vs `encoding_evasion`. `encoding_evasion`
+11. `cryptographic_payload` vs `encoding_evasion`. `encoding_evasion`
    is sub-semantic: homoglyphs, zero-width characters, leetspeak, and
    typos that evade the decision layer at the character level.
    `cryptographic_payload` is semantic-level: the payload is fully
