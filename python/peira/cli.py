@@ -302,6 +302,26 @@ def _write_final_artifact(out_dir: Path, slug: str, suite: str,
     return out_path
 
 
+def _validate_against_registry(
+    value: str, valid: set[str] | dict, unknown_label: str, known_label: str
+) -> list[str]:
+    """Validate comma-separated ids against a registry, preserving order.
+
+    Raises ValueError with the exact ``unknown ... (known ...: ...)``
+    message shape the CLI has always used for --families validation.
+    """
+    wanted = [part.strip() for part in value.split(",")]
+    wanted = [w for w in wanted if w]
+    unknown = [w for w in wanted if w not in valid]
+    if unknown:
+        known = ", ".join(sorted(valid))
+        raise ValueError(
+            f"unknown {unknown_label}: {', '.join(unknown)} "
+            f"(known {known_label}: {known})"
+        )
+    return list(dict.fromkeys(wanted))
+
+
 def parse_family_filter(
     value: str | None, suite: str | None = None
 ) -> list[str] | None:
@@ -310,7 +330,8 @@ def parse_family_filter(
     Returns None when no filter was given. Raises ValueError listing
     the unknown ids (with the canonical list) otherwise. When
     ``suite`` is the conversational suite, conversational families are
-    validated against the conversational registry instead.
+    validated against the conversational registry instead; when it is
+    the combo suite, pair ids are validated against the combo registry.
     """
     if value is None or not value.strip():
         return None
@@ -320,16 +341,15 @@ def parse_family_filter(
     if suite == "conversational":
         from peira.conversation_schema import KNOWN_CONVERSATION_FAMILIES
 
-        wanted = [part.strip() for part in value.split(",")]
-        wanted = [w for w in wanted if w]
-        unknown = [w for w in wanted if w not in KNOWN_CONVERSATION_FAMILIES]
-        if unknown:
-            known = ", ".join(sorted(KNOWN_CONVERSATION_FAMILIES))
-            raise ValueError(
-                f"unknown conversational famil(ies): {', '.join(unknown)} "
-                f"(known conversational families: {known})"
-            )
-        return list(dict.fromkeys(wanted))
+        return _validate_against_registry(
+            value, KNOWN_CONVERSATION_FAMILIES,
+            "conversational famil(ies)", "conversational families")
+
+    if suite == "combo":
+        from peira.combo_schema import COMBO_PAIRS
+
+        return _validate_against_registry(
+            value, COMBO_PAIRS, "combo pair(s)", "combo pairs")
 
     wanted = [part.strip() for part in value.split(",")]
     wanted = [w for w in wanted if w]
