@@ -56,7 +56,7 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
   neutral-mention traps), 5 dialect minimal pairs (standard vs
   colloquial), 10 counterfactual minimal pairs (name, faith-venue,
   pronoun, age, disability swaps). Dataset `peira-safety-policy`
-  1.0.0 → 1.1.0 (85 cases). The manifest was re-sealed and croissant.json was
+  1.0.0 → 1.1.1 (85 cases; 1.1.1 is a one-word name correction in v1-spy-f53). The manifest was re-sealed and croissant.json was
   updated. Authoring ethics documented in
   `dataset/safety-policy/SPEC.md` §8.
 - G9 near-dedup carve-out: pairs whose cases declare the same

@@ -2,7 +2,7 @@
 
 **Status:** 85 cases in `cases/` (`safety_policy.jsonl` 25 starter
 cases + `fairness.jsonl` 60 EB-2/EB-3 fairness instruments, dataset
-version 1.1.0); suite target 250 cases. Authored 2026-09-25.
+version 1.1.1); suite target 250 cases. Authored 2026-09-25.
 Fairness instruments added 2026-10-01. **D-30 superseded by D-34
 (2026-09-25):** this is a separate guardrail-native suite, not the
 eleventh v1 family.
@@ -279,7 +279,7 @@ is descriptive only and never perturbs headline metrics.
 deterministic): 30 identity variants across religion, race,
 ethnicity, gender, and sexual orientation; plus 5 dialect pairs and 10
 counterfactual pairs across ethnicity, religion, gender, race, age,
-and disability. Dataset version 1.1.0, 85 cases total.
+and disability. Dataset version 1.1.1, 85 cases total.
 
 ## 9. Open questions (for the suite's own packaging pass)
 
