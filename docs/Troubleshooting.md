@@ -866,6 +866,166 @@ Cause: the API returned a response without the documented `results`
 array. This means API drift, not a retryable failure. Fix: report
 it; the wire shape is pinned in `python/peira/adapters/omni_moderation.py`.
 
+**`model-armor adapter needs a GCP project ID with Model Armor enabled: set the MODEL_ARMOR_PROJECT_ID environment variable (or pass project_id=...)`**
+Cause: the adapter was constructed without a project ID (the same
+pattern holds for `MODEL_ARMOR_TEMPLATE_ID` and
+`MODEL_ARMOR_ACCESS_TOKEN`. The token hint suggests `gcloud auth
+print-access-token`). Fix: export all three variables.
+
+**`model-armor API error 401: ...; check that MODEL_ARMOR_ACCESS_TOKEN is a valid OAuth2 access token ...`**
+Cause: bad or expired token. Terminal: the runner won't retry it.
+Fix: mint a fresh token with `gcloud auth print-access-token` and
+check the caller has the modelarmor.user role.
+
+**`model-armor API error 403: ...; check that MODEL_ARMOR_ACCESS_TOKEN is a valid OAuth2 access token with the cloud-platform scope, and that the caller has the modelarmor.user role.`**
+Cause: forbidden. Terminal: the runner won't retry it. Fix: check
+the token scope and confirm the caller has the modelarmor.user role.
+
+**`model-armor API error 400: ...; the request was rejected; this is an adapter bug or a bad template resource name, not a retryable failure.`** (same for 422)
+Cause: the request shape or the template resource name was rejected.
+The adapter sends the documented shape, so this means API drift or a
+bad template name. Fix: report it with the template resource name.
+don't retry.
+
+**`model-armor API error 404: ...; the template resource name was not found; check MODEL_ARMOR_PROJECT_ID/MODEL_ARMOR_LOCATION/MODEL_ARMOR_TEMPLATE_ID.`**
+Cause: the template resource name is wrong (typo, wrong region, or
+the template was deleted). Terminal. Fix: check the three variables
+against the Cloud Console.
+
+**`model-armor response missing 'sanitizationResult' object`**
+Cause: the API returned a response without the documented
+`sanitizationResult`. This means API drift, not a retryable failure.
+Fix: report it. The wire shape is pinned in
+`python/peira/adapters/model_armor.py`.
+
+**`model-armor response has unexpected 'filterMatchState': '...'`**
+Cause: the API returned a `filterMatchState` value the adapter does
+not know (neither `MATCH_FOUND` nor `NO_MATCH_FOUND`). The adapter
+fails closed rather than guessing. This means API drift. Fix: report
+it with the value.
+
+**`model-armor transport error: ...` (status 408)**
+Cause: the connection dropped, DNS failed, or the request timed out.
+Raised as status 408 so `peira run` treats it as transient and retries
+under `--max-attempts`. Fix: re-run. Sustained 408s mean your network
+or the Model Armor endpoint is degraded.
+
+**`model-armor returned non-JSON response` / `model-armor returned a non-object JSON response`**
+Cause: the endpoint returned something that is not the documented
+JSON object (proxy error page, HTML, truncated body). Fix: check for
+a proxy or captive portal in the path. Otherwise report it.
+
+**`model-armor does not support primitive '...' (supported: ['abstain'])`**
+Cause: the adapter was asked for a primitive other than `abstain`.
+Guardrails are abstain-primitive-only per B2. Fix: run with the
+abstain primitive.
+
+**`azure-prompt-shields adapter needs an Azure AI Content Safety endpoint: set the AZURE_CONTENT_SAFETY_ENDPOINT environment variable (or pass endpoint=...)`**
+Cause: the adapter was constructed without an endpoint (the same
+pattern holds for `AZURE_CONTENT_SAFETY_KEY`). Fix: export both
+variables.
+
+**`azure-prompt-shields API error 401: ...; check that AZURE_CONTENT_SAFETY_KEY is valid for the AZURE_CONTENT_SAFETY_ENDPOINT resource.`**
+Cause: bad or unauthorized key. Terminal: the runner won't retry it.
+Fix: check the key in the Azure portal.
+
+**`azure-prompt-shields API error 403: ...; check that AZURE_CONTENT_SAFETY_KEY is valid for the AZURE_CONTENT_SAFETY_ENDPOINT resource.`**
+Cause: forbidden. Terminal: the runner won't retry it. Fix: check
+the key in the Azure portal.
+
+**`azure-prompt-shields API error 400: ...; the request was rejected; this is an adapter bug, not a retryable failure.`** (same for 422)
+Cause: the request shape was rejected. The adapter sends the
+documented `userPrompt`/`documents` shape, so this means API drift.
+Fix: report it. Don't retry.
+
+**`azure-prompt-shields prompt exceeds the 10,000-character API limit; refusing to send it`**
+Cause: the case prompt is longer than Microsoft's documented
+10,000-character maximum for Prompt Shields. The adapter refuses it
+locally (terminal, never retried) instead of sending it. Fix:
+shorten the prompt. The API cannot screen longer ones.
+
+**`azure-prompt-shields response missing 'userPromptAnalysis' object`**
+Cause: the API returned a response without the documented
+`userPromptAnalysis`. This means API drift, not a retryable failure.
+Fix: report it. The wire shape is pinned in
+`python/peira/adapters/azure_prompt_shields.py`.
+
+**`azure-prompt-shields response has non-boolean 'userPromptAnalysis.attackDetected'`**
+Cause: the API returned an `attackDetected` value that is not a
+boolean. The adapter fails closed rather than guessing. This means
+API drift. Fix: report it with the value.
+
+**`azure-prompt-shields transport error: ...` (status 408)**
+Cause: the connection dropped, DNS failed, or the request timed out.
+Raised as status 408 so `peira run` treats it as transient and retries
+under `--max-attempts`. Fix: re-run. Sustained 408s mean your network
+or the Content Safety endpoint is degraded.
+
+**`azure-prompt-shields returned non-JSON response` / `azure-prompt-shields returned a non-object JSON response`**
+Cause: the endpoint returned something that is not the documented
+JSON object (proxy error page, HTML, truncated body). Fix: check for
+a proxy or captive portal in the path. Otherwise report it.
+
+**`azure-prompt-shields does not support primitive '...' (supported: ['abstain'])`**
+Cause: the adapter was asked for a primitive other than `abstain`.
+Guardrails are abstain-primitive-only per B2. Fix: run with the
+abstain primitive.
+
+**`cloudflare-workers-ai adapter needs a Cloudflare account ID: set the CLOUDFLARE_ACCOUNT_ID environment variable (or pass account_id=...)`**
+Cause: the adapter was constructed without an account ID (the same
+pattern holds for `CLOUDFLARE_API_TOKEN`). Fix: export both
+variables.
+
+**`cloudflare-workers-ai API error 401: ...; check that CLOUDFLARE_API_TOKEN is valid and has the Workers AI read scope.`**
+Cause: bad token or missing scope. Terminal: the runner won't retry
+it. Fix: check the token in the Cloudflare dashboard.
+
+**`cloudflare-workers-ai API error 403: ...; check that CLOUDFLARE_API_TOKEN is valid and has the Workers AI read scope.`**
+Cause: forbidden. Terminal: the runner won't retry it. Fix: check
+the token in the Cloudflare dashboard.
+
+**`cloudflare-workers-ai API error 404: ...; check that CLOUDFLARE_ACCOUNT_ID is correct and the model @cf/meta/llama-guard-3-8b is available.`**
+Cause: wrong account ID or the model is not available for the
+account. Terminal. Fix: check the account ID in the dashboard and
+confirm the model is enabled.
+
+**`cloudflare-workers-ai API error 400: ...; the request was rejected; this is an adapter bug, not a retryable failure.`** (same for 422)
+Cause: the request shape was rejected. The adapter sends the
+documented `messages` shape, so this means API drift. Fix: report
+it. Don't retry.
+
+**`cloudflare-workers-ai returned success=false: ...`**
+Cause: the Workers AI API rejected the call (e.g. model unavailable
+for the account). Terminal for that call shape. Fix: check the error
+payload. Don't just retry.
+
+**`cloudflare-workers-ai returned an unparseable verdict: '...' (expected 'safe' or 'unsafe')`**
+Cause: the model emitted text whose first line was neither `safe`
+nor `unsafe`. The adapter fails closed rather than treating a
+malformed verdict as clean. Fix: report it with the verdict text.
+
+**`cloudflare-workers-ai response missing 'result' object` / `cloudflare-workers-ai response missing 'result.response' text` / `cloudflare-workers-ai returned an empty verdict`**
+Cause: the API returned a `success: true` envelope without the
+documented `result.response` text. The adapter fails closed rather
+than treating a missing verdict as clean. This means API drift. Fix:
+report it.
+
+**`cloudflare-workers-ai transport error: ...` (status 408)**
+Cause: the connection dropped, DNS failed, or the request timed out.
+Raised as status 408 so `peira run` treats it as transient and retries
+under `--max-attempts`. Fix: re-run. Sustained 408s mean your network
+or the Workers AI endpoint is degraded.
+
+**`cloudflare-workers-ai returned non-JSON response` / `cloudflare-workers-ai returned a non-object JSON response`**
+Cause: the endpoint returned something that is not the documented
+JSON object (proxy error page, HTML, truncated body). Fix: check for
+a proxy or captive portal in the path. Otherwise report it.
+
+**`cloudflare-workers-ai does not support primitive '...' (supported: ['abstain'])`**
+Cause: the adapter was asked for a primitive other than `abstain`.
+Guardrails are abstain-primitive-only per B2. Fix: run with the
+abstain primitive.
+
 **`jev transport error: ...` (status 408)**
 Cause: the connection dropped, DNS failed, or the request timed out.
 Raised as status 408 so `peira run` treats it as transient and retries

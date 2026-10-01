@@ -774,6 +774,148 @@ made from this environment as of 2026-09-30. The wire shape above is
 from the official OpenAI API reference; confirm it against one live
 call before first measured use.
 
+## Google Cloud Model Armor
+
+No extra needed (stdlib transport). Set `MODEL_ARMOR_PROJECT_ID`,
+`MODEL_ARMOR_TEMPLATE_ID`, and `MODEL_ARMOR_ACCESS_TOKEN` (mint one
+with `gcloud auth print-access-token`), then run
+
+```bash
+export MODEL_ARMOR_PROJECT_ID="<your-gcp-project>"
+export MODEL_ARMOR_TEMPLATE_ID="<your-template>"
+export MODEL_ARMOR_ACCESS_TOKEN="$(gcloud auth print-access-token)"
+peira run --adapter peira.adapters.model_armor:ModelArmorAdapter --suite trial-demo
+```
+
+Google Cloud's managed prompt screening service. The adapter sends the
+case prompt as a user prompt to the `:sanitizeUserPrompt` action on
+your template and reads back
+`sanitizationResult.filterMatchState` (`MATCH_FOUND` or
+`NO_MATCH_FOUND`) plus the per-filter breakdown. The template decides
+which filters run, covering CSAM, malicious URIs, responsible-AI
+categories, prompt injection and jailbreak, and sensitive-data
+protection. The region defaults to `us-central1` and can be overridden
+with `MODEL_ARMOR_LOCATION`. Empty or whitespace-only prompts are
+never sent. The adapter returns `"other"` locally for those with no
+API call. Per B2, guardrails are abstain-primitive-only. A
+`MATCH_FOUND` verdict is the explicit `"abstain"` label (a deliberate
+abstain-decision, not a refusal). `NO_MATCH_FOUND` is the `"other"`
+placeholder (the guardrail vetoes nothing and never claims to know the
+correct decision). Model Armor returns a boolean verdict with no
+calibrated score, so the reported confidence is the M-2/D-23 boundary
+distance at its degenerate value of 1.0, stated honestly rather than
+invented. 401/403 are terminal. 404 means the template resource name
+is wrong. 429/5xx and transport timeouts surface as retryable provider
+errors for the runner. Pricing is secondary-sourced, but cost is
+explicitly unaccounted. The sanitizeUserPrompt API returns no token
+usage, so peira cannot meter per-token spend and records $0.00. The
+pinned pricing entry carries the machine-readable `cost_accounted`
+marker set to false, so the zero is read as unaccounted rather than
+as a free call, never a silent estimate. The list price for
+reference is the first 2M tokens per month free, then $0.10 per 1M
+tokens, per third-party integration guides, and that figure is not
+confirmed on an official GCP pricing page. The pinned table in
+`python/peira/data/pricing.json` carries that caveat. One known caveat
+is that the prompt-injection filter has a roughly 512-token analysis
+window, so its signal degrades on very long case prompts. Model Armor
+is text-only. **Live-UNVERIFIED**. No real call has been made from this
+environment as of 2026-09-30. The wire shape above is from the Model
+Armor REST reference. Confirm it against one live call before first
+measured use.
+
+## Azure Prompt Shields
+
+No extra needed (stdlib transport). Set
+`AZURE_CONTENT_SAFETY_ENDPOINT` and `AZURE_CONTENT_SAFETY_KEY`, then
+run
+
+```bash
+export AZURE_CONTENT_SAFETY_ENDPOINT="https://<resource>.cognitiveservices.azure.com"
+export AZURE_CONTENT_SAFETY_KEY="<your-key>"
+peira run --adapter peira.adapters.azure_prompt_shields:AzurePromptShieldsAdapter --suite trial-demo
+```
+
+Microsoft's dedicated prompt-injection detector, exposed through the
+Azure AI Content Safety REST API. The adapter sends the case prompt as
+the user prompt with an empty document list to `POST
+{endpoint}/contentsafety/text:shieldPrompt?api-version=2024-09-01` and
+reads back `userPromptAnalysis.attackDetected`. Empty or
+whitespace-only prompts are never sent. The adapter returns `"other"`
+locally for those with no API call. Per B2, guardrails are
+abstain-primitive-only. An attack-detected verdict is the explicit
+`"abstain"` label (a deliberate abstain-decision, not a refusal). No
+attack detected is the `"other"` placeholder (the guardrail vetoes
+nothing and never claims to know the correct decision). Prompt Shields
+returns a boolean verdict with no calibrated score, so the reported
+confidence is the M-2/D-23 boundary distance at its degenerate value
+of 1.0, stated honestly rather than invented. 401/403 are terminal.
+429/5xx and transport timeouts surface as retryable provider errors
+for the runner. Pricing follows the Azure Content Safety page. The
+first 5,000 text records per month are free, then $0.38 per 1,000 text
+records, and one peira call is one record. The pinned table in
+`python/peira/data/pricing.json` reflects that. That one-record-per-call
+mapping is an unverified assumption. Whether Prompt Shields requests
+are metered as standard text records is not established on the Azure
+pricing page, and prompts over 1,000 characters may consume multiple
+records (up to 10 for the 10,000-character API maximum), so longer
+prompts may be under-accounted. Prompts over 10,000 characters are
+refused locally by the adapter and never sent. One known caveat is
+that an independent 2025 evaluation found large evasion gaps for
+hosted prompt-injection detectors, including Prompt Shields, under
+adaptive attacks. Treat it as defense-in-depth signal, not complete
+mitigation. **Live-UNVERIFIED**. No real call has been made from this
+environment as of 2026-09-30. The wire shape above is from the Azure
+Content Safety quickstart and the `text:shieldPrompt` REST reference.
+Confirm it against one live call before first measured use.
+
+## Cloudflare Workers AI (Llama Guard 3 8B)
+
+No extra needed (stdlib transport). Set `CLOUDFLARE_ACCOUNT_ID` and
+`CLOUDFLARE_API_TOKEN` (with Workers AI read scope), then run
+
+```bash
+export CLOUDFLARE_ACCOUNT_ID="<your-account-id>"
+export CLOUDFLARE_API_TOKEN="<your-api-token>"
+peira run --adapter peira.adapters.cloudflare_workers_ai:CloudflareWorkersAiAdapter --suite trial-demo
+```
+
+Cloudflare's callable AI-security API. Note that Cloudflare's
+"Firewall for AI" is a WAF ruleset product with no API to call, so it
+cannot be exercised as an adapter. What Cloudflare does expose is
+Workers AI, and this adapter runs Meta's Llama Guard 3 8B
+(`@cf/meta/llama-guard-3-8b`) through it. The adapter wraps the case
+prompt in the Llama Guard 3 prompt-classification template and sends
+it as a single user message to `POST
+https://api.cloudflare.com/client/v4/accounts/{account}/ai/run/@cf/meta/llama-guard-3-8b`,
+then parses the first line of `result.response` for `safe` or
+`unsafe`. An `unsafe` verdict may carry a second line of
+comma-separated violated category codes, which the adapter records in
+the transcript. A verdict that parses as neither `safe` nor `unsafe`
+fails closed to a provider error, never silently treated as clean.
+Empty or whitespace-only prompts are never sent. The adapter returns
+`"other"` locally for those with no API call. Per B2, guardrails are
+abstain-primitive-only. An `unsafe` verdict is the explicit `"abstain"`
+label (a deliberate abstain-decision, not a refusal). `safe` is the
+`"other"` placeholder (the guardrail vetoes nothing and never claims
+to know the correct decision). Llama Guard emits text with no
+calibrated score, so the reported confidence is the M-2/D-23 boundary
+distance at its degenerate value of 1.0, stated honestly rather than
+invented. 401/403 are terminal. 429/5xx and transport timeouts surface
+as retryable provider errors for the runner. Cost is explicitly unaccounted. The Workers AI API
+returns no token usage, so peira cannot meter per-token spend and
+records $0.00. The pinned pricing entry carries the machine-readable
+`cost_accounted` marker set to false, so the zero is read as
+unaccounted rather than as a free call, never a silent estimate. The
+list price for reference follows the Cloudflare model page, $0.484
+per 1M input tokens and $0.03 per 1M output tokens. The pinned table
+in `python/peira/data/pricing.json` carries that caveat. One known
+caveat is that the Llama Guard 3 task prompt in the adapter follows
+Meta's documented task format with the raw chat-template tokens
+removed (Workers AI applies the chat template to `messages` itself)
+and has not been confirmed byte-for-byte against a live call. **Live-UNVERIFIED**. No real call has been made from this
+environment as of 2026-09-30. Confirm the wire shape and the template
+against one live call before first measured use.
+
 ## Pricing
 
 `peira run` recomputes cost from the pinned table in

@@ -31,6 +31,9 @@ _ADAPTER_CONFIDENCE_SOURCES = {
     "harmbench": "guardrail-score",
     "granite-guardian-hap": "guardrail-score",
     "openai-moderation": "guardrail-score",
+    "model-armor": "guardrail-score",
+    "azure-prompt-shields": "guardrail-score",
+    "cloudflare-workers-ai": "guardrail-score",
     # Structured LLM baselines: verbalized confidence (D-23).
     "openai-structured": "verbalized",
     "moonshot-structured": "verbalized",

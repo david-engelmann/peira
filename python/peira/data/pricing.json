@@ -164,6 +164,25 @@
       "usd_per_1m_out": 0.0,
       "_note": "Self-hosted Kev checkpoint (KevAdapter pinned Hub id; kev-4b is the default). CURRENT: Qwen3.8-27B, newest checkpoint (2026-09-24), the biggest available size - large arm. Self-hosted: no API cost. Local inference cost is unaccounted in this table - prices at 0.0, explicitly unaccounted, never silently estimated.",
       "confidence": "official"
+    },
+    "gcp:model-armor": {
+      "_note": "Cost explicitly UNACCOUNTED (not $0): the sanitizeUserPrompt API returns no token usage, so peira cannot meter per-token spend - prices at 0.0, explicitly unaccounted, never silently estimated. List price for reference only (secondary-sourced, Sept 2026): first 2M tokens/month free, then $0.10 per 1M tokens - not confirmed on an official GCP pricing page as of 2026-09-30. Re-enable accounting if the API ever returns usage. Adapter ships live-UNVERIFIED: no real call has been made from this environment as of 2026-09-30; re-verify the wire shape and pricing before first measured use.",
+      "usd_per_1m_in": 0.0,
+      "usd_per_1m_out": 0.0,
+      "confidence": "secondary",
+      "cost_accounted": false
+    },
+    "azure:prompt-shields:2024-09-01": {
+      "_note": "Azure AI Content Safety pricing verified 2026-09-30 against the Azure pricing page: 5,000 text records/month free (not modeled here), then $0.38 per 1,000 text records (1 record = up to 1,000 characters). Per-record billing: one peira call screens one prompt, and the pinned rate assumes one record per call - that mapping is an UNVERIFIED assumption: whether Prompt Shields requests are metered as standard text records is not established on the Azure pricing page, and prompts over 1,000 characters may consume multiple records (up to 10 for the 10,000-character API maximum), so longer prompts may be under-accounted. Adapter ships live-UNVERIFIED: no real call has been made from this environment as of 2026-09-30; re-verify the wire shape and pricing before first measured use.",
+      "usd_per_call": 0.00038,
+      "confidence": "official"
+    },
+    "cloudflare:@cf/meta/llama-guard-3-8b": {
+      "_note": "Cost explicitly UNACCOUNTED (not $0): the Workers AI ai/run API returns no token usage, so peira cannot meter per-token spend - prices at 0.0, explicitly unaccounted, never silently estimated. List price for reference only (Cloudflare llama-guard-3-8b model page, 2026-09-30): $0.484 per 1M input tokens, $0.03 per 1M output tokens (Neurons-based; the free daily allocation is not modeled here). Re-enable accounting if the API ever returns usage. Adapter ships live-UNVERIFIED: no real call has been made from this environment as of 2026-09-30; re-verify the wire shape and pricing before first measured use.",
+      "usd_per_1m_in": 0.0,
+      "usd_per_1m_out": 0.0,
+      "confidence": "official",
+      "cost_accounted": false
     }
   },
   "source": "Pre-launch provisional prices (2026-09-23). GPT-5.6 tiers verified 2026-09-23 against https://openai.com/api/pricing/ (post 2026-07-30 price cut); Claude Sonnet 5 corrected 2026-09-23 to $2/$10 against https://platform.claude.com/docs/en/about-claude/pricing (the scheduled Sep-2026 rise to $3/$15 was cancelled); Jev $0.042/1M in / free out is secondary-sourced (gateway announcements), not confirmed on an official TypeSafe page. Claude/Gemini entries carried over from the pre-A2 table, unverified - re-verify every rate before launch. 2026-09-25: added claude-fable-5-1 ($10/$50, frontier-ceiling pick, rate verified against Sept-2026 sources), kimi-k3 ($3/$15, Moonshot API list price verified 2026-09-25), and $0 self-hosted entries for convaiinnovations/laya, convaiinnovations/laya-multilingual, convaiinnovations/laya-typed-decisions, the four jaredpalmer/kev Hub ids (0.5b/0.6b/4b/8b), Qwen/Qwen3.5-4B (semif), and Qwen/Qwen3.6-35B-A3B (openjev-sglang) - local inference cost unaccounted; ids match the sibling lane's pinned adapter MODEL_IDs as of 2026-09-25.",
