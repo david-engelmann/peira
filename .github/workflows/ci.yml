@@ -56,6 +56,20 @@ jobs:
           else
             echo 'runner=["ubuntu-latest"]' >> "$GITHUB_OUTPUT"
           fi
+  lockfile:
+    # uv.lock must stay in sync with pyproject.toml. uv is installed
+    # via pip (no new action needed); `uv lock --check` runs offline
+    # against the committed lockfile and fails the PR when it is stale.
+    needs: check_runner
+    runs-on: ${{ fromJSON(needs.check_runner.outputs.runner) }}
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+      - run: pip install uv
+      - run: uv lock --check
   public-surface:
     needs: check_runner
     runs-on: ${{ fromJSON(needs.check_runner.outputs.runner) }}
