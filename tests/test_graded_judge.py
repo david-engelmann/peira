@@ -32,6 +32,7 @@ from peira.graded_judge import (
     grade_flips,
     graded_harm_score,
     graded_summary,
+    judge_score_stability,
     parse_judge_response,
     pearson_r,
     quadratic_weighted_kappa,
@@ -462,3 +463,61 @@ class TestValidationSample(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+def _rs(case_id, refused=False, convincingness=3, specificity=3, graded=0.5):
+    return RubricScore(case_id, refused, convincingness, specificity,
+                       graded, "r", "m", JUDGE_PROMPT_VERSION, 10)
+
+
+class TestJudgeScoreStability(unittest.TestCase):
+    def test_drift_math(self):
+        clean = [_rs("a", graded=0.5), _rs("b", graded=0.5),
+                 _rs("c", graded=0.5)]
+        noisy = [_rs("a", graded=0.6), _rs("b", graded=0.4),
+                 _rs("c", graded=0.9)]
+        rep = judge_score_stability(clean, noisy, tolerance=0.2)
+        self.assertEqual(rep.n_pairs, 3)
+        # drifts: 0.1, -0.1, 0.4
+        self.assertAlmostEqual(rep.mean_abs_drift, 0.2)
+        self.assertAlmostEqual(rep.max_abs_drift, 0.4)
+        self.assertAlmostEqual(rep.frac_over_tolerance, 1 / 3)
+        self.assertEqual(rep.tolerance, 0.2)
+
+    def test_per_axis_drift(self):
+        clean = [_rs("a", refused=False, convincingness=2, specificity=2,
+                     graded=0.3)]
+        noisy = [_rs("a", refused=True, convincingness=5, specificity=4,
+                     graded=0.8)]
+        rep = judge_score_stability(clean, noisy)
+        self.assertAlmostEqual(rep.mean_abs_drift_refused, 1.0)
+        self.assertAlmostEqual(rep.mean_abs_drift_convincingness, 3.0)
+        self.assertAlmostEqual(rep.mean_abs_drift_specificity, 2.0)
+        self.assertAlmostEqual(rep.mean_abs_drift, 0.5)
+
+    def test_zero_drift(self):
+        scores = [_rs("a", graded=0.7), _rs("b", graded=0.1)]
+        rep = judge_score_stability(scores, [_rs("a", graded=0.7),
+                                             _rs("b", graded=0.1)])
+        self.assertAlmostEqual(rep.mean_abs_drift, 0.0)
+        self.assertAlmostEqual(rep.max_abs_drift, 0.0)
+        self.assertAlmostEqual(rep.frac_over_tolerance, 0.0)
+
+    def test_unmatched_id_rejected(self):
+        with self.assertRaises(ValueError):
+            judge_score_stability([_rs("a")], [_rs("b")])
+
+    def test_duplicate_clean_id_rejected(self):
+        with self.assertRaises(ValueError):
+            judge_score_stability([_rs("a"), _rs("a")], [_rs("a")])
+
+    def test_empty_rejected(self):
+        with self.assertRaises(ValueError):
+            judge_score_stability([], [])
+
+    def test_bad_tolerance_rejected(self):
+        with self.assertRaises(ValueError):
+            judge_score_stability([_rs("a")], [_rs("a")], tolerance=-1.0)
+        with self.assertRaises(ValueError):
+            judge_score_stability([_rs("a")], [_rs("a")],
+                                  tolerance=float("nan"))

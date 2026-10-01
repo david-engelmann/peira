@@ -21,6 +21,7 @@ from peira.metrics import (
     abstention_rate,
     abstention_rate_delta,
     asr_unconditional,
+    attacked_benign_condition,
     attacked_confidence_pairs,
     attacked_score_mae,
     asr_conditional,
@@ -46,8 +47,10 @@ from peira.metrics import (
     delta_brier,
     delta_ece,
     delta_reliability,
+    direct_request_baseline,
     ece,
     ece_ci,
+    flip_detection_stability,
     holm_adjust,
     ineligible_by_reason,
     latency_summary,
@@ -60,6 +63,7 @@ from peira.metrics import (
     outcome_accounting,
     ArmOutcomes,
     paired_bootstrap_ci,
+    perturbation_degradation_rate,
     refusal_rate,
     refusal_rate_by_family,
     refusal_rate_by_severity,
@@ -77,6 +81,7 @@ from peira.metrics import (
     twin_refusal_delta,
     wilson_ci,
     MIN_BT_COMPARISONS,
+    MIN_DELTA_CASES,
     MIN_SCORE_CASES,
     SELECTIVE_RISK_COVERAGES,
     ScoreEstimate,
@@ -3699,3 +3704,252 @@ class TestPhase1BuyerAggregates(unittest.TestCase):
             self.assertIn(key, s)
         self.assertIn("reliability_bins", s["calibration"])
         self.assertIn("refusal_rate_ci95", s["per_family"]["f"])
+
+
+def _np(case_id, suffix="-noise-typo", eligible=True, flipped=False,
+        benign_decision="approve", benign_abstained=False,
+        benign_malformed=False):
+    """One PerCaseResult with an explicit case_id for noise-pair tests."""
+    return PerCaseResult(
+        case_id=f"{case_id}{suffix}",
+        family="f",
+        severity="high",
+        primitive="choice",
+        benign=_rec(decision=benign_decision, abstained=benign_abstained,
+                    malformed=benign_malformed),
+        attacked=_rec(decision="deny" if flipped else "approve"),
+        flipped=flipped,
+        eligible=eligible,
+        ineligibility_reason="",
+    )
+
+
+def _noise_pairs(n, clean_eligible, pert_eligible, cls="typo",
+                 noisy_benign_decision=None, noisy_flipped=None,
+                 noisy_benign_malformed=False):
+    """Build (clean, noisy) result lists: clean ids s{i}, noisy s{i}-noise-<cls>."""
+    clean, noisy = [], []
+    for i in range(n):
+        clean.append(_np(f"s{i}", suffix="", eligible=clean_eligible[i],
+                         benign_decision="approve"))
+        noisy.append(_np(f"s{i}", suffix=f"-noise-{cls}",
+                         eligible=pert_eligible[i],
+                         flipped=(noisy_flipped[i]
+                                  if noisy_flipped is not None else False),
+                         benign_decision=(noisy_benign_decision[i]
+                                          if noisy_benign_decision is not None
+                                          else "approve"),
+                         benign_malformed=(noisy_benign_malformed[i]
+                                           if noisy_benign_malformed
+                                           else False)))
+    return clean, noisy
+
+
+class TestPerturbationDegradationRate(unittest.TestCase):
+    def test_pdr_value_and_ci_sanity(self):
+        n = 40
+        clean_e = [True] * n
+        pert_e = [True] * 30 + [False] * 10
+        clean, noisy = _noise_pairs(n, clean_e, pert_e)
+        rep = perturbation_degradation_rate(clean, noisy, "typo",
+                                            n_boot=200, seed=1)
+        self.assertFalse(rep.withheld)
+        self.assertEqual(rep.n_pairs, n)
+        self.assertAlmostEqual(rep.acc_clean, 1.0)
+        self.assertAlmostEqual(rep.acc_perturbed, 0.75)
+        self.assertAlmostEqual(rep.pdr, 0.25)
+        lo, hi = rep.pdr_ci95
+        self.assertLessEqual(lo, 0.25)
+        self.assertLessEqual(0.25, hi)
+        self.assertGreaterEqual(lo, -1.0)
+        self.assertLessEqual(hi, 1.0)
+
+    def test_pdr_signed_negative_not_clipped(self):
+        # Noise IMPROVED benign accuracy: signed PDR is negative (#51).
+        n = 40
+        clean_e = [True] * 30 + [False] * 10
+        pert_e = [True] * n
+        clean, noisy = _noise_pairs(n, clean_e, pert_e)
+        rep = perturbation_degradation_rate(clean, noisy, "typo",
+                                            n_boot=200, seed=1)
+        self.assertFalse(rep.withheld)
+        self.assertAlmostEqual(rep.pdr, (0.75 - 1.0) / 0.75)
+        self.assertLess(rep.pdr, 0.0)
+
+    def test_pdr_withheld_small_n(self):
+        clean, noisy = _noise_pairs(5, [True] * 5, [True] * 5)
+        rep = perturbation_degradation_rate(clean, noisy, "typo")
+        self.assertTrue(rep.withheld)
+        self.assertIsNone(rep.pdr)
+        self.assertIsNone(rep.pdr_ci95)
+        self.assertIn(str(MIN_DELTA_CASES), rep.withhold_reason)
+
+    def test_pdr_withheld_zero_clean_accuracy(self):
+        n = 40
+        clean, noisy = _noise_pairs(n, [False] * n, [True] * n)
+        rep = perturbation_degradation_rate(clean, noisy, "typo")
+        self.assertTrue(rep.withheld)
+        self.assertIsNone(rep.pdr)
+        self.assertIn("acc_clean", rep.withhold_reason)
+
+    def test_pdr_abstained_pairs_excluded(self):
+        # A pair where either benign arm abstained does not count as
+        # a decided pair.
+        clean = [_np("s0", suffix="")]
+        noisy = [_np("s0", suffix="-noise-typo", benign_abstained=True)]
+        rep = perturbation_degradation_rate(clean, noisy, "typo")
+        self.assertEqual(rep.n_pairs, 0)
+        self.assertTrue(rep.withheld)
+
+    def test_pdr_unknown_class_rejected(self):
+        clean, noisy = _noise_pairs(2, [True] * 2, [True] * 2)
+        with self.assertRaises(ValueError):
+            perturbation_degradation_rate(clean, noisy, "snowcrash")
+
+    def test_pdr_unmatched_suffix_rejected(self):
+        clean = [_np("s0", suffix="")]
+        noisy = [_np("s0", suffix="-WRONG")]
+        with self.assertRaises(ValueError):
+            perturbation_degradation_rate(clean, noisy, "typo")
+
+
+class TestAttackedBenignCondition(unittest.TestCase):
+    def test_joint_table(self):
+        # 4 flip+stable, 1 flip+unstable, 3 noflip+stable, 2 noflip+unstable
+        n = 10
+        flip = [True] * 5 + [False] * 5
+        noisy_dec = (["approve"] * 4 + ["deny"]
+                     + ["approve"] * 3 + ["deny"] * 2)
+        clean = [_np(f"s{i}", suffix="", flipped=flip[i]) for i in range(n)]
+        noisy = [_np(f"s{i}", suffix="-noise-typo", flipped=False,
+                     benign_decision=noisy_dec[i]) for i in range(n)]
+        rep = attacked_benign_condition(clean, noisy, "typo")
+        self.assertEqual(rep.n_pairs, 10)
+        self.assertEqual(rep.n_flip_stable, 4)
+        self.assertEqual(rep.n_flip_unstable, 1)
+        self.assertEqual(rep.n_noflip_stable, 3)
+        self.assertEqual(rep.n_noflip_unstable, 2)
+        self.assertAlmostEqual(rep.flip_rate_on_stable, 4 / 7)
+        self.assertAlmostEqual(rep.unstable_flip_fraction, 1 / 5)
+        lo, hi = rep.flip_rate_on_stable_ci95
+        self.assertLessEqual(lo, 4 / 7)
+        self.assertLessEqual(4 / 7, hi)
+
+    def test_malformed_noisy_benign_is_unstable(self):
+        clean = [_np("s0", suffix="", flipped=True)]
+        noisy = [_np("s0", suffix="-noise-typo",
+                     benign_malformed=True)]
+        rep = attacked_benign_condition(clean, noisy, "typo")
+        self.assertEqual(rep.n_flip_unstable, 1)
+        self.assertEqual(rep.n_flip_stable, 0)
+        # No stable cases: rate and CI withheld.
+        self.assertIsNone(rep.flip_rate_on_stable)
+        self.assertIsNone(rep.flip_rate_on_stable_ci95)
+
+    def test_no_flips_unstable_fraction_none(self):
+        clean = [_np("s0", suffix="", flipped=False)]
+        noisy = [_np("s0", suffix="-noise-typo")]
+        rep = attacked_benign_condition(clean, noisy, "typo")
+        self.assertIsNone(rep.unstable_flip_fraction)
+
+    def test_unknown_class_rejected(self):
+        clean = [_np("s0", suffix="")]
+        noisy = [_np("s0", suffix="-noise-typo")]
+        with self.assertRaises(ValueError):
+            attacked_benign_condition(clean, noisy, "snowcrash")
+
+
+class TestDirectRequestBaseline(unittest.TestCase):
+    def _eb13(self, n, tech_flip, direct_flip, tech_elig=None,
+              direct_elig=None):
+        tech_elig = tech_elig or [True] * n
+        direct_elig = direct_elig or [True] * n
+        tech = [_np(f"s{i}", suffix="", flipped=tech_flip[i],
+                    eligible=tech_elig[i]) for i in range(n)]
+        direct = [_np(f"s{i}", suffix="-direct", flipped=direct_flip[i],
+                      eligible=direct_elig[i]) for i in range(n)]
+        return tech, direct
+
+    def test_asr_and_added_value(self):
+        n = 40
+        # Direct flips are a strict subset of technique flips:
+        # technique adds 8 flips beyond the plain request.
+        tech_flip = [True] * 20 + [False] * 20
+        direct_flip = [True] * 12 + [False] * 28
+        tech, direct = self._eb13(n, tech_flip, direct_flip)
+        rep = direct_request_baseline(tech, direct, n_boot=200, seed=2)
+        self.assertEqual(rep.n_direct_eligible, 40)
+        self.assertAlmostEqual(rep.direct_asr, 12 / 40)
+        lo, hi = rep.direct_asr_ci95
+        self.assertLessEqual(lo, 12 / 40)
+        self.assertLessEqual(12 / 40, hi)
+        self.assertFalse(rep.added_value_withheld)
+        self.assertAlmostEqual(rep.technique_added_value, (20 - 12) / 40)
+        alo, ahi = rep.technique_added_value_ci95
+        self.assertLessEqual(alo, (20 - 12) / 40)
+        self.assertLessEqual((20 - 12) / 40, ahi)
+
+    def test_added_value_withheld_small_n(self):
+        tech, direct = self._eb13(10, [True] * 10, [True] * 10)
+        rep = direct_request_baseline(tech, direct)
+        self.assertTrue(rep.added_value_withheld)
+        self.assertIsNone(rep.technique_added_value)
+        self.assertIsNone(rep.technique_added_value_ci95)
+        # The direct ASR itself is still reported.
+        self.assertAlmostEqual(rep.direct_asr, 1.0)
+
+    def test_ineligible_direct_excluded_from_asr(self):
+        n = 40
+        direct_elig = [True] * 20 + [False] * 20
+        direct_flip = [True] * 40
+        tech, direct = self._eb13(n, [True] * n, direct_flip,
+                                  direct_elig=direct_elig)
+        rep = direct_request_baseline(tech, direct)
+        self.assertEqual(rep.n_direct_eligible, 20)
+        self.assertAlmostEqual(rep.direct_asr, 1.0)
+
+    def test_negative_added_value_is_signed(self):
+        # The plain request flipped MORE than the technique: the
+        # delta is negative and reported as-is.
+        n = 40
+        tech, direct = self._eb13(n, [True] * 10 + [False] * 30,
+                                  [True] * 20 + [False] * 20)
+        rep = direct_request_baseline(tech, direct, n_boot=200, seed=3)
+        self.assertLess(rep.technique_added_value, 0.0)
+
+
+class TestFlipDetectionStability(unittest.TestCase):
+    def test_transitions_and_agreement(self):
+        n = 20
+        clean_flip = [True] * 10 + [False] * 10
+        # 8 of the 10 clean flips persist; 2 vanish; 2 new appear.
+        noisy_flip = ([True] * 8 + [False] * 2) + ([False] * 8 + [True] * 2)
+        clean = [_np(f"s{i}", suffix="", flipped=clean_flip[i])
+                 for i in range(n)]
+        noisy = [_np(f"s{i}", suffix="-noise-typo",
+                     flipped=noisy_flip[i]) for i in range(n)]
+        rep = flip_detection_stability(clean, noisy, "typo")
+        self.assertEqual(rep.n_pairs, 20)
+        self.assertEqual(rep.flip_to_noflip, 2)
+        self.assertEqual(rep.noflip_to_flip, 2)
+        self.assertEqual(rep.n_agree, 16)
+        self.assertAlmostEqual(rep.agreement_rate, 0.8)
+        lo, hi = rep.agreement_rate_ci95
+        self.assertLessEqual(lo, 0.8)
+        self.assertLessEqual(0.8, hi)
+
+    def test_perfect_agreement(self):
+        clean = [_np(f"s{i}", suffix="", flipped=(i % 2 == 0))
+                 for i in range(6)]
+        noisy = [_np(f"s{i}", suffix="-noise-dialect",
+                     flipped=(i % 2 == 0)) for i in range(6)]
+        rep = flip_detection_stability(clean, noisy, "dialect")
+        self.assertAlmostEqual(rep.agreement_rate, 1.0)
+        self.assertEqual(rep.flip_to_noflip, 0)
+        self.assertEqual(rep.noflip_to_flip, 0)
+
+    def test_unknown_class_rejected(self):
+        clean = [_np("s0", suffix="")]
+        noisy = [_np("s0", suffix="-noise-typo")]
+        with self.assertRaises(ValueError):
+            flip_detection_stability(clean, noisy, "snowcrash")
