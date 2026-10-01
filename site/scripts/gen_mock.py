@@ -126,15 +126,17 @@ def build_v3_block(
 
     # Per-family typed list (SHOULD 20): the research note requires a
     # typed list (family enum + n + point estimate + CI), not the
-    # string-keyed dict metrics.per_family ships.
+    # string-keyed dict metrics.per_family ships. Families the run never
+    # evaluated ride with n=0 and null estimates (the suite manifest is
+    # the requirement set); CI edges are null-safe for that shape.
     per_family = [
         {
             "family": family,
             "n": entry["n"],
             "n_eligible": entry["n_eligible"],
             "asr": entry["asr"],
-            "ci_lo": entry["asr_ci95"][0],
-            "ci_hi": entry["asr_ci95"][1],
+            "ci_lo": entry["asr_ci95"][0] if entry["asr_ci95"] else None,
+            "ci_hi": entry["asr_ci95"][1] if entry["asr_ci95"] else None,
         }
         for family, entry in sorted(metrics["per_family"].items())
     ]
@@ -404,25 +406,46 @@ def gen_case(
 def gen_artifact(
     rng: random.Random, name: str, version: str, model_class: str,
     asr: float, suite: str, n_cases: int, seed: int, defect: float = 0.06,
+    skip_families: tuple = (), withhold_refusal_rate: tuple = (),
+    required_families: list | None = None,
 ) -> RunArtifact:
-    results = [
-        gen_case(
-            rng,
-            # Case IDs are shared across adapters in the same suite so the
-            # Compare view can join two runs' cases on case_id.
-            f"mock-{suite}-{i:04d}",
-            FAMILIES[i % len(FAMILIES)],
-            asr,
-            seed * 1_000_000,
-            i,
-            defect,
+    # EB-5 fixture: skip_families drops whole families from the run (the
+    # matrix must show them as visibly missing, never silently absent).
+    # withhold_refusal_rate withholds the refusal-rate metric for the
+    # named families (null = withheld, per the site data contract).
+    # required_families is the suite's family manifest, passed through to
+    # the real summarize() exactly the way the results pipeline will pass
+    # the real manifest: a family absent from the run scores 0 eligible
+    # and fails the ranking gate instead of shrinking the requirement.
+    results = []
+    for i in range(n_cases):
+        family = FAMILIES[i % len(FAMILIES)]
+        if family in skip_families:
+            continue
+        results.append(
+            gen_case(
+                rng,
+                # Case IDs are shared across adapters in the same suite so the
+                # Compare view can join two runs' cases on case_id.
+                f"mock-{suite}-{i:04d}",
+                family,
+                asr,
+                seed * 1_000_000,
+                i,
+                defect,
+            )
         )
-        for i in range(n_cases)
-    ]
     # Mock only: a small bootstrap budget. Fourth-decimal CI jitter is
     # irrelevant for synthetic data; the real default (10000) would take
     # minutes in the pure-Python backend on this loaded machine.
-    metrics = summarize(results, seed=seed, n_boot=500)
+    metrics = summarize(
+        results, seed=seed, n_boot=500, required_families=required_families,
+    )
+    for fam in withhold_refusal_rate:
+        entry = metrics["per_family"].get(fam)
+        if entry is not None:
+            entry["refusal_rate"] = None
+            entry["refusal_rate_ci95"] = None
     created_utc = datetime.now(timezone.utc).isoformat()
     artifact = RunArtifact(
         artifact_version="2",
@@ -473,9 +496,27 @@ def main() -> None:
             ("public", 504, 11, 0.03),
             ("holdout", 100, 22, 0.06),
         ):
+            # EB-5 fixtures, public suite only. mock-hybrid never sees the
+            # encoding_evasion family, so its matrix row must render as
+            # visibly missing and its ranking gate must fail on the absent
+            # family (the suite manifest is the requirement, not the run's
+            # own family set). mock-llm-judge withholds refusal_rate for
+            # negation_games, exercising the withheld-metric rendering.
+            skip = (
+                ("encoding_evasion",)
+                if (name, suite) == ("mock-hybrid", "public")
+                else ()
+            )
+            withhold = (
+                ("negation_games",)
+                if (name, suite) == ("mock-llm-judge", "public")
+                else ()
+            )
             artifact = gen_artifact(
                 rng, name, version, model_class, asr, suite, n_cases,
                 args.seed * 100 + sseed, defect,
+                skip_families=skip, withhold_refusal_rate=withhold,
+                required_families=FAMILIES,
             )
             assert artifact.verify(), "mock artifact failed its own lock"
             path = out / f"{name}.{suite}.json"

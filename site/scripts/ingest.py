@@ -26,7 +26,7 @@ sys.path.insert(0, str(REPO_ROOT / "python"))
 from peira import __version__ as peira_version  # noqa: E402
 from peira.artifacts import RunArtifact  # noqa: E402
 
-SCHEMA_VERSION = "2"
+SCHEMA_VERSION = "3"
 
 # ---------------------------------------------------------------------------
 # v3 extension blocks (research_notes/peira-run-artifact-research-20260928.md).
@@ -301,6 +301,35 @@ def main() -> None:
         fail(f"runs disagree on manifest_sha256: {sorted(manifest_shas)}")
     runs.sort(key=lambda r: (r["suite"], r["adapter_name"]))
 
+    # EB-5: the canonical family inventory is the sorted union of the
+    # per-family keys across every run in the build. The leaderboard's
+    # family-by-metric matrix is drawn from this list, never from a
+    # single run's family set, so a run that skipped a family shows a
+    # visibly missing row instead of a silently shorter matrix. (The real
+    # results pipeline will source this list from the dataset manifest;
+    # the union rule stays as the fallback when no manifest is bound.)
+    canonical_families = sorted({
+        family
+        for run in runs
+        for family in (run["metrics"].get("per_family") or {})
+    })
+    total = len(canonical_families)
+    for run in runs:
+        per_family = run["metrics"].get("per_family") or {}
+        # A family counts as evaluated only when the run has cases in it.
+        # The metrics layer lists required-but-unevaluated families with
+        # n=0 (the suite manifest is the requirement set); those are the
+        # visibly-missing cells, not silent gaps and not measured zeros.
+        evaluated = sum(
+            1 for entry in per_family.values()
+            if isinstance(entry, dict) and (entry.get("n") or 0) > 0
+        )
+        run["coverage"] = {
+            "families_evaluated": evaluated,
+            "families_total": total,
+            "coverage_pct": round(100.0 * evaluated / total, 1) if total else None,
+        }
+
     site_data = {
         "schema_version": SCHEMA_VERSION,
         "generated_utc": datetime.now(timezone.utc).isoformat(),
@@ -310,6 +339,7 @@ def main() -> None:
             "name": "peira-v1",
             "version": next(iter(dataset_versions)),
             "manifest_sha256": next(iter(manifest_shas)),
+            "families": canonical_families,
         },
         "runs": runs,
     }

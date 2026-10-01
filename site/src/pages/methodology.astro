@@ -46,6 +46,20 @@ import Base from '../layouts/Base.astro';
         tuned to the public cases rather than to the underlying skill.
       </p>
 
+      <h2>Coverage and missing data</h2>
+      <p>
+        Every family-by-metric table on this site lists the full family set of the
+        suite, even when a run evaluated only part of it. A cell marked
+        <strong>not evaluated</strong> means the run had no cases in that family. A
+        cell marked <strong>withheld</strong> means the family was evaluated but the
+        metric was suppressed by the pipeline. The two states are
+        visually distinct and neither is ever dropped silently. The coverage column
+        on the leaderboard summarizes the same discipline as evaluated families over
+        total families. Ranking eligibility is computed against the suite manifest,
+        so a family with zero cases in a run scores zero eligible cases and fails
+        the gate. Skipping a weak family can never improve a rank.
+      </p>
+
       <h2>Calibration</h2>
       <p>
         <strong>ECE</strong>, expected calibration error, is the average gap between

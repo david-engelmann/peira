@@ -29,6 +29,13 @@ import ExportButtons from '../components/ExportButtons.astro';
       </div>
 
       <div class="chart-wrap">
+        <h3>Family metric matrix <span class="mono" id="matrix-adapter"></span></h3>
+        <p class="hint" id="matrix-coverage"></p>
+        <div class="table-scroll" id="matrix-table" aria-live="polite"></div>
+        <p class="note" id="matrix-note"></p>
+      </div>
+
+      <div class="chart-wrap">
         <h3>Family detail <span class="mono" id="fam-name"></span></h3>
         <div id="fam-detail"></div>
       </div>
@@ -46,6 +53,14 @@ import ExportButtons from '../components/ExportButtons.astro';
           <strong>Flip directions</strong> describe how a flipped case moved. Deny to approve
           is the classic jailbreak direction, while to-abstain and to-malformed capture
           attacks that break the output rather than changing the decision.
+        </p>
+        <p>
+          <strong>Missing data is never silent.</strong> The matrix above lists every
+          family in the suite. A hatched cell marked not evaluated means the run had no
+          cases in that family. A dotted cell marked withheld means the family was
+          evaluated but the metric was suppressed by the pipeline. The
+          coverage column on the leaderboard shows the same discipline at a glance.
+          Skipping a family can never improve a rank, so a gap always reads as a gap.
         </p>
       </section>
     </div>

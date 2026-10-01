@@ -67,6 +67,27 @@
     for (const r of RUNS) for (const f of Object.keys(r.metrics.per_family || {})) s.add(f);
     return [...s].sort();
   };
+  // EB-5: matrix rows inside one suite view use the families present in
+  // that suite, so the view never renders rows for families absent from
+  // every run in view, while gaps between runs in the same suite stay
+  // visible as "not evaluated" cells. The build-wide canonical inventory
+  // (dataset.families, see SITE_DATA_SCHEMA.md) is the contract the
+  // rows are drawn from; the suite slice is a view concern only.
+  const suiteFamilies = (suite) => {
+    const s = new Set();
+    for (const r of runsForSuite(suite)) for (const f of Object.keys(r.metrics.per_family || {})) s.add(f);
+    return [...s].sort();
+  };
+  const coverageCell = (r) => {
+    const c = r.coverage || {};
+    if (c.families_total === null || c.families_total === undefined || c.families_total === 0) return 'withheld';
+    const pctTxt = (c.coverage_pct === null || c.coverage_pct === undefined) ? '' : `<span class="ci">${Number(c.coverage_pct).toFixed(1)}% of families</span>`;
+    return `${c.families_evaluated}/${c.families_total}${pctTxt}`;
+  };
+  // EB-5: a family counts as evaluated only when the run has cases in
+  // it. The metrics layer lists required-but-unevaluated families with
+  // n=0; those render as "not evaluated", never as measured zeros.
+  const familyEvaluated = (pf) => pf !== undefined && pf !== null && (pf.n || 0) > 0;
 
   const PALETTE = ['#e8a33d', '#6fbf73', '#7aa5e8', '#b493e8', '#58b8a8', '#d96a5f', '#d8b84a', '#8fc1e8'];
   const colorFor = (name, suiteRuns) => {
@@ -198,6 +219,7 @@
       { key: 'asr', label: 'Conditional ASR', get: (r) => r.metrics.asr_conditional, nullsLast: true },
       { key: 'acc', label: 'Benign accuracy', get: (r) => r.metrics.benign_accuracy, nullsLast: true },
       { key: 'n', label: 'Eligible cases', get: (r) => r.metrics.n_eligible },
+      { key: 'cov', label: 'Coverage', get: (r) => r.coverage && r.coverage.coverage_pct, nullsLast: true },
       { key: 'cost', label: 'Cost per 1k', get: (r) => r.metrics.cost && r.metrics.cost.cost_per_1k_decisions, nullsLast: true },
       { key: 'lat', label: 'p99 latency', get: (r) => r.metrics.latency_ms && r.metrics.latency_ms.overall && r.metrics.latency_ms.overall.p99, nullsLast: true },
     ];
@@ -240,6 +262,7 @@
           `<td class="num">${asrBar}${pct(m.asr_conditional)}<span class="ci">${ciText(m.asr_ci95)}</span></td>` +
           `<td class="num">${pct(m.benign_accuracy)}<span class="ci">${ciText(m.benign_accuracy_ci95)}</span></td>` +
           `<td class="num">${num(m.n_eligible)}</td>` +
+          `<td class="num">${coverageCell(r)}</td>` +
           `<td class="num">${money(m.cost && m.cost.cost_per_1k_decisions)}</td>` +
           `<td class="num">${ms(m.latency_ms && m.latency_ms.overall && m.latency_ms.overall.p99)}</td>` +
           `<td>${elig}${MOCK ? ' <span class="badge mock">mock</span>' : ''}</td></tr>`;
@@ -257,13 +280,16 @@
       root.__csvRows = () => {
         const rows = [['adapter', 'adapter_version', 'model_class', 'suite', 'ranking_eligible',
           'asr_conditional', 'asr_ci95_lo', 'asr_ci95_hi', 'benign_accuracy', 'benign_accuracy_ci95_lo',
-          'benign_accuracy_ci95_hi', 'n_eligible', 'n_cases', 'cost_per_1k_usd', 'p99_latency_ms', mockNote() ? 'mock_note' : ''].filter(Boolean)];
+          'benign_accuracy_ci95_hi', 'n_eligible', 'n_cases', 'coverage_families_evaluated',
+          'coverage_families_total', 'coverage_pct', 'cost_per_1k_usd', 'p99_latency_ms', mockNote() ? 'mock_note' : ''].filter(Boolean)];
         for (const r of runs) {
           const m = r.metrics;
+          const cov = r.coverage || {};
           rows.push([r.adapter_name, r.adapter_version, r.model_class, r.suite, m.ranking_eligible,
             m.asr_conditional, m.asr_ci95 && m.asr_ci95[0], m.asr_ci95 && m.asr_ci95[1],
             m.benign_accuracy, m.benign_accuracy_ci95 && m.benign_accuracy_ci95[0], m.benign_accuracy_ci95 && m.benign_accuracy_ci95[1],
             m.n_eligible, m.n_cases,
+            cov.families_evaluated, cov.families_total, cov.coverage_pct,
             m.cost && m.cost.cost_per_1k_decisions,
             m.latency_ms && m.latency_ms.overall && m.latency_ms.overall.p99,
             mockNote()].filter((v, i) => i < rows[0].length));
@@ -290,12 +316,50 @@
     const gridEl = root.querySelector('#fam-grid');
     const detailEl = root.querySelector('#fam-detail');
     const selAdapter = root.querySelector('#sel-adapter');
-    // P2-6: derive the family set from the selected suite only, so the
-    // view never renders rows for families absent from every run in view.
-    const famList = () => {
-      const s = new Set();
-      for (const r of runsForSuite(state.suite)) for (const f of Object.keys(r.metrics.per_family || {})) s.add(f);
-      return [...s];
+    const matrixEl = root.querySelector('#matrix-table');
+    const matrixAdapterEl = root.querySelector('#matrix-adapter');
+    const matrixCovEl = root.querySelector('#matrix-coverage');
+    const matrixNoteEl = root.querySelector('#matrix-note');
+    // EB-5: rows come from the families present in the selected suite, so
+    // the view never renders rows for families absent from every run in
+    // view. A family present in the suite but missing from one run is a
+    // visibly missing cell, never a silent gap.
+    const famList = () => suiteFamilies(state.suite);
+
+    // EB-5: the full family-by-metric matrix for one run. Every family in
+    // the suite appears as a row. A family the run never evaluated is a
+    // "not evaluated" row; an evaluated family with a null metric is
+    // "withheld". Neither state is ever dropped or blanked.
+    const matrixCell = (evaluated, value, fmt) => {
+      if (!evaluated) return '<span class="missing-label">not evaluated</span>';
+      if (value === null || value === undefined) return 'withheld';
+      return fmt(value);
+    };
+    const renderMatrix = (run) => {
+      if (!matrixEl) return;
+      const fams = [...famList()].sort();
+      const pfAll = (run && run.metrics.per_family) || {};
+      matrixAdapterEl.textContent = run ? runLabel(run) : '';
+      matrixCovEl.textContent = run
+        ? coverageCell(run) + ' families evaluated. Families with no cases in this run stay in the table and are marked, never dropped.'
+        : '';
+      let html = '<table class="board" style="min-width:780px"><thead><tr>' +
+        '<th class="no-sort">Family</th><th class="no-sort">Conditional ASR</th>' +
+        '<th class="no-sort">Refusal rate</th><th class="no-sort">Eligible cases</th>' +
+        '</tr></thead><tbody>';
+      for (const f of fams) {
+        const pf = pfAll[f];
+        const evaluated = familyEvaluated(pf);
+        html += '<tr><td class="mono">' + esc(f) + '</td>' +
+          '<td class="num">' + matrixCell(evaluated, evaluated ? pf.asr : null,
+            (v) => pct(v) + '<span class="ci">' + ciText(pf.asr_ci95) + '</span>') + '</td>' +
+          '<td class="num">' + matrixCell(evaluated, evaluated ? pf.refusal_rate : null, (v) => pct(v)) + '</td>' +
+          '<td class="num">' + matrixCell(evaluated, evaluated ? pf.n_eligible : null,
+            (v) => num(v) + '<span class="ci">of ' + num(pf.n) + ' cases</span>') + '</td></tr>';
+      }
+      html += '</tbody></table>';
+      matrixEl.innerHTML = html;
+      matrixNoteEl.textContent = MOCK ? 'Mock values.' : '';
     };
 
     const render = () => {
@@ -318,9 +382,13 @@
         let worst = null;
         for (const r of suiteRuns) {
           const pf = (r.metrics.per_family || {})[f];
-          const v = pf ? pf.asr : null;
+          const evaluated = familyEvaluated(pf);
+          const v = evaluated ? pf.asr : null;
           if (v !== null && (worst === null || v > worst)) worst = v;
-          html += `<div class="cell" data-family="${esc(f)}" style="cursor:pointer" title="${esc(f)} · ${esc(shortName(r.adapter_name))} · ${pct(v)}"><i style="width:${v === null ? 0 : Math.min(100, v * 100).toFixed(1)}%;background:${heatColor(v)}"></i></div>`;
+          const cellCls = evaluated ? (v === null ? 'cell withheld' : 'cell') : 'cell missing';
+          const cellTitle = evaluated ? `${esc(f)} · ${esc(shortName(r.adapter_name))} · ${pct(v)}`
+            : `${esc(f)} · ${esc(shortName(r.adapter_name))} · not evaluated in this run`;
+          html += `<div class="${cellCls}" data-family="${esc(f)}" style="cursor:pointer" title="${cellTitle}"><i style="width:${v === null ? 0 : Math.min(100, v * 100).toFixed(1)}%;background:${heatColor(v)}"></i></div>`;
         }
         html += `<div class="val">${pct(worst)}</div>`;
       }
@@ -334,9 +402,11 @@
       let dHtml = '';
       if (run) {
         const pf = (run.metrics.per_family || {})[state.family] || {};
+        const evaluated = familyEvaluated(pf);
         const dirs = pf.flip_direction_counts || {};
         const dirKeys = Object.keys(dirs).sort();
-        dHtml = '<div class="cards">' +
+        dHtml = (evaluated ? '' : '<p class="note"><span class="missing-label">not evaluated</span> This run had no cases in this family, so the cards below are empty by construction.</p>') +
+          '<div class="cards">' +
           `<div class="card"><div class="k">Conditional ASR</div><div class="v">${pct(pf.asr)}</div><div class="sub">${ciText(pf.asr_ci95)}</div></div>` +
           `<div class="card"><div class="k">Refusal rate</div><div class="v">${pct(pf.refusal_rate)}</div><div class="sub">${ciText(pf.refusal_rate_ci95)}</div></div>` +
           `<div class="card"><div class="k">Eligible cases</div><div class="v">${num(pf.n_eligible)}</div><div class="sub">of ${num(pf.n)} cases in family</div></div></div>` +
@@ -347,11 +417,12 @@
           '<p class="note">Family ' + esc(state.family) + ', adapter ' + esc(runLabel(run)) + '. ' + (MOCK ? 'Mock values.' : '') + '</p>';
 
         root.__csvRows = () => {
-          const rows = [['family', 'adapter', 'adapter_version', 'suite', 'asr', 'asr_ci95_lo', 'asr_ci95_hi',
+          const rows = [['family', 'family_evaluated', 'adapter', 'adapter_version', 'suite', 'asr', 'asr_ci95_lo', 'asr_ci95_hi',
             'refusal_rate', 'refusal_rate_ci95_lo', 'refusal_rate_ci95_hi', 'n', 'n_eligible', 'flip_direction_counts_json']];
           for (const f of fams) for (const rr of suiteRuns) {
-            const p = (rr.metrics.per_family || {})[f] || {};
-            rows.push([f, rr.adapter_name, rr.adapter_version, rr.suite, p.asr,
+            const pfAll = rr.metrics.per_family || {};
+            const p = pfAll[f] || {};
+            rows.push([f, familyEvaluated(pfAll[f]), rr.adapter_name, rr.adapter_version, rr.suite, p.asr,
               p.asr_ci95 && p.asr_ci95[0], p.asr_ci95 && p.asr_ci95[1],
               p.refusal_rate, p.refusal_rate_ci95 && p.refusal_rate_ci95[0], p.refusal_rate_ci95 && p.refusal_rate_ci95[1],
               p.n, p.n_eligible, JSON.stringify(p.flip_direction_counts || {})]);
@@ -361,6 +432,7 @@
       }
       detailEl.innerHTML = dHtml;
       root.querySelector('#fam-name').textContent = state.family;
+      renderMatrix(run);
     };
 
     bindSuiteToggle(root, state, render);

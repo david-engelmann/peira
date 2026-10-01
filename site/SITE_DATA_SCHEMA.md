@@ -1,4 +1,4 @@
-# Site data schema (v2)
+# Site data schema (v3)
 
 The contract between the ingestion pipeline (`site/scripts/ingest.py`)
 and the Astro site (`site/src`). Both sides must honor this file. Bump
@@ -6,6 +6,14 @@ and the Astro site (`site/src`). Both sides must honor this file. Bump
 
 ## Changelog
 
+- v3: EB-5 per-family metric matrix. `dataset.families` is the canonical
+  family inventory for the build (sorted union of every run's
+  `per_family` keys); every family-by-metric surface draws its rows from
+  this list, never from a single run's family set. Each run carries
+  `run.coverage` (`families_evaluated`, `families_total`,
+  `coverage_pct`). Missing-cell semantics are fixed: a family absent
+  from a run renders as "not evaluated", a null metric value renders as
+  "withheld"; rows are never silently dropped. (v2 changelog below.)
 - v2: runs carry the v3 extension blocks (`run.v3`): threat model,
   attack provenance, adjudication identity, exposure attestation, and
   the other agent-consumer fields from
@@ -23,14 +31,15 @@ and the Astro site (`site/src`). Both sides must honor this file. Bump
 
 ```json
 {
-  "schema_version": "2",
+  "schema_version": "3",
   "generated_utc": "2026-09-29T18:00:00+00:00",
   "mock_data": true,
   "peira_version": "0.1.0",
   "dataset": {
     "name": "peira-v1",
     "version": "1.1.1",
-    "manifest_sha256": "abc123..."
+    "manifest_sha256": "abc123...",
+    "families": ["abstain_forcing", "..."]
   },
   "runs": [ <run> ]
 }
@@ -42,6 +51,12 @@ and the Astro site (`site/src`). Both sides must honor this file. Bump
 - `dataset` is taken from the artifacts' `dataset_version` fields (all
   runs in one build must agree, else ingest fails). `manifest_sha256`
   is the artifacts' `manifest_sha256` (empty string when unbound).
+- `dataset.families` is the canonical family inventory: the sorted union
+  of every run's `metrics.per_family` keys in this build (ingest rule
+  13). The real results pipeline will source this list from the dataset
+  manifest; the union rule is the fallback when no manifest is bound.
+  Every family-by-metric surface (heatmap, matrix) draws its rows from
+  this list.
 
 ## Run object
 
@@ -56,6 +71,11 @@ and the Astro site (`site/src`). Both sides must honor this file. Bump
   "analysis_lock": "sha256...",
   "ranking_eligible": true,
   "eligibility_notes": [],
+  "coverage": {
+    "families_evaluated": 20,
+    "families_total": 21,
+    "coverage_pct": 95.2
+  },
   "metrics": { "...": "verbatim peira.metrics.summarize() output" },
   "v3": { "...": "verbatim v3 extension block (see below); absent on pure-v2 artifacts" },
   "cases": [
@@ -94,6 +114,29 @@ and the Astro site (`site/src`). Both sides must honor this file. Bump
     client-side)
 - `cases` decisions are strings, while `flipped` and `eligible` are booleans.
   Withheld metric values are `null` (never NaN).
+
+## Missing-cell semantics (EB-5)
+
+The family-by-metric matrix is the product; aggregates are labeled as
+such. Three states exist for a matrix cell, and the views must keep them
+visually and textually distinct:
+
+- **measured**: the run evaluated the family and the metric is a number.
+  Rendered as the value.
+- **not evaluated**: the family is in `dataset.families` but the run has
+  no cases in it. Either the family is absent from the run's
+  `metrics.per_family`, or it is present with `n: 0` (the metrics layer
+  lists required-but-unevaluated families with `n: 0` when the suite
+  manifest is passed as the requirement set). Rendered as "not
+  evaluated" with a hatched cell. Rows are never dropped to hide this
+  state.
+- **withheld**: the family was evaluated but the metric value is `null`
+  (the estimate did not clear the minimum-observations gate). Rendered
+  as "withheld" with a dotted cell.
+
+A run that skipped a family must look worse, never better, than a run
+that measured it. The leaderboard's coverage column (`20/21`, `95.2%`)
+is the at-a-glance form of this discipline.
 
 ## v3 block
 
@@ -233,3 +276,8 @@ benign_wrong_decision, attacked_malformed};
     views can read threat model, attack provenance, adjudication
     identity, exposure attestation, and the other agent-consumer fields
     without recomputing them. Pure-v2 artifacts have no `v3` key.
+13. EB-5 matrix contract: `dataset.families` is the sorted union of every
+    run's `metrics.per_family` keys, and every run carries `coverage`
+    (`families_evaluated`, `families_total`, `coverage_pct`). A run may
+    evaluate any subset of the canonical families; the views, not
+    ingest, make the gaps visible.

@@ -1205,6 +1205,30 @@ Eligible = the benign variant was answered correctly and was well-formed
 (a benign-malformed case has no baseline to attack and is excluded from
 ASR; an attacked variant that is malformed counts as flipped).
 
+### Per-family coverage matrix (EB-5)
+
+The leaderboard enforces a full family-by-metric matrix. The canonical
+family inventory for a build is the sorted union of every run's
+`per_family` keys, carried in the site data as `dataset.families` (the
+real results pipeline will source it from the dataset manifest, with the
+union rule as fallback), and each run carries `coverage`
+(`families_evaluated`, `families_total`, `coverage_pct`).
+
+Three matrix-cell states exist and the display keeps them distinct:
+
+- **measured**: the run evaluated the family and the metric is a number;
+- **not evaluated**: the family is in the canonical set but absent from
+  the run's `per_family`. Rendered as a visibly missing cell, never as a
+  dropped row;
+- **withheld**: the family was evaluated but the metric value is null
+  (the estimate did not clear the minimum-observations gate).
+
+A run that skipped a family must look worse, never better, than a run
+that measured it: the leaderboard's coverage column (`20/21`, `95.2%`)
+is the at-a-glance form of the discipline, and the ranking gate is
+evaluated against the suite manifest so a fully omitted family scores 0
+eligible and fails the gate.
+
 ## Hardness stratification and transfer ASR (M-4, diagnostic)
 
 Aggregate ASR hides whether a family has a hard core: 20% ASR could mean
