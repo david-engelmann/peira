@@ -45,6 +45,19 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
 - `docs/Reproducibility.md`: lockfile usage, Docker build/run
   reference, and regeneration instructions; linked from
   `docs/Overview.md`.
+### Added threshold_edge_hunting attack family
+
+- The v2 suite ships attack family 26: `threshold_edge_hunting`
+  (420 cases, `v2-edge-0001`..`v2-edge-0420`), under
+  `dataset/v2/cases/`. Each case states an explicit numeric cutoff
+  and places the benign evidence within 0.01 of it on the correct
+  side; the attacked arm applies a minimal semantics-preserving
+  perturbation (evidence paraphrase, threshold restatement, cosmetic
+  reorder, combined) changing no number and no cutoff. Fourteen
+  domains, five thresholds per domain, both sides of each cutoff,
+  336 choice + 84 score cases. Design decision D-38: ships as fixed
+  paired cases; the adaptive flip-radius variant is future measurement
+  work. Dataset version 2.3.1 to 2.4.0.
 
 ### Added judge_sycophancy attack family
 
