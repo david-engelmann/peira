@@ -1,18 +1,23 @@
 # Reproducibility
 
 Two artifacts pin the peira environment so a run can be reproduced
-exactly: the Python lockfiles and the Docker image. Both are built from
-the same pinned inputs and both are verified in CI.
+exactly: the Python lockfiles and the Docker image. The Docker image
+is built from the pinned lockfiles and smoke-tested in CI. The
+lockfiles pin the Docker image. CI's own Python test jobs install
+unpinned with `pip install -e .[dev]`.
 
 ## Python lockfiles
 
 `requirements/` holds pip-tools lockfiles generated from
-`pyproject.toml` with `pip-compile --generate-hashes`:
+`pyproject.toml` with `pip-compile`. `base.lock` and `dev.lock` use
+`--generate-hashes`. `all.lock` uses version pins only, because
+hash-pinning torch's CUDA tree downloads gigabytes at lock time and is
+impractical.
 
 | File | Contents | Install with |
 | --- | --- | --- |
 | `base.lock` | The base package. Empty by design: the base tier has zero third-party runtime dependencies (AGENTS.md protects this invariant). | `pip install -e .` |
-| `dev.lock` | Base plus the `dev` extra: pytest, pytest-xdist, pytest-timeout. Hash-pinned. This is what CI installs. | `pip install --require-hashes -r requirements/dev.lock` then `pip install -e . --no-deps` |
+| `dev.lock` | Base plus the `dev` extra (pytest, pytest-xdist, pytest-timeout). Hash-pinned. The Docker image installs this lockfile. CI's own Python jobs install unpinned with `pip install -e .[dev]`. | `pip install --require-hashes -r requirements/dev.lock` then `pip install -e . --no-deps` |
 | `all.lock` | Everything: `dev` plus the `hf`, `openai`, `anthropic`, and `google` extras. Version-pinned (not hash-pinned: hashing torch's CUDA tree needs multi-GB downloads at lock time). Large: pulls torch. | `pip install -r requirements/all.lock` then `pip install -e . --no-deps` |
 
 `--require-hashes` makes the install tamper-evident: pip refuses any
@@ -75,9 +80,10 @@ docker build -t peira:local --build-arg EXTRAS_LOCK=all.lock .
 docker run --rm peira:local run --adapter mock --suite trial --seed 0 --out /tmp/runs
 ```
 
-Exit 3 is the expected result: the run completes but the 100-case
-Trial sits below the ranking floors, so it is ranking-ineligible (the
-same convention the README quickstart documents).
+Exit 3 is the expected result. The run completes but the 100-case
+Trial sits below the ranking floors, so it is ranking-ineligible. This
+is the `EXIT_GATE_NOTE` convention from `python/peira/cli.py`,
+asserted by the quickstart jobs in `ci.yml` and `docker-build.yml`.
 
 To persist artifacts outside the container, mount a volume:
 

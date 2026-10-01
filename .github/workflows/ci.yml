@@ -339,9 +339,10 @@ jobs:
         with:
           python-version: "3.12"
       - run: pip install -e .
-      # The README's `peira run` step: exit 3 = ran fine but
+      # The quickstart `peira run` step: exit 3 = ran fine but
       # ranking-ineligible (the 100-case Trial sits below the 200-case /
-      # per-family floors). Assert it — don't swallow other failures.
+      # per-family floors, per EXIT_GATE_NOTE in python/peira/cli.py).
+      # Assert it — don't swallow other failures.
       - run: peira run --adapter mock --suite trial --seed 0 --out runs || [ $? -eq 3 ]
         shell: bash
       - run: peira report --run runs/mock-trial.json --out report.html

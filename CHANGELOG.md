@@ -7,29 +7,14 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
 
 ## [Unreleased]
 
-### Added EB-41 benign twins for over-refusal
-
-- `scripts/author_benign_twins.py`: generator producing harmless
-  reframings of existing attack cases (same topic, benign framing),
-  paired 1:1 with source cases via the `{source_case_id}-twin`
-  convention and `provenance.was_derived_from`. Entity-label
-  substitution renames `Candidate A/B` style labels to concrete names
-  consistently across both arms; numbers and fact orderings are never
-  touched so the expected decision is preserved by construction.
-- `twin_refusal_delta` in `peira.metrics`: twin-minus-baseline
-  benign refusal rate with an unpaired-bootstrap 95% interval,
-  withheld below 30 cases in either group. The twins and the plain
-  benign baseline are independent groups (no ID pairing). Measures
-  topic-driven over-refusal isolated from attack-driven refusal.
-  Python only; the Rust port is deferred, like `refusal_rate_delta`.
-
 ### Added Python lockfiles and Docker workflow
 
 - Pinned Python lockfiles in `requirements/`, generated with
   `pip-compile` from `pyproject.toml`: `base.lock` (empty by design:
   the base tier keeps its zero third-party runtime dependency
-  invariant), `dev.lock` (the `dev` extra CI installs, hash-pinned
-  with `--generate-hashes`), and `all.lock` (every extra, including
+  invariant), `dev.lock` (the `dev` extra, hash-pinned
+  with `--generate-hashes`, pinning the Docker image while CI's own
+  Python jobs install unpinned), and `all.lock` (every extra, including
   the Hugging Face and LLM-adapter extras, version-pinned because
   hash-pinning torch's CUDA tree is impractical).
 - Multi-stage `Dockerfile` (Rust 1.98.1 builder for the `peira._core`
