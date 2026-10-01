@@ -48,7 +48,7 @@ indexes the load-bearing claims; detail lives in the linked docs.
 
 - That a good score certifies a model as safe. (Non-certification notice,
   README.)
-- That the 10 families (× 200 cases) cover every attack shape. They don't.
+- That the attack families cover every attack shape. They don't.
 - That synthetic cases equal real incidents. They model attack shapes.
 
 ## Unverified

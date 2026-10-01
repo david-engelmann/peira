@@ -6,7 +6,7 @@ Every PR must:
 
 1. Keep `python -m pytest tests -n auto` green (install test deps first:
    `pip install -e .[dev]`).
-2. Keep `cargo test --workspace` green (once the Rust core has logic).
+2. Keep `cargo test --workspace` green.
 3. Keep `python scripts/check_public_surface.py` green. Strategy language
    is never committed (see below).
 4. If you added a user-facing error string, add it to
@@ -33,25 +33,35 @@ the finished state. An independent line-by-line review of the diff. The
 maintainer's own verification pass with independent re-checks of the key
 claims. Fix everything the reviews find.
 
-CI must be green on the final head. The required checks are check_runner,
-coderabbit-config, public-surface, docs, dco, dataset-version, lint-rust,
-test-python, test-hf-tokenizers, test-rust, test-python-rust, quickstart,
-readme-table, and dataset-checks. Merge only when all three reviews are clean and CI is
-green. The maintainer reviews for correctness against
+During the build phase, the maintainer merges on green local gates plus
+the three reviews. CI is a backstop, not a gate. It is never waited on.
+A red main does not hold up merges. The fix-forward lane repairs it in
+parallel while perfect, fully verified work keeps landing. Before every
+merge the branch is rebased onto the current origin/main head and passes
+the rebase survival check, which confirms every hunk of the lane's work
+is still present and behaving. Once the project has downstream users or
+contributors, the bar tightens and CI must be green on the final head
+before merge. The required checks are check_runner, coderabbit-config, public-surface,
+docs, dco, dataset-version, lint-rust, test-python, test-hf-tokenizers,
+test-rust, test-python-rust, quickstart, readme-table, and
+dataset-checks. The maintainer reviews for correctness against
 `docs/Methodology.md`. Adapter PRs go through the same flow. The maintainer
 additionally reviews the adapter for an honest `supported_primitives`
 declaration.
 
-## Rust accelerator (optional)
+## Rust core
 
-The scoring hot paths (`peira.metrics`, `peira.schema`) can run on the
-compiled Rust core via the `peira._core` PyO3 extension. It is purely an
-accelerator: every function falls back to the pure-Python reference
-implementation when the extension is absent, so `pip install peira` never
-needs a Rust toolchain, and both backends produce the same values (up to
-~1 ulp where the reference squares terms via `** 2` and the Rust core
-uses exact multiplication; `paired_bootstrap_ci` always uses the
-Python PRNG so reported intervals never depend on the backend).
+The deterministic logic (metrics, gates, canonicalization, dataset
+validation, artifacts) is implemented in the Rust core and exposed to
+Python through PyO3. The direction is Rust-maximal (2026-09-30).
+Deterministic logic moves to Rust in parity-tested slices while
+adapters stay Python and the PyO3 surfaces stay intact. Every Rust
+function keeps a pure-Python reference implementation, so
+`pip install peira` never needs a Rust toolchain. The two backends
+produce the same values (up to ~1 ulp where the reference squares
+terms via `** 2` and the Rust core uses exact multiplication).
+`paired_bootstrap_ci` always uses the Python PRNG so reported
+intervals never depend on the backend.
 
 To build it in a checkout:
 
