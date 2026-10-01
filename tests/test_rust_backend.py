@@ -533,9 +533,27 @@ class TestSafeRepr(unittest.TestCase):
 
 @unittest.skipUnless(_rust.RUST_AVAILABLE, "peira._core not built")
 class TestRustExtension(unittest.TestCase):
-    def test_version_matches_package(self):
+    def test_version_matches_crate(self):
+        # Tag-is-version (P-8): the repo carries 0.0.0 and the Rust crates
+        # are versioned independently, never stamped. The extension must
+        # report the crate version it was built from, not the package
+        # placeholder. This keeps the original test's purpose: catching a
+        # stale .so built from different sources.
         from peira import _core
-        self.assertEqual(_core.version(), peira.__version__)
+        crate_toml = (
+            Path(peira.__file__).resolve().parents[2]
+            / "crates"
+            / "peira-python"
+            / "Cargo.toml"
+        )
+        if not crate_toml.is_file():
+            self.skipTest("crate sources not available in this layout")
+        declared = next(
+            line.split("=", 1)[1].strip().strip('"')
+            for line in crate_toml.read_text(encoding="utf-8").splitlines()
+            if line.strip().startswith("version")
+        )
+        self.assertEqual(_core.version(), declared)
 
     def test_canonical_json_matches_dumps(self):
         from peira import _core
