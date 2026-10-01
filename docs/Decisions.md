@@ -1688,3 +1688,46 @@ merge.
 direction ever makes the lockfile format a liability, the exported
 requirements format is plain pip and the project can fall back to
 pip-tools with no metadata changes.
+## D-41: Anti-self-grading is a protocol invariant (2026-09-30)
+
+**Decision.** No adapter, and no model from the same family as the
+adapter under test, may serve as a judge or grader over that adapter's
+leaderboard entry (R-19, E-6). This is a protocol invariant, not a
+suggestion: any future model-graded check must route around the
+adapter's own family.
+
+**Rationale.** Self-preference bias is measured and large (GPT-4 +10%,
+Claude-v1 +25% win-rate inflation for own outputs). peira's scoring is
+deterministic today, so the invariant is moot for scoring — and that is
+exactly why it is written down now, while violating it is impossible:
+the day any model-graded check is added, a contributor cannot violate
+it by accident. peira's blind-holdout design (pseudonymous call IDs,
+zero gold in adapter-visible context) already embodies the principle:
+the model must not grade its own bake-off entry.
+
+**Scope.** Covers all leaderboard-adjacent grading, including any
+future model-graded scoring of the safety-policy suite (currently
+gold-labeled; see docs/Judge-Discipline.md). Internal loops
+(adjudication, triage, case-authoring QA) follow the binary-judge
+discipline and are additionally bound by this invariant whenever the
+judge's output touches a leaderboard entry.
+
+**To revisit:** never on the principle; only on the family-definition
+mechanics if provider model families become ambiguous.
+
+## D-42: Grade the outcome, not the path (2026-09-30)
+
+**Decision.** peira grades the adapter's *decision* against gold labels
+and validates (but does not score) rationales and free text (R-19,
+E-14). This is locked as a deliberate, reviewed choice: any future
+"let's score rationale quality with an LLM judge" proposal must argue
+against this record.
+
+**Rationale.** Path-grading punishes valid-but-unexpected solutions
+(the Opus 4.5 τ2-bench loophole); scoring only the decision keeps the
+benchmark objective and judge-free. A guardrail that blocks the attack
+for the "wrong" reason still blocked the attack — the benchmark
+measures outcomes, not reasoning aesthetics.
+
+**To revisit:** only with evidence that decision-only scoring
+systematically misses a capability the benchmark claims to measure.

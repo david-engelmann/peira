@@ -1,5 +1,6 @@
 """Unit tests for peira metrics (run with: python -m pytest tests)."""
 
+import dataclasses
 import math
 import random
 import unittest
@@ -3994,3 +3995,43 @@ class TestLatencyInflation(unittest.TestCase):
         out = latency_inflation(results)
         self.assertGreater(out["a"]["inflation"], 1.0)
         self.assertAlmostEqual(out["b"]["inflation"], 1.0, places=6)
+
+class TestR20TelemetryFields(unittest.TestCase):
+    """R-20: per-call telemetry fields (finish_reason, cached-input
+    breakdown, provider response id) round-trip through the record."""
+
+    def _usage(self, **kw):
+        base = dict(model="m", tokens_in=100, tokens_out=20,
+                    latency_ms=5.0, cost_usd=0.001)
+        base.update(kw)
+        return CallUsage(**base)
+
+    def test_defaults_are_none(self):
+        u = self._usage()
+        self.assertIsNone(u.finish_reason)
+        self.assertIsNone(u.cached_tokens_in)
+        self.assertIsNone(u.provider_response_id)
+
+    def test_fields_carry_through(self):
+        u = self._usage(finish_reason="stop", cached_tokens_in=40,
+                        provider_response_id="chatcmpl-abc123")
+        self.assertEqual(u.finish_reason, "stop")
+        self.assertEqual(u.cached_tokens_in, 40)
+        self.assertEqual(u.provider_response_id, "chatcmpl-abc123")
+
+    def test_asdict_round_trip(self):
+        u = self._usage(finish_reason="length", cached_tokens_in=10,
+                        provider_response_id="msg_01x")
+        d = dataclasses.asdict(u)
+        u2 = CallUsage(**d)
+        self.assertEqual(u, u2)
+
+    def test_missing_keys_still_load(self):
+        # Records sealed before R-20 carry no new keys: the defaults
+        # must keep CallUsage(**old_dict) working.
+        d = dict(model="m", tokens_in=100, tokens_out=20,
+                 latency_ms=5.0, cost_usd=0.001)
+        u = CallUsage(**d)
+        self.assertIsNone(u.finish_reason)
+        self.assertIsNone(u.cached_tokens_in)
+        self.assertIsNone(u.provider_response_id)

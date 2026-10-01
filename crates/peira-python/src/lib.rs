@@ -135,6 +135,9 @@ struct PyCallUsage {
     latency_ms: f64,
     cost_usd: f64,
     price_table_ref: Option<String>,
+    finish_reason: Option<String>,
+    cached_tokens_in: Option<i64>,
+    provider_response_id: Option<String>,
 }
 
 impl From<PyCallUsage> for metrics::CallUsage {
@@ -146,6 +149,9 @@ impl From<PyCallUsage> for metrics::CallUsage {
             latency_ms: u.latency_ms,
             cost_usd: u.cost_usd,
             price_table_ref: u.price_table_ref,
+            finish_reason: u.finish_reason,
+            cached_tokens_in: u.cached_tokens_in,
+            provider_response_id: u.provider_response_id,
         }
     }
 }

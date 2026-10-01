@@ -297,6 +297,11 @@ def _validate_and_record(
                 usage.model, usage.tokens_in, usage.tokens_out, pricing_table
             ),
             price_table_ref=pricing_table.get("pricing_version"),
+            # R-20: carry the adapter-reported telemetry the cost
+            # recompute does not touch.
+            finish_reason=usage.finish_reason,
+            cached_tokens_in=usage.cached_tokens_in,
+            provider_response_id=usage.provider_response_id,
         )
     token_limit_exceeded = _exceeds_token_limit(
         usage.tokens_out if usage is not None else None, max_tokens_per_call
