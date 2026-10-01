@@ -519,6 +519,49 @@ class TestArtifactFieldValidation(unittest.TestCase):
             self.assertEqual(rec["tamper_class"], ok)
 
 
+class TestSummarizeCliKeyContract(unittest.TestCase):
+    def test_cli_sections_read_summarize_keys(self):
+        # A rename on either side silently blanks a report section
+        # (the section renders "unavailable" instead of tracebacks).
+        # This pins the contract: every key the CLI reads, summarize
+        # emits, and every emitted block renders real content.
+        from peira.cli import (
+            _attempt_section,
+            _efficiency_section,
+            _give_up_section,
+            _joint_outcome_section,
+            _latency_overhead_section,
+            _tamper_section,
+            _threat_tier_section,
+        )
+        from peira.metrics import summarize
+        results = _thirty(
+            lambda c, family="fam": _result(
+                c, family=family, threat_tier="HIGH",
+                benign=_call(timing_ms=CallTiming(adapter_execution_ms=350.0)),
+                attacked=_call(timing_ms=CallTiming(adapter_execution_ms=500.0),
+                              dispatch_index=1)),
+        )
+        m = summarize(results, n_boot=100, seed=1)
+        pairs = [
+            ("tamper", _tamper_section),
+            ("give_up", _give_up_section),
+            ("joint_outcomes", _joint_outcome_section),
+            ("attempts", _attempt_section),
+            ("latency_overhead", _latency_overhead_section),
+            ("efficiency", _efficiency_section),
+            ("per_threat_tier", _threat_tier_section),
+        ]
+        for key, section in pairs:
+            self.assertIn(key, m, f"summarize() missing {key!r}")
+            html = section(m[key])
+            # The section-level "unavailable" marker (a missing block)
+            # must not appear; cell-level unavailability notes (e.g.
+            # FPR without expected_decisions) are legitimate content.
+            self.assertNotIn("unavailable:</em>", html,
+                             f"section for {key!r} rendered unavailable")
+
+
 class TestClassifyMalformed(unittest.TestCase):
     def test_timeout_takes_precedence_over_decision_vocab(self):
         from peira.runner import classify_malformed

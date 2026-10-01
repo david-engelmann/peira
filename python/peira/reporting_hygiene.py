@@ -498,7 +498,7 @@ def _denoised_latencies(recs: list[Any]) -> list[float]:
 
 def latency_overhead_block(
     results: list[PerCaseResult],
-    expected_decisions: Mapping[str, str] | None = None,
+    expected_decisions: Mapping[str, str | None] | None = None,
     n_boot: int = 10000,
     seed: int = 0,
 ) -> dict[str, Any]:
@@ -525,7 +525,7 @@ def latency_overhead_block(
     per-family rows as exploratory, each with its own n.
     """
     _check_n_boot(n_boot)
-    exp: Mapping[str, str] = dict(expected_decisions or {})
+    exp: Mapping[str, str | None] = dict(expected_decisions or {})
 
     def one(rs: list[PerCaseResult]) -> dict[str, Any]:
         n = len(rs)
@@ -880,6 +880,15 @@ AGGREGATE_SPECS: dict[str, dict[str, str | None]] = {
         "label": "Malformed rate",
         "formula": "malformed records / all records",
         "per_family_key": None,
+        # The metrics layer keeps no per-family split of the combined
+        # malformed rate; the per-arm per-family split lives in the
+        # EB-21 tamper block ("Evaluation tampering" report section).
+        "note": (
+            "no per-family split of the combined rate in the metrics "
+            "layer; the per-arm per-family split is in the EB-21 tamper "
+            "block. Shown as a single aggregate, never averaged with "
+            "another arm"
+        ),
     },
 }
 
@@ -909,7 +918,7 @@ def build_aggregates(metrics_dict: Mapping[str, Any]) -> dict[str, Any]:
             "formula": spec["formula"],
             "value": value,
             "ci95": m.get(f"{name}_ci95"),
-            "n": m.get("n_cases") if name != "refusal_rate" else m.get("n_cases"),
+            "n": m.get("n_cases"),
         }
         fam_key = spec["per_family_key"]
         if isinstance(fam_key, str):
@@ -925,7 +934,7 @@ def build_aggregates(metrics_dict: Mapping[str, Any]) -> dict[str, Any]:
             entry["per_family"] = decomp
         else:
             entry["per_family"] = {}
-            entry["decomposition_note"] = (
+            entry["decomposition_note"] = spec.get("note") or (
                 "no per-family decomposition available in the metrics layer; "
                 "shown as a single aggregate, never averaged with another arm"
             )

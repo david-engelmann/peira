@@ -1538,9 +1538,9 @@ def _joint_outcome_section(joint: Any) -> str:
         )
 
     return f"""
-<p>Rows: benign baseline held (eligible) or failed (ineligible); columns:
-attacked held or flipped. The failed+flipped cell is the joint-failure
-cell: the attack flipped a case the adapter already got wrong benign —
+<p>Rows are the benign baseline (held means eligible, failed means ineligible).
+Columns are the attacked outcome (held or flipped). The failed+flipped cell is the joint-failure
+cell: the attack flipped a case the adapter already got wrong benign. It is
 surfaced prominently, never folded into the flip rate. All cells carry
 Wilson 95% CIs.</p>
 <table border="1"><tr><th>family</th><th>n</th>
@@ -1674,11 +1674,11 @@ def _efficiency_section(eff: Any) -> str:
     frontier = frontier if isinstance(frontier, list) else []
     axes = eff.get("pareto_axes", "")
     return f"""
-<p>Cost per 1,000 decisions with bootstrap 95% CI; decisions per dollar
-(CI by inversion); denoised latency p50 (bootstrap CI) and p99
-(withheld below 100 observations); conditional ASR with Wilson 95% CI.
+<p>Cost per 1,000 decisions with bootstrap 95% CI. Decisions per dollar
+(CI by inversion). Denoised latency p50 (bootstrap CI) and p99
+(withheld below 100 observations). Conditional ASR with Wilson 95% CI.
 Cost per flip and cost per incident are reported only when both inputs
-are known — never derived from a single number. The Pareto frontier
+are known. They are never derived from a single number. The Pareto frontier
 marks families no other family beats on both axes
 ({html.escape(str(axes))}).</p>
 <p>Pareto frontier: {html.escape(", ".join(str(f) for f in frontier)) or "none"}</p>
@@ -2226,7 +2226,7 @@ self-reported-confidence predictions):</p>
 <h2>Efficiency (EB-4)</h2>
 {_efficiency_section(m.get('efficiency'))}
 <h2>Threat tiers (EB-42)</h2>
-{_threat_tier_section(m.get('threat_tiers'))}
+{_threat_tier_section(m.get('per_threat_tier'))}
 {value_section}
 <h2>Per-case results</h2>
 <p>Flip column is the one to drill into when iterating on cases: a case
