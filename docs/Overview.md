@@ -14,7 +14,7 @@ Everything in `docs/`, organized by what you are trying to do. Pick a path, or b
 1. [Add your model](../README.md#add-your-model): the 15-line adapter snippet.
 2. [Adapters](Adapters.md): the day-one adapters (install extras, API keys, pinned models, what each one measures).
 3. [examples/minimal_adapter.py](../examples/minimal_adapter.py): the runnable version, about 25 lines.
-4. [Taxonomy](Taxonomy.md): the three primitives and the 25 attack families documented in the taxonomy.
+4. [Taxonomy](Taxonomy.md): the three primitives and the 27 attack families documented in the taxonomy.
 5. [Methodology](Methodology.md): the contracts your `decide()` output must satisfy, and what makes a case eligible.
 6. [CLI reference](CLI.md): `--adapter` takes a dotted path. `--max-concurrency`, `--transcript`, and `--cache-dir` are the flags you will actually use.
 
@@ -32,7 +32,7 @@ Everything in `docs/`, organized by what you are trying to do. Pick a path, or b
 
 - [Methodology](Methodology.md): how peira measures the adversarial robustness of decision models. The measurement contract: ASR, eligibility, analysis locks.
 - [Methodology-Governance](Methodology-Governance.md). How verified rows, the saturation trigger, adaptive attacks, and the contamination assumption are handled after the methodology is frozen.
-- [Taxonomy](Taxonomy.md): the three primitives (choice, score, abstain) and the 25 attack families.
+- [Taxonomy](Taxonomy.md): the three primitives (choice, score, abstain) and the 27 attack families.
 - [Concepts](Concepts.md): the five ideas the benchmark rests on.
 - [Severity-Rubric](Severity-Rubric.md): consequence-based severity tiers, for case authors.
 - [Threat-Model](Threat-Model.md): what peira measures, and what it explicitly does not.
@@ -60,6 +60,15 @@ Everything in `docs/`, organized by what you are trying to do. Pick a path, or b
 - [Troubleshooting](Troubleshooting.md): exact error, cause, fix. Every user-facing CLI error lives here.
 - [FAQ](FAQ.md): the questions everyone asks first.
 - [Glossary](Glossary.md): terms, defined once.
+
+**Deploy** (for teams shipping a decision model)
+
+- [Adversarial-Testing-Documentation-Pack](Adversarial-Testing-Documentation-Pack.md). Flip classes mapped to incident-severity tiers shaped on the EU AI Act, the reporting clock each tier implies, and the corrective action per tier.
+- [Drift-Monitoring-Spec](Drift-Monitoring-Spec.md). The scheduled re-run protocol and the statistical method for detecting attack-success drift over calendar time.
+- [Foreseeable-Misuse-Coverage](Foreseeable-Misuse-Coverage.md). Intended use, the foreseeable misuses of decision models, which attack families cover each one, and the stated gaps.
+- [Art55-Report-Design](Art55-Report-Design.md). Design and data contract for the per-run evaluation report. Design only. The generator waits on run-artifact v3.
+- [Landing-Page-Readiness](Landing-Page-Readiness.md). What "ready" means for the public leaderboard page.
+- [Announcement-Package](Announcement-Package.md). Prepared launch copy. Draft, not published.
 
 **Project**:
 
