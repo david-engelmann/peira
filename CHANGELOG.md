@@ -35,9 +35,11 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
   hash-pinning torch's CUDA tree is impractical).
 - Multi-stage `Dockerfile` (Rust 1.98.1 builder for the `peira._core`
   accelerator, Python 3.12-slim runtime): installs the pinned lockfile
-  with `--require-hashes`, ships the compiled Rust extension and the
-  versioned datasets, runs as a non-root user with `peira` as the
-  entrypoint. `EXTRAS_LOCK=all.lock` selects the full-extras build.
+  (with `--require-hashes` when the lockfile carries hashes, plain
+  `pip install` for the hash-free `all.lock` build), ships the compiled
+  Rust extension and the versioned datasets, runs as a non-root user
+  with `peira` as the entrypoint. `EXTRAS_LOCK=all.lock` selects the
+  full-extras build.
 - `.github/workflows/docker-build.yml`: builds the image on every
   push to main and every PR and smoke-tests it (Rust extension
   imports, mock trial run completes). Build-only: no image is pushed
