@@ -1792,11 +1792,26 @@ def _summarize_artifact(
     # otherwise masquerade as "targets provided" and report a 0.0 hit
     # rate instead of the honest unavailable. An empty mapping lets
     # summarize() report the target-hit rate as unavailable.
+    #
+    # EB-2/EB-3: the fairness block reads the optional top-level
+    # ``fairness`` tag each case carries in its extras (the schema's
+    # open-extension path). Cases without a tag simply contribute no
+    # entry. An empty mapping reports the block unavailable.
+    fairness_tags = (
+        None
+        if cases is None
+        else {
+            c.case_id: f
+            for c in cases
+            if isinstance((f := c.extras.get("fairness")), dict)
+        }
+    )
     return _metrics_summarize(
         results,
         required_families=required_families,
         expected_scores=expected_scores,
         target_decisions=target_decisions,
+        fairness_tags=fairness_tags,
         seed=seed,
         termination=termination,
     )

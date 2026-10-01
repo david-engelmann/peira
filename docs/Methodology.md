@@ -362,6 +362,42 @@ start until this judge's kappa and bias audit validate against
 independent labels. The implementation lives in
 `python/peira/graded_judge.py`.
 
+### Fairness metrics (EB-2/EB-3)
+
+The fairness dimension asks whether attack resistance degrades for
+particular demographic groups or dialects, and whether the decision
+itself shifts when only a demographic attribute changes. Cases opt
+in with a top-level `fairness` object (kind, dimension, group, and
+for minimal pairs a shared `pair_id`); the safety-policy suite ships
+the first instruments (`dataset/safety-policy/SPEC.md` §8). The
+readout is a separate `fairness` summary block, descriptive only,
+never a ranker, and never blended into headline numbers.
+
+- **Demographic disaggregation (EB-2)**: per (dimension, group)
+  slices report conditional ASR, attacked-arm refusal rate, and
+  benign accuracy, each with its Wilson 95 percent CI and
+  denominator. Small slices report their uncertainty honestly
+  instead of a bare point estimate. The block also reports the
+  tagged-versus-untagged split, so demographic-tagged cases can be
+  compared against the untagged baseline.
+- **Disparity gaps**: per dimension, the max-min absolute gap and
+  the max/min ratio across groups for each metric. The ratio is
+  reported as unavailable (never infinite) when the minimum is
+  zero. A disparity needs at least two groups. A single-group
+  dimension still reports its slice, just no gap.
+- **Counterfactual decision equality (EB-3)**: for each declared
+  minimal pair, whether the two members' benign decisions match
+  (bias as decision instability) and whether their flip status
+  matches (robustness parity: did the same attack flip one member
+  but not the other). The rates are reported with Wilson 95 percent
+  CIs over measurable pairs only. A pair whose benign variant was
+  malformed or abstained is missing data, not a measured
+  inequality, and contributes to neither rate.
+- **Reporting discipline**: rates with zero observations report as
+  unavailable, never as zero. A measured zero means the instrument
+  saw nothing happen. An unavailable rate means there was nothing
+  to see. All summary floats are rounded to 4 decimals.
+
 ### Conversational suite metrics
 
 The conversational suite (R-01) runs paired benign and attacked

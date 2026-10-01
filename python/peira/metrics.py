@@ -6322,6 +6322,7 @@ def summarize(
     expected_scores: Mapping[str, float | None] | None = None,
     positive_decisions: Mapping[str, str | None] | None = None,
     target_decisions: Mapping[str, str | None] | None = None,
+    fairness_tags: Mapping[str, Any] | None = None,
     n_boot: int = 10000,
     seed: int = 0,
     pricing_table: Mapping[str, Any] | None = None,
@@ -6342,7 +6343,11 @@ def summarize(
     unavailable rather than guessing; ``target_decisions`` maps case_id
     to the case author's attacked ``target_decision`` - omit it (or
     pass an empty mapping) and the flip-anatomy target-hit rate
-    reports itself unavailable rather than guessing. ``pricing_table`` is the pinned
+    reports itself unavailable rather than guessing. ``fairness_tags``
+    maps case_id to the case's top-level ``fairness`` object (EB-2/EB-3
+    demographic tags) - omit it (or pass no tagged cases) and the
+    fairness block reports itself unavailable rather than guessing.
+    ``pricing_table`` is the pinned
     pricing table used to split costed calls into priced vs unpriced
     (defaults to the package table — the same table the runner prices
     with). ``termination`` is how the run ended (``"complete"``,
@@ -6599,6 +6604,13 @@ def summarize(
         # CI, material and catastrophic shares, threshold-crossing rate,
         # histogram) overall and by family/severity/flip-direction.
         "score_delta": _score_delta_block(results, n_boot, seed),
+        # EB-2/EB-3: fairness block. Per-group ASR / refusal / benign
+        # accuracy with Wilson 95% CIs, max-min disparity gaps, the
+        # tagged-vs-untagged split, and the counterfactual
+        # decision-equality / robustness-parity rates. Descriptive-only,
+        # never a ranker. It reports itself unavailable when no case
+        # carries a fairness tag, and never perturbs headline metrics.
+        "fairness": _fairness_block(results, fairness_tags),
     }
 
 
@@ -7281,6 +7293,62 @@ def _targeted_asr_block(
             for fam, decomp in targeted_asr_decomposition_by_family(results, target_decisions).items()
         },
     }
+
+
+def _fairness_block(
+    results: list[PerCaseResult],
+    fairness_tags: Mapping[str, Any] | None,
+) -> dict[str, Any]:
+    """The ``fairness`` summary block (EB-2/EB-3).
+
+    Deferred import: peira.fairness imports the result types from
+    this module, so the import lives here, not at module top.
+    Applies the summary reporting conventions: rates rounded to 4
+    decimals, zero-observation rates reported as None (never 0.0).
+    """
+    from peira.fairness import fairness_summary_block
+
+    block = fairness_summary_block(results, fairness_tags)
+    if not block["available"]:
+        return block
+    for g in block["disaggregation"]["groups"]:
+        asr_v, asr_ci_v = _reported_rate(g["asr"], g["asr_ci95"], g["n_eligible"])
+        ref_v, ref_ci_v = _reported_rate(
+            g["refusal_rate"], g["refusal_rate_ci95"], g["n_eligible"])
+        acc_v, acc_ci_v = _reported_rate(
+            g["benign_accuracy"], g["benign_accuracy_ci95"],
+            g["n_benign_decided"])
+        g["asr"], g["asr_ci95"] = asr_v, asr_ci_v
+        g["refusal_rate"], g["refusal_rate_ci95"] = ref_v, ref_ci_v
+        g["benign_accuracy"], g["benign_accuracy_ci95"] = acc_v, acc_ci_v
+    for d in block["disaggregation"]["disparities"]:
+        d["max_value"] = _round4(d["max_value"])
+        d["min_value"] = _round4(d["min_value"])
+        d["abs_gap"] = _round4(d["abs_gap"])
+        d["ratio"] = _round4(d["ratio"])
+    for key in ("tagged", "untagged"):
+        s = block["disaggregation"][key]
+        if s is None:
+            continue
+        asr_v, asr_ci_v = _reported_rate(s["asr"], s["asr_ci95"], s["n_eligible"])
+        ref_v, ref_ci_v = _reported_rate(
+            s["refusal_rate"], s["refusal_rate_ci95"], s["n_eligible"])
+        s["asr"], s["asr_ci95"] = asr_v, asr_ci_v
+        s["refusal_rate"], s["refusal_rate_ci95"] = ref_v, ref_ci_v
+    cf = block["counterfactual"]
+    dec_rate = cf["decision_equality_rate"]
+    par_rate = cf["robustness_parity_rate"]
+    dec_v, dec_ci_v = _reported_rate(
+        dec_rate if dec_rate is not None else 0.0,
+        cf["decision_equality_ci95"],
+        cf["n_decision_measurable"])
+    par_v, par_ci_v = _reported_rate(
+        par_rate if par_rate is not None else 0.0,
+        cf["robustness_parity_ci95"],
+        cf["n_parity_measurable"])
+    cf["decision_equality_rate"], cf["decision_equality_ci95"] = dec_v, dec_ci_v
+    cf["robustness_parity_rate"], cf["robustness_parity_ci95"] = par_v, par_ci_v
+    return block
 
 
 def _outcome_label(rec: CallRecord) -> str:

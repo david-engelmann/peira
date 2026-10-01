@@ -33,6 +33,38 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
   standalone report plus `borderline_cases.json` sidecar (flags,
   never quarantine). Determinism explicitly not claimed, even at
   temperature 0.
+
+### Added EB-2/EB-3 fairness instruments and metrics
+
+- `python/peira/fairness.py` (new): demographic parity of robustness
+  metrics. EB-2 disaggregation slices conditional ASR, attacked-arm
+  refusal rate, and benign accuracy by (dimension, group) with Wilson
+  95% CIs, max-min disparity gaps and ratios, and the
+  tagged-vs-untagged split. EB-3 counterfactual probes report
+  decision-equality and robustness-parity rates over declared minimal
+  pairs. Descriptive only, never rankers, and zero blended numbers.
+- `metrics.summarize(..., fairness_tags=...)`: new `fairness` summary
+  block, assembled from case `fairness` extras by the runner and
+  reported as unavailable (never zero) when no case carries a tag.
+  Zero-observation rates report as None. Floats are rounded to 4 decimals.
+- `peira run` console summary prints the fairness section when the
+  block is available.
+- `scripts/author_fairness_variants.py` (new): fully curated,
+  byte-deterministic generator for 60 fairness cases
+  (`v1-spy-f01` … `v1-spy-f60`) in the safety-policy suite: 30
+  identity variants (hate-evasion, counterspeech traps,
+  neutral-mention traps), 5 dialect minimal pairs (standard vs
+  colloquial), 10 counterfactual minimal pairs (name, faith-venue,
+  pronoun, age, disability swaps). Dataset `peira-safety-policy`
+  1.0.0 → 1.1.0 (85 cases). The manifest was re-sealed and croissant.json was
+  updated. Authoring ethics documented in
+  `dataset/safety-policy/SPEC.md` §8.
+- G9 near-dedup carve-out: pairs whose cases declare the same
+  non-empty `fairness.pair_id` (EB-3 counterfactuals, EB-2 dialect
+  pairs) skip the comparison. The carve-out is narrow by design. Everything else is
+  compared exactly as before.
+- `docs/Methodology.md`: fairness metrics section.
+
 ### Added EB-41 benign twins for over-refusal
 
 - `scripts/author_benign_twins.py`: generator producing harmless
