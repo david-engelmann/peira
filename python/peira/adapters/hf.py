@@ -183,8 +183,8 @@ class _HFAdapterBase:
     name = "hf-base"
     # EB-19: this adapter executes the local ML stack (torch /
     # transformers), so the runner warns when the installed versions
-    # drift from requirements/all.lock. API adapters leave this False:
-    # the local environment does not score their calls.
+    # drift from the pinned lockfile (uv.lock). API adapters leave this
+    # False: the local environment does not score their calls.
     uses_local_ml_stack = True
     _doctor_skip = True  # abstract base: not a usable adapter
     version = "0.0"

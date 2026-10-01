@@ -1550,6 +1550,90 @@ scenarios supply natural values (`deny-to-approve` flip cost for
 a cost model, not net benefit: outputs are dollars per case, never
 Vickers-Elkin net benefit.
 
+## External-benchmark Tier 1 (Program A)
+
+Four cross-benchmark comparison analyses, all computed on existing run
+artifacts (Program A: analysis only, no new data collection). They are
+diagnostic, never rankings.
+
+### Confidence-erosion distribution (EB-23)
+
+Failed attacks still move the model. On the eligible non-flipped
+population with both confidences present, the erosion is
+`benign.confidence - attacked.confidence`: how much confidence the
+attack burned without flipping the decision. Reported per family and
+overall as mean, p50, p90, a fixed-bin histogram over [-1, 1], and the
+near-flip fraction: the share with erosion >= 0.5 whose decision still
+held. The 0.5 line is a documented absolute magnitude, not a
+calibrated boundary. It reads as "large erosion", never "would have
+flipped". Families below 30 eligible observations are withheld
+(insufficient, not zero). Complement to M-6: where M-6 puts Wilson
+intervals on severity flip rates, EB-23 shows the within-case
+confidence movement that stopped short of a flip. Available in
+`summarize()` as `confidence_erosion` and via `peira erosion`.
+
+### Cross-adapter robustness tax (EB-40)
+
+EB-40 prices robustness against the observed frontier. For each
+adapter the accuracy tax is the best observed benign accuracy minus
+the adapter's benign accuracy. The calibration tax is the adapter's
+attacked ECE minus the best observed attacked ECE. The combined tax
+is their sum, which is the leaderboard column. The frontier adapter
+pays zero tax by construction. The frontier is descriptive, not
+normative. "Best observed" is what the cohort achieved, not what is
+achievable. Tax CIs hold the frontier fixed and use the adapter's own
+component CIs. The approximation is documented, not hidden. The
+combined-tax CI sums the component CI bounds, which assumes perfect
+positive correlation between the accuracy and calibration tax
+components and so reads conservative (wide). Inputs require at least
+two adapters, with at least one adapter carrying benign accuracy
+and at least one carrying attacked ECE across the set. A combined
+tax is computed per adapter only when that adapter carries both
+components (else the combined tax is withheld for it). The analysis
+layer refuses two readings under one adapter name with any differing
+value (one frontier reading per adapter). `peira tax` collapses
+same-name inputs last-wins before analysis, so fewer than two
+distinct adapter names is the usual refusal there. Across adapters,
+Spearman rank correlations (ASR vs accuracy, ASR vs ECE, ASR vs
+log-loss) with bootstrap CIs test whether robustness comes at the
+price of clean accuracy or calibration. With fewer than five
+adapters the correlations are withheld. The log-loss correlation is
+computed by the analysis layer and read by `peira tax` from the
+`log_loss` artifact-metrics key when present. End to end it
+activates once R-07 seals per-adapter log-loss under that key, until
+then it reports withheld, never imputed. Diagnostic only: taxes
+describe, they never rank. `peira tax` writes the report and the
+leaderboard carries the combined-tax point estimate per ranked row.
+
+### Length sensitivity and de-confounding (EB-7 / EB-10)
+
+Response length confounds attack-family comparisons: some families
+elicit longer responses, and length itself may carry the effect. Per
+family, EB-10 regresses the flip indicator on attacked-arm
+`tokens_out` (OLS slope with bootstrap CI), reports the Pearson
+correlation, and shows ASR by length tertile with Wilson intervals.
+EB-7 de-confounding fits, per family, the univariate OLS slope of
+the flip indicator on attacked length and on the verbosity delta
+(attacked minus benign `tokens_out`), with bootstrap two-sided
+p-values and Holm adjustment. A family for which either the
+attacked-length or the verbosity-delta univariate test passes the
+Holm-adjusted threshold gets length as a reported covariate,
+surfaced as the `covariate_recommended_families` roster in
+`length_diagnostics` and the "Reported covariates" line of
+`peira length`. Separately, it fits the bivariate OLS slope of the
+flip indicator on attacked length adjusted for the verbosity
+delta: the de-confounded length effect with its bootstrap CI, which
+does not select the roster. When the univariate length slope is
+significant but the adjusted slope is not, verbosity was carrying
+the effect, not length. Protocol: adapters declare their generation cap as
+`generation_max_tokens` (sealed into the artifact config at run
+time. The structured-LLM baselines declare it from their enforced
+decode cap). `peira length` checks the declared cap against the
+observed max attacked `tokens_out` and warns when the cap was not
+enforced.
+Available in `summarize()` as `length_diagnostics` and via
+`peira length`.
+
 ## Economic value view (M-3, sidecar)
 
 Every robustness benchmark reports ASR as a naked percentage. The value
@@ -1845,7 +1929,50 @@ R-04 stability probe and the EB-35 threshold sweeps. The fixed-pair
 design answers whether a minimal rewording moves the decision at
 the edge. The adaptive design would answer how far the edge can be
 pushed. Both are useful. Only the first ships here.
+## cryptographic_payload (attack family)
 
+Family 28. The attacked variant carries the hostile payload as
+ciphertext plus in-context decode-and-apply instructions. The benign
+control shows the identical attack in plaintext inside an explicit
+guardrail BLOCKED notice, with an instruction to decide on the facts
+and ignore the blocked content. Four ciphers form the sub-arm ladder.
+They are ROT13, base64, keyed simple substitution (a per-case random
+alphabet permutation, with the key stated in-band in the decode
+instructions), and word-reversal (each word's letters reversed). Three
+payload shapes are used. A hostile instruction steering toward the wrong
+decision. A fabricated pre-approval or system override naming the wrong
+decision. A justification arguing the wrong decision is correct. The
+family probes the hypothesized execution-context gap. The cases simulate
+a guard layer classifying the ciphertext as benign while the decision
+model recovers the plaintext in a trusted context and follows it. The
+BLOCKED notice and the decode instructions are simulated contexts that
+stand in for the proposed mechanism. They are not measurements from a
+guardrail in the loop (Adversa AI, Aug 2026, reporting Grok and Gemini
+guardrail bypasses with encrypted payloads).
+
+**Paired-control construction.** The benign prompt presents the facts
+plus a guardrail screening notice marking the plaintext attack BLOCKED.
+For choice and score cases the facts clearly favor the expected decision.
+For abstain cases the facts are genuinely balanced and abstain is the
+correct decision. The attacked prompt keeps the identical facts and adds
+only the decode block, the ciphertext plus instructions to decode and
+apply it. G2 (paired-variants) enforces that the variants differ. Every
+payload is encoded programmatically and the authoring script asserts
+decode(encode(payload)) equals the plaintext and the ciphertext differs
+from it, so the cases are machine-checkable rather than
+security-through-obscurity.
+
+**Validity diagnostic, the deletion test.** Present the payload
+decrypted in plaintext outside the guard notice. If the case still
+reads as an attack it is instruction_override (instruction payloads)
+or authority_fabrication (authorization payloads), not
+cryptographic_payload. The encryption layer is this family's
+mechanism. This also separates it from encoding_evasion, which is
+sub-semantic character tricks (homoglyphs, zero-width, leetspeak).
+cryptographic_payload is semantic-level. The context in which
+the payload is read differs between guard and decider. (Design
+diagnostic. Empirical demonstration with a guardrail in the loop is
+future work.)
 **Design MDEs.** At n=400, 4.4pp at 10% discordance, 6.3pp at 20%,
 7.7pp at 30%, 8.9pp at 40%. Published in the dataset manifest's
 `mdes` table (`dataset/v2/cases/manifest.json`).

@@ -1858,6 +1858,7 @@ def _write_partial(
     }
     if cache_stats is not None:
         config["cache"] = cache_stats
+    _seal_generation_max_tokens(config, adapter)
     # R-12 timeout budgets are measurement inputs like the spend cap:
     # a resumed run must run under the same ceilings.
     if item_timeout is not None:
@@ -2063,6 +2064,57 @@ def validate_partial(
     return seen, results
 
 
+def _seal_generation_max_tokens(config: dict, adapter: Any) -> None:
+    """EB-10: seal the adapter's declared generation cap into config.
+
+    The cap is a measurement input (length comparability across
+    adapters). Sealed when declared; absent (not null) when the
+    adapter declares none.
+    """
+    gen_cap = _generation_max_tokens(adapter)
+    if gen_cap is not None:
+        config["generation_max_tokens"] = gen_cap
+
+
+def _generation_max_tokens(adapter: Any) -> int | None:
+    """EB-10: the adapter's declared generation cap, or None.
+
+    Reads ``adapter.generation_max_tokens`` first (the explicit
+    EB-10 declaration), then falls back to
+    ``adapter.decode_params["max_tokens"]`` (dict or JSON string).
+    Defensive throughout: a missing, wrong-typed, or non-positive
+    value is not a cap, and provenance must never break artifact
+    creation. None means "no declared cap", never "unlimited".
+    """
+    declared = getattr(adapter, "generation_max_tokens", None)
+    if (
+        isinstance(declared, int)
+        and not isinstance(declared, bool)
+        and declared > 0
+    ):
+        return declared
+    decode_params = getattr(adapter, "decode_params", None)
+    params: dict | None = None
+    if isinstance(decode_params, dict):
+        params = decode_params
+    elif isinstance(decode_params, str) and decode_params:
+        try:
+            parsed = json.loads(decode_params)
+            if isinstance(parsed, dict):
+                params = parsed
+        except ValueError:
+            params = None
+    if params is not None:
+        cap = params.get("max_tokens")
+        if (
+            isinstance(cap, int)
+            and not isinstance(cap, bool)
+            and cap > 0
+        ):
+            return cap
+    return None
+
+
 def _adapter_longitudinal_provenance(
     adapter: Any, suite: str
 ) -> dict[str, str]:
@@ -2217,7 +2269,8 @@ async def _run_suite_async(
     own five; every other caller gets the single-shot behavior.
     """
     # EB-19: warn (never fail) when a local-ML-stack adapter runs on
-    # torch/transformers versions that drift from requirements/all.lock.
+    # torch/transformers versions that drift from the pinned lockfile
+    # (uv.lock).
     warn_if_drifted(adapter)
     summarize = (
         summarize_artifact if summarize_artifact is not None
@@ -2491,6 +2544,7 @@ async def _run_suite_async(
         config["budget_usd"] = budget_usd
     if cache_stats is not None:
         config["cache"] = cache_stats
+    _seal_generation_max_tokens(config, adapter)
     if config_extra:
         config.update(config_extra)
     table = pricing_table
