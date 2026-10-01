@@ -171,6 +171,26 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
   `targeted_asr` summary block. Targeted ASR is unavailable when no
   target mapping is supplied or no flip has a known target.
 
+### Added cryptographic_payload attack family (family 28, Tier 1)
+
+- New v2 family `cryptographic_payload`: encrypted payload plus
+  in-context decryption instructions. The guard layer classifies the
+  ciphertext (benign-looking) while the decision model recovers the
+  plaintext in a trusted execution context and follows it. 420 cases
+  (181 critical / 155 high / 84 medium; 300 choice / 50 abstain /
+  70 score) authored by `scripts/author_cryptographic_payload.py`, case
+  IDs `v2-cryp-0001` and up. The benign control shows the attack in
+  plaintext inside an explicit guardrail BLOCKED notice; the attacked
+  variant carries the identical payload as ROT13, base64, keyed
+  simple-substitution, or word-reversal ciphertext plus decode-and-apply
+  instructions. Every
+  payload is encoded programmatically with round-trip assertions
+  (`decode(encode(x)) == x`), so cases are machine-checkable. Registered
+  in `python/peira/families.py`, documented in `docs/Taxonomy.md`
+  (entry 28, boundary ruling vs encoding_evasion and indirect_injection)
+  and `docs/Methodology.md` (measurement section with the deletion
+  test). Ships within dataset version 2.4.0.
+
 ### Added conversational case families
 
 - The conversational suite ships its first two attack families:
