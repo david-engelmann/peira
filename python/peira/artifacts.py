@@ -103,6 +103,12 @@ class RunArtifact:
     # enforces it pre-dispatch with a 1.5x running-mean projection and
     # drains in-flight calls; it never kills a paid call mid-flight.
     budget_usd: float | None = None
+    # Per-call output-token cap (R-18, None = uncapped). A call whose
+    # reported tokens_out exceeds it is marked malformed, because the
+    # decision was produced outside the run's declared cost envelope.
+    # Part of the analysis lock, because a run measured under a
+    # different cap is a different measurement.
+    max_tokens_per_call: int | None = None
     # Actual priced spend at seal time (runner-computed, same table as
     # the call records). May overshoot budget_usd by at most one
     # in-flight wave: dispatched calls always complete.
@@ -162,6 +168,7 @@ class RunArtifact:
                 "contract_version": self.contract_version,
                 "termination": self.termination,
                 "budget_usd": self.budget_usd,
+                "max_tokens_per_call": self.max_tokens_per_call,
                 "spent_usd": self.spent_usd,
                 "cases_completed": self.cases_completed,
                 "cases_planned": self.cases_planned,
@@ -221,6 +228,7 @@ class RunArtifact:
                     self.cases_planned,
                     self.seed,
                     self.max_concurrency,
+                    self.max_tokens_per_call,
                     self.metrics,
                     self.env_sha256,
                     self.model_class,
@@ -295,6 +303,10 @@ class RunArtifact:
     # budget_usd additionally allows null (uncapped run).
     _NUM_FIELDS: ClassVar[tuple] = ("spent_usd",)
     _NULLABLE_NUM_FIELDS: ClassVar[tuple] = ("budget_usd",)
+    # Integer fields where a JSON `true` must not pass as an integer
+    # (bool subclasses int). max_tokens_per_call additionally allows
+    # null (uncapped run).
+    _NULLABLE_INT_FIELDS: ClassVar[tuple] = ("max_tokens_per_call",)
     _REQUIRED_FIELDS: ClassVar[tuple] = ("peira_version", "dataset_version")
     _FIELD_DEFAULTS: ClassVar[dict] = {
         "artifact_version": ARTIFACT_VERSION,
@@ -313,6 +325,7 @@ class RunArtifact:
         "contract_version": CONTRACT_VERSION,
         "termination": "complete",
         "budget_usd": None,
+        "max_tokens_per_call": None,
         "spent_usd": 0.0,
         "cases_completed": 0,
         "cases_planned": 0,
@@ -375,6 +388,9 @@ class RunArtifact:
             if key not in (
                 "model", "tokens_in", "tokens_out", "latency_ms", "cost_usd",
                 "price_table_ref",
+                # R-20: per-call telemetry (finish reason, cached-input
+                # breakdown, provider response id).
+                "finish_reason", "cached_tokens_in", "provider_response_id",
             ):
                 raise ValueError(f"{where} has unknown usage field: {key!r}")
         for key in ("model", "tokens_in", "tokens_out", "latency_ms", "cost_usd"):
@@ -412,6 +428,32 @@ class RunArtifact:
                 raise ValueError(
                     f"{where} usage field {key!r} must be non-negative, "
                     f"got {usage[key]}"
+                )
+        # R-20: optional telemetry fields.
+        for key in ("finish_reason", "provider_response_id"):
+            val = usage.get(key)
+            if val is not None and not isinstance(val, str):
+                raise ValueError(
+                    f"{where} usage field {key!r} must be str or null, "
+                    f"got {type(val).__name__}"
+                )
+        cached = usage.get("cached_tokens_in")
+        if cached is not None:
+            if not _is_int(cached):
+                raise ValueError(
+                    f"{where} usage field 'cached_tokens_in' must be an "
+                    f"integer or null, got {type(cached).__name__}"
+                )
+            if cached < 0:
+                raise ValueError(
+                    f"{where} usage field 'cached_tokens_in' must be "
+                    f"non-negative, got {cached}"
+                )
+            if cached > usage["tokens_in"]:
+                raise ValueError(
+                    f"{where} usage field 'cached_tokens_in' ({cached}) "
+                    f"exceeds 'tokens_in' ({usage['tokens_in']}): cached "
+                    f"tokens are a subset of input tokens"
                 )
 
     @classmethod
@@ -668,6 +710,7 @@ class RunArtifact:
                 key not in cls._FIELD_TYPES
                 and key not in cls._NUM_FIELDS
                 and key not in cls._NULLABLE_NUM_FIELDS
+                and key not in cls._NULLABLE_INT_FIELDS
             ):
                 raise ValueError(f"unknown artifact field: {key!r}")
         for key in cls._REQUIRED_FIELDS:
@@ -693,6 +736,12 @@ class RunArtifact:
             if key in d and d[key] is not None and not _is_num(d[key]):
                 raise ValueError(
                     f"artifact field {key!r} must be a number or null, "
+                    f"got {type(d[key]).__name__}"
+                )
+        for key in cls._NULLABLE_INT_FIELDS:
+            if key in d and d[key] is not None and not _is_int(d[key]):
+                raise ValueError(
+                    f"artifact field {key!r} must be an integer or null, "
                     f"got {type(d[key]).__name__}"
                 )
         for key in cls._INT_FIELDS:

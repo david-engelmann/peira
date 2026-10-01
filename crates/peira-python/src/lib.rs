@@ -135,6 +135,9 @@ struct PyCallUsage {
     latency_ms: f64,
     cost_usd: f64,
     price_table_ref: Option<String>,
+    finish_reason: Option<String>,
+    cached_tokens_in: Option<i64>,
+    provider_response_id: Option<String>,
 }
 
 impl From<PyCallUsage> for metrics::CallUsage {
@@ -146,6 +149,9 @@ impl From<PyCallUsage> for metrics::CallUsage {
             latency_ms: u.latency_ms,
             cost_usd: u.cost_usd,
             price_table_ref: u.price_table_ref,
+            finish_reason: u.finish_reason,
+            cached_tokens_in: u.cached_tokens_in,
+            provider_response_id: u.provider_response_id,
         }
     }
 }
@@ -1049,7 +1055,7 @@ fn output_fields_to_value(output: &Bound<'_, PyAny>) -> PyResult<Value> {
             "asdict() should be called on dataclass instances",
         ));
     } else {
-        // A foreign dataclass carrying fields beyond the six known
+        // A foreign dataclass carrying fields beyond the nine known
         // CallUsage fields: the reference's `asdict` preserves every
         // field, but the Rust projection below would silently drop the
         // extras. A foreign dataclass carrying a *subset* of the fields
@@ -1065,11 +1071,14 @@ fn output_fields_to_value(output: &Bound<'_, PyAny>) -> PyResult<Value> {
             "latency_ms",
             "cost_usd",
             "price_table_ref",
+            "finish_reason",
+            "cached_tokens_in",
+            "provider_response_id",
         ];
         let fields = usage.getattr("__dataclass_fields__")?;
         let dict = fields.cast::<PyDict>().map_err(|_| {
             PyTypeError::new_err(
-                "usage must be a CallUsage dataclass instance with exactly the 6 known fields",
+                "usage must be a CallUsage dataclass instance with exactly the 9 known fields",
             )
         })?;
         // `dataclasses.fields()` (which `asdict` uses) keeps only fields
@@ -1078,7 +1087,7 @@ fn output_fields_to_value(output: &Bound<'_, PyAny>) -> PyResult<Value> {
         // mere presence check is wrong, since unbound `dataclasses.field()`
         // objects carry `_field_type=None`.
         let field_marker = output.py().import("dataclasses")?.getattr("_FIELD")?;
-        let mut seen = [false; 6];
+        let mut seen = [false; 9];
         let mut shape_ok = true;
         for (key, field) in dict.iter() {
             let idx = match key.extract::<String>() {
@@ -1099,7 +1108,7 @@ fn output_fields_to_value(output: &Bound<'_, PyAny>) -> PyResult<Value> {
         }
         if !shape_ok || seen.iter().any(|s| !s) {
             return Err(PyTypeError::new_err(
-                "usage must be a CallUsage dataclass instance with exactly the 6 known fields",
+                "usage must be a CallUsage dataclass instance with exactly the 9 known fields",
             ));
         }
         // `PyCallUsage` extraction coerces `True` to `1` and `5` to
@@ -1252,6 +1261,7 @@ fn artifact_lock_payload(
     cases_planned: i64,
     seed: &Bound<'_, PyAny>,
     max_concurrency: &Bound<'_, PyAny>,
+    max_tokens_per_call: Option<i64>,
     metrics: &Bound<'_, PyAny>,
     env_sha256: &str,
     model_class: &str,
@@ -1284,6 +1294,7 @@ fn artifact_lock_payload(
         cases_planned,
         int_param("seed", seed)?,
         int_param("max_concurrency", max_concurrency)?,
+        max_tokens_per_call,
         &value_from_py(metrics)?,
         env_sha256,
         model_class,

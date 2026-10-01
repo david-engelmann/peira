@@ -223,6 +223,9 @@ mod tests {
             latency_ms: latency,
             cost_usd: cost,
             price_table_ref: None,
+            finish_reason: None,
+            cached_tokens_in: None,
+            provider_response_id: None,
         }
     }
 

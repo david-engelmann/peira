@@ -786,5 +786,108 @@ class TestBudgetEstimateNote(unittest.TestCase):
         self.assertIn("no priced cost history", note)
 
 
+# ---------------------------------------------------------------------------
+# R-18: per-call token limit
+# ---------------------------------------------------------------------------
+
+class VerboseAdapter:
+    """Deterministic adapter always reporting tokens_out=5000."""
+
+    name = "verbose-test"
+    version = "1.0"
+    supported_primitives = frozenset({"choice", "score", "abstain"})
+
+    def __init__(self, tokens_out=5000):
+        self.tokens_out = tokens_out
+
+    def decide(self, case_input, primitive, context):
+        return _output_for(
+            primitive, _usage(tokens_in=100, tokens_out=self.tokens_out))
+
+
+class TestTokenLimitValidation(unittest.TestCase):
+    def test_zero_rejected(self):
+        with self.assertRaisesRegex(ValueError, "max_tokens_per_call"):
+            run_suite(PricedAdapter(), _cases(1), "trial-demo", "0.1.0-demo",
+                      max_tokens_per_call=0)
+
+    def test_negative_rejected(self):
+        with self.assertRaisesRegex(ValueError, "max_tokens_per_call"):
+            run_suite(PricedAdapter(), _cases(1), "trial-demo", "0.1.0-demo",
+                      max_tokens_per_call=-10)
+
+    def test_bool_rejected(self):
+        with self.assertRaisesRegex(ValueError, "must be an int"):
+            run_suite(PricedAdapter(), _cases(1), "trial-demo", "0.1.0-demo",
+                      max_tokens_per_call=True)
+
+    def test_none_ok(self):
+        a = run_suite(PricedAdapter(), _cases(1), "trial-demo",
+                      "0.1.0-demo", max_tokens_per_call=None)
+        self.assertIsNone(a.max_tokens_per_call)
+        self.assertEqual(a.termination, "complete")
+
+
+class TestTokenLimitEnforcement(unittest.TestCase):
+    def test_exceeding_calls_are_malformed(self):
+        a = run_suite(VerboseAdapter(), _cases(2), "trial-demo",
+                      "0.1.0-demo", max_tokens_per_call=100)
+        for r in a.results:
+            for rec in (r["benign"], r["attacked"]):
+                self.assertTrue(rec["malformed"])
+                # The usage (and its cost) stays on the record: the
+                # money was spent.
+                self.assertEqual(rec["usage"]["tokens_out"], 5000)
+        self.assertEqual(a.max_tokens_per_call, 100)
+
+    def test_under_cap_calls_are_fine(self):
+        a = run_suite(VerboseAdapter(tokens_out=50), _cases(2),
+                      "trial-demo", "0.1.0-demo", max_tokens_per_call=100)
+        for r in a.results:
+            for rec in (r["benign"], r["attacked"]):
+                self.assertFalse(rec["malformed"])
+
+    def test_boundary_is_inclusive(self):
+        # Exactly at the cap is not a violation.
+        a = run_suite(VerboseAdapter(tokens_out=100), _cases(1),
+                      "trial-demo", "0.1.0-demo", max_tokens_per_call=100)
+        self.assertFalse(a.results[0]["benign"]["malformed"])
+
+    def test_transcript_flags_violations(self):
+        with tempfile.TemporaryDirectory() as td:
+            tpath = Path(td) / "t.jsonl"
+            run_suite(VerboseAdapter(), _cases(1), "trial-demo",
+                      "0.1.0-demo", max_tokens_per_call=100,
+                      transcript_path=tpath)
+            entries = [json.loads(line) for line in
+                       tpath.read_text().splitlines()]
+            self.assertTrue(entries)
+            for e in entries:
+                if e["response"]["kind"] == "output":
+                    self.assertTrue(e["token_limit_exceeded"])
+
+    def test_lock_binds_the_cap(self):
+        a = RunArtifact(adapter_name="x", max_tokens_per_call=100).seal()
+        b = RunArtifact(adapter_name="x", max_tokens_per_call=200).seal()
+        c = RunArtifact(adapter_name="x", max_tokens_per_call=None).seal()
+        self.assertNotEqual(a.analysis_lock, b.analysis_lock)
+        self.assertNotEqual(a.analysis_lock, c.analysis_lock)
+
+    def test_artifact_round_trip(self):
+        a = RunArtifact(adapter_name="x", max_tokens_per_call=4096).seal()
+        b = RunArtifact.from_json(a.to_json())
+        self.assertEqual(b.max_tokens_per_call, 4096)
+        self.assertTrue(b.verify())
+
+    def test_artifact_rejects_bad_cap(self):
+        d = json.loads(RunArtifact(adapter_name="x").to_json())
+        d["max_tokens_per_call"] = True
+        with self.assertRaisesRegex(ValueError, "integer or null"):
+            RunArtifact.from_json(json.dumps(d))
+        d["max_tokens_per_call"] = 1.5
+        with self.assertRaisesRegex(ValueError, "integer or null"):
+            RunArtifact.from_json(json.dumps(d))
+
+
 if __name__ == "__main__":
     unittest.main()

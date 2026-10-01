@@ -120,6 +120,27 @@ about its own timeout enforcement. Fix: resume with the same `--run-timeout`
 the partial was written with (or no `--run-timeout`, matching the partial),
 or delete the `<adapter>-<suite>.partial.json` file and re-run from scratch.
 
+**`error: --max-tokens-per-call must be >= 1 (got X)`**
+Cause: the per-call output-token cap was zero or negative, which is not a
+cap at all. Fix: pass a positive integer, or drop `--max-tokens-per-call`
+for an uncapped run.
+
+**`error: partial run was recorded with max_tokens_per_call X, not Y: re-run with the same --max-tokens-per-call or drop --resume`**
+Cause: `peira run --resume` found a partial run recorded under a different
+per-call token cap than the one requested. The cap is a measurement input.
+Merging results scored under a different cap would make the artifact lie
+about its own token enforcement. Fix: resume with the same
+`--max-tokens-per-call` the partial was written with (or no
+`--max-tokens-per-call`, matching the partial), or delete the
+`<adapter>-<suite>.partial.json` file and re-run from scratch.
+
+**`error: could not render transcript: ...`**
+Cause: `peira transcript-view` could not read the transcript file
+(missing path, permissions, or undecodable bytes). Fix: check the
+`--transcript` path and re-run. Transcript lines that are not valid JSON
+are skipped individually and reported in the page summary instead of
+failing the render.
+
 **`error: partial run has no cache state declaration (config.cache_enabled): it predates cache-state sealing and cannot resume`**
 Cause: `peira run --resume` found a partial run written before cache
 state was sealed into artifacts. It cannot prove its cache state, so
@@ -1101,6 +1122,69 @@ Cause: `peira hardness --out` points somewhere unwritable: a missing
 parent directory, or a permissions problem. Fix: create the directory
 first, or pick a writable path.
 
+**`error: tax needs at least 2 run artifacts` (from `peira tax`)**
+Cause: fewer than two artifact paths were given. The robustness tax is
+a cross-adapter frontier view. One run has nothing to anchor against.
+Fix: pass two or more run artifact paths.
+
+**`error: <path> not found` (from `peira tax`, `peira erosion`, `peira length`)**
+Cause: one of the artifact paths doesn't exist. Fix: check the paths.
+
+**`error: <path> is not a valid run artifact (...)` (from `peira tax`, `peira erosion`, `peira length`)**
+Cause: the file isn't valid JSON or isn't a sealed run artifact. Fix:
+point at `peira run` output files.
+
+**`error: <path>: cannot decode per-case results (...)` (from `peira tax`, `peira erosion`, `peira length`)**
+Cause: the artifact's per-case results don't match the current
+measurement contract. Fix: re-run with the current `peira`. Don't
+hand-edit artifacts.
+
+**`error: tax: ...` (from `peira tax`)**
+Cause: the tax analysis refused the inputs. The message names the
+reason. Inputs sharing an adapter name collapse last-wins before
+analysis, so "needs at least 2 adapters" usually means fewer than
+two distinct adapter names were given. The analysis also needs at
+least one adapter carrying benign accuracy and at least one
+carrying attacked ECE across the set. A combined tax is withheld
+per adapter when that adapter lacks either component. Fix: check
+the metrics are sealed on the artifacts and that the adapter names
+are distinct.
+
+**`error: erosion: ...` (from `peira erosion`)**
+Cause: the per-case data failed validation: a non-finite confidence
+on an eligible non-flipped case. Fix: re-run the adapter. Don't
+hand-edit artifacts.
+
+**`error: length: ...` (from `peira length`)**
+Cause: the per-case data failed validation: an invalid (negative or
+non-finite) tokens_out on an eligible case. Fix: re-run the adapter.
+Don't hand-edit artifacts.
+
+**`warning: ... analysis lock mismatch` (from `peira tax`, `peira erosion`, `peira length`)**
+Cause: the run artifact was modified after sealing. The analysis
+still runs (warning, not error) but the numbers aren't trustworthy:
+treat the output as tampered until you re-run. Fix: don't edit
+artifacts, re-run. If you need different config, that's a new run
+with a new lock.
+
+**`WARNING: observed length exceeds the declared cap` (in `peira length` output)**
+Cause: at least one attacked-arm response was longer than the
+`generation_max_tokens` the artifact declares, so the cap was not
+enforced on this run. The length-sensitivity slopes then measure a
+mixture of protocol drift and real length effects. Fix: re-run with
+the cap enforced (see EB-10 in `docs/Methodology.md`). A
+non-numeric `generation_max_tokens` is treated as no declared cap.
+
+**`error: cannot write tax JSON to <out> (...)` (from `peira tax --json`)**
+Cause: `peira tax --json` points somewhere unwritable: a missing
+parent directory, or a permissions problem. Fix: create the directory
+first, or pick a writable path.
+
+**`error: cannot write robustness-tax report to <out> (...)` / `error: cannot write erosion report to <out> (...)` / `error: cannot write length report to <out> (...)`**
+Cause: `--out` points somewhere unwritable: a missing parent
+directory, or a permissions problem. Fix: create the directory first,
+or pick a writable path.
+
 **`error: artifacts are not comparable: ...`**
 Cause: the two artifacts weren't scored under the same trial. The
 message names the mismatch: different `suite`, different
@@ -1542,3 +1626,26 @@ need all trials complete.
 Cause: not an error. `--cases` (or the default 100) exceeds the
 filtered suite size, so the probe runs over every available case.
 Fix: none required.
+## Drift detection (`scripts/drift_detect.py`) errors
+
+**`drift_detect: cannot read <path>: <reason>`**
+The file cannot be read or does not contain valid JSON. Check the
+path and save the artifact again. The script accepts a full sealed
+run artifact or a bare `metrics` dict as JSON.
+
+**`<path> does not contain a JSON object`**
+The artifact file holds a JSON array or scalar at the top level.
+Pass the artifact JSON file as written by the runner, not a list of
+results.
+
+**`drift_detect: artifact has no usable metrics block`**
+The artifact's `metrics` key is present but is not an object.
+Regenerate the artifact with the standard metrics writer. Do not
+hand-edit the metrics block. The seal covers it.
+
+**Report shows "Not comparable" and exit code 2**
+The two artifacts belong to different monitoring series. A dataset
+change, a different adapter or suite, or a different case manifest
+is not drift. It is a new series. This is not a bug. Start a new
+monitoring series for the new dataset version (see
+`docs/Drift-Monitoring-Spec.md`).

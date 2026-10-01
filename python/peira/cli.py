@@ -563,6 +563,11 @@ def cmd_run(args: argparse.Namespace) -> int:
         print(f"error: --run-timeout must be > 0 "
               f"(got {run_timeout})", file=sys.stderr)
         return EXIT_USER_ERROR
+    max_tokens_per_call = getattr(args, "max_tokens_per_call", None)
+    if max_tokens_per_call is not None and max_tokens_per_call < 1:
+        print(f"error: --max-tokens-per-call must be >= 1 "
+              f"(got {max_tokens_per_call})", file=sys.stderr)
+        return EXIT_USER_ERROR
 
     if args.dry_run:
         print(f"dry run: {len(cases)} cases, adapter={adapter.name}, "
@@ -606,6 +611,8 @@ def cmd_run(args: argparse.Namespace) -> int:
                         partial, adapter, cases, suite, dataset_version,
                         manifest_sha256, seed=args.seed,
                         budget_usd=getattr(args, "budget_usd", None),
+                        max_tokens_per_call=getattr(
+                            args, "max_tokens_per_call", None),
                         cache_enabled=args.cache_dir is not None,
                         item_timeout=item_timeout,
                         run_timeout=run_timeout,
@@ -658,6 +665,7 @@ def cmd_run(args: argparse.Namespace) -> int:
                 rlimit_nproc=getattr(args, "rlimit_nproc", None),
                 death_log_path=getattr(args, "death_log", None),
                 budget_usd=budget_usd,
+                max_tokens_per_call=max_tokens_per_call,
                 item_timeout=item_timeout,
                 run_timeout=run_timeout,
                 # Persist the loader spec (e.g. "peira.adapters.jev:JevAdapter"),
@@ -869,6 +877,23 @@ def cmd_replay(args: argparse.Namespace) -> int:
     _print_run_summary(artifact, out_path)
     if not artifact.metrics["ranking_eligible"]:
         return EXIT_GATE_NOTE
+    return EXIT_OK
+
+
+def cmd_transcript_view(args: argparse.Namespace) -> int:
+    """Render a run transcript as a self-contained static HTML page."""
+    from peira.transcript_view import write_html  # noqa: PLC0415
+
+    tpath = Path(args.transcript)
+    if not tpath.exists():
+        print(f"error: transcript {tpath} not found", file=sys.stderr)
+        return EXIT_USER_ERROR
+    try:
+        write_html(tpath, args.out)
+    except (OSError, UnicodeDecodeError) as e:
+        print(f"error: could not render transcript: {e}", file=sys.stderr)
+        return EXIT_USER_ERROR
+    print(f"wrote {args.out}")
     return EXIT_OK
 
 
@@ -2748,6 +2773,230 @@ def cmd_hardness(args: argparse.Namespace) -> int:
     return EXIT_OK
 
 
+def _load_run_artifact(path_str: str):
+    """Load one run artifact for the EB Tier-1 analyses.
+
+    Returns (artifact, results) or raises _ArtifactError with a
+    user-facing message. Lock mismatches are warnings, not errors:
+    the analyses describe the artifact's numbers, whatever they are.
+    """
+    from peira.artifacts import RunArtifact
+    from peira.metrics import PerCaseResult
+
+    path = Path(path_str)
+    if not path.exists():
+        raise _ArtifactError(f"{path} not found")
+    try:
+        artifact = RunArtifact.from_json(
+            path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as e:
+        raise _ArtifactError(
+            f"{path} is not a valid run artifact ({e})")
+    if not artifact.verify():
+        print(f"warning: {path}: analysis lock mismatch: artifact was "
+              f"modified after sealing.", file=sys.stderr)
+    try:
+        results = [PerCaseResult.from_dict(d)
+                   for d in artifact.results]
+    except (KeyError, ValueError, TypeError) as e:
+        raise _ArtifactError(
+            f"{path}: cannot decode per-case results ({e})")
+    return artifact, results
+
+
+class _ArtifactError(Exception):
+    pass
+
+
+def _metric_rate(d: dict, key: str) -> float | None:
+    """A sealed metric as a float, or None when absent/not numeric.
+
+    Non-finite values (NaN/inf, reachable in hand-written
+    artifacts) are not metrics: they read as absent rather than
+    poisoning downstream max/min arithmetic.
+    """
+    v = d.get(key)
+    return (v if isinstance(v, (int, float))
+            and not isinstance(v, bool)
+            and math.isfinite(v) else None)
+
+
+def _metric_ci(d: dict, key: str) -> tuple[float, float] | None:
+    """A sealed [lo, hi] metric CI, or None when absent/malformed."""
+    v = d.get(key)
+    if (isinstance(v, list) and len(v) == 2
+            and all(isinstance(x, (int, float))
+                    and not isinstance(x, bool)
+                    and math.isfinite(x) for x in v)):
+        return (v[0], v[1])
+    return None
+
+
+def _metric_int(d: dict, key: str) -> int:
+    v = d.get(key)
+    return (v if isinstance(v, int) and not isinstance(v, bool)
+            else 0)
+
+
+def _write_text_out(text: str, out: str | None, label: str) -> int:
+    if out is None:
+        sys.stdout.write(text)
+        return EXIT_OK
+    try:
+        Path(out).write_text(text, encoding="utf-8")
+    except OSError as e:
+        print(f"error: cannot write {label} to {out} ({e})",
+              file=sys.stderr)
+        return EXIT_USER_ERROR
+    print(f"{label}: {out}")
+    return EXIT_OK
+
+
+def cmd_tax(args: argparse.Namespace) -> int:
+    """EB-40: cross-adapter robustness-tax analysis.
+
+    Diagnostic only: the taxes describe what each adapter paid for
+    robustness against the observed frontier; they never rank
+    adapters.
+    """
+    from peira.eb_analysis import (AdapterTaxInput, robustness_tax,
+                                   tax_report_text)
+
+    if len(args.runs) < 2:
+        print("error: tax needs at least 2 run artifacts",
+              file=sys.stderr)
+        return EXIT_USER_ERROR
+    inputs: list[AdapterTaxInput] = []
+    for path_str in args.runs:
+        try:
+            artifact, _ = _load_run_artifact(path_str)
+        except _ArtifactError as e:
+            print(f"error: {e}", file=sys.stderr)
+            return EXIT_USER_ERROR
+        metrics = artifact.metrics if isinstance(
+            artifact.metrics, dict) else {}
+        cal = metrics.get("calibration") or {}
+        attacked_cal = cal.get("attacked") or {}
+        name = artifact.adapter_name or path_str
+
+        # Later artifacts with the same adapter name replace earlier
+        # ones; the CLI takes explicit paths, so last-wins is the
+        # least surprise.
+        inputs = [i for i in inputs if i.adapter != name]
+        inputs.append(AdapterTaxInput(
+            adapter=name,
+            asr=_metric_rate(metrics, "asr_conditional"),
+            asr_ci=_metric_ci(metrics, "asr_ci95"),
+            benign_accuracy=_metric_rate(metrics, "benign_accuracy"),
+            benign_accuracy_ci=_metric_ci(metrics,
+                                          "benign_accuracy_ci95"),
+            ece=_metric_rate(attacked_cal, "ece"),
+            ece_ci=_metric_ci(attacked_cal, "ece_ci95"),
+            # EB-40: R-07 log-loss/NLL. Nothing seals it yet, so this
+            # reads the documented "log_loss" metrics key when present
+            # and reports the correlation withheld when absent.
+            log_loss=_metric_rate(metrics, "log_loss"),
+            log_loss_ci=_metric_ci(metrics, "log_loss_ci95"),
+            n_cases=_metric_int(metrics, "n_eligible"),
+        ))
+    try:
+        report = robustness_tax(inputs)
+    except ValueError as e:
+        print(f"error: tax: {e}", file=sys.stderr)
+        return EXIT_USER_ERROR
+    text = tax_report_text(report)
+    if args.json is not None:
+        try:
+            Path(args.json).write_text(
+                json.dumps(report, indent=2, sort_keys=True),
+                encoding="utf-8")
+        except OSError as e:
+            print(f"error: cannot write tax JSON to {args.json} ({e})",
+                  file=sys.stderr)
+            return EXIT_USER_ERROR
+        print(f"tax JSON: {args.json}")
+    return _write_text_out(text, args.out, "robustness-tax report")
+
+
+def cmd_erosion(args: argparse.Namespace) -> int:
+    """EB-23: per-family confidence-erosion distribution."""
+    from peira.eb_analysis import (confidence_erosion,
+                                   erosion_report_text)
+
+    try:
+        _, results = _load_run_artifact(args.run)
+    except _ArtifactError as e:
+        print(f"error: {e}", file=sys.stderr)
+        return EXIT_USER_ERROR
+    try:
+        report = confidence_erosion(results)
+    except ValueError as e:
+        print(f"error: erosion: {e}", file=sys.stderr)
+        return EXIT_USER_ERROR
+    return _write_text_out(
+        erosion_report_text(report), args.out, "erosion report")
+
+
+def cmd_length(args: argparse.Namespace) -> int:
+    """EB-7/EB-10: length-sensitivity + de-confounding diagnostics.
+
+    Also checks the EB-10 generation-length protocol: the adapter's
+    declared cap (artifact config ``generation_max_tokens``) against
+    the observed max attacked-arm tokens_out.
+    """
+    from peira.eb_analysis import (length_confound_diagnostics,
+                                   length_report_text,
+                                   length_sensitivity)
+
+    try:
+        artifact, results = _load_run_artifact(args.run)
+    except _ArtifactError as e:
+        print(f"error: {e}", file=sys.stderr)
+        return EXIT_USER_ERROR
+    try:
+        sensitivity = length_sensitivity(results)
+        diagnostics = length_confound_diagnostics(results)
+    except ValueError as e:
+        print(f"error: length: {e}", file=sys.stderr)
+        return EXIT_USER_ERROR
+    text = length_report_text(sensitivity, diagnostics)
+    cfg = artifact.config if isinstance(artifact.config, dict) else {}
+    declared = cfg.get("generation_max_tokens")
+    # Defensive: a hand-written artifact may carry a non-numeric cap.
+    # Only a positive int is a declared cap; anything else reads as
+    # undeclared (never a crash on the comparison below).
+    if (
+        isinstance(declared, bool)
+        or not isinstance(declared, int)
+        or declared <= 0
+    ):
+        declared = None
+    observed = None
+    for r in results:
+        u = r.attacked.usage
+        if u is not None and u.tokens_out is not None:
+            t = u.tokens_out
+            if isinstance(t, (int, float)) and not isinstance(t, bool):
+                observed = t if observed is None else max(observed, t)
+    proto = ["", "Generation-length protocol (EB-10):"]
+    if declared is None:
+        proto.append("  declared cap: not declared by the adapter")
+    else:
+        proto.append(f"  declared cap: {declared} tokens")
+    proto.append(
+        "  observed max attacked tokens_out: "
+        + (f"{observed:g} tokens" if observed is not None
+           else "no length data")
+    )
+    if (declared is not None and observed is not None
+            and observed > declared):
+        proto.append(
+            "  WARNING: observed length exceeds the declared cap; "
+            "the cap was not enforced on this run")
+    text += "\n".join(proto) + "\n"
+    return _write_text_out(text, args.out, "length report")
+
+
 def _lottery_text(a: dict) -> str:
     """Human-readable leave-one-family-out stability report for stdout."""
     lines = [
@@ -4568,6 +4817,11 @@ def build_parser() -> argparse.ArgumentParser:
                    "projection exceeds the cap; in-flight cases drain and "
                    "the artifact seals with termination=budget "
                    "(analyzable, never rankable) (default: no cap)")
+    r.add_argument("--max-tokens-per-call", type=int, default=None,
+                   help="per-call output-token cap. A call whose reported "
+                   "tokens_out exceeds the cap is marked malformed and "
+                   "excluded from scoring, and the transcript flags "
+                   "token_limit_exceeded for the call (default no cap)")
     r.add_argument("--cache-dir", default=None,
                    help="opt-in response cache directory for deterministic "
                    "adapters (temperature 0 + fixed seed); off by default "
@@ -4587,6 +4841,14 @@ def build_parser() -> argparse.ArgumentParser:
                     help="smoke is an alias for trial")
     rp.add_argument("--out", default="runs")
     rp.set_defaults(func=cmd_replay)
+
+    tv = sub.add_parser("transcript-view",
+                        help="render a run transcript as static HTML")
+    tv.add_argument("--transcript", required=True,
+                    help="transcript JSONL written by `peira run --transcript`")
+    tv.add_argument("--out", required=True,
+                    help="output HTML path")
+    tv.set_defaults(func=cmd_transcript_view)
 
     v = sub.add_parser("validate", help="validate a dataset directory")
     v.add_argument("--dataset", required=True)
@@ -4732,6 +4994,43 @@ def build_parser() -> argparse.ArgumentParser:
     hd.add_argument("--out", default=None,
                     help="write the diagnostic tables to this path")
     hd.set_defaults(func=cmd_hardness)
+
+    # EB Tier 1: external-benchmark analyses (Program A).
+    tx = sub.add_parser(
+        "tax",
+        help="EB-40: cross-adapter robustness-tax diagnostics "
+        "(accuracy/calibration/combined taxes, ASR-tax correlations)",
+    )
+    tx.add_argument("runs", nargs="+",
+                    help="run artifact paths (>= 2, one per adapter)")
+    tx.add_argument("--out", default=None,
+                    help="write the text report to this path "
+                    "(default: stdout)")
+    tx.add_argument("--json", default=None,
+                    help="write the full tax analysis JSON to this path")
+    tx.set_defaults(func=cmd_tax)
+
+    er = sub.add_parser(
+        "erosion",
+        help="EB-23: confidence-erosion distribution on failed attacks "
+        "(per-family and overall)",
+    )
+    er.add_argument("run", help="run artifact path")
+    er.add_argument("--out", default=None,
+                    help="write the text report to this path "
+                    "(default: stdout)")
+    er.set_defaults(func=cmd_erosion)
+
+    ln = sub.add_parser(
+        "length",
+        help="EB-7/EB-10: length-sensitivity analysis and "
+        "length de-confounding diagnostics for one run artifact",
+    )
+    ln.add_argument("run", help="run artifact path")
+    ln.add_argument("--out", default=None,
+                    help="write the text report to this path "
+                    "(default: stdout)")
+    ln.set_defaults(func=cmd_length)
 
     lt = sub.add_parser(
         "lottery",

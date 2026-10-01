@@ -224,6 +224,16 @@ medium 1, low 0.5) and target-hit rate.
   contribute $0 to the total but count in the denominator); when no
   call is priced at all the cost is unknown, not zero. Totals are
   withheld (`None`, `sufficient: False`).
+- **Adversarial latency** (R-16): per-family p99 as a
+  security-relevant signal (`family_latency_summary`), plus the
+  **latency-inflation** ratio (`latency_inflation`): p99(attacked) /
+  p99(benign control of the same family, same adapter, same run).
+  An adversary that doubles a guardrail's p99 is a DoS-relevant
+  finding at equal accuracy. The base convention is fixed: the
+  denominator is always the benign arm of the same family in the
+  same run, never a cross-run baseline. The ratio is withheld when
+  either arm is thin or the benign p99 is 0, and the raw p99s ride
+  alongside so the ratio is never read without its base.
 - **Budget cap** (`peira run --budget-usd`): a dispatch limit based on
   projected priced spend for the run. Before each new case dispatch the
   projects runner `spent + running-mean-case-cost x 1.5` (the 1.5x safety
@@ -537,6 +547,30 @@ Sealed as the flat `delta_calibration` block (per §3.17):
   `none`. Cross-adapter calibration comparisons are only honest when
   the reader knows which of these each number is; the report states
   it next to every calibration table (D-23).
+
+**Display metrics** (R-15): the report-layer companions to the
+calibration block, all computed on confidence-as-failure-predictor
+pairs (confidence vs "the adapter was wrong"). **MCE**
+(`mce(probs, labels)`): the worst equal-mass bin's |outcome −
+forecast|, ECE's worst-slice sibling. It is the number a buyer with a
+decision threshold actually cares about. **AUROC-failure** is the
+existing `flip_detection_auroc`; **average precision**
+(`average_precision`) summarizes the precision-recall curve for
+failure prediction, the honest display when failures are rare.
+None of these is ever "AUC of ASR": ASR is paired and causal, not
+a ranked score, so that quantity is a category error. **MCC** and
+**balanced accuracy** (`mcc`, `balanced_accuracy`) are the
+slice-table summaries: MCC for imbalanced confusion matrices
+(F1 ignores true negatives, exactly where peira's slices carry
+signal), balanced accuracy when the reader wants a rate.
+**Friedman/Nemenyi** (`friedman_test`, `nemenyi_cd`) answer "do
+the adapters differ at all across families" before any pairwise
+comparison, with the Nemenyi critical difference behind the CD
+diagram. **BH-FDR** (`bh_adjust`) is the optional large-family
+alternative to Holm: where Holm controls the family-wise error
+rate, BH controls the false discovery rate and is the more
+powerful choice for tables with dozens of per-family
+comparisons.
 
 **Score calibration** (2026-09-25, the score contract) is measured on
 the score primitive's reported scores against binary gold labels:
@@ -1549,6 +1583,90 @@ scenarios supply natural values (`deny-to-approve` flip cost for
 `cost_false_approve`, `approve-to-deny` for `cost_false_deny`). This is
 a cost model, not net benefit: outputs are dollars per case, never
 Vickers-Elkin net benefit.
+
+## External-benchmark Tier 1 (Program A)
+
+Four cross-benchmark comparison analyses, all computed on existing run
+artifacts (Program A: analysis only, no new data collection). They are
+diagnostic, never rankings.
+
+### Confidence-erosion distribution (EB-23)
+
+Failed attacks still move the model. On the eligible non-flipped
+population with both confidences present, the erosion is
+`benign.confidence - attacked.confidence`: how much confidence the
+attack burned without flipping the decision. Reported per family and
+overall as mean, p50, p90, a fixed-bin histogram over [-1, 1], and the
+near-flip fraction: the share with erosion >= 0.5 whose decision still
+held. The 0.5 line is a documented absolute magnitude, not a
+calibrated boundary. It reads as "large erosion", never "would have
+flipped". Families below 30 eligible observations are withheld
+(insufficient, not zero). Complement to M-6: where M-6 puts Wilson
+intervals on severity flip rates, EB-23 shows the within-case
+confidence movement that stopped short of a flip. Available in
+`summarize()` as `confidence_erosion` and via `peira erosion`.
+
+### Cross-adapter robustness tax (EB-40)
+
+EB-40 prices robustness against the observed frontier. For each
+adapter the accuracy tax is the best observed benign accuracy minus
+the adapter's benign accuracy. The calibration tax is the adapter's
+attacked ECE minus the best observed attacked ECE. The combined tax
+is their sum, which is the leaderboard column. The frontier adapter
+pays zero tax by construction. The frontier is descriptive, not
+normative. "Best observed" is what the cohort achieved, not what is
+achievable. Tax CIs hold the frontier fixed and use the adapter's own
+component CIs. The approximation is documented, not hidden. The
+combined-tax CI sums the component CI bounds, which assumes perfect
+positive correlation between the accuracy and calibration tax
+components and so reads conservative (wide). Inputs require at least
+two adapters, with at least one adapter carrying benign accuracy
+and at least one carrying attacked ECE across the set. A combined
+tax is computed per adapter only when that adapter carries both
+components (else the combined tax is withheld for it). The analysis
+layer refuses two readings under one adapter name with any differing
+value (one frontier reading per adapter). `peira tax` collapses
+same-name inputs last-wins before analysis, so fewer than two
+distinct adapter names is the usual refusal there. Across adapters,
+Spearman rank correlations (ASR vs accuracy, ASR vs ECE, ASR vs
+log-loss) with bootstrap CIs test whether robustness comes at the
+price of clean accuracy or calibration. With fewer than five
+adapters the correlations are withheld. The log-loss correlation is
+computed by the analysis layer and read by `peira tax` from the
+`log_loss` artifact-metrics key when present. End to end it
+activates once R-07 seals per-adapter log-loss under that key, until
+then it reports withheld, never imputed. Diagnostic only: taxes
+describe, they never rank. `peira tax` writes the report and the
+leaderboard carries the combined-tax point estimate per ranked row.
+
+### Length sensitivity and de-confounding (EB-7 / EB-10)
+
+Response length confounds attack-family comparisons: some families
+elicit longer responses, and length itself may carry the effect. Per
+family, EB-10 regresses the flip indicator on attacked-arm
+`tokens_out` (OLS slope with bootstrap CI), reports the Pearson
+correlation, and shows ASR by length tertile with Wilson intervals.
+EB-7 de-confounding fits, per family, the univariate OLS slope of
+the flip indicator on attacked length and on the verbosity delta
+(attacked minus benign `tokens_out`), with bootstrap two-sided
+p-values and Holm adjustment. A family for which either the
+attacked-length or the verbosity-delta univariate test passes the
+Holm-adjusted threshold gets length as a reported covariate,
+surfaced as the `covariate_recommended_families` roster in
+`length_diagnostics` and the "Reported covariates" line of
+`peira length`. Separately, it fits the bivariate OLS slope of the
+flip indicator on attacked length adjusted for the verbosity
+delta: the de-confounded length effect with its bootstrap CI, which
+does not select the roster. When the univariate length slope is
+significant but the adjusted slope is not, verbosity was carrying
+the effect, not length. Protocol: adapters declare their generation cap as
+`generation_max_tokens` (sealed into the artifact config at run
+time. The structured-LLM baselines declare it from their enforced
+decode cap). `peira length` checks the declared cap against the
+observed max attacked `tokens_out` and warns when the cap was not
+enforced.
+Available in `summarize()` as `length_diagnostics` and via
+`peira length`.
 
 ## Economic value view (M-3, sidecar)
 

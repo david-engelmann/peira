@@ -1,17 +1,18 @@
 # syntax=docker/dockerfile:1
 # peira reproducible environment.
 #
-# Multi-stage build:
-#   1. rust-builder -- compiles the optional PyO3 accelerator (peira._core)
+# Multi-stage build.
+#   1. rust-builder compiles the optional PyO3 accelerator (peira._core)
 #      from crates/peira-python against the pinned Cargo.lock.
-#   2. runtime     -- Python 3.12 + pip-installed peira with its pinned
-#      lockfile, the built Rust extension, and the versioned datasets.
+#   2. runtime is Python 3.12 plus pip-installed peira with its pinned
+#      dependencies, the built Rust extension, and the versioned
+#      datasets.
 #
-# Build-only by default: no image is pushed to any registry. See
+# Build-only by default. No image is pushed to any registry. See
 # .github/workflows/docker-build.yml and docs/Reproducibility.md.
 #
 #   docker build -t peira:local .
-#   docker build -t peira:local --build-arg EXTRAS_LOCK=all.lock .
+#   docker build -t peira:local --build-arg EXTRAS=all .
 #   docker run --rm peira:local run --adapter mock --suite trial --seed 0 --out /tmp/runs
 
 # ---------------------------------------------------------------------------
@@ -41,10 +42,10 @@ RUN cargo build --release -p peira-python
 # ---------------------------------------------------------------------------
 FROM python:3.12-slim-bookworm AS runtime
 
-# Which pinned lockfile to install. `dev.lock` (the default) covers the
-# base package plus the test tooling CI uses; `all.lock` adds the
-# Hugging Face and LLM-adapter extras (large: pulls torch).
-ARG EXTRAS_LOCK=dev.lock
+# Which extras to install. `dev` (the default) covers the base
+# package plus the test tooling CI uses. `all` adds the Hugging Face
+# and LLM-adapter extras. Large, pulls torch.
+ARG EXTRAS=dev
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
@@ -52,18 +53,24 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /peira
 
-# Install the pinned third-party dependencies first: this layer only
-# rebuilds when the lockfiles change, not on every code edit.
-# dev.lock (the default) carries --generate-hashes pins, so
-# --require-hashes makes the install tamper-evident. all.lock is
-# version-pinned only: hash-pinning torch's CUDA tree would require
-# multi-GB downloads at lock time (see docs/Reproducibility.md).
-COPY requirements/ requirements/
-RUN if grep -q -- "--hash" "requirements/${EXTRAS_LOCK}"; then \
-      pip install --require-hashes -r "requirements/${EXTRAS_LOCK}"; \
+# Install the pinned third-party dependencies first. This layer only
+# rebuilds when the lockfile changes, not on every code edit.
+# uv.lock is the single source of truth. `uv export` projects it to a
+# hash-pinned requirements file at build time. uv reads hashes from
+# index metadata, so even the torch CUDA wheels get hash pins with no
+# multi-gigabyte downloads. pip installs that file with
+# --require-hashes, which makes the install tamper-evident. The uv
+# binary is pinned to an exact release, like every other image pin in
+# this file.
+COPY --from=ghcr.io/astral-sh/uv:0.12.21 /uv /uvx /bin/
+COPY pyproject.toml uv.lock ./
+RUN if [ "$EXTRAS" = "all" ]; then \
+      uv export --frozen --format requirements-txt --no-emit-project --all-extras -o /tmp/pinned.txt; \
     else \
-      pip install -r "requirements/${EXTRAS_LOCK}"; \
-    fi
+      uv export --frozen --format requirements-txt --no-emit-project --extra dev -o /tmp/pinned.txt; \
+    fi && \
+    pip install --require-hashes -r /tmp/pinned.txt && \
+    rm /tmp/pinned.txt
 
 # Install peira itself, editable from the /peira checkout. The editable
 # install is load-bearing, not a shortcut: cli.py and dataset.py resolve

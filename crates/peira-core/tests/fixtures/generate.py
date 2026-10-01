@@ -128,6 +128,7 @@ def gen_locks() -> None:
             contract_version="1",
             termination="budget",
             budget_usd=10.0,
+            max_tokens_per_call=4096,
             spent_usd=10.5,
             cases_completed=2,
             cases_planned=3,

@@ -1,7 +1,7 @@
 {
   "created_utc": "2026-10-01T00:55:56.646763+00:00",
   "dataset": "peira-v1",
-  "dataset_version": "1.4.0",
+  "dataset_version": "1.4.1",
   "files": {
     "confidence_spoofing.jsonl": {
       "kind": "cases",
@@ -39,7 +39,7 @@
         "medium": 47
       },
       "n_cases": 200,
-      "sha256": "42694c19119e9f9819f5666696fb1bae42f8e5d9c74eac4560f60da27b9aa5d2"
+      "sha256": "f4012adf9d7e0d3601b0230d5221ef34898e6ee9adf509903670ad31b1cae0e5"
     },
     "distractor_flooding.jsonl": {
       "kind": "cases",
