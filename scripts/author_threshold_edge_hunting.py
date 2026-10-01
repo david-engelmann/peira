@@ -50,7 +50,7 @@ questions) so templated cases stay clear of the G9 near-dedup bands.
 
 Coverage: 14 threshold domains. Each domain ships 30 cases: 24 choice
 and 6 score, both threshold sides covered, all four perturbation
-classes represented, each of the three thresholds used.
+classes represented, each of the five thresholds used.
 """
 
 import json
