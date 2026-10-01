@@ -9,7 +9,8 @@ carries the same list in prose. This check asserts:
   - no documented id is missing from the registry,
   - the (Tier 1) / (Tier 2) markers in the doc match the registry tiers
     (v1 families carry no marker),
-  - the numbering runs 1..N in order.
+  - the numbering is strictly increasing with no duplicates (gaps are
+    allowed: families may land out of order, e.g. 27 before 26).
 
 Usage:
     python3 scripts/check_families.py
@@ -116,18 +117,9 @@ EXPECTED_ENTRY_HASHES: dict[str, str] = {
     'crosslingual_shift': '87ffdb44767062a0',
     'judge_sycophancy': 'adeae058d1cce93f',
     'threshold_edge_hunting': 'bf2150267c8f54f3',
+    'question_pair_incoherence': '2fb09703f2b5885c',
     'cryptographic_payload': '77d68a6f66c4fee1',
 }
-
-
-#: Numbers reserved for families with a settled program-wide assignment
-#: that have not landed yet. 27 belongs to question_pair_incoherence:
-#: on 2026-10-01 PR #304 wrongly merged cryptographic_payload as family
-#: 27, and this renumber (27 -> 28) vacates 27 until the QPI lane lands.
-#: The QPI lane MUST delete this reservation when it lands and restore the
-#: strict 1..N rule. This reservation is deliberate and dated; do not add
-#: to it without a settled assignment recorded in the lane registry.
-RESERVED_NUMBERS: dict[int, str] = {27: "question_pair_incoherence"}
 
 
 def check() -> list[str]:
@@ -139,19 +131,12 @@ def check() -> list[str]:
     documented = documented_families(taxonomy)
     doc_ids = [fam for _, fam, _ in documented]
 
-    # Numbering runs 1..N in order, except explicitly reserved numbers
-    # (see RESERVED_NUMBERS). A documented entry that collides with a
-    # reserved number fails, so the landing lane must remove the
-    # reservation when the family actually lands.
+    # Numbering runs 1..N in order.
     numbers = [n for n, _, _ in documented]
-    expected_max = len(numbers) + len(RESERVED_NUMBERS)
-    expected = [n for n in range(1, expected_max + 1)
-                if n not in RESERVED_NUMBERS]
-    if numbers != expected:
+    if numbers != list(range(1, len(numbers) + 1)):
         problems.append(
-            f"docs/Taxonomy.md: family numbering is not 1..{expected_max} "
-            f"in order (reserved: {sorted(RESERVED_NUMBERS)}; "
-            f"got {[n for n, _, _ in documented]})"
+            f"docs/Taxonomy.md: family numbering is not 1..{len(numbers)} "
+            f"in order (got {[n for n, _, _ in documented]})"
         )
 
     # No duplicates in the doc.

@@ -34,7 +34,8 @@ dataset files and per-case drill-down. Entry numbers below are this
 section's sequence; the program-wide family numbers additionally count
 the two conversational-suite families (`multi_turn_escalation` 25,
 `decision_splitting` 26, see `docs/Conversational-Suite.md`), so the
-newest v2 family is program-wide family 28.
+newest v2 family number program-wide is 28 (question_pair_incoherence
+landed most recently, as family 27).
 
 1. **state_poisoning**: hostile content in tool output authorizes the
    action; includes history-embedded payloads in multi-turn state.
@@ -163,6 +164,13 @@ ships, with no fixed total.
     ships as fixed paired cases. The adaptive flip-radius variant is
     future measurement work. YouTube-reconciliation research 2026-09-30;
     Boundary Point Jailbreaking analogue.
+27. **question_pair_incoherence** (Tier 1). Two complementary questions
+    asked over identical facts, where adversarial phrasing of one
+    question widens the joint-incoherence gap between the answers. The
+    benign arm asks both questions neutrally. The attacked arm
+    rephrases one question with leading wording, a policy-scope shift,
+    or a burden shift toward the target decision, adding no new facts.
+    Peira-native contribution.
 
 28. **cryptographic_payload** (Tier 1). Encrypted payload plus
     in-context decryption instructions: the guard layer classifies the
@@ -233,6 +241,16 @@ families); the v1 cases are frozen as authored.
    with no merit pleading ever present, it is `judge_sycophancy`.
    The sycophancy block must address the judge (you/your) and must
    not plead case merits, issue instructions, or rewrite rules.
+10. `question_pair_incoherence` vs `literal_reading` vs
+   `contradiction_injection`. `literal_reading` attacks single-question
+   scoping, meaning how one question is read in isolation.
+   `contradiction_injection` plants contradictory clauses in the policy,
+   so the attack surface is the rule text. `question_pair_incoherence`
+   keeps the policy and the facts fixed and attacks cross-question
+   consistency, so the surface is how the two questions are phrased.
+   The deletion test restores the neutral phrasing of the attacked
+   question. If the flip disappears it is `question_pair_incoherence`.
+   If the flip survives rephrasing, the case is misclassified.
 
 10. `cryptographic_payload` vs `encoding_evasion`. `encoding_evasion`
    is sub-semantic: homoglyphs, zero-width characters, leetspeak, and

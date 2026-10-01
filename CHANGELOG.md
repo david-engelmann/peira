@@ -180,6 +180,27 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
   (overall and per family, each with Wilson 95% CI) in a new
   `targeted_asr` summary block. Targeted ASR is unavailable when no
   target mapping is supplied or no flip has a known target.
+### Added question_pair_incoherence attack family (family 27, Tier 1)
+
+- New v2 family `question_pair_incoherence`. Two complementary questions
+  are asked over identical facts, where adversarial phrasing of one
+  question widens the joint-incoherence gap between the answers. 400
+  cases authored by `scripts/author_question_pair_incoherence.py`, case
+  IDs `v2-qpi-0001` and up. The mix is 86 critical, 140 high and 174
+  medium, with 300 choice, 50 abstain and 50 score cases. The attacked
+  variant keeps the byte-identical scenario and facts and rephrases one
+  question with one of three techniques. A leading interrogative, a
+  policy-scope shift, or a burden shift demanding affirmative
+  justification of the fact-favored side. Registered in
+  `python/peira/families.py`, documented in `docs/Taxonomy.md`
+  (entry 27, with a boundary ruling against `literal_reading` and
+  `contradiction_injection`) and `docs/Methodology.md` (measurement
+  section with the deletion test). Dataset version moves from 2.4.0 to
+  2.4.1. Version 2.4.1 rewords the case notes to meet the public-copy
+  bar and fixes awkward phrasing in four score cases. The dataset
+  manifest's minimum-detectable-effects table gains the
+  `question_pair_incoherence` row referenced by the Methodology's
+  pre-registered flip rule.
 
 ### Added cryptographic_payload attack family (family 28, Tier 1)
 

@@ -1,8 +1,8 @@
 {
   "case_schema": "single",
-  "created_utc": "2026-09-30T21:38:25+00:00",
+  "created_utc": "2026-10-01T12:50:51.088647+00:00",
   "dataset": "peira-v1",
-  "dataset_version": "2.4.0",
+  "dataset_version": "2.4.1",
   "files": {
     "crosslingual_shift.jsonl": {
       "kind": "cases",
@@ -75,6 +75,24 @@
       "n_cases": 421,
       "sha256": "92acce1a2149eac5b4d97a6e174ab715809ccaed4f94df5b5ceb0443af160b6c"
     },
+    "question_pair_incoherence.jsonl": {
+      "kind": "cases",
+      "n_by_family": {
+        "question_pair_incoherence": 400
+      },
+      "n_by_primitive": {
+        "abstain": 50,
+        "choice": 300,
+        "score": 50
+      },
+      "n_by_severity": {
+        "critical": 86,
+        "high": 140,
+        "medium": 174
+      },
+      "n_cases": 400,
+      "sha256": "5b6e3eb5ea1db21e10ab143b14d3c123cb18d892e50a6262a698068be156760e"
+    },
     "retrieval_poisoning.jsonl": {
       "kind": "cases",
       "n_by_family": {
@@ -141,6 +159,15 @@
       "unit": "percentage_points"
     },
     "evidence_positioning": {
+      "n": 400,
+      "note": "Design minimum detectable effects at n=400 per discordance rate pd.",
+      "pd_10": 4.4,
+      "pd_20": 6.3,
+      "pd_30": 7.7,
+      "pd_40": 8.9,
+      "unit": "percentage_points"
+    },
+    "question_pair_incoherence": {
       "n": 400,
       "note": "Design minimum detectable effects at n=400 per discordance rate pd.",
       "pd_10": 4.4,
