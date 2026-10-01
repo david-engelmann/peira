@@ -5,8 +5,9 @@ reproducibility, and what it does not. It describes the code as it is:
 where a field is timing-dependent, the document says so instead of
 pretending otherwise. The executable form of this contract is
 `peira/repro.py` (normalization and comparison primitives),
-exercised by `tests/test_determinism.py` and by
-`scripts/check_determinism.py` in CI.
+exercised by `tests/test_repro.py` and applied by
+`scripts/check_determinism.py` in CI. `tests/test_determinism.py`
+tests the runner directly with its own normalization helpers.
 
 ## The precise claim
 
@@ -105,9 +106,9 @@ non-deterministic fields (`usage.latency_ms` and `dispatch_limit` on
 each benign/attacked record) and compare the `results` arrays for
 equality, then compare `metrics` with the `latency_ms` block
 normalized. `peira.repro.normalize_artifact` and
-`peira.repro.compare_artifacts` do exactly this; `tests/test_determinism.py`
-exercises them with the mock adapter at two different concurrency caps,
-and `scripts/check_determinism.py` applies them to real CLI reruns.
+`peira.repro.compare_artifacts` do exactly this; `tests/test_repro.py`
+covers them as unit tests, and `scripts/check_determinism.py` applies
+them to real CLI reruns in CI.
 
 ## Out of scope
 

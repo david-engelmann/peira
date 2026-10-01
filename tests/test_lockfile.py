@@ -273,6 +273,7 @@ class WarnIfDriftedTests(unittest.TestCase):
         calls = []
         real_find = lockfile_mod.find_lockfile
         real_read = lockfile_mod.read_lock_pins
+        real_installed = lockfile_mod.installed_version
 
         def counting_find():
             calls.append(1)
@@ -283,8 +284,15 @@ class WarnIfDriftedTests(unittest.TestCase):
             pins["torch"] = ["0.0.0"]
             return pins
 
+        # Deterministic environment: no test may depend on the real
+        # machine's installed packages, so force torch to a drifting
+        # version and nothing else installed.
+        def fake_installed(pkg):
+            return {"torch": "9.9.9"}.get(pkg)
+
         lockfile_mod.find_lockfile = counting_find
         lockfile_mod.read_lock_pins = drifting_read
+        lockfile_mod.installed_version = fake_installed
         try:
             err = io.StringIO()
             with redirect_stderr(err):
@@ -292,6 +300,7 @@ class WarnIfDriftedTests(unittest.TestCase):
         finally:
             lockfile_mod.find_lockfile = real_find
             lockfile_mod.read_lock_pins = real_read
+            lockfile_mod.installed_version = real_installed
         self.assertEqual(len(drifts), 1)
         self.assertEqual(calls, [1])
         self.assertIn("uv.lock", err.getvalue())
