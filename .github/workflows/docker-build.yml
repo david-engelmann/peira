@@ -1,0 +1,78 @@
+name: docker-build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# Least privilege: every job only checks out code.
+permissions:
+  contents: read
+
+# Cancel superseded runs on the same ref; a newer push makes the older run's
+# result meaningless.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check_runner:
+    # Picks the runner pool for all Linux jobs: David's self-hosted
+    # runner-grid when online (no queue wait), else GitHub-hosted.
+    # Fork PRs NEVER use self-hosted (untrusted code on David's laptop).
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      actions: read  # to check runner status
+    outputs:
+      runner: ${{ steps.final.outputs.runner }}
+    steps:
+      - name: Check if runner-grid is online
+        id: fallback
+        # Skip the API check for fork PRs; they stay on GitHub-hosted.
+        if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
+        uses: mikehardy/runner-fallback-action@v1
+        with:
+          primary-runner: "self-hosted,runner-grid"
+          fallback-runner: "ubuntu-latest"
+          primaries-required: 1
+          fallback-on-error: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Set runner output
+        id: final
+        run: |
+          if [ -n "${{ steps.fallback.outputs.use-runner }}" ]; then
+            # Convert the action's output to a JSON array for fromJSON().
+            # The action may output "self-hosted,runner-grid" (comma-separated)
+            # or '["ubuntu-latest"]' (already JSON).
+            runner='${{ steps.fallback.outputs.use-runner }}'
+            if [[ "$runner" == "["* ]]; then
+              echo "runner=$runner" >> "$GITHUB_OUTPUT"
+            else
+              json=$(python3 -c "import json,sys; print(json.dumps([s.strip() for s in '''$runner'''.split(',')]))")
+              echo "runner=$json" >> "$GITHUB_OUTPUT"
+            fi
+          else
+            echo 'runner=["ubuntu-latest"]' >> "$GITHUB_OUTPUT"
+          fi
+
+  build:
+    # Build-only: the image is never pushed to a registry. Registry pushes
+    # stay manual until an external reproducibility request asks for one
+    # (see docs/Reproducibility.md).
+    needs: check_runner
+    runs-on: ${{ fromJSON(needs.check_runner.outputs.runner) }}
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Build the peira image (no push)
+        run: docker buildx build --tag peira:ci --file Dockerfile .
+
+      - name: Smoke-test the built image
+        # The Rust accelerator must be importable and the CLI must run the
+        # README quickstart path end to end inside the container.
+        run: |
+          docker run --rm peira:ci python3 -c "from peira._rust import RUST_AVAILABLE; assert RUST_AVAILABLE"
+          docker run --rm peira:ci run --adapter mock --suite trial --seed 0 --out /tmp/runs || [ $? -eq 3 ]
