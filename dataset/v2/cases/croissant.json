@@ -91,7 +91,7 @@
       "description": "421 paired adversarial decision cases (peira-v1 2.4.0).",
       "encodingFormat": "application/x-ndjson",
       "name": "judge_sycophancy.jsonl",
-      "sha256": "92acce1a2149eac5b4d97a6e174ab715809ccaed4f94df5b5ceb0443af160b6c"
+      "sha256": "b452939352bbb2f363cfb21d25340e94187399c7a7edcaa5b4a3ef0d5632e368"
     },
     {
       "@id": "peira-v1/retrieval_poisoning.jsonl",
