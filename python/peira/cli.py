@@ -1050,7 +1050,7 @@ def cmd_report(args: argparse.Namespace) -> int:
             source_path=str(run_path),
         ).seal()
         try:
-            Path(json_out).write_text(sealed.to_json(), encoding="utf-8")
+            atomic_write_text(Path(json_out), sealed.to_json())
         except OSError as e3:
             print(f"error: cannot write report artifact to {json_out} "
                   f"({e3})", file=sys.stderr)

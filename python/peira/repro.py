@@ -102,6 +102,12 @@ def _compare_values(path: str, a: Any, b: Any, tol: float) -> list[str]:
             return [f"{path}: {a!r} != {b!r}"]
         return []
     if isinstance(a, float) or isinstance(b, float):
+        # Only real numbers compare with tolerance. Anything else paired
+        # with a float (null, a string, an array, an object) is a type
+        # change, hence a mismatch: float() would raise instead of
+        # reporting it.
+        if not isinstance(a, (int, float)) or not isinstance(b, (int, float)):
+            return [f"{path}: {a!r} != {b!r}"]
         af, bf = float(a), float(b)
         if not math.isfinite(af) or not math.isfinite(bf):
             if af != bf:

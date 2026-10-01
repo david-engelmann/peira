@@ -148,6 +148,26 @@ class CompareArtifactsTests(unittest.TestCase):
         b = normalize_artifact(other)
         self.assertFalse(artifacts_reproduce(a, b))
 
+    def test_float_vs_null_is_a_mismatch_not_a_crash(self):
+        # A float paired with null is a type change. It must surface as a
+        # mismatch, not raise TypeError inside float().
+        a = normalize_artifact(_artifact())
+        other = _artifact()
+        other["metrics"]["asr_conditional"] = None
+        b = normalize_artifact(other)
+        self.assertFalse(artifacts_reproduce(a, b))
+        mismatches = compare_artifacts(a, b)
+        self.assertTrue(any("asr_conditional" in m for m in mismatches))
+
+    def test_float_vs_numeric_string_is_a_mismatch(self):
+        # "0.5" is not 0.5: a numeric string where a float stood is a type
+        # change, even though float("0.5") would compare equal.
+        a = normalize_artifact(_artifact())
+        other = _artifact()
+        other["metrics"]["asr_conditional"] = "0.4"
+        b = normalize_artifact(other)
+        self.assertFalse(artifacts_reproduce(a, b))
+
     def test_length_mismatch_reported(self):
         a = normalize_artifact(_artifact())
         other = _artifact(results=[])

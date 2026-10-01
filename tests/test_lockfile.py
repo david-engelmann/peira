@@ -131,7 +131,7 @@ class WarnIfDriftedTests(unittest.TestCase):
         # lockfile; this pins the resolution, not the versions.
         found = find_lockfile()
         self.assertIsNotNone(found)
-        self.assertTrue(str(found).endswith("requirements/all.lock"))
+        self.assertTrue(found.as_posix().endswith("requirements/all.lock"))
         pins = read_lock_pins(found)
         self.assertIn("torch", pins)
 
