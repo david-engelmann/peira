@@ -1,7 +1,7 @@
 """Optional Rust accelerator.
 
 `peira._core` is the PyO3 extension built from `crates/peira-python`
-(see `scripts/build_core_ext.py`). It is never required: import it here,
+(maturin is the PEP 517 build backend; `maturin develop` rebuilds it). It is never required: import it here,
 and every hot path in `peira.metrics` / `peira.schema` / `peira.gates`
 / `peira.compare` / `peira.runner` / `peira.concurrency` dispatches to it
 when present and falls back to the pure-Python reference implementation

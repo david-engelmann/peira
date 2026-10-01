@@ -28,7 +28,7 @@ Conventions (v2 measurement contract):
   detector.
 
 Backend: the public functions below dispatch to the compiled Rust core
-(`peira._core`, built with `scripts/build_core_ext.py`) when it is
+(`peira._core`, built by the maturin PEP 517 backend) when it is
 importable, and fall back to the pure-Python reference implementations
 (`_xxx_py`) otherwise. The two backends can differ by ~1 ulp on float
 aggregates: Python's builtin `sum()` uses compensated (Neumaier)

@@ -7,6 +7,23 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
 
 ## [Unreleased]
 
+### Changed - maturin replaces setuptools + hand-rolled Rust build script (D-41)
+
+- The PEP 517 build backend is now `maturin` (`build-backend = "maturin"`,
+  `[tool.maturin]` with `bindings = "pyo3"`, `module-name = "peira._core"`,
+  `features = ["pyo3/abi3-py310"]`). `scripts/build_core_ext.py` is deleted;
+  `pip install -e '.[dev]'` builds the extension (release profile in CI via
+  `MATURIN_PEP517_ARGS=--release`), and `maturin develop` gives incremental
+  debug rebuilds after Rust changes. Wheels are abi3 (one per platform);
+  installing from an sdist or git URL now requires a Rust toolchain.
+- CI installs the Rust toolchain in every job that pip-installs the package
+  (the maturin backend builds the extension at install time). `test-python`
+  now runs the suite with `PEIRA_NO_RUST=1`, keeping its pure-Python
+  fallback coverage; `test-python-rust` covers the compiled backend.
+- New `release-wheels.yml` workflow builds abi3 wheels (linux x86_64,
+  macOS arm64, Windows x86_64) plus an sdist on `v*` tags and publishes to
+  PyPI via trusted publishing (OIDC).
+
 ### Added R-04 effective sampling config and stability probe
 
 - Every transcript entry now records `sampling_config`: the effective

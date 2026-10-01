@@ -42,14 +42,9 @@ jobs:
           path: dist
 
   macos:
-    runs-on: ${{ matrix.runner }}
-    strategy:
-      matrix:
-        include:
-          - runner: macos-14
-            target: aarch64
-          - runner: macos-13
-            target: x86_64
+    # D-41 commits to macOS arm64 only; Intel macOS x86_64 is legacy
+    # hardware and is revisited only when contributor hardware demands it.
+    runs-on: macos-14
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
@@ -58,12 +53,12 @@ jobs:
       - name: Build wheels
         uses: PyO3/maturin-action@e83996d129638aa358a18fbd1dfb82f0b0fb5d3b # v1
         with:
-          target: ${{ matrix.target }}
+          target: aarch64
           args: --release --out dist
       - name: Upload wheels
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: wheels-macos-${{ matrix.target }}
+          name: wheels-macos-aarch64
           path: dist
 
   windows:
