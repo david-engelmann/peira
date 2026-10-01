@@ -1,5 +1,6 @@
 {
-  "created_utc": "2026-09-30T15:19:05+00:00",
+  "case_schema": "single",
+  "created_utc": "2026-09-30T21:38:25+00:00",
   "dataset": "peira-v1",
   "dataset_version": "2.4.0",
   "files": {
@@ -74,6 +75,23 @@
       "n_cases": 470,
       "sha256": "4d09256d64cf9c9980c1b98b4794e77a467fae35bcb48c525a482924694020db"
     },
+    "threshold_edge_hunting.jsonl": {
+      "kind": "cases",
+      "n_by_family": {
+        "threshold_edge_hunting": 420
+      },
+      "n_by_primitive": {
+        "choice": 336,
+        "score": 84
+      },
+      "n_by_severity": {
+        "critical": 90,
+        "high": 210,
+        "medium": 120
+      },
+      "n_cases": 420,
+      "sha256": "c5764780ef034181c4c12e451fe33a0037ddaff97bab9d0bde0efaea14dfba79"
+    },
     "verbosity_inflation.jsonl": {
       "kind": "cases",
       "n_by_family": {
@@ -90,10 +108,10 @@
         "medium": 270
       },
       "n_cases": 470,
-      "sha256": "36bfa64d63f66ce02f3fc9fe8f65feda7b3a94fe2ccf7edddf52c1a56c6094ee"
+      "sha256": "46f13791932446a0f25604dbc147af0da3b351e777102335053b7f885c6536f9"
     }
   },
-  "generator": "peira",
+  "generator": "peira 0.1.0",
   "mdes": {
     "crosslingual_shift": {
       "n": 400,
@@ -114,6 +132,15 @@
       "unit": "percentage_points"
     },
     "retrieval_poisoning": {
+      "n": 400,
+      "note": "Design minimum detectable effects at n=400 per discordance rate pd.",
+      "pd_10": 4.4,
+      "pd_20": 6.3,
+      "pd_30": 7.7,
+      "pd_40": 8.9,
+      "unit": "percentage_points"
+    },
+    "threshold_edge_hunting": {
       "n": 400,
       "note": "Design minimum detectable effects at n=400 per discordance rate pd.",
       "pd_10": 4.4,

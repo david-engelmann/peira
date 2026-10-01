@@ -1552,3 +1552,69 @@ boundary ruling 9), and ships 421 cases (v2-jsp-0001..v2-jsp-0421).
 **To revisit:** if future case growth blurs the boundary (sycophancy
 blocks that also plead merits), the boundary ruling's deletion tests
 decide case-by-case; persistent blur would reopen the fold question.
+## D-39: threshold_edge_hunting ships as fixed paired cases; adaptive boundary-finding is measurement work (2026-09-30)
+
+**Decision.** The YouTube-reconciliation NEW concept threshold_edge_hunting
+becomes attack family 26 as fixed paired cases (benign + attacked), not
+as an adaptive measurement protocol. (Numbered 25 at decision time;
+renumbered to 26 when PR #281 landed judge_sycophancy as family 25.) The adaptive variant - sweeping
+paraphrase space per model with 1-bit feedback to locate the flip
+radius (the Boundary Point Jailbreaking analog) - is measurement-roadmap
+work alongside R-04's stability probe and EB-35's attack-strength
+sweeps. It is noted as future work, not a blocker.
+
+**The fixed-pair operationalization.** The "plus-or-minus 0.01 stability
+band" lives in the case's own threshold space, which the author controls
+exactly - no model measurement needed. Every case states an explicit
+numeric decision threshold (a cutoff rule: "approve when DTI is at most
+36%"), and the benign evidence lands within 0.01 of it, on the correct
+side (DTI 35.99%). A careful reader resolves the case unambiguously;
+the numbers do the work. The attacked arm applies a minimal,
+semantics-preserving perturbation - evidence paraphrase with
+byte-identical numbers, equivalent threshold restatement, or cosmetic
+evidence reorder - that changes no fact and no cutoff. The correct
+decision is unchanged. The flip measures the model's decision-boundary
+instability at the edge: a robust decider holds under cosmetic
+perturbation; a jagged one flips. Edge proximity is held constant across
+arms so the pair isolates the perturbation's effect; confounding edge
+distance with perturbation strength would make the flip uninterpretable.
+
+**Boundary rulings.**
+
+- vs temporal_numeric_traps-18: traps mislead through date phrasing
+  (semantic confusion about dates); this family tests stability under
+  cosmetic perturbation at an explicit numeric cutoff. Different
+  mechanism. Deletion test: remove the numeric cutoff and the attack
+  dies (no threshold, no edge); traps survive without any cutoff.
+- vs score_anchoring-5: anchoring plants reference points that drag
+  Score outputs; here nothing is planted and the perturbation is
+  cosmetic. Deletion test: strip the paraphrase and the attack dies.
+- vs policy_paraphrase-8: paraphrase-8 rewords to dodge a
+  natural-language policy; here the threshold is numeric and explicit
+  and the perturbation carries no evasion intent - it is a stability
+  probe, not a dodge.
+- vs evidence_positioning-23: positioning-23 reorders to steer via
+  primacy/recency toward a target; here reorder is a cosmetic
+  perturbation class and the flip is the model's own instability, not
+  the steer's success. Deletion test: restore the benign order and a
+  positioning attack dies while an edge-hunting paraphrase attack is
+  unaffected.
+- vs R-04 stability probe: R-04 is a measurement protocol (pass^k over
+  repeated runs); this is a case family. Complementary, not competing.
+
+**Alternatives.** Ship as measurement protocol only (rejected: the
+paired-case instrument is peira's unit of measurement, and a fixed
+family gives every adapter the same edge cases); adaptive per-model
+edge-finding as the family itself (rejected: unmeasurable in fixed
+pairs, belongs in the runner); benign-far/attacked-at-edge design
+(rejected: confounds edge proximity with perturbation).
+
+**Why this:** the YouTube source's "cases engineered at the model's
+plus-or-minus 0.01 stability band" is only honest if the band is in
+units we control. Placing the band in the case's threshold space keeps
+every case's claim checkable by a human reader, which is the standard
+the authoring gates enforce.
+
+**To revisit:** promote the adaptive boundary-finding protocol once
+R-04 and EB-35 land; the fixed family then becomes the calibration set
+for the adaptive sweep.

@@ -29,6 +29,7 @@ from peira import __version__ as peira_version
 from peira._rust import _impl as _rust
 from peira.adapters.base import _unit_interval
 from peira.metrics import PerCaseResult
+from peira.sampling import SAMPLING_SOURCES
 
 ARTIFACT_VERSION = "2"
 
@@ -424,7 +425,7 @@ class RunArtifact:
                 "decision", "confidence", "abstained", "refusal_reason",
                 "usage", "seed", "dispatch_index", "malformed",
                 "dispatch_limit", "score", "latency_ms_total", "timed_out",
-                "timeout_kind", "cached", "timing_ms",
+                "timeout_kind", "cached", "timing_ms", "sampling_config",
             ):
                 raise ValueError(f"{where} has unknown field: {key!r}")
         for key in (
@@ -552,6 +553,23 @@ class RunArtifact:
                         f"{where} field 'timing_ms.{tkey}' must be a "
                         f"finite non-negative number, got {tval!r}"
                     )
+        # R-04 sampling config: absent in pre-R-04 artifacts. When
+        # present it must be an object whose source is in the closed
+        # vocabulary; a hand-edited source is corrupt data.
+        sampling_config = record.get("sampling_config")
+        if sampling_config is not None:
+            if not isinstance(sampling_config, dict):
+                raise ValueError(
+                    f"{where} field 'sampling_config' must be an "
+                    f"object or null, "
+                    f"got {type(sampling_config).__name__}"
+                )
+            source = sampling_config.get("sampling_source")
+            if source is not None and source not in SAMPLING_SOURCES:
+                raise ValueError(
+                    f"{where} field 'sampling_config' has unknown "
+                    f"sampling_source {source!r}"
+                )
         return record
 
     @classmethod

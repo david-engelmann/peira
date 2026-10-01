@@ -55,6 +55,7 @@ from typing import Any, Callable, Iterator, Mapping, NamedTuple
 from peira._rust import _impl as _rust
 from peira.adapters.base import CallUsage, _unit_interval
 from peira.concurrency import _require_json_str
+from peira.sampling import check_sampling_config
 
 # Ineligibility reasons, recorded on PerCaseResult.ineligibility_reason.
 INELIGIBLE_BENIGN_MALFORMED = "benign_malformed"
@@ -203,6 +204,11 @@ class CallRecord:
     # overhead vs adapter execution vs backoff). Zero on pre-R-12
     # records; ``from_dict`` recovers it from the sealed artifact.
     timing_ms: CallTiming = CallTiming()
+    # R-04: the effective sampling config actually sent on the wire
+    # (temperature, seed, max_tokens) plus the sampling_source flag.
+    # None on records sealed before R-04; ``from_dict`` recovers it
+    # from the sealed artifact or transcript entry.
+    sampling_config: dict[str, Any] | None = None
 
     @classmethod
     def from_dict(cls, d: dict[str, Any]) -> "CallRecord":
@@ -271,6 +277,13 @@ class CallRecord:
                 f"got {type(cached).__name__}"
             )
         timing_ms = CallTiming.from_dict(d.get("timing_ms"))
+        # R-04: the effective sampling config. Hostile-input treatment:
+        # a wrong-typed config must fail here with a clean ValueError,
+        # and the source must come from the closed vocabulary:
+        # anything else is corrupt data. Absent (None) on records
+        # sealed before R-04.
+        sampling_config = d.get("sampling_config")
+        check_sampling_config(sampling_config)
         return cls(
             decision=d["decision"],
             confidence=confidence,
@@ -287,6 +300,7 @@ class CallRecord:
             timeout_kind=timeout_kind,
             cached=cached,
             timing_ms=timing_ms,
+            sampling_config=sampling_config,
         )
 
 

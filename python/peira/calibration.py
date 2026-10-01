@@ -37,6 +37,7 @@ _ADAPTER_CONFIDENCE_SOURCES = {
     # Structured LLM baselines: verbalized confidence (D-23).
     "openai-structured": "verbalized",
     "moonshot-structured": "verbalized",
+    "openrouter-structured": "verbalized",
     "anthropic-structured": "verbalized",
     "google-structured": "verbalized",
     # API per-answer / choice probabilities (D-23).

@@ -125,6 +125,7 @@ __all__ = [
     "ZaiAdapter",
     "MistralAdapter",
     "QwenAdapter",
+    "OpenRouterAdapter",
 ]
 
 # ---------------------------------------------------------------------------
@@ -501,6 +502,10 @@ class _StructuredLLMBase:
     _extra = "peira[?]"            # e.g. "peira[openai]"
     _env_vars: tuple[str, ...] = ()  # API key env vars, in lookup order
     _supports_seed = True          # False where the provider has no seed
+    # R-04: the provider accepts a temperature parameter. Fail-closed:
+    # a sampling-capable adapter with unset temperature refuses to run
+    # rather than silently using provider defaults.
+    _supports_temperature = True   # False where the provider has none
 
     def __init__(
         self,
@@ -1500,6 +1505,101 @@ class QwenAdapter(OpenAIAdapter):
         # record it in the transcript, not just the wire kwargs.
         extra_body = sent.get("extra_body") or {}
         return {"enable_thinking": extra_body.get("enable_thinking")}
+
+    def _request(
+        self, user_text: str, schema: dict[str, Any], repair: bool
+    ) -> _RawResult:
+        raw = super()._request(user_text, schema, repair)
+        # The inherited request shape names the endpoint and model but
+        # not the host it was sent to — record it for traceability.
+        raw.request_shape["base_url"] = self._base_url
+        return raw
+
+
+# ---------------------------------------------------------------------------
+# OpenRouter — unified gateway for structured-output LLM baselines.
+# ---------------------------------------------------------------------------
+
+class OpenRouterAdapter(OpenAIAdapter):
+    """Baseline: any OpenRouter model through the unified gateway.
+
+    Reuses the OpenAI request shape verbatim (strict JSON schema via
+    ``response_format``) against ``https://openrouter.ai/api/v1`` with
+    an ``OPENROUTER_API_KEY`` Bearer token — the ``openai`` SDK package
+    drives the compat endpoint, so the extra stays ``peira[openai]``.
+    The request's ``base_url`` is recorded in the transcript's request
+    shape; the key itself never is.
+
+    This is the one adapter that can reach any of OpenRouter's 400+
+    models: ``OpenRouterAdapter(model="vendor/model-id")``. It exists
+    so new LLM baselines do not each need a bespoke adapter — the
+    gateway is the default route for one-off or exploratory models,
+    and per-provider adapters stay reserved for models peira measures
+    repeatedly (where provider-native quirks earn their own code).
+
+    Default model is ``google/gemini-3.8-flash``: the same model family
+    as the GoogleAdapter default, reached through the gateway instead
+    of the vendor API — the direct-vs-gateway comparison is the point
+    of the default. Flash-tier, so it stays inside the cost guard.
+
+    Request shape: OpenRouter translates ``response_format``
+    ``json_schema`` to each provider's native structured-output
+    mechanism (Anthropic ``output_config.format``, Google native
+    schema, OpenAI passthrough). Whether a given model honors it is a
+    per-model property of the upstream provider: models that ignore or
+    reject the schema surface as terminal provider errors or failed
+    schema validation — never silent mismeasurement — so verify a new
+    model id against the live API before any measured run. ``seed``
+    and ``logprobs`` are sent (OpenRouter documents both as supported
+    request parameters); per-model passthrough is likewise unverified.
+
+    Deliberately NOT used: OpenRouter's ``models`` fallback array. A
+    fallback would silently substitute a different model mid-run,
+    breaking the cache namespace and the measurement identity (one
+    adapter instance = one pinned model id, always). If you need
+    failover, run two adapter instances.
+
+    App-identification headers (``HTTP-Referer``/``X-Title``) follow
+    OpenRouter's documented convention; they carry the project domain
+    and name, never the key.
+
+    Not exercised against the live API yet.
+    """
+
+    name = "openrouter-structured"
+    _extra = "peira[openai]"
+    _env_vars = ("OPENROUTER_API_KEY",)
+    _provider_label = "OpenRouter"
+    _supports_seed = True
+
+    _base_url = "https://openrouter.ai/api/v1"
+
+    def __init__(
+        self,
+        model: str = PINNED_API_MODELS["openrouter-structured"],
+        temperature: float = 0.0,
+        seed: int | None = 0,
+        max_tokens: int = 512,
+        api_key: str | None = None,
+    ) -> None:
+        # Not OpenAIAdapter.__init__: that constructor pins the client
+        # to api.openai.com. Rebuild the identical client against
+        # OpenRouter's OpenAI-compatible endpoint — retries still
+        # DISABLED, the runner owns the retry policy. App-identification
+        # headers follow OpenRouter's documented convention.
+        _StructuredLLMBase.__init__(
+            self, model, temperature, seed, max_tokens, api_key
+        )
+        self._sdk = _require_openai()
+        self._client = self._sdk.OpenAI(
+            api_key=self._api_key,
+            base_url=self._base_url,
+            max_retries=0,
+            default_headers={
+                "HTTP-Referer": "https://peiratrial.dev",
+                "X-Title": "peira",
+            },
+        )
 
     def _request(
         self, user_text: str, schema: dict[str, Any], repair: bool

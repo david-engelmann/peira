@@ -64,7 +64,7 @@
       "description": "420 paired adversarial decision cases (peira-v1 1.0.2).",
       "encodingFormat": "application/x-ndjson",
       "name": "decision_splitting.jsonl",
-      "sha256": "508517e4e8f59acfe2cf5f475d702fdc53bff76acead0302d222391a623cee20"
+      "sha256": "16a70b244e45e42f1769bf0edb1b38bd10873ae6529a55d61ae085e30de00b21"
     },
     {
       "@id": "peira-v1/multi_turn_escalation.jsonl",
