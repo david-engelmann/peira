@@ -1217,11 +1217,12 @@ union rule as fallback), and each run carries `coverage`
 Three matrix-cell states exist and the display keeps them distinct:
 
 - **measured**: the run evaluated the family and the metric is a number;
-- **not evaluated**: the family is in the canonical set but absent from
-  the run's `per_family`. Rendered as a visibly missing cell, never as a
+- **not evaluated**: the family is in the canonical set but the run has
+  no cases in it, either absent from the run's `per_family` or present
+  with `n: 0`. Rendered as a visibly missing cell, never as a
   dropped row;
 - **withheld**: the family was evaluated but the metric value is null
-  (the estimate did not clear the minimum-observations gate).
+  (suppressed by the pipeline).
 
 A run that skipped a family must look worse, never better, than a run
 that measured it: the leaderboard's coverage column (`20/21`, `95.2%`)
