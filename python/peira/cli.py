@@ -216,11 +216,36 @@ def _suite_dataset_identity(suite_dir: Path) -> tuple[str, str]:
     return dataset_version, manifest_sha256
 
 
+def _print_sweep_run_summary(artifact, out_path: Path) -> None:
+    """EB-35: one-line-per-family summary of a sweep run."""
+    sweep = artifact.metrics["sweep"]
+    n_cases = sum(
+        fam["flip_budget_distribution"]["n_eligible"]
+        for fam in sweep["families"].values()
+    )
+    print(f"done: sweep over {n_cases} eligible cases "
+          f"(dimension={sweep['strength_dimension']}, "
+          f"grid={sweep['budget_grid']})")
+    if artifact.termination != "complete":
+        print(f"  termination:     {artifact.termination} "
+              f"({artifact.cases_completed}/{artifact.cases_planned} cases)")
+    print(f"  spend:           ${artifact.spent_usd:.4f} "
+          f"(uncapped)" if artifact.budget_usd is None else
+          f"  budget:          cap ${artifact.budget_usd:.2f}, "
+          f"spent ${artifact.spent_usd:.4f}")
+    print(f"  artifact:        {out_path}")
+    print("  hint:            `peira sweep-report "
+          f"{out_path}` renders the ASR-vs-budget curves")
+
+
 def _print_run_summary(artifact, out_path: Path) -> None:
     m = artifact.metrics
     from peira.conversation import CONVERSATION_SUITE_ID
     if artifact.suite == CONVERSATION_SUITE_ID:
         _print_conversation_run_summary(artifact, out_path)
+        return
+    if isinstance(m.get("sweep"), dict):
+        _print_sweep_run_summary(artifact, out_path)
         return
     print(f"done: {m['n_cases']} cases ({m['n_eligible']} eligible)")
     if artifact.termination != "complete":
@@ -417,6 +442,57 @@ def _budget_estimate_note(
         )
 
 
+def _resume_sweep_error(
+    partial: Any,
+    is_sweep: bool,
+    sweep_grid: list[int] | None,
+    sweep_dimension: str,
+    partial_path: Any,
+) -> str | None:
+    """Sweep/single-shot resume compatibility (EB-35).
+
+    Returns an error string when resuming ``partial`` with the current
+    run's sweep settings would mix protocols, else None. A sweep
+    partial resumed without ``--budget-grid`` would silently downgrade
+    the remaining cases to single-shot scoring and seal an artifact
+    whose ranking flags no longer mean what they say; a grid or
+    dimension mismatch would silently corrupt the budget curve.
+    """
+    partial_grid = (partial.config or {}).get("sweep_budget_grid")
+    partial_dim = (partial.config or {}).get("sweep_strength_dimension")
+    if partial_grid is None:
+        if is_sweep:
+            return (
+                f"partial run at {partial_path} is a single-shot run, "
+                f"but the current run is a sweep (grid={sweep_grid} "
+                f"dimension={sweep_dimension}); delete {partial_path} "
+                f"or drop --budget-grid and --strength-dimension"
+            )
+        return None
+    if not is_sweep:
+        grid_text = (
+            ",".join(str(b) for b in partial_grid)
+            if isinstance(partial_grid, list)
+            else repr(partial_grid)
+        )
+        return (
+            f"partial run at {partial_path} is a sweep run "
+            f"(grid={partial_grid} dimension={partial_dim}); resume with "
+            f"--budget-grid {grid_text} "
+            f"--strength-dimension {partial_dim}, or delete "
+            f"{partial_path} and re-run"
+        )
+    if partial_grid != sweep_grid or partial_dim != sweep_dimension:
+        return (
+            f"partial run at {partial_path} uses grid={partial_grid} "
+            f"dimension={partial_dim}, but current run uses "
+            f"grid={sweep_grid} dimension={sweep_dimension}; delete "
+            f"{partial_path} or re-run with the original grid and "
+            f"dimension."
+        )
+    return None
+
+
 def cmd_run(args: argparse.Namespace) -> int:
     root = _repo_root()
     try:
@@ -488,6 +564,39 @@ def cmd_run(args: argparse.Namespace) -> int:
               "each seed run is independent (re-run without --resume)",
               file=sys.stderr)
         return EXIT_USER_ERROR
+    # EB-35: parse the sweep budget grid early so a malformed grid
+    # fails before any adapter is built or any case is scored.
+    sweep_grid: list[int] | None = None
+    sweep_dimension = getattr(args, "strength_dimension", "attacker_queries")
+    budget_grid_raw = getattr(args, "budget_grid", None)
+    if budget_grid_raw is not None:
+        if is_conversational:
+            print("error: --budget-grid is not supported for the "
+                  "conversational suite (single-shot suites only)",
+                  file=sys.stderr)
+            return EXIT_USER_ERROR
+        if num_seeds > 1:
+            print("error: --budget-grid is not supported with --seeds > 1; "
+                  "run the sweep with --seeds 1", file=sys.stderr)
+            return EXIT_USER_ERROR
+        from peira.sweep import (
+            get_strength_dimension,
+            validate_budget_grid,
+        )
+        try:
+            get_strength_dimension(sweep_dimension)
+        except ValueError as e:
+            print(f"error: invalid --strength-dimension: {e}",
+                  file=sys.stderr)
+            return EXIT_USER_ERROR
+        try:
+            sweep_grid = validate_budget_grid(
+                [int(x) for x in budget_grid_raw.split(",") if x.strip()]
+            )
+        except ValueError as e:
+            print(f"error: invalid --budget-grid: {e}", file=sys.stderr)
+            return EXIT_USER_ERROR
+    is_sweep = sweep_grid is not None
     if num_seeds > 1 and args.transcript:
         print("error: --transcript is not supported with --seeds > 1; "
               "each seed run is independent (run with --seeds 1 to "
@@ -504,11 +613,24 @@ def cmd_run(args: argparse.Namespace) -> int:
             if is_conversational
             else MockAdapter.script_for
         )
-        return MockAdapter(
-            script=script_builder(
+        if sweep_grid is not None and not is_conversational:
+            # The sweep driver spaces cases by stride = max(grid) + 1
+            # and runs max(grid) attacked attempts per case (see
+            # peira.sweep.run_sweep_suite). The script must use the
+            # same layout: a single-shot script would answer sweep
+            # calls from the wrong cases' entries and silently poison
+            # the measurement.
+            stride = max(sweep_grid) + 1
+            script = script_builder(
+                cases, seed=seed_i, run_nonce=run_nonce_i,
+                dispatch_stride=stride,
+                attacked_attempts=max(sweep_grid),
+            )
+        else:
+            script = script_builder(
                 cases, seed=seed_i, run_nonce=run_nonce_i
             )
-        )
+        return MockAdapter(script=script)
 
     if isinstance(adapter, MockAdapter):
         # The mock is a test double: its simulation script is built
@@ -627,6 +749,9 @@ def cmd_run(args: argparse.Namespace) -> int:
                     from peira.conversation import (
                         ConversationResult as _ConvResult,
                     )
+                    from peira.sweep import (
+                        SweepCaseResult as _SweepResult,
+                    )
                     already_done, prior_results = validate_partial(
                         partial, adapter, cases, suite, dataset_version,
                         manifest_sha256, seed=args.seed,
@@ -639,12 +764,29 @@ def cmd_run(args: argparse.Namespace) -> int:
                         result_from_dict=(
                             _ConvResult.from_dict
                             if is_conversational
-                            else PerCaseResult.from_dict
+                            else (
+                                _SweepResult.from_dict
+                                if is_sweep
+                                else PerCaseResult.from_dict
+                            )
                         ),
                     )
                 except ValueError as e:
                     print(f"error: {e}; delete {partial_path} or drop "
                           f"--resume and re-run.", file=sys.stderr)
+                    return EXIT_USER_ERROR
+                # A sweep resume must use the same grid and dimension:
+                # mixing grids would silently corrupt the budget curve.
+                # Resuming a sweep partial WITHOUT --budget-grid is also
+                # rejected: the remaining cases would run single-shot and
+                # seal an artifact whose ranking flags no longer mean
+                # what they say.
+                sweep_err = _resume_sweep_error(
+                    partial, is_sweep, sweep_grid, sweep_dimension,
+                    partial_path,
+                )
+                if sweep_err is not None:
+                    print(f"error: {sweep_err}", file=sys.stderr)
                     return EXIT_USER_ERROR
                 print(f"resuming: {len(already_done)} cases already done, "
                       f"{len(cases) - len(already_done)} remaining.")
@@ -697,6 +839,13 @@ def cmd_run(args: argparse.Namespace) -> int:
                 from peira.conversation import run_conversation_suite
                 artifact = run_conversation_suite(
                     adapter, cases, suite, dataset_version, **run_kwargs
+                )
+            elif is_sweep:
+                from peira.sweep import run_sweep_suite
+                assert sweep_grid is not None  # validated above
+                artifact = run_sweep_suite(
+                    adapter, cases, suite, dataset_version,
+                    sweep_grid, sweep_dimension, **run_kwargs
                 )
             else:
                 artifact = run_suite(
@@ -2245,6 +2394,93 @@ never a win.</p>
 <p><em>A peira comparison measures relative robustness on this benchmark's paired
 decision cases. It does not certify a model as safe.</em></p>
 </body></html>"""
+
+
+def cmd_sweep_report(args: argparse.Namespace) -> int:
+    """EB-35: render attack-strength sweep curves from a sweep artifact."""
+    from peira.sweep import (
+        STRENGTH_DIMENSIONS,
+        SweepCaseResult,
+        budget_to_first_flip_distribution,
+        sweep_curve,
+    )
+
+    path = Path(args.artifact)
+    if not path.exists():
+        print(f"error: {path} not found", file=sys.stderr)
+        return EXIT_USER_ERROR
+    try:
+        artifact = RunArtifact.from_json(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as e:
+        print(f"error: {path} is not a valid run artifact ({e})",
+              file=sys.stderr)
+        return EXIT_USER_ERROR
+    sweep = (artifact.metrics or {}).get("sweep")
+    if not isinstance(sweep, dict):
+        print(f"error: {path} is not a sweep artifact "
+              f"(no metrics.sweep section; run with --budget-grid first)",
+              file=sys.stderr)
+        return EXIT_USER_ERROR
+    grid = sweep.get("budget_grid", [])
+    dimension = sweep.get("strength_dimension", "attacker_queries")
+    dim = STRENGTH_DIMENSIONS.get(dimension)
+    unit = dim.unit if dim else ""
+    try:
+        results = [SweepCaseResult.from_dict(d) for d in artifact.results]
+    except (ValueError, KeyError, TypeError) as e:
+        print(f"error: {path} has malformed sweep results ({e})",
+              file=sys.stderr)
+        return EXIT_USER_ERROR
+    families = sorted({r.family for r in results})
+
+    if args.format == "json":
+        print(json.dumps(sweep, indent=2, sort_keys=True))
+        return EXIT_OK
+
+    print(f"attack-strength sweep: dimension={dimension} ({unit}), "
+          f"grid={grid}")
+    print(f"artifact: {path} (adapter={artifact.adapter_name}, "
+          f"suite={artifact.suite})")
+    for family in families:
+        try:
+            curve = sweep_curve(results, family, grid)
+            dist = budget_to_first_flip_distribution(results, family)
+        except ValueError as e:
+            # A tampered artifact can mix per-case budget grids, which
+            # the distribution refuses to merge: report it as a data
+            # error, not a traceback.
+            print(f"error: {path} has inconsistent sweep data for family "
+                  f"{family!r} ({e})", file=sys.stderr)
+            return EXIT_USER_ERROR
+        print(f"\nfamily: {family} "
+              f"(n_eligible={dist['n_eligible']}, "
+              f"n_flipped={dist['n_flipped']})")
+        print(f"  {'budget':>8} {'n':>5} {'flipped':>8} "
+              f"{'ASR':>7} {'95% CI':>17}")
+        for point in curve:
+            print(f"  {point['budget']:>8} {point['n']:>5} "
+                  f"{point['flipped']:>8} {point['asr']:>7.3f} "
+                  f"[{point['lo']:.3f}, {point['hi']:.3f}]")
+        counts = ", ".join(
+            f"{b}: {c}" for b, c in dist["counts"].items() if c
+        )
+        print(f"  budget-to-first-flip: {counts or '(none flipped)'}; "
+              f"never flipped: {dist['never_flipped']}; "
+              f"median flip budget: {dist['median_flip_budget']}; "
+              f"p90 flip budget: {dist['p90_flip_budget']}")
+    return EXIT_OK
+
+
+def cmd_sweep_dimensions(args: argparse.Namespace) -> int:
+    """EB-35: list the strength-dimension registry."""
+    from peira.sweep import STRENGTH_DIMENSIONS
+
+    del args  # no arguments
+    for name in sorted(STRENGTH_DIMENSIONS):
+        dim = STRENGTH_DIMENSIONS[name]
+        status = "implemented" if dim.is_usable else "not parameterized"
+        print(f"{dim.name} [{dim.unit}] ({status}): {dim.description}")
+    return EXIT_OK
 
 
 def cmd_stability(args: argparse.Namespace) -> int:
@@ -4842,6 +5078,17 @@ def build_parser() -> argparse.ArgumentParser:
                    "tokens_out exceeds the cap is marked malformed and "
                    "excluded from scoring, and the transcript flags "
                    "token_limit_exceeded for the call (default no cap)")
+    r.add_argument("--budget-grid", default=None,
+                   help="EB-35 attack-strength sweep. Comma-separated "
+                   "strictly increasing positive ints (e.g. 1,2,4,8,16). "
+                   "Each case's attacked arm runs max(grid) queries and "
+                   "the artifact records budget-to-first-flip per case "
+                   "plus ASR-vs-budget curves with Wilson CIs per family. "
+                   "Single-shot suites only and --seeds 1 only.")
+    r.add_argument("--strength-dimension", default="attacker_queries",
+                   help="EB-35 strength dimension to budget over. "
+                   "Default is attacker_queries. See "
+                   "`peira sweep-dimensions` for the registry.")
     r.add_argument("--cache-dir", default=None,
                    help="opt-in response cache directory for deterministic "
                    "adapters (temperature 0 + fixed seed); off by default "
@@ -4934,6 +5181,22 @@ def build_parser() -> argparse.ArgumentParser:
     st.add_argument("--out", default=None,
                     help="write a sealed stability artifact JSON to this path")
     st.set_defaults(func=cmd_stability)
+
+    sw = sub.add_parser("sweep-report",
+                        help="render EB-35 attack-strength sweep curves "
+                        "from a sweep run artifact")
+    sw.add_argument("artifact",
+                    help="sweep run artifact JSON (from "
+                    "`peira run --budget-grid ...`)")
+    sw.add_argument("--format", choices=("text", "json"), default="text",
+                    help="text renders per-family ASR-vs-budget tables. "
+                    "json emits the sealed sweep summary. Default is text.")
+    sw.set_defaults(func=cmd_sweep_report)
+
+    sd = sub.add_parser("sweep-dimensions",
+                        help="list the EB-35 strength-dimension registry "
+                        "and each dimension's implementation status")
+    sd.set_defaults(func=cmd_sweep_dimensions)
 
     dw = sub.add_parser("drift-watch",
                         help="drift-watch: per-family McNemar deltas between "
