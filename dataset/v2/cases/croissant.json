@@ -73,7 +73,7 @@
       "description": "420 paired adversarial decision cases (peira-v1 2.4.0).",
       "encodingFormat": "application/x-ndjson",
       "name": "cryptographic_payload.jsonl",
-      "sha256": "d5e72233b7db0d80c9a3033a64be94a16a9cbccf51cc60446d6e3e2dca43b256"
+      "sha256": "1fd7a5e3862a1e0eefca427399fa750a3a16413430d2237ab26d4de60b17a3f2"
     },
     {
       "@id": "peira-v1/evidence_positioning.jsonl",
@@ -83,6 +83,15 @@
       "encodingFormat": "application/x-ndjson",
       "name": "evidence_positioning.jsonl",
       "sha256": "565a770d06f8630b3a2aa337472263515c680c9044cd4e6e661b2748c15e5503"
+    },
+    {
+      "@id": "peira-v1/judge_sycophancy.jsonl",
+      "@type": "cr:FileObject",
+      "contentUrl": "https://raw.githubusercontent.com/david-engelmann/peira/main/dataset/v2/cases/judge_sycophancy.jsonl",
+      "description": "421 paired adversarial decision cases (peira-v1 2.4.0).",
+      "encodingFormat": "application/x-ndjson",
+      "name": "judge_sycophancy.jsonl",
+      "sha256": "92acce1a2149eac5b4d97a6e174ab715809ccaed4f94df5b5ceb0443af160b6c"
     },
     {
       "@id": "peira-v1/retrieval_poisoning.jsonl",

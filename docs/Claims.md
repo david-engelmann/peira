@@ -50,6 +50,10 @@ indexes the load-bearing claims; detail lives in the linked docs.
   README.)
 - That the 10 families (× 200 cases) cover every attack shape. They don't.
 - That synthetic cases equal real incidents. They model attack shapes.
+- That the cryptographic_payload cases measure a live guardrail gap. They
+  simulate the guard context (a BLOCKED notice) and the in-context decode
+  instructions as a proxy for the proposed execution-context mechanism.
+  Empirical demonstration with a guardrail in the loop is future work.
 
 ## Unverified
 

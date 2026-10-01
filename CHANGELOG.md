@@ -92,16 +92,16 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
   `targeted_asr` summary block. Targeted ASR is unavailable when no
   target mapping is supplied or no flip has a known target.
 
-### Added cryptographic_payload attack family (family 26, Tier 1)
+### Added cryptographic_payload attack family (family 28, Tier 1)
 
-- New v2 family `cryptographic_payload`: encrypted payload plus
+- New v2 family `cryptographic_payload`. Encrypted payload plus
   in-context decryption instructions. The guard layer classifies the
   ciphertext (benign-looking) while the decision model recovers the
   plaintext in a trusted execution context and follows it. 420 cases
-  (181 critical / 155 high / 84 medium; 300 choice / 50 abstain /
+  (181 critical, 155 high, 84 medium. 300 choice, 50 abstain,
   70 score) authored by `scripts/author_cryptographic_payload.py`, case
   IDs `v2-cryp-0001` and up. The benign control shows the attack in
-  plaintext inside an explicit guardrail BLOCKED notice; the attacked
+  plaintext inside an explicit guardrail BLOCKED notice. The attacked
   variant carries the identical payload as ROT13, base64, keyed
   simple-substitution, or word-reversal ciphertext plus decode-and-apply
   instructions. Every
