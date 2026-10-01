@@ -504,6 +504,13 @@ and round up to the limit's granularity (CPU seconds round up to whole
 seconds). Fix: pass a positive value (`--rlimit-cpu-seconds 3600`,
 `--rlimit-as-mb 4096`).
 
+**`error: --rlimit-nproc must be >= 1 (got N)`**
+Cause: `peira run` got a non-positive `--rlimit-nproc`. The nproc
+fork-bomb guard applies to subprocess adapter children only (RLIMIT_NPROC
+counts processes per UID, so it is never applied to the runner itself).
+Fix: pass a positive integer (`--rlimit-nproc 64`), or drop the flag
+for no child process-count limit.
+
 **`error: --budget-usd must be > 0 (got N)`**
 Cause: `peira run --budget-usd` got a non-positive (or NaN) spend cap.
 A non-positive cap can never dispatch a case honestly. Fix: pass a
@@ -1240,7 +1247,6 @@ or above 0.78) that a human should check whether they test the same
 thing. Fix: none required. G9 warnings are informational and re-emit on
 every gate run; there is no review-queue clearing mechanism for G9
 (unlike G6). If the cases are genuinely distinct, no action is needed.
-
 ## Site ingestion (`site/scripts/ingest.py`) errors
 
 **`ingest: error: <artifact>: v3 run_status is '<status>', not 'success' (only successful runs are ingestible)`**
@@ -1298,6 +1304,14 @@ object with its documented keys (see `site/SITE_DATA_SCHEMA.md`).
 Cause: the determinism self-check block is malformed (not an object,
 missing `passed`/`mismatches`/`sample_n`, non-boolean `passed`, or
 non-integer counts). Fix: record a real verdict object, not a bare
+boolean.
+
+**`author_benign_twins.py: Duplicate twin benign prompt at <case_id> (from <path>:<lineno>). This usually means the source file contains duplicate cases.`**
+Cause: two source cases produced the same twin benign prompt, usually
+because the source file contains duplicate cases or two sources are
+near-identical and the seed maps them to the same names and question
+variant. Fix: dedupe the source inputs, or re-run with a different
+`--seed`.
 boolean.
 
 **`author_benign_twins.py: Duplicate twin benign prompt at <case_id> (from <path>:<lineno>). This usually means the source file contains duplicate cases.`**

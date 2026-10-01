@@ -1727,6 +1727,39 @@ Every run artifact carries a sha256 lock over config + dataset version +
 peira version. If anything is edited post-hoc, the lock mismatches and
 `peira report` warns. Scores are never adjusted after the fact; you re-run.
 
+## Resource governor (R-03)
+
+Locally-executed adapters are arbitrary code running in the runner
+process (see docs/Threat-Model.md). The named `ResourceGovernor`
+(`python/peira/resource_governor.py`) is the cheap rlimit backstop
+layer: `RLIMIT_CPU` (CPU-time backstop), `RLIMIT_AS` (virtual-memory
+ceiling, since `RLIMIT_RSS` is unenforced on Linux), `RLIMIT_FSIZE`
+(bounds runaway transcript or cache writes),
+and `RLIMIT_NPROC` (fork-bomb guard). All four are opt-in via
+`peira run --rlimit-cpu-seconds`, `--rlimit-as-mb`, `--rlimit-fsize-mb`,
+and `--rlimit-nproc`. The hard-bounded AIMD controller
+(`AdaptiveConcurrency`, limit in `[1, max_concurrency]`) handles
+provider-side congestion separately.
+
+Two design points matter. First, these are backstops, not isolation:
+`setrlimit` applies to the whole runner process, and a memory-hungry
+adapter can still OOM the runner before the limit bites. Full
+isolation needs the subprocess mode in docs/Adapter-Isolation.md.
+Second, `RLIMIT_NPROC` counts processes per UID, not per process, so
+it is never applied to the runner itself. It is applied inside
+subprocess adapter children (currently SemIf) via `preexec_fn`.
+
+Death diagnostics: the 2026-09-27 Jev exploratory run died at 612/4000
+calls with no error trail and no OOM signature, and the cause was never
+determined. `ResourceGovernor.install_death_handlers(path)` arms
+SIGTERM/SIGINT handlers that append a "last words" JSON record to
+`path` before the process dies, so the next such incident leaves
+evidence. Wire it via `peira run --death-log PATH` (recommended for
+long unattended runs). SIGKILL cannot be caught by definition. A death with no
+last-words record and no traceback points at an external kill
+(OOM-killer, parent death, machine restart), and the operator should
+check `dmesg` and the parent process's logs.
+
 ## Combo interaction contrast (combo suite)
 
 The combo suite measures interaction effects between attack-family
