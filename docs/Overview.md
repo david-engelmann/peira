@@ -61,6 +61,15 @@ Everything in `docs/`, organized by what you are trying to do. Pick a path, or b
 - [FAQ](FAQ.md): the questions everyone asks first.
 - [Glossary](Glossary.md): terms, defined once.
 
+**Deploy** (for teams shipping a decision model)
+
+- [Adversarial-Testing-Documentation-Pack](Adversarial-Testing-Documentation-Pack.md). Flip classes mapped to incident-severity tiers shaped on the EU AI Act, the reporting clock each tier implies, and the corrective action per tier.
+- [Drift-Monitoring-Spec](Drift-Monitoring-Spec.md). The scheduled re-run protocol and the statistical method for detecting attack-success drift over calendar time.
+- [Foreseeable-Misuse-Coverage](Foreseeable-Misuse-Coverage.md). Intended use, the foreseeable misuses of decision models, which attack families cover each one, and the stated gaps.
+- [Art55-Report-Design](Art55-Report-Design.md). Design and data contract for the per-run evaluation report. Design only. The generator waits on run-artifact v3.
+- [Landing-Page-Readiness](Landing-Page-Readiness.md). What "ready" means for the public leaderboard page.
+- [Announcement-Package](Announcement-Package.md). Prepared launch copy. Draft, not published.
+
 **Project**:
 
 - [Contributing](Contributing.md): the checklist for PRs.
