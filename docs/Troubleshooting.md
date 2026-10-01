@@ -408,8 +408,8 @@ Python 3.10+ interpreter (PyO3's build script queries it; on Linux the
 
 **`peira._core` fails to import after `maturin develop`**
 Cause: the compiled extension doesn't load in your Python (usually a
-version mismatch — the extension is built for the interpreter that ran
-maturin). Fix: rebuild with the Python you actually use
+version mismatch, since the extension is built for the interpreter that
+ran maturin). Fix: rebuild with the Python you actually use
 (`.venv/bin/maturin develop`), and make sure no stale `_core*.so` /
 `_core*.pyd` from another interpreter sits in `python/peira/`.
 
