@@ -41,9 +41,10 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
   disclaimers and safety preambles when scoring, reasons before
   scoring, and truncates inputs at 4000 chars (length control). The
   judge ships with its validation discipline. That includes a 40-item
-  human-labeled sample (`tests/fixtures/judge_validation_sample.jsonl`),
+  author-labeled seed sample (`tests/fixtures/judge_validation_sample.jsonl`),
   Cohen's kappa on refusal, quadratic-weighted kappa on the 1-5 axes, and
   a bias audit (order-consistency, position-bias, self-preference). The
+  labels are the lane author's, not an independent annotator panel's. The
   module is stdlib-only. Production scoring goes through a
   caller-supplied `JudgeScorer` (e.g. `StdlibChatScorer` against an
   OpenAI-compatible endpoint), and tests use the deterministic

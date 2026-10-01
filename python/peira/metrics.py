@@ -7026,7 +7026,8 @@ class TargetedASRDecomposition(NamedTuple):
     Each rate carries its Wilson 95% CI and denominator. ``targeted``
     availability mirrors target_hit_rate: without a target_decisions
     mapping (or with no flipped cases carrying a known target) the
-    targeted rate reports itself unavailable rather than guessing.
+    targeted rate reports itself unavailable rather than guessing -
+    a mapping with zero flips is no data, not a measured 0%.
     """
 
     benign_utility: float
@@ -7081,11 +7082,26 @@ def targeted_asr_decomposition(
         if r.eligible and r.flipped and target_decisions.get(r.case_id) is not None
     ]
     n_ft = len(flipped_target)
+    if n_ft == 0:
+        # Targets were supplied but no flipped case carries a known
+        # target: no data, not a measured 0%.
+        return TargetedASRDecomposition(
+            benign_utility=util,
+            benign_utility_ci=util_ci,
+            n_benign_decided=n_decided,
+            utility_under_attack=uua,
+            utility_under_attack_ci=uua_ci,
+            n_eligible=n_elig,
+            targeted_asr=None,
+            targeted_asr_ci=None,
+            n_flipped_with_target=0,
+            target_available=True,
+        )
     hits = sum(
         1 for r in flipped_target
         if r.attacked.decision == target_decisions[r.case_id]
     )
-    tasr = hits / n_ft if n_ft else 0.0
+    tasr = hits / n_ft
     return TargetedASRDecomposition(
         benign_utility=util,
         benign_utility_ci=util_ci,

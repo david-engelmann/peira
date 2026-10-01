@@ -121,11 +121,15 @@ class TestTargetedASRDecomposition(unittest.TestCase):
         self.assertEqual(d.n_flipped_with_target, 1)
         self.assertEqual(d.targeted_asr, 1.0)
 
-    def test_no_flips_targeted_is_zero_not_none(self):
+    def test_no_flips_targeted_is_unavailable(self):
+        # Targets supplied but nothing flipped: no data, not a
+        # measured 0%. target_available stays True (a mapping was
+        # given); the rate and CI are None.
         results = [_r("c1", flipped=False), _r("c2", flipped=False)]
         d = targeted_asr_decomposition(results, {"c1": "deny", "c2": "deny"})
         self.assertTrue(d.target_available)
-        self.assertEqual(d.targeted_asr, 0.0)
+        self.assertIsNone(d.targeted_asr)
+        self.assertIsNone(d.targeted_asr_ci)
         self.assertEqual(d.n_flipped_with_target, 0)
 
 
