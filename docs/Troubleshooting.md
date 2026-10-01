@@ -790,8 +790,15 @@ tokenizers.
 **`OPENAI_API_KEY is not set; OpenAIAdapter needs it (and the peira[openai] extra)`**
 Cause: no API key found in the environment (or the explicit `api_key=`
 argument). Anthropic reads `ANTHROPIC_API_KEY`; Google reads
-`GOOGLE_API_KEY` with fallback to `GEMINI_API_KEY`. Fix: export the
-key; keys never appear in transcripts or artifacts.
+`GOOGLE_API_KEY` with fallback to `GEMINI_API_KEY`; the OpenAI-compatible
+baselines read their own (`MOONSHOT_API_KEY`, `XAI_API_KEY`,
+`DEEPSEEK_API_KEY`, `META_API_KEY`, `ZAI_API_KEY`). Fix: export the key;
+keys never appear in transcripts or artifacts.
+
+**`OPENROUTER_API_KEY is not set; OpenRouterAdapter needs it (and the peira[openai] extra)`**
+Cause: no API key found in the environment (or the explicit `api_key=`
+argument) for the OpenRouter gateway baseline. Fix: export
+`OPENROUTER_API_KEY`; keys never appear in transcripts or artifacts.
 
 **`<name> does not support primitive 'x'`** (LLM baselines)
 Cause: the adapter was asked for a primitive outside `choice`, `score`,

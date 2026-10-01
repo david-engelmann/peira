@@ -176,6 +176,7 @@ One adapter per provider, one extra each. Install only what you need:
 | Zhipu (GLM) | `peira[openai]` | `peira.adapters.llm:ZaiAdapter` | `glm-4-plus` | `ZAI_API_KEY` |
 | Mistral | `peira[openai]` | `peira.adapters.llm:MistralAdapter` | `mistral-large-2512` | `MISTRAL_API_KEY` |
 | Qwen (Alibaba) | `peira[openai]` | `peira.adapters.llm:QwenAdapter` | `qwen3.8-max` | `DASHSCOPE_API_KEY` |
+| OpenRouter gateway | `peira[openai]` | `peira.adapters.llm:OpenRouterAdapter` | `google/gemini-3.8-flash` | `OPENROUTER_API_KEY` |
 
 Default models are pinned per each vendor's versioning scheme
 (verified 2026-09-27 against the vendor docs, re-verified per
@@ -505,6 +506,43 @@ authenticate against the international endpoint this adapter uses.
 environment as of 2026-09-30. Verify against the live API before any
 measured run; mismatches surface as terminal provider errors, not
 silent mismeasurement.
+
+### OpenRouter gateway
+
+```bash
+pip install "peira[openai]"
+export OPENROUTER_API_KEY=<redacted>
+peira run --adapter peira.adapters.llm:OpenRouterAdapter --suite trial-demo
+# any OpenRouter model id (vendor/model):
+peira run --adapter 'peira.adapters.llm:OpenRouterAdapter(model="anthropic/claude-sonnet-4.6")' --suite trial-demo
+```
+
+`OpenRouterAdapter` is the unified gateway for structured-output LLM
+baselines. One adapter reaches any of OpenRouter's 400+ models through
+`https://openrouter.ai/api/v1` with the same strict JSON-schema request
+shape as `OpenAIAdapter`. New one-off or exploratory models go through
+the gateway. Per-provider adapters stay reserved for models peira
+measures repeatedly. The default model is `google/gemini-3.8-flash`,
+the same model family as the Google baseline's default reached through
+the gateway, so the direct-vs-gateway comparison is the default
+measurement. `max_retries=0`. The runner owns retries, same as every
+other LLM baseline.
+
+OpenRouter translates the `json_schema` `response_format` to each
+provider's native structured-output mechanism. The adapter deliberately
+does NOT use OpenRouter's `models` fallback array. A fallback would
+silently substitute a different model mid-run, breaking the cache
+namespace and the measurement identity. One adapter instance is one
+pinned model id, always. App-identification headers (`HTTP-Referer`,
+`X-Title`) follow OpenRouter's documented convention.
+
+The honest caveats match the other new baselines. The adapter is built
+from OpenRouter's published docs, not the live API. Whether a given
+model honors the translated schema, `seed`, and `logprobs` is a
+per-model property of the upstream provider and is unverified here.
+Verify a new model id against the live API before any measured run.
+Mismatches surface as terminal provider errors or failed schema
+validation, not silent mismeasurement.
 
 ## TypeSafe Jev
 

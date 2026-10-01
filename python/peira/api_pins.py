@@ -88,12 +88,19 @@ __all__ = [
 #                                   mistral-large-latest moves)
 #   Qwen:      qwen3.8-max         (versioned flagship ID; the qwen-max
 #                                   alias is rolling)
+#   OpenRouter: google/gemini-3.8-flash (gateway model id: vendor/model;
+#                                   mirrors the GoogleAdapter default so the
+#                                   direct-vs-gateway comparison is the
+#                                   default measurement)
 #
 # These pins were verified 2026-09-27 against the vendor docs linked in
 # the module docstring (xAI, DeepSeek, Meta, Zhipu re-verified
-# 2026-09-28; Mistral, Qwen verified 2026-09-30). Re-verify against
-# the vendor docs before each release. Pricing rates for these IDs
-# live in python/peira/data/pricing.json under the same IDs.
+# 2026-09-28; Mistral, Qwen verified 2026-09-30). The OpenRouter gateway
+# id format (vendor/model) is the documented OpenRouter convention; the
+# default's live availability is unverified (live-UNVERIFIED like every
+# other new adapter). Re-verify against the vendor docs before each
+# release. Pricing rates for these IDs live in
+# python/peira/data/pricing.json under the same IDs.
 
 PINNED_API_MODELS: dict[str, str] = {
     "openai-structured": "gpt-5.6-luna",
@@ -106,6 +113,7 @@ PINNED_API_MODELS: dict[str, str] = {
     "zai-structured": "glm-4-plus",
     "mistral-structured": "mistral-large-2512",
     "qwen-structured": "qwen3.8-max",
+    "openrouter-structured": "google/gemini-3.8-flash",
 }
 
 # Old pins the vendors have retired: old ID -> replacement ID.
@@ -174,6 +182,12 @@ class DeprecatedPinError(ValueError):
 #              mistral-large-2512, mistral-small-latest).
 #   qwen:      qwen[<version>]-<name> (cf. qwen-max, qwen3.8-max,
 #              qwen-plus).
+#   openrouter: <vendor>/<model> (cf. google/gemini-3.8-flash,
+#              anthropic/claude-sonnet-4.6): OpenRouter's documented
+#              gateway ID scheme. The inner model part must itself look
+#              like a real vendor ID (checked by
+#              _passes_vendor_semantics), so a fabricated inner ID
+#              cannot ride in behind the slash.
 #
 # Scheme rules per vendor (checked by _passes_vendor_semantics): Luna
 # never shipped dated snapshots, 5.x Anthropic IDs are dateless-only,
@@ -191,6 +205,7 @@ _VENDOR_ID_PATTERNS: dict[str, re.Pattern[str]] = {
     "zai": re.compile(r"^glm-\d+(-[a-z0-9]+)*$"),
     "mistral": re.compile(r"^mistral-[a-z]+(-\d+|-latest)?$"),
     "qwen": re.compile(r"^qwen\d*(\.\d+)?(-[a-z0-9]+)+$"),
+    "openrouter": re.compile(r"^[a-z0-9][a-z0-9_.-]*/[A-Za-z0-9][A-Za-z0-9._-]*$"),
 }
 
 
@@ -224,6 +239,17 @@ def _passes_vendor_semantics(vendor: str, model_id: str) -> bool:
         return True
     if vendor == "google":
         return re.match(r"^gemini-3\.\d+-[a-z]+-\d{3}$", model_id) is None
+    if vendor == "openrouter":
+        # Gateway IDs are vendor/model: the inner model part must
+        # itself look like a real vendor ID, so a fabricated inner ID
+        # cannot ride in behind the slash. Both callers only reach this
+        # branch after the format regex (which requires a slash) has
+        # matched, but fail closed anyway so a future direct caller
+        # with a slash-less ID gets False, not an IndexError.
+        if "/" not in model_id:
+            return False
+        inner = model_id.split("/", 1)[1]
+        return _looks_like_any_vendor_id(inner)
     return True
 
 
