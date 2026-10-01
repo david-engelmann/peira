@@ -137,6 +137,16 @@ ships, with no fixed total.
     German, Portuguese, Italian, or Dutch. Peira-native contribution
     (weak/indirect ATLAS analogue only).
 
+25. **threshold_edge_hunting** (Tier 1). Evidence placed within 0.01 of
+    an explicit numeric cutoff, paired with a minimal
+    semantics-preserving perturbation of the threshold or evidence
+    wording. Tests whether the model's decision is stable at the
+    boundary. Four perturbation sub-arms: evidence paraphrase,
+    threshold restatement, cosmetic reorder, combined. Fixed paired
+    cases; the adaptive flip-radius variant is future
+    measurement work. YouTube-reconciliation research 2026-09-30;
+    Boundary Point Jailbreaking analogue.
+
 ## Family boundary rulings
 
 Neighboring families stay separate only if case authors can tell them

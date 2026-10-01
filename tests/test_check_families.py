@@ -82,9 +82,9 @@ class TestCheckFamilies(unittest.TestCase):
             REPO_ROOT / "docs" / "Taxonomy.md"
         )
         # No cap on families (David 2026-09-28).
-        self.assertEqual(len(documented), 24)
+        self.assertEqual(len(documented), 25)
         numbers = [n for n, _, _ in documented]
-        self.assertEqual(numbers, list(range(1, 25)))
+        self.assertEqual(numbers, list(range(1, 26)))
         tiers = {fam: tier for _, fam, tier in documented}
         self.assertEqual(tiers["state_poisoning"], "v1")
         self.assertEqual(tiers["instruction_override"], "1")
