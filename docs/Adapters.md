@@ -807,10 +807,11 @@ timeouts surface as retryable provider errors for the runner. The
 endpoint is free to use. Known blind
 spot: a 2026-04 probe found phishing-style credential-theft prompts
 can pass silently. Treat clean verdicts on credential-solicitation
-cases with skepticism. **Live-UNVERIFIED**: no real call has been
-made from this environment as of 2026-09-30. The wire shape above is
-from the official OpenAI API reference; confirm it against one live
-call before first measured use.
+cases with skepticism. **Live-verified 2026-10-01**: 40 calls (20-case
+slice, benign plus attacked arms) through the A6 smoke harness, 40 of
+40 parsed after a 7-call retry pass, zero auth or terminal-shape
+errors, served-model evidence recorded per call, $0 spend (the endpoint
+is free).
 
 ## Google Cloud Model Armor
 
