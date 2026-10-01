@@ -3,7 +3,8 @@
 This document describes how peira verifies an adapter against its live
 API before any measured run may use it. Verification is wire
 verification, not measurement. It answers whether the adapter
-authenticates, whether the pinned model id resolves, whether the
+authenticates, whether the configured model id resolves to a working
+endpoint, whether the
 provider honors the request shape the adapter sends, and whether
 decisions come back parseable and directionally sane. It does not
 produce numbers anyone may publish. Per the D-33 policy recorded in
@@ -16,8 +17,9 @@ Any adapter that has never completed a successful call against its live
 API is unverified. Its docstring and its section in `Adapters.md` carry
 an honest caveat to that effect, and no measured numbers from it may be
 published until a live smoke test passes. Re-verification is required
-when a pin changes, when the request shape changes, or when a provider
-announces a wire-level behavior change.
+when a pin changes, when the request shape changes, when a provider
+announces a wire-level behavior change, or when a provider alias
+resolves to a different model version.
 
 ## The smoke procedure
 
@@ -38,19 +40,21 @@ Every adapter under test needs these preconditions in place first.
 - A cost-guard plan exists for the run (`costguard.py plan`), and the
   paid-run authorization for the estimate is in hand. The cost-guard
   is the operator's cost-control tooling in the agent environment. It
-  is not installed from this repo.
+  is not installed from this repo. Outside the agent environment,
+  substitute any equivalent cost-control step that records an up-front
+  estimate and a planned ledger entry before paid calls.
 
 Run one adapter at a time so spend attributes cleanly. The exact invocation per adapter follows.
 
 ```bash
 peira run --adapter peira.adapters.llm:XAIAdapter \
   --suite trial --families score_anchoring,negation_games \
-  --out runs/a6-smoke --max-concurrency 4 --call-timeout 120
+  --out runs/a6-smoke --seeds 1 --max-concurrency 4 --call-timeout 120
 ```
 
 Replace the adapter path with `peira.adapters.llm:DeepSeekAdapter`,
 `peira.adapters.llm:MetaLlamaAdapter`, or
-`peira.adapters.llm:ZaiAdapter`. Keep `--seeds 1`. Do not raise
+`peira.adapters.llm:ZaiAdapter`. Do not raise `--seeds` or
 `--max-attempts` to force a pass. Retries are transient-only and the
 runner owns them.
 
@@ -68,6 +72,34 @@ key, so the begin/end snapshots will show a zero OpenRouter delta.
 Record the vendor-console actuals in the run report and pass them to
 `end` with `--note`.
 
+## Cost estimate
+
+Per-adapter estimates use the live OpenRouter pricing snapshot of
+2026-10-01. Each adapter is 40 calls (20 cases x 2 arms), 1000 prompt
++ 300 completion tokens per call, which is conservative against the
+measured mean case prompt of about 477 chars. The model under test
+cannot be substituted, so each row uses the closest OpenRouter price
+as a proxy. Spend lands on vendor API keys, not the OpenRouter key.
+
+| adapter | configured id | OpenRouter proxy | in / 1M | out / 1M | 40-call estimate | plan |
+|---|---|---|---|---|---|---|
+| XAIAdapter | grok-4 | x-ai/grok-4.7 | $2.00 | $6.00 | $0.152 | CG-0016 |
+| DeepSeekAdapter | deepseek-flash | deepseek/deepseek-v4-flash | $0.042 | $0.084 | $0.0027 | CG-0017 |
+| MetaLlamaAdapter | Llama-4-Maverick-17B-128E-Instruct-FP8 | meta-llama/llama-4-maverick | $0.1875 | $0.6525 | $0.0153 | CG-0018 |
+| ZaiAdapter | glm-4-plus | z-ai/glm-4.5 | $0.60 | $2.20 | $0.0504 | CG-0019 |
+
+The total planned estimate is $0.2204. That is under the $2
+single-run ask-first threshold and October spend so far is well under
+the $10 monthly threshold, but David's authorization is still
+required before any paid call. All four models are outside the flash
+tier, the spend spans four vendor accounts, and none of the four
+vendor keys is provisioned in the agent environment. CG-0016 through
+CG-0019 are the active plans. They supersede the earlier estimates
+from before the call count was corrected to 40 and the prices were
+refreshed. No paid call has been made and no spend has occurred.
+One begin/end pair was recorded against CG-0016 on 2026-10-01 with
+no run between them, and its usage delta was zero.
+
 ## What the smoke checks per adapter
 
 Each adapter below was built from vendor docs, not the live API. The
@@ -77,7 +109,8 @@ next.
 - **XAIAdapter** (`grok-4` on `https://api.x.ai/v1`). Open question is
   whether `json_schema` response_format is honored, or only plain
   `json_object`.
-- **DeepSeekAdapter** (`deepseek-flash` on `https://api.deepseek.com`).
+- **DeepSeekAdapter** (`deepseek-flash`, the vendor alias for the
+  current DeepSeek-V4.1 Flash, on `https://api.deepseek.com`).
   Open question is whether strict `json_schema` is honored. Thinking is
   disabled by the adapter and must stay disabled on the wire.
 - **MetaLlamaAdapter** (`Llama-4-Maverick-17B-128E-Instruct-FP8` on
@@ -132,9 +165,10 @@ Failing adapters get repair lanes with their own estimates.
 ## Recording the result
 
 On a pass, append a live-verification note to the adapter's section in
-`Adapters.md`, following the Lakera precedent (date, endpoint, call
-count, wire shape observed, and the outcome against the pass criteria
-above). On a fail,
+`Adapters.md`, following the Lakera precedent (date, endpoint,
+configured model id, the model version the provider reported or a note
+that the provider does not expose one, call count, wire shape
+observed, and the outcome against the pass criteria above). On a fail,
 record the failure mode and the repair needed. Per the D-33 policy in
 `Adapters.md`, the publication block lifts for the passing adapters
 only.

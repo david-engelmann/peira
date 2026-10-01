@@ -43,6 +43,11 @@ indexes the load-bearing claims; detail lives in the linked docs.
   carries 544 disclosed G9 near-duplicate flags in its
   verbosity_inflation family. See DATASHEET.md.
 - Every headline number ships with a 95% confidence interval.
+- No measured numbers are published from an adapter that has not
+  passed its live smoke. The smoke procedure, and the publication
+  block it lifts, is documented in `docs/live-verification.md` under
+  the D-33 policy recorded in `docs/Adapters.md` and
+  `docs/Decisions.md`.
 
 ## We don't claim
 
