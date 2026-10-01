@@ -7,9 +7,9 @@ authenticates, whether the configured model id resolves to a working
 endpoint, whether the
 provider honors the request shape the adapter sends, and whether
 decisions come back parseable and directionally sane. It does not
-produce numbers anyone may publish. Per the D-33 policy recorded in
-`Adapters.md`, the publication block lifts only for adapters that
-pass.
+produce numbers anyone may publish. D-33 first set this rule for the
+Tier 1 adapters, and this smoke extends it to the four adapters
+below. The publication block lifts only for adapters that pass.
 
 ## When verification is required
 
@@ -118,8 +118,9 @@ next.
 - **XAIAdapter** (`grok-4` on `https://api.x.ai/v1`). Open question is
   whether `json_schema` response_format is honored, or only plain
   `json_object`.
-- **DeepSeekAdapter** (`deepseek-flash`, the vendor alias for the
-  current DeepSeek-V4.1 Flash, on `https://api.deepseek.com`).
+- **DeepSeekAdapter** (`deepseek-flash`, the adapter's documented
+  alias for the current DeepSeek-V4.1 Flash, on
+  `https://api.deepseek.com`).
   Open question is whether strict `json_schema` is honored. Thinking is
   disabled by the adapter and must stay disabled on the wire.
 - **MetaLlamaAdapter** (`Llama-4-Maverick-17B-128E-Instruct-FP8` on
@@ -178,9 +179,9 @@ On a pass, append a live-verification note to the adapter's section in
 configured model id, the model version the provider reported or a note
 that the provider does not expose one, call count, wire shape
 observed, and the outcome against the pass criteria above). On a fail,
-record the failure mode and the repair needed. Per the D-33 policy in
-`Adapters.md`, the publication block lifts for the passing adapters
-only.
+record the failure mode and the repair needed. Extending the D-33
+precedent to this smoke, the publication block lifts for the passing
+adapters only.
 
 The A6 smoke instance is planned, not yet executed. It covers the four
 adapters above. The Lakera adapter was verified separately on

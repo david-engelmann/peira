@@ -45,9 +45,9 @@ indexes the load-bearing claims; detail lives in the linked docs.
 - Every headline number ships with a 95% confidence interval.
 - No measured numbers are published from an adapter that has not
   passed its live smoke. The smoke procedure, and the publication
-  block it lifts, is documented in `docs/live-verification.md` under
-  the D-33 policy recorded in `docs/Adapters.md` and
-  `docs/Decisions.md`.
+  block it lifts, is documented in `docs/live-verification.md`, which
+  extends the D-33 precedent to the A6 adapters. D-33 itself covers
+  the Tier 1 adapters and is recorded in `docs/Decisions.md`.
 
 ## We don't claim
 
