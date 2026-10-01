@@ -989,7 +989,22 @@ class TestResponseCache(unittest.TestCase):
                        cache_namespace="", primitive="choice",
                        variant="benign", case_id="c2",
                        case_input=inp, manifest_sha256="m")
-        self.assertEqual(len({k1, k2, k3, k4, k5, k6}), 6)
+        # R-04 (lm-eval-harness #3881 class): the key covers the
+        # *effective* sampling config. The runner folds
+        # sampling_cache_namespace() into cache_namespace, so the same
+        # adapter at two temperatures gets two keys — a run at
+        # temperature 0.7 never reuses entries recorded at 0.0.
+        k7 = cache_key(adapter_name="a", adapter_version="1",
+                       cache_namespace="|temperature=0.7",
+                       primitive="choice",
+                       variant="benign", case_id="c1",
+                       case_input=inp, manifest_sha256="m")
+        k8 = cache_key(adapter_name="a", adapter_version="1",
+                       cache_namespace="|temperature=0.0",
+                       primitive="choice",
+                       variant="benign", case_id="c1",
+                       case_input=inp, manifest_sha256="m")
+        self.assertEqual(len({k1, k2, k3, k4, k5, k6, k7, k8}), 8)
 
     def test_different_mock_config_does_not_collide(self):
         with TemporaryDirectory() as tmp:

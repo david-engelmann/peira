@@ -221,6 +221,12 @@ divided evenly across seeds), re-run the terminated seeds, or run
 Cause: the suite directory has no `.jsonl` files. Fix: check the path;
 `dataset/trial-demo/cases.jsonl` ships with the repo.
 
+**`error: invalid case data: ...`**
+Cause: a case file failed schema validation (the detail after the
+colon names the offending field). Fix: run `peira dataset gates`
+on the suite to see the full validation report; hand-edited case
+files are the usual culprit.
+
 **`error: unknown famil(ies): x (known families: ...)`**
 Cause: `peira run --families` got a family id that isn't in the
 registry. Fix: pick from the list in the error. The twenty canonical
@@ -866,166 +872,6 @@ Cause: the API returned a response without the documented `results`
 array. This means API drift, not a retryable failure. Fix: report
 it; the wire shape is pinned in `python/peira/adapters/omni_moderation.py`.
 
-**`model-armor adapter needs a GCP project ID with Model Armor enabled: set the MODEL_ARMOR_PROJECT_ID environment variable (or pass project_id=...)`**
-Cause: the adapter was constructed without a project ID (the same
-pattern holds for `MODEL_ARMOR_TEMPLATE_ID` and
-`MODEL_ARMOR_ACCESS_TOKEN`. The token hint suggests `gcloud auth
-print-access-token`). Fix: export all three variables.
-
-**`model-armor API error 401: ...; check that MODEL_ARMOR_ACCESS_TOKEN is a valid OAuth2 access token ...`**
-Cause: bad or expired token. Terminal: the runner won't retry it.
-Fix: mint a fresh token with `gcloud auth print-access-token` and
-check the caller has the modelarmor.user role.
-
-**`model-armor API error 403: ...; check that MODEL_ARMOR_ACCESS_TOKEN is a valid OAuth2 access token with the cloud-platform scope, and that the caller has the modelarmor.user role.`**
-Cause: forbidden. Terminal: the runner won't retry it. Fix: check
-the token scope and confirm the caller has the modelarmor.user role.
-
-**`model-armor API error 400: ...; the request was rejected; this is an adapter bug or a bad template resource name, not a retryable failure.`** (same for 422)
-Cause: the request shape or the template resource name was rejected.
-The adapter sends the documented shape, so this means API drift or a
-bad template name. Fix: report it with the template resource name.
-don't retry.
-
-**`model-armor API error 404: ...; the template resource name was not found; check MODEL_ARMOR_PROJECT_ID/MODEL_ARMOR_LOCATION/MODEL_ARMOR_TEMPLATE_ID.`**
-Cause: the template resource name is wrong (typo, wrong region, or
-the template was deleted). Terminal. Fix: check the three variables
-against the Cloud Console.
-
-**`model-armor response missing 'sanitizationResult' object`**
-Cause: the API returned a response without the documented
-`sanitizationResult`. This means API drift, not a retryable failure.
-Fix: report it. The wire shape is pinned in
-`python/peira/adapters/model_armor.py`.
-
-**`model-armor response has unexpected 'filterMatchState': '...'`**
-Cause: the API returned a `filterMatchState` value the adapter does
-not know (neither `MATCH_FOUND` nor `NO_MATCH_FOUND`). The adapter
-fails closed rather than guessing. This means API drift. Fix: report
-it with the value.
-
-**`model-armor transport error: ...` (status 408)**
-Cause: the connection dropped, DNS failed, or the request timed out.
-Raised as status 408 so `peira run` treats it as transient and retries
-under `--max-attempts`. Fix: re-run. Sustained 408s mean your network
-or the Model Armor endpoint is degraded.
-
-**`model-armor returned non-JSON response` / `model-armor returned a non-object JSON response`**
-Cause: the endpoint returned something that is not the documented
-JSON object (proxy error page, HTML, truncated body). Fix: check for
-a proxy or captive portal in the path. Otherwise report it.
-
-**`model-armor does not support primitive '...' (supported: ['abstain'])`**
-Cause: the adapter was asked for a primitive other than `abstain`.
-Guardrails are abstain-primitive-only per B2. Fix: run with the
-abstain primitive.
-
-**`azure-prompt-shields adapter needs an Azure AI Content Safety endpoint: set the AZURE_CONTENT_SAFETY_ENDPOINT environment variable (or pass endpoint=...)`**
-Cause: the adapter was constructed without an endpoint (the same
-pattern holds for `AZURE_CONTENT_SAFETY_KEY`). Fix: export both
-variables.
-
-**`azure-prompt-shields API error 401: ...; check that AZURE_CONTENT_SAFETY_KEY is valid for the AZURE_CONTENT_SAFETY_ENDPOINT resource.`**
-Cause: bad or unauthorized key. Terminal: the runner won't retry it.
-Fix: check the key in the Azure portal.
-
-**`azure-prompt-shields API error 403: ...; check that AZURE_CONTENT_SAFETY_KEY is valid for the AZURE_CONTENT_SAFETY_ENDPOINT resource.`**
-Cause: forbidden. Terminal: the runner won't retry it. Fix: check
-the key in the Azure portal.
-
-**`azure-prompt-shields API error 400: ...; the request was rejected; this is an adapter bug, not a retryable failure.`** (same for 422)
-Cause: the request shape was rejected. The adapter sends the
-documented `userPrompt`/`documents` shape, so this means API drift.
-Fix: report it. Don't retry.
-
-**`azure-prompt-shields prompt exceeds the 10,000-character API limit; refusing to send it`**
-Cause: the case prompt is longer than Microsoft's documented
-10,000-character maximum for Prompt Shields. The adapter refuses it
-locally (terminal, never retried) instead of sending it. Fix:
-shorten the prompt. The API cannot screen longer ones.
-
-**`azure-prompt-shields response missing 'userPromptAnalysis' object`**
-Cause: the API returned a response without the documented
-`userPromptAnalysis`. This means API drift, not a retryable failure.
-Fix: report it. The wire shape is pinned in
-`python/peira/adapters/azure_prompt_shields.py`.
-
-**`azure-prompt-shields response has non-boolean 'userPromptAnalysis.attackDetected'`**
-Cause: the API returned an `attackDetected` value that is not a
-boolean. The adapter fails closed rather than guessing. This means
-API drift. Fix: report it with the value.
-
-**`azure-prompt-shields transport error: ...` (status 408)**
-Cause: the connection dropped, DNS failed, or the request timed out.
-Raised as status 408 so `peira run` treats it as transient and retries
-under `--max-attempts`. Fix: re-run. Sustained 408s mean your network
-or the Content Safety endpoint is degraded.
-
-**`azure-prompt-shields returned non-JSON response` / `azure-prompt-shields returned a non-object JSON response`**
-Cause: the endpoint returned something that is not the documented
-JSON object (proxy error page, HTML, truncated body). Fix: check for
-a proxy or captive portal in the path. Otherwise report it.
-
-**`azure-prompt-shields does not support primitive '...' (supported: ['abstain'])`**
-Cause: the adapter was asked for a primitive other than `abstain`.
-Guardrails are abstain-primitive-only per B2. Fix: run with the
-abstain primitive.
-
-**`cloudflare-workers-ai adapter needs a Cloudflare account ID: set the CLOUDFLARE_ACCOUNT_ID environment variable (or pass account_id=...)`**
-Cause: the adapter was constructed without an account ID (the same
-pattern holds for `CLOUDFLARE_API_TOKEN`). Fix: export both
-variables.
-
-**`cloudflare-workers-ai API error 401: ...; check that CLOUDFLARE_API_TOKEN is valid and has the Workers AI read scope.`**
-Cause: bad token or missing scope. Terminal: the runner won't retry
-it. Fix: check the token in the Cloudflare dashboard.
-
-**`cloudflare-workers-ai API error 403: ...; check that CLOUDFLARE_API_TOKEN is valid and has the Workers AI read scope.`**
-Cause: forbidden. Terminal: the runner won't retry it. Fix: check
-the token in the Cloudflare dashboard.
-
-**`cloudflare-workers-ai API error 404: ...; check that CLOUDFLARE_ACCOUNT_ID is correct and the model @cf/meta/llama-guard-3-8b is available.`**
-Cause: wrong account ID or the model is not available for the
-account. Terminal. Fix: check the account ID in the dashboard and
-confirm the model is enabled.
-
-**`cloudflare-workers-ai API error 400: ...; the request was rejected; this is an adapter bug, not a retryable failure.`** (same for 422)
-Cause: the request shape was rejected. The adapter sends the
-documented `messages` shape, so this means API drift. Fix: report
-it. Don't retry.
-
-**`cloudflare-workers-ai returned success=false: ...`**
-Cause: the Workers AI API rejected the call (e.g. model unavailable
-for the account). Terminal for that call shape. Fix: check the error
-payload. Don't just retry.
-
-**`cloudflare-workers-ai returned an unparseable verdict: '...' (expected 'safe' or 'unsafe')`**
-Cause: the model emitted text whose first line was neither `safe`
-nor `unsafe`. The adapter fails closed rather than treating a
-malformed verdict as clean. Fix: report it with the verdict text.
-
-**`cloudflare-workers-ai response missing 'result' object` / `cloudflare-workers-ai response missing 'result.response' text` / `cloudflare-workers-ai returned an empty verdict`**
-Cause: the API returned a `success: true` envelope without the
-documented `result.response` text. The adapter fails closed rather
-than treating a missing verdict as clean. This means API drift. Fix:
-report it.
-
-**`cloudflare-workers-ai transport error: ...` (status 408)**
-Cause: the connection dropped, DNS failed, or the request timed out.
-Raised as status 408 so `peira run` treats it as transient and retries
-under `--max-attempts`. Fix: re-run. Sustained 408s mean your network
-or the Workers AI endpoint is degraded.
-
-**`cloudflare-workers-ai returned non-JSON response` / `cloudflare-workers-ai returned a non-object JSON response`**
-Cause: the endpoint returned something that is not the documented
-JSON object (proxy error page, HTML, truncated body). Fix: check for
-a proxy or captive portal in the path. Otherwise report it.
-
-**`cloudflare-workers-ai does not support primitive '...' (supported: ['abstain'])`**
-Cause: the adapter was asked for a primitive other than `abstain`.
-Guardrails are abstain-primitive-only per B2. Fix: run with the
-abstain primitive.
-
 **`jev transport error: ...` (status 408)**
 Cause: the connection dropped, DNS failed, or the request timed out.
 Raised as status 408 so `peira run` treats it as transient and retries
@@ -1472,11 +1318,52 @@ because the source file contains duplicate cases or two sources are
 near-identical and the seed maps them to the same names and question
 variant. Fix: dedupe the source inputs, or re-run with a different
 `--seed`.
-boolean.
 
-**`author_benign_twins.py: Duplicate twin benign prompt at <case_id> (from <path>:<lineno>). This usually means the source file contains duplicate cases.`**
-Cause: two source cases produced the same twin benign prompt, usually
-because the source file contains duplicate cases or two sources are
-near-identical and the seed maps them to the same names and question
-variant. Fix: dedupe the source inputs, or re-run with a different
-`--seed`.
+## R-04 sampling config and stability probe
+
+**`error: adapter '<name>' declares _supports_temperature but its effective temperature is unset: declare an explicit temperature or set _supports_temperature = False`**
+Cause: the adapter claims temperature control but its `decode_params`
+carry no temperature: the run would silently proceed on provider
+defaults, invalidating every comparison. The runner fails closed
+before any case runs. Fix: set an explicit temperature in the
+adapter's decode params, or set `_supports_temperature = False` if
+the provider has no temperature knob.
+
+**`error: adapter '<name>' declares _supports_seed but its effective seed is unset: declare an explicit seed or set _supports_seed = False`**
+Cause: the adapter claims seed control but its `decode_params` carry
+no seed. Same fail-closed rule as temperature. Fix: set an explicit
+seed, or set `_supports_seed = False`.
+
+**`error: stability-probe supports single-shot suites only; the conversational suite has its own turn-level stability machinery`**
+Cause: `peira stability-probe --suite conversational` was passed. The
+probe analyzes per-case flip outcomes; the conversational suite's
+turn-level stability is measured by its own machinery. Fix: probe a
+single-shot suite (e.g. `trial`).
+
+**`error: --cases must be >= 1 (got <n>)` (from `peira stability-probe`)**
+Cause: `--cases 0` or a negative slice size. Fix: pass a positive
+case count, or omit `--cases` for the default 100.
+
+**`error: --trials must be >= 2 (got <n>)` (from `peira stability-probe`)**
+Cause: `--trials 1` (or 0). A stability probe needs at least two
+trials to measure flip agreement. Fix: pass `--trials 2` or more
+(default: 3).
+
+**`error: trial <t> (seed <s>): <message>` (from `peira stability-probe`)**
+Cause: trial `<t>` failed with the wrapped `<message>`, usually a
+config error (bad sampling config, bad cache dir) from that trial's
+`run_suite`. Fix: address the wrapped message the same way you would
+for `peira run`; the other trials' work is discarded so the probe
+never reports on a partial trial set.
+
+**`warning: trial <t> (seed <s>) terminated with '<kind>': its cases still enter the probe, flagged by eligibility` (from `peira stability-probe`)**
+Cause: not an error. The trial ended early (e.g. budget termination)
+but produced per-case results; ineligible cases are excluded from
+pass^k and the stability score via the eligibility flag. Fix: none
+required, but a terminated trial weakens the probe; re-run if you
+need all trials complete.
+
+**`warning: suite has <n> cases after filtering, fewer than the requested <m>; probing all of them` (from `peira stability-probe`)**
+Cause: not an error. `--cases` (or the default 100) exceeds the
+filtered suite size, so the probe runs over every available case.
+Fix: none required.

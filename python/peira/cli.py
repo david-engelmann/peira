@@ -2323,6 +2323,224 @@ def cmd_drift_watch(args: argparse.Namespace) -> int:
     return EXIT_OK
 
 
+def cmd_stability_probe(args: argparse.Namespace) -> int:
+    """R-04: small multi-trial stability probe over a fixed case slice.
+
+    Runs ~100 cases x 3 trials (default) through one adapter version,
+    each trial under a fresh run nonce and its own seed, then analyzes
+    per-case flip rates, attacked-arm pass^k (the headline stability
+    number), and a stability score. Writes a standalone probe report
+    plus a borderline-cases sidecar (never the official leaderboard),
+    never a modification of the sealed dataset.
+    """
+    from peira.metrics import PerCaseResult
+    from peira.sampling import effective_sampling_config
+    from peira.stability_probe import (
+        DEFAULT_PROBE_CASES,
+        DEFAULT_PROBE_TRIALS,
+        analyze_probe,
+    )
+
+    root = _repo_root()
+    try:
+        adapter = _get_adapter(args.adapter)
+    except ValueError as e:
+        print(f"error: {e}", file=sys.stderr)
+        return EXIT_USER_ERROR
+
+    suite = args.suite
+    if suite == "smoke":
+        suite = "trial"  # smoke is the Trial alias
+    if suite not in SUITE_DIRS:
+        _suite_names = ", ".join(["smoke"] + sorted(SUITE_DIRS))
+        print(f"error: unknown suite {args.suite!r} (available: {_suite_names})",
+              file=sys.stderr)
+        return EXIT_USER_ERROR
+    if suite == "conversational":
+        print("error: stability-probe supports single-shot suites only; "
+              "the conversational suite has its own turn-level stability "
+              "machinery", file=sys.stderr)
+        return EXIT_USER_ERROR
+    suite_dir = root / SUITE_DIRS[suite]
+    if not suite_dir.exists():
+        print(f"error: suite directory {suite_dir} not found",
+              file=sys.stderr)
+        return EXIT_USER_ERROR
+    try:
+        cases = load_cases(suite_dir)
+    except ValueError as e:
+        print(f"error: invalid case data: {e}", file=sys.stderr)
+        return EXIT_USER_ERROR
+    if not cases:
+        print(f"error: no cases found in {suite_dir}", file=sys.stderr)
+        return EXIT_USER_ERROR
+    try:
+        wanted_families = parse_family_filter(
+            getattr(args, "families", None), suite=suite
+        )
+    except ValueError as e:
+        print(f"error: {e}", file=sys.stderr)
+        return EXIT_USER_ERROR
+    # The gate is evaluated over the full suite's family manifest (same
+    # rule as `peira run`): a subset probe never redefines the gate.
+    suite_families = sorted({c.family for c in cases})
+    if wanted_families is not None:
+        cases = [c for c in cases if c.family in wanted_families]
+        if not cases:
+            print(f"error: --families matched no cases in {suite_dir}",
+                  file=sys.stderr)
+            return EXIT_USER_ERROR
+
+    n_cases = args.cases
+    if n_cases is not None and n_cases < 1:
+        print(f"error: --cases must be >= 1 (got {n_cases})",
+              file=sys.stderr)
+        return EXIT_USER_ERROR
+    trials = args.trials
+    if trials < 2:
+        print(f"error: --trials must be >= 2 (got {trials})",
+              file=sys.stderr)
+        return EXIT_USER_ERROR
+
+    # The probe slice is fixed and deterministic: first N cases by
+    # case id, identical across trials and re-runs.
+    ordered = sorted(cases, key=lambda c: c.case_id)
+    want = DEFAULT_PROBE_CASES if n_cases is None else n_cases
+    probe_cases = ordered[:want]
+    if len(probe_cases) < want:
+        print(f"warning: suite has {len(ordered)} cases after filtering, "
+              f"fewer than the requested {want}; probing all of them",
+              file=sys.stderr)
+
+    dataset_version, manifest_sha256 = _suite_dataset_identity(suite_dir)
+
+    # Per-trial adapter builds: the mock's script is namespaced per
+    # (seed, nonce) exactly like `peira run`; seed-sensitive adapters
+    # re-seed via with_seed (M-7 pattern). Adapters with neither get
+    # the same instance every trial; the runner seed still varies,
+    # and the report says so via the sampling configs.
+    def _build_mock(seed_i: int, run_nonce_i: str) -> "MockAdapter":
+        return MockAdapter(
+            script=MockAdapter.script_for(
+                probe_cases, seed=seed_i, run_nonce=run_nonce_i
+            )
+        )
+
+    if isinstance(adapter, MockAdapter):
+        build_adapter = _build_mock
+    elif hasattr(adapter, "with_seed"):
+        _base_adapter = adapter
+
+        def build_adapter(  # type: ignore[misc]
+            seed_i: int, run_nonce_i: str, _base=_base_adapter
+        ):
+            return _base.with_seed(seed_i)
+    else:
+        build_adapter = None
+
+    out_dir = Path(args.out)
+    try:
+        out_dir.mkdir(parents=True, exist_ok=True)
+    except OSError as e:
+        print(f"error: cannot create {out_dir}: {e}", file=sys.stderr)
+        return EXIT_USER_ERROR
+
+    artifacts = []
+    sampling_configs = []
+    seeds = [args.seed + t for t in range(trials)]
+    for t, seed_i in enumerate(seeds):
+        nonce_i = new_run_nonce()
+        trial_adapter = (
+            build_adapter(seed_i, nonce_i)
+            if build_adapter is not None else adapter
+        )
+        sampling_configs.append(
+            dict(effective_sampling_config(trial_adapter))
+        )
+        try:
+            artifact = run_suite(
+                trial_adapter,
+                probe_cases,
+                suite,
+                dataset_version,
+                manifest_sha256=manifest_sha256,
+                seed=seed_i,
+                required_families=suite_families,
+                max_concurrency=args.max_concurrency,
+                max_attempts=args.max_attempts,
+                call_timeout=args.call_timeout,
+                run_nonce=nonce_i,
+                config_extra={
+                    "adapter_spec": args.adapter,
+                    "stability_probe": True,
+                    "probe_trial": t,
+                },
+            )
+        except ValueError as e:
+            # Config errors (bad sampling config, bad cache dir): user
+            # error with the message, not a traceback.
+            print(f"error: trial {t} (seed {seed_i}): {e}",
+                  file=sys.stderr)
+            return EXIT_USER_ERROR
+        artifacts.append(artifact)
+        if artifact.termination != "complete":
+            print(f"warning: trial {t} (seed {seed_i}) terminated with "
+                  f"{artifact.termination!r}: its cases still enter the "
+                  f"probe, flagged by eligibility",
+                  file=sys.stderr)
+
+    adapter_version = str(getattr(adapter, "version", "") or "")
+    trial_results = [
+        [PerCaseResult.from_dict(r) for r in a.results]
+        for a in artifacts
+    ]
+    try:
+        result = analyze_probe(
+            adapter_name=adapter.name,
+            adapter_version=adapter_version,
+            suite=suite,
+            dataset_version=dataset_version,
+            manifest_sha256=manifest_sha256,
+            seeds=seeds,
+            sampling_configs=sampling_configs,
+            trial_results=trial_results,
+        )
+    except ValueError as e:
+        print(f"error: {e}", file=sys.stderr)
+        return EXIT_USER_ERROR
+
+    report = result.to_dict()
+    # Borderline flags ride a sidecar, never the sealed manifest: the
+    # probe must not perturb the instrument it measures (E-9).
+    report_path = out_dir / "stability-probe.json"
+    sidecar_path = out_dir / "borderline_cases.json"
+    atomic_write_text(
+        report_path, json.dumps(report, indent=2, sort_keys=True)
+    )
+    atomic_write_text(
+        sidecar_path,
+        json.dumps(
+            {
+                "schema_ref": "peira/stability-probe-borderline/v1",
+                "adapter_name": adapter.name,
+                "adapter_version": adapter_version,
+                "suite": suite,
+                "dataset_version": dataset_version,
+                "seeds": seeds,
+                "borderline_case_ids": result.borderline_case_ids,
+                "note": "durable metadata flag, never a quarantine: "
+                        "these cases stay in the sealed instrument",
+            },
+            indent=2,
+            sort_keys=True,
+        ),
+    )
+    print(result.summary_text())
+    print(f"wrote {report_path}", file=sys.stderr)
+    print(f"wrote {sidecar_path}", file=sys.stderr)
+    return EXIT_OK
+
+
 def cmd_compare(args: argparse.Namespace) -> int:
     from peira.compare import compare_artifacts
 
@@ -4446,6 +4664,36 @@ def build_parser() -> argparse.ArgumentParser:
     dw.add_argument("--out", default=None,
                     help="write the drift result JSON to this path")
     dw.set_defaults(func=cmd_drift_watch)
+
+    # R-04 stability probe: separate track, separate report.
+    sp = sub.add_parser("stability-probe",
+                        help="stability-probe: ~100 cases x 3 trials per "
+                        "adapter version, reporting attacked-arm pass^k "
+                        "and a stability score next to accuracy")
+    sp.add_argument("--adapter", required=True,
+                    help="adapter: 'mock' or a dotted path like "
+                    "'examples.minimal_adapter'")
+    sp.add_argument("--suite", default="trial",
+                    help="suite to probe (default: trial); single-shot "
+                    "suites only")
+    sp.add_argument("--out", required=True,
+                    help="output directory for stability-probe.json and "
+                    "borderline_cases.json")
+    sp.add_argument("--cases", type=int, default=None,
+                    help="cases in the probe slice (default: 100)")
+    sp.add_argument("--trials", type=int, default=3,
+                    help="trials per case (default: 3; minimum: 2)")
+    sp.add_argument("--seed", type=int, default=0,
+                    help="base seed; trial seeds are seed .. seed+trials-1")
+    sp.add_argument("--families", default=None,
+                    help="family filter (same syntax as `peira run`)")
+    sp.add_argument("--max-concurrency", type=int, default=4,
+                    help="max concurrent calls per trial")
+    sp.add_argument("--max-attempts", type=int, default=3,
+                    help="max attempts per call")
+    sp.add_argument("--call-timeout", type=float, default=30.0,
+                    help="per-call timeout in seconds")
+    sp.set_defaults(func=cmd_stability_probe)
 
     # Dashboard data layer: artifact -> dashboard-ready JSON.
     db = sub.add_parser("dashboard",
