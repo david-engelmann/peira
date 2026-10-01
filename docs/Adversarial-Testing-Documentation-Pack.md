@@ -3,15 +3,16 @@
 **Status** Product spec, 2026-10-01
 **Covers** EB-30
 
-A peira run measures whether attacks flip a decision model's answers.
-That number is a research result. The documentation pack turns the same
-run into the paperwork a deployment team actually files. It maps every
+A peira run measures whether hostile input manipulations change
+typed decision outputs, with paired benign and attacked controls,
+across the documented attack families. That number is a research
+result. The documentation pack is the template that turns the same
+run into the paperwork a deployment team files. It maps every
 observed flip class to an incident-severity tier shaped on the EU AI
 Act, states the reporting clock each tier implies, and lists the
-corrective action the tier calls for. It is a product feature, not a
-metric. The report generator that fills this template from a sealed
-artifact is the EB-32 design. This document is the template it will
-fill.
+corrective action the tier calls for. The EB-32 report generator
+that will fill this template from a sealed artifact is a design, not
+a built tool. Until it exists, a human fills the template by hand.
 
 This document is not legal advice. It describes how peira results map
 onto regulatory concepts so a team can hand the pack to its own
@@ -35,12 +36,17 @@ without undue delay to the AI Office and, as appropriate, to national
 competent authorities, relevant information about serious incidents and
 possible corrective measures. Article 73 sets the clocks for high-risk
 systems. Providers report a serious incident to the market surveillance
-authority of the Member State where it occurred. The general rule is
-15 days from becoming aware, 10 days where a person died, and 2 days
-for a serious and irreversible disruption of critical infrastructure
-or a widespread infringement. Deployers who become aware of a serious
-incident inform the provider immediately (Article 26(5)), and report
-directly where the provider cannot be reached.
+authority of the Member State where it occurred. Reporting begins
+immediately once the causal link between the AI system and the
+incident is established or suspected. The deadlines are outer
+limits, not grace periods. The general rule is 15 days from becoming
+aware, 10 days where a person died, and 2 days for a serious and
+irreversible disruption of critical infrastructure or a widespread
+infringement. Deployers who become aware of a serious incident
+immediately inform first the provider, then the importer or
+distributor and the relevant market surveillance authorities
+(Article 26(5)). Where the provider cannot be reached, Article 73
+applies to the deployer directly.
 
 **A serious incident has a fixed definition.** Article 3(49) defines it
 as an incident or malfunctioning of an AI system that directly or
@@ -61,11 +67,17 @@ authoring time (see [Severity-Rubric](Severity-Rubric.md)).
 ## The four tiers
 
 **T1. Serious incident.** The flip produced, or in live deployment would
-have produced, one of the four Article 3(49) outcomes. The Article 73
-clock runs. The general rule is 15 days, 10 days where a person died,
-and 2 days for critical-infrastructure disruption or widespread
-infringement. A deployer informs the provider immediately on becoming
-aware.
+have produced, one of the four Article 3(49) outcomes. Two conditions
+gate the clock. The team confirms a qualifying incident under the
+Article 3(49) definition, and the system is an applicable high-risk
+AI system. An offline peira result or a judge score alone confirms
+neither. Until both conditions hold, the event stays a T2 candidate.
+Once they hold, the Article 73 clock runs. Reporting begins
+immediately once the causal link is established or suspected. The
+general rule is 15 days, 10 days where a person died, and 2 days for
+critical-infrastructure disruption or widespread infringement. A
+deployer immediately informs first the provider, then the importer
+or distributor and the relevant market surveillance authorities.
 
 **T2. Near miss with serious-incident potential.** The attack reached
 the wrong decision but the harm did not materialize. The wrong wire was

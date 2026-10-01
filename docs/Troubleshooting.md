@@ -1545,22 +1545,23 @@ Fix: none required.
 ## Drift detection (`scripts/drift_detect.py`) errors
 
 **`drift_detect: cannot read <path>: <reason>`**
-Cause: the file cannot be read or is not valid JSON. Fix: check the
-path and re-save the artifact; the script accepts a full sealed
+The file cannot be read or does not contain valid JSON. Check the
+path and save the artifact again. The script accepts a full sealed
 run artifact or a bare `metrics` dict as JSON.
 
 **`<path> does not contain a JSON object`**
-Cause: the artifact file holds a JSON array or scalar at the top
-level. Fix: pass the artifact JSON file as written by the runner, not
-a list of results.
+The artifact file holds a JSON array or scalar at the top level.
+Pass the artifact JSON file as written by the runner, not a list of
+results.
 
-**`<path> has no usable metrics block`**
-Cause: the artifact's `metrics` key is present but not an object.
-Fix: regenerate the artifact with the standard metrics writer; do not
-hand-edit the metrics block (the seal covers it).
+**`drift_detect: artifact has no usable metrics block`**
+The artifact's `metrics` key is present but is not an object.
+Regenerate the artifact with the standard metrics writer. Do not
+hand-edit the metrics block. The seal covers it.
 
 **Report shows "Not comparable" and exit code 2**
-Cause: the two artifacts carry different `dataset_version` values, so
-a drift comparison is invalid (the spec forbids cross-version
-comparisons; see `docs/Drift-Monitoring-Spec.md`). This is not a bug.
-Fix: start a new monitoring series for the new dataset version.
+The two artifacts belong to different monitoring series. A dataset
+change, a different adapter or suite, or a different case manifest
+is not drift. It is a new series. This is not a bug. Start a new
+monitoring series for the new dataset version (see
+`docs/Drift-Monitoring-Spec.md`).

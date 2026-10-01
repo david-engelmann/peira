@@ -116,7 +116,10 @@ Honest gaps, stated plainly.
   under test is the model deployed. Backdoored weights and poisoned
   fine-tunes are a different evaluation.
 - **Multi-agent collusion.** Attacks coordinated across several model
-  instances or tool calls are uncovered. Every family is single-shot.
+  instances or tool calls are uncovered. The single-shot families
+  model one attack turn. The conversational suite's multi-turn
+  families (M13, M14) model escalation across turns, not collusion
+  across agents.
 - **Infrastructure-scale denial of decision.** Beyond the abstain
   primitive, cost-exhaustion and latency attacks on the serving layer
   are not decision attacks and are not covered.

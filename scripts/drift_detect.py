@@ -174,6 +174,21 @@ def check_comparable(base: dict, curr: dict) -> list[str]:
             f"dataset versions differ ({bv} vs {cv}): "
             "start a new monitoring series instead of comparing"
         )
+    # Series identity: the spec compares one adapter on one suite over
+    # time. Conflicting identities are a different series, not drift.
+    # Adapter-version (pin) changes stay comparable on purpose.
+    for field, label in (
+        ("adapter_name", "adapter"),
+        ("suite", "suite"),
+        ("manifest_sha256", "case manifest"),
+    ):
+        b_id = _doc_field(base, b_m, field)
+        c_id = _doc_field(curr, c_m, field)
+        if b_id is not None and c_id is not None and b_id != c_id:
+            problems.append(
+                f"{label} differs ({b_id} vs {c_id}): "
+                "each monitoring series tracks one adapter on one suite"
+            )
     return problems
 
 
@@ -229,8 +244,9 @@ def drift_report(
     b_env = _doc_field(base, base_m, "env_sha256")
     c_env = _doc_field(curr, curr_m, "env_sha256")
     if b_env is not None and c_env is not None and b_env != c_env:
-        lines.append("- Environment fingerprints differ: treat as an "
-                     "explained difference, not drift.")
+        lines.append("- Environment fingerprints differ: a possible "
+                     "confounder. Investigate before attributing drift "
+                     "verdicts to the adapter.")
     lines.append("")
 
     rows = []
@@ -303,6 +319,10 @@ def drift_report(
         lines.append("No actionable drift, but WATCH slices moved "
                      "significantly below the effect-size floor: shorten "
                      "the re-run cadence for those families.")
+    elif all(r["verdict"] == "INSUFFICIENT DATA" for _, r in rows):
+        lines.append("No usable data in either run. Do not read this as "
+                     "stability: re-run with enough eligible cases (30 per "
+                     "slice minimum) before drawing conclusions.")
     else:
         lines.append("No action. Robustness is stable across the series.")
     lines.append("")
@@ -327,15 +347,16 @@ def main(argv: list[str] | None = None) -> int:
     try:
         base = load_metrics(args.baseline)
         curr = load_metrics(args.current)
+        report = drift_report(
+            base, curr,
+            base_label=args.baseline.name, curr_label=args.current.name,
+            alpha=args.alpha, min_n=args.min_n,
+            effect_floor=args.effect_floor,
+        )
     except ValueError as exc:
         print(f"drift_detect: {exc}", file=sys.stderr)
         return 2
 
-    report = drift_report(
-        base, curr,
-        base_label=args.baseline.name, curr_label=args.current.name,
-        alpha=args.alpha, min_n=args.min_n, effect_floor=args.effect_floor,
-    )
     print(report)
     if "## Not comparable" in report:
         return 2

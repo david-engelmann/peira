@@ -24,28 +24,27 @@ uncomfortable question. It works on your test set. What happens when
 someone is actively trying to make it decide wrong.
 
 peira is our attempt to answer that question properly. It is an open
-benchmark that attacks decision models the way real attackers do and
-measures whether the decision flips.
+benchmark that measures how documented hostile-input attack shapes
+affect typed decision outputs.
 
 **What it tests.** Approve and deny decisions, numeric scores, and
 abstentions across 25 attack families. Prompt injection buried in tool
 output. Instructions hidden in retrieved documents. Fake
 authorization signals. Reordered evidence. Flattery aimed at the judge
-instead of the case. Each family is grounded in published research or
-observed failures, and the taxonomy doc cites the source for every
-one.
+instead of the case. The taxonomy doc records the literature or
+vendor source that motivates each family where one exists.
 
-**How it measures.** Paired benign and attacked cases, so every number
-is a causal claim about the attack, not a vibes-based score. 95%
-confidence intervals on every number. A blind holdout set with
-pseudonymized IDs so models cannot detect the evaluation. Severity
-grading on every case, because a flipped wire transfer is not the
-same event as a flipped lunch recommendation.
+**How it measures.** Paired benign and attacked cases, so the
+decision-change number isolates the attack, not the vibes. 95%
+confidence intervals on every headline number. A blind holdout set
+with pseudonymized IDs so models cannot detect the evaluation.
+Severity grading on every case, because a flipped wire transfer is
+not the same event as a flipped lunch recommendation.
 
 **What you get.** A leaderboard with per-family breakdowns,
-calibration views, and a documentation pack per run that maps results
-onto incident-severity tiers for teams that need the paperwork, not
-just the score.
+calibration views, and a documentation pack template that maps
+results onto incident-severity tiers for teams that need the
+paperwork, not just the score.
 
 The code is MIT licensed. The dataset is CC-BY-4.0. Reproduce any
 number from the sealed artifacts. The provenance chain is part of the
@@ -64,11 +63,11 @@ We built the benchmark we wanted to exist.
 peira attacks decision models across 25 attack families, from prompt
 injection in tool output to poisoned retrieval corpora to flattery
 aimed at the judge, and measures whether the decision flips. Paired
-cases, confidence intervals on everything, a blind holdout, and
-severity grading because not all flips are equal.
+cases with a 95% confidence interval on every headline number, a
+blind holdout, and severity grading because not all flips are equal.
 
-Open source, reproducible down to the sealed artifact, with a per-run
-documentation pack for teams that answer to regulators.
+Open source, reproducible down to the sealed artifact, with a
+documentation pack template for teams that answer to regulators.
 
 The official results are coming. The methodology is public today.
 

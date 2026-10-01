@@ -127,6 +127,33 @@ class TestDriftReport(unittest.TestCase):
         self.assertEqual(val, 0.90)
         self.assertEqual(src, "benign_accuracy")
 
+    def test_series_identity_conflict_blocks_comparison(self):
+        base_m = _metrics(0.12, 800)
+        curr_m = _metrics(0.18, 800)
+        del base_m["adapter_name"]
+        del curr_m["adapter_name"]
+        base = {"adapter_name": "x", "dataset_version": "2.4.0",
+                "metrics": base_m}
+        curr = {"adapter_name": "y", "dataset_version": "2.4.0",
+                "metrics": curr_m}
+        report = drift_detect.drift_report(base, curr)
+        self.assertIn("## Not comparable", report)
+        self.assertIn("one adapter on one suite", report)
+
+    def test_series_identity_allows_pin_changes(self):
+        base = {"adapter_name": "x", "dataset_version": "2.4.0",
+                "adapter_version": "v1", "metrics": _metrics(0.12, 800)}
+        curr = {"adapter_name": "x", "dataset_version": "2.4.0",
+                "adapter_version": "v2", "metrics": _metrics(0.18, 800)}
+        self.assertEqual(drift_detect.check_comparable(base, curr), [])
+
+    def test_all_insufficient_data_is_not_stability(self):
+        base = _metrics(0.12, 10)
+        curr = _metrics(0.18, 10)
+        report = drift_detect.drift_report(base, curr)
+        self.assertIn("No usable data", report)
+        self.assertNotIn("stable across the series", report)
+
     def test_identity_fields_read_from_artifact_level(self):
         # Real run artifacts carry adapter/dataset/pin fields at the
         # artifact level, outside the metrics block.
@@ -218,6 +245,24 @@ class TestCli(unittest.TestCase):
                 capture_output=True, text=True, check=False)
         self.assertEqual(proc.returncode, 2)
         self.assertIn("Not comparable", proc.stdout)
+
+    def test_cli_null_metrics_is_a_clean_error(self):
+        # {"metrics": null} must follow the documented error path:
+        # a concise message and exit 2, not a traceback and exit 1.
+        with tempfile.TemporaryDirectory() as tmp:
+            base_p = Path(tmp) / "base.json"
+            curr_p = Path(tmp) / "curr.json"
+            base_p.write_text(
+                json.dumps({"metrics": None}), encoding="utf-8")
+            curr_p.write_text(
+                json.dumps(_metrics(0.20, 800)), encoding="utf-8")
+            proc = subprocess.run(
+                [sys.executable, str(REPO_ROOT / "scripts" / "drift_detect.py"),
+                 str(base_p), str(curr_p)],
+                capture_output=True, text=True, check=False)
+        self.assertEqual(proc.returncode, 2)
+        self.assertIn("drift_detect:", proc.stderr)
+        self.assertNotIn("Traceback", proc.stderr)
 
 
 if __name__ == "__main__":

@@ -197,7 +197,11 @@
           "type": "string"
         },
         "suite": {
-          "type": "string"
+          "description": "Suite label. Null for holdout runs, which are pseudonymized and carry no suite or arm labels",
+          "type": [
+            "string",
+            "null"
+          ]
         }
       },
       "required": [

@@ -132,5 +132,6 @@ does that. It does not certify a model as safe. It documents one
 evaluation. It does not replace post-market monitoring. It feeds it.
 And it never blends public and holdout numbers. A report covers one
 artifact, and holdout artifacts are pseudonymized per the blind
-holdout decision, so the report carries no suite or arm labels for
-holdout runs.
+holdout decision, so the report carries a null suite label and no
+arm labels for holdout runs (see the nullable `protocol.suite` in
+the schema).

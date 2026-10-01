@@ -31,7 +31,9 @@ surface. Each item can be checked off by whoever does the final pass.
       renders on every page. No build with mock data is presented as
       real results.
 - [ ] Public and holdout numbers are never blended. The toggle is
-      visible and the holdout view explains why it exists.
+      visible and the holdout view explains why it exists. It shows
+      only release-approved aggregate metrics. It never exposes case
+      text, per-case outcomes, or manifest contents.
 - [ ] Every leaderboard row links to its provenance. Dataset version,
       manifest SHA, artifact seal. Numbers without provenance do not
       ship.

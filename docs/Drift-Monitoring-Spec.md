@@ -43,15 +43,19 @@ it finds.
 
 **Environment is evidence, not drift.** Every artifact carries an
 environment fingerprint (`env_sha256`). If the current run's
-fingerprint differs from the baseline's, the report says so and treats
-it as an explained difference. Drift is a change in attack success
-that survives after the environment is accounted for, not a change in
-the machine the test ran on.
+fingerprint differs from the baseline's, the report says so. The
+statistical comparison is unchanged. An environment change is a
+possible confounder for any drift verdict, so the team investigates
+before attributing a DRIFT UP verdict to adapter drift.
 
 **Comparability gate.** Before any comparison, the tool checks that
-both artifacts carry the same dataset version. A dataset change is not
-drift. It is a new series. The tool refuses to compare across dataset
-versions rather than produce a misleading delta.
+both artifacts belong to the same monitoring series. Same dataset
+version, same adapter, same suite, same case manifest. A dataset
+change is not drift. It is a new series. A different adapter or suite
+is not drift either. The tool refuses to compare across series rather
+than produce a misleading delta. A changed adapter pin stays
+comparable on purpose. That is the drift the protocol exists to
+catch.
 
 ## The drift detection method
 
