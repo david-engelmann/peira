@@ -1299,3 +1299,10 @@ Cause: the determinism self-check block is malformed (not an object,
 missing `passed`/`mismatches`/`sample_n`, non-boolean `passed`, or
 non-integer counts). Fix: record a real verdict object, not a bare
 boolean.
+
+**`author_benign_twins.py: Duplicate twin benign prompt at <case_id> (from <path>:<lineno>). This usually means the source file contains duplicate cases.`**
+Cause: two source cases produced the same twin benign prompt, usually
+because the source file contains duplicate cases or two sources are
+near-identical and the seed maps them to the same names and question
+variant. Fix: dedupe the source inputs, or re-run with a different
+`--seed`.
