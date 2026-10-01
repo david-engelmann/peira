@@ -238,6 +238,11 @@ Cause: `peira run --suite conversational --families` got a family id
 that isn't in the conversational registry. Fix: pick from
 `multi_turn_escalation` or `decision_splitting`.
 
+**`error: unknown combo pair(s): x (known combo pairs: ...)`**
+Cause: `peira run --suite combo --families` got a pair id that isn't
+in the combo registry. Fix: pick from `combo-dfl-ind` or
+`combo-san-csp`.
+
 **`error: --families matched no cases in ...`**
 Cause: the ids are valid, but the suite has no cases for them (e.g. a
 Tier 2 family before its cases are authored). Fix: drop `--families` or
