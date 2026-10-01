@@ -93,6 +93,7 @@ class TestCheckFamilies(unittest.TestCase):
         self.assertEqual(tiers["retrieval_poisoning"], "1")
         self.assertEqual(tiers["evidence_positioning"], "1")
         self.assertEqual(tiers["crosslingual_shift"], "1")
+        self.assertEqual(tiers["judge_sycophancy"], "1")
 
     def test_entry_prose_drift_detected(self):
         # A meaning change to one family's entry must fail the check.
