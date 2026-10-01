@@ -1688,6 +1688,7 @@ merge.
 direction ever makes the lockfile format a liability, the exported
 requirements format is plain pip and the project can fall back to
 pip-tools with no metadata changes.
+
 ## D-41: maturin replaces setuptools + hand-rolled Rust build script (2026-10-01)
 
 **Decision.** The PEP 517 build backend becomes `maturin`
@@ -1727,4 +1728,3 @@ pip stays the install path.
 **To revisit:** never for the backend choice itself; revisit the wheel
 platform matrix (currently linux x86_64, macOS arm64, Windows x86_64)
 when contributor hardware demands it.
->>>>>>> c50c2457 (build: switch PEP 517 backend from setuptools to maturin)
