@@ -14,7 +14,7 @@
 - CG1 schema validity: PASS (0 errors)
 - CG2 2x2 arm completeness: PASS (0 errors)
 - CG3 pair separation + id uniqueness: PASS (0 errors)
-- CG4 substrate freshness vs v1/v2 corpus (3,455 prompts): PASS (0 errors)
+- CG4 substrate freshness vs v1/v2 corpus (3,455 prompts at pilot time): PASS (0 errors)
 - CG5 substrate near-dedup (Jaccard < 0.85): PASS (0 errors)
 
 **Infrastructure:**
@@ -51,6 +51,31 @@ classification for each pair awaits execution against a real adapter.
 - `combo-san-csp`: sub-additive (redundant persuasion; negative control)
 
 **To run:** `python3 scripts/combo_run.py --adapter <name> --out runs/<id>/results.jsonl`, then `python3 scripts/combo_analyze.py runs/<id>/results.jsonl`.
+
+## Pilot limitations (follow-up items)
+
+The pilot implements the 2x2 arm structure and the paired interaction
+machinery. Three design elements are documented here as deferred, not
+as resolved.
+
+- **Length control (design 6c).** Attacked arms are longer than the
+  control arm (the anchor/spoof lines add tokens). If longer prompts
+  flip more often regardless of content, part of any measured
+  interaction could be a length effect rather than a combination
+  effect. Follow-up: length-matched control arms that add inert text
+  of equal token count, so the interaction contrast isolates content
+  from length.
+- **Order control (design 6c).** The ab arm always applies
+  score_anchoring before confidence_spoofing (or distraction before
+  misdirection). Order effects are not measured. Follow-up: a ba arm
+  with the application order reversed, at least on a subsample, to
+  check that the interaction is not order-dependent.
+- **`unresolved` floor (design 6d).** `paired_interaction()` in
+  `python/peira/combo_metrics.py` classifies a pair as unresolved when
+  MDE80 exceeds a fixed 0.20 floor. The design doc's convention is a
+  per-combo MDE floor calibrated to the pair's stakes, not one fixed
+  threshold. Follow-up: replace the fixed floor with the per-combo
+  convention before the first full-scale combo run.
 
 ## Design compliance
 

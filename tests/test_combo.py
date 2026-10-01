@@ -1,14 +1,21 @@
 """Tests for the combo suite: schema, gates, and interaction metrics."""
 
+import json
+import sys
 import unittest
+from pathlib import Path
 
 from peira.combo_gates import (
     gate_cg1_schema,
     gate_cg2_arm_completeness,
     gate_cg3_pair_separation,
+    gate_cg4_with_corpus,
     gate_cg5_near_dedup,
+    load_freshness_corpus,
     run_combo_gates,
 )
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
 from peira.combo_metrics import format_interaction, paired_interaction
 from peira.combo_schema import (
     combo_case_id,
@@ -128,6 +135,53 @@ class ComboGatesTest(unittest.TestCase):
         self.assertTrue(any("duplicate case_id" in e for e in r.errors))
 
 
+class ComboGatesCG4Test(unittest.TestCase):
+    def test_cg4_passes_on_fresh_prompts(self):
+        cases = list(_substrate("combo-dfl-ind", 1).values())
+        r = gate_cg4_with_corpus(cases, {"some unrelated prompt"})
+        self.assertTrue(r.passed, r.errors[:3])
+
+    def test_cg4_catches_duplicate_of_corpus_prompt(self):
+        cases = list(_substrate("combo-dfl-ind", 1).values())
+        benign_prompt = cases[0]["benign"]["input"]["prompt"]
+        r = gate_cg4_with_corpus(cases, {benign_prompt})
+        self.assertFalse(r.passed)
+        # One error per substrate, not one per arm.
+        self.assertEqual(r.n_errors, 1)
+        self.assertIn("combo-dfl-ind-0001", r.errors[0])
+
+    def test_run_combo_gates_includes_cg4(self):
+        root = Path(__file__).resolve().parents[1]
+        files = [str(root / "dataset/combo/cases/combo-dfl-ind.jsonl"),
+                 str(root / "dataset/combo/cases/combo-san-csp.jsonl")]
+        results = run_combo_gates(files, repo_root=str(root))
+        self.assertEqual([r.gate_id for r in results],
+                         ["CG1", "CG2", "CG3", "CG4", "CG5"])
+        for r in results:
+            self.assertTrue(r.passed, f"{r.gate_id}: {r.errors[:3]}")
+
+    def test_freshness_corpus_covers_v1_and_v2(self):
+        root = str(Path(__file__).resolve().parents[1])
+        corpus = load_freshness_corpus(root)
+        # The corpus must draw from both v1 and v2 case files and be
+        # non-trivially large. The exact count is intentionally not
+        # pinned: v1/v2 keep growing, and the gate's contract is
+        # coverage, not a frozen number.
+        self.assertGreater(len(corpus), 3000)
+        import glob as _glob
+        import json as _json
+        v1_prompts = set()
+        for path in _glob.glob(str(Path(root) / "dataset" / "v1" / "cases" / "*.jsonl")):
+            with open(path) as f:
+                for line in f:
+                    line = line.strip()
+                    if line:
+                        v1_prompts.add(_json.loads(line)["benign"]["input"]["prompt"])
+        self.assertGreater(len(v1_prompts), 1000)
+        self.assertTrue(v1_prompts & corpus)
+        self.assertGreater(len(corpus) - len(v1_prompts), 100)
+
+
 class PairedInteractionTest(unittest.TestCase):
     def test_super_additive_detected(self):
         # 100 substrates: control never flips, single arms flip 10%,
@@ -186,6 +240,70 @@ class PairedInteractionTest(unittest.TestCase):
         s = format_interaction(r)
         self.assertIn("combo-dfl-ind", s)
         self.assertIn("n=100", s)
+
+
+class ComboAuthoringReproTest(unittest.TestCase):
+    def test_san_csp_regenerates_byte_identical(self):
+        sys.path.insert(0, str(REPO_ROOT / "scripts"))
+        import author_combo_san_csp as author
+
+        lines = []
+        for i, s in enumerate(author.SUBSTRATES, start=1):
+            (severity, setup, case_file, rule, question, anchor, anchor_pos,
+             spoof, spoof_pos, options, expected, target, note_body) = s
+            for arm in ("ctrl", "a", "b", "ab"):
+                c = author.build_case(
+                    i, severity, setup, case_file, rule, question, anchor,
+                    anchor_pos, spoof, spoof_pos, options, expected, target,
+                    note_body, arm)
+                lines.append(json.dumps(c, ensure_ascii=False))
+        shipped = (REPO_ROOT / "dataset" / "combo" / "cases"
+                   / "combo-san-csp.jsonl").read_text().splitlines()
+        self.assertEqual(lines, shipped)
+
+
+class ComboAnalyzeInputTest(unittest.TestCase):
+    """scripts/combo_analyze.py accepts per-case JSONL and run artifacts."""
+
+    def _rows(self):
+        return [
+            {"case_id": "combo-dfl-ind-0001-%s" % arm, "flipped": f}
+            for arm, f in (("ctrl", 0), ("a", 1), ("b", 1), ("ab", 1))
+        ]
+
+    def _run_main(self, path):
+        sys.path.insert(0, str(REPO_ROOT / "scripts"))
+        import combo_analyze
+        old = sys.argv
+        sys.argv = ["combo_analyze.py", str(path)]
+        try:
+            rc = combo_analyze.main()
+        finally:
+            sys.argv = old
+        return rc
+
+    def test_jsonl_input(self):
+        import tempfile
+        with tempfile.NamedTemporaryFile(
+                "w", suffix=".jsonl", delete=False) as f:
+            for r in self._rows():
+                f.write(json.dumps(r) + "\n")
+            path = f.name
+        try:
+            self.assertEqual(self._run_main(path), 0)
+        finally:
+            Path(path).unlink()
+
+    def test_run_artifact_input(self):
+        import tempfile
+        with tempfile.NamedTemporaryFile(
+                "w", suffix=".json", delete=False) as f:
+            json.dump({"results": self._rows(), "metrics": {}}, f)
+            path = f.name
+        try:
+            self.assertEqual(self._run_main(path), 0)
+        finally:
+            Path(path).unlink()
 
 
 if __name__ == "__main__":

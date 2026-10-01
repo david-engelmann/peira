@@ -88,6 +88,11 @@ SUITE_DIRS = {
     # and gates in peira.conversation). No cases ship yet: the attack
     # families land after R-01.
     "conversational": "dataset/conversational/cases",
+    # The combo suite hosts family-combination 2x2 cases (schema, gates,
+    # and metrics in peira.combo). Each case is an ordinary single-shot
+    # case, so the standard runner path handles it; the 2x2 structure is
+    # recovered at analysis time (scripts/combo_analyze.py).
+    "combo": "dataset/combo/cases",
 }
 
 DEFAULT_MAX_CONCURRENCY = 8
