@@ -258,8 +258,23 @@ def _default_runner(
                 f.write(json.dumps(row) + "\n")
         cmd = [binary, *argv[1:], "--input", in_path, "--output", out_path]
         try:
+            # The active ResourceGovernor (if any) applies its nproc
+            # fork-bomb guard to this child via preexec_fn. RLIMIT_NPROC
+            # counts per UID, so it is only ever set in children, never
+            # on the runner process itself.
+            preexec_fn = None
+            try:
+                from peira.resource_governor import get_active_governor
+
+                _gov = get_active_governor()
+                if _gov is not None and _gov.nproc is not None:
+                    preexec_fn = _gov.child_preexec()
+            except RuntimeError:
+                # Non-Unix platform: no rlimits available; run unconfined.
+                pass
             proc = subprocess.run(
-                cmd, capture_output=True, text=True, timeout=timeout_s
+                cmd, capture_output=True, text=True, timeout=timeout_s,
+                preexec_fn=preexec_fn,
             )
         except FileNotFoundError as e:
             raise ProviderError(
