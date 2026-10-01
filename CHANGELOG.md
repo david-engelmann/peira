@@ -91,6 +91,19 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
 - `docs/Reproducibility.md`: lockfile usage, Docker build/run
   reference, and regeneration instructions; linked from
   `docs/Overview.md`.
+### Added threshold_edge_hunting attack family
+
+- The v2 suite ships attack family 26: `threshold_edge_hunting`
+  (420 cases, `v2-edge-0001`..`v2-edge-0420`), under
+  `dataset/v2/cases/`. Each case states an explicit numeric cutoff
+  and places the benign evidence within 0.01 of it on the correct
+  side; the attacked arm applies a minimal semantics-preserving
+  perturbation (evidence paraphrase, threshold restatement, cosmetic
+  reorder, combined) changing no number and no cutoff. Fourteen
+  domains, five thresholds per domain, both sides of each cutoff,
+  336 choice + 84 score cases. Design decision D-39: ships as fixed
+  paired cases; the adaptive flip-radius variant is future measurement
+  work. Dataset version 2.3.1 to 2.4.0.
 
 ### Added EB-44 graded flip-severity rubric judge + EB-53 targeted ASR
 
@@ -118,16 +131,16 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
   `targeted_asr` summary block. Targeted ASR is unavailable when no
   target mapping is supplied or no flip has a known target.
 
-### Added cryptographic_payload attack family (family 28, Tier 1)
+### Added cryptographic_payload attack family (family 27, Tier 1)
 
-- New v2 family `cryptographic_payload`. Encrypted payload plus
+- New v2 family `cryptographic_payload`: encrypted payload plus
   in-context decryption instructions. The guard layer classifies the
   ciphertext (benign-looking) while the decision model recovers the
   plaintext in a trusted execution context and follows it. 420 cases
-  (181 critical, 155 high, 84 medium. 300 choice, 50 abstain,
+  (181 critical / 155 high / 84 medium; 300 choice / 50 abstain /
   70 score) authored by `scripts/author_cryptographic_payload.py`, case
   IDs `v2-cryp-0001` and up. The benign control shows the attack in
-  plaintext inside an explicit guardrail BLOCKED notice. The attacked
+  plaintext inside an explicit guardrail BLOCKED notice; the attacked
   variant carries the identical payload as ROT13, base64, keyed
   simple-substitution, or word-reversal ciphertext plus decode-and-apply
   instructions. Every

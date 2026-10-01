@@ -21,7 +21,9 @@ Post-v1 families use `v2-<fam>-XXXX`:
 - `v2-retp-0001` … retrieval_poisoning (family 22)
 - `v2-evpos-0001` … evidence_positioning (family 23)
 - `v2-xling-0001` … crosslingual_shift (family 24)
-- `v2-cryp-0001` … cryptographic_payload (family 28)
+- `v2-jsp-0001` … judge_sycophancy (family 25)
+- `v2-edge-0001` … threshold_edge_hunting (family 26)
+- `v2-cryp-0001` … cryptographic_payload (family 27)
 - future families: `v2-<3-letter family code>-XXXX`, zero-padded,
   dense numbering per family file.
 
@@ -51,9 +53,11 @@ published discordance rates.
 | 22 | retrieval_poisoning | 470 | shipped |
 | 23 | evidence_positioning | 420 | shipped |
 | 24 | crosslingual_shift | 420 | shipped |
-| 28 | cryptographic_payload | 420 | shipped |
+| 25 | judge_sycophancy | 421 | shipped |
+| 26 | threshold_edge_hunting | 420 | shipped |
+| 27 | cryptographic_payload | 420 | shipped |
 
-(Program-wide family numbers. 25 and 26 are the conversational-suite
+(Program-wide family numbers: 25 and 26 are the conversational-suite
 families, which ship under `dataset/conversational/`.)
 
 New families land as `<family>.jsonl` plus a manifest rebuild and a
