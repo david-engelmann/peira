@@ -1704,23 +1704,23 @@ to maturin's `include`. Status: accepted.
 **Why.** maturin is the PyO3-official standard build tool, not a niche
 choice. It makes editable installs correct by construction: no manual
 cdylib discovery, no hand-maintained `EXT_SUFFIX` renaming, no in-tree
-`.so` copies — the entire stale-artifact bug class (cargo target dir
+`.so` copies. The entire stale-artifact bug class (cargo target dir
 ignored by the old script, silent stale installs) stops existing. The
 dev loop is `pip install -e '.[dev]'` once, then `maturin develop` for
 incremental debug rebuilds (seconds) after Rust changes; Python-only
 edits take effect immediately. Distribution: abi3 wheels (one per
 platform, all supported Pythons) keep the `pip install peira` UX
-unchanged — no toolchain needed. Installing from an sdist or git URL
+unchanged with no toolchain needed. Installing from an sdist or git URL
 now requires a Rust toolchain, which is standard for maturin projects.
 
 **Alternatives.** Keep the hand-rolled script and fix its staleness bugs
 (rejected: polishing a niche setup; every platform quirk stays
-hand-maintained). setuptools-rust with `optional=True` (rejected: the
-legacy path — the ecosystem is moving to maturin, and its editable
+hand-maintained). setuptools-rust with `optional=True` (rejected as the
+legacy path: the ecosystem is moving to maturin, and its editable
 rebuild loop is slower and less reliable than `maturin develop`).
 
 **Packaging note.** This settles the build-backend half of the packaging
-decision (Poetry is definitively out — it wants to own the build
+decision (Poetry is definitively out, since it wants to own the build
 backend). The lockfile-manager half went to uv in D-40; the two
 decisions compose: uv manages `uv.lock`, maturin is the build backend,
 pip stays the install path.

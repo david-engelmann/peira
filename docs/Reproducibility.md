@@ -23,9 +23,11 @@ wheels, come from index metadata, so the full-extras set is
 hash-pinned with no multi-gigabyte downloads at lock time.
 
 The `pip install peira` path is unchanged. The package metadata stays
-PEP 621 with the setuptools backend, so plain pip installs from
-`pyproject.toml` exactly as before. uv manages the lockfile only and
-never replaces pip as the installer.
+PEP 621 with the maturin backend, so plain pip installs from
+`pyproject.toml` build the extension automatically. Installing from
+PyPI uses prebuilt abi3 wheels (no Rust toolchain needed); installing
+from an sdist or git URL builds from source and needs a Rust toolchain.
+uv manages the lockfile only and never replaces pip as the installer.
 
 ### Installing from the lockfile
 

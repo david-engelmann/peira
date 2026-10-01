@@ -58,8 +58,10 @@ python-source = "python"
 module-name = "peira._core"
 manifest-path = "crates/peira-python/Cargo.toml"
 # Stable-ABI wheels: one wheel per platform covers all supported Pythons.
-# abi3 is enabled ONLY for wheel builds via this features list, so
-# `cargo test` / `cargo bench` keep working against the full (non-abi3) API.
+# These features apply to every maturin invocation (build, develop, and
+# PEP 517 installs): abi3 constrains the PyO3 API used, so `cargo test` /
+# `cargo bench` (which do not go through maturin) keep working against
+# the full (non-abi3) API.
 features = ["pyo3/abi3-py310"]
 # Wheels ship optimized; local editable installs stay fast debug builds.
 profile = "release"

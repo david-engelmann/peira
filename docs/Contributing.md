@@ -64,7 +64,7 @@ terms via `** 2` and the Rust core uses exact multiplication).
 intervals never depend on the backend.
 
 To build it in a checkout (maturin is the PEP 517 build backend, so a
-normal editable install builds the extension — no separate script):
+normal editable install builds the extension with no separate script):
 
     python3 -m venv .venv
     .venv/bin/pip install -e '.[dev]'
@@ -74,12 +74,12 @@ RUST_AVAILABLE; print(RUST_AVAILABLE)"` prints `True`. After changing
 anything under `crates/`, rebuild incrementally with `.venv/bin/maturin
 develop` (debug, seconds); use `.venv/bin/maturin develop --release`
 for performance work. Python-only edits take effect immediately under
-the editable install — no rebuild needed.
+the editable install with no rebuild needed.
 
 IMPORTANT: always run tests through the venv (`.venv/bin/python -m
 pytest tests -n auto`). `maturin develop` places the compiled `_core`
 extension inside the `python/peira/` source tree as a
-maturin-managed build artifact (gitignored — never commit it); on a
+maturin-managed build artifact (gitignored, so never commit it); on a
 fresh checkout that was never built, running pytest with a bare
 `PYTHONPATH=<worktree>/python` will SILENTLY test the pure-Python
 backend (`RUST_AVAILABLE=False`). The venv is the only supported way
@@ -91,7 +91,7 @@ pinned by `tests/test_rust_backend.py`. Set `PEIRA_NO_RUST=1` to force
 the pure-Python backend locally.
 
 Distribution notes: `pip install peira` from PyPI installs prebuilt
-abi3 wheels (one per platform, all supported Pythons) — no Rust
+abi3 wheels (one per platform, all supported Pythons) with no Rust
 toolchain needed, unchanged UX. Installing from an sdist or a git URL
 now requires a Rust toolchain, which is standard for maturin-based
 projects.
