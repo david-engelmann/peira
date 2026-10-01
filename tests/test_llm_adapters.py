@@ -490,6 +490,34 @@ class TestAnthropicShape(unittest.TestCase):
         self.assertIn("refusal", out.refusal_reason)
         self.assertEqual(validate_output(out, "choice"), [])
 
+    def test_temperature_sent_via_extra_body_not_kwarg(self):
+        # anthropic SDK 1.x removed the temperature kwarg from
+        # messages.create (passing it is a TypeError). The adapter
+        # must carry temperature in extra_body — identical wire JSON
+        # on the 0.x and 1.x SDK lines — never as a top-level kwarg.
+        out = AnthropicAdapter().decide(CASE, "choice", _ctx())
+        self.assertEqual(out.decision, "approve")
+        self.assertNotIn("temperature", self.calls[0])
+        self.assertEqual(self.calls[0]["extra_body"],
+                         {"temperature": 0.0})
+        self.assertEqual(out.transcript["request"]["temperature"],
+                         0.0)
+
+    def test_no_temperature_model_omits_extra_body(self):
+        # claude-opus-5-5 rejects temperature with a 400: nothing
+        # temperature-shaped may reach the wire for it.
+        mod, calls, _ = _make_anthropic(
+            [_anthropic_message(text=GOOD_JSON)])
+        with _fake_modules({"anthropic": mod}), \
+                _env(ANTHROPIC_API_KEY="sk-test"):
+            out = AnthropicAdapter(
+                model="claude-opus-5-5").decide(CASE, "choice", _ctx())
+        self.assertEqual(out.decision, "approve")
+        self.assertNotIn("temperature", calls[0])
+        self.assertNotIn("extra_body", calls[0])
+        self.assertIsNone(
+            out.transcript["request"]["temperature"])
+
 
 class TestAnthropicStructuredOutputs(unittest.TestCase):
     """Native output_config.format path for newer Anthropic models.
