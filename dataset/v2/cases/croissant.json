@@ -67,6 +67,15 @@
       "sha256": "04ffcb0f546c9f5424f78204124797cb3117df23a23fb4c6c37f2a796819357d"
     },
     {
+      "@id": "peira-v1/cryptographic_payload.jsonl",
+      "@type": "cr:FileObject",
+      "contentUrl": "https://raw.githubusercontent.com/david-engelmann/peira/main/dataset/v2/cases/cryptographic_payload.jsonl",
+      "description": "420 paired adversarial decision cases (peira-v1 2.4.0).",
+      "encodingFormat": "application/x-ndjson",
+      "name": "cryptographic_payload.jsonl",
+      "sha256": "1fd7a5e3862a1e0eefca427399fa750a3a16413430d2237ab26d4de60b17a3f2"
+    },
+    {
       "@id": "peira-v1/evidence_positioning.jsonl",
       "@type": "cr:FileObject",
       "contentUrl": "https://raw.githubusercontent.com/david-engelmann/peira/main/dataset/v2/cases/evidence_positioning.jsonl",
