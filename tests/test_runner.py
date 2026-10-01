@@ -346,5 +346,37 @@ class TestScorePairFlipSemantics(unittest.TestCase):
         self.assertTrue(r.flipped)
 
 
+class GenerationMaxTokensSealingTest(unittest.TestCase):
+    """EB-10: the adapter's declared generation cap seals into config."""
+
+    def test_explicit_declaration_wins(self):
+        from peira.runner import _seal_generation_max_tokens
+        adapter = SimpleNamespace(generation_max_tokens=1024,
+                                  decode_params={"max_tokens": 512})
+        config: dict = {}
+        _seal_generation_max_tokens(config, adapter)
+        self.assertEqual(config["generation_max_tokens"], 1024)
+
+    def test_decode_params_fallback(self):
+        from peira.runner import _seal_generation_max_tokens
+        adapter = SimpleNamespace(decode_params={"max_tokens": 256})
+        config: dict = {}
+        _seal_generation_max_tokens(config, adapter)
+        self.assertEqual(config["generation_max_tokens"], 256)
+
+    def test_absent_cap_leaves_key_out(self):
+        from peira.runner import _seal_generation_max_tokens
+        config: dict = {}
+        _seal_generation_max_tokens(config, SimpleNamespace())
+        self.assertNotIn("generation_max_tokens", config)
+
+    def test_non_positive_cap_is_not_a_cap(self):
+        from peira.runner import _seal_generation_max_tokens
+        adapter = SimpleNamespace(generation_max_tokens=0)
+        config: dict = {}
+        _seal_generation_max_tokens(config, adapter)
+        self.assertNotIn("generation_max_tokens", config)
+
+
 if __name__ == "__main__":
     unittest.main()
