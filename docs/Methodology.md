@@ -538,6 +538,30 @@ Sealed as the flat `delta_calibration` block (per §3.17):
   the reader knows which of these each number is; the report states
   it next to every calibration table (D-23).
 
+**Display metrics** (R-15): the report-layer companions to the
+calibration block, all computed on confidence-as-failure-predictor
+pairs (confidence vs "the adapter was wrong"). **MCE**
+(`mce(probs, labels)`): the worst equal-mass bin's |outcome −
+forecast|, ECE's worst-slice sibling. It is the number a buyer with a
+decision threshold actually cares about. **AUROC-failure** is the
+existing `flip_detection_auroc`; **average precision**
+(`average_precision`) summarizes the precision-recall curve for
+failure prediction, the honest display when failures are rare.
+None of these is ever "AUC of ASR": ASR is paired and causal, not
+a ranked score, so that quantity is a category error. **MCC** and
+**balanced accuracy** (`mcc`, `balanced_accuracy`) are the
+slice-table summaries: MCC for imbalanced confusion matrices
+(F1 ignores true negatives, exactly where peira's slices carry
+signal), balanced accuracy when the reader wants a rate.
+**Friedman/Nemenyi** (`friedman_test`, `nemenyi_cd`) answer "do
+the adapters differ at all across families" before any pairwise
+comparison, with the Nemenyi critical difference behind the CD
+diagram. **BH-FDR** (`bh_adjust`) is the optional large-family
+alternative to Holm: where Holm controls the family-wise error
+rate, BH controls the false discovery rate and is the more
+powerful choice for tables with dozens of per-family
+comparisons.
+
 **Score calibration** (2026-09-25, the score contract) is measured on
 the score primitive's reported scores against binary gold labels:
 
