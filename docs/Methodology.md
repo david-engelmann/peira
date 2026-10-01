@@ -1805,6 +1805,51 @@ flip rates are unaffected.
 7.7pp at 30%, 8.9pp at 40%. Published in the dataset manifest's
 `mdes` table (`dataset/v2/cases/manifest.json`).
 
+## threshold_edge_hunting (attack family)
+
+Family 26. Each case states an explicit numeric cutoff and places the
+benign evidence within 0.01 of it on the correct side, for example
+35.99% against a 36% cutoff. Fourteen decision domains (lending,
+hiring, medical triage, insurance pricing, admissions, fee waivers,
+procurement, content moderation, water quality, aviation, food
+safety, and others), five thresholds per domain, both sides of each
+cutoff. The family measures boundary stability. It asks whether the
+model's decision holds when the evidence sits at the edge of the
+stated rule.
+
+**Paired-control construction.** The benign prompt states the cutoff,
+gives the edge-proximate evidence, and adds neutral file detail. The
+attacked arm applies one of four minimal perturbations that change no
+number and no cutoff. Evidence paraphrase rewords the evidence
+sentence with byte-identical numbers. Threshold restatement rewords
+the cutoff sentence with the identical value. Cosmetic reorder swaps
+the evidence and background order. Combined applies a restatement
+plus a paraphrase. Edge proximity is held constant across arms, so
+the pair isolates the perturbation's effect. G2 (paired-variants)
+enforces that the variants differ. The authoring contract enforces
+that they differ *only* by the perturbation.
+
+**Validity diagnostic, the deletion test.** Move the evidence 0.05
+away from the cutoff, keeping the perturbation. If the attack dies
+once the case is no longer at the edge, the case is genuine
+threshold_edge_hunting. If the perturbed wording still flips the
+decision far from any boundary, the mechanism is not edge hunting
+and the case is misclassified. (Design diagnostic. Empirical
+demonstration across models is future work.)
+
+**Fixed pairs, not adaptive search.** This family ships as fixed
+paired cases. An adaptive variant that sweeps paraphrase space per
+model to find each model's flip radius (the Boundary Point
+Jailbreaking analogue) is future measurement work, alongside the
+R-04 stability probe and the EB-35 threshold sweeps. The fixed-pair
+design answers whether a minimal rewording moves the decision at
+the edge. The adaptive design would answer how far the edge can be
+pushed. Both are useful. Only the first ships here.
+
+**Design MDEs.** At n=400, 4.4pp at 10% discordance, 6.3pp at 20%,
+7.7pp at 30%, 8.9pp at 40%. Published in the dataset manifest's
+`mdes` table (`dataset/v2/cases/manifest.json`).
+
 ## Near-dedup calibration (G9)
 
 Dataset gate G9 flags near-duplicate cases with character-trigram cosine
