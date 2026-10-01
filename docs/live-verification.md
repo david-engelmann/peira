@@ -77,13 +77,13 @@ Record the vendor-console actuals in the run report and pass them to
 Per-adapter estimates use the live OpenRouter pricing snapshot of
 2026-10-01. Each adapter is 40 calls (20 cases x 2 arms), 1000 prompt
 + 300 completion tokens per call, which is conservative against the
-measured mean case prompt of about 477 chars. The model under test
+measured mean case prompt of about 507 chars. The model under test
 cannot be substituted, so each row uses the closest OpenRouter price
 as a proxy. Spend lands on vendor API keys, not the OpenRouter key.
 
 | adapter | configured id | OpenRouter proxy | in / 1M | out / 1M | 40-call estimate | plan |
 |---|---|---|---|---|---|---|
-| XAIAdapter | grok-4 | x-ai/grok-4.7 | $2.00 | $6.00 | $0.152 | CG-0016 |
+| XAIAdapter | grok-4 | x-ai/grok-4.7 | $2.00 | $6.00 | $0.152 | CG-0016 (closed, fresh plan needed) |
 | DeepSeekAdapter | deepseek-flash | deepseek/deepseek-v4-flash | $0.042 | $0.084 | $0.0027 | CG-0017 |
 | MetaLlamaAdapter | Llama-4-Maverick-17B-128E-Instruct-FP8 | meta-llama/llama-4-maverick | $0.1875 | $0.6525 | $0.0153 | CG-0018 |
 | ZaiAdapter | glm-4-plus | z-ai/glm-4.5 | $0.60 | $2.20 | $0.0504 | CG-0019 |
@@ -97,12 +97,13 @@ $10 monthly ask-first thresholds, and cheapest-sufficient-model
 default where substitution is allowed. The four models under test
 cannot be substituted, the spend spans four vendor accounts, and
 none of the four vendor keys is provisioned in the agent environment.
-CG-0016 through
-CG-0019 are the active plans. They supersede the earlier estimates
-from before the call count was corrected to 40 and the prices were
-refreshed. No paid call has been made and no spend has occurred.
-One begin/end pair was recorded against CG-0016 on 2026-10-01 with
-no run between them, and its usage delta was zero.
+CG-0017 through CG-0019 are the open plans. They supersede the
+earlier estimates from before the call count was corrected to 40
+and the prices were refreshed. CG-0016 (XAI) was opened and closed
+on 2026-10-01 with no run between its begin and end, so the XAI
+smoke needs a fresh plan at the same estimate before execution.
+No paid call has been made and no spend has occurred. The begin/end
+pair against CG-0016 recorded a zero usage delta.
 
 ## What the smoke checks per adapter
 
