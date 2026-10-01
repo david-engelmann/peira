@@ -1,10 +1,9 @@
 # Reproducibility
 
 Two artifacts pin the peira environment so a run can be reproduced
-exactly: the Python lockfiles and the Docker image. The Docker image
-is built from the pinned lockfiles and smoke-tested in CI. The
-lockfiles pin the Docker image. CI's own Python test jobs install
-unpinned with `pip install -e .[dev]`.
+exactly. The Python lockfiles pin the dependencies the Docker image
+installs, and the image is smoke-tested in CI. CI's own Python test
+jobs install unpinned with `pip install -e .[dev]`.
 
 ## Python lockfiles
 

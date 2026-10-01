@@ -29,8 +29,8 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
   `pip-compile` from `pyproject.toml`: `base.lock` (empty by design:
   the base tier keeps its zero third-party runtime dependency
   invariant), `dev.lock` (the `dev` extra, hash-pinned
-  with `--generate-hashes`, pinning the Docker image while CI's own
-  Python jobs install unpinned), and `all.lock` (every extra, including
+  with `--generate-hashes`, pinning the dependencies the Docker image
+  installs while CI's own Python jobs install unpinned), and `all.lock` (every extra, including
   the Hugging Face and LLM-adapter extras, version-pinned because
   hash-pinning torch's CUDA tree is impractical).
 - Multi-stage `Dockerfile` (Rust 1.98.1 builder for the `peira._core`
