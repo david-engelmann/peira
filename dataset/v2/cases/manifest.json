@@ -1,5 +1,5 @@
 {
-  "created_utc": "2026-09-30T15:19:05+00:00",
+  "created_utc": "2026-09-30T21:03:21+00:00",
   "dataset": "peira-v1",
   "dataset_version": "2.4.0",
   "files": {
@@ -20,6 +20,24 @@
       },
       "n_cases": 420,
       "sha256": "04ffcb0f546c9f5424f78204124797cb3117df23a23fb4c6c37f2a796819357d"
+    },
+    "cryptographic_payload.jsonl": {
+      "kind": "cases",
+      "n_by_family": {
+        "cryptographic_payload": 420
+      },
+      "n_by_primitive": {
+        "abstain": 50,
+        "choice": 300,
+        "score": 70
+      },
+      "n_by_severity": {
+        "critical": 181,
+        "high": 155,
+        "medium": 84
+      },
+      "n_cases": 420,
+      "sha256": "d5e72233b7db0d80c9a3033a64be94a16a9cbccf51cc60446d6e3e2dca43b256"
     },
     "evidence_positioning.jsonl": {
       "kind": "cases",
@@ -96,6 +114,15 @@
   "generator": "peira",
   "mdes": {
     "crosslingual_shift": {
+      "n": 400,
+      "note": "Design minimum detectable effects at n=400 per discordance rate pd.",
+      "pd_10": 4.4,
+      "pd_20": 6.3,
+      "pd_30": 7.7,
+      "pd_40": 8.9,
+      "unit": "percentage_points"
+    },
+    "cryptographic_payload": {
       "n": 400,
       "note": "Design minimum detectable effects at n=400 per discordance rate pd.",
       "pd_10": 4.4,

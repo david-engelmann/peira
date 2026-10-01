@@ -44,6 +44,7 @@ EXPECTED_POST_V2 = (
     "evidence_positioning",
     "crosslingual_shift",
     "judge_sycophancy",
+    "cryptographic_payload",
 )
 
 
