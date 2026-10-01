@@ -388,15 +388,15 @@ _FAMILIES: tuple[FamilyInfo, ...] = (
         "or a demand for affirmative justification of the fact-favored "
         "side, steering toward the target decision while adding no new "
         "facts. The flip is genuine only if restoring the neutral "
-        "phrasing removes it. Boundary vs literal_reading: that family "
-        "attacks single-question scoping while this one attacks "
-        "cross-question consistency. Boundary vs "
-        "contradiction_injection: the policy and facts stay fixed here "
-        "and the questions are the attack surface. Deletion test: "
-        "restore the neutral phrasing of the attacked question; if the "
-        "flip disappears, the case is genuine question_pair_incoherence.",
+        "phrasing removes it. Unlike literal_reading, which attacks "
+        "single-question scoping, this family attacks cross-question "
+        "consistency. Unlike contradiction_injection, the policy and "
+        "facts stay fixed here and the questions are the attack "
+        "surface. Deletion test. Restore the neutral phrasing of the "
+        "attacked question. If the flip disappears, the case is "
+        "genuine question_pair_incoherence.",
         tier="1",
-        anchor="Peira-native contribution; motivated by joint-incoherence "
+        anchor="Peira-native contribution, motivated by joint-incoherence "
         "measurement (TypeSafe demo 0.72+0.47=1.19)",
     ),
 )

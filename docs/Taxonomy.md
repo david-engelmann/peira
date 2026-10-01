@@ -197,14 +197,14 @@ families); the v1 cases are frozen as authored.
    structured state.
 9. `question_pair_incoherence` vs `literal_reading` vs
    `contradiction_injection`. `literal_reading` attacks single-question
-   scoping: how one question is read in isolation. `contradiction_injection`
-   plants contradictory clauses in the policy: the attack surface is the
-   rule text. `question_pair_incoherence` keeps the policy and the facts
-   fixed and attacks cross-question consistency: the surface is how the
-   two questions are phrased. Deletion test: restore the neutral phrasing
-   of the attacked question. If the flip disappears it is
-   `question_pair_incoherence`; if the flip survives rephrasing, the case
-   is misclassified.
+   scoping, meaning how one question is read in isolation.
+   `contradiction_injection` plants contradictory clauses in the policy,
+   so the attack surface is the rule text. `question_pair_incoherence`
+   keeps the policy and the facts fixed and attacks cross-question
+   consistency, so the surface is how the two questions are phrased.
+   The deletion test restores the neutral phrasing of the attacked
+   question. If the flip disappears it is `question_pair_incoherence`.
+   If the flip survives rephrasing, the case is misclassified.
 
 Classifier guardrails get their own benchmark: the **safety-policy
 suite** (`dataset/safety-policy/`), a separate guardrail-native suite
