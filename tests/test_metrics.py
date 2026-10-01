@@ -74,6 +74,7 @@ from peira.metrics import (
     selective_risk_ci,
     severity_weighted_asr,
     severity_weighted_asr_ci,
+    twin_refusal_delta,
     wilson_ci,
     MIN_BT_COMPARISONS,
     MIN_SCORE_CASES,
@@ -810,6 +811,113 @@ class TestOutcomeAccounting(unittest.TestCase):
         empty = refusal_rate_delta([])
         self.assertFalse(empty.sufficient)
         self.assertEqual(empty.n, 0)
+
+
+def _twin_r(case_id, benign_abstained=False):
+    # PerCaseResult with an explicit case_id for twin pairing tests.
+    # The attacked arm is never read by twin_refusal_delta.
+    return PerCaseResult(
+        case_id=case_id,
+        family="f",
+        severity="high",
+        primitive="choice",
+        benign=_rec(abstained=benign_abstained,
+                    refusal_reason="policy" if benign_abstained else ""),
+        attacked=_rec(),
+        flipped=False,
+        eligible=True,
+        ineligibility_reason="",
+    )
+
+
+class TestTwinRefusalDelta(unittest.TestCase):
+    def _groups(self, n_twin, n_base, twin_abs, base_abs):
+        twins = [_twin_r(f"t{i:03d}", twin_abs(i)) for i in range(n_twin)]
+        bases = [_twin_r(f"b{i:03d}", base_abs(i)) for i in range(n_base)]
+        return twins, bases
+
+    def test_hand_computed_positive_delta(self):
+        # 40 twins: 10 abstain (0.25). 40 baselines: 4 abstain (0.10).
+        # Delta = 0.25 - 0.10 = 0.15.
+        twins, bases = self._groups(
+            40, 40, lambda i: i < 10, lambda i: i < 4)
+        est = twin_refusal_delta(twins, bases, n_boot=200, seed=0)
+        self.assertTrue(est.sufficient)
+        self.assertEqual(est.n, 40)
+        self.assertAlmostEqual(est.delta, 0.15)
+        lo, hi = est.ci
+        self.assertLessEqual(lo, est.delta)
+        self.assertGreaterEqual(hi, est.delta)
+
+    def test_unequal_group_sizes(self):
+        # Groups need not be the same size; the delta is the
+        # difference of the two group means.
+        twins, bases = self._groups(
+            30, 50, lambda i: i < 6, lambda i: i < 5)
+        est = twin_refusal_delta(twins, bases, n_boot=200, seed=0)
+        self.assertTrue(est.sufficient)
+        self.assertEqual(est.n, 30)
+        self.assertAlmostEqual(est.delta, 0.2 - 0.1)
+
+    def test_zero_when_groups_match(self):
+        twins, bases = self._groups(
+            30, 30, lambda i: i % 3 == 0, lambda i: i % 3 == 0)
+        est = twin_refusal_delta(twins, bases, n_boot=200, seed=0)
+        self.assertTrue(est.sufficient)
+        self.assertEqual(est.delta, 0.0)
+
+    def test_negative_when_twins_refuse_less(self):
+        twins, bases = self._groups(
+            30, 30, lambda i: False, lambda i: i < 6)
+        est = twin_refusal_delta(twins, bases, n_boot=200, seed=0)
+        self.assertTrue(est.sufficient)
+        self.assertAlmostEqual(est.delta, -0.2)
+
+    def test_uses_benign_arm_only(self):
+        # Attacked-arm abstentions must not leak into the delta: the
+        # twin metric reads benign arms on both sides.
+        attacked_abs = [
+            PerCaseResult(
+                case_id=f"t{i:03d}", family="f", severity="high",
+                primitive="choice", benign=_rec(),
+                attacked=_rec(abstained=True,
+                               refusal_reason="provider block"),
+                flipped=False, eligible=True, ineligibility_reason="")
+            for i in range(30)
+        ]
+        bases = [_twin_r(f"b{i:03d}") for i in range(30)]
+        est = twin_refusal_delta(attacked_abs, bases, n_boot=200, seed=0)
+        self.assertTrue(est.sufficient)
+        self.assertEqual(est.delta, 0.0)
+
+    def test_insufficient_below_gate(self):
+        # Either group below MIN_DELTA_CASES withholds the estimate.
+        twins, bases = self._groups(10, 40, lambda i: True, lambda i: False)
+        est = twin_refusal_delta(twins, bases)
+        self.assertFalse(est.sufficient)
+        self.assertIsNone(est.delta)
+        self.assertIsNone(est.ci)
+        self.assertEqual(est.n, 10)
+        twins2, bases2 = self._groups(40, 10, lambda i: True, lambda i: False)
+        est2 = twin_refusal_delta(twins2, bases2)
+        self.assertFalse(est2.sufficient)
+        self.assertEqual(est2.n, 10)
+
+    def test_no_id_pairing_required(self):
+        # The groups are independent: case_ids need not share a
+        # suffix or match across groups.
+        twins, bases = self._groups(
+            30, 30, lambda i: False, lambda i: False)
+        est = twin_refusal_delta(twins, bases, n_boot=200, seed=0)
+        self.assertTrue(est.sufficient)
+        self.assertEqual(est.delta, 0.0)
+
+    def test_deterministic_ci_for_seed(self):
+        twins, bases = self._groups(
+            40, 40, lambda i: i < 10, lambda i: i < 4)
+        e1 = twin_refusal_delta(twins, bases, n_boot=200, seed=7)
+        e2 = twin_refusal_delta(twins, bases, n_boot=200, seed=7)
+        self.assertEqual(e1.ci, e2.ci)
 
 
 class TestAdapterVersionLock(unittest.TestCase):

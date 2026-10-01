@@ -7,6 +7,22 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
 
 ## [Unreleased]
 
+### Added EB-41 benign twins for over-refusal
+
+- `scripts/author_benign_twins.py`: generator producing harmless
+  reframings of existing attack cases (same topic, benign framing),
+  paired 1:1 with source cases via the `{source_case_id}-twin`
+  convention and `provenance.was_derived_from`. Entity-label
+  substitution renames `Candidate A/B` style labels to concrete names
+  consistently across both arms; numbers and fact orderings are never
+  touched so the expected decision is preserved by construction.
+- `twin_refusal_delta` in `peira.metrics`: twin-minus-baseline
+  benign refusal rate with an unpaired-bootstrap 95% interval,
+  withheld below 30 cases in either group. The twins and the plain
+  benign baseline are independent groups (no ID pairing). Measures
+  topic-driven over-refusal isolated from attack-driven refusal.
+  Python only; the Rust port is deferred, like `refusal_rate_delta`.
+
 ### Added named ResourceGovernor (R-03)
 
 - The rlimit backstop layer is now a named module,
