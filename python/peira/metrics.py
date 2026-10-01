@@ -55,6 +55,7 @@ from typing import Any, Callable, Iterator, Mapping, NamedTuple
 from peira._rust import _impl as _rust
 from peira.adapters.base import CallUsage, _unit_interval
 from peira.concurrency import _require_json_str
+from peira.sampling import check_sampling_config
 
 # Ineligibility reasons, recorded on PerCaseResult.ineligibility_reason.
 INELIGIBLE_BENIGN_MALFORMED = "benign_malformed"
@@ -203,6 +204,11 @@ class CallRecord:
     # overhead vs adapter execution vs backoff). Zero on pre-R-12
     # records; ``from_dict`` recovers it from the sealed artifact.
     timing_ms: CallTiming = CallTiming()
+    # R-04: the effective sampling config actually sent on the wire
+    # (temperature, seed, max_tokens) plus the sampling_source flag.
+    # None on records sealed before R-04; ``from_dict`` recovers it
+    # from the sealed artifact or transcript entry.
+    sampling_config: dict[str, Any] | None = None
 
     @classmethod
     def from_dict(cls, d: dict[str, Any]) -> "CallRecord":
@@ -271,6 +277,13 @@ class CallRecord:
                 f"got {type(cached).__name__}"
             )
         timing_ms = CallTiming.from_dict(d.get("timing_ms"))
+        # R-04: the effective sampling config. Hostile-input treatment:
+        # a wrong-typed config must fail here with a clean ValueError,
+        # and the source must come from the closed vocabulary:
+        # anything else is corrupt data. Absent (None) on records
+        # sealed before R-04.
+        sampling_config = d.get("sampling_config")
+        check_sampling_config(sampling_config)
         return cls(
             decision=d["decision"],
             confidence=confidence,
@@ -287,6 +300,7 @@ class CallRecord:
             timeout_kind=timeout_kind,
             cached=cached,
             timing_ms=timing_ms,
+            sampling_config=sampling_config,
         )
 
 
@@ -6302,6 +6316,34 @@ def _reliability_block(
     }
 
 
+# ---------------------------------------------------------------------------
+# EB-23 / EB-7 / EB-10 summarize() sections (external-benchmark Tier 1).
+#
+# These live in peira.eb_analysis, which imports PerCaseResult and
+# helpers from this module: a top-level import here would be
+# circular, so the wrappers below import lazily. The import cost is
+# paid once (sys.modules cache); the wrappers keep summarize()'s
+# body free of import machinery.
+# ---------------------------------------------------------------------------
+
+
+def _eb_confidence_erosion_block(
+    results: list[PerCaseResult],
+) -> dict[str, Any]:
+    from peira.eb_analysis import confidence_erosion_block
+
+    return confidence_erosion_block(results)
+
+
+def _eb_length_diagnostics_block(
+    results: list[PerCaseResult],
+    seed: int,
+) -> dict[str, Any]:
+    from peira.eb_analysis import length_diagnostics_block
+
+    return length_diagnostics_block(results, seed=seed)
+
+
 def summarize(
     results: list[PerCaseResult],
     required_families: list[str] | None = None,
@@ -6585,6 +6627,22 @@ def summarize(
         # CI, material and catastrophic shares, threshold-crossing rate,
         # histogram) overall and by family/severity/flip-direction.
         "score_delta": _score_delta_block(results, n_boot, seed),
+        # EB-23: confidence-erosion distribution on failed attacks.
+        # Per non-flipped case, benign-minus-attacked confidence:
+        # distribution (mean/p50/p90/histogram) overall and per family,
+        # plus the near-flip fraction (large erosion, decision held).
+        # The within-case confidence view complementing M-6's Wilson
+        # CIs on severity flip rates. Function-level import: eb_analysis
+        # imports from this module, so a top-level import would cycle.
+        "confidence_erosion": _eb_confidence_erosion_block(results),
+        # EB-7/EB-10: length de-confounding diagnostics and
+        # length-sensitivity analysis. Per-family OLS slope of the flip
+        # indicator on attacked-arm tokens_out (bootstrap CI), ASR by
+        # length tertile, and Holm-adjusted de-confounding tests over
+        # attacked length + verbosity delta. A significant family gets
+        # length as a reported covariate.
+        "length_diagnostics": _eb_length_diagnostics_block(
+            results, seed),
     }
 
 
@@ -8283,6 +8341,8 @@ def flip_detection_stability(
     pairs = _pair_derived_results(
         clean_results, noisy_results, f"-noise-{perturbation_class}"
     )
+    if not pairs:
+        raise ValueError("no pairs: both result lists are empty")
     f2n = sum(
         1 for c, p in pairs if c.flipped and not p.flipped
     )

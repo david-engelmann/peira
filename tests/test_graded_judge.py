@@ -511,6 +511,17 @@ class TestJudgeScoreStability(unittest.TestCase):
         with self.assertRaises(ValueError):
             judge_score_stability([_rs("a"), _rs("a")], [_rs("a")])
 
+    def test_duplicate_noisy_id_rejected(self):
+        with self.assertRaises(ValueError):
+            judge_score_stability([_rs("a")], [_rs("a"), _rs("a")])
+
+    def test_clean_superset_rejected(self):
+        # A clean id with no noisy counterpart must raise, not be
+        # silently dropped: dropping pairs would bias the drift
+        # estimate the docstring guards against.
+        with self.assertRaises(ValueError):
+            judge_score_stability([_rs("a"), _rs("b")], [_rs("a")])
+
     def test_empty_rejected(self):
         with self.assertRaises(ValueError):
             judge_score_stability([], [])

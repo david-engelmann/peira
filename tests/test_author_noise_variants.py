@@ -203,3 +203,12 @@ class TestValidationSample(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestSchemaGuard(unittest.TestCase):
+    def test_conversational_schema_rejected_clearly(self):
+        src = _source_case()
+        src["benign"] = {"turns": [], "options": [], "expected_decision": "x"}
+        with self.assertRaises(ValueError) as ctx:
+            anv.make_variant(src, "typo", "benign", 0)
+        self.assertIn("single-decision", str(ctx.exception))

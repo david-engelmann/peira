@@ -149,6 +149,26 @@ def _arm_case(arm: dict, cls: str, seed: int, do_perturb: bool) -> dict:
     return new_arm
 
 
+def _require_single_decision_schema(source_case: dict) -> None:
+    """Reject non-single-decision case schemas with a clear error.
+
+    Conversational multi-turn cases (``benign.turns``) carry no
+    ``input.prompt``; perturbing them would be a different design
+    decision (which turns? all of them?). Fail loudly instead of a
+    raw KeyError.
+    """
+    for arm in ("benign", "attacked"):
+        try:
+            source_case[arm]["input"]["prompt"]
+        except (KeyError, TypeError):
+            raise ValueError(
+                f"{source_case.get('case_id', '?')}: arm {arm!r} has no "
+                "input.prompt (this generator supports the "
+                "single-decision case schema only; conversational "
+                "multi-turn cases are out of scope)"
+            )
+
+
 def make_variant(source_case: dict, cls: str, arms: str, seed: int) -> dict:
     """Build one noise-variant case dict from a source case dict.
 
@@ -156,6 +176,7 @@ def make_variant(source_case: dict, cls: str, arms: str, seed: int) -> dict:
     generator refuses to emit rather than shipping a changed-meaning
     variant).
     """
+    _require_single_decision_schema(source_case)
     if cls not in PERTURBATION_CLASSES:
         raise ValueError(f"unknown perturbation class {cls!r}")
     if arms not in ARM_MODES:

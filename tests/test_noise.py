@@ -141,6 +141,20 @@ class TestParaphrase(unittest.TestCase):
                         f"seed {seed}: unexpected change {w0} -> {w1}",
                     )
 
+    def test_no_cascade_chains(self):
+        # An introduced synonym must never be re-substituted in the
+        # same call: "new" -> "recent" must not chain into "latest".
+        # Two-hop targets are only reachable via a chain here, since
+        # none of their source keys appear in the input text.
+        text = "The new policy is bad and important."
+        for seed in range(200):
+            out = noise.perturb_paraphrase(text, seed)
+            words = {w.lower().rstrip(".,") for w in out.split()}
+            self.assertTrue(
+                words.isdisjoint({"latest", "notable", "subpar"}),
+                f"seed {seed}: cascade chain in {out!r}",
+            )
+
     def test_entities_not_in_map(self):
         # The map must not contain words that could be entity labels.
         for word in ("candidate", "vendor", "proposal", "hire",

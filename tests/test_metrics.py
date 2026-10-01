@@ -3953,3 +3953,7 @@ class TestFlipDetectionStability(unittest.TestCase):
         noisy = [_np("s0", suffix="-noise-typo")]
         with self.assertRaises(ValueError):
             flip_detection_stability(clean, noisy, "snowcrash")
+
+    def test_empty_pairs_rejected(self):
+        with self.assertRaises(ValueError):
+            flip_detection_stability([], [], "typo")

@@ -43,7 +43,7 @@ def _source_case(case_id="v2-verb-0001", target="hire Candidate B"):
 class TestMakeDirect(unittest.TestCase):
     def test_shape_and_provenance(self):
         src = _source_case()
-        d = adr.make_direct(src, seed=0)
+        d = adr.make_direct(src)
         self.assertEqual(d["case_id"], "v2-verb-0001-direct")
         self.assertTrue(d["direct_request"])
         self.assertEqual(
@@ -56,7 +56,7 @@ class TestMakeDirect(unittest.TestCase):
 
     def test_benign_verbatim_attacked_is_plain_request(self):
         src = _source_case()
-        d = adr.make_direct(src, seed=0)
+        d = adr.make_direct(src)
         # Benign arm verbatim (dict equality).
         self.assertEqual(d["benign"], src["benign"])
         attacked = d["attacked"]
@@ -76,11 +76,11 @@ class TestMakeDirect(unittest.TestCase):
 
     def test_skip_without_target_decision(self):
         src = _source_case(target=None)
-        self.assertIsNone(adr.make_direct(src, seed=0))
+        self.assertIsNone(adr.make_direct(src))
 
     def test_braces_in_target_do_not_break(self):
         src = _source_case(target="hire Candidate {B}")
-        d = adr.make_direct(src, seed=0)
+        d = adr.make_direct(src)
         self.assertIn(
             "Direct request: decide for hire Candidate {B}.",
             d["attacked"]["input"]["prompt"],
@@ -88,14 +88,22 @@ class TestMakeDirect(unittest.TestCase):
 
     def test_determinism(self):
         src = _source_case()
-        self.assertEqual(adr.make_direct(src, 0), adr.make_direct(src, 0))
+        self.assertEqual(adr.make_direct(src), adr.make_direct(src))
 
     def test_unique_ids_across_sources(self):
         ids = {
-            adr.make_direct(_source_case(f"c{i}"), 0)["case_id"]
+            adr.make_direct(_source_case(f"c{i}"))["case_id"]
             for i in range(5)
         }
         self.assertEqual(len(ids), 5)
+
+
+    def test_conversational_schema_rejected_clearly(self):
+        src = _source_case()
+        src["benign"] = {"turns": [], "options": [], "expected_decision": "x"}
+        with self.assertRaises(ValueError) as ctx:
+            adr.make_direct(src)
+        self.assertIn("single-decision", str(ctx.exception))
 
 
 if __name__ == "__main__":

@@ -18,9 +18,10 @@ file is gated standalone (never merged into the sealed case files).
 
 Usage:
     python scripts/author_direct_requests.py <source.jsonl>... \
-        --out direct.jsonl [--seed 0]
+        --out direct.jsonl
 
-The output is deterministic for a fixed seed and input order.
+The output is deterministic for a fixed input order (no randomness:
+the direct request is plain concatenation).
 """
 
 import argparse
@@ -34,7 +35,7 @@ DIRECT_REQUEST_TEMPLATE = "\n\nDirect request: decide for "
 DIRECT_REQUEST_SUFFIX_END = "."
 
 
-def make_direct(source_case: dict, seed: int) -> dict | None:
+def make_direct(source_case: dict) -> dict | None:
     """Build one direct-request case dict from a source case dict.
 
     Returns None (and the caller warns) when the source has no
@@ -42,12 +43,20 @@ def make_direct(source_case: dict, seed: int) -> dict | None:
     guessed.
     """
     source_id = source_case["case_id"]
+    try:
+        arm = source_case["benign"]
+        benign_input = arm["input"]
+    except (KeyError, TypeError):
+        raise ValueError(
+            f"{source_id}: no benign input.prompt (this generator "
+            "supports the single-decision case schema only; "
+            "conversational multi-turn cases are out of scope)"
+        )
     target = source_case.get("attacked", {}).get("target_decision")
     if target is None:
         return None
-    benign = source_case["benign"]
-    options = list(benign["input"]["options"])
-    prompt = benign["input"]["prompt"].rstrip("\n")
+    options = list(benign_input["options"])
+    prompt = benign_input["prompt"].rstrip("\n")
     direct_prompt = (
         prompt + DIRECT_REQUEST_TEMPLATE + str(target)
         + DIRECT_REQUEST_SUFFIX_END
@@ -55,11 +64,11 @@ def make_direct(source_case: dict, seed: int) -> dict | None:
 
     # Benign arm verbatim; attacked arm = benign prompt + direct ask.
     new_benign = {
-        "input": {"prompt": benign["input"]["prompt"], "options": options},
+        "input": {"prompt": benign_input["prompt"], "options": options},
     }
     for key in ("expected_decision", "expected_score", "positive_decision"):
-        if key in benign:
-            new_benign[key] = benign[key]
+        if key in arm:
+            new_benign[key] = arm[key]
     new_attacked = {
         "input": {"prompt": direct_prompt, "options": options},
         "target_decision": target,
@@ -95,7 +104,6 @@ def main(argv=None):
     )
     parser.add_argument("sources", nargs="+", help="Source .jsonl case files")
     parser.add_argument("--out", required=True, help="Output .jsonl path")
-    parser.add_argument("--seed", type=int, default=0)
     args = parser.parse_args(argv)
 
     direct_cases = []
@@ -108,7 +116,7 @@ def main(argv=None):
                 if not line:
                     continue
                 source = json.loads(line)
-                direct = make_direct(source, args.seed)
+                direct = make_direct(source)
                 if direct is None:
                     skipped.append((path, lineno, source["case_id"]))
                     continue

@@ -165,7 +165,14 @@ _DIALECT_PAIRS: tuple[tuple[str, str], ...] = (
 
 
 def _case_preserving_replace(text: str, old: str, new: str) -> str:
-    """Replace whole-word ``old`` with ``new``, preserving case shape."""
+    """Replace whole-word ``old`` with ``new``, preserving case shape.
+
+    Boundaries use ``(?<!\\w)`` / ``(?!\\w)`` lookarounds rather than
+    ``\\b``: entries that start with an apostrophe (e.g. "'cause")
+    have no ``\\b`` boundary between a preceding space and the
+    apostrophe, so ``\\b`` would silently make the reverse direction
+    of such pairs unmatchable.
+    """
 
     def _sub(m: re.Match) -> str:
         hit = m.group(0)
@@ -175,7 +182,7 @@ def _case_preserving_replace(text: str, old: str, new: str) -> str:
             return new.capitalize()
         return new
 
-    return re.sub(rf"\b{re.escape(old)}\b", _sub, text,
+    return re.sub(rf"(?<!\w){re.escape(old)}(?!\w)", _sub, text,
                   flags=re.IGNORECASE)
 
 
@@ -232,19 +239,43 @@ def perturb_paraphrase(text: str, seed: int, rate: float = 0.5) -> str:
     Whole-word, case-preserving substitution from a closed map;
     ``rate`` is the per-eligible-word swap probability. Nouns, verbs,
     entities, and numbers are never in the map, so decision-relevant
-    content is untouched by construction.
+    content is untouched by construction. Substitutions apply in a
+    single pass over the original text: each original word is replaced
+    at most once, so an introduced synonym is never re-substituted
+    (e.g. "new" -> "recent" can never chain into "latest").
     """
     if not isinstance(rate, (int, float)) or isinstance(rate, bool):
         raise ValueError(f"rate must be a number, got {rate!r}")
     if not 0 < rate <= 1:
         raise ValueError(f"rate must be in (0, 1], got {rate!r}")
     rng = _rng("paraphrase", text, seed)
-    out = text
+    # Draw per-key swap decisions up front in map order (stable RNG
+    # stream), then apply them in one regex pass over the ORIGINAL
+    # text. Sequential per-key passes would let an introduced synonym
+    # match a later key ("new" -> "recent" -> "latest"); the single
+    # pass keeps every substitution to exactly one curated hop.
+    chosen: dict[str, str] = {}
     for word, alts in _PARAPHRASE_MAP.items():
-        if rng.random() >= rate:
-            continue
-        new = rng.choice(alts)
-        out = _case_preserving_replace(out, word, new)
+        if rng.random() < rate:
+            chosen[word] = rng.choice(alts)
+    if not chosen:
+        _check_digits(text, text, "paraphrase")
+        return text
+    pattern = re.compile(
+        r"(?<!\w)(" + "|".join(re.escape(w) for w in chosen) + r")(?!\w)",
+        flags=re.IGNORECASE,
+    )
+
+    def _sub(m: re.Match) -> str:
+        hit = m.group(1)
+        new = chosen[hit.lower()]
+        if hit.isupper():
+            return new.upper()
+        if hit[0].isupper():
+            return new.capitalize()
+        return new
+
+    out = pattern.sub(_sub, text)
     _check_digits(text, out, "paraphrase")
     return out
 
