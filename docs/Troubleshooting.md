@@ -64,6 +64,13 @@ Cause: the run artifact was edited after sealing (the report still
 renders, but the numbers aren't trustworthy). Fix: don't edit artifacts;
 re-run. If you need different config, that's a new run with a new lock.
 
+**`error: cannot write report artifact to <path> (<reason>)`**
+Cause: `peira report --json-out` could not write the versioned report
+artifact (bad path, missing directory, permissions). The HTML report
+was already written. Fix: point `--json-out` at a writable path and
+re-run the report command (rendering is deterministic, so the second
+write seals the same content).
+
 **`... field 'score': score 2.5 outside 0..1` (artifact load)**
 Cause: a call record in the artifact (or partial run) carries a score
 outside the 0..1 score space: a hand-edited or corrupt artifact.
