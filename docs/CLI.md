@@ -40,6 +40,8 @@ run a suite through an adapter
 | `--rlimit-cpu-seconds` |  | - | process-wide CPU time backstop in seconds (Unix only; opt-in, no limit by default) |
 | `--rlimit-as-mb` |  | - | process-wide virtual memory cap in MB (Unix only; opt-in, no limit by default) |
 | `--rlimit-fsize-mb` |  | - | max size of any single file write, in MB (Unix only; opt-in, no limit by default) |
+| `--rlimit-nproc` |  | - | max process count for subprocess adapter children (fork-bomb guard; Unix only, opt-in, no limit by default; never applied to the runner itself) |
+| `--death-log` |  | - | path for the governor's SIGTERM/SIGINT 'last words' JSON record (opt-in; recommended for long unattended runs so an unexplained death leaves evidence) |
 | `--budget-usd` |  | - | hard spend cap in USD: the runner projects spent + running-mean-case-cost x 1.5 before each new case dispatch and stops dispatching when the projection exceeds the cap; in-flight cases drain and the artifact seals with termination=budget (analyzable, never rankable) (default: no cap) |
 | `--cache-dir` |  | - | opt-in response cache directory for deterministic adapters (temperature 0 + fixed seed); off by default and never on the measurement path unless given |
 | `--transcript` |  | - | write a JSONL transcript of every request/response to this path (for audit and `peira replay`) |
