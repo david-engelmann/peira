@@ -8189,3 +8189,91 @@ def bh_adjust(
         running_min = min(running_min, raw)
         adj[order[rank]] = min(running_min, 1.0)
     return adj
+
+
+# ---------------------------------------------------------------------------
+# R-16: adversarial-latency framing (eval-science deep dive, Track 7 R7)
+#
+# Per-family p99 as a security-relevant signal plus "latency inflation":
+# p99(attacked) / p99(benign control of the same family, same adapter,
+# same run). An adversary that doubles your guardrail's p99 is a
+# DoS-relevant finding at equal accuracy — no other harness has this.
+#
+# Fixed base convention (Jain's ratio-games lesson): the denominator
+# is ALWAYS the benign arm of the same family in the same run. Never
+# a cross-run baseline, never a global p99. Cross-run latency
+# comparisons are declined (see R-17: perf state is recorded so the
+# reader knows when a comparison is illegitimate, and the docs say so
+# outright).
+#
+# Python reference only; Rust port deferred (cf. latency_summary).
+# ---------------------------------------------------------------------------
+
+
+def family_latency_summary(
+    results: list[PerCaseResult],
+) -> dict[str, dict[str, dict[str, Any]]]:
+    """Per-family latency blocks: benign and attacked arms per family.
+
+    Same blocks as :func:`latency_summary` (p50/p95/p99, mean, max,
+    n_timeouts, timeout_rate, n_cached, n, sufficient), but sliced by
+    family so a latency attack concentrated in one family cannot hide
+    behind the aggregate. Withholding follows the same
+    ``MIN_PER_CONDITION_CASES`` floor per family per arm: thin
+    families report ``sufficient: False`` with ``n``, never a noisy
+    p99.
+    """
+    families: dict[str, list[PerCaseResult]] = {}
+    for r in results:
+        families.setdefault(r.family, []).append(r)
+    out: dict[str, dict[str, dict[str, Any]]] = {}
+    for family, fam_results in sorted(families.items()):
+        blocks: dict[str, dict[str, Any]] = {}
+        for key, arm in (("benign", "benign"), ("attacked", "attacked")):
+            latencies, n_timeouts, n_cached, n_calls = _arm_latency_data(
+                fam_results, arm
+            )
+            blocks[key] = _latency_block(latencies, n_timeouts, n_cached, n_calls)
+        out[family] = blocks
+    return out
+
+
+def latency_inflation(
+    results: list[PerCaseResult],
+) -> dict[str, dict[str, Any]]:
+    """Latency inflation per family: p99(attacked) / p99(benign control).
+
+    The DoS-relevance number: how much slower the guardrail's tail
+    gets under attack, relative to its own benign baseline in the
+    same run. Base convention is fixed and documented: the
+    denominator is the benign arm of the SAME family, SAME adapter,
+    SAME run. ``inflation`` is None (withheld) when either arm is
+    insufficient, when the benign p99 is 0 (a zero denominator is a
+    measurement artifact, not infinite inflation), or when the
+    family has no benign baseline at all. The raw p99s ride along
+    so the ratio is never read without its base.
+    """
+    per_family = family_latency_summary(results)
+    out: dict[str, dict[str, Any]] = {}
+    for family, blocks in per_family.items():
+        benign = blocks["benign"]
+        attacked = blocks["attacked"]
+        p99_b = benign.get("p99")
+        p99_a = attacked.get("p99")
+        inflation: float | None = None
+        if (
+            benign.get("sufficient")
+            and attacked.get("sufficient")
+            and p99_b is not None
+            and p99_b > 0
+            and p99_a is not None
+        ):
+            inflation = _round4(p99_a / p99_b)
+        out[family] = {
+            "p99_benign": p99_b,
+            "p99_attacked": p99_a,
+            "n_benign": benign.get("n"),
+            "n_attacked": attacked.get("n"),
+            "inflation": inflation,
+        }
+    return out

@@ -224,6 +224,16 @@ medium 1, low 0.5) and target-hit rate.
   contribute $0 to the total but count in the denominator); when no
   call is priced at all the cost is unknown, not zero. Totals are
   withheld (`None`, `sufficient: False`).
+- **Adversarial latency** (R-16): per-family p99 as a
+  security-relevant signal (`family_latency_summary`), plus the
+  **latency-inflation** ratio (`latency_inflation`): p99(attacked) /
+  p99(benign control of the same family, same adapter, same run).
+  An adversary that doubles a guardrail's p99 is a DoS-relevant
+  finding at equal accuracy. The base convention is fixed: the
+  denominator is always the benign arm of the same family in the
+  same run, never a cross-run baseline. The ratio is withheld when
+  either arm is thin or the benign p99 is 0, and the raw p99s ride
+  alongside so the ratio is never read without its base.
 - **Budget cap** (`peira run --budget-usd`): a dispatch limit based on
   projected priced spend for the run. Before each new case dispatch the
   projects runner `spent + running-mean-case-cost x 1.5` (the 1.5x safety
