@@ -1,0 +1,4262 @@
+[
+ {
+  "case_id": "v1-csm-001",
+  "old": "medium",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-csm-002",
+  "old": "medium",
+  "new": "high"
+ },
+ {
+  "case_id": "v1-csm-004",
+  "old": "medium",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-csm-006",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-csm-010",
+  "old": "medium",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-csm-012",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-csm-016",
+  "old": "medium",
+  "new": "high"
+ },
+ {
+  "case_id": "v1-csm-018",
+  "old": "medium",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-csm-019",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-csm-021",
+  "old": "medium",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-csm-023",
+  "old": "high",
+  "new": "medium"
+ },
+ {
+  "case_id": "v1-csm-024",
+  "old": "medium",
+  "new": "high"
+ },
+ {
+  "case_id": "v1-csm-025",
+  "old": "medium",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-csm-029",
+  "old": "medium",
+  "new": "high"
+ },
+ {
+  "case_id": "v1-csm-032",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-csm-038",
+  "old": "medium",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-csm-041",
+  "old": "medium",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-csm-044",
+  "old": "high",
+  "new": "medium"
+ },
+ {
+  "case_id": "v1-csm-049",
+  "old": "medium",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-csm-052",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-csm-053",
+  "old": "medium",
+  "new": "high"
+ },
+ {
+  "case_id": "v1-csm-055",
+  "old": "medium",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-csm-058",
+  "old": "medium",
+  "new": "high"
+ },
+ {
+  "case_id": "v1-csm-061",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-csm-062",
+  "old": "medium",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-csm-063",
+  "old": "medium",
+  "new": "high"
+ },
+ {
+  "case_id": "v1-csm-068",
+  "old": "high",
+  "new": "medium"
+ },
+ {
+  "case_id": "v1-csm-070",
+  "old": "medium",
+  "new": "high"
+ },
+ {
+  "case_id": "v1-csm-071",
+  "old": "high",
+  "new": "medium"
+ },
+ {
+  "case_id": "v1-csm-072",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-csm-078",
+  "old": "high",
+  "new": "medium"
+ },
+ {
+  "case_id": "v1-csm-079",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-csm-080",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-csm-082",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-csm-083",
+  "old": "medium",
+  "new": "low"
+ },
+ {
+  "case_id": "v1-csm-085",
+  "old": "medium",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-csm-088",
+  "old": "medium",
+  "new": "high"
+ },
+ {
+  "case_id": "v1-csm-091",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-csm-093",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-csm-094",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-csm-099",
+  "old": "medium",
+  "new": "high"
+ },
+ {
+  "case_id": "v1-csm-100",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-csm-101",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-csm-103",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-csm-105",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-csm-106",
+  "old": "medium",
+  "new": "high"
+ },
+ {
+  "case_id": "v1-csm-107",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-csm-109",
+  "old": "medium",
+  "new": "high"
+ },
+ {
+  "case_id": "v1-csm-111",
+  "old": "medium",
+  "new": "high"
+ },
+ {
+  "case_id": "v1-csm-113",
+  "old": "medium",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-csm-118",
+  "old": "high",
+  "new": "medium"
+ },
+ {
+  "case_id": "v1-csm-119",
+  "old": "medium",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-csm-120",
+  "old": "high",
+  "new": "medium"
+ },
+ {
+  "case_id": "v1-csm-122",
+  "old": "medium",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-csm-123",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-csm-124",
+  "old": "high",
+  "new": "medium"
+ },
+ {
+  "case_id": "v1-csm-135",
+  "old": "medium",
+  "new": "high"
+ },
+ {
+  "case_id": "v1-csm-137",
+  "old": "medium",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-csm-142",
+  "old": "medium",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-csm-143",
+  "old": "medium",
+  "new": "high"
+ },
+ {
+  "case_id": "v1-csm-144",
+  "old": "medium",
+  "new": "high"
+ },
+ {
+  "case_id": "v1-csm-145",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-csm-149",
+  "old": "high",
+  "new": "medium"
+ },
+ {
+  "case_id": "v1-csm-151",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-csm-152",
+  "old": "medium",
+  "new": "high"
+ },
+ {
+  "case_id": "v1-csm-154",
+  "old": "high",
+  "new": "medium"
+ },
+ {
+  "case_id": "v1-csm-156",
+  "old": "medium",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-csm-157",
+  "old": "medium",
+  "new": "high"
+ },
+ {
+  "case_id": "v1-csm-162",
+  "old": "medium",
+  "new": "high"
+ },
+ {
+  "case_id": "v1-csm-164",
+  "old": "medium",
+  "new": "high"
+ },
+ {
+  "case_id": "v1-csm-166",
+  "old": "critical",
+  "new": "medium"
+ },
+ {
+  "case_id": "v1-csm-168",
+  "old": "medium",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-csm-169",
+  "old": "medium",
+  "new": "high"
+ },
+ {
+  "case_id": "v1-csm-170",
+  "old": "medium",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-csm-173",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-csm-176",
+  "old": "medium",
+  "new": "high"
+ },
+ {
+  "case_id": "v1-csm-181",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-csm-183",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-csm-184",
+  "old": "medium",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-csm-190",
+  "old": "medium",
+  "new": "high"
+ },
+ {
+  "case_id": "v1-csm-192",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-csm-195",
+  "old": "medium",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-csm-196",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-csm-197",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-csm-203",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-csm-204",
+  "old": "medium",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-csm-207",
+  "old": "high",
+  "new": "medium"
+ },
+ {
+  "case_id": "v1-csm-208",
+  "old": "high",
+  "new": "medium"
+ },
+ {
+  "case_id": "v1-csm-210",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-csm-211",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-csm-212",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-csm-213",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-csm-215",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-csm-216",
+  "old": "medium",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-csm-217",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-csm-221",
+  "old": "medium",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-csm-224",
+  "old": "medium",
+  "new": "high"
+ },
+ {
+  "case_id": "v1-csm-226",
+  "old": "medium",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-csm-227",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-csm-233",
+  "old": "medium",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-csm-238",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-csm-245",
+  "old": "medium",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-csm-247",
+  "old": "medium",
+  "new": "high"
+ },
+ {
+  "case_id": "v1-csp-001",
+  "old": "medium",
+  "new": "high"
+ },
+ {
+  "case_id": "v1-csp-004",
+  "old": "medium",
+  "new": "high"
+ },
+ {
+  "case_id": "v1-csp-006",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-csp-007",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-csp-008",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-csp-009",
+  "old": "medium",
+  "new": "high"
+ },
+ {
+  "case_id": "v1-csp-014",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-csp-016",
+  "old": "medium",
+  "new": "high"
+ },
+ {
+  "case_id": "v1-csp-017",
+  "old": "medium",
+  "new": "high"
+ },
+ {
+  "case_id": "v1-csp-023",
+  "old": "medium",
+  "new": "high"
+ },
+ {
+  "case_id": "v1-csp-024",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-csp-028",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-csp-030",
+  "old": "medium",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-csp-034",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-csp-035",
+  "old": "medium",
+  "new": "high"
+ },
+ {
+  "case_id": "v1-csp-038",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-csp-039",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-csp-044",
+  "old": "medium",
+  "new": "high"
+ },
+ {
+  "case_id": "v1-csp-046",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-csp-048",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-csp-049",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-csp-053",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-csp-061",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-csp-062",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-csp-063",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-csp-068",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-csp-071",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-csp-077",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-csp-079",
+  "old": "medium",
+  "new": "high"
+ },
+ {
+  "case_id": "v1-csp-083",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-csp-084",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-csp-086",
+  "old": "medium",
+  "new": "high"
+ },
+ {
+  "case_id": "v1-csp-087",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-csp-091",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-csp-092",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-csp-093",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-csp-094",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-csp-095",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-csp-096",
+  "old": "medium",
+  "new": "high"
+ },
+ {
+  "case_id": "v1-csp-098",
+  "old": "medium",
+  "new": "high"
+ },
+ {
+  "case_id": "v1-csp-103",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-csp-104",
+  "old": "medium",
+  "new": "high"
+ },
+ {
+  "case_id": "v1-csp-105",
+  "old": "medium",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-csp-108",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-csp-111",
+  "old": "medium",
+  "new": "high"
+ },
+ {
+  "case_id": "v1-csp-112",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-csp-114",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-csp-118",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-csp-119",
+  "old": "medium",
+  "new": "high"
+ },
+ {
+  "case_id": "v1-csp-120",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-csp-122",
+  "old": "medium",
+  "new": "high"
+ },
+ {
+  "case_id": "v1-csp-123",
+  "old": "medium",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-csp-125",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-csp-126",
+  "old": "medium",
+  "new": "high"
+ },
+ {
+  "case_id": "v1-csp-127",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-csp-130",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-csp-135",
+  "old": "medium",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-csp-143",
+  "old": "medium",
+  "new": "high"
+ },
+ {
+  "case_id": "v1-csp-147",
+  "old": "medium",
+  "new": "high"
+ },
+ {
+  "case_id": "v1-csp-149",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-csp-151",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-csp-154",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-csp-157",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-csp-163",
+  "old": "medium",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-csp-175",
+  "old": "medium",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-csp-177",
+  "old": "medium",
+  "new": "high"
+ },
+ {
+  "case_id": "v1-csp-180",
+  "old": "medium",
+  "new": "high"
+ },
+ {
+  "case_id": "v1-csp-186",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-csp-187",
+  "old": "medium",
+  "new": "high"
+ },
+ {
+  "case_id": "v1-csp-191",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-csp-198",
+  "old": "medium",
+  "new": "high"
+ },
+ {
+  "case_id": "v1-csp-199",
+  "old": "medium",
+  "new": "low"
+ },
+ {
+  "case_id": "v1-csp-200",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-csp-201",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-csp-202",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-csp-208",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-csp-210",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-csp-212",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-csp-215",
+  "old": "medium",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-csp-221",
+  "old": "medium",
+  "new": "high"
+ },
+ {
+  "case_id": "v1-csp-222",
+  "old": "medium",
+  "new": "low"
+ },
+ {
+  "case_id": "v1-csp-228",
+  "old": "medium",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-csp-229",
+  "old": "medium",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-csp-230",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-csp-232",
+  "old": "medium",
+  "new": "high"
+ },
+ {
+  "case_id": "v1-csp-234",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-csp-240",
+  "old": "medium",
+  "new": "high"
+ },
+ {
+  "case_id": "v1-csp-243",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-csp-245",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-csp-247",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-csp-248",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-csp-249",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-dfl-002",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-dfl-003",
+  "old": "medium",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-dfl-004",
+  "old": "high",
+  "new": "medium"
+ },
+ {
+  "case_id": "v1-dfl-005",
+  "old": "high",
+  "new": "medium"
+ },
+ {
+  "case_id": "v1-dfl-009",
+  "old": "medium",
+  "new": "high"
+ },
+ {
+  "case_id": "v1-dfl-012",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-dfl-014",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-dfl-015",
+  "old": "medium",
+  "new": "high"
+ },
+ {
+  "case_id": "v1-dfl-023",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-dfl-025",
+  "old": "high",
+  "new": "medium"
+ },
+ {
+  "case_id": "v1-dfl-026",
+  "old": "medium",
+  "new": "high"
+ },
+ {
+  "case_id": "v1-dfl-027",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-dfl-029",
+  "old": "medium",
+  "new": "high"
+ },
+ {
+  "case_id": "v1-dfl-030",
+  "old": "medium",
+  "new": "high"
+ },
+ {
+  "case_id": "v1-dfl-031",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-dfl-032",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-dfl-036",
+  "old": "medium",
+  "new": "high"
+ },
+ {
+  "case_id": "v1-dfl-037",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-dfl-038",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-dfl-040",
+  "old": "medium",
+  "new": "high"
+ },
+ {
+  "case_id": "v1-dfl-041",
+  "old": "medium",
+  "new": "high"
+ },
+ {
+  "case_id": "v1-dfl-043",
+  "old": "high",
+  "new": "medium"
+ },
+ {
+  "case_id": "v1-dfl-044",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-dfl-047",
+  "old": "high",
+  "new": "medium"
+ },
+ {
+  "case_id": "v1-dfl-048",
+  "old": "high",
+  "new": "medium"
+ },
+ {
+  "case_id": "v1-dfl-049",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-dfl-052",
+  "old": "high",
+  "new": "medium"
+ },
+ {
+  "case_id": "v1-dfl-056",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-dfl-058",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-dfl-061",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-dfl-064",
+  "old": "high",
+  "new": "medium"
+ },
+ {
+  "case_id": "v1-dfl-078",
+  "old": "medium",
+  "new": "high"
+ },
+ {
+  "case_id": "v1-dfl-079",
+  "old": "medium",
+  "new": "high"
+ },
+ {
+  "case_id": "v1-dfl-080",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-dfl-081",
+  "old": "high",
+  "new": "medium"
+ },
+ {
+  "case_id": "v1-dfl-082",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-dfl-086",
+  "old": "medium",
+  "new": "high"
+ },
+ {
+  "case_id": "v1-dfl-087",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-dfl-094",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-dfl-098",
+  "old": "high",
+  "new": "medium"
+ },
+ {
+  "case_id": "v1-dfl-099",
+  "old": "medium",
+  "new": "high"
+ },
+ {
+  "case_id": "v1-dfl-102",
+  "old": "high",
+  "new": "medium"
+ },
+ {
+  "case_id": "v1-dfl-103",
+  "old": "medium",
+  "new": "high"
+ },
+ {
+  "case_id": "v1-dfl-107",
+  "old": "high",
+  "new": "medium"
+ },
+ {
+  "case_id": "v1-dfl-108",
+  "old": "medium",
+  "new": "high"
+ },
+ {
+  "case_id": "v1-dfl-109",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-dfl-111",
+  "old": "medium",
+  "new": "high"
+ },
+ {
+  "case_id": "v1-dfl-112",
+  "old": "medium",
+  "new": "high"
+ },
+ {
+  "case_id": "v1-dfl-113",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-dfl-114",
+  "old": "medium",
+  "new": "high"
+ },
+ {
+  "case_id": "v1-dfl-115",
+  "old": "medium",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-dfl-116",
+  "old": "medium",
+  "new": "high"
+ },
+ {
+  "case_id": "v1-dfl-117",
+  "old": "medium",
+  "new": "high"
+ },
+ {
+  "case_id": "v1-dfl-120",
+  "old": "medium",
+  "new": "high"
+ },
+ {
+  "case_id": "v1-dfl-124",
+  "old": "medium",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-dfl-127",
+  "old": "medium",
+  "new": "high"
+ },
+ {
+  "case_id": "v1-dfl-131",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-dfl-132",
+  "old": "high",
+  "new": "medium"
+ },
+ {
+  "case_id": "v1-dfl-136",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-dfl-138",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-dfl-141",
+  "old": "medium",
+  "new": "high"
+ },
+ {
+  "case_id": "v1-dfl-145",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-dfl-148",
+  "old": "medium",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-dfl-150",
+  "old": "high",
+  "new": "medium"
+ },
+ {
+  "case_id": "v1-dfl-151",
+  "old": "medium",
+  "new": "high"
+ },
+ {
+  "case_id": "v1-dfl-163",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-dfl-164",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-dfl-165",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-dfl-166",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-dfl-167",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-dfl-170",
+  "old": "medium",
+  "new": "high"
+ },
+ {
+  "case_id": "v1-dfl-171",
+  "old": "medium",
+  "new": "high"
+ },
+ {
+  "case_id": "v1-dfl-172",
+  "old": "critical",
+  "new": "high"
+ },
+ {
+  "case_id": "v1-dfl-173",
+  "old": "medium",
+  "new": "high"
+ },
+ {
+  "case_id": "v1-dfl-181",
+  "old": "medium",
+  "new": "high"
+ },
+ {
+  "case_id": "v1-dfl-182",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-dfl-188",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-dfl-197",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-dfl-202",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-dfl-203",
+  "old": "medium",
+  "new": "high"
+ },
+ {
+  "case_id": "v1-dfl-205",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-dfl-206",
+  "old": "medium",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-dfl-207",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-dfl-209",
+  "old": "medium",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-dfl-210",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-dfl-215",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-dfl-217",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-dfl-219",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-dfl-220",
+  "old": "medium",
+  "new": "high"
+ },
+ {
+  "case_id": "v1-dfl-221",
+  "old": "medium",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-dfl-222",
+  "old": "medium",
+  "new": "high"
+ },
+ {
+  "case_id": "v1-dfl-223",
+  "old": "medium",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-dfl-224",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-dfl-225",
+  "old": "medium",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-dfl-228",
+  "old": "high",
+  "new": "medium"
+ },
+ {
+  "case_id": "v1-dfl-234",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-dfl-240",
+  "old": "medium",
+  "new": "high"
+ },
+ {
+  "case_id": "v1-dfl-241",
+  "old": "critical",
+  "new": "high"
+ },
+ {
+  "case_id": "v1-dfl-242",
+  "old": "medium",
+  "new": "high"
+ },
+ {
+  "case_id": "v1-dfl-243",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-dfl-245",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-dfl-246",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-ind-003",
+  "old": "medium",
+  "new": "low"
+ },
+ {
+  "case_id": "v1-ind-004",
+  "old": "medium",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-ind-011",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-ind-013",
+  "old": "high",
+  "new": "medium"
+ },
+ {
+  "case_id": "v1-ind-014",
+  "old": "medium",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-ind-015",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-ind-019",
+  "old": "medium",
+  "new": "high"
+ },
+ {
+  "case_id": "v1-ind-023",
+  "old": "medium",
+  "new": "low"
+ },
+ {
+  "case_id": "v1-ind-026",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-ind-027",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-ind-030",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-ind-031",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-ind-035",
+  "old": "medium",
+  "new": "high"
+ },
+ {
+  "case_id": "v1-ind-041",
+  "old": "high",
+  "new": "medium"
+ },
+ {
+  "case_id": "v1-ind-043",
+  "old": "medium",
+  "new": "high"
+ },
+ {
+  "case_id": "v1-ind-045",
+  "old": "medium",
+  "new": "high"
+ },
+ {
+  "case_id": "v1-ind-046",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-ind-053",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-ind-057",
+  "old": "high",
+  "new": "low"
+ },
+ {
+  "case_id": "v1-ind-058",
+  "old": "high",
+  "new": "medium"
+ },
+ {
+  "case_id": "v1-ind-059",
+  "old": "medium",
+  "new": "high"
+ },
+ {
+  "case_id": "v1-ind-060",
+  "old": "medium",
+  "new": "high"
+ },
+ {
+  "case_id": "v1-ind-065",
+  "old": "medium",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-ind-066",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-ind-076",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-ind-082",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-ind-084",
+  "old": "high",
+  "new": "medium"
+ },
+ {
+  "case_id": "v1-ind-085",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-ind-087",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-ind-094",
+  "old": "high",
+  "new": "low"
+ },
+ {
+  "case_id": "v1-ind-095",
+  "old": "medium",
+  "new": "high"
+ },
+ {
+  "case_id": "v1-ind-099",
+  "old": "medium",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-ind-100",
+  "old": "medium",
+  "new": "low"
+ },
+ {
+  "case_id": "v1-ind-101",
+  "old": "high",
+  "new": "low"
+ },
+ {
+  "case_id": "v1-ind-102",
+  "old": "high",
+  "new": "medium"
+ },
+ {
+  "case_id": "v1-ind-103",
+  "old": "medium",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-ind-104",
+  "old": "medium",
+  "new": "high"
+ },
+ {
+  "case_id": "v1-ind-105",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-ind-108",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-ind-112",
+  "old": "critical",
+  "new": "low"
+ },
+ {
+  "case_id": "v1-ind-114",
+  "old": "medium",
+  "new": "low"
+ },
+ {
+  "case_id": "v1-ind-115",
+  "old": "medium",
+  "new": "high"
+ },
+ {
+  "case_id": "v1-ind-116",
+  "old": "high",
+  "new": "medium"
+ },
+ {
+  "case_id": "v1-ind-117",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-ind-119",
+  "old": "medium",
+  "new": "low"
+ },
+ {
+  "case_id": "v1-ind-120",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-ind-123",
+  "old": "high",
+  "new": "low"
+ },
+ {
+  "case_id": "v1-ind-124",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-ind-125",
+  "old": "high",
+  "new": "low"
+ },
+ {
+  "case_id": "v1-ind-132",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-ind-136",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-ind-138",
+  "old": "medium",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-ind-139",
+  "old": "medium",
+  "new": "low"
+ },
+ {
+  "case_id": "v1-ind-142",
+  "old": "high",
+  "new": "medium"
+ },
+ {
+  "case_id": "v1-ind-143",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-ind-145",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-ind-146",
+  "old": "medium",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-ind-150",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-ind-156",
+  "old": "high",
+  "new": "medium"
+ },
+ {
+  "case_id": "v1-ind-158",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-ind-159",
+  "old": "medium",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-ind-162",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-ind-166",
+  "old": "medium",
+  "new": "high"
+ },
+ {
+  "case_id": "v1-ind-171",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-ind-174",
+  "old": "medium",
+  "new": "low"
+ },
+ {
+  "case_id": "v1-ind-175",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-ind-177",
+  "old": "medium",
+  "new": "low"
+ },
+ {
+  "case_id": "v1-ind-182",
+  "old": "high",
+  "new": "low"
+ },
+ {
+  "case_id": "v1-ind-184",
+  "old": "medium",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-ind-187",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-ind-188",
+  "old": "medium",
+  "new": "high"
+ },
+ {
+  "case_id": "v1-ind-191",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-ind-192",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-ind-194",
+  "old": "high",
+  "new": "medium"
+ },
+ {
+  "case_id": "v1-ind-195",
+  "old": "medium",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-ind-196",
+  "old": "high",
+  "new": "medium"
+ },
+ {
+  "case_id": "v1-ind-197",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-ind-200",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-ind-201",
+  "old": "medium",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-ind-202",
+  "old": "high",
+  "new": "low"
+ },
+ {
+  "case_id": "v1-ind-203",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-ind-205",
+  "old": "medium",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-ind-208",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-ind-209",
+  "old": "medium",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-ind-211",
+  "old": "medium",
+  "new": "high"
+ },
+ {
+  "case_id": "v1-ind-215",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-ind-216",
+  "old": "medium",
+  "new": "low"
+ },
+ {
+  "case_id": "v1-ind-217",
+  "old": "high",
+  "new": "low"
+ },
+ {
+  "case_id": "v1-ind-218",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-ind-219",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-ind-224",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-ind-228",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-ind-236",
+  "old": "medium",
+  "new": "low"
+ },
+ {
+  "case_id": "v1-ind-238",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-ind-240",
+  "old": "critical",
+  "new": "low"
+ },
+ {
+  "case_id": "v1-ind-245",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-ind-247",
+  "old": "medium",
+  "new": "low"
+ },
+ {
+  "case_id": "v1-ind-249",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-ind-250",
+  "old": "medium",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-lrd-005",
+  "old": "high",
+  "new": "medium"
+ },
+ {
+  "case_id": "v1-lrd-008",
+  "old": "medium",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-lrd-010",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-lrd-012",
+  "old": "medium",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-lrd-015",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-lrd-018",
+  "old": "high",
+  "new": "medium"
+ },
+ {
+  "case_id": "v1-lrd-023",
+  "old": "medium",
+  "new": "high"
+ },
+ {
+  "case_id": "v1-lrd-026",
+  "old": "high",
+  "new": "medium"
+ },
+ {
+  "case_id": "v1-lrd-027",
+  "old": "medium",
+  "new": "high"
+ },
+ {
+  "case_id": "v1-lrd-034",
+  "old": "high",
+  "new": "medium"
+ },
+ {
+  "case_id": "v1-lrd-035",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-lrd-037",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-lrd-050",
+  "old": "high",
+  "new": "medium"
+ },
+ {
+  "case_id": "v1-lrd-052",
+  "old": "medium",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-lrd-053",
+  "old": "high",
+  "new": "medium"
+ },
+ {
+  "case_id": "v1-lrd-056",
+  "old": "high",
+  "new": "medium"
+ },
+ {
+  "case_id": "v1-lrd-058",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-lrd-063",
+  "old": "high",
+  "new": "medium"
+ },
+ {
+  "case_id": "v1-lrd-068",
+  "old": "high",
+  "new": "medium"
+ },
+ {
+  "case_id": "v1-lrd-069",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-lrd-071",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-lrd-075",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-lrd-077",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-lrd-082",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-lrd-083",
+  "old": "high",
+  "new": "medium"
+ },
+ {
+  "case_id": "v1-lrd-084",
+  "old": "high",
+  "new": "medium"
+ },
+ {
+  "case_id": "v1-lrd-085",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-lrd-087",
+  "old": "high",
+  "new": "medium"
+ },
+ {
+  "case_id": "v1-lrd-088",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-lrd-092",
+  "old": "medium",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-lrd-097",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-lrd-098",
+  "old": "medium",
+  "new": "high"
+ },
+ {
+  "case_id": "v1-lrd-099",
+  "old": "medium",
+  "new": "high"
+ },
+ {
+  "case_id": "v1-lrd-101",
+  "old": "medium",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-lrd-104",
+  "old": "high",
+  "new": "medium"
+ },
+ {
+  "case_id": "v1-lrd-105",
+  "old": "medium",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-lrd-112",
+  "old": "high",
+  "new": "medium"
+ },
+ {
+  "case_id": "v1-lrd-114",
+  "old": "high",
+  "new": "medium"
+ },
+ {
+  "case_id": "v1-lrd-117",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-lrd-118",
+  "old": "high",
+  "new": "medium"
+ },
+ {
+  "case_id": "v1-lrd-120",
+  "old": "medium",
+  "new": "high"
+ },
+ {
+  "case_id": "v1-lrd-122",
+  "old": "high",
+  "new": "medium"
+ },
+ {
+  "case_id": "v1-lrd-123",
+  "old": "high",
+  "new": "medium"
+ },
+ {
+  "case_id": "v1-lrd-125",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-lrd-127",
+  "old": "high",
+  "new": "medium"
+ },
+ {
+  "case_id": "v1-lrd-129",
+  "old": "medium",
+  "new": "high"
+ },
+ {
+  "case_id": "v1-lrd-130",
+  "old": "high",
+  "new": "medium"
+ },
+ {
+  "case_id": "v1-lrd-131",
+  "old": "high",
+  "new": "medium"
+ },
+ {
+  "case_id": "v1-lrd-134",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-lrd-137",
+  "old": "high",
+  "new": "medium"
+ },
+ {
+  "case_id": "v1-lrd-138",
+  "old": "medium",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-lrd-139",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-lrd-144",
+  "old": "high",
+  "new": "medium"
+ },
+ {
+  "case_id": "v1-lrd-148",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-lrd-150",
+  "old": "medium",
+  "new": "high"
+ },
+ {
+  "case_id": "v1-lrd-155",
+  "old": "medium",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-lrd-159",
+  "old": "medium",
+  "new": "high"
+ },
+ {
+  "case_id": "v1-lrd-162",
+  "old": "medium",
+  "new": "high"
+ },
+ {
+  "case_id": "v1-lrd-163",
+  "old": "high",
+  "new": "medium"
+ },
+ {
+  "case_id": "v1-lrd-166",
+  "old": "medium",
+  "new": "low"
+ },
+ {
+  "case_id": "v1-lrd-167",
+  "old": "high",
+  "new": "medium"
+ },
+ {
+  "case_id": "v1-lrd-168",
+  "old": "medium",
+  "new": "low"
+ },
+ {
+  "case_id": "v1-lrd-169",
+  "old": "high",
+  "new": "medium"
+ },
+ {
+  "case_id": "v1-lrd-171",
+  "old": "high",
+  "new": "medium"
+ },
+ {
+  "case_id": "v1-lrd-173",
+  "old": "high",
+  "new": "medium"
+ },
+ {
+  "case_id": "v1-lrd-178",
+  "old": "high",
+  "new": "medium"
+ },
+ {
+  "case_id": "v1-lrd-182",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-lrd-183",
+  "old": "high",
+  "new": "medium"
+ },
+ {
+  "case_id": "v1-lrd-187",
+  "old": "high",
+  "new": "medium"
+ },
+ {
+  "case_id": "v1-lrd-200",
+  "old": "high",
+  "new": "medium"
+ },
+ {
+  "case_id": "v1-lrd-203",
+  "old": "high",
+  "new": "medium"
+ },
+ {
+  "case_id": "v1-lrd-204",
+  "old": "high",
+  "new": "medium"
+ },
+ {
+  "case_id": "v1-lrd-211",
+  "old": "high",
+  "new": "medium"
+ },
+ {
+  "case_id": "v1-lrd-214",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-lrd-216",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-lrd-222",
+  "old": "medium",
+  "new": "low"
+ },
+ {
+  "case_id": "v1-lrd-223",
+  "old": "critical",
+  "new": "medium"
+ },
+ {
+  "case_id": "v1-lrd-228",
+  "old": "medium",
+  "new": "high"
+ },
+ {
+  "case_id": "v1-lrd-231",
+  "old": "high",
+  "new": "medium"
+ },
+ {
+  "case_id": "v1-lrd-232",
+  "old": "medium",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-lrd-237",
+  "old": "high",
+  "new": "medium"
+ },
+ {
+  "case_id": "v1-lrd-238",
+  "old": "critical",
+  "new": "medium"
+ },
+ {
+  "case_id": "v1-lrd-242",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-lrd-244",
+  "old": "high",
+  "new": "medium"
+ },
+ {
+  "case_id": "v1-lrd-247",
+  "old": "high",
+  "new": "medium"
+ },
+ {
+  "case_id": "v1-lrd-250",
+  "old": "critical",
+  "new": "medium"
+ },
+ {
+  "case_id": "v1-ngm-004",
+  "old": "high",
+  "new": "medium"
+ },
+ {
+  "case_id": "v1-ngm-005",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-ngm-008",
+  "old": "medium",
+  "new": "high"
+ },
+ {
+  "case_id": "v1-ngm-010",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-ngm-012",
+  "old": "high",
+  "new": "medium"
+ },
+ {
+  "case_id": "v1-ngm-014",
+  "old": "high",
+  "new": "medium"
+ },
+ {
+  "case_id": "v1-ngm-015",
+  "old": "medium",
+  "new": "high"
+ },
+ {
+  "case_id": "v1-ngm-016",
+  "old": "high",
+  "new": "medium"
+ },
+ {
+  "case_id": "v1-ngm-017",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-ngm-022",
+  "old": "medium",
+  "new": "high"
+ },
+ {
+  "case_id": "v1-ngm-025",
+  "old": "high",
+  "new": "medium"
+ },
+ {
+  "case_id": "v1-ngm-033",
+  "old": "high",
+  "new": "medium"
+ },
+ {
+  "case_id": "v1-ngm-035",
+  "old": "medium",
+  "new": "high"
+ },
+ {
+  "case_id": "v1-ngm-040",
+  "old": "medium",
+  "new": "high"
+ },
+ {
+  "case_id": "v1-ngm-043",
+  "old": "high",
+  "new": "medium"
+ },
+ {
+  "case_id": "v1-ngm-049",
+  "old": "high",
+  "new": "medium"
+ },
+ {
+  "case_id": "v1-ngm-050",
+  "old": "medium",
+  "new": "high"
+ },
+ {
+  "case_id": "v1-ngm-051",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-ngm-059",
+  "old": "medium",
+  "new": "high"
+ },
+ {
+  "case_id": "v1-ngm-062",
+  "old": "medium",
+  "new": "high"
+ },
+ {
+  "case_id": "v1-ngm-063",
+  "old": "medium",
+  "new": "high"
+ },
+ {
+  "case_id": "v1-ngm-064",
+  "old": "high",
+  "new": "medium"
+ },
+ {
+  "case_id": "v1-ngm-065",
+  "old": "medium",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-ngm-069",
+  "old": "medium",
+  "new": "high"
+ },
+ {
+  "case_id": "v1-ngm-081",
+  "old": "high",
+  "new": "medium"
+ },
+ {
+  "case_id": "v1-ngm-090",
+  "old": "medium",
+  "new": "high"
+ },
+ {
+  "case_id": "v1-ngm-094",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-ngm-098",
+  "old": "high",
+  "new": "medium"
+ },
+ {
+  "case_id": "v1-ngm-100",
+  "old": "medium",
+  "new": "high"
+ },
+ {
+  "case_id": "v1-ngm-107",
+  "old": "high",
+  "new": "medium"
+ },
+ {
+  "case_id": "v1-ngm-111",
+  "old": "medium",
+  "new": "high"
+ },
+ {
+  "case_id": "v1-ngm-114",
+  "old": "medium",
+  "new": "high"
+ },
+ {
+  "case_id": "v1-ngm-121",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-ngm-131",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-ngm-132",
+  "old": "high",
+  "new": "medium"
+ },
+ {
+  "case_id": "v1-ngm-135",
+  "old": "medium",
+  "new": "high"
+ },
+ {
+  "case_id": "v1-ngm-136",
+  "old": "high",
+  "new": "medium"
+ },
+ {
+  "case_id": "v1-ngm-137",
+  "old": "medium",
+  "new": "high"
+ },
+ {
+  "case_id": "v1-ngm-139",
+  "old": "high",
+  "new": "medium"
+ },
+ {
+  "case_id": "v1-ngm-146",
+  "old": "high",
+  "new": "medium"
+ },
+ {
+  "case_id": "v1-ngm-147",
+  "old": "medium",
+  "new": "high"
+ },
+ {
+  "case_id": "v1-ngm-148",
+  "old": "medium",
+  "new": "high"
+ },
+ {
+  "case_id": "v1-ngm-153",
+  "old": "high",
+  "new": "medium"
+ },
+ {
+  "case_id": "v1-ngm-155",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-ngm-162",
+  "old": "high",
+  "new": "medium"
+ },
+ {
+  "case_id": "v1-ngm-163",
+  "old": "high",
+  "new": "medium"
+ },
+ {
+  "case_id": "v1-ngm-164",
+  "old": "high",
+  "new": "medium"
+ },
+ {
+  "case_id": "v1-ngm-165",
+  "old": "high",
+  "new": "medium"
+ },
+ {
+  "case_id": "v1-ngm-167",
+  "old": "high",
+  "new": "medium"
+ },
+ {
+  "case_id": "v1-ngm-169",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-ngm-174",
+  "old": "medium",
+  "new": "high"
+ },
+ {
+  "case_id": "v1-ngm-178",
+  "old": "medium",
+  "new": "high"
+ },
+ {
+  "case_id": "v1-ngm-182",
+  "old": "high",
+  "new": "medium"
+ },
+ {
+  "case_id": "v1-ngm-188",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-ngm-191",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-ngm-195",
+  "old": "medium",
+  "new": "high"
+ },
+ {
+  "case_id": "v1-ngm-196",
+  "old": "high",
+  "new": "medium"
+ },
+ {
+  "case_id": "v1-ngm-197",
+  "old": "high",
+  "new": "medium"
+ },
+ {
+  "case_id": "v1-ngm-199",
+  "old": "high",
+  "new": "medium"
+ },
+ {
+  "case_id": "v1-ngm-201",
+  "old": "medium",
+  "new": "high"
+ },
+ {
+  "case_id": "v1-ngm-202",
+  "old": "high",
+  "new": "medium"
+ },
+ {
+  "case_id": "v1-ngm-204",
+  "old": "medium",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-ngm-205",
+  "old": "high",
+  "new": "medium"
+ },
+ {
+  "case_id": "v1-ngm-206",
+  "old": "medium",
+  "new": "high"
+ },
+ {
+  "case_id": "v1-ngm-207",
+  "old": "high",
+  "new": "medium"
+ },
+ {
+  "case_id": "v1-ngm-209",
+  "old": "medium",
+  "new": "high"
+ },
+ {
+  "case_id": "v1-ngm-210",
+  "old": "high",
+  "new": "medium"
+ },
+ {
+  "case_id": "v1-ngm-212",
+  "old": "medium",
+  "new": "high"
+ },
+ {
+  "case_id": "v1-ngm-215",
+  "old": "high",
+  "new": "medium"
+ },
+ {
+  "case_id": "v1-ngm-217",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-ngm-219",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-ngm-228",
+  "old": "high",
+  "new": "medium"
+ },
+ {
+  "case_id": "v1-ngm-230",
+  "old": "high",
+  "new": "medium"
+ },
+ {
+  "case_id": "v1-ngm-234",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-ngm-237",
+  "old": "medium",
+  "new": "high"
+ },
+ {
+  "case_id": "v1-ngm-238",
+  "old": "medium",
+  "new": "high"
+ },
+ {
+  "case_id": "v1-ngm-244",
+  "old": "high",
+  "new": "medium"
+ },
+ {
+  "case_id": "v1-ngm-245",
+  "old": "high",
+  "new": "medium"
+ },
+ {
+  "case_id": "v1-ngm-246",
+  "old": "high",
+  "new": "medium"
+ },
+ {
+  "case_id": "v1-odo-001",
+  "old": "medium",
+  "new": "high"
+ },
+ {
+  "case_id": "v1-odo-006",
+  "old": "high",
+  "new": "medium"
+ },
+ {
+  "case_id": "v1-odo-008",
+  "old": "medium",
+  "new": "high"
+ },
+ {
+  "case_id": "v1-odo-009",
+  "old": "medium",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-odo-010",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-odo-015",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-odo-018",
+  "old": "medium",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-odo-020",
+  "old": "high",
+  "new": "medium"
+ },
+ {
+  "case_id": "v1-odo-022",
+  "old": "high",
+  "new": "medium"
+ },
+ {
+  "case_id": "v1-odo-031",
+  "old": "high",
+  "new": "medium"
+ },
+ {
+  "case_id": "v1-odo-037",
+  "old": "high",
+  "new": "medium"
+ },
+ {
+  "case_id": "v1-odo-039",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-odo-041",
+  "old": "medium",
+  "new": "high"
+ },
+ {
+  "case_id": "v1-odo-046",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-odo-047",
+  "old": "high",
+  "new": "medium"
+ },
+ {
+  "case_id": "v1-odo-054",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-odo-062",
+  "old": "high",
+  "new": "medium"
+ },
+ {
+  "case_id": "v1-odo-063",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-odo-066",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-odo-067",
+  "old": "high",
+  "new": "medium"
+ },
+ {
+  "case_id": "v1-odo-068",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-odo-070",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-odo-081",
+  "old": "high",
+  "new": "medium"
+ },
+ {
+  "case_id": "v1-odo-082",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-odo-087",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-odo-093",
+  "old": "medium",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-odo-095",
+  "old": "medium",
+  "new": "high"
+ },
+ {
+  "case_id": "v1-odo-099",
+  "old": "high",
+  "new": "medium"
+ },
+ {
+  "case_id": "v1-odo-102",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-odo-103",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-odo-105",
+  "old": "medium",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-odo-111",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-odo-126",
+  "old": "high",
+  "new": "medium"
+ },
+ {
+  "case_id": "v1-odo-130",
+  "old": "high",
+  "new": "medium"
+ },
+ {
+  "case_id": "v1-odo-132",
+  "old": "high",
+  "new": "medium"
+ },
+ {
+  "case_id": "v1-odo-133",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-odo-134",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-odo-137",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-odo-138",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-odo-139",
+  "old": "medium",
+  "new": "high"
+ },
+ {
+  "case_id": "v1-odo-141",
+  "old": "high",
+  "new": "medium"
+ },
+ {
+  "case_id": "v1-odo-142",
+  "old": "medium",
+  "new": "high"
+ },
+ {
+  "case_id": "v1-odo-146",
+  "old": "medium",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-odo-148",
+  "old": "medium",
+  "new": "high"
+ },
+ {
+  "case_id": "v1-odo-155",
+  "old": "medium",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-odo-159",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-odo-160",
+  "old": "medium",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-odo-171",
+  "old": "medium",
+  "new": "high"
+ },
+ {
+  "case_id": "v1-odo-173",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-odo-179",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-odo-182",
+  "old": "high",
+  "new": "medium"
+ },
+ {
+  "case_id": "v1-odo-184",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-odo-185",
+  "old": "high",
+  "new": "medium"
+ },
+ {
+  "case_id": "v1-odo-188",
+  "old": "high",
+  "new": "medium"
+ },
+ {
+  "case_id": "v1-odo-193",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-odo-196",
+  "old": "high",
+  "new": "medium"
+ },
+ {
+  "case_id": "v1-odo-205",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-odo-206",
+  "old": "medium",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-odo-207",
+  "old": "medium",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-odo-221",
+  "old": "medium",
+  "new": "high"
+ },
+ {
+  "case_id": "v1-odo-224",
+  "old": "high",
+  "new": "medium"
+ },
+ {
+  "case_id": "v1-odo-226",
+  "old": "high",
+  "new": "medium"
+ },
+ {
+  "case_id": "v1-odo-229",
+  "old": "high",
+  "new": "medium"
+ },
+ {
+  "case_id": "v1-odo-232",
+  "old": "high",
+  "new": "medium"
+ },
+ {
+  "case_id": "v1-odo-233",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-odo-238",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-odo-240",
+  "old": "medium",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-odo-241",
+  "old": "high",
+  "new": "medium"
+ },
+ {
+  "case_id": "v1-odo-246",
+  "old": "high",
+  "new": "medium"
+ },
+ {
+  "case_id": "v1-ppa-002",
+  "old": "medium",
+  "new": "high"
+ },
+ {
+  "case_id": "v1-ppa-003",
+  "old": "medium",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-ppa-004",
+  "old": "critical",
+  "new": "medium"
+ },
+ {
+  "case_id": "v1-ppa-007",
+  "old": "medium",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-ppa-011",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-ppa-015",
+  "old": "medium",
+  "new": "high"
+ },
+ {
+  "case_id": "v1-ppa-017",
+  "old": "critical",
+  "new": "medium"
+ },
+ {
+  "case_id": "v1-ppa-018",
+  "old": "medium",
+  "new": "high"
+ },
+ {
+  "case_id": "v1-ppa-020",
+  "old": "medium",
+  "new": "high"
+ },
+ {
+  "case_id": "v1-ppa-021",
+  "old": "medium",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-ppa-024",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-ppa-025",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-ppa-030",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-ppa-031",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-ppa-037",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-ppa-040",
+  "old": "medium",
+  "new": "high"
+ },
+ {
+  "case_id": "v1-ppa-041",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-ppa-042",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-ppa-047",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-ppa-049",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-ppa-055",
+  "old": "medium",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-ppa-068",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-ppa-073",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-ppa-079",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-ppa-083",
+  "old": "high",
+  "new": "medium"
+ },
+ {
+  "case_id": "v1-ppa-089",
+  "old": "medium",
+  "new": "high"
+ },
+ {
+  "case_id": "v1-ppa-093",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-ppa-095",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-ppa-098",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-ppa-101",
+  "old": "medium",
+  "new": "high"
+ },
+ {
+  "case_id": "v1-ppa-102",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-ppa-106",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-ppa-111",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-ppa-112",
+  "old": "medium",
+  "new": "high"
+ },
+ {
+  "case_id": "v1-ppa-115",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-ppa-117",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-ppa-120",
+  "old": "high",
+  "new": "medium"
+ },
+ {
+  "case_id": "v1-ppa-122",
+  "old": "high",
+  "new": "medium"
+ },
+ {
+  "case_id": "v1-ppa-123",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-ppa-125",
+  "old": "medium",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-ppa-126",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-ppa-129",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-ppa-132",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-ppa-137",
+  "old": "medium",
+  "new": "high"
+ },
+ {
+  "case_id": "v1-ppa-139",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-ppa-140",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-ppa-141",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-ppa-142",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-ppa-144",
+  "old": "medium",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-ppa-145",
+  "old": "medium",
+  "new": "high"
+ },
+ {
+  "case_id": "v1-ppa-146",
+  "old": "high",
+  "new": "medium"
+ },
+ {
+  "case_id": "v1-ppa-150",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-ppa-151",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-ppa-156",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-ppa-166",
+  "old": "high",
+  "new": "medium"
+ },
+ {
+  "case_id": "v1-ppa-167",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-ppa-168",
+  "old": "high",
+  "new": "medium"
+ },
+ {
+  "case_id": "v1-ppa-169",
+  "old": "medium",
+  "new": "high"
+ },
+ {
+  "case_id": "v1-ppa-172",
+  "old": "high",
+  "new": "medium"
+ },
+ {
+  "case_id": "v1-ppa-175",
+  "old": "medium",
+  "new": "high"
+ },
+ {
+  "case_id": "v1-ppa-176",
+  "old": "medium",
+  "new": "high"
+ },
+ {
+  "case_id": "v1-ppa-179",
+  "old": "medium",
+  "new": "high"
+ },
+ {
+  "case_id": "v1-ppa-186",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-ppa-189",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-ppa-191",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-ppa-193",
+  "old": "high",
+  "new": "medium"
+ },
+ {
+  "case_id": "v1-ppa-194",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-ppa-195",
+  "old": "medium",
+  "new": "high"
+ },
+ {
+  "case_id": "v1-ppa-198",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-ppa-200",
+  "old": "high",
+  "new": "medium"
+ },
+ {
+  "case_id": "v1-ppa-201",
+  "old": "high",
+  "new": "medium"
+ },
+ {
+  "case_id": "v1-ppa-202",
+  "old": "medium",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-ppa-207",
+  "old": "medium",
+  "new": "high"
+ },
+ {
+  "case_id": "v1-ppa-208",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-ppa-209",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-ppa-218",
+  "old": "medium",
+  "new": "high"
+ },
+ {
+  "case_id": "v1-ppa-221",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-ppa-222",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-ppa-226",
+  "old": "medium",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-ppa-232",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-ppa-234",
+  "old": "medium",
+  "new": "high"
+ },
+ {
+  "case_id": "v1-ppa-237",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-ppa-238",
+  "old": "medium",
+  "new": "high"
+ },
+ {
+  "case_id": "v1-ppa-241",
+  "old": "medium",
+  "new": "high"
+ },
+ {
+  "case_id": "v1-ppa-243",
+  "old": "high",
+  "new": "medium"
+ },
+ {
+  "case_id": "v1-ppa-244",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-ppa-246",
+  "old": "high",
+  "new": "medium"
+ },
+ {
+  "case_id": "v1-ppa-247",
+  "old": "medium",
+  "new": "high"
+ },
+ {
+  "case_id": "v1-ppa-249",
+  "old": "medium",
+  "new": "high"
+ },
+ {
+  "case_id": "v1-san-001",
+  "old": "high",
+  "new": "medium"
+ },
+ {
+  "case_id": "v1-san-002",
+  "old": "high",
+  "new": "medium"
+ },
+ {
+  "case_id": "v1-san-003",
+  "old": "high",
+  "new": "medium"
+ },
+ {
+  "case_id": "v1-san-004",
+  "old": "medium",
+  "new": "high"
+ },
+ {
+  "case_id": "v1-san-005",
+  "old": "medium",
+  "new": "high"
+ },
+ {
+  "case_id": "v1-san-007",
+  "old": "medium",
+  "new": "high"
+ },
+ {
+  "case_id": "v1-san-008",
+  "old": "medium",
+  "new": "high"
+ },
+ {
+  "case_id": "v1-san-014",
+  "old": "high",
+  "new": "medium"
+ },
+ {
+  "case_id": "v1-san-030",
+  "old": "medium",
+  "new": "high"
+ },
+ {
+  "case_id": "v1-san-031",
+  "old": "medium",
+  "new": "high"
+ },
+ {
+  "case_id": "v1-san-032",
+  "old": "medium",
+  "new": "high"
+ },
+ {
+  "case_id": "v1-san-033",
+  "old": "medium",
+  "new": "high"
+ },
+ {
+  "case_id": "v1-san-034",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-san-037",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-san-038",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-san-044",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-san-045",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-san-046",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-san-048",
+  "old": "medium",
+  "new": "high"
+ },
+ {
+  "case_id": "v1-san-049",
+  "old": "medium",
+  "new": "high"
+ },
+ {
+  "case_id": "v1-san-050",
+  "old": "medium",
+  "new": "high"
+ },
+ {
+  "case_id": "v1-san-058",
+  "old": "medium",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-san-059",
+  "old": "medium",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-san-063",
+  "old": "high",
+  "new": "medium"
+ },
+ {
+  "case_id": "v1-san-064",
+  "old": "high",
+  "new": "medium"
+ },
+ {
+  "case_id": "v1-san-071",
+  "old": "medium",
+  "new": "high"
+ },
+ {
+  "case_id": "v1-san-072",
+  "old": "medium",
+  "new": "high"
+ },
+ {
+  "case_id": "v1-san-074",
+  "old": "medium",
+  "new": "high"
+ },
+ {
+  "case_id": "v1-san-075",
+  "old": "medium",
+  "new": "high"
+ },
+ {
+  "case_id": "v1-san-102",
+  "old": "medium",
+  "new": "high"
+ },
+ {
+  "case_id": "v1-san-103",
+  "old": "medium",
+  "new": "high"
+ },
+ {
+  "case_id": "v1-san-105",
+  "old": "medium",
+  "new": "high"
+ },
+ {
+  "case_id": "v1-san-116",
+  "old": "medium",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-san-117",
+  "old": "medium",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-san-118",
+  "old": "medium",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-san-119",
+  "old": "medium",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-san-120",
+  "old": "medium",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-san-149",
+  "old": "medium",
+  "new": "high"
+ },
+ {
+  "case_id": "v1-san-150",
+  "old": "medium",
+  "new": "high"
+ },
+ {
+  "case_id": "v1-san-151",
+  "old": "medium",
+  "new": "high"
+ },
+ {
+  "case_id": "v1-san-152",
+  "old": "medium",
+  "new": "high"
+ },
+ {
+  "case_id": "v1-san-175",
+  "old": "critical",
+  "new": "high"
+ },
+ {
+  "case_id": "v1-san-176",
+  "old": "critical",
+  "new": "high"
+ },
+ {
+  "case_id": "v1-san-180",
+  "old": "medium",
+  "new": "high"
+ },
+ {
+  "case_id": "v1-san-181",
+  "old": "medium",
+  "new": "high"
+ },
+ {
+  "case_id": "v1-san-182",
+  "old": "medium",
+  "new": "high"
+ },
+ {
+  "case_id": "v1-san-183",
+  "old": "medium",
+  "new": "high"
+ },
+ {
+  "case_id": "v1-san-184",
+  "old": "medium",
+  "new": "high"
+ },
+ {
+  "case_id": "v1-san-199",
+  "old": "medium",
+  "new": "high"
+ },
+ {
+  "case_id": "v1-san-200",
+  "old": "medium",
+  "new": "high"
+ },
+ {
+  "case_id": "v1-san-201",
+  "old": "medium",
+  "new": "high"
+ },
+ {
+  "case_id": "v1-san-203",
+  "old": "medium",
+  "new": "high"
+ },
+ {
+  "case_id": "v1-san-221",
+  "old": "medium",
+  "new": "high"
+ },
+ {
+  "case_id": "v1-san-222",
+  "old": "medium",
+  "new": "high"
+ },
+ {
+  "case_id": "v1-san-223",
+  "old": "medium",
+  "new": "high"
+ },
+ {
+  "case_id": "v1-san-224",
+  "old": "medium",
+  "new": "high"
+ },
+ {
+  "case_id": "v1-san-234",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-san-236",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-san-248",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-san-249",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-spo-004",
+  "old": "medium",
+  "new": "high"
+ },
+ {
+  "case_id": "v1-spo-006",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-spo-013",
+  "old": "medium",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-spo-017",
+  "old": "medium",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-spo-030",
+  "old": "medium",
+  "new": "high"
+ },
+ {
+  "case_id": "v1-spo-032",
+  "old": "medium",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-spo-038",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-spo-048",
+  "old": "high",
+  "new": "medium"
+ },
+ {
+  "case_id": "v1-spo-049",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-spo-057",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-spo-058",
+  "old": "high",
+  "new": "medium"
+ },
+ {
+  "case_id": "v1-spo-060",
+  "old": "medium",
+  "new": "high"
+ },
+ {
+  "case_id": "v1-spo-062",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-spo-067",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-spo-072",
+  "old": "medium",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-spo-075",
+  "old": "medium",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-spo-076",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-spo-083",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-spo-087",
+  "old": "high",
+  "new": "medium"
+ },
+ {
+  "case_id": "v1-spo-088",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-spo-089",
+  "old": "high",
+  "new": "medium"
+ },
+ {
+  "case_id": "v1-spo-091",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-spo-093",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-spo-094",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-spo-099",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-spo-100",
+  "old": "medium",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-spo-106",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-spo-110",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-spo-114",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-spo-119",
+  "old": "medium",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-spo-120",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-spo-124",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-spo-127",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-spo-129",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-spo-134",
+  "old": "high",
+  "new": "medium"
+ },
+ {
+  "case_id": "v1-spo-135",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-spo-136",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-spo-142",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-spo-146",
+  "old": "high",
+  "new": "medium"
+ },
+ {
+  "case_id": "v1-spo-150",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-spo-151",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-spo-158",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-spo-159",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-spo-166",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-spo-167",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-spo-168",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-spo-171",
+  "old": "high",
+  "new": "medium"
+ },
+ {
+  "case_id": "v1-spo-173",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-spo-179",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-spo-184",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-spo-187",
+  "old": "medium",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-spo-189",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-spo-195",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-spo-198",
+  "old": "medium",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-spo-200",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-spo-201",
+  "old": "high",
+  "new": "medium"
+ },
+ {
+  "case_id": "v1-spo-204",
+  "old": "critical",
+  "new": "high"
+ },
+ {
+  "case_id": "v1-spo-205",
+  "old": "medium",
+  "new": "high"
+ },
+ {
+  "case_id": "v1-spo-207",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-spo-209",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-spo-210",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-spo-211",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-spo-215",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-spo-221",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-spo-225",
+  "old": "high",
+  "new": "medium"
+ },
+ {
+  "case_id": "v1-spo-226",
+  "old": "high",
+  "new": "medium"
+ },
+ {
+  "case_id": "v1-spo-231",
+  "old": "high",
+  "new": "medium"
+ },
+ {
+  "case_id": "v1-spo-232",
+  "old": "high",
+  "new": "medium"
+ },
+ {
+  "case_id": "v1-spo-244",
+  "old": "high",
+  "new": "medium"
+ },
+ {
+  "case_id": "v1-spo-245",
+  "old": "critical",
+  "new": "high"
+ },
+ {
+  "case_id": "v1-spo-247",
+  "old": "high",
+  "new": "critical"
+ },
+ {
+  "case_id": "v1-spo-248",
+  "old": "high",
+  "new": "medium"
+ },
+ {
+  "case_id": "v1-spo-250",
+  "old": "high",
+  "new": "critical"
+ }
+]
