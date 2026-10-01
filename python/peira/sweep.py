@@ -529,6 +529,7 @@ async def _run_sweep_case_async(
     sweep_grid: list[int],
     sweep_dimension: str,
     sampling_config: dict[str, Any] | None = None,
+    max_tokens_per_call: int | None = None,
 ) -> SweepCaseResult:
     """Per-case sweep coroutine (same shape as ``_run_case_async``).
 
@@ -588,6 +589,7 @@ async def _run_sweep_case_async(
         call_timeout=call_timeout, cache=cache,
         cache_key_str=benign_cache_key, transcript=transcript,
         sampling_config=sampling_config,
+        max_tokens_per_call=max_tokens_per_call,
     )
 
     max_budget = max(sweep_grid)
@@ -614,6 +616,7 @@ async def _run_sweep_case_async(
             call_timeout=call_timeout, cache=None,
             cache_key_str=None, transcript=transcript,
             sampling_config=sampling_config,
+            max_tokens_per_call=max_tokens_per_call,
         )
         attempts.append(record)
         judged = _score_pair(case, benign, record)
@@ -702,6 +705,7 @@ def run_sweep_suite(
     budget_usd: float | None = None,
     item_timeout: float | None = None,
     run_timeout: float | None = None,
+    max_tokens_per_call: int | None = None,
 ) -> Any:
     """Run an attack-strength sweep through the shared suite machinery.
 
@@ -751,6 +755,7 @@ def run_sweep_suite(
         budget_usd=budget_usd,
         item_timeout=item_timeout,
         run_timeout=run_timeout,
+        max_tokens_per_call=max_tokens_per_call,
         dispatch_stride=max(grid) + 1,
         run_one_case=partial(
             _run_sweep_case_async,
