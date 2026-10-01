@@ -24,7 +24,9 @@ Run each unverified adapter over a fixed 20-case slice of the trial
 suite. The slice is `score_anchoring` plus `negation_games`, which
 together cover all three primitives (10 score, 7 abstain, 3 choice).
 The runner classifies both arms of every case, so the smoke is 40 paid
-calls per adapter.
+calls per adapter in the expected case. A malformed response triggers
+one repair retry, so the ceiling is 80 calls per adapter. The 5x abort
+threshold below covers that path.
 
 Every adapter under test needs these preconditions in place first.
 
