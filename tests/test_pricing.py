@@ -9,6 +9,7 @@ unaccounted, never silently estimated.
 
 import time
 import unittest
+from pathlib import Path
 
 from peira.adapters.base import ChoiceOutput, CallUsage
 from peira import pricing
@@ -102,6 +103,56 @@ class TestPricingTable(unittest.TestCase):
         orig = pricing._TABLE_PATH
         try:
             pricing._TABLE_PATH = orig.parent / "does-not-exist.json"
+            # load_pricing_table is lru-cached: clear it so the swapped
+            # path is actually read.
+            load_pricing_table.cache_clear()
+            with self.assertRaises(RuntimeError):
+                load_pricing_table()
+        finally:
+            pricing._TABLE_PATH = orig
+            load_pricing_table.cache_clear()
+
+
+class TestIsCostAccounted(unittest.TestCase):
+    def test_metered_model_is_accounted(self):
+        table = load_pricing_table()
+        # gpt-5.6-sol prices per token: its rate is metered, so even a
+        # 0.0 rate would be an accounted zero.
+        self.assertTrue(pricing.is_cost_accounted("gpt-5.6-sol", table))
+
+    def test_unmetered_entries_are_unaccounted(self):
+        table = load_pricing_table()
+        # The batch-2 guardrail APIs return no usage, so the table cannot
+        # meter per-token spend: explicitly unaccounted, never a silent
+        # estimate.
+        self.assertFalse(pricing.is_cost_accounted("gcp:model-armor", table))
+        self.assertFalse(
+            pricing.is_cost_accounted(
+                "cloudflare:@cf/meta/llama-guard-3-8b", table))
+
+    def test_unknown_model_is_unaccounted(self):
+        table = load_pricing_table()
+        self.assertFalse(pricing.is_cost_accounted("no-such-model", table))
+
+    def test_pinned_table_is_the_default(self):
+        # The batch-2 marker is real package data, not a test fixture:
+        # the default call reads the pinned table.
+        self.assertFalse(pricing.is_cost_accounted("gcp:model-armor"))
+        self.assertTrue(pricing.is_cost_accounted("gpt-5.6-sol"))
+
+    def test_bad_marker_rejected(self):
+        import json
+        import tempfile
+        table = load_pricing_table()
+        bad = json.loads(json.dumps(table))
+        bad["models"]["gcp:model-armor"]["cost_accounted"] = "false"
+        orig = pricing._TABLE_PATH
+        try:
+            with tempfile.NamedTemporaryFile(
+                    "w", suffix=".json", delete=False) as f:
+                json.dump(bad, f)
+                path = f.name
+            pricing._TABLE_PATH = Path(path)
             # load_pricing_table is lru-cached: clear it so the swapped
             # path is actually read.
             load_pricing_table.cache_clear()

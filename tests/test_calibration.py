@@ -501,6 +501,8 @@ class TestConfidenceSourceMetadata(unittest.TestCase):
         from peira.adapters import hf, jev, kev, laya, llm, mock, semif
         from peira.adapters import openjev_sglang
         from peira.adapters import lakera, omni_moderation
+        from peira.adapters import model_armor, azure_prompt_shields
+        from peira.adapters import cloudflare_workers_ai
         return [
             hf.ShieldstralAdapter, hf.ProtectAIAdapter,
             hf.LlamaPromptGuard2Adapter, hf.Qwen3GuardAdapter,
@@ -508,6 +510,9 @@ class TestConfidenceSourceMetadata(unittest.TestCase):
             hf.WildGuardAdapter, hf.HarmBenchAdapter,
             hf.GraniteGuardianHapAdapter, lakera.LakeraAdapter,
             omni_moderation.OmniModerationAdapter,
+            model_armor.ModelArmorAdapter,
+            azure_prompt_shields.AzurePromptShieldsAdapter,
+            cloudflare_workers_ai.CloudflareWorkersAiAdapter,
             llm.OpenAIAdapter, llm.MoonshotAdapter,
             llm.AnthropicAdapter, llm.GoogleAdapter,
             jev.JevAdapter, kev.LocalSystemOneAdapter, kev.KevAdapter,
@@ -525,12 +530,17 @@ class TestConfidenceSourceMetadata(unittest.TestCase):
     def test_guardrails_use_boundary_distance(self):
         from peira.adapters import hf
         from peira.adapters import lakera, omni_moderation
+        from peira.adapters import model_armor, azure_prompt_shields
+        from peira.adapters import cloudflare_workers_ai
         for cls in (hf.ShieldstralAdapter, hf.ProtectAIAdapter,
                     hf.LlamaPromptGuard2Adapter, hf.Qwen3GuardAdapter,
                     hf.GraniteGuardianAdapter, hf.ShieldGemmaAdapter,
                     hf.WildGuardAdapter, hf.HarmBenchAdapter,
                     hf.GraniteGuardianHapAdapter, lakera.LakeraAdapter,
-                    omni_moderation.OmniModerationAdapter):
+                    omni_moderation.OmniModerationAdapter,
+                    model_armor.ModelArmorAdapter,
+                    azure_prompt_shields.AzurePromptShieldsAdapter,
+                    cloudflare_workers_ai.CloudflareWorkersAiAdapter):
             self.assertEqual(cls.confidence_source, "guardrail-score")
 
     def test_llm_baselines_verbalized(self):

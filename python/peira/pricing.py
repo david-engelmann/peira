@@ -16,7 +16,12 @@ gateway-reported). The dashboard labels secondary-sourced prices; it
 never treats them as official.
 
 An unknown model prices at 0.0 — cost is then explicitly unaccounted,
-never silently wrong.
+never silently wrong. Entries whose real cost cannot be metered (the
+API returns no usage, so the table cannot price the call) carry the
+machine-readable marker ``"cost_accounted": false`` alongside their
+zero rates. :func:`is_cost_accounted` answers the question "is this
+model's spend metered?" so report tooling can distinguish "accounted
+zero" from "unaccounted zero".
 """
 
 from __future__ import annotations
@@ -81,6 +86,13 @@ def load_pricing_table() -> dict[str, Any]:
                 f"'confidence' {confidence!r}: {_TABLE_PATH} "
                 f"(need one of {PRICING_CONFIDENCES})"
             )
+        marker = entry.get("cost_accounted", True)
+        if not isinstance(marker, bool):
+            raise RuntimeError(
+                f"peira pricing table entry {model!r} has bad "
+                f"'cost_accounted' {marker!r}: {_TABLE_PATH} "
+                "(need a boolean when present)"
+            )
     return table
 
 
@@ -99,6 +111,26 @@ def pricing_confidence(
     if entry is None:
         return None
     return str(entry["confidence"])
+
+
+def is_cost_accounted(
+    model: str,
+    table: dict[str, Any] | None = None,
+) -> bool:
+    """Whether a model's spend is metered by the pricing table.
+
+    True means the table prices the model: a 0.0 rate is then an
+    accounted zero (the call genuinely costs nothing the table can
+    see). False means the spend is explicitly unaccounted — either the
+    entry carries ``"cost_accounted": false`` (the API returns no usage,
+    so the table cannot meter the call) or the model is unknown to the
+    table (prices at 0.0, never silently estimated).
+    """
+    table = table if table is not None else load_pricing_table()
+    entry = table["models"].get(model)
+    if entry is None:
+        return False
+    return entry.get("cost_accounted", True) is not False
 
 
 def cost_usd_py(
