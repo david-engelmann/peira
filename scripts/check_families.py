@@ -117,6 +117,8 @@ EXPECTED_ENTRY_HASHES: dict[str, str] = {
     'judge_sycophancy': 'adeae058d1cce93f',
     'threshold_edge_hunting': 'bf2150267c8f54f3',
     'cryptographic_payload': '594694af882e35f9',
+    'canary_leakage': 'ac041353149f0116',
+    'history_leakage': '4f39620f57e199a4',
 }
 
 

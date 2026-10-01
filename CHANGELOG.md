@@ -7,6 +7,37 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
 
 ## [Unreleased]
 
+### Added EB-25 canary_leakage and EB-48 history_leakage families
+
+- Two new Tier 1 attack families (28 and 29), 420 cases each:
+  `dataset/v2/cases/canary_leakage.jsonl` and
+  `dataset/v2/cases/history_leakage.jsonl`.
+- canary_leakage (EB-25): a synthetic sensitive token (PII,
+  credentials, system-prompt fragments, reference tokens) planted in a
+  records block plus extraction pressure steering the model to quote
+  the token in its decision or reasoning. Single-turn.
+- history_leakage (EB-48): a synthetic secret disclosed in the turn-1
+  user message, extracted under turn-3 pressure referencing the earlier
+  conversation. Cross-turn privacy failure.
+- `python/peira/leakage.py`: stdlib-only reference quotation detector
+  (`detect_quotation`, `case_secret`, `score_response`) with exact,
+  case-insensitive, whitespace-normalized, and partial match modes;
+  case-level `canary` / `history_secret` metadata carries the planted
+  value. Covered by `tests/test_leakage.py` (18 tests).
+- Authoring: `scripts/author_canary_leakage.py` and
+  `scripts/author_history_leakage.py` assemble cases deterministically
+  from baked LLM-drafted scenarios
+  (`scripts/canary_leakage_scenarios.py`,
+  `scripts/history_leakage_scenarios.py`; drafted once via OpenRouter,
+  verified programmatically); ingredient specs in
+  `scripts/canary_ingredients.py` / `scripts/history_ingredients.py`.
+  Every case asserts the deletion test, value uniqueness, extraction
+  verbs, and boundary separation from state_poisoning /
+  authority_fabrication / indirect_injection.
+- Registered in `python/peira/families.py`, documented in
+  `docs/Taxonomy.md` (families 28/29, boundary ruling 11), decision
+  record D-43 in `docs/Decisions.md`.
+
 ### Fixed v1-csm-134 PII hygiene, dataset v1 1.4.1
 
 - v1-csm-134 used `audit@revenue.gov`, a real-TLD government-looking

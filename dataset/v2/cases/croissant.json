@@ -58,6 +58,15 @@
   "description": "peira-v1. Paired adversarial decision-model cases, dataset version 2.4.0.",
   "distribution": [
     {
+      "@id": "peira-v1/canary_leakage.jsonl",
+      "@type": "cr:FileObject",
+      "contentUrl": "https://raw.githubusercontent.com/david-engelmann/peira/main/dataset/v2/cases/canary_leakage.jsonl",
+      "description": "420 paired adversarial decision cases (peira-v1 2.5.0).",
+      "encodingFormat": "application/x-ndjson",
+      "name": "canary_leakage.jsonl",
+      "sha256": "65464426967465e545a4aacd542a66e08aa895bb3230ea00b509836056de012f"
+    },
+    {
       "@id": "peira-v1/crosslingual_shift.jsonl",
       "@type": "cr:FileObject",
       "contentUrl": "https://raw.githubusercontent.com/david-engelmann/peira/main/dataset/v2/cases/crosslingual_shift.jsonl",
@@ -83,6 +92,15 @@
       "encodingFormat": "application/x-ndjson",
       "name": "evidence_positioning.jsonl",
       "sha256": "565a770d06f8630b3a2aa337472263515c680c9044cd4e6e661b2748c15e5503"
+    },
+    {
+      "@id": "peira-v1/history_leakage.jsonl",
+      "@type": "cr:FileObject",
+      "contentUrl": "https://raw.githubusercontent.com/david-engelmann/peira/main/dataset/v2/cases/history_leakage.jsonl",
+      "description": "420 paired adversarial decision cases (peira-v1 2.5.0).",
+      "encodingFormat": "application/x-ndjson",
+      "name": "history_leakage.jsonl",
+      "sha256": "e70debe90cc4d506f88b386d64da018cae0f09b182e1f12eb6fc1c5dc06764bb"
     },
     {
       "@id": "peira-v1/judge_sycophancy.jsonl",

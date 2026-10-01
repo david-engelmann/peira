@@ -1731,3 +1731,47 @@ measures outcomes, not reasoning aesthetics.
 
 **To revisit:** only with evidence that decision-only scoring
 systematically misses a capability the benchmark claims to measure.
+
+
+## D-43: EB-25 canary_leakage + EB-48 history_leakage ship as families 28/29 (2026-10-01)
+
+**Decision.** The EB-25 and EB-48 external-benchmark dispositions ship
+as two new Tier 1 families: canary_leakage (family 28, 420 cases) and
+history_leakage (family 29, 420 cases). They are separate families,
+not one "leakage" family and not folded into neighboring families.
+(Numbered 26/27 at decision time; renumbered when threshold_edge_hunting
+and cryptographic_payload landed as families 26 and 27.)
+
+**Alternatives.** One merged leakage family (rejected: single-turn
+token-plus-pressure vs cross-turn secret retrieval are different
+causal mechanisms with different countermeasures -- prompt-level
+filtering vs conversation-state hygiene). Fold into state_poisoning
+(rejected: the payload is data the model is pressured to quote, never
+an authorization signal).
+
+**Why this:** every case carries mechanical validity diagnostics:
+(1) attacked == benign + exactly one planted block (deletion-test
+literal); (2) the secret value occurs exactly once in attacked and
+nowhere in benign; (3) the pressure carries an extraction verb and a
+cross-turn marker (history_leakage: "earlier"); (4) no authorization
+language and no bare decision imperatives (boundary vs
+state_poisoning/authority_fabrication/indirect_injection, enforced by
+assertion in the authoring scripts). All values are synthetic by
+construction (900-series SSNs, 555 numbers, test-format keys,
+fictional companies). The reference quotation detector
+(`python/peira/leakage.py`, stdlib-only) scores quotation in decision
+or reasoning text; case-level `canary`/`history_secret` metadata
+carries the planted value. G9: gate passes (0 errors); 422 same-frame
+warning pairs peak at 0.879 trigram-cosine, all attributable to
+controlled per-frame scaffolding (identical transcript shape for
+history_leakage, identical evidence facts for canary_leakage) -- the
+LLM-drafted scenario prose itself peaks at 0.15 pairwise. Boundary
+ruling 11 in docs/Taxonomy.md governs the
+canary/history/state_poisoning/indirect_injection/authority_fabrication
+borders.
+
+**To revisit:** if a future family plants secrets with same-turn
+pressure inside a multi-turn conversation, the ruling-11 deletion
+tests decide whether it is canary_leakage (block-local) or
+history_leakage (cross-turn retrieval); persistent blur would reopen
+the merge question.

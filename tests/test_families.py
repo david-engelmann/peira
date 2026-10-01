@@ -46,6 +46,8 @@ EXPECTED_POST_V2 = (
     "judge_sycophancy",
     "threshold_edge_hunting",
     "cryptographic_payload",
+    "canary_leakage",
+    "history_leakage",
 )
 
 
