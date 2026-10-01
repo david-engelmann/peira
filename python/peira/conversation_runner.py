@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import asyncio
 import dataclasses
+import functools
 from dataclasses import dataclass, field
 from pathlib import Path
 import time
@@ -148,6 +149,14 @@ class ConversationResult(PerCaseResult):
 
     benign_turns: list[CallRecord] = field(default_factory=list)
     attacked_turns: list[CallRecord] = field(default_factory=list)
+    # EB-15: True when an attacker budget (max_attacker_rounds or
+    # attacker_token_budget) truncated the attacked arm before its
+    # authored trajectory finished. The scored pair is then (benign
+    # final, last executed attacked turn): the case is still scored,
+    # but the exhaustion is a first-class outcome, not silent
+    # truncation. Omitted from the artifact dict when False so
+    # pre-EB-15 artifacts round-trip byte-identically.
+    attack_budget_exhausted: bool = False
 
     @classmethod
     def from_scored(
@@ -155,6 +164,7 @@ class ConversationResult(PerCaseResult):
         scored: PerCaseResult,
         benign_turns: list[CallRecord],
         attacked_turns: list[CallRecord],
+        attack_budget_exhausted: bool = False,
     ) -> "ConversationResult":
         return cls(
             case_id=scored.case_id,
@@ -168,6 +178,7 @@ class ConversationResult(PerCaseResult):
             ineligibility_reason=scored.ineligibility_reason,
             benign_turns=list(benign_turns),
             attacked_turns=list(attacked_turns),
+            attack_budget_exhausted=attack_budget_exhausted,
         )
 
     @classmethod
@@ -184,21 +195,39 @@ class ConversationResult(PerCaseResult):
         attacked_turn_dicts = turns.get(
             "attacked_turns", d.get("attacked_turns", [])
         )
+        # The resume-partial path treats entries as hostile input: a
+        # wrong-typed flag must fail here, not coerce silently.
+        exhausted = d.get("attack_budget_exhausted", False)
+        if not isinstance(exhausted, bool):
+            raise ValueError(
+                "bad attack_budget_exhausted: expected boolean, "
+                f"got {type(exhausted).__name__}"
+            )
         return cls.from_scored(
             base,
             [CallRecord.from_dict(r) for r in benign_turn_dicts],
             [CallRecord.from_dict(r) for r in attacked_turn_dicts],
+            attack_budget_exhausted=exhausted,
         )
 
     def to_dict(self) -> dict[str, Any]:
         """Artifact entry shape: strict base fields plus the sealed
         turn records under the suite-namespaced ``conversational_turns``
-        field (see RunArtifact._RESULT_OPTIONAL)."""
+        field (see RunArtifact._RESULT_OPTIONAL).
+
+        ``attack_budget_exhausted`` is emitted only when True: the
+        Rust core skips serializing a false flag, so omitting it keeps
+        the two backends' canonical JSON (and analysis locks)
+        byte-identical.
+        """
         d = dataclasses.asdict(self)
         d["conversational_turns"] = {
             "benign_turns": d.pop("benign_turns"),
             "attacked_turns": d.pop("attacked_turns"),
         }
+        exhausted = d.pop("attack_budget_exhausted")
+        if exhausted:
+            d["attack_budget_exhausted"] = True
         return d
 
 
@@ -268,6 +297,44 @@ def _conversation_turn_dispatch_index(
     return dispatch_base + 2 * turn_index + arm_offset
 
 
+def _validate_attack_budgets(
+    max_attacker_rounds: int | None,
+    attacker_token_budget: int | None,
+) -> None:
+    """Validate EB-15 attacker budgets; raise ValueError when unusable.
+
+    Budgets are opt-in (None disables); when given they must be
+    positive ints. A bool is not an int here (``True`` would silently
+    mean one round), and zero or negative budgets would truncate the
+    attacked arm before its first turn, which is a configuration
+    error, not a measurement.
+    """
+    for name, value in (
+        ("max_attacker_rounds", max_attacker_rounds),
+        ("attacker_token_budget", attacker_token_budget),
+    ):
+        if value is None:
+            continue
+        if (
+            isinstance(value, bool)
+            or not isinstance(value, int)
+            or value < 1
+        ):
+            raise ValueError(
+                f"{name} must be a positive int or None, "
+                f"got {value!r}"
+            )
+
+
+def _attacked_tokens(records: list[CallRecord]) -> int:
+    """Cumulative attacker tokens (in + out) over executed turns."""
+    total = 0
+    for rec in records:
+        if rec.usage is not None:
+            total += rec.usage.tokens_in + rec.usage.tokens_out
+    return total
+
+
 # ---------------------------------------------------------------------------
 # Per-case execution
 # ---------------------------------------------------------------------------
@@ -290,6 +357,8 @@ async def _run_conversation_case_async(
     transcript: Any | None,
     run_nonce: str,
     sampling_config: dict[str, Any] | None = None,
+    max_attacker_rounds: int | None = None,
+    attacker_token_budget: int | None = None,
 ) -> ConversationResult:
     """Drive one conversational case, turn by turn.
 
@@ -302,7 +371,17 @@ async def _run_conversation_case_async(
     spliced into the history without a call; each model response is
     appended to the history the next turn sees. Only the final turn
     of each arm is scored.
+
+    EB-15 attacker budgets: ``max_attacker_rounds`` caps the executed
+    user turns of the attacked arm; ``attacker_token_budget`` caps its
+    cumulative tokens (in + out). The turn that reaches a budget is
+    kept (it was executed and paid for); the arm stops before the
+    next turn. The benign arm is the control and always runs fully.
+    A truncated attacked arm seals
+    ``attack_budget_exhausted=True`` on the result; the scored pair
+    is then (benign final, last executed attacked turn).
     """
+    _validate_attack_budgets(max_attacker_rounds, attacker_token_budget)
     # Local imports: runner imports nothing from this module, so there
     # is no cycle, and importing this module never requires the
     # runner's asyncio machinery at module scope.
@@ -342,7 +421,7 @@ async def _run_conversation_case_async(
 
     async def run_arm(
         arm_name: str, turns: list[ConversationTurn], options: list[str]
-    ) -> list[CallRecord]:
+    ) -> tuple[list[CallRecord], bool]:
         """Execute one arm's turns in order.
 
         Fixed assistant turns are spliced verbatim into the history —
@@ -352,11 +431,18 @@ async def _run_conversation_case_async(
         therefore sit adjacent to a generated response; both are
         assistant-role messages and the history is a message list, not
         a strict alternation.
+
+        Returns the turn records plus whether an attacker budget
+        truncated this arm (only ever True for the attacked arm).
         """
         history: list[dict[str, str]] = []
         records: list[CallRecord] = []
         executed = 0
         user_turns = [t for t in turns if t.role == "user"]
+        budgeted = arm_name == "attacked" and (
+            max_attacker_rounds is not None
+            or attacker_token_budget is not None
+        )
         for turn in turns:
             if turn.role == "assistant":
                 # Fixed, authored history: spliced in, never executed.
@@ -419,19 +505,36 @@ async def _run_conversation_case_async(
                 }
             )
             executed += 1
-        return records
+            if budgeted and (
+                (
+                    max_attacker_rounds is not None
+                    and executed >= max_attacker_rounds
+                )
+                or (
+                    attacker_token_budget is not None
+                    and _attacked_tokens(records) >= attacker_token_budget
+                )
+            ):
+                # The budget fired: stop before the next turn. The
+                # turn that reached the budget is kept.
+                break
+        exhausted = budgeted and executed < len(user_turns)
+        return records, exhausted
 
-    benign_records = await run_arm(
+    benign_records, _ = await run_arm(
         "benign", case.benign.turns, case.benign.options
     )
-    attacked_records = await run_arm(
+    attacked_records, attack_exhausted = await run_arm(
         "attacked", case.attacked.turns, case.attacked.options
     )
     scored = _score_pair(
         _scoring_case(case), benign_records[-1], attacked_records[-1]
     )
     return ConversationResult.from_scored(
-        scored, benign_records, attacked_records
+        scored,
+        benign_records,
+        attacked_records,
+        attack_budget_exhausted=attack_exhausted,
     )
 
 
@@ -442,14 +545,20 @@ def run_conversation_case(
     dispatch_base: int = 0,
     pricing_table: dict[str, Any] | None = None,
     run_nonce: str | None = None,
+    max_attacker_rounds: int | None = None,
+    attacker_token_budget: int | None = None,
 ) -> ConversationResult:
     """Run one conversational case synchronously (debugging aid).
 
     Mirrors :func:`peira.runner.run_case`: strictly sequential, no
     concurrency, retries, cache, or transcript. Every turn goes
-    through the adapter's turn entry point.
+    through the adapter's turn entry point. EB-15 attacker budgets
+    (``max_attacker_rounds``, ``attacker_token_budget``) truncate the
+    attacked arm exactly as in the async path; the benign arm always
+    runs fully.
     """
     _require_conversational_adapter(adapter)
+    _validate_attack_budgets(max_attacker_rounds, attacker_token_budget)
     from peira.pricing import load_pricing_table
     from peira.runner import (
         _pseudonymous_call_id,
@@ -463,15 +572,20 @@ def run_conversation_case(
 
     def run_arm(
         arm_name: str, turns: list[ConversationTurn], options: list[str]
-    ) -> list[CallRecord]:
+    ) -> tuple[list[CallRecord], bool]:
         """Execute one arm's turns in order (sync; same semantics as
         the async path: authored assistant turns splice verbatim into
         the history, executed user turns append the user message and
-        the model's generated response)."""
+        the model's generated response). Returns the turn records
+        plus whether an attacker budget truncated this arm."""
         history: list[dict[str, str]] = []
         records: list[CallRecord] = []
         executed = 0
         user_turns = [t for t in turns if t.role == "user"]
+        budgeted = arm_name == "attacked" and (
+            max_attacker_rounds is not None
+            or attacker_token_budget is not None
+        )
         for turn in turns:
             if turn.role == "assistant":
                 history.append(
@@ -513,17 +627,34 @@ def run_conversation_case(
                 }
             )
             executed += 1
-        return records
+            if budgeted and (
+                (
+                    max_attacker_rounds is not None
+                    and executed >= max_attacker_rounds
+                )
+                or (
+                    attacker_token_budget is not None
+                    and _attacked_tokens(records) >= attacker_token_budget
+                )
+            ):
+                break
+        exhausted = budgeted and executed < len(user_turns)
+        return records, exhausted
 
-    benign_records = run_arm("benign", case.benign.turns, case.benign.options)
-    attacked_records = run_arm(
+    benign_records, _ = run_arm(
+        "benign", case.benign.turns, case.benign.options
+    )
+    attacked_records, attack_exhausted = run_arm(
         "attacked", case.attacked.turns, case.attacked.options
     )
     scored = _score_pair(
         _scoring_case(case), benign_records[-1], attacked_records[-1]
     )
     return ConversationResult.from_scored(
-        scored, benign_records, attacked_records
+        scored,
+        benign_records,
+        attacked_records,
+        attack_budget_exhausted=attack_exhausted,
     )
 
 
@@ -554,10 +685,14 @@ def run_conversation_suite(
     rlimit_cpu_seconds: float | None = None,
     rlimit_as_mb: float | None = None,
     rlimit_fsize_mb: float | None = None,
+    rlimit_nproc: int | None = None,
+    death_log_path: Path | str | None = None,
     run_nonce: str | None = None,
     budget_usd: float | None = None,
     item_timeout: float | None = None,
     run_timeout: float | None = None,
+    max_attacker_rounds: int | None = None,
+    attacker_token_budget: int | None = None,
 ):
     """Run a conversational suite through an adapter, concurrently.
 
@@ -571,16 +706,37 @@ def run_conversation_suite(
     transcripts, checkpoints, resume, environment fingerprinting, the
     sealed artifact — is the shared machinery, unchanged.
 
+    EB-15 attacker budgets: ``max_attacker_rounds`` caps the executed
+    user turns of each case's attacked arm; ``attacker_token_budget``
+    caps its cumulative tokens (in + out). A truncated arm seals
+    ``attack_budget_exhausted=True`` on its result (a scored outcome
+    class, not silent truncation); the benign arm always runs fully.
+    Both budgets are sealed into the artifact config for
+    reproducibility.
+
     The artifact's ``suite`` is ``"conversational"`` (or the override
     passed here): conversational results are namespaced away from the
     v1/v2 numbers by construction.
     """
     _require_conversational_adapter(adapter)
+    _validate_attack_budgets(max_attacker_rounds, attacker_token_budget)
     from peira.runner import run_suite
 
     # Lazy import: peira.conversation_metrics imports this module's
     # public names, so a module-level import would be circular.
     from peira.conversation_metrics import summarize_conversation_artifact
+
+    # The driver calls run_one_case positionally for the shared
+    # leading args and by keyword for the rest: bind the attacker
+    # budgets as keywords so the driver signature stays untouched.
+    run_one = functools.partial(
+        _run_conversation_case_async,
+        max_attacker_rounds=max_attacker_rounds,
+        attacker_token_budget=attacker_token_budget,
+    )
+    sealed_extra = dict(config_extra or {})
+    sealed_extra["max_attacker_rounds"] = max_attacker_rounds
+    sealed_extra["attacker_token_budget"] = attacker_token_budget
 
     return run_suite(
         adapter,
@@ -600,16 +756,18 @@ def run_conversation_suite(
         call_timeout=call_timeout,
         cache_dir=cache_dir,
         transcript_path=transcript_path,
-        config_extra=config_extra,
+        config_extra=sealed_extra,
         rlimit_cpu_seconds=rlimit_cpu_seconds,
         rlimit_as_mb=rlimit_as_mb,
         rlimit_fsize_mb=rlimit_fsize_mb,
+        rlimit_nproc=rlimit_nproc,
+        death_log_path=death_log_path,
         run_nonce=run_nonce,
         budget_usd=budget_usd,
         item_timeout=item_timeout,
         run_timeout=run_timeout,
         dispatch_stride=CONVERSATION_DISPATCH_STRIDE,
-        run_one_case=_run_conversation_case_async,
+        run_one_case=run_one,
         case_cost=_conversation_case_cost_usd,
         result_to_dict=lambda r: r.to_dict(),
         summarize_artifact=summarize_conversation_artifact,
@@ -626,14 +784,35 @@ def validate_conversation_partial(
     seed: int = 0,
     budget_usd: float | None = None,
     cache_enabled: bool = False,
+    item_timeout: float | None = None,
+    run_timeout: float | None = None,
+    max_attacker_rounds: int | None = None,
+    attacker_token_budget: int | None = None,
 ) -> tuple[set[str], list[ConversationResult]]:
     """Strictly validate a conversational partial run for --resume.
 
     Same contract as :func:`peira.runner.validate_partial`, but
     result entries rebuild as :class:`ConversationResult` so the turn
-    history survives the resume round-trip.
+    history survives the resume round-trip. The EB-15 attacker
+    budgets are measurement inputs like the timeout budgets: a
+    partial recorded under different budgets must not merge into
+    this run (a case truncated under one budget might complete under
+    another), so they are validated against the sealed config.
     """
     from peira.runner import validate_partial
+
+    for _bname, _bwant in (
+        ("max_attacker_rounds", max_attacker_rounds),
+        ("attacker_token_budget", attacker_token_budget),
+    ):
+        _bgot = partial.config.get(_bname)
+        if _bgot != _bwant:
+            _flag = "--" + _bname.replace("_", "-")
+            raise ValueError(
+                f"partial run was recorded with {_bname} "
+                f"{_bgot!r}, not {_bwant!r}: re-run with the same "
+                f"{_flag} or drop --resume"
+            )
 
     return validate_partial(  # type: ignore[return-value]
         partial,
@@ -645,5 +824,7 @@ def validate_conversation_partial(
         seed=seed,
         budget_usd=budget_usd,
         cache_enabled=cache_enabled,
+        item_timeout=item_timeout,
+        run_timeout=run_timeout,
         result_from_dict=ConversationResult.from_dict,
     )

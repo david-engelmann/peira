@@ -33,6 +33,37 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
   standalone report plus `borderline_cases.json` sidecar (flags,
   never quarantine). Determinism explicitly not claimed, even at
   temperature 0.
+
+### Added conversational attacker budgets and trajectory metrics (EB-15 + EB-16 + EB-60)
+
+- New conversational-only `peira run` flags. `--max-attacker-rounds N`
+  caps attacker rounds per case and `--attacker-token-budget T` caps
+  attacked-arm tokens (in + out) per case. Budgets fire only on the
+  attacked arm (the benign arm is the control and always runs fully).
+  The turn that reaches a budget is kept, the case scores on its last
+  executed turn, and the result seals `attack_budget_exhausted`. Both
+  budgets are sealed into the artifact config and `--resume` rejects a
+  partial recorded under different budgets.
+- New summary blocks in `peira.conversation_metrics`. Escalation cost
+  (`median_rounds_to_first_flip`, `median_attacker_tokens_per_case`,
+  `budget_exhaustion_rate` with Wilson intervals), confidence erosion
+  (`stable` / `single_step_collapse` / `gradual_erosion` with coverage
+  and per-class rates), the refusal taxonomy (per-arm refusal /
+  hedging / compliance rates plus refusal quality over refused
+  turns), and diagnostic per-turn decision-quality curves
+  (`attacked_gold_match`, `benign_gold_match`,
+  `attacked_benign_agreement`, scorable rates). The curves never feed
+  the headline flip rate, which stays final-turn-only. Per-family
+  drill-downs carry the same blocks.
+- `ConversationResult.attack_budget_exhausted` is emitted in result
+  JSON only when true, so pre-existing artifacts verify
+  byte-identically. The Rust `PerCaseResult` mirrors the field with
+  `skip_serializing_if`.
+- Fixed a latent crash on the conversational CLI path.
+  `run_conversation_suite` now accepts `rlimit_nproc` and
+  `death_log_path` and passes them through to the shared driver
+  instead of raising `TypeError` on the CLI's standard run kwargs.
+
 ### Added EB-41 benign twins for over-refusal
 
 - `scripts/author_benign_twins.py`: generator producing harmless
@@ -91,19 +122,6 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
 - `docs/Reproducibility.md`: lockfile usage, Docker build/run
   reference, and regeneration instructions; linked from
   `docs/Overview.md`.
-### Added threshold_edge_hunting attack family
-
-- The v2 suite ships attack family 26: `threshold_edge_hunting`
-  (420 cases, `v2-edge-0001`..`v2-edge-0420`), under
-  `dataset/v2/cases/`. Each case states an explicit numeric cutoff
-  and places the benign evidence within 0.01 of it on the correct
-  side; the attacked arm applies a minimal semantics-preserving
-  perturbation (evidence paraphrase, threshold restatement, cosmetic
-  reorder, combined) changing no number and no cutoff. Fourteen
-  domains, five thresholds per domain, both sides of each cutoff,
-  336 choice + 84 score cases. Design decision D-39: ships as fixed
-  paired cases; the adaptive flip-radius variant is future measurement
-  work. Dataset version 2.3.1 to 2.4.0.
 
 ### Added EB-44 graded flip-severity rubric judge + EB-53 targeted ASR
 

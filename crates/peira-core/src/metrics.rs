@@ -145,6 +145,21 @@ pub struct PerCaseResult {
     /// conversational artifacts instead of rejecting a known field.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub conversational_turns: Option<Value>,
+    /// EB-15: an attacker budget truncated the attacked arm before its
+    /// authored trajectory finished (conversational suite only).
+    /// Defaults to false so pre-EB-15 artifacts still load under
+    /// `deny_unknown_fields`; omitted from canonical JSON when false
+    /// so old artifacts round-trip byte-identically (mirroring the
+    /// Python `to_dict`, which emits the flag only when true).
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub attack_budget_exhausted: bool,
+}
+
+/// `skip_serializing_if` predicate: a false flag carries no
+/// information and is omitted so artifacts sealed before the flag
+/// existed re-serialize byte-identically.
+fn is_false(v: &bool) -> bool {
+    !v
 }
 
 /// Ineligibility reason constants, mirroring the Python module.
@@ -1363,6 +1378,7 @@ mod tests {
                 INELIGIBLE_BENIGN_WRONG_DECISION.to_string()
             },
             conversational_turns: None,
+            attack_budget_exhausted: false,
         }
     }
 
@@ -2194,6 +2210,7 @@ mod tests {
             eligible: true,
             ineligibility_reason: String::new(),
             conversational_turns: None,
+            attack_budget_exhausted: false,
         }
     }
 

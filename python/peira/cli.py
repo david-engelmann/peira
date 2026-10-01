@@ -266,6 +266,25 @@ def _print_conversation_run_summary(artifact, out_path: Path) -> None:
         print(f"  spend:           ${artifact.spent_usd:.4f} (uncapped)")
     print(f"  flip rate:       {_val(_metric_value(m['flip_rate']))} "
           f"95% CI {_ci95(_metric_ci(m['flip_rate']))}")
+    mr = m.get("median_rounds_to_first_flip") or {}
+    print(f"  median rounds to first flip: {_val(mr.get('median'))} "
+          f"(n={mr.get('n')})")
+    print(f"  median attacker tokens/case: "
+          f"{_val(m.get('median_attacker_tokens_per_case'))}")
+    print(f"  budget exhaustion: "
+          f"{_val(_metric_value(m.get('budget_exhaustion_rate')))} "
+          f"95% CI {_ci95(_metric_ci(m.get('budget_exhaustion_rate')))}")
+    er = m.get("confidence_erosion") or {}
+    print(f"  confidence erosion: median {_val(er.get('median_erosion'))} "
+          f"over n={er.get('n_with_trajectory')} trajectories "
+          f"(coverage {_val(er.get('coverage'))})")
+    rt = m.get("refusal_taxonomy") or {}
+    atk = rt.get("attacked") or {}
+    def _rate(block, key):
+        return (block.get(key) or {}).get("rate")
+    print(f"  attacked refusals: {_val(_rate(atk, 'refusal'))}, "
+          f"hedging: {_val(_rate(atk, 'hedging'))}, "
+          f"compliance: {_val(_rate(atk, 'compliance'))}")
     print(f"  target hit rate: {_val(m['target_hit_rate'])}")
     print(f"  mean user turns: benign {_val(m['mean_user_turns_benign'])}, "
           f"attacked {_val(m['mean_user_turns_attacked'])}")
@@ -563,6 +582,26 @@ def cmd_run(args: argparse.Namespace) -> int:
         print(f"error: --run-timeout must be > 0 "
               f"(got {run_timeout})", file=sys.stderr)
         return EXIT_USER_ERROR
+    # EB-15 attacker budgets: measurement inputs for the conversational
+    # suite only. argparse already guarantees ints here; the harness
+    # needs them strictly positive.
+    max_attacker_rounds = getattr(args, "max_attacker_rounds", None)
+    attacker_token_budget = getattr(args, "attacker_token_budget", None)
+    for _flag, _value in (
+        ("max-attacker-rounds", max_attacker_rounds),
+        ("attacker-token-budget", attacker_token_budget),
+    ):
+        if _value is not None and _value < 1:
+            print(f"error: --{_flag} must be a positive integer "
+                  f"(got {_value})", file=sys.stderr)
+            return EXIT_USER_ERROR
+    if (max_attacker_rounds is not None
+            or attacker_token_budget is not None) \
+            and not is_conversational:
+        print("error: --max-attacker-rounds and --attacker-token-budget "
+              "apply only to the conversational suite "
+              f"(got suite {args.suite!r})", file=sys.stderr)
+        return EXIT_USER_ERROR
 
     if args.dry_run:
         print(f"dry run: {len(cases)} cases, adapter={adapter.name}, "
@@ -599,22 +638,32 @@ def cmd_run(args: argparse.Namespace) -> int:
                 partial = None
             if partial is not None:
                 try:
-                    from peira.conversation import (
-                        ConversationResult as _ConvResult,
-                    )
-                    already_done, prior_results = validate_partial(
-                        partial, adapter, cases, suite, dataset_version,
-                        manifest_sha256, seed=args.seed,
-                        budget_usd=getattr(args, "budget_usd", None),
-                        cache_enabled=args.cache_dir is not None,
-                        item_timeout=item_timeout,
-                        run_timeout=run_timeout,
-                        result_from_dict=(
-                            _ConvResult.from_dict
-                            if is_conversational
-                            else PerCaseResult.from_dict
-                        ),
-                    )
+                    if is_conversational:
+                        from peira.conversation import (
+                            validate_conversation_partial
+                            as _validate_conv_partial,
+                        )
+                        already_done, prior_results = _validate_conv_partial(
+                            partial, adapter, cases, suite,
+                            dataset_version, manifest_sha256,
+                            seed=args.seed,
+                            budget_usd=getattr(args, "budget_usd", None),
+                            cache_enabled=args.cache_dir is not None,
+                            item_timeout=item_timeout,
+                            run_timeout=run_timeout,
+                            max_attacker_rounds=max_attacker_rounds,
+                            attacker_token_budget=attacker_token_budget,
+                        )
+                    else:
+                        already_done, prior_results = validate_partial(
+                            partial, adapter, cases, suite, dataset_version,
+                            manifest_sha256, seed=args.seed,
+                            budget_usd=getattr(args, "budget_usd", None),
+                            cache_enabled=args.cache_dir is not None,
+                            item_timeout=item_timeout,
+                            run_timeout=run_timeout,
+                            result_from_dict=PerCaseResult.from_dict,
+                        )
                 except ValueError as e:
                     print(f"error: {e}; delete {partial_path} or drop "
                           f"--resume and re-run.", file=sys.stderr)
@@ -668,7 +717,9 @@ def cmd_run(args: argparse.Namespace) -> int:
             if is_conversational:
                 from peira.conversation import run_conversation_suite
                 artifact = run_conversation_suite(
-                    adapter, cases, suite, dataset_version, **run_kwargs
+                    adapter, cases, suite, dataset_version, **run_kwargs,
+                    max_attacker_rounds=max_attacker_rounds,
+                    attacker_token_budget=attacker_token_budget,
                 )
             else:
                 artifact = run_suite(
@@ -4542,6 +4593,16 @@ def build_parser() -> argparse.ArgumentParser:
                    "resumable partial, and the artifact seals with "
                    "termination=timeout (analyzable, never rankable) "
                    "(no run budget by default)")
+    r.add_argument("--max-attacker-rounds", type=int, default=None,
+                   help="conversational suite only: cap attacker rounds "
+                   "per case before the attacked arm stops; the case "
+                   "seals with attack_budget_exhausted=true and scores "
+                   "on its last executed turn (no cap by default)")
+    r.add_argument("--attacker-token-budget", type=int, default=None,
+                   help="conversational suite only: cap attacked-arm "
+                   "tokens (in + out) per case; on exhaustion the case "
+                   "seals with attack_budget_exhausted=true and scores "
+                   "on its last executed turn (no cap by default)")
     r.add_argument("--rlimit-cpu-seconds", type=float, default=None,
                    help="process-wide CPU time backstop in seconds (Unix "
                    "only; opt-in, no limit by default)")

@@ -221,6 +221,10 @@ impl From<PyPerCaseResult> for metrics::PerCaseResult {
             eligible: r.eligible,
             ineligibility_reason: r.ineligibility_reason,
             conversational_turns: None,
+            // The PyO3 path serves single-shot metrics; the
+            // conversational runner is Python-only, so the EB-15
+            // budget flag is always false here.
+            attack_budget_exhausted: false,
         }
     }
 }

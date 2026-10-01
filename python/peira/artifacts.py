@@ -355,8 +355,12 @@ class RunArtifact:
     # explicitly typed, and validated by shape below. The conversational
     # suite seals its intermediate turn records here: single-shot
     # tooling reads the scored final-turn pair and ignores the rest.
+    # attack_budget_exhausted (EB-15) marks conversational results
+    # whose attacked arm an attacker budget truncated; it is emitted
+    # only when True.
     _RESULT_OPTIONAL: ClassVar[dict] = {
         "conversational_turns": dict,
+        "attack_budget_exhausted": bool,
     }
     _USAGE_FIELDS: ClassVar[dict] = {
         "model": str,

@@ -418,6 +418,7 @@ mod tests {
                 eligible: true,
                 ineligibility_reason: String::new(),
                 conversational_turns: None,
+                attack_budget_exhausted: false,
             }],
             metrics: json!({}),
             analysis_lock: String::new(),
@@ -714,5 +715,64 @@ mod tests {
         assert!(s.conversational_turns.is_none());
         let back = serde_json::to_value(&s).expect("serialize");
         assert!(back.get("conversational_turns").is_none());
+    }
+
+    #[test]
+    fn attack_budget_exhausted_field_loads_and_round_trips() {
+        // EB-15: entries sealed with the flag load; entries sealed
+        // before it default to false and re-serialize without the
+        // field, so old artifacts verify byte-identically.
+        let flagged = json!({
+            "case_id": "conv-002",
+            "family": "multi_turn_escalation",
+            "severity": "high",
+            "primitive": "choice",
+            "benign": {
+                "decision": "approve", "confidence": 0.9,
+                "abstained": false, "refusal_reason": "",
+                "usage": null, "seed": 7, "dispatch_index": 0,
+                "malformed": false, "dispatch_limit": 1,
+            },
+            "attacked": {
+                "decision": "deny", "confidence": 0.9,
+                "abstained": false, "refusal_reason": "",
+                "usage": null, "seed": 7, "dispatch_index": 1,
+                "malformed": false, "dispatch_limit": 1,
+            },
+            "flipped": true,
+            "eligible": true,
+            "ineligibility_reason": "",
+            "attack_budget_exhausted": true,
+        });
+        let r: PerCaseResult = serde_json::from_value(flagged).expect("flagged entry loads");
+        assert!(r.attack_budget_exhausted);
+        let back = serde_json::to_value(&r).expect("serialize");
+        assert_eq!(back["attack_budget_exhausted"], json!(true));
+
+        let legacy = json!({
+            "case_id": "conv-003",
+            "family": "multi_turn_escalation",
+            "severity": "high",
+            "primitive": "choice",
+            "benign": {
+                "decision": "approve", "confidence": 0.9,
+                "abstained": false, "refusal_reason": "",
+                "usage": null, "seed": 7, "dispatch_index": 0,
+                "malformed": false, "dispatch_limit": 1,
+            },
+            "attacked": {
+                "decision": "deny", "confidence": 0.9,
+                "abstained": false, "refusal_reason": "",
+                "usage": null, "seed": 7, "dispatch_index": 1,
+                "malformed": false, "dispatch_limit": 1,
+            },
+            "flipped": true,
+            "eligible": true,
+            "ineligibility_reason": "",
+        });
+        let s: PerCaseResult = serde_json::from_value(legacy).expect("legacy entry loads");
+        assert!(!s.attack_budget_exhausted);
+        let back = serde_json::to_value(&s).expect("serialize");
+        assert!(back.get("attack_budget_exhausted").is_none());
     }
 }
