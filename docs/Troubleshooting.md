@@ -395,29 +395,23 @@ or counts like `n_cases` drifted). Each mismatch is listed as
 `  - <file>: <what changed>`. Fix: don't edit released case files. 
 cut a new dataset version instead. For a draft, rebuild the manifest.
 
-**``error: the `cargo` binary was not found on PATH.``**
-Cause: you ran `scripts/build_core_ext.py` without the Rust toolchain.
+**`maturin develop`: `error: the `cargo` binary was not found on PATH.`**
+Cause: you ran `maturin develop` without the Rust toolchain.
 Fix: install it (https://rustup.rs), or skip the build entirely. The
 extension is an optional accelerator; peira runs on the pure-Python
 reference implementation without it.
 
-**`error: cargo build failed (exit N).`**
+**`maturin develop`: `error: cargo build failed`**
 Cause: the PyO3 extension failed to compile. Fix: check you have a
-Python 3.10+ interpreter with development headers (`Python.h`). On
-Debian/Ubuntu that's `python3-dev`. Then re-run
-`python scripts/build_core_ext.py`.
+Python 3.10+ interpreter (PyO3's build script queries it; on Linux the
+`-dev` headers are unnecessary). Then re-run `maturin develop`.
 
-**`error: no cdylib found in target/...`**
-Cause: cargo finished but produced no shared library (wrong target dir
-or an interrupted build). Fix: `cargo clean -p peira-python` and rebuild
-with `python scripts/build_core_ext.py`.
-
-**`error: built extension failed to import:`**
-Cause: the compiled `peira._core` doesn't load in your Python (usually a
-version mismatch. The extension is built for the interpreter that ran
-the script). Fix: rebuild with the Python you actually use, and make
-sure no stale `_core*.so` / `_core*.pyd` from another interpreter sits in
-`python/peira/`.
+**`peira._core` fails to import after `maturin develop`**
+Cause: the compiled extension doesn't load in your Python (usually a
+version mismatch — the extension is built for the interpreter that ran
+maturin). Fix: rebuild with the Python you actually use
+(`.venv/bin/maturin develop`), and make sure no stale `_core*.so` /
+`_core*.pyd` from another interpreter sits in `python/peira/`.
 
 **`warning: unreadable manifest at ... (…); recording dataset_version='0.1.0-demo'.`**
 Cause: `peira run` found a `manifest.json` in the suite directory but

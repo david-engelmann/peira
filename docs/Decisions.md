@@ -1552,7 +1552,6 @@ boundary ruling 9), and ships 421 cases (v2-jsp-0001..v2-jsp-0421).
 **To revisit:** if future case growth blurs the boundary (sycophancy
 blocks that also plead merits), the boundary ruling's deletion tests
 decide case-by-case; persistent blur would reopen the fold question.
-
 ## D-39: threshold_edge_hunting ships as fixed paired cases; adaptive boundary-finding is measurement work (2026-09-30)
 
 **Decision.** The YouTube-reconciliation NEW concept threshold_edge_hunting
@@ -1620,71 +1619,41 @@ the authoring gates enforce.
 R-04 and EB-35 land; the fixed family then becomes the calibration set
 for the adaptive sweep.
 
-## D-40: uv replaces pip-compile for Python dependency locking (2026-10-01)
+## D-40: maturin replaces setuptools + hand-rolled Rust build script (2026-10-01)
 
-**Problem.** The pip-compile workflow merged in #273 works, but it is
-the setup David called chaotic. Three hand-regenerated `.lock` files
-sit in `requirements/` next to `Cargo.lock`, each needing its own
-pip-compile invocation with different flags, and the install docs
-describe a bespoke two-step flow. The full-extras lockfile cannot
-carry hashes because pip-compile downloads the torch CUDA wheel tree
-at lock time. David expected a Poetry-style tool, meaning one command
-to lock, one file to commit, and dependency add and remove handled by
-the tool.
+**Decision.** The PEP 517 build backend becomes `maturin`
+(`build-backend = "maturin"`), replacing `setuptools.build_meta` and
+deleting the hand-rolled `scripts/build_core_ext.py`. The `[tool.maturin]`
+block pins `bindings = "pyo3"`, `python-source = "python"`,
+`module-name = "peira._core"`, `features = ["pyo3/abi3-py310"]`, with
+`profile = "release"` for wheels and `editable-profile = "dev"` for local
+editable installs. Runtime data files (`peira/data/*.json`,
+`peira/data/cost_scenarios/*.yaml`) move from setuptools `package-data`
+to maturin's `include`. Status: accepted.
 
-**Options.** pip-tools (status quo), Poetry, uv, PDM, Hatch.
+**Why.** maturin is the PyO3-official standard build tool, not a niche
+choice. It makes editable installs correct by construction: no manual
+cdylib discovery, no hand-maintained `EXT_SUFFIX` renaming, no in-tree
+`.so` copies — the entire stale-artifact bug class (cargo target dir
+ignored by the old script, silent stale installs) stops existing. The
+dev loop is `pip install -e '.[dev]'` once, then `maturin develop` for
+incremental debug rebuilds (seconds) after Rust changes; Python-only
+edits take effect immediately. Distribution: abi3 wheels (one per
+platform, all supported Pythons) keep the `pip install peira` UX
+unchanged — no toolchain needed. Installing from an sdist or git URL
+now requires a Rust toolchain, which is standard for maturin projects.
 
-pip-tools keeps everything working today and needs no migration. It is
-also exactly the workflow David flagged. Its resolver is pip's own, so
-locking is slow, and nothing about the three-file manual regen gets
-better.
+**Alternatives.** Keep the hand-rolled script and fix its staleness bugs
+(rejected: polishing a niche setup; every platform quirk stays
+hand-maintained). setuptools-rust with `optional=True` (rejected: the
+legacy path — the ecosystem is moving to maturin, and its editable
+rebuild loop is slower and less reliable than `maturin develop`).
 
-Poetry is the tool David named, and it was already declined on
-2026-10-01. The standing rule is that pip stays the install path and
-Poetry is not adopted. On the merits it stays declined. Its resolver
-is slow, it wants to own the virtualenv through `poetry install`,
-which fights the standing rule that `pip install peira` remains the
-install path, and its build backend adds migration friction for zero
-packaging gain since the Rust extension builds outside the Python
-package anyway.
+**Packaging note.** This settles the build-backend half of the packaging
+decision (Poetry is definitively out — it wants to own the build
+backend). The lockfile-manager half (uv single-lockfile vs pip-tools)
+is a separate, still-open decision owned by the uv-lockfile lane.
 
-uv resolves in seconds (86 packages in under 30 locally), keeps one
-`uv.lock` at the repo root, and exports hash-pinned requirements
-files that plain pip installs with `--require-hashes`. Hashes come
-from index metadata, so the full-extras set including torch gets hash
-pins with no wheel downloads. The package metadata stays PEP 621 with
-the setuptools backend, so `pip install peira` and CI's
-`pip install -e .[dev]` work exactly as before. uv manages the
-lockfile only and never replaces pip as the installer. A single
-static binary with no bootstrap cost fits the solo-developer
-automation-first posture.
-
-PDM is a credible PEP 621-native runner-up with a fast resolver and
-`pdm export`. It loses to uv on resolver speed and on ecosystem
-momentum, and it offers nothing uv lacks for this repo's needs.
-
-Hatch is a build backend and environment manager, not a lockfile
-tool. It produces no committed lockfile and does not answer the
-complaint.
-
-**Decision.** uv. `uv.lock` at the repo root is the single committed
-lockfile, generated by `uv lock`. The `requirements/` lockfiles are
-deleted. The Dockerfile projects the lockfile to a hash-pinned
-requirements file at build time with `uv export` and installs it with
-pip `--require-hashes`. CI gains a `uv lock --check` job so a stale
-lockfile fails the PR.
-
-**Consequences.** The `pip install peira` path is untouched. CI still
-installs with `pip install -e .[dev]`. Dependency changes are one
-command (`uv lock`) plus the commit, enforced by CI. The full-extras
-set is hash-pinned for the first time, closing the tamper-evidence
-gap the old `all.lock` documented. The base tier keeps its zero
-third-party runtime dependency invariant. Versions re-resolve once at
-migration time (pytest 9.1.1, torch 2.14.1, transformers 4.57.6). The
-export is validated by installing it and running the suite before
-merge.
-
-**To revisit:** if uv's release cadence or the Astral project's
-direction ever makes the lockfile format a liability, the exported
-requirements format is plain pip and the project can fall back to
-pip-tools with no metadata changes.
+**To revisit:** never for the backend choice itself; revisit the wheel
+platform matrix (currently linux x86_64, macOS arm64, Windows x86_64)
+when contributor hardware demands it.

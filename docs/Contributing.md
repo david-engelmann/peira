@@ -63,13 +63,35 @@ terms via `** 2` and the Rust core uses exact multiplication).
 `paired_bootstrap_ci` always uses the Python PRNG so reported
 intervals never depend on the backend.
 
-To build it in a checkout:
+To build it in a checkout (maturin is the PEP 517 build backend, so a
+normal editable install builds the extension — no separate script):
 
-    python scripts/build_core_ext.py
+    python3 -m venv .venv
+    .venv/bin/pip install -e '.[dev]'
 
-then confirm `python -c "from peira._rust import RUST_AVAILABLE;
-print(RUST_AVAILABLE)"` prints `True`. Rebuild after changing anything
-under `crates/`. The `test-python-rust` CI job builds the extension and
-runs the full Python suite against both backends; backend parity is
+then confirm `.venv/bin/python -c "from peira._rust import
+RUST_AVAILABLE; print(RUST_AVAILABLE)"` prints `True`. After changing
+anything under `crates/`, rebuild incrementally with `.venv/bin/maturin
+develop` (debug, seconds); use `.venv/bin/maturin develop --release`
+for performance work. Python-only edits take effect immediately under
+the editable install — no rebuild needed.
+
+IMPORTANT: always run tests through the venv (`.venv/bin/python -m
+pytest tests -n auto`). `maturin develop` places the compiled `_core`
+extension inside the `python/peira/` source tree as a
+maturin-managed build artifact (gitignored — never commit it); on a
+fresh checkout that was never built, running pytest with a bare
+`PYTHONPATH=<worktree>/python` will SILENTLY test the pure-Python
+backend (`RUST_AVAILABLE=False`). The venv is the only supported way
+to run the suite.
+
+The `test-python-rust` CI job installs the extension in release profile
+and runs the full Python suite against both backends; backend parity is
 pinned by `tests/test_rust_backend.py`. Set `PEIRA_NO_RUST=1` to force
 the pure-Python backend locally.
+
+Distribution notes: `pip install peira` from PyPI installs prebuilt
+abi3 wheels (one per platform, all supported Pythons) — no Rust
+toolchain needed, unchanged UX. Installing from an sdist or a git URL
+now requires a Rust toolchain, which is standard for maturin-based
+projects.
