@@ -62,25 +62,26 @@
   const runsForSuite = (suite) => RUNS.filter((r) => r.suite === suite);
   const runId = (r) => r.adapter_name + '@' + r.adapter_version + '@' + r.suite;
   const findRun = (id) => RUNS.find((r) => runId(r) === id);
-  const allFamilies = () => {
-    const s = new Set();
-    for (const r of RUNS) for (const f of Object.keys(r.metrics.per_family || {})) s.add(f);
-    return [...s].sort();
-  };
-  // EB-5: matrix rows inside one suite view use the families present in
-  // that suite, so the view never renders rows for families absent from
-  // every run in view, while gaps between runs in the same suite stay
-  // visible as "not evaluated" cells. The build-wide canonical inventory
-  // (dataset.families, see SITE_DATA_SCHEMA.md) is the contract the
-  // rows are drawn from; the suite slice is a view concern only.
+  // EB-5: matrix rows inside one suite view are the per-suite slice of
+  // the canonical inventory: the union of per_family keys across runs in
+  // the selected suite. The view never renders rows for families absent
+  // from every run in view, while gaps between runs in the same suite
+  // stay visible as "not evaluated" cells. (dataset.families is the
+  // build-wide canonical inventory; see SITE_DATA_SCHEMA.md.)
   const suiteFamilies = (suite) => {
     const s = new Set();
     for (const r of runsForSuite(suite)) for (const f of Object.keys(r.metrics.per_family || {})) s.add(f);
     return [...s].sort();
   };
+  // EB-5: a missing coverage block means ingest never computed it, a
+  // different state from a suppressed metric ("withheld").
+  const hasCoverage = (r) => {
+    const c = (r && r.coverage) || {};
+    return c.families_total !== null && c.families_total !== undefined && c.families_total !== 0;
+  };
   const coverageCell = (r) => {
-    const c = r.coverage || {};
-    if (c.families_total === null || c.families_total === undefined || c.families_total === 0) return 'withheld';
+    if (!hasCoverage(r)) return '<span class="missing-label">not computed</span>';
+    const c = r.coverage;
     const pctTxt = (c.coverage_pct === null || c.coverage_pct === undefined) ? '' : `<span class="ci">${Number(c.coverage_pct).toFixed(1)}% of families</span>`;
     return `${c.families_evaluated}/${c.families_total}${pctTxt}`;
   };
@@ -332,7 +333,10 @@
     // "withheld". Neither state is ever dropped or blanked.
     const matrixCell = (evaluated, value, fmt) => {
       if (!evaluated) return '<span class="missing-label">not evaluated</span>';
-      if (value === null || value === undefined) return 'withheld';
+      // EB-5: the schema promises a dotted cell for withheld metrics.
+      // The heatmap's dotted style is scoped to .heatmap-grid, so the
+      // matrix uses its own dotted-label class (global.css).
+      if (value === null || value === undefined) return '<span class="withheld-label">withheld</span>';
       return fmt(value);
     };
     const renderMatrix = (run) => {
@@ -341,7 +345,9 @@
       const pfAll = (run && run.metrics.per_family) || {};
       matrixAdapterEl.textContent = run ? runLabel(run) : '';
       matrixCovEl.textContent = run
-        ? coverageCell(run) + ' families evaluated. Families with no cases in this run stay in the table and are marked, never dropped.'
+        ? (hasCoverage(run)
+          ? `${run.coverage.families_evaluated}/${run.coverage.families_total} families evaluated. Families with no cases in this run stay in the table and are marked, never dropped.`
+          : 'Coverage was not computed for this run. Families with no cases in this run stay in the table and are marked, never dropped.')
         : '';
       let html = '<table class="board" style="min-width:780px"><thead><tr>' +
         '<th class="no-sort">Family</th><th class="no-sort">Conditional ASR</th>' +
@@ -409,7 +415,7 @@
         // never "withheld" values: withheld means measured-but-suppressed,
         // which is a different state.
         const naCard = '<span class="missing-label">not evaluated</span>';
-        dHtml = (evaluated ? '' : '<p class="note">' + naCard + ' This run had no cases in this family, so the cards below are empty by construction.</p>') +
+        dHtml = (evaluated ? '' : '<p class="note">' + naCard + ' This run had no cases in this family, so the cards below show the not evaluated state.</p>') +
           '<div class="cards">' +
           `<div class="card"><div class="k">Conditional ASR</div><div class="v">${evaluated ? pct(pf.asr) : naCard}</div><div class="sub">${evaluated ? ciText(pf.asr_ci95) : ''}</div></div>` +
           `<div class="card"><div class="k">Refusal rate</div><div class="v">${evaluated ? pct(pf.refusal_rate) : naCard}</div><div class="sub">${evaluated ? ciText(pf.refusal_rate_ci95) : ''}</div></div>` +

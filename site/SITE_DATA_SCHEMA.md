@@ -8,12 +8,19 @@ and the Astro site (`site/src`). Both sides must honor this file. Bump
 
 - v3: EB-5 per-family metric matrix. `dataset.families` is the canonical
   family inventory for the build (sorted union of every run's
-  `per_family` keys); every family-by-metric surface draws its rows from
-  this list, never from a single run's family set. Each run carries
-  `run.coverage` (`families_evaluated`, `families_total`,
-  `coverage_pct`). Missing-cell semantics are fixed: a family absent
-  from a run renders as "not evaluated", a null metric value renders as
-  "withheld"; rows are never silently dropped. (v2 changelog below.)
+  `per_family` keys). Family-by-metric surfaces draw their rows from
+  the per-suite slice of that inventory: the union of `per_family` keys
+  across the runs in the selected suite (`suiteFamilies()`), never from
+  a single run's family set. A family present in the suite but absent
+  from one run renders as "not evaluated"; families absent from every
+  run in the suite never render as rows. The real results pipeline must
+  bind a dataset manifest before a suite's family set can diverge from
+  the build union; until then the suite slice and the build-wide union
+  coincide. Each run carries `run.coverage` (`families_evaluated`,
+  `families_total`, `coverage_pct`). Missing-cell semantics are fixed:
+  a family absent from a run renders as "not evaluated", a null metric
+  value renders as "withheld"; rows are never silently dropped. (v2
+  changelog below.)
 - v2: runs carry the v3 extension blocks (`run.v3`): threat model,
   attack provenance, adjudication identity, exposure attestation, and
   the other agent-consumer fields from
@@ -55,8 +62,11 @@ and the Astro site (`site/src`). Both sides must honor this file. Bump
   of every run's `metrics.per_family` keys in this build (ingest rule
   13). The real results pipeline will source this list from the dataset
   manifest; the union rule is the fallback when no manifest is bound.
-  Every family-by-metric surface (heatmap, matrix) draws its rows from
-  this list.
+  Family-by-metric surfaces (heatmap, matrix) draw their rows from the
+  per-suite slice of this list: the union of `per_family` keys across
+  the runs in the selected suite. The slice never drops families that
+  have data in the suite; a family the suite has but a run lacks
+  renders as "not evaluated".
 
 ## Run object
 
@@ -123,13 +133,13 @@ visually and textually distinct:
 
 - **measured**: the run evaluated the family and the metric is a number.
   Rendered as the value.
-- **not evaluated**: the family is in `dataset.families` but the run has
-  no cases in it. Either the family is absent from the run's
-  `metrics.per_family`, or it is present with `n: 0` (the metrics layer
-  lists required-but-unevaluated families with `n: 0` when the suite
-  manifest is passed as the requirement set). Rendered as "not
-  evaluated" with a hatched cell. Rows are never dropped to hide this
-  state.
+- **not evaluated**: the family is in the suite's family set (the rows the
+  view renders) but the run has no cases in it. Either the family is
+  absent from the run's `metrics.per_family`, or it is present with
+  `n: 0` (the metrics layer lists required-but-unevaluated families with
+  `n: 0` when the suite manifest is passed as the requirement set).
+  Rendered as "not evaluated" with a hatched cell. Rows are never
+  dropped to hide this state.
 - **withheld**: the family was evaluated but the metric value is `null`
   (the estimate did not clear the minimum-observations gate). Rendered
   as "withheld" with a dotted cell.
