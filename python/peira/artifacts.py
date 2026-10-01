@@ -103,6 +103,12 @@ class RunArtifact:
     # enforces it pre-dispatch with a 1.5x running-mean projection and
     # drains in-flight calls; it never kills a paid call mid-flight.
     budget_usd: float | None = None
+    # Per-call output-token cap (R-18, None = uncapped). A call whose
+    # reported tokens_out exceeds it is marked malformed, because the
+    # decision was produced outside the run's declared cost envelope.
+    # Part of the analysis lock, because a run measured under a
+    # different cap is a different measurement.
+    max_tokens_per_call: int | None = None
     # Actual priced spend at seal time (runner-computed, same table as
     # the call records). May overshoot budget_usd by at most one
     # in-flight wave: dispatched calls always complete.
@@ -162,6 +168,7 @@ class RunArtifact:
                 "contract_version": self.contract_version,
                 "termination": self.termination,
                 "budget_usd": self.budget_usd,
+                "max_tokens_per_call": self.max_tokens_per_call,
                 "spent_usd": self.spent_usd,
                 "cases_completed": self.cases_completed,
                 "cases_planned": self.cases_planned,
@@ -221,6 +228,7 @@ class RunArtifact:
                     self.cases_planned,
                     self.seed,
                     self.max_concurrency,
+                    self.max_tokens_per_call,
                     self.metrics,
                     self.env_sha256,
                     self.model_class,
@@ -295,6 +303,10 @@ class RunArtifact:
     # budget_usd additionally allows null (uncapped run).
     _NUM_FIELDS: ClassVar[tuple] = ("spent_usd",)
     _NULLABLE_NUM_FIELDS: ClassVar[tuple] = ("budget_usd",)
+    # Integer fields where a JSON `true` must not pass as an integer
+    # (bool subclasses int). max_tokens_per_call additionally allows
+    # null (uncapped run).
+    _NULLABLE_INT_FIELDS: ClassVar[tuple] = ("max_tokens_per_call",)
     _REQUIRED_FIELDS: ClassVar[tuple] = ("peira_version", "dataset_version")
     _FIELD_DEFAULTS: ClassVar[dict] = {
         "artifact_version": ARTIFACT_VERSION,
@@ -313,6 +325,7 @@ class RunArtifact:
         "contract_version": CONTRACT_VERSION,
         "termination": "complete",
         "budget_usd": None,
+        "max_tokens_per_call": None,
         "spent_usd": 0.0,
         "cases_completed": 0,
         "cases_planned": 0,
@@ -668,6 +681,7 @@ class RunArtifact:
                 key not in cls._FIELD_TYPES
                 and key not in cls._NUM_FIELDS
                 and key not in cls._NULLABLE_NUM_FIELDS
+                and key not in cls._NULLABLE_INT_FIELDS
             ):
                 raise ValueError(f"unknown artifact field: {key!r}")
         for key in cls._REQUIRED_FIELDS:
@@ -693,6 +707,12 @@ class RunArtifact:
             if key in d and d[key] is not None and not _is_num(d[key]):
                 raise ValueError(
                     f"artifact field {key!r} must be a number or null, "
+                    f"got {type(d[key]).__name__}"
+                )
+        for key in cls._NULLABLE_INT_FIELDS:
+            if key in d and d[key] is not None and not _is_int(d[key]):
+                raise ValueError(
+                    f"artifact field {key!r} must be an integer or null, "
                     f"got {type(d[key]).__name__}"
                 )
         for key in cls._INT_FIELDS:

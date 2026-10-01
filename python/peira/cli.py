@@ -563,6 +563,11 @@ def cmd_run(args: argparse.Namespace) -> int:
         print(f"error: --run-timeout must be > 0 "
               f"(got {run_timeout})", file=sys.stderr)
         return EXIT_USER_ERROR
+    max_tokens_per_call = getattr(args, "max_tokens_per_call", None)
+    if max_tokens_per_call is not None and max_tokens_per_call < 1:
+        print(f"error: --max-tokens-per-call must be >= 1 "
+              f"(got {max_tokens_per_call})", file=sys.stderr)
+        return EXIT_USER_ERROR
 
     if args.dry_run:
         print(f"dry run: {len(cases)} cases, adapter={adapter.name}, "
@@ -606,6 +611,8 @@ def cmd_run(args: argparse.Namespace) -> int:
                         partial, adapter, cases, suite, dataset_version,
                         manifest_sha256, seed=args.seed,
                         budget_usd=getattr(args, "budget_usd", None),
+                        max_tokens_per_call=getattr(
+                            args, "max_tokens_per_call", None),
                         cache_enabled=args.cache_dir is not None,
                         item_timeout=item_timeout,
                         run_timeout=run_timeout,
@@ -658,31 +665,13 @@ def cmd_run(args: argparse.Namespace) -> int:
                 rlimit_nproc=getattr(args, "rlimit_nproc", None),
                 death_log_path=getattr(args, "death_log", None),
                 budget_usd=budget_usd,
+                max_tokens_per_call=max_tokens_per_call,
                 item_timeout=item_timeout,
                 run_timeout=run_timeout,
                 # Persist the loader spec (e.g. "peira.adapters.jev:JevAdapter"),
                 # not just adapter.name (e.g. "jev"). cmd_reproduce needs the
                 # spec to reload the adapter; the short name is not loadable.
                 config_extra={"adapter_spec": args.adapter},
-            )
-            if is_conversational:
-                from peira.conversation import run_conversation_suite
-                artifact = run_conversation_suite(
-                    adapter, cases, suite, dataset_version, **run_kwargs
-                )
-            else:
-                artifact = run_suite(
-                    adapter, cases, suite, dataset_version, **run_kwargs
-                )
-        else:
-            if is_conversational:
-                print("error: --seeds > 1 is not supported for the "
-                      "conversational suite", file=sys.stderr)
-                return EXIT_USER_ERROR
-            return _cmd_run_multiseed(
-                args, adapter, cases, suite, suite_families,
-                dataset_version, manifest_sha256, out_dir, slug,
-                num_seeds, build_adapter, budget_usd, progress,
             )
     except KeyboardInterrupt:
         if num_seeds > 1:
@@ -869,6 +858,23 @@ def cmd_replay(args: argparse.Namespace) -> int:
     _print_run_summary(artifact, out_path)
     if not artifact.metrics["ranking_eligible"]:
         return EXIT_GATE_NOTE
+    return EXIT_OK
+
+
+def cmd_transcript_view(args: argparse.Namespace) -> int:
+    """Render a run transcript as a self-contained static HTML page."""
+    from peira.transcript_view import write_html  # noqa: PLC0415
+
+    tpath = Path(args.transcript)
+    if not tpath.exists():
+        print(f"error: transcript {tpath} not found", file=sys.stderr)
+        return EXIT_USER_ERROR
+    try:
+        write_html(tpath, args.out)
+    except (OSError, UnicodeDecodeError) as e:
+        print(f"error: could not render transcript: {e}", file=sys.stderr)
+        return EXIT_USER_ERROR
+    print(f"wrote {args.out}")
     return EXIT_OK
 
 
@@ -4792,6 +4798,11 @@ def build_parser() -> argparse.ArgumentParser:
                    "projection exceeds the cap; in-flight cases drain and "
                    "the artifact seals with termination=budget "
                    "(analyzable, never rankable) (default: no cap)")
+    r.add_argument("--max-tokens-per-call", type=int, default=None,
+                   help="per-call output-token cap. A call whose reported "
+                   "tokens_out exceeds the cap is marked malformed and "
+                   "excluded from scoring, and the transcript flags "
+                   "token_limit_exceeded for the call (default no cap)")
     r.add_argument("--cache-dir", default=None,
                    help="opt-in response cache directory for deterministic "
                    "adapters (temperature 0 + fixed seed); off by default "
@@ -4811,6 +4822,14 @@ def build_parser() -> argparse.ArgumentParser:
                     help="smoke is an alias for trial")
     rp.add_argument("--out", default="runs")
     rp.set_defaults(func=cmd_replay)
+
+    tv = sub.add_parser("transcript-view",
+                        help="render a run transcript as static HTML")
+    tv.add_argument("--transcript", required=True,
+                    help="transcript JSONL written by `peira run --transcript`")
+    tv.add_argument("--out", required=True,
+                    help="output HTML path")
+    tv.set_defaults(func=cmd_transcript_view)
 
     v = sub.add_parser("validate", help="validate a dataset directory")
     v.add_argument("--dataset", required=True)
