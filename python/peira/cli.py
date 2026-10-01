@@ -937,6 +937,80 @@ def cmd_doctor(args: argparse.Namespace) -> int:
     return EXIT_OK
 
 
+def cmd_adapter_list(args: argparse.Namespace) -> int:
+    """List the adapter registry (``peira.adapters`` entry points).
+
+    Discovery reads package metadata only and never imports adapter
+    code, so listing is safe for unregistered-at-install-time
+    third-party distributions. Per-adapter details that require
+    importing (primitives, version when undeclared) are reported as
+    not-loaded rather than guessed.
+    """
+    import json  # noqa: PLC0415
+
+    from peira.adapters import discovery  # noqa: PLC0415
+
+    result = discovery.discover()
+    rows: list[dict] = [
+        {
+            "id": "mock",
+            "version": None,
+            "primitives": None,
+            "source": "built-in",
+            "first_party": True,
+            "transport": "inprocess",
+        }
+    ]
+    for reg in sorted(result.registrations.values(),
+                      key=lambda r: r.registry_id):
+        rows.append(
+            {
+                "id": reg.registry_id,
+                "version": reg.dist_version,
+                "primitives": None,  # not loaded; see docstring
+                "source": (f"{reg.dist_name} {reg.dist_version}"
+                           if reg.dist_name else "unknown distribution"),
+                "first_party": reg.first_party,
+                "transport": ("inprocess" if reg.first_party
+                              else "subprocess"),
+            }
+        )
+    if args.json:
+        payload = {
+            "adapters": rows,
+            "ambiguous": {
+                name: [f"{r.dist_name} {r.dist_version}"
+                       for r in regs]
+                for name, regs in result.ambiguous.items()
+            },
+            "issues": [
+                {"id": issue.registry_id, "message": issue.message}
+                for issue in result.issues
+            ],
+        }
+        print(json.dumps(payload, indent=2, sort_keys=True))
+        return EXIT_OK
+    for row in rows:
+        origin = "first-party" if row["first_party"] else "third-party"
+        print(f"{row['id']}  version={row['version']}  "
+              f"transport={row['transport']}  {origin}  ({row['source']})")
+    if args.verbose:
+        for reg in sorted(result.registrations.values(),
+                          key=lambda r: r.registry_id):
+            print(f"  {reg.registry_id} -> {reg.value}")
+        for name, regs in sorted(result.ambiguous.items()):
+            claimants = ", ".join(
+                f"{r.dist_name} {r.dist_version}" for r in regs)
+            print(f"  ambiguous {name!r}: claimed by {claimants}")
+        for issue in result.issues:
+            print(f"  issue {issue.registry_id!r}: {issue.message}")
+    elif result.ambiguous or result.issues:
+        print(f"({len(result.ambiguous)} ambiguous name(s), "
+              f"{len(result.issues)} issue(s); rerun with --verbose)",
+              file=sys.stderr)
+    return EXIT_OK
+
+
 def cmd_validate(args: argparse.Namespace) -> int:
     kind = getattr(args, "kind", "single")
     if kind == "conversational":
@@ -4946,6 +5020,20 @@ def build_parser() -> argparse.ArgumentParser:
     dw.add_argument("--out", default=None,
                     help="write the drift result JSON to this path")
     dw.set_defaults(func=cmd_drift_watch)
+
+    # Adapter plugin registry (P-4): discovery is metadata-only and
+    # never imports adapter code; `check` (the conformance kit) lands
+    # with the next step of the plugin-ecosystem build.
+    ad = sub.add_parser("adapter",
+                        help="inspect the adapter plugin registry")
+    adsub = ad.add_subparsers(dest="adapter_command", required=True)
+    adl = adsub.add_parser("list", help="list registered adapters")
+    adl.add_argument("--verbose", action="store_true",
+                     help="show entry-point values, ambiguous names, "
+                     "and discovery issues")
+    adl.add_argument("--json", action="store_true",
+                     help="emit machine-readable JSON")
+    adl.set_defaults(func=cmd_adapter_list)
 
     # R-04 stability probe: separate track, separate report.
     sp = sub.add_parser("stability-probe",
