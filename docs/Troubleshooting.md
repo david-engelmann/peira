@@ -170,6 +170,84 @@ but multi-seed runs are k independent executions. Fix: run with
 `--seeds 1` to capture a transcript, or omit `--transcript` for
 multi-seed runs.
 
+**`error: --budget-grid is not supported for the conversational suite (single-shot suites only)`**
+Cause: EB-35 attack-strength sweeps budget the single-shot attacked
+arm. The conversational suite has its own turn-based driver. Fix:
+run the sweep on a single-shot suite, or use the conversational
+suite without `--budget-grid`.
+
+**`error: --budget-grid is not supported with --seeds > 1; run the sweep with --seeds 1`**
+Cause: a sweep already multiplies each case by max(budget_grid)
+attacked queries. Crossing that with k seeds would confound the
+budget dimension with seed variance. Fix: run the sweep with
+`--seeds 1`.
+
+**`error: invalid --strength-dimension: <reason>`**
+Cause: `--strength-dimension` named a dimension that is not in the
+registry. Fix: run `peira sweep-dimensions` to list the registered
+dimensions and pass one of those names.
+
+**`error: invalid --budget-grid: <reason>`**
+Cause: the grid must be a non-empty, strictly increasing list of
+positive integers (e.g. `1,2,4,8`). Common mistakes: a zero or
+negative entry, a repeated value, non-integer text, or an empty
+string. Fix: pass a valid grid like `--budget-grid 1,2,4,8,16`.
+
+**`error: <path> is not a sweep artifact (no metrics.sweep section; run with --budget-grid first)`**
+Cause: `peira sweep-report` was pointed at a standard run artifact,
+which has no sealed sweep summary. Fix: run with
+`--budget-grid` to produce a sweep artifact, then report on it.
+
+**`error: <path> not found`**
+Cause: `peira sweep-report` was given a path that does not exist.
+Fix: check the path spelling and that the sweep run completed.
+
+**`error: <path> is not a valid run artifact (<reason>)`**
+Cause: `peira sweep-report` was given a file that is not a valid
+run artifact (corrupt JSON, wrong schema, or a partial from a
+different suite). Fix: verify the file is a completed sweep
+artifact from `peira run --budget-grid`.
+
+**`error: partial run at <path> uses grid=<grid> dimension=<dim>, but current run uses grid=<grid> dimension=<dim>; delete <path> or re-run with the original grid and dimension.`**
+Cause: `peira run --resume --budget-grid` was given a different grid
+or dimension than the partial run. Mixing grids would silently corrupt
+the budget-to-first-flip curve. Fix: delete the partial and re-run,
+or re-run with the original grid and dimension.
+
+**`error: partial run at <path> is a sweep run (grid=<grid> dimension=<dim>); resume with --budget-grid <grid> --strength-dimension <dim>, or delete <path> and re-run`**
+Cause: `peira run --resume` was used without `--budget-grid` on a
+partial from a sweep run. The remaining cases would run single-shot
+and seal an artifact whose ranking flags no longer mean what they
+say. Fix: resume with the original `--budget-grid` and
+`--strength-dimension`, or delete the partial and re-run.
+
+**`error: partial run at <path> is a single-shot run, but the current run is a sweep (grid=<grid> dimension=<dim>); delete <path> or drop --budget-grid and --strength-dimension`**
+Cause: `peira run --resume --budget-grid` was used on a partial from
+a single-shot run. Sweep and single-shot per-case records are
+different protocols and must not share an artifact. Fix: delete the
+partial and re-run, or drop `--budget-grid` to resume the
+single-shot run.
+
+**`error: <path> has inconsistent sweep data for family '<family>' (<reason>)`**
+Cause: `peira sweep-report` found per-case results for one family that
+use different budget grids (e.g. a hand-edited or corrupted artifact).
+Merging them would silently mix incompatible budget levels. Fix:
+re-run the sweep to produce a clean artifact; do not hand-edit sealed
+artifacts.
+
+**`error: <path> has malformed sweep results (<reason>)`**
+Cause: `peira sweep-report` found result entries that do not parse as
+sweep per-case records (corrupt or hand-edited artifact). Fix: re-run
+the sweep to produce a clean artifact; do not hand-edit sealed
+artifacts.
+
+**`ValueError: strength dimension '<name>' is registered but no family has a registered attack instantiator (...)`**
+Cause: the requested dimension (e.g. `paraphrase_rounds`) is in the
+registry but no family has a registered attack instantiator for it,
+so the budget parameter is undefined. Fix: use
+`--strength-dimension attacker_queries`, or register an instantiator
+with `peira.sweep.register_strength_instantiator`.
+
 **`ValueError: budget_usd must be a number or None, got True`**
 Cause: a boolean was passed as the budget to `run_multiseed`.
 Python booleans are integers, so `True / 3` would silently become a
@@ -1168,11 +1246,14 @@ or pick a writable path.
 Cause: the two artifacts weren't scored under the same trial. The
 message names the mismatch: different `suite`, different
 `dataset_version`, different `artifact_version` (measurement contract),
-or different `manifest_sha256` (dataset bytes). Fix: compare runs of
-the same suite and dataset version; re-run the adapter if the dataset
+different `manifest_sha256` (dataset bytes), or different sweep config
+(one side is an attack-strength sweep and the other is single-shot, or
+the two sweeps used different budget grids or strength dimensions).
+Fix: compare runs of the same suite and dataset version; re-run the adapter if the dataset
 moved on. Comparing across dataset versions is refused deliberately:
 the per-case outcomes wouldn't be paired observations of the same
-trial.
+trial. Sweep runs only compare against sweeps with the same grid and
+dimension, for the same reason.
 
 **`error: artifacts share no cases: nothing to compare`**
 Cause: the two artifacts have no `case_id` overlap (different case

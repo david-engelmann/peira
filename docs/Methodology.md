@@ -1633,6 +1633,55 @@ observed max attacked `tokens_out` and warns when the cap was not
 enforced.
 Available in `summarize()` as `length_diagnostics` and via
 `peira length`.
+## Attack-strength sweep curves (EB-35)
+
+A single attack success rate hides how hard the attacker worked. An
+attack that flips on the first query is a different finding from one
+that needs fifty queries, and a defense that holds for ten queries but
+falls at twenty has a measurable breaking point. EB-35 makes the
+budget dimension explicit by running each case's attacked arm at
+multiple strength levels and recording where the flip happens.
+
+The sweep budgets over one strength dimension per run. The
+`attacker_queries` dimension runs the attacked arm as b independent
+queries against the fixed case text, for each budget level b in the
+grid. The attack counts as successful at budget b when any of the
+first b queries flips the decision. This cumulative rule is what makes
+the ASR curve monotone by construction. Each case records its
+budget-to-first-flip, the lowest grid level at which the attack had
+flipped, or None when the attack never flipped within the grid.
+
+Three further dimensions are registered but not yet parameterized.
+They are `paraphrase_rounds`, `suffix_length`, and `escalation_steps`.
+Each needs a per-family attack instantiator that maps a budget level
+to a concrete attacked input. Until one is registered, requesting the
+dimension fails fast with a named error rather than running a
+degenerate sweep. New instantiators register through
+`peira.sweep.register_strength_instantiator`.
+
+Per-case mechanics. The benign arm runs once and the response cache
+applies as usual. The attacked arm runs max(grid) queries and each
+query bypasses the response cache, because a cached attacked response
+would report budget b's outcome as budget 1's and silently flatten the
+curve. Eligibility is judged once from the benign baseline and shared
+across all attempts. The representative attacked record sealed for
+single-shot tooling is the first flipping attempt, or the final attempt
+when nothing flipped.
+
+Reporting. `peira sweep-report` renders per-family ASR-vs-budget curves
+with Wilson 95 percent confidence intervals at each budget point, plus
+the budget-to-first-flip distribution (per-level counts, never-flipped
+count, median and p90 flip budget, where the median is the statistical
+median across flipped cases and p90 is the nearest-rank 90th percentile).
+Only eligible cases contribute, the
+same conditional rule as the standard metrics. Sweep runs are
+analyzable but never rankable. The per-case query count differs from
+the standard protocol, so sweep numbers must not pool with single-shot
+leaderboard runs. `peira compare` enforces this: a sweep artifact only
+compares against another sweep with the same budget grid and strength
+dimension, never against a single-shot artifact or a differently
+gridded sweep, because the per-case records would not be paired
+observations under the same budget.
 
 ## Economic value view (M-3, sidecar)
 

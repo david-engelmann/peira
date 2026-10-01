@@ -337,9 +337,9 @@ class Comparison:
 def check_comparable(a: RunArtifact, b: RunArtifact) -> list[str]:
     """Reasons two artifacts cannot be meaningfully compared (empty = OK).
 
-    Comparing across suites, dataset versions, measurement contracts, or
-    dataset bytes is meaningless: the per-case outcomes would not be
-    paired observations of the same trial.
+    Comparing across suites, dataset versions, measurement contracts,
+    dataset bytes, or sweep configs is meaningless: the per-case
+    outcomes would not be paired observations of the same trial.
     """
     problems: list[str] = []
     if a.suite != b.suite:
@@ -355,6 +355,49 @@ def check_comparable(a: RunArtifact, b: RunArtifact) -> list[str]:
     if a.manifest_sha256 != b.manifest_sha256:
         problems.append("manifest_sha256 differs: artifacts were scored against "
                         "different dataset bytes")
+    problems.extend(_check_sweep_compatible(a, b))
+    return problems
+
+
+def _sweep_config(a: RunArtifact) -> dict[str, Any] | None:
+    """The sealed sweep summary, or None for a single-shot artifact."""
+    sweep = (a.metrics or {}).get("sweep")
+    return sweep if isinstance(sweep, dict) else None
+
+
+def _check_sweep_compatible(
+    a: RunArtifact, b: RunArtifact
+) -> list[str]:
+    """EB-35: sweep artifacts only compare against matching sweeps.
+
+    A sweep run's per-case records carry a budget dimension that
+    single-shot records do not have, and two sweeps on different grids
+    measure flips at different effective budgets: pooling either pair
+    would silently compare different measurements.
+    """
+    problems: list[str] = []
+    a_sweep, b_sweep = _sweep_config(a), _sweep_config(b)
+    if (a_sweep is None) != (b_sweep is None):
+        problems.append(
+            "sweep config differs: one artifact is an attack-strength "
+            "sweep run and the other is a single-shot run; sweep "
+            "per-case records carry a budget dimension that "
+            "single-shot records do not have"
+        )
+    elif a_sweep is not None and b_sweep is not None:
+        if a_sweep.get("budget_grid") != b_sweep.get("budget_grid"):
+            problems.append(
+                "sweep budget_grid differs: "
+                f"{a_sweep.get('budget_grid')!r} vs "
+                f"{b_sweep.get('budget_grid')!r}"
+            )
+        if (a_sweep.get("strength_dimension")
+                != b_sweep.get("strength_dimension")):
+            problems.append(
+                "sweep strength_dimension differs: "
+                f"{a_sweep.get('strength_dimension')!r} vs "
+                f"{b_sweep.get('strength_dimension')!r}"
+            )
     return problems
 
 
