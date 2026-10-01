@@ -15,10 +15,22 @@
       "usd_per_1m_out": 25.0,
       "confidence": "secondary"
     },
+    "claude-opus-5-5": {
+      "_note": "D3 reconciliation (2026-09-30): Opus 5.5 API id verified as 'claude-opus-5-5' (Anthropic model docs, AWS Bedrock, launch coverage 2026-09-22). $4/$20 per 1M (Anthropic pricing page, corroborated 2026-09-27/28). Adapter support landed (output_config.format routing, temperature omitted) but live-UNVERIFIED: no API calls from this environment yet. Default pin stays claude-sonnet-5 until a live smoke test decides D3.",
+      "usd_per_1m_in": 4.0,
+      "usd_per_1m_out": 20.0,
+      "confidence": "secondary"
+    },
     "claude-sonnet-5": {
       "usd_per_1m_in": 2.0,
       "usd_per_1m_out": 10.0,
       "confidence": "official"
+    },
+    "claude-sonnet-5-5": {
+      "_note": "Claude Sonnet 5.5 (released 2026-09-28, id 'claude-sonnet-5-5'): $2/$10 per 1M (Anthropic pricing page, corroborated 2026-09-28). Adapter support landed alongside the Opus 5.5 reconciliation (output_config.format routing, temperature omitted) but live-UNVERIFIED. Default pin stays claude-sonnet-5 until a live smoke test decides the D3 matrix.",
+      "usd_per_1m_in": 2.0,
+      "usd_per_1m_out": 10.0,
+      "confidence": "secondary"
     },
     "convaiinnovations/laya": {
       "_note": "Self-hosted checkpoint (LayaAdapter default): no API cost. Local inference cost is unaccounted in this table - prices at 0.0, explicitly unaccounted, never silently estimated.",
@@ -110,6 +122,18 @@
       "usd_per_1m_in": 3.0,
       "usd_per_1m_out": 15.0,
       "confidence": "official"
+    },
+    "mistral-large-2512": {
+      "_note": "MistralAdapter pinned default (2026-09-30): Mistral Large 3 dated snapshot. $0.50/$1.50 per 1M (Mistral Large 3 model card, corroborated 2026-09-30). Adapter ships live-UNVERIFIED: no API calls from this environment yet; re-verify the wire shape before first measured use.",
+      "usd_per_1m_in": 0.5,
+      "usd_per_1m_out": 1.5,
+      "confidence": "secondary"
+    },
+    "qwen3.8-max": {
+      "_note": "QwenAdapter pinned default (2026-09-30): Qwen3.8-Max via DashScope compatible-mode (international endpoint). $2.00/$6.00 per 1M (Alibaba list price, Singapore/intl region, corroborated 2026-09-30). Adapter ships live-UNVERIFIED: no API calls from this environment yet; re-verify the wire shape before first measured use.",
+      "usd_per_1m_in": 2.0,
+      "usd_per_1m_out": 6.0,
+      "confidence": "secondary"
     },
     "Qwen/Qwen3.5-4B": {
       "_note": "Self-hosted SemIf checkpoint (SemifAdapter pinned model id). Self-hosted: no API cost. Local inference cost is unaccounted in this table - prices at 0.0, explicitly unaccounted, never silently estimated.",

@@ -174,22 +174,29 @@ One adapter per provider, one extra each. Install only what you need:
 | DeepSeek | `peira[openai]` | `peira.adapters.llm:DeepSeekAdapter` | `deepseek-flash` | `DEEPSEEK_API_KEY` |
 | Meta (Llama API) | `peira[openai]` | `peira.adapters.llm:MetaLlamaAdapter` | `Llama-4-Maverick-17B-128E-Instruct-FP8` | `META_API_KEY` |
 | Zhipu (GLM) | `peira[openai]` | `peira.adapters.llm:ZaiAdapter` | `glm-4-plus` | `ZAI_API_KEY` |
+| Mistral | `peira[openai]` | `peira.adapters.llm:MistralAdapter` | `mistral-large-2512` | `MISTRAL_API_KEY` |
+| Qwen (Alibaba) | `peira[openai]` | `peira.adapters.llm:QwenAdapter` | `qwen3.8-max` | `DASHSCOPE_API_KEY` |
 
 Default models are pinned per each vendor's versioning scheme
 (verified 2026-09-27 against the vendor docs, re-verified per
-release). Anthropic is the strongest case: from the 4.6 generation
-onward the dateless id IS the pinned snapshot by vendor guarantee,
-with weights and config fixed for the life of the id and updates
-shipped under new ids. Google's 3.x ids carry no `-001`-style suffix
-(that convention is 1.5/2.0-era); Moonshot never published dated ids
-at all. The OpenAI pin is the honest weak spot: Luna publishes no
-dated snapshots (the vendor docs render a Snapshots section but list
-none), so `gpt-5.6-luna` is a best-effort pin on the bare id. If OpenAI swaps
-the weights behind the name, nothing in peira can detect it. The pin
-registry lives in `peira.api_pins`: `get_pinned_model(adapter_name)`
-resolves the exact id, `is_pinned_model()` checks one, and
-`peira doctor` warns when an API adapter's default is not the pinned
-version. The resolved version is sealed into the run artifact
+release; Mistral and Qwen verified 2026-09-30). Anthropic is the
+strongest case: from the 4.6 generation onward the dateless id IS the
+pinned snapshot by vendor guarantee, with weights and config fixed
+for the life of the id and updates shipped under new ids. Google's
+3.x ids carry no `-001`-style suffix (that convention is 1.5/2.0-era);
+Moonshot never published dated ids at all. Mistral and Qwen sit in
+the middle: Mistral publishes dated snapshots, so the pin uses
+`mistral-large-2512` rather than the rolling `mistral-large-latest`
+alias; Qwen's `qwen-max` is a rolling alias, so the pin uses the
+versioned `qwen3.8-max` id. The OpenAI pin is the honest weak spot:
+Luna publishes no dated snapshots (the vendor docs render a
+Snapshots section but list none), so `gpt-5.6-luna` is a best-effort
+pin on the bare id. If OpenAI swaps the weights behind the name,
+nothing in peira can detect it. The pin registry lives in
+`peira.api_pins`: `get_pinned_model(adapter_name)` resolves the
+exact id, `is_pinned_model()` checks one, and `peira doctor` warns
+when an API adapter's default is not the pinned version. The
+resolved version is sealed into the run artifact
 (`adapter_version`, part of the analysis lock), so a pinned run is
 reproducible and an unpinned one is visibly marked by its version
 string.
@@ -226,6 +233,27 @@ validation failure is a terminal provider error. The
 adapter never retries. The runner owns retries, and the SDKs are
 configured for a single attempt so the runner's congestion signal stays
 honest.
+
+### Anthropic pin reconciliation (D3, 2026-09-30)
+
+D3 asked whether the Anthropic baseline should be `claude-sonnet-5`,
+Opus 5.5, or both. The reconciliation landed 2026-09-30:
+
+- **The Opus 5.5 API id is `claude-opus-5-5`.** Verified against
+  Anthropic's model docs, AWS Bedrock, and launch coverage (released
+  2026-09-22). Pricing is $4/$20 per 1M.
+- **The adapter supports it.** `AnthropicAdapter` auto-routes
+  `claude-opus-5-5` to native `output_config.format` JSON-schema
+  structured outputs (forced `tool_choice` returns a 400 on this
+  model) and omits `temperature` (rejected with a 400 on the Opus 4.6
+  generation and later). Pass `model="claude-opus-5-5"` explicitly to
+  measure it.
+- **Sonnet 5.5 exists.** Anthropic released Claude Sonnet 5.5 on
+  2026-09-28 as `claude-sonnet-5-5` ($2/$10 per 1M). It gets the same
+  routing and temperature handling as Opus 5.5.
+- **The default pin is unchanged.** `claude-sonnet-5` stays the
+  default until a live smoke test decides D3's (a)/(b)/(c). All three
+  ids are live-UNVERIFIED from this environment.
 
 ### Frontier ceiling (candidate; id unverified, not yet measured)
 
@@ -409,6 +437,74 @@ the live API. Whether `json_schema` `response_format`, `seed`, and
 `logprobs` are honored for `glm-4-plus` is unverified. Verify against
 the live API before any measured run; mismatches surface as terminal
 provider errors, not silent mismeasurement.
+
+### Mistral Large 3 (Mistral)
+
+```bash
+pip install "peira[openai]"
+export MISTRAL_API_KEY=<your-key>
+peira run --adapter peira.adapters.llm:MistralAdapter --suite trial-demo
+```
+
+Mistral Large 3 is Mistral's open-weight flagship (Apache 2.0), a
+675B sparse mixture-of-experts model with a 256K context window. The
+adapter drives Mistral's OpenAI-compatible endpoint
+(`https://api.mistral.ai/v1`, model id `mistral-large-2512`, the
+December 2025 dated snapshot behind the rolling
+`mistral-large-latest` alias) with the same strict JSON-schema
+request shape as `OpenAIAdapter`; the base URL is recorded in the
+transcript's request shape, and the key is never logged.
+`max_retries=0`. The runner owns retries, same as every other LLM
+baseline. At $0.50/$1.50 per 1M it is the cheapest frontier-adjacent
+model on the board.
+
+Two honest caveats: the adapter is built from Mistral's published
+docs and third-party parameter surveys, not the live API. Mistral
+names the seed parameter `random_seed` (not `seed`), which the
+adapter sends; `logprobs` is undocumented for chat completions, so
+the adapter omits it rather than negotiating. There is no
+decision-token logprob track on this adapter, and the transcript
+records the seed under the wire name it was sent with.
+**Live-UNVERIFIED**: no real call has been made from this
+environment as of 2026-09-30. Verify against the live API before any
+measured run; mismatches surface as terminal provider errors, not
+silent mismeasurement.
+
+### Qwen3.8-Max (Alibaba)
+
+```bash
+pip install "peira[openai]"
+export DASHSCOPE_API_KEY=<your-key>
+peira run --adapter peira.adapters.llm:QwenAdapter --suite trial-demo
+```
+
+Qwen3.8-Max is Alibaba's August 2026 flagship, a 2.4T sparse
+mixture-of-experts model with a 1M-token context window. The adapter
+drives Alibaba's DashScope OpenAI-compatible endpoint
+(`https://dashscope-intl.aliyuncs.com/compatible-mode/v1`, model id
+`qwen3.8-max`; the `qwen-max` alias is rolling, so the pin uses the
+versioned id) with the same strict JSON-schema request shape as
+`OpenAIAdapter`; the base URL is recorded in the transcript's
+request shape, and the key is never logged. `max_retries=0`. The
+runner owns retries, same as every other LLM baseline. At $2.00/$6.00
+per 1M on the international endpoint it is priced well below the
+Western frontier tier.
+
+Two honest caveats: the adapter is built from Alibaba's published
+docs and third-party parameter surveys, not the live API. DashScope
+requires `enable_thinking` to be set explicitly on every request
+(the endpoint rejects requests that omit it), and Qwen's
+hybrid-thinking models honor `json_schema` `response_format` only
+with thinking disabled, so the adapter sends
+`enable_thinking: false` via `extra_body` on every call. Thinking is
+off by construction, never by omission, and the transcript records
+it. Regional note: DashScope keys are minted per host; a key issued
+for the China endpoint (`dashscope.aliyuncs.com`) will not
+authenticate against the international endpoint this adapter uses.
+**Live-UNVERIFIED**: no real call has been made from this
+environment as of 2026-09-30. Verify against the live API before any
+measured run; mismatches surface as terminal provider errors, not
+silent mismeasurement.
 
 ## TypeSafe Jev
 

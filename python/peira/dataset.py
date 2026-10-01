@@ -147,7 +147,8 @@ def _summarize_bytes_py(
 
     ``kind`` selects the case schema: ``"single"`` validates with the
     single-shot schema, ``"conversational"`` with the conversational
-    schema (paired benign/attacked trajectories).
+    schema (paired benign/attacked trajectories), ``"combo"`` with the
+    combo schema (2x2 factorial arms).
     """
     digest = hashlib.sha256(data).hexdigest()
     try:
@@ -164,6 +165,20 @@ def _summarize_bytes_py(
                 raise ValueError(
                     f"{name}:{lineno}: invalid JSON ({e})") from e
             errors = validate_conversation_dict(case)
+            if errors:
+                raise ValueError(
+                    f"{name}:{lineno}: {'; '.join(errors)}") from None
+            return case
+    elif kind == "combo":
+        from peira.combo_schema import validate_combo_dict
+
+        def _validate(line: str, lineno: int) -> dict[str, Any]:
+            try:
+                case = json.loads(line)
+            except json.JSONDecodeError as e:
+                raise ValueError(
+                    f"{name}:{lineno}: invalid JSON ({e})") from e
+            errors = validate_combo_dict(case)
             if errors:
                 raise ValueError(
                     f"{name}:{lineno}: {'; '.join(errors)}") from None
@@ -235,8 +250,8 @@ def summarize_cases(path: Path, *, kind: str = "single") -> dict[str, Any]:
     The file is read exactly once: the SHA-256 and the parse share the
     single read instead of a hash pass plus a parse pass.
 
-    ``kind`` selects the case schema (``"single"`` or
-    ``"conversational"``).
+    ``kind`` selects the case schema (``"single"``, ``"conversational"``,
+    or ``"combo"``).
     """
     return _summarize_bytes(path.name, path.read_bytes(), kind=kind)
 
@@ -257,8 +272,8 @@ def build_manifest(dataset_dir: Path, dataset_version: str,
     (design MDEs in percentage points at the published discordance
     rates), stored verbatim as the manifest's ``mdes`` field.
 
-    ``kind`` selects the case schema (``"single"`` or
-    ``"conversational"``) and is recorded in the manifest's
+    ``kind`` selects the case schema (``"single"``, ``"conversational"``,
+    or ``"combo"``) and is recorded in the manifest's
     ``case_schema`` field so verification uses the same validator the
     seal was built with.
 
