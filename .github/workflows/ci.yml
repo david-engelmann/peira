@@ -321,10 +321,11 @@ jobs:
       - run: cargo test --workspace
 
   test-python-rust:
-    # The optional PyO3 accelerator: build peira._core and run the Python
-    # suite against the Rust backend, then again with PEIRA_NO_RUST=1 to
-    # prove the pure-Python fallback. (test-python covers the fallback on
-    # a fresh checkout, where the extension is never built.)
+    # The optional PyO3 accelerator: build peira._core in release profile
+    # via the maturin backend and run the Python suite against the Rust
+    # backend, then again with PEIRA_NO_RUST=1 to prove the pure-Python
+    # fallback. (test-python covers the fallback on a fresh checkout,
+    # where the extension is never built.)
     needs: check_runner
     runs-on: ${{ fromJSON(needs.check_runner.outputs.runner) }}
     timeout-minutes: 45
@@ -334,8 +335,12 @@ jobs:
         with:
           python-version: "3.12"
       - uses: dtolnay/rust-toolchain@ce678459e9fc7500d337468f904b95f1b5c10b5e # 1.98.1
-      - run: pip install -e .[dev]
-      - run: python scripts/build_core_ext.py
+      - run: pip install maturin
+      # Exactly one release-profile extension build, through pip's PEP 517
+      # path: MATURIN_PEP517_ARGS is the maturin-documented way to pass
+      # --release through pip install. --no-build-isolation reuses the
+      # maturin installed above instead of downloading it again.
+      - run: MATURIN_PEP517_ARGS="--release" pip install --no-build-isolation -e '.[dev]'
       - run: python -c "from peira._rust import RUST_AVAILABLE; assert RUST_AVAILABLE"
       - run: python -m pytest tests -n auto
       - run: PEIRA_NO_RUST=1 python -m pytest tests -n auto
