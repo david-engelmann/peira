@@ -7,6 +7,29 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
 
 ## [Unreleased]
 
+### Added Python lockfiles and Docker workflow
+
+- Pinned Python lockfiles in `requirements/`, generated with
+  `pip-compile` from `pyproject.toml`: `base.lock` (empty by design:
+  the base tier keeps its zero third-party runtime dependency
+  invariant), `dev.lock` (the `dev` extra CI installs, hash-pinned
+  with `--generate-hashes`), and `all.lock` (every extra, including
+  the Hugging Face and LLM-adapter extras, version-pinned because
+  hash-pinning torch's CUDA tree is impractical).
+- Multi-stage `Dockerfile` (Rust 1.98.1 builder for the `peira._core`
+  accelerator, Python 3.12-slim runtime): installs the pinned lockfile
+  with `--require-hashes`, ships the compiled Rust extension and the
+  versioned datasets, runs as a non-root user with `peira` as the
+  entrypoint. `EXTRAS_LOCK=all.lock` selects the full-extras build.
+- `.github/workflows/docker-build.yml`: builds the image on every
+  push to main and every PR and smoke-tests it (Rust extension
+  imports, mock trial run completes). Build-only: no image is pushed
+  to any registry until an external reproducibility request asks for
+  one.
+- `docs/Reproducibility.md`: lockfile usage, Docker build/run
+  reference, and regeneration instructions; linked from
+  `docs/Overview.md`.
+
 ### Added conversational case families
 
 - The conversational suite ships its first two attack families:

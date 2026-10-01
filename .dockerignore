@@ -1,0 +1,15 @@
+# Keep the Docker build context small and reproducible.
+.git
+target/
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+*.egg-info/
+site/
+runs/
+.rev-cache/
+peira-171-review/
+s1/
+paper/
+assets/
