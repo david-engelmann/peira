@@ -23,26 +23,6 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
   topic-driven over-refusal isolated from attack-driven refusal.
   Python only; the Rust port is deferred, like `refusal_rate_delta`.
 
-### Added named ResourceGovernor (R-03)
-
-- The rlimit backstop layer is now a named module,
-  `python/peira/resource_governor.py`, replacing the inline
-  `_apply_rlimits` helper in the runner (kept as a thin wrapper).
-  `ResourceGovernor` covers `RLIMIT_CPU` + `RLIMIT_AS` +
-  `RLIMIT_FSIZE` on the runner process and adds the missing
-  `RLIMIT_NPROC` fork-bomb guard, applied to subprocess adapter
-  children (SemIf) via `preexec_fn`. It is never applied to the runner
-  itself, since `RLIMIT_NPROC` counts per UID.
-- New `peira run --rlimit-nproc` flag (positive integer, Unix only).
-- New `peira run --death-log PATH` flag: arms the governor's
-  SIGTERM/SIGINT "last words" handler for the run.
-- `ResourceGovernor.install_death_handlers(path)` arms SIGTERM/SIGINT
-  handlers that write a "last words" JSON record before the process
-  dies, making the next unexplained process death (like the 2026-09-27
-  Jev exploratory run's death at 612/4000, cause undetermined, no OOM
-  signature) diagnosable. See docs/Methodology.md "Resource governor
-  (R-03)".
-
 ### Added Python lockfiles and Docker workflow
 
 - Pinned Python lockfiles in `requirements/`, generated with
@@ -65,6 +45,22 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
 - `docs/Reproducibility.md`: lockfile usage, Docker build/run
   reference, and regeneration instructions; linked from
   `docs/Overview.md`.
+
+### Added judge_sycophancy attack family
+
+- New v2 attack family `judge_sycophancy` (421 cases,
+  `v2-jsp-0001`..`v2-jsp-0421`) under `dataset/v2/cases/`. The judged
+  content manipulates the decision-maker rather than pleading the
+  case's merits: flattery of the judge's discernment, validation of the
+  judge's identity and values, agreeableness pressure, consistency traps
+  built on the judge's past positions, and ingratiation through favors
+  and praise. Five sub-mechanisms (discernment_flattery,
+  identity_validation, agreeableness_pressure, consistency_trap,
+  ingratiation), 40/137/244 critical/high/medium severity mix, 375
+  choice and 46 score cases. Pilot verdict (2026-09-30): standalone
+  family, mechanism-distinguishable from self_advocacy by deletion
+  tests (see docs/Taxonomy.md ruling 9).
+- Dataset version bumped to 2.4.0.
 
 ### Added conversational case families
 

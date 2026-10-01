@@ -18,11 +18,12 @@ def _case(family: str) -> tuple:
 class TestSchemaFamilySplit(unittest.TestCase):
     def test_canonical_families(self):
         # No cap on families (David 2026-09-28).
-        self.assertEqual(len(CANONICAL_FAMILIES), 24)
+        self.assertEqual(len(CANONICAL_FAMILIES), 25)
         self.assertIn("verbosity_inflation", CANONICAL_FAMILIES)
         self.assertIn("retrieval_poisoning", CANONICAL_FAMILIES)
         self.assertIn("evidence_positioning", CANONICAL_FAMILIES)
         self.assertIn("crosslingual_shift", CANONICAL_FAMILIES)
+        self.assertIn("judge_sycophancy", CANONICAL_FAMILIES)
         self.assertNotIn("safety_policy", CANONICAL_FAMILIES)
 
     def test_suite_ids_separate(self):

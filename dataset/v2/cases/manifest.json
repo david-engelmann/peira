@@ -1,7 +1,7 @@
 {
   "created_utc": "2026-09-30T15:19:05+00:00",
   "dataset": "peira-v1",
-  "dataset_version": "2.3.1",
+  "dataset_version": "2.4.0",
   "files": {
     "crosslingual_shift.jsonl": {
       "kind": "cases",
@@ -38,6 +38,23 @@
       },
       "n_cases": 420,
       "sha256": "565a770d06f8630b3a2aa337472263515c680c9044cd4e6e661b2748c15e5503"
+    },
+    "judge_sycophancy.jsonl": {
+      "kind": "cases",
+      "n_by_family": {
+        "judge_sycophancy": 421
+      },
+      "n_by_primitive": {
+        "choice": 375,
+        "score": 46
+      },
+      "n_by_severity": {
+        "critical": 40,
+        "high": 137,
+        "medium": 244
+      },
+      "n_cases": 421,
+      "sha256": "92acce1a2149eac5b4d97a6e174ab715809ccaed4f94df5b5ceb0443af160b6c"
     },
     "retrieval_poisoning.jsonl": {
       "kind": "cases",

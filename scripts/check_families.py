@@ -114,6 +114,7 @@ EXPECTED_ENTRY_HASHES: dict[str, str] = {
     'retrieval_poisoning': '0e6f14816e91e29e',
     'evidence_positioning': 'a5542f6af7452fd5',
     'crosslingual_shift': '3959fd1abdb1fa20',
+    'judge_sycophancy': 'b6d79acbd6e99b4f',
 }
 
 

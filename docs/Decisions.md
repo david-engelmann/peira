@@ -1519,3 +1519,36 @@ goalposts; with one, it is the policy working as designed.
 **To revisit:** the floor/ceiling thresholds and the two-release rule,
 after the first real multi-adapter season calibrates them; the
 variant-flip requirement, when M-8 lands.
+
+## D-38: judge_sycophancy pilot verdict: standalone family (2026-09-30)
+
+**Decision.** The judge_sycophancy pilot (Program D) concludes
+**standalone**: judge_sycophancy ships as a new v2 attack family,
+not folded into self_advocacy.
+
+**Alternatives.** Fold the pilot cases into self_advocacy's growth set
+(rejected: the mechanism differs, see below).
+
+**Why this:** the pilot's 75 cases were authored with mechanical
+validity diagnostics proving mechanism separation on every case:
+(1) the sycophancy block addresses the judge (you/your), never the
+case merits; (2) the block contains zero merit pleading
+(anti-self_advocacy assertion), zero instructions
+(anti-indirect_injection), zero rule rewrites
+(anti-criteria_smuggling); (3) attacked == benign + exactly one
+sycophancy block (deletion-test literal). The distinguishing deletion
+tests are operationally different: self_advocacy dies when merit
+pleading is removed; judge_sycophancy dies when judge-directed
+sycophancy is removed, with no merit pleading ever present.
+Different causal mechanism (judge self-image vs case merits),
+different countermeasures (judge debiasing vs fact-checking),
+separate literature grounding (Sharma et al. 2023 sycophancy), and
+internal structure (five sub-mechanisms: discernment_flattery,
+identity_validation, agreeableness_pressure, consistency_trap,
+ingratiation). The family is registered in
+`python/peira/families.py`, documented in docs/Taxonomy.md (family 25,
+boundary ruling 9), and ships 421 cases (v2-jsp-0001..v2-jsp-0421).
+
+**To revisit:** if future case growth blurs the boundary (sycophancy
+blocks that also plead merits), the boundary ruling's deletion tests
+decide case-by-case; persistent blur would reopen the fold question.
