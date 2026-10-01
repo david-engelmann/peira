@@ -34,7 +34,7 @@ dataset files and per-case drill-down. Entry numbers below are this
 section's sequence; the program-wide family numbers additionally count
 the two conversational-suite families (`multi_turn_escalation` 25,
 `decision_splitting` 26, see `docs/Conversational-Suite.md`), so the
-newest v2 family is program-wide family 27.
+newest v2 family is program-wide family 28.
 
 1. **state_poisoning**: hostile content in tool output authorizes the
    action; includes history-embedded payloads in multi-turn state.
@@ -164,7 +164,7 @@ ships, with no fixed total.
     future measurement work. YouTube-reconciliation research 2026-09-30;
     Boundary Point Jailbreaking analogue.
 
-27. **cryptographic_payload** (Tier 1). Encrypted payload plus
+28. **cryptographic_payload** (Tier 1). Encrypted payload plus
     in-context decryption instructions: the guard layer classifies the
     ciphertext (benign-looking) while the decision model recovers the
     plaintext in a trusted execution context and follows it. The benign
