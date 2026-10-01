@@ -23,7 +23,8 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
   (entry 25, with a boundary ruling against `literal_reading` and
   `contradiction_injection`) and `docs/Methodology.md` (measurement
   section with the deletion test). Dataset version moves from 2.3.1 to
-  2.4.0.
+  2.4.1. Version 2.4.1 rewords the case notes to meet the public-copy
+  bar and fixes awkward phrasing in three hiring score cases.
 
 ### Added conversational case families
 
