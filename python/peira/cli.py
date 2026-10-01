@@ -1032,6 +1032,30 @@ def cmd_report(args: argparse.Namespace) -> int:
         print(f"error: cannot write report to {out} ({e2})", file=sys.stderr)
         return EXIT_USER_ERROR
     print(f"report: {out}")
+    # EB-18: optional versioned report artifact. The HTML alone is not
+    # reproducible (buyer-cost parameters change the rendering), so the
+    # artifact seals the source artifact's provenance, the report
+    # parameters, and the metric payload under their own analysis lock.
+    json_out = getattr(args, "json_out", None)
+    if json_out:
+        from peira.report_artifact import ReportArtifact
+        report_params = {}
+        if buyer_cost_params is not None:
+            report_params["buyer_cost"] = buyer_cost_params
+        if flips_per_incident is not None:
+            report_params["flips_per_incident"] = flips_per_incident
+        sealed = ReportArtifact.from_run_artifact(
+            artifact,
+            report_params=report_params,
+            source_path=str(run_path),
+        ).seal()
+        try:
+            Path(json_out).write_text(sealed.to_json(), encoding="utf-8")
+        except OSError as e3:
+            print(f"error: cannot write report artifact to {json_out} "
+                  f"({e3})", file=sys.stderr)
+            return EXIT_USER_ERROR
+        print(f"report artifact: {json_out}")
     return EXIT_OK
 
 
@@ -4625,6 +4649,10 @@ def build_parser() -> argparse.ArgumentParser:
                     help="R-08 flips per incident for the attack-mix "
                          "cost-per-incident view (optional, renders as "
                          "withheld without it)")
+    rp.add_argument("--json-out", default=None,
+                    help="write a versioned report artifact JSON "
+                         "alongside the HTML (seals source provenance, "
+                         "report parameters, and metrics)")
     rp.set_defaults(func=cmd_report)
 
     cp = sub.add_parser("compare",
