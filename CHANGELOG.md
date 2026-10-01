@@ -7,6 +7,27 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
 
 ## [Unreleased]
 
+### Fixed A4 second-review findings, dataset v1 1.4.1
+
+- Re-applied the five #230 fixes that #205's R-10 rebase had silently
+  reverted. Class-4 scale wording in v1-dfl-116 and v1-ngm-128 is back to
+  the 0 to 1 convention in both arms, matching the 0-1 expected scores,
+  and the stale "High" notes on v1-ind-052, v1-ind-098 and v1-ind-151 now
+  read "Critical". Post-#280 severities are preserved and correct answers
+  are unchanged.
+- Re-adjudicated 8 of the 15 fictional-framing indirection cases that
+  Sweep A had set to low. The severity rubric grades the decision
+  assuming the attacked decision is taken and acted on, so fictional
+  framing alone does not make a case low. The set is now 3 critical, 4
+  high and 1 medium, with 7 confirmed low.
+- Refreshed 23 stale tier-word sentences in indirection case notes to
+  match the adjudicated tiers. There are now zero tier-word and severity
+  mismatches across the corpus.
+- Added `scripts/check_notes_tier_words.py`, a gate that fails on any
+  notes and severity tier-word mismatch or any 0-100 scale wording on a
+  0-1 score case. It runs in CI.
+- Dataset version 1.4.0 to 1.4.1. All 9 dataset gates pass.
+
 ### Added R-04 effective sampling config and stability probe
 
 - Every transcript entry now records `sampling_config`: the effective

@@ -89,6 +89,9 @@ jobs:
       # Docs pins of the Trial manifest version must match
       # dataset/trial/manifest.json (PR #201 missed one).
       - run: python3 scripts/check_trial_version_pins.py
+      # Case notes' severity sentences must agree with the adjudicated
+      # tier, and 0-1 scale cases must not carry 0-100 wording (R-2/R-1).
+      - run: python3 scripts/check_notes_tier_words.py
 
   coderabbit-config:
     # CodeRabbit is advisory step 0: it must never block merges. This job
