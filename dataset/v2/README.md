@@ -21,6 +21,8 @@ Post-v1 families use `v2-<fam>-XXXX`:
 - `v2-retp-0001` … retrieval_poisoning (family 22)
 - `v2-evpos-0001` … evidence_positioning (family 23)
 - `v2-xling-0001` … crosslingual_shift (family 24)
+- `v2-jsp-0001` … judge_sycophancy (family 25)
+- `v2-edge-0001` … threshold_edge_hunting (family 26)
 - future families: `v2-<3-letter family code>-XXXX`, zero-padded,
   dense numbering per family file.
 
@@ -50,6 +52,8 @@ published discordance rates.
 | 22 | retrieval_poisoning | 470 | shipped |
 | 23 | evidence_positioning | 420 | shipped |
 | 24 | crosslingual_shift | 420 | shipped |
+| 25 | judge_sycophancy | 421 | shipped |
+| 26 | threshold_edge_hunting | 420 | shipped |
 
 New families land as `<family>.jsonl` plus a manifest rebuild and a
 CHANGELOG entry. The 400/family design target is a floor, not a
