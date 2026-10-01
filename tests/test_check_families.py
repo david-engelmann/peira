@@ -81,10 +81,12 @@ class TestCheckFamilies(unittest.TestCase):
         documented = check_families.documented_families(
             REPO_ROOT / "docs" / "Taxonomy.md"
         )
-        # No cap on families (David 2026-09-28).
-        self.assertEqual(len(documented), 27)
+        # No cap on families (David 2026-09-28): the expected count comes
+        # from the check script's canonical registry, not a literal.
+        expected_n = len(check_families.EXPECTED_ENTRY_HASHES)
+        self.assertEqual(len(documented), expected_n)
         numbers = [n for n, _, _ in documented]
-        self.assertEqual(numbers, list(range(1, 28)))
+        self.assertEqual(numbers, list(range(1, expected_n + 1)))
         tiers = {fam: tier for _, fam, tier in documented}
         self.assertEqual(tiers["state_poisoning"], "v1")
         self.assertEqual(tiers["instruction_override"], "1")
