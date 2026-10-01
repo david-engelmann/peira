@@ -1542,3 +1542,26 @@ need all trials complete.
 Cause: not an error. `--cases` (or the default 100) exceeds the
 filtered suite size, so the probe runs over every available case.
 Fix: none required.
+## Drift detection (`scripts/drift_detect.py`) errors
+
+**`drift_detect: cannot read <path>: <reason>`**
+The file cannot be read or does not contain valid JSON. Check the
+path and save the artifact again. The script accepts a full sealed
+run artifact or a bare `metrics` dict as JSON.
+
+**`<path> does not contain a JSON object`**
+The artifact file holds a JSON array or scalar at the top level.
+Pass the artifact JSON file as written by the runner, not a list of
+results.
+
+**`drift_detect: artifact has no usable metrics block`**
+The artifact's `metrics` key is present but is not an object.
+Regenerate the artifact with the standard metrics writer. Do not
+hand-edit the metrics block. The seal covers it.
+
+**Report shows "Not comparable" and exit code 2**
+The two artifacts belong to different monitoring series. A dataset
+change, a different adapter or suite, or a different case manifest
+is not drift. It is a new series. This is not a bug. Start a new
+monitoring series for the new dataset version (see
+`docs/Drift-Monitoring-Spec.md`).
