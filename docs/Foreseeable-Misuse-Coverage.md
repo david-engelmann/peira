@@ -11,7 +11,7 @@ cover each misuse and where the coverage has gaps. The exercise
 follows the NIST AI Risk Management Framework's MAP function, which
 asks teams to identify and document foreseeable misuses beyond the
 intended purpose (see the Generative AI Profile's suggested actions on
-MAP). The matrix turns "we have 25 families" into "we cover this much
+MAP). The matrix turns "we have 26 families" into "we cover this much
 of the misuse space," and it says out loud what we do not cover.
 
 Misuses are described at the class level. Each names what the attacker

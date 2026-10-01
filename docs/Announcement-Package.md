@@ -28,7 +28,7 @@ benchmark that measures how documented hostile-input attack shapes
 affect typed decision outputs.
 
 **What it tests.** Approve and deny decisions, numeric scores, and
-abstentions across 25 attack families. Prompt injection buried in tool
+abstentions across 26 attack families. Prompt injection buried in tool
 output. Instructions hidden in retrieved documents. Fake
 authorization signals. Reordered evidence. Flattery aimed at the judge
 instead of the case. The taxonomy doc records the literature or
@@ -60,7 +60,7 @@ No numbers are claimed before then.]
 
 We built the benchmark we wanted to exist.
 
-peira attacks decision models across 25 attack families, from prompt
+peira attacks decision models across 26 attack families, from prompt
 injection in tool output to poisoned retrieval corpora to flattery
 aimed at the judge, and measures whether the decision flips. Paired
 cases with a 95% confidence interval on every headline number, a

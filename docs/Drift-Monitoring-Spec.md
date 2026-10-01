@@ -67,7 +67,7 @@ already carries (`asr_conditional`, plus `per_family` entries with
 
 **The test.** Two-sided z-test for the difference of two proportions
 on the flip counts. Significance at 0.05 with a Bonferroni correction
-over the number of families compared, so a 25-family comparison does
+over the number of families compared, so a 26-family comparison does
 not cry wolf on noise.
 
 **The effect-size floor.** Statistical significance alone is not drift.
