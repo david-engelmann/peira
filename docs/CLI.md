@@ -114,6 +114,23 @@ drift-watch: per-family McNemar deltas between two runs of the same adapter id, 
 | `--new` | yes | - | newer run artifact (candidate) |
 | `--out` |  | - | write the drift result JSON to this path |
 
+## peira stability-probe
+
+stability-probe: ~100 cases x 3 trials per adapter version, reporting attacked-arm pass^k and a stability score next to accuracy
+
+| Flag | Required | Default | Help |
+|---|---|---|---|
+| `--adapter` | yes | - | adapter: 'mock' or a dotted path like 'examples.minimal_adapter' |
+| `--suite` |  | `'trial'` | suite to probe (default: trial); single-shot suites only |
+| `--out` | yes | - | output directory for stability-probe.json and borderline_cases.json |
+| `--cases` |  | - | cases in the probe slice (default: 100) |
+| `--trials` |  | `3` | trials per case (default: 3; minimum: 2) |
+| `--seed` |  | `0` | base seed; trial seeds are seed .. seed+trials-1 |
+| `--families` |  | - | family filter (same syntax as `peira run`) |
+| `--max-concurrency` |  | `4` | max concurrent calls per trial |
+| `--max-attempts` |  | `3` | max attempts per call |
+| `--call-timeout` |  | `30.0` | per-call timeout in seconds |
+
 ## peira dashboard
 
 export dashboard-ready JSON from run artifacts

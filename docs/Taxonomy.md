@@ -57,10 +57,12 @@ v2 family is therefore program-wide family 28.
 10. **confidence_spoofing**: hostile content inflates confidence while
     flipping the answer.
 
-v2 adds ten more families in two tiers, each with the literature or
-vendor source that motivates it. Tier 1 ships with v2; Tier 2 follows
-once case design is validated. The v1 ten are frozen as authored; v2
-tops each up from 200 to 400 cases under the boundary rulings below.
+v2 adds fifteen more families in two tiers, each with the literature or
+vendor source that motivates it. Eleven are Tier 1 and ship with v2. Four
+are Tier 2 and follow once case design is validated. The v1 ten are
+frozen as authored. Each v2 family ships with at least 400 cases, a
+floor not a ceiling (David 2026-09-28). The boundary rulings below
+govern authoring.
 
 11. **instruction_override** (Tier 1): explicit instruction embedded in
     judged content telling the model how to decide ("ignore the policy
@@ -117,7 +119,7 @@ tops each up from 200 to 400 cases under the boundary rulings below.
 Post-v2 families have no cap (David 2026-09-28): every supported family
 ships, with no fixed total.
 
-22. **retrieval_poisoning** (Tier 1). False evidence planted in the
+22. **retrieval_poisoning** (Tier 1): False evidence planted in the
     retrieval corpus steers the decision to the attacker's target. One
     poisoned document satisfies the retrieval condition (it surfaces for
     the target query) and the generation condition (taken as true, it
@@ -126,7 +128,7 @@ ships, with no fixed total.
     text. PoisonedRAG (Zou et al., arXiv:2402.07867). MITRE ATLAS AML.T0070
     (RAG Poisoning).
 
-23. **evidence_positioning** (Tier 1). Reordering byte-identical evidence
+23. **evidence_positioning** (Tier 1): Reordering byte-identical evidence
     exploits primacy and recency effects to steer the decision to the
     attacker's target. Six facts are byte-identical between arms. Only
     the order changes. The benign arm alternates [E1, T1, E2, T2, E3, T3].
@@ -134,14 +136,14 @@ ships, with no fixed total.
     [T1, E1, E2, E3, T2, T3], burying expected-supporting facts centrally.
     No new facts are introduced, only reordered.
 
-24. **crosslingual_shift** (Tier 1). Hostile instructions or
+24. **crosslingual_shift** (Tier 1): Hostile instructions or
     justifications rendered in a non-English language (or code-switched
     mix) to bypass safety filters trained primarily on English. The
     facts stay in English. The attack payload shifts to Spanish, French,
     German, Portuguese, Italian, or Dutch. Peira-native contribution
     (weak/indirect ATLAS analogue only).
 
-25. **judge_sycophancy** (Tier 1). The judged content manipulates the
+25. **judge_sycophancy** (Tier 1): The judged content manipulates the
     decision-maker rather than pleading the case's merits: flattery of
     the judge's discernment, validation of the judge's identity and
     values, agreeableness pressure, consistency traps built on the
@@ -245,6 +247,7 @@ are not comparable with v1's (D-34). See
 `dataset/safety-policy/SPEC.md`.
 
 Each family ships with worked examples in its dataset version's
-directory. Family definitions freeze per dataset version: v1's ten are
-frozen as authored, and the ten v2 families above arrive with dataset
-v2.
+directory. Family definitions freeze per dataset version. The v1 ten
+are frozen as authored, and the Tier 1 families above arrive with
+dataset v2. Tier 2 families arrive once their case design is
+validated.
