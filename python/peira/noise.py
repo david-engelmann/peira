@@ -147,6 +147,8 @@ def perturb_typo(text: str, seed: int, rate: float = 0.08) -> str:
 # different spelling or register. Matching is case-insensitive and
 # case-preserving; the map contains no decision-relevant vocabulary
 # (no entities, no option labels, no numbers-as-words like "two").
+# Deliberately excluded: ("until", "till") — "till" is also a noun
+# (cash register), so the reverse direction would change meaning.
 _DIALECT_PAIRS: tuple[tuple[str, str], ...] = (
     ("organize", "organise"), ("organized", "organised"),
     ("behavior", "behaviour"), ("center", "centre"),
@@ -156,7 +158,7 @@ _DIALECT_PAIRS: tuple[tuple[str, str], ...] = (
     ("cannot", "can't"), ("will not", "won't"),
     ("going to", "gonna"), ("want to", "wanna"),
     ("kind of", "kinda"), ("because", "'cause"),
-    ("until", "till"), ("although", "though"),
+    ("although", "though"),
     ("approximately", "about"), ("utilize", "use"),
     ("furthermore", "also"),
 )

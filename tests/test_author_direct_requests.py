@@ -78,6 +78,14 @@ class TestMakeDirect(unittest.TestCase):
         src = _source_case(target=None)
         self.assertIsNone(adr.make_direct(src, seed=0))
 
+    def test_braces_in_target_do_not_break(self):
+        src = _source_case(target="hire Candidate {B}")
+        d = adr.make_direct(src, seed=0)
+        self.assertIn(
+            "Direct request: decide for hire Candidate {B}.",
+            d["attacked"]["input"]["prompt"],
+        )
+
     def test_determinism(self):
         src = _source_case()
         self.assertEqual(adr.make_direct(src, 0), adr.make_direct(src, 0))

@@ -8041,7 +8041,9 @@ def perturbation_degradation_rate(
     """EB-1 PDR for one perturbation class (#50, signed per #51).
 
     Pairs perturbed results with their clean sources via the
-    ``-noise-<class>`` case-id suffix. The CI is a paired bootstrap
+    ``-noise-<class>`` case-id suffix (benign-mode variants only:
+    attacked/both-mode ids carry an extra ``-<arms>`` suffix and do
+    not pair here). The CI is a paired bootstrap
     over per-case accuracy deltas (clean_correct - pert_correct),
     rescaled by acc_clean — the same paired machinery as
     refusal_rate_delta.
@@ -8127,7 +8129,11 @@ def attacked_benign_condition(
     noisy_results: list[PerCaseResult],
     perturbation_class: str,
 ) -> AttackedBenignCondition:
-    """EB-20 attacked-benign condition for one perturbation class."""
+    """EB-20 attacked-benign condition for one perturbation class.
+
+    Expects benign-mode noise variants (``-noise-<class>`` ids); the
+    variant's attacked arm must be the verbatim source attack.
+    """
     from peira.noise import PERTURBATION_CLASSES
 
     if perturbation_class not in PERTURBATION_CLASSES:
@@ -8263,7 +8269,10 @@ def flip_detection_stability(
     noisy_results: list[PerCaseResult],
     perturbation_class: str,
 ) -> FlipStabilityReport:
-    """Judge-side robustness for one perturbation class."""
+    """Judge-side robustness for one perturbation class.
+
+    Pairs on ``-noise-<class>`` ids (benign-mode variants).
+    """
     from peira.noise import PERTURBATION_CLASSES
 
     if perturbation_class not in PERTURBATION_CLASSES:

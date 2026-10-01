@@ -108,6 +108,14 @@ class TestDialect(unittest.TestCase):
         self.assertRegex(out, r"\b[Oo]rgani[sz]e\b")
         self.assertRegex(out, r"\b(CENTER|CENTRE)\b")
 
+    def test_homograph_noun_never_rewritten(self):
+        # "till" is also a noun (cash register): no seed may rewrite
+        # it to "until", which would change meaning.
+        text = "The cash till was empty."
+        for seed in range(50):
+            out = noise.perturb_dialect(text, seed)
+            self.assertNotIn("until", out, f"seed {seed}")
+
 
 class TestParaphrase(unittest.TestCase):
     def test_digits_never_touched(self):

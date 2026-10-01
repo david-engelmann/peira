@@ -75,15 +75,14 @@ def _derived_seed(seed: int, case_id: str, cls: str, arm: str) -> int:
     return int(digest[:16], 16)
 
 
-def split_decision_question(prompt: str, options: list) -> tuple:
+def split_decision_question(prompt: str) -> tuple:
     """Split a prompt into (body, decision_question).
 
     The decision question is the trailing line when it matches the
     authoring convention: the last non-empty line starts with
     ``Decision:`` (see ``scripts/author_benign_twins.py``). Otherwise
-    the whole prompt is body and the question is the empty string —
-    the caller then perturbs everything, and documents that no
-    question line was found. The question line is never perturbed.
+    the whole prompt is body and the question is the empty string.
+    The question line is never perturbed.
     """
     lines = prompt.split("\n")
     idx = len(lines) - 1
@@ -96,7 +95,7 @@ def split_decision_question(prompt: str, options: list) -> tuple:
     return prompt, ""
 
 
-def perturb_prompt(prompt: str, options: list, cls: str, seed: int) -> str:
+def perturb_prompt(prompt: str, cls: str, seed: int) -> str:
     """Perturb prompt prose, never options text or the decision line.
 
     Guard: the decision question (trailing ``Decision:`` line) is
@@ -105,7 +104,7 @@ def perturb_prompt(prompt: str, options: list, cls: str, seed: int) -> str:
     changed decision line can never happen here because the line is
     re-attached byte-identical.
     """
-    body, question = split_decision_question(prompt, options)
+    body, question = split_decision_question(prompt)
     noisy_body = perturb(body, cls, seed)
     if question:
         return noisy_body + "\n" + question
@@ -121,18 +120,13 @@ def _check_variant_guards(source_prompt: str, noisy_prompt: str,
             f"{case_id}: options changed by noise.{cls}; options must "
             f"stay byte-identical"
         )
-    src_body, src_q = split_decision_question(source_prompt, source_options)
-    new_body, new_q = split_decision_question(noisy_prompt, noisy_options)
+    _, src_q = split_decision_question(source_prompt)
+    _, new_q = split_decision_question(noisy_prompt)
     if src_q and src_q != new_q:
         raise AssertionError(
             f"{case_id}: decision question changed by noise.{cls}; the "
             f"trailing Decision: line is never perturbed"
         )
-    if cls != "distractor" and src_body and new_body == src_body:
-        # Distractor always appends; the other classes may legitimately
-        # leave very short bodies unchanged. This is a soft diagnostic,
-        # not a guard — noise is allowed to be a no-op on tiny text.
-        pass
 
 
 def _arm_case(arm: dict, cls: str, seed: int, do_perturb: bool) -> dict:
@@ -141,7 +135,7 @@ def _arm_case(arm: dict, cls: str, seed: int, do_perturb: bool) -> dict:
     options = list(arm["input"]["options"])
     new_arm = {
         "input": {
-            "prompt": perturb_prompt(prompt, options, cls, seed)
+            "prompt": perturb_prompt(prompt, cls, seed)
             if do_perturb else prompt,
             "options": options,
         },
@@ -258,8 +252,7 @@ def build_validation_sample(sources: list, per_class: int,
     pairs = []
     for case in cases:
         prompt = case["benign"]["input"]["prompt"]
-        options = case["benign"]["input"]["options"]
-        body, _ = split_decision_question(prompt, options)
+        body, _ = split_decision_question(prompt)
         for cls in PERTURBATION_CLASSES:
             pseed = _derived_seed(seed, case["case_id"], cls, "benign")
             pairs.append({

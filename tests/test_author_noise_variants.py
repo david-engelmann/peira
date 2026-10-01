@@ -51,14 +51,13 @@ class TestSplitDecisionQuestion(unittest.TestCase):
     def test_trailing_decision_line_split(self):
         body, question = anv.split_decision_question(
             "Some prose.\n\nDecision: hire A or hire B?\n",
-            ["hire A", "hire B"],
         )
         self.assertEqual(body, "Some prose.")
         self.assertEqual(question, "Decision: hire A or hire B?\n")
 
     def test_no_decision_line(self):
         prompt = "Prose with no question line.\n"
-        body, question = anv.split_decision_question(prompt, [])
+        body, question = anv.split_decision_question(prompt)
         self.assertEqual(body, prompt)
         self.assertEqual(question, "")
 
@@ -95,7 +94,6 @@ class TestMakeVariant(unittest.TestCase):
         seed = anv._derived_seed(3, "v2-verb-0001", "dialect", "attacked")
         body, question = anv.split_decision_question(
             src["attacked"]["input"]["prompt"],
-            src["attacked"]["input"]["options"],
         )
         expected = perturb(body, "dialect", seed) + (
             "\n" + question if question else ""
@@ -164,11 +162,9 @@ class TestMakeVariant(unittest.TestCase):
         v = anv.make_variant(src, "distractor", "benign", seed=0)
         body, question = anv.split_decision_question(
             src["benign"]["input"]["prompt"],
-            src["benign"]["input"]["options"],
         )
         noisy_body, noisy_question = anv.split_decision_question(
             v["benign"]["input"]["prompt"],
-            v["benign"]["input"]["options"],
         )
         self.assertTrue(noisy_body.startswith(body))
         self.assertEqual(noisy_question, question)

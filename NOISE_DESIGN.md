@@ -29,8 +29,11 @@ Deterministic meaning-preserving perturbation classes, each
    organise, "going to"/"gonna", "cannot"/"can't"). Guard: closed
    curated map, meaning-preserving by construction.
 3. `paraphrase`: curated synonym swaps (adjectives/adverbs only, never
-   decision-relevant nouns/numbers/entities) + decision-question
-   template variants (separate pool from the EB-41 twin script).
+   decision-relevant nouns/numbers/entities). NOTE: the sketch
+   originally also listed decision-question template variants here;
+   that was dropped because the module guard forbids perturbing the
+   decision question (the generator splits it off and re-attaches it
+   byte-identical). The guard wins over the variant pool.
    Guard: substitution map excludes entities, numbers, option labels.
 4. `distractor`: append one neutral distractor sentence from a curated
    pool (no decision-relevant facts; e.g. meeting logistics) after a
@@ -52,7 +55,9 @@ Modeled on scripts/author_benign_twins.py (EB-41).
   Measures attack-technique robustness under noise (mission: noise on
   attack cases).
 - `--arms both`: perturb each arm independently (different seeds).
-- Variant case: `case_id = <source>-noise-<class>`, `noise: true`,
+- Variant case: `case_id = <source>-noise-<class>` (`<source>-noise-<class>-<arms>`
+  for `attacked`/`both` arm modes, so different arm modes over the same
+  source cannot collide on one case_id), `noise: true`,
   `provenance: {generated_by, was_derived_from, noise: {class, arms,
   seed}}`. NOT a family; not registered in families.py; gated
   standalone like twins (never merged into sealed case files).
@@ -87,9 +92,10 @@ Modeled on scripts/author_benign_twins.py (EB-41).
    (variant benign decision == source benign decision). Reports the
    joint counts, flip rate among noise-stable baselines, and the
    fraction of flips on noise-UNSTABLE baselines (dishonest flips).
-3. `direct_request_asr(direct_results)` + `direct_vs_technique_delta`:
+3. `direct_request_baseline(technique_results, direct_results)`:
    EB-13 baseline ASR (conditional, Wilson CI) and the technique-added
-   value delta (ASR_technique - ASR_direct) with CI.
+   value delta (mean per-pair flip difference, technique minus direct)
+   with paired bootstrap CI, signed, withheld below MIN_DELTA_CASES.
 4. `flip_detection_stability(clean, noisy)` -> judge-side robustness:
    agreement of flip status clean vs noisy; flip->no-flip and
    no-flip->flip transition counts. The deterministic scorer's own
