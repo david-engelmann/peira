@@ -187,7 +187,11 @@ def drift_report(
     min_n: int = MIN_N,
     effect_floor: float = EFFECT_FLOOR,
 ) -> str:
-    """Render the Markdown drift report for two metrics blocks."""
+    """Render the Markdown drift report for two run artifacts.
+
+    Each input is a full artifact dict or a bare metrics dict; identity
+    fields are read at the artifact level with metrics-level fallback.
+    """
     problems = check_comparable(base, curr)
     lines = ["# Drift report", ""]
     lines.append(f"Comparing **{curr_label}** against **{base_label}**.")
