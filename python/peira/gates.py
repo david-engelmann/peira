@@ -402,7 +402,7 @@ def gate_near_dedup(valid_cases) -> GateResult:
     counterfactual probes, EB-2 dialect pairs) are *supposed* to be
     near-identical — that is the measurement. The carve-out is
     narrow (both cases must declare the same pair id) and documented
-    in dataset/safety-policy/SPEC.md; everything else is compared
+    in dataset/safety-policy/SPEC.md. Everything else is compared
     exactly as before.
 
     Candidate pairs come from a bottom-k sketch inverted index (see

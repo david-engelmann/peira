@@ -7324,7 +7324,11 @@ def _fairness_block(
     for d in block["disaggregation"]["disparities"]:
         d["max_value"] = _round4(d["max_value"])
         d["min_value"] = _round4(d["min_value"])
-        d["abs_gap"] = _round4(d["abs_gap"])
+        # Gap recomputed from the ROUNDED values: the reported block
+        # stays arithmetic-consistent (abs_gap == max_value -
+        # min_value exactly as reported) instead of carrying a gap
+        # rounded from full precision that can differ by 1e-4.
+        d["abs_gap"] = _round4(d["max_value"] - d["min_value"])
         d["ratio"] = _round4(d["ratio"])
     for key in ("tagged", "untagged"):
         s = block["disaggregation"][key]

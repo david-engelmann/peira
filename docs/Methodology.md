@@ -368,7 +368,7 @@ The fairness dimension asks whether attack resistance degrades for
 particular demographic groups or dialects, and whether the decision
 itself shifts when only a demographic attribute changes. Cases opt
 in with a top-level `fairness` object (kind, dimension, group, and
-for minimal pairs a shared `pair_id`); the safety-policy suite ships
+for minimal pairs a shared `pair_id`). The safety-policy suite ships
 the first instruments (`dataset/safety-policy/SPEC.md` §8). The
 readout is a separate `fairness` summary block, descriptive only,
 never a ranker, and never blended into headline numbers.

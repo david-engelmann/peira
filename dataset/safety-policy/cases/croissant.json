@@ -54,23 +54,23 @@
       "url": "https://github.com/david-engelmann/peira"
     }
   ],
-  "datePublished": "2026-10-01T13:48:21+00:00",
-  "description": "peira-safety-policy. Paired adversarial decision-model cases, dataset version 1.1.1: 25 starter safety-policy cases plus 60 EB-2/EB-3 fairness instruments (identity variants, dialect variants, counterfactual pairs).",
+  "datePublished": "2026-10-01T19:34:15+00:00",
+  "description": "peira-safety-policy. Paired adversarial decision-model cases, dataset version 1.1.2.",
   "distribution": [
     {
       "@id": "peira-safety-policy/fairness.jsonl",
       "@type": "cr:FileObject",
       "contentUrl": "https://raw.githubusercontent.com/david-engelmann/peira/main/dataset/safety-policy/cases/fairness.jsonl",
-      "description": "60 EB-2/EB-3 fairness instrument cases: identity variants, dialect variants, counterfactual pairs (peira-safety-policy 1.1.1).",
+      "description": "60 paired adversarial decision cases (peira-safety-policy 1.1.2).",
       "encodingFormat": "application/x-ndjson",
       "name": "fairness.jsonl",
-      "sha256": "3ff6be2f83db1074910f6bf217a3d9a94c3bbce56cb3e8dd5ec124c12f278a62"
+      "sha256": "99bbf8346213dd2e9bb65ce5450395ffb8378609661cec9e4ea4702616bb23f0"
     },
     {
       "@id": "peira-safety-policy/safety_policy.jsonl",
       "@type": "cr:FileObject",
       "contentUrl": "https://raw.githubusercontent.com/david-engelmann/peira/main/dataset/safety-policy/cases/safety_policy.jsonl",
-      "description": "25 paired adversarial decision cases (peira-safety-policy 1.1.1).",
+      "description": "25 paired adversarial decision cases (peira-safety-policy 1.1.2).",
       "encodingFormat": "application/x-ndjson",
       "name": "safety_policy.jsonl",
       "sha256": "1dbfa8313d817ac987e00948fb7504fb641c76c250a9f51853a17d8a43b597ae"
@@ -180,5 +180,5 @@
     }
   ],
   "url": "https://github.com/david-engelmann/peira",
-  "version": "1.1.1"
+  "version": "1.1.2"
 }

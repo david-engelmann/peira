@@ -68,7 +68,7 @@ def parse_fairness_tags(
 
     Lenient by design: a malformed tag (not a dict, missing kind /
     dimension / group) degrades to "no tag" rather than failing a
-    run. The authoring gates validate the curated corpus; production
+    run. The authoring gates validate the curated corpus. Production
     runs must never crash on a typo'd extra field.
     """
     tags: dict[str, FairnessTag] = {}
@@ -188,9 +188,12 @@ def disaggregate(
     Rates are computed over each slice with the same definitions as
     the headline metrics (conditional ASR over eligible cases,
     attacked-arm abstention over eligible cases, benign accuracy over
-    decided benign variants). Every rate carries its Wilson 95% CI
-    and denominator: a slice with 3 cases reports its uncertainty
-    honestly instead of a bare point estimate.
+    decided benign variants), except refusal: the headline
+    refusal_rate is over all cases while the slice uses eligible
+    cases, so the slice refusal stays comparable with the slice ASR.
+    Every rate carries its Wilson 95% CI and denominator: a slice
+    with 3 cases reports its uncertainty honestly instead of a bare
+    point estimate.
     """
     by_key: dict[tuple[str, str], list[PerCaseResult]] = {}
     kind_of: dict[tuple[str, str], str] = {}
@@ -201,7 +204,7 @@ def disaggregate(
         key = (tag.dimension, tag.group)
         by_key.setdefault(key, []).append(r)
         # A slice mixes kinds only if an author tags the same
-        # (dimension, group) with two instruments; record the first
+        # (dimension, group) with two instruments. Record the first
         # seen kind as the label rather than failing.
         kind_of.setdefault(key, tag.kind)
     if not by_key:
@@ -258,7 +261,7 @@ def _disparities(slices: list[GroupSlice]) -> list[Disparity]:
         by_dim.setdefault(s.dimension, []).append(s)
     for dimension, ss in sorted(by_dim.items()):
         if len(ss) < 2:
-            # A disparity needs at least two groups; a single-group
+            # A disparity needs at least two groups. A single-group
             # dimension still reports its slice, just no gap.
             continue
         for metric in ("asr", "refusal_rate", "benign_accuracy"):
@@ -343,7 +346,7 @@ def counterfactual_equality(
         members = by_pair[pair_id]
         if len(members) != 2:
             # A declared pair that did not resolve to exactly two run
-            # members is an authoring defect; skip it rather than
+            # members is an authoring defect. Skip it rather than
             # guessing which two to compare. The authoring script
             # asserts pair completeness at generation time.
             continue
