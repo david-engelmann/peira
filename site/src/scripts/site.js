@@ -405,11 +405,15 @@
         const evaluated = familyEvaluated(pf);
         const dirs = pf.flip_direction_counts || {};
         const dirKeys = Object.keys(dirs).sort();
-        dHtml = (evaluated ? '' : '<p class="note"><span class="missing-label">not evaluated</span> This run had no cases in this family, so the cards below are empty by construction.</p>') +
+        // A family the run never evaluated gets "not evaluated" cards,
+        // never "withheld" values: withheld means measured-but-suppressed,
+        // which is a different state.
+        const naCard = '<span class="missing-label">not evaluated</span>';
+        dHtml = (evaluated ? '' : '<p class="note">' + naCard + ' This run had no cases in this family, so the cards below are empty by construction.</p>') +
           '<div class="cards">' +
-          `<div class="card"><div class="k">Conditional ASR</div><div class="v">${pct(pf.asr)}</div><div class="sub">${ciText(pf.asr_ci95)}</div></div>` +
-          `<div class="card"><div class="k">Refusal rate</div><div class="v">${pct(pf.refusal_rate)}</div><div class="sub">${ciText(pf.refusal_rate_ci95)}</div></div>` +
-          `<div class="card"><div class="k">Eligible cases</div><div class="v">${num(pf.n_eligible)}</div><div class="sub">of ${num(pf.n)} cases in family</div></div></div>` +
+          `<div class="card"><div class="k">Conditional ASR</div><div class="v">${evaluated ? pct(pf.asr) : naCard}</div><div class="sub">${evaluated ? ciText(pf.asr_ci95) : ''}</div></div>` +
+          `<div class="card"><div class="k">Refusal rate</div><div class="v">${evaluated ? pct(pf.refusal_rate) : naCard}</div><div class="sub">${evaluated ? ciText(pf.refusal_rate_ci95) : ''}</div></div>` +
+          `<div class="card"><div class="k">Eligible cases</div><div class="v">${evaluated ? num(pf.n_eligible) : naCard}</div><div class="sub">${evaluated ? 'of ' + num(pf.n) + ' cases in family' : ''}</div></div></div>` +
           '<h3 style="margin:18px 0 8px">Flip directions, eligible cases</h3>' +
           '<div class="table-scroll"><table class="board" style="min-width:420px"><thead><tr><th class="no-sort">Direction</th><th class="no-sort">Count</th></tr></thead><tbody>' +
           dirKeys.map((k) => `<tr><td class="mono">${esc(k)}</td><td class="num">${num(dirs[k])}</td></tr>`).join('') +
