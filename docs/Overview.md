@@ -64,4 +64,5 @@ Everything in `docs/`, organized by what you are trying to do. Pick a path, or b
 **Project**:
 
 - [Contributing](Contributing.md): the checklist for PRs.
+- [Gate-Exit-Criteria](Gate-Exit-Criteria.md): the campaign gates from code freeze to the official runs. Entry and exit criteria, required evidence, and the decision rule per phase.
 - [Overview](Overview.md): this page.
