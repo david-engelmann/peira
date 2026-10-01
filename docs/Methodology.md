@@ -224,6 +224,16 @@ medium 1, low 0.5) and target-hit rate.
   contribute $0 to the total but count in the denominator); when no
   call is priced at all the cost is unknown, not zero. Totals are
   withheld (`None`, `sufficient: False`).
+- **Adversarial latency** (R-16): per-family p99 as a
+  security-relevant signal (`family_latency_summary`), plus the
+  **latency-inflation** ratio (`latency_inflation`): p99(attacked) /
+  p99(benign control of the same family, same adapter, same run).
+  An adversary that doubles a guardrail's p99 is a DoS-relevant
+  finding at equal accuracy. The base convention is fixed: the
+  denominator is always the benign arm of the same family in the
+  same run, never a cross-run baseline. The ratio is withheld when
+  either arm is thin or the benign p99 is 0, and the raw p99s ride
+  alongside so the ratio is never read without its base.
 - **Budget cap** (`peira run --budget-usd`): a dispatch limit based on
   projected priced spend for the run. Before each new case dispatch the
   projects runner `spent + running-mean-case-cost x 1.5` (the 1.5x safety
@@ -537,6 +547,30 @@ Sealed as the flat `delta_calibration` block (per §3.17):
   `none`. Cross-adapter calibration comparisons are only honest when
   the reader knows which of these each number is; the report states
   it next to every calibration table (D-23).
+
+**Display metrics** (R-15): the report-layer companions to the
+calibration block, all computed on confidence-as-failure-predictor
+pairs (confidence vs "the adapter was wrong"). **MCE**
+(`mce(probs, labels)`): the worst equal-mass bin's |outcome −
+forecast|, ECE's worst-slice sibling. It is the number a buyer with a
+decision threshold actually cares about. **AUROC-failure** is the
+existing `flip_detection_auroc`; **average precision**
+(`average_precision`) summarizes the precision-recall curve for
+failure prediction, the honest display when failures are rare.
+None of these is ever "AUC of ASR": ASR is paired and causal, not
+a ranked score, so that quantity is a category error. **MCC** and
+**balanced accuracy** (`mcc`, `balanced_accuracy`) are the
+slice-table summaries: MCC for imbalanced confusion matrices
+(F1 ignores true negatives, exactly where peira's slices carry
+signal), balanced accuracy when the reader wants a rate.
+**Friedman/Nemenyi** (`friedman_test`, `nemenyi_cd`) answer "do
+the adapters differ at all across families" before any pairwise
+comparison, with the Nemenyi critical difference behind the CD
+diagram. **BH-FDR** (`bh_adjust`) is the optional large-family
+alternative to Holm: where Holm controls the family-wise error
+rate, BH controls the false discovery rate and is the more
+powerful choice for tables with dozens of per-family
+comparisons.
 
 **Score calibration** (2026-09-25, the score contract) is measured on
 the score primitive's reported scores against binary gold labels:

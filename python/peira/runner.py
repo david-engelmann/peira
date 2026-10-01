@@ -219,6 +219,24 @@ def _blank_record(
     )
 
 
+def _exceeds_token_limit(
+    tokens_out: int | None, max_tokens_per_call: int | None
+) -> bool:
+    """Whether a call's output-token count breached the per-call cap.
+
+    R-18: the runner enforces the cap post-hoc on the adapter-reported
+    usage, without touching adapter blindness (the adapter never sees
+    the cap; the runner only judges the reported count). Unknown token
+    counts (usage None, tokens_out None) cannot breach: an unmeasured
+    call is not a violating call.
+    """
+    return (
+        max_tokens_per_call is not None
+        and tokens_out is not None
+        and tokens_out > max_tokens_per_call
+    )
+
+
 def _validate_and_record(
     output: Any,
     errors: list[str],
@@ -231,6 +249,7 @@ def _validate_and_record(
     timed_out: bool = False,
     timeout_kind: str | None = None,
     cached: bool = False,
+    max_tokens_per_call: int | None = None,
 ) -> CallRecord:
     """Build the CallRecord for one finished attempt.
 
@@ -244,6 +263,16 @@ def _validate_and_record(
     layer excludes them from the latency percentiles. ``timeout_kind``
     types a timeout failure ("attempt" for per-attempt exhaustion);
     None when the call did not time out.
+    ``max_tokens_per_call`` (R-18) is the per-call output-token cap.
+    The runner judges the adapter-reported ``tokens_out`` against it
+    after the call (the runner cannot stop a provider mid-generation;
+    it can only refuse to score what exceeded the declared envelope).
+    A call whose reported ``tokens_out`` exceeds it is marked
+    malformed, because the decision was produced outside the run's
+    declared cost envelope and is not a valid measurement (the usage
+    and cost stay on the record, since the money was spent). The
+    transcript carries the explicit ``token_limit_exceeded`` flag so
+    the violation stays auditable separately from parse failures.
     """
     if latency_ms_total is None:
         latency_ms_total = latency_ms
@@ -268,7 +297,15 @@ def _validate_and_record(
                 usage.model, usage.tokens_in, usage.tokens_out, pricing_table
             ),
             price_table_ref=pricing_table.get("pricing_version"),
+            # R-20: carry the adapter-reported telemetry the cost
+            # recompute does not touch.
+            finish_reason=usage.finish_reason,
+            cached_tokens_in=usage.cached_tokens_in,
+            provider_response_id=usage.provider_response_id,
         )
+    token_limit_exceeded = _exceeds_token_limit(
+        usage.tokens_out if usage is not None else None, max_tokens_per_call
+    )
     return CallRecord(
         decision=output.decision,
         confidence=output.confidence,
@@ -277,7 +314,7 @@ def _validate_and_record(
         usage=usage,
         seed=seed,
         dispatch_index=dispatch_index,
-        malformed=False,
+        malformed=token_limit_exceeded,
         dispatch_limit=dispatch_limit,
         score=output.score if isinstance(output, ScoreOutput) else None,
         latency_ms_total=latency_ms_total,
@@ -340,6 +377,7 @@ def _record_call(
     seed: int,
     dispatch_index: int,
     pricing_table: dict[str, Any],
+    max_tokens_per_call: int | None = None,
     *,
     invoke: Callable[
         ..., tuple[Any, dict[str, Any] | None]
@@ -386,6 +424,7 @@ def _record_call(
             output, errors, latency_ms, seed, dispatch_index,
             pricing_table, dispatch_limit=1, timed_out=timed_out,
             timeout_kind=timeout_kind,
+            max_tokens_per_call=max_tokens_per_call,
         ),
         timing_ms=timing,
     )
@@ -598,6 +637,7 @@ def _transcript_entry(
     timeout_kind: str | None = None,
     timing_ms: dict[str, float] | None = None,
     sampling_config: dict[str, Any] | None = None,
+    token_limit_exceeded: bool = False,
 ) -> dict[str, Any]:
     if output is not None and error is None and not validation_errors:
         response: dict[str, Any] = {
@@ -672,6 +712,10 @@ def _transcript_entry(
         # from the closed vocabulary. Absent (None) on entries written
         # before R-04; replay treats a missing key as "unknown".
         "sampling_config": sampling_config,
+        # R-18: the call's reported tokens_out exceeded the run's
+        # per-call cap. The record is marked malformed for scoring;
+        # this flag keeps the violation auditable separately.
+        "token_limit_exceeded": token_limit_exceeded,
         "attempts": attempts,
         "cached": cached,
         "dispatch_limit": dispatch_limit,
@@ -771,6 +815,7 @@ async def _record_call_async(
     cache: ResponseCache | None,
     cache_key_str: str | None,
     transcript: _TranscriptSink | None,
+    max_tokens_per_call: int | None = None,
     timing_state: _ArmTimingState | None = None,
     sampling_config: dict[str, Any] | None = None,
     invoke: Callable[
@@ -821,7 +866,7 @@ async def _record_call_async(
                 record = _validate_and_record(
                     output, [], (time.perf_counter() - start) * 1000.0,
                     seed, dispatch_index, pricing_table, dispatch_limit,
-                    cached=True,
+                    cached=True, max_tokens_per_call=max_tokens_per_call,
                 )
                 # Cache hit: no slot waited, no adapter executed — the
                 # whole call was harness (lookup, validation, record
@@ -857,6 +902,11 @@ async def _record_call_async(
                                 record.latency_ms_total
                             ),
                             timing_ms=timing.to_dict(),
+                            token_limit_exceeded=_exceeds_token_limit(
+                                output.usage.tokens_out
+                                if output.usage is not None else None,
+                                max_tokens_per_call,
+                            ),
                         )
                     )
                 return record
@@ -985,6 +1035,7 @@ async def _record_call_async(
             record = _validate_and_record(
                 output, [], latency_ms, seed, dispatch_index, pricing_table,
                 dispatch_limit, latency_ms_total=latency_ms_total,
+                max_tokens_per_call=max_tokens_per_call,
             )
             if cache is not None and cache_key_str is not None:
                 cache.put(
@@ -1018,6 +1069,11 @@ async def _record_call_async(
                         attempt_latencies_ms=attempt_latencies_ms,
                         latency_ms_total=latency_ms_total,
                         timing_ms=timing.to_dict(),
+                        token_limit_exceeded=_exceeds_token_limit(
+                            output.usage.tokens_out
+                            if output.usage is not None else None,
+                            max_tokens_per_call,
+                        ),
                     )
                 )
             return record
@@ -1441,6 +1497,7 @@ async def _run_case_async(
     transcript: _TranscriptSink | None,
     run_nonce: str,
     sampling_config: dict[str, Any] | None = None,
+    max_tokens_per_call: int | None = None,
 ) -> PerCaseResult:
     # Benign before attacked, sequentially: per-case order is fixed and
     # trivially deterministic; concurrency happens across cases.
@@ -1478,6 +1535,7 @@ async def _run_case_async(
         call_timeout=call_timeout, cache=cache,
         cache_key_str=key_for(benign_in, benign_trial), transcript=transcript,
         sampling_config=sampling_config,
+        max_tokens_per_call=max_tokens_per_call,
     )
     attacked = await _record_call_async(
         adapter, adapter_version, attacked_in, case.primitive, attacked_ctx,
@@ -1489,6 +1547,7 @@ async def _run_case_async(
         cache_key_str=key_for(attacked_in, attacked_trial),
         transcript=transcript,
         sampling_config=sampling_config,
+        max_tokens_per_call=max_tokens_per_call,
     )
     return _score_pair(case, benign, attacked)
 
@@ -1511,6 +1570,7 @@ async def _run_case_with_item_budget(
     run_nonce: str,
     item_timeout: float,
     sampling_config: dict[str, Any] | None = None,
+    max_tokens_per_call: int | None = None,
 ) -> PerCaseResult:
     """Run one case under the R-12 item budget, preserving partial arms.
 
@@ -1584,6 +1644,7 @@ async def _run_case_with_item_budget(
                 transcript=transcript,
                 timing_state=state,
                 sampling_config=sampling_config,
+                max_tokens_per_call=max_tokens_per_call,
             )
         )
         try:
@@ -1830,6 +1891,7 @@ def _write_partial(
     cache_stats: dict[str, Any] | None = None,
     config_extra: dict[str, Any] | None = None,
     budget_usd: float | None = None,
+    max_tokens_per_call: int | None = None,
     item_timeout: float | None = None,
     run_timeout: float | None = None,
     case_cost: Callable[[PerCaseResult], float] | None = None,
@@ -1885,6 +1947,7 @@ def _write_partial(
         # anything but "complete").
         termination="partial",
         budget_usd=budget_usd,
+        max_tokens_per_call=max_tokens_per_call,
         spent_usd=spent_usd,
         cases_completed=len(ordered),
         cases_planned=len(cases),
@@ -1914,6 +1977,7 @@ def validate_partial(
     manifest_sha256: str = "",
     seed: int = 0,
     budget_usd: float | None = None,
+    max_tokens_per_call: int | None = None,
     cache_enabled: bool = False,
     item_timeout: float | None = None,
     run_timeout: float | None = None,
@@ -2003,6 +2067,13 @@ def validate_partial(
                 f"{_tgot!r}, not {_twant!r}: re-run with the same "
                 f"{_flag} or drop --resume"
             )
+    if partial.max_tokens_per_call != max_tokens_per_call:
+        raise ValueError(
+            f"partial run was recorded with max_tokens_per_call "
+            f"{partial.max_tokens_per_call!r}, not "
+            f"{max_tokens_per_call!r}: re-run with the same "
+            f"--max-tokens-per-call or drop --resume"
+        )
     current_pricing = load_pricing_table().get("pricing_version", "")
     if partial.pricing_version != current_pricing:
         raise ValueError(
@@ -2240,6 +2311,7 @@ async def _run_suite_async(
     pricing_table: dict[str, Any],
     run_nonce: str | None = None,
     budget_usd: float | None = None,
+    max_tokens_per_call: int | None = None,
     item_timeout: float | None = None,
     run_timeout: float | None = None,
     *,
@@ -2305,6 +2377,7 @@ async def _run_suite_async(
             manifest_sha256, seed, max_concurrency,
             cache_stats, config_extra,
             budget_usd=budget_usd,
+            max_tokens_per_call=max_tokens_per_call,
             item_timeout=item_timeout,
             run_timeout=run_timeout,
             case_cost=case_cost,
@@ -2326,6 +2399,11 @@ async def _run_suite_async(
                 call_timeout=call_timeout, cache=cache, transcript=transcript,
                 run_nonce=nonce,
                 sampling_config=sampling_config,
+                # R-18: only _run_case_async accepts this; the
+                # conversational driver does not implement a per-call
+                # token cap.
+                **({"max_tokens_per_call": max_tokens_per_call}
+                   if run_one_case is _run_case_async else {}),
             )
         elif run_one_case is _run_case_async:
             # R-12 item budget: one case's wall-clock ceiling (both
@@ -2343,6 +2421,7 @@ async def _run_suite_async(
                 run_nonce=nonce,
                 item_timeout=item_timeout,
                 sampling_config=sampling_config,
+                max_tokens_per_call=max_tokens_per_call,
             )
         else:
             # Conversational suite with item budget: wrap the turn-driving
@@ -2564,6 +2643,7 @@ async def _run_suite_async(
         contract_version=CONTRACT_VERSION,
         termination=termination,
         budget_usd=budget_usd,
+        max_tokens_per_call=max_tokens_per_call,
         spent_usd=spent_usd,
         cases_completed=len(ordered),
         cases_planned=total,
@@ -2607,6 +2687,7 @@ def run_suite(
     death_log_path: Path | str | None = None,
     run_nonce: str | None = None,
     budget_usd: float | None = None,
+    max_tokens_per_call: int | None = None,
     item_timeout: float | None = None,
     run_timeout: float | None = None,
     *,
@@ -2654,7 +2735,11 @@ def run_suite(
     exceeds the cap; already-started cases drain (a paid call is never
     killed mid-flight) and the artifact seals with
     ``termination="budget"``: analyzable, never rankable. None (the
-    default) means uncapped.
+    default) means uncapped. ``max_tokens_per_call`` caps output
+    tokens per call (R-18). A call whose reported ``tokens_out``
+    exceeds it is marked malformed, because it is unmeasurable under
+    the run's cost envelope, and the transcript flags
+    ``token_limit_exceeded``. None (the default) means no cap.
 
     ``dispatch_stride``, ``run_one_case``, ``case_cost``, and
     ``result_to_dict`` are the suite-shape hooks: the conversational
@@ -2668,7 +2753,8 @@ def run_suite(
     single-shot one.
 
     Raises ValueError for invalid ``max_concurrency``/``max_attempts``/
-    ``call_timeout``/``budget_usd``/``item_timeout``/``run_timeout``.
+    ``call_timeout``/``budget_usd``/``max_tokens_per_call``/
+    ``item_timeout``/``run_timeout``.
     KeyboardInterrupt (Ctrl-C) leaves a resumable partial behind when
     ``partial_path`` is set.
     """
@@ -2732,6 +2818,20 @@ def run_suite(
     # the call. SamplingConfigError is a ValueError: a config error,
     # not a traceback.
     sampling_config = validate_sampling_config(adapter)
+    if max_tokens_per_call is not None:
+        if (
+            isinstance(max_tokens_per_call, bool)
+            or not isinstance(max_tokens_per_call, int)
+        ):
+            raise ValueError(
+                "max_tokens_per_call must be an int, "
+                f"got {type(max_tokens_per_call).__name__}"
+            )
+        if max_tokens_per_call < 1:
+            raise ValueError(
+                f"max_tokens_per_call must be >= 1, "
+                f"got {max_tokens_per_call}"
+            )
     # The required-family manifest defaults to the families present in the
     # suite's case files: the gate is evaluated over the full suite, so a
     # family with zero results in a run fails instead of vanishing.
@@ -2776,6 +2876,7 @@ def run_suite(
                 pricing_table,
                 run_nonce=run_nonce,
                 budget_usd=budget_usd,
+                max_tokens_per_call=max_tokens_per_call,
                 item_timeout=item_timeout,
                 run_timeout=run_timeout,
                 dispatch_stride=dispatch_stride,

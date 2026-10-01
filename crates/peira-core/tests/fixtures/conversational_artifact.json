@@ -1,7 +1,7 @@
 {
   "adapter_name": "dummy",
   "adapter_version": "0",
-  "analysis_lock": "d8a73b198d88eb730eab6c542b891a9f9e0e1d3107dfae926d57c282610e41af",
+  "analysis_lock": "03b7e94c069439b7ebad19017b794ec04c44e16338af78e54badcf3ac315e2e1",
   "api_version": "",
   "artifact_version": "2",
   "budget_usd": null,
@@ -23,6 +23,7 @@
   "env_sha256": "",
   "manifest_sha256": "",
   "max_concurrency": 0,
+  "max_tokens_per_call": null,
   "metrics": {
     "flip_rate": 1.0,
     "n_cases": 1

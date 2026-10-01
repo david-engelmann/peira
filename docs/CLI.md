@@ -43,6 +43,7 @@ run a suite through an adapter
 | `--rlimit-nproc` |  | - | max process count for subprocess adapter children (fork-bomb guard; Unix only, opt-in, no limit by default; never applied to the runner itself) |
 | `--death-log` |  | - | path for the governor's SIGTERM/SIGINT 'last words' JSON record (opt-in; recommended for long unattended runs so an unexplained death leaves evidence) |
 | `--budget-usd` |  | - | hard spend cap in USD: the runner projects spent + running-mean-case-cost x 1.5 before each new case dispatch and stops dispatching when the projection exceeds the cap; in-flight cases drain and the artifact seals with termination=budget (analyzable, never rankable) (default: no cap) |
+| `--max-tokens-per-call` |  | - | per-call output-token cap. A call whose reported tokens_out exceeds it is marked malformed and excluded from scoring, and the transcript flags token_limit_exceeded for the call. The cap is sealed into the run artifact and covered by the analysis lock. Resume refuses a partial run recorded under a different cap (default no cap) |
 | `--cache-dir` |  | - | opt-in response cache directory for deterministic adapters (temperature 0 + fixed seed); off by default and never on the measurement path unless given |
 | `--transcript` |  | - | write a JSONL transcript of every request/response to this path (for audit and `peira replay`) |
 
@@ -50,11 +51,37 @@ run a suite through an adapter
 
 re-score a recorded transcript without calling any provider
 
+This is Peira's equivalent of lm-eval `--predict_only`. The transcript
+holds the exact decisions a model already made, so replay re-runs only
+the scoring and metrics layers on those recorded outputs. Metric changes,
+rubric changes, and new analyses can be evaluated with zero new provider
+calls, zero new spend, and zero new latency. The replayed artifact seals
+with termination=complete and is analyzable but never rankable, since no
+live execution backs it.
+
 | Flag | Required | Default | Help |
 |---|---|---|---|
 | `--transcript` | yes | - | transcript JSONL written by `peira run --transcript` |
 | `--suite` |  | `'trial-demo'` | smoke is an alias for trial (choices: `trial-demo`, `trial`, `v1`, `safety-policy`, `conversational`, `smoke`) |
 | `--out` |  | `'runs'` |  |
+
+## peira transcript-view
+
+render a run transcript as a self-contained static HTML page
+
+The viewer reads the JSONL transcript written by
+`peira run --transcript` and produces one HTML file with no external
+resources and no JavaScript. It shows a summary of the run (entries,
+outputs, errors, timeouts, token-limit violations, cache hits) and one
+row per call with the full entry available in a collapsible detail.
+Every value is HTML-escaped, so hostile case content in a transcript
+cannot break out of the page. Useful for auditing a run by hand before
+trusting its artifact.
+
+| Flag | Required | Default | Help |
+|---|---|---|---|
+| `--transcript` | yes | - | transcript JSONL written by `peira run --transcript` |
+| `--out` | yes | - | output HTML path |
 
 ## peira validate
 

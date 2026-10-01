@@ -102,3 +102,64 @@ class TestRustBackendInfo(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestPerfState(unittest.TestCase):
+    def test_collect_env_has_perf_state(self):
+        env = collect_env()
+        self.assertIn("perf_state", env)
+        ps = env["perf_state"]
+        for key in ("cpu_governor", "boost_state", "affinity", "smt",
+                    "observed_mhz"):
+            self.assertIn(key, ps, f"missing perf_state key: {key}")
+
+    def test_perf_state_value_types(self):
+        from peira.env_fingerprint import collect_perf_state
+        import warnings
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            ps = collect_perf_state()
+        if ps["cpu_governor"] is not None:
+            self.assertIsInstance(ps["cpu_governor"], str)
+        if ps["boost_state"] is not None:
+            self.assertIn(ps["boost_state"], ("on", "off"))
+        if ps["affinity"] is not None:
+            self.assertIsInstance(ps["affinity"], list)
+            self.assertTrue(all(isinstance(c, int) for c in ps["affinity"]))
+        if ps["smt"] is not None:
+            self.assertIsInstance(ps["smt"], bool)
+        if ps["observed_mhz"] is not None:
+            self.assertIsInstance(ps["observed_mhz"], float)
+            self.assertGreater(ps["observed_mhz"], 0)
+
+    def test_perf_state_warns_never_fails(self):
+        import peira.env_fingerprint as ef
+        real_read = ef._read_sysfs
+        real_affinity = getattr(__import__("os"), "sched_affinity", None)
+
+        # _read_sysfs contract: unreadable -> None.
+        ef._read_sysfs = lambda path: None
+        import os as _os
+        had = hasattr(_os, "sched_affinity")
+        if had:
+            # Delete the attribute to force the AttributeError path in
+            # _affinity(): setting it to None would raise TypeError on
+            # call instead, which _affinity() does not catch.
+            del _os.sched_affinity
+        try:
+            with self.assertWarns(UserWarning):
+                ps = ef.collect_perf_state()
+        finally:
+            ef._read_sysfs = real_read
+            if had:
+                _os.sched_affinity = real_affinity
+        for key in ("cpu_governor", "boost_state", "affinity", "smt",
+                    "observed_mhz"):
+            self.assertIsNone(ps[key], f"{key} should be None, not raised")
+
+    def test_perf_state_json_serializable(self):
+        import json
+        import warnings
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            json.dumps(collect_env())

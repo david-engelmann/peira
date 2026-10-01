@@ -120,6 +120,27 @@ about its own timeout enforcement. Fix: resume with the same `--run-timeout`
 the partial was written with (or no `--run-timeout`, matching the partial),
 or delete the `<adapter>-<suite>.partial.json` file and re-run from scratch.
 
+**`error: --max-tokens-per-call must be >= 1 (got X)`**
+Cause: the per-call output-token cap was zero or negative, which is not a
+cap at all. Fix: pass a positive integer, or drop `--max-tokens-per-call`
+for an uncapped run.
+
+**`error: partial run was recorded with max_tokens_per_call X, not Y: re-run with the same --max-tokens-per-call or drop --resume`**
+Cause: `peira run --resume` found a partial run recorded under a different
+per-call token cap than the one requested. The cap is a measurement input.
+Merging results scored under a different cap would make the artifact lie
+about its own token enforcement. Fix: resume with the same
+`--max-tokens-per-call` the partial was written with (or no
+`--max-tokens-per-call`, matching the partial), or delete the
+`<adapter>-<suite>.partial.json` file and re-run from scratch.
+
+**`error: could not render transcript: ...`**
+Cause: `peira transcript-view` could not read the transcript file
+(missing path, permissions, or undecodable bytes). Fix: check the
+`--transcript` path and re-run. Transcript lines that are not valid JSON
+are skipped individually and reported in the page summary instead of
+failing the render.
+
 **`error: partial run has no cache state declaration (config.cache_enabled): it predates cache-state sealing and cannot resume`**
 Cause: `peira run --resume` found a partial run written before cache
 state was sealed into artifacts. It cannot prove its cache state, so

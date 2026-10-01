@@ -54,6 +54,19 @@ pub struct CallUsage {
     /// `None` when unknown; `#[serde(default)]` keeps old 5-field JSON loadable.
     #[serde(default)]
     pub price_table_ref: Option<String>,
+    /// R-20: provider-reported finish/stop reason ("stop", "length",
+    /// "tool_calls", "content_filter", ...). `None` when the provider
+    /// did not report one.
+    #[serde(default)]
+    pub finish_reason: Option<String>,
+    /// R-20: input tokens served from provider prompt cache, a subset of
+    /// `tokens_in`. `None` when the provider did not report a breakdown.
+    #[serde(default)]
+    pub cached_tokens_in: Option<i64>,
+    /// R-20: the provider's response id (e.g. OpenAI "chatcmpl-..."), for
+    /// correlating a peira call with provider-side logs.
+    #[serde(default)]
+    pub provider_response_id: Option<String>,
 }
 
 /// Deserialize `score` with the unit-interval rule, mirroring Python's

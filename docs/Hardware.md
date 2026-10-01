@@ -27,3 +27,26 @@ the result through the standard HF adapter.
 - **Self-hosted adapters** (Laya, Kev, SemIf, openjev-sglang): you
   provide the machine. See `docs/Adapters.md` for each model's size
   and the serving setup it expects.
+
+## Latency comparability (R-17)
+
+Latency numbers are only comparable within one run on one machine.
+A governor switch from `powersave` to `performance`, a boost toggle,
+a taskset change, or SMT on vs off can move p99 by tens of percent
+with no change to the adapter or the attack. So every run records a
+`perf_state` block in the environment fingerprint: CPU governor,
+boost state, process affinity, SMT state, and an observed frequency
+sample.
+
+The rule is simple. **Compare latency arms within a run, never
+across runs on different machines.** The R-16 latency-inflation ratio is deliberately
+intra-run for this reason (p99 attacked vs the benign control of the
+same family in the same run). If you must compare across runs, check
+that `perf_state` matches first; if it does not, the comparison is
+invalid and the report should say so, not silently print both
+numbers.
+
+Sources that are unreadable (containers without sysfs, macOS, WSL)
+are recorded as `None` with a warning at collection time. `None`
+means "unknown", not "default": an unknown governor is not a
+performance governor.
