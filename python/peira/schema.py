@@ -69,6 +69,15 @@ CASE_JSON_SCHEMA: dict[str, Any] = {
         "family": {"type": "string"},
         "primitive": {"type": "string", "enum": list(PRIMITIVES)},
         "severity": {"type": "string", "enum": list(SEVERITIES)},
+        # EB-42: the case's threat tier (expected-action class of the
+        # underlying threat). Optional; null/absent means the case
+        # declares no tier (reported as "unassigned", never dropped).
+        # The enum mirrors peira.metrics.THREAT_TIERS (kept as a
+        # literal here because this module's bottom import brings
+        # metrics in after this dict is defined); a test pins them
+        # equal.
+        "threat_tier": {"type": ["string", "null"],
+                        "enum": ["HIGH", "MED", "LOW", None]},
         "benign": {
             "type": "object",
             "properties": {
@@ -190,6 +199,10 @@ class Case:
     benign: BenignVariant
     attacked: AttackedVariant
     notes: str = ""
+    # EB-42: the case's threat tier (expected-action class of the
+    # underlying threat), separate from severity (the case's
+    # adversarial-intent signal). None when the case declares no tier.
+    threat_tier: str | None = None
     # Machine-readable training-exclusion flags (R-05 contamination
     # package). Every peira benchmark case is evaluation-only data:
     # these default True and travel with the case through the whole
@@ -213,6 +226,15 @@ class Case:
             raise ValueError(f"unknown primitive: {_safe_repr(self.primitive)}")
         if self.severity not in SEVERITIES:
             raise ValueError(f"unknown severity: {_safe_repr(self.severity)}")
+        # EB-42: threat tier is a closed vocabulary (or None for
+        # untiered); an unknown tier is corrupt data: fail loudly.
+        # THREAT_TIERS is imported at the bottom of this module (with
+        # the other peira.metrics imports); __post_init__ runs at call
+        # time, after the import has completed.
+        if self.threat_tier is not None and self.threat_tier not in THREAT_TIERS:
+            raise ValueError(
+                f"unknown threat_tier: {_safe_repr(self.threat_tier)}"
+            )
         if not isinstance(self.evaluation_only, bool):
             raise ValueError(
                 f"bad evaluation_only: {_safe_repr(str(self.evaluation_only))}"
@@ -254,6 +276,11 @@ class Case:
             "do_not_train": self.do_not_train,
         }
         d.update(self.extras)
+        # EB-42: threat tier is a schema field, so a stray
+        # "threat_tier" key in extras cannot silently clobber it
+        # (from_dict can never produce that state; this guards
+        # hand-built Case objects). Explicit null when untiered.
+        d["threat_tier"] = self.threat_tier
         # Provenance is set after extras: it is a schema field, so a
         # stray "provenance" key in extras cannot silently clobber it.
         # (from_dict can never produce that state; this guards
@@ -268,12 +295,14 @@ class Case:
             "case_id", "family", "primitive", "severity",
             "benign", "attacked", "notes",
             "evaluation_only", "do_not_train", "provenance",
+            "threat_tier",
         }
         return cls(
             case_id=d["case_id"],
             family=d["family"],
             primitive=d["primitive"],
             severity=d["severity"],
+            threat_tier=d.get("threat_tier"),
             benign=BenignVariant(
                 input=d["benign"]["input"],
                 expected_decision=d["benign"]["expected_decision"],
@@ -426,6 +455,16 @@ def _validate_case_dict_py(d: dict[str, Any]) -> list[str]:
                 )
         if "notes" in d and not isinstance(d["notes"], str):
             errors.append("bad notes: expected string")
+        # EB-42: threat tier is optional (absent/null = untiered), but
+        # when present must be a known tier. THREAT_TIERS resolves at
+        # call time (imported at the bottom of this module).
+        if "threat_tier" in d:
+            tier = d["threat_tier"]
+            if tier is not None and tier not in THREAT_TIERS:
+                errors.append(
+                    f"bad threat_tier: {_safe_repr(str(tier))} "
+                    "not a known threat tier"
+                )
         # R-05: training-exclusion flags are optional (absent means True,
         # the benchmark default) but when present must be real booleans.
         # A truthy string like "false" would silently mislead a training
@@ -483,7 +522,11 @@ from peira.adapters.base import (  # noqa: E402
     ScoreOutput,
     validate_output,
 )
-from peira.metrics import CallRecord, PerCaseResult  # noqa: E402
+from peira.metrics import (  # noqa: E402
+    THREAT_TIERS,
+    CallRecord,
+    PerCaseResult,
+)
 
 __all__ = [
     "AdapterOutput",

@@ -392,7 +392,12 @@ def run_to_dashboard(artifact: RunArtifact) -> dict[str, Any]:
     cost = m.get("cost", {}) if isinstance(m.get("cost"), dict) else {}
     calibration = m.get("calibration", {}) if isinstance(m.get("calibration"), dict) else {}
 
-    return {
+    # EB-24: every aggregate on a rendered surface carries its label,
+    # formula, and per-family decomposition; check_no_blend enforces
+    # the no-blended-figures rule on the finished payload.
+    from peira.reporting_hygiene import build_aggregates, check_no_blend
+    aggregates = build_aggregates(m)
+    payload = {
         "run": {
             "run_id": "",
             "adapter_name": artifact.adapter_name,
@@ -456,7 +461,14 @@ def run_to_dashboard(artifact: RunArtifact) -> dict[str, Any]:
             "delta_ece": calibration.get("delta_ece"),
             "reliability_bins": calibration.get("reliability_bins"),
         },
+        "aggregates": aggregates,
     }
+    blend_violations = check_no_blend(payload)
+    payload["blend_check"] = {
+        "passed": not blend_violations,
+        "violations": blend_violations,
+    }
+    return payload
 
 
 def leaderboard(
@@ -523,6 +535,11 @@ def leaderboard(
                     # "not recorded", not as verified facts.
                     cfg = artifact.config if isinstance(
                         artifact.config, dict) else {}
+                    # EB-24: the row's aggregates carry label + formula +
+                    # per-family decomposition (never a blended figure);
+                    # check_no_blend enforces it on every row render.
+                    row_aggregates = payload.get("aggregates", {})
+                    row_blend = payload.get("blend_check", {})
                     row = {
                         "adapter_name": adapter,
                         "adapter_version": artifact.adapter_version,
@@ -540,6 +557,8 @@ def leaderboard(
                         "latency_ms_p95_attacked": attacked_lat.get("p95"),
                         "ece_attacked": attacked_cal.get("ece"),
                         "ranking_eligible": True,
+                        "aggregates": row_aggregates,
+                        "blend_check": row_blend,
                         "provenance": {
                             "adapter_name": adapter,
                             "adapter_version": artifact.adapter_version,
@@ -645,7 +664,30 @@ def comparison_to_dashboard(comparison: Comparison) -> dict[str, Any]:
             "n": fam_d.get("n", 0),
         }
     p_value = mcnemar.get("p_value") if isinstance(mcnemar, dict) else None
-    return {
+    # EB-24: the comparison's aggregates are the A−B deltas. Each
+    # carries its label and formula; a paired A−B delta is the
+    # estimand itself (paired bootstrap over the paired sample), not
+    # a cross-family average, so the decomposition note says exactly
+    # that instead of inventing a per-family split.
+    aggregates: dict[str, Any] = {}
+    for dd in (d.get("deltas") or []):
+        if not isinstance(dd, dict) or not dd.get("name"):
+            continue
+        aggregates[str(dd["name"])] = {
+            "label": f"A−B delta: {dd['name']}",
+            "formula": "paired bootstrap mean(A − B) over the paired cases",
+            "value": dd.get("delta"),
+            "ci95": dd.get("ci95"),
+            "n": dd.get("n"),
+            "per_family": {},
+            "decomposition_note": (
+                "paired estimate over all paired cases; the estimand, "
+                "not a cross-family average. Per-family head-to-head "
+                "counts (both-held / joint-failures separate) are in "
+                "the comparison payload."
+            ),
+        }
+    out = {
         "comparison": d,
         "verdict": {
             "mcnemar_significant_005": (
@@ -654,7 +696,19 @@ def comparison_to_dashboard(comparison: Comparison) -> dict[str, Any]:
             "mcnemar_p_value": p_value,
             "per_family_winners": winners,
         },
+        "aggregates": aggregates,
     }
+    # EB-24: the comparison payload is an aggregate render too. The
+    # head-to-head counts stay per-family decomposed (both-held and
+    # joint-failures separate, never a blended "ties"); run the
+    # no-blend check over the finished payload and report it.
+    from peira.reporting_hygiene import check_no_blend
+    blend_violations = check_no_blend(out)
+    out["blend_check"] = {
+        "passed": not blend_violations,
+        "violations": blend_violations,
+    }
+    return out
 
 
 def pairwise_resample_ahead(

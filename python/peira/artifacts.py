@@ -28,8 +28,7 @@ from typing import ClassVar
 from peira import __version__ as peira_version
 from peira._rust import _impl as _rust
 from peira.adapters.base import _unit_interval
-from peira.metrics import PerCaseResult
-from peira.sampling import SAMPLING_SOURCES
+from peira.metrics import PerCaseResult, TAMPER_CLASSES
 
 ARTIFACT_VERSION = "2"
 
@@ -357,6 +356,9 @@ class RunArtifact:
     # tooling reads the scored final-turn pair and ignores the rest.
     _RESULT_OPTIONAL: ClassVar[dict] = {
         "conversational_turns": dict,
+        # EB-42: the case's threat tier (HIGH/MED/LOW) or null when the
+        # case declares no tier. isinstance accepts the tuple.
+        "threat_tier": (str, type(None)),
     }
     _USAGE_FIELDS: ClassVar[dict] = {
         "model": str,
@@ -425,7 +427,10 @@ class RunArtifact:
                 "decision", "confidence", "abstained", "refusal_reason",
                 "usage", "seed", "dispatch_index", "malformed",
                 "dispatch_limit", "score", "latency_ms_total", "timed_out",
-                "timeout_kind", "cached", "timing_ms", "sampling_config",
+                "timeout_kind", "cached", "timing_ms",
+                # EB-56: sealed attempt count; EB-21: sealed tamper
+                # class.
+                "attempts", "tamper_class",
             ):
                 raise ValueError(f"{where} has unknown field: {key!r}")
         for key in (
@@ -514,6 +519,25 @@ class RunArtifact:
                     f"{where} field {key!r} must be an integer, "
                     f"got {type(record[key]).__name__}"
                 )
+        # EB-56: attempt count; absent in pre-EB-56 artifacts (reads as
+        # 1 attempt in from_dict). Integer, never a bool, never
+        # negative.
+        attempts = record.get("attempts", 1)
+        if not _is_int(attempts) or attempts < 0:
+            raise ValueError(
+                f"{where} field 'attempts' must be a non-negative "
+                f"integer, got {attempts!r}"
+            )
+        # EB-21: tamper class from the closed vocabulary ("" when the
+        # call was not malformed); unknown strings are corrupt data.
+        tamper_class = record.get("tamper_class", "")
+        if not isinstance(tamper_class, str) or (
+            tamper_class and tamper_class not in TAMPER_CLASSES
+        ):
+            raise ValueError(
+                f"{where} field 'tamper_class' must be a known tamper "
+                f"class or '', got {tamper_class!r}"
+            )
         if "usage" not in record:
             raise ValueError(f"{where} is missing field: 'usage'")
         cls._checked_usage(record["usage"], where)
@@ -553,23 +577,6 @@ class RunArtifact:
                         f"{where} field 'timing_ms.{tkey}' must be a "
                         f"finite non-negative number, got {tval!r}"
                     )
-        # R-04 sampling config: absent in pre-R-04 artifacts. When
-        # present it must be an object whose source is in the closed
-        # vocabulary; a hand-edited source is corrupt data.
-        sampling_config = record.get("sampling_config")
-        if sampling_config is not None:
-            if not isinstance(sampling_config, dict):
-                raise ValueError(
-                    f"{where} field 'sampling_config' must be an "
-                    f"object or null, "
-                    f"got {type(sampling_config).__name__}"
-                )
-            source = sampling_config.get("sampling_source")
-            if source is not None and source not in SAMPLING_SOURCES:
-                raise ValueError(
-                    f"{where} field 'sampling_config' has unknown "
-                    f"sampling_source {source!r}"
-                )
         return record
 
     @classmethod

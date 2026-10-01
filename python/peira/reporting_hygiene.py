@@ -846,3 +846,168 @@ def threat_tier_block(results: list[PerCaseResult]) -> dict[str, Any]:
         "cases whose suite declares no threat_tier; reported, not dropped"
     )
     return out
+
+
+# ---------------------------------------------------------------------------
+# EB-24: aggregate labels, formulas, and the no-blend check.
+# ---------------------------------------------------------------------------
+
+# Canonical aggregate label + formula for every headline aggregate a
+# rendered surface may show. A formula names the numerator and
+# denominator in words; "display-only" marks an aggregate that must
+# never drive a rank. The per-family key names the metrics-layer
+# per_family field the decomposition reads from (None when the
+# aggregate has no per-family decomposition available — the check
+# then requires the aggregate to say so explicitly rather than
+# silently blending).
+AGGREGATE_SPECS: dict[str, dict[str, str | None]] = {
+    "asr_conditional": {
+        "label": "ASR (conditional)",
+        "formula": "flips / eligible cases (usable benign baseline)",
+        "per_family_key": "asr",
+    },
+    "refusal_rate": {
+        "label": "Refusal rate (attacked)",
+        "formula": "attacked refusals / attacked calls",
+        "per_family_key": "refusal_rate",
+    },
+    "benign_accuracy": {
+        "label": "Benign accuracy",
+        "formula": "correct benign decisions / all benign calls",
+        "per_family_key": None,
+    },
+    "malformed_rate": {
+        "label": "Malformed rate",
+        "formula": "malformed records / all records",
+        "per_family_key": None,
+    },
+}
+
+# Key-name hints that a number is a blend across arms, tiers, or
+# families. A numeric value under one of these names without an
+# explicit decomposition alongside it is a blend violation.
+_BLEND_NAME_HINTS = ("overall", "combined", "mixed", "pooled", "average")
+
+
+def build_aggregates(metrics_dict: Mapping[str, Any]) -> dict[str, Any]:
+    """Build the labeled aggregate section for a dashboard payload.
+
+    Every aggregate carries its label, formula, value, 95% CI, n, and
+    (when available) its per-family decomposition. Aggregates with no
+    per-family decomposition available say so in ``decomposition_note``
+    rather than silently blending. Never raises on a hostile metrics
+    dict; never invents a decomposition.
+    """
+    m = metrics_dict if isinstance(metrics_dict, Mapping) else {}
+    per_family = m.get("per_family")
+    per_family = per_family if isinstance(per_family, Mapping) else {}
+    out: dict[str, Any] = {}
+    for name, spec in AGGREGATE_SPECS.items():
+        value = m.get(name)
+        entry: dict[str, Any] = {
+            "label": spec["label"],
+            "formula": spec["formula"],
+            "value": value,
+            "ci95": m.get(f"{name}_ci95"),
+            "n": m.get("n_cases") if name != "refusal_rate" else m.get("n_cases"),
+        }
+        fam_key = spec["per_family_key"]
+        if isinstance(fam_key, str):
+            decomp: dict[str, Any] = {}
+            for fam, fv in per_family.items():
+                if not isinstance(fv, Mapping):
+                    continue
+                decomp[str(fam)] = {
+                    "value": fv.get(fam_key),
+                    "ci95": fv.get(f"{fam_key}_ci95"),
+                    "n": fv.get("n"),
+                }
+            entry["per_family"] = decomp
+        else:
+            entry["per_family"] = {}
+            entry["decomposition_note"] = (
+                "no per-family decomposition available in the metrics layer; "
+                "shown as a single aggregate, never averaged with another arm"
+            )
+        out[name] = entry
+    return out
+
+
+def check_no_blend(payload: Any) -> list[str]:
+    """Verify a dashboard payload carries no blended aggregate figures.
+
+    EB-24 / D17: every aggregate number on a rendered surface must
+    carry its aggregate label, its formula, and (when one exists) its
+    per-family decomposition; no figure may silently mix arms, tiers,
+    or families. Returns a list of violation strings (empty = clean).
+    Never raises: a hostile payload reports violations, never a
+    traceback.
+    """
+    violations: list[str] = []
+    if not isinstance(payload, Mapping):
+        return ["payload is not a mapping"]
+
+    def _check_aggregates(aggs: Any, where: str) -> None:
+        if not isinstance(aggs, Mapping):
+            violations.append(f"{where}: aggregates section missing or not a mapping")
+            return
+        for name, entry in aggs.items():
+            loc = f"{where}.aggregates[{name}]"
+            if not isinstance(entry, Mapping):
+                violations.append(f"{loc}: entry not a mapping")
+                continue
+            if not entry.get("label"):
+                violations.append(f"{loc}: missing aggregate label")
+            if not entry.get("formula"):
+                violations.append(f"{loc}: missing aggregate formula")
+            if entry.get("value") is None:
+                continue  # withheld: nothing to blend
+            decomp = entry.get("per_family")
+            if isinstance(decomp, Mapping):
+                if not decomp:
+                    # Empty decomposition is only acceptable with an
+                    # explicit note; otherwise the aggregate is a
+                    # blend across families with no decomposition.
+                    if not entry.get("decomposition_note"):
+                        violations.append(
+                            f"{loc}: value present but per-family "
+                            "decomposition empty and no decomposition_note"
+                        )
+            elif not entry.get("decomposition_note"):
+                violations.append(
+                    f"{loc}: value present with no per-family decomposition "
+                    "and no decomposition_note"
+                )
+
+    def _scan_blend_names(node: Any, path: str) -> None:
+        if isinstance(node, Mapping):
+            for key, val in node.items():
+                kpath = f"{path}.{key}" if path else str(key)
+                lname = str(key).lower()
+                if any(h in lname for h in _BLEND_NAME_HINTS) and isinstance(
+                    val, (int, float)
+                ) and not isinstance(val, bool):
+                    siblings = set(node.keys())
+                    if not any(
+                        s in siblings
+                        for s in ("per_family", "per_arm", "decomposition",
+                                  "decomposition_note", "by_family", "by_arm")
+                    ):
+                        violations.append(
+                            f"{kpath}: numeric value under a blend-suggesting "
+                            "name with no decomposition alongside it"
+                        )
+                _scan_blend_names(val, kpath)
+        elif isinstance(node, list):
+            for i, item in enumerate(node):
+                _scan_blend_names(item, f"{path}[{i}]")
+
+    aggs = payload.get("aggregates") if isinstance(payload, Mapping) else None
+    if aggs is not None:
+        _check_aggregates(aggs, "payload")
+    else:
+        # A rendered aggregate surface without an aggregates section
+        # cannot be checked: flag, don't pass silently.
+        violations.append("payload has no aggregates section to check")
+    _scan_blend_names(payload, "")
+    return violations

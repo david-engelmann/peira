@@ -1401,6 +1401,357 @@ def _pricing_confidence_markers(artifact) -> str:
     return markers
 
 
+# ---------------------------------------------------------------------------
+# EB reporting-hygiene sections (EB-4/9/21/22/29/42). Module-level like
+# _net_benefit_section/_buyer_cost_section. Every accessor is defensive
+# (.get with a default): a hostile artifact can omit a block or any key
+# inside it; the report renders "insufficient data", never a traceback.
+# ---------------------------------------------------------------------------
+
+
+def _hygiene_fam_rows(block: Any, cell) -> str:
+    """Per-family table rows for a hygiene block with a per_family map."""
+    if not isinstance(block, dict):
+        return ""
+    per_family = block.get("per_family")
+    if not isinstance(per_family, dict):
+        return ""
+    return "\n".join(
+        cell(fam, v if isinstance(v, dict) else {})
+        for fam, v in sorted(per_family.items())
+    )
+
+
+def _tamper_section(tamper: Any) -> str:
+    """EB-21: malformed outputs classified under attack vs. benign arms."""
+    if not isinstance(tamper, dict):
+        return "<p><em>Evaluation-tampering unavailable:</em> insufficient data</p>"
+    classes = tamper.get("classes")
+    classes = classes if isinstance(classes, list) else []
+
+    def cell(fam, v):
+        d = v.get("malformed_delta_attacked_minus_benign")
+        d = d if isinstance(d, dict) else {}
+        return (
+            f"<tr><td>{html.escape(str(fam))}</td><td>{_num(v.get('n'))}</td>"
+            f"<td>{_val(v.get('malformed_attacked'))} "
+            f"({_ci95(v.get('malformed_attacked_ci95'))})</td>"
+            f"<td>{_val(v.get('malformed_benign'))} "
+            f"({_ci95(v.get('malformed_benign_ci95'))})</td>"
+            f"<td>{_val(d.get('delta'))} "
+            f"({_ci95(d.get('ci95'))}, n={_num(d.get('n'))})</td></tr>"
+        )
+
+    ov = tamper.get("overall")
+    ov = ov if isinstance(ov, dict) else {}
+    ca = ov.get("classes_attacked")
+    ca = ca if isinstance(ca, dict) else {}
+    cb = ov.get("classes_benign")
+    cb = cb if isinstance(cb, dict) else {}
+    census_rows = "\n".join(
+        f"<tr><td>{html.escape(str(c))}</td>"
+        f"<td>{_num(ca.get(c))}</td><td>{_num(cb.get(c))}</td></tr>"
+        for c in classes
+    )
+    census_rows += (
+        f"<tr><td>unclassified</td><td>{_num(ca.get('unclassified'))}</td>"
+        f"<td>{_num(cb.get('unclassified'))}</td></tr>"
+    )
+    return f"""
+<p>Malformed outputs classified by arm. A positive attacked-minus-benign
+delta with a 95% CI excluding zero means attacks systematically produce
+more malformed outputs than benign inputs do: the adapter is being
+steered off the evaluation rails. The "grader-directed" and
+"task-redefinition" classes are heuristic pattern matches on the model's
+raw text (see Methodology); "unclassified" counts malformed records
+sealed before EB-21 classification existed.</p>
+<table border="1"><tr><th>family</th><th>n</th><th>malformed (attacked)</th>
+<th>malformed (benign)</th><th>delta attacked-benign</th></tr>
+{_hygiene_fam_rows(tamper, cell)}</table>
+<h3>Tamper-class census (overall)</h3>
+<table border="1"><tr><th>class</th><th>attacked</th><th>benign</th></tr>
+{census_rows}</table>"""
+
+
+def _give_up_section(give_up: Any) -> str:
+    """EB-22: the abstain/timeout/malformed bucket, decomposed."""
+    if not isinstance(give_up, dict):
+        return "<p><em>Give-up decomposition unavailable:</em> insufficient data</p>"
+    buckets = give_up.get("buckets")
+    buckets = buckets if isinstance(buckets, list) else []
+
+    def arm_cells(arm):
+        arm = arm if isinstance(arm, dict) else {}
+        b = arm.get("buckets")
+        b = b if isinstance(b, dict) else {}
+        cells = []
+        for name in buckets:
+            entry = b.get(name)
+            entry = entry if isinstance(entry, dict) else {}
+            cells.append(
+                f"<td>{_num(entry.get('count'))} "
+                f"({_val(entry.get('rate'))})</td>"
+            )
+        gu = f"{_val(arm.get('give_up_rate'))} ({_ci95(arm.get('give_up_rate_ci95'))})"
+        return "".join(cells) + f"<td>{gu}</td>"
+
+    def cell(fam, v):
+        return (
+            f"<tr><td rowspan=\"2\">{html.escape(str(fam))}</td>"
+            f"<td>benign</td>{arm_cells(v.get('benign'))}</tr>\n"
+            f"<tr><td>attacked</td>{arm_cells(v.get('attacked'))}</tr>"
+        )
+
+    head = "".join(f"<th>{html.escape(str(b))}</th>" for b in buckets)
+    prec = give_up.get("precedence", "")
+    return f"""
+<p>Every call lands in exactly one bucket. Principled refusals (caution)
+are not failures (timeouts, malformed): the give-up rate is 1 minus the
+decided rate. Classification precedence: {html.escape(str(prec))}.</p>
+<table border="1"><tr><th>family</th><th>arm</th>{head}
+<th>give-up rate (95% CI)</th></tr>
+{_hygiene_fam_rows(give_up, cell)}</table>"""
+
+
+def _joint_outcome_section(joint: Any) -> str:
+    """EB-9: per-family joint outcome tables (benign x attacked)."""
+    if not isinstance(joint, dict):
+        return "<p><em>Joint outcomes unavailable:</em> insufficient data</p>"
+
+    def cell(fam, v):
+        cells = v.get("cells")
+        cells = cells if isinstance(cells, dict) else {}
+
+        def c(name):
+            entry = cells.get(name)
+            entry = entry if isinstance(entry, dict) else {}
+            return (
+                f"<td>{_num(entry.get('count'))} "
+                f"({_val(entry.get('rate'))}, "
+                f"{_ci95(entry.get('ci95'))})</td>"
+            )
+
+        return (
+            f"<tr><td>{html.escape(str(fam))}</td><td>{_num(v.get('n'))}</td>"
+            f"{c('held_held')}{c('held_flipped')}"
+            f"{c('failed_held')}{c('failed_flipped')}</tr>"
+        )
+
+    return f"""
+<p>Rows: benign baseline held (eligible) or failed (ineligible); columns:
+attacked held or flipped. The failed+flipped cell is the joint-failure
+cell: the attack flipped a case the adapter already got wrong benign —
+surfaced prominently, never folded into the flip rate. All cells carry
+Wilson 95% CIs.</p>
+<table border="1"><tr><th>family</th><th>n</th>
+<th>held / held</th><th>held / flipped</th>
+<th>failed / held</th><th>failed / flipped</th></tr>
+{_hygiene_fam_rows(joint, cell)}</table>"""
+
+
+def _attempt_section(attempts: Any) -> str:
+    """EB-56: which retry attempt decided the outcome, per family."""
+    if not isinstance(attempts, dict):
+        return "<p><em>Attempt breakdown unavailable:</em> insufficient data</p>"
+
+    def arm_cells(arm):
+        arm = arm if isinstance(arm, dict) else {}
+        return (
+            f"<td>{_num(arm.get('n'))}</td>"
+            f"<td>{_val(arm.get('attempts_mean'))} "
+            f"({_ci95(arm.get('attempts_mean_ci95'))})</td>"
+            f"<td>{_val(arm.get('attempts_p50'))}</td>"
+            f"<td>{_val(arm.get('attempts_p90'))}</td>"
+            f"<td>{_num(arm.get('attempts_max'))}</td>"
+            f"<td>{_num(arm.get('retried_count'))} "
+            f"({_val(arm.get('retried_rate'))}, "
+            f"{_ci95(arm.get('retried_rate_ci95'))})</td>"
+        )
+
+    def cell(fam, v):
+        fl = v.get("flips")
+        fl = fl if isinstance(fl, dict) else {}
+        flip_line = (
+            f"flips n={_num(fl.get('n_flips'))}: first-attempt "
+            f"{_num(fl.get('n_decided_first_attempt'))}, after-retry "
+            f"{_num(fl.get('n_decided_after_retry'))} "
+            f"({_val(fl.get('after_retry_rate'))}, "
+            f"{_ci95(fl.get('after_retry_rate_ci95'))})"
+        )
+        return (
+            f"<tr><td rowspan=\"2\">{html.escape(str(fam))}</td>"
+            f"<td>benign</td>{arm_cells(v.get('benign'))}</tr>\n"
+            f"<tr><td>attacked</td>{arm_cells(v.get('attacked'))}</tr>\n"
+            f"<tr><td colspan=\"8\">{flip_line}</td></tr>"
+        )
+
+    return f"""
+<p>Attempt-count distribution per arm (mean with bootstrap 95% CI, p50,
+p90, max) and the retried share. The flips row shows how many flips were
+decided on the first attempt vs after at least one retry, with a Wilson
+95% CI on the after-retry share. Refusal reasons are grouped by the
+attempt index they arrived on (a refusal is terminal, so the reason's
+attempt is the arm's final attempt).</p>
+<table border="1"><tr><th>family</th><th>arm</th><th>n</th>
+<th>attempts mean (95% CI)</th><th>p50</th><th>p90</th><th>max</th>
+<th>retried (rate, 95% CI)</th></tr>
+{_hygiene_fam_rows(attempts, cell)}</table>"""
+
+
+def _latency_overhead_section(overhead: Any) -> str:
+    """EB-29: guardrail latency overhead per threat category."""
+    if not isinstance(overhead, dict):
+        return "<p><em>Latency overhead unavailable:</em> insufficient data</p>"
+
+    def arm_cell(q, p99key="p99_ms"):
+        q = q if isinstance(q, dict) else {}
+        return (
+            f"{_val(q.get('p50_ms'))} ({_ci95(q.get('p50_ms_ci95'))}) / "
+            f"{_val(q.get(p99key))}"
+        )
+
+    def cell(fam, v):
+        d = v.get("delta_p50_attacked_minus_benign_ms")
+        d = d if isinstance(d, dict) else {}
+        fpr = v.get("fpr_note") or (
+            f"{_val(v.get('fpr'))} ({_ci95(v.get('fpr_ci95'))}, "
+            f"n={_num(v.get('fpr_n'))})"
+        )
+        return (
+            f"<tr><td>{html.escape(str(fam))}</td><td>{_num(v.get('n'))}</td>"
+            f"<td>{arm_cell(v.get('attacked'))}</td>"
+            f"<td>{arm_cell(v.get('benign'))}</td>"
+            f"<td>{_val(d.get('delta'))} ({_ci95(d.get('ci95'))}, "
+            f"n={_num(d.get('n_pairs'))})</td>"
+            f"<td>{_val(v.get('detection_rate'))} "
+            f"({_ci95(v.get('detection_rate_ci95'))}, "
+            f"n={_num(v.get('detection_n'))})</td>"
+            f"<td>{html.escape(str(fpr))}</td></tr>"
+        )
+
+    return f"""
+<p>Guardrail latency overhead per threat category (the family).
+Latencies are denoised (adapter-execution-only; cached and timed-out
+calls excluded). The p50 delta is attacked-minus-benign with a paired
+bootstrap 95% CI: how much longer the attack makes this adapter take.
+p99 is withheld below 100 observations. Joint with detection rate
+(share of eligible attacked calls that deny) and false-positive rate
+(share of benign calls that deny when the case's expected decision is
+"approve"); FPR needs the case author's expected decisions and reports
+itself unavailable without them. Per-family FPRs are exploratory: the
+overall FPR is the primary estimate.</p>
+<table border="1"><tr><th>family</th><th>n</th>
+<th>attacked p50 (95% CI) / p99</th><th>benign p50 (95% CI) / p99</th>
+<th>delta p50 attacked-benign (95% CI)</th>
+<th>detection rate (95% CI)</th><th>FPR (95% CI)</th></tr>
+{_hygiene_fam_rows(overhead, cell)}</table>"""
+
+
+def _efficiency_section(eff: Any) -> str:
+    """EB-4: efficiency metrics per family, with ASR-vs-cost Pareto."""
+    if not isinstance(eff, dict):
+        return "<p><em>Efficiency unavailable:</em> insufficient data</p>"
+
+    def cell(fam, v):
+        pareto = "yes" if v.get("on_pareto_frontier") else "no"
+        return (
+            f"<tr><td>{html.escape(str(fam))}</td>"
+            f"<td>{_num(v.get('n_calls'))}</td>"
+            f"<td>{_val(v.get('cost_per_1k_decisions_usd'))} "
+            f"({_ci95(v.get('cost_per_1k_decisions_usd_ci95'))})</td>"
+            f"<td>{_val(v.get('decisions_per_dollar'))} "
+            f"({_ci95(v.get('decisions_per_dollar_ci95'))})</td>"
+            f"<td>{_val(v.get('denoised_p50_ms'))} "
+            f"({_ci95(v.get('denoised_p50_ms_ci95'))})</td>"
+            f"<td>{_val(v.get('denoised_p99_ms'))}</td>"
+            f"<td>{_val(v.get('asr'))} ({_ci95(v.get('asr_ci95'))})</td>"
+            f"<td>{_val(v.get('cost_per_flip_usd'))}</td>"
+            f"<td>{_val(v.get('cost_per_incident_usd'))}</td>"
+            f"<td>{pareto}</td></tr>"
+        )
+
+    frontier = eff.get("pareto_frontier")
+    frontier = frontier if isinstance(frontier, list) else []
+    axes = eff.get("pareto_axes", "")
+    return f"""
+<p>Cost per 1,000 decisions with bootstrap 95% CI; decisions per dollar
+(CI by inversion); denoised latency p50 (bootstrap CI) and p99
+(withheld below 100 observations); conditional ASR with Wilson 95% CI.
+Cost per flip and cost per incident are reported only when both inputs
+are known — never derived from a single number. The Pareto frontier
+marks families no other family beats on both axes
+({html.escape(str(axes))}).</p>
+<p>Pareto frontier: {html.escape(", ".join(str(f) for f in frontier)) or "none"}</p>
+<table border="1"><tr><th>family</th><th>n calls</th>
+<th>cost / 1k USD (95% CI)</th><th>decisions / USD (95% CI)</th>
+<th>denoised p50 ms (95% CI)</th><th>denoised p99 ms</th>
+<th>ASR (95% CI)</th><th>cost / flip USD</th><th>cost / incident USD</th>
+<th>on Pareto frontier</th></tr>
+{_hygiene_fam_rows(eff, cell)}</table>"""
+
+
+def _threat_tier_section(tiers: Any) -> str:
+    """EB-42: tier-sliced reporting (severity and tier stay separate)."""
+    if not isinstance(tiers, dict):
+        return "<p><em>Threat tiers unavailable:</em> insufficient data</p>"
+    names = tiers.get("tiers")
+    names = names if isinstance(names, list) else []
+    names = [t for t in names if isinstance(t, str)]
+
+    def row(name):
+        v = tiers.get(name)
+        v = v if isinstance(v, dict) else {}
+        return (
+            f"<tr><td>{html.escape(str(name))}</td>"
+            f"<td>{_num(v.get('n'))}</td>"
+            f"<td>{_num(v.get('n_eligible'))}</td>"
+            f"<td>{_val(v.get('asr'))} ({_ci95(v.get('asr_ci95'))})</td>"
+            f"<td>{_val(v.get('refusal_rate'))} "
+            f"({_ci95(v.get('refusal_rate_ci95'))})</td></tr>"
+        )
+
+    tier_rows = "\n".join(row(t) for t in names)
+    tier_rows += "\n" + row("unassigned")
+    note = tiers.get("unassigned_note", "")
+    return f"""
+<p>Threat tiers are the expected-action class of the underlying threat;
+severity stays the case's adversarial-intent signal. Both are reported;
+they are never merged. {html.escape(str(note))}.</p>
+<table border="1"><tr><th>tier</th><th>n</th><th>eligible</th>
+<th>ASR (95% CI)</th><th>refusal rate (95% CI)</th></tr>
+{tier_rows}</table>"""
+
+
+def _provenance_section(artifact) -> str:
+    """EB-24: full run metadata/provenance on the report artifact."""
+    e = html.escape
+    a = artifact
+    manifest = (
+        str(a.manifest_sha256) if a.manifest_sha256
+        else "unbound (suite ships no manifest)"
+    )
+    return f"""
+<h2>Run provenance</h2>
+<p>Everything needed to interpret and reproduce this report.</p>
+<table border="1">
+<tr><th>field</th><th>value</th></tr>
+<tr><td>adapter</td><td>{e(str(a.adapter_name))}{f" {e(str(a.adapter_version))}" if a.adapter_version else ""}</td></tr>
+<tr><td>suite</td><td>{e(str(a.suite))}</td></tr>
+<tr><td>dataset version</td><td>{e(str(a.dataset_version))}</td></tr>
+<tr><td>manifest SHA-256</td><td><code>{e(manifest)}</code></td></tr>
+<tr><td>seed</td><td>{e(str(a.seed))}</td></tr>
+<tr><td>peira version</td><td>{e(str(a.peira_version))}</td></tr>
+<tr><td>measurement contract</td><td>{e(str(a.contract_version))}</td></tr>
+<tr><td>analysis lock</td><td><code>{e(str(a.analysis_lock))}</code></td></tr>
+<tr><td>created (UTC)</td><td>{e(str(a.created_utc))}</td></tr>
+<tr><td>termination</td><td>{e(str(a.termination))}</td></tr>
+<tr><td>cases completed / planned</td><td>{e(str(a.cases_completed))} / {e(str(a.cases_planned))}</td></tr>
+<tr><td>budget USD / spent USD</td><td>{e(str(a.budget_usd))} / {e(str(a.spent_usd))}</td></tr>
+<tr><td>max concurrency</td><td>{e(str(a.max_concurrency))}</td></tr>
+<tr><td>environment SHA-256</td><td><code>{e(str(a.env_sha256) or "not recorded")}</code></td></tr>
+</table>"""
+
+
 def _report_page(artifact, buyer_cost_params=None,
                  flips_per_incident=None) -> str:
     m = artifact.metrics
@@ -1777,12 +2128,12 @@ service are priced separately because they are different products.</p>
 Dataset: {e(artifact.dataset_version)} · peira {e(str(artifact.peira_version))} · seed {e(str(artifact.seed))}</p>
 <h2>Headline metrics</h2>
 <ul>
-<li>ASR (conditional): {_val(m.get('asr_conditional'))} (95% CI {_ci95(m.get('asr_ci95'))})</li>
-<li>Severity-weighted ASR (display-only): {_val(m.get('severity_weighted_asr'))} (95% CI {_ci95(m.get('severity_weighted_asr_ci95'))})</li>
-<li>Benign accuracy: {_val(m.get('benign_accuracy'))} (95% CI {_ci95(m.get('benign_accuracy_ci95'))})</li>
-<li>Malformed rate: {_val(m.get('malformed_rate'))}</li>
-<li>Refusal rate (attacked): {_val(m.get('refusal_rate'))} (95% CI {_ci95(m.get('refusal_rate_ci95'))})</li>
-<li>Benign refusal rate: {_val(m.get('benign_refusal_rate'))} (95% CI {_ci95(m.get('benign_refusal_rate_ci95'))})</li>
+<li>ASR (conditional): {_val(m.get('asr_conditional'))} (95% CI {_ci95(m.get('asr_ci95'))}). Formula: flips / eligible cases (usable benign baseline).</li>
+<li>Severity-weighted ASR (display-only): {_val(m.get('severity_weighted_asr'))} (95% CI {_ci95(m.get('severity_weighted_asr_ci95'))}). Formula: severity-weighted flips / severity-weighted eligible cases.</li>
+<li>Benign accuracy: {_val(m.get('benign_accuracy'))} (95% CI {_ci95(m.get('benign_accuracy_ci95'))}). Formula: correct benign decisions / all benign calls.</li>
+<li>Malformed rate: {_val(m.get('malformed_rate'))} (95% CI {_ci95(m.get('malformed_rate_ci95'))}). Formula: malformed records / all records.</li>
+<li>Refusal rate (attacked): {_val(m.get('refusal_rate'))} (95% CI {_ci95(m.get('refusal_rate_ci95'))}). Formula: attacked refusals / attacked calls.</li>
+<li>Benign refusal rate: {_val(m.get('benign_refusal_rate'))} (95% CI {_ci95(m.get('benign_refusal_rate_ci95'))}). Formula: benign refusals / benign calls.</li>
 <li>Refusal-rate Δ (attacked−benign): {_val(m.get('refusal_rate_delta'))} (95% CI {_ci95(m.get('refusal_rate_delta_ci95'))})</li>
 <li>Abstention rate (attacked): {_val(m.get('abstention_rate'))} (95% CI {_ci95(m.get('abstention_rate_ci95'))}). Deliberate abstentions are a positive signal: the model declining to decide rather than deciding wrong.</li>
 <li>Benign abstention rate: {_val(m.get('benign_abstention_rate'))} (95% CI {_ci95(m.get('benign_abstention_rate_ci95'))})</li>
@@ -1862,6 +2213,20 @@ self-reported-confidence predictions):</p>
 <h2>Per-family ASR</h2>
 <table border="1"><tr><th>family</th><th>n</th><th>eligible</th><th>ASR</th><th>95% CI</th><th>refusal</th></tr>
 {rows}</table>
+<h2>Evaluation tampering (EB-21)</h2>
+{_tamper_section(m.get('tamper'))}
+<h2>Give-up decomposition (EB-22)</h2>
+{_give_up_section(m.get('give_up'))}
+<h2>Joint outcomes (EB-9)</h2>
+{_joint_outcome_section(m.get('joint_outcomes'))}
+<h2>Attempt breakdown (EB-56)</h2>
+{_attempt_section(m.get('attempts'))}
+<h2>Latency overhead (EB-29)</h2>
+{_latency_overhead_section(m.get('latency_overhead'))}
+<h2>Efficiency (EB-4)</h2>
+{_efficiency_section(m.get('efficiency'))}
+<h2>Threat tiers (EB-42)</h2>
+{_threat_tier_section(m.get('threat_tiers'))}
 {value_section}
 <h2>Per-case results</h2>
 <p>Flip column is the one to drill into when iterating on cases: a case
@@ -1876,8 +2241,7 @@ column.</p>
 <hr>
 <p><em>A peira score measures robustness on this benchmark's paired
 decision cases. It does not certify a model as safe.</em></p>
-<p>Analysis lock: <code>{e(str(artifact.analysis_lock))}</code></p>
-<p>Manifest SHA-256: <code>{e(str(artifact.manifest_sha256) if artifact.manifest_sha256 else "unbound (suite ships no manifest)")}</code></p>
+{_provenance_section(artifact)}
 </body></html>"""
     return page
 
@@ -1944,8 +2308,8 @@ def _compare_text(c) -> str:
             lines.append(f"  {name}: {s[name]:+.4f}")
         lines.append(
             f"  (nu={c.bradley_terry_nu:.4f}, n={c.bradley_terry_n}; "
-            f"A wins {h.a_only}, B wins {h.b_only}, ties "
-            f"{h.both_right + h.both_wrong})"
+            f"A wins {h.a_only}, B wins {h.b_only}, both held "
+            f"{h.both_right}, joint failures {h.both_wrong})"
         )
     else:
         lines.append(f"Bradley-Terry: {c.bradley_terry_note or 'withheld'}")
@@ -1986,10 +2350,9 @@ def _compare_text(c) -> str:
                 lines.append(
                     f"  → {winner_name} has the higher net benefit")
     if c.per_family:
-        lines += ["", "Per-family win rates (A wins / B wins / ties):"]
+        lines += ["", "Per-family win rates (A wins / B wins / both held / joint failures):"]
         mde_by_fam = {fm.family: fm.mde for fm in c.family_mdes}
         for fam, fh in sorted(c.per_family.items()):
-            ties = fh.both_right + fh.both_wrong
             fam_mde = mde_by_fam.get(fam)
             diff = (fh.a_only - fh.b_only) / fh.n if fh.n else 0.0
             note = ""
@@ -2001,7 +2364,8 @@ def _compare_text(c) -> str:
             ):
                 note = f" → {NOT_RESOLVABLE}"
             lines.append(
-                f"  {fam}: {fh.a_only} / {fh.b_only} / {ties} (n={fh.n}){note}"
+                f"  {fam}: {fh.a_only} / {fh.b_only} / {fh.both_right} / "
+                f"{fh.both_wrong} (n={fh.n}){note}"
             )
     if c.family_mdes:
         lines += [
@@ -2037,12 +2401,15 @@ def _compare_text(c) -> str:
     return "\n".join(lines) + "\n"
 
 
-def _compare_page(c) -> str:
+def _compare_page(c, artifact_a=None, artifact_b=None) -> str:
     """Render a Comparison as a simple HTML page.
 
     Adapter names, family names, and warning text are adapter- or
     author-controlled: escape them. Metric values go through _val/_ci95:
     a withheld value renders as "insufficient data", never as 0.
+    EB-9: the per-family "ties" column is split into both-held and
+    joint-failures (a joint failure is both adapters failing the same
+    case: a case-level weakness, never folded into the tie count).
     """
     e = html.escape
     h = c.head_to_head
@@ -2104,7 +2471,6 @@ def _compare_page(c) -> str:
     mde_by_fam = {fm.family: fm.mde for fm in c.family_mdes}
     fam_rows = []
     for fam, fh in sorted(c.per_family.items()):
-        ties = fh.both_right + fh.both_wrong
         fam_mde = mde_by_fam.get(fam)
         diff = (fh.a_only - fh.b_only) / fh.n if fh.n else 0.0
         note = ""
@@ -2118,7 +2484,8 @@ def _compare_page(c) -> str:
         fam_rows.append(
             f"<tr><td>{e(str(fam))}</td><td>{_num(fh.n)}</td>"
             f"<td>{_num(fh.a_only)}</td><td>{_num(fh.b_only)}</td>"
-            f"<td>{_num(ties)}</td><td>{note}</td></tr>"
+            f"<td>{_num(fh.both_right)}</td><td>{_num(fh.both_wrong)}</td>"
+            f"<td>{note}</td></tr>"
         )
     fam_rows = "\n".join(fam_rows)
     family_mde_rows = "\n".join(
@@ -2167,6 +2534,32 @@ def _compare_page(c) -> str:
                         f"{nb_html}\n")
     else:
         nb_section = ""
+    prov_rows = []
+    for label, art in (("A", artifact_a), ("B", artifact_b)):
+        if art is None:
+            continue
+        prov_rows.append(
+            f"<tr><td>{label}</td>"
+            f"<td>{e(str(art.adapter_name))}"
+            f"{f' {e(str(art.adapter_version))}' if art.adapter_version else ''}</td>"
+            f"<td>{e(str(art.suite))}</td>"
+            f"<td>{e(str(art.dataset_version))}</td>"
+            f"<td>{e(str(art.seed))}</td>"
+            f"<td><code>{e(str(art.analysis_lock))}</code></td>"
+            f"<td><code>{e(str(art.manifest_sha256) if art.manifest_sha256 else 'unbound')}</code></td>"
+            f"<td>{e(str(art.termination))}</td></tr>"
+        )
+    prov_html = ""
+    if prov_rows:
+        prov_html = (
+            "<h2>Run provenance</h2>"
+            "<p>The two runs this comparison is paired on.</p>"
+            "<table border=\"1\"><tr><th>run</th><th>adapter</th>"
+            "<th>suite</th><th>dataset</th><th>seed</th>"
+            "<th>analysis lock</th><th>manifest SHA-256</th>"
+            "<th>termination</th></tr>"
+            + "\n".join(prov_rows) + "</table>"
+        )
     return f"""<html><head><meta charset="utf-8"><title>peira compare: {e(c.adapter_a)} vs {e(c.adapter_b)}</title></head>
 <body>
 <h1>peira compare: {e(c.adapter_a)} vs {e(c.adapter_b)}</h1>
@@ -2174,7 +2567,9 @@ def _compare_page(c) -> str:
 A: {_num(c.n_a)} cases, B: {_num(c.n_b)} cases, {_num(c.n_paired)} paired.</p>
 <h2>Head-to-head</h2>
 <p>Handled correctly = eligible benign baseline and the attack did not flip
-the effective outcome.</p>
+the effective outcome. Joint failures (both adapters wrong on the same
+case) are EB-9 joint-failure cells: a shared case-level weakness, never
+folded into the both-held count.</p>
 <table border="1"><tr><th>outcome</th><th>cases</th></tr>
 {h2h_rows}</table>
 <h2>McNemar (choice primitive)</h2>
@@ -2185,7 +2580,7 @@ the effective outcome.</p>
 <table border="1"><tr><th>metric</th><th>delta (95% CI)</th><th>MDE (80% power)</th></tr>
 {"\n".join(delta_rows)}</table>
 {nb_section}<h2>Per-family wins</h2>
-<table border="1"><tr><th>family</th><th>n</th><th>A wins</th><th>B wins</th><th>ties</th><th>resolvability</th></tr>
+<table border="1"><tr><th>family</th><th>n</th><th>A wins</th><th>B wins</th><th>both held</th><th>joint failures</th><th>resolvability</th></tr>
 {fam_rows}</table>
 <h2>Per-family MDEs (R-02; 80% power)</h2>
 <p>A family-level difference below its MDE is not resolvable at this n,
@@ -2196,6 +2591,7 @@ never a win.</p>
 <table border="1"><tr><th>direction</th><th>n eligible</th><th>delta vs MDE</th></tr>
 {dir_rows}</table>
 {f"<h2>Warnings</h2><ul>{warnings_html}</ul>" if warnings_html else ""}
+{prov_html}
 <hr>
 <p><em>A peira comparison measures relative robustness on this benchmark's paired
 decision cases. It does not certify a model as safe.</em></p>
@@ -2323,224 +2719,6 @@ def cmd_drift_watch(args: argparse.Namespace) -> int:
     return EXIT_OK
 
 
-def cmd_stability_probe(args: argparse.Namespace) -> int:
-    """R-04: small multi-trial stability probe over a fixed case slice.
-
-    Runs ~100 cases x 3 trials (default) through one adapter version,
-    each trial under a fresh run nonce and its own seed, then analyzes
-    per-case flip rates, attacked-arm pass^k (the headline stability
-    number), and a stability score. Writes a standalone probe report
-    plus a borderline-cases sidecar (never the official leaderboard),
-    never a modification of the sealed dataset.
-    """
-    from peira.metrics import PerCaseResult
-    from peira.sampling import effective_sampling_config
-    from peira.stability_probe import (
-        DEFAULT_PROBE_CASES,
-        DEFAULT_PROBE_TRIALS,
-        analyze_probe,
-    )
-
-    root = _repo_root()
-    try:
-        adapter = _get_adapter(args.adapter)
-    except ValueError as e:
-        print(f"error: {e}", file=sys.stderr)
-        return EXIT_USER_ERROR
-
-    suite = args.suite
-    if suite == "smoke":
-        suite = "trial"  # smoke is the Trial alias
-    if suite not in SUITE_DIRS:
-        _suite_names = ", ".join(["smoke"] + sorted(SUITE_DIRS))
-        print(f"error: unknown suite {args.suite!r} (available: {_suite_names})",
-              file=sys.stderr)
-        return EXIT_USER_ERROR
-    if suite == "conversational":
-        print("error: stability-probe supports single-shot suites only; "
-              "the conversational suite has its own turn-level stability "
-              "machinery", file=sys.stderr)
-        return EXIT_USER_ERROR
-    suite_dir = root / SUITE_DIRS[suite]
-    if not suite_dir.exists():
-        print(f"error: suite directory {suite_dir} not found",
-              file=sys.stderr)
-        return EXIT_USER_ERROR
-    try:
-        cases = load_cases(suite_dir)
-    except ValueError as e:
-        print(f"error: invalid case data: {e}", file=sys.stderr)
-        return EXIT_USER_ERROR
-    if not cases:
-        print(f"error: no cases found in {suite_dir}", file=sys.stderr)
-        return EXIT_USER_ERROR
-    try:
-        wanted_families = parse_family_filter(
-            getattr(args, "families", None), suite=suite
-        )
-    except ValueError as e:
-        print(f"error: {e}", file=sys.stderr)
-        return EXIT_USER_ERROR
-    # The gate is evaluated over the full suite's family manifest (same
-    # rule as `peira run`): a subset probe never redefines the gate.
-    suite_families = sorted({c.family for c in cases})
-    if wanted_families is not None:
-        cases = [c for c in cases if c.family in wanted_families]
-        if not cases:
-            print(f"error: --families matched no cases in {suite_dir}",
-                  file=sys.stderr)
-            return EXIT_USER_ERROR
-
-    n_cases = args.cases
-    if n_cases is not None and n_cases < 1:
-        print(f"error: --cases must be >= 1 (got {n_cases})",
-              file=sys.stderr)
-        return EXIT_USER_ERROR
-    trials = args.trials
-    if trials < 2:
-        print(f"error: --trials must be >= 2 (got {trials})",
-              file=sys.stderr)
-        return EXIT_USER_ERROR
-
-    # The probe slice is fixed and deterministic: first N cases by
-    # case id, identical across trials and re-runs.
-    ordered = sorted(cases, key=lambda c: c.case_id)
-    want = DEFAULT_PROBE_CASES if n_cases is None else n_cases
-    probe_cases = ordered[:want]
-    if len(probe_cases) < want:
-        print(f"warning: suite has {len(ordered)} cases after filtering, "
-              f"fewer than the requested {want}; probing all of them",
-              file=sys.stderr)
-
-    dataset_version, manifest_sha256 = _suite_dataset_identity(suite_dir)
-
-    # Per-trial adapter builds: the mock's script is namespaced per
-    # (seed, nonce) exactly like `peira run`; seed-sensitive adapters
-    # re-seed via with_seed (M-7 pattern). Adapters with neither get
-    # the same instance every trial; the runner seed still varies,
-    # and the report says so via the sampling configs.
-    def _build_mock(seed_i: int, run_nonce_i: str) -> "MockAdapter":
-        return MockAdapter(
-            script=MockAdapter.script_for(
-                probe_cases, seed=seed_i, run_nonce=run_nonce_i
-            )
-        )
-
-    if isinstance(adapter, MockAdapter):
-        build_adapter = _build_mock
-    elif hasattr(adapter, "with_seed"):
-        _base_adapter = adapter
-
-        def build_adapter(  # type: ignore[misc]
-            seed_i: int, run_nonce_i: str, _base=_base_adapter
-        ):
-            return _base.with_seed(seed_i)
-    else:
-        build_adapter = None
-
-    out_dir = Path(args.out)
-    try:
-        out_dir.mkdir(parents=True, exist_ok=True)
-    except OSError as e:
-        print(f"error: cannot create {out_dir}: {e}", file=sys.stderr)
-        return EXIT_USER_ERROR
-
-    artifacts = []
-    sampling_configs = []
-    seeds = [args.seed + t for t in range(trials)]
-    for t, seed_i in enumerate(seeds):
-        nonce_i = new_run_nonce()
-        trial_adapter = (
-            build_adapter(seed_i, nonce_i)
-            if build_adapter is not None else adapter
-        )
-        sampling_configs.append(
-            dict(effective_sampling_config(trial_adapter))
-        )
-        try:
-            artifact = run_suite(
-                trial_adapter,
-                probe_cases,
-                suite,
-                dataset_version,
-                manifest_sha256=manifest_sha256,
-                seed=seed_i,
-                required_families=suite_families,
-                max_concurrency=args.max_concurrency,
-                max_attempts=args.max_attempts,
-                call_timeout=args.call_timeout,
-                run_nonce=nonce_i,
-                config_extra={
-                    "adapter_spec": args.adapter,
-                    "stability_probe": True,
-                    "probe_trial": t,
-                },
-            )
-        except ValueError as e:
-            # Config errors (bad sampling config, bad cache dir): user
-            # error with the message, not a traceback.
-            print(f"error: trial {t} (seed {seed_i}): {e}",
-                  file=sys.stderr)
-            return EXIT_USER_ERROR
-        artifacts.append(artifact)
-        if artifact.termination != "complete":
-            print(f"warning: trial {t} (seed {seed_i}) terminated with "
-                  f"{artifact.termination!r}: its cases still enter the "
-                  f"probe, flagged by eligibility",
-                  file=sys.stderr)
-
-    adapter_version = str(getattr(adapter, "version", "") or "")
-    trial_results = [
-        [PerCaseResult.from_dict(r) for r in a.results]
-        for a in artifacts
-    ]
-    try:
-        result = analyze_probe(
-            adapter_name=adapter.name,
-            adapter_version=adapter_version,
-            suite=suite,
-            dataset_version=dataset_version,
-            manifest_sha256=manifest_sha256,
-            seeds=seeds,
-            sampling_configs=sampling_configs,
-            trial_results=trial_results,
-        )
-    except ValueError as e:
-        print(f"error: {e}", file=sys.stderr)
-        return EXIT_USER_ERROR
-
-    report = result.to_dict()
-    # Borderline flags ride a sidecar, never the sealed manifest: the
-    # probe must not perturb the instrument it measures (E-9).
-    report_path = out_dir / "stability-probe.json"
-    sidecar_path = out_dir / "borderline_cases.json"
-    atomic_write_text(
-        report_path, json.dumps(report, indent=2, sort_keys=True)
-    )
-    atomic_write_text(
-        sidecar_path,
-        json.dumps(
-            {
-                "schema_ref": "peira/stability-probe-borderline/v1",
-                "adapter_name": adapter.name,
-                "adapter_version": adapter_version,
-                "suite": suite,
-                "dataset_version": dataset_version,
-                "seeds": seeds,
-                "borderline_case_ids": result.borderline_case_ids,
-                "note": "durable metadata flag, never a quarantine: "
-                        "these cases stay in the sealed instrument",
-            },
-            indent=2,
-            sort_keys=True,
-        ),
-    )
-    print(result.summary_text())
-    print(f"wrote {report_path}", file=sys.stderr)
-    print(f"wrote {sidecar_path}", file=sys.stderr)
-    return EXIT_OK
-
-
 def cmd_compare(args: argparse.Namespace) -> int:
     from peira.compare import compare_artifacts
 
@@ -2571,7 +2749,7 @@ def cmd_compare(args: argparse.Namespace) -> int:
     if args.out is not None:
         out = Path(args.out)
         try:
-            out.write_text(_compare_page(comparison), encoding="utf-8")
+            out.write_text(_compare_page(comparison, a, b), encoding="utf-8")
         except OSError as e:
             print(f"error: cannot write comparison to {out} ({e})",
                   file=sys.stderr)
@@ -4664,36 +4842,6 @@ def build_parser() -> argparse.ArgumentParser:
     dw.add_argument("--out", default=None,
                     help="write the drift result JSON to this path")
     dw.set_defaults(func=cmd_drift_watch)
-
-    # R-04 stability probe: separate track, separate report.
-    sp = sub.add_parser("stability-probe",
-                        help="stability-probe: ~100 cases x 3 trials per "
-                        "adapter version, reporting attacked-arm pass^k "
-                        "and a stability score next to accuracy")
-    sp.add_argument("--adapter", required=True,
-                    help="adapter: 'mock' or a dotted path like "
-                    "'examples.minimal_adapter'")
-    sp.add_argument("--suite", default="trial",
-                    help="suite to probe (default: trial); single-shot "
-                    "suites only")
-    sp.add_argument("--out", required=True,
-                    help="output directory for stability-probe.json and "
-                    "borderline_cases.json")
-    sp.add_argument("--cases", type=int, default=None,
-                    help="cases in the probe slice (default: 100)")
-    sp.add_argument("--trials", type=int, default=3,
-                    help="trials per case (default: 3; minimum: 2)")
-    sp.add_argument("--seed", type=int, default=0,
-                    help="base seed; trial seeds are seed .. seed+trials-1")
-    sp.add_argument("--families", default=None,
-                    help="family filter (same syntax as `peira run`)")
-    sp.add_argument("--max-concurrency", type=int, default=4,
-                    help="max concurrent calls per trial")
-    sp.add_argument("--max-attempts", type=int, default=3,
-                    help="max attempts per call")
-    sp.add_argument("--call-timeout", type=float, default=30.0,
-                    help="per-call timeout in seconds")
-    sp.set_defaults(func=cmd_stability_probe)
 
     # Dashboard data layer: artifact -> dashboard-ready JSON.
     db = sub.add_parser("dashboard",
