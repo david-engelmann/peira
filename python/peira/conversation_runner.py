@@ -289,6 +289,7 @@ async def _run_conversation_case_async(
     cache: Any | None,
     transcript: Any | None,
     run_nonce: str,
+    sampling_config: dict[str, Any] | None = None,
 ) -> ConversationResult:
     """Drive one conversational case, turn by turn.
 
@@ -312,8 +313,15 @@ async def _run_conversation_case_async(
         _score_pair,
         _TrialInfo,
     )
+    from peira.sampling import with_sampling_namespace
 
     namespace = str(getattr(adapter, "cache_namespace", "") or "")
+    # R-04: fold the effective sampling config into the cache namespace
+    # so the key covers the values actually sent on the wire
+    # (lm-eval-harness #3881 class). Adapters with no sampling knobs
+    # set keep their namespace unchanged, so their existing cache
+    # entries keep working.
+    namespace = with_sampling_namespace(namespace, sampling_config)
     expected = case.benign.expected_decision
 
     def key_for(
@@ -398,6 +406,7 @@ async def _run_conversation_case_async(
                 cache_key_str=key_for(payload, arm_name, executed),
                 transcript=transcript,
                 invoke=_invoke_adapter_turn,
+                sampling_config=sampling_config,
             )
             records.append(record)
             history.append(user_message)

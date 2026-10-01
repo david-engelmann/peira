@@ -502,6 +502,10 @@ class _StructuredLLMBase:
     _extra = "peira[?]"            # e.g. "peira[openai]"
     _env_vars: tuple[str, ...] = ()  # API key env vars, in lookup order
     _supports_seed = True          # False where the provider has no seed
+    # R-04: the provider accepts a temperature parameter. Fail-closed:
+    # a sampling-capable adapter with unset temperature refuses to run
+    # rather than silently using provider defaults.
+    _supports_temperature = True   # False where the provider has none
 
     def __init__(
         self,

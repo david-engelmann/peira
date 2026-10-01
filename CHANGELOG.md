@@ -7,6 +7,32 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
 
 ## [Unreleased]
 
+### Added R-04 effective sampling config and stability probe
+
+- Every transcript entry now records `sampling_config`: the effective
+  `temperature`, `seed`, and `max_tokens` actually sent on the wire
+  plus a `sampling_source` flag from the closed vocabulary
+  `adapter-declared` / `provider-incapable` / `unknown`. It rides the
+  entry, the rebuilt `CallRecord`, and the sealed artifact, so replay
+  preserves the original config.
+- New `peira.sampling` module with the fail-closed gate: an adapter
+  that declares `_supports_temperature` / `_supports_seed` but leaves
+  the parameter unset raises `SamplingConfigError` before any case
+  runs, instead of silently running on provider defaults.
+  `_StructuredLLMBase` declares `_supports_temperature = True`.
+- The response-cache key now folds the effective sampling config into
+  the cache namespace (lm-eval-harness #3881 class): a run at
+  temperature 0.7 never reuses entries recorded at temperature 0.0.
+  Adapters with no sampling knobs produce an empty fragment, so their
+  existing cache entries keep working (one-time post-upgrade cache
+  miss for LLM adapters).
+- New `peira.stability_probe` module and `peira stability-probe`
+  command: ~100 cases x 3 trials over a fixed deterministic slice,
+  per-case flip rates, attacked-arm pass^k (P(all k succeed)) with
+  Wilson 95% CI as the headline, stability score next to accuracy,
+  standalone report plus `borderline_cases.json` sidecar (flags,
+  never quarantine). Determinism explicitly not claimed, even at
+  temperature 0.
 ### Added EB-41 benign twins for over-refusal
 
 - `scripts/author_benign_twins.py`: generator producing harmless
