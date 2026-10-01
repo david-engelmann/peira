@@ -90,10 +90,14 @@ as a proxy. Spend lands on vendor API keys, not the OpenRouter key.
 
 The total planned estimate is $0.2204. That is under the $2
 single-run ask-first threshold and October spend so far is well under
-the $10 monthly threshold, but David's authorization is still
-required before any paid call. All four models are outside the flash
-tier, the spend spans four vendor accounts, and none of the four
-vendor keys is provisioned in the agent environment. CG-0016 through
+the $10 monthly threshold. David authorized the A6 live-verification
+spend on 2026-10-01. The cost-guard gate stays in force anyway: an
+up-front ledger estimate for every paid call, the $2 single-run and
+$10 monthly ask-first thresholds, and cheapest-sufficient-model
+default where substitution is allowed. The four models under test
+cannot be substituted, the spend spans four vendor accounts, and
+none of the four vendor keys is provisioned in the agent environment.
+CG-0016 through
 CG-0019 are the active plans. They supersede the earlier estimates
 from before the call count was corrected to 40 and the prices were
 refreshed. No paid call has been made and no spend has occurred.
