@@ -9,8 +9,7 @@ carries the same list in prose. This check asserts:
   - no documented id is missing from the registry,
   - the (Tier 1) / (Tier 2) markers in the doc match the registry tiers
     (v1 families carry no marker),
-  - the numbering is strictly increasing with no duplicates (gaps are
-    allowed: families may land out of order, e.g. 27 before 26).
+  - the numbering runs 1..N in order.
 
 Usage:
     python3 scripts/check_families.py
