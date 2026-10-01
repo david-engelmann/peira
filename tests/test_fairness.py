@@ -278,7 +278,7 @@ class TestFairnessSummaryBlock(unittest.TestCase):
                        group="white", pair_id="p1"),
         }
         block = fairness_summary_block(results, tags)
-        json.dumps(block)  # must not raise
+        self.assertEqual(json.loads(json.dumps(block)), block)
 
     def test_summarize_includes_fairness_block(self):
         results = [

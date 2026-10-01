@@ -262,7 +262,7 @@ and get no exemption.
 
 ### The fairness summary block
 
-`peira metrics summarize` emits a `fairness` block whenever cases
+`peira.metrics.summarize()` (reached through `peira run`) emits a `fairness` block whenever cases
 carry fairness tags. It reports per-group ASR, attacked-arm refusal
 rate, and benign accuracy with Wilson 95 percent CIs and
 denominators, max-min disparity gaps and ratios per dimension, the

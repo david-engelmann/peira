@@ -712,6 +712,21 @@ def main(argv=None) -> int:
             )
         seen_prompts.add(key)
 
+    # Pair completeness: every declared pair_id must resolve to
+    # exactly two members, or the metrics layer will silently drop
+    # the malformed pair (see counterfactual_equality).
+    pair_counts: dict[str, int] = {}
+    for c in cases:
+        pid = c["fairness"].get("pair_id")
+        if pid:
+            pair_counts[pid] = pair_counts.get(pid, 0) + 1
+    bad_pairs = {p: n for p, n in pair_counts.items() if n != 2}
+    if bad_pairs:
+        raise AssertionError(
+            f"Incomplete minimal pairs (each pair_id needs exactly 2 "
+            f"members): {bad_pairs}"
+        )
+
     out = Path(args.out)
     with open(out, "w", encoding="utf-8") as f:
         for c in cases:

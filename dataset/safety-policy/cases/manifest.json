@@ -1,7 +1,7 @@
 {
   "case_schema": "single",
-  "created_utc": "2026-10-01T12:24:48+00:00",
-  "dataset": "peira-v1",
+  "created_utc": "2026-10-01T13:48:21+00:00",
+  "dataset": "peira-safety-policy",
   "dataset_version": "1.1.1",
   "files": {
     "fairness.jsonl": {
