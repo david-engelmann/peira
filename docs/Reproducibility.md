@@ -68,6 +68,33 @@ Commit `uv.lock` in the same PR as the `pyproject.toml` change. CI
 runs `uv lock --check` and fails the PR when the lockfile is stale.
 Reviewers check that the diff only touches the intended packages.
 
+### Lockfile drift warning
+
+A run on a machine whose torch, transformers, or numpy differs from
+`uv.lock` (the legacy `requirements/all.lock` is still honored when
+present, e.g. in older checkouts) is still a valid run, but its
+numbers may not reproduce on a pinned install. The runner warns at run start when an
+adapter that executes the local ML stack (the Hugging Face adapters
+in `python/peira/adapters/hf.py`, marked with `uses_local_ml_stack`)
+drifts from the lockfile. The warning is advisory and never fails the
+run. API adapters get no warning. The local environment does not
+score their calls. The installed versions are already sealed in the
+artifact's environment fingerprint, so drift is detectable after the
+fact from the artifact alone.
+
+## Determinism verification
+
+`scripts/check_determinism.py` proves reruns reproduce. It runs the
+deterministic mock adapter twice as real CLI invocations with
+different `--max-concurrency` values, then compares the two sealed
+artifacts with `peira.repro`. Decisions, seeds, and flags must match
+exactly. Float metrics compare within 1e-9. Each artifact's own
+analysis lock must verify. The `determinism` CI job runs it on every
+push and PR. Run it locally with `python3
+scripts/check_determinism.py`. The normalization it applies is the
+executable form of `docs/Execution-Contract.md`. Wall-clock timing
+and the AIMD controller's live limit are excluded there and here.
+
 ## Docker image
 
 `Dockerfile` is a multi-stage build:

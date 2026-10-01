@@ -82,6 +82,22 @@ and `peira runs compare` (future) to diff environments between runs.
 The fingerprint is computed by `python/peira/env_fingerprint.py` at run start
 and sealed into the artifact. See the module docstring for the full field list.
 
+## Report Artifacts (2026-10-01)
+
+`peira report --json-out report.json` writes a versioned report
+artifact alongside the HTML. The HTML alone is not reproducible.
+Buyer-cost parameters change the rendering, so the report artifact
+seals the source artifact's provenance (path, artifact version,
+analysis lock, env fingerprint, manifest digest, adapter, suite,
+dataset version, seed), the report parameters, and the metric
+payload under its own analysis lock.
+
+- `artifact_kind`: `"report"`
+- `report_schema_version`: `"1"`
+- The loader is strict like the run artifact's. Unknown fields are
+  rejected and non-`"1"` schema versions are refused.
+- `verify()` detects any post-hoc edit to the sealed content.
+
 ## What "Verifiable Forever" Means in Practice
 
 A researcher in 2028 should be able to:

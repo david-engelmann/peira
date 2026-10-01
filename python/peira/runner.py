@@ -43,6 +43,7 @@ from peira.adapters.base import (
 )
 from peira.artifacts import CONTRACT_VERSION, RunArtifact, results_to_dicts
 from peira.env_fingerprint import collect_and_fingerprint
+from peira.lockfile import warn_if_drifted
 from peira.concurrency import (
     MAX_RETRY_AFTER_S,
     AdaptiveConcurrency,
@@ -2344,6 +2345,10 @@ async def _run_suite_async(
     metric schema pass their own. The conversational suite passes its
     own five; every other caller gets the single-shot behavior.
     """
+    # EB-19: warn (never fail) when a local-ML-stack adapter runs on
+    # torch/transformers versions that drift from the pinned lockfile
+    # (uv.lock).
+    warn_if_drifted(adapter)
     summarize = (
         summarize_artifact if summarize_artifact is not None
         else _summarize_artifact

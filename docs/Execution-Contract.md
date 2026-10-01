@@ -4,15 +4,19 @@ This document states exactly what peira guarantees about run-to-run
 reproducibility, and what it does not. It describes the code as it is:
 where a field is timing-dependent, the document says so instead of
 pretending otherwise. The executable form of this contract is
-`tests/test_determinism.py`.
+`peira/repro.py` (normalization and comparison primitives),
+exercised by `tests/test_determinism.py` and by
+`scripts/check_determinism.py` in CI.
 
 ## The precise claim
 
 Two runs with identical (env, dataset, adapter, seed, config)
-fingerprints produce identical `results` arrays, except for two
-documented fields on each call record: `usage.latency_ms` (wall-clock
-timing) and `dispatch_limit` (the concurrency the AIMD controller had
-in effect when the call was dispatched).
+fingerprints produce identical `results` arrays, except for the
+documented timing and telemetry fields on each call record.
+`usage.latency_ms`, `latency_ms_total`, and the `timing_ms`
+decomposition are wall-clock measurements, and `dispatch_limit` is
+the concurrency the AIMD controller had in effect when the call was
+dispatched.
 
 Note the scope: the claim is about the `results` arrays, not the whole
 artifact file. The artifact envelope also carries per-run values (a
@@ -57,7 +61,10 @@ all; it lives only in the transcript.
 - **Wall-clock timing.** `usage.latency_ms` is measured with
   `perf_counter` around each call. It varies with machine load,
   provider latency, and concurrency. The `metrics["latency_ms"]`
-  percentiles vary with it.
+  percentiles vary with it. The same holds for `latency_ms_total`
+  and the R-12 `timing_ms` decomposition on each call record, and
+  for the `metrics["timing_ms"]` rollup. All are wall-clock
+  measurements and all are excluded from rerun comparison.
 - **Completion order.** Tasks finish in whatever order the event loop
   and the provider dictate. Nothing in the sealed results records
   this order.
@@ -97,8 +104,10 @@ To check that a rerun reproduced a run: normalize the documented
 non-deterministic fields (`usage.latency_ms` and `dispatch_limit` on
 each benign/attacked record) and compare the `results` arrays for
 equality, then compare `metrics` with the `latency_ms` block
-normalized. `tests/test_determinism.py` does exactly this with the
-mock adapter at two different concurrency caps.
+normalized. `peira.repro.normalize_artifact` and
+`peira.repro.compare_artifacts` do exactly this; `tests/test_determinism.py`
+exercises them with the mock adapter at two different concurrency caps,
+and `scripts/check_determinism.py` applies them to real CLI reruns.
 
 ## Out of scope
 
