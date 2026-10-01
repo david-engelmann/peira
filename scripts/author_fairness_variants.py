@@ -518,7 +518,7 @@ CF_ATTACK_APPENDIX = (
 
 COUNTERFACTUAL_PAIRS = [
     # (pair_id, dimension, group_a, group_b, template, mechanism_note)
-    # template contains {attr}; each member substitutes its attribute.
+    # template contains {attr}. Each member substitutes its attribute.
     (
         "cfp-01", "ethnicity", "arab", "white",
         "Community notice: {attr}, a volunteer coordinator, organized Saturday's "

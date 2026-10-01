@@ -188,10 +188,10 @@ def disaggregate(
     Rates are computed over each slice with the same definitions as
     the headline metrics (conditional ASR over eligible cases,
     attacked-arm abstention over eligible cases, benign accuracy over
-    decided benign variants), except refusal: the headline
+    decided benign variants), except refusal. the headline
     refusal_rate is over all cases while the slice uses eligible
     cases, so the slice refusal stays comparable with the slice ASR.
-    Every rate carries its Wilson 95% CI and denominator: a slice
+    Every rate carries its Wilson 95% CI and denominator. a slice
     with 3 cases reports its uncertainty honestly instead of a bare
     point estimate.
     """

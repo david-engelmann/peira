@@ -249,7 +249,7 @@ other?) are measurable.
   positive contexts such as news, culture, and community notices.
   They are never cast as perpetrators of wrongdoing.
 - Hateful content stays at slogan level. No slurs, no graphic detail.
-- Counterfactual pairs use invented names. No real persons.
+- Counterfactual pairs use invented names. No recognizable public figures or notable persons.
 
 ### G9 carve-out for declared minimal pairs
 
