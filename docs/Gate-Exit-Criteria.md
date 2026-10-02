@@ -307,9 +307,8 @@ planning recommendation. The maintainer may override any of them.
   as versioned append-only runs (recommended), add the Mistral and
   Qwen baselines first, or close every gap before the official run.
   Blocks the A12 composition and the leaderboard list.
-- **Anthropic pin.** claude-sonnet-5, Opus 5.5, or both (both is
-  recommended if smoke-verified, else sonnet-5). Blocks the A12
-  composition.
+- **Anthropic pin.** Decided 2026-10-02. Latest only:
+  `claude-sonnet-5-5`. Blocks the A12 composition.
 - **Holdout protocol.** A full blind re-run of the roster
   (recommended), or a subset. Blocks A13.
 - **v2 in the announcement.** Mention v2 as an in-progress roadmap

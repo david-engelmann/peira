@@ -9,6 +9,9 @@ against the vendor docs on 2026-09-27:
     google:     gemini-3.8-flash
     moonshot:   kimi-k3
 
+D3 decided 2026-10-02 (latest only): the Anthropic pin moved to
+claude-sonnet-5-5.
+
 The validator is a format + vendor-scheme check (offline by design): pin
 validity is maintained by review, never probed live. These tests lock the
 validator's accept/reject behavior so a future bad edit cannot silently
@@ -50,9 +53,9 @@ class TestPinnedIds(unittest.TestCase):
     def test_openai_pin_is_luna(self):
         self.assertEqual(get_pinned_model("openai-structured"), "gpt-5.6-luna")
 
-    def test_anthropic_pin_is_sonnet_5(self):
+    def test_anthropic_pin_is_sonnet_5_5(self):
         self.assertEqual(
-            get_pinned_model("anthropic-structured"), "claude-sonnet-5"
+            get_pinned_model("anthropic-structured"), "claude-sonnet-5-5"
         )
 
     def test_google_pin_is_gemini_38_flash(self):

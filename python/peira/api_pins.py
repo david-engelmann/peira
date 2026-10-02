@@ -15,7 +15,7 @@ Per-vendor schemes:
   into the run artifact, but if OpenAI swaps the weights behind the
   name, the fail-closed machinery cannot detect it. Honest about the
   limit.
-- Anthropic: ``claude-sonnet-5`` (https://platform.claude.com/docs/en/about-claude/models/model-ids-and-versions).
+- Anthropic: ``claude-sonnet-5-5`` (https://platform.claude.com/docs/en/about-claude/models/model-ids-and-versions).
   From the 4.6 generation onward the dateless ID IS the pinned snapshot
   by vendor guarantee: weights and configuration stay fixed for the life
   of the ID, and updates ship under new IDs. This strengthens the story:
@@ -73,7 +73,7 @@ __all__ = [
 #
 # Pins are the vendors' own canonical IDs, not invented dated variants:
 #   OpenAI:    gpt-5.6-luna        (bare; Luna publishes no dated snapshots)
-#   Anthropic: claude-sonnet-5     (dateless; pinned snapshot by vendor
+#   Anthropic: claude-sonnet-5-5   (dateless; pinned snapshot by vendor
 #                                   guarantee from the 4.6 generation on)
 #   Google:    gemini-3.8-flash    (stable model code; no -NNN suffix on 3.x)
 #   Moonshot:  kimi-k3             (Moonshot never published dated IDs)
@@ -104,7 +104,7 @@ __all__ = [
 
 PINNED_API_MODELS: dict[str, str] = {
     "openai-structured": "gpt-5.6-luna",
-    "anthropic-structured": "claude-sonnet-5",
+    "anthropic-structured": "claude-sonnet-5-5",
     "google-structured": "gemini-3.8-flash",
     "moonshot-structured": "kimi-k3",
     "xai-structured": "grok-4",

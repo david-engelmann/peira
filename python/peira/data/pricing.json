@@ -27,10 +27,10 @@
       "confidence": "official"
     },
     "claude-sonnet-5-5": {
-      "_note": "Claude Sonnet 5.5 (released 2026-09-28, id 'claude-sonnet-5-5'): $2/$10 per 1M (Anthropic pricing page, corroborated 2026-09-28). Adapter support landed alongside the Opus 5.5 reconciliation (output_config.format routing, temperature omitted) but live-UNVERIFIED. Default pin stays claude-sonnet-5 until a live smoke test decides the D3 matrix.",
+      "_note": "Claude Sonnet 5.5 (released 2026-09-28, id 'claude-sonnet-5-5'): $2/$10 per 1M (Anthropic pricing page, corroborated 2026-09-28). Adapter support landed alongside the Opus 5.5 reconciliation (output_config.format routing, temperature omitted). D3 decided 2026-10-02: latest only - this is now the default Anthropic pin (api_pins.py anthropic-structured).",
       "usd_per_1m_in": 2.0,
       "usd_per_1m_out": 10.0,
-      "confidence": "secondary"
+      "confidence": "official"
     },
     "convaiinnovations/laya": {
       "_note": "Self-hosted checkpoint (LayaAdapter default): no API cost. Local inference cost is unaccounted in this table - prices at 0.0, explicitly unaccounted, never silently estimated.",

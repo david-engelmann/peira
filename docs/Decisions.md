@@ -705,7 +705,7 @@ on `CallUsage.model` into the run artifact:
   asserted by tests, and recorded in the transcript with
   `"revision_source": "pinned"`.
 - LLM baselines pin the provider model id (`gpt-5.6-luna`,
-  `claude-sonnet-5`, `gemini-3.8-flash`); Jev pins `jev-1.13.0` and
+  `claude-sonnet-5-5`, `gemini-3.8-flash`); Jev pins `jev-1.13.0` and
   rejects floating tags (`jev-latest`) at construction with an
   explicit error.
 - The pricing table carries the pinned rates for exactly these ids.
