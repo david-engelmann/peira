@@ -27,6 +27,7 @@ Cluster C (adapters/CLI/glue): adapters/*, cli, dashboard, templates,
 | 1 | lottery.py (R-09 lottery index) | LOW | strong (34 existing + 37 Rust unit + 15 parity) | rust-max slice 1: #300 |
 | 2 | _labels.py + invariance.py + combo_schema.py validation/ID fns (C-1) | LOW | weak/moderate existing + 40 Rust unit + 62 parity | rust-max slice 2: #321 |
 | 3 | combo_metrics.py + hardness.py (MIGRATE #2, #3) | LOW-MED / LOW | strong (29 hardness + 14 combo shared) + 11 Rust unit + 44 parity | rust-max slice 3: #371 |
+| 3b | metrics.rs: flip_direction + net_benefit_at_threshold (Wave 3 item 9) | LOW | 7 Rust unit + 7 parity | rust-max metrics prereqs: #376 |
 
 ## Phase 1 results: Cluster A (metrics) audit complete
 
@@ -148,7 +149,7 @@ Wave 2 (finish started ports):
   7. compare.py finish (B-2)
   8. pricing.py pricing_confidence (C-8; finish the pricing slice)
 Wave 3 (metrics core expansions, unblock dependents):
-  9. metrics.rs: flip_direction + net_benefit_at_threshold (block economics core)
+  9. metrics.rs: flip_direction + net_benefit_at_threshold (block economics core) -- LANDED in this PR
   10. economics.py numeric core (A-4): SPLIT: YAML parser + cppf/break_even
       bootstraps stay Python (PRNG precedent)
   11. metrics.rs: mde_mcnemar (block saturation)
