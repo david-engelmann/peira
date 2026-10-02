@@ -1076,12 +1076,16 @@ class XAIAdapter(OpenAIAdapter):
     also publishes dated variants such as ``grok-4-0709``).
 
     Request shape: xAI documents ``seed`` as supported (best-effort
-    deterministic), so the seed is sent; whether ``json_schema``
-    ``response_format`` (vs plain ``json_object``) is honored for
-    ``grok-4`` is unverified. If the live endpoint rejects or ignores
-    any of these, you will see terminal provider errors, not silent
-    mismeasurement — verify against the live API before any measured
-    run. Not exercised against the live API yet.
+    deterministic), so positive seeds are sent — but xAI 400s on
+    non-positive seeds ("Seed must be positive but seed = 0"), so the
+    ``seed`` field is omitted when it is ``0`` or ``None`` (the
+    transcript's request shape then honestly records ``"seed": None``).
+    Whether ``json_schema`` ``response_format`` (vs plain
+    ``json_object``) is honored for ``grok-4`` is unverified. If the
+    live endpoint rejects or ignores any of these, you will see
+    terminal provider errors, not silent mismeasurement — verify
+    against the live API before any measured run. Not exercised
+    against the live API yet.
     """
 
     name = "xai-structured"
@@ -1111,6 +1115,18 @@ class XAIAdapter(OpenAIAdapter):
         self._client = self._sdk.OpenAI(
             api_key=self._api_key, base_url=self._base_url, max_retries=0
         )
+
+    def _request_kwargs(
+        self, messages: list[dict[str, str]], schema: dict[str, Any]
+    ) -> dict[str, Any]:
+        kwargs = super()._request_kwargs(messages, schema)
+        # xAI 400s on non-positive seeds ("Seed must be positive but
+        # seed = 0") — omit the field rather than negotiating, as with
+        # Moonshot. Positive seeds are still sent: xAI documents seed
+        # as supported (best-effort deterministic).
+        if self._seed is None or self._seed <= 0:
+            kwargs.pop("seed", None)
+        return kwargs
 
     def _request(
         self, user_text: str, schema: dict[str, Any], repair: bool

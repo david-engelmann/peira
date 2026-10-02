@@ -353,7 +353,8 @@ as every other LLM baseline.
 
 Honest caveat: the adapter is built from xAI's published docs, not
 the live API. xAI documents `seed` as supported (best-effort
-deterministic), so the seed is sent; whether `json_schema`
+deterministic), so positive seeds are sent; `seed` is omitted when it
+is `0`/`None` because xAI 400s on non-positive seeds. Whether `json_schema`
 `response_format` (vs plain `json_object`) is honored for `grok-4`
 is unverified. Verify against the live API before any measured run;
 mismatches surface as terminal provider errors, not silent
