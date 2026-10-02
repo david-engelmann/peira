@@ -1,7 +1,7 @@
 {
   "$schema_id": "https://peiratrial.dev/schemas/dataset-changelog-1.json",
   "dataset": "peira-v1",
-  "dataset_version": "1.4.1",
+  "dataset_version": "1.4.2",
   "entries": [
     {
       "type": "annotate",
@@ -6723,6 +6723,43 @@
         "state_poisoning": 200
       },
       "manifest_sha256": "ed75671ee85e34481f0e00606bb9c608e60b21a343303af45f085af8439dc94f"
+    },
+    {
+      "type": "fix",
+      "dataset_version": "1.4.2",
+      "date": "2026-10-02",
+      "description": "A4 second independent review repairs (R-1, R-2, R-3): re-applied 5 fixes from PR #230 reverted by #205 rebase (v1-dfl-116, v1-ngm-128 scale wording 0-1; v1-ind-052/098/151 stale High: notes to Critical:); re-adjudicated 8 FSA fictional-framing cases (3 to critical, 4 to high, 1 to medium per rubric: fictional framing is not a toy-scenario criterion); refreshed 23 stale tier-words in notes (20 to Critical:, 3 to Medium:).",
+      "diff_summary": "distractor_flooding.jsonl, negation_games.jsonl, indirection.jsonl: 36 cases touched (5 R-1, 8 R-3 severity, 23 R-2 notes). No retirements or additions.",
+      "rationale": "Program A gate A4: second independent case review of the S-1 integrated set. R-1 restores #230 fixes lost to rebase clobber. R-3 corrects Sweep A over-downgrade of fictional-framing cases. R-2 eliminates tier-word/severity contradictions. New scripts/check_notes_tier_words.py gate prevents recurrence.",
+      "case_ids": [
+        "v1-dfl-116",
+        "v1-ind-003",
+        "v1-ind-052",
+        "v1-ind-094",
+        "v1-ind-098",
+        "v1-ind-101",
+        "v1-ind-112",
+        "v1-ind-123",
+        "v1-ind-151",
+        "v1-ind-182",
+        "v1-ind-217",
+        "v1-ind-240",
+        "v1-ngm-128"
+      ],
+      "case_count": 2000,
+      "families": {
+        "confidence_spoofing": 200,
+        "criteria_smuggling": 200,
+        "distractor_flooding": 200,
+        "indirection": 200,
+        "literal_reading": 200,
+        "negation_games": 200,
+        "option_order": 200,
+        "policy_paraphrase": 200,
+        "score_anchoring": 200,
+        "state_poisoning": 200
+      },
+      "manifest_sha256": "263dec7c42da32e8d0078ad9fd428b56c7613ac35df534dc83bf978695919458"
     }
   ],
   "format_version": "1"

@@ -1,7 +1,7 @@
 {
-  "created_utc": "2026-10-01T00:55:56.646763+00:00",
+  "created_utc": "2026-10-02T14:16:29.827210+00:00",
   "dataset": "peira-v1",
-  "dataset_version": "1.4.1",
+  "dataset_version": "1.4.2",
   "files": {
     "confidence_spoofing.jsonl": {
       "kind": "cases",
@@ -57,7 +57,7 @@
         "medium": 62
       },
       "n_cases": 200,
-      "sha256": "c8e884371d987913b02ecbbce9d2c3f17760c7a2b90afb8fde214c833c6710ee"
+      "sha256": "026f6a618ac430b8fad8fee6e4dc19c848b00102f3675dae42728415af8fbcb9"
     },
     "indirection.jsonl": {
       "kind": "cases",
@@ -70,13 +70,13 @@
         "score": 32
       },
       "n_by_severity": {
-        "critical": 87,
-        "high": 28,
-        "low": 22,
-        "medium": 63
+        "critical": 90,
+        "high": 32,
+        "low": 14,
+        "medium": 64
       },
       "n_cases": 200,
-      "sha256": "5887cddecde1305822e9d7d9b24202bdc79746d6c8fbdae86d76ea7887230c5f"
+      "sha256": "ea49d774dba70664d6ab76b665c9373fc39e1a81248f5013151ac29d91ac9903"
     },
     "literal_reading.jsonl": {
       "kind": "cases",
@@ -113,7 +113,7 @@
         "medium": 95
       },
       "n_cases": 200,
-      "sha256": "a34a156ab9dfe15ea4038595399efc608fc07486283418d96b2b670989f86665"
+      "sha256": "2f30e7e797e582e71f0f8392c2f37eb347faeb79f32eef13a3843d50113a8cae"
     },
     "option_order.jsonl": {
       "kind": "cases",
