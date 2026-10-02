@@ -68,6 +68,90 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
 - CI runs `uv lock --check` so a stale lockfile fails the PR. See
   docs/Reproducibility.md for the new workflow.
 
+### Fixed v2 draft copy defects from the exhaustive v2-draft audit, dataset v2 2.4.1
+
+- Row-by-row audit of all 2,201 v2 draft cases (4,402 benign+attacked
+  arms) across the five v2 families (perfection-gate item 8). Copy-only
+  fixes. No labels, options, or case structure changed.
+  - 198 article errors in role lines (`You are a insurance/admissions/`
+    and similar, now `You are an ...`) across judge_sycophancy prompts.
+  - 60 evidence_positioning score cases whose question line doubled
+    `Score score X higher`, now `Score X higher`.
+  - 44 verbosity_inflation abstain cases whose notes claimed the
+    "choice primitive" while the primitive field is `abstain`. Notes
+    corrected to the abstain primitive.
+- Audit accepted as by-design with no change. Score-primitive arm shape
+  (`expected_score` plus `positive_decision`, with `target_score` on
+  evpos attacked arms). Benign-control sharing within and across
+  families. The `v2-<fam>-XXXX` ID scheme. Ambiguous fidelity
+  observations (crosslingual abstain payload steering, retrieval score
+  double instruction) are logged in the audit report, not changed.
+- Dataset version moves from 2.4.0 to 2.4.1. Per-file SHA-256 digests
+  re-sealed in `dataset/v2/cases/manifest.json`.
+
+### Added EB-35 attack-strength sweep curves
+
+- `peira run --budget-grid 1,2,4,8,16` runs an attack-strength sweep.
+  Each case's attacked arm runs max(grid) queries and the artifact
+  records budget-to-first-flip per case. `peira sweep-report` renders
+  per-family ASR-vs-budget curves with Wilson 95 percent CIs plus the
+  budget-to-first-flip distribution. `peira sweep-dimensions` lists the
+  strength-dimension registry. Sweep runs are analyzable but never
+  rankable.
+- Resume refuses sweep/single-shot mixing: a sweep partial resumed
+  without `--budget-grid` (or a single-shot partial resumed with one)
+  exits 2 with a documented error instead of silently running the
+  wrong experiment. Grid or dimension mismatches on resume keep the
+  original refusal message.
+- `peira compare` refuses to pool sweep artifacts against single-shot
+  artifacts or against sweeps with a different budget grid or
+  strength dimension ("sweep config differs"); matching sweep pairs
+  still compare.
+- `peira sweep-report` turns inconsistent or malformed sweep results
+  into a documented exit-2 error instead of a traceback.
+- `peira run --budget-grid --adapter mock` builds the mock simulation
+  script on the sweep dispatch layout (one entry per case per
+  attempt). The previous single-shot layout answered sweep calls
+  from the wrong cases' entries and silently poisoned the artifact.
+- The sealed `eligibility_notes` list now rides alongside
+  `ranking_ineligible_reason`, so `runs_registry` reports the sweep
+  ineligibility reason instead of "ranking eligibility not recorded".
+
+### Added EB-2/EB-3 fairness instruments and metrics
+
+- `python/peira/fairness.py` (new): demographic parity of robustness
+  metrics. EB-2 disaggregation slices conditional ASR, attacked-arm
+  refusal rate, and benign accuracy by (dimension, group) with Wilson
+  95% CIs, max-min disparity gaps and ratios, and the
+  tagged-vs-untagged split. EB-3 counterfactual probes report
+  decision-equality and robustness-parity rates over declared minimal
+  pairs. Descriptive only, never rankers, and zero blended numbers.
+- `metrics.summarize(..., fairness_tags=...)`: new `fairness` summary
+  block, assembled from case `fairness` extras by the runner and
+  reported as unavailable (never zero) when no case carries a tag.
+  Zero-observation rates report as None. Floats are rounded to 4 decimals.
+- `peira run` console summary prints the fairness section when the
+  block is available.
+- `scripts/author_fairness_variants.py` (new): fully curated,
+  byte-deterministic generator for 60 fairness cases
+  (`v1-spy-f01` … `v1-spy-f60`) in the safety-policy suite: 30
+  identity variants (hate-evasion, counterspeech traps,
+  neutral-mention traps), 5 dialect minimal pairs (standard vs
+  colloquial), 10 counterfactual minimal pairs (name, faith-venue,
+  pronoun, age, disability swaps). Dataset `peira-safety-policy`
+  1.0.0 → 1.1.2 (85 cases. 1.1.1 was a one-word name correction in
+  v1-spy-f53. 1.1.2 replaces three more real-person names and one
+  further Wikipedia-page name across cfp-05, cfp-06, cfp-07 and
+  cfp-09, keeping the invented-names-only authoring rule true). The
+  manifest was re-sealed and croissant.json was
+  updated. Authoring ethics documented in
+  `dataset/safety-policy/SPEC.md` §8.
+- G9 near-dedup carve-out: pairs whose cases declare the same
+  non-empty `fairness.pair_id` (EB-3 counterfactuals, EB-2 dialect
+  pairs) skip the comparison. The carve-out is narrow by design. Everything else is
+  compared exactly as before.
+- `docs/Methodology.md`: fairness metrics section.
+
 ### Added EB-41 benign twins for over-refusal
 
 - `scripts/author_benign_twins.py`: generator producing harmless

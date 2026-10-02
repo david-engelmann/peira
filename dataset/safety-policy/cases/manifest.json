@@ -1,8 +1,24 @@
 {
-  "created_utc": "2026-09-26T16:53:23+00:00",
+  "case_schema": "single",
+  "created_utc": "2026-10-01T19:34:15+00:00",
   "dataset": "peira-safety-policy",
-  "dataset_version": "1.0.0",
+  "dataset_version": "1.1.2",
   "files": {
+    "fairness.jsonl": {
+      "kind": "cases",
+      "n_by_family": {
+        "safety_policy": 60
+      },
+      "n_by_primitive": {
+        "choice": 60
+      },
+      "n_by_severity": {
+        "high": 10,
+        "medium": 50
+      },
+      "n_cases": 60,
+      "sha256": "99bbf8346213dd2e9bb65ce5450395ffb8378609661cec9e4ea4702616bb23f0"
+    },
     "safety_policy.jsonl": {
       "kind": "cases",
       "n_by_family": {
@@ -22,5 +38,5 @@
       "sha256": "1dbfa8313d817ac987e00948fb7504fb641c76c250a9f51853a17d8a43b597ae"
     }
   },
-  "generator": "peira"
+  "generator": "peira 0.1.0"
 }

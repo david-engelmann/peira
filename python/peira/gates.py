@@ -374,6 +374,21 @@ def _g9_sketch(trigrams: set[str]) -> set[int]:
     return set(nsmallest(G9_SKETCH_K, it))
 
 
+def _g9_pair_id(case: dict) -> str | None:
+    """The declared minimal-pair id of a case, if any.
+
+    EB-3 counterfactual probes (and EB-2 dialect pairs) are minimal
+    pairs by design: two cases differing only in one demographic
+    attribute or register. They declare the link in the top-level
+    ``fairness.pair_id`` field.
+    """
+    f = case.get("fairness")
+    if not isinstance(f, dict):
+        return None
+    pid = f.get("pair_id")
+    return pid if isinstance(pid, str) and pid else None
+
+
 def gate_near_dedup(valid_cases) -> GateResult:
     """G9: flag near-duplicate cases via trigram-cosine similarity.
 
@@ -381,6 +396,14 @@ def gate_near_dedup(valid_cases) -> GateResult:
     case pair (stdlib only, no embedding model). Pairs at or above
     G9_ERROR_THRESHOLD are errors (near-identical); pairs at or above
     G9_WARN_THRESHOLD are warnings for human review.
+
+    Declared minimal-pair instruments are excluded by design: two
+    cases sharing a non-empty ``fairness.pair_id`` (EB-3
+    counterfactual probes, EB-2 dialect pairs) are *supposed* to be
+    near-identical — that is the measurement. The carve-out is
+    narrow (both cases must declare the same pair id) and documented
+    in dataset/safety-policy/SPEC.md. Everything else is compared
+    exactly as before.
 
     Candidate pairs come from a bottom-k sketch inverted index (see
     G9_SKETCH_K / G9_MIN_OVERLAP), so the exact cosine is computed for
@@ -430,6 +453,11 @@ def gate_near_dedup(valid_cases) -> GateResult:
         else:
             candidates.update(j for j in short if j > i)
         for j in sorted(candidates):
+            # Declared minimal-pair instruments skip the comparison:
+            # near-identity is their design, not an authoring defect.
+            pid_i = _g9_pair_id(items[i][2])
+            if pid_i is not None and pid_i == _g9_pair_id(items[j][2]):
+                continue
             vec_j, norm_j = vecs[j]
             sim = _g9_cosine(vec_i, norm_i, vec_j, norm_j)
             if sim < G9_WARN_THRESHOLD:
