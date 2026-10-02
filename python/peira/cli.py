@@ -960,7 +960,9 @@ def cmd_run(args: argparse.Namespace) -> int:
                 # P-4: seal the trust/transport provenance of the run.
                 config_extra={"adapter_spec": args.adapter,
                               "adapter_trust": adapter_trust,
-                              "adapter_transport": adapter_transport},
+                              "adapter_transport": adapter_transport,
+                              **({"division": args.division}
+                                 if getattr(args, "division", None) else {})},
             )
             if is_conversational:
                 from peira.conversation import run_conversation_suite
@@ -1058,7 +1060,9 @@ def _cmd_run_multiseed(
         call_timeout=args.call_timeout,
         config_extra={"adapter_spec": args.adapter,
                       "adapter_trust": adapter_trust,
-                      "adapter_transport": adapter_transport},
+                      "adapter_transport": adapter_transport,
+                      **({"division": args.division}
+                         if getattr(args, "division", None) else {})},
         rlimit_cpu_seconds=getattr(args, "rlimit_cpu_seconds", None),
         rlimit_as_mb=getattr(args, "rlimit_as_mb", None),
         rlimit_fsize_mb=getattr(args, "rlimit_fsize_mb", None),
@@ -5276,6 +5280,12 @@ def build_parser() -> argparse.ArgumentParser:
                    "in-process with the working directory first on "
                    "sys.path: only load paths you trust. Third-party "
                    "registry ids run isolated in a subprocess by default.")
+    r.add_argument("--division", default=None,
+                   choices=["guardrail", "llm-baseline"],
+                   help="declared leaderboard division for this submission "
+                   "(docs/Admission-Rules.md). Sealed into the run artifact "
+                   "config. The site ingest requires it: a submission "
+                   "without a declared division does not go on the board.")
     r.add_argument("--adapter-no-isolation", action="store_true",
                    help="run a third-party adapter IN-PROCESS instead of "
                    "the subprocess sandbox. The adapter's code is "

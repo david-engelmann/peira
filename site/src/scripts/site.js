@@ -188,9 +188,38 @@
   };
 
   /* ================= leaderboard ================= */
+  // Divisions (docs/Admission-Rules.md): the guardrail division and the
+  // structured-output LLM baseline division. The board shows both side by
+  // side, but the headline ranking never mixes them: every rank is dense
+  // within its own division.
+  const DIVISIONS = [
+    { key: 'guardrail', label: 'Guardrail division' },
+    { key: 'llm-baseline', label: 'LLM baseline division' },
+  ];
+  const divisionLabel = (d) => (DIVISIONS.find((x) => x.key === d) || {}).label || d;
+  const validDivisions = new Set(['both', ...DIVISIONS.map((d) => d.key)]);
+
+  const bindDivisionToggle = (root, state, onChange) => {
+    root.querySelectorAll('[data-division-toggle]').forEach((seg) => {
+      const btns = seg.querySelectorAll('button');
+      const paint = () => btns.forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.division === state.division)));
+      paint();
+      btns.forEach((b) => b.addEventListener('click', () => {
+        if (state.division === b.dataset.division) return;
+        state.division = b.dataset.division;
+        // reset run-scoped selections when the division changes
+        for (const k of ['adapter', 'a', 'b', 'run', 'page']) delete state[k];
+        writeState(state);
+        paint();
+        onChange();
+      }));
+    });
+  };
+
   const leaderboard = () => {
     const root = document.querySelector('[data-page="leaderboard"]');
-    const state = readState({ suite: 'public', sort: 'asr', dir: 'asc', ineligible: 'show' });
+    const state = readState({ suite: 'public', sort: 'asr', dir: 'asc', ineligible: 'show', division: 'both' });
+    if (!validDivisions.has(state.division)) state.division = 'both';
     const tableWrap = root.querySelector('#board-wrap');
     const countEl = root.querySelector('#board-count');
 
@@ -203,12 +232,10 @@
     ];
 
     const render = () => {
-      let runs = runsForSuite(state.suite);
       const eligibleOnly = state.ineligible === 'hide';
-      if (eligibleOnly) runs = runs.filter((r) => r.metrics.ranking_eligible);
       const col = columns.find((c) => c.key === state.sort) || columns[0];
       const asc = state.dir === 'asc';
-      runs = [...runs].sort((a, b) => {
+      const sortRuns = (runs) => [...runs].sort((a, b) => {
         const va = col.get(a), vb = col.get(b);
         const na = va === null || va === undefined, nb = vb === null || vb === undefined;
         if (na && nb) return 0;
@@ -222,35 +249,67 @@
         if (!colorMap.has(r.adapter_name)) colorMap.set(r.adapter_name, PALETTE[i % PALETTE.length]);
       });
 
-      let html = '<table class="board"><thead><tr><th class="no-sort">Rank</th><th class="no-sort">Adapter</th>';
-      for (const c of columns) {
-        const arrow = state.sort === c.key ? '<span class="dir">' + (state.dir === 'asc' ? '▲' : '▼') + '</span>' : '';
-        html += `<th data-sort="${c.key}">${c.label}${arrow}</th>`;
+      const visibleDivisions = state.division === 'both'
+        ? DIVISIONS
+        : DIVISIONS.filter((d) => d.key === state.division);
+
+      // One table per division. Ranks are dense within the division:
+      // the headline ranking never mixes divisions.
+      const boardTable = (divRuns, division) => {
+        let runs = eligibleOnly ? divRuns.filter((r) => r.metrics.ranking_eligible) : divRuns;
+        runs = sortRuns(runs);
+        let html = `<div class="table-scroll"><table class="board" data-division-table="${esc(division)}"><thead><tr><th class="no-sort">Rank</th><th class="no-sort">Adapter</th>`;
+        for (const c of columns) {
+          const arrow = state.sort === c.key ? '<span class="dir">' + (state.dir === 'asc' ? '▲' : '▼') + '</span>' : '';
+          html += `<th data-sort="${c.key}">${c.label}${arrow}</th>`;
+        }
+        html += '<th class="no-sort">Eligibility</th></tr></thead><tbody>';
+        // Rank counts ranking-eligible runs only, in display order, so
+        // ineligible rows shown for transparency never shift eligible ranks.
+        let rank = 0;
+        runs.forEach((r) => {
+          const m = r.metrics;
+          const asrBar = m.asr_conditional === null ? '' : `<span class="bar"><i style="width:${Math.min(100, m.asr_conditional * 100).toFixed(1)}%;background:${colorMap.get(r.adapter_name)}"></i></span>`;
+          const elig = m.ranking_eligible
+            ? '<span class="badge ok">ranking eligible</span>'
+            : '<span class="badge warn" title="' + esc((m.eligibility_notes || []).join(' ')) + '">not eligible</span>';
+          if (m.ranking_eligible) rank += 1;
+          const rankCell = m.ranking_eligible ? `<td class="rank num">${rank}</td>` : '<td class="rank num">–</td>';
+          html += `<tr data-division="${esc(division)}">${rankCell}` +
+            `<td><span class="adapter-name">${esc(shortName(r.adapter_name))}</span><div class="faint mono" style="font-size:11.5px">${esc(r.adapter_version)} · ${esc(r.model_class || '')}</div></td>` +
+            `<td class="num">${asrBar}${pct(m.asr_conditional)}<span class="ci">${ciText(m.asr_ci95)}</span></td>` +
+            `<td class="num">${pct(m.benign_accuracy)}<span class="ci">${ciText(m.benign_accuracy_ci95)}</span></td>` +
+            `<td class="num">${num(m.n_eligible)}</td>` +
+            `<td class="num">${money(m.cost && m.cost.cost_per_1k_decisions)}</td>` +
+            `<td class="num">${ms(m.latency_ms && m.latency_ms.overall && m.latency_ms.overall.p99)}</td>` +
+            `<td>${elig}${MOCK ? ' <span class="badge mock">mock</span>' : ''}</td></tr>`;
+        });
+        html += '</tbody></table></div>';
+        return { html, shown: runs, total: divRuns.length };
+      };
+
+      const suiteRuns = runsForSuite(state.suite);
+      const twoUp = visibleDivisions.length > 1;
+      let html = `<div class="divisions${twoUp ? ' two' : ''}">`;
+      const perDivision = [];
+      for (const d of visibleDivisions) {
+        const divRuns = suiteRuns.filter((r) => r.division === d.key);
+        const t = boardTable(divRuns, d.key);
+        perDivision.push({ division: d.key, ...t });
+        html += `<section class="division" data-division-section="${esc(d.key)}">` +
+          `<h3>${esc(d.label)}</h3>` +
+          `<p class="count division-count">${t.shown.length} of ${t.total} runs in view</p>` +
+          t.html + '</section>';
       }
-      html += '<th class="no-sort">Eligibility</th></tr></thead><tbody>';
-      // Rank counts ranking-eligible runs only, in display order, so
-      // ineligible rows shown for transparency never shift eligible ranks.
-      let rank = 0;
-      runs.forEach((r) => {
-        const m = r.metrics;
-        const asrBar = m.asr_conditional === null ? '' : `<span class="bar"><i style="width:${Math.min(100, m.asr_conditional * 100).toFixed(1)}%;background:${colorMap.get(r.adapter_name)}"></i></span>`;
-        const elig = m.ranking_eligible
-          ? '<span class="badge ok">ranking eligible</span>'
-          : '<span class="badge warn" title="' + esc((m.eligibility_notes || []).join(' ')) + '">not eligible</span>';
-        if (m.ranking_eligible) rank += 1;
-        const rankCell = m.ranking_eligible ? `<td class="rank num">${rank}</td>` : '<td class="rank num">–</td>';
-        html += `<tr>${rankCell}` +
-          `<td><span class="adapter-name">${esc(shortName(r.adapter_name))}</span><div class="faint mono" style="font-size:11.5px">${esc(r.adapter_version)} · ${esc(r.model_class || '')}</div></td>` +
-          `<td class="num">${asrBar}${pct(m.asr_conditional)}<span class="ci">${ciText(m.asr_ci95)}</span></td>` +
-          `<td class="num">${pct(m.benign_accuracy)}<span class="ci">${ciText(m.benign_accuracy_ci95)}</span></td>` +
-          `<td class="num">${num(m.n_eligible)}</td>` +
-          `<td class="num">${money(m.cost && m.cost.cost_per_1k_decisions)}</td>` +
-          `<td class="num">${ms(m.latency_ms && m.latency_ms.overall && m.latency_ms.overall.p99)}</td>` +
-          `<td>${elig}${MOCK ? ' <span class="badge mock">mock</span>' : ''}</td></tr>`;
-      });
-      html += '</tbody></table>';
+      html += '</div>';
       tableWrap.innerHTML = html;
-      countEl.textContent = runs.length + ' of ' + runsForSuite(state.suite).length + ' runs in view';
+      const totalShown = perDivision.reduce((n, p) => n + p.shown.length, 0);
+      const totalRuns = perDivision.reduce((n, p) => n + p.total, 0);
+      countEl.textContent = totalShown + ' of ' + totalRuns + ' runs in view across ' +
+        perDivision.length + (perDivision.length === 1 ? ' division' : ' divisions');
+
+      // One delegated sort handler for every division table: sorting is
+      // shared view state, but each table sorts its own division only.
       tableWrap.querySelectorAll('th[data-sort]').forEach((th) => th.addEventListener('click', () => {
         const k = th.dataset.sort;
         if (state.sort === k) state.dir = state.dir === 'asc' ? 'desc' : 'asc';
@@ -259,30 +318,35 @@
       }));
 
       root.__csvRows = () => {
-        const rows = [['adapter', 'adapter_version', 'model_class', 'suite', 'ranking_eligible',
+        const header = ['division', 'adapter', 'adapter_version', 'model_class', 'suite', 'ranking_eligible',
           'asr_conditional', 'asr_ci95_lo', 'asr_ci95_hi', 'benign_accuracy', 'benign_accuracy_ci95_lo',
-          'benign_accuracy_ci95_hi', 'n_eligible', 'n_cases', 'cost_per_1k_usd', 'p99_latency_ms', mockNote() ? 'mock_note' : ''].filter(Boolean)];
-        for (const r of runs) {
-          const m = r.metrics;
-          rows.push([r.adapter_name, r.adapter_version, r.model_class, r.suite, m.ranking_eligible,
-            m.asr_conditional, m.asr_ci95 && m.asr_ci95[0], m.asr_ci95 && m.asr_ci95[1],
-            m.benign_accuracy, m.benign_accuracy_ci95 && m.benign_accuracy_ci95[0], m.benign_accuracy_ci95 && m.benign_accuracy_ci95[1],
-            m.n_eligible, m.n_cases,
-            m.cost && m.cost.cost_per_1k_decisions,
-            m.latency_ms && m.latency_ms.overall && m.latency_ms.overall.p99,
-            mockNote()].filter((v, i) => i < rows[0].length));
+          'benign_accuracy_ci95_hi', 'n_eligible', 'n_cases', 'cost_per_1k_usd', 'p99_latency_ms',
+          mockNote() ? 'mock_note' : ''].filter(Boolean);
+        const rows = [header];
+        for (const p of perDivision) {
+          for (const r of p.shown) {
+            const m = r.metrics;
+            rows.push([p.division, r.adapter_name, r.adapter_version, r.model_class, r.suite, m.ranking_eligible,
+              m.asr_conditional, m.asr_ci95 && m.asr_ci95[0], m.asr_ci95 && m.asr_ci95[1],
+              m.benign_accuracy, m.benign_accuracy_ci95 && m.benign_accuracy_ci95[0], m.benign_accuracy_ci95 && m.benign_accuracy_ci95[1],
+              m.n_eligible, m.n_cases,
+              m.cost && m.cost.cost_per_1k_decisions,
+              m.latency_ms && m.latency_ms.overall && m.latency_ms.overall.p99,
+              mockNote()].filter((v, i) => i < header.length));
+          }
         }
         return rows;
       };
     };
 
     bindSuiteToggle(root, state, render);
+    bindDivisionToggle(root, state, render);
     root.querySelector('#ineligible-filter').addEventListener('change', (e) => {
       state.ineligible = e.target.checked ? 'hide' : 'show';
       writeState(state); render();
     });
     root.querySelector('#ineligible-filter').checked = state.ineligible === 'hide';
-    bindExport(root, () => null, () => 'peira-leaderboard-' + state.suite);
+    bindExport(root, () => null, () => 'peira-leaderboard-' + state.suite + '-' + state.division);
     copyLink(root);
     render();
   };

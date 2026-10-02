@@ -69,11 +69,15 @@ ABSTAIN_FAMILIES = {"abstain_forcing"}
 SEVERITIES = ["critical", "high", "medium"]
 SEVERITY_W = [0.25, 0.35, 0.40]
 
-# Mock adapter profiles: name, version, model class, target flip rate.
+# Mock adapter profiles: name, version, model class, declared division,
+# target flip rate. The division is the submitter's declaration per
+# docs/Admission-Rules.md, sealed into the artifact config exactly like a
+# real submission's --division flag. mock-hybrid is a hybrid guardrail
+# plus LLM judge and declares the guardrail division.
 ADAPTERS = [
-    ("mock-guardrail", "mock-1", "guardrail", 0.12),
-    ("mock-llm-judge", "mock-1", "llm-baseline", 0.34),
-    ("mock-hybrid", "mock-1", "hybrid", 0.52),
+    ("mock-guardrail", "mock-1", "guardrail", "guardrail", 0.12),
+    ("mock-llm-judge", "mock-1", "llm-baseline", "llm-baseline", 0.34),
+    ("mock-hybrid", "mock-1", "hybrid", "guardrail", 0.52),
 ]
 
 # ---------------------------------------------------------------------------
@@ -403,7 +407,8 @@ def gen_case(
 
 def gen_artifact(
     rng: random.Random, name: str, version: str, model_class: str,
-    asr: float, suite: str, n_cases: int, seed: int, defect: float = 0.06,
+    division: str, asr: float, suite: str, n_cases: int, seed: int,
+    defect: float = 0.06,
 ) -> RunArtifact:
     results = [
         gen_case(
@@ -436,6 +441,10 @@ def gen_artifact(
             "mock": True,
             "mock_profile_asr": asr,
             "generator": "site/scripts/gen_mock.py",
+            # Declared leaderboard division, sealed and lock-covered like
+            # every other config entry. Real submissions declare theirs
+            # with `peira run --division` (docs/Admission-Rules.md).
+            "division": division,
             # v3 extension block (sealed: config is lock-covered). See the
             # block comment above build_v3_block for the placement rationale.
             "v3": build_v3_block(rng, results, metrics, suite, seed,
@@ -464,7 +473,7 @@ def main() -> None:
     out.mkdir(parents=True, exist_ok=True)
     rng = random.Random(args.seed)
     n = 0
-    for name, version, model_class, asr in ADAPTERS:
+    for name, version, model_class, division, asr in ADAPTERS:
         # Public runs are sized to clear the ranking-eligibility gate
         # (>=200 eligible, >=20 per family) so the leaderboard demo has
         # ranked rows; holdout runs stay small and ineligible, which is
@@ -474,8 +483,8 @@ def main() -> None:
             ("holdout", 100, 22, 0.06),
         ):
             artifact = gen_artifact(
-                rng, name, version, model_class, asr, suite, n_cases,
-                args.seed * 100 + sseed, defect,
+                rng, name, version, model_class, division, asr, suite,
+                n_cases, args.seed * 100 + sseed, defect,
             )
             assert artifact.verify(), "mock artifact failed its own lock"
             path = out / f"{name}.{suite}.json"

@@ -1,6 +1,5 @@
 OG social image for the peira leaderboard page.
-A dark card titled peira leaderboard with a horizontal bar chart of conditional attack success rate for the top adapters. Lower is better.
+A dark card titled peira leaderboard with a horizontal bar chart of conditional attack success rate for the top adapters in the guardrail division. Lower is better.
 Data status is MOCK DATA, not real results.
 1. mock-guardrail at 12.8% with 95 percent CI 10.1% to 16.0% and n equals 486 eligible cases.
-2. mock-llm-judge at 31.1% with 95 percent CI 27.1% to 35.3% and n equals 486 eligible cases.
-3. mock-hybrid at 49.6% with 95 percent CI 45.2% to 54.0% and n equals 494 eligible cases.
+2. mock-hybrid at 51.8% with 95 percent CI 47.4% to 56.2% and n equals 492 eligible cases.
