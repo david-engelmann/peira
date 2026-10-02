@@ -566,13 +566,25 @@ namespace and the measurement identity. One adapter instance is one
 pinned model id, always. App-identification headers (`HTTP-Referer`,
 `X-Title`) follow OpenRouter's documented convention.
 
-The honest caveats match the other new baselines. The adapter is built
-from OpenRouter's published docs, not the live API. Whether a given
-model honors the translated schema, `seed`, and `logprobs` is a
-per-model property of the upstream provider and is unverified here.
-Verify a new model id against the live API before any measured run.
-Mismatches surface as terminal provider errors or failed schema
-validation, not silent mismeasurement.
+The adapter is built from OpenRouter's published docs. The translated
+schema path was live-verified for the default model below. Schema
+support for other model ids remains unverified, and the live test did
+not verify `seed` or `logprobs`, which stay unverified per-model
+behaviors. Verify a new model id against the live API before any
+measured run. Mismatches surface as terminal provider errors or failed
+schema validation, not silent mismeasurement.
+
+Live-verified 2026-10-01 for the default model `google/gemini-3.8-flash`.
+Forty calls (a 20-case trial slice spanning `score_anchoring` and
+`negation_games`, benign and attacked arms) against
+`POST https://openrouter.ai/api/v1/chat/completions` returned 38
+schema-valid decisions with zero 401/403/400 responses. The
+strict `json_schema` response shape was honored on the translated path,
+and the adapter's app-identification headers (`HTTP-Referer`,
+`X-Title`) were sent. The two failures were attacked-arm cases where
+the model emitted no JSON object even after the repair retry, and no
+provider-side content-filter refusal was observed. Other model ids
+through the gateway remain unverified until smoke-tested.
 
 ## TypeSafe Jev
 

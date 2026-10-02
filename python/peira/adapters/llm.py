@@ -1573,7 +1573,10 @@ class OpenRouterAdapter(OpenAIAdapter):
     OpenRouter's documented convention; they carry the project domain
     and name, never the key.
 
-    Not exercised against the live API yet.
+    Live-verified 2026-10-01 for the default ``google/gemini-3.8-flash``.
+    Forty smoke calls (20-case trial slice, both arms) returned 38
+    schema-valid decisions with zero 401/403/400. Other model ids remain
+    unverified until smoke-tested.
     """
 
     name = "openrouter-structured"
