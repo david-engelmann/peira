@@ -1,0 +1,49 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630" role="img" aria-label="peira attack families OG image, mock data">
+  <rect width="1200" height="630" fill="#0f1a14"/>
+  <rect x="24" y="24" width="1152" height="582" rx="12" fill="#16241c"/>
+  <rect x="0" y="0" width="1200" height="46" fill="#e8b34b"/>
+<text x="600.0" y="31" text-anchor="middle" font-family="DejaVu Sans, Verdana, sans-serif" font-size="22" font-weight="bold" fill="#3a2b00">MOCK DATA, NOT REAL RESULTS</text>
+  <text x="64" y="112" font-family="DejaVu Sans, Verdana, sans-serif" font-size="44" font-weight="bold" fill="#eef4ee">peira attack families</text>
+  <text x="64" y="148" font-family="DejaVu Sans, Verdana, sans-serif" font-size="22" fill="#a8bcb0">max conditional attack success rate per family · lower is better · dataset 1.1.1</text>
+  <text x="1136" y="112" text-anchor="end" font-family="DejaVu Sans, Verdana, sans-serif" font-size="20" fill="#a8bcb0">top 8 families</text>
+  <text x="1136" y="140" text-anchor="end" font-family="DejaVu Sans, Verdana, sans-serif" font-size="15" fill="#a8bcb0">Guardrail division</text>
+  <text x="1136" y="168" text-anchor="end" font-family="DejaVu Sans, Verdana, sans-serif" font-size="15" fill="#a8bcb0">whiskers show 95 percent confidence intervals</text>
+    <line x1="360.0" y1="202" x2="360.0" y2="578" stroke="#2a3b31" stroke-width="1"/><text x="360.0" y="194" text-anchor="middle" font-family="DejaVu Sans, Verdana, sans-serif" font-size="14" fill="#a8bcb0">0.0%</text>
+    <line x1="545.0" y1="202" x2="545.0" y2="578" stroke="#2a3b31" stroke-width="1"/><text x="545.0" y="194" text-anchor="middle" font-family="DejaVu Sans, Verdana, sans-serif" font-size="14" fill="#a8bcb0">25.0%</text>
+    <line x1="730.0" y1="202" x2="730.0" y2="578" stroke="#2a3b31" stroke-width="1"/><text x="730.0" y="194" text-anchor="middle" font-family="DejaVu Sans, Verdana, sans-serif" font-size="14" fill="#a8bcb0">50.0%</text>
+    <line x1="915.0" y1="202" x2="915.0" y2="578" stroke="#2a3b31" stroke-width="1"/><text x="915.0" y="194" text-anchor="middle" font-family="DejaVu Sans, Verdana, sans-serif" font-size="14" fill="#a8bcb0">75.0%</text>
+    <line x1="1100.0" y1="202" x2="1100.0" y2="578" stroke="#2a3b31" stroke-width="1"/><text x="1100.0" y="194" text-anchor="middle" font-family="DejaVu Sans, Verdana, sans-serif" font-size="14" fill="#a8bcb0">100.0%</text>
+    <text x="344" y="238.0" text-anchor="end" font-family="DejaVu Sans, Verdana, sans-serif" font-size="20" fill="#eef4ee">contradiction injection</text>
+    <rect x="360" y="224.0" width="605.5" height="18" rx="4" fill="#7fd79a"/>
+    <line x1="815.0" y1="233.0" x2="1045.9" y2="233.0" stroke="#eef4ee" stroke-width="3"/><line x1="815.0" y1="223.0" x2="815.0" y2="243.0" stroke="#eef4ee" stroke-width="3"/><line x1="1045.9" y1="223.0" x2="1045.9" y2="243.0" stroke="#eef4ee" stroke-width="3"/>
+    <text x="1059.9" y="240.0" font-family="DejaVu Sans, Verdana, sans-serif" font-size="20" font-weight="bold" fill="#eef4ee">81.8%</text>
+    <text x="344" y="284.0" text-anchor="end" font-family="DejaVu Sans, Verdana, sans-serif" font-size="20" fill="#eef4ee">precedent stacking</text>
+    <rect x="360" y="270.0" width="555.0" height="18" rx="4" fill="#7fd79a"/>
+    <line x1="767.7" y1="279.0" x2="1011.2" y2="279.0" stroke="#eef4ee" stroke-width="3"/><line x1="767.7" y1="269.0" x2="767.7" y2="289.0" stroke="#eef4ee" stroke-width="3"/><line x1="1011.2" y1="269.0" x2="1011.2" y2="289.0" stroke="#eef4ee" stroke-width="3"/>
+    <text x="1025.2" y="286.0" font-family="DejaVu Sans, Verdana, sans-serif" font-size="20" font-weight="bold" fill="#eef4ee">75.0%</text>
+    <text x="344" y="330.0" text-anchor="end" font-family="DejaVu Sans, Verdana, sans-serif" font-size="20" fill="#eef4ee">verbosity inflation</text>
+    <rect x="360" y="316.0" width="524.1" height="18" rx="4" fill="#7fd79a"/>
+    <line x1="736.1" y1="325.0" x2="989.7" y2="325.0" stroke="#eef4ee" stroke-width="3"/><line x1="736.1" y1="315.0" x2="736.1" y2="335.0" stroke="#eef4ee" stroke-width="3"/><line x1="989.7" y1="315.0" x2="989.7" y2="335.0" stroke="#eef4ee" stroke-width="3"/>
+    <text x="1003.7" y="332.0" font-family="DejaVu Sans, Verdana, sans-serif" font-size="20" font-weight="bold" fill="#eef4ee">70.8%</text>
+    <text x="344" y="376.0" text-anchor="end" font-family="DejaVu Sans, Verdana, sans-serif" font-size="20" fill="#eef4ee">negation games</text>
+    <rect x="360" y="362.0" width="462.5" height="18" rx="4" fill="#7fd79a"/>
+    <line x1="676.1" y1="371.0" x2="943.4" y2="371.0" stroke="#eef4ee" stroke-width="3"/><line x1="676.1" y1="361.0" x2="676.1" y2="381.0" stroke="#eef4ee" stroke-width="3"/><line x1="943.4" y1="361.0" x2="943.4" y2="381.0" stroke="#eef4ee" stroke-width="3"/>
+    <text x="957.4" y="378.0" font-family="DejaVu Sans, Verdana, sans-serif" font-size="20" font-weight="bold" fill="#eef4ee">62.5%</text>
+    <text x="344" y="422.0" text-anchor="end" font-family="DejaVu Sans, Verdana, sans-serif" font-size="20" fill="#eef4ee">option order</text>
+    <rect x="360" y="408.0" width="431.6" height="18" rx="4" fill="#7fd79a"/>
+    <line x1="647.3" y1="417.0" x2="918.9" y2="417.0" stroke="#eef4ee" stroke-width="3"/><line x1="647.3" y1="407.0" x2="647.3" y2="427.0" stroke="#eef4ee" stroke-width="3"/><line x1="918.9" y1="407.0" x2="918.9" y2="427.0" stroke="#eef4ee" stroke-width="3"/>
+    <text x="932.9" y="424.0" font-family="DejaVu Sans, Verdana, sans-serif" font-size="20" font-weight="bold" fill="#eef4ee">58.3%</text>
+    <text x="344" y="468.0" text-anchor="end" font-family="DejaVu Sans, Verdana, sans-serif" font-size="20" fill="#eef4ee">policy paraphrase</text>
+    <rect x="360" y="454.0" width="431.6" height="18" rx="4" fill="#7fd79a"/>
+    <line x1="647.3" y1="463.0" x2="918.9" y2="463.0" stroke="#eef4ee" stroke-width="3"/><line x1="647.3" y1="453.0" x2="647.3" y2="473.0" stroke="#eef4ee" stroke-width="3"/><line x1="918.9" y1="453.0" x2="918.9" y2="473.0" stroke="#eef4ee" stroke-width="3"/>
+    <text x="932.9" y="470.0" font-family="DejaVu Sans, Verdana, sans-serif" font-size="20" font-weight="bold" fill="#eef4ee">58.3%</text>
+    <text x="344" y="514.0" text-anchor="end" font-family="DejaVu Sans, Verdana, sans-serif" font-size="20" fill="#eef4ee">confidence spoofing</text>
+    <rect x="360" y="500.0" width="418.2" height="18" rx="4" fill="#7fd79a"/>
+    <line x1="632.4" y1="509.0" x2="910.3" y2="509.0" stroke="#eef4ee" stroke-width="3"/><line x1="632.4" y1="499.0" x2="632.4" y2="519.0" stroke="#eef4ee" stroke-width="3"/><line x1="910.3" y1="499.0" x2="910.3" y2="519.0" stroke="#eef4ee" stroke-width="3"/>
+    <text x="924.3" y="516.0" font-family="DejaVu Sans, Verdana, sans-serif" font-size="20" font-weight="bold" fill="#eef4ee">56.5%</text>
+    <text x="344" y="560.0" text-anchor="end" font-family="DejaVu Sans, Verdana, sans-serif" font-size="20" fill="#eef4ee">encoding evasion</text>
+    <rect x="360" y="546.0" width="418.2" height="18" rx="4" fill="#7fd79a"/>
+    <line x1="632.4" y1="555.0" x2="910.3" y2="555.0" stroke="#eef4ee" stroke-width="3"/><line x1="632.4" y1="545.0" x2="632.4" y2="565.0" stroke="#eef4ee" stroke-width="3"/><line x1="910.3" y1="545.0" x2="910.3" y2="565.0" stroke="#eef4ee" stroke-width="3"/>
+    <text x="924.3" y="562.0" font-family="DejaVu Sans, Verdana, sans-serif" font-size="20" font-weight="bold" fill="#eef4ee">56.5%</text>  <text x="64" y="586" font-family="DejaVu Sans, Verdana, sans-serif" font-size="15" fill="#a8bcb0">peiratrial.dev</text>
+  <text x="1136" y="586" text-anchor="end" font-family="DejaVu Sans, Verdana, sans-serif" font-size="15" fill="#a8bcb0">peira 0.1.0 · generated from sealed run artifacts</text>
+</svg>

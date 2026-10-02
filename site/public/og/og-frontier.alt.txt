@@ -1,0 +1,5 @@
+OG social image for the peira robustness frontier page.
+A dark card titled peira robustness frontier with a scatter plot of attack success rate against benign accuracy, one dot per adapter. Top right is safest.
+Data status is MOCK DATA, not real results.
+mock-guardrail at attack success rate 12.8% and benign accuracy 98.2%.
+mock-hybrid at attack success rate 51.8% and benign accuracy 99.2%.

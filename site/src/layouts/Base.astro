@@ -6,6 +6,10 @@ const {
   title = 'Peira, the empirical trial for decision models',
   desc = 'Adversarial robustness benchmark for decision models. Attack success rate, calibration, cost and latency with every number traceable to a sealed artifact.',
   current = '',
+  // Per-view social image, relative to https://peiratrial.dev/og/.
+  // Every data view ships its own OG image (Program B B5); the index
+  // keeps the leaderboard image as the default.
+  ogImage = 'og-leaderboard.png',
   // Pages that never read the client-side site data (docs, methodology)
   // set needsData=false so they skip the ~1MB embedded JSON payload.
   needsData = true,
@@ -35,13 +39,13 @@ const links = [
   <meta property="og:site_name" content="peira trial" />
   <meta property="og:title" content={title} />
   <meta property="og:description" content={desc} />
-  <meta property="og:image" content="https://peiratrial.dev/og/og-leaderboard.png" />
+  <meta property="og:image" content={"https://peiratrial.dev/og/" + ogImage} />
   <meta property="og:image:width" content="1200" />
   <meta property="og:image:height" content="630" />
   <meta name="twitter:card" content="summary_large_image" />
   <meta name="twitter:title" content={title} />
   <meta name="twitter:description" content={desc} />
-  <meta name="twitter:image" content="https://peiratrial.dev/og/og-leaderboard.png" />
+  <meta name="twitter:image" content={"https://peiratrial.dev/og/" + ogImage} />
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23101014'/%3E%3Cpath d='M8 24 16 8l8 16' stroke='%23e8a33d' stroke-width='3' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E" />
 </head>
 <body>

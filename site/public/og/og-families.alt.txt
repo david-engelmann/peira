@@ -1,0 +1,11 @@
+OG social image for the peira attack families page.
+A dark card titled peira attack families with a horizontal bar chart of the highest conditional attack success rate per family in the Guardrail division. Lower is better.
+Data status is MOCK DATA, not real results.
+1. contradiction_injection at 81.8%.
+2. precedent_stacking at 75.0%.
+3. verbosity_inflation at 70.8%.
+4. negation_games at 62.5%.
+5. option_order at 58.3%.
+6. policy_paraphrase at 58.3%.
+7. confidence_spoofing at 56.5%.
+8. encoding_evasion at 56.5%.

@@ -1,0 +1,3 @@
+OG social image for the peira cases page.
+A dark card titled peira case corpus with headline corpus statistics: 2 sealed runs charted and 21 attack families. Every number comes from sealed run artifacts.
+Data status is MOCK DATA, not real results.
