@@ -120,8 +120,9 @@ same preflight; nothing here conflicts with it.
 
 ## What this lane deliberately does not do
 
-- It does not change the build backend. The maturin migration owns
-  `build-system` and the hand-rolled extension builder.
+- It does not change the build backend. The release builds with whatever
+  PEP 517 backend the repo uses (maturin since D-43); `python -m build`
+  handles the backend, the release scripts handle the version.
 - It does not change dependency resolution. The `uv.lock` mechanics from
   the D-40 migration are untouched; this lane only re-resolved the lockfile
   for the `0.0.0` version marker.
