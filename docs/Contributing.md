@@ -43,11 +43,13 @@ is still present and behaving. Once the project has downstream users or
 contributors, the bar tightens and CI must be green on the final head
 before merge. The required checks are check_runner, coderabbit-config, public-surface,
 docs, dco, dataset-version, lint-rust, test-python, test-hf-tokenizers,
-test-rust, test-python-rust, quickstart, readme-table, and
+test-rust, test-python-rust, test-integration, quickstart, readme-table, and
 dataset-checks. The maintainer reviews for correctness against
 `docs/Methodology.md`. Adapter PRs go through the same flow. The maintainer
 additionally reviews the adapter for an honest `supported_primitives`
-declaration.
+declaration. The `test-integration` job runs `tests/integration`
+(the end-to-end pipeline suite: dataset -> runner -> metrics ->
+artifact -> report) in both backends.
 
 ## Rust core
 
