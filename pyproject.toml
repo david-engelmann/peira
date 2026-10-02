@@ -41,7 +41,7 @@ all = ["peira[hf]", "peira[openai]", "peira[anthropic]", "peira[google]"]
 # parallelizes it across workers and pytest-timeout guards against hangs.
 # maturin is the PEP 517 build backend (PyO3 extension); it is also needed
 # directly in the venv for `maturin develop` (fast incremental rebuilds).
-dev = ["pytest>=8", "pytest-xdist>=3", "pytest-timeout>=2", "maturin>=1,<2"]
+dev = ["pytest>=8", "pytest-xdist>=3", "pytest-timeout>=2", "hypothesis>=6.100", "maturin>=1,<2"]
 
 [project.scripts]
 peira = "peira.cli:main"
