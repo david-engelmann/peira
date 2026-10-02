@@ -1,8 +1,8 @@
 {
   "case_schema": "single",
-  "created_utc": "2026-10-01T15:30:00+00:00",
+  "created_utc": "2026-10-02T04:34:13+00:00",
   "dataset": "peira-v1",
-  "dataset_version": "2.4.1",
+  "dataset_version": "2.5.0",
   "files": {
     "crosslingual_shift.jsonl": {
       "kind": "cases",
@@ -40,6 +40,23 @@
       "n_cases": 420,
       "sha256": "1fd7a5e3862a1e0eefca427399fa750a3a16413430d2237ab26d4de60b17a3f2"
     },
+    "dos_resource_exhaustion.jsonl": {
+      "kind": "cases",
+      "n_by_family": {
+        "dos_resource_exhaustion": 420
+      },
+      "n_by_primitive": {
+        "choice": 372,
+        "score": 48
+      },
+      "n_by_severity": {
+        "critical": 60,
+        "high": 180,
+        "medium": 180
+      },
+      "n_cases": 420,
+      "sha256": "9ef39e17a3ed70a69084c09f56efb5e5b088bdfb0bffa5a220c1394a81595555"
+    },
     "evidence_positioning.jsonl": {
       "kind": "cases",
       "n_by_family": {
@@ -74,6 +91,22 @@
       },
       "n_cases": 421,
       "sha256": "55b48fc18e3549ebe73009c02cfd0d00d6db26b5a7f98af960f80dbbe1b191e1"
+    },
+    "poisoned_few_shot.jsonl": {
+      "kind": "cases",
+      "n_by_family": {
+        "poisoned_few_shot": 420
+      },
+      "n_by_primitive": {
+        "choice": 420
+      },
+      "n_by_severity": {
+        "critical": 49,
+        "high": 210,
+        "medium": 161
+      },
+      "n_cases": 420,
+      "sha256": "80549521f585babf518cf27adbd0e5577b9d1c7ee19026f2fe035adbb25f5058"
     },
     "retrieval_poisoning.jsonl": {
       "kind": "cases",
@@ -129,7 +162,7 @@
       "sha256": "daf2e0963ffbb66272899d48afdaeb817131e53d6311cbd4a58c1a37f49e22ba"
     }
   },
-  "generator": "peira 0.1.0",
+  "generator": "peira",
   "mdes": {
     "crosslingual_shift": {
       "n": 400,
@@ -140,6 +173,15 @@
       "pd_40": 8.9,
       "unit": "percentage_points"
     },
+    "dos_resource_exhaustion": {
+      "n": 420,
+      "note": "Design minimum detectable effects at n=420 per discordance rate pd.",
+      "pd_10": 4.3,
+      "pd_20": 6.1,
+      "pd_30": 7.5,
+      "pd_40": 8.6,
+      "unit": "percentage_points"
+    },
     "evidence_positioning": {
       "n": 400,
       "note": "Design minimum detectable effects at n=400 per discordance rate pd.",
@@ -147,6 +189,15 @@
       "pd_20": 6.3,
       "pd_30": 7.7,
       "pd_40": 8.9,
+      "unit": "percentage_points"
+    },
+    "poisoned_few_shot": {
+      "n": 420,
+      "note": "Design minimum detectable effects at n=420 per discordance rate pd.",
+      "pd_10": 4.3,
+      "pd_20": 6.1,
+      "pd_30": 7.5,
+      "pd_40": 8.6,
       "unit": "percentage_points"
     },
     "retrieval_poisoning": {

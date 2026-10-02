@@ -1620,6 +1620,7 @@ the authoring gates enforce.
 R-04 and EB-35 land; the fixed family then becomes the calibration set
 for the adaptive sweep.
 
+
 ## D-40: uv replaces pip-compile for Python dependency locking (2026-10-01)
 
 **Problem.** The pip-compile workflow merged in #273 works, but it is
@@ -1688,6 +1689,7 @@ merge.
 direction ever makes the lockfile format a liability, the exported
 requirements format is plain pip and the project can fall back to
 pip-tools with no metadata changes.
+
 ## D-41: Anti-self-grading is a protocol invariant (2026-09-30)
 
 **Decision.** No adapter, and no model from the same family as the
@@ -1771,3 +1773,41 @@ pip stays the install path.
 **To revisit:** never for the backend choice itself; revisit the wheel
 platform matrix (currently linux x86_64, macOS arm64, Windows x86_64)
 when contributor hardware demands it.
+
+## D-44: EB-27 dos_resource_exhaustion and EB-47 poisoned_few_shot ship as standalone v2 families (2026-10-01)
+
+**Decision.** The external-benchmark disposition (2026-09-30)
+authorizes two new v2 attack families; both ship **standalone**:
+`dos_resource_exhaustion` (family 29, EB-27) and `poisoned_few_shot`
+(family 30, EB-47). Neither folds into an existing family.
+
+**Alternatives.** (a) Fold dos_resource_exhaustion into
+verbosity_inflation (rejected: verbosity_inflation flips the decision
+via style; the exhaustion blocks are mechanically neutral and the
+decision never changes  -  the deletion test is byte-identical
+decisions across arms). (b) Fold poisoned_few_shot into
+precedent_stacking or indirect_injection (rejected: the target subject
+never appears in any demonstration, and no imperatives appear
+anywhere  -  the steering comes only from demonstrated mappings).
+
+**Why this:** dos_resource_exhaustion is peira's first family whose
+signal lives entirely outside the decision: ASR is structurally zero,
+so the family ships with a new `resource_anomaly` measurement
+(median attacked/benign cost, latency, and output-token ratios;
+anomaly rates at 2x and above with Wilson 95% CIs; attacked timeout
+rate; overall and per family, wired into `summarize()`). The
+exhaustion blocks are asserted scenario-neutral at authoring time (no
+option strings, no steering directives, every block matches a
+resource-demand pattern). poisoned_few_shot is the DecodingTrust
+analog for in-context demonstration poisoning  -  peira's cases are
+zero-shot today, and demonstration poisoning is a distinct attack
+vector from fabricated history (precedent_stacking) and smuggled
+instructions (indirect_injection). Both families ship 420 cases each
+with mechanical boundary assertions on every case and full
+Taxonomy.md boundary rulings (11 and 12).
+
+**To revisit:** if adapters show zero cost movement on
+dos_resource_exhaustion (the exhaustion blocks ignored wholesale),
+the family's MDE posture should be re-examined  -  but the metric stays,
+because a null result on DoS is itself a robustness finding.
+

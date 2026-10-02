@@ -46,6 +46,8 @@ EXPECTED_POST_V2 = (
     "judge_sycophancy",
     "threshold_edge_hunting",
     "cryptographic_payload",
+    "dos_resource_exhaustion",
+    "poisoned_few_shot",
 )
 
 
