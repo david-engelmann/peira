@@ -44,9 +44,12 @@ from peira._rust import _impl as _rust
 
 # Short codes for families used in combo pairs. The full family id is
 # recoverable via COMBO_PAIRS below; codes keep case ids readable.
+# The family tuples are stored alphabetically: the lookup in
+# _combo_pair_id_py sorts its inputs before comparing, so an unsorted
+# entry would never resolve.
 COMBO_PAIRS: dict[str, tuple[str, str]] = {
     "combo-dfl-ind": ("distractor_flooding", "indirection"),
-    "combo-san-csp": ("score_anchoring", "confidence_spoofing"),
+    "combo-san-csp": ("confidence_spoofing", "score_anchoring"),
 }
 
 COMBO_SUITE_ID = "combo"
