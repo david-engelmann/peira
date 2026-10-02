@@ -44,6 +44,8 @@ run a suite through an adapter
 | `--death-log` |  | - | path for the governor's SIGTERM/SIGINT 'last words' JSON record (opt-in; recommended for long unattended runs so an unexplained death leaves evidence) |
 | `--budget-usd` |  | - | hard spend cap in USD: the runner projects spent + running-mean-case-cost x 1.5 before each new case dispatch and stops dispatching when the projection exceeds the cap; in-flight cases drain and the artifact seals with termination=budget (analyzable, never rankable) (default: no cap) |
 | `--max-tokens-per-call` |  | - | per-call output-token cap. A call whose reported tokens_out exceeds the cap is marked malformed and excluded from scoring, and the transcript flags token_limit_exceeded for the call (default no cap) |
+| `--budget-grid` |  | - | EB-35 attack-strength sweep. Comma-separated strictly increasing positive ints (e.g. 1,2,4,8,16). Each case's attacked arm runs max(grid) queries and the artifact records budget-to-first-flip per case plus ASR-vs-budget curves with Wilson CIs per family. Single-shot suites only and --seeds 1 only. |
+| `--strength-dimension` |  | `'attacker_queries'` | EB-35 strength dimension to budget over. Default is attacker_queries. See `peira sweep-dimensions` for the registry. |
 | `--cache-dir` |  | - | opt-in response cache directory for deterministic adapters (temperature 0 + fixed seed); off by default and never on the measurement path unless given |
 | `--transcript` |  | - | write a JSONL transcript of every request/response to this path (for audit and `peira replay`) |
 
@@ -113,6 +115,19 @@ k-seed stability analysis (pass^k, variance decomposition) over existing run art
 |---|---|---|---|
 | `RUNS` | yes | - | two or more run artifacts from the same adapter/suite (different seeds) |
 | `--out` |  | - | write a sealed stability artifact JSON to this path |
+
+## peira sweep-report
+
+render EB-35 attack-strength sweep curves from a sweep run artifact
+
+| Flag | Required | Default | Help |
+|---|---|---|---|
+| `ARTIFACT` | yes | - | sweep run artifact JSON (from `peira run --budget-grid ...`) |
+| `--format` |  | `'text'` | text renders per-family ASR-vs-budget tables. json emits the sealed sweep summary. Default is text. (choices: `text`, `json`) |
+
+## peira sweep-dimensions
+
+list the EB-35 strength-dimension registry and each dimension's implementation status
 
 ## peira drift-watch
 
