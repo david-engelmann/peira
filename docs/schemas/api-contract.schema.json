@@ -1,0 +1,150 @@
+{
+  "$id": "https://peiratrial.dev/schemas/api-contract.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "definitions": {
+    "error_envelope": {
+      "additionalProperties": false,
+      "description": "Every error response uses this envelope. The code is stable and machine-matchable; the message is human prose and may change.",
+      "properties": {
+        "code": {
+          "enum": [
+            "run_not_found",
+            "run_incomplete",
+            "invalid_token",
+            "expired_token",
+            "rate_limited",
+            "dataset_not_found",
+            "family_not_found",
+            "adapter_not_found",
+            "bad_request",
+            "internal",
+            "unauthorized",
+            "forbidden"
+          ],
+          "type": "string"
+        },
+        "detail": {
+          "type": "string"
+        },
+        "error": {
+          "type": "string"
+        },
+        "retry_after_seconds": {
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "error",
+        "code"
+      ],
+      "type": "object"
+    },
+    "freshness": {
+      "additionalProperties": false,
+      "description": "Every data response carries this block. Agents must check status before analysis.",
+      "properties": {
+        "dataset_version": {
+          "type": "string"
+        },
+        "generated_at": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "manifest_sha256": {
+          "type": "string"
+        },
+        "run_id": {
+          "type": "string"
+        },
+        "status": {
+          "description": "Only 'complete' snapshots are reproducible. Anything else is still being written.",
+          "enum": [
+            "complete",
+            "running",
+            "partial",
+            "superseded"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "run_id",
+        "status",
+        "generated_at"
+      ],
+      "type": "object"
+    },
+    "pagination": {
+      "additionalProperties": false,
+      "description": "Cursor pagination. A response with next_token set to null is the last page. Clients must never assume a page is last because it is short.",
+      "properties": {
+        "next_token": {
+          "description": "Opaque cursor for the next page, or null when this is the last page.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "total": {
+          "description": "Total items across all pages at the time of the request.",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "next_token",
+        "total"
+      ],
+      "type": "object"
+    },
+    "authentication": {
+      "description": "Every request authenticates with a read-only API key in the Authorization header. Keys are per-agent and revocable; old keys keep working for seven days after rotation. This definition documents the scheme; it never appears in a response body.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "scheme": {
+          "const": "bearer"
+        },
+        "header": {
+          "const": "Authorization"
+        },
+        "scopes": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "read"
+            ]
+          }
+        },
+        "key_prefix": {
+          "const": "peira_live_"
+        }
+      },
+      "required": [
+        "scheme",
+        "header",
+        "scopes"
+      ]
+    }
+  },
+  "description": "Contract for the peira leaderboard API. DESIGN ONLY. The API does not exist yet; when it ships, every response must validate against this schema. Written before the API so agents can rely on the shape from day one.",
+  "properties": {
+    "data": {
+      "description": "The payload. Shape is defined per endpoint."
+    },
+    "freshness": {
+      "$ref": "#/definitions/freshness"
+    },
+    "pagination": {
+      "$ref": "#/definitions/pagination"
+    }
+  },
+  "required": [
+    "data",
+    "pagination",
+    "freshness"
+  ],
+  "type": "object"
+}
