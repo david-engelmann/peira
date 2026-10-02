@@ -110,10 +110,55 @@ def _ci95(ci: Any) -> str:
     return f"{_val(ci[0])}–{_val(ci[1])}"
 
 
-def _get_adapter(name: str):
+def _get_adapter(name: str, *, no_isolation: bool = False,
+                 env_extra: dict[str, str] | None = None,
+                 rlimit_cpu_seconds: float | None = None,
+                 rlimit_as_mb: float | None = None,
+                 rlimit_fsize_mb: float | None = None,
+                 rlimit_nproc: int | None = None):
+    """Resolve an adapter spec to ``(adapter, trust, transport)``.
+
+    Resolution order: ``mock`` -> dotted path -> registry id.
+
+    - ``mock``: the built-in test double (in-process).
+    - dotted path: imported in-process; trust ``"unverified"``.
+    - first-party registry id: in-process; trust ``"first-party"``.
+    - third-party registry id: a :class:`SubprocessAdapter` (unopened;
+      the runner opens it), trust ``"third-party"``, transport
+      ``"subprocess"`` — unless ``no_isolation`` is set, which loads
+      it in-process instead (the caller prints the warning).
+      Rlimit values are forwarded to the child per design §7.2.
+    """
+    from peira.adapters import discovery  # noqa: PLC0415
+
     if name == "mock":
-        return MockAdapter()
-    return _load_dotted_adapter(name)
+        return MockAdapter(), "first-party", "inprocess"
+    resolved = discovery.resolve_spec(name)
+    if resolved.kind == "dotted":
+        return _load_dotted_adapter(name), "unverified", "inprocess"
+    reg = resolved.registration
+    assert reg is not None  # resolve_spec only returns registry with one
+    if reg.first_party or no_isolation:
+        # P3-2: design §7.1 requires the literal
+        # "no-isolation-opt-out" trust value when the operator
+        # explicitly opts out of isolation for a third-party adapter.
+        trust = (
+            "first-party" if reg.first_party
+            else "no-isolation-opt-out" if no_isolation
+            else "third-party"
+        )
+        return (discovery.load_registered(reg), trust, "inprocess")
+    from peira.adapters.subprocess import (  # noqa: PLC0415
+        SubprocessAdapter,
+    )
+
+    return (SubprocessAdapter(
+                name, env_extra=env_extra,
+                rlimit_cpu_seconds=rlimit_cpu_seconds,
+                rlimit_as_mb=rlimit_as_mb,
+                rlimit_fsize_mb=rlimit_fsize_mb,
+                rlimit_nproc=rlimit_nproc),
+            "third-party", "subprocess")
 
 
 def _unknown_adapter(spec: str) -> ValueError:
@@ -495,11 +540,33 @@ def _resume_sweep_error(
 
 def cmd_run(args: argparse.Namespace) -> int:
     root = _repo_root()
+    env_extra: dict[str, str] = {}
+    for item in getattr(args, "adapter_env", None) or []:
+        if "=" not in item:
+            print(f"error: --adapter-env needs KEY=VALUE, got {item!r}",
+                  file=sys.stderr)
+            return EXIT_USER_ERROR
+        key, value = item.split("=", 1)
+        env_extra[key] = value
+    no_isolation = bool(getattr(args, "adapter_no_isolation", False))
     try:
-        adapter = _get_adapter(args.adapter)
+        adapter, adapter_trust, adapter_transport = _get_adapter(
+            args.adapter, no_isolation=no_isolation, env_extra=env_extra,
+            rlimit_cpu_seconds=getattr(args, "rlimit_cpu_seconds", None),
+            rlimit_as_mb=getattr(args, "rlimit_as_mb", None),
+            rlimit_fsize_mb=getattr(args, "rlimit_fsize_mb", None),
+            rlimit_nproc=getattr(args, "rlimit_nproc", None))
     except ValueError as e:
         print(f"error: {e}", file=sys.stderr)
         return EXIT_USER_ERROR
+    if no_isolation and adapter_trust == "third-party":
+        # F10: explicit warning; the flag is an operator decision,
+        # never something an adapter's README should instruct.
+        print(f"warning: --adapter-no-isolation: third-party adapter "
+              f"{args.adapter!r} will be imported and executed "
+              f"IN-PROCESS, with peira's full environment. Only use "
+              f"this for adapters you trust completely.",
+              file=sys.stderr)
 
     suite = args.suite
     if suite == "smoke":
@@ -833,7 +900,10 @@ def cmd_run(args: argparse.Namespace) -> int:
                 # Persist the loader spec (e.g. "peira.adapters.jev:JevAdapter"),
                 # not just adapter.name (e.g. "jev"). cmd_reproduce needs the
                 # spec to reload the adapter; the short name is not loadable.
-                config_extra={"adapter_spec": args.adapter},
+                # P-4: seal the trust/transport provenance of the run.
+                config_extra={"adapter_spec": args.adapter,
+                              "adapter_trust": adapter_trust,
+                              "adapter_transport": adapter_transport},
             )
             if is_conversational:
                 from peira.conversation import run_conversation_suite
@@ -927,7 +997,9 @@ def _cmd_run_multiseed(
         max_concurrency=args.max_concurrency,
         max_attempts=args.max_attempts,
         call_timeout=args.call_timeout,
-        config_extra={"adapter_spec": args.adapter},
+        config_extra={"adapter_spec": args.adapter,
+                      "adapter_trust": adapter_trust,
+                      "adapter_transport": adapter_transport},
         rlimit_cpu_seconds=getattr(args, "rlimit_cpu_seconds", None),
         rlimit_as_mb=getattr(args, "rlimit_as_mb", None),
         rlimit_fsize_mb=getattr(args, "rlimit_fsize_mb", None),
@@ -1084,6 +1156,144 @@ def cmd_doctor(args: argparse.Namespace) -> int:
     # a future `--fail-on {any,missing,hardware}` flag and/or `--json`
     # flag can add opt-in gating without changing the default.
     return EXIT_OK
+
+
+def cmd_adapter_list(args: argparse.Namespace) -> int:
+    """List the adapter registry (``peira.adapters`` entry points).
+
+    Discovery reads package metadata only and never imports adapter
+    code, so listing is safe for unregistered-at-install-time
+    third-party distributions. Per-adapter details that require
+    importing (primitives, version when undeclared) are reported as
+    not-loaded rather than guessed.
+    """
+    import json  # noqa: PLC0415
+
+    from peira.adapters import discovery  # noqa: PLC0415
+
+    result = discovery.discover()
+    rows: list[dict] = [
+        {
+            "id": "mock",
+            "version": None,
+            "primitives": None,
+            "source": "built-in",
+            "first_party": True,
+            "transport": "inprocess",
+        }
+    ]
+    for reg in sorted(result.registrations.values(),
+                      key=lambda r: r.registry_id):
+        rows.append(
+            {
+                "id": reg.registry_id,
+                "version": reg.dist_version,
+                "primitives": None,  # not loaded; see docstring
+                "source": (f"{reg.dist_name} {reg.dist_version}"
+                           if reg.dist_name else "unknown distribution"),
+                "first_party": reg.first_party,
+                "transport": ("inprocess" if reg.first_party
+                              else "subprocess"),
+            }
+        )
+    if args.json:
+        payload = {
+            "adapters": rows,
+            "ambiguous": {
+                name: [f"{r.dist_name} {r.dist_version}"
+                       for r in regs]
+                for name, regs in result.ambiguous.items()
+            },
+            "issues": [
+                {"id": issue.registry_id, "message": issue.message}
+                for issue in result.issues
+            ],
+        }
+        print(json.dumps(payload, indent=2, sort_keys=True))
+        return EXIT_OK
+    for row in rows:
+        origin = "first-party" if row["first_party"] else "third-party"
+        print(f"{row['id']}  version={row['version']}  "
+              f"transport={row['transport']}  {origin}  ({row['source']})")
+    if args.verbose:
+        for reg in sorted(result.registrations.values(),
+                          key=lambda r: r.registry_id):
+            print(f"  {reg.registry_id} -> {reg.value}")
+        for name, regs in sorted(result.ambiguous.items()):
+            claimants = ", ".join(
+                f"{r.dist_name} {r.dist_version}" for r in regs)
+            print(f"  ambiguous {name!r}: claimed by {claimants}")
+        for issue in result.issues:
+            print(f"  issue {issue.registry_id!r}: {issue.message}")
+    elif result.ambiguous or result.issues:
+        print(f"({len(result.ambiguous)} ambiguous name(s), "
+              f"{len(result.issues)} issue(s); rerun with --verbose)",
+              file=sys.stderr)
+    return EXIT_OK
+
+
+def cmd_adapter_check(args: argparse.Namespace) -> int:
+    """Run the adapter conformance kit (P-4).
+
+    Third-party adapters are exercised through the subprocess shim
+    child, never in this process. Writes a sealed check report.
+    Exit 0: all checks pass. Exit 1: a check failed. Exit 2: usage
+    or loading error (design §5).
+    """
+    import asyncio  # noqa: PLC0415
+
+    from peira.adapters import conformance  # noqa: PLC0415
+
+    if args.verify:
+        ok, message = conformance.verify_report(args.verify)
+        print(message)
+        return EXIT_OK if ok else EXIT_USER_ERROR
+    if not args.adapter:
+        print("error: peira adapter check needs an adapter id (or 'mock'), "
+              "or --verify REPORT", file=sys.stderr)
+        return EXIT_INFRA_ERROR
+    env_extra: dict[str, str] = {}
+    for item in args.adapter_env or []:
+        if "=" not in item:
+            print(f"error: --adapter-env needs KEY=VALUE, got {item!r}",
+                  file=sys.stderr)
+            return EXIT_INFRA_ERROR
+        key, value = item.split("=", 1)
+        env_extra[key] = value
+    try:
+        report = asyncio.run(conformance.run_check(
+            args.adapter, timeout=args.timeout, env_extra=env_extra))
+    except conformance.AdapterCheckError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return EXIT_INFRA_ERROR
+    out = args.out or f"{args.adapter}-check.json"
+    try:
+        conformance.write_report(report, out)
+    except OSError as exc:
+        print(f"error: could not write check report to {out}: {exc}",
+              file=sys.stderr)
+        return EXIT_INFRA_ERROR
+    if args.json:
+        import json as _json  # noqa: PLC0415
+
+        print(_json.dumps(report.to_dict(), indent=2, sort_keys=True))
+        return EXIT_OK if report.verdict == "pass" else EXIT_USER_ERROR
+    for suite in report.suites:
+        status = "pass" if suite.passed else "FAIL"
+        print(f"[{status}] {suite.name}")
+        for check in suite.checks:
+            mark = "ok" if check.passed else "FAIL"
+            detail = f" ({check.detail})" if check.detail else ""
+            print(f"    {mark} {check.name}{detail}")
+    for failure in report.attestation_failures:
+        print(f"    FAIL must-attest: {failure}")
+    if report.advisory_findings:
+        print(f"advisory findings: {len(report.advisory_findings)} "
+              f"(see report; never verdicts)")
+    print(f"verdict: {report.verdict} (transport={report.transport}, "
+          f"trust={report.adapter_trust})")
+    print(f"check report: {out}")
+    return EXIT_OK if report.verdict == "pass" else EXIT_USER_ERROR
 
 
 def cmd_validate(args: argparse.Namespace) -> int:
@@ -2624,7 +2834,7 @@ def cmd_stability_probe(args: argparse.Namespace) -> int:
 
     root = _repo_root()
     try:
-        adapter = _get_adapter(args.adapter)
+        adapter, _, _ = _get_adapter(args.adapter)
     except ValueError as e:
         print(f"error: {e}", file=sys.stderr)
         return EXIT_USER_ERROR
@@ -4529,7 +4739,7 @@ def cmd_reproduce(args: argparse.Namespace) -> int:
               file=sys.stderr)
         return EXIT_REPRO_MISMATCH
     try:
-        adapter = _get_adapter(bundle["adapter_spec"])
+        adapter, _, _ = _get_adapter(bundle["adapter_spec"])
     except ValueError as e:
         print(f"error: {e}", file=sys.stderr)
         return EXIT_USER_ERROR
@@ -4994,11 +5204,23 @@ def build_parser() -> argparse.ArgumentParser:
 
     r = sub.add_parser("run", help="run a suite through an adapter")
     r.add_argument("--adapter", default="mock",
-                   help="'mock', or a dotted path: package.module (with a "
-                   "top-level `adapter`), package.module:ClassName, or "
-                   "package.module.ClassName. Only load adapter paths you "
-                   "trust: the module is imported (and therefore executed) "
-                   "with the working directory first on sys.path")
+                   help="'mock', a dotted path (package.module, "
+                   "package.module:ClassName, or package.module.ClassName), "
+                   "or a registered adapter id (see 'peira adapter list'). "
+                   "Dotted paths are imported (and therefore executed) "
+                   "in-process with the working directory first on "
+                   "sys.path: only load paths you trust. Third-party "
+                   "registry ids run isolated in a subprocess by default.")
+    r.add_argument("--adapter-no-isolation", action="store_true",
+                   help="run a third-party adapter IN-PROCESS instead of "
+                   "the subprocess sandbox. The adapter's code is "
+                   "imported and executed with peira's full environment: "
+                   "only use this for adapters you trust completely.")
+    r.add_argument("--adapter-env", action="append", default=[],
+                   metavar="KEY=VALUE",
+                   help="extra environment variables for a third-party "
+                   "adapter's subprocess (repeatable; denylisted "
+                   "variables are refused)")
     r.add_argument("--suite", default="trial-demo",
                    choices=list(SUITE_DIRS) + ["smoke"],
                    help="smoke is an alias for trial")
@@ -5209,6 +5431,42 @@ def build_parser() -> argparse.ArgumentParser:
     dw.add_argument("--out", default=None,
                     help="write the drift result JSON to this path")
     dw.set_defaults(func=cmd_drift_watch)
+
+    # Adapter plugin registry (P-4): discovery is metadata-only and
+    # never imports adapter code; `check` (the conformance kit) lands
+    # with the next step of the plugin-ecosystem build.
+    ad = sub.add_parser("adapter",
+                        help="inspect the adapter plugin registry")
+    adsub = ad.add_subparsers(dest="adapter_command", required=True)
+    adl = adsub.add_parser("list", help="list registered adapters")
+    adl.add_argument("--verbose", action="store_true",
+                     help="show entry-point values, ambiguous names, "
+                     "and discovery issues")
+    adl.add_argument("--json", action="store_true",
+                     help="emit machine-readable JSON")
+    adl.set_defaults(func=cmd_adapter_list)
+    adc = adsub.add_parser("check",
+                           help="run the adapter conformance kit")
+    adc.add_argument("adapter", nargs="?",
+                     help="registry id or 'mock' (dotted paths are refused: "
+                     "check needs a registered id)")
+    adc.add_argument("--out", default=None,
+                     help="write the sealed check report here "
+                     "(default: <adapter>-check.json)")
+    adc.add_argument("--timeout", type=float, default=300.0,
+                     help="per-call timeout in seconds for the isolated "
+                     "check child (default: 300)")
+    adc.add_argument("--adapter-env", action="append", default=[],
+                     metavar="KEY=VALUE",
+                     help="extra environment for the isolated check "
+                     "child (repeatable; denylisted variables refused)")
+    adc.add_argument("--verify", default=None, metavar="REPORT",
+                     help="offline-verify a sealed check report "
+                     "instead of running the kit")
+    adc.add_argument("--json", action="store_true",
+                     help="print the machine-readable check report "
+                     "to stdout instead of the human summary")
+    adc.set_defaults(func=cmd_adapter_check)
 
     # R-04 stability probe: separate track, separate report.
     sp = sub.add_parser("stability-probe",

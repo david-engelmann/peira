@@ -41,6 +41,7 @@ from peira.adapters.base import (
     ScoreOutput,
     validate_output,
 )
+from peira.adapters.subprocess import SubprocessAdapter
 from peira.artifacts import CONTRACT_VERSION, RunArtifact, results_to_dicts
 from peira.env_fingerprint import collect_and_fingerprint
 from peira.concurrency import (
@@ -374,6 +375,53 @@ def _invoke_adapter(
     return output, raw
 
 
+async def _ainvoke_subprocess_adapter(
+    adapter: SubprocessAdapter,
+    invoke: Callable[..., tuple[Any, dict[str, Any] | None]],
+    case_input: dict[str, Any],
+    primitive: str,
+    context: CallContext,
+    _exec_ms: list[float] | None = None,
+    _exec_start: list[float] | None = None,
+) -> tuple[Any, dict[str, Any] | None]:
+    """Run one adapter call through the shim child (P-4).
+
+    The async counterpart of :func:`_invoke_adapter` for third-party
+    adapters: ``await adapter.adecide(...)`` (or ``adecide_turn``
+    when ``invoke`` is the conversational turn driver) instead of a
+    worker thread. Timing and transcript capture follow the same
+    contract: ``_exec_ms`` gets decide's wall time, ``_exec_start``
+    the dispatch time, and the transcript payload is read off the
+    returned output. On timeout the child's shielded drop kills the
+    process group, so unlike the thread-pool path there is no
+    abandoned worker: ``_exec_ms`` honestly holds the partial time.
+    """
+    is_turn = getattr(invoke, "_peira_turn_driver", False)
+    if _exec_ms is None:
+        if is_turn:
+            output = await adapter.adecide_turn(
+                case_input, primitive, context)
+        else:
+            output = await adapter.adecide(case_input, primitive, context)
+    else:
+        if _exec_start is not None:
+            _exec_start.append(time.perf_counter())
+        t0 = time.perf_counter()
+        try:
+            if is_turn:
+                output = await adapter.adecide_turn(
+                    case_input, primitive, context)
+            else:
+                output = await adapter.adecide(
+                    case_input, primitive, context)
+        finally:
+            _exec_ms.append((time.perf_counter() - t0) * 1000.0)
+    raw = getattr(output, "transcript", None)
+    if raw is not None and not isinstance(raw, dict):
+        raw = None
+    return output, raw
+
+
 def _record_call(
     adapter: Any,
     case_input: dict[str, Any],
@@ -585,10 +633,10 @@ def _apply_rlimits(
     Thin backward-compatible wrapper around
     :class:`peira.resource_governor.ResourceGovernor`. These are
     backstops, not per-adapter isolation: ``resource.setrlimit``
-    applies to the whole runner process, and adapter code runs in-process
-    (see docs/Threat-Model.md). A memory-hungry adapter can still OOM the
-    runner before the limit bites; full isolation needs the subprocess
-    mode designed in docs/Adapter-Isolation.md.
+    applies to the whole runner process. For third-party adapters the
+    rlimits are forwarded to the shim child per design §7.2 (see
+    ``peira.adapters.subprocess``); this process-wide application is
+    skipped for them in ``run_suite``.
 
     Raises ValueError for non-positive limits, and RuntimeError on
     non-Unix platforms (the ``resource`` module is Unix-only).
@@ -948,10 +996,19 @@ async def _record_call_async(
                 # instead of 0.0.
                 exec_ms: list[float] = []
                 exec_start: list[float] = []
-                call = asyncio.to_thread(
-                    invoke, adapter, attempt_input, primitive,
-                    context, exec_ms, exec_start,
-                )
+                if isinstance(adapter, SubprocessAdapter):
+                    # P-4: third-party adapters run in the shim child;
+                    # drive them with the async entry point, not the
+                    # worker thread.
+                    call = _ainvoke_subprocess_adapter(
+                        adapter, invoke, attempt_input, primitive,
+                        context, exec_ms, exec_start,
+                    )
+                else:
+                    call = asyncio.to_thread(
+                        invoke, adapter, attempt_input, primitive,
+                        context, exec_ms, exec_start,
+                    )
                 if timing_state is not None:
                     timing_state.worker_in_flight = True
                 if call_timeout is not None:
@@ -2351,6 +2408,14 @@ async def _run_suite_async(
     cost_of = case_cost if case_cost is not None else _default_case_cost_usd
     adapter_version = getattr(adapter, "version", "")
     controller = AdaptiveConcurrency(max_concurrency)
+    # P-4: third-party adapters run in the shim child. Open it here so
+    # the hello handshake (import + protocol version + name binding)
+    # happens once per run, before any case dispatches; the finally
+    # below closes it.
+    subprocess_adapter = (
+        adapter if isinstance(adapter, SubprocessAdapter) else None)
+    if subprocess_adapter is not None:
+        await subprocess_adapter.open()
     # One nonce per suite execution: call ids are unlinkable across
     # runs even with the same seed, but stable across retries and
     # resume-safe within this execution (dispatch indices are
@@ -2580,6 +2645,8 @@ async def _run_suite_async(
     finally:
         if transcript is not None:
             transcript.close()
+        if subprocess_adapter is not None:
+            await subprocess_adapter.aclose()
 
     if run_timed_out:
         # The ceiling fired and the in-flight cases have drained (see
@@ -2788,7 +2855,15 @@ def run_suite(
             raise ValueError(
                 f"{_name} must be > 0, got {_value}"
             )
-    _apply_rlimits(rlimit_cpu_seconds, rlimit_as_mb, rlimit_fsize_mb)
+    # Design §7.2: for third-party adapters the rlimits apply to the
+    # shim child per adapter (forwarded via SubprocessAdapter), not
+    # process-wide. Skip the process-wide application in that case.
+    from peira.adapters.subprocess import (  # noqa: PLC0415
+        SubprocessAdapter,
+    )
+
+    if not isinstance(adapter, SubprocessAdapter):
+        _apply_rlimits(rlimit_cpu_seconds, rlimit_as_mb, rlimit_fsize_mb)
     from peira.resource_governor import ResourceGovernor, set_active_governor
 
     # The named governor (R-03): validated here, applied to this process

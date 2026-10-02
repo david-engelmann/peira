@@ -33,63 +33,111 @@ machine running peira.
 ### Trust boundary
 
 Trusted: the peira codebase, the dataset, the runner process itself.
-Untrusted: third-party adapter code. An adapter is loaded with
-`importlib.import_module`, which executes the module at import time, and
-its `decide()` method runs in-process on a worker thread. There is no
-sandboxing. Only run adapters you trust, or run peira somewhere you can
-afford to lose.
+Untrusted: third-party adapter code. How much of the machine an
+adapter can reach depends on the transport it runs under.
 
-### What an adapter can reach
+Third-party adapters (registry ids from the `peira.adapters`
+entry-point group that are not first-party) run in a subprocess
+child by default: `python -m peira.adapters._shim <registry id>`,
+spawned by the runner. Discovery never imports adapter code, and
+loading happens inside the child, never in the runner's process.
+Two paths still run adapter code in-process: dotted-path adapters
+(`--adapter some.module`, trust `unverified` in the artifact) and
+third-party registry ids with `--adapter-no-isolation` (an explicit
+operator flag; the CLI prints a warning). Those paths carry the
+old in-process threat model, documented below.
 
-Because adapters run in-process, a malicious or buggy adapter has the
-runner's full ambient authority:
+### What an isolated adapter can reach
 
-- **Environment variables**, including API keys. First-party adapters read
-  keys from `os.environ` directly (e.g. `TYPESAFE_API_KEY`); a third-party
-  adapter sees the same environment.
-- **The filesystem**, with the runner's permissions. Nothing stops an
-  adapter from reading or writing files the runner can reach.
-- **The network**, with no egress filtering.
-- **Unbounded CPU, memory, and wall-clock time**, unless you set limits
-  (see below).
+The subprocess boundary is blast-radius containment and
+killability, not a sandbox:
 
-### Timeouts bound the runner's wait, not the adapter
+- **Environment.** The child gets a runner-built environment:
+  sanitized `PATH`, `TMPDIR`/`TEMP`, `SYSTEMROOT` on Windows,
+  `HOME` pointed at a fresh temp dir, plus explicit
+  `--adapter-env KEY=VALUE` entries. Nothing is inherited
+  wholesale. Denylisted names (`LD_PRELOAD`, `DYLD_*`,
+  `PYTHONPATH`, `PYTHONSTARTUP`, `PYTHONHOME`) are refused, but
+  only keys the operator chose to pass are visible, and any key
+  given *can* be exfiltrated. Key scoping stays the operator's job.
+- **Filesystem.** The child's working directory is an empty temp
+  dir, but the UID's filesystem is still reachable by absolute
+  path. Opportunistic relative-path damage is stopped; targeted
+  reads are not.
+- **Network.** No egress filtering. A malicious adapter can
+  exfiltrate case text over its own network calls. Holdout bytes
+  are protected by OpSec (never published, separate invocation),
+  not by the sandbox.
+- **CPU and memory.** Per-child Unix rlimits bound them;
+  third-party children get a default 8192 MB address-space cap.
+  CPU beyond the timeout kill and Windows builds remain
+  operator-configured.
+- **Killability.** Each child runs in its own process group.
+  `--call-timeout` SIGKILLs the group immediately on expiry (no grace
+  window for a hung child). Normal close (`aclose`) uses SIGTERM with
+  a grace period, then SIGKILL. The old thread-zombie failure mode is
+  structurally eliminated: a killed child frees its slot, and the
+  retry goes to
+  a fresh child.
 
-`--call-timeout` (default 300 seconds) wraps each attempt in
-`asyncio.wait_for`. When it fires, the runner stops waiting, records a
-timeout, and retries as a transient failure. But the adapter call runs on
-a worker thread, and Python cannot kill threads: the timed-out call keeps
-running in the background until it returns or the process exits. The
-timeout bounds how long the *run* stalls, not how long the *adapter*
-executes. A hung adapter still burns a thread, and those burned threads
-occupy the shared default executor pool (`min(32, cpu_count + 4)` workers;
-6 on a 2-core box). Once zombie threads exhaust the pool, no new adapter
-call can start a worker thread, so every remaining call deterministically
-times out into a blank record. The run still terminates on schedule, but
-the tail of the run is silently garbage results, not just slow ones.
+A determined adapter author defeats any finite conformance probe
+set, because the probes ship in the open. The conformance kit
+raises the cost of cheating; it does not prove honesty.
 
-### Backstops that exist today
+### The in-process paths (dotted path, --adapter-no-isolation)
 
-- `--call-timeout` defaults to 300 seconds. The flag requires a positive
-  value; passing a very large number effectively disables it, which opts
-  out of the backstop.
-- `--rlimit-cpu-seconds`, `--rlimit-as-mb`, `--rlimit-fsize-mb` set
-  process-wide Unix resource limits (CPU time, virtual memory, single-file
-  write size). They are opt-in and blunt: they apply to the whole runner,
-  not per adapter call. They catch runaway resource use; they do not
-  isolate.
-- Each attempt gets a deep copy of the case input, so a misbehaving
-  adapter cannot poison the next attempt's input through mutation.
-- The limits above apply inside `run_suite`. Adapter *import-time* code
-  is not covered: `_get_adapter` runs `importlib.import_module` before
-  flag validation and before rlimits are applied, so a malicious
-  adapter's module-level code executes with no backstop at all. There is
-  no sandboxing; only run adapters you trust.
+When adapter code runs inside the runner's process, it has the
+runner's full ambient authority: environment variables including
+API keys, the filesystem with the runner's permissions, the
+network with no egress filtering, and unbounded CPU, memory, and
+wall-clock time unless limits are set. Timeouts bound the runner's
+wait, not the adapter: `--call-timeout` wraps each attempt in
+`asyncio.wait_for`, but the adapter call runs on a worker thread,
+and Python cannot kill threads. A hung adapter burns a thread; once
+zombie threads exhaust the shared executor pool, the run's tail
+becomes silently garbage results, not just slow ones.
 
-### What is still missing
+Backstops that apply in-process: `--call-timeout` (default 300
+seconds; a very large value effectively disables it),
+`--rlimit-cpu-seconds`, `--rlimit-as-mb`, `--rlimit-fsize-mb`
+(process-wide, Unix only, opt-in). Each attempt gets a deep copy
+of the case input, so an adapter cannot poison the next attempt by
+mutation. Import-time code executes with no backstop at all on the
+in-process path.
 
-True isolation needs the adapter out of the runner's process: no shared
-environment, no shared filesystem, killable on timeout. That is the
-subprocess/JSON execution mode designed in `docs/Adapter-Isolation.md`.
-Until it lands, treat third-party adapters as arbitrary code execution
-and scope your trust accordingly.
+### Holdout integrity does not depend on the sandbox
+
+The blind holdout's integrity rests on the adapter-observable
+surface being identical between public and holdout runs by
+construction: `case_input` carries no case id, no family, no arm,
+no suite tag, no holdout flag (D-25), and `context` carries only
+the pseudonymous `call_id`. Holdout runs are unlinkable from
+public runs, so an adapter cannot behave differently on them.
+Residual risk, stated plainly: an adapter with network egress
+*could* exfiltrate case text to a collaborator who checks it
+against the public set ("not in public set" implies holdout), and
+adapter fields recorded verbatim (`transcript`,
+`provider_response_id`, `refusal_reason`) are a second exfil
+channel needing no network. Holdout runs redact adapter-supplied
+transcript payloads to fixed schema fields. No PR may widen the
+adapter-visible surface (new `CallContext` fields, new protocol
+params, new `case_input` metadata) without a holdout-integrity
+review.
+
+### Residual risks
+
+- The subprocess boundary stops neither network exfiltration nor
+  targeted filesystem reads as the operator's UID. Only run
+  adapters you trust remains true; the subprocess mode narrows
+  what "trust" has to cover.
+- `--adapter-no-isolation` is an operator-risk flag. It is never
+  something an adapter's install docs should instruct; never take
+  CLI flags from an adapter's README.
+- `pip install peira-adapter-foo` executes arbitrary code at
+  install time (build backends, setup scripts). That is inherent
+  to pip and out of scope: this design contains the adapter at
+  *run time*, it does not make installing untrusted packages safe.
+- Review listing PRs on a clean machine: a fresh VM or container
+  holding no credentials. The conformance kit runs the adapter in
+  the shim child regardless, but the reviewer's shell is their
+  own responsibility.

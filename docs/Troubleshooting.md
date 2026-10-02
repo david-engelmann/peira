@@ -3,12 +3,15 @@
 An error catalog: exact error → cause → fix. New user-facing errors get an
 entry here in the same PR that introduces them.
 
-**`error: unknown adapter: 'x' (available: 'mock' or a dotted path like 'examples.minimal_adapter')`**
-Cause: the adapter name didn't resolve. Fix: use `mock`, or pass a dotted
-path (`package.module` with a top-level `adapter`,
+**`error: unknown adapter: 'x' (available: 'mock', a dotted path like 'examples.minimal_adapter', or a registered adapter id; see 'peira adapter list')`**
+Cause: the adapter name didn't resolve: it isn't `mock`, a dotted
+path, or a registered `peira.adapters` entry-point id. Fix: check
+the spelling, run `peira adapter list` to see registered ids, or
+pass a dotted path (`package.module` with a top-level `adapter`,
 `package.module:ClassName`, or `package.module.ClassName`; see
-`examples/minimal_adapter.py`). Run from the directory your adapter module
-lives under.
+`examples/minimal_adapter.py`). Run from the directory your adapter
+module lives under. Third-party registry ids run isolated in a
+subprocess by default; see `docs/third-party-adapters.md`.
 
 **Loading an adapter runs its code: only use paths you trust**
 Cause: `peira run --adapter some.module` imports that module to get the
@@ -1276,6 +1279,175 @@ Cause: `--families` left only one family to analyze, so removing it
 leaves nothing to rank on (leave-one-out needs at least two families).
 Fix: pass at least two families, or omit `--families` to use the union
 across the runs.
+
+## Third-party adapter (plugin) errors
+
+**`error: unknown adapter: 'x' (available: 'mock', a dotted path like 'examples.minimal_adapter', or a registered adapter id; see 'peira adapter list')`**
+Cause: the adapter spec matched none of the three resolution rules
+(`mock`, dotted path, registry id). Fix: check the spelling; run
+`peira adapter list` to see registered ids. (A sibling wording,
+`error: unknown adapter: 'x' (available: 'mock' or a dotted path
+like 'examples.minimal_adapter')`, comes from the dotted-path
+loader itself when a dotted spec fails to import.)
+
+**`error: adapter name 'my-adapter' claimed by multiple distributions: peira-adapter-a 1.0, peira-adapter-b 2.3`**
+Cause: two installed distributions registered the same registry id.
+Peira fails closed rather than picking a winner by install order.
+Fix: `pip uninstall` one of the claimants (see
+`peira adapter list --verbose`), or coordinate with the other
+author to pick different ids.
+
+**`error: adapter name mismatch: registry 'my-adapter' served 'other-adapter'`**
+Cause: the package registered one registry id but its adapter
+class's `name` attribute differs. The confusion deputy cannot
+borrow a trusted name, so the load fails closed. Fix (adapter
+author): set the adapter's `name` to the registry id, or register
+the id that matches the class.
+
+**`error: peira adapter check needs a registry id (or 'mock'), got 'some.module': dotted paths cannot be checked because the shim and the name binding need a registered id; register an entry point first (see docs/third-party-adapters.md)`**
+Cause: you passed a dotted path to `peira adapter check`. The kit
+tests what the runner will actually do, so it needs a registered
+id for the shim and the name binding. Fix: register the
+`peira.adapters` entry point, then check the id.
+
+**`error: peira adapter check needs an adapter id (or 'mock'), or --verify REPORT`**
+Cause: `peira adapter check` was run with no adapter and no
+`--verify`. Fix: pass an adapter id, or `--verify <report>` to
+offline-verify a sealed report.
+
+**`error: could not write check report to <out>: <reason>`**
+Cause: the report path isn't writable. Fix: pick a writable `--out`
+path.
+
+**`error: --adapter-env needs KEY=VALUE, got 'MYKEY'`**
+Cause: an `--adapter-env` entry has no `=`. Fix: write it as
+`--adapter-env MYKEY=value` (repeatable).
+
+**`error: --adapter-env may not set denylisted variable 'LD_PRELOAD'`**
+Cause: the variable name is on the denylist (`LD_PRELOAD`,
+`DYLD_*`, `PYTHONPATH`, `PYTHONSTARTUP`, `PYTHONHOME`, and
+friends): an adapter's install docs must not be able to re-arm the
+channels the env scrubbing removed. Fix: use a different variable
+name for adapter config.
+
+**`warning: --adapter-no-isolation: third-party adapter 'x' will be imported and executed IN-PROCESS, with peira's full environment. Only use this for adapters you trust completely.`**
+Cause: not an error. You passed `--adapter-no-isolation`, which
+loads third-party code into peira's process with its full
+environment, filesystem, and network. Fix: none, if you meant it.
+If you didn't, drop the flag; the default subprocess transport
+applies. Never take this flag from an adapter's README.
+
+**`error: adapter child timed out on 'decide' after 300s`**
+(or `'hello'`, `'close'`): Cause: the shim child exceeded the
+per-call timeout (`--call-timeout` for decide; 30s handshake
+budget for hello). The child is dropped and the call fails.
+Fix: a slow or hung adapter. Raise `--call-timeout` for a
+legitimately slow model, or debug the adapter; check its stderr in
+the run transcript.
+
+**`error: adapter child protocol mismatch: got 'peira-adapter/9', want 1`**
+Cause: the shim child's hello handshake reported a protocol
+version the runner doesn't speak. Fix: upgrade peira and the
+adapter package together; the protocol version moves in lockstep
+with peira.
+
+**`error: adapter child for 'my-adapter' exited with code 1`**
+Cause: the shim child died before answering (crashed import,
+segfault, OOM-kill). Fix: run the shim by hand
+(`python -m peira.adapters._shim my-adapter`) and watch stderr;
+the child's log stream is captured per call up to 1 MB.
+
+**`error: adapter child for 'my-adapter' died: <reason>`**
+Cause: the child died mid-call. Fix: same as above; treat it as a
+crash in adapter code until proven otherwise.
+
+**`error: adapter child for 'my-adapter' closed stdout (exit code 1)`**
+Cause: the child closed its stdout without answering: it exited
+instead of responding. Fix: the adapter's `decide` returned by
+killing the process or calling `sys.exit`/`os._exit`; the
+conformance kit's import-safety check catches this before a run.
+
+**`error: adapter 'my-adapter' failed on 'decide': ValueError: bad options`**
+Cause: the adapter raised inside the child; the exception type and
+message are framed back to the runner. Transient types retry like
+in-process exceptions. Fix: the bug is in the adapter's `decide`,
+not the transport.
+
+**`error: adapter child sent an unparseable frame: <reason>; stderr tail: ...`**
+Cause: the child wrote a line that isn't a JSON object on the
+protocol channel. Only that call fails. Fix: the adapter (or its
+dependencies) printed to stdout instead of stderr. stdout is the
+protocol; logs go to stderr.
+
+**`error: adapter child id mismatch or unsolicited frame: child dropped`**
+Cause: the child answered with a wrong or duplicate request id.
+The child is dropped; no sibling call can be corrupted because
+there are no concurrent sibling calls (one in flight per child).
+Fix: adapter bug in framing; hand-rolled protocol loops must echo
+the request id exactly.
+
+**`error: adapter child output failed validation: <reason>`**
+Cause: the child's decoded output failed `validate_output()`
+(wrong type, out-of-range confidence). Fix: return the primitive's
+output object, not a bare string; normalize confidence to 0..1.
+
+**`error: the shim only serves registry ids, got 'some.module' (kind dotted)`**
+Cause: the shim was invoked directly with a non-registry spec.
+The shim is an internal implementation detail, not a user tool.
+Fix: don't run the shim by hand for dotted paths; use
+`peira run --adapter <dotted path>` instead.
+
+**`error: could not load adapter 'my-adapter': ImportError: ...`**
+Cause: the shim child failed to import the entry point (missing
+dependency, broken install). Fix: install the adapter's
+requirements in the same interpreter peira runs under.
+
+**`error: could not start the isolated check child for 'my-adapter': <reason>`**
+Cause: `peira adapter check` couldn't spawn the shim child at all.
+Fix: check the reason; usually a broken install like the previous
+entry.
+
+**`verdict: fail (...)` from `peira adapter check`**
+Cause: one or more conformance checks failed; the per-suite lines
+above name them. Fix: read the failing suite's detail (schema,
+abstention shape, determinism, metadata-invariance, retry
+attestation, import-safety, protocol round-trip) in
+`docs/third-party-adapters.md` and fix the adapter.
+
+**`error: adapter failed conformance: <n> check(s) failed`**
+Note: this string is from the design doc, not the implementation.
+The kit reports failures as `verdict: fail` with per-suite detail;
+see the previous entry.
+
+**`module hash mismatch: sealed ab12... != on-disk cd34... (the adapter changed since the check ran; re-run 'peira adapter check')`**
+Cause: `peira adapter check --verify` found the installed module
+bits differ from the sealed report. The badge covers exact bits
+only. Fix: re-run `peira adapter check` for the new bits.
+
+**`report has no sealed module_sha256; cannot verify`**
+Cause: the report predates sealed provenance or was hand-edited.
+Fix: re-run `peira adapter check` to produce a sealed report.
+
+**`report has no module_path; cannot verify`**
+Cause: same as above, for the module path field. Fix: re-run
+`peira adapter check`.
+
+**`module file missing: /path/to/module.py (the adapter was moved or uninstalled since the check ran; re-run 'peira adapter check')`**
+Cause: the adapter was moved or uninstalled after the check.
+Fix: reinstall it, then re-run `peira adapter check`.
+
+**`unreadable report: <reason>`**
+Cause: `--verify` got a path that isn't readable JSON. Fix: point
+at the JSON report `peira adapter check` wrote.
+
+**`not a peira-adapter-check/1 report: format='...'`**
+Cause: `--verify` got a JSON file that isn't a sealed check
+report. Fix: pass the report file, not some other JSON.
+
+**`error: adapter 'my-adapter' vanished from the registry between discovery and load`**
+Cause: the entry point disappeared between `peira adapter list`
+(or resolution) and load: a concurrent uninstall. Fix: reinstall
+the adapter package and retry.
 
 ## `peira threshold-by-family` (C-7)
 
