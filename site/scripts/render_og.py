@@ -737,9 +737,9 @@ def alt_text_methodology(data: dict) -> str:
     mock = bool(data.get("mock_data"))
     return "\n".join([
         "OG social image for the peira methodology page.",
-        "A dark card titled peira methodology listing the measurement contract: "
-        "paired benign and attacked cases, 95 percent confidence intervals on "
-        "every number, and public and holdout suites never blended.",
+        "A dark card titled peira methodology listing the measurement contract, "
+        "which is paired benign and attacked cases, 95 percent confidence "
+        "intervals on every number, and public and holdout suites never blended.",
         f"Data status is {'MOCK DATA, not real results' if mock else 'real benchmark results'}.",
     ]) + "\n"
 

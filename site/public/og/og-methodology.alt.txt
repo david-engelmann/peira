@@ -1,3 +1,3 @@
 OG social image for the peira methodology page.
-A dark card titled peira methodology listing the measurement contract: paired benign and attacked cases, 95 percent confidence intervals on every number, and public and holdout suites never blended.
+A dark card titled peira methodology listing the measurement contract, which is paired benign and attacked cases, 95 percent confidence intervals on every number, and public and holdout suites never blended.
 Data status is MOCK DATA, not real results.
