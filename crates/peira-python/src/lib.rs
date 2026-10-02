@@ -299,6 +299,27 @@ fn refusal_rate_by_family(results: Vec<PyPerCaseResult>) -> BTreeMap<String, f64
     metrics::refusal_rate_by_family(&to_core_results(results))
 }
 
+/// Direction of a case's flip in the M-1 taxonomy (Wave 3 item 9).
+#[pyfunction]
+fn flip_direction(result: PyPerCaseResult) -> String {
+    metrics::flip_direction(&metrics::PerCaseResult::from(result)).to_string()
+}
+
+/// Count of eligible cases per flip direction (M-1), every direction
+/// present as a key. Wave 3 item 9.
+#[pyfunction]
+fn flip_direction_counts(results: Vec<PyPerCaseResult>) -> BTreeMap<String, usize> {
+    metrics::flip_direction_counts(&to_core_results(results))
+}
+
+/// Net benefit at a single operating threshold (Vickers & Elkin 2006).
+/// The Python wrapper validates before dispatching; the Rust core
+/// asserts per the D-11 caller-bug convention. Wave 3 item 9.
+#[pyfunction]
+fn net_benefit_at_threshold(risks: Vec<f64>, labels: Vec<i64>, pt: f64) -> f64 {
+    metrics::net_benefit_at_threshold(&risks, &labels, pt)
+}
+
 /// Ineligible-case counts by reason, as a dict.
 #[pyfunction]
 fn ineligible_by_reason(results: Vec<PyPerCaseResult>) -> BTreeMap<String, u64> {
@@ -2032,6 +2053,9 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(benign_accuracy, m)?)?;
     m.add_function(wrap_pyfunction!(refusal_rate, m)?)?;
     m.add_function(wrap_pyfunction!(refusal_rate_by_family, m)?)?;
+    m.add_function(wrap_pyfunction!(flip_direction, m)?)?;
+    m.add_function(wrap_pyfunction!(flip_direction_counts, m)?)?;
+    m.add_function(wrap_pyfunction!(net_benefit_at_threshold, m)?)?;
     m.add_function(wrap_pyfunction!(ineligible_by_reason, m)?)?;
     m.add_function(wrap_pyfunction!(malformed_rate, m)?)?;
     m.add_function(wrap_pyfunction!(ece, m)?)?;
