@@ -383,14 +383,13 @@ the base URL is recorded in the transcript's request shape, and the
 key is never logged. `max_retries=0`. The runner owns retries, same
 as every other LLM baseline.
 
-Honest caveat: the adapter is built from xAI's published docs, not
-the live API. xAI documents `seed` as supported (best-effort
-deterministic), so positive seeds are sent; `seed` is omitted when it
-is `0`/`None` because xAI 400s on non-positive seeds. Whether `json_schema`
-`response_format` (vs plain `json_object`) is honored for `grok-4`
-is unverified. Verify against the live API before any measured run;
-mismatches surface as terminal provider errors, not silent
-mismeasurement.
+The adapter was built from xAI's published docs and verified
+against the live API on 2026-10-02. All 40 verification calls parsed
+against `grok-4` with zero auth or wire-shape errors, and the seed-0
+handling from PR #355 held up. Whether `json_schema` `response_format`
+(vs plain `json_object`) is honored for `grok-4` remains unverified
+beyond successful parsing. Mismatches surface as terminal provider
+errors, not silent mismeasurement.
 
 ### DeepSeek V4.1 Flash (DeepSeek)
 
