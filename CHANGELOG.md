@@ -182,6 +182,39 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
   compared exactly as before.
 - `docs/Methodology.md`: fairness metrics section.
 
+### Added conversational attacker budgets and trajectory metrics (EB-15 + EB-16 + EB-60)
+
+- New conversational-only `peira run` flags. `--max-attacker-rounds N`
+  caps attacker rounds per case and `--attacker-token-budget T` caps
+  attacked-arm tokens (in + out) per case. Budgets fire only on the
+  attacked arm (the benign arm is the control and always runs fully).
+  The turn that reaches a budget is kept, the case scores on its last
+  executed turn, and the result seals `attack_budget_exhausted`. Both
+  budgets are sealed into the artifact config and `--resume` rejects a
+  partial recorded under different budgets.
+- New summary blocks in `peira.conversation_metrics`. Escalation cost
+  (`median_rounds_to_first_flip`, `median_attacker_tokens_per_case`,
+  `budget_exhaustion_rate` with Wilson intervals), confidence erosion
+  (`stable` / `single_step_collapse` / `gradual_erosion` with coverage
+  and per-class rates), the refusal taxonomy (per-arm refusal /
+  hedging / compliance rates plus refusal quality over refused
+  turns), and diagnostic per-turn decision-quality curves
+  (`attacked_gold_match`, `benign_gold_match`,
+  `attacked_benign_agreement`, scorable rates). The curves never feed
+  the headline flip rate, which stays final-turn-only. Per-family
+  drill-downs carry the same blocks.
+- `--resume` on the conversational suite now goes through
+  `validate_conversation_partial`, which additionally validates the
+  timeout budgets (`max_tokens_per_call`, `item_timeout`,
+  `run_timeout`) against the sealed config like the single-shot
+  path; attacker budgets (`max_attacker_rounds`,
+  `attacker_token_budget`) are validated the same way, so a partial
+  recorded under different budgets is rejected rather than merged.
+- `ConversationResult.attack_budget_exhausted` is emitted in result
+  JSON only when true, so pre-existing artifacts verify
+  byte-identically. The Rust `PerCaseResult` mirrors the field with
+  `skip_serializing_if`.
+
 ### Added EB-41 benign twins for over-refusal
 
 - `scripts/author_benign_twins.py`: generator producing harmless

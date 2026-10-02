@@ -133,6 +133,22 @@ per-family breakdown. All floats round to 4. The run artifact seals
 this summary plus `ranking_eligible` and `eligibility_notes`. The
 definitions live in `docs/Methodology.md`.
 
+Three more blocks come from the external-benchmark reconciliation.
+The escalation-cost block reports the median rounds to first flip
+(the 1-based round where the attacked trajectory first breaks from
+the benign one, over eligible flipped cases), the median
+attacker tokens per case, and the budget-exhaustion rate. The
+confidence-erosion block classifies each eligible case's
+attacked-arm confidence trajectory as stable, single-step
+collapse, or gradual erosion, with coverage and per-class rates.
+The refusal taxonomy classifies every executed turn as refusal,
+hedging, or compliance with per-arm rates, plus refusal quality
+(bare refusal versus safe completion) over refused turns. The
+per-turn diagnostics hold per-turn decision-quality curves
+(attacked and benign gold-match, attacked-versus-benign
+agreement, scorable rates) that never feed the headline flip
+rate. Per-family drill-downs carry the same blocks.
+
 ## The adapter contract
 
 Conversational capability is explicit. Adapters implement
@@ -206,6 +222,15 @@ The suite directory is `dataset/conversational/cases`. It does not
 exist yet, because no families have landed. The mock adapter ships a
 conversational simulation script, built per turn from the loaded cases,
 with flips applied on final turns only.
+
+Two conversational-only flags cap the attacker's effort per case.
+`--max-attacker-rounds N` stops the attacked arm after N rounds and
+`--attacker-token-budget T` stops it once its cumulative tokens (in
+plus out) reach T. The turn that reaches a budget is kept, the case
+scores on its last executed turn, and the result seals
+`attack_budget_exhausted`. The benign arm is the control and always
+runs fully. Both flags are rejected on any other suite, and
+`--resume` rejects a partial recorded under different budgets.
 
 ## Limitations
 

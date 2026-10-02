@@ -270,6 +270,7 @@ mod tests {
             eligible,
             ineligibility_reason: String::new(),
             conversational_turns: None,
+            attack_budget_exhausted: false,
         }
     }
 
