@@ -78,7 +78,7 @@ Built for teams putting decision models in front of real actions: each attack is
 
 ## Leaderboard
 
-One row per (adapter, dataset version). The leaderboard opens with the v1 dataset. That is 2,000 cases across 10 attack families, 200 per family. The v2 dataset is in authoring against the attack-family taxonomy. The registry holds 25 families today and the taxonomy has no cap. Five families and 2,201 cases are authored so far, and each v2 family ships with at least 400 cases.
+One row per (adapter, dataset version). The leaderboard opens with the v1 dataset. That is 2,000 cases across 10 attack families, 200 per family. The v2 dataset is in authoring against the attack-family taxonomy. The registry holds 29 families today and the taxonomy has no cap. Nine families and 3,861 cases are authored so far, and each v2 family ships with at least 400 cases.
 
 A separate safety-policy suite (guardrail-native, pilot, 25 starter cases) and a conversational suite (multi-turn attacks, two families and 840 cases so far) ship alongside v1. They run on the same harness but are scored separately, never blended into the v1 numbers.
 
