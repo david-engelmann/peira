@@ -1661,6 +1661,15 @@ _NO_TEMPERATURE_MODELS = frozenset({
 })
 
 
+def _sent_temperature(sent: dict[str, Any]) -> Any:
+    """The temperature value actually carried by built request kwargs.
+
+    Temperature travels in ``extra_body`` (see ``_request_kwargs``), not
+    as a top-level kwarg — ``None`` when the model omits it.
+    """
+    return (sent.get("extra_body") or {}).get("temperature")
+
+
 def _wants_structured_outputs(model: str, flag: bool | None) -> bool:
     """Route an Anthropic model to its constrained-decoding path.
 
@@ -1748,8 +1757,12 @@ class AnthropicAdapter(_StructuredLLMBase):
         }
         if self._model not in _NO_TEMPERATURE_MODELS:
             # Opus 4.6+ rejects temperature with a 400 — omit it for
-            # those ids rather than negotiating.
-            kwargs["temperature"] = self._temperature
+            # those ids rather than negotiating. Sent via extra_body,
+            # not the temperature kwarg: anthropic SDK 1.x removed the
+            # kwarg from messages.create (passing it is a TypeError),
+            # while extra_body merges into the request JSON as-is on
+            # both the 0.x and 1.x SDK lines — identical wire shape.
+            kwargs["extra_body"] = {"temperature": self._temperature}
         if self._structured_outputs:
             # Native structured outputs: no tools, no tool_choice.
             # Forced tool_choice 400s on the newer reasoning models.
@@ -1815,8 +1828,9 @@ class AnthropicAdapter(_StructuredLLMBase):
                 "system": "peira system prompt",
                 "output_config": "json_schema",
                 # Only the temperature actually sent — omitted for
-                # the _NO_TEMPERATURE_MODELS ids.
-                "temperature": sent.get("temperature"),
+                # the _NO_TEMPERATURE_MODELS ids. It travels in
+                # extra_body (anthropic SDK 1.x compatibility).
+                "temperature": _sent_temperature(sent),
                 "max_tokens": self._max_tokens,
             }
         else:
@@ -1826,7 +1840,10 @@ class AnthropicAdapter(_StructuredLLMBase):
                 "system": "peira system prompt",
                 "tool": SCHEMA_NAME,
                 "tool_choice": "forced",
-                "temperature": sent.get("temperature"),
+                # Only the temperature actually sent — omitted for
+                # the _NO_TEMPERATURE_MODELS ids. It travels in
+                # extra_body (anthropic SDK 1.x compatibility).
+                "temperature": _sent_temperature(sent),
                 "max_tokens": self._max_tokens,
             }
         return _RawResult(
