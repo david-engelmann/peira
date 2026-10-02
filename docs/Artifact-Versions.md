@@ -84,8 +84,9 @@ and sealed into the artifact. See the module docstring for the full field list.
 
 ## Report Artifacts (2026-10-01)
 
-`peira report --json-out report.json` writes a versioned report
-artifact alongside the HTML. The HTML alone is not reproducible.
+`peira report --run runs/<name>.json --json-out report.json` writes
+a versioned report artifact alongside the HTML. The HTML alone is
+not reproducible.
 Buyer-cost parameters change the rendering, so the report artifact
 seals the source artifact's provenance (path, artifact version,
 analysis lock, env fingerprint, manifest digest, adapter, suite,

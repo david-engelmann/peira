@@ -13,8 +13,8 @@ indexes the load-bearing claims; detail lives in the linked docs.
   lock mismatch.
 - Report artifacts are sealed with a provenance lock binding the source
   run digests, the report parameters, and the metrics. `peira report
-  --json-out` writes the sealed artifact and any later edit breaks
-  verification.
+  --json-out` writes the sealed artifact and any later edit to the
+  sealed content breaks verification.
 - The attacked-arm decision curve carries an isotonic-recalibration
   upper-bound envelope (C-3). It is display-only, never a ranker, and
   slightly optimistic because the fit is in-sample.
