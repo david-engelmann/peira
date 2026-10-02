@@ -41,6 +41,9 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass
 
+from peira._rust import _impl as _rust
+from peira.concurrency import _require_json_str
+
 
 @dataclass
 class InteractionResult:
@@ -74,12 +77,12 @@ def _var_sample(xs: list[float]) -> float:
     return sum((x - m) ** 2 for x in xs) / (n - 1)
 
 
-def paired_interaction(
+def _paired_interaction_py(
     outcomes: list[tuple[int, int, int, int]],
     pair_id: str = "",
     hypothesis: str = "",
 ) -> InteractionResult:
-    """Compute the paired interaction contrast.
+    """Reference implementation of :func:`paired_interaction` (pure Python).
 
     ``outcomes`` is a list of (y_ctrl, y_a, y_b, y_ab) binary outcomes,
     one tuple per substrate, on the combo's registered primary outcome.
@@ -130,8 +133,8 @@ def paired_interaction(
     )
 
 
-def format_interaction(r: InteractionResult) -> str:
-    """One-paragraph human summary of an interaction result."""
+def _format_interaction_py(r: InteractionResult) -> str:
+    """Reference implementation of :func:`format_interaction` (pure Python)."""
     verdict = {
         "super": "SUPER-ADDITIVE (synergy)",
         "additive": "additive (independent)",
@@ -149,3 +152,92 @@ def format_interaction(r: InteractionResult) -> str:
         s += (f" Pre-registered hypothesis '{r.hypothesis}' "
               f"{'CONFIRMED' if r.hypothesis_confirmed else 'REJECTED'}.")
     return s
+
+
+# ---------------------------------------------------------------------------
+# Rust dispatch (D-11).
+# ---------------------------------------------------------------------------
+
+
+def _interaction_to_dict(r: InteractionResult) -> dict:
+    """Extract the dataclass fields for the Rust binding.
+
+    Raises AttributeError on a non-InteractionResult, like the reference.
+    """
+    return {
+        "pair_id": r.pair_id,
+        "n_substrates": r.n_substrates,
+        "rate_ctrl": r.rate_ctrl,
+        "rate_a": r.rate_a,
+        "rate_b": r.rate_b,
+        "rate_ab": r.rate_ab,
+        "interaction": r.interaction,
+        "se": r.se,
+        "ci_lo": r.ci_lo,
+        "ci_hi": r.ci_hi,
+        "mde_80": r.mde_80,
+        "classification": r.classification,
+        "hypothesis": r.hypothesis,
+        "hypothesis_confirmed": r.hypothesis_confirmed,
+    }
+
+
+def _interaction_from_dict(d: dict) -> InteractionResult:
+    """Rebuild the dataclass from the Rust binding's field dict."""
+    return InteractionResult(**d)
+
+
+def paired_interaction(
+    outcomes: list[tuple[int, int, int, int]],
+    pair_id: str = "",
+    hypothesis: str = "",
+) -> InteractionResult:
+    """Compute the paired interaction contrast.
+
+    ``outcomes`` is a list of (y_ctrl, y_a, y_b, y_ab) binary outcomes,
+    one tuple per substrate, on the combo's registered primary outcome.
+    Dispatches to the Rust core when available; the pure-Python
+    reference (:func:`_paired_interaction_py`) is the fallback.
+    """
+    # Reject lone surrogates up front so both backends raise the same
+    # ValueError (the Rust &str extraction raises UnicodeEncodeError,
+    # a ValueError the dispatch does not catch).
+    if isinstance(pair_id, str):
+        _require_json_str(pair_id)
+    if isinstance(hypothesis, str):
+        _require_json_str(hypothesis)
+    if _rust is not None:
+        try:
+            return _interaction_from_dict(
+                _rust.combo_metrics_paired_interaction(outcomes, pair_id, hypothesis)
+            )
+        except (TypeError, OverflowError):
+            # Non-integer outcomes or an int wider than i64 fail the PyO3
+            # extraction: the reference handles (or raises on) them.
+            # ValueError("no substrates") propagates identically from both
+            # backends and is not caught here.
+            pass
+        except ValueError as e:
+            # PyO3's tuple-length ValueError has a different message than
+            # the reference's; fall back so the reference raises its own.
+            # "no substrates" is the core's own error and must propagate.
+            if str(e) == "no substrates":
+                raise
+            pass
+    return _paired_interaction_py(outcomes, pair_id, hypothesis)
+
+
+def format_interaction(r: InteractionResult) -> str:
+    """One-paragraph human summary of an interaction result.
+
+    Dispatches to the Rust core when available; the pure-Python
+    reference (:func:`_format_interaction_py`) is the fallback.
+    """
+    if _rust is not None:
+        try:
+            return _rust.combo_metrics_format_interaction(_interaction_to_dict(r))
+        except (AttributeError, TypeError):
+            # Not an InteractionResult, or an unusual field value: the
+            # reference raises the natural exception (or renders it).
+            pass
+    return _format_interaction_py(r)
