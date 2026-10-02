@@ -299,14 +299,14 @@ fn refusal_rate_by_family(results: Vec<PyPerCaseResult>) -> BTreeMap<String, f64
     metrics::refusal_rate_by_family(&to_core_results(results))
 }
 
-/// Direction of a case's flip in the M-1 taxonomy (Wave 3 item 9).
+/// Direction of a case's flip in the M-1 taxonomy.
 #[pyfunction]
 fn flip_direction(result: PyPerCaseResult) -> String {
     metrics::flip_direction(&metrics::PerCaseResult::from(result)).to_string()
 }
 
 /// Count of eligible cases per flip direction (M-1), every direction
-/// present as a key. Wave 3 item 9.
+/// present as a key.
 #[pyfunction]
 fn flip_direction_counts(results: Vec<PyPerCaseResult>) -> BTreeMap<String, usize> {
     metrics::flip_direction_counts(&to_core_results(results))
@@ -314,7 +314,7 @@ fn flip_direction_counts(results: Vec<PyPerCaseResult>) -> BTreeMap<String, usiz
 
 /// Net benefit at a single operating threshold (Vickers & Elkin 2006).
 /// The Python wrapper validates before dispatching; the Rust core
-/// asserts per the D-11 caller-bug convention. Wave 3 item 9.
+/// asserts per the D-11 caller-bug convention.
 #[pyfunction]
 fn net_benefit_at_threshold(risks: Vec<f64>, labels: Vec<i64>, pt: f64) -> f64 {
     metrics::net_benefit_at_threshold(&risks, &labels, pt)
