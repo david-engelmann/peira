@@ -46,8 +46,9 @@ def materialize_tag(tag: str, dest: pathlib.Path) -> None:
         ["git", "archive", tag], cwd=REPO_ROOT, capture_output=True, check=False
     )
     if archive.returncode != 0:
+        detail = archive.stderr.decode().strip().splitlines()
         raise ReleaseError(
-            f"git archive {tag} failed: {archive.stderr.decode().strip().splitlines()[-1]}"
+            f"git archive {tag} failed: {detail[-1] if detail else 'no stderr'}"
         )
     proc = subprocess.run(
         ["tar", "-x", "-C", str(dest)],

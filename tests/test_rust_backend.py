@@ -10,6 +10,7 @@ the Rust paths are covered as well.
 import json
 import os
 import random
+import re
 import subprocess
 import sys
 import unittest
@@ -548,11 +549,21 @@ class TestRustExtension(unittest.TestCase):
         )
         if not crate_toml.is_file():
             self.skipTest("crate sources not available in this layout")
-        declared = next(
-            line.split("=", 1)[1].strip().strip('"')
-            for line in crate_toml.read_text(encoding="utf-8").splitlines()
-            if line.strip().startswith("version")
-        )
+        # Section-aware scan: the version must come from [package], not a
+        # line that merely starts with "version" (e.g. version.workspace).
+        in_package = False
+        declared = None
+        for line in crate_toml.read_text(encoding="utf-8").splitlines():
+            stripped = line.strip()
+            if stripped.startswith("["):
+                in_package = stripped == "[package]"
+            elif in_package:
+                match = re.match(r'version\s*=\s*"([^"]+)"', stripped)
+                if match:
+                    declared = match.group(1)
+                    break
+        if not isinstance(declared, str):
+            self.skipTest("could not read [package] version from Cargo.toml")
         self.assertEqual(_core.version(), declared)
 
     def test_canonical_json_matches_dumps(self):
