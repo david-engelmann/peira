@@ -81,8 +81,10 @@ class TestCheckFamilies(unittest.TestCase):
         documented = check_families.documented_families(
             REPO_ROOT / "docs" / "Taxonomy.md"
         )
-        # No cap on families (David 2026-09-28).
-        self.assertEqual(len(documented), 27)
+        # No cap on families (David 2026-09-28): the expected count comes
+        # from the check script's canonical registry, not a literal.
+        expected_n = len(check_families.EXPECTED_ENTRY_HASHES)
+        self.assertEqual(len(documented), expected_n)
         numbers = [n for n, _, _ in documented]
         # 27 is reserved for question_pair_incoherence (QPI lane, landing
         # imminently after the 2026-10-01 cryptographic_payload 27 -> 28
