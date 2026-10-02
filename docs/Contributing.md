@@ -4,10 +4,10 @@
 
 Every PR must:
 
-1. Keep `python -m pytest tests -n auto` green (install test deps first:
-   `pip install -e .[dev]`).
+1. Keep `.venv/bin/python -m pytest tests -n auto` green (install test deps first:
+   `python3 -m venv .venv && .venv/bin/pip install -e '.[dev]'`).
 2. Keep `cargo test --workspace` green.
-3. Keep `python scripts/check_public_surface.py` green. Strategy language
+3. Keep `.venv/bin/python scripts/check_public_surface.py` green. Strategy language
    is never committed (see below).
 4. If you added a user-facing error string, add it to
    `docs/Troubleshooting.md` in the same PR.
