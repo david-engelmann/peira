@@ -455,21 +455,24 @@ peira run --adapter peira.adapters.llm:ZaiAdapter --suite trial-demo
 GLM-4 Plus is Zhipu's current paid flagship in the GLM-4 family. The
 adapter drives Zhipu's OpenAI-compatible endpoint
 (`https://open.bigmodel.cn/api/paas/v4`, model id `glm-4-plus`) with
-the same strict JSON-schema request shape as `OpenAIAdapter`; the
-base URL is recorded in the transcript's request shape, and the key
-is never logged. `max_retries=0`. The runner owns retries, same as
-every other LLM baseline.
+a `json_object` request shape (not the strict JSON-schema shape):
+Zhipu's endpoint does not support `json_schema` `response_format`
+and silently ignores it, so the adapter inlines the schema
+(required keys, types, decision enum) in the system prompt.
+Schema adherence is best-effort, not server-enforced. The base URL
+is recorded in the transcript's request shape, and the key is never
+logged. `max_retries=0`. The runner owns retries, same as every
+other LLM baseline.
 
 Auth note: Zhipu also supports JWT auth built from the API key ID
 plus secret, but the OpenAI-compatible endpoint accepts the API key
 directly as the Bearer token (per Zhipu's own OpenAI-compat docs),
 which is what this adapter uses.
 
-Honest caveat: the adapter is built from Zhipu's published docs, not
-the live API. Whether `json_schema` `response_format`, `seed`, and
-`logprobs` are honored for `glm-4-plus` is unverified. Verify against
-the live API before any measured run; mismatches surface as terminal
-provider errors, not silent mismeasurement.
+Honest caveat: whether `seed` and `logprobs` are honored for
+`glm-4-plus` is unverified. Verify against the live API before any
+measured run; mismatches surface as terminal provider errors, not
+silent mismeasurement.
 
 ### Mistral Large 3 (Mistral)
 

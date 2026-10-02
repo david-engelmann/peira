@@ -916,11 +916,22 @@ class OpenAIAdapter(_StructuredLLMBase):
         """
         return {}
 
+    def _system_prompt(self, schema: dict[str, Any]) -> str:
+        """System prompt for the request.
+
+        Subclasses whose provider cannot enforce the schema
+        server-side (Zhipu ignores ``json_schema`` ``response_format``)
+        override this to inline the schema so the model knows the
+        required keys. The default is the shared prompt — the schema
+        travels in ``response_format`` for providers that honor it.
+        """
+        return SYSTEM_PROMPT
+
     def _request(
         self, user_text: str, schema: dict[str, Any], repair: bool
     ) -> _RawResult:
         messages = [
-            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "system", "content": self._system_prompt(schema)},
             {"role": "user", "content": user_text},
         ]
         if repair:
@@ -1338,12 +1349,18 @@ class ZaiAdapter(OpenAIAdapter):
     Default model is ``glm-4-plus`` (Zhipu's current paid flagship in
     the GLM-4 family).
 
-    Request shape: whether ``json_schema`` ``response_format``, ``seed``,
-    and ``logprobs`` are honored for ``glm-4-plus`` is unverified. If
-    the live endpoint rejects or ignores any of these, you will see
-    terminal provider errors, not silent mismeasurement — verify against
-    the live API before any measured run. Not exercised against the
-    live API yet.
+    Request shape: Zhipu's OpenAI-compatible endpoint does NOT support
+    ``json_schema`` ``response_format`` — only ``text`` and
+    ``json_object``. It silently ignores the ``json_schema`` block (no
+    400), so this adapter sends ``response_format: {"type":
+    "json_object"}`` and inlines the schema (required keys, types, and
+    the decision enum) in the system prompt. Schema adherence is
+    best-effort, not server-enforced; the transcript records the
+    actual mode. Whether ``seed`` and ``logprobs`` are honored for
+    ``glm-4-plus`` is unverified. If the live endpoint rejects or
+    ignores any of these, you will see terminal provider errors, not
+    silent mismeasurement — verify against the live API before any
+    measured run.
     """
 
     name = "zai-structured"
@@ -1373,6 +1390,46 @@ class ZaiAdapter(OpenAIAdapter):
         self._client = self._sdk.OpenAI(
             api_key=self._api_key, base_url=self._base_url, max_retries=0
         )
+
+    def _request_kwargs(
+        self, messages: list[dict[str, str]], schema: dict[str, Any]
+    ) -> dict[str, Any]:
+        kwargs = super()._request_kwargs(messages, schema)
+        # Zhipu's OpenAI-compatible endpoint does NOT support the
+        # ``json_schema`` response_format — only ``text`` and
+        # ``json_object``. It silently ignores the ``json_schema``
+        # block (no 400), so the model never sees the schema and the
+        # response fails client-side validation. Send ``json_object``
+        # and put the schema in the system prompt instead (see
+        # _system_prompt). Schema adherence is then best-effort, not
+        # server-enforced — the transcript records this honestly.
+        kwargs["response_format"] = {"type": "json_object"}
+        return kwargs
+
+    def _system_prompt(self, schema: dict[str, Any]) -> str:
+        # The schema must travel in the prompt because Zhipu ignores
+        # the json_schema response_format. Spell out the required keys,
+        # their types, and the decision enum so the model can conform.
+        props = schema.get("properties", {}) or {}
+        required = schema.get("required", []) or []
+        parts = [SYSTEM_PROMPT, "The JSON object MUST contain exactly these keys:"]
+        for key in required:
+            ptype = props.get(key, {}).get("type", "string")
+            desc = f'"{key}" ({ptype})'
+            if key == "decision" and "enum" in props.get(key, {}):
+                desc += f", one of: {props[key]['enum']}"
+            if key in ("confidence", "score"):
+                desc += ", a number between 0 and 1"
+            parts.append(f"- {desc}")
+        return " ".join(parts)
+
+    def _request_shape_overrides(
+        self, sent: dict[str, Any]
+    ) -> dict[str, Any]:
+        # The json_object (not strict json_schema) mode is
+        # load-bearing for this adapter — record what was actually
+        # sent so the transcript never claims strict enforcement.
+        return {"response_format": "json_object:prompt-inlined-schema"}
 
     def _request(
         self, user_text: str, schema: dict[str, Any], repair: bool
