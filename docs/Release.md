@@ -104,3 +104,8 @@ same preflight; nothing here conflicts with it.
   for the `0.0.0` version marker.
 - It does not publish anything. The first real publish is David's manual
   run, after the perfection gate.
+- The post-publish smoke does not run the README quickstart's
+  `peira run --suite trial` step, because the trial dataset ships with the
+  repo, not the wheel. The smoke covers the install surface the wheel
+  actually provides. If the dataset ever ships inside the wheel, extend
+  `scripts/release/smoke.py` with a mock-adapter trial run.
