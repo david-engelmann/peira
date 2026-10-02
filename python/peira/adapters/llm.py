@@ -1356,11 +1356,12 @@ class ZaiAdapter(OpenAIAdapter):
     "json_object"}`` and inlines the schema (required keys, types, and
     the decision enum) in the system prompt. Schema adherence is
     best-effort, not server-enforced; the transcript records the
-    actual mode. Whether ``seed`` and ``logprobs`` are honored for
-    ``glm-4-plus`` is unverified. If the live endpoint rejects or
-    ignores any of these, you will see terminal provider errors, not
-    silent mismeasurement — verify against the live API before any
-    measured run.
+    actual mode. Live-verified 2026-10-02 against ``glm-4-plus``. All
+    40 verification calls parsed with zero auth or wire-shape errors,
+    and the ``json_object`` plus prompt-inlined schema shape from PR
+    #367 held up. Whether ``seed`` and ``logprobs`` are honored remains
+    unverified beyond successful parsing. Mismatches surface as
+    terminal provider errors, not silent mismeasurement.
     """
 
     name = "zai-structured"
