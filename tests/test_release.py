@@ -39,20 +39,28 @@ from scripts.release.validate import (  # noqa: E402
 # validate.py
 
 
-@pytest.mark.parametrize("good", ["0.0.0", "1.2.3", "10.20.30", "1.0.0-rc.1", "2.0.0-alpha"])
-def test_release_version_accepts_semver(good):
+@pytest.mark.parametrize("good", ["0.0.0", "1.2.3", "10.20.30", "1.0.0rc1", "2.0.0a0", "3.1.0b2"])
+def test_release_version_accepts_pep440(good):
     assert release_version(good) == good
 
 
 @pytest.mark.parametrize(
     "bad", ["", "v1.2.3", "1.2", "1.2.3.4", "1.02.3", "latest", "1.2.x", " 1.2.3"]
 )
-def test_release_version_rejects_non_semver(bad):
+def test_release_version_rejects_non_pep440(bad):
     with pytest.raises(ReleaseError):
         release_version(bad)
 
 
-@pytest.mark.parametrize("good", ["v0.0.0", "v1.2.3", "v10.20.30-rc.1"])
+@pytest.mark.parametrize("semver", ["1.0.0-rc.1", "2.0.0-alpha", "1.2.3-beta.2"])
+def test_release_version_rejects_semver_prerelease(semver):
+    # SemVer prerelease syntax would normalize away from the tag; the error
+    # points at the PEP 440 form so tag-is-version survives.
+    with pytest.raises(ReleaseError, match="PEP 440"):
+        release_version(semver)
+
+
+@pytest.mark.parametrize("good", ["v0.0.0", "v1.2.3", "v10.20.30rc1"])
 def test_release_tag_accepts_v_prefixed(good):
     assert release_tag(good) == good
 
@@ -98,18 +106,20 @@ def test_absolute_path():
 def test_parse_release_version():
     assert parse_release_version("1.2.3") == ReleaseMeta("1.2.3", "v1.2.3")
     assert parse_release_version("v1.2.3") == ReleaseMeta("1.2.3", "v1.2.3")
-    assert parse_release_version("  v2.0.0-rc.1 ") == ReleaseMeta(
-        "2.0.0-rc.1", "v2.0.0-rc.1"
+    assert parse_release_version("  v2.0.0rc1 ") == ReleaseMeta(
+        "2.0.0rc1", "v2.0.0rc1"
     )
     with pytest.raises(ReleaseError):
         parse_release_version("nope")
+    with pytest.raises(ReleaseError, match="PEP 440"):
+        parse_release_version("v2.0.0-rc.1")
 
 
 def test_stable_versions_from_ls_remote():
     output = (
         "abc123\trefs/tags/v1.0.0\n"
         "def456\trefs/tags/v1.0.0^{}\n"
-        "aaa111\trefs/tags/v1.1.0-rc.1\n"
+        "aaa111\trefs/tags/v1.1.0rc1\n"
         "bbb222\trefs/tags/v2.0.0\n"
         "ccc333\trefs/tags/not-a-version\n"
         "ddd444\trefs/heads/main\n"
@@ -127,10 +137,16 @@ def test_compare_versions():
     assert compare_versions("1.2.4", "1.2.3") > 0
     assert compare_versions("1.2.3", "2.0.0") < 0
     assert compare_versions("1.10.0", "1.9.0") > 0
+    # PEP 440 prerelease ordering: a < b < rc < stable.
+    assert compare_versions("1.2.3a0", "1.2.3b0") < 0
+    assert compare_versions("1.2.3b0", "1.2.3rc1") < 0
+    assert compare_versions("1.2.3rc1", "1.2.3") < 0
+    assert compare_versions("1.2.3rc1", "1.2.3rc2") < 0
+    assert compare_versions("1.2.3rc1", "1.2.4a0") < 0
 
 
 def test_channel_for():
-    assert channel_for("1.0.0-rc.1", ["1.0.0", "2.0.0"]) == "prerelease"
+    assert channel_for("1.0.0rc1", ["1.0.0", "2.0.0"]) == "prerelease"
     assert channel_for("2.0.0", ["1.0.0", "2.0.0"]) == "latest"
     assert channel_for("3.0.0", ["1.0.0", "2.0.0"]) == "latest"
     assert channel_for("1.5.0", ["1.0.0", "2.0.0"]) == "backport"

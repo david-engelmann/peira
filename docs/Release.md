@@ -22,10 +22,19 @@ If a release is bad, the fix is a new version, not a rewritten tag.
 
 ## Channels
 
-- A prerelease (`-rc.1`, `-alpha`) never moves the stable channel.
+- A prerelease (`1.2.3rc1`, `1.2.3a0`) never moves the stable channel.
 - A stable release becomes `latest` only when it is the highest stable tag.
   A backport (stable but not highest, e.g. `v0.2.5` cut after `v0.3.0`)
   ships on PyPI but never moves the `latest` pointer.
+
+## Versions are PEP 440
+
+PyPI requires PEP 440, so the release version is always PEP 440 and the
+tag is `v` plus that version. For stable releases this is just `1.2.3`.
+For prereleases, tag the PEP 440 form directly (`git tag -s v1.2.3rc1`,
+not `v1.2.3-rc.1`): the tooling rejects SemVer prerelease syntax with a
+pointer to the PEP 440 form, because silently normalizing would break
+tag-is-version (the tag you create must equal the published version).
 
 ## The pipeline
 
