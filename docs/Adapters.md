@@ -286,6 +286,14 @@ Opus 5.5, or both. The reconciliation landed 2026-09-30:
   default until a live smoke test decides D3's (a)/(b)/(c). All three
   ids are live-UNVERIFIED from this environment.
 
+Live verification was attempted 2026-10-02 and could not complete.
+The sandbox cannot reach api.anthropic.com through the provisioned
+credential path. The credential is in place, the adapter constructs,
+and the request is well formed, but the call hangs with no response
+(75 second timeout, zero bytes). Per D19 the Anthropic pins stay out
+of the official run until a live smoke passes. Verification will be
+re-attempted once the network path is fixed.
+
 ### Frontier ceiling (candidate; id unverified, not yet measured)
 
 The strongest model peira can measure against: the upper bound every
@@ -508,6 +516,12 @@ records the seed under the wire name it was sent with.
 environment as of 2026-09-30. Verify against the live API before any
 measured run; mismatches surface as terminal provider errors, not
 silent mismeasurement.
+
+Live verification was attempted 2026-10-02 and could not start. No
+Mistral credential is provisioned in this environment, so no call
+could be made. Per D19 the Mistral pin stays out of the official run
+until a live smoke passes. Verification will be re-attempted once a
+credential is provisioned.
 
 ### Qwen3.8-Max (Alibaba)
 
@@ -857,10 +871,13 @@ timeouts surface as retryable provider errors for the runner. The
 endpoint is free to use. Known blind
 spot: a 2026-04 probe found phishing-style credential-theft prompts
 can pass silently. Treat clean verdicts on credential-solicitation
-cases with skepticism. **Live-UNVERIFIED**: no real call has been
-made from this environment as of 2026-09-30. The wire shape above is
-from the official OpenAI API reference; confirm it against one live
-call before first measured use.
+cases with skepticism. **Live-verified 2026-10-02.** 40 calls (20-case
+slice, benign plus attacked arms) against
+`POST https://api.openai.com/v1/moderations` with model
+`omni-moderation-latest`, through the A6 smoke harness. 40 of
+40 parsed with zero retries, zero auth or terminal-shape errors, and
+served-model `omni-moderation-latest` recorded per call. $0 spend (the
+endpoint is free).
 
 ## Google Cloud Model Armor
 
