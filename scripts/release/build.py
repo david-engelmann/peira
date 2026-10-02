@@ -69,6 +69,10 @@ def build_artifacts(tree: pathlib.Path, outdir: pathlib.Path) -> list[pathlib.Pa
             "the 'build' package is required (pip install build) to build releases"
         )
     outdir.mkdir(parents=True, exist_ok=True)
+    # Never let a stale artifact from an earlier run sneak into the upload set.
+    for stale in outdir.glob("peira-*"):
+        if stale.is_file():
+            stale.unlink()
     _check(
         [sys.executable, "-m", "build", "--sdist", "--wheel", "--outdir", str(outdir)],
         cwd=tree,

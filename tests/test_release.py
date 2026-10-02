@@ -2,6 +2,7 @@
 network, no git, no publishing. xdist-safe via tmp_path."""
 
 import pathlib
+import types
 
 import pytest
 
@@ -9,6 +10,7 @@ import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
+from scripts.release import build as build_module  # noqa: E402
 from scripts.release.meta import (  # noqa: E402
     ReleaseMeta,
     channel_for,
@@ -220,3 +222,29 @@ def test_find_main_pinned_installs():
 
     clean = {"README.md": "pip install peira==1.2.3\n"}
     assert find_main_pinned_installs(clean) == []
+
+
+def test_build_artifacts_clears_stale_files(tmp_path, monkeypatch):
+    tree = tmp_path / "tree"
+    tree.mkdir()
+    outdir = tmp_path / "dist"
+    outdir.mkdir()
+    stale = outdir / "peira-0.0.1-py3-none-any.whl"
+    stale.write_text("stale")
+    monkeypatch.setitem(sys.modules, "build", types.ModuleType("build"))
+    fresh = outdir / "peira-9.9.9-py3-none-any.whl"
+
+    def fake_check(cmd, cwd=None):
+        fresh.write_text("fresh")
+        return ""
+
+    monkeypatch.setattr(build_module, "_check", fake_check)
+    files = build_module.build_artifacts(tree, outdir)
+    assert not stale.exists(), "stale artifact from an earlier run leaked into dist/"
+    assert files == [fresh]
+
+
+def test_build_artifacts_requires_build_package(tmp_path, monkeypatch):
+    monkeypatch.delitem(sys.modules, "build", raising=False)
+    with pytest.raises(build_module.ReleaseError, match="pip install build"):
+        build_module.build_artifacts(tmp_path, tmp_path)

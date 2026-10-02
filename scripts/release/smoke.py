@@ -8,6 +8,12 @@ package imports, reports the right version, and answers ``peira --version``.
 Catches the "published but broken" class: bad metadata, missing files in
 the sdist/wheel, or an import-time crash.
 
+The trial dataset ships with the repo, not the wheel, so the README
+quickstart's ``peira run --suite trial`` step needs a checkout and cannot
+run in the clean venv. The smoke covers the install surface the wheel
+actually provides. If the dataset ever ships inside the wheel, extend the
+smoke with a ``peira run --adapter mock --suite trial`` pass.
+
 Needs network access to PyPI. Never run against a local path or a test
 index unless ``--index-url`` is explicitly overridden.
 """
@@ -71,6 +77,8 @@ def run_smoke(version: str, index_url: str = PYPI_INDEX) -> None:
         if meta.version not in cli:
             raise ReleaseError(f"peira --version did not mention {meta.version}: {cli!r}")
         print(f"ok: peira --version -> {cli}")
+        _check([str(venv / "bin" / "peira"), "--help"], "peira --help")
+        print("ok: peira --help exits 0 (full CLI wiring)")
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
 
