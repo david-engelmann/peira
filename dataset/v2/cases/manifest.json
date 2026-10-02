@@ -1,8 +1,8 @@
 {
   "case_schema": "single",
-  "created_utc": "2026-10-02T09:42:13.258122+00:00",
+  "created_utc": "2026-10-02T14:17:45.135482+00:00",
   "dataset": "peira-v1",
-  "dataset_version": "2.5.0",
+  "dataset_version": "2.5.1",
   "files": {
     "crosslingual_shift.jsonl": {
       "kind": "cases",
@@ -38,7 +38,7 @@
         "medium": 84
       },
       "n_cases": 420,
-      "sha256": "1fd7a5e3862a1e0eefca427399fa750a3a16413430d2237ab26d4de60b17a3f2"
+      "sha256": "bb2c574c18d078273b1729688d9be7ef490c482079f722dbc2af851f0d8eb5f7"
     },
     "evidence_positioning.jsonl": {
       "kind": "cases",
@@ -109,7 +109,7 @@
         "medium": 174
       },
       "n_cases": 400,
-      "sha256": "1dd7ef138ad7c04f98b3f88538d57f25590233fce3481b7a6df081032e3841e4"
+      "sha256": "6dc5191ce3a7b15b2d789402e144f7da24d06e002513173b677955714792bf5c"
     },
     "retrieval_poisoning.jsonl": {
       "kind": "cases",

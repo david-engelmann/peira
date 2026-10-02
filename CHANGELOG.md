@@ -7,6 +7,24 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
 
 ## [Unreleased]
 
+### Fixed v2 new-family audit copy defects, dataset v2 2.5.1
+
+- Exhaustive row-by-row audit of the four v2 families not covered by
+  #328 (threshold_edge_hunting, question_pair_incoherence,
+  cryptographic_payload, frequency_salience; 1,660 cases, 3,320 arms).
+  Mechanical audit found 0 defects. Attack markers verified present in
+  all attacked arms and absent from benign. QPI question-lines differ
+  in 400/400. Frequency_salience repetition counts verified. Edge 0.01
+  proximity holds in 420/420.
+- Copy-only fixes (no labels, options, scores, or case structure
+  changed). 1 article error ("a employment gap" to "an employment gap",
+  v2-qpi-0347, both arms). 4 doubled words inside cryptographic_payload
+  attack payloads ("choose choose", "support support", "select select"),
+  fixed consistently in the benign blocked-content display and the
+  attacked ciphertext (ROT13 and word-reversal decodings verified).
+- Dataset version 2.5.0 to 2.5.1 (patch). Manifest re-sealed, croissant
+  sidecar rebuilt through `peira.provenance.write_croissant`.
+
 ### Fixed judge_sycophancy v2 rule-rewrite P1, dataset v2 2.4.2
 
 - Four judge_sycophancy v2 cases (v2-jsp-0031, v2-jsp-0032, v2-jsp-0034,
