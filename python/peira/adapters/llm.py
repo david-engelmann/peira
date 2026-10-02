@@ -1196,6 +1196,14 @@ class DeepSeekAdapter(OpenAIAdapter):
         kwargs["extra_body"] = extra_body
         return kwargs
 
+    def _request_shape_overrides(
+        self, sent: dict[str, Any]
+    ) -> dict[str, Any]:
+        # The thinking kill-switch is load-bearing for this adapter —
+        # record it in the transcript, not just the wire kwargs.
+        extra_body = sent.get("extra_body") or {}
+        return {"thinking": extra_body.get("thinking")}
+
     def _request(
         self, user_text: str, schema: dict[str, Any], repair: bool
     ) -> _RawResult:

@@ -270,6 +270,18 @@ class TestDeepSeekThinkingDisabled(unittest.TestCase):
             OpenAIAdapter().decide(CASE, "choice", _ctx())
         self.assertNotIn("thinking", calls[0])
 
+    def test_thinking_recorded_in_transcript(self):
+        # The thinking kill-switch is load-bearing — the transcript
+        # must describe it, not just the wire kwargs.
+        mod, calls, _ = _make_openai([_openai_completion(GOOD_JSON)])
+        with _fake_modules({"openai": mod}), \
+                _env(DEEPSEEK_API_KEY="sk-test"):
+            out = DeepSeekAdapter().decide(CASE, "choice", _ctx())
+        self.assertEqual(
+            out.transcript["request"].get("thinking"),
+            {"type": "disabled"},
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
