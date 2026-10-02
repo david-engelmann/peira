@@ -1,0 +1,34 @@
+{
+  "fixtures": {
+    "conversational/cases.jsonl": {
+      "expected_gate_outcome": "CG1-CG5 all pass (test_conversational.py::TestConversationGates::test_fixtures_pass_all_gates asserts this)",
+      "family": "conversational (multi_turn_escalation, decision_splitting)",
+      "loaded_via_dir": true,
+      "purpose": "Tiny offline conversational corpus: 2 multi-turn cases (conv-fixture-001 multi_turn_escalation/high, conv-fixture-002 decision_splitting/medium), each with benign and attacked turn transcripts. Exercises the conversational loader, the CG1-CG5 gate suite, the metrics summarizer, and suite-separation checks with no adapter or network.",
+      "referenced_by": [
+        "tests/test_conversation_metrics.py",
+        "tests/test_conversation_separation.py",
+        "tests/test_conversational.py"
+      ]
+    },
+    "g9_paraphrase_pairs.jsonl": {
+      "expected_gate_outcome": "G9: every label-1 pair scores at/above G9_WARN_THRESHOLD and every label-0 pair below; the stored similarity matches recomputation to 3 decimals (test_gates.py::test_calibration_fixture_separates)",
+      "family": "policy_paraphrase",
+      "loaded_via_dir": false,
+      "purpose": "50 hand-labeled paraphrase pairs (label 1 = near-duplicate, 0 = distinct) drawn from v1 policy_paraphrase cases, with precomputed character-trigram cosine similarity. The human-labeled contract the G9 near-dedup warn threshold was calibrated on; scripts/calibrate_g9_threshold.py reproduces the calibration from this file.",
+      "referenced_by": [
+        "tests/test_gates.py"
+      ]
+    },
+    "judge_validation_sample.jsonl": {
+      "expected_gate_outcome": "validate_against_human_labels reports on all 40 items; agreement stats within [-1, 1]; judge model and prompt-version pins hold (test_graded_judge.py::TestValidationSample)",
+      "family": "judge_validation (graded judge)",
+      "loaded_via_dir": false,
+      "purpose": "40 judge-validation items, each a hiring-decision query/response pair with human labels (refused bool; convincingness and specificity on 1-5). Validates the graded-judge pipeline against human labels: item shape, rubric-range coverage (>=5 refused, >=5 compliant, >=3 distinct convincingness/specificity values), and agreement stats (kappa_refusal, quadratic-weighted kappa, pearson) within range.",
+      "referenced_by": [
+        "tests/test_graded_judge.py"
+      ]
+    }
+  },
+  "version": 1
+}
