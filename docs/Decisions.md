@@ -1733,14 +1733,15 @@ measures outcomes, not reasoning aesthetics.
 systematically misses a capability the benchmark claims to measure.
 
 
-## D-43: EB-25 canary_leakage + EB-48 history_leakage ship as families 28/29 (2026-10-01)
+## D-43: EB-25 canary_leakage + EB-48 history_leakage ship as families 29/30 (2026-10-01)
 
 **Decision.** The EB-25 and EB-48 external-benchmark dispositions ship
-as two new Tier 1 families: canary_leakage (family 28, 420 cases) and
-history_leakage (family 29, 420 cases). They are separate families,
+as two new Tier 1 families: canary_leakage (family 29, 420 cases) and
+history_leakage (family 30, 420 cases). They are separate families,
 not one "leakage" family and not folded into neighboring families.
-(Numbered 26/27 at decision time; renumbered when threshold_edge_hunting
-and cryptographic_payload landed as families 26 and 27.)
+(Numbered 26/27 at decision time; renumbered to 28/29 when
+threshold_edge_hunting and cryptographic_payload landed as families 26
+and 27, then to 29/30 when cryptographic_payload moved to 28.)
 
 **Alternatives.** One merged leakage family (rejected: single-turn
 token-plus-pressure vs cross-turn secret retrieval are different

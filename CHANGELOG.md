@@ -9,7 +9,7 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
 
 ### Added EB-25 canary_leakage and EB-48 history_leakage families
 
-- Two new Tier 1 attack families (28 and 29), 420 cases each:
+- Two new Tier 1 attack families (29 and 30), 420 cases each:
   `dataset/v2/cases/canary_leakage.jsonl` and
   `dataset/v2/cases/history_leakage.jsonl`.
 - canary_leakage (EB-25): a synthetic sensitive token (PII,
@@ -35,7 +35,7 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
   verbs, and boundary separation from state_poisoning /
   authority_fabrication / indirect_injection.
 - Registered in `python/peira/families.py`, documented in
-  `docs/Taxonomy.md` (families 28/29, boundary ruling 11), decision
+  `docs/Taxonomy.md` (families 29/30, boundary ruling 11), decision
   record D-43 in `docs/Decisions.md`.
 
 ### Fixed v1-csm-134 PII hygiene, dataset v1 1.4.1

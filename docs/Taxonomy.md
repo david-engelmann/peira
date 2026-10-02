@@ -34,7 +34,7 @@ dataset files and per-case drill-down. Entry numbers below are this
 section's sequence; the program-wide family numbers additionally count
 the two conversational-suite families (`multi_turn_escalation` 25,
 `decision_splitting` 26, see `docs/Conversational-Suite.md`), so the
-newest v2 family is program-wide family 27.
+newest v2 family is program-wide family 28.
 
 1. **state_poisoning**: hostile content in tool output authorizes the
    action; includes history-embedded payloads in multi-turn state.
@@ -164,7 +164,7 @@ ships, with no fixed total.
     future measurement work. YouTube-reconciliation research 2026-09-30;
     Boundary Point Jailbreaking analogue.
 
-27. **cryptographic_payload** (Tier 1). Encrypted payload plus
+28. **cryptographic_payload** (Tier 1). Encrypted payload plus
     in-context decryption instructions: the guard layer classifies the
     ciphertext (benign-looking) while the decision model recovers the
     plaintext in a trusted execution context and follows it. The benign
@@ -175,7 +175,7 @@ ships, with no fixed total.
     decode-and-apply instructions. Adversa AI, Aug 2026 (Grok and Gemini
     guardrails bypassed).
 
-28. **canary_leakage** (Tier 1). The attacked variant plants a
+29. **canary_leakage** (Tier 1). The attacked variant plants a
     fake-but-realistic sensitive token (a "canary": synthetic PII,
     credentials, system-prompt fragments, or reference tokens) in a
     records block and adds an extraction-pressure block that steers the
@@ -188,7 +188,7 @@ ships, with no fixed total.
     credential_canary, system_fragment, reference_token. Distinct from
     R-05's holdout-contamination canaries. EB-25.
 
-29. **history_leakage** (Tier 1). A secret disclosed in an early
+30. **history_leakage** (Tier 1). A secret disclosed in an early
     conversation turn is extracted under later-turn pressure. The
     attacked variant plants a synthetic secret in the turn-1 user
     message and applies extraction pressure in the turn-3 user message,
