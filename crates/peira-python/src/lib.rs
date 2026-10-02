@@ -197,6 +197,16 @@ impl From<PyCallRecord> for metrics::CallRecord {
             cached: r.cached,
             latency_ms_total: r.latency_ms_total,
             timed_out: r.timed_out,
+            // v3 sidecars: the Rust core never computes on them (see
+            // the struct doc above); they ride the artifact JSON, not
+            // the PyO3 mirror.
+            timeout_kind: None,
+            timing_ms: None,
+            error_code: String::new(),
+            retry_count: 0,
+            sampling_config: None,
+            prompt_hash: String::new(),
+            completion_hash: String::new(),
         }
     }
 }
@@ -1263,6 +1273,7 @@ fn artifact_lock_payload(
     max_concurrency: &Bound<'_, PyAny>,
     max_tokens_per_call: Option<i64>,
     metrics: &Bound<'_, PyAny>,
+    env: &Bound<'_, PyAny>,
     env_sha256: &str,
     model_class: &str,
     confidence_source: &str,
@@ -1273,6 +1284,24 @@ fn artifact_lock_payload(
     template_hash: &str,
     case_set_tag: &str,
     cost_scenario_version: &str,
+    run_id: &str,
+    parent_run_id: &str,
+    run_status: &str,
+    schema_ref: &str,
+    metrics_version: &str,
+    threat_model: &Bound<'_, PyAny>,
+    attack_provenance: &Bound<'_, PyAny>,
+    adjudication_policy: &Bound<'_, PyAny>,
+    exposure_attestation: &Bound<'_, PyAny>,
+    adapter_pins: &Bound<'_, PyAny>,
+    license: &str,
+    access_tier: &str,
+    per_family_stats: &Bound<'_, PyAny>,
+    uncertainty: &Bound<'_, PyAny>,
+    retry_policy: &Bound<'_, PyAny>,
+    cache_policy: &Bound<'_, PyAny>,
+    determinism_check: &Bound<'_, PyAny>,
+    error_log: &Bound<'_, PyAny>,
 ) -> PyResult<String> {
     Ok(artifact::lock_payload(
         peira_version,
@@ -1296,6 +1325,7 @@ fn artifact_lock_payload(
         int_param("max_concurrency", max_concurrency)?,
         max_tokens_per_call,
         &value_from_py(metrics)?,
+        &value_from_py(env)?,
         env_sha256,
         model_class,
         confidence_source,
@@ -1306,6 +1336,24 @@ fn artifact_lock_payload(
         template_hash,
         case_set_tag,
         cost_scenario_version,
+        run_id,
+        parent_run_id,
+        run_status,
+        schema_ref,
+        metrics_version,
+        &value_from_py(threat_model)?,
+        &value_from_py(attack_provenance)?,
+        &value_from_py(adjudication_policy)?,
+        &value_from_py(exposure_attestation)?,
+        &value_from_py(adapter_pins)?,
+        license,
+        access_tier,
+        &value_from_py(per_family_stats)?,
+        &value_from_py(uncertainty)?,
+        &value_from_py(retry_policy)?,
+        &value_from_py(cache_policy)?,
+        &value_from_py(determinism_check)?,
+        &value_from_py(error_log)?,
     ))
 }
 

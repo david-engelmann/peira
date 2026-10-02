@@ -73,6 +73,7 @@ fn analysis_lock_parity_with_python() {
             art["max_concurrency"].as_i64().unwrap(),
             art["max_tokens_per_call"].as_i64(),
             &art["metrics"],
+            &art["env"],
             art["env_sha256"].as_str().unwrap_or(""),
             art["model_class"].as_str().unwrap_or(""),
             art["confidence_source"].as_str().unwrap_or(""),
@@ -83,6 +84,25 @@ fn analysis_lock_parity_with_python() {
             art["template_hash"].as_str().unwrap_or(""),
             art["case_set_tag"].as_str().unwrap_or(""),
             art["cost_scenario_version"].as_str().unwrap_or(""),
+            // v3 agent-consumer fields (all lock-covered)
+            art["run_id"].as_str().unwrap_or(""),
+            art["parent_run_id"].as_str().unwrap_or(""),
+            art["run_status"].as_str().unwrap_or("success"),
+            art["schema_ref"].as_str().unwrap_or(""),
+            art["metrics_version"].as_str().unwrap_or(""),
+            &art["threat_model"],
+            &art["attack_provenance"],
+            &art["adjudication_policy"],
+            &art["exposure_attestation"],
+            &art["adapter_pins"],
+            art["license"].as_str().unwrap_or("CC-BY-4.0"),
+            art["access_tier"].as_str().unwrap_or("public"),
+            &art["per_family_stats"],
+            &art["uncertainty"],
+            &art["retry_policy"],
+            &art["cache_policy"],
+            &art["determinism_check"],
+            &art["error_log"],
         );
         assert_eq!(got, row["lock"].as_str().unwrap(), "lock mismatch");
 

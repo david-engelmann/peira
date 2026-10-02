@@ -456,13 +456,14 @@ The artifact itself is valid (it's just from an older schema), so
 half-empty page or calling the artifact corrupt. Fix: re-run the
 suite to generate a current artifact.
 
-**`error: unsupported artifact_version '1': ...`**
-Cause: the artifact was produced before the v2 measurement contract.
-Peira never migrates v1 artifacts. The numbers were computed under
-weaker semantics (flat results, no call records, no refusal tracking),
-and a migration shim would bless them as v2. Fix: re-run the adapter to
-produce a v2 artifact (the suite cases are unchanged; only the harness
-outputs moved).
+**`error: unsupported artifact_version '1': ...`** (or `'2'`)
+Cause: the artifact predates the v3 agent-consumer schema. Peira never
+migrates old artifacts. v1 had flat results with no call records. v2
+lacked stable run identity, closed vocabularies, and the structured
+threat-model / provenance / adjudication / exposure blocks. A migration
+shim would bless old numbers under new semantics. Fix: re-run the
+adapter to produce a v3 artifact (the suite cases are unchanged; only
+the harness outputs moved).
 
 **`error: cannot write report to <out> (...)`**
 Cause: `peira report --out` points somewhere unwritable: a missing

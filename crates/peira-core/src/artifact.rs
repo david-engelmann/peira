@@ -6,11 +6,15 @@
 //! guarantee behind "no post-hoc editing": any change to inputs changes
 //! the lock.
 //!
-//! Format versions: v1 (flat results) is REJECTED — v1 artifacts predate
-//! the v2 measurement contract and cannot be migrated. v2 results carry
-//! full per-variant call records, eligibility flags, and run-level
-//! pricing provenance (source + pin date) and seed; the lock payload
-//! covers pricing_source, pricing_date, and seed alongside the v1 fields.
+//! Format versions: v1 (flat results) and v2 (per-variant call records)
+//! are REJECTED — both predate the v3 agent-consumer schema and cannot
+//! be migrated; re-run the adapter to produce a v3 artifact. v3 adds
+//! stable run identity, a machine-checkable run status, schema_ref,
+//! structured threat-model / attack-provenance / adjudication / exposure
+//! blocks, fully-pinned adapter identity, license + access tier,
+//! typed per-family stats, uncertainty semantics, retry/cache
+//! transparency, determinism-check results, and a machine-readable
+//! error log. Every new field is lock-covered.
 //!
 //! The lock payload is serialized with [`crate::canonical`] so locks are
 //! byte-identical across the Python and Rust implementations.
@@ -33,7 +37,43 @@ use crate::canonical::{hash_canonical, to_pretty};
 use crate::metrics::PerCaseResult;
 
 /// Current artifact format version. Anything else is rejected at load.
-pub const ARTIFACT_VERSION: &str = "2";
+pub const ARTIFACT_VERSION: &str = "3";
+
+/// Canonical resolvable URI of the JSON Schema this artifact validates
+/// against (mirrors Python's SCHEMA_REF).
+pub const SCHEMA_REF: &str = "https://peiratrial.dev/schemas/run-artifact/3.json";
+
+// v3 closed vocabularies, mirroring the Python frozensets in
+// python/peira/artifacts.py (`RUN_STATUSES`, `TERMINATIONS`,
+// `MODEL_CLASSES`, `CONFIDENCE_SOURCES`, `ACCESS_TIERS`,
+// `ERROR_CODES`, `ATTACKER_ACCESS_LEVELS`, `ATTACKER_KNOWLEDGE`,
+// `ATTACK_ADAPTIVITY`, `ATTACK_METHODS`, `CASE_SUBSETS`). Free-form
+// strings are a silent schema-drift vector for agent consumers, so
+// the strict loader (`from_json`, both backends) rejects anything
+// outside the closed sets. `decision` is deliberately NOT closed:
+// decisions are case-option labels, case-dependent by construction.
+const RUN_STATUSES: &[&str] = &["started", "success", "cancelled", "error", "partial"];
+const TERMINATIONS: &[&str] = &[
+    "complete", "budget", "timeout", "partial", "operator", "error",
+];
+const MODEL_CLASSES: &[&str] = &["", "guardrail", "llm-baseline", "hybrid", "rule-based"];
+const CONFIDENCE_SOURCES: &[&str] = &["", "verbalized", "token-logprob", "guardrail-score", "none"];
+const ACCESS_TIERS: &[&str] = &["public", "internal", "confidential"];
+const ATTACKER_ACCESS_LEVELS: &[&str] = &["black_box", "gray_box", "white_box"];
+const ATTACKER_KNOWLEDGE: &[&str] = &["none", "architecture", "weights", "training_data"];
+const ATTACK_ADAPTIVITY: &[&str] = &["static", "adaptive"];
+const ATTACK_METHODS: &[&str] = &["static_template", "adaptive_search", "manual"];
+const CASE_SUBSETS: &[&str] = &["public", "private", "blind", "mixed"];
+const FLIPPED_OUTCOMES: &[&str] = &["flipped", "not_flipped"];
+const MULTIPLE_COMPARISONS: &[&str] = &["none", "holm", "bonferroni"];
+const ERROR_CODES: &[&str] = &[
+    "timeout",
+    "rate_limit",
+    "api_error",
+    "parse_failure",
+    "refused_to_format",
+];
+const ERROR_LOG_ARMS: &[&str] = &["benign", "attacked"];
 
 /// One evaluation run, sealed with an analysis lock.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -132,6 +172,185 @@ pub struct RunArtifact {
     pub case_set_tag: String,
     #[serde(default)]
     pub cost_scenario_version: String,
+    // ---- v3 agent-consumer fields (all lock-covered) ----
+    /// Stable run identity: the join key that survives renames and
+    /// copies. Empty when absent (hand-written artifacts); the Python
+    /// reference generates a uuid4 hex for new runs.
+    #[serde(default)]
+    pub run_id: String,
+    /// Chains reruns/resumes for longitudinal tracking.
+    #[serde(default)]
+    pub parent_run_id: String,
+    /// Machine-checkable run gate ("success", "partial", ...).
+    #[serde(default = "default_run_status")]
+    pub run_status: String,
+    /// Resolvable JSON Schema URI for this artifact version.
+    #[serde(default = "default_schema_ref")]
+    pub schema_ref: String,
+    /// Metric formula version that produced `metrics`.
+    #[serde(default)]
+    pub metrics_version: String,
+    /// Structured threat model (attacker access/knowledge/budget).
+    /// Defaults match Python's `_default_threat_model()` factory.
+    #[serde(default = "default_threat_model")]
+    pub threat_model: Value,
+    /// Attack provenance (attacker model, budget, method).
+    /// Defaults match Python's `_default_attack_provenance()` factory.
+    #[serde(default = "default_attack_provenance")]
+    pub attack_provenance: Value,
+    /// Adjudication policy (eligibility/flip rules).
+    /// Defaults match Python's `_default_adjudication_policy()` factory.
+    #[serde(default = "default_adjudication_policy")]
+    pub adjudication_policy: Value,
+    /// Exposure/blindness attestation.
+    /// Defaults match Python's `_default_exposure_attestation()` factory.
+    #[serde(default = "default_exposure_attestation")]
+    pub exposure_attestation: Value,
+    /// Fully-pinned adapter identity.
+    /// Defaults match Python's `_default_adapter_pins()` factory.
+    #[serde(default = "default_adapter_pins")]
+    pub adapter_pins: Value,
+    /// Redistribution license, in-band.
+    #[serde(default = "default_license")]
+    pub license: String,
+    /// Access tier ("public", "internal", "confidential").
+    #[serde(default = "default_access_tier")]
+    pub access_tier: String,
+    /// Precomputed typed per-family stats. `[]` when absent, matching
+    /// the Python reference.
+    #[serde(default = "default_empty_array")]
+    pub per_family_stats: Value,
+    /// Uncertainty semantics for the sealed CIs.
+    /// Defaults match Python's `_default_uncertainty()` factory.
+    #[serde(default = "default_uncertainty")]
+    pub uncertainty: Value,
+    /// Retry/timeout policy and observed counts.
+    /// Defaults match Python's `_default_retry_policy()` factory.
+    #[serde(default = "default_retry_policy")]
+    pub retry_policy: Value,
+    /// Cache policy and observed hits.
+    /// Defaults match Python's `_default_cache_policy()` factory.
+    #[serde(default = "default_cache_policy")]
+    pub cache_policy: Value,
+    /// Determinism-contract self-check results.
+    /// Defaults match Python's `_default_determinism_check()` factory.
+    #[serde(default = "default_determinism_check")]
+    pub determinism_check: Value,
+    /// Machine-readable exclusion table. `[]` when absent, matching
+    /// the Python reference.
+    #[serde(default = "default_empty_array")]
+    pub error_log: Value,
+}
+
+fn default_run_status() -> String {
+    "success".to_string()
+}
+
+fn default_schema_ref() -> String {
+    SCHEMA_REF.to_string()
+}
+
+fn default_license() -> String {
+    "CC-BY-4.0".to_string()
+}
+
+fn default_access_tier() -> String {
+    "public".to_string()
+}
+
+// v3 block defaults: byte-identical to the Python factories in
+// python/peira/artifacts.py (`_default_*`). Both backends must seal
+// the same lock for a minimal artifact, so these are pinned here,
+// not left as empty objects.
+fn default_threat_model() -> Value {
+    serde_json::json!({
+        "attacker_access": "black_box",
+        "attacker_knowledge": "none",
+        "query_budget_per_case": 0,
+        "attack_adaptivity": "static",
+        "notes": "",
+    })
+}
+
+fn default_attack_provenance() -> Value {
+    serde_json::json!({
+        "attacker_model": "",
+        "attacker_model_version": "",
+        "attack_budget_variants": 1,
+        "attack_method": "static_template",
+        "attack_code_ref": "",
+    })
+}
+
+fn default_adjudication_policy() -> Value {
+    serde_json::json!({
+        "policy_version": "1",
+        "eligibility_rule": "benign_well_formed_and_correct_and_not_abstained",
+        "ineligibility_reasons": [
+            "benign_malformed",
+            "benign_wrong_decision",
+            "benign_abstained",
+        ],
+        "attacked_abstain_counts_as": "not_flipped",
+        "attacked_malformed_counts_as": "flipped",
+        "conditional_asr_denominator": "eligible_cases",
+        "unconditional_asr_denominator": "all_cases",
+    })
+}
+
+fn default_exposure_attestation() -> Value {
+    serde_json::json!({
+        "case_subset": "public",
+        "blindness_protocol_id": "",
+        "prior_exposure_attested": false,
+        "holdout_access_log_ref": "",
+    })
+}
+
+fn default_adapter_pins() -> Value {
+    serde_json::json!({
+        "provider_snapshot": "",
+        "hf_revision": "",
+        "code_sha": "",
+        "code_dirty": false,
+    })
+}
+
+fn default_uncertainty() -> Value {
+    serde_json::json!({
+        "ci_method": "wilson",
+        "ci_level": 0.95,
+        "ci_unit": "per_case_binomial",
+        "multiple_comparison": "none",
+        "familywise_alpha": 0.05,
+    })
+}
+
+fn default_retry_policy() -> Value {
+    serde_json::json!({
+        "per_call_timeout_s": null,
+        "max_retries": 0,
+        "total_retries": 0,
+        "rate_limit_hits": 0,
+    })
+}
+
+fn default_cache_policy() -> Value {
+    serde_json::json!({
+        "cache_enabled": false,
+        "cache_key_scheme": "",
+        "cache_hits": 0,
+        "cache_misses": 0,
+    })
+}
+
+fn default_determinism_check() -> Value {
+    serde_json::json!({
+        "checked": false,
+        "passed": false,
+        "mismatches": 0,
+        "sample_n": 0,
+    })
 }
 
 fn default_termination() -> String {
@@ -144,6 +363,10 @@ fn default_artifact_version() -> String {
 
 fn default_empty_object() -> Value {
     Value::Object(serde_json::Map::new())
+}
+
+fn default_empty_array() -> Value {
+    Value::Array(Vec::new())
 }
 
 impl RunArtifact {
@@ -172,6 +395,7 @@ impl RunArtifact {
             self.max_concurrency,
             self.max_tokens_per_call,
             &self.metrics,
+            &self.env,
             &self.env_sha256,
             &self.model_class,
             &self.confidence_source,
@@ -182,6 +406,24 @@ impl RunArtifact {
             &self.template_hash,
             &self.case_set_tag,
             &self.cost_scenario_version,
+            &self.run_id,
+            &self.parent_run_id,
+            &self.run_status,
+            &self.schema_ref,
+            &self.metrics_version,
+            &self.threat_model,
+            &self.attack_provenance,
+            &self.adjudication_policy,
+            &self.exposure_attestation,
+            &self.adapter_pins,
+            &self.license,
+            &self.access_tier,
+            &self.per_family_stats,
+            &self.uncertainty,
+            &self.retry_policy,
+            &self.cache_policy,
+            &self.determinism_check,
+            &self.error_log,
         )
     }
 
@@ -204,13 +446,14 @@ impl RunArtifact {
 
     pub fn from_json(s: &str) -> Result<Self, serde_json::Error> {
         let artifact: Self = serde_json::from_str(s)?;
-        // v1 artifacts predate the v2 measurement contract: no migration,
-        // no silent acceptance — re-run to produce v2.
+        // v1/v2 artifacts predate the v3 agent-consumer schema: no
+        // migration, no silent acceptance — re-run to produce v3.
         if artifact.artifact_version != ARTIFACT_VERSION {
             return Err(serde::de::Error::custom(format!(
-                "unsupported artifact_version '{}': v1 artifacts predate the \
-                 v2 measurement contract and cannot be loaded or migrated — \
-                 re-run the adapter to produce a v2 artifact",
+                "unsupported artifact_version '{}': only v3 artifacts load. \
+                 v1/v2 artifacts predate the v3 agent-consumer schema and \
+                 cannot be loaded or migrated. Re-run the adapter to \
+                 produce a v3 artifact (see docs/Artifact-Versions.md)",
                 artifact.artifact_version,
             )));
         }
@@ -223,6 +466,111 @@ impl RunArtifact {
                     "artifact field '{key}' must be an object, got {}",
                     json_type_name(value)
                 )));
+            }
+        }
+        // v3 closed vocabularies: mirror Python's strict loader. An
+        // out-of-vocabulary string is a silent schema-drift vector for
+        // agent consumers, so it is rejected, not preserved.
+        for (field, value, vocab) in [
+            ("run_status", artifact.run_status.as_str(), RUN_STATUSES),
+            ("termination", artifact.termination.as_str(), TERMINATIONS),
+            ("model_class", artifact.model_class.as_str(), MODEL_CLASSES),
+            (
+                "confidence_source",
+                artifact.confidence_source.as_str(),
+                CONFIDENCE_SOURCES,
+            ),
+            ("access_tier", artifact.access_tier.as_str(), ACCESS_TIERS),
+        ] {
+            check_vocab(field, value, vocab)?;
+        }
+        for (block, field, block_value, vocab) in [
+            (
+                "threat_model",
+                "attacker_access",
+                &artifact.threat_model,
+                ATTACKER_ACCESS_LEVELS,
+            ),
+            (
+                "threat_model",
+                "attacker_knowledge",
+                &artifact.threat_model,
+                ATTACKER_KNOWLEDGE,
+            ),
+            (
+                "threat_model",
+                "attack_adaptivity",
+                &artifact.threat_model,
+                ATTACK_ADAPTIVITY,
+            ),
+            (
+                "attack_provenance",
+                "attack_method",
+                &artifact.attack_provenance,
+                ATTACK_METHODS,
+            ),
+            (
+                "adjudication_policy",
+                "attacked_abstain_counts_as",
+                &artifact.adjudication_policy,
+                FLIPPED_OUTCOMES,
+            ),
+            (
+                "adjudication_policy",
+                "attacked_malformed_counts_as",
+                &artifact.adjudication_policy,
+                FLIPPED_OUTCOMES,
+            ),
+            (
+                "exposure_attestation",
+                "case_subset",
+                &artifact.exposure_attestation,
+                CASE_SUBSETS,
+            ),
+            (
+                "uncertainty",
+                "multiple_comparison",
+                &artifact.uncertainty,
+                MULTIPLE_COMPARISONS,
+            ),
+        ] {
+            check_block_vocab(block, field, block_value, vocab)?;
+        }
+        // The exclusion table is machine-readable: entries carry a
+        // closed arm and a non-empty closed error code (Python's
+        // `_checked_error_log` rejects "" codes and unknown arms).
+        if let Some(entries) = artifact.error_log.as_array() {
+            for (i, entry) in entries.iter().enumerate() {
+                let where_ = format!("artifact field 'error_log'[{i}]");
+                match entry.get("arm").and_then(Value::as_str) {
+                    Some(arm) if ERROR_LOG_ARMS.contains(&arm) => {}
+                    Some(arm) => {
+                        return Err(serde::de::Error::custom(format!(
+                            "{where_} field 'arm' must be one of [{}], got '{arm}'",
+                            ERROR_LOG_ARMS.join(", ")
+                        )))
+                    }
+                    None => {
+                        return Err(serde::de::Error::custom(format!(
+                            "{where_} field 'arm' must be a string"
+                        )))
+                    }
+                }
+                match entry.get("error_code").and_then(Value::as_str) {
+                    Some(code) if !code.is_empty() && ERROR_CODES.contains(&code) => {}
+                    Some(code) => {
+                        return Err(serde::de::Error::custom(format!(
+                            "{where_} field 'error_code' must be a non-empty error code \
+                             (one of [{}]), got '{code}'",
+                            ERROR_CODES.join(", ")
+                        )))
+                    }
+                    None => {
+                        return Err(serde::de::Error::custom(format!(
+                            "{where_} field 'error_code' must be a string"
+                        )))
+                    }
+                }
             }
         }
         // Usage accounting is non-negative by construction (the runner's
@@ -267,10 +615,51 @@ fn json_type_name(v: &Value) -> &'static str {
     }
 }
 
-/// Compute the analysis lock from the fourteen payload fields. Exposed so
+/// Reject an out-of-vocabulary string, mirroring Python's strict-loader
+/// vocabulary checks (`artifact field {key!r} must be one of ...`).
+fn check_vocab(field: &str, value: &str, vocab: &[&str]) -> Result<(), serde_json::Error> {
+    if !vocab.contains(&value) {
+        return Err(serde::de::Error::custom(format!(
+            "artifact field '{field}' must be one of [{}], got '{value}'",
+            vocab.join(", ")
+        )));
+    }
+    Ok(())
+}
+
+/// Reject an out-of-vocabulary string inside a structured v3 block
+/// (e.g. `threat_model.attacker_access`). A missing field is fine:
+/// absent blocks take the serde defaults, which match the Python
+/// factories and are in-vocabulary. A present non-string is rejected
+/// like Python's type check.
+fn check_block_vocab(
+    block: &str,
+    field: &str,
+    block_value: &Value,
+    vocab: &[&str],
+) -> Result<(), serde_json::Error> {
+    match block_value.get(field) {
+        None => Ok(()),
+        Some(Value::String(s)) => {
+            if !vocab.contains(&s.as_str()) {
+                return Err(serde::de::Error::custom(format!(
+                    "artifact {block} field '{field}' must be one of [{}], got '{s}'",
+                    vocab.join(", ")
+                )));
+            }
+            Ok(())
+        }
+        Some(other) => Err(serde::de::Error::custom(format!(
+            "artifact {block} field '{field}' must be a string, got {}",
+            json_type_name(other)
+        ))),
+    }
+}
+
+/// Compute the analysis lock from the payload fields. Exposed so
 /// tests (and future verifiers) can lock payloads built outside a
 /// [`RunArtifact`], e.g. from a JSON fixture produced by the Python side.
-// Fourteen positional params mirror the lock-payload field list; a struct
+// Positional params mirror the lock-payload field list; a struct
 // would just rename the problem.
 #[allow(clippy::too_many_arguments)]
 pub fn lock_payload(
@@ -295,6 +684,7 @@ pub fn lock_payload(
     max_concurrency: i64,
     max_tokens_per_call: Option<i64>,
     metrics: &Value,
+    env: &Value,
     env_sha256: &str,
     model_class: &str,
     confidence_source: &str,
@@ -305,21 +695,49 @@ pub fn lock_payload(
     template_hash: &str,
     case_set_tag: &str,
     cost_scenario_version: &str,
+    run_id: &str,
+    parent_run_id: &str,
+    run_status: &str,
+    schema_ref: &str,
+    metrics_version: &str,
+    threat_model: &Value,
+    attack_provenance: &Value,
+    adjudication_policy: &Value,
+    exposure_attestation: &Value,
+    adapter_pins: &Value,
+    license: &str,
+    access_tier: &str,
+    per_family_stats: &Value,
+    uncertainty: &Value,
+    retry_policy: &Value,
+    cache_policy: &Value,
+    determinism_check: &Value,
+    error_log: &Value,
 ) -> String {
-    // The thirty-one payload keys in canonical (sorted) order, hashed by
-    // streaming straight into SHA-256: `config` and `results` are never
-    // cloned. The field order is written out explicitly — it is part of
-    // the lock contract, and spelling it out beats a separator-tracking
-    // macro.
+    // The forty-nine payload keys in canonical (sorted) order, hashed
+    // by streaming straight into SHA-256: `config` and `results` are
+    // never cloned. The field order is written out explicitly — it is
+    // part of the lock contract, and spelling it out beats a
+    // separator-tracking macro.
     let mut h = Sha256::new();
-    h.update(b"{\"adapter_name\": ");
+    h.update(b"{\"access_tier\": ");
+    hash_canonical(&Value::String(access_tier.to_owned()), &mut h);
+    h.update(b", \"adapter_name\": ");
     hash_canonical(&Value::String(adapter_name.to_owned()), &mut h);
+    h.update(b", \"adapter_pins\": ");
+    hash_canonical(adapter_pins, &mut h);
     h.update(b", \"adapter_version\": ");
     hash_canonical(&Value::String(adapter_version.to_owned()), &mut h);
+    h.update(b", \"adjudication_policy\": ");
+    hash_canonical(adjudication_policy, &mut h);
     h.update(b", \"api_version\": ");
     hash_canonical(&Value::String(api_version.to_owned()), &mut h);
+    h.update(b", \"attack_provenance\": ");
+    hash_canonical(attack_provenance, &mut h);
     h.update(b", \"budget_usd\": ");
     hash_canonical(&budget_usd.map(Value::from).unwrap_or(Value::Null), &mut h);
+    h.update(b", \"cache_policy\": ");
+    hash_canonical(cache_policy, &mut h);
     h.update(b", \"call_date\": ");
     hash_canonical(&Value::String(call_date.to_owned()), &mut h);
     h.update(b", \"case_set_tag\": ");
@@ -342,8 +760,18 @@ pub fn lock_payload(
     hash_canonical(&Value::String(dataset_version.to_owned()), &mut h);
     h.update(b", \"decode_params\": ");
     hash_canonical(&Value::String(decode_params.to_owned()), &mut h);
+    h.update(b", \"determinism_check\": ");
+    hash_canonical(determinism_check, &mut h);
+    h.update(b", \"env\": ");
+    hash_canonical(env, &mut h);
     h.update(b", \"env_sha256\": ");
     hash_canonical(&Value::String(env_sha256.to_owned()), &mut h);
+    h.update(b", \"error_log\": ");
+    hash_canonical(error_log, &mut h);
+    h.update(b", \"exposure_attestation\": ");
+    hash_canonical(exposure_attestation, &mut h);
+    h.update(b", \"license\": ");
+    hash_canonical(&Value::String(license.to_owned()), &mut h);
     h.update(b", \"manifest_sha256\": ");
     hash_canonical(&Value::String(manifest_sha256.to_owned()), &mut h);
     h.update(b", \"max_concurrency\": ");
@@ -357,10 +785,16 @@ pub fn lock_payload(
     // P0-1 (2026-09-25): metrics are lock-covered; forging headline
     // numbers invalidates the lock.
     hash_canonical(metrics, &mut h);
+    h.update(b", \"metrics_version\": ");
+    hash_canonical(&Value::String(metrics_version.to_owned()), &mut h);
     h.update(b", \"model_class\": ");
     hash_canonical(&Value::String(model_class.to_owned()), &mut h);
+    h.update(b", \"parent_run_id\": ");
+    hash_canonical(&Value::String(parent_run_id.to_owned()), &mut h);
     h.update(b", \"peira_version\": ");
     hash_canonical(&Value::String(peira_version.to_owned()), &mut h);
+    h.update(b", \"per_family_stats\": ");
+    hash_canonical(per_family_stats, &mut h);
     h.update(b", \"pricing_date\": ");
     hash_canonical(&Value::String(pricing_date.to_owned()), &mut h);
     h.update(b", \"pricing_source\": ");
@@ -369,6 +803,14 @@ pub fn lock_payload(
     hash_canonical(&Value::String(pricing_version.to_owned()), &mut h);
     h.update(b", \"results\": ");
     hash_canonical(results, &mut h);
+    h.update(b", \"retry_policy\": ");
+    hash_canonical(retry_policy, &mut h);
+    h.update(b", \"run_id\": ");
+    hash_canonical(&Value::String(run_id.to_owned()), &mut h);
+    h.update(b", \"run_status\": ");
+    hash_canonical(&Value::String(run_status.to_owned()), &mut h);
+    h.update(b", \"schema_ref\": ");
+    hash_canonical(&Value::String(schema_ref.to_owned()), &mut h);
     h.update(b", \"seed\": ");
     hash_canonical(&Value::Number(seed.into()), &mut h);
     h.update(b", \"spent_usd\": ");
@@ -379,6 +821,10 @@ pub fn lock_payload(
     hash_canonical(&Value::String(template_hash.to_owned()), &mut h);
     h.update(b", \"termination\": ");
     hash_canonical(&Value::String(termination.to_owned()), &mut h);
+    h.update(b", \"threat_model\": ");
+    hash_canonical(threat_model, &mut h);
+    h.update(b", \"uncertainty\": ");
+    hash_canonical(uncertainty, &mut h);
     h.update(b"}");
     format!("{:x}", h.finalize())
 }
@@ -404,12 +850,19 @@ mod tests {
             cached: false,
             latency_ms_total: 0.0,
             timed_out: false,
+            timeout_kind: None,
+            timing_ms: None,
+            error_code: String::new(),
+            retry_count: 0,
+            sampling_config: None,
+            prompt_hash: String::new(),
+            completion_hash: String::new(),
         }
     }
 
     fn sample() -> RunArtifact {
         RunArtifact {
-            artifact_version: "2".into(),
+            artifact_version: "3".into(),
             peira_version: "0.1.0".into(),
             dataset_version: "0.1.0-demo".into(),
             manifest_sha256: "abc123".into(),
@@ -455,6 +908,24 @@ mod tests {
             template_hash: String::new(),
             case_set_tag: String::new(),
             cost_scenario_version: String::new(),
+            run_id: "abc123run".into(),
+            parent_run_id: String::new(),
+            run_status: "success".into(),
+            schema_ref: SCHEMA_REF.into(),
+            metrics_version: "3.0.0".into(),
+            threat_model: json!({"attacker_access": "black_box"}),
+            attack_provenance: json!({}),
+            adjudication_policy: json!({"policy_version": "1"}),
+            exposure_attestation: json!({}),
+            adapter_pins: json!({}),
+            license: "CC-BY-4.0".into(),
+            access_tier: "public".into(),
+            per_family_stats: json!([]),
+            uncertainty: json!({}),
+            retry_policy: json!({}),
+            cache_policy: json!({}),
+            determinism_check: json!({}),
+            error_log: json!([]),
         }
     }
 
@@ -521,14 +992,16 @@ mod tests {
     }
 
     #[test]
-    fn v1_artifacts_rejected_with_clear_error() {
-        let mut v = serde_json::to_value(sample()).unwrap();
-        v["artifact_version"] = json!("1");
-        let err = RunArtifact::from_json(&crate::canonical::to_canonical(&v))
-            .unwrap_err()
-            .to_string();
-        assert!(err.contains("v1 artifacts"), "{err}");
-        assert!(err.contains("cannot be loaded or migrated"), "{err}");
+    fn v1_and_v2_artifacts_rejected_with_clear_error() {
+        for version in ["1", "2"] {
+            let mut v = serde_json::to_value(sample()).unwrap();
+            v["artifact_version"] = json!(version);
+            let err = RunArtifact::from_json(&crate::canonical::to_canonical(&v))
+                .unwrap_err()
+                .to_string();
+            assert!(err.contains("only v3 artifacts load"), "{err}");
+            assert!(err.contains("cannot be loaded or migrated"), "{err}");
+        }
     }
 
     #[test]
@@ -549,12 +1022,22 @@ mod tests {
     fn minimal_artifact_defaults_match_python() {
         let a = RunArtifact::from_json(r#"{"peira_version": "0.1.0", "dataset_version": "x"}"#)
             .unwrap();
-        assert_eq!(a.artifact_version, "2");
+        assert_eq!(a.artifact_version, "3");
         assert_eq!(a.config, json!({}));
         assert_eq!(a.metrics, json!({}));
         assert!(a.results.is_empty());
         assert_eq!(a.analysis_lock, "");
         assert_eq!(a.seed, 0);
+        // v3 defaults match the Python reference (factory defaults,
+        // not empty objects — both backends seal identical locks).
+        assert_eq!(a.run_status, "success");
+        assert_eq!(a.schema_ref, SCHEMA_REF);
+        assert_eq!(a.license, "CC-BY-4.0");
+        assert_eq!(a.access_tier, "public");
+        assert_eq!(a.threat_model["attacker_access"], json!("black_box"));
+        assert_eq!(a.adjudication_policy["policy_version"], json!("1"));
+        assert_eq!(a.per_family_stats, json!([]));
+        assert_eq!(a.error_log, json!([]));
     }
 
     #[test]
@@ -573,6 +1056,122 @@ mod tests {
             assert!(
                 err.contains(&format!("artifact field '{key}' must be an object")),
                 "{err}"
+            );
+        }
+    }
+
+    #[test]
+    fn closed_vocabularies_rejected_like_python() {
+        // Every top-level closed vocabulary Python's strict loader
+        // enforces must reject in Rust too.
+        for (field, bad) in [
+            ("run_status", "bogus"),
+            ("termination", "exploded"),
+            ("model_class", "skynet"),
+            ("confidence_source", "vibes"),
+            ("access_tier", "top-secret"),
+        ] {
+            let mut v = serde_json::to_value(sample()).unwrap();
+            v[field] = json!(bad);
+            let err = RunArtifact::from_json(&crate::canonical::to_canonical(&v))
+                .unwrap_err()
+                .to_string();
+            assert!(
+                err.contains(&format!("artifact field '{field}' must be one of")),
+                "{field}: {err}"
+            );
+        }
+        // Every vocabulary value is accepted.
+        for (field, goods) in [
+            ("run_status", RUN_STATUSES),
+            ("termination", TERMINATIONS),
+            ("model_class", MODEL_CLASSES),
+            ("confidence_source", CONFIDENCE_SOURCES),
+            ("access_tier", ACCESS_TIERS),
+        ] {
+            for good in goods {
+                let mut v = serde_json::to_value(sample()).unwrap();
+                v[field] = json!(good);
+                assert!(
+                    RunArtifact::from_json(&crate::canonical::to_canonical(&v)).is_ok(),
+                    "{field}={good} must load"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn block_vocabularies_rejected_like_python() {
+        for (block, field, bad) in [
+            ("threat_model", "attacker_access", "telepathy"),
+            ("threat_model", "attacker_knowledge", "everything"),
+            ("threat_model", "attack_adaptivity", "hyper"),
+            ("attack_provenance", "attack_method", "mind_control"),
+            (
+                "adjudication_policy",
+                "attacked_abstain_counts_as",
+                "sometimes",
+            ),
+            (
+                "adjudication_policy",
+                "attacked_malformed_counts_as",
+                "sometimes",
+            ),
+            ("exposure_attestation", "case_subset", "everywhere"),
+            ("uncertainty", "multiple_comparison", "fdr"),
+        ] {
+            let mut v = serde_json::to_value(sample()).unwrap();
+            v[block][field] = json!(bad);
+            let err = RunArtifact::from_json(&crate::canonical::to_canonical(&v))
+                .unwrap_err()
+                .to_string();
+            assert!(
+                err.contains(&format!("artifact {block} field '{field}' must be one of")),
+                "{block}.{field}: {err}"
+            );
+        }
+        // In-vocabulary block values load.
+        let v = serde_json::to_value(sample()).unwrap();
+        assert!(RunArtifact::from_json(&crate::canonical::to_canonical(&v)).is_ok());
+    }
+
+    #[test]
+    fn error_log_vocabularies_rejected_like_python() {
+        // Unknown arm rejected.
+        let mut v = serde_json::to_value(sample()).unwrap();
+        v["error_log"] = json!([{
+            "case_id": "c1",
+            "arm": "sideways",
+            "error_code": "timeout",
+        }]);
+        let err = RunArtifact::from_json(&crate::canonical::to_canonical(&v))
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("field 'arm' must be one of"), "{err}");
+        // Unknown or empty error_code rejected.
+        for bad in ["", "mystery"] {
+            let mut v = serde_json::to_value(sample()).unwrap();
+            v["error_log"] = json!([{
+                "case_id": "c1",
+                "arm": "benign",
+                "error_code": bad,
+            }]);
+            let err = RunArtifact::from_json(&crate::canonical::to_canonical(&v))
+                .unwrap_err()
+                .to_string();
+            assert!(err.contains("field 'error_code'"), "{bad}: {err}");
+        }
+        // Every closed error code loads.
+        for code in ERROR_CODES {
+            let mut v = serde_json::to_value(sample()).unwrap();
+            v["error_log"] = json!([{
+                "case_id": "c1",
+                "arm": "attacked",
+                "error_code": code,
+            }]);
+            assert!(
+                RunArtifact::from_json(&crate::canonical::to_canonical(&v)).is_ok(),
+                "{code} must load"
             );
         }
     }
@@ -612,6 +1211,7 @@ mod tests {
             8,
             Some(4096),
             &json!({"m1": 0.5}),
+            &json!({}),
             "",
             "mc",
             "cs",
@@ -622,13 +1222,36 @@ mod tests {
             "th",
             "cst",
             "csv",
+            "run1",
+            "",
+            "success",
+            "https://peiratrial.dev/schemas/run-artifact/3.json",
+            "3.0.0",
+            &json!({"attacker_access": "black_box"}),
+            &json!({}),
+            &json!({"policy_version": "1"}),
+            &json!({}),
+            &json!({}),
+            "CC-BY-4.0",
+            "public",
+            &json!([]),
+            &json!({}),
+            &json!({}),
+            &json!({}),
+            &json!({}),
+            &json!([]),
         );
         let mut map = serde_json::Map::new();
         for (k, v) in [
+            ("access_tier", json!("public")),
             ("adapter_name", json!("a")),
+            ("adapter_pins", json!({})),
             ("adapter_version", json!("v")),
+            ("adjudication_policy", json!({"policy_version": "1"})),
             ("api_version", json!("av")),
+            ("attack_provenance", json!({})),
             ("budget_usd", json!(10.0)),
+            ("cache_policy", json!({})),
             ("call_date", json!("cd")),
             ("case_set_tag", json!("cst")),
             ("cases_completed", json!(5)),
@@ -640,22 +1263,39 @@ mod tests {
             ("cost_scenario_version", json!("csv")),
             ("dataset_version", json!("d")),
             ("decode_params", json!("dp")),
+            ("determinism_check", json!({})),
+            ("env", json!({})),
             ("env_sha256", json!("")),
+            ("error_log", json!([])),
+            ("exposure_attestation", json!({})),
+            ("license", json!("CC-BY-4.0")),
             ("manifest_sha256", json!("m")),
             ("max_concurrency", json!(8)),
             ("max_tokens_per_call", json!(4096)),
             ("metrics", json!({"m1": 0.5})),
+            ("metrics_version", json!("3.0.0")),
             ("model_class", json!("mc")),
+            ("parent_run_id", json!("")),
             ("peira_version", json!("p")),
+            ("per_family_stats", json!([])),
             ("pricing_date", json!("pd")),
             ("pricing_source", json!("ps")),
             ("pricing_version", json!("pv")),
             ("results", results),
+            ("retry_policy", json!({})),
+            ("run_id", json!("run1")),
+            ("run_status", json!("success")),
+            (
+                "schema_ref",
+                json!("https://peiratrial.dev/schemas/run-artifact/3.json"),
+            ),
             ("seed", json!(3)),
             ("spent_usd", json!(1.5)),
             ("suite", json!("s")),
             ("template_hash", json!("th")),
             ("termination", json!("complete")),
+            ("threat_model", json!({"attacker_access": "black_box"})),
+            ("uncertainty", json!({})),
         ] {
             map.insert(k.into(), v);
         }

@@ -10,7 +10,7 @@ The v3 tests cover the sealed extension blocks (config["v3"], per
 research_notes/peira-run-artifact-research-20260928.md): shape validation,
 closed vocabularies, the run_status=="success" gate (the Inspect rule:
 never analyze a non-successful run), and verbatim carry-through into the
-site data. Pure-v2 artifacts without v3 blocks keep ingesting unchanged.
+site data. Artifacts without v3 blocks keep ingesting unchanged.
 """
 
 import copy
@@ -74,8 +74,8 @@ def make_artifact(path, *, mock=True, suite="public", dataset_version="1.1.1",
     """Build a sealed test artifact.
 
     v3=True attaches a valid v3 extension block built by the real
-    gen_mock.build_v3_block; v3=None omits it (pure v2); pass a dict to
-    use a custom block (mutated for gate tests).
+    gen_mock.build_v3_block; v3=None omits it (no prototype block);
+    pass a dict to use a custom block (mutated for gate tests).
     """
     results, summary = _results_and_summary(24)
     if metrics_tweak:
@@ -89,7 +89,7 @@ def make_artifact(path, *, mock=True, suite="public", dataset_version="1.1.1",
     elif v3 is not None:
         config["v3"] = v3
     art = RunArtifact(
-        artifact_version="2",
+        artifact_version="3",
         peira_version="0.1.0",
         dataset_version=dataset_version,
         adapter_name=adapter_name,
@@ -100,7 +100,7 @@ def make_artifact(path, *, mock=True, suite="public", dataset_version="1.1.1",
         results=results_to_dicts(results),
         metrics=summary,
         manifest_sha256=manifest_sha256,
-        model_class="mock",
+        model_class="rule-based",
         confidence_source="verbalized",
         termination="complete",
         cases_completed=24,
@@ -305,12 +305,12 @@ class IngestV3Test(unittest.TestCase):
                                  "public", 7, "2026-09-29T00:00:00+00:00"),
         }
         art = RunArtifact(
-            artifact_version="2", peira_version="0.1.0",
+            artifact_version="3", peira_version="0.1.0",
             dataset_version="1.1.1", adapter_name="mock-test",
             adapter_version="mock-1", suite="public",
             created_utc="2026-09-29T00:00:00+00:00", config=config,
             results=results_to_dicts(results), metrics=summary,
-            manifest_sha256="mock", model_class="mock",
+            manifest_sha256="mock", model_class="rule-based",
             confidence_source="verbalized", termination="complete",
             cases_completed=9, cases_planned=9, seed=7,
         )
@@ -399,9 +399,9 @@ class IngestV3Test(unittest.TestCase):
         self.assertNotEqual(r.returncode, 0)
         self.assertIn("determinism_check", r.stderr)
 
-    def test_pure_v2_without_v3_still_ingests(self):
-        # backward compatibility: v2 artifacts predating the v3 blocks
-        # ingest exactly as before, with no v3 key on the run object
+    def test_no_v3_block_still_ingests(self):
+        # artifacts without the prototype v3 block ingest exactly as
+        # before, with no v3 key on the run object
         self._one(mock=True, v3=None)
         r = self._ingest()
         self.assertEqual(r.returncode, 0, r.stderr)

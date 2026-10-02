@@ -131,6 +131,34 @@ pub struct CallRecord {
     /// The call's terminal failure was a per-attempt timeout.
     #[serde(default)]
     pub timed_out: bool,
+    /// v3: types the timeout explicitly: "attempt" or "item" on a
+    /// timed-out record, None otherwise. Defaults to None so pre-kind
+    /// artifacts still load under `deny_unknown_fields`.
+    #[serde(default)]
+    pub timeout_kind: Option<String>,
+    /// v3: per-call timing decomposition (R-12). Defaults to None;
+    /// the Python side uses a zero-breakdown dict for pre-R-12
+    /// artifacts.
+    #[serde(default)]
+    pub timing_ms: Option<Value>,
+    /// v3: terminal-failure taxonomy ("" = no error). Defaults to ""
+    /// so pre-v3 artifacts still load under `deny_unknown_fields`.
+    #[serde(default)]
+    pub error_code: String,
+    /// v3: observed number of retries this call actually took.
+    #[serde(default)]
+    pub retry_count: i64,
+    /// R-04: the effective sampling config actually sent on the wire
+    /// (temperature, seed, max_tokens) plus the sampling_source flag.
+    /// None on records sealed before R-04. Defaults to None so older
+    /// artifacts still load under `deny_unknown_fields`.
+    #[serde(default)]
+    pub sampling_config: Option<Value>,
+    /// v3: content hashes (never raw text) for duplication analysis.
+    #[serde(default)]
+    pub prompt_hash: String,
+    #[serde(default)]
+    pub completion_hash: String,
 }
 
 /// Per-case scoring result, mirroring the Python dataclass field-for-field.
@@ -1358,6 +1386,13 @@ mod tests {
             cached: false,
             latency_ms_total: 0.0,
             timed_out: false,
+            timeout_kind: None,
+            timing_ms: None,
+            error_code: String::new(),
+            retry_count: 0,
+            sampling_config: None,
+            prompt_hash: String::new(),
+            completion_hash: String::new(),
         }
     }
 
@@ -2196,6 +2231,13 @@ mod tests {
             cached: false,
             latency_ms_total: 0.0,
             timed_out: false,
+            timeout_kind: None,
+            timing_ms: None,
+            error_code: String::new(),
+            retry_count: 0,
+            sampling_config: None,
+            prompt_hash: String::new(),
+            completion_hash: String::new(),
         };
         PerCaseResult {
             case_id: "c".to_string(),
@@ -2261,6 +2303,13 @@ mod tests {
             cached: false,
             latency_ms_total: 0.0,
             timed_out: false,
+            timeout_kind: None,
+            timing_ms: None,
+            error_code: String::new(),
+            retry_count: 0,
+            sampling_config: None,
+            prompt_hash: String::new(),
+            completion_hash: String::new(),
         };
         assert_eq!(classify_outcome(&rec), "malformed");
         // Refused (with reason) vs plain abstained.

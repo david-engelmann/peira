@@ -16,11 +16,11 @@
 
 These principles are in tension. This policy resolves the tension.
 
-## Current State (2026-09-25)
+## Current State (2026-09-30)
 
-- `ARTIFACT_VERSION = "2"`.
-- `from_json()` **rejects** v1 artifacts with a clear error message.
-- This is correct: there are no sealed v1 measurements yet. Nothing to preserve.
+- `ARTIFACT_VERSION = "3"`.
+- `from_json()` **rejects** v1 and v2 artifacts with a clear error message.
+- This is correct: there are no sealed measurements yet. Nothing to preserve.
 
 ## The Policy
 
@@ -65,6 +65,7 @@ whose results are published), the following rules take effect:
 | 1 | pre-2026-09-25 | Initial format | N/A (superseded) |
 | 2 | 2026-09-25 | Metrics included in lock (P0-1). Pre-v2 artifacts fail `verify()`. | No; rejected with clear error. Acceptable: no sealed measurements exist. |
 | 2 | 2026-09-27 | Environment fingerprint added: `env` (dict) and `env_sha256` (str) fields. The `env_sha256` is part of the analysis lock. Pre-2026-09-27 v2 artifacts fail `verify()` (the lock payload changed); acceptable per blank-canvas, no sealed measurements exist. | No; old v2 artifacts fail verification (lock mismatch). |
+| 3 | 2026-09-30 | Agent-consumer schema. Stable run identity (`run_id`/`parent_run_id`), machine-checkable `run_status` gate, `schema_ref`, `metrics_version`, structured `threat_model`/`attack_provenance`/`adjudication_policy`/`exposure_attestation` blocks, fully-pinned adapter identity (`adapter_pins`), `license` + `access_tier` in-band, typed `per_family_stats`, `uncertainty` semantics, `retry_policy`/`cache_policy` transparency, `determinism_check` results, machine-readable `error_log`, and per-call `error_code`/`retry_count`/`prompt_hash`/`completion_hash`. Closed vocabularies for `run_status`, `termination`, `model_class`, `confidence_source`, `access_tier`, and error codes. 49-key canonical lock. | No. v1/v2 rejected outright (no migration). Acceptable: no sealed measurements exist. |
 
 ## Environment Fingerprint (2026-09-27)
 

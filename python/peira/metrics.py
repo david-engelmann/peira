@@ -62,6 +62,20 @@ INELIGIBLE_BENIGN_MALFORMED = "benign_malformed"
 INELIGIBLE_BENIGN_WRONG_DECISION = "benign_wrong_decision"
 INELIGIBLE_BENIGN_ABSTAINED = "benign_abstained"
 
+#: Version of the metric formula definitions in this module. Sealed into
+#: every v3 artifact as `metrics_version`: two artifacts computed under
+#: different formula versions are not comparable, and the version is the
+#: machine-checkable guard. Bump on any formula change (not on code
+#: refactors that preserve outputs).
+METRICS_VERSION = "3.0.0"
+
+#: Version of the adjudication policy (the rule mapping
+#: abstain/malformed/ineligible/eligible into ASR numerators and
+#: denominators, documented in the module docstring above and sealed
+#: into v3 artifacts as adjudication_policy.policy_version).
+#: Same number as the measurement contract: the policy IS the contract.
+ADJUDICATION_POLICY_VERSION = "1"
+
 
 @dataclass(frozen=True)
 class CallTiming:
@@ -209,6 +223,21 @@ class CallRecord:
     # None on records sealed before R-04; ``from_dict`` recovers it
     # from the sealed artifact or transcript entry.
     sampling_config: dict[str, Any] | None = None
+    # v3: terminal-failure taxonomy for this call ("" = no error; one
+    # of the closed ERROR_CODES in peira.artifacts). Lets agents
+    # recompute denominators correctly from the machine-readable
+    # error log instead of trusting prose about exclusions.
+    error_code: str = ""
+    # v3: observed number of retries this call actually took (0 when
+    # the first attempt succeeded). Distinct from the retry POLICY
+    # sealed on the artifact; this is what happened.
+    retry_count: int = 0
+    # v3: content hashes (never raw text) for duplication and caching
+    # analysis: sha256 hex of the exact prompt sent and the exact
+    # completion received. "" when the runner did not hash (e.g.
+    # pre-v3 records).
+    prompt_hash: str = ""
+    completion_hash: str = ""
 
     @classmethod
     def from_dict(cls, d: dict[str, Any]) -> "CallRecord":
@@ -277,13 +306,39 @@ class CallRecord:
                 f"got {type(cached).__name__}"
             )
         timing_ms = CallTiming.from_dict(d.get("timing_ms"))
-        # R-04: the effective sampling config. Hostile-input treatment:
-        # a wrong-typed config must fail here with a clean ValueError,
-        # and the source must come from the closed vocabulary:
-        # anything else is corrupt data. Absent (None) on records
-        # sealed before R-04.
         sampling_config = d.get("sampling_config")
         check_sampling_config(sampling_config)
+        # v3 per-call fields: error_code is the closed terminal-failure
+        # taxonomy (hostile-input treatment like the other enums);
+        # retry_count is the observed retry count; prompt_hash /
+        # completion_hash are content hashes (never raw text).
+        error_code = d.get("error_code", "")
+        if not isinstance(error_code, str):
+            raise ValueError(
+                f"CallRecord field 'error_code': must be a string, "
+                f"got {type(error_code).__name__}"
+            )
+        retry_count = d.get("retry_count", 0)
+        if (
+            not isinstance(retry_count, int)
+            or isinstance(retry_count, bool)
+            or retry_count < 0
+        ):
+            raise ValueError(
+                f"CallRecord field 'retry_count': must be a "
+                f"non-negative integer, got {retry_count!r}"
+            )
+        prompt_hash = d.get("prompt_hash", "")
+        completion_hash = d.get("completion_hash", "")
+        for key, value in (
+            ("prompt_hash", prompt_hash),
+            ("completion_hash", completion_hash),
+        ):
+            if not isinstance(value, str):
+                raise ValueError(
+                    f"CallRecord field {key!r}: must be a string, "
+                    f"got {type(value).__name__}"
+                )
         return cls(
             decision=d["decision"],
             confidence=confidence,
@@ -301,6 +356,10 @@ class CallRecord:
             cached=cached,
             timing_ms=timing_ms,
             sampling_config=sampling_config,
+            error_code=error_code,
+            retry_count=retry_count,
+            prompt_hash=prompt_hash,
+            completion_hash=completion_hash,
         )
 
 

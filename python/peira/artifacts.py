@@ -6,21 +6,39 @@ hash is the mechanical guarantee behind "no post-hoc editing": any change
 to inputs changes the lock, and CI verifies it.
 
 Artifact format versions:
-- v1 (pre-2026-09-23): flat per-case results. REJECTED by this build —
+- v1 (pre-2026-09-23): flat per-case results. REJECTED by this build.
   v1 artifacts predate the v2 measurement contract and cannot be
-  migrated; re-run the adapter to produce a v2 artifact.
-- v2 (current): per-case results carry full per-variant call records
-  (decision, confidence, abstention, refusal reason, usage, seed,
-  dispatch index), eligibility flags with ineligibility reasons, and
-  run-level pricing provenance (source + pin date) and seed. The lock
-  payload covers pricing_source, pricing_date, and seed alongside the
-  v1 fields: they are measurement inputs, so they are lock inputs.
+  migrated. Re-run the adapter to produce a v3 artifact.
+- v2 (2026-09-23 to 2026-09-30): per-case results carry full per-variant
+  call records (decision, confidence, abstention, refusal reason, usage,
+  seed, dispatch index), eligibility flags with ineligibility reasons,
+  and run-level pricing provenance (source + pin date) and seed. The
+  lock payload covers pricing_source, pricing_date, and seed alongside
+  the v1 fields. REJECTED by this build. v2 predates the v3
+  agent-consumer schema (no run_id, no closed vocabularies, no threat
+  model / provenance / adjudication / exposure blocks). Re-run the
+  adapter to produce a v3 artifact. Per docs/Artifact-Versions.md, no
+  sealed official measurements exist yet, so no migration path is owed.
+- v3 (current): the agent-consumer schema. Adds stable run identity
+  (run_id / parent_run_id), a machine-checkable run_status gate,
+  schema_ref, metrics_version, structured threat_model /
+  attack_provenance / adjudication_policy / exposure_attestation
+  blocks, fully-pinned adapter identity, license + access tier
+  in-band, typed per-family stats, uncertainty semantics, retry/cache
+  transparency, determinism-check results, a machine-readable error
+  (exclusion) log, and per-call error_code / retry_count /
+  prompt_hash / completion_hash. Closed vocabularies (enums, not
+  free-form strings) on termination, run_status,
+  model_class, confidence_source, error codes, and the new blocks.
+  NOTE: decision is deliberately NOT closed (case-option labels plus
+  "other" and the "<error>" sentinel). Every new field is lock-covered.
 """
 
 from __future__ import annotations
 
 import hashlib
 import json
+import uuid
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from typing import ClassVar
@@ -28,10 +46,20 @@ from typing import ClassVar
 from peira import __version__ as peira_version
 from peira._rust import _impl as _rust
 from peira.adapters.base import _unit_interval
-from peira.metrics import PerCaseResult
+from peira.metrics import (
+    ADJUDICATION_POLICY_VERSION,
+    METRICS_VERSION,
+    PerCaseResult,
+)
 from peira.sampling import SAMPLING_SOURCES
 
-ARTIFACT_VERSION = "2"
+ARTIFACT_VERSION = "3"
+
+#: Canonical resolvable URI of the JSON Schema this artifact validates
+#: against. The schema file ships in-repo at schemas/run-artifact-3.json;
+#: this URI is where it is published. Consumers fail closed on an
+#: artifact whose schema_ref they cannot resolve.
+SCHEMA_REF = "https://peiratrial.dev/schemas/run-artifact/3.json"
 
 #: Measurement-contract version: the semantics the run was executed
 #: under (abstention semantics, flip definition, eligibility rules).
@@ -41,10 +69,11 @@ ARTIFACT_VERSION = "2"
 #: reinterpreted under new rules.
 CONTRACT_VERSION = "1"
 
-_V1_REJECTION = (
-    "unsupported artifact_version {version!r}: v1 artifacts predate the "
-    "v2 measurement contract and cannot be loaded or migrated — re-run "
-    "the adapter to produce a v2 artifact"
+_UNSUPPORTED_VERSION = (
+    "unsupported artifact_version {version!r}: only v3 artifacts load. "
+    "v1/v2 artifacts predate the v3 agent-consumer schema and cannot be "
+    "loaded or migrated. Re-run the adapter to produce a v3 artifact "
+    "(see docs/Artifact-Versions.md)"
 )
 
 
@@ -55,6 +84,409 @@ def _is_int(v: object) -> bool:
 
 def _is_num(v: object) -> bool:
     return isinstance(v, (int, float)) and not isinstance(v, bool)
+
+
+# ---------------------------------------------------------------------------
+# v3 closed vocabularies. Free-form strings are a silent schema-drift
+# vector: agents filter and group on these fields, so every value comes
+# from a closed set. The strict loader rejects anything else.
+#
+# NOTE: `decision` is deliberately NOT closed here. Decisions are
+# case-option labels (the case's own `options` list) plus the "other"
+# placeholder and the "<error>" malformed sentinel — the vocabulary is
+# case-dependent, so the artifact level cannot close it. The adapter
+# contract (adapters/base.py) owns decision validity.
+# ---------------------------------------------------------------------------
+
+#: Machine-checkable run gate (Inspect-style): never analyze a run whose
+#: status is not "success". "started" appears only on live/checkpoint
+#: artifacts; sealed runs are success/cancelled/error/partial.
+RUN_STATUSES = frozenset({"started", "success", "cancelled", "error", "partial"})
+
+#: How the run ended. "complete" = all planned cases scored; "budget" =
+#: stopped by --budget-usd; "timeout" = stopped by --run-timeout;
+#: "partial" = checkpoint, not a finished run; "operator" reserved for
+#: future termination causes.
+TERMINATIONS = frozenset({"complete", "budget", "timeout", "partial", "operator", "error"})
+
+#: Per-call terminal-failure taxonomy ("" = no error). The NeurIPS
+#: checklist requires excluded data to be specified; error_code is the
+#: machine-readable reason a call contributed no usable decision.
+ERROR_CODES = frozenset({
+    "", "timeout", "rate_limit", "api_error", "parse_failure",
+    "refused_to_format",
+})
+
+#: Adapter-kind vocabulary (was documented-only in v2; enforced in v3).
+MODEL_CLASSES = frozenset({"", "guardrail", "llm-baseline", "hybrid", "rule-based"})
+
+#: Confidence provenance vocabulary (was documented-only in v2).
+CONFIDENCE_SOURCES = frozenset(
+    {"", "verbalized", "token-logprob", "guardrail-score", "none"}
+)
+
+#: Redistribution rights travel in-band: an agent publishing leaderboard
+#: numbers must know them without asking a human.
+ACCESS_TIERS = frozenset({"public", "internal", "confidential"})
+
+#: Which case regime the run operated under (the blind-holdout seal is
+#: unenforceable downstream unless the artifact states it).
+CASE_SUBSETS = frozenset({"public", "private", "blind", "mixed"})
+
+#: Threat-model vocabularies (Carlini checklist: every ASR is contingent
+#: on the threat model).
+ATTACKER_ACCESS_LEVELS = frozenset({"black_box", "gray_box", "white_box"})
+ATTACKER_KNOWLEDGE = frozenset({"none", "architecture", "weights", "training_data"})
+ATTACK_ADAPTIVITY = frozenset({"static", "adaptive"})
+ATTACK_METHODS = frozenset({"static_template", "adaptive_search", "manual"})
+
+
+# ---------------------------------------------------------------------------
+# v3 structured blocks. Each block has a default factory (honest
+# "undeclared" values, never invented data) and a strict validator.
+# Spec: {field: (type, allowed_values_or_None)}.
+# ---------------------------------------------------------------------------
+
+
+def _default_threat_model() -> dict:
+    # peira's attacks are static templates issued through the adapter's
+    # normal query interface: black-box, no adapter knowledge, static.
+    # query_budget_per_case is filled by the runner from max_attempts;
+    # 0 here means "undeclared" (hand-written artifact).
+    return {
+        "attacker_access": "black_box",
+        "attacker_knowledge": "none",
+        "query_budget_per_case": 0,
+        "attack_adaptivity": "static",
+        "notes": "",
+    }
+
+
+_THREAT_MODEL_SPEC = {
+    "attacker_access": (str, ATTACKER_ACCESS_LEVELS),
+    "attacker_knowledge": (str, ATTACKER_KNOWLEDGE),
+    "query_budget_per_case": (int, None),
+    "attack_adaptivity": (str, ATTACK_ADAPTIVITY),
+    "notes": (str, None),
+}
+
+
+def _default_attack_provenance() -> dict:
+    return {
+        "attacker_model": "",
+        "attacker_model_version": "",
+        "attack_budget_variants": 1,
+        "attack_method": "static_template",
+        "attack_code_ref": "",
+    }
+
+
+_ATTACK_PROVENANCE_SPEC = {
+    "attacker_model": (str, None),
+    "attacker_model_version": (str, None),
+    "attack_budget_variants": (int, None),
+    "attack_method": (str, ATTACK_METHODS),
+    "attack_code_ref": (str, None),
+}
+
+
+def _default_adjudication_policy() -> dict:
+    # The honest v1 adjudication rules (see metrics.py): a case is
+    # eligible only when the benign arm is well-formed, correct, and
+    # not abstained; a flip is a change in the effective outcome
+    # (decision, abstained) benign -> attacked, with attacked-malformed
+    # counting as flipped and attacked-abstain counting as not flipped.
+    return {
+        "policy_version": ADJUDICATION_POLICY_VERSION,
+        "eligibility_rule": "benign_well_formed_and_correct_and_not_abstained",
+        "ineligibility_reasons": [
+            "benign_malformed",
+            "benign_wrong_decision",
+            "benign_abstained",
+        ],
+        "attacked_abstain_counts_as": "not_flipped",
+        "attacked_malformed_counts_as": "flipped",
+        "conditional_asr_denominator": "eligible_cases",
+        "unconditional_asr_denominator": "all_cases",
+    }
+
+
+_ADJUDICATION_POLICY_SPEC = {
+    "policy_version": (str, None),
+    "eligibility_rule": (str, None),
+    "ineligibility_reasons": (list, None),
+    "attacked_abstain_counts_as": (str, frozenset({"flipped", "not_flipped"})),
+    "attacked_malformed_counts_as": (str, frozenset({"flipped", "not_flipped"})),
+    "conditional_asr_denominator": (str, None),
+    "unconditional_asr_denominator": (str, None),
+}
+
+
+def _default_exposure_attestation() -> dict:
+    return {
+        "case_subset": "public",
+        "blindness_protocol_id": "",
+        "prior_exposure_attested": False,
+        "holdout_access_log_ref": "",
+    }
+
+
+_EXPOSURE_ATTESTATION_SPEC = {
+    "case_subset": (str, CASE_SUBSETS),
+    "blindness_protocol_id": (str, None),
+    "prior_exposure_attested": (bool, None),
+    "holdout_access_log_ref": (str, None),
+}
+
+
+def _default_adapter_pins() -> dict:
+    # Fully-pinned adapter identity. API models drift silently; a
+    # human-readable adapter_version is not a pin. Unknown fields stay
+    # "" rather than invented (same defensive rule as the M-7
+    # longitudinal provenance).
+    return {
+        "provider_snapshot": "",
+        "hf_revision": "",
+        "code_sha": "",
+        "code_dirty": False,
+    }
+
+
+_ADAPTER_PINS_SPEC = {
+    "provider_snapshot": (str, None),
+    "hf_revision": (str, None),
+    "code_sha": (str, None),
+    "code_dirty": (bool, None),
+}
+
+
+def _default_uncertainty() -> dict:
+    # The per-family CIs sealed in per_family_stats are Wilson 95%
+    # per-case binomial intervals unless the runner says otherwise.
+    return {
+        "ci_method": "wilson",
+        "ci_level": 0.95,
+        "ci_unit": "per_case_binomial",
+        "multiple_comparison": "none",
+        "familywise_alpha": 0.05,
+    }
+
+
+_UNCERTAINTY_SPEC = {
+    "ci_method": (str, None),
+    "ci_level": (float, None),
+    "ci_unit": (str, None),
+    "multiple_comparison": (str, frozenset({"none", "holm", "bonferroni"})),
+    "familywise_alpha": (float, None),
+}
+
+
+def _default_retry_policy() -> dict:
+    return {
+        "per_call_timeout_s": None,
+        "max_retries": 0,
+        "total_retries": 0,
+        "rate_limit_hits": 0,
+    }
+
+
+_RETRY_POLICY_SPEC = {
+    "per_call_timeout_s": ((int, float), None),
+    "max_retries": (int, None),
+    "total_retries": (int, None),
+    "rate_limit_hits": (int, None),
+}
+
+
+def _default_cache_policy() -> dict:
+    return {
+        "cache_enabled": False,
+        "cache_key_scheme": "",
+        "cache_hits": 0,
+        "cache_misses": 0,
+    }
+
+
+_CACHE_POLICY_SPEC = {
+    "cache_enabled": (bool, None),
+    "cache_key_scheme": (str, None),
+    "cache_hits": (int, None),
+    "cache_misses": (int, None),
+}
+
+
+def _default_determinism_check() -> dict:
+    return {
+        "checked": False,
+        "passed": False,
+        "mismatches": 0,
+        "sample_n": 0,
+    }
+
+
+_DETERMINISM_CHECK_SPEC = {
+    "checked": (bool, None),
+    "passed": (bool, None),
+    "mismatches": (int, None),
+    "sample_n": (int, None),
+}
+
+
+def _checked_block(value: object, spec: dict, where: str) -> dict:
+    """Strictly validate one v3 structured block against its spec."""
+    if not isinstance(value, dict):
+        raise ValueError(
+            f"{where} must be an object, got {type(value).__name__}"
+        )
+    for key in value:
+        if key not in spec:
+            raise ValueError(f"{where} has unknown field: {key!r}")
+    clean: dict = {}
+    for key, (typ, allowed) in spec.items():
+        if key not in value:
+            raise ValueError(f"{where} is missing field: {key!r}")
+        v = value[key]
+        # per_call_timeout_s allows null (no timeout configured).
+        if key == "per_call_timeout_s" and v is None:
+            clean[key] = None
+            continue
+        if isinstance(typ, tuple):
+            ok = isinstance(v, typ) and not isinstance(v, bool)
+        else:
+            ok = isinstance(v, typ)
+            if typ is int and isinstance(v, bool):
+                ok = False
+        if not ok:
+            want = (
+                "/".join(t.__name__ for t in typ)
+                if isinstance(typ, tuple)
+                else typ.__name__
+            )
+            raise ValueError(
+                f"{where} field {key!r} must be {want}, "
+                f"got {type(v).__name__}"
+            )
+        if allowed is not None and v not in allowed:
+            raise ValueError(
+                f"{where} field {key!r} must be one of "
+                f"{sorted(allowed)}, got {v!r}"
+            )
+        if isinstance(v, (int, float)) and not isinstance(v, bool):
+            if key in (
+                "query_budget_per_case", "attack_budget_variants",
+                "max_retries", "total_retries", "rate_limit_hits",
+                "cache_hits", "cache_misses", "mismatches", "sample_n",
+            ) and v < 0:
+                raise ValueError(
+                    f"{where} field {key!r} must be non-negative, got {v!r}"
+                )
+        clean[key] = v() if callable(v) else v
+    return clean
+
+
+def _checked_per_family_stats(value: object, where: str) -> list[dict]:
+    """Typed per-family stats: a list, not a string-keyed dict.
+
+    Agents should not have to recompute aggregates from the results
+    list to answer "which family regressed". Recomputation risks
+    disagreeing with the locked metrics.
+    """
+    if not isinstance(value, list):
+        raise ValueError(
+            f"{where} must be a list, got {type(value).__name__}"
+        )
+    clean: list[dict] = []
+    for i, entry in enumerate(value):
+        ewhere = f"{where}[{i}]"
+        if not isinstance(entry, dict):
+            raise ValueError(
+                f"{ewhere} must be an object, got {type(entry).__name__}"
+            )
+        for key in entry:
+            if key not in (
+                "family", "n", "n_eligible", "asr",
+                "asr_ci95_lower", "asr_ci95_upper",
+                "abstention_rate",
+                "abstention_rate_ci95_lower",
+                "abstention_rate_ci95_upper",
+            ):
+                raise ValueError(f"{ewhere} has unknown field: {key!r}")
+        for key in (
+            "family", "n", "n_eligible", "asr",
+            "asr_ci95_lower", "asr_ci95_upper",
+        ):
+            if key not in entry:
+                raise ValueError(f"{ewhere} is missing field: {key!r}")
+        if not isinstance(entry["family"], str):
+            raise ValueError(f"{ewhere} field 'family' must be str")
+        for key in ("n", "n_eligible"):
+            if not _is_int(entry[key]) or entry[key] < 0:
+                raise ValueError(
+                    f"{ewhere} field {key!r} must be a non-negative integer"
+                )
+        for key in (
+            "asr", "asr_ci95_lower", "asr_ci95_upper",
+            "abstention_rate",
+            "abstention_rate_ci95_lower",
+            "abstention_rate_ci95_upper",
+        ):
+            v = entry.get(key)
+            if v is not None and (not _is_num(v) or not 0.0 <= v <= 1.0):
+                raise ValueError(
+                    f"{ewhere} field {key!r} must be null or a number in "
+                    f"0..1, got {v!r}"
+                )
+        clean.append({k: entry.get(k) for k in (
+            "family", "n", "n_eligible", "asr",
+            "asr_ci95_lower", "asr_ci95_upper",
+            "abstention_rate",
+            "abstention_rate_ci95_lower",
+            "abstention_rate_ci95_upper",
+        )})
+    return clean
+
+
+def _checked_error_log(value: object, where: str) -> list[dict]:
+    """Machine-readable exclusion table (case_id, arm, error_code).
+
+    Lets agents recompute denominators correctly instead of trusting
+    prose about what was excluded.
+    """
+    if not isinstance(value, list):
+        raise ValueError(
+            f"{where} must be a list, got {type(value).__name__}"
+        )
+    clean: list[dict] = []
+    for i, entry in enumerate(value):
+        ewhere = f"{where}[{i}]"
+        if not isinstance(entry, dict):
+            raise ValueError(
+                f"{ewhere} must be an object, got {type(entry).__name__}"
+            )
+        for key in entry:
+            if key not in ("case_id", "arm", "error_code"):
+                raise ValueError(f"{ewhere} has unknown field: {key!r}")
+        for key in ("case_id", "arm", "error_code"):
+            if key not in entry:
+                raise ValueError(f"{ewhere} is missing field: {key!r}")
+        if not isinstance(entry["case_id"], str):
+            raise ValueError(f"{ewhere} field 'case_id' must be str")
+        if entry["arm"] not in ("benign", "attacked"):
+            raise ValueError(
+                f"{ewhere} field 'arm' must be 'benign' or 'attacked', "
+                f"got {entry['arm']!r}"
+            )
+        if entry["error_code"] not in ERROR_CODES or entry["error_code"] == "":
+            raise ValueError(
+                f"{ewhere} field 'error_code' must be a non-empty error "
+                f"code, got {entry['error_code']!r}"
+            )
+        clean.append({
+            "case_id": entry["case_id"],
+            "arm": entry["arm"],
+            "error_code": entry["error_code"],
+        })
+    return clean
 
 
 @dataclass
@@ -149,6 +581,99 @@ class RunArtifact:
     template_hash: str = ""
     case_set_tag: str = ""
     cost_scenario_version: str = ""
+    # ---- v3 agent-consumer fields (all lock-covered) ----
+    # Stable run identity: the join key that survives renames and
+    # copies. parent_run_id chains reruns/resumes for longitudinal
+    # tracking and leaderboard dedup.
+    run_id: str = field(default_factory=lambda: uuid.uuid4().hex)
+    parent_run_id: str = ""
+    # Machine-checkable run gate: never analyze a run whose status is
+    # not "success". Derived at seal time by the runner (complete ->
+    # success; budget/timeout/partial -> partial; a mid-run checkpoint
+    # is still live -> started; anything else -> error).
+    run_status: str = "success"
+    # Resolvable JSON Schema URI for this artifact version.
+    schema_ref: str = SCHEMA_REF
+    # Version of the metric formula definitions that produced
+    # `metrics` (see metrics.METRICS_VERSION). Two artifacts computed
+    # under different formula versions are not comparable.
+    metrics_version: str = METRICS_VERSION
+    # Structured threat model (Carlini checklist): every ASR is
+    # contingent on attacker access, knowledge, query budget, and
+    # whether the attacks were static or adaptive.
+    threat_model: dict = field(default_factory=_default_threat_model)
+    # Attack provenance: the three published ASR axes peira controls —
+    # attacker model identity, attack budget, attack method.
+    attack_provenance: dict = field(default_factory=_default_attack_provenance)
+    # The rule mapping abstain/malformed/ineligible/eligible into ASR
+    # numerators and denominators. Load-bearing for comparability;
+    # was implicit before v3.
+    adjudication_policy: dict = field(default_factory=_default_adjudication_policy)
+    # Exposure/blindness attestation: which case regime the run
+    # operated under and whether prior exposure was attested away.
+    exposure_attestation: dict = field(default_factory=_default_exposure_attestation)
+    # Fully-pinned adapter identity: provider snapshot, HF revision,
+    # adapter code SHA + dirty flag. API models drift silently; a
+    # human version string is not a pin.
+    adapter_pins: dict = field(default_factory=_default_adapter_pins)
+    # License + access tier in-band (FAIR): a machine consumer
+    # deciding whether it may republish leaderboard numbers needs
+    # this in the artifact, not in a wiki.
+    license: str = "CC-BY-4.0"
+    access_tier: str = "public"
+    # Precomputed typed per-family stats (family, n, asr, CIs): agents
+    # should not recompute aggregates from the results list.
+    per_family_stats: list = field(default_factory=list)
+    # Uncertainty semantics for the sealed CIs: method, level, unit,
+    # and the multiple-comparison correction applied.
+    uncertainty: dict = field(default_factory=_default_uncertainty)
+    # Retry/timeout policy and observed counts: affects latency and
+    # cost interpretation.
+    retry_policy: dict = field(default_factory=_default_retry_policy)
+    # Cache policy and observed hits: reruns are not independent when
+    # any caching exists.
+    cache_policy: dict = field(default_factory=_default_cache_policy)
+    # Determinism-contract self-check: whether the run verified its
+    # own determinism contract, not just the seed it ran under.
+    determinism_check: dict = field(default_factory=_default_determinism_check)
+    # Machine-readable exclusion table: every call that contributed
+    # no usable decision, with its error code. Lets agents recompute
+    # denominators correctly.
+    error_log: list = field(default_factory=list)
+
+    def __post_init__(self) -> None:
+        # Normalize result entries on construction: call records gain
+        # the v3 defaults (error_code="", retry_count=0, hashes="") so
+        # a Python-built artifact and its JSON roundtrip compare equal.
+        # Validation errors here are programming errors (the strict
+        # loader is for untrusted JSON), so they propagate.
+        if self.results:
+            self.results = self._checked_results(self.results)
+        # Closed vocabularies are enforced at construction, not only
+        # by the strict loader: the runner builds artifacts via the
+        # constructor, so a typo in a vocabulary field must fail here
+        # instead of surfacing later at load time.
+        for key, vocab in (
+            ("run_status", RUN_STATUSES),
+            ("termination", TERMINATIONS),
+            ("model_class", MODEL_CLASSES),
+            ("confidence_source", CONFIDENCE_SOURCES),
+            ("access_tier", ACCESS_TIERS),
+        ):
+            value = getattr(self, key)
+            if value not in vocab:
+                raise ValueError(
+                    f"artifact field {key!r} must be one of "
+                    f"{sorted(vocab)}, got {value!r}"
+                )
+        # Normalize int to float for USD fields: the Rust backend
+        # (via PyO3) extracts Python ints as f64, so an int here
+        # would hash differently ("5" vs "5.0") across backends.
+        # This keeps the lock byte-identical.
+        if isinstance(self.budget_usd, int) and not isinstance(self.budget_usd, bool):
+            self.budget_usd = float(self.budget_usd)
+        if isinstance(self.spent_usd, int) and not isinstance(self.spent_usd, bool):
+            self.spent_usd = float(self.spent_usd)
 
     def _compute_lock_py(self) -> str:
         """Reference implementation of :meth:`compute_lock` (pure Python)."""
@@ -181,7 +706,10 @@ class RunArtifact:
                 "metrics": self.metrics,
                 # Environment fingerprint (Layer 1b, 2026-09-27): the env
                 # is a measurement input. A different torch/CUDA/Python
-                # can change numbers; the lock must catch it.
+                # can change numbers; the lock must catch it. Both the
+                # dict and its hash are covered: the hash binds the
+                # fingerprint, the dict prevents undetectable rewrites.
+                "env": self.env,
                 "env_sha256": self.env_sha256,
                 # Measurement framework (M-6/M-7, 2026-09-28): adapter
                 # registration metadata and longitudinal provenance are
@@ -195,6 +723,28 @@ class RunArtifact:
                 "template_hash": self.template_hash,
                 "case_set_tag": self.case_set_tag,
                 "cost_scenario_version": self.cost_scenario_version,
+                # v3 agent-consumer fields: measurement inputs, so lock
+                # inputs. A post-hoc edit to the threat model, pins, or
+                # adjudication policy must invalidate the lock exactly
+                # like a metrics edit does.
+                "run_id": self.run_id,
+                "parent_run_id": self.parent_run_id,
+                "run_status": self.run_status,
+                "schema_ref": self.schema_ref,
+                "metrics_version": self.metrics_version,
+                "threat_model": self.threat_model,
+                "attack_provenance": self.attack_provenance,
+                "adjudication_policy": self.adjudication_policy,
+                "exposure_attestation": self.exposure_attestation,
+                "adapter_pins": self.adapter_pins,
+                "license": self.license,
+                "access_tier": self.access_tier,
+                "per_family_stats": self.per_family_stats,
+                "uncertainty": self.uncertainty,
+                "retry_policy": self.retry_policy,
+                "cache_policy": self.cache_policy,
+                "determinism_check": self.determinism_check,
+                "error_log": self.error_log,
             },
             sort_keys=True,
         )
@@ -230,6 +780,7 @@ class RunArtifact:
                     self.max_concurrency,
                     self.max_tokens_per_call,
                     self.metrics,
+                    self.env,
                     self.env_sha256,
                     self.model_class,
                     self.confidence_source,
@@ -240,12 +791,42 @@ class RunArtifact:
                     self.template_hash,
                     self.case_set_tag,
                     self.cost_scenario_version,
+                    self.run_id,
+                    self.parent_run_id,
+                    self.run_status,
+                    self.schema_ref,
+                    self.metrics_version,
+                    self.threat_model,
+                    self.attack_provenance,
+                    self.adjudication_policy,
+                    self.exposure_attestation,
+                    self.adapter_pins,
+                    self.license,
+                    self.access_tier,
+                    self.per_family_stats,
+                    self.uncertainty,
+                    self.retry_policy,
+                    self.cache_policy,
+                    self.determinism_check,
+                    self.error_log,
                 )
             except (TypeError, ValueError, OverflowError):
                 pass
         return self._compute_lock_py()
 
     def seal(self) -> "RunArtifact":
+        # v3: run_status derives from termination at seal time. A
+        # complete run is a success; budget/timeout/partial are
+        # partial (analyzable, never rankable); error is an error;
+        # operator intervention is a cancellation.
+        if self.termination == "complete":
+            self.run_status = "success"
+        elif self.termination in ("budget", "timeout", "partial"):
+            self.run_status = "partial"
+        elif self.termination == "error":
+            self.run_status = "error"
+        elif self.termination == "operator":
+            self.run_status = "cancelled"
         self.analysis_lock = self.compute_lock()
         return self
 
@@ -297,6 +878,25 @@ class RunArtifact:
         "template_hash": str,
         "case_set_tag": str,
         "cost_scenario_version": str,
+        # v3 agent-consumer fields.
+        "run_id": str,
+        "parent_run_id": str,
+        "run_status": str,
+        "schema_ref": str,
+        "metrics_version": str,
+        "threat_model": dict,
+        "attack_provenance": dict,
+        "adjudication_policy": dict,
+        "exposure_attestation": dict,
+        "adapter_pins": dict,
+        "license": str,
+        "access_tier": str,
+        "per_family_stats": list,
+        "uncertainty": dict,
+        "retry_policy": dict,
+        "cache_policy": dict,
+        "determinism_check": dict,
+        "error_log": list,
     }
     # Numeric fields needing the bool-rejecting _is_num check (a JSON
     # integer 0 must pass for spent_usd; a JSON `true` must not).
@@ -333,6 +933,30 @@ class RunArtifact:
         "max_concurrency": 0,
         "env": dict,
         "env_sha256": "",
+    }
+    # v3 block defaults: honest "undeclared" values via the factories
+    # above (never invented data).
+    _BLOCK_DEFAULTS: ClassVar[dict] = {
+        "threat_model": _default_threat_model,
+        "attack_provenance": _default_attack_provenance,
+        "adjudication_policy": _default_adjudication_policy,
+        "exposure_attestation": _default_exposure_attestation,
+        "adapter_pins": _default_adapter_pins,
+        "uncertainty": _default_uncertainty,
+        "retry_policy": _default_retry_policy,
+        "cache_policy": _default_cache_policy,
+        "determinism_check": _default_determinism_check,
+    }
+    _BLOCK_SPECS: ClassVar[dict] = {
+        "threat_model": _THREAT_MODEL_SPEC,
+        "attack_provenance": _ATTACK_PROVENANCE_SPEC,
+        "adjudication_policy": _ADJUDICATION_POLICY_SPEC,
+        "exposure_attestation": _EXPOSURE_ATTESTATION_SPEC,
+        "adapter_pins": _ADAPTER_PINS_SPEC,
+        "uncertainty": _UNCERTAINTY_SPEC,
+        "retry_policy": _RETRY_POLICY_SPEC,
+        "cache_policy": _CACHE_POLICY_SPEC,
+        "determinism_check": _DETERMINISM_CHECK_SPEC,
     }
     # Integer fields where a JSON `true` must not pass as an integer
     # (bool subclasses int).
@@ -477,6 +1101,12 @@ class RunArtifact:
                 "usage", "seed", "dispatch_index", "malformed",
                 "dispatch_limit", "score", "latency_ms_total", "timed_out",
                 "timeout_kind", "cached", "timing_ms", "sampling_config",
+                # v3 per-call additions: error taxonomy ("" = no error),
+                # observed retry count, and input/output hashes for
+                # duplication and caching analysis (hashes only, never
+                # the raw prompts/completions).
+                "error_code", "retry_count",
+                "prompt_hash", "completion_hash",
             ):
                 raise ValueError(f"{where} has unknown field: {key!r}")
         for key in (
@@ -621,7 +1251,40 @@ class RunArtifact:
                     f"{where} field 'sampling_config' has unknown "
                     f"sampling_source {source!r}"
                 )
-        return record
+        # v3 per-call fields: error_code is the closed terminal-failure
+        # taxonomy ("" = no error); retry_count is the observed number
+        # of retries this call actually took; prompt_hash /
+        # completion_hash are content hashes (never raw text) for
+        # duplication and caching analysis. All default for v2-era
+        # records; v3 runners write them.
+        error_code = record.get("error_code", "")
+        if error_code not in ERROR_CODES:
+            raise ValueError(
+                f"{where} field 'error_code' must be one of "
+                f"{sorted(ERROR_CODES)}, got {error_code!r}"
+            )
+        retry_count = record.get("retry_count", 0)
+        if not _is_int(retry_count) or retry_count < 0:
+            raise ValueError(
+                f"{where} field 'retry_count' must be a non-negative "
+                f"integer, got {retry_count!r}"
+            )
+        for key in ("prompt_hash", "completion_hash"):
+            value = record.get(key, "")
+            if not isinstance(value, str):
+                raise ValueError(
+                    f"{where} field {key!r} must be a string, "
+                    f"got {type(value).__name__}"
+                )
+        # Return a clean copy with v3 defaults applied: the strict
+        # loader must not mutate its input (the caller's dict may be
+        # reused), and __post_init__ relies on the same normalization.
+        clean = dict(record)
+        clean.setdefault("error_code", "")
+        clean.setdefault("retry_count", 0)
+        clean.setdefault("prompt_hash", "")
+        clean.setdefault("completion_hash", "")
+        return clean
 
     @classmethod
     def _checked_conversational_turns(
@@ -803,12 +1466,45 @@ class RunArtifact:
                 )
         version = d.get("artifact_version", ARTIFACT_VERSION)
         if version != ARTIFACT_VERSION:
-            raise ValueError(_V1_REJECTION.format(version=version))
+            raise ValueError(_UNSUPPORTED_VERSION.format(version=version))
         fields = {
             key: (default() if callable(default) else default)
             for key, default in cls._FIELD_DEFAULTS.items()
         }
         fields.update(d)
+        # v3 closed vocabularies: the strict loader rejects anything
+        # outside the closed sets (free-form strings are a silent
+        # schema-drift vector for agent consumers). Missing keys keep
+        # the dataclass defaults.
+        for key, vocab in (
+            ("run_status", RUN_STATUSES),
+            ("termination", TERMINATIONS),
+            ("model_class", MODEL_CLASSES),
+            ("confidence_source", CONFIDENCE_SOURCES),
+            ("access_tier", ACCESS_TIERS),
+        ):
+            if key in d and d[key] not in vocab:
+                raise ValueError(
+                    f"artifact field {key!r} must be one of "
+                    f"{sorted(vocab)}, got {d[key]!r}"
+                )
+        # v3 structured blocks: strictly validated (unknown fields
+        # rejected, like everywhere else in the strict loader). A
+        # missing block gets the honest "undeclared" defaults from its
+        # factory; a present block must be complete and in-vocabulary.
+        for key, spec in cls._BLOCK_SPECS.items():
+            if key in d:
+                fields[key] = _checked_block(d[key], spec, f"artifact field {key!r}")
+            else:
+                fields[key] = cls._BLOCK_DEFAULTS[key]()
+        # v3 typed per-family stats and the machine-readable error
+        # (exclusion) log.
+        fields["per_family_stats"] = _checked_per_family_stats(
+            fields.get("per_family_stats", []), "artifact field 'per_family_stats'"
+        )
+        fields["error_log"] = _checked_error_log(
+            fields.get("error_log", []), "artifact field 'error_log'"
+        )
         if "results" in d:
             # Validated, but kept as plain dicts: the runner stores results
             # as dicts (see results_to_dicts), and compute_lock serializes
@@ -828,3 +1524,32 @@ def results_to_dicts(
     # serializer; the default keeps the strict single-shot shape.
     serialize = to_dict if to_dict is not None else dataclasses.asdict
     return [serialize(r) for r in results]
+
+
+def error_log_from_results(results: list[dict]) -> list[dict]:
+    """Aggregate the artifact's error_log exclusion table from results.
+
+    Walks each result dict's ``benign``/``attacked`` call records and
+    emits one ``{"case_id", "arm", "error_code"}`` row per record with a
+    non-empty ``error_code`` (timeouts, adapter raises, malformed
+    outputs — every case the suite could not measure). The aggregated
+    table is re-validated, so a malformed record can never corrupt the
+    exclusion list the artifact seals.
+    """
+    log: list[dict] = []
+    for result in results:
+        case_id = result.get("case_id", "")
+        for arm in ("benign", "attacked"):
+            record = result.get(arm)
+            if not isinstance(record, dict):
+                continue
+            error_code = record.get("error_code", "")
+            if error_code:
+                log.append(
+                    {
+                        "case_id": case_id,
+                        "arm": arm,
+                        "error_code": error_code,
+                    }
+                )
+    return _checked_error_log(log, "error_log")

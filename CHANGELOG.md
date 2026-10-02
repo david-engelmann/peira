@@ -272,6 +272,57 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
   `targeted_asr` summary block. Targeted ASR is unavailable when no
   target mapping is supplied or no flip has a known target.
 
+### Added cryptographic_payload attack family (family 28, Tier 1)
+
+- New v2 family `cryptographic_payload`: encrypted payload plus
+  in-context decryption instructions. The guard layer classifies the
+  ciphertext (benign-looking) while the decision model recovers the
+  plaintext in a trusted execution context and follows it. 420 cases
+  (181 critical / 155 high / 84 medium; 300 choice / 50 abstain /
+  70 score) authored by `scripts/author_cryptographic_payload.py`, case
+  IDs `v2-cryp-0001` and up. The benign control shows the attack in
+  plaintext inside an explicit guardrail BLOCKED notice; the attacked
+  variant carries the identical payload as ROT13, base64, keyed
+  simple-substitution, or word-reversal ciphertext plus decode-and-apply
+  instructions. Every
+  payload is encoded programmatically with round-trip assertions
+  (`decode(encode(x)) == x`), so cases are machine-checkable. Registered
+  in `python/peira/families.py`, documented in `docs/Taxonomy.md`
+  (entry 28, boundary ruling vs encoding_evasion and indirect_injection)
+  and `docs/Methodology.md` (measurement section with the deletion
+  test). Ships within dataset version 2.4.0.
+
+### Changed run artifact to v3 (agent-consumer schema)
+
+- `ARTIFACT_VERSION` is now `"3"`. v1 and v2 artifacts are rejected
+  outright by `from_json()` (no migration). No sealed measurements
+  exist yet, so no migration path is owed (see
+  `docs/Artifact-Versions.md`).
+- New stable run identity with `run_id` (uuid4 hex) and `parent_run_id`
+  for run lineage. `run_status` (`success`/`partial`/`error`/`started`/
+  `cancelled`) derives from `termination` at seal time and is the
+  machine-checkable gate for downstream analysis.
+- New structured provenance blocks, all lock-covered, including `threat_model`
+  (attacker access/knowledge/adaptivity), `attack_provenance`
+  (attacker model, method, budget), `adjudication_policy` (the honest
+  eligibility rules, versioned), `exposure_attestation` (blindness
+  protocol, holdout access), `adapter_pins` (code SHA, HF revision,
+  provider snapshot), `license`, `access_tier`.
+- New measurement transparency through a typed `per_family_stats` list (ASR
+  + abstention rate with 95% CIs per family), `uncertainty` semantics,
+  `retry_policy`/`cache_policy`, `determinism_check` results, and a
+  machine-readable `error_log` (every excluded call with its error
+  code).
+- Per-call records gain `error_code` (closed taxonomy of timeout,
+  rate_limit, api_error, parse_failure, refused_to_format, or ""),
+  `retry_count`, `prompt_hash`, `completion_hash` (hashes only, never
+  raw text), plus `timeout_kind` and `timing_ms` in the Rust core.
+- The analysis lock now covers 49 keys (was 30), canonicalized via
+  streaming SHA-256 in Rust and sorted JSON in Python. Cross-language
+  lock agreement verified by `crates/peira-core/tests/parity.rs`.
+- JSON Schema at `schemas/run-artifact-3.json`
+  (`https://peiratrial.dev/schemas/run-artifact/3.json`).
+
 ### Added conversational case families
 
 - The conversational suite ships its first two attack families:
