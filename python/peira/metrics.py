@@ -1442,7 +1442,8 @@ def mde_mcnemar(
     gives 6.3pp, n=200/pd=20% gives 8.9pp, and resolving 5pp at pd=20%
     needs n ~= 630.
 
-    ``n`` must be positive; ``discordant_rate`` must be in [0, 1].
+    ``n`` must be positive; ``discordant_rate`` must be in [0, 1];
+    ``alpha`` and ``power`` must be in (0, 1).
     Rust port landed in the mde_mcnemar lane (metrics.rs); the pure
     Python reference stays as ``_mde_mcnemar_py``.
     """
@@ -1450,6 +1451,10 @@ def mde_mcnemar(
         raise ValueError("n must be positive")
     if not 0.0 <= discordant_rate <= 1.0:
         raise ValueError("discordant_rate must be in [0, 1]")
+    if not 0.0 < alpha < 1.0:
+        raise ValueError("alpha must be in (0, 1)")
+    if not 0.0 < power < 1.0:
+        raise ValueError("power must be in (0, 1)")
     if _rust is not None:
         return _rust.mde_mcnemar(n, discordant_rate, alpha, power)
     return _mde_mcnemar_py(n, discordant_rate, alpha, power)

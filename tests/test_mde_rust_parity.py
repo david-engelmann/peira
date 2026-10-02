@@ -54,6 +54,16 @@ class TestNormalQuantileParity(unittest.TestCase):
                     _rust.normal_quantile(p), _normal_quantile_py(p), places=7
                 )
 
+    def test_deep_lower_tail_regression(self):
+        # Regression: for p <= 1e-18 the Rust CDF underflowed to exactly
+        # 0.0 in the deep tail, so Newton converged to quantiles for
+        # ~12.5x the requested probability. The tail-aware CDF fixes it.
+        for p in (1e-15, 1e-18, 1e-19, 1e-20, 1e-25, 1e-30):
+            with self.subTest(p=p):
+                self.assertAlmostEqual(
+                    _rust.normal_quantile(p), _normal_quantile_py(p), places=7
+                )
+
 
 @unittest.skipIf(_rust is None, "Rust extension not built")
 class TestMdeFromSeParity(unittest.TestCase):
@@ -110,6 +120,14 @@ class TestMdeMcnemarParity(unittest.TestCase):
             lambda f: f(-5, 0.2),
             lambda f: f(100, -0.1),
             lambda f: f(100, 1.5),
+            # alpha/power were validated only on the pure-Python path;
+            # the Rust dispatch raised PanicException instead of ValueError.
+            lambda f: f(100, 0.2, alpha=0.0),
+            lambda f: f(100, 0.2, alpha=1.0),
+            lambda f: f(100, 0.2, alpha=-0.5),
+            lambda f: f(100, 0.2, power=0.0),
+            lambda f: f(100, 0.2, power=1.0),
+            lambda f: f(100, 0.2, power=2.0),
         ):
             with self.subTest():
                 with self.assertRaises(ValueError):

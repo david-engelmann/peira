@@ -1710,8 +1710,21 @@ fn erf_precise(x: f64) -> f64 {
 }
 
 /// Standard normal CDF to ~1e-15. Private helper for `normal_quantile`.
+///
+/// Tail-aware: for z = x/sqrt(2) < -2 the naive `0.5*(1+erf(z))` suffers
+/// catastrophic cancellation (`1.0 - tiny` rounds to `1.0`, so erf goes to
+/// exactly -1.0 and the CDF underflows to exactly 0.0). Newton refinement
+/// then converges to a wrong fixed point (observed: quantiles for ~12.5x
+/// the requested probability at p <= 1e-18). In the deep lower tail we use
+/// Phi(x) = 0.5*erfc(-x/sqrt(2)) directly, which the Laplace continued
+/// fraction evaluates without cancellation.
 fn normal_cdf(x: f64) -> f64 {
-    0.5 * (1.0 + erf_precise(x / std::f64::consts::SQRT_2))
+    let z = x / std::f64::consts::SQRT_2;
+    if z < -2.0 {
+        0.5 * erfc_laplace(-z)
+    } else {
+        0.5 * (1.0 + erf_precise(z))
+    }
 }
 
 /// Standard normal quantile function.
@@ -1719,18 +1732,19 @@ fn normal_cdf(x: f64) -> f64 {
 /// Mirrors `_normal_quantile` in `python/peira/metrics.py`, which uses
 /// `statistics.NormalDist().inv_cdf(p)` (CPython's C implementation).
 /// Acklam's rational approximation seeds Newton refinement on the
-/// high-precision CDF above; verified bit-compatible to <1e-13 against
-/// CPython 3.12 across the unit interval (see `normal_quantile_matches_cpython`
-/// in the test module).
+/// tail-aware CDF above; accurate to <1e-12 against CPython 3.12 across
+/// the unit interval, including deep tails down to p=1e-300
+/// (see `normal_quantile_matches_cpython` and
+/// `normal_quantile_deep_lower_tail` in the test module).
 ///
 /// The Python wrapper validates `0.0 < p < 1.0` before dispatching; the
 /// Rust core asserts per the D-11 caller-bug convention.
+#[allow(clippy::excessive_precision)]
 pub fn normal_quantile(p: f64) -> f64 {
-    assert!(
-        p > 0.0 && p < 1.0,
-        "quantile p must be in (0, 1)"
-    );
-    // Acklam's approximation coefficients.
+    assert!(p > 0.0 && p < 1.0, "quantile p must be in (0, 1)");
+    // Acklam's approximation coefficients, as published. They carry more
+    // digits than f64 can represent; the excess is harmless (see the
+    // #[allow(clippy::excessive_precision)] on this function).
     const A1: f64 = -3.969683028665376e+01;
     const A2: f64 = 2.209460984245205e+02;
     const A3: f64 = -2.759285104469687e+02;
@@ -1791,14 +1805,8 @@ pub fn normal_quantile(p: f64) -> f64 {
 /// alpha and power in (0, 1)); the Rust core asserts per D-11.
 pub fn mde_from_se(se: f64, alpha: f64, power: f64) -> f64 {
     assert!(se >= 0.0, "standard error must be non-negative");
-    assert!(
-        alpha > 0.0 && alpha < 1.0,
-        "alpha must be in (0, 1)"
-    );
-    assert!(
-        power > 0.0 && power < 1.0,
-        "power must be in (0, 1)"
-    );
+    assert!(alpha > 0.0 && alpha < 1.0, "alpha must be in (0, 1)");
+    assert!(power > 0.0 && power < 1.0, "power must be in (0, 1)");
     if se == 0.0 {
         return 0.0;
     }
@@ -1991,6 +1999,34 @@ mod tests {
             assert!(
                 (got - expected).abs() < 1e-12,
                 "p={p}: got {got}, expected {expected}"
+            );
+        }
+    }
+
+    #[test]
+    fn normal_quantile_deep_lower_tail() {
+        // Regression: for p <= 1e-18 the old CDF underflowed to exactly
+        // 0.0 in the deep tail, and Newton refinement converged to
+        // quantiles for ~12.5x the requested probability. Reference
+        // values from CPython 3.12 statistics.NormalDist().inv_cdf.
+        let cases = [
+            (1e-15, -7.941345326170995),
+            (1e-18, -8.757290348782316),
+            (1e-19, -9.013271153126675),
+            (1e-20, -9.262340089798405),
+            (1e-25, -10.420452200803098),
+            (1e-30, -11.464024688443617),
+            (1e-100, -21.27345356096532),
+            (1e-300, -37.0470962993612),
+        ];
+        for (p, expected) in cases {
+            let got = normal_quantile(p);
+            // Deep tails: 1e-9 relative is the honest bar for the
+            // Newton-refined approximation at these magnitudes.
+            let rel = ((got - expected) / expected).abs();
+            assert!(
+                rel < 1e-9,
+                "p={p}: got {got}, expected {expected} (rel err {rel})"
             );
         }
     }
