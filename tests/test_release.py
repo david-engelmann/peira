@@ -180,12 +180,12 @@ def test_stamp_version_double_marker_fails_loud(tmp_path):
         stamp_version(tree, "1.2.3")
 
 
-def test_stamp_version_cargo_optional(tmp_path):
+def test_stamp_version_ignores_cargo(tmp_path):
+    """Rust crates are versioned independently; never stamped."""
     stamped = stamp_version(_tree(tmp_path, cargo=True), "2.0.0")
-    assert "crates/peira-python/Cargo.toml" in stamped
+    assert stamped == ["pyproject.toml", "python/peira/__init__.py"]
     cargo_text = (tmp_path / "crates/peira-python/Cargo.toml").read_text()
-    assert 'version = "2.0.0"' in cargo_text
-    assert 'name = "peira"' in cargo_text
+    assert 'version = "0.0.0"' in cargo_text
 
 
 def test_stamp_version_missing_pyproject_fails(tmp_path):
