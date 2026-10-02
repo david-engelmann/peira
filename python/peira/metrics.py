@@ -1339,14 +1339,47 @@ MDE_ALPHA = 0.05
 MDE_POWER = 0.8
 
 
-def _normal_quantile(p: float) -> float:
-    """Standard normal quantile function.
+def _normal_quantile_py(p: float) -> float:
+    """Pure-Python reference for :func:`_normal_quantile`.
 
     Uses :class:`statistics.NormalDist` (stdlib, no third-party dependency).
+    Rust port landed in the mde_mcnemar lane (metrics.rs); the pure
+    Python reference stays as ``_normal_quantile_py``.
     """
     if not 0.0 < p < 1.0:
         raise ValueError("quantile p must be in (0, 1)")
     return statistics.NormalDist().inv_cdf(p)
+
+
+def _normal_quantile(p: float) -> float:
+    """Standard normal quantile function.
+
+    Validates, then dispatches to the Rust core when available.
+    """
+    if not 0.0 < p < 1.0:
+        raise ValueError("quantile p must be in (0, 1)")
+    if _rust is not None:
+        return _rust.normal_quantile(p)
+    return _normal_quantile_py(p)
+
+
+def _mde_from_se_py(
+    se: float, alpha: float = MDE_ALPHA, power: float = MDE_POWER,
+) -> float:
+    """Pure-Python reference for :func:`mde_from_se`.
+
+    Rust port landed in the mde_mcnemar lane (metrics.rs); the pure
+    Python reference stays as ``_mde_from_se_py``.
+    """
+    if se < 0.0:
+        raise ValueError("standard error must be non-negative")
+    if not 0.0 < alpha < 1.0:
+        raise ValueError("alpha must be in (0, 1)")
+    if not 0.0 < power < 1.0:
+        raise ValueError("power must be in (0, 1)")
+    if se == 0.0:
+        return 0.0
+    return (_normal_quantile_py(1.0 - alpha / 2.0) + _normal_quantile_py(power)) * se
 
 
 def mde_from_se(se: float, alpha: float = MDE_ALPHA, power: float = MDE_POWER) -> float:
@@ -1358,7 +1391,8 @@ def mde_from_se(se: float, alpha: float = MDE_ALPHA, power: float = MDE_POWER) -
 
     ``se`` must be non-negative; ``alpha`` and ``power`` must be in (0, 1).
     Returns 0.0 when se is 0.0 (a degenerate estimator detects nothing, and
-    nothing is detectable).
+    nothing is detectable). Rust port landed in the mde_mcnemar lane
+    (metrics.rs); the pure Python reference stays as ``_mde_from_se_py``.
     """
     if se < 0.0:
         raise ValueError("standard error must be non-negative")
@@ -1366,9 +1400,27 @@ def mde_from_se(se: float, alpha: float = MDE_ALPHA, power: float = MDE_POWER) -
         raise ValueError("alpha must be in (0, 1)")
     if not 0.0 < power < 1.0:
         raise ValueError("power must be in (0, 1)")
-    if se == 0.0:
-        return 0.0
-    return (_normal_quantile(1.0 - alpha / 2.0) + _normal_quantile(power)) * se
+    if _rust is not None:
+        return _rust.mde_from_se(se, alpha, power)
+    return _mde_from_se_py(se, alpha, power)
+
+
+def _mde_mcnemar_py(
+    n: int,
+    discordant_rate: float,
+    alpha: float = MDE_ALPHA,
+    power: float = MDE_POWER,
+) -> float:
+    """Pure-Python reference for :func:`mde_mcnemar`.
+
+    Rust port landed in the mde_mcnemar lane (metrics.rs); the pure
+    Python reference stays as ``_mde_mcnemar_py``.
+    """
+    if n <= 0:
+        raise ValueError("n must be positive")
+    if not 0.0 <= discordant_rate <= 1.0:
+        raise ValueError("discordant_rate must be in [0, 1]")
+    return _mde_from_se_py(math.sqrt(discordant_rate / n), alpha, power)
 
 
 def mde_mcnemar(
@@ -1391,12 +1443,16 @@ def mde_mcnemar(
     needs n ~= 630.
 
     ``n`` must be positive; ``discordant_rate`` must be in [0, 1].
+    Rust port landed in the mde_mcnemar lane (metrics.rs); the pure
+    Python reference stays as ``_mde_mcnemar_py``.
     """
     if n <= 0:
         raise ValueError("n must be positive")
     if not 0.0 <= discordant_rate <= 1.0:
         raise ValueError("discordant_rate must be in [0, 1]")
-    return mde_from_se(math.sqrt(discordant_rate / n), alpha, power)
+    if _rust is not None:
+        return _rust.mde_mcnemar(n, discordant_rate, alpha, power)
+    return _mde_mcnemar_py(n, discordant_rate, alpha, power)
 
 
 def paired_bootstrap_se(
