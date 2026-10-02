@@ -228,13 +228,17 @@
         html += `<th data-sort="${c.key}">${c.label}${arrow}</th>`;
       }
       html += '<th class="no-sort">Eligibility</th></tr></thead><tbody>';
-      runs.forEach((r, i) => {
+      // Rank counts ranking-eligible runs only, in display order, so
+      // ineligible rows shown for transparency never shift eligible ranks.
+      let rank = 0;
+      runs.forEach((r) => {
         const m = r.metrics;
         const asrBar = m.asr_conditional === null ? '' : `<span class="bar"><i style="width:${Math.min(100, m.asr_conditional * 100).toFixed(1)}%;background:${colorMap.get(r.adapter_name)}"></i></span>`;
         const elig = m.ranking_eligible
           ? '<span class="badge ok">ranking eligible</span>'
           : '<span class="badge warn" title="' + esc((m.eligibility_notes || []).join(' ')) + '">not eligible</span>';
-        const rankCell = m.ranking_eligible ? `<td class="rank num">${i + 1}</td>` : '<td class="rank num">–</td>';
+        if (m.ranking_eligible) rank += 1;
+        const rankCell = m.ranking_eligible ? `<td class="rank num">${rank}</td>` : '<td class="rank num">–</td>';
         html += `<tr>${rankCell}` +
           `<td><span class="adapter-name">${esc(shortName(r.adapter_name))}</span><div class="faint mono" style="font-size:11.5px">${esc(r.adapter_version)} · ${esc(r.model_class || '')}</div></td>` +
           `<td class="num">${asrBar}${pct(m.asr_conditional)}<span class="ci">${ciText(m.asr_ci95)}</span></td>` +
