@@ -471,6 +471,8 @@ def validate_case_dict(d: dict[str, Any]) -> list[str]:
         try:
             return _rust.validate_case_dict(d)
         except (TypeError, ValueError):
+            if STRICT_RUST:
+                raise
             # Values with no JSON representation (non-finite floats,
             # integers wider than u64, non-string keys) cannot cross the
             # boundary; validate them with the reference implementation.

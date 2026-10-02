@@ -150,7 +150,8 @@ def parse_combo_case_id(case_id: str) -> tuple[str, int, str]:
             # fall back so those parse exactly as the reference does.
             return _rust.combo_parse_case_id(case_id)
         except (TypeError, ValueError):
-            pass
+            if STRICT_RUST:
+                raise
     return _parse_combo_case_id_py(case_id)
 
 

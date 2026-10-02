@@ -23,7 +23,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from peira._rust import _impl as _rust, STRICT_RUST
+from peira._rust import _impl as _rust
 from peira.metrics import (
     DEFAULT_NB_THRESHOLDS,
     MIN_PER_CONDITION_CASES,

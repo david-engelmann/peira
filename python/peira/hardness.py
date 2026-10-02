@@ -567,6 +567,8 @@ def flip_distribution(
                     _rust.hardness_flip_distribution(results_by_adapter)
                 )
             except (TypeError, AttributeError):
+                if STRICT_RUST:
+                    raise
                 # Non-string adapter names or non-PerCaseResult values
                 # fail the PyO3 extraction: the reference handles (or
                 # raises on) them.
@@ -595,7 +597,8 @@ def hardest_decile_survival(
                     _rust.hardness_hardest_decile_survival(results_by_adapter, decile)
                 )
             except (TypeError, AttributeError):
-                pass
+                if STRICT_RUST:
+                    raise
     return _hardest_decile_survival_py(results_by_adapter, decile)
 
 
@@ -623,6 +626,8 @@ def transfer_matrix(
                     _rust.hardness_transfer_matrix(results_by_adapter, family)
                 )
             except (TypeError, AttributeError):
+                if STRICT_RUST:
+                    raise
                 pass
     return _transfer_matrix_py(results_by_adapter, family)
 
@@ -649,6 +654,8 @@ def analyze_runs(
                     _rust.hardness_analyze_runs(results_by_adapter, decile)
                 )
             except (TypeError, AttributeError):
+                if STRICT_RUST:
+                    raise
                 pass
     return _analyze_runs_py(results_by_adapter, decile)
 

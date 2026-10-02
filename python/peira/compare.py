@@ -27,7 +27,7 @@ import math
 from dataclasses import dataclass, field
 from typing import Any
 
-from peira._rust import _impl as _rust, STRICT_RUST
+from peira._rust import _impl as _rust
 from peira.artifacts import RunArtifact
 from peira.concurrency import _require_json_str
 from peira.metrics import (

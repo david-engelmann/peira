@@ -41,7 +41,7 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass
 
-from peira._rust import _impl as _rust, STRICT_RUST
+from peira._rust import _impl as _rust
 from peira.concurrency import _require_json_str
 
 
