@@ -51,6 +51,7 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
   never quarantine). Determinism explicitly not claimed, even at
   temperature 0.
 
+
 ### Changed - uv replaces pip-compile for Python dependency locking (D-40)
 
 - `uv.lock` at the repo root is now the single committed Python
@@ -67,6 +68,40 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
   `EXTRAS_LOCK` build arg is now `EXTRAS` (`dev` or `all`).
 - CI runs `uv lock --check` so a stale lockfile fails the PR. See
   docs/Reproducibility.md for the new workflow.
+
+### Added EB-27 dos_resource_exhaustion and EB-47 poisoned_few_shot families
+
+- Family 29 `dos_resource_exhaustion` (Tier 1): 420 paired cases
+  (`dataset/v2/cases/dos_resource_exhaustion.jsonl`) measuring the
+  cost of deciding. The attacked variant appends a scenario-neutral
+  exhaustion block that demands extra written work without naming an
+  option or steering toward a decision; no flip is expected. Five
+  sub-mechanisms: verbosity_bomb, reasoning_loop,
+  enumeration_exploit, precompute_trap, reformat_amplify. Registered
+  in `python/peira/families.py`, `docs/Taxonomy.md` (entry 29, new
+  boundary ruling 11 vs verbosity_inflation), and the dataset
+  manifest (v2.5.0).
+- Family 30 `poisoned_few_shot` (Tier 1): 420 paired cases
+  (`dataset/v2/cases/poisoned_few_shot.jsonl`) measuring in-context
+  demonstration poisoning. Both arms show three worked examples of
+  the decision task plus the same target case; only the
+  demonstrations differ. Five sub-mechanisms: label_flip,
+  trigger_backdoor, smuggled_policy, boundary_shift,
+  corrupted_reasoning. Registered in `python/peira/families.py`,
+  `docs/Taxonomy.md` (entry 30, new boundary ruling 12 vs
+  precedent_stacking and indirect_injection), and the dataset
+  manifest (v2.5.0).
+- `resource_anomaly` in `peira.metrics` (new, EB-27): per-case
+  attacked/benign ratios for `cost_usd`, `latency_ms_total`, and
+  `tokens_out`; median ratios, anomaly rates at 2x and above with
+  Wilson 95% CIs, and attacked/benign timeout rates. Reported
+  overall and per family in the `resource_anomaly` summary block
+  (wired into `summarize()`). Medians and anomaly rates are withheld
+  below 30 pairs; cached and usage-missing pairs are excluded with
+  counts reported. Display-only, never a ranker. Python only.
+- `docs/Methodology.md`: new `resource_anomaly` metric entry plus
+  per-family sections for both families (paired-control
+  construction, deletion-test diagnostics, design MDEs at n=420).
 
 ### Added EB-41 benign twins for over-refusal
 

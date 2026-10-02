@@ -82,13 +82,13 @@ class TestCheckFamilies(unittest.TestCase):
             REPO_ROOT / "docs" / "Taxonomy.md"
         )
         # No cap on families (David 2026-09-28).
-        self.assertEqual(len(documented), 27)
+        self.assertEqual(len(documented), 29)
         numbers = [n for n, _, _ in documented]
         # 27 is reserved for question_pair_incoherence (QPI lane, landing
         # imminently after the 2026-10-01 cryptographic_payload 27 -> 28
-        # renumber). The QPI lane restores range(1, 29) here and deletes the
+        # renumber). The QPI lane restores range(1, 31) here and deletes the
         # RESERVED_NUMBERS entry in scripts/check_families.py.
-        self.assertEqual(numbers, list(range(1, 27)) + [28])
+        self.assertEqual(numbers, list(range(1, 27)) + [28, 29, 30])
         tiers = {fam: tier for _, fam, tier in documented}
         self.assertEqual(tiers["state_poisoning"], "v1")
         self.assertEqual(tiers["instruction_override"], "1")
