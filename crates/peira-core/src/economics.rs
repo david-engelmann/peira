@@ -15,10 +15,15 @@
 //!   dicts the wrapper uses to construct them (the slice-3 pattern).
 //!
 //! Parity notes:
-//! - Float summation order matches the reference exactly: every sum
-//!   iterates in list order with a sequential fold, never a tree
-//!   reduction. `(total / n) * attack_rate` keeps Python's
-//!   left-associative order.
+//! - Float aggregates can differ from the reference by a few ulp:
+//!   on Python 3.12+ the reference sums with the builtin `sum()`
+//!   (Neumaier compensated summation) while this core accumulates
+//!   naively left-to-right in list order, never a tree reduction.
+//!   On Python 3.10/3.11 the builtin `sum()` is itself naive
+//!   left-to-right, so the summation matches exactly there.
+//!   `(total / n) * attack_rate` keeps Python's left-associative
+//!   order. A few ulp is ~1e-15 relative, immaterial to every
+//!   reported number.
 //! - `FLIP_DIRECTIONS` order is the canonical M-1 taxonomy order
 //!   (approve-to-deny, deny-to-approve, to-abstain, to-malformed,
 //!   score-shifted, other, none); direction-keyed sums iterate in that

@@ -407,6 +407,10 @@ _MAX_JSON_DEPTH = 256
 
 
 def _require_json_str(value: str) -> None:
+    if not isinstance(value, str):
+        raise ValueError(
+            "expected str, got " + type(value).__name__
+        )
     try:
         value.encode("utf-8")
     except UnicodeEncodeError:

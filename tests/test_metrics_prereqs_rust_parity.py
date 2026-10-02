@@ -175,6 +175,40 @@ class TestFlipDirectionParity(unittest.TestCase):
         with self.assertRaises(ValueError):
             flip_direction(bad)
 
+    def test_usage_optional_strings_reject_surrogates(self):
+        # Slice-5 follow-up: _require_result_strings now validates the
+        # optional CallUsage string fields (price_table_ref,
+        # finish_reason, provider_response_id). A lone surrogate in any
+        # of them must raise ValueError from the dispatched entry point
+        # in both backends, exactly like every other string field the
+        # PyO3 mirrors extract as String.
+        for field in ("price_table_ref", "finish_reason",
+                      "provider_response_id"):
+            rec = _rec()
+            rec["usage"] = {
+                "model": "test-model",
+                "tokens_in": 10,
+                "tokens_out": 5,
+                "latency_ms": 50.0,
+                "cost_usd": 0.001,
+                field: "x\ud800y",
+            }
+            bad_dict = {
+                "case_id": "c1",
+                "family": "fam",
+                "severity": "high",
+                "primitive": "choice",
+                "benign": rec,
+                "attacked": _rec(),
+                "flipped": False,
+                "eligible": True,
+                "ineligibility_reason": "",
+            }
+            bad = PerCaseResult.from_dict(bad_dict)
+            with self.assertRaisesRegex(ValueError, "lone surrogates",
+                                        msg=field):
+                flip_direction(bad)
+
 
 class TestNetBenefitParity(unittest.TestCase):
     def test_grids_match_reference(self):

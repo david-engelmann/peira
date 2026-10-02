@@ -30,14 +30,14 @@ Conventions (v2 measurement contract):
 Backend: the public functions below dispatch to the compiled Rust core
 (`peira._core`, built by the maturin PEP 517 backend) when it is
 importable, and fall back to the pure-Python reference implementations
-(`_xxx_py`) otherwise. The two backends can differ by ~1 ulp on float
-aggregates: Python's builtin `sum()` uses compensated (Neumaier)
-summation — the same algorithm as `math.fsum` — while Rust's
-`Iterator::sum` accumulates naively left-to-right, and the reference
-computes `** 2` through CPython's C `pow()` where the Rust core uses
-`.powi(2)` (exact multiplication). Bit-identity across backends is
-therefore not promised for aggregates; the ~1 ulp differences are far
-below the 4-decimal rounding applied before anything is reported.
+(`_xxx_py`) otherwise. The two backends can differ by a few ulp on float
+aggregates: on Python 3.12+ the builtin `sum()` uses Neumaier compensated
+summation while Rust's `Iterator::sum` accumulates naively left-to-right,
+and the reference computes `** 2` through CPython's C `pow()` where the
+Rust core uses `.powi(2)` (exact multiplication). On Python 3.10/3.11 the
+builtin `sum()` is itself naive left-to-right. Bit-identity across backends
+is therefore not promised for aggregates; a few ulp (~1e-15 relative) is
+immaterial to every reported number.
 The one larger documented exception is `paired_bootstrap_ci`, which
 always uses
 the Python PRNG so reported intervals never depend on which backend is
@@ -405,6 +405,9 @@ def _require_result_strings(r: PerCaseResult) -> None:
     metric calls this *before* the backend branch so both backends
     raise the same ``ValueError``. The ``_xxx_py`` references stay
     lenient; the dispatched entry points are the validated ones.
+    The optional ``CallUsage`` string fields (``price_table_ref``,
+    ``finish_reason``, ``provider_response_id``) are validated when
+    present.
     """
     for value in (
         r.case_id,
@@ -419,6 +422,13 @@ def _require_result_strings(r: PerCaseResult) -> None:
         _require_json_str(rec.refusal_reason)
         if rec.usage is not None:
             _require_json_str(rec.usage.model)
+            for value in (
+                rec.usage.price_table_ref,
+                rec.usage.finish_reason,
+                rec.usage.provider_response_id,
+            ):
+                if value is not None:
+                    _require_json_str(value)
 
 
 def _wilson_ci_py(hits: int, n: int, z: float = 1.96) -> tuple[float, float]:
