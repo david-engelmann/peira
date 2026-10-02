@@ -22,8 +22,8 @@
 //!   the Python wrappers catch those and fall back to pure Python.
 
 use peira_core::{
-    artifact, canonical, combo, compare, dataset, env, execution, gates, invariance, labels,
-    lottery, metrics, pricing, records, schema,
+    artifact, canonical, combo, combo_metrics, compare, dataset, env, execution, gates, hardness,
+    invariance, labels, lottery, metrics, pricing, records, schema,
 };
 use pyo3::exceptions::{PyAttributeError, PyKeyError, PyTypeError, PyValueError};
 use pyo3::prelude::*;
@@ -1688,6 +1688,339 @@ fn combo_validate_dict(d: &Bound<'_, PyDict>) -> PyResult<Vec<String>> {
     })
 }
 
+/// combo_metrics.paired_interaction: paired interaction contrast.
+///
+/// Returns the result fields as a dict; the Python wrapper constructs
+/// the `InteractionResult` dataclass from it. Empty outcomes raise
+/// `ValueError("no substrates")`, matching the reference. Non-integer
+/// outcomes fail `Vec<(i64, i64, i64, i64)>` extraction with
+/// `TypeError`; the wrapper falls back to the reference.
+#[pyfunction]
+fn combo_metrics_paired_interaction(
+    py: Python<'_>,
+    outcomes: Vec<(i64, i64, i64, i64)>,
+    pair_id: &str,
+    hypothesis: &str,
+) -> PyResult<Py<PyDict>> {
+    let r = combo_metrics::paired_interaction(&outcomes, pair_id, hypothesis)
+        .map_err(|e| PyValueError::new_err(e.to_string()))?;
+    let d = PyDict::new(py);
+    d.set_item("pair_id", r.pair_id)?;
+    d.set_item("n_substrates", r.n_substrates)?;
+    d.set_item("rate_ctrl", r.rate_ctrl)?;
+    d.set_item("rate_a", r.rate_a)?;
+    d.set_item("rate_b", r.rate_b)?;
+    d.set_item("rate_ab", r.rate_ab)?;
+    d.set_item("interaction", r.interaction)?;
+    d.set_item("se", r.se)?;
+    d.set_item("ci_lo", r.ci_lo)?;
+    d.set_item("ci_hi", r.ci_hi)?;
+    d.set_item("mde_80", r.mde_80)?;
+    d.set_item("classification", r.classification)?;
+    d.set_item("hypothesis", r.hypothesis)?;
+    d.set_item("hypothesis_confirmed", r.hypothesis_confirmed)?;
+    Ok(d.into())
+}
+
+/// Extract an `InteractionResult` from the wrapper-built dict.
+///
+/// Field extraction failures raise `TypeError`; the Python wrapper
+/// catches it and re-runs the reference, which raises the natural
+/// exception (or formats the unusual value) itself.
+fn interaction_from_dict(d: &Bound<'_, PyDict>) -> PyResult<combo_metrics::InteractionResult> {
+    let get_str = |k: &str| -> PyResult<String> {
+        d.get_item(k)?
+            .ok_or_else(|| PyTypeError::new_err(format!("internal: missing field {k}")))?
+            .extract()
+            .map_err(|_| PyTypeError::new_err(format!("internal: field {k} is not a str")))
+    };
+    let get_f64 = |k: &str| -> PyResult<f64> {
+        d.get_item(k)?
+            .ok_or_else(|| PyTypeError::new_err(format!("internal: missing field {k}")))?
+            .extract()
+            .map_err(|_| PyTypeError::new_err(format!("internal: field {k} is not a float")))
+    };
+    Ok(combo_metrics::InteractionResult {
+        pair_id: get_str("pair_id")?,
+        n_substrates: d
+            .get_item("n_substrates")?
+            .ok_or_else(|| PyTypeError::new_err("internal: missing field n_substrates"))?
+            .extract()
+            .map_err(|_| PyTypeError::new_err("internal: field n_substrates is not an int"))?,
+        rate_ctrl: get_f64("rate_ctrl")?,
+        rate_a: get_f64("rate_a")?,
+        rate_b: get_f64("rate_b")?,
+        rate_ab: get_f64("rate_ab")?,
+        interaction: get_f64("interaction")?,
+        se: get_f64("se")?,
+        ci_lo: get_f64("ci_lo")?,
+        ci_hi: get_f64("ci_hi")?,
+        mde_80: get_f64("mde_80")?,
+        classification: get_str("classification")?,
+        hypothesis: get_str("hypothesis")?,
+        hypothesis_confirmed: d
+            .get_item("hypothesis_confirmed")?
+            .ok_or_else(|| PyTypeError::new_err("internal: missing field hypothesis_confirmed"))?
+            .extract()
+            .map_err(|_| {
+                PyTypeError::new_err("internal: field hypothesis_confirmed is not a bool-or-None")
+            })?,
+    })
+}
+
+/// combo_metrics.format_interaction: one-paragraph human summary.
+///
+/// Takes the wrapper-built field dict (see [`interaction_from_dict`]).
+/// An unknown classification raises `KeyError`, matching the reference.
+#[pyfunction]
+fn combo_metrics_format_interaction(d: &Bound<'_, PyDict>) -> PyResult<String> {
+    let r = interaction_from_dict(d)?;
+    combo_metrics::format_interaction(&r).map_err(PyKeyError::new_err)
+}
+
+/// Convert the Python `dict[str, list[PerCaseResult]]` to the core input.
+///
+/// `BTreeMap` extraction sorts adapter names byte-wise, matching the
+/// reference's `sorted()`. Non-string keys or non-PerCaseResult values
+/// fail extraction with `TypeError`; the wrapper falls back.
+fn hardness_input(results: BTreeMap<String, Vec<PyPerCaseResult>>) -> hardness::ResultsByAdapter {
+    results
+        .into_iter()
+        .map(|(k, v)| (k, v.into_iter().map(metrics::PerCaseResult::from).collect()))
+        .collect()
+}
+
+fn hardness_dict_flip_distribution(
+    py: Python<'_>,
+    d: &hardness::FlipDistribution,
+) -> PyResult<Py<PyDict>> {
+    let out = PyDict::new(py);
+    out.set_item("adapters", &d.adapters)?;
+    out.set_item("n_cases", d.n_cases)?;
+    out.set_item("counts", &d.counts)?;
+    Ok(out.into())
+}
+
+fn hardness_dict_hardest_decile(
+    py: Python<'_>,
+    h: &hardness::HardestDecileSurvival,
+) -> PyResult<Py<PyDict>> {
+    let out = PyDict::new(py);
+    out.set_item("adapters", &h.adapters)?;
+    out.set_item("n_cases", h.n_cases)?;
+    out.set_item("decile_size", h.decile_size)?;
+    out.set_item("decile_case_ids", &h.decile_case_ids)?;
+    out.set_item("survived", &h.survived)?;
+    Ok(out.into())
+}
+
+fn hardness_dict_transfer_matrix(
+    py: Python<'_>,
+    t: &hardness::TransferMatrix,
+) -> PyResult<Py<PyDict>> {
+    let out = PyDict::new(py);
+    out.set_item("adapters", &t.adapters)?;
+    out.set_item("family", &t.family)?;
+    out.set_item("n_cases", t.n_cases)?;
+    out.set_item("flipped_by_source", &t.flipped_by_source)?;
+    // Rates cross as (src, dst, rate-or-None) triples; the wrapper
+    // rebuilds the {(src, dst): rate} dict.
+    let rates: Vec<(String, String, Option<f64>)> = t
+        .rates
+        .iter()
+        .map(|((s, d), v)| (s.clone(), d.clone(), *v))
+        .collect();
+    out.set_item("rates", rates)?;
+    Ok(out.into())
+}
+
+/// hardness.flip_distribution: flip-count histogram.
+///
+/// Returns the raw fields as a dict; the wrapper constructs the
+/// `FlipDistribution` dataclass.
+#[pyfunction]
+fn hardness_flip_distribution(
+    py: Python<'_>,
+    results: BTreeMap<String, Vec<PyPerCaseResult>>,
+) -> PyResult<Py<PyDict>> {
+    let input = hardness_input(results);
+    let d = hardness::flip_distribution(&input);
+    hardness_dict_flip_distribution(py, &d)
+}
+
+/// hardness.hardest_decile_survival: per-adapter survival on the decile.
+///
+/// `decile` is pre-validated by the wrapper (D-11); the core assumes
+/// `0 < decile <= 1`.
+#[pyfunction]
+fn hardness_hardest_decile_survival(
+    py: Python<'_>,
+    results: BTreeMap<String, Vec<PyPerCaseResult>>,
+    decile: f64,
+) -> PyResult<Py<PyDict>> {
+    let input = hardness_input(results);
+    let h = hardness::hardest_decile_survival(&input, decile);
+    hardness_dict_hardest_decile(py, &h)
+}
+
+/// hardness.transfer_matrix: cross-adapter transfer ASR.
+#[pyfunction]
+fn hardness_transfer_matrix(
+    py: Python<'_>,
+    results: BTreeMap<String, Vec<PyPerCaseResult>>,
+    family: Option<String>,
+) -> PyResult<Py<PyDict>> {
+    let input = hardness_input(results);
+    let t = hardness::transfer_matrix(&input, family.as_deref());
+    hardness_dict_transfer_matrix(py, &t)
+}
+
+/// hardness.analyze_runs: the full M-4 diagnostic report.
+#[pyfunction]
+fn hardness_analyze_runs(
+    py: Python<'_>,
+    results: BTreeMap<String, Vec<PyPerCaseResult>>,
+    decile: f64,
+) -> PyResult<Py<PyDict>> {
+    let input = hardness_input(results);
+    let r = hardness::analyze_runs(&input, decile);
+    let out = PyDict::new(py);
+    out.set_item("adapters", &r.adapters)?;
+    out.set_item("n_cases", r.n_cases)?;
+    out.set_item(
+        "flip_distribution",
+        hardness_dict_flip_distribution(py, &r.flip_distribution)?,
+    )?;
+    out.set_item(
+        "hardest_decile",
+        hardness_dict_hardest_decile(py, &r.hardest_decile)?,
+    )?;
+    out.set_item(
+        "transfer_overall",
+        hardness_dict_transfer_matrix(py, &r.transfer_overall)?,
+    )?;
+    let by_family = PyDict::new(py);
+    for (fam, m) in &r.transfer_by_family {
+        by_family.set_item(fam, hardness_dict_transfer_matrix(py, m)?)?;
+    }
+    out.set_item("transfer_by_family", by_family)?;
+    Ok(out.into())
+}
+
+/// Get a required key from a dict, raising `TypeError` when missing
+/// (the wrapper falls back to the reference on `TypeError`).
+fn dict_get<'a>(dd: &'a Bound<'_, PyDict>, k: &str) -> PyResult<Bound<'a, PyAny>> {
+    dd.get_item(k)?
+        .ok_or_else(|| PyTypeError::new_err(format!("internal: missing key {k}")))
+}
+
+/// Extract a `HardnessReport` from the wrapper-built plain dict.
+///
+/// The dict mirrors the dataclass fields with transfer rates as
+/// `(src, dst, rate-or-None)` triples. Extraction failures raise
+/// `TypeError`; the wrapper falls back to the reference.
+fn hardness_report_from_dict(d: &Bound<'_, PyDict>) -> PyResult<hardness::HardnessReport> {
+    let adapters: Vec<String> = dict_get(d, "adapters")?
+        .extract()
+        .map_err(|_| PyTypeError::new_err("internal: adapters is not a list of str"))?;
+    let n_cases: usize = dict_get(d, "n_cases")?
+        .extract()
+        .map_err(|_| PyTypeError::new_err("internal: n_cases is not an int"))?;
+    let fd: Bound<'_, PyDict> = dict_get(d, "flip_distribution")?
+        .extract()
+        .map_err(|_| PyTypeError::new_err("internal: flip_distribution is not a dict"))?;
+    let hd: Bound<'_, PyDict> = dict_get(d, "hardest_decile")?
+        .extract()
+        .map_err(|_| PyTypeError::new_err("internal: hardest_decile is not a dict"))?;
+    let flip_distribution = hardness::FlipDistribution {
+        adapters: dict_get(&fd, "adapters")?
+            .extract()
+            .map_err(|_| PyTypeError::new_err("internal: bad flip_distribution.adapters"))?,
+        n_cases: dict_get(&fd, "n_cases")?
+            .extract()
+            .map_err(|_| PyTypeError::new_err("internal: bad flip_distribution.n_cases"))?,
+        counts: dict_get(&fd, "counts")?
+            .extract()
+            .map_err(|_| PyTypeError::new_err("internal: bad flip_distribution.counts"))?,
+    };
+    let transfer = |dd: &Bound<'_, PyDict>| -> PyResult<hardness::TransferMatrix> {
+        let rates_in: Vec<(String, String, Option<f64>)> = dict_get(dd, "rates")?
+            .extract()
+            .map_err(|_| PyTypeError::new_err("internal: bad transfer.rates"))?;
+        Ok(hardness::TransferMatrix {
+            adapters: dict_get(dd, "adapters")?
+                .extract()
+                .map_err(|_| PyTypeError::new_err("internal: bad transfer.adapters"))?,
+            family: dict_get(dd, "family")?
+                .extract()
+                .map_err(|_| PyTypeError::new_err("internal: bad transfer.family"))?,
+            n_cases: dict_get(dd, "n_cases")?
+                .extract()
+                .map_err(|_| PyTypeError::new_err("internal: bad transfer.n_cases"))?,
+            flipped_by_source: dict_get(dd, "flipped_by_source")?
+                .extract()
+                .map_err(|_| PyTypeError::new_err("internal: bad transfer.flipped_by_source"))?,
+            rates: rates_in
+                .into_iter()
+                .map(|(s, dst, v)| ((s, dst), v))
+                .collect(),
+        })
+    };
+    let t_overall: Bound<'_, PyDict> = dict_get(d, "transfer_overall")?
+        .extract()
+        .map_err(|_| PyTypeError::new_err("internal: transfer_overall is not a dict"))?;
+    let by_family_in: Bound<'_, PyDict> = dict_get(d, "transfer_by_family")?
+        .extract()
+        .map_err(|_| PyTypeError::new_err("internal: transfer_by_family is not a dict"))?;
+    // Preserve the dict's insertion order (the reference iterates
+    // transfer_by_family.items() in insertion order).
+    let mut transfer_by_family: Vec<(String, hardness::TransferMatrix)> = Vec::new();
+    for (fam, m) in by_family_in.iter() {
+        let fam: String = fam
+            .extract()
+            .map_err(|_| PyTypeError::new_err("internal: transfer_by_family key is not str"))?;
+        let m: Bound<'_, PyDict> = m.extract().map_err(|_| {
+            PyTypeError::new_err("internal: transfer_by_family value is not a dict")
+        })?;
+        transfer_by_family.push((fam, transfer(&m)?));
+    }
+    let report = hardness::HardnessReport {
+        adapters,
+        n_cases,
+        flip_distribution,
+        hardest_decile: hardness::HardestDecileSurvival {
+            adapters: dict_get(&hd, "adapters")?
+                .extract()
+                .map_err(|_| PyTypeError::new_err("internal: bad hardest_decile.adapters"))?,
+            n_cases: dict_get(&hd, "n_cases")?
+                .extract()
+                .map_err(|_| PyTypeError::new_err("internal: bad hardest_decile.n_cases"))?,
+            decile_size: dict_get(&hd, "decile_size")?
+                .extract()
+                .map_err(|_| PyTypeError::new_err("internal: bad hardest_decile.decile_size"))?,
+            decile_case_ids: dict_get(&hd, "decile_case_ids")?.extract().map_err(|_| {
+                PyTypeError::new_err("internal: bad hardest_decile.decile_case_ids")
+            })?,
+            survived: dict_get(&hd, "survived")?
+                .extract()
+                .map_err(|_| PyTypeError::new_err("internal: bad hardest_decile.survived"))?,
+        },
+        transfer_overall: transfer(&t_overall)?,
+        transfer_by_family,
+    };
+    Ok(report)
+}
+
+/// hardness.report_text: human-readable M-4 diagnostic tables.
+///
+/// Takes the wrapper-built plain report dict (see
+/// [`hardness_report_from_dict`]).
+#[pyfunction]
+fn hardness_report_text(d: &Bound<'_, PyDict>) -> PyResult<String> {
+    let r = hardness_report_from_dict(d)?;
+    hardness::report_text(&r).map_err(|e| PyKeyError::new_err(e.0))
+}
+
 /// peira._core: the compiled Rust core (PyO3). Optional accelerator,
 /// every function here has a pure-Python twin of identical behavior.
 #[pymodule]
@@ -1769,5 +2102,12 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(combo_case_id, m)?)?;
     m.add_function(wrap_pyfunction!(combo_parse_case_id, m)?)?;
     m.add_function(wrap_pyfunction!(combo_validate_dict, m)?)?;
+    m.add_function(wrap_pyfunction!(combo_metrics_paired_interaction, m)?)?;
+    m.add_function(wrap_pyfunction!(combo_metrics_format_interaction, m)?)?;
+    m.add_function(wrap_pyfunction!(hardness_flip_distribution, m)?)?;
+    m.add_function(wrap_pyfunction!(hardness_hardest_decile_survival, m)?)?;
+    m.add_function(wrap_pyfunction!(hardness_transfer_matrix, m)?)?;
+    m.add_function(wrap_pyfunction!(hardness_analyze_runs, m)?)?;
+    m.add_function(wrap_pyfunction!(hardness_report_text, m)?)?;
     Ok(())
 }
