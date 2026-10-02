@@ -22,8 +22,8 @@
 //!   the Python wrappers catch those and fall back to pure Python.
 
 use peira_core::{
-    artifact, canonical, compare, dataset, env, execution, gates, lottery, metrics, pricing,
-    records, schema,
+    artifact, canonical, combo, compare, dataset, env, execution, gates, invariance, labels,
+    lottery, metrics, pricing, records, schema,
 };
 use pyo3::exceptions::{PyAttributeError, PyKeyError, PyTypeError, PyValueError};
 use pyo3::prelude::*;
@@ -1518,6 +1518,124 @@ fn lottery_analysis(
     value_to_py(py, &Value::Object(m))
 }
 
+/// _labels.candidate_labels: sorted, deduplicated candidate labels
+/// from the case input's options.
+///
+/// The Python wrapper validates that `case_input` is a dict before
+/// dispatch (a non-dict raises the reference's AttributeError); the
+/// core handles every JSON-shaped dict, and values that have no JSON
+/// representation raise TypeError/ValueError from the conversion, in
+/// which case the wrapper falls back to the pure-Python reference.
+#[pyfunction]
+fn labels_candidate_labels(
+    case_input: &Bound<'_, PyDict>,
+    primitive: &str,
+) -> PyResult<Vec<String>> {
+    let v = value_from_py(case_input.as_any())?;
+    Ok(labels::candidate_labels(&v, primitive))
+}
+
+/// _labels.non_abstain_placeholder: the "other" placeholder.
+#[pyfunction]
+fn labels_non_abstain_placeholder() -> String {
+    labels::non_abstain_placeholder().to_owned()
+}
+
+/// invariance.invariance_report: flip-rate summary for one case's
+/// variant set, as a named-field object.
+///
+/// The Python wrapper validates non-empty `variant_decisions` before
+/// dispatch (D-11); the core also returns the error, mapped here to
+/// PyValueError with the reference's exact message, as a backstop.
+#[pyfunction]
+fn invariance_report(
+    py: Python<'_>,
+    baseline_decision: &str,
+    variant_decisions: Vec<String>,
+) -> PyResult<Py<PyAny>> {
+    let r = invariance::invariance_report(baseline_decision, &variant_decisions)
+        .map_err(|e| PyValueError::new_err(e.message().to_owned()))?;
+    let mut m = serde_json::Map::new();
+    m.insert("baseline".to_string(), Value::String(r.baseline));
+    m.insert(
+        "n_variants".to_string(),
+        Value::Number(Number::from(r.n_variants as u64)),
+    );
+    m.insert(
+        "n_flips".to_string(),
+        Value::Number(Number::from(r.n_flips as u64)),
+    );
+    m.insert(
+        "flip_rate".to_string(),
+        Value::Number(
+            Number::from_f64(r.flip_rate)
+                .ok_or_else(|| PyValueError::new_err("flip_rate is not finite"))?,
+        ),
+    );
+    m.insert(
+        "flipped_indices".to_string(),
+        Value::Array(
+            r.flipped_indices
+                .into_iter()
+                .map(|i| Value::Number(Number::from(i as u64)))
+                .collect(),
+        ),
+    );
+    value_to_py(py, &Value::Object(m))
+}
+
+/// Map a [`combo::ComboError`] to the Python exception type the
+/// reference raises: KeyError for unknown-pair lookups, ValueError
+/// otherwise, with the identical message.
+fn combo_py_err(e: combo::ComboError) -> PyErr {
+    if e.is_key_error() {
+        PyKeyError::new_err(e.message().to_owned())
+    } else {
+        PyValueError::new_err(e.message().to_owned())
+    }
+}
+
+/// combo_schema.combo_pair_id: canonical pair id for two family ids.
+#[pyfunction]
+fn combo_pair_id(family_a: &str, family_b: &str) -> PyResult<String> {
+    combo::combo_pair_id(family_a, family_b).map_err(combo_py_err)
+}
+
+/// combo_schema.combo_case_id: canonical case id for one arm.
+#[pyfunction]
+fn combo_case_id(pair_id: &str, substrate_idx: i64, arm: &str) -> PyResult<String> {
+    combo::combo_case_id(pair_id, substrate_idx, arm).map_err(combo_py_err)
+}
+
+/// combo_schema.parse_combo_case_id: split into (pair_id, idx, arm).
+#[pyfunction]
+fn combo_parse_case_id(case_id: &str) -> PyResult<(String, i64, String)> {
+    combo::parse_combo_case_id(case_id).map_err(combo_py_err)
+}
+
+/// combo_schema.validate_combo_dict: list of error strings.
+///
+/// Inputs that violate the structural contract (non-string case_id,
+/// truthy non-dict benign/attacked) surface here as an internal
+/// AttributeError; the Python wrapper catches it and re-runs the
+/// pure-Python reference, which raises the natural exception. A
+/// missing `primary_outcome` propagates as KeyError, exactly like the
+/// reference. Non-JSON-shaped values raise TypeError/ValueError from
+/// the conversion with the same fallback.
+#[pyfunction]
+fn combo_validate_dict(d: &Bound<'_, PyDict>) -> PyResult<Vec<String>> {
+    let v = value_from_py(d.as_any())?;
+    let map = v
+        .as_object()
+        .ok_or_else(|| PyValueError::new_err("internal: dict did not convert to a JSON object"))?;
+    combo::validate_combo_dict(map).map_err(|e| match e {
+        combo::ValidateError::Structural => PyAttributeError::new_err(
+            "internal: input violates the combo validation structural contract",
+        ),
+        combo::ValidateError::Key(ke) => combo_py_err(ke),
+    })
+}
+
 /// peira._core: the compiled Rust core (PyO3). Optional accelerator,
 /// every function here has a pure-Python twin of identical behavior.
 #[pymodule]
@@ -1592,5 +1710,12 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(lottery_pairwise_swap_fraction, m)?)?;
     m.add_function(wrap_pyfunction!(lottery_stability_verdict, m)?)?;
     m.add_function(wrap_pyfunction!(lottery_analysis, m)?)?;
+    m.add_function(wrap_pyfunction!(labels_candidate_labels, m)?)?;
+    m.add_function(wrap_pyfunction!(labels_non_abstain_placeholder, m)?)?;
+    m.add_function(wrap_pyfunction!(invariance_report, m)?)?;
+    m.add_function(wrap_pyfunction!(combo_pair_id, m)?)?;
+    m.add_function(wrap_pyfunction!(combo_case_id, m)?)?;
+    m.add_function(wrap_pyfunction!(combo_parse_case_id, m)?)?;
+    m.add_function(wrap_pyfunction!(combo_validate_dict, m)?)?;
     Ok(())
 }
