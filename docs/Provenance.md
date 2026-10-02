@@ -27,7 +27,7 @@ hand. The provenance tests fail the build if they ever disagree.
 Regenerate a record explicitly with
 
 ```
-PYTHONPATH=python python3 -c "
+.venv/bin/python -c "
 from pathlib import Path
 from peira.dataset import read_manifest
 from peira.provenance import write_croissant
