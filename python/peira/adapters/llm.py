@@ -563,6 +563,16 @@ class _StructuredLLMBase:
         """
         return self._max_tokens
 
+    def _sent_seed(self) -> int | None:
+        """The seed actually placed on the wire, or None if omitted.
+
+        Base: the configured seed when the provider supports one.
+        Providers with wire constraints (xAI: seed must be positive)
+        override this so ``decode_params`` and the transcript agree
+        with what was actually sent.
+        """
+        return self._seed if self._supports_seed else None
+
     @property
     def decode_params(self) -> dict[str, Any]:
         """M-7 longitudinal provenance: decode params actually sent.
@@ -575,7 +585,7 @@ class _StructuredLLMBase:
             "max_tokens": self._max_tokens,
         }
         if self._supports_seed:
-            params["seed"] = self._seed
+            params["seed"] = self._sent_seed()
         return params
 
     def with_seed(self, seed: int | None) -> "_StructuredLLMBase":
@@ -726,7 +736,7 @@ class _StructuredLLMBase:
         # model, and schema — never the API key.
         return {
             "model": self._model,
-            "seed": self._seed if self._supports_seed else None,
+            "seed": self._sent_seed(),
             "parameters": {
                 "temperature": self._temperature,
                 "max_tokens": self._max_tokens,
@@ -1116,6 +1126,14 @@ class XAIAdapter(OpenAIAdapter):
             api_key=self._api_key, base_url=self._base_url, max_retries=0
         )
 
+    def _sent_seed(self) -> int | None:
+        seed = super()._sent_seed()
+        # xAI 400s on non-positive seeds — the field is omitted from
+        # the wire (see _request_kwargs), so provenance must agree.
+        if seed is None or seed <= 0:
+            return None
+        return seed
+
     def _request_kwargs(
         self, messages: list[dict[str, str]], schema: dict[str, Any]
     ) -> dict[str, Any]:
@@ -1124,7 +1142,7 @@ class XAIAdapter(OpenAIAdapter):
         # seed = 0") — omit the field rather than negotiating, as with
         # Moonshot. Positive seeds are still sent: xAI documents seed
         # as supported (best-effort deterministic).
-        if self._seed is None or self._seed <= 0:
+        if self._sent_seed() is None:
             kwargs.pop("seed", None)
         return kwargs
 
