@@ -74,11 +74,21 @@ def check_on_main_up_to_date() -> None:
     branch = _run("git", "branch", "--show-current").stdout.strip()
     if branch != "main":
         raise ReleaseError(f"releases are cut from main, not '{branch}'")
-    _run("git", "fetch", "origin", "main")
-    ahead_behind = _run(
-        "git", "rev-list", "--left-right", "--count", "HEAD...origin/main"
-    ).stdout.strip()
-    ahead, behind = (int(x) for x in ahead_behind.split())
+    fetch = _run("git", "fetch", "origin", "main")
+    if fetch.returncode != 0:
+        raise ReleaseError(
+            "could not fetch origin/main: "
+            + (fetch.stderr.strip() or "unknown error")
+        )
+    rev = _run("git", "rev-list", "--left-right", "--count", "HEAD...origin/main")
+    if rev.returncode != 0:
+        raise ReleaseError("could not compare HEAD with origin/main")
+    try:
+        ahead, behind = (int(x) for x in rev.stdout.strip().split())
+    except ValueError:
+        raise ReleaseError(
+            f"unexpected rev-list output: {rev.stdout.strip()!r}"
+        )
     if ahead or behind:
         raise ReleaseError(
             f"main is {ahead} ahead / {behind} behind origin/main; push or pull first"

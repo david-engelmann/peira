@@ -118,6 +118,13 @@ same preflight; nothing here conflicts with it.
   for the `0.0.0` version marker.
 - It does not publish anything. The first real publish is David's manual
   run, after the perfection gate.
+
+A note on the repo's error-string convention: `docs/Troubleshooting.md`
+carries every user-facing error string the `peira` CLI can emit. The
+release scripts' `ReleaseError` one-liners are deliberately not duplicated
+there. They are operator tooling for the person cutting the release, their
+messages are self-explanatory, and `docs/Release.md` is their manual.
+Troubleshooting.md stays for `peira` users.
 - The post-publish smoke does not run the README quickstart's
   `peira run --suite trial` step, because the trial dataset ships with the
   repo, not the wheel. The smoke covers the install surface the wheel
