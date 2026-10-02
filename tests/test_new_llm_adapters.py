@@ -221,6 +221,11 @@ class TestNewAdapterRequestShape(unittest.TestCase):
     def test_strict_json_schema_sent(self):
         for cls, name, env_var, _, _ in ADAPTER_SPECS:
             with self.subTest(adapter=name):
+                if cls is ZaiAdapter:
+                    # Zhipu ignores json_schema response_format; Zai
+                    # sends json_object with the schema in the prompt
+                    # (see TestZaiJsonObjectMode).
+                    continue
                 calls, _ = self._setup(env_var)
                 out = cls().decide(CASE, "choice", _ctx())
                 self.assertEqual(out.decision, "approve")
@@ -401,6 +406,59 @@ class TestXAISeedHandling(unittest.TestCase):
         self.assertEqual(calls[0]["seed"], 0)
         self.assertEqual(out.transcript["request"]["seed"], 0)
         self.assertEqual(out.transcript["seed"], 0)
+
+
+class TestZaiJsonObjectMode(unittest.TestCase):
+    """Zhipu ignores json_schema response_format: the adapter sends
+    json_object and inlines the schema in the system prompt."""
+
+    def _setup(self, **adapter_kwargs):
+        mod, calls, _ = _make_openai([_openai_completion(GOOD_JSON)])
+        with _fake_modules({"openai": mod}), _env(ZAI_API_KEY="sk-test"):
+            adapter = ZaiAdapter(**adapter_kwargs)
+            out = adapter.decide(CASE, "choice", _ctx())
+        return calls, out, adapter
+
+    def test_response_format_is_json_object_not_json_schema(self):
+        # Live smoke 2026-10-02: open.bigmodel.cn silently ignores the
+        # json_schema block (no 400) — the model never sees the schema
+        # and every call fails client-side validation. json_object is
+        # the only structured mode Zhipu documents.
+        calls, _, _ = self._setup()
+        self.assertEqual(calls[0]["response_format"], {"type": "json_object"})
+
+    def test_system_prompt_inlines_schema(self):
+        # With no server-side schema enforcement, the model only knows
+        # the required keys if the prompt tells it. The decision enum
+        # must be present — it is injected per call from the labels.
+        calls, _, _ = self._setup()
+        system = calls[0]["messages"][0]["content"]
+        self.assertEqual(calls[0]["messages"][0]["role"], "system")
+        for key in ("decision", "confidence", "reason"):
+            self.assertIn(f'"{key}"', system)
+        self.assertIn("approve", system)
+        self.assertIn("deny", system)
+
+    def test_transcript_records_json_object_mode(self):
+        # The transcript must never claim strict json_schema
+        # enforcement for this adapter — the override records what was
+        # actually sent.
+        _, out, _ = self._setup()
+        self.assertEqual(
+            out.transcript["request"]["response_format"],
+            "json_object:prompt-inlined-schema",
+        )
+
+    def test_openai_still_sends_strict_json_schema(self):
+        # The base OpenAI adapter is unchanged: only Zai downgrades.
+        mod, calls, _ = _make_openai([_openai_completion(GOOD_JSON)])
+        with _fake_modules({"openai": mod}), \
+                _env(OPENAI_API_KEY="sk-test"):
+            out = OpenAIAdapter().decide(CASE, "choice", _ctx())
+        rf = calls[0]["response_format"]
+        self.assertEqual(rf["type"], "json_schema")
+        self.assertTrue(rf["json_schema"]["strict"])
+        self.assertIn("json_schema", out.transcript["request"]["response_format"])
 
 
 if __name__ == "__main__":
