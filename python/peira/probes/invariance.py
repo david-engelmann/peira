@@ -17,7 +17,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Sequence
 
-from peira._rust import _impl as _rust
+from peira._rust import _impl as _rust, STRICT_RUST
 
 
 @dataclass(frozen=True)
@@ -77,5 +77,7 @@ def invariance_report(
                     flipped_indices=tuple(r["flipped_indices"]),
                 )
             except (TypeError, ValueError):
+                if STRICT_RUST:
+                    raise
                 pass
     return _invariance_report_py(baseline_decision, variant_decisions)

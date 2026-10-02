@@ -26,7 +26,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from peira._rust import _impl as _rust
+from peira._rust import _impl as _rust, STRICT_RUST
 
 #: Placeholder decision for abstain-primitive adapters whose model
 #: answered "should I abstain?" with no. The model never emitted a
@@ -72,6 +72,8 @@ def candidate_labels(
             if options is None or isinstance(options, list):
                 return _rust.labels_candidate_labels(case_input, primitive)
         except (TypeError, ValueError):
+            if STRICT_RUST:
+                raise
             pass
     return _candidate_labels_py(case_input, primitive)
 

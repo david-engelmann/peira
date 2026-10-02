@@ -11,14 +11,15 @@ is `paired_bootstrap_ci`, which the Python side never auto-dispatches
 because the two PRNGs differ.
 
 Set `PEIRA_NO_RUST=1` to force the pure-Python backend even when the
-extension is installed — used by the backend-parity tests.
+extension is installed  -  used by the backend-parity tests.
 
 Set `PEIRA_STRICT_RUST=1` to disable the silent fallback: if the Rust
-core raises TypeError/ValueError/OverflowError, the exception propagates
-instead of falling back to Python. Use in CI to ensure parity tests
-actually exercise the Rust code (otherwise a Rust bug that raises is
-invisible — the fallback returns Python results and the parity test
-compares Python against Python).
+core raises an exception that the dispatch site would otherwise swallow
+(typically TypeError/ValueError/OverflowError, but varies by site), the
+exception propagates instead of falling back to Python. Use in CI to
+ensure parity tests actually exercise the Rust code (otherwise a Rust
+bug that raises is invisible - the fallback returns Python results and
+the parity test compares Python against Python).
 """
 
 from __future__ import annotations
