@@ -268,8 +268,36 @@ def _print_run_summary(artifact, out_path: Path) -> None:
           f"({', '.join(f'{k}={v}' for k, v in inelig.items())})")
     print(f"  ranking eligible:  {m['ranking_eligible']}"
           + (f" ({'; '.join(m['eligibility_notes'])})" if m['eligibility_notes'] else ""))
+    _print_fairness_summary(m)
     print(f"artifact: {out_path}")
     print(f"analysis lock: {artifact.analysis_lock[:16]}…")
+
+
+def _print_fairness_summary(m) -> None:
+    """Console section for the EB-2/EB-3 fairness block, when available."""
+    fb = m.get("fairness") or {}
+    if not fb.get("available"):
+        return
+    dis = fb["disaggregation"]
+    print(f"  fairness:          {fb['n_tagged_cases']} tagged cases")
+    for g in dis["groups"]:
+        print(f"    [{g['dimension']}/{g['group']}] "
+              f"n={g['n_eligible']} ASR {_val(g['asr'])} "
+              f"95% CI {_ci95(g['asr_ci95'])} "
+              f"refusal {_val(g['refusal_rate'])}")
+    for d in dis["disparities"]:
+        if d["metric"] != "asr":
+            continue
+        print(f"    disparity ({d['dimension']} ASR): "
+              f"{d['max_group']}={_val(d['max_value'])} vs "
+              f"{d['min_group']}={_val(d['min_value'])} "
+              f"gap {_val(d['abs_gap'])}")
+    cf = fb["counterfactual"]
+    if cf["available"]:
+        print(f"    counterfactual:  {cf['n_pairs']} pairs, "
+              f"decision-equality {_val(cf['decision_equality_rate'])} "
+              f"95% CI {_ci95(cf['decision_equality_ci95'])}, "
+              f"robustness-parity {_val(cf['robustness_parity_rate'])}")
 
 
 def _print_conversation_run_summary(artifact, out_path: Path) -> None:
