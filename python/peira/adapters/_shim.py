@@ -85,6 +85,33 @@ def _load_adapter(registry_id: str):
     return discovery.load_registered(resolved.registration)
 
 
+def _module_provenance(adapter) -> dict:
+    """SHA-256 + path of the loaded adapter module file.
+
+    Computed here (in the child) because the parent must never
+    import the module to locate it. Failures degrade to empty
+    strings rather than failing the handshake: provenance gaps are
+    reported by the conformance kit, not hidden.
+    """
+    import hashlib  # noqa: PLC0415
+    import inspect  # noqa: PLC0415
+
+    path = ""
+    digest = ""
+    try:
+        path = inspect.getfile(type(adapter))
+        with open(path, "rb") as f:
+            digest = hashlib.sha256(f.read()).hexdigest()
+    except (OSError, TypeError):
+        pass
+    return {"path": path, "sha256": digest}
+
+
+def _sampling_posture(adapter):
+    posture = getattr(adapter, "sampling_posture", None)
+    return posture if posture in ("deterministic", "sampling") else None
+
+
 def _read_attestations(adapter) -> dict[str, bool]:
     raw = getattr(adapter, "conformance_attestations", None)
     if not isinstance(raw, dict):
@@ -152,6 +179,15 @@ def _serve(adapter, attestations: dict[str, bool]) -> int:
                         "confidence_source": getattr(
                             adapter, "confidence_source", "none"),
                         "attestations": attestations,
+                        # Declared sampling posture for the
+                        # conformance kit's determinism suite
+                        # (design 6.1.3).
+                        "sampling_posture": _sampling_posture(adapter),
+                        # Provenance for the check report (F7): the
+                        # SHA-256 of the loaded module file, so
+                        # `peira adapter check --verify` can confirm
+                        # the sealed report still matches disk.
+                        "module": _module_provenance(adapter),
                     },
                 })
             elif op == "decide":

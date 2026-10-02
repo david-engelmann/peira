@@ -1011,6 +1011,69 @@ def cmd_adapter_list(args: argparse.Namespace) -> int:
     return EXIT_OK
 
 
+def cmd_adapter_check(args: argparse.Namespace) -> int:
+    """Run the adapter conformance kit (P-4).
+
+    Third-party adapters are exercised through the subprocess shim
+    child, never in this process. Writes a sealed check report and
+    exits non-zero when the verdict is not "pass".
+    """
+    import asyncio  # noqa: PLC0415
+
+    from peira.adapters import conformance  # noqa: PLC0415
+
+    if args.verify:
+        ok, message = conformance.verify_report(args.verify)
+        print(message)
+        return EXIT_OK if ok else EXIT_USER_ERROR
+    if not args.adapter:
+        print("error: peira adapter check needs an adapter id (or 'mock'), "
+              "or --verify REPORT", file=sys.stderr)
+        return EXIT_USER_ERROR
+    env_extra: dict[str, str] = {}
+    for item in args.adapter_env or []:
+        if "=" not in item:
+            print(f"error: --adapter-env needs KEY=VALUE, got {item!r}",
+                  file=sys.stderr)
+            return EXIT_USER_ERROR
+        key, value = item.split("=", 1)
+        env_extra[key] = value
+    try:
+        report = asyncio.run(conformance.run_check(
+            args.adapter, timeout=args.timeout, env_extra=env_extra))
+    except conformance.AdapterCheckError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return EXIT_USER_ERROR
+    out = args.out or f"{args.adapter}-check.json"
+    try:
+        conformance.write_report(report, out)
+    except OSError as exc:
+        print(f"error: could not write check report to {out}: {exc}",
+              file=sys.stderr)
+        return EXIT_USER_ERROR
+    if args.json:
+        import json as _json  # noqa: PLC0415
+
+        print(_json.dumps(report.to_dict(), indent=2, sort_keys=True))
+        return EXIT_OK if report.verdict == "pass" else EXIT_USER_ERROR
+    for suite in report.suites:
+        status = "pass" if suite.passed else "FAIL"
+        print(f"[{status}] {suite.name}")
+        for check in suite.checks:
+            mark = "ok" if check.passed else "FAIL"
+            detail = f" ({check.detail})" if check.detail else ""
+            print(f"    {mark} {check.name}{detail}")
+    for failure in report.attestation_failures:
+        print(f"    FAIL must-attest: {failure}")
+    if report.advisory_findings:
+        print(f"advisory findings: {len(report.advisory_findings)} "
+              f"(see report; never verdicts)")
+    print(f"verdict: {report.verdict} (transport={report.transport}, "
+          f"trust={report.adapter_trust})")
+    print(f"check report: {out}")
+    return EXIT_OK if report.verdict == "pass" else EXIT_USER_ERROR
+
+
 def cmd_validate(args: argparse.Namespace) -> int:
     kind = getattr(args, "kind", "single")
     if kind == "conversational":
@@ -5034,6 +5097,28 @@ def build_parser() -> argparse.ArgumentParser:
     adl.add_argument("--json", action="store_true",
                      help="emit machine-readable JSON")
     adl.set_defaults(func=cmd_adapter_list)
+    adc = adsub.add_parser("check",
+                           help="run the adapter conformance kit")
+    adc.add_argument("adapter", nargs="?",
+                     help="registry id or 'mock' (dotted paths are refused: "
+                     "check needs a registered id)")
+    adc.add_argument("--out", default=None,
+                     help="write the sealed check report here "
+                     "(default: <adapter>-check.json)")
+    adc.add_argument("--timeout", type=float, default=300.0,
+                     help="per-call timeout in seconds for the isolated "
+                     "check child (default: 300)")
+    adc.add_argument("--adapter-env", action="append", default=[],
+                     metavar="KEY=VALUE",
+                     help="extra environment for the isolated check "
+                     "child (repeatable; denylisted variables refused)")
+    adc.add_argument("--verify", default=None, metavar="REPORT",
+                     help="offline-verify a sealed check report "
+                     "instead of running the kit")
+    adc.add_argument("--json", action="store_true",
+                     help="print the machine-readable check report "
+                     "to stdout instead of the human summary")
+    adc.set_defaults(func=cmd_adapter_check)
 
     # R-04 stability probe: separate track, separate report.
     sp = sub.add_parser("stability-probe",

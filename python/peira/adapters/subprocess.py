@@ -231,10 +231,12 @@ class SubprocessAdapter:
     """
 
     def __init__(self, registry_id: str, *, timeout: float = 300.0,
-                 env_extra: dict[str, str] | None = None):
+                 env_extra: dict[str, str] | None = None,
+                 hello_timeout: float = 30.0):
         self._registry_id = registry_id
         self._timeout = timeout
         self._env_extra = env_extra
+        self._hello_timeout = hello_timeout
         self._child: _Child | None = None
         # Populated by the hello handshake.
         self.name: str = registry_id
@@ -244,6 +246,11 @@ class SubprocessAdapter:
         self.cache_namespace: str = ""
         self.attestations: dict[str, bool] = {}
         self.last_stderr: str = ""
+        # Module provenance (sealed into check reports).
+        self.module_path: str = ""
+        self.module_sha256: str = ""
+        # Declared sampling posture (conformance 6.1.3).
+        self.sampling_posture: str | None = None
 
     # -- lifecycle -------------------------------------------------
 
@@ -257,7 +264,8 @@ class SubprocessAdapter:
         child = await _spawn_child(self._registry_id, self._env_extra)
         self._child = child
         try:
-            result = await self._request(child, "hello", {}, 60.0)
+            result = await self._request(child, "hello", {},
+                                         self._hello_timeout)
         except AdapterSubprocessError:
             await child.drop()
             self._child = None
@@ -290,6 +298,13 @@ class SubprocessAdapter:
         self.attestations = {
             str(k): bool(v) for k, v in attestations.items()
         }
+        posture = result.get("sampling_posture")
+        self.sampling_posture = posture if posture in (
+            "deterministic", "sampling") else None
+        module = result.get("module", {})
+        if isinstance(module, dict):
+            self.module_path = str(module.get("path", ""))
+            self.module_sha256 = str(module.get("sha256", ""))
         return child
 
     async def _request(self, child: _Child, op: str,
@@ -453,11 +468,14 @@ async def open_subprocess_adapter(
     *,
     timeout: float = 300.0,
     env_extra: dict[str, str] | None = None,
+    hello_timeout: float = 30.0,
 ) -> SubprocessAdapter:
     """Connect to a third-party adapter: spawn the shim child and run
-    the hello handshake (protocol version + name binding)."""
+    the hello handshake (protocol version + name binding). The
+    handshake budget covers the child's import (design 6.1.6: 30s)."""
     adapter = SubprocessAdapter(
-        registry_id, timeout=timeout, env_extra=env_extra)
+        registry_id, timeout=timeout, env_extra=env_extra,
+        hello_timeout=hello_timeout)
     try:
         await adapter._ensure_child()
     except AdapterSubprocessError:
