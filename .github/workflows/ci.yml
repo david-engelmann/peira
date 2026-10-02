@@ -281,7 +281,8 @@ jobs:
           python-version: "3.12"
       - uses: dtolnay/rust-toolchain@ce678459e9fc7500d337468f904b95f1b5c10b5e # 1.98.1
       - run: pip install -e .[dev]
-      - run: PEIRA_NO_RUST=1 python -m pytest tests -n auto
+      # tests/integration is owned by the dedicated test-integration job.
+      - run: PEIRA_NO_RUST=1 python -m pytest tests -n auto --ignore=tests/integration
 
   test-hf-tokenizers:
     # T-P1-2: the real-tokenizer contracts in test_hf_adapters.py need
@@ -356,8 +357,42 @@ jobs:
       - run: .venv/bin/pip install --no-build-isolation -e '.[dev]'
       - run: .venv/bin/maturin develop --release
       - run: .venv/bin/python -c "from peira._rust import RUST_AVAILABLE; assert RUST_AVAILABLE"
-      - run: .venv/bin/python -m pytest tests -n auto
-      - run: PEIRA_NO_RUST=1 .venv/bin/python -m pytest tests -n auto
+      # tests/integration is owned by the dedicated test-integration
+      # job (own timeout, own visibility); the main suite excludes it
+      # so the integration layer runs exactly once per backend.
+      - run: .venv/bin/python -m pytest tests -n auto --ignore=tests/integration
+      - run: PEIRA_NO_RUST=1 .venv/bin/python -m pytest tests -n auto --ignore=tests/integration
+
+  test-integration:
+    # The integration layer: dataset -> runner -> metrics -> artifact ->
+    # report end to end on real case samples, in both backends. Kept as
+    # its own job (not folded into test-python-rust) so a pipeline-level
+    # regression is visible at a glance, and so the job can carry its
+    # own time budget: the suite must finish in minutes, not tens of
+    # minutes.
+    needs: check_runner
+    runs-on: ${{ fromJSON(needs.check_runner.outputs.runner) }}
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+      - uses: dtolnay/rust-toolchain@ce678459e9fc7500d337468f904b95f1b5c10b5e # 1.98.1
+      # Same release-profile extension build as test-python-rust:
+      # MATURIN_PEP517_ARGS cannot be used (pip forwards it to
+      # `maturin pep517 write-dist-info`, which rejects --release in
+      # maturin 1.x), so install via pip then rebuild in release via
+      # maturin develop in an active virtualenv. maturin must be
+      # installed into the venv first: --no-build-isolation means pip
+      # uses the venv's packages for the build backend.
+      - run: python3 -m venv .venv
+      - run: .venv/bin/pip install "maturin>=1,<2"
+      - run: .venv/bin/pip install --no-build-isolation -e '.[dev]'
+      - run: .venv/bin/maturin develop --release
+      - run: .venv/bin/python -c "from peira._rust import RUST_AVAILABLE; assert RUST_AVAILABLE"
+      - run: .venv/bin/python -m pytest tests/integration -n auto -q
+      - run: PEIRA_NO_RUST=1 .venv/bin/python -m pytest tests/integration -n auto -q
 
   quickstart:
     # The README quickstart must work verbatim, offline, on every PR.
