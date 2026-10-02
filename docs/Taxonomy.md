@@ -34,8 +34,8 @@ dataset files and per-case drill-down. Entry numbers below are this
 section's sequence; the program-wide family numbers additionally count
 the two conversational-suite families (`multi_turn_escalation` 25,
 `decision_splitting` 26, see `docs/Conversational-Suite.md`), so the
-newest v2 family number program-wide is 28 (question_pair_incoherence
-landed most recently, as family 27).
+newest v2 family number program-wide is 29 (frequency_salience
+landed most recently, as family 29).
 
 1. **state_poisoning**: hostile content in tool output authorizes the
    action; includes history-embedded payloads in multi-turn state.
