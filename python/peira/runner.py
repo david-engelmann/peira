@@ -2338,6 +2338,7 @@ def _write_partial(
     case_cost: Callable[[PerCaseResult], float] | None = None,
     result_to_dict: Callable[[PerCaseResult], dict[str, Any]] | None = None,
     summarize_artifact: Callable[..., dict[str, Any]] | None = None,
+    max_attempts: int = DEFAULT_MAX_ATTEMPTS,
 ) -> None:
     if partial_path is None:
         return
@@ -2840,6 +2841,7 @@ async def _run_suite_async(
             case_cost=case_cost,
             result_to_dict=result_to_dict,
             summarize_artifact=summarize_artifact,
+            max_attempts=max_attempts,
         )
 
     async def one(case: Case) -> None:
