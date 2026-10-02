@@ -16,12 +16,14 @@
 //!   minimum width 4, no truncation — matching Python's `:04d`.
 //! - The substrate-index parser mirrors Python's `int(s)` for the
 //!   realistic domain: surrounding whitespace stripped, optional
-//!   `+`/`-` sign, ASCII digits, i64 range. Documented divergences:
-//!   Python also accepts underscores between digits (`"1_2"`) and
-//!   non-ASCII decimal digits, and its `strip()` removes exotic
-//!   whitespace (e.g. U+001C) that Rust's `char::is_whitespace` does
-//!   not; those inputs report a malformed index here. Indices outside
-//!   the i64 range likewise report malformed.
+//!   `+`/`-` sign, ASCII digits, i64 range. The trim matches CPython
+//!   exactly (Unicode whitespace except U+001C..=U+001F, which
+//!   CPython's `int()` does not strip; see `is_int_whitespace`).
+//!   Documented divergences: Python also accepts underscores between
+//!   digits (`"1_2"`) and non-ASCII decimal digits; those inputs are
+//!   rejected by the Rust parser, and the Python wrapper falls back
+//!   to the reference so they parse identically. Indices outside the
+//!   i64 range likewise report malformed (and fall back).
 //! - Error strings are byte-identical to the reference, including the
 //!   `{!r}` interpolations, via [`crate::py_repr`]. One documented
 //!   divergence class, shared with the schema/dataset ports: values
@@ -168,13 +170,24 @@ pub fn combo_case_id(pair_id: &str, substrate_idx: i64, arm: &str) -> Result<Str
     Ok(format!("{pair_id}-{substrate_idx:04}-{arm}"))
 }
 
+/// Whitespace as stripped by CPython's `int()`: Unicode whitespace
+/// except U+001C..=U+001F (the C0 separators), which CPython does not
+/// strip even though Rust's `char::is_whitespace` reports them.
+fn is_int_whitespace(c: char) -> bool {
+    c.is_whitespace() && !('\u{1c}'..='\u{1f}').contains(&c)
+}
+
 /// Parse a Python-`int()`-shaped decimal string to i64.
 ///
 /// Mirrors `int(s)` for the realistic domain: surrounding whitespace
 /// stripped, one optional sign, ASCII digits, i64 range. Returns
 /// `None` otherwise.
+///
+/// The trim matches CPython exactly: it strips Unicode whitespace
+/// *except* U+001C..=U+001F, which CPython's `int()` does not strip
+/// (Rust's `char::is_whitespace` includes them).
 fn parse_py_int(s: &str) -> Option<i64> {
-    let t = s.trim_matches(|c: char| c.is_whitespace());
+    let t = s.trim_matches(is_int_whitespace);
     let (sign, digits) = match t.strip_prefix('+') {
         Some(rest) => (1i128, rest),
         None => match t.strip_prefix('-') {
@@ -599,6 +612,16 @@ mod tests {
         // Mirrors Python int(): surrounding whitespace and +/- signs.
         assert_eq!(parse_combo_case_id("combo-dfl-ind- 12 -a").unwrap().1, 12);
         assert_eq!(parse_combo_case_id("combo-dfl-ind-+0007-a").unwrap().1, 7);
+    }
+
+    #[test]
+    fn parse_index_whitespace_matches_cpython_exactly() {
+        // CPython int() strips U+00A0 (and other Unicode whitespace)
+        // but NOT U+001C..=U+001F. The trim must match exactly:
+        // accepting "\x1c1" would diverge from the reference.
+        assert_eq!(parse_combo_case_id("combo-dfl-ind-\u{a0}1-a").unwrap().1, 1);
+        assert!(parse_combo_case_id("combo-dfl-ind-\u{1c}1-a").is_err());
+        assert!(parse_combo_case_id("combo-dfl-ind-\u{1f}1-a").is_err());
     }
 
     #[test]

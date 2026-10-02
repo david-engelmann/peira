@@ -242,6 +242,36 @@ class TestParseComboCaseIdParity(unittest.TestCase):
             _parse_combo_case_id_py("combo-dfl-ind-  42 -a"), ("combo-dfl-ind", 42, "a")
         )
 
+    def test_underscore_index_falls_back(self):
+        # Python int("1_2") == 12; the Rust parser rejects underscores,
+        # so the D-11 fallback must recover the reference's answer.
+        self.assertEqual(
+            parse_combo_case_id("combo-dfl-ind-1_2-a"), ("combo-dfl-ind", 12, "a")
+        )
+        self.assertEqual(
+            _parse_combo_case_id_py("combo-dfl-ind-1_2-a"), ("combo-dfl-ind", 12, "a")
+        )
+
+    def test_exotic_whitespace_index_matches_reference(self):
+        # CPython int() strips U+00A0 but NOT U+001C..=U+001F; the Rust
+        # trim matches that exactly (it does not use char::is_whitespace
+        # alone, which would accept U+001C).
+        self.assertEqual(
+            parse_combo_case_id("combo-dfl-ind-\xa01-a"), ("combo-dfl-ind", 1, "a")
+        )
+        self.assertEqual(
+            _parse_combo_case_id_py("combo-dfl-ind-\xa01-a"), ("combo-dfl-ind", 1, "a")
+        )
+        bad = "combo-dfl-ind-\x1c1-a"
+        _assert_raises(
+            self, ValueError, f"malformed substrate index in case id: {bad}",
+            parse_combo_case_id, bad,
+        )
+        _assert_raises(
+            self, ValueError, f"malformed substrate index in case id: {bad}",
+            _parse_combo_case_id_py, bad,
+        )
+
     def test_non_string_falls_back(self):
         with self.assertRaises(AttributeError):
             parse_combo_case_id(42)

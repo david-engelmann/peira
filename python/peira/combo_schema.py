@@ -140,7 +140,14 @@ def _parse_combo_case_id_py(case_id: str) -> tuple[str, int, str]:
 def parse_combo_case_id(case_id: str) -> tuple[str, int, str]:
     """Split a combo case id into (pair_id, substrate_idx, arm)."""
     if _rust is not None and isinstance(case_id, str):
-        return _rust.combo_parse_case_id(case_id)
+        try:
+            # The Rust index parser mirrors int() for the realistic
+            # domain but rejects inputs the reference accepts
+            # (underscores between digits, non-ASCII decimal digits);
+            # fall back so those parse exactly as the reference does.
+            return _rust.combo_parse_case_id(case_id)
+        except (TypeError, ValueError):
+            pass
     return _parse_combo_case_id_py(case_id)
 
 

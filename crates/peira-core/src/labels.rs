@@ -120,8 +120,11 @@ mod tests {
     }
 
     #[test]
-    fn sort_is_codepoint_order() {
-        // Byte-wise Rust ordering == Python codepoint ordering.
+    fn sorts_and_dedups_labels() {
+        // Pins that the output is sorted and deduplicated. The
+        // byte-order == codepoint-order equivalence with Python is
+        // pinned by the Python parity test `test_unicode_sort_order`
+        // (compares against Python's `sorted()`), not here.
         let input = json!({"options": ["éclair", "zebra", "Äpfel", "apple"]});
         let got = labels_of(&input, "choice");
         let mut expected = vec!["éclair", "zebra", "Äpfel", "apple", "other"];
