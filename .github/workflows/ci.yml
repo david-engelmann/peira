@@ -122,9 +122,11 @@ jobs:
       - run: python3 scripts/check_coderabbit_config.py
 
   site:
-    # The leaderboard scaffold must stay buildable: install deps, ingest
-    # the mock artifacts through the real pipeline, and run the Astro
-    # static build. Real-data ingestion is a manual pre-launch step.
+    # The leaderboard scaffold must stay buildable and correct: install
+    # deps, ingest the mock artifacts through the real pipeline, run the
+    # Astro static build, then run the JSDOM test suite (site.test.js,
+    # site-views.test.js, site-methodology.test.js) against the source.
+    # Real-data ingestion is a manual pre-launch step.
     needs: check_runner
     runs-on: ${{ fromJSON(needs.check_runner.outputs.runner) }}
     timeout-minutes: 20
@@ -141,6 +143,8 @@ jobs:
       - run: npm ci
         working-directory: site
       - run: npm run build
+        working-directory: site
+      - run: npm test
         working-directory: site
 
   dco:
