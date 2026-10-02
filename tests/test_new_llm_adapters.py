@@ -265,7 +265,7 @@ class TestDeepSeekThinkingDisabled(unittest.TestCase):
 
 
 class TestXAISeedHandling(unittest.TestCase):
-    """xAI 400s on non-positive seeds — the adapter omits, not negotiates."""
+    """xAI 400s on non-positive seeds: the adapter omits, not negotiates."""
 
     def _setup(self, **adapter_kwargs):
         mod, calls, _ = _make_openai([_openai_completion(GOOD_JSON)])
@@ -275,7 +275,7 @@ class TestXAISeedHandling(unittest.TestCase):
 
     def test_seed_zero_omitted_from_wire(self):
         # Live smoke CG-0027: xAI 400s "Seed must be positive but
-        # seed = 0" on the default seed=0 — it must not go on the wire.
+        # seed = 0" on the default seed=0, so it must not go on the wire.
         calls, out = self._setup()
         self.assertNotIn("seed", calls[0])
         # The transcript's request shape reads back from the actually
@@ -300,7 +300,7 @@ class TestXAISeedHandling(unittest.TestCase):
         self.assertEqual(out.transcript["request"]["seed"], 42)
 
     def test_openai_still_sends_seed_zero(self):
-        # The base OpenAI adapter is unchanged — only xAI omits.
+        # The base OpenAI adapter is unchanged: only xAI omits.
         mod, calls, _ = _make_openai([_openai_completion(GOOD_JSON)])
         with _fake_modules({"openai": mod}), \
                 _env(OPENAI_API_KEY="sk-test"):

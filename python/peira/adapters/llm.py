@@ -1076,7 +1076,7 @@ class XAIAdapter(OpenAIAdapter):
     also publishes dated variants such as ``grok-4-0709``).
 
     Request shape: xAI documents ``seed`` as supported (best-effort
-    deterministic), so positive seeds are sent — but xAI 400s on
+    deterministic), so positive seeds are sent. xAI 400s on
     non-positive seeds ("Seed must be positive but seed = 0"), so the
     ``seed`` field is omitted when it is ``0`` or ``None`` (the
     transcript's request shape then honestly records ``"seed": None``).
