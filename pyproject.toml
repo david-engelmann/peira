@@ -4,10 +4,7 @@ build-backend = "maturin"
 
 [project]
 name = "peira"
-# NB: the repo ALWAYS carries 0.0.0. The signed git release tag (vX.Y.Z)
-# is the single source of truth; scripts/release/stamp.py stamps the tag
-# version into build trees at publish time. See docs/Release.md.
-version = "0.0.0"
+version = "0.1.0"
 description = "An open-source AI safety stress-test and intelligence hub for leading models and guardrails, including Jev, ChatGPT, Claude, DeepSeek, Kimi, Gemini, Llama Prompt Guard 2, Grok, GLM, WildGuard, ShieldGemma, Granite Guardian and Shieldstral."
 readme = "README.md"
 license = { text = "MIT" }
@@ -49,9 +46,48 @@ dev = ["pytest>=8", "pytest-xdist>=3", "pytest-timeout>=2", "hypothesis>=6.100",
 [project.scripts]
 peira = "peira.cli:main"
 
+# P-4 adapter plugin registry. First-party adapters register under the
+# same `peira.adapters` group third-party distributions use, so
+# `peira adapter list` shows one registry. The entry-point name is the
+# registry id and MUST equal the adapter's `name` attribute (the
+# name-vs-attribute binding in peira.adapters.discovery fails the load
+# closed otherwise). Dotted-path loading keeps working unchanged.
+[project.entry-points."peira.adapters"]
+shieldstral = "peira.adapters.hf:ShieldstralAdapter"
+protectai-prompt-injection = "peira.adapters.hf:ProtectAIAdapter"
+llama-prompt-guard-2 = "peira.adapters.hf:LlamaPromptGuard2Adapter"
+qwen3guard-gen = "peira.adapters.hf:Qwen3GuardAdapter"
+granite-guardian = "peira.adapters.hf:GraniteGuardianAdapter"
+shieldgemma = "peira.adapters.hf:ShieldGemmaAdapter"
+wildguard = "peira.adapters.hf:WildGuardAdapter"
+harmbench = "peira.adapters.hf:HarmBenchAdapter"
+granite-guardian-hap = "peira.adapters.hf:GraniteGuardianHapAdapter"
+azure-prompt-shields = "peira.adapters.azure_prompt_shields:AzurePromptShieldsAdapter"
+cloudflare-workers-ai = "peira.adapters.cloudflare_workers_ai:CloudflareWorkersAiAdapter"
+jev = "peira.adapters.jev:JevAdapter"
+local-systemone = "peira.adapters.kev:LocalSystemOneAdapter"
+kev = "peira.adapters.kev:KevAdapter"
+lakera = "peira.adapters.lakera:LakeraAdapter"
+laya = "peira.adapters.laya:LayaAdapter"
+openai-structured = "peira.adapters.llm:OpenAIAdapter"
+moonshot-structured = "peira.adapters.llm:MoonshotAdapter"
+xai-structured = "peira.adapters.llm:XAIAdapter"
+deepseek-structured = "peira.adapters.llm:DeepSeekAdapter"
+meta-structured = "peira.adapters.llm:MetaLlamaAdapter"
+zai-structured = "peira.adapters.llm:ZaiAdapter"
+mistral-structured = "peira.adapters.llm:MistralAdapter"
+qwen-structured = "peira.adapters.llm:QwenAdapter"
+openrouter-structured = "peira.adapters.llm:OpenRouterAdapter"
+anthropic-structured = "peira.adapters.llm:AnthropicAdapter"
+google-structured = "peira.adapters.llm:GoogleAdapter"
+model-armor = "peira.adapters.model_armor:ModelArmorAdapter"
+openai-moderation = "peira.adapters.omni_moderation:OmniModerationAdapter"
+openjev-sglang = "peira.adapters.openjev_sglang:OpenJevSglangAdapter"
+semif = "peira.adapters.semif:SemifAdapter"
+
 [project.urls]
 Homepage = "https://github.com/david-engelmann/peira"
-Documentation = "https://github.com/david-engelmann/peira/tree/v0.0.0/docs"
+Documentation = "https://github.com/david-engelmann/peira/tree/main/docs"
 Repository = "https://github.com/david-engelmann/peira"
 
 [tool.maturin]

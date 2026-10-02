@@ -59,7 +59,16 @@ def _require_conversational_adapter(adapter: Any) -> None:
     Conversational capability is explicit and validated up front: an
     adapter without ``decide_turn`` is rejected with an actionable
     error instead of being silently flattened into single-shot calls.
+    Third-party adapters (``SubprocessAdapter``) expose the async
+    ``adecide_turn``; the runner drives it instead of the sync entry
+    point.
     """
+    from peira.adapters.subprocess import (  # noqa: PLC0415
+        SubprocessAdapter,
+    )
+
+    if isinstance(adapter, SubprocessAdapter):
+        return
     if not callable(getattr(adapter, "decide_turn", None)):
         raise ValueError(
             f"adapter {getattr(adapter, 'name', adapter)!r} cannot run "
@@ -108,6 +117,12 @@ def _invoke_adapter_turn(
     if raw is not None and not isinstance(raw, dict):
         raw = None
     return output, raw
+
+
+# Marker read by peira.runner._ainvoke_subprocess_adapter to select
+# adecide_turn over adecide for third-party adapters (a module-level
+# import would cycle: conversation_runner imports runner).
+_invoke_adapter_turn._peira_turn_driver = True
 
 
 def _record_to_history_text(record: CallRecord, primitive: str) -> str:

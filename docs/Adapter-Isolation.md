@@ -1,5 +1,23 @@
 # Adapter isolation: subprocess/JSON execution mode
 
+> **Status: implemented with deviation.** The subprocess/JSON execution
+> mode is implemented in `python/peira/adapters/` (`discovery.py`,
+> `conformance.py`, `subprocess.py`, `_shim.py`) and wired through the
+> runner (third-party registry ids default to the subprocess
+> transport). Deliberate deviation from this doc's packaging section:
+> the runner spawns a **runner-owned shim**
+> (`python -m peira.adapters._shim <registry id>`) instead of
+> launching author-owned console scripts via `--adapter-subprocess`.
+> Rationale and details are in `docs/Plugin-Ecosystem-Design.md`
+> section 7 (zero author ceremony, uniform env scrubbing, one framing
+> implementation to audit). The protocol, handshake, and security
+> properties below are otherwise adopted as designed, with two
+> further deviations: no pipelining (one in-flight call per child;
+> the runner never sends concurrent calls), and the protocol params
+> are key-set-pinned (`{case_input, primitive, context}`,
+> `context` carrying only `call_id`). The `serve()` helper became
+> the shim's internal loop, not a supported author extension point.
+
 Design for running third-party adapters out of the runner's process.
 This is a design doc; the implementation is a separate build. For why
 this is needed, see the runner security section of `docs/Threat-Model.md`.

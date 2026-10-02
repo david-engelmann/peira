@@ -23,7 +23,9 @@ run a suite through an adapter
 
 | Flag | Required | Default | Help |
 |---|---|---|---|
-| `--adapter` |  | `'mock'` | 'mock', or a dotted path: package.module (with a top-level `adapter`), package.module:ClassName, or package.module.ClassName. Only load adapter paths you trust: the module is imported (and therefore executed) with the working directory first on sys.path |
+| `--adapter` |  | `'mock'` | 'mock', a dotted path (package.module, package.module:ClassName, or package.module.ClassName), or a registered adapter id (see 'peira adapter list'). Dotted paths are imported (and therefore executed) in-process with the working directory first on sys.path: only load paths you trust. Third-party registry ids run isolated in a subprocess by default. |
+| `--adapter-no-isolation` |  | `False` | run a third-party adapter IN-PROCESS instead of the subprocess sandbox. The adapter's code is imported and executed with peira's full environment: only use this for adapters you trust completely. |
+| `--adapter-env` |  | `[]` | extra environment variables for a third-party adapter's subprocess (repeatable; denylisted variables are refused) |
 | `--suite` |  | `'trial-demo'` | smoke is an alias for trial (choices: `trial-demo`, `trial`, `v1`, `safety-policy`, `conversational`, `combo`, `smoke`) |
 | `--families` |  | all | comma-separated family ids: run only cases from these attack families (default: all families in the suite; an empty value also means all). Subset runs are marked ranking-ineligible (exit 3): the ranking gate always covers the full suite. |
 | `--out` |  | `'runs'` |  |
@@ -138,6 +140,32 @@ drift-watch: per-family McNemar deltas between two runs of the same adapter id, 
 | `--old` | yes | - | older run artifact (baseline) |
 | `--new` | yes | - | newer run artifact (candidate) |
 | `--out` |  | - | write the drift result JSON to this path |
+
+## peira adapter
+
+inspect the adapter plugin registry
+
+### peira adapter list
+
+list registered adapters
+
+| Flag | Required | Default | Help |
+|---|---|---|---|
+| `--verbose` |  | `False` | show entry-point values, ambiguous names, and discovery issues |
+| `--json` |  | `False` | emit machine-readable JSON |
+
+### peira adapter check
+
+run the adapter conformance kit
+
+| Flag | Required | Default | Help |
+|---|---|---|---|
+| `ADAPTER` |  | - | registry id or 'mock' (dotted paths are refused: check needs a registered id) |
+| `--out` |  | - | write the sealed check report here (default: <adapter>-check.json) |
+| `--timeout` |  | `300.0` | per-call timeout in seconds for the isolated check child (default: 300) |
+| `--adapter-env` |  | `[]` | extra environment for the isolated check child (repeatable; denylisted variables refused) |
+| `--verify` |  | - | offline-verify a sealed check report instead of running the kit |
+| `--json` |  | `False` | print the machine-readable check report to stdout instead of the human summary |
 
 ## peira stability-probe
 
