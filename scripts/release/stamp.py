@@ -5,6 +5,9 @@ release build materializes ``git archive <tag>`` into a temp dir and this
 module stamps the tag version into exactly the files that carry it:
 
 - ``pyproject.toml``: ``version = "0.0.0"`` under ``[project]``
+- ``pyproject.toml``: the ``[project.urls]`` Documentation URL, which is
+  pinned to the release (``tree/v0.0.0/docs`` in the repo, ``tree/vX.Y.Z/docs``
+  after stamping), never ``main``
 - ``python/peira/__init__.py``: ``__version__ = "0.0.0"``
 
 The Rust crates under ``crates/`` are versioned independently and are never
@@ -29,8 +32,13 @@ REPO_VERSION = "0.0.0"
 # versioned independently (like the dataset). If a future build backend
 # (e.g. maturin) needs the crate version to track releases, that is a
 # deliberate decision for that lane, not something to guess at here.
-_STAMP_TARGETS: tuple[tuple[str, str, str], ...] = (
+#
+# STAMP_TARGETS is public: scripts/release/preflight.py derives the
+# tag-is-version gate from the same list, so the gate and the stamper can
+# never disagree about which markers must be present exactly once.
+STAMP_TARGETS: tuple[tuple[str, str, str], ...] = (
     ("pyproject.toml", 'version = "0.0.0"', 'version = "{version}"'),
+    ("pyproject.toml", "tree/v0.0.0/docs", "tree/v{version}/docs"),
     (
         "python/peira/__init__.py",
         '__version__ = "0.0.0"',
@@ -64,12 +72,13 @@ def stamp_version(tree: str | Path, version: str) -> list[str]:
     version = release_version(version)
     root = Path(tree)
     stamped: list[str] = []
-    for rel, marker, template in _STAMP_TARGETS:
+    for rel, marker, template in STAMP_TARGETS:
         path = root / rel
         if not path.is_file():
             continue
         if _stamp_file(path, marker, template.format(version=version)):
-            stamped.append(rel)
+            if rel not in stamped:
+                stamped.append(rel)
         else:
             raise ReleaseError(
                 f"{rel} exists but has no '{marker}' marker; "

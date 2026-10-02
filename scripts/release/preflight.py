@@ -3,8 +3,9 @@
 Usage: ``python scripts/release/preflight.py --version 1.2.3``
 
 Every check fails loud with a one-line reason on stderr and exit code 1.
-The pure helpers (changelog section detection, install-pin scan) are covered
-by ``tests/test_release.py``; the git wrappers are exercised by dry runs.
+The pure helpers (changelog section detection, install-pin scan, docs-link
+scan) are covered by ``tests/test_release.py``; the git wrappers are
+exercised by dry runs.
 """
 
 from __future__ import annotations
@@ -18,10 +19,10 @@ import sys
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2]))
 
 from scripts.release.meta import parse_release_version  # noqa: E402
+from scripts.release.stamp import STAMP_TARGETS  # noqa: E402
 from scripts.release.validate import ReleaseError  # noqa: E402
 
 REPO_ROOT = pathlib.Path(__file__).resolve().parents[2]
-REPO_VERSION = "0.0.0"
 
 # Install commands pinned to the main branch instead of a release. The
 # release process must never bless one; every install path pins to the
@@ -32,6 +33,13 @@ _MAIN_PIN_PATTERNS = (
     re.compile(r"pip install[^\n]*git\+https://github\.com/david-engelmann/peira(?:@main)?(?:[^\w@]|$)"),
 )
 
+# Documentation links pinned to the main branch. The spec pins docs URLs to
+# the release, never main: the [project.urls] Documentation link is stamped
+# per release, and no hand-written README/docs link may point at main.
+_MAIN_DOC_LINK_PATTERN = re.compile(
+    r"github\.com/david-engelmann/peira/(tree|blob)/main\b"
+)
+
 
 def _run(*args: str, cwd: pathlib.Path = REPO_ROOT) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
@@ -40,17 +48,20 @@ def _run(*args: str, cwd: pathlib.Path = REPO_ROOT) -> subprocess.CompletedProce
 
 
 def check_repo_unstamped() -> None:
-    """The repo must carry 0.0.0; the tag is the version source of truth."""
-    pyproject = (REPO_ROOT / "pyproject.toml").read_text(encoding="utf-8")
-    if 'version = "0.0.0"' not in pyproject:
-        raise ReleaseError(
-            "pyproject.toml is not at 0.0.0; tag-is-version invariant broken"
-        )
-    init = (REPO_ROOT / "python/peira/__init__.py").read_text(encoding="utf-8")
-    if '__version__ = "0.0.0"' not in init:
-        raise ReleaseError(
-            "python/peira/__init__.py is not at 0.0.0; tag-is-version broken"
-        )
+    """The repo must carry 0.0.0; the tag is the version source of truth.
+
+    Mirrors the stamper's invariant exactly: every marker in STAMP_TARGETS
+    must be present exactly once, so a drifted duplicate dies here instead
+    of later at build time.
+    """
+    for rel, marker, _template in STAMP_TARGETS:
+        text = (REPO_ROOT / rel).read_text(encoding="utf-8")
+        count = text.count(marker)
+        if count != 1:
+            raise ReleaseError(
+                f"{rel}: expected the 0.0.0 marker {marker!r} exactly once, "
+                f"found {count}x; tag-is-version invariant broken"
+            )
 
 
 def check_tree_clean() -> None:
@@ -124,18 +135,43 @@ def find_main_pinned_installs(
     return hits
 
 
-def check_install_pins() -> None:
-    """No install path may point at the main branch; releases pin versions."""
+def find_main_pinned_links(
+    files: dict[str, str],
+) -> list[str]:
+    """Return ``path:line`` hits for docs links pinned to the main branch."""
+    hits: list[str] = []
+    for path, text in files.items():
+        for lineno, line in enumerate(text.splitlines(), 1):
+            if _MAIN_DOC_LINK_PATTERN.search(line):
+                hits.append(f"{path}:{lineno}")
+    return hits
+
+
+def _doc_files() -> dict[str, str]:
     candidates = [REPO_ROOT / "README.md", *sorted((REPO_ROOT / "docs").glob("*.md"))]
-    files = {
+    return {
         str(p.relative_to(REPO_ROOT)): p.read_text(encoding="utf-8")
         for p in candidates
         if p.is_file()
     }
-    hits = find_main_pinned_installs(files)
+
+
+def check_install_pins() -> None:
+    """No install path may point at the main branch; releases pin versions."""
+    hits = find_main_pinned_installs(_doc_files())
     if hits:
         raise ReleaseError(
             "install commands pinned to main (pin to the release instead): "
+            + ", ".join(hits)
+        )
+
+
+def check_doc_links() -> None:
+    """No docs URL may point at the main branch; they pin to the release."""
+    hits = find_main_pinned_links(_doc_files())
+    if hits:
+        raise ReleaseError(
+            "docs links pinned to main (pin to the release tag instead): "
             + ", ".join(hits)
         )
 
@@ -166,6 +202,8 @@ def run_preflight(version: str, verbose: bool = True) -> None:
     log(f"ok: CHANGELOG.md has a curated '## [{meta.version}]' section")
     check_install_pins()
     log("ok: no main-pinned install commands")
+    check_doc_links()
+    log("ok: no main-pinned docs links")
     check_uv_lock()
     log("ok: uv.lock in sync")
     log(f"preflight PASS for {meta.tag}")
