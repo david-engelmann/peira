@@ -469,10 +469,13 @@ plus secret, but the OpenAI-compatible endpoint accepts the API key
 directly as the Bearer token (per Zhipu's own OpenAI-compat docs),
 which is what this adapter uses.
 
-Honest caveat: whether `seed` and `logprobs` are honored for
-`glm-4-plus` is unverified. Verify against the live API before any
-measured run; mismatches surface as terminal provider errors, not
-silent mismeasurement.
+The adapter was built from Zhipu's published docs and
+verified against the live API on 2026-10-02. All 40 verification calls
+parsed against `glm-4-plus` with zero auth or wire-shape errors, and the
+`json_object` plus prompt-inlined schema shape from PR #367 held up.
+Whether `seed` and `logprobs` are honored for `glm-4-plus` remains
+unverified beyond successful parsing. Mismatches surface as terminal
+provider errors, not silent mismeasurement.
 
 ### Mistral Large 3 (Mistral)
 
