@@ -73,7 +73,7 @@
       ],
       "dataset_version": "1.4.1",
       "date": "2026-10-01",
-      "description": "A4 repair lane: refresh 23 stale tier-word severity sentences in indirection notes (R-2). #280's refresh_notes matched only 'Severity <old>:' and 'Severity: <old> -' patterns and missed the family's bare '<Tier>:' sentence style. 21 -> 'Critical:', 2 -> 'Medium:'. Zero tier-word/severity mismatches corpus-wide afterward; new scripts/check_notes_tier_words.py gate asserts this class cannot recur.",
+      "description": "A4 repair lane: refresh 23 stale tier-word severity sentences in indirection notes (R-2). #280's refresh_notes matched only 'Severity <old>:' and 'Severity: <old> -' patterns and missed the family's bare '<Tier>:' sentence style. 20 -> 'Critical:', 3 -> 'Medium:'. Zero tier-word/severity mismatches corpus-wide afterward; new scripts/check_notes_tier_words.py gate asserts this class cannot recur.",
       "diff_summary": "notes field only: '<OldTier>: <substrate>.' -> '<NewTier>: <substrate>.' in 23 cases. Prompts, golds, severities unchanged.",
       "rationale": "R-2 of the second A4 review (2026-10-01): presentational consistency; notes must not contradict the adjudicated tier.",
       "type": "fix"
