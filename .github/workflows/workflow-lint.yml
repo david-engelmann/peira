@@ -116,9 +116,8 @@ jobs:
     #     workflow may override dtolnay/rust-toolchain with an explicit
     #     version input (the action honors rust-toolchain.toml).
     #   - Python build backend: pyproject.toml [build-system] is the
-    #     source. While the maturin migration is in flight, no consumer
-    #     (workflows, Dockerfile, scripts/build_core_ext.py) may invoke
-    #     maturin unless the declared backend is maturin.
+    #     source. No consumer (workflows, Dockerfile) may invoke maturin
+    #     unless the declared backend is maturin.
     #   - uv: NO single source of truth exists yet (the Dockerfile pins
     #     ghcr.io/astral-sh/uv:<ver> while ci.yml installs latest via
     #     pip). This is reported as a warning, not a failure: failing on
@@ -172,8 +171,7 @@ jobs:
               # including it would make the check fail on itself.
               consumers = [root / "Dockerfile",
                            *(p for p in sorted((root / ".github/workflows").glob("*.yml"))
-                             if p.name != "workflow-lint.yml"),
-                           root / "scripts" / "build_core_ext.py"]
+                             if p.name != "workflow-lint.yml")]
               early = [str(p) for p in consumers if p.is_file() and re.search(r"(?i)maturin", p.read_text())]
               if early:
                   fail(f"build-backend is {backend!r} but maturin is referenced in {early}; "

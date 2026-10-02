@@ -6,15 +6,15 @@ symlink to this file, for agents configured to look for that name.
 ## Build / test / lint
 
 ```bash
-pip install -e .                    # install the Python package
-pip install -e .[dev]               # pytest, pytest-xdist, pytest-timeout
-python -m pytest tests -n auto      # Python tests - must stay green
+python3 -m venv .venv && .venv/bin/pip install -e '.[dev]'   # install (venv required, no PYTHONPATH)
+.venv/bin/python -m pytest tests -n auto      # Python tests - must stay green
+.venv/bin/maturin develop                     # rebuild _core after crates/ changes (debug, seconds)
 cargo test --workspace              # Rust tests - must stay green
-python scripts/artifact_smoke.py    # artifact smoke: builds the real wheel,
-                                    # installs it, runs gates+metrics through
-                                    # the INSTALLED package - must stay green
-python scripts/check_public_surface.py   # strategy-language check - must stay green
-peira run --adapter mock --suite trial-demo --dry-run   # CLI smoke
+.venv/bin/python scripts/artifact_smoke.py    # artifact smoke: builds the real wheel,
+                                              # installs it, runs gates+metrics through
+                                              # the INSTALLED package - must stay green
+.venv/bin/python scripts/check_public_surface.py   # strategy-language check - must stay green
+.venv/bin/peira run --adapter mock --suite trial-demo --dry-run   # CLI smoke
 ```
 
 ## Architecture map

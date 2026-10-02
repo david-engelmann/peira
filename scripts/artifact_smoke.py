@@ -207,6 +207,7 @@ cases_path = Path(sys.argv[3])
 n_cases = int(sys.argv[4])
 dataset_dir = Path(sys.argv[5])
 expected_so_hash = sys.argv[6]  # "none" when the tree ships no native extension
+backend = sys.argv[7]  # build backend from pyproject.toml, e.g. "maturin"
 
 import peira
 from peira import _rust
@@ -258,9 +259,18 @@ else:
     check("native-ext-present", bool(sos),
           "tree ships a _core extension but the wheel does not embed it (stale-by-omission)")
     if sos:
-        ih = hashlib.sha256(sos[0].read_bytes()).hexdigest()
-        check("native-ext-hash", ih == expected_so_hash,
-              "installed _core binary differs from the tree's (stale build)")
+        if "maturin" in backend:
+            # maturin builds the worktree extension with editable-profile=dev
+            # but wheels with profile=release, so the binaries legitimately
+            # differ by hash. Staleness is covered by the worktree mtime
+            # check (prebuilt .so older than newest Rust source fails the
+            # smoke before the wheel is built) and by the fresh wheel build
+            # in this run; a hash comparison here would be vacuous.
+            pass
+        else:
+            ih = hashlib.sha256(sos[0].read_bytes()).hexdigest()
+            check("native-ext-hash", ih == expected_so_hash,
+                  "installed _core binary differs from the tree's (stale build)")
     if not no_rust_forced:
         check("rust-available", _rust.RUST_AVAILABLE,
               "wheel embeds _core but peira._rust reports it unavailable")
@@ -557,7 +567,7 @@ def main(argv: list[str] | None = None) -> int:
         driver = tmp / "driver.py"
         driver.write_text(DRIVER, encoding="utf-8")
         common = [proj_version, src_hash, str(cases_path), str(args.n_cases),
-                  str(tmp / "dataset"), so_hash]
+                  str(tmp / "dataset"), so_hash, backend]
         forced_no_rust = bool(os.environ.get("PEIRA_NO_RUST"))
         if forced_no_rust:
             log("  note: PEIRA_NO_RUST=1 is set in this environment; the 'ambient' "

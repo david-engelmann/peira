@@ -4,7 +4,7 @@ build-backend = "maturin"
 
 [project]
 name = "peira"
-version = "0.1.0"
+version = "0.0.0"
 description = "An open-source AI safety stress-test and intelligence hub for leading models and guardrails, including Jev, ChatGPT, Claude, DeepSeek, Kimi, Gemini, Llama Prompt Guard 2, Grok, GLM, WildGuard, ShieldGemma, Granite Guardian and Shieldstral."
 readme = "README.md"
 license = { text = "MIT" }
