@@ -38,6 +38,10 @@ from typing import NoReturn
 REPO_ROOT = Path(__file__).resolve().parents[2]
 SITE_ROOT = REPO_ROOT / "site"
 
+sys.path.insert(0, str(REPO_ROOT / "python"))
+
+from peira.divisions import DIVISION_KEYS, division_label  # noqa: E402
+
 WIDTH, HEIGHT = 1200, 630
 TOP_N_DEFAULT = 8
 
@@ -61,7 +65,7 @@ def pct(x: float) -> str:
     return f"{x * 100:.1f}%"
 
 
-DIVISION_LABELS = {"guardrail": "guardrail division", "llm-baseline": "LLM baseline division"}
+# (moved to python/peira/divisions.py: single source of truth)
 
 
 def load_runs(path: Path, suite: str, division: str) -> tuple[dict, list[dict]]:
@@ -199,7 +203,7 @@ def render(data: dict, scored: list[dict], top_n: int, division: str,
   <rect x="24" y="24" width="{WIDTH - 48}" height="{HEIGHT - 48}" rx="12" fill="{CARD}"/>
 {mock_banner}
   <text x="64" y="112" font-family="{FONT}" font-size="44" font-weight="bold" fill="{TEXT}">peira leaderboard</text>
-  <text x="64" y="148" font-family="{FONT}" font-size="22" fill="{MUTED}">{esc(DIVISION_LABELS.get(division, division))}</text>
+  <text x="64" y="148" font-family="{FONT}" font-size="22" fill="{MUTED}">{esc(division_label(division))}</text>
   <text x="64" y="174" font-family="{FONT}" font-size="19" fill="{MUTED}">{esc(subtitle)}</text>
   <text x="{WIDTH - 64}" y="112" text-anchor="end" font-family="{FONT}" font-size="20" fill="{MUTED}">top {len(top)} adapters</text>
   <text x="{WIDTH - 64}" y="140" text-anchor="end" font-family="{FONT}" font-size="15" fill="{MUTED}">whiskers show 95 percent confidence intervals</text>
@@ -217,7 +221,7 @@ def alt_text(data: dict, scored: list[dict], top_n: int, division: str) -> str:
         "OG social image for the peira leaderboard page.",
         "A dark card titled peira leaderboard with a horizontal bar chart "
         "of conditional attack success rate for the top adapters in the "
-        f"{DIVISION_LABELS.get(division, division)}. Lower is better.",
+        f"{division_label(division)}. Lower is better.",
         f"Data status is {'MOCK DATA, not real results' if mock else 'real benchmark results'}.",
     ]
     for i, s in enumerate(scored[:top_n], 1):
@@ -265,7 +269,7 @@ def main() -> None:
     ap.add_argument(
         "--division",
         default="guardrail",
-        choices=tuple(sorted(DIVISION_LABELS)),
+        choices=tuple(sorted(DIVISION_KEYS)),
         help="which division the image charts (the headline ranking never "
         "mixes divisions)",
     )

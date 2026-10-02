@@ -59,7 +59,9 @@ const RUNS = [
   },
 ];
 
-const DATA = { schema_version: '2', mock_data: true, runs: RUNS };
+const DATA = { schema_version: '2', mock_data: true, runs: RUNS,
+  divisions: [{ key: 'guardrail', label: 'Guardrail division' },
+              { key: 'llm-baseline', label: 'LLM baseline division' }] };
 
 const LEADERBOARD_HTML = `
   <script id="site-data" type="application/json">${JSON.stringify(DATA).replace(/</g, '\\u003c')}</script>

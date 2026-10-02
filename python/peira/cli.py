@@ -27,6 +27,7 @@ from peira.calibration import (
     risk_coverage_diagram_svg,
 )
 from peira.dataset import atomic_write_text, verify_manifest, verify_manifest_sealed
+from peira.divisions import DIVISIONS
 from peira.metrics import (
     MIN_DELTA_CASES,
     MIN_NB_CASES,
@@ -5281,7 +5282,7 @@ def build_parser() -> argparse.ArgumentParser:
                    "sys.path: only load paths you trust. Third-party "
                    "registry ids run isolated in a subprocess by default.")
     r.add_argument("--division", default=None,
-                   choices=["guardrail", "llm-baseline"],
+                   choices=[key for key, _ in DIVISIONS],
                    help="declared leaderboard division for this submission "
                    "(docs/Admission-Rules.md). Sealed into the run artifact "
                    "config. The site ingest requires it: a submission "

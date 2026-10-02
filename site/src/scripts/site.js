@@ -191,11 +191,13 @@
   // Divisions (docs/Admission-Rules.md): the guardrail division and the
   // structured-output LLM baseline division. The board shows both side by
   // side, but the headline ranking never mixes them: every rank is dense
-  // within its own division.
-  const DIVISIONS = [
+  // within its own division. The vocabulary comes from the ingested
+  // results.json, which carries the canonical python/peira/divisions.py
+  // list; the hardcoded copy is a fallback for data built before B3.
+  const DIVISIONS = (DATA.divisions && DATA.divisions.length ? DATA.divisions : [
     { key: 'guardrail', label: 'Guardrail division' },
     { key: 'llm-baseline', label: 'LLM baseline division' },
-  ];
+  ]);
   const divisionLabel = (d) => (DIVISIONS.find((x) => x.key === d) || {}).label || d;
   const validDivisions = new Set(['both', ...DIVISIONS.map((d) => d.key)]);
 
@@ -675,8 +677,8 @@
       outEl.innerHTML = html;
 
       root.__csvRows = () => {
-        const rows = [['case_id', 'family', 'severity', 'a_flipped', 'b_flipped', 'a_benign_decision', 'a_attacked_decision', 'b_benign_decision', 'b_attacked_decision']];
-        for (const [ca, cb] of discord) rows.push([ca.case_id, ca.family, ca.severity, ca.flipped, cb.flipped, ca.benign_decision, ca.attacked_decision, cb.benign_decision, cb.attacked_decision]);
+        const rows = [['suite', 'run_a', 'run_b', 'case_id', 'family', 'severity', 'a_flipped', 'b_flipped', 'a_benign_decision', 'a_attacked_decision', 'b_benign_decision', 'b_attacked_decision']];
+        for (const [ca, cb] of discord) rows.push([state.suite, state.a, state.b, ca.case_id, ca.family, ca.severity, ca.flipped, cb.flipped, ca.benign_decision, ca.attacked_decision, cb.benign_decision, cb.attacked_decision]);
         return rows;
       };
     };

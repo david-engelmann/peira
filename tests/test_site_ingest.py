@@ -442,5 +442,60 @@ class IngestV3Test(unittest.TestCase):
         self.assertIn("lock", r.stderr.lower())
 
 
+class TestDivisionVocabularySync(unittest.TestCase):
+    """B3: the division vocabulary has one canonical home
+    (python/peira/divisions.py). Every consumer must agree with it."""
+
+    def test_canonical_module_has_two_divisions(self):
+        from peira.divisions import DIVISION_KEYS, DIVISION_LABELS, DIVISIONS
+        self.assertEqual(DIVISION_KEYS, {"guardrail", "llm-baseline"})
+        self.assertEqual(
+            DIVISION_LABELS,
+            {"guardrail": "Guardrail division",
+             "llm-baseline": "LLM baseline division"},
+        )
+        self.assertEqual([k for k, _ in DIVISIONS], ["guardrail", "llm-baseline"])
+
+    def test_ingest_emits_canonical_divisions(self):
+        # ingest.py writes the canonical vocabulary into results.json
+        # so the site JS can never drift from the submission rules.
+        from peira.divisions import DIVISIONS
+        src = (REPO / "site" / "scripts" / "ingest.py").read_text()
+        self.assertIn("from peira.divisions import", src)
+        self.assertIn('"divisions": [{"key": k, "label": v} for k, v in DIVISIONS]', src)
+
+    def test_cli_division_choices_come_from_canonical(self):
+        from peira.divisions import DIVISION_KEYS
+        src = (REPO / "python" / "peira" / "cli.py").read_text()
+        self.assertIn("from peira.divisions import DIVISIONS", src)
+        # no hardcoded division list may remain on the --division argument
+        self.assertNotIn('choices=["guardrail", "llm-baseline"]', src)
+
+    def test_site_js_fallback_matches_canonical(self):
+        # the site.js fallback (used for data built before B3) must
+        # carry the same keys and labels as the canonical module.
+        from peira.divisions import DIVISIONS
+        src = (REPO / "site" / "src" / "scripts" / "site.js").read_text()
+        for key, label in DIVISIONS:
+            self.assertIn(f"key: '{key}'", src)
+            self.assertIn(f"label: '{label}'", src)
+
+    def test_og_renderer_uses_canonical_labels(self):
+        src = (REPO / "site" / "scripts" / "render_og.py").read_text()
+        self.assertIn("from peira.divisions import", src)
+        self.assertIn("division_label(", src)
+        self.assertNotIn('DIVISION_LABELS = {', src)
+        self.assertNotIn("DIVISION_LABELS.get(", src)
+
+    def test_division_toggle_keys_match_canonical(self):
+        # The static DivisionToggle.astro buttons must carry the canonical
+        # keys; site.js validates the URL division param against them.
+        import re
+        from peira.divisions import DIVISION_KEYS
+        src = (REPO / "site" / "src" / "components" / "DivisionToggle.astro").read_text()
+        keys = set(re.findall(r'data-division="([^"]+)"', src)) - {"both"}
+        self.assertEqual(keys, set(DIVISION_KEYS))
+
+
 if __name__ == "__main__":
     unittest.main()
