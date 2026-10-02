@@ -3129,7 +3129,13 @@ def cmd_dashboard_leaderboard(args: argparse.Namespace) -> int:
         suite=args.suite,
         dataset_version=args.dataset_version,
     )
-    text = json.dumps(payload, indent=2, sort_keys=True)
+    # The same payload renders as a self-contained HTML artifact.
+    if getattr(args, "format", "json") == "html":
+        from peira.report_html import leaderboard_to_html
+        text = leaderboard_to_html(
+            payload, data_source=getattr(args, "data_source", "mock"))
+    else:
+        text = json.dumps(payload, indent=2, sort_keys=True)
     if args.out:
         try:
             Path(args.out).write_text(text, encoding="utf-8")
@@ -5516,7 +5522,15 @@ def build_parser() -> argparse.ArgumentParser:
     dbl.add_argument("--dataset-version", default=None,
                      help="filter by dataset version")
     dbl.add_argument("--out", default=None,
-                     help="write JSON to this path (default: stdout)")
+                     help="write output to this path (default: stdout)")
+    dbl.add_argument("--format", choices=("json", "html"), default="json",
+                     help="output format: dashboard JSON (default) or a "
+                     "self-contained zero-JavaScript HTML report artifact")
+    dbl.add_argument("--data-source", choices=("mock", "official"),
+                     default="mock",
+                     help="banner the HTML report as official results or "
+                     "mock data (default: mock). A report must never present "
+                     "itself as official unless declared")
     dbl.set_defaults(func=cmd_dashboard_leaderboard)
     dbc = dsub.add_parser("compare",
                           help="head-to-head comparison as dashboard JSON")

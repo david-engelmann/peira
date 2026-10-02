@@ -206,7 +206,9 @@ cross-adapter leaderboard JSON
 | `--runs-dir` |  | - | runs directory (default: ./runs or $PEIRA_RUNS_DIR) |
 | `--suite` |  | - | filter by suite |
 | `--dataset-version` |  | - | filter by dataset version |
-| `--out` |  | - | write JSON to this path (default: stdout) |
+| `--out` |  | - | write output to this path (default: stdout) |
+| `--format` |  | `'json'` | output format: dashboard JSON (default) or a self-contained zero-JavaScript HTML report artifact (choices: `json`, `html`) |
+| `--data-source` |  | `'mock'` | banner the HTML report as official results or mock data (default: mock). A report must never present itself as official unless declared (choices: `mock`, `official`) |
 
 ### peira dashboard compare
 
