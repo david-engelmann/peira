@@ -6,7 +6,6 @@
     "column": "cr:column",
     "conformsTo": "dct:conformsTo",
     "cr": "http://mlcommons.org/croissant/",
-    "rai": "http://mlcommons.org/croissant/RAI/",
     "data": {
       "@id": "cr:data",
       "@type": "@json"
@@ -22,8 +21,8 @@
     },
     "extract": "cr:extract",
     "field": "cr:field",
-    "fileProperty": "cr:fileProperty",
     "fileObject": "cr:fileObject",
+    "fileProperty": "cr:fileProperty",
     "fileSet": "cr:fileSet",
     "format": "cr:format",
     "includes": "cr:includes",
@@ -33,6 +32,7 @@
     "md5": "cr:md5",
     "parentField": "cr:parentField",
     "path": "cr:path",
+    "rai": "http://mlcommons.org/croissant/RAI/",
     "recordSet": "cr:recordSet",
     "references": "cr:references",
     "regex": "cr:regex",
@@ -44,14 +44,9 @@
     "subField": "cr:subField",
     "transform": "cr:transform"
   },
-  "@type": "sc:Dataset",
   "@id": "peira-v1",
+  "@type": "sc:Dataset",
   "conformsTo": "http://mlcommons.org/croissant/1.0",
-  "name": "peira-v1",
-  "description": "peira-v1. Paired adversarial decision-model cases, dataset version 1.4.1.",
-  "version": "1.4.1",
-  "url": "https://github.com/david-engelmann/peira",
-  "license": "https://creativecommons.org/licenses/by/4.0/deed.en",
   "creator": [
     {
       "@type": "Person",
@@ -59,7 +54,100 @@
       "url": "https://github.com/david-engelmann/peira"
     }
   ],
-  "datePublished": "2026-10-01T00:55:56.646763+00:00",
+  "datePublished": "2026-10-01T20:15:49+00:00",
+  "description": "peira-v1. Paired adversarial decision-model cases, dataset version 1.4.2.",
+  "distribution": [
+    {
+      "@id": "peira-v1/confidence_spoofing.jsonl",
+      "@type": "cr:FileObject",
+      "contentUrl": "https://raw.githubusercontent.com/david-engelmann/peira/main/dataset/v1/cases/confidence_spoofing.jsonl",
+      "description": "200 paired adversarial decision cases (peira-v1 1.4.2).",
+      "encodingFormat": "application/x-ndjson",
+      "name": "confidence_spoofing.jsonl",
+      "sha256": "8767255c30847856e7984069c098b78c7548859d99535e7472f7558909a0d556"
+    },
+    {
+      "@id": "peira-v1/criteria_smuggling.jsonl",
+      "@type": "cr:FileObject",
+      "contentUrl": "https://raw.githubusercontent.com/david-engelmann/peira/main/dataset/v1/cases/criteria_smuggling.jsonl",
+      "description": "200 paired adversarial decision cases (peira-v1 1.4.2).",
+      "encodingFormat": "application/x-ndjson",
+      "name": "criteria_smuggling.jsonl",
+      "sha256": "f4012adf9d7e0d3601b0230d5221ef34898e6ee9adf509903670ad31b1cae0e5"
+    },
+    {
+      "@id": "peira-v1/distractor_flooding.jsonl",
+      "@type": "cr:FileObject",
+      "contentUrl": "https://raw.githubusercontent.com/david-engelmann/peira/main/dataset/v1/cases/distractor_flooding.jsonl",
+      "description": "200 paired adversarial decision cases (peira-v1 1.4.2).",
+      "encodingFormat": "application/x-ndjson",
+      "name": "distractor_flooding.jsonl",
+      "sha256": "026f6a618ac430b8fad8fee6e4dc19c848b00102f3675dae42728415af8fbcb9"
+    },
+    {
+      "@id": "peira-v1/indirection.jsonl",
+      "@type": "cr:FileObject",
+      "contentUrl": "https://raw.githubusercontent.com/david-engelmann/peira/main/dataset/v1/cases/indirection.jsonl",
+      "description": "200 paired adversarial decision cases (peira-v1 1.4.2).",
+      "encodingFormat": "application/x-ndjson",
+      "name": "indirection.jsonl",
+      "sha256": "33b7631e05493b53105f5f236e9d39318c0d787bad9bbbb12abf32d0bcd343f0"
+    },
+    {
+      "@id": "peira-v1/literal_reading.jsonl",
+      "@type": "cr:FileObject",
+      "contentUrl": "https://raw.githubusercontent.com/david-engelmann/peira/main/dataset/v1/cases/literal_reading.jsonl",
+      "description": "200 paired adversarial decision cases (peira-v1 1.4.2).",
+      "encodingFormat": "application/x-ndjson",
+      "name": "literal_reading.jsonl",
+      "sha256": "4370f6afe93b8b46027edc12d16a0404c3190d08565f018ec36289e9036b87d4"
+    },
+    {
+      "@id": "peira-v1/negation_games.jsonl",
+      "@type": "cr:FileObject",
+      "contentUrl": "https://raw.githubusercontent.com/david-engelmann/peira/main/dataset/v1/cases/negation_games.jsonl",
+      "description": "200 paired adversarial decision cases (peira-v1 1.4.2).",
+      "encodingFormat": "application/x-ndjson",
+      "name": "negation_games.jsonl",
+      "sha256": "2f30e7e797e582e71f0f8392c2f37eb347faeb79f32eef13a3843d50113a8cae"
+    },
+    {
+      "@id": "peira-v1/option_order.jsonl",
+      "@type": "cr:FileObject",
+      "contentUrl": "https://raw.githubusercontent.com/david-engelmann/peira/main/dataset/v1/cases/option_order.jsonl",
+      "description": "200 paired adversarial decision cases (peira-v1 1.4.2).",
+      "encodingFormat": "application/x-ndjson",
+      "name": "option_order.jsonl",
+      "sha256": "43bbb94e5d9fa221816d6ec1cc5c5a36150d7a53bb5605dc61888803f04ad881"
+    },
+    {
+      "@id": "peira-v1/policy_paraphrase.jsonl",
+      "@type": "cr:FileObject",
+      "contentUrl": "https://raw.githubusercontent.com/david-engelmann/peira/main/dataset/v1/cases/policy_paraphrase.jsonl",
+      "description": "200 paired adversarial decision cases (peira-v1 1.4.2).",
+      "encodingFormat": "application/x-ndjson",
+      "name": "policy_paraphrase.jsonl",
+      "sha256": "2c60130b8cf1e34316d63e19b7e0835f1c4e67ae79803486b5b4c1df7dce646f"
+    },
+    {
+      "@id": "peira-v1/score_anchoring.jsonl",
+      "@type": "cr:FileObject",
+      "contentUrl": "https://raw.githubusercontent.com/david-engelmann/peira/main/dataset/v1/cases/score_anchoring.jsonl",
+      "description": "200 paired adversarial decision cases (peira-v1 1.4.2).",
+      "encodingFormat": "application/x-ndjson",
+      "name": "score_anchoring.jsonl",
+      "sha256": "8516e7c23407c325997f76b0bcec794e28dd9e93282dc079c9903e03693d1849"
+    },
+    {
+      "@id": "peira-v1/state_poisoning.jsonl",
+      "@type": "cr:FileObject",
+      "contentUrl": "https://raw.githubusercontent.com/david-engelmann/peira/main/dataset/v1/cases/state_poisoning.jsonl",
+      "description": "200 paired adversarial decision cases (peira-v1 1.4.2).",
+      "encodingFormat": "application/x-ndjson",
+      "name": "state_poisoning.jsonl",
+      "sha256": "491ee92b644b8028cf867f34194ae8f605d8d8396f3debe8f26baa7482f5765f"
+    }
+  ],
   "keywords": [
     "adversarial robustness",
     "decision models",
@@ -67,190 +155,102 @@
     "AI safety",
     "jailbreak"
   ],
-  "distribution": [
-    {
-      "@type": "cr:FileObject",
-      "@id": "peira-v1/confidence_spoofing.jsonl",
-      "name": "confidence_spoofing.jsonl",
-      "description": "200 paired adversarial decision cases (peira-v1 1.4.1).",
-      "encodingFormat": "application/x-ndjson",
-      "sha256": "8767255c30847856e7984069c098b78c7548859d99535e7472f7558909a0d556",
-      "contentUrl": "https://raw.githubusercontent.com/david-engelmann/peira/main/dataset/v1/cases/confidence_spoofing.jsonl"
-    },
-    {
-      "@type": "cr:FileObject",
-      "@id": "peira-v1/criteria_smuggling.jsonl",
-      "name": "criteria_smuggling.jsonl",
-      "description": "200 paired adversarial decision cases (peira-v1 1.4.1).",
-      "encodingFormat": "application/x-ndjson",
-      "sha256": "f4012adf9d7e0d3601b0230d5221ef34898e6ee9adf509903670ad31b1cae0e5",
-      "contentUrl": "https://raw.githubusercontent.com/david-engelmann/peira/main/dataset/v1/cases/criteria_smuggling.jsonl"
-    },
-    {
-      "@type": "cr:FileObject",
-      "@id": "peira-v1/distractor_flooding.jsonl",
-      "name": "distractor_flooding.jsonl",
-      "description": "200 paired adversarial decision cases (peira-v1 1.4.1).",
-      "encodingFormat": "application/x-ndjson",
-      "sha256": "c8e884371d987913b02ecbbce9d2c3f17760c7a2b90afb8fde214c833c6710ee",
-      "contentUrl": "https://raw.githubusercontent.com/david-engelmann/peira/main/dataset/v1/cases/distractor_flooding.jsonl"
-    },
-    {
-      "@type": "cr:FileObject",
-      "@id": "peira-v1/indirection.jsonl",
-      "name": "indirection.jsonl",
-      "description": "200 paired adversarial decision cases (peira-v1 1.4.1).",
-      "encodingFormat": "application/x-ndjson",
-      "sha256": "5887cddecde1305822e9d7d9b24202bdc79746d6c8fbdae86d76ea7887230c5f",
-      "contentUrl": "https://raw.githubusercontent.com/david-engelmann/peira/main/dataset/v1/cases/indirection.jsonl"
-    },
-    {
-      "@type": "cr:FileObject",
-      "@id": "peira-v1/literal_reading.jsonl",
-      "name": "literal_reading.jsonl",
-      "description": "200 paired adversarial decision cases (peira-v1 1.4.1).",
-      "encodingFormat": "application/x-ndjson",
-      "sha256": "4370f6afe93b8b46027edc12d16a0404c3190d08565f018ec36289e9036b87d4",
-      "contentUrl": "https://raw.githubusercontent.com/david-engelmann/peira/main/dataset/v1/cases/literal_reading.jsonl"
-    },
-    {
-      "@type": "cr:FileObject",
-      "@id": "peira-v1/negation_games.jsonl",
-      "name": "negation_games.jsonl",
-      "description": "200 paired adversarial decision cases (peira-v1 1.4.1).",
-      "encodingFormat": "application/x-ndjson",
-      "sha256": "a34a156ab9dfe15ea4038595399efc608fc07486283418d96b2b670989f86665",
-      "contentUrl": "https://raw.githubusercontent.com/david-engelmann/peira/main/dataset/v1/cases/negation_games.jsonl"
-    },
-    {
-      "@type": "cr:FileObject",
-      "@id": "peira-v1/option_order.jsonl",
-      "name": "option_order.jsonl",
-      "description": "200 paired adversarial decision cases (peira-v1 1.4.1).",
-      "encodingFormat": "application/x-ndjson",
-      "sha256": "43bbb94e5d9fa221816d6ec1cc5c5a36150d7a53bb5605dc61888803f04ad881",
-      "contentUrl": "https://raw.githubusercontent.com/david-engelmann/peira/main/dataset/v1/cases/option_order.jsonl"
-    },
-    {
-      "@type": "cr:FileObject",
-      "@id": "peira-v1/policy_paraphrase.jsonl",
-      "name": "policy_paraphrase.jsonl",
-      "description": "200 paired adversarial decision cases (peira-v1 1.4.1).",
-      "encodingFormat": "application/x-ndjson",
-      "sha256": "2c60130b8cf1e34316d63e19b7e0835f1c4e67ae79803486b5b4c1df7dce646f",
-      "contentUrl": "https://raw.githubusercontent.com/david-engelmann/peira/main/dataset/v1/cases/policy_paraphrase.jsonl"
-    },
-    {
-      "@type": "cr:FileObject",
-      "@id": "peira-v1/score_anchoring.jsonl",
-      "name": "score_anchoring.jsonl",
-      "description": "200 paired adversarial decision cases (peira-v1 1.4.1).",
-      "encodingFormat": "application/x-ndjson",
-      "sha256": "8516e7c23407c325997f76b0bcec794e28dd9e93282dc079c9903e03693d1849",
-      "contentUrl": "https://raw.githubusercontent.com/david-engelmann/peira/main/dataset/v1/cases/score_anchoring.jsonl"
-    },
-    {
-      "@type": "cr:FileObject",
-      "@id": "peira-v1/state_poisoning.jsonl",
-      "name": "state_poisoning.jsonl",
-      "description": "200 paired adversarial decision cases (peira-v1 1.4.1).",
-      "encodingFormat": "application/x-ndjson",
-      "sha256": "491ee92b644b8028cf867f34194ae8f605d8d8396f3debe8f26baa7482f5765f",
-      "contentUrl": "https://raw.githubusercontent.com/david-engelmann/peira/main/dataset/v1/cases/state_poisoning.jsonl"
-    }
-  ],
+  "license": "https://creativecommons.org/licenses/by/4.0/deed.en",
+  "name": "peira-v1",
   "recordSet": [
     {
-      "@type": "cr:RecordSet",
       "@id": "peira-v1/paired_cases",
-      "name": "paired_cases",
+      "@type": "cr:RecordSet",
       "description": "One record per line of each JSONL distribution file. Each line is a benign decision variant paired with its attacked variant.",
       "field": [
         {
-          "@type": "cr:Field",
           "@id": "peira-v1/paired_cases/case_id",
-          "name": "case_id",
+          "@type": "cr:Field",
+          "dataType": "sc:Text",
           "description": "Stable case identifier, e.g. v1-spo-001.",
-          "dataType": "sc:Text"
+          "name": "case_id"
         },
         {
-          "@type": "cr:Field",
           "@id": "peira-v1/paired_cases/family",
-          "name": "family",
+          "@type": "cr:Field",
+          "dataType": "sc:Text",
           "description": "Attack family id from the peira taxonomy.",
-          "dataType": "sc:Text"
+          "name": "family"
         },
         {
-          "@type": "cr:Field",
           "@id": "peira-v1/paired_cases/primitive",
-          "name": "primitive",
+          "@type": "cr:Field",
+          "dataType": "sc:Text",
           "description": "Decision primitive, either choice, score, or abstain.",
-          "dataType": "sc:Text"
+          "name": "primitive"
         },
         {
-          "@type": "cr:Field",
           "@id": "peira-v1/paired_cases/severity",
-          "name": "severity",
+          "@type": "cr:Field",
+          "dataType": "sc:Text",
           "description": "Consequence-based severity, either critical, high, medium, or low.",
-          "dataType": "sc:Text"
+          "name": "severity"
         },
         {
-          "@type": "cr:Field",
           "@id": "peira-v1/paired_cases/benign.input.prompt",
-          "name": "benign.input.prompt",
+          "@type": "cr:Field",
+          "dataType": "sc:Text",
           "description": "The unattacked decision prompt.",
-          "dataType": "sc:Text"
+          "name": "benign.input.prompt"
         },
         {
-          "@type": "cr:Field",
           "@id": "peira-v1/paired_cases/benign.input.options",
-          "name": "benign.input.options",
+          "@type": "cr:Field",
+          "dataType": "sc:Text",
           "description": "The explicit decision vocabulary.",
-          "dataType": "sc:Text"
+          "name": "benign.input.options"
         },
         {
-          "@type": "cr:Field",
           "@id": "peira-v1/paired_cases/benign.expected_decision",
-          "name": "benign.expected_decision",
+          "@type": "cr:Field",
+          "dataType": "sc:Text",
           "description": "Gold decision on the benign variant.",
-          "dataType": "sc:Text"
+          "name": "benign.expected_decision"
         },
         {
-          "@type": "cr:Field",
           "@id": "peira-v1/paired_cases/attacked.input.prompt",
-          "name": "attacked.input.prompt",
+          "@type": "cr:Field",
+          "dataType": "sc:Text",
           "description": "The attacked decision prompt.",
-          "dataType": "sc:Text"
+          "name": "attacked.input.prompt"
         },
         {
-          "@type": "cr:Field",
           "@id": "peira-v1/paired_cases/attacked.target_decision",
-          "name": "attacked.target_decision",
+          "@type": "cr:Field",
+          "dataType": "sc:Text",
           "description": "Decision the attacker tries to induce, or null when the attack only tries to change the decision.",
-          "dataType": "sc:Text"
+          "name": "attacked.target_decision"
         },
         {
-          "@type": "cr:Field",
           "@id": "peira-v1/paired_cases/provenance",
-          "name": "provenance",
+          "@type": "cr:Field",
+          "dataType": "sc:Thing",
           "description": "Optional PROV-style object with generated_by, generated_at, was_derived_from, and was_attributed_to.",
-          "dataType": "sc:Thing"
+          "name": "provenance"
         },
         {
-          "@type": "cr:Field",
           "@id": "peira-v1/paired_cases/evaluation_only",
-          "name": "evaluation_only",
+          "@type": "cr:Field",
+          "dataType": "sc:Boolean",
           "description": "True. Benchmark data, never train on it.",
-          "dataType": "sc:Boolean"
+          "name": "evaluation_only"
         },
         {
-          "@type": "cr:Field",
           "@id": "peira-v1/paired_cases/do_not_train",
-          "name": "do_not_train",
+          "@type": "cr:Field",
+          "dataType": "sc:Boolean",
           "description": "True. Exclude from training corpora.",
-          "dataType": "sc:Boolean"
+          "name": "do_not_train"
         }
-      ]
+      ],
+      "name": "paired_cases"
     }
-  ]
+  ],
+  "url": "https://github.com/david-engelmann/peira",
+  "version": "1.4.2"
 }

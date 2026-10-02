@@ -1,8 +1,83 @@
 {
   "$schema_id": "https://peiratrial.dev/schemas/dataset-changelog-1.json",
   "dataset": "peira-v1",
-  "dataset_version": "1.4.1",
+  "dataset_version": "1.4.2",
   "entries": [
+    {
+      "case_ids": [],
+      "dataset_version": "1.4.2",
+      "date": "2026-10-01",
+      "description": "Re-seal at 1.4.2 on top of main's 1.4.1. This branch sealed its own 1.4.1 (A4 repair: R-1 re-application, R-3 re-adjudication, R-2 tier-word refresh) while main landed a separate 1.4.1 (v1-csm-134 PII hygiene fix). Rebased onto current main; aggregate, manifest, and croissant sidecar regenerated from the merged family files at 1.4.2. No case content changed by this entry.",
+      "diff_summary": "generated files only (cases.jsonl, manifest.json, croissant.json). Family files byte-identical to the merged tree.",
+      "rationale": "Version collision: two independent 1.4.1 seals with different content. Re-seal at the next patch version.",
+      "type": "fix"
+    },
+    {
+      "case_ids": [
+        "v1-dfl-116",
+        "v1-ngm-128",
+        "v1-ind-052",
+        "v1-ind-098",
+        "v1-ind-151"
+      ],
+      "dataset_version": "1.4.1",
+      "date": "2026-10-01",
+      "description": "A4 repair lane: re-apply the five #230 fixes (D-36 defect classes 2/4) silently reverted by #205's R-10 rebase. Scale wording in v1-dfl-116 and v1-ngm-128 ('0 to 100' -> '0 to 1', '70-plus' -> '0.70-plus', both arms); stale 'High:' notes -> 'Critical:' for v1-ind-052, v1-ind-098, v1-ind-151. Post-#280 severities preserved (v1-dfl-116 stays high per Sweep A).",
+      "diff_summary": "v1-dfl-116: prompts 'Essays are scored 0 to 100' -> '0 to 1', '70 or higher' -> '0.70 or higher', 'below 70' -> 'below 0.70' (both arms); v1-ngm-128: 'from 0 to 100' -> 'from 0 to 1', 'award at 70-plus' -> 'award at 0.70-plus' (both arms); 3 indirection notes: 'High: <substrate>.' -> 'Critical: <substrate>.'. Golds and severities unchanged.",
+      "rationale": "R-1 of the second A4 review (2026-10-01): fourth stale-branch silent clobber in the #197/#229/#205 sequence. Mechanical re-application of 83f6232a's case content.",
+      "type": "fix"
+    },
+    {
+      "case_ids": [
+        "v1-ind-112",
+        "v1-ind-240",
+        "v1-ind-003",
+        "v1-ind-094",
+        "v1-ind-101",
+        "v1-ind-123",
+        "v1-ind-182",
+        "v1-ind-217"
+      ],
+      "dataset_version": "1.4.1",
+      "date": "2026-10-01",
+      "description": "A4 repair lane: re-adjudicate 8 of the 15 FSA fictional-framing indirection cases (R-3). Sweep A had downgraded all 15 to low reasoning fictional framing is 'clearly inconsequential'; per docs/Severity-Rubric.md severity grades the decision assuming the attacked decision is taken and acted on, and fictional framing is not a toy-scenario criterion. Re-derived: 3 critical (v1-ind-112, v1-ind-240, v1-ind-003), 4 high (v1-ind-094, v1-ind-101, v1-ind-123, v1-ind-182), 1 medium (v1-ind-217). 7 remain low (independently confirmed).",
+      "diff_summary": "severity field only: 8 cases low -> critical/high/medium. Prompts, golds, notes unchanged except v1-ind-217's tier-word sentence refreshed to 'Medium:' and a critical-justification sentence added to v1-ind-003's notes.",
+      "rationale": "R-3 of the second A4 review (2026-10-01): systematic severity mis-grade; 15 cases at low distorted the low tier (29 cases) and understated safety-substrate risk.",
+      "type": "annotate"
+    },
+    {
+      "case_ids": [
+        "v1-ind-011",
+        "v1-ind-013",
+        "v1-ind-026",
+        "v1-ind-030",
+        "v1-ind-041",
+        "v1-ind-082",
+        "v1-ind-085",
+        "v1-ind-105",
+        "v1-ind-108",
+        "v1-ind-117",
+        "v1-ind-120",
+        "v1-ind-136",
+        "v1-ind-143",
+        "v1-ind-150",
+        "v1-ind-158",
+        "v1-ind-162",
+        "v1-ind-187",
+        "v1-ind-192",
+        "v1-ind-200",
+        "v1-ind-208",
+        "v1-ind-217",
+        "v1-ind-224",
+        "v1-ind-228"
+      ],
+      "dataset_version": "1.4.1",
+      "date": "2026-10-01",
+      "description": "A4 repair lane: refresh 23 stale tier-word severity sentences in indirection notes (R-2). #280's refresh_notes matched only 'Severity <old>:' and 'Severity: <old> -' patterns and missed the family's bare '<Tier>:' sentence style. 21 -> 'Critical:', 2 -> 'Medium:'. Zero tier-word/severity mismatches corpus-wide afterward; new scripts/check_notes_tier_words.py gate asserts this class cannot recur.",
+      "diff_summary": "notes field only: '<OldTier>: <substrate>.' -> '<NewTier>: <substrate>.' in 23 cases. Prompts, golds, severities unchanged.",
+      "rationale": "R-2 of the second A4 review (2026-10-01): presentational consistency; notes must not contradict the adjudicated tier.",
+      "type": "fix"
+    },
     {
       "type": "annotate",
       "dataset_version": "1.4.0",
@@ -5215,6 +5290,31 @@
         }
       },
       "rationale": "S-1 Rule 3 (Sweep A): replacements for 5 retired class-1/6 cases. New IDs are max+1 per prefix; retired numbers never reused. Authority: s1/replacement_cases.json."
+    },
+    {
+      "case_ids": [
+        "v1-dfl-116",
+        "v1-ngm-128"
+      ],
+      "dataset_version": "1.2.1",
+      "date": "2026-09-30",
+      "description": "A4 second review: 2 presentational class-4 fixes (D-36). Scale wording in v1-dfl-116 and v1-ngm-128 ('0 to 100' -> '0 to 1', spaced variant missed by 1.1.1 and S-1).",
+      "diff_summary": "v1-dfl-116: 'Essays are scored 0 to 100' -> 'Essays are scored 0 to 1', 'A score of 70 or higher' -> 'A score of 0.70 or higher', 'below 70' -> 'below 0.70' (both arms); v1-ngm-128: 'from 0 to 100' -> 'from 0 to 1', 'award at 70-plus' -> 'award at 0.70-plus' (both arms).",
+      "rationale": "D-36 defect class 4, presentational. Scale wording aligned to the 0-1 reference convention (#175 pattern, v1-dfl-086 precedent). Correct answers unchanged in both.",
+      "type": "fix"
+    },
+    {
+      "case_ids": [
+        "v1-ind-052",
+        "v1-ind-098",
+        "v1-ind-151"
+      ],
+      "dataset_version": "1.2.1",
+      "date": "2026-09-30",
+      "description": "A4 second review: refresh stale 'High:' severity sentences in case notes to 'Critical:' for 3 cases upgraded high->critical by S-1 whose notes refresh was missed (v1-ind-052 found by A4; v1-ind-098 and v1-ind-151 found by a notes/severity consistency sweep).",
+      "diff_summary": "notes field only: 'High: <substrate>.' -> 'Critical: <substrate>.' in all three cases. Prompts, gold labels, and severities byte-identical.",
+      "rationale": "Presentational consistency: notes' Severity sentences must match the adjudicated tier (S-1 1.2.0 refresh precedent).",
+      "type": "fix"
     },
     {
       "case_ids": [
