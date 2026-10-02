@@ -17,6 +17,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Sequence
 
+from peira._rust import _impl as _rust
+
 
 @dataclass(frozen=True)
 class InvarianceReport:
@@ -27,6 +29,23 @@ class InvarianceReport:
     n_flips: int
     flip_rate: float  # n_flips / n_variants, in [0, 1]
     flipped_indices: tuple[int, ...]  # positions in variant_decisions
+
+
+def _invariance_report_py(
+    baseline_decision: str, variant_decisions: Sequence[str]
+) -> InvarianceReport:
+    """Reference implementation of :func:`invariance_report`."""
+    decisions = tuple(variant_decisions)
+    if not decisions:
+        raise ValueError("variant_decisions must be non-empty")
+    flipped = tuple(i for i, d in enumerate(decisions) if d != baseline_decision)
+    return InvarianceReport(
+        baseline=baseline_decision,
+        n_variants=len(decisions),
+        n_flips=len(flipped),
+        flip_rate=len(flipped) / len(decisions),
+        flipped_indices=flipped,
+    )
 
 
 def invariance_report(
@@ -43,14 +62,20 @@ def invariance_report(
         ValueError: if ``variant_decisions`` is empty. An empty variant
             set measures nothing; fail loudly instead of reporting 0.0.
     """
-    decisions = tuple(variant_decisions)
-    if not decisions:
-        raise ValueError("variant_decisions must be non-empty")
-    flipped = tuple(i for i, d in enumerate(decisions) if d != baseline_decision)
-    return InvarianceReport(
-        baseline=baseline_decision,
-        n_variants=len(decisions),
-        n_flips=len(flipped),
-        flip_rate=len(flipped) / len(decisions),
-        flipped_indices=flipped,
-    )
+    if _rust is not None and isinstance(baseline_decision, str) and isinstance(
+        variant_decisions, Sequence
+    ):
+        variants = tuple(variant_decisions)
+        if variants and all(isinstance(d, str) for d in variants):
+            try:
+                r = _rust.invariance_report(baseline_decision, list(variants))
+                return InvarianceReport(
+                    baseline=r["baseline"],
+                    n_variants=r["n_variants"],
+                    n_flips=r["n_flips"],
+                    flip_rate=r["flip_rate"],
+                    flipped_indices=tuple(r["flipped_indices"]),
+                )
+            except (TypeError, ValueError):
+                pass
+    return _invariance_report_py(baseline_decision, variant_decisions)

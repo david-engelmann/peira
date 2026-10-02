@@ -40,6 +40,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
+from peira._rust import _impl as _rust
+
 # Short codes for families used in combo pairs. The full family id is
 # recoverable via COMBO_PAIRS below; codes keep case ids readable.
 COMBO_PAIRS: dict[str, tuple[str, str]] = {
@@ -71,12 +73,8 @@ COMBO_HYPOTHESIS: dict[str, str] = {
 }
 
 
-def combo_pair_id(family_a: str, family_b: str) -> str:
-    """Return the canonical combo pair id for two family ids.
-
-    Families are ordered alphabetically so (A, B) and (B, A) map to the
-    same pair.
-    """
+def _combo_pair_id_py(family_a: str, family_b: str) -> str:
+    """Reference implementation of :func:`combo_pair_id`."""
     a, b = sorted((family_a, family_b))
     for pair_id, (fa, fb) in COMBO_PAIRS.items():
         if (fa, fb) == (a, b):
@@ -84,8 +82,19 @@ def combo_pair_id(family_a: str, family_b: str) -> str:
     raise KeyError(f"unknown combo pair: {family_a} x {family_b}")
 
 
-def combo_case_id(pair_id: str, substrate_idx: int, arm: str) -> str:
-    """Build the canonical case id for one arm of a substrate."""
+def combo_pair_id(family_a: str, family_b: str) -> str:
+    """Return the canonical combo pair id for two family ids.
+
+    Families are ordered alphabetically so (A, B) and (B, A) map to the
+    same pair.
+    """
+    if _rust is not None and isinstance(family_a, str) and isinstance(family_b, str):
+        return _rust.combo_pair_id(family_a, family_b)
+    return _combo_pair_id_py(family_a, family_b)
+
+
+def _combo_case_id_py(pair_id: str, substrate_idx: int, arm: str) -> str:
+    """Reference implementation of :func:`combo_case_id`."""
     if pair_id not in COMBO_PAIRS:
         raise KeyError(f"unknown combo pair id: {pair_id}")
     if arm not in COMBO_ARMS:
@@ -93,8 +102,26 @@ def combo_case_id(pair_id: str, substrate_idx: int, arm: str) -> str:
     return f"{pair_id}-{substrate_idx:04d}-{arm}"
 
 
-def parse_combo_case_id(case_id: str) -> tuple[str, int, str]:
-    """Split a combo case id into (pair_id, substrate_idx, arm)."""
+def combo_case_id(pair_id: str, substrate_idx: int, arm: str) -> str:
+    """Build the canonical case id for one arm of a substrate."""
+    if (
+        _rust is not None
+        and isinstance(pair_id, str)
+        and isinstance(arm, str)
+        and isinstance(substrate_idx, int)
+        and not isinstance(substrate_idx, bool)
+    ):
+        try:
+            return _rust.combo_case_id(pair_id, substrate_idx, arm)
+        except (OverflowError, TypeError, ValueError):
+            # Integers outside i64 range (the reference formats them
+            # fine): fall back to the pure-Python implementation.
+            pass
+    return _combo_case_id_py(pair_id, substrate_idx, arm)
+
+
+def _parse_combo_case_id_py(case_id: str) -> tuple[str, int, str]:
+    """Reference implementation of :func:`parse_combo_case_id`."""
     parts = case_id.rsplit("-", 2)
     if len(parts) != 3:
         raise ValueError(f"malformed combo case id: {case_id}")
@@ -108,6 +135,13 @@ def parse_combo_case_id(case_id: str) -> tuple[str, int, str]:
     except ValueError:
         raise ValueError(f"malformed substrate index in case id: {case_id}")
     return pair_id, idx, arm
+
+
+def parse_combo_case_id(case_id: str) -> tuple[str, int, str]:
+    """Split a combo case id into (pair_id, substrate_idx, arm)."""
+    if _rust is not None and isinstance(case_id, str):
+        return _rust.combo_parse_case_id(case_id)
+    return _parse_combo_case_id_py(case_id)
 
 
 @dataclass
@@ -150,8 +184,8 @@ class ComboCase:
         return d
 
 
-def validate_combo_dict(d: dict[str, Any]) -> list[str]:
-    """Validate one combo case dict. Returns a list of error strings."""
+def _validate_combo_dict_py(d: dict[str, Any]) -> list[str]:
+    """Reference implementation of :func:`validate_combo_dict`."""
     errors: list[str] = []
     for key in ("case_id", "family", "primitive", "severity", "benign",
                 "attacked", "combo_arm", "combo_substrate", "combo_pair",
@@ -206,6 +240,20 @@ def validate_combo_dict(d: dict[str, Any]) -> list[str]:
             errors.append("attacked missing target_decision")
 
     return errors
+
+
+def validate_combo_dict(d: dict[str, Any]) -> list[str]:
+    """Validate one combo case dict. Returns a list of error strings."""
+    if _rust is not None and isinstance(d, dict):
+        try:
+            return _rust.combo_validate_dict(d)
+        except (AttributeError, TypeError, ValueError):
+            # Structural-contract violation, or a non-JSON-shaped value
+            # (or an over-deep/lone-surrogate one) the converter
+            # rejects: the reference raises the natural exception or
+            # reports the errors itself.
+            pass
+    return _validate_combo_dict_py(d)
 
 
 def load_combo_cases(path: str) -> list[dict[str, Any]]:

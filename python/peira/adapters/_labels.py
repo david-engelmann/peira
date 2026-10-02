@@ -26,6 +26,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from peira._rust import _impl as _rust
+
 #: Placeholder decision for abstain-primitive adapters whose model
 #: answered "should I abstain?" with no. The model never emitted a
 #: decision label, so the placeholder must not be gold-derived — and
@@ -34,16 +36,10 @@ from typing import Any
 NON_ABSTAIN_PLACEHOLDER = "other"
 
 
-def candidate_labels(
+def _candidate_labels_py(
     case_input: dict[str, Any], primitive: str
 ) -> list[str]:
-    """Sorted, deduplicated candidate labels from the input's options.
-
-    ``case_input["options"]`` is the case's explicit, non-empty option
-    list (required by the v1 case schema on both arms). Non-string or
-    empty entries are ignored defensively; the schema guarantees they
-    never occur in real cases.
-    """
+    """Reference implementation of :func:`candidate_labels`."""
     options = case_input.get("options")
     labels: set[str] = set()
     if isinstance(options, list):
@@ -56,6 +52,29 @@ def candidate_labels(
     return sorted(labels)
 
 
+def candidate_labels(
+    case_input: dict[str, Any], primitive: str
+) -> list[str]:
+    """Sorted, deduplicated candidate labels from the input's options.
+
+    ``case_input["options"]`` is the case's explicit, non-empty option
+    list (required by the v1 case schema on both arms). Non-string or
+    empty entries are ignored defensively; the schema guarantees they
+    never occur in real cases.
+    """
+    if _rust is not None and isinstance(case_input, dict):
+        try:
+            return _rust.labels_candidate_labels(case_input, primitive)
+        except (TypeError, ValueError):
+            pass
+    return _candidate_labels_py(case_input, primitive)
+
+
+def _non_abstain_placeholder_py() -> str:
+    """Reference implementation of :func:`non_abstain_placeholder`."""
+    return NON_ABSTAIN_PLACEHOLDER
+
+
 def non_abstain_placeholder() -> str:
     """The decision placeholder when an abstain-primitive call does not
     abstain.
@@ -66,4 +85,6 @@ def non_abstain_placeholder() -> str:
     decision-shaped output was produced. Flip detection uses the
     ``abstained`` flag.
     """
-    return NON_ABSTAIN_PLACEHOLDER
+    if _rust is not None:
+        return _rust.labels_non_abstain_placeholder()
+    return _non_abstain_placeholder_py()
