@@ -29,9 +29,9 @@ REPO_VERSION = "0.0.0"
 #
 # NB: the Rust crates under crates/ are deliberately NOT stamped. They build
 # the peira._core native extension, not the peira PyPI package, and are
-# versioned independently (like the dataset). If a future build backend
-# (e.g. maturin) needs the crate version to track releases, that is a
-# deliberate decision for that lane, not something to guess at here.
+# versioned independently (like the dataset). If the build backend ever needs
+# the crate version to track releases, that is a deliberate decision for
+# that lane, not something to guess at here.
 #
 # STAMP_TARGETS is public: scripts/release/preflight.py derives the
 # tag-is-version gate from the same list, so the gate and the stamper can
