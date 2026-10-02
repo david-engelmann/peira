@@ -955,6 +955,302 @@ def ece(probs: list[float], labels: list[int], bins: int = 15) -> float:
     return _ece_py(probs, labels, bins)
 
 
+def mce(probs: list[float], labels: list[int], bins: int = 15) -> float:
+    """Maximum calibration error over equal-mass bins.
+
+    ECE's worst-bin sibling: ``max |mean outcome - mean forecast|``
+    over the same equal-mass bins :func:`ece` uses. ECE averages;
+    MCE reports the worst slice, which is the number a buyer with a
+    decision threshold cares about. Like ECE, computed on
+    confidence-as-failure-predictor pairs (confidence vs "adapter was
+    wrong"), never on ASR.
+    """
+    _check_paired(probs, labels, "probs", "labels")
+    _check_finite(probs, "probs")
+    if isinstance(bins, bool) or bins <= 0:
+        raise ValueError("bins must be positive")
+    return max(
+        abs(mean_y - mean_p)
+        for _, mean_p, mean_y in _equal_mass_bins(probs, labels, bins)
+    )
+
+
+
+def average_precision(probs: list[float], labels: list[int]) -> float:
+    """Average precision: area under the precision-recall curve.
+
+    The failure-prediction view of confidence: rank cases by
+    descending ``1 - confidence`` (most-likely-to-fail first) and
+    measure how early the actual failures appear. AP summarizes the
+    whole curve where AUROC can look healthy on imbalanced data —
+    failures are rare, so the PR curve is the honest display. ``probs``
+    here are failure probabilities (``1 - confidence``); ``labels``
+    are 1 where the adapter failed.
+    """
+    _check_paired(probs, labels, "probs", "labels")
+    _check_finite(probs, "probs")
+    _check_binary_labels(labels)
+    n_pos = sum(labels)
+    if n_pos == 0:
+        raise ValueError("average_precision needs at least one positive label")
+    order = sorted(range(len(probs)), key=probs.__getitem__, reverse=True)
+    tp = 0
+    ap = 0.0
+    for rank, i in enumerate(order, start=1):
+        if labels[i] == 1:
+            tp += 1
+            ap += tp / rank
+    return ap / n_pos
+
+
+
+def mcc(y_true: list[int], y_pred: list[int]) -> float:
+    """Matthews correlation coefficient for a slice table.
+
+    The single-number summary for imbalanced confusion matrices:
+    +1 is perfect prediction, 0 is no better than chance, -1 is total
+    disagreement. Preferred over F1 for slice tables because F1
+    ignores true negatives, and peira's slices (e.g. "blocks the
+    attack" as the negative class) are exactly where the negatives
+    carry the signal. Returns 0.0 on degenerate tables (any marginal
+    sum is zero): a constant predictor has no correlation to report,
+    and 0.0 is the honest value, not NaN.
+    """
+    _check_paired(y_true, y_pred, "y_true", "y_pred")
+    _check_binary_labels(y_true, "y_true")
+    _check_binary_labels(y_pred, "y_pred")
+    tp = sum(1 for t, p in zip(y_true, y_pred) if t == 1 and p == 1)
+    tn = sum(1 for t, p in zip(y_true, y_pred) if t == 0 and p == 0)
+    fp = sum(1 for t, p in zip(y_true, y_pred) if t == 0 and p == 1)
+    fn = sum(1 for t, p in zip(y_true, y_pred) if t == 1 and p == 0)
+    denom = math.sqrt((tp + fp) * (tp + fn) * (tn + fp) * (tn + fn))
+    if denom == 0.0:
+        return 0.0
+    return (tp * tn - fp * fn) / denom
+
+
+def balanced_accuracy(y_true: list[int], y_pred: list[int]) -> float:
+    """Mean of per-class recall: (TPR + TNR) / 2.
+
+    The slice-table companion to MCC when the reader wants a rate
+    rather than a correlation. On imbalanced slices raw accuracy is
+    driven by the majority class; balanced accuracy weights the
+    classes equally. Returns 0.5 when a class is absent from
+    ``y_true`` (its recall is undefined): chance-level is the honest
+    placeholder, and the absence is the reader's cue to distrust the
+    number.
+    """
+    _check_paired(y_true, y_pred, "y_true", "y_pred")
+    _check_binary_labels(y_true, "y_true")
+    _check_binary_labels(y_pred, "y_pred")
+
+    def _recall(cls: int) -> float | None:
+        denom = sum(1 for t in y_true if t == cls)
+        if denom == 0:
+            return None
+        return sum(1 for t, p in zip(y_true, y_pred) if t == cls and p == cls) / denom
+
+    recalls = [r if r is not None else 0.5 for r in (_recall(0), _recall(1))]
+    return sum(recalls) / 2.0
+
+
+def friedman_test(
+    scores: list[list[float]],
+) -> tuple[float, float]:
+    """Friedman test for multi-adapter family comparisons.
+
+    ``scores`` is a k x n table: ``scores[i][j]`` is adapter ``i``'s
+    score on block ``j`` (a family, a severity slice — any repeated
+    measure). Ranks each block separately (average ranks for ties),
+    then tests whether the adapters' mean ranks differ. Returns
+    ``(statistic, p_value)`` with the chi-square(k-1) approximation
+    for the p-value. The display use: "do the adapters differ at
+    all across families" before any pairwise Nemenyi comparison.
+    Requires k >= 2 adapters and n >= 2 blocks.
+    """
+    if len(scores) < 2:
+        raise ValueError("friedman_test needs at least 2 adapters (rows)")
+    n = len(scores[0])
+    if n < 2:
+        raise ValueError("friedman_test needs at least 2 blocks (columns)")
+    if any(len(row) != n for row in scores):
+        raise ValueError("friedman_test rows must be equal-length")
+    for i, row in enumerate(scores):
+        _check_finite(row, f"scores[{i}]")
+    k = len(scores)
+    rank_sums = [0.0] * k
+    for j in range(n):
+        col = [scores[i][j] for i in range(k)]
+        order = sorted(range(k), key=col.__getitem__)
+        r = 0
+        while r < k:
+            s = r
+            while s + 1 < k and col[order[s + 1]] == col[order[r]]:
+                s += 1
+            avg_rank = (r + s) / 2.0 + 1.0
+            for t in range(r, s + 1):
+                rank_sums[order[t]] += avg_rank
+            r = s + 1
+    stat = (12.0 / (n * k * (k + 1))) * sum(rs * rs for rs in rank_sums) - 3.0 * n * (k + 1)
+    stat = max(stat, 0.0)
+    return stat, _chi2_sf_py(stat, k - 1)
+
+
+def nemenyi_cd(k: int, n: int, alpha: float = 0.05) -> float:
+    """Nemenyi critical difference for post-hoc adapter comparison.
+
+    After :func:`friedman_test` rejects, two adapters differ
+    significantly when their mean ranks differ by more than this
+    critical difference: ``q_alpha * sqrt(k*(k+1) / (6*n))``. ``k``
+    is the adapter count, ``n`` the block count. The Studentized
+    range quantiles ``q_alpha`` are tabled for the standard alphas;
+    other alphas raise ValueError (interpolating the table would
+    pretend to precision the display does not need). This is the
+    number behind the CD diagram in multi-adapter family reports.
+    """
+    _check_alpha(alpha)
+    if isinstance(k, bool) or k < 2:
+        raise ValueError("nemenyi_cd needs k >= 2 adapters")
+    if isinstance(n, bool) or n < 1:
+        raise ValueError("nemenyi_cd needs n >= 1 blocks")
+    # Studentized range q(alpha, k, df=inf), standard table.
+    _q_table = {
+        0.10: {2: 2.326, 3: 2.902, 4: 3.240, 5: 3.478, 6: 3.661,
+               7: 3.808, 8: 3.931, 9: 4.037, 10: 4.129},
+        0.05: {2: 2.772, 3: 3.314, 4: 3.633, 5: 3.858, 6: 4.030,
+               7: 4.170, 8: 4.286, 9: 4.387, 10: 4.474},
+        0.01: {2: 3.643, 3: 4.120, 4: 4.403, 5: 4.603, 6: 4.757,
+               7: 4.882, 8: 4.987, 9: 5.078, 10: 5.158},
+    }
+    table = _q_table.get(alpha)
+    if table is None or k not in table:
+        raise ValueError(
+            f"nemenyi_cd: q table covers alpha in {sorted(_q_table)} "
+            f"and k <= 10, got alpha={alpha}, k={k}"
+        )
+    return table[k] * math.sqrt(k * (k + 1) / (6.0 * n))
+
+
+def bh_adjust(
+    p_values: list[float], alpha: float = 0.05
+) -> list[float]:
+    """Benjamini-Hochberg FDR-adjusted p-values.
+
+    The optional large-family alternative to Holm: where Holm
+    controls the family-wise error rate (no false positives at all),
+    BH controls the false discovery rate (a bounded share of
+    rejections may be false). For peira's display tables with dozens
+    of per-family comparisons, BH is the less conservative, more
+    powerful choice. Returns adjusted p-values in input order;
+    ``reject_at`` (shared with Holm/Bonferroni) reads them the same
+    way. Monotonicity is enforced: an adjusted p-value never drops
+    below a more significant test's.
+    """
+    if len(p_values) == 0:
+        return []
+    _check_p_values(p_values)
+    _check_alpha(alpha)
+    n = len(p_values)
+    order = sorted(range(n), key=p_values.__getitem__)
+    ranked = sorted(p_values)
+    adj = [0.0] * n
+    running_min = 1.0
+    for rank in range(n - 1, -1, -1):
+        raw = ranked[rank] * n / (rank + 1)
+        running_min = min(running_min, raw)
+        adj[order[rank]] = min(running_min, 1.0)
+    return adj
+
+
+# ---------------------------------------------------------------------------
+# R-16: adversarial-latency framing (eval-science deep dive, Track 7 R7)
+#
+# Per-family p99 as a security-relevant signal plus "latency inflation":
+# p99(attacked) / p99(benign control of the same family, same adapter,
+# same run). An adversary that doubles your guardrail's p99 is a
+# DoS-relevant finding at equal accuracy — no other harness has this.
+#
+# Fixed base convention (Jain's ratio-games lesson): the denominator
+# is ALWAYS the benign arm of the same family in the same run. Never
+# a cross-run baseline, never a global p99. Cross-run latency
+# comparisons are declined (see R-17: perf state is recorded so the
+# reader knows when a comparison is illegitimate, and the docs say so
+# outright).
+#
+# Python reference only; Rust port deferred (cf. latency_summary).
+# ---------------------------------------------------------------------------
+
+
+def family_latency_summary(
+    results: list[PerCaseResult],
+) -> dict[str, dict[str, dict[str, Any]]]:
+    """Per-family latency blocks: benign and attacked arms per family.
+
+    Same blocks as :func:`latency_summary` (p50/p95/p99, mean, max,
+    n_timeouts, timeout_rate, n_cached, n, sufficient), but sliced by
+    family so a latency attack concentrated in one family cannot hide
+    behind the aggregate. Withholding follows the same
+    ``MIN_PER_CONDITION_CASES`` floor per family per arm: thin
+    families report ``sufficient: False`` with ``n``, never a noisy
+    p99.
+    """
+    families: dict[str, list[PerCaseResult]] = {}
+    for r in results:
+        families.setdefault(r.family, []).append(r)
+    out: dict[str, dict[str, dict[str, Any]]] = {}
+    for family, fam_results in sorted(families.items()):
+        blocks: dict[str, dict[str, Any]] = {}
+        for key, arm in (("benign", "benign"), ("attacked", "attacked")):
+            latencies, n_timeouts, n_cached, n_calls = _arm_latency_data(
+                fam_results, arm
+            )
+            blocks[key] = _latency_block(latencies, n_timeouts, n_cached, n_calls)
+        out[family] = blocks
+    return out
+
+
+def latency_inflation(
+    results: list[PerCaseResult],
+) -> dict[str, dict[str, Any]]:
+    """Latency inflation per family: p99(attacked) / p99(benign control).
+
+    The DoS-relevance number: how much slower the guardrail's tail
+    gets under attack, relative to its own benign baseline in the
+    same run. Base convention is fixed and documented: the
+    denominator is the benign arm of the SAME family, SAME adapter,
+    SAME run. ``inflation`` is None (withheld) when either arm is
+    insufficient, when the benign p99 is 0 (a zero denominator is a
+    measurement artifact, not infinite inflation), or when the
+    family has no benign baseline at all. The raw p99s ride along
+    so the ratio is never read without its base.
+    """
+    per_family = family_latency_summary(results)
+    out: dict[str, dict[str, Any]] = {}
+    for family, blocks in per_family.items():
+        benign = blocks["benign"]
+        attacked = blocks["attacked"]
+        p99_b = benign.get("p99")
+        p99_a = attacked.get("p99")
+        inflation: float | None = None
+        if (
+            benign.get("sufficient")
+            and attacked.get("sufficient")
+            and p99_b is not None
+            and p99_b > 0
+            and p99_a is not None
+        ):
+            inflation = _round4(p99_a / p99_b)
+        out[family] = {
+            "p99_benign": p99_b,
+            "p99_attacked": p99_a,
+            "n_benign": benign.get("n"),
+            "n_attacked": attacked.get("n"),
+            "inflation": inflation,
+        }
+    return out
+
+
+
 class MurphyDecomposition(NamedTuple):
     """Murphy decomposition of the Brier score (Murphy 1973).
 
