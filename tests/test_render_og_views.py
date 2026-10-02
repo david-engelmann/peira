@@ -40,6 +40,11 @@ def make_data(mock=True, n_runs=3):
                 "asr_ci95": [0.15 + 0.1 * i, 0.25 + 0.1 * i],
                 "benign_accuracy": round(0.9 - 0.02 * i, 4),
                 "benign_accuracy_ci95": [0.88 - 0.02 * i, 0.92 - 0.02 * i],
+                "calibration": {"attacked": {
+                    "ece": round(0.05 + 0.03 * i, 4),
+                    "ece_ci95": [round(0.04 + 0.03 * i, 4),
+                                 round(0.06 + 0.03 * i, 4)],
+                }},
                 "n_eligible": 100,
                 "per_family": per_family,
             },
@@ -143,6 +148,20 @@ class RenderOgViewsTest(unittest.TestCase):
         svg, _ = render_og.render_view("methodology", data, [], 8, "public",
                                        "guardrail", "0.1.0")
         self.assertNotRegex(svg, r"\d+\.\d%")
+
+    def test_calibration_shows_ece_not_accuracy(self):
+        # Spec: the calibration view charts reliability/ECE, not plain
+        # accuracy. The OG image must show expected calibration error.
+        data = make_data()
+        scored = scored_for(data)
+        svg, alt = render_og.render_view("calibration", data, scored, 8,
+                                         "public", "guardrail", "0.1.0")
+        self.assertIn("expected calibration error", svg.lower())
+        self.assertIn("expected calibration error", alt.lower())
+        # ECE values from the fixture must appear; benign accuracy must not
+        # be the charted metric.
+        self.assertIn("5.0%", svg)  # mock-0 ece
+        self.assertNotIn("benign accuracy per adapter", svg)
 
     def test_views_registry_covers_all_data_pages(self):
         # Every data page must have a corresponding OG view, and the
