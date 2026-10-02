@@ -6,6 +6,7 @@
       "loaded_via_dir": true,
       "purpose": "Tiny offline conversational corpus: 2 multi-turn cases (conv-fixture-001 multi_turn_escalation/high, conv-fixture-002 decision_splitting/medium), each with benign and attacked turn transcripts. Exercises the conversational loader, the CG1-CG5 gate suite, the metrics summarizer, and suite-separation checks with no adapter or network.",
       "referenced_by": [
+        "tests/test_conversation_budgets.py",
         "tests/test_conversation_metrics.py",
         "tests/test_conversation_separation.py",
         "tests/test_conversational.py"

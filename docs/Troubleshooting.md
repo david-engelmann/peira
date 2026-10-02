@@ -600,6 +600,30 @@ with N greater than 1. Multi-seed execution is not implemented for the
 conversational suite in R-01. Run with `--seeds 1` (the default) or omit
 the flag.
 
+**`error: --max-attacker-rounds must be a positive integer (got N)`** /
+**`error: --attacker-token-budget must be a positive integer (got N)`**
+This happens when `peira run --suite conversational` is given a
+non-positive attacker budget. Budgets cap the attacked arm's effort
+per case and must be at least 1 (round or token). Pass a positive
+integer, or omit the flag for no cap.
+
+**`error: --max-attacker-rounds and --attacker-token-budget apply only to the conversational suite (got suite '<name>')`**
+This happens when an attacker budget flag is passed with any suite
+other than `conversational`. The flags truncate the attacked arm of a
+conversational case and have no meaning for single-shot suites.
+Drop the flags, or run with `--suite conversational`.
+
+**`error: partial run was recorded with max_attacker_rounds X, not Y: re-run with the same --max-attacker-rounds or drop --resume`** /
+**`error: partial run was recorded with attacker_token_budget X, not Y: re-run with the same --attacker-token-budget or drop --resume`**
+This happens when `peira run --suite conversational --resume` is given
+with attacker budgets that differ from the ones the partial was
+recorded with. Budgets are measurement inputs like the timeout
+budgets. A case truncated under one budget might complete under
+another, so a mismatched partial is never silently merged. Resume
+with the same budget flags the partial was written with (or no
+flags, matching the partial), or drop `--resume` and the stale
+`.partial.json` to start over.
+
 **`interrupted; partial run saved; re-run with --resume.`**
 Cause: Ctrl-C during `peira run`. The runner checkpoints completed
 cases (and closes the transcript cleanly) before exiting, so nothing

@@ -39,6 +39,8 @@ run a suite through an adapter
 | `--call-timeout` |  | `300.0` | seconds per attempt; a timeout is retried as a transient failure (default: 300) |
 | `--item-timeout` |  | - | wall-clock budget in seconds for one case (both variants, all attempts); on expiry the case seals as a timeout sample failure and the run continues (no item budget by default) |
 | `--run-timeout` |  | - | wall-clock budget in seconds for the whole run; on expiry dispatch stops, in-flight cases drain to completion, completed cases are checkpointed in a resumable partial, and the artifact seals with termination=timeout (analyzable, never rankable) (no run budget by default) |
+| `--max-attacker-rounds` |  | - | conversational suite only: cap attacker rounds per case before the attacked arm stops; the case seals with attack_budget_exhausted=true and scores on its last executed turn (no cap by default) |
+| `--attacker-token-budget` |  | - | conversational suite only: cap attacked-arm tokens (in + out) per case; on exhaustion the case seals with attack_budget_exhausted=true and scores on its last executed turn (no cap by default) |
 | `--rlimit-cpu-seconds` |  | - | process-wide CPU time backstop in seconds (Unix only; opt-in, no limit by default) |
 | `--rlimit-as-mb` |  | - | process-wide virtual memory cap in MB (Unix only; opt-in, no limit by default) |
 | `--rlimit-fsize-mb` |  | - | max size of any single file write, in MB (Unix only; opt-in, no limit by default) |

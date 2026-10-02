@@ -996,6 +996,9 @@ class RunArtifact:
     # "attacked" field carries the representative (final) attempt for
     # single-shot tooling, while "attempts"/"attempt_flipped" carry the
     # full budget dimension.
+    # attack_budget_exhausted (EB-15) marks conversational results
+    # whose attacked arm an attacker budget truncated; it is emitted
+    # only when True.
     _RESULT_OPTIONAL: ClassVar[dict] = {
         "conversational_turns": dict,
         "attempts": list,
@@ -1003,6 +1006,7 @@ class RunArtifact:
         "budget_grid": list,
         "strength_dimension": str,
         "budget_to_first_flip": (int, type(None)),
+        "attack_budget_exhausted": bool,
     }
     _USAGE_FIELDS: ClassVar[dict] = {
         "model": str,
