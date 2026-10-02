@@ -1,0 +1,198 @@
+name: workflow-lint
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/**"
+      - rust-toolchain.toml
+      - pyproject.toml
+      - uv.lock
+  pull_request:
+    paths:
+      - ".github/workflows/**"
+      - rust-toolchain.toml
+      - pyproject.toml
+      - uv.lock
+
+# Least privilege: every job only checks out code.
+permissions:
+  contents: read
+
+# Cancel superseded runs on the same ref; a newer push makes the older run's
+# result meaningless.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check_runner:
+    # Picks the runner pool for all Linux jobs: David's self-hosted
+    # runner-grid when online (no queue wait), else GitHub-hosted.
+    # Fork PRs NEVER use self-hosted (untrusted code on David's laptop).
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      actions: read  # to check runner status
+    outputs:
+      runner: ${{ steps.final.outputs.runner }}
+    steps:
+      - name: Check if runner-grid is online
+        id: fallback
+        # Skip the API check for fork PRs; they stay on GitHub-hosted.
+        if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
+        uses: mikehardy/runner-fallback-action@v1
+        with:
+          primary-runner: "self-hosted,runner-grid"
+          fallback-runner: "ubuntu-latest"
+          primaries-required: 1
+          fallback-on-error: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Set runner output
+        id: final
+        run: |
+          if [ -n "${{ steps.fallback.outputs.use-runner }}" ]; then
+            # Convert the action's output to a JSON array for fromJSON().
+            # The action may output "self-hosted,runner-grid" (comma-separated)
+            # or '["ubuntu-latest"]' (already JSON).
+            runner='${{ steps.fallback.outputs.use-runner }}'
+            if [[ "$runner" == "["* ]]; then
+              echo "runner=$runner" >> "$GITHUB_OUTPUT"
+            else
+              json=$(python3 -c "import json,sys; print(json.dumps([s.strip() for s in '''$runner'''.split(',')]))")
+              echo "runner=$json" >> "$GITHUB_OUTPUT"
+            fi
+          else
+            echo 'runner=["ubuntu-latest"]' >> "$GITHUB_OUTPUT"
+          fi
+
+  lint-workflows:
+    # P-16: the CI config is the highest-blast-radius code in the repo
+    # (it runs on every machine via CI), so it gets its own fast lint:
+    # actionlint for workflow syntax + inline shell, zizmor for security
+    # findings (template injection, unpinned actions, etc.). No external
+    # shellcheck binary: peira has no installer script, and actionlint
+    # already parses the shell inside run: steps. --no-online-audits
+    # keeps the job hermetic and fast (target: under 2 minutes).
+    needs: check_runner
+    runs-on: ${{ fromJSON(needs.check_runner.outputs.runner) }}
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install actionlint (pinned)
+        env:
+          ACTIONLINT_VERSION: 1.7.12
+          ACTIONLINT_SHA256: 8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP"
+          curl -fsSL --retry 3 -o actionlint.tar.gz \
+            "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz"
+          echo "${ACTIONLINT_SHA256}  actionlint.tar.gz" | sha256sum -c -
+          tar -xzf actionlint.tar.gz actionlint
+          mkdir -p "$RUNNER_TEMP/bin"
+          install -m 755 actionlint "$RUNNER_TEMP/bin/actionlint"
+          echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
+
+      - name: actionlint
+        run: actionlint -color
+
+      - name: zizmor
+        env:
+          ZIZMOR_VERSION: 1.30.1
+        run: |
+          set -euo pipefail
+          pipx install "zizmor==${ZIZMOR_VERSION}"
+          zizmor --persona=regular --min-severity=medium --no-online-audits .github/workflows/
+
+  toolchain-pins:
+    # P-16: the release toolchain pins must match their single sources
+    # of truth, or the Dockerfile and CI silently build against
+    # different toolchains. Fails loudly on drift:
+    #   - Rust: rust-toolchain.toml [toolchain].channel is the source.
+    #     The Dockerfile rust-builder FROM tag must equal it, and no
+    #     workflow may override dtolnay/rust-toolchain with an explicit
+    #     version input (the action honors rust-toolchain.toml).
+    #   - Python build backend: pyproject.toml [build-system] is the
+    #     source. While the maturin migration is in flight, no consumer
+    #     (workflows, Dockerfile, scripts/build_core_ext.py) may invoke
+    #     maturin unless the declared backend is maturin.
+    #   - uv: NO single source of truth exists yet (the Dockerfile pins
+    #     ghcr.io/astral-sh/uv:<ver> while ci.yml installs latest via
+    #     pip). This is reported as a warning, not a failure: failing on
+    #     a rule nobody committed would be inventing policy.
+    needs: check_runner
+    runs-on: ${{ fromJSON(needs.check_runner.outputs.runner) }}
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+      - name: assert toolchain pins match their sources of truth
+        run: |
+          python3 - <<'PYEOF'
+          import pathlib, re, sys, tomllib
+
+          root = pathlib.Path(".")
+          failures = []
+
+          def fail(msg):
+              failures.append(msg)
+              print(f"::error::toolchain-pins: {msg}")
+
+          # --- Rust toolchain -------------------------------------------
+          channel = tomllib.loads((root / "rust-toolchain.toml").read_text())["toolchain"]["channel"]
+          print(f"rust-toolchain.toml channel: {channel}")
+
+          dockerfile = (root / "Dockerfile").read_text()
+          m = re.search(r"^FROM\s+rust:([^-:\s]+?)(?:-[\w.-]+)?\s+AS\s+rust-builder", dockerfile, re.M)
+          if m is None:
+              fail("Dockerfile has no rust-builder stage to compare against rust-toolchain.toml")
+          elif m.group(1) != channel:
+              fail(f"Dockerfile rust-builder pins rust:{m.group(1)} but rust-toolchain.toml channel is {channel}")
+          else:
+              print(f"Dockerfile rust-builder ({m.group(1)}) matches rust-toolchain.toml")
+
+          # dtolnay/rust-toolchain honors rust-toolchain.toml; a version
+          # input here would silently fork the toolchain between CI jobs.
+          for wf in sorted((root / ".github/workflows").glob("*.yml")):
+              if "dtolnay/rust-toolchain@" in wf.read_text() and re.search(r"^\s+toolchain:\s*", wf.read_text(), re.M):
+                  fail(f"{wf.name} passes an explicit toolchain: input to dtolnay/rust-toolchain; "
+                       "rust-toolchain.toml must stay the single source")
+
+          # --- Python build backend --------------------------------------
+          backend = tomllib.loads((root / "pyproject.toml").read_text())["build-system"]["build-backend"]
+          print(f"pyproject.toml build-backend: {backend}")
+          if backend != "maturin":
+              # This workflow file is excluded: it only mentions maturin in
+              # its own explanatory comments and in this checker's code, so
+              # including it would make the check fail on itself.
+              consumers = [root / "Dockerfile",
+                           *(p for p in sorted((root / ".github/workflows").glob("*.yml"))
+                             if p.name != "workflow-lint.yml"),
+                           root / "scripts" / "build_core_ext.py"]
+              early = [str(p) for p in consumers if p.is_file() and re.search(r"(?i)maturin", p.read_text())]
+              if early:
+                  fail(f"build-backend is {backend!r} but maturin is referenced in {early}; "
+                       "backend and consumers must agree during the maturin migration")
+
+          # --- uv: known gap, reported not failed -------------------------
+          m = re.search(r"ghcr\.io/astral-sh/uv:([0-9][\w.\-]*)", dockerfile)
+          docker_uv = m.group(1) if m else None
+          ci_uv = (root / ".github/workflows" / "ci.yml").read_text()
+          ci_uv_pinned = bool(re.search(r"pip install uv[=<>]", ci_uv))
+          print(f"Dockerfile uv image pin: {docker_uv}")
+          print(f"ci.yml lockfile job installs uv: {'pinned' if ci_uv_pinned else 'latest (unpinned)'}")
+          print("::warning::toolchain-pins: uv has no single source of truth: "
+                f"Dockerfile pins ghcr.io/astral-sh/uv:{docker_uv} while ci.yml installs "
+                f"{'a pinned' if ci_uv_pinned else 'the latest'} uv via pip. "
+                "Promote one declaration consumed by both the next time uv is bumped.")
+
+          if failures:
+              print(f"\n{len(failures)} toolchain-pin assertion(s) FAILED")
+              sys.exit(1)
+          print("\ntoolchain pins are consistent with their sources of truth")
+          PYEOF
