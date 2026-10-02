@@ -347,14 +347,17 @@ jobs:
           python-version: "3.12"
       - uses: dtolnay/rust-toolchain@ce678459e9fc7500d337468f904b95f1b5c10b5e # 1.98.1
       - run: pip install "maturin>=1,<2"
-      # Exactly one release-profile extension build, through pip's PEP 517
-      # path: MATURIN_PEP517_ARGS is the maturin-documented way to pass
-      # --release through pip install. --no-build-isolation reuses the
-      # maturin installed above instead of downloading it again.
-      - run: MATURIN_PEP517_ARGS="--release" pip install --no-build-isolation -e '.[dev]'
-      - run: python -c "from peira._rust import RUST_AVAILABLE; assert RUST_AVAILABLE"
-      - run: python -m pytest tests -n auto
-      - run: PEIRA_NO_RUST=1 python -m pytest tests -n auto
+      # Exactly one release-profile extension build. MATURIN_PEP517_ARGS
+      # cannot be used: pip forwards it to `maturin pep517 write-dist-info`,
+      # which rejects --release in maturin 1.x. Instead, create a venv,
+      # install via pip, then rebuild the extension in release via maturin
+      # develop (which requires an active virtualenv).
+      - run: python3 -m venv .venv
+      - run: .venv/bin/pip install --no-build-isolation -e '.[dev]'
+      - run: .venv/bin/maturin develop --release
+      - run: .venv/bin/python -c "from peira._rust import RUST_AVAILABLE; assert RUST_AVAILABLE"
+      - run: .venv/bin/python -m pytest tests -n auto
+      - run: PEIRA_NO_RUST=1 .venv/bin/python -m pytest tests -n auto
 
   quickstart:
     # The README quickstart must work verbatim, offline, on every PR.

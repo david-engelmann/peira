@@ -29,8 +29,9 @@ WORKDIR /peira
 
 # Rust toolchain for maturin's PEP 517 build of peira._core. Pinned by
 # rust-toolchain.toml (1.98.1); the minimal profile keeps the layer small.
+# build-essential provides the C linker (cc) that rustc needs.
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends curl ca-certificates && \
+    apt-get install -y --no-install-recommends curl ca-certificates build-essential && \
     curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | \
       sh -s -- -y --profile minimal && \
     rm -rf /var/lib/apt/lists/*
