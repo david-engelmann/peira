@@ -28,6 +28,14 @@ HEADING_RE = re.compile(r"^(#{1,6})\s+(.+?)\s*#*\s*$")
 # brackets.
 REF_DEF_RE = re.compile(r"^\s{0,3}\[([^\]]+)\]:\s*(\S+)")
 REF_LINK_RE = re.compile(r"\[([^\]]*)\]\[([^\]]*)\]")
+# Code spans (backtick-quoted) are not links. Strip them before matching
+# REF_LINK_RE, so regexes like `^[a-z0-9][a-z0-9_-]{1,63}$` are not
+# misread as reference-style links.
+CODE_SPAN_RE = re.compile(r"`[^`]*`")
+
+
+def _strip_code_spans(line: str) -> str:
+    return CODE_SPAN_RE.sub("", line)
 
 
 def slugify(heading: str) -> str:
@@ -89,7 +97,7 @@ def check(root: Path) -> list[str]:
         lines = page.read_text(encoding="utf-8").splitlines()
         # Pass 1: inline [text](target) links.
         for lineno, line in enumerate(lines, 1):
-            for target in LINK_RE.findall(line):
+            for target in LINK_RE.findall(_strip_code_spans(line)):
                 _check_target(page, target, lineno, root, problems,
                               anchor_cache)
         # Pass 2: reference-style links. Collect [label]: target
@@ -103,7 +111,7 @@ def check(root: Path) -> list[str]:
         for lineno, line in enumerate(lines, 1):
             if REF_DEF_RE.match(line):
                 continue  # the definition itself, not a link
-            for text, label in REF_LINK_RE.findall(line):
+            for text, label in REF_LINK_RE.findall(_strip_code_spans(line)):
                 key = (label or text).strip().lower()
                 if key not in definitions:
                     problems.append(

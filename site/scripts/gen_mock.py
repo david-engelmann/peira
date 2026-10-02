@@ -425,7 +425,7 @@ def gen_artifact(
     metrics = summarize(results, seed=seed, n_boot=500)
     created_utc = datetime.now(timezone.utc).isoformat()
     artifact = RunArtifact(
-        artifact_version="2",
+        artifact_version="3",
         peira_version=peira_version,
         dataset_version="1.1.1",
         adapter_name=name,
