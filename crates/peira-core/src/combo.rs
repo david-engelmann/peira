@@ -177,6 +177,15 @@ pub fn combo_case_id(pair_id: &str, substrate_idx: i64, arm: &str) -> Result<Str
     Ok(format!("{pair_id}-{substrate_idx:04}-{arm}"))
 }
 
+/// True when a substrate-index string is rejected by [`parse_py_int`]
+/// but accepted by CPython's `int()`: underscores between digits or
+/// non-ASCII decimal digits. Over-approximates (any non-ASCII char
+/// triggers it); a spurious fallback just re-runs the reference,
+/// which always gives the right answer.
+fn index_needs_reference_fallback(s: &str) -> bool {
+    s.chars().any(|c| c == '_' || !c.is_ascii())
+}
+
 /// Whitespace as stripped by CPython's `int()`: Unicode whitespace
 /// except U+001C..=U+001F (the C0 separators), which CPython does not
 /// strip even though Rust's `char::is_whitespace` reports them.
@@ -356,7 +365,11 @@ fn side_input<'a>(
 /// required-keys list, so `d["primary_outcome"]` raises). The PyO3
 /// binding maps `Structural` to an internal `AttributeError` the
 /// Python wrapper catches to fall back to the reference, and `Key` to
-/// the reference's `KeyError`.
+/// the reference's `KeyError`. `Structural` is also used when the
+/// case-id substrate index is one the reference accepts but the Rust
+/// parser rejects (underscores, non-ASCII digits): the reference
+/// validator calls the public `parse_combo_case_id`, which falls back
+/// to Python's `int()`, so the whole validation must defer to it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ValidateError {
     Structural,
@@ -383,7 +396,24 @@ pub fn validate_combo_dict(d: &Map<String, Value>) -> Result<Vec<String>, Valida
     let case_id = d["case_id"].as_str().ok_or(ValidateError::Structural)?;
     let (pair_id, idx, arm) = match parse_combo_case_id(case_id) {
         Ok(parsed) => parsed,
-        Err(e) => return Ok(vec![e.message().to_owned()]),
+        Err(e) => {
+            // The reference validator calls the public `parse_combo_case_id`,
+            // which falls back to Python's `int()` for indices the Rust
+            // parser rejects (underscores, non-ASCII digits). If this input
+            // is one the reference accepts, defer to it via a Structural
+            // fallback instead of reporting a malformed index the reference
+            // would not report.
+            if e.message()
+                .starts_with("malformed substrate index in case id: ")
+                && case_id
+                    .rsplit('-')
+                    .nth(1)
+                    .is_some_and(index_needs_reference_fallback)
+            {
+                return Err(ValidateError::Structural);
+            }
+            return Ok(vec![e.message().to_owned()]);
+        }
     };
 
     if !matches!(&d["family"], Value::String(s) if s == &pair_id) {
@@ -634,6 +664,17 @@ mod tests {
     #[test]
     fn validate_ok_case() {
         assert!(validate_combo_dict(&valid_case()).unwrap().is_empty());
+    }
+
+    #[test]
+    fn validate_underscore_index_defers_to_reference() {
+        // Python int("1_2") == 12, so the reference validator accepts
+        // this case id. The Rust validator cannot reproduce that, so it
+        // reports Structural and the Python wrapper re-runs the reference.
+        let mut d = valid_case();
+        d["case_id"] = json!("combo-dfl-ind-1_2-a");
+        d["combo_substrate"] = json!("combo-dfl-ind-0012");
+        assert_eq!(validate_combo_dict(&d), Err(ValidateError::Structural));
     }
 
     #[test]

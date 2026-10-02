@@ -292,6 +292,16 @@ class TestValidateComboDictParity(unittest.TestCase):
         self.assertEqual(validate_combo_dict(d), [])
         self.assertEqual(_validate_combo_dict_py(d), [])
 
+    def test_underscore_index_valid_case(self):
+        # Python int("1_2") == 12, so the reference validator accepts
+        # this case id; the Rust validator must defer to the reference
+        # (Structural fallback) rather than report a malformed index.
+        d = _valid_case()
+        d["case_id"] = "combo-dfl-ind-1_2-a"
+        d["combo_substrate"] = "combo-dfl-ind-0012"
+        self.assertEqual(validate_combo_dict(d), [])
+        self.assertEqual(_validate_combo_dict_py(d), [])
+
     def test_missing_keys(self):
         for key in (
             "case_id", "family", "primitive", "severity", "benign",

@@ -1567,7 +1567,10 @@ fn invariance_report(
     );
     m.insert(
         "flip_rate".to_string(),
-        Value::Number(Number::from_f64(r.flip_rate).expect("flip_rate is finite")),
+        Value::Number(
+            Number::from_f64(r.flip_rate)
+                .ok_or_else(|| PyValueError::new_err("flip_rate is not finite"))?,
+        ),
     );
     m.insert(
         "flipped_indices".to_string(),
@@ -1622,7 +1625,9 @@ fn combo_parse_case_id(case_id: &str) -> PyResult<(String, i64, String)> {
 #[pyfunction]
 fn combo_validate_dict(d: &Bound<'_, PyDict>) -> PyResult<Vec<String>> {
     let v = value_from_py(d.as_any())?;
-    let map = v.as_object().expect("converted from a PyDict");
+    let map = v
+        .as_object()
+        .ok_or_else(|| PyValueError::new_err("internal: dict did not convert to a JSON object"))?;
     combo::validate_combo_dict(map).map_err(|e| match e {
         combo::ValidateError::Structural => PyAttributeError::new_err(
             "internal: input violates the combo validation structural contract",
