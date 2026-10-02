@@ -383,7 +383,8 @@ scaffold a new case from a family template
 
 | Flag | Required | Default | Help |
 |---|---|---|---|
-| `--family` | yes | - | attack family (choices: `abstain_forcing`, `authority_fabrication`, `confidence_spoofing`, `contradiction_injection`, `criteria_order`, `criteria_smuggling`, `crosslingual_shift`, `cryptographic_payload`, `distractor_flooding`, `encoding_evasion`, `evidence_positioning`, `indirect_injection`, `indirection`, `instruction_override`, `judge_sycophancy`, `literal_reading`, `negation_games`, `option_order`, `policy_paraphrase`, `precedent_stacking`, `question_pair_incoherence`, `retrieval_poisoning`, `safety_policy`, `score_anchoring`, `self_advocacy`, `state_poisoning`, `temporal_numeric_traps`, `threshold_edge_hunting`, `verbosity_inflation`) || `--id` | yes | - | case id, e.g. sp-042 |
+| `--family` | yes | - | attack family (choices: `abstain_forcing`, `authority_fabrication`, `confidence_spoofing`, `contradiction_injection`, `criteria_order`, `criteria_smuggling`, `crosslingual_shift`, `cryptographic_payload`, `distractor_flooding`, `encoding_evasion`, `evidence_positioning`, `indirect_injection`, `indirection`, `instruction_override`, `judge_sycophancy`, `literal_reading`, `negation_games`, `option_order`, `policy_paraphrase`, `precedent_stacking`, `question_pair_incoherence`, `retrieval_poisoning`, `safety_policy`, `score_anchoring`, `self_advocacy`, `state_poisoning`, `temporal_numeric_traps`, `threshold_edge_hunting`, `verbosity_inflation`) |
+| `--id` | yes | - | case id, e.g. sp-042 |
 | `--severity` |  | `'medium'` | (choices: `critical`, `high`, `medium`, `low`) |
 | `--primitive` |  | - | default: the family's natural primitive (choices: `choice`, `score`, `abstain`) |
 | `--out` |  | - | append the case as JSONL to this file (default: print to stdout) |
