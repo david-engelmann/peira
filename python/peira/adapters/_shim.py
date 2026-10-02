@@ -5,7 +5,7 @@ parent (see ``peira.adapters.subprocess``); never run by hand. The
 child imports the adapter, then serves a stdio JSONL protocol:
 
 - parent -> child: ``{"id", "op", "payload"}`` with ``op`` in
-  ``hello`` | ``decide`` | ``close``;
+  ``hello`` | ``decide`` | ``decide_turn`` | ``close``;
 - child -> parent: ``{"id", "ok": true, "result": {...}}`` or
   ``{"id", "ok": false, "error": "..."}``.
 
@@ -193,6 +193,9 @@ def _serve(adapter, attestations: dict[str, bool]) -> int:
             elif op == "decide":
                 _handle_decide(req_id, payload, adapter, CallContext,
                                PINNED_CONTEXT_KEYS)
+            elif op == "decide_turn":
+                _handle_decide_turn(req_id, payload, adapter, CallContext,
+                                    PINNED_CONTEXT_KEYS)
             elif op == "close":
                 close = getattr(adapter, "close", None)
                 if callable(close):
@@ -229,6 +232,54 @@ def _handle_decide(req_id, payload, adapter, CallContext,
         **{k: v for k, v in context.items() if k in pinned_keys})
     try:
         output = adapter.decide(case_input, primitive, ctx)
+    except Exception as exc:  # noqa: BLE001 - framed to the parent
+        _error(req_id, f"{type(exc).__name__}: {exc}")
+        return
+    from peira.adapters.base import (  # noqa: PLC0415
+        AbstainOutput,
+        ChoiceOutput,
+        ScoreOutput,
+    )
+
+    if not isinstance(output, (ChoiceOutput, ScoreOutput, AbstainOutput)):
+        _error(req_id,
+               f"adapter returned {type(output).__name__}, not an "
+               f"AdapterOutput")
+        return
+    _write({
+        "id": req_id, "ok": True, "result": {
+            "type": type(output).__name__,
+            "output": dataclasses.asdict(output),
+        },
+    })
+
+
+def _handle_decide_turn(req_id, payload, adapter, CallContext,
+                        pinned_keys) -> None:
+    turn_input = payload.get("turn_input")
+    primitive = payload.get("primitive")
+    context = payload.get("context")
+    if not isinstance(turn_input, dict):
+        _error(req_id, "decide_turn payload needs a dict turn_input")
+        return
+    if not isinstance(primitive, str):
+        _error(req_id, "decide_turn payload needs a string primitive")
+        return
+    if not isinstance(context, dict) or \
+            not isinstance(context.get("call_id"), str):
+        _error(req_id,
+               "decide_turn payload needs a context dict with a call_id")
+        return
+    decide_turn = getattr(adapter, "decide_turn", None)
+    if not callable(decide_turn):
+        _error(req_id,
+               f"adapter {getattr(adapter, 'name', adapter)!r} does not "
+               f"implement decide_turn")
+        return
+    ctx = CallContext(
+        **{k: v for k, v in context.items() if k in pinned_keys})
+    try:
+        output = decide_turn(turn_input, primitive, ctx)
     except Exception as exc:  # noqa: BLE001 - framed to the parent
         _error(req_id, f"{type(exc).__name__}: {exc}")
         return

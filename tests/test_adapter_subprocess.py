@@ -77,7 +77,7 @@ class ShimEndToEndTest(PluginInstallMixin, unittest.TestCase):
                 self.assertEqual(adapter.supported_primitives,
                                  frozenset({"choice"}))
                 self.assertEqual(
-                    adapter.attestations["max_retries_0"], True)
+                    adapter.attestations["retry_posture"], True)
                 from peira.adapters.base import CallContext, ChoiceOutput
                 out = await adapter.adecide(
                     {"text": "hello", "options": ["approve", "deny"]},

@@ -10,6 +10,7 @@ import json
 import os
 import tempfile
 import unittest
+from pathlib import Path
 
 from tests.adapter_test_plugin import PluginInstallMixin
 from peira.adapters import conformance
@@ -186,6 +187,77 @@ class InProcessDriverTest(unittest.TestCase):
         # First-party: not gated.
         _, failures = _check_retry_posture({}, "first-party")
         self.assertEqual(failures, [])
+
+
+# -- runner wiring (P-4 step 4) ----------------------------------------
+
+class RunnerWiringTest(unittest.TestCase, PluginInstallMixin):
+    """Third-party adapters reach the real runner via the shim child."""
+
+    @classmethod
+    def setUpClass(cls):
+        PluginInstallMixin.setUpClass()
+
+    @classmethod
+    def tearDownClass(cls):
+        PluginInstallMixin.tearDownClass()
+
+    def test_get_adapter_resolves_registry_id_to_subprocess(self):
+        from peira.adapters.subprocess import SubprocessAdapter
+        from peira.cli import _get_adapter
+
+        adapter, trust, transport = _get_adapter("testplugin-conf-good")
+        self.assertIsInstance(adapter, SubprocessAdapter)
+        self.assertEqual(trust, "third-party")
+        self.assertEqual(transport, "subprocess")
+
+    def test_get_adapter_no_isolation_loads_inprocess(self):
+        from peira.adapters.subprocess import SubprocessAdapter
+        from peira.cli import _get_adapter
+
+        adapter, trust, transport = _get_adapter(
+            "testplugin-conf-good", no_isolation=True)
+        self.assertNotIsInstance(adapter, SubprocessAdapter)
+        self.assertEqual(getattr(adapter, "name", None),
+                         "testplugin-conf-good")
+        self.assertEqual(trust, "third-party")
+        self.assertEqual(transport, "inprocess")
+
+    def test_get_adapter_first_party_stays_inprocess(self):
+        from peira.adapters.subprocess import SubprocessAdapter
+        from peira.cli import _get_adapter
+
+        # kev is a first-party registry id that loads without credentials.
+        adapter, trust, transport = _get_adapter("kev")
+        self.assertNotIsInstance(adapter, SubprocessAdapter)
+        self.assertEqual(trust, "first-party")
+        self.assertEqual(transport, "inprocess")
+
+    def test_run_suite_seals_trust_and_transport(self):
+        # A third-party adapter driven through run_suite seals
+        # adapter_trust/adapter_transport in the artifact config, and
+        # the child is opened for the run and closed afterwards.
+        from peira.cli import _get_adapter
+        from peira.runner import load_cases, run_suite
+
+        root = Path(__file__).resolve().parents[1]
+        cases = load_cases(root / "dataset" / "trial-demo")[:2]
+        adapter, trust, transport = _get_adapter("testplugin-conf-good")
+        self.assertEqual((trust, transport),
+                         ("third-party", "subprocess"))
+        artifact = run_suite(
+            adapter, cases, "trial-demo", "v1",
+            config_extra={"adapter_spec": "testplugin-conf-good",
+                          "adapter_trust": trust,
+                          "adapter_transport": transport},
+        )
+        self.assertEqual(artifact.config.get("adapter_trust"),
+                         "third-party")
+        self.assertEqual(artifact.config.get("adapter_transport"),
+                         "subprocess")
+        self.assertEqual(len(artifact.results), 2)
+        # The child was closed after the run: no lingering process.
+        self.assertIsNone(adapter._child)
 
 
 if __name__ == "__main__":

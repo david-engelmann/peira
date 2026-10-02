@@ -402,6 +402,31 @@ class SubprocessAdapter:
             raise
         return _decode_output(result)
 
+    async def adecide_turn(self, turn_input: dict, primitive: str,
+                           context) -> object:
+        """Drive one conversation turn through the child (async)."""
+        child = await self._ensure_child()
+        payload = {
+            "turn_input": turn_input,
+            "primitive": primitive,
+            "context": {
+                k: v for k, v in _context_dict(context).items()
+                if k in PINNED_CONTEXT_KEYS
+            },
+        }
+        try:
+            result = await self._request(
+                child, "decide_turn", payload, self._timeout)
+        except AdapterSubprocessError:
+            self._child = None
+            raise
+        return _decode_output(result)
+
+    async def open(self) -> "SubprocessAdapter":
+        """Run the hello handshake (idempotent)."""
+        await self._ensure_child()
+        return self
+
     def decide(self, case_input: dict, primitive: str, context) -> object:
         """Sync wrapper: spawns a child, makes one call, tears down.
 

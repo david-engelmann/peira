@@ -110,10 +110,39 @@ def _ci95(ci: Any) -> str:
     return f"{_val(ci[0])}–{_val(ci[1])}"
 
 
-def _get_adapter(name: str):
+def _get_adapter(name: str, *, no_isolation: bool = False,
+                 env_extra: dict[str, str] | None = None):
+    """Resolve an adapter spec to ``(adapter, trust, transport)``.
+
+    Resolution order: ``mock`` -> dotted path -> registry id.
+
+    - ``mock``: the built-in test double (in-process).
+    - dotted path: imported in-process; trust ``"unverified"``.
+    - first-party registry id: in-process; trust ``"first-party"``.
+    - third-party registry id: a :class:`SubprocessAdapter` (unopened;
+      the runner opens it), trust ``"third-party"``, transport
+      ``"subprocess"`` — unless ``no_isolation`` is set, which loads
+      it in-process instead (the caller prints the warning).
+    """
+    from peira.adapters import discovery  # noqa: PLC0415
+
     if name == "mock":
-        return MockAdapter()
-    return _load_dotted_adapter(name)
+        return MockAdapter(), "first-party", "inprocess"
+    resolved = discovery.resolve_spec(name)
+    if resolved.kind == "dotted":
+        return _load_dotted_adapter(name), "unverified", "inprocess"
+    reg = resolved.registration
+    assert reg is not None  # resolve_spec only returns registry with one
+    if reg.first_party or no_isolation:
+        return (discovery.load_registered(reg),
+                "first-party" if reg.first_party else "third-party",
+                "inprocess")
+    from peira.adapters.subprocess import (  # noqa: PLC0415
+        SubprocessAdapter,
+    )
+
+    return (SubprocessAdapter(name, env_extra=env_extra),
+            "third-party", "subprocess")
 
 
 def _unknown_adapter(spec: str) -> ValueError:
@@ -419,11 +448,29 @@ def _budget_estimate_note(
 
 def cmd_run(args: argparse.Namespace) -> int:
     root = _repo_root()
+    env_extra: dict[str, str] = {}
+    for item in getattr(args, "adapter_env", None) or []:
+        if "=" not in item:
+            print(f"error: --adapter-env needs KEY=VALUE, got {item!r}",
+                  file=sys.stderr)
+            return EXIT_USER_ERROR
+        key, value = item.split("=", 1)
+        env_extra[key] = value
+    no_isolation = bool(getattr(args, "adapter_no_isolation", False))
     try:
-        adapter = _get_adapter(args.adapter)
+        adapter, adapter_trust, adapter_transport = _get_adapter(
+            args.adapter, no_isolation=no_isolation, env_extra=env_extra)
     except ValueError as e:
         print(f"error: {e}", file=sys.stderr)
         return EXIT_USER_ERROR
+    if no_isolation and adapter_trust == "third-party":
+        # F10: explicit warning; the flag is an operator decision,
+        # never something an adapter's README should instruct.
+        print(f"warning: --adapter-no-isolation: third-party adapter "
+              f"{args.adapter!r} will be imported and executed "
+              f"IN-PROCESS, with peira's full environment. Only use "
+              f"this for adapters you trust completely.",
+              file=sys.stderr)
 
     suite = args.suite
     if suite == "smoke":
@@ -691,7 +738,10 @@ def cmd_run(args: argparse.Namespace) -> int:
                 # Persist the loader spec (e.g. "peira.adapters.jev:JevAdapter"),
                 # not just adapter.name (e.g. "jev"). cmd_reproduce needs the
                 # spec to reload the adapter; the short name is not loadable.
-                config_extra={"adapter_spec": args.adapter},
+                # P-4: seal the trust/transport provenance of the run.
+                config_extra={"adapter_spec": args.adapter,
+                              "adapter_trust": adapter_trust,
+                              "adapter_transport": adapter_transport},
             )
             if is_conversational:
                 from peira.conversation import run_conversation_suite
@@ -778,7 +828,9 @@ def _cmd_run_multiseed(
         max_concurrency=args.max_concurrency,
         max_attempts=args.max_attempts,
         call_timeout=args.call_timeout,
-        config_extra={"adapter_spec": args.adapter},
+        config_extra={"adapter_spec": args.adapter,
+                      "adapter_trust": adapter_trust,
+                      "adapter_transport": adapter_transport},
         rlimit_cpu_seconds=getattr(args, "rlimit_cpu_seconds", None),
         rlimit_as_mb=getattr(args, "rlimit_as_mb", None),
         rlimit_fsize_mb=getattr(args, "rlimit_fsize_mb", None),
@@ -2525,7 +2577,7 @@ def cmd_stability_probe(args: argparse.Namespace) -> int:
 
     root = _repo_root()
     try:
-        adapter = _get_adapter(args.adapter)
+        adapter, _, _ = _get_adapter(args.adapter)
     except ValueError as e:
         print(f"error: {e}", file=sys.stderr)
         return EXIT_USER_ERROR
@@ -4430,7 +4482,7 @@ def cmd_reproduce(args: argparse.Namespace) -> int:
               file=sys.stderr)
         return EXIT_REPRO_MISMATCH
     try:
-        adapter = _get_adapter(bundle["adapter_spec"])
+        adapter, _, _ = _get_adapter(bundle["adapter_spec"])
     except ValueError as e:
         print(f"error: {e}", file=sys.stderr)
         return EXIT_USER_ERROR
@@ -4895,11 +4947,23 @@ def build_parser() -> argparse.ArgumentParser:
 
     r = sub.add_parser("run", help="run a suite through an adapter")
     r.add_argument("--adapter", default="mock",
-                   help="'mock', or a dotted path: package.module (with a "
-                   "top-level `adapter`), package.module:ClassName, or "
-                   "package.module.ClassName. Only load adapter paths you "
-                   "trust: the module is imported (and therefore executed) "
-                   "with the working directory first on sys.path")
+                   help="'mock', a dotted path (package.module, "
+                   "package.module:ClassName, or package.module.ClassName), "
+                   "or a registered adapter id (see 'peira adapter list'). "
+                   "Dotted paths are imported (and therefore executed) "
+                   "in-process with the working directory first on "
+                   "sys.path: only load paths you trust. Third-party "
+                   "registry ids run isolated in a subprocess by default.")
+    r.add_argument("--adapter-no-isolation", action="store_true",
+                   help="run a third-party adapter IN-PROCESS instead of "
+                   "the subprocess sandbox. The adapter's code is "
+                   "imported and executed with peira's full environment: "
+                   "only use this for adapters you trust completely.")
+    r.add_argument("--adapter-env", action="append", default=[],
+                   metavar="KEY=VALUE",
+                   help="extra environment variables for a third-party "
+                   "adapter's subprocess (repeatable; denylisted "
+                   "variables are refused)")
     r.add_argument("--suite", default="trial-demo",
                    choices=list(SUITE_DIRS) + ["smoke"],
                    help="smoke is an alias for trial")
