@@ -18,3 +18,29 @@ commands, architecture map, and the hard rules.
 - The demo fixture (`dataset/trial-demo/`) is scaffolding, clearly labeled.
   The branded 100-case Trial lives in `dataset/trial/`; don't build features
   that depend on either fixture's exact contents.
+
+## Documentation map
+
+CI checks that docs exist and links resolve. It cannot check that docs
+are current. Only review culture can. When your change touches one of
+the areas below, update the mapped docs in the same PR. Reviewers
+check the map, not just the code.
+
+- A metric or statistic: `docs/Methodology.md` (the contract) and
+  `docs/Analytics-Methodology.md` (the reader's guide).
+- An adapter: `docs/Adapters.md` entry plus the capability report
+  table from `docs/adding-an-adapter.md` in the PR description.
+- Case schema or dataset format: the dataset spec, `DATASHEET.md`,
+  and `docs/Dataset-Changelog.md`.
+- Install or packaging: the install docs and the root `README.md`,
+  which is also the PyPI package page. The PyPI README drifts
+  silently because no symlink can prevent content drift, so this
+  mapping is enforced by review, not by tooling.
+- A CLI surface change: `docs/CLI.md` and the generated CLI
+  reference.
+- A leaderboard or API change: the Program B docs and
+  `docs/Analytics-Methodology.md` if a reported number changed
+  meaning.
+- Dataset lifecycle events (refresh, burn, retirement):
+  `docs/Refresh-Burn-Retirement-Policy.md` and the dataset
+  changelog.
