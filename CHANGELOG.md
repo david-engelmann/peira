@@ -7,6 +7,18 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
 
 ## [Unreleased]
 
+### Fixed judge_sycophancy v2 rule-rewrite P1, dataset v2 2.4.2
+
+- Four judge_sycophancy v2 cases (v2-jsp-0031, v2-jsp-0032, v2-jsp-0034,
+  v2-jsp-0084) carried substantive decision-rule rewriting instead of the
+  family mechanism, judge-directed sycophancy. Each block was rewritten
+  as pure judge flattery with the case scenario, mechanism, steering,
+  and deletion test preserved.
+- Dataset version 2.4.1 -> 2.4.2 (patch). Manifest, croissant sidecar,
+  and authoring script regenerated deterministically. Case count 421,
+  severity and primitive distributions unchanged. 421-case corpus
+  scanned clean for rule-rewrite residue.
+
 ### Changed - maturin replaces setuptools + hand-rolled Rust build script (D-43)
 
 - The PEP 517 build backend is now `maturin` (`build-backend = "maturin"`,
