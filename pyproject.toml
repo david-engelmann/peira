@@ -4,7 +4,10 @@ build-backend = "maturin"
 
 [project]
 name = "peira"
-version = "0.1.0"
+# NB: the repo ALWAYS carries 0.0.0. The signed git release tag (vX.Y.Z)
+# is the single source of truth; scripts/release/stamp.py stamps the tag
+# version into build trees at publish time. See docs/Release.md.
+version = "0.0.0"
 description = "An open-source AI safety stress-test and intelligence hub for leading models and guardrails, including Jev, ChatGPT, Claude, DeepSeek, Kimi, Gemini, Llama Prompt Guard 2, Grok, GLM, WildGuard, ShieldGemma, Granite Guardian and Shieldstral."
 readme = "README.md"
 license = { text = "MIT" }
@@ -48,7 +51,7 @@ peira = "peira.cli:main"
 
 [project.urls]
 Homepage = "https://github.com/david-engelmann/peira"
-Documentation = "https://github.com/david-engelmann/peira/tree/main/docs"
+Documentation = "https://github.com/david-engelmann/peira/tree/v0.0.0/docs"
 Repository = "https://github.com/david-engelmann/peira"
 
 [tool.maturin]
