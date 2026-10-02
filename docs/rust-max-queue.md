@@ -37,7 +37,7 @@ cluster; all stdlib + peira.* imports):
 | combo_metrics.py | LOW-MED | weak-mod (14 shared) | MIGRATE #2: tiny, pure |
 | hardness.py | LOW | strong (29) | MIGRATE #3: pure aggregation |
 | economics.py (numeric core) | LOW-MED/part | strong (77) | DONE: PR #382 (merge 646a0390ae14c6f0664b176f4211f9e7ec3b4bd4), 9 fns in crates/peira-core/src/economics.rs, parity-tested |
-| stability.py (numeric core) | MED | strong (35) | SPLIT #5: artifact sealing/JSON lock stays Python (byte-exact json.dumps parity risk) |
+| stability.py (numeric core) | MED | strong (35) | DONE: rust-max slice 5 — flip_agreement + drift_watch in crates/peira-core/src/stability.rs, PyO3 exports, _xxx_py twins + dispatch, 11 Rust unit + 16 parity tests; artifact sealing/JSON lock stayed Python per SPLIT #5 |
 | saturation.py | MED | moderate (23) | MIGRATE #6 after mde_mcnemar lands in metrics.rs |
 | calibration.py | LOW-MED | strong (45) | MIGRATE #7: SVG byte-parity ({x:.4f}, {t:g}, html.escape) |
 | economic_lottery.py | MED | moderate (18) | MIGRATE #8 after lottery.py + economics core |

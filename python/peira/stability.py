@@ -39,7 +39,13 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any
 
-from peira.metrics import PerCaseResult, mcnemar_p_value, wilson_ci
+from peira._rust import _impl as _rust
+from peira.metrics import (
+    PerCaseResult,
+    _require_result_strings,
+    mcnemar_p_value,
+    wilson_ci,
+)
 
 #: Minimum seed count for a stability claim. k = 2 can only report
 #: agreement, not stability; the protocol requires k >= 3.
@@ -182,10 +188,15 @@ def _check_seed_alignment(
     return canonical
 
 
-def flip_agreement(
+def _flip_agreement_py(
     results_by_seed: list[list[PerCaseResult]],
 ) -> StabilityResult:
-    """Compute the k-seed stability analysis.
+    """Reference implementation of :func:`flip_agreement` (pure Python).
+
+    The dispatched entry point validates inputs and uses the Rust core
+    when available; this twin is the ``PEIRA_NO_RUST=1`` fallback and
+    the parity-test reference. It stays lenient (no string validation);
+    the dispatched :func:`flip_agreement` enforces that.
 
     ``results_by_seed`` is one per-seed list of PerCaseResult, in seed
     order. All runs must cover the same case set (checked). Only
@@ -265,6 +276,49 @@ def flip_agreement(
     )
 
 
+def _stability_result_from_rust(raw: dict[str, Any]) -> StabilityResult:
+    """Build a StabilityResult from the Rust core's raw field dict."""
+    ci = raw["wilson_ci"]
+    return StabilityResult(
+        seeds=[],  # filled by the caller (run_multiseed / CLI)
+        k=int(raw["k"]),
+        n_cases=int(raw["n_cases"]),
+        n_cases_total=int(raw["n_cases_total"]),
+        per_seed_asr=[float(x) for x in raw["per_seed_asr"]],
+        pooled_asr=float(raw["pooled_asr"]),
+        pass_k=float(raw["pass_k"]),
+        n_agree=int(raw["n_agree"]),
+        per_case_flip_rate={
+            str(cid): float(rate)
+            for cid, rate in raw["per_case_flip_rate"].items()
+        },
+        wilson_ci=(float(ci[0]), float(ci[1])),
+        run_sd=float(raw["run_sd"]),
+        item_variance=float(raw["item_variance"]),
+        n_churn=int(raw["n_churn"]),
+    )
+
+
+def flip_agreement(
+    results_by_seed: list[list[PerCaseResult]],
+) -> StabilityResult:
+    """Compute the k-seed stability analysis.
+
+    Dispatches to the Rust core when available; the pure-Python twin
+    :func:`_flip_agreement_py` is the fallback. Inputs are validated
+    before the backend branch so both backends raise the same
+    ``ValueError`` on lone surrogates.
+    """
+    for results in results_by_seed:
+        for r in results:
+            _require_result_strings(r)
+    if _rust is not None:
+        return _stability_result_from_rust(
+            _rust.stability_flip_agreement(results_by_seed)
+        )
+    return _flip_agreement_py(results_by_seed)
+
+
 @dataclass(frozen=True)
 class FamilyDrift:
     """Drift-watch result for one family between two runs."""
@@ -339,13 +393,18 @@ class DriftResult:
         return "\n".join(lines)
 
 
-def drift_watch(
+def _drift_watch_py(
     old_results: list[PerCaseResult],
     new_results: list[PerCaseResult],
     old_run_id: str = "",
     new_run_id: str = "",
 ) -> DriftResult:
-    """Compare two runs of the same adapter id for drift.
+    """Reference implementation of :func:`drift_watch` (pure Python).
+
+    The dispatched entry point validates inputs and uses the Rust core
+    when available; this twin is the ``PEIRA_NO_RUST=1`` fallback and
+    the parity-test reference. It stays lenient (no string validation);
+    the dispatched :func:`drift_watch` enforces that.
 
     Pairs cases by case_id; only cases eligible in BOTH runs enter the
     paired statistics. Per family, the McNemar test runs on the
@@ -421,6 +480,62 @@ def drift_watch(
         newly_flipping=sorted(newly_flipping),
         newly_fixed=sorted(newly_fixed),
     )
+
+
+def _drift_result_from_rust(
+    raw: dict[str, Any], old_run_id: str, new_run_id: str
+) -> DriftResult:
+    """Build a DriftResult from the Rust core's raw field dict."""
+    return DriftResult(
+        old_run_id=old_run_id,
+        new_run_id=new_run_id,
+        families=[
+            FamilyDrift(
+                family=str(f["family"]),
+                n_paired=int(f["n_paired"]),
+                asr_old=float(f["asr_old"]),
+                asr_new=float(f["asr_new"]),
+                delta=float(f["delta"]),
+                n_newly_flipping=int(f["n_newly_flipping"]),
+                n_newly_fixed=int(f["n_newly_fixed"]),
+                mcnemar_p=(
+                    None
+                    if f["mcnemar_p"] is None
+                    else float(f["mcnemar_p"])
+                ),
+                degraded=bool(f["degraded"]),
+            )
+            for f in raw["families"]
+        ],
+        newly_flipping=[str(cid) for cid in raw["newly_flipping"]],
+        newly_fixed=[str(cid) for cid in raw["newly_fixed"]],
+    )
+
+
+def drift_watch(
+    old_results: list[PerCaseResult],
+    new_results: list[PerCaseResult],
+    old_run_id: str = "",
+    new_run_id: str = "",
+) -> DriftResult:
+    """Compare two runs of the same adapter id for drift.
+
+    Dispatches to the Rust core when available; the pure-Python twin
+    :func:`_drift_watch_py` is the fallback. Inputs are validated
+    before the backend branch so both backends raise the same
+    ``ValueError`` on lone surrogates.
+    """
+    for r in old_results:
+        _require_result_strings(r)
+    for r in new_results:
+        _require_result_strings(r)
+    if _rust is not None:
+        return _drift_result_from_rust(
+            _rust.stability_drift_watch(old_results, new_results),
+            old_run_id,
+            new_run_id,
+        )
+    return _drift_watch_py(old_results, new_results, old_run_id, new_run_id)
 
 
 @dataclass

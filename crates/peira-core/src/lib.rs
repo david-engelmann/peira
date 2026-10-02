@@ -29,6 +29,7 @@ pub mod pricing;
 pub mod py_repr;
 pub mod records;
 pub mod schema;
+pub mod stability;
 
 /// Crate version, kept in sync with the Python package by CI.
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");

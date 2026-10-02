@@ -23,7 +23,7 @@
 
 use peira_core::{
     artifact, canonical, combo, combo_metrics, compare, dataset, economics, env, execution, gates,
-    hardness, invariance, labels, lottery, metrics, pricing, records, schema,
+    hardness, invariance, labels, lottery, metrics, pricing, records, schema, stability,
 };
 use pyo3::exceptions::{PyAttributeError, PyKeyError, PyTypeError, PyValueError};
 use pyo3::prelude::*;
@@ -634,6 +634,97 @@ fn economics_optimal_threshold(py: Python<'_>, curve: &Bound<'_, PyDict>) -> PyR
     };
     let o = economics::optimal_threshold(&c);
     dict_defense_optimum(py, &o)
+}
+
+// ---------------------------------------------------------------------------
+// stability: M-7 numeric core (rust-max slice 5).
+//
+// The Rust core returns plain structs; these bindings hand the fields
+// back as dicts the Python wrapper uses to construct its dataclasses
+// (the slice-4 pattern). The dataclasses, summary_text, and
+// StabilityArtifact sealing stay Python.
+// ---------------------------------------------------------------------------
+
+/// Fields of `stability::StabilitySummary` as a dict.
+fn dict_stability_summary(py: Python<'_>, s: &stability::StabilitySummary) -> PyResult<Py<PyDict>> {
+    let out = PyDict::new(py);
+    out.set_item("k", s.k)?;
+    out.set_item("n_cases", s.n_cases)?;
+    out.set_item("n_cases_total", s.n_cases_total)?;
+    out.set_item("per_seed_asr", &s.per_seed_asr)?;
+    out.set_item("pooled_asr", s.pooled_asr)?;
+    out.set_item("pass_k", s.pass_k)?;
+    out.set_item("n_agree", s.n_agree)?;
+    let rates = PyDict::new(py);
+    for (cid, rate) in &s.per_case_flip_rate {
+        rates.set_item(cid, *rate)?;
+    }
+    out.set_item("per_case_flip_rate", rates)?;
+    out.set_item("wilson_ci", (s.wilson_ci.0, s.wilson_ci.1))?;
+    out.set_item("run_sd", s.run_sd)?;
+    out.set_item("item_variance", s.item_variance)?;
+    out.set_item("n_churn", s.n_churn)?;
+    Ok(out.into())
+}
+
+/// stability.flip_agreement: k-seed stability numeric core.
+///
+/// Returns the raw fields as a dict; the wrapper constructs the
+/// `StabilityResult` dataclass (seeds/excluded_seeds filled by the
+/// caller). Alignment failures raise `ValueError`, matching the
+/// reference.
+#[pyfunction]
+fn stability_flip_agreement(
+    py: Python<'_>,
+    results_by_seed: Vec<Vec<PyPerCaseResult>>,
+) -> PyResult<Py<PyDict>> {
+    let input: Vec<Vec<metrics::PerCaseResult>> =
+        results_by_seed.into_iter().map(to_core_results).collect();
+    let s = stability::flip_agreement(&input).map_err(|e| PyValueError::new_err(e.to_string()))?;
+    dict_stability_summary(py, &s)
+}
+
+/// Fields of `stability::FamilyDriftSummary` as a dict.
+fn dict_family_drift_summary(
+    py: Python<'_>,
+    f: &stability::FamilyDriftSummary,
+) -> PyResult<Py<PyDict>> {
+    let out = PyDict::new(py);
+    out.set_item("family", &f.family)?;
+    out.set_item("n_paired", f.n_paired)?;
+    out.set_item("asr_old", f.asr_old)?;
+    out.set_item("asr_new", f.asr_new)?;
+    out.set_item("delta", f.delta)?;
+    out.set_item("n_newly_flipping", f.n_newly_flipping)?;
+    out.set_item("n_newly_fixed", f.n_newly_fixed)?;
+    out.set_item("mcnemar_p", f.mcnemar_p)?;
+    out.set_item("degraded", f.degraded)?;
+    Ok(out.into())
+}
+
+/// stability.drift_watch: longitudinal drift numeric core.
+///
+/// Returns the raw fields as a dict; the wrapper constructs the
+/// `DriftResult` dataclass (run ids filled by the caller).
+#[pyfunction]
+fn stability_drift_watch(
+    py: Python<'_>,
+    old_results: Vec<PyPerCaseResult>,
+    new_results: Vec<PyPerCaseResult>,
+) -> PyResult<Py<PyDict>> {
+    let d = stability::drift_watch(&to_core_results(old_results), &to_core_results(new_results));
+    let out = PyDict::new(py);
+    let fams = PyList::new(
+        py,
+        d.families
+            .iter()
+            .map(|f| dict_family_drift_summary(py, f))
+            .collect::<PyResult<Vec<_>>>()?,
+    )?;
+    out.set_item("families", fams)?;
+    out.set_item("newly_flipping", &d.newly_flipping)?;
+    out.set_item("newly_fixed", &d.newly_fixed)?;
+    Ok(out.into())
 }
 
 /// Ineligible-case counts by reason, as a dict.
@@ -2458,5 +2549,7 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(hardness_transfer_matrix, m)?)?;
     m.add_function(wrap_pyfunction!(hardness_analyze_runs, m)?)?;
     m.add_function(wrap_pyfunction!(hardness_report_text, m)?)?;
+    m.add_function(wrap_pyfunction!(stability_flip_agreement, m)?)?;
+    m.add_function(wrap_pyfunction!(stability_drift_watch, m)?)?;
     Ok(())
 }
