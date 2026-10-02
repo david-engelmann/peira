@@ -1,12 +1,15 @@
-"""Unit tests for strict RunArtifact.from_json validation (v2 contract).
+"""Unit tests for strict RunArtifact.from_json validation (v3 contract).
 
 Run with: PYTHONPATH=python python3 -m pytest tests
 """
 
 import json
 import unittest
+from pathlib import Path
 
-from peira.artifacts import RunArtifact
+from peira.artifacts import TERMINATIONS, RunArtifact
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
 
 
 def _call_record(**over):
@@ -111,7 +114,7 @@ class TestStrictFromJson(unittest.TestCase):
         a = RunArtifact.from_json(
             json.dumps({"peira_version": "x", "dataset_version": "y"})
         )
-        self.assertEqual(a.artifact_version, "2")
+        self.assertEqual(a.artifact_version, "3")
         self.assertEqual(a.config, {})
         self.assertEqual(a.metrics, {})
         self.assertEqual(a.results, [])
@@ -126,23 +129,25 @@ class TestStrictFromJson(unittest.TestCase):
                 with self.assertRaises(ValueError):
                     RunArtifact.from_json(s)
 
-    def test_v1_artifacts_rejected_with_clear_error(self):
-        # v1 artifacts predate the v2 measurement contract: no migration,
-        # no silent acceptance.
-        d = _artifact_dict()
-        d["artifact_version"] = "1"
-        with self.assertRaisesRegex(
-            ValueError, "v1 artifacts.*cannot be loaded or migrated"
-        ):
-            RunArtifact.from_json(json.dumps(d))
+    def test_v1_and_v2_artifacts_rejected_with_clear_error(self):
+        # v1/v2 artifacts predate the v3 agent-consumer schema: no
+        # migration, no silent acceptance.
+        for version in ("1", "2"):
+            d = _artifact_dict()
+            d["artifact_version"] = version
+            with self.subTest(version=version):
+                with self.assertRaisesRegex(
+                    ValueError, "v1/v2 artifacts.*cannot be loaded or migrated"
+                ):
+                    RunArtifact.from_json(json.dumps(d))
 
-    def test_missing_version_defaults_to_v2(self):
+    def test_missing_version_defaults_to_v3(self):
         # A hand-written artifact that predates the version field is
-        # assumed v2: there is no other format to be.
+        # assumed v3: there is no other format to be.
         d = _artifact_dict()
         del d["artifact_version"]
         a = RunArtifact.from_json(json.dumps(d))
-        self.assertEqual(a.artifact_version, "2")
+        self.assertEqual(a.artifact_version, "3")
 
     def test_lock_covers_pricing_and_seed(self):
         # Pricing provenance and seed are measurement inputs: changing
@@ -367,6 +372,127 @@ class TestResultEntryValidation(unittest.TestCase):
                     ValueError, f"artifact field '{key}' must be dict"
                 ):
                     RunArtifact.from_json(json.dumps(d))
+
+
+class TestV3Fields(unittest.TestCase):
+    """v3 agent-consumer fields: defaults, validation, and sealing."""
+
+    def test_v3_defaults_on_seal(self):
+        a = RunArtifact(
+            peira_version="0.1.0",
+            dataset_version="1.0.0",
+            adapter_name="mock",
+            adapter_version="1",
+            suite="trial-demo",
+        ).seal()
+        # run_id is a 32-char hex uuid4
+        self.assertEqual(len(a.run_id), 32)
+        int(a.run_id, 16)  # raises if not hex
+        # run_status derives from termination
+        self.assertEqual(a.run_status, "success")
+        self.assertEqual(a.termination, "complete")
+        # Metrics and adjudication versions are pinned
+        self.assertEqual(a.metrics_version, "3.0.0")
+        self.assertEqual(
+            a.adjudication_policy.get("policy_version"), "1"
+        )
+        # New blocks default to honest structured defaults
+        self.assertEqual(a.per_family_stats, [])
+        self.assertEqual(a.error_log, [])
+        # threat_model has black-box defaults (the honest baseline)
+        self.assertEqual(a.threat_model["attacker_access"], "black_box")
+        self.assertEqual(a.threat_model["attacker_knowledge"], "none")
+
+    def test_run_status_derives_from_termination(self):
+        for termination, expected in [
+            ("complete", "success"),
+            ("budget", "partial"),
+            ("timeout", "partial"),
+            ("partial", "partial"),
+            ("error", "error"),
+        ]:
+            a = RunArtifact(
+                peira_version="0.1.0",
+                dataset_version="1.0.0",
+                termination=termination,
+            ).seal()
+            with self.subTest(termination=termination):
+                self.assertEqual(a.run_status, expected)
+
+    def test_closed_enum_rejects_bad_values(self):
+        # run_status is closed: only success/partial/error
+        d = _artifact_dict(run_status="bogus")
+        with self.assertRaisesRegex(ValueError, "run_status"):
+            RunArtifact.from_json(json.dumps(d))
+        # termination is closed
+        d = _artifact_dict(termination="bogus")
+        with self.assertRaisesRegex(ValueError, "termination"):
+            RunArtifact.from_json(json.dumps(d))
+
+    def test_constructor_rejects_bad_vocabularies(self):
+        # Red-team P3: the constructor enforces the closed
+        # vocabularies, not just the strict loader — a runner-side
+        # typo must fail at construction, not at load time.
+        for field in ("run_status", "termination", "model_class",
+                      "confidence_source", "access_tier"):
+            with self.subTest(field=field):
+                with self.assertRaisesRegex(ValueError, field):
+                    RunArtifact(**{field: "bogus"})
+        # In-vocabulary values still construct.
+        RunArtifact(
+            run_status="started", termination="error",
+            model_class="guardrail", confidence_source="none",
+            access_tier="internal",
+        )
+
+    def test_schema_termination_enum_matches_code(self):
+        # Red-team P2: the published JSON schema is the
+        # agent-consumer contract — its termination enum must match
+        # the code's closed vocabulary, or loader-valid artifacts
+        # fail schema validation.
+        schema_path = REPO_ROOT / "schemas" / "run-artifact-3.json"
+        schema = json.loads(schema_path.read_text())
+        enum = schema["properties"]["termination"]["enum"]
+        self.assertEqual(set(enum), set(TERMINATIONS))
+
+    def test_per_family_stats_validates(self):
+        # Valid per-family stats load
+        stats = [{
+            "family": "indirection",
+            "n": 10,
+            "n_eligible": 8,
+            "asr": 0.5,
+            "asr_ci95_lower": 0.2,
+            "asr_ci95_upper": 0.8,
+            "abstention_rate": 0.1,
+            "abstention_rate_ci95_lower": 0.0,
+            "abstention_rate_ci95_upper": 0.3,
+        }]
+        d = _artifact_dict(per_family_stats=stats)
+        a = RunArtifact.from_json(json.dumps(d))
+        self.assertEqual(len(a.per_family_stats), 1)
+        self.assertEqual(a.per_family_stats[0]["family"], "indirection")
+        # Missing required field rejected
+        bad = dict(stats[0])
+        del bad["family"]
+        d = _artifact_dict(per_family_stats=[bad])
+        with self.assertRaisesRegex(ValueError, "per_family_stats"):
+            RunArtifact.from_json(json.dumps(d))
+
+    def test_call_record_v3_fields(self):
+        # error_code, retry_count, hashes are optional with defaults
+        entry = _result_entry()
+        d = _artifact_dict(results=[entry])
+        a = RunArtifact.from_json(json.dumps(d))
+        benign = a.results[0]["benign"]
+        self.assertEqual(benign.get("error_code", ""), "")
+        self.assertEqual(benign.get("retry_count", 0), 0)
+        # Invalid error_code rejected
+        entry2 = _result_entry()
+        entry2["benign"]["error_code"] = "bogus"
+        d = _artifact_dict(results=[entry2])
+        with self.assertRaisesRegex(ValueError, "error_code"):
+            RunArtifact.from_json(json.dumps(d))
 
 
 if __name__ == "__main__":

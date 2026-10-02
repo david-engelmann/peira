@@ -248,6 +248,13 @@ mod tests {
             cached: false,
             latency_ms_total: 0.0,
             timed_out: false,
+            timeout_kind: None,
+            timing_ms: None,
+            error_code: String::new(),
+            retry_count: 0,
+            sampling_config: None,
+            prompt_hash: String::new(),
+            completion_hash: String::new(),
         }
     }
 

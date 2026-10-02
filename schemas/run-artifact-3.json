@@ -1,0 +1,806 @@
+{
+  "$defs": {
+    "adapter_pins": {
+      "additionalProperties": false,
+      "properties": {
+        "code_dirty": {
+          "type": "boolean"
+        },
+        "code_sha": {
+          "type": "string"
+        },
+        "hf_revision": {
+          "type": "string"
+        },
+        "provider_snapshot": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "provider_snapshot",
+        "hf_revision",
+        "code_sha",
+        "code_dirty"
+      ],
+      "type": "object"
+    },
+    "adjudication_policy": {
+      "additionalProperties": false,
+      "properties": {
+        "attacked_abstain_counts_as": {
+          "enum": [
+            "flipped",
+            "not_flipped"
+          ]
+        },
+        "attacked_malformed_counts_as": {
+          "enum": [
+            "flipped",
+            "not_flipped"
+          ]
+        },
+        "conditional_asr_denominator": {
+          "type": "string"
+        },
+        "eligibility_rule": {
+          "type": "string"
+        },
+        "ineligibility_reasons": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "policy_version": {
+          "type": "string"
+        },
+        "unconditional_asr_denominator": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "policy_version",
+        "eligibility_rule",
+        "ineligibility_reasons",
+        "attacked_abstain_counts_as",
+        "attacked_malformed_counts_as",
+        "conditional_asr_denominator",
+        "unconditional_asr_denominator"
+      ],
+      "type": "object"
+    },
+    "attack_provenance": {
+      "additionalProperties": false,
+      "properties": {
+        "attack_budget_variants": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "attack_code_ref": {
+          "type": "string"
+        },
+        "attack_method": {
+          "enum": [
+            "static_template",
+            "adaptive_search",
+            "manual"
+          ]
+        },
+        "attacker_model": {
+          "type": "string"
+        },
+        "attacker_model_version": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "attacker_model",
+        "attacker_model_version",
+        "attack_budget_variants",
+        "attack_method",
+        "attack_code_ref"
+      ],
+      "type": "object"
+    },
+    "cache_policy": {
+      "additionalProperties": false,
+      "properties": {
+        "cache_enabled": {
+          "type": "boolean"
+        },
+        "cache_hits": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "cache_key_scheme": {
+          "type": "string"
+        },
+        "cache_misses": {
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "cache_enabled",
+        "cache_key_scheme",
+        "cache_hits",
+        "cache_misses"
+      ],
+      "type": "object"
+    },
+    "call_record": {
+      "additionalProperties": false,
+      "properties": {
+        "abstained": {
+          "type": "boolean"
+        },
+        "cached": {
+          "type": "boolean"
+        },
+        "completion_hash": {
+          "default": "",
+          "type": "string"
+        },
+        "confidence": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "decision": {
+          "type": "string"
+        },
+        "dispatch_index": {
+          "type": "integer"
+        },
+        "dispatch_limit": {
+          "type": "integer"
+        },
+        "error_code": {
+          "default": "",
+          "enum": [
+            "",
+            "timeout",
+            "rate_limit",
+            "api_error",
+            "parse_failure",
+            "refused_to_format"
+          ],
+          "type": "string"
+        },
+        "latency_ms_total": {
+          "type": "number"
+        },
+        "malformed": {
+          "type": "boolean"
+        },
+        "prompt_hash": {
+          "default": "",
+          "type": "string"
+        },
+        "refusal_reason": {
+          "type": "string"
+        },
+        "retry_count": {
+          "default": 0,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "score": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "seed": {
+          "type": "integer"
+        },
+        "timed_out": {
+          "type": "boolean"
+        },
+        "timeout_kind": {
+          "enum": [
+            "attempt",
+            "item",
+            null
+          ],
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "timing_ms": {
+          "type": [
+            "object",
+            "null"
+          ]
+        },
+        "usage": {
+          "type": [
+            "object",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "decision",
+        "abstained",
+        "refusal_reason",
+        "seed",
+        "dispatch_index",
+        "malformed",
+        "dispatch_limit"
+      ],
+      "type": "object"
+    },
+    "determinism_check": {
+      "additionalProperties": false,
+      "properties": {
+        "checked": {
+          "type": "boolean"
+        },
+        "mismatches": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "passed": {
+          "type": "boolean"
+        },
+        "sample_n": {
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "checked",
+        "passed",
+        "mismatches",
+        "sample_n"
+      ],
+      "type": "object"
+    },
+    "error_entry": {
+      "additionalProperties": false,
+      "properties": {
+        "arm": {
+          "enum": [
+            "benign",
+            "attacked"
+          ],
+          "type": "string"
+        },
+        "case_id": {
+          "type": "string"
+        },
+        "error_code": {
+          "enum": [
+            "timeout",
+            "rate_limit",
+            "api_error",
+            "parse_failure",
+            "refused_to_format"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "case_id",
+        "arm",
+        "error_code"
+      ],
+      "type": "object"
+    },
+    "exposure_attestation": {
+      "additionalProperties": false,
+      "properties": {
+        "blindness_protocol_id": {
+          "type": "string"
+        },
+        "case_subset": {
+          "enum": [
+            "public",
+            "private",
+            "blind",
+            "mixed"
+          ]
+        },
+        "holdout_access_log_ref": {
+          "type": "string"
+        },
+        "prior_exposure_attested": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "case_subset",
+        "blindness_protocol_id",
+        "prior_exposure_attested",
+        "holdout_access_log_ref"
+      ],
+      "type": "object"
+    },
+    "per_family_stat": {
+      "additionalProperties": false,
+      "properties": {
+        "abstention_rate": {
+          "maximum": 1,
+          "minimum": 0,
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "abstention_rate_ci95_lower": {
+          "maximum": 1,
+          "minimum": 0,
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "abstention_rate_ci95_upper": {
+          "maximum": 1,
+          "minimum": 0,
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "asr": {
+          "maximum": 1,
+          "minimum": 0,
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "asr_ci95_lower": {
+          "maximum": 1,
+          "minimum": 0,
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "asr_ci95_upper": {
+          "maximum": 1,
+          "minimum": 0,
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "family": {
+          "type": "string"
+        },
+        "n": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "n_eligible": {
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "family",
+        "n",
+        "n_eligible",
+        "asr",
+        "asr_ci95_lower",
+        "asr_ci95_upper"
+      ],
+      "type": "object"
+    },
+    "result_entry": {
+      "additionalProperties": false,
+      "properties": {
+        "attacked": {
+          "$ref": "#/$defs/call_record"
+        },
+        "benign": {
+          "$ref": "#/$defs/call_record"
+        },
+        "case_id": {
+          "type": "string"
+        },
+        "conversational_turns": {
+          "type": "object"
+        },
+        "eligible": {
+          "type": "boolean"
+        },
+        "family": {
+          "type": "string"
+        },
+        "flipped": {
+          "type": "boolean"
+        },
+        "ineligibility_reason": {
+          "default": "",
+          "type": "string"
+        },
+        "primitive": {
+          "type": "string"
+        },
+        "severity": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "case_id",
+        "family",
+        "severity",
+        "primitive",
+        "benign",
+        "attacked",
+        "flipped",
+        "eligible"
+      ],
+      "type": "object"
+    },
+    "retry_policy": {
+      "additionalProperties": false,
+      "properties": {
+        "max_retries": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "per_call_timeout_s": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "rate_limit_hits": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "total_retries": {
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "per_call_timeout_s",
+        "max_retries",
+        "total_retries",
+        "rate_limit_hits"
+      ],
+      "type": "object"
+    },
+    "threat_model": {
+      "additionalProperties": false,
+      "properties": {
+        "attack_adaptivity": {
+          "enum": [
+            "static",
+            "adaptive"
+          ]
+        },
+        "attacker_access": {
+          "enum": [
+            "black_box",
+            "gray_box",
+            "white_box"
+          ]
+        },
+        "attacker_knowledge": {
+          "enum": [
+            "none",
+            "architecture",
+            "weights",
+            "training_data"
+          ]
+        },
+        "notes": {
+          "type": "string"
+        },
+        "query_budget_per_case": {
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "attacker_access",
+        "attacker_knowledge",
+        "query_budget_per_case",
+        "attack_adaptivity",
+        "notes"
+      ],
+      "type": "object"
+    },
+    "uncertainty": {
+      "additionalProperties": false,
+      "properties": {
+        "ci_level": {
+          "type": "number"
+        },
+        "ci_method": {
+          "type": "string"
+        },
+        "ci_unit": {
+          "type": "string"
+        },
+        "familywise_alpha": {
+          "type": "number"
+        },
+        "multiple_comparison": {
+          "enum": [
+            "none",
+            "holm",
+            "bonferroni"
+          ]
+        }
+      },
+      "required": [
+        "ci_method",
+        "ci_level",
+        "ci_unit",
+        "multiple_comparison",
+        "familywise_alpha"
+      ],
+      "type": "object"
+    }
+  },
+  "$id": "https://peiratrial.dev/schemas/run-artifact/3.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Versioned record of one peira evaluation run. Sealed with an analysis_lock (SHA-256 over the lock payload). Only v3 artifacts load. v1/v2 are rejected outright.",
+  "properties": {
+    "access_tier": {
+      "default": "public",
+      "enum": [
+        "public",
+        "internal",
+        "confidential"
+      ],
+      "type": "string"
+    },
+    "adapter_name": {
+      "default": "",
+      "type": "string"
+    },
+    "adapter_pins": {
+      "$ref": "#/$defs/adapter_pins"
+    },
+    "adapter_version": {
+      "default": "",
+      "type": "string"
+    },
+    "adjudication_policy": {
+      "$ref": "#/$defs/adjudication_policy"
+    },
+    "analysis_lock": {
+      "default": "",
+      "type": "string"
+    },
+    "api_version": {
+      "default": "",
+      "type": "string"
+    },
+    "artifact_version": {
+      "const": "3"
+    },
+    "attack_provenance": {
+      "$ref": "#/$defs/attack_provenance"
+    },
+    "budget_usd": {
+      "default": null,
+      "type": [
+        "number",
+        "null"
+      ]
+    },
+    "cache_policy": {
+      "$ref": "#/$defs/cache_policy"
+    },
+    "call_date": {
+      "default": "",
+      "type": "string"
+    },
+    "case_set_tag": {
+      "default": "",
+      "type": "string"
+    },
+    "cases_completed": {
+      "default": 0,
+      "minimum": 0,
+      "type": "integer"
+    },
+    "cases_planned": {
+      "default": 0,
+      "minimum": 0,
+      "type": "integer"
+    },
+    "checkpoint_hash": {
+      "default": "",
+      "type": "string"
+    },
+    "confidence_source": {
+      "default": "",
+      "enum": [
+        "",
+        "verbalized",
+        "token-logprob",
+        "guardrail-score",
+        "none"
+      ],
+      "type": "string"
+    },
+    "config": {
+      "default": {},
+      "type": "object"
+    },
+    "contract_version": {
+      "default": "1",
+      "type": "string"
+    },
+    "cost_scenario_version": {
+      "default": "",
+      "type": "string"
+    },
+    "created_utc": {
+      "default": "",
+      "type": "string"
+    },
+    "dataset_version": {
+      "type": "string"
+    },
+    "decode_params": {
+      "default": "",
+      "type": "string"
+    },
+    "determinism_check": {
+      "$ref": "#/$defs/determinism_check"
+    },
+    "env": {
+      "default": {},
+      "type": "object"
+    },
+    "env_sha256": {
+      "default": "",
+      "type": "string"
+    },
+    "error_log": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/error_entry"
+      },
+      "type": "array"
+    },
+    "exposure_attestation": {
+      "$ref": "#/$defs/exposure_attestation"
+    },
+    "license": {
+      "default": "CC-BY-4.0",
+      "type": "string"
+    },
+    "manifest_sha256": {
+      "default": "",
+      "type": "string"
+    },
+    "max_concurrency": {
+      "default": 0,
+      "minimum": 0,
+      "type": "integer"
+    },
+    "metrics": {
+      "default": {},
+      "type": "object"
+    },
+    "metrics_version": {
+      "default": "",
+      "type": "string"
+    },
+    "model_class": {
+      "default": "",
+      "enum": [
+        "",
+        "guardrail",
+        "llm-baseline",
+        "hybrid",
+        "rule-based"
+      ],
+      "type": "string"
+    },
+    "parent_run_id": {
+      "default": "",
+      "type": "string"
+    },
+    "peira_version": {
+      "type": "string"
+    },
+    "per_family_stats": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/per_family_stat"
+      },
+      "type": "array"
+    },
+    "pricing_date": {
+      "default": "",
+      "type": "string"
+    },
+    "pricing_source": {
+      "default": "",
+      "type": "string"
+    },
+    "pricing_version": {
+      "default": "",
+      "type": "string"
+    },
+    "results": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/result_entry"
+      },
+      "type": "array"
+    },
+    "retry_policy": {
+      "$ref": "#/$defs/retry_policy"
+    },
+    "run_id": {
+      "default": "",
+      "description": "Stable run identity. The join key that survives renames and copies.",
+      "type": "string"
+    },
+    "run_status": {
+      "default": "success",
+      "description": "Machine-checkable run gate. Never analyze a run whose status is not success.",
+      "enum": [
+        "started",
+        "success",
+        "cancelled",
+        "error",
+        "partial"
+      ],
+      "type": "string"
+    },
+    "schema_ref": {
+      "default": "https://peiratrial.dev/schemas/run-artifact/3.json",
+      "type": "string"
+    },
+    "seed": {
+      "default": 0,
+      "type": "integer"
+    },
+    "spent_usd": {
+      "default": 0.0,
+      "type": "number"
+    },
+    "suite": {
+      "default": "",
+      "type": "string"
+    },
+    "template_hash": {
+      "default": "",
+      "type": "string"
+    },
+    "termination": {
+      "default": "complete",
+      "enum": [
+        "complete",
+        "budget",
+        "timeout",
+        "partial",
+        "operator",
+        "error"
+      ],
+      "type": "string"
+    },
+    "threat_model": {
+      "$ref": "#/$defs/threat_model"
+    },
+    "uncertainty": {
+      "$ref": "#/$defs/uncertainty"
+    }
+  },
+  "required": [
+    "artifact_version",
+    "peira_version",
+    "dataset_version"
+  ],
+  "title": "peira run artifact v3",
+  "type": "object"
+}

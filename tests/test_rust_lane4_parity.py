@@ -139,7 +139,39 @@ class ComputeLockParity(unittest.TestCase):
             adapter_version="0",
             suite="trial-demo",
             config={"k": [1, 2, {"n": None}]},
-            results=[{"case_id": "c1", "x": 1.5}],
+            results=[
+                {
+                    "case_id": "c1",
+                    "family": "negation_games",
+                    "severity": "high",
+                    "primitive": "choice",
+                    "ineligibility_reason": "",
+                    "benign": {
+                        "decision": "approve",
+                        "confidence": 0.9,
+                        "abstained": False,
+                        "refusal_reason": "",
+                        "seed": 0,
+                        "dispatch_index": 0,
+                        "malformed": False,
+                        "dispatch_limit": 1,
+                        "usage": None,
+                    },
+                    "attacked": {
+                        "decision": "deny",
+                        "confidence": 0.8,
+                        "abstained": False,
+                        "refusal_reason": "",
+                        "seed": 0,
+                        "dispatch_index": 1,
+                        "malformed": False,
+                        "dispatch_limit": 1,
+                        "usage": None,
+                    },
+                    "flipped": True,
+                    "eligible": True,
+                }
+            ],
             metrics={"asr": 0.25},
             seed=7,
             max_concurrency=8,
@@ -152,8 +184,15 @@ class ComputeLockParity(unittest.TestCase):
         return RunArtifact(**kw)
 
     def test_known_vector_independent(self):
-        """Lock matches a digest computed directly with hashlib/json."""
-        a = self.make_artifact()
+        """Lock matches a digest computed directly with hashlib/json.
+
+        The payload below is a literal, independent specification of the
+        v3 lock payload: every key and default is spelled out, so any
+        change to the lock schema or a default fails this test loudly.
+        Note the constructor normalizes each result entry, applying the
+        four v3 call-record defaults to both arms.
+        """
+        a = self.make_artifact(run_id="fixed-run-id")
         payload = json.dumps(
             {
                 "peira_version": a.peira_version,
@@ -162,7 +201,47 @@ class ComputeLockParity(unittest.TestCase):
                 "adapter_version": "0",
                 "suite": "trial-demo",
                 "config": {"k": [1, 2, {"n": None}]},
-                "results": [{"case_id": "c1", "x": 1.5}],
+                "results": [
+                    {
+                        "case_id": "c1",
+                        "family": "negation_games",
+                        "severity": "high",
+                        "primitive": "choice",
+                        "ineligibility_reason": "",
+                        "benign": {
+                            "decision": "approve",
+                            "confidence": 0.9,
+                            "abstained": False,
+                            "refusal_reason": "",
+                            "seed": 0,
+                            "dispatch_index": 0,
+                            "malformed": False,
+                            "dispatch_limit": 1,
+                            "usage": None,
+                            "error_code": "",
+                            "retry_count": 0,
+                            "prompt_hash": "",
+                            "completion_hash": "",
+                        },
+                        "attacked": {
+                            "decision": "deny",
+                            "confidence": 0.8,
+                            "abstained": False,
+                            "refusal_reason": "",
+                            "seed": 0,
+                            "dispatch_index": 1,
+                            "malformed": False,
+                            "dispatch_limit": 1,
+                            "usage": None,
+                            "error_code": "",
+                            "retry_count": 0,
+                            "prompt_hash": "",
+                            "completion_hash": "",
+                        },
+                        "flipped": True,
+                        "eligible": True,
+                    }
+                ],
                 "manifest_sha256": "abc",
                 "pricing_source": "s",
                 "pricing_date": "2026-01-01",
@@ -177,10 +256,10 @@ class ComputeLockParity(unittest.TestCase):
                 "max_concurrency": 8,
                 "max_tokens_per_call": None,
                 "metrics": {"asr": 0.25},
+                "env": {},
                 "env_sha256": "def",
-                # Measurement framework (M-6/M-7, 2026-09-28): the 9 new
-                # lock-covered provenance fields, defaulting to "" for
-                # artifacts predating them.
+                # Measurement framework (M-6/M-7, 2026-09-28): the 9
+                # lock-covered provenance fields.
                 "model_class": "",
                 "confidence_source": "",
                 "checkpoint_hash": "",
@@ -190,6 +269,84 @@ class ComputeLockParity(unittest.TestCase):
                 "template_hash": "",
                 "case_set_tag": "",
                 "cost_scenario_version": "",
+                # Run-artifact v3 agent-consumer block (Program B).
+                "run_id": "fixed-run-id",
+                "parent_run_id": "",
+                "run_status": "success",
+                "schema_ref": (
+                    "https://peiratrial.dev/schemas/run-artifact/3.json"
+                ),
+                "metrics_version": "3.0.0",
+                "threat_model": {
+                    "attack_adaptivity": "static",
+                    "attacker_access": "black_box",
+                    "attacker_knowledge": "none",
+                    "notes": "",
+                    "query_budget_per_case": 0,
+                },
+                "attack_provenance": {
+                    "attack_budget_variants": 1,
+                    "attack_code_ref": "",
+                    "attack_method": "static_template",
+                    "attacker_model": "",
+                    "attacker_model_version": "",
+                },
+                "adjudication_policy": {
+                    "attacked_abstain_counts_as": "not_flipped",
+                    "attacked_malformed_counts_as": "flipped",
+                    "conditional_asr_denominator": "eligible_cases",
+                    "eligibility_rule": (
+                        "benign_well_formed_and_correct_and_not_abstained"
+                    ),
+                    "ineligibility_reasons": [
+                        "benign_malformed",
+                        "benign_wrong_decision",
+                        "benign_abstained",
+                    ],
+                    "policy_version": "1",
+                    "unconditional_asr_denominator": "all_cases",
+                },
+                "exposure_attestation": {
+                    "blindness_protocol_id": "",
+                    "case_subset": "public",
+                    "holdout_access_log_ref": "",
+                    "prior_exposure_attested": False,
+                },
+                "adapter_pins": {
+                    "code_dirty": False,
+                    "code_sha": "",
+                    "hf_revision": "",
+                    "provider_snapshot": "",
+                },
+                "license": "CC-BY-4.0",
+                "access_tier": "public",
+                "per_family_stats": [],
+                "uncertainty": {
+                    "ci_level": 0.95,
+                    "ci_method": "wilson",
+                    "ci_unit": "per_case_binomial",
+                    "familywise_alpha": 0.05,
+                    "multiple_comparison": "none",
+                },
+                "retry_policy": {
+                    "max_retries": 0,
+                    "per_call_timeout_s": None,
+                    "rate_limit_hits": 0,
+                    "total_retries": 0,
+                },
+                "cache_policy": {
+                    "cache_enabled": False,
+                    "cache_hits": 0,
+                    "cache_key_scheme": "",
+                    "cache_misses": 0,
+                },
+                "determinism_check": {
+                    "checked": False,
+                    "mismatches": 0,
+                    "passed": False,
+                    "sample_n": 0,
+                },
+                "error_log": [],
             },
             sort_keys=True,
         )

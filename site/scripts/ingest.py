@@ -31,11 +31,12 @@ SCHEMA_VERSION = "2"
 # ---------------------------------------------------------------------------
 # v3 extension blocks (research_notes/peira-run-artifact-research-20260928.md).
 #
-# The v3 schema has not landed in peira.artifacts yet, so v3 blocks ride as
-# a sealed extension inside config["v3"]; the full placement rationale
-# lives on build_v3_block() in site/scripts/gen_mock.py. When the real v3
-# lands with top-level fields and a bumped artifact_version, the v3 lane
-# updates extract_v3() to read the new layout.
+# The v3 schema has since landed in peira.artifacts with top-level v3
+# fields and artifact_version "3", but the site pipeline still consumes
+# the prototype block riding as a sealed extension inside config["v3"];
+# the full placement rationale lives on build_v3_block() in
+# site/scripts/gen_mock.py. Migrating extract_v3() to read the new
+# top-level layout is separate future work.
 # ---------------------------------------------------------------------------
 
 # Closed vocabularies. Agents filter and group on these; a free-form string
@@ -97,11 +98,13 @@ def _has_path(block: dict, dotted: str) -> bool:
 
 
 def extract_v3(artifact: RunArtifact, path_name: str) -> dict | None:
-    """Return the v3 extension block, or None for pure-v2 artifacts.
+    """Return the v3 extension block, or None for artifacts without one.
 
-    Reads the sealed config["v3"] extension block. (Top-level v3 fields
-    cannot exist yet: RunArtifact.from_json rejects unknown top-level
-    fields. The v3 lane updates this when the real schema lands.)
+    Reads the sealed config["v3"] extension block. (The run-artifact v3
+    schema has since landed with top-level v3 fields on RunArtifact, but
+    the site pipeline still consumes the prototype block layout;
+    migrating extract_v3() to the top-level fields is separate future
+    work.)
     """
     raw = artifact.config.get("v3")
     if raw is None:
@@ -205,8 +208,8 @@ def load_artifact(path: Path, allow_mock: bool) -> tuple[RunArtifact, dict | Non
         artifact = RunArtifact.from_json(path.read_text(encoding="utf-8"))
     except Exception as exc:
         fail(f"{path.name}: cannot parse as RunArtifact: {exc}")
-    if artifact.artifact_version != "2":
-        fail(f"{path.name}: artifact_version {artifact.artifact_version!r} != '2'")
+    if artifact.artifact_version != "3":
+        fail(f"{path.name}: artifact_version {artifact.artifact_version!r} != '3'")
     if not artifact.verify():
         fail(f"{path.name}: analysis lock does NOT verify (tampered or hand-edited?)")
     is_mock = artifact.config.get("mock", False)
@@ -220,8 +223,10 @@ def load_artifact(path: Path, allow_mock: bool) -> tuple[RunArtifact, dict | Non
         fail(f"{path.name}: suite {artifact.suite!r} must be 'public' or 'holdout'")
     if not isinstance(artifact.metrics, dict) or not artifact.metrics:
         fail(f"{path.name}: artifact carries no sealed metrics")
-    # v3 extension blocks are optional on v2 artifacts but, when present,
+    # v3 extension blocks are optional on v3 artifacts but, when present,
     # are validated and gated before anything downstream sees the run.
+    # (The block still rides in config["v3"]; the migration of
+    # extract_v3() to the top-level v3 fields is separate future work.)
     v3 = extract_v3(artifact, path.name)
     if v3 is not None:
         validate_v3(v3, path.name)

@@ -83,6 +83,13 @@ pub fn blank_record(seed: i64, dispatch_index: i64, dispatch_limit: i64) -> Call
         cached: false,
         latency_ms_total: 0.0,
         timed_out: false,
+        timeout_kind: None,
+        timing_ms: None,
+        error_code: String::new(),
+        retry_count: 0,
+        sampling_config: None,
+        prompt_hash: String::new(),
+        completion_hash: String::new(),
     }
 }
 
@@ -257,6 +264,13 @@ pub fn record_from_transcript_entry(entry: &Value) -> Result<CallRecord, String>
         cached,
         latency_ms_total,
         timed_out,
+        timeout_kind: None,
+        timing_ms: None,
+        error_code: String::new(),
+        retry_count: 0,
+        sampling_config: None,
+        prompt_hash: String::new(),
+        completion_hash: String::new(),
     })
 }
 
