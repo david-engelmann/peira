@@ -1,12 +1,11 @@
 # syntax=docker/dockerfile:1
 # peira reproducible environment.
 #
-# Multi-stage build.
-#   1. rust-builder compiles the optional PyO3 accelerator (peira._core)
-#      from crates/peira-python against the pinned Cargo.lock.
-#   2. runtime is Python 3.12 plus pip-installed peira with its pinned
-#      dependencies, the built Rust extension, and the versioned
-#      datasets.
+# Single-stage build: the maturin PEP 517 backend compiles the optional
+# PyO3 accelerator (peira._core) from crates/peira-python as part of
+# `pip install -e .`, so no separate Rust build stage or manual .so
+# copy is needed. The Rust toolchain is installed in the image because
+# the PEP 517 build runs at install time.
 #
 # Build-only by default. No image is pushed to any registry. See
 # .github/workflows/docker-build.yml and docs/Reproducibility.md.
@@ -15,31 +14,6 @@
 #   docker build -t peira:local --build-arg EXTRAS=all .
 #   docker run --rm peira:local run --adapter mock --suite trial --seed 0 --out /tmp/runs
 
-# ---------------------------------------------------------------------------
-# Stage 1: build the Rust accelerator.
-# ---------------------------------------------------------------------------
-FROM rust:1.98.1-slim-bookworm AS rust-builder
-
-# PyO3's build script needs a Python interpreter to query (it does not
-# link libpython on Linux with the extension-module feature, so the
-# -dev headers are unnecessary).
-RUN apt-get update && \
-    apt-get install -y --no-install-recommends python3 && \
-    rm -rf /var/lib/apt/lists/*
-
-WORKDIR /build
-
-# The Rust toolchain is pinned by rust-toolchain.toml (1.98.1) and every
-# crate dependency by Cargo.lock; copying the manifests first keeps the
-# dependency layer cacheable.
-COPY Cargo.toml Cargo.lock rust-toolchain.toml ./
-COPY crates/ crates/
-
-RUN cargo build --release -p peira-python
-
-# ---------------------------------------------------------------------------
-# Stage 2: Python runtime.
-# ---------------------------------------------------------------------------
 FROM python:3.12-slim-bookworm AS runtime
 
 # Which extras to install. `dev` (the default) covers the base
@@ -52,6 +26,15 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PIP_NO_CACHE_DIR=1
 
 WORKDIR /peira
+
+# Rust toolchain for maturin's PEP 517 build of peira._core. Pinned by
+# rust-toolchain.toml (1.98.1); the minimal profile keeps the layer small.
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends curl ca-certificates && \
+    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | \
+      sh -s -- -y --profile minimal && \
+    rm -rf /var/lib/apt/lists/*
+ENV PATH="/root/.cargo/bin:${PATH}"
 
 # Install the pinned third-party dependencies first. This layer only
 # rebuilds when the lockfile changes, not on every code edit.
@@ -79,18 +62,15 @@ RUN if [ "$EXTRAS" = "all" ]; then \
 # The base tier has zero third-party runtime dependencies by design (see
 # AGENTS.md); --no-deps keeps it that way and lets the lockfile stay the
 # single source of truth for everything else.
-COPY pyproject.toml README.md ./
+#
+# maturin is the PEP 517 build backend, so this step compiles peira._core
+# in place (needs the crates/ tree and the Cargo manifests, copied
+# below). The extension suffix is computed by maturin, not hardcoded, so
+# the Dockerfile survives Python upgrades.
+COPY pyproject.toml README.md Cargo.toml Cargo.lock rust-toolchain.toml ./
 COPY python/ python/
-RUN pip install -e . --no-deps
-
-# Install the Rust accelerator built in stage 1 next to the checked-out
-# package, exactly as scripts/build_core_ext.py does for a local
-# checkout. The extension suffix is computed, not hardcoded, so the
-# Dockerfile survives Python upgrades.
-COPY --from=rust-builder /build/target/release/lib_core.so /tmp/lib_core.so
-RUN EXT_SUFFIX=$(python3 -c "import sysconfig; print(sysconfig.get_config_var('EXT_SUFFIX'))") && \
-    cp /tmp/lib_core.so "/peira/python/peira/_core$EXT_SUFFIX" && \
-    rm /tmp/lib_core.so && \
+COPY crates/ crates/
+RUN pip install -e . --no-deps && \
     python3 -c "from peira._rust import RUST_AVAILABLE; assert RUST_AVAILABLE, 'Rust extension failed to import'"
 
 # Ship the versioned datasets so suite runs work out of the box.

@@ -120,27 +120,6 @@ about its own timeout enforcement. Fix: resume with the same `--run-timeout`
 the partial was written with (or no `--run-timeout`, matching the partial),
 or delete the `<adapter>-<suite>.partial.json` file and re-run from scratch.
 
-**`error: --max-tokens-per-call must be >= 1 (got X)`**
-Cause: the per-call output-token cap was zero or negative, which is not a
-cap at all. Fix: pass a positive integer, or drop `--max-tokens-per-call`
-for an uncapped run.
-
-**`error: partial run was recorded with max_tokens_per_call X, not Y: re-run with the same --max-tokens-per-call or drop --resume`**
-Cause: `peira run --resume` found a partial run recorded under a different
-per-call token cap than the one requested. The cap is a measurement input.
-Merging results scored under a different cap would make the artifact lie
-about its own token enforcement. Fix: resume with the same
-`--max-tokens-per-call` the partial was written with (or no
-`--max-tokens-per-call`, matching the partial), or delete the
-`<adapter>-<suite>.partial.json` file and re-run from scratch.
-
-**`error: could not render transcript: ...`**
-Cause: `peira transcript-view` could not read the transcript file
-(missing path, permissions, or undecodable bytes). Fix: check the
-`--transcript` path and re-run. Transcript lines that are not valid JSON
-are skipped individually and reported in the page summary instead of
-failing the render.
-
 **`error: partial run has no cache state declaration (config.cache_enabled): it predates cache-state sealing and cannot resume`**
 Cause: `peira run --resume` found a partial run written before cache
 state was sealed into artifacts. It cannot prove its cache state, so
@@ -190,84 +169,6 @@ Cause: a transcript captures a single run's request/response stream,
 but multi-seed runs are k independent executions. Fix: run with
 `--seeds 1` to capture a transcript, or omit `--transcript` for
 multi-seed runs.
-
-**`error: --budget-grid is not supported for the conversational suite (single-shot suites only)`**
-Cause: EB-35 attack-strength sweeps budget the single-shot attacked
-arm. The conversational suite has its own turn-based driver. Fix:
-run the sweep on a single-shot suite, or use the conversational
-suite without `--budget-grid`.
-
-**`error: --budget-grid is not supported with --seeds > 1; run the sweep with --seeds 1`**
-Cause: a sweep already multiplies each case by max(budget_grid)
-attacked queries. Crossing that with k seeds would confound the
-budget dimension with seed variance. Fix: run the sweep with
-`--seeds 1`.
-
-**`error: invalid --strength-dimension: <reason>`**
-Cause: `--strength-dimension` named a dimension that is not in the
-registry. Fix: run `peira sweep-dimensions` to list the registered
-dimensions and pass one of those names.
-
-**`error: invalid --budget-grid: <reason>`**
-Cause: the grid must be a non-empty, strictly increasing list of
-positive integers (e.g. `1,2,4,8`). Common mistakes: a zero or
-negative entry, a repeated value, non-integer text, or an empty
-string. Fix: pass a valid grid like `--budget-grid 1,2,4,8,16`.
-
-**`error: <path> is not a sweep artifact (no metrics.sweep section; run with --budget-grid first)`**
-Cause: `peira sweep-report` was pointed at a standard run artifact,
-which has no sealed sweep summary. Fix: run with
-`--budget-grid` to produce a sweep artifact, then report on it.
-
-**`error: <path> not found`**
-Cause: `peira sweep-report` was given a path that does not exist.
-Fix: check the path spelling and that the sweep run completed.
-
-**`error: <path> is not a valid run artifact (<reason>)`**
-Cause: `peira sweep-report` was given a file that is not a valid
-run artifact (corrupt JSON, wrong schema, or a partial from a
-different suite). Fix: verify the file is a completed sweep
-artifact from `peira run --budget-grid`.
-
-**`error: partial run at <path> uses grid=<grid> dimension=<dim>, but current run uses grid=<grid> dimension=<dim>; delete <path> or re-run with the original grid and dimension.`**
-Cause: `peira run --resume --budget-grid` was given a different grid
-or dimension than the partial run. Mixing grids would silently corrupt
-the budget-to-first-flip curve. Fix: delete the partial and re-run,
-or re-run with the original grid and dimension.
-
-**`error: partial run at <path> is a sweep run (grid=<grid> dimension=<dim>); resume with --budget-grid <grid> --strength-dimension <dim>, or delete <path> and re-run`**
-Cause: `peira run --resume` was used without `--budget-grid` on a
-partial from a sweep run. The remaining cases would run single-shot
-and seal an artifact whose ranking flags no longer mean what they
-say. Fix: resume with the original `--budget-grid` and
-`--strength-dimension`, or delete the partial and re-run.
-
-**`error: partial run at <path> is a single-shot run, but the current run is a sweep (grid=<grid> dimension=<dim>); delete <path> or drop --budget-grid and --strength-dimension`**
-Cause: `peira run --resume --budget-grid` was used on a partial from
-a single-shot run. Sweep and single-shot per-case records are
-different protocols and must not share an artifact. Fix: delete the
-partial and re-run, or drop `--budget-grid` to resume the
-single-shot run.
-
-**`error: <path> has inconsistent sweep data for family '<family>' (<reason>)`**
-Cause: `peira sweep-report` found per-case results for one family that
-use different budget grids (e.g. a hand-edited or corrupted artifact).
-Merging them would silently mix incompatible budget levels. Fix:
-re-run the sweep to produce a clean artifact; do not hand-edit sealed
-artifacts.
-
-**`error: <path> has malformed sweep results (<reason>)`**
-Cause: `peira sweep-report` found result entries that do not parse as
-sweep per-case records (corrupt or hand-edited artifact). Fix: re-run
-the sweep to produce a clean artifact; do not hand-edit sealed
-artifacts.
-
-**`ValueError: strength dimension '<name>' is registered but no family has a registered attack instantiator (...)`**
-Cause: the requested dimension (e.g. `paraphrase_rounds`) is in the
-registry but no family has a registered attack instantiator for it,
-so the budget parameter is undefined. Fix: use
-`--strength-dimension attacker_queries`, or register an instantiator
-with `peira.sweep.register_strength_instantiator`.
 
 **`ValueError: budget_usd must be a number or None, got True`**
 Cause: a boolean was passed as the budget to `run_multiseed`.
@@ -336,11 +237,6 @@ ids are in `docs/Taxonomy.md`. If the id is `safety_policy`, use
 Cause: `peira run --suite conversational --families` got a family id
 that isn't in the conversational registry. Fix: pick from
 `multi_turn_escalation` or `decision_splitting`.
-
-**`error: unknown combo pair(s): x (known combo pairs: ...)`**
-Cause: `peira run --suite combo --families` got a pair id that isn't
-in the combo registry. Fix: pick from `combo-dfl-ind` or
-`combo-san-csp`.
 
 **`error: --families matched no cases in ...`**
 Cause: the ids are valid, but the suite has no cases for them (e.g. a
@@ -499,29 +395,23 @@ or counts like `n_cases` drifted). Each mismatch is listed as
 `  - <file>: <what changed>`. Fix: don't edit released case files. 
 cut a new dataset version instead. For a draft, rebuild the manifest.
 
-**``error: the `cargo` binary was not found on PATH.``**
-Cause: you ran `scripts/build_core_ext.py` without the Rust toolchain.
+**`maturin develop`: `error: the `cargo` binary was not found on PATH.`**
+Cause: you ran `maturin develop` without the Rust toolchain.
 Fix: install it (https://rustup.rs), or skip the build entirely. The
 extension is an optional accelerator; peira runs on the pure-Python
 reference implementation without it.
 
-**`error: cargo build failed (exit N).`**
+**`maturin develop`: `error: cargo build failed`**
 Cause: the PyO3 extension failed to compile. Fix: check you have a
-Python 3.10+ interpreter with development headers (`Python.h`). On
-Debian/Ubuntu that's `python3-dev`. Then re-run
-`python scripts/build_core_ext.py`.
+Python 3.10+ interpreter (PyO3's build script queries it; on Linux the
+`-dev` headers are unnecessary). Then re-run `maturin develop`.
 
-**`error: no cdylib found in target/...`**
-Cause: cargo finished but produced no shared library (wrong target dir
-or an interrupted build). Fix: `cargo clean -p peira-python` and rebuild
-with `python scripts/build_core_ext.py`.
-
-**`error: built extension failed to import:`**
-Cause: the compiled `peira._core` doesn't load in your Python (usually a
-version mismatch. The extension is built for the interpreter that ran
-the script). Fix: rebuild with the Python you actually use, and make
-sure no stale `_core*.so` / `_core*.pyd` from another interpreter sits in
-`python/peira/`.
+**`peira._core` fails to import after `maturin develop`**
+Cause: the compiled extension doesn't load in your Python (usually a
+version mismatch, since the extension is built for the interpreter that
+ran maturin). Fix: rebuild with the Python you actually use
+(`.venv/bin/maturin develop`), and make sure no stale `_core*.so` /
+`_core*.pyd` from another interpreter sits in `python/peira/`.
 
 **`warning: unreadable manifest at ... (…); recording dataset_version='0.1.0-demo'.`**
 Cause: `peira run` found a `manifest.json` in the suite directory but
@@ -1272,14 +1162,11 @@ or pick a writable path.
 Cause: the two artifacts weren't scored under the same trial. The
 message names the mismatch: different `suite`, different
 `dataset_version`, different `artifact_version` (measurement contract),
-different `manifest_sha256` (dataset bytes), or different sweep config
-(one side is an attack-strength sweep and the other is single-shot, or
-the two sweeps used different budget grids or strength dimensions).
-Fix: compare runs of the same suite and dataset version; re-run the adapter if the dataset
+or different `manifest_sha256` (dataset bytes). Fix: compare runs of
+the same suite and dataset version; re-run the adapter if the dataset
 moved on. Comparing across dataset versions is refused deliberately:
 the per-case outcomes wouldn't be paired observations of the same
-trial. Sweep runs only compare against sweeps with the same grid and
-dimension, for the same reason.
+trial.
 
 **`error: artifacts share no cases: nothing to compare`**
 Cause: the two artifacts have no `case_id` overlap (different case

@@ -380,8 +380,8 @@ def check_installation() -> list[CheckResult]:
         else:
             results.append(CheckResult(
                 "Rust core", "warn", "not built; pure-Python fallback active",
-                "run `python scripts/build_core_ext.py` for the accelerator "
-                "(optional - results are identical)"))
+                "run `pip install -e '.[dev]'` (or `maturin develop`) for the "
+                "accelerator (optional - results are identical)"))
     except ImportError:
         results.append(CheckResult("Rust core", "unknown",
                                    "could not probe", ""))
