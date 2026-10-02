@@ -25,6 +25,7 @@ Post-v1 families use `v2-<fam>-XXXX`:
 - `v2-edge-0001` … threshold_edge_hunting (family 26)
 - `v2-qpi-0001` … question_pair_incoherence (family 27)
 - `v2-cryp-0001` … cryptographic_payload (family 28)
+- `v2-freq-0001` … frequency_salience (family 29)
 - future families: `v2-<3-letter family code>-XXXX`, zero-padded,
   dense numbering per family file.
 
@@ -58,6 +59,7 @@ published discordance rates.
 | 26 | threshold_edge_hunting | 420 | shipped |
 | 27 | question_pair_incoherence | 400 | shipped |
 | 28 | cryptographic_payload | 420 | shipped |
+| 29 | frequency_salience | 420 | shipped |
 
 (Program-wide family numbers: 25 and 26 are the conversational-suite
 families, which ship under `dataset/conversational/`.)

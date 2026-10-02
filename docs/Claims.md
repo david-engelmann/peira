@@ -81,6 +81,10 @@ indexes the load-bearing claims; detail lives in the linked docs.
   simulate the guard context (a BLOCKED notice) and the in-context decode
   instructions as a proxy for the proposed execution-context mechanism.
   Empirical demonstration with a guardrail in the loop is future work.
+- That the frequency_salience cases measure real-world name-frequency
+  effects. They simulate administrative filler repeating an entity as a
+  proxy for the Laya name-frequency failure mode. Empirical demonstration
+  in the original setting is future work.
 
 ## Unverified
 

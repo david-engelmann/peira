@@ -47,6 +47,7 @@ EXPECTED_POST_V2 = (
     "threshold_edge_hunting",
     "question_pair_incoherence",
     "cryptographic_payload",
+    "frequency_salience",
 )
 
 
