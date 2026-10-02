@@ -23,6 +23,7 @@ Post-v1 families use `v2-<fam>-XXXX`:
 - `v2-xling-0001` … crosslingual_shift (family 24)
 - `v2-jsp-0001` … judge_sycophancy (family 25)
 - `v2-edge-0001` … threshold_edge_hunting (family 26)
+- `v2-qpi-0001` … question_pair_incoherence (family 27)
 - `v2-cryp-0001` … cryptographic_payload (family 28)
 - future families: `v2-<3-letter family code>-XXXX`, zero-padded,
   dense numbering per family file.
@@ -55,6 +56,7 @@ published discordance rates.
 | 24 | crosslingual_shift | 420 | shipped |
 | 25 | judge_sycophancy | 421 | shipped |
 | 26 | threshold_edge_hunting | 420 | shipped |
+| 27 | question_pair_incoherence | 400 | shipped |
 | 28 | cryptographic_payload | 420 | shipped |
 
 (Program-wide family numbers: 25 and 26 are the conversational-suite

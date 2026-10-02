@@ -323,6 +323,27 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
 - JSON Schema at `schemas/run-artifact-3.json`
   (`https://peiratrial.dev/schemas/run-artifact/3.json`).
 
+### Added question_pair_incoherence attack family (family 27, Tier 1)
+
+- New v2 family `question_pair_incoherence`. Two complementary questions
+  are asked over identical facts, where adversarial phrasing of one
+  question widens the joint-incoherence gap between the answers. 400
+  cases authored by `scripts/author_question_pair_incoherence.py`, case
+  IDs `v2-qpi-0001` and up. The mix is 86 critical, 140 high and 174
+  medium, with 300 choice, 50 abstain and 50 score cases. The attacked
+  variant keeps the byte-identical scenario and facts and rephrases one
+  question with one of three techniques. A leading interrogative, a
+  policy-scope shift, or a burden shift demanding affirmative
+  justification of the fact-favored side. Registered in
+  `python/peira/families.py`, documented in `docs/Taxonomy.md`
+  (entry 27, with a boundary ruling against `literal_reading` and
+  `contradiction_injection`) and `docs/Methodology.md` (measurement
+  section with the deletion test). Dataset stays at version 2.4.1. The
+  QPI case notes meet the public-copy bar, including repaired phrasing
+  in 84 cases flagged by the red-team audit. The dataset manifest's
+  minimum-detectable-effects table gains the `question_pair_incoherence`
+  row referenced by the Methodology's pre-registered flip rule.
+
 ### Added conversational case families
 
 - The conversational suite ships its first two attack families:

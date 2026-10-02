@@ -81,14 +81,13 @@ class TestCheckFamilies(unittest.TestCase):
         documented = check_families.documented_families(
             REPO_ROOT / "docs" / "Taxonomy.md"
         )
-        # No cap on families (David 2026-09-28).
-        self.assertEqual(len(documented), 27)
+        # No cap on families (David 2026-09-28). Numbering runs 1..N in
+        # order: 27 is question_pair_incoherence, 28 cryptographic_payload.
         numbers = [n for n, _, _ in documented]
-        # 27 is reserved for question_pair_incoherence (QPI lane, landing
-        # imminently after the 2026-10-01 cryptographic_payload 27 -> 28
-        # renumber). The QPI lane restores range(1, 29) here and deletes the
-        # RESERVED_NUMBERS entry in scripts/check_families.py.
-        self.assertEqual(numbers, list(range(1, 27)) + [28])
+        self.assertEqual(numbers, list(range(1, 29)))
+        num_by_fam = {fam: n for n, fam, _ in documented}
+        self.assertEqual(num_by_fam["question_pair_incoherence"], 27)
+        self.assertEqual(num_by_fam["cryptographic_payload"], 28)
         tiers = {fam: tier for _, fam, tier in documented}
         self.assertEqual(tiers["state_poisoning"], "v1")
         self.assertEqual(tiers["instruction_override"], "1")
@@ -98,6 +97,7 @@ class TestCheckFamilies(unittest.TestCase):
         self.assertEqual(tiers["evidence_positioning"], "1")
         self.assertEqual(tiers["crosslingual_shift"], "1")
         self.assertEqual(tiers["judge_sycophancy"], "1")
+        self.assertEqual(tiers["question_pair_incoherence"], "1")
         self.assertEqual(tiers["cryptographic_payload"], "1")
 
     def test_entry_prose_drift_detected(self):
