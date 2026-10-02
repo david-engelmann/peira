@@ -25,8 +25,13 @@ sys.path.insert(0, str(REPO_ROOT / "python"))
 
 from peira import __version__ as peira_version  # noqa: E402
 from peira.artifacts import RunArtifact  # noqa: E402
+from peira.divisions import DIVISION_KEYS, DIVISIONS  # noqa: E402
 
 SCHEMA_VERSION = "2"
+
+# Canonical division vocabulary lives in python/peira/divisions.py;
+# ingest validates against it and emits it for the site JS so the
+# display can never drift from the submission rules.
 
 # ---------------------------------------------------------------------------
 # v3 extension blocks (research_notes/peira-run-artifact-research-20260928.md).
@@ -43,7 +48,7 @@ SCHEMA_VERSION = "2"
 # its division at submit time; the declaration is sealed in the artifact
 # config (lock-covered), and ingest rejects artifacts that do not declare
 # one. The display never mixes divisions in a headline ranking.
-DIVISIONS = {"guardrail", "llm-baseline"}
+# (moved to python/peira/divisions.py: single source of truth)
 
 # Closed vocabularies. Agents filter and group on these; a free-form string
 # that drifts silently breaks downstream joins, so ingest rejects unknown
@@ -288,10 +293,10 @@ def main() -> None:
         # in config by `peira run --division`. Missing or unknown means
         # the submission is incomplete and does not go on the board.
         division = a.config.get("division") if isinstance(a.config, dict) else None
-        if division not in DIVISIONS:
+        if division not in DIVISION_KEYS:
             fail(
                 f"{path.name}: config.division must be one of "
-                f"{sorted(DIVISIONS)}, got {division!r} "
+                f"{sorted(DIVISION_KEYS)}, got {division!r} "
                 "(declare with `peira run --division`)"
             )
         run = {
@@ -328,6 +333,10 @@ def main() -> None:
         "generated_utc": datetime.now(timezone.utc).isoformat(),
         "mock_data": bool(args.mock),
         "peira_version": peira_version,
+        # Division vocabulary for the site JS, straight from the
+        # canonical python/peira/divisions.py so display and ingest
+        # can never drift apart.
+        "divisions": [{"key": k, "label": v} for k, v in DIVISIONS],
         "dataset": {
             "name": "peira-v1",
             "version": next(iter(dataset_versions)),

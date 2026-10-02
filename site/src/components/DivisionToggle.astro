@@ -2,7 +2,11 @@
 /* Segmented division control: Both divisions side by side, Guardrails only,
    or LLM baselines only. View state lives in the URL query string and is
    managed by site.js. The headline ranking never mixes divisions, each
-   division table ranks its own runs. */
+   division table ranks its own runs.
+   NOTE: the division keys here (guardrail, llm-baseline) must stay in sync
+   with the canonical vocabulary in python/peira/divisions.py. site.js
+   validates the URL division param against DATA.divisions (emitted by
+   site/scripts/ingest.py from the canonical module). */
 ---
 <div class="seg" data-division-toggle role="group" aria-label="Leaderboard division">
   <button type="button" data-division="both">Both divisions</button>
