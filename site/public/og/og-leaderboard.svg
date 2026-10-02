@@ -23,5 +23,5 @@
     <line x1="689.9" y1="262.0" x2="758.4" y2="262.0" stroke="#eef4ee" stroke-width="3"/><line x1="689.9" y1="252.0" x2="689.9" y2="272.0" stroke="#eef4ee" stroke-width="3"/><line x1="758.4" y1="252.0" x2="758.4" y2="272.0" stroke="#eef4ee" stroke-width="3"/>
     <text x="772.4" y="269.0" font-family="DejaVu Sans, Verdana, sans-serif" font-size="20" font-weight="bold" fill="#eef4ee">51.8%</text>
   <text x="64" y="586" font-family="DejaVu Sans, Verdana, sans-serif" font-size="15" fill="#a8bcb0">peiratrial.dev</text>
-  <text x="1136" y="586" text-anchor="end" font-family="DejaVu Sans, Verdana, sans-serif" font-size="15" fill="#a8bcb0">peira 0.0.0 · generated from sealed run artifacts</text>
+  <text x="1136" y="586" text-anchor="end" font-family="DejaVu Sans, Verdana, sans-serif" font-size="15" fill="#a8bcb0">peira 0.1.0 · generated from sealed run artifacts</text>
 </svg>
