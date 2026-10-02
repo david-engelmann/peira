@@ -6,8 +6,8 @@ description = "PyO3 bindings exposing peira-core to Python as peira._core."
 license = "MIT"
 
 [lib]
-# The leading underscore matches the Python-side module name: the built
-# cdylib is renamed to _core.<ext-suffix> by scripts/build_core_ext.py.
+# The leading underscore matches the Python-side module name: maturin
+# renames the built cdylib to peira/_core.<ext-suffix>.
 name = "_core"
 crate-type = ["cdylib"]
 
