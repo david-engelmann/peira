@@ -88,6 +88,9 @@ def load_runs(path: Path, suite: str, division: str) -> tuple[dict, list[dict]]:
             continue  # no headline metric, skip rather than invent one
         bacc = m.get("benign_accuracy")
         bacc_ci = m.get("benign_accuracy_ci95") or [None, None]
+        cal = (m.get("calibration") or {}).get("attacked") or {}
+        ece = cal.get("ece")
+        ece_ci = cal.get("ece_ci95") or [None, None]
         scored.append(
             {
                 "adapter_name": str(r.get("adapter_name", "unknown")),
@@ -101,6 +104,9 @@ def load_runs(path: Path, suite: str, division: str) -> tuple[dict, list[dict]]:
                 "benign_accuracy": float(bacc) if bacc is not None else None,
                 "benign_accuracy_ci_lo": float(bacc_ci[0]) if bacc_ci[0] is not None else None,
                 "benign_accuracy_ci_hi": float(bacc_ci[1]) if bacc_ci[1] is not None else None,
+                "ece": float(ece) if ece is not None else None,
+                "ece_ci_lo": float(ece_ci[0]) if ece_ci[0] is not None else None,
+                "ece_ci_hi": float(ece_ci[1]) if ece_ci[1] is not None else None,
             }
         )
     scored.sort(key=lambda s: s["asr"])
@@ -428,37 +434,44 @@ def alt_text_families(data: dict, suite: str, division: str, top_n: int) -> str:
     return "\n".join(lines) + "\n"
 
 
-def _accuracy_rows(scored: list[dict]) -> list[dict]:
+def _ece_rows(scored: list[dict]) -> list[dict]:
+    """Per-adapter expected calibration error, best (lowest) first.
+
+    ECE is the calibration page's headline metric: the average gap
+    between stated confidence and observed accuracy. Lower is better.
+    """
     rows = []
     for s in scored:
+        if s.get("ece") is None:
+            continue
         rows.append({
-            "asr": float(s["benign_accuracy"]),
-            "ci_lo": s["benign_accuracy_ci_lo"],
-            "ci_hi": s["benign_accuracy_ci_hi"],
+            "asr": float(s["ece"]),
+            "ci_lo": s["ece_ci_lo"],
+            "ci_hi": s["ece_ci_hi"],
             "adapter_name": s["adapter_name"],
             "adapter_version": s["adapter_version"],
         })
-    rows.sort(key=lambda r: r["asr"], reverse=True)
+    rows.sort(key=lambda r: r["asr"])
     return rows
 
 
 def render_calibration(data: dict, scored: list[dict],
                        peira_version_override: str | None = None) -> str:
-    acc = [s for s in scored if s.get("benign_accuracy") is not None]
-    if not acc:
-        fail("no benign_accuracy in the site-data JSON for the selected suite/division")
+    ece = _ece_rows(scored)
+    if not ece:
+        fail("no calibration.attacked.ece in the site-data JSON for the selected suite/division")
     footer_right, dataset_version, mock = _footer_bits(data, peira_version_override)
-    subtitle_bits = ["benign accuracy per adapter", "higher is better"]
+    subtitle_bits = ["expected calibration error per adapter", "lower is better"]
     if dataset_version:
         subtitle_bits.append(f"dataset {dataset_version}")
     body = _bar_rows(
-        _accuracy_rows(acc), 360, 740, 210, 52,
+        ece, 360, 740, 210, 52,
         lambda s: (s["adapter_name"] + (f" {s['adapter_version']}" if s["adapter_version"] else ""), None),
     )
     return _frame(
         "peira calibration",
         " \u00b7 ".join(subtitle_bits),
-        [f"{len(acc)} adapters", "whiskers show 95 percent confidence intervals"],
+        [f"{len(ece)} adapters", "whiskers show 95 percent confidence intervals"],
         body, mock,
         "peira calibration OG image, " + ("mock data" if mock else "benchmark results"),
         footer_right,
@@ -470,10 +483,11 @@ def alt_text_calibration(data: dict, scored: list[dict]) -> str:
     lines = [
         "OG social image for the peira calibration page.",
         "A dark card titled peira calibration with a horizontal bar chart of "
-        "benign accuracy per adapter. Higher is better.",
+        "expected calibration error per adapter, the average gap between "
+        "stated confidence and observed accuracy. Lower is better.",
         f"Data status is {'MOCK DATA, not real results' if mock else 'real benchmark results'}.",
     ]
-    for i, s in enumerate(_accuracy_rows([x for x in scored if x.get("benign_accuracy") is not None]), 1):
+    for i, s in enumerate(_ece_rows(scored), 1):
         lines.append(f"{i}. {s['adapter_name']} at {pct(s['asr'])}.")
     return "\n".join(lines) + "\n"
 
@@ -794,8 +808,10 @@ def main() -> None:
     )
     ap.add_argument(
         "--out",
-        default=str(SITE_ROOT / "public" / "og" / "og-leaderboard"),
-        help="output base path (no extension)",
+        default=None,
+        help="output base path (no extension). Default: the og/ directory "
+        "plus the view's file name (e.g. og-calibration for --view "
+        "calibration), or og-leaderboard for the default view.",
     )
     ap.add_argument("--top-n", type=int, default=TOP_N_DEFAULT)
     ap.add_argument("--suite", default="public", choices=("public", "holdout"))
@@ -837,9 +853,12 @@ def main() -> None:
         )
 
     views = sorted(VIEWS) if args.all_views else [args.view]
-    default_out = Path(args.out)
+    og_dir = SITE_ROOT / "public" / "og"
     for view in views:
-        out_base = (default_out.parent / VIEWS[view]) if args.all_views else default_out
+        if args.out:
+            out_base = Path(args.out)
+        else:
+            out_base = og_dir / VIEWS[view]
         out_base.parent.mkdir(parents=True, exist_ok=True)
         svg, alt = render_view(view, data, scored, args.top_n, args.suite,
                                args.division, args.peira_version)

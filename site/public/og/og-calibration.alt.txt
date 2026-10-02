@@ -1,5 +1,5 @@
 OG social image for the peira calibration page.
-A dark card titled peira calibration with a horizontal bar chart of benign accuracy per adapter. Higher is better.
+A dark card titled peira calibration with a horizontal bar chart of expected calibration error per adapter, the average gap between stated confidence and observed accuracy. Lower is better.
 Data status is MOCK DATA, not real results.
-1. mock-hybrid at 99.2%.
-2. mock-guardrail at 98.2%.
+1. mock-guardrail at 12.3%.
+2. mock-hybrid at 30.7%.

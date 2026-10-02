@@ -4,7 +4,7 @@
   <rect x="0" y="0" width="1200" height="46" fill="#e8b34b"/>
 <text x="600.0" y="31" text-anchor="middle" font-family="DejaVu Sans, Verdana, sans-serif" font-size="22" font-weight="bold" fill="#3a2b00">MOCK DATA, NOT REAL RESULTS</text>
   <text x="64" y="112" font-family="DejaVu Sans, Verdana, sans-serif" font-size="44" font-weight="bold" fill="#eef4ee">peira calibration</text>
-  <text x="64" y="148" font-family="DejaVu Sans, Verdana, sans-serif" font-size="22" fill="#a8bcb0">benign accuracy per adapter · higher is better · dataset 1.1.1</text>
+  <text x="64" y="148" font-family="DejaVu Sans, Verdana, sans-serif" font-size="22" fill="#a8bcb0">expected calibration error per adapter · lower is better · dataset 1.1.1</text>
   <text x="1136" y="112" text-anchor="end" font-family="DejaVu Sans, Verdana, sans-serif" font-size="20" fill="#a8bcb0">2 adapters</text>
   <text x="1136" y="140" text-anchor="end" font-family="DejaVu Sans, Verdana, sans-serif" font-size="15" fill="#a8bcb0">whiskers show 95 percent confidence intervals</text>
     <line x1="360.0" y1="202" x2="360.0" y2="314" stroke="#2a3b31" stroke-width="1"/><text x="360.0" y="194" text-anchor="middle" font-family="DejaVu Sans, Verdana, sans-serif" font-size="14" fill="#a8bcb0">0.0%</text>
@@ -12,13 +12,13 @@
     <line x1="730.0" y1="202" x2="730.0" y2="314" stroke="#2a3b31" stroke-width="1"/><text x="730.0" y="194" text-anchor="middle" font-family="DejaVu Sans, Verdana, sans-serif" font-size="14" fill="#a8bcb0">50.0%</text>
     <line x1="915.0" y1="202" x2="915.0" y2="314" stroke="#2a3b31" stroke-width="1"/><text x="915.0" y="194" text-anchor="middle" font-family="DejaVu Sans, Verdana, sans-serif" font-size="14" fill="#a8bcb0">75.0%</text>
     <line x1="1100.0" y1="202" x2="1100.0" y2="314" stroke="#2a3b31" stroke-width="1"/><text x="1100.0" y="194" text-anchor="middle" font-family="DejaVu Sans, Verdana, sans-serif" font-size="14" fill="#a8bcb0">100.0%</text>
-    <text x="344" y="241.0" text-anchor="end" font-family="DejaVu Sans, Verdana, sans-serif" font-size="20" fill="#eef4ee">mock-hybrid mock-1</text>
-    <rect x="360" y="227.0" width="734.0" height="18" rx="4" fill="#7fd79a"/>
-    <line x1="1084.8" y1="236.0" x2="1097.7" y2="236.0" stroke="#eef4ee" stroke-width="3"/><line x1="1084.8" y1="226.0" x2="1084.8" y2="246.0" stroke="#eef4ee" stroke-width="3"/><line x1="1097.7" y1="226.0" x2="1097.7" y2="246.0" stroke="#eef4ee" stroke-width="3"/>
-    <text x="1111.7" y="243.0" font-family="DejaVu Sans, Verdana, sans-serif" font-size="20" font-weight="bold" fill="#eef4ee">99.2%</text>
-    <text x="344" y="293.0" text-anchor="end" font-family="DejaVu Sans, Verdana, sans-serif" font-size="20" fill="#eef4ee">mock-guardrail mock-1</text>
-    <rect x="360" y="279.0" width="726.5" height="18" rx="4" fill="#7fd79a"/>
-    <line x1="1074.7" y1="288.0" x2="1092.9" y2="288.0" stroke="#eef4ee" stroke-width="3"/><line x1="1074.7" y1="278.0" x2="1074.7" y2="298.0" stroke="#eef4ee" stroke-width="3"/><line x1="1092.9" y1="278.0" x2="1092.9" y2="298.0" stroke="#eef4ee" stroke-width="3"/>
-    <text x="1106.9" y="295.0" font-family="DejaVu Sans, Verdana, sans-serif" font-size="20" font-weight="bold" fill="#eef4ee">98.2%</text>  <text x="64" y="586" font-family="DejaVu Sans, Verdana, sans-serif" font-size="15" fill="#a8bcb0">peiratrial.dev</text>
+    <text x="344" y="241.0" text-anchor="end" font-family="DejaVu Sans, Verdana, sans-serif" font-size="20" fill="#eef4ee">mock-guardrail mock-1</text>
+    <rect x="360" y="227.0" width="91.0" height="18" rx="4" fill="#7fd79a"/>
+    <line x1="438.2" y1="236.0" x2="473.2" y2="236.0" stroke="#eef4ee" stroke-width="3"/><line x1="438.2" y1="226.0" x2="438.2" y2="246.0" stroke="#eef4ee" stroke-width="3"/><line x1="473.2" y1="226.0" x2="473.2" y2="246.0" stroke="#eef4ee" stroke-width="3"/>
+    <text x="487.2" y="243.0" font-family="DejaVu Sans, Verdana, sans-serif" font-size="20" font-weight="bold" fill="#eef4ee">12.3%</text>
+    <text x="344" y="293.0" text-anchor="end" font-family="DejaVu Sans, Verdana, sans-serif" font-size="20" fill="#eef4ee">mock-hybrid mock-1</text>
+    <rect x="360" y="279.0" width="226.9" height="18" rx="4" fill="#7fd79a"/>
+    <line x1="559.9" y1="288.0" x2="618.0" y2="288.0" stroke="#eef4ee" stroke-width="3"/><line x1="559.9" y1="278.0" x2="559.9" y2="298.0" stroke="#eef4ee" stroke-width="3"/><line x1="618.0" y1="278.0" x2="618.0" y2="298.0" stroke="#eef4ee" stroke-width="3"/>
+    <text x="632.0" y="295.0" font-family="DejaVu Sans, Verdana, sans-serif" font-size="20" font-weight="bold" fill="#eef4ee">30.7%</text>  <text x="64" y="586" font-family="DejaVu Sans, Verdana, sans-serif" font-size="15" fill="#a8bcb0">peiratrial.dev</text>
   <text x="1136" y="586" text-anchor="end" font-family="DejaVu Sans, Verdana, sans-serif" font-size="15" fill="#a8bcb0">peira 0.1.0 · generated from sealed run artifacts</text>
 </svg>
