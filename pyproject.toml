@@ -39,7 +39,7 @@ all = ["peira[hf]", "peira[openai]", "peira[anthropic]", "peira[google]"]
 # Development and test tooling. The Python suite runs under pytest
 # (unittest.TestCase classes are discovered natively); pytest-xdist
 # parallelizes it across workers and pytest-timeout guards against hangs.
-dev = ["pytest>=8", "pytest-xdist>=3", "pytest-timeout>=2"]
+dev = ["pytest>=8", "pytest-xdist>=3", "pytest-timeout>=2", "hypothesis>=6.100"]
 
 [project.scripts]
 peira = "peira.cli:main"
