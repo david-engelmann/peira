@@ -16,8 +16,16 @@
 //!   backends raise the same `ValueError`).
 //!
 //! Parity notes:
-//! - Float summation order matches the reference: every sum iterates in
-//!   list order with a sequential fold, never a tree reduction.
+//! - Float aggregates can differ from the reference by a few ulp
+//!   (worst measured: 6 ulp on `item_variance`, 2 ulp on `run_sd`):
+//!   on Python 3.12+ the reference sums with the builtin `sum()`
+//!   (Neumaier compensated summation) while this core accumulates
+//!   naively left-to-right in list order, never a tree reduction;
+//!   the reference also computes `** 2` through CPython's C `pow()`
+//!   where this core uses `.powi(2)` (exact multiplication). On
+//!   Python 3.10/3.11 the builtin `sum()` is itself naive
+//!   left-to-right, so the summation matches exactly there. A few
+//!   ulp is ~1e-15 relative, immaterial to every reported number.
 //! - `per_case_flip_rate` preserves the canonical case order (first
 //!   seed's order) as an ordered pair list; the Python wrapper builds
 //!   the dict from it in that order.

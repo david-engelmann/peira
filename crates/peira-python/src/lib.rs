@@ -11,12 +11,14 @@
 //! - `paired_bootstrap_ci` is exposed but the Python side does not
 //!   auto-dispatch to it: the Rust core uses SplitMix64 where the Python
 //!   reference uses Mersenne Twister, so draws are not bit-identical.
-//! - Float aggregates can differ from the reference by ~1 ulp: the
-//!   reference sums with Python's compensated `sum()` (Neumaier, same as
-//!   `math.fsum`) while the Rust core accumulates naively left-to-right,
-//!   and the reference computes `** 2` through CPython's C `pow()` where
-//!   the Rust core uses `.powi(2)` (exact multiplication). Immaterial
-//!   after the 4-decimal rounding applied before anything is reported.
+//! - Float aggregates can differ from the reference by a few ulp:
+//!   on Python 3.12+ the reference sums with the builtin `sum()`
+//!   (Neumaier compensated summation) while the Rust core accumulates
+//!   naively left-to-right, and the reference computes `** 2` through
+//!   CPython's C `pow()` where the Rust core uses `.powi(2)` (exact
+//!   multiplication). On Python 3.10/3.11 the builtin `sum()` is
+//!   itself naive left-to-right. A few ulp is ~1e-15 relative,
+//!   immaterial to every reported number.
 //! - Values that have no JSON representation (non-finite floats, integers
 //!   wider than u64, non-string dict keys) raise `TypeError`/`ValueError`;
 //!   the Python wrappers catch those and fall back to pure Python.
