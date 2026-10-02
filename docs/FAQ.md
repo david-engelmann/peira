@@ -33,6 +33,33 @@ Scores are tied to the dataset version and the peira version (both in the
 run artifact). Check the CHANGELOG; dataset changes are versioned and the
 planned leaderboard will keep one row per (adapter, dataset version) pair.
 
+**How do I plug in my own model without forking peira?**
+Ship it as a package with a `peira.adapters` entry point, then
+`peira adapter check <your-id>` and `peira run --adapter <your-id>`.
+Your adapter runs isolated in a subprocess by default. The full
+author guide is `docs/third-party-adapters.md`.
+
+**Is the subprocess isolation a security sandbox?**
+No. It is blast-radius containment and killability: your adapter
+runs in its own process with a scrubbed environment, its own
+process group, and per-child resource limits, so a hung or greedy
+adapter cannot take down the run. It does not filter syscalls or
+network egress, and it does not change UIDs. A malicious adapter
+can still do anything its UID can do. Only run adapters you trust.
+
+**Why did `peira adapter check` refuse my dotted path?**
+The kit tests what the runner will actually do, so it needs a
+registered id for the shim and the name-vs-attribute binding.
+Register the `peira.adapters` entry point first, then check the
+registry id.
+
+**My adapter passed `check`, then I shipped a new version. Is the badge still good?**
+No. The check report seals the SHA-256 of the module file that was
+actually loaded; the badge covers exact bits only. Re-run
+`peira adapter check` for the new version. Anyone can confirm the
+installed bits match a report with
+`peira adapter check --verify <report>`.
+
 **Why is my adapter listed as "partial coverage"?**
 Your adapter doesn't implement every primitive (Choice/Score/Abstain).
 That's fine. Coverage is reported honestly per primitive instead of

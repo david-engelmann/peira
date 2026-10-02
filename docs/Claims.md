@@ -48,6 +48,22 @@ indexes the load-bearing claims; detail lives in the linked docs.
   block it lifts, is documented in `docs/live-verification.md`, which
   extends the D-33 precedent to the A6 adapters. D-33 itself covers
   the Tier 1 adapters and is recorded in `docs/Decisions.md`.
+- Third-party adapters run isolated in a subprocess child by default
+  (runner-owned shim, scrubbed environment, per-child resource
+  limits, process-group kill on timeout). The boundary is
+  blast-radius containment and killability, not a security sandbox.
+- Blind-holdout integrity rests on the content-free adapter boundary
+  (D-25), not on the sandbox: the adapter-visible surface is
+  identical between public and holdout runs by construction, and no
+  PR widens it without a holdout-integrity review.
+- The conformance kit (`peira adapter check`) raises the cost of
+  adapter cheating from zero to "must carry evasion code past
+  review." It does not prove the absence of retry loops or metadata
+  sniffing.
+- Run artifacts seal `adapter_trust` and `adapter_transport` with
+  the distribution name, version, and module SHA-256, so every
+  leaderboard number is traceable to the exact bits that produced
+  it.
 
 ## We don't claim
 
@@ -55,6 +71,12 @@ indexes the load-bearing claims; detail lives in the linked docs.
   README.)
 - That the attack families cover every attack shape. They don't.
 - That synthetic cases equal real incidents. They model attack shapes.
+- That the subprocess boundary makes untrusted code safe to run. It
+  does not filter syscalls or network egress, and it does not change
+  UIDs. Only run adapters you trust.
+- That a conformance pass endorses the package. A community table row
+  states that a given set of bits passed the kit on a given date,
+  nothing more.
 - That the cryptographic_payload cases measure a live guardrail gap. They
   simulate the guard context (a BLOCKED notice) and the in-context decode
   instructions as a proxy for the proposed execution-context mechanism.

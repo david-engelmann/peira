@@ -11,6 +11,36 @@ arguments, so configuration is via environment variables:
 peira run --adapter peira.adapters.hf:ShieldstralAdapter --suite trial-demo
 ```
 
+## Community adapters (third-party plugin registry)
+
+The adapters above are first-party: their code lives in this repo.
+Third-party adapters ship as their own PyPI packages
+(`peira-adapter-<slug>`) and register under the `peira.adapters`
+entry-point group. They run isolated in a subprocess by default
+(never inside peira's process). The full author guide, including
+the conformance kit (`peira adapter check`), is in
+`docs/third-party-adapters.md`.
+
+A row below is a link, not an endorsement. It states that a given
+set of bits passed conformance on a given date, nothing more. The
+badge never follows a package to a new version without a new check;
+verify with `peira adapter check --verify <report>` before relying
+on the numbers. Run artifacts seal the adapter's provenance
+(`adapter_trust`, `adapter_transport`, dist name/version, module
+SHA-256). No vendor marks appear inside data artifacts (N-1); the
+leaderboard never carries sponsor placement.
+
+| Registry id | Adapter | Conformance | Checked | Distribution | Module SHA-256 |
+|---|---|---|---|---|---|
+| _(none yet)_ | | | | | |
+
+To get listed: publish your package, run
+`peira adapter check <your-id>` until it is green, then open a docs
+PR adding your row. A maintainer re-runs the check on a clean
+machine and reviews measurement honesty before merging. Delisting
+is a docs PR too: a row is removed if a later check fails or
+measurement dishonesty is found.
+
 ## Guardrails (`peira[hf]`)
 
 Local Hugging Face models. Install with `pip install peira[hf]`

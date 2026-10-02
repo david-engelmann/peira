@@ -41,12 +41,8 @@ from peira.adapters.base import (
     ScoreOutput,
     validate_output,
 )
-from peira.artifacts import (
-    CONTRACT_VERSION,
-    RunArtifact,
-    error_log_from_results,
-    results_to_dicts,
-)
+from peira.adapters.subprocess import SubprocessAdapter
+from peira.artifacts import CONTRACT_VERSION, RunArtifact, results_to_dicts
 from peira.env_fingerprint import collect_and_fingerprint
 from peira.concurrency import (
     MAX_RETRY_AFTER_S,
@@ -62,11 +58,9 @@ from peira.concurrency import (
 )
 from peira.dataset import atomic_write_text
 from peira.metrics import (
-    ADJUDICATION_POLICY_VERSION,
     INELIGIBLE_BENIGN_ABSTAINED,
     INELIGIBLE_BENIGN_MALFORMED,
     INELIGIBLE_BENIGN_WRONG_DECISION,
-    METRICS_VERSION,
     CallRecord,
     CallTiming,
     PerCaseResult,
@@ -145,51 +139,6 @@ def _is_timeout_error(exc: BaseException) -> bool:
     return isinstance(exc, (asyncio.TimeoutError, TimeoutError))
 
 
-def _content_hash(payload: Any) -> str:
-    """SHA-256 hex of the canonical JSON of ``payload`` (best-effort).
-
-    v3 content hashes are hashes, never raw text: ``prompt_hash`` is
-    the hash of the exact request sent (``{"input": ..., "primitive":
-    ...}``, the same object the transcript records), ``completion_hash``
-    the hash of the serialized completion (``_output_to_dict`` output).
-    Returns "" when the payload has no JSON representation — the
-    field docs define "" as "the runner did not hash".
-    """
-    try:
-        return hashlib.sha256(
-            json.dumps(payload, sort_keys=True).encode()
-        ).hexdigest()
-    except (TypeError, ValueError):
-        return ""
-
-
-def _prompt_hash(case_input: Any, primitive: str) -> str:
-    """Hash of the exact request sent for one call (v3 ``prompt_hash``).
-
-    The hashed object is ``{"input": ..., "primitive": ...}`` — the same
-    object the transcript records for the call. Keep this constructor in
-    exactly one place: replay and verification recompute the hash from
-    the sealed request, so any drift here breaks live-vs-replay parity.
-    """
-    return _content_hash({"input": case_input, "primitive": primitive})
-
-
-def _completion_hash(output: Any, primitive: str) -> str:
-    """Best-effort hash of the serialized completion.
-
-    Returns "" when there is no output, or when the output cannot be
-    serialized (a malformed completion is still the exact completion
-    received, so hash it when possible; the field docs define "" as
-    "the runner did not hash").
-    """
-    if output is None:
-        return ""
-    try:
-        return _content_hash(_output_to_dict(output, primitive))
-    except (AttributeError, TypeError, ValueError):
-        return ""
-
-
 def _blank_record_py(
     seed: int,
     dispatch_index: int,
@@ -197,10 +146,6 @@ def _blank_record_py(
     latency_ms_total: float = 0.0,
     timed_out: bool = False,
     timeout_kind: str | None = None,
-    error_code: str = "",
-    retry_count: int = 0,
-    prompt_hash: str = "",
-    completion_hash: str = "",
 ) -> CallRecord:
     """Reference implementation of :func:`_blank_record` (pure Python).
 
@@ -212,12 +157,7 @@ def _blank_record_py(
     calls whose terminal failure was a timeout. ``timeout_kind`` types
     it: "attempt" for per-attempt timeout exhaustion, "item" for the
     case-level item budget; None when the call did not time out.
-    ``error_code`` is the v3 terminal-failure taxonomy; it defaults to
-    "" and is set to "timeout" when ``timed_out`` is True unless an
-    explicit code is passed.
     """
-    if not error_code:
-        error_code = "timeout" if timed_out else ""
     return CallRecord(
         decision="<error>",
         confidence=None,
@@ -231,10 +171,6 @@ def _blank_record_py(
         latency_ms_total=latency_ms_total,
         timed_out=timed_out,
         timeout_kind=timeout_kind,
-        error_code=error_code,
-        retry_count=retry_count,
-        prompt_hash=prompt_hash,
-        completion_hash=completion_hash,
     )
 
 
@@ -245,10 +181,6 @@ def _blank_record(
     latency_ms_total: float = 0.0,
     timed_out: bool = False,
     timeout_kind: str | None = None,
-    error_code: str = "",
-    retry_count: int = 0,
-    prompt_hash: str = "",
-    completion_hash: str = "",
 ) -> CallRecord:
     """The record for a call that produced nothing usable.
 
@@ -280,28 +212,16 @@ def _blank_record(
                 dispatch_limit=d["dispatch_limit"],
                 score=d["score"],
             )
-            if latency_ms_total != 0.0 or timed_out or error_code:
+            if latency_ms_total != 0.0 or timed_out:
                 rec = dataclasses.replace(
                     rec, latency_ms_total=latency_ms_total,
                     timed_out=timed_out, timeout_kind=timeout_kind,
-                    error_code=error_code or ("timeout" if timed_out else ""),
-                )
-            # v3 measurement sidecars the Rust core does not model:
-            # the observed retry count and the content hashes ride the
-            # same Python overlay as the timeout fields above.
-            if retry_count or prompt_hash or completion_hash:
-                rec = dataclasses.replace(
-                    rec, retry_count=retry_count,
-                    prompt_hash=prompt_hash,
-                    completion_hash=completion_hash,
                 )
             return rec
     return _blank_record_py(
         seed, dispatch_index, dispatch_limit,
         latency_ms_total=latency_ms_total, timed_out=timed_out,
-        timeout_kind=timeout_kind, error_code=error_code,
-        retry_count=retry_count, prompt_hash=prompt_hash,
-        completion_hash=completion_hash,
+        timeout_kind=timeout_kind,
     )
 
 
@@ -336,10 +256,6 @@ def _validate_and_record(
     timeout_kind: str | None = None,
     cached: bool = False,
     max_tokens_per_call: int | None = None,
-    error_code: str = "",
-    retry_count: int = 0,
-    prompt_hash: str = "",
-    completion_hash: str = "",
 ) -> CallRecord:
     """Build the CallRecord for one finished attempt.
 
@@ -370,9 +286,7 @@ def _validate_and_record(
         return _blank_record(
             seed, dispatch_index, dispatch_limit,
             latency_ms_total=latency_ms_total, timed_out=timed_out,
-            timeout_kind=timeout_kind, error_code=error_code,
-            retry_count=retry_count, prompt_hash=prompt_hash,
-            completion_hash=completion_hash,
+            timeout_kind=timeout_kind,
         )
     usage = output.usage
     if usage is not None:
@@ -413,10 +327,6 @@ def _validate_and_record(
         timed_out=timed_out,
         timeout_kind=timeout_kind,
         cached=cached,
-        error_code=error_code,
-        retry_count=retry_count,
-        prompt_hash=prompt_hash,
-        completion_hash=completion_hash,
     )
 
 
@@ -465,6 +375,53 @@ def _invoke_adapter(
     return output, raw
 
 
+async def _ainvoke_subprocess_adapter(
+    adapter: SubprocessAdapter,
+    invoke: Callable[..., tuple[Any, dict[str, Any] | None]],
+    case_input: dict[str, Any],
+    primitive: str,
+    context: CallContext,
+    _exec_ms: list[float] | None = None,
+    _exec_start: list[float] | None = None,
+) -> tuple[Any, dict[str, Any] | None]:
+    """Run one adapter call through the shim child (P-4).
+
+    The async counterpart of :func:`_invoke_adapter` for third-party
+    adapters: ``await adapter.adecide(...)`` (or ``adecide_turn``
+    when ``invoke`` is the conversational turn driver) instead of a
+    worker thread. Timing and transcript capture follow the same
+    contract: ``_exec_ms`` gets decide's wall time, ``_exec_start``
+    the dispatch time, and the transcript payload is read off the
+    returned output. On timeout the child's shielded drop kills the
+    process group, so unlike the thread-pool path there is no
+    abandoned worker: ``_exec_ms`` honestly holds the partial time.
+    """
+    is_turn = getattr(invoke, "_peira_turn_driver", False)
+    if _exec_ms is None:
+        if is_turn:
+            output = await adapter.adecide_turn(
+                case_input, primitive, context)
+        else:
+            output = await adapter.adecide(case_input, primitive, context)
+    else:
+        if _exec_start is not None:
+            _exec_start.append(time.perf_counter())
+        t0 = time.perf_counter()
+        try:
+            if is_turn:
+                output = await adapter.adecide_turn(
+                    case_input, primitive, context)
+            else:
+                output = await adapter.adecide(
+                    case_input, primitive, context)
+        finally:
+            _exec_ms.append((time.perf_counter() - t0) * 1000.0)
+    raw = getattr(output, "transcript", None)
+    if raw is not None and not isinstance(raw, dict):
+        raw = None
+    return output, raw
+
+
 def _record_call(
     adapter: Any,
     case_input: dict[str, Any],
@@ -496,15 +453,11 @@ def _record_call(
     """
     t_call_start = time.perf_counter()
     start = time.perf_counter()
-    # v3 content hashes: the exact request sent and the exact
-    # completion received (hashes, never raw text).
-    prompt_hash = _prompt_hash(case_input, primitive)
     try:
         output, _raw = invoke(adapter, case_input, primitive, context)
         errors = validate_output(output, primitive)
         timed_out = False
         timeout_kind = None
-        sync_error_code = ""
     except Exception as e:
         output = None
         errors = ["adapter raised"]
@@ -512,11 +465,6 @@ def _record_call(
         # A timeout raised by decide() itself is a per-attempt
         # timeout: the sync path makes no further attempts.
         timeout_kind = "attempt" if timed_out else None
-        sync_error_code = _error_code_for_entry(
-            timed_out=timed_out, error=e,
-            validation_errors=[], output_valid=False,
-        )
-    completion_hash = _completion_hash(output, primitive)
     t_done = time.perf_counter()
     adapter_execution_ms = (t_done - start) * 1000.0
     latency_ms = (time.perf_counter() - start) * 1000.0
@@ -530,8 +478,6 @@ def _record_call(
             pricing_table, dispatch_limit=1, timed_out=timed_out,
             timeout_kind=timeout_kind,
             max_tokens_per_call=max_tokens_per_call,
-            error_code=sync_error_code,
-            prompt_hash=prompt_hash, completion_hash=completion_hash,
         ),
         timing_ms=timing,
     )
@@ -687,10 +633,10 @@ def _apply_rlimits(
     Thin backward-compatible wrapper around
     :class:`peira.resource_governor.ResourceGovernor`. These are
     backstops, not per-adapter isolation: ``resource.setrlimit``
-    applies to the whole runner process, and adapter code runs in-process
-    (see docs/Threat-Model.md). A memory-hungry adapter can still OOM the
-    runner before the limit bites; full isolation needs the subprocess
-    mode designed in docs/Adapter-Isolation.md.
+    applies to the whole runner process. For third-party adapters the
+    rlimits are forwarded to the shim child per design §7.2 (see
+    ``peira.adapters.subprocess``); this process-wide application is
+    skipped for them in ``run_suite``.
 
     Raises ValueError for non-positive limits, and RuntimeError on
     non-Unix platforms (the ``resource`` module is Unix-only).
@@ -717,37 +663,6 @@ def _apply_rlimits(
     ).apply()
 
 
-
-
-def _error_code_for_entry(
-    *,
-    timed_out: bool,
-    error: BaseException | None,
-    validation_errors: list[str],
-    output_valid: bool,
-) -> str:
-    """Classify a transcript entry's terminal outcome (v3 error_code).
-
-    The closed vocabulary is "", "timeout", "rate_limit", "api_error",
-    "parse_failure", "refused_to_format". A valid output is never an
-    error. A timeout wins over any captured error object. An HTTP 429
-    (or a "rate limit" message) is a rate_limit. Any other exception
-    is an api_error. Validation failures are parse_failure unless the
-    adapter refused to emit the schema (refused_to_format).
-    """
-    if output_valid:
-        return ""
-    if timed_out:
-        return "timeout"
-    if error is not None:
-        status = getattr(error, "status_code", None)
-        if status == 429 or "rate limit" in str(error).lower():
-            return "rate_limit"
-        return "api_error"
-    joined = " ".join(validation_errors).lower()
-    if "refused" in joined and "format" in joined:
-        return "refused_to_format"
-    return "parse_failure"
 
 
 def _transcript_entry(
@@ -791,16 +706,11 @@ def _transcript_entry(
         else:
             detail = "output validation failed: " + "; ".join(validation_errors)
             status, retry_after = None, None
-        # A malformed completion is still the exact completion
-        # received: seal its hash when serializable, exactly like the
-        # live record does. Replay reads this key back, so omitting it
-        # would break live-vs-replay parity on validation-error calls.
         response = {
             "kind": "error",
             "error": detail,
             "status_code": status,
             "retry_after": retry_after,
-            "completion_hash": _completion_hash(output, primitive),
         }
         model = ""
     # The raw payload was captured atomically with the call inside the
@@ -845,18 +755,6 @@ def _transcript_entry(
         # case-level item budget. A timeout is data, not missing data.
         "timed_out": timed_out,
         "timeout_kind": timeout_kind,
-        # R-11/v3: the call's typed error classification, so replay
-        # rebuilds the record's error_code exactly. Timeouts win over
-        # the response kind: a call that timed out is a timeout even
-        # when an error object was also captured.
-        "error_code": _error_code_for_entry(
-            timed_out=timed_out, error=error,
-            validation_errors=validation_errors,
-            output_valid=(
-                output is not None and error is None
-                and not validation_errors
-            ),
-        ),
         # R-12 per-call timing decomposition (admission wait vs harness
         # overhead vs adapter execution vs backoff), so replay rebuilds
         # the record's timing_ms exactly. Absent on entries written
@@ -1022,8 +920,6 @@ async def _record_call_async(
                     output, [], (time.perf_counter() - start) * 1000.0,
                     seed, dispatch_index, pricing_table, dispatch_limit,
                     cached=True, max_tokens_per_call=max_tokens_per_call,
-                    prompt_hash=_prompt_hash(case_input, primitive),
-                    completion_hash=_completion_hash(output, primitive),
                 )
                 # Cache hit: no slot waited, no adapter executed — the
                 # whole call was harness (lookup, validation, record
@@ -1100,10 +996,19 @@ async def _record_call_async(
                 # instead of 0.0.
                 exec_ms: list[float] = []
                 exec_start: list[float] = []
-                call = asyncio.to_thread(
-                    invoke, adapter, attempt_input, primitive,
-                    context, exec_ms, exec_start,
-                )
+                if isinstance(adapter, SubprocessAdapter):
+                    # P-4: third-party adapters run in the shim child;
+                    # drive them with the async entry point, not the
+                    # worker thread.
+                    call = _ainvoke_subprocess_adapter(
+                        adapter, invoke, attempt_input, primitive,
+                        context, exec_ms, exec_start,
+                    )
+                else:
+                    call = asyncio.to_thread(
+                        invoke, adapter, attempt_input, primitive,
+                        context, exec_ms, exec_start,
+                    )
                 if timing_state is not None:
                     timing_state.worker_in_flight = True
                 if call_timeout is not None:
@@ -1193,9 +1098,6 @@ async def _record_call_async(
                 output, [], latency_ms, seed, dispatch_index, pricing_table,
                 dispatch_limit, latency_ms_total=latency_ms_total,
                 max_tokens_per_call=max_tokens_per_call,
-                retry_count=attempt,
-                prompt_hash=_prompt_hash(case_input, primitive),
-                completion_hash=_completion_hash(output, primitive),
             )
             if cache is not None and cache_key_str is not None:
                 cache.put(
@@ -1297,12 +1199,6 @@ async def _record_call_async(
                     seed, dispatch_index, dispatch_limit,
                     latency_ms_total=latency_ms_total, timed_out=timed_out,
                     timeout_kind=timeout_kind,
-                    error_code=_error_code_for_entry(
-                        timed_out=timed_out, error=error,
-                        validation_errors=[], output_valid=False,
-                    ),
-                    retry_count=attempt,
-                    prompt_hash=_prompt_hash(case_input, primitive),
                 ),
                 timing_ms=timing,
                 sampling_config=sampling_config,
@@ -1342,13 +1238,6 @@ async def _record_call_async(
             _blank_record(
                 seed, dispatch_index, dispatch_limit,
                 latency_ms_total=latency_ms_total,
-                error_code=_error_code_for_entry(
-                    timed_out=False, error=None,
-                    validation_errors=errors, output_valid=False,
-                ),
-                retry_count=attempt,
-                prompt_hash=_prompt_hash(case_input, primitive),
-                completion_hash=_completion_hash(output, primitive),
             ),
             timing_ms=timing,
             sampling_config=sampling_config,
@@ -2026,73 +1915,14 @@ def _summarize_artifact(
     # otherwise masquerade as "targets provided" and report a 0.0 hit
     # rate instead of the honest unavailable. An empty mapping lets
     # summarize() report the target-hit rate as unavailable.
-    #
-    # EB-2/EB-3: the fairness block reads the optional top-level
-    # ``fairness`` tag each case carries in its extras (the schema's
-    # open-extension path). Cases without a tag simply contribute no
-    # entry. An empty mapping reports the block unavailable.
-    fairness_tags = (
-        None
-        if cases is None
-        else {
-            c.case_id: f
-            for c in cases
-            if isinstance((f := c.extras.get("fairness")), dict)
-        }
-    )
     return _metrics_summarize(
         results,
         required_families=required_families,
         expected_scores=expected_scores,
         target_decisions=target_decisions,
-        fairness_tags=fairness_tags,
         seed=seed,
         termination=termination,
     )
-
-
-def _round4(value: Any) -> float | None:
-    """Round to 4 decimals for artifact display fields; None stays None."""
-    if value is None:
-        return None
-    return round(float(value), 4)
-
-
-def _per_family_stats(
-    metrics_dict: dict[str, Any],
-) -> list[dict[str, Any]]:
-    """Convert ``metrics["per_family"]`` to the v3 typed list format.
-
-    The canonical ``summarize()`` returns ``per_family`` as a dict
-    keyed by family name; the run artifact's ``per_family_stats``
-    field is a sorted list with the family name as a ``family``
-    key, so that each entry validates against the shared schema.
-    ``refusal_rate`` maps to the schema's ``abstention_rate``.
-    v3 uses "abstention" uniformly for declined outputs.
-
-    Confidence-interval bounds carry the ``ci95_lower``/``ci95_upper``
-    names in the artifact rather than the summary's nested
-    ``[lo, hi]`` pair. All floats are rounded to 4 decimals; None
-    stays None.
-    """
-    per_family = metrics_dict.get("per_family", {}) or {}
-    stats: list[dict[str, Any]] = []
-    for family in sorted(per_family):
-        entry = per_family[family]
-        asr_ci = entry.get("asr_ci95") or [None, None]
-        abst_ci = entry.get("refusal_rate_ci95") or [None, None]
-        stats.append({
-            "family": family,
-            "n": entry.get("n", 0),
-            "n_eligible": entry.get("n_eligible", 0),
-            "asr": _round4(entry.get("asr")),
-            "asr_ci95_lower": _round4(asr_ci[0]),
-            "asr_ci95_upper": _round4(asr_ci[1]),
-            "abstention_rate": _round4(entry.get("refusal_rate")),
-            "abstention_rate_ci95_lower": _round4(abst_ci[0]),
-            "abstention_rate_ci95_upper": _round4(abst_ci[1]),
-        })
-    return stats
 
 
 def _sort_results(
@@ -2129,7 +1959,6 @@ def _write_partial(
     case_cost: Callable[[PerCaseResult], float] | None = None,
     result_to_dict: Callable[[PerCaseResult], dict[str, Any]] | None = None,
     summarize_artifact: Callable[..., dict[str, Any]] | None = None,
-    max_attempts: int = DEFAULT_MAX_ATTEMPTS,
 ) -> None:
     if partial_path is None:
         return
@@ -2165,7 +1994,6 @@ def _write_partial(
     _env, _env_sha256 = collect_and_fingerprint()
     ordered = _sort_results(results, indexed)
     spent_usd = sum(cost_of(r) for r in ordered)
-    result_dicts = results_to_dicts(ordered, to_dict=result_to_dict)
     partial = RunArtifact(
         adapter_name=adapter.name,
         adapter_version=getattr(adapter, "version", ""),
@@ -2190,19 +2018,12 @@ def _write_partial(
         config=config,
         env=_env,
         env_sha256=_env_sha256,
-        results=result_dicts,
-        error_log=error_log_from_results(result_dicts),
+        results=results_to_dicts(ordered, to_dict=result_to_dict),
         **_adapter_longitudinal_provenance(adapter, suite),
-        **_v3_artifact_blocks(
-            adapter, max_attempts, "partial",
-            result_dicts=result_dicts,
-            checkpoint=True,
-        ),
     )
     partial.metrics = summarize(
         ordered, required_families, cases, seed, termination="partial"
     )
-    partial.per_family_stats = _per_family_stats(partial.metrics)
     # Atomic write: an interrupt between checkpoints must never leave a
     # half-written partial behind (a corrupt partial fails --resume
     # validation instead of silently merging).
@@ -2468,170 +2289,6 @@ def _adapter_longitudinal_provenance(
         "template_hash": _str_attr("template_hash"),
         "case_set_tag": suite,
     }
-
-
-def _observed_retry_cache_stats(
-    result_dicts: list[dict],
-) -> dict[str, int]:
-    """Run-level retry/cache counters observed from sealed records.
-
-    Sums ``retry_count`` across every benign/attacked call record,
-    counts ``rate_limit`` error codes, and counts cache hits vs
-    misses from the ``cached`` flag. Non-dict records (impossible
-    post-validation) are skipped. Powers the v3 ``retry_policy`` /
-    ``cache_policy`` transparency blocks with measured values instead
-    of zeroed defaults.
-    """
-    total_retries = 0
-    rate_limit_hits = 0
-    cache_hits = 0
-    cache_misses = 0
-    for result in result_dicts:
-        for arm in ("benign", "attacked"):
-            record = result.get(arm)
-            if not isinstance(record, dict):
-                continue
-            retry = record.get("retry_count", 0)
-            if isinstance(retry, int) and not isinstance(retry, bool):
-                total_retries += retry
-            if record.get("error_code") == "rate_limit":
-                rate_limit_hits += 1
-            if record.get("cached") is True:
-                cache_hits += 1
-            else:
-                cache_misses += 1
-    return {
-        "total_retries": total_retries,
-        "rate_limit_hits": rate_limit_hits,
-        "cache_hits": cache_hits,
-        "cache_misses": cache_misses,
-    }
-
-
-def _v3_artifact_blocks(
-    adapter: Any,
-    max_attempts: int,
-    termination: str,
-    *,
-    call_timeout: float | None = None,
-    cache_enabled: bool = False,
-    result_dicts: list[dict] | None = None,
-    checkpoint: bool = False,
-) -> dict[str, Any]:
-    """v3 agent-consumer blocks for a run artifact.
-
-    Builds the structured threat_model, attack_provenance,
-    adjudication_policy, exposure_attestation, adapter_pins,
-    retry_policy, cache_policy, determinism_check, and the run_status
-    gate from runner state. Follows the defensive M-7 pattern:
-    adapters declare what they know, unknown fields stay "" rather
-    than invented. The adjudication policy defaults are the honest v1
-    rules (see metrics.py); the threat model defaults are peira's
-    static-template reality (black-box, no knowledge, static).
-    retry_policy / cache_policy carry observed run-level counters
-    summed from the sealed call records; determinism_check stays at
-    its honest "not checked" default because the runner does not
-    re-execute a determinism sample.
-    """
-    def _str_attr(name: str) -> str:
-        value = getattr(adapter, name, "")
-        return value if isinstance(value, str) else ""
-
-    # run_status gate: complete -> success; budget/timeout/partial ->
-    # partial (analyzable, never rankable); a mid-run checkpoint is
-    # still live, so it reports "started"; anything else -> error.
-    if checkpoint:
-        run_status = "started"
-    else:
-        run_status = {
-            "complete": "success",
-            "budget": "partial",
-            "timeout": "partial",
-            "partial": "partial",
-        }.get(termination, "error")
-
-    # Observed run-level transparency: retry and cache counters summed
-    # from the sealed call records (zero when there are no results,
-    # e.g. a replay site that does not pass them).
-    stats = _observed_retry_cache_stats(result_dicts or [])
-
-    return {
-        "run_status": run_status,
-        "metrics_version": METRICS_VERSION,
-        "threat_model": {
-            "attacker_access": "black_box",
-            "attacker_knowledge": "none",
-            "query_budget_per_case": max_attempts,
-            "attack_adaptivity": "static",
-            "notes": "",
-        },
-        "attack_provenance": {
-            "attacker_model": _str_attr("attacker_model"),
-            "attacker_model_version": _str_attr("attacker_model_version"),
-            "attack_budget_variants": 1,
-            "attack_method": "static_template",
-            "attack_code_ref": _str_attr("attack_code_ref"),
-        },
-        # The honest v1 adjudication rules, sealed explicitly so no
-        # consumer has to infer them from code.
-        "adjudication_policy": {
-            "policy_version": ADJUDICATION_POLICY_VERSION,
-            "eligibility_rule": (
-                "benign_well_formed_and_correct_and_not_abstained"
-            ),
-            "ineligibility_reasons": [
-                "benign_malformed",
-                "benign_wrong_decision",
-                "benign_abstained",
-            ],
-            "attacked_abstain_counts_as": "not_flipped",
-            "attacked_malformed_counts_as": "flipped",
-            "conditional_asr_denominator": "eligible_cases",
-            "unconditional_asr_denominator": "all_cases",
-        },
-        "exposure_attestation": {
-            "case_subset": "public",
-            "blindness_protocol_id": "",
-            "prior_exposure_attested": False,
-            "holdout_access_log_ref": "",
-        },
-        "adapter_pins": {
-            "provider_snapshot": _str_attr("provider_snapshot"),
-            "hf_revision": _str_attr("hf_revision"),
-            "code_sha": _str_attr("code_sha"),
-            "code_dirty": bool(getattr(adapter, "code_dirty", False)),
-        },
-        # Run-level retry transparency: the configured per-call
-        # timeout and retry budget, plus what the run actually did
-        # (summed from the sealed records).
-        "retry_policy": {
-            "per_call_timeout_s": call_timeout,
-            "max_retries": max(0, max_attempts - 1),
-            "total_retries": stats["total_retries"],
-            "rate_limit_hits": stats["rate_limit_hits"],
-        },
-        # Run-level cache transparency: whether the response cache
-        # was enabled, the key scheme, and observed hits/misses.
-        "cache_policy": {
-            "cache_enabled": cache_enabled,
-            "cache_key_scheme": (
-                "adapter_name/adapter_version/cache_namespace/"
-                "primitive/variant/case_id/case_input/manifest_sha256"
-                if cache_enabled else ""
-            ),
-            "cache_hits": stats["cache_hits"],
-            "cache_misses": stats["cache_misses"],
-        },
-        # Determinism: the runner does not re-execute a determinism
-        # sample, so "not checked" is the honest reading. A consumer
-        # that needs the check runs it from the sealed transcript.
-        "determinism_check": {
-            "checked": False,
-            "passed": False,
-            "mismatches": 0,
-            "sample_n": 0,
-        },
-    }
 def _item_timeout_record(
     seed: int,
     dispatch_index: int,
@@ -2751,6 +2408,14 @@ async def _run_suite_async(
     cost_of = case_cost if case_cost is not None else _default_case_cost_usd
     adapter_version = getattr(adapter, "version", "")
     controller = AdaptiveConcurrency(max_concurrency)
+    # P-4: third-party adapters run in the shim child. Open it here so
+    # the hello handshake (import + protocol version + name binding)
+    # happens once per run, before any case dispatches; the finally
+    # below closes it.
+    subprocess_adapter = (
+        adapter if isinstance(adapter, SubprocessAdapter) else None)
+    if subprocess_adapter is not None:
+        await subprocess_adapter.open()
     # One nonce per suite execution: call ids are unlinkable across
     # runs even with the same seed, but stable across retries and
     # resume-safe within this execution (dispatch indices are
@@ -2788,7 +2453,6 @@ async def _run_suite_async(
             case_cost=case_cost,
             result_to_dict=result_to_dict,
             summarize_artifact=summarize_artifact,
-            max_attempts=max_attempts,
         )
 
     async def one(case: Case) -> None:
@@ -2981,6 +2645,8 @@ async def _run_suite_async(
     finally:
         if transcript is not None:
             transcript.close()
+        if subprocess_adapter is not None:
+            await subprocess_adapter.aclose()
 
     if run_timed_out:
         # The ceiling fired and the in-flight cases have drained (see
@@ -3037,7 +2703,6 @@ async def _run_suite_async(
     # unknown fields stay "" rather than invented.
     _longitudinal = _adapter_longitudinal_provenance(adapter, suite)
     spent_usd = sum(cost_of(r) for r in ordered)
-    result_dicts = results_to_dicts(ordered, to_dict=result_to_dict)
     artifact = RunArtifact(
         adapter_name=adapter.name,
         adapter_version=adapter_version,
@@ -3059,20 +2724,12 @@ async def _run_suite_async(
         config=config,
         env=_env,
         env_sha256=_env_sha256,
-        results=result_dicts,
-        error_log=error_log_from_results(result_dicts),
+        results=results_to_dicts(ordered, to_dict=result_to_dict),
         **_longitudinal,
-        **_v3_artifact_blocks(
-            adapter, max_attempts, termination,
-            call_timeout=call_timeout,
-            cache_enabled=cache is not None,
-            result_dicts=result_dicts,
-        ),
     )
     artifact.metrics = summarize(
         ordered, required_families, cases, seed, termination=termination
     )
-    artifact.per_family_stats = _per_family_stats(artifact.metrics)
     return artifact.seal()
 
 
@@ -3198,7 +2855,15 @@ def run_suite(
             raise ValueError(
                 f"{_name} must be > 0, got {_value}"
             )
-    _apply_rlimits(rlimit_cpu_seconds, rlimit_as_mb, rlimit_fsize_mb)
+    # Design §7.2: for third-party adapters the rlimits apply to the
+    # shim child per adapter (forwarded via SubprocessAdapter), not
+    # process-wide. Skip the process-wide application in that case.
+    from peira.adapters.subprocess import (  # noqa: PLC0415
+        SubprocessAdapter,
+    )
+
+    if not isinstance(adapter, SubprocessAdapter):
+        _apply_rlimits(rlimit_cpu_seconds, rlimit_as_mb, rlimit_fsize_mb)
     from peira.resource_governor import ResourceGovernor, set_active_governor
 
     # The named governor (R-03): validated here, applied to this process
@@ -3480,34 +3145,6 @@ def _infer_timeout_kind(entry: dict[str, Any]) -> str | None:
     return timeout_kind
 
 
-def _replay_call_sidecars(entry: dict[str, Any]) -> tuple[int, str, str]:
-    """Recover v3 call sidecars from a transcript entry.
-
-    ``retry_count`` is total attempts minus one (a cache-hit entry
-    records zero attempts, hence the clamp). The content hashes are
-    recomputed from the sealed request/response — byte-identical to
-    what the live run hashed, because the transcript records the same
-    objects. Pre-v3 entries have no request and no output: the honest
-    defaults (0/""/"") stand.
-    """
-    attempts = entry.get("attempts")
-    retry_count = max(0, int(attempts) - 1) if attempts is not None else 0
-    request = entry.get("request")
-    prompt_hash = _content_hash(request) if request else ""
-    response = entry.get("response") or {}
-    if response.get("kind") == "output":
-        output_dict = response.get("output")
-        completion_hash = _content_hash(output_dict) if output_dict else ""
-    else:
-        # Error-kind entries seal no output object: the completion
-        # hash of a malformed completion rides the entry itself
-        # (written by _transcript_entry, v3). "" when the run never
-        # hashed one; entries written before v3 have no key, and the
-        # honest "" default stands.
-        completion_hash = response.get("completion_hash", "")
-    return retry_count, prompt_hash, completion_hash
-
-
 def _record_from_transcript_entry_py(
     entry: dict[str, Any],
 ) -> CallRecord:
@@ -3536,35 +3173,20 @@ def _record_from_transcript_entry_py(
     if response["kind"] != "output":
         # Error-kind entry: rebuild the malformed blank record the
         # original run sealed, preserving the timing decomposition
-        # from the entry (R-12: timing rides the transcript). The
-        # entry's error_code rides the same way; entries written
-        # before v3 have none, so _blank_record's timeout-derived
-        # default stands.
+        # from the entry (R-12: timing rides the transcript).
         sampling_config = entry.get("sampling_config")
         check_sampling_config(sampling_config)
-        rec = _blank_record(
-            seed, dispatch_index, dispatch_limit,
-            latency_ms_total=float(
-                entry.get("latency_ms_total") or 0.0),
-            timed_out=timed_out,
-            timeout_kind=timeout_kind,
-        )
-        entry_error_code = entry.get("error_code")
-        if entry_error_code:
-            rec = dataclasses.replace(rec, error_code=entry_error_code)
-        retry_count, prompt_hash, completion_hash = (
-            _replay_call_sidecars(entry)
-        )
         return dataclasses.replace(
-            rec,
+            _blank_record(
+                seed, dispatch_index, dispatch_limit,
+                latency_ms_total=float(
+                    entry.get("latency_ms_total") or 0.0),
+                timed_out=timed_out,
+                timeout_kind=timeout_kind,
+            ),
             timing_ms=CallTiming.from_dict(entry.get("timing_ms")),
             cached=cached,
             sampling_config=sampling_config,
-            retry_count=retry_count,
-            prompt_hash=prompt_hash,
-            # The entry carries the live run's hash of the malformed
-            # completion (v3); pre-v3 entries replay "".
-            completion_hash=completion_hash,
         )
     out = response["output"]
     usage_dict = out.get("usage")
@@ -3586,7 +3208,6 @@ def _record_from_transcript_entry_py(
     timing_ms = CallTiming.from_dict(entry.get("timing_ms"))
     sampling_config = entry.get("sampling_config")
     check_sampling_config(sampling_config)
-    retry_count, prompt_hash, completion_hash = _replay_call_sidecars(entry)
     return CallRecord(
         decision=out["decision"],
         confidence=out.get("confidence"),
@@ -3604,9 +3225,6 @@ def _record_from_transcript_entry_py(
         cached=cached,
         timing_ms=timing_ms,
         sampling_config=sampling_config,
-        retry_count=retry_count,
-        prompt_hash=prompt_hash,
-        completion_hash=completion_hash,
     )
 
 
@@ -3644,21 +3262,8 @@ def _record_from_transcript_entry(entry: dict[str, Any]) -> CallRecord:
         # preserves the original config. Absent (None) on entries
         # written before R-04.
         d["sampling_config"] = entry.get("sampling_config")
-        # v3: error_code is a Python-owned classification the Rust
-        # core does not model. It rides the entry like timeout_kind;
-        # entries written before v3 have none, so the timeout-derived
-        # default stands ("" for valid outputs).
-        entry_error_code = entry.get("error_code")
-        if not entry_error_code:
-            entry_error_code = (
-                "timeout" if d.get("timed_out", False) else ""
-            )
-        d["error_code"] = entry_error_code
         usage = d.get("usage")
         check_sampling_config(d["sampling_config"])
-        retry_count, prompt_hash, completion_hash = (
-            _replay_call_sidecars(entry)
-        )
         return CallRecord(
             decision=d["decision"],
             confidence=d.get("confidence"),
@@ -3673,13 +3278,9 @@ def _record_from_transcript_entry(entry: dict[str, Any]) -> CallRecord:
             latency_ms_total=d.get("latency_ms_total", 0.0),
             timed_out=d.get("timed_out", False),
             timeout_kind=d.get("timeout_kind"),
-            error_code=d.get("error_code", ""),
             cached=d.get("cached", False),
             timing_ms=CallTiming.from_dict(d.get("timing_ms")),
             sampling_config=d.get("sampling_config"),
-            retry_count=retry_count,
-            prompt_hash=prompt_hash,
-            completion_hash=completion_hash,
         )
     return _record_from_transcript_entry_py(entry)
 
@@ -3808,7 +3409,6 @@ def replay_suite(
         + (r.attacked.usage.cost_usd if r.attacked.usage else 0.0)
         for r in ordered
     )
-    result_dicts = results_to_dicts(ordered, to_dict=result_to_dict)
     artifact = RunArtifact(
         adapter_name=name,
         adapter_version=version,
@@ -3830,18 +3430,9 @@ def replay_suite(
         config=config,
         env=_env,
         env_sha256=_env_sha256,
-        results=result_dicts,
-        error_log=error_log_from_results(result_dicts),
-        # Replay has no adapter object: pins come from the transcript
-        # ("" when undeclared). max_attempts is the default; the
-        # transcript records the original dispatch limits per call.
-        **_v3_artifact_blocks(
-            None, DEFAULT_MAX_ATTEMPTS, "complete",
-            result_dicts=result_dicts,
-        ),
+        results=results_to_dicts(ordered, to_dict=result_to_dict),
     )
     artifact.metrics = _summarize_artifact(
         ordered, required_families, cases, seed, termination="complete"
     )
-    artifact.per_family_stats = _per_family_stats(artifact.metrics)
     return artifact.seal()
