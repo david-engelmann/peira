@@ -6,9 +6,9 @@ module stamps the tag version into exactly the files that carry it:
 
 - ``pyproject.toml``: ``version = "0.0.0"`` under ``[project]``
 - ``python/peira/__init__.py``: ``__version__ = "0.0.0"``
-- ``crates/peira-python/Cargo.toml``: ``version = "0.0.0"`` (maturin
-  migration; stamped only when the file exists, so this keeps working
-  before and after that lane lands)
+
+The Rust crates under ``crates/`` are versioned independently and are never
+stamped (they build the ``peira._core`` extension, not the PyPI package).
 
 Stamping is fail-loud: each file must contain its marker exactly once, or
 this raises instead of guessing. Nothing outside these markers is touched.
@@ -23,6 +23,12 @@ from .validate import ReleaseError, release_version
 REPO_VERSION = "0.0.0"
 
 # (relative path, exact marker line fragment, replacement template)
+#
+# NB: the Rust crates under crates/ are deliberately NOT stamped. They build
+# the peira._core native extension, not the peira PyPI package, and are
+# versioned independently (like the dataset). If a future build backend
+# (e.g. maturin) needs the crate version to track releases, that is a
+# deliberate decision for that lane, not something to guess at here.
 _STAMP_TARGETS: tuple[tuple[str, str, str], ...] = (
     ("pyproject.toml", 'version = "0.0.0"', 'version = "{version}"'),
     (
@@ -30,7 +36,6 @@ _STAMP_TARGETS: tuple[tuple[str, str, str], ...] = (
         '__version__ = "0.0.0"',
         '__version__ = "{version}"',
     ),
-    ("crates/peira-python/Cargo.toml", 'version = "0.0.0"', 'version = "{version}"'),
 )
 
 
