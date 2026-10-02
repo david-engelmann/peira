@@ -101,6 +101,8 @@ class MockAdapter:
         seed: int = 0,
         dispatch_base: int = 0,
         run_nonce: str,
+        dispatch_stride: int = 2,
+        attacked_attempts: int = 1,
     ) -> dict[str, _ScriptedCall]:
         """Build a simulation script for a list of cases.
 
@@ -108,43 +110,60 @@ class MockAdapter:
         with the loaded cases, the run seed, and the SAME ``run_nonce``
         the run will use (see ``new_run_nonce``); the runner's dispatch
         indices are suite-position-derived (benign = ``dispatch_base +
-        2i``, attacked = ``dispatch_base + 2i + 1``), so the script keys
-        line up with the pseudonymous call ids the runner will
+        dispatch_stride * i``, attacked = ``dispatch_base +
+        dispatch_stride * i + 1 + a`` for attempt ``a``), so the script
+        keys line up with the pseudonymous call ids the runner will
         generate. For ``run_case`` pass a single case with the same
         ``seed``/``dispatch_base``/``run_nonce`` the call uses.
         ``run_nonce`` is required — a script built under the wrong
         namespace matches nothing, so guessing is worse than failing
         fast.
+
+        The defaults reproduce the single-shot layout (one attacked
+        call per case). For a sweep run (see ``peira.sweep``), pass
+        ``dispatch_stride=max(grid) + 1`` and
+        ``attacked_attempts=max(grid)``: each case then owns a block
+        of ``dispatch_stride`` consecutive indices, and every attempt
+        gets its own script entry. Multi-attempt entries use a
+        per-attempt hash id (``{case_id}#q{a}``) so the mock's
+        deterministic flip draw varies across the budget dimension
+        instead of repeating one draw; the single-attempt entry keeps
+        the bare case id, exactly as before.
         """
         # Imported here: runner imports nothing from this module, so
         # there is no cycle, and importing this module never requires
         # the runner.
         from peira.runner import _pseudonymous_call_id
 
+        if dispatch_stride < attacked_attempts + 1:
+            raise ValueError(
+                f"dispatch_stride ({dispatch_stride}) must leave room "
+                f"for the benign call plus {attacked_attempts} attacked "
+                "attempt(s) per case"
+            )
         script: dict[str, _ScriptedCall] = {}
         for i, case in enumerate(cases):
             expected = case.benign.expected_decision
             target = case.attacked.target_decision
+            base = dispatch_base + dispatch_stride * i
             script[
-                _pseudonymous_call_id(
-                    run_nonce, seed, dispatch_base + 2 * i
-                )
+                _pseudonymous_call_id(run_nonce, seed, base)
             ] = _ScriptedCall(
                 arm="benign",
                 expected_decision=expected,
                 target_decision=None,
                 hash_id=case.case_id,
             )
-            script[
-                _pseudonymous_call_id(
-                    run_nonce, seed, dispatch_base + 2 * i + 1
+            for a in range(attacked_attempts):
+                script[
+                    _pseudonymous_call_id(run_nonce, seed, base + 1 + a)
+                ] = _ScriptedCall(
+                    arm="attacked",
+                    expected_decision=expected,
+                    target_decision=target,
+                    hash_id=(case.case_id if attacked_attempts == 1
+                             else f"{case.case_id}#q{a}"),
                 )
-            ] = _ScriptedCall(
-                arm="attacked",
-                expected_decision=expected,
-                target_decision=target,
-                hash_id=case.case_id,
-            )
         return script
 
     def _flips(self, hash_id: str) -> bool:
