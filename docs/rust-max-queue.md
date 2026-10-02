@@ -24,10 +24,7 @@ Cluster C (adapters/CLI/glue): adapters/*, cli, dashboard, templates,
 
 | # | Module | Risk | Coverage | Slice PR |
 |---|--------|------|----------|----------|
-| 1 | lottery.py (R-09 lottery index) | LOW | strong (34 existing + 37 Rust unit + 15 parity) | rust-max slice 1: #300 |
-| 2 | _labels.py + invariance.py + combo_schema.py validation/ID fns (C-1) | LOW | weak/moderate existing + 40 Rust unit + 62 parity | rust-max slice 2: #321 |
-| 3 | combo_metrics.py + hardness.py (MIGRATE #2, #3) | LOW-MED / LOW | strong (29 hardness + 14 combo shared) + 11 Rust unit + 44 parity | rust-max slice 3: #371 |
-| 3b | metrics.rs: flip_direction + net_benefit_at_threshold (Wave 3 item 9) | LOW | 7 Rust unit + 7 parity | rust-max metrics prereqs: #376 |
+| 1 | lottery.py (R-09 lottery index) | LOW | strong (34 existing + 37 Rust unit + 15 parity) | rust-max slice 1: this PR |
 
 ## Phase 1 results: Cluster A (metrics) audit complete
 
@@ -39,7 +36,7 @@ cluster; all stdlib + peira.* imports):
 | lottery.py | LOW | strong (34) | MIGRATE #1: zero new Rust prereqs, unblocks economic_lottery |
 | combo_metrics.py | LOW-MED | weak-mod (14 shared) | MIGRATE #2: tiny, pure |
 | hardness.py | LOW | strong (29) | MIGRATE #3: pure aggregation |
-| economics.py (numeric core) | LOW-MED/part | strong (77) | MIGRATE #4 after flip_direction + net_benefit_at_threshold land in metrics.rs |
+| economics.py (numeric core) | LOW-MED/part | strong (77) | DONE: PR #382 (merge 646a0390ae14c6f0664b176f4211f9e7ec3b4bd4) — 9 fns in crates/peira-core/src/economics.rs, parity-tested |
 | stability.py (numeric core) | MED | strong (35) | SPLIT #5: artifact sealing/JSON lock stays Python (byte-exact json.dumps parity risk) |
 | saturation.py | MED | moderate (23) | MIGRATE #6 after mde_mcnemar lands in metrics.rs |
 | calibration.py | LOW-MED | strong (45) | MIGRATE #7: SVG byte-parity ({x:.4f}, {t:g}, html.escape) |
@@ -149,7 +146,7 @@ Wave 2 (finish started ports):
   7. compare.py finish (B-2)
   8. pricing.py pricing_confidence (C-8; finish the pricing slice)
 Wave 3 (metrics core expansions, unblock dependents):
-  9. metrics.rs: flip_direction + net_benefit_at_threshold (block economics core) -- LANDED in this PR
+  9. metrics.rs: flip_direction + net_benefit_at_threshold (block economics core)
   10. economics.py numeric core (A-4): SPLIT: YAML parser + cppf/break_even
       bootstraps stay Python (PRNG precedent)
   11. metrics.rs: mde_mcnemar (block saturation)
