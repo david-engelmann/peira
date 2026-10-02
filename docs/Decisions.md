@@ -1731,3 +1731,43 @@ measures outcomes, not reasoning aesthetics.
 
 **To revisit:** only with evidence that decision-only scoring
 systematically misses a capability the benchmark claims to measure.
+
+## D-43: maturin replaces setuptools + hand-rolled Rust build script (2026-10-01)
+
+**Decision.** The PEP 517 build backend becomes `maturin`
+(`build-backend = "maturin"`), replacing `setuptools.build_meta` and
+deleting the hand-rolled `scripts/build_core_ext.py`. The `[tool.maturin]`
+block pins `bindings = "pyo3"`, `python-source = "python"`,
+`module-name = "peira._core"`, `features = ["pyo3/abi3-py310"]`, with
+`profile = "release"` for wheels and `editable-profile = "dev"` for local
+editable installs. Runtime data files (`peira/data/*.json`,
+`peira/data/cost_scenarios/*.yaml`) move from setuptools `package-data`
+to maturin's `include`. Status: accepted.
+
+**Why.** maturin is the PyO3-official standard build tool, not a niche
+choice. It makes editable installs correct by construction: no manual
+cdylib discovery, no hand-maintained `EXT_SUFFIX` renaming, no in-tree
+`.so` copies. The entire stale-artifact bug class (cargo target dir
+ignored by the old script, silent stale installs) stops existing. The
+dev loop is `pip install -e '.[dev]'` once, then `maturin develop` for
+incremental debug rebuilds (seconds) after Rust changes; Python-only
+edits take effect immediately. Distribution: abi3 wheels (one per
+platform, all supported Pythons) keep the `pip install peira` UX
+unchanged with no toolchain needed. Installing from an sdist or git URL
+now requires a Rust toolchain, which is standard for maturin projects.
+
+**Alternatives.** Keep the hand-rolled script and fix its staleness bugs
+(rejected: polishing a niche setup; every platform quirk stays
+hand-maintained). setuptools-rust with `optional=True` (rejected as the
+legacy path: the ecosystem is moving to maturin, and its editable
+rebuild loop is slower and less reliable than `maturin develop`).
+
+**Packaging note.** This settles the build-backend half of the packaging
+decision (Poetry is definitively out, since it wants to own the build
+backend). The lockfile-manager half went to uv in D-40; the two
+decisions compose: uv manages `uv.lock`, maturin is the build backend,
+pip stays the install path.
+
+**To revisit:** never for the backend choice itself; revisit the wheel
+platform matrix (currently linux x86_64, macOS arm64, Windows x86_64)
+when contributor hardware demands it.

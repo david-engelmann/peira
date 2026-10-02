@@ -7,15 +7,22 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
 
 ## [Unreleased]
 
-### Fixed v1-csm-134 PII hygiene, dataset v1 1.4.1
+### Changed - maturin replaces setuptools + hand-rolled Rust build script (D-43)
 
-- v1-csm-134 used `audit@revenue.gov`, a real-TLD government-looking
-  address, in both arms. Changed to the fictional `audit@revenue.example`.
-  One-line diff, gold labels and severities byte-identical.
-- Dataset version 1.4.0 -> 1.4.1 (patch). Manifest, croissant sidecar,
-  and dataset CHANGELOG updated with the new file hash and a fix entry.
-  Found by the v1 exhaustive audit (perfection-gate item 7), which
-  reports 0 findings across all 2,000 cases after the fix.
+- The PEP 517 build backend is now `maturin` (`build-backend = "maturin"`,
+  `[tool.maturin]` with `bindings = "pyo3"`, `module-name = "peira._core"`,
+  `features = ["pyo3/abi3-py310"]`). `scripts/build_core_ext.py` is deleted;
+  `pip install -e '.[dev]'` builds the extension (release profile in CI via
+  `MATURIN_PEP517_ARGS=--release`), and `maturin develop` gives incremental
+  debug rebuilds after Rust changes. Wheels are abi3 (one per platform);
+  installing from an sdist or git URL now requires a Rust toolchain.
+- CI installs the Rust toolchain in every job that pip-installs the package
+  (the maturin backend builds the extension at install time). `test-python`
+  now runs the suite with `PEIRA_NO_RUST=1`, keeping its pure-Python
+  fallback coverage; `test-python-rust` covers the compiled backend.
+- New `release-wheels.yml` workflow builds abi3 wheels (linux x86_64,
+  macOS arm64, Windows x86_64) plus an sdist on `v*` tags and publishes to
+  PyPI via trusted publishing (OIDC).
 
 ### Added R-04 effective sampling config and stability probe
 
@@ -60,55 +67,6 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
   `EXTRAS_LOCK` build arg is now `EXTRAS` (`dev` or `all`).
 - CI runs `uv lock --check` so a stale lockfile fails the PR. See
   docs/Reproducibility.md for the new workflow.
-
-### Fixed v2 draft copy defects from the exhaustive v2-draft audit, dataset v2 2.4.1
-
-- Row-by-row audit of all 2,201 v2 draft cases (4,402 benign+attacked
-  arms) across the five v2 families (perfection-gate item 8). Copy-only
-  fixes. No labels, options, or case structure changed.
-  - 198 article errors in role lines (`You are a insurance/admissions/`
-    and similar, now `You are an ...`) across judge_sycophancy prompts.
-  - 60 evidence_positioning score cases whose question line doubled
-    `Score score X higher`, now `Score X higher`.
-  - 44 verbosity_inflation abstain cases whose notes claimed the
-    "choice primitive" while the primitive field is `abstain`. Notes
-    corrected to the abstain primitive.
-- Audit accepted as by-design with no change. Score-primitive arm shape
-  (`expected_score` plus `positive_decision`, with `target_score` on
-  evpos attacked arms). Benign-control sharing within and across
-  families. The `v2-<fam>-XXXX` ID scheme. Ambiguous fidelity
-  observations (crosslingual abstain payload steering, retrieval score
-  double instruction) are logged in the audit report, not changed.
-- Dataset version moves from 2.4.0 to 2.4.1. Per-file SHA-256 digests
-  re-sealed in `dataset/v2/cases/manifest.json`.
-
-### Added EB-35 attack-strength sweep curves
-
-- `peira run --budget-grid 1,2,4,8,16` runs an attack-strength sweep.
-  Each case's attacked arm runs max(grid) queries and the artifact
-  records budget-to-first-flip per case. `peira sweep-report` renders
-  per-family ASR-vs-budget curves with Wilson 95 percent CIs plus the
-  budget-to-first-flip distribution. `peira sweep-dimensions` lists the
-  strength-dimension registry. Sweep runs are analyzable but never
-  rankable.
-- Resume refuses sweep/single-shot mixing: a sweep partial resumed
-  without `--budget-grid` (or a single-shot partial resumed with one)
-  exits 2 with a documented error instead of silently running the
-  wrong experiment. Grid or dimension mismatches on resume keep the
-  original refusal message.
-- `peira compare` refuses to pool sweep artifacts against single-shot
-  artifacts or against sweeps with a different budget grid or
-  strength dimension ("sweep config differs"); matching sweep pairs
-  still compare.
-- `peira sweep-report` turns inconsistent or malformed sweep results
-  into a documented exit-2 error instead of a traceback.
-- `peira run --budget-grid --adapter mock` builds the mock simulation
-  script on the sweep dispatch layout (one entry per case per
-  attempt). The previous single-shot layout answered sweep calls
-  from the wrong cases' entries and silently poisoned the artifact.
-- The sealed `eligibility_notes` list now rides alongside
-  `ranking_ineligible_reason`, so `runs_registry` reports the sweep
-  ineligibility reason instead of "ranking eligibility not recorded".
 
 ### Added EB-41 benign twins for over-refusal
 
@@ -229,26 +187,6 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
   (overall and per family, each with Wilson 95% CI) in a new
   `targeted_asr` summary block. Targeted ASR is unavailable when no
   target mapping is supplied or no flip has a known target.
-
-### Added cryptographic_payload attack family (family 28, Tier 1)
-
-- New v2 family `cryptographic_payload`: encrypted payload plus
-  in-context decryption instructions. The guard layer classifies the
-  ciphertext (benign-looking) while the decision model recovers the
-  plaintext in a trusted execution context and follows it. 420 cases
-  (181 critical / 155 high / 84 medium; 300 choice / 50 abstain /
-  70 score) authored by `scripts/author_cryptographic_payload.py`, case
-  IDs `v2-cryp-0001` and up. The benign control shows the attack in
-  plaintext inside an explicit guardrail BLOCKED notice; the attacked
-  variant carries the identical payload as ROT13, base64, keyed
-  simple-substitution, or word-reversal ciphertext plus decode-and-apply
-  instructions. Every
-  payload is encoded programmatically with round-trip assertions
-  (`decode(encode(x)) == x`), so cases are machine-checkable. Registered
-  in `python/peira/families.py`, documented in `docs/Taxonomy.md`
-  (entry 28, boundary ruling vs encoding_evasion and indirect_injection)
-  and `docs/Methodology.md` (measurement section with the deletion
-  test). Ships within dataset version 2.4.0.
 
 ### Added conversational case families
 

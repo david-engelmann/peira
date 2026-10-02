@@ -1,6 +1,6 @@
 [build-system]
-requires = ["setuptools>=61"]
-build-backend = "setuptools.build_meta"
+requires = ["maturin>=1,<2"]
+build-backend = "maturin"
 
 [project]
 name = "peira"
@@ -39,7 +39,9 @@ all = ["peira[hf]", "peira[openai]", "peira[anthropic]", "peira[google]"]
 # Development and test tooling. The Python suite runs under pytest
 # (unittest.TestCase classes are discovered natively); pytest-xdist
 # parallelizes it across workers and pytest-timeout guards against hangs.
-dev = ["pytest>=8", "pytest-xdist>=3", "pytest-timeout>=2"]
+# maturin is the PEP 517 build backend (PyO3 extension); it is also needed
+# directly in the venv for `maturin develop` (fast incremental rebuilds).
+dev = ["pytest>=8", "pytest-xdist>=3", "pytest-timeout>=2", "maturin>=1,<2"]
 
 [project.scripts]
 peira = "peira.cli:main"
@@ -49,11 +51,26 @@ Homepage = "https://github.com/david-engelmann/peira"
 Documentation = "https://github.com/david-engelmann/peira/tree/main/docs"
 Repository = "https://github.com/david-engelmann/peira"
 
-[tool.setuptools.packages.find]
-where = ["python"]
-
-[tool.setuptools.package-data]
-peira = ["data/*.json", "data/cost_scenarios/*.yaml"]
+[tool.maturin]
+# PyO3 extension module: crates/peira-python builds `peira._core`.
+bindings = "pyo3"
+python-source = "python"
+module-name = "peira._core"
+manifest-path = "crates/peira-python/Cargo.toml"
+# Stable-ABI wheels: one wheel per platform covers all supported Pythons.
+# These features apply to every maturin invocation (build, develop, and
+# PEP 517 installs): abi3 constrains the PyO3 API used, so `cargo test` /
+# `cargo bench` (which do not go through maturin) keep working against
+# the full (non-abi3) API.
+features = ["pyo3/abi3-py310"]
+# Wheels ship optimized; local editable installs stay fast debug builds.
+profile = "release"
+editable-profile = "dev"
+# Runtime data files shipped inside the wheel and sdist.
+include = [
+  { path = "python/peira/data/*.json", format = ["sdist", "wheel"] },
+  { path = "python/peira/data/cost_scenarios/*.yaml", format = ["sdist", "wheel"] },
+]
 
 [tool.pytest.ini_options]
 # The suite is unittest.TestCase-based; pytest discovers it natively.

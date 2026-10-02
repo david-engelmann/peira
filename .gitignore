@@ -9,6 +9,9 @@ runs/
 report.html
 target/
 .DS_Store
+# maturin-managed build artifact: `maturin develop` / `pip install -e .`
+# place the compiled peira._core extension inside python/peira/.
+# Never commit it; `maturin develop` refreshes it after Rust changes.
 _core*.so
 _core*.pyd
 hidden_audit/
