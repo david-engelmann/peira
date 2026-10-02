@@ -39,7 +39,7 @@ cluster; all stdlib + peira.* imports):
 | economics.py (numeric core) | LOW-MED/part | strong (77) | DONE: PR #382 (merge 646a0390ae14c6f0664b176f4211f9e7ec3b4bd4), 9 fns in crates/peira-core/src/economics.rs, parity-tested |
 | stability.py (numeric core) | MED | strong (35) | DONE: rust-max slice 5 — flip_agreement + drift_watch in crates/peira-core/src/stability.rs, PyO3 exports, _xxx_py twins + dispatch, 11 Rust unit + 16 parity tests; artifact sealing/JSON lock stayed Python per SPLIT #5 |
 | saturation.py | MED | moderate (23) | MIGRATE #6 after mde_mcnemar lands in metrics.rs |
-| calibration.py | LOW-MED | strong (45) | MIGRATE #7: SVG byte-parity ({x:.4f}, {t:g}, html.escape) |
+| calibration.py | LOW-MED | strong (45) | DONE: rust-max slice 7 — reliability_diagram_svg + risk_coverage_diagram_svg in crates/peira-core/src/calibration.rs, PyO3 exports, _xxx_py twins + dispatch with exact-type gates, 10 Rust unit + 10 parity tests (20 subtests) byte-identical; confidence_source_label stayed Python (trivial lookup, adapter-pin single source of truth) |
 | economic_lottery.py | MED | moderate (18) | MIGRATE #8 after lottery.py + economics core |
 | conversation_metrics.py | MED | weak (11) | DEFER: boundary types missing in Rust, banker's rounding |
 | threshold_family.py | MED | moderate (25) | STAY PYTHON (declared Python-only; depends on unported buyer_cost_at_threshold) |

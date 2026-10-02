@@ -24,8 +24,9 @@
 //!   the Python wrappers catch those and fall back to pure Python.
 
 use peira_core::{
-    artifact, canonical, combo, combo_metrics, compare, dataset, economics, env, execution, gates,
-    hardness, invariance, labels, lottery, metrics, pricing, records, schema, stability,
+    artifact, calibration, canonical, combo, combo_metrics, compare, dataset, economics, env,
+    execution, gates, hardness, invariance, labels, lottery, metrics, pricing, records, schema,
+    stability,
 };
 use pyo3::exceptions::{PyAttributeError, PyKeyError, PyTypeError, PyValueError};
 use pyo3::prelude::*;
@@ -727,6 +728,147 @@ fn stability_drift_watch(
     out.set_item("newly_flipping", &d.newly_flipping)?;
     out.set_item("newly_fixed", &d.newly_fixed)?;
     Ok(out.into())
+}
+
+// ---------------------------------------------------------------------------
+// calibration: R-11 SVG diagrams (rust-max slice 7).
+//
+// The Python wrappers gate inputs to JSON-native shapes before dispatch;
+// these bindings extract the gated values into the core's `Scalar`
+// model. Anything the gate missed (non-JSON scalars, out-of-range ints)
+// raises TypeError/ValueError, which the wrappers catch and fall back
+// to the pure-Python twins.
+// ---------------------------------------------------------------------------
+
+/// Extract a JSON-native scalar for the calibration core.
+///
+/// `bool` is checked before `int` because Python's `bool` subclasses
+/// `int`. Huge ints fail the i64 extraction and raise, as do non-scalar
+/// types; the wrapper falls back to Python on both.
+fn calibration_scalar(obj: &Bound<'_, PyAny>) -> PyResult<calibration::Scalar> {
+    if obj.is_none() {
+        return Ok(calibration::Scalar::None);
+    }
+    if let Ok(b) = obj.cast::<PyBool>() {
+        return Ok(calibration::Scalar::Bool(b.is_true()));
+    }
+    if let Ok(i) = obj.cast::<PyInt>() {
+        let v: i64 = i
+            .extract()
+            .map_err(|_| PyValueError::new_err("calibration: int out of i64 range"))?;
+        return Ok(calibration::Scalar::Int(v));
+    }
+    if let Ok(f) = obj.cast::<PyFloat>() {
+        return Ok(calibration::Scalar::Float(f.value()));
+    }
+    Err(PyTypeError::new_err(
+        "calibration: expected a JSON scalar (None/bool/int/float)",
+    ))
+}
+
+/// `dict.get(key)` as a calibration scalar; missing keys become
+/// `Scalar::None` (the twin's `KeyError` path withholds the block).
+fn calibration_get(dict: &Bound<'_, PyDict>, key: &str) -> PyResult<calibration::Scalar> {
+    match dict.get_item(key)? {
+        Some(v) => calibration_scalar(&v),
+        None => Ok(calibration::Scalar::None),
+    }
+}
+
+/// calibration.reliability_diagram_svg: R-11 reliability diagram.
+///
+/// `block` is a gated dict (`reliability_bins` block); `title` is a
+/// plain string. Returns the SVG (or the withheld placeholder) as a
+/// string, byte-identical to the Python twin.
+#[pyfunction]
+fn calibration_reliability_diagram_svg(block: &Bound<'_, PyDict>, title: &str) -> PyResult<String> {
+    let n = calibration_get(block, "n")?.to_int().unwrap_or(0);
+    let sufficient = block
+        .get_item("sufficient")?
+        .map(|v| v.is_truthy())
+        .transpose()?
+        .unwrap_or(false);
+    let bins = match block.get_item("bins")? {
+        None => None,
+        Some(v) => {
+            if v.is_none() {
+                None
+            } else {
+                let list = v
+                    .cast::<PyList>()
+                    .map_err(|_| PyTypeError::new_err("calibration: 'bins' is not a list"))?;
+                let mut out = Vec::with_capacity(list.len());
+                for item in list.iter() {
+                    let d = item
+                        .cast::<PyDict>()
+                        .map_err(|_| PyTypeError::new_err("calibration: bin is not a dict"))?;
+                    out.push(calibration::RawRelBin {
+                        mean_forecast: calibration_get(d, "mean_forecast")?,
+                        mean_outcome: calibration_get(d, "mean_outcome")?,
+                        n: calibration_get(d, "n")?,
+                    });
+                }
+                Some(out)
+            }
+        }
+    };
+    Ok(calibration::reliability_diagram_svg(
+        &calibration::ReliabilityBlock {
+            n,
+            sufficient,
+            bins,
+        },
+        title,
+    ))
+}
+
+/// calibration.risk_coverage_diagram_svg: R-11 selective-risk curve.
+///
+/// `sp` is a gated dict (`selective_prediction` block). Returns the SVG
+/// (or the withheld placeholder), byte-identical to the Python twin.
+#[pyfunction]
+fn calibration_risk_coverage_diagram_svg(sp: &Bound<'_, PyDict>, title: &str) -> PyResult<String> {
+    let n = calibration_get(sp, "n")?.to_int().unwrap_or(0);
+    let sufficient = sp
+        .get_item("sufficient")?
+        .map(|v| v.is_truthy())
+        .transpose()?
+        .unwrap_or(false);
+    let curve = match sp.get_item("risk_coverage_curve")? {
+        None => None,
+        Some(v) => {
+            if v.is_none() {
+                None
+            } else {
+                let list = v.cast::<PyList>().map_err(|_| {
+                    PyTypeError::new_err("calibration: 'risk_coverage_curve' is not a list")
+                })?;
+                let mut out = Vec::with_capacity(list.len());
+                for item in list.iter() {
+                    let pair = item.cast::<PyList>().map_err(|_| {
+                        PyTypeError::new_err("calibration: curve point is not a list")
+                    })?;
+                    if pair.len() != 2 {
+                        return Err(PyValueError::new_err(
+                            "calibration: curve point does not have 2 elements",
+                        ));
+                    }
+                    let c = calibration_scalar(&pair.get_item(0)?)?;
+                    let r = calibration_scalar(&pair.get_item(1)?)?;
+                    out.push((c, r));
+                }
+                Some(out)
+            }
+        }
+    };
+    Ok(calibration::risk_coverage_diagram_svg(
+        &calibration::RiskCoverageBlock {
+            n,
+            sufficient,
+            curve,
+        },
+        title,
+    ))
 }
 
 /// Ineligible-case counts by reason, as a dict.
@@ -2553,5 +2695,7 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(hardness_report_text, m)?)?;
     m.add_function(wrap_pyfunction!(stability_flip_agreement, m)?)?;
     m.add_function(wrap_pyfunction!(stability_drift_watch, m)?)?;
+    m.add_function(wrap_pyfunction!(calibration_reliability_diagram_svg, m)?)?;
+    m.add_function(wrap_pyfunction!(calibration_risk_coverage_diagram_svg, m)?)?;
     Ok(())
 }

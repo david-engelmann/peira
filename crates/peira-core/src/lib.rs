@@ -11,6 +11,7 @@
 //! Rust and vice versa. See the module docs for the exact rules.
 
 pub mod artifact;
+pub mod calibration;
 pub mod canonical;
 pub mod combo;
 pub mod combo_metrics;
