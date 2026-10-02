@@ -45,6 +45,7 @@ EXPECTED_POST_V2 = (
     "crosslingual_shift",
     "judge_sycophancy",
     "threshold_edge_hunting",
+    "question_pair_incoherence",
     "cryptographic_payload",
 )
 

@@ -75,6 +75,24 @@
       "n_cases": 421,
       "sha256": "55b48fc18e3549ebe73009c02cfd0d00d6db26b5a7f98af960f80dbbe1b191e1"
     },
+    "question_pair_incoherence.jsonl": {
+      "kind": "cases",
+      "n_by_family": {
+        "question_pair_incoherence": 400
+      },
+      "n_by_primitive": {
+        "abstain": 50,
+        "choice": 300,
+        "score": 50
+      },
+      "n_by_severity": {
+        "critical": 86,
+        "high": 140,
+        "medium": 174
+      },
+      "n_cases": 400,
+      "sha256": "1dd7ef138ad7c04f98b3f88538d57f25590233fce3481b7a6df081032e3841e4"
+    },
     "retrieval_poisoning.jsonl": {
       "kind": "cases",
       "n_by_family": {
@@ -141,6 +159,15 @@
       "unit": "percentage_points"
     },
     "evidence_positioning": {
+      "n": 400,
+      "note": "Design minimum detectable effects at n=400 per discordance rate pd.",
+      "pd_10": 4.4,
+      "pd_20": 6.3,
+      "pd_30": 7.7,
+      "pd_40": 8.9,
+      "unit": "percentage_points"
+    },
+    "question_pair_incoherence": {
       "n": 400,
       "note": "Design minimum detectable effects at n=400 per discordance rate pd.",
       "pd_10": 4.4,

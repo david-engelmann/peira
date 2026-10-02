@@ -119,6 +119,15 @@
       "encodingFormat": "application/x-ndjson",
       "name": "verbosity_inflation.jsonl",
       "sha256": "daf2e0963ffbb66272899d48afdaeb817131e53d6311cbd4a58c1a37f49e22ba"
+    },
+    {
+      "@id": "peira-v1/question_pair_incoherence.jsonl",
+      "@type": "cr:FileObject",
+      "contentUrl": "https://raw.githubusercontent.com/david-engelmann/peira/main/dataset/v2/cases/question_pair_incoherence.jsonl",
+      "description": "400 paired adversarial decision cases (peira-v1 2.4.1).",
+      "encodingFormat": "application/x-ndjson",
+      "name": "question_pair_incoherence.jsonl",
+      "sha256": "1dd7ef138ad7c04f98b3f88538d57f25590233fce3481b7a6df081032e3841e4"
     }
   ],
   "keywords": [
