@@ -39,6 +39,12 @@ SCHEMA_VERSION = "2"
 # top-level layout is separate future work.
 # ---------------------------------------------------------------------------
 
+# Leaderboard divisions (docs/Admission-Rules.md). Every submission declares
+# its division at submit time; the declaration is sealed in the artifact
+# config (lock-covered), and ingest rejects artifacts that do not declare
+# one. The display never mixes divisions in a headline ranking.
+DIVISIONS = {"guardrail", "llm-baseline"}
+
 # Closed vocabularies. Agents filter and group on these; a free-form string
 # that drifts silently breaks downstream joins, so ingest rejects unknown
 # values instead of passing them through.
@@ -278,10 +284,21 @@ def main() -> None:
         check_finite(a.metrics, f"{path.name}.metrics")
         cases = [trim_case(e) for e in a.results]
         check_finite(cases, f"{path.name}.cases")
+        # Declared leaderboard division (docs/Admission-Rules.md): sealed
+        # in config by `peira run --division`. Missing or unknown means
+        # the submission is incomplete and does not go on the board.
+        division = a.config.get("division") if isinstance(a.config, dict) else None
+        if division not in DIVISIONS:
+            fail(
+                f"{path.name}: config.division must be one of "
+                f"{sorted(DIVISIONS)}, got {division!r} "
+                "(declare with `peira run --division`)"
+            )
         run = {
             "adapter_name": a.adapter_name,
             "adapter_version": a.adapter_version,
             "model_class": a.model_class,
+            "division": division,
             "suite": a.suite,
             "dataset_version": a.dataset_version,
             "created_utc": a.created_utc,

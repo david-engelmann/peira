@@ -1,0 +1,11 @@
+---
+/* Segmented division control: Both divisions side by side, Guardrails only,
+   or LLM baselines only. View state lives in the URL query string and is
+   managed by site.js. The headline ranking never mixes divisions, each
+   division table ranks its own runs. */
+---
+<div class="seg" data-division-toggle role="group" aria-label="Leaderboard division">
+  <button type="button" data-division="both">Both divisions</button>
+  <button type="button" data-division="guardrail">Guardrails</button>
+  <button type="button" data-division="llm-baseline">LLM baselines</button>
+</div>

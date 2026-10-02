@@ -21,7 +21,7 @@
     "policy_version": "1",
     "unconditional_asr_denominator": "all_cases"
   },
-  "analysis_lock": "83a741ed1f64fc6dda8498899403ba7b154e18f9546afa72e585d4773a93265e",
+  "analysis_lock": "31b35d94d7e83bfb09036c5f2d531fae63137785250be2a819bff7ea493a9732",
   "api_version": "",
   "artifact_version": "3",
   "attack_provenance": {
@@ -45,6 +45,7 @@
   "checkpoint_hash": "",
   "confidence_source": "verbalized",
   "config": {
+    "division": "guardrail",
     "generator": "site/scripts/gen_mock.py",
     "mock": true,
     "mock_profile_asr": 0.12,
@@ -322,14 +323,14 @@
         "multiple_comparison": "none"
       },
       "wall_clock": {
-        "ended_utc": "2026-10-02T15:00:23.351213+00:00",
-        "started_utc": "2026-10-02T15:00:23.351213+00:00"
+        "ended_utc": "2026-10-02T16:11:38.583897+00:00",
+        "started_utc": "2026-10-02T16:11:38.583897+00:00"
       }
     }
   },
   "contract_version": "1",
   "cost_scenario_version": "",
-  "created_utc": "2026-10-02T15:00:23.351213+00:00",
+  "created_utc": "2026-10-02T16:11:38.583897+00:00",
   "dataset_version": "1.1.1",
   "decode_params": "",
   "determinism_check": {
@@ -16555,7 +16556,7 @@
     "rate_limit_hits": 0,
     "total_retries": 0
   },
-  "run_id": "794fe224144a4dccb1a7b7fbd0f8b259",
+  "run_id": "f34aee6fd637414791edb639601521ca",
   "run_status": "success",
   "schema_ref": "https://peiratrial.dev/schemas/run-artifact/3.json",
   "seed": 722,

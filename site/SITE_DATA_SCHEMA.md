@@ -50,6 +50,7 @@ and the Astro site (`site/src`). Both sides must honor this file. Bump
   "adapter_name": "shieldstral-1.0",
   "adapter_version": "2026-09-01",
   "model_class": "guardrail",
+  "division": "guardrail",
   "suite": "public",
   "dataset_version": "1.1.1",
   "created_utc": "2026-09-29T17:00:00+00:00",

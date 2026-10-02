@@ -24,6 +24,7 @@ run a suite through an adapter
 | Flag | Required | Default | Help |
 |---|---|---|---|
 | `--adapter` |  | `'mock'` | 'mock', a dotted path (package.module, package.module:ClassName, or package.module.ClassName), or a registered adapter id (see 'peira adapter list'). Dotted paths are imported (and therefore executed) in-process with the working directory first on sys.path: only load paths you trust. Third-party registry ids run isolated in a subprocess by default. |
+| `--division` |  | - | declared leaderboard division for this submission (docs/Admission-Rules.md). Sealed into the run artifact config. The site ingest requires it: a submission without a declared division does not go on the board. (choices: `guardrail`, `llm-baseline`) |
 | `--adapter-no-isolation` |  | `False` | run a third-party adapter IN-PROCESS instead of the subprocess sandbox. The adapter's code is imported and executed with peira's full environment: only use this for adapters you trust completely. |
 | `--adapter-env` |  | `[]` | extra environment variables for a third-party adapter's subprocess (repeatable; denylisted variables are refused) |
 | `--suite` |  | `'trial-demo'` | smoke is an alias for trial (choices: `trial-demo`, `trial`, `v1`, `safety-policy`, `conversational`, `combo`, `smoke`) |

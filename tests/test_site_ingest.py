@@ -70,7 +70,7 @@ def _results_and_summary(n):
 def make_artifact(path, *, mock=True, suite="public", dataset_version="1.1.1",
                    corrupt_lock=False, manifest_sha256="mock",
                    adapter_name="mock-test", adapter_version="mock-1",
-                   metrics_tweak=None, v3=True):
+                   metrics_tweak=None, v3=True, division="guardrail"):
     """Build a sealed test artifact.
 
     v3=True attaches a valid v3 extension block built by the real
@@ -81,6 +81,8 @@ def make_artifact(path, *, mock=True, suite="public", dataset_version="1.1.1",
     if metrics_tweak:
         metrics_tweak(summary)
     config = {"mock": mock}
+    if division is not None:
+        config["division"] = division
     if v3 is True:
         config["v3"] = build_v3_block(
             random.Random(1234), results, summary, suite, 7,
@@ -161,6 +163,7 @@ class IngestGatesTest(unittest.TestCase):
         run = data["runs"][0]
         self.assertEqual(run["adapter_name"], "mock-test")
         self.assertEqual(run["suite"], "public")
+        self.assertEqual(run["division"], "guardrail")
         # v3 blocks ride through verbatim
         self.assertIn("v3", run)
         self.assertEqual(run["v3"]["run_status"], "success")
@@ -176,6 +179,25 @@ class IngestGatesTest(unittest.TestCase):
                 ["attacked_decision", "benign_decision", "case_id", "eligible",
                  "family", "flipped", "primitive", "severity"],
             )
+
+    def test_division_carried_through(self):
+        self._one(mock=True, suite="public", division="llm-baseline")
+        r = run_ingest(self.arts, self.out, extra=["--mock"])
+        self.assertEqual(r.returncode, 0, r.stderr)
+        data = json.loads(self.out.read_text())
+        self.assertEqual(data["runs"][0]["division"], "llm-baseline")
+
+    def test_missing_division_rejected(self):
+        self._one(mock=True, suite="public", division=None)
+        r = run_ingest(self.arts, self.out, extra=["--mock"])
+        self.assertNotEqual(r.returncode, 0)
+        self.assertIn("division", r.stderr.lower())
+
+    def test_invalid_division_rejected(self):
+        self._one(mock=True, suite="public", division="hybrid")
+        r = run_ingest(self.arts, self.out, extra=["--mock"])
+        self.assertNotEqual(r.returncode, 0)
+        self.assertIn("division", r.stderr.lower())
 
     def test_broken_lock_rejected(self):
         self._one(mock=True, corrupt_lock=True)
@@ -301,6 +323,7 @@ class IngestV3Test(unittest.TestCase):
         summary = summarize(results, n_boot=50)
         config = {
             "mock": True,
+            "division": "guardrail",
             "v3": build_v3_block(random.Random(99), results, summary,
                                  "public", 7, "2026-09-29T00:00:00+00:00"),
         }

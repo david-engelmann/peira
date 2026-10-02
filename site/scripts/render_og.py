@@ -18,6 +18,7 @@ artifacts out of real builds applies to shared images.
 Usage:
     python3 site/scripts/render_og.py [--in site/src/data/results.json]
         [--out site/public/og/og-leaderboard] [--top-n 8] [--suite public]
+        [--division guardrail]
 
 Output files:
     <out>.svg        the source image
@@ -60,12 +61,20 @@ def pct(x: float) -> str:
     return f"{x * 100:.1f}%"
 
 
-def load_runs(path: Path, suite: str) -> tuple[dict, list[dict]]:
+DIVISION_LABELS = {"guardrail": "guardrail division", "llm-baseline": "LLM baseline division"}
+
+
+def load_runs(path: Path, suite: str, division: str) -> tuple[dict, list[dict]]:
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
     except Exception as exc:
         fail(f"cannot read {path}: {exc}")
-    runs = [r for r in data.get("runs", []) if r.get("suite") == suite]
+    # The headline ranking never mixes divisions: the social image charts
+    # one division only, labeled as such.
+    runs = [
+        r for r in data.get("runs", [])
+        if r.get("suite") == suite and r.get("division") == division
+    ]
     scored = []
     for r in runs:
         m = r.get("metrics") or {}
@@ -78,6 +87,7 @@ def load_runs(path: Path, suite: str) -> tuple[dict, list[dict]]:
                 "adapter_name": str(r.get("adapter_name", "unknown")),
                 "adapter_version": str(r.get("adapter_version", "")),
                 "model_class": str(r.get("model_class", "")),
+                "division": str(r.get("division", "")),
                 "asr": float(asr),
                 "ci_lo": float(ci[0]) if ci[0] is not None else None,
                 "ci_hi": float(ci[1]) if ci[1] is not None else None,
@@ -92,7 +102,7 @@ def esc(s: str) -> str:
     return html.escape(s, quote=True)
 
 
-def render(data: dict, scored: list[dict], top_n: int) -> str:
+def render(data: dict, scored: list[dict], top_n: int, division: str) -> str:
     top = scored[:top_n]
     mock = bool(data.get("mock_data"))
     peira_version = str(data.get("peira_version", ""))
@@ -182,7 +192,8 @@ def render(data: dict, scored: list[dict], top_n: int) -> str:
   <rect x="24" y="24" width="{WIDTH - 48}" height="{HEIGHT - 48}" rx="12" fill="{CARD}"/>
 {mock_banner}
   <text x="64" y="112" font-family="{FONT}" font-size="44" font-weight="bold" fill="{TEXT}">peira leaderboard</text>
-  <text x="64" y="146" font-family="{FONT}" font-size="19" fill="{MUTED}">{esc(subtitle)}</text>
+  <text x="64" y="148" font-family="{FONT}" font-size="22" fill="{MUTED}">{esc(DIVISION_LABELS.get(division, division))}</text>
+  <text x="64" y="174" font-family="{FONT}" font-size="19" fill="{MUTED}">{esc(subtitle)}</text>
   <text x="{WIDTH - 64}" y="112" text-anchor="end" font-family="{FONT}" font-size="20" fill="{MUTED}">top {len(top)} adapters</text>
   <text x="{WIDTH - 64}" y="140" text-anchor="end" font-family="{FONT}" font-size="15" fill="{MUTED}">whiskers show 95 percent confidence intervals</text>
 {chr(10).join(grid)}
@@ -193,12 +204,13 @@ def render(data: dict, scored: list[dict], top_n: int) -> str:
 """
 
 
-def alt_text(data: dict, scored: list[dict], top_n: int) -> str:
+def alt_text(data: dict, scored: list[dict], top_n: int, division: str) -> str:
     mock = bool(data.get("mock_data"))
     lines = [
         "OG social image for the peira leaderboard page.",
         "A dark card titled peira leaderboard with a horizontal bar chart "
-        "of conditional attack success rate for the top adapters. Lower is better.",
+        "of conditional attack success rate for the top adapters in the "
+        f"{DIVISION_LABELS.get(division, division)}. Lower is better.",
         f"Data status is {'MOCK DATA, not real results' if mock else 'real benchmark results'}.",
     ]
     for i, s in enumerate(scored[:top_n], 1):
@@ -243,23 +255,35 @@ def main() -> None:
     )
     ap.add_argument("--top-n", type=int, default=TOP_N_DEFAULT)
     ap.add_argument("--suite", default="public", choices=("public", "holdout"))
+    ap.add_argument(
+        "--division",
+        default="guardrail",
+        choices=tuple(sorted(DIVISION_LABELS)),
+        help="which division the image charts (the headline ranking never "
+        "mixes divisions)",
+    )
     args = ap.parse_args()
     if not 1 <= args.top_n <= TOP_N_DEFAULT:
         fail(f"--top-n must be between 1 and {TOP_N_DEFAULT} (chart capacity)")
 
-    data, scored = load_runs(Path(args.inp), args.suite)
+    data, scored = load_runs(Path(args.inp), args.suite, args.division)
     if not scored:
-        fail("no runs with asr_conditional in the site-data JSON")
+        fail(
+            "no runs with asr_conditional in the site-data JSON "
+            f"for suite={args.suite} division={args.division}"
+        )
 
     out_base = Path(args.out)
     out_base.parent.mkdir(parents=True, exist_ok=True)
-    svg = render(data, scored, args.top_n)
+    svg = render(data, scored, args.top_n, args.division)
     svg_path = out_base.with_suffix(".svg")
     svg_path.write_text(svg, encoding="utf-8")
     print(f"render_og: wrote {svg_path} ({len(scored[: args.top_n])} bars)")
 
     alt_path = out_base.with_suffix(".alt.txt")
-    alt_path.write_text(alt_text(data, scored, args.top_n), encoding="utf-8")
+    alt_path.write_text(
+        alt_text(data, scored, args.top_n, args.division), encoding="utf-8"
+    )
     print(f"render_og: wrote {alt_path}")
 
     png_path = out_base.with_suffix(".png")

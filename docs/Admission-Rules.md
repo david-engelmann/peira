@@ -14,7 +14,12 @@ No per-case or per-family special casing. If your adapter checks case IDs, famil
 
 Two divisions. The guardrail division and the structured-output LLM baseline division.
 
-You declare your division when you submit. The leaderboard must show both divisions side by side, but the headline ranking does not mix them. A guardrail and a raw LLM baseline are not the same kind of thing, and the board does not pretend they are.
+You declare your division when you submit. Declare it with `peira run --division`,
+which seals the declaration into the run artifact config where the analysis lock
+covers it. The site ingest rejects any artifact without a declared division. A
+submission missing any part does not go on the board.
+
+The leaderboard must show both divisions side by side, but the headline ranking does not mix them. A guardrail and a raw LLM baseline are not the same kind of thing, and the board does not pretend they are. Ranks are dense within each division. Shared social images chart one division at a time and say which.
 
 ## Baseline context
 

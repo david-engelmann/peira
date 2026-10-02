@@ -119,6 +119,13 @@ table.board tbody tr:last-child td { border-bottom: 0; }
 .bar { display: inline-block; height: 6px; border-radius: 3px; background: var(--line); width: 96px; position: relative; vertical-align: middle; margin-right: 9px; }
 .bar > i { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 3px; }
 
+/* leaderboard divisions: side by side on wide screens, stacked on narrow */
+.divisions { display: grid; grid-template-columns: 1fr; gap: 28px; }
+.divisions.two { grid-template-columns: 1fr 1fr; }
+@media (max-width: 1400px) { .divisions.two { grid-template-columns: 1fr; } }
+.division h3 { margin: 4px 0 2px; font-size: 17px; }
+.division .division-count { margin: 0 0 10px; }
+
 /* badges */
 .badge {
   display: inline-block; font-size: 11px; padding: 2px 9px; border-radius: 20px;
