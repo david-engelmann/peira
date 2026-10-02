@@ -82,12 +82,15 @@ class TestCheckFamilies(unittest.TestCase):
             REPO_ROOT / "docs" / "Taxonomy.md"
         )
         # No cap on families (David 2026-09-28). Numbering runs 1..N in
-        # order: 27 is question_pair_incoherence, 28 cryptographic_payload.
+        # order: 27 is question_pair_incoherence, 28 cryptographic_payload,
+        # 29 frequency_salience.
+        self.assertEqual(len(documented), 29)
         numbers = [n for n, _, _ in documented]
-        self.assertEqual(numbers, list(range(1, 29)))
+        self.assertEqual(numbers, list(range(1, 30)))
         num_by_fam = {fam: n for n, fam, _ in documented}
         self.assertEqual(num_by_fam["question_pair_incoherence"], 27)
         self.assertEqual(num_by_fam["cryptographic_payload"], 28)
+        self.assertEqual(num_by_fam["frequency_salience"], 29)
         tiers = {fam: tier for _, fam, tier in documented}
         self.assertEqual(tiers["state_poisoning"], "v1")
         self.assertEqual(tiers["instruction_override"], "1")
@@ -99,6 +102,7 @@ class TestCheckFamilies(unittest.TestCase):
         self.assertEqual(tiers["judge_sycophancy"], "1")
         self.assertEqual(tiers["question_pair_incoherence"], "1")
         self.assertEqual(tiers["cryptographic_payload"], "1")
+        self.assertEqual(tiers["frequency_salience"], "1")
 
     def test_entry_prose_drift_detected(self):
         # A meaning change to one family's entry must fail the check.

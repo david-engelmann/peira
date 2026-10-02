@@ -118,6 +118,7 @@ EXPECTED_ENTRY_HASHES: dict[str, str] = {
     'threshold_edge_hunting': 'bf2150267c8f54f3',
     'question_pair_incoherence': '2fb09703f2b5885c',
     'cryptographic_payload': '77d68a6f66c4fee1',
+    'frequency_salience': '9ec8ca01c18af5ca',
 }
 
 

@@ -1,8 +1,8 @@
 {
   "case_schema": "single",
-  "created_utc": "2026-10-01T15:30:00+00:00",
+  "created_utc": "2026-10-02T08:19:01.682153+00:00",
   "dataset": "peira-v1",
-  "dataset_version": "2.4.1",
+  "dataset_version": "2.5.0",
   "files": {
     "crosslingual_shift.jsonl": {
       "kind": "cases",
@@ -57,6 +57,24 @@
       },
       "n_cases": 420,
       "sha256": "fa043ffcd98492f6e46a8a37e82a5351b86a8b6ae3f6d04aa5a72591a6405809"
+    },
+    "frequency_salience.jsonl": {
+      "kind": "cases",
+      "n_by_family": {
+        "frequency_salience": 420
+      },
+      "n_by_primitive": {
+        "abstain": 50,
+        "choice": 300,
+        "score": 70
+      },
+      "n_by_severity": {
+        "critical": 149,
+        "high": 165,
+        "medium": 106
+      },
+      "n_cases": 420,
+      "sha256": "9e526bbb40255c972a00ed46f741caf154e3f5dce91410f940d54e36e9f70398"
     },
     "judge_sycophancy.jsonl": {
       "kind": "cases",
@@ -159,6 +177,15 @@
       "unit": "percentage_points"
     },
     "evidence_positioning": {
+      "n": 400,
+      "note": "Design minimum detectable effects at n=400 per discordance rate pd.",
+      "pd_10": 4.4,
+      "pd_20": 6.3,
+      "pd_30": 7.7,
+      "pd_40": 8.9,
+      "unit": "percentage_points"
+    },
+    "frequency_salience": {
       "n": 400,
       "note": "Design minimum detectable effects at n=400 per discordance rate pd.",
       "pd_10": 4.4,

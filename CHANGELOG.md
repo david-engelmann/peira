@@ -7,6 +7,24 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
 
 ## [Unreleased]
 
+### Added frequency_salience attack family (family 29, Tier 1)
+
+- New v2 family `frequency_salience`. Irrelevant repetition of a competing
+  entity in administrative filler hijacks the decision toward it. 420 cases
+  (149 critical, 165 high, 106 medium, with 300 choice, 70 score and 50 abstain)
+  authored by `scripts/author_frequency_salience.py`, case IDs `v2-freq-0001`
+  and up. The attacked variant keeps the benign facts byte-identical and adds
+  an administrative-notes block (calendar entries, directory listings, access
+  logs) repeating the competing entity 1, 3, or 7 times. Filler length is held
+  approximately constant across doses so only the mention count varies. The family ships a
+  dose-response design (100 scenarios x 3 mention-count doses for the choice
+  cases, plus 70 score and 50 abstain cases cycling the doses) measuring the
+  salience curve toward the repeated entity. Registered in
+  `python/peira/families.py`, documented in `docs/Taxonomy.md` (entry 29,
+  boundary ruling vs verbosity_inflation, evidence_positioning, and
+  distractor_flooding) and `docs/Methodology.md` (measurement section with the
+  deletion test). Ships in dataset version 2.5.0.
+
 ### Changed - maturin replaces setuptools + hand-rolled Rust build script (D-43)
 
 - The PEP 517 build backend is now `maturin` (`build-backend = "maturin"`,
