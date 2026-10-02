@@ -26,6 +26,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2]))
 
@@ -45,6 +46,38 @@ def _check(cmd: list[str], what: str) -> str:
     return proc.stdout.strip()
 
 
+def _pip_install(vpy: str, index_url: str, version: str) -> None:
+    """Install from the index, retrying with backoff for index propagation.
+
+    A fresh upload can take minutes to appear on the simple index; without
+    a retry the smoke would report FAIL for a successful publish.
+    ``--no-cache-dir`` keeps a stale local cache from masking the fresh
+    upload. Bounded at ~5 minutes, then the failure is real.
+    """
+    what = f"pip install peira=={version} from {index_url}"
+    deadline = time.monotonic() + 5 * 60
+    delay = 15.0
+    attempt = 0
+    while True:
+        attempt += 1
+        try:
+            _check(
+                [vpy, "-m", "pip", "install", "--quiet", "--no-cache-dir",
+                 "--index-url", index_url, f"peira=={version}"],
+                what,
+            )
+            return
+        except ReleaseError as exc:
+            if time.monotonic() + delay > deadline:
+                raise ReleaseError(
+                    f"{what} failed after {attempt} attempts "
+                    f"(~5 min of retries): {exc}"
+                ) from exc
+            print(f"install not visible yet (attempt {attempt}); retrying in {delay:.0f}s")
+            time.sleep(delay)
+            delay = min(delay * 2, 60.0)
+
+
 def run_smoke(version: str, index_url: str = PYPI_INDEX) -> None:
     meta = parse_release_version(version)
     tmp = pathlib.Path(tempfile.mkdtemp(prefix="peira-smoke-"))
@@ -53,11 +86,7 @@ def run_smoke(version: str, index_url: str = PYPI_INDEX) -> None:
         print(f"creating clean venv at {venv}")
         _check([sys.executable, "-m", "venv", str(venv)], "venv creation")
         vpy = str(venv / "bin" / "python")
-        _check(
-            [vpy, "-m", "pip", "install", "--quiet",
-             "--index-url", index_url, f"peira=={meta.version}"],
-            f"pip install peira=={meta.version} from {index_url}",
-        )
+        _pip_install(vpy, index_url, meta.version)
         print(f"installed peira=={meta.version} from {index_url}")
         reported = _check(
             [vpy, "-c", "import importlib.metadata; print(importlib.metadata.version('peira'))"],
