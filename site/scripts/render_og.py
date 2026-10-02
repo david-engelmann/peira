@@ -18,7 +18,7 @@ artifacts out of real builds applies to shared images.
 Usage:
     python3 site/scripts/render_og.py [--in site/src/data/results.json]
         [--out site/public/og/og-leaderboard] [--top-n 8] [--suite public]
-        [--division guardrail]
+        [--division guardrail] [--peira-version 0.1.0]
 
 Output files:
     <out>.svg        the source image
@@ -102,10 +102,17 @@ def esc(s: str) -> str:
     return html.escape(s, quote=True)
 
 
-def render(data: dict, scored: list[dict], top_n: int, division: str) -> str:
+def render(data: dict, scored: list[dict], top_n: int, division: str,
+           peira_version_override: str | None = None) -> str:
     top = scored[:top_n]
     mock = bool(data.get("mock_data"))
-    peira_version = str(data.get("peira_version", ""))
+    # The repo carries 0.0.0 per the tag-is-version policy (docs/Release.md);
+    # the tag is the source of truth and no tag exists pre-launch. A public
+    # OG image showing "peira 0.0.0" reads as broken, so the caller may pass
+    # an explicit display version. The site-data value is never mutated.
+    peira_version = (peira_version_override
+                     if peira_version_override is not None
+                     else str(data.get("peira_version", "")))
     dataset_version = str((data.get("dataset") or {}).get("version", ""))
 
     chart_x, chart_w = 320, 780
@@ -262,6 +269,13 @@ def main() -> None:
         help="which division the image charts (the headline ranking never "
         "mixes divisions)",
     )
+    ap.add_argument(
+        "--peira-version",
+        default=None,
+        help="override the peira version shown in the footer (default: the "
+        "site-data value; the repo carries 0.0.0 pre-launch per "
+        "docs/Release.md, which reads as broken on a public image)",
+    )
     args = ap.parse_args()
     if not 1 <= args.top_n <= TOP_N_DEFAULT:
         fail(f"--top-n must be between 1 and {TOP_N_DEFAULT} (chart capacity)")
@@ -275,7 +289,8 @@ def main() -> None:
 
     out_base = Path(args.out)
     out_base.parent.mkdir(parents=True, exist_ok=True)
-    svg = render(data, scored, args.top_n, args.division)
+    svg = render(data, scored, args.top_n, args.division,
+                 peira_version_override=args.peira_version)
     svg_path = out_base.with_suffix(".svg")
     svg_path.write_text(svg, encoding="utf-8")
     print(f"render_og: wrote {svg_path} ({len(scored[: args.top_n])} bars)")

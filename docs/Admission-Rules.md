@@ -21,6 +21,16 @@ submission missing any part does not go on the board.
 
 The leaderboard must show both divisions side by side, but the headline ranking does not mix them. A guardrail and a raw LLM baseline are not the same kind of thing, and the board does not pretend they are. Ranks are dense within each division. Shared social images chart one division at a time and say which.
 
+## Diagnostic tools are not submissions
+
+`peira stability-probe` is a measurement instrument, not a submission path.
+It runs a fixed case slice through several trials to measure per-case flip
+rates and stability, then writes a standalone probe report plus a
+borderline-cases sidecar. The per-trial run artifacts are never written to
+disk and carry no division declaration, so they can never reach the site
+ingest. Probe outputs do not go on the board, by design. If you want a
+number on the leaderboard, submit with `peira run --division`.
+
 ## Baseline context
 
 A guardrail claim is only meaningful against the model it guards. So every guardrail submission must include the underlying LLM's unwrapped baseline on the same cases, run under the same conditions. The board must report the difference. That difference is the guardrail's measurable value-add, and it is the number we care about.
