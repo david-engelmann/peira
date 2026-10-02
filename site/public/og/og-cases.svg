@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630" role="img" aria-label="peira case corpus OG image, mock data">
+  <rect width="1200" height="630" fill="#0f1a14"/>
+  <rect x="24" y="24" width="1152" height="582" rx="12" fill="#16241c"/>
+  <rect x="0" y="0" width="1200" height="46" fill="#e8b34b"/>
+<text x="600.0" y="31" text-anchor="middle" font-family="DejaVu Sans, Verdana, sans-serif" font-size="22" font-weight="bold" fill="#3a2b00">MOCK DATA, NOT REAL RESULTS</text>
+  <text x="64" y="112" font-family="DejaVu Sans, Verdana, sans-serif" font-size="44" font-weight="bold" fill="#eef4ee">peira case corpus</text>
+  <text x="64" y="148" font-family="DejaVu Sans, Verdana, sans-serif" font-size="22" fill="#a8bcb0">every number below comes from sealed run artifacts</text>
+
+    <rect x="60.0" y="240" width="240" height="180" rx="12" fill="#0f1a14"/><text x="180.0" y="330" text-anchor="middle" font-family="DejaVu Sans, Verdana, sans-serif" font-size="52" font-weight="bold" fill="#7fd79a">2</text><text x="180.0" y="368" text-anchor="middle" font-family="DejaVu Sans, Verdana, sans-serif" font-size="18" fill="#a8bcb0">sealed runs charted</text>
+    <rect x="340.0" y="240" width="240" height="180" rx="12" fill="#0f1a14"/><text x="460.0" y="330" text-anchor="middle" font-family="DejaVu Sans, Verdana, sans-serif" font-size="52" font-weight="bold" fill="#7fd79a">21</text><text x="460.0" y="368" text-anchor="middle" font-family="DejaVu Sans, Verdana, sans-serif" font-size="18" fill="#a8bcb0">attack families</text>
+    <rect x="620.0" y="240" width="240" height="180" rx="12" fill="#0f1a14"/><text x="740.0" y="330" text-anchor="middle" font-family="DejaVu Sans, Verdana, sans-serif" font-size="52" font-weight="bold" fill="#7fd79a">978</text><text x="740.0" y="368" text-anchor="middle" font-family="DejaVu Sans, Verdana, sans-serif" font-size="18" fill="#a8bcb0">eligible case runs</text>
+    <rect x="900.0" y="240" width="240" height="180" rx="12" fill="#0f1a14"/><text x="1020.0" y="330" text-anchor="middle" font-family="DejaVu Sans, Verdana, sans-serif" font-size="52" font-weight="bold" fill="#7fd79a">1.1.1</text><text x="1020.0" y="368" text-anchor="middle" font-family="DejaVu Sans, Verdana, sans-serif" font-size="18" fill="#a8bcb0">dataset version</text>  <text x="64" y="586" font-family="DejaVu Sans, Verdana, sans-serif" font-size="15" fill="#a8bcb0">peiratrial.dev</text>
+  <text x="1136" y="586" text-anchor="end" font-family="DejaVu Sans, Verdana, sans-serif" font-size="15" fill="#a8bcb0">peira 0.1.0 · generated from sealed run artifacts</text>
+</svg>

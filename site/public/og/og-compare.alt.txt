@@ -1,0 +1,5 @@
+OG social image for the peira adapter compare page.
+A dark card titled peira adapter compare with the two best adapters side by side on conditional attack success rate. Lower is better.
+Data status is MOCK DATA, not real results.
+1. mock-guardrail at 12.8%.
+2. mock-hybrid at 51.8%.

@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630" role="img" aria-label="peira adapter compare OG image, mock data">
+  <rect width="1200" height="630" fill="#0f1a14"/>
+  <rect x="24" y="24" width="1152" height="582" rx="12" fill="#16241c"/>
+  <rect x="0" y="0" width="1200" height="46" fill="#e8b34b"/>
+<text x="600.0" y="31" text-anchor="middle" font-family="DejaVu Sans, Verdana, sans-serif" font-size="22" font-weight="bold" fill="#3a2b00">MOCK DATA, NOT REAL RESULTS</text>
+  <text x="64" y="112" font-family="DejaVu Sans, Verdana, sans-serif" font-size="44" font-weight="bold" fill="#eef4ee">peira adapter compare</text>
+  <text x="64" y="148" font-family="DejaVu Sans, Verdana, sans-serif" font-size="22" fill="#a8bcb0">head to head on conditional attack success rate · lower is better · dataset 1.1.1</text>
+  <text x="1136" y="112" text-anchor="end" font-family="DejaVu Sans, Verdana, sans-serif" font-size="20" fill="#a8bcb0">top 2 adapters</text>
+    <line x1="420.0" y1="222" x2="420.0" y2="470" stroke="#2a3b31" stroke-width="1"/><text x="420.0" y="214" text-anchor="middle" font-family="DejaVu Sans, Verdana, sans-serif" font-size="14" fill="#a8bcb0">0.0%</text>
+    <line x1="590.0" y1="222" x2="590.0" y2="470" stroke="#2a3b31" stroke-width="1"/><text x="590.0" y="214" text-anchor="middle" font-family="DejaVu Sans, Verdana, sans-serif" font-size="14" fill="#a8bcb0">25.0%</text>
+    <line x1="760.0" y1="222" x2="760.0" y2="470" stroke="#2a3b31" stroke-width="1"/><text x="760.0" y="214" text-anchor="middle" font-family="DejaVu Sans, Verdana, sans-serif" font-size="14" fill="#a8bcb0">50.0%</text>
+    <line x1="930.0" y1="222" x2="930.0" y2="470" stroke="#2a3b31" stroke-width="1"/><text x="930.0" y="214" text-anchor="middle" font-family="DejaVu Sans, Verdana, sans-serif" font-size="14" fill="#a8bcb0">75.0%</text>
+    <line x1="1100.0" y1="222" x2="1100.0" y2="470" stroke="#2a3b31" stroke-width="1"/><text x="1100.0" y="214" text-anchor="middle" font-family="DejaVu Sans, Verdana, sans-serif" font-size="14" fill="#a8bcb0">100.0%</text>
+    <text x="404" y="282.0" text-anchor="end" font-family="DejaVu Sans, Verdana, sans-serif" font-size="24" font-weight="bold" fill="#eef4ee">mock-guardrail mock-1</text>
+    <text x="404" y="308.0" text-anchor="end" font-family="DejaVu Sans, Verdana, sans-serif" font-size="16" fill="#a8bcb0">rank 1 by attack success rate</text>
+    <rect x="420" y="273.0" width="86.8" height="34" rx="6" fill="#7fd79a"/>
+    <text x="520.8" y="298.0" font-family="DejaVu Sans, Verdana, sans-serif" font-size="24" font-weight="bold" fill="#eef4ee">12.8%</text>
+    <text x="404" y="402.0" text-anchor="end" font-family="DejaVu Sans, Verdana, sans-serif" font-size="24" font-weight="bold" fill="#eef4ee">mock-hybrid mock-1</text>
+    <text x="404" y="428.0" text-anchor="end" font-family="DejaVu Sans, Verdana, sans-serif" font-size="16" fill="#a8bcb0">rank 2 by attack success rate</text>
+    <rect x="420" y="393.0" width="352.4" height="34" rx="6" fill="#7fd79a"/>
+    <text x="786.4" y="418.0" font-family="DejaVu Sans, Verdana, sans-serif" font-size="24" font-weight="bold" fill="#eef4ee">51.8%</text>  <text x="64" y="586" font-family="DejaVu Sans, Verdana, sans-serif" font-size="15" fill="#a8bcb0">peiratrial.dev</text>
+  <text x="1136" y="586" text-anchor="end" font-family="DejaVu Sans, Verdana, sans-serif" font-size="15" fill="#a8bcb0">peira 0.1.0 · generated from sealed run artifacts</text>
+</svg>
