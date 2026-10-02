@@ -22,8 +22,8 @@
 //!   the Python wrappers catch those and fall back to pure Python.
 
 use peira_core::{
-    artifact, canonical, combo, combo_metrics, compare, dataset, env, execution, gates, hardness,
-    invariance, labels, lottery, metrics, pricing, records, schema,
+    artifact, canonical, combo, combo_metrics, compare, dataset, economics, env, execution, gates,
+    hardness, invariance, labels, lottery, metrics, pricing, records, schema,
 };
 use pyo3::exceptions::{PyAttributeError, PyKeyError, PyTypeError, PyValueError};
 use pyo3::prelude::*;
@@ -318,6 +318,322 @@ fn flip_direction_counts(results: Vec<PyPerCaseResult>) -> BTreeMap<String, usiz
 #[pyfunction]
 fn net_benefit_at_threshold(risks: Vec<f64>, labels: Vec<i64>, pt: f64) -> f64 {
     metrics::net_benefit_at_threshold(&risks, &labels, pt)
+}
+
+// ---------------------------------------------------------------------------
+// economics: M-3 / C-4 numeric core (rust-max slice 4).
+//
+// The Rust core returns plain structs; these bindings hand the fields
+// back as dicts the Python wrapper uses to construct its dataclasses
+// (the slice-3 pattern). Scenario prices arrive as plain parameters;
+// the Python wrapper owns the CostScenario dataclass and validation.
+// ---------------------------------------------------------------------------
+
+/// Build a ScenarioPrices from wrapper-supplied fields.
+fn scenario_prices(
+    flip_cost_usd: BTreeMap<String, f64>,
+    flips_per_incident: f64,
+    scenario_id: String,
+) -> economics::ScenarioPrices {
+    economics::ScenarioPrices {
+        flip_cost_usd,
+        flips_per_incident,
+        scenario_id,
+    }
+}
+
+fn dict_attack_cost_estimate(
+    py: Python<'_>,
+    e: &economics::AttackCostEstimate,
+) -> PyResult<Py<PyDict>> {
+    let out = PyDict::new(py);
+    out.set_item("e_attacked", e.e_attacked)?;
+    out.set_item("per_flip", e.per_flip)?;
+    out.set_item("per_incident", e.per_incident)?;
+    out.set_item("direction_counts", &e.direction_counts)?;
+    out.set_item("n", e.n)?;
+    out.set_item("scenario_id", &e.scenario_id)?;
+    Ok(out.into())
+}
+
+/// economics.e_attacked: expected attack cost per decision.
+#[pyfunction]
+#[pyo3(signature = (results, flip_cost_usd, flips_per_incident, attack_rate, scenario_id))]
+fn economics_e_attacked(
+    py: Python<'_>,
+    results: Vec<PyPerCaseResult>,
+    flip_cost_usd: BTreeMap<String, f64>,
+    flips_per_incident: f64,
+    attack_rate: f64,
+    scenario_id: String,
+) -> PyResult<Py<PyDict>> {
+    let prices = scenario_prices(flip_cost_usd, flips_per_incident, scenario_id);
+    let e = economics::e_attacked(&to_core_results(results), &prices, attack_rate);
+    dict_attack_cost_estimate(py, &e)
+}
+
+/// economics._mean_cost_per_decision: mean inference cost per eligible decision.
+#[pyfunction]
+fn economics_mean_cost_per_decision(results: Vec<PyPerCaseResult>) -> f64 {
+    economics::mean_cost_per_decision(&to_core_results(results))
+}
+
+fn dict_frontier_point(py: Python<'_>, p: &economics::FrontierPoint) -> PyResult<Py<PyDict>> {
+    let out = PyDict::new(py);
+    out.set_item("adapter", &p.adapter)?;
+    out.set_item("cost_per_decision_usd", p.cost_per_decision_usd)?;
+    out.set_item("asr", p.asr)?;
+    out.set_item("asr_ci95", (p.asr_ci95.0, p.asr_ci95.1))?;
+    out.set_item("n", p.n)?;
+    out.set_item("price_date", &p.price_date)?;
+    out.set_item("on_frontier", p.on_frontier)?;
+    Ok(out.into())
+}
+
+/// economics.pareto_frontier: (cost, ASR) Pareto frontier.
+///
+/// Adapters arrive as an order-preserving list of (name, results);
+/// the returned points keep that order.
+#[pyfunction]
+fn economics_pareto_frontier(
+    py: Python<'_>,
+    adapters: Vec<(String, Vec<PyPerCaseResult>)>,
+    price_date: &str,
+) -> PyResult<Vec<Py<PyDict>>> {
+    let core: Vec<(String, Vec<metrics::PerCaseResult>)> = adapters
+        .into_iter()
+        .map(|(name, rs)| (name, to_core_results(rs)))
+        .collect();
+    economics::pareto_frontier(&core, price_date)
+        .iter()
+        .map(|p| dict_frontier_point(py, p))
+        .collect()
+}
+
+/// economics.drummond_holte_curves (points half): normalized expected
+/// cost vs cost ratio. Crossover statements stay Python.
+#[pyfunction]
+fn economics_drummond_holte_points(
+    py: Python<'_>,
+    adapters: Vec<(String, Vec<PyPerCaseResult>)>,
+    cost_ratios: Vec<f64>,
+) -> PyResult<Vec<Py<PyDict>>> {
+    let core: Vec<(String, Vec<metrics::PerCaseResult>)> = adapters
+        .into_iter()
+        .map(|(name, rs)| (name, to_core_results(rs)))
+        .collect();
+    economics::drummond_holte_points(&core, &cost_ratios)
+        .iter()
+        .map(|p| {
+            let out = PyDict::new(py);
+            out.set_item("adapter", &p.adapter)?;
+            out.set_item("cost_ratio", p.cost_ratio)?;
+            out.set_item("normalized_cost", p.normalized_cost)?;
+            Ok(out.into())
+        })
+        .collect()
+}
+
+/// economics.attacker_cost_multiplier: 1 / P(flip in direction).
+/// Returns None when the direction never flips.
+#[pyfunction]
+fn economics_attacker_cost_multiplier(
+    results: Vec<PyPerCaseResult>,
+    direction: &str,
+) -> Option<f64> {
+    economics::attacker_cost_multiplier(&to_core_results(results), direction)
+}
+
+fn dict_gordon_loeb(py: Python<'_>, r: &economics::GordonLoebResult) -> PyResult<Py<PyDict>> {
+    let out = PyDict::new(py);
+    out.set_item("tripped", r.tripped)?;
+    out.set_item("annualized_extra_cost", r.annualized_extra_cost)?;
+    out.set_item("expected_loss_reduction", r.expected_loss_reduction)?;
+    out.set_item("ratio", r.ratio)?;
+    Ok(out.into())
+}
+
+/// economics.gordon_loeb_tripwire: 37% over-investment tripwire.
+#[pyfunction]
+#[allow(clippy::too_many_arguments)]
+#[pyo3(signature = (baseline_results, candidate_results, flip_cost_usd, flips_per_incident, scenario_id, decisions_per_year, attack_rate))]
+fn economics_gordon_loeb_tripwire(
+    py: Python<'_>,
+    baseline_results: Vec<PyPerCaseResult>,
+    candidate_results: Vec<PyPerCaseResult>,
+    flip_cost_usd: BTreeMap<String, f64>,
+    flips_per_incident: f64,
+    scenario_id: String,
+    decisions_per_year: f64,
+    attack_rate: f64,
+) -> PyResult<Py<PyDict>> {
+    let prices = scenario_prices(flip_cost_usd, flips_per_incident, scenario_id);
+    let r = economics::gordon_loeb_tripwire(
+        &to_core_results(baseline_results),
+        &to_core_results(candidate_results),
+        &prices,
+        decisions_per_year,
+        attack_rate,
+    );
+    dict_gordon_loeb(py, &r)
+}
+
+fn dict_defense_point(py: Python<'_>, p: &economics::DefensePoint) -> PyResult<Py<PyDict>> {
+    let out = PyDict::new(py);
+    out.set_item("pt", p.pt)?;
+    out.set_item("n_reviewed", p.n_reviewed)?;
+    out.set_item("review_rate", p.review_rate)?;
+    out.set_item("residual_e_attacked", p.residual_e_attacked)?;
+    out.set_item("review_spend_per_decision", p.review_spend_per_decision)?;
+    out.set_item(
+        "total_defender_cost_per_decision",
+        p.total_defender_cost_per_decision,
+    )?;
+    out.set_item("net_benefit", p.net_benefit)?;
+    Ok(out.into())
+}
+
+fn dict_defense_curve(py: Python<'_>, c: &economics::DefenseCurve) -> PyResult<Py<PyDict>> {
+    let out = PyDict::new(py);
+    let points: Vec<Py<PyDict>> = c
+        .points
+        .iter()
+        .map(|p| dict_defense_point(py, p))
+        .collect::<PyResult<_>>()?;
+    out.set_item("points", points)?;
+    out.set_item("n_eligible", c.n_eligible)?;
+    out.set_item("n_analyzed", c.n_analyzed)?;
+    out.set_item("n_always_review", c.n_always_review)?;
+    out.set_item("e_attacked_undefended", c.e_attacked_undefended)?;
+    out.set_item("scenario_id", &c.scenario_id)?;
+    out.set_item("review_cost_usd", c.review_cost_usd)?;
+    out.set_item("attack_rate", c.attack_rate)?;
+    Ok(out.into())
+}
+
+/// economics.defense_curve: C-4 threshold sweep.
+///
+/// The wrapper validates review_cost_usd, attack_rate, and the
+/// threshold grid (exact ValueErrors); the core assumes valid inputs.
+/// Errors when no eligible cases exist.
+#[pyfunction]
+#[allow(clippy::too_many_arguments)]
+#[pyo3(signature = (results, flip_cost_usd, flips_per_incident, scenario_id, review_cost_usd, attack_rate, thresholds))]
+fn economics_defense_curve(
+    py: Python<'_>,
+    results: Vec<PyPerCaseResult>,
+    flip_cost_usd: BTreeMap<String, f64>,
+    flips_per_incident: f64,
+    scenario_id: String,
+    review_cost_usd: f64,
+    attack_rate: f64,
+    thresholds: Vec<f64>,
+) -> PyResult<Py<PyDict>> {
+    let prices = scenario_prices(flip_cost_usd, flips_per_incident, scenario_id);
+    let c = economics::defense_curve(
+        &to_core_results(results),
+        &prices,
+        review_cost_usd,
+        attack_rate,
+        &thresholds,
+    )
+    .map_err(PyValueError::new_err)?;
+    dict_defense_curve(py, &c)
+}
+
+/// economics.risk_coverage_curve: (review_rate, residual) sorted.
+#[pyfunction]
+fn economics_risk_coverage_curve(
+    py: Python<'_>,
+    curve: &Bound<'_, PyDict>,
+) -> PyResult<Vec<(f64, f64)>> {
+    let _ = py;
+    let points: Vec<(f64, f64)> = curve
+        .get_item("points")?
+        .ok_or_else(|| PyValueError::new_err("curve dict missing 'points'"))?
+        .extract::<Vec<Py<PyDict>>>()?
+        .iter()
+        .map(|p| {
+            let p = p.bind(py);
+            Ok((
+                p.get_item("review_rate")?
+                    .ok_or_else(|| PyValueError::new_err("point missing 'review_rate'"))?
+                    .extract::<f64>()?,
+                p.get_item("residual_e_attacked")?
+                    .ok_or_else(|| PyValueError::new_err("point missing 'residual_e_attacked'"))?
+                    .extract::<f64>()?,
+            ))
+        })
+        .collect::<PyResult<_>>()?;
+    let mut pts = points;
+    pts.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+    Ok(pts)
+}
+
+fn dict_defense_optimum(py: Python<'_>, o: &economics::DefenseOptimum) -> PyResult<Py<PyDict>> {
+    let out = PyDict::new(py);
+    out.set_item("pt", o.pt)?;
+    out.set_item("review_rate", o.review_rate)?;
+    out.set_item("residual_e_attacked", o.residual_e_attacked)?;
+    out.set_item("review_spend_per_decision", o.review_spend_per_decision)?;
+    out.set_item(
+        "total_defender_cost_per_decision",
+        o.total_defender_cost_per_decision,
+    )?;
+    out.set_item(
+        "prevention_value_per_review_dollar",
+        o.prevention_value_per_review_dollar,
+    )?;
+    Ok(out.into())
+}
+
+/// economics.optimal_threshold: attacker-cost-aware operating point.
+/// Takes the defense-curve dict produced by economics_defense_curve.
+#[pyfunction]
+fn economics_optimal_threshold(py: Python<'_>, curve: &Bound<'_, PyDict>) -> PyResult<Py<PyDict>> {
+    let get_f = |d: &Bound<'_, PyDict>, k: &str| -> PyResult<f64> {
+        d.get_item(k)?
+            .ok_or_else(|| PyValueError::new_err(format!("curve missing {k:?}")))?
+            .extract::<f64>()
+    };
+    let get_usize = |d: &Bound<'_, PyDict>, k: &str| -> PyResult<usize> {
+        d.get_item(k)?
+            .ok_or_else(|| PyValueError::new_err(format!("curve missing {k:?}")))?
+            .extract::<usize>()
+    };
+    let points: Vec<economics::DefensePoint> = curve
+        .get_item("points")?
+        .ok_or_else(|| PyValueError::new_err("curve dict missing 'points'"))?
+        .extract::<Vec<Py<PyDict>>>()?
+        .iter()
+        .map(|p| {
+            let p = p.bind(py);
+            Ok(economics::DefensePoint {
+                pt: get_f(p, "pt")?,
+                n_reviewed: get_usize(p, "n_reviewed")?,
+                review_rate: get_f(p, "review_rate")?,
+                residual_e_attacked: get_f(p, "residual_e_attacked")?,
+                review_spend_per_decision: get_f(p, "review_spend_per_decision")?,
+                total_defender_cost_per_decision: get_f(p, "total_defender_cost_per_decision")?,
+                net_benefit: get_f(p, "net_benefit")?,
+            })
+        })
+        .collect::<PyResult<_>>()?;
+    let c = economics::DefenseCurve {
+        points,
+        n_eligible: get_usize(curve, "n_eligible")?,
+        n_analyzed: get_usize(curve, "n_analyzed")?,
+        n_always_review: get_usize(curve, "n_always_review")?,
+        e_attacked_undefended: get_f(curve, "e_attacked_undefended")?,
+        scenario_id: curve
+            .get_item("scenario_id")?
+            .ok_or_else(|| PyValueError::new_err("curve missing 'scenario_id'"))?
+            .extract::<String>()?,
+        review_cost_usd: get_f(curve, "review_cost_usd")?,
+        attack_rate: get_f(curve, "attack_rate")?,
+    };
+    let o = economics::optimal_threshold(&c);
+    dict_defense_optimum(py, &o)
 }
 
 /// Ineligible-case counts by reason, as a dict.
@@ -2056,6 +2372,15 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(flip_direction, m)?)?;
     m.add_function(wrap_pyfunction!(flip_direction_counts, m)?)?;
     m.add_function(wrap_pyfunction!(net_benefit_at_threshold, m)?)?;
+    m.add_function(wrap_pyfunction!(economics_e_attacked, m)?)?;
+    m.add_function(wrap_pyfunction!(economics_mean_cost_per_decision, m)?)?;
+    m.add_function(wrap_pyfunction!(economics_pareto_frontier, m)?)?;
+    m.add_function(wrap_pyfunction!(economics_drummond_holte_points, m)?)?;
+    m.add_function(wrap_pyfunction!(economics_attacker_cost_multiplier, m)?)?;
+    m.add_function(wrap_pyfunction!(economics_gordon_loeb_tripwire, m)?)?;
+    m.add_function(wrap_pyfunction!(economics_defense_curve, m)?)?;
+    m.add_function(wrap_pyfunction!(economics_risk_coverage_curve, m)?)?;
+    m.add_function(wrap_pyfunction!(economics_optimal_threshold, m)?)?;
     m.add_function(wrap_pyfunction!(ineligible_by_reason, m)?)?;
     m.add_function(wrap_pyfunction!(malformed_rate, m)?)?;
     m.add_function(wrap_pyfunction!(ece, m)?)?;

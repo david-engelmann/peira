@@ -3971,9 +3971,13 @@ def net_benefit_at_threshold(
 def _decision_curve_py(
     risks: list[float], labels: list[int], thresholds: list[float],
 ) -> list[tuple[float, float]]:
-    """Reference implementation of :func:`decision_curve`."""
+    """Reference implementation of :func:`decision_curve`.
+
+    The curve loop stays Python (R-08: no Rust port); the per-point net
+    benefit dispatches through the Rust path when available.
+    """
     return [
-        (pt, _net_benefit_at_threshold_py(risks, labels, pt))
+        (pt, net_benefit_at_threshold(risks, labels, pt))
         for pt in thresholds
     ]
 
@@ -4974,7 +4978,7 @@ def _net_benefit_arm_block(
     refs = decision_curve_references(risks, labels, thresholds)
     prevalence = sum(labels) / n
     operating = {
-        str(pt): _round4(_net_benefit_at_threshold_py(risks, labels, pt))
+        str(pt): _round4(net_benefit_at_threshold(risks, labels, pt))
         for pt in NB_OPERATING_POINTS
     }
     best_pt, best_nb = max(curve, key=lambda t: t[1])
