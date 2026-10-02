@@ -702,10 +702,10 @@ mod tests {
     }
 
     #[test]
-    fn pareto_frontier_marks_dominated() {
+    fn pareto_frontier_flags_pareto_worse() {
         let p = prices();
         let _ = p;
-        // cheap-low-asr dominates expensive-high-asr
+        // cheap-low-asr is Pareto-better than expensive-high-asr
         let good = vec![
             result("a", true, true, "approve", "deny", Some(0.1), Some(1.0)),
             result("b", true, false, "approve", "approve", Some(0.9), Some(1.0)),

@@ -36,7 +36,7 @@ cluster; all stdlib + peira.* imports):
 | lottery.py | LOW | strong (34) | MIGRATE #1: zero new Rust prereqs, unblocks economic_lottery |
 | combo_metrics.py | LOW-MED | weak-mod (14 shared) | MIGRATE #2: tiny, pure |
 | hardness.py | LOW | strong (29) | MIGRATE #3: pure aggregation |
-| economics.py (numeric core) | LOW-MED/part | strong (77) | DONE: PR #382 (merge 646a0390ae14c6f0664b176f4211f9e7ec3b4bd4) — 9 fns in crates/peira-core/src/economics.rs, parity-tested |
+| economics.py (numeric core) | LOW-MED/part | strong (77) | DONE: PR #382 (merge 646a0390ae14c6f0664b176f4211f9e7ec3b4bd4), 9 fns in crates/peira-core/src/economics.rs, parity-tested |
 | stability.py (numeric core) | MED | strong (35) | SPLIT #5: artifact sealing/JSON lock stays Python (byte-exact json.dumps parity risk) |
 | saturation.py | MED | moderate (23) | MIGRATE #6 after mde_mcnemar lands in metrics.rs |
 | calibration.py | LOW-MED | strong (45) | MIGRATE #7: SVG byte-parity ({x:.4f}, {t:g}, html.escape) |

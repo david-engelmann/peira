@@ -56,16 +56,16 @@ Rust-active and `PEIRA_NO_RUST=1` modes:
 |------|-------------|-------------|-----------------|
 | test_check_families.py (taxonomy/renumber) | #322 | 6 passed | 6 passed |
 | test_artifacts.py (artifact v3) | #341, #336 | 36 passed | 36 passed |
-| test_metrics.py (metrics core) | #298, #321 | 320 passed | — |
+| test_metrics.py (metrics core) | #298, #321 | 320 passed | n/a |
 
 All targeted suites pass in both modes. Combined with the fact that these
 code paths are exercised by every subsequent merge's CI and lane gates,
 the residual risk from the missing exact-head full suites is LOW.
 
-- Rust-active full: `python -m pytest tests -n 2` on `ffb881d9` — HUNG, killed after 36 min
-- Rust-active retry: `python -m pytest tests -n 1` on `ffb881d9` — HUNG, killed
-- `PEIRA_NO_RUST=1` full: — NOT ATTEMPTED (same infrastructure constraint)
-- Artifact smoke: `scripts/artifact_smoke.py` — NOT ATTEMPTED (requires full wheel build; targeted artifact tests pass)
+- Rust-active full: `python -m pytest tests -n 2` on `ffb881d9`, HUNG, killed after 36 min
+- Rust-active retry: `python -m pytest tests -n 1` on `ffb881d9`, HUNG, killed
+- `PEIRA_NO_RUST=1` full suite: NOT ATTEMPTED (same infrastructure constraint)
+- Artifact smoke: `scripts/artifact_smoke.py`, NOT ATTEMPTED (requires full wheel build; targeted artifact tests pass)
 
 ### Per-PR notes
 
@@ -95,7 +95,7 @@ conformance reports, subprocess isolation, trust sealing. The lane ran
 targeted tests, not full suites, and omitted artifact smoke. Targeted
 repair: artifact and metrics tests pass, but plugin-specific paths were
 not exercised. The artifact smoke script was not run (requires full wheel
-build on constrained infra). Residual risk: LOW-MEDIUM — a future lane
+build on constrained infra). Residual risk: LOW-MEDIUM, a future lane
 should run `scripts/artifact_smoke.py` and the plugin conformance suite
 when infrastructure permits.
 
@@ -106,7 +106,7 @@ since been exercised by the v2-newfam-audit lane. Residual risk: LOW.
 
 ## Review-text adjudications
 
-### PR #288 (OpenRouter gateway adapter) — ADJUDICATED, David decision required
+### PR #288 (OpenRouter gateway adapter): ADJUDICATED, David decision required
 
 **What was missing.** The full texts of the three checkpoint reviews
 (red-team re-audit, two-axis spec/standards, own line-by-line
@@ -131,7 +131,7 @@ real API. The 2 cosmetic defects found pre-merge were fixed.
 **David's call:** accept the PASS previews + completion-agent verification
 as sufficient, or commission three fresh reviews with persisted reports.
 
-### PR #341 (artifact v3) — ADJUDICATED
+### PR #341 (artifact v3): ADJUDICATED
 
 **What was missing.** The full texts of the three checkpoint reviews were
 not preserved on disk. The GOAL entry records "three reviews clean, all
@@ -158,14 +158,14 @@ production since.
 
 | PR | Debt | Disposition |
 |----|------|-------------|
-| #322 | exact-head suites | PARTIALLY REPAIRED — targeted taxonomy tests pass both modes; full suite infeasible on this infra |
-| #298 | Rust-active suite | PARTIALLY REPAIRED — targeted metrics tests pass; full suite infeasible on this infra |
-| #321 | full suites | PARTIALLY REPAIRED — targeted metrics tests pass; full suite infeasible on this infra |
-| #336 | full Python suite | PARTIALLY REPAIRED — targeted artifact tests pass both modes; full suite infeasible |
-| #346 | full suites + smoke | PARTIALLY REPAIRED — targeted tests pass; smoke not run (infra); plugin tests need lane follow-up |
-| #351 | full suite | PARTIALLY REPAIRED — parent's explicit decision stands; targeted tests pass; full suite infeasible |
-| #288 | review texts | ADJUDICATED — David decides on re-run |
-| #341 | review texts | ADJUDICATED — accepted on surviving evidence |
+| #322 | exact-head suites | PARTIALLY REPAIRED, targeted taxonomy tests pass both modes; full suite infeasible on this infra |
+| #298 | Rust-active suite | PARTIALLY REPAIRED, targeted metrics tests pass; full suite infeasible on this infra |
+| #321 | full suites | PARTIALLY REPAIRED, targeted metrics tests pass; full suite infeasible on this infra |
+| #336 | full Python suite | PARTIALLY REPAIRED, targeted artifact tests pass both modes; full suite infeasible |
+| #346 | full suites + smoke | PARTIALLY REPAIRED, targeted tests pass; smoke not run (infra); plugin tests need lane follow-up |
+| #351 | full suite | PARTIALLY REPAIRED, parent's explicit decision stands; targeted tests pass; full suite infeasible |
+| #288 | review texts | ADJUDICATED, David decides on re-run |
+| #341 | review texts | ADJUDICATED, accepted on surviving evidence |
 
 ## Standing note
 
