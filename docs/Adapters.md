@@ -911,6 +911,14 @@ environment as of 2026-09-30. The wire shape above is from the Model
 Armor REST reference. Confirm it against one live call before first
 measured use.
 
+Live verification was attempted 2026-10-02 and could not start. No
+Model Armor credential is provisioned in this environment
+(`MODEL_ARMOR_PROJECT_ID`, `MODEL_ARMOR_TEMPLATE_ID`, and
+`MODEL_ARMOR_ACCESS_TOKEN` are all unset), so no call could be made.
+The adapter stays out of measured runs until a live smoke passes.
+Backfill once the GCP project, template, and token are
+provisioned.
+
 ## Azure Prompt Shields
 
 No extra needed (stdlib transport). Set
@@ -955,6 +963,13 @@ mitigation. **Live-UNVERIFIED**. No real call has been made from this
 environment as of 2026-09-30. The wire shape above is from the Azure
 Content Safety quickstart and the `text:shieldPrompt` REST reference.
 Confirm it against one live call before first measured use.
+
+Live verification was attempted 2026-10-02 and could not start. No
+Azure Content Safety credential is provisioned in this environment
+(`AZURE_CONTENT_SAFETY_ENDPOINT` and `AZURE_CONTENT_SAFETY_KEY` are
+both unset), so no call could be made. The adapter stays out of
+measured runs until a live smoke passes. Backfill once
+an Azure AI Content Safety resource is provisioned.
 
 ## Cloudflare Workers AI (Llama Guard 3 8B)
 
@@ -1003,6 +1018,17 @@ removed (Workers AI applies the chat template to `messages` itself)
 and has not been confirmed byte-for-byte against a live call. **Live-UNVERIFIED**. No real call has been made from this
 environment as of 2026-09-30. Confirm the wire shape and the template
 against one live call before first measured use.
+
+Live verification was attempted 2026-10-02 and could not complete.
+The sandbox reaches api.cloudflare.com and the provisioned connector
+credential authenticates for account reads, but the Workers AI
+endpoint rejects the call with HTTP 401 (authentication error). The
+provisioned token lacks Workers AI scope, or Workers AI is not
+enabled on the account. The adapter's exact payload was sent, but no
+usable response was ever returned, so the wire shape stays
+unconfirmed. The adapter stays out of measured runs until a live
+smoke passes. Backfill once a token with Workers AI
+scope is provisioned.
 
 ## Pricing
 
