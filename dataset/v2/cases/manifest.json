@@ -2,7 +2,7 @@
   "case_schema": "single",
   "created_utc": "2026-10-01T15:30:00+00:00",
   "dataset": "peira-v1",
-  "dataset_version": "2.4.1",
+  "dataset_version": "2.4.2",
   "files": {
     "crosslingual_shift.jsonl": {
       "kind": "cases",
@@ -73,7 +73,7 @@
         "medium": 244
       },
       "n_cases": 421,
-      "sha256": "55b48fc18e3549ebe73009c02cfd0d00d6db26b5a7f98af960f80dbbe1b191e1"
+      "sha256": "64ccb6120681cd83b1ea369a5a107dd74dc7f0fafed9ad5253033db04414b7e5"
     },
     "question_pair_incoherence.jsonl": {
       "kind": "cases",
