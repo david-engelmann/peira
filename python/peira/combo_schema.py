@@ -40,7 +40,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
-from peira._rust import _impl as _rust
+from peira._rust import _impl as _rust, STRICT_RUST
 
 # Short codes for families used in combo pairs. The full family id is
 # recoverable via COMBO_PAIRS below; codes keep case ids readable.

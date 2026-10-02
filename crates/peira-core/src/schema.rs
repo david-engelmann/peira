@@ -285,6 +285,17 @@ pub fn validate_case_dict(d: &Value) -> Vec<String> {
                             ));
                         }
                     }
+                    // G9 (near-dedup) concatenates prompts as strings; a
+                    // non-string prompt would crash the gate run instead of
+                    // producing a finding. Fail at load with a clear error.
+                    // Message is byte-identical to the Python reference.
+                    if let Some(prompt) = input.get("prompt") {
+                        if !prompt.is_string() {
+                            errors.push(format!(
+                                "bad {variant} input prompt: expected string"
+                            ));
+                        }
+                    }
                 }
             }
             _ => {

@@ -10,8 +10,8 @@ Checks, in order:
   1. Worktree version coherence: pyproject.toml [project].version ==
      peira.__version__ in the source tree.
   2. Build backend detection: reads [build-system] from pyproject.toml and
-     builds the wheel with the CURRENT backend (setuptools today, maturin
-     once that migration lands -- never assumed).
+     builds the wheel with the CURRENT backend (maturin; the script
+     adapts to whichever backend pyproject declares -- never assumed).
   3. Fresh-wheel assertion: the wheel's mtime is >= the recorded build
      start, so the artifact cannot be a leftover from an earlier build.
   4. Wheel contents: exactly one peira wheel, version matches, and the

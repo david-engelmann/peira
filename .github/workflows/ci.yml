@@ -360,7 +360,11 @@ jobs:
       # tests/integration is owned by the dedicated test-integration
       # job (own timeout, own visibility); the main suite excludes it
       # so the integration layer runs exactly once per backend.
-      - run: .venv/bin/python -m pytest tests -n auto --ignore=tests/integration
+      # PEIRA_STRICT_RUST=1 disables the silent Python fallback in Rust
+      # dispatch sites: a Rust bug that raises becomes visible instead
+      # of being masked by the fallback (which would make parity tests
+      # compare Python against Python).
+      - run: PEIRA_STRICT_RUST=1 .venv/bin/python -m pytest tests -n auto --ignore=tests/integration
       - run: PEIRA_NO_RUST=1 .venv/bin/python -m pytest tests -n auto --ignore=tests/integration
 
   test-integration:
@@ -391,7 +395,7 @@ jobs:
       - run: .venv/bin/pip install --no-build-isolation -e '.[dev]'
       - run: .venv/bin/maturin develop --release
       - run: .venv/bin/python -c "from peira._rust import RUST_AVAILABLE; assert RUST_AVAILABLE"
-      - run: .venv/bin/python -m pytest tests/integration -n auto -q
+      - run: PEIRA_STRICT_RUST=1 .venv/bin/python -m pytest tests/integration -n auto -q
       - run: PEIRA_NO_RUST=1 .venv/bin/python -m pytest tests/integration -n auto -q
 
   quickstart:

@@ -52,7 +52,7 @@ import statistics
 from dataclasses import dataclass
 from typing import Any, Callable, Iterator, Mapping, NamedTuple
 
-from peira._rust import _impl as _rust
+from peira._rust import _impl as _rust, STRICT_RUST
 from peira.adapters.base import CallUsage, _unit_interval
 from peira.concurrency import _require_json_str
 from peira.sampling import check_sampling_config

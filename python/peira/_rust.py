@@ -12,6 +12,13 @@ because the two PRNGs differ.
 
 Set `PEIRA_NO_RUST=1` to force the pure-Python backend even when the
 extension is installed — used by the backend-parity tests.
+
+Set `PEIRA_STRICT_RUST=1` to disable the silent fallback: if the Rust
+core raises TypeError/ValueError/OverflowError, the exception propagates
+instead of falling back to Python. Use in CI to ensure parity tests
+actually exercise the Rust code (otherwise a Rust bug that raises is
+invisible — the fallback returns Python results and the parity test
+compares Python against Python).
 """
 
 from __future__ import annotations
@@ -27,3 +34,9 @@ except ImportError:
 
 #: True when the compiled Rust core is importable in this environment.
 RUST_AVAILABLE: bool = _impl is not None
+
+#: When True, Rust dispatch sites re-raise TypeError/ValueError/OverflowError
+#: instead of silently falling back to the pure-Python reference. Set via
+#: PEIRA_STRICT_RUST=1. The CI test-python-rust job uses this to ensure
+#: parity tests genuinely exercise the Rust implementation.
+STRICT_RUST: bool = os.environ.get("PEIRA_STRICT_RUST") == "1"

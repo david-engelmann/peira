@@ -44,7 +44,7 @@ from datetime import datetime, timezone
 from typing import ClassVar
 
 from peira import __version__ as peira_version
-from peira._rust import _impl as _rust
+from peira._rust import _impl as _rust, STRICT_RUST
 from peira.adapters.base import _unit_interval
 from peira.metrics import (
     ADJUDICATION_POLICY_VERSION,
@@ -811,7 +811,8 @@ class RunArtifact:
                     self.error_log,
                 )
             except (TypeError, ValueError, OverflowError):
-                pass
+                if STRICT_RUST:
+                    raise
         return self._compute_lock_py()
 
     def seal(self) -> "RunArtifact":

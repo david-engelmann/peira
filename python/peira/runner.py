@@ -32,7 +32,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Literal
 
-from peira._rust import _impl as _rust
+from peira._rust import _impl as _rust, STRICT_RUST
 from peira.adapters.base import (
     CallContext,
     CallUsage,
@@ -201,7 +201,8 @@ def _blank_record(
         try:
             d = _rust.records_blank_record(seed, dispatch_index, dispatch_limit)
         except (TypeError, ValueError, OverflowError):
-            pass
+            if STRICT_RUST:
+                raise
         else:
             usage = d["usage"]
             rec = CallRecord(
@@ -546,7 +547,8 @@ def _output_to_dict(output: Any, primitive: str) -> dict[str, Any]:
         try:
             return dict(_rust.records_output_to_dict(primitive, output))
         except (TypeError, ValueError, OverflowError):
-            pass
+            if STRICT_RUST:
+                raise
     return _output_to_dict_py(output, primitive)
 
 
@@ -900,6 +902,8 @@ def _output_from_dict(primitive: str, d: dict[str, Any]) -> Any:
         try:
             c = _rust.records_output_from_dict(primitive, d)
         except (TypeError, ValueError, OverflowError):
+            if STRICT_RUST:
+                raise
             return _output_from_dict_py(primitive, d)
         usage = c.get("usage")
         usage_obj = CallUsage(**usage) if usage is not None else None
@@ -3656,6 +3660,8 @@ def _record_from_transcript_entry(entry: dict[str, Any]) -> CallRecord:
         try:
             d = _rust.records_record_from_transcript_entry(entry)
         except (TypeError, ValueError, OverflowError):
+            if STRICT_RUST:
+                raise
             return _record_from_transcript_entry_py(entry)
         # R-12: the timing decomposition is a Python-owned measurement
         # structure (timing_summary is Python-reference-only, like

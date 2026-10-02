@@ -22,7 +22,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from peira._rust import _impl as _rust
+from peira._rust import _impl as _rust, STRICT_RUST
 from peira.schema import validate_case_dict
 
 MANIFEST_NAME = "manifest.json"
@@ -237,7 +237,8 @@ def _summarize_bytes(
         try:
             return dict(_rust.dataset_summarize_case_bytes(name, data))
         except (TypeError, ValueError, OverflowError):
-            pass
+            if STRICT_RUST:
+                raise
     return _summarize_bytes_py(name, data, kind=kind)
 
 

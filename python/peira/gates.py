@@ -23,7 +23,7 @@ from heapq import nsmallest
 from pathlib import Path
 from typing import Any
 
-from peira._rust import _impl as _rust
+from peira._rust import _impl as _rust, STRICT_RUST
 from peira.dataset import iter_case_lines
 from peira.schema import GATE_KNOWN_IDS, validate_case_dict
 

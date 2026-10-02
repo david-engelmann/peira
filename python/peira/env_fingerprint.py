@@ -25,7 +25,7 @@ import json
 import platform
 from importlib.metadata import version as _pkg_version, PackageNotFoundError
 
-from peira._rust import _impl as _rust
+from peira._rust import _impl as _rust, STRICT_RUST
 
 
 def _safe_version(pkg: str) -> str | None:
@@ -284,7 +284,8 @@ def fingerprint_env(env: dict | None = None) -> str:
         try:
             return _rust.env_fingerprint_env(env)
         except (TypeError, ValueError, OverflowError):
-            pass
+            if STRICT_RUST:
+                raise
     return fingerprint_env_py(env)
 
 
