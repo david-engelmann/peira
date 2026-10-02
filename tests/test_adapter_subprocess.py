@@ -43,7 +43,13 @@ class EnvScrubbingTest(unittest.TestCase):
         for var in ("LD_PRELOAD", "PYTHONPATH", "PYTHONSTARTUP",
                     "PYTHONHOME", "DYLD_INSERT_LIBRARIES"):
             self.assertNotIn(var, env)
-        self.assertEqual(env["PEIRA_KEEP_ME"], "yes")
+        # P1-2: allowlist — nothing inherited wholesale, even non-denylisted vars.
+        self.assertNotIn("PEIRA_KEEP_ME", env)
+        # Allowlist contains only the sanitized minimal set.
+        self.assertIn("PATH", env)
+        # HOME is set when home_dir is provided (as _spawn_child does).
+        env_with_home = build_child_env(home_dir="/tmp/test-home")
+        self.assertEqual(env_with_home["HOME"], "/tmp/test-home")
 
     def test_extra_env_passes_through(self):
         env = build_child_env({"PEIRA_TESTPLUGIN_EXTRA": "1"})
@@ -115,7 +121,9 @@ class ShimEndToEndTest(PluginInstallMixin, unittest.TestCase):
                     await adapter.aclose()
 
         seen = self._run(go())
-        self.assertEqual(seen["PEIRA_TESTPLUGIN_SECRET"], "s3cr3t")
+        # Design §7.2: nothing inherited wholesale. Parent-only vars
+        # (including secrets) are NOT visible; --adapter-env extras are.
+        self.assertIsNone(seen["PEIRA_TESTPLUGIN_SECRET"])
         self.assertEqual(seen["PEIRA_TESTPLUGIN_EXTRA"], "yes")
         self.assertIsNone(seen["LD_PRELOAD"])
         self.assertIsNone(seen["PYTHONPATH"])

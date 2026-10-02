@@ -633,10 +633,10 @@ def _apply_rlimits(
     Thin backward-compatible wrapper around
     :class:`peira.resource_governor.ResourceGovernor`. These are
     backstops, not per-adapter isolation: ``resource.setrlimit``
-    applies to the whole runner process, and adapter code runs in-process
-    (see docs/Threat-Model.md). A memory-hungry adapter can still OOM the
-    runner before the limit bites; full isolation needs the subprocess
-    mode designed in docs/Adapter-Isolation.md.
+    applies to the whole runner process. For third-party adapters the
+    rlimits are forwarded to the shim child per design §7.2 (see
+    ``peira.adapters.subprocess``); this process-wide application is
+    skipped for them in ``run_suite``.
 
     Raises ValueError for non-positive limits, and RuntimeError on
     non-Unix platforms (the ``resource`` module is Unix-only).
@@ -2855,7 +2855,15 @@ def run_suite(
             raise ValueError(
                 f"{_name} must be > 0, got {_value}"
             )
-    _apply_rlimits(rlimit_cpu_seconds, rlimit_as_mb, rlimit_fsize_mb)
+    # Design §7.2: for third-party adapters the rlimits apply to the
+    # shim child per adapter (forwarded via SubprocessAdapter), not
+    # process-wide. Skip the process-wide application in that case.
+    from peira.adapters.subprocess import (  # noqa: PLC0415
+        SubprocessAdapter,
+    )
+
+    if not isinstance(adapter, SubprocessAdapter):
+        _apply_rlimits(rlimit_cpu_seconds, rlimit_as_mb, rlimit_fsize_mb)
     from peira.resource_governor import ResourceGovernor, set_active_governor
 
     # The named governor (R-03): validated here, applied to this process

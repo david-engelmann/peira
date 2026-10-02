@@ -658,7 +658,7 @@ async def _suite_transport(driver, hello_elapsed: float) -> SuiteResult:
 
 def _check_retry_posture(attestations: dict,
                          trust: str) -> tuple[dict, list[str]]:
-    """6.1.5 must-attest. The value is True/"single-attack" for
+    """6.1.5 must-attest. The value is True/"single-attempt" for
     single-attempt, or a free-text description of the retry behavior.
     First-party adapters are not gated (reviewed code); the report
     says so."""

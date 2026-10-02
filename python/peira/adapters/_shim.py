@@ -33,6 +33,7 @@ from __future__ import annotations
 import dataclasses
 import io
 import json
+import os
 import sys
 
 # Binary handle to the protocol pipe, saved before sys.stdout is
@@ -57,8 +58,14 @@ def _protect_protocol_channel() -> None:
 
 
 def _apply_child_limits() -> None:
-    """Cap this process's address space (Unix only), before the
-    adapter module is imported."""
+    """Cap this process's resources (Unix only), before the adapter
+    module is imported.
+
+    Design §7.2: rlimits apply to the child per adapter. The runner
+    forwards ``--rlimit-cpu-seconds`` / ``--rlimit-as-mb`` /
+    ``--rlimit-fsize-mb`` via env vars; address space defaults to
+    8192 MB unless overridden.
+    """
     if sys.platform == "win32":
         return
     import resource  # noqa: PLC0415
@@ -67,10 +74,49 @@ def _apply_child_limits() -> None:
         CHILD_MEM_LIMIT_BYTES,
     )
 
-    resource.setrlimit(
-        resource.RLIMIT_AS,
-        (CHILD_MEM_LIMIT_BYTES, CHILD_MEM_LIMIT_BYTES),
-    )
+    def _get_mb(name: str, default: int | None) -> int | None:
+        raw = os.environ.get(name)
+        if raw is None:
+            return default
+        try:
+            return int(float(raw) * 1024 * 1024)
+        except ValueError:
+            return default
+
+    # Address space: forwarded value or the 8192 MB default.
+    as_bytes = _get_mb("PEIRA_RLIMIT_AS_MB", CHILD_MEM_LIMIT_BYTES)
+    if as_bytes is not None:
+        resource.setrlimit(
+            resource.RLIMIT_AS, (as_bytes, as_bytes))
+    # CPU time: forwarded value only (no default; bounded by timeout).
+    cpu_raw = os.environ.get("PEIRA_RLIMIT_CPU_SECONDS")
+    if cpu_raw is not None:
+        try:
+            # P3-5: round UP, not truncate (0.5 -> 1, not 0 which would
+            # SIGXCPU the child immediately).
+            import math  # noqa: PLC0415
+
+            cpu_seconds = math.ceil(float(cpu_raw))
+            if cpu_seconds >= 1:
+                resource.setrlimit(
+                    resource.RLIMIT_CPU, (cpu_seconds, cpu_seconds))
+        except ValueError:
+            pass
+    # File size: forwarded value only.
+    fsize_bytes = _get_mb("PEIRA_RLIMIT_FSIZE_MB", None)
+    if fsize_bytes is not None:
+        resource.setrlimit(
+            resource.RLIMIT_FSIZE, (fsize_bytes, fsize_bytes))
+    # Process count: forwarded value only (fork-bomb guard, P2-1).
+    nproc_raw = os.environ.get("PEIRA_RLIMIT_NPROC")
+    if nproc_raw is not None:
+        try:
+            nproc = int(nproc_raw)
+            if nproc >= 1:
+                resource.setrlimit(
+                    resource.RLIMIT_NPROC, (nproc, nproc))
+        except ValueError:
+            pass
 
 
 def _load_adapter(registry_id: str):
@@ -83,6 +129,14 @@ def _load_adapter(registry_id: str):
             f"{registry_id!r} (kind {resolved.kind})"
         )
     return discovery.load_registered(resolved.registration)
+
+
+def _model_paths(adapter) -> list:
+    """Read the adapter's declared local model paths (design 7.2)."""
+    raw = getattr(adapter, "model_paths", None)
+    if not isinstance(raw, (list, tuple)):
+        return []
+    return [str(p) for p in raw]
 
 
 def _module_provenance(adapter) -> dict:
@@ -188,6 +242,9 @@ def _serve(adapter, attestations: dict[str, bool]) -> int:
                         # `peira adapter check --verify` can confirm
                         # the sealed report still matches disk.
                         "module": _module_provenance(adapter),
+                        # Declared local model paths (design 7.2):
+                        # logged for provenance, not granted.
+                        "model_paths": _model_paths(adapter),
                     },
                 })
             elif op == "decide":

@@ -48,6 +48,20 @@ ENV_DENYLIST = frozenset(
 )
 ENV_DENYLIST_PREFIXES = ("DYLD_",)
 
+
+def _is_denylisted(key: str) -> bool:
+    """Check if an env var name is denylisted (P2-3).
+
+    Windows env lookup is case-insensitive, so compare
+    case-insensitively there; on Unix, exact match is sufficient
+    (but over-refusing is harmless).
+    """
+    upper = key.upper()
+    return (
+        upper in ENV_DENYLIST
+        or upper.startswith(ENV_DENYLIST_PREFIXES)
+    )
+
 #: Max bytes of child stderr retained per call.
 STDERR_CAP_BYTES = 1_000_000
 #: Memory cap the child applies to itself (Unix only).
@@ -85,20 +99,37 @@ class AdapterRemoteError(AdapterSubprocessError):
     """The adapter raised inside the child (``ok: false`` frame)."""
 
 
-def build_child_env(extra: dict[str, str] | None = None) -> dict[str, str]:
-    """Build the child's environment: parent's minus the denylist.
+def build_child_env(extra: dict[str, str] | None = None,
+                    home_dir: str | None = None) -> dict[str, str]:
+    """Build the child's environment from an allowlist (design §7.2).
 
-    ``extra`` (from ``--adapter-env KEY=VALUE``) is applied on top but
-    may not reintroduce a denylisted variable.
+    Nothing is inherited wholesale: the child gets a sanitized PATH,
+    TMPDIR/TEMP, SYSTEMROOT on Windows, HOME pointed at a fresh temp
+    dir, and nothing else. ``extra`` (from ``--adapter-env KEY=VALUE``)
+    is applied on top but may not reintroduce a denylisted variable.
+    An adapter that dumps ``os.environ`` sees only what the runner
+    gave it.
     """
-    env = {
-        k: v
-        for k, v in os.environ.items()
-        if k not in ENV_DENYLIST
-        and not k.startswith(ENV_DENYLIST_PREFIXES)
-    }
+    env: dict[str, str] = {}
+    # Sanitized PATH: fixed minimal value, not the parent's (which
+    # could contain attacker-controlled entries).
+    if sys.platform == "win32":
+        env["PATH"] = r"C:\Windows\System32;C:\Windows"
+        # SYSTEMROOT is required for Windows to function.
+        systemroot = os.environ.get("SYSTEMROOT")
+        if systemroot:
+            env["SYSTEMROOT"] = systemroot
+        if home_dir:
+            env["TEMP"] = home_dir
+            env["TMP"] = home_dir
+    else:
+        env["PATH"] = "/usr/local/bin:/usr/bin:/bin"
+        if home_dir:
+            env["TMPDIR"] = home_dir
+    if home_dir:
+        env["HOME"] = home_dir
     for key, value in (extra or {}).items():
-        if key in ENV_DENYLIST or key.startswith(ENV_DENYLIST_PREFIXES):
+        if _is_denylisted(key):
             raise ValueError(
                 f"--adapter-env may not set denylisted variable {key!r}"
             )
@@ -130,6 +161,12 @@ class _Child:
     stderr_task: asyncio.Task | None = None
     lock: asyncio.Lock = field(default_factory=asyncio.Lock)
     dropped: bool = False
+    #: Fresh temp dir used as the child's cwd and HOME (design §7.2).
+    #: Removed when the child is closed.
+    workdir: str | None = None
+    #: Set when stderr exceeded the 1MB cap (design §7.2: truncated
+    #: with a marker, and the call is failed).
+    stderr_truncated: bool = False
 
     async def _drain_stderr(self) -> None:
         try:
@@ -139,7 +176,12 @@ class _Child:
                     break
                 # Keep the tail: the exception line of a traceback is
                 # at the end, which is what identifies the failure.
-                self.stderr_buf = (self.stderr_buf + chunk)[-STDERR_CAP_BYTES:]
+                # Design §7.2: cap at 1MB with a marker, fail the call.
+                new_buf = self.stderr_buf + chunk
+                if len(new_buf) > STDERR_CAP_BYTES:
+                    self.stderr_truncated = True
+                    new_buf = new_buf[-STDERR_CAP_BYTES:]
+                self.stderr_buf = new_buf
         except (asyncio.CancelledError, ValueError):
             pass
         except Exception:
@@ -156,7 +198,14 @@ class _Child:
         self.dropped = True
         try:
             if sys.platform == "win32":
-                self.proc.terminate()
+                # P2-2: terminate() kills only the direct child;
+                # taskkill /T kills the whole tree.
+                import subprocess as _sp  # noqa: PLC0415
+
+                _sp.run(
+                    ["taskkill", "/PID", str(self.proc.pid), "/T", "/F"],
+                    capture_output=True, timeout=10,
+                )
             else:
                 os.killpg(self.proc.pid, signal.SIGKILL)
         except (ProcessLookupError, PermissionError, OSError):
@@ -173,6 +222,7 @@ class _Child:
             pass
         finally:
             _close_transport(self)
+            self._remove_workdir()
             if self.stderr_task is not None:
                 self.stderr_task.cancel()
 
@@ -194,17 +244,55 @@ class _Child:
                 pass
         finally:
             _close_transport(self)
+            self._remove_workdir()
+
+    def _remove_workdir(self) -> None:
+        """Remove the child's temp working directory (best-effort)."""
+        if self.workdir:
+            workdir, self.workdir = self.workdir, None
+            try:
+                import shutil  # noqa: PLC0415
+
+                shutil.rmtree(workdir, ignore_errors=True)
+            except OSError:
+                pass
 
 
 async def _spawn_child(registry_id: str,
-                       env_extra: dict[str, str] | None = None) -> _Child:
+                       env_extra: dict[str, str] | None = None,
+                       rlimit_cpu_seconds: float | None = None,
+                       rlimit_as_mb: float | None = None,
+                       rlimit_fsize_mb: float | None = None,
+                       rlimit_nproc: int | None = None) -> _Child:
     """Spawn the shim child in its own process group (list-form argv,
-    never shell=True)."""
+    never shell=True).
+
+    The child gets a fresh temp working directory (design §7.2: empty
+    temp cwd, not the runner's) and an allowlist-built environment.
+    The workdir is removed when the child is closed. Rlimit values
+    are passed to the shim via env vars for it to apply before
+    importing the adapter.
+    """
+    import tempfile  # noqa: PLC0415
+
+    workdir = tempfile.mkdtemp(prefix="peira-adapter-")
+    env = build_child_env(env_extra, home_dir=workdir)
+    # Forward rlimits to the shim (design §7.2: per-adapter, not
+    # process-wide). The shim applies them before the adapter import.
+    if rlimit_cpu_seconds is not None:
+        env["PEIRA_RLIMIT_CPU_SECONDS"] = str(rlimit_cpu_seconds)
+    if rlimit_as_mb is not None:
+        env["PEIRA_RLIMIT_AS_MB"] = str(rlimit_as_mb)
+    if rlimit_fsize_mb is not None:
+        env["PEIRA_RLIMIT_FSIZE_MB"] = str(rlimit_fsize_mb)
+    if rlimit_nproc is not None:
+        env["PEIRA_RLIMIT_NPROC"] = str(rlimit_nproc)
     kwargs: dict = {
         "stdin": asyncio.subprocess.PIPE,
         "stdout": asyncio.subprocess.PIPE,
         "stderr": asyncio.subprocess.PIPE,
-        "env": build_child_env(env_extra),
+        "env": env,
+        "cwd": workdir,
     }
     if sys.platform == "win32":
         import subprocess as _sp
@@ -216,7 +304,7 @@ async def _spawn_child(registry_id: str,
         sys.executable, "-m", "peira.adapters._shim", registry_id,
         **kwargs,
     )
-    child = _Child(proc=proc)
+    child = _Child(proc=proc, workdir=workdir)
     child.stderr_task = asyncio.ensure_future(child._drain_stderr())
     return child
 
@@ -232,11 +320,21 @@ class SubprocessAdapter:
 
     def __init__(self, registry_id: str, *, timeout: float = 300.0,
                  env_extra: dict[str, str] | None = None,
-                 hello_timeout: float = 30.0):
+                 hello_timeout: float = 30.0,
+                 rlimit_cpu_seconds: float | None = None,
+                 rlimit_as_mb: float | None = None,
+                 rlimit_fsize_mb: float | None = None,
+                 rlimit_nproc: int | None = None):
         self._registry_id = registry_id
         self._timeout = timeout
         self._env_extra = env_extra
         self._hello_timeout = hello_timeout
+        # Design §7.2: rlimits apply to the child per adapter, not
+        # process-wide. None means "use the shim default".
+        self._rlimit_cpu_seconds = rlimit_cpu_seconds
+        self._rlimit_as_mb = rlimit_as_mb
+        self._rlimit_fsize_mb = rlimit_fsize_mb
+        self._rlimit_nproc = rlimit_nproc
         self._child: _Child | None = None
         # Populated by the hello handshake.
         self.name: str = registry_id
@@ -249,6 +347,8 @@ class SubprocessAdapter:
         # Module provenance (sealed into check reports).
         self.module_path: str = ""
         self.module_sha256: str = ""
+        # Declared local model paths (design 7.2).
+        self.model_paths: list = []
         # Declared sampling posture (conformance 6.1.3).
         self.sampling_posture: str | None = None
 
@@ -261,7 +361,13 @@ class SubprocessAdapter:
                     f"adapter child for {self._registry_id!r} exited "
                     f"with code {self._child.proc.returncode}")
             return self._child
-        child = await _spawn_child(self._registry_id, self._env_extra)
+        child = await _spawn_child(
+            self._registry_id, self._env_extra,
+            rlimit_cpu_seconds=self._rlimit_cpu_seconds,
+            rlimit_as_mb=self._rlimit_as_mb,
+            rlimit_fsize_mb=self._rlimit_fsize_mb,
+            rlimit_nproc=self._rlimit_nproc,
+        )
         self._child = child
         try:
             result = await self._request(child, "hello", {},
@@ -305,6 +411,9 @@ class SubprocessAdapter:
         if isinstance(module, dict):
             self.module_path = str(module.get("path", ""))
             self.module_sha256 = str(module.get("sha256", ""))
+        model_paths = result.get("model_paths", [])
+        if isinstance(model_paths, list):
+            self.model_paths = [str(p) for p in model_paths]
         return child
 
     async def _request(self, child: _Child, op: str,
@@ -461,6 +570,9 @@ class SubprocessAdapter:
             if child.stderr_task is not None:
                 child.stderr_task.cancel()
             child.kill()
+            # P3-6: clean up the temp workdir (drop() and
+            # terminate_gracefully() do this; close() must too).
+            child._remove_workdir()
 
     async def aclose(self) -> None:
         """Graceful async teardown: ask the child to close, then kill

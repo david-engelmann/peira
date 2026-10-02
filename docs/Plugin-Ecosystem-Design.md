@@ -133,7 +133,7 @@ never in the runner process.
 
 ```text
 peira adapter list [--verbose] [--json]
-peira adapter check <spec> [--json] [--probes N] [--timeout S] [--verify]
+peira adapter check <spec> [--json] [--timeout S] [--verify]
 ```
 
 - `list`: every registered adapter (name, version, primitives,
@@ -180,7 +180,10 @@ import-time code never executes in the checker's process
 2. **abstention.** Refusal-shaped probes (refusal prefixes,
    provider block phrasing) must yield `abstained=True`,
    `decision=""`, non-empty `refusal_reason`. An adapter that raises
-   on refusals, or returns a decision string for them, fails.
+   on refusals, or returns a decision string for them, fails. Note:
+   the implementation softens the value assertions into no-raise +
+   valid-shape checks (the exact `abstained`/`decision`/`refusal_reason`
+   values are not asserted); see section 13.
 3. **determinism.** The same probe input twice (fresh contexts)
    yields identical `(decision, abstained)`. An adapter may declare
    a sampling posture instead; the kit then asserts the declared
@@ -274,7 +277,12 @@ packaging only:
   loop. The `serve()` helper from `Adapter-Isolation.md` becomes
   the loop implementation shared by the shim. It is an internal
   implementation detail in v1, not a supported author extension
-  point.
+  point. Note (P3-7): the shim's in-child checks (context stripping,
+  output-type validation) are defense in depth, not a trust boundary:
+  a malicious adapter's import-time thread could race the stdio
+  streams and forge frames. The parent re-validates everything that
+  matters (strict id match, output type/field allowlist, hello name
+  binding).
 
 Rationale: (a) zero author ceremony, any `BaseAdapter`
 implementation gets isolation without writing a server; (b)

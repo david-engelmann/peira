@@ -220,7 +220,7 @@ class RunnerWiringTest(unittest.TestCase, PluginInstallMixin):
         self.assertNotIsInstance(adapter, SubprocessAdapter)
         self.assertEqual(getattr(adapter, "name", None),
                          "testplugin-conf-good")
-        self.assertEqual(trust, "third-party")
+        self.assertEqual(trust, "no-isolation-opt-out")
         self.assertEqual(transport, "inprocess")
 
     def test_get_adapter_first_party_stays_inprocess(self):

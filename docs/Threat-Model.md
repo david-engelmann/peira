@@ -73,9 +73,11 @@ killability, not a sandbox:
   CPU beyond the timeout kill and Windows builds remain
   operator-configured.
 - **Killability.** Each child runs in its own process group.
-  `--call-timeout` SIGTERMs the group on expiry, SIGKILLs after a
-  grace period. The old thread-zombie failure mode is structurally
-  eliminated: a killed child frees its slot, and the retry goes to
+  `--call-timeout` SIGKILLs the group immediately on expiry (no grace
+  window for a hung child). Normal close (`aclose`) uses SIGTERM with
+  a grace period, then SIGKILL. The old thread-zombie failure mode is
+  structurally eliminated: a killed child frees its slot, and the
+  retry goes to
   a fresh child.
 
 A determined adapter author defeats any finite conformance probe

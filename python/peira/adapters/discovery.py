@@ -106,6 +106,41 @@ def _validate_name(name: str) -> str | None:
     return None
 
 
+def _is_trusted_first_party(reg: "AdapterRegistration") -> bool:
+    """Verify a first-party claim by module location (P1-1).
+
+    The dist ``Name`` is self-asserted metadata; a spoofed
+    ``PEIRA-*.dist-info`` on sys.path could claim first-party status
+    for attacker code. We resolve the entry-point module with
+    ``importlib.util.find_spec`` (without importing) and require its
+    origin to live under the already-imported, already-trusted
+    ``peira`` package directory.
+    """
+    if not reg.first_party:
+        return False
+    try:
+        import importlib.util  # noqa: PLC0415
+        import peira  # noqa: PLC0415
+    except ImportError:
+        return False
+    # Entry-point value: "package.module" or "package.module:ClassName"
+    module_name = reg.value.split(":")[0]
+    try:
+        spec = importlib.util.find_spec(module_name)
+    except (ImportError, AttributeError, ValueError):
+        return False
+    if spec is None or spec.origin is None:
+        return False
+    try:
+        import os  # noqa: PLC0415
+
+        peira_dir = os.path.dirname(os.path.abspath(peira.__file__))
+        module_path = os.path.abspath(spec.origin)
+        return module_path.startswith(peira_dir + os.sep)
+    except OSError:
+        return False
+
+
 def discover() -> DiscoveryResult:
     """Read the ``peira.adapters`` registry without importing anything.
 
@@ -135,6 +170,17 @@ def discover() -> DiscoveryResult:
             dist_version=dist.version if dist is not None else None,
             first_party=_normalize_dist(dist_name) == FIRST_PARTY_DIST,
         )
+        # P1-1: dist Name is self-asserted; verify the module actually
+        # lives inside the trusted peira package before honoring the
+        # first-party claim.
+        if reg.first_party and not _is_trusted_first_party(reg):
+            reg = AdapterRegistration(
+                registry_id=reg.registry_id,
+                value=reg.value,
+                dist_name=reg.dist_name,
+                dist_version=reg.dist_version,
+                first_party=False,
+            )
         by_name.setdefault(ep.name, []).append(reg)
     registrations: dict[str, AdapterRegistration] = {}
     ambiguous: dict[str, list[AdapterRegistration]] = {}

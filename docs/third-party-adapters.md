@@ -204,9 +204,9 @@ prints cannot corrupt framing.
 What the isolation actually is, in plain words:
 
 - Your code runs in its own process, in its own process group.
-  Timeouts kill the whole group (SIGTERM, then SIGKILL), so a hung
-  adapter cannot poison the run's tail with zombie threads. A killed
-  child frees its slot; the retry goes to a fresh child.
+  Timeouts SIGKILL the whole group immediately (no grace window), so
+  a hung adapter cannot poison the run's tail with zombie threads. A
+  killed child frees its slot; the retry goes to a fresh child.
 - The child gets a runner-built environment: a sanitized `PATH`,
   `TMPDIR`/`TEMP`, `SYSTEMROOT` on Windows, `HOME` pointed at a
   fresh temp dir, and whatever you pass via `--adapter-env`. Your
