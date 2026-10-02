@@ -16,6 +16,7 @@ pub mod combo;
 pub mod combo_metrics;
 pub mod compare;
 pub mod dataset;
+pub mod economics;
 pub mod env;
 pub mod execution;
 pub mod gates;
