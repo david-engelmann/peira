@@ -32,6 +32,10 @@ peira run --adapter mock --suite trial-demo --dry-run   # CLI smoke
 Mechanical checklist in `docs/Contributing.md`. Green local gates,
 then merge. CI is a backstop, not a gate.
 
+Definition of done, mirrored from the PR template. No test weakened
+or deleted to make the suite pass. Docs-update map consulted, every
+named doc updated in the same PR. Public surface green.
+
 ## Hard rules
 
 1. **Never edit scored artifacts post-hoc.** New config means a new run
@@ -72,17 +76,18 @@ check the map, not just the code.
   and `docs/Analytics-Methodology.md` (the reader's guide).
 - An adapter. Add a `docs/Adapters.md` entry, and put the capability
   report table from `docs/adding-an-adapter.md` in the PR description.
-- Case schema or dataset format. Update the dataset spec,
+- Case schema or dataset format. Update `docs/Dataset.md`,
   `DATASHEET.md`, and `docs/Dataset-Changelog.md`.
-- Install or packaging. Update the install docs and the root
-  `README.md`, which is also the PyPI package page. The PyPI README
-  drifts silently because no symlink can prevent content drift, so
-  this mapping is enforced by review, not by tooling.
-- A CLI surface change. Update `docs/CLI.md` and the generated CLI
-  reference.
-- A leaderboard or API change. Update the Program B docs, and
-  `docs/Analytics-Methodology.md` if a reported number changed
-  meaning.
+- Install or packaging. Update `docs/Local-Run-Walkthrough.md` and
+  the root `README.md`, which is also the PyPI package page. The
+  PyPI README drifts silently because no symlink can prevent content
+  drift, so this mapping is enforced by review, not by tooling.
+- A CLI surface change. Update `docs/CLI.md`, which is generated
+  from the live parser by `scripts/gen_cli_reference.py`. Never
+  hand-edit it. Regenerate and let CI check the drift.
+- A leaderboard or ranking-rule change. Update
+  `docs/Admission-Rules.md`, and `docs/Analytics-Methodology.md` if
+  a reported number changed meaning.
 - Dataset lifecycle events (refresh, burn, retirement). Update
   `docs/Refresh-Burn-Retirement-Policy.md` and the dataset
   changelog.

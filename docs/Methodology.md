@@ -70,7 +70,7 @@ values, computed from the typed decisions (see
 The dashboard's flip-anatomy table (§3.16) reports per-family counts
 over these values, plus severity-weighted ASR inputs (weights
 versioned as `SEVERITY_WEIGHTS_VERSION`, v1: critical 3, high 2,
-medium 1, low 0.5) and target-hit rate.
+medium 1) and target-hit rate.
 
 ## Metrics
 

@@ -29,9 +29,10 @@ guarantees. They are not interchangeable.
 **Retirement** removes a case or shard from the ranked set. The
 files stay in the repo. The case keeps its id. The dataset changelog
 records the retirement, the reason, and the version it took effect
-in. Retired cases are excluded from leaderboards but remain
-addressable for reproducibility. This is the normal path for aged,
-saturated, or burned shards. See
+in. Retired cases are excluded from leaderboards once the exclusion
+mechanism lands. Today no retired-list is consumed by the runner,
+so treat retirement as a changelog-level operation with leaderboard
+exclusion planned, not yet enforced. See
 `docs/Refresh-Burn-Retirement-Policy.md`.
 
 **Deletion** removes the bytes. There are two levels, described
@@ -90,8 +91,8 @@ listed below.
 ## Requesting a removal
 
 Open an issue naming the case id and the reason. Security or
-privacy reasons go through the security contact in SECURITY.md,
-not the public tracker. The operator decides between retirement,
-tombstone, or full removal, and records the decision in the
-dataset changelog. The default answer to a removal request is
+privacy reasons go through the private security channel in
+SECURITY.md, not the public tracker. The operator decides between
+retirement, tombstone, or full removal, and records the decision in
+the dataset changelog. The default answer to a removal request is
 retirement, not deletion.

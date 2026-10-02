@@ -9,7 +9,7 @@ docs build and link check. -->
 
 - [ ] Full Python suite passed in Rust-active mode (`python -m pytest tests -n auto`), exit 0
 - [ ] Full Python suite passed with `PEIRA_NO_RUST=1`, exit 0
-- [ ] Docs build and link check passed (for docs changes)
+- [ ] Docs link check passed (for docs changes)
 
 ## Checklist
 
@@ -20,13 +20,15 @@ docs build and link check. -->
       it names for this change is updated in this PR or marked N/A below.
 - [ ] Public surface is green: quickstart, CLI help, and README code
       blocks still run as documented.
-- [ ] Copy bar: no em dashes, no semicolons, no strategy-talk in
-      public copy.
+- [ ] Copy bar: no em dashes, no colons, no semicolons, no
+      strategy-talk in public copy.
 
 ## Schema or dataset changes
 
 <!-- Delete this section if the PR touches neither. -->
 
+- [ ] `dataset_version` bumped in the dataset manifest, with a
+      changelog entry per `docs/Dataset-Changelog.md`
 - [ ] Migration path documented in `docs/Dataset-Changelog.md`
 - [ ] `DATASHEET.md` updated
 - [ ] Provenance fields on derived artifacts follow the distilled

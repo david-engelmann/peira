@@ -136,29 +136,44 @@ the ranking gate itself. The rest default to the empty string (or,
 for `seed`, 0) when the run artifact did not record them, so treat
 empty values as not recorded rather than as verified facts.
 
-## 5. Distilled artifacts
+## 5. Distilled dataset fixtures
 
-A distilled artifact is anything derived from run records for
-humans to read. A summary, a chart, a press-kit number, a slide.
-It is one step removed from the measurement, and it must say so.
+A distilled fixture is a case that a tool made, not a human. The
+typical source is an observed adapter failure. A flip worth
+regression-testing becomes a regression case. A successful attack
+varied into new shapes becomes attack variants for the living
+dataset. These cases are valuable exactly because they come from
+real measurements, and dangerous for the same reason. A corpus that
+cannot say which cases are human-authored, which are
+generator-authored, and which were distilled from observed failures
+cannot defend any of its numbers.
 
-Every distilled artifact carries three provenance fields. They are
-listed below.
+Every distilled case carries three provenance fields on the case
+record:
 
-- `generated_by`. The tool and version that produced it, in the
-  form `distill/<tool>@<version>`. A hand-made chart says
-  `distill/manual@1`, with the author named beside it.
-- `derived_from_runs`. The count of source runs the artifact was
-  derived from, as a string. `"14"`, not `14`. Provenance fields
-  are string-typed throughout peira, and distilled fields follow
-  the same rule so validators never have to guess.
+- `generated_by`. The tool and version that produced the case, in
+  the form `distill/<tool>@<version>`. This is the same field
+  section 2 defines as the activity that generated the case, with
+  the format pinned down for machine-made cases. Human-authored
+  cases carry `human@<author>` instead, and purely synthetic
+  generator output carries `generate/<tool>@<version>`. The three
+  origins are distinct values, never inferred from context.
+- `derived_from_runs`. The count of source runs the case was
+  distilled from, as a string. `"14"`, not `14`. Provenance fields
+  are string-typed by convention throughout peira. Note the limit
+  of that convention. Validators enforce string typing only on the
+  four named fields in section 2. Unknown sub-fields are preserved
+  verbatim without type checks, so the string form here is a
+  documented convention, not a validated guarantee.
 - `review_status`. Always the string `review before use` until a
-  human has reviewed the artifact and recorded the review. An
-  unreviewed chart does not get published, quoted, or screenshotted
-  into a slide. The review records who looked and what they
-  checked, in the same record as the artifact.
+  human has reviewed the case and recorded the review. A
+  machine-generated case never enters the corpus unlabeled, and
+  never enters it unreviewed. The review records who looked and
+  what they checked.
 
-A distilled artifact never silently inherits the trust of its
-sources. The run records are sealed and the analysis lock holds.
-The chart drawn from them is a new claim, and it carries its own
-provenance or it carries nothing.
+The dataset manifest records the distillation. Which cases in a
+release are distilled, from how many runs, and under which review.
+The dataset changelog entry for a release that adds distilled cases
+names the generator and the review status. A distilled case whose
+`review_status` still reads `review before use` is excluded from
+ranking, the same way an unsealed version is.
