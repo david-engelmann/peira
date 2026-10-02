@@ -253,7 +253,14 @@ class TestDeepSeekThinkingDisabled(unittest.TestCase):
         with _fake_modules({"openai": mod}), \
                 _env(DEEPSEEK_API_KEY="sk-test"):
             DeepSeekAdapter().decide(CASE, "choice", _ctx())
-        self.assertEqual(calls[0].get("thinking"), {"type": "disabled"})
+        # ``thinking`` is not an OpenAI SDK kwarg — it must travel in
+        # ``extra_body`` or the SDK raises TypeError before the request
+        # ever reaches DeepSeek.
+        self.assertNotIn("thinking", calls[0])
+        self.assertEqual(
+            (calls[0].get("extra_body") or {}).get("thinking"),
+            {"type": "disabled"},
+        )
 
     def test_openai_does_not_send_thinking(self):
         # The base OpenAI adapter is unchanged — only DeepSeek sets it.

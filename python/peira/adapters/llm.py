@@ -1186,9 +1186,14 @@ class DeepSeekAdapter(OpenAIAdapter):
         self, messages: list[dict[str, str]], schema: dict[str, Any]
     ) -> dict[str, Any]:
         kwargs = super()._request_kwargs(messages, schema)
-        # Thinking disabled per the evaluation design: reasoning traces
-        # must not leak into the decision channel.
-        kwargs["thinking"] = {"type": "disabled"}
+        # ``thinking`` is not an OpenAI SDK body parameter, so it
+        # travels via ``extra_body`` (the same pattern QwenAdapter
+        # uses for ``enable_thinking``). Thinking stays disabled per
+        # the evaluation design: reasoning traces must not leak into
+        # the decision channel.
+        extra_body = dict(kwargs.get("extra_body") or {})
+        extra_body["thinking"] = {"type": "disabled"}
+        kwargs["extra_body"] = extra_body
         return kwargs
 
     def _request(
