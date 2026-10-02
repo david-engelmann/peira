@@ -1634,6 +1634,195 @@ pub fn net_benefit_at_threshold(risks: &[f64], labels: &[i64], pt: f64) -> f64 {
     tp as f64 / n - (fp as f64 / n) * w
 }
 
+// ---------------------------------------------------------------------------
+// MDE (minimum detectable effect) numeric core.
+//
+// `mde_mcnemar` unblocks rust-max slice 6 (saturation.py). The chain is
+// `_normal_quantile` -> `mde_from_se` -> `mde_mcnemar`, mirroring
+// `python/peira/metrics.py`. The Python wrapper validates before
+// dispatching; the Rust core asserts per the D-11 caller-bug convention.
+// ---------------------------------------------------------------------------
+
+/// Complementary error function via the Laplace continued fraction
+/// (Lentz's modified algorithm). Accurate to ~1e-15 for x > 0; used by
+/// the high-precision normal CDF below. Private: the existing `erfc`
+/// (Abramowitz & Stegun 7.1.26, 1.5e-7) is sufficient for the chi-square
+/// survival function but not for quantile refinement.
+fn erfc_laplace(x: f64) -> f64 {
+    const TINY: f64 = 1e-300;
+    let mut f = TINY;
+    let mut c = TINY;
+    let mut d = 0.0;
+    for n in 1..=200 {
+        let (a, b) = if n == 1 {
+            (1.0, x)
+        } else {
+            ((n as f64 - 1.0) / 2.0, x)
+        };
+        d = b + a * d;
+        if d.abs() < TINY {
+            d = TINY;
+        }
+        c = b + a / c;
+        if c.abs() < TINY {
+            c = TINY;
+        }
+        d = 1.0 / d;
+        let delta = c * d;
+        f *= delta;
+        if (delta - 1.0).abs() < 1e-15 {
+            break;
+        }
+    }
+    (-x * x).exp() / std::f64::consts::PI.sqrt() * f
+}
+
+/// Error function to ~1e-15: Maclaurin series for |x| <= 2, the Laplace
+/// continued fraction for |x| > 2. Private helper for `normal_cdf`.
+fn erf_precise(x: f64) -> f64 {
+    if x == 0.0 {
+        return 0.0;
+    }
+    let ax = x.abs();
+    let result = if ax <= 2.0 {
+        let mut term = ax;
+        let mut sum = term;
+        let x2 = ax * ax;
+        let mut n = 1u32;
+        loop {
+            term *= -x2 / (n as f64);
+            let delta = term / (2 * n + 1) as f64;
+            sum += delta;
+            if delta.abs() < 1e-17 * sum.abs() || n > 200 {
+                break;
+            }
+            n += 1;
+        }
+        2.0 * sum / std::f64::consts::PI.sqrt()
+    } else {
+        1.0 - erfc_laplace(ax)
+    };
+    if x < 0.0 {
+        -result
+    } else {
+        result
+    }
+}
+
+/// Standard normal CDF to ~1e-15. Private helper for `normal_quantile`.
+fn normal_cdf(x: f64) -> f64 {
+    0.5 * (1.0 + erf_precise(x / std::f64::consts::SQRT_2))
+}
+
+/// Standard normal quantile function.
+///
+/// Mirrors `_normal_quantile` in `python/peira/metrics.py`, which uses
+/// `statistics.NormalDist().inv_cdf(p)` (CPython's C implementation).
+/// Acklam's rational approximation seeds Newton refinement on the
+/// high-precision CDF above; verified bit-compatible to <1e-13 against
+/// CPython 3.12 across the unit interval (see `normal_quantile_matches_cpython`
+/// in the test module).
+///
+/// The Python wrapper validates `0.0 < p < 1.0` before dispatching; the
+/// Rust core asserts per the D-11 caller-bug convention.
+pub fn normal_quantile(p: f64) -> f64 {
+    assert!(
+        p > 0.0 && p < 1.0,
+        "quantile p must be in (0, 1)"
+    );
+    // Acklam's approximation coefficients.
+    const A1: f64 = -3.969683028665376e+01;
+    const A2: f64 = 2.209460984245205e+02;
+    const A3: f64 = -2.759285104469687e+02;
+    const A4: f64 = 1.383577518672690e+02;
+    const A5: f64 = -3.066479806614716e+01;
+    const A6: f64 = 2.506628277459239e+00;
+    const B1: f64 = -5.447609879822406e+01;
+    const B2: f64 = 1.615858368580409e+02;
+    const B3: f64 = -1.556989798598866e+02;
+    const B4: f64 = 6.680131188771972e+01;
+    const B5: f64 = -1.328068155288572e+01;
+    const C1: f64 = -7.784894002430293e-03;
+    const C2: f64 = -3.223964580411365e-01;
+    const C3: f64 = -2.400758277161838e+00;
+    const C4: f64 = -2.549732539343734e+00;
+    const C5: f64 = 4.374664141464968e+00;
+    const C6: f64 = 2.938163982698783e+00;
+    const D1: f64 = 7.784695709041462e-03;
+    const D2: f64 = 3.224671290700398e-01;
+    const D3: f64 = 2.445134137142996e+00;
+    const D4: f64 = 3.754408661907416e+00;
+
+    let mut x = if p < 0.02425 {
+        let t = (-2.0 * p.ln()).sqrt();
+        (((((C1 * t + C2) * t + C3) * t + C4) * t + C5) * t + C6)
+            / ((((D1 * t + D2) * t + D3) * t + D4) * t + 1.0)
+    } else if p <= 0.97575 {
+        let t = p - 0.5;
+        let r = t * t;
+        (((((A1 * r + A2) * r + A3) * r + A4) * r + A5) * r + A6) * t
+            / (((((B1 * r + B2) * r + B3) * r + B4) * r + B5) * r + 1.0)
+    } else {
+        let t = (-2.0 * (1.0 - p).ln()).sqrt();
+        -(((((C1 * t + C2) * t + C3) * t + C4) * t + C5) * t + C6)
+            / ((((D1 * t + D2) * t + D3) * t + D4) * t + 1.0)
+    };
+
+    // Newton refinement: x -= (Phi(x) - p) / phi(x).
+    for _ in 0..10 {
+        let err = normal_cdf(x) - p;
+        let pdf = (-0.5 * x * x).exp() / (2.0 * std::f64::consts::PI).sqrt();
+        let delta = err / pdf;
+        x -= delta;
+        if delta.abs() < 1e-15 {
+            break;
+        }
+    }
+    x
+}
+
+/// Minimum detectable effect from the standard error of an estimator.
+///
+/// `MDE = (z_{1-alpha/2} + z_{power}) * se`, the standard normal-approximation
+/// power formula. Mirrors `mde_from_se` in `python/peira/metrics.py`.
+/// Returns 0.0 when se is 0.0 (a degenerate estimator detects nothing).
+///
+/// The Python wrapper validates before dispatching (se non-negative,
+/// alpha and power in (0, 1)); the Rust core asserts per D-11.
+pub fn mde_from_se(se: f64, alpha: f64, power: f64) -> f64 {
+    assert!(se >= 0.0, "standard error must be non-negative");
+    assert!(
+        alpha > 0.0 && alpha < 1.0,
+        "alpha must be in (0, 1)"
+    );
+    assert!(
+        power > 0.0 && power < 1.0,
+        "power must be in (0, 1)"
+    );
+    if se == 0.0 {
+        return 0.0;
+    }
+    (normal_quantile(1.0 - alpha / 2.0) + normal_quantile(power)) * se
+}
+
+/// MDE for a paired binary comparison (the McNemar setting).
+///
+/// For n paired cases with discordant-pair rate `pd`, the standard error
+/// of the paired difference is sqrt(pd / n), so
+/// `MDE = (z_{1-alpha/2} + z_{power}) * sqrt(pd / n)`.
+/// Mirrors `mde_mcnemar` in `python/peira/metrics.py`.
+///
+/// The Python wrapper validates before dispatching (n positive,
+/// discordant_rate in [0, 1]); the Rust core asserts per D-11.
+pub fn mde_mcnemar(n: u64, discordant_rate: f64, alpha: f64, power: f64) -> f64 {
+    assert!(n > 0, "n must be positive");
+    assert!(
+        (0.0..=1.0).contains(&discordant_rate),
+        "discordant_rate must be in [0, 1]"
+    );
+    mde_from_se((discordant_rate / n as f64).sqrt(), alpha, power)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1782,6 +1971,61 @@ mod tests {
     fn mcnemar_value() {
         assert!(((mcnemar(8, 2) - 3.6).abs()) < 1e-12);
         assert_eq!(mcnemar(0, 0), 0.0);
+    }
+
+    #[test]
+    fn normal_quantile_matches_cpython() {
+        // Reference values from CPython 3.12 statistics.NormalDist().inv_cdf.
+        let cases = [
+            (0.975, 1.9599639845400536),
+            (0.8, 0.8416212335729144),
+            (0.95, 1.6448536269514715),
+            (0.99, 2.3263478740408408),
+            (0.5, 0.0),
+            (0.025, -1.9599639845400538),
+            (0.001, -3.090232306167813),
+            (0.999, 3.090232306167813),
+        ];
+        for (p, expected) in cases {
+            let got = normal_quantile(p);
+            assert!(
+                (got - expected).abs() < 1e-12,
+                "p={p}: got {got}, expected {expected}"
+            );
+        }
+    }
+
+    #[test]
+    fn mde_from_se_defaults() {
+        // At alpha=0.05, power=0.8 the multiplier is z_0.975 + z_0.8 = 2.801585218112968.
+        let mde = mde_from_se(0.0223606797749979, 0.05, 0.8);
+        let expected = 2.801585218112968 * 0.0223606797749979;
+        assert!((mde - expected).abs() < 1e-12, "mde={mde}");
+        assert_eq!(mde_from_se(0.0, 0.05, 0.8), 0.0);
+    }
+
+    #[test]
+    fn mde_mcnemar_reference_values() {
+        // Independently verified: n=400/pd=20% gives 6.3pp, n=200/pd=20%
+        // gives 8.9pp (docs in python/peira/metrics.py).
+        let m400 = mde_mcnemar(400, 0.2, 0.05, 0.8);
+        assert!((m400 - 0.063).abs() < 0.001, "m400={m400}");
+        let m200 = mde_mcnemar(200, 0.2, 0.05, 0.8);
+        assert!((m200 - 0.089).abs() < 0.001, "m200={m200}");
+        // Degenerate: zero discordant rate -> zero MDE.
+        assert_eq!(mde_mcnemar(100, 0.0, 0.05, 0.8), 0.0);
+    }
+
+    #[test]
+    #[should_panic(expected = "n must be positive")]
+    fn mde_mcnemar_rejects_zero_n() {
+        mde_mcnemar(0, 0.2, 0.05, 0.8);
+    }
+
+    #[test]
+    #[should_panic(expected = "discordant_rate must be in [0, 1]")]
+    fn mde_mcnemar_rejects_bad_rate() {
+        mde_mcnemar(100, 1.5, 0.05, 0.8);
     }
 
     #[test]

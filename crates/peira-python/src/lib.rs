@@ -323,6 +323,30 @@ fn net_benefit_at_threshold(risks: Vec<f64>, labels: Vec<i64>, pt: f64) -> f64 {
     metrics::net_benefit_at_threshold(&risks, &labels, pt)
 }
 
+/// Standard normal quantile function (inverse CDF).
+/// Mirrors `_normal_quantile` in `python/peira/metrics.py`.
+/// The Python wrapper validates `0.0 < p < 1.0` before dispatching.
+#[pyfunction]
+fn normal_quantile(p: f64) -> f64 {
+    metrics::normal_quantile(p)
+}
+
+/// Minimum detectable effect from a standard error.
+/// Mirrors `mde_from_se` in `python/peira/metrics.py`.
+/// The Python wrapper validates before dispatching.
+#[pyfunction]
+fn mde_from_se(se: f64, alpha: f64, power: f64) -> f64 {
+    metrics::mde_from_se(se, alpha, power)
+}
+
+/// MDE for a paired binary comparison (McNemar setting).
+/// Mirrors `mde_mcnemar` in `python/peira/metrics.py`.
+/// The Python wrapper validates before dispatching.
+#[pyfunction]
+fn mde_mcnemar(n: u64, discordant_rate: f64, alpha: f64, power: f64) -> f64 {
+    metrics::mde_mcnemar(n, discordant_rate, alpha, power)
+}
+
 // ---------------------------------------------------------------------------
 // economics: M-3 / C-4 numeric core (rust-max slice 4).
 //
@@ -2607,6 +2631,9 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(flip_direction, m)?)?;
     m.add_function(wrap_pyfunction!(flip_direction_counts, m)?)?;
     m.add_function(wrap_pyfunction!(net_benefit_at_threshold, m)?)?;
+    m.add_function(wrap_pyfunction!(normal_quantile, m)?)?;
+    m.add_function(wrap_pyfunction!(mde_from_se, m)?)?;
+    m.add_function(wrap_pyfunction!(mde_mcnemar, m)?)?;
     m.add_function(wrap_pyfunction!(economics_e_attacked, m)?)?;
     m.add_function(wrap_pyfunction!(economics_mean_cost_per_decision, m)?)?;
     m.add_function(wrap_pyfunction!(economics_pareto_frontier, m)?)?;
