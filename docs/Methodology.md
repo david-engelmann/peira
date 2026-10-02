@@ -223,7 +223,10 @@ medium 1, low 0.5) and target-hit rate.
   totals are a **lower bound** whenever `n_unpriced > 0` (unpriced calls
   contribute $0 to the total but count in the denominator); when no
   call is priced at all the cost is unknown, not zero. Totals are
-  withheld (`None`, `sufficient: False`).
+  withheld (`None`, `sufficient: False`). The full policy behind
+  these numbers, including the unpriced rule, the rate table
+  requirements, and the D13 re-verification procedure, is
+  `docs/Economics-Policy.md`.
 - **Adversarial latency** (R-16): per-family p99 as a
   security-relevant signal (`family_latency_summary`), plus the
   **latency-inflation** ratio (`latency_inflation`): p99(attacked) /

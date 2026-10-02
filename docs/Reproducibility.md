@@ -23,9 +23,11 @@ wheels, come from index metadata, so the full-extras set is
 hash-pinned with no multi-gigabyte downloads at lock time.
 
 The `pip install peira` path is unchanged. The package metadata stays
-PEP 621 with the setuptools backend, so plain pip installs from
-`pyproject.toml` exactly as before. uv manages the lockfile only and
-never replaces pip as the installer.
+PEP 621 with the maturin backend, so plain pip installs from
+`pyproject.toml` build the extension automatically. Installing from
+PyPI uses prebuilt abi3 wheels (no Rust toolchain needed); installing
+from an sdist or git URL builds from source and needs a Rust toolchain.
+uv manages the lockfile only and never replaces pip as the installer.
 
 ### Installing from the lockfile
 
@@ -82,9 +84,9 @@ Reviewers check that the diff only touches the intended packages.
    editable from the `/peira` checkout (editable is load-bearing, since
    the CLI resolves dataset paths from the repo root relative to the
    package files), copies the built `_core` extension next to the
-   package exactly as `scripts/build_core_ext.py` does, and ships the
-   versioned datasets so trial runs work out of the box. Runs as a
-   non-root `peira` user with `peira` as the entrypoint.
+   package, and ships the versioned datasets so trial runs work out of
+   the box. Runs as a non-root `peira` user with `peira` as the entrypoint.
+
 
 ### Build
 
