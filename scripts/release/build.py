@@ -86,7 +86,12 @@ def build_artifacts(tree: pathlib.Path, outdir: pathlib.Path) -> list[pathlib.Pa
 def wheel_version(wheel: pathlib.Path) -> str:
     """Read the Version field from a wheel's METADATA."""
     with zipfile.ZipFile(wheel) as zf:
-        meta_name = next(n for n in zf.namelist() if n.endswith(".dist-info/METADATA"))
+        meta_name = next(
+            (n for n in zf.namelist() if n.endswith(".dist-info/METADATA")),
+            None,
+        )
+        if meta_name is None:
+            raise ReleaseError(f"{wheel.name} has no .dist-info/METADATA")
         for line in zf.read(meta_name).decode("utf-8").splitlines():
             if line.startswith("Version: "):
                 return line[len("Version: ") :].strip()

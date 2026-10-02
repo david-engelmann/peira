@@ -340,3 +340,13 @@ def test_wheel_version_missing_raises(tmp_path):
         )
     with pytest.raises(ReleaseError, match="no Version in METADATA"):
         build_module.wheel_version(whl)
+
+
+def test_wheel_version_no_metadata_raises(tmp_path):
+    import zipfile
+
+    whl = tmp_path / "peira-9.9.9-py3-none-any.whl"
+    with zipfile.ZipFile(whl, "w") as zf:
+        zf.writestr("peira-9.9.9.dist-info/WHEEL", "Wheel-Version: 1.0\n")
+    with pytest.raises(ReleaseError, match="no .dist-info/METADATA"):
+        build_module.wheel_version(whl)

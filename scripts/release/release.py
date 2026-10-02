@@ -24,10 +24,14 @@ import sys
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2]))
 
 from scripts.release.build import run_build, sha256  # noqa: E402
-from scripts.release.meta import channel_for, parse_release_version  # noqa: E402
+from scripts.release.meta import (  # noqa: E402
+    channel_for,
+    parse_release_version,
+    stable_versions_from_ls_remote,
+)
 from scripts.release.preflight import run_preflight  # noqa: E402
 from scripts.release.smoke import run_smoke  # noqa: E402
-from scripts.release.validate import ReleaseError  # noqa: E402
+from scripts.release.validate import ReleaseError, safe_path  # noqa: E402
 
 REPO_ROOT = pathlib.Path(__file__).resolve().parents[2]
 
@@ -47,8 +51,6 @@ def known_stable_tags() -> list[str]:
         return []
     if proc.returncode != 0:
         return []
-    from scripts.release.meta import stable_versions_from_ls_remote
-
     return stable_versions_from_ls_remote(proc.stdout)
 
 
@@ -97,7 +99,7 @@ def main(argv: list[str] | None = None) -> int:
             print(
                 "note: backport release; it ships but never moves the 'latest' pointer"
             )
-        outdir = REPO_ROOT / args.outdir
+        outdir = REPO_ROOT / safe_path("outdir", args.outdir)
         files = run_build(meta.version, outdir)
         print("artifacts:")
         for f in files:
