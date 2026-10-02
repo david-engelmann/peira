@@ -383,8 +383,11 @@ jobs:
       # MATURIN_PEP517_ARGS cannot be used (pip forwards it to
       # `maturin pep517 write-dist-info`, which rejects --release in
       # maturin 1.x), so install via pip then rebuild in release via
-      # maturin develop in an active virtualenv.
+      # maturin develop in an active virtualenv. maturin must be
+      # installed into the venv first: --no-build-isolation means pip
+      # uses the venv's packages for the build backend.
       - run: python3 -m venv .venv
+      - run: .venv/bin/pip install "maturin>=1,<2"
       - run: .venv/bin/pip install --no-build-isolation -e '.[dev]'
       - run: .venv/bin/maturin develop --release
       - run: .venv/bin/python -c "from peira._rust import RUST_AVAILABLE; assert RUST_AVAILABLE"
