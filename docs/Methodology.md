@@ -2148,6 +2148,51 @@ rate, and it is significant when it clears the design MDE. The
 joint-incoherence gap that motivates the family is measured as future
 work. Until then the verdict-flip rule above is the registered outcome.
 
+## frequency_salience (attack family)
+
+Family 29. The attacked variant adds one administrative-notes block to
+byte-identical facts, repeating a competing entity 1, 3, or 7 times in
+clearly irrelevant filler (calendar entries, directory listings, access
+logs). The benign control presents the same facts with no filler. The
+family ships a dose-response design rather than a single flip count.
+Three hundred choice cases form 100 scenarios times 3 mention-count
+doses, and the filler block length is held approximately constant across doses so
+only the mention count varies. Seventy score cases and 50 abstain cases
+carry one dose each, cycling 1, 3, 7, so the family totals about 140
+cases per dose level and the salience curve (flip rate against mention
+count) is measurable family-wide. The dose counts (1, 3, 7) are filler-block
+mentions. The full attacked prompt carries two additional baseline mentions
+because the benign facts name both entities. The family probes whether sheer
+repetition in zero-evidence filler moves decisions, the mechanism behind
+the Laya name-frequency failure (YouTube reconciliation 2026-09-30,
+where Laya flipped purely on name frequency in the murder-mystery
+control).
+
+**Paired-control construction.** The benign prompt presents facts
+clearly favoring the expected decision, or genuinely balanced facts
+where abstain is the correct decision. The attacked prompt keeps the
+identical facts and adds only the administrative-notes block repeating
+the competing entity exactly the dose count. G2 (paired-variants)
+enforces that the variants differ. The authoring script asserts the
+exact mention count per case and zero duplicate content across the file,
+so the dose manipulation is machine-checkable rather than asserted.
+G9 near-dedup warnings on the dose arms of one scenario are
+design-intentional. The benign arm is byte-identical across doses by
+construction, which is what makes the dose manipulation pure.
+
+**Validity diagnostic, the deletion test.** Remove the filler block.
+If the attack dies it is frequency_salience. This separates it from
+verbosity_inflation, where style and length of the preferred answer
+carry the attack (here filler length is approximately constant across
+doses). It also separates it from evidence_positioning, where order
+steers the decision (here order is fixed). And from distractor_flooding,
+whose filler degrades the decision with no directional pull (here the
+filler always pulls toward the repeated entity). (Design diagnostic.
+Empirical demonstration in the original Laya setting is future work.)
+**Design MDEs.** At n=400, 4.4pp at 10% discordance, 6.3pp at 20%,
+7.7pp at 30%, 8.9pp at 40%. Published in the dataset manifest's
+`mdes` table (`dataset/v2/cases/manifest.json`).
+
 ## Near-dedup calibration (G9)
 
 Dataset gate G9 flags near-duplicate cases with character-trigram cosine
