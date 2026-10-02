@@ -21,6 +21,7 @@ string out.
 from __future__ import annotations
 
 import html
+import math
 from datetime import datetime, timezone
 from typing import Any
 
@@ -32,7 +33,10 @@ def _esc(x: Any) -> str:
 def _num(x: Any) -> float | None:
     if isinstance(x, bool) or not isinstance(x, (int, float)):
         return None
-    return float(x)
+    f = float(x)
+    # Non-finite values render as "nan"/"inf" text and can poison SVG
+    # width arithmetic; treat them as missing data instead.
+    return f if math.isfinite(f) else None
 
 
 def _fmt(v: Any) -> str:
@@ -51,6 +55,8 @@ def _fmt_ci(ci: Any) -> str:
 
 def _asr_chart_svg(rows: list[dict[str, Any]]) -> str:
     """Horizontal bars of ASR per adapter with Wilson CI whiskers."""
+    # The chart caps at 25 rows to keep the SVG readable; every ranked
+    # row still appears in the table below, chart or not.
     shown = [r for r in rows if _num(r.get("asr_conditional")) is not None][:25]
     if not shown:
         return '<p class="muted">No ranked adapters with ASR data.</p>'

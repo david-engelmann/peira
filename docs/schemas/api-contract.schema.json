@@ -11,7 +11,7 @@
           "enum": [
             "run_not_found",
             "run_incomplete",
-            "invalid_token",
+            "invalid_cursor",
             "expired_token",
             "rate_limited",
             "dataset_not_found",

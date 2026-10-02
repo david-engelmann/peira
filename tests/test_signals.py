@@ -137,10 +137,14 @@ class DetectTest(unittest.TestCase):
         self.assertGreaterEqual(min(issue_scores), MIN_ISSUE_SCORE)
 
     def test_deterministic_order(self):
-        lb = _leaderboard(_row("b", benign=0.5), _row("a", benign=0.5))
-        first = [s["signal_id"] for s in detect_signals(lb)]
-        second = [s["signal_id"] for s in detect_signals(lb)]
-        self.assertEqual(first, second)
+        # Score-descending first: benign_utility_drop scores 85.0,
+        # calibration_gap scores 60.0, so benign must come first even
+        # when the adapter sorts last alphabetically.
+        lb = _leaderboard(_row("b", benign=0.5, ece=0.5),
+                          _row("a", benign=0.5, ece=0.5))
+        ids = [s["signal_id"] for s in detect_signals(lb)]
+        self.assertEqual(ids, ["benign-utility-drop:a", "benign-utility-drop:b",
+                              "calibration-gap:a", "calibration-gap:b"])
 
     def test_missing_values_degrade_to_no_signal(self):
         lb = _leaderboard({"adapter_name": "a", "ranking_eligible": True})
@@ -217,10 +221,70 @@ class RegistryTest(unittest.TestCase):
             "prompt_injection": {
                 "asr": 0.70, "n_eligible": 400,
                 "asr_ci95": (0.60, 0.80),  # tuple instead of list
+                "cost_usd": object(),  # non-data value: must be dropped
             }}}}
         signals = detect_signals({}, run_payloads=payloads)
+        sig = next(s for s in signals if s["type"] == "high_asr_family")
+        self.assertIsInstance(sig["evidence"]["asr_ci95"], list)
+        self.assertNotIn("cost_usd", sig["evidence"])
         blob = json.dumps(signals)
         self.assertIn("[0.6, 0.8]", blob)
+
+    def test_non_finite_floats_are_json_safe(self):
+        # NaN/inf must never reach the output: they are not valid
+        # strict JSON and NaN defeats every numeric comparison.
+        # f1 fires high_asr_family with an inf inside its CI; f2's NaN
+        # n_eligible must degrade to "no signal", never a crash.
+        payloads = {"a": {"families": {
+            "f1": {"asr": 0.70, "n_eligible": 400,
+                   "asr_ci95": [0.60, float("inf")], "cost_usd": 1.0},
+            "f2": {"asr": 0.70, "n_eligible": float("nan"),
+                   "cost_usd": 1.0},
+        }, "headline": {"abstention_rate": 0.05}}}
+        signals = detect_signals({}, run_payloads=payloads)
+        self.assertEqual(
+            [s["signal_id"] for s in signals], ["high-asr-family:a:f1"])
+        sig = signals[0]
+        self.assertEqual(sig["evidence"]["asr_ci95"], [0.60, None])
+        blob = json.dumps(signals)
+        self.assertNotIn("NaN", blob)
+        self.assertNotIn("Infinity", blob)
+        # Strict-JSON parse of the whole blob must succeed.
+        json.loads(blob, parse_constant=lambda x: (_ for _ in ()).throw(
+            ValueError(x)))
+
+    def test_roll_forward_skips_corrupt_registry_entries(self):
+        # A hand-edited or corrupted registry must not abort the whole
+        # roll-forward: non-dict entries are replaced by fresh signals.
+        lb = _leaderboard(_row("a", asr=0.3))
+        prev = _leaderboard(_row("a", asr=0.20))
+        signals = detect_signals(lb, previous_leaderboard=prev)
+        sid = next(s["signal_id"] for s in signals
+                   if s["type"] == "asr_regression")
+        reg = {"version": 1, "signals": {sid: "notadict"}}
+        out = roll_forward(reg, signals, lb, report_id="2026-10")
+        entry = out["signals"][sid]
+        self.assertEqual(entry["status"], "open")
+        self.assertEqual(entry["months_open"], 1)
+
+    def test_roll_forward_adopts_latest_success_bar(self):
+        # A re-emitted signal tracks the current report's promise, not
+        # the first month's bar.
+        prev = _leaderboard(_row("a", asr=0.20))
+        curr = _leaderboard(_row("a", asr=0.30))
+        reg = roll_forward(empty_registry(),
+                           detect_signals(curr, previous_leaderboard=prev),
+                           curr, report_id="2026-10")
+        sid = next(iter(reg["signals"]))
+        self.assertEqual(reg["signals"][sid]["success_check"]["value"], 0.20)
+        worse = _leaderboard(_row("a", asr=0.40))
+        reg = roll_forward(reg,
+                           detect_signals(worse, previous_leaderboard=curr),
+                           worse, report_id="2026-11")
+        entry = reg["signals"][sid]
+        self.assertEqual(entry["success_check"]["value"], 0.30)
+        self.assertEqual(entry["months_open"], 2)
+        self.assertEqual(entry["status"], "open")
 
 
 if __name__ == "__main__":

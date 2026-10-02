@@ -19,6 +19,7 @@ enforced structurally by the score bands, not by convention.
 from __future__ import annotations
 
 import copy
+import math
 from typing import Any
 
 # --- Signal taxonomy -------------------------------------------------------
@@ -61,18 +62,31 @@ DEFAULT_THRESHOLDS: dict[str, float] = {
 
 
 def _num(x: Any) -> float | None:
-    return x if isinstance(x, (int, float)) and not isinstance(x, bool) else None
+    """Coerce a numeric metric value, or None when it is not usable.
+
+    Booleans and non-finite floats (NaN/inf) are rejected: the former
+    are never metric values, the latter poison every comparison they
+    touch (NaN < threshold is False) and are not valid strict JSON.
+    """
+    if isinstance(x, bool) or not isinstance(x, (int, float)):
+        return None
+    if isinstance(x, float) and not math.isfinite(x):
+        return None
+    return x
 
 
 def _json_safe(value: Any) -> Any:
     """Recursively coerce a value into something json.dumps accepts.
 
-    Tuples become lists and anything that is not plain data is dropped,
+    Tuples become lists, non-finite floats become None (they are not
+    valid strict JSON), and anything that is not plain data is dropped,
     so detect_signals output stays JSON-safe even when the input
     payload carries malformed values.
     """
-    if value is None or isinstance(value, (bool, int, float, str)):
+    if value is None or isinstance(value, (bool, int, str)):
         return value
+    if isinstance(value, float):
+        return value if math.isfinite(value) else None
     if isinstance(value, (list, tuple)):
         return [_json_safe(v) for v in value]
     if isinstance(value, dict):
@@ -352,7 +366,11 @@ def check_success(signal: dict[str, Any], leaderboard: dict[str, Any],
                   run_payloads: dict[str, dict[str, Any]] | None = None,
                   ) -> bool:
     """Evaluate a signal's falsifiable success metric against new data."""
-    check = signal.get("success_check") or {}
+    if not isinstance(signal, dict):
+        return False
+    check = signal.get("success_check")
+    if not isinstance(check, dict):
+        return False
     kind = check.get("kind")
     adapter = check.get("adapter")
     value = _num(check.get("value"))
@@ -416,6 +434,10 @@ def roll_forward(registry: dict[str, Any], signals: list[dict[str, Any]],
     holds become implemented. Everything else stays open with its
     months_open counter incremented. Implemented signals stay
     implemented; the registry is append-only history.
+
+    A re-emitted open signal adopts the latest success bar: the
+    registry tracks the report's current promise, not the first one.
+    first_seen and months_open are never reset.
     """
     tracked = copy.deepcopy(registry.get("signals") or {})
     if not isinstance(tracked, dict):
@@ -425,6 +447,10 @@ def roll_forward(registry: dict[str, Any], signals: list[dict[str, Any]],
         sid = s["signal_id"]
         seen.add(sid)
         entry = tracked.get(sid)
+        if not isinstance(entry, dict):
+            # Corrupt or hand-edited registry entries are replaced by
+            # the fresh signal instead of crashing the roll-forward.
+            entry = None
         if entry is None:
             tracked[sid] = {
                 "status": "open",
@@ -435,6 +461,11 @@ def roll_forward(registry: dict[str, Any], signals: list[dict[str, Any]],
                 "success_check": s.get("success_check"),
             }
         elif entry.get("status") == "open":
+            # Latest bar wins: what the current report promises is what
+            # the registry grades against.
+            entry["title"] = s["title"]
+            entry["success_metric"] = s["success_metric"]
+            entry["success_check"] = s.get("success_check")
             if check_success(s, leaderboard, run_payloads):
                 entry["status"] = "implemented"
                 entry["implemented_in"] = report_id
@@ -444,6 +475,8 @@ def roll_forward(registry: dict[str, Any], signals: list[dict[str, Any]],
     # metric evaluated: a recovered adapter emits no regression signal,
     # and that silence is exactly the success condition.
     for sid, entry in tracked.items():
+        if not isinstance(entry, dict):
+            continue
         if sid in seen or entry.get("status") != "open":
             continue
         probe = {"signal_id": sid,

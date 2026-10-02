@@ -6,7 +6,7 @@
 
 A leaderboard that only ranks is a scoreboard. The signals layer is what
 makes the monthly State-of-Robustness reports actionable for model
-builders. Each monthly report emits `signal:*` items beyond the ranking.
+builders. Each monthly report emits signal items beyond the ranking.
 Every signal carries the evidence, a suggestion, a named action, and a
 falsifiable success metric. The next report checks the metric. This is
 the difference between publishing numbers and closing the loop.
@@ -79,7 +79,10 @@ open. An open signal whose `success_check` now holds becomes
 implemented. Everything else stays open and its `months_open` counter
 increments. Implemented signals stay implemented. The registry is
 append-only history, and the monthly report prints the open list with
-ages. A signal open for six months is itself a finding.
+ages. A signal open for six months is itself a finding. When a signal
+is re-emitted with a new success bar, the registry adopts the latest
+one: the registry grades against the current report's promise, not the
+first one. `first_seen` and `months_open` are never reset.
 
 ## Monthly workflow
 

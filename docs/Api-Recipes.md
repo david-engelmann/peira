@@ -27,8 +27,7 @@ Rules.
 - Send the key in the `Authorization` header. Never in the URL. URLs
   end up in logs and transcripts.
 - A revoked or missing key returns the `unauthorized` code from
-  Recipe 2. A key that lacks a scope returns `forbidden`. Treat both
-  as credential problems, not as data problems.
+  Recipe 2. Treat it as a credential problem, not as a data problem.
 - Rotate keys on your own schedule. Old keys keep working for seven
   days after rotation so in-flight analysis does not break.
 - Never paste a key into a shared artifact, a report, or a chat
@@ -75,7 +74,7 @@ Every error uses the `{error, code}` envelope. Match on `code`. The
 | ---- | ------- | ---------- |
 | `run_not_found` | No run with that id | Check the id, list `/v1/runs` |
 | `run_incomplete` | The run exists but is not complete | Poll `freshness.status` until `complete` |
-| `invalid_token` | Bad pagination cursor | Restart from the first page |
+| `invalid_cursor` | Bad pagination cursor | Restart from the first page |
 | `expired_token` | Cursor is too old | Restart from the first page |
 | `rate_limited` | Too many requests | Honor `retry_after_seconds`, then retry |
 | `dataset_not_found` | No such dataset version | List `/v1/datasets` |
@@ -83,7 +82,7 @@ Every error uses the `{error, code}` envelope. Match on `code`. The
 | `adapter_not_found` | No such adapter | List `/v1/adapters` |
 | `bad_request` | Your parameters are wrong | Read `detail`, fix, retry once |
 | `unauthorized` | Missing or revoked API key | Check Recipe 0, then retry |
-| `forbidden` | Key lacks the scope for this resource | Request a key with the scope |
+| `forbidden` | Reserved for future scopes; no current read-only key can produce it | Ignore unless a scope model is announced |
 | `internal` | Our problem | Retry with backoff, then report it |
 
 ## Recipe 3. Paginate with continuation tokens

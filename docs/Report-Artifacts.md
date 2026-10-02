@@ -22,7 +22,9 @@ forever. Every HTML artifact peira emits follows this contract.
 - The data source is bannered, never implied. A report rendered from
   placeholder data says MOCK DATA in a banner that survives
   screenshotting. Only an explicit `--data-source official` renders the
-  official banner.
+  official banner. The official banner is a self-declared label: the
+  renderer does not verify the data's provenance, it records what the
+  operator declared.
 
 `tests/test_report_html_contract.py` pins the contract. A future edit
 that adds a script tag, an external stylesheet, or an unescaped value
