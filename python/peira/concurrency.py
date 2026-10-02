@@ -39,7 +39,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
 
-from peira._rust import _impl as _rust
+from peira._rust import _impl as _rust, STRICT_RUST
 from peira.adapters.base import ProviderError
 from peira.dataset import atomic_write_text
 
@@ -732,6 +732,8 @@ def validate_transcript_entry(entry: Any, lineno: int) -> dict[str, Any]:
         try:
             _rust.records_validate_transcript_entry(entry, lineno)
         except (TypeError, ValueError, OverflowError):
+            if STRICT_RUST:
+                raise
             return validate_transcript_entry_py(entry, lineno)
         return entry
     return validate_transcript_entry_py(entry, lineno)

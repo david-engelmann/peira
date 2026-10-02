@@ -23,7 +23,7 @@ from heapq import nsmallest
 from pathlib import Path
 from typing import Any
 
-from peira._rust import _impl as _rust
+from peira._rust import _impl as _rust, STRICT_RUST
 from peira.dataset import iter_case_lines
 from peira.schema import GATE_KNOWN_IDS, validate_case_dict
 
@@ -99,7 +99,8 @@ def gate_paired_variants(valid_cases) -> GateResult:
             packed = _rust.gates_paired_variants(_to_rust_gate_cases(valid_cases))
             return _from_rust_gate_result(packed)
         except (TypeError, ValueError):
-            pass
+            if STRICT_RUST:
+                raise
     return _gate_paired_variants_py(valid_cases)
 
 
@@ -133,6 +134,8 @@ def gate_dedup(valid_cases) -> GateResult:
             packed = _rust.gates_dedup(_to_rust_gate_cases(valid_cases))
             return _from_rust_gate_result(packed)
         except (TypeError, ValueError):
+            if STRICT_RUST:
+                raise
             pass
     return _gate_dedup_py(valid_cases)
 
@@ -156,6 +159,8 @@ def gate_families(valid_cases) -> GateResult:
             )
             return _from_rust_gate_result(packed)
         except (TypeError, ValueError):
+            if STRICT_RUST:
+                raise
             pass
     return _gate_families_py(valid_cases)
 
@@ -190,6 +195,8 @@ def gate_target_coherence(valid_cases) -> GateResult:
             packed = _rust.gates_target_coherence(_to_rust_gate_cases(valid_cases))
             return _from_rust_gate_result(packed)
         except (TypeError, ValueError):
+            if STRICT_RUST:
+                raise
             pass
     return _gate_target_coherence_py(valid_cases)
 
@@ -220,6 +227,8 @@ def gate_pii_scan(valid_cases) -> GateResult:
             packed = _rust.gates_pii_scan(_to_rust_gate_cases(valid_cases))
             return _from_rust_gate_result(packed)
         except (TypeError, ValueError):
+            if STRICT_RUST:
+                raise
             pass
     return _gate_pii_scan_py(valid_cases)
 
@@ -248,6 +257,8 @@ def gate_score_reference(valid_cases) -> GateResult:
             packed = _rust.gates_score_reference(_to_rust_gate_cases(valid_cases))
             return _from_rust_gate_result(packed)
         except (TypeError, ValueError):
+            if STRICT_RUST:
+                raise
             pass
     return _gate_score_reference_py(valid_cases)
 
@@ -304,6 +315,8 @@ def gate_options_coherence(valid_cases) -> GateResult:
             packed = _rust.gates_options_coherence(_to_rust_gate_cases(valid_cases))
             return _from_rust_gate_result(packed)
         except (TypeError, ValueError):
+            if STRICT_RUST:
+                raise
             pass
     return _gate_options_coherence_py(valid_cases)
 

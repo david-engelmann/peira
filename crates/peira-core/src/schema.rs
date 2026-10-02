@@ -266,9 +266,11 @@ pub fn validate_case_dict(d: &Value) -> Vec<String> {
                     // adapters build per-call schemas from. Message
                     // strings are identical to the Python reference.
                     let input = v.get("input").unwrap().as_object().unwrap();
+                    let mut options_ok = true;
                     match input.get("options") {
                         None => {
                             errors.push(format!("{variant} input needs 'options'"));
+                            options_ok = false;
                         }
                         Some(Value::Array(opts))
                             if !opts.is_empty()
@@ -283,6 +285,21 @@ pub fn validate_case_dict(d: &Value) -> Vec<String> {
                                 "bad {variant} input options: expected non-empty list \
                                  of non-empty strings"
                             ));
+                        }
+                    }
+                    // G9 (near-dedup) concatenates prompts as strings; a
+                    // non-string prompt would crash the gate run instead of
+                    // producing a finding. Fail at load with a clear error.
+                    // Message is byte-identical to the Python reference.
+                    // Skip when options is missing (mirrors Python's
+                    // `continue` after the missing-options error).
+                    if options_ok {
+                        if let Some(prompt) = input.get("prompt") {
+                            if !prompt.is_string() {
+                                errors.push(format!(
+                                    "bad {variant} input prompt: expected string"
+                                ));
+                            }
                         }
                     }
                 }

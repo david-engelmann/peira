@@ -31,7 +31,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-from peira._rust import _impl as _rust
+from peira._rust import _impl as _rust, STRICT_RUST
 
 _TABLE_PATH = Path(__file__).parent / "data" / "pricing.json"
 
@@ -189,5 +189,6 @@ def cost_usd(
         try:
             return _rust.pricing_cost_usd(model, tokens_in, tokens_out, table)
         except (TypeError, ValueError, OverflowError):
-            pass
+            if STRICT_RUST:
+                raise
     return cost_usd_py(model, tokens_in, tokens_out, table)

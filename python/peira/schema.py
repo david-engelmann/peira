@@ -19,7 +19,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
-from peira._rust import _impl as _rust
+from peira._rust import _impl as _rust, STRICT_RUST
 from peira.families import FAMILY_IDS
 
 PRIMITIVES = ("choice", "score", "abstain")
@@ -375,6 +375,15 @@ def _validate_case_dict_py(d: dict[str, Any]) -> list[str]:
                         f"bad {variant} input options: expected "
                         "non-empty list of non-empty strings"
                     )
+                # G9 (near-dedup) concatenates prompts as strings; a
+                # non-string prompt would crash the gate run instead of
+                # producing a finding. Fail at load with a clear error.
+                if "prompt" in v["input"] and not isinstance(
+                    v["input"]["prompt"], str
+                ):
+                    errors.append(
+                        f"bad {variant} input prompt: expected string"
+                    )
         benign = d.get("benign")
         if isinstance(benign, dict):
             if "expected_decision" not in benign:
@@ -462,6 +471,8 @@ def validate_case_dict(d: dict[str, Any]) -> list[str]:
         try:
             return _rust.validate_case_dict(d)
         except (TypeError, ValueError):
+            if STRICT_RUST:
+                raise
             # Values with no JSON representation (non-finite floats,
             # integers wider than u64, non-string keys) cannot cross the
             # boundary; validate them with the reference implementation.

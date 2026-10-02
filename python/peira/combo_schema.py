@@ -40,7 +40,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
-from peira._rust import _impl as _rust
+from peira._rust import _impl as _rust, STRICT_RUST
 
 # Short codes for families used in combo pairs. The full family id is
 # recoverable via COMBO_PAIRS below; codes keep case ids readable.
@@ -150,7 +150,8 @@ def parse_combo_case_id(case_id: str) -> tuple[str, int, str]:
             # fall back so those parse exactly as the reference does.
             return _rust.combo_parse_case_id(case_id)
         except (TypeError, ValueError):
-            pass
+            if STRICT_RUST:
+                raise
     return _parse_combo_case_id_py(case_id)
 
 

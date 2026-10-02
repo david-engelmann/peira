@@ -3,8 +3,11 @@
 
 The repo is the product's public face. Strategy (dominance intent, speed
 language, vendor plays, internal memos) must never be committed. Approved
-factual uses go in .public-surface-allowlist (one regex per line); only the
-maintainer edits that file.
+factual uses of the word "audits" go in .public-surface-allowlist (one
+regex per line); only the maintainer edits that file. The allowlist
+applies ONLY to the "audits" pattern  -  no other banned phrase can be
+allowlisted (if a legitimate use of another phrase arises, edit the
+BANNED list in this script instead).
 """
 
 from __future__ import annotations
