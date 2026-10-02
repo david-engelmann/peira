@@ -71,7 +71,10 @@ mod tests {
     #[test]
     fn basic_options_sorted_deduped() {
         let input = json!({"options": ["deny", "approve", "deny"]});
-        assert_eq!(labels_of(&input, "choice"), vec!["approve", "deny", "other"]);
+        assert_eq!(
+            labels_of(&input, "choice"),
+            vec!["approve", "deny", "other"]
+        );
     }
 
     #[test]

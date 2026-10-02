@@ -67,12 +67,28 @@ class TestBackendUnderTest(unittest.TestCase):
 
 
 class TestComboPairIdParity(unittest.TestCase):
-    def test_known_pairs_both_orders(self):
-        for pair_id, (fa, fb) in COMBO_PAIRS.items():
-            self.assertEqual(combo_pair_id(fa, fb), pair_id)
-            self.assertEqual(combo_pair_id(fb, fa), pair_id)
-            self.assertEqual(_combo_pair_id_py(fa, fb), pair_id)
-            self.assertEqual(_combo_pair_id_py(fb, fa), pair_id)
+    def test_dfl_ind_pair_both_orders(self):
+        fa, fb = COMBO_PAIRS["combo-dfl-ind"]
+        self.assertEqual(combo_pair_id(fa, fb), "combo-dfl-ind")
+        self.assertEqual(combo_pair_id(fb, fa), "combo-dfl-ind")
+        self.assertEqual(_combo_pair_id_py(fa, fb), "combo-dfl-ind")
+        self.assertEqual(_combo_pair_id_py(fb, fa), "combo-dfl-ind")
+
+    def test_san_csp_quirk_matches_reference(self):
+        # The reference table stores ("score_anchoring",
+        # "confidence_spoofing") but looks up the SORTED pair, so
+        # combo-san-csp never resolves: both backends raise the same
+        # KeyError. Parity, not a fix.
+        _assert_raises(
+            self, KeyError,
+            "'unknown combo pair: score_anchoring x confidence_spoofing'",
+            combo_pair_id, "score_anchoring", "confidence_spoofing",
+        )
+        _assert_raises(
+            self, KeyError,
+            "'unknown combo pair: score_anchoring x confidence_spoofing'",
+            _combo_pair_id_py, "score_anchoring", "confidence_spoofing",
+        )
 
     def test_unknown_pair_key_error(self):
         _assert_raises(
@@ -165,13 +181,26 @@ class TestParseComboCaseIdParity(unittest.TestCase):
                     self.assertEqual(_parse_combo_case_id_py(case_id), expected)
 
     def test_malformed(self):
-        for bad in ("combo-dfl-ind-0001", "nodashes", "", "combo-dfl-ind-a"):
+        for bad in ("", "nodashes", "a-b"):
             _assert_raises(
                 self, ValueError, f"malformed combo case id: {bad}",
                 parse_combo_case_id, bad,
             )
             _assert_raises(
                 self, ValueError, f"malformed combo case id: {bad}",
+                _parse_combo_case_id_py, bad,
+            )
+
+    def test_three_parts_unknown_pair(self):
+        # rsplit("-", 2) yields 3 parts for these, so they fail the
+        # pair lookup, not the malformed check.
+        for bad in ("combo-dfl-ind", "combo-dfl-ind-0001", "combo-dfl-ind-a"):
+            _assert_raises(
+                self, ValueError, f"unknown combo pair in case id: {bad}",
+                parse_combo_case_id, bad,
+            )
+            _assert_raises(
+                self, ValueError, f"unknown combo pair in case id: {bad}",
                 _parse_combo_case_id_py, bad,
             )
 
@@ -305,11 +334,11 @@ class TestValidateComboDictParity(unittest.TestCase):
         d = _valid_case()
         del d["primary_outcome"]
         _assert_raises(
-            self, KeyError, '"\'primary_outcome\'"',
+            self, KeyError, "'primary_outcome'",
             validate_combo_dict, d,
         )
         _assert_raises(
-            self, KeyError, '"\'primary_outcome\'"',
+            self, KeyError, "'primary_outcome'",
             _validate_combo_dict_py, d,
         )
 
@@ -360,11 +389,23 @@ class TestValidateComboDictParity(unittest.TestCase):
             with self.assertRaises(AttributeError):
                 _validate_combo_dict_py(d)
 
-    def test_non_dict_input_raises(self):
-        with self.assertRaises(AttributeError):
-            validate_combo_dict("nope")
-        with self.assertRaises(AttributeError):
-            _validate_combo_dict_py("nope")
+    def test_non_dict_input(self):
+        # A str input hits the `key not in d` substring check: every
+        # required key is "missing". An int/None input raises TypeError
+        # from the same check. The wrapper never dispatches on
+        # non-dicts, so both modes agree trivially.
+        expected = [f"missing required key: {k}" for k in (
+            "case_id", "family", "primitive", "severity", "benign",
+            "attacked", "combo_arm", "combo_substrate", "combo_pair",
+            "transform_order",
+        )]
+        self.assertEqual(validate_combo_dict("nope"), expected)
+        self.assertEqual(_validate_combo_dict_py("nope"), expected)
+        for bad in (42, None, 3.5):
+            with self.assertRaises(TypeError):
+                validate_combo_dict(bad)
+            with self.assertRaises(TypeError):
+                _validate_combo_dict_py(bad)
 
     def test_non_json_values_agree(self):
         # A set is not JSON-shaped: the Rust path falls back to the

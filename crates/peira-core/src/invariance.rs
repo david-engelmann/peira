@@ -101,7 +101,8 @@ mod tests {
 
     #[test]
     fn some_flips_positions() {
-        let r = invariance_report("approve", &strs(&["approve", "deny", "approve", "deny"])).unwrap();
+        let r =
+            invariance_report("approve", &strs(&["approve", "deny", "approve", "deny"])).unwrap();
         assert_eq!(r.n_variants, 4);
         assert_eq!(r.n_flips, 2);
         assert_eq!(r.flip_rate, 0.5);

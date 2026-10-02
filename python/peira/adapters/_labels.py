@@ -64,7 +64,13 @@ def candidate_labels(
     """
     if _rust is not None and isinstance(case_input, dict):
         try:
-            return _rust.labels_candidate_labels(case_input, primitive)
+            # The reference only reads `options` when it is a `list`
+            # (a tuple is ignored, not treated as options); the
+            # converter erases the list/tuple distinction, so keep
+            # non-list options on the pure-Python path.
+            options = case_input.get("options")
+            if options is None or isinstance(options, list):
+                return _rust.labels_candidate_labels(case_input, primitive)
         except (TypeError, ValueError):
             pass
     return _candidate_labels_py(case_input, primitive)

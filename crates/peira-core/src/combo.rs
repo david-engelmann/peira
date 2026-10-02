@@ -156,15 +156,9 @@ pub fn combo_pair_id(family_a: &str, family_b: &str) -> Result<String, ComboErro
 /// Build the canonical case id for one arm of a substrate.
 ///
 /// Mirrors `python/peira/combo_schema.py::combo_case_id`.
-pub fn combo_case_id(
-    pair_id: &str,
-    substrate_idx: i64,
-    arm: &str,
-) -> Result<String, ComboError> {
+pub fn combo_case_id(pair_id: &str, substrate_idx: i64, arm: &str) -> Result<String, ComboError> {
     if pair_families(pair_id).is_none() {
-        return Err(ComboError::key(format!(
-            "unknown combo pair id: {pair_id}"
-        )));
+        return Err(ComboError::key(format!("unknown combo pair id: {pair_id}")));
     }
     if !COMBO_ARMS.contains(&arm) {
         return Err(ComboError::value(format!("unknown combo arm: {arm}")));
@@ -201,9 +195,7 @@ fn parse_py_int(s: &str) -> Option<i64> {
 /// Mirrors `python/peira/combo_schema.py::parse_combo_case_id`.
 pub fn parse_combo_case_id(case_id: &str) -> Result<(String, i64, String), ComboError> {
     let mut parts = case_id.rsplitn(3, '-');
-    let (Some(arm), Some(idx_s), Some(pair_id)) =
-        (parts.next(), parts.next(), parts.next())
-    else {
+    let (Some(arm), Some(idx_s), Some(pair_id)) = (parts.next(), parts.next(), parts.next()) else {
         return Err(ComboError::value(format!(
             "malformed combo case id: {case_id}"
         )));
@@ -219,9 +211,7 @@ pub fn parse_combo_case_id(case_id: &str) -> Result<(String, i64, String), Combo
         )));
     }
     let idx = parse_py_int(idx_s).ok_or_else(|| {
-        ComboError::value(format!(
-            "malformed substrate index in case id: {case_id}"
-        ))
+        ComboError::value(format!("malformed substrate index in case id: {case_id}"))
     })?;
     Ok((pair_id.to_owned(), idx, arm.to_owned()))
 }
@@ -357,9 +347,7 @@ pub enum ValidateError {
 /// exactly, including error order and early returns: missing keys
 /// return immediately; a case-id parse failure returns immediately;
 /// everything else accumulates.
-pub fn validate_combo_dict(
-    d: &Map<String, Value>,
-) -> Result<Vec<String>, ValidateError> {
+pub fn validate_combo_dict(d: &Map<String, Value>) -> Result<Vec<String>, ValidateError> {
     let mut errors: Vec<String> = Vec::new();
     for key in REQUIRED_KEYS {
         if !d.contains_key(key) {
@@ -412,11 +400,13 @@ pub fn validate_combo_dict(
         ));
     }
     // `primary_outcome` is not in the required-keys list: when it is
-    // absent the reference's `d["primary_outcome"]` raises KeyError,
-    // which propagates to the caller (not into the error list).
-    let primary_outcome = d.get("primary_outcome").ok_or_else(|| {
-        ValidateError::Key(ComboError::key(py_repr::py_repr_str("primary_outcome")))
-    })?;
+    // absent the reference's `d["primary_outcome"]` raises
+    // KeyError("primary_outcome"), which propagates to the caller (not
+    // into the error list). The message is the bare key: `str()` of the
+    // raised KeyError adds the quotes, like the reference.
+    let primary_outcome = d
+        .get("primary_outcome")
+        .ok_or_else(|| ValidateError::Key(ComboError::key("primary_outcome".to_owned())))?;
     if !matches!(primary_outcome, Value::String(s) if COMBO_PRIMARY_OUTCOMES.contains(&s.as_str()))
     {
         errors.push(format!(
@@ -497,9 +487,20 @@ mod tests {
             combo_pair_id("indirection", "distractor_flooding").unwrap(),
             "combo-dfl-ind"
         );
+    }
+
+    #[test]
+    fn pair_id_san_csp_quirk_matches_reference() {
+        // The reference table stores ("score_anchoring",
+        // "confidence_spoofing") but looks up the SORTED pair
+        // ("confidence_spoofing", "score_anchoring"), so combo-san-csp
+        // never resolves. Verified against the Python reference: it
+        // raises the same KeyError. Parity, not a fix.
+        let err = combo_pair_id("score_anchoring", "confidence_spoofing").unwrap_err();
+        assert!(err.is_key_error());
         assert_eq!(
-            combo_pair_id("score_anchoring", "confidence_spoofing").unwrap(),
-            "combo-san-csp"
+            err.message(),
+            "unknown combo pair: score_anchoring x confidence_spoofing"
         );
     }
 
@@ -550,11 +551,17 @@ mod tests {
 
     #[test]
     fn parse_malformed_variants() {
-        for bad in ["", "combo-dfl-ind", "combo-dfl-ind-0001", "a-b"] {
+        for bad in ["", "a-b"] {
+            let err = parse_combo_case_id(bad).unwrap_err();
+            assert_eq!(err.message(), &format!("malformed combo case id: {bad}"));
+        }
+        // These split into 3 parts via rsplit("-", 2), so they are not
+        // "malformed": they fail the pair lookup instead.
+        for bad in ["combo-dfl-ind", "combo-dfl-ind-0001"] {
             let err = parse_combo_case_id(bad).unwrap_err();
             assert_eq!(
                 err.message(),
-                &format!("malformed combo case id: {bad}")
+                &format!("unknown combo pair in case id: {bad}")
             );
         }
     }
@@ -588,14 +595,8 @@ mod tests {
     #[test]
     fn parse_index_whitespace_and_sign() {
         // Mirrors Python int(): surrounding whitespace and +/- signs.
-        assert_eq!(
-            parse_combo_case_id("combo-dfl-ind- 12 -a").unwrap().1,
-            12
-        );
-        assert_eq!(
-            parse_combo_case_id("combo-dfl-ind-+0007-a").unwrap().1,
-            7
-        );
+        assert_eq!(parse_combo_case_id("combo-dfl-ind- 12 -a").unwrap().1, 12);
+        assert_eq!(parse_combo_case_id("combo-dfl-ind-+0007-a").unwrap().1, 7);
     }
 
     #[test]
@@ -690,7 +691,10 @@ mod tests {
         assert!(!py_json_eq(&json!(1), &json!(1.5)));
         assert!(py_json_eq(&json!(0), &json!(false)));
         // Precision: 2**53+1 != 2**53 as f64.
-        assert!(!py_json_eq(&json!(9007199254740993i64), &json!(9007199254740992.0)));
+        assert!(!py_json_eq(
+            &json!(9007199254740993i64),
+            &json!(9007199254740992.0)
+        ));
         assert!(py_json_eq(
             &json!({"a": [1, {"b": 2.0}]}),
             &json!({"a": [1.0, {"b": 2}]})
@@ -745,7 +749,7 @@ mod tests {
         match err {
             ValidateError::Key(e) => {
                 assert!(e.is_key_error());
-                assert_eq!(e.message(), "'primary_outcome'");
+                assert_eq!(e.message(), "primary_outcome");
             }
             other => panic!("expected Key error, got {other:?}"),
         }
