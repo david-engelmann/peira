@@ -12,7 +12,7 @@
     "ingest-mock": "python3 scripts/ingest.py --mock assets/mock-artifacts --out src/data/results.json",
     "prebuild": "npm run ingest-mock",
     "preview": "astro preview",
-    "test": "node --test tests/site.test.js tests/site-views.test.js"
+    "test": "node --test tests/site.test.js tests/site-views.test.js tests/site-methodology.test.js"
   },
   "type": "module",
   "version": "1.0.0",
