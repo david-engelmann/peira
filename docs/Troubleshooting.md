@@ -1401,7 +1401,7 @@ Cause: `--out` points somewhere unwritable: a missing parent
 directory, or a permissions problem. Fix: create the directory first,
 or pick a writable path.
 
-**`error: cannot write leaderboard JSON to <out> (...)` (from `peira dashboard leaderboard`)**
+**`error: cannot write leaderboard output to <out> (...)` (from `peira dashboard leaderboard`)**
 Cause: `--out` points somewhere unwritable: a missing parent
 directory, or a permissions problem. Fix: create the directory first,
 or pick a writable path.

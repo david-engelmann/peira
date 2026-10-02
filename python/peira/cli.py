@@ -2958,7 +2958,7 @@ def cmd_dashboard_leaderboard(args: argparse.Namespace) -> int:
         try:
             Path(args.out).write_text(text, encoding="utf-8")
         except OSError as e:
-            print(f"error: cannot write leaderboard JSON to {args.out} ({e})",
+            print(f"error: cannot write leaderboard output to {args.out} ({e})",
                   file=sys.stderr)
             return EXIT_USER_ERROR
         print(f"leaderboard: {args.out}")
