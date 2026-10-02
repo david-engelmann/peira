@@ -353,7 +353,8 @@ class TestQwenThinkingDisabled(unittest.TestCase):
 
 class TestAnthropicOpusReconciliation(unittest.TestCase):
     """D3: claude-opus-5-5 / claude-sonnet-5-5 route to structured
-    outputs and omit temperature; the default pin is unchanged."""
+    outputs and omit temperature. D3 decided 2026-10-02 (latest only):
+    the default pin is claude-sonnet-5-5."""
 
     def _setup(self, model):
         mod, calls, created = _make_anthropic(
