@@ -100,6 +100,8 @@ jobs:
       - run: python3 scripts/gen_cli_reference.py --check docs/CLI.md
       # The family registry and docs/Taxonomy.md must never drift.
       - run: python3 scripts/check_families.py
+      # Notes tier-words must match severity; scale wording must match 0-1 convention (A4).
+      - run: python3 scripts/check_notes_tier_words.py
       # Docs pins of the Trial manifest version must match
       # dataset/trial/manifest.json (PR #201 missed one).
       - run: python3 scripts/check_trial_version_pins.py
