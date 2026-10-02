@@ -25,6 +25,7 @@ Cluster C (adapters/CLI/glue): adapters/*, cli, dashboard, templates,
 | # | Module | Risk | Coverage | Slice PR |
 |---|--------|------|----------|----------|
 | 1 | lottery.py (R-09 lottery index) | LOW | strong (34 existing + 37 Rust unit + 15 parity) | rust-max slice 1: this PR |
+| 2 | _labels.py + invariance.py + combo_schema.py validation/ID fns (C-1) | LOW | weak/moderate existing + 40 Rust unit + 62 parity | rust-max slice 2: this PR |
 
 ## Phase 1 results: Cluster A (metrics) audit complete
 

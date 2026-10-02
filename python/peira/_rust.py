@@ -3,7 +3,9 @@
 `peira._core` is the PyO3 extension built from `crates/peira-python`
 (see `scripts/build_core_ext.py`). It is never required: import it here,
 and every hot path in `peira.metrics` / `peira.schema` / `peira.gates`
-/ `peira.compare` / `peira.runner` / `peira.concurrency` dispatches to it
+/ `peira.compare` / `peira.runner` / `peira.concurrency` / `peira.lottery`
+/ `peira.combo_schema` / `peira.probes.invariance` /
+`peira.adapters._labels` dispatches to it
 when present and falls back to the pure-Python reference implementation
 otherwise. Both backends compute the same values up to ~1 ulp of float
 summation order (see `peira.metrics`); the one larger documented exception

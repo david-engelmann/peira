@@ -12,11 +12,14 @@
 
 pub mod artifact;
 pub mod canonical;
+pub mod combo;
 pub mod compare;
 pub mod dataset;
 pub mod env;
 pub mod execution;
 pub mod gates;
+pub mod invariance;
+pub mod labels;
 pub mod lottery;
 pub mod metrics;
 pub mod pricing;
