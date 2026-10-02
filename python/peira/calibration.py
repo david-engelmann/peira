@@ -13,6 +13,8 @@ against outcomes, and the diagram is the measurement.
 
 import html
 
+from peira._rust import _impl as _rust, STRICT_RUST
+
 # M-2: confidence-elicitation metadata per adapter. The canonical source
 # of truth is the ``confidence_source`` class attribute on the adapter
 # classes (see ``peira.adapters.base.BaseAdapter``); this static mapping
@@ -170,6 +172,85 @@ def _frame(title: str, xlabel: str, ylabel: str, body: str) -> str:
     )
 
 
+def _clean_str(value: str) -> bool:
+    """True when ``value`` has no lone surrogates (PyO3 extracts to String)."""
+    try:
+        value.encode("utf-8")
+    except UnicodeEncodeError:
+        return False
+    return True
+
+
+def _rust_num_ok(value: object) -> bool:
+    """True when a numeric field is clean for the Rust calibration core.
+
+    The core mirrors the twin's ``int()``/``float()`` coercions for
+    None/bool/int/float only, and only for *exact* types: a subclass
+    overriding ``__int__``/``__float__`` would make the twin honor the
+    override while the binding reads the raw C value, so subclasses go
+    to the twin. Strings are gated out (the twin parses them, e.g.
+    ``int("5")``); out-of-i64-range ints and non-finite floats are gated
+    out (the twin's coercions diverge from ``as`` casts there). The twin
+    handles every gated-out input.
+    """
+    if value is None:
+        return True
+    t = type(value)
+    if t is bool:
+        return True
+    if t is int:
+        return -(2**63) <= value <= 2**63 - 1
+    if t is float:
+        return abs(value) < 2**63
+    return False
+
+
+def _require_reliability_rust_input(block: object) -> bool:
+    """Gate for the Rust reliability-diagram core.
+
+    True when ``block`` is a dict of JSON-native values (exact types,
+    no subclasses — see :func:`_rust_num_ok`) whose numeric fields are
+    None/bool/int/float. The core reproduces the twin byte-for-byte on
+    gated inputs; anything else falls back to the pure-Python twin.
+    """
+    if type(block) is not dict:
+        return False
+    if not _rust_num_ok(block.get("n", 0)):
+        return False
+    bins = block.get("bins")
+    if bins is None:
+        return True
+    if type(bins) is not list:
+        return False
+    for b in bins:
+        if type(b) is not dict:
+            return False
+        for key in ("mean_forecast", "mean_outcome", "n"):
+            if not _rust_num_ok(b.get(key)):
+                return False
+    return True
+
+
+def _require_risk_coverage_rust_input(sp: object) -> bool:
+    """Gate for the Rust selective-risk-curve core (same contract)."""
+    if type(sp) is not dict:
+        return False
+    if not _rust_num_ok(sp.get("n", 0)):
+        return False
+    curve = sp.get("risk_coverage_curve")
+    if curve is None:
+        return True
+    if type(curve) is not list:
+        return False
+    for pt in curve:
+        if type(pt) is not list or len(pt) != 2:
+            return False
+        c, r = pt
+        if not _rust_num_ok(c) or not _rust_num_ok(r):
+            return False
+    return True
+
+
 def _withheld_html(what: str, n: int) -> str:
     return (
         f"<p><em>{html.escape(what)} diagram withheld:</em> insufficient"
@@ -177,15 +258,12 @@ def _withheld_html(what: str, n: int) -> str:
     )
 
 
-def reliability_diagram_svg(block: dict, title: str) -> str:
-    """Inline SVG reliability diagram from a ``reliability_bins`` block.
+def _reliability_diagram_svg_py(block: dict, title: str) -> str:
+    """Pure-Python twin of :func:`reliability_diagram_svg`.
 
-    ``block`` is one arm of ``artifact["metrics"]["calibration"]
-    ["reliability_bins"]``: ``{"bins": [...], "n": n, "sufficient": bool}``.
-    Each bin plots mean self-reported confidence (x) against observed
-    accuracy (y); the dashed diagonal is perfect calibration; circle
-    area scales with bin count. Withheld (or malformed) blocks render a
-    short placeholder paragraph, never a traceback.
+    The reference implementation and the ``PEIRA_NO_RUST=1`` fallback.
+    Withheld (or malformed) blocks render a short placeholder paragraph,
+    never a traceback.
     """
     if not isinstance(block, dict):
         return _withheld_html("Reliability", 0)
@@ -230,14 +308,11 @@ def reliability_diagram_svg(block: dict, title: str) -> str:
     )
 
 
-def risk_coverage_diagram_svg(sp: dict, title: str) -> str:
-    """Inline SVG selective-risk curve from a ``selective_prediction`` block.
+def _risk_coverage_diagram_svg_py(sp: dict, title: str) -> str:
+    """Pure-Python twin of :func:`risk_coverage_diagram_svg`.
 
-    ``sp`` carries ``risk_coverage_curve`` ([[coverage, risk], ...]),
-    ``n`` and ``sufficient``. The curve shows selective risk (error rate
-    on the retained set) as coverage shrinks toward the highest
-    self-reported-confidence predictions. Withheld (or malformed) blocks
-    render a placeholder.
+    The reference implementation and the ``PEIRA_NO_RUST=1`` fallback.
+    Withheld (or malformed) blocks render a placeholder.
     """
     if not isinstance(sp, dict):
         return _withheld_html("Selective-risk", 0)
@@ -268,3 +343,61 @@ def risk_coverage_diagram_svg(sp: dict, title: str) -> str:
             f" {_f4(r)}</title></circle>"
         )
     return _frame(title, "coverage", "selective risk", body)
+
+
+# ---------------------------------------------------------------------------
+# Rust-dispatched entry points (rust-max slice 7)
+# ---------------------------------------------------------------------------
+
+
+def reliability_diagram_svg(block: dict, title: str) -> str:
+    """Inline SVG reliability diagram from a ``reliability_bins`` block.
+
+    ``block`` is one arm of ``artifact["metrics"]["calibration"]
+    ["reliability_bins"]``: ``{"bins": [...], "n": n, "sufficient": bool}``.
+    Each bin plots mean self-reported confidence (x) against observed
+    accuracy (y); the dashed diagonal is perfect calibration; circle
+    area scales with bin count. Withheld (or malformed) blocks render a
+    short placeholder paragraph, never a traceback.
+
+    Dispatches to the Rust core when available; the pure-Python twin
+    :func:`_reliability_diagram_svg_py` is the fallback.
+    """
+    if (
+        _rust is not None
+        and type(title) is str
+        and _clean_str(title)
+        and _require_reliability_rust_input(block)
+    ):
+        try:
+            return _rust.calibration_reliability_diagram_svg(block, title)
+        except (TypeError, ValueError, OverflowError):
+            if STRICT_RUST:
+                raise
+    return _reliability_diagram_svg_py(block, title)
+
+
+def risk_coverage_diagram_svg(sp: dict, title: str) -> str:
+    """Inline SVG selective-risk curve from a ``selective_prediction`` block.
+
+    ``sp`` carries ``risk_coverage_curve`` ([[coverage, risk], ...]),
+    ``n`` and ``sufficient``. The curve shows selective risk (error rate
+    on the retained set) as coverage shrinks toward the highest
+    self-reported-confidence predictions. Withheld (or malformed) blocks
+    render a placeholder.
+
+    Dispatches to the Rust core when available; the pure-Python twin
+    :func:`_risk_coverage_diagram_svg_py` is the fallback.
+    """
+    if (
+        _rust is not None
+        and type(title) is str
+        and _clean_str(title)
+        and _require_risk_coverage_rust_input(sp)
+    ):
+        try:
+            return _rust.calibration_risk_coverage_diagram_svg(sp, title)
+        except (TypeError, ValueError, OverflowError):
+            if STRICT_RUST:
+                raise
+    return _risk_coverage_diagram_svg_py(sp, title)
