@@ -94,7 +94,10 @@ FAILURE_EXIT = 2
 # build cannot see (or be polluted by) the rest of the worktree, and so no
 # build artifacts (build/, *.egg-info/) are written into the worktree.
 STAGE_FILES = ["pyproject.toml", "README.md", "LICENSE", "LICENSE-CC-BY-4.0"]
-STAGE_DIRS = ["python"]
+# crates/ is required for the maturin backend ([tool.maturin] manifest-path
+# points at crates/peira-python/Cargo.toml). Added when the maturin backend
+# (D-43) landed; the smoke previously staged only the setuptools inputs.
+STAGE_DIRS = ["python", "crates"]
 
 EXPECTED_GATE_COUNT = 9  # G1..G9 in peira.gates.run_gates
 
