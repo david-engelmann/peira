@@ -16,7 +16,7 @@ Every internal LLM-assisted judgment must satisfy all five requirements:
    per failure mode ("does this case exhibit X: yes/no"), never a free
    score or a holistic grade. Multi-aspect assessments decompose into
    one binary verdict each. Continuous scores invite calibration drift
-   that nobody audits; binary verdicts make error rates countable.
+   that goes unaudited; binary verdicts make error rates countable.
 
 2. **Written rationale (critique).** Every verdict ships with a short
    written rationale quoting the evidence it rests on. The rationale is
@@ -56,7 +56,7 @@ its changelog.
 No adapter, and no model from the same family as the adapter under test,
 may serve as a judge or grader over that adapter's leaderboard entry.
 This is a protocol invariant, not a suggestion (see D-41). It is
-currently moot for scoring — scoring is deterministic — and it is
+currently moot for scoring since scoring is deterministic, and it is
 written down so the day any model-graded check is added, a future
 contributor cannot violate it by accident. peira's blind-holdout design
 (pseudonymous call IDs, zero gold in adapter-visible context) already

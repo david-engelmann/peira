@@ -82,6 +82,34 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
 - Dataset version moves from 2.4.0 to 2.4.1. Per-file SHA-256 digests
   re-sealed in `dataset/v2/cases/manifest.json`.
 
+### Added EB-35 attack-strength sweep curves
+
+- `peira run --budget-grid 1,2,4,8,16` runs an attack-strength sweep.
+  Each case's attacked arm runs max(grid) queries and the artifact
+  records budget-to-first-flip per case. `peira sweep-report` renders
+  per-family ASR-vs-budget curves with Wilson 95 percent CIs plus the
+  budget-to-first-flip distribution. `peira sweep-dimensions` lists the
+  strength-dimension registry. Sweep runs are analyzable but never
+  rankable.
+- Resume refuses sweep/single-shot mixing: a sweep partial resumed
+  without `--budget-grid` (or a single-shot partial resumed with one)
+  exits 2 with a documented error instead of silently running the
+  wrong experiment. Grid or dimension mismatches on resume keep the
+  original refusal message.
+- `peira compare` refuses to pool sweep artifacts against single-shot
+  artifacts or against sweeps with a different budget grid or
+  strength dimension ("sweep config differs"); matching sweep pairs
+  still compare.
+- `peira sweep-report` turns inconsistent or malformed sweep results
+  into a documented exit-2 error instead of a traceback.
+- `peira run --budget-grid --adapter mock` builds the mock simulation
+  script on the sweep dispatch layout (one entry per case per
+  attempt). The previous single-shot layout answered sweep calls
+  from the wrong cases' entries and silently poisoned the artifact.
+- The sealed `eligibility_notes` list now rides alongside
+  `ranking_ineligible_reason`, so `runs_registry` reports the sweep
+  ineligibility reason instead of "ranking eligibility not recorded".
+
 ### Added EB-41 benign twins for over-refusal
 
 - `scripts/author_benign_twins.py`: generator producing harmless

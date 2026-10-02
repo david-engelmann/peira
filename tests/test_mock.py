@@ -300,5 +300,91 @@ class TestRunNonce(unittest.TestCase):
         self.assertTrue(result.attacked.malformed)
 
 
+class TestScriptForSweepLayout(unittest.TestCase):
+    """The script layout must match the sweep driver's dispatch.
+
+    Regression: ``peira run --adapter mock --budget-grid`` built the
+    script with the single-shot 2-per-case layout while the sweep
+    driver spaces cases by max(grid)+1, so sweep calls were answered
+    from the wrong cases' script entries (benign scored against an
+    attacked entry) and the artifact was silently garbage. Every
+    (case, attempt) the driver dispatches must have its own entry.
+    """
+
+    def _sweep_cases(self, n=3):
+        return load_cases(REPO_ROOT / "dataset" / "trial-demo")[:n]
+
+    def test_default_layout_unchanged(self):
+        from peira.runner import _pseudonymous_call_id
+        cases = self._sweep_cases()
+        script = MockAdapter.script_for(
+            cases, seed=7, run_nonce="sweep-layout-a")
+        self.assertEqual(len(script), 2 * len(cases))
+        for i, case in enumerate(cases):
+            benign = script[_pseudonymous_call_id("sweep-layout-a", 7, 2 * i)]
+            attacked = script[
+                _pseudonymous_call_id("sweep-layout-a", 7, 2 * i + 1)]
+            self.assertEqual(benign.arm, "benign")
+            self.assertEqual(attacked.arm, "attacked")
+            self.assertEqual(benign.hash_id, case.case_id)
+
+    def test_sweep_layout_keys_every_driver_call(self):
+        from peira.runner import _pseudonymous_call_id
+        cases = self._sweep_cases()
+        grid = [1, 2]
+        stride = max(grid) + 1
+        nonce = "sweep-layout-b"
+        script = MockAdapter.script_for(
+            cases, seed=7, run_nonce=nonce,
+            dispatch_stride=stride, attacked_attempts=max(grid))
+        self.assertEqual(len(script), len(cases) * (1 + max(grid)))
+        for i in range(len(cases)):
+            base = stride * i
+            entry = script[_pseudonymous_call_id(nonce, 7, base)]
+            self.assertEqual(entry.arm, "benign")
+            for a in range(max(grid)):
+                attempt = script[
+                    _pseudonymous_call_id(nonce, 7, base + 1 + a)]
+                self.assertEqual(attempt.arm, "attacked")
+
+    def test_sweep_layout_too_tight_is_refused(self):
+        cases = self._sweep_cases(1)
+        with self.assertRaises(ValueError):
+            MockAdapter.script_for(
+                cases, seed=7, run_nonce="sweep-layout-c",
+                dispatch_stride=2, attacked_attempts=2)
+
+    def test_stock_mock_sweep_run_is_well_formed(self):
+        # End to end through the driver with the stock mock: every
+        # call hits a script entry, and the benign arm answers the
+        # expected decision (the original bug scored benign against an
+        # attacked entry, so benign decisions were wrong).
+        from peira.sweep import SweepCaseResult, run_sweep_suite
+        cases = self._sweep_cases()
+        grid = [1, 2]
+        stride = max(grid) + 1
+        nonce = "sweep-layout-d"
+        adapter = MockAdapter(script=MockAdapter.script_for(
+            cases, seed=7, run_nonce=nonce,
+            dispatch_stride=stride, attacked_attempts=max(grid)))
+        artifact = run_sweep_suite(
+            adapter, cases, "trial-demo", "0.1.0-demo",
+            grid, "attacker_queries", seed=7, run_nonce=nonce)
+        self.assertTrue(artifact.verify())
+        self.assertEqual(len(artifact.results), len(cases))
+        for d, case in zip(artifact.results, cases):
+            result = SweepCaseResult.from_dict(d)
+            self.assertFalse(result.benign.malformed, case.case_id)
+            for attempt in result.attempts:
+                self.assertFalse(attempt.malformed, case.case_id)
+            self.assertEqual(result.benign.decision,
+                             case.benign.expected_decision, case.case_id)
+            self.assertEqual(
+                [a.dispatch_index for a in result.attempts],
+                [stride * cases.index(case) + 1,
+                 stride * cases.index(case) + 2],
+                case.case_id)
+
+
 if __name__ == "__main__":
     unittest.main()

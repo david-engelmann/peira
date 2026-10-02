@@ -8063,7 +8063,7 @@ def balanced_accuracy(y_true: list[int], y_pred: list[int]) -> float:
 
     The slice-table companion to MCC when the reader wants a rate
     rather than a correlation. On imbalanced slices raw accuracy is
-    dominated by the majority class; balanced accuracy weights the
+    driven by the majority class; balanced accuracy weights the
     classes equally. Returns 0.5 when a class is absent from
     ``y_true`` (its recall is undefined): chance-level is the honest
     placeholder, and the absence is the reader's cue to distrust the
