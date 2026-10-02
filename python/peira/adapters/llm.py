@@ -1101,12 +1101,13 @@ class XAIAdapter(OpenAIAdapter):
     non-positive seeds ("Seed must be positive but seed = 0"), so the
     ``seed`` field is omitted when it is ``0`` or ``None`` (the
     transcript's request shape then honestly records ``"seed": None``).
-    Whether ``json_schema`` ``response_format`` (vs plain
-    ``json_object``) is honored for ``grok-4`` is unverified. If the
-    live endpoint rejects or ignores any of these, you will see
-    terminal provider errors, not silent mismeasurement — verify
-    against the live API before any measured run. Not exercised
-    against the live API yet.
+    Live-verified 2026-10-02 against ``grok-4``. All 40 verification
+    calls parsed with zero auth or wire-shape errors, and the seed-0
+    handling from PR #355 held up. Whether ``json_schema``
+    ``response_format`` (vs plain ``json_object``) is honored for
+    ``grok-4`` remains unverified beyond successful parsing.
+    Mismatches surface as terminal provider errors, not silent
+    mismeasurement.
     """
 
     name = "xai-structured"
