@@ -7,6 +7,11 @@ structure) but follow the same gate-result conventions.
 
 from __future__ import annotations
 
+import argparse
+import glob
+import json
+import os
+import re
 from collections import Counter
 from dataclasses import dataclass, field
 
@@ -28,7 +33,6 @@ class ComboGateResult:
 
 
 def _load_all(files: list[str]) -> tuple[list[dict], list[str]]:
-    import json
     cases: list[dict] = []
     load_errors: list[str] = []
     for path in files:
@@ -101,18 +105,34 @@ def gate_cg3_pair_separation(cases: list[dict]) -> ComboGateResult:
                            not errors, len(errors), errors[:50])
 
 
-def gate_cg4_substrate_freshness(cases: list[dict]) -> ComboGateResult:
-    """CG4: benign substrates must not duplicate existing v1/v2 prompts.
+def load_freshness_corpus(repo_root: str = ".") -> set[str]:
+    """Collect benign prompts from the v1/v2 corpora for CG4.
 
-    Combo arms must derive from fresh substrates (design 6b.1); reusing
-    an existing single-family case's benign text would confound the
-    contrast. This gate checks for exact prompt duplication against a
-    caller-supplied corpus of existing prompts.
+    Combo substrates must be freshly authored (design 6b.1): this set is
+    the reference corpus a combo benign prompt must not duplicate. Missing
+    directories are skipped so the gate stays usable in partial trees.
     """
-    # Implemented as a function taking the reference corpus so the gate
-    # stays dependency-free; the CLI wires the v1/v2 prompt set in.
-    return ComboGateResult("CG4", "substrate freshness (needs corpus)",
-                           True, 0, [])
+    prompts: set[str] = set()
+    patterns = ("dataset/v1/cases/*.jsonl", "dataset/v2/cases/*.jsonl")
+    for pattern in patterns:
+        for path in glob.glob(os.path.join(repo_root, pattern)):
+            try:
+                with open(path) as f:
+                    for line in f:
+                        line = line.strip()
+                        if not line:
+                            continue
+                        try:
+                            d = json.loads(line)
+                        except json.JSONDecodeError:
+                            continue
+                        prompt = ((d.get("benign") or {}).get("input")
+                                  or {}).get("prompt")
+                        if prompt:
+                            prompts.add(prompt)
+            except OSError:
+                continue
+    return prompts
 
 
 def gate_cg4_with_corpus(cases: list[dict],
@@ -145,7 +165,6 @@ def gate_cg5_near_dedup(cases: list[dict]) -> ComboGateResult:
     above 0.85 for author review. Reports, does not auto-fail: the
     author dispositions each flag.
     """
-    import re
     errors: list[str] = []
     # One prompt per substrate (use the ctrl arm's benign input).
     substrates: dict[str, str] = {}
@@ -185,18 +204,69 @@ COMBO_GATES = (
     ("CG1", gate_cg1_schema),
     ("CG2", gate_cg2_arm_completeness),
     ("CG3", gate_cg3_pair_separation),
+    # CG4 (substrate freshness) needs the v1/v2 corpus, so it is run
+    # explicitly in run_combo_gates rather than from this table.
     ("CG5", gate_cg5_near_dedup),
 )
 
 
-def run_combo_gates(files: list[str]) -> list[ComboGateResult]:
-    """Run all combo gates over the given case files."""
+def run_combo_gates(files: list[str],
+                    freshness_corpus: set[str] | None = None,
+                    repo_root: str = ".") -> list[ComboGateResult]:
+    """Run all combo gates (CG1-CG5) over the given case files.
+
+    CG4 checks substrate freshness against the v1/v2 benign-prompt
+    corpus. Pass ``freshness_corpus`` explicitly to override the default
+    (loaded from ``repo_root``), or an empty set to run CG4 trivially
+    when no corpus is available.
+    """
     cases, load_errors = _load_all(files)
     results: list[ComboGateResult] = []
     if load_errors:
         results.append(ComboGateResult(
             "CG0", "file loading", False, len(load_errors), load_errors[:50]))
         return results
+    if freshness_corpus is None:
+        freshness_corpus = load_freshness_corpus(repo_root)
     for gate_id, fn in COMBO_GATES:
         results.append(fn(cases))
+    # CG4 runs after CG3 (it needs the corpus, so it is not in the
+    # table): insert by gate id, not by position, so adding a gate to
+    # COMBO_GATES cannot silently misplace it.
+    cg4 = gate_cg4_with_corpus(cases, freshness_corpus)
+    names = [r.gate_id for r in results]
+    results.insert(names.index("CG3") + 1, cg4)
     return results
+
+
+def _main(argv: list[str] | None = None) -> int:
+    ap = argparse.ArgumentParser(
+        description="Run the combo authoring gates (CG1-CG5).")
+    ap.add_argument("files", nargs="+",
+                    help="combo case JSONL files (globs allowed)")
+    ap.add_argument("--corpus-root", default=".",
+                    help="repo root used to build the v1/v2 freshness "
+                         "corpus for CG4")
+    ap.add_argument("--no-corpus", action="store_true",
+                    help="skip the corpus build: CG4 runs trivially "
+                         "(passes with no reference corpus)")
+    args = ap.parse_args(argv)
+    files: list[str] = []
+    for pattern in args.files:
+        files.extend(sorted(glob.glob(pattern)) or [pattern])
+    corpus: set[str] | None = set() if args.no_corpus else None
+    results = run_combo_gates(files, freshness_corpus=corpus,
+                              repo_root=args.corpus_root)
+    failed = False
+    for r in results:
+        status = "PASS" if r.passed else "FAIL"
+        print(f"{r.gate_id} {r.name}: {status} ({r.n_errors} errors)")
+        for e in r.errors[:5]:
+            print(f"    {e}")
+        if not r.passed:
+            failed = True
+    return 1 if failed else 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(_main())

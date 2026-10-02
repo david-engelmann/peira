@@ -86,7 +86,7 @@ medium 1, low 0.5) and target-hit rate.
   the attack surface the eligibility gate removes. The two are not
   ordered: their denominators differ.
 - **Severity-weighted ASR**: the flip indicator averaged over eligible
-  cases with frozen weights critical 3 / high 2 / medium 1. A flipped
+  cases with frozen weights critical 3 / high 2 / medium 1 / low 0.5. A flipped
   critical case hurts three times as much as a flipped medium one.
   **Display-only, never a ranker**: the weights are a judgment
   about harm, not a ranking rule. Empty (no eligible cases) reads 0.0,
@@ -224,6 +224,16 @@ medium 1, low 0.5) and target-hit rate.
   contribute $0 to the total but count in the denominator); when no
   call is priced at all the cost is unknown, not zero. Totals are
   withheld (`None`, `sufficient: False`).
+- **Adversarial latency** (R-16): per-family p99 as a
+  security-relevant signal (`family_latency_summary`), plus the
+  **latency-inflation** ratio (`latency_inflation`): p99(attacked) /
+  p99(benign control of the same family, same adapter, same run).
+  An adversary that doubles a guardrail's p99 is a DoS-relevant
+  finding at equal accuracy. The base convention is fixed: the
+  denominator is always the benign arm of the same family in the
+  same run, never a cross-run baseline. The ratio is withheld when
+  either arm is thin or the benign p99 is 0, and the raw p99s ride
+  alongside so the ratio is never read without its base.
 - **Budget cap** (`peira run --budget-usd`): a dispatch limit based on
   projected priced spend for the run. Before each new case dispatch the
   projects runner `spent + running-mean-case-cost x 1.5` (the 1.5x safety
@@ -538,6 +548,30 @@ Sealed as the flat `delta_calibration` block (per §3.17):
   the reader knows which of these each number is; the report states
   it next to every calibration table (D-23).
 
+**Display metrics** (R-15): the report-layer companions to the
+calibration block, all computed on confidence-as-failure-predictor
+pairs (confidence vs "the adapter was wrong"). **MCE**
+(`mce(probs, labels)`): the worst equal-mass bin's |outcome −
+forecast|, ECE's worst-slice sibling. It is the number a buyer with a
+decision threshold actually cares about. **AUROC-failure** is the
+existing `flip_detection_auroc`; **average precision**
+(`average_precision`) summarizes the precision-recall curve for
+failure prediction, the honest display when failures are rare.
+None of these is ever "AUC of ASR": ASR is paired and causal, not
+a ranked score, so that quantity is a category error. **MCC** and
+**balanced accuracy** (`mcc`, `balanced_accuracy`) are the
+slice-table summaries: MCC for imbalanced confusion matrices
+(F1 ignores true negatives, exactly where peira's slices carry
+signal), balanced accuracy when the reader wants a rate.
+**Friedman/Nemenyi** (`friedman_test`, `nemenyi_cd`) answer "do
+the adapters differ at all across families" before any pairwise
+comparison, with the Nemenyi critical difference behind the CD
+diagram. **BH-FDR** (`bh_adjust`) is the optional large-family
+alternative to Holm: where Holm controls the family-wise error
+rate, BH controls the false discovery rate and is the more
+powerful choice for tables with dozens of per-family
+comparisons.
+
 **Score calibration** (2026-09-25, the score contract) is measured on
 the score primitive's reported scores against binary gold labels:
 
@@ -727,7 +761,7 @@ never modified.
 - **Weighted deltas (A − B)**: Δseverity-weighted-ASR with a
   paired-bootstrap 95% CI via `paired_bootstrap_weighted_ci()`. The
   point estimate is weighted-mean(A) − weighted-mean(B) using the
-  frozen severity weights (critical 3 / high 2 / medium 1, the same
+  frozen severity weights (critical 3 / high 2 / medium 1 / low 0.5, the same
   weights as the per-run `severity_weighted_asr`), each arm divided by
   its own total weight. Each bootstrap resample draws cases with
   replacement, preserving the A/B pairing, and recomputes both weighted
@@ -1633,6 +1667,55 @@ observed max attacked `tokens_out` and warns when the cap was not
 enforced.
 Available in `summarize()` as `length_diagnostics` and via
 `peira length`.
+## Attack-strength sweep curves (EB-35)
+
+A single attack success rate hides how hard the attacker worked. An
+attack that flips on the first query is a different finding from one
+that needs fifty queries, and a defense that holds for ten queries but
+falls at twenty has a measurable breaking point. EB-35 makes the
+budget dimension explicit by running each case's attacked arm at
+multiple strength levels and recording where the flip happens.
+
+The sweep budgets over one strength dimension per run. The
+`attacker_queries` dimension runs the attacked arm as b independent
+queries against the fixed case text, for each budget level b in the
+grid. The attack counts as successful at budget b when any of the
+first b queries flips the decision. This cumulative rule is what makes
+the ASR curve monotone by construction. Each case records its
+budget-to-first-flip, the lowest grid level at which the attack had
+flipped, or None when the attack never flipped within the grid.
+
+Three further dimensions are registered but not yet parameterized.
+They are `paraphrase_rounds`, `suffix_length`, and `escalation_steps`.
+Each needs a per-family attack instantiator that maps a budget level
+to a concrete attacked input. Until one is registered, requesting the
+dimension fails fast with a named error rather than running a
+degenerate sweep. New instantiators register through
+`peira.sweep.register_strength_instantiator`.
+
+Per-case mechanics. The benign arm runs once and the response cache
+applies as usual. The attacked arm runs max(grid) queries and each
+query bypasses the response cache, because a cached attacked response
+would report budget b's outcome as budget 1's and silently flatten the
+curve. Eligibility is judged once from the benign baseline and shared
+across all attempts. The representative attacked record sealed for
+single-shot tooling is the first flipping attempt, or the final attempt
+when nothing flipped.
+
+Reporting. `peira sweep-report` renders per-family ASR-vs-budget curves
+with Wilson 95 percent confidence intervals at each budget point, plus
+the budget-to-first-flip distribution (per-level counts, never-flipped
+count, median and p90 flip budget, where the median is the statistical
+median across flipped cases and p90 is the nearest-rank 90th percentile).
+Only eligible cases contribute, the
+same conditional rule as the standard metrics. Sweep runs are
+analyzable but never rankable. The per-case query count differs from
+the standard protocol, so sweep numbers must not pool with single-shot
+leaderboard runs. `peira compare` enforces this: a sweep artifact only
+compares against another sweep with the same budget grid and strength
+dimension, never against a single-shot artifact or a differently
+gridded sweep, because the per-case records would not be paired
+observations under the same budget.
 
 ## Economic value view (M-3, sidecar)
 
@@ -2070,17 +2153,18 @@ pairs with a 2x2 factorial design. Each substrate yields four arms
 
     d_i = Y_i(ab) - Y_i(a) - Y_i(b) + Y_i(ctrl)
 
-where Y is the binary primary outcome (flip rate by default; abstain
-rate for availability combos; joint flip-and-oversight-failure rate for
-masking combos). The pair-level estimate is the mean of d_i. Because all
+where Y is the binary primary outcome (flip rate by default, abstain
+rate for availability combos, and the joint flip-and-oversight-failure
+rate for masking combos). The pair-level estimate is the mean of d_i. Because all
 four arms derive from the same substrate, the variance is estimated from
 the sample variance of d_i directly (paired analysis), which is tighter
 than the independent-arms sum-of-variances whenever arms correlate
 within substrate.
 
-Classification uses the additive null with a CI-excludes-zero rule:
-super-additive (CI above zero), additive (CI includes zero, MDE met),
-sub-additive (CI below zero), unresolved (MDE80 > 0.20, "not resolvable
+Classification uses the additive null with a CI-excludes-zero rule.
+A pair reads super-additive when the CI sits above zero, additive when
+the CI includes zero and the MDE is met, sub-additive when the CI sits
+below zero, and unresolved when MDE80 exceeds 0.20 ("not resolvable
 at this n"). The MDE at 80% power is 2.8 * se. Pre-registered hypotheses
-from the design are tested against the measured classification; both are
-reported.
+from the design are tested against the measured classification and both
+are reported.

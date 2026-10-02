@@ -99,6 +99,10 @@ pub struct RunArtifact {
     /// Hard spend cap in USD, if any. Part of the lock.
     #[serde(default)]
     pub budget_usd: Option<f64>,
+    /// Per-call output-token cap, if any. Part of the lock: a run
+    /// measured under a different cap is a different measurement.
+    #[serde(default)]
+    pub max_tokens_per_call: Option<i64>,
     /// Actual spend in USD. Part of the lock.
     #[serde(default)]
     pub spent_usd: f64,
@@ -166,6 +170,7 @@ impl RunArtifact {
             self.cases_planned,
             self.seed,
             self.max_concurrency,
+            self.max_tokens_per_call,
             &self.metrics,
             &self.env_sha256,
             &self.model_class,
@@ -288,6 +293,7 @@ pub fn lock_payload(
     cases_planned: i64,
     seed: i64,
     max_concurrency: i64,
+    max_tokens_per_call: Option<i64>,
     metrics: &Value,
     env_sha256: &str,
     model_class: &str,
@@ -300,7 +306,7 @@ pub fn lock_payload(
     case_set_tag: &str,
     cost_scenario_version: &str,
 ) -> String {
-    // The thirty payload keys in canonical (sorted) order, hashed by
+    // The thirty-one payload keys in canonical (sorted) order, hashed by
     // streaming straight into SHA-256: `config` and `results` are never
     // cloned. The field order is written out explicitly — it is part of
     // the lock contract, and spelling it out beats a separator-tracking
@@ -342,6 +348,11 @@ pub fn lock_payload(
     hash_canonical(&Value::String(manifest_sha256.to_owned()), &mut h);
     h.update(b", \"max_concurrency\": ");
     hash_canonical(&Value::Number(max_concurrency.into()), &mut h);
+    h.update(b", \"max_tokens_per_call\": ");
+    hash_canonical(
+        &max_tokens_per_call.map(Value::from).unwrap_or(Value::Null),
+        &mut h,
+    );
     h.update(b", \"metrics\": ");
     // P0-1 (2026-09-25): metrics are lock-covered; forging headline
     // numbers invalidates the lock.
@@ -427,6 +438,7 @@ mod tests {
             contract_version: "1".into(),
             termination: "complete".into(),
             budget_usd: None,
+            max_tokens_per_call: None,
             spent_usd: 0.0,
             cases_completed: 0,
             cases_planned: 0,
@@ -598,6 +610,7 @@ mod tests {
             10,
             3,
             8,
+            Some(4096),
             &json!({"m1": 0.5}),
             "",
             "mc",
@@ -630,6 +643,7 @@ mod tests {
             ("env_sha256", json!("")),
             ("manifest_sha256", json!("m")),
             ("max_concurrency", json!(8)),
+            ("max_tokens_per_call", json!(4096)),
             ("metrics", json!({"m1": 0.5})),
             ("model_class", json!("mc")),
             ("peira_version", json!("p")),

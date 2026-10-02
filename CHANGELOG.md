@@ -7,7 +7,7 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
 
 ## [Unreleased]
 
-### Changed - maturin replaces setuptools + hand-rolled Rust build script (D-41)
+### Changed - maturin replaces setuptools + hand-rolled Rust build script (D-43)
 
 - The PEP 517 build backend is now `maturin` (`build-backend = "maturin"`,
   `[tool.maturin]` with `bindings = "pyo3"`, `module-name = "peira._core"`,

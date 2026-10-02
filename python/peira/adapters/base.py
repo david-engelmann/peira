@@ -85,6 +85,19 @@ class CallUsage:
     # identifies the table so historical costs are recomputable under
     # future pricing without rerunning. None when unknown.
     price_table_ref: str | None = None
+    # R-20: provider-reported finish/stop reason ("stop",
+    # "length", "tool_calls", "content_filter", ...). None when the
+    # provider did not report one (or the adapter did not capture it).
+    finish_reason: str | None = None
+    # R-20: input tokens served from provider prompt cache. A subset of
+    # tokens_in (0 <= cached_tokens_in <= tokens_in). None when the
+    # provider did not report a cached breakdown. Priced at the input
+    # rate until a model entry specifies "usd_per_1m_cached_in".
+    cached_tokens_in: int | None = None
+    # R-20: the provider's response id (e.g. OpenAI "chatcmpl-..."),
+    # for correlating a peira call with provider-side logs. None when
+    # the provider did not return one or the adapter did not capture it.
+    provider_response_id: str | None = None
 
 
 @dataclass(frozen=True)

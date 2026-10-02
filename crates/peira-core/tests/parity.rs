@@ -71,6 +71,7 @@ fn analysis_lock_parity_with_python() {
             art["cases_planned"].as_i64().unwrap_or(0),
             art["seed"].as_i64().unwrap(),
             art["max_concurrency"].as_i64().unwrap(),
+            art["max_tokens_per_call"].as_i64(),
             &art["metrics"],
             art["env_sha256"].as_str().unwrap_or(""),
             art["model_class"].as_str().unwrap_or(""),

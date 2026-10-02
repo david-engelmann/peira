@@ -554,8 +554,11 @@ def run_conversation_suite(
     rlimit_cpu_seconds: float | None = None,
     rlimit_as_mb: float | None = None,
     rlimit_fsize_mb: float | None = None,
+    rlimit_nproc: int | None = None,
+    death_log_path: Path | str | None = None,
     run_nonce: str | None = None,
     budget_usd: float | None = None,
+    max_tokens_per_call: int | None = None,
     item_timeout: float | None = None,
     run_timeout: float | None = None,
 ):
@@ -574,6 +577,13 @@ def run_conversation_suite(
     The artifact's ``suite`` is ``"conversational"`` (or the override
     passed here): conversational results are namespaced away from the
     v1/v2 numbers by construction.
+
+    ``max_tokens_per_call`` is accepted for signature parity with
+    :func:`peira.runner.run_suite` and recorded in the artifact config.
+    Enforcement is post-hoc only: over-limit calls are flagged
+    ``token_limit_exceeded`` in the transcript (see the R-18 note in
+    the shared driver); the turn driver cannot stop a provider
+    mid-generation.
     """
     _require_conversational_adapter(adapter)
     from peira.runner import run_suite
@@ -604,8 +614,11 @@ def run_conversation_suite(
         rlimit_cpu_seconds=rlimit_cpu_seconds,
         rlimit_as_mb=rlimit_as_mb,
         rlimit_fsize_mb=rlimit_fsize_mb,
+        rlimit_nproc=rlimit_nproc,
+        death_log_path=death_log_path,
         run_nonce=run_nonce,
         budget_usd=budget_usd,
+        max_tokens_per_call=max_tokens_per_call,
         item_timeout=item_timeout,
         run_timeout=run_timeout,
         dispatch_stride=CONVERSATION_DISPATCH_STRIDE,

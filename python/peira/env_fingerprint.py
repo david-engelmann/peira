@@ -100,6 +100,135 @@ def _rust_backend_info() -> dict:
     return info
 
 
+# -- R-17: performance state -----------------------------------------------
+
+import os as _os
+import warnings as _warnings
+
+
+def _read_sysfs(path: str) -> str | None:
+    """Read a sysfs/procfs file, returning None when unreadable."""
+    try:
+        with open(path, "r", encoding="utf-8") as fh:
+            return fh.read().strip()
+    except OSError:
+        return None
+
+
+def _cpu_governor() -> str | None:
+    """CPU frequency governor (Linux), e.g. 'performance' or 'powersave'."""
+    return _read_sysfs(
+        "/sys/devices/system/cpu/cpu0/cpufreq/scaling_governor"
+    )
+
+
+def _boost_state() -> str | None:
+    """Turbo/boost state: 'on', 'off', or None when unreadable.
+
+    Checks the generic cpufreq boost flag first, then the Intel
+    pstate no_turbo flag (inverted: 0 means turbo is on).
+    """
+    boost = _read_sysfs("/sys/devices/system/cpu/cpufreq/boost")
+    if boost == "1":
+        return "on"
+    if boost == "0":
+        return "off"
+    no_turbo = _read_sysfs(
+        "/sys/devices/system/cpu/intel_pstate/no_turbo"
+    )
+    if no_turbo == "0":
+        return "on"
+    if no_turbo == "1":
+        return "off"
+    return None
+
+
+def _affinity() -> list[int] | None:
+    """CPUs this process may run on, or None when unavailable."""
+    try:
+        return sorted(_os.sched_affinity(0))
+    except (AttributeError, OSError):
+        return None
+
+
+def _smt_enabled() -> bool | None:
+    """Whether SMT/hyperthreading is on: cpu0 shares its core, or not."""
+    siblings = _read_sysfs(
+        "/sys/devices/system/cpu/cpu0/topology/thread_siblings_list"
+    )
+    if siblings is None:
+        return None
+    # "0" -> one thread per core; "0-1" or "0,1" -> shared core.
+    return "," in siblings or "-" in siblings
+
+
+def _observed_mhz() -> float | None:
+    """Current CPU frequency in MHz, or None when unreadable.
+
+    A point sample, not a sustained measurement: it documents the
+    state at collection time so a reader can sanity-check the
+    latency numbers, not a benchmark of the machine.
+    """
+    cur_khz = _read_sysfs(
+        "/sys/devices/system/cpu/cpu0/cpufreq/scaling_cur_freq"
+    )
+    if cur_khz:
+        try:
+            return round(float(cur_khz) / 1000.0, 1)
+        except ValueError:
+            pass
+    cpuinfo = _read_sysfs("/proc/cpuinfo")
+    if cpuinfo:
+        for line in cpuinfo.splitlines():
+            if line.startswith("cpu MHz"):
+                try:
+                    return round(float(line.split(":")[1].strip()), 1)
+                except (ValueError, IndexError):
+                    pass
+    return None
+
+
+def collect_perf_state() -> dict:
+    """Performance-relevant OS/CPU state (R-17).
+
+    Latency numbers are only comparable within one run on one
+    machine. This block records the state needed to tell whether a
+    cross-run latency comparison is even legitimate: CPU governor,
+    boost state, process affinity, SMT state, and an observed
+    frequency sample. Unavailable sources are recorded as None with
+    a warning, never an exception — a fingerprint must not fail
+    because sysfs is unreadable.
+    """
+    missing: list[str] = []
+    governor = _cpu_governor()
+    if governor is None:
+        missing.append("cpu_governor")
+    boost = _boost_state()
+    if boost is None:
+        missing.append("boost_state")
+    affinity = _affinity()
+    if affinity is None:
+        missing.append("affinity")
+    smt = _smt_enabled()
+    if smt is None:
+        missing.append("smt")
+    mhz = _observed_mhz()
+    if mhz is None:
+        missing.append("observed_mhz")
+    if missing:
+        _warnings.warn(
+            "peira env fingerprint: perf-state sources unavailable, "
+            f"recorded as None: {', '.join(missing)}"
+        )
+    return {
+        "cpu_governor": governor,
+        "boost_state": boost,
+        "affinity": affinity,
+        "smt": smt,
+        "observed_mhz": mhz,
+    }
+
+
 def collect_env() -> dict:
     """Collect the full environment fingerprint as a dict.
 
@@ -121,6 +250,7 @@ def collect_env() -> dict:
         "numpy": _safe_version("numpy"),
         "os": platform.platform(),
         "architecture": platform.machine(),
+        "perf_state": collect_perf_state(),
     }
 
 
