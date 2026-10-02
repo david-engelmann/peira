@@ -22,7 +22,8 @@
 //!   the Python wrappers catch those and fall back to pure Python.
 
 use peira_core::{
-    artifact, canonical, compare, dataset, env, execution, gates, metrics, pricing, records, schema,
+    artifact, canonical, compare, dataset, env, execution, gates, lottery, metrics, pricing,
+    records, schema,
 };
 use pyo3::exceptions::{PyAttributeError, PyKeyError, PyTypeError, PyValueError};
 use pyo3::prelude::*;
@@ -134,6 +135,9 @@ struct PyCallUsage {
     latency_ms: f64,
     cost_usd: f64,
     price_table_ref: Option<String>,
+    finish_reason: Option<String>,
+    cached_tokens_in: Option<i64>,
+    provider_response_id: Option<String>,
 }
 
 impl From<PyCallUsage> for metrics::CallUsage {
@@ -145,6 +149,9 @@ impl From<PyCallUsage> for metrics::CallUsage {
             latency_ms: u.latency_ms,
             cost_usd: u.cost_usd,
             price_table_ref: u.price_table_ref,
+            finish_reason: u.finish_reason,
+            cached_tokens_in: u.cached_tokens_in,
+            provider_response_id: u.provider_response_id,
         }
     }
 }
@@ -1048,7 +1055,7 @@ fn output_fields_to_value(output: &Bound<'_, PyAny>) -> PyResult<Value> {
             "asdict() should be called on dataclass instances",
         ));
     } else {
-        // A foreign dataclass carrying fields beyond the six known
+        // A foreign dataclass carrying fields beyond the nine known
         // CallUsage fields: the reference's `asdict` preserves every
         // field, but the Rust projection below would silently drop the
         // extras. A foreign dataclass carrying a *subset* of the fields
@@ -1064,11 +1071,14 @@ fn output_fields_to_value(output: &Bound<'_, PyAny>) -> PyResult<Value> {
             "latency_ms",
             "cost_usd",
             "price_table_ref",
+            "finish_reason",
+            "cached_tokens_in",
+            "provider_response_id",
         ];
         let fields = usage.getattr("__dataclass_fields__")?;
         let dict = fields.cast::<PyDict>().map_err(|_| {
             PyTypeError::new_err(
-                "usage must be a CallUsage dataclass instance with exactly the 6 known fields",
+                "usage must be a CallUsage dataclass instance with exactly the 9 known fields",
             )
         })?;
         // `dataclasses.fields()` (which `asdict` uses) keeps only fields
@@ -1077,7 +1087,7 @@ fn output_fields_to_value(output: &Bound<'_, PyAny>) -> PyResult<Value> {
         // mere presence check is wrong, since unbound `dataclasses.field()`
         // objects carry `_field_type=None`.
         let field_marker = output.py().import("dataclasses")?.getattr("_FIELD")?;
-        let mut seen = [false; 6];
+        let mut seen = [false; 9];
         let mut shape_ok = true;
         for (key, field) in dict.iter() {
             let idx = match key.extract::<String>() {
@@ -1098,7 +1108,7 @@ fn output_fields_to_value(output: &Bound<'_, PyAny>) -> PyResult<Value> {
         }
         if !shape_ok || seen.iter().any(|s| !s) {
             return Err(PyTypeError::new_err(
-                "usage must be a CallUsage dataclass instance with exactly the 6 known fields",
+                "usage must be a CallUsage dataclass instance with exactly the 9 known fields",
             ));
         }
         // `PyCallUsage` extraction coerces `True` to `1` and `5` to
@@ -1251,6 +1261,7 @@ fn artifact_lock_payload(
     cases_planned: i64,
     seed: &Bound<'_, PyAny>,
     max_concurrency: &Bound<'_, PyAny>,
+    max_tokens_per_call: Option<i64>,
     metrics: &Bound<'_, PyAny>,
     env_sha256: &str,
     model_class: &str,
@@ -1283,6 +1294,7 @@ fn artifact_lock_payload(
         cases_planned,
         int_param("seed", seed)?,
         int_param("max_concurrency", max_concurrency)?,
+        max_tokens_per_call,
         &value_from_py(metrics)?,
         env_sha256,
         model_class,
@@ -1332,6 +1344,178 @@ fn dataset_summarize_case_bytes(
         map.insert(key.to_string(), Value::Object(inner));
     }
     value_to_py(py, &Value::Object(map))
+}
+
+/// Banker's rounding to 4 decimals, mirroring Python's `round(v, 4)`.
+///
+/// Exposed so the backend-parity suite can pin it directly against the
+/// Python reference on a boundary battery (negatives, x.xxx5 values).
+/// The lottery bindings apply it internally; this entry point is the
+/// test hook for the rounding rule itself.
+#[pyfunction]
+fn lottery_round4(v: f64) -> f64 {
+    lottery::round4(v)
+}
+
+/// Finite f64 as a JSON number. Lottery outputs are ratios of small
+/// integers in [-1, 1]; non-finite cannot occur.
+fn json_num(v: f64) -> Value {
+    Value::Number(Number::from_f64(v).expect("lottery outputs are finite"))
+}
+
+fn json_opt_num(v: Option<f64>) -> Value {
+    v.map_or(Value::Null, json_num)
+}
+
+fn json_strs(items: Vec<String>) -> Value {
+    Value::Array(items.into_iter().map(Value::String).collect())
+}
+
+/// Convert `(run_id, results)` pairs to core results; shared by the
+/// two lottery entry points that take runs.
+fn to_core_runs(
+    runs: Vec<(String, Vec<PyPerCaseResult>)>,
+) -> Vec<(String, Vec<metrics::PerCaseResult>)> {
+    runs.into_iter()
+        .map(|(run_id, results)| (run_id, to_core_results(results)))
+        .collect()
+}
+
+/// RankedRun as a named-field object, mirroring
+/// `python/peira/lottery.py::RankedRun`. `asr` is the RAW conditional
+/// ASR (null when ineligible); the Python wrapper rounds it for
+/// display, exactly like the reference.
+fn ranked_run_to_value(r: lottery::RankedRun) -> Value {
+    let mut m = serde_json::Map::new();
+    m.insert("run_id".to_string(), Value::String(r.run_id));
+    m.insert("asr".to_string(), json_opt_num(r.asr));
+    m.insert("eligible".to_string(), Value::Bool(r.eligible));
+    m.insert("reasons".to_string(), json_strs(r.reasons));
+    Value::Object(m)
+}
+
+/// lottery.rank_runs: rank runs by conditional ASR (ascending) over
+/// `families`.
+///
+/// `runs` holds (run_id, results) in mapping order. Returns a list of
+/// named-field RankedRun objects: eligible first by (raw asr, run_id),
+/// then ineligible by run_id. The Python wrapper validates (non-empty
+/// families, non-empty string run ids) before dispatch and raises the
+/// reference's ValueErrors itself.
+#[pyfunction]
+fn lottery_rank_runs(
+    py: Python<'_>,
+    runs: Vec<(String, Vec<PyPerCaseResult>)>,
+    families: Vec<String>,
+) -> PyResult<Py<PyAny>> {
+    let arr = Value::Array(
+        lottery::rank_runs(&to_core_runs(runs), &families)
+            .into_iter()
+            .map(ranked_run_to_value)
+            .collect(),
+    );
+    value_to_py(py, &arr)
+}
+
+/// lottery.kendall_tau: Kendall's tau between two best-first run-id
+/// lists, or None when fewer than two runs are common to both.
+#[pyfunction]
+fn lottery_kendall_tau(rank_a: Vec<String>, rank_b: Vec<String>) -> Option<f64> {
+    lottery::kendall_tau(&rank_a, &rank_b)
+}
+
+/// lottery.pairwise_swap_fraction: fraction of common pairs whose
+/// relative order differs, or None when fewer than two runs are
+/// common to both.
+#[pyfunction]
+fn lottery_pairwise_swap_fraction(rank_a: Vec<String>, rank_b: Vec<String>) -> Option<f64> {
+    lottery::pairwise_swap_fraction(&rank_a, &rank_b)
+}
+
+/// lottery.stability_verdict: one-word verdict for a lottery index.
+/// Bands the value it is given; `lottery_analysis` passes the ROUNDED
+/// index, mirroring the reference.
+#[pyfunction]
+fn lottery_stability_verdict(lottery_index: Option<f64>) -> String {
+    lottery::stability_verdict(lottery_index)
+}
+
+/// Per-family leave-one-out detail as a named-field object.
+/// `tau`/`swap_fraction` arrive [`lottery::round4`]-rounded; the Python
+/// wrapper places them into the report dict untouched.
+fn family_detail_to_value(family: &str, d: lottery::FamilyDetail) -> Value {
+    let mut m = serde_json::Map::new();
+    m.insert("family".to_string(), Value::String(family.to_string()));
+    m.insert("tau".to_string(), json_opt_num(d.tau));
+    m.insert("swap_fraction".to_string(), json_opt_num(d.swap_fraction));
+    m.insert(
+        "n_common".to_string(),
+        Value::Number(Number::from(d.n_common as u64)),
+    );
+    m.insert(
+        "max_rank_displacement".to_string(),
+        d.max_rank_displacement
+            .map_or(Value::Null, |n| Value::Number(Number::from(n as u64))),
+    );
+    m.insert("ranking".to_string(), json_strs(d.ranking));
+    m.insert("dropped_runs".to_string(), json_strs(d.dropped_runs));
+    Value::Object(m)
+}
+
+/// lottery.lottery_analysis: leave-one-family-out ranking stability.
+///
+/// Returns the report as a named-field object; `per_family` is an
+/// array of family-detail objects in the input `families` order, so
+/// the Python wrapper preserves dict insertion order.
+///
+/// Raises ValueError with the reference's exact message when
+/// `families` is empty, or when a leave-one-out step would rank on no
+/// families (the single-family case).
+#[pyfunction]
+fn lottery_analysis(
+    py: Python<'_>,
+    runs: Vec<(String, Vec<PyPerCaseResult>)>,
+    families: Vec<String>,
+) -> PyResult<Py<PyAny>> {
+    let a =
+        lottery::lottery_analysis(&to_core_runs(runs), &families).map_err(PyValueError::new_err)?;
+    let mut m = serde_json::Map::new();
+    m.insert("families".to_string(), json_strs(a.families));
+    m.insert(
+        "n_runs".to_string(),
+        Value::Number(Number::from(a.n_runs as u64)),
+    );
+    m.insert(
+        "n_ranked".to_string(),
+        Value::Number(Number::from(a.n_ranked as u64)),
+    );
+    m.insert("full_ranking".to_string(), json_strs(a.full_ranking));
+    m.insert(
+        "full_ranking_detail".to_string(),
+        Value::Array(
+            a.full_ranking_detail
+                .into_iter()
+                .map(ranked_run_to_value)
+                .collect(),
+        ),
+    );
+    m.insert("lottery_index".to_string(), json_opt_num(a.lottery_index));
+    m.insert("verdict".to_string(), Value::String(a.verdict));
+    m.insert("min_tau".to_string(), json_opt_num(a.min_tau));
+    m.insert(
+        "most_influential_family".to_string(),
+        a.most_influential_family.map_or(Value::Null, Value::String),
+    );
+    m.insert(
+        "per_family".to_string(),
+        Value::Array(
+            a.per_family
+                .into_iter()
+                .map(|(fam, d)| family_detail_to_value(&fam, d))
+                .collect(),
+        ),
+    );
+    value_to_py(py, &Value::Object(m))
 }
 
 /// peira._core: the compiled Rust core (PyO3). Optional accelerator,
@@ -1402,5 +1586,11 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(env_fingerprint_env, m)?)?;
     m.add_function(wrap_pyfunction!(artifact_lock_payload, m)?)?;
     m.add_function(wrap_pyfunction!(dataset_summarize_case_bytes, m)?)?;
+    m.add_function(wrap_pyfunction!(lottery_round4, m)?)?;
+    m.add_function(wrap_pyfunction!(lottery_rank_runs, m)?)?;
+    m.add_function(wrap_pyfunction!(lottery_kendall_tau, m)?)?;
+    m.add_function(wrap_pyfunction!(lottery_pairwise_swap_fraction, m)?)?;
+    m.add_function(wrap_pyfunction!(lottery_stability_verdict, m)?)?;
+    m.add_function(wrap_pyfunction!(lottery_analysis, m)?)?;
     Ok(())
 }

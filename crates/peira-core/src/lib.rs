@@ -17,6 +17,7 @@ pub mod dataset;
 pub mod env;
 pub mod execution;
 pub mod gates;
+pub mod lottery;
 pub mod metrics;
 pub mod pricing;
 pub mod py_repr;

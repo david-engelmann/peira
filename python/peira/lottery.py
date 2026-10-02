@@ -19,6 +19,15 @@ robust decision model). Only ranking-eligible runs are ranked; the
 eligibility gates are re-evaluated on the reduced family set, so a run
 that only qualified because of the removed family drops out honestly
 instead of silently keeping its rank.
+
+Backend: the public functions dispatch to the compiled Rust core
+(``peira._core``, see ``crates/peira-python``) when it is importable and
+fall back to the ``_xxx_py`` pure-Python reference implementations
+otherwise. ``PEIRA_NO_RUST=1`` forces the reference backend. Both
+backends are byte/decision-identical on CPython 3.12+ (the Rust core's
+compensated summation mirrors ``sum()``, which is Neumaier only from
+3.12; on 3.10/3.11 adversarial inputs can diverge by ~1 ulp), see
+``tests/test_lottery_rust_parity.py``.
 """
 
 from __future__ import annotations
@@ -26,7 +35,14 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Mapping, Sequence
 
-from peira.metrics import PerCaseResult, asr_conditional, check_eligibility
+from peira._rust import _impl as _rust
+from peira.concurrency import _require_json_str
+from peira.metrics import (
+    PerCaseResult,
+    _asr_conditional_py,
+    _check_eligibility_py,
+    _require_result_strings,
+)
 
 
 @dataclass(frozen=True)
@@ -37,6 +53,74 @@ class RankedRun:
     asr: float | None  # conditional ASR; None when the run is ineligible
     eligible: bool
     reasons: tuple[str, ...] = ()
+
+
+def _validate_run_ids(results_by_run: Mapping[str, Any], func: str) -> None:
+    """D-11: the reference's run-id ValueErrors, raised before dispatch."""
+    for run_id in results_by_run:
+        if not isinstance(run_id, str) or not run_id:
+            raise ValueError(f"{func}: run ids must be non-empty strings")
+        _require_json_str(run_id)
+
+
+def _validate_families(fams: list[str], func: str) -> None:
+    """D-11: families must be strings (the PyO3 boundary needs Vec<String>).
+
+    The reference never type-checked families; the Rust binding would
+    raise TypeError at the boundary while the reference computed, so
+    the dispatched entry points check first and both backends agree.
+    """
+    for fam in fams:
+        if not isinstance(fam, str):
+            raise TypeError(
+                f"{func}: families must be strings, "
+                f"not {type(fam).__name__}"
+            )
+        _require_json_str(fam)
+
+
+def _validate_results(results_by_run: Mapping[str, Sequence[PerCaseResult]]) -> None:
+    """D-11: reject lone surrogates before dispatch (see
+    ``peira.metrics._require_result_strings``). The ``_xxx_py``
+    references stay lenient; the dispatched entry points are the
+    validated ones."""
+    for run_id in results_by_run:
+        for r in results_by_run[run_id]:
+            _require_result_strings(r)
+
+
+def _rank_runs_py(
+    results_by_run: Mapping[str, Sequence[PerCaseResult]],
+    families: Sequence[str],
+) -> list[RankedRun]:
+    """Reference implementation of :func:`rank_runs` (pure Python)."""
+    fams = list(families)
+    if not fams:
+        raise ValueError("rank_runs: families must not be empty")
+    fam_set = set(fams)
+    ranked: list[RankedRun] = []
+    for run_id in results_by_run:
+        if not isinstance(run_id, str) or not run_id:
+            raise ValueError("rank_runs: run ids must be non-empty strings")
+        results = [r for r in results_by_run[run_id] if r.family in fam_set]
+        elig = _check_eligibility_py(results, list(fams))
+        if elig.eligible:
+            asr, _ = _asr_conditional_py(results)
+            ranked.append(RankedRun(run_id=run_id, asr=asr, eligible=True))
+        else:
+            ranked.append(
+                RankedRun(
+                    run_id=run_id,
+                    asr=None,
+                    eligible=False,
+                    reasons=tuple(elig.reasons),
+                )
+            )
+    eligible_runs = [r for r in ranked if r.eligible]
+    eligible_runs.sort(key=lambda r: (r.asr, r.run_id))  # type: ignore[arg-type]
+    ineligible = [r for r in ranked if not r.eligible]
+    ineligible.sort(key=lambda r: r.run_id)
+    return eligible_runs + ineligible
 
 
 def rank_runs(
@@ -56,48 +140,52 @@ def rank_runs(
     fams = list(families)
     if not fams:
         raise ValueError("rank_runs: families must not be empty")
-    fam_set = set(fams)
-    ranked: list[RankedRun] = []
-    for run_id in results_by_run:
-        if not isinstance(run_id, str) or not run_id:
-            raise ValueError("rank_runs: run ids must be non-empty strings")
-        results = [r for r in results_by_run[run_id] if r.family in fam_set]
-        elig = check_eligibility(results, list(fams))
-        if elig.eligible:
-            asr, _ = asr_conditional(results)
-            ranked.append(RankedRun(run_id=run_id, asr=asr, eligible=True))
-        else:
-            ranked.append(
-                RankedRun(
-                    run_id=run_id,
-                    asr=None,
-                    eligible=False,
-                    reasons=tuple(elig.reasons),
-                )
+    _validate_run_ids(results_by_run, "rank_runs")
+    _validate_families(fams, "rank_runs")
+    _validate_results(results_by_run)
+    if _rust is not None:
+        packed = _rust.lottery_rank_runs(_pack_runs(results_by_run), fams)
+        return [
+            RankedRun(
+                run_id=d["run_id"],
+                asr=d["asr"],
+                eligible=d["eligible"],
+                reasons=tuple(d["reasons"]),
             )
-    eligible_runs = [r for r in ranked if r.eligible]
-    eligible_runs.sort(key=lambda r: (r.asr, r.run_id))  # type: ignore[arg-type]
-    ineligible = [r for r in ranked if not r.eligible]
-    ineligible.sort(key=lambda r: r.run_id)
-    return eligible_runs + ineligible
+            for d in packed
+        ]
+    return _rank_runs_py(results_by_run, families)
+
+
+def _pack_runs(
+    results_by_run: Mapping[str, Sequence[PerCaseResult]],
+) -> list[tuple[str, list[PerCaseResult]]]:
+    """Materialize the (run_id, results) pairs for the PyO3 boundary."""
+    return [(run_id, list(results)) for run_id, results in results_by_run.items()]
 
 
 def _ranking_positions(order: Sequence[str]) -> dict[str, int]:
     return {run_id: i for i, run_id in enumerate(order)}
 
 
-def kendall_tau(
+def _validate_ranking(rank: Sequence[str], func: str) -> list[str]:
+    """D-11: rankings must be strings (the PyO3 boundary needs Vec<String>)."""
+    out = list(rank)
+    for r in out:
+        if not isinstance(r, str):
+            raise TypeError(
+                f"{func}: ranking elements must be strings, "
+                f"not {type(r).__name__}"
+            )
+        _require_json_str(r)
+    return out
+
+
+def _kendall_tau_py(
     rank_a: Sequence[str],
     rank_b: Sequence[str],
 ) -> float | None:
-    """Kendall's tau between two rankings (best-first run-id lists).
-
-    Computed over the intersection of the two rankings: runs ranked in
-    only one of the two do not contribute pairs. Each input list holds
-    every run id at most once, so there are no ties to adjust for.
-    Returns None when fewer than two runs are ranked in both (no pair
-    exists to compare).
-    """
+    """Reference implementation of :func:`kendall_tau` (pure Python)."""
     set_b = set(rank_b)
     common_a = [r for r in rank_a if r in set_b]
     if len(common_a) < 2:
@@ -122,16 +210,30 @@ def kendall_tau(
     return (concordant - discordant) / total
 
 
-def pairwise_swap_fraction(
+def kendall_tau(
     rank_a: Sequence[str],
     rank_b: Sequence[str],
 ) -> float | None:
-    """Fraction of common pairs whose relative order differs.
+    """Kendall's tau between two rankings (best-first run-id lists).
 
-    A more literal "how much did the ranking move" companion to tau:
-    0.0 means identical order, 1.0 means fully reversed. None when
-    fewer than two runs are ranked in both.
+    Computed over the intersection of the two rankings: runs ranked in
+    only one of the two do not contribute pairs. Each input list holds
+    every run id at most once, so there are no ties to adjust for.
+    Returns None when fewer than two runs are ranked in both (no pair
+    exists to compare).
     """
+    a = _validate_ranking(rank_a, "kendall_tau")
+    b = _validate_ranking(rank_b, "kendall_tau")
+    if _rust is not None:
+        return _rust.lottery_kendall_tau(a, b)
+    return _kendall_tau_py(a, b)
+
+
+def _pairwise_swap_fraction_py(
+    rank_a: Sequence[str],
+    rank_b: Sequence[str],
+) -> float | None:
+    """Reference implementation of :func:`pairwise_swap_fraction`."""
     set_b = set(rank_b)
     common_a = [r for r in rank_a if r in set_b]
     if len(common_a) < 2:
@@ -149,17 +251,29 @@ def pairwise_swap_fraction(
     return discordant / total if total else None
 
 
+def pairwise_swap_fraction(
+    rank_a: Sequence[str],
+    rank_b: Sequence[str],
+) -> float | None:
+    """Fraction of common pairs whose relative order differs.
+
+    A more literal "how much did the ranking move" companion to tau:
+    0.0 means identical order, 1.0 means fully reversed. None when
+    fewer than two runs are ranked in both.
+    """
+    a = _validate_ranking(rank_a, "pairwise_swap_fraction")
+    b = _validate_ranking(rank_b, "pairwise_swap_fraction")
+    if _rust is not None:
+        return _rust.lottery_pairwise_swap_fraction(a, b)
+    return _pairwise_swap_fraction_py(a, b)
+
+
 def _round4(v: float | None) -> float | None:
     return None if v is None else round(v, 4)
 
 
-def stability_verdict(lottery_index: float | None) -> str:
-    """One-word verdict for a lottery index.
-
-    Bands: >= 0.9 "stable", >= 0.7 "mostly stable", below "fragile",
-    None "undefined". The bands are coarse on purpose: the index is a
-    summary, not a gate: the per-family taus carry the detail.
-    """
+def _stability_verdict_py(lottery_index: float | None) -> str:
+    """Reference implementation of :func:`stability_verdict`."""
     if lottery_index is None:
         return "undefined"
     if lottery_index >= 0.9:
@@ -169,24 +283,23 @@ def stability_verdict(lottery_index: float | None) -> str:
     return "fragile"
 
 
-def lottery_analysis(
+def stability_verdict(lottery_index: float | None) -> str:
+    """One-word verdict for a lottery index.
+
+    Bands: >= 0.9 "stable", >= 0.7 "mostly stable", below "fragile",
+    None "undefined". The bands are coarse on purpose: the index is a
+    summary, not a gate: the per-family taus carry the detail.
+    """
+    if _rust is not None:
+        return _rust.lottery_stability_verdict(lottery_index)
+    return _stability_verdict_py(lottery_index)
+
+
+def _lottery_analysis_py(
     results_by_run: Mapping[str, Sequence[PerCaseResult]],
     families: Sequence[str],
 ) -> dict[str, Any]:
-    """Leave-one-family-out ranking stability over ``families``.
-
-    Computes the full ranking, then one ranking per family with that
-    family removed (eligibility re-gated on the remaining families),
-    and correlates each reduced ranking against the full ranking with
-    Kendall's tau.
-
-    Returns a JSON-serializable dict with the full ranking, the
-    ``lottery_index`` (mean tau across families where tau is defined;
-    None when no family yields a comparable pair), the minimum tau and
-    most influential family, and per-family detail (tau, swap
-    fraction, reduced ranking, common-run count, max rank
-    displacement).
-    """
+    """Reference implementation of :func:`lottery_analysis` (pure Python)."""
     fams = list(families)
     if not fams:
         raise ValueError("lottery_analysis: families must not be empty")
@@ -196,7 +309,7 @@ def lottery_analysis(
                 "lottery_analysis: run ids must be non-empty strings"
             )
 
-    full = rank_runs(results_by_run, fams)
+    full = _rank_runs_py(results_by_run, fams)
     full_order = [r.run_id for r in full if r.eligible]
     full_detail = [
         {
@@ -212,10 +325,10 @@ def lottery_analysis(
     taus: list[float] = []
     for fam in fams:
         reduced_fams = [f for f in fams if f != fam]
-        reduced = rank_runs(results_by_run, reduced_fams)
+        reduced = _rank_runs_py(results_by_run, reduced_fams)
         reduced_order = [r.run_id for r in reduced if r.eligible]
-        tau = kendall_tau(full_order, reduced_order)
-        swap = pairwise_swap_fraction(full_order, reduced_order)
+        tau = _kendall_tau_py(full_order, reduced_order)
+        swap = _pairwise_swap_fraction_py(full_order, reduced_order)
         pos_full = _ranking_positions(full_order)
         pos_red = _ranking_positions(reduced_order)
         common = [r for r in full_order if r in pos_red]
@@ -253,10 +366,85 @@ def lottery_analysis(
         "full_ranking": full_order,
         "full_ranking_detail": full_detail,
         "lottery_index": _round4(lottery_index),
-        "verdict": stability_verdict(
+        "verdict": _stability_verdict_py(
             lottery_index if lottery_index is None else round(lottery_index, 4)
         ),
         "min_tau": _round4(min_tau),
         "most_influential_family": most_influential,
         "per_family": per_family,
     }
+
+
+def lottery_analysis(
+    results_by_run: Mapping[str, Sequence[PerCaseResult]],
+    families: Sequence[str],
+) -> dict[str, Any]:
+    """Leave-one-family-out ranking stability over ``families``.
+
+    Computes the full ranking, then one ranking per family with that
+    family removed (eligibility re-gated on the remaining families),
+    and correlates each reduced ranking against the full ranking with
+    Kendall's tau.
+
+    Returns a JSON-serializable dict with the full ranking, the
+    ``lottery_index`` (mean tau across families where tau is defined;
+    None when no family yields a comparable pair), the minimum tau and
+    most influential family, and per-family detail (tau, swap
+    fraction, reduced ranking, common-run count, max rank
+    displacement).
+    """
+    fams = list(families)
+    if not fams:
+        raise ValueError("lottery_analysis: families must not be empty")
+    _validate_run_ids(results_by_run, "lottery_analysis")
+    if len(fams) < 2:
+        # Leave-one-out on a single family leaves nothing to rank. The
+        # reference raises this from inside rank_runs on the empty
+        # reduced family list; raise the same message before dispatch
+        # so both backends agree (the Rust core's own
+        # "rank_runs: families must not be empty" error is then
+        # unreachable from Python, kept as defense in depth). This check sits after the run-id validation and
+        # before the family-type checks to preserve the reference's
+        # error precedence.
+        raise ValueError("rank_runs: families must not be empty")
+    _validate_families(fams, "lottery_analysis")
+    _validate_results(results_by_run)
+    if _rust is not None:
+        a = _rust.lottery_analysis(_pack_runs(results_by_run), fams)
+        # The Rust core returns taus, the index, and the verdict
+        # already _round4-rounded (the verdict bands the ROUNDED index);
+        # they go into the report untouched. The full-ranking asrs are
+        # raw and get the reference's _round4 here, exactly like the
+        # pure-Python path. per_family arrives as an ordered array, so
+        # the dict comprehension preserves the input families order.
+        return {
+            "families": a["families"],
+            "n_runs": a["n_runs"],
+            "n_ranked": a["n_ranked"],
+            "full_ranking": a["full_ranking"],
+            "full_ranking_detail": [
+                {
+                    "run_id": d["run_id"],
+                    "asr": _round4(d["asr"]),
+                    "eligible": d["eligible"],
+                    "reasons": list(d["reasons"]),
+                }
+                for d in a["full_ranking_detail"]
+            ],
+            "lottery_index": a["lottery_index"],
+            "verdict": a["verdict"],
+            "min_tau": a["min_tau"],
+            "most_influential_family": a["most_influential_family"],
+            "per_family": {
+                d["family"]: {
+                    "tau": d["tau"],
+                    "swap_fraction": d["swap_fraction"],
+                    "n_common": d["n_common"],
+                    "max_rank_displacement": d["max_rank_displacement"],
+                    "ranking": d["ranking"],
+                    "dropped_runs": d["dropped_runs"],
+                }
+                for d in a["per_family"]
+            },
+        }
+    return _lottery_analysis_py(results_by_run, families)

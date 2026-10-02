@@ -175,6 +175,7 @@ class ComputeLockParity(unittest.TestCase):
                 "cases_planned": 0,
                 "seed": 7,
                 "max_concurrency": 8,
+                "max_tokens_per_call": None,
                 "metrics": {"asr": 0.25},
                 "env_sha256": "def",
                 # Measurement framework (M-6/M-7, 2026-09-28): the 9 new

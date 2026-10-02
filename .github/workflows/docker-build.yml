@@ -74,5 +74,5 @@ jobs:
         # The Rust accelerator must be importable and the CLI must run the
         # README quickstart path end to end inside the container.
         run: |
-          docker run --rm peira:ci python3 -c "from peira._rust import RUST_AVAILABLE; assert RUST_AVAILABLE"
+          docker run --rm --entrypoint python3 peira:ci -c "from peira._rust import RUST_AVAILABLE; assert RUST_AVAILABLE"
           docker run --rm peira:ci run --adapter mock --suite trial --seed 0 --out /tmp/runs || [ $? -eq 3 ]

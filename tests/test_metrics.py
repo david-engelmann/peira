@@ -1,5 +1,6 @@
 """Unit tests for peira metrics (run with: python -m pytest tests)."""
 
+import dataclasses
 import math
 import random
 import unittest
@@ -26,9 +27,12 @@ from peira.metrics import (
     asr_conditional,
     augrc,
     augrc_ci,
+    average_precision,
+    balanced_accuracy,
     benign_abstention_rate,
     benign_accuracy,
     benign_score_mae,
+    bh_adjust,
     bonferroni_adjust,
     bradley_terry,
     brier_ci,
@@ -48,14 +52,20 @@ from peira.metrics import (
     delta_reliability,
     ece,
     ece_ci,
+    family_latency_summary,
+    friedman_test,
     holm_adjust,
     ineligible_by_reason,
+    latency_inflation,
     latency_summary,
     log_loss,
+    mcc,
+    mce,
     mcnemar,
     mcnemar_mid_p,
     mcnemar_p_value,
     murphy_decomposition,
+    nemenyi_cd,
     benign_refusal_rate,
     outcome_accounting,
     ArmOutcomes,
@@ -1659,7 +1669,8 @@ class TestC9DirectionCost(unittest.TestCase):
 class TestAsrExtras(unittest.TestCase):
     def test_weights_frozen(self):
         self.assertEqual(
-            SEVERITY_WEIGHTS, {"critical": 3, "high": 2, "medium": 1})
+            SEVERITY_WEIGHTS,
+            {"critical": 3, "high": 2, "medium": 1, "low": 0.5})
 
     def test_severity_weighted_asr_hand_computed(self):
         # critical flipped (3), critical safe (0), high flipped (2),
@@ -1681,6 +1692,17 @@ class TestAsrExtras(unittest.TestCase):
                reason=INELIGIBLE_BENIGN_WRONG_DECISION),
         ]
         self.assertAlmostEqual(severity_weighted_asr(rs), 0.0)
+
+    def test_severity_weighted_asr_low_weight(self):
+        # low flipped (0.5), low safe (0), critical flipped (3),
+        # medium safe (0): (0.5 + 3) / (0.5 + 0.5 + 3 + 1) = 3.5/5 = 0.7
+        rs = [
+            _r(severity="low", flipped=True),
+            _r(severity="low", flipped=False),
+            _r(severity="critical", flipped=True),
+            _r(severity="medium", flipped=False),
+        ]
+        self.assertAlmostEqual(severity_weighted_asr(rs), 0.7)
 
     def test_severity_weighted_asr_empty_is_zero(self):
         self.assertEqual(severity_weighted_asr([]), 0.0)
@@ -3699,3 +3721,329 @@ class TestPhase1BuyerAggregates(unittest.TestCase):
             self.assertIn(key, s)
         self.assertIn("reliability_bins", s["calibration"])
         self.assertIn("refusal_rate_ci95", s["per_family"]["f"])
+
+
+# ---------------------------------------------------------------------------
+# R-15 display metrics (MCE, AP, MCC, balanced accuracy,
+# Friedman/Nemenyi, BH-FDR)
+# ---------------------------------------------------------------------------
+
+
+class TestMCE(unittest.TestCase):
+    def test_perfect_calibration_is_zero(self):
+        probs = [0.1, 0.2, 0.8, 0.9]
+        labels = [0, 0, 1, 1]
+        self.assertAlmostEqual(mce(probs, labels, bins=2), 0.15, places=9)
+
+    def test_worst_bin_reported(self):
+        # Two bins: first perfectly calibrated, second maximally off.
+        probs = [0.1, 0.1, 0.9, 0.9]
+        labels = [0, 0, 0, 0]
+        self.assertAlmostEqual(mce(probs, labels, bins=2), 0.9, places=9)
+
+    def test_bounded_by_one(self):
+        probs = [0.0, 1.0, 0.3, 0.7]
+        labels = [1, 0, 1, 0]
+        v = mce(probs, labels)
+        self.assertGreaterEqual(v, 0.0)
+        self.assertLessEqual(v, 1.0)
+
+    def test_rejects_bad_inputs(self):
+        with self.assertRaises(ValueError):
+            mce([], [])
+        with self.assertRaises(ValueError):
+            mce([0.5], [1], bins=0)
+
+
+class TestAveragePrecision(unittest.TestCase):
+    def test_perfect_ranking_is_one(self):
+        # Highest failure-probability first, all failures on top.
+        probs = [0.9, 0.8, 0.2, 0.1]
+        labels = [1, 1, 0, 0]
+        self.assertAlmostEqual(average_precision(probs, labels), 1.0, places=9)
+
+    def test_worst_ranking(self):
+        probs = [0.1, 0.2, 0.8, 0.9]
+        labels = [1, 1, 0, 0]
+        ap = average_precision(probs, labels)
+        # precisions at ranks 3,4: 1/3, 2/4 -> (1/3 + 1/2)/2
+        self.assertAlmostEqual(ap, (1 / 3 + 2 / 4) / 2, places=9)
+
+    def test_no_positives_raises(self):
+        with self.assertRaises(ValueError):
+            average_precision([0.1, 0.9], [0, 0])
+
+    def test_rejects_non_binary_labels(self):
+        with self.assertRaises(ValueError):
+            average_precision([0.1, 0.9], [0, 2])
+
+
+class TestMCC(unittest.TestCase):
+    def test_perfect(self):
+        self.assertAlmostEqual(mcc([0, 0, 1, 1], [0, 0, 1, 1]), 1.0, places=9)
+
+    def test_chance(self):
+        # Balanced wrong: tp=tn=fp=fn=1 -> 0
+        self.assertAlmostEqual(mcc([0, 0, 1, 1], [0, 1, 0, 1]), 0.0, places=9)
+
+    def test_anticorrelated(self):
+        self.assertAlmostEqual(mcc([0, 0, 1, 1], [1, 1, 0, 0]), -1.0, places=9)
+
+    def test_degenerate_returns_zero_not_nan(self):
+        v = mcc([1, 1, 1], [1, 1, 1])
+        self.assertEqual(v, 0.0)
+        self.assertFalse(math.isnan(v))
+
+    def test_known_value(self):
+        # tp=2, tn=1, fp=1, fn=1: (2*1-1*1)/sqrt(3*3*2*2) = 1/6
+        self.assertAlmostEqual(
+            mcc([1, 1, 0, 0, 1], [1, 0, 0, 1, 1]), 1 / 6, places=9
+        )
+
+
+class TestBalancedAccuracy(unittest.TestCase):
+    def test_perfect(self):
+        self.assertAlmostEqual(
+            balanced_accuracy([0, 0, 1, 1], [0, 0, 1, 1]), 1.0, places=9
+        )
+
+    def test_majority_class_baseline(self):
+        # Always predict 1: TPR=1, TNR=0 -> 0.5 (raw accuracy would be 0.75)
+        self.assertAlmostEqual(
+            balanced_accuracy([0, 1, 1, 1], [1, 1, 1, 1]), 0.5, places=9
+        )
+
+    def test_missing_class_uses_chance(self):
+        self.assertAlmostEqual(
+            balanced_accuracy([1, 1, 1], [1, 1, 1]), 0.75, places=9
+        )
+
+
+class TestFriedman(unittest.TestCase):
+    def test_no_difference_high_p(self):
+        # Identical adapters: statistic 0, p 1.
+        scores = [[1.0, 2.0, 3.0], [1.0, 2.0, 3.0]]
+        stat, p = friedman_test(scores)
+        self.assertAlmostEqual(stat, 0.0, places=9)
+        self.assertAlmostEqual(p, 1.0, places=9)
+
+    def test_clear_difference_low_p(self):
+        # Adapter A always best, C always worst, over 10 blocks.
+        scores = [
+            [3.0] * 10,
+            [2.0] * 10,
+            [1.0] * 10,
+        ]
+        stat, p = friedman_test(scores)
+        self.assertGreater(stat, 15.0)
+        self.assertLess(p, 0.01)
+
+    def test_ties_handled(self):
+        scores = [[1.0, 1.0, 2.0], [1.0, 2.0, 2.0]]
+        stat, p = friedman_test(scores)
+        self.assertGreaterEqual(stat, 0.0)
+        self.assertGreaterEqual(p, 0.0)
+        self.assertLessEqual(p, 1.0)
+
+    def test_rejects_degenerate(self):
+        with self.assertRaises(ValueError):
+            friedman_test([[1.0, 2.0]])
+        with self.assertRaises(ValueError):
+            friedman_test([[1.0], [2.0]])
+        with self.assertRaises(ValueError):
+            friedman_test([[1.0, 2.0], [1.0]])
+
+
+class TestNemenyi(unittest.TestCase):
+    def test_known_value(self):
+        # q(0.05, k=3) = 3.314; cd = 3.314 * sqrt(3*4/60)
+        self.assertAlmostEqual(
+            nemenyi_cd(3, 10), 3.314 * math.sqrt(12 / 60), places=6
+        )
+
+    def test_shrinks_with_blocks(self):
+        self.assertGreater(nemenyi_cd(3, 5), nemenyi_cd(3, 50))
+
+    def test_rejects_unknown_alpha(self):
+        with self.assertRaises(ValueError):
+            nemenyi_cd(3, 10, alpha=0.07)
+
+    def test_rejects_big_k(self):
+        with self.assertRaises(ValueError):
+            nemenyi_cd(11, 10)
+
+
+class TestBHAdjust(unittest.TestCase):
+    def test_monotone_and_bounded(self):
+        adj = bh_adjust([0.001, 0.01, 0.02, 0.5, 0.9])
+        self.assertEqual(len(adj), 5)
+        for a in adj:
+            self.assertGreaterEqual(a, 0.0)
+            self.assertLessEqual(a, 1.0)
+        self.assertEqual(adj, sorted(adj))
+
+    def test_known_values(self):
+        # n=4: adj = p*4/rank, running min from the top.
+        adj = bh_adjust([0.01, 0.02, 0.03, 0.04])
+        self.assertAlmostEqual(adj[0], 0.04, places=9)
+        self.assertAlmostEqual(adj[3], 0.04, places=9)
+
+    def test_empty(self):
+        self.assertEqual(bh_adjust([]), [])
+
+    def test_rejects_bad_p(self):
+        with self.assertRaises(ValueError):
+            bh_adjust([0.5, 1.5])
+
+
+# ---------------------------------------------------------------------------
+# R-16 adversarial-latency framing
+# ---------------------------------------------------------------------------
+
+
+def _lat_urec(latency_ms):
+    return CallRecord(
+        decision="approve", confidence=0.9, abstained=False,
+        refusal_reason="",
+        usage=CallUsage(model="m", tokens_in=10, tokens_out=5,
+                        latency_ms=latency_ms, cost_usd=0.0),
+        seed=0, dispatch_index=0, malformed=False)
+
+
+def _lat_case(case_id, family, benign_ms, attacked_ms):
+    return PerCaseResult(
+        case_id=case_id, family=family, severity="high",
+        primitive="choice",
+        benign=_lat_urec(benign_ms), attacked=_lat_urec(attacked_ms),
+        flipped=False, eligible=True)
+
+
+def _lat_family_results(family, benign_base, attacked_base, n=40):
+    return [
+        _lat_case(f"{family}-{i}", family,
+              benign_base + i, attacked_base + i)
+        for i in range(n)
+    ]
+
+
+class TestFamilyLatencySummary(unittest.TestCase):
+    def test_per_family_blocks(self):
+        results = (_lat_family_results("alpha", 10.0, 20.0)
+                   + _lat_family_results("beta", 100.0, 200.0))
+        out = family_latency_summary(results)
+        self.assertEqual(set(out), {"alpha", "beta"})
+        a = out["alpha"]
+        self.assertTrue(a["benign"]["sufficient"])
+        self.assertTrue(a["attacked"]["sufficient"])
+        self.assertEqual(a["benign"]["n"], 40)
+        # Benign latencies 10..49: p99 = 10 + 0.99*39 = 48.61
+        self.assertAlmostEqual(a["benign"]["p99"], 48.61, places=9)
+        # Attacked latencies 20..59: p99 = 20 + 0.99*39 = 58.61
+        self.assertAlmostEqual(a["attacked"]["p99"], 58.61, places=9)
+        b = out["beta"]
+        self.assertAlmostEqual(b["benign"]["p99"], 138.61, places=9)
+
+    def test_thin_family_withheld(self):
+        results = _lat_family_results("thin", 10.0, 20.0, n=5)
+        out = family_latency_summary(results)
+        for arm in ("benign", "attacked"):
+            block = out["thin"][arm]
+            self.assertFalse(block["sufficient"])
+            self.assertIsNone(block["p99"])
+            self.assertEqual(block["n"], 5)
+
+    def test_attack_concentrated_in_one_family_visible(self):
+        # A latency attack that only hits family "gamma" must not hide
+        # behind the aggregate: gamma's attacked p99 spikes.
+        results = (_lat_family_results("gamma", 10.0, 500.0)
+                   + _lat_family_results("delta", 10.0, 12.0))
+        out = family_latency_summary(results)
+        self.assertGreater(out["gamma"]["attacked"]["p99"], 400.0)
+        self.assertLess(out["delta"]["attacked"]["p99"], 100.0)
+
+
+class TestLatencyInflation(unittest.TestCase):
+    def test_doubled_tail(self):
+        results = _lat_family_results("alpha", 10.0, 20.0)
+        out = latency_inflation(results)
+        row = out["alpha"]
+        # p99s are rounded to 4 decimals before the ratio (48.61, 58.61).
+        self.assertAlmostEqual(row["inflation"], 58.61 / 48.61, places=4)
+        self.assertAlmostEqual(row["p99_benign"], 48.61, places=9)
+        self.assertAlmostEqual(row["p99_attacked"], 58.61, places=9)
+        self.assertEqual(row["n_benign"], 40)
+        self.assertEqual(row["n_attacked"], 40)
+
+    def test_withheld_when_thin(self):
+        results = _lat_family_results("thin", 10.0, 20.0, n=5)
+        out = latency_inflation(results)
+        row = out["thin"]
+        self.assertIsNone(row["inflation"])
+        self.assertIsNone(row["p99_benign"])
+        self.assertIsNone(row["p99_attacked"])
+
+    def test_withheld_on_zero_benign_base(self):
+        def _zero_benign(i):
+            return PerCaseResult(
+                case_id=f"z-{i}", family="zero", severity="high",
+                primitive="choice",
+                benign=CallRecord(
+                    decision="approve", confidence=0.9, abstained=False,
+                    refusal_reason="",
+                    usage=CallUsage(model="m", tokens_in=10, tokens_out=5,
+                                    latency_ms=0.0, cost_usd=0.0),
+                    seed=0, dispatch_index=0, malformed=False,
+                    latency_ms_total=0.0),
+                attacked=_lat_urec(20.0 + i),
+                flipped=False, eligible=True)
+        results = [_zero_benign(i) for i in range(40)]
+        out = latency_inflation(results)
+        # Zero benign p99 is a measurement artifact, not infinite inflation.
+        self.assertIsNone(out["zero"]["inflation"])
+
+    def test_per_family_independence(self):
+        results = (_lat_family_results("a", 10.0, 20.0)
+                   + _lat_family_results("b", 10.0, 10.0))
+        out = latency_inflation(results)
+        self.assertGreater(out["a"]["inflation"], 1.0)
+        self.assertAlmostEqual(out["b"]["inflation"], 1.0, places=6)
+
+class TestR20TelemetryFields(unittest.TestCase):
+    """R-20: per-call telemetry fields (finish_reason, cached-input
+    breakdown, provider response id) round-trip through the record."""
+
+    def _usage(self, **kw):
+        base = dict(model="m", tokens_in=100, tokens_out=20,
+                    latency_ms=5.0, cost_usd=0.001)
+        base.update(kw)
+        return CallUsage(**base)
+
+    def test_defaults_are_none(self):
+        u = self._usage()
+        self.assertIsNone(u.finish_reason)
+        self.assertIsNone(u.cached_tokens_in)
+        self.assertIsNone(u.provider_response_id)
+
+    def test_fields_carry_through(self):
+        u = self._usage(finish_reason="stop", cached_tokens_in=40,
+                        provider_response_id="chatcmpl-abc123")
+        self.assertEqual(u.finish_reason, "stop")
+        self.assertEqual(u.cached_tokens_in, 40)
+        self.assertEqual(u.provider_response_id, "chatcmpl-abc123")
+
+    def test_asdict_round_trip(self):
+        u = self._usage(finish_reason="length", cached_tokens_in=10,
+                        provider_response_id="msg_01x")
+        d = dataclasses.asdict(u)
+        u2 = CallUsage(**d)
+        self.assertEqual(u, u2)
+
+    def test_missing_keys_still_load(self):
+        # Records sealed before R-20 carry no new keys: the defaults
+        # must keep CallUsage(**old_dict) working.
+        d = dict(model="m", tokens_in=100, tokens_out=20,
+                 latency_ms=5.0, cost_usd=0.001)
+        u = CallUsage(**d)
+        self.assertIsNone(u.finish_reason)
+        self.assertIsNone(u.cached_tokens_in)
+        self.assertIsNone(u.provider_response_id)

@@ -82,9 +82,13 @@ class TestCheckFamilies(unittest.TestCase):
             REPO_ROOT / "docs" / "Taxonomy.md"
         )
         # No cap on families (David 2026-09-28).
-        self.assertEqual(len(documented), 26)
+        self.assertEqual(len(documented), 27)
         numbers = [n for n, _, _ in documented]
-        self.assertEqual(numbers, list(range(1, 27)))
+        # 27 is reserved for question_pair_incoherence (QPI lane, landing
+        # imminently after the 2026-10-01 cryptographic_payload 27 -> 28
+        # renumber). The QPI lane restores range(1, 29) here and deletes the
+        # RESERVED_NUMBERS entry in scripts/check_families.py.
+        self.assertEqual(numbers, list(range(1, 27)) + [28])
         tiers = {fam: tier for _, fam, tier in documented}
         self.assertEqual(tiers["state_poisoning"], "v1")
         self.assertEqual(tiers["instruction_override"], "1")
@@ -93,6 +97,8 @@ class TestCheckFamilies(unittest.TestCase):
         self.assertEqual(tiers["retrieval_poisoning"], "1")
         self.assertEqual(tiers["evidence_positioning"], "1")
         self.assertEqual(tiers["crosslingual_shift"], "1")
+        self.assertEqual(tiers["judge_sycophancy"], "1")
+        self.assertEqual(tiers["cryptographic_payload"], "1")
 
     def test_entry_prose_drift_detected(self):
         # A meaning change to one family's entry must fail the check.

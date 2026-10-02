@@ -24,7 +24,7 @@ run a suite through an adapter
 | Flag | Required | Default | Help |
 |---|---|---|---|
 | `--adapter` |  | `'mock'` | 'mock', or a dotted path: package.module (with a top-level `adapter`), package.module:ClassName, or package.module.ClassName. Only load adapter paths you trust: the module is imported (and therefore executed) with the working directory first on sys.path |
-| `--suite` |  | `'trial-demo'` | smoke is an alias for trial (choices: `trial-demo`, `trial`, `v1`, `safety-policy`, `conversational`, `smoke`) |
+| `--suite` |  | `'trial-demo'` | smoke is an alias for trial (choices: `trial-demo`, `trial`, `v1`, `safety-policy`, `conversational`, `combo`, `smoke`) |
 | `--families` |  | all | comma-separated family ids: run only cases from these attack families (default: all families in the suite; an empty value also means all). Subset runs are marked ranking-ineligible (exit 3): the ranking gate always covers the full suite. |
 | `--out` |  | `'runs'` |  |
 | `--dry-run` |  | `False` | validate config without scoring |
@@ -43,6 +43,9 @@ run a suite through an adapter
 | `--rlimit-nproc` |  | - | max process count for subprocess adapter children (fork-bomb guard; Unix only, opt-in, no limit by default; never applied to the runner itself) |
 | `--death-log` |  | - | path for the governor's SIGTERM/SIGINT 'last words' JSON record (opt-in; recommended for long unattended runs so an unexplained death leaves evidence) |
 | `--budget-usd` |  | - | hard spend cap in USD: the runner projects spent + running-mean-case-cost x 1.5 before each new case dispatch and stops dispatching when the projection exceeds the cap; in-flight cases drain and the artifact seals with termination=budget (analyzable, never rankable) (default: no cap) |
+| `--max-tokens-per-call` |  | - | per-call output-token cap. A call whose reported tokens_out exceeds the cap is marked malformed and excluded from scoring, and the transcript flags token_limit_exceeded for the call (default no cap) |
+| `--budget-grid` |  | - | EB-35 attack-strength sweep. Comma-separated strictly increasing positive ints (e.g. 1,2,4,8,16). Each case's attacked arm runs max(grid) queries and the artifact records budget-to-first-flip per case plus ASR-vs-budget curves with Wilson CIs per family. Single-shot suites only and --seeds 1 only. |
+| `--strength-dimension` |  | `'attacker_queries'` | EB-35 strength dimension to budget over. Default is attacker_queries. See `peira sweep-dimensions` for the registry. |
 | `--cache-dir` |  | - | opt-in response cache directory for deterministic adapters (temperature 0 + fixed seed); off by default and never on the measurement path unless given |
 | `--transcript` |  | - | write a JSONL transcript of every request/response to this path (for audit and `peira replay`) |
 
@@ -53,8 +56,17 @@ re-score a recorded transcript without calling any provider
 | Flag | Required | Default | Help |
 |---|---|---|---|
 | `--transcript` | yes | - | transcript JSONL written by `peira run --transcript` |
-| `--suite` |  | `'trial-demo'` | smoke is an alias for trial (choices: `trial-demo`, `trial`, `v1`, `safety-policy`, `conversational`, `smoke`) |
+| `--suite` |  | `'trial-demo'` | smoke is an alias for trial (choices: `trial-demo`, `trial`, `v1`, `safety-policy`, `conversational`, `combo`, `smoke`) |
 | `--out` |  | `'runs'` |  |
+
+## peira transcript-view
+
+render a run transcript as static HTML
+
+| Flag | Required | Default | Help |
+|---|---|---|---|
+| `--transcript` | yes | - | transcript JSONL written by `peira run --transcript` |
+| `--out` | yes | - | output HTML path |
 
 ## peira validate
 
@@ -103,6 +115,19 @@ k-seed stability analysis (pass^k, variance decomposition) over existing run art
 |---|---|---|---|
 | `RUNS` | yes | - | two or more run artifacts from the same adapter/suite (different seeds) |
 | `--out` |  | - | write a sealed stability artifact JSON to this path |
+
+## peira sweep-report
+
+render EB-35 attack-strength sweep curves from a sweep run artifact
+
+| Flag | Required | Default | Help |
+|---|---|---|---|
+| `ARTIFACT` | yes | - | sweep run artifact JSON (from `peira run --budget-grid ...`) |
+| `--format` |  | `'text'` | text renders per-family ASR-vs-budget tables. json emits the sealed sweep summary. Default is text. (choices: `text`, `json`) |
+
+## peira sweep-dimensions
+
+list the EB-35 strength-dimension registry and each dimension's implementation status
 
 ## peira drift-watch
 
@@ -174,6 +199,34 @@ M-4 hardness/transfer diagnostics over 2+ run artifacts (diagnostic tables, neve
 |---|---|---|---|
 | `RUNS` | yes | - | run artifact paths (>= 2) |
 | `--out` |  | - | write the diagnostic tables to this path |
+
+## peira tax
+
+EB-40: cross-adapter robustness-tax diagnostics (accuracy/calibration/combined taxes, ASR-tax correlations)
+
+| Flag | Required | Default | Help |
+|---|---|---|---|
+| `RUNS` | yes | - | run artifact paths (>= 2, one per adapter) |
+| `--out` |  | - | write the text report to this path (default: stdout) |
+| `--json` |  | - | write the full tax analysis JSON to this path |
+
+## peira erosion
+
+EB-23: confidence-erosion distribution on failed attacks (per-family and overall)
+
+| Flag | Required | Default | Help |
+|---|---|---|---|
+| `RUN` | yes | - | run artifact path |
+| `--out` |  | - | write the text report to this path (default: stdout) |
+
+## peira length
+
+EB-7/EB-10: length-sensitivity analysis and length de-confounding diagnostics for one run artifact
+
+| Flag | Required | Default | Help |
+|---|---|---|---|
+| `RUN` | yes | - | run artifact path |
+| `--out` |  | - | write the text report to this path (default: stdout) |
 
 ## peira lottery
 
@@ -356,7 +409,7 @@ scaffold a new case from a family template
 
 | Flag | Required | Default | Help |
 |---|---|---|---|
-| `--family` | yes | - | attack family (choices: `abstain_forcing`, `authority_fabrication`, `confidence_spoofing`, `contradiction_injection`, `criteria_order`, `criteria_smuggling`, `crosslingual_shift`, `distractor_flooding`, `encoding_evasion`, `evidence_positioning`, `indirect_injection`, `indirection`, `instruction_override`, `judge_sycophancy`, `literal_reading`, `negation_games`, `option_order`, `policy_paraphrase`, `precedent_stacking`, `retrieval_poisoning`, `safety_policy`, `score_anchoring`, `self_advocacy`, `state_poisoning`, `temporal_numeric_traps`, `threshold_edge_hunting`, `verbosity_inflation`) |
+| `--family` | yes | - | attack family (choices: `abstain_forcing`, `authority_fabrication`, `confidence_spoofing`, `contradiction_injection`, `criteria_order`, `criteria_smuggling`, `crosslingual_shift`, `cryptographic_payload`, `distractor_flooding`, `encoding_evasion`, `evidence_positioning`, `indirect_injection`, `indirection`, `instruction_override`, `judge_sycophancy`, `literal_reading`, `negation_games`, `option_order`, `policy_paraphrase`, `precedent_stacking`, `retrieval_poisoning`, `safety_policy`, `score_anchoring`, `self_advocacy`, `state_poisoning`, `temporal_numeric_traps`, `threshold_edge_hunting`, `verbosity_inflation`) |
 | `--id` | yes | - | case id, e.g. sp-042 |
 | `--severity` |  | `'medium'` | (choices: `critical`, `high`, `medium`, `low`) |
 | `--primitive` |  | - | default: the family's natural primitive (choices: `choice`, `score`, `abstain`) |

@@ -1,0 +1,522 @@
+{
+  "$id": "https://peiratrial.dev/schemas/art55-report.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "Data contract for the per-run evaluation report described in docs/Art55-Report-Design.md. DESIGN ONLY. Fields marked x-v3-gated depend on run-artifact v3 blocks that have not landed yet, and the generator that fills this document is not built until they do.",
+  "properties": {
+    "adjudication_policy": {
+      "description": "How ambiguous outcomes were adjudicated, from the artifact v3 adjudication_policy block",
+      "properties": {
+        "abstention_rule": {
+          "type": "string"
+        },
+        "human_review_trigger": {
+          "type": "string"
+        },
+        "malformed_rule": {
+          "type": "string"
+        },
+        "tie_breaking": {
+          "type": "string"
+        }
+      },
+      "type": "object",
+      "x-v3-gated": true
+    },
+    "attack_provenance": {
+      "description": "Per-family provenance for the attacks exercised, from the artifact v3 attack_provenance block",
+      "items": {
+        "properties": {
+          "case_count": {
+            "type": "integer"
+          },
+          "family": {
+            "type": "string"
+          },
+          "literature_reference": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "mechanism_description": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "family",
+          "case_count"
+        ],
+        "type": "object"
+      },
+      "type": "array",
+      "x-v3-gated": true
+    },
+    "corrective_measures": {
+      "description": "Measures taken or planned in response to the findings, per EB-30 tier",
+      "items": {
+        "properties": {
+          "measure": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "tier": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "tier",
+          "measure"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "coverage": {
+      "description": "What the run exercised and what it did not",
+      "properties": {
+        "eligible_cases": {
+          "type": "integer"
+        },
+        "families": {
+          "items": {
+            "properties": {
+              "cases": {
+                "type": "integer"
+              },
+              "eligible": {
+                "type": "integer"
+              },
+              "family": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "family",
+              "cases",
+              "eligible"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "foreseeable_misuse_coverage": {
+          "description": "Pointer to the misuse coverage matrix and this run's slice of it",
+          "properties": {
+            "matrix_version": {
+              "type": "string"
+            },
+            "misuses_covered": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "misuses_not_covered": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            }
+          },
+          "type": "object"
+        },
+        "total_cases": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "families",
+        "total_cases",
+        "eligible_cases"
+      ],
+      "type": "object"
+    },
+    "exposure_attestation": {
+      "description": "Attestation that the evaluated configuration matches the deployed one, from the artifact v3 exposure_attestation block",
+      "properties": {
+        "attested_by": {
+          "type": "string"
+        },
+        "attested_utc": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "differences": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "evaluated_matches_deployed": {
+          "type": "boolean"
+        }
+      },
+      "type": "object",
+      "x-v3-gated": true
+    },
+    "generated_utc": {
+      "description": "When the report was generated",
+      "format": "date-time",
+      "type": "string"
+    },
+    "generator": {
+      "description": "The tool that produced the report",
+      "properties": {
+        "command": {
+          "type": "string"
+        },
+        "name": {
+          "const": "peira",
+          "type": "string"
+        },
+        "version": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "version"
+      ],
+      "type": "object"
+    },
+    "protocol": {
+      "description": "How the evaluation was conducted",
+      "properties": {
+        "dataset_manifest_sha256": {
+          "type": "string"
+        },
+        "dataset_version": {
+          "type": "string"
+        },
+        "methodology_reference": {
+          "type": "string"
+        },
+        "peira_version": {
+          "type": "string"
+        },
+        "suite": {
+          "description": "Suite label. Null for holdout runs, which are pseudonymized and carry no suite or arm labels",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "peira_version",
+        "suite",
+        "dataset_version",
+        "dataset_manifest_sha256"
+      ],
+      "type": "object"
+    },
+    "provenance": {
+      "description": "The full provenance tuple binding the report to the measurement",
+      "properties": {
+        "artifact_uri": {
+          "type": "string"
+        },
+        "code_version": {
+          "type": "string"
+        },
+        "dataset_manifest_sha256": {
+          "type": "string"
+        },
+        "environment_sha256": {
+          "type": "string"
+        },
+        "seal_verified": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "dataset_manifest_sha256",
+        "code_version",
+        "environment_sha256",
+        "seal_verified"
+      ],
+      "type": "object"
+    },
+    "report_id": {
+      "description": "Stable identifier for this report, derived from the run artifact id and the report version",
+      "type": "string"
+    },
+    "report_version": {
+      "description": "Version of the report contract, starting at 1.0.0. Bumped on any breaking field change",
+      "type": "string"
+    },
+    "residual_risks": {
+      "description": "What the run did not test and which mitigations are assumed but unmeasured",
+      "items": {
+        "properties": {
+          "planned_follow_up": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "risk": {
+            "type": "string"
+          },
+          "why_unmeasured": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "risk",
+          "why_unmeasured"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "results": {
+      "description": "Headline and sliced results with 95 percent confidence intervals",
+      "properties": {
+        "attack_success_rate": {
+          "properties": {
+            "ci_high": {
+              "type": "number"
+            },
+            "ci_low": {
+              "type": "number"
+            },
+            "n": {
+              "type": "integer"
+            },
+            "point": {
+              "type": "number"
+            }
+          },
+          "required": [
+            "point",
+            "ci_low",
+            "ci_high",
+            "n"
+          ],
+          "type": "object"
+        },
+        "benign_accuracy": {
+          "properties": {
+            "ci_high": {
+              "type": "number"
+            },
+            "ci_low": {
+              "type": "number"
+            },
+            "n": {
+              "type": "integer"
+            },
+            "point": {
+              "type": "number"
+            }
+          },
+          "required": [
+            "point",
+            "ci_low",
+            "ci_high",
+            "n"
+          ],
+          "type": "object"
+        },
+        "drift_summary": {
+          "description": "Present when a prior run in the same monitoring series exists",
+          "properties": {
+            "baseline_report_id": {
+              "type": "string"
+            },
+            "slices_with_drift_down": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "slices_with_drift_up": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            }
+          },
+          "type": [
+            "object",
+            "null"
+          ]
+        },
+        "incident_tiers": {
+          "description": "Flip counts by EB-30 documentation-pack tier",
+          "properties": {
+            "t1_candidates": {
+              "type": "integer"
+            },
+            "t2": {
+              "type": "integer"
+            },
+            "t3_signals": {
+              "type": "integer"
+            },
+            "t4": {
+              "type": "integer"
+            }
+          },
+          "type": "object"
+        },
+        "per_family": {
+          "items": {
+            "properties": {
+              "attack_success_rate": {
+                "type": "number"
+              },
+              "ci_high": {
+                "type": "number"
+              },
+              "ci_low": {
+                "type": "number"
+              },
+              "family": {
+                "type": "string"
+              },
+              "n": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "family",
+              "attack_success_rate",
+              "n"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "per_severity": {
+          "items": {
+            "properties": {
+              "attack_success_rate": {
+                "type": "number"
+              },
+              "n": {
+                "type": "integer"
+              },
+              "severity": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "severity",
+              "attack_success_rate",
+              "n"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "targeted_asr": {
+          "description": "The EB-53 trio, present when target decisions are known",
+          "properties": {
+            "benign_utility": {
+              "type": "number"
+            },
+            "ci_high": {
+              "type": "number"
+            },
+            "ci_low": {
+              "type": "number"
+            },
+            "targeted_asr": {
+              "type": "number"
+            },
+            "utility_under_attack": {
+              "type": "number"
+            },
+            "validation_status": {
+              "type": "string"
+            }
+          },
+          "type": [
+            "object",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "attack_success_rate",
+        "benign_accuracy"
+      ],
+      "type": "object"
+    },
+    "run_reference": {
+      "description": "The sealed run artifact this report evaluates",
+      "properties": {
+        "adapter_name": {
+          "type": "string"
+        },
+        "adapter_pin": {
+          "type": "string"
+        },
+        "analysis_lock": {
+          "type": "string"
+        },
+        "artifact_uri": {
+          "type": "string"
+        },
+        "artifact_version": {
+          "type": "string"
+        },
+        "run_utc": {
+          "format": "date-time",
+          "type": "string"
+        }
+      },
+      "required": [
+        "artifact_uri",
+        "analysis_lock",
+        "artifact_version"
+      ],
+      "type": "object"
+    },
+    "threat_model": {
+      "description": "The attacker model the run assumed. Sourced from the artifact v3 threat_model block",
+      "properties": {
+        "attacker_capabilities": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "attacker_knowledge": {
+          "type": "string"
+        },
+        "explicitly_out_of_scope": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "query_budget": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        }
+      },
+      "type": "object",
+      "x-v3-gated": true
+    }
+  },
+  "required": [
+    "report_id",
+    "report_version",
+    "generated_utc",
+    "run_reference",
+    "protocol",
+    "coverage",
+    "results",
+    "residual_risks",
+    "provenance"
+  ],
+  "title": "Peira Art. 55-shaped evaluation report",
+  "type": "object"
+}

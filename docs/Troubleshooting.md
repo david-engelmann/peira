@@ -120,6 +120,27 @@ about its own timeout enforcement. Fix: resume with the same `--run-timeout`
 the partial was written with (or no `--run-timeout`, matching the partial),
 or delete the `<adapter>-<suite>.partial.json` file and re-run from scratch.
 
+**`error: --max-tokens-per-call must be >= 1 (got X)`**
+Cause: the per-call output-token cap was zero or negative, which is not a
+cap at all. Fix: pass a positive integer, or drop `--max-tokens-per-call`
+for an uncapped run.
+
+**`error: partial run was recorded with max_tokens_per_call X, not Y: re-run with the same --max-tokens-per-call or drop --resume`**
+Cause: `peira run --resume` found a partial run recorded under a different
+per-call token cap than the one requested. The cap is a measurement input.
+Merging results scored under a different cap would make the artifact lie
+about its own token enforcement. Fix: resume with the same
+`--max-tokens-per-call` the partial was written with (or no
+`--max-tokens-per-call`, matching the partial), or delete the
+`<adapter>-<suite>.partial.json` file and re-run from scratch.
+
+**`error: could not render transcript: ...`**
+Cause: `peira transcript-view` could not read the transcript file
+(missing path, permissions, or undecodable bytes). Fix: check the
+`--transcript` path and re-run. Transcript lines that are not valid JSON
+are skipped individually and reported in the page summary instead of
+failing the render.
+
 **`error: partial run has no cache state declaration (config.cache_enabled): it predates cache-state sealing and cannot resume`**
 Cause: `peira run --resume` found a partial run written before cache
 state was sealed into artifacts. It cannot prove its cache state, so
@@ -169,6 +190,84 @@ Cause: a transcript captures a single run's request/response stream,
 but multi-seed runs are k independent executions. Fix: run with
 `--seeds 1` to capture a transcript, or omit `--transcript` for
 multi-seed runs.
+
+**`error: --budget-grid is not supported for the conversational suite (single-shot suites only)`**
+Cause: EB-35 attack-strength sweeps budget the single-shot attacked
+arm. The conversational suite has its own turn-based driver. Fix:
+run the sweep on a single-shot suite, or use the conversational
+suite without `--budget-grid`.
+
+**`error: --budget-grid is not supported with --seeds > 1; run the sweep with --seeds 1`**
+Cause: a sweep already multiplies each case by max(budget_grid)
+attacked queries. Crossing that with k seeds would confound the
+budget dimension with seed variance. Fix: run the sweep with
+`--seeds 1`.
+
+**`error: invalid --strength-dimension: <reason>`**
+Cause: `--strength-dimension` named a dimension that is not in the
+registry. Fix: run `peira sweep-dimensions` to list the registered
+dimensions and pass one of those names.
+
+**`error: invalid --budget-grid: <reason>`**
+Cause: the grid must be a non-empty, strictly increasing list of
+positive integers (e.g. `1,2,4,8`). Common mistakes: a zero or
+negative entry, a repeated value, non-integer text, or an empty
+string. Fix: pass a valid grid like `--budget-grid 1,2,4,8,16`.
+
+**`error: <path> is not a sweep artifact (no metrics.sweep section; run with --budget-grid first)`**
+Cause: `peira sweep-report` was pointed at a standard run artifact,
+which has no sealed sweep summary. Fix: run with
+`--budget-grid` to produce a sweep artifact, then report on it.
+
+**`error: <path> not found`**
+Cause: `peira sweep-report` was given a path that does not exist.
+Fix: check the path spelling and that the sweep run completed.
+
+**`error: <path> is not a valid run artifact (<reason>)`**
+Cause: `peira sweep-report` was given a file that is not a valid
+run artifact (corrupt JSON, wrong schema, or a partial from a
+different suite). Fix: verify the file is a completed sweep
+artifact from `peira run --budget-grid`.
+
+**`error: partial run at <path> uses grid=<grid> dimension=<dim>, but current run uses grid=<grid> dimension=<dim>; delete <path> or re-run with the original grid and dimension.`**
+Cause: `peira run --resume --budget-grid` was given a different grid
+or dimension than the partial run. Mixing grids would silently corrupt
+the budget-to-first-flip curve. Fix: delete the partial and re-run,
+or re-run with the original grid and dimension.
+
+**`error: partial run at <path> is a sweep run (grid=<grid> dimension=<dim>); resume with --budget-grid <grid> --strength-dimension <dim>, or delete <path> and re-run`**
+Cause: `peira run --resume` was used without `--budget-grid` on a
+partial from a sweep run. The remaining cases would run single-shot
+and seal an artifact whose ranking flags no longer mean what they
+say. Fix: resume with the original `--budget-grid` and
+`--strength-dimension`, or delete the partial and re-run.
+
+**`error: partial run at <path> is a single-shot run, but the current run is a sweep (grid=<grid> dimension=<dim>); delete <path> or drop --budget-grid and --strength-dimension`**
+Cause: `peira run --resume --budget-grid` was used on a partial from
+a single-shot run. Sweep and single-shot per-case records are
+different protocols and must not share an artifact. Fix: delete the
+partial and re-run, or drop `--budget-grid` to resume the
+single-shot run.
+
+**`error: <path> has inconsistent sweep data for family '<family>' (<reason>)`**
+Cause: `peira sweep-report` found per-case results for one family that
+use different budget grids (e.g. a hand-edited or corrupted artifact).
+Merging them would silently mix incompatible budget levels. Fix:
+re-run the sweep to produce a clean artifact; do not hand-edit sealed
+artifacts.
+
+**`error: <path> has malformed sweep results (<reason>)`**
+Cause: `peira sweep-report` found result entries that do not parse as
+sweep per-case records (corrupt or hand-edited artifact). Fix: re-run
+the sweep to produce a clean artifact; do not hand-edit sealed
+artifacts.
+
+**`ValueError: strength dimension '<name>' is registered but no family has a registered attack instantiator (...)`**
+Cause: the requested dimension (e.g. `paraphrase_rounds`) is in the
+registry but no family has a registered attack instantiator for it,
+so the budget parameter is undefined. Fix: use
+`--strength-dimension attacker_queries`, or register an instantiator
+with `peira.sweep.register_strength_instantiator`.
 
 **`ValueError: budget_usd must be a number or None, got True`**
 Cause: a boolean was passed as the budget to `run_multiseed`.
@@ -237,6 +336,11 @@ ids are in `docs/Taxonomy.md`. If the id is `safety_policy`, use
 Cause: `peira run --suite conversational --families` got a family id
 that isn't in the conversational registry. Fix: pick from
 `multi_turn_escalation` or `decision_splitting`.
+
+**`error: unknown combo pair(s): x (known combo pairs: ...)`**
+Cause: `peira run --suite combo --families` got a pair id that isn't
+in the combo registry. Fix: pick from `combo-dfl-ind` or
+`combo-san-csp`.
 
 **`error: --families matched no cases in ...`**
 Cause: the ids are valid, but the suite has no cases for them (e.g. a
@@ -1101,15 +1205,81 @@ Cause: `peira hardness --out` points somewhere unwritable: a missing
 parent directory, or a permissions problem. Fix: create the directory
 first, or pick a writable path.
 
+**`error: tax needs at least 2 run artifacts` (from `peira tax`)**
+Cause: fewer than two artifact paths were given. The robustness tax is
+a cross-adapter frontier view. One run has nothing to anchor against.
+Fix: pass two or more run artifact paths.
+
+**`error: <path> not found` (from `peira tax`, `peira erosion`, `peira length`)**
+Cause: one of the artifact paths doesn't exist. Fix: check the paths.
+
+**`error: <path> is not a valid run artifact (...)` (from `peira tax`, `peira erosion`, `peira length`)**
+Cause: the file isn't valid JSON or isn't a sealed run artifact. Fix:
+point at `peira run` output files.
+
+**`error: <path>: cannot decode per-case results (...)` (from `peira tax`, `peira erosion`, `peira length`)**
+Cause: the artifact's per-case results don't match the current
+measurement contract. Fix: re-run with the current `peira`. Don't
+hand-edit artifacts.
+
+**`error: tax: ...` (from `peira tax`)**
+Cause: the tax analysis refused the inputs. The message names the
+reason. Inputs sharing an adapter name collapse last-wins before
+analysis, so "needs at least 2 adapters" usually means fewer than
+two distinct adapter names were given. The analysis also needs at
+least one adapter carrying benign accuracy and at least one
+carrying attacked ECE across the set. A combined tax is withheld
+per adapter when that adapter lacks either component. Fix: check
+the metrics are sealed on the artifacts and that the adapter names
+are distinct.
+
+**`error: erosion: ...` (from `peira erosion`)**
+Cause: the per-case data failed validation: a non-finite confidence
+on an eligible non-flipped case. Fix: re-run the adapter. Don't
+hand-edit artifacts.
+
+**`error: length: ...` (from `peira length`)**
+Cause: the per-case data failed validation: an invalid (negative or
+non-finite) tokens_out on an eligible case. Fix: re-run the adapter.
+Don't hand-edit artifacts.
+
+**`warning: ... analysis lock mismatch` (from `peira tax`, `peira erosion`, `peira length`)**
+Cause: the run artifact was modified after sealing. The analysis
+still runs (warning, not error) but the numbers aren't trustworthy:
+treat the output as tampered until you re-run. Fix: don't edit
+artifacts, re-run. If you need different config, that's a new run
+with a new lock.
+
+**`WARNING: observed length exceeds the declared cap` (in `peira length` output)**
+Cause: at least one attacked-arm response was longer than the
+`generation_max_tokens` the artifact declares, so the cap was not
+enforced on this run. The length-sensitivity slopes then measure a
+mixture of protocol drift and real length effects. Fix: re-run with
+the cap enforced (see EB-10 in `docs/Methodology.md`). A
+non-numeric `generation_max_tokens` is treated as no declared cap.
+
+**`error: cannot write tax JSON to <out> (...)` (from `peira tax --json`)**
+Cause: `peira tax --json` points somewhere unwritable: a missing
+parent directory, or a permissions problem. Fix: create the directory
+first, or pick a writable path.
+
+**`error: cannot write robustness-tax report to <out> (...)` / `error: cannot write erosion report to <out> (...)` / `error: cannot write length report to <out> (...)`**
+Cause: `--out` points somewhere unwritable: a missing parent
+directory, or a permissions problem. Fix: create the directory first,
+or pick a writable path.
+
 **`error: artifacts are not comparable: ...`**
 Cause: the two artifacts weren't scored under the same trial. The
 message names the mismatch: different `suite`, different
 `dataset_version`, different `artifact_version` (measurement contract),
-or different `manifest_sha256` (dataset bytes). Fix: compare runs of
-the same suite and dataset version; re-run the adapter if the dataset
+different `manifest_sha256` (dataset bytes), or different sweep config
+(one side is an attack-strength sweep and the other is single-shot, or
+the two sweeps used different budget grids or strength dimensions).
+Fix: compare runs of the same suite and dataset version; re-run the adapter if the dataset
 moved on. Comparing across dataset versions is refused deliberately:
 the per-case outcomes wouldn't be paired observations of the same
-trial.
+trial. Sweep runs only compare against sweeps with the same grid and
+dimension, for the same reason.
 
 **`error: artifacts share no cases: nothing to compare`**
 Cause: the two artifacts have no `case_id` overlap (different case
@@ -1542,3 +1712,26 @@ need all trials complete.
 Cause: not an error. `--cases` (or the default 100) exceeds the
 filtered suite size, so the probe runs over every available case.
 Fix: none required.
+## Drift detection (`scripts/drift_detect.py`) errors
+
+**`drift_detect: cannot read <path>: <reason>`**
+The file cannot be read or does not contain valid JSON. Check the
+path and save the artifact again. The script accepts a full sealed
+run artifact or a bare `metrics` dict as JSON.
+
+**`<path> does not contain a JSON object`**
+The artifact file holds a JSON array or scalar at the top level.
+Pass the artifact JSON file as written by the runner, not a list of
+results.
+
+**`drift_detect: artifact has no usable metrics block`**
+The artifact's `metrics` key is present but is not an object.
+Regenerate the artifact with the standard metrics writer. Do not
+hand-edit the metrics block. The seal covers it.
+
+**Report shows "Not comparable" and exit code 2**
+The two artifacts belong to different monitoring series. A dataset
+change, a different adapter or suite, or a different case manifest
+is not drift. It is a new series. This is not a bug. Start a new
+monitoring series for the new dataset version (see
+`docs/Drift-Monitoring-Spec.md`).

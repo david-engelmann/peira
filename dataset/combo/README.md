@@ -70,13 +70,13 @@ the MDE floor is not met. Primary outcome is registered per pair
 ## Running the pilot
 
 ```bash
-# Authoring gates
-python3 -m peira.combo_gates dataset/combo/cases/*.jsonl
+# Authoring gates (CG1-CG5, including substrate freshness vs v1/v2)
+PYTHONPATH=python python3 -m peira.combo_gates dataset/combo/cases/*.jsonl
 
 # Run all four arms through the standard runner (each arm is an
 # ordinary case; the 2x2 structure is recovered at analysis time)
-peira run --dataset dataset/combo/cases --adapter <name>
+PYTHONPATH=python python3 -m peira.cli run --suite combo --adapter <name>
 
 # Interaction analysis (paired contrast + CI + MDE)
-python3 scripts/combo_analyze.py runs/<run-id>/results.jsonl
+python3 scripts/combo_analyze.py runs/<run-id>/mock-combo.json
 ```

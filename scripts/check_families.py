@@ -99,7 +99,7 @@ EXPECTED_ENTRY_HASHES: dict[str, str] = {
     'negation_games': 'e24fea34a9966334',
     'policy_paraphrase': '5eb61f23faccafdb',
     'indirection': '3304a7fb9b38f7bd',
-    'confidence_spoofing': 'b79bb96facf4b6fc',
+    'confidence_spoofing': '231e91635600d823',
     'instruction_override': 'fc45375a7ef6549e',
     'indirect_injection': '5b42165367cb2521',
     'authority_fabrication': '3e043c617a3798ce',
@@ -111,12 +111,23 @@ EXPECTED_ENTRY_HASHES: dict[str, str] = {
     'encoding_evasion': 'b8aa7481a261acf9',
     'abstain_forcing': 'a2524ce248716d94',
     'verbosity_inflation': '28288f5d232a6691',
-    'retrieval_poisoning': '0e6f14816e91e29e',
-    'evidence_positioning': 'a5542f6af7452fd5',
-    'crosslingual_shift': '3959fd1abdb1fa20',
-    'judge_sycophancy': 'b6d79acbd6e99b4f',
+    'retrieval_poisoning': '1373fe2864e9e018',
+    'evidence_positioning': '2578e98c3747c940',
+    'crosslingual_shift': '87ffdb44767062a0',
+    'judge_sycophancy': 'adeae058d1cce93f',
     'threshold_edge_hunting': 'bf2150267c8f54f3',
+    'cryptographic_payload': '77d68a6f66c4fee1',
 }
+
+
+#: Numbers reserved for families with a settled program-wide assignment
+#: that have not landed yet. 27 belongs to question_pair_incoherence:
+#: on 2026-10-01 PR #304 wrongly merged cryptographic_payload as family
+#: 27, and this renumber (27 -> 28) vacates 27 until the QPI lane lands.
+#: The QPI lane MUST delete this reservation when it lands and restore the
+#: strict 1..N rule. This reservation is deliberate and dated; do not add
+#: to it without a settled assignment recorded in the lane registry.
+RESERVED_NUMBERS: dict[int, str] = {27: "question_pair_incoherence"}
 
 
 def check() -> list[str]:
@@ -128,12 +139,19 @@ def check() -> list[str]:
     documented = documented_families(taxonomy)
     doc_ids = [fam for _, fam, _ in documented]
 
-    # Numbering runs 1..N in order.
+    # Numbering runs 1..N in order, except explicitly reserved numbers
+    # (see RESERVED_NUMBERS). A documented entry that collides with a
+    # reserved number fails, so the landing lane must remove the
+    # reservation when the family actually lands.
     numbers = [n for n, _, _ in documented]
-    if numbers != list(range(1, len(numbers) + 1)):
+    expected_max = len(numbers) + len(RESERVED_NUMBERS)
+    expected = [n for n in range(1, expected_max + 1)
+                if n not in RESERVED_NUMBERS]
+    if numbers != expected:
         problems.append(
-            f"docs/Taxonomy.md: family numbering is not 1..{len(numbers)} "
-            f"in order (got {[n for n, _, _ in documented]})"
+            f"docs/Taxonomy.md: family numbering is not 1..{expected_max} "
+            f"in order (reserved: {sorted(RESERVED_NUMBERS)}; "
+            f"got {[n for n, _, _ in documented]})"
         )
 
     # No duplicates in the doc.

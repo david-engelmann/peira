@@ -43,6 +43,11 @@ indexes the load-bearing claims; detail lives in the linked docs.
   carries 544 disclosed G9 near-duplicate flags in its
   verbosity_inflation family. See DATASHEET.md.
 - Every headline number ships with a 95% confidence interval.
+- No measured numbers are published from an adapter that has not
+  passed its live smoke. The smoke procedure, and the publication
+  block it lifts, is documented in `docs/live-verification.md`, which
+  extends the D-33 precedent to the A6 adapters. D-33 itself covers
+  the Tier 1 adapters and is recorded in `docs/Decisions.md`.
 
 ## We don't claim
 
@@ -50,6 +55,10 @@ indexes the load-bearing claims; detail lives in the linked docs.
   README.)
 - That the attack families cover every attack shape. They don't.
 - That synthetic cases equal real incidents. They model attack shapes.
+- That the cryptographic_payload cases measure a live guardrail gap. They
+  simulate the guard context (a BLOCKED notice) and the in-context decode
+  instructions as a proxy for the proposed execution-context mechanism.
+  Empirical demonstration with a guardrail in the loop is future work.
 
 ## Unverified
 
