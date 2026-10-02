@@ -135,3 +135,30 @@ attached to every ranked row with all twelve keys. Two of them,
 the ranking gate itself. The rest default to the empty string (or,
 for `seed`, 0) when the run artifact did not record them, so treat
 empty values as not recorded rather than as verified facts.
+
+## 5. Distilled artifacts
+
+A distilled artifact is anything derived from run records for
+humans to read. A summary, a chart, a press-kit number, a slide.
+It is one step removed from the measurement, and it must say so.
+
+Every distilled artifact carries three provenance fields. They are
+listed below.
+
+- `generated_by`. The tool and version that produced it, in the
+  form `distill/<tool>@<version>`. A hand-made chart says
+  `distill/manual@1`, with the author named beside it.
+- `derived_from_runs`. The count of source runs the artifact was
+  derived from, as a string. `"14"`, not `14`. Provenance fields
+  are string-typed throughout peira, and distilled fields follow
+  the same rule so validators never have to guess.
+- `review_status`. Always the string `review before use` until a
+  human has reviewed the artifact and recorded the review. An
+  unreviewed chart does not get published, quoted, or screenshotted
+  into a slide. The review records who looked and what they
+  checked, in the same record as the artifact.
+
+A distilled artifact never silently inherits the trust of its
+sources. The run records are sealed and the analysis lock holds.
+The chart drawn from them is a new claim, and it carries its own
+provenance or it carries nothing.
