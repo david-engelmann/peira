@@ -190,8 +190,13 @@ class _Child:
     def take_stderr(self) -> str:
         raw = bytes(self.stderr_buf)
         del self.stderr_buf[:]
-        return strip_control_sequences(
+        text = strip_control_sequences(
             raw.decode("utf-8", errors="replace"))
+        # Design 6.2: marker when truncation occurred.
+        if self.stderr_truncated:
+            text = "[stderr truncated: exceeded 1MB]\n" + text
+            self.stderr_truncated = False
+        return text
 
     def kill(self) -> None:
         """Drop the child: kill the whole process group, no grace."""
@@ -428,9 +433,17 @@ class SubprocessAdapter:
         """
         async with child.lock:
             req_id = uuid.uuid4().hex
+            # Design 6.2: reset truncation flag at call start; if set
+            # during the call, fail it (stderr spam is not OOMed).
+            child.stderr_truncated = False
             try:
-                return await self._request_inner(
+                result = await self._request_inner(
                     child, op, payload, timeout, req_id)
+                if child.stderr_truncated:
+                    raise AdapterSubprocessError(
+                        f"adapter child exceeded 1MB stderr cap on {op!r}; "
+                        f"call failed")
+                return result
             except AdapterRemoteError:
                 # Framed ok:false: the child is healthy, the adapter
                 # call itself failed. Keep the child up.
