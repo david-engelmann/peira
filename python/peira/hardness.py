@@ -39,7 +39,9 @@ import math
 from dataclasses import dataclass, field
 from typing import Any
 
-from peira.metrics import PerCaseResult
+from peira._rust import _impl as _rust
+from peira.concurrency import _require_json_str
+from peira.metrics import PerCaseResult, _require_result_strings
 
 
 def _flipped(r: PerCaseResult) -> bool:
@@ -211,10 +213,10 @@ def _common_universe(
     }
 
 
-def flip_distribution(
+def _flip_distribution_py(
     results_by_adapter: dict[str, list[PerCaseResult]],
 ) -> FlipDistribution:
-    """Histogram of per-case flip counts over the common eligible universe."""
+    """Reference implementation of :func:`flip_distribution` (pure Python)."""
     adapters = tuple(sorted(results_by_adapter))
     universe = _common_universe(results_by_adapter)
     n = len(adapters)
@@ -227,7 +229,7 @@ def flip_distribution(
     )
 
 
-def hardest_decile_survival(
+def _hardest_decile_survival_py(
     results_by_adapter: dict[str, list[PerCaseResult]],
     decile: float = 0.10,
 ) -> HardestDecileSurvival:
@@ -264,7 +266,7 @@ def hardest_decile_survival(
     )
 
 
-def transfer_matrix(
+def _transfer_matrix_py(
     results_by_adapter: dict[str, list[PerCaseResult]],
     family: str | None = None,
 ) -> TransferMatrix:
@@ -326,21 +328,21 @@ def transfer_matrix(
     )
 
 
-def analyze_runs(
+def _analyze_runs_py(
     results_by_adapter: dict[str, list[PerCaseResult]],
     decile: float = 0.10,
 ) -> HardnessReport:
-    """Full M-4 diagnostic report over N adapter runs."""
+    """Reference implementation of :func:`analyze_runs` (pure Python)."""
     adapters = tuple(sorted(results_by_adapter))
     universe = _common_universe(results_by_adapter)
-    dist = flip_distribution(results_by_adapter)
-    hd = hardest_decile_survival(results_by_adapter, decile=decile)
-    overall = transfer_matrix(results_by_adapter)
+    dist = _flip_distribution_py(results_by_adapter)
+    hd = _hardest_decile_survival_py(results_by_adapter, decile=decile)
+    overall = _transfer_matrix_py(results_by_adapter)
     families = sorted(
         {r.family for rs in results_by_adapter.values() for r in rs}
     )
     by_family = {
-        fam: transfer_matrix(results_by_adapter, family=fam)
+        fam: _transfer_matrix_py(results_by_adapter, family=fam)
         for fam in families
     }
     return HardnessReport(
@@ -362,8 +364,8 @@ def _pct(x: float | None) -> str:
     return "n/a" if x is None else f"{100 * x:.1f}%"
 
 
-def report_text(report: HardnessReport) -> str:
-    """Human-readable M-4 diagnostic tables.
+def _report_text_py(report: HardnessReport) -> str:
+    """Reference implementation of :func:`report_text` (pure Python).
 
     Labeled diagnostic throughout: these tables describe the shape of
     hardness and transfer; they do not rank adapters.
@@ -435,3 +437,235 @@ def report_text(report: HardnessReport) -> str:
                 f"{m.n_cases:>7}"
             )
     return "\n".join(L) + "\n"
+
+
+# ---------------------------------------------------------------------------
+# Rust dispatch (D-11).
+# ---------------------------------------------------------------------------
+
+
+def _check_results(results_by_adapter: dict) -> None:
+    """D-11 validation shared by the dispatched entry points.
+
+    Rejects lone surrogates in every string the Rust bindings read
+    (adapter names and result fields), so both backends raise the same
+    ``ValueError``. Duck-typed records missing the full PerCaseResult
+    surface are left alone: the PyO3 extraction then fails with
+    TypeError and the wrapper falls back to the reference, which only
+    needs eligible/case_id/flipped/family.
+    """
+    for name in results_by_adapter:
+        if isinstance(name, str):
+            _require_json_str(name)
+    for rs in results_by_adapter.values():
+        for r in rs:
+            try:
+                _require_result_strings(r)
+            except AttributeError:
+                # Duck-typed record: extraction fails -> TypeError ->
+                # fallback to the reference.
+                pass
+
+
+def _flip_distribution_from_rust(d: dict) -> FlipDistribution:
+    """Rebuild the dataclass from the Rust binding's field dict."""
+    return FlipDistribution(
+        adapters=tuple(d["adapters"]),
+        n_cases=d["n_cases"],
+        counts=tuple(d["counts"]),
+    )
+
+
+def _hardest_decile_from_rust(d: dict) -> HardestDecileSurvival:
+    """Rebuild the dataclass from the Rust binding's field dict."""
+    return HardestDecileSurvival(
+        adapters=tuple(d["adapters"]),
+        n_cases=d["n_cases"],
+        decile_size=d["decile_size"],
+        decile_case_ids=tuple(d["decile_case_ids"]),
+        survived=dict(d["survived"]),
+    )
+
+
+def _transfer_matrix_from_rust(d: dict) -> TransferMatrix:
+    """Rebuild the dataclass from the Rust binding's field dict."""
+    return TransferMatrix(
+        adapters=tuple(d["adapters"]),
+        family=d["family"],
+        n_cases=d["n_cases"],
+        flipped_by_source=dict(d["flipped_by_source"]),
+        rates={(s, t): v for s, t, v in d["rates"]},
+    )
+
+
+def _hardness_report_from_rust(d: dict) -> HardnessReport:
+    """Rebuild the report from the Rust binding's nested field dicts."""
+    return HardnessReport(
+        adapters=tuple(d["adapters"]),
+        n_cases=d["n_cases"],
+        flip_distribution=_flip_distribution_from_rust(d["flip_distribution"]),
+        hardest_decile=_hardest_decile_from_rust(d["hardest_decile"]),
+        transfer_overall=_transfer_matrix_from_rust(d["transfer_overall"]),
+        transfer_by_family={
+            fam: _transfer_matrix_from_rust(m)
+            for fam, m in d["transfer_by_family"].items()
+        },
+    )
+
+
+def _report_to_plain(report: HardnessReport) -> dict:
+    """Deconstruct a report into plain data for the Rust binding.
+
+    Transfer rates cross as ``(src, dst, rate-or-None)`` triples; the
+    binding rebuilds the ``{(src, dst): rate}`` dict.
+    """
+    def plain_transfer(t: TransferMatrix) -> dict:
+        return {
+            "adapters": list(t.adapters),
+            "family": t.family,
+            "n_cases": t.n_cases,
+            "flipped_by_source": dict(t.flipped_by_source),
+            "rates": [(s, d, v) for (s, d), v in t.rates.items()],
+        }
+
+    return {
+        "adapters": list(report.adapters),
+        "n_cases": report.n_cases,
+        "flip_distribution": {
+            "adapters": list(report.flip_distribution.adapters),
+            "n_cases": report.flip_distribution.n_cases,
+            "counts": list(report.flip_distribution.counts),
+        },
+        "hardest_decile": {
+            "adapters": list(report.hardest_decile.adapters),
+            "n_cases": report.hardest_decile.n_cases,
+            "decile_size": report.hardest_decile.decile_size,
+            "decile_case_ids": list(report.hardest_decile.decile_case_ids),
+            "survived": dict(report.hardest_decile.survived),
+        },
+        "transfer_overall": plain_transfer(report.transfer_overall),
+        "transfer_by_family": {
+            fam: plain_transfer(m)
+            for fam, m in report.transfer_by_family.items()
+        },
+    }
+
+
+def flip_distribution(
+    results_by_adapter: dict[str, list[PerCaseResult]],
+) -> FlipDistribution:
+    """Histogram of per-case flip counts over the common eligible universe.
+
+    Dispatches to the Rust core when available; the pure-Python
+    reference (:func:`_flip_distribution_py`) is the fallback.
+    """
+    if isinstance(results_by_adapter, dict):
+        _check_results(results_by_adapter)
+        if _rust is not None:
+            try:
+                return _flip_distribution_from_rust(
+                    _rust.hardness_flip_distribution(results_by_adapter)
+                )
+            except (TypeError, AttributeError):
+                # Non-string adapter names or non-PerCaseResult values
+                # fail the PyO3 extraction: the reference handles (or
+                # raises on) them.
+                pass
+    return _flip_distribution_py(results_by_adapter)
+
+
+def hardest_decile_survival(
+    results_by_adapter: dict[str, list[PerCaseResult]],
+    decile: float = 0.10,
+) -> HardestDecileSurvival:
+    """Per-adapter survival on the hardest decile of cases.
+
+    Hardness is the flip count across adapters. The decile is the top
+    ``ceil(decile * n)`` cases by (flip count desc, case_id asc).
+    Dispatches to the Rust core when available; the pure-Python
+    reference (:func:`_hardest_decile_survival_py`) is the fallback.
+    """
+    if not 0 < decile <= 1:
+        raise ValueError(f"decile must be in (0, 1], got {decile!r}")
+    if isinstance(results_by_adapter, dict):
+        _check_results(results_by_adapter)
+        if _rust is not None:
+            try:
+                return _hardest_decile_from_rust(
+                    _rust.hardness_hardest_decile_survival(results_by_adapter, decile)
+                )
+            except (TypeError, AttributeError):
+                pass
+    return _hardest_decile_survival_py(results_by_adapter, decile)
+
+
+def transfer_matrix(
+    results_by_adapter: dict[str, list[PerCaseResult]],
+    family: str | None = None,
+) -> TransferMatrix:
+    """Cross-adapter transfer ASR, optionally restricted to one family.
+
+    transfer(src -> dst) = P(dst flips | src flipped), over cases eligible
+    for both src and dst (and in ``family`` when given). Dispatches to
+    the Rust core when available; the pure-Python reference
+    (:func:`_transfer_matrix_py`) is the fallback.
+    """
+    # Reject lone surrogates up front so both backends raise the same
+    # ValueError (the Rust Option<String> extraction raises
+    # UnicodeEncodeError, a ValueError the dispatch does not catch).
+    if isinstance(family, str):
+        _require_json_str(family)
+    if isinstance(results_by_adapter, dict):
+        _check_results(results_by_adapter)
+        if _rust is not None:
+            try:
+                return _transfer_matrix_from_rust(
+                    _rust.hardness_transfer_matrix(results_by_adapter, family)
+                )
+            except (TypeError, AttributeError):
+                pass
+    return _transfer_matrix_py(results_by_adapter, family)
+
+
+def analyze_runs(
+    results_by_adapter: dict[str, list[PerCaseResult]],
+    decile: float = 0.10,
+) -> HardnessReport:
+    """Full M-4 diagnostic report over N adapter runs.
+
+    Dispatches to the Rust core when available; the pure-Python
+    reference (:func:`_analyze_runs_py`) is the fallback.
+    """
+    if isinstance(results_by_adapter, dict):
+        # Decile is checked here (not before the isinstance) so that a
+        # non-dict input raises the reference's TypeError first, matching
+        # the reference's error precedence.
+        if not 0 < decile <= 1:
+            raise ValueError(f"decile must be in (0, 1], got {decile!r}")
+        _check_results(results_by_adapter)
+        if _rust is not None:
+            try:
+                return _hardness_report_from_rust(
+                    _rust.hardness_analyze_runs(results_by_adapter, decile)
+                )
+            except (TypeError, AttributeError):
+                pass
+    return _analyze_runs_py(results_by_adapter, decile)
+
+
+def report_text(report: HardnessReport) -> str:
+    """Human-readable M-4 diagnostic tables.
+
+    Labeled diagnostic throughout: these tables describe the shape of
+    hardness and transfer; they do not rank adapters. Dispatches to the
+    Rust core when available; the pure-Python reference
+    (:func:`_report_text_py`) is the fallback.
+    """
+    if _rust is not None:
+        try:
+            return _rust.hardness_report_text(_report_to_plain(report))
+        except (AttributeError, TypeError):
+            # Not a HardnessReport, or an unusual field value: the
+            # reference raises the natural exception (or renders it).
+            pass
+    return _report_text_py(report)
