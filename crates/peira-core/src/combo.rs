@@ -18,8 +18,10 @@
 //!   realistic domain: surrounding whitespace stripped, optional
 //!   `+`/`-` sign, ASCII digits, i64 range. Documented divergences:
 //!   Python also accepts underscores between digits (`"1_2"`) and
-//!   non-ASCII decimal digits; those inputs report a malformed index
-//!   here. Indices outside the i64 range likewise report malformed.
+//!   non-ASCII decimal digits, and its `strip()` removes exotic
+//!   whitespace (e.g. U+001C) that Rust's `char::is_whitespace` does
+//!   not; those inputs report a malformed index here. Indices outside
+//!   the i64 range likewise report malformed.
 //! - Error strings are byte-identical to the reference, including the
 //!   `{!r}` interpolations, via [`crate::py_repr`]. One documented
 //!   divergence class, shared with the schema/dataset ports: values
