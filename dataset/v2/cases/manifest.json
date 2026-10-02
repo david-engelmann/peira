@@ -2,7 +2,7 @@
   "case_schema": "single",
   "created_utc": "2026-10-01T15:30:00+00:00",
   "dataset": "peira-v1",
-  "dataset_version": "2.4.1",
+  "dataset_version": "2.4.2",
   "files": {
     "crosslingual_shift.jsonl": {
       "kind": "cases",
