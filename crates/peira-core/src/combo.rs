@@ -25,10 +25,17 @@
 //!   to the reference so they parse identically. Indices outside the
 //!   i64 range likewise report malformed (and fall back).
 //! - Error strings are byte-identical to the reference, including the
-//!   `{!r}` interpolations, via [`crate::py_repr`]. One documented
-//!   divergence class, shared with the schema/dataset ports: values
-//!   containing non-printable non-ASCII outside C1 (e.g. U+200B)
-//!   render raw here where CPython's `repr()` would emit `\uNNNN`.
+//!   `{!r}` interpolations, via [`crate::py_repr`]. Documented
+//!   divergence classes, shared with the schema/dataset ports (all
+//!   three affect only message text on already-invalid inputs —
+//!   accept/reject outcomes, error counts, and exception types are
+//!   identical): values containing non-printable non-ASCII outside C1
+//!   (e.g. U+200B) render raw here where CPython's `repr()` would emit
+//!   `\uNNNN`; dict values render with keys sorted (the JSON boundary
+//!   is a `BTreeMap`, so insertion order is lost) where CPython's
+//!   `repr()` preserves insertion order; tuples cross the PyO3 boundary
+//!   as JSON arrays and render as `[...]` where the reference shows
+//!   `(...)`.
 //! - The arm-content rule compares benign/attacked inputs with
 //!   Python `==` semantics for JSON values: `1 == 1.0` and
 //!   `True == 1` hold (unlike `serde_json`'s structural equality).
