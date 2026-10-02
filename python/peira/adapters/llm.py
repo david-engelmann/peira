@@ -563,6 +563,16 @@ class _StructuredLLMBase:
         """
         return self._max_tokens
 
+    def _sent_seed(self) -> int | None:
+        """The seed actually placed on the wire, or None if omitted.
+
+        Base: the configured seed when the provider supports one.
+        Providers with wire constraints (xAI: seed must be positive)
+        override this so ``decode_params`` and the transcript agree
+        with what was actually sent.
+        """
+        return self._seed if self._supports_seed else None
+
     @property
     def decode_params(self) -> dict[str, Any]:
         """M-7 longitudinal provenance: decode params actually sent.
@@ -575,7 +585,7 @@ class _StructuredLLMBase:
             "max_tokens": self._max_tokens,
         }
         if self._supports_seed:
-            params["seed"] = self._seed
+            params["seed"] = self._sent_seed()
         return params
 
     def with_seed(self, seed: int | None) -> "_StructuredLLMBase":
@@ -726,7 +736,7 @@ class _StructuredLLMBase:
         # model, and schema — never the API key.
         return {
             "model": self._model,
-            "seed": self._seed if self._supports_seed else None,
+            "seed": self._sent_seed(),
             "parameters": {
                 "temperature": self._temperature,
                 "max_tokens": self._max_tokens,
@@ -1076,12 +1086,16 @@ class XAIAdapter(OpenAIAdapter):
     also publishes dated variants such as ``grok-4-0709``).
 
     Request shape: xAI documents ``seed`` as supported (best-effort
-    deterministic), so the seed is sent; whether ``json_schema``
-    ``response_format`` (vs plain ``json_object``) is honored for
-    ``grok-4`` is unverified. If the live endpoint rejects or ignores
-    any of these, you will see terminal provider errors, not silent
-    mismeasurement — verify against the live API before any measured
-    run. Not exercised against the live API yet.
+    deterministic), so positive seeds are sent. xAI 400s on
+    non-positive seeds ("Seed must be positive but seed = 0"), so the
+    ``seed`` field is omitted when it is ``0`` or ``None`` (the
+    transcript's request shape then honestly records ``"seed": None``).
+    Whether ``json_schema`` ``response_format`` (vs plain
+    ``json_object``) is honored for ``grok-4`` is unverified. If the
+    live endpoint rejects or ignores any of these, you will see
+    terminal provider errors, not silent mismeasurement — verify
+    against the live API before any measured run. Not exercised
+    against the live API yet.
     """
 
     name = "xai-structured"
@@ -1111,6 +1125,26 @@ class XAIAdapter(OpenAIAdapter):
         self._client = self._sdk.OpenAI(
             api_key=self._api_key, base_url=self._base_url, max_retries=0
         )
+
+    def _sent_seed(self) -> int | None:
+        seed = super()._sent_seed()
+        # xAI 400s on non-positive seeds — the field is omitted from
+        # the wire (see _request_kwargs), so provenance must agree.
+        if seed is None or seed <= 0:
+            return None
+        return seed
+
+    def _request_kwargs(
+        self, messages: list[dict[str, str]], schema: dict[str, Any]
+    ) -> dict[str, Any]:
+        kwargs = super()._request_kwargs(messages, schema)
+        # xAI 400s on non-positive seeds ("Seed must be positive but
+        # seed = 0") — omit the field rather than negotiating, as with
+        # Moonshot. Positive seeds are still sent: xAI documents seed
+        # as supported (best-effort deterministic).
+        if self._sent_seed() is None:
+            kwargs.pop("seed", None)
+        return kwargs
 
     def _request(
         self, user_text: str, schema: dict[str, Any], repair: bool
@@ -1674,6 +1708,15 @@ _NO_TEMPERATURE_MODELS = frozenset({
 })
 
 
+def _sent_temperature(sent: dict[str, Any]) -> Any:
+    """The temperature value actually carried by built request kwargs.
+
+    Temperature travels in ``extra_body`` (see ``_request_kwargs``), not
+    as a top-level kwarg — ``None`` when the model omits it.
+    """
+    return (sent.get("extra_body") or {}).get("temperature")
+
+
 def _wants_structured_outputs(model: str, flag: bool | None) -> bool:
     """Route an Anthropic model to its constrained-decoding path.
 
@@ -1761,8 +1804,12 @@ class AnthropicAdapter(_StructuredLLMBase):
         }
         if self._model not in _NO_TEMPERATURE_MODELS:
             # Opus 4.6+ rejects temperature with a 400 — omit it for
-            # those ids rather than negotiating.
-            kwargs["temperature"] = self._temperature
+            # those ids rather than negotiating. Sent via extra_body,
+            # not the temperature kwarg: anthropic SDK 1.x removed the
+            # kwarg from messages.create (passing it is a TypeError),
+            # while extra_body merges into the request JSON as-is on
+            # both the 0.x and 1.x SDK lines — identical wire shape.
+            kwargs["extra_body"] = {"temperature": self._temperature}
         if self._structured_outputs:
             # Native structured outputs: no tools, no tool_choice.
             # Forced tool_choice 400s on the newer reasoning models.
@@ -1828,8 +1875,9 @@ class AnthropicAdapter(_StructuredLLMBase):
                 "system": "peira system prompt",
                 "output_config": "json_schema",
                 # Only the temperature actually sent — omitted for
-                # the _NO_TEMPERATURE_MODELS ids.
-                "temperature": sent.get("temperature"),
+                # the _NO_TEMPERATURE_MODELS ids. It travels in
+                # extra_body (anthropic SDK 1.x compatibility).
+                "temperature": _sent_temperature(sent),
                 "max_tokens": self._max_tokens,
             }
         else:
@@ -1839,7 +1887,10 @@ class AnthropicAdapter(_StructuredLLMBase):
                 "system": "peira system prompt",
                 "tool": SCHEMA_NAME,
                 "tool_choice": "forced",
-                "temperature": sent.get("temperature"),
+                # Only the temperature actually sent — omitted for
+                # the _NO_TEMPERATURE_MODELS ids. It travels in
+                # extra_body (anthropic SDK 1.x compatibility).
+                "temperature": _sent_temperature(sent),
                 "max_tokens": self._max_tokens,
             }
         return _RawResult(

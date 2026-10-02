@@ -390,12 +390,15 @@ class TestAnthropicOpusReconciliation(unittest.TestCase):
 
     def test_sonnet_5_default_path_unchanged(self):
         # The default pin keeps the forced-tool path AND temperature.
+        # Temperature travels in extra_body (anthropic SDK 1.x removed
+        # the top-level temperature kwarg) — never as a top-level kwarg.
         calls, _ = self._setup("claude-sonnet-5")
         out = AnthropicAdapter().decide(CASE, "choice", _ctx())
         self.assertEqual(out.usage.model, "claude-sonnet-5")
         self.assertIn("tools", calls[0])
         self.assertEqual(calls[0]["tool_choice"]["type"], "tool")
-        self.assertEqual(calls[0]["temperature"], 0.0)
+        self.assertNotIn("temperature", calls[0])
+        self.assertEqual(calls[0]["extra_body"]["temperature"], 0.0)
         self.assertEqual(
             out.transcript["request"]["temperature"], 0.0)
 

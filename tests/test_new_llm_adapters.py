@@ -283,5 +283,65 @@ class TestDeepSeekThinkingDisabled(unittest.TestCase):
         )
 
 
+class TestXAISeedHandling(unittest.TestCase):
+    """xAI 400s on non-positive seeds: the adapter omits, not negotiates."""
+
+    def _setup(self, **adapter_kwargs):
+        mod, calls, _ = _make_openai([_openai_completion(GOOD_JSON)])
+        with _fake_modules({"openai": mod}), _env(XAI_API_KEY="sk-test"):
+            out = XAIAdapter(**adapter_kwargs).decide(CASE, "choice", _ctx())
+        return calls, out
+
+    def test_seed_zero_omitted_from_wire(self):
+        # Live smoke CG-0027: xAI 400s "Seed must be positive but
+        # seed = 0" on the default seed=0, so it must not go on the wire.
+        calls, out = self._setup()
+        self.assertNotIn("seed", calls[0])
+        # The transcript's request shape reads back from the actually
+        # sent kwargs, so it honestly records the omission.
+        self.assertIsNone(out.transcript["request"]["seed"])
+        # The top-level transcript seed agrees: nothing was sent.
+        self.assertIsNone(out.transcript["seed"])
+
+    def test_seed_none_omitted_from_wire(self):
+        calls, out = self._setup(seed=None)
+        self.assertNotIn("seed", calls[0])
+        self.assertIsNone(out.transcript["request"]["seed"])
+        self.assertIsNone(out.transcript["seed"])
+
+    def test_negative_seed_omitted_from_wire(self):
+        calls, out = self._setup(seed=-7)
+        self.assertNotIn("seed", calls[0])
+        self.assertIsNone(out.transcript["request"]["seed"])
+        self.assertIsNone(out.transcript["seed"])
+
+    def test_positive_seed_still_sent(self):
+        # xAI documents seed as supported (best-effort deterministic):
+        # positive seeds go on the wire, preserving the M-7 protocol.
+        calls, out = self._setup(seed=42)
+        self.assertEqual(calls[0]["seed"], 42)
+        self.assertEqual(out.transcript["request"]["seed"], 42)
+        self.assertEqual(out.transcript["seed"], 42)
+
+    def test_decode_params_agrees_with_wire(self):
+        # decode_params is sealed into run artifacts as "actually sent":
+        # it must not claim a seed the wire omitted.
+        mod, _, _ = _make_openai([])
+        with _fake_modules({"openai": mod}), _env(XAI_API_KEY="sk-test"):
+            self.assertIsNone(XAIAdapter().decode_params["seed"])
+            self.assertIsNone(XAIAdapter(seed=None).decode_params["seed"])
+            self.assertEqual(XAIAdapter(seed=42).decode_params["seed"], 42)
+
+    def test_openai_still_sends_seed_zero(self):
+        # The base OpenAI adapter is unchanged: only xAI omits.
+        mod, calls, _ = _make_openai([_openai_completion(GOOD_JSON)])
+        with _fake_modules({"openai": mod}), \
+                _env(OPENAI_API_KEY="sk-test"):
+            out = OpenAIAdapter().decide(CASE, "choice", _ctx())
+        self.assertEqual(calls[0]["seed"], 0)
+        self.assertEqual(out.transcript["request"]["seed"], 0)
+        self.assertEqual(out.transcript["seed"], 0)
+
+
 if __name__ == "__main__":
     unittest.main()

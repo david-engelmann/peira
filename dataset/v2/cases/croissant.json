@@ -55,13 +55,13 @@
     }
   ],
   "datePublished": "2026-10-01T15:30:00+00:00",
-  "description": "peira-v1. Paired adversarial decision-model cases, dataset version 2.4.1.",
+  "description": "peira-v1. Paired adversarial decision-model cases, dataset version 2.4.2.",
   "distribution": [
     {
       "@id": "peira-v1/crosslingual_shift.jsonl",
       "@type": "cr:FileObject",
       "contentUrl": "https://raw.githubusercontent.com/david-engelmann/peira/main/dataset/v2/cases/crosslingual_shift.jsonl",
-      "description": "420 paired adversarial decision cases (peira-v1 2.4.1).",
+      "description": "420 paired adversarial decision cases (peira-v1 2.4.2).",
       "encodingFormat": "application/x-ndjson",
       "name": "crosslingual_shift.jsonl",
       "sha256": "04ffcb0f546c9f5424f78204124797cb3117df23a23fb4c6c37f2a796819357d"
@@ -70,7 +70,7 @@
       "@id": "peira-v1/cryptographic_payload.jsonl",
       "@type": "cr:FileObject",
       "contentUrl": "https://raw.githubusercontent.com/david-engelmann/peira/main/dataset/v2/cases/cryptographic_payload.jsonl",
-      "description": "420 paired adversarial decision cases (peira-v1 2.4.1).",
+      "description": "420 paired adversarial decision cases (peira-v1 2.4.2).",
       "encodingFormat": "application/x-ndjson",
       "name": "cryptographic_payload.jsonl",
       "sha256": "1fd7a5e3862a1e0eefca427399fa750a3a16413430d2237ab26d4de60b17a3f2"
@@ -79,7 +79,7 @@
       "@id": "peira-v1/evidence_positioning.jsonl",
       "@type": "cr:FileObject",
       "contentUrl": "https://raw.githubusercontent.com/david-engelmann/peira/main/dataset/v2/cases/evidence_positioning.jsonl",
-      "description": "420 paired adversarial decision cases (peira-v1 2.4.1).",
+      "description": "420 paired adversarial decision cases (peira-v1 2.4.2).",
       "encodingFormat": "application/x-ndjson",
       "name": "evidence_positioning.jsonl",
       "sha256": "fa043ffcd98492f6e46a8a37e82a5351b86a8b6ae3f6d04aa5a72591a6405809"
@@ -88,16 +88,16 @@
       "@id": "peira-v1/judge_sycophancy.jsonl",
       "@type": "cr:FileObject",
       "contentUrl": "https://raw.githubusercontent.com/david-engelmann/peira/main/dataset/v2/cases/judge_sycophancy.jsonl",
-      "description": "421 paired adversarial decision cases (peira-v1 2.4.1).",
+      "description": "421 paired adversarial decision cases (peira-v1 2.4.2).",
       "encodingFormat": "application/x-ndjson",
       "name": "judge_sycophancy.jsonl",
-      "sha256": "55b48fc18e3549ebe73009c02cfd0d00d6db26b5a7f98af960f80dbbe1b191e1"
+      "sha256": "64ccb6120681cd83b1ea369a5a107dd74dc7f0fafed9ad5253033db04414b7e5"
     },
     {
       "@id": "peira-v1/retrieval_poisoning.jsonl",
       "@type": "cr:FileObject",
       "contentUrl": "https://raw.githubusercontent.com/david-engelmann/peira/main/dataset/v2/cases/retrieval_poisoning.jsonl",
-      "description": "470 paired adversarial decision cases (peira-v1 2.4.1).",
+      "description": "470 paired adversarial decision cases (peira-v1 2.4.2).",
       "encodingFormat": "application/x-ndjson",
       "name": "retrieval_poisoning.jsonl",
       "sha256": "4d09256d64cf9c9980c1b98b4794e77a467fae35bcb48c525a482924694020db"
@@ -106,7 +106,7 @@
       "@id": "peira-v1/threshold_edge_hunting.jsonl",
       "@type": "cr:FileObject",
       "contentUrl": "https://raw.githubusercontent.com/david-engelmann/peira/main/dataset/v2/cases/threshold_edge_hunting.jsonl",
-      "description": "420 paired adversarial decision cases (peira-v1 2.4.1).",
+      "description": "420 paired adversarial decision cases (peira-v1 2.4.2).",
       "encodingFormat": "application/x-ndjson",
       "name": "threshold_edge_hunting.jsonl",
       "sha256": "c5764780ef034181c4c12e451fe33a0037ddaff97bab9d0bde0efaea14dfba79"
@@ -115,10 +115,19 @@
       "@id": "peira-v1/verbosity_inflation.jsonl",
       "@type": "cr:FileObject",
       "contentUrl": "https://raw.githubusercontent.com/david-engelmann/peira/main/dataset/v2/cases/verbosity_inflation.jsonl",
-      "description": "470 paired adversarial decision cases (peira-v1 2.4.1).",
+      "description": "470 paired adversarial decision cases (peira-v1 2.4.2).",
       "encodingFormat": "application/x-ndjson",
       "name": "verbosity_inflation.jsonl",
       "sha256": "daf2e0963ffbb66272899d48afdaeb817131e53d6311cbd4a58c1a37f49e22ba"
+    },
+    {
+      "@id": "peira-v1/question_pair_incoherence.jsonl",
+      "@type": "cr:FileObject",
+      "contentUrl": "https://raw.githubusercontent.com/david-engelmann/peira/main/dataset/v2/cases/question_pair_incoherence.jsonl",
+      "description": "400 paired adversarial decision cases (peira-v1 2.4.2).",
+      "encodingFormat": "application/x-ndjson",
+      "name": "question_pair_incoherence.jsonl",
+      "sha256": "1dd7ef138ad7c04f98b3f88538d57f25590233fce3481b7a6df081032e3841e4"
     }
   ],
   "keywords": [
@@ -225,5 +234,5 @@
     }
   ],
   "url": "https://github.com/david-engelmann/peira",
-  "version": "2.4.1"
+  "version": "2.4.2"
 }

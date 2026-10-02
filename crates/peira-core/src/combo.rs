@@ -69,7 +69,7 @@ const REQUIRED_KEYS: [&str; 10] = [
 /// Mirrors `python/peira/combo_schema.py::COMBO_PAIRS`.
 const COMBO_PAIRS: [(&str, &str, &str); 2] = [
     ("combo-dfl-ind", "distractor_flooding", "indirection"),
-    ("combo-san-csp", "score_anchoring", "confidence_spoofing"),
+    ("combo-san-csp", "confidence_spoofing", "score_anchoring"),
 ];
 
 /// Valid combo arms. Mirrors `COMBO_ARMS`.
@@ -542,17 +542,18 @@ mod tests {
     }
 
     #[test]
-    fn pair_id_san_csp_quirk_matches_reference() {
-        // The reference table stores ("score_anchoring",
-        // "confidence_spoofing") but looks up the SORTED pair
-        // ("confidence_spoofing", "score_anchoring"), so combo-san-csp
-        // never resolves. Verified against the Python reference: it
-        // raises the same KeyError. Parity, not a fix.
-        let err = combo_pair_id("score_anchoring", "confidence_spoofing").unwrap_err();
-        assert!(err.is_key_error());
+    fn pair_id_san_csp_both_orders() {
+        // The reference table used to store ("score_anchoring",
+        // "confidence_spoofing") unsorted, so the sorted lookup never
+        // resolved (KeyError on both orders). Fixed: the table stores
+        // the families alphabetically and both orders resolve.
         assert_eq!(
-            err.message(),
-            "unknown combo pair: score_anchoring x confidence_spoofing"
+            combo_pair_id("score_anchoring", "confidence_spoofing").unwrap(),
+            "combo-san-csp"
+        );
+        assert_eq!(
+            combo_pair_id("confidence_spoofing", "score_anchoring").unwrap(),
+            "combo-san-csp"
         );
     }
 

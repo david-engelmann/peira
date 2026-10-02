@@ -74,21 +74,12 @@ class TestComboPairIdParity(unittest.TestCase):
         self.assertEqual(_combo_pair_id_py(fa, fb), "combo-dfl-ind")
         self.assertEqual(_combo_pair_id_py(fb, fa), "combo-dfl-ind")
 
-    def test_san_csp_quirk_matches_reference(self):
-        # The reference table stores ("score_anchoring",
-        # "confidence_spoofing") but looks up the SORTED pair, so
-        # combo-san-csp never resolves: both backends raise the same
-        # KeyError. Parity, not a fix.
-        _assert_raises(
-            self, KeyError,
-            "'unknown combo pair: score_anchoring x confidence_spoofing'",
-            combo_pair_id, "score_anchoring", "confidence_spoofing",
-        )
-        _assert_raises(
-            self, KeyError,
-            "'unknown combo pair: score_anchoring x confidence_spoofing'",
-            _combo_pair_id_py, "score_anchoring", "confidence_spoofing",
-        )
+    def test_san_csp_pair_both_orders(self):
+        fa, fb = COMBO_PAIRS["combo-san-csp"]
+        self.assertEqual(combo_pair_id(fa, fb), "combo-san-csp")
+        self.assertEqual(combo_pair_id(fb, fa), "combo-san-csp")
+        self.assertEqual(_combo_pair_id_py(fa, fb), "combo-san-csp")
+        self.assertEqual(_combo_pair_id_py(fb, fa), "combo-san-csp")
 
     def test_unknown_pair_key_error(self):
         _assert_raises(

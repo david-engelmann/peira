@@ -298,7 +298,9 @@ auto-routes to native JSON-schema structured outputs (no `tools`, no
 forced `tool_choice`), and the response parses through the same typed
 decision contract as every other adapter. Defaults are unchanged; the
 ceiling is never the default. The `peira[anthropic]` extra requires
-`anthropic>=0.77.0` for `output_config` support.
+`anthropic>=0.77.0` for `output_config` support. The adapter is
+compatible with both the 0.x and 1.x SDK lines (`temperature` travels
+in `extra_body`, since SDK 1.x removed the `temperature` kwarg).
 
 Why Fable 5.1 over GPT-6 Astra (`gpt-6-astra`, also $10/$50, GA
 2026-09-03):
@@ -383,7 +385,8 @@ as every other LLM baseline.
 
 Honest caveat: the adapter is built from xAI's published docs, not
 the live API. xAI documents `seed` as supported (best-effort
-deterministic), so the seed is sent; whether `json_schema`
+deterministic), so positive seeds are sent; `seed` is omitted when it
+is `0`/`None` because xAI 400s on non-positive seeds. Whether `json_schema`
 `response_format` (vs plain `json_object`) is honored for `grok-4`
 is unverified. Verify against the live API before any measured run;
 mismatches surface as terminal provider errors, not silent
