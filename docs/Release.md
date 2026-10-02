@@ -60,9 +60,17 @@ when the version section is missing.
 Users install a version, never a branch: `pip install peira==1.2.3`. No
 install command in `README.md` or `docs/` may point at the `main` branch
 (no `curl ... /main/install.sh`, no `pip install git+...@main`); preflight
-scans for these patterns and fails the release if one appears. The docs
-URL in `pyproject.toml` points at the repo for reference, which is fine;
-it is not an install path.
+scans for these patterns and fails the release if one appears.
+
+## Docs URLs pin to the release
+
+The `[project.urls]` Documentation link in `pyproject.toml` is pinned to
+the release tag, never `main`: the repo carries
+`https://github.com/david-engelmann/peira/tree/v0.0.0/docs` and the release
+build stamps it to `tree/v1.2.3/docs` for the published wheel, so the PyPI
+sidebar always shows the docs as of that release. Preflight also scans
+`README.md` and `docs/` for hand-written `tree/main` or `blob/main` links
+and fails the release if one appears.
 
 ## David's manual steps for a real release
 
@@ -81,6 +89,12 @@ sign-off identity, and PyPI credentials in `~/.pypirc` or the environment.
    from the real PyPI into a clean venv.
 5. Announce only after the smoke test passes. The announcement package
    stays under its own sequencing rules; see `docs/Announcement-Package.md`.
+
+`--skip-smoke` exists for one situation: the smoke already passed for this
+exact version and these exact artifacts (for example a re-run after a
+network drop between upload and smoke). Skipping the smoke for any other
+reason defeats the "published but broken" catch the release process exists
+for. When the smoke is skipped, say so in the release notes.
 
 ## Rollback
 

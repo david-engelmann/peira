@@ -18,11 +18,13 @@ from scripts.release.meta import (  # noqa: E402
     parse_release_version,
     stable_versions_from_ls_remote,
 )
+from scripts.release import preflight as preflight_module  # noqa: E402
 from scripts.release.preflight import (  # noqa: E402
     changelog_has_section,
     find_main_pinned_installs,
+    find_main_pinned_links,
 )
-from scripts.release.stamp import stamp_version  # noqa: E402
+from scripts.release.stamp import STAMP_TARGETS, stamp_version  # noqa: E402
 from scripts.release.validate import (  # noqa: E402
     ReleaseError,
     absolute_path,
@@ -142,6 +144,8 @@ def _tree(tmp_path, pyproject_version="0.0.0", init_version="0.0.0", cargo=False
     (tmp_path / "python" / "peira").mkdir(parents=True)
     (tmp_path / "pyproject.toml").write_text(
         '[project]\nname = "peira"\nversion = "%s"\nrequires-python = ">=3.10"\n'
+        '[project.urls]\nDocumentation = '
+        '"https://github.com/david-engelmann/peira/tree/v0.0.0/docs"\n'
         % pyproject_version
     )
     (tmp_path / "python" / "peira" / "__init__.py").write_text(
@@ -248,3 +252,91 @@ def test_build_artifacts_requires_build_package(tmp_path, monkeypatch):
     monkeypatch.delitem(sys.modules, "build", raising=False)
     with pytest.raises(build_module.ReleaseError, match="pip install build"):
         build_module.build_artifacts(tmp_path, tmp_path)
+
+
+def _write_repo_tree(root, *, duplicate_url=False):
+    url_marker = "tree/v0.0.0/docs"
+    if duplicate_url:
+        url_marker += "\n# tree/v0.0.0/docs"
+    (root / "pyproject.toml").write_text(
+        '[project]\nversion = "0.0.0"\n'
+        f'Documentation = "https://github.com/david-engelmann/peira/{url_marker}"\n'
+    )
+    pkg = root / "python" / "peira"
+    pkg.mkdir(parents=True)
+    (pkg / "__init__.py").write_text('__version__ = "0.0.0"\n')
+
+
+def test_stamp_version_stamps_docs_url(tmp_path):
+    _write_repo_tree(tmp_path)
+    stamped = stamp_version(tmp_path, "9.9.9")
+    assert sorted(stamped) == ["pyproject.toml", "python/peira/__init__.py"]
+    pyproject = (tmp_path / "pyproject.toml").read_text()
+    assert 'version = "9.9.9"' in pyproject
+    assert "tree/v9.9.9/docs" in pyproject
+    assert "v0.0.0" not in pyproject
+    init = (tmp_path / "python" / "peira" / "__init__.py").read_text()
+    assert '__version__ = "9.9.9"' in init
+
+
+def test_stamp_version_duplicate_url_marker_fails(tmp_path):
+    _write_repo_tree(tmp_path, duplicate_url=True)
+    with pytest.raises(ReleaseError, match="refusing to guess"):
+        stamp_version(tmp_path, "9.9.9")
+
+
+def test_stamp_targets_cover_docs_url():
+    markers = [(rel, marker) for rel, marker, _ in STAMP_TARGETS]
+    assert ("pyproject.toml", "tree/v0.0.0/docs") in markers
+
+
+def test_check_repo_unstamped_mirrors_stamp(tmp_path, monkeypatch):
+    _write_repo_tree(tmp_path)
+    monkeypatch.setattr(preflight_module, "REPO_ROOT", tmp_path)
+    preflight_module.check_repo_unstamped()  # must not raise
+
+
+def test_check_repo_unstamped_catches_duplicate(tmp_path, monkeypatch):
+    _write_repo_tree(tmp_path, duplicate_url=True)
+    monkeypatch.setattr(preflight_module, "REPO_ROOT", tmp_path)
+    with pytest.raises(ReleaseError, match="exactly once"):
+        preflight_module.check_repo_unstamped()
+
+
+def test_find_main_pinned_links():
+    files = {
+        "README.md": "see https://github.com/david-engelmann/peira/tree/main/docs\n",
+        "docs/Install.md": (
+            "raw: https://github.com/david-engelmann/peira/blob/main/install.sh\n"
+            "pinned: https://github.com/david-engelmann/peira/tree/v1.2.3/docs\n"
+            "placeholder: https://github.com/david-engelmann/peira/tree/v0.0.0/docs\n"
+        ),
+    }
+    hits = find_main_pinned_links(files)
+    assert hits == ["README.md:1", "docs/Install.md:1"]
+    assert find_main_pinned_links({"README.md": "no links here\n"}) == []
+
+
+def test_wheel_version_reads_metadata(tmp_path):
+    import zipfile
+
+    whl = tmp_path / "peira-9.9.9-py3-none-any.whl"
+    with zipfile.ZipFile(whl, "w") as zf:
+        zf.writestr(
+            "peira-9.9.9.dist-info/METADATA",
+            "Metadata-Version: 2.1\nName: peira\nVersion: 9.9.9\n",
+        )
+    assert build_module.wheel_version(whl) == "9.9.9"
+
+
+def test_wheel_version_missing_raises(tmp_path):
+    import zipfile
+
+    whl = tmp_path / "peira-9.9.9-py3-none-any.whl"
+    with zipfile.ZipFile(whl, "w") as zf:
+        zf.writestr(
+            "peira-9.9.9.dist-info/METADATA",
+            "Metadata-Version: 2.1\nName: peira\n",
+        )
+    with pytest.raises(ReleaseError, match="no Version in METADATA"):
+        build_module.wheel_version(whl)
