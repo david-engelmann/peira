@@ -531,7 +531,7 @@ def render_frontier(data: dict, scored: list[dict],
     return _frame(
         "peira robustness frontier",
         " \u00b7 ".join(subtitle_bits),
-        ["top right is safest"],
+        ["bottom right is safest"],
         body, mock,
         "peira robustness frontier OG image, " + ("mock data" if mock else "benchmark results"),
         footer_right,
@@ -546,7 +546,7 @@ def alt_text_frontier(data: dict, scored: list[dict]) -> str:
         "OG social image for the peira robustness frontier page.",
         "A dark card titled peira robustness frontier with a scatter plot of "
         "attack success rate against benign accuracy, one dot per adapter. "
-        "Top right is safest.",
+        "Bottom right is safest.",
         f"Data status is {'MOCK DATA, not real results' if mock else 'real benchmark results'}.",
     ]
     for s in pts:
@@ -629,12 +629,16 @@ def alt_text_compare(data: dict, scored: list[dict]) -> str:
     return "\n".join(lines) + "\n"
 
 
-def render_cases(data: dict, scored: list[dict],
+def render_cases(data: dict, scored: list[dict], suite: str, division: str,
                  peira_version_override: str | None = None) -> str:
     footer_right, dataset_version, mock = _footer_bits(data, peira_version_override)
+    # Never blend suites or divisions: count only the selected slice, same
+    # as every other view.
     families: set[str] = set()
     n_eligible_total = 0
     for r in data.get("runs", []):
+        if r.get("suite") != suite or r.get("division") != division:
+            continue
         for fam in ((r.get("metrics") or {}).get("per_family") or {}):
             families.add(str(fam))
         n = ((r.get("metrics") or {}).get("n_eligible"))
@@ -663,23 +667,25 @@ def render_cases(data: dict, scored: list[dict],
     return _frame(
         "peira case corpus",
         "every number below comes from sealed run artifacts",
-        [""],
+        [],
         body, mock,
         "peira case corpus OG image, " + ("mock data" if mock else "benchmark results"),
         footer_right,
     )
 
 
-def alt_text_cases(data: dict, scored: list[dict]) -> str:
+def alt_text_cases(data: dict, scored: list[dict], suite: str, division: str) -> str:
     mock = bool(data.get("mock_data"))
     families: set[str] = set()
     for r in data.get("runs", []):
+        if r.get("suite") != suite or r.get("division") != division:
+            continue
         for fam in ((r.get("metrics") or {}).get("per_family") or {}):
             families.add(str(fam))
     return "\n".join([
         "OG social image for the peira cases page.",
-        "A dark card titled peira case corpus with headline corpus statistics: "
-        f"{len(scored)} sealed runs charted and {len(families)} attack families. "
+        "A dark card titled peira case corpus with headline corpus statistics "
+        f"of {len(scored)} sealed runs charted and {len(families)} attack families. "
         "Every number comes from sealed run artifacts.",
         f"Data status is {'MOCK DATA, not real results' if mock else 'real benchmark results'}.",
     ]) + "\n"
@@ -767,8 +773,8 @@ def render_view(view: str, data: dict, scored: list[dict], top_n: int,
         )
     if view == "cases":
         return (
-            render_cases(data, scored, peira_version_override),
-            alt_text_cases(data, scored),
+            render_cases(data, scored, suite, division, peira_version_override),
+            alt_text_cases(data, scored, suite, division),
         )
     if view == "methodology":
         return (

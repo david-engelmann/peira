@@ -153,6 +153,31 @@ class RenderOgViewsTest(unittest.TestCase):
             self.assertIn(view, render_og.VIEWS)
             self.assertTrue(render_og.VIEWS[view].startswith("og-"))
 
+    def test_cases_never_blends_suites(self):
+        # The cases image must count only the selected suite/division,
+        # never the whole file. Public and holdout are never blended.
+        data = make_data()
+        data["runs"].append({
+            "adapter_name": "mock-holdout",
+            "adapter_version": "1",
+            "suite": "holdout",
+            "division": "guardrail",
+            "metrics": {
+                "asr_conditional": 0.9,
+                "asr_ci95": [0.8, 1.0],
+                "benign_accuracy": 0.5,
+                "benign_accuracy_ci95": [0.4, 0.6],
+                "n_eligible": 1000,
+                "per_family": {"sneaky_new_family": {"asr": 0.99}},
+            },
+        })
+        scored = scored_for(data)  # public guardrail only
+        svg, alt = render_og.render_view("cases", data, scored, 8, "public",
+                                        "guardrail", "0.1.0")
+        self.assertNotIn("sneaky_new_family", svg + alt)
+        self.assertNotIn("1000", svg)  # holdout n_eligible must not leak in
+        self.assertIn(str(len(scored)), svg)
+
 
 if __name__ == "__main__":
     unittest.main()
