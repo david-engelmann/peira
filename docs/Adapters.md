@@ -197,7 +197,7 @@ One adapter per provider, one extra each. Install only what you need:
 | Adapter | Extra | Dotted path | Default model | API key |
 |---|---|---|---|---|
 | OpenAI | `peira[openai]` | `peira.adapters.llm:OpenAIAdapter` | `gpt-5.6-luna` | `OPENAI_API_KEY` |
-| Anthropic | `peira[anthropic]` | `peira.adapters.llm:AnthropicAdapter` | `claude-sonnet-5` | `ANTHROPIC_API_KEY` |
+| Anthropic | `peira[anthropic]` | `peira.adapters.llm:AnthropicAdapter` | `claude-sonnet-5-5` | `ANTHROPIC_API_KEY` |
 | Google | `peira[google]` | `peira.adapters.llm:GoogleAdapter` | `gemini-3.8-flash` | `GOOGLE_API_KEY` |
 | Moonshot (Kimi) | `peira[openai]` | `peira.adapters.llm:MoonshotAdapter` | `kimi-k3` | `MOONSHOT_API_KEY` |
 | xAI (Grok) | `peira[openai]` | `peira.adapters.llm:XAIAdapter` | `grok-4` | `XAI_API_KEY` |
@@ -282,9 +282,9 @@ Opus 5.5, or both. The reconciliation landed 2026-09-30:
 - **Sonnet 5.5 exists.** Anthropic released Claude Sonnet 5.5 on
   2026-09-28 as `claude-sonnet-5-5` ($2/$10 per 1M). It gets the same
   routing and temperature handling as Opus 5.5.
-- **The default pin is unchanged.** `claude-sonnet-5` stays the
-  default until a live smoke test decides D3's (a)/(b)/(c). All three
-  ids are live-UNVERIFIED from this environment.
+- **The default pin is `claude-sonnet-5-5`.** D3 decided 2026-10-02:
+  latest only. The pin moved from `claude-sonnet-5` to `claude-sonnet-5-5`
+  (released 2026-09-28, $2/$10 per 1M).
 
 ### Frontier ceiling (candidate; id unverified, not yet measured)
 

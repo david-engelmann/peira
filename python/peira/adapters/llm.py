@@ -1747,10 +1747,10 @@ class OpenRouterAdapter(OpenAIAdapter):
 # ``claude-opus-5-5`` (verified against Anthropic's model docs, AWS
 # Bedrock, and launch coverage — released 2026-09-22), and Claude
 # Sonnet 5.5 shipped 2026-09-28 as ``claude-sonnet-5-5``. Both are
-# 5.x reasoning models, so both route here. The default pin stays
-# ``claude-sonnet-5`` until a live smoke test decides D3's
-# (a)/(b)/(c); pass ``model="claude-opus-5-5"`` explicitly to measure
-# Opus 5.5. All ids in this set are live-UNVERIFIED from this
+# 5.x reasoning models, so both route here. D3 decided 2026-10-02.
+# Latest only: the default pin is ``claude-sonnet-5-5``; pass
+# ``model="claude-opus-5-5"`` explicitly to measure Opus 5.5.
+# All ids in this set are live-UNVERIFIED from this
 # environment (no API calls in the authoring lane).
 _STRUCTURED_OUTPUT_MODELS = frozenset({
     "claude-fable-5-1",

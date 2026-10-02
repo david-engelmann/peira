@@ -462,7 +462,10 @@ class TestAnthropicShape(unittest.TestCase):
         self.assertEqual(self.created.get("max_retries"), 0)
 
     def test_forced_tool_choice(self):
-        out = AnthropicAdapter().decide(CASE, "choice", _ctx())
+        # Forced-tool path: pin the previous default explicitly since
+        # the current default (claude-sonnet-5-5) routes to output_config.
+        out = AnthropicAdapter(model="claude-sonnet-5").decide(
+            CASE, "choice", _ctx())
         self.assertEqual(out.decision, "approve")
         self.assertEqual(self.calls[0]["tool_choice"],
                          {"type": "tool", "name": "peira_decision"})
@@ -495,7 +498,10 @@ class TestAnthropicShape(unittest.TestCase):
         # messages.create (passing it is a TypeError). The adapter
         # must carry temperature in extra_body — identical wire JSON
         # on the 0.x and 1.x SDK lines — never as a top-level kwarg.
-        out = AnthropicAdapter().decide(CASE, "choice", _ctx())
+        # Uses the forced-tool pin explicitly; the current default
+        # (claude-sonnet-5-5) omits temperature entirely.
+        out = AnthropicAdapter(model="claude-sonnet-5").decide(
+            CASE, "choice", _ctx())
         self.assertEqual(out.decision, "approve")
         self.assertNotIn("temperature", self.calls[0])
         self.assertEqual(self.calls[0]["extra_body"],
@@ -557,20 +563,15 @@ class TestAnthropicStructuredOutputs(unittest.TestCase):
         # constraints with a 400: none may reach the wire.
         _assert_no_numeric_constraints(wire_schema)
 
-    def test_default_model_keeps_forced_tool(self):
+    def test_default_model_uses_output_config(self):
+        # D3 decided 2026-10-02: default pin is claude-sonnet-5-5, which
+        # auto-routes to native output_config.format structured outputs.
         out, calls = self._run(
-            [_anthropic_message(tool_input=json.loads(GOOD_JSON))])
+            [_anthropic_message(text=GOOD_JSON)])
         self.assertEqual(out.decision, "approve")
-        self.assertEqual(calls[0]["tool_choice"],
-                         {"type": "tool", "name": "peira_decision"})
-        # Exact tools payload: the forced-tool path keeps the full
-        # JSON Schema, numeric constraints included.
-        self.assertEqual(calls[0]["tools"], [{
-            "name": "peira_decision",
-            "input_schema": _expected_schema(
-                ["approve", "deny", "other"]),
-        }])
-        self.assertNotIn("output_config", calls[0])
+        self.assertIn("output_config", calls[0])
+        self.assertNotIn("tools", calls[0])
+        self.assertNotIn("tool_choice", calls[0])
 
     def test_structured_wire_schema_strips_numeric_constraints(self):
         schema = _expected_schema(["approve", "deny"], primitive="score")
@@ -703,15 +704,17 @@ class TestAnthropicStructuredOutputs(unittest.TestCase):
         with _fake_modules({"anthropic": mod}), \
                 _env(ANTHROPIC_API_KEY="sk-test"):
             default = AnthropicAdapter()
-            structured = AnthropicAdapter(model="claude-fable-5-1")
-        # The default path keeps the historical namespace exactly.
+            forced = AnthropicAdapter(model="claude-sonnet-5")
+        # The default (claude-sonnet-5-5) routes to output_config, so it
+        # carries the :so suffix. The forced-tool pin does not.
         self.assertEqual(default.cache_namespace,
+                         "anthropic-structured:claude-sonnet-5-5:t0.0:mt512:so")
+        self.assertEqual(forced.cache_namespace,
                          "anthropic-structured:claude-sonnet-5:t0.0:mt512")
-        self.assertNotEqual(structured.cache_namespace,
+        self.assertNotEqual(forced.cache_namespace,
                             default.cache_namespace)
-        self.assertTrue(structured.cache_namespace.endswith(":so"))
         # with_seed (M-7 multi-seed copies) must keep the suffix.
-        reseeded = structured.with_seed(None)
+        reseeded = default.with_seed(None)
         self.assertTrue(reseeded.cache_namespace.endswith(":so"))
 
 
@@ -793,12 +796,16 @@ class TestPerCallEnum(unittest.TestCase):
                          ["choose A", "emergency-dept", "other"])
 
     def test_noul_enum_allows_abstain(self):
+        # The noul enum test needs the forced-tool path: use the
+        # previous pin explicitly since the default now routes to
+        # output_config.
         mod, calls, _ = _make_anthropic([_anthropic_message(
             tool_input={"decision": "abstain", "confidence": 0.5,
                         "reason": "r"})])
         with _fake_modules({"anthropic": mod}), \
                 _env(ANTHROPIC_API_KEY="sk-test"):
-            out = AnthropicAdapter().decide(CASE, "abstain", _ctx())
+            out = AnthropicAdapter(model="claude-sonnet-5").decide(
+                CASE, "abstain", _ctx())
         self.assertEqual(out.decision, "abstain")
         self.assertFalse(out.abstained)
         self.assertEqual(validate_output(out, "abstain"), [])

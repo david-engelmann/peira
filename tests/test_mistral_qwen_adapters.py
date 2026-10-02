@@ -388,19 +388,20 @@ class TestAnthropicOpusReconciliation(unittest.TestCase):
                 self.assertIsNone(
                     out.transcript["request"]["temperature"])
 
-    def test_sonnet_5_default_path_unchanged(self):
-        # The default pin keeps the forced-tool path AND temperature.
-        # Temperature travels in extra_body (anthropic SDK 1.x removed
-        # the top-level temperature kwarg) — never as a top-level kwarg.
-        calls, _ = self._setup("claude-sonnet-5")
+    def test_sonnet_5_5_default_path_uses_output_config(self):
+        # D3 decided 2026-10-02: default pin is claude-sonnet-5-5, which
+        # routes to native output_config.format structured outputs and
+        # omits temperature entirely (rejected with 400 on 5.x models).
+        calls, _ = self._setup("claude-sonnet-5-5")
         out = AnthropicAdapter().decide(CASE, "choice", _ctx())
-        self.assertEqual(out.usage.model, "claude-sonnet-5")
-        self.assertIn("tools", calls[0])
-        self.assertEqual(calls[0]["tool_choice"]["type"], "tool")
+        self.assertEqual(out.usage.model, "claude-sonnet-5-5")
+        self.assertIn("output_config", calls[0])
+        self.assertNotIn("tools", calls[0])
+        self.assertNotIn("tool_choice", calls[0])
         self.assertNotIn("temperature", calls[0])
-        self.assertEqual(calls[0]["extra_body"]["temperature"], 0.0)
-        self.assertEqual(
-            out.transcript["request"]["temperature"], 0.0)
+        self.assertNotIn("extra_body", calls[0])
+        self.assertIsNone(
+            out.transcript["request"]["temperature"])
 
     def test_explicit_opt_out_still_works(self):
         # structured_outputs=False forces the legacy path even for a
