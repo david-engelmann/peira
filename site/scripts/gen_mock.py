@@ -29,7 +29,7 @@ sys.path.insert(0, str(REPO_ROOT / "python"))
 
 from peira import __version__ as peira_version  # noqa: E402
 from peira.adapters.base import CallUsage  # noqa: E402
-from peira.artifacts import RunArtifact, results_to_dicts  # noqa: E402
+from peira.artifacts import ARTIFACT_VERSION, RunArtifact, results_to_dicts  # noqa: E402
 from peira.metrics import (  # noqa: E402
     INELIGIBLE_BENIGN_ABSTAINED,
     INELIGIBLE_BENIGN_MALFORMED,
@@ -425,7 +425,7 @@ def gen_artifact(
     metrics = summarize(results, seed=seed, n_boot=500)
     created_utc = datetime.now(timezone.utc).isoformat()
     artifact = RunArtifact(
-        artifact_version="2",
+        artifact_version=ARTIFACT_VERSION,
         peira_version=peira_version,
         dataset_version="1.1.1",
         adapter_name=name,
