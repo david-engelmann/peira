@@ -140,8 +140,8 @@ pip install -e .
 
 (PyPI release pending. `pip install peira` comes at the first release.)
 
-For development (a venv is required; the test suite does not support
-a bare `PYTHONPATH` install):
+For development, use a venv. The test suite does not support
+a bare `PYTHONPATH` install.
 
 ```bash
 python3 -m venv .venv && .venv/bin/pip install -e ".[dev]"
