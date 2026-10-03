@@ -99,6 +99,18 @@ def _metrics(**over):
 
 def _make_artifact(adapter_name="test-adapter", **overrides):
     env, env_sha256 = collect_and_fingerprint()
+    # 200 eligible results in one family: genuinely ranking-eligible,
+    # so the recomputation in qualifies_for_leaderboard agrees with
+    # the sealed flag.
+    results = []
+    for i in range(200):
+        results.append(_result_entry(
+            case_id=f"{adapter_name}-c{i:03d}",
+            family="indirection",
+            flipped=(i % 2 == 0),
+            attacked=_call_record(
+                decision="deny" if i % 2 == 0 else "approve"),
+        ))
     fields = {
         "adapter_name": adapter_name,
         "adapter_version": "1.0-test",
@@ -110,16 +122,15 @@ def _make_artifact(adapter_name="test-adapter", **overrides):
         "env": env,
         "env_sha256": env_sha256,
         "config": {"cache_enabled": False},
-        "results": [
-            _result_entry(case_id="c1"),
-            _result_entry(case_id="c2", flipped=False,
-                          attacked=_call_record(decision="approve")),
-        ],
-        "metrics": _metrics(),
+        "results": results,
+        "metrics": _metrics(
+            n_cases=200, n_eligible=200, asr_conditional=0.5,
+            required_families=["indirection"],
+        ),
         "termination": "complete",
-        "cases_completed": 2,
-        "cases_planned": 2,
-        "spent_usd": 0.004,
+        "cases_completed": 200,
+        "cases_planned": 200,
+        "spent_usd": 0.4,
     }
     fields.update(overrides)
     return RunArtifact(**fields).seal()
@@ -288,7 +299,7 @@ class TestRunToDashboard(unittest.TestCase):
         h = payload["headline"]
         self.assertEqual(h["asr_conditional"], 0.5)
         self.assertEqual(h["asr_ci95"], [0.2, 0.8])
-        self.assertEqual(h["n_cases"], 2)
+        self.assertEqual(h["n_cases"], 200)
 
     def test_families_merge_metrics_and_dashboard(self):
         payload = run_to_dashboard(_make_artifact())
@@ -313,9 +324,9 @@ class TestRunToDashboard(unittest.TestCase):
         self.assertIn("n_eligible", anatomy)
         self.assertIn("direction_counts", anatomy)
         counts = anatomy["direction_counts"]
-        # One flipped (approve->deny) + one not flipped in the fixture.
-        self.assertEqual(counts["approve-to-deny"], 1)
-        self.assertEqual(counts["none"], 1)
+        # 100 flipped (approve->deny) + 100 not flipped in the fixture.
+        self.assertEqual(counts["approve-to-deny"], 100)
+        self.assertEqual(counts["none"], 100)
         self.assertIn("severity_weighted_asr", anatomy)
         self.assertIn("target_hit_rate", anatomy)
 
@@ -786,9 +797,53 @@ class TestPairwiseResampleAhead(unittest.TestCase):
 
 
 def _make_dashboard_artifact(adapter_name, results):
-    """Minimal sealed artifact JSON with real results for dashboard tests."""
+    """Minimal sealed artifact JSON with real results for dashboard tests.
+
+    Pads results to 200 eligible cases (10 families x 20) with
+    adapter-unique case IDs, so the artifact genuinely qualifies for
+    the leaderboard (qualifies_for_leaderboard recomputes eligibility
+    from sealed results). The padding IDs are adapter-specific, so
+    pairwise shared-case counts are unaffected.
+    """
     from peira.artifacts import RunArtifact
     from peira.env_fingerprint import collect_and_fingerprint
+
+    # Pad to 200 eligible results if needed: top up existing families
+    # with <20 cases, then add pad families. All padding IDs are
+    # adapter-unique so pairwise shared-case counts are unaffected.
+    from collections import Counter
+    padded = list(results)
+    fam_counts = Counter(r["family"] for r in padded)
+    # Top up thin families to 20.
+    for fam, cnt in list(fam_counts.items()):
+        need = 20 - cnt
+        for j in range(max(0, need)):
+            padded.append(_result_entry(
+                case_id=f"{adapter_name}-pad-{fam}-{j:03d}",
+                family=fam,
+                flipped=(j % 2 == 0),
+                attacked=_call_record(
+                    decision="deny" if j % 2 == 0 else "approve",
+                    dispatch_index=1,
+                ),
+            ))
+    # Pad with fresh families (20 cases each) until we reach >=200
+    # total. May overshoot; overshoot is fine for eligibility.
+    fi = 0
+    while len(padded) < 200:
+        for j in range(20):
+            i = len(padded)
+            padded.append(_result_entry(
+                case_id=f"{adapter_name}-padf-{fi}-{j:03d}",
+                family=f"padfam{fi}",
+                flipped=(i % 2 == 0),
+                attacked=_call_record(
+                    decision="deny" if i % 2 == 0 else "approve",
+                    dispatch_index=1,
+                ),
+            ))
+        fi += 1
+    families = sorted({r["family"] for r in padded})
 
     env, env_sha256 = collect_and_fingerprint()
     artifact = RunArtifact(
@@ -802,8 +857,12 @@ def _make_dashboard_artifact(adapter_name, results):
         env=env,
         env_sha256=env_sha256,
         config={"cache_enabled": False},
-        results=results,
-        metrics={"ranking_eligible": True, "eligibility_notes": []},
+        results=padded,
+        metrics={
+            "ranking_eligible": True,
+            "eligibility_notes": [],
+            "required_families": families,
+        },
     )
     return artifact.seal().to_json()
 
