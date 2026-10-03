@@ -66,6 +66,7 @@ def _partial(results, adapter=None, suite="trial-demo",
         config={"cache_enabled": False},
         pricing_version=load_pricing_table().get("pricing_version", ""),
         results=results_to_dicts(results),
+        termination="partial",
     ).seal()
 
 
@@ -108,6 +109,15 @@ class TestValidatePartial(unittest.TestCase):
     def test_tampered_lock(self):
         p = _partial([_r("c1")])
         p.results[0]["flipped"] = True  # modify after sealing
+        with self.assertRaises(ValueError):
+            validate_partial(p, MockAdapter(), _cases("c1"),
+                             "trial-demo", "0.1.0-demo")
+
+    def test_rejects_complete_run(self):
+        # A finished run is not a valid resume partial (P1-3).
+        p = _partial([_r("c1")])
+        p.termination = "complete"
+        p.seal()
         with self.assertRaises(ValueError):
             validate_partial(p, MockAdapter(), _cases("c1"),
                              "trial-demo", "0.1.0-demo")

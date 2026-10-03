@@ -41,7 +41,35 @@ class GateResult:
 
 
 def _canon_input(variant: dict[str, Any]) -> str:
-    return json.dumps(variant.get("input", {}), sort_keys=True)
+    """Canonical JSON for input comparison with semantic normalization.
+
+    Applies Unicode NFC normalization, strips zero-width/format
+    characters (U+200B, U+200C, U+200D, U+FEFF), and normalizes numeric
+    values (int/float equivalence) so semantically-null "attacks" that
+    differ only in encoding details are caught by G2.
+    """
+    import unicodedata
+    inp = variant.get("input", {})
+
+    def normalize(obj):
+        if isinstance(obj, str):
+            # NFC normalize, strip zero-width/format chars
+            s = unicodedata.normalize("NFC", obj)
+            s = s.replace("\u200b", "").replace("\u200c", "")
+            s = s.replace("\u200d", "").replace("\ufeff", "")
+            return s
+        if isinstance(obj, dict):
+            return {normalize(k): normalize(v) for k, v in obj.items()}
+        if isinstance(obj, list):
+            return [normalize(x) for x in obj]
+        if isinstance(obj, float):
+            # Normalize int-valued floats to int for equivalence
+            if obj.is_integer():
+                return int(obj)
+            return obj
+        return obj
+
+    return json.dumps(normalize(inp), sort_keys=True)
 
 
 def _to_rust_gate_cases(valid_cases) -> list[tuple[str, int, dict]]:
@@ -187,6 +215,40 @@ _PII_PATTERNS = [
     ("SSN", re.compile(r"\b\d{3}-\d{2}-\d{4}\b")),
 ]
 
+# The email pattern above has catastrophic backtracking on long
+# word-character runs without an @ (quadratic: 32k chars -> ~2s).
+# Windowed scan: only run the regex on a bounded window around each @.
+# Emails are <=254 chars per RFC 5321; the local part before @ is <=64.
+_EMAIL_WINDOW_BEFORE = 64
+_EMAIL_WINDOW_AFTER = 255
+
+
+def _pii_scan_text(text: str) -> str | None:
+    """Return the PII label if text contains PII, else None.
+
+    The email check uses a windowed scan to avoid ReDoS on long inputs:
+    the regex only runs on text[i-64:i+255] for each @ at position i,
+    and is skipped entirely when there is no @ in the text.
+    """
+    # Email: windowed to avoid catastrophic backtracking.
+    if "@" in text:
+        pattern = _PII_PATTERNS[0][1]
+        start = 0
+        while True:
+            at = text.find("@", start)
+            if at < 0:
+                break
+            lo = max(0, at - _EMAIL_WINDOW_BEFORE)
+            hi = min(len(text), at + _EMAIL_WINDOW_AFTER)
+            if pattern.search(text[lo:hi]):
+                return "email address"
+            start = at + 1
+    # Phone and SSN: fixed-width patterns, no backtracking risk.
+    for label, pattern in _PII_PATTERNS[1:]:
+        if pattern.search(text):
+            return label
+    return None
+
 
 def gate_target_coherence(valid_cases) -> GateResult:
     """Dispatch to Rust when available, else the pure-Python reference."""
@@ -212,11 +274,11 @@ def _gate_pii_scan_py(valid_cases) -> GateResult:
     for path, lineno, case in valid_cases:
         for variant in ("benign", "attacked"):
             text = json.dumps(case[variant].get("input", {}), sort_keys=True)
-            for label, pattern in _PII_PATTERNS:
-                if pattern.search(text):
-                    r.warnings.append(f"{path.name}:{lineno}: possible "
-                                      f"{label} in {variant} input")
-                    break
+            label = _pii_scan_text(text)
+            if label is not None:
+                r.warnings.append(f"{path.name}:{lineno}: possible "
+                                  f"{label} in {variant} input")
+                break
     return r
 
 
@@ -468,9 +530,17 @@ def gate_near_dedup(valid_cases) -> GateResult:
         for j in sorted(candidates):
             # Declared minimal-pair instruments skip the comparison:
             # near-identity is their design, not an authoring defect.
+            # The carve-out is bounded: both cases must share a family,
+            # otherwise the pair_id is ignored and the pair is compared
+            # normally (prevents smuggling arbitrary near-duplicates
+            # past G9 via a forged pair_id).
             pid_i = _g9_pair_id(items[i][2])
-            if pid_i is not None and pid_i == _g9_pair_id(items[j][2]):
-                continue
+            pid_j = _g9_pair_id(items[j][2])
+            if pid_i is not None and pid_i == pid_j:
+                fam_i = items[i][2].get("family")
+                fam_j = items[j][2].get("family")
+                if fam_i is not None and fam_i == fam_j:
+                    continue
             vec_j, norm_j = vecs[j]
             sim = _g9_cosine(vec_i, norm_i, vec_j, norm_j)
             if sim < G9_WARN_THRESHOLD:

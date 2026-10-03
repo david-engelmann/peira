@@ -394,7 +394,7 @@ class TestV3Fields(unittest.TestCase):
         # Metrics and adjudication versions are pinned
         self.assertEqual(a.metrics_version, "3.0.0")
         self.assertEqual(
-            a.adjudication_policy.get("policy_version"), "1"
+            a.adjudication_policy.get("policy_version"), "2"
         )
         # New blocks default to honest structured defaults
         self.assertEqual(a.per_family_stats, [])

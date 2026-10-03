@@ -258,7 +258,10 @@ pub fn record_from_transcript_entry(entry: &Value) -> Result<CallRecord, String>
         usage,
         seed,
         dispatch_index,
-        malformed: false,
+        malformed: entry
+            .get("token_limit_exceeded")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false),
         dispatch_limit,
         score,
         cached,
