@@ -8,14 +8,15 @@ are published so car makers can test cars.
 **Does a good score certify my model as safe?**
 No. A peira score measures robustness on this benchmark's paired decision
 cases. It says nothing about open-ended generation, real deployment risk,
-or attacks outside the 10 v1 families (× 200 cases each; the separate
-safety-policy suite covers classifier guardrails). See the non-certification notice in the
+or attacks outside the 10 v1 families (200 cases each). The separate
+safety-policy suite covers classifier guardrails. See the non-certification notice in the
 README.
 
 **How much does a full run cost?**
 The mock adapter costs nothing but time. Local HF adapters cost nothing
-but electricity; hosted runs cost whatever your provider charges for
-~4,000 decisions (2,000 public v1 cases × benign/attacked pair). Start
+but electricity. Hosted runs cost whatever your provider charges per call.
+A full v1 run is ~4,000 decisions (2,000 public cases x benign/attacked pair).
+A full v2 run is ~7,700 decisions (3,861 cases x pair). Start
 with the trial-demo fixture (12 cases). It's free and offline.
 
 **Can I run fully offline?**
@@ -30,7 +31,7 @@ then save yours as `my_adapter.py` and run
 
 **Why did my score change between peira versions?**
 Scores are tied to the dataset version and the peira version (both in the
-run artifact). Check the CHANGELOG; dataset changes are versioned and the
+run artifact). Check the CHANGELOG. Dataset changes are versioned and the
 planned leaderboard will keep one row per (adapter, dataset version) pair.
 
 **How do I plug in my own model without forking peira?**
@@ -55,7 +56,7 @@ registry id.
 
 **My adapter passed `check`, then I shipped a new version. Is the badge still good?**
 No. The check report seals the SHA-256 of the module file that was
-actually loaded; the badge covers exact bits only. Re-run
+actually loaded. The badge covers exact bits only. Re-run
 `peira adapter check` for the new version. Anyone can confirm the
 installed bits match a report with
 `peira adapter check --verify <report>`.

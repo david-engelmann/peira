@@ -75,21 +75,21 @@ normal editable install builds the extension with no separate script):
 then confirm `.venv/bin/python -c "from peira._rust import
 RUST_AVAILABLE; print(RUST_AVAILABLE)"` prints `True`. After changing
 anything under `crates/`, rebuild incrementally with `.venv/bin/maturin
-develop` (debug, seconds); use `.venv/bin/maturin develop --release`
+develop` (debug, seconds). Use `.venv/bin/maturin develop --release`
 for performance work. Python-only edits take effect immediately under
 the editable install with no rebuild needed.
 
 IMPORTANT: always run tests through the venv (`.venv/bin/python -m
 pytest tests -n auto`). `maturin develop` places the compiled `_core`
 extension inside the `python/peira/` source tree as a
-maturin-managed build artifact (gitignored, so never commit it); on a
+maturin-managed build artifact (gitignored, so never commit it). On a
 fresh checkout that was never built, running pytest with a bare
 `PYTHONPATH=<worktree>/python` will SILENTLY test the pure-Python
 backend (`RUST_AVAILABLE=False`). The venv is the only supported way
 to run the suite.
 
 The `test-python-rust` CI job installs the extension in release profile
-and runs the full Python suite against both backends; backend parity is
+and runs the full Python suite against both backends. Backend parity is
 pinned by `tests/test_rust_backend.py`. Set `PEIRA_NO_RUST=1` to force
 the pure-Python backend locally.
 
