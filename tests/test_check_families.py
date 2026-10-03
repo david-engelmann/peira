@@ -83,14 +83,16 @@ class TestCheckFamilies(unittest.TestCase):
         )
         # No cap on families (David 2026-09-28). Numbering runs 1..N in
         # order: 27 is question_pair_incoherence, 28 cryptographic_payload,
-        # 29 frequency_salience.
-        self.assertEqual(len(documented), 29)
+        # 29 frequency_salience, 30 canary_leakage, 31 history_leakage.
+        self.assertEqual(len(documented), 31)
         numbers = [n for n, _, _ in documented]
-        self.assertEqual(numbers, list(range(1, 30)))
+        self.assertEqual(numbers, list(range(1, 32)))
         num_by_fam = {fam: n for n, fam, _ in documented}
         self.assertEqual(num_by_fam["question_pair_incoherence"], 27)
         self.assertEqual(num_by_fam["cryptographic_payload"], 28)
         self.assertEqual(num_by_fam["frequency_salience"], 29)
+        self.assertEqual(num_by_fam["canary_leakage"], 30)
+        self.assertEqual(num_by_fam["history_leakage"], 31)
         tiers = {fam: tier for _, fam, tier in documented}
         self.assertEqual(tiers["state_poisoning"], "v1")
         self.assertEqual(tiers["instruction_override"], "1")
