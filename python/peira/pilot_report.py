@@ -59,12 +59,16 @@ def _pairwise_table(pairwise: dict[str, Any]) -> str:
         sig_txt = "yes" if sig else ("no" if sig is not None else "n/a")
         pv = p.get("p_value")
         pv_adj = p.get("p_value_adjusted")
+        pv_txt = f"<td>{pv:.4f}</td>" if isinstance(pv, float) else "<td>n/a</td>"
+        pv_adj_txt = (
+            f"<td>{pv_adj:.4f}</td>" if isinstance(pv_adj, float) else "<td>n/a</td>"
+        )
         rows.append(
             f"<tr><td>{_esc(p.get('adapter_a', '?'))}</td>"
             f"<td>{_esc(p.get('adapter_b', '?'))}</td>"
             f"<td>{_esc(p.get('n_paired', 'n/a'))}</td>"
-            f"<td>{pv:.4f}</td>" if isinstance(pv, float) else "<td>n/a</td>"
-            f"<td>{pv_adj:.4f}</td>" if isinstance(pv_adj, float) else "<td>n/a</td>"
+            f"{pv_txt}"
+            f"{pv_adj_txt}"
             f'<td class="{cls}">{sig_txt}</td></tr>'
         )
     return (
