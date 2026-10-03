@@ -226,6 +226,11 @@ class TestNewAdapterRequestShape(unittest.TestCase):
                     # sends json_object with the schema in the prompt
                     # (see TestZaiJsonObjectMode).
                     continue
+                if cls is DeepSeekAdapter:
+                    # DeepSeek 400s on json_schema response_format;
+                    # DeepSeek sends json_object with the schema in the
+                    # prompt (see TestDeepSeekJsonObjectMode).
+                    continue
                 calls, _ = self._setup(env_var)
                 out = cls().decide(CASE, "choice", _ctx())
                 self.assertEqual(out.decision, "approve")
@@ -285,6 +290,49 @@ class TestDeepSeekThinkingDisabled(unittest.TestCase):
         self.assertEqual(
             out.transcript["request"].get("thinking"),
             {"type": "disabled"},
+        )
+
+
+class TestDeepSeekJsonObjectMode(unittest.TestCase):
+    """DeepSeek rejects json_schema response_format (400): the adapter
+    sends json_object and inlines the schema in the system prompt."""
+
+    def _setup(self, **adapter_kwargs):
+        mod, calls, _ = _make_openai([_openai_completion(GOOD_JSON)])
+        with _fake_modules({"openai": mod}), \
+                _env(DEEPSEEK_API_KEY="sk-test"):
+            adapter = DeepSeekAdapter(**adapter_kwargs)
+            out = adapter.decide(CASE, "choice", _ctx())
+        return calls, out, adapter
+
+    def test_response_format_is_json_object_not_json_schema(self):
+        # Live smoke 2026-10-03: api.deepseek.com 400s
+        # "This response_format type is unavailable now" on the
+        # json_schema block — json_object is the only structured mode
+        # DeepSeek accepts.
+        calls, _, _ = self._setup()
+        self.assertEqual(calls[0]["response_format"], {"type": "json_object"})
+
+    def test_system_prompt_inlines_schema(self):
+        # With no server-side schema enforcement, the model only knows
+        # the required keys if the prompt tells it. The decision enum
+        # must be present — it is injected per call from the labels.
+        calls, _, _ = self._setup()
+        system = calls[0]["messages"][0]["content"]
+        self.assertEqual(calls[0]["messages"][0]["role"], "system")
+        for key in ("decision", "confidence", "reason"):
+            self.assertIn(f'"{key}"', system)
+        self.assertIn("approve", system)
+        self.assertIn("deny", system)
+
+    def test_transcript_records_json_object_mode(self):
+        # The transcript must never claim strict json_schema
+        # enforcement for this adapter — the override records what was
+        # actually sent.
+        _, out, _ = self._setup()
+        self.assertEqual(
+            out.transcript["request"]["response_format"],
+            "json_object:prompt-inlined-schema",
         )
 
 

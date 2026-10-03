@@ -1192,12 +1192,15 @@ class DeepSeekAdapter(OpenAIAdapter):
     Request shape: DeepSeek's thinking mode is DISABLED
     (``thinking: {"type": "disabled"}``) per the evaluation design —
     reasoning traces would otherwise leak into the decision channel.
-    Whether ``json_schema`` ``response_format`` (vs plain
-    ``json_object``, which DeepSeek documents) is honored for
-    ``deepseek-flash`` is unverified. If the live endpoint rejects or
-    ignores any of these, you will see terminal provider errors, not
-    silent mismeasurement — verify against the live API before any
-    measured run. Not exercised against the live API yet.
+    DeepSeek's API REJECTS the ``json_schema`` ``response_format``
+    with a 400 ("This response_format type is unavailable now") —
+    observed against the live API 2026-10-03. This adapter sends
+    ``response_format: {"type": "json_object"}`` and inlines the
+    schema (required keys, types, and the decision enum) in the
+    system prompt. Schema adherence is best-effort, not
+    server-enforced; the transcript records the actual mode. The
+    ``json_object`` shape has NOT yet been exercised against the
+    live API — verify before any measured run.
     """
 
     name = "deepseek-structured"
@@ -1232,6 +1235,14 @@ class DeepSeekAdapter(OpenAIAdapter):
         self, messages: list[dict[str, str]], schema: dict[str, Any]
     ) -> dict[str, Any]:
         kwargs = super()._request_kwargs(messages, schema)
+        # DeepSeek's API rejects the ``json_schema`` response_format
+        # with a 400 ("This response_format type is unavailable now") —
+        # verified against the live API 2026-10-03. Only ``text`` and
+        # ``json_object`` are accepted, so send ``json_object`` and put
+        # the schema in the system prompt instead (see
+        # _system_prompt). Schema adherence is then best-effort, not
+        # server-enforced — the transcript records this honestly.
+        kwargs["response_format"] = {"type": "json_object"}
         # ``thinking`` is not an OpenAI SDK body parameter, so it
         # travels via ``extra_body`` (the same pattern QwenAdapter
         # uses for ``enable_thinking``). Thinking stays disabled per
@@ -1242,13 +1253,37 @@ class DeepSeekAdapter(OpenAIAdapter):
         kwargs["extra_body"] = extra_body
         return kwargs
 
+    def _system_prompt(self, schema: dict[str, Any]) -> str:
+        # The schema must travel in the prompt because DeepSeek
+        # rejects the json_schema response_format. Spell out the
+        # required keys, their types, and the decision enum so the
+        # model can conform.
+        props = schema.get("properties", {}) or {}
+        required = schema.get("required", []) or []
+        parts = [SYSTEM_PROMPT, "The JSON object MUST contain exactly these keys:"]
+        for key in required:
+            ptype = props.get(key, {}).get("type", "string")
+            desc = f'"{key}" ({ptype})'
+            if key == "decision" and "enum" in props.get(key, {}):
+                desc += f", one of: {props[key]['enum']}"
+            if key in ("confidence", "score"):
+                desc += ", a number between 0 and 1"
+            parts.append(f"- {desc}")
+        return " ".join(parts)
+
     def _request_shape_overrides(
         self, sent: dict[str, Any]
     ) -> dict[str, Any]:
         # The thinking kill-switch is load-bearing for this adapter —
-        # record it in the transcript, not just the wire kwargs.
+        # record it in the transcript, not just the wire kwargs. The
+        # json_object (not strict json_schema) mode is likewise
+        # load-bearing — record what was actually sent so the
+        # transcript never claims strict enforcement.
         extra_body = sent.get("extra_body") or {}
-        return {"thinking": extra_body.get("thinking")}
+        return {
+            "thinking": extra_body.get("thinking"),
+            "response_format": "json_object:prompt-inlined-schema",
+        }
 
     def _request(
         self, user_text: str, schema: dict[str, Any], repair: bool
