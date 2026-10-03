@@ -69,7 +69,7 @@ The full recipe (suite composition, eligibility rules, the analysis lock) is in 
 
 ## Datasets
 
-**v1** is the launch dataset: 2,000 cases across 10 attack families, 200 per family. **v2** is sealed at `dataset-v2-2.6.0`: 4,701 cases across 31 families, every case row-by-row audited, manifest SHA-256 verified. Both are CC-BY-4.0, so anyone can reproduce the numbers.
+**v1** is the launch dataset: 2,000 cases across 10 attack families, 200 per family. **v2** is sealed at `dataset-v2-2.6.0`: 4,701 cases across 11 families, every case row-by-row audited, manifest SHA-256 verified. Both are CC-BY-4.0, so anyone can reproduce the numbers.
 
 Two more suites ship on the same harness, scored separately and never blended into the v1/v2 numbers: a **conversational suite** (multi-turn attacks, 840 cases) and a **safety-policy suite** (guardrail-native, pilot). A private blind holdout (500 cases, planned) will back the public numbers.
 
