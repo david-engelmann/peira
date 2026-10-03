@@ -1,27 +1,25 @@
 # peira
 
-peira is an open-source AI safety stress-test and intelligence hub for leading models and guardrails, including Jev, ChatGPT, Claude, DeepSeek, Kimi, Gemini, Llama Prompt Guard 2, Grok, GLM, WildGuard, ShieldGemma, Granite Guardian and Shieldstral. The program is designed so every published number is backed by real evaluation runs on versioned public datasets. The code is MIT-licensed and the public datasets are CC-BY-4.0, so anyone can reproduce the numbers.
-
+peira is an open-source AI safety stress-test and intelligence hub for leading models and guardrails. It measures one thing: whether hostile input can flip a decision model's typed output.
 
 [![ci](https://github.com/david-engelmann/peira/actions/workflows/ci.yml/badge.svg)](https://github.com/david-engelmann/peira/actions/workflows/ci.yml)
 [![license](https://img.shields.io/badge/license-MIT%20%2F%20CC--BY--4.0-blue.svg)](LICENSE)
 
-[Docs](docs/Overview.md) · [Leaderboard](#leaderboard) · [Adapter API](python/peira/adapters/base.py) · [Contributing](docs/Contributing.md) · [Discussions](https://github.com/david-engelmann/peira/discussions)
+[Docs](docs/Overview.md) · [Methodology](docs/Methodology.md) · [Adapters](docs/Adapters.md) · [Contributing](docs/Contributing.md) · [Discussions](https://github.com/david-engelmann/peira/discussions)
 
-> Decisions fail silently. A model that approves what it should deny tells you nothing, and an accuracy benchmark will not catch attack-driven flips. peira runs each attack against a clean control case, so a flipped decision is evidence about the attack, not noise.
+> Accuracy benchmarks tell you whether a model decides well on clean input. peira tells you whether an attacker can change the decision. Every attack ships with a benign twin, so a flipped decision is evidence about the attack, not noise.
 
 ## Contents
 
 - [The trial in action](#the-trial-in-action)
 - [60-second quickstart](#60-second-quickstart)
 - [What peira measures](#what-peira-measures)
-- [What brings you here](#what-brings-you-here)
+- [Datasets](#datasets)
 - [Leaderboard](#leaderboard)
 - [Adapters](#adapters)
 - [How peira differs](#how-peira-differs)
 - [Install](#install)
 - [Add your model](#add-your-model)
-- [Methodology](#methodology)
 - [Reports](#reports)
 - [Citation](#citation)
 - [License / notices](#license--notices)
@@ -61,30 +59,31 @@ Check your setup first with `peira doctor`: it reports Python/RAM/disk/GPU, veri
 
 ## What peira measures
 
-Whether hostile input changes a decision model's typed output: approve/deny (choice), a numeric score (score), or abstain (abstain). This is adversarial robustness at the decision layer. Each attacked case ships with a benign twin, and a case only counts when its benign variant gives a usable baseline. A model cannot look sturdy by failing the control.
+Whether hostile input changes a decision model's typed output: approve/deny (choice), a numeric score (score), or abstain (abstain). Each attacked case ships with a benign twin, and a case only counts when its benign variant gives a usable baseline. A model cannot look sturdy by failing the control.
 
-The headline metric is decision-change ASR with Wilson 95% confidence intervals. ECE and Brier cover confidence quality. Malformed attacked outputs count as flipped (a decision model that breaks under attack gets no benefit of the doubt), and so is attack-induced abstention: a flip of the abstention state is a flip of the outcome, a DoS vector. Refusal rates are reported separately so the refusal phenomenon stays visible. Cost is a sidecar, never blended into a score. Every report carries per-case drill-down receipts, and every run is sealed against post-hoc editing.
+The headline metric is decision-change ASR with Wilson 95% confidence intervals. ECE and Brier cover confidence quality. Malformed attacked outputs count as flipped (a decision model that breaks under attack gets no benefit of the doubt), and neither does attack-induced abstention: a flip of the abstention state is a flip of the outcome, a DoS vector. Refusal rates are reported separately so the refusal phenomenon stays visible. Cost is a sidecar, never blended into a score. Every report carries per-case drill-down receipts, and every run is sealed against post-hoc editing.
 
 A low ASR is not a safety certificate. It says the decision model held against peira's attack families, nothing about the attacks peira does not cover.
 
-Built for teams putting decision models in front of real actions: each attack is paired with a clean control, so a flip is evidence about the attack, not noise.
+The full recipe (suite composition, eligibility rules, the analysis lock) is in `docs/Methodology.md`. Read it before quoting a number.
 
-## What brings you here
+## Datasets
 
-- **Test my decision model**: run the quickstart above, then read `docs/Methodology.md`.
-- **Claim a leaderboard row**: see [Adapters](#adapters), then [Add your model](#add-your-model).
-- **Write attack cases**: see [the authoring guide](docs/Dataset.md).
-- **Compare harnesses**: see [How peira differs](#how-peira-differs).
+**v1** is the launch dataset: 2,000 cases across 10 attack families, 200 per family. **v2** is sealed at `dataset-v2-2.5.1`: 3,861 cases across 9 families, every case row-by-row audited, manifest SHA-256 verified. Both are CC-BY-4.0, so anyone can reproduce the numbers.
+
+Two more suites ship on the same harness, scored separately and never blended into the v1/v2 numbers: a **conversational suite** (multi-turn attacks, 840 cases) and a **safety-policy suite** (guardrail-native, pilot). A private blind holdout (500 cases, planned) will back the public numbers.
+
+The code is MIT-licensed. See `docs/Dataset.md` for the authoring pipeline and `docs/Taxonomy.md` for the 29 attack families.
 
 ## Leaderboard
 
-One row per (adapter, dataset version). The leaderboard opens with the v1 dataset. That is 2,000 cases across 10 attack families, 200 per family. The v2 dataset is in authoring against the attack-family taxonomy. The registry holds 29 families today and the taxonomy has no cap. Nine families and 3,861 cases are authored so far, and each v2 family ships with at least 400 cases.
+One row per (adapter, dataset version). The bar is mechanical, not editorial: malformed rate at most 5%, benign accuracy at least 0.5, at least 200 eligible cases overall, and at least 20 eligible cases in every family present. Miss any gate and the run is published but unranked. Omission never improves a rank.
 
-A separate safety-policy suite (guardrail-native, pilot, 25 starter cases) and a conversational suite (multi-turn attacks, two families and 840 cases so far) ship alongside v1. They run on the same harness but are scored separately, never blended into the v1 numbers.
-
-The bar is mechanical, not editorial. Malformed rate at most 5%, benign accuracy at least 0.5, at least 200 eligible cases overall, and at least 20 eligible cases in every family present. Miss any gate and the run is published but unranked. Omission never improves a rank. Partial primitive coverage is reported honestly, not hidden.
+The adapters below are shipped and tested. Official measurement runs are in progress. Rows land as runs complete. Nothing ships a number here until it is measured with name, version, and run date.
 
 ## Adapters
+
+29 adapters ship today: 9 Hugging Face guardrails, 10 structured-output LLM baselines, 5 guardrail APIs, and 5 Jev-family judges. The full table (install extras, API keys, pinned models) is in `docs/Adapters.md`.
 
 | Adapter | Status |
 |---|---|
@@ -96,22 +95,26 @@ The bar is mechanical, not editorial. Malformed rate at most 5%, benign accuracy
 | Granite Guardian 4.1 8B (IBM) | shipped, not yet measured |
 | ShieldGemma 2B (Google) | shipped, not yet measured |
 | WildGuard (AllenAI) | shipped, not yet measured |
-| Structured-output LLM baselines (OpenAI, Anthropic, Gemini, Moonshot, xAI, DeepSeek, Meta, Zhipu, Mistral, Qwen) | shipped, not yet measured |
+| Structured-output LLM baselines (OpenAI, Anthropic `claude-sonnet-5-5`, Gemini, Moonshot, xAI, DeepSeek, Meta, Zhipu, Mistral, Qwen) | shipped, not yet measured |
 | TypeSafe Jev | shipped, gated on access |
 | Laya (ConvAI Innovations) | shipped, not yet measured |
 | Kev (Jared Palmer) | shipped, not yet measured |
 | SemIf (TheoLeeCJ) | shipped, not yet measured |
 | openjev-sglang (self-hosted) | shipped, not yet measured |
 | Lakera Guard (Check Point) | shipped, gated on access |
-| claude-fable-5-1 (Anthropic, frontier-ceiling candidate) | shipped, id unverified, not yet measured |
 | HarmBench classifier | shipped, not yet measured |
 | Granite Guardian HAP-125M (IBM) | shipped, not yet measured |
 | OpenAI omni-moderation | shipped, not yet measured |
 | Google Cloud Model Armor | shipped, not yet measured |
 | Azure Prompt Shields | shipped, not yet measured |
 | Cloudflare Workers AI (Llama Guard 3 8B) | shipped, not yet measured |
+| claude-fable-5-1 (Anthropic, frontier-ceiling candidate) | shipped, id unverified, not yet measured |
 
-"Shipped" means the adapter exists and is tested. See `docs/Adapters.md` for install, keys, and pinned models. Nothing ships a number here until it is measured with name, version, and run date.
+"Shipped" means the adapter exists and is tested. See `docs/Adapters.md` for install, keys, and pinned models.
+
+## Reports
+
+A monthly *State of Decision Robustness* starting at the v1 launch: the full leaderboard, the methodology it was scored under, and per-adapter receipts.
 
 ## How peira differs
 
@@ -183,14 +186,6 @@ peira run --adapter my_adapter --suite trial --seed 0
 ```
 
 See `examples/minimal_adapter.py` for the runnable version, then read `docs/Methodology.md` for the contracts your outputs must satisfy.
-
-## Methodology
-
-One metric, honestly computed: decision-change ASR over eligible cases only, with Wilson 95% confidence intervals on reported rates. The full recipe (suite composition, eligibility rules, the analysis lock) is in `docs/Methodology.md`.
-
-## Reports
-
-A monthly *State of Decision Robustness* starting at the v1 launch: the full leaderboard, the methodology it was scored under, and per-adapter receipts. The cadence starts when the leaderboard does.
 
 ## Citation
 

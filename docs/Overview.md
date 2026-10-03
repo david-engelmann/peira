@@ -20,10 +20,10 @@ Everything in `docs/`, organized by what you are trying to do. Pick a path, or b
 
 ## Contribute cases or work on peira itself
 
-1. [Contributing](Contributing.md): the mechanical checklist. Read first; it defines "done".
+1. [Contributing](Contributing.md): the mechanical checklist. Read it first. It defines "done".
 2. [Dataset](Dataset.md): the authoring pipeline (templates, gates, review queue, manifests).
 3. [Severity-Rubric](Severity-Rubric.md): consequence-based severity, assigned at authoring time, never derived from model behavior.
-4. [Decisions](Decisions.md): the architecture decision records. Check here before proposing a design change; the argument already happened.
+4. [Decisions](Decisions.md): the architecture decision records. Check here before proposing a design change. The argument already happened.
 5. [Taxonomy](Taxonomy.md): family definitions for case authors.
 
 ## Full map
