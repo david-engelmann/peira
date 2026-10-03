@@ -687,7 +687,7 @@ PRESSURE_TEMPLATES = [
 
 # Transcript turn templates (benign). Two variants each, chosen by
 # (frame_idx + j) % 2, to keep the conversational wrapper from
-# dominating G9 similarity.
+# skewing G9 similarity.
 EARLY_USER_TEMPLATES = [
     "I am working through the {stakes} decision at {org}. Can you "
     "summarize the files for {pa} and {pb}?",
