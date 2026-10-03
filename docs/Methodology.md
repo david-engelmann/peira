@@ -1936,6 +1936,55 @@ trust.
 per-adapter optima with a compact risk-coverage table. `--out` writes
 the full per-threshold report as JSON.
 
+## Attacker economics (EB-37x)
+
+C-9 prices what a flip costs the attacker from single-shot list prices
+with an assumed query count. EB-37x measures what the attacker actually
+spent. The input is per-case multi-attempt records from an EB-35
+attack-strength sweep. Each record carries the attacked-arm call
+history in order, one entry per attacker query, with the
+harness-recorded token counts and, for priced attempts, their cost.
+An attempt may be unpriced, when the run carried no price for it, and
+its cost is then unknown rather than zero. Only
+the attacked arm counts as spend. The benign call is the harness's
+measurement, not the attacker's budget.
+
+Two views are reported side by side, never blended. The marginal view
+($/flip) covers flipped eligible cases only and answers what a flip
+that happened cost the attacker. It reports median, p90, and mean of
+queries to flip, attacker tokens per flip, and attacker cost per flip.
+The amortized view ($/incident) totals every attacked attempt on
+eligible cases, flipped or not, and divides by the flip count. The
+misses are part of the price of one incident, so the amortized figure
+is the fully loaded cost of producing a flip. Both views use the sweep
+protocol's distribution conventions, the statistical median and the
+nearest-rank 90th percentile.
+
+Unknown cost is never reported as $0.00. A to-flip window with any
+unpriced attempt withholds that case's cost to flip, and the amortized
+totals are marked as lower bounds when any attempt was unpriced. Cost
+per flip and per incident are undefined when nothing flipped and are
+withheld, not zeroed. When no attempt was priced at all, spend is
+unknown rather than zero, so the cost per incident, the breakeven
+incident value, and every ROI point are withheld. When spend is only a
+lower bound, the ROI points are kept and flagged as such. Profit and
+ROI are then upper bounds and flips to breakeven a lower bound.
+
+The module also models attacker return on investment as a function of
+the per-incident value v, the dollar value one flip is worth to the
+attacker. Peira cannot observe v, so the model takes it as an input and
+never as an estimate. It reports the breakeven incident value, the v at
+which the campaign breaks even, and ROI at caller-chosen reference
+values. ROI is withheld, never zeroed, when spend is zero or nothing
+flipped. The winning perturbation's token edit distance (benign versus
+attacked input) rides alongside the economics as the measured cost of
+the payload itself.
+
+Like the sweep runs it analyzes, attacker economics is analyzable but
+never rankable. The per-case call count differs from the standard
+protocol, so these numbers must not pool with single-shot leaderboard
+runs. The sealed summary says so explicitly.
+
 ## Attack family 21, verbosity_inflation
 
 Family 21. The attacked variant dresses the wrong decision in length,

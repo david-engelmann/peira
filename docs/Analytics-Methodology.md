@@ -342,6 +342,40 @@ attacker query per case. A real attacker's economics include
 engineering time, infrastructure, and retries, none of which this
 ratio sees.
 
+### Attacker economics
+
+Definition. What the attacker actually spent on multi-attempt
+sweep runs, in two views reported side by side and never blended.
+The marginal view answers what a flip that happened cost the
+attacker, over flipped eligible cases only, with median, 90th
+percentile, and mean of queries to flip, attacker tokens per flip,
+and attacker cost per flip. The amortized view answers the fully
+loaded cost of producing one incident, with every attacked attempt
+on eligible cases, flipped or not, divided by the flip count. Only
+the attacked arm counts as spend. The benign call is the harness's
+measurement, not the attacker's budget.
+
+Scope. An attempt that carried no price is unknown cost, never
+$0.00. A to-flip window with any unpriced attempt withholds that
+case's cost to flip, and the amortized totals are marked as lower
+bounds when any attempt was unpriced. When no attempt was priced at
+all, cost per incident, the breakeven incident value, and every ROI
+point are withheld as unknown. The ROI model takes the per-incident
+value as a caller-chosen input, never as an estimate, and reports
+the breakeven value plus ROI at reference values. ROI is withheld,
+never zeroed, when nothing flipped or spend is zero. The winning
+perturbation's token edit distance rides alongside as the measured
+cost of the payload itself.
+
+Do not rank adapters on attacker economics. These numbers are
+analyzable but never rankable, because the per-case call count
+differs from the standard single-shot protocol and pooling them
+with leaderboard runs would compare different measurements. Do not
+treat the amortized figure as a real campaign budget. It is the
+fully loaded cost inside the sweep run, and a real attacker's
+economics include engineering time, infrastructure, and judgment,
+none of which this measurement sees.
+
 ### Budget cap
 
 Definition. A dispatch limit on projected priced spend. A
