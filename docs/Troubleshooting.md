@@ -99,6 +99,13 @@ its own provenance. Fix: resume with the same `--seed` the partial was
 written with, or delete the `<adapter>-<suite>.partial.json` file and
 re-run from scratch.
 
+**Multi-seed resume (`--seeds N --resume`)**
+Each seed checkpoints independently to
+`<adapter>-<suite>-seed{N}.partial.json`. On resume, seeds with valid
+partials pick up where they left off; seeds without partials start fresh.
+If a seed's partial fails validation, the error names the seed and the
+partial path: delete that seed's partial file or drop `--resume`.
+
 **`error: partial run was recorded with budget_usd X, not Y: re-run with the same --budget-usd or drop --resume`**
 Cause: `peira run --resume` found a partial run recorded under a different
 spend cap than the one requested. The cap is a measurement input: merging
