@@ -1276,7 +1276,7 @@ class DeepSeekAdapter(OpenAIAdapter):
         # model can conform.
         props = schema.get("properties", {}) or {}
         required = schema.get("required", []) or []
-        parts = [SYSTEM_PROMPT, "The JSON object MUST contain exactly these keys:"]
+        parts = [SYSTEM_PROMPT, "The JSON object MUST contain exactly these keys: (respond in json format)"]
         for key in required:
             ptype = props.get(key, {}).get("type", "string")
             desc = f'"{key}" ({ptype})'
@@ -1468,7 +1468,7 @@ class ZaiAdapter(OpenAIAdapter):
         # their types, and the decision enum so the model can conform.
         props = schema.get("properties", {}) or {}
         required = schema.get("required", []) or []
-        parts = [SYSTEM_PROMPT, "The JSON object MUST contain exactly these keys:"]
+        parts = [SYSTEM_PROMPT, "The JSON object MUST contain exactly these keys: (respond in json format)"]
         for key in required:
             ptype = props.get(key, {}).get("type", "string")
             desc = f'"{key}" ({ptype})'
