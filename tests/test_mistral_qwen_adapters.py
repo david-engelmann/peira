@@ -283,12 +283,26 @@ class TestMistralSeedWireName(unittest.TestCase):
     """Mistral's seed parameter is ``random_seed``, not ``seed``."""
 
     def test_random_seed_sent_not_seed(self):
+        # Mistral's seed travels as ``random_seed`` inside ``extra_body``
+        # — the OpenAI SDK rejects unknown top-level kwargs with a
+        # TypeError, so a top-level ``random_seed`` breaks every call.
         mod, calls, _ = _make_openai([_openai_completion(GOOD_JSON)])
         with _fake_modules({"openai": mod}), \
                 _env(MISTRAL_API_KEY="sk-test"):
             MistralAdapter(seed=42).decide(CASE, "choice", _ctx())
-        self.assertEqual(calls[0].get("random_seed"), 42)
+        self.assertNotIn("random_seed", calls[0])
         self.assertNotIn("seed", calls[0])
+        self.assertEqual(
+            (calls[0].get("extra_body") or {}).get("random_seed"), 42)
+
+    def test_no_seed_no_extra_body(self):
+        # seed=None must not invent an ``extra_body``.
+        mod, calls, _ = _make_openai([_openai_completion(GOOD_JSON)])
+        with _fake_modules({"openai": mod}), \
+                _env(MISTRAL_API_KEY="sk-test"):
+            MistralAdapter(seed=None).decide(CASE, "choice", _ctx())
+        self.assertNotIn("random_seed", calls[0])
+        self.assertNotIn("extra_body", calls[0])
 
     def test_logprobs_omitted(self):
         # Undocumented for Mistral chat completions — omit, don't

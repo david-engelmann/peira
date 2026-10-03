@@ -471,7 +471,8 @@ model on the board.
 Two honest caveats: the adapter is built from Mistral's published
 docs and third-party parameter surveys, not the live API. Mistral
 names the seed parameter `random_seed` (not `seed`), which the
-adapter sends; `logprobs` is undocumented for chat completions, so
+adapter sends inside `extra_body` (the OpenAI SDK rejects unknown
+top-level kwargs). `logprobs` is undocumented for chat completions, so
 the adapter omits it rather than negotiating. There is no
 decision-token logprob track on this adapter, and the transcript
 records the seed under the wire name it was sent with.
