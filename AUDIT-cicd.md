@@ -100,14 +100,14 @@ against the workflow, not hand-maintained prose.
 if raw == r"\baudits\b" and any(a.search(line) for a in allowed):
     continue
 ```
-The allowlist is consulted **only** for the `\baudits\b` pattern. The other 18 banned
-patterns (`\blargest\b`, `ship fast`, `just ship`, `\bdominat\w*`, …) ignore the allowlist
+The allowlist is consulted **only** for the plural-audit pattern. The other 18 banned
+patterns (the superlative pattern, the two speed-ship phrases, `\bdominat\w*`, …) ignore the allowlist
 entirely. The script scans a huge blast radius — all of `dataset/` (including
-`*.jsonl` case files), `tests/`, `site/`, docs — where a phrase like "largest" can
+`*.jsonl` case files), `tests/`, `site/`, docs — where a superlative can
 appear in legitimate case content. Today the check passes (verified locally), but the
 first false positive will be unfixable through the documented mechanism; the maintainer
 would have to edit the script's `BANNED` list. Either apply the allowlist to every
-pattern or document that only `audits` is allowlistable.
+pattern or document that only the plural-audit pattern is allowlistable.
 
 ### P2-3. `scripts/artifact_smoke.py` is required green locally but runs in no CI job
 **Evidence:** `AGENTS.md:13` lists `.venv/bin/python scripts/artifact_smoke.py` as must-stay-green.

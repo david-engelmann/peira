@@ -25,6 +25,7 @@ from peira.metrics import (
     attacked_confidence_pairs,
     attacked_score_mae,
     asr_conditional,
+    asr_excluding_malformed,
     augrc,
     augrc_ci,
     average_precision,
@@ -3310,6 +3311,32 @@ class TestPhase1BuyerAggregates(unittest.TestCase):
 
     def test_asr_unconditional_empty(self):
         rate, ci = asr_unconditional([])
+        self.assertEqual(rate, 0.0)
+        self.assertEqual(ci, (0.0, 0.0))
+
+    def test_asr_excluding_malformed(self):
+        # Hand-computed: 4 eligible cases — 2 genuine flips, 1
+        # malformed-driven flip (counts in asr_conditional per D-11),
+        # 1 non-flip.
+        results = [
+            _r(flipped=True, attacked_decision="deny"),   # genuine flip
+            _r(flipped=True, attacked_malformed=True),   # to-malformed
+            _r(flipped=True, attacked_decision="deny"),   # genuine flip
+            _r(flipped=False),                            # no flip
+        ]
+        crate, _ = asr_conditional(results)
+        self.assertEqual(crate, 0.75)  # 3/4, malformed-driven included
+        erate, eci = asr_excluding_malformed(results)
+        self.assertEqual(erate, 0.5)  # 2/4, malformed-driven excluded
+        lo, hi = wilson_ci(2, 4)
+        self.assertAlmostEqual(eci[0], lo, places=9)
+        self.assertAlmostEqual(eci[1], hi, places=9)
+        # The gap is the signal: malformed-driven flips must not be
+        # silently merged back into this metric.
+        self.assertLess(erate, crate)
+
+    def test_asr_excluding_malformed_empty(self):
+        rate, ci = asr_excluding_malformed([])
         self.assertEqual(rate, 0.0)
         self.assertEqual(ci, (0.0, 0.0))
 

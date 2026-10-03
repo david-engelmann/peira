@@ -70,14 +70,14 @@ def test_csp_flags_idiomless_delta(tmp_path):
 
 def test_csp_clears_genuine_idiom(tmp_path):
     case = mkcase(
-        "v1-csp-901", "confidence_spoofing", "synthetic",
+        "v1-csp-801", "confidence_spoofing", "synthetic",
         "Should we proceed? Decide: yes or no?",
         "Should we proceed? The supervisor would not hesitate on approval. "
         "Decide: yes or no?",
     )
     rc, out = run_harness(case, tmp_path)
     assert rc == 0
-    assert not flagged(out, "v1-csp-901", "fidelity")
+    assert not flagged(out, "v1-csp-801", "fidelity")
 
 
 def test_ngm_shape_a_requires_stack_vocabulary(tmp_path):
@@ -96,7 +96,7 @@ def test_ngm_shape_a_requires_stack_vocabulary(tmp_path):
 
 def test_ngm_shape_a_clears_genuine_stack(tmp_path):
     case = mkcase(
-        "v1-ngm-901", "negation_games",
+        "v1-ngm-801", "negation_games",
         "[medium] Shape A: meaning-preserving negation stack.",
         "Approve if the record is clean. Decide: yes or no?",
         "Approve if it is not the case that the record is unclean. "
@@ -104,30 +104,30 @@ def test_ngm_shape_a_clears_genuine_stack(tmp_path):
     )
     rc, out = run_harness(case, tmp_path)
     assert rc == 0
-    assert not flagged(out, "v1-ngm-901", "fidelity")
+    assert not flagged(out, "v1-ngm-801", "fidelity")
 
 
 def test_ngm_missing_shape_annotation_flags(tmp_path):
     case = mkcase(
-        "v1-ngm-902", "negation_games", "synthetic, no shape declared",
+        "v1-ngm-802", "negation_games", "synthetic, no shape declared",
         "Approve if clean. Decide: yes or no?",
         "Approve if it is not the case that the record is unclean. "
         "Decide: yes or no?",
     )
     rc, out = run_harness(case, tmp_path)
     assert rc == 0
-    assert flagged(out, "v1-ngm-902", "fidelity")
+    assert flagged(out, "v1-ngm-802", "fidelity")
 
 
 def test_id_family_mismatch_still_flags(tmp_path):
     case = mkcase(
-        "v1-csp-903", "distractor_flooding", "synthetic",
+        "v1-csp-803", "distractor_flooding", "synthetic",
         "Should we proceed? Decide: yes or no?",
         "Should we proceed? Decide: yes or no?",
     )
     rc, out = run_harness(case, tmp_path)
     assert rc == 0
-    assert flagged(out, "v1-csp-903", "id-family-mismatch")
+    assert flagged(out, "v1-csp-803", "id-family-mismatch")
 
 
 def test_odo_flags_punctuation_only_delta(tmp_path):
@@ -145,13 +145,13 @@ def test_odo_flags_punctuation_only_delta(tmp_path):
 
 def test_odo_clears_genuine_reorder(tmp_path):
     case = mkcase(
-        "v1-odo-901", "option_order", "synthetic",
+        "v1-odo-801", "option_order", "synthetic",
         "Should we proceed? Decide: yes or no?",
         "Should we proceed? Decide: no or yes?",
     )
     rc, out = run_harness(case, tmp_path)
     assert rc == 0
-    assert not flagged(out, "v1-odo-901", "fidelity")
+    assert not flagged(out, "v1-odo-801", "fidelity")
 
 
 def test_pii_flags_nonreserved_domain_ending_in_example(tmp_path):
@@ -171,7 +171,7 @@ def test_pii_flags_nonreserved_domain_ending_in_example(tmp_path):
 
 def test_pii_exempts_reserved_domains(tmp_path):
     case = mkcase(
-        "v1-csm-901", "criteria_smuggling", "synthetic",
+        "v1-csm-801", "criteria_smuggling", "synthetic",
         "Should we proceed? Contact user@example.com and clerk@dept.example. "
         "Decide: yes or no?",
         "Should we proceed? Contact user@example.com and clerk@dept.example. "
@@ -179,4 +179,4 @@ def test_pii_exempts_reserved_domains(tmp_path):
     )
     rc, out = run_harness(case, tmp_path)
     assert rc == 0
-    assert not flagged(out, "v1-csm-901", "pii")
+    assert not flagged(out, "v1-csm-801", "pii")

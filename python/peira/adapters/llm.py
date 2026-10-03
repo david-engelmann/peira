@@ -654,6 +654,7 @@ class _StructuredLLMBase:
         started = time.perf_counter()
         raw = self._request(user_text, schema, repair=False)
         attempts = 1
+        first_raw = raw
 
         refusal = _refusal_stop_reason(raw.stop_reason)
         if refusal is not None:
@@ -678,13 +679,13 @@ class _StructuredLLMBase:
             if refusal is not None:
                 return self._abstain(
                     primitive, f"stop_reason: {raw.stop_reason}",
-                    raw, started, attempts,
+                    raw, started, attempts, extra_raw=first_raw,
                 )
             prefix = _match_refusal_prefix(raw.text)
             if prefix is not None:
                 return self._abstain(
                     primitive, f"refusal prefix: {prefix!r}",
-                    raw, started, attempts,
+                    raw, started, attempts, extra_raw=first_raw,
                 )
             obj, errors = self._resolve(raw, schema)
 
@@ -698,7 +699,7 @@ class _StructuredLLMBase:
                 status_code=None,
             )
         assert obj is not None
-        return self._build_output(primitive, obj, raw, started, attempts)
+        return self._build_output(primitive, obj, raw, started, attempts, extra_raw=first_raw)
 
     def _resolve(
         self, raw: _RawResult, schema: dict[str, Any]
@@ -715,11 +716,18 @@ class _StructuredLLMBase:
 
     # -- outputs ----------------------------------------------------------
 
-    def _usage(self, raw: _RawResult, started: float) -> CallUsage:
+    def _usage(self, raw: _RawResult, started: float, extra_raw: _RawResult | None = None) -> CallUsage:
+        tokens_in = max(0, int(raw.tokens_in or 0))
+        tokens_out = max(0, int(raw.tokens_out or 0))
+        if extra_raw is not None:
+            # Parse-repair fired: accumulate both attempts' tokens so cost
+            # accounting reflects the true provider spend.
+            tokens_in += max(0, int(extra_raw.tokens_in or 0))
+            tokens_out += max(0, int(extra_raw.tokens_out or 0))
         return CallUsage(
             model=self._model,  # exact pinned model id, never an alias
-            tokens_in=max(0, int(raw.tokens_in or 0)),
-            tokens_out=max(0, int(raw.tokens_out or 0)),
+            tokens_in=tokens_in,
+            tokens_out=tokens_out,
             latency_ms=(time.perf_counter() - started) * 1000.0,
             cost_usd=0.0,  # the runner recomputes cost; ignored on input
         )
@@ -760,11 +768,12 @@ class _StructuredLLMBase:
         raw: _RawResult,
         started: float,
         attempts: int,
+        extra_raw: _RawResult | None = None,
     ) -> AdapterOutput:
         decision = obj["decision"]
         confidence = float(obj["confidence"])
         logprob = self._decision_logprob(raw, decision)
-        usage = self._usage(raw, started)
+        usage = self._usage(raw, started, extra_raw)
         transcript = self._transcript(raw, started, attempts, confidence, logprob)
         if primitive == "choice":
             return ChoiceOutput(
@@ -789,6 +798,7 @@ class _StructuredLLMBase:
         raw: _RawResult,
         started: float,
         attempts: int,
+        extra_raw: _RawResult | None = None,
     ) -> AdapterOutput:
         """A detected refusal: empty decision, abstained=True.
 
@@ -800,7 +810,7 @@ class _StructuredLLMBase:
         AbstainOutput carry decision="", ScoreOutput carries score=0.0 and
         decision="", confidence is None (no usable measurement).
         """
-        usage = self._usage(raw, started)
+        usage = self._usage(raw, started, extra_raw)
         transcript = self._transcript(raw, started, attempts, None, None)
         if primitive == "choice":
             return ChoiceOutput(
@@ -1192,15 +1202,12 @@ class DeepSeekAdapter(OpenAIAdapter):
     Request shape: DeepSeek's thinking mode is DISABLED
     (``thinking: {"type": "disabled"}``) per the evaluation design —
     reasoning traces would otherwise leak into the decision channel.
-    DeepSeek's API REJECTS the ``json_schema`` ``response_format``
-    with a 400 ("This response_format type is unavailable now") —
-    observed against the live API 2026-10-03. This adapter sends
-    ``response_format: {"type": "json_object"}`` and inlines the
-    schema (required keys, types, and the decision enum) in the
-    system prompt. Schema adherence is best-effort, not
-    server-enforced; the transcript records the actual mode. The
-    ``json_object`` shape has NOT yet been exercised against the
-    live API — verify before any measured run.
+    Whether ``json_schema`` ``response_format`` (vs plain
+    ``json_object``, which DeepSeek documents) is honored for
+    ``deepseek-flash`` is unverified. If the live endpoint rejects or
+    ignores any of these, you will see terminal provider errors, not
+    silent mismeasurement — verify against the live API before any
+    measured run. Not exercised against the live API yet.
     """
 
     name = "deepseek-structured"
@@ -1235,14 +1242,6 @@ class DeepSeekAdapter(OpenAIAdapter):
         self, messages: list[dict[str, str]], schema: dict[str, Any]
     ) -> dict[str, Any]:
         kwargs = super()._request_kwargs(messages, schema)
-        # DeepSeek's API rejects the ``json_schema`` response_format
-        # with a 400 ("This response_format type is unavailable now") —
-        # verified against the live API 2026-10-03. Only ``text`` and
-        # ``json_object`` are accepted, so send ``json_object`` and put
-        # the schema in the system prompt instead (see
-        # _system_prompt). Schema adherence is then best-effort, not
-        # server-enforced — the transcript records this honestly.
-        kwargs["response_format"] = {"type": "json_object"}
         # ``thinking`` is not an OpenAI SDK body parameter, so it
         # travels via ``extra_body`` (the same pattern QwenAdapter
         # uses for ``enable_thinking``). Thinking stays disabled per
@@ -1253,37 +1252,13 @@ class DeepSeekAdapter(OpenAIAdapter):
         kwargs["extra_body"] = extra_body
         return kwargs
 
-    def _system_prompt(self, schema: dict[str, Any]) -> str:
-        # The schema must travel in the prompt because DeepSeek
-        # rejects the json_schema response_format. Spell out the
-        # required keys, their types, and the decision enum so the
-        # model can conform.
-        props = schema.get("properties", {}) or {}
-        required = schema.get("required", []) or []
-        parts = [SYSTEM_PROMPT, "The JSON object MUST contain exactly these keys:"]
-        for key in required:
-            ptype = props.get(key, {}).get("type", "string")
-            desc = f'"{key}" ({ptype})'
-            if key == "decision" and "enum" in props.get(key, {}):
-                desc += f", one of: {props[key]['enum']}"
-            if key in ("confidence", "score"):
-                desc += ", a number between 0 and 1"
-            parts.append(f"- {desc}")
-        return " ".join(parts)
-
     def _request_shape_overrides(
         self, sent: dict[str, Any]
     ) -> dict[str, Any]:
         # The thinking kill-switch is load-bearing for this adapter —
-        # record it in the transcript, not just the wire kwargs. The
-        # json_object (not strict json_schema) mode is likewise
-        # load-bearing — record what was actually sent so the
-        # transcript never claims strict enforcement.
+        # record it in the transcript, not just the wire kwargs.
         extra_body = sent.get("extra_body") or {}
-        return {
-            "thinking": extra_body.get("thinking"),
-            "response_format": "json_object:prompt-inlined-schema",
-        }
+        return {"thinking": extra_body.get("thinking")}
 
     def _request(
         self, user_text: str, schema: dict[str, Any], repair: bool

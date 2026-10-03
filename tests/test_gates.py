@@ -153,6 +153,19 @@ class TestGates(unittest.TestCase):
                             for w in r.warnings))
         self.assertEqual(self._errors(), [])
 
+    def test_g6_redos_long_word_run(self):
+        # Regression: the email regex must not catastrophically
+        # backtrack on long word-character runs without an @.
+        # A 100k-char run must complete in well under a second.
+        import time
+        from peira.gates import _pii_scan_text
+        text = "x" * 100000
+        started = time.perf_counter()
+        result = _pii_scan_text(text)
+        elapsed = time.perf_counter() - started
+        self.assertIsNone(result)
+        self.assertLess(elapsed, 1.0, f"took {elapsed:.2f}s")
+
     def test_g7_score_case_without_reference_fails(self):
         self._write_cases([_score_case("s1")])
         r = self._results()["G7"]

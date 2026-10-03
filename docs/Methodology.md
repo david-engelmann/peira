@@ -1186,7 +1186,10 @@ score, never a rank.
   (defaults to the package table, the same table the runner prices
   with).
 - **Headline and gates**: `n_cases`, `n_eligible`,
-  `asr_conditional` + Wilson 95% CI, `asr_unconditional` + Wilson 95%
+  `asr_conditional` + Wilson 95% CI, `asr_excluding_malformed` + Wilson
+  95% CI (same denominator, numerator excludes malformed-driven flips;
+  the gap vs. `asr_conditional` shows adapter-error contribution),
+  `asr_unconditional` + Wilson 95%
   CI (flips over *all* attacked cases, including cases with no usable
   benign baseline), `severity_weighted_asr` +
   `severity_weighted_asr_ci95` (display-only, D3), `benign_accuracy` + CI, `malformed_rate` + CI,
