@@ -61,10 +61,11 @@ def load_pilot_runs(
         if not path:
             continue
         try:
-            artifact = RunArtifact.load(Path(path))
+            artifact = RunArtifact.from_json(Path(path).read_text(encoding="utf-8"))
         except Exception:
             continue
-        if not runs_registry.qualifies_for_leaderboard(artifact):
+        qualifies, _reason = runs_registry.qualifies_for_leaderboard(artifact)
+        if not qualifies:
             continue
         try:
             payload = dashboard.run_to_dashboard(artifact)
@@ -195,13 +196,14 @@ def pairwise_significance(
             cmp = compare.compare_artifacts(a, b)
         except ValueError:
             continue
-        mcn = cmp.mcnemar or {}
-        p = mcn.get("p_value")
+        mcn = cmp.mcnemar
+        p = mcn.p_value if mcn is not None else None
+        stat = mcn.statistic if mcn is not None else None
         pairs.append({
             "adapter_a": records[i]["adapter_name"],
             "adapter_b": records[j]["adapter_name"],
             "n_paired": cmp.n_paired,
-            "mcnemar_stat": mcn.get("statistic"),
+            "mcnemar_stat": stat,
             "p_value": p,
             "p_value_adjusted": None,  # filled after BH
             "significant_at_05": None,
@@ -320,7 +322,8 @@ def cost_effectiveness(records: list[dict[str, Any]]) -> dict[str, Any]:
     rows = []
     for rec in records:
         h = _headline(rec)
-        cost = h.get("total_cost_usd")
+        cost_dict = h.get("cost") or {}
+        cost = cost_dict.get("total_cost_usd") if isinstance(cost_dict, dict) else None
         n_elig = h.get("n_eligible")
         benign_acc = h.get("benign_accuracy")
         asr = h.get("asr_conditional")
@@ -331,12 +334,14 @@ def cost_effectiveness(records: list[dict[str, Any]]) -> dict[str, Any]:
         }
         if isinstance(cost, (int, float)) and isinstance(n_elig, (int, float)) and n_elig > 0:
             row["cost_per_decision"] = cost / n_elig
-            # Correct decisions: benign correct + attacked not flipped.
+            # Correct decisions: benign correct + attacked correctly rejected.
+            # asr_conditional is conditioned on benign-correct, so the
+            # attacked-correct count must also condition on benign accuracy.
             n_correct = None
             if isinstance(benign_acc, (int, float)) and isinstance(asr, (int, float)):
-                # benign_acc and asr are rates; n_correct needs counts.
-                # Use eligible n as the base for both arms (paired design).
-                n_correct = n_elig * benign_acc + n_elig * (1.0 - asr)
+                n_benign_correct = n_elig * benign_acc
+                n_attacked_correct = n_benign_correct * (1.0 - asr)
+                n_correct = n_benign_correct + n_attacked_correct
                 row["cost_per_correct"] = cost / n_correct if n_correct > 0 else None
             else:
                 row["cost_per_correct"] = None
@@ -384,8 +389,6 @@ def cost_effectiveness(records: list[dict[str, Any]]) -> dict[str, Any]:
 def analyze_pilot(runs_dir: str | Path | None = None) -> dict[str, Any]:
     """Run the complete pilot analysis. Returns the full report dict."""
     records = load_pilot_runs(runs_dir)
-    # Strip artifacts for JSON-serializability in the summary; the
-    # pairwise step needs them, so run it before stripping.
     pairwise = pairwise_significance(records)
     ranking = ranking_analysis(records)
     report = {

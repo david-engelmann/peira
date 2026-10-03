@@ -184,3 +184,29 @@ class TestRankChart(unittest.TestCase, _ContractMixin):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestCostScatterEdgeCases(unittest.TestCase):
+    def test_all_zero_costs(self):
+        # Regression: all-zero costs (free-tier local models) crashed
+        # on math.log10(0.0). Must render without error.
+        cost_data = {
+            "rows": [
+                {"adapter_name": "a", "total_cost_usd": 0.0, "mean_asr": 0.3, "n_eligible": 100},
+                {"adapter_name": "b", "total_cost_usd": 0.0, "mean_asr": 0.5, "n_eligible": 100},
+            ]
+        }
+        svg = cost_scatter_svg(cost_data)
+        self.assertIn("<svg", svg)
+        self.assertIn("a", svg)
+        self.assertIn("b", svg)
+
+    def test_mixed_zero_and_positive_costs(self):
+        cost_data = {
+            "rows": [
+                {"adapter_name": "free", "total_cost_usd": 0.0, "mean_asr": 0.3, "n_eligible": 100},
+                {"adapter_name": "paid", "total_cost_usd": 10.0, "mean_asr": 0.5, "n_eligible": 100},
+            ]
+        }
+        svg = cost_scatter_svg(cost_data)
+        self.assertIn("<svg", svg)

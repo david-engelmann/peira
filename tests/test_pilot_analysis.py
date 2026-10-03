@@ -6,10 +6,13 @@ are tested without building sealed artifacts.
 """
 
 import unittest
+from dataclasses import dataclass
+from unittest.mock import patch
 
 from peira.pilot_analysis import (
     family_matrix,
     attack_effectiveness,
+    pairwise_significance,
     ranking_analysis,
     cost_effectiveness,
 )
@@ -146,7 +149,7 @@ class TestCostEffectiveness(unittest.TestCase):
             name,
             {"f1": _fam(asr, n=n_elig, n_elig=n_elig)},
             headline={
-                "total_cost_usd": cost,
+                "cost": {"total_cost_usd": cost},
                 "n_eligible": n_elig,
                 "benign_accuracy": benign_acc,
                 "asr_conditional": asr,
@@ -161,13 +164,24 @@ class TestCostEffectiveness(unittest.TestCase):
         self.assertAlmostEqual(rows["b"]["cost_per_decision"], 0.02)
 
     def test_cost_per_correct(self):
-        # n_elig=1000, benign_acc=0.9, asr=0.2:
-        # n_correct = 1000*0.9 + 1000*0.8 = 1700. cost 10 -> 10/1700.
+        # n_elig=1000, benign_acc=0.9, asr_conditional=0.2:
+        # n_benign_correct = 900; n_attacked_correct = 900*0.8 = 720.
+        # n_correct = 1620. cost 10 -> 10/1620.
+        # (asr_conditional conditions on benign-correct, so the attacked
+        # arm must too; the old flat formula overcounted.)
         recs = [self._rec("a", 10.0)]
         ce = cost_effectiveness(recs)
         self.assertAlmostEqual(
-            ce["rows"][0]["cost_per_correct"], 10.0 / 1700.0
+            ce["rows"][0]["cost_per_correct"], 10.0 / 1620.0
         )
+
+    def test_cost_nested_under_headline_cost(self):
+        # Regression: cost_effectiveness must read headline["cost"]["total_cost_usd"],
+        # not headline["total_cost_usd"] (which never exists).
+        recs = [self._rec("a", 10.0)]
+        ce = cost_effectiveness(recs)
+        self.assertEqual(ce["rows"][0]["total_cost_usd"], 10.0)
+        self.assertIsNotNone(ce["rows"][0]["cost_per_decision"])
 
     def test_sorted_by_cost_per_correct(self):
         recs = [self._rec("expensive", 100.0), self._rec("cheap", 1.0)]
@@ -191,3 +205,70 @@ class TestCostEffectiveness(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+@dataclass(frozen=True)
+class _FakeMcnemar:
+    """Stand-in for compare.McNemarResult (a dataclass, not a dict)."""
+
+    b: int = 10
+    c: int = 5
+    n_pairs: int = 100
+    statistic: float = 1.5
+    p_value: float | None = 0.22
+    winner: str | None = None
+
+
+@dataclass(frozen=True)
+class _FakeComparison:
+    mcnemar: _FakeMcnemar | None = None
+    n_paired: int = 100
+
+
+class TestPairwiseSignificance(unittest.TestCase):
+    def _recs(self):
+        return [
+            {"adapter_name": "a", "adapter_version": "1", "artifact": object()},
+            {"adapter_name": "b", "adapter_version": "1", "artifact": object()},
+        ]
+
+    def test_uses_dataclass_attributes(self):
+        # Regression: cmp.mcnemar is a McNemarResult dataclass, not a dict.
+        # .get() raised AttributeError; must use attribute access.
+        with patch(
+            "peira.pilot_analysis.compare.compare_artifacts",
+            return_value=_FakeComparison(mcnemar=_FakeMcnemar()),
+        ):
+            out = pairwise_significance(self._recs())
+        self.assertEqual(len(out["pairs"]), 1)
+        pair = out["pairs"][0]
+        self.assertEqual(pair["p_value"], 0.22)
+        self.assertEqual(pair["mcnemar_stat"], 1.5)
+        self.assertEqual(pair["n_paired"], 100)
+
+    def test_none_mcnemar(self):
+        with patch(
+            "peira.pilot_analysis.compare.compare_artifacts",
+            return_value=_FakeComparison(mcnemar=None),
+        ):
+            out = pairwise_significance(self._recs())
+        self.assertIsNone(out["pairs"][0]["p_value"])
+        self.assertIsNone(out["pairs"][0]["mcnemar_stat"])
+
+    def test_bh_correction_applied(self):
+        with patch(
+            "peira.pilot_analysis.compare.compare_artifacts",
+            return_value=_FakeComparison(
+                mcnemar=_FakeMcnemar(p_value=0.01)
+            ),
+        ):
+            recs = [
+                {"adapter_name": "a", "adapter_version": "1", "artifact": object()},
+                {"adapter_name": "b", "adapter_version": "1", "artifact": object()},
+                {"adapter_name": "c", "adapter_version": "1", "artifact": object()},
+            ]
+            out = pairwise_significance(recs)
+        # 3 pairs; BH-adjusted p-values filled in.
+        self.assertEqual(len(out["pairs"]), 3)
+        for pair in out["pairs"]:
+            self.assertIsNotNone(pair["p_value_adjusted"])

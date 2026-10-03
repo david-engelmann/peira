@@ -123,6 +123,11 @@ def cost_scatter_svg(cost_data: dict[str, Any]) -> str:
     lo_c, hi_c = min(costs), max(costs)
     if lo_c <= 0:
         lo_c = min(c for c in costs if c > 0) if any(c > 0 for c in costs) else 1e-6
+    if hi_c <= 0:
+        # All costs are zero (e.g. free-tier local models): give the
+        # log scale a nominal positive upper bound instead of crashing
+        # on log10(0).
+        hi_c = lo_c * 10.0
     lo_l, hi_l = math.log10(lo_c), math.log10(hi_c)
     if hi_l == lo_l:
         hi_l = lo_l + 1.0
