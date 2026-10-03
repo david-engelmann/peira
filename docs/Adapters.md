@@ -323,16 +323,19 @@ in the transcript's request shape, and the key is never logged.
 baseline.
 
 Two honest caveats: the adapter is built from Moonshot's published
-docs and third-party parameter surveys, not the live API. Moonshot
-documents `temperature` only on the 0..1 range, and whether
-`json_schema` `response_format` (vs plain `json_object`) is honored
-for `kimi-k3` is unverified. On `seed`/`logprobs` the surveys agree
-(both unsupported, both 400 when sent), so the adapter OMITS both
-fields from the request rather than negotiating. There is no
-decision-token logprob track on this adapter, and the transcript
-honestly records `"seed": None`. Verify against the live API before
-any measured run; mismatches surface as terminal provider errors, not
-silent mismeasurement.
+docs and third-party parameter surveys, not the live API. The pinned
+`kimi-k3` is a reasoning model that only accepts `temperature=1` (any
+other value 400s, observed live 2026-10-03), so the adapter forces it
+and records the actual value in the transcript. Determinism is
+sacrificed for this model, honestly recorded. Whether `json_schema`
+`response_format` (vs plain `json_object`) is honored for `kimi-k3`
+is unverified. On `seed`/`logprobs` the surveys agree (both
+unsupported, both 400 when sent), so the adapter OMITS both fields
+from the request rather than negotiating. There is no decision-token
+logprob track on this adapter, and the transcript honestly records
+`"seed": None`. Verify against the live API before any measured run.
+Mismatches surface as terminal provider errors, not silent
+mismeasurement.
 
 ### Grok 4 (xAI)
 

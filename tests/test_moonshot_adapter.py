@@ -255,5 +255,69 @@ class TestMoonshotRequestShape(unittest.TestCase):
         self.assertTrue(req["logprobs"])
 
 
+class TestMoonshotTemperatureOverride(unittest.TestCase):
+    """kimi-k3 only accepts temperature=1 (live 400 on any other value).
+
+    Regression test: the adapter must force temperature=1 for the
+    pinned model even though the constructor default is 0.0, and the
+    transcript must record the temperature actually sent.
+    """
+
+    def setUp(self):
+        self.mod, self.calls, self.created = _make_openai(
+            [_openai_completion(GOOD_JSON)])
+        self._m = _fake_modules({"openai": self.mod})
+        self._m.__enter__()
+        self._e = _env(MOONSHOT_API_KEY="sk-test")
+        self._e.__enter__()
+        self.addCleanup(self._e.__exit__, None, None, None)
+        self.addCleanup(self._m.__exit__, None, None, None)
+
+    def test_pinned_model_sends_temperature_one(self):
+        # Constructor default is 0.0, but kimi-k3 must send 1.0.
+        MoonshotAdapter().decide(CASE, "choice", _ctx())
+        self.assertEqual(self.calls[0]["temperature"], 1.0)
+
+    def test_pinned_model_transcript_records_override(self):
+        out = MoonshotAdapter().decide(CASE, "choice", _ctx())
+        self.assertEqual(out.transcript["request"]["temperature"], 1.0)
+
+    def test_pinned_model_effective_temperature_is_one(self):
+        # The override is applied in __init__, so the instance itself
+        # carries the effective value — cache namespace and transcript
+        # agree with what is sent.
+        adapter = MoonshotAdapter()
+        self.assertEqual(adapter._temperature, 1.0)
+        self.assertIn(":t1.0:", adapter.cache_namespace)
+
+    def test_explicit_temperature_does_not_leak_into_cache(self):
+        # A caller-passed temperature for kimi-k3 must not create a
+        # phantom cache namespace: the effective value wins everywhere.
+        adapter = MoonshotAdapter(temperature=0.5)
+        self.assertEqual(adapter._temperature, 1.0)
+        self.assertIn(":t1.0:", adapter.cache_namespace)
+        self.assertNotIn(":t0.5:", adapter.cache_namespace)
+
+    def test_explicit_temperature_still_overridden_for_kimi_k3(self):
+        # Even an explicit constructor temperature cannot beat the
+        # provider's constraint — the override wins.
+        MoonshotAdapter(temperature=0.5).decide(CASE, "choice", _ctx())
+        self.assertEqual(self.calls[0]["temperature"], 1.0)
+
+    def test_unlisted_model_keeps_constructor_temperature(self):
+        # Models without an override entry keep the caller's value.
+        MoonshotAdapter(model="kimi-k2.6").decide(CASE, "choice", _ctx())
+        self.assertEqual(self.calls[0]["temperature"], 0.0)
+
+    def test_unlisted_model_transcript_records_constructor_value(self):
+        out = MoonshotAdapter(model="kimi-k2.6").decide(CASE, "choice", _ctx())
+        self.assertEqual(out.transcript["request"]["temperature"], 0.0)
+
+    def test_override_map_covers_pinned_model(self):
+        self.assertIn("kimi-k3", MoonshotAdapter._MODEL_TEMPERATURE_OVERRIDES)
+        self.assertEqual(
+            MoonshotAdapter._MODEL_TEMPERATURE_OVERRIDES["kimi-k3"], 1.0)
+
+
 if __name__ == "__main__":
     unittest.main()
