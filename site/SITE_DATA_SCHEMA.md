@@ -207,7 +207,7 @@ benign_wrong_decision, attacked_malformed};
 
 1. Every artifact must parse via `RunArtifact.from_json` and `verify()`
    must pass. A broken lock fails the build loudly.
-2. `artifact_version` must be `"2"`.
+2. `artifact_version` must be `"3"`.
 3. Mock discipline stays mechanical. `--mock` ingests only artifacts
    whose `config.mock` is true. Without `--mock` any mock artifact is
    rejected. Real and mock never mix in one build.

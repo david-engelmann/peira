@@ -181,7 +181,10 @@ class TestInputPurity(unittest.TestCase):
         (_, benign_ctx), (_, attacked_ctx) = rec.seen
         for ctx in (benign_ctx, attacked_ctx):
             self.assertEqual(list(ctx.__dataclass_fields__), ["call_id"])
-            self.assertTrue(ctx.call_id.startswith("call-"))
+            # Pin the exact opaque format: a degraded call_id (e.g.
+            # leaking the dispatch index, which encodes the arm) must
+            # fail this test, not slip through a prefix check.
+            self.assertRegex(ctx.call_id, r"^call-[0-9a-f]{16}$")
         # The two arms get different, unlinkable pseudonyms.
         self.assertNotEqual(benign_ctx.call_id, attacked_ctx.call_id)
         for attr in ("case_id", "arm", "expected_decision",

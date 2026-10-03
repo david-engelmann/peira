@@ -230,8 +230,14 @@ def load_artifact(path: Path, allow_mock: bool) -> tuple[RunArtifact, dict | Non
         fail(f"{path.name}: --mock given but artifact is not marked mock")
     if not allow_mock and is_mock:
         fail(f"{path.name}: mock artifact rejected without --mock")
-    if artifact.suite not in ("public", "holdout"):
-        fail(f"{path.name}: suite {artifact.suite!r} must be 'public' or 'holdout'")
+    # The exposure regime lives in the sealed exposure_attestation block,
+    # not in artifact.suite (which names the dataset: v1, v2,
+    # conversational, ...). The runner seals case_subset="public" for
+    # ordinary runs; blind-holdout runs seal "blind".
+    subset = (artifact.exposure_attestation or {}).get("case_subset")
+    if subset not in ("public", "blind"):
+        fail(f"{path.name}: exposure_attestation.case_subset {subset!r} "
+             f"must be 'public' or 'blind'")
     if not isinstance(artifact.metrics, dict) or not artifact.metrics:
         fail(f"{path.name}: artifact carries no sealed metrics")
     # v3 extension blocks are optional on v3 artifacts but, when present,
@@ -326,6 +332,30 @@ def main() -> None:
         fail(f"runs disagree on dataset_version: {sorted(dataset_versions)}")
     if len(manifest_shas) != 1:
         fail(f"runs disagree on manifest_sha256: {sorted(manifest_shas)}")
+    # The manifest SHA must match a published release in
+    # data/dataset-releases.json. Agreement among the artifacts is not
+    # enough: a batch of forgeries could agree with each other while
+    # pointing at a dataset that was never sealed. Skipped for --mock
+    # (synthetic test artifacts).
+    if not args.mock:
+        registry_path = REPO_ROOT / "data" / "dataset-releases.json"
+        try:
+            registry = json.loads(
+                registry_path.read_text(encoding="utf-8"))
+        except (OSError, ValueError) as e:
+            fail(f"cannot read dataset release registry: {e}")
+        known_shas = {
+            r.get("manifest_sha256")
+            for r in registry.get("releases", [])
+            if r.get("manifest_sha256")
+        }
+        sha = next(iter(manifest_shas))
+        if sha not in known_shas:
+            fail(
+                f"manifest_sha256 {sha[:16]}... not found in "
+                f"data/dataset-releases.json: refusing to ingest an "
+                f"unregistered dataset"
+            )
     runs.sort(key=lambda r: (r["suite"], r["adapter_name"]))
 
     site_data = {

@@ -5473,8 +5473,9 @@ def _arm_latency_data(
     Latency is the cumulative buyer latency (``latency_ms_total``: all
     attempts plus the backoff between them), falling back to the final
     attempt's ``usage.latency_ms`` on pre-Phase-0 records that predate
-    the cumulative field. Records without ``usage`` are skipped: a
-    missing usage is not a zero-latency call. Cache-hit records are
+    the cumulative field. Records with no latency measurement at all
+    (no ``latency_ms_total`` and no ``usage``) are skipped: a missing
+    measurement is not a zero-latency call. Cache-hit records are
     counted in ``n_cached`` and excluded from the percentile inputs: no
     provider call was made, so they carry no latency measurement and
     their ~0ms lookup time must not dilute the percentiles. Timed-out
@@ -5505,11 +5506,12 @@ def _arm_latency_data(
                 n_cached += 1
                 continue
             usage = rec.usage
-            if usage is None:
+            lat = rec.latency_ms_total
+            if not lat and usage is not None:
+                lat = usage.latency_ms
+            if not lat:
                 continue
-            latencies.append(
-                float(rec.latency_ms_total or usage.latency_ms)
-            )
+            latencies.append(float(lat))
     _check_finite(latencies, "latency_ms_total")
     return latencies, n_timeouts, n_cached, n_calls
 

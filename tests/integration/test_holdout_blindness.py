@@ -17,6 +17,7 @@ touches the real holdout (AGENTS.md hard rule 2).
 
 import dataclasses
 import json
+import re
 
 from peira.adapters.base import ChoiceOutput
 from peira.runner import load_cases, run_suite
@@ -117,6 +118,12 @@ def test_adapter_never_sees_trial_bookkeeping():
     # trip this test, not slip past a call_id-only check.
     for ctx in adapter.seen_contexts:
         assert ctx is not None
+        # Pin the exact opaque call_id format: a degraded id (e.g.
+        # leaking the dispatch index, which encodes the arm) must fail
+        # here, not pass a loose check.
+        assert re.fullmatch(r"call-[0-9a-f]{16}", ctx.call_id), (
+            f"call_id format degraded: {ctx.call_id!r}"
+        )
         ctx_blob = json.dumps(dataclasses.asdict(ctx), default=str)
         for case in cases:
             assert case.case_id not in ctx_blob, (
