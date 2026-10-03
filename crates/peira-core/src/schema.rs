@@ -296,9 +296,7 @@ pub fn validate_case_dict(d: &Value) -> Vec<String> {
                     if options_ok {
                         if let Some(prompt) = input.get("prompt") {
                             if !prompt.is_string() {
-                                errors.push(format!(
-                                    "bad {variant} input prompt: expected string"
-                                ));
+                                errors.push(format!("bad {variant} input prompt: expected string"));
                             }
                         }
                     }
