@@ -1564,8 +1564,10 @@ class MistralAdapter(OpenAIAdapter):
 
     Request shape: Mistral names the seed parameter ``random_seed``
     (not ``seed``), and ``logprobs`` is not documented for chat
-    completions, so the adapter sends ``random_seed`` instead of
-    ``seed`` and omits ``logprobs`` rather than negotiating. There is
+    completions. The OpenAI SDK rejects unknown top-level kwargs, so
+    ``random_seed`` travels inside ``extra_body`` (the QwenAdapter
+    ``enable_thinking`` pattern) rather than alongside ``seed``, and
+    ``logprobs`` is omitted rather than negotiated. There is
     NO decision-token logprob track on this adapter; the transcript
     records the seed under the wire name it was sent with. If the live
     endpoint rejects or ignores any of these, you will see terminal
@@ -1608,22 +1610,28 @@ class MistralAdapter(OpenAIAdapter):
         self, messages: list[dict[str, str]], schema: dict[str, Any]
     ) -> dict[str, Any]:
         kwargs = super()._request_kwargs(messages, schema)
-        # Mistral's wire name for the seed is ``random_seed``; the
-        # OpenAI ``seed`` field is dropped, not sent alongside it.
+        # Mistral's wire name for the seed is ``random_seed`` (not the
+        # OpenAI ``seed`` field). The OpenAI SDK rejects unknown
+        # top-level kwargs (TypeError), so it travels via ``extra_body``
+        # — the same pattern QwenAdapter uses for ``enable_thinking``.
         # ``logprobs`` is undocumented for chat completions — omit,
         # don't negotiate. No decision-token logprob track.
         kwargs.pop("seed", None)
         kwargs.pop("logprobs", None)
         if self._seed is not None:
-            kwargs["random_seed"] = self._seed
+            extra_body = dict(kwargs.get("extra_body") or {})
+            extra_body["random_seed"] = self._seed
+            kwargs["extra_body"] = extra_body
         return kwargs
 
     def _request_shape_overrides(
         self, sent: dict[str, Any]
     ) -> dict[str, Any]:
         # Record the seed under the wire name it was actually sent
-        # with, so the transcript never claims an unsent ``seed``.
-        return {"seed": sent.get("random_seed")}
+        # with (inside ``extra_body``), so the transcript never claims
+        # an unsent ``seed``.
+        extra_body = sent.get("extra_body") or {}
+        return {"seed": extra_body.get("random_seed")}
 
     def _request(
         self, user_text: str, schema: dict[str, Any], repair: bool,
