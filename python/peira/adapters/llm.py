@@ -1036,13 +1036,17 @@ class MoonshotAdapter(OpenAIAdapter):
     (per third-party parameter surveys — the adapter omits both
     fields rather than negotiating), so there is NO decision-token
     logprob track on this adapter; the transcript honestly records
-    ``"seed": None`` and ``"logprobs": False``. Moonshot documents
-    ``temperature`` only on the 0..1 range, and whether ``json_schema``
-    ``response_format`` (vs plain ``json_object``) is honored for
-    ``kimi-k3`` is unverified. If the live endpoint rejects or ignores
-    any of these, you will see terminal provider errors, not silent
-    mismeasurement — verify against the live API before any measured
-    run. Not exercised against the live API yet.
+    ``"seed": None`` and ``"logprobs": False``. The pinned ``kimi-k3``
+    is a reasoning model that only accepts ``temperature=1`` (any other
+    value 400s — observed live 2026-10-03); the adapter forces it via
+    ``_MODEL_TEMPERATURE_OVERRIDES`` and records the actual value in
+    the transcript, so runs stay honest about the lost determinism.
+    Whether ``json_schema`` ``response_format`` (vs plain
+    ``json_object``) is honored for ``kimi-k3`` is unverified. If the
+    live endpoint rejects or ignores any of these, you will see
+    terminal provider errors, not silent mismeasurement — verify
+    against the live API before any measured run. Not exercised
+    against the live API yet.
     """
 
     name = "moonshot-structured"
@@ -1052,6 +1056,16 @@ class MoonshotAdapter(OpenAIAdapter):
     _supports_seed = False
 
     _base_url = "https://api.moonshot.ai/v1"
+
+    # Per-model temperature overrides. kimi-k3 is a reasoning model that
+    # 400s on any temperature other than 1 ("invalid temperature: only 1
+    # is allowed for this model", observed live 2026-10-03). The override
+    # is applied in __init__ so self._temperature, the cache namespace,
+    # the request kwargs, and the transcript all agree — determinism is
+    # sacrificed for this model, honestly recorded everywhere.
+    _MODEL_TEMPERATURE_OVERRIDES: dict[str, float] = {
+        "kimi-k3": 1.0,
+    }
 
     def __init__(
         self,
@@ -1065,6 +1079,15 @@ class MoonshotAdapter(OpenAIAdapter):
         # to api.openai.com. Rebuild the identical client against
         # Moonshot's OpenAI-compatible endpoint — retries still
         # DISABLED, the runner owns the retry policy.
+        # kimi-k3 is a reasoning model that 400s on any temperature
+        # other than 1 ("invalid temperature: only 1 is allowed for
+        # this model", observed live 2026-10-03). Force the override
+        # here so self._temperature, the cache namespace, the request
+        # kwargs, and the transcript all agree on the value actually
+        # sent — determinism is sacrificed for this model, honestly.
+        _temp_override = self._MODEL_TEMPERATURE_OVERRIDES.get(model)
+        if _temp_override is not None:
+            temperature = _temp_override
         _StructuredLLMBase.__init__(
             self, model, temperature, seed, max_tokens, api_key
         )
@@ -1081,6 +1104,10 @@ class MoonshotAdapter(OpenAIAdapter):
         # negotiating. No decision-token logprob track on this adapter.
         kwargs.pop("seed", None)
         kwargs.pop("logprobs", None)
+        # Note: kimi-k3's temperature=1 requirement is enforced in
+        # __init__ (via _MODEL_TEMPERATURE_OVERRIDES), so
+        # self._temperature is already correct here — no override
+        # needed at request time.
         return kwargs
 
     def _request(
