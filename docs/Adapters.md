@@ -564,7 +564,8 @@ through the gateway remain unverified until smoke-tested.
 
 #### Cheap-model pilot set
 
-One cheap model per major lab, reachable on a single OpenRouter credits
+One cheap model per major lab, plus the most discounted structured-output
+models on the gateway, reachable on a single OpenRouter credits
 balance. This is the pilot-run set for gathering real measurement data
 before the flagship run. Every ID was verified 2026-10-03 against
 OpenRouter's live model list with structured-output support advertised.
@@ -588,8 +589,13 @@ adapter = OpenRouterAdapter(model=get_openrouter_cheap_model("or-mistral-nemo"))
 | `or-kimi-k2.5` | `moonshotai/kimi-k2.5` | Moonshot | $0.45/$2.25 | ~$17 |
 | `or-grok-4.3` | `x-ai/grok-4.3` | xAI | $1.25/$2.50 | ~$32 |
 | `or-claude-haiku` | `anthropic/claude-haiku-4.5` | Anthropic | $1.00/$5.00 | ~$39 |
+| `or-mercury-2.5` | `inception/mercury-2.5` | Inception | $0.04/$0.15 | ~$1.30 |
+| `or-qwen3-235b` | `qwen/qwen3-235b-a22b-2507` | Qwen | $0.0875/$0.35 | ~$3.00 |
+| `or-ling-flash-vl` | `inclusionai/ling-3.0-flash-vl` | inclusionAI | $0.021/$0.0616 | ~$0.60 |
+| `or-solar-pro4` | `upstage/solar-pro4` | Upstage | $0.09/$0.36 | ~$3.05 |
+| `or-ling-flash` | `inclusionai/ling-3.0-flash` | inclusionAI | $0.021/$0.063 | ~$0.60 |
 
-The whole set runs roughly $96. Each model id needs a live smoke test before
+The whole set runs roughly $105. Each model id needs a live smoke test before
 any measured run. Pricing lives in `python/peira/data/pricing.json`
 under the same IDs.
 

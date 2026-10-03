@@ -175,6 +175,16 @@ OPENROUTER_CHEAP_MODELS: dict[str, str] = {
     "or-grok-4.3": "x-ai/grok-4.3",
     # Anthropic: cheapest Claude with structured outputs.
     "or-claude-haiku": "anthropic/claude-haiku-4.5",
+    # Inception: Mercury 2.5 diffusion LLM, 80% off on OpenRouter.
+    "or-mercury-2.5": "inception/mercury-2.5",
+    # Qwen: 235B MoE instruct, 75% off on OpenRouter.
+    "or-qwen3-235b": "qwen/qwen3-235b-a22b-2507",
+    # inclusionAI: Ling 3.0 Flash VL (vision), 72% off on OpenRouter.
+    "or-ling-flash-vl": "inclusionai/ling-3.0-flash-vl",
+    # Upstage: Solar Pro 4, 70% off on OpenRouter.
+    "or-solar-pro4": "upstage/solar-pro4",
+    # inclusionAI: Ling 3.0 Flash, 65% off on OpenRouter.
+    "or-ling-flash": "inclusionai/ling-3.0-flash",
 }
 
 
