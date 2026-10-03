@@ -3308,6 +3308,19 @@ def run_suite(
     # the call. SamplingConfigError is a ValueError: a config error,
     # not a traceback.
     sampling_config = validate_sampling_config(adapter)
+    if isinstance(checkpoint_every, bool) or not isinstance(
+        checkpoint_every, int
+    ):
+        raise ValueError(
+            "checkpoint_every must be an int, "
+            f"got {type(checkpoint_every).__name__}"
+        )
+    if checkpoint_every < 1:
+        # checkpoint_every=0 would ZeroDivisionError at
+        # `completed % checkpoint_every` in the checkpoint writer.
+        raise ValueError(
+            f"checkpoint_every must be >= 1, got {checkpoint_every}"
+        )
     if max_tokens_per_call is not None:
         if (
             isinstance(max_tokens_per_call, bool)
@@ -3385,6 +3398,16 @@ def run_suite(
         reset_active_governor(_governor_token)
 
 
+def per_seed_budget(budget_usd: float | None, num_seeds: int) -> float | None:
+    """Split a run-wide spend cap across seeds.
+
+    ``run_multiseed`` seals each seed's partial under
+    ``budget_usd / num_seeds``; resume validation must use the same
+    value so the equality check in ``validate_partial`` is exact.
+    """
+    return budget_usd / num_seeds if budget_usd is not None else None
+
+
 def run_multiseed(
     adapter: Any,
     cases: list[Case],
@@ -3417,6 +3440,11 @@ def run_multiseed(
     # Per-seed resume state: maps seed int -> (already_done, prior_results).
     # Seeds not in the dict start fresh. Used with --resume on multi-seed runs.
     seed_resume: dict[int, tuple[set[str], list]] | None = None,
+    # Run-safety: per-seed transcripts. When set, each seed run
+    # writes its transcript to seed_transcript_path(seed_i) (None
+    # disables the transcript for that seed). Mirrors
+    # seed_partial_path.
+    seed_transcript_path: Callable[[int], Path | None] | None = None,
 ) -> tuple[list[RunArtifact], "StabilityResult | None"]:
     """Run a suite k times under consecutive seeds (M-7 protocol).
 
@@ -3435,8 +3463,14 @@ def run_multiseed(
     ``budget_usd``, when set, is divided evenly across the seed runs:
     the cap the operator stated covers the whole multi-seed run, not
     each seed. Raises ValueError for ``num_seeds < 3`` (the protocol
-    minimum), for resume-incompatible state there is none: multi-seed
-    runs do not support --resume (each seed run is independent).
+    minimum).
+
+    ``seed_resume``, when given, maps seed ints to validated
+    ``(already_done, prior_results)`` pairs: those seeds pick up where
+    their partials left off instead of starting fresh. Used with
+    ``--resume`` on multi-seed runs; each seed's partial is validated
+    against its per-seed budget (``budget_usd / num_seeds``) before
+    the run starts.
 
     ``seed_partial_path``, when given, enables per-seed checkpointing:
     each seed's ``run_suite`` call receives its own partial path, so a
@@ -3467,9 +3501,7 @@ def run_multiseed(
             f"budget_usd must be a number or None, got {budget_usd!r}"
         )
     seeds = [seed + i for i in range(num_seeds)]
-    per_run_budget = (
-        budget_usd / num_seeds if budget_usd is not None else None
-    )
+    per_run_budget = per_seed_budget(budget_usd, num_seeds)
     # (seed, artifact, error): a crashed seed leaves no artifact but
     # must not take the completed seeds down with it. KeyboardInterrupt
     # and SystemExit are not caught: the operator's stop is final.
@@ -3522,6 +3554,13 @@ def run_multiseed(
                 checkpoint_every=checkpoint_every,
                 already_done=_resume_done,
                 prior_results=_resume_results,
+                # Per-seed transcript: each seed writes its own file
+                # (None disables the transcript for this seed).
+                transcript_path=(
+                    seed_transcript_path(seed_i)
+                    if seed_transcript_path is not None
+                    else None
+                ),
             )
         except Exception as e:  # noqa: BLE001 - resilience, not silence
             # Surface the crash immediately: the CLI prints excluded

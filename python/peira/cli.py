@@ -42,6 +42,7 @@ from peira.runner import (
     SUITE_DIRS,
     load_cases,
     new_run_nonce,
+    per_seed_budget,
     replay_suite,
     run_multiseed,
     run_suite,
@@ -389,23 +390,32 @@ def _triple_ci(triple):
     return None
 
 
+def _atomic_write_with_backup(path: Path, content: str) -> None:
+    """Atomic write plus a ``.backup`` copy of the same content.
+
+    The primary write's exceptions propagate: a failed primary fails
+    the run. The backup is best-effort and warning-only (any
+    exception, including a KeyboardInterrupt landing mid-backup, is a
+    warning): the primary is already safe, so a backup failure must
+    never fail an otherwise successful run.
+    """
+    atomic_write_text(path, content)
+    backup_path = path.parent / (path.stem + ".backup" + path.suffix)
+    try:
+        atomic_write_text(backup_path, content)
+    except BaseException as e:
+        # The primary is safe; a backup failure is a warning, not an
+        # error. The run itself succeeded.
+        print(f"warning: could not write backup artifact "
+              f"({backup_path}: {e})", file=sys.stderr)
+
+
 def _write_final_artifact(out_dir: Path, slug: str, suite: str,
                           artifact, suffix: str = "") -> Path:
     out_path = out_dir / f"{slug}-{suite}{suffix}.json"
     # Atomic write: a crash mid-write must never leave a corrupt
     # artifact behind.
-    atomic_write_text(out_path, artifact.to_json())
-    # Run-safety: keep a backup copy. If the primary is deleted or
-    # corrupted after the run, the backup preserves the paid results.
-    # The backup is written atomically too.
-    backup_path = out_dir / f"{slug}-{suite}{suffix}.backup.json"
-    try:
-        atomic_write_text(backup_path, artifact.to_json())
-    except OSError as e:
-        # The primary is safe; a backup failure is a warning, not an
-        # error. The run itself succeeded.
-        print(f"warning: could not write backup artifact "
-              f"({backup_path}: {e})", file=sys.stderr)
+    _atomic_write_with_backup(out_path, artifact.to_json())
     return out_path
 
 
@@ -575,6 +585,38 @@ def _resume_sweep_error(
     return None
 
 
+def _default_transcript_path(args: argparse.Namespace, out_dir: Path,
+                             slug: str, suite: str) -> str | None:
+    """Resolve the run's transcript path (None when disabled).
+
+    Returns the explicit ``--transcript`` path when given, the default
+    ``{out_dir}/{slug}-{suite}.transcript.jsonl`` when the transcript
+    is on by default, and None when ``--no-transcript`` was passed.
+    """
+    if getattr(args, "no_transcript", False):
+        return None
+    if getattr(args, "transcript", None) is not None:
+        return args.transcript
+    return str(out_dir / f"{slug}-{suite}.transcript.jsonl")
+
+
+def _derive_seed_transcript_path(base: str | Path, seed_i: int) -> Path:
+    """Derive a per-seed transcript path from a run-level one.
+
+    ``{slug}-{suite}.transcript.jsonl`` becomes
+    ``{slug}-{suite}-seed{N}.transcript.jsonl``; any other name gets
+    ``-seed{N}`` inserted before its suffix, so an explicit
+    ``--transcript`` path is never shared (and overwritten) across
+    seeds.
+    """
+    p = Path(base)
+    name = p.name
+    if name.endswith(".transcript.jsonl"):
+        stem = name[: -len(".transcript.jsonl")]
+        return p.parent / f"{stem}-seed{seed_i}.transcript.jsonl"
+    return p.parent / f"{p.stem}-seed{seed_i}{p.suffix}"
+
+
 def cmd_run(args: argparse.Namespace) -> int:
     root = _repo_root()
     env_extra: dict[str, str] = {}
@@ -663,6 +705,14 @@ def cmd_run(args: argparse.Namespace) -> int:
         print(f"error: --seeds must be 1 or >= 3 (M-7 protocol minimum), "
               f"got {num_seeds}", file=sys.stderr)
         return EXIT_USER_ERROR
+    # Run-safety: checkpoint_every=0 would ZeroDivisionError at
+    # `completed % checkpoint_every` deep in the runner. Fail fast
+    # with a clear message, like the --seeds validation above.
+    checkpoint_every = getattr(args, "checkpoint_every", 25)
+    if checkpoint_every is not None and checkpoint_every < 1:
+        print(f"error: --checkpoint-every must be >= 1 "
+              f"(got {checkpoint_every})", file=sys.stderr)
+        return EXIT_USER_ERROR
     # (Run-safety: multi-seed --resume is supported; each seed
     # checkpoints independently. See _cmd_run_multiseed.)
     # EB-35: parse the sweep budget grid early so a malformed grid
@@ -698,11 +748,6 @@ def cmd_run(args: argparse.Namespace) -> int:
             print(f"error: invalid --budget-grid: {e}", file=sys.stderr)
             return EXIT_USER_ERROR
     is_sweep = sweep_grid is not None
-    if num_seeds > 1 and args.transcript:
-        print("error: --transcript is not supported with --seeds > 1; "
-              "each seed run is independent (run with --seeds 1 to "
-              "capture a transcript)", file=sys.stderr)
-        return EXIT_USER_ERROR
 
     def _build_mock(seed_i: int, run_nonce_i: str) -> "MockAdapter":
         # The mock's simulation script is namespaced per (seed, nonce):
@@ -857,9 +902,23 @@ def cmd_run(args: argparse.Namespace) -> int:
     # Run-safety: the transcript is on by default. It is the only
     # record that lets a crashed run be rebuilt via `peira replay`
     # without paying for provider calls again. --no-transcript opts
-    # out (not recommended for paid adapters).
-    if args.transcript is None and not getattr(args, "no_transcript", False):
-        args.transcript = str(out_dir / f"{slug}-{suite}.transcript.jsonl")
+    # out (not recommended for paid adapters). Multi-seed runs get
+    # per-seed transcripts (see _cmd_run_multiseed); the default path
+    # announced here is the base they are derived from.
+    transcript_was_default = getattr(args, "transcript", None) is None
+    args.transcript = _default_transcript_path(args, out_dir, slug, suite)
+    if num_seeds > 1:
+        if args.transcript is not None:
+            if transcript_was_default:
+                print(f"transcript: per-seed files "
+                      f"{slug}-{suite}-seed{{N}}.transcript.jsonl "
+                      f"(default on; --no-transcript to disable)",
+                      file=sys.stderr)
+            else:
+                print(f"transcript: per-seed files derived from "
+                      f"{args.transcript} (--no-transcript to disable)",
+                      file=sys.stderr)
+    elif transcript_was_default and args.transcript is not None:
         print(f"transcript: {args.transcript} (default on; "
               f"--no-transcript to disable)", file=sys.stderr)
     if args.resume:
@@ -1015,7 +1074,7 @@ def cmd_run(args: argparse.Namespace) -> int:
     except KeyboardInterrupt:
         if num_seeds > 1:
             print("\ninterrupted; completed seed artifacts are saved; "
-                  "re-run without --resume.", file=sys.stderr)
+                  "re-run with --resume.", file=sys.stderr)
         else:
             print("\ninterrupted; partial run saved; re-run with --resume.",
                   file=sys.stderr)
@@ -1082,6 +1141,10 @@ def _cmd_run_multiseed(
 
     # Per-seed resume state: validate each seed's partial (if --resume)
     # and build the already_done/prior_results for run_multiseed.
+    # run_multiseed seals each seed's partial under the per-seed
+    # budget (budget_usd / num_seeds): validate against that same
+    # value, not the whole-run budget, or resume always rejects.
+    seed_budget = per_seed_budget(budget_usd, num_seeds)
     seed_resume: dict[int, tuple[set[str], list]] = {}
     if args.resume:
         for seed_i in range(args.seed, args.seed + num_seeds):
@@ -1098,7 +1161,7 @@ def _cmd_run_multiseed(
                 already_done, prior_results = _validate_partial(
                     partial, adapter, cases, suite, dataset_version,
                     manifest_sha256, seed=seed_i,
-                    budget_usd=budget_usd,
+                    budget_usd=seed_budget,
                     max_tokens_per_call=getattr(
                         args, "max_tokens_per_call", None),
                     cache_enabled=args.cache_dir is not None,
@@ -1112,6 +1175,20 @@ def _cmd_run_multiseed(
             seed_resume[seed_i] = (already_done, prior_results)
             print(f"resuming seed {seed_i}: {len(already_done)} cases "
                   f"already done.", file=sys.stderr)
+
+    def _seed_transcript_path(seed_i: int) -> Path | None:
+        # Run-safety: wire the transcript through per seed. The default
+        # transcript path ({slug}-{suite}.transcript.jsonl) becomes
+        # {slug}-{suite}-seed{N}.transcript.jsonl; an explicit
+        # --transcript path gets -seed{N} inserted before its suffix
+        # so seeds never share (and overwrite) one file.
+        if getattr(args, "no_transcript", False):
+            return None
+        base = getattr(args, "transcript", None)
+        if base is None:
+            # Transcript on by default: per-seed default files.
+            return out_dir / f"{slug}-{suite}-seed{seed_i}.transcript.jsonl"
+        return _derive_seed_transcript_path(base, seed_i)
 
     artifacts, stability = run_multiseed(
         adapter,
@@ -1141,6 +1218,7 @@ def _cmd_run_multiseed(
         cache_dir=args.cache_dir,
         checkpoint_every=getattr(args, "checkpoint_every", 25),
         seed_partial_path=_seed_partial_path,
+        seed_transcript_path=_seed_transcript_path,
         seed_resume=seed_resume or None,
     )
     if stability is None:
@@ -1185,7 +1263,9 @@ def _cmd_run_multiseed(
         stability=stability,
     ).seal()
     stab_path = out_dir / f"{slug}-{suite}-stability.json"
-    atomic_write_text(stab_path, stab_artifact.to_json())
+    # Run-safety: the stability artifact gets the same backup treatment
+    # as per-seed artifacts (see _write_final_artifact).
+    _atomic_write_with_backup(stab_path, stab_artifact.to_json())
     print(f"\nstability: {stab_path}", file=sys.stderr)
     if stability.excluded_seeds:
         print(f"warning: excluded seeds {stability.excluded_seeds} "
