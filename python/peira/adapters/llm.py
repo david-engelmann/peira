@@ -875,6 +875,13 @@ class OpenAIAdapter(_StructuredLLMBase):
     _supports_seed = True
     _provider_label = "OpenAI"
 
+    #: Models whose chat-completions endpoint rejects ``max_tokens``
+    #: and requires ``max_completion_tokens`` instead (OpenAI's newer
+    #: models, e.g. ``gpt-5.6-luna``). Sending ``max_tokens`` to one of
+    #: these 400s with "Unsupported parameter". The transcript records
+    #: which field was actually sent, read back from the kwargs.
+    _MAX_COMPLETION_TOKENS_MODELS = frozenset({"gpt-5.6-luna"})
+
     def __init__(
         self,
         model: str = PINNED_API_MODELS["openai-structured"],
@@ -898,7 +905,7 @@ class OpenAIAdapter(_StructuredLLMBase):
         e.g. omitting provider-unsupported fields — without
         duplicating the error handling or result parsing.
         """
-        return {
+        kwargs = {
             "model": self._model,
             "messages": messages,
             "response_format": {
@@ -910,10 +917,17 @@ class OpenAIAdapter(_StructuredLLMBase):
                 },
             },
             "temperature": self._temperature,
-            "max_tokens": self._max_tokens,
             "seed": self._seed,
             "logprobs": True,
         }
+        # Newer OpenAI models reject ``max_tokens`` and require
+        # ``max_completion_tokens`` instead — sending the old field
+        # 400s. The field is chosen per model, not negotiated.
+        if self._model in self._MAX_COMPLETION_TOKENS_MODELS:
+            kwargs["max_completion_tokens"] = self._max_tokens
+        else:
+            kwargs["max_tokens"] = self._max_tokens
+        return kwargs
 
     def _request_shape_overrides(
         self, sent: dict[str, Any]
@@ -993,7 +1007,11 @@ class OpenAIAdapter(_StructuredLLMBase):
                 "model": self._model,
                 "response_format": f"json_schema:{SCHEMA_NAME}:strict",
                 "temperature": self._temperature,
-                "max_tokens": self._max_tokens,
+                "max_tokens": sent.get("max_tokens"),
+                # Newer OpenAI models take max_completion_tokens
+                # instead of max_tokens (see _request_kwargs) — record
+                # whichever field was actually sent.
+                "max_completion_tokens": sent.get("max_completion_tokens"),
                 # Only the fields actually sent — subclasses may omit
                 # seed/logprobs (Moonshot), so read them back from the
                 # kwargs rather than assuming.

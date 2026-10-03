@@ -545,3 +545,42 @@ def test_meta_llama_api_key_fallback_resolution():
         clear=True,
     ):
         assert adapter._resolve_api_key("explicit") == "explicit"
+
+
+class TestOpenAIMaxCompletionTokens(unittest.TestCase):
+    """gpt-5.6-luna rejects ``max_tokens`` (400 "Unsupported
+    parameter"): the adapter sends ``max_completion_tokens`` for it,
+    and keeps ``max_tokens`` for other OpenAI models."""
+
+    def _setup(self, **adapter_kwargs):
+        mod, calls, _ = _make_openai([_openai_completion(GOOD_JSON)])
+        with _fake_modules({"openai": mod}), \
+                _env(OPENAI_API_KEY="sk-test"):
+            adapter = OpenAIAdapter(**adapter_kwargs)
+            out = adapter.decide(CASE, "choice", _ctx())
+        return calls, out
+
+    def test_gpt_5_6_luna_sends_max_completion_tokens(self):
+        # Default pin is gpt-5.6-luna (see api_pins.py) — the live
+        # endpoint 400s on max_tokens for this model (Audit 5/5
+        # pilot-verification, 2026-10-03), so the wire must carry the
+        # renamed field instead.
+        calls, _ = self._setup()
+        self.assertEqual(calls[0]["model"], "gpt-5.6-luna")
+        self.assertEqual(calls[0]["max_completion_tokens"], 512)
+        self.assertNotIn("max_tokens", calls[0])
+
+    def test_other_models_still_send_max_tokens(self):
+        # Only models in _MAX_COMPLETION_TOKENS_MODELS get the renamed
+        # field; everything else keeps the legacy field.
+        calls, _ = self._setup(model="gpt-4o")
+        self.assertEqual(calls[0]["max_tokens"], 512)
+        self.assertNotIn("max_completion_tokens", calls[0])
+
+    def test_transcript_records_which_field_was_sent(self):
+        # The transcript must agree with the wire: max_completion_tokens
+        # present and max_tokens absent for the renamed model.
+        _, out = self._setup()
+        req = out.transcript["request"]
+        self.assertEqual(req["max_completion_tokens"], 512)
+        self.assertIsNone(req["max_tokens"])
