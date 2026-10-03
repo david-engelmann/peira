@@ -594,6 +594,37 @@ the model emitted no JSON object even after the repair retry, and no
 provider-side content-filter refusal was observed. Other model ids
 through the gateway remain unverified until smoke-tested.
 
+#### Cheap-model pilot set
+
+One cheap model per major lab, reachable on a single OpenRouter credits
+balance. This is the pilot-run set for gathering real measurement data
+before the flagship run. Every ID was verified 2026-10-03 against
+OpenRouter's live model list with structured-output support advertised.
+
+```python
+from peira.adapters.llm import OpenRouterAdapter
+from peira.api_pins import get_openrouter_cheap_model
+
+adapter = OpenRouterAdapter(model=get_openrouter_cheap_model("or-mistral-nemo"))
+```
+
+| Key | OpenRouter model id | Lab | $/1M in/out | Est. v2 cost |
+|-----|---------------------|-----|-------------|--------------|
+| `or-mistral-nemo` | `mistralai/mistral-nemo` | Mistral | $0.02/$0.03 | ~$0.50 |
+| `or-deepseek-flash` | `deepseek/deepseek-v4-flash` | DeepSeek | $0.03/$0.06 | ~$0.75 |
+| `or-gpt-oss-20b` | `openai/gpt-oss-20b` | OpenAI | $0.02/$0.09 | ~$0.70 |
+| `or-qwen-flash` | `qwen/qwen3.7-flash` | Qwen | $0.03/$0.13 | ~$1.00 |
+| `or-llama-8b` | `meta-llama/llama-3.1-8b-instruct` | Meta | $0.05/$0.08 | ~$1.15 |
+| `or-gemma-4b` | `google/gemma-3-4b-it` | Google | $0.05/$0.10 | ~$1.25 |
+| `or-glm-flash` | `z-ai/glm-4.7-flash` | Zhipu | $0.06/$0.40 | ~$2.75 |
+| `or-kimi-k2.5` | `moonshotai/kimi-k2.5` | Moonshot | $0.45/$2.25 | ~$17 |
+| `or-grok-4.3` | `x-ai/grok-4.3` | xAI | $1.25/$2.50 | ~$32 |
+| `or-claude-haiku` | `anthropic/claude-haiku-4.5` | Anthropic | $1.00/$5.00 | ~$39 |
+
+The whole set runs roughly $96. Each model id needs a live smoke test before
+any measured run. Pricing lives in `python/peira/data/pricing.json`
+under the same IDs.
+
 ## TypeSafe Jev
 
 No extra needed (stdlib transport). Set `TYPESAFE_API_KEY`:
