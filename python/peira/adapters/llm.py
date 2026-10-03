@@ -875,6 +875,13 @@ class OpenAIAdapter(_StructuredLLMBase):
     _supports_seed = True
     _provider_label = "OpenAI"
 
+    #: Models whose chat-completions endpoint rejects ``max_tokens``
+    #: and requires ``max_completion_tokens`` instead (OpenAI's newer
+    #: models, e.g. ``gpt-5.6-luna``). Sending ``max_tokens`` to one of
+    #: these 400s with "Unsupported parameter". The transcript records
+    #: which field was actually sent, read back from the kwargs.
+    _MAX_COMPLETION_TOKENS_MODELS = frozenset({"gpt-5.6-luna"})
+
     def __init__(
         self,
         model: str = PINNED_API_MODELS["openai-structured"],
@@ -898,7 +905,7 @@ class OpenAIAdapter(_StructuredLLMBase):
         e.g. omitting provider-unsupported fields — without
         duplicating the error handling or result parsing.
         """
-        return {
+        kwargs = {
             "model": self._model,
             "messages": messages,
             "response_format": {
@@ -910,10 +917,17 @@ class OpenAIAdapter(_StructuredLLMBase):
                 },
             },
             "temperature": self._temperature,
-            "max_tokens": self._max_tokens,
             "seed": self._seed,
             "logprobs": True,
         }
+        # Newer OpenAI models reject ``max_tokens`` and require
+        # ``max_completion_tokens`` instead — sending the old field
+        # 400s. The field is chosen per model, not negotiated.
+        if self._model in self._MAX_COMPLETION_TOKENS_MODELS:
+            kwargs["max_completion_tokens"] = self._max_tokens
+        else:
+            kwargs["max_tokens"] = self._max_tokens
+        return kwargs
 
     def _request_shape_overrides(
         self, sent: dict[str, Any]
@@ -993,7 +1007,11 @@ class OpenAIAdapter(_StructuredLLMBase):
                 "model": self._model,
                 "response_format": f"json_schema:{SCHEMA_NAME}:strict",
                 "temperature": self._temperature,
-                "max_tokens": self._max_tokens,
+                "max_tokens": sent.get("max_tokens"),
+                # Newer OpenAI models take max_completion_tokens
+                # instead of max_tokens (see _request_kwargs) — record
+                # whichever field was actually sent.
+                "max_completion_tokens": sent.get("max_completion_tokens"),
                 # Only the fields actually sent — subclasses may omit
                 # seed/logprobs (Moonshot), so read them back from the
                 # kwargs rather than assuming.
@@ -1036,13 +1054,17 @@ class MoonshotAdapter(OpenAIAdapter):
     (per third-party parameter surveys — the adapter omits both
     fields rather than negotiating), so there is NO decision-token
     logprob track on this adapter; the transcript honestly records
-    ``"seed": None`` and ``"logprobs": False``. Moonshot documents
-    ``temperature`` only on the 0..1 range, and whether ``json_schema``
-    ``response_format`` (vs plain ``json_object``) is honored for
-    ``kimi-k3`` is unverified. If the live endpoint rejects or ignores
-    any of these, you will see terminal provider errors, not silent
-    mismeasurement — verify against the live API before any measured
-    run. Not exercised against the live API yet.
+    ``"seed": None`` and ``"logprobs": False``. The pinned ``kimi-k3``
+    is a reasoning model that only accepts ``temperature=1`` (any other
+    value 400s — observed live 2026-10-03); the adapter forces it via
+    ``_MODEL_TEMPERATURE_OVERRIDES`` and records the actual value in
+    the transcript, so runs stay honest about the lost determinism.
+    Whether ``json_schema`` ``response_format`` (vs plain
+    ``json_object``) is honored for ``kimi-k3`` is unverified. If the
+    live endpoint rejects or ignores any of these, you will see
+    terminal provider errors, not silent mismeasurement — verify
+    against the live API before any measured run. Not exercised
+    against the live API yet.
     """
 
     name = "moonshot-structured"
@@ -1052,6 +1074,16 @@ class MoonshotAdapter(OpenAIAdapter):
     _supports_seed = False
 
     _base_url = "https://api.moonshot.ai/v1"
+
+    # Per-model temperature overrides. kimi-k3 is a reasoning model that
+    # 400s on any temperature other than 1 ("invalid temperature: only 1
+    # is allowed for this model", observed live 2026-10-03). The override
+    # is applied in __init__ so self._temperature, the cache namespace,
+    # the request kwargs, and the transcript all agree — determinism is
+    # sacrificed for this model, honestly recorded everywhere.
+    _MODEL_TEMPERATURE_OVERRIDES: dict[str, float] = {
+        "kimi-k3": 1.0,
+    }
 
     def __init__(
         self,
@@ -1065,6 +1097,15 @@ class MoonshotAdapter(OpenAIAdapter):
         # to api.openai.com. Rebuild the identical client against
         # Moonshot's OpenAI-compatible endpoint — retries still
         # DISABLED, the runner owns the retry policy.
+        # kimi-k3 is a reasoning model that 400s on any temperature
+        # other than 1 ("invalid temperature: only 1 is allowed for
+        # this model", observed live 2026-10-03). Force the override
+        # here so self._temperature, the cache namespace, the request
+        # kwargs, and the transcript all agree on the value actually
+        # sent — determinism is sacrificed for this model, honestly.
+        _temp_override = self._MODEL_TEMPERATURE_OVERRIDES.get(model)
+        if _temp_override is not None:
+            temperature = _temp_override
         _StructuredLLMBase.__init__(
             self, model, temperature, seed, max_tokens, api_key
         )
@@ -1081,6 +1122,10 @@ class MoonshotAdapter(OpenAIAdapter):
         # negotiating. No decision-token logprob track on this adapter.
         kwargs.pop("seed", None)
         kwargs.pop("logprobs", None)
+        # Note: kimi-k3's temperature=1 requirement is enforced in
+        # __init__ (via _MODEL_TEMPERATURE_OVERRIDES), so
+        # self._temperature is already correct here — no override
+        # needed at request time.
         return kwargs
 
     def _request(
@@ -1519,8 +1564,10 @@ class MistralAdapter(OpenAIAdapter):
 
     Request shape: Mistral names the seed parameter ``random_seed``
     (not ``seed``), and ``logprobs`` is not documented for chat
-    completions, so the adapter sends ``random_seed`` instead of
-    ``seed`` and omits ``logprobs`` rather than negotiating. There is
+    completions. The OpenAI SDK rejects unknown top-level kwargs, so
+    ``random_seed`` travels inside ``extra_body`` (the QwenAdapter
+    ``enable_thinking`` pattern) rather than alongside ``seed``, and
+    ``logprobs`` is omitted rather than negotiated. There is
     NO decision-token logprob track on this adapter; the transcript
     records the seed under the wire name it was sent with. If the live
     endpoint rejects or ignores any of these, you will see terminal
@@ -1563,22 +1610,28 @@ class MistralAdapter(OpenAIAdapter):
         self, messages: list[dict[str, str]], schema: dict[str, Any]
     ) -> dict[str, Any]:
         kwargs = super()._request_kwargs(messages, schema)
-        # Mistral's wire name for the seed is ``random_seed``; the
-        # OpenAI ``seed`` field is dropped, not sent alongside it.
+        # Mistral's wire name for the seed is ``random_seed`` (not the
+        # OpenAI ``seed`` field). The OpenAI SDK rejects unknown
+        # top-level kwargs (TypeError), so it travels via ``extra_body``
+        # — the same pattern QwenAdapter uses for ``enable_thinking``.
         # ``logprobs`` is undocumented for chat completions — omit,
         # don't negotiate. No decision-token logprob track.
         kwargs.pop("seed", None)
         kwargs.pop("logprobs", None)
         if self._seed is not None:
-            kwargs["random_seed"] = self._seed
+            extra_body = dict(kwargs.get("extra_body") or {})
+            extra_body["random_seed"] = self._seed
+            kwargs["extra_body"] = extra_body
         return kwargs
 
     def _request_shape_overrides(
         self, sent: dict[str, Any]
     ) -> dict[str, Any]:
         # Record the seed under the wire name it was actually sent
-        # with, so the transcript never claims an unsent ``seed``.
-        return {"seed": sent.get("random_seed")}
+        # with (inside ``extra_body``), so the transcript never claims
+        # an unsent ``seed``.
+        extra_body = sent.get("extra_body") or {}
+        return {"seed": extra_body.get("random_seed")}
 
     def _request(
         self, user_text: str, schema: dict[str, Any], repair: bool,
