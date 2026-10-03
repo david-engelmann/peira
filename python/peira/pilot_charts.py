@@ -144,8 +144,7 @@ def cost_scatter_svg(cost_data: dict[str, Any]) -> str:
         'role="img" aria-label="Cost versus attack success rate scatter plot">'
     ]
     # Gridlines and log-scale x ticks.
-    import math as _m
-    tick = _m.floor(lo_l)
+    tick = math.floor(lo_l)
     while tick <= hi_l + 1:
         tx = x(10 ** tick)
         if pad_l <= tx <= pad_l + plot_w:
