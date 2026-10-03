@@ -1093,7 +1093,9 @@ def qualifies_for_leaderboard(artifact: RunArtifact) -> tuple[bool, str]:
     # Recompute eligibility from the sealed per-case results — never
     # trust the sealed ranking_eligible flag alone. A holder-adversary
     # can hand-edit metrics and re-seal (verify() is self-attestation),
-    # so the flag is a claim, not evidence. Fail closed on mismatch.
+    # so the flag is a claim, not evidence. Both the recomputation and
+    # the sealed flag must agree the run is eligible; any mismatch
+    # fails closed.
     try:
         from peira.metrics import check_eligibility, Eligibility, PerCaseResult
         results = [
@@ -1110,23 +1112,32 @@ def qualifies_for_leaderboard(artifact: RunArtifact) -> tuple[bool, str]:
                          f"run terminated early: {artifact.termination}"),
             )
         sealed_eligible = bool(metrics.get("ranking_eligible", False))
-        if recomputed.eligible != sealed_eligible:
-            return False, (
-                "ranking_eligible flag does not match recomputation "
-                f"from sealed results (sealed={sealed_eligible}, "
-                f"recomputed={recomputed.eligible}): "
-                + "; ".join(recomputed.reasons)
+        if not recomputed.eligible:
+            if sealed_eligible:
+                return False, (
+                    "ranking_eligible flag does not match recomputation "
+                    "from sealed results (sealed=True, recomputed=False): "
+                    + "; ".join(recomputed.reasons)
+                )
+            notes = metrics.get("eligibility_notes") or []
+            detail = (
+                "; ".join(str(n) for n in notes)
+                if notes
+                else "ranking eligibility not recorded"
             )
+            return False, f"ranking-ineligible: {detail}"
+        if not sealed_eligible:
+            notes = metrics.get("eligibility_notes") or []
+            detail = (
+                "; ".join(str(n) for n in notes)
+                if notes
+                else "sealed ranking_eligible flag is false "
+                     "(recomputation from sealed results says eligible; "
+                     "the flag and the results disagree)"
+            )
+            return False, f"ranking-ineligible: {detail}"
     except Exception as e:
         return False, f"eligibility recomputation failed: {e}"
-    if not metrics.get("ranking_eligible", False):
-        notes = metrics.get("eligibility_notes") or []
-        detail = (
-            "; ".join(str(n) for n in notes)
-            if notes
-            else "ranking eligibility not recorded"
-        )
-        return False, f"ranking-ineligible: {detail}"
     if artifact.termination != "complete":
         return False, f"run terminated early: {artifact.termination}"
     cache_enabled = artifact.config.get("cache_enabled")

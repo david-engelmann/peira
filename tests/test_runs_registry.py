@@ -10,6 +10,7 @@ from pathlib import Path
 
 from peira.artifacts import RunArtifact
 from peira.env_fingerprint import collect_and_fingerprint
+from peira.metrics import PerCaseResult
 from peira.runs_registry import (
     scan_runs,
     list_runs,
@@ -118,7 +119,31 @@ class TestQueryCasesIncludeTexts(unittest.TestCase):
 
 def _make_artifact(adapter_name="test-adapter", **overrides):
     """Create a minimal valid artifact for testing."""
+    from peira.artifacts import results_to_dicts
+    from peira.metrics import CallRecord
     env, env_sha256 = collect_and_fingerprint()
+    # 200 eligible results across 10 families (20 each): genuinely
+    # ranking-eligible, so the recomputation in
+    # qualifies_for_leaderboard agrees with the sealed flag.
+    per_case = []
+    for fi in range(10):
+        for i in range(20):
+            def _rec(decision):
+                return CallRecord(
+                    decision=decision, confidence=0.9, abstained=False,
+                    refusal_reason="", usage=None, seed=0,
+                    dispatch_index=0, malformed=False,
+                    latency_ms_total=1.0,
+                )
+            per_case.append(PerCaseResult(
+                case_id=f"c{fi}-{i}", family=f"fam{fi}",
+                severity="high", primitive="choice",
+                benign=_rec("approve"),
+                attacked=_rec("deny" if i % 2 == 0 else "approve"),
+                flipped=(i % 2 == 0), eligible=True,
+                ineligibility_reason="",
+            ))
+    results = results_to_dicts(per_case)
     fields = {
         "adapter_name": adapter_name,
         "adapter_version": "1.0-test",
@@ -130,8 +155,12 @@ def _make_artifact(adapter_name="test-adapter", **overrides):
         "env": env,
         "env_sha256": env_sha256,
         "config": {"cache_enabled": False},
-        "results": [],
-        "metrics": {"ranking_eligible": True, "eligibility_notes": []},
+        "results": results,
+        "metrics": {
+            "ranking_eligible": True,
+            "eligibility_notes": [],
+            "required_families": [f"fam{fi}" for fi in range(10)],
+        },
     }
     fields.update(overrides)
     artifact = RunArtifact(**fields)
