@@ -63,9 +63,6 @@ published discordance rates.
 | 30 | canary_leakage | 420 | shipped |
 | 31 | history_leakage | 420 | shipped |
 
-(Program-wide family numbers: 25 and 26 are the conversational-suite
-families, which ship under `dataset/conversational/`.)
-
 New families land as `<family>.jsonl` plus a manifest rebuild and a
 CHANGELOG entry. The 400/family design target is a floor, not a
 ceiling: families ship with as many cases as statistical power

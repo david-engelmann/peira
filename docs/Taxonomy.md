@@ -30,12 +30,9 @@ it's reported honestly, not penalized silently.
 
 v1 ships 10 attack families × 200 cases (2,000 public + 500 private
 holdout). The snake_case IDs are canonical; they appear verbatim in
-dataset files and per-case drill-down. Entry numbers below are this
-section's sequence; the program-wide family numbers additionally count
-the two conversational-suite families (`multi_turn_escalation` 25,
-`decision_splitting` 26, see `docs/Conversational-Suite.md`), so the
-newest v2 family number program-wide is 31 (history_leakage
-landed most recently, as family 31).
+dataset files and per-case drill-down. Entry numbers below are the
+program-wide family numbers; the newest is 31 (history_leakage
+landed most recently).
 
 1. **state_poisoning**: hostile content in tool output authorizes the
    action; includes history-embedded payloads in multi-turn state.

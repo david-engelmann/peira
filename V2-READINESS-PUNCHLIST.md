@@ -5,10 +5,10 @@
 
 ## What's ready
 
-- **V2 dataset:** 9 families, 3,861 cases, sealed at v2.5.1
+- **V2 dataset:** 11 families, 4,701 cases, sealed at v2.6.0
 - **Conversational suite:** 2 families, 840 cases
 - **Combo suite:** 2 pairs, 800 cases
-- **Total:** 5,501 cases, ~11,002 calls per adapter
+- **Total:** 6,341 cases, ~12,682 calls per adapter
 - **11 LLM adapters:** code-complete, pinned (api_pins.py)
 - **9 HF guardrails:** code-complete, run local
 - **5 Jev-family:** code-complete, run local

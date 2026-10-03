@@ -14,7 +14,7 @@ Everything in `docs/`, organized by what you are trying to do. Pick a path, or b
 1. [Add your model](../README.md#add-your-model): the 15-line adapter snippet.
 2. [Adapters](Adapters.md): the day-one adapters (install extras, API keys, pinned models, what each one measures).
 3. [examples/minimal_adapter.py](../examples/minimal_adapter.py): the runnable version, about 25 lines.
-4. [Taxonomy](Taxonomy.md): the three primitives and the 29 attack families documented in the taxonomy.
+4. [Taxonomy](Taxonomy.md): the three primitives and the 31 attack families documented in the taxonomy.
 5. [Methodology](Methodology.md): the contracts your `decide()` output must satisfy, and what makes a case eligible.
 6. [CLI reference](CLI.md): `--adapter` takes a dotted path. `--max-concurrency`, `--transcript`, and `--cache-dir` are the flags you will actually use.
 
@@ -32,7 +32,7 @@ Everything in `docs/`, organized by what you are trying to do. Pick a path, or b
 
 - [Methodology](Methodology.md): how peira measures the adversarial robustness of decision models. The measurement contract: ASR, eligibility, analysis locks.
 - [Methodology-Governance](Methodology-Governance.md). How verified rows, the saturation trigger, adaptive attacks, and the contamination assumption are handled after the methodology is frozen.
-- [Taxonomy](Taxonomy.md): the three primitives (choice, score, abstain) and the 29 attack families.
+- [Taxonomy](Taxonomy.md): the three primitives (choice, score, abstain) and the 31 attack families.
 - [Concepts](Concepts.md): the five ideas the benchmark rests on.
 - [Severity-Rubric](Severity-Rubric.md): consequence-based severity tiers, for case authors.
 - [Threat-Model](Threat-Model.md): what peira measures, and what it explicitly does not.

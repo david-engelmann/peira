@@ -8,16 +8,16 @@
 
 | Component | Cases | Status |
 |-----------|-------|--------|
-| 9 v2 families (21-29) | 3,861 | Sealed at v2.5.1 |
+| 11 v2 families (21-31) | 4,701 | Sealed at v2.6.0 |
 | Conversational suite (2 families) | 840 | Landed |
 | Combo suite (2 pairs) | 800 | Landed |
-| **Total** | **5,501** | |
+| **Total** | **6,341** | |
 
 ## Cut criteria
 
 The v2 dataset is cut (frozen for the official run) when ALL of the following hold:
 
-1. **All 9 v2 families pass the 9 dataset gates** with 0 errors.
+1. **All 11 v2 families pass the 9 dataset gates** with 0 errors.
 2. **Conversational and combo suites pass their gates** with 0 errors.
 3. **Exhaustive row-by-row audit complete** on all v2 cases (the 4,400 v2 drafts item in the dataset-perfection checklist).
 4. **Manifest sealed** with SHA-256 per file at the cut version.
