@@ -414,9 +414,17 @@ class TestOpenAIShape(unittest.TestCase):
                              f"strict-mode invariant broken for {primitive}")
 
     def test_temperature_zero_and_seed_passed(self):
+        # The pinned gpt-5.6-luna only accepts temperature=1 (live 400
+        # on 0.0, observed 2026-10-03): the override forces 1.0 on the
+        # wire even though the constructor default is 0.0. An
+        # unlisted model keeps the constructor temperature.
+        self.script.append(_openai_completion(GOOD_JSON))
         OpenAIAdapter().decide(CASE, "choice", _ctx())
-        self.assertEqual(self.calls[0]["temperature"], 0)
+        self.assertEqual(self.calls[0]["temperature"], 1.0)
         self.assertEqual(self.calls[0]["seed"], 0)
+        OpenAIAdapter(model="gpt-4o").decide(CASE, "choice", _ctx())
+        self.assertEqual(self.calls[1]["temperature"], 0)
+        self.assertEqual(self.calls[1]["seed"], 0)
 
     def test_call_usage_model_exact(self):
         out = OpenAIAdapter().decide(CASE, "choice", _ctx())
