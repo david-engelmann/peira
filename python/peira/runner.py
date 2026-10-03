@@ -96,6 +96,8 @@ SUITE_DIRS = {
     # case, so the standard runner path handles it; the 2x2 structure is
     # recovered at analysis time (scripts/combo_analyze.py).
     "combo": "dataset/combo/cases",
+    # v2 points at the cases/ subdirectory, same flat-manifest pattern as v1.
+    "v2": "dataset/v2/cases",
 }
 
 DEFAULT_MAX_CONCURRENCY = 8
