@@ -1010,6 +1010,7 @@ def cmd_run(args: argparse.Namespace) -> int:
                 dataset_version, manifest_sha256, out_dir, slug,
                 num_seeds, build_adapter, budget_usd, progress,
                 item_timeout, run_timeout,
+                adapter_trust, adapter_transport,
             )
     except KeyboardInterrupt:
         if num_seeds > 1:
@@ -1057,6 +1058,8 @@ def _cmd_run_multiseed(
     progress: Any,
     item_timeout: float | None = None,
     run_timeout: float | None = None,
+    adapter_trust: str = "first-party",
+    adapter_transport: str = "in-process",
 ) -> int:
     """M-7 multi-seed run: k executions, k artifacts, one stability record.
 
@@ -1157,6 +1160,12 @@ def _cmd_run_multiseed(
             out_dir, slug, suite, artifact, suffix=f"-seed{seed_i}"
         )
         seed_paths[seed_i] = str(out_path)
+        # Run-safety: delete the per-seed partial only when that seed
+        # genuinely completed. A timeout- or budget-terminated seed
+        # keeps its partial so --resume can finish it.
+        _seed_ppath = _seed_partial_path(seed_i)
+        if _seed_ppath.exists() and artifact.termination == "complete":
+            _seed_ppath.unlink()
         print(f"seed {seed_i}: {out_path} "
               f"(termination={artifact.termination})", file=sys.stderr)
         _print_run_summary(artifact, out_path)
