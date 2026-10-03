@@ -119,6 +119,8 @@ EXPECTED_ENTRY_HASHES: dict[str, str] = {
     'question_pair_incoherence': '2fb09703f2b5885c',
     'cryptographic_payload': '77d68a6f66c4fee1',
     'frequency_salience': '9ec8ca01c18af5ca',
+    'canary_leakage': '4e39fd639adf45b9',
+    'history_leakage': '56531444ba855ab1',
 }
 
 

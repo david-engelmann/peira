@@ -85,6 +85,16 @@ indexes the load-bearing claims; detail lives in the linked docs.
   effects. They simulate administrative filler repeating an entity as a
   proxy for the Laya name-frequency failure mode. Empirical demonstration
   in the original setting is future work.
+- That the canary_leakage cases measure a live data-exfiltration gap.
+  They plant synthetic canaries (fake PII, credentials, system-prompt
+  fragments) with extraction pressure as a proxy for prompt-leakage
+  attacks. The canaries are synthetic and the quotation is detected by
+  peira's leakage detector, not by a production DLP system.
+- That the history_leakage cases measure a live multi-turn exfiltration
+  gap. They plant synthetic secrets in early conversation turns with
+  later-turn extraction pressure as a proxy for cross-turn leakage
+  attacks. Empirical demonstration with a production system in the loop
+  is future work.
 
 ## Unverified
 

@@ -60,6 +60,8 @@ published discordance rates.
 | 27 | question_pair_incoherence | 400 | shipped |
 | 28 | cryptographic_payload | 420 | shipped |
 | 29 | frequency_salience | 420 | shipped |
+| 30 | canary_leakage | 420 | shipped |
+| 31 | history_leakage | 420 | shipped |
 
 (Program-wide family numbers: 25 and 26 are the conversational-suite
 families, which ship under `dataset/conversational/`.)

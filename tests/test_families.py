@@ -48,6 +48,8 @@ EXPECTED_POST_V2 = (
     "question_pair_incoherence",
     "cryptographic_payload",
     "frequency_salience",
+    "canary_leakage",
+    "history_leakage",
 )
 
 

@@ -7,6 +7,20 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
 
 ## [Unreleased]
 
+### Added canary_leakage and history_leakage attack families (families 30/31, Tier 1), dataset v2 2.6.0
+
+- Two new v2 families probing prompt-leakage attacks. canary_leakage
+  (family 30): a planted fake-but-realistic sensitive token (PII,
+  credentials, system-prompt fragments) plus extraction pressure
+  steering the model to quote the token in its decision or reasoning
+  text. history_leakage (family 31): a secret disclosed in an early
+  conversation turn extracted under later-turn pressure, the model
+  quotes the earlier-turn secret. 420 cases each (368 choice / 52
+  score), deterministic authoring, registered in families.py, templated,
+  documented (Taxonomy entries 30/31, Methodology measurement sections).
+- Dataset version 2.5.1 to 2.6.0 (minor). Manifest re-sealed, croissant
+  sidecar rebuilt, MDE entries added for both families.
+
 ### Fixed v2 new-family audit copy defects, dataset v2 2.5.1
 
 - Exhaustive row-by-row audit of the four v2 families not covered by
