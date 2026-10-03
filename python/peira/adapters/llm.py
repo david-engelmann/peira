@@ -1,36 +1,24 @@
-"""Structured-output LLM baseline adapters: OpenAI, Anthropic, Google, Moonshot.
+"""Structured-output LLM baseline adapters: OpenAI, Anthropic, Google, Moonshot,
+xAI, DeepSeek, Meta, Zhipu, Mistral, Qwen, and OpenRouter.
 
-Four provider adapters (``OpenAIAdapter``, ``AnthropicAdapter``,
-``GoogleAdapter``, ``MoonshotAdapter``) sharing one base class
-(``_StructuredLLMBase``). Each sends the case prompt to its provider
-with provider-native constrained decoding (OpenAI strict JSON schema /
-Anthropic forced tool use, or native ``output_config.format`` JSON
-schema on the newer Anthropic reasoning models / Google JSON response
-schema / Moonshot via its OpenAI-compatible endpoint), then
-revalidates the answer client-side with a hand-written stdlib
-validator. The base package stays dependency-free, so there is
-deliberately no pydantic here.
+Eleven provider adapters (``OpenAIAdapter``, ``AnthropicAdapter``,
+``GoogleAdapter``, ``MoonshotAdapter``, ``XAIAdapter``,
+``DeepSeekAdapter``, ``MetaLlamaAdapter``, ``ZaiAdapter``,
+``MistralAdapter``, ``QwenAdapter``, ``OpenRouterAdapter``) sharing one
+base class (``_StructuredLLMBase``). Each sends the case prompt to its
+provider with provider-native constrained decoding (OpenAI strict JSON
+schema / Anthropic ``output_config.format`` JSON schema on the newer
+reasoning models / Google JSON response schema / OpenAI-compatible
+endpoints for the rest), then revalidates the answer client-side with a
+hand-written stdlib validator. The base package stays dependency-free,
+so there is deliberately no pydantic here.
 
-Frontier ceiling (picked 2026-09-25): ``claude-fable-5-1`` via
-``AnthropicAdapter(model=...)`` — NOT ``gpt-6-astra``. Fable 5.1's id
-follows Anthropic's documented naming convention (Fable 5's id was
-``claude-fable-5``) but is NOT independently confirmed on the live API.
-Verify before the first run (D-32). It was available on every major
-platform on day one (vs Astra's phased rollout), and it holds the
-highest Artificial Analysis Intelligence Index score ever measured
-(66/192, ahead of Opus 5 at 63 and GPT-5.6 Sol at 61) — the strongest
-available "ceiling" evidence. Astra was rejected because it 400s on
-``temperature``/``top_p``/``logprobs``, which ``OpenAIAdapter`` sends on
-every call, so ``OpenAIAdapter(model="gpt-6-astra")`` fails without a
-new per-model special-case; Fable 5.1's 400 is only on forced
-``tool_choice``, whose fix (native ``output_config.format`` structured
-outputs) is the request path ``AnthropicAdapter`` now uses for the
-newer Anthropic reasoning models. Caveat: the request path is
-implemented and unit-tested, but the Fable 5.1 model id is NOT
-independently confirmed on the live API; verify before the first run
-(D-32). Astra (``gpt-6-astra``) 400s on every call and has no adapter
-support. See docs/Adapters.md "Frontier ceiling". The frontier model
-is opt-in via ``model=``; defaults are unchanged.
+Model pin (D3, 2026-10-02): the Anthropic default is
+``claude-sonnet-5-5`` (Sonnet 5.5), per the latest-model directive —
+"latest Anthropic model only". The adapter uses native
+``output_config.format`` structured outputs and omits temperature.
+Frontier-ceiling comparisons are snapshots in time: each pinned model
+is measured as it exists, never blended across versions.
 
 Why the decision enum is per-call, not fixed
 --------------------------------------------
@@ -485,6 +473,7 @@ class _RawResult:
     logprob_tokens: Any              # provider logprob payload, or None
     request_shape: dict[str, Any]     # redacted request description
     response_shape: dict[str, Any]    # provider-native response summary
+    cached_tokens_in: int | None = None  # prompt-cache read tokens (Anthropic)
 
 
 class _StructuredLLMBase:
@@ -673,7 +662,10 @@ class _StructuredLLMBase:
         if errors:
             # Parse-then-repair: one repair attempt with an explicit
             # "JSON only" nudge before giving up on the call.
-            raw = self._request(user_text, schema, repair=True)
+            # prior_text lets providers with strict role alternation
+            # (Anthropic) interleave the failed attempt as an
+            # assistant turn instead of stacking user messages.
+            raw = self._request(user_text, schema, repair=True, prior_text=raw.text)
             attempts = 2
             refusal = _refusal_stop_reason(raw.stop_reason)
             if refusal is not None:
@@ -709,9 +701,16 @@ class _StructuredLLMBase:
         return _parse_and_validate(raw.text, schema)
 
     def _request(
-        self, user_text: str, schema: dict[str, Any], repair: bool
+        self, user_text: str, schema: dict[str, Any], repair: bool,
+        prior_text: str | None = None,
     ) -> _RawResult:
-        """One provider call. Implemented per provider."""
+        """One provider call. Implemented per provider.
+
+        ``prior_text`` is the failed attempt's text, supplied on repair.
+        Only AnthropicAdapter uses it (strict role alternation);
+        OpenAI-compatible providers accept consecutive user messages
+        and ignore it.
+        """
         raise NotImplementedError
 
     # -- outputs ----------------------------------------------------------
@@ -719,15 +718,19 @@ class _StructuredLLMBase:
     def _usage(self, raw: _RawResult, started: float, extra_raw: _RawResult | None = None) -> CallUsage:
         tokens_in = max(0, int(raw.tokens_in or 0))
         tokens_out = max(0, int(raw.tokens_out or 0))
-        if extra_raw is not None:
+        cached_in = raw.cached_tokens_in or 0
+        if extra_raw is not None and extra_raw is not raw:
             # Parse-repair fired: accumulate both attempts' tokens so cost
-            # accounting reflects the true provider spend.
+            # accounting reflects the true provider spend. (When no repair
+            # fired, extra_raw IS raw — skip to avoid double-counting.)
             tokens_in += max(0, int(extra_raw.tokens_in or 0))
             tokens_out += max(0, int(extra_raw.tokens_out or 0))
+            cached_in += extra_raw.cached_tokens_in or 0
         return CallUsage(
             model=self._model,  # exact pinned model id, never an alias
             tokens_in=tokens_in,
             tokens_out=tokens_out,
+            cached_tokens_in=cached_in or None,
             latency_ms=(time.perf_counter() - started) * 1000.0,
             cost_usd=0.0,  # the runner recomputes cost; ignored on input
         )
@@ -938,7 +941,8 @@ class OpenAIAdapter(_StructuredLLMBase):
         return SYSTEM_PROMPT
 
     def _request(
-        self, user_text: str, schema: dict[str, Any], repair: bool
+        self, user_text: str, schema: dict[str, Any], repair: bool,
+        prior_text: str | None = None,
     ) -> _RawResult:
         messages = [
             {"role": "system", "content": self._system_prompt(schema)},
@@ -1080,7 +1084,8 @@ class MoonshotAdapter(OpenAIAdapter):
         return kwargs
 
     def _request(
-        self, user_text: str, schema: dict[str, Any], repair: bool
+        self, user_text: str, schema: dict[str, Any], repair: bool,
+        prior_text: str | None = None,
     ) -> _RawResult:
         raw = super()._request(user_text, schema, repair)
         # The inherited request shape names the endpoint and model but
@@ -1169,7 +1174,8 @@ class XAIAdapter(OpenAIAdapter):
         return kwargs
 
     def _request(
-        self, user_text: str, schema: dict[str, Any], repair: bool
+        self, user_text: str, schema: dict[str, Any], repair: bool,
+        prior_text: str | None = None,
     ) -> _RawResult:
         raw = super()._request(user_text, schema, repair)
         # The inherited request shape names the endpoint and model but
@@ -1202,12 +1208,15 @@ class DeepSeekAdapter(OpenAIAdapter):
     Request shape: DeepSeek's thinking mode is DISABLED
     (``thinking: {"type": "disabled"}``) per the evaluation design —
     reasoning traces would otherwise leak into the decision channel.
-    Whether ``json_schema`` ``response_format`` (vs plain
-    ``json_object``, which DeepSeek documents) is honored for
-    ``deepseek-flash`` is unverified. If the live endpoint rejects or
-    ignores any of these, you will see terminal provider errors, not
-    silent mismeasurement — verify against the live API before any
-    measured run. Not exercised against the live API yet.
+    DeepSeek's API REJECTS the ``json_schema`` ``response_format``
+    with a 400 ("This response_format type is unavailable now") —
+    observed against the live API 2026-10-03. This adapter sends
+    ``response_format: {"type": "json_object"}`` and inlines the
+    schema (required keys, types, and the decision enum) in the
+    system prompt. Schema adherence is best-effort, not
+    server-enforced; the transcript records the actual mode. The
+    ``json_object`` shape has NOT yet been exercised against the
+    live API — verify before any measured run.
     """
 
     name = "deepseek-structured"
@@ -1242,6 +1251,14 @@ class DeepSeekAdapter(OpenAIAdapter):
         self, messages: list[dict[str, str]], schema: dict[str, Any]
     ) -> dict[str, Any]:
         kwargs = super()._request_kwargs(messages, schema)
+        # DeepSeek's API rejects the ``json_schema`` response_format
+        # with a 400 ("This response_format type is unavailable now") —
+        # verified against the live API 2026-10-03. Only ``text`` and
+        # ``json_object`` are accepted, so send ``json_object`` and put
+        # the schema in the system prompt instead (see
+        # _system_prompt). Schema adherence is then best-effort, not
+        # server-enforced — the transcript records this honestly.
+        kwargs["response_format"] = {"type": "json_object"}
         # ``thinking`` is not an OpenAI SDK body parameter, so it
         # travels via ``extra_body`` (the same pattern QwenAdapter
         # uses for ``enable_thinking``). Thinking stays disabled per
@@ -1252,16 +1269,41 @@ class DeepSeekAdapter(OpenAIAdapter):
         kwargs["extra_body"] = extra_body
         return kwargs
 
+    def _system_prompt(self, schema: dict[str, Any]) -> str:
+        # The schema must travel in the prompt because DeepSeek
+        # rejects the json_schema response_format. Spell out the
+        # required keys, their types, and the decision enum so the
+        # model can conform.
+        props = schema.get("properties", {}) or {}
+        required = schema.get("required", []) or []
+        parts = [SYSTEM_PROMPT, "The JSON object MUST contain exactly these keys:"]
+        for key in required:
+            ptype = props.get(key, {}).get("type", "string")
+            desc = f'"{key}" ({ptype})'
+            if key == "decision" and "enum" in props.get(key, {}):
+                desc += f", one of: {props[key]['enum']}"
+            if key in ("confidence", "score"):
+                desc += ", a number between 0 and 1"
+            parts.append(f"- {desc}")
+        return " ".join(parts)
+
     def _request_shape_overrides(
         self, sent: dict[str, Any]
     ) -> dict[str, Any]:
         # The thinking kill-switch is load-bearing for this adapter —
-        # record it in the transcript, not just the wire kwargs.
+        # record it in the transcript, not just the wire kwargs. The
+        # json_object (not strict json_schema) mode is likewise
+        # load-bearing — record what was actually sent so the
+        # transcript never claims strict enforcement.
         extra_body = sent.get("extra_body") or {}
-        return {"thinking": extra_body.get("thinking")}
+        return {
+            "thinking": extra_body.get("thinking"),
+            "response_format": "json_object:prompt-inlined-schema",
+        }
 
     def _request(
-        self, user_text: str, schema: dict[str, Any], repair: bool
+        self, user_text: str, schema: dict[str, Any], repair: bool,
+        prior_text: str | None = None,
     ) -> _RawResult:
         raw = super()._request(user_text, schema, repair)
         # The inherited request shape names the endpoint and model but
@@ -1279,7 +1321,8 @@ class MetaLlamaAdapter(OpenAIAdapter):
 
     Reuses the OpenAI request shape verbatim (strict JSON schema via
     ``response_format``) against ``https://api.llama.com/compat/v1``
-    with a ``META_API_KEY`` Bearer token — the ``openai`` SDK package
+    with a ``META_API_KEY`` (or ``LLAMA_API_KEY``, Meta's official
+    convention) Bearer token — the ``openai`` SDK package
     drives the compat endpoint, so the extra stays ``peira[openai]``.
     The request's ``base_url`` is recorded in the transcript's request
     shape; the key itself never is.
@@ -1302,7 +1345,7 @@ class MetaLlamaAdapter(OpenAIAdapter):
 
     name = "meta-structured"
     _extra = "peira[openai]"
-    _env_vars = ("META_API_KEY",)
+    _env_vars = ("META_API_KEY", "LLAMA_API_KEY")
     _provider_label = "Meta"
     _supports_seed = True
 
@@ -1329,7 +1372,8 @@ class MetaLlamaAdapter(OpenAIAdapter):
         )
 
     def _request(
-        self, user_text: str, schema: dict[str, Any], repair: bool
+        self, user_text: str, schema: dict[str, Any], repair: bool,
+        prior_text: str | None = None,
     ) -> _RawResult:
         raw = super()._request(user_text, schema, repair)
         # The inherited request shape names the endpoint and model but
@@ -1444,7 +1488,8 @@ class ZaiAdapter(OpenAIAdapter):
         return {"response_format": "json_object:prompt-inlined-schema"}
 
     def _request(
-        self, user_text: str, schema: dict[str, Any], repair: bool
+        self, user_text: str, schema: dict[str, Any], repair: bool,
+        prior_text: str | None = None,
     ) -> _RawResult:
         raw = super()._request(user_text, schema, repair)
         # The inherited request shape names the endpoint and model but
@@ -1462,7 +1507,7 @@ class MistralAdapter(OpenAIAdapter):
 
     Reuses the OpenAI request shape (strict JSON schema via
     ``response_format``) against ``https://api.mistral.ai/v1`` with a
-    ``MISTRAL_API_KEY`` Bearer <redacted> — the ``openai`` SDK package drives
+    ``MISTRAL_API_KEY`` Bearer token — the ``openai`` SDK package drives
     the compat endpoint, so the extra stays ``peira[openai]``. The
     request's ``base_url`` is recorded in the transcript's request
     shape; the key itself never is.
@@ -1536,7 +1581,8 @@ class MistralAdapter(OpenAIAdapter):
         return {"seed": sent.get("random_seed")}
 
     def _request(
-        self, user_text: str, schema: dict[str, Any], repair: bool
+        self, user_text: str, schema: dict[str, Any], repair: bool,
+        prior_text: str | None = None,
     ) -> _RawResult:
         raw = super()._request(user_text, schema, repair)
         # The inherited request shape names the endpoint and model but
@@ -1554,7 +1600,7 @@ class QwenAdapter(OpenAIAdapter):
 
     Reuses the OpenAI request shape (strict JSON schema via
     ``response_format``) against DashScope's compatible-mode endpoint
-    with a ``DASHSCOPE_API_KEY`` Bearer <redacted> — the ``openai`` SDK
+    with a ``DASHSCOPE_API_KEY`` Bearer token — the ``openai`` SDK
     package drives the compat endpoint, so the extra stays
     ``peira[openai]``. The request's ``base_url`` is recorded in the
     transcript's request shape; the key itself never is.
@@ -1633,7 +1679,8 @@ class QwenAdapter(OpenAIAdapter):
         return {"enable_thinking": extra_body.get("enable_thinking")}
 
     def _request(
-        self, user_text: str, schema: dict[str, Any], repair: bool
+        self, user_text: str, schema: dict[str, Any], repair: bool,
+        prior_text: str | None = None,
     ) -> _RawResult:
         raw = super()._request(user_text, schema, repair)
         # The inherited request shape names the endpoint and model but
@@ -1731,7 +1778,8 @@ class OpenRouterAdapter(OpenAIAdapter):
         )
 
     def _request(
-        self, user_text: str, schema: dict[str, Any], repair: bool
+        self, user_text: str, schema: dict[str, Any], repair: bool,
+        prior_text: str | None = None,
     ) -> _RawResult:
         raw = super()._request(user_text, schema, repair)
         # The inherited request shape names the endpoint and model but
@@ -1901,10 +1949,19 @@ class AnthropicAdapter(_StructuredLLMBase):
         return kwargs
 
     def _request(
-        self, user_text: str, schema: dict[str, Any], repair: bool
+        self, user_text: str, schema: dict[str, Any], repair: bool,
+        prior_text: str | None = None,
     ) -> _RawResult:
         messages = [{"role": "user", "content": user_text}]
         if repair:
+            # Anthropic's Messages API requires strict user/assistant
+            # alternation — two consecutive user messages 400. Interleave
+            # the failed attempt as an assistant turn so the repair
+            # nudge is a valid second user turn. Always appended, even
+            # when prior_text is empty: skipping it would send
+            # [user, user] and 400.
+            messages.append(
+                {"role": "assistant", "content": prior_text or ""})
             messages.append({"role": "user", "content": REPAIR_SUFFIX})
         # Bound once so the transcript's request shape can record the
         # fields actually sent (temperature is omitted for some ids).
@@ -1976,6 +2033,9 @@ class AnthropicAdapter(_StructuredLLMBase):
             tokens_in=int(getattr(usage, "input_tokens", 0) or 0),
             tokens_out=int(getattr(usage, "output_tokens", 0) or 0),
             logprob_tokens=None,  # Anthropic exposes no token logprobs
+            cached_tokens_in=int(
+                getattr(usage, "cache_read_input_tokens", 0) or 0
+            ) or None,
             request_shape=request_shape,
             response_shape={
                 "stop_reason": stop_reason,
@@ -2013,12 +2073,42 @@ class GoogleAdapter(_StructuredLLMBase):
     ) -> None:
         super().__init__(model, temperature, seed, max_tokens, api_key)
         self._sdk = _require_genai()
-        # No retry config exists on genai.Client: a single attempt, as
-        # the runner's retry layering requires.
-        self._client = self._sdk.Client(api_key=self._api_key)
+        # Single attempt: the runner owns the retry policy. Explicitly
+        # disable SDK-level retries via HttpOptions so a future genai
+        # default can never double-retry and corrupt the congestion
+        # signal. Falls back to the plain client if the installed genai
+        # line lacks the retry-options API.
+        self._client = self._single_attempt_client()
+
+    def _single_attempt_client(self) -> Any:
+        genai = self._sdk
+        try:
+            http_options = genai.types.HttpOptions(
+                retry_options=genai.types.HttpRetryOptions(
+                    attempts=1,
+                    initial_delay=0,
+                    max_delay=0,
+                    exp_base=1,
+                    http_status_codes=[],
+                )
+            )
+            return genai.Client(
+                api_key=self._api_key, http_options=http_options
+            )
+        except (AttributeError, TypeError, ValueError):
+            # Older genai without the retry-options API, or a future
+            # genai whose HttpOptions/HttpRetryOptions shape changed
+            # (pydantic raises ValueError on validation failure): fall
+            # back to the plain client. Note the plain client's default
+            # retry behavior is unverified against the installed genai —
+            # if it retries, the runner's congestion signal degrades.
+            # Prefer the explicit HttpOptions path above whenever the
+            # SDK supports it.
+            return genai.Client(api_key=self._api_key)
 
     def _request(
-        self, user_text: str, schema: dict[str, Any], repair: bool
+        self, user_text: str, schema: dict[str, Any], repair: bool,
+        prior_text: str | None = None,
     ) -> _RawResult:
         genai = self._sdk
         config = genai.types.GenerateContentConfig(

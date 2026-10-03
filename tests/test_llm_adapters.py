@@ -681,6 +681,48 @@ class TestAnthropicStructuredOutputs(unittest.TestCase):
             self.assertNotIn("tools", call)
             self.assertNotIn("tool_choice", call)
 
+    def test_repair_retry_alternates_roles(self):
+        # Anthropic's Messages API 400s on consecutive same-role
+        # messages. The repair call must interleave the failed attempt
+        # as an assistant turn: user, assistant, user - never user,
+        # user. (Regression: the repair path previously sent two
+        # consecutive user messages, which 400s on the live API.)
+        mod, calls, _ = _make_anthropic([
+            _anthropic_message(text="not json at all"),
+            _anthropic_message(text=GOOD_JSON),
+        ])
+        with _fake_modules({"anthropic": mod}), _env(ANTHROPIC_API_KEY="test"):
+            AnthropicAdapter(
+                model="claude-fable-5-1").decide(CASE, "choice", _ctx())
+        self.assertEqual(len(calls), 2)
+        # First call: single user message (no repair yet).
+        first_roles = [m["role"] for m in calls[0]["messages"]]
+        self.assertEqual(first_roles, ["user"])
+        # Repair call: user, assistant (failed attempt), user (nudge).
+        repair_roles = [m["role"] for m in calls[1]["messages"]]
+        self.assertEqual(repair_roles, ["user", "assistant", "user"])
+        # The assistant turn carries the failed attempt's text.
+        self.assertEqual(
+            calls[1]["messages"][1]["content"], "not json at all")
+
+    def test_repair_retry_alternates_roles_empty_prior(self):
+        # Even when the failed attempt returned empty text, the repair
+        # call must still alternate roles (user, assistant, user) —
+        # skipping the assistant turn would send [user, user] and 400.
+        mod, calls, _ = _make_anthropic([
+            _anthropic_message(text=""),
+            _anthropic_message(text=GOOD_JSON),
+        ])
+        with _fake_modules({"anthropic": mod}), _env(ANTHROPIC_API_KEY="test"):
+            out = AnthropicAdapter(
+                model="claude-fable-5-1").decide(CASE, "choice", _ctx())
+        self.assertEqual(out.decision, "approve")
+        self.assertEqual(len(calls), 2)
+        repair_roles = [m["role"] for m in calls[1]["messages"]]
+        self.assertEqual(repair_roles, ["user", "assistant", "user"])
+        # Empty prior text is preserved as an empty assistant turn.
+        self.assertEqual(calls[1]["messages"][1]["content"], "")
+
     def test_refusal_on_structured_path_abstains(self):
         out, _ = self._run(
             [_anthropic_message(text="", stop_reason="refusal")],

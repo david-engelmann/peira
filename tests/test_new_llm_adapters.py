@@ -511,3 +511,37 @@ class TestZaiJsonObjectMode(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+def test_meta_llama_api_key_fallback_resolution():
+    """MetaLlamaAdapter resolves LLAMA_API_KEY when META_API_KEY is absent.
+
+    Exercises _StructuredLLMBase._resolve_api_key directly: with only
+    LLAMA_API_KEY set, the adapter must pick it up (Meta's official
+    convention). With both set, META_API_KEY wins (documented order).
+    """
+    import os
+    from unittest.mock import patch
+    from peira.adapters.llm import MetaLlamaAdapter
+
+    adapter = MetaLlamaAdapter.__new__(MetaLlamaAdapter)
+
+    # Fallback: only LLAMA_API_KEY set.
+    with patch.dict(os.environ, {"LLAMA_API_KEY": "llama-key"}, clear=True):
+        assert adapter._resolve_api_key(None) == "llama-key"
+
+    # Primary wins when both are set.
+    with patch.dict(
+        os.environ,
+        {"META_API_KEY": "meta-key", "LLAMA_API_KEY": "llama-key"},
+        clear=True,
+    ):
+        assert adapter._resolve_api_key(None) == "meta-key"
+
+    # Explicit api_key arg beats both env vars.
+    with patch.dict(
+        os.environ,
+        {"META_API_KEY": "meta-key", "LLAMA_API_KEY": "llama-key"},
+        clear=True,
+    ):
+        assert adapter._resolve_api_key("explicit") == "explicit"
