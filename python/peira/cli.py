@@ -395,6 +395,17 @@ def _write_final_artifact(out_dir: Path, slug: str, suite: str,
     # Atomic write: a crash mid-write must never leave a corrupt
     # artifact behind.
     atomic_write_text(out_path, artifact.to_json())
+    # Run-safety: keep a backup copy. If the primary is deleted or
+    # corrupted after the run, the backup preserves the paid results.
+    # The backup is written atomically too.
+    backup_path = out_dir / f"{slug}-{suite}{suffix}.backup.json"
+    try:
+        atomic_write_text(backup_path, artifact.to_json())
+    except OSError as e:
+        # The primary is safe; a backup failure is a warning, not an
+        # error. The run itself succeeded.
+        print(f"warning: could not write backup artifact "
+              f"({backup_path}: {e})", file=sys.stderr)
     return out_path
 
 
@@ -652,11 +663,8 @@ def cmd_run(args: argparse.Namespace) -> int:
         print(f"error: --seeds must be 1 or >= 3 (M-7 protocol minimum), "
               f"got {num_seeds}", file=sys.stderr)
         return EXIT_USER_ERROR
-    if num_seeds > 1 and args.resume:
-        print("error: --resume is not supported with --seeds > 1; "
-              "each seed run is independent (re-run without --resume)",
-              file=sys.stderr)
-        return EXIT_USER_ERROR
+    # (Run-safety: multi-seed --resume is supported; each seed
+    # checkpoints independently. See _cmd_run_multiseed.)
     # EB-35: parse the sweep budget grid early so a malformed grid
     # fails before any adapter is built or any case is scored.
     sweep_grid: list[int] | None = None
@@ -846,6 +854,14 @@ def cmd_run(args: argparse.Namespace) -> int:
         print(f"error: {e}", file=sys.stderr)
         return EXIT_USER_ERROR
     partial_path = out_dir / f"{slug}-{suite}.partial.json"
+    # Run-safety: the transcript is on by default. It is the only
+    # record that lets a crashed run be rebuilt via `peira replay`
+    # without paying for provider calls again. --no-transcript opts
+    # out (not recommended for paid adapters).
+    if args.transcript is None and not getattr(args, "no_transcript", False):
+        args.transcript = str(out_dir / f"{slug}-{suite}.transcript.jsonl")
+        print(f"transcript: {args.transcript} (default on; "
+              f"--no-transcript to disable)", file=sys.stderr)
     if args.resume:
         if not partial_path.exists():
             print(f"warning: no partial run at {partial_path}; starting fresh.",
@@ -938,6 +954,7 @@ def cmd_run(args: argparse.Namespace) -> int:
             run_kwargs = dict(
                 progress=progress, already_done=already_done,
                 prior_results=prior_results, partial_path=partial_path,
+                checkpoint_every=getattr(args, "checkpoint_every", 25),
                 manifest_sha256=manifest_sha256, seed=args.seed,
                 required_families=suite_families,
                 max_concurrency=args.max_concurrency,
@@ -992,6 +1009,7 @@ def cmd_run(args: argparse.Namespace) -> int:
                 args, adapter, cases, suite, suite_families,
                 dataset_version, manifest_sha256, out_dir, slug,
                 num_seeds, build_adapter, budget_usd, progress,
+                item_timeout, run_timeout,
             )
     except KeyboardInterrupt:
         if num_seeds > 1:
@@ -1037,6 +1055,8 @@ def _cmd_run_multiseed(
     build_adapter: Any,
     budget_usd: float | None,
     progress: Any,
+    item_timeout: float | None = None,
+    run_timeout: float | None = None,
 ) -> int:
     """M-7 multi-seed run: k executions, k artifacts, one stability record.
 
@@ -1046,7 +1066,50 @@ def _cmd_run_multiseed(
     pass^k / variance-decomposition analysis. Ranking eligibility is
     per seed run; the command exits EXIT_GATE_NOTE when any seed run
     is ineligible.
+
+    Run-safety: each seed checkpoints to
+    ``{slug}-{suite}-seed{N}.partial.json``. With ``--resume``, seeds
+    with valid partials pick up where they left off.
     """
+    from peira.artifacts import RunArtifact as _RunArtifact
+    from peira.runner import validate_partial as _validate_partial
+
+    def _seed_partial_path(seed_i: int) -> Path:
+        return out_dir / f"{slug}-{suite}-seed{seed_i}.partial.json"
+
+    # Per-seed resume state: validate each seed's partial (if --resume)
+    # and build the already_done/prior_results for run_multiseed.
+    seed_resume: dict[int, tuple[set[str], list]] = {}
+    if args.resume:
+        for seed_i in range(args.seed, args.seed + num_seeds):
+            ppath = _seed_partial_path(seed_i)
+            if not ppath.exists():
+                continue
+            try:
+                partial = _RunArtifact.from_json(ppath.read_text())
+            except Exception as e:
+                print(f"warning: seed {seed_i}: could not read partial "
+                      f"({e}); starting fresh.", file=sys.stderr)
+                continue
+            try:
+                already_done, prior_results = _validate_partial(
+                    partial, adapter, cases, suite, dataset_version,
+                    manifest_sha256, seed=seed_i,
+                    budget_usd=budget_usd,
+                    max_tokens_per_call=getattr(
+                        args, "max_tokens_per_call", None),
+                    cache_enabled=args.cache_dir is not None,
+                    item_timeout=item_timeout,
+                    run_timeout=run_timeout,
+                )
+            except ValueError as e:
+                print(f"error: seed {seed_i}: {e}; delete {ppath} or drop "
+                      f"--resume and re-run.", file=sys.stderr)
+                return EXIT_USER_ERROR
+            seed_resume[seed_i] = (already_done, prior_results)
+            print(f"resuming seed {seed_i}: {len(already_done)} cases "
+                  f"already done.", file=sys.stderr)
+
     artifacts, stability = run_multiseed(
         adapter,
         cases,
@@ -1073,6 +1136,9 @@ def _cmd_run_multiseed(
         build_adapter=build_adapter,
         required_families=suite_families,
         cache_dir=args.cache_dir,
+        checkpoint_every=getattr(args, "checkpoint_every", 25),
+        seed_partial_path=_seed_partial_path,
+        seed_resume=seed_resume or None,
     )
     if stability is None:
         # Fewer than MIN_SEEDS seeds completed (e.g. budget
@@ -5313,7 +5379,10 @@ def build_parser() -> argparse.ArgumentParser:
     r.add_argument("--out", default="runs")
     r.add_argument("--dry-run", action="store_true", help="validate config without scoring")
     r.add_argument("--json-progress", action="store_true", help="machine-readable progress on stdout")
-    r.add_argument("--resume", action="store_true", help="resume an interrupted run")
+    r.add_argument("--resume", action="store_true",
+                   help="resume an interrupted run (single-seed and "
+                   "multi-seed: seeds with valid partials resume, others "
+                   "start fresh)")
     r.add_argument("--seed", type=int, default=0,
                    help="run seed, recorded on every call record (default: 0)")
     r.add_argument("--seeds", type=int, default=1,
@@ -5403,7 +5472,18 @@ def build_parser() -> argparse.ArgumentParser:
                    "and never on the measurement path unless given")
     r.add_argument("--transcript", default=None,
                    help="write a JSONL transcript of every request/response "
-                   "to this path (for audit and `peira replay`)")
+                   "to this path (for audit and `peira replay`). Defaults "
+                   "to {out}/{slug}-{suite}.transcript.jsonl; the transcript "
+                   "is the only record that lets a crashed run be rebuilt "
+                   "without paying for provider calls again.")
+    r.add_argument("--no-transcript", action="store_true",
+                   help="disable the default transcript (not recommended: "
+                   "without it, a crashed run cannot be replayed and paid "
+                   "calls are lost)")
+    r.add_argument("--checkpoint-every", type=int, default=25,
+                   help="write a resumable checkpoint every N completed "
+                   "cases (default 25). Lower values lose less work on a "
+                   "crash but write more often.")
     r.set_defaults(func=cmd_run)
 
     rp = sub.add_parser("replay",

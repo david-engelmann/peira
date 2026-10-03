@@ -3407,6 +3407,16 @@ def run_multiseed(
     build_adapter: Callable[[int, str], Any] | None = None,
     required_families: list[str] | None = None,
     cache_dir: str | None = None,
+    checkpoint_every: int = 25,
+    # Run-safety: per-seed checkpointing. When set, each seed run
+    # writes its partial to seed_partial_path(seed_i) and a crashed
+    # seed can be resumed without losing its paid calls. The callable
+    # receives the seed int and returns the partial Path (or None to
+    # disable checkpointing for that seed).
+    seed_partial_path: Callable[[int], Path | None] | None = None,
+    # Per-seed resume state: maps seed int -> (already_done, prior_results).
+    # Seeds not in the dict start fresh. Used with --resume on multi-seed runs.
+    seed_resume: dict[int, tuple[set[str], list]] | None = None,
 ) -> tuple[list[RunArtifact], "StabilityResult | None"]:
     """Run a suite k times under consecutive seeds (M-7 protocol).
 
@@ -3427,6 +3437,12 @@ def run_multiseed(
     each seed. Raises ValueError for ``num_seeds < 3`` (the protocol
     minimum), for resume-incompatible state there is none: multi-seed
     runs do not support --resume (each seed run is independent).
+
+    ``seed_partial_path``, when given, enables per-seed checkpointing:
+    each seed's ``run_suite`` call receives its own partial path, so a
+    crashed seed leaves a resumable partial behind instead of losing
+    all its paid calls. The CLI wires this to
+    ``{out_dir}/{slug}-{suite}-seed{N}.partial.json``.
 
     A seed whose run did not complete (``artifact.termination`` is not
     ``"complete"``, e.g. budget termination) is excluded from the
@@ -3463,6 +3479,12 @@ def run_multiseed(
         extra = dict(config_extra or {})
         extra["num_seeds"] = num_seeds
         extra["seed_index"] = i
+        # Per-seed resume: a seed with validated prior state picks up
+        # where it left off; others start fresh.
+        _resume_done: set[str] = set()
+        _resume_results: list = []
+        if seed_resume is not None and seed_i in seed_resume:
+            _resume_done, _resume_results = seed_resume[seed_i]
         try:
             run_adapter = (
                 build_adapter(seed_i, run_nonce)
@@ -3490,6 +3512,16 @@ def run_multiseed(
                 run_nonce=run_nonce,
                 budget_usd=per_run_budget,
                 cache_dir=cache_dir,
+                # Per-seed checkpoint: a crashed seed leaves a resumable
+                # partial instead of losing all its paid calls.
+                partial_path=(
+                    seed_partial_path(seed_i)
+                    if seed_partial_path is not None
+                    else None
+                ),
+                checkpoint_every=checkpoint_every,
+                already_done=_resume_done,
+                prior_results=_resume_results,
             )
         except Exception as e:  # noqa: BLE001 - resilience, not silence
             # Surface the crash immediately: the CLI prints excluded

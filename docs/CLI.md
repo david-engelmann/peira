@@ -27,12 +27,12 @@ run a suite through an adapter
 | `--division` |  | - | declared leaderboard division for this submission (docs/Admission-Rules.md). Sealed into the run artifact config. The site ingest requires it: a submission without a declared division does not go on the board. (choices: `guardrail`, `llm-baseline`) |
 | `--adapter-no-isolation` |  | `False` | run a third-party adapter IN-PROCESS instead of the subprocess sandbox. The adapter's code is imported and executed with peira's full environment: only use this for adapters you trust completely. |
 | `--adapter-env` |  | `[]` | extra environment variables for a third-party adapter's subprocess (repeatable; denylisted variables are refused) |
-| `--suite` |  | `'trial-demo'` | smoke is an alias for trial (choices: `trial-demo`, `trial`, `v1`, `safety-policy`, `conversational`, `combo`, `smoke`) |
+| `--suite` |  | `'trial-demo'` | smoke is an alias for trial (choices: `trial-demo`, `trial`, `v1`, `safety-policy`, `conversational`, `combo`, `v2`, `smoke`) |
 | `--families` |  | all | comma-separated family ids: run only cases from these attack families (default: all families in the suite; an empty value also means all). Subset runs are marked ranking-ineligible (exit 3): the ranking gate always covers the full suite. |
 | `--out` |  | `'runs'` |  |
 | `--dry-run` |  | `False` | validate config without scoring |
 | `--json-progress` |  | `False` | machine-readable progress on stdout |
-| `--resume` |  | `False` | resume an interrupted run |
+| `--resume` |  | `False` | resume an interrupted run (single-seed and multi-seed: seeds with valid partials resume, others start fresh) |
 | `--seed` |  | `0` | run seed, recorded on every call record (default: 0) |
 | `--seeds` |  | `1` | M-7 multi-seed protocol: run the suite N times under consecutive seeds (seed .. seed+N-1) and seal a stability artifact with pass^k flip agreement and variance decomposition. 1 (default) is a single run; any other value must be >= 3. Paid adapters: N multiplies spend; check the cost pilot first (Methodology M-7) |
 | `--max-concurrency` |  | `8` | cap on in-flight adapter calls; the AIMD controller adapts within [1, N] (default: 8) |
@@ -52,7 +52,9 @@ run a suite through an adapter
 | `--budget-grid` |  | - | EB-35 attack-strength sweep. Comma-separated strictly increasing positive ints (e.g. 1,2,4,8,16). Each case's attacked arm runs max(grid) queries and the artifact records budget-to-first-flip per case plus ASR-vs-budget curves with Wilson CIs per family. Single-shot suites only and --seeds 1 only. |
 | `--strength-dimension` |  | `'attacker_queries'` | EB-35 strength dimension to budget over. Default is attacker_queries. See `peira sweep-dimensions` for the registry. |
 | `--cache-dir` |  | - | opt-in response cache directory for deterministic adapters (temperature 0 + fixed seed); off by default and never on the measurement path unless given |
-| `--transcript` |  | - | write a JSONL transcript of every request/response to this path (for audit and `peira replay`) |
+| `--transcript` |  | - | write a JSONL transcript of every request/response to this path (for audit and `peira replay`). Defaults to {out}/{slug}-{suite}.transcript.jsonl; the transcript is the only record that lets a crashed run be rebuilt without paying for provider calls again. |
+| `--no-transcript` |  | `False` | disable the default transcript (not recommended: without it, a crashed run cannot be replayed and paid calls are lost) |
+| `--checkpoint-every` |  | `25` | write a resumable checkpoint every N completed cases (default 25). Lower values lose less work on a crash but write more often. |
 
 ## peira replay
 
@@ -61,7 +63,7 @@ re-score a recorded transcript without calling any provider
 | Flag | Required | Default | Help |
 |---|---|---|---|
 | `--transcript` | yes | - | transcript JSONL written by `peira run --transcript` |
-| `--suite` |  | `'trial-demo'` | smoke is an alias for trial (choices: `trial-demo`, `trial`, `v1`, `safety-policy`, `conversational`, `combo`, `smoke`) |
+| `--suite` |  | `'trial-demo'` | smoke is an alias for trial (choices: `trial-demo`, `trial`, `v1`, `safety-policy`, `conversational`, `combo`, `v2`, `smoke`) |
 | `--out` |  | `'runs'` |  |
 
 ## peira transcript-view
