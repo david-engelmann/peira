@@ -246,13 +246,24 @@ class TestMoonshotRequestShape(unittest.TestCase):
         # Moonshot never receives the seed — _supports_seed = False.
         self.assertIsNone(out.transcript["seed"])
 
-    def test_openai_still_sends_seed_and_logprobs(self):
-        # The base OpenAI adapter is unchanged — only Moonshot omits.
-        with _env(OPENAI_API_KEY="<redacted>"):
+    def test_openai_pinned_model_sends_seed_but_omits_logprobs(self):
+        # The pinned gpt-5.6-luna now omits logprobs (live 400,
+        # observed 2026-10-03) — only Moonshot omits seed. An
+        # unlisted model keeps the historical wire behavior: both
+        # seed and logprobs are sent.
+        mod, calls, _ = _make_openai(
+            [_openai_completion(GOOD_JSON),
+             _openai_completion(GOOD_JSON)])
+        with _fake_modules({"openai": mod}), _env(OPENAI_API_KEY="<redacted>"):
             out = OpenAIAdapter().decide(CASE, "choice", _ctx())
-        req = out.transcript["request"]
-        self.assertEqual(req["seed"], 0)
-        self.assertTrue(req["logprobs"])
+            req = out.transcript["request"]
+            self.assertEqual(req["seed"], 0)
+            self.assertFalse(req["logprobs"])
+            out = OpenAIAdapter(model="gpt-4o").decide(CASE, "choice",
+                                                       _ctx())
+            req = out.transcript["request"]
+            self.assertEqual(req["seed"], 0)
+            self.assertTrue(req["logprobs"])
 
 
 class TestMoonshotTemperatureOverride(unittest.TestCase):
