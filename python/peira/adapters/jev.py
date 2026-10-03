@@ -203,7 +203,7 @@ class JevAdapter:
     """Decision adapter for TypeSafe's Jev (System One) API."""
 
     name = "jev"
-    version = "1.13.0"
+    version = MODEL_ID
     supported_primitives = frozenset({"choice", "score", "abstain"})
     # M-2: confidence comes from the API's per-answer probabilities
     # (D-23): a model-output probability, not a verbalization.

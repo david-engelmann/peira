@@ -202,7 +202,7 @@ One adapter per provider, one extra each. Install only what you need:
 | Moonshot (Kimi) | `peira[openai]` | `peira.adapters.llm:MoonshotAdapter` | `kimi-k3` | `MOONSHOT_API_KEY` |
 | xAI (Grok) | `peira[openai]` | `peira.adapters.llm:XAIAdapter` | `grok-4` | `XAI_API_KEY` |
 | DeepSeek | `peira[openai]` | `peira.adapters.llm:DeepSeekAdapter` | `deepseek-flash` | `DEEPSEEK_API_KEY` |
-| Meta (Llama API) | `peira[openai]` | `peira.adapters.llm:MetaLlamaAdapter` | `Llama-4-Maverick-17B-128E-Instruct-FP8` | `META_API_KEY` |
+| Meta (Llama API) | `peira[openai]` | `peira.adapters.llm:MetaLlamaAdapter` | `Llama-4-Maverick-17B-128E-Instruct-FP8` | `META_API_KEY` or `LLAMA_API_KEY` |
 | Zhipu (GLM) | `peira[openai]` | `peira.adapters.llm:ZaiAdapter` | `glm-4-plus` | `ZAI_API_KEY` |
 | Mistral | `peira[openai]` | `peira.adapters.llm:MistralAdapter` | `mistral-large-2512` | `MISTRAL_API_KEY` |
 | Qwen (Alibaba) | `peira[openai]` | `peira.adapters.llm:QwenAdapter` | `qwen3.8-max` | `DASHSCOPE_API_KEY` |
@@ -286,55 +286,21 @@ Opus 5.5, or both. The reconciliation landed 2026-09-30:
   latest only. The pin moved from `claude-sonnet-5` to `claude-sonnet-5-5`
   (released 2026-09-28, $2/$10 per 1M).
 
-### Frontier ceiling (candidate; id unverified, not yet measured)
+### Anthropic pin (D3, 2026-10-02, latest model only)
 
-The strongest model peira can measure against: the upper bound every
-other adapter is compared to. Candidate picked 2026-09-25:
-**`claude-fable-5-1`** (Anthropic, GA 2026-09-01, $10/$50 per 1M in the
-pinned pricing table), used opt-in via
-`AnthropicAdapter(model="claude-fable-5-1")`. The
-`output_config.format` migration has landed (2026-09-30): Fable 5.1
-auto-routes to native JSON-schema structured outputs (no `tools`, no
-forced `tool_choice`), and the response parses through the same typed
-decision contract as every other adapter. Defaults are unchanged; the
-ceiling is never the default. The `peira[anthropic]` extra requires
-`anthropic>=0.77.0` for `output_config` support. The adapter is
-compatible with both the 0.x and 1.x SDK lines (`temperature` travels
-in `extra_body`, since SDK 1.x removed the `temperature` kwarg).
+The Anthropic default is **`claude-sonnet-5-5`** (Sonnet 5.5), per
+David's latest-model directive ("latest Anthropic model only"). The
+adapter uses native `output_config.format` JSON-schema structured
+outputs and omits temperature. Pricing is $2/$10 per 1M tokens in the
+pinned pricing table. The ceiling is never the default; frontier
+comparisons are snapshots in time, never blended across versions.
 
-Why Fable 5.1 over GPT-6 Astra (`gpt-6-astra`, also $10/$50, GA
-2026-09-03):
-
-- **Availability.** Fable 5.1 shipped on every major platform (Claude
-  API, Bedrock, Vertex AI, Foundry, AWS) on day one of GA (2026-09-01,
-  per 9to5Mac). Astra rolled out in phases (Daybreak program first,
-  then API). A ceiling nobody can run is decorative.
-- **Benchmark evidence.** Fable 5.1 holds the highest Artificial
-  Analysis Intelligence Index score reported to date (66 of 192 models,
-  ahead of Claude Opus 5 at 63, Fable 5 at 62, GPT-5.6 Sol at 61). No
-  independent comparative index score was found for Astra (its public
-  numbers, e.g. GPQA Diamond 96.1%, are vendor-adjacent).
-- **Adapter compatibility.** Neither candidate is a pure `model=`
-  drop-in, but Fable 5.1's fix is already peira's decided direction:
-  it rejects forced `tool_choice` (400), and its documented structured
-  path is native `output_config.format` JSON schema, exactly the
-  migration the adapter matrix already chose for the newer Anthropic
-  reasoning models. Astra instead 400s on `temperature`, `top_p`, and
-  `logprobs`, which `OpenAIAdapter` sends on every call, so
-  `OpenAIAdapter(model="gpt-6-astra")` fails on every call without a
-  new per-model special-case.
-
-**Honest caveats:** (1) the model id `claude-fable-5-1` follows
-Anthropic's documented naming convention (Fable 5's id was
-`claude-fable-5`) but is NOT independently confirmed on the live API.
-Verify before the first run. The adapter sends the documented
-`output_config.format` shape (numeric schema constraints stripped
-per Anthropic's published subset; the shape is asserted in mocked
-request tests only); (2) no live verification has happened yet: the
-adapter path is unit-tested against mocked request/response shapes
-only, and no measured numbers from this adapter may be published
-until a live smoke test passes (D-33). Full rationale is recorded as
-D-32 in `docs/Decisions.md`.
+**Honest caveats:** (1) the adapter path is unit-tested against mocked
+request/response shapes only, and no measured numbers from this
+adapter may be published until a live smoke test passes; (2) the
+model id follows Anthropic's documented naming convention. Verify
+against the live API before the first run. Full rationale is recorded
+in `docs/Decisions.md`.
 
 ### Kimi K3 (Moonshot)
 
@@ -403,9 +369,14 @@ DeepSeek-V4.1 Flash is DeepSeek's current fast flagship (the
 `deepseek-flash` alias; the legacy `deepseek-chat` / `deepseek-reasoner`
 ids were discontinued 2026-07-24). The adapter drives DeepSeek's
 OpenAI-compatible endpoint (`https://api.deepseek.com`; note: no
-`/v1` suffix, per DeepSeek's docs) with the same strict JSON-schema
-request shape as `OpenAIAdapter`; the base URL is recorded in the
-transcript's request shape, and the key is never logged.
+`/v1` suffix, per DeepSeek's docs) with `response_format`
+`json_object`. DeepSeek's live API REJECTS the `json_schema`
+`response_format` with a 400 ("This response_format type is
+unavailable now"), observed live 2026-10-03. The schema (required keys,
+types, decision enum) is inlined in the system prompt instead, so
+schema adherence is best-effort, not server-enforced; the transcript
+records the actual mode. The base URL is recorded in the transcript's
+request shape, and the key is never logged.
 `max_retries=0`. The runner owns retries, same as every other LLM
 baseline.
 
@@ -413,12 +384,9 @@ Thinking is DISABLED (`thinking: {"type": "disabled"}`) per the
 evaluation design: reasoning traces must not leak into the decision
 channel.
 
-Honest caveat: the adapter is built from DeepSeek's published docs,
-not the live API. DeepSeek documents `response_format` as
-`json_object`; whether strict `json_schema` is honored for
-`deepseek-flash` is unverified. Verify against the live API before
-any measured run; mismatches surface as terminal provider errors, not
-silent mismeasurement.
+Honest caveat: the `json_object` shape has NOT yet been exercised
+against the live API. Verify before any measured run. Mismatches
+surface as terminal provider errors, not silent mismeasurement.
 
 ### Llama 4 Maverick (Meta Llama API)
 
@@ -636,10 +604,11 @@ peira run --adapter peira.adapters.jev:JevAdapter --suite trial-demo
 
 Jev is a decision-model API, not a chat model: the adapter sends the
 case prompt as `state` plus named typed questions (each question
-carries `instructions` and `criteria`) and reads back `choice`
+carries `instructions`; choice and score questions also carry
+`criteria`) and reads back `choice`
 (choice), `score` (score), or `abstain` (abstain) answers. The score
-question uses five described levels ("strongly favor deny" …
-"strongly favor approve"), not raw numbers. The model is pinned to
+question uses five described levels ("clearly the wrong decision" …
+"clearly the right decision"), not raw numbers. The model is pinned to
 `jev-1.13.0`. Floating tags are rejected at construction. Reported
 pricing is $0.042 per 1M input tokens with output free (secondary-sourced
 via gateway announcements, not confirmed on an official TypeSafe pricing
