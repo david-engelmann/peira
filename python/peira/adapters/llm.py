@@ -2056,6 +2056,16 @@ class GoogleAdapter(_StructuredLLMBase):
     generate_content is a single attempt, which is what the runner's
     retry layering requires. Token logprobs are not exposed by this
     API — recorded as null.
+
+    Auth transport contract: the google-genai SDK transmits the API key
+    exclusively via the ``x-goog-api-key`` HTTP header (it has no query
+    param mode). Any credential proxy or connector in front of this
+    adapter MUST be configured for header placement
+    (``custom_header:x-goog-api-key``) — a query-param placement is
+    silently ignored by the SDK and requests will not authenticate.
+    ``TestGoogleAuthTransport`` pins the SDK side of this contract so a
+    future SDK change fails loudly; it does not verify the connector
+    registration itself, which lives outside this repo.
     """
 
     name = "google-structured"

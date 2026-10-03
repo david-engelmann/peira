@@ -265,6 +265,19 @@ adapter never retries. The runner owns retries, and the SDKs are
 configured for a single attempt so the runner's congestion signal stays
 honest.
 
+### Google auth transport
+
+The `google-genai` SDK sends the API key in the `x-goog-api-key` HTTP
+header. It has no query parameter mode. Any credential proxy or
+connector in front of `GoogleAdapter` must use header placement for
+the key. A query parameter placement is silently ignored by the SDK
+and requests will not authenticate. On 2026-10-03 the connector was
+registered for query parameter placement and live requests failed at
+the transport layer ("Server disconnected"). The
+`TestGoogleAuthTransport` test pins the SDK side of this contract
+against the installed SDK. It does not verify the connector
+registration itself.
+
 ### Anthropic pin reconciliation (D3, 2026-09-30)
 
 D3 asked whether the Anthropic baseline should be `claude-sonnet-5`,

@@ -803,6 +803,72 @@ class TestGoogleShape(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
+# Google auth transport contract.
+# ---------------------------------------------------------------------------
+
+class TestGoogleAuthTransport(unittest.TestCase):
+    """Pins the google-genai SDK's API-key transport contract.
+
+    GoogleAdapter hands its key to ``genai.Client(api_key=...)``. The SDK
+    transmits it exclusively via the ``x-goog-api-key`` HTTP header — it
+    has no query-param mode. Any credential proxy or connector in front
+    of this adapter must therefore be configured for header placement
+    (``custom_header:x-goog-api-key``). On 2026-10-03 the connector was
+    registered for ``query_param:key`` instead, and live requests failed
+    at the transport layer ("Server disconnected").
+
+    This test pins the SDK side of the contract: if a future SDK
+    version changes key transmission, it fails loudly. It does NOT
+    verify the connector registration itself, which lives outside this
+    repo — a misconfigured connector still needs an operator to fix.
+
+    Requires the real ``google-genai`` package (the ``peira[google]``
+    extra); skipped in environments that only have the faked modules.
+    Makes no network calls.
+    """
+
+    def _real_genai(self):
+        try:
+            import google.genai as genai  # noqa: PLC0415
+        except ImportError:
+            self.skipTest("google-genai not installed (peira[google] extra)")
+        # Guard against the suite's fake ``google`` modules leaking in:
+        # the fakes are bare ModuleTypes with no __file__.
+        if not getattr(genai, "__file__", None):
+            self.skipTest("google.genai is faked in this process")
+        return genai
+
+    def test_sdk_sends_key_via_x_goog_api_key_header(self):
+        genai = self._real_genai()
+        # The sandbox's default NO_PROXY carries unbracketed IPv6 that
+        # crashes httpx client construction; sanitize for the probe.
+        # (No network is touched — this only inspects header wiring.)
+        with _env(NO_PROXY="localhost,127.0.0.1",
+                  no_proxy="localhost,127.0.0.1",
+                  HTTP_PROXY=None, HTTPS_PROXY=None,
+                  http_proxy=None, https_proxy=None):
+            # Mirror GoogleAdapter._single_attempt_client: explicit
+            # HttpOptions, so the probe follows the adapter's real
+            # construction path rather than the SDK default.
+            http_options = genai.types.HttpOptions()
+            client = genai.Client(api_key="sk-test-transport-probe",
+                                   http_options=http_options)
+        client_opts = getattr(client._api_client, "_http_options", None)
+        self.assertIsNotNone(
+            client_opts,
+            "genai SDK internals changed: cannot locate HTTP options; "
+            "re-verify where the SDK transmits the API key",
+        )
+        headers = dict(getattr(client_opts, "headers", {}) or {})
+        self.assertEqual(
+            headers.get("x-goog-api-key"), "sk-test-transport-probe",
+            "google-genai no longer sends the API key via the "
+            "x-goog-api-key header; update the credential connector "
+            "placement and this contract test",
+        )
+
+
+# ---------------------------------------------------------------------------
 # Per-call enum (open decision vocabulary).
 # ---------------------------------------------------------------------------
 
