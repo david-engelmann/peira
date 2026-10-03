@@ -106,6 +106,20 @@ partials pick up where they left off; seeds without partials start fresh.
 If a seed's partial fails validation, the error names the seed and the
 partial path: delete that seed's partial file or drop `--resume`.
 
+**Multi-seed transcripts (`--seeds N`)**
+The transcript is on by default for multi-seed runs too: each seed writes
+its own `<adapter>-<suite>-seed{N}.transcript.jsonl`. An explicit
+`--transcript` path gets `-seed{N}` inserted before its suffix, so seeds
+never share (and overwrite) one file. `--no-transcript` disables them.
+
+**`error: seed N: <message>; delete <path> or drop --resume and re-run`**
+Cause: a multi-seed resume (`--seeds N --resume`) found seed N's partial
+invalid: its sealed config (seed, per-seed budget, timeouts, cache state)
+no longer matches this invocation, or the file is corrupt. Fix: delete
+that seed's partial file (`<adapter>-<suite>-seed{N}.partial.json`) and
+re-run with `--resume` (the seed starts fresh), or drop `--resume` to
+start all seeds fresh.
+
 **`error: partial run was recorded with budget_usd X, not Y: re-run with the same --budget-usd or drop --resume`**
 Cause: `peira run --resume` found a partial run recorded under a different
 spend cap than the one requested. The cap is a measurement input: merging
@@ -168,17 +182,6 @@ Cause: `peira run --seeds N` was given a value other than 1 or at
 least 3. k = 2 can only report agreement, not stability, so the M-7
 protocol rejects it. Fix: use `--seeds 1` for a single run or
 `--seeds 3` (or more) for the stability protocol.
-
-**`error: --resume is not supported with --seeds > 1; each seed run is independent (re-run without --resume)`**
-Cause: resume merges a partial run into a new execution, but
-multi-seed runs are k independent executions with no shared partial
-state. Fix: re-run without `--resume`; each seed run starts fresh.
-
-**`error: --transcript is not supported with --seeds > 1; each seed run is independent (run with --seeds 1 to capture a transcript)`**
-Cause: a transcript captures a single run's request/response stream,
-but multi-seed runs are k independent executions. Fix: run with
-`--seeds 1` to capture a transcript, or omit `--transcript` for
-multi-seed runs.
 
 **`ValueError: budget_usd must be a number or None, got True`**
 Cause: a boolean was passed as the budget to `run_multiseed`.
@@ -502,10 +505,10 @@ construction. Unbounded nesting is a stack-overflow vector. Fix:
 flatten the input; no real case nests anywhere near that deep (see
 `docs/Dataset.md`).
 
-**`error: --max-concurrency must be >= 1 (got N)` / `error: --max-attempts must be >= 1 (got N)` / `error: --call-timeout must be > 0 (got N)`**
+**`error: --max-concurrency must be >= 1 (got N)` / `error: --max-attempts must be >= 1 (got N)` / `error: --call-timeout must be > 0 (got N)` / `error: --checkpoint-every must be >= 1 (got N)`**
 Cause: `peira run` got a non-positive `--max-concurrency`,
-`--max-attempts`, or `--call-timeout`. Fix: pass a positive value
-(`--max-concurrency 8`, `--max-attempts 3`).
+`--max-attempts`, `--call-timeout`, or `--checkpoint-every`. Fix: pass a positive value
+(`--max-concurrency 8`, `--max-attempts 3`, `--checkpoint-every 25`).
 
 **`error: --rlimit-cpu-seconds must be > 0 (got N)` / `--rlimit-as-mb must be > 0` / `--rlimit-fsize-mb must be > 0`**
 Cause: `peira run` got a non-positive `--rlimit-cpu-seconds`,
