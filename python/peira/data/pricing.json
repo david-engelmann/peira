@@ -1,8 +1,8 @@
 {
-  "_comment": "Pinned list-price table for cost accounting. Prices are USD per 1M tokens at the providers' standard (non-cached, non-batch) tier. This table is a measurement input: its source and pin date are sealed into every run artifact (pricing_source / pricing_date), so a cost figure is always traceable to the table that produced it. Update by bumping 'date' and 'source' together, never silently. 2026-09-27: pinned API model IDs (gpt-5.6-luna, claude-sonnet-5, gemini-3.8-flash, kimi-k3) per each vendor's actual versioning scheme (peira.api_pins); rate entries for these IDs were already in this table and are unchanged, so the API adapters' pinned defaults stay cost-accounted. 2026-09-28: added pricing_version (date + intra-day revision; sealed into run artifacts so a cost figure is traceable to the exact table version) and per-entry confidence (\"official\" = verified against the vendor pricing page or a first-party $0.0 assertion for self-hosted checkpoints; \"secondary\" = carried over unverified or gateway-reported). 2026-10-02: Anthropic default pin moved to claude-sonnet-5-5 per D3 latest-only decision (entry marked official); stale default-pin note in claude-opus-5-5 entry corrected.",
+  "_comment": "Pinned list-price table for cost accounting. Prices are USD per 1M tokens at the providers' standard (non-cached, non-batch) tier. This table is a measurement input: its source and pin date are sealed into every run artifact (pricing_source / pricing_date), so a cost figure is always traceable to the table that produced it. Update by bumping 'date' and 'source' together, never silently. 2026-09-27: pinned API model IDs (gpt-5.6-luna, claude-sonnet-5, gemini-3.8-flash, kimi-k3) per each vendor's actual versioning scheme (peira.api_pins); rate entries for these IDs were already in this table and are unchanged, so the API adapters' pinned defaults stay cost-accounted. 2026-09-28: added pricing_version (date + intra-day revision; sealed into run artifacts so a cost figure is traceable to the exact table version) and per-entry confidence (\"official\" = verified against the vendor pricing page or a first-party $0.0 assertion for self-hosted checkpoints; \"secondary\" = carried over unverified or gateway-reported). 2026-10-02: Anthropic default pin moved to claude-sonnet-5-5 per D3 latest-only decision (entry marked official); stale default-pin note in claude-opus-5-5 entry corrected. Changelog: 2026-10-03 added 10 OpenRouter gateway rates (OPENROUTER_CHEAP_MODELS pilot set), verified live via openrouter.ai/api/v1/models; version 2026-10-03.1.",
   "basis": "USD per 1M tokens, list price, standard tier (no prompt caching, no batch discount, no long-context surcharge)",
-  "date": "2026-10-02",
-  "pricing_version": "2026-10-02.2",
+  "date": "2026-10-03",
+  "pricing_version": "2026-10-03.1",
   "models": {
     "claude-fable-5-1": {
       "_note": "Frontier-ceiling CANDIDATE (2026-09-25; adapter request path landed 2026-09-30 - id still unverified, not yet measured): $10/$50 per 1M, corroborated by multiple Sept-2026 sources (Anthropic pricing page, 9to5Mac 2026-09-01 launch coverage). Model id 'claude-fable-5-1' follows Anthropic's documented naming convention (Fable 5's id was 'claude-fable-5'); it is NOT independently confirmed on the live API. Caveat: Fable 5.1 rejects forced tool_choice (400) - AnthropicAdapter now auto-routes this model to native output_config.format structured outputs (no tools, no tool_choice; numeric schema constraints stripped per Anthropic's published subset), with the response parsed through the same typed decision contract (unit-tested, mocked only). DO NOT RUN before the model id is verified against the live API (a David-authorized paid step).",
@@ -213,9 +213,69 @@
       "usd_per_1m_in": 0.2,
       "usd_per_1m_out": 0.6,
       "confidence": "official"
+    },
+    "mistralai/mistral-nemo": {
+      "_note": "OpenRouter gateway rate, verified live 2026-10-03 via openrouter.ai/api/v1/models ($0.02/$0.03 per 1M). Part of the cheap-model pilot set (OPENROUTER_CHEAP_MODELS).",
+      "usd_per_1m_in": 0.02,
+      "usd_per_1m_out": 0.03,
+      "confidence": "official"
+    },
+    "deepseek/deepseek-v4-flash": {
+      "_note": "OpenRouter gateway rate, verified live 2026-10-03 via openrouter.ai/api/v1/models ($0.03/$0.06 per 1M). Part of the cheap-model pilot set (OPENROUTER_CHEAP_MODELS).",
+      "usd_per_1m_in": 0.03,
+      "usd_per_1m_out": 0.06,
+      "confidence": "official"
+    },
+    "openai/gpt-oss-20b": {
+      "_note": "OpenRouter gateway rate, verified live 2026-10-03 via openrouter.ai/api/v1/models ($0.02/$0.09 per 1M). Part of the cheap-model pilot set (OPENROUTER_CHEAP_MODELS).",
+      "usd_per_1m_in": 0.02,
+      "usd_per_1m_out": 0.09,
+      "confidence": "official"
+    },
+    "qwen/qwen3.7-flash": {
+      "_note": "OpenRouter gateway rate, verified live 2026-10-03 via openrouter.ai/api/v1/models ($0.03/$0.13 per 1M). Part of the cheap-model pilot set (OPENROUTER_CHEAP_MODELS).",
+      "usd_per_1m_in": 0.03,
+      "usd_per_1m_out": 0.13,
+      "confidence": "official"
+    },
+    "meta-llama/llama-3.1-8b-instruct": {
+      "_note": "OpenRouter gateway rate, verified live 2026-10-03 via openrouter.ai/api/v1/models ($0.05/$0.08 per 1M). Part of the cheap-model pilot set (OPENROUTER_CHEAP_MODELS).",
+      "usd_per_1m_in": 0.05,
+      "usd_per_1m_out": 0.08,
+      "confidence": "official"
+    },
+    "google/gemma-3-4b-it": {
+      "_note": "OpenRouter gateway rate, verified live 2026-10-03 via openrouter.ai/api/v1/models ($0.05/$0.1 per 1M). Part of the cheap-model pilot set (OPENROUTER_CHEAP_MODELS).",
+      "usd_per_1m_in": 0.05,
+      "usd_per_1m_out": 0.1,
+      "confidence": "official"
+    },
+    "z-ai/glm-4.7-flash": {
+      "_note": "OpenRouter gateway rate, verified live 2026-10-03 via openrouter.ai/api/v1/models ($0.06/$0.4 per 1M). Part of the cheap-model pilot set (OPENROUTER_CHEAP_MODELS).",
+      "usd_per_1m_in": 0.06,
+      "usd_per_1m_out": 0.4,
+      "confidence": "official"
+    },
+    "moonshotai/kimi-k2.5": {
+      "_note": "OpenRouter gateway rate, verified live 2026-10-03 via openrouter.ai/api/v1/models ($0.45/$2.25 per 1M). Part of the cheap-model pilot set (OPENROUTER_CHEAP_MODELS).",
+      "usd_per_1m_in": 0.45,
+      "usd_per_1m_out": 2.25,
+      "confidence": "official"
+    },
+    "x-ai/grok-4.3": {
+      "_note": "OpenRouter gateway rate, verified live 2026-10-03 via openrouter.ai/api/v1/models ($1.25/$2.5 per 1M). Part of the cheap-model pilot set (OPENROUTER_CHEAP_MODELS).",
+      "usd_per_1m_in": 1.25,
+      "usd_per_1m_out": 2.5,
+      "confidence": "official"
+    },
+    "anthropic/claude-haiku-4.5": {
+      "_note": "OpenRouter gateway rate, verified live 2026-10-03 via openrouter.ai/api/v1/models ($1.0/$5.0 per 1M). Part of the cheap-model pilot set (OPENROUTER_CHEAP_MODELS).",
+      "usd_per_1m_in": 1.0,
+      "usd_per_1m_out": 5.0,
+      "confidence": "official"
     }
   },
-  "source": "Pre-launch provisional prices (2026-09-23). GPT-5.6 tiers verified 2026-09-23 against https://openai.com/api/pricing/ (post 2026-07-30 price cut); Claude Sonnet 5 corrected 2026-09-23 to $2/$10 against https://platform.claude.com/docs/en/about-claude/pricing (the scheduled Sep-2026 rise to $3/$15 was cancelled); Jev $0.042/1M in / free out is secondary-sourced (gateway announcements), not confirmed on an official TypeSafe page. Claude/Gemini entries carried over from the pre-A2 table, unverified - re-verify every rate before launch. 2026-09-25: added claude-fable-5-1 ($10/$50, frontier-ceiling pick, rate verified against Sept-2026 sources), kimi-k3 ($3/$15, Moonshot API list price verified 2026-09-25), and $0 self-hosted entries for convaiinnovations/laya, convaiinnovations/laya-multilingual, convaiinnovations/laya-typed-decisions, the four jaredpalmer/kev Hub ids (0.5b/0.6b/4b/8b), Qwen/Qwen3.5-4B (semif), and Qwen/Qwen3.6-35B-A3B (openjev-sglang) - local inference cost unaccounted; ids match the sibling lane's pinned adapter MODEL_IDs as of 2026-09-25.",
+  "source": "Pre-launch provisional prices (2026-09-23) plus OpenRouter gateway rates verified live 2026-10-03 via openrouter.ai/api/v1/models. Re-verify every rate before launch.",
   "source_urls": [
     "https://openai.com/api/pricing/",
     "https://www.anthropic.com/pricing",

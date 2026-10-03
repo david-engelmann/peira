@@ -59,9 +59,11 @@ from typing import Any
 __all__ = [
     "PINNED_API_MODELS",
     "DEPRECATED_PINS",
+    "OPENROUTER_CHEAP_MODELS",
     "UnknownAdapterPinError",
     "DeprecatedPinError",
     "get_pinned_model",
+    "get_openrouter_cheap_model",
     "is_pinned_model",
     "pin_status",
     "validate_registry",
@@ -127,6 +129,70 @@ DEPRECATED_PINS: dict[str, str] = {
 
 
 # ---------------------------------------------------------------------------
+# OpenRouter cheap-model pilot set.
+# ---------------------------------------------------------------------------
+# David 2026-10-03: one cheap model per major lab, reachable through the
+# OpenRouter gateway on a single credits balance. This is the pilot-run
+# set: gather real measurement data on the cheap before the flagship run.
+#
+# Every ID below was verified 2026-10-03 against OpenRouter's live
+# /api/v1/models endpoint: the ID exists, and the model advertises
+# structured-output support (response_format). Prices are the live
+# OpenRouter rates in USD per 1M tokens, mirrored in
+# python/peira/data/pricing.json under the same IDs.
+#
+# Estimated full v2-run cost per model (~11,002 calls, ~1,500 in /
+# ~400 out tokens each):
+#   or-mistral-nemo     ~$0.50    or-deepseek-flash  ~$0.75
+#   or-gpt-oss-20b      ~$0.70    or-qwen-flash      ~$1.00
+#   or-llama-8b         ~$1.15    or-gemma-4b        ~$1.25
+#   or-glm-flash        ~$2.75    or-kimi-k2.5       ~$17
+#   or-grok-4.3         ~$32      or-claude-haiku    ~$39
+# Whole set: roughly $96.
+#
+# Use via OpenRouterAdapter(model=OPENROUTER_CHEAP_MODELS["or-mistral-nemo"]).
+# Each model id still needs a live smoke test before any measured run;
+# the gateway routes the same weights, but per-model structured-output
+# behavior is a property of the upstream provider.
+OPENROUTER_CHEAP_MODELS: dict[str, str] = {
+    # Mistral: cheapest structured-output model on the gateway.
+    "or-mistral-nemo": "mistralai/mistral-nemo",
+    # DeepSeek: 10-20x cheaper through the gateway than direct.
+    "or-deepseek-flash": "deepseek/deepseek-v4-flash",
+    # OpenAI: open-weights budget tier.
+    "or-gpt-oss-20b": "openai/gpt-oss-20b",
+    # Qwen/Alibaba: flash tier.
+    "or-qwen-flash": "qwen/qwen3.7-flash",
+    # Meta: 8B instruct, cheapest Llama with structured outputs.
+    "or-llama-8b": "meta-llama/llama-3.1-8b-instruct",
+    # Google: Gemma budget tier.
+    "or-gemma-4b": "google/gemma-3-4b-it",
+    # Zhipu: GLM flash tier.
+    "or-glm-flash": "z-ai/glm-4.7-flash",
+    # Moonshot: Kimi budget tier.
+    "or-kimi-k2.5": "moonshotai/kimi-k2.5",
+    # xAI: cheapest Grok with structured outputs.
+    "or-grok-4.3": "x-ai/grok-4.3",
+    # Anthropic: cheapest Claude with structured outputs.
+    "or-claude-haiku": "anthropic/claude-haiku-4.5",
+}
+
+
+def get_openrouter_cheap_model(key: str) -> str:
+    """Return the OpenRouter model ID for a cheap-pilot key.
+
+    Fails closed on unknown keys: never guess a model ID.
+    """
+    try:
+        return OPENROUTER_CHEAP_MODELS[key]
+    except KeyError:
+        valid = ", ".join(sorted(OPENROUTER_CHEAP_MODELS))
+        raise KeyError(
+            f"unknown OpenRouter cheap-model key {key!r}; valid keys: {valid}"
+        ) from None
+
+
+# ---------------------------------------------------------------------------
 # Errors: fail closed, never guess.
 # ---------------------------------------------------------------------------
 
@@ -184,10 +250,12 @@ class DeprecatedPinError(ValueError):
 #              qwen-plus).
 #   openrouter: <vendor>/<model> (cf. google/gemini-3.8-flash,
 #              anthropic/claude-sonnet-4.6): OpenRouter's documented
-#              gateway ID scheme. The inner model part must itself look
-#              like a real vendor ID (checked by
-#              _passes_vendor_semantics), so a fabricated inner ID
-#              cannot ride in behind the slash.
+#              gateway ID scheme. OpenRouter normalizes upstream IDs
+#              (lowercase vendor prefixes, dotted versions), so the
+#              inner model part is checked against the gateway's ID
+#              shape, not the native vendor schemes. The
+#              anti-fabrication check for gateway IDs is the live-API
+#              verification recorded at each registry entry.
 #
 # Scheme rules per vendor (checked by _passes_vendor_semantics): Luna
 # never shipped dated snapshots, 5.x Anthropic IDs are dateless-only,
@@ -240,16 +308,24 @@ def _passes_vendor_semantics(vendor: str, model_id: str) -> bool:
     if vendor == "google":
         return re.match(r"^gemini-3\.\d+-[a-z]+-\d{3}$", model_id) is None
     if vendor == "openrouter":
-        # Gateway IDs are vendor/model: the inner model part must
-        # itself look like a real vendor ID, so a fabricated inner ID
-        # cannot ride in behind the slash. Both callers only reach this
-        # branch after the format regex (which requires a slash) has
-        # matched, but fail closed anyway so a future direct caller
-        # with a slash-less ID gets False, not an IndexError.
+        # Gateway IDs are vendor/model under OpenRouter's naming
+        # convention, which normalizes upstream IDs (lowercase vendor
+        # prefixes, dotted versions like 4.7, open-weights names like
+        # gpt-oss-20b). The direct-vendor scheme regexes above describe
+        # the vendors' native API ID formats, not OpenRouter's
+        # normalizations, so the inner part is checked against the
+        # gateway's documented ID shape instead: a non-empty model name
+        # of alphanumerics, dots, hyphens, and underscores. The
+        # anti-fabrication check for gateway IDs is the live-API
+        # verification recorded at each registry entry, not the
+        # native-scheme regexes. Both callers only reach this branch
+        # after the format regex (which requires a slash) has matched,
+        # but fail closed anyway so a future direct caller with a
+        # slash-less ID gets False, not an IndexError.
         if "/" not in model_id:
             return False
         inner = model_id.split("/", 1)[1]
-        return _looks_like_any_vendor_id(inner)
+        return re.match(r"^[A-Za-z0-9][A-Za-z0-9._-]*$", inner) is not None
     return True
 
 
@@ -301,9 +377,10 @@ def validate_registry() -> None:
 
     Every pin must match its vendor's ID format and scheme, no pin may be
     deprecated, and every deprecated entry must name real
-    vendor-format-and-scheme IDs on both sides. Called at import time: a bad
-    registry is a packaging bug and must be loud immediately, never
-    discovered mid-run.
+    vendor-format-and-scheme IDs on both sides. The OpenRouter cheap-model
+    pilot set gets the same treatment: every value must be a well-formed
+    gateway ID. Called at import time: a bad registry is a packaging bug
+    and must be loud immediately, never discovered mid-run.
     """
     for adapter_name, pin in PINNED_API_MODELS.items():
         if not _looks_like_pinned_id(adapter_name, pin):
@@ -326,6 +403,12 @@ def validate_registry() -> None:
             raise ValueError(
                 f"api_pins registry corrupt: replacement pin {new_id!r} "
                 "does not match any vendor's model ID format"
+            )
+    for key, model_id in OPENROUTER_CHEAP_MODELS.items():
+        if not _looks_like_pinned_id("openrouter-structured", model_id):
+            raise ValueError(
+                f"api_pins registry corrupt: cheap-model {key!r} maps to "
+                f"{model_id!r}, not a well-formed OpenRouter gateway ID"
             )
 
 

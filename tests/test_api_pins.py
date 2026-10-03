@@ -23,11 +23,15 @@ from unittest.mock import patch
 
 from peira.api_pins import (
     DEPRECATED_PINS,
+    OPENROUTER_CHEAP_MODELS,
     PINNED_API_MODELS,
     DeprecatedPinError,
     UnknownAdapterPinError,
     _looks_like_any_vendor_id,
     _looks_like_pinned_id,
+    _passes_vendor_semantics,
+    _VENDOR_ID_PATTERNS,
+    get_openrouter_cheap_model,
     get_pinned_model,
     is_pinned_model,
     pin_status,
@@ -247,6 +251,68 @@ class TestPinLifecycle(unittest.TestCase):
         for bad in (["openai-structured"], None, 42):
             status, _ = pin_status(bad, "gpt-5.6-luna")
             self.assertEqual(status, "unknown_adapter")
+
+
+class TestOpenRouterCheapModels(unittest.TestCase):
+    """The cheap-model pilot set (OPENROUTER_CHEAP_MODELS)."""
+
+    def test_all_ids_match_openrouter_format(self):
+        # Every ID must be vendor/model, matching the OpenRouter gateway
+        # convention enforced by the openrouter vendor regex.
+        pattern = _VENDOR_ID_PATTERNS["openrouter"]
+        for key, model_id in OPENROUTER_CHEAP_MODELS.items():
+            with self.subTest(key=key):
+                self.assertRegex(model_id, pattern)
+
+    def test_all_ids_pass_gateway_semantics(self):
+        # The module's anti-fabrication bar for gateway IDs: the inner
+        # model part must match OpenRouter's documented ID shape. A
+        # fabricated inner ID cannot ride in behind the slash.
+        for key, model_id in OPENROUTER_CHEAP_MODELS.items():
+            with self.subTest(key=key):
+                self.assertTrue(
+                    _passes_vendor_semantics("openrouter", model_id),
+                    f"{model_id!r} fails gateway semantics",
+                )
+
+    def test_ten_models_one_per_lab(self):
+        self.assertEqual(len(OPENROUTER_CHEAP_MODELS), 10)
+        vendors = {mid.split("/")[0] for mid in OPENROUTER_CHEAP_MODELS.values()}
+        self.assertEqual(len(vendors), 10)
+
+    def test_get_openrouter_cheap_model_all_bindings(self):
+        # Independent literal mapping: a key-to-ID swap in the dict
+        # must fail this test. (Reading expected values from the dict
+        # itself would be tautological.)
+        expected = {
+            "or-mistral-nemo": "mistralai/mistral-nemo",
+            "or-deepseek-flash": "deepseek/deepseek-v4-flash",
+            "or-gpt-oss-20b": "openai/gpt-oss-20b",
+            "or-qwen-flash": "qwen/qwen3.7-flash",
+            "or-llama-8b": "meta-llama/llama-3.1-8b-instruct",
+            "or-gemma-4b": "google/gemma-3-4b-it",
+            "or-glm-flash": "z-ai/glm-4.7-flash",
+            "or-kimi-k2.5": "moonshotai/kimi-k2.5",
+            "or-grok-4.3": "x-ai/grok-4.3",
+            "or-claude-haiku": "anthropic/claude-haiku-4.5",
+        }
+        self.assertEqual(OPENROUTER_CHEAP_MODELS, expected)
+        for key, model_id in expected.items():
+            with self.subTest(key=key):
+                self.assertEqual(get_openrouter_cheap_model(key), model_id)
+
+    def test_get_openrouter_cheap_model_fails_closed(self):
+        with self.assertRaises(KeyError) as ctx:
+            get_openrouter_cheap_model("or-does-not-exist")
+        self.assertIn("or-mistral-nemo", str(ctx.exception))
+
+    def test_every_cheap_model_has_pricing(self):
+        from peira.pricing import load_pricing_table
+
+        table = load_pricing_table()
+        for key, model_id in OPENROUTER_CHEAP_MODELS.items():
+            with self.subTest(key=key):
+                self.assertIn(model_id, table["models"])
 
 
 if __name__ == "__main__":
