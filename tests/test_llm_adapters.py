@@ -785,8 +785,33 @@ class TestGoogleShape(unittest.TestCase):
         self.assertEqual(out.decision, "approve")
         config = self.configs[0]
         self.assertEqual(config["response_mime_type"], "application/json")
-        self.assertEqual(config["response_schema"],
-                         _expected_schema(["approve", "deny", "other"]))
+        # Google's API rejects additionalProperties; the adapter strips it.
+        expected = _expected_schema(["approve", "deny", "other"])
+        del expected["additionalProperties"]
+        self.assertEqual(config["response_schema"], expected)
+
+    def test_response_schema_strips_additional_properties(self):
+        # Regression test: Google 400s on additionalProperties in
+        # response_schema. The adapter must strip it before the API call.
+        from peira.adapters.llm import _strip_additional_properties
+        GoogleAdapter().decide(CASE, "choice", _ctx())
+        schema = self.configs[0]["response_schema"]
+        self.assertNotIn("additionalProperties", schema)
+        # The helper is recursive and non-mutating.
+        nested = {
+            "type": "object",
+            "additionalProperties": False,
+            "properties": {
+                "x": {"type": "string", "additionalProperties": True},
+            },
+        }
+        stripped = _strip_additional_properties(nested)
+        self.assertNotIn("additionalProperties", stripped)
+        self.assertNotIn("additionalProperties",
+                         stripped["properties"]["x"])
+        self.assertIn("additionalProperties", nested)  # input unchanged
+        self.assertIn("additionalProperties",
+                      nested["properties"]["x"])
 
     def test_temperature_zero_and_seed(self):
         GoogleAdapter().decide(CASE, "choice", _ctx())

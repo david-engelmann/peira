@@ -2141,6 +2141,25 @@ class AnthropicAdapter(_StructuredLLMBase):
 # Google (google-genai SDK).
 # ---------------------------------------------------------------------------
 
+def _strip_additional_properties(schema: Any) -> Any:
+    """Recursively remove ``additionalProperties`` from a JSON schema.
+
+    Google's ``response_schema`` rejects OpenAI-style ``additionalProperties``
+    with HTTP 400 INVALID_ARGUMENT. The shared ``SCHEMA_TEMPLATE`` keeps it
+    for OpenAI strict mode; this strips it only for the Google request path.
+    Returns a deep copy; the input is never mutated.
+    """
+    if isinstance(schema, dict):
+        return {
+            k: _strip_additional_properties(v)
+            for k, v in schema.items()
+            if k != "additionalProperties"
+        }
+    if isinstance(schema, list):
+        return [_strip_additional_properties(v) for v in schema]
+    return schema
+
+
 class GoogleAdapter(_StructuredLLMBase):
     """Baseline: Google genai with JSON response schema.
 
@@ -2214,10 +2233,14 @@ class GoogleAdapter(_StructuredLLMBase):
         prior_text: str | None = None,
     ) -> _RawResult:
         genai = self._sdk
+        # Google's response_schema rejects OpenAI-style "additionalProperties"
+        # (HTTP 400 INVALID_ARGUMENT). Strip it recursively; the shared
+        # SCHEMA_TEMPLATE keeps it for OpenAI strict mode.
+        google_schema = _strip_additional_properties(schema)
         config = genai.types.GenerateContentConfig(
             system_instruction=SYSTEM_PROMPT,
             response_mime_type="application/json",
-            response_schema=schema,
+            response_schema=google_schema,
             temperature=self._temperature,
             max_output_tokens=self._max_tokens,
             seed=self._seed,
