@@ -276,9 +276,12 @@ class TestOpenRouterCheapModels(unittest.TestCase):
                 )
 
     def test_ten_models_one_per_lab(self):
-        self.assertEqual(len(OPENROUTER_CHEAP_MODELS), 10)
+        # 10 base models (one per lab) + 5 discounted additions.
+        self.assertEqual(len(OPENROUTER_CHEAP_MODELS), 15)
         vendors = {mid.split("/")[0] for mid in OPENROUTER_CHEAP_MODELS.values()}
-        self.assertEqual(len(vendors), 10)
+        # 13 distinct vendors: qwen and inclusionai each appear twice
+        # (base + discounted).
+        self.assertEqual(len(vendors), 13)
 
     def test_get_openrouter_cheap_model_all_bindings(self):
         # Independent literal mapping: a key-to-ID swap in the dict
@@ -295,6 +298,11 @@ class TestOpenRouterCheapModels(unittest.TestCase):
             "or-kimi-k2.5": "moonshotai/kimi-k2.5",
             "or-grok-4.3": "x-ai/grok-4.3",
             "or-claude-haiku": "anthropic/claude-haiku-4.5",
+            "or-mercury-2.5": "inception/mercury-2.5",
+            "or-qwen3-235b": "qwen/qwen3-235b-a22b-2507",
+            "or-ling-flash-vl": "inclusionai/ling-3.0-flash-vl",
+            "or-solar-pro4": "upstage/solar-pro4",
+            "or-ling-flash": "inclusionai/ling-3.0-flash",
         }
         self.assertEqual(OPENROUTER_CHEAP_MODELS, expected)
         for key, model_id in expected.items():
