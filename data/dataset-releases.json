@@ -1,1 +1,14 @@
-{"releases": []}
+{
+  "releases": [
+    {
+      "tag": "dataset-v2-2.5.1",
+      "dataset": "peira-v2",
+      "dataset_version": "2.5.1",
+      "manifest_path": "dataset/v2/cases/manifest.json",
+      "manifest_sha256": "b8b877fa54e9ae08dab3215ac6f933c7b1c074396d685fc5296c5c3d8f485fd5",
+      "croissant_sha256": "805853884eea28f70c68f96476887f3037ec3915ad2960e63e160430a7cf1f28",
+      "commit": "cfaa4c61a7704fd7f764f14e395bd15a19d1e821",
+      "created_utc": "2026-10-03T00:22:42Z"
+    }
+  ]
+}
