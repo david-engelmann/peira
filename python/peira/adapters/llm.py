@@ -882,6 +882,18 @@ class OpenAIAdapter(_StructuredLLMBase):
     #: which field was actually sent, read back from the kwargs.
     _MAX_COMPLETION_TOKENS_MODELS = frozenset({"gpt-5.6-luna"})
 
+    # Per-model temperature overrides. gpt-5.6-luna is a reasoning
+    # model that only accepts temperature=1 (any other value 400s
+    # with "Unsupported value: 'temperature' does not support 0.0
+    # with this model. Only the default (1) value is supported.",
+    # observed live 2026-10-03). The override is applied in __init__
+    # so self._temperature, the cache namespace, the request kwargs,
+    # the transcript, and decode_params all agree — determinism is
+    # sacrificed for this model, honestly recorded everywhere.
+    _MODEL_TEMPERATURE_OVERRIDES: dict[str, float] = {
+        "gpt-5.6-luna": 1.0,
+    }
+
     def __init__(
         self,
         model: str = PINNED_API_MODELS["openai-structured"],
@@ -890,6 +902,17 @@ class OpenAIAdapter(_StructuredLLMBase):
         max_tokens: int = 512,
         api_key: str | None = None,
     ) -> None:
+        # gpt-5.6-luna is a reasoning model that 400s on any
+        # temperature other than 1 ("Unsupported value: 'temperature'
+        # does not support 0.0 with this model. Only the default (1)
+        # value is supported.", observed live 2026-10-03). Force the
+        # override here so self._temperature, the cache namespace,
+        # the request kwargs, the transcript, and decode_params all
+        # agree on the value actually sent — determinism is
+        # sacrificed for this model, honestly.
+        _temp_override = self._MODEL_TEMPERATURE_OVERRIDES.get(model)
+        if _temp_override is not None:
+            temperature = _temp_override
         super().__init__(model, temperature, seed, max_tokens, api_key)
         self._sdk = _require_openai()
         # Retries DISABLED: the runner owns the retry policy (see the

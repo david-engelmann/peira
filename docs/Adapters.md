@@ -315,6 +315,19 @@ model id follows Anthropic's documented naming convention. Verify
 against the live API before the first run. Full rationale is recorded
 in `docs/Decisions.md`.
 
+### gpt-5.6-luna (OpenAI)
+
+`gpt-5.6-luna` is a reasoning model whose chat-completions endpoint
+only accepts `temperature=1` (any other value 400s with
+"Unsupported value: 'temperature' does not support 0.0 with this
+model. Only the default (1) value is supported.", observed live
+2026-10-03), so the adapter forces it via
+`_MODEL_TEMPERATURE_OVERRIDES` and records the actual value in the
+transcript and `decode_params`. Determinism is sacrificed for this
+model, honestly recorded: the cache namespace, the request kwargs,
+and the transcript all carry `1.0`. Models without an override entry
+keep the constructor's `temperature=0.0` default.
+
 ### Kimi K3 (Moonshot)
 
 ```bash
