@@ -328,6 +328,15 @@ model, honestly recorded: the cache namespace, the request kwargs,
 and the transcript all carry `1.0`. Models without an override entry
 keep the constructor's `temperature=0.0` default.
 
+The same endpoint also rejects `logprobs` outright (400:
+"Unsupported parameter: 'logprobs' is not supported with this
+model.", observed live 2026-10-03), so the adapter omits the field
+for this model via `_NO_LOGPROBS_MODELS`, following the per-model
+pattern `_MAX_COMPLETION_TOKENS_MODELS` established. The transcript records
+`"logprobs": False`, the decision-token logprob track is `None`, and
+confidence stays on the verbalized track. Models without an entry
+keep sending `logprobs=True` as before.
+
 ### Kimi K3 (Moonshot)
 
 ```bash

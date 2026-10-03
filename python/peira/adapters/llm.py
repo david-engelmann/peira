@@ -894,6 +894,16 @@ class OpenAIAdapter(_StructuredLLMBase):
         "gpt-5.6-luna": 1.0,
     }
 
+    #: Models whose chat-completions endpoint rejects ``logprobs``
+    #: and requires it to be omitted instead (OpenAI's newer models,
+    #: e.g. ``gpt-5.6-luna``). Sending ``logprobs`` to one of these
+    #: 400s with "Unsupported parameter: 'logprobs' is not supported
+    #: with this model." The transcript records the value actually
+    #: sent, read back from the kwargs (``"logprobs": False``), and
+    #: the decision-token logprob track is recorded as ``None`` —
+    #: confidence stays on the verbalized track (D-23).
+    _NO_LOGPROBS_MODELS = frozenset({"gpt-5.6-luna"})
+
     def __init__(
         self,
         model: str = PINNED_API_MODELS["openai-structured"],
@@ -950,6 +960,13 @@ class OpenAIAdapter(_StructuredLLMBase):
             kwargs["max_completion_tokens"] = self._max_tokens
         else:
             kwargs["max_tokens"] = self._max_tokens
+        # Newer OpenAI models reject ``logprobs`` entirely — sending
+        # the field 400s with "Unsupported parameter". The field is
+        # omitted per model, not negotiated (same bug class as the
+        # Moonshot seed/logprobs omission, but inline here because
+        # the model rides the OpenAI adapter itself).
+        if self._model in self._NO_LOGPROBS_MODELS:
+            kwargs.pop("logprobs", None)
         return kwargs
 
     def _request_shape_overrides(
