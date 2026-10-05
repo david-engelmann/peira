@@ -422,6 +422,13 @@ Thinking is DISABLED (`thinking: {"type": "disabled"}`) per the
 evaluation design: reasoning traces must not leak into the decision
 channel.
 
+Scale normalization: DeepSeek's best-effort `json_object` mode
+sometimes emits `confidence`/`score` on a 0-100 scale despite the
+schema requiring 0-1 (observed 2026-10-04). The adapter normalizes
+values in (1, 100] by dividing by 100 at parse time, before
+validation; values in [0, 1] pass through, and out-of-range values
+are still rejected.
+
 Honest caveat: the `json_object` shape has NOT yet been exercised
 against the live API. Verify before any measured run. Mismatches
 surface as terminal provider errors, not silent mismeasurement.

@@ -336,6 +336,82 @@ class TestDeepSeekJsonObjectMode(unittest.TestCase):
         )
 
 
+class TestDeepSeekScoreNormalization(unittest.TestCase):
+    """DeepSeek's best-effort json_object mode sometimes emits
+    confidence/score on a 0-100 scale (observed 2026-10-04). The adapter
+    normalizes (1, 100] to 0-1 before validation; anything else is left
+    for the schema to reject."""
+
+    def _decide(self, payload):
+        mod, _, _ = _make_openai([_openai_completion(json.dumps(payload))])
+        with _fake_modules({"openai": mod}), \
+                _env(DEEPSEEK_API_KEY="sk-test"):
+            return DeepSeekAdapter().decide(CASE, "choice", _ctx())
+
+    def test_confidence_0_to_1_unchanged(self):
+        out = self._decide(
+            {"decision": "approve", "confidence": 0.95, "reason": "ok"})
+        self.assertAlmostEqual(out.confidence, 0.95)
+
+    def test_confidence_100_scale_normalized(self):
+        out = self._decide(
+            {"decision": "approve", "confidence": 95, "reason": "ok"})
+        self.assertAlmostEqual(out.confidence, 0.95)
+
+    def test_confidence_out_of_range_still_rejected(self):
+        # 150 is not a plausible 0-100 slip — _resolve must still report
+        # validation errors (not silently rescale). The decide() repair
+        # path then raises ProviderError after two failures.
+        from peira.adapters.llm import _validate_schema_object, _build_schema
+        schema = _build_schema(["approve", "deny"], "choice")
+        obj = {"decision": "approve", "confidence": 150, "reason": "ok"}
+        # Normalization leaves it alone...
+        from peira.adapters.llm import _normalize_verbalized_scales
+        self.assertEqual(_normalize_verbalized_scales(obj)["confidence"], 150)
+        # ...so validation still fails.
+        errors = _validate_schema_object(obj, schema)
+        self.assertTrue(any("confidence" in e for e in errors))
+
+    def test_normalize_helper_boundaries(self):
+        from peira.adapters.llm import _normalize_verbalized_scales
+        # 0-1 passes through untouched.
+        self.assertEqual(
+            _normalize_verbalized_scales({"confidence": 0.95}),
+            {"confidence": 0.95})
+        self.assertEqual(
+            _normalize_verbalized_scales({"confidence": 0}),
+            {"confidence": 0})
+        self.assertEqual(
+            _normalize_verbalized_scales({"confidence": 1}),
+            {"confidence": 1})
+        # (1, 100] normalizes.
+        self.assertEqual(
+            _normalize_verbalized_scales({"confidence": 95}),
+            {"confidence": 0.95})
+        self.assertEqual(
+            _normalize_verbalized_scales({"confidence": 100}),
+            {"confidence": 1.0})
+        # Out of range left alone for validation to reject.
+        self.assertEqual(
+            _normalize_verbalized_scales({"confidence": 150}),
+            {"confidence": 150})
+        self.assertEqual(
+            _normalize_verbalized_scales({"confidence": -5}),
+            {"confidence": -5})
+        # Bools are not numbers for this purpose — never rescale.
+        self.assertEqual(
+            _normalize_verbalized_scales({"confidence": True}),
+            {"confidence": True})
+        # Score gets the same treatment.
+        self.assertEqual(
+            _normalize_verbalized_scales({"score": 73}),
+            {"score": 0.73})
+        # Input dict is not mutated.
+        src = {"confidence": 95}
+        _normalize_verbalized_scales(src)
+        self.assertEqual(src, {"confidence": 95})
+
+
 class TestXAISeedHandling(unittest.TestCase):
     """xAI 400s on non-positive seeds: the adapter omits, not negotiates."""
 

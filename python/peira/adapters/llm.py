@@ -314,6 +314,27 @@ def _validate_value(key: str, value: Any, subschema: dict[str, Any]) -> list[str
     return errors
 
 
+def _normalize_verbalized_scales(obj: dict[str, Any]) -> dict[str, Any]:
+    """Normalize 0-100 verbalized scales to 0-1.
+
+    Some providers emit confidence/score on a 0-100 scale despite the
+    schema requiring 0-1 (observed: DeepSeek 2026-10-04, which uses
+    best-effort ``json_object`` mode rather than server-enforced
+    ``json_schema``). Values in (1, 100] are divided by 100; values in
+    [0, 1] pass through untouched; anything else (including bools, NaN,
+    and out-of-range numbers) is left for schema validation to reject.
+    Returns a new dict; the input is not mutated.
+    """
+    out = dict(obj)
+    for key in ("confidence", "score"):
+        v = out.get(key)
+        if isinstance(v, bool):
+            continue
+        if isinstance(v, (int, float)) and 1 < v <= 100:
+            out[key] = v / 100
+    return out
+
+
 def _validate_schema_object(
     obj: Any, schema: dict[str, Any]
 ) -> list[str]:
@@ -1395,6 +1416,23 @@ class DeepSeekAdapter(OpenAIAdapter):
         # not the host it was sent to — record it for traceability.
         raw.request_shape["base_url"] = self._base_url
         return raw
+
+    def _resolve(
+        self, raw: _RawResult, schema: dict[str, Any]
+    ) -> tuple[dict[str, Any] | None, list[str]]:
+        obj, errors = super()._resolve(raw, schema)
+        if obj is not None and errors:
+            # DeepSeek's best-effort json_object mode sometimes emits
+            # confidence/score on a 0-100 scale (observed 2026-10-04).
+            # Normalize before the repair path: a scale slip is not a
+            # malformed response, and burning a repair call on it wastes
+            # provider spend.
+            normalized = _normalize_verbalized_scales(obj)
+            if normalized != obj:
+                normalized_errors = _validate_schema_object(normalized, schema)
+                if not normalized_errors:
+                    return normalized, normalized_errors
+        return obj, errors
 
 
 # ---------------------------------------------------------------------------
