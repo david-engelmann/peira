@@ -574,6 +574,11 @@ class TestResumeBudgetMismatch(unittest.TestCase):
         artifact, adapter, cases = self._sealed_artifact(
             max_attacker_rounds=1
         )
+        # Mark the artifact resumable: validate_partial refuses
+        # termination="complete" (fail-closed), and this test exercises
+        # the budget-matching path, not the termination gate.
+        artifact.termination = "partial"
+        artifact.seal()
         done, prior = validate_conversation_partial(
             artifact, adapter, cases,
             manifest_sha256=artifact.manifest_sha256,

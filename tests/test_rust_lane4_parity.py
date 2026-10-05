@@ -303,7 +303,7 @@ class ComputeLockParity(unittest.TestCase):
                         "benign_wrong_decision",
                         "benign_abstained",
                     ],
-                    "policy_version": "1",
+                    "policy_version": "2",
                     "unconditional_asr_denominator": "all_cases",
                 },
                 "exposure_attestation": {

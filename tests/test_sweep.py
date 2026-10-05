@@ -1,7 +1,6 @@
 """Unit tests for peira.sweep (EB-35 attack-strength sweep curves)."""
 
 import io
-import shutil
 import tempfile
 import unittest
 from contextlib import redirect_stderr
@@ -703,8 +702,12 @@ class TestResumeSweepCompat(unittest.TestCase):
     def test_sweep_partial_resume_without_grid_refused_end_to_end(self):
         # The reported scenario, through the real CLI: a sweep partial
         # resumed as a single-shot run must be refused, not silently
-        # reinterpreted. The final artifact stands in for the partial
-        # (same config shape: sweep_budget_grid is sealed in config).
+        # reinterpreted. A completed sweep run stands in for the partial
+        # (same config shape: sweep_budget_grid is sealed in config),
+        # re-terminated as "partial" with a fresh lock so the resume
+        # path reaches the sweep/single-shot compatibility check
+        # (validate_partial refuses termination="complete" first).
+        from peira.artifacts import RunArtifact
         parser = build_parser()
         with tempfile.TemporaryDirectory() as tmp:
             rc = cmd_run(parser.parse_args([
@@ -714,7 +717,11 @@ class TestResumeSweepCompat(unittest.TestCase):
             self.assertEqual(rc, 3)  # run completed, ranking-ineligible
             final = Path(tmp) / "mock-trial-demo.json"
             self.assertTrue(final.exists())
-            shutil.copy(final, Path(tmp) / "mock-trial-demo.partial.json")
+            art = RunArtifact.from_json(final.read_text())
+            art.termination = "partial"
+            art.seal()
+            (Path(tmp) / "mock-trial-demo.partial.json").write_text(
+                art.to_json())
             err = io.StringIO()
             with redirect_stderr(err):
                 rc = cmd_run(parser.parse_args([

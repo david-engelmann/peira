@@ -92,6 +92,10 @@ class TestSuiteDatasetIdentity(unittest.TestCase):
             suite="trial", dataset_version="1.0.0",
             manifest_sha256="a" * 64,
             results=[],
+            # termination="partial" so the fixture reaches the snapshot
+            # check (validate_partial refuses termination="complete"
+            # fail-closed).
+            termination="partial",
         )
         partial.seal()
         with self.assertRaises(ValueError) as ctx:
