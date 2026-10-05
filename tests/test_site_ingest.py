@@ -70,7 +70,8 @@ def _results_and_summary(n):
 def make_artifact(path, *, mock=True, suite="public", dataset_version="1.1.1",
                    corrupt_lock=False, manifest_sha256="mock",
                    adapter_name="mock-test", adapter_version="mock-1",
-                   metrics_tweak=None, v3=True, division="guardrail"):
+                   metrics_tweak=None, v3=True, division="guardrail",
+                   exposure_subset="public"):
     """Build a sealed test artifact.
 
     v3=True attaches a valid v3 extension block built by the real
@@ -108,6 +109,12 @@ def make_artifact(path, *, mock=True, suite="public", dataset_version="1.1.1",
         cases_completed=24,
         cases_planned=24,
         seed=7,
+        exposure_attestation={
+            "case_subset": exposure_subset,
+            "blindness_protocol_id": "",
+            "prior_exposure_attested": False,
+            "holdout_access_log_ref": "",
+        },
     )
     art.seal()
     data = json.loads(art.to_json())
@@ -225,10 +232,16 @@ class IngestGatesTest(unittest.TestCase):
         self.assertNotEqual(r.returncode, 0)
         self.assertIn("dataset", r.stderr.lower())
 
-    def test_invalid_suite_rejected(self):
-        self._one(mock=True, suite="staging")
+    def test_invalid_exposure_subset_rejected(self):
+        # The exposure regime lives in the sealed exposure_attestation
+        # block, not in artifact.suite (which names the dataset).
+        # "private" is valid artifact vocabulary (CASE_SUBSETS) but the
+        # ingest gate only accepts "public"/"blind", so this exercises
+        # the ingest gate itself rather than the artifact loader.
+        self._one(mock=True, exposure_subset="private")
         r = run_ingest(self.arts, self.out, extra=["--mock"])
         self.assertNotEqual(r.returncode, 0)
+        self.assertIn("must be 'public' or 'blind'", r.stderr)
 
     def test_manifest_sha_mismatch_rejected(self):
         make_artifact(self.arts / "a.json", mock=True, manifest_sha256="aaa")

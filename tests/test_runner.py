@@ -137,9 +137,12 @@ class TestValidatePartial(unittest.TestCase):
     def test_scalar_result_entry_is_value_error(self):
         # A hand-edited partial with a scalar entry used to die in
         # AttributeError on r.get; it is now a clear ValueError.
+        # seal() also rejects malformed entries at the trust boundary,
+        # so the lock is recomputed directly (bypassing seal) to
+        # exercise validate_partial's hostile-input handling.
         p = _partial([_r("c1")])
         p.results.append("bogus")
-        p.seal()  # re-seal so the lock passes and the entry is reached
+        p.analysis_lock = p._compute_lock_py()
         with self.assertRaisesRegex(
             ValueError, "partial run has malformed result entry at index 1"
         ):
@@ -149,9 +152,11 @@ class TestValidatePartial(unittest.TestCase):
     def test_wrong_shaped_result_dict_is_value_error(self):
         # A dict entry that PerCaseResult rejects is hostile input too:
         # TypeError becomes ValueError with the entry's position.
+        # (Lock recomputed directly: seal() rejects malformed entries
+        # at the trust boundary; see above.)
         p = _partial([_r("c1")])
         p.results.append({"case_id": "c2", "bogus_key": 1})
-        p.seal()
+        p.analysis_lock = p._compute_lock_py()
         with self.assertRaisesRegex(
             ValueError, "partial run has malformed result entry at index 1"
         ):

@@ -351,13 +351,19 @@ jobs:
         with:
           python-version: "3.12"
       - uses: dtolnay/rust-toolchain@ce678459e9fc7500d337468f904b95f1b5c10b5e # 1.98.1
-      - run: pip install "maturin>=1,<2"
       # Exactly one release-profile extension build. MATURIN_PEP517_ARGS
       # cannot be used: pip forwards it to `maturin pep517 write-dist-info`,
       # which rejects --release in maturin 1.x. Instead, create a venv,
       # install via pip, then rebuild the extension in release via maturin
-      # develop (which requires an active virtualenv).
+      # develop (which requires an active virtualenv). maturin must be
+      # installed into the venv first: --no-build-isolation means pip
+      # uses the venv's packages for the build backend.
       - run: python3 -m venv .venv
+      - run: .venv/bin/pip install "maturin>=1,<2"
+      # maturin's PEP 517 hooks shell out to the `maturin` binary, so
+      # .venv/bin must be on PATH for the build below (otherwise pip
+      # fails with FileNotFoundError: 'maturin').
+      - run: echo "$PWD/.venv/bin" >> "$GITHUB_PATH"
       - run: .venv/bin/pip install --no-build-isolation -e '.[dev]'
       - run: .venv/bin/maturin develop --release
       - run: .venv/bin/python -c "from peira._rust import RUST_AVAILABLE; assert RUST_AVAILABLE"
@@ -392,6 +398,10 @@ jobs:
       # uses the venv's packages for the build backend.
       - run: python3 -m venv .venv
       - run: .venv/bin/pip install "maturin>=1,<2"
+      # maturin's PEP 517 hooks shell out to the `maturin` binary, so
+      # .venv/bin must be on PATH for the build below (otherwise pip
+      # fails with FileNotFoundError: 'maturin').
+      - run: echo "$PWD/.venv/bin" >> "$GITHUB_PATH"
       - run: .venv/bin/pip install --no-build-isolation -e '.[dev]'
       - run: .venv/bin/maturin develop --release
       - run: .venv/bin/python -c "from peira._rust import RUST_AVAILABLE; assert RUST_AVAILABLE"

@@ -497,10 +497,18 @@ class TestReleaseRegistry(unittest.TestCase):
             self.assertTrue(any("append-only" in p for p in problems),
                             problems)
 
-    def test_repo_registry_starts_empty_and_valid(self):
+    def test_repo_registry_valid(self):
+        # The registry records shipped dataset releases (e.g.
+        # dataset-v2-2.5.1); it is append-only and must always verify
+        # clean. It is no longer empty.
         reg = registry_path(REPO_ROOT)
         self.assertTrue(reg.is_file())
-        self.assertEqual(load_releases(reg), [])
+        releases = load_releases(reg)
+        # The registry must not be empty: it records shipped releases.
+        self.assertTrue(releases)
+        for r in releases:
+            self.assertIn("tag", r)
+            self.assertIn("dataset_version", r)
         self.assertEqual(verify_releases(REPO_ROOT, reg), [])
 
 

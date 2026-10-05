@@ -617,7 +617,16 @@ class TestCacheState(unittest.TestCase):
         self.assertFalse(ok)
 
     def test_registry_accepts_complete_declared(self):
-        a = _artifact()
+        # 200 eligible results across 10 families (20 each): genuinely
+        # ranking-eligible, so the recomputation in
+        # qualifies_for_leaderboard agrees with the sealed flag
+        # (see 67e73db9).
+        from peira.artifacts import results_to_dicts
+        per_case = []
+        for fi in range(10):
+            for i in range(20):
+                per_case.append(_r(f"c{fi}-{i}", family=f"fam{fi}"))
+        a = _artifact(results=results_to_dicts(per_case))
         a.config["cache_enabled"] = False
         a.metrics["ranking_eligible"] = True
         a = a.seal()
