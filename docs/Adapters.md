@@ -207,6 +207,7 @@ One adapter per provider, one extra each. Install only what you need:
 | Mistral | `peira[openai]` | `peira.adapters.llm:MistralAdapter` | `mistral-large-2512` | `MISTRAL_API_KEY` |
 | Qwen (Alibaba) | `peira[openai]` | `peira.adapters.llm:QwenAdapter` | `qwen3.8-max` | `DASHSCOPE_API_KEY` |
 | OpenRouter gateway | `peira[openai]` | `peira.adapters.llm:OpenRouterAdapter` | `google/gemini-3.8-flash` | `OPENROUTER_API_KEY` |
+| OpenRouter gateway (tool calling) | `peira[openai]` | `peira.adapters.llm:OpenRouterToolAdapter` | `google/gemini-3.8-flash` | `OPENROUTER_API_KEY` |
 
 Default models are pinned per each vendor's versioning scheme
 (verified 2026-09-27 against the vendor docs, re-verified per
@@ -607,6 +608,27 @@ and the adapter's app-identification headers (`HTTP-Referer`,
 the model emitted no JSON object even after the repair retry, and no
 provider-side content-filter refusal was observed. Other model ids
 through the gateway remain unverified until smoke-tested.
+
+### OpenRouter gateway, tool-calling variant
+
+```bash
+pip install "peira[openai]"
+export OPENROUTER_API_KEY=<redacted>
+peira run --adapter 'peira.adapters.llm:OpenRouterToolAdapter(model="inclusionai/ling-3.0-flash")' --suite trial-demo
+```
+
+`OpenRouterToolAdapter` is the forced-tool-calling twin of
+`OpenRouterAdapter`: same gateway endpoint, auth, and app-identification
+headers, but the peira schema travels as a forced `peira_decision`
+function tool instead of `response_format` JSON schema. Some gateway
+models ignore the translated schema and answer in free text
+(`inclusionai/ling-3.0-flash` and `ling-3.0-flash-vl` ignored
+`response_format` on ~22% of trial calls in October 2026); forced tool
+calling is the vendor-blessed structured path for those models. The adapter name differs from
+`openrouter-structured` on purpose: the name is part of the runner's
+cache namespace, so tool-calling runs never share cache entries with
+`response_format` runs of the same model id. Live-unverified as of
+authoring: verify against the live API before any measured run.
 
 #### Cheap-model pilot set
 
