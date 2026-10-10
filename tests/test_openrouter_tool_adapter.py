@@ -28,7 +28,7 @@ from peira.adapters.llm import (
     SCHEMA_NAME,
     _RawResult,
 )
-from peira.adapters.base import CallContext
+from peira.adapters.base import CallContext, ProviderError
 
 
 # ---------------------------------------------------------------------------
@@ -184,7 +184,9 @@ class _ToolHarness(unittest.TestCase):
 
 class TestOpenRouterToolConstruction(_ToolHarness):
     def test_name_is_distinct(self):
-        self.assertEqual(OpenRouterToolAdapter.name, "openrouter-tool")
+        # The behavioral property that matters: the tool variant's
+        # cache namespace can never equal the response_format
+        # adapter's for the same model id.
         self.assertNotEqual(
             OpenRouterToolAdapter.name, OpenRouterAdapter.name)
 
@@ -243,9 +245,10 @@ class TestOpenRouterToolRequestShape(_ToolHarness):
         self.assertEqual(choice["type"], "function")
         self.assertEqual(choice["function"]["name"], SCHEMA_NAME)
 
-    def test_no_minimax_only_fields(self):
-        # "thinking" is MiniMax-specific; the plain OpenAI tool shape
-        # must not send it (an unknown field risks a 400).
+    def test_no_vendor_specific_fields(self):
+        # "thinking" is a vendor-specific reasoning field some APIs
+        # accept; the plain OpenAI tool-calling shape must not send it
+        # (an unknown field risks a 400).
         self.adapter().decide(CASE, "choice", _ctx())
         self.assertNotIn("thinking", self.calls[0])
 
@@ -285,6 +288,30 @@ class TestOpenRouterToolVerdict(_ToolHarness):
         self.assertEqual(out.decision, "approve")
         self.assertAlmostEqual(out.confidence, 0.73)
 
+    def test_preparsed_dict_arguments_accepted(self):
+        # Some gateway/SDK variants pre-parse tool arguments into a
+        # dict; the forced-tool verdict must not be silently dropped
+        # to the text fallback in that case.
+        args = {"decision": "deny", "confidence": 0.4, "reason": "risky"}
+        fn = SimpleNamespace(name=SCHEMA_NAME, arguments=args)
+        tc = SimpleNamespace(type="function", function=fn)
+        choice = SimpleNamespace(
+            message=SimpleNamespace(content="", tool_calls=[tc]),
+            finish_reason="stop",
+            logprobs=SimpleNamespace(content=[]),
+        )
+        resp = SimpleNamespace(
+            choices=[choice],
+            usage=SimpleNamespace(prompt_tokens=11, completion_tokens=22),
+        )
+        mod, _, _ = _make_openai([resp])
+        with _fake_modules({"openai": mod}), _env(OPENROUTER_API_KEY="<redacted>"):
+            out = OpenRouterToolAdapter(
+                model="inclusionai/ling-3.0-flash").decide(
+                    CASE, "choice", _ctx())
+        self.assertEqual(out.decision, "deny")
+        self.assertTrue(out.transcript["response"]["tool_call_parsed"])
+
     def test_text_fallback_when_no_tool_call(self):
         mod, calls, _ = _make_openai(
             [_openai_text_completion(json.dumps({
@@ -317,7 +344,6 @@ class TestOpenRouterToolVerdict(_ToolHarness):
         with _fake_modules({"openai": mod}), _env(OPENROUTER_API_KEY="k"):
             # No usable verdict anywhere: the text path has no JSON,
             # so the adapter raises after the repair attempt.
-            from peira.adapters.base import ProviderError
             with self.assertRaises(ProviderError):
                 OpenRouterToolAdapter(
                     model="inclusionai/ling-3.0-flash").decide(

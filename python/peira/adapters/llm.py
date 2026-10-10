@@ -1998,8 +1998,7 @@ class OpenRouterToolAdapter(OpenRouterAdapter):
 
     def _system_prompt(self, schema: dict[str, Any]) -> str:
         # The verdict travels as a forced tool call, but the schema is
-        # inlined in the system prompt anyway: the model sees the
-        # required
+        # inlined in the system prompt anyway: the model sees the required
         # keys, types, and decision enum before reading the tool
         # definition, so a tool-definition parsing quirk cannot
         # silently drop the contract.
@@ -2035,10 +2034,9 @@ class OpenRouterToolAdapter(OpenRouterAdapter):
             messages.append(
                 {"role": "user", "content": _OPENROUTER_TOOL_REPAIR_SUFFIX}
             )
+        kwargs = self._request_kwargs(messages, schema)
         try:
-            resp = self._client.chat.completions.create(
-                **self._request_kwargs(messages, schema)
-            )
+            resp = self._client.chat.completions.create(**kwargs)
         except self._sdk.APIStatusError as exc:
             raise _status_error(self._provider_label, exc) from exc
         except self._sdk.APITimeoutError as exc:
@@ -2066,9 +2064,11 @@ class OpenRouterToolAdapter(OpenRouterAdapter):
         message = choice.message
 
         # Forced-tool path: the verdict arrives pre-parsed in the
-        # tool-call arguments. The shared JSON extractor parses the
-        # arguments string; a model that answers in text instead falls
-        # through to the text path in _resolve.
+        # tool-call arguments. Arguments are a JSON string on the
+        # OpenAI SDK shape; accept an already-parsed dict too so a
+        # gateway/SDK variant that pre-parses does not silently fall
+        # through to the text path. A model that answers in text
+        # instead falls through to the text path in _resolve.
         parsed: dict[str, Any] | None = None
         for tc in getattr(message, "tool_calls", None) or []:
             fn = getattr(tc, "function", None)
@@ -2076,14 +2076,14 @@ class OpenRouterToolAdapter(OpenRouterAdapter):
                 continue
             if getattr(fn, "name", None) != SCHEMA_NAME:
                 continue
-            candidate = _extract_json(getattr(fn, "arguments", None) or "")
+            args = getattr(fn, "arguments", None) or ""
+            candidate = args if isinstance(args, dict) else _extract_json(args)
             if isinstance(candidate, dict):
                 parsed = candidate
                 break
 
         text = getattr(message, "content", None) or ""
         usage = getattr(resp, "usage", None)
-        sent = self._request_kwargs(messages, schema)
         return _RawResult(
             text=text,
             stop_reason=getattr(choice, "finish_reason", None),
@@ -2098,12 +2098,11 @@ class OpenRouterToolAdapter(OpenRouterAdapter):
                 "model": self._model,
                 "response_format": f"tool_call:{SCHEMA_NAME}:forced",
                 "temperature": self._temperature,
-                "max_tokens": sent.get("max_tokens"),
-                "max_completion_tokens": sent.get("max_completion_tokens"),
+                "max_tokens": kwargs.get("max_tokens"),
                 # Only the fields actually sent — read back from the
                 # kwargs rather than assuming.
-                "seed": sent.get("seed"),
-                "logprobs": sent.get("logprobs", False),
+                "seed": kwargs.get("seed"),
+                "logprobs": kwargs.get("logprobs", False),
                 "base_url": self._base_url,
             },
             response_shape={
@@ -2118,8 +2117,7 @@ class OpenRouterToolAdapter(OpenRouterAdapter):
     ) -> tuple[dict[str, Any] | None, list[str]]:
         obj, errors = super()._resolve(raw, schema)
         if obj is not None and errors:
-            # The
-            # 0-100 verbalized scale slip and the 'reason' key typos
+            # The 0-100 verbalized scale slip and the 'reason' key typos
             # are deterministic model quirks, not malformed responses.
             # Ling has not been observed with these yet; the repairs
             # are cheap, transcript-visible, and only fire when
