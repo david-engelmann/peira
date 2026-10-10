@@ -834,6 +834,58 @@ class TestGoogleShape(unittest.TestCase):
         retryable, _, _ = classify_exception(ctx.exception)
         self.assertTrue(retryable)
 
+    def test_429_body_retry_delay_parsed(self):
+        # Google puts the quota retry delay in the 429 BODY (RetryInfo),
+        # not the Retry-After header. The adapter must surface it so the
+        # runner waits the provider's requested delay instead of guessing.
+        # Shaped like the real genai APIError: parsed body on `.details`.
+        from peira.adapters.llm import _google_error
+        body = {"error": {"code": 429, "status": "RESOURCE_EXHAUSTED",
+                          "details": [{"@type": "type.googleapis.com/google.rpc.RetryInfo",
+                                       "retryDelay": "32s"}]}}
+        err = _FakeGoogleError("rate limited", code=429)
+        err.details = body
+        out = _google_error(err)
+        self.assertEqual(out.retry_after, 32.0)
+        retryable, _, retry_after = classify_exception(out)
+        self.assertTrue(retryable)
+        self.assertEqual(retry_after, 32.0)
+
+    def test_429_body_retry_delay_fractional(self):
+        from peira.adapters.llm import _parse_google_retry_delay
+        body = {"error": {"details": [{"retryDelay": "1.5s"}]}}
+        self.assertEqual(_parse_google_retry_delay(body), 1.5)
+
+    def test_429_header_beats_body(self):
+        from peira.adapters.llm import _google_error
+        body = {"error": {"details": [{"retryDelay": "32s"}]}}
+        err = _FakeGoogleError("rate limited", code=429)
+        err.details = body
+        err.headers = {"retry-after": "5"}
+        out = _google_error(err)
+        self.assertEqual(out.retry_after, 5.0)
+
+    def test_429_response_headers_used(self):
+        # Real genai APIError exposes the raw response as `.response`,
+        # not `.headers`. A fake shaped like it must still yield the
+        # header delay.
+        from peira.adapters.llm import _google_error
+        from types import SimpleNamespace
+        err = _FakeGoogleError("rate limited", code=429)
+        err.response = SimpleNamespace(headers={"retry-after": "7"})
+        out = _google_error(err)
+        self.assertEqual(out.retry_after, 7.0)
+
+    def test_429_body_retry_delay_absent_or_malformed(self):
+        from peira.adapters.llm import _parse_google_retry_delay
+        self.assertIsNone(_parse_google_retry_delay(None))
+        self.assertIsNone(_parse_google_retry_delay("not a dict"))
+        self.assertIsNone(_parse_google_retry_delay({"error": {}}))
+        self.assertIsNone(_parse_google_retry_delay(
+            {"error": {"details": [{"retryDelay": "soon"}]}}))
+        self.assertIsNone(_parse_google_retry_delay(
+            {"error": {"details": [{"retryDelay": "-3s"}]}}))
+
 
 # ---------------------------------------------------------------------------
 # Google auth transport contract.
