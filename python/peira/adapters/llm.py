@@ -1990,6 +1990,10 @@ class OpenRouterToolAdapter(OpenRouterAdapter):
                 "type": "function",
                 "function": {"name": SCHEMA_NAME},
             },
+            # A forced tool_choice does not limit the response to one
+            # call on its own; disable parallel calls so a second
+            # verdict cannot arrive silently beside the first.
+            "parallel_tool_calls": False,
             "temperature": self._temperature,
             "seed": self._seed,
             "logprobs": True,
@@ -2069,18 +2073,31 @@ class OpenRouterToolAdapter(OpenRouterAdapter):
         # gateway/SDK variant that pre-parses does not silently fall
         # through to the text path. A model that answers in text
         # instead falls through to the text path in _resolve.
+        #
+        # The contract is exactly one verdict call. More than one
+        # matching call is ambiguous no matter what the arguments say,
+        # so it is rejected outright: the runner's repair path retries
+        # the call rather than letting a silent first-wins choice
+        # poison the measurement.
         parsed: dict[str, Any] | None = None
+        seen = 0
         for tc in getattr(message, "tool_calls", None) or []:
             fn = getattr(tc, "function", None)
             if fn is None:
                 continue
             if getattr(fn, "name", None) != SCHEMA_NAME:
                 continue
+            seen += 1
+            if seen > 1:
+                raise ProviderError(
+                    f"{self._provider_label} returned {seen} "
+                    f"{SCHEMA_NAME} calls; exactly one verdict was requested",
+                    status_code=None,
+                )
             args = getattr(fn, "arguments", None) or ""
             candidate = args if isinstance(args, dict) else _extract_json(args)
             if isinstance(candidate, dict):
                 parsed = candidate
-                break
 
         text = getattr(message, "content", None) or ""
         usage = getattr(resp, "usage", None)

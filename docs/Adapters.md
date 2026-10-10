@@ -618,18 +618,31 @@ peira run --adapter 'peira.adapters.llm:OpenRouterToolAdapter(model="inclusionai
 ```
 
 `OpenRouterToolAdapter` is the forced-tool-calling twin of
-`OpenRouterAdapter`: same gateway endpoint, auth, and app-identification
-headers, but the peira schema travels as a forced `peira_decision`
-function tool instead of `response_format` JSON schema. Some gateway
-models ignore the translated schema and answer in free text
-(`inclusionai/ling-3.0-flash` and `inclusionai/ling-3.0-flash-vl` ignored
-`response_format` on ~22% of trial calls in October 2026); forced tool
-calling is the vendor-blessed structured path for those models. The adapter name differs from
-`openrouter-structured` on purpose: the name is part of the runner's
-cache namespace, so tool-calling runs never share cache entries with
-`response_format` runs of the same model id. Verified live 2026-10-10:
-10-case trial canaries passed for both `inclusionai/ling-3.0-flash`
-(10/10, 0 errors) and `inclusionai/ling-3.0-flash-vl` (10/10, 0 errors).
+`OpenRouterAdapter`. It uses the same gateway endpoint, auth, and
+app-identification headers. The peira schema travels as a forced
+`peira_decision` function tool instead of `response_format` JSON
+schema. Some gateway models ignore the translated schema and answer
+in free text. In October 2026, `inclusionai/ling-3.0-flash` and
+`inclusionai/ling-3.0-flash-vl` ignored `response_format` on about
+22% of trial calls. Forced tool calling is the vendor-blessed
+structured path for those models. The adapter name differs from
+`openrouter-structured` on purpose. The name is part of the runner's
+cache namespace. Tool-calling runs therefore never share cache
+entries with `response_format` runs of the same model id.
+
+The verdict mapping has two lossy points. When the model answers in
+text instead of calling the function, the shared JSON extractor
+parses the text as a fallback. When validation fails, two cheap
+repairs run before the repair retry. Confidence and score values on
+a 0-100 scale are divided by 100. The `rereason` and `re reason`
+key typos are aliased to `reason`. Both repairs only fire after a
+validation failure and are visible in the transcript.
+
+Live-verified 2026-10-10. Twenty calls (10-case trial canaries for
+`inclusionai/ling-3.0-flash` and `inclusionai/ling-3.0-flash-vl`,
+benign and attacked arms) returned 20 successes and 0 errors. Two
+attacked-arm errors on the VL canary were recovered through the
+repair path.
 
 #### Cheap-model pilot set
 

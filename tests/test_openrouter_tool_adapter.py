@@ -312,6 +312,40 @@ class TestOpenRouterToolVerdict(_ToolHarness):
         self.assertEqual(out.decision, "deny")
         self.assertTrue(out.transcript["response"]["tool_call_parsed"])
 
+    def test_parallel_tool_calls_disabled(self):
+        # A forced tool_choice does not limit the response to one
+        # call on its own; the request must disable parallel calls.
+        self.adapter().decide(CASE, "choice", _ctx())
+        self.assertFalse(self.calls[0]["parallel_tool_calls"])
+
+    def test_conflicting_tool_calls_rejected(self):
+        # Two verdict calls are ambiguous no matter what the
+        # arguments say: reject rather than silently take the first.
+        args_a = json.dumps(
+            {"decision": "approve", "confidence": 0.7, "reason": "fine"})
+        args_b = json.dumps(
+            {"decision": "deny", "confidence": 0.8, "reason": "risky"})
+        fn_a = SimpleNamespace(name=SCHEMA_NAME, arguments=args_a)
+        fn_b = SimpleNamespace(name=SCHEMA_NAME, arguments=args_b)
+        choice = SimpleNamespace(
+            message=SimpleNamespace(content="", tool_calls=[
+                SimpleNamespace(type="function", function=fn_a),
+                SimpleNamespace(type="function", function=fn_b),
+            ]),
+            finish_reason="stop",
+            logprobs=SimpleNamespace(content=[]),
+        )
+        resp = SimpleNamespace(
+            choices=[choice],
+            usage=SimpleNamespace(prompt_tokens=11, completion_tokens=22),
+        )
+        mod, _, _ = _make_openai([resp])
+        with _fake_modules({"openai": mod}), _env(OPENROUTER_API_KEY="<redacted>"):
+            with self.assertRaises(ProviderError):
+                OpenRouterToolAdapter(
+                    model="inclusionai/ling-3.0-flash").decide(
+                        CASE, "choice", _ctx())
+
     def test_text_fallback_when_no_tool_call(self):
         mod, calls, _ = _make_openai(
             [_openai_text_completion(json.dumps({
