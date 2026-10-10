@@ -466,7 +466,7 @@ def _parse_google_retry_delay(body: Any) -> float | None:
     Google returns quota retry timing in the response BODY
     (``error.details[].retryDelay``, protobuf Duration JSON like ``"32s"``),
     not just the ``Retry-After`` header. The genai SDK surfaces the parsed
-    body as ``response_json`` on APIError. Returns None when no usable
+    body as ``details`` on APIError. Returns None when no usable
     delay is present.
     """
     if not isinstance(body, dict):
@@ -502,15 +502,23 @@ def _google_error(exc: BaseException) -> ProviderError:
     429/5xx are transient and retried by the runner, everything else is
     terminal. Retry timing is read from the ``Retry-After`` header first,
     then from Google's response-body RetryInfo (``error.details[]``)
-    which is where the 429 quota delay actually lives.
+    which is where the 429 quota delay actually lives. The genai SDK
+    surfaces the parsed body as ``details`` on APIError (and the raw
+    response as ``response``); both are read defensively since other
+    error shapes may use ``response_json``/``headers``.
     """
     status = _coerce_int(getattr(exc, "status_code", None))
     if status is None:
         status = _coerce_int(getattr(exc, "code", None))
-    retry_after = _parse_retry_after(getattr(exc, "headers", None))
+    headers = getattr(exc, "headers", None)
+    if headers is None:
+        headers = getattr(getattr(exc, "response", None), "headers", None)
+    retry_after = _parse_retry_after(headers)
     if retry_after is None:
-        retry_after = _parse_google_retry_delay(
-            getattr(exc, "response_json", None))
+        body = getattr(exc, "details", None)
+        if body is None:
+            body = getattr(exc, "response_json", None)
+        retry_after = _parse_google_retry_delay(body)
     return ProviderError(
         f"Google API error: {exc}",
         status_code=status,
