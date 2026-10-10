@@ -4,15 +4,15 @@
 tool calling instead of ``response_format`` JSON schema, for gateway
 models that ignore the translated schema and answer in free text
 (observed 2026-10-09: ``inclusionai/ling-3.0-flash`` and
-``ling-3.0-flash-vl`` ignored ``response_format`` on ~22% of trial
-calls). The ``openai`` SDK is faked in sys.modules: no API keys, no
-network.
+``inclusionai/ling-3.0-flash-vl`` ignored ``response_format`` on ~22%
+of trial calls). The ``openai`` SDK is faked in sys.modules: no API
+keys, no network.
 
 The fakes record exact client-construction kwargs and request payloads
 so the tests can assert the forced tool-call shape, the tool-choice
 pin, the pre-parsed verdict path, the text fallback, and the
-_MiniMax-style _resolve repairs (0-100 scale normalization and the
-``reason`` key typos).
+verdict repairs (0-100 scale normalization and the ``reason`` key
+typos).
 """
 
 import json

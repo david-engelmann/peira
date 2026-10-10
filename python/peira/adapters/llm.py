@@ -1943,7 +1943,7 @@ class OpenRouterToolAdapter(OpenRouterAdapter):
     peira schema travels as a forced function tool instead of
     ``response_format`` JSON schema. Some gateway models ignore the
     translated schema and answer in free text (observed 2026-10-09:
-    ``inclusionai/ling-3.0-flash`` and ``ling-3.0-flash-vl`` ignored
+    ``inclusionai/ling-3.0-flash`` and ``inclusionai/ling-3.0-flash-vl`` ignored
     ``response_format`` on ~22% of trial calls, surfacing as "No JSON
     object found"); forced tool calling is the vendor-blessed
     structured path for those models.

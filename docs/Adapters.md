@@ -622,14 +622,14 @@ peira run --adapter 'peira.adapters.llm:OpenRouterToolAdapter(model="inclusionai
 headers, but the peira schema travels as a forced `peira_decision`
 function tool instead of `response_format` JSON schema. Some gateway
 models ignore the translated schema and answer in free text
-(`inclusionai/ling-3.0-flash` and `ling-3.0-flash-vl` ignored
+(`inclusionai/ling-3.0-flash` and `inclusionai/ling-3.0-flash-vl` ignored
 `response_format` on ~22% of trial calls in October 2026); forced tool
 calling is the vendor-blessed structured path for those models. The adapter name differs from
 `openrouter-structured` on purpose: the name is part of the runner's
 cache namespace, so tool-calling runs never share cache entries with
 `response_format` runs of the same model id. Verified live 2026-10-10:
 10-case trial canaries passed for both `inclusionai/ling-3.0-flash`
-(10/10, 0 errors) and `ling-3.0-flash-vl` (10/10, 0 errors).
+(10/10, 0 errors) and `inclusionai/ling-3.0-flash-vl` (10/10, 0 errors).
 
 #### Cheap-model pilot set
 
