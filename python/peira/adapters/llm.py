@@ -460,20 +460,61 @@ def _status_error(provider: str, exc: BaseException) -> ProviderError:
     )
 
 
+def _parse_google_retry_delay(body: Any) -> float | None:
+    """Extract Google's RetryInfo retryDelay from a 429 response body.
+
+    Google returns quota retry timing in the response BODY
+    (``error.details[].retryDelay``, protobuf Duration JSON like ``"32s"``),
+    not just the ``Retry-After`` header. The genai SDK surfaces the parsed
+    body as ``response_json`` on APIError. Returns None when no usable
+    delay is present.
+    """
+    if not isinstance(body, dict):
+        return None
+    err = body.get("error")
+    if not isinstance(err, dict):
+        return None
+    details = err.get("details")
+    if not isinstance(details, list):
+        return None
+    for item in details:
+        if not isinstance(item, dict):
+            continue
+        raw = item.get("retryDelay")
+        if not isinstance(raw, str):
+            continue
+        text = raw.strip()
+        if text.endswith("s"):
+            text = text[:-1]
+        try:
+            delay = float(text)
+        except ValueError:
+            continue
+        if delay >= 0:
+            return delay
+    return None
+
+
 def _google_error(exc: BaseException) -> ProviderError:
     """Duck-typed mapping for google-genai / google-api-core errors.
 
     Status is read from ``status_code`` (genai) or ``code`` (api-core);
     429/5xx are transient and retried by the runner, everything else is
-    terminal.
+    terminal. Retry timing is read from the ``Retry-After`` header first,
+    then from Google's response-body RetryInfo (``error.details[]``)
+    which is where the 429 quota delay actually lives.
     """
     status = _coerce_int(getattr(exc, "status_code", None))
     if status is None:
         status = _coerce_int(getattr(exc, "code", None))
+    retry_after = _parse_retry_after(getattr(exc, "headers", None))
+    if retry_after is None:
+        retry_after = _parse_google_retry_delay(
+            getattr(exc, "response_json", None))
     return ProviderError(
         f"Google API error: {exc}",
         status_code=status,
-        retry_after=_parse_retry_after(getattr(exc, "headers", None)),
+        retry_after=retry_after,
     )
 
 
