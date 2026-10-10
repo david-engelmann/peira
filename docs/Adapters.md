@@ -207,6 +207,7 @@ One adapter per provider, one extra each. Install only what you need:
 | Mistral | `peira[openai]` | `peira.adapters.llm:MistralAdapter` | `mistral-large-2512` | `MISTRAL_API_KEY` |
 | Qwen (Alibaba) | `peira[openai]` | `peira.adapters.llm:QwenAdapter` | `qwen3.8-max` | `DASHSCOPE_API_KEY` |
 | OpenRouter gateway | `peira[openai]` | `peira.adapters.llm:OpenRouterAdapter` | `google/gemini-3.8-flash` | `OPENROUTER_API_KEY` |
+| OpenRouter gateway (tool calling) | `peira[openai]` | `peira.adapters.llm:OpenRouterToolAdapter` | `google/gemini-3.8-flash` | `OPENROUTER_API_KEY` |
 
 Default models are pinned per each vendor's versioning scheme
 (verified 2026-09-27 against the vendor docs, re-verified per
@@ -607,6 +608,41 @@ and the adapter's app-identification headers (`HTTP-Referer`,
 the model emitted no JSON object even after the repair retry, and no
 provider-side content-filter refusal was observed. Other model ids
 through the gateway remain unverified until smoke-tested.
+
+### OpenRouter gateway, tool-calling variant
+
+```bash
+pip install "peira[openai]"
+export OPENROUTER_API_KEY=<redacted>
+peira run --adapter 'peira.adapters.llm:OpenRouterToolAdapter(model="inclusionai/ling-3.0-flash")' --suite trial-demo
+```
+
+`OpenRouterToolAdapter` is the forced-tool-calling twin of
+`OpenRouterAdapter`. It uses the same gateway endpoint, auth, and
+app-identification headers. The peira schema travels as a forced
+`peira_decision` function tool instead of `response_format` JSON
+schema. Some gateway models ignore the translated schema and answer
+in free text. In October 2026, `inclusionai/ling-3.0-flash` and
+`inclusionai/ling-3.0-flash-vl` ignored `response_format` on about
+22% of trial calls. Forced tool calling is the vendor-blessed
+structured path for those models. The adapter name differs from
+`openrouter-structured` on purpose. The name is part of the runner's
+cache namespace. Tool-calling runs therefore never share cache
+entries with `response_format` runs of the same model id.
+
+The verdict mapping has two lossy points. When the model answers in
+text instead of calling the function, the shared JSON extractor
+parses the text as a fallback. When validation fails, two cheap
+repairs run before the repair retry. Confidence and score values on
+a 0-100 scale are divided by 100. The `rereason` and `re reason`
+key typos are aliased to `reason`. Both repairs only fire after a
+validation failure and are visible in the transcript.
+
+Live-verified 2026-10-10. Twenty calls (10-case trial canaries for
+`inclusionai/ling-3.0-flash` and `inclusionai/ling-3.0-flash-vl`,
+benign and attacked arms) returned 20 successes and 0 errors. Two
+attacked-arm errors on the VL canary were recovered through the
+repair path.
 
 #### Cheap-model pilot set
 

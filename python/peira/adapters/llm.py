@@ -114,6 +114,7 @@ __all__ = [
     "MistralAdapter",
     "QwenAdapter",
     "OpenRouterAdapter",
+    "OpenRouterToolAdapter",
 ]
 
 # ---------------------------------------------------------------------------
@@ -1917,6 +1918,245 @@ class OpenRouterAdapter(OpenAIAdapter):
         # not the host it was sent to — record it for traceability.
         raw.request_shape["base_url"] = self._base_url
         return raw
+
+
+# ---------------------------------------------------------------------------
+# OpenRouter tool-calling variant — for gateway models that ignore
+# response_format JSON schema.
+# ---------------------------------------------------------------------------
+
+# Repair nudge for the forced-tool path. The base REPAIR_SUFFIX
+# ("Return ONLY the JSON object.") assumes a text-JSON contract; here
+# the verdict travels as tool-call arguments, so the nudge names the
+# function instead. (Same forced-tool repair-nudge pattern.)
+_OPENROUTER_TOOL_REPAIR_SUFFIX = (
+    "Your previous response was invalid. Call the peira_decision "
+    "function with the corrected verdict arguments."
+)
+
+
+class OpenRouterToolAdapter(OpenRouterAdapter):
+    """Forced tool calling through the OpenRouter gateway.
+
+    Same transport, auth, and endpoint as ``OpenRouterAdapter`` — the
+    OpenAI SDK against ``https://openrouter.ai/api/v1`` — but the
+    peira schema travels as a forced function tool instead of
+    ``response_format`` JSON schema. Some gateway models ignore the
+    translated schema and answer in free text (observed 2026-10-09:
+    ``inclusionai/ling-3.0-flash`` and ``inclusionai/ling-3.0-flash-vl`` ignored
+    ``response_format`` on ~22% of trial calls, surfacing as "No JSON
+    object found"); forced tool calling is the vendor-blessed
+    structured path for those models.
+
+    ``name`` differs from ``openrouter-structured`` on purpose: the
+    name is part of the runner's cache namespace, so tool-calling
+    runs never share cache entries with response_format runs of the
+    same model id.
+    """
+
+    name = "openrouter-tool"
+
+    def _request_kwargs(
+        self, messages: list[dict[str, str]], schema: dict[str, Any]
+    ) -> dict[str, Any]:
+        """Build the ``chat.completions.create`` kwargs.
+
+        The peira schema travels as a forced function tool, not
+        ``response_format``: the Ling models do not reliably honor the
+        gateway-translated JSON schema, while tool calling is the
+        vendor-blessed structured path. ``seed`` and ``logprobs`` ride
+        along as OpenRouter documents both as supported. No
+        model-specific extra fields — this is the plain
+        OpenAI tool-calling shape.
+        """
+        return {
+            "model": self._model,
+            "messages": messages,
+            "tools": [
+                {
+                    "type": "function",
+                    "function": {
+                        "name": SCHEMA_NAME,
+                        "description": (
+                            "Record the decision verdict for the case. "
+                            "Call this function exactly once with the "
+                            "verdict arguments."
+                        ),
+                        "parameters": schema,
+                    },
+                }
+            ],
+            "tool_choice": {
+                "type": "function",
+                "function": {"name": SCHEMA_NAME},
+            },
+            # A forced tool_choice does not limit the response to one
+            # call on its own; disable parallel calls so a second
+            # verdict cannot arrive silently beside the first.
+            "parallel_tool_calls": False,
+            "temperature": self._temperature,
+            "seed": self._seed,
+            "logprobs": True,
+            "max_tokens": self._max_tokens,
+        }
+
+    def _system_prompt(self, schema: dict[str, Any]) -> str:
+        # The verdict travels as a forced tool call, but the schema is
+        # inlined in the system prompt anyway: the model sees the required
+        # keys, types, and decision enum before reading the tool
+        # definition, so a tool-definition parsing quirk cannot
+        # silently drop the contract.
+        props = schema.get("properties", {}) or {}
+        required = schema.get("required", []) or []
+        parts = [
+            "You are a decision classifier. "
+            "Call the peira_decision function exactly once with your verdict. "
+            "Do not output any other text. "
+            "The function arguments MUST contain exactly these keys:"
+        ]
+        for key in required:
+            ptype = props.get(key, {}).get("type", "string")
+            desc = f'"{key}" ({ptype})'
+            if key == "decision" and "enum" in props.get(key, {}):
+                desc += f", one of: {props[key]['enum']}"
+            if key in ("confidence", "score"):
+                desc += ", a number between 0 and 1"
+            parts.append(f"- {desc}")
+        return " ".join(parts)
+
+    def _request(
+        self, user_text: str, schema: dict[str, Any], repair: bool,
+        prior_text: str | None = None,
+    ) -> _RawResult:
+        messages = [
+            {"role": "system", "content": self._system_prompt(schema)},
+            {"role": "user", "content": user_text},
+        ]
+        if repair:
+            # The base REPAIR_SUFFIX assumes a text-JSON contract;
+            # here the verdict travels as tool-call arguments.
+            messages.append(
+                {"role": "user", "content": _OPENROUTER_TOOL_REPAIR_SUFFIX}
+            )
+        kwargs = self._request_kwargs(messages, schema)
+        try:
+            resp = self._client.chat.completions.create(**kwargs)
+        except self._sdk.APIStatusError as exc:
+            raise _status_error(self._provider_label, exc) from exc
+        except self._sdk.APITimeoutError as exc:
+            # A timeout has no status; 408 keeps it retryable for the runner.
+            raise ProviderError(
+                f"{self._provider_label} request timed out: {exc}",
+                status_code=408,
+            ) from exc
+        except self._sdk.APIConnectionError as exc:
+            # Builtin ConnectionError is retryable per
+            # peira.concurrency.classify_exception; wrapping it in
+            # ProviderError(status_code=None) would wrongly make it
+            # terminal.
+            raise ConnectionError(
+                f"{self._provider_label} connection failed: {exc}"
+            ) from exc
+
+        choices = getattr(resp, "choices", None) or []
+        if not choices:
+            raise ProviderError(
+                f"{self._provider_label} returned no choices",
+                status_code=None,
+            )
+        choice = choices[0]
+        message = choice.message
+
+        # Forced-tool path: the verdict arrives pre-parsed in the
+        # tool-call arguments. Arguments are a JSON string on the
+        # OpenAI SDK shape; accept an already-parsed dict too so a
+        # gateway/SDK variant that pre-parses does not silently fall
+        # through to the text path. A model that answers in text
+        # instead falls through to the text path in _resolve.
+        #
+        # The contract is exactly one verdict call. More than one
+        # matching call is ambiguous no matter what the arguments say,
+        # so it is rejected outright: the runner's repair path retries
+        # the call rather than letting a silent first-wins choice
+        # poison the measurement.
+        parsed: dict[str, Any] | None = None
+        seen = 0
+        for tc in getattr(message, "tool_calls", None) or []:
+            fn = getattr(tc, "function", None)
+            if fn is None:
+                continue
+            if getattr(fn, "name", None) != SCHEMA_NAME:
+                continue
+            seen += 1
+            if seen > 1:
+                raise ProviderError(
+                    f"{self._provider_label} returned {seen} "
+                    f"{SCHEMA_NAME} calls; exactly one verdict was requested",
+                    status_code=None,
+                )
+            args = getattr(fn, "arguments", None) or ""
+            candidate = args if isinstance(args, dict) else _extract_json(args)
+            if isinstance(candidate, dict):
+                parsed = candidate
+
+        text = getattr(message, "content", None) or ""
+        usage = getattr(resp, "usage", None)
+        return _RawResult(
+            text=text,
+            stop_reason=getattr(choice, "finish_reason", None),
+            # Pre-parsed verdict from the forced tool call; None when
+            # the model answered in text (the _resolve text path).
+            parsed=parsed,
+            tokens_in=int(getattr(usage, "prompt_tokens", 0) or 0),
+            tokens_out=int(getattr(usage, "completion_tokens", 0) or 0),
+            logprob_tokens=choice,
+            request_shape={
+                "endpoint": "chat.completions.create",
+                "model": self._model,
+                "response_format": f"tool_call:{SCHEMA_NAME}:forced",
+                "temperature": self._temperature,
+                "max_tokens": kwargs.get("max_tokens"),
+                # Only the fields actually sent — read back from the
+                # kwargs rather than assuming.
+                "seed": kwargs.get("seed"),
+                "logprobs": kwargs.get("logprobs", False),
+                "base_url": self._base_url,
+            },
+            response_shape={
+                "finish_reason": getattr(choice, "finish_reason", None),
+                "tool_call_parsed": parsed is not None,
+                "text": text[:4000],
+            },
+        )
+
+    def _resolve(
+        self, raw: _RawResult, schema: dict[str, Any]
+    ) -> tuple[dict[str, Any] | None, list[str]]:
+        obj, errors = super()._resolve(raw, schema)
+        if obj is not None and errors:
+            # The 0-100 verbalized scale slip and the 'reason' key typos
+            # are deterministic model quirks, not malformed responses.
+            # Ling has not been observed with these yet; the repairs
+            # are cheap, transcript-visible, and only fire when
+            # validation already failed.
+            #
+            # Both repairs compose: either repair (or both) triggers a
+            # re-validation, so a typo-only repair is not dropped.
+            repaired = dict(obj)
+            for typo in ("rereason", "re reason"):
+                if typo in repaired and "reason" not in repaired:
+                    repaired["reason"] = repaired[typo]
+                    # Keep the typo key out of the validated object;
+                    # unknown keys are tolerated but the transcript
+                    # stays clean.
+                    del repaired[typo]
+                    break
+            repaired = _normalize_verbalized_scales(repaired)
+            if repaired != obj:
+                repaired_errors = _validate_schema_object(repaired, schema)
+                if not repaired_errors:
+                    return repaired, repaired_errors
+        return obj, errors
 
 
 # ---------------------------------------------------------------------------
