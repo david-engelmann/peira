@@ -155,8 +155,13 @@ def _make_google(script):
             configs.append(kwargs)
             self.kwargs = kwargs
 
+    class _ThinkingConfig:
+        def __init__(self, **kwargs):
+            self.kwargs = kwargs
+
     types_mod = ModuleType("google.genai.types")
     types_mod.GenerateContentConfig = _Config
+    types_mod.ThinkingConfig = _ThinkingConfig
 
     class _Models:
         def generate_content(self, **kwargs):
@@ -819,6 +824,17 @@ class TestGoogleShape(unittest.TestCase):
         self.assertEqual(self.configs[0]["seed"], 0)
         self.assertEqual(self.calls[0]["model"], "gemini-3.8-flash")
 
+    def test_thinking_disabled(self):
+        # Evaluation design: thinking is off by construction, since
+        # reasoning traces must not leak into the decision channel (same
+        # rule as DeepSeekAdapter and QwenAdapter). With thinking on,
+        # gemini-3.8-flash intermittently spent the whole
+        # max_output_tokens budget on thought and truncated the JSON
+        # answer into a MAX_TOKENS finish (v2 trial: ~10-22% malformed).
+        GoogleAdapter().decide(CASE, "choice", _ctx())
+        thinking = self.configs[0]["thinking_config"]
+        self.assertEqual(thinking.kwargs["thinking_budget"], 0)
+
     def test_safety_finish_reason_abstains(self):
         self.script[0] = _genai_response("", finish_reason="SAFETY")
         out = GoogleAdapter().decide(CASE, "choice", _ctx())
@@ -885,6 +901,21 @@ class TestGoogleShape(unittest.TestCase):
             {"error": {"details": [{"retryDelay": "soon"}]}}))
         self.assertIsNone(_parse_google_retry_delay(
             {"error": {"details": [{"retryDelay": "-3s"}]}}))
+
+    def test_thinking_config_sdk_floor(self):
+        # GoogleAdapter passes ThinkingConfig(thinking_budget=0) on every
+        # call. thinking_budget landed in google-genai 1.10.0; on older
+        # 1.x the constructor raises pydantic ValidationError (the SDK
+        # forbids extra fields), which decide() does not catch. The
+        # peira[google] floor must stay at or above 1.10.
+        import re
+        from pathlib import Path
+        pyproject = Path(__file__).resolve().parent.parent / "pyproject.toml"
+        m = re.search(r'^google\s*=\s*\[\s*"google-genai>=([^"]+)"',
+                      pyproject.read_text(), re.M)
+        self.assertIsNotNone(m, "google extra pin not found in pyproject.toml")
+        floor = tuple(int(p) for p in m.group(1).split("."))
+        self.assertGreaterEqual(floor, (1, 10))
 
 
 # ---------------------------------------------------------------------------

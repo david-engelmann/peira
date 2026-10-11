@@ -34,7 +34,8 @@ hf = ["transformers>=4.40,<5", "torch>=2.2"]
 # (python/peira/adapters/llm.py).
 openai = ["openai>=1.40"]
 anthropic = ["anthropic>=0.77.0"]
-google = ["google-genai>=1.0"]
+google = ["google-genai>=1.10"]  # ThinkingConfig.thinking_budget landed in 1.10;
+# GoogleAdapter disables thinking on every call and needs it.
 all = ["peira[hf]", "peira[openai]", "peira[anthropic]", "peira[google]"]
 # Development and test tooling. The Python suite runs under pytest
 # (unittest.TestCase classes are discovered natively); pytest-xdist
