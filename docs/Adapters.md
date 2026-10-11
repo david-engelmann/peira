@@ -279,6 +279,19 @@ the transport layer ("Server disconnected"). The
 against the installed SDK. It does not verify the connector
 registration itself.
 
+### Google thinking disabled
+
+`GoogleAdapter` sends `thinking_config=ThinkingConfig(thinking_budget=0)`
+on every call. Thinking is off by construction, per the evaluation
+design: reasoning traces must not leak into the decision channel (the
+same rule `DeepSeekAdapter` and `QwenAdapter` enforce). It is also a
+reliability fix: with thinking on, `gemini-3.8-flash` intermittently
+spent the whole `max_output_tokens` budget on thought — thinking tokens
+count toward the cap in the Gemini API — and truncated the JSON answer
+into a `MAX_TOKENS` finish, which the v2 trial measured as a ~10-22%
+malformed rate before the halt. The budget is recorded in the
+transcript's `request_shape` as `thinking_budget: 0`.
+
 ### Anthropic pin reconciliation (D3, 2026-09-30)
 
 D3 asked whether the Anthropic baseline should be `claude-sonnet-5`,

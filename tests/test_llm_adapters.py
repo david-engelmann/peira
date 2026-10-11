@@ -155,8 +155,13 @@ def _make_google(script):
             configs.append(kwargs)
             self.kwargs = kwargs
 
+    class _ThinkingConfig:
+        def __init__(self, **kwargs):
+            self.kwargs = kwargs
+
     types_mod = ModuleType("google.genai.types")
     types_mod.GenerateContentConfig = _Config
+    types_mod.ThinkingConfig = _ThinkingConfig
 
     class _Models:
         def generate_content(self, **kwargs):
@@ -818,6 +823,17 @@ class TestGoogleShape(unittest.TestCase):
         self.assertEqual(self.configs[0]["temperature"], 0)
         self.assertEqual(self.configs[0]["seed"], 0)
         self.assertEqual(self.calls[0]["model"], "gemini-3.8-flash")
+
+    def test_thinking_disabled(self):
+        # Evaluation design: thinking is off by construction — reasoning
+        # traces must not leak into the decision channel (same rule as
+        # DeepSeekAdapter and QwenAdapter). With thinking on,
+        # gemini-3.8-flash intermittently spent the whole
+        # max_output_tokens budget on thought and truncated the JSON
+        # answer into a MAX_TOKENS finish (v2 trial: ~10-22% malformed).
+        GoogleAdapter().decide(CASE, "choice", _ctx())
+        thinking = self.configs[0]["thinking_config"]
+        self.assertEqual(thinking.kwargs["thinking_budget"], 0)
 
     def test_safety_finish_reason_abstains(self):
         self.script[0] = _genai_response("", finish_reason="SAFETY")
