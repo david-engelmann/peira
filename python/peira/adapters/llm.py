@@ -2507,11 +2507,11 @@ class GoogleAdapter(_StructuredLLMBase):
     registration itself, which lives outside this repo.
 
     Thinking contract: thinking is DISABLED (``thinking_budget=0``) on
-    every call, per the evaluation design — reasoning traces must not
-    leak into the decision channel (same rule as DeepSeekAdapter and
-    QwenAdapter). With thinking on, gemini-3.8-flash intermittently
-    spent the whole ``max_output_tokens`` budget on thought and
-    truncated the JSON answer into a MAX_TOKENS finish.
+    every call. The evaluation design requires it, since reasoning
+    traces must not leak into the decision channel (same rule as
+    DeepSeekAdapter and QwenAdapter). With thinking on, gemini-3.8-flash
+    intermittently spent the whole ``max_output_tokens`` budget on
+    thought and truncated the JSON answer into a MAX_TOKENS finish.
     """
 
     name = "google-structured"
@@ -2571,13 +2571,10 @@ class GoogleAdapter(_StructuredLLMBase):
         # (HTTP 400 INVALID_ARGUMENT). Strip it recursively; the shared
         # SCHEMA_TEMPLATE keeps it for OpenAI strict mode.
         google_schema = _strip_additional_properties(schema)
-        # Thinking is DISABLED (budget 0) per the evaluation design —
-        # reasoning traces must not leak into the decision channel, the
-        # same rule DeepSeekAdapter and QwenAdapter enforce. It also
-        # keeps thinking tokens from consuming max_output_tokens: with
-        # thinking on, gemini-3.8-flash intermittently spent the whole
-        # 512-token budget on thought and truncated the JSON answer into
-        # a MAX_TOKENS finish (v2 trial, ~10-22% malformed rate).
+        # Thinking is DISABLED (budget 0). See the class docstring: the
+        # evaluation design keeps reasoning traces out of the decision
+        # channel, and thinking tokens would otherwise consume
+        # max_output_tokens and truncate the JSON answer.
         config = genai.types.GenerateContentConfig(
             system_instruction=SYSTEM_PROMPT,
             response_mime_type="application/json",

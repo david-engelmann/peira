@@ -825,9 +825,9 @@ class TestGoogleShape(unittest.TestCase):
         self.assertEqual(self.calls[0]["model"], "gemini-3.8-flash")
 
     def test_thinking_disabled(self):
-        # Evaluation design: thinking is off by construction — reasoning
-        # traces must not leak into the decision channel (same rule as
-        # DeepSeekAdapter and QwenAdapter). With thinking on,
+        # Evaluation design: thinking is off by construction, since
+        # reasoning traces must not leak into the decision channel (same
+        # rule as DeepSeekAdapter and QwenAdapter). With thinking on,
         # gemini-3.8-flash intermittently spent the whole
         # max_output_tokens budget on thought and truncated the JSON
         # answer into a MAX_TOKENS finish (v2 trial: ~10-22% malformed).
