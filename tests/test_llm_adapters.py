@@ -902,6 +902,21 @@ class TestGoogleShape(unittest.TestCase):
         self.assertIsNone(_parse_google_retry_delay(
             {"error": {"details": [{"retryDelay": "-3s"}]}}))
 
+    def test_thinking_config_sdk_floor(self):
+        # GoogleAdapter passes ThinkingConfig(thinking_budget=0) on every
+        # call. thinking_budget landed in google-genai 1.10.0; on older
+        # 1.x the constructor raises pydantic ValidationError (the SDK
+        # forbids extra fields), which decide() does not catch. The
+        # peira[google] floor must stay at or above 1.10.
+        import re
+        from pathlib import Path
+        pyproject = Path(__file__).resolve().parent.parent / "pyproject.toml"
+        m = re.search(r'^google\s*=\s*\[\s*"google-genai>=([^"]+)"',
+                      pyproject.read_text(), re.M)
+        self.assertIsNotNone(m, "google extra pin not found in pyproject.toml")
+        floor = tuple(int(p) for p in m.group(1).split("."))
+        self.assertGreaterEqual(floor, (1, 10))
+
 
 # ---------------------------------------------------------------------------
 # Google auth transport contract.
