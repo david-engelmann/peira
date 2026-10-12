@@ -28,7 +28,7 @@ from peira.adapters.llm import (
     SCHEMA_NAME,
     _RawResult,
 )
-from peira.adapters.base import CallContext, ProviderError
+from peira.adapters.base import CallContext, ProviderError, validate_output
 
 
 # ---------------------------------------------------------------------------
@@ -373,15 +373,25 @@ class TestOpenRouterToolVerdict(_ToolHarness):
         )
         # Two scripted responses: the initial call and the repair
         # attempt. Both carry the wrong function name and no usable
-        # text, so the adapter raises after the repair attempt.
+        # text, so no attempt yields a verdict.
         mod, _, _ = _make_openai([resp, resp])
         with _fake_modules({"openai": mod}), _env(OPENROUTER_API_KEY="k"):
-            # No usable verdict anywhere: the text path has no JSON,
-            # so the adapter raises after the repair attempt.
-            with self.assertRaises(ProviderError):
-                OpenRouterToolAdapter(
-                    model="inclusionai/ling-3.0-flash").decide(
-                        CASE, "choice", _ctx())
+            # No usable verdict anywhere: the text path has no JSON.
+            # Double validation failure is measured model behavior, so
+            # decide() returns a malformed output (one validate_output
+            # flags) instead of raising ProviderError.
+            out = OpenRouterToolAdapter(
+                model="inclusionai/ling-3.0-flash").decide(
+                    CASE, "choice", _ctx())
+        self.assertEqual(out.decision, "")
+        self.assertFalse(out.abstained)
+        self.assertIsNone(out.confidence)
+        self.assertIn(
+            "non-abstained output must have a non-empty decision",
+            validate_output(out, "choice"))
+        # Usage sums both attempts (1 in / 1 out per scripted call).
+        self.assertEqual(out.usage.tokens_in, 2)
+        self.assertEqual(out.usage.tokens_out, 2)
 
     def test_repair_uses_tool_nudge_not_json_nudge(self):
         bad = _openai_text_completion("not json at all")
