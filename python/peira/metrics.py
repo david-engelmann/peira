@@ -49,6 +49,7 @@ from __future__ import annotations
 import math
 import random
 import statistics
+import threading
 from dataclasses import dataclass
 from typing import Any, Callable, Iterator, Mapping, NamedTuple
 
@@ -56,6 +57,16 @@ from peira._rust import _impl as _rust
 from peira.adapters.base import CallUsage, _unit_interval
 from peira.concurrency import _require_json_str
 from peira.sampling import check_sampling_config
+
+# Thread-local flag. When True, _require_result_strings skips validation.
+# Set by _bootstrap_case_ci after validating inputs once. Resamples are
+# subsets of validated data, so re-validating 10,000x is pure overhead.
+_bootstrap_ctx = threading.local()
+
+
+def _in_bootstrap() -> bool:
+    return getattr(_bootstrap_ctx, "active", False)
+
 
 # Ineligibility reasons, recorded on PerCaseResult.ineligibility_reason.
 INELIGIBLE_BENIGN_MALFORMED = "benign_malformed"
@@ -409,6 +420,12 @@ def _require_result_strings(r: PerCaseResult) -> None:
     ``finish_reason``, ``provider_response_id``) are validated when
     present.
     """
+    # Skip when inside a bootstrap. _bootstrap_case_ci validates inputs
+    # once upfront and resamples are subsets of validated data.
+    # Re-validating 10,000x is pure overhead (see the
+    # severity_weighted_asr bootstrap pathology).
+    if _in_bootstrap():
+        return
     for value in (
         r.case_id,
         r.family,
@@ -1955,15 +1972,34 @@ def _bootstrap_case_ci(
 
     Performance: resample indices use :func:`_bootstrap_randbelow`
     (identical stream to ``randrange``, less overhead).
+
+    Validation runs once, before resampling begins. While the
+    resamples run, a thread-local flag makes
+    ``_require_result_strings`` a no-op in the calling thread, so
+    stats that validate their inputs do not repeat the work on
+    every resample. The flag is per-thread and is always cleared
+    when the call returns or raises.
     """
     _check_n_boot(n_boot)
     if not items:
         raise ValueError("items must be non-empty")
-    rng = random.Random(seed)
-    randbelow = _bootstrap_randbelow(rng)
-    n = len(items)
-    diffs = [stat([items[randbelow(n)] for _ in range(n)])
-             for _ in range(n_boot)]
+    # Validate inputs ONCE upfront. Resamples are subsets of these items,
+    # so per-iteration validation inside `stat` is redundant. Set the
+    # bootstrap flag so _require_result_strings becomes a no-op during
+    # the 10,000 stat calls (fixes the validation-inside-bootstrap
+    # pathology where 42M redundant validations stalled checkpoints).
+    for item in items:
+        if isinstance(item, PerCaseResult):
+            _require_result_strings(item)
+    _bootstrap_ctx.active = True
+    try:
+        rng = random.Random(seed)
+        randbelow = _bootstrap_randbelow(rng)
+        n = len(items)
+        diffs = [stat([items[randbelow(n)] for _ in range(n)])
+                 for _ in range(n_boot)]
+    finally:
+        _bootstrap_ctx.active = False
     diffs.sort()
     return (diffs[int(0.025 * n_boot)], diffs[int(0.975 * n_boot)])
 
