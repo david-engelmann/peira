@@ -20,6 +20,7 @@ from types import ModuleType, SimpleNamespace
 from peira.adapters.llm import (
     DeepSeekAdapter,
     MetaLlamaAdapter,
+    MiniMaxAdapter,
     OpenAIAdapter,
     XAIAdapter,
     ZaiAdapter,
@@ -583,6 +584,238 @@ class TestZaiJsonObjectMode(unittest.TestCase):
         self.assertEqual(rf["type"], "json_schema")
         self.assertTrue(rf["json_schema"]["strict"])
         self.assertIn("json_schema", out.transcript["request"]["response_format"])
+
+
+class TestZaiScoreNormalization(unittest.TestCase):
+    """glm-4-plus sometimes emits confidence/score on a 0-100 scale
+    despite the prompt-inlined 0-1 schema (observed 2026-10-07 in the
+    v2 trial, where 316 of 317 zai transcript errors were "'score' N above
+    maximum 1"). The adapter normalizes (1, 100] to 0-1 before
+    validation, the same repair DeepSeekAdapter runs."""
+
+    def _decide(self, payload, primitive="choice"):
+        mod, _, _ = _make_openai([_openai_completion(json.dumps(payload))])
+        with _fake_modules({"openai": mod}), _env(ZAI_API_KEY="sk-test"):
+            return ZaiAdapter().decide(CASE, primitive, _ctx())
+
+    def test_confidence_100_scale_normalized(self):
+        out = self._decide(
+            {"decision": "approve", "confidence": 85, "reason": "ok"})
+        self.assertAlmostEqual(out.confidence, 0.85)
+
+    def test_score_100_scale_normalized(self):
+        # The trial's dominant failure shape is score 15, for N in
+        # {15, 20, 25, 85, 90, 92, 95, 100}.
+        out = self._decide(
+            {"decision": "deny", "confidence": 0.8, "score": 15,
+             "reason": "risky"}, primitive="score")
+        self.assertAlmostEqual(out.score, 0.15)
+        self.assertAlmostEqual(out.confidence, 0.8)
+
+    def test_confidence_0_to_1_unchanged(self):
+        out = self._decide(
+            {"decision": "approve", "confidence": 0.85, "reason": "ok"})
+        self.assertAlmostEqual(out.confidence, 0.85)
+
+    def test_out_of_range_still_rejected(self):
+        # 150 is not a plausible 0-100 slip. The repair must leave it
+        # for validation to reject, not silently rescale it.
+        from peira.adapters.llm import (
+            _normalize_verbalized_scales,
+            _validate_schema_object,
+            _build_schema,
+        )
+        obj = {"decision": "approve", "confidence": 150, "reason": "ok"}
+        self.assertEqual(_normalize_verbalized_scales(obj)["confidence"], 150)
+        schema = _build_schema(["approve", "deny"], "choice")
+        errors = _validate_schema_object(obj, schema)
+        self.assertTrue(any("confidence" in e for e in errors))
+
+
+# ---------------------------------------------------------------------------
+# MiniMax: stdlib urllib transport, faked at the urlopen seam.
+# ---------------------------------------------------------------------------
+
+class _FakeHTTPResponse:
+    """Minimal stand-in for the object urllib.request.urlopen returns."""
+
+    def __init__(self, body):
+        self._raw = json.dumps(body).encode("utf-8")
+        self.headers = {}
+
+    def read(self):
+        return self._raw
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+
+def _minimax_tool_body(arguments, finish_reason="tool_calls"):
+    return {
+        "choices": [{
+            "finish_reason": finish_reason,
+            "message": {
+                "role": "assistant",
+                "content": "",
+                "tool_calls": [{
+                    "type": "function",
+                    "function": {"name": "peira_decision",
+                                 "arguments": arguments},
+                }],
+            },
+        }],
+        "usage": {"prompt_tokens": 100, "completion_tokens": 20},
+    }
+
+
+class TestMiniMaxAdapter(unittest.TestCase):
+    """MiniMax M3 through the OpenAI-compatible endpoint. The verdict
+    travels as a forced tool call, with thinking disabled in the payload
+    and think tags are stripped defensively. All transport is faked
+    by patching urllib.request.urlopen."""
+
+    def _decide(self, body, **adapter_kwargs):
+        from unittest import mock
+
+        captured = {}
+
+        def fake_urlopen(req, timeout=None):
+            captured["url"] = req.full_url
+            captured["payload"] = json.loads(req.data.decode("utf-8"))
+            captured["authorization"] = req.get_header("Authorization")
+            captured["timeout"] = timeout
+            return _FakeHTTPResponse(body)
+
+        adapter_kwargs.setdefault("api_key", "test-key")
+        with mock.patch("urllib.request.urlopen", fake_urlopen):
+            out = MiniMaxAdapter(**adapter_kwargs).decide(
+                CASE, "choice", _ctx())
+        return out, captured
+
+    def test_tool_call_verdict_parsed(self):
+        body = _minimax_tool_body(json.dumps(
+            {"decision": "approve", "confidence": 0.9, "reason": "clear"}))
+        out, _ = self._decide(body)
+        self.assertEqual(out.decision, "approve")
+        self.assertAlmostEqual(out.confidence, 0.9)
+        self.assertEqual(out.usage.tokens_in, 100)
+        self.assertEqual(out.usage.tokens_out, 20)
+
+    def test_request_payload_shape(self):
+        body = _minimax_tool_body(json.dumps(
+            {"decision": "approve", "confidence": 0.9, "reason": "clear"}))
+        _, captured = self._decide(body)
+        self.assertEqual(
+            captured["url"], "https://api.minimax.io/v1/chat/completions")
+        self.assertEqual(captured["authorization"], "Bearer test-key")
+        payload = captured["payload"]
+        self.assertEqual(payload["model"], "MiniMax-M3")
+        # The verdict travels as a forced function tool, never as
+        # response_format (unreliable on this endpoint).
+        self.assertNotIn("response_format", payload)
+        self.assertEqual(payload["tools"][0]["function"]["name"],
+                         "peira_decision")
+        self.assertEqual(payload["tool_choice"],
+                         {"type": "function",
+                          "function": {"name": "peira_decision"}})
+        # Thinking is disabled in the payload, and no logprobs are
+        # requested (the endpoint exposes no token logprobs).
+        self.assertEqual(payload["thinking"], {"type": "disabled"})
+        self.assertNotIn("logprobs", payload)
+        self.assertEqual(payload["seed"], 0)
+        self.assertEqual(payload["max_tokens"], 512)
+
+    def test_transcript_records_shape_honestly(self):
+        body = _minimax_tool_body(json.dumps(
+            {"decision": "approve", "confidence": 0.9, "reason": "clear"}))
+        out, _ = self._decide(body)
+        req = out.transcript["request"]
+        self.assertEqual(req["response_format"],
+                         "tool_call:peira_decision:forced")
+        self.assertEqual(req["thinking"], "disabled")
+        self.assertEqual(req["transport"], "urllib")
+        self.assertIs(req["logprobs"], False)
+        self.assertEqual(req["base_url"], "https://api.minimax.io/v1")
+        self.assertTrue(
+            out.transcript["response"]["tool_call_parsed"])
+
+    def test_think_tags_stripped_before_text_fallback(self):
+        # No tool call: the model answered in text with its reasoning
+        # inline. The think block carries a JSON-shaped draft verdict,
+        # the real verdict follows it. Without stripping, the extractor
+        # would parse the draft.
+        text = ('<think>{"decision": "deny", "confidence": 0.1, '
+                '"reason": "draft"}</think>'
+                '{"decision": "approve", "confidence": 0.9, '
+                '"reason": "clear"}')
+        body = {
+            "choices": [{"finish_reason": "stop",
+                         "message": {"role": "assistant",
+                                     "content": text}}],
+            "usage": {"prompt_tokens": 100, "completion_tokens": 20},
+        }
+        out, _ = self._decide(body)
+        self.assertEqual(out.decision, "approve")
+        self.assertAlmostEqual(out.confidence, 0.9)
+
+    def test_reason_typo_and_scale_slip_repaired_together(self):
+        # Observed 2026-10-09 in the v2 trial. M3 typos the 'reason'
+        # key ('rereason') and emits confidence on a 0-100 scale. The
+        # two repairs compose in _resolve.
+        body = _minimax_tool_body(json.dumps(
+            {"decision": "approve", "confidence": 85,
+             "rereason": "solid"}))
+        out, _ = self._decide(body)
+        self.assertEqual(out.decision, "approve")
+        self.assertAlmostEqual(out.confidence, 0.85)
+
+    def test_base_resp_rate_limit_maps_to_429(self):
+        from peira.adapters.base import ProviderError
+        body = {"base_resp": {"status_code": 1002,
+                              "status_msg": "rate limit exceeded"}}
+        with self.assertRaises(ProviderError) as ctx:
+            self._decide(body)
+        self.assertEqual(ctx.exception.status_code, 429)
+
+    def test_base_resp_auth_failure_maps_to_401(self):
+        from peira.adapters.base import ProviderError
+        body = {"base_resp": {"status_code": 1004,
+                              "status_msg": "authentication failed"}}
+        with self.assertRaises(ProviderError) as ctx:
+            self._decide(body)
+        self.assertEqual(ctx.exception.status_code, 401)
+
+    def test_default_model_is_pinned(self):
+        with _env(MINIMAX_API_KEY="sk-test"):
+            adapter = MiniMaxAdapter()
+        self.assertEqual(adapter.name, "minimax-structured")
+        self.assertEqual(adapter.version, "MiniMax-M3")
+
+    def test_missing_key_names_own_env_var(self):
+        with _env(MINIMAX_API_KEY=None):
+            with self.assertRaises(ValueError) as ctx:
+                MiniMaxAdapter()
+        self.assertIn("MINIMAX_API_KEY", str(ctx.exception))
+
+
+class TestStripThink(unittest.TestCase):
+    def test_strips_blocks(self):
+        from peira.adapters.llm import _strip_think
+        self.assertEqual(
+            _strip_think("<think>draft</think>final"), "final")
+        self.assertEqual(
+            _strip_think("<think>a</think>mid<think>b</think>end"),
+            "midend")
+        self.assertEqual(_strip_think("plain"), "plain")
+
+    def test_case_insensitive_and_non_string(self):
+        from peira.adapters.llm import _strip_think
+        self.assertEqual(_strip_think("<THINK>x</THINK>y"), "y")
+        self.assertEqual(_strip_think(None), "")
+        self.assertEqual(_strip_think(42), "")
 
 
 if __name__ == "__main__":

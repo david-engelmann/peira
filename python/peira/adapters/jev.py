@@ -413,7 +413,14 @@ class JevAdapter:
         # placeholder, NOT a model output and NOT gold. Flip detection
         # uses the `abstained` flag. See the module docstring.
         ans = _need_answer(answers, "abstain")
-        p_yes = ans.get("abstain")
+        # TypeSafe's live API returns the abstain probability under its
+        # own field name, {'type': 'noul', 'noul': 0.73}. Observed
+        # 2026-10-07 in the v2 trial, where the jev errors on exactly
+        # this shape (122 error rows, 100 in the crosslingual_shift
+        # family and 22 in cryptographic_payload) were all
+        # "no numeric abstain value". Prefer the documented key and
+        # fall back to the API's native field.
+        p_yes = ans.get("abstain", ans.get("noul"))
         if not isinstance(p_yes, (int, float)) or isinstance(p_yes, bool):
             raise ProviderError(
                 f"jev abstain answer has no numeric abstain value: {ans!r}")

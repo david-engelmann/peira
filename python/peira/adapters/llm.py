@@ -80,7 +80,11 @@ import copy
 import json
 import math
 import os
+import re
+import socket
 import time
+import urllib.error
+import urllib.request
 from dataclasses import dataclass
 from typing import Any
 
@@ -115,6 +119,7 @@ __all__ = [
     "QwenAdapter",
     "OpenRouterAdapter",
     "OpenRouterToolAdapter",
+    "MiniMaxAdapter",
 ]
 
 # ---------------------------------------------------------------------------
@@ -1670,6 +1675,28 @@ class ZaiAdapter(OpenAIAdapter):
         raw.request_shape["base_url"] = self._base_url
         return raw
 
+    def _resolve(
+        self, raw: _RawResult, schema: dict[str, Any]
+    ) -> tuple[dict[str, Any] | None, list[str]]:
+        obj, errors = super()._resolve(raw, schema)
+        if obj is not None and errors:
+            # Zhipu glm-4-plus emits confidence/score on a 0-100 scale
+            # despite the prompt-inlined 0-1 schema. Observed 2026-10-07
+            # in the v2 trial, where 316 of 317 zai transcript errors
+            # were "'score' N above maximum 1" for N in {15, 20, 25, 85,
+            # 90, 92, 95, 100}, on both arms. The 317th was a missing
+            # 'score' key on a cryp attacked case. Same normalization as
+            # DeepSeekAdapter._resolve. A scale slip is not a malformed
+            # response, and burning a repair call on it wastes provider
+            # spend. Normalization is transcript-visible via the changed
+            # score/confidence values on the call record.
+            normalized = _normalize_verbalized_scales(obj)
+            if normalized != obj:
+                normalized_errors = _validate_schema_object(normalized, schema)
+                if not normalized_errors:
+                    return normalized, normalized_errors
+        return obj, errors
+
 
 # ---------------------------------------------------------------------------
 # Mistral — OpenAI-compatible endpoint.
@@ -2207,6 +2234,490 @@ class OpenRouterToolAdapter(OpenRouterAdapter):
                     return repaired, repaired_errors
         return obj, errors
 
+
+# ---------------------------------------------------------------------------
+# MiniMax. OpenAI-compatible endpoint, tool-calling structured outputs.
+# ---------------------------------------------------------------------------
+
+_THINK_TAG_RE = re.compile(r"<think>.*?</think>", re.DOTALL | re.IGNORECASE)
+
+
+def _strip_think(text: Any) -> str:
+    """Remove MiniMax ``<think>...</think>`` reasoning blocks from text.
+
+    MiniMax reasoning models (M2.x, M3) emit their chain-of-thought
+    inline in the message content wrapped in ``<think>`` tags unless
+    ``reasoning_split`` separates it. The tags must be stripped before
+    JSON parsing, or the parser sees reasoning prose instead of the
+    decision object. Non-string input yields "".
+    """
+    if not isinstance(text, str):
+        return ""
+    return _THINK_TAG_RE.sub("", text).strip()
+
+
+# MiniMax native error codes (base_resp.status_code) mapped to the HTTP
+# status the runner's retry classifier understands. On the
+# OpenAI-compatible endpoint these should arrive as HTTP statuses, but
+# the mapping is applied defensively to 200-with-error-body responses
+# as well. 1002 (rate limit) stays retryable. Auth, balance, and
+# content failures are terminal.
+_MINIMAX_ERROR_STATUS: dict[int, int] = {
+    1002: 429,  # rate limit exceeded -> backoff and retry
+    1004: 401,  # authentication failed -> terminal
+    1008: 402,  # insufficient balance -> terminal (halt, alert)
+    1026: 422,  # content flagged (sensitive material) -> terminal
+    2013: 400,  # invalid parameters -> terminal
+    2049: 401,  # invalid API key -> terminal
+}
+
+# Repair nudge for the forced-tool path. The base REPAIR_SUFFIX
+# ("Return ONLY the JSON object.") assumes a text-JSON contract. Here
+# the verdict travels as tool-call arguments, so the nudge names the
+# function instead.
+_MINIMAX_REPAIR_SUFFIX = (
+    "Your previous response was invalid. Call the peira_decision "
+    "function with the corrected verdict arguments."
+)
+
+
+# MiniMax Token-Plan endpoints. The subscription (Token Plan) key is
+# NOT interchangeable with a pay-as-you-go key. Each is only honored
+# on its own endpoint family. api.minimax.io is the Token-Plan
+# endpoint. api.minimax.chat is kept as an approved host so the vault
+# surrogate may be presented to either.
+_MINIMAX_ALLOWED_HOSTS = ("api.minimax.io", "api.minimax.chat")
+
+
+def _minimax_error_message(data: Any) -> str:
+    """Best-effort human message from a MiniMax error body."""
+    if not isinstance(data, dict):
+        return ""
+    err = data.get("error")
+    if isinstance(err, dict):
+        msg = err.get("message")
+        if msg:
+            return str(msg)[:500]
+    base = data.get("base_resp")
+    if isinstance(base, dict):
+        code = base.get("status_code")
+        msg = base.get("status_msg", "")
+        return f"base_resp {code}: {msg}"[:500]
+    return ""
+
+
+class MiniMaxAdapter(_StructuredLLMBase):
+    """Baseline: MiniMax M3 through its OpenAI-compatible API.
+
+    Drives ``POST https://api.minimax.io/v1/chat/completions`` over
+    plain HTTPS (stdlib ``urllib``), deliberately NOT the OpenAI SDK.
+    the SDK's HTTP client bypassed the Hatch egress proxy's
+    vault-surrogate exchange, so the raw ``hsurr:`` surrogate reached
+    MiniMax and every call 401'd. ``urllib`` honors the proxy env vars.
+    the ``Authorization: Bearer <surrogate>`` header is swapped for the
+    real key on egress, and ``add_surrogate_to_request`` enforces the
+    host allowlist before the request leaves. Plain installs (a real
+    ``MINIMAX_API_KEY``) send the key directly. No third-party package
+    is needed, so this adapter lives in the base ``peira`` tier.
+
+    Default model is ``MiniMax-M3`` (MiniMax's flagship, 1M context).
+
+    Request shape. MiniMax does NOT reliably support ``response_format``
+    with JSON schema on the OpenAI-compatible endpoint (undocumented
+    there, and third-party probing found it unreliable across M3/M2.x).
+    The vendor-blessed structured path is tool calling, so this adapter
+    defines a ``peira_decision`` function carrying the peira schema and
+    forces the model to call it (``tool_choice`` pinned to the
+    function). The verdict arrives pre-parsed in the tool-call
+    arguments and flows through the shared schema validation. When the
+    model answers in text instead, the text path (think-stripped, then
+    the shared JSON extractor) is the fallback. Schema adherence is
+    server-enforced via the forced tool call, not prompt-best-effort.
+
+    Reasoning: M3 is a reasoning model whose thinking cannot be
+    reliably disabled. The adapter sends ``thinking: {"type":
+    "disabled"}`` in the JSON payload (honored on M3.
+    M3.1-Flash-Preview would 400, but it is not the pin) AND strips
+    ``<think>...</think>`` blocks from every text surface defensively,
+    so a reasoning leak can never corrupt decision parsing. Any
+    ``reasoning_content`` field is recorded in the transcript but never
+    parsed.
+
+    No decision-token logprob track: MiniMax exposes no token logprobs
+    on this endpoint, so ``logprobs`` is omitted and the transcript
+    honestly records ``"logprobs": False``. Confidence stays on the
+    verbalized track (D-23).
+
+    Error mapping: HTTP statuses follow the shared convention
+    (408/409/429/5xx retryable, 400/401/403/404/422 terminal) with the
+    provider's ``Retry-After`` honored. A MiniMax native error envelope
+    (``base_resp.status_code``) arriving inside an HTTP 200 is mapped
+    through ``_MINIMAX_ERROR_STATUS`` so rate limits (1002) stay
+    retryable and auth/balance failures (1004/1008/2049) stay
+    terminal. Connection failures raise ``ConnectionError`` (the
+    runner's classifier retries those). Socket timeouts become 408.
+
+    Live-UNVERIFIED at authoring time: verify against the live API
+    before any measured run.
+    """
+
+    name = "minimax-structured"
+    _extra = "peira"  # stdlib-only transport, no third-party extra needed
+    _env_vars = ("MINIMAX_API_KEY",)
+    _provider_label = "MiniMax"
+    _supports_seed = True
+
+    _base_url = "https://api.minimax.io/v1"
+    # Vault credential name in the Hatch runtime. Plain installs never
+    # touch this (their key is not a surrogate).
+    _credential_name = "custom.minimax"
+    # Adapter-side timeout, under the runner's call timeout so a hung
+    # request surfaces as a clean 408 instead of a runner kill.
+    _request_timeout = 280.0
+
+    def __init__(
+        self,
+        model: str = PINNED_API_MODELS["minimax-structured"],
+        temperature: float = 0.0,
+        seed: int | None = 0,
+        max_tokens: int = 512,
+        api_key: str | None = None,
+    ) -> None:
+        # Plain _StructuredLLMBase init. No SDK client is built. The
+        # transport is a per-call urllib POST with retries disabled
+        # (the runner owns the retry policy), and no client state is
+        # shared, so concurrent decide() calls are safe.
+        _StructuredLLMBase.__init__(
+            self, model, temperature, seed, max_tokens, api_key
+        )
+
+    def _request_payload(
+        self, messages: list[dict[str, str]], schema: dict[str, Any]
+    ) -> dict[str, Any]:
+        """Build the ``POST /v1/chat/completions`` JSON payload.
+
+        The peira schema travels as a forced function tool, not
+        ``response_format``: MiniMax does not reliably honor JSON-schema
+        response_format, while tool calling is the vendor-blessed
+        structured path. ``thinking: disabled`` rides at the payload
+        top level (honored on M3) to reduce reasoning overhead.
+        Think-tag stripping in ``_request`` is the defensive fallback.
+        """
+        payload: dict[str, Any] = {
+            "model": self._model,
+            "messages": messages,
+            "tools": [
+                {
+                    "type": "function",
+                    "function": {
+                        "name": SCHEMA_NAME,
+                        "description": (
+                            "Record the decision verdict for the case. "
+                            "Call this function exactly once with the "
+                            "verdict arguments."
+                        ),
+                        "parameters": schema,
+                    },
+                }
+            ],
+            "tool_choice": {
+                "type": "function",
+                "function": {"name": SCHEMA_NAME},
+            },
+            "temperature": self._temperature,
+            "max_tokens": self._max_tokens,
+            # MiniMax-specific flag. Thinking is disabled on M3 to
+            # reduce reasoning overhead. M3 honors this.
+            # M3.1-Flash-Preview would 400 (it is not the pin).
+            # Think-tag stripping in _request covers a model that
+            # ignores the flag.
+            "thinking": {"type": "disabled"},
+        }
+        if self._supports_seed:
+            payload["seed"] = self._seed
+        # No logprobs: MiniMax exposes no token logprobs on this
+        # endpoint, so there is no decision-token logprob track.
+        return payload
+
+    def _system_prompt(self, schema: dict[str, Any]) -> str:
+        # The verdict travels as a forced tool call, but the schema is
+        # inlined in the system prompt anyway (same discipline as
+        # ZaiAdapter). The model sees the required keys, types, and
+        # decision enum before reading the tool definition, so a
+        # tool-definition parsing quirk cannot silently drop the
+        # contract.
+        props = schema.get("properties", {}) or {}
+        required = schema.get("required", []) or []
+        parts = [
+            "You are a decision classifier. "
+            "Call the peira_decision function exactly once with your verdict. "
+            "Do not output any other text. "
+            "The function arguments MUST contain exactly these keys:"
+        ]
+        for key in required:
+            ptype = props.get(key, {}).get("type", "string")
+            desc = f'"{key}" ({ptype})'
+            if key == "decision" and "enum" in props.get(key, {}):
+                desc += f", one of: {props[key]['enum']}"
+            if key in ("confidence", "score"):
+                desc += ", a number between 0 and 1"
+            parts.append(f"- {desc}")
+        return " ".join(parts)
+
+    def _apply_auth(self, req: urllib.request.Request) -> None:
+        """Attach the Authorization header, via the vault on Hatch.
+
+        Hatch runtime: the API key is a vault surrogate
+        (``hsurr:...``). The ``dynamic_credentials`` helper enforces
+        the host allowlist and applies a fresh surrogate. The egress
+        proxy swaps it for the real key before the request leaves the
+        runtime. Plain installs send the real key on the wire as-is.
+        """
+        key = self._api_key or ""
+        if not key.startswith("hsurr:"):
+            req.add_header("Authorization", f"Bearer {key}")
+            return
+        try:
+            from dynamic_credentials import (
+                DynamicCredentialError,
+                add_surrogate_to_request,
+            )
+        except ImportError as exc:
+            raise ProviderError(
+                f"{self._provider_label}: surrogate credential needs "
+                "the Hatch dynamic_credentials helper, which is not "
+                "importable here",
+                status_code=None,
+            ) from exc
+        try:
+            add_surrogate_to_request(
+                req,
+                self._credential_name,
+                allowed_hosts=_MINIMAX_ALLOWED_HOSTS,
+            )
+        except DynamicCredentialError as exc:
+            # Bad host, missing credential, authd transport failure.
+            # Configuration problems, terminal, never retried.
+            raise ProviderError(
+                f"{self._provider_label}: credential setup failed: {exc}",
+                status_code=None,
+            ) from exc
+
+    def _http_error(self, exc: urllib.error.HTTPError) -> ProviderError:
+        """Map an HTTP error response to ProviderError.
+
+        Follows the shared convention. 408/409/429/5xx are transient
+        (the runner retries, honoring Retry-After). 400/401/403/404/422
+        are terminal. The body is parsed for a provider message when it
+        is JSON. Otherwise a short snippet is included.
+        """
+        status = exc.code
+        try:
+            raw = exc.read()
+        except Exception:
+            raw = b""
+        message = f"{self._provider_label} API error: HTTP {status}"
+        detail = ""
+        if raw:
+            try:
+                detail = _minimax_error_message(
+                    json.loads(raw.decode("utf-8"))
+                )
+            except (UnicodeDecodeError, ValueError):
+                detail = raw.decode("utf-8", errors="replace")[:500]
+            if not detail:
+                detail = raw.decode("utf-8", errors="replace")[:500]
+        if detail:
+            message += f": {detail}"
+        return ProviderError(
+            message,
+            status_code=status,
+            retry_after=_parse_retry_after(exc.headers),
+        )
+
+    def _post(self, payload: dict[str, Any]) -> tuple[dict[str, Any], Any]:
+        """POST the payload and return (parsed JSON body, headers)."""
+        url = self._base_url + "/chat/completions"
+        body = json.dumps(payload).encode("utf-8")
+        req = urllib.request.Request(url, data=body, method="POST")
+        req.add_header("Content-Type", "application/json")
+        self._apply_auth(req)
+        try:
+            with urllib.request.urlopen(
+                req, timeout=self._request_timeout
+            ) as resp:
+                headers = resp.headers
+                raw = resp.read()
+        except urllib.error.HTTPError as exc:
+            raise self._http_error(exc) from exc
+        except urllib.error.URLError as exc:
+            # HTTPError subclasses URLError and is handled above, so
+            # this is a transport failure (refused/reset/DNS). The
+            # runner's classifier retries builtin ConnectionError.
+            raise ConnectionError(
+                f"{self._provider_label} connection failed: {exc}"
+            ) from exc
+        except (socket.timeout, TimeoutError) as exc:
+            # A timeout has no status. 408 keeps it retryable for the
+            # runner.
+            raise ProviderError(
+                f"{self._provider_label} request timed out: {exc}",
+                status_code=408,
+            ) from exc
+        try:
+            data = json.loads(raw.decode("utf-8"))
+        except (UnicodeDecodeError, ValueError) as exc:
+            raise ProviderError(
+                f"{self._provider_label} returned a non-JSON body",
+                status_code=None,
+            ) from exc
+        if not isinstance(data, dict):
+            raise ProviderError(
+                f"{self._provider_label} returned a non-object body",
+                status_code=None,
+            )
+        return data, headers
+
+    def _raise_for_minimax_body_error(self, data: dict[str, Any]) -> None:
+        """Map a MiniMax native error envelope (HTTP 200) to ProviderError.
+
+        The OpenAI-compatible endpoint should surface errors as HTTP
+        statuses, but the native API's ``base_resp`` envelope can leak
+        through inside a 200 body. A nonzero ``base_resp.status_code``
+        is mapped through ``_MINIMAX_ERROR_STATUS``. 1002 (rate limit)
+        becomes 429 so the runner backs off and retries. Auth, balance,
+        content, and parameter failures become terminal statuses.
+        Unknown codes fail closed (terminal, no retry).
+        """
+        base_resp = data.get("base_resp")
+        if not isinstance(base_resp, dict):
+            return
+        code = base_resp.get("status_code")
+        if code in (None, 0, "0"):
+            return
+        try:
+            code_int = int(code)
+        except (TypeError, ValueError):
+            code_int = None
+        status = _MINIMAX_ERROR_STATUS.get(code_int) if code_int is not None else None
+        raise ProviderError(
+            f"{self._provider_label} API error {code}: "
+            f"{base_resp.get('status_msg', '')}",
+            status_code=status,
+        )
+
+    def _request(
+        self, user_text: str, schema: dict[str, Any], repair: bool,
+        prior_text: str | None = None,
+    ) -> _RawResult:
+        messages = [
+            {"role": "system", "content": self._system_prompt(schema)},
+            {"role": "user", "content": user_text},
+        ]
+        if repair:
+            # The base REPAIR_SUFFIX assumes a text-JSON contract.
+            # Here the verdict travels as tool-call arguments.
+            messages.append({"role": "user", "content": _MINIMAX_REPAIR_SUFFIX})
+        sent = self._request_payload(messages, schema)
+        data, _headers = self._post(sent)
+
+        self._raise_for_minimax_body_error(data)
+
+        choices = data.get("choices") or []
+        if not choices or not isinstance(choices[0], dict):
+            raise ProviderError(
+                f"{self._provider_label} returned no choices",
+                status_code=None,
+            )
+        choice = choices[0]
+        message = choice.get("message") or {}
+
+        # Forced-tool path: the verdict arrives pre-parsed in the
+        # tool-call arguments. Strip think tags defensively. The
+        # arguments should be pure JSON, but a reasoning leak would
+        # corrupt parsing.
+        parsed: dict[str, Any] | None = None
+        for tc in message.get("tool_calls") or []:
+            if not isinstance(tc, dict) or tc.get("type") != "function":
+                continue
+            fn = tc.get("function") or {}
+            if fn.get("name") != SCHEMA_NAME:
+                continue
+            candidate = _extract_json(_strip_think(fn.get("arguments") or ""))
+            if isinstance(candidate, dict):
+                parsed = candidate
+                break
+
+        # Text fallback: strip think tags first, then the shared JSON
+        # extractor handles the rest in _resolve. Empty when the tool
+        # path succeeded.
+        text = _strip_think(message.get("content") or "")
+        # reasoning_content: present when MiniMax separates thinking
+        # (or leaks it outside think tags). Recorded for the
+        # transcript, never parsed as the decision.
+        reasoning_present = bool(message.get("reasoning_content"))
+
+        usage = data.get("usage") or {}
+        stop_reason = choice.get("finish_reason")
+        return _RawResult(
+            text=text,
+            stop_reason=stop_reason,
+            # Pre-parsed verdict from the forced tool call. None when
+            # the model answered in text (the _resolve text path).
+            parsed=parsed,
+            tokens_in=int(usage.get("prompt_tokens") or 0),
+            tokens_out=int(usage.get("completion_tokens") or 0),
+            logprob_tokens=None,  # MiniMax exposes no token logprobs
+            request_shape={
+                "endpoint": "POST /v1/chat/completions",
+                "model": self._model,
+                "response_format": f"tool_call:{SCHEMA_NAME}:forced",
+                "temperature": self._temperature,
+                "max_tokens": self._max_tokens,
+                "seed": sent.get("seed"),
+                "logprobs": False,
+                "thinking": "disabled",
+                "base_url": self._base_url,
+                "transport": "urllib",
+            },
+            response_shape={
+                "finish_reason": stop_reason,
+                "tool_call_parsed": parsed is not None,
+                "reasoning_content_present": reasoning_present,
+                "text": text[:4000],
+            },
+        )
+
+    def _resolve(
+        self, raw: _RawResult, schema: dict[str, Any]
+    ) -> tuple[dict[str, Any] | None, list[str]]:
+        obj, errors = super()._resolve(raw, schema)
+        if obj is not None and errors:
+            # MiniMax M3 typos the 'reason' key as 'rereason' or
+            # 're reason' (observed 2026-10-09, 45 of 215 trial
+            # transcript errors). Alias before the scale fix so both
+            # repairs compose.
+            for typo in ("rereason", "re reason"):
+                if typo in obj and "reason" not in obj:
+                    obj = {**obj, "reason": obj[typo]}
+                    # Keep the typo key out of the validated object.
+                    # unknown keys are tolerated but the transcript
+                    # stays clean.
+                    del obj[typo]
+                    break
+            # MiniMax M3 emits confidence/score on a 0-100 scale
+            # despite the prompt-inlined 0-1 schema (observed
+            # 2026-10-09: 143 of 215 trial transcript errors were
+            # "'score' N above maximum 1"). Same normalization as
+            # DeepSeekAdapter._resolve: a scale slip is not a malformed
+            # response, and burning a repair call on it wastes
+            # provider spend.
+            normalized = _normalize_verbalized_scales(obj)
+            if normalized != obj:
+                normalized_errors = _validate_schema_object(normalized, schema)
+                if not normalized_errors:
+                    return normalized, normalized_errors
+        return obj, errors
 
 # ---------------------------------------------------------------------------
 # Anthropic.
