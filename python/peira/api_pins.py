@@ -94,7 +94,7 @@ __all__ = [
 #                                   mistral-large-latest moves)
 #   Qwen:      qwen3.8-max         (versioned flagship ID; the qwen-max
 #                                   alias is rolling)
-#   MiniMax:   MiniMax-M3          (flagship; case-sensitive vendor ID)
+#   MiniMax:   MiniMax-M3          (flagship, case-sensitive vendor ID)
 #   OpenRouter: google/gemini-3.8-flash (gateway model id: vendor/model;
 #                                   mirrors the GoogleAdapter default so the
 #                                   direct-vs-gateway comparison is the

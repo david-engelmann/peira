@@ -2236,7 +2236,7 @@ class OpenRouterToolAdapter(OpenRouterAdapter):
 
 
 # ---------------------------------------------------------------------------
-# MiniMax — OpenAI-compatible endpoint, tool-calling structured outputs.
+# MiniMax. OpenAI-compatible endpoint, tool-calling structured outputs.
 # ---------------------------------------------------------------------------
 
 _THINK_TAG_RE = re.compile(r"<think>.*?</think>", re.DOTALL | re.IGNORECASE)
@@ -2282,7 +2282,7 @@ _MINIMAX_REPAIR_SUFFIX = (
 
 
 # MiniMax Token-Plan endpoints. The subscription (Token Plan) key is
-# NOT interchangeable with a pay-as-you-go key: each is only honored
+# NOT interchangeable with a pay-as-you-go key. Each is only honored
 # on its own endpoint family. api.minimax.io is the Token-Plan
 # endpoint. api.minimax.chat is kept as an approved host so the vault
 # surrogate may be presented to either.
@@ -2442,7 +2442,7 @@ class MiniMaxAdapter(_StructuredLLMBase):
     def _system_prompt(self, schema: dict[str, Any]) -> str:
         # The verdict travels as a forced tool call, but the schema is
         # inlined in the system prompt anyway (same discipline as
-        # ZaiAdapter): the model sees the required keys, types, and
+        # ZaiAdapter). The model sees the required keys, types, and
         # decision enum before reading the tool definition, so a
         # tool-definition parsing quirk cannot silently drop the
         # contract.
@@ -2694,7 +2694,7 @@ class MiniMaxAdapter(_StructuredLLMBase):
         obj, errors = super()._resolve(raw, schema)
         if obj is not None and errors:
             # MiniMax M3 typos the 'reason' key as 'rereason' or
-            # 're reason' (observed 2026-10-09: 45 of 215 trial
+            # 're reason' (observed 2026-10-09, 45 of 215 trial
             # transcript errors). Alias before the scale fix so both
             # repairs compose.
             for typo in ("rereason", "re reason"):

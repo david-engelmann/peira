@@ -305,7 +305,7 @@
       "confidence": "official"
     },
     "MiniMax-M3": {
-      "_note": "MiniMaxAdapter pinned default (2026-10-08): MiniMax-M3 via api.minimax.chat/v1 (OpenAI-compatible). ~$0.30/$1.20 per 1M (third-party sources, post-50%-off promotion; verify against platform.minimax.io before committing budget). Adapter ships live-UNVERIFIED: verify the wire shape before first measured use.",
+      "_note": "MiniMaxAdapter pinned default (2026-10-08). MiniMax-M3 via api.minimax.io/v1 (OpenAI-compatible). ~$0.30/$1.20 per 1M from third-party sources after a 50%-off promotion, so verify against platform.minimax.io before committing budget. The adapter ran the full v2 trial against the live API, so the wire shape is verified.",
       "usd_per_1m_in": 0.3,
       "usd_per_1m_out": 1.2,
       "confidence": "secondary"

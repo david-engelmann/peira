@@ -232,14 +232,14 @@ class TestJevNoul(unittest.TestCase):
 
     def test_documented_key_wins_over_noul(self):
         # When both keys are present the documented 'abstain' key is
-        # authoritative; the native field is only a fallback.
+        # authoritative. The native field is only a fallback.
         t = _transport_for({"abstain": {"abstain": 0.2, "noul": 0.9}})
         out = JevAdapter(api_key="k", transport=t).decide(_case_input(), "abstain", _ctx())
         self.assertEqual(out.decision, "other")
         self.assertFalse(out.abstained)
 
     def test_missing_both_keys_still_terminal(self):
-        # Neither key present: the fallback must not invent a value.
+        # Neither key present. The fallback must not invent a value.
         t = _transport_for({"abstain": {"type": "noul"}})
         with self.assertRaises(ProviderError):
             JevAdapter(api_key="k", transport=t).decide(_case_input(), "abstain", _ctx())

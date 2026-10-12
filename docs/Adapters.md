@@ -497,7 +497,7 @@ plus secret, but the OpenAI-compatible endpoint accepts the API key
 directly as the Bearer token (per Zhipu's own OpenAI-compat docs),
 which is what this adapter uses.
 
-Scale normalization: GLM-4 Plus sometimes emits `confidence`/`score`
+Scale normalization. GLM-4 Plus sometimes emits `confidence`/`score`
 on a 0-100 scale despite the prompt-inlined schema requiring 0-1
 (observed 2026-10-07 in the v2 trial, where nearly all zai errors
 were this shape). The adapter normalizes values in (1, 100] by
@@ -782,8 +782,8 @@ page), and the pinned table in `python/peira/data/pricing.json` reflects
 that with the caveat attached. Access is
 gated; without a key the error tells you exactly where to get one.
 429/529/5xx and transport timeouts surface as retryable provider
-errors for the runner; 401/422 are terminal. One live-API quirk,
-observed 2026-10-07 in the v2 trial: the abstain answer returns its
+errors for the runner. 401/422 are terminal. One live-API quirk,
+observed 2026-10-07 in the v2 trial, where the abstain answer returns its
 probability under TypeSafe's own field name (`noul`) rather than the
 documented key, so the adapter reads the documented key first and
 falls back to the native field. The adapter ran the full v2 trial

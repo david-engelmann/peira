@@ -589,7 +589,7 @@ class TestZaiJsonObjectMode(unittest.TestCase):
 class TestZaiScoreNormalization(unittest.TestCase):
     """glm-4-plus sometimes emits confidence/score on a 0-100 scale
     despite the prompt-inlined 0-1 schema (observed 2026-10-07 in the
-    v2 trial: 316 of 317 zai transcript errors were "'score' N above
+    v2 trial, where 316 of 317 zai transcript errors were "'score' N above
     maximum 1"). The adapter normalizes (1, 100] to 0-1 before
     validation, the same repair DeepSeekAdapter runs."""
 
@@ -604,7 +604,7 @@ class TestZaiScoreNormalization(unittest.TestCase):
         self.assertAlmostEqual(out.confidence, 0.85)
 
     def test_score_100_scale_normalized(self):
-        # The trial's dominant failure shape: score 15 for N in
+        # The trial's dominant failure shape is score 15, for N in
         # {15, 20, 25, 85, 90, 92, 95, 100}.
         out = self._decide(
             {"decision": "deny", "confidence": 0.8, "score": 15,
@@ -673,7 +673,7 @@ def _minimax_tool_body(arguments, finish_reason="tool_calls"):
 
 class TestMiniMaxAdapter(unittest.TestCase):
     """MiniMax M3 through the OpenAI-compatible endpoint. The verdict
-    travels as a forced tool call; thinking is disabled in the payload
+    travels as a forced tool call, with thinking disabled in the payload
     and think tags are stripped defensively. All transport is faked
     by patching urllib.request.urlopen."""
 
@@ -744,7 +744,7 @@ class TestMiniMaxAdapter(unittest.TestCase):
 
     def test_think_tags_stripped_before_text_fallback(self):
         # No tool call: the model answered in text with its reasoning
-        # inline. The think block carries a JSON-shaped draft verdict;
+        # inline. The think block carries a JSON-shaped draft verdict,
         # the real verdict follows it. Without stripping, the extractor
         # would parse the draft.
         text = ('<think>{"decision": "deny", "confidence": 0.1, '
@@ -762,7 +762,7 @@ class TestMiniMaxAdapter(unittest.TestCase):
         self.assertAlmostEqual(out.confidence, 0.9)
 
     def test_reason_typo_and_scale_slip_repaired_together(self):
-        # Observed 2026-10-09 in the v2 trial: M3 typos the 'reason'
+        # Observed 2026-10-09 in the v2 trial. M3 typos the 'reason'
         # key ('rereason') and emits confidence on a 0-100 scale. The
         # two repairs compose in _resolve.
         body = _minimax_tool_body(json.dumps(
