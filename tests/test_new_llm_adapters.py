@@ -772,6 +772,47 @@ class TestMiniMaxAdapter(unittest.TestCase):
         self.assertEqual(out.decision, "approve")
         self.assertAlmostEqual(out.confidence, 0.85)
 
+    def _decide_counting(self, body):
+        """decide() against a fixed response body, counting HTTP calls."""
+        from unittest import mock
+
+        calls = []
+
+        def fake_urlopen(req, timeout=None):
+            calls.append(req)
+            return _FakeHTTPResponse(body)
+
+        with mock.patch("urllib.request.urlopen", fake_urlopen):
+            out = MiniMaxAdapter(api_key="test-key").decide(
+                CASE, "choice", _ctx())
+        return out, calls
+
+    def test_reason_typo_only_repaired_without_repair_call(self):
+        # The typo is the ONLY defect (confidence already on the 0-1
+        # scale). The alias repair fixes the object, so _resolve must
+        # return it with fresh empty errors. Returning the stale
+        # pre-repair errors instead makes decide() burn its one repair
+        # call on an already-valid object and fail terminally when the
+        # model repeats the typo.
+        body = _minimax_tool_body(json.dumps(
+            {"decision": "approve", "confidence": 0.9,
+             "rereason": "solid"}))
+        out, calls = self._decide_counting(body)
+        self.assertEqual(out.decision, "approve")
+        self.assertAlmostEqual(out.confidence, 0.9)
+        self.assertEqual(len(calls), 1)
+
+    def test_reason_space_typo_only_repaired_without_repair_call(self):
+        # Same stale-errors shape with the second observed typo
+        # spelling ('re reason').
+        body = _minimax_tool_body(json.dumps(
+            {"decision": "deny", "confidence": 0.4,
+             "re reason": "weak"}))
+        out, calls = self._decide_counting(body)
+        self.assertEqual(out.decision, "deny")
+        self.assertAlmostEqual(out.confidence, 0.4)
+        self.assertEqual(len(calls), 1)
+
     def test_base_resp_rate_limit_maps_to_429(self):
         from peira.adapters.base import ProviderError
         body = {"base_resp": {"status_code": 1002,
