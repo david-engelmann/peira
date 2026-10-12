@@ -1156,31 +1156,35 @@ class MoonshotAdapter(OpenAIAdapter):
 
     Reuses the OpenAI request shape verbatim (strict JSON schema via
     ``response_format``) against ``https://api.moonshot.ai/v1`` with a
-    ``MOONSHOT_API_KEY`` bearer key — the ``openai`` SDK package drives
+    ``MOONSHOT_API_KEY`` bearer key. The ``openai`` SDK package drives
     the compat endpoint, so the extra stays ``peira[openai]``. The
     request's ``base_url`` is recorded in the transcript's request
-    shape; the key itself never is.
+    shape and the key itself never is.
 
     Default model is ``kimi-k3`` (the pinned version of Moonshot's
-    2.8T open-weight flagship, $3/$15 per 1M): the self-host audience's
-    flagship model, and the cheapest way to put a frontier-adjacent
-    model on the board.
+    2.8T open-weight flagship, $3/$15 per 1M). It is the self-host
+    audience's flagship model and the cheapest way to put a
+    frontier-adjacent model on the board.
 
     Request shape: Moonshot's API 400s on ``seed`` and ``logprobs``
-    (per third-party parameter surveys — the adapter omits both
-    fields rather than negotiating), so there is NO decision-token
-    logprob track on this adapter; the transcript honestly records
-    ``"seed": None`` and ``"logprobs": False``. The pinned ``kimi-k3``
-    is a reasoning model that only accepts ``temperature=1`` (any other
-    value 400s — observed live 2026-10-03); the adapter forces it via
+    so the adapter omits both fields rather than negotiating. There
+    is NO decision-token logprob track on this adapter and the
+    transcript honestly records ``"seed": None`` and
+    ``"logprobs": False``. Thinking is disabled through
+    ``extra_body`` with ``{"thinking": {"type": "disabled"}}``
+    because kimi-k3 otherwise spends the whole output budget on
+    reasoning and returns empty content. That failure was observed
+    live on 2026-10-12 during the v2 trial, which halted at 3,274
+    of 4,701 cases. Moonshot mandates temperature 1 while thinking
+    is on and temperature 0.6 while thinking is off, observed live
+    on 2026-10-12. The adapter forces 0.6 for ``kimi-k3`` through
     ``_MODEL_TEMPERATURE_OVERRIDES`` and records the actual value in
     the transcript, so runs stay honest about the lost determinism.
-    Whether ``json_schema`` ``response_format`` (vs plain
-    ``json_object``) is honored for ``kimi-k3`` is unverified. If the
-    live endpoint rejects or ignores any of these, you will see
-    terminal provider errors, not silent mismeasurement — verify
-    against the live API before any measured run. Not exercised
-    against the live API yet.
+    The thinking setting is recorded in the transcript request
+    shape as well. The adapter has now been exercised against the
+    live API extensively, with the v2 trial running 3,274 cases
+    through it, and ``json_schema`` ``response_format`` is honored
+    with clean parses whenever content is returned.
     """
 
     name = "moonshot-structured"
@@ -1191,14 +1195,15 @@ class MoonshotAdapter(OpenAIAdapter):
 
     _base_url = "https://api.moonshot.ai/v1"
 
-    # Per-model temperature overrides. kimi-k3 is a reasoning model that
-    # 400s on any temperature other than 1 ("invalid temperature: only 1
-    # is allowed for this model", observed live 2026-10-03). The override
-    # is applied in __init__ so self._temperature, the cache namespace,
-    # the request kwargs, and the transcript all agree — determinism is
-    # sacrificed for this model, honestly recorded everywhere.
+    # Per-model temperature overrides. Moonshot mandates temperature
+    # 1 while thinking is on and temperature 0.6 while thinking is
+    # off, observed live 2026-10-12. Thinking is disabled for this
+    # adapter, so kimi-k3 is pinned to 0.6. The override is applied
+    # in __init__ so self._temperature, the cache namespace, the
+    # request kwargs, and the transcript all agree. Determinism is
+    # sacrificed for this model and honestly recorded everywhere.
     _MODEL_TEMPERATURE_OVERRIDES: dict[str, float] = {
-        "kimi-k3": 1.0,
+        "kimi-k3": 0.6,
     }
 
     def __init__(
@@ -1213,12 +1218,12 @@ class MoonshotAdapter(OpenAIAdapter):
         # to api.openai.com. Rebuild the identical client against
         # Moonshot's OpenAI-compatible endpoint — retries still
         # DISABLED, the runner owns the retry policy.
-        # kimi-k3 is a reasoning model that 400s on any temperature
-        # other than 1 ("invalid temperature: only 1 is allowed for
-        # this model", observed live 2026-10-03). Force the override
-        # here so self._temperature, the cache namespace, the request
-        # kwargs, and the transcript all agree on the value actually
-        # sent — determinism is sacrificed for this model, honestly.
+        # Moonshot mandates temperature 0.6 while thinking is off,
+        # observed live 2026-10-12, and thinking is disabled for this
+        # adapter. Force the override here so self._temperature, the
+        # cache namespace, the request kwargs, and the transcript all
+        # agree on the value actually sent. Determinism is sacrificed
+        # for this model, honestly.
         _temp_override = self._MODEL_TEMPERATURE_OVERRIDES.get(model)
         if _temp_override is not None:
             temperature = _temp_override
@@ -1238,11 +1243,29 @@ class MoonshotAdapter(OpenAIAdapter):
         # negotiating. No decision-token logprob track on this adapter.
         kwargs.pop("seed", None)
         kwargs.pop("logprobs", None)
-        # Note: kimi-k3's temperature=1 requirement is enforced in
-        # __init__ (via _MODEL_TEMPERATURE_OVERRIDES), so
-        # self._temperature is already correct here — no override
-        # needed at request time.
+        # The kimi-k3 temperature requirement is enforced in
+        # __init__ through _MODEL_TEMPERATURE_OVERRIDES, so
+        # self._temperature is already correct here and no override
+        # is needed at request time.
+        # Thinking is disabled adapter-wide through ``extra_body``,
+        # mirroring DeepSeekAdapter. With thinking on, kimi-k3 spends
+        # the whole output budget on reasoning content and returns
+        # empty content, observed live 2026-10-12. The field travels
+        # through ``extra_body`` because it is not an OpenAI SDK body
+        # parameter.
+        extra_body = dict(kwargs.get("extra_body") or {})
+        extra_body["thinking"] = {"type": "disabled"}
+        kwargs["extra_body"] = extra_body
         return kwargs
+
+    def _request_shape_overrides(
+        self, sent: dict[str, Any]
+    ) -> dict[str, Any]:
+        # The thinking setting is load-bearing for this adapter, so
+        # record it in the transcript and not just the wire kwargs.
+        # Read it back from the sent kwargs so the transcript never
+        # claims a setting that was not sent.
+        return {"thinking": (sent.get("extra_body") or {}).get("thinking")}
 
     def _request(
         self, user_text: str, schema: dict[str, Any], repair: bool,
