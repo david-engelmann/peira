@@ -361,8 +361,8 @@ class TestDeepSeekScoreNormalization(unittest.TestCase):
 
     def test_confidence_out_of_range_still_rejected(self):
         # 150 is not a plausible 0-100 slip — _resolve must still report
-        # validation errors (not silently rescale). The decide() repair
-        # path then raises ProviderError after two failures.
+        # validation errors (not silently rescale). After two failures
+        # decide() returns the output as malformed (measured data).
         from peira.adapters.llm import _validate_schema_object, _build_schema
         schema = _build_schema(["approve", "deny"], "choice")
         obj = {"decision": "approve", "confidence": 150, "reason": "ok"}

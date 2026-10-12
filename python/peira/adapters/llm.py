@@ -759,12 +759,13 @@ class _StructuredLLMBase:
 
         if errors:
             # No judge: validation failed twice and no refusal signal
-            # matched either attempt — a terminal provider error
-            # (no status code, so the runner will NOT retry it).
-            raise ProviderError(
-                f"{self.name}: model output failed schema validation "
-                f"twice: {'; '.join(errors)}",
-                status_code=None,
+            # matched either attempt. Unparseable output is measured
+            # model behavior, not a provider fault — return it as a
+            # malformed output (the adapters/base.py contract) so the
+            # runner records parse_failure and scores the variant
+            # malformed, instead of booking a provider api_error.
+            return self._malformed(
+                primitive, raw, started, attempts, extra_raw=first_raw,
             )
         assert obj is not None
         return self._build_output(primitive, obj, raw, started, attempts, extra_raw=first_raw)
@@ -904,6 +905,45 @@ class _StructuredLLMBase:
             )
         return AbstainOutput(
             decision="", abstained=True, refusal_reason=reason,
+            confidence=None, usage=usage, transcript=transcript,
+        )
+
+    def _malformed(
+        self,
+        primitive: str,
+        raw: _RawResult,
+        started: float,
+        attempts: int,
+        extra_raw: _RawResult | None = None,
+    ) -> AdapterOutput:
+        """Model output that failed schema validation twice.
+
+        Measured model behavior, never a provider error — the contract
+        in adapters/base.py: "A malformed output (wrong type, bad
+        field) is not a crash: the runner marks the variant malformed
+        and scores conservatively." Mirrors ``_abstain``'s shape but
+        with abstained=False: decision="" is exactly what
+        validate_output flags ("non-abstained output must have a
+        non-empty decision"), so the runner records the call as
+        parse_failure and scores the variant malformed instead of
+        booking a provider api_error. Usage and transcript account for
+        both attempts, like every other repair-path return.
+        """
+        usage = self._usage(raw, started, extra_raw)
+        transcript = self._transcript(raw, started, attempts, None, None)
+        if primitive == "choice":
+            return ChoiceOutput(
+                decision="", abstained=False, refusal_reason="",
+                confidence=None, usage=usage, transcript=transcript,
+            )
+        if primitive == "score":
+            return ScoreOutput(
+                score=0.0, decision="", abstained=False,
+                refusal_reason="", confidence=None,
+                usage=usage, transcript=transcript,
+            )
+        return AbstainOutput(
+            decision="", abstained=False, refusal_reason="",
             confidence=None, usage=usage, transcript=transcript,
         )
 
