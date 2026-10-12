@@ -343,9 +343,15 @@ class TestRunToDashboard(unittest.TestCase):
 
 
 class TestLeaderboard(unittest.TestCase):
-    def _write(self, tmp_path, name, adapter, asr, eligible=True):
+    def _write(self, tmp_path, name, adapter, asr, eligible=True,
+               adapter_version=None):
+        # P1.1: leaderboard dedupes by adapter_version (model ID), not
+        # adapter_name. Default the version to the adapter name so
+        # distinct adapters stay distinct unless the test says otherwise.
         art = _make_artifact(
             adapter_name=adapter,
+            adapter_version=(adapter_version if adapter_version is not None
+                             else adapter + "-1.0"),
             metrics=_metrics(asr_conditional=asr,
                              ranking_eligible=eligible),
         )
@@ -361,6 +367,25 @@ class TestLeaderboard(unittest.TestCase):
             self.assertEqual(lb["n_ranked"], 2)
             self.assertEqual(lb["ranked"][0]["adapter_name"], "adapter-a")
             self.assertEqual(lb["ranked"][1]["adapter_name"], "adapter-b")
+
+    def test_shared_adapter_name_keeps_distinct_models(self):
+        # P1.1: models sharing an adapter_name (e.g. all OpenRouter
+        # models use "openrouter-structured") must each appear, deduped
+        # by adapter_version (the model ID), not adapter_name.
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            self._write(tmp_path, "qwen.json", "openrouter-structured", 0.3,
+                        adapter_version="qwen/qwen3-235b-a22b-2507")
+            self._write(tmp_path, "solar.json", "openrouter-structured", 0.2,
+                        adapter_version="upstage/solar-pro4")
+            scan_runs(tmp)
+            lb = leaderboard(tmp)
+            self.assertEqual(lb["n_ranked"], 2)
+            versions = {r["adapter_version"] for r in lb["ranked"]}
+            self.assertEqual(
+                versions,
+                {"qwen/qwen3-235b-a22b-2507", "upstage/solar-pro4"},
+            )
 
     def test_unranked_listed_with_reason(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -406,6 +431,24 @@ class TestLeaderboard(unittest.TestCase):
             self._write(tmp_path, "a.json", "adapter-a", 0.2)
             scan_runs(tmp)
             json.dumps(leaderboard(tmp))
+
+    def test_display_name_is_the_model_id(self):
+        # The public page names models, not adapters: two models can
+        # share one adapter_name, so rows carry display_name equal to
+        # the model ID (adapter_version) for the renderer to show.
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            self._write(tmp_path, "qwen.json", "openrouter-structured", 0.3,
+                        adapter_version="qwen/qwen3-235b-a22b-2507")
+            self._write(tmp_path, "bad.json", "adapter-bad", 0.2,
+                        eligible=False,
+                        adapter_version="bad-model-2.0")
+            scan_runs(tmp)
+            lb = leaderboard(tmp)
+            self.assertEqual(lb["ranked"][0]["display_name"],
+                             "qwen/qwen3-235b-a22b-2507")
+            self.assertEqual(lb["unranked"][0]["display_name"],
+                             "bad-model-2.0")
 
 
 class TestComparisonToDashboard(unittest.TestCase):
@@ -796,7 +839,7 @@ class TestPairwiseResampleAhead(unittest.TestCase):
             self.assertEqual(mirror["behind_fraction"], 0.0)
 
 
-def _make_dashboard_artifact(adapter_name, results):
+def _make_dashboard_artifact(adapter_name, results, adapter_version=None):
     """Minimal sealed artifact JSON with real results for dashboard tests.
 
     Pads results to 200 eligible cases (10 families x 20) with
@@ -848,7 +891,8 @@ def _make_dashboard_artifact(adapter_name, results):
     env, env_sha256 = collect_and_fingerprint()
     artifact = RunArtifact(
         adapter_name=adapter_name,
-        adapter_version="1.0-test",
+        adapter_version=(adapter_version if adapter_version is not None
+                         else adapter_name + "-1.0-test"),
         suite="v1",
         dataset_version="1.2.1",
         manifest_sha256="abc123" * 10 + "abcd",

@@ -483,17 +483,25 @@ def leaderboard(
     from peira.runs_registry import list_runs
 
     runs = list_runs(runs_dir=runs_dir, suite=suite, dataset_version=dataset_version)
-    # Latest run per adapter (list_runs is already created_utc DESC).
+    # Latest run per model (list_runs is already created_utc DESC).
+    # P1.1 fix: dedupe by adapter_version (the model ID, e.g.
+    # "qwen/qwen3-235b-a22b-2507") not adapter_name. Multiple models
+    # can share one adapter_name (e.g. all OpenRouter models use
+    # "openrouter-structured"); deduping by adapter_name silently
+    # drops all but one of them from the leaderboard.
     latest: dict[str, dict[str, Any]] = {}
     for r in runs:
-        adapter = r.get("adapter_name", "")
-        if adapter and adapter not in latest:
-            latest[adapter] = r
+        model_key = r.get("adapter_version", "") or r.get("adapter_name", "")
+        if model_key and model_key not in latest:
+            latest[model_key] = r
 
     ranked: list[dict[str, Any]] = []
     unranked: list[dict[str, Any]] = []
-    for adapter in sorted(latest):
-        meta = latest[adapter]
+    for model_key in sorted(latest):
+        meta = latest[model_key]
+        # adapter_name is the display grouping; model_key (adapter_version)
+        # is the unique model identity used for dedupe.
+        adapter = meta.get("adapter_name", "")
         path = Path(meta["path"])
         reason = "artifact not found"
         row: dict[str, Any] | None = None
@@ -525,6 +533,12 @@ def leaderboard(
                         artifact.config, dict) else {}
                     row = {
                         "adapter_name": adapter,
+                        # Display identity is the model, not the adapter:
+                        # several models share one adapter (every
+                        # OpenRouter model uses openrouter-structured),
+                        # and a public page must name the model a
+                        # reader would recognize.
+                        "display_name": artifact.adapter_version,
                         "adapter_version": artifact.adapter_version,
                         "suite": artifact.suite,
                         "dataset_version": artifact.dataset_version,
@@ -557,6 +571,15 @@ def leaderboard(
                             "env_sha256": artifact.env_sha256,
                             "contract_version": artifact.contract_version,
                         },
+                        # P1.3: per-run detail for the HTML detail view.
+                        # Families breakdown, calibration bins, and
+                        # severity aggregates. Read from the sealed
+                        # artifact; the artifact itself is never modified.
+                        "detail": {
+                            "families": payload.get("families") or [],
+                            "severities": payload.get("severities") or [],
+                            "calibration": payload.get("calibration") or {},
+                        },
                     }
                 else:
                     reason = why
@@ -573,6 +596,7 @@ def leaderboard(
         else:
             unranked.append({
                 "adapter_name": adapter,
+                "display_name": meta.get("adapter_version", ""),
                 "adapter_version": meta.get("adapter_version", ""),
                 "run_id": meta.get("run_id", ""),
                 "created_utc": meta.get("created_utc", ""),

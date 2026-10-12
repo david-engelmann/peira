@@ -46,3 +46,12 @@ Every submission is a run bundle with five parts.
 5. A signed attestation that these rules were followed. Signing means the submitter is on record. A false attestation is rejected, and the submitter does not submit again.
 
 A submission missing any part does not go on the board.
+
+## Model identity
+
+Each leaderboard row is a distinct model, identified by `adapter_version`
+(the model ID, e.g. `qwen/qwen3-235b-a22b-2507`), not by `adapter_name`.
+Multiple models may share one adapter implementation (for example, all
+OpenRouter-routed models use the `openrouter-structured` adapter); the
+board dedupes by model ID so each model appears exactly once. The
+adapter name is shown for context but never used as the identity key.
