@@ -385,6 +385,17 @@ class TestMoonshotThinkingDisabled(unittest.TestCase):
             {"type": "disabled"},
         )
 
+    def test_cache_namespace_marks_thinking_disabled(self):
+        # The namespace is the cache identity, so it must separate
+        # the thinking off request shape from any earlier shape for
+        # the same model and temperature. That separation matters
+        # most for unlisted models, whose temperature never changes.
+        unlisted = MoonshotAdapter(model="kimi-k2.6")
+        self.assertTrue(unlisted.cache_namespace.endswith(":thinkoff"))
+        pinned = MoonshotAdapter()
+        self.assertTrue(pinned.cache_namespace.endswith(":thinkoff"))
+        self.assertIn(":t0.6:", pinned.cache_namespace)
+
     def test_repair_call_carries_thinking_disabled_and_temperature(self):
         # The first completion is empty content, which is the live
         # failure mode this fix removes. The parse failure drives a

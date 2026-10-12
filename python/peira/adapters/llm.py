@@ -1235,6 +1235,15 @@ class MoonshotAdapter(OpenAIAdapter):
             api_key=self._api_key, base_url=self._base_url, max_retries=0
         )
 
+    def _cache_namespace_suffix(self) -> str:
+        # Thinking disabled is part of the measurement identity for
+        # this adapter. The pinned kimi-k3 namespace already changes
+        # with its forced temperature, but an unlisted model keeps
+        # its constructor temperature, so without this suffix a
+        # result cached with thinking on could satisfy a thinking
+        # off run for the same model.
+        return ":thinkoff"
+
     def _request_kwargs(
         self, messages: list[dict[str, str]], schema: dict[str, Any]
     ) -> dict[str, Any]:
