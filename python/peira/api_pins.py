@@ -34,6 +34,10 @@ Per-vendor schemes:
   compatible-mode endpoint). Qwen's ``qwen-max`` is a rolling alias
   for the flagship tier; the pin uses the versioned
   ``qwen3.8-max`` ID (GA 2026-08-03) for reproducibility.
+- MiniMax: ``MiniMax-M3`` (https://platform.minimax.io/docs/api-reference/text-openai-api).
+  MiniMax's flagship reasoning model (1M context). The ID is
+  case-sensitive (capital M, capital M), and the pin uses the exact
+  vendor-canonical form.
 
 This module is the single source of truth for those pins. It is
 stdlib-only (the base ``peira`` tier has zero third-party runtime
@@ -90,6 +94,7 @@ __all__ = [
 #                                   mistral-large-latest moves)
 #   Qwen:      qwen3.8-max         (versioned flagship ID; the qwen-max
 #                                   alias is rolling)
+#   MiniMax:   MiniMax-M3          (flagship; case-sensitive vendor ID)
 #   OpenRouter: google/gemini-3.8-flash (gateway model id: vendor/model;
 #                                   mirrors the GoogleAdapter default so the
 #                                   direct-vs-gateway comparison is the
@@ -115,6 +120,7 @@ PINNED_API_MODELS: dict[str, str] = {
     "zai-structured": "glm-4-plus",
     "mistral-structured": "mistral-large-2512",
     "qwen-structured": "qwen3.8-max",
+    "minimax-structured": "MiniMax-M3",
     "openrouter-structured": "google/gemini-3.8-flash",
 }
 
@@ -258,6 +264,9 @@ class DeprecatedPinError(ValueError):
 #              mistral-large-2512, mistral-small-latest).
 #   qwen:      qwen[<version>]-<name> (cf. qwen-max, qwen3.8-max,
 #              qwen-plus).
+#   minimax:   MiniMax-M<version>[-<name>] (cf. MiniMax-M3,
+#              MiniMax-M2.7, MiniMax-M3.1-Flash-Preview). Case-sensitive.
+#              The vendor ships the capital-M capital-M form.
 #   openrouter: <vendor>/<model> (cf. google/gemini-3.8-flash,
 #              anthropic/claude-sonnet-4.6): OpenRouter's documented
 #              gateway ID scheme. OpenRouter normalizes upstream IDs
@@ -283,6 +292,7 @@ _VENDOR_ID_PATTERNS: dict[str, re.Pattern[str]] = {
     "zai": re.compile(r"^glm-\d+(-[a-z0-9]+)*$"),
     "mistral": re.compile(r"^mistral-[a-z]+(-\d+|-latest)?$"),
     "qwen": re.compile(r"^qwen\d*(\.\d+)?(-[a-z0-9]+)+$"),
+    "minimax": re.compile(r"^MiniMax-M\d+(\.\d+)?(-[A-Za-z0-9]+)*$"),
     "openrouter": re.compile(r"^[a-z0-9][a-z0-9_.-]*/[A-Za-z0-9][A-Za-z0-9._-]*$"),
 }
 
