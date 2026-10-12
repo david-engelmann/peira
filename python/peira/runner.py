@@ -2425,6 +2425,80 @@ def _write_partial(
     atomic_write_text(partial_path, partial.seal().to_json())
 
 
+def _validate_budget_amendment_chain(partial: RunArtifact) -> float:
+    """Validate ``config["budget_amendments"]``; return the authorized cap.
+
+    A budget amendment chain is the only legitimate way a resumable
+    partial's recorded cap can differ from the cap the run started
+    under: each amendment is an explicit, append-only, provenance-
+    carrying record (see :func:`amend_partial_budget`). The chain must
+    link end to end — the first record's ``old_cap_usd`` is the
+    original cap, each later record starts where the previous one
+    ended, every step strictly raises the cap, every record carries a
+    non-empty reason, authorizer, and timestamp — and the final
+    ``new_cap_usd`` must equal the artifact's recorded ``budget_usd``.
+    Any inconsistency raises ValueError: a budget that changed without
+    an intact chain is indistinguishable from a hand-edit.
+    """
+    def _invalid(detail: str) -> ValueError:
+        return ValueError(
+            f"partial run has an invalid budget amendment chain: {detail}"
+        )
+
+    amendments = partial.config.get("budget_amendments")
+    if not isinstance(amendments, list) or not amendments:
+        raise _invalid(
+            "'budget_amendments' must be a non-empty list of records, "
+            f"got {amendments!r}"
+        )
+    previous_new: float | None = None
+    for i, record in enumerate(amendments):
+        where = f"budget amendment {i}"
+        if not isinstance(record, dict):
+            raise _invalid(
+                f"{where} is not an object: {record!r}"
+            )
+        old_cap = record.get("old_cap_usd")
+        new_cap = record.get("new_cap_usd")
+        for label, value in (
+            ("old_cap_usd", old_cap),
+            ("new_cap_usd", new_cap),
+        ):
+            if (
+                isinstance(value, bool)
+                or not isinstance(value, (int, float))
+                or not math.isfinite(value)
+                or not value > 0
+            ):
+                raise _invalid(
+                    f"{where} has invalid {label} {value!r}: caps are "
+                    "positive finite numbers"
+                )
+        if not new_cap > old_cap:
+            raise _invalid(
+                f"{where} does not raise the cap "
+                f"({old_cap!r} -> {new_cap!r}): amendments only raise"
+            )
+        if previous_new is not None and old_cap != previous_new:
+            raise _invalid(
+                f"{where} starts at {old_cap!r} but the previous "
+                f"amendment ended at {previous_new!r}: the chain is broken"
+            )
+        for field in ("reason", "authorized_by", "amended_utc"):
+            value = record.get(field)
+            if not isinstance(value, str) or not value.strip():
+                raise _invalid(
+                    f"{where} has a missing or empty {field!r}"
+                )
+        previous_new = new_cap
+    if previous_new != partial.budget_usd:
+        raise _invalid(
+            f"the final amended cap {previous_new!r} does not match "
+            f"the recorded budget_usd {partial.budget_usd!r}"
+        )
+    return float(previous_new)
+
+
 def validate_partial(
     partial: RunArtifact,
     adapter: Any,
@@ -2465,6 +2539,14 @@ def validate_partial(
     ``PerCaseResult.from_dict`` by default, the conversational
     subclass for the conversational suite (its turn history must
     survive the resume round-trip).
+
+    Budget exception: a partial whose cap was raised through
+    :func:`amend_partial_budget` carries an amendment chain in
+    ``config["budget_amendments"]``. Such a partial validates only
+    when the chain is intact (see
+    :func:`_validate_budget_amendment_chain`) and the resume targets
+    the chain's final cap exactly. A cap that changed without an
+    intact chain fails here exactly like any other mismatch.
     """
     if not partial.verify():
         raise ValueError(
@@ -2511,7 +2593,23 @@ def validate_partial(
     # different pricing table, different artifact semantics, or a
     # different cache state must not merge into this run: the sealed
     # numbers would lie.
-    if partial.budget_usd != budget_usd:
+    if "budget_amendments" in partial.config:
+        # The cap was raised through amend_partial_budget: the chain
+        # in config is the provenance record, and it is the second
+        # wall behind the analysis lock (a hand-edit breaks verify();
+        # a re-sealed edit still has to produce an intact chain).
+        # The resume must target the chain's final cap exactly —
+        # resuming at the original cap, or any other value, would run
+        # the rest of the suite under a cap nobody authorized.
+        amended_cap = _validate_budget_amendment_chain(partial)
+        if amended_cap != budget_usd:
+            raise ValueError(
+                f"partial run's budget cap was amended to "
+                f"{amended_cap!r} (see config.budget_amendments), "
+                f"not {budget_usd!r}: re-run with --budget-usd set "
+                f"to the amended cap or drop --resume"
+            )
+    elif partial.budget_usd != budget_usd:
         raise ValueError(
             f"partial run was recorded with budget_usd "
             f"{partial.budget_usd!r}, not {budget_usd!r}: re-run with "
@@ -2594,6 +2692,112 @@ def validate_partial(
                 f"partial run has malformed result entry at index {i}: {e}"
             ) from e
     return seen, results
+
+
+def amend_partial_budget(
+    partial: RunArtifact,
+    *,
+    new_cap_usd: float,
+    reason: str,
+    authorized_by: str,
+    now_utc: datetime | str | None = None,
+) -> RunArtifact:
+    """Raise a resumable partial's budget cap, with provenance.
+
+    A run whose cost estimate was too low cannot finish under its
+    recorded cap, and :func:`validate_partial` rightly refuses to
+    merge a partial recorded under a different cap — the cap is a
+    measurement input. Discarding the partial loses every scored
+    case. This is the auditable way out: an amendment is an explicit,
+    append-only record stored in ``config["budget_amendments"]`` on
+    the artifact itself, each entry carrying the old cap, the new
+    cap, the reason, who authorized it, and when. The artifact's
+    top-level ``budget_usd`` always equals the latest amendment's
+    ``new_cap_usd`` (or the original cap when no amendments exist).
+
+    The transformation is pure: the input artifact is not modified;
+    the returned artifact is a copy re-sealed through the same
+    :meth:`RunArtifact.seal` path checkpoints use, so its analysis
+    lock covers the amendment chain and :meth:`RunArtifact.verify`
+    passes on it. File IO stays with the caller.
+
+    Refusals (ValueError): the partial fails its analysis lock (never
+    amend a tampered partial); its termination is not resumable
+    (``partial``/``budget``/``timeout``); it has no cap to raise
+    (``budget_usd`` is None — an uncapped run needs no amendment);
+    ``new_cap_usd`` is not a finite number or does not strictly
+    exceed the current cap (amendments only raise: lowering a cap
+    mid-run is never legitimate); ``reason`` or ``authorized_by`` is
+    empty; or an amendment chain already on the artifact is broken
+    (appending a well-formed record must never launder earlier
+    tampering into validity).
+    """
+    if not partial.verify():
+        raise ValueError(
+            "cannot amend the budget of a partial that failed its "
+            "analysis lock — it was modified after sealing"
+        )
+    if partial.termination not in ("partial", "budget", "timeout"):
+        raise ValueError(
+            f"cannot amend a run with termination={partial.termination!r} — "
+            "only partial, budget-exhausted, or timed-out runs are resumable"
+        )
+    if not isinstance(reason, str) or not reason.strip():
+        raise ValueError(
+            "a budget amendment requires a non-empty reason"
+        )
+    if not isinstance(authorized_by, str) or not authorized_by.strip():
+        raise ValueError(
+            "a budget amendment requires a non-empty authorized_by"
+        )
+    current_cap = partial.budget_usd
+    if current_cap is None:
+        raise ValueError(
+            "partial run has no budget cap (budget_usd is None): "
+            "an uncapped run needs no amendment"
+        )
+    if (
+        isinstance(new_cap_usd, bool)
+        or not isinstance(new_cap_usd, (int, float))
+        or not math.isfinite(new_cap_usd)
+    ):
+        raise ValueError(
+            f"new budget cap must be a finite number, "
+            f"got {new_cap_usd!r}"
+        )
+    if not new_cap_usd > current_cap:
+        raise ValueError(
+            f"new budget cap {new_cap_usd!r} does not exceed the "
+            f"current cap {current_cap!r}: amendments only raise the cap"
+        )
+    if "budget_amendments" in partial.config:
+        _validate_budget_amendment_chain(partial)
+    if now_utc is None:
+        amended_utc = datetime.now(timezone.utc).isoformat()
+    elif isinstance(now_utc, datetime):
+        amended_utc = now_utc.isoformat()
+    else:
+        amended_utc = str(now_utc)
+    record = {
+        "old_cap_usd": float(current_cap),
+        "new_cap_usd": float(new_cap_usd),
+        "reason": reason,
+        "authorized_by": authorized_by,
+        "amended_utc": amended_utc,
+    }
+    amended = copy.deepcopy(partial)
+    chain = list(amended.config.get("budget_amendments") or [])
+    chain.append(record)
+    amended.config["budget_amendments"] = chain
+    amended.budget_usd = float(new_cap_usd)
+    amended.seal()
+    if not amended.verify():
+        # seal() sets the lock from the amended content, so this
+        # cannot fire unless the sealing path itself is broken.
+        raise RuntimeError(
+            "amended partial failed verification after re-sealing"
+        )
+    return amended
 
 
 def _seal_generation_max_tokens(config: dict, adapter: Any) -> None:
