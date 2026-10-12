@@ -425,6 +425,132 @@ class TestLeaderboard(unittest.TestCase):
                 lb["ranked"][0]["asr_conditional"], 0.1
             )
 
+    def _reseal_later(self, art):
+        # Same trick as test_latest_run_per_adapter: force a later
+        # created_utc through a reseal, never the wall clock.
+        d = json.loads(art.to_json())
+        d["created_utc"] = "2099-01-01T00:00:00+00:00"
+        return RunArtifact.from_json(json.dumps(d)).seal()
+
+    def test_probe_rerun_does_not_shadow_full_run(self):
+        # A later probe run (a canary: far fewer recorded cases than
+        # the coverage gates require) must not displace the model's
+        # earlier full run from the board.
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            full = _make_artifact(adapter_name="adapter-a",
+                                  adapter_version="model-x-1.0")
+            (tmp_path / "full.json").write_text(full.to_json())
+            probe_results = [
+                _result_entry(case_id=f"probe-c{i:02d}",
+                              family="indirection")
+                for i in range(10)
+            ]
+            probe = _make_artifact(
+                adapter_name="adapter-a",
+                adapter_version="model-x-1.0",
+                results=probe_results,
+                metrics=_metrics(
+                    n_cases=10, n_eligible=10, ranking_eligible=False,
+                    eligibility_notes=[
+                        "fewer than 200 eligible cases (10)"],
+                ),
+                cases_completed=10,
+                cases_planned=10,
+            )
+            (tmp_path / "probe.json").write_text(
+                self._reseal_later(probe).to_json())
+            scan_runs(tmp)
+            lb = leaderboard(tmp)
+            self.assertEqual(lb["n_ranked"], 1)
+            self.assertEqual(lb["n_unranked"], 0)
+            self.assertEqual(lb["ranked"][0]["adapter_version"],
+                             "model-x-1.0")
+            self.assertEqual(lb["ranked"][0]["asr_conditional"], 0.5)
+
+    def test_latest_full_run_failing_quality_stands(self):
+        # A later FULL run that measured the benchmark and failed a
+        # quality gate is the model's standing result: the board does
+        # not fall back to the earlier qualifying run.
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            full = _make_artifact(adapter_name="adapter-a",
+                                  adapter_version="model-x-1.0")
+            (tmp_path / "full.json").write_text(full.to_json())
+            bad_results = []
+            for i in range(200):
+                bad_results.append(_result_entry(
+                    case_id=f"bad-c{i:03d}",
+                    family="indirection",
+                    flipped=(i % 2 == 0),
+                    benign=_call_record(malformed=True),
+                    attacked=_call_record(
+                        decision="deny" if i % 2 == 0 else "approve",
+                        malformed=True),
+                ))
+            bad = _make_artifact(
+                adapter_name="adapter-a",
+                adapter_version="model-x-1.0",
+                results=bad_results,
+                metrics=_metrics(
+                    malformed_rate=1.0, ranking_eligible=False,
+                    eligibility_notes=["malformed_rate above 5%"],
+                ),
+            )
+            (tmp_path / "bad.json").write_text(
+                self._reseal_later(bad).to_json())
+            scan_runs(tmp)
+            lb = leaderboard(tmp)
+            self.assertEqual(lb["n_ranked"], 0)
+            self.assertEqual(lb["n_unranked"], 1)
+            self.assertIn("malformed", lb["unranked"][0]["reason"])
+
+    def test_unranked_row_carries_full_stats(self):
+        # A model that ran the full benchmark and failed a quality
+        # gate is unranked, but its numbers exist: the unranked row
+        # carries the same headline stats and per-run detail as a
+        # ranked row, so the page can print them next to the reason.
+        # Qualification itself is unchanged.
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            bad_results = []
+            for i in range(200):
+                bad_results.append(_result_entry(
+                    case_id=f"bad-c{i:03d}",
+                    family="indirection",
+                    flipped=(i % 2 == 0),
+                    benign=_call_record(malformed=True),
+                    attacked=_call_record(
+                        decision="deny" if i % 2 == 0 else "approve",
+                        malformed=True),
+                ))
+            bad = _make_artifact(
+                adapter_name="adapter-a",
+                adapter_version="model-x-1.0",
+                results=bad_results,
+                metrics=_metrics(
+                    malformed_rate=1.0, ranking_eligible=False,
+                    eligibility_notes=["malformed_rate above 5%"],
+                ),
+            )
+            (tmp_path / "bad.json").write_text(bad.to_json())
+            good = _make_artifact(adapter_name="adapter-b",
+                                  adapter_version="model-y-1.0")
+            (tmp_path / "good.json").write_text(good.to_json())
+            scan_runs(tmp)
+            lb = leaderboard(tmp)
+            self.assertEqual(lb["n_ranked"], 1)
+            self.assertEqual(lb["n_unranked"], 1)
+            self.assertEqual(lb["ranked"][0]["malformed_rate"], 0.0)
+            row = lb["unranked"][0]
+            self.assertEqual(row["ranking_eligible"], False)
+            self.assertEqual(row["asr_conditional"], 0.5)
+            self.assertEqual(row["malformed_rate"], 1.0)
+            self.assertEqual(row["benign_accuracy"], 1.0)
+            self.assertEqual(row["n_eligible"], 2)
+            self.assertIn("malformed", row["reason"])
+            self.assertIn("indirection", row["detail"]["families"])
+
     def test_json_serializable(self):
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)

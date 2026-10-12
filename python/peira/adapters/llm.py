@@ -2767,28 +2767,35 @@ class MiniMaxAdapter(_StructuredLLMBase):
         if obj is not None and errors:
             # MiniMax M3 typos the 'reason' key as 'rereason' or
             # 're reason' (observed 2026-10-09, 45 of 215 trial
-            # transcript errors). Alias before the scale fix so both
-            # repairs compose.
+            # transcript errors) and emits confidence/score on a
+            # 0-100 scale despite the prompt-inlined 0-1 schema
+            # (observed 2026-10-09, 143 of 215 trial transcript errors
+            # were "'score' N above maximum 1"). Both are deterministic
+            # model quirks, not malformed responses, and burning a
+            # repair call on them wastes provider spend. Same repairs
+            # as OpenRouterToolAdapter._resolve.
+            #
+            # Both repairs compose on a copy, and either repair (or
+            # both) triggers a re-validation, so a typo-only repair is
+            # not dropped. The first version of this method gated the
+            # re-validation on the scale fix changing the object, so a
+            # typo-only repair came back with the stale pre-repair
+            # errors and decide() still burned its repair call on an
+            # already-valid object.
+            repaired = dict(obj)
             for typo in ("rereason", "re reason"):
-                if typo in obj and "reason" not in obj:
-                    obj = {**obj, "reason": obj[typo]}
+                if typo in repaired and "reason" not in repaired:
+                    repaired["reason"] = repaired[typo]
                     # Keep the typo key out of the validated object.
                     # unknown keys are tolerated but the transcript
                     # stays clean.
-                    del obj[typo]
+                    del repaired[typo]
                     break
-            # MiniMax M3 emits confidence/score on a 0-100 scale
-            # despite the prompt-inlined 0-1 schema (observed
-            # 2026-10-09: 143 of 215 trial transcript errors were
-            # "'score' N above maximum 1"). Same normalization as
-            # DeepSeekAdapter._resolve: a scale slip is not a malformed
-            # response, and burning a repair call on it wastes
-            # provider spend.
-            normalized = _normalize_verbalized_scales(obj)
-            if normalized != obj:
-                normalized_errors = _validate_schema_object(normalized, schema)
-                if not normalized_errors:
-                    return normalized, normalized_errors
+            repaired = _normalize_verbalized_scales(repaired)
+            if repaired != obj:
+                repaired_errors = _validate_schema_object(repaired, schema)
+                if not repaired_errors:
+                    return repaired, repaired_errors
         return obj, errors
 
 # ---------------------------------------------------------------------------

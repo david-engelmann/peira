@@ -70,9 +70,9 @@ def _fmt_latency(v: Any) -> str:
 def _name(r: dict[str, Any]) -> str:
     """Display name for a leaderboard row.
 
-    Prefers an explicit ``display_name`` when the payload carries one
-    (the data layer may add gateway-disambiguated names); falls back
-    to the raw adapter name.
+    The data layer sets ``display_name`` to the model ID on every row
+    it emits; fall back to the raw adapter name for payloads that do
+    not carry one.
     """
     name = r.get("display_name") or r.get("adapter_name", "?")
     return _esc(str(name)[:40])
@@ -81,13 +81,10 @@ def _name(r: dict[str, Any]) -> str:
 def _version(r: dict[str, Any]) -> str:
     """Display version for a leaderboard row.
 
-    Prefers an explicit ``display_version``; otherwise strips a
-    vendor prefix (``upstage/solar-pro4`` renders as ``solar-pro4``)
-    so version strings read consistently across rows.
+    Strips a vendor prefix (``upstage/solar-pro4`` renders as
+    ``solar-pro4``) so version strings read consistently across rows.
+    The full model ID, prefix included, is in the Model column.
     """
-    v = r.get("display_version")
-    if v:
-        return _esc(str(v))
     raw = str(r.get("adapter_version", ""))
     if "/" in raw:
         raw = raw.rsplit("/", 1)[-1]
@@ -127,7 +124,7 @@ def _nice_ceiling(v: float) -> float:
     A bar chart whose axis ends at 0.19 has an ugly final tick.
     Snapping the max to a round number gives clean ticks for free.
     """
-    if v <= 0:
+    if not math.isfinite(v) or v <= 0:
         return 0.05
     exp = math.floor(math.log10(v))
     base = v / (10 ** exp)
@@ -138,9 +135,14 @@ def _nice_ceiling(v: float) -> float:
 
 
 def _asr_chart_svg(rows: list[dict[str, Any]]) -> str:
-    """Horizontal bars of ASR per model with Wilson CI whiskers."""
-    # The chart caps at 25 rows to keep the SVG readable; every ranked
-    # row still appears in the table below, chart or not.
+    """Horizontal bars of ASR per model with Wilson CI whiskers.
+
+    Rows the caller annotated with ``_ranked`` False draw in grey:
+    the model is on the chart with its number, and the color says it
+    carries no rank. Unannotated rows draw in the standard green.
+    """
+    # The chart caps at 25 rows to keep the SVG readable; every row
+    # still appears in the table below, chart or not.
     shown = [r for r in rows if _num(r.get("asr_conditional")) is not None][:25]
     if not shown:
         return '<p class="muted">No ranked models with ASR data.</p>'
@@ -181,11 +183,12 @@ def _asr_chart_svg(rows: list[dict[str, Any]]) -> str:
         lo = hi = None
         if isinstance(ci, (list, tuple)) and len(ci) == 2:
             lo, hi = _num(ci[0]), _num(ci[1])
+        fill = "#2f6f4f" if r.get("_ranked", True) else "#9aa0a6"
         parts.append(
             f'<text x="{pad_l - 8}" y="{y + bar_h - 4}" font-size="11" '
             f'text-anchor="end" fill="#222">{name}</text>'
             f'<rect x="{x(0):.1f}" y="{y}" width="{x(asr) - x(0):.1f}" '
-            f'height="{bar_h}" fill="#2f6f4f"/>')
+            f'height="{bar_h}" fill="{fill}"/>')
         if lo is not None and hi is not None:
             cy = y + bar_h / 2
             parts.append(
@@ -212,14 +215,30 @@ def _rank_cell(i: int) -> str:
     return str(i)
 
 
-def _ranked_table(rows: list[dict[str, Any]]) -> str:
+def _main_table(entries: list[dict[str, Any]]) -> str:
+    """One table for every model on the page, in ASR order.
+
+    Each entry is ``{"row": row, "rank": int | None}``. A ranked row
+    shows its rank number; a row without a rank shows the Not ranked
+    marker in the rank cell and the disqualification reason under
+    the model name, so the row itself says why it carries no rank.
+    Every row prints the full stat set, malformed rate included.
+    """
     body = []
-    for i, r in enumerate(rows, 1):
-        zebra = ' class="alt"' if i % 2 == 0 else ""
+    for pos, entry in enumerate(entries, 1):
+        r = entry["row"]
+        zebra = ' class="alt"' if pos % 2 == 0 else ""
+        if entry["rank"] is not None:
+            rank_html = _rank_cell(entry["rank"])
+            name_html = _name(r)
+        else:
+            rank_html = '<span class="nr">Not ranked</span>'
+            reason = _esc(_humanize_reason(r.get("reason")))
+            name_html = f"{_name(r)}<br><span class=\"muted\">{reason}</span>"
         body.append(
             f"<tr{zebra}>"
-            f"<td>{_rank_cell(i)}</td>"
-            f"<td>{_name(r)}</td>"
+            f"<td>{rank_html}</td>"
+            f"<td>{name_html}</td>"
             f"<td>{_version(r)}</td>"
             f"<td>{_fmt(r.get('asr_conditional'))}</td>"
             f"<td>{_fmt_ci(r.get('asr_ci95'))}</td>"
@@ -228,43 +247,33 @@ def _ranked_table(rows: list[dict[str, Any]]) -> str:
             f"<td>{_fmt(r.get('total_cost_usd'))}</td>"
             f"<td>{_fmt_latency(r.get('latency_ms_p50_attacked'))}</td>"
             f"<td>{_fmt(r.get('ece_attacked'))}</td>"
+            f"<td>{_fmt(r.get('malformed_rate'))}</td>"
             "</tr>"
         )
     return (
-        '<div class="table-wrap"><table><thead><tr><th>Rank</th><th>Model</th><th>Version</th>'
+        '<div class="table-wrap"><table class="board"><thead><tr><th>Rank</th><th>Model</th><th>Version</th>'
         "<th>ASR</th><th>ASR 95% CI</th><th>Benign accuracy</th>"
         "<th>Eligible n</th><th>Cost USD</th><th>Latency p50</th>"
-        "<th>ECE</th></tr></thead><tbody>\n"
+        "<th>ECE</th><th>Malformed rate</th></tr></thead><tbody>\n"
         + "\n".join(body)
         + "\n</tbody></table></div>"
     )
 
 
-def _unranked_table(rows: list[dict[str, Any]]) -> str:
-    if not rows:
-        return ""
-    body = "\n".join(
-        "<tr>"
-        f"<td>{_name(r)}</td>"
-        f"<td>{_version(r)}</td>"
-        f"<td>{_esc(_humanize_reason(r.get('reason')))}</td>"
-        "</tr>"
-        for r in rows if isinstance(r, dict)
-    )
-    return (
-        "<h2>Not ranked</h2>"
-        "<p>Omission never improves a rank. These models ran but did "
-        "not qualify, and the reason is shown.</p>"
-        '<div class="table-wrap"><table><thead><tr><th>Model</th><th>Version</th>'
-        "<th>Reason</th></tr></thead><tbody>\n"
-        + body + "\n</tbody></table></div>"
-    )
+_NOT_RANKED_NOTE = (
+    "<p>Models marked Not ranked ran the full benchmark but did not "
+    "qualify for a rank under the published admission rules, and the "
+    "reason is printed with each name. One of those rules caps the "
+    "malformed response rate at 5 percent, because a score built only "
+    "on the cases a model managed to answer can flatter it. Every "
+    "number is shown either way.</p>"
+)
 
 
 _BANNER_OFFICIAL = (
     '<div class="banner official">Official results. Produced from a '
     "frozen dataset tag under the published methodology. The methodology "
-    "is pre-registered and awaiting independent replication: treat these "
+    "is pre-registered and awaiting independent replication. Treat these "
     "as the current best measurement, not as settled fact.</div>"
 )
 _BANNER_MOCK = (
@@ -305,6 +314,7 @@ _CSS = (
     "svg.chart{display:block;width:100%;height:auto;max-width:640px}"
     ".table-wrap{max-width:100%;overflow-x:auto}"
     "table{border-collapse:collapse;width:100%;margin:1rem 0;font-size:13px}"
+    "table.board th,table.board td{padding:6px 6px}"
     "th,td{border:1px solid #ccc;padding:6px 8px;text-align:left}"
     "th{background:#f4f4f4;white-space:nowrap}"
     "tr.alt td{background:#fafafa}"
@@ -315,6 +325,7 @@ _CSS = (
     ".rank{display:inline-block;min-width:22px;height:22px;line-height:22px;"
     "border-radius:11px;text-align:center;font-weight:700;font-size:12px;color:#fff}"
     ".rank-1{background:#b8860b}.rank-2{background:#8a8d93}.rank-3{background:#a06a35}"
+    ".nr{color:#666;font-weight:700;white-space:nowrap}"
     ".muted{color:#666}code{background:#f4f4f4;padding:2px 4px}"
     ".provenance{background:#f8f9fa;border:1px solid #dee2e6;border-radius:6px;"
     "padding:12px 16px;margin:1rem 0}"
@@ -355,10 +366,10 @@ _BRAND = (
 # recorded in the trial log when each adapter fix landed. The page
 # discloses the split rather than presenting either run as a single
 # configuration.
-_MIXED_CONFIG_RUNS = (
-    ("gemini-3.8-flash", "Google", 1610),
-    ("kimi-k3", "Moonshot", 3274),
-)
+_MIXED_CONFIG_RUNS = {
+    "gemini-3.8-flash": ("Google", 1610),
+    "kimi-k3": ("Moonshot", 3274),
+}
 
 
 def _run_notes_block(ranked: list[dict[str, Any]],
@@ -372,7 +383,11 @@ def _run_notes_block(ranked: list[dict[str, Any]],
     affected run is on the page.
     """
     present = {r.get("adapter_version") for r in ranked + unranked}
-    matched = [entry for entry in _MIXED_CONFIG_RUNS if entry[0] in present]
+    matched = [
+        (version, vendor, n_first)
+        for version, (vendor, n_first) in _MIXED_CONFIG_RUNS.items()
+        if version in present
+    ]
     if not matched:
         return ""
     parts = ['<div class="run-notes"><h2>Run notes</h2>']
@@ -406,6 +421,27 @@ def leaderboard_to_html(payload: dict[str, Any],
     unranked = [r for r in unranked if isinstance(r, dict)] if isinstance(unranked, list) else []
     banner = _BANNER_OFFICIAL if data_source == "official" else _BANNER_MOCK
     stamp = generated_utc or datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    # One display order for the whole page: every model by ASR, with
+    # unusable ASRs last. Rank numbers count only the ranked rows in
+    # order, so a model without a rank slotting between two ranked
+    # ones never renumbers them.
+    combined = [(r, True) for r in ranked] + [(r, False) for r in unranked]
+    combined.sort(key=_display_sort_key)
+    entries: list[dict[str, Any]] = []
+    chart_rows: list[dict[str, Any]] = []
+    rank_no = 0
+    for r, is_ranked in combined:
+        if is_ranked:
+            rank_no += 1
+            entries.append({"row": r, "rank": rank_no})
+        else:
+            entries.append({"row": r, "rank": None})
+        chart_rows.append(dict(r, _ranked=is_ranked))
+    chart_caption = (
+        '<p class="muted">Grey bars are models shown without a rank.</p>'
+        if unranked else ""
+    )
+    note_html = _NOT_RANKED_NOTE if unranked else ""
     # P1.2: provenance block. The payload carries suite, dataset_version,
     # and each ranked row carries n_cases and created_utc. Render them so
     # a reader can see what dataset, how many cases, and when the runs
@@ -420,37 +456,51 @@ def leaderboard_to_html(payload: dict[str, Any],
         f"{_BRAND}"
         f"<h1>{_esc(title)}</h1>"
         f'<p class="muted">Generated {_esc(stamp)}. '
-        f"{len(ranked)} ranked, {len(unranked)} not ranked.</p>"
+        f"{len(ranked) + len(unranked)} models, {len(ranked)} ranked, "
+        f"{len(unranked)} not ranked.</p>"
         f"{banner}"
         f"{provenance_html}"
         f"{notes_html}"
         "<h2>Attack success rate by model</h2>"
         '<div class="chart-wrap">'
-        f"{_asr_chart_svg(ranked)}"
+        f"{_asr_chart_svg(chart_rows)}"
+        f"{chart_caption}"
         "</div>"
         "<h2>Rankings</h2>"
-        f"{_ranked_table(ranked)}"
-        f"{_unranked_table(unranked)}"
-        f"{_run_details(ranked)}"
+        f"{_main_table(entries)}"
+        f"{note_html}"
+        f"{_run_details([e['row'] for e in entries])}"
         f"{_FOOTER}"
         "</body></html>\n"
     )
 
 
-def _run_details(ranked: list[dict[str, Any]]) -> str:
+def _display_sort_key(item: tuple[dict[str, Any], bool]) -> tuple[bool, float]:
+    """ASR ascending for the combined table; unusable ASRs last.
+
+    Mirrors the data layer's ranked sort, so the merged display
+    order never disagrees with the payload's own ranking order.
+    """
+    v = _num(item[0].get("asr_conditional"))
+    if v is None:
+        return (True, 0.0)
+    return (False, v)
+
+
+def _run_details(rows: list[dict[str, Any]]) -> str:
     """P1.3: per-run detail sections with family breakdown and calibration.
 
-    Each ranked row carries a ``detail`` dict (families, severities,
-    calibration) from the sealed artifact. Rendered as static sections
+    Each row carries a ``detail`` dict from the sealed artifact,
+    ranked and not ranked alike; this view renders its family
+    breakdown and its calibration. Rendered as static sections
     (no JavaScript per the HTML contract) below the main table.
     """
-    if not ranked:
+    if not rows:
         return ""
     parts = ['<h2>Per-run detail</h2>']
-    for r in ranked:
-        name = r.get("adapter_version") or r.get("adapter_name") or "unknown"
+    for r in rows:
         detail = r.get("detail") or {}
-        parts.append(f'<div class="run-detail"><h3>{_esc(name)}</h3>')
+        parts.append(f'<div class="run-detail"><h3>{_name(r)}</h3>')
         parts.append(_families_table(detail.get("families") or []))
         parts.append(_calibration_block(detail.get("calibration") or {}))
         parts.append('</div>')
@@ -467,7 +517,7 @@ def _families_table(families: Any) -> str:
     """
     if isinstance(families, dict):
         families = list(families.values())
-    if not families:
+    if not isinstance(families, list) or not families:
         return '<p class="muted">No family breakdown available.</p>'
     rows = []
     for f in families:
@@ -508,13 +558,17 @@ def _provenance_block(payload: dict[str, Any],
     # The payload-level suite and dataset version echo the caller's
     # filters and are empty on an unfiltered build. Fall back to the
     # rows themselves, which carry both fields from their artifacts.
+    all_rows = list(ranked) + list(unranked or [])
     suite = payload.get("suite")
-    if not suite and ranked:
-        suite = ranked[0].get("suite")
+    if not suite:
+        suite = next(
+            (r.get("suite") for r in all_rows if r.get("suite")), None)
     suite = suite or "n/a"
     dataset_version = payload.get("dataset_version")
-    if not dataset_version and ranked:
-        dataset_version = ranked[0].get("dataset_version")
+    if not dataset_version:
+        dataset_version = next(
+            (r.get("dataset_version") for r in all_rows
+             if r.get("dataset_version")), None)
     dataset_version = dataset_version or "n/a"
     # n_cases should be uniform across ranked rows; take the max as the
     # representative count and note if rows disagree.
@@ -529,7 +583,6 @@ def _provenance_block(payload: dict[str, Any],
     # Run dates: min/max created_utc across every row on the page,
     # ranked and not ranked alike. A range drawn only from ranked
     # rows understates when the run finished.
-    all_rows = list(ranked) + list(unranked or [])
     dates = sorted(r.get("created_utc", "") for r in all_rows if r.get("created_utc"))
     if dates:
         date_range = _esc(dates[0][:10])

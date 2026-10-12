@@ -52,6 +52,14 @@ A submission missing any part does not go on the board.
 Each leaderboard row is a distinct model, identified by `adapter_version`
 (the model ID, e.g. `qwen/qwen3-235b-a22b-2507`), not by `adapter_name`.
 Multiple models may share one adapter implementation (for example, all
-OpenRouter-routed models use the `openrouter-structured` adapter); the
+OpenRouter-routed models use the `openrouter-structured` adapter). The
 board dedupes by model ID so each model appears exactly once. The
 adapter name is shown for context but never used as the identity key.
+
+The board shows each model's latest full run. A probe run that never
+covered the benchmark (fewer recorded cases than the coverage gates
+require, or a required family it never attempted) does not displace an
+earlier full run. A full run that fails a quality gate stands as the
+model's result and is shown as not ranked, with the reason. Its numbers
+are printed in the same table as the ranked models, malformed response
+rate included, so a result is visible even when it carries no rank.

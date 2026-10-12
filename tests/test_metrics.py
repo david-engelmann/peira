@@ -5,6 +5,7 @@ import math
 import random
 import unittest
 
+from peira import metrics
 from peira.adapters.base import CallUsage
 
 from peira.metrics import (
@@ -19,6 +20,8 @@ from peira.metrics import (
     SEVERITY_WEIGHTS,
     _abstention_rate_arm_py,
     _bootstrap_case_ci,
+    _in_bootstrap,
+    _require_result_strings,
     abstention_rate,
     abstention_rate_delta,
     asr_unconditional,
@@ -4074,3 +4077,132 @@ class TestR20TelemetryFields(unittest.TestCase):
         self.assertIsNone(u.finish_reason)
         self.assertIsNone(u.cached_tokens_in)
         self.assertIsNone(u.provider_response_id)
+
+
+# ---------------------------------------------------------------------
+# Bootstrap validation speedup (follow-up lane, David 2026-10-12)
+#
+# _bootstrap_case_ci validates PerCaseResult inputs once upfront and
+# then suppresses per-resample re-validation through a thread-local
+# flag. The tests below pin the three properties that make the
+# speedup safe. Invalid inputs still raise before any resampling
+# happens. Resamples perform no leaf string validation. Results
+# with the speedup active are exactly equal to results without it.
+
+
+def _bs_result(case_id="c0", flipped=False):
+    return PerCaseResult(
+        case_id=case_id,
+        family="f",
+        severity="high",
+        primitive="choice",
+        benign=_rec(),
+        attacked=_rec(decision="deny" if flipped else "approve"),
+        flipped=flipped,
+        eligible=True,
+        ineligibility_reason="",
+    )
+
+
+def _bs_flip_rate(results):
+    return sum(1.0 for r in results if r.flipped) / len(results)
+
+
+def _bs_validating_flip_rate(results):
+    # Mirrors the dispatched metric stats, which validate every
+    # result they touch before computing.
+    for r in results:
+        _require_result_strings(r)
+    return _bs_flip_rate(results)
+
+
+class TestBootstrapValidationSpeedup(unittest.TestCase):
+    def _fixtures(self, n=12):
+        return [
+            _bs_result(case_id=f"c{i}", flipped=(i % 3 == 0))
+            for i in range(n)
+        ]
+
+    def test_invalid_input_raises_on_upfront_pass(self):
+        # A lone surrogate in a string field has no JSON
+        # representation. The stat below never validates, so the
+        # only way this call can raise is the upfront validation
+        # pass in _bootstrap_case_ci. Without that pass the call
+        # silently returns a CI and this test fails.
+        bad = _bs_result(case_id="bad\ud800id")
+        items = self._fixtures(4) + [bad]
+        with self.assertRaises(ValueError):
+            _bootstrap_case_ci(items, _bs_flip_rate, n_boot=10, seed=0)
+        # The flag must be reset even when validation raises before
+        # the resampling loop starts.
+        self.assertFalse(_in_bootstrap())
+
+    def test_resamples_skip_revalidation(self):
+        # Count leaf string validations. Each fixture result costs
+        # exactly 9 leaf calls when validated (5 result fields plus
+        # a decision and refusal reason for each of the 2 records,
+        # usage is None). With the speedup, the upfront pass pays
+        # that cost once per item and the 40 resamples pay nothing,
+        # even though the stat validates every result it touches.
+        # If the flag check in _require_result_strings is removed,
+        # the count grows by a factor of n_boot and this test fails.
+        items = self._fixtures(10)
+        calls = []
+        original = metrics._require_json_str
+
+        def counting(value):
+            calls.append(value)
+            return original(value)
+
+        metrics._require_json_str = counting
+        try:
+            _bootstrap_case_ci(
+                items, _bs_validating_flip_rate, n_boot=40, seed=3)
+        finally:
+            metrics._require_json_str = original
+        self.assertEqual(len(calls), 9 * len(items))
+        self.assertFalse(_in_bootstrap())
+
+    def test_flag_reset_when_stat_raises(self):
+        # The finally block must clear the flag, or later unrelated
+        # validation in the same thread would be silently skipped.
+        def boom(results):
+            raise RuntimeError("stat failed")
+
+        with self.assertRaises(RuntimeError):
+            _bootstrap_case_ci(self._fixtures(4), boom, n_boot=5, seed=0)
+        self.assertFalse(_in_bootstrap())
+        # Validation is live again after the failed bootstrap.
+        with self.assertRaises(ValueError):
+            _require_result_strings(_bs_result(case_id="bad\ud800id"))
+
+    def test_results_equal_with_and_without_speedup(self):
+        # Same fixtures, same seed, two modes. First the normal
+        # path with the speedup active. Then the same function with
+        # the flag lookup forced off, which restores the old
+        # validate-every-resample behavior. The CIs must be exactly
+        # equal, since validation never changes a statistic value.
+        items = self._fixtures(15)
+        accelerated = _bootstrap_case_ci(
+            items, _bs_validating_flip_rate, n_boot=200, seed=7)
+        original_lookup = metrics._in_bootstrap
+        metrics._in_bootstrap = lambda: False
+        try:
+            unaccelerated = _bootstrap_case_ci(
+                items, _bs_validating_flip_rate, n_boot=200, seed=7)
+        finally:
+            metrics._in_bootstrap = original_lookup
+        self.assertEqual(accelerated, unaccelerated)
+
+        # Independent naive reference. Plain randrange resampling
+        # with validation active throughout, computed outside the
+        # function under test.
+        rng = random.Random(7)
+        n = len(items)
+        diffs = sorted(
+            _bs_validating_flip_rate(
+                [items[rng.randrange(n)] for _ in range(n)])
+            for _ in range(200)
+        )
+        expected = (diffs[int(0.025 * 200)], diffs[int(0.975 * 200)])
+        self.assertEqual(accelerated, expected)

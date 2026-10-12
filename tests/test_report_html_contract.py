@@ -160,6 +160,42 @@ class ContractTest(unittest.TestCase):
         self.assertIn("Not ranked", page)
         self.assertIn("benign accuracy below ranking floor", page)
 
+    def test_unranked_rows_render_full_numbers(self):
+        # A not-ranked row whose payload carries stats prints them
+        # in the one main table, with the marker in place of a rank
+        # and a per-run detail section like every other model.
+        payload = _payload()
+        payload["unranked"][0].update({
+            "asr_conditional": 0.30,
+            "asr_ci95": [0.25, 0.35],
+            "benign_accuracy": 0.95,
+            "n_eligible": 400,
+            "total_cost_usd": 0.75,
+            "latency_ms_p50_attacked": 150.0,
+            "ece_attacked": 0.07,
+            "malformed_rate": 0.11,
+            "detail": {
+                "families": {
+                    "indirection": {
+                        "family": "indirection",
+                        "asr": 0.31,
+                        "asr_ci95": [0.26, 0.36],
+                        "n": 400,
+                    },
+                },
+                "calibration": {},
+            },
+        })
+        page = leaderboard_to_html(payload)
+        self.assertEqual(page.count("<th>Rank</th>"), 1)
+        self.assertIn("<th>Malformed rate</th>", page)
+        self.assertIn("0.3000", page)
+        self.assertIn("0.1100", page)
+        self.assertIn("Not ranked", page)
+        self.assertIn("broken-adapter", page)
+        self.assertIn("indirection", page)
+        self.assertIn("0.3100", page)
+
     def test_ranking_content(self):
         page = leaderboard_to_html(_payload())
         self.assertIn("shieldstral-1.0", page)
