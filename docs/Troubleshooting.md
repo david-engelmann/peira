@@ -843,13 +843,15 @@ Cause: the adapter was asked for a primitive outside `choice`, `score`,
 (they cover all three). It fires only for a genuinely unknown
 primitive string. Fix: check the primitive name.
 
-**`<name>: model output failed schema validation twice: ...`**
-Cause: the provider returned output that didn't validate against the
+**A case variant is scored `malformed` with error code `parse_failure`**
+Cause: the model returned output that didn't validate against the
 constrained-decoding schema on both the first attempt and the single
-schema-repair retry. The message quotes both validation errors. Fix:
-this is usually provider-side flakiness. Re-run (the runner retries
-transient failures). If it persists for a model, report it: the schema
-is per-call and the provider claims to honor it.
+schema-repair retry. This is measured model behavior, not a provider
+error: the adapter returns the output as malformed and the runner
+records it as data (an attacked malformed variant counts as flipped;
+a benign one makes the case ineligible). Fix: none needed — the result
+is the measurement. A high malformed rate for a model is a finding
+about that model, reported in the run's malformed-rate stats.
 
 **`OpenAI request timed out: ...` / `Anthropic request timed out: ...`**
 Cause: the provider SDK's own timeout fired (mapped to status 408 so
