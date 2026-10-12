@@ -267,10 +267,12 @@ class TestMoonshotRequestShape(unittest.TestCase):
 
 
 class TestMoonshotTemperatureOverride(unittest.TestCase):
-    """kimi-k3 only accepts temperature=1 (live 400 on any other value).
+    """kimi-k3 is pinned to temperature 0.6 while thinking is off.
 
-    Regression test: the adapter must force temperature=1 for the
-    pinned model even though the constructor default is 0.0, and the
+    Moonshot mandates temperature 1 while thinking is on and
+    temperature 0.6 while thinking is off, observed live 2026-10-12.
+    Thinking is disabled for this adapter, so the pinned model must
+    send 0.6 even though the constructor default is 0.0, and the
     transcript must record the temperature actually sent.
     """
 
@@ -284,39 +286,41 @@ class TestMoonshotTemperatureOverride(unittest.TestCase):
         self.addCleanup(self._e.__exit__, None, None, None)
         self.addCleanup(self._m.__exit__, None, None, None)
 
-    def test_pinned_model_sends_temperature_one(self):
-        # Constructor default is 0.0, but kimi-k3 must send 1.0.
+    def test_pinned_model_sends_temperature_point_six(self):
+        # Constructor default is 0.0, but kimi-k3 must send 0.6.
         MoonshotAdapter().decide(CASE, "choice", _ctx())
-        self.assertEqual(self.calls[0]["temperature"], 1.0)
+        self.assertEqual(self.calls[0]["temperature"], 0.6)
 
     def test_pinned_model_transcript_records_override(self):
         out = MoonshotAdapter().decide(CASE, "choice", _ctx())
-        self.assertEqual(out.transcript["request"]["temperature"], 1.0)
+        self.assertEqual(out.transcript["request"]["temperature"], 0.6)
+        self.assertEqual(out.transcript["parameters"]["temperature"], 0.6)
 
-    def test_pinned_model_effective_temperature_is_one(self):
+    def test_pinned_model_effective_temperature_is_point_six(self):
         # The override is applied in __init__, so the instance itself
-        # carries the effective value — cache namespace and transcript
-        # agree with what is sent.
+        # carries the effective value and the cache namespace and
+        # transcript agree with what is sent.
         adapter = MoonshotAdapter()
-        self.assertEqual(adapter._temperature, 1.0)
-        self.assertIn(":t1.0:", adapter.cache_namespace)
+        self.assertEqual(adapter._temperature, 0.6)
+        self.assertIn(":t0.6:", adapter.cache_namespace)
 
     def test_explicit_temperature_does_not_leak_into_cache(self):
         # A caller-passed temperature for kimi-k3 must not create a
-        # phantom cache namespace: the effective value wins everywhere.
+        # phantom cache namespace and the effective value wins
+        # everywhere.
         adapter = MoonshotAdapter(temperature=0.5)
-        self.assertEqual(adapter._temperature, 1.0)
-        self.assertIn(":t1.0:", adapter.cache_namespace)
+        self.assertEqual(adapter._temperature, 0.6)
+        self.assertIn(":t0.6:", adapter.cache_namespace)
         self.assertNotIn(":t0.5:", adapter.cache_namespace)
 
     def test_explicit_temperature_still_overridden_for_kimi_k3(self):
         # Even an explicit constructor temperature cannot beat the
-        # provider's constraint — the override wins.
+        # provider constraint and the override wins.
         MoonshotAdapter(temperature=0.5).decide(CASE, "choice", _ctx())
-        self.assertEqual(self.calls[0]["temperature"], 1.0)
+        self.assertEqual(self.calls[0]["temperature"], 0.6)
 
     def test_unlisted_model_keeps_constructor_temperature(self):
-        # Models without an override entry keep the caller's value.
+        # Models without an override entry keep the caller value.
         MoonshotAdapter(model="kimi-k2.6").decide(CASE, "choice", _ctx())
         self.assertEqual(self.calls[0]["temperature"], 0.0)
 
@@ -327,7 +331,99 @@ class TestMoonshotTemperatureOverride(unittest.TestCase):
     def test_override_map_covers_pinned_model(self):
         self.assertIn("kimi-k3", MoonshotAdapter._MODEL_TEMPERATURE_OVERRIDES)
         self.assertEqual(
-            MoonshotAdapter._MODEL_TEMPERATURE_OVERRIDES["kimi-k3"], 1.0)
+            MoonshotAdapter._MODEL_TEMPERATURE_OVERRIDES["kimi-k3"], 0.6)
+
+
+class TestMoonshotThinkingDisabled(unittest.TestCase):
+    """Thinking is disabled on every Moonshot request.
+
+    The disable is adapter-wide, mirroring DeepSeekAdapter, so an
+    unlisted model carries it too while keeping its own temperature.
+    The repair call goes through the same request builder, so the
+    second call must carry the same settings as the first.
+    """
+
+    def setUp(self):
+        self.mod, self.calls, self.created = _make_openai(
+            [_openai_completion(GOOD_JSON)])
+        self._m = _fake_modules({"openai": self.mod})
+        self._m.__enter__()
+        self._e = _env(MOONSHOT_API_KEY="sk-test")
+        self._e.__enter__()
+        self.addCleanup(self._e.__exit__, None, None, None)
+        self.addCleanup(self._m.__exit__, None, None, None)
+
+    def test_initial_call_carries_thinking_disabled(self):
+        MoonshotAdapter().decide(CASE, "choice", _ctx())
+        self.assertEqual(
+            self.calls[0].get("extra_body"),
+            {"thinking": {"type": "disabled"}},
+        )
+
+    def test_transcript_records_thinking_disabled(self):
+        out = MoonshotAdapter().decide(CASE, "choice", _ctx())
+        self.assertEqual(
+            out.transcript["request"]["thinking"],
+            {"type": "disabled"},
+        )
+
+    def test_unlisted_model_carries_thinking_disabled(self):
+        # The disable is adapter-wide, while the temperature override
+        # stays pinned to kimi-k3 only.
+        MoonshotAdapter(model="kimi-k2.6").decide(CASE, "choice", _ctx())
+        self.assertEqual(
+            self.calls[0].get("extra_body"),
+            {"thinking": {"type": "disabled"}},
+        )
+        self.assertEqual(self.calls[0]["temperature"], 0.0)
+
+    def test_unlisted_model_transcript_records_thinking_disabled(self):
+        out = MoonshotAdapter(model="kimi-k2.6").decide(
+            CASE, "choice", _ctx())
+        self.assertEqual(
+            out.transcript["request"]["thinking"],
+            {"type": "disabled"},
+        )
+
+    def test_cache_namespace_marks_thinking_disabled(self):
+        # The namespace is the cache identity, so it must separate
+        # the thinking off request shape from any earlier shape for
+        # the same model and temperature. That separation matters
+        # most for unlisted models, whose temperature never changes.
+        unlisted = MoonshotAdapter(model="kimi-k2.6")
+        self.assertTrue(unlisted.cache_namespace.endswith(":thinkoff"))
+        pinned = MoonshotAdapter()
+        self.assertTrue(pinned.cache_namespace.endswith(":thinkoff"))
+        self.assertIn(":t0.6:", pinned.cache_namespace)
+
+    def test_repair_call_carries_thinking_disabled_and_temperature(self):
+        # The first completion is empty content, which is the live
+        # failure mode this fix removes. The parse failure drives a
+        # repair call, and that second call must carry the same
+        # thinking disable and the same pinned temperature.
+        mod, calls, _ = _make_openai([
+            _openai_completion(""),
+            _openai_completion(GOOD_JSON),
+        ])
+        with _fake_modules({"openai": mod}), _env(
+                MOONSHOT_API_KEY="sk-test"):
+            out = MoonshotAdapter().decide(CASE, "choice", _ctx())
+        self.assertEqual(out.decision, "approve")
+        self.assertEqual(len(calls), 2)
+        self.assertEqual(
+            calls[0].get("extra_body"),
+            {"thinking": {"type": "disabled"}},
+        )
+        self.assertEqual(
+            calls[1].get("extra_body"),
+            {"thinking": {"type": "disabled"}},
+        )
+        self.assertEqual(calls[1]["temperature"], 0.6)
+        self.assertEqual(out.transcript["response"]["attempts"], 2)
+        self.assertEqual(
+            out.transcript["request"]["thinking"],
+            {"type": "disabled"},
+        )
 
 
 if __name__ == "__main__":

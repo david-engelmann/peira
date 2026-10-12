@@ -1107,17 +1107,37 @@ class TestRefusalPipeline(unittest.TestCase):
         self.assertIn("I'm sorry", out.refusal_reason)
         self.assertEqual(validate_output(out, "choice"), [])
 
-    def test_bad_enum_is_terminal_not_retryable(self):
+    def test_bad_enum_twice_returns_malformed_not_provider_error(self):
+        # Double schema failure is measured model behavior, not a
+        # provider fault (the adapters/base.py contract): decide()
+        # returns a malformed output instead of raising ProviderError,
+        # so the runner records parse_failure rather than api_error.
         bad = json.dumps({"decision": "maybe", "confidence": 0.9,
                           "reason": "x"})
         adapter, calls = self._adapter_with(
             [_openai_completion(bad), _openai_completion(bad)])
-        with self.assertRaises(ProviderError) as ctx:
-            adapter.decide(CASE, "choice", _ctx())
-        retryable, _, _ = classify_exception(ctx.exception)
-        self.assertFalse(retryable)
-        # Exactly one repair attempt, then terminal.
+        out = adapter.decide(CASE, "choice", _ctx())
+        # Exactly one repair attempt, then the malformed return.
         self.assertEqual(len(calls), 2)
+        self.assertEqual(out.decision, "")
+        self.assertFalse(out.abstained)
+        self.assertIsNone(out.confidence)
+        self.assertEqual(out.refusal_reason, "")
+        errors = validate_output(out, "choice")
+        self.assertIn(
+            "non-abstained output must have a non-empty decision", errors)
+        # The runner classifies a returned-but-invalid output (no
+        # exception) as parse_failure — never api_error.
+        from peira.runner import _error_code_for_entry
+        self.assertEqual(
+            _error_code_for_entry(
+                timed_out=False, error=None,
+                validation_errors=errors, output_valid=False),
+            "parse_failure")
+        # Usage accounts for BOTH attempts (11 in / 22 out per call).
+        self.assertEqual(out.usage.tokens_in, 22)
+        self.assertEqual(out.usage.tokens_out, 44)
+        self.assertEqual(out.transcript["response"]["attempts"], 2)
 
     def test_repair_attempt_can_succeed(self):
         bad = json.dumps({"decision": "approve"})  # missing confidence
@@ -1150,6 +1170,76 @@ class TestRefusalPipeline(unittest.TestCase):
         case = dict(CASE, whatever="x", nested={"a": 1})
         out = adapter.decide(case, "choice", _ctx(target="deny", attacked=True))
         self.assertEqual(out.decision, "approve")
+
+
+# ---------------------------------------------------------------------------
+# Malformed outputs: unparseable model output is measured data.
+# ---------------------------------------------------------------------------
+
+class TestMalformedOutput(unittest.TestCase):
+    """Non-JSON output on both attempts returns a malformed output.
+
+    Regression guard for the v2-trial misclassification: kimi-k3's
+    plain-text answers used to raise ProviderError out of decide(), so
+    the runner booked them as api_error (a provider fault) and the
+    trial driver's benign-arm spend-protection rail halted the run.
+    The adapters/base.py contract says malformed output is measured
+    model behavior: decide() must return an output validate_output
+    flags, so the runner records parse_failure and scores the variant
+    malformed. Every test here fails if the raise comes back.
+    """
+
+    # Plain prose: no JSON object and no refusal prefix, so both
+    # attempts fail text parsing (the _parse_and_validate path).
+    PLAIN_TEXT = "The committee weighed the request and reached a view."
+
+    def setUp(self):
+        self._e = _env(OPENAI_API_KEY="sk-test")
+        self._e.__enter__()
+        self.addCleanup(self._e.__exit__, None, None, None)
+
+    def _decide_plain_text(self, primitive):
+        mod, calls, _ = _make_openai([
+            _openai_completion(self.PLAIN_TEXT),
+            _openai_completion(self.PLAIN_TEXT),
+        ])
+        with _fake_modules({"openai": mod}):
+            out = OpenAIAdapter().decide(CASE, primitive, _ctx())
+        return out, calls
+
+    def _assert_malformed(self, out, calls, primitive):
+        self.assertEqual(out.decision, "")
+        self.assertFalse(out.abstained)
+        self.assertIsNone(out.confidence)
+        self.assertEqual(out.refusal_reason, "")
+        errors = validate_output(out, primitive)
+        self.assertIn(
+            "non-abstained output must have a non-empty decision", errors)
+        # Exactly one repair attempt before giving up on the call, and
+        # usage sums BOTH attempts (11 in / 22 out per fake call).
+        self.assertEqual(len(calls), 2)
+        self.assertEqual(out.usage.tokens_in, 22)
+        self.assertEqual(out.usage.tokens_out, 44)
+        self.assertEqual(out.transcript["response"]["attempts"], 2)
+
+    def test_choice_plain_text_returns_malformed(self):
+        from peira.adapters.base import ChoiceOutput
+        out, calls = self._decide_plain_text("choice")
+        self.assertIsInstance(out, ChoiceOutput)
+        self._assert_malformed(out, calls, "choice")
+
+    def test_score_plain_text_returns_malformed(self):
+        from peira.adapters.base import ScoreOutput
+        out, calls = self._decide_plain_text("score")
+        self.assertIsInstance(out, ScoreOutput)
+        self.assertEqual(out.score, 0.0)
+        self._assert_malformed(out, calls, "score")
+
+    def test_abstain_plain_text_returns_malformed(self):
+        from peira.adapters.base import AbstainOutput
+        out, calls = self._decide_plain_text("abstain")
+        self.assertIsInstance(out, AbstainOutput)
+        self._assert_malformed(out, calls, "abstain")
 
 
 # ---------------------------------------------------------------------------

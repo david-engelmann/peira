@@ -372,20 +372,26 @@ in the transcript's request shape, and the key is never logged.
 `max_retries=0`. The runner owns retries, same as every other LLM
 baseline.
 
-Two honest caveats: the adapter is built from Moonshot's published
-docs and third-party parameter surveys, not the live API. The pinned
-`kimi-k3` is a reasoning model that only accepts `temperature=1` (any
-other value 400s, observed live 2026-10-03), so the adapter forces it
-and records the actual value in the transcript. Determinism is
-sacrificed for this model, honestly recorded. Whether `json_schema`
-`response_format` (vs plain `json_object`) is honored for `kimi-k3`
-is unverified. On `seed`/`logprobs` the surveys agree (both
-unsupported, both 400 when sent), so the adapter OMITS both fields
-from the request rather than negotiating. There is no decision-token
-logprob track on this adapter, and the transcript honestly records
-`"seed": None`. Verify against the live API before any measured run.
-Mismatches surface as terminal provider errors, not silent
-mismeasurement.
+The adapter has been exercised against the live API extensively.
+The v2 trial ran 3,274 cases through it before halting, and a
+targeted live check on 2026-10-12 verified the thinking fix with
+three clean calls out of three. `json_schema` `response_format`
+is honored, with clean parses whenever content is returned.
+Thinking is disabled through `extra_body` with
+`{"thinking": {"type": "disabled"}}` because kimi-k3 otherwise
+spends the whole output budget on reasoning and returns empty
+content. That failure halted the v2 trial at 3,274 of 4,701 cases.
+Moonshot mandates temperature 1 while thinking is on and
+temperature 0.6 while thinking is off, observed live on
+2026-10-12. The adapter therefore forces temperature 0.6 for
+`kimi-k3` and records both the temperature and the thinking
+setting in the transcript. Determinism is sacrificed for this
+model, honestly recorded. On `seed` and `logprobs` the API
+400s when either field is sent, so the adapter omits both fields
+from the request rather than negotiating. There is no
+decision-token logprob track on this adapter, and the transcript
+honestly records `"seed": None`. Mismatches surface as terminal
+provider errors, not silent mismeasurement.
 
 ### Grok 4 (xAI)
 
