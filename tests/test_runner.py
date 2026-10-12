@@ -25,6 +25,7 @@ from peira.runner import (
     _transcript_entry,
     _v3_artifact_blocks,
     _validate_and_record,
+    amend_partial_budget,
     load_cases,
     replay_suite,
     run_suite,
@@ -56,7 +57,8 @@ def _r(case_id="c1", **kw):
 
 
 def _partial(results, adapter=None, suite="trial-demo",
-             dataset_version="0.1.0-demo"):
+             dataset_version="0.1.0-demo", budget_usd=None,
+             termination="partial"):
     adapter = adapter or MockAdapter()
     return RunArtifact(
         adapter_name=adapter.name,
@@ -66,7 +68,8 @@ def _partial(results, adapter=None, suite="trial-demo",
         config={"cache_enabled": False},
         pricing_version=load_pricing_table().get("pricing_version", ""),
         results=results_to_dicts(results),
-        termination="partial",
+        termination=termination,
+        budget_usd=budget_usd,
     ).seal()
 
 
@@ -178,6 +181,228 @@ class TestValidatePartial(unittest.TestCase):
             p, MockAdapter(), _cases("c1", "c2"),
             "trial-demo", "0.1.0-demo", seed=7)
         self.assertEqual(done, {"c1"})
+
+    def test_budget_mismatch_rejected(self):
+        # The cap is a measurement input: an unamended partial recorded
+        # under one cap must not merge into a run under another (or
+        # into an uncapped run).
+        p = _partial([_r("c1")], budget_usd=40.0)
+        with self.assertRaisesRegex(ValueError, "recorded with budget_usd"):
+            validate_partial(p, MockAdapter(), _cases("c1", "c2"),
+                             "trial-demo", "0.1.0-demo", budget_usd=41.0)
+        with self.assertRaisesRegex(ValueError, "recorded with budget_usd"):
+            validate_partial(p, MockAdapter(), _cases("c1", "c2"),
+                             "trial-demo", "0.1.0-demo", budget_usd=None)
+        # The recorded cap resumes fine.
+        done, prior = validate_partial(
+            p, MockAdapter(), _cases("c1", "c2"),
+            "trial-demo", "0.1.0-demo", budget_usd=40.0)
+        self.assertEqual(done, {"c1"})
+
+
+class TestBudgetAmendment(unittest.TestCase):
+    """amend_partial_budget: the auditable cap-raise path."""
+
+    NOW = "2026-10-12T12:00:00+00:00"
+
+    def _amend(self, p, new_cap=55.0, **kw):
+        kw.setdefault("reason", "original estimate too low")
+        kw.setdefault("authorized_by", "david")
+        kw.setdefault("now_utc", self.NOW)
+        return amend_partial_budget(p, new_cap_usd=new_cap, **kw)
+
+    def _validate(self, p, budget_usd):
+        return validate_partial(
+            p, MockAdapter(), _cases("c1", "c2", "c3"),
+            "trial-demo", "0.1.0-demo", budget_usd=budget_usd)
+
+    def test_happy_path(self):
+        p = _partial([_r("c1"), _r("c2")], budget_usd=40.0)
+        amended = self._amend(p)
+        # Pure transformation: the input artifact is untouched.
+        self.assertIsNot(amended, p)
+        self.assertEqual(p.budget_usd, 40.0)
+        self.assertNotIn("budget_amendments", p.config)
+        self.assertTrue(p.verify())
+        # The amended artifact re-sealed through the checkpoint path:
+        # its lock covers the chain and verify() passes.
+        self.assertTrue(amended.verify())
+        self.assertEqual(amended.budget_usd, 55.0)
+        self.assertEqual(amended.config["budget_amendments"], [{
+            "old_cap_usd": 40.0,
+            "new_cap_usd": 55.0,
+            "reason": "original estimate too low",
+            "authorized_by": "david",
+            "amended_utc": self.NOW,
+        }])
+        # Run identity survives: the amendment is not a new run.
+        self.assertEqual(amended.run_id, p.run_id)
+        self.assertEqual(
+            [r["case_id"] for r in amended.results], ["c1", "c2"])
+        # Resume validates at the amended cap only.
+        done, prior = self._validate(amended, 55.0)
+        self.assertEqual(done, {"c1", "c2"})
+        with self.assertRaisesRegex(ValueError, "amended to 55.0"):
+            self._validate(amended, 40.0)
+        with self.assertRaisesRegex(ValueError, "amended to 55.0"):
+            self._validate(amended, 60.0)
+        with self.assertRaisesRegex(ValueError, "amended to 55.0"):
+            self._validate(amended, None)
+
+    def test_amended_partial_survives_json_roundtrip(self):
+        # Real usage loads the partial from disk: the chain in config
+        # and the lock must both survive the strict loader.
+        p = _partial([_r("c1")], budget_usd=40.0)
+        amended = self._amend(p)
+        loaded = RunArtifact.from_json(amended.to_json())
+        self.assertTrue(loaded.verify())
+        done, prior = self._validate(loaded, 55.0)
+        self.assertEqual(done, {"c1"})
+
+    def test_two_sequential_amendments(self):
+        p = _partial([_r("c1")], budget_usd=40.0)
+        once = self._amend(p, 55.0)
+        twice = self._amend(once, 70.0)
+        self.assertTrue(twice.verify())
+        self.assertEqual(twice.budget_usd, 70.0)
+        chain = twice.config["budget_amendments"]
+        self.assertEqual(len(chain), 2)
+        self.assertEqual(chain[0]["old_cap_usd"], 40.0)
+        self.assertEqual(chain[1]["old_cap_usd"], 55.0)
+        self.assertEqual(chain[1]["new_cap_usd"], 70.0)
+        done, prior = self._validate(twice, 70.0)
+        self.assertEqual(done, {"c1"})
+        # Neither superseded cap is resumable any more.
+        with self.assertRaises(ValueError):
+            self._validate(twice, 55.0)
+        with self.assertRaises(ValueError):
+            self._validate(twice, 40.0)
+
+    def test_budget_terminated_partial_is_amendable(self):
+        # The Moonshot shape: the run stopped on its cap, so its
+        # termination is "budget", not "partial".
+        p = _partial([_r("c1")], budget_usd=40.0, termination="budget")
+        amended = self._amend(p)
+        self.assertTrue(amended.verify())
+        done, prior = self._validate(amended, 55.0)
+        self.assertEqual(done, {"c1"})
+
+    # -- chain corruption: each forgery is re-sealed so verify()
+    # passes; the chain check in validate_partial is the wall that
+    # must still refuse it. --
+
+    def _corrupted(self, mutate):
+        p = _partial([_r("c1")], budget_usd=40.0)
+        amended = self._amend(self._amend(p, 55.0), 70.0)
+        mutate(amended)
+        amended.seal()
+        self.assertTrue(amended.verify())
+        return amended
+
+    def test_chain_swapped_cap_rejected(self):
+        def mutate(a):
+            a.config["budget_amendments"][0]["new_cap_usd"] = 45.0
+        with self.assertRaisesRegex(ValueError, "amendment chain"):
+            self._validate(self._corrupted(mutate), 70.0)
+
+    def test_chain_dropped_record_rejected(self):
+        def drop_last(a):
+            a.config["budget_amendments"] = \
+                a.config["budget_amendments"][:1]
+        with self.assertRaisesRegex(ValueError, "amendment chain"):
+            self._validate(self._corrupted(drop_last), 70.0)
+
+        def drop_middle(a):
+            chain = a.config["budget_amendments"]
+            a.config["budget_amendments"] = [chain[0], {
+                "old_cap_usd": 70.0, "new_cap_usd": 90.0,
+                "reason": "more", "authorized_by": "david",
+                "amended_utc": self.NOW,
+            }]
+            a.budget_usd = 90.0
+        with self.assertRaisesRegex(ValueError, "amendment chain"):
+            self._validate(self._corrupted(drop_middle), 90.0)
+
+        def drop_only(a):
+            a.config["budget_amendments"] = []
+        p = _partial([_r("c1")], budget_usd=40.0)
+        only = self._amend(p, 55.0)
+        drop_only(only)
+        only.seal()
+        with self.assertRaisesRegex(ValueError, "amendment chain"):
+            self._validate(only, 55.0)
+
+    def test_chain_lowered_cap_rejected(self):
+        def mutate(a):
+            a.config["budget_amendments"][1]["new_cap_usd"] = 50.0
+            a.budget_usd = 50.0
+        with self.assertRaisesRegex(ValueError, "amendment chain"):
+            self._validate(self._corrupted(mutate), 50.0)
+
+    def test_chain_empty_reason_rejected(self):
+        def mutate(a):
+            a.config["budget_amendments"][0]["reason"] = ""
+        with self.assertRaisesRegex(ValueError, "amendment chain"):
+            self._validate(self._corrupted(mutate), 70.0)
+
+    def test_chain_broken_link_rejected(self):
+        def mutate(a):
+            a.config["budget_amendments"][1]["old_cap_usd"] = 54.0
+        with self.assertRaisesRegex(ValueError, "amendment chain"):
+            self._validate(self._corrupted(mutate), 70.0)
+
+    def test_amend_refuses_to_extend_broken_chain(self):
+        p = _partial([_r("c1")], budget_usd=40.0)
+        amended = self._amend(p, 55.0)
+        amended.config["budget_amendments"][0]["reason"] = ""
+        amended.seal()
+        self.assertTrue(amended.verify())
+        with self.assertRaisesRegex(ValueError, "amendment chain"):
+            self._amend(amended, 70.0)
+
+    # -- amend_partial_budget refusals --
+
+    def test_amend_refuses_tampered_partial(self):
+        p = _partial([_r("c1")], budget_usd=40.0)
+        p.results[0]["flipped"] = True  # post-seal edit: lock breaks
+        self.assertFalse(p.verify())
+        with self.assertRaisesRegex(ValueError, "analysis lock"):
+            self._amend(p)
+
+    def test_amend_refuses_completed_run(self):
+        p = _partial([_r("c1")], budget_usd=40.0, termination="complete")
+        with self.assertRaisesRegex(ValueError, "termination='complete'"):
+            self._amend(p)
+
+    def test_amend_refuses_non_raising_cap(self):
+        p = _partial([_r("c1")], budget_usd=40.0)
+        with self.assertRaisesRegex(ValueError, "does not exceed"):
+            self._amend(p, 40.0)
+        with self.assertRaisesRegex(ValueError, "does not exceed"):
+            self._amend(p, 30.0)
+
+    def test_amend_refuses_uncapped_partial(self):
+        p = _partial([_r("c1")], budget_usd=None)
+        with self.assertRaisesRegex(ValueError, "no budget cap"):
+            self._amend(p)
+
+    def test_amend_refuses_empty_provenance(self):
+        p = _partial([_r("c1")], budget_usd=40.0)
+        with self.assertRaisesRegex(ValueError, "non-empty reason"):
+            amend_partial_budget(p, new_cap_usd=55.0, reason="",
+                                  authorized_by="david")
+        with self.assertRaisesRegex(ValueError, "non-empty authorized_by"):
+            amend_partial_budget(p, new_cap_usd=55.0, reason="too low",
+                                  authorized_by="  ")
+
+    def test_amend_refuses_non_numeric_cap(self):
+        p = _partial([_r("c1")], budget_usd=40.0)
+        with self.assertRaisesRegex(ValueError, "finite number"):
+            amend_partial_budget(p, new_cap_usd="55",
+                                 reason="too low", authorized_by="david")
+        with self.assertRaisesRegex(ValueError, "finite number"):
+            amend_partial_budget(p, new_cap_usd=float("inf"),
+                                 reason="too low", authorized_by="david")
 
 
 class TestResumeProgress(unittest.TestCase):
