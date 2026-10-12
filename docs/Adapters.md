@@ -497,6 +497,14 @@ plus secret, but the OpenAI-compatible endpoint accepts the API key
 directly as the Bearer token (per Zhipu's own OpenAI-compat docs),
 which is what this adapter uses.
 
+Scale normalization: GLM-4 Plus sometimes emits `confidence`/`score`
+on a 0-100 scale despite the prompt-inlined schema requiring 0-1
+(observed 2026-10-07 in the v2 trial, where nearly all zai errors
+were this shape). The adapter normalizes values in (1, 100] by
+dividing by 100 at parse time, before validation, the same repair
+DeepSeekAdapter runs. Values in [0, 1] pass through, and out-of-range
+values are still rejected.
+
 The adapter was built from Zhipu's published docs and
 verified against the live API on 2026-10-02. All 40 verification calls
 parsed against `glm-4-plus` with zero auth or wire-shape errors, and the
@@ -658,6 +666,62 @@ benign and attacked arms) returned 20 successes and 0 errors. Two
 attacked-arm errors on the VL canary were recovered through the
 repair path.
 
+### MiniMax M3 (MiniMax)
+
+```bash
+pip install peira
+export MINIMAX_API_KEY=<redacted>
+peira run --adapter peira.adapters.llm:MiniMaxAdapter --suite trial-demo
+```
+
+MiniMax-M3 is MiniMax's flagship reasoning model (1M context). The
+adapter drives MiniMax's OpenAI-compatible endpoint
+(`https://api.minimax.io/v1`, model id `MiniMax-M3`, case-sensitive)
+over plain HTTPS with the standard library (`urllib`), deliberately
+not the `openai` SDK package, whose HTTP client bypassed the Hatch
+egress proxy's vault-surrogate exchange. No third-party package is
+needed, so the adapter lives in the base `peira` tier. The runner owns
+retries, same as every other LLM baseline. At ~$0.30/$1.20 per 1M it
+is priced well below the Western frontier tier.
+
+The request shape differs from every other LLM baseline in one
+load-bearing way. MiniMax does not reliably support `response_format`
+with JSON schema on the OpenAI-compatible endpoint (undocumented
+there, and third-party probing found it unreliable across M3/M2.x).
+The vendor-blessed structured path is tool calling, so the adapter
+defines a `peira_decision` function carrying the peira schema and
+forces the model to call it (`tool_choice` pinned to the function).
+The verdict arrives pre-parsed in the tool-call arguments and flows
+through the shared schema validation. When the model answers in text
+instead, the text path (think-stripped, then the shared JSON
+extractor) is the fallback. The schema is also inlined in the system
+prompt, so the model sees the required keys before reading the tool
+definition. The transcript records `response_format:
+tool_call:peira_decision:forced`, honestly naming the mechanism.
+
+M3's thinking cannot be reliably disabled, so reasoning is handled
+two ways. The adapter sends `thinking: {"type": "disabled"}` at the
+payload top level (honored on M3) and strips `<think>...</think>`
+blocks from every text surface defensively, so a reasoning leak can
+never corrupt decision parsing. Any `reasoning_content` field is
+recorded in the transcript but never parsed. MiniMax exposes no token
+logprobs, so there is no decision-token logprob track. `logprobs` is
+omitted and the transcript records `"logprobs": False`. Confidence
+stays on the verbalized track (D-23).
+
+Error mapping follows the shared convention for HTTP statuses
+(429/5xx retryable, 400/401/403 terminal), with one addition. A
+MiniMax native error envelope (`base_resp.status_code`) arriving
+inside an HTTP 200 is mapped defensively. 1002 (rate limit) becomes
+429 so the runner backs off and retries. 1004 and 2049 (auth), 1008
+(insufficient balance), 1026 (content flagged), and 2013 (invalid
+parameters) become terminal.
+
+Verified live on 2026-10-08 and 2026-10-09 by the full v2 trial run
+(4,701 cases sealed). The forced tool-call path, the
+`thinking: disabled` flag, and `seed` passthrough were all exercised
+end-to-end against the real endpoint.
+
 #### Cheap-model pilot set
 
 One cheap model per major lab, plus the most discounted structured-output
@@ -718,11 +782,12 @@ page), and the pinned table in `python/peira/data/pricing.json` reflects
 that with the caveat attached. Access is
 gated; without a key the error tells you exactly where to get one.
 429/529/5xx and transport timeouts surface as retryable provider
-errors for the runner; 401/422 are terminal. One honest caveat: the
-request shape is built from TypeSafe's published SDK examples, but the
-adapter hasn't been exercised against the live API yet. If the
-service answers differently than documented, you'll see terminal
-provider errors, not silent mismeasurement. See D-24.
+errors for the runner; 401/422 are terminal. One live-API quirk,
+observed 2026-10-07 in the v2 trial: the abstain answer returns its
+probability under TypeSafe's own field name (`noul`) rather than the
+documented key, so the adapter reads the documented key first and
+falls back to the native field. The adapter ran the full v2 trial
+against the live API (4,701 cases sealed). See D-24.
 
 ## Laya
 

@@ -218,6 +218,32 @@ class TestJevNoul(unittest.TestCase):
         self.assertTrue(q["instructions"])
         self.assertNotIn("criteria", q)
 
+    def test_noul_native_field_fallback(self):
+        # The live API returns the abstain probability under its own
+        # field name, {'type': 'noul', 'noul': 0.73}, with no 'abstain'
+        # key in the answer at all. Observed 2026-10-07 in the v2
+        # trial (the xling errors). Without the fallback this shape
+        # raises "no numeric abstain value".
+        t = _transport_for({"abstain": {"type": "noul", "noul": 0.73}})
+        out = JevAdapter(api_key="k", transport=t).decide(_case_input(), "abstain", _ctx())
+        self.assertEqual(validate_output(out, "abstain"), [])
+        self.assertEqual(out.decision, "abstain")
+        self.assertAlmostEqual(out.confidence, 0.46)  # |2*.73-1|
+
+    def test_documented_key_wins_over_noul(self):
+        # When both keys are present the documented 'abstain' key is
+        # authoritative; the native field is only a fallback.
+        t = _transport_for({"abstain": {"abstain": 0.2, "noul": 0.9}})
+        out = JevAdapter(api_key="k", transport=t).decide(_case_input(), "abstain", _ctx())
+        self.assertEqual(out.decision, "other")
+        self.assertFalse(out.abstained)
+
+    def test_missing_both_keys_still_terminal(self):
+        # Neither key present: the fallback must not invent a value.
+        t = _transport_for({"abstain": {"type": "noul"}})
+        with self.assertRaises(ProviderError):
+            JevAdapter(api_key="k", transport=t).decide(_case_input(), "abstain", _ctx())
+
 
 class TestJevQuestionValidation(unittest.TestCase):
     def test_malformed_question_is_terminal_before_send(self):
