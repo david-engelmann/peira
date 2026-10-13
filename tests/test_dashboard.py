@@ -343,9 +343,15 @@ class TestRunToDashboard(unittest.TestCase):
 
 
 class TestLeaderboard(unittest.TestCase):
-    def _write(self, tmp_path, name, adapter, asr, eligible=True):
+    def _write(self, tmp_path, name, adapter, asr, eligible=True,
+               adapter_version=None):
+        # P1.1: leaderboard dedupes by adapter_version (model ID), not
+        # adapter_name. Default the version to the adapter name so
+        # distinct adapters stay distinct unless the test says otherwise.
         art = _make_artifact(
             adapter_name=adapter,
+            adapter_version=(adapter_version if adapter_version is not None
+                             else adapter + "-1.0"),
             metrics=_metrics(asr_conditional=asr,
                              ranking_eligible=eligible),
         )
@@ -361,6 +367,25 @@ class TestLeaderboard(unittest.TestCase):
             self.assertEqual(lb["n_ranked"], 2)
             self.assertEqual(lb["ranked"][0]["adapter_name"], "adapter-a")
             self.assertEqual(lb["ranked"][1]["adapter_name"], "adapter-b")
+
+    def test_shared_adapter_name_keeps_distinct_models(self):
+        # P1.1: models sharing an adapter_name (e.g. all OpenRouter
+        # models use "openrouter-structured") must each appear, deduped
+        # by adapter_version (the model ID), not adapter_name.
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            self._write(tmp_path, "qwen.json", "openrouter-structured", 0.3,
+                        adapter_version="qwen/qwen3-235b-a22b-2507")
+            self._write(tmp_path, "solar.json", "openrouter-structured", 0.2,
+                        adapter_version="upstage/solar-pro4")
+            scan_runs(tmp)
+            lb = leaderboard(tmp)
+            self.assertEqual(lb["n_ranked"], 2)
+            versions = {r["adapter_version"] for r in lb["ranked"]}
+            self.assertEqual(
+                versions,
+                {"qwen/qwen3-235b-a22b-2507", "upstage/solar-pro4"},
+            )
 
     def test_unranked_listed_with_reason(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -400,12 +425,156 @@ class TestLeaderboard(unittest.TestCase):
                 lb["ranked"][0]["asr_conditional"], 0.1
             )
 
+    def _reseal_later(self, art):
+        # Same trick as test_latest_run_per_adapter: force a later
+        # created_utc through a reseal, never the wall clock.
+        d = json.loads(art.to_json())
+        d["created_utc"] = "2099-01-01T00:00:00+00:00"
+        return RunArtifact.from_json(json.dumps(d)).seal()
+
+    def test_probe_rerun_does_not_shadow_full_run(self):
+        # A later probe run (a canary: far fewer recorded cases than
+        # the coverage gates require) must not displace the model's
+        # earlier full run from the board.
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            full = _make_artifact(adapter_name="adapter-a",
+                                  adapter_version="model-x-1.0")
+            (tmp_path / "full.json").write_text(full.to_json())
+            probe_results = [
+                _result_entry(case_id=f"probe-c{i:02d}",
+                              family="indirection")
+                for i in range(10)
+            ]
+            probe = _make_artifact(
+                adapter_name="adapter-a",
+                adapter_version="model-x-1.0",
+                results=probe_results,
+                metrics=_metrics(
+                    n_cases=10, n_eligible=10, ranking_eligible=False,
+                    eligibility_notes=[
+                        "fewer than 200 eligible cases (10)"],
+                ),
+                cases_completed=10,
+                cases_planned=10,
+            )
+            (tmp_path / "probe.json").write_text(
+                self._reseal_later(probe).to_json())
+            scan_runs(tmp)
+            lb = leaderboard(tmp)
+            self.assertEqual(lb["n_ranked"], 1)
+            self.assertEqual(lb["n_unranked"], 0)
+            self.assertEqual(lb["ranked"][0]["adapter_version"],
+                             "model-x-1.0")
+            self.assertEqual(lb["ranked"][0]["asr_conditional"], 0.5)
+
+    def test_latest_full_run_failing_quality_stands(self):
+        # A later FULL run that measured the benchmark and failed a
+        # quality gate is the model's standing result: the board does
+        # not fall back to the earlier qualifying run.
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            full = _make_artifact(adapter_name="adapter-a",
+                                  adapter_version="model-x-1.0")
+            (tmp_path / "full.json").write_text(full.to_json())
+            bad_results = []
+            for i in range(200):
+                bad_results.append(_result_entry(
+                    case_id=f"bad-c{i:03d}",
+                    family="indirection",
+                    flipped=(i % 2 == 0),
+                    benign=_call_record(malformed=True),
+                    attacked=_call_record(
+                        decision="deny" if i % 2 == 0 else "approve",
+                        malformed=True),
+                ))
+            bad = _make_artifact(
+                adapter_name="adapter-a",
+                adapter_version="model-x-1.0",
+                results=bad_results,
+                metrics=_metrics(
+                    malformed_rate=1.0, ranking_eligible=False,
+                    eligibility_notes=["malformed_rate above 5%"],
+                ),
+            )
+            (tmp_path / "bad.json").write_text(
+                self._reseal_later(bad).to_json())
+            scan_runs(tmp)
+            lb = leaderboard(tmp)
+            self.assertEqual(lb["n_ranked"], 0)
+            self.assertEqual(lb["n_unranked"], 1)
+            self.assertIn("malformed", lb["unranked"][0]["reason"])
+
+    def test_unranked_row_carries_full_stats(self):
+        # A model that ran the full benchmark and failed a quality
+        # gate is unranked, but its numbers exist: the unranked row
+        # carries the same headline stats and per-run detail as a
+        # ranked row, so the page can print them next to the reason.
+        # Qualification itself is unchanged.
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            bad_results = []
+            for i in range(200):
+                bad_results.append(_result_entry(
+                    case_id=f"bad-c{i:03d}",
+                    family="indirection",
+                    flipped=(i % 2 == 0),
+                    benign=_call_record(malformed=True),
+                    attacked=_call_record(
+                        decision="deny" if i % 2 == 0 else "approve",
+                        malformed=True),
+                ))
+            bad = _make_artifact(
+                adapter_name="adapter-a",
+                adapter_version="model-x-1.0",
+                results=bad_results,
+                metrics=_metrics(
+                    malformed_rate=1.0, ranking_eligible=False,
+                    eligibility_notes=["malformed_rate above 5%"],
+                ),
+            )
+            (tmp_path / "bad.json").write_text(bad.to_json())
+            good = _make_artifact(adapter_name="adapter-b",
+                                  adapter_version="model-y-1.0")
+            (tmp_path / "good.json").write_text(good.to_json())
+            scan_runs(tmp)
+            lb = leaderboard(tmp)
+            self.assertEqual(lb["n_ranked"], 1)
+            self.assertEqual(lb["n_unranked"], 1)
+            self.assertEqual(lb["ranked"][0]["malformed_rate"], 0.0)
+            row = lb["unranked"][0]
+            self.assertEqual(row["ranking_eligible"], False)
+            self.assertEqual(row["asr_conditional"], 0.5)
+            self.assertEqual(row["malformed_rate"], 1.0)
+            self.assertEqual(row["benign_accuracy"], 1.0)
+            self.assertEqual(row["n_eligible"], 2)
+            self.assertIn("malformed", row["reason"])
+            self.assertIn("indirection", row["detail"]["families"])
+
     def test_json_serializable(self):
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
             self._write(tmp_path, "a.json", "adapter-a", 0.2)
             scan_runs(tmp)
             json.dumps(leaderboard(tmp))
+
+    def test_display_name_is_the_model_id(self):
+        # The public page names models, not adapters: two models can
+        # share one adapter_name, so rows carry display_name equal to
+        # the model ID (adapter_version) for the renderer to show.
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            self._write(tmp_path, "qwen.json", "openrouter-structured", 0.3,
+                        adapter_version="qwen/qwen3-235b-a22b-2507")
+            self._write(tmp_path, "bad.json", "adapter-bad", 0.2,
+                        eligible=False,
+                        adapter_version="bad-model-2.0")
+            scan_runs(tmp)
+            lb = leaderboard(tmp)
+            self.assertEqual(lb["ranked"][0]["display_name"],
+                             "qwen/qwen3-235b-a22b-2507")
+            self.assertEqual(lb["unranked"][0]["display_name"],
+                             "bad-model-2.0")
 
 
 class TestComparisonToDashboard(unittest.TestCase):
@@ -796,7 +965,7 @@ class TestPairwiseResampleAhead(unittest.TestCase):
             self.assertEqual(mirror["behind_fraction"], 0.0)
 
 
-def _make_dashboard_artifact(adapter_name, results):
+def _make_dashboard_artifact(adapter_name, results, adapter_version=None):
     """Minimal sealed artifact JSON with real results for dashboard tests.
 
     Pads results to 200 eligible cases (10 families x 20) with
@@ -848,7 +1017,8 @@ def _make_dashboard_artifact(adapter_name, results):
     env, env_sha256 = collect_and_fingerprint()
     artifact = RunArtifact(
         adapter_name=adapter_name,
-        adapter_version="1.0-test",
+        adapter_version=(adapter_version if adapter_version is not None
+                         else adapter_name + "-1.0-test"),
         suite="v1",
         dataset_version="1.2.1",
         manifest_sha256="abc123" * 10 + "abcd",
