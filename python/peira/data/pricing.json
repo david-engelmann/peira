@@ -1,8 +1,8 @@
 {
-  "_comment": "Pinned list-price table for cost accounting. Prices are USD per 1M tokens at the providers' standard (non-cached, non-batch) tier. This table is a measurement input: its source and pin date are sealed into every run artifact (pricing_source / pricing_date), so a cost figure is always traceable to the table that produced it. Update by bumping 'date' and 'source' together, never silently. 2026-09-27: pinned API model IDs (gpt-5.6-luna, claude-sonnet-5, gemini-3.8-flash, kimi-k3) per each vendor's actual versioning scheme (peira.api_pins); rate entries for these IDs were already in this table and are unchanged, so the API adapters' pinned defaults stay cost-accounted. 2026-09-28: added pricing_version (date + intra-day revision; sealed into run artifacts so a cost figure is traceable to the exact table version) and per-entry confidence (\"official\" = verified against the vendor pricing page or a first-party $0.0 assertion for self-hosted checkpoints; \"secondary\" = carried over unverified or gateway-reported). 2026-10-02: Anthropic default pin moved to claude-sonnet-5-5 per D3 latest-only decision (entry marked official); stale default-pin note in claude-opus-5-5 entry corrected. Changelog: 2026-10-03 added 10 OpenRouter gateway rates (OPENROUTER_CHEAP_MODELS pilot set), verified live via openrouter.ai/api/v1/models; version 2026-10-03.1. 2026-10-03 added 5 discounted OpenRouter gateway rates (Mercury 2.5, Qwen3 235B, Ling 3.0 Flash VL, Solar Pro 4, Ling 3.0 Flash), verified live via openrouter.ai/api/v1/models; version 2026-10-03.2.",
+  "_comment": "Pinned list-price table for cost accounting. Prices are USD per 1M tokens at the providers' standard (non-cached, non-batch) tier. This table is a measurement input: its source and pin date are sealed into every run artifact (pricing_source / pricing_date), so a cost figure is always traceable to the table that produced it. Update by bumping 'date' and 'source' together, never silently. 2026-09-27: pinned API model IDs (gpt-5.6-luna, claude-sonnet-5, gemini-3.8-flash, kimi-k3) per each vendor's actual versioning scheme (peira.api_pins); rate entries for these IDs were already in this table and are unchanged, so the API adapters' pinned defaults stay cost-accounted. 2026-09-28: added pricing_version (date + intra-day revision; sealed into run artifacts so a cost figure is traceable to the exact table version) and per-entry confidence (\"official\" = verified against the vendor pricing page or a first-party $0.0 assertion for self-hosted checkpoints; \"secondary\" = carried over unverified or gateway-reported). 2026-10-02: Anthropic default pin moved to claude-sonnet-5-5 per D3 latest-only decision (entry marked official); stale default-pin note in claude-opus-5-5 entry corrected. Changelog: 2026-10-03 added 10 OpenRouter gateway rates (OPENROUTER_CHEAP_MODELS pilot set), verified live via openrouter.ai/api/v1/models; version 2026-10-03.1. 2026-10-03 added 5 discounted OpenRouter gateway rates (Mercury 2.5, Qwen3 235B, Ling 3.0 Flash VL, Solar Pro 4, Ling 3.0 Flash), verified live via openrouter.ai/api/v1/models; version 2026-10-03.2. 2026-10-13: added gpt-6.1-sol ($2/$10 per 1M, standard short-context tier), verified against OpenAI's official pricing page (developers.openai.com/api/docs/pricing) on 2026-10-13; version 2026-10-13.1.",
   "basis": "USD per 1M tokens, list price, standard tier (no prompt caching, no batch discount, no long-context surcharge)",
-  "date": "2026-10-03",
-  "pricing_version": "2026-10-03.2",
+  "date": "2026-10-13",
+  "pricing_version": "2026-10-13.1",
   "models": {
     "claude-fable-5-1": {
       "_note": "Frontier-ceiling CANDIDATE (2026-09-25; adapter request path landed 2026-09-30 - id still unverified, not yet measured): $10/$50 per 1M, corroborated by multiple Sept-2026 sources (Anthropic pricing page, 9to5Mac 2026-09-01 launch coverage). Model id 'claude-fable-5-1' follows Anthropic's documented naming convention (Fable 5's id was 'claude-fable-5'); it is NOT independently confirmed on the live API. Caveat: Fable 5.1 rejects forced tool_choice (400) - AnthropicAdapter now auto-routes this model to native output_config.format structured outputs (no tools, no tool_choice; numeric schema constraints stripped per Anthropic's published subset), with the response parsed through the same typed decision contract (unit-tested, mocked only). DO NOT RUN before the model id is verified against the live API (a David-authorized paid step).",
@@ -80,6 +80,12 @@
     "gpt-5.6-terra": {
       "usd_per_1m_in": 2.0,
       "usd_per_1m_out": 12.0,
+      "confidence": "official"
+    },
+    "gpt-6.1-sol": {
+      "_note": "GPT-6.1 Sol (pin 'gpt-6.1-sol'): $2/$10 per 1M, standard short-context tier (cached input $0.10, cache writes $2.50; long-context $4/$15 not modeled). Verified 2026-10-13 against OpenAI's official pricing page (developers.openai.com/api/docs/pricing). The OpenAI adapter gives this model the Luna wire quirks (max_completion_tokens, temperature forced to 1, no logprobs), each observed live for this model on 2026-10-13.",
+      "usd_per_1m_in": 2.0,
+      "usd_per_1m_out": 10.0,
       "confidence": "official"
     },
     "jaredpalmer/kev-0.5b": {
@@ -317,9 +323,10 @@
       "confidence": "secondary"
     }
   },
-  "source": "Pre-launch provisional prices (2026-09-23) plus OpenRouter gateway rates verified live 2026-10-03 via openrouter.ai/api/v1/models. Re-verify every rate before launch.",
+  "source": "Pre-launch provisional prices (2026-09-23) plus OpenRouter gateway rates verified live 2026-10-03 via openrouter.ai/api/v1/models; gpt-6.1-sol rate verified 2026-10-13 against OpenAI's official pricing page (developers.openai.com/api/docs/pricing). Re-verify every rate before launch.",
   "source_urls": [
     "https://openai.com/api/pricing/",
+    "https://developers.openai.com/api/docs/pricing",
     "https://www.anthropic.com/pricing",
     "https://ai.google.dev/gemini-api/docs/pricing",
     "https://vercel.com/kb/guide/typesafe-jev-and-ai-sdk",

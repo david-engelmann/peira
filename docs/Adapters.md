@@ -352,6 +352,36 @@ pattern `_MAX_COMPLETION_TOKENS_MODELS` established. The transcript records
 confidence stays on the verbalized track. Models without an entry
 keep sending `logprobs=True` as before.
 
+### gpt-6.1-sol (OpenAI)
+
+`gpt-6.1-sol` runs through the same `OpenAIAdapter` with
+`model="gpt-6.1-sol"`. Its wire behavior was probed live on
+2026-10-13 for this model on its own evidence (eleven canary calls
+against `api.openai.com` on real v2 trial cases, both arms), not
+inherited from the 5.6 family. All three Luna quirks hold for it.
+`max_tokens` 400s ("Unsupported parameter: 'max_tokens' is not
+supported with this model. Use 'max_completion_tokens' instead."),
+so the model is in `_MAX_COMPLETION_TOKENS_MODELS`. `logprobs`
+400s ("Unsupported parameter: 'logprobs' is not supported with
+this model."), so it is in `_NO_LOGPROBS_MODELS` and its
+decision-token logprob track is `None`. `temperature=0.0` 400s
+("Unsupported value: 'temperature' does not support 0.0 with this
+model. Only the default (1) value is supported."), so
+`_MODEL_TEMPERATURE_OVERRIDES` forces 1.0 and determinism is
+sacrificed for this model, honestly recorded in the transcript,
+`decode_params`, and cache namespace. `seed=0` is accepted. With
+that shape, eight of eight confirmation calls across four case
+families returned schema-valid decisions in the option set with
+finish reason `stop`. Reasoning tokens appear inside the
+completion total on some calls (0 to 80 observed).
+
+Published pricing is $2.00 per 1M input tokens and $10.00 per 1M
+output tokens at the standard short-context tier (OpenAI pricing
+page, verified 2026-10-13), and the pinned table in
+`python/peira/data/pricing.json` carries the entry at that rate.
+The adapter default stays `gpt-5.6-luna`. Select this model with
+`--adapter 'peira.adapters.llm:OpenAIAdapter(model="gpt-6.1-sol")'`.
+
 ### Kimi K3 (Moonshot)
 
 ```bash

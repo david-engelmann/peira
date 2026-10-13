@@ -177,5 +177,57 @@ class TestOpenAITemperatureOverride(unittest.TestCase):
             OpenAIAdapter._MODEL_TEMPERATURE_OVERRIDES["gpt-5.6-luna"], 1.0)
 
 
+class TestOpenAISolTemperatureOverride(unittest.TestCase):
+    """gpt-6.1-sol only accepts temperature=1.
+
+    Observed live 2026-10-13 (canary probes against api.openai.com,
+    run for this model on its own evidence, not inherited from the
+    5.6 family): temperature=0.0 400s with "Unsupported value:
+    'temperature' does not support 0.0 with this model. Only the
+    default (1) value is supported." The adapter must force
+    temperature=1 for ``gpt-6.1-sol`` even though the constructor
+    default is 0.0.
+    """
+
+    def setUp(self):
+        self.mod, self.calls, self.created = _make_openai(
+            [_openai_completion(GOOD_JSON)])
+        self._m = _fake_modules({"openai": self.mod})
+        self._m.__enter__()
+        self._e = _env(OPENAI_API_KEY="sk-test")
+        self._e.__enter__()
+        self.addCleanup(self._e.__exit__, None, None, None)
+        self.addCleanup(self._m.__exit__, None, None, None)
+
+    def test_sol_sends_temperature_one(self):
+        OpenAIAdapter(model="gpt-6.1-sol").decide(CASE, "choice", _ctx())
+        self.assertEqual(self.calls[0]["temperature"], 1.0)
+
+    def test_sol_transcript_records_override(self):
+        out = OpenAIAdapter(model="gpt-6.1-sol").decide(
+            CASE, "choice", _ctx())
+        self.assertEqual(out.transcript["request"]["temperature"], 1.0)
+
+    def test_sol_effective_temperature_is_one(self):
+        adapter = OpenAIAdapter(model="gpt-6.1-sol")
+        self.assertEqual(adapter._temperature, 1.0)
+        self.assertIn(":t1.0:", adapter.cache_namespace)
+        self.assertEqual(adapter.decode_params["temperature"], 1.0)
+
+    def test_sol_explicit_temperature_still_overridden(self):
+        # Even an explicit constructor temperature cannot beat the
+        # provider's constraint — the override wins.
+        OpenAIAdapter(
+            model="gpt-6.1-sol", temperature=0.5).decide(
+                CASE, "choice", _ctx())
+        self.assertEqual(self.calls[0]["temperature"], 1.0)
+
+    def test_override_map_covers_sol(self):
+        self.assertIn("gpt-6.1-sol",
+                      OpenAIAdapter._MODEL_TEMPERATURE_OVERRIDES)
+        self.assertEqual(
+            OpenAIAdapter._MODEL_TEMPERATURE_OVERRIDES["gpt-6.1-sol"], 1.0)
+
+
 if __name__ == "__main__":
     unittest.main()
