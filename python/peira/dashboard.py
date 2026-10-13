@@ -459,6 +459,110 @@ def run_to_dashboard(artifact: RunArtifact) -> dict[str, Any]:
     }
 
 
+def _probe_sized(artifact: RunArtifact) -> bool:
+    """True when a run never attempted the full benchmark.
+
+    A probe (a canary or smoke run) either recorded fewer results
+    than the ranking gates' overall minimum of 200 eligible cases,
+    so it could never qualify no matter how clean its answers, or
+    it skipped a required family entirely. A run that attempted
+    the benchmark and failed on quality (malformed rate, benign
+    accuracy, termination) is not a probe: it measured, and its
+    result stands. Any inconsistency in the artifact means it
+    cannot be classified as a probe, so it stands.
+    """
+    try:
+        results = artifact.results or []
+        if len(results) < 200:
+            return True
+        required = (artifact.metrics or {}).get("required_families")
+        if required:
+            present = {
+                r.get("family") for r in results if isinstance(r, dict)
+            }
+            return any(fam not in present for fam in required)
+        return False
+    except Exception:
+        return False
+
+
+def _leaderboard_stat_row(
+    artifact: RunArtifact,
+    payload: dict[str, Any],
+    meta: dict[str, Any],
+    adapter: str,
+) -> dict[str, Any]:
+    """The full headline row for one model's standing run.
+
+    Built for ranked and unranked models alike: qualification
+    decides whether the row earns a rank, never whether its numbers
+    exist. Callers set ``ranking_eligible`` (and ``reason`` for an
+    unranked row) on the returned dict.
+    """
+    h = payload["headline"]
+    lat = h.get("latency_ms", {}) or {}
+    attacked_lat = lat.get("attacked", {}) or {}
+    cal = payload["calibration"] or {}
+    attacked_cal = (cal.get("attacked", {}) or {})
+    # R-10: every row is bound to the full provenance tuple. It
+    # carries adapter identity, dataset identity, pricing version,
+    # seed, and environment. The object is always attached with all
+    # twelve keys; most values default to "" when the artifact did
+    # not record them (seed defaults to 0). manifest_sha256 and
+    # adapter_version are required non-empty by
+    # qualifies_for_leaderboard, so consumers should treat empty
+    # values as "not recorded", not as verified facts.
+    cfg = artifact.config if isinstance(artifact.config, dict) else {}
+    return {
+        "adapter_name": adapter,
+        # Display identity is the model, not the adapter: several
+        # models share one adapter (every OpenRouter model uses
+        # openrouter-structured), and a public page must name the
+        # model a reader would recognize.
+        "display_name": artifact.adapter_version,
+        "adapter_version": artifact.adapter_version,
+        "suite": artifact.suite,
+        "dataset_version": artifact.dataset_version,
+        "run_id": meta.get("run_id", ""),
+        "created_utc": artifact.created_utc,
+        "n_cases": h.get("n_cases"),
+        "n_eligible": h.get("n_eligible"),
+        "asr_conditional": h.get("asr_conditional"),
+        "asr_ci95": h.get("asr_ci95"),
+        "benign_accuracy": h.get("benign_accuracy"),
+        "malformed_rate": h.get("malformed_rate"),
+        "total_cost_usd": (h.get("cost", {}) or {}).get("total_cost_usd"),
+        "latency_ms_p50_attacked": attacked_lat.get("p50"),
+        "latency_ms_p95_attacked": attacked_lat.get("p95"),
+        "ece_attacked": attacked_cal.get("ece"),
+        "provenance": {
+            "adapter_name": adapter,
+            "adapter_version": artifact.adapter_version,
+            "adapter_revision": str(
+                cfg.get("adapter_revision")
+                or artifact.adapter_version or ""),
+            "adapter_spec": str(cfg.get("adapter_spec") or ""),
+            "suite": artifact.suite,
+            "dataset_version": artifact.dataset_version,
+            "manifest_sha256": artifact.manifest_sha256,
+            "seed": artifact.seed,
+            "pricing_version": artifact.pricing_version,
+            "pricing_date": artifact.pricing_date,
+            "env_sha256": artifact.env_sha256,
+            "contract_version": artifact.contract_version,
+        },
+        # P1.3: per-run detail carried from the sealed artifact:
+        # family breakdown, severity aggregates, and calibration.
+        # The HTML detail view renders the families and calibration.
+        # The artifact itself is never modified.
+        "detail": {
+            "families": payload.get("families") or [],
+            "severities": payload.get("severities") or [],
+            "calibration": payload.get("calibration") or {},
+        },
+    }
+
+
 def leaderboard(
     runs_dir: Path | str | None = None,
     suite: str | None = None,
@@ -466,14 +570,21 @@ def leaderboard(
 ) -> dict[str, Any]:
     """Cross-adapter leaderboard from the run registry.
 
-    For each adapter, takes the latest run that passes
+    For each model, takes the latest run that passes
     ``qualifies_for_leaderboard`` and emits its dashboard headline
     row: adapter identity, ASR + CI, benign accuracy, cost, latency
     p50/p95, calibration ECE, ranking eligibility, and the run's
-    identity (run_id, created_utc) for drill-down. Adapters whose
-    latest run does not qualify are listed under ``unranked`` with the
+    identity (run_id, created_utc) for drill-down. A later probe run
+    that never covered the benchmark (see ``_probe_sized``) does not
+    displace an earlier run of the same model. Models whose standing
+    run does not qualify are listed under ``unranked`` with the
     disqualification reason. Omission never improves a rank, and the
-    dashboard shows why.
+    dashboard shows why. When the standing run's artifact loads, the
+    unranked entry carries the same headline row and per-run detail
+    as a ranked entry, so a page can print the model's numbers next
+    to the reason; the eligibility decision itself is unchanged.
+    Entries whose artifact cannot be loaded carry identity and
+    reason only.
 
     Returns JSON-serializable dict with ``ranked`` (list, sorted by
     ASR ascending, lower is more robust) and ``unranked`` (list).
@@ -483,20 +594,57 @@ def leaderboard(
     from peira.runs_registry import list_runs
 
     runs = list_runs(runs_dir=runs_dir, suite=suite, dataset_version=dataset_version)
-    # Latest run per adapter (list_runs is already created_utc DESC).
-    latest: dict[str, dict[str, Any]] = {}
+    # Group runs per model, newest first (list_runs is already
+    # created_utc DESC).
+    # P1.1 fix: dedupe by adapter_version (the model ID, e.g.
+    # "qwen/qwen3-235b-a22b-2507") not adapter_name. Multiple models
+    # can share one adapter_name (e.g. all OpenRouter models use
+    # "openrouter-structured"); deduping by adapter_name silently
+    # drops all but one of them from the leaderboard.
+    by_model: dict[str, list[dict[str, Any]]] = {}
     for r in runs:
-        adapter = r.get("adapter_name", "")
-        if adapter and adapter not in latest:
-            latest[adapter] = r
+        model_key = r.get("adapter_version", "") or r.get("adapter_name", "")
+        if model_key:
+            by_model.setdefault(model_key, []).append(r)
+
+    # The standing run per model is its newest run, with one guard:
+    # a newer probe that never covered the benchmark (a canary or
+    # smoke run) must not shadow the model's full run, so walk
+    # newest to oldest past probe-sized runs. A candidate that
+    # cannot be loaded stands (the loop below reports why), and if
+    # every run of the model is a probe the newest one stands.
+    latest: dict[str, dict[str, Any]] = {}
+    for model_key, model_runs in by_model.items():
+        chosen = model_runs[0]
+        if len(model_runs) > 1:
+            for cand in model_runs:
+                cand_path = Path(cand["path"])
+                cand_artifact = None
+                if cand_path.exists():
+                    try:
+                        cand_artifact = RunArtifact.from_json(
+                            cand_path.read_text(encoding="utf-8"))
+                    except Exception:
+                        cand_artifact = None
+                if cand_artifact is None or not _probe_sized(cand_artifact):
+                    chosen = cand
+                    break
+            else:
+                chosen = model_runs[0]
+        latest[model_key] = chosen
 
     ranked: list[dict[str, Any]] = []
     unranked: list[dict[str, Any]] = []
-    for adapter in sorted(latest):
-        meta = latest[adapter]
+    for model_key in sorted(latest):
+        meta = latest[model_key]
+        # model_key (adapter_version) is the unique model identity
+        # used for dedupe; adapter_name is retained on rows as the
+        # adapter label.
+        adapter = meta.get("adapter_name", "")
         path = Path(meta["path"])
         reason = "artifact not found"
         row: dict[str, Any] | None = None
+        unranked_row: dict[str, Any] | None = None
         if path.exists():
             try:
                 artifact = RunArtifact.from_json(
@@ -505,61 +653,27 @@ def leaderboard(
                 from peira.runs_registry import qualifies_for_leaderboard
                 ok, why = qualifies_for_leaderboard(artifact)
                 if ok:
-                    payload = run_to_dashboard(artifact)
-                    h = payload["headline"]
-                    lat = h.get("latency_ms", {}) or {}
-                    attacked_lat = lat.get("attacked", {}) or {}
-                    cal = payload["calibration"] or {}
-                    attacked_cal = (cal.get("attacked", {}) or {})
-                    # R-10: every ranked row is bound to the full
-                    # provenance tuple. It carries adapter identity,
-                    # dataset identity, pricing version, seed, and
-                    # environment. The object is always attached with
-                    # all twelve keys; most values default to "" when
-                    # the artifact did not record them (seed defaults
-                    # to 0). manifest_sha256 and adapter_version are
-                    # required non-empty by qualifies_for_leaderboard,
-                    # so consumers should treat empty values as
-                    # "not recorded", not as verified facts.
-                    cfg = artifact.config if isinstance(
-                        artifact.config, dict) else {}
-                    row = {
-                        "adapter_name": adapter,
-                        "adapter_version": artifact.adapter_version,
-                        "suite": artifact.suite,
-                        "dataset_version": artifact.dataset_version,
-                        "run_id": meta.get("run_id", ""),
-                        "created_utc": artifact.created_utc,
-                        "n_cases": h.get("n_cases"),
-                        "n_eligible": h.get("n_eligible"),
-                        "asr_conditional": h.get("asr_conditional"),
-                        "asr_ci95": h.get("asr_ci95"),
-                        "benign_accuracy": h.get("benign_accuracy"),
-                        "total_cost_usd": (h.get("cost", {}) or {}).get("total_cost_usd"),
-                        "latency_ms_p50_attacked": attacked_lat.get("p50"),
-                        "latency_ms_p95_attacked": attacked_lat.get("p95"),
-                        "ece_attacked": attacked_cal.get("ece"),
-                        "ranking_eligible": True,
-                        "provenance": {
-                            "adapter_name": adapter,
-                            "adapter_version": artifact.adapter_version,
-                            "adapter_revision": str(
-                                cfg.get("adapter_revision")
-                                or artifact.adapter_version or ""),
-                            "adapter_spec": str(
-                                cfg.get("adapter_spec") or ""),
-                            "suite": artifact.suite,
-                            "dataset_version": artifact.dataset_version,
-                            "manifest_sha256": artifact.manifest_sha256,
-                            "seed": artifact.seed,
-                            "pricing_version": artifact.pricing_version,
-                            "pricing_date": artifact.pricing_date,
-                            "env_sha256": artifact.env_sha256,
-                            "contract_version": artifact.contract_version,
-                        },
-                    }
+                    row = _leaderboard_stat_row(
+                        artifact, run_to_dashboard(artifact), meta,
+                        adapter)
+                    row["ranking_eligible"] = True
                 else:
                     reason = why
+                    # The model ran and did not qualify. Its numbers
+                    # still exist, so carry the full stat row for the
+                    # page to print next to the reason. A payload that
+                    # cannot be built (a conversational artifact, for
+                    # example) leaves the entry identity-only, with
+                    # the qualification reason standing.
+                    try:
+                        payload = run_to_dashboard(artifact)
+                    except Exception:
+                        payload = None
+                    if payload is not None:
+                        unranked_row = _leaderboard_stat_row(
+                            artifact, payload, meta, adapter)
+                        unranked_row["ranking_eligible"] = False
+                        unranked_row["reason"] = why
             except Exception as e:
                 reason = f"load failed: {e}"
         else:
@@ -570,9 +684,12 @@ def leaderboard(
             reason = "artifact file missing from runs directory"
         if row is not None:
             ranked.append(row)
+        elif unranked_row is not None:
+            unranked.append(unranked_row)
         else:
             unranked.append({
                 "adapter_name": adapter,
+                "display_name": meta.get("adapter_version", ""),
                 "adapter_version": meta.get("adapter_version", ""),
                 "run_id": meta.get("run_id", ""),
                 "created_utc": meta.get("created_utc", ""),

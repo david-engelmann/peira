@@ -91,12 +91,19 @@ def test_full_pipeline_end_to_end():
     )
     assert "<html" in html and "</html>" in html
     assert "mock" in html  # adapter row rendered
-    assert "0.2.0" in html  # version rendered
-    assert "Attack success rate" in html
-    # The rendered ASR matches the metrics layer's number, formatted.
-    # report_html renders with :.4f, so assert the exact cell content,
-    # not a :.2f substring that passes by coincidence.
-    assert f"{metrics['asr_conditional']:.4f}" in html
+    # The dashboard renderer has no standalone adapter-version surface.
+    # In a production row, adapter_version is the model ID and the row's
+    # display_name carries that same ID. This synthetic row keeps the
+    # mock adapter identity separate, so pinning "0.2.0" would assert a
+    # rendering the current report does not perform.
+    assert "Attack success rate with 95% confidence whiskers" in html
+    # The rendered ASR and interval match the metrics layer's numbers
+    # at the renderer's one-decimal percent precision.
+    asr_pct = f"{metrics['asr_conditional'] * 100:.1f}%"
+    ci_lo_pct = f"{metrics['asr_ci95'][0] * 100:.1f}%"
+    ci_hi_pct = f"{metrics['asr_ci95'][1] * 100:.1f}%"
+    assert asr_pct in html
+    assert f"ASR · 95% CI {ci_lo_pct} to {ci_hi_pct}" in html
 
 
 def test_pipeline_results_survive_json_serialization():
