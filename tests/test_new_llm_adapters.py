@@ -934,3 +934,24 @@ class TestOpenAIMaxCompletionTokens(unittest.TestCase):
         req = out.transcript["request"]
         self.assertEqual(req["max_completion_tokens"], 512)
         self.assertIsNone(req["max_tokens"])
+
+    def test_gpt_6_1_sol_sends_max_completion_tokens(self):
+        # gpt-6.1-sol rejects max_tokens with the same 400 family
+        # ("Unsupported parameter: 'max_tokens' is not supported with
+        # this model. Use 'max_completion_tokens' instead.",
+        # observed live 2026-10-13 for this model specifically), so
+        # it belongs in _MAX_COMPLETION_TOKENS_MODELS too.
+        calls, _ = self._setup(model="gpt-6.1-sol")
+        self.assertEqual(calls[0]["model"], "gpt-6.1-sol")
+        self.assertEqual(calls[0]["max_completion_tokens"], 512)
+        self.assertNotIn("max_tokens", calls[0])
+
+    def test_sol_transcript_records_which_field_was_sent(self):
+        _, out = self._setup(model="gpt-6.1-sol")
+        req = out.transcript["request"]
+        self.assertEqual(req["max_completion_tokens"], 512)
+        self.assertIsNone(req["max_tokens"])
+
+    def test_max_completion_tokens_set_covers_sol(self):
+        self.assertIn(
+            "gpt-6.1-sol", OpenAIAdapter._MAX_COMPLETION_TOKENS_MODELS)

@@ -994,31 +994,37 @@ class OpenAIAdapter(_StructuredLLMBase):
     #: Models whose chat-completions endpoint rejects ``max_tokens``
     #: and requires ``max_completion_tokens`` instead (OpenAI's newer
     #: models, e.g. ``gpt-5.6-luna``). Sending ``max_tokens`` to one of
-    #: these 400s with "Unsupported parameter". The transcript records
-    #: which field was actually sent, read back from the kwargs.
-    _MAX_COMPLETION_TOKENS_MODELS = frozenset({"gpt-5.6-luna"})
+    #: these 400s with "Unsupported parameter". gpt-6.1-sol rejects
+    #: it with the same 400 (observed live 2026-10-13). The
+    #: transcript records which field was actually sent, read back
+    #: from the kwargs.
+    _MAX_COMPLETION_TOKENS_MODELS = frozenset({"gpt-5.6-luna", "gpt-6.1-sol"})
 
     # Per-model temperature overrides. gpt-5.6-luna is a reasoning
     # model that only accepts temperature=1 (any other value 400s
     # with "Unsupported value: 'temperature' does not support 0.0
     # with this model. Only the default (1) value is supported.",
-    # observed live 2026-10-03). The override is applied in __init__
-    # so self._temperature, the cache namespace, the request kwargs,
-    # the transcript, and decode_params all agree — determinism is
-    # sacrificed for this model, honestly recorded everywhere.
+    # observed live 2026-10-03). gpt-6.1-sol rejects 0.0 with the
+    # same 400 (observed live 2026-10-13). The override is applied
+    # in __init__ so self._temperature, the cache namespace, the
+    # request kwargs, the transcript, and decode_params all agree —
+    # determinism is sacrificed for these models, honestly recorded
+    # everywhere.
     _MODEL_TEMPERATURE_OVERRIDES: dict[str, float] = {
         "gpt-5.6-luna": 1.0,
+        "gpt-6.1-sol": 1.0,
     }
 
     #: Models whose chat-completions endpoint rejects ``logprobs``
     #: and requires it to be omitted instead (OpenAI's newer models,
     #: e.g. ``gpt-5.6-luna``). Sending ``logprobs`` to one of these
     #: 400s with "Unsupported parameter: 'logprobs' is not supported
-    #: with this model." The transcript records the value actually
-    #: sent, read back from the kwargs (``"logprobs": False``), and
-    #: the decision-token logprob track is recorded as ``None`` —
-    #: confidence stays on the verbalized track (D-23).
-    _NO_LOGPROBS_MODELS = frozenset({"gpt-5.6-luna"})
+    #: with this model." gpt-6.1-sol rejects it with the same 400
+    #: (observed live 2026-10-13). The transcript records the value
+    #: actually sent, read back from the kwargs (``"logprobs":
+    #: False``), and the decision-token logprob track is recorded as
+    #: ``None`` — confidence stays on the verbalized track (D-23).
+    _NO_LOGPROBS_MODELS = frozenset({"gpt-5.6-luna", "gpt-6.1-sol"})
 
     def __init__(
         self,

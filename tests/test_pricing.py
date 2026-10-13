@@ -61,6 +61,19 @@ class TestPricingTable(unittest.TestCase):
         got = cost_usd("gpt-5.6-sol", 1_000_000, 500_000, table)
         self.assertAlmostEqual(got, 4.0 + 10.0, places=9)
 
+    def test_gpt_6_1_sol_calculation(self):
+        table = load_pricing_table()
+        # gpt-6.1-sol: 2.0/1M in, 10.0/1M out, standard short-context
+        # tier (verified 2026-10-13 against OpenAI's official
+        # pricing page, developers.openai.com/api/docs/pricing).
+        # Without the table entry the model prices at 0.0 and its
+        # trial spend would be silently unaccounted.
+        got = cost_usd("gpt-6.1-sol", 1_000_000, 500_000, table)
+        self.assertAlmostEqual(got, 2.0 + 5.0, places=9)
+        self.assertEqual(
+            pricing.pricing_confidence("gpt-6.1-sol", table), "official")
+        self.assertTrue(pricing.is_cost_accounted("gpt-6.1-sol", table))
+
     def test_jev_secondary_sourced_rate(self):
         table = load_pricing_table()
         # Secondary-sourced Jev pricing (gateway announcements, not a
