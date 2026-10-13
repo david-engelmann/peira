@@ -74,6 +74,46 @@ class TestPricingTable(unittest.TestCase):
             pricing.pricing_confidence("gpt-6.1-sol", table), "official")
         self.assertTrue(pricing.is_cost_accounted("gpt-6.1-sol", table))
 
+    def test_gpt_6_luna_calculation(self):
+        table = load_pricing_table()
+        # gpt-6-luna: 0.10/1M in, 0.50/1M out, standard short-context
+        # tier (verified 2026-10-13 against OpenAI's official
+        # pricing page, platform.openai.com/docs/pricing).
+        # Without the table entry the model prices at 0.0 and its
+        # trial spend would be silently unaccounted.
+        got = cost_usd("gpt-6-luna", 1_000_000, 500_000, table)
+        self.assertAlmostEqual(got, 0.10 + 0.25, places=9)
+        self.assertEqual(
+            pricing.pricing_confidence("gpt-6-luna", table), "official")
+        self.assertTrue(pricing.is_cost_accounted("gpt-6-luna", table))
+
+    def test_gpt_5_6_terra_calculation(self):
+        table = load_pricing_table()
+        # gpt-5.6-terra: 2.0/1M in, 12.0/1M out, standard
+        # short-context tier (rate re-verified 2026-10-13 against
+        # the model's official page,
+        # developers.openai.com/api/docs/models/gpt-5.6-terra).
+        # Without the table entry the model prices at 0.0 and its
+        # trial spend would be silently unaccounted.
+        got = cost_usd("gpt-5.6-terra", 1_000_000, 500_000, table)
+        self.assertAlmostEqual(got, 2.0 + 6.0, places=9)
+        self.assertEqual(
+            pricing.pricing_confidence("gpt-5.6-terra", table), "official")
+        self.assertTrue(pricing.is_cost_accounted("gpt-5.6-terra", table))
+
+    def test_gpt_6_astra_calculation(self):
+        table = load_pricing_table()
+        # gpt-6-astra: 10.0/1M in, 50.0/1M out, standard
+        # short-context tier (verified 2026-10-13 against OpenAI's
+        # official pricing page, platform.openai.com/docs/pricing).
+        # Without the table entry the model prices at 0.0 and its
+        # trial spend would be silently unaccounted.
+        got = cost_usd("gpt-6-astra", 1_000_000, 500_000, table)
+        self.assertAlmostEqual(got, 10.0 + 25.0, places=9)
+        self.assertEqual(
+            pricing.pricing_confidence("gpt-6-astra", table), "official")
+        self.assertTrue(pricing.is_cost_accounted("gpt-6-astra", table))
+
     def test_jev_secondary_sourced_rate(self):
         table = load_pricing_table()
         # Secondary-sourced Jev pricing (gateway announcements, not a

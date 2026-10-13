@@ -995,23 +995,30 @@ class OpenAIAdapter(_StructuredLLMBase):
     #: and requires ``max_completion_tokens`` instead (OpenAI's newer
     #: models, e.g. ``gpt-5.6-luna``). Sending ``max_tokens`` to one of
     #: these 400s with "Unsupported parameter". gpt-6.1-sol rejects
-    #: it with the same 400 (observed live 2026-10-13). The
-    #: transcript records which field was actually sent, read back
-    #: from the kwargs.
-    _MAX_COMPLETION_TOKENS_MODELS = frozenset({"gpt-5.6-luna", "gpt-6.1-sol"})
+    #: it with the same 400 (observed live 2026-10-13). gpt-6-luna,
+    #: gpt-5.6-terra, and gpt-6-astra reject it with the same 400
+    #: (observed live 2026-10-13). The transcript records which
+    #: field was actually sent, read back from the kwargs.
+    _MAX_COMPLETION_TOKENS_MODELS = frozenset(
+        {"gpt-5.6-luna", "gpt-5.6-terra", "gpt-6-astra", "gpt-6-luna",
+         "gpt-6.1-sol"})
 
     # Per-model temperature overrides. gpt-5.6-luna is a reasoning
     # model that only accepts temperature=1 (any other value 400s
     # with "Unsupported value: 'temperature' does not support 0.0
     # with this model. Only the default (1) value is supported.",
     # observed live 2026-10-03). gpt-6.1-sol rejects 0.0 with the
-    # same 400 (observed live 2026-10-13). The override is applied
-    # in __init__ so self._temperature, the cache namespace, the
-    # request kwargs, the transcript, and decode_params all agree —
-    # determinism is sacrificed for these models, honestly recorded
-    # everywhere.
+    # same 400 (observed live 2026-10-13). gpt-6-luna, gpt-5.6-terra,
+    # and gpt-6-astra reject 0.0 with the same 400 (observed live
+    # 2026-10-13). The override is applied in __init__ so
+    # self._temperature, the cache namespace, the request kwargs,
+    # the transcript, and decode_params all agree — determinism is
+    # sacrificed for these models, honestly recorded everywhere.
     _MODEL_TEMPERATURE_OVERRIDES: dict[str, float] = {
         "gpt-5.6-luna": 1.0,
+        "gpt-5.6-terra": 1.0,
+        "gpt-6-astra": 1.0,
+        "gpt-6-luna": 1.0,
         "gpt-6.1-sol": 1.0,
     }
 
@@ -1020,11 +1027,15 @@ class OpenAIAdapter(_StructuredLLMBase):
     #: e.g. ``gpt-5.6-luna``). Sending ``logprobs`` to one of these
     #: 400s with "Unsupported parameter: 'logprobs' is not supported
     #: with this model." gpt-6.1-sol rejects it with the same 400
-    #: (observed live 2026-10-13). The transcript records the value
-    #: actually sent, read back from the kwargs (``"logprobs":
-    #: False``), and the decision-token logprob track is recorded as
-    #: ``None`` — confidence stays on the verbalized track (D-23).
-    _NO_LOGPROBS_MODELS = frozenset({"gpt-5.6-luna", "gpt-6.1-sol"})
+    #: (observed live 2026-10-13). gpt-6-luna, gpt-5.6-terra, and
+    #: gpt-6-astra reject it with the same 400 (observed live
+    #: 2026-10-13). The transcript records the value actually sent,
+    #: read back from the kwargs (``"logprobs": False``), and the
+    #: decision-token logprob track is recorded as ``None`` —
+    #: confidence stays on the verbalized track (D-23).
+    _NO_LOGPROBS_MODELS = frozenset(
+        {"gpt-5.6-luna", "gpt-5.6-terra", "gpt-6-astra", "gpt-6-luna",
+         "gpt-6.1-sol"})
 
     def __init__(
         self,
