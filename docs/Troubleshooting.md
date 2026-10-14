@@ -893,6 +893,46 @@ Cause: Jev rejected the request shape. The adapter validates every
 question client-side before sending, so this means API drift. Fix:
 report it; don't retry.
 
+**`openai-decisions adapter needs an OpenAI API key: set the OPENAI_API_KEY environment variable (or pass api_key=<redacted>)`**
+Cause: no OpenAI API key. The Decisions API is in public beta, and
+the key's account also needs beta access. Fix:
+`export OPENAI_API_KEY=<redacted>
+
+**`openai-decisions adapter pins model 'gpt-6-luna'; got '...'`**
+Cause: a floating or wrong model id was passed. The endpoint
+supports only `gpt-6-luna`, and Decisions measurements must name it
+exactly. Fix: don't pass `model=` at all (the default is the pin),
+or pass the exact pinned id.
+
+**`openai-decisions API error 401: ... — check that OPENAI_API_KEY is valid and the account has Decisions beta access.`**
+Cause: bad or unauthorized key, or the account has no Decisions
+beta access. Terminal: the runner won't retry it. Fix: check the
+key and the account's beta access.
+
+**`openai-decisions API error 422: ... — the request was rejected; this is an adapter bug, not a retryable failure.`**
+Cause: the endpoint rejected the request shape. The adapter
+validates every question client-side before sending, so this means
+API drift. Fix: report it; don't retry.
+
+**`openai-decisions transport error: ...`**
+Cause: the request never reached the API (DNS, connection, or TLS
+failure). The runner records it as a retryable 408. Fix: check the
+network and re-run.
+
+**`openai-decisions response missing 'answers' array`**
+Cause: the API returned a response without the documented
+`answers` shape (the same family covers a missing named answer and
+a non-object JSON body). This means API drift, not a retryable
+failure. Fix: report it; the wire shape is pinned in
+`python/peira/adapters/openai_decisions.py`.
+
+**`openai-decisions returned non-numeric probability: ...`**
+Cause: an answer value broke the documented wire contract. The
+same family covers a choice outside the offered set, a non-numeric
+score or confidence, and a malformed usage field. The adapter
+raises rather than guessing a default. Fix: report it as API
+drift.
+
 **`openai-moderation adapter needs an OpenAI API key: set the OPENAI_API_KEY environment variable (or pass api_key=...)`**
 Cause: no OpenAI API key. The moderation endpoint is free and does
 not count toward usage quotas, but it still needs a key. Fix:
