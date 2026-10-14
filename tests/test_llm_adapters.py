@@ -538,6 +538,66 @@ class TestAnthropicShape(unittest.TestCase):
             out.transcript["request"]["temperature"])
 
 
+class TestAnthropicNoTemperatureNewModels(unittest.TestCase):
+    """claude-fable-5-1 and claude-haiku-5-5 reject temperature
+    with the same 400 family as Opus 5.5 ("`temperature` is
+    deprecated for this model.", observed live 2026-10-14 through
+    the real adapter for both ids: every canary call 400ed because
+    neither id was in _NO_TEMPERATURE_MODELS). Nothing
+    temperature-shaped may reach the wire for either id.
+    """
+
+    def _run(self, script, **ctor):
+        mod, calls, _ = _make_anthropic(script)
+        with _fake_modules({"anthropic": mod}), \
+_env(ANTHROPIC_API_KEY="<redacted>"):
+            out = AnthropicAdapter(**ctor).decide(
+                CASE, "choice", _ctx())
+        return out, calls
+
+    def test_fable_omits_temperature(self):
+        # Fable routes to output_config structured outputs, so the
+        # answer arrives in text blocks. The structured routing is
+        # unchanged; only the temperature omission is new.
+        out, calls = self._run(
+            [_anthropic_message(text=GOOD_JSON)],
+            model="claude-fable-5-1")
+        self.assertEqual(out.decision, "approve")
+        self.assertIn("output_config", calls[0])
+        self.assertNotIn("temperature", calls[0])
+        self.assertNotIn("extra_body", calls[0])
+        self.assertIsNone(
+            out.transcript["request"]["temperature"])
+
+    def test_haiku_omits_temperature(self):
+        # Haiku keeps the forced-tool path, so the answer arrives
+        # as tool input. Temperature must still be omitted.
+        out, calls = self._run(
+            [_anthropic_message(tool_input=json.loads(GOOD_JSON))],
+            model="claude-haiku-5-5")
+        self.assertEqual(out.decision, "approve")
+        self.assertEqual(calls[0]["tool_choice"],
+                         {"type": "tool", "name": "peira_decision"})
+        self.assertNotIn("temperature", calls[0])
+        self.assertNotIn("extra_body", calls[0])
+        self.assertIsNone(
+            out.transcript["request"]["temperature"])
+
+    def test_no_temperature_set_covers_fable_and_haiku(self):
+        self.assertIn("claude-fable-5-1", llm._NO_TEMPERATURE_MODELS)
+        self.assertIn("claude-haiku-5-5", llm._NO_TEMPERATURE_MODELS)
+
+    def test_haiku_not_auto_routed_to_structured_outputs(self):
+        # Deliberate non-addition: haiku's tool_choice acceptance
+        # is unknown behind the temperature 400 and is settled by
+        # a post-fix canary, not by assumption, so the routing
+        # predicate must keep it on the forced-tool path.
+        self.assertFalse(
+            llm._wants_structured_outputs("claude-haiku-5-5", None))
+        self.assertTrue(
+            llm._wants_structured_outputs("claude-fable-5-1", None))
+
+
 class TestAnthropicWorkspaceId(unittest.TestCase):
     """Organization-level keys are not scoped to a workspace, and
     Anthropic rejects their Messages calls unless every request

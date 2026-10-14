@@ -7,6 +7,21 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
 
 ## [Unreleased]
 
+### Fixed Anthropic temperature deprecations for Fable 5.1 and Haiku 5.5
+
+- `claude-fable-5-1` and `claude-haiku-5-5` reject the
+  `temperature` field with HTTP 400 ("`temperature` is deprecated
+  for this model.", observed live on 2026-10-14 through the real
+  adapter). Both ids join `_NO_TEMPERATURE_MODELS`, so the adapter
+  omits temperature for them, matching Opus 5.5 and Sonnet 5.5.
+  Haiku deliberately stays off `_STRUCTURED_OUTPUT_MODELS`. Its
+  `tool_choice` acceptance is settled by a canary after this fix,
+  not by assumption.
+- Added the missing `claude-haiku-5-5` pricing entry ($0.10/$0.50
+  per 1M at the base tier for prompts up to 100,000 tokens,
+  verified against Anthropic's official pricing page on
+  2026-10-14). Pricing table version 2026-10-13.2 to 2026-10-14.1.
+
 ### Added canary_leakage and history_leakage attack families (families 30/31, Tier 1), dataset v2 2.6.0
 
 - Two new v2 families probing prompt-leakage attacks. canary_leakage

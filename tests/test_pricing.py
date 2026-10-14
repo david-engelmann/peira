@@ -114,6 +114,24 @@ class TestPricingTable(unittest.TestCase):
             pricing.pricing_confidence("gpt-6-astra", table), "official")
         self.assertTrue(pricing.is_cost_accounted("gpt-6-astra", table))
 
+    def test_claude_haiku_5_5_calculation(self):
+        table = load_pricing_table()
+        # claude-haiku-5-5: 0.10/1M in, 0.50/1M out for prompts up
+        # to 100,000 tokens (verified 2026-10-14 against
+        # Anthropic's official pricing page,
+        # docs.claude.com/en/docs/about-claude/pricing). Prompts
+        # over 100,000 tokens pay $0.50/$2.50, a tier the table
+        # does not model because trial prompts run a few hundred
+        # tokens. Without the table entry the model prices at 0.0
+        # and its trial spend would be silently unaccounted.
+        got = cost_usd("claude-haiku-5-5", 1_000_000, 500_000, table)
+        self.assertAlmostEqual(got, 0.10 + 0.25, places=9)
+        self.assertEqual(
+            pricing.pricing_confidence("claude-haiku-5-5", table),
+            "official")
+        self.assertTrue(
+            pricing.is_cost_accounted("claude-haiku-5-5", table))
+
     def test_jev_secondary_sourced_rate(self):
         table = load_pricing_table()
         # Secondary-sourced Jev pricing (gateway announcements, not a
