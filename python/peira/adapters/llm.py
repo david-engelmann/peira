@@ -2849,7 +2849,18 @@ _STRUCTURED_OUTPUT_MODELS = frozenset({
 # ids instead of sending it. Explicit allowlist, same discipline as
 # ``_STRUCTURED_OUTPUT_MODELS``: do NOT extend with unconfirmed ids.
 # Live-UNVERIFIED (no API calls in the authoring lane).
+#
+# 2026-10-14: ``claude-fable-5-1`` and ``claude-haiku-5-5`` added on
+# live canary evidence (owner-run through this adapter, with the
+# workspace header, on real v2 trial cases): every call for both ids
+# returned HTTP 400, "`temperature` is deprecated for this model.",
+# because neither id was in this set. Fable already routes to
+# structured outputs, so omission is its only wire change. Haiku
+# does not route there, and its ``tool_choice`` acceptance behind
+# the temperature wall stays unconfirmed until a post-fix canary.
 _NO_TEMPERATURE_MODELS = frozenset({
+    "claude-fable-5-1",
+    "claude-haiku-5-5",
     "claude-opus-5-5",
     "claude-sonnet-5-5",
 })

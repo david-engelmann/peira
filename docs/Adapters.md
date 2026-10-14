@@ -342,6 +342,37 @@ model id follows Anthropic's documented naming convention. Verify
 against the live API before the first run. Full rationale is recorded
 in `docs/Decisions.md`.
 
+### claude-fable-5-1 and claude-haiku-5-5 (Anthropic)
+
+Both models reject the `temperature` field outright. An owner-run
+canary on 2026-10-14 drove the real `AnthropicAdapter` (with the
+workspace header) on real v2 trial cases, and every call for both
+ids returned HTTP 400 with the provider message
+"`temperature` is deprecated for this model." Both ids are
+therefore in `_NO_TEMPERATURE_MODELS`, and the adapter sends no
+temperature for them, matching Opus 5.5 and Sonnet 5.5.
+
+`claude-fable-5-1` already routes to native `output_config.format`
+structured outputs (see the D3 reconciliation above), so the
+omission is its only wire change. `claude-haiku-5-5` is not in
+`_STRUCTURED_OUTPUT_MODELS`. Whether it accepts forced
+`tool_choice` is unknown, because the temperature rejection fired
+first on every canary call. That question is settled by a canary
+after this fix lands, not by assumption, and the adapter keeps
+Haiku on the forced-tool path until then.
+
+Pricing for `claude-haiku-5-5` is $0.10 per 1M input tokens and
+$0.50 per 1M output tokens, verified 2026-10-14 against
+Anthropic's official pricing page
+(docs.claude.com/en/docs/about-claude/pricing). Anthropic prices
+this model by prompt length, and prompts over 100,000 tokens pay
+$0.50/$2.50 per 1M instead. The pinned table in
+`python/peira/data/pricing.json` carries only the base tier,
+because trial prompts run a few hundred tokens and the higher
+tier is unreachable. Select either model by passing it
+explicitly, for example
+`--adapter 'peira.adapters.llm:AnthropicAdapter(model="claude-haiku-5-5")'`.
+
 ### gpt-5.6-luna (OpenAI)
 
 `gpt-5.6-luna` is a reasoning model whose chat-completions endpoint
