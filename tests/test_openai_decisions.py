@@ -177,6 +177,27 @@ class TestChoice(unittest.TestCase):
             _case_input(), "choice", _ctx())
         self.assertIsNone(out.usage.cached_tokens_in)
 
+    def test_malformed_usage_values_raise_provider_error(self):
+        # A present usage value that is not a non-negative int is wire
+        # drift. It must raise ProviderError, never be coerced into a
+        # wrong token count or silently dropped to None.
+        from peira.adapters.base import ProviderError
+        bad_usages = [
+            {"input_tokens": True, "output_tokens": 0},
+            {"input_tokens": 301.5, "output_tokens": 0},
+            {"input_tokens": -1, "output_tokens": 0},
+            {"input_tokens": "301", "output_tokens": 0},
+            {"input_tokens": 301, "output_tokens": 0,
+             "input_tokens_details": {"cached_tokens": "12"}},
+            {"input_tokens": 301, "output_tokens": 0,
+             "input_tokens_details": {"cached_tokens": -3}},
+        ]
+        for usage in bad_usages:
+            t = _transport_for([_choice_answer()], usage=usage)
+            with self.assertRaises(ProviderError, msg=f"usage={usage!r}"):
+                OpenAIDecisionsAdapter(api_key="k", transport=t).decide(
+                    _case_input(), "choice", _ctx())
+
     def test_choice_request_shape(self):
         t = _transport_for([_choice_answer()])
         OpenAIDecisionsAdapter(api_key="k", transport=t).decide(

@@ -399,8 +399,8 @@ class OpenAIDecisionsAdapter:
             response.get("usage"), dict) else {}
         call_usage = CallUsage(
             model=self.model,
-            tokens_in=int(usage.get("input_tokens", 0)),
-            tokens_out=int(usage.get("output_tokens", 0)),
+            tokens_in=_usage_int(usage, "input_tokens"),
+            tokens_out=_usage_int(usage, "output_tokens"),
             latency_ms=float(response.get("_latency_ms", 0.0)),
             cost_usd=0.0,  # the runner recomputes from the pricing table
             cached_tokens_in=_cached_tokens_in(usage),
@@ -615,14 +615,30 @@ def _answer_confidence(
     return _clamp01(raw, "confidence")
 
 
+def _usage_int(usage: dict[str, Any], key: str) -> int:
+    """A reported token count, validated like every other wire value.
+
+    Absent reads as zero. A present value that is not a non-negative
+    int (bools included) is wire drift, and drift raises ProviderError
+    rather than being coerced into a wrong count.
+    """
+    value = usage.get(key, 0)
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        raise ProviderError(
+            f"openai-decisions returned malformed usage field "
+            f"{key}: {value!r}")
+    return value
+
+
 def _cached_tokens_in(usage: dict[str, Any]) -> int | None:
     details = usage.get("input_tokens_details")
     if not isinstance(details, dict):
         return None
-    cached = details.get("cached_tokens")
-    if isinstance(cached, bool) or not isinstance(cached, (int, float)):
+    if "cached_tokens" not in details:
         return None
-    return int(cached)
+    # Present but malformed is drift, not an unreported breakdown:
+    # None is reserved for a breakdown the provider did not report.
+    return _usage_int(details, "cached_tokens")
 
 
 def _clamp01(value: Any, name: str) -> float:
