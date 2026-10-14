@@ -293,6 +293,18 @@ measured this as a ~10-22% malformed rate before the halt. The budget
 is recorded in the transcript's `request_shape` as `thinking_budget`
 set to 0.
 
+### Anthropic workspace id
+
+`AnthropicAdapter` accepts an optional `workspace_id`. Anthropic
+issues two kinds of API keys. A workspace-scoped key belongs to one
+workspace and needs nothing extra. An organization-level key belongs
+to no workspace, and Anthropic rejects its Messages calls unless
+every request names a workspace in the `anthropic-workspace-id`
+header. When `workspace_id` is set, the adapter passes it to the SDK
+as that default header on every request. When it is not set, the
+adapter sends no workspace header, which is the right behavior for
+workspace-scoped keys.
+
 ### Anthropic pin reconciliation (D3, 2026-09-30)
 
 D3 asked whether the Anthropic baseline should be `claude-sonnet-5`,

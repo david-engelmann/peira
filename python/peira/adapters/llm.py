@@ -2914,6 +2914,7 @@ class AnthropicAdapter(_StructuredLLMBase):
         max_tokens: int = 512,
         api_key: str | None = None,
         structured_outputs: bool | None = None,
+        workspace_id: str | None = None,
     ) -> None:
         # Set before super().__init__: the cache-namespace suffix hook
         # reads it while the base constructor builds the namespace.
@@ -2923,9 +2924,26 @@ class AnthropicAdapter(_StructuredLLMBase):
         super().__init__(model, temperature, seed, max_tokens, api_key)
         self._sdk = _require_anthropic()
         # Retries DISABLED: the runner owns the retry policy.
-        self._client = self._sdk.Anthropic(
-            api_key=self._api_key, max_retries=0
-        )
+        client_kwargs: dict[str, Any] = {
+            "api_key": self._api_key,
+            "max_retries": 0,
+        }
+        if workspace_id is not None:
+            if not isinstance(workspace_id, str):
+                raise TypeError(
+                    "workspace_id must be str or None, got "
+                    + type(workspace_id).__name__)
+            workspace_id = workspace_id.strip()
+        if workspace_id:
+            # Organization-level keys are not scoped to a workspace:
+            # Anthropic rejects their Messages calls unless every
+            # request carries the anthropic-workspace-id header.
+            # Workspace-scoped keys need no header, so the default
+            # header is sent only when a workspace id is supplied.
+            client_kwargs["default_headers"] = {
+                "anthropic-workspace-id": workspace_id
+            }
+        self._client = self._sdk.Anthropic(**client_kwargs)
 
     def _cache_namespace_suffix(self) -> str:
         # The constrained-decoding path is part of the measurement

@@ -538,6 +538,68 @@ class TestAnthropicShape(unittest.TestCase):
             out.transcript["request"]["temperature"])
 
 
+class TestAnthropicWorkspaceId(unittest.TestCase):
+    """Organization-level keys are not scoped to a workspace, and
+    Anthropic rejects their Messages calls unless every request
+    carries the anthropic-workspace-id header. The optional
+    workspace_id constructor argument supplies that header as an
+    SDK default header. Workspace-scoped keys need no header, so
+    construction without a workspace id must stay header-free."""
+
+    def setUp(self):
+        self.script = [_anthropic_message(
+            tool_input=json.loads(GOOD_JSON))]
+        self.mod, self.calls, self.created = _make_anthropic(self.script)
+        self._m = _fake_modules({"anthropic": self.mod})
+        self._m.__enter__()
+        self._e = _env(ANTHROPIC_API_KEY="sk-test")
+        self._e.__enter__()
+        self.addCleanup(self._e.__exit__, None, None, None)
+        self.addCleanup(self._m.__exit__, None, None, None)
+
+    def test_workspace_id_sent_as_default_header(self):
+        AnthropicAdapter(workspace_id="wrkspc_01test")
+        self.assertEqual(
+            self.created.get("default_headers"),
+            {"anthropic-workspace-id": "wrkspc_01test"})
+
+    def test_explicit_none_sends_no_default_headers(self):
+        AnthropicAdapter(workspace_id=None)
+        self.assertNotIn("default_headers", self.created)
+
+    def test_empty_workspace_id_sends_no_default_headers(self):
+        AnthropicAdapter(workspace_id="")
+        self.assertNotIn("default_headers", self.created)
+
+    def test_whitespace_only_workspace_id_sends_no_default_headers(self):
+        AnthropicAdapter(workspace_id="   ")
+        self.assertNotIn("default_headers", self.created)
+
+    def test_padded_workspace_id_is_trimmed(self):
+        AnthropicAdapter(workspace_id="  wrkspc_01test  ")
+        self.assertEqual(
+            self.created.get("default_headers"),
+            {"anthropic-workspace-id": "wrkspc_01test"})
+
+    def test_non_string_workspace_id_raises_type_error(self):
+        with self.assertRaises(TypeError):
+            AnthropicAdapter(workspace_id=123)
+
+    def test_workspace_id_decide_still_answers(self):
+        mod, calls, created = _make_anthropic(
+            [_anthropic_message(text=GOOD_JSON)])
+        with _fake_modules({"anthropic": mod}), \
+                _env(ANTHROPIC_API_KEY="sk-test"):
+            out = AnthropicAdapter(
+                workspace_id="wrkspc_01test").decide(
+                    CASE, "choice", _ctx())
+        self.assertEqual(out.decision, "approve")
+        self.assertEqual(
+            created.get("default_headers"),
+            {"anthropic-workspace-id": "wrkspc_01test"})
+        self.assertEqual(len(calls), 1)
+
+
 class TestAnthropicStructuredOutputs(unittest.TestCase):
     """Native output_config.format path for newer Anthropic models.
 
