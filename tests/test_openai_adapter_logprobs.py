@@ -221,5 +221,134 @@ class TestOpenAISolLogprobsOmission(unittest.TestCase):
         self.assertIn("gpt-6.1-sol", OpenAIAdapter._NO_LOGPROBS_MODELS)
 
 
+class TestOpenAILuna6LogprobsOmission(unittest.TestCase):
+    """gpt-6-luna 400s on logprobs.
+
+    Observed live 2026-10-13 (canary probes against api.openai.com,
+    run for this model on its own evidence): sending ``logprobs``
+    400s with "Unsupported parameter: 'logprobs' is not supported
+    with this model." The adapter must omit the field for
+    ``gpt-6-luna``, the transcript must honestly record the
+    omission, and the decision-token logprob track is ``None``.
+    """
+
+    def setUp(self):
+        self.mod, self.calls, self.created = _make_openai(
+            [_openai_completion(GOOD_JSON, with_logprobs=False)])
+        self._m = _fake_modules({"openai": self.mod})
+        self._m.__enter__()
+        self._e = _env(OPENAI_API_KEY="sk-test")
+        self._e.__enter__()
+        self.addCleanup(self._e.__exit__, None, None, None)
+        self.addCleanup(self._m.__exit__, None, None, None)
+
+    def test_luna6_omits_logprobs_on_wire(self):
+        OpenAIAdapter(model="gpt-6-luna").decide(CASE, "choice", _ctx())
+        self.assertNotIn("logprobs", self.calls[0])
+
+    def test_luna6_transcript_records_omission(self):
+        out = OpenAIAdapter(model="gpt-6-luna").decide(
+            CASE, "choice", _ctx())
+        self.assertFalse(out.transcript["request"]["logprobs"])
+
+    def test_luna6_decide_returns_valid_decision(self):
+        out = OpenAIAdapter(model="gpt-6-luna").decide(
+            CASE, "choice", _ctx())
+        self.assertEqual(out.decision, "approve")
+        self.assertEqual(out.confidence, 0.73)
+        tracks = out.transcript["confidence_tracks"]
+        self.assertIsNone(tracks["decision_token_logprob"])
+        self.assertEqual(tracks["verbalized"], 0.73)
+
+    def test_no_logprobs_set_covers_luna6(self):
+        self.assertIn("gpt-6-luna", OpenAIAdapter._NO_LOGPROBS_MODELS)
+
+
+class TestOpenAITerra56LogprobsOmission(unittest.TestCase):
+    """gpt-5.6-terra 400s on logprobs.
+
+    Observed live 2026-10-13 (canary probes against api.openai.com,
+    run for this model on its own evidence): sending ``logprobs``
+    400s with "Unsupported parameter: 'logprobs' is not supported
+    with this model." The adapter must omit the field for
+    ``gpt-5.6-terra``, the transcript must honestly record the
+    omission, and the decision-token logprob track is ``None``.
+    """
+
+    def setUp(self):
+        self.mod, self.calls, self.created = _make_openai(
+            [_openai_completion(GOOD_JSON, with_logprobs=False)])
+        self._m = _fake_modules({"openai": self.mod})
+        self._m.__enter__()
+        self._e = _env(OPENAI_API_KEY="sk-test")
+        self._e.__enter__()
+        self.addCleanup(self._e.__exit__, None, None, None)
+        self.addCleanup(self._m.__exit__, None, None, None)
+
+    def test_terra_omits_logprobs_on_wire(self):
+        OpenAIAdapter(model="gpt-5.6-terra").decide(CASE, "choice", _ctx())
+        self.assertNotIn("logprobs", self.calls[0])
+
+    def test_terra_transcript_records_omission(self):
+        out = OpenAIAdapter(model="gpt-5.6-terra").decide(
+            CASE, "choice", _ctx())
+        self.assertFalse(out.transcript["request"]["logprobs"])
+
+    def test_terra_decide_returns_valid_decision(self):
+        out = OpenAIAdapter(model="gpt-5.6-terra").decide(
+            CASE, "choice", _ctx())
+        self.assertEqual(out.decision, "approve")
+        self.assertEqual(out.confidence, 0.73)
+        tracks = out.transcript["confidence_tracks"]
+        self.assertIsNone(tracks["decision_token_logprob"])
+        self.assertEqual(tracks["verbalized"], 0.73)
+
+    def test_no_logprobs_set_covers_terra(self):
+        self.assertIn("gpt-5.6-terra", OpenAIAdapter._NO_LOGPROBS_MODELS)
+
+
+class TestOpenAIAstraLogprobsOmission(unittest.TestCase):
+    """gpt-6-astra 400s on logprobs.
+
+    Observed live 2026-10-13 (canary probes against api.openai.com,
+    run for this model on its own evidence): sending ``logprobs``
+    400s with "Unsupported parameter: 'logprobs' is not supported
+    with this model." The adapter must omit the field for
+    ``gpt-6-astra``, the transcript must honestly record the
+    omission, and the decision-token logprob track is ``None``.
+    """
+
+    def setUp(self):
+        self.mod, self.calls, self.created = _make_openai(
+            [_openai_completion(GOOD_JSON, with_logprobs=False)])
+        self._m = _fake_modules({"openai": self.mod})
+        self._m.__enter__()
+        self._e = _env(OPENAI_API_KEY="sk-test")
+        self._e.__enter__()
+        self.addCleanup(self._e.__exit__, None, None, None)
+        self.addCleanup(self._m.__exit__, None, None, None)
+
+    def test_astra_omits_logprobs_on_wire(self):
+        OpenAIAdapter(model="gpt-6-astra").decide(CASE, "choice", _ctx())
+        self.assertNotIn("logprobs", self.calls[0])
+
+    def test_astra_transcript_records_omission(self):
+        out = OpenAIAdapter(model="gpt-6-astra").decide(
+            CASE, "choice", _ctx())
+        self.assertFalse(out.transcript["request"]["logprobs"])
+
+    def test_astra_decide_returns_valid_decision(self):
+        out = OpenAIAdapter(model="gpt-6-astra").decide(
+            CASE, "choice", _ctx())
+        self.assertEqual(out.decision, "approve")
+        self.assertEqual(out.confidence, 0.73)
+        tracks = out.transcript["confidence_tracks"]
+        self.assertIsNone(tracks["decision_token_logprob"])
+        self.assertEqual(tracks["verbalized"], 0.73)
+
+    def test_no_logprobs_set_covers_astra(self):
+        self.assertIn("gpt-6-astra", OpenAIAdapter._NO_LOGPROBS_MODELS)
+
+
 if __name__ == "__main__":
     unittest.main()

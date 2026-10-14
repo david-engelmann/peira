@@ -955,3 +955,62 @@ class TestOpenAIMaxCompletionTokens(unittest.TestCase):
     def test_max_completion_tokens_set_covers_sol(self):
         self.assertIn(
             "gpt-6.1-sol", OpenAIAdapter._MAX_COMPLETION_TOKENS_MODELS)
+
+    def test_gpt_6_luna_sends_max_completion_tokens(self):
+        # gpt-6-luna rejects max_tokens with the same 400 family
+        # ("Unsupported parameter: 'max_tokens' is not supported with
+        # this model. Use 'max_completion_tokens' instead.",
+        # observed live 2026-10-13 for this model specifically), so
+        # it belongs in _MAX_COMPLETION_TOKENS_MODELS too.
+        calls, _ = self._setup(model="gpt-6-luna")
+        self.assertEqual(calls[0]["model"], "gpt-6-luna")
+        self.assertEqual(calls[0]["max_completion_tokens"], 512)
+        self.assertNotIn("max_tokens", calls[0])
+
+    def test_gpt_6_luna_transcript_records_which_field_was_sent(self):
+        _, out = self._setup(model="gpt-6-luna")
+        req = out.transcript["request"]
+        self.assertEqual(req["max_completion_tokens"], 512)
+        self.assertIsNone(req["max_tokens"])
+
+    def test_max_completion_tokens_set_covers_gpt_6_luna(self):
+        self.assertIn(
+            "gpt-6-luna", OpenAIAdapter._MAX_COMPLETION_TOKENS_MODELS)
+
+    def test_gpt_5_6_terra_sends_max_completion_tokens(self):
+        # gpt-5.6-terra rejects max_tokens with the same 400 family
+        # (observed live 2026-10-13 for this model specifically), so
+        # it belongs in _MAX_COMPLETION_TOKENS_MODELS too.
+        calls, _ = self._setup(model="gpt-5.6-terra")
+        self.assertEqual(calls[0]["model"], "gpt-5.6-terra")
+        self.assertEqual(calls[0]["max_completion_tokens"], 512)
+        self.assertNotIn("max_tokens", calls[0])
+
+    def test_gpt_5_6_terra_transcript_records_which_field_was_sent(self):
+        _, out = self._setup(model="gpt-5.6-terra")
+        req = out.transcript["request"]
+        self.assertEqual(req["max_completion_tokens"], 512)
+        self.assertIsNone(req["max_tokens"])
+
+    def test_max_completion_tokens_set_covers_terra(self):
+        self.assertIn(
+            "gpt-5.6-terra", OpenAIAdapter._MAX_COMPLETION_TOKENS_MODELS)
+
+    def test_gpt_6_astra_sends_max_completion_tokens(self):
+        # gpt-6-astra rejects max_tokens with the same 400 family
+        # (observed live 2026-10-13 for this model specifically), so
+        # it belongs in _MAX_COMPLETION_TOKENS_MODELS too.
+        calls, _ = self._setup(model="gpt-6-astra")
+        self.assertEqual(calls[0]["model"], "gpt-6-astra")
+        self.assertEqual(calls[0]["max_completion_tokens"], 512)
+        self.assertNotIn("max_tokens", calls[0])
+
+    def test_gpt_6_astra_transcript_records_which_field_was_sent(self):
+        _, out = self._setup(model="gpt-6-astra")
+        req = out.transcript["request"]
+        self.assertEqual(req["max_completion_tokens"], 512)
+        self.assertIsNone(req["max_tokens"])
+
+    def test_max_completion_tokens_set_covers_astra(self):
+        self.assertIn(
+            "gpt-6-astra", OpenAIAdapter._MAX_COMPLETION_TOKENS_MODELS)
