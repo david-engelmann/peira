@@ -962,6 +962,51 @@ documented key, so the adapter reads the documented key first and
 falls back to the native field. The adapter ran the full v2 trial
 against the live API (4,701 cases sealed). See D-24.
 
+## OpenAI Decisions
+
+No extra needed (stdlib transport). Set `OPENAI_API_KEY` first.
+
+```bash
+export OPENAI_API_KEY=<redacted>
+peira run --adapter peira.adapters.openai_decisions:OpenAIDecisionsAdapter --suite trial-demo
+```
+
+OpenAI's Decisions API (public beta) is a decision-model endpoint in
+the same family as Jev. The adapter sends the case prompt as `input`
+plus named typed questions and reads back typed answers. A `choice`
+answer carries the chosen option, a per-option probability
+distribution, and a separate confidence field. A `score` answer
+carries a probability-weighted average over the same five-level
+rubric the Jev adapter uses ("clearly the wrong decision" …
+"clearly the right decision") plus per-level probabilities. A
+`predicate` answer carries a probability, and the abstain primitive
+is mapped onto it (probability at or above 0.5 is the deliberate
+decision label `abstain`. Below it the decision is the `other`
+placeholder, exactly as on the Jev wire). Any question can instead
+return a `refusal` answer while the other questions in the request
+are still answered, and a refusal on the question that carries the
+primitive maps to an abstained output. Score arms send two questions
+in one request, the rubric score and the paired decision, and the
+reported decision and confidence come from the paired choice answer.
+The question text (instructions, rubric, label construction) is the
+Jev adapter's unchanged, so the two wires see identical decision
+spaces. The model is pinned to `gpt-6-luna`, the only model the
+endpoint supports, and any other model string is rejected at
+construction. Pricing is $0.10 per 1M input tokens with no output
+charge (the wire reports `output_tokens` 0), and the pinned table's
+existing `gpt-6-luna` entry computes the cost exactly. 408/409/429/
+529/5xx and transport timeouts surface as retryable provider errors
+for the runner, 400/401/403/404/422 are terminal, and the provider's
+error code rides in the error message so a billing-side 429 reads as
+what it is. The choice and score shapes were exercised live on
+2026-10-14 (three probe calls on real v2 cases, all 200s). The
+predicate and refusal shapes are documented in the API reference and
+are first exercised by the post-merge canary. One beta caveat
+applies. OpenAI publishes no SLA or schema freeze for this endpoint,
+so the adapter
+pins the wire-shape version into its cache namespace (`v1`) and a
+field rename lands in this one module.
+
 ## Laya
 
 ```bash

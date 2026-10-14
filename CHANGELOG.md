@@ -7,6 +7,30 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
 
 ## [Unreleased]
 
+### Added OpenAI Decisions adapter (openai-decisions, gpt-6-luna)
+
+- New adapter `peira.adapters.openai_decisions:OpenAIDecisionsAdapter`
+  (entry point `openai-decisions`) for OpenAI's Decisions API, a
+  decision-model endpoint in the Jev family. The case prompt rides as
+  the request `input` with named typed questions, and the wire's
+  typed answers map onto all three primitives. Choice answers carry
+  a per-option probability distribution plus a separate confidence
+  field. Score arms batch a rubric score question and the paired
+  decision question in one request, with the score normalized from
+  the five-level rubric. The abstain primitive maps onto a predicate
+  question whose probability is P(abstain). Any question can return
+  a documented refusal answer, which maps to an abstained output.
+- The question text (instructions, five-level rubric, label
+  construction) is the Jev adapter's unchanged, so the two
+  Jev-pattern wires see identical decision spaces.
+- Model pinned to `gpt-6-luna`, the only model the endpoint
+  supports. No pricing change. The wire reports zero output tokens
+  and the existing `gpt-6-luna` table entry ($0.10 per 1M input)
+  computes the cost exactly. Choice and score wire shapes were
+  verified live on 2026-10-14 by the design lane's probe. The
+  predicate and refusal shapes are documented in the API reference
+  and are first exercised by the post-merge canary.
+
 ### Fixed Anthropic temperature deprecations for Fable 5.1 and Haiku 5.5
 
 - `claude-fable-5-1` and `claude-haiku-5-5` reject the
