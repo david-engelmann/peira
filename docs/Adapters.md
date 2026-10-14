@@ -335,12 +335,15 @@ outputs and omits temperature. Pricing is $2/$10 per 1M tokens in the
 pinned pricing table. The ceiling is never the default; frontier
 comparisons are snapshots in time, never blended across versions.
 
-**Honest caveats:** (1) the adapter path is unit-tested against mocked
-request/response shapes only, and no measured numbers from this
-adapter may be published until a live smoke test passes; (2) the
-model id follows Anthropic's documented naming convention. Verify
-against the live API before the first run. Full rationale is recorded
-in `docs/Decisions.md`.
+**Honest caveats.** The adapter path is no longer mock-only.
+`claude-sonnet-5-5` completed a full live trial run through this
+adapter and its measured numbers are published. `claude-opus-5-5`
+and `claude-fable-5-1` were canaried live through the adapter on
+2026-10-14. One routing question is still open. Whether
+`claude-haiku-5-5` accepts forced `tool_choice` is unverified,
+because the temperature rejection fired first on every canary
+call, and the canary after this fix settles it. Full rationale is
+recorded in `docs/Decisions.md`.
 
 ### claude-fable-5-1 and claude-haiku-5-5 (Anthropic)
 

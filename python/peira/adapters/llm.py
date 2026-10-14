@@ -2823,9 +2823,9 @@ class MiniMaxAdapter(_StructuredLLMBase):
 # (HTTP 400; only ``auto``/``none`` are accepted), so they are driven
 # through native ``output_config.format`` JSON-schema structured
 # outputs instead of the forced-tool path. This is an explicit
-# allowlist of repo-documented ids: do NOT extend it with unconfirmed
-# ids (D-32; even ``claude-fable-5-1`` itself is still unverified
-# against the live API). Any other model opts in explicitly via
+# allowlist of repo-documented ids, and every id in it has since
+# been confirmed against the live API (D-32). Do NOT extend it with
+# unconfirmed ids. Any other model opts in explicitly via
 # ``AnthropicAdapter(..., structured_outputs=True)``.
 #
 # D3 reconciliation (2026-09-30): the Opus 5.5 API id is
@@ -2833,10 +2833,12 @@ class MiniMaxAdapter(_StructuredLLMBase):
 # Bedrock, and launch coverage — released 2026-09-22), and Claude
 # Sonnet 5.5 shipped 2026-09-28 as ``claude-sonnet-5-5``. Both are
 # 5.x reasoning models, so both route here. D3 decided 2026-10-02.
-# Latest only: the default pin is ``claude-sonnet-5-5``; pass
-# ``model="claude-opus-5-5"`` explicitly to measure Opus 5.5.
-# All ids in this set are live-UNVERIFIED from this
-# environment (no API calls in the authoring lane).
+# Latest only. The default pin is ``claude-sonnet-5-5``, and
+# ``model="claude-opus-5-5"`` measures Opus 5.5 when passed
+# explicitly. Live status as of 2026-10-14 is confirmed for all
+# three ids. ``claude-sonnet-5-5`` completed a full live trial run
+# sealed that day, and ``claude-opus-5-5`` and ``claude-fable-5-1``
+# were canaried live through this adapter on the same day.
 _STRUCTURED_OUTPUT_MODELS = frozenset({
     "claude-fable-5-1",
     "claude-opus-5-5",
@@ -2847,8 +2849,11 @@ _STRUCTURED_OUTPUT_MODELS = frozenset({
 # Anthropic rejects ``temperature``/``top_p`` with a 400 on the Opus
 # 4.6 generation and later, so the adapter omits the field for these
 # ids instead of sending it. Explicit allowlist, same discipline as
-# ``_STRUCTURED_OUTPUT_MODELS``: do NOT extend with unconfirmed ids.
-# Live-UNVERIFIED (no API calls in the authoring lane).
+# ``_STRUCTURED_OUTPUT_MODELS``. Do NOT extend with unconfirmed ids.
+# Every id in this set has live temperature evidence behind it.
+# Opus 5.5 and Sonnet 5.5 omit the field and run live, while
+# Fable 5.1 and Haiku 5.5 returned the deprecation 400 recorded
+# below when the field was sent.
 #
 # 2026-10-14: ``claude-fable-5-1`` and ``claude-haiku-5-5`` added on
 # live canary evidence (owner-run through this adapter, with the
