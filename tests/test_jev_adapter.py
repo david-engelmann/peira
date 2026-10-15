@@ -82,6 +82,55 @@ class TestJevConstruction(unittest.TestCase):
         a = JevAdapter(api_key="k")
         self.assertEqual(a.cache_namespace, f"jev:{MODEL_ID}")
 
+    def test_model_accepts_both_pins_and_defaults_to_113(self):
+        a = JevAdapter(api_key="k", model="jev-1.13.0")
+        self.assertEqual(a.model, "jev-1.13.0")
+        b = JevAdapter(api_key="k", model="jev-1.14.0")
+        self.assertEqual(b.model, "jev-1.14.0")
+        self.assertEqual(JevAdapter(api_key="k").model, "jev-1.13.0")
+
+    def test_model_rejects_aliases_and_unknown_ids(self):
+        # jev-latest currently resolves to 1.13.0 and jev-preview to
+        # 1.14.0 upstream; both stay rejected here, because a floating
+        # tag would silently change what a run measures when upstream
+        # repoints it. Unknown versioned ids and near-misses reject too.
+        for bad in ("jev-latest", "jev-preview", "jev-1.15.0",
+                    "jev-2.0.0", "jev", "JEV-1.14.0", "jev-1.14"):
+            with self.assertRaises(ValueError, msg=bad):
+                JevAdapter(api_key="k", model=bad)
+
+    def test_model_rejection_message_matches_troubleshooting_quote(self):
+        # docs/Troubleshooting.md quotes this message verbatim in its
+        # heading, so the full emitted text is pinned here. A wording
+        # change must move the doc quote in the same change.
+        with self.assertRaises(ValueError) as cm:
+            JevAdapter(api_key="k", model="jev-latest")
+        self.assertEqual(
+            str(cm.exception),
+            "jev adapter pins model 'jev-1.13.0' or 'jev-1.14.0'; "
+            "got 'jev-latest'. Floating tags like 'jev-latest' and "
+            "'jev-preview' are never allowed \u2014 a measurement "
+            "must name the exact model.")
+
+    def test_version_and_cache_namespace_follow_the_instance_model(self):
+        a = JevAdapter(api_key="k", model="jev-1.13.0")
+        b = JevAdapter(api_key="k", model="jev-1.14.0")
+        self.assertEqual(a.version, "jev-1.13.0")
+        self.assertEqual(b.version, "jev-1.14.0")
+        self.assertEqual(a.cache_namespace, "jev:jev-1.13.0")
+        self.assertEqual(b.cache_namespace, "jev:jev-1.14.0")
+        self.assertNotEqual(a.cache_namespace, b.cache_namespace)
+
+    def test_decide_sends_the_instance_model(self):
+        t = _transport_for({"decision": {"choice": "deny",
+                                          "confidence": 0.9}})
+        out = JevAdapter(api_key="k", model="jev-1.14.0",
+                         transport=t).decide(_case_input(), "choice",
+                                             _ctx())
+        self.assertEqual(t.seen["payload"]["model"], "jev-1.14.0")
+        self.assertEqual(out.usage.model, "jev-1.14.0")
+        self.assertEqual(out.transcript["model"], "jev-1.14.0")
+
 
 class TestJevChoice(unittest.TestCase):
     def test_choice_maps_option_and_confidence(self):

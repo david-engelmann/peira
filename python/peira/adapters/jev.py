@@ -7,8 +7,9 @@ probabilities for ``choice``, a probability-weighted numeric answer for
 ``score``, and a probability-of-yes for ``abstain``.
 
 Access is gated: you need a TypeSafe account and an API key. The adapter
-pins ``jev-1.13.0`` — never ``jev-latest`` or any floating tag — so a
-measurement always names the exact model that produced it.
+pins an exact snapshot — ``jev-1.13.0`` by default, ``jev-1.14.0`` also
+supported — never ``jev-latest`` or any floating tag, so a measurement
+always names the exact model that produced it.
 
 Endpoint: ``POST https://api.typesafe.ai/v1/systemone``
 Auth: ``Authorization: Bearer $TYPESAFE_API_KEY``
@@ -72,7 +73,12 @@ from peira.adapters.base import (
 )
 
 MODEL_ID = "jev-1.13.0"
-"""Pinned Jev model. Never a floating tag."""
+"""Default pinned Jev model. Never a floating tag."""
+
+SUPPORTED_MODEL_IDS = frozenset({"jev-1.13.0", "jev-1.14.0"})
+"""Every Jev snapshot this adapter will measure. The constructor
+accepts exactly these versioned ids and nothing else, so each run is
+one named snapshot and two snapshots can be plotted side by side."""
 
 API_URL = "https://api.typesafe.ai/v1/systemone"
 """Direct System One endpoint."""
@@ -203,16 +209,14 @@ class JevAdapter:
     """Decision adapter for TypeSafe's Jev (System One) API."""
 
     name = "jev"
-    version = MODEL_ID
     supported_primitives = frozenset({"choice", "score", "abstain"})
     # M-2: confidence comes from the API's per-answer probabilities
     # (D-23): a model-output probability, not a verbalization.
     confidence_source = "token-logprob"
     # M-7 longitudinal provenance.
     model_class = "guardrail"
-    # Pinned model id: same input → same decision, so the runner's
-    # opt-in response cache is safe namespaced on it.
-    cache_namespace = f"jev:{MODEL_ID}"
+    # ``version`` and ``cache_namespace`` are per-instance attributes,
+    # set in __init__ from the instance's pinned snapshot.
 
     def __init__(
         self,
@@ -222,13 +226,22 @@ class JevAdapter:
         timeout_s: float = 60.0,
         transport: Callable[..., dict[str, Any]] | None = None,
     ) -> None:
-        if not model or model != MODEL_ID:
+        if model not in SUPPORTED_MODEL_IDS:
+            pins = " or ".join(repr(m) for m in sorted(SUPPORTED_MODEL_IDS))
             raise ValueError(
-                f"jev adapter pins model {MODEL_ID!r}; got {model!r}. "
-                "Floating tags like 'jev-latest' are never allowed — a "
-                "measurement must name the exact model."
+                f"jev adapter pins model {pins}; got {model!r}. "
+                "Floating tags like 'jev-latest' and 'jev-preview' are "
+                "never allowed — a measurement must name the exact model."
             )
         self.model = model
+        # The pinned model id IS the version (M-7): a 1.14.0 run seals
+        # adapter_version jev-1.14.0, a 1.13.0 run jev-1.13.0.
+        self.version = model
+        # Pinned model id: same input → same decision, so the runner's
+        # opt-in response cache is safe namespaced on it. The namespace
+        # follows the instance's snapshot, so the two supported pins
+        # never share cache entries.
+        self.cache_namespace = f"jev:{model}"
         self._api_key = _require_api_key(api_key)
         self.api_url = api_url
         self.timeout_s = timeout_s

@@ -947,12 +947,20 @@ carries `instructions`; choice and score questions also carry
 `criteria`) and reads back `choice`
 (choice), `score` (score), or `abstain` (abstain) answers. The score
 question uses five described levels ("clearly the wrong decision" …
-"clearly the right decision"), not raw numbers. The model is pinned to
-`jev-1.13.0`. Floating tags are rejected at construction. Reported
-pricing is $0.042 per 1M input tokens with output free (secondary-sourced
-via gateway announcements, not confirmed on an official TypeSafe pricing
-page), and the pinned table in `python/peira/data/pricing.json` reflects
-that with the caveat attached. Access is
+"clearly the right decision"), not raw numbers. The adapter supports
+two pinned snapshots, `jev-1.13.0` and `jev-1.14.0`, and `jev-1.13.0`
+remains the default when no model is named. Construction rejects
+floating tags such as `jev-latest` and `jev-preview`, along with any
+other model id, so a run always names one exact snapshot. Each
+instance records its snapshot as its adapter version and caches under
+that snapshot's own namespace, so the two snapshots can be measured
+side by side without sharing state. Reported pricing is $0.042 per
+1M input tokens with output free. The 1.13.0 rate is secondary-sourced
+via gateway announcements and carries that caveat in the pinned table
+in `python/peira/data/pricing.json`. The 1.14.0 rate was verified
+against the TypeSafe models page on 2026-10-14, and an owner probe
+that same day called the live API with model `jev-1.14.0` and received
+HTTP 200 with the response model field naming `jev-1.14.0`. Access is
 gated; without a key the error tells you exactly where to get one.
 429/529/5xx and transport timeouts surface as retryable provider
 errors for the runner. 401/422 are terminal. One live-API quirk,
