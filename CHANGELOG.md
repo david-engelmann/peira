@@ -7,6 +7,27 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
 
 ## [Unreleased]
 
+### Added GLiNER2.5-Decide adapter
+
+- New `gliner-decide` adapter for Fastino's GLiNER2.5-Decide
+  (Apache 2.0), a 340M DeBERTa-v3 schema classifier that runs
+  locally on CPU through the `gliner2` package. Peira's three
+  primitives map onto caller-supplied label sets (choice options
+  as a described label set, score levels as labels, abstain as a
+  two-label yes/no set), documented in the adapter and in
+  Adapters.md, with the winning label's model probability as the
+  confidence. The checkpoint is pinned to
+  `fastino/GLiNER2.5-Decide` at a fixed Hub revision.
+- Pricing gains a `fastino/GLiNER2.5-Decide` entry at $0.0 per 1M
+  tokens (self-hosted; local inference cost explicitly
+  unaccounted). The pricing table moves to version 2026-10-15.2.
+- Live state at landing. The live CPU canary passed on 2026-10-15
+  through the real adapter (exit 0, peak resident set 2,770 MB;
+  choice, score and abstain outputs all validating) after the
+  first attempts on the shared trial VM were OOM-killed under
+  contention, a host capacity state rather than an adapter
+  defect.
+
 ### Added Cloudflare Clef adapter (Workers AI decision models)
 
 - New `ClefAdapter` (entry point `clef`) for Cloudflare's Clef
