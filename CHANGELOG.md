@@ -7,6 +7,23 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
 
 ## [Unreleased]
 
+### Added Jev 1.14 snapshot support (jev-1.14.0)
+
+- `JevAdapter` now accepts two pinned snapshots, `jev-1.13.0` and
+  `jev-1.14.0`, with `jev-1.13.0` unchanged as the default. Floating
+  tags such as `jev-latest` and `jev-preview` and every other model
+  id are still rejected at construction, so a measurement always
+  names the exact model that produced it.
+- `version` and `cache_namespace` now follow the instance's pinned
+  snapshot. A 1.14.0 run seals adapter version `jev-1.14.0` and
+  caches under `jev:jev-1.14.0`, never colliding with a 1.13.0 run.
+- Pricing gains a `jev-1.14.0` entry at $0.042 per 1M input tokens
+  with output free, verified against the TypeSafe models page on
+  2026-10-14. The pricing table moves to version 2026-10-14.2.
+- An owner probe verified the 1.14.0 wire live on 2026-10-14 and
+  received HTTP 200 with the response model field naming
+  `jev-1.14.0`.
+
 ### Fixed Decisions adapter error strings carrying em dashes
 
 - Two error messages from the OpenAI Decisions adapter used an

@@ -878,11 +878,12 @@ Cause: Jev was asked for a primitive outside `choice`, `score`,
 Cause: no Jev API key. Jev is gated on access. The message says where
 to request it. Fix: `export TYPESAFE_API_KEY='your-key-here'`
 
-**`jev adapter pins model 'jev-1.13.0'; got '...'`**
-Cause: a floating or wrong model id was passed. Jev measurements must
-name the exact model. `jev-latest` and friends are rejected. Fix:
-don't pass `model=` at all (the default is the pin), or pass the exact
-pinned id.
+**`jev adapter pins model 'jev-1.13.0' or 'jev-1.14.0'; got '...'`**
+Cause: a floating or unsupported model id was passed. Jev measurements
+must name the exact model, and only the two pinned snapshots are
+supported. `jev-latest`, `jev-preview` and friends are rejected. Fix:
+don't pass `model=` at all (the default is `jev-1.13.0`), or pass one
+of the exact pinned ids.
 
 **`jev API error 401: ...; check that TYPESAFE_API_KEY is valid and the account has Jev access.`**
 Cause: bad or unauthorized key. Terminal: the runner won't retry it.
