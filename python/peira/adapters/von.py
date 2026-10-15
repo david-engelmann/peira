@@ -50,17 +50,20 @@ default timeout. Trial wiring should pass a larger ``timeout_s``
 Served-model stamp: the server stamps every response with the
 model it actually served, and this adapter checks the stamp on
 every call. A response naming a different model fails the call
-rather than being recorded under the pin, so a server that starts
-serving a different model (an SDK upgrade, a wrong endpoint)
-cannot silently relabel a run. A checkpoint directory chosen with
-``VON_CHECKPOINT_DIR`` keeps the same stamp, so that choice stays
-an operator attestation for the run record.
+rather than being recorded under the pin, and so does a response
+with no stamp at all, because the wire type always carries one.
+A server that starts serving a different model (an SDK upgrade,
+a wrong endpoint) therefore cannot silently relabel a run. A
+checkpoint directory chosen with ``VON_CHECKPOINT_DIR`` keeps the
+same stamp, so that choice stays an operator attestation for the
+run record.
 
 Auth: ``von serve`` takes no auth unless started with ``VON_API_KEY``
 set. When a key is configured here (``api_key=`` or the
 ``VON_API_KEY`` environment variable) requests carry it as a Bearer
-token. Without one, requests go keyless. The key never appears in
-transcripts.
+token to whatever endpoint ``api_url`` names, so a remote
+deployment should be reached over HTTPS or a tunnel. Without a
+key, requests go keyless. The key never appears in transcripts.
 
 Verified vs unverified: the wire compatibility claim, the serve
 flags above, and the model facts are per the project's published
@@ -140,18 +143,29 @@ class VonAdapter(LocalSystemOneAdapter):
         """Wrap a transport with the served-model stamp check.
 
         The server stamps every response with the model it actually
-        served. A stamp naming any other model means the deployment
-        is not running the pinned checkpoint, and recording its
-        answers under the pin would mislabel the run, so the call
-        fails terminally instead. A response with no stamp cannot
-        mislabel anything and passes.
+        served; the stamp is a required field of the wire type, so
+        every genuine response carries one. A stamp naming any
+        other model means the deployment is not running the pinned
+        checkpoint, and a missing stamp means the endpoint is not
+        answering as a Von deployment at all. Either way, recording
+        the answers under the pin would mislabel the run, so the
+        call fails terminally instead.
         """
 
         def checked(payload: Any) -> Any:
             response = inner(payload)
             if isinstance(response, dict):
                 served = response.get("model")
-                if served is not None and served != MODEL_ID:
+                if served is None:
+                    raise ProviderError(
+                        "von server response carries no model stamp; "
+                        f"this adapter measures only {MODEL_ID!r} and "
+                        "cannot verify what served this answer. The "
+                        "endpoint is not answering as a von serve "
+                        f"deployment; point api_url= at a {MODEL_ID} "
+                        "deployment."
+                    )
+                if served != MODEL_ID:
                     raise ProviderError(
                         f"von server response names model {served!r}; "
                         f"this adapter measures only {MODEL_ID!r}. The "

@@ -44,8 +44,9 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
   serves; Von 1.3, an engine release whose weights are unchanged
   from 1.2), with optional Bearer auth for servers started with
   `VON_API_KEY` set. The adapter checks the model stamp on every
-  server response and refuses a response that names a different
-  checkpoint than the pin. The docs record the
+  server response and refuses a response whose stamp names a
+  different checkpoint than the pin, or that carries no stamp.
+  The docs record the
   two serve settings a measurement depends on (the raw noul
   decision rule and refuse-on-overflow) because the adapter cannot
   see either of them.

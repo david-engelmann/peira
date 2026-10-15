@@ -1203,7 +1203,9 @@ the runner cache. The server fetches the weights from the Hub on
 first use. Von takes no auth unless the server was started
 with `VON_API_KEY` set. Pass the same key to the adapter with
 `api_key=` or the `VON_API_KEY` environment variable and requests
-carry it as a Bearer token. The key never appears in transcripts.
+carry it as a Bearer token to whatever endpoint `api_url` names,
+so a remote deployment should be reached over HTTPS or a tunnel.
+The key never appears in transcripts.
 
 Two server settings matter for measurement, and the adapter cannot
 see either of them, so both belong in the serve command:
@@ -1243,8 +1245,8 @@ head the server loads, so it cannot be served as itself. The pin
 was corrected to `von-1.3.0` before merge, so a sealed run names
 the weights that produced it. The adapter enforces the server's
 own model stamp on every response, so a server that starts
-serving a different model fails the run instead of relabelling
-it. A deployment that serves a specific checkpoint directory with
+serving a different model, or answers without a stamp, fails the
+run instead of relabelling it. A deployment that serves a specific checkpoint directory with
 `VON_CHECKPOINT_DIR` says so in the run record, because the stamp
 cannot distinguish one checkpoint directory from another; that
 choice is an operator attestation.

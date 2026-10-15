@@ -213,15 +213,18 @@ class TestVonErrors(unittest.TestCase):
         self.assertIn("von-1.4.0", str(cm.exception))
         self.assertIn("von-1.3.0", str(cm.exception))
 
-    def test_response_without_model_stamp_passes(self):
-        # No stamp cannot mislabel anything; the answers are used.
+    def test_response_without_model_stamp_is_terminal(self):
+        # The wire type always carries the stamp, so a response
+        # without one is not a Von server response; accepting its
+        # answers would record an unverifiable server under the pin.
         def bare_transport(payload):
             return {"answers": {"decision": {"choice": "deny",
                                              "confidence": 0.9}}}
 
-        out = VonAdapter(transport=bare_transport).decide(
-            _case_input(), "choice", _ctx())
-        self.assertEqual(out.decision, "deny")
+        with self.assertRaises(ProviderError) as cm:
+            VonAdapter(transport=bare_transport).decide(
+                _case_input(), "choice", _ctx())
+        self.assertIn("no model stamp", str(cm.exception))
 
     def test_raise_for_status_error_strings(self):
         # Pins the emitted strings byte-for-byte, so drift between the

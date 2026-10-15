@@ -1253,7 +1253,9 @@ when numeric; non-numeric is terminal. Fix: report it.
 Cause: a floating or unsupported model id was passed. The Von
 checkpoint is baked into the server deployment, so the adapter
 accepts only the pinned snapshot id. Fix: don't pass `model=` at
-all, or point `api_url=` at a deployment of the pinned checkpoint.
+all, or pass exactly `von-1.3.0`. Separately, make sure `api_url=`
+points at a deployment of the pinned checkpoint; changing the
+endpoint does not lift the model check.
 
 **`von: cannot reach the local server at http://127.0.0.1:8000/v1/systemone (...)`**
 Cause: no Von server is listening at the configured endpoint. The
@@ -1268,6 +1270,14 @@ a different checkpoint than the pin (for example, the SDK was
 upgraded and now serves a newer model). Terminal: recording those
 answers under the pinned id would mislabel the run. Fix: point
 `api_url=` at a deployment serving the pinned checkpoint.
+
+**`von server response carries no model stamp; this adapter measures only 'von-1.3.0'`**
+Cause: the endpoint at `api_url=` answered without the model
+stamp every `von serve` response carries, so what served the
+answer cannot be verified; the endpoint is not answering as a
+Von deployment. Terminal, for the same reason as above. Fix:
+point `api_url=` at a real `von serve` deployment of the pinned
+checkpoint.
 
 **`von server error 401: ...; the server rejected the request as unauthorized; if this deployment was started with VON_API_KEY set, pass the same key here (api_key= or the VON_API_KEY environment variable).`**
 Cause: the server was started with `VON_API_KEY` set and the
