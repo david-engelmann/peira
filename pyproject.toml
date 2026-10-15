@@ -88,6 +88,7 @@ model-armor = "peira.adapters.model_armor:ModelArmorAdapter"
 openai-moderation = "peira.adapters.omni_moderation:OmniModerationAdapter"
 openjev-sglang = "peira.adapters.openjev_sglang:OpenJevSglangAdapter"
 semif = "peira.adapters.semif:SemifAdapter"
+gliner-decide = "peira.adapters.gliner_decide:GlinerDecideAdapter"
 
 [project.urls]
 Homepage = "https://github.com/david-engelmann/peira"

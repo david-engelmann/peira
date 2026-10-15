@@ -1249,6 +1249,59 @@ same drift handling as above.
 Cause: a confidence/probability field wasn't a number. Clamped only
 when numeric; non-numeric is terminal. Fix: report it.
 
+**`gliner-decide adapter pins checkpoint 'fastino/GLiNER2.5-Decide'; got '...'`**
+Cause: an unlisted checkpoint id was passed. The adapter measures
+exactly one checkpoint, pinned at a fixed Hub revision. Fix: don't
+pass `checkpoint=` at all.
+
+**`the gliner-decide adapter needs the gliner2 package: run \`pip install "gliner2[local]"\`, then retry.`**
+Cause: the optional `gliner2` package is not installed in this
+environment. The adapter imports it lazily at construction. Fix:
+install it as the message says, then retry.
+
+**`gliner-decide failed to load checkpoint 'fastino/GLiNER2.5-Decide' at revision '...': ...`**
+Cause: the pinned checkpoint could not be downloaded or loaded
+(network, disk, or a corrupt cache). Terminal. Fix: check the
+Hugging Face cache and disk space, then retry.
+
+**`gliner-decide classify_text failed: ...`**
+Cause: the local model raised during inference. There is no status
+code, so the runner treats it as permanent and records the call
+malformed. Fix: read the wrapped error; a repeat usually means a
+broken local install.
+
+**`gliner-decide returned choice '...' outside the offered labels [...]; adapter bug or API drift.` / `gliner-decide returned score level '...' outside the offered levels [...]; adapter bug or API drift.` / `gliner-decide returned abstain label '...' outside the offered labels ['no', 'yes']; adapter bug or API drift.`**
+Cause: the model returned a label the adapter never offered. The
+adapter refuses to map it to anything, because guessing would
+corrupt the measurement. Terminal. Fix: report it.
+
+**`gliner-decide response missing task '...' result object` / `gliner-decide task '...' returned no label: ...` / `gliner-decide task '...' returned no numeric confidence: ...`**
+Cause: a `classify_text` result lacks the winning label or the
+confidence the adapter asks for with `include_confidence=True`.
+Terminal: API drift. Fix: report it.
+
+**`gliner-decide adapter pins revision '9d1bfb848cd16d93ee56ccbc59cd92bf0f284d90'; got '...'`**
+Cause: a `revision=` other than the pinned Hub revision was
+passed (a branch name like `main`, another commit, an empty or
+non-string value). The adapter measures exactly one checkpoint
+at exactly one revision. Fix: don't pass `revision=` at all.
+
+**`gliner-decide does not support primitive '...'`**
+Cause: the runner asked the adapter for a primitive outside
+`choice`, `score` and `abstain`. The adapter's primitive set is
+fixed by the model class. Fix: report it.
+
+**`gliner-decide returned a non-object result: ...`**
+Cause: `classify_text` returned something other than a result
+object (a list, a string, nothing at all). Terminal: API drift.
+Fix: report it.
+
+**`gliner-decide task '...' returned confidence ... outside 0..1: ...`**
+Cause: the model's reported probability was NaN, infinite, or
+outside the unit interval. The adapter refuses to clamp it into
+range, because a clamped value would invent the measurement the
+artifact reports. Terminal: API drift. Fix: report it.
+
 **`error: <run> not found` (from `peira compare`)**
 Cause: one of the two artifact paths doesn't exist. Fix: check the
 paths. `peira compare` takes two positional artifact files.
