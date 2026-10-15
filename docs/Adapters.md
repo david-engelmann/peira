@@ -1520,8 +1520,9 @@ Perplexity's official Decisions API documentation on 2026-10-15 and
 are pinned in `python/peira/data/pricing.json`. Unversioned names
 and every other id are rejected at construction, so a run always
 names one exact model. 429/529/5xx and transport timeouts surface as
-retryable provider errors for the runner. 401/403, 402 (out of API
-credit), 404 and 400/422 are terminal. The organization rate limit
+retryable provider errors for the runner. 401 and 403 (key
+rejected), 402 (out of API credit), 404 and 400/422 are terminal.
+The organization rate limit
 is 10 requests per second; the runner owns concurrency.
 
 **Live-verified wire, canary pending.** The wire shape above was

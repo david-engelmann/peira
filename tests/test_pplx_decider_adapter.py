@@ -234,6 +234,21 @@ class TestPplxScore(unittest.TestCase):
         out = _adapter(transport=t).decide(_case_input(), "score", _ctx())
         self.assertAlmostEqual(out.score, 1.0)
 
+    def test_score_bool_probability_is_terminal(self):
+        # The score fallback must not let float(True) == 1.0 turn a
+        # bool into a fabricated rubric position (red-team finding,
+        # 2026-10-15). Bools are rejected everywhere else this
+        # adapter reads a probability.
+        t = _transport_for({
+            "score": {"type": "score",
+                      "probabilities": {"0": 0.0, "1": 0.0, "2": True,
+                                        "3": 0.0, "4": 0.0}},
+            "decision": {"type": "choice", "choice": "approve",
+                         "confidence": 0.9},
+        })
+        with self.assertRaises(ProviderError):
+            _adapter(transport=t).decide(_case_input(), "score", _ctx())
+
     def test_score_non_numeric_probabilities_is_terminal(self):
         t = _transport_for({
             "score": {"type": "score",
@@ -301,12 +316,25 @@ class TestPplxNoul(unittest.TestCase):
         self.assertTrue(q["instructions"])
         self.assertNotIn("criteria", q)
 
-    def test_documented_key_wins_over_noul(self):
+    def test_agreeing_abstain_and_noul_keys_accepted(self):
+        # The Jev-documented "abstain" key is an accepted alias for
+        # the verified "noul" key when both carry the same value.
         t = _transport_for({"abstain": {"type": "noul", "abstain": 0.2,
-                                        "noul": 0.9}})
+                                        "noul": 0.2}})
         out = _adapter(transport=t).decide(_case_input(), "abstain", _ctx())
         self.assertEqual(out.decision, "other")
         self.assertFalse(out.abstained)
+
+    def test_disagreeing_abstain_keys_are_terminal(self):
+        # If the API ever adds an "abstain" key that disagrees with
+        # the verified "noul" value, no preference order can say which
+        # is the probability. The adapter fails closed (red-team
+        # finding, 2026-10-15).
+        t = _transport_for({"abstain": {"type": "noul", "abstain": 0.2,
+                                        "noul": 0.9}})
+        with self.assertRaises(ProviderError) as cm:
+            _adapter(transport=t).decide(_case_input(), "abstain", _ctx())
+        self.assertIn("ambiguous", str(cm.exception))
 
     def test_missing_both_keys_still_terminal(self):
         t = _transport_for({"abstain": {"type": "noul"}})
@@ -450,6 +478,22 @@ class TestPplxErrors(unittest.TestCase):
                 adapter._http_transport({"model": MODEL_ID})
         self.assertIn("Invalid model specified", str(cm.exception))
         self.assertEqual(cm.exception.status_code, 400)
+
+    def test_http_error_without_headers_still_maps_status(self):
+        # urllib can construct an HTTPError with headers=None; the
+        # transport path must not die with AttributeError before it
+        # can classify the status (red-team nit, 2026-10-15).
+        import io
+        import urllib.error
+        from unittest import mock
+        err = urllib.error.HTTPError(
+            API_URL, 503, "Service Unavailable", None,
+            io.BytesIO(b"upstream down"))
+        adapter = _adapter()
+        with mock.patch("urllib.request.urlopen", side_effect=err):
+            with self.assertRaises(ProviderError) as cm:
+                adapter._http_transport({"model": MODEL_ID})
+        self.assertEqual(cm.exception.status_code, 503)
 
     def test_transport_timeout_maps_to_408(self):
         import urllib.error

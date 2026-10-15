@@ -1290,6 +1290,13 @@ Cause: the answer carried neither the documented value nor a
 probability map to derive it from. Fix: report it with the answer
 payload.
 
+**`pplx-decider abstain answer carries both 'abstain' (...) and 'noul' (...) with different values; refusing a measurement whose probability is ambiguous.`**
+Cause: the abstain answer carried the probability under two keys
+with different values. The verified wire uses `noul` only, so a
+second, disagreeing key means the API drifted and no preference
+order can say which value is the probability. The adapter fails
+closed. Fix: report it with the answer payload.
+
 **`pplx-decider returned non-numeric confidence: ...` / `pplx-decider returned non-numeric score: ...` / `pplx-decider returned non-numeric abstain: ...`**
 Cause: the API returned a non-numeric value where a probability was
 documented. Booleans and non-finite floats (NaN, infinities) count as

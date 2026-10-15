@@ -299,7 +299,9 @@ class PplxDeciderAdapter:
                 retry_after = resp.headers.get("Retry-After")
                 raw = resp.read().decode("utf-8")
         except urllib.error.HTTPError as e:
-            self._raise_for_status(e.code, e.headers.get("Retry-After"),
+            retry_after = e.headers.get("Retry-After") if e.headers \
+                else None
+            self._raise_for_status(e.code, retry_after,
                                    _read_error_detail(e))
         except (urllib.error.URLError, TimeoutError, OSError) as e:
             # Lost connection / DNS / refused / timed out: transient.
@@ -466,14 +468,19 @@ class PplxDeciderAdapter:
             # per-level probabilities when the API omits the score.
             # The map's keys are the level indices; use them, never
             # the map's iteration order, which the wire does not
-            # guarantee.
-            try:
-                value = sum(
-                    int(k) * float(p)
-                    for k, p in ans["probabilities"].items()
-                )
-            except (TypeError, ValueError):
+            # guarantee. A bool probability is malformed wire data
+            # (float(True) would silently count it as 1.0), so it
+            # voids the fallback like any other non-numeric value.
+            probs = ans["probabilities"]
+            if any(isinstance(p, bool) for p in probs.values()):
                 value = None
+            else:
+                try:
+                    value = sum(
+                        int(k) * float(p) for k, p in probs.items()
+                    )
+                except (TypeError, ValueError):
+                    value = None
         if not isinstance(value, (int, float)) or isinstance(value, bool):
             raise ProviderError(
                 f"pplx-decider score answer has no numeric score: {ans!r}")
@@ -506,11 +513,20 @@ class PplxDeciderAdapter:
         # detection uses the `abstained` flag. See the module docstring.
         ans = _need_answer(answers, "abstain")
         # The wire returns the abstain probability under its own field
-        # name, {'type': 'noul', 'noul': 0.73}. Prefer the documented
-        # key and fall back to the API's native field, as on the Jev
-        # wire where this shape was observed live on 2026-10-07. The
-        # 2026-10-15 Perplexity probe carried the noul key only.
-        p_yes = ans.get("abstain", ans.get("noul"))
+        # name, {'type': 'noul', 'noul': 0.73}, and the 2026-10-15
+        # Perplexity probe carried the noul key only. The Jev wire's
+        # documented key is "abstain", so that key is accepted as an
+        # alias. If both keys ever arrive with different values, the
+        # API has drifted and no preference order can say which one
+        # is the probability; fail closed instead of guessing.
+        carried = [ans[k] for k in ("abstain", "noul") if k in ans]
+        if len(carried) == 2 and carried[0] != carried[1]:
+            raise ProviderError(
+                f"pplx-decider abstain answer carries both "
+                f"'abstain' ({carried[0]!r}) and 'noul' "
+                f"({carried[1]!r}) with different values; refusing a "
+                "measurement whose probability is ambiguous.")
+        p_yes = carried[0] if carried else None
         if not isinstance(p_yes, (int, float)) or isinstance(p_yes, bool):
             raise ProviderError(
                 f"pplx-decider abstain answer has no numeric abstain "
