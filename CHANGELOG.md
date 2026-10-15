@@ -34,6 +34,22 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
   The token carries no Workers AI scope. The adapter is canary-ready
   and stays out of measured runs until a Workers AI scoped token is
   provisioned and the first canary passes.
+### Added Von adapter
+
+- New `von` adapter for Von (wfzyx, Apache 2.0), an open
+  non-autoregressive System One decision model served by
+  `von serve` over the TypeSafe-compatible `/v1/systemone` wire.
+  The adapter reuses the self-hosted wire plumbing shared with Kev
+  and pins the `von-1.3.0` snapshot id (the checkpoint `von serve`
+  serves; Von 1.3, an engine release whose weights are unchanged
+  from 1.2), with optional Bearer auth for servers started with
+  `VON_API_KEY` set. The adapter checks the model stamp on every
+  server response and refuses a response whose stamp names a
+  different checkpoint than the pin, or that carries no stamp.
+  The docs record the
+  two serve settings a measurement depends on (the raw noul
+  decision rule and refuse-on-overflow) because the adapter cannot
+  see either of them.
 
 ### Added Jev 1.14 snapshot support (jev-1.14.0)
 

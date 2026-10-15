@@ -1249,6 +1249,51 @@ same drift handling as above.
 Cause: a confidence/probability field wasn't a number. Clamped only
 when numeric; non-numeric is terminal. Fix: report it.
 
+**`von adapter pins model 'von-1.3.0'; got '...'`**
+Cause: a floating or unsupported model id was passed. The Von
+checkpoint is baked into the server deployment, so the adapter
+accepts only the pinned snapshot id. Fix: don't pass `model=` at
+all, or pass exactly `von-1.3.0`. Separately, make sure `api_url=`
+points at a deployment of the pinned checkpoint; changing the
+endpoint does not lift the model check.
+
+**`von: cannot reach the local server at http://127.0.0.1:8000/v1/systemone (...)`**
+Cause: no Von server is listening at the configured endpoint. The
+message continues with the serve command that starts one
+(`von serve --port 8000 --noul-decision raw --on-overflow refuse`,
+after `pip install von-sdk`). Terminal: the runner never retries a
+missing local server. Fix: start the server, then re-run.
+
+**`von server response names model '...'; this adapter measures only 'von-1.3.0'`**
+Cause: the server at `api_url=` answered with a model stamp naming
+a different checkpoint than the pin (for example, the SDK was
+upgraded and now serves a newer model). Terminal: recording those
+answers under the pinned id would mislabel the run. Fix: point
+`api_url=` at a deployment serving the pinned checkpoint.
+
+**`von server response carries no model stamp; this adapter measures only 'von-1.3.0'`**
+Cause: the endpoint at `api_url=` answered without the model
+stamp every `von serve` response carries, so what served the
+answer cannot be verified; the endpoint is not answering as a
+Von deployment. Terminal, for the same reason as above. Fix:
+point `api_url=` at a real `von serve` deployment of the pinned
+checkpoint.
+
+**`von server error 401: ...; the server rejected the request as unauthorized; if this deployment was started with VON_API_KEY set, pass the same key here (api_key= or the VON_API_KEY environment variable).`**
+Cause: the server was started with `VON_API_KEY` set and the
+adapter sent no key or the wrong one. Fix: pass the same key to the
+adapter with `api_key=` or the `VON_API_KEY` environment variable.
+
+**`von server error 422: ...; the request was rejected; this is an adapter bug, not a retryable failure.`**
+Cause: the server rejected the request. The wording is the shared
+wire text for every 422, and for Von the common case is not a bug:
+with `--on-overflow refuse` set (the recommended serve flags for
+peira measurements) a case state that exceeds the server's token
+window is refused with a 422, in place of a silently truncated
+measurement. Fix: report oversize states; do not work around them
+by truncating the case. A 422 on a state that fits the window is a
+genuine request bug; report it.
+
 **`error: <run> not found` (from `peira compare`)**
 Cause: one of the two artifact paths doesn't exist. Fix: check the
 paths. `peira compare` takes two positional artifact files.

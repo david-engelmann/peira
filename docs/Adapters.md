@@ -1175,6 +1175,82 @@ not silent mismeasurement. The project's published parity number
 (95.5% vs Jev 96.3% on the aligned subset, overlapping CIs) is their
 claim, not a peira measurement.
 
+## Von
+
+```bash
+pip install von-sdk
+von serve --port 8000 --noul-decision raw --on-overflow refuse
+peira run --adapter peira.adapters.von:VonAdapter --suite trial-demo
+```
+
+Von (wfzyx, Apache 2.0) is an open-source non-autoregressive System
+One decision model. A 395M ModernBERT-large encoder plus an
+option-marker scoring head answers typed choice, score, and noul
+questions in one forward pass, with a probability over every option
+and no token generation. `von serve` exposes a TypeSafe-compatible
+`POST /v1/systemone` endpoint and runs on CPU through OpenVINO, so
+the adapter reuses the self-hosted wire plumbing it shares with Kev
+and openjev-sglang. The differences are the pinned model id, the
+default endpoint (`http://127.0.0.1:8000/v1/systemone`), and optional
+Bearer auth.
+
+The model is pinned to `von-1.3.0`, the checkpoint `von serve`
+serves (`wfzyx/von` on the Hub; its model card identifies it as
+Von 1.3, an engine release whose weights are unchanged from 1.2).
+The checkpoint is baked into the server deployment, so any other
+model id is rejected at construction, and the pinned id namespaces
+the runner cache. The server fetches the weights from the Hub on
+first use. Von takes no auth unless the server was started
+with `VON_API_KEY` set. Pass the same key to the adapter with
+`api_key=` or the `VON_API_KEY` environment variable and requests
+carry it as a Bearer token to whatever endpoint `api_url` names,
+so a remote deployment should be reached over HTTPS or a tunnel.
+The key never appears in transcripts.
+
+Two server settings matter for measurement, and the adapter cannot
+see either of them, so both belong in the serve command:
+
+- Noul decision rule. The server default passes the abstain
+  probability through a band rule that pushes every returned value
+  outside the 0.2 to 0.8 range. The abstain decision is unchanged,
+  but the confidence derived from the returned value is inflated.
+  Serve with `--noul-decision raw` so peira measures the calibrated
+  posterior.
+- State truncation. The server default middle-truncates a state
+  that exceeds its token window, and the answer then measures the
+  truncated text. Serve with `--on-overflow refuse` so an oversize
+  state fails with a 422 instead.
+
+A server that cannot be reached is a terminal provider error whose
+message tells you how to start it. The runner never retries a
+missing local server. HTTP error statuses keep their status codes
+for the runner's classifier. The model is local and self-hosted, so
+cost is $0.
+
+Canary record (2026-10-15): the adapter was exercised end to end
+against a real `von serve` on this project's trial VM (CPU device,
+the two serve flags above). All three primitives returned valid
+outputs. It also produced one operational note: the server's first
+request loads the weights lazily and can exceed the adapter's 60
+second default timeout on a loaded CPU box, so a trial on shared
+hardware should pass a larger `timeout_s`.
+
+Pin history: the adapter was first written with a `von-1.1.0` pin.
+A pre-merge checkpoint review established that no servable von-1.1
+checkpoint exists. The SDK accepts `von-1.1` only as an alias that
+resolves to the current model and stamps every response with the
+version actually served, and the one older Hub tree (2026-09-19)
+identifies itself as Von-1.0 and predates the Option-Marker scoring
+head the server loads, so it cannot be served as itself. The pin
+was corrected to `von-1.3.0` before merge, so a sealed run names
+the weights that produced it. The adapter enforces the server's
+own model stamp on every response, so a server that starts
+serving a different model, or answers without a stamp, fails the
+run instead of relabelling it. A deployment that serves a specific checkpoint directory with
+`VON_CHECKPOINT_DIR` says so in the run record, because the stamp
+cannot distinguish one checkpoint directory from another; that
+choice is an operator attestation.
+
 ## Lakera Guard
 
 No extra needed (stdlib transport). Set `LAKERA_API_KEY` to your API key,
