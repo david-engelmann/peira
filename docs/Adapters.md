@@ -1423,6 +1423,61 @@ unconfirmed. The adapter stays out of measured runs until a live
 smoke passes. Backfill once a token with Workers AI
 scope is provisioned.
 
+## Cloudflare Clef
+
+No extra needed (stdlib transport). Set `CLOUDFLARE_ACCOUNT_ID` and
+`CLOUDFLARE_API_TOKEN` (the token needs Workers AI scope on the
+account), then run
+
+```bash
+export CLOUDFLARE_ACCOUNT_ID="<your-account-id>"
+export CLOUDFLARE_API_TOKEN=<redacted>
+peira run --adapter peira.adapters.clef:ClefAdapter --suite trial-demo
+```
+
+Clef is Cloudflare's decision-model family on Workers AI, launched
+2026-10-01 as a drop-in compatible implementation of the System One
+API and benchmarked by Cloudflare head-to-head against TypeSafe's
+Jev. The adapter sends the case prompt as `state` plus named typed
+questions (each question carries `instructions`; choice and score
+questions also carry `criteria`) to `POST
+https://api.cloudflare.com/client/v4/accounts/{account}/ai/run/{model}`
+and reads the answers back out of the Workers AI envelope's
+`result.answers`. The question text is the Jev adapter's unchanged,
+so the wires see identical decision spaces. Answers carry `choice`
+(choice), `score` (score), or `noul` (abstain); the score question
+uses the same five described levels as the Jev adapter, and the
+abstain primitive follows the Jev placeholder rule exactly (at or
+above probability 0.5 the decision is the deliberate label `abstain`,
+below it the `other` placeholder). A `success: false` envelope is
+terminal.
+
+Three pinned models are supported, each named by its full Workers AI
+id, with per-instance version and cache namespace following the pin:
+`@cf/cloudflare/clef-flash` (9B, the default, $0.038 per 1M input
+tokens after the 2026-10-09 price cut from $0.090, which also cut its
+hosted context to 24,576 tokens), `@cf/cloudflare/clef` (27B, $0.24
+per 1M input tokens, 65,536-token context), and
+`@cf/cloudflare/clef-omni` (30B-A3B, $0.15 per 1M input tokens,
+64,000-token context; peira's cases are text, so omni is exercised on
+its text path). Output is free on all three; the rates were verified
+against Cloudflare's official Workers AI pricing page on 2026-10-15
+and are pinned in `python/peira/data/pricing.json`. Short model names
+and every other id are rejected at construction, so a run always
+names one exact model. 429/529/5xx and transport timeouts surface as
+retryable provider errors for the runner. 401/403, 404 and 400/422
+are terminal.
+
+**Live-UNVERIFIED.** An access probe on 2026-10-15 sent the adapter's
+exact payload to the run endpoint for `@cf/cloudflare/clef-flash`.
+The account's provisioned Cloudflare token answered HTTP 401 (error
+code 10000, authentication error) on the run endpoint and HTTP 403 on
+the model search endpoint, while the same token verified active and
+listed zones; it carries no Workers AI scope. The wire shape above
+follows Cloudflare's official Clef documentation and is confirmed by
+the first canary once a Workers AI scoped token is provisioned. The
+adapter stays out of measured runs until that canary passes.
+
 ## Pricing
 
 `peira run` recomputes cost from the pinned table in

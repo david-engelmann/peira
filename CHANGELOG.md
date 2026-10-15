@@ -7,6 +7,34 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
 
 ## [Unreleased]
 
+### Added Cloudflare Clef adapter (Workers AI decision models)
+
+- New `ClefAdapter` (entry point `clef`) for Cloudflare's Clef
+  decision-model family on Workers AI, the drop-in System One
+  compatible API Cloudflare launched on 2026-10-01 and benchmarked
+  head-to-head against TypeSafe's Jev. The adapter sends the Jev
+  adapter's question text unchanged and unwraps the Workers AI
+  envelope (`result.answers`), so the two wires are measured on
+  identical decision spaces.
+- Three pinned models are supported, each named by its full Workers
+  AI id with per-instance version and cache namespace following the
+  pin: `@cf/cloudflare/clef-flash` (9B, the default),
+  `@cf/cloudflare/clef` (27B) and `@cf/cloudflare/clef-omni`
+  (30B-A3B). Short names and every other id are rejected at
+  construction.
+- Pricing gains entries for all three models at $0.038, $0.240 and
+  $0.150 per 1M input tokens with output free, verified against
+  Cloudflare's official Workers AI pricing page on 2026-10-15. The
+  clef-flash rate is the 2026-10-09 price cut from $0.090. The
+  pricing table moves to version 2026-10-15.1.
+- Live state at landing: an access probe on 2026-10-15 with the
+  account's existing Cloudflare token received HTTP 401 from the run
+  endpoint (error code 10000) and HTTP 403 from the model search
+  endpoint, while the same token verified active and listed zones;
+  the token carries no Workers AI scope. The adapter is canary-ready
+  and stays out of measured runs until a Workers AI scoped token is
+  provisioned and the first canary passes.
+
 ### Added Jev 1.14 snapshot support (jev-1.14.0)
 
 - `JevAdapter` now accepts two pinned snapshots, `jev-1.13.0` and

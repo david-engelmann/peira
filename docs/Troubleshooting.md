@@ -1113,6 +1113,101 @@ Cause: the adapter was asked for a primitive other than `abstain`.
 Guardrails are abstain-primitive-only per B2. Fix: run with the
 abstain primitive.
 
+**`clef does not support primitive 'x'`**
+Cause: Clef was asked for a primitive outside `choice`, `score`,
+`abstain`. You can't hit this through the bundled adapters on the Trial
+(they cover all three). Fix: check the primitive name.
+
+**`clef adapter needs a Cloudflare account ID: set the CLOUDFLARE_ACCOUNT_ID environment variable (or pass account_id=...). The account ID is on the Workers AI overview page of the Cloudflare dashboard.`**
+Cause: no Cloudflare account ID. Fix: `export CLOUDFLARE_ACCOUNT_ID=<your-account-id>`.
+
+**`clef adapter needs a Cloudflare API token with Workers AI scope: set the CLOUDFLARE_API_TOKEN environment variable (or pass api_token=...).`**
+Cause: no Cloudflare API token. Fix: create a token with Workers AI
+scope in the Cloudflare dashboard, then `export CLOUDFLARE_API_TOKEN=<redacted>`.
+
+**`clef adapter pins model '@cf/cloudflare/clef-flash', '@cf/cloudflare/clef' or '@cf/cloudflare/clef-omni'; got '...'. Short names and floating tags are never allowed; a measurement must name the exact model.`**
+Cause: a short name or unsupported model id was passed. Clef
+measurements must name the exact Workers AI model. The short names
+(`clef-flash`, `clef`, `clef-omni`) are request-body values, not
+adapter model ids. Fix: don't pass `model=` at all (the default is
+`@cf/cloudflare/clef-flash`), or pass one of the exact pinned ids.
+
+**`clef API error 401: ...; check that CLOUDFLARE_API_TOKEN is valid and has the Workers AI scope for this account.`** (same for 403)
+Cause: bad token or missing Workers AI scope. This is the state
+observed on 2026-10-15 with a token that verifies active and lists
+zones but carries no Workers AI scope; the run endpoint answered 401
+with error code 10000 and the model search endpoint answered 403.
+Terminal: the runner won't retry it. Fix: create or edit an API token
+with the Workers AI permission for the account in the Cloudflare
+dashboard.
+
+**`clef API error 404: ...; check that CLOUDFLARE_ACCOUNT_ID is correct and the model @cf/cloudflare/clef-flash is available on Workers AI.`**
+Cause: wrong account ID or the model is not available for the
+account. Terminal. Fix: check the account ID in the dashboard and
+confirm the model is enabled.
+
+**`clef API error 400: ...; the request was rejected; this is an adapter bug, not a retryable failure.`** (same for 422)
+Cause: Workers AI rejected the request shape. The adapter validates
+every question client-side before sending, so this means API drift.
+Fix: report it. Don't retry.
+
+**`clef API error 429` / `clef API error 529` / `clef API error 5xx`**
+Cause: rate limit or a transient Workers AI failure. The runner
+retries these under `--max-attempts`. Fix: re-run; sustained failures
+mean the endpoint is degraded.
+
+**`clef returned success=false: ...`**
+Cause: the Workers AI API rejected the call (e.g. model unavailable
+for the account). Terminal for that call shape. Fix: check the error
+payload. Don't just retry.
+
+**`clef response missing 'result' object` / `clef response missing 'answers' object` / `clef response missing answer 'decision'`**
+Cause: the API returned a `success: true` envelope without the
+documented result shape. The adapter fails closed rather than
+treating a missing answer as a decision. This means API drift. Fix:
+report it.
+
+**`clef transport error: ...` (status 408)**
+Cause: the connection dropped, DNS failed, or the request timed out.
+Raised as status 408 so `peira run` treats it as transient and retries
+under `--max-attempts`. Fix: re-run. Sustained 408s mean your network
+or the Workers AI endpoint is degraded.
+
+**`clef returned non-JSON response (HTTP ...)` / `clef returned a non-object JSON response`**
+Cause: the endpoint returned something that is not the documented
+JSON object (proxy error page, HTML, truncated body). Fix: check for
+a proxy or captive portal in the path. Otherwise report it.
+
+**`clef built a malformed question 'x': not an object`** / **`clef built question 'x' with unknown type 'y'`** / **`clef built question 'x' without instructions`** / **`clef built choice question 'x' without a non-empty criteria map`** / **`clef built score question 'x' without 2-10 level descriptions`**
+Cause: the adapter constructed a malformed question. This is an
+adapter bug caught client-side before anything was sent. Fix: report
+it with the question name.
+
+**`clef returned choice 'x' outside the offered labels [...]; adapter bug or API drift.`**
+Cause: the model answered with a label that was not in the request's
+criteria. Fix: report it; this means API drift or an adapter bug.
+
+**`clef score answer has no numeric score: ...` / `clef abstain answer has no numeric abstain value: ...`**
+Cause: the answer carried neither the documented value nor a
+probability map to derive it from. Fix: report it with the answer
+payload.
+
+**`clef returned non-numeric confidence: ...` / `clef returned non-numeric score: ...` / `clef returned non-numeric abstain: ...`**
+Cause: the API returned a non-numeric value where a probability was
+documented. Booleans and non-finite floats (NaN, infinities) count as
+non-numeric here: the adapter fails closed rather than clamping them
+into a fabricated measurement. Fix: report it with the value.
+
+**`clef returned probabilities that are not an object: ...`**
+Cause: a choice answer carried a `probabilities` value that is not a
+per-label map. Fix: report it with the answer payload; this means API
+drift.
+
+**`clef returned malformed usage counters: ...`**
+Cause: the response envelope's `usage` object carried token counters
+that are not integers. Cost accounting fails closed rather than
+guessing. Fix: report it with the usage payload.
+
 **`jev transport error: ...` (status 408)**
 Cause: the connection dropped, DNS failed, or the request timed out.
 Raised as status 408 so `peira run` treats it as transient and retries
