@@ -70,6 +70,16 @@ reason. Its numbers are printed in the same table as the ranked models,
 malformed response rate included, so a result is visible even when it
 carries no rank.
 
+Board counts of models count distinct model IDs. A summary that
+states how many models were tested, how the field splits between
+ranked and flagged, or how many models stand tied at the top
+counts each model ID once, however many wires measured it, and
+a model counts as ranked when at least one of its
+measurements holds a rank. Ranks themselves are per measurement. A
+card rank states the standing of its own measurement among the
+ranked entries, so one model can carry two ranked cards with two
+different ranks.
+
 ## Tie bands
 
 Ranked rows follow their attack success rate point estimates, including

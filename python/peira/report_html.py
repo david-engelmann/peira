@@ -1288,29 +1288,67 @@ def _kpi_tiles(entries: list[dict[str, Any]],
         # falls after the separator, not before it.
         return html.replace(" · ", "&nbsp;· ")
 
-    n_flagged = sum(1 for e in entries if e["rank"] is None)
-    n_ranked_asr = sum(1 for e in entries if e["rank"] is not None
-                       and _num(e["row"].get("asr_conditional"))
-                       is not None)
-    n_ranked_bare = sum(1 for e in entries if e["rank"] is not None
-                        and _num(e["row"].get("asr_conditional"))
-                        is None)
+    def _model_key(row: dict[str, Any]) -> Any:
+        # The key a row groups under when the tiles count
+        # models: its model ID (adapter_version). A model ID is
+        # a string. A value of another type is a malformed
+        # identity: keyed apart under its repr, so it can
+        # neither raise here nor merge with the model its text
+        # resembles.
+        v = row.get("adapter_version")
+        if v is not None and not isinstance(v, str):
+            return ("malformed model id", repr(v))
+        return v
+
+    # The tile counts models, and an entry is not a model. An
+    # entry is one model measured over one wire (Admission-Rules,
+    # Model identity), and one model can carry two entries, as
+    # gpt-6-luna does over its chat and decisions wires. Grouping
+    # the entries by model ID (adapter_version) and classifying
+    # each model once keeps the headline and its split counting
+    # the same thing, so the split sums to the headline. A model
+    # is ranked when any of its entries holds a rank; among
+    # ranked models it stands in the recorded-ASR class when any
+    # ranked entry carries a rate, and in the without-a-recorded-
+    # ASR class when none does. A model with no ranked entry is
+    # flagged. When no two entries share a model ID, every count
+    # here is the entry count it replaces.
+    _by_model: dict[Any, list[dict[str, Any]]] = {}
+    for e in entries:
+        _by_model.setdefault(_model_key(e["row"]), []).append(e)
+    n_models = len(_by_model)
+    n_flagged = 0
+    n_ranked_asr = 0
+    n_ranked_bare = 0
+    for _model_entries in _by_model.values():
+        _ranked = [e for e in _model_entries
+                   if e["rank"] is not None]
+        if not _ranked:
+            n_flagged += 1
+        elif any(_num(e["row"].get("asr_conditional")) is not None
+                 for e in _ranked):
+            n_ranked_asr += 1
+        else:
+            n_ranked_bare += 1
     models_lab = "MODELS TESTED"
     if n_flagged or n_ranked_bare:
         # The split of the field is headline information, stated
         # on the tile itself rather than left to captions below.
-        # It prints whenever any run is flagged, an all-flagged
+        # It prints whenever any model is flagged, an all-flagged
         # field included: "0 RANKED · N FLAGGED" is exactly the
         # case a bare count would misdescribe (pass 18). The
-        # ranked count is the one the card chips and captions
-        # use, the ranked runs that carry a rate: a ranked run
-        # with no recorded rate holds no rank anywhere on the
-        # page, and counting it here under the same word made
-        # the tile and the chips state two ranked counts for
-        # one field (passes 26, 27 and 30; the passes 18 and
-        # 22 adjudication settled the denominators, not the
-        # shared word). Such a run is stated as its own line
-        # of the split instead.
+        # ranked class counts the models whose ranked entries
+        # carry a rate. The card chips count ranked entries
+        # instead, the measurement-level field, and Admission-
+        # Rules states the two conventions apart so the counts
+        # are never read as one quantity: a ranked run with no
+        # recorded rate holds no rank anywhere on the page, and
+        # folding its model into the ranked class here under the
+        # same word would restate the confusion the passes
+        # removed (passes 26, 27 and 30; the passes 18 and 22
+        # adjudication settled the denominators, not the shared
+        # word). Such a model is stated as its own line of the
+        # split instead.
         models_lab += f" · {n_ranked_asr} RANKED"
         if n_ranked_bare:
             models_lab += (f" · {n_ranked_bare} RANKED WITHOUT "
@@ -1318,7 +1356,7 @@ def _kpi_tiles(entries: list[dict[str, Any]],
         if n_flagged:
             models_lab += f" · {n_flagged} FLAGGED"
     tiles: list[tuple[str, str, str]] = [
-        (str(len(entries)), models_lab, "")]
+        (str(n_models), models_lab, "")]
     if _num(n_cases) is not None:
         # The case count is not the base of any rate on the page,
         # so the tile itself carries the eligible range the rates
@@ -1363,7 +1401,15 @@ def _kpi_tiles(entries: list[dict[str, Any]],
                          + nbw(_tile_name(tied[1]))
                          + " TIED")
             else:
-                label = (f"LEAD BAND · {len(tied)} MODELS "
+                # The count is of models, as the word says: the
+                # band holds entries, and one model can hold two
+                # of its slots over two wires, so the entries are
+                # grouped under the same model key the first tile
+                # counts by. When no model in the band repeats,
+                # the count is the entry count it replaces.
+                n_tied_models = len({_model_key(e["row"])
+                                     for e in tied})
+                label = (f"LEAD BAND · {n_tied_models} MODELS "
                          "TIED AT THE TOP")
             # The unit rides on the end of the range, as the
             # retrieval tile's range does, which also keeps the
@@ -1408,8 +1454,14 @@ def _kpi_tiles(entries: list[dict[str, Any]],
         # When some models do not carry the family at all, the
         # tile says how many do, so its range is never read as
         # a field-wide figure resting on a subset (pass 18).
-        carry = (f" · {len(rp)} OF {len(entries)} MODELS"
-                 if len(rp) < len(entries) else "")
+        # The count is of models, as the word says: a model
+        # carrying the family on two wires counts once, over
+        # the distinct-model count the first tile prints. When
+        # no two entries share a model ID the two figures are
+        # the entry counts they replace.
+        n_carry = len({_model_key(e["row"]) for _v, e in rp})
+        carry = (f" · {n_carry} OF {n_models} MODELS"
+                 if n_carry < n_models else "")
         if vals[0] == vals[-1]:
             # A single distinct value is not a range, the same
             # special case the cost tile makes: print the one
