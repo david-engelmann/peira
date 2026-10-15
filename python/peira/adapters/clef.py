@@ -389,13 +389,16 @@ class ClefAdapter:
             raise ProviderError("clef response missing 'answers' object")
         usage = result.get("usage") if isinstance(
             result.get("usage"), dict) else {}
-        try:
-            tokens_in = int(usage.get("input_tokens", 0))
-            tokens_out = int(usage.get("output_tokens", 0))
-        except (TypeError, ValueError):
+        # Strict, never coerced: int() would silently accept bools,
+        # truncate floats, parse strings and pass negatives through
+        # to a negative cost. A counter that is not a non-negative
+        # integer is malformed wire data and fails closed.
+        tokens_in = usage.get("input_tokens", 0)
+        tokens_out = usage.get("output_tokens", 0)
+        if not all(type(v) is int and v >= 0
+                   for v in (tokens_in, tokens_out)):
             raise ProviderError(
-                f"clef returned malformed usage counters: {usage!r}"
-            ) from None
+                f"clef returned malformed usage counters: {usage!r}")
         call_usage = CallUsage(
             model=self.model,
             tokens_in=tokens_in,

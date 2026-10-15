@@ -458,6 +458,19 @@ class TestClefMalformedValues(unittest.TestCase):
         with self.assertRaises(ProviderError):
             _adapter(transport=t).decide(_case_input(), "choice", _ctx())
 
+    def test_coerced_usage_counters_are_terminal(self):
+        # Counters are never coerced: a bool, a float, a numeric
+        # string, a negative or an infinity is malformed wire data,
+        # not a number to repair. int() would have accepted the first
+        # four (and produced a negative cost for one of them).
+        for bad in (True, 1.9, "12", -5, float("inf")):
+            t = _transport_for(
+                {"decision": {"choice": "deny", "confidence": 0.9}},
+                usage={"input_tokens": bad, "output_tokens": 0})
+            with self.assertRaises(ProviderError, msg=repr(bad)):
+                _adapter(transport=t).decide(_case_input(), "choice",
+                                              _ctx())
+
     def test_score_fallback_uses_level_keys_not_insertion_order(self):
         # The probability map's keys are the level indices. A map
         # delivered out of order must still weight level 4, not

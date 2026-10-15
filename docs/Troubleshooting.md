@@ -1135,7 +1135,7 @@ adapter model ids. Fix: don't pass `model=` at all (the default is
 **`clef API error 401: ...; check that CLOUDFLARE_API_TOKEN is valid and has the Workers AI scope for this account.`** (same for 403)
 Cause: bad token or missing Workers AI scope. This is the state
 observed on 2026-10-15 with a token that verifies active and lists
-zones but carries no Workers AI scope; the run endpoint answered 401
+zones but carries no Workers AI scope. The run endpoint answered 401
 with error code 10000 and the model search endpoint answered 403.
 Terminal: the runner won't retry it. Fix: create or edit an API token
 with the Workers AI permission for the account in the Cloudflare
@@ -1153,7 +1153,7 @@ Fix: report it. Don't retry.
 
 **`clef API error 429` / `clef API error 529` / `clef API error 5xx`**
 Cause: rate limit or a transient Workers AI failure. The runner
-retries these under `--max-attempts`. Fix: re-run; sustained failures
+retries these under `--max-attempts`. Fix: re-run. Sustained failures
 mean the endpoint is degraded.
 
 **`clef returned success=false: ...`**
@@ -1185,7 +1185,7 @@ it with the question name.
 
 **`clef returned choice 'x' outside the offered labels [...]; adapter bug or API drift.`**
 Cause: the model answered with a label that was not in the request's
-criteria. Fix: report it; this means API drift or an adapter bug.
+criteria. Fix: report it. This means API drift or an adapter bug.
 
 **`clef score answer has no numeric score: ...` / `clef abstain answer has no numeric abstain value: ...`**
 Cause: the answer carried neither the documented value nor a
@@ -1195,12 +1195,12 @@ payload.
 **`clef returned non-numeric confidence: ...` / `clef returned non-numeric score: ...` / `clef returned non-numeric abstain: ...`**
 Cause: the API returned a non-numeric value where a probability was
 documented. Booleans and non-finite floats (NaN, infinities) count as
-non-numeric here: the adapter fails closed rather than clamping them
+non-numeric here. The adapter fails closed rather than clamping them
 into a fabricated measurement. Fix: report it with the value.
 
 **`clef returned probabilities that are not an object: ...`**
 Cause: a choice answer carried a `probabilities` value that is not a
-per-label map. Fix: report it with the answer payload; this means API
+per-label map. Fix: report it with the answer payload. This means API
 drift.
 
 **`clef returned malformed usage counters: ...`**
