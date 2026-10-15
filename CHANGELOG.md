@@ -33,7 +33,7 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
   live API on 2026-10-15, before the adapter was written, with a
   probe call carrying the adapter's exact question text. The probe
   returned HTTP 200 for `pplx-decider-v1.1-27b` with all three
-  primitives answered; the abstain probability arrived under the
+  primitives answered. The abstain probability arrived under the
   `noul` key only. The adapter's first measured exercise is the
   standard driver canary.
 

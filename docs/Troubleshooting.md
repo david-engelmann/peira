@@ -1242,7 +1242,7 @@ fixed documented path, so this means the API moved. Terminal. Fix:
 report it. Don't retry.
 
 **`pplx-decider API error 400: ...; the request was rejected; this is an adapter bug, not a retryable failure.`** (same for 422)
-Cause: the Decisions API rejected the request shape; the detail after
+Cause: the Decisions API rejected the request shape. The detail after
 the status is the API's own `error.message`. The adapter validates
 every question client-side before sending, so this means API drift.
 Fix: report it. Don't retry.
@@ -1272,8 +1272,8 @@ or the Decisions endpoint is degraded.
 
 **`pplx-decider returned non-JSON response (HTTP ...)` / `pplx-decider returned a non-object JSON response`**
 Cause: the endpoint returned something that is not the documented
-JSON object (proxy error page, HTML, truncated body; a 504 can
-return an HTML page). Fix: check for a proxy or captive portal in the
+JSON object (proxy error page, HTML, truncated body). A 504 can
+return an HTML page. Fix: check for a proxy or captive portal in the
 path. Otherwise report it.
 
 **`pplx-decider built a malformed question 'x': not an object`** / **`pplx-decider built question 'x' with unknown type 'y'`** / **`pplx-decider built question 'x' without instructions`** / **`pplx-decider built choice question 'x' without a non-empty criteria map`** / **`pplx-decider built score question 'x' without 2-10 level descriptions`**
