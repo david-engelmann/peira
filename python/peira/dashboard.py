@@ -740,22 +740,35 @@ def leaderboard(
 
 def _apply_robustness_tax_column(ranked: list[dict[str, Any]]) -> None:
     """EB-40: attach the combined-tax point estimate to each row."""
-    from peira.eb_analysis import AdapterTaxInput, robustness_tax
+    from peira.eb_analysis import (AdapterTaxInput, model_identity,
+                                   robustness_tax)
 
     def _num(v: Any) -> float | None:
         return (float(v) if isinstance(v, (int, float))
                 and not isinstance(v, bool)
                 and math.isfinite(v) else None)
 
+    def _model_key(row: dict[str, Any]) -> str:
+        # Tax readings key by model identity (the adapter name and
+        # version pair, via peira.eb_analysis.model_identity): the
+        # leaderboard's P1.1 standing-run dedupe above keys by
+        # adapter_version alone, which is safe there because dedupe
+        # guarantees one row per version, but the tax frontier must
+        # keep two wires of one model distinct, so the tax column
+        # deliberately uses the finer pair identity.
+        return model_identity(str(row.get("adapter_name", "")),
+                              str(row.get("adapter_version", "")
+                                  or ""))
+
     inputs: list[AdapterTaxInput] = []
-    # One reading per adapter name, last row wins: mirrors cmd_tax
-    # so a duplicated adapter name cannot raise inside
+    # One reading per model, last row wins: mirrors cmd_tax
+    # so a duplicated model identity cannot raise inside
     # robustness_tax and blank the whole column.
     seen: dict[str, AdapterTaxInput] = {}
     for row in ranked:
-        name = str(row.get("adapter_name", ""))
-        seen[name] = AdapterTaxInput(
-            adapter=name,
+        key = _model_key(row)
+        seen[key] = AdapterTaxInput(
+            adapter=key,
             asr=_num(row.get("asr_conditional")),
             asr_ci=None,
             benign_accuracy=_num(row.get("benign_accuracy")),
@@ -773,7 +786,7 @@ def _apply_robustness_tax_column(ranked: list[dict[str, Any]]) -> None:
             row["robustness_tax"] = None
         return
     for row in ranked:
-        tax = report["per_adapter"].get(str(row.get("adapter_name")))
+        tax = report["per_adapter"].get(_model_key(row))
         row["robustness_tax"] = (
             tax["combined_tax"] if tax and tax["sufficient"]
             else None

@@ -7,6 +7,24 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
 
 ## [Unreleased]
 
+### Fixed leaderboard robustness tax collapsing models that share an adapter
+
+- The dashboard tax column keyed its inputs by adapter name, so
+  models sharing one adapter (every Anthropic model uses
+  anthropic-structured and every OpenAI model uses
+  openai-structured) collapsed into a single reading. The
+  collapsed models printed the surviving model's tax, and their
+  own readings dropped out of the frontier, which moved the tax
+  printed for unrelated models. The column now keys by model
+  identity, the pair of the run's adapter name and
+  adapter_version, since neither field alone names a model.
+  Each ranked model is taxed from its own benign accuracy and
+  attacked ECE. The
+  `peira tax` command keyed its inputs the same way and gets
+  the same fix, so two runs from models sharing one adapter
+  both stand in its analysis instead of the later one silently
+  replacing the earlier.
+
 ### Added OpenAI Decisions adapter (openai-decisions, gpt-6-luna)
 
 - New adapter `peira.adapters.openai_decisions:OpenAIDecisionsAdapter`

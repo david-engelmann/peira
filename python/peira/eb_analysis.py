@@ -372,6 +372,25 @@ def erosion_report_text(report: dict[str, Any]) -> str:
 # ---------------------------------------------------------------------------
 
 
+def model_identity(adapter_name: str, adapter_version: str,
+                   fallback: str = "") -> str:
+    """The model identity a tax reading is keyed by.
+
+    The (adapter_name, adapter_version) pair, because neither field
+    alone names a model: two models can share one adapter (every
+    Anthropic model uses anthropic-structured) and one model can be
+    served by two adapters. ``fallback`` stands in for an empty
+    adapter name (cmd_tax passes the artifact path). The pair is
+    joined with "@", which adapter names (code identifiers) and
+    model IDs do not contain in practice; a literal "@" inside a
+    field could alias two pairs to one key.
+    """
+    base = adapter_name or fallback
+    if adapter_version:
+        return f"{base}@{adapter_version}" if base else adapter_version
+    return base
+
+
 class AdapterTaxInput(NamedTuple):
     """One adapter's headline numbers for the tax computation.
 

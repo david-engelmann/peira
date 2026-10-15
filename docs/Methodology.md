@@ -1720,11 +1720,16 @@ components and so reads conservative (wide). Inputs require at least
 two adapters, with at least one adapter carrying benign accuracy
 and at least one carrying attacked ECE across the set. A combined
 tax is computed per adapter only when that adapter carries both
-components (else the combined tax is withheld for it). The analysis
-layer refuses two readings under one adapter name with any differing
-value (one frontier reading per adapter). `peira tax` collapses
-same-name inputs last-wins before analysis, so fewer than two
-distinct adapter names is the usual refusal there. Across adapters,
+components (else the combined tax is withheld for it). The unit of
+analysis is the model, identified by the pair of the run's adapter
+name and adapter_version, because two models can share one adapter
+and one model can be served by two adapters, so neither field
+alone names a model. The pair is written with an "@" separator,
+which adapter names and model IDs do not contain in practice. Each model owes its own frontier reading. The analysis
+layer refuses two readings under one model identity with any
+differing value (one frontier reading per model). `peira tax`
+collapses same-model inputs last-wins before analysis, so fewer
+than two distinct models is the usual refusal there. Across adapters,
 Spearman rank correlations (ASR vs accuracy, ASR vs ECE, ASR vs
 log-loss) with bootstrap CIs test whether robustness comes at the
 price of clean accuracy or calibration. With fewer than five
