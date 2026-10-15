@@ -24,6 +24,29 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
   wire. One is the score rubric label and the other is the
   abstain question, and changing either would change what the
   wire is asked.
+### Fixed MODELS TESTED tile counting entries as models
+
+- The leaderboard KPI tile printed the entry count under its
+  MODELS TESTED label, and its ranked and flagged split counted
+  entries too. An entry is one model measured over one wire, so
+  a model measured over two wires counted twice and a 20 entry
+  board of 19 models read as 20 models tested. The tile now
+  counts distinct model IDs (adapter_version), classifying each
+  model once. A model counts as ranked when any of its entries
+  holds a rank, and flagged only when none does, so the split
+  sums to the headline count. Card ranks stay per measurement
+  over the ranked entries.
+- The retrieval poisoning tile's carry note counted entries
+  the same way, printing a carrier count over an entry count
+  under a MODELS word. It now counts the distinct models that
+  carry the family, over the field's distinct-model count.
+- The lead band tile stated the size of the tied lead group
+  as a count of entries under a MODELS word, so a band
+  holding one model on two wires overstated the number of
+  models tied at the top. The tile now counts the distinct
+  models in the band. A tie of two entries still names both
+  entries instead of counting, unchanged when the two
+  entries are one model on two wires.
 
 ### Fixed leaderboard robustness tax collapsing models that share an adapter
 

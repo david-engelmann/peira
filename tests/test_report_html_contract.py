@@ -1979,13 +1979,233 @@ class ContractTest(unittest.TestCase):
         page = leaderboard_to_html(payload)
         self.assertIn("ALL CARRIERS FLAGGED", page)
 
+    def test_retrieval_tile_counts_carrying_models_once(self):
+        # The carry note counts models, as its word says: a
+        # model carrying the family on both of its wires counts
+        # once, against the field's distinct-model count. The
+        # fixture is the live gpt-6-luna shape plus a carrying
+        # model and a flagged non-carrier: four entries, three
+        # models, two of the models carrying. Counted by entry
+        # the note printed 3 OF 4 MODELS, a carrier count over
+        # an entry count under a MODELS word. With one wire of
+        # the pair dropped every model has one entry, and the
+        # note prints exactly what the entry count printed.
+        def row(name, version, asr, rp_asr=None):
+            r = {
+                "adapter_name": name,
+                "adapter_version": version,
+                "wire": name,
+                "asr_conditional": asr,
+                "asr_ci95": [asr - 0.02, asr + 0.02],
+                "benign_accuracy": 0.97,
+                "n_eligible": 400,
+                "total_cost_usd": 1.0,
+                "latency_ms_p50_attacked": 100.0,
+                "ece_attacked": 0.05,
+                "malformed_rate": 0.01,
+            }
+            if rp_asr is not None:
+                r["detail"] = {
+                    "families": {"retrieval_poisoning": {
+                        "family": "retrieval_poisoning",
+                        "asr": rp_asr, "n_eligible": 400}},
+                    "calibration": {}}
+            return r
+        flagged = {"adapter_name": "broken-adapter",
+                   "adapter_version": "flagged-model",
+                   "wire": "broken-adapter",
+                   "reason": "benign accuracy below ranking floor"}
+        payload = {
+            "ranked": [
+                row("openai-structured", "gpt-6-luna", 0.12, 0.50),
+                row("openai-decisions", "gpt-6-luna", 0.11, 0.80),
+                row("other-adapter", "other-model", 0.20, 0.30),
+            ],
+            "unranked": [flagged],
+        }
+        page = leaderboard_to_html(payload)
+        self.assertIn("2 OF 3 MODELS", page)
+        self.assertNotIn("3 OF 4 MODELS", page)
+        payload["ranked"] = payload["ranked"][1:]
+        page = leaderboard_to_html(payload)
+        self.assertIn("2 OF 3 MODELS", page)
+
     def test_models_tile_splits_an_all_flagged_field(self):
         payload = _payload()
-        payload["unranked"].append(dict(payload["unranked"][0]))
+        # The appended row is a second flagged model, so it
+        # carries its own model ID: an exact copy would be the
+        # same model-and-wire pair again, which the board holds
+        # once, and the tile counts distinct models.
+        second = dict(payload["unranked"][0])
+        second["adapter_version"] = "0.2"
+        payload["unranked"].append(second)
         payload["ranked"] = []
         page = leaderboard_to_html(payload)
         # Tile labels join with no-break entities in the HTML.
         self.assertIn("0 RANKED&nbsp;· 2 FLAGGED", page)
+
+    def test_models_tile_counts_distinct_models_over_two_wires(self):
+        # One model measured over two wires is two entries and
+        # one model (Admission-Rules, Model identity). The tile
+        # counts models: the headline is the number of distinct
+        # model IDs, and the split classifies each model once,
+        # so the split sums to the headline. Counted by entry
+        # this fixture printed 4 models, 3 of them ranked.
+        def row(name, version, asr):
+            return {
+                "adapter_name": name,
+                "adapter_version": version,
+                "wire": name,
+                "asr_conditional": asr,
+                "asr_ci95": [asr - 0.02, asr + 0.02],
+                "benign_accuracy": 0.97,
+                "n_eligible": 400,
+                "total_cost_usd": 1.0,
+                "latency_ms_p50_attacked": 100.0,
+                "ece_attacked": 0.05,
+                "malformed_rate": 0.01,
+            }
+        payload = {
+            "ranked": [
+                row("openai-structured", "gpt-6-luna", 0.12),
+                row("openai-decisions", "gpt-6-luna", 0.11),
+                row("other-adapter", "other-model", 0.20),
+            ],
+            "unranked": [
+                {"adapter_name": "broken-adapter",
+                 "adapter_version": "flagged-model",
+                 "wire": "broken-adapter",
+                 "reason": "benign accuracy below ranking floor"},
+            ],
+        }
+        page = leaderboard_to_html(payload)
+        self.assertIn(
+            '<div class="kpi-num">3</div>'
+            '<div class="kpi-lab">MODELS TESTED&nbsp;· '
+            '2 RANKED&nbsp;· 1 FLAGGED</div>', page)
+        # The same model over a ranked and an unranked wire is
+        # a ranked model, never a flagged one: any ranked entry
+        # ranks the model, and the model still counts once.
+        # Counted by entry this form printed 3 models with 2
+        # of them flagged.
+        payload["ranked"] = [row("openai-structured",
+                                 "gpt-6-luna", 0.12)]
+        payload["unranked"].insert(0, {
+            "adapter_name": "openai-decisions",
+            "adapter_version": "gpt-6-luna",
+            "wire": "openai-decisions",
+            "reason": "malformed response rate above 5%",
+            "malformed_rate": 0.09})
+        page = leaderboard_to_html(payload)
+        self.assertIn(
+            '<div class="kpi-num">2</div>'
+            '<div class="kpi-lab">MODELS TESTED&nbsp;· '
+            '1 RANKED&nbsp;· 1 FLAGGED</div>', page)
+
+    def test_lead_band_tile_counts_distinct_models(self):
+        # The lead band tile states how many models stand tied
+        # at the top, and the band holds entries: one model on
+        # two wires holds two of its slots. The count is of
+        # distinct model IDs, grouped by the same key the
+        # MODELS TESTED tile counts by. Counted by entry this
+        # fixture printed 4 models for a band of three.
+        def row(name, version, asr):
+            return {
+                "adapter_name": name,
+                "adapter_version": version,
+                "display_name": version,
+                "wire": name,
+                "asr_conditional": asr,
+                "asr_ci95": [asr - 0.02, asr + 0.02],
+                "benign_accuracy": 0.97,
+                "n_eligible": 400,
+                "total_cost_usd": 1.0,
+                "latency_ms_p50_attacked": 100.0,
+                "ece_attacked": 0.05,
+                "malformed_rate": 0.01,
+            }
+        payload = {
+            "ranked": [
+                row("openai-structured", "gpt-6-luna", 0.110),
+                row("openai-decisions", "gpt-6-luna", 0.115),
+                row("other-adapter", "other-model", 0.120),
+                row("third-adapter", "third-model", 0.125),
+            ],
+            "unranked": [],
+        }
+        page = leaderboard_to_html(payload)
+        self.assertIn(
+            '<div class="kpi range"><div class="kpi-num">'
+            '11.0–12.5%</div><div class="kpi-lab">LEAD BAND'
+            '&nbsp;· 3 MODELS TIED AT THE TOP</div>', page)
+        # When no model in the band repeats, the count is the
+        # entry count it replaces: a band of three entries over
+        # three models prints the same figure either way.
+        payload["ranked"] = [
+            row("openai-structured", "gpt-6-luna", 0.11),
+            row("other-adapter", "other-model", 0.12),
+            row("third-adapter", "third-model", 0.13),
+        ]
+        page = leaderboard_to_html(payload)
+        self.assertIn(
+            '<div class="kpi range"><div class="kpi-num">'
+            '11.0–13.0%</div><div class="kpi-lab">LEAD BAND'
+            '&nbsp;· 3 MODELS TIED AT THE TOP</div>', page)
+        # A two-entry tie names both entries instead of
+        # counting, and that form is unchanged when the two
+        # entries are one model on two wires: the label names
+        # the two measurements by the disambiguated names the
+        # rest of the page uses, each traceable to its wire on
+        # its card, and no count of models is stated at all.
+        payload["ranked"] = [
+            row("openai-structured", "gpt-6-luna", 0.110),
+            row("openai-decisions", "gpt-6-luna", 0.115),
+        ]
+        page = leaderboard_to_html(payload)
+        self.assertIn(
+            '<div class="kpi range"><div class="kpi-num">'
+            '11.0–11.5%</div><div class="kpi-lab">LEAD BAND'
+            '&nbsp;· <span class="nbw">GPT-6-LUNA (1)</span>'
+            ' AND <span class="nbw">GPT-6-LUNA (2)</span>'
+            ' TIED</div>', page)
+        self.assertNotIn("MODELS TIED AT THE TOP", page)
+
+    def test_models_tile_counts_malformed_model_id_apart(self):
+        # A malformed model ID (here a list in place of the
+        # string) is an identity apart from the model its text
+        # resembles: it neither merges with the lookalike
+        # string model nor raises in the render. Two entries
+        # carrying the same malformed ID are one such identity,
+        # so this field of three entries counts two models.
+        def row(name, version, display, asr):
+            return {
+                "adapter_name": name,
+                "adapter_version": version,
+                "display_name": display,
+                "wire": name,
+                "asr_conditional": asr,
+                "asr_ci95": [asr - 0.02, asr + 0.02],
+                "benign_accuracy": 0.97,
+                "n_eligible": 400,
+                "total_cost_usd": 1.0,
+                "latency_ms_p50_attacked": 100.0,
+                "ece_attacked": 0.05,
+                "malformed_rate": 0.01,
+            }
+        payload = {
+            "ranked": [
+                row("weird-adapter", ["kimi-k3"], "weird-model",
+                    0.30),
+                row("other-wire", ["kimi-k3"], "weird-model",
+                    0.32),
+                row("moonshot", "kimi-k3", "kimi-k3", 0.31),
+            ],
+            "unranked": [],
+        }
+        page = leaderboard_to_html(payload)
+        self.assertIn(
+            '<div class="kpi-num">2</div>'
+            '<div class="kpi-lab">MODELS TESTED</div>', page)
 
     def test_scatter_coincident_points_offset_and_disclosed(self):
         # Two runs at one cost and rate both stay visible, and
