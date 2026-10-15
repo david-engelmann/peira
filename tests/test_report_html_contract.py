@@ -4337,5 +4337,45 @@ class TestPass39Reopened(unittest.TestCase):
         self.assertNotIn("under about 1%", page)
 
 
+class WireNoteTest(unittest.TestCase):
+    """Two rows for one model measured over two wires.
+
+    The data layer keys leaderboard entries by model ID plus wire,
+    so one model can appear twice with the same display name. The
+    cards must not read as one model printed twice: each colliding
+    card names its wire. A model that appears once gets no wire
+    note; its header already identifies it.
+    """
+
+    def _two_wire_payload(self):
+        row = {
+            "display_name": "gpt-6-luna",
+            "adapter_version": "gpt-6-luna",
+            "asr_ci95": [0.15, 0.26],
+            "benign_accuracy": 0.97,
+            "n_eligible": 400,
+            "total_cost_usd": 1.23,
+            "latency_ms_p50_attacked": 210.5,
+            "ece_attacked": 0.04,
+        }
+        chat = dict(row, adapter_name="openai-structured",
+                    wire="openai-structured", asr_conditional=0.30)
+        dec = dict(row, adapter_name="openai-decisions",
+                   wire="openai-decisions", asr_conditional=0.20)
+        return {"ranked": [dec, chat], "unranked": []}
+
+    def test_same_model_cards_name_their_wire(self):
+        page = leaderboard_to_html(self._two_wire_payload())
+        self.assertIn("Wire · openai-decisions", page)
+        self.assertIn("Wire · openai-structured", page)
+        # Both measurements are on the page with their own rates.
+        self.assertIn("20.0%", page)
+        self.assertIn("30.0%", page)
+
+    def test_single_entry_per_model_has_no_wire_note(self):
+        page = leaderboard_to_html(_payload())
+        self.assertNotIn("Wire ·", page)
+
+
 if __name__ == "__main__":
     unittest.main()

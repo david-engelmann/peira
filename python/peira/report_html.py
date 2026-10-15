@@ -3420,6 +3420,15 @@ def _card(entry: dict[str, Any], fam_order: list[str],
         # contract promises; it bounds only a degenerate ID
         # that would otherwise print whole (pass 35).
         notes.append(f"Model ID · {_esc(_truncate(full_id, 120))}")
+    wire_note = entry.get("wire_note")
+    if isinstance(wire_note, str) and _clean(wire_note).strip():
+        # Another entry on this page shares this card's model ID
+        # across a different wire, so the header alone cannot tell
+        # the two measurements apart: the note names this entry's
+        # wire. The render sets wire_note only for such colliding
+        # entries, so a model measured once carries no extra line.
+        notes.append(
+            f"Wire · {_esc(_truncate(_clean(wire_note), 80))}")
     seg = _rerun_segment(r)
     if seg is not None:
         notes.append(
@@ -4900,6 +4909,34 @@ def leaderboard_to_html(payload: dict[str, Any],
     for _e, _b, _s in zip(entries, _bases, _disambiguate(_bases)):
         _e["short_base"] = _b
         _e["short"] = _s
+    # Two entries can share one model ID when a model was measured
+    # over two wires (the data layer keys entries by model ID plus
+    # adapter). Their cards would carry identical headers, so each
+    # entry in a colliding set whose wires differ takes a wire
+    # note naming the adapter behind its measurement, and the card
+    # prints it with the model ID. An entry whose model ID is
+    # unique on the page gets no note: the header already
+    # identifies it. A set whose rows carry only one wire between
+    # them gets no note either: the note could not tell them apart.
+    _disp_groups: dict[str, list[dict[str, Any]]] = {}
+    for _e in entries:
+        _disp_groups.setdefault(
+            _norm_name(_raw_name(_e["row"])), []).append(_e)
+    for _group in _disp_groups.values():
+        if len(_group) < 2:
+            continue
+        _wires: list[str] = []
+        for _e in _group:
+            _w = _e["row"].get("wire")
+            if not isinstance(_w, str) or not _clean(_w).strip():
+                _w = _e["row"].get("adapter_name")
+            _wires.append(
+                _clean(_w).strip() if isinstance(_w, str) else "")
+        if len(set(_wires)) < 2:
+            continue
+        for _e, _w in zip(_group, _wires):
+            if _w:
+                _e["wire_note"] = _w
     fam_order = _family_order(list(ranked) + list(unranked))
     prov = _provenance_data(payload, ranked, unranked)
     xmax = _hero_scale(entries)
