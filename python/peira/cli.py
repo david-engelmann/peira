@@ -3550,8 +3550,8 @@ def cmd_tax(args: argparse.Namespace) -> int:
     robustness against the observed frontier; they never rank
     adapters.
     """
-    from peira.eb_analysis import (AdapterTaxInput, robustness_tax,
-                                   tax_report_text)
+    from peira.eb_analysis import (AdapterTaxInput, model_identity,
+                                   robustness_tax, tax_report_text)
 
     if len(args.runs) < 2:
         print("error: tax needs at least 2 run artifacts",
@@ -3568,11 +3568,21 @@ def cmd_tax(args: argparse.Namespace) -> int:
             artifact.metrics, dict) else {}
         cal = metrics.get("calibration") or {}
         attacked_cal = cal.get("attacked") or {}
-        name = artifact.adapter_name or path_str
+        # Model identity is the (adapter_name, adapter_version)
+        # pair (peira.eb_analysis.model_identity): neither field
+        # alone is unique. Two models can share one adapter (every
+        # Anthropic model uses anthropic-structured), and one model
+        # can be served by two adapters. Keying by adapter name
+        # alone would silently drop all but one shared-adapter
+        # model from the analysis. An empty adapter name falls back
+        # to the artifact path, as before.
+        name = model_identity(artifact.adapter_name,
+                              artifact.adapter_version,
+                              fallback=path_str)
 
-        # Later artifacts with the same adapter name replace earlier
-        # ones; the CLI takes explicit paths, so last-wins is the
-        # least surprise.
+        # Later artifacts with the same model identity replace
+        # earlier ones; the CLI takes explicit paths, so last-wins
+        # is the least surprise.
         inputs = [i for i in inputs if i.adapter != name]
         inputs.append(AdapterTaxInput(
             adapter=name,

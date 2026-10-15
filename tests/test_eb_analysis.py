@@ -306,6 +306,115 @@ class RobustnessTaxTest(unittest.TestCase):
                                places=9)
         self.assertIsNone(rows[2]["robustness_tax"])
 
+    def test_leaderboard_tax_column_shared_adapter_name(self):
+        # Two ranked models share one adapter_name (the Anthropic
+        # and OpenAI families do this on the real board). Model
+        # identity is the (adapter_name, adapter_version) pair, so
+        # each row's tax must come from its own readings, and both
+        # models' readings must stand in the frontier the third
+        # model is taxed against.
+        from peira.dashboard import _apply_robustness_tax_column
+        rows = [
+            {"adapter_name": "shared-structured",
+             "adapter_version": "model-one", "asr_conditional": 0.10,
+             "benign_accuracy": 0.96, "ece_attacked": 0.05},
+            {"adapter_name": "shared-structured",
+             "adapter_version": "model-two", "asr_conditional": 0.20,
+             "benign_accuracy": 0.90, "ece_attacked": 0.02},
+            {"adapter_name": "other-structured",
+             "adapter_version": "model-three", "asr_conditional": 0.30,
+             "benign_accuracy": 0.92, "ece_attacked": 0.06},
+        ]
+        _apply_robustness_tax_column(rows)
+        # Frontier over all three models' own readings: best benign
+        # accuracy 0.96 (model-one), best attacked ECE 0.02
+        # (model-two). combined_tax = (frontier accuracy - own
+        # accuracy) + (own ECE - frontier ECE), per robustness_tax.
+        self.assertAlmostEqual(rows[0]["robustness_tax"], 0.03,
+                               places=9)
+        self.assertAlmostEqual(rows[1]["robustness_tax"], 0.06,
+                               places=9)
+        # model-three pays against model-one's 0.96 accuracy and
+        # model-two's 0.02 ECE: (0.96 - 0.92) + (0.06 - 0.02). If
+        # either shared-adapter model dropped out of the frontier,
+        # this number moves.
+        self.assertAlmostEqual(rows[2]["robustness_tax"], 0.08,
+                               places=9)
+
+    def test_cmd_tax_keys_inputs_by_model_identity(self):
+        # Two sealed runs from models sharing one adapter_name must
+        # both stand in the `peira tax` analysis under their own
+        # model identities. Keyed by adapter name, the later run
+        # silently replaced the earlier one before analysis.
+        from pathlib import Path
+
+        from peira.artifacts import RunArtifact
+        from peira.cli import cmd_tax
+        from peira.env_fingerprint import collect_and_fingerprint
+
+        env, env_sha256 = collect_and_fingerprint()
+
+        def make_run(version, asr, benign, ece, name="shared-structured"):
+            fields = {
+                "adapter_name": name,
+                "adapter_version": version,
+                "suite": "trial-demo",
+                "dataset_version": "0.1.0-demo",
+                "manifest_sha256": "a" * 64,
+                "seed": 7,
+                "max_concurrency": 1,
+                "env": env,
+                "env_sha256": env_sha256,
+                "config": {"cache_enabled": False},
+                "results": [],
+                "metrics": {
+                    "asr_conditional": asr,
+                    "asr_ci95": [asr - 0.01, asr + 0.01],
+                    "benign_accuracy": benign,
+                    "benign_accuracy_ci95": [benign - 0.01, benign],
+                    "n_eligible": 4000,
+                    "calibration": {"attacked": {
+                        "ece": ece, "ece_ci95": [ece, ece + 0.01]}},
+                },
+            }
+            return RunArtifact(**fields).seal()
+
+        with tempfile.TemporaryDirectory() as tmp:
+            p1 = Path(tmp) / "one.json"
+            p2 = Path(tmp) / "two.json"
+            p3 = Path(tmp) / "three.json"
+            p1.write_text(make_run("model-one", 0.10, 0.96, 0.05
+                                   ).to_json())
+            p2.write_text(make_run("model-two", 0.20, 0.90, 0.02
+                                   ).to_json())
+            # An artifact with an empty adapter_name falls back to
+            # its path in the identity, so it cannot collapse into
+            # the versioned run that shares its version string.
+            p3.write_text(make_run("model-one", 0.30, 0.92, 0.06,
+                                   name="").to_json())
+            out = Path(tmp) / "tax.json"
+            rc = cmd_tax(argparse.Namespace(
+                runs=[str(p1), str(p2), str(p3)], json=str(out),
+                out=None))
+            self.assertEqual(rc, 0)
+            report = json.loads(out.read_text())
+        keys = sorted(report["per_adapter"])
+        self.assertEqual(len(keys), 3)
+        self.assertIn("shared-structured@model-one", keys)
+        self.assertIn("shared-structured@model-two", keys)
+        self.assertTrue(any(k.endswith("@model-one") and "three" in k
+                            for k in keys))
+        # Frontier over both models' own readings: model-one pays
+        # only its ECE gap (0.05 - 0.02); model-two pays its
+        # accuracy gap (0.96 - 0.90). Keyed by adapter name the
+        # report would carry a single shared-structured entry.
+        self.assertAlmostEqual(
+            report["per_adapter"]["shared-structured@model-one"]
+            ["combined_tax"], 0.03, places=9)
+        self.assertAlmostEqual(
+            report["per_adapter"]["shared-structured@model-two"]
+            ["combined_tax"], 0.06, places=9)
+
 
 class LengthSensitivityTest(unittest.TestCase):
     def _length_driven(self, family="f", n_short=50, n_long=50):
