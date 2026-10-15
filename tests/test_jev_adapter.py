@@ -99,6 +99,19 @@ class TestJevConstruction(unittest.TestCase):
             with self.assertRaises(ValueError, msg=bad):
                 JevAdapter(api_key="k", model=bad)
 
+    def test_model_rejection_message_matches_troubleshooting_quote(self):
+        # docs/Troubleshooting.md quotes this message verbatim in its
+        # heading, so the full emitted text is pinned here. A wording
+        # change must move the doc quote in the same change.
+        with self.assertRaises(ValueError) as cm:
+            JevAdapter(api_key="k", model="jev-latest")
+        self.assertEqual(
+            str(cm.exception),
+            "jev adapter pins model 'jev-1.13.0' or 'jev-1.14.0'; "
+            "got 'jev-latest'. Floating tags like 'jev-latest' and "
+            "'jev-preview' are never allowed \u2014 a measurement "
+            "must name the exact model.")
+
     def test_version_and_cache_namespace_follow_the_instance_model(self):
         a = JevAdapter(api_key="k", model="jev-1.13.0")
         b = JevAdapter(api_key="k", model="jev-1.14.0")
