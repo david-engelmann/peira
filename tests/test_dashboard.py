@@ -345,9 +345,10 @@ class TestRunToDashboard(unittest.TestCase):
 class TestLeaderboard(unittest.TestCase):
     def _write(self, tmp_path, name, adapter, asr, eligible=True,
                adapter_version=None):
-        # P1.1: leaderboard dedupes by adapter_version (model ID), not
-        # adapter_name. Default the version to the adapter name so
-        # distinct adapters stay distinct unless the test says otherwise.
+        # Leaderboard identity is the (adapter_version, adapter_name)
+        # pair: the model ID plus the wire that measured it. Default
+        # the version to the adapter name so distinct adapters stay
+        # distinct unless the test says otherwise.
         art = _make_artifact(
             adapter_name=adapter,
             adapter_version=(adapter_version if adapter_version is not None
@@ -386,6 +387,89 @@ class TestLeaderboard(unittest.TestCase):
                 versions,
                 {"qwen/qwen3-235b-a22b-2507", "upstage/solar-pro4"},
             )
+            for row in lb["ranked"]:
+                self.assertEqual(row["wire"], "openrouter-structured")
+
+    def test_same_model_id_two_wires_both_appear(self):
+        # Two wires can measure the same model: the chat-completions
+        # run and the OpenAI Decisions run both carry adapter_version
+        # "gpt-6-luna", under adapter_names "openai-structured" and
+        # "openai-decisions". Grouping by model ID alone silently
+        # displaced one measurement with the other; the board must
+        # carry both as separate entries, each with its own numbers
+        # and a wire label naming the adapter that produced it.
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            self._write(tmp_path, "chat.json", "openai-structured", 0.30,
+                        adapter_version="gpt-6-luna")
+            self._write(tmp_path, "decisions.json", "openai-decisions",
+                        0.20, adapter_version="gpt-6-luna")
+            scan_runs(tmp)
+            lb = leaderboard(tmp)
+            self.assertEqual(lb["n_ranked"], 2)
+            self.assertEqual(lb["n_unranked"], 0)
+            by_wire = {r["wire"]: r for r in lb["ranked"]}
+            self.assertEqual(set(by_wire),
+                             {"openai-structured", "openai-decisions"})
+            self.assertEqual(
+                by_wire["openai-structured"]["asr_conditional"], 0.30)
+            self.assertEqual(
+                by_wire["openai-decisions"]["asr_conditional"], 0.20)
+            for row in lb["ranked"]:
+                self.assertEqual(row["display_name"], "gpt-6-luna")
+                self.assertEqual(row["wire"], row["adapter_name"])
+
+    def test_probe_shadow_applies_per_wire(self):
+        # The probe-shadow guard works within a wire: a newer
+        # probe-sized run of the Decisions wire must not displace
+        # that wire's full run, and must not touch the chat wire's
+        # entry for the same model.
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            chat = _make_artifact(
+                adapter_name="openai-structured",
+                adapter_version="gpt-6-luna",
+                metrics=_metrics(n_cases=200, n_eligible=200,
+                                 asr_conditional=0.30))
+            (tmp_path / "chat.json").write_text(chat.to_json())
+            dec = _make_artifact(
+                adapter_name="openai-decisions",
+                adapter_version="gpt-6-luna",
+                metrics=_metrics(n_cases=200, n_eligible=200,
+                                 asr_conditional=0.20))
+            (tmp_path / "dec.json").write_text(dec.to_json())
+            probe_results = [
+                _result_entry(case_id=f"probe-c{i:02d}",
+                              family="indirection")
+                for i in range(10)
+            ]
+            probe = _make_artifact(
+                adapter_name="openai-decisions",
+                adapter_version="gpt-6-luna",
+                results=probe_results,
+                metrics=_metrics(
+                    n_cases=10, n_eligible=10, ranking_eligible=False,
+                    eligibility_notes=[
+                        "fewer than 200 eligible cases (10)"],
+                ),
+                cases_completed=10,
+                cases_planned=10,
+            )
+            (tmp_path / "probe.json").write_text(
+                self._reseal_later(probe).to_json())
+            scan_runs(tmp)
+            lb = leaderboard(tmp)
+            self.assertEqual(lb["n_ranked"], 2)
+            self.assertEqual(lb["n_unranked"], 0)
+            by_wire = {r["wire"]: r for r in lb["ranked"]}
+            # The Decisions entry is its full run (ASR 0.20, the
+            # run_id of the full artifact), not the later probe.
+            self.assertEqual(
+                by_wire["openai-decisions"]["asr_conditional"], 0.20)
+            self.assertEqual(
+                by_wire["openai-decisions"]["n_cases"], 200)
+            self.assertEqual(
+                by_wire["openai-structured"]["asr_conditional"], 0.30)
 
     def test_unranked_listed_with_reason(self):
         with tempfile.TemporaryDirectory() as tmp:

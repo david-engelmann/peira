@@ -492,7 +492,7 @@ def _leaderboard_stat_row(
     meta: dict[str, Any],
     adapter: str,
 ) -> dict[str, Any]:
-    """The full headline row for one model's standing run.
+    """The full headline row for one entry's standing run.
 
     Built for ranked and unranked models alike: qualification
     decides whether the row earns a rank, never whether its numbers
@@ -515,6 +515,10 @@ def _leaderboard_stat_row(
     cfg = artifact.config if isinstance(artifact.config, dict) else {}
     return {
         "adapter_name": adapter,
+        # The wire label names the adapter that produced this
+        # measurement. Two entries can share one model ID across
+        # wires, and the wire is what tells those entries apart.
+        "wire": adapter,
         # Display identity is the model, not the adapter: several
         # models share one adapter (every OpenRouter model uses
         # openrouter-structured), and a public page must name the
@@ -570,15 +574,16 @@ def leaderboard(
 ) -> dict[str, Any]:
     """Cross-adapter leaderboard from the run registry.
 
-    For each model, takes the latest run that passes
-    ``qualifies_for_leaderboard`` and emits its dashboard headline
-    row: adapter identity, ASR + CI, benign accuracy, cost, latency
-    p50/p95, calibration ECE, ranking eligibility, and the run's
-    identity (run_id, created_utc) for drill-down. A later probe run
-    that never covered the benchmark (see ``_probe_sized``) does not
-    displace an earlier run of the same model. Models whose standing
-    run does not qualify are listed under ``unranked`` with the
-    disqualification reason. Omission never improves a rank, and the
+    For each entry (one model measured over one wire, keyed by the
+    model ID and the adapter that ran it), takes the latest run
+    that passes ``qualifies_for_leaderboard`` and emits its
+    dashboard headline row: adapter identity, ASR + CI, benign
+    accuracy, cost, latency p50/p95, calibration ECE, ranking
+    eligibility, and the run's identity (run_id, created_utc) for
+    drill-down. A later probe run that never covered the benchmark
+    (see ``_probe_sized``) does not displace an earlier run of the
+    same entry. Entries whose standing run does not qualify are
+    listed under ``unranked`` with the disqualification reason. Omission never improves a rank, and the
     dashboard shows why. When the standing run's artifact loads, the
     unranked entry carries the same headline row and per-run detail
     as a ranked entry, so a page can print the model's numbers next
@@ -594,30 +599,36 @@ def leaderboard(
     from peira.runs_registry import list_runs
 
     runs = list_runs(runs_dir=runs_dir, suite=suite, dataset_version=dataset_version)
-    # Group runs per model, newest first (list_runs is already
-    # created_utc DESC).
-    # P1.1 fix: dedupe by adapter_version (the model ID, e.g.
-    # "qwen/qwen3-235b-a22b-2507") not adapter_name. Multiple models
-    # can share one adapter_name (e.g. all OpenRouter models use
-    # "openrouter-structured"); deduping by adapter_name silently
-    # drops all but one of them from the leaderboard.
-    by_model: dict[str, list[dict[str, Any]]] = {}
+    # Group runs per leaderboard entry, newest first (list_runs is
+    # already created_utc DESC).
+    # Entry identity is the model ID plus the wire that measured
+    # it: the (adapter_version, adapter_name) pair. Neither field
+    # alone is safe. P1.1 fixed dedupe by adapter_name alone, which
+    # silently dropped all but one of the models sharing one
+    # adapter (every OpenRouter model uses "openrouter-structured").
+    # adapter_version alone has the mirror-image flaw: two wires
+    # can measure one model (the chat-completions run and the
+    # OpenAI Decisions run both carry adapter_version "gpt-6-luna"
+    # under different adapter_names), and grouping by the model ID
+    # alone silently displaced one measurement with the other.
+    by_entry: dict[tuple[str, str], list[dict[str, Any]]] = {}
     for r in runs:
-        model_key = r.get("adapter_version", "") or r.get("adapter_name", "")
-        if model_key:
-            by_model.setdefault(model_key, []).append(r)
+        entry_key = (r.get("adapter_version", "") or "",
+                     r.get("adapter_name", "") or "")
+        if entry_key[0] or entry_key[1]:
+            by_entry.setdefault(entry_key, []).append(r)
 
-    # The standing run per model is its newest run, with one guard:
+    # The standing run per entry is its newest run, with one guard:
     # a newer probe that never covered the benchmark (a canary or
-    # smoke run) must not shadow the model's full run, so walk
+    # smoke run) must not shadow the entry's full run, so walk
     # newest to oldest past probe-sized runs. A candidate that
     # cannot be loaded stands (the loop below reports why), and if
-    # every run of the model is a probe the newest one stands.
-    latest: dict[str, dict[str, Any]] = {}
-    for model_key, model_runs in by_model.items():
-        chosen = model_runs[0]
-        if len(model_runs) > 1:
-            for cand in model_runs:
+    # every run of the entry is a probe the newest one stands.
+    latest: dict[tuple[str, str], dict[str, Any]] = {}
+    for entry_key, entry_runs in by_entry.items():
+        chosen = entry_runs[0]
+        if len(entry_runs) > 1:
+            for cand in entry_runs:
                 cand_path = Path(cand["path"])
                 cand_artifact = None
                 if cand_path.exists():
@@ -630,16 +641,16 @@ def leaderboard(
                     chosen = cand
                     break
             else:
-                chosen = model_runs[0]
-        latest[model_key] = chosen
+                chosen = entry_runs[0]
+        latest[entry_key] = chosen
 
     ranked: list[dict[str, Any]] = []
     unranked: list[dict[str, Any]] = []
-    for model_key in sorted(latest):
-        meta = latest[model_key]
-        # model_key (adapter_version) is the unique model identity
-        # used for dedupe; adapter_name is retained on rows as the
-        # adapter label.
+    for entry_key in sorted(latest):
+        meta = latest[entry_key]
+        # entry_key is the (adapter_version, adapter_name) pair:
+        # the unique entry identity used for dedupe. adapter_name
+        # is the entry's wire, retained on rows as the wire label.
         adapter = meta.get("adapter_name", "")
         path = Path(meta["path"])
         reason = "artifact not found"
@@ -689,6 +700,7 @@ def leaderboard(
         else:
             unranked.append({
                 "adapter_name": adapter,
+                "wire": adapter,
                 "display_name": meta.get("adapter_version", ""),
                 "adapter_version": meta.get("adapter_version", ""),
                 "run_id": meta.get("run_id", ""),

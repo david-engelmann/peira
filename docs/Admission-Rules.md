@@ -49,20 +49,26 @@ A submission missing any part does not go on the board.
 
 ## Model identity
 
-Each leaderboard row is a distinct model, identified by `adapter_version`
-(the model ID, e.g. `qwen/qwen3-235b-a22b-2507`), not by `adapter_name`.
-Multiple models may share one adapter implementation (for example, all
-OpenRouter-routed models use the `openrouter-structured` adapter). The
-board dedupes by model ID so each model appears exactly once. The
-adapter name is shown for context but never used as the identity key.
+Each leaderboard row is one model measured over one wire, identified by
+the pair of `adapter_version` (the model ID, e.g.
+`qwen/qwen3-235b-a22b-2507`) and `adapter_name` (the adapter that ran
+the measurement). Neither field alone is the identity. Multiple models
+may share one adapter implementation (for example, all OpenRouter-routed
+models use the `openrouter-structured` adapter), and one model may be
+measured by more than one adapter (for example, a chat completions
+adapter and a decisions API adapter reporting the same model ID). The
+board dedupes by the pair, so each model-and-wire measurement appears
+exactly once. Every row carries a wire label naming its adapter, so two
+rows for one model stay distinguishable.
 
-The board shows each model's latest full run. A probe run that never
+The board shows each entry's latest full run. A probe run that never
 covered the benchmark (fewer recorded cases than the coverage gates
 require, or a required family it never attempted) does not displace an
-earlier full run. A full run that fails a quality gate stands as the
-model's result and is shown as not ranked, with the reason. Its numbers
-are printed in the same table as the ranked models, malformed response
-rate included, so a result is visible even when it carries no rank.
+earlier full run of the same entry. A full run that fails a quality gate
+stands as the entry's result and is shown as not ranked, with the
+reason. Its numbers are printed in the same table as the ranked models,
+malformed response rate included, so a result is visible even when it
+carries no rank.
 
 ## Tie bands
 
