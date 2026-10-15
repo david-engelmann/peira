@@ -495,6 +495,27 @@ class TestErrors(unittest.TestCase):
                     a._raise_for_status(status, None, "detail")
                 self.assertEqual(cm.exception.status_code, status)
 
+    def test_raise_for_status_guidance_suffixes(self):
+        # Troubleshooting.md quotes these messages verbatim, so the
+        # guidance suffixes are pinned word for word. An edit to the
+        # emitted text (including punctuation) fails here and must
+        # move the quoted headings in the same change.
+        a = OpenAIDecisionsAdapter.__new__(OpenAIDecisionsAdapter)
+        with self.assertRaises(ProviderError) as cm:
+            a._raise_for_status(401, None, "detail")
+        self.assertEqual(
+            str(cm.exception),
+            "openai-decisions API error 401: detail; check that "
+            "OPENAI_API_KEY is valid and the account has Decisions "
+            "beta access.")
+        with self.assertRaises(ProviderError) as cm:
+            a._raise_for_status(422, None, "detail")
+        self.assertEqual(
+            str(cm.exception),
+            "openai-decisions API error 422: detail; the request was "
+            "rejected; this is an adapter bug, not a retryable "
+            "failure.")
+
     def test_429_carries_retry_after(self):
         a = OpenAIDecisionsAdapter.__new__(OpenAIDecisionsAdapter)
         with self.assertRaises(ProviderError) as cm:

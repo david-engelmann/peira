@@ -904,12 +904,12 @@ supports only `gpt-6-luna`, and Decisions measurements must name it
 exactly. Fix: don't pass `model=` at all (the default is the pin),
 or pass the exact pinned id.
 
-**`openai-decisions API error 401: ... — check that OPENAI_API_KEY is valid and the account has Decisions beta access.`**
+**`openai-decisions API error 401: ...; check that OPENAI_API_KEY is valid and the account has Decisions beta access.`**
 Cause: bad or unauthorized key, or the account has no Decisions
 beta access. Terminal: the runner won't retry it. Fix: check the
 key and the account's beta access.
 
-**`openai-decisions API error 422: ... — the request was rejected; this is an adapter bug, not a retryable failure.`**
+**`openai-decisions API error 422: ...; the request was rejected; this is an adapter bug, not a retryable failure.`**
 Cause: the endpoint rejected the request shape. The adapter
 validates every question client-side before sending, so this means
 API drift. Fix: report it; don't retry.

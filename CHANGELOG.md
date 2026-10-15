@@ -7,6 +7,24 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
 
 ## [Unreleased]
 
+### Fixed Decisions adapter error strings carrying em dashes
+
+- Two error messages from the OpenAI Decisions adapter used an
+  em dash before their guidance clause, and Troubleshooting.md
+  quotes error strings verbatim, so the public docs carried the
+  dashes and failed the docs check. The 401 and 422 messages now
+  join their guidance clause with a semicolon, the construction
+  the Troubleshooting.md headings already print for the matching
+  Jev messages, and the Decisions headings match the emitted
+  strings word for word. The two API error strings and the
+  adapter's other error messages, docstrings and comments no
+  longer carry em dashes. The two question strings the adapter
+  sends keep their exact original wording, dashes included,
+  because they are the measurement text shared with the Jev
+  wire. One is the score rubric label and the other is the
+  abstain question, and changing either would change what the
+  wire is asked.
+
 ### Fixed leaderboard robustness tax collapsing models that share an adapter
 
 - The dashboard tax column keyed its inputs by adapter name, so

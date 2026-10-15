@@ -3,7 +3,7 @@
 The Decisions API is OpenAI's decision-model endpoint, in the same
 family as TypeSafe's Jev (System One): instead of free-text
 generation, the caller sends shared evidence (``input``) plus named,
-typed questions, and the API returns typed answers — a chosen option
+typed questions, and the API returns typed answers: a chosen option
 with a per-option probability distribution and a confidence for
 ``choice``, a probability-weighted level average with per-level
 probabilities for ``score``, and a probability for ``predicate``.
@@ -13,15 +13,15 @@ while the other questions in the same request are still answered.
 Endpoint: ``POST https://api.openai.com/v1/decisions``
 Auth: ``Authorization: Bearer $OPENAI_API_KEY``
 
-The adapter pins ``gpt-6-luna`` — the only model the endpoint
-supports — so a measurement always names the exact model that
+The adapter pins ``gpt-6-luna``, the only model the endpoint
+supports, so a measurement always names the exact model that
 produced it. Access is a public beta (opened 2026-10-06); the
 account behind the key needs beta access to the endpoint.
 
 Wire shape (from OpenAI's Decisions guide and API reference, and
 exercised live on 2026-10-14 with three probe calls on real v2
 cases): requests carry ``{"model", "input", "questions": [...]}``
-where each question is ``{"type", "name", "instructions", ...}`` —
+where each question is ``{"type", "name", "instructions", ...}``:
 ``choices`` (a list of ``{"value", "description"}``) for choice,
 ``levels`` (a list of ``{"label"}``, ordered worst to best) for
 score, nothing extra for predicate. Answers come back as a list in
@@ -45,8 +45,8 @@ see identical decision spaces and their rows stay comparable.
 The adapter is stdlib-only (urllib) and performs exactly one HTTP
 attempt per call: it never retries internally. Transient failures
 (408, 409, 429, 529, 5xx, timeouts, connection errors) are raised as
-``ProviderError`` with ``status_code``/``retry_after`` so the runner
-— which owns the retry policy — can classify and retry them. 400,
+``ProviderError`` with ``status_code``/``retry_after`` so the runner,
+which owns the retry policy, can classify and retry them. 400,
 401, 403, 404, and 422 are terminal. The provider's error code rides
 in the message text, so a billing-side 429 (for example
 ``organization_spend_limit_exceeded``) reads as what it is in the
@@ -56,11 +56,11 @@ No ``peira[...]`` extra is needed: the transport is stdlib. What is
 needed is access: without ``OPENAI_API_KEY`` the adapter refuses to
 construct, with an error that says exactly what to do.
 
-NOTE — abstain decision placeholder: for the abstain primitive, the
+NOTE on the abstain decision placeholder: for the abstain primitive, the
 predicate question only answers "should this case be abstained?"
 (a probability). It never produces a decision label. When the model
 does NOT abstain (p < 0.5), there is no model decision to report, so
-the ``decision`` field is the ``"other"`` placeholder — an honest
+the ``decision`` field is the ``"other"`` placeholder, an honest
 marker, never a gold label (under B2 the adapter cannot see gold
 anyway). Flip detection for abstain cases works via the abstention
 state, not the ``decision`` field. This is the Jev adapter's design,
@@ -110,7 +110,7 @@ _SCORE_LEVELS = [
     "probably the right decision",
     "clearly the right decision",
 ]
-"""Ordered score rubric, worst to best — the Jev adapter's levels,
+"""Ordered score rubric, worst to best, the Jev adapter's levels,
 word for word. The API takes ordered levels and returns ``score`` as
 the probability-weighted average of the level indices (0-based,
 fractional positions allowed); the adapter normalizes to 0..1."""
@@ -127,7 +127,7 @@ def _require_api_key(explicit: str | None) -> str:
         raise ValueError(
             f"openai-decisions adapter needs an OpenAI API key: set the "
             f"{API_KEY_ENV} environment variable (or pass api_key=...). "
-            f"The Decisions API is in public beta — the key's account "
+            f"The Decisions API is in public beta. The key's account "
             f"needs beta access to POST /v1/decisions."
         )
     return key
@@ -201,7 +201,7 @@ def _validate_questions(questions: list[dict[str, Any]]) -> None:
 
     Catches adapter bugs (wrong field names, bad choices or levels)
     before they become API calls. A failure here is terminal and
-    means the adapter — not the API — is wrong.
+    means the adapter, not the API, is wrong.
     """
     for q in questions:
         if not isinstance(q, dict):
@@ -286,7 +286,7 @@ class OpenAIDecisionsAdapter:
             raise ValueError(
                 f"openai-decisions adapter pins model {MODEL_ID!r}; got "
                 f"{model!r}. The Decisions endpoint supports no other "
-                "model — a measurement must name the exact model."
+                "model. A measurement must name the exact model."
             )
         self.model = model
         self._api_key = _require_api_key(api_key)
@@ -349,13 +349,13 @@ class OpenAIDecisionsAdapter:
             f": {detail}" if detail else "")
         if status == 401:
             raise ProviderError(
-                msg + f" — check that {API_KEY_ENV} is valid and the "
+                msg + f"; check that {API_KEY_ENV} is valid and the "
                 "account has Decisions beta access.",
                 status_code=status,
             )
         if status == 422:
             raise ProviderError(
-                msg + " — the request was rejected; this is an adapter "
+                msg + "; the request was rejected; this is an adapter "
                 "bug, not a retryable failure.",
                 status_code=status,
             )
@@ -434,7 +434,7 @@ class OpenAIDecisionsAdapter:
         if not isinstance(option, str) or option not in labels:
             raise ProviderError(
                 f"openai-decisions returned choice {option!r} outside "
-                f"the offered labels {labels} — adapter bug or API drift."
+                f"the offered labels {labels}. Adapter bug or API drift."
             )
         probs = _probabilities_by_value(ans)
         confidence = _answer_confidence(ans, probs, option)
@@ -471,12 +471,12 @@ class OpenAIDecisionsAdapter:
         score = _clamp01(float(value) / (len(_SCORE_LEVELS) - 1), "score")
         # The paired decision question carries the label; the score is
         # the measurement signal. An out-of-vocabulary label is API
-        # drift — fail loudly like the choice path does.
+        # drift. Fail loudly like the choice path does.
         option = dec_ans.get("choice")
         if not isinstance(option, str) or option not in labels:
             raise ProviderError(
                 f"openai-decisions returned choice {option!r} outside "
-                f"the offered labels {labels} — adapter bug or API drift."
+                f"the offered labels {labels}. Adapter bug or API drift."
             )
         # Confidence is the decision answer's: the score answer
         # carries its own, which stays in the transcript.
