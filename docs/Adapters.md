@@ -1480,6 +1480,58 @@ follows Cloudflare's official Clef documentation and is confirmed by
 the first canary once a Workers AI scoped token is provisioned. The
 adapter stays out of measured runs until that canary passes.
 
+## Perplexity pplx-decider
+
+No extra needed (stdlib transport). Set `PERPLEXITY_API_KEY` (API
+access is prepaid, so the account also needs API credit), then run
+
+```bash
+export PERPLEXITY_API_KEY=<redacted>
+peira run --adapter peira.adapters.pplx_decider:PplxDeciderAdapter --suite trial-demo
+```
+
+pplx-decider is Perplexity's decision model, served through the
+Decisions API and positioned by Perplexity directly against
+TypeSafe's Jev. The adapter sends the case prompt as `state` plus
+named typed questions to `POST
+https://api.perplexity.ai/v1/decisions` and reads the answers back
+out of the body's top-level `answers`. Each question carries
+`instructions`. Choice and score questions also carry `criteria`.
+The question text is the Jev adapter's unchanged, so the wires see
+identical decision spaces. Answers carry `choice` (choice), `score`
+(score), or `noul` (abstain). The score question uses the same five
+described levels as the Jev adapter, and the abstain primitive
+follows the Jev placeholder rule exactly (at or above probability
+0.5 the decision is the deliberate label `abstain`, below it the
+`other` placeholder).
+
+The response is not enveloped. Its top level carries `answers`, a
+`model` echo of the id sent, and `usage`. The adapter refuses a
+response whose echoed model differs from the pin, so a measurement
+can never seal under the wrong model's name.
+
+Two pinned models are supported. Each is named by its full served
+id, and the per-instance version and cache namespace follow the pin.
+The two are `pplx-decider-v1.1-27b` (the current version, the
+default) and `pplx-decider-v1-27b` (the launch version). Both are
+Qwen3.8-27B fine-tunes with Apache-2.0 weights, priced at $0.02 per
+1M input tokens with output free. The rates were verified against
+Perplexity's official Decisions API documentation on 2026-10-15 and
+are pinned in `python/peira/data/pricing.json`. Unversioned names
+and every other id are rejected at construction, so a run always
+names one exact model. 429/529/5xx and transport timeouts surface as
+retryable provider errors for the runner. 401/403, 402 (out of API
+credit), 404 and 400/422 are terminal. The organization rate limit
+is 10 requests per second; the runner owns concurrency.
+
+**Live-verified wire, canary pending.** The wire shape above was
+verified against the live API on 2026-10-15, before the adapter was
+written, with a probe call carrying the adapter's exact question
+text. The probe returned HTTP 200 for `pplx-decider-v1.1-27b` with
+all three primitives answered; the abstain probability arrived under
+the `noul` key only, and `usage` carried integer counters. The
+adapter's first measured exercise is the standard driver canary.
+
 ## Pricing
 
 `peira run` recomputes cost from the pinned table in

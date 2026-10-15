@@ -1208,6 +1208,104 @@ Cause: the response envelope's `usage` object carried token counters
 that are not integers. Cost accounting fails closed rather than
 guessing. Fix: report it with the usage payload.
 
+**`pplx-decider does not support primitive 'x'`**
+Cause: pplx-decider was asked for a primitive outside `choice`,
+`score`, `abstain`. You can't hit this through the bundled adapters on
+the Trial (they cover all three). Fix: check the primitive name.
+
+**`pplx-decider adapter needs a Perplexity API key: set the PERPLEXITY_API_KEY environment variable (or pass api_key=<redacted>). Perplexity API access is prepaid; create a key in the API Console at perplexity.ai and load API credit, then export PERPLEXITY_API_KEY=<your key>.`**
+Cause: no Perplexity API key. Fix: create a key in the API Console,
+load API credit, then `export PERPLEXITY_API_KEY=<your key>`.
+
+**`pplx-decider adapter pins model 'pplx-decider-v1-27b' or 'pplx-decider-v1.1-27b'; got '...'. Floating tags and unversioned names are never allowed; a measurement must name the exact model.`**
+Cause: an unversioned name or unsupported model id was passed.
+pplx-decider measurements must name the exact served weights. The
+family name (`pplx-decider`) is not a pin. Fix: don't pass `model=` at
+all (the default is `pplx-decider-v1.1-27b`), or pass one of the exact
+pinned ids.
+
+**`pplx-decider API error 401: ...; check that PERPLEXITY_API_KEY is valid and active, and sent as a Bearer token.`** (same for 403)
+Cause: bad key, an inactive key, or the key sent in an `x-api-key`
+header, which the Decisions API does not read. The adapter always
+sends `Authorization: Bearer`, so this means the key itself was
+rejected. Terminal: the runner won't retry it. Fix: check the key in
+the API Console.
+
+**`pplx-decider API error 402: ...; the account is out of API credit; add credit in the API Console under Billing, then rerun.`**
+Cause: Perplexity API access is prepaid and the account balance is
+exhausted. Terminal: retrying cannot add credit. Fix: add credit in
+the API Console under Billing, then rerun.
+
+**`pplx-decider API error 404: ...; the Decisions endpoint path was not found; this is an adapter bug or an API change, not a retryable failure.`**
+Cause: the endpoint path was not found. The adapter posts to the
+fixed documented path, so this means the API moved. Terminal. Fix:
+report it. Don't retry.
+
+**`pplx-decider API error 400: ...; the request was rejected; this is an adapter bug, not a retryable failure.`** (same for 422)
+Cause: the Decisions API rejected the request shape; the detail after
+the status is the API's own `error.message`. The adapter validates
+every question client-side before sending, so this means API drift.
+Fix: report it. Don't retry.
+
+**`pplx-decider API error 429` / `pplx-decider API error 529` / `pplx-decider API error 5xx`**
+Cause: rate limit (the organization limit is 10 requests per second)
+or a transient Decisions API failure, including a 504 model timeout.
+The runner retries these under `--max-attempts`. Fix: re-run.
+Sustained failures mean the endpoint is degraded.
+
+**`pplx-decider response missing 'answers' object` / `pplx-decider response missing answer 'decision'`**
+Cause: the API returned a body without the documented answers shape.
+The adapter fails closed rather than treating a missing answer as a
+decision. This means API drift. Fix: report it.
+
+**`pplx-decider response names model '...' but the adapter pinned '...'; refusing a measurement under the wrong model name.`**
+Cause: the response's `model` echo names different weights than the
+adapter requested. The adapter refuses to record the measurement
+under the wrong name. This means the API served something other than
+the pin. Fix: report it with both names.
+
+**`pplx-decider transport error: ...` (status 408)**
+Cause: the connection dropped, DNS failed, or the request timed out.
+Raised as status 408 so `peira run` treats it as transient and retries
+under `--max-attempts`. Fix: re-run. Sustained 408s mean your network
+or the Decisions endpoint is degraded.
+
+**`pplx-decider returned non-JSON response (HTTP ...)` / `pplx-decider returned a non-object JSON response`**
+Cause: the endpoint returned something that is not the documented
+JSON object (proxy error page, HTML, truncated body; a 504 can
+return an HTML page). Fix: check for a proxy or captive portal in the
+path. Otherwise report it.
+
+**`pplx-decider built a malformed question 'x': not an object`** / **`pplx-decider built question 'x' with unknown type 'y'`** / **`pplx-decider built question 'x' without instructions`** / **`pplx-decider built choice question 'x' without a non-empty criteria map`** / **`pplx-decider built score question 'x' without 2-10 level descriptions`**
+Cause: the adapter constructed a malformed question. This is an
+adapter bug caught client-side before anything was sent. Fix: report
+it with the question name.
+
+**`pplx-decider returned choice 'x' outside the offered labels [...]; adapter bug or API drift.`**
+Cause: the model answered with a label that was not in the request's
+criteria. Fix: report it. This means API drift or an adapter bug.
+
+**`pplx-decider score answer has no numeric score: ...` / `pplx-decider abstain answer has no numeric abstain value: ...`**
+Cause: the answer carried neither the documented value nor a
+probability map to derive it from. Fix: report it with the answer
+payload.
+
+**`pplx-decider returned non-numeric confidence: ...` / `pplx-decider returned non-numeric score: ...` / `pplx-decider returned non-numeric abstain: ...`**
+Cause: the API returned a non-numeric value where a probability was
+documented. Booleans and non-finite floats (NaN, infinities) count as
+non-numeric here. The adapter fails closed rather than clamping them
+into a fabricated measurement. Fix: report it with the value.
+
+**`pplx-decider returned probabilities that are not an object: ...`**
+Cause: a choice answer carried a `probabilities` value that is not a
+per-label map. Fix: report it with the answer payload. This means API
+drift.
+
+**`pplx-decider returned malformed usage counters: ...`**
+Cause: the response's `usage` object carried token counters that are
+not non-negative integers. Cost accounting fails closed rather than
+guessing. Fix: report it with the usage payload.
+
 **`jev transport error: ...` (status 408)**
 Cause: the connection dropped, DNS failed, or the request timed out.
 Raised as status 408 so `peira run` treats it as transient and retries
