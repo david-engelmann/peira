@@ -1250,6 +1250,88 @@ run instead of relabelling it. A deployment that serves a specific checkpoint di
 `VON_CHECKPOINT_DIR` says so in the run record, because the stamp
 cannot distinguish one checkpoint directory from another; that
 choice is an operator attestation.
+## Strands Decider
+
+```bash
+pip install strands-decider
+strands-decider serve StrandsAgents/strands-decider-2B-hobson-v21 --device cpu --port 8000
+peira run --adapter peira.adapters.strands_decider:StrandsDeciderAdapter --suite trial-demo
+```
+
+Strands Decider (AWS Strands Labs, Apache 2.0) is a small decision
+model. A Qwen3.5-2B base with its LM head removed, a rank-16 LoRA,
+and a pointer readout head answers typed choice, score, and noul
+questions in one forward pass, with a probability distribution per
+question and no generated text. `strands-decider serve` exposes
+`POST /v1/systemone` on 127.0.0.1 with no authentication, and
+JevBench's TypeSafe adapter runs against it unmodified, so the
+adapter reuses the self-hosted wire plumbing it shares with Kev.
+The differences are the pinned checkpoint and the default endpoint
+(`http://127.0.0.1:8000/v1/systemone`).
+
+The checkpoint is pinned to
+`StrandsAgents/strands-decider-2B-hobson-v21`, the current
+published reference weights. The checkpoint is baked into the
+server deployment, so any other model id is rejected at
+construction, and the pinned id namespaces the runner cache. The
+adapter also checks the model name every response reports and
+fails the call when it is not the pinned checkpoint's name, so
+an endpoint serving other weights cannot be measured under the
+pin by mistake. A server started with its `--model-name`
+override is out of contract for the same reason. The
+first server start downloads the checkpoint repo plus the
+Qwen3.5-2B base weights, about 4.5 GB.
+
+One wire difference from Jev matters, and the adapter corrects for
+it. The server's `confidence` field on a choice answer is a
+rescaled value, stretched so an even split gives 0 and certainty
+gives 1 whatever the number of options. Peira's confidence
+contract is the model's probability for the chosen option, so
+wherever an answer carries `probabilities` the adapter reports
+`probabilities[decision]` and leaves the rescaled figure in the
+transcript only. The same correction applies to the paired
+decision answer on score calls. A score answer's `score` field is
+the probability weighted level position on the 0..levels-1 scale,
+which is the shape the Jev score mapping already normalizes.
+
+Device selection is the server's. Pass `--device cuda`, `mps`,
+or `cpu` to `strands-decider serve`. The server binds to
+127.0.0.1 by default and has no authentication, and its authors
+have not verified its behaviour under concurrent requests, so run
+it locally only and run peira against it at concurrency 1.
+
+CPU practicality, measured on the project's 2 vCPU trial VM
+with `--device cpu` (2026-10-15). The package installs and the
+checkpoint and base weights download and load fully on CPU,
+and a live CPU serve canary answered all three primitives at
+build time. A later rerun under lane contention was OOM-killed
+at a measured peak resident set of about 4.2 GB before its
+first answer. The honest verdict is that a full CPU trial
+needs either this VM to itself (the 2B weights in float32 plus
+runtime overhead want roughly half the machine) or a GPU
+host. Full peira trials on CPU will be slow in any case, and
+the honest expectation is hours rather than minutes. The
+model is local and self-hosted, so cost is $0.
+
+Serve device changes the numbers. The server engine runs the
+torso in float32 on CPU and in bfloat16 on CUDA by design,
+and the two stacks give materially different probabilities
+for this checkpoint. A live canary pair on the
+duplicate-charge refund case makes the size of it concrete.
+On CPU the choice probability for approve was 0.6487 and the
+abstain probability was 0.9667. Served on an RTX 3090 the
+same case gave 0.8446 and 0.4791, and the abstain arm crossed
+its halfway threshold on the GPU values alone. Neither stack
+is wrong. The numbers are the model's as served on that
+device, and results from different devices are not
+interchangeable. The adapter cannot see which device served
+it, so the serve device is recorded with the run's own
+configuration rather than by the adapter.
+
+A server that cannot be reached is a terminal provider error whose
+message tells you exactly how to start it. The runner never
+retries a missing local server. HTTP error statuses keep their
+status codes for the runner's classifier.
 
 ## GLiNER2.5-Decide
 

@@ -1293,6 +1293,55 @@ window is refused with a 422, in place of a silently truncated
 measurement. Fix: report oversize states; do not work around them
 by truncating the case. A 422 on a state that fits the window is a
 genuine request bug; report it.
+**`strands-decider adapter pins model 'StrandsAgents/strands-decider-2B-hobson-v21'; got '...'`**
+Cause: a floating or unsupported checkpoint id was passed. The
+checkpoint is baked into the server deployment, so the adapter
+accepts only the pinned id. Fix: don't pass `model=` at all, or
+point `api_url=` at a deployment of the pinned checkpoint.
+
+**`strands-decider decision answer for chosen option '...' carries no probabilities map; the server contract puts the model's probability for the chosen option in that map, so this is server drift and the call is not measurable.`**
+Cause: the server answered a choice or score call without
+the probability distribution its answer schema requires. The
+adapter will not fall back to the server's rescaled
+confidence, because that number is not the model's
+probability for the option. Fix: report it. Terminal.
+
+**`strands-decider server reported model '...'; this adapter measures only the pinned deployment of StrandsAgents/strands-decider-2B-hobson-v21, which reports 'strands-decider-2B-hobson-v21'; point api_url= at that deployment.`**
+Cause: the endpoint in use is serving different weights than
+the pinned checkpoint, or the server was started with a
+`--model-name` override. The adapter measures one checkpoint
+only and will not record another deployment's answers under
+its name. Fix: point `api_url=` at a deployment of the pinned
+checkpoint started without a name override. Terminal.
+
+**`strands-decider server error ...` / `strands-decider transport error: ...` / `strands-decider returned non-JSON response ...`**
+Cause: the local server answered with an HTTP error status,
+the connection dropped mid-call, or the response was not the
+expected JSON object. The runner retries 429 and 5xx
+statuses as transient. A 401 is terminal, because these
+servers take no auth and a rejection means the server is
+misconfigured, and a 422 is terminal, because the request
+itself was rejected. Fix: check the server log, and restart
+the server if it is wedged.
+
+**`strands-decider decision answer for chosen option '...' carries no numeric probability in its probabilities map; the server contract puts the chosen option in the map, so this is server drift and the call is not measurable.`**
+Cause: the server answered a choice or score call with a
+probability distribution that omits its own chosen option, or
+carries a non-numeric value for it. The adapter will not fall
+back to the server's rescaled confidence, because that number
+is not the model's probability for the option. Fix: report
+it. Terminal.
+
+**`strands-decider: cannot reach the local server at http://127.0.0.1:8000/v1/systemone (...)`**
+Cause: no Strands Decider server is listening at the configured
+endpoint. The message continues with the serve command that starts
+one (`strands-decider serve
+StrandsAgents/strands-decider-2B-hobson-v21 --port 8000`, after
+`pip install strands-decider`; the server picks cuda, then mps,
+then cpu when `--device` is not passed). The first start
+downloads the checkpoint and its Qwen3.5-2B base weights, about
+4.5 GB. Terminal: the runner never retries a missing local server.
+Fix: start the server, then re-run.
 
 **`gliner-decide adapter pins checkpoint 'fastino/GLiNER2.5-Decide'; got '...'`**
 Cause: an unlisted checkpoint id was passed. The adapter measures

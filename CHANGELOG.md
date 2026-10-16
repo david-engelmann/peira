@@ -7,6 +7,18 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
 
 ## [Unreleased]
 
+### Added Strands Decider adapter
+
+- New `strands-decider` adapter for Strands Decider 2B (AWS
+  Strands Labs, Apache 2.0), served by `strands-decider serve`
+  over the TypeSafe-compatible `/v1/systemone` wire. The adapter
+  reuses the self-hosted wire plumbing shared with Kev, pins the
+  `StrandsAgents/strands-decider-2B-hobson-v21` checkpoint, and
+  corrects the one wire difference that matters (the server's
+  rescaled choice confidence is replaced by the raw probability
+  for the chosen option wherever the answer carries a probability
+  distribution). Adapters.md records the CPU practicality measured
+  in the adapter's canary.
 ### Added GLiNER2.5-Decide adapter
 
 - New `gliner-decide` adapter for Fastino's GLiNER2.5-Decide
