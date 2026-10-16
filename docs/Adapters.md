@@ -1251,6 +1251,73 @@ run instead of relabelling it. A deployment that serves a specific checkpoint di
 cannot distinguish one checkpoint directory from another; that
 choice is an operator attestation.
 
+## GLiNER2.5-Decide
+
+```bash
+pip install "gliner2[local]"
+peira run --adapter peira.adapters.gliner_decide:GlinerDecideAdapter --suite trial-demo
+```
+
+GLiNER2.5-Decide (Fastino Labs, Apache 2.0) is a 340M DeBERTa-v3
+encoder fine-tuned for operational decisions. It is a schema
+classifier, not a question-answering wire. One `classify_text` call
+scores several named tasks over the same text, and each task is a
+caller-supplied label set whose labels may carry a description
+each. The adapter always asks for confidences, and a task result is
+the winning label plus the model's probability for it. The model
+runs locally on CPU, so cost is $0 and a failure is a terminal
+provider error with no status code.
+
+The label mapping is the adapter's design, and it is fixed:
+
+- Choice becomes one task named `decision`. Its labels are the
+  case's candidate labels (the case options plus `other`), each
+  described the way the Jev choice criteria describe them. The
+  winning label is the decision and its probability is the
+  confidence.
+- Score becomes two tasks in one call. The `score` task's labels
+  are the five ordered rubric levels the Jev wire uses, worst to
+  best (the middle level carries a comma where Jev's copy
+  carries an em dash; these labels are this adapter's own
+  instrument text), and the winning level's position normalized
+  to 0..1 is the score. The `decision` task carries the decision
+  label and the reported confidence, the same pairing the Jev
+  adapter uses.
+- Abstain becomes one task named `abstain` with two labels, `yes`
+  (the case should be abstained, because there is no confident
+  correct decision) and `no` (a confident correct decision exists).
+  The yes probability is the winner's confidence, or one minus it
+  when the winner is `no`. The decision threshold and the
+  confidence formula then follow the Jev abstain mapping.
+
+Two honest limitations. The model takes no instructions, so the
+question a case asks is carried only by the task name, the labels,
+and their descriptions. Cases whose prompt does not itself state
+the decision context will measure worse, and that is the model's
+score to earn. And the public `classify_text` API returns only the
+winning label and its confidence per task, so the score is the
+winning level's position rather than a probability weighted
+expectation over levels. Both task results are recorded verbatim in
+the transcript, so the reading stays auditable.
+
+The checkpoint is pinned to `fastino/GLiNER2.5-Decide` at a pinned
+Hub revision. Any other checkpoint id is rejected at construction.
+The pinned pair is the adapter version and namespaces the runner
+cache.
+
+Canary record (2026-10-15): the package installs from PyPI, the
+checkpoint downloads in full, and the `classify_text` API shape
+was verified against the installed package. The first live CPU
+canary attempts on the project's shared trial VM were OOM-killed
+the same day (measured peak resident set 2.3 GB and still rising
+when killed, while other lanes held most of the VM's 8 GB), a
+host capacity state rather than an adapter defect. The rerun
+later that day, launched at the best memory the shared box
+offered, passed through the real adapter: exit 0, peak resident
+set 2,770 MB, with choice approve at confidence 0.4867, score
+0.75 (approve) at confidence 0.4486, and abstain at confidence
+0.3668, every output validating against the adapter contract.
+
 ## Lakera Guard
 
 No extra needed (stdlib transport). Set `LAKERA_API_KEY` to your API key,
