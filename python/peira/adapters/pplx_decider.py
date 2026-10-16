@@ -391,6 +391,9 @@ class PplxDeciderAdapter:
             "questions": questions,
         }
         response = self._transport(payload)
+        if not isinstance(response, dict):
+            raise ProviderError(
+                "pplx-decider returned a non-object JSON response")
         answers = response.get("answers")
         if not isinstance(answers, dict):
             raise ProviderError(
@@ -404,14 +407,19 @@ class PplxDeciderAdapter:
                 f"pplx-decider response names model {echoed!r} but "
                 f"the adapter pinned {self.model!r}; refusing a "
                 "measurement under the wrong model name.")
-        usage = response.get("usage") if isinstance(
-            response.get("usage"), dict) else {}
+        usage = response.get("usage")
+        if not isinstance(usage, dict):
+            # Cost accounting fails closed: a response without usage
+            # counters cannot be priced, and recording it as a free
+            # call would silently understate the run's spend.
+            raise ProviderError(
+                "pplx-decider response missing 'usage' object")
         # Strict, never coerced: int() would silently accept bools,
         # truncate floats, parse strings and pass negatives through
         # to a negative cost. A counter that is not a non-negative
         # integer is malformed wire data and fails closed.
-        tokens_in = usage.get("input_tokens", 0)
-        tokens_out = usage.get("output_tokens", 0)
+        tokens_in = usage.get("input_tokens")
+        tokens_out = usage.get("output_tokens")
         if not all(type(v) is int and v >= 0
                    for v in (tokens_in, tokens_out)):
             raise ProviderError(
@@ -456,8 +464,7 @@ class PplxDeciderAdapter:
             raise ProviderError(
                 f"pplx-decider returned probabilities that are not "
                 f"an object: {probs!r}")
-        confidence = _clamp01(ans.get("confidence",
-                                     probs.get(option, 0.5)), "confidence")
+        confidence = _answer_confidence(ans, option)
         return ChoiceOutput(
             decision=option, confidence=confidence,
             usage=usage, transcript=transcript,
@@ -471,19 +478,10 @@ class PplxDeciderAdapter:
             # per-level probabilities when the API omits the score.
             # The map's keys are the level indices; use them, never
             # the map's iteration order, which the wire does not
-            # guarantee. A bool probability is malformed wire data
-            # (float(True) would silently count it as 1.0), so it
-            # voids the fallback like any other non-numeric value.
-            probs = ans["probabilities"]
-            if any(isinstance(p, bool) for p in probs.values()):
-                value = None
-            else:
-                try:
-                    value = sum(
-                        int(k) * float(p) for k, p in probs.items()
-                    )
-                except (TypeError, ValueError):
-                    value = None
+            # guarantee. The fallback accepts only a genuine
+            # distribution (see _score_from_probabilities); anything
+            # else voids it and the answer fails closed below.
+            value = _score_from_probabilities(ans["probabilities"])
         if not isinstance(value, (int, float)) or isinstance(value, bool):
             raise ProviderError(
                 f"pplx-decider score answer has no numeric score: {ans!r}")
@@ -499,7 +497,7 @@ class PplxDeciderAdapter:
                 f"offered labels {labels}; adapter bug or API drift."
             )
         decision = option
-        confidence = _clamp01(dec_ans.get("confidence", 0.5), "confidence")
+        confidence = _answer_confidence(dec_ans, option)
         return ScoreOutput(
             score=score, decision=decision, confidence=confidence,
             usage=usage, transcript=transcript,
@@ -522,7 +520,10 @@ class PplxDeciderAdapter:
         # alias. If both keys ever arrive with different values, the
         # API has drifted and no preference order can say which one
         # is the probability; fail closed instead of guessing.
-        carried = [ans[k] for k in ("abstain", "noul") if k in ans]
+        # An explicit null carries no value on the wire; it counts
+        # as absent, not as a competing reading.
+        carried = [ans[k] for k in ("abstain", "noul")
+                   if ans.get(k) is not None]
         if len(carried) == 2 and carried[0] != carried[1]:
             raise ProviderError(
                 f"pplx-decider abstain answer carries both "
@@ -534,7 +535,14 @@ class PplxDeciderAdapter:
             raise ProviderError(
                 f"pplx-decider abstain answer has no numeric abstain "
                 f"value: {ans!r}")
-        p_yes = _clamp01(float(p_yes), "abstain")
+        if not 0.0 <= float(p_yes) <= 1.0:
+            # A probability outside [0, 1] (NaN included; its
+            # comparisons are all false) is malformed wire data, not
+            # a value to clamp into a fabricated extreme.
+            raise ProviderError(
+                f"pplx-decider abstain answer probability out of "
+                f"range: {ans!r}")
+        p_yes = float(p_yes)
         confidence = _clamp01(abs(2 * p_yes - 1), "confidence")
         if p_yes >= 0.5:
             decision = "abstain"
@@ -551,6 +559,67 @@ def _need_answer(answers: dict[str, Any], name: str) -> dict[str, Any]:
     if not isinstance(ans, dict):
         raise ProviderError(f"pplx-decider response missing answer {name!r}")
     return ans
+
+
+def _answer_confidence(ans: dict[str, Any], option: str) -> float:
+    """The decision answer's confidence, strictly validated.
+
+    The API's ``confidence`` field is authoritative; the fallback is
+    the probabilities map's value for the chosen option. Both must be
+    genuine numbers in [0, 1], never coerced. A missing or malformed
+    confidence is malformed wire data and fails closed: confidence is
+    a measurement the model reported, never a value the adapter
+    invents (there is no midpoint default).
+    """
+    raw = ans.get("confidence")
+    if raw is None:
+        probs = ans.get("probabilities")
+        if isinstance(probs, dict):
+            raw = probs.get(option)
+    if isinstance(raw, bool) or not isinstance(raw, (int, float)):
+        raise ProviderError(
+            f"pplx-decider decision answer has no usable confidence: "
+            f"{ans!r}")
+    value = float(raw)
+    if not math.isfinite(value) or not 0.0 <= value <= 1.0:
+        raise ProviderError(
+            f"pplx-decider decision answer has no usable confidence: "
+            f"{ans!r}")
+    return value
+
+
+def _score_from_probabilities(probs: dict[str, Any]) -> float | None:
+    """Weighted rubric position from a per-level probability map.
+
+    The fallback for a score answer whose ``score`` field is absent.
+    The map must be a genuine distribution over the rubric levels:
+    non-empty, keys naming levels 0..4, values genuine numbers in
+    [0, 1] (never coerced, so a string or a bool voids the fallback),
+    and a total within rounding distance of 1. Anything else returns
+    None, which the caller turns into a terminal error rather than
+    a fabricated score.
+    """
+    if not probs:
+        return None
+    total = 0.0
+    weighted = 0.0
+    for key, prob in probs.items():
+        if isinstance(prob, bool) or not isinstance(prob, (int, float)):
+            return None
+        value = float(prob)
+        if not math.isfinite(value) or not 0.0 <= value <= 1.0:
+            return None
+        try:
+            level = int(key)
+        except (TypeError, ValueError):
+            return None
+        if not 0 <= level < len(_SCORE_LEVELS):
+            return None
+        total += value
+        weighted += level * value
+    if abs(total - 1.0) > 0.01:
+        return None
+    return weighted
 
 
 def _clamp01(value: Any, name: str) -> float:

@@ -1258,6 +1258,12 @@ Cause: the API returned a body without the documented answers shape.
 The adapter fails closed rather than treating a missing answer as a
 decision. This means API drift. Fix: report it.
 
+**`pplx-decider response missing 'usage' object`**
+Cause: the API returned a body without the documented usage
+counters. A call without counters cannot be priced, and the adapter
+fails closed rather than recording it as a free call. This means
+API drift. Fix: report it.
+
 **`pplx-decider response names model '...' but the adapter pinned '...'; refusing a measurement under the wrong model name.`**
 Cause: the response's `model` echo names different weights than the
 adapter requested. The adapter refuses to record the measurement
@@ -1289,6 +1295,18 @@ criteria. Fix: report it. This means API drift or an adapter bug.
 Cause: the answer carried neither the documented value nor a
 probability map to derive it from. Fix: report it with the answer
 payload.
+
+**`pplx-decider decision answer has no usable confidence: ...`**
+Cause: the decision answer carried no confidence field and no
+probabilities value for the chosen option, or the value was not a
+number in range. Confidence is a measurement the model reports.
+The adapter fails closed rather than inventing one. Fix: report it
+with the answer payload.
+
+**`pplx-decider abstain answer probability out of range: ...`**
+Cause: the abstain probability was a number outside 0 to 1. The
+adapter fails closed rather than clamping it into an extreme
+measurement. Fix: report it with the answer payload.
 
 **`pplx-decider abstain answer carries both 'abstain' (...) and 'noul' (...) with different values; refusing a measurement whose probability is ambiguous.`**
 Cause: the abstain answer carried the probability under two keys

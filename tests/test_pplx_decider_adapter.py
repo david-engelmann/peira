@@ -165,6 +165,50 @@ class TestPplxChoice(unittest.TestCase):
         out = _adapter(transport=t).decide(_case_input(), "choice", _ctx())
         self.assertAlmostEqual(out.confidence, 0.99816)
 
+    def test_choice_missing_confidence_everywhere_is_terminal(self):
+        # No confidence field and no probabilities map: the value is
+        # a measurement the model reports, never a midpoint the
+        # adapter invents (second red team, 2026-10-15).
+        t = _transport_for({
+            "decision": {"type": "choice", "choice": "approve"},
+        })
+        with self.assertRaises(ProviderError):
+            _adapter(transport=t).decide(_case_input(), "choice", _ctx())
+
+    def test_choice_string_confidence_is_terminal(self):
+        t = _transport_for({
+            "decision": {"type": "choice", "choice": "approve",
+                         "confidence": "0.73"},
+        })
+        with self.assertRaises(ProviderError):
+            _adapter(transport=t).decide(_case_input(), "choice", _ctx())
+
+    def test_choice_confidence_above_one_is_terminal(self):
+        t = _transport_for({
+            "decision": {"type": "choice", "choice": "approve",
+                         "confidence": 1.2},
+        })
+        with self.assertRaises(ProviderError):
+            _adapter(transport=t).decide(_case_input(), "choice", _ctx())
+
+    def test_choice_probability_fallback_value_is_validated(self):
+        # The fallback reads probabilities[choice]; a value of -5
+        # must not clamp into a measured 0.0.
+        t = _transport_for({
+            "decision": {"type": "choice", "choice": "approve",
+                         "probabilities": {"approve": -5}},
+        })
+        with self.assertRaises(ProviderError):
+            _adapter(transport=t).decide(_case_input(), "choice", _ctx())
+
+    def test_score_missing_decision_confidence_is_terminal(self):
+        t = _transport_for({
+            "score": {"type": "score", "score": 3.0},
+            "decision": {"type": "choice", "choice": "approve"},
+        })
+        with self.assertRaises(ProviderError):
+            _adapter(transport=t).decide(_case_input(), "score", _ctx())
+
     def test_choice_request_shape(self):
         t = _transport_for({"decision": {"type": "choice",
                                          "choice": "deny",
@@ -259,6 +303,51 @@ class TestPplxScore(unittest.TestCase):
         with self.assertRaises(ProviderError):
             _adapter(transport=t).decide(_case_input(), "score", _ctx())
 
+    def _score_with_probs(self, probs):
+        return _transport_for({
+            "score": {"type": "score", "probabilities": probs},
+            "decision": {"type": "choice", "choice": "approve",
+                         "confidence": 0.9},
+        })
+
+    def test_score_fallback_empty_probabilities_is_terminal(self):
+        # An empty map is missing data, not a measured worst score
+        # (second red team, 2026-10-15: sum() of nothing read as 0.0).
+        t = self._score_with_probs({})
+        with self.assertRaises(ProviderError):
+            _adapter(transport=t).decide(_case_input(), "score", _ctx())
+
+    def test_score_fallback_out_of_range_level_is_terminal(self):
+        t = self._score_with_probs({"99": 1.0})
+        with self.assertRaises(ProviderError):
+            _adapter(transport=t).decide(_case_input(), "score", _ctx())
+
+    def test_score_fallback_value_above_one_is_terminal(self):
+        t = self._score_with_probs({"4": 2.0})
+        with self.assertRaises(ProviderError):
+            _adapter(transport=t).decide(_case_input(), "score", _ctx())
+
+    def test_score_fallback_partial_mass_is_terminal(self):
+        # The stated mass totals 0.1; the missing 0.9 is not the
+        # adapter's to invent or silently ignore.
+        t = self._score_with_probs({"4": 0.1})
+        with self.assertRaises(ProviderError):
+            _adapter(transport=t).decide(_case_input(), "score", _ctx())
+
+    def test_score_fallback_string_value_is_terminal(self):
+        # float("1.0") would coerce this into a maximal score.
+        t = self._score_with_probs({"4": "1.0"})
+        with self.assertRaises(ProviderError):
+            _adapter(transport=t).decide(_case_input(), "score", _ctx())
+
+    def test_score_fallback_sparse_full_mass_accepted(self):
+        # Levels carrying no probability may be omitted; the stated
+        # mass still totals 1 and the weighted position is exact.
+        t = self._score_with_probs({"0": 0.25, "4": 0.75})
+        out = _adapter(transport=t).decide(_case_input(), "score",
+                                           _ctx())
+        self.assertAlmostEqual(out.score, 0.75)
+
     def test_score_sends_two_questions(self):
         a, t = self._score_adapter(3)
         a.decide(_case_input(), "score", _ctx())
@@ -325,6 +414,23 @@ class TestPplxNoul(unittest.TestCase):
         self.assertEqual(out.decision, "other")
         self.assertFalse(out.abstained)
 
+    def test_null_abstain_alias_falls_back_to_noul(self):
+        # An explicit null under the alias key carries no value; the
+        # verified noul reading stands (second red team, 2026-10-15).
+        t = _transport_for({"abstain": {"type": "noul", "abstain": None,
+                                        "noul": 0.9}})
+        out = _adapter(transport=t).decide(_case_input(), "abstain",
+                                           _ctx())
+        self.assertEqual(out.decision, "abstain")
+
+    def test_abstain_probability_out_of_range_is_terminal(self):
+        # 1.7 is not a probability; clamping it would fabricate a
+        # maximal measurement.
+        t = _transport_for({"abstain": {"type": "noul", "noul": 1.7}})
+        with self.assertRaises(ProviderError):
+            _adapter(transport=t).decide(_case_input(), "abstain",
+                                         _ctx())
+
     def test_disagreeing_abstain_keys_are_terminal(self):
         # If the API ever adds an "abstain" key that disagrees with
         # the verified "noul" value, no preference order can say which
@@ -372,17 +478,40 @@ class TestPplxResponseValidation(unittest.TestCase):
         with self.assertRaises(ProviderError):
             _adapter(transport=t).decide(_case_input(), "choice", _ctx())
 
-    def test_missing_usage_defaults_to_zero_tokens(self):
+    def test_missing_usage_is_terminal(self):
+        # Cost accounting fails closed (second red team, 2026-10-15):
+        # a response without usage counters cannot be priced, and
+        # recording it as a free call would silently understate the
+        # run's spend. An earlier version of this test enshrined the
+        # zero-token default; that behaviour is gone.
         def fake(payload):
             return {"answers": {"decision": {"type": "choice",
                                              "choice": "deny",
                                              "confidence": 0.9}},
                     "model": MODEL_ID, "_latency_ms": 3.0}
-        out = _adapter(transport=fake).decide(_case_input(), "choice",
-                                              _ctx())
-        self.assertEqual(out.usage.tokens_in, 0)
-        self.assertEqual(out.usage.tokens_out, 0)
-        self.assertEqual(out.usage.latency_ms, 3.0)
+        with self.assertRaises(ProviderError):
+            _adapter(transport=fake).decide(_case_input(), "choice",
+                                           _ctx())
+
+    def test_non_dict_usage_is_terminal(self):
+        def fake(payload):
+            return {"answers": {"decision": {"type": "choice",
+                                             "choice": "deny",
+                                             "confidence": 0.9}},
+                    "model": MODEL_ID, "usage": [435, 3]}
+        with self.assertRaises(ProviderError):
+            _adapter(transport=fake).decide(_case_input(), "choice",
+                                           _ctx())
+
+    def test_missing_usage_counter_is_terminal(self):
+        def fake(payload):
+            return {"answers": {"decision": {"type": "choice",
+                                             "choice": "deny",
+                                             "confidence": 0.9}},
+                    "model": MODEL_ID, "usage": {"input_tokens": 435}}
+        with self.assertRaises(ProviderError):
+            _adapter(transport=fake).decide(_case_input(), "choice",
+                                           _ctx())
 
 
 class TestPplxQuestionValidation(unittest.TestCase):
@@ -530,6 +659,16 @@ class TestPplxErrors(unittest.TestCase):
             with self.assertRaises(ProviderError) as cm:
                 adapter._http_transport({"model": MODEL_ID})
         self.assertIn("non-JSON", str(cm.exception))
+
+    def test_non_dict_transport_body_is_terminal(self):
+        # An injected transport returning a non-object body must meet
+        # the same ProviderError as the real transport's non-object
+        # guard, not an AttributeError from the parser.
+        def fake(payload):
+            return ["not", "an", "object"]
+        with self.assertRaises(ProviderError):
+            _adapter(transport=fake).decide(_case_input(), "choice",
+                                            _ctx())
 
     def test_transcript_has_no_key_material(self):
         import json
