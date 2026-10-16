@@ -92,6 +92,7 @@ semif = "peira.adapters.semif:SemifAdapter"
 strands-decider = "peira.adapters.strands_decider:StrandsDeciderAdapter"
 von = "peira.adapters.von:VonAdapter"
 gliner-decide = "peira.adapters.gliner_decide:GlinerDecideAdapter"
+decider = "peira.adapters.decider:DeciderAdapter"
 
 [project.urls]
 Homepage = "https://github.com/david-engelmann/peira"
