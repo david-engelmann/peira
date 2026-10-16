@@ -28,6 +28,36 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
   contention, a host capacity state rather than an adapter
   defect.
 
+### Added Perplexity pplx-decider adapter (Decisions API)
+
+- New `PplxDeciderAdapter` (entry point `pplx-decider`) for
+  Perplexity's pplx-decider decision model on the hosted Decisions
+  API, the endpoint Perplexity positions directly against TypeSafe's
+  Jev. The adapter sends the Jev adapter's question text unchanged
+  and reads the unenveloped response body (`answers`, `model`,
+  `usage`), so the two wires are measured on identical decision
+  spaces.
+- Two pinned models are supported. Each is named by its full served
+  id, with per-instance version and cache namespace following the
+  pin. The two are `pplx-decider-v1.1-27b` (the current version, the
+  default) and `pplx-decider-v1-27b` (the launch version).
+  Unversioned names and every other id are rejected at construction.
+  The adapter also refuses a response whose echoed `model` differs
+  from the pin, so a measurement can never seal under the wrong
+  model's name.
+- Pricing gains entries for both models at $0.02 per 1M input tokens
+  with output free, verified against Perplexity's official Decisions
+  API documentation on 2026-10-15. The live docs rate of $0.02
+  supersedes the $0.04 figure carried in pre-launch secondary
+  reporting. The pricing table moves to version 2026-10-15.3.
+- Live state at landing. The wire shape was verified against the
+  live API on 2026-10-15, before the adapter was written, with a
+  probe call carrying the adapter's exact question text. The probe
+  returned HTTP 200 for `pplx-decider-v1.1-27b` with all three
+  primitives answered. The abstain probability arrived under the
+  `noul` key only. The adapter's first measured exercise is the
+  standard driver canary.
+
 ### Added Cloudflare Clef adapter (Workers AI decision models)
 
 - New `ClefAdapter` (entry point `clef`) for Cloudflare's Clef
