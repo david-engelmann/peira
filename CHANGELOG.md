@@ -17,7 +17,7 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
   wrong model's name.
 - Pricing gains a `celeris-1-decision` entry at $0.04 per 1M input
   tokens with output free. The rate is the vendor-stated price. The
-  pricing table moves to version 2026-10-15.3.
+  pricing table moves to version 2026-10-15.4.
 - Live state at landing. The wire shape was verified against the
   live API on 2026-10-15 before the adapter was written. A probe
   carrying the adapter's exact question text returned HTTP 200 on a

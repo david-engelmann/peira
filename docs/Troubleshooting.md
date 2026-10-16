@@ -1361,7 +1361,7 @@ all return 422 on this wire. The adapter validates every question
 client-side before sending and pins the model the endpoint serves, so
 this means API drift. Fix: report it. Don't retry.
 
-**`celeris API error 429` / `celeris API error 529` / `celeris API error 5xx`**
+**`celeris API error 408` / `celeris API error 429` / `celeris API error 529` / `celeris API error 5xx`**
 Cause: rate limit or a transient Celeris failure. The runner retries
 these under `--max-attempts`. Fix: re-run. Sustained failures mean the
 endpoint is degraded.
