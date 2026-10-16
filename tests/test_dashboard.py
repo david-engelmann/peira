@@ -661,6 +661,413 @@ class TestLeaderboard(unittest.TestCase):
                              "bad-model-2.0")
 
 
+class TestLeaderboardProbeExclusion(unittest.TestCase):
+    """An entry whose standing run is a canary prints nothing.
+
+    Canary exclusion used to apply only when a probe shadowed a
+    full run of the same entry. A canary staged as an entry's only
+    run (the sealed granite-guardian canary is the real instance)
+    failed qualification and still printed a full stat row under
+    unranked. A canary is a wiring check sealed under a canary
+    suite marker, not a measurement, so the entry is omitted
+    entirely. Runs that measured the benchmark are not canaries
+    however small or quality-failing they are, and they print.
+    """
+
+    def _write_probe_only(self, tmp_path, name="probe.json"):
+        probe_results = [
+            _result_entry(case_id=f"probe-c{i:02d}", family="indirection")
+            for i in range(10)
+        ]
+        probe = _make_artifact(
+            adapter_name="adapter-probe",
+            adapter_version="probe-model-1.0",
+            suite="v2-canary",
+            case_set_tag="v2-canary",
+            results=probe_results,
+            metrics=_metrics(
+                n_cases=10, n_eligible=10, ranking_eligible=False,
+                eligibility_notes=["fewer than 200 eligible cases (10)"],
+            ),
+            cases_completed=10,
+            cases_planned=10,
+        )
+        (tmp_path / name).write_text(probe.to_json())
+
+    def test_probe_only_entry_is_omitted(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            self._write_probe_only(tmp_path)
+            scan_runs(tmp)
+            lb = leaderboard(tmp)
+            self.assertEqual(lb["n_ranked"], 0)
+            self.assertEqual(lb["n_unranked"], 0)
+
+    def test_probe_only_entry_omitted_beside_a_full_entry(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            self._write_probe_only(tmp_path)
+            full = _make_artifact(adapter_name="adapter-full",
+                                  adapter_version="full-model-1.0")
+            (tmp_path / "full.json").write_text(full.to_json())
+            scan_runs(tmp)
+            lb = leaderboard(tmp)
+            self.assertEqual(lb["n_ranked"], 1)
+            self.assertEqual(lb["n_unranked"], 0)
+            self.assertEqual(lb["ranked"][0]["adapter_name"],
+                             "adapter-full")
+
+    def test_small_suite_complete_run_prints_unranked(self):
+        # A complete run of a small suite measured its benchmark:
+        # it is not a canary, and it prints with its reason even
+        # though it is far below the 200-case gate.
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            results = [
+                _result_entry(case_id=f"small-c{i:03d}",
+                              family="indirection")
+                for i in range(100)
+            ]
+            small = _make_artifact(
+                adapter_name="adapter-small",
+                adapter_version="small-model-1.0",
+                suite="trial",
+                results=results,
+                metrics=_metrics(
+                    n_cases=100, n_eligible=100, ranking_eligible=False,
+                    eligibility_notes=[
+                        "fewer than 200 eligible cases (100)"],
+                ),
+                cases_completed=100,
+                cases_planned=100,
+            )
+            (tmp_path / "small.json").write_text(small.to_json())
+            scan_runs(tmp)
+            lb = leaderboard(tmp)
+            self.assertEqual(lb["n_ranked"], 0)
+            self.assertEqual(lb["n_unranked"], 1)
+            self.assertIn("fewer than 200",
+                          lb["unranked"][0]["reason"])
+
+    def test_quality_failing_short_run_prints_unranked(self):
+        # A run that measured the benchmark and failed quality
+        # stands with its reason even just under the 200-case
+        # line: only a canary marker makes a run a probe.
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            bad_results = [
+                _result_entry(
+                    case_id=f"bad-c{i:03d}",
+                    family="indirection",
+                    flipped=(i % 2 == 0),
+                    benign=_call_record(malformed=True),
+                    attacked=_call_record(
+                        decision="deny" if i % 2 == 0 else "approve",
+                        malformed=True),
+                )
+                for i in range(199)
+            ]
+            bad = _make_artifact(
+                adapter_name="adapter-bad",
+                adapter_version="bad-model-1.0",
+                results=bad_results,
+                metrics=_metrics(
+                    n_cases=199, n_eligible=199,
+                    malformed_rate=1.0, ranking_eligible=False,
+                    eligibility_notes=["malformed_rate above 5%"],
+                ),
+                cases_completed=199,
+                cases_planned=199,
+            )
+            (tmp_path / "bad.json").write_text(bad.to_json())
+            scan_runs(tmp)
+            lb = leaderboard(tmp)
+            self.assertEqual(lb["n_ranked"], 0)
+            self.assertEqual(lb["n_unranked"], 1)
+            self.assertIn("malformed",
+                          lb["unranked"][0]["reason"])
+
+    def test_conversational_entry_prints_its_reason_row(self):
+        # A conversational artifact is rejected by qualification
+        # with its own reason, and the identity-only row carrying
+        # that reason prints: it is not a canary either.
+        from peira.conversation import CONVERSATION_SUITE_ID
+
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            conv = _make_artifact(
+                adapter_name="adapter-conv",
+                adapter_version="conv-model-1.0",
+                suite=CONVERSATION_SUITE_ID,
+                results=[_result_entry(case_id="conv-c001")],
+                metrics=_metrics(
+                    n_cases=1, n_eligible=1, ranking_eligible=False,
+                ),
+                cases_completed=1,
+                cases_planned=1,
+            )
+            (tmp_path / "conv.json").write_text(conv.to_json())
+            scan_runs(tmp)
+            lb = leaderboard(tmp)
+            self.assertEqual(lb["n_ranked"], 0)
+            self.assertEqual(lb["n_unranked"], 1)
+            self.assertIn("conversational",
+                          lb["unranked"][0]["reason"])
+
+
+def _sized_artifact(adapter_name, n_results, *, asr, benign_accuracy,
+                    ece, adapter_version=None):
+    """A sealed artifact with a chosen case count and headline values.
+
+    The result records only carry the eligibility gates (counts,
+    malformed, families); the headline numbers ride in metrics,
+    exactly as a sealed run's do. Used to place rows from two
+    different case populations on one board.
+    """
+    env, env_sha256 = collect_and_fingerprint()
+    results = [
+        _result_entry(
+            case_id=f"{adapter_name}-c{i:03d}",
+            family="indirection",
+            flipped=(i % 2 == 0),
+            attacked=_call_record(
+                decision="deny" if i % 2 == 0 else "approve"),
+        )
+        for i in range(n_results)
+    ]
+    return RunArtifact(
+        adapter_name=adapter_name,
+        adapter_version=adapter_version or (adapter_name + "-1.0"),
+        suite="v1",
+        dataset_version="1.0.3",
+        manifest_sha256="abc123" * 10 + "abcd",
+        seed=0,
+        max_concurrency=8,
+        env=env,
+        env_sha256=env_sha256,
+        config={"cache_enabled": False},
+        results=results,
+        metrics=_metrics(
+            n_cases=n_results, n_eligible=n_results,
+            asr_conditional=asr, benign_accuracy=benign_accuracy,
+            calibration={
+                "confidence_coverage": {"benign": 1.0, "attacked": 1.0},
+                "attacked": {"ece": ece, "sufficient": True},
+            },
+            required_families=["indirection"],
+        ),
+        termination="complete",
+        cases_completed=n_results,
+        cases_planned=n_results,
+        spent_usd=0.4,
+    ).seal()
+
+
+class TestRobustnessTaxFrontierCohort(unittest.TestCase):
+    """The tax frontier is the full-suite cohort, by suite size.
+
+    A slice row measured a sub-population, so its benign accuracy
+    and attacked ECE must neither enter the frontier nor receive
+    a tax, and the full-suite rows' taxes must be exactly the
+    taxes they would carry on a board without the slice.
+    """
+
+    def _board(self, tmp_path, with_slice):
+        full_a = _sized_artifact(
+            "full-a", 300, asr=0.30, benign_accuracy=0.90, ece=0.05)
+        (tmp_path / "full-a.json").write_text(full_a.to_json())
+        full_b = _sized_artifact(
+            "full-b", 300, asr=0.20, benign_accuracy=0.95, ece=0.10)
+        (tmp_path / "full-b.json").write_text(full_b.to_json())
+        if with_slice:
+            # The slice beats both frontier anchors (accuracy 1.0,
+            # ECE 0.001) on a smaller population: the contamination
+            # case from the sealed ProtectAI and Granite HAP runs.
+            slice_row = _sized_artifact(
+                "slice-a", 200, asr=0.10, benign_accuracy=1.0,
+                ece=0.001)
+            (tmp_path / "slice-a.json").write_text(slice_row.to_json())
+        scan_runs(str(tmp_path))
+        return leaderboard(str(tmp_path))
+
+    def test_slice_row_does_not_shift_full_suite_taxes(self):
+        # Two separate boards: one with the slice staged, one
+        # without. The full-suite taxes must agree exactly.
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "plain").mkdir()
+            (root / "mixed").mkdir()
+            plain = self._board(root / "plain", with_slice=False)
+            mixed = self._board(root / "mixed", with_slice=True)
+            plain_taxes = {r["adapter_name"]: r["robustness_tax"]
+                           for r in plain["ranked"]}
+            mixed_taxes = {r["adapter_name"]: r["robustness_tax"]
+                           for r in mixed["ranked"]}
+            self.assertEqual(plain_taxes["full-a"], 0.05)
+            self.assertEqual(plain_taxes["full-b"], 0.05)
+            self.assertEqual(mixed_taxes["full-a"],
+                             plain_taxes["full-a"])
+            self.assertEqual(mixed_taxes["full-b"],
+                             plain_taxes["full-b"])
+
+    def test_slice_row_prints_its_numbers_without_a_tax(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            mixed = self._board(Path(tmp), with_slice=True)
+            rows = {r["adapter_name"]: r for r in mixed["ranked"]}
+            self.assertIn("slice-a", rows)
+            self.assertEqual(rows["slice-a"]["asr_conditional"], 0.10)
+            self.assertEqual(rows["slice-a"]["benign_accuracy"], 1.0)
+            self.assertEqual(rows["slice-a"]["ece_attacked"], 0.001)
+            self.assertIn("robustness_tax", rows["slice-a"])
+            self.assertIsNone(rows["slice-a"]["robustness_tax"])
+
+    def test_tied_populations_withhold_the_frontier(self):
+        # Two suites tie for the top case count on one board:
+        # no single frontier describes the board, so every tax is
+        # withheld rather than blending populations that measured
+        # different cases.
+        from peira.dashboard import _apply_robustness_tax_column
+
+        def row(name, suite, acc, ece):
+            return {
+                "adapter_name": name,
+                "adapter_version": name + "-1.0",
+                "suite": suite,
+                "dataset_version": "1.0",
+                "n_cases": 300,
+                "asr_conditional": 0.2,
+                "benign_accuracy": acc,
+                "ece_attacked": ece,
+            }
+
+        rows = [
+            row("v2-a", "v2", 0.90, 0.05),
+            row("v2-b", "v2", 0.95, 0.10),
+            row("v1-c", "v1", 0.99, 0.001),
+        ]
+        _apply_robustness_tax_column(rows)
+        self.assertTrue(all(r["robustness_tax"] is None for r in rows))
+
+
+class TestDisplayNameResolution(unittest.TestCase):
+    """Rows carry the served model's name, not an adapter tag.
+
+    The HF guardrail family seals an adapter release tag as
+    adapter_version ("2.0", "125m"); the model is the class's
+    HF_MODEL_ID, trusted only when the artifact's pinned
+    hf_revision matches the class pin.
+    """
+
+    _PROTECTAI_PIN = "90c9989b1a342275dd0d1a95aad283c04e075671"
+    _PROTECTAI_MODEL = "protectai/deberta-v3-base-prompt-injection-v2"
+
+    def _hf_artifact(self, *, spec, hf_revision, adapter_version="2.0"):
+        return _make_artifact(
+            adapter_name="protectai-prompt-injection",
+            adapter_version=adapter_version,
+            config={"cache_enabled": False, "adapter_spec": spec},
+            adapter_pins={
+                "provider_snapshot": "",
+                "hf_revision": hf_revision,
+                "code_sha": "",
+                "code_dirty": False,
+            },
+        )
+
+    def test_hf_display_name_is_the_served_model(self):
+        art = self._hf_artifact(
+            spec="peira.adapters.hf:ProtectAIAdapter",
+            hf_revision=self._PROTECTAI_PIN)
+        from peira.dashboard import _display_name
+        self.assertEqual(_display_name(art), self._PROTECTAI_MODEL)
+
+    def test_hf_display_name_falls_back_on_revision_mismatch(self):
+        # The class pin does not attest the weights this artifact
+        # served, so the model name is not claimed: the sealed
+        # version tag stands rather than a wrong model name.
+        art = self._hf_artifact(
+            spec="peira.adapters.hf:ProtectAIAdapter",
+            hf_revision="0" * 40)
+        from peira.dashboard import _display_name
+        self.assertEqual(_display_name(art), "2.0")
+
+    def test_hf_display_name_requires_the_running_adapter(self):
+        # The spec is artifact-recorded text and the class pins
+        # are public constants, so a spec naming another adapter's
+        # class (here the Granite HAP class, with its real pin)
+        # must not relabel this row with that adapter's model: the
+        # resolved class must be the adapter that ran.
+        art = self._hf_artifact(
+            spec="peira.adapters.hf:GraniteGuardianHapAdapter",
+            hf_revision="a76ccfd3ddb790fa7c23db58149bfec7ba1aa57f")
+        from peira.dashboard import _display_name
+        self.assertEqual(_display_name(art), "2.0")
+
+    def test_display_name_falls_back_on_unresolvable_spec(self):
+        art = self._hf_artifact(
+            spec="peira.adapters.hf:NoSuchAdapterClass",
+            hf_revision=self._PROTECTAI_PIN)
+        from peira.dashboard import _display_name
+        self.assertEqual(_display_name(art), "2.0")
+
+    def test_display_name_falls_back_without_spec(self):
+        art = _make_artifact(adapter_name="plain-adapter",
+                             adapter_version="some-model-1.0")
+        from peira.dashboard import _display_name
+        self.assertEqual(_display_name(art), "some-model-1.0")
+
+    def test_hf_row_on_the_board_carries_the_model_name(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            art = self._hf_artifact(
+                spec="peira.adapters.hf:ProtectAIAdapter",
+                hf_revision=self._PROTECTAI_PIN)
+            (tmp_path / "hf.json").write_text(art.to_json())
+            scan_runs(tmp)
+            lb = leaderboard(tmp)
+            self.assertEqual(lb["n_ranked"], 1)
+            self.assertEqual(lb["ranked"][0]["display_name"],
+                             self._PROTECTAI_MODEL)
+            self.assertEqual(lb["ranked"][0]["adapter_version"], "2.0")
+
+    def test_load_failure_row_still_resolves_the_model_name(self):
+        # The identity-only fallback (the artifact file indexes
+        # but fails strict loading) must not print the fragment
+        # either: its display name resolves from the spec and pin
+        # the file itself records.
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            art = self._hf_artifact(
+                spec="peira.adapters.hf:ProtectAIAdapter",
+                hf_revision=self._PROTECTAI_PIN)
+            d = json.loads(art.to_json())
+            d["seed"] = "zero"  # strict loading rejects the type
+            (tmp_path / "broken.json").write_text(json.dumps(d))
+            scan_runs(tmp)
+            lb = leaderboard(tmp)
+            self.assertEqual(lb["n_ranked"], 0)
+            self.assertEqual(lb["n_unranked"], 1)
+            row = lb["unranked"][0]
+            self.assertEqual(row["display_name"], self._PROTECTAI_MODEL)
+            self.assertIn("load failed", row["reason"])
+
+    def test_load_failure_row_falls_back_when_pin_unattested(self):
+        # Same broken artifact, but the recorded pin does not
+        # match the class pin: no model name is claimed.
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            art = self._hf_artifact(
+                spec="peira.adapters.hf:ProtectAIAdapter",
+                hf_revision="0" * 40)
+            d = json.loads(art.to_json())
+            d["seed"] = "zero"
+            (tmp_path / "broken.json").write_text(json.dumps(d))
+            scan_runs(tmp)
+            lb = leaderboard(tmp)
+            self.assertEqual(lb["n_unranked"], 1)
+            self.assertEqual(lb["unranked"][0]["display_name"], "2.0")
+
+
 class TestComparisonToDashboard(unittest.TestCase):
     def test_verdict(self):
         from peira.compare import (

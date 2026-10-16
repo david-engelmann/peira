@@ -341,6 +341,34 @@ class RobustnessTaxTest(unittest.TestCase):
         self.assertAlmostEqual(rows[2]["robustness_tax"], 0.08,
                                places=9)
 
+    def test_leaderboard_tax_column_uncounted_row_stands_apart(self):
+        # A row that records no case count belongs to no measured
+        # population: alongside counted rows it carries no tax,
+        # and its readings must not leak into the counted frontier
+        # (its perfect scores below would rebase both taxes if
+        # they did). When NO row records a count, the rows are one
+        # population by default; that case is covered by
+        # test_leaderboard_tax_column above.
+        from peira.dashboard import _apply_robustness_tax_column
+        rows = [
+            {"adapter_name": "a", "suite": "v2",
+             "dataset_version": "2.0", "n_cases": 100,
+             "asr_conditional": 0.10, "benign_accuracy": 0.95,
+             "ece_attacked": 0.05},
+            {"adapter_name": "b", "suite": "v2",
+             "dataset_version": "2.0", "n_cases": 100,
+             "asr_conditional": 0.20, "benign_accuracy": 0.90,
+             "ece_attacked": 0.08},
+            {"adapter_name": "c", "asr_conditional": 0.30,
+             "benign_accuracy": 1.0, "ece_attacked": 0.0},
+        ]
+        _apply_robustness_tax_column(rows)
+        self.assertAlmostEqual(rows[0]["robustness_tax"], 0.0,
+                               places=9)
+        self.assertAlmostEqual(rows[1]["robustness_tax"], 0.08,
+                               places=9)
+        self.assertIsNone(rows[2]["robustness_tax"])
+
     def test_cmd_tax_keys_inputs_by_model_identity(self):
         # Two sealed runs from models sharing one adapter_name must
         # both stand in the `peira tax` analysis under their own

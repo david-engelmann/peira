@@ -306,6 +306,26 @@ condition.
 Do not rank on diagnostics. They are there to explain a ranking,
 not to produce one.
 
+### Robustness tax
+
+Definition. The combined tax printed on the leaderboard. The
+accuracy tax (the best observed benign accuracy minus the row's
+benign accuracy) plus the calibration tax (the row's attacked
+ECE minus the best observed attacked ECE), both read against
+the observed frontier.
+
+Scope. The frontier is one measurement population. Only rows
+that ran the most cases within the board's suite and
+dataset version set the best-observed anchors and receive a tax.
+A slice row measured a sub-population, so it neither sets the
+anchors nor, on the full-suite board, carries a tax. When two
+populations tie at that size, no frontier is published
+and no tax prints.
+
+Do not compare a tax across boards with different full-suite
+cohorts. The anchors are what the cohort achieved, and a new
+frontier row moves every tax on the board.
+
 ## Cost and operations
 
 ### Cost and latency
