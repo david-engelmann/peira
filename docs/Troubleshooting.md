@@ -1293,7 +1293,57 @@ window is refused with a 422, in place of a silently truncated
 measurement. Fix: report oversize states; do not work around them
 by truncating the case. A 422 on a state that fits the window is a
 genuine request bug; report it.
+**`decider adapter pins checkpoint 'Mapika/decider-0.8b'; got '...'`**
+Cause: an unlisted checkpoint id was passed. The adapter measures
+exactly one checkpoint, pinned at a fixed Hub revision. Fix: don't
+pass `checkpoint=` at all.
 
+**`decider adapter pins revision 'a0a01d6f8135298f400a8c856b355793012ae971'; got '...'`**
+Cause: a revision other than the pinned one was passed. The pin is
+the measurement, so floating branches and other commits are
+rejected. Fix: don't pass `revision=` at all.
+
+**`the decider adapter needs the decider-ai package: run \`pip install decider-ai\`, then retry.`**
+Cause: the optional `decider-ai` package is not installed in this
+environment. The adapter imports it lazily at construction. Fix:
+install it as the message says, then retry.
+
+**`decider failed to load checkpoint 'Mapika/decider-0.8b' at revision '...': ...`**
+Cause: the pinned checkpoint could not be downloaded or loaded
+(network, disk, or a corrupt cache). Terminal. Fix: check the
+Hugging Face cache and disk space, then retry.
+
+**`decider system_one failed: ...`**
+Cause: the local model raised during inference. There is no status
+code, so the runner treats it as permanent and records the call
+malformed. Fix: read the wrapped error; a repeat usually means a
+broken local install.
+
+**`decider returned choice '...' outside the offered labels [...]; adapter bug or API drift.` / `decider response missing answer '...'` / `decider score answer has no numeric score: ...` / `decider abstain answer has no numeric noul value: ...`**
+Cause: an answer is missing, carries a label the adapter never
+offered, or lacks its numeric field. The adapter refuses to guess,
+because guessing would corrupt the measurement. Terminal. Fix:
+report it.
+
+**`decider returned a non-object result: ...` / `decider response missing 'answers' object`**
+Cause: the local package returned something that is not a result
+object carrying an answers map. Terminal. Fix: report it; a
+repeat usually means a broken local install.
+
+**`decider returned non-numeric confidence: ...` (`score` and `noul` take the same form)**
+Cause: a probability, score, or noul field was not a number, so
+there is nothing to read. Values are clamped into range only when
+numeric; non-numeric is terminal. Fix: report it.
+
+**`decider answer carries no probability for the chosen option '...': ...`**
+Cause: the answer names a choice but its probabilities map has no
+entry for that choice, so there is no raw probability to report.
+The adapter will not substitute the rescaled confidence field or
+any other figure. Terminal. Fix: report it.
+
+**`decider does not support primitive '...'`**
+Cause: the caller asked for a primitive outside choice, score,
+and abstain. Fix: this is a wiring bug in the caller; report it.
 **`gliner-decide adapter pins checkpoint 'fastino/GLiNER2.5-Decide'; got '...'`**
 Cause: an unlisted checkpoint id was passed. The adapter measures
 exactly one checkpoint, pinned at a fixed Hub revision. Fix: don't
