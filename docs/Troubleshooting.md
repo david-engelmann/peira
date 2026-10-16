@@ -1337,10 +1337,11 @@ Cause: no Strands Decider server is listening at the configured
 endpoint. The message continues with the serve command that starts
 one (`strands-decider serve
 StrandsAgents/strands-decider-2B-hobson-v21 --port 8000`, after
-`pip install strands-decider`; the server picks cuda, then mps,
-then cpu when `--device` is not passed). The first start
-downloads the checkpoint and its Qwen3.5-2B base weights, about
-4.5 GB. Terminal: the runner never retries a missing local server.
+`pip install strands-decider`). The hint omits `--device`, so
+the server picks cuda, then mps, then cpu on its own. The
+first start downloads the checkpoint and its Qwen3.5-2B base
+weights, about 4.5 GB. Terminal: the runner never retries a
+missing local server.
 Fix: start the server, then re-run.
 
 **`gliner-decide adapter pins checkpoint 'fastino/GLiNER2.5-Decide'; got '...'`**

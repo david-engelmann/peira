@@ -1287,9 +1287,11 @@ it. The server's `confidence` field on a choice answer is a
 rescaled value, stretched so an even split gives 0 and certainty
 gives 1 whatever the number of options. Peira's confidence
 contract is the model's probability for the chosen option, so
-wherever an answer carries `probabilities` the adapter reports
-`probabilities[decision]` and leaves the rescaled figure in the
-transcript only. The same correction applies to the paired
+the adapter reports `probabilities[decision]` and leaves the
+rescaled figure in the transcript only. A decision answer with
+no numeric probability for its chosen option is a terminal
+error, never a fallback to the rescaled figure. The same
+correction applies to the paired
 decision answer on score calls. A score answer's `score` field is
 the probability weighted level position on the 0..levels-1 scale,
 which is the shape the Jev score mapping already normalizes.
