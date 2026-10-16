@@ -141,6 +141,18 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
   two serve settings a measurement depends on (the raw noul
   decision rule and refuse-on-overflow) because the adapter cannot
   see either of them.
+### Added Decider adapter
+
+- New `decider` adapter for Mapika's Decider 0.8B (Apache 2.0),
+  the small arm of the Decider family of System One-style models,
+  run in-process through the `decider-ai` package. The adapter
+  sends Jev's question builders unchanged, reports the raw
+  probability for the chosen option as the confidence (the
+  answer's own confidence field is the rescaled TypeSafe figure),
+  normalizes the score from its 0..levels-1 index scale, and
+  never overrides the checkpoint's fitted per-type temperatures.
+  The checkpoint is pinned to `Mapika/decider-0.8b` at a fixed Hub
+  revision.
 
 ### Added Jev 1.14 snapshot support (jev-1.14.0)
 

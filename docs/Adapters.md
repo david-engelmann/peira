@@ -1334,6 +1334,67 @@ A server that cannot be reached is a terminal provider error whose
 message tells you exactly how to start it. The runner never
 retries a missing local server. HTTP error statuses keep their
 status codes for the runner's classifier.
+## Decider
+
+```bash
+pip install decider-ai
+peira run --adapter peira.adapters.decider:DeciderAdapter --suite trial-demo
+```
+
+Decider (Mapika AI, Apache 2.0) is a family of System One-style
+models fine-tuned from Qwen3.5 bases. A Decider reads a state plus
+typed questions and returns, from one forward pass, a probability
+distribution for every question. This adapter measures the small
+arm, `Mapika/decider-0.8b` (Qwen3.5-0.8B base, 32k context), in
+process through the package's library API. Its `system_one` method
+takes the same question shapes the Jev wire takes and returns the
+same answer shapes, so the adapter sends Jev's question builders
+unchanged and the rubric text and abstain question are the same
+measurement instrument every Jev-family adapter sends.
+
+Two answer readings matter. A choice answer's `confidence` field
+is the TypeSafe rescaled figure, so the adapter reports the raw
+probability for the chosen option from the answer's
+`probabilities` map and leaves the rescaled figure in the
+transcript only. And a score answer's `score` arrives on the
+0..levels-1 index scale, so the adapter normalizes it with the
+same divisor the Jev adapter uses.
+
+Every answer is a softmax over its option letters divided by a
+temperature from the checkpoint's `decider_config.json`, one
+fitted value per question type where the checkpoint carries a
+per-type map. Those temperatures are part of the measured
+instrument, and the adapter never overrides them, so a run
+measures the checkpoint as its authors shipped it.
+
+The device is picked at construction (CUDA, then MPS, then CPU)
+and can be forced with `device=`. On CPU the package runs float32
+eager, and the 0.8B checkpoint is the family's CPU-sized arm. The
+model is local, so cost is $0, and a failure is a terminal
+provider error with no status code.
+
+The checkpoint is pinned to `Mapika/decider-0.8b` at a pinned Hub
+revision. Any other checkpoint id or revision is rejected at
+construction. The pinned pair is the adapter version and
+namespaces the runner cache.
+
+Canary record (2026-10-15): the adapter's package calls were
+verified line by line against the installed `decider-ai` source
+(the constructor takes no revision argument, so the pin is a
+local snapshot of the pinned revision, and the `system_one`
+question and answer shapes match what the adapter sends and
+reads). The live canary then passed on a rented RTX 3090 pod,
+with the engine holding about 1.9 GB of GPU memory. Choice
+answered approve at 0.9213, score answered 0.89 with confidence
+0.9257, and abstain answered other at 0.2944. Every output was
+valid, the pin was verified in process, and every decision
+agreed with the builders' local CPU canary. Two runtime
+requirements came out of that run. The package needs its own
+torch pairing (decider-ai 1.9.0 uses torch 2.7 APIs, with
+transformers 5.19.0 the known-good partner), and its
+torch.compile path needs a C compiler in the environment. On
+the project's 8 GB trial VM the first inference peaks at about
+3.3 GB resident, so a local run wants a drained box.
 
 ## GLiNER2.5-Decide
 
