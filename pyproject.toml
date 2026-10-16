@@ -89,6 +89,7 @@ openai-moderation = "peira.adapters.omni_moderation:OmniModerationAdapter"
 openjev-sglang = "peira.adapters.openjev_sglang:OpenJevSglangAdapter"
 semif = "peira.adapters.semif:SemifAdapter"
 von = "peira.adapters.von:VonAdapter"
+decider = "peira.adapters.decider:DeciderAdapter"
 
 [project.urls]
 Homepage = "https://github.com/david-engelmann/peira"
