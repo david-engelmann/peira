@@ -68,6 +68,7 @@ cloudflare-workers-ai = "peira.adapters.cloudflare_workers_ai:CloudflareWorkersA
 clef = "peira.adapters.clef:ClefAdapter"
 jev = "peira.adapters.jev:JevAdapter"
 pplx-decider = "peira.adapters.pplx_decider:PplxDeciderAdapter"
+mercury-decide = "peira.adapters.mercury_decide:MercuryDecideAdapter"
 openai-decisions = "peira.adapters.openai_decisions:OpenAIDecisionsAdapter"
 local-systemone = "peira.adapters.kev:LocalSystemOneAdapter"
 kev = "peira.adapters.kev:KevAdapter"
