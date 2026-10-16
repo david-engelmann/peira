@@ -1820,6 +1820,62 @@ text. The probe returned HTTP 200 for `pplx-decider-v1.1-27b` with
 all three primitives answered. The abstain probability arrived under
 the `noul` key only. The `usage` object carried integer counters. The
 adapter's first measured exercise is the standard driver canary.
+## Celeris
+
+No extra needed (stdlib transport). Set `CELERIS_API_KEY`, then run
+
+```bash
+export CELERIS_API_KEY="<your-api-key>"
+peira run --adapter peira.adapters.celeris:CelerisAdapter --suite trial-demo
+```
+
+Celeris-1-decision is a diffusion decision model launched by Celeris
+on 2026-10-08. It serves the System One wire at `POST
+https://inference.celeris.ai/celeris-1-decision/v1/systemone`. The
+adapter sends the case prompt as `state` plus named typed questions
+and reads the answers from the top level of the response. The
+response is not enveloped. It also carries a `model` echo and a
+`usage` object with integer token counters.
+
+The question text is the Jev adapter's unchanged, so the wires see
+identical decision spaces. Answers carry `choice` (choice), `score`
+(score), or `noul` (abstain). The score question uses the same five
+described levels as the Jev adapter. The abstain primitive follows
+the Jev placeholder rule exactly. The adapter refuses a response
+whose model echo differs from the pin, so a measurement can never
+seal under the wrong model's name. A response without usage counters
+is terminal. A call that cannot be priced cannot be recorded as
+free.
+
+One pinned model is supported. The pin is `celeris-1-decision` at
+$0.04 per 1M input tokens with output free. The rate is the
+vendor-stated price and is pinned in `python/peira/data/pricing.json`.
+The per-instance version and cache namespace follow the pin. Every
+other id is rejected at construction, so a run always names one
+exact model. Vendor material describes per-answer reasons in an
+`x_celeris` extension object. No probe response carried one. The
+adapter reads only the standard answer fields, so extension content
+never enters a metric.
+
+Errors are FastAPI-shaped. The body carries a `detail` list and the
+adapter surfaces its message text. 408, 429, 529 and 5xx statuses
+and transport timeouts surface as retryable provider errors for the
+runner. 401/403, 404 and 400/422 are terminal.
+
+**Live-verified.** A probe on 2026-10-15 sent the adapter's exact
+question text to the endpoint and returned HTTP 200. A combined call
+carried all three questions. Each per-primitive call shape also
+returned HTTP 200 with only the requested answers present. The
+choice answer carried a confidence of 0.94 against a chosen-option
+probability of 0.96, so the confidence field is its own value. The
+score answer carried 3.82 on the 0-based rubric scale. The abstain
+answer carried the probability under `noul` only. Usage reported 300
+input tokens for the combined call and output tokens at 0 on every
+call. The first call on the account took about 31 seconds. Warm
+calls took 1.0 to 2.2 seconds and four concurrent calls all
+succeeded. An unknown model and an unknown question type each
+returned HTTP 422. The adapter's first measured exercise is the
+standard driver canary.
 
 ## Pricing
 

@@ -7,6 +7,22 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
 
 ## [Unreleased]
 
+### Added Celeris adapter
+
+- New `celeris` adapter for Celeris-1-decision, a diffusion decision
+  model served on the System One wire at inference.celeris.ai. The
+  adapter sends the Jev adapter's question text unchanged and pins
+  the single served model id. A response whose model echo differs
+  from the pin is refused, so a measurement never seals under the
+  wrong model's name.
+- Pricing gains a `celeris-1-decision` entry at $0.04 per 1M input
+  tokens with output free. The rate is the vendor-stated price. The
+  pricing table moves to version 2026-10-15.4.
+- Live state at landing. The wire shape was verified against the
+  live API on 2026-10-15 before the adapter was written. A probe
+  carrying the adapter's exact question text returned HTTP 200 on a
+  combined call and on each per-primitive call shape.
+
 ### Added Strands Decider adapter
 
 - New `strands-decider` adapter for Strands Decider 2B (AWS

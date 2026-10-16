@@ -1331,6 +1331,123 @@ Cause: the response's `usage` object carried token counters that are
 not non-negative integers. Cost accounting fails closed rather than
 guessing. Fix: report it with the usage payload.
 
+**`celeris does not support primitive 'x'`**
+Cause: Celeris was asked for a primitive outside `choice`, `score`,
+`abstain`. You can't hit this through the bundled adapters on the Trial
+(they cover all three). Fix: check the primitive name.
+
+**`celeris adapter needs a Celeris API key: set the CELERIS_API_KEY environment variable (or pass api_key=...). Create a key in the Celeris console, then export CELERIS_API_KEY=<your key>.`**
+Cause: no Celeris API key. Fix: `export CELERIS_API_KEY=<your key>`.
+
+**`celeris adapter pins model 'celeris-1-decision'; got '...'. Floating tags and unversioned names are never allowed; a measurement must name the exact model.`**
+Cause: an unsupported model id was passed. Celeris measurements must
+name the exact served model. Fix: don't pass `model=` at all (the
+default is `celeris-1-decision`), or pass the exact pinned id.
+
+**`celeris API error 401: ...; check that CELERIS_API_KEY is valid and active, and sent as a Bearer token.`** (same for 403)
+Cause: bad key, an inactive key, or a key sent in the wrong header.
+Terminal: the runner won't retry it. Fix: check the key in the Celeris
+console and confirm it is active.
+
+**`celeris API error 404: ...; the System One endpoint path was not found; this is an adapter bug or an API change, not a retryable failure.`**
+Cause: the endpoint path did not resolve. The adapter posts to the
+System One path on the per-model base, so a 404 means the path
+moved. Terminal. Fix: report it.
+
+**`celeris API error 400: ...; the request was rejected; this is an adapter bug, not a retryable failure.`** (same for 422)
+Cause: the API rejected the request shape. An unknown model, an
+unknown question type, a missing field and an empty questions object
+all return 422 on this wire. The adapter validates every question
+client-side before sending and pins the model the endpoint serves, so
+this means API drift. Fix: report it. Don't retry.
+
+**`celeris API error 408` / `celeris API error 429` / `celeris API error 529` / `celeris API error 5xx`**
+Cause: rate limit or a transient Celeris failure. The runner retries
+these under `--max-attempts`. Fix: re-run. Sustained failures mean the
+endpoint is degraded.
+
+**`celeris response missing 'answers' object` / `celeris response missing answer 'decision'`**
+Cause: the API returned a body without the documented answers shape.
+The adapter fails closed rather than treating a missing answer as a
+decision. This means API drift. Fix: report it.
+
+**`celeris response names model '...' but the adapter pinned 'celeris-1-decision'; refusing a measurement under the wrong model name.`**
+Cause: the response's model echo names weights other than the pin.
+The measurement cannot be recorded under this adapter's name.
+Terminal. Fix: report it. This means the endpoint served a different
+model than the one requested.
+
+**`celeris response missing 'usage' object`**
+Cause: the API returned answers without usage counters. A call that
+cannot be priced cannot be recorded as free, so cost accounting fails
+closed. Fix: report it.
+
+**`celeris returned malformed usage counters: ...`**
+Cause: the response's `usage` object carried token counters that are
+not non-negative integers. Booleans, floats, numeric strings and
+negatives all count as malformed here. Cost accounting fails closed
+rather than guessing. Fix: report it with the usage payload.
+
+**`celeris transport error: ...` (status 408)**
+Cause: the connection dropped, DNS failed, or the request timed out.
+Raised as status 408 so `peira run` treats it as transient and retries
+under `--max-attempts`. Fix: re-run. Sustained 408s mean your network
+or the Celeris endpoint is degraded.
+
+**`celeris returned non-JSON response (HTTP ...)` / `celeris returned a non-object JSON response`**
+Cause: the endpoint returned something that is not the documented
+JSON object (proxy error page, HTML, truncated body). Fix: check for
+a proxy or captive portal in the path. Otherwise report it.
+
+**`celeris built a malformed question 'x': not an object`** / **`celeris built question 'x' with unknown type 'y'`** / **`celeris built question 'x' without instructions`** / **`celeris built choice question 'x' without a non-empty criteria map`** / **`celeris built score question 'x' without 2-10 level descriptions`**
+Cause: the adapter constructed a malformed question. This is an
+adapter bug caught client-side before anything was sent. Fix: report
+it with the question name.
+
+**`celeris returned choice 'x' outside the offered labels [...]; adapter bug or API drift.`**
+Cause: the model answered with a label that was not in the request's
+criteria. Fix: report it. This means API drift or an adapter bug.
+
+**`celeris returned probabilities that are not an object: ...`**
+Cause: a choice answer carried a `probabilities` value that is not a
+per-label map. Fix: report it with the answer payload. This means API
+drift.
+
+**`celeris decision answer has no usable confidence: ...`**
+Cause: the decision answer carried no confidence the adapter can
+report. The confidence field and the chosen option's probability were
+both missing or not genuine numbers in range. Confidence is a
+measurement the model reports, never a value the adapter invents, so
+there is no default. Fix: report it with the answer payload.
+
+**`celeris score answer has no numeric score: ...`**
+Cause: the score answer carried neither a numeric `score` nor a
+probability map the adapter could derive one from. A probability map
+only counts as a genuine distribution over the five levels. Fix:
+report it with the answer payload.
+
+**`celeris score answer score out of range: ...`**
+Cause: the score answer's `score` fell outside the 0-based rubric
+positions. The adapter fails closed rather than clamping it into a
+fabricated extreme. Fix: report it with the answer payload.
+
+**`celeris abstain answer carries both 'abstain' (...) and 'noul' (...) with different values; refusing a measurement whose probability is ambiguous.`**
+Cause: the abstain answer carried both probability keys with
+different values. No preference order can say which one is the
+probability. Fix: report it. This means API drift.
+
+**`celeris abstain answer has no numeric abstain value: ...` / `celeris abstain answer probability out of range: ...`**
+Cause: the abstain answer carried no genuine probability under either
+key, or one outside 0 to 1. Booleans and non-finite floats count as
+non-numeric here. The adapter fails closed rather than clamping them
+into a fabricated measurement. Fix: report it with the answer payload.
+
+**`celeris returned non-numeric confidence: ...`**
+Cause: the API returned a non-numeric value where a probability was
+documented. Booleans and non-finite floats (NaN, infinities) count as
+non-numeric here. The adapter fails closed rather than clamping them
+into a fabricated measurement. Fix: report it with the value.
+
 **`jev transport error: ...` (status 408)**
 Cause: the connection dropped, DNS failed, or the request timed out.
 Raised as status 408 so `peira run` treats it as transient and retries
