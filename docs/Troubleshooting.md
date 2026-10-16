@@ -1208,6 +1208,139 @@ Cause: the response envelope's `usage` object carried token counters
 that are not integers. Cost accounting fails closed rather than
 guessing. Fix: report it with the usage payload.
 
+**`mercury-decide does not support primitive 'x'`**
+Cause: mercury-decide was asked for a primitive outside `choice`,
+`score`, `abstain`. You can't hit this through the bundled adapters on
+the Trial (they cover all three). Fix: check the primitive name.
+
+**`mercury-decide adapter needs an Inception API key: set the INCEPTION_API_KEY environment variable (or pass api_key=<redacted>). Create a key in the Inception console at platform.inceptionlabs.ai, then export INCEPTION_API_KEY=<your key>.`**
+Cause: no Inception API key. Fix: create a key in the Inception
+console, then `export INCEPTION_API_KEY=<redacted>
+
+**`mercury-decide adapter pins model 'mercury-decide'; got '...'. Floating tags and unversioned names are never allowed; a measurement must name the exact model.`**
+Cause: an unversioned name or unsupported model id was passed.
+mercury-decide measurements must name the exact served weights. The
+account's chat models (`mercury-2`, `mercury-2.5`) are not the
+decision model. Fix: don't pass `model=` at all (the default is
+`mercury-decide`).
+
+**`mercury-decide API error 401: ...; check that INCEPTION_API_KEY is valid and active, and sent as a Bearer token.`** (same for 403)
+Cause: bad key or an inactive key. The adapter always sends
+`Authorization: Bearer`, so this means the key itself was rejected.
+Terminal: the runner won't retry it. Fix: check the key in the
+Inception console.
+
+**`mercury-decide API error 402: ...; the account's billing is inactive or its quota is exhausted; check billing in the Inception console at platform.inceptionlabs.ai, then rerun.`**
+Cause: the vendor's account error. Billing is inactive on the
+account or its quota is exhausted. Terminal: retrying cannot fix
+billing. Fix: check billing in the Inception console, then rerun.
+
+**`mercury-decide API error 404: ...; the pinned model was not found; the served model id may have changed; this is an adapter bug or an API change, not a retryable failure.`**
+Cause: the vendor's model-not-found error. The adapter pins the
+served id from the account's models list, so this means the API
+moved or renamed the model. Terminal. Fix: report it. Don't retry.
+
+**`mercury-decide API error 413: ...; the request exceeded the API's 20 MiB body limit; this is an adapter bug or an oversized case, not a retryable failure.`**
+Cause: the request body exceeded the gateway's 20 MiB limit. Peira
+cases are small, so this means an adapter bug or a corrupt case.
+Terminal. Fix: report it. Don't retry.
+
+**`mercury-decide API error 400: ...; the request was rejected; this is an adapter bug, not a retryable failure.`** (same for 422)
+Cause: the Decisions API rejected the request shape. The detail after
+the status is the API's own `error.message`. The adapter validates
+every question client-side before sending, so this means API drift.
+Fix: report it. Don't retry.
+
+**`mercury-decide API error 408` / `mercury-decide API error 429` / `mercury-decide API error 5xx`**
+Cause: rate limit or a transient Decisions API failure, including a
+504 gateway timeout. The runner retries these under `--max-attempts`.
+Fix: re-run. Sustained failures mean the endpoint is degraded.
+
+**`mercury-decide response missing 'answers' object` / `mercury-decide response missing answer 'decision'`**
+Cause: the API returned a body without the documented answers shape.
+The adapter fails closed rather than treating a missing answer as a
+decision. This means API drift. Fix: report it.
+
+**`mercury-decide response missing 'usage' object`**
+Cause: the API returned a body without the documented usage
+counters. A call without counters cannot be priced, and the adapter
+fails closed rather than recording it as a free call. This means
+API drift. Fix: report it.
+
+**`mercury-decide response names model '...' but the adapter pinned '...'; refusing a measurement under the wrong model name.`**
+Cause: the response's `model` echo names different weights than the
+adapter requested. The adapter refuses to record the measurement
+under the wrong name. This means the API served something other than
+the pin. Fix: report it with both names.
+
+**`mercury-decide transport error: ...` (status 408)**
+Cause: the connection dropped, DNS failed, or the request timed out.
+Raised as status 408 so `peira run` treats it as transient and retries
+under `--max-attempts`. Fix: re-run. Sustained 408s mean your network
+or the Decisions endpoint is degraded.
+
+**`mercury-decide returned non-JSON response (HTTP ...)` / `mercury-decide returned a non-object JSON response`**
+Cause: the endpoint returned something that is not the documented
+JSON object (proxy error page, HTML, truncated body). A gateway
+error can return an HTML page. Fix: check for a proxy or captive
+portal in the path. Otherwise report it.
+
+**`mercury-decide built a malformed question 'x': not an object`** / **`mercury-decide built question 'x' with unknown type 'y'`** / **`mercury-decide built question 'x' without instructions`** / **`mercury-decide built choice question 'x' without a non-empty criteria map`** / **`mercury-decide built score question 'x' without 2-10 level descriptions`**
+Cause: the adapter constructed a malformed question. This is an
+adapter bug caught client-side before anything was sent. Fix: report
+it with the question name.
+
+**`mercury-decide returned choice 'x' outside the offered labels [...]; adapter bug or API drift.`**
+Cause: the model answered with a label that was not in the request's
+criteria. Fix: report it. This means API drift or an adapter bug.
+
+**`mercury-decide score answer has no numeric score: ...` / `mercury-decide abstain answer has no numeric abstain value: ...`**
+Cause: the answer carried neither the documented value nor a
+probability map to derive it from. Fix: report it with the answer
+payload.
+
+**`mercury-decide score answer score out of range: ...`**
+Cause: the score was a number outside the rubric's 0 to 4 range. A
+small tolerance band covers float dust from the wire's weighted
+average. A value beyond the band is not a measurement, and the
+adapter fails closed rather than clamping it into an extreme. Fix:
+report it with the answer payload.
+
+**`mercury-decide decision answer has no usable confidence: ...`**
+Cause: the decision answer carried no confidence field and no
+probabilities value for the chosen option, or the value was not a
+number in range. Confidence is a measurement the model reports.
+The adapter fails closed rather than inventing one. Fix: report it
+with the answer payload.
+
+**`mercury-decide abstain answer probability out of range: ...`**
+Cause: the abstain probability was a number outside 0 to 1. The
+adapter fails closed rather than clamping it into an extreme
+measurement. Fix: report it with the answer payload.
+
+**`mercury-decide abstain answer carries both 'abstain' (...) and 'noul' (...) with different values; refusing a measurement whose probability is ambiguous.`**
+Cause: the abstain answer carried the probability under two keys
+with different values. The verified wire uses `noul` only, so a
+second, disagreeing key means the API drifted and no preference
+order can say which value is the probability. The adapter fails
+closed. Fix: report it with the answer payload.
+
+**`mercury-decide returned non-numeric confidence: ...` / `mercury-decide returned non-numeric score: ...`**
+Cause: the API returned a non-numeric value where a probability was
+documented. Booleans and non-finite floats (NaN, infinities) count as
+non-numeric here. The adapter fails closed rather than clamping them
+into a fabricated measurement. Fix: report it with the value.
+
+**`mercury-decide returned probabilities that are not an object: ...`**
+Cause: a choice answer carried a `probabilities` value that is not a
+per-label map. Fix: report it with the answer payload. This means API
+drift.
+
+**`mercury-decide returned malformed usage counters: ...`**
+Cause: the response's `usage` object carried token counters that are
+not non-negative integers. Cost accounting fails closed rather than
+guessing. Fix: report it with the usage payload.
+
 **`jev transport error: ...` (status 408)**
 Cause: the connection dropped, DNS failed, or the request timed out.
 Raised as status 408 so `peira run` treats it as transient and retries

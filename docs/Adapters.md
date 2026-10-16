@@ -1707,6 +1707,59 @@ follows Cloudflare's official Clef documentation and is confirmed by
 the first canary once a Workers AI scoped token is provisioned. The
 adapter stays out of measured runs until that canary passes.
 
+## Inception Mercury Decide
+
+No extra needed (stdlib transport). Set `INCEPTION_API_KEY`, then run
+
+```bash
+export INCEPTION_API_KEY=<redacted>
+peira run --adapter peira.adapters.mercury_decide:MercuryDecideAdapter --suite trial-demo
+```
+
+Mercury Decide is Inception's decision model, served only through
+the Decisions endpoint and positioned by Inception directly against
+TypeSafe's Jev. The adapter sends the case prompt as `state` plus
+named typed questions to `POST
+https://api.inceptionlabs.ai/v1/decisions` and reads the answers back
+out of the body's top-level `answers`. Each question carries
+`instructions`. Choice and score questions also carry `criteria`.
+The question text is the Jev adapter's unchanged, so the wires see
+identical decision spaces. Answers carry `choice` (choice), `score`
+(score), or `noul` (abstain). The score question uses the same five
+described levels as the Jev adapter, and the abstain primitive
+follows the Jev placeholder rule exactly (at or above probability
+0.5 the decision is the deliberate label `abstain`, below it the
+`other` placeholder).
+
+The response is not enveloped. Its top level carries `answers`, a
+`model` echo of the id sent, and `usage`. The adapter refuses a
+response whose echoed model differs from the pin, so a measurement
+can never seal under the wrong model's name.
+
+One pinned model is supported. It is named by its full served id,
+and the per-instance version and cache namespace follow the pin. It
+is `mercury-decide`, the typed-decision preview model the account's
+models list serves on the decisions endpoint only. It is priced at
+$0.02 per 1M input tokens with output free. The rate was verified
+against the models list served by Inception's API on 2026-10-16 and
+is pinned in `python/peira/data/pricing.json`. The account's chat
+models (`mercury-2`, `mercury-2.5`) are not the decision model and
+are rejected at construction. Unversioned names and every other id
+are rejected too, so a run always names the exact model. 408, 429
+and 5xx responses and transport failures surface as retryable
+provider errors for the runner. 401 and 403 (key rejected), 402 (billing
+inactive or quota exhausted), 404, 413 and 400/422 are terminal.
+The runner owns concurrency.
+
+**Live-verified wire, canary pending.** The wire shape above was
+verified against the live API on 2026-10-16, before the adapter was
+written, with a probe call carrying one question of each type. The
+probe returned HTTP 200 for `mercury-decide` with all three
+primitives answered in about 1.4 seconds. The abstain probability
+arrived under the `noul` key only. The `usage` object carried
+integer counters. The adapter's first measured exercise is the
+standard driver canary.
+
 ## Pricing
 
 `peira run` recomputes cost from the pinned table in
