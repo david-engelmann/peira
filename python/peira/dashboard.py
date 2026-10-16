@@ -21,6 +21,7 @@ filename.)
 
 from __future__ import annotations
 
+import json
 import math
 import random
 from pathlib import Path
@@ -486,6 +487,116 @@ def _probe_sized(artifact: RunArtifact) -> bool:
         return False
 
 
+def _canary_marked(artifact: RunArtifact) -> bool:
+    """True when the artifact is sealed as a canary (probe) run.
+
+    Canary runs are sealed under a canary suite marker: the suite
+    and the case-set tag carry the "-canary" suffix (the v2 canary
+    suite is "v2-canary", a suite id deliberately distinct from
+    production runs). The marker, not the case count, is what
+    makes a run a probe. A small suite's complete run and a
+    quality-failing run are not probes however few cases they
+    recorded: they measured the benchmark, and their results
+    stand. That is also the distinction ``_probe_sized`` draws for
+    the standing-run walk, where a failed run still displaces a
+    probe rather than being treated as one.
+    """
+    suite = getattr(artifact, "suite", None)
+    tag = getattr(artifact, "case_set_tag", None)
+    return (isinstance(suite, str) and suite.endswith("-canary")) or (
+        isinstance(tag, str) and tag.endswith("-canary"))
+
+
+def _display_name(artifact: RunArtifact) -> str:
+    """The display identity for a leaderboard row: the model served.
+
+    Most adapters seal the model ID as ``adapter_version``, and
+    that is the display name. The Hugging Face guardrail family
+    seals an adapter release tag there instead ("2.0", "125m"),
+    which prints as a fragment. Those adapters declare the model
+    they serve as the class attribute ``HF_MODEL_ID``, pinned to
+    ``HF_REVISION``. When the artifact's recorded adapter spec
+    resolves to the class of the adapter that ran, and the
+    artifact's pinned revision matches the class pin, the
+    declared model ID is the display identity. Anything else (no
+    spec, an unresolvable spec, a spec naming another adapter, a
+    revision mismatch, a class that declares no model ID) falls
+    back to ``adapter_version``: a row never loses its identity
+    because a display name could not be derived, and it never
+    gains a model name the running adapter and its sealed pin do
+    not attest. The identity-only fallback row for an artifact
+    that fails strict loading runs the same checked resolution
+    over the file's raw JSON (see ``_display_name_from_raw``).
+    """
+    fallback = artifact.adapter_version or ""
+    cfg = artifact.config if isinstance(artifact.config, dict) else {}
+    pins = (artifact.adapter_pins
+            if isinstance(artifact.adapter_pins, dict) else {})
+    return _model_id_for_spec(cfg.get("adapter_spec"),
+                              pins.get("hf_revision"),
+                              artifact.adapter_name) or fallback
+
+
+def _model_id_for_spec(
+    spec: Any, hf_revision: Any, adapter_name: Any
+) -> str | None:
+    """The model ID an adapter spec declares, when it is attested.
+
+    Resolves the adapter class named by ``spec`` ("module:Class")
+    and returns its declared ``HF_MODEL_ID`` only when the class
+    is the adapter that ran (its declared ``name`` equals
+    ``adapter_name``) and its pin ``HF_REVISION`` equals
+    ``hf_revision``. Resolution is limited to first-party modules
+    (``peira.*``): a reporting path imports nothing on an
+    artifact's say-so beyond the package's own adapter classes.
+    Any other input (no spec, an unresolvable spec, another
+    adapter's spec, a class that declares no model ID, a revision
+    mismatch) returns None: the caller falls back rather than
+    printing a model name nothing attests.
+    """
+    try:
+        if not isinstance(spec, str) or ":" not in spec:
+            return None
+        module_name, _, class_name = spec.partition(":")
+        if module_name != "peira" and not module_name.startswith("peira."):
+            return None
+        import importlib
+
+        cls = getattr(importlib.import_module(module_name), class_name)
+        if getattr(cls, "name", None) != adapter_name:
+            return None
+        model_id = getattr(cls, "HF_MODEL_ID", "")
+        pinned = getattr(cls, "HF_REVISION", "")
+        if model_id and pinned and hf_revision == pinned:
+            return str(model_id)
+    except Exception:
+        pass
+    return None
+
+
+def _display_name_from_raw(
+    path: Path, fallback: str, adapter_name: str
+) -> str:
+    """Display identity for an artifact that failed strict loading.
+
+    The identity-only fallback row has no RunArtifact to resolve
+    from, but the file on disk still records the adapter spec and
+    the pinned revision in plain JSON. Read just those two fields
+    tolerantly and run the same checked resolution as
+    ``_display_name``. A file that cannot be read as JSON, or
+    whose spec and pin do not attest a model, keeps the fallback.
+    """
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+        cfg = raw.get("config") if isinstance(raw, dict) else None
+        pins = raw.get("adapter_pins") if isinstance(raw, dict) else None
+        spec = cfg.get("adapter_spec") if isinstance(cfg, dict) else None
+        revision = pins.get("hf_revision") if isinstance(pins, dict) else None
+        return _model_id_for_spec(spec, revision, adapter_name) or fallback
+    except Exception:
+        return fallback
+
+
 def _leaderboard_stat_row(
     artifact: RunArtifact,
     payload: dict[str, Any],
@@ -522,8 +633,9 @@ def _leaderboard_stat_row(
         # Display identity is the model, not the adapter: several
         # models share one adapter (every OpenRouter model uses
         # openrouter-structured), and a public page must name the
-        # model a reader would recognize.
-        "display_name": artifact.adapter_version,
+        # model a reader would recognize. _display_name resolves
+        # the model the artifact's adapter served.
+        "display_name": _display_name(artifact),
         "adapter_version": artifact.adapter_version,
         "suite": artifact.suite,
         "dataset_version": artifact.dataset_version,
@@ -582,7 +694,11 @@ def leaderboard(
     eligibility, and the run's identity (run_id, created_utc) for
     drill-down. A later probe run that never covered the benchmark
     (see ``_probe_sized``) does not displace an earlier run of the
-    same entry. Entries whose standing run does not qualify are
+    same entry, and an entry whose standing run is sealed as a
+    canary (see ``_canary_marked``) is omitted entirely: a canary
+    is a wiring check, not a measurement, and never prints as a
+    result. Entries whose
+    standing run does not qualify are
     listed under ``unranked`` with the disqualification reason. Omission never improves a rank, and the
     dashboard shows why. When the standing run's artifact loads, the
     unranked entry carries the same headline row and per-run detail
@@ -656,11 +772,23 @@ def leaderboard(
         reason = "artifact not found"
         row: dict[str, Any] | None = None
         unranked_row: dict[str, Any] | None = None
+        fallback_display = meta.get("adapter_version", "")
         if path.exists():
             try:
                 artifact = RunArtifact.from_json(
                     path.read_text(encoding="utf-8")
                 )
+                if _canary_marked(artifact):
+                    # A canary (probe) run is a wiring check, not a
+                    # measurement: an entry whose standing run is a
+                    # canary emits no row at all, ranked or unranked,
+                    # so a probe artifact staged by mistake can never
+                    # print as a result. The canary suite marker, not
+                    # the case count, is what makes a run a probe
+                    # (see _canary_marked): a run that measured the
+                    # benchmark prints with its standing even when it
+                    # is small or failed quality.
+                    continue
                 from peira.runs_registry import qualifies_for_leaderboard
                 ok, why = qualifies_for_leaderboard(artifact)
                 if ok:
@@ -687,6 +815,11 @@ def leaderboard(
                         unranked_row["reason"] = why
             except Exception as e:
                 reason = f"load failed: {e}"
+                # The row below is identity-only, but its display
+                # name still resolves from the file's recorded
+                # spec and pin when they attest a model.
+                fallback_display = _display_name_from_raw(
+                    path, fallback_display, adapter)
         else:
             # Fall back to indexed family data when the artifact file
             # is unavailable: emit the row from the registry's
@@ -701,7 +834,7 @@ def leaderboard(
             unranked.append({
                 "adapter_name": adapter,
                 "wire": adapter,
-                "display_name": meta.get("adapter_version", ""),
+                "display_name": fallback_display,
                 "adapter_version": meta.get("adapter_version", ""),
                 "run_id": meta.get("run_id", ""),
                 "created_utc": meta.get("created_utc", ""),
@@ -724,9 +857,11 @@ def leaderboard(
     ranked.sort(key=_asr_sort_key)
     # EB-40: robustness-tax column. Computed over the ranked rows'
     # own headline values (point estimates; the full per-adapter
-    # taxes with CIs live in `peira tax`). Rows missing benign
-    # accuracy or attacked ECE get no tax: a tax from imputed
-    # components would be a guess, not a measurement.
+    # taxes with CIs live in `peira tax`). The frontier is the
+    # full-suite cohort only (see _apply_robustness_tax_column):
+    # slice rows neither enter it nor receive a tax. Rows missing
+    # benign accuracy or attacked ECE get no tax: a tax from
+    # imputed components would be a guess, not a measurement.
     _apply_robustness_tax_column(ranked)
     return {
         "suite": suite,
@@ -739,7 +874,31 @@ def leaderboard(
 
 
 def _apply_robustness_tax_column(ranked: list[dict[str, Any]]) -> None:
-    """EB-40: attach the combined-tax point estimate to each row."""
+    """EB-40: attach the combined-tax point estimate to each row.
+
+    The frontier is computed over one measurement population at
+    a time. A board can mix populations: a slice row measured a
+    defined sub-population (the 373-case abstain slice, say), so
+    its benign accuracy and attacked ECE are readings of that
+    sub-population, not of the full suite. Letting a slice row
+    into the frontier would rebase every full-suite tax by
+    numbers from a different measurement. Rows are grouped by
+    suite, dataset version, and case count, and the frontier
+    cohort is the group that ran the most cases:
+    separation by measurement population, never by model name.
+    When two populations tie at that size the board mixes
+    suites or dataset versions and no single frontier describes
+    it, so every tax is withheld rather than blending populations
+    that measured different cases. Rows outside the cohort carry
+    no tax (the key is present with None): the tax is a
+    full-suite-relative statistic, and a slice row prints its own
+    headline numbers without one. A row that records no case
+    count belongs to no measurable population: alongside counted
+    populations it carries no tax, and when no row records a
+    count the rows form one population by default (the column's
+    direct-call contract), so they tax against each other rather
+    than blanking the column.
+    """
     from peira.eb_analysis import (AdapterTaxInput, model_identity,
                                    robustness_tax)
 
@@ -760,12 +919,41 @@ def _apply_robustness_tax_column(ranked: list[dict[str, Any]]) -> None:
                               str(row.get("adapter_version", "")
                                   or ""))
 
+    # Every row carries the key; the cohort fill below overwrites
+    # the frontier rows, and rows outside the cohort keep None.
+    for row in ranked:
+        row["robustness_tax"] = None
+    populations: dict[tuple[Any, Any, int], list[dict[str, Any]]] = {}
+    uncounted: list[dict[str, Any]] = []
+    for row in ranked:
+        n = _num(row.get("n_cases"))
+        if n is None:
+            uncounted.append(row)
+        else:
+            key = (row.get("suite"), row.get("dataset_version"), int(n))
+            populations.setdefault(key, []).append(row)
+    if populations:
+        full_size = max(key[2] for key in populations)
+        cohorts = [rows for key, rows in populations.items()
+                   if key[2] == full_size]
+        if len(cohorts) != 1:
+            return
+        cohort = cohorts[0]
+    elif uncounted:
+        # No row records a case count, so no measured population
+        # exists to separate: the rows are one population by
+        # default and tax against each other (the column's
+        # direct-call contract), rather than blanking the column.
+        cohort = uncounted
+    else:
+        return
+
     inputs: list[AdapterTaxInput] = []
     # One reading per model, last row wins: mirrors cmd_tax
     # so a duplicated model identity cannot raise inside
     # robustness_tax and blank the whole column.
     seen: dict[str, AdapterTaxInput] = {}
-    for row in ranked:
+    for row in cohort:
         key = _model_key(row)
         seen[key] = AdapterTaxInput(
             adapter=key,
@@ -780,12 +968,11 @@ def _apply_robustness_tax_column(ranked: list[dict[str, Any]]) -> None:
     try:
         report = robustness_tax(inputs)
     except ValueError:
-        # Not enough usable readings for a frontier: every row gets
-        # the key with None, matching the success path's shape.
-        for row in ranked:
-            row["robustness_tax"] = None
+        # Not enough usable readings for a frontier: every row
+        # keeps the key with None, matching the success path's
+        # shape.
         return
-    for row in ranked:
+    for row in cohort:
         tax = report["per_adapter"].get(_model_key(row))
         row["robustness_tax"] = (
             tax["combined_tax"] if tax and tax["sufficient"]

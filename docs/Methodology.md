@@ -1741,6 +1741,23 @@ then it reports withheld, never imputed. Diagnostic only: taxes
 describe, they never rank. `peira tax` writes the report and the
 leaderboard carries the combined-tax point estimate per ranked row.
 
+On the leaderboard the frontier is computed over one measurement
+population at a time. Rows are grouped by suite, dataset version,
+and case count, and the cohort is the group that ran the most
+cases, which on the published board is the full suite. A
+run over a defined sub-population (a slice, for example the
+abstain-only cases a guardrail adapter can speak) reports its
+benign accuracy and attacked ECE over that sub-population, so its
+readings never enter the full-suite frontier, and its row carries
+no combined tax. The tax stays a comparison among runs that
+measured the same cases. The cohort is chosen by measurement
+population, never by model or adapter name. When two populations
+tie at that size, no frontier is published and every tax
+is withheld, because a blended frontier would describe neither
+population. The `peira tax` report is unchanged. It analyses the
+artifacts it is handed, and cohort selection there stays with
+the operator.
+
 ### Length sensitivity and de-confounding (EB-7 / EB-10)
 
 Response length confounds attack-family comparisons: some families

@@ -64,11 +64,35 @@ rows for one model stay distinguishable.
 The board shows each entry's latest full run. A probe run that never
 covered the benchmark (fewer recorded cases than the coverage gates
 require, or a required family it never attempted) does not displace an
-earlier full run of the same entry. A full run that fails a quality gate
-stands as the entry's result and is shown as not ranked, with the
-reason. Its numbers are printed in the same table as the ranked models,
-malformed response rate included, so a result is visible even when it
-carries no rank.
+earlier full run of the same entry. An entry whose runs are all canary
+runs is absent from the board. A canary run is sealed under a canary
+suite marker (the v2 canary suite), and the marker, not its size, is
+what makes it a probe. A probe is a wiring check, not a measurement,
+and it never prints as a result, ranked or not ranked. A full run that
+fails a quality gate stands as the entry's result and is shown as not
+ranked, with the reason. Its numbers are printed in the same table as
+the ranked models, malformed response rate included, so a result is
+visible even when it carries no rank.
+
+A run can also cover a defined sub-population of the suite instead of
+the whole suite. The abstain slice is the standing example, the cases
+whose primitive a guardrail adapter speaks. A slice run that passes
+the same qualification gates appears on the board with its own
+numbers and its case count printed, and its numbers describe the
+sub-population it measured. On the full-suite board a slice row does
+not enter the robustness tax frontier and carries no tax, because the
+tax compares runs that measured the same cases. The frontier rule is
+in the methodology
+document, under the cross-adapter robustness tax.
+
+Every row carries a display name that names the model. Where an
+adapter seals the model ID as its version, the display name is that
+ID. Where an adapter seals a release tag of its own instead, as the
+Hugging Face guardrail adapters do, the display name is the model the
+adapter serves, resolved from the adapter's declared model pin. The
+name prints only when the resolved adapter is the one that ran and
+the run artifact's pinned revision matches that declaration. A row
+never borrows a model name its sealed pins do not attest.
 
 Board counts of models count distinct model IDs. A summary that
 states how many models were tested, how the field splits between

@@ -70,6 +70,34 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
   `noul` key only. The adapter's first measured exercise is the
   standard driver canary.
 
+### Fixed slice-row presentation on the dashboard leaderboard
+
+- The robustness tax frontier is now the full-suite cohort. The
+  tax column previously computed its frontier over every ranked
+  row, so a slice row (a run over a defined sub-population, for
+  example the 373-case abstain slice the Hugging Face guardrail
+  adapters speak) moved the best-observed anchors and rebased
+  every full-suite tax on the board. The frontier now comes from
+  the ranked rows that ran the most cases within the
+  board's suite and dataset version, chosen by measurement
+  population and never by model name. Slice rows print their own
+  numbers and, on the full-suite board, carry no tax.
+- Leaderboard rows now carry the served model's full display
+  name. The guardrail adapters seal an adapter release tag as
+  their version ("2.0", "125m"), which printed as the row's
+  name. The display name is now the model the adapter serves,
+  resolved from the adapter's declared model pin and printed
+  only when the run artifact's pinned revision matches that
+  declaration. ProtectAI rows now name
+  protectai/deberta-v3-base-prompt-injection-v2 and Granite HAP
+  rows name ibm-granite/granite-guardian-hap-125m.
+- A canary (probe) run staged as an entry's only run no longer
+  prints as an unranked result. Probe exclusion previously
+  applied only when a probe shadowed a full run of the same
+  entry. A run sealed under a canary suite marker is now omitted
+  entirely, while a run that measured the benchmark still prints
+  with its standing, however small or quality-failing it is.
+
 ### Added Cloudflare Clef adapter (Workers AI decision models)
 
 - New `ClefAdapter` (entry point `clef`) for Cloudflare's Clef
