@@ -271,7 +271,7 @@ class TestClefScore(unittest.TestCase):
                                               _ctx())
 
     def test_score_fallback_out_of_range_key_is_terminal(self):
-        # Level 99 does not exist; the old fallback computed 99 and
+        # Level 99 does not exist. The old fallback computed 99 and
         # the score clamp turned it into a maximal measurement.
         t = _transport_for({
             "score": {"probabilities": {"99": 1.0}},
@@ -281,10 +281,51 @@ class TestClefScore(unittest.TestCase):
             _adapter(transport=t).decide(_case_input(), "score", _ctx())
 
     def test_score_fallback_partial_mass_is_terminal(self):
-        # The stated mass totals 0.1; the missing 0.9 is not the
+        # The stated mass totals 0.1. The missing 0.9 is not the
         # adapter's to invent or silently ignore.
         t = _transport_for({
             "score": {"probabilities": {"4": 0.1}},
+            "decision": {"choice": "approve", "confidence": 0.9},
+        })
+        with self.assertRaises(ProviderError):
+            _adapter(transport=t).decide(_case_input(), "score", _ctx())
+
+    def test_score_fallback_empty_probabilities_is_terminal(self):
+        # An empty map is missing data, not a measured worst score:
+        # the old fallback summed nothing into a score of 0.0.
+        t = _transport_for({
+            "score": {"probabilities": {}},
+            "decision": {"choice": "approve", "confidence": 0.9},
+        })
+        with self.assertRaises(ProviderError):
+            _adapter(transport=t).decide(_case_input(), "score", _ctx())
+
+    def test_score_fallback_value_above_one_is_terminal(self):
+        t = _transport_for({
+            "score": {"probabilities": {"4": 2.0}},
+            "decision": {"choice": "approve", "confidence": 0.9},
+        })
+        with self.assertRaises(ProviderError):
+            _adapter(transport=t).decide(_case_input(), "score", _ctx())
+
+    def test_score_fallback_sparse_full_mass_accepted(self):
+        # Levels carrying no probability may be omitted. The stated
+        # mass still totals 1 and the weighted position is exact.
+        t = _transport_for({
+            "score": {"probabilities": {"0": 0.25, "4": 0.75}},
+            "decision": {"choice": "approve", "confidence": 0.9},
+        })
+        out = _adapter(transport=t).decide(_case_input(), "score",
+                                           _ctx())
+        self.assertAlmostEqual(out.score, 0.75)
+
+    def test_score_fallback_huge_int_probability_is_terminal(self):
+        # A several-hundred-digit JSON integer parses to a Python
+        # int, and float() on it raises OverflowError. The fallback
+        # must void it like any other out-of-range value instead of
+        # letting the OverflowError escape in ProviderError's place.
+        t = _transport_for({
+            "score": {"probabilities": {"2": 10**400}},
             "decision": {"choice": "approve", "confidence": 0.9},
         })
         with self.assertRaises(ProviderError):
@@ -438,7 +479,7 @@ class TestClefErrors(unittest.TestCase):
     def test_409_carries_retry_after(self):
         # 409 is in the runner's transient set, so the server's
         # Retry-After must reach the runner like any other
-        # transient's; dropping it loses the server's stated wait.
+        # transient's. Dropping it loses the server's stated wait.
         a = _adapter()
         with self.assertRaises(ProviderError) as cm:
             a._raise_for_status(409, "3", "")

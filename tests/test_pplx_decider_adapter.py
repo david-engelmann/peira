@@ -328,7 +328,7 @@ class TestPplxScore(unittest.TestCase):
             _adapter(transport=t).decide(_case_input(), "score", _ctx())
 
     def test_score_fallback_partial_mass_is_terminal(self):
-        # The stated mass totals 0.1; the missing 0.9 is not the
+        # The stated mass totals 0.1. The missing 0.9 is not the
         # adapter's to invent or silently ignore.
         t = self._score_with_probs({"4": 0.1})
         with self.assertRaises(ProviderError):
@@ -355,6 +355,15 @@ class TestPplxScore(unittest.TestCase):
         # their mass sums to 1.0, so parsing double-counted level 1
         # into a fabricated score instead of failing closed.
         t = self._score_with_probs({"1": 0.5, "01": 0.5})
+        with self.assertRaises(ProviderError):
+            _adapter(transport=t).decide(_case_input(), "score", _ctx())
+
+    def test_score_fallback_huge_int_probability_is_terminal(self):
+        # A several-hundred-digit JSON integer parses to a Python
+        # int, and float() on it raises OverflowError. The fallback
+        # must void it like any other out-of-range value instead of
+        # letting the OverflowError escape in ProviderError's place.
+        t = self._score_with_probs({"2": 10**400})
         with self.assertRaises(ProviderError):
             _adapter(transport=t).decide(_case_input(), "score", _ctx())
 
@@ -587,7 +596,7 @@ class TestPplxErrors(unittest.TestCase):
     def test_409_carries_retry_after(self):
         # 409 is in the runner's transient set, so the server's
         # Retry-After must reach the runner like any other
-        # transient's; dropping it loses the server's stated wait.
+        # transient's. Dropping it loses the server's stated wait.
         a = _adapter()
         with self.assertRaises(ProviderError) as cm:
             a._raise_for_status(409, "3", "")
