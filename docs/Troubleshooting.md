@@ -1151,7 +1151,7 @@ Cause: Workers AI rejected the request shape. The adapter validates
 every question client-side before sending, so this means API drift.
 Fix: report it. Don't retry.
 
-**`clef API error 429` / `clef API error 529` / `clef API error 5xx`**
+**`clef API error 408` / `clef API error 409` / `clef API error 429` / `clef API error 529` / `clef API error 5xx`**
 Cause: rate limit or a transient Workers AI failure. The runner
 retries these under `--max-attempts`. Fix: re-run. Sustained failures
 mean the endpoint is degraded.

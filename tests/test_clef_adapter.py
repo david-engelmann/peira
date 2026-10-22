@@ -233,6 +233,63 @@ class TestClefScore(unittest.TestCase):
         with self.assertRaises(ProviderError):
             _adapter(transport=t).decide(_case_input(), "score", _ctx())
 
+    def test_score_fallback_noncanonical_key_spellings_are_terminal(self):
+        # A probability key is matched against the canonical level
+        # spellings, never parsed into a level: int() accepts every
+        # spelling below and would fabricate a rubric position.
+        for probs in ({" 2": 1.0}, {"01": 1.0}, {"+1": 1.0}):
+            t = _transport_for({
+                "score": {"probabilities": probs},
+                "decision": {"choice": "approve", "confidence": 0.9},
+            })
+            with self.assertRaises(ProviderError, msg=repr(probs)):
+                _adapter(transport=t).decide(_case_input(), "score",
+                                              _ctx())
+
+    def test_score_fallback_duplicate_level_spellings_are_terminal(self):
+        # "1" and "01" name the same level under int() parsing and
+        # their mass sums to 1.0, so parsing double-counted level 1
+        # into a fabricated score instead of failing closed.
+        t = _transport_for({
+            "score": {"probabilities": {"1": 0.5, "01": 0.5}},
+            "decision": {"choice": "approve", "confidence": 0.9},
+        })
+        with self.assertRaises(ProviderError):
+            _adapter(transport=t).decide(_case_input(), "score", _ctx())
+
+    def test_score_fallback_coerced_values_are_terminal(self):
+        # The old fallback coerced values with float(), so a numeric
+        # string or a bool became a genuine probability. Values are
+        # measurements the model reported, never values to repair.
+        for probs in ({"4": "1.0"}, {"4": True}):
+            t = _transport_for({
+                "score": {"probabilities": probs},
+                "decision": {"choice": "approve", "confidence": 0.9},
+            })
+            with self.assertRaises(ProviderError, msg=repr(probs)):
+                _adapter(transport=t).decide(_case_input(), "score",
+                                              _ctx())
+
+    def test_score_fallback_out_of_range_key_is_terminal(self):
+        # Level 99 does not exist; the old fallback computed 99 and
+        # the score clamp turned it into a maximal measurement.
+        t = _transport_for({
+            "score": {"probabilities": {"99": 1.0}},
+            "decision": {"choice": "approve", "confidence": 0.9},
+        })
+        with self.assertRaises(ProviderError):
+            _adapter(transport=t).decide(_case_input(), "score", _ctx())
+
+    def test_score_fallback_partial_mass_is_terminal(self):
+        # The stated mass totals 0.1; the missing 0.9 is not the
+        # adapter's to invent or silently ignore.
+        t = _transport_for({
+            "score": {"probabilities": {"4": 0.1}},
+            "decision": {"choice": "approve", "confidence": 0.9},
+        })
+        with self.assertRaises(ProviderError):
+            _adapter(transport=t).decide(_case_input(), "score", _ctx())
+
     def test_score_sends_two_questions(self):
         a, t = self._score_adapter(3)
         a.decide(_case_input(), "score", _ctx())
@@ -377,6 +434,16 @@ class TestClefErrors(unittest.TestCase):
         with self.assertRaises(ProviderError) as cm:
             a._raise_for_status(429, "5", "")
         self.assertEqual(cm.exception.retry_after, 5.0)
+
+    def test_409_carries_retry_after(self):
+        # 409 is in the runner's transient set, so the server's
+        # Retry-After must reach the runner like any other
+        # transient's; dropping it loses the server's stated wait.
+        a = _adapter()
+        with self.assertRaises(ProviderError) as cm:
+            a._raise_for_status(409, "3", "")
+        self.assertEqual(cm.exception.status_code, 409)
+        self.assertEqual(cm.exception.retry_after, 3.0)
 
     def test_transport_timeout_maps_to_408(self):
         import urllib.error

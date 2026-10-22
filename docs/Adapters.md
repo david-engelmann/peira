@@ -1754,9 +1754,10 @@ on its text path. Output is free on all three. The rates were
 verified against Cloudflare's official Workers AI pricing page on
 2026-10-15 and are pinned in `python/peira/data/pricing.json`. Short model names
 and every other id are rejected at construction, so a run always
-names one exact model. 429/529/5xx and transport timeouts surface as
-retryable provider errors for the runner. 401/403, 404 and 400/422
-are terminal.
+names one exact model. 408, 409, 429, 529 and 5xx statuses and
+transport timeouts surface as retryable provider errors for
+the runner, with any server `Retry-After` passed through.
+401/403, 404 and 400/422 are terminal.
 
 **Live-UNVERIFIED.** An access probe on 2026-10-15 sent the adapter's
 exact payload to the run endpoint for `@cf/cloudflare/clef-flash`.

@@ -7,6 +7,26 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
 
 ## [Unreleased]
 
+### Fixed score probability keys accepted by spelling in the Clef adapter
+
+- Fix-forward for the entry below: the `clef` adapter carried the
+  same score fallback pattern in a different spelling and was
+  missed by that change. Its fallback summed `int(key) * float(p)`
+  over the probability map, so non-canonical keys (`" 2"`, `"01"`,
+  `"+1"`) were silently accepted as levels, duplicate spellings
+  double-counted a level, string and boolean values were coerced
+  into probabilities, and an out-of-range total was clamped into
+  an extreme score instead of failing. The fallback now applies
+  the same strict contract as the Celeris and pplx-decider
+  adapters: keys exactly `"0"` to `"4"`, genuine numbers in
+  [0, 1], a total within rounding distance of 1, anything else
+  fails closed with the existing ProviderError. The adapter also
+  now passes a 409 response's `Retry-After` through to the runner,
+  like the other transient statuses. A transcript audit of both
+  published Clef runs found zero fallback engagements (all 1,412
+  score answers in each run carried the server-reported score),
+  so no published measurement is affected.
+
 ### Fixed score probability keys accepted by spelling in the Celeris and pplx-decider adapters
 
 - The score fallback in the `celeris` and `pplx-decider` adapters,
