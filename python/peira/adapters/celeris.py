@@ -625,6 +625,10 @@ def _score_from_probabilities(probs: dict[str, Any]) -> float | None:
         return None
     total = 0.0
     weighted = 0.0
+    # With keys matched canonically the duplicate check below
+    # cannot fire today; it pins the one-entry-per-level rule in
+    # the code itself, so loosening key matching later cannot
+    # silently reintroduce double-counting.
     seen: set[int] = set()
     for key, prob in probs.items():
         if isinstance(prob, bool) or not isinstance(prob, (int, float)):
