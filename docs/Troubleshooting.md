@@ -1247,7 +1247,7 @@ the status is the API's own `error.message`. The adapter validates
 every question client-side before sending, so this means API drift.
 Fix: report it. Don't retry.
 
-**`pplx-decider API error 408` / `pplx-decider API error 429` / `pplx-decider API error 529` / `pplx-decider API error 5xx`**
+**`pplx-decider API error 408` / `pplx-decider API error 409` / `pplx-decider API error 429` / `pplx-decider API error 529` / `pplx-decider API error 5xx`**
 Cause: rate limit (the organization limit is 10 requests per second)
 or a transient Decisions API failure, including a 504 model timeout.
 The runner retries these under `--max-attempts`. Fix: re-run.
@@ -1361,7 +1361,7 @@ all return 422 on this wire. The adapter validates every question
 client-side before sending and pins the model the endpoint serves, so
 this means API drift. Fix: report it. Don't retry.
 
-**`celeris API error 408` / `celeris API error 429` / `celeris API error 529` / `celeris API error 5xx`**
+**`celeris API error 408` / `celeris API error 409` / `celeris API error 429` / `celeris API error 529` / `celeris API error 5xx`**
 Cause: rate limit or a transient Celeris failure. The runner retries
 these under `--max-attempts`. Fix: re-run. Sustained failures mean the
 endpoint is degraded.

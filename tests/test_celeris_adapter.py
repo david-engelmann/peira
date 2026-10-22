@@ -363,6 +363,24 @@ class TestCelerisScore(unittest.TestCase):
         with self.assertRaises(ProviderError):
             _adapter(transport=t).decide(_case_input(), "score", _ctx())
 
+    def test_score_fallback_noncanonical_key_spellings_are_terminal(self):
+        # A probability key is matched against the canonical level
+        # spellings, never parsed into a level: int() accepts every
+        # spelling below and would fabricate a rubric position.
+        for probs in ({" 2": 1.0}, {"01": 1.0}, {"+1": 1.0}):
+            t = self._score_with_probs(probs)
+            with self.assertRaises(ProviderError, msg=repr(probs)):
+                _adapter(transport=t).decide(_case_input(), "score",
+                                              _ctx())
+
+    def test_score_fallback_duplicate_level_spellings_are_terminal(self):
+        # "1" and "01" name the same level under int() parsing and
+        # their mass sums to 1.0, so parsing double-counted level 1
+        # into a fabricated score instead of failing closed.
+        t = self._score_with_probs({"1": 0.5, "01": 0.5})
+        with self.assertRaises(ProviderError):
+            _adapter(transport=t).decide(_case_input(), "score", _ctx())
+
     def test_score_fallback_sparse_full_mass_accepted(self):
         # Levels carrying no probability may be omitted; the stated
         # mass still totals 1 and the weighted position is exact.
@@ -621,6 +639,16 @@ class TestCelerisErrors(unittest.TestCase):
         with self.assertRaises(ProviderError) as cm:
             a._raise_for_status(429, "5", "")
         self.assertEqual(cm.exception.retry_after, 5.0)
+
+    def test_409_carries_retry_after(self):
+        # 409 is in the runner's transient set, so the server's
+        # Retry-After must reach the runner like any other
+        # transient's; dropping it loses the server's stated wait.
+        a = _adapter()
+        with self.assertRaises(ProviderError) as cm:
+            a._raise_for_status(409, "3", "")
+        self.assertEqual(cm.exception.status_code, 409)
+        self.assertEqual(cm.exception.retry_after, 3.0)
 
     def test_error_detail_reads_fastapi_messages(self):
         # The Celeris error body is FastAPI-shaped: a detail list of

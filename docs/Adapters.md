@@ -1807,8 +1807,9 @@ Qwen3.8-27B fine-tunes with Apache-2.0 weights, priced at $0.02 per
 Perplexity's official Decisions API documentation on 2026-10-15 and
 are pinned in `python/peira/data/pricing.json`. Unversioned names
 and every other id are rejected at construction, so a run always
-names one exact model. 429/529/5xx and transport timeouts surface as
-retryable provider errors for the runner. 401 and 403 (key
+names one exact model. 408/409/429/529/5xx and transport timeouts
+surface as retryable provider errors for the runner, with any
+server `Retry-After` passed through. 401 and 403 (key
 rejected), 402 (out of API credit), 404 and 400/422 are terminal.
 The organization rate limit
 is 10 requests per second. The runner owns concurrency.
@@ -1858,9 +1859,10 @@ adapter reads only the standard answer fields, so extension content
 never enters a metric.
 
 Errors are FastAPI-shaped. The body carries a `detail` list and the
-adapter surfaces its message text. 408, 429, 529 and 5xx statuses
-and transport timeouts surface as retryable provider errors for the
-runner. 401/403, 404 and 400/422 are terminal.
+adapter surfaces its message text. 408, 409, 429, 529 and 5xx
+statuses and transport timeouts surface as retryable provider
+errors for the runner, with any server `Retry-After` passed
+through. 401/403, 404 and 400/422 are terminal.
 
 **Live-verified.** A probe on 2026-10-15 sent the adapter's exact
 question text to the endpoint and returned HTTP 200. A combined call
