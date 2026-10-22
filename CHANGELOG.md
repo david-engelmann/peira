@@ -7,6 +7,25 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
 
 ## [Unreleased]
 
+### Fixed score probability keys accepted by spelling in the Celeris and pplx-decider adapters
+
+- The score fallback in the `celeris` and `pplx-decider` adapters,
+  which derives a rubric position from per-level probabilities when
+  the server omits the `score` field, parsed probability keys with
+  `int()` instead of validating them. Spellings such as `" 2"`,
+  `"01"` and `"+1"` were silently accepted as levels, and `"1"`
+  alongside `"01"` double-counted one level while still summing to
+  1, fabricating a score. Keys must now be exactly the canonical
+  level spellings `"0"` to `"4"`; anything else voids the fallback
+  and the answer fails closed with the existing ProviderError. A
+  transcript audit of the published pplx-decider run found zero
+  fallback engagements (all 1,412 score answers carried the
+  server-reported score), so no published measurement is affected.
+- Both adapters now pass a 409 response's `Retry-After` through to
+  the runner, like the other transient statuses. 409 was already in
+  the runner's transient set; the parsed wait was previously
+  dropped.
+
 ### Added Celeris adapter
 
 - New `celeris` adapter for Celeris-1-decision, a diffusion decision
