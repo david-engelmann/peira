@@ -45,7 +45,7 @@ first live exercise.
 
 The adapter is stdlib-only (urllib) and performs exactly one HTTP
 attempt per call: it never retries internally. Transient failures
-(408, 429, 529, 5xx, timeouts, connection errors) are raised as
+(408, 409, 429, 529, 5xx, timeouts, connection errors) are raised as
 ``ProviderError`` with ``status_code``/``retry_after`` so the runner,
 which owns the retry policy, can classify and retry them. 401/403,
 404 and 400/422 are terminal.
@@ -120,6 +120,14 @@ _SCORE_LEVELS = [
 levels described in words and returns ``score`` as the 0-based rubric
 position (fractional positions allowed); the adapter normalizes to
 0..1."""
+
+# The only spellings a score probability key may carry: the canonical
+# decimal form of each rubric level index. A key is admitted only
+# by matching this set. It is never parsed to decide whether it
+# names a level, so spellings like "01", "+1" or " 2" are wire
+# drift and void the score fallback outright.
+_SCORE_LEVEL_KEYS = frozenset(
+    str(level) for level in range(len(_SCORE_LEVELS)))
 
 
 def _require_account_id(explicit: str | None) -> str:
@@ -350,9 +358,11 @@ class ClefAdapter:
                 "bug, not a retryable failure.",
                 status_code=status,
             )
-        if status in (408, 429, 529) or 500 <= status < 600:
+        if status in (408, 409, 429, 529) or 500 <= status < 600:
             # Transient: the runner retries with backoff and adapts
-            # concurrency. The adapter itself never retries.
+            # concurrency. The adapter itself never retries. 409 is
+            # in the runner's transient set, so the server's
+            # Retry-After must reach it like every other transient's.
             raise ProviderError(msg, status_code=status, retry_after=wait)
         raise ProviderError(msg, status_code=status)
 
@@ -453,14 +463,10 @@ class ClefAdapter:
             # per-level probabilities when the API omits the score.
             # The map's keys are the level indices; use them, never
             # the map's iteration order, which the wire does not
-            # guarantee.
-            try:
-                value = sum(
-                    int(k) * float(p)
-                    for k, p in ans["probabilities"].items()
-                )
-            except (TypeError, ValueError):
-                value = None
+            # guarantee. The fallback accepts only a genuine
+            # distribution (see _score_from_probabilities). Anything
+            # else voids it and the answer fails closed below.
+            value = _score_from_probabilities(ans["probabilities"])
         if not isinstance(value, (int, float)) or isinstance(value, bool):
             raise ProviderError(
                 f"clef score answer has no numeric score: {ans!r}")
@@ -533,6 +539,55 @@ def _need_answer(answers: dict[str, Any], name: str) -> dict[str, Any]:
     if not isinstance(ans, dict):
         raise ProviderError(f"clef response missing answer {name!r}")
     return ans
+
+
+def _score_from_probabilities(probs: dict[str, Any]) -> float | None:
+    """Weighted rubric position from a per-level probability map.
+
+    The fallback for a score answer whose ``score`` field is absent.
+    The map must be a genuine distribution over the rubric levels:
+    non-empty, keys exactly the canonical level spellings "0".."4"
+    (a key is admitted by matching, never by parsing, so "01",
+    "+1" or " 2" is drift, not a level, and two spellings of one
+    level cannot double-count
+    it), values genuine numbers in [0, 1] (never coerced, so a
+    string or a bool voids the fallback), and a total within
+    rounding distance of 1. Anything else returns None, which the
+    caller turns into a terminal error rather than a fabricated
+    score.
+    """
+    if not probs:
+        return None
+    total = 0.0
+    weighted = 0.0
+    # With keys matched canonically the duplicate check below
+    # cannot fire today. It pins the one-entry-per-level rule in
+    # the code itself, so loosening key matching later cannot
+    # silently reintroduce double-counting.
+    seen: set[int] = set()
+    for key, prob in probs.items():
+        if isinstance(prob, bool) or not isinstance(prob, (int, float)):
+            return None
+        if isinstance(prob, int) and prob not in (0, 1):
+            # An int probability is genuine only as 0 or 1. A
+            # several-hundred-digit JSON integer parses to an int
+            # whose float() raises OverflowError, which would escape
+            # the fallback instead of voiding it.
+            return None
+        value = float(prob)
+        if not math.isfinite(value) or not 0.0 <= value <= 1.0:
+            return None
+        if key not in _SCORE_LEVEL_KEYS:
+            return None
+        level = int(key)
+        if level in seen:
+            return None
+        seen.add(level)
+        total += value
+        weighted += level * value
+    if abs(total - 1.0) > 0.01:
+        return None
+    return weighted
 
 
 def _clamp01(value: Any, name: str) -> float:
