@@ -36,7 +36,7 @@
   /* Ranking grid geometry, shared by rows, band blocks and the
      axis strips so every chart cell aligns on one axis. */
   --micro: 11.5px;
-  --rail-w: 48px;
+  --rail-w: 68px;
   --rank-w: 44px;
   --name-w: minmax(180px, 290px);
   --value-w: 96px;
@@ -280,7 +280,7 @@ body {
 
 .rail-label {
   position: absolute;
-  left: 13px;
+  left: 22px;
   top: 50%;
   transform: translateY(-50%);
   font-size: 12px;
@@ -288,6 +288,7 @@ body {
   letter-spacing: 0.09em;
   text-transform: uppercase;
   color: var(--ink-2);
+  white-space: nowrap;
 }
 
 .rows {

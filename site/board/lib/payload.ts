@@ -431,8 +431,10 @@ export interface BoardGroups {
 /**
  * The ranking groups of the design system, section 4.1. The
  * ranked array splits on its case base into the full suite group
- * and the abstain slice group, each keeping payload rank order
- * and payload rank numbers. Flagged rows carry no rank and order
+ * and the abstain slice group, each keeping payload rank order.
+ * Ranks are dense within each group: the full suite group runs
+ * 1..N and the slice group 1..M (admission rules: ranks are dense
+ * within each division). Flagged rows carry no rank and order
  * by attack success. Tie bands are computed inside each ranked
  * group, because a band cannot be drawn across the flagged strip
  * that separates the groups.
@@ -440,8 +442,12 @@ export interface BoardGroups {
 export function boardGroups(): BoardGroups {
   const ranked = rankedRows();
   const fullCases = fullCaseCount(ranked);
-  const full = ranked.filter((r) => r.n_cases === fullCases);
-  const slices = ranked.filter((r) => r.n_cases < fullCases);
+  const full = ranked
+    .filter((r) => r.n_cases === fullCases)
+    .map((r, i) => ({ ...r, rank: i + 1 }));
+  const slices = ranked
+    .filter((r) => r.n_cases < fullCases)
+    .map((r, i) => ({ ...r, rank: i + 1 }));
   const flagged = [...payload.unranked].sort(
     (a, b) => (a.asr_conditional ?? 0) - (b.asr_conditional ?? 0),
   );

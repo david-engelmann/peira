@@ -1,5 +1,4 @@
 import {
-  payload,
   boardGroups,
   boardDateWords,
   boardVersions,
@@ -136,7 +135,6 @@ export default function ModelCards() {
   ];
   const dupes = duplicateShortNames(allRows);
   const familyKeys = familyOrder(allRows);
-  const totalRanked = payload.ranked.length;
   const sliceCases = groups.slices[0]?.n_cases ?? 0;
   const versions = boardVersions();
 
@@ -152,7 +150,13 @@ export default function ModelCards() {
         row={row}
         rank={rank}
         kind={kind}
-        totalRanked={totalRanked}
+        groupSize={
+          kind === "full"
+            ? groups.full.length
+            : kind === "slice"
+              ? groups.slices.length
+              : 0
+        }
         sliceCases={sliceCases}
         benchmarks={benchmarks}
         familyKeys={familyKeys}

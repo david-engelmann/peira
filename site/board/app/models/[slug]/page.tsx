@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import {
-  payload,
   boardGroups,
   boardDateWords,
   boardVersions,
@@ -136,7 +135,13 @@ export default async function ModelPage({
           row={row}
           rank={rank}
           kind={kind}
-          totalRanked={payload.ranked.length}
+          groupSize={
+            kind === "full"
+              ? groups.full.length
+              : kind === "slice"
+                ? groups.slices.length
+                : 0
+          }
           sliceCases={groups.slices[0]?.n_cases ?? 0}
           benchmarks={taxBenchmarks(groups)}
           familyKeys={familyOrder(rows)}

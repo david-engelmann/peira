@@ -13,7 +13,7 @@
  *        fits its client width) and every rendered short name
  *        equals the payload-derived short name.
  *  F-01  the rank column holds exactly one number per ranked row
- *        (the payload rank) and none on flagged rows.
+ *        (the group-local rank) and none on flagged rows.
  *  Amber appears only inside the flagged strip.
  *  The slice group header states the slice case base, the full
  *  group caption states the suite size.
@@ -177,7 +177,16 @@ const shortName = (r) => {
   const slash = name.lastIndexOf("/");
   return slash >= 0 ? name.slice(slash + 1) : name;
 };
-const ranked = payload.ranked.map((r, i) => ({ ...r, rank: i + 1 }));
+/* Group-local ranks, mirroring lib/payload boardGroups: the full
+ * suite group runs 1..N and the slice group 1..M, each in payload
+ * rank order. */
+const fullCasesRankA = Math.max(...payload.ranked.map((r) => r.n_cases));
+let fullRankA = 0;
+let sliceRankA = 0;
+const ranked = payload.ranked.map((r) => ({
+  ...r,
+  rank: r.n_cases === fullCasesRankA ? ++fullRankA : ++sliceRankA,
+}));
 const byRunId = new Map(
   [...ranked, ...payload.unranked].map((r) => [r.run_id, r]),
 );
@@ -1083,7 +1092,7 @@ for (const width of [1440, 1280, 390]) {
       }
     } else if (cell.text !== String(row.rank)) {
       failures.push(
-        `width ${width}: row ${cell.runId} rank cell holds "${cell.text}", payload rank is ${row.rank}`,
+        `width ${width}: row ${cell.runId} rank cell holds "${cell.text}", group rank is ${row.rank}`,
       );
     }
   }

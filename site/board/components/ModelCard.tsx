@@ -54,21 +54,21 @@ function NotMeasured() {
 function rankStatement(
   kind: CardKind,
   rank: number | null,
-  totalRanked: number,
+  groupSize: number,
   sliceCases: number,
 ): string {
   if (kind === "flagged") return "Flagged";
   if (kind === "slice") {
-    return `Rank ${rank} of ${totalRanked} ranked, on the guardrail slice of ${fmtInt(sliceCases)} cases`;
+    return `Rank ${rank} of ${groupSize} on the guardrail slice of ${fmtInt(sliceCases)} cases`;
   }
-  return `Rank ${rank} of ${totalRanked} ranked`;
+  return `Rank ${rank} of ${groupSize} in the full suite`;
 }
 
 export default function ModelCard({
   row,
   rank,
   kind,
-  totalRanked,
+  groupSize,
   sliceCases,
   benchmarks,
   familyKeys,
@@ -78,7 +78,7 @@ export default function ModelCard({
   row: BoardRow;
   rank: number | null;
   kind: CardKind;
-  totalRanked: number;
+  groupSize: number;
   sliceCases: number;
   benchmarks: TaxBenchmarks;
   familyKeys: string[];
@@ -109,7 +109,7 @@ export default function ModelCard({
     <div className="card-body">
       <div className="card-head">
         <p className="card-statement">
-          {rankStatement(kind, rank, totalRanked, sliceCases)}
+          {rankStatement(kind, rank, groupSize, sliceCases)}
         </p>
         <p className="card-model-id mono">{row.display_name}</p>
         <p className="card-wire">Wire {wireWords(row.wire)}</p>
