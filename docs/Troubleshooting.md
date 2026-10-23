@@ -1716,6 +1716,115 @@ first start downloads the checkpoint and its Qwen3.5-2B base
 weights, about 4.5 GB. Terminal: the runner never retries a
 missing local server.
 Fix: start the server, then re-run.
+**`cerno adapter pins model 'apertixai/cerno-4b'; got '...'`**
+Cause: a floating or unsupported checkpoint id was passed. The
+checkpoint is baked into the server deployment, so the adapter
+accepts only the pinned id. Fix: don't pass `model=` at all, or
+point `api_url=` at a deployment of the pinned checkpoint.
+
+**`cerno server reported model '...'; this adapter measures only the pinned deployment of apertixai/cerno-4b, which reports 'cerno-4b'; point api_url= at that deployment.`**
+Cause: the endpoint in use is serving different weights than
+the pinned checkpoint, or the sidecar was started without
+stamping the checkpoint it loaded. The vendored Decider's own
+response name is `decider-dev` for this checkpoint, so a bare
+vendored server without the sidecar's stamp is out of contract
+for the same reason. The adapter measures one checkpoint only
+and will not record another deployment's answers under its
+name. Fix: point `api_url=` at the pinned deployment served by
+the Cerno sidecar. Terminal.
+
+**`cerno server reported revision '...'; this adapter measures only the pinned deployment of apertixai/cerno-4b at Hub revision ed4b5c59b542ee96c227ee874776c973980c640b; point api_url= at that deployment.`**
+Cause: the endpoint is serving the pinned repo at a different
+Hub revision than the pin (an older snapshot, or a future
+re-upload under the same repo name), or the sidecar was
+started without stamping the revision it loaded. The model id
+floats on the Hub, so the revision stamp is what names the
+exact weights. Fix: point `api_url=` at the deployment of the
+pinned snapshot served by the Cerno sidecar. Terminal.
+
+**`cerno answer '...' must be a JSON object, got ...; the vendored answer format emits one object per question, so this is server drift and the call is not measurable.`**
+Cause: the server answered a question with a value that is
+not an answer object at all (a bare string, a number, a list).
+Fix: report it. Terminal.
+
+**`cerno choice answer '...' carries no string choice; the vendored answer format always emits one, so this is server drift and the call is not measurable.`**
+Cause: the choice answer's `choice` field was missing or not
+a string. Fix: report it. Terminal.
+
+**`cerno choice answer '...' carries no probabilities map; the vendored answer format always emits the full distribution, so this is server drift and the call is not measurable.`** / **`cerno score answer '...' carries no probabilities map; ...`**
+Cause: the server answered a choice or score call without
+the probability distribution its answer schema requires (or
+with a value that is not a map at all). Without the map there
+is no measured probability to report, and the adapter will
+not record the inherited parser's default. Fix: report it.
+Terminal.
+
+**`cerno choice answer '...' carries a probabilities map whose mass sums to ..., not 1; the vendored answer format emits a softmax distribution, so this is server drift and the call is not measurable.`** / **`cerno score answer '...' carries a probabilities map whose mass sums to ..., not 1; ...`**
+Cause: every value in the map was individually a valid
+probability, but together they are not a distribution (they
+sum to 2, or to 0.3, or to nothing). The recorded confidence
+or score would not be the model's. Fix: report it. Terminal.
+
+**`cerno choice answer '...' picks '...', which its probabilities map does not carry; the vendored answer format builds the map from the same distribution it picks from, so this is server drift and the call is not measurable.`**
+Cause: the answer's chosen option is absent from its own
+probability distribution, so there is no measured probability
+for the decision the server reports. Fix: report it.
+Terminal.
+
+**`cerno decision answer carries no probabilities map entry for its chosen option '...'; the vendored answer format builds the map from the same distribution it picks from, so this is server drift and the call is not measurable.`**
+Cause: the decision answer reached the parser without a
+usable probability for its chosen option, so the confidence
+could not be normalized to a measured number. The transport
+validation rejects this shape first; this is its parser-side
+backstop. Fix: report it. Terminal.
+
+**`cerno score answer '...' carries a probability for level '...', which is not one of the score levels; the vendored answer format keys the distribution by level index, so this is server drift and the call is not measurable.`**
+Cause: the score answer's level map carried a key outside
+the level indices ("0" to "4"). Fix: report it. Terminal.
+
+**`cerno answer '...' carries neither 'abstain' nor 'noul'; the vendored answer format emits the abstention probability under 'noul', so this is server drift and the call is not measurable.`**
+Cause: the abstain answer carried no abstention probability
+under either key the parser reads. Fix: report it. Terminal.
+
+**`cerno answer '...' carries ... , which is not a finite probability in [0, 1]; the vendored answer format always emits one, so this is server drift and the call is not measurable.`**
+Cause: a probability in the answer (an option probability, a
+level probability, the noul value, or a present `confidence`)
+was missing, non-numeric, non-finite, or outside [0, 1]. The
+adapter will not clamp it into range or default it, because
+the recorded number would not be the model's. Fix: report
+it. Terminal.
+
+**`cerno score answer '...' carries score ..., which is not a finite level position in [0, 4]; the vendored answer format emits the probability weighted level position on that scale, so this is server drift and the call is not measurable.`**
+Cause: the score answer's `score` field was missing,
+non-numeric, non-finite, or outside the level scale. Fix:
+report it. Terminal.
+
+**`cerno answer '...' carries type ...; the vendored answer format emits choice, score, or noul answers only, so this is server drift and the call is not measurable.`**
+Cause: the server answered with an answer type the vendored
+format never emits, or with an answer that is not a JSON
+object at all. Fix: report it. Terminal.
+
+**`cerno server error ...` / `cerno transport error: ...` / `cerno returned non-JSON response (HTTP ...)`**
+Cause: the local server answered with an HTTP error status,
+the connection dropped mid-call, or the response was not the
+expected JSON object. The runner retries 429 and 5xx
+statuses as transient. A 401 is terminal, because these
+servers take no auth and a rejection means the server is
+misconfigured, and a 422 is terminal, because the request
+itself was rejected. Fix: check the server log, and restart
+the server if it is wedged.
+
+**`cerno: cannot reach the local server at http://127.0.0.1:8017/v1/systemone (...)`**
+Cause: no Cerno sidecar is listening at the configured
+endpoint. The message continues with the setup hint (start
+the Cerno sidecar first, which wraps the vendored Apertix
+Decider loaded from the pinned apertixai/cerno-4b snapshot,
+serves POST /v1/systemone on 127.0.0.1:8017, and stamps every
+response with the checkpoint name cerno-4b and its Hub
+revision). Terminal: the runner never retries a missing
+local server.
+Fix: start the server, then re-run.
+
 **`decider adapter pins checkpoint 'Mapika/decider-0.8b'; got '...'`**
 Cause: an unlisted checkpoint id was passed. The adapter measures
 exactly one checkpoint, pinned at a fixed Hub revision. Fix: don't

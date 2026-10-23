@@ -1934,6 +1934,85 @@ arrived under the `noul` key only. The `usage` object carried
 integer counters. The adapter's first measured exercise is the
 standard driver canary.
 
+## Cerno
+
+```bash
+peira run --adapter peira.adapters.cerno:CernoAdapter --suite trial-demo
+```
+
+Cerno (Apertix, Apache 2.0) is a family of open-weights System
+One decision models, `apertixai/cerno-27b`, `apertixai/cerno-9b`
+and `apertixai/cerno-4b`, each a Qwen3.5 text base fine-tuned to
+answer typed choice, score, and noul questions in one forward
+pass, with a probability distribution per question and no
+generated text. The vendor's inference code renders the state
+and questions into option slots and reads each option's
+probability off the label-token logits, dividing by the
+calibration temperature the checkpoint ships in
+`decider_config.json` (1.534 for the 4B at the pinned revision).
+
+The vendor ships no server. The deployment under test is a
+local sidecar that wraps the vendored Decider class and exposes
+`POST /v1/systemone` on 127.0.0.1 with no authentication, the
+wire shape the Jev adapter speaks, so the adapter reuses the
+self-hosted wire plumbing it shares with Kev and Strands
+Decider. The differences are the pinned checkpoint, the default
+endpoint (`http://127.0.0.1:8017/v1/systemone`), and the answer
+validation below. Run it locally only, and run peira against it
+at concurrency 1.
+
+The checkpoint is pinned to `apertixai/cerno-4b` at Hub
+revision ed4b5c59b542ee96c227ee874776c973980c640b, the only
+family member small enough to serve on the trial VM. Any other
+model id is rejected at construction, and the pinned id
+namespaces the runner cache. The sidecar loads exactly the
+pinned snapshot and stamps every response with the checkpoint
+name and Hub revision it loaded, `cerno-4b` and
+`ed4b5c59b542ee96c227ee874776c973980c640b`. The vendored
+Decider's own response name is `decider-dev` for this
+checkpoint, because its config carries no version field, so
+both stamps come from the sidecar, not the library. The
+adapter fails the call when either stamp is absent or
+different, so an endpoint serving other weights, or the same
+repo at another revision, cannot be measured under the pin
+by mistake.
+
+The weights are FP8 W8A8 as shipped. That is the checkpoint's
+native format, served as published and never re-quantized or
+converted. The sidecar's CPU serving keeps the weights FP8 in
+memory and dequantizes each layer transiently for the forward
+pass, which is the standard CPU execution of an FP8 checkpoint.
+Serve device and execution stack change the numbers, as with
+Strands Decider, so the serving device is recorded with the
+run's own records.
+
+Peira's confidence is the model's probability for the chosen
+option. The vendored answer format emits that figure both as
+the answer's `confidence` and in its `probabilities` map, and
+the vendor's published answer format omits the `confidence`
+field because it duplicates the map entry. The adapter
+normalizes the decision answer to the map entry before
+parsing, so the recorded confidence is the probability under
+either format, and never the inherited parser's 0.5 default
+for an absent field. A present but malformed `confidence` is
+still a terminal error, since neither format emits one. What
+the adapter does not accept at all is a malformed
+distribution. A probability that is missing, non-numeric,
+non-finite, or outside [0, 1], a distribution whose mass does
+not sum to 1 within rounding, a score outside the level
+range, or a noul value that is not a probability is a
+terminal error, never a clamped or defaulted number, because
+for a pinned local deployment those shapes are server drift
+against a fixed answer schema, not measurement.
+
+The model is local and self-hosted, so cost is $0 (pricing
+version 2026-10-15.6). A forward pass is a full prefill of the
+case state on CPU. Measured at build time on the 2 vCPU trial
+VM under its usual load, a short case state took about 318
+seconds for a single choice call, so the adapter's default
+timeout is 1,200 seconds and a full trial is a long run, on
+the order of days of wall time on that VM rather than hours.
+
 ## Pricing
 
 `peira run` recomputes cost from the pinned table in
