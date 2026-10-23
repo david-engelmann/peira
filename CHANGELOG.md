@@ -19,6 +19,21 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
   task, written down in
   `docs/Board-Publishing.md`.
 
+### Added Llama Guard 3 adapters
+
+- New `llama-guard-3-1b` and `llama-guard-3-8b` adapters for Meta's
+  Llama Guard 3 safety classifiers, pinned to
+  `meta-llama/Llama-Guard-3-1B` at Hub revision
+  acf7aafa60f0410f8f42b1fa35e077d705892029 and
+  `meta-llama/Llama-Guard-3-8B` at Hub revision
+  7327bd9f6efbbe6101dc6cc4736302b3cbb6e425. Both run prompt
+  classification through the model's own chat template (the
+  MLCommons taxonomy ships inside it) and score P(unsafe)
+  renormalized over the first-token safe/unsafe label logprobs,
+  the model card's classifier-score construction. Abstain
+  primitive only, like the rest of the HF guardrail family. Both
+  checkpoints are gated under the Llama 3.1 Community License.
+
 ### Board facts refreshed to the freeze publish
 
 - The README and the announcement package now state the freeze board with 39 entries covering 38 distinct models, 34 ranked models and 4 flagged models. The refresh adds Mercury Decide and Clef omni as published full-suite results, marks Llama Prompt Guard 2 as measured on the guardrail slice, records that the robustness tax frontier is unchanged, and adds adapter table rows for Mercury Decide and Cerno.

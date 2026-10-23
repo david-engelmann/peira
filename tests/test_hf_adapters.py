@@ -23,6 +23,8 @@ from peira.adapters.hf import (
     GraniteGuardianHapAdapter,
     HarmBenchAdapter,
     ShieldGemmaAdapter,
+    LlamaGuard3_1BAdapter,
+    LlamaGuard3_8BAdapter,
     LlamaPromptGuard2Adapter,
     ProtectAIAdapter,
     Qwen3GuardAdapter,
@@ -230,6 +232,10 @@ class TestPinnedRevisions(unittest.TestCase):
              "bda705349d1144fa618770bea64d99ce54e3835b"),
             (GraniteGuardianHapAdapter, "ibm-granite/granite-guardian-hap-125m",
              "a76ccfd3ddb790fa7c23db58149bfec7ba1aa57f"),
+            (LlamaGuard3_1BAdapter, "meta-llama/Llama-Guard-3-1B",
+             "acf7aafa60f0410f8f42b1fa35e077d705892029"),
+            (LlamaGuard3_8BAdapter, "meta-llama/Llama-Guard-3-8B",
+             "7327bd9f6efbbe6101dc6cc4736302b3cbb6e425"),
         ]
         for cls, model_id, revision in cases:
             with self.subTest(cls=cls.__name__):
@@ -257,6 +263,8 @@ class TestPinnedRevisions(unittest.TestCase):
             (Qwen3GuardAdapter, "qwen3guard-gen", "1.0"),
             (HarmBenchAdapter, "harmbench", "1.0"),
             (GraniteGuardianHapAdapter, "granite-guardian-hap", "125m"),
+            (LlamaGuard3_1BAdapter, "llama-guard-3-1b", "1.0"),
+            (LlamaGuard3_8BAdapter, "llama-guard-3-8b", "1.0"),
         ]:
             with self.subTest(cls=cls.__name__):
                 self.assertEqual(cls.name, name)
@@ -1557,6 +1565,228 @@ class TestLoadErrors(unittest.TestCase):
         self.assertEqual(retry_after, 7.0)
 
 
+# -- Llama Guard 3 (1B / 8B) --------------------------------------------
+
+class _LlamaGuard3Tokenizer(_FakeTokenizer):
+    """Adds the chat-template hook Llama Guard 3's prompt builder needs.
+
+    The adapter calls apply_chat_template with exactly one user message
+    and no extra kwargs (Meta's published usage); both are recorded.
+    """
+
+    def __init__(self, encode=None, call_ids=(1, 2, 3), template="TEMPLATE:"):
+        super().__init__(encode=encode, call_ids=call_ids)
+        self._template = template
+        self.seen_messages = None
+        self.seen_text = None
+
+    def apply_chat_template(self, messages, tokenize=False):
+        self.seen_messages = messages
+        return self._template
+
+    def __call__(self, text, return_tensors=None, truncation=False,
+                 max_length=None):
+        self.seen_text = text
+        return super().__call__(text, return_tensors=return_tensors,
+                                truncation=truncation, max_length=max_length)
+
+
+class TestLlamaGuard3(unittest.TestCase):
+    CLASSES = (LlamaGuard3_1BAdapter, LlamaGuard3_8BAdapter)
+
+    def _adapter(self, cls, logits, encode_map=None, template="TEMPLATE:"):
+        # Bare "safe"/"unsafe" first: the template ends with the
+        # assistant header, so the trained first token has no space.
+        base = {"safe": [1], "unsafe": [2]}
+        base.update(encode_map or {})
+        tok = _LlamaGuard3Tokenizer(encode=base, template=template)
+        model = _FakeCausalModel(logits)
+        return _make(cls, tok, model), tok, model
+
+    def test_unsafe_wins_gives_abstain(self):
+        for cls in self.CLASSES:
+            with self.subTest(cls=cls.__name__):
+                logits = [0.0] * 3
+                logits[2] = 6.0  # "unsafe" far above everything else
+                adapter, _, model = self._adapter(cls, logits)
+                out = adapter.decide(_choice_input(), "abstain", _ctx())
+                self.assertEqual(out.decision, "abstain")
+                self.assertFalse(out.abstained)  # label, not a refusal
+                self.assertGreater(out.confidence, 0.99)
+                self.assertEqual(out.transcript["scores"]["label"],
+                                 "unsafe")
+                # Generation contract: exactly one greedy token.
+                self.assertEqual(model.generate_kwargs["max_new_tokens"], 1)
+                self.assertEqual(model.generate_kwargs["temperature"], 0)
+                self.assertEqual(out.usage.tokens_out, 1)
+                self.assertEqual(validate_output(out, "abstain"), [])
+
+    def test_safe_wins_gives_other_placeholder(self):
+        for cls in self.CLASSES:
+            with self.subTest(cls=cls.__name__):
+                logits = [0.0] * 3
+                logits[1] = 6.0  # "safe"
+                adapter, _, _ = self._adapter(cls, logits)
+                out = adapter.decide(_choice_input(), "abstain", _ctx())
+                self.assertEqual(out.decision, "other")
+                self.assertFalse(out.abstained)
+                self.assertGreater(out.confidence, 0.99)
+                self.assertEqual(out.transcript["scores"]["label"], "safe")
+                self.assertEqual(validate_output(out, "abstain"), [])
+
+    def test_renormalization_math(self):
+        # Ids: safe=1, unsafe=2. Mass on index 0 must not leak into
+        # p_malicious: scores renormalize over the two label tokens.
+        logits = [2.0, 0.5, 1.0]
+        adapter, _, _ = self._adapter(LlamaGuard3_8BAdapter, logits)
+        out = adapter.decide(_choice_input(), "abstain", _ctx())
+        e_safe, e_unsafe = math.exp(0.5), math.exp(1.0)
+        total = e_safe + e_unsafe
+        expected_p = e_unsafe / total  # P(unsafe) / (P(safe) + P(unsafe))
+        scores = out.transcript["scores"]
+        self.assertAlmostEqual(scores["p_malicious"], expected_p)
+        self.assertAlmostEqual(scores["p_safe"], e_safe / total)
+        self.assertAlmostEqual(scores["p_unsafe"], e_unsafe / total)
+        self.assertEqual(scores["label"], "unsafe")
+        # 0.62 >= 0.5: threshold decides, matching the argmax here.
+        self.assertEqual(out.decision, "abstain")
+        self.assertAlmostEqual(out.confidence, abs(2 * expected_p - 1))
+
+    def test_probability_follows_unsafe_logit_not_argmax_position(self):
+        # A larger logit on a NON-label token (index 0) with the safe
+        # label ahead of unsafe: the probability construction must read
+        # the label ids, not positions or the generation argmax.
+        logits = [9.0, 3.0, 1.0]
+        adapter, _, _ = self._adapter(LlamaGuard3_1BAdapter, logits)
+        out = adapter.decide(_choice_input(), "abstain", _ctx())
+        e_safe, e_unsafe = math.exp(3.0), math.exp(1.0)
+        expected_p = e_unsafe / (e_safe + e_unsafe)
+        scores = out.transcript["scores"]
+        self.assertAlmostEqual(scores["p_malicious"], expected_p)
+        self.assertLess(scores["p_malicious"], 0.5)
+        self.assertEqual(scores["label"], "safe")
+        self.assertEqual(out.decision, "other")
+
+    def test_threshold_boundary_abstains(self):
+        # p(unsafe) = 0.5 exactly: >= threshold, so malicious.
+        logits = [0.0, 0.0, 0.0]
+        adapter, _, _ = self._adapter(LlamaGuard3_1BAdapter, logits)
+        out = adapter.decide(_choice_input(), "abstain", _ctx())
+        self.assertAlmostEqual(
+            out.transcript["scores"]["p_malicious"], 0.5)
+        self.assertEqual(out.decision, "abstain")
+
+    def test_single_user_message_prompt_no_prefill(self):
+        # Meta's published usage: one user message carrying the case
+        # text, through the model's own template; the rendered text is
+        # used exactly as the template returns it (no prefill — the
+        # template ends with the assistant header). The message
+        # CONTENT shape differs per checkpoint because the shipped
+        # templates read different shapes: the 8B renders a string,
+        # the 1B renders text parts (a string renders an empty
+        # conversation in the 1B template).
+        logits = [0.0] * 3
+        logits[2] = 6.0
+        adapter, tok, _ = self._adapter(
+            LlamaGuard3_8BAdapter, logits, template="<tmpl>")
+        adapter.decide(_choice_input("hello"), "abstain", _ctx())
+        self.assertEqual(tok.seen_messages,
+                         [{"role": "user", "content": "hello"}])
+        self.assertEqual(tok.seen_text, "<tmpl>")
+
+        adapter, tok, _ = self._adapter(
+            LlamaGuard3_1BAdapter, logits, template="<tmpl>")
+        adapter.decide(_choice_input("hello"), "abstain", _ctx())
+        self.assertEqual(
+            tok.seen_messages,
+            [{"role": "user",
+              "content": [{"type": "text", "text": "hello"}]}])
+        self.assertEqual(tok.seen_text, "<tmpl>")
+
+    def test_bare_token_preferred_over_spaced(self):
+        # Both spellings single-token: the bare ids win (no leading
+        # space after the assistant header).
+        logits = [0.0] * 10
+        logits[4] = 1.0  # spaced " safe"
+        logits[3] = 5.0  # bare "safe"
+        adapter, _, _ = self._adapter(
+            LlamaGuard3_8BAdapter, logits,
+            encode_map={"safe": [3], " safe": [4], "unsafe": [5]})
+        out = adapter.decide(_choice_input(), "abstain", _ctx())
+        self.assertEqual(out.transcript["scores"]["label"], "safe")
+        self.assertGreater(out.transcript["scores"]["p_safe"], 0.9)
+
+    def test_spaced_token_fallback(self):
+        # Bare "unsafe" is multi-token: fall back to the spaced id.
+        logits = [0.0] * 10
+        logits[7] = 5.0  # spaced " unsafe"
+        adapter, _, _ = self._adapter(
+            LlamaGuard3_1BAdapter, logits,
+            encode_map={"safe": [8], "unsafe": [5, 6], " unsafe": [7]})
+        out = adapter.decide(_choice_input(), "abstain", _ctx())
+        self.assertEqual(out.decision, "abstain")
+        self.assertEqual(out.transcript["scores"]["label"], "unsafe")
+
+    def test_missing_label_token_raises_provider_error(self):
+        adapter, _, _ = self._adapter(
+            LlamaGuard3_8BAdapter, [0.0] * 3,
+            encode_map={"safe": [1, 2], " safe": [3, 4]})
+        with self.assertRaises(ProviderError) as ctx:
+            adapter.decide(_choice_input(), "abstain", _ctx())
+        self.assertIn("single-token id", str(ctx.exception))
+        self.assertIn("meta-llama/Llama-Guard-3-8B", str(ctx.exception))
+
+    def test_non_text_template_raises_provider_error(self):
+        class _BadTemplate(_LlamaGuard3Tokenizer):
+            def apply_chat_template(self, messages, tokenize=False):
+                return ["not", "text"]
+
+        tok = _BadTemplate(encode={"safe": [1], "unsafe": [2]})
+        adapter = _make(LlamaGuard3_1BAdapter, tok,
+                        _FakeCausalModel([0.0] * 3))
+        with self.assertRaises(ProviderError):
+            adapter.decide(_choice_input(), "abstain", _ctx())
+
+    def test_label_ids_cached_across_calls(self):
+        calls = []
+
+        def counting_encode(text):
+            calls.append(text)
+            return {"safe": [1], "unsafe": [2]}[text]
+
+        tok = _LlamaGuard3Tokenizer(encode=counting_encode)
+        adapter = _make(LlamaGuard3_8BAdapter, tok,
+                        _FakeCausalModel([0.0] * 3))
+        adapter.decide(_choice_input(), "abstain", _ctx())
+        first_call_count = len(calls)
+        adapter.decide(_choice_input(), "abstain", _ctx())
+        self.assertEqual(len(calls), first_call_count)
+
+    def test_abstain_is_the_only_primitive(self):
+        # The driver routes only abstain-primitive cases to this family
+        # (ABSTAIN_ONLY_KEYS); any other primitive is a contract error,
+        # never a fabricated decision.
+        adapter, _, _ = self._adapter(
+            LlamaGuard3_1BAdapter, [0.0] * 3)
+        for primitive in ("choice", "score"):
+            with self.subTest(primitive=primitive):
+                with self.assertRaises(ValueError):
+                    adapter.decide(_choice_input(), primitive, _ctx())
+
+    def test_usage_model_is_pinned_identifier(self):
+        for cls in self.CLASSES:
+            with self.subTest(cls=cls.__name__):
+                adapter, _, _ = self._adapter(cls, [0.0] * 3)
+                out = adapter.decide(_choice_input(), "abstain", _ctx())
+                self.assertEqual(
+                    out.usage.model,
+                    f"hf:{cls.HF_MODEL_ID}@{cls.HF_REVISION}")
+                self.assertEqual(out.transcript["revision"],
+                                 cls.HF_REVISION)
+                self.assertEqual(out.transcript["revision_source"],
+                                 "pinned")
+
+
 # -- Real-tokenizer contract (T-P1-2) -----------------------------------
 # These tests resolve label ids through _single_token_id against the real
 # pinned tokenizers (CPU-only, tokenizer files only, no weights or GPU).
@@ -1620,6 +1850,56 @@ class TestRealTokenizerContract(unittest.TestCase):
         ids = tok.encode("yes", add_special_tokens=False)
         self.assertEqual(len(ids), 1)
         self.assertEqual(ids[0], yes_id)
+
+    def test_llama_guard_3_bare_labels_are_single_tokens(self):
+        # Llama Guard 3's bare-first candidate tuple: "safe" and
+        # "unsafe" must each resolve to a single real id through
+        # _single_token_id on BOTH pinned tokenizers (the 1B and 8B
+        # share the Llama-3 tokenizer family, but the pins are
+        # independent repos, so both are pinned separately).
+        for model_id, revision in (
+            ("meta-llama/Llama-Guard-3-1B",
+             "acf7aafa60f0410f8f42b1fa35e077d705892029"),
+            ("meta-llama/Llama-Guard-3-8B",
+             "7327bd9f6efbbe6101dc6cc4736302b3cbb6e425"),
+        ):
+            with self.subTest(model_id=model_id):
+                tok = self._load_tokenizer(model_id, revision)
+                for label in ("safe", "unsafe"):
+                    resolved = _single_token_id(
+                        tok, (label, f" {label}"), label, model_id)
+                    ids = tok.encode(label, add_special_tokens=False)
+                    self.assertEqual(len(ids), 1)
+                    self.assertEqual(ids[0], resolved)
+
+    def test_llama_guard_3_template_carries_taxonomy_and_header(self):
+        # The adapter relies on Meta's shipped chat template for the
+        # whole policy: the prompt built through the ADAPTER (each
+        # checkpoint's own message shape) must carry that checkpoint's
+        # shipped taxonomy, contain the case text in the conversation
+        # (the 1B template renders an empty conversation for string
+        # content — the failure this test exists to catch), and end
+        # with the assistant header, so the model's first generated
+        # token is the verdict with no prefill from the adapter. The
+        # shipped taxonomies differ: 8B runs S1–S14, 1B runs S1–S13.
+        for cls, last_category in (
+            (LlamaGuard3_1BAdapter, "S13: Elections"),
+            (LlamaGuard3_8BAdapter, "S14: Code Interpreter Abuse"),
+        ):
+            with self.subTest(cls=cls.__name__):
+                tok = self._load_tokenizer(
+                    cls.HF_MODEL_ID, cls.HF_REVISION)
+                adapter = _make(cls, tok, _FakeCausalModel([0.0] * 3))
+                rendered = adapter._build_prompt("probe text", tok)
+                self.assertIn("S1: Violent Crimes", rendered)
+                self.assertIn(last_category, rendered)
+                self.assertIn("User: probe text", rendered)
+                self.assertTrue(
+                    rendered.rstrip().endswith(
+                        "<|start_header_id|>assistant<|end_header_id|>"),
+                    f"template does not end with the assistant header: "
+                    f"{rendered[-120:]!r}",
+                )
 
 
 if __name__ == "__main__":
