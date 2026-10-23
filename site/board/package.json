@@ -1,0 +1,30 @@
+{
+  "name": "peira-board",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Peira decision model robustness board. Static Next.js front end over the pipeline payload.",
+  "scripts": {
+    "dev": "next dev",
+    "prebuild": "node scripts/gen-og.mjs",
+    "build": "next build && node scripts/check-integrity.mjs && node scripts/check-budget.mjs",
+    "check:integrity": "node scripts/check-integrity.mjs"
+  },
+  "dependencies": {
+    "@visx/axis": "^3.12.0",
+    "@visx/group": "^3.12.0",
+    "@visx/responsive": "^3.12.0",
+    "@visx/scale": "^3.12.0",
+    "@visx/shape": "^3.12.0",
+    "@visx/text": "^3.12.0",
+    "next": "^15.5.4",
+    "react": "^19.1.1",
+    "react-dom": "^19.1.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.18.0",
+    "@types/react": "^19.1.0",
+    "@types/react-dom": "^19.1.0",
+    "puppeteer-core": "^25.16.0",
+    "typescript": "^5.9.0"
+  }
+}

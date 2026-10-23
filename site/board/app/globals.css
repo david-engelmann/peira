@@ -1,0 +1,598 @@
+/* Ledger design tokens, design system section 3. Provisional skin
+   for the round 8 prototype. The tokens and type rules are the
+   design system's; section composition lands at the round 10 gate. */
+
+@font-face {
+  font-family: "Archivo";
+  font-style: normal;
+  font-weight: 400 800;
+  font-display: swap;
+  src: url("/fonts/archivo.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "JetBrains Mono";
+  font-style: normal;
+  font-weight: 400 700;
+  font-display: swap;
+  src: url("/fonts/jetbrains-mono.woff2") format("woff2");
+}
+
+:root {
+  --ground: #0a0c0f;
+  --panel: #10141a;
+  --raised: #171d24;
+  --hairline: #232c35;
+  --ink-1: #e9eef3;
+  --ink-2: #aebcc7;
+  --ink-3: #71808f;
+  --accent: #2fbf71;
+  --amber: #e8a33d;
+  --red: #ff6a3d;
+
+  --font-data: "Archivo", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+
+  /* Ranking grid geometry, shared by rows, band blocks and the
+     axis strips so every chart cell aligns on one axis. */
+  --micro: 11.5px;
+  --rail-w: 48px;
+  --rank-w: 44px;
+  --name-w: minmax(180px, 290px);
+  --value-w: 96px;
+  --row-gap: 16px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  background: var(--ground);
+  color: var(--ink-1);
+  font-family: var(--font-data);
+  font-size: 14.5px;
+  line-height: 1.45;
+}
+
+.num {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
+}
+
+.mono {
+  font-family: var(--font-mono);
+}
+
+.page {
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 0 24px 96px;
+}
+
+/* Masthead, prototype placeholder. Round 11 builds the real one. */
+
+.masthead {
+  padding: 28px 0 20px;
+  border-bottom: 1px solid var(--hairline);
+}
+
+.masthead-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 24px;
+}
+
+/* The wordmark block is the only green on the page (owner
+   ruling, round 8 feedback). Every other accent usage in the
+   system resolves to ink tones. */
+
+.wordmark {
+  font-size: 20px;
+  font-weight: 650;
+  letter-spacing: 0.02em;
+  margin: 0;
+  color: var(--accent);
+}
+
+.claim {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--accent);
+  margin: 4px 0 0;
+}
+
+.stamp {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  color: var(--ink-3);
+  margin: 4px 0 0;
+  text-align: right;
+}
+
+/* Findings strip. A newspaper band across the page (owner
+   ruling, round 8 feedback), a heavy rule over a hairline, the
+   finding set as a headline and the counts as its deck. */
+
+.findings {
+  margin-top: 22px;
+  border-top: 2px solid var(--ink-1);
+  border-bottom: 1px solid var(--hairline);
+  padding: 18px 0 16px;
+}
+
+.finding {
+  font-size: 23px;
+  font-weight: 600;
+  line-height: 1.35;
+  max-width: 46ch;
+  margin: 0;
+}
+
+.counts-line {
+  color: var(--ink-2);
+  max-width: 68ch;
+  margin: 10px 0 0;
+}
+
+/* Section heading system */
+
+.section {
+  margin-top: 64px;
+}
+
+.section-label {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--ink-2);
+  margin: 0 0 8px;
+}
+
+.section-title {
+  font-size: 20px;
+  font-weight: 650;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  margin: 0 0 12px;
+}
+
+.section-lede {
+  color: var(--ink-2);
+  max-width: 68ch;
+  margin: 0;
+}
+
+/* Ranking groups */
+
+.rank-group {
+  margin-top: 40px;
+}
+
+.group-head {
+  display: flex;
+  align-items: baseline;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-bottom: 4px;
+}
+
+.group-label {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--ink-1);
+  margin: 0;
+}
+
+.group-caption {
+  color: var(--ink-2);
+  margin: 0;
+  max-width: 68ch;
+}
+
+/* Axis strip. A row of the shared grid whose chart cell carries
+   the tick labels, so the ticks sit exactly over the data axis. */
+
+.axis-row {
+  display: flex;
+}
+
+.axis-grid {
+  flex: 1;
+  min-width: 0;
+}
+
+.axis-cell {
+  position: relative;
+  height: 16px;
+}
+
+.axis-title {
+  font-size: 11.5px;
+  color: var(--ink-3);
+  margin-bottom: 2px;
+}
+
+.axis-tick {
+  position: absolute;
+  bottom: 0;
+  transform: translateX(-50%);
+  font-size: 11.5px;
+  color: var(--ink-3);
+  font-variant-numeric: tabular-nums;
+}
+
+.axis-tick.first {
+  transform: none;
+}
+
+.axis-tick.last {
+  transform: translateX(-100%);
+}
+
+/* Band blocks. A flex row of rail plus rows. The rail stretches
+   the height of its rows, so a bracket spans exactly its band at
+   any width, with no measured offsets. */
+
+.band-block {
+  display: flex;
+}
+
+.rail {
+  flex: 0 0 var(--rail-w);
+  position: relative;
+}
+
+.rail-rule {
+  position: absolute;
+  left: 8px;
+  top: 6px;
+  bottom: 6px;
+  width: 0;
+  border-left: 1px solid var(--ink-3);
+}
+
+.rail-rule::before,
+.rail-rule::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  width: 7px;
+  border-top: 1px solid var(--ink-3);
+}
+
+.rail-rule::before {
+  top: 0;
+}
+
+.rail-rule::after {
+  bottom: 0;
+}
+
+.rail-label {
+  position: absolute;
+  left: 13px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--ink-2);
+}
+
+.rows {
+  flex: 1;
+  position: relative;
+  min-width: 0;
+}
+
+/* One ranking row (owner layout, round 8 feedback). A main
+   block of two lines, name over a mono data line, a right
+   block with the headline rate over its precise figure and
+   interval, and an interval strip across the full row width
+   on the shared axis. */
+
+.rank-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  grid-template-areas:
+    "main value"
+    "chart chart";
+  column-gap: 28px;
+  align-items: center;
+  padding: 10px 0 12px;
+  border-bottom: 1px solid color-mix(in srgb, var(--hairline) 45%, transparent);
+  position: relative;
+}
+
+.rank-row:last-child {
+  border-bottom: none;
+}
+
+.row-main {
+  grid-area: main;
+  min-width: 0;
+}
+
+.row-line1 {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+}
+
+.cell-rank {
+  flex: 0 0 26px;
+  font-size: 13.5px;
+  font-weight: 500;
+  color: var(--ink-2);
+  font-variant-numeric: tabular-nums;
+}
+
+.flag-tag {
+  display: inline-block;
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.09em;
+  color: var(--amber);
+  border: 1px solid var(--amber);
+  border-radius: 3px;
+  padding: 0 4px;
+  line-height: 1.3;
+  margin-right: 8px;
+  vertical-align: 1px;
+}
+
+.cell-name {
+  min-width: 0;
+}
+
+.name-line {
+  font-size: 15.5px;
+  font-weight: 550;
+  color: var(--ink-1);
+  line-height: 1.25;
+  overflow-wrap: break-word;
+}
+
+.wire-line {
+  font-size: 11.5px;
+  color: var(--ink-3);
+  line-height: 1.25;
+}
+
+.meta-line {
+  font-size: 11.5px;
+  color: var(--ink-2);
+  line-height: 1.3;
+  margin-top: 2px;
+}
+
+.meta-line.flagged {
+  color: var(--amber);
+}
+
+.data-line {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 0;
+  margin-top: 6px;
+  margin-left: 38px;
+  font-size: 11.5px;
+  letter-spacing: 0.03em;
+  line-height: 1.5;
+}
+
+.dl-sep {
+  color: var(--ink-3);
+  padding: 0 9px;
+}
+
+.dl-k {
+  color: var(--ink-3);
+}
+
+.dl-v {
+  color: var(--ink-1);
+}
+
+/* The right block */
+
+.cell-value {
+  grid-area: value;
+  text-align: right;
+  align-self: center;
+}
+
+.value-main {
+  font-size: 27px;
+  font-weight: 600;
+  color: var(--ink-1);
+  font-variant-numeric: tabular-nums;
+  line-height: 1.1;
+}
+
+.value-sub {
+  font-size: 11px;
+  color: var(--ink-2);
+  font-variant-numeric: tabular-nums;
+  line-height: 1.3;
+  margin-top: 4px;
+  white-space: nowrap;
+}
+
+.cell-value.flagged .value-main,
+.cell-value.flagged .value-sub {
+  color: var(--amber);
+}
+
+/* The interval strip. Children are positioned by percent of
+   the shared 0 to 30 axis. The whisker line stops 2 px short
+   of each cap center, so the caps stand clear of the line and
+   nothing passes through them (owner ruling). */
+
+.cell-chart {
+  grid-area: chart;
+  position: relative;
+  height: 16px;
+  margin-top: 4px;
+}
+
+.whisker {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  height: 2px;
+  background: var(--ink-1);
+}
+
+.whisker-cap {
+  position: absolute;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: 2px;
+  height: 11px;
+  background: var(--ink-1);
+}
+
+.estimate-dot {
+  position: absolute;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--ink-1);
+}
+
+.estimate-dot.hollow {
+  background: var(--ground);
+  border: 1.5px solid var(--ink-1);
+  width: 6px;
+  height: 6px;
+}
+
+.cell-chart.slice .whisker,
+.cell-chart.slice .whisker-cap {
+  background: var(--ink-2);
+}
+
+.cell-chart.flagged .whisker,
+.cell-chart.flagged .whisker-cap,
+.cell-chart.flagged .estimate-dot {
+  background: var(--amber);
+}
+
+.not-measured {
+  color: var(--ink-3);
+  text-align: center;
+}
+
+.proto-note {
+  margin-top: 64px;
+  padding-top: 16px;
+  border-top: 1px solid var(--hairline);
+  font-size: 11.5px;
+  color: var(--ink-3);
+  max-width: 68ch;
+}
+
+/* Mobile. The row keeps its two blocks, the data line wraps
+   under the name, and the interval strip stays at full row
+   width. Brackets narrow to a 14 px rail and keep their rule;
+   the bracket word yields to the gutter width. */
+
+@media (max-width: 760px) {
+  :root {
+    --rail-w: 14px;
+  }
+
+  .page {
+    padding: 0 16px 64px;
+  }
+
+  .rail-label {
+    display: none;
+  }
+
+  .rail-rule {
+    left: 2px;
+  }
+
+  .rank-row {
+    grid-template-columns: minmax(0, 1fr) fit-content(150px);
+    column-gap: 14px;
+    padding: 8px 0 10px;
+  }
+
+  .cell-value {
+    min-width: 0;
+  }
+
+  .data-line {
+    margin-left: 0;
+  }
+
+  .value-main {
+    font-size: 21px;
+  }
+
+  .value-sub {
+    white-space: normal;
+  }
+
+  .finding {
+    font-size: 19px;
+  }
+}
+
+/* Trust furniture, identification, and access basics. */
+.skip {
+  position: absolute;
+  left: -9999px;
+  top: 0;
+  background: var(--raised);
+  color: var(--ink-1);
+  padding: 10px 16px;
+  z-index: 50;
+}
+.skip:focus {
+  left: 8px;
+  top: 8px;
+}
+:focus-visible {
+  outline: 2px solid var(--ink-1);
+  outline-offset: 2px;
+}
+.links-line {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 28px;
+  margin-top: 14px;
+}
+.links-line a {
+  color: var(--ink-1);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  padding: 6px 2px;
+}
+.chart-id {
+  margin-top: 18px;
+  font-size: var(--micro);
+  color: var(--ink-3);
+}
+.proto-note p {
+  margin: 0 0 10px;
+}
+.proto-note p:last-child {
+  margin-bottom: 0;
+}
