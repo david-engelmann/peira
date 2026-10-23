@@ -117,6 +117,58 @@ export function calibrationOf(row: BoardRow): CalibrationData | null {
   };
 }
 
+export interface CalibrationArm {
+  ece: number | null;
+  brier: number | null;
+  n: number | null;
+  sufficient: boolean;
+}
+
+export interface CalibrationArms {
+  attacked: CalibrationArm;
+  benign: CalibrationArm;
+  /** Share of eligible cases that reported a confidence, per arm. */
+  coverageAttacked: number | null;
+  coverageBenign: number | null;
+}
+
+/**
+ * Both calibration arms plus the confidence coverage, for the
+ * detail card's stat grid (design 4.5). The calibration section
+ * plots the attacked arm only; the card carries both arms in
+ * numbers, which is where the benign arm lives on this page.
+ */
+export function calibrationArmsOf(row: BoardRow): CalibrationArms | null {
+  const raw = detailOf(row).calibration;
+  if (raw === null || typeof raw !== "object" || Array.isArray(raw)) {
+    return null;
+  }
+  const cal = raw as Record<string, unknown>;
+  const arm = (key: string): CalibrationArm => {
+    const a =
+      cal[key] !== null && typeof cal[key] === "object"
+        ? (cal[key] as Record<string, unknown>)
+        : {};
+    return {
+      ece: numOrNull(a.ece),
+      brier: numOrNull(a.brier),
+      n: numOrNull(a.n),
+      sufficient: a.sufficient === true,
+    };
+  };
+  const cov =
+    cal.confidence_coverage !== null &&
+    typeof cal.confidence_coverage === "object"
+      ? (cal.confidence_coverage as Record<string, unknown>)
+      : {};
+  return {
+    attacked: arm("attacked"),
+    benign: arm("benign"),
+    coverageAttacked: numOrNull(cov.attacked),
+    coverageBenign: numOrNull(cov.benign),
+  };
+}
+
 /* ---------------- scatter population ---------------- */
 
 export interface ScatterSets {

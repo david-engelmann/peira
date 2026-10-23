@@ -153,17 +153,44 @@ mkdirSync(path.join(root, ".og"), { recursive: true });
 const ogHtml = path.join(root, ".og", "og.html");
 writeFileSync(ogHtml, html);
 
-const chromeHits = globSync(
-  ".cache/ms-playwright/chromium_headless_shell-*/chrome-headless-shell-linux64/chrome-headless-shell",
-  { cwd: homedir() },
-);
+/* Browser discovery and environment (round 10, 2026-10-23).
+ * After the overnight runtime restarts, the headless shell in
+ * the Playwright cache dies at launch in this sandbox (mmap
+ * denied, then SIGILL) and the full Chrome in the Puppeteer
+ * cache dies with it; the full Chromium in the Playwright
+ * cache launches. Discovery prefers it and falls back to the
+ * headless shell. The browser also gets a proxy-free
+ * environment: the sandbox proxy variables make single-process
+ * Chrome fail on its V8 proxy resolver, and every page these
+ * scripts load is local. The launch runs single-process for
+ * the same reason; the engine and its measurements are the
+ * same. */
+const chromeHits = [
+  ...globSync(
+    ".cache/ms-playwright/chromium-*/chrome-linux64/chrome",
+    { cwd: homedir() },
+  ),
+  ...globSync(
+    ".cache/ms-playwright/chromium_headless_shell-*/chrome-headless-shell-linux64/chrome-headless-shell",
+    { cwd: homedir() },
+  ),
+];
 if (chromeHits.length === 0) {
-  console.error("gen-og: chrome-headless-shell not found in the Playwright cache");
+  console.error("gen-og: no Chromium found in the Playwright cache");
   process.exit(1);
+}
+const browserEnv = { ...process.env };
+for (const k of Object.keys(browserEnv)) {
+  if (/proxy/i.test(k)) delete browserEnv[k];
 }
 const browser = await puppeteer.launch({
   executablePath: path.join(homedir(), chromeHits[0]),
-  args: ["--no-sandbox", "--force-color-profile=srgb"],
+  env: browserEnv,
+  /* The launch timeout is load tolerance for the shared box
+   * (round 10): under the trial lanes the browser can take
+   * well over the 30 s default to come up. */
+  timeout: 180000,
+  args: ["--no-sandbox", "--no-zygote", "--single-process", "--force-color-profile=srgb"],
 });
 const page = await browser.newPage();
 await page.setViewport({ width: 1200, height: 630 });

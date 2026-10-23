@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
- * DOM acceptance audit for the ranking prototype. Drives the
- * Playwright cache's chrome-headless-shell through puppeteer-core
+ * DOM acceptance audit for the ranking prototype. Drives a
+ * Chromium from the Playwright cache through puppeteer-core
  * against the static out/ directory, measures the built page at
  * 1440, 1280, and 390, and checks the census and spec tests that
  * need a live layout:
@@ -47,6 +47,26 @@
  *        allowed in the ranking's flagged strip, on scatter
  *        marks whose row is flagged, and on heatmap flag tags
  *        of flagged rows, and nowhere else.
+ *
+ * Round 10 extensions (malformed, cards, model pages):
+ *  Malformed. Bar rows equal the payload rows whose printed
+ *        rate is not 0.0 percent, worst first; each value
+ *        equals the payload rate; each bar's width sits on the
+ *        0 to 15 percent axis; the single admission line stands
+ *        at the 5 percent position of the first row's track;
+ *        flagged values are amber and ranked values are not;
+ *        the fold line states the folded count.
+ *  Cards. The index holds 36 items in the ranking's groups;
+ *        summary rows are at least 44 px tall with no
+ *        horizontal overflow; opening one card per group works;
+ *        a card anchor lands on the card header inside its
+ *        scroll margin; a card's back link lands on the top of
+ *        the index.
+ *  Model pages. A sample (one per group plus the two-wire
+ *        model) renders its card article under its own address.
+ *  Amber gains two contexts: the flagged rows of the
+ *        malformed chart and the flagged cards of the model
+ *        index, both keyed to the row's flagged status.
  *
  * Screenshots land in the directory given as argv[3].
  */
@@ -246,6 +266,48 @@ const calOrderA = [...allRowsA]
   })
   .map((r) => r.run_id);
 
+/* ---------- round 10 derivations ---------- */
+
+function shiftDecA(decStr, places) {
+  const neg = decStr.startsWith("-");
+  const body = neg ? decStr.slice(1) : decStr;
+  const [ip, fp = ""] = body.split(".");
+  let digits = ip + fp;
+  let point = ip.length + places;
+  let lead = 0;
+  while (lead < digits.length - 1 && digits[lead] === "0") lead += 1;
+  if (lead > 0) {
+    digits = digits.slice(lead);
+    point -= lead;
+  }
+  let out;
+  if (point <= 0) out = "0." + "0".repeat(-point) + digits;
+  else if (point >= digits.length) out = digits + "0".repeat(point - digits.length);
+  else out = `${digits.slice(0, point)}.${digits.slice(point)}`;
+  return (neg ? "-" : "") + out;
+}
+const fmtPctA = (v) => `${quantA(Number(shiftDecA(String(v), 2)), 1)}%`;
+const slugOfA = (r) => {
+  const base = shortName(r);
+  const shared = allRowsA.some(
+    (o) => o.run_id !== r.run_id && shortName(o) === base,
+  );
+  const raw = shared ? `${base}-${r.wire}` : base;
+  return raw
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+};
+const sortedMalA = [...allRowsA].sort((a, b) => {
+  const d = (b.malformed_rate ?? 0) - (a.malformed_rate ?? 0);
+  if (d !== 0) return d;
+  return a.display_name < b.display_name ? -1 : 1;
+});
+const printedMalA = sortedMalA.filter(
+  (r) => r.malformed_rate !== null && fmtPctA(r.malformed_rate) !== "0.0%",
+);
+const foldedMalA = sortedMalA.length - printedMalA.length;
+
 function lumA([r, g, b]) {
   const f = (c) => {
     const s = c / 255;
@@ -264,15 +326,36 @@ const parseRgbA = (s) => {
   return m ? [Number(m[1]), Number(m[2]), Number(m[3])] : null;
 };
 
-const chromeHits = globSync(
-  join(
-    homedir(),
-    ".cache/ms-playwright/chromium_headless_shell-*/chrome-headless-shell-linux64/chrome-headless-shell",
+/* Browser discovery and environment (round 10, 2026-10-23).
+ * After the overnight runtime restarts, the headless shell in
+ * the Playwright cache dies at launch in this sandbox (mmap
+ * denied, then SIGILL) and the full Chrome in the Puppeteer
+ * cache dies with it; the full Chromium in the Playwright
+ * cache launches. Discovery prefers it and falls back to the
+ * headless shell. The browser also gets a proxy-free
+ * environment: the sandbox proxy variables make single-process
+ * Chrome fail on its V8 proxy resolver, and every page this
+ * audit loads is served from 127.0.0.1. The launch runs
+ * single-process for the same reason; the engine and its
+ * measurements are the same. */
+const chromeHits = [
+  ...globSync(
+    join(homedir(), ".cache/ms-playwright/chromium-*/chrome-linux64/chrome"),
   ),
-);
+  ...globSync(
+    join(
+      homedir(),
+      ".cache/ms-playwright/chromium_headless_shell-*/chrome-headless-shell-linux64/chrome-headless-shell",
+    ),
+  ),
+];
 if (chromeHits.length === 0) {
-  console.error("chrome-headless-shell not found in the Playwright cache");
+  console.error("no Chromium found in the Playwright cache");
   process.exit(2);
+}
+const browserEnv = { ...process.env };
+for (const k of Object.keys(browserEnv)) {
+  if (/proxy/i.test(k)) delete browserEnv[k];
 }
 
 /* The static export references its assets by absolute path, so
@@ -307,7 +390,13 @@ const pageUrl = `http://127.0.0.1:${server.address().port}/index.html`;
 
 const browser = await puppeteer.launch({
   executablePath: chromeHits[0],
-  args: ["--no-sandbox", "--force-device-scale-factor=1"],
+  env: browserEnv,
+  /* The launch timeout is load tolerance for the shared box
+   * (round 10): under the trial lanes the browser can take
+   * well over the 30 s default to come up. It changes no
+   * measurement. */
+  timeout: 180000,
+  args: ["--no-sandbox", "--no-zygote", "--single-process", "--force-device-scale-factor=1"],
 });
 const page = await browser.newPage();
 await page.goto(pageUrl, { waitUntil: "networkidle0" });
@@ -328,7 +417,7 @@ for (const width of [1440, 1280, 390]) {
       path: join(shotsDir, `page-${width}.png`),
       fullPage: true,
     });
-    for (const name of ["heatmap", "scatter", "calibration"]) {
+    for (const name of ["heatmap", "scatter", "calibration", "malformed", "models", "method"]) {
       const el = await page.$(`[data-section="${name}"]`);
       if (el) {
         await el.screenshot({ path: join(shotsDir, `${name}-${width}.png`) });
@@ -351,7 +440,16 @@ for (const width of [1440, 1280, 390]) {
     };
     const vis = (el) => {
       const s = getComputedStyle(el);
-      return s.display !== "none" && s.visibility !== "hidden";
+      if (s.display === "none" || s.visibility === "hidden") return false;
+      /* Content of a closed <details> is not rendered, whatever
+       * its computed style says; only the summary shows. (Round
+       * 10: the model index lives in closed details, and range
+       * rects inside them report would-be geometry for content
+       * that painted nothing, which read as thousands of false
+       * text overlaps.) */
+      const det = el.closest("details");
+      if (det && !det.open && !el.closest("summary")) return false;
+      return true;
     };
     // Names and clipping.
     document.querySelectorAll(".rank-row").forEach((row) => {
@@ -475,6 +573,16 @@ for (const width of [1440, 1280, 390]) {
             el.closest(".heat-name")
               ? el.closest(".heat-name").getAttribute("data-run-id")
               : null,
+          malId:
+            el.closest('[data-section="malformed"]') &&
+            el.closest(".mal-row")
+              ? el.closest(".mal-row").getAttribute("data-run-id")
+              : null,
+          modelId:
+            el.closest('[data-section="models"]') &&
+            el.closest("[data-card-for]")
+              ? el.closest("[data-card-for]").getAttribute("data-card-for")
+              : null,
         });
       }
     });
@@ -486,6 +594,57 @@ for (const width of [1440, 1280, 390]) {
         : "";
     });
     out.tiedCount = (document.body.innerText.match(/tied/gi) ?? []).length;
+    const msec = document.querySelector('[data-section="malformed"]');
+    if (msec) {
+      const rows = [...msec.querySelectorAll(".mal-row")].map((r) => {
+        const track = r.querySelector(".mal-track");
+        const fill = r.querySelector(".mal-fill");
+        const val = r.querySelector(".mal-value");
+        const tr = track.getBoundingClientRect();
+        const fr = fill.getBoundingClientRect();
+        return {
+          id: r.getAttribute("data-run-id"),
+          value: val ? val.textContent.trim() : "",
+          valueColor: val ? getComputedStyle(val).color : "",
+          fillPct: tr.width > 0 ? (fr.width / tr.width) * 100 : null,
+          trackLeft: tr.left,
+          trackWidth: tr.width,
+          flagged: !!r.querySelector(".flag-tag"),
+        };
+      });
+      const line = msec.querySelector(".mal-line");
+      const lr = line ? line.getBoundingClientRect() : null;
+      const first = rows[0];
+      out.mal = {
+        rows,
+        lineXPct:
+          lr && first
+            ? ((lr.left - first.trackLeft) / first.trackWidth) * 100
+            : null,
+        fold: msec.querySelector(".mal-fold")
+          ? msec.querySelector(".mal-fold").textContent.replace(/\s+/g, " ").trim()
+          : null,
+      };
+    }
+    const modelsSec = document.querySelector('[data-section="models"]');
+    if (modelsSec) {
+      out.cards = {
+        items: [...modelsSec.querySelectorAll("details.model-item")].map((d) => {
+          const summary = d.querySelector("summary");
+          const sr = summary.getBoundingClientRect();
+          return {
+            id: d.getAttribute("data-card-for"),
+            anchorId: d.id,
+            summaryH: sr.height,
+            summarySW: summary.scrollWidth,
+            summaryCW: summary.clientWidth,
+          };
+        }),
+        groups: [...modelsSec.querySelectorAll("[data-mgroup]")].map((g) =>
+          g.getAttribute("data-mgroup"),
+        ),
+      };
+    }
     return out;
   });
 
@@ -702,12 +861,14 @@ for (const width of [1440, 1280, 390]) {
       }
     }
   }
-  // Amber confinement (round 9 rule: the flagged strip, scatter
-  // marks of flagged rows, and heatmap flag tags of flagged rows).
+  // Amber confinement (round 9 rule, extended in round 10 with
+  // the malformed flagged rows and the flagged index cards).
   for (const use of report.amberUses) {
     const allowed =
       use.inFlaggedStrip ||
-      (use.heatNameId !== null && flaggedIdsA.has(use.heatNameId));
+      (use.heatNameId !== null && flaggedIdsA.has(use.heatNameId)) ||
+      (use.malId !== null && flaggedIdsA.has(use.malId)) ||
+      (use.modelId !== null && flaggedIdsA.has(use.modelId));
     if (!allowed) {
       failures.push(`width ${width}: amber outside its allowed contexts on ${use.desc}`);
     }
@@ -1067,9 +1228,207 @@ for (const width of [1440, 1280, 390]) {
       }
     }
   }
+  /* ---------- round 10 assertions ---------- */
+  // Malformed.
+  if (!report.mal) {
+    failures.push(`width ${width}: malformed section not measured`);
+  } else {
+    const mal = report.mal;
+    if (mal.rows.length !== printedMalA.length) {
+      failures.push(
+        `width ${width}: malformed holds ${mal.rows.length} bar rows, payload implies ${printedMalA.length}`,
+      );
+    }
+    mal.rows.forEach((mr, i) => {
+      const row = printedMalA[i];
+      if (!row) return;
+      if (mr.id !== row.run_id) {
+        failures.push(
+          `width ${width}: malformed row ${i + 1} is ${mr.id}, worst-first order expects ${row.run_id}`,
+        );
+      }
+      if (mr.value !== fmtPctA(row.malformed_rate)) {
+        failures.push(
+          `width ${width}: malformed row ${mr.id} prints "${mr.value}", payload gives "${fmtPctA(row.malformed_rate)}"`,
+        );
+      }
+      const expPct = (row.malformed_rate / 0.15) * 100;
+      if (mr.fillPct === null || Math.abs(mr.fillPct - expPct) > 1.6) {
+        failures.push(
+          `width ${width}: malformed bar ${mr.id} fills ${mr.fillPct?.toFixed(1)} percent of its track, the 0 to 15 axis expects ${expPct.toFixed(1)}`,
+        );
+      }
+      const isFlagged = flaggedIdsA.has(mr.id);
+      if (mr.flagged !== isFlagged) {
+        failures.push(
+          `width ${width}: malformed row ${mr.id} flagged tag presence is ${mr.flagged}, payload says ${isFlagged}`,
+        );
+      }
+      const amberVal = mr.valueColor === "rgb(232, 163, 61)";
+      if (isFlagged && !amberVal) {
+        failures.push(`width ${width}: flagged malformed value ${mr.id} is not amber`);
+      }
+      if (!isFlagged && amberVal) {
+        failures.push(`width ${width}: ranked malformed value ${mr.id} carries amber`);
+      }
+    });
+    if (mal.lineXPct === null || Math.abs(mal.lineXPct - 100 / 3) > 0.6) {
+      failures.push(
+        `width ${width}: admission line stands at ${mal.lineXPct?.toFixed(2)} percent of the track, the 5 percent mark on a 0 to 15 axis is 33.33`,
+      );
+    }
+    if (
+      foldedMalA > 0 &&
+      (!mal.fold ||
+        !mal.fold.includes(`${foldedMalA} results printed a malformed rate of 0.0`))
+    ) {
+      failures.push(
+        `width ${width}: malformed fold line does not state the folded count ${foldedMalA} (${mal.fold})`,
+      );
+    }
+  }
+  // Cards.
+  if (!report.cards) {
+    failures.push(`width ${width}: model index not measured`);
+  } else {
+    const cards = report.cards;
+    if (cards.items.length !== allRowsA.length) {
+      failures.push(
+        `width ${width}: model index holds ${cards.items.length} items, payload holds ${allRowsA.length}`,
+      );
+    }
+    if (JSON.stringify(cards.groups) !== JSON.stringify(["full", "flagged", "slices"])) {
+      failures.push(
+        `width ${width}: model index groups are ${cards.groups.join(",")}, expected full,flagged,slices`,
+      );
+    }
+    for (const item of cards.items) {
+      const row = byRunId.get(item.id);
+      if (!row) {
+        failures.push(`width ${width}: index item for unknown row ${item.id}`);
+        continue;
+      }
+      if (item.anchorId !== `model-${slugOfA(row)}`) {
+        failures.push(
+          `width ${width}: index item ${item.id} anchors at "${item.anchorId}", slug rule gives "model-${slugOfA(row)}"`,
+        );
+      }
+      if (item.summaryH < 43.5) {
+        failures.push(
+          `width ${width}: index summary for ${item.id} is ${item.summaryH.toFixed(1)} px tall, under the 44 px tap target`,
+        );
+      }
+      if (item.summarySW > item.summaryCW + 1) {
+        failures.push(
+          `width ${width}: index summary for ${item.id} overflows horizontally (${item.summarySW} vs ${item.summaryCW})`,
+        );
+      }
+    }
+  }
+  // Anchor and expansion behaviour, once, at desktop width.
+  if (width === 1440) {
+    const groupsA = {
+      full: ranked.filter((r) => r.n_cases === fullCasesA),
+      flagged: payload.unranked,
+      slices: ranked.filter((r) => r.n_cases < fullCasesA),
+    };
+    const samples = [groupsA.full[0], groupsA.flagged[0], groupsA.slices[0]];
+    for (const row of samples) {
+      await page.click(`details[data-card-for="${row.run_id}"] > summary`);
+      const opened = await page.evaluate(
+        (id) => document.querySelector(`details[data-card-for="${id}"]`)?.open === true,
+        row.run_id,
+      );
+      if (!opened) {
+        failures.push(`card ${row.run_id} did not open on a summary click`);
+      }
+    }
+    const anchorRow = groupsA.full[0];
+    const anchorSlug = slugOfA(anchorRow);
+    await page.evaluate((slug) => {
+      location.hash = `model-${slug}`;
+    }, anchorSlug);
+    await new Promise((r) => setTimeout(r, 250));
+    const cardTop = await page.evaluate(
+      (slug) => document.getElementById(`model-${slug}`)?.getBoundingClientRect().top,
+      anchorSlug,
+    );
+    if (cardTop === undefined || cardTop < -1 || cardTop > 40) {
+      failures.push(
+        `card anchor for ${anchorRow.run_id} lands with the card header at ${cardTop} px, outside its scroll margin`,
+      );
+    }
+    await page.click(
+      `details[data-card-for="${anchorRow.run_id}"] a[href="#models"]`,
+    );
+    await new Promise((r) => setTimeout(r, 250));
+    const indexTop = await page.evaluate(
+      () => document.getElementById("models")?.getBoundingClientRect().top,
+    );
+    const hash = await page.evaluate(() => location.hash);
+    if (hash !== "#models") {
+      failures.push(`back link inside a card sets the hash to ${hash}, not #models`);
+    }
+    if (indexTop === undefined || indexTop < -1 || indexTop > 40) {
+      failures.push(
+        `back link lands with the index top at ${indexTop} px, outside its scroll margin`,
+      );
+    }
+    /* Restore the pristine page: the widths measured after
+     * this one must see the index as a reader first does, with
+     * every card closed. */
+    await page.evaluate(() => {
+      document
+        .querySelectorAll("details[open]")
+        .forEach((d) => d.removeAttribute("open"));
+      window.scrollTo(0, 0);
+    });
+  }
   notes.push(
     `width ${width}: ${report.names.length} names checked, ${boxes.length} text boxes, tied count (innerText) ${report.tiedCount}`,
   );
+}
+
+/* ---------- round 10 model page samples ---------- */
+const pageSamples = [
+  ranked.find((r) => r.n_cases === fullCasesA),
+  payload.unranked[0],
+  ranked.find((r) => r.n_cases < fullCasesA),
+  allRowsA.find((r) => r.run_id.includes("structured")),
+]
+  .filter(Boolean)
+  .filter((r, i, a) => a.indexOf(r) === i);
+for (const row of pageSamples) {
+  const slug = slugOfA(row);
+  await page.goto(
+    `http://127.0.0.1:${server.address().port}/models/${slug}/index.html`,
+    { waitUntil: "networkidle0" },
+  );
+  const res = await page.evaluate(() => {
+    const art = document.querySelector("article[data-card-for]");
+    const h1 = document.querySelector("h1");
+    return {
+      found: !!art,
+      id: art ? art.getAttribute("data-card-for") : null,
+      h1: h1 ? h1.textContent.replace(/\s+/g, " ").trim() : "",
+      h1Clip: h1 ? h1.scrollWidth > h1.clientWidth + 1 : null,
+      height: document.documentElement.scrollHeight,
+    };
+  });
+  if (!res.found || res.id !== row.run_id) {
+    failures.push(
+      `model page /models/${slug}/ does not render its card article`,
+    );
+  }
+  if (!res.h1.includes(shortName(row))) {
+    failures.push(
+      `model page /models/${slug}/ H1 "${res.h1}" does not name the model`,
+    );
+  }
+  if (res.h1Clip) {
+    failures.push(`model page /models/${slug}/ H1 is clipped`);
+  }
+  notes.push(`model page /models/${slug}/ height ${res.height}`);
 }
 
 await browser.close();

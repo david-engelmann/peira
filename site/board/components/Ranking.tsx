@@ -173,6 +173,10 @@ export default function Ranking() {
         Ranks follow point estimates, and rows joined by a bracket have
         overlapping 95 percent intervals and should be read as tied.
       </p>
+      <p className="section-lede lede-pointer">
+        Why {fmtInt(groups.flagged.length)} results are flagged stands
+        with the <a href="#malformed">malformed chart</a> directly below.
+      </p>
 
       <RankedGroup
         id="full"

@@ -247,6 +247,26 @@ export function wireWords(wire: string): string {
 }
 
 /**
+ * The stable address slug for a result's own page. The short
+ * name, slugified, with the wire appended when another result
+ * shares the short name, so gpt-6-luna's two wires get two
+ * addresses that say which is which. Deterministic from the
+ * payload alone; both gate scripts port this rule and fail if
+ * a page address and the app disagree.
+ */
+export function modelSlug(row: BoardRow, allRows: BoardRow[]): string {
+  const base = shortName(row);
+  const shared = allRows.some(
+    (r) => r.run_id !== row.run_id && shortName(r) === base,
+  );
+  const raw = shared ? `${base}-${row.wire}` : base;
+  return raw
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
+/**
  * The rows whose short name is shared with another row in the
  * payload. Only those rows carry a wire line in the ranking, per
  * the name policy.

@@ -5,26 +5,28 @@ import {
   boardVersions,
   modelCounts,
   multiResultModels,
-  taxBenchmarks,
 } from "@/lib/payload";
-import { fmtInt, fmtPct, fmtEce } from "@/lib/format";
+import { fmtInt, fmtPct } from "@/lib/format";
 import Ranking from "@/components/Ranking";
+import Malformed from "@/components/Malformed";
 import Heatmap from "@/components/Heatmap";
 import Scatter from "@/components/Scatter";
 import Calibration from "@/components/Calibration";
+import ModelCards from "@/components/ModelCards";
+import Method from "@/components/Method";
 
 /**
- * Round 8 prototype page. A compact masthead carrying the
- * orientation facts (what was measured, on how many cases, the
- * headline counts) over the ranking section alone. The findings
- * strip, navigation, and remaining sections land in their own
- * build rounds.
+ * The board page, in the design system's section order (2.1).
+ * Masthead and findings, ranking, malformed and admission,
+ * attack families, cost, calibration, model detail, and method
+ * last. The footer carries the citation block, the what changed
+ * note, and the doors to the code and the payload (TR-02,
+ * TR-04, TR-05).
  */
 export default function Page() {
   const groups = boardGroups();
   const counts = modelCounts();
   const multi = multiResultModels();
-  const benchmarks = taxBenchmarks(groups);
   const versions = boardVersions();
   const updated = boardDateWords();
   const resultCount = payload.ranked.length + payload.unranked.length;
@@ -88,25 +90,24 @@ export default function Page() {
 
       <Ranking />
 
+      <Malformed />
+
       <Heatmap />
 
       <Scatter />
 
       <Calibration />
 
-      <footer className="proto-note">
-        <p>
-          Prototype for design review, built from payload publish 26.
-          Robustness tax benchmarks derived from this payload are benign
-          accuracy set by {benchmarks.benignSetter} at{" "}
-          {fmtPct(benchmarks.benignValue)} and attacked ECE set by{" "}
-          {benchmarks.eceSetter} at {fmtEce(benchmarks.eceValue)}, over
-          the {benchmarks.cohortSize} full suite ranked results.
-        </p>
+      <ModelCards />
+
+      <Method />
+
+      <footer className="board-footer">
         <p>
           How to cite this board. Engelmann, D. Peira decision robustness
           board. Dataset {versions.dataset}, suite {versions.suite},
-          updated {updated}. peiratrial.dev
+          updated {updated}.{" "}
+          <a href="https://peiratrial.dev">peiratrial.dev</a>
         </p>
         <p>
           What changed since the previous board. Model counts now count
@@ -114,9 +115,20 @@ export default function Page() {
           keyed its counts on version alone and merged three unrelated
           guard models that share version 1.0 into one counted model.
           Tie bands are drawn as brackets rather than listed in prose,
-          and flagged results sit
-          in their own strip. Corrections are made by republishing the
-          payload and recording the change here.
+          and flagged results sit in their own strip. Corrections are
+          made by republishing the payload and recording the change
+          here.
+        </p>
+        <p className="links-line">
+          <a href="https://github.com/david-engelmann/peira">
+            Code and method on GitHub
+          </a>
+          <a href="/payload.json">The payload behind this page, JSON</a>
+          <a href="#method">Method and notes</a>
+        </p>
+        <p>
+          Peira decision robustness board. Dataset {versions.dataset},
+          suite {versions.suite}, updated {updated}.
         </p>
       </footer>
     </main>

@@ -913,7 +913,7 @@ body {
 }
 .cal-grid {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(4, 1fr);
   gap: 16px;
 }
 .cal-panel {
@@ -924,13 +924,16 @@ body {
   min-width: 0;
 }
 .cal-head {
-  min-height: 46px;
+  min-height: 40px;
 }
 .cal-name {
   font-size: 12.5px;
   font-weight: 600;
   margin: 0;
-  white-space: nowrap;
+  /* Names wrap at the narrower column widths rather than
+     clipping (round 10 compaction; the name policy forbids
+     truncation, and a wrapped name loses nothing). */
+  overflow-wrap: break-word;
 }
 .slice-tag {
   display: inline-block;
@@ -953,7 +956,6 @@ body {
   font-size: 11.5px;
   color: var(--ink-2);
   margin: 3px 0 6px;
-  white-space: nowrap;
 }
 .cal-svg {
   width: 100%;
@@ -976,14 +978,19 @@ body {
 .cal-dot {
   fill: var(--ink-1);
 }
+/* Axis ticks belong to the grid's edge panels. CSS owns the
+ * edges because the column count is a CSS decision (four
+ * across on desktop, two on phone, round 10 compaction); the
+ * component renders the tick groups on every panel and these
+ * rules choose which ones show. */
 .cal-panel .tk-y,
 .cal-panel .tk-x {
   display: none;
 }
-.cal-panel.edge-l .tk-y {
+.cal-panel:nth-child(4n + 1) .tk-y {
   display: block;
 }
-.cal-panel.edge-b .tk-x {
+.cal-panel:nth-last-child(-n + 4) .tk-x {
   display: block;
 }
 .cal-empty {
@@ -1031,7 +1038,8 @@ body {
     width: 22px;
   }
   .phone-key .keyed-meta {
-    display: block;
+    display: flex;
+    flex-wrap: wrap;
     margin: 2px 0 0 32px;
   }
   .heat-group-inner {
@@ -1070,10 +1078,546 @@ body {
     display: none;
   }
   .cal-grid {
-    grid-template-columns: 1fr;
+    grid-template-columns: repeat(2, 1fr);
   }
+  /* Phone edges for the two-across grid: the desktop rules
+   * would leave x ticks on the third and fourth panels from
+   * the end, so the axis is restated in full here. */
   .cal-panel .tk-y,
   .cal-panel .tk-x {
+    display: none;
+  }
+  .cal-panel:nth-child(2n + 1) .tk-y {
     display: block;
+  }
+  .cal-panel:nth-last-child(-n + 2) .tk-x {
+    display: block;
+  }
+}
+
+/* Round 10. Malformed, model detail, method, footer, and the
+   per-model pages, on the Ledger tokens. */
+
+.lede-pointer {
+  margin-top: 8px;
+}
+.lede-pointer a,
+.board-footer a,
+.back-line a,
+.card-nav a {
+  color: var(--ink-1);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+/* Keyed phrases wrap only at phrase boundaries (round 9
+   deviation fix). */
+.keyed-meta {
+  display: inline-flex;
+  flex-wrap: wrap;
+}
+.keyed-phrase {
+  white-space: nowrap;
+}
+
+/* Malformed. Rows follow the ranking's rhythm: a name line with
+   the value at the right, then a full width bar strip. The
+   admission line is one continuous overlay across the strips. */
+
+.mal-axis {
+  position: relative;
+  height: 34px;
+  margin-top: 18px;
+}
+.mal-limit-label {
+  position: absolute;
+  top: 0;
+  transform: translateX(8px);
+  font-size: var(--micro);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-2);
+  white-space: nowrap;
+}
+.mal-tick {
+  position: absolute;
+  bottom: 0;
+  transform: translateX(-50%);
+  font-size: 11.5px;
+  color: var(--ink-3);
+}
+.mal-tick.first {
+  transform: none;
+}
+.mal-tick.last {
+  transform: translateX(-100%);
+}
+.mal-rows {
+  position: relative;
+}
+.mal-line {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 0;
+  border-left: 1px solid var(--ink-2);
+  opacity: 0.55;
+  z-index: 2;
+  pointer-events: none;
+}
+.mal-row {
+  padding: 5px 0 6px;
+  border-bottom: 1px solid
+    color-mix(in srgb, var(--hairline) 45%, transparent);
+  position: relative;
+}
+.mal-row:last-child {
+  border-bottom: none;
+}
+.mal-line1 {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+}
+.mal-value {
+  font-size: 15.5px;
+  font-weight: 600;
+  color: var(--ink-1);
+}
+.mal-value.flagged {
+  color: var(--amber);
+}
+.mal-track {
+  position: relative;
+  height: 10px;
+  margin-top: 3px;
+  background: var(--panel);
+  border-radius: 2px;
+}
+.mal-fill {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  background: var(--ink-2);
+  border-right: 2px solid var(--ink-1);
+  border-radius: 2px 0 0 2px;
+}
+.mal-fill.flagged {
+  background: transparent;
+  border: 1px solid var(--amber);
+  border-radius: 2px;
+}
+.mal-fill.over {
+  background: var(--red);
+  border-right-color: var(--red);
+}
+.mal-fold {
+  color: var(--ink-2);
+  max-width: 68ch;
+  margin: 14px 0 0;
+}
+
+/* Model detail. The index row is a details summary; the card
+   opens in place under it. Anchors land on the summary, which
+   is the card header, with scroll margin (foundation items 8
+   and 9). */
+
+.card-controls {
+  display: flex;
+  gap: 10px;
+  margin-top: 18px;
+}
+.card-controls button {
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--ink-1);
+  background: var(--panel);
+  border: 1px solid var(--hairline);
+  border-radius: 6px;
+  padding: 8px 14px;
+  min-height: 44px;
+  cursor: pointer;
+}
+.card-controls button:hover {
+  background: var(--raised);
+}
+.model-group {
+  margin-top: 32px;
+}
+.model-item {
+  border-bottom: 1px solid
+    color-mix(in srgb, var(--hairline) 45%, transparent);
+  scroll-margin-top: 16px;
+}
+#models {
+  scroll-margin-top: 16px;
+}
+.index-row {
+  display: block;
+  cursor: pointer;
+  list-style: none;
+  padding: 9px 0 10px;
+  min-height: 44px;
+}
+.index-row::-webkit-details-marker {
+  display: none;
+}
+.index-row:hover {
+  background: color-mix(in srgb, var(--raised) 55%, transparent);
+}
+.idx-line1 {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+}
+.idx-name {
+  font-size: 15.5px;
+  font-weight: 550;
+  color: var(--ink-1);
+  line-height: 1.25;
+  min-width: 0;
+  overflow-wrap: break-word;
+}
+.idx-name .wire-line {
+  font-size: 11.5px;
+  font-weight: 400;
+}
+.idx-toggle {
+  margin-left: auto;
+  flex: 0 0 auto;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--ink-2);
+}
+.idx-toggle::after {
+  content: "›";
+  display: inline-block;
+  margin-left: 6px;
+  transition: transform 0.15s ease;
+}
+.model-item[open ] .idx-toggle::after {
+  transform: rotate(90deg);
+}
+.idx-line2 {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 0;
+  margin-top: 5px;
+  margin-left: 38px;
+  font-size: 11.5px;
+  letter-spacing: 0.03em;
+  line-height: 1.5;
+  color: var(--ink-1);
+}
+
+/* The expanded card. A panel, per the surface rules (it holds
+   a coordinate system of spark bars and a fixed anatomy). */
+
+.card-body {
+  background: var(--panel);
+  border: 1px solid var(--hairline);
+  border-radius: 6px;
+  padding: 18px 20px 16px;
+  margin: 4px 0 14px;
+}
+.model-item[open ] {
+  border-bottom: none;
+}
+.card-statement {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--ink-1);
+  margin: 0;
+}
+.card-model-id {
+  font-size: 13.5px;
+  color: var(--ink-1);
+  margin: 8px 0 0;
+  overflow-wrap: anywhere;
+}
+.card-wire {
+  color: var(--ink-2);
+  margin: 3px 0 0;
+}
+.card-reason {
+  color: var(--ink-2);
+  max-width: 68ch;
+  margin: 8px 0 0;
+}
+.card-reason.flagged {
+  color: var(--amber);
+}
+.card-headline {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 18px 40px;
+  margin-top: 18px;
+  padding-top: 14px;
+  border-top: 1px solid var(--hairline);
+}
+.hl-fig {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.hl-label,
+.stat-label,
+.sev-label {
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+.hl-value {
+  font-size: 23px;
+  font-weight: 600;
+  line-height: 1.15;
+}
+.hl-sub,
+.stat-sub,
+.sev-base {
+  font-size: 11.5px;
+  color: var(--ink-2);
+}
+.stat-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px 28px;
+  margin-top: 18px;
+  padding-top: 14px;
+  border-top: 1px solid var(--hairline);
+}
+.stat {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+.stat-value {
+  font-size: 15.5px;
+  font-weight: 600;
+}
+.not-measured-inline {
+  color: var(--ink-3);
+}
+.card-subhead {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--ink-1);
+  margin: 20px 0 8px;
+  padding-top: 14px;
+  border-top: 1px solid var(--hairline);
+}
+.spark-list {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.spark-row {
+  display: grid;
+  grid-template-columns: 190px 1fr 34px;
+  gap: 12px;
+  align-items: center;
+}
+.spark-name {
+  font-size: 12.5px;
+  color: var(--ink-2);
+  white-space: nowrap;
+}
+.spark-track {
+  position: relative;
+  height: 9px;
+  background: color-mix(in srgb, var(--hairline) 55%, transparent);
+  border-radius: 2px;
+}
+.spark-fill {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  background: var(--ink-1);
+  border-radius: 2px 0 0 2px;
+}
+.spark-fill.worst {
+  background: var(--red);
+}
+.spark-slot {
+  display: block;
+  text-align: center;
+  color: var(--ink-3);
+  line-height: 9px;
+}
+.spark-value {
+  font-size: 12.5px;
+  font-weight: 600;
+  text-align: right;
+}
+.spark-value.worst {
+  color: var(--red);
+}
+.sev-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px 28px;
+}
+.sev-item {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.sev-value {
+  font-size: 19px;
+  font-weight: 600;
+  line-height: 1.2;
+}
+.tax-line {
+  color: var(--ink-2);
+  max-width: 68ch;
+  margin: 18px 0 0;
+  padding-top: 14px;
+  border-top: 1px solid var(--hairline);
+}
+.prov {
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid var(--hairline);
+  font-size: 11.5px;
+  line-height: 1.55;
+  color: var(--ink-3);
+  overflow-wrap: anywhere;
+}
+.prov p {
+  margin: 0;
+}
+.card-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 28px;
+  margin: 16px 0 0;
+}
+.card-nav a {
+  padding: 6px 2px;
+}
+
+/* Method */
+
+.method-head {
+  font-size: 15.5px;
+  font-weight: 650;
+  color: var(--ink-1);
+  margin: 18px 0 6px;
+}
+.method-p {
+  color: var(--ink-2);
+  max-width: 68ch;
+  margin: 0;
+}
+
+/* Footer */
+
+.board-footer {
+  margin-top: 72px;
+  padding-top: 18px;
+  border-top: 1px solid var(--hairline);
+  color: var(--ink-2);
+  max-width: 68ch;
+}
+.board-footer p {
+  margin: 0 0 12px;
+}
+.board-footer p:last-child {
+  margin-bottom: 0;
+}
+
+/* Per-model pages */
+
+.back-line {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 28px;
+  margin: 18px 0 0;
+}
+.back-line a {
+  padding: 6px 2px;
+}
+.model-page-title {
+  font-size: 26px;
+  font-weight: 650;
+  margin: 14px 0 4px;
+  overflow-wrap: break-word;
+}
+.model-page-wire {
+  font-size: 15.5px;
+  font-weight: 400;
+  color: var(--ink-2);
+}
+.model-card.standalone {
+  margin-top: 18px;
+}
+
+@media (min-width: 761px) {
+  /* One-line index rows on desktop (round 10 compaction). The
+     summary becomes a single flex row: rank, name, the figure
+     line, and the toggle pinned right. No type shrinks; the
+     stacked second line was the whole cost, and the 44 px
+     minimum height keeps the tap target. */
+  .index-row {
+    display: flex;
+    align-items: baseline;
+    gap: 12px;
+    padding: 10px 0 11px;
+  }
+  .idx-line1 {
+    display: contents;
+  }
+  .idx-line2 {
+    order: 2;
+    margin: 0;
+  }
+  .idx-toggle {
+    order: 3;
+  }
+}
+
+@media (max-width: 760px) {
+  .idx-line2 {
+    margin-left: 0;
+  }
+  .card-body {
+    padding: 14px 14px 12px;
+  }
+  .stat-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .sev-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .spark-row {
+    grid-template-columns: 128px 1fr 30px;
+    gap: 8px;
+  }
+  .mal-limit-label {
+    transform: translateX(6px);
+  }
+}
+
+@media (max-width: 340px) {
+  .stat-grid,
+  .sev-grid {
+    grid-template-columns: 1fr;
+  }
+  .spark-row {
+    grid-template-columns: 108px 1fr 30px;
   }
 }

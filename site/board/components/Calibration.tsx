@@ -23,26 +23,20 @@ import { calibrationRows, type CalibRow } from "@/lib/charts";
  */
 
 const PW = 300;
-const PH = 190;
-const PLOT = { x0: 34, x1: 292, y0: 12, y1: 152 };
+const PH = 166;
+const PLOT = { x0: 34, x1: 292, y0: 12, y1: 130 };
 const r2 = (v: number) => Math.round(v * 100) / 100;
 
 function Panel({
   entry,
-  edgeL,
-  edgeB,
   label,
 }: {
   entry: CalibRow;
-  edgeL: boolean;
-  edgeB: boolean;
   label: string;
 }) {
   const { row, data, isSlice } = entry;
   const classes = [
     "cal-panel",
-    edgeL ? "edge-l" : "",
-    edgeB ? "edge-b" : "",
     label.length + (isSlice ? 6 : 0) > 27 ? "long" : "",
   ]
     .filter(Boolean)
@@ -164,7 +158,6 @@ export default function Calibration() {
     ...entries.map((e) => e.data?.ece ?? e.row.ece_attacked ?? 0),
   );
   const versions = boardVersions();
-  const lastRowStart = entries.length - ((entries.length % 3) || 3);
 
   return (
     <section
@@ -221,7 +214,7 @@ export default function Calibration() {
           </ul>
         </nav>
         <div className="cal-grid">
-          {entries.map((e, i) => {
+          {entries.map((e) => {
             const name = shortName(e.row);
             const label = dupes.has(name)
               ? `${name} (${wireWords(e.row.wire)})`
@@ -230,8 +223,6 @@ export default function Calibration() {
               <Panel
                 key={e.row.run_id}
                 entry={e}
-                edgeL={i % 3 === 0}
-                edgeB={i >= lastRowStart}
                 label={label}
               />
             );

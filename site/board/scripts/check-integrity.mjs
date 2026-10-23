@@ -47,6 +47,20 @@
  *     every printed cell value equals the payload rate under
  *     the cell format rule. The calibration panels render in
  *     attacked ECE order, rail and grid in the same order.
+ *  9. Malformed (round 10). Bar rows equal the payload rows
+ *     whose printed rate is not 0.0 percent, in worst first
+ *     order, each printing its payload rate; the folded count
+ *     in the summary line equals the payload's zero group; the
+ *     admission line is labelled.
+ * 10. Cards and model pages (round 10). Every card in the
+ *     index and every per-model page is asserted field by
+ *     field against the payload (headline figures, cost state
+ *     words, latency, both calibration arms, calibration base
+ *     and coverage, severity rates and bases, spark bar data
+ *     attributes in column order, the tax figure with both
+ *     benchmark setters named or the untaxed statement, and
+ *     the short provenance), plus the rank statement, the
+ *     own-page link, and the copy rules on every model page.
  */
 
 import { readFileSync } from "node:fs";
@@ -334,11 +348,15 @@ function groupBlocks(source) {
   });
   return blocks;
 }
-/* The ranking checks scope to the ranking section only. The
- * chart sections below it carry their own data-run-id carriers
- * (cells, points, panels) and are checked as check 8. */
+/* The ranking checks scope to the top of the page only. The
+ * sections below it carry their own data-run-id carriers
+ * (malformed rows, cells, points, panels, cards) and are
+ * checked as checks 8 to 10. */
+const malformedStart = html.indexOf('data-section="malformed"');
 const heatmapStart = html.indexOf('data-section="heatmap"');
-const rankingHtml = heatmapStart >= 0 ? html.slice(0, heatmapStart) : html;
+const rankingEnd =
+  malformedStart >= 0 ? malformedStart : heatmapStart;
+const rankingHtml = rankingEnd >= 0 ? html.slice(0, rankingEnd) : html;
 const blocks = groupBlocks(rankingHtml);
 const expectedGroups = {
   full: fullCohort,
@@ -455,8 +473,29 @@ const suiteStr = fullCases.toLocaleString("en-US");
 if (!text.includes(suiteStr)) {
   fail(`suite size ${suiteStr} does not appear on the page`);
 }
-if (/[0-9a-f]{40}/.test(text)) {
-  fail("a 40 character revision hash appears in rendered text");
+/* Hash rule. Outside the model detail section, no revision
+ * hash appears in rendered text at all: charts, tiles, and
+ * prose never carry one (the name policy). Inside the model
+ * detail section, the full display name stands on the card, so
+ * a long hex run may appear there, but only as part of a row's
+ * own display name. Any other long hex run in the page text
+ * (a provenance hash printed in full, a hash borrowed into a
+ * label) fails here. */
+const modelsStart = html.indexOf('data-section="models"');
+const methodStart = html.indexOf('data-section="method"');
+const outsideModelsText =
+  modelsStart >= 0 && methodStart > modelsStart
+    ? visibleText(html.slice(0, modelsStart) + html.slice(methodStart))
+    : text;
+if (/[0-9a-f]{40}/.test(outsideModelsText)) {
+  fail("a 40 character revision hash appears in rendered text outside the model cards");
+}
+for (const m of text.matchAll(/[0-9a-f]{40,}/g)) {
+  if (![...ranked, ...unranked].some((r) => r.display_name.includes(m[0]))) {
+    fail(
+      `a long hex run in the page text is not part of any display name: ${m[0].slice(0, 16)}`,
+    );
+  }
 }
 
 /* ---------- 8. charts ---------- */
@@ -635,7 +674,7 @@ if (!heatHtml) {
 }
 
 /* Calibration accounting. */
-const calHtml = sectionSlice("calibration", null);
+const calHtml = sectionSlice("calibration", "models");
 if (!calHtml) {
   fail("calibration section missing from rendered page");
 } else {
@@ -668,6 +707,342 @@ if (!calHtml) {
   }
   if (!calHtml.includes("Peira decision robustness board")) {
     fail("calibration section carries no identification line (SF-01)");
+  }
+}
+
+/* ---------- 9. malformed (round 10) ---------- */
+
+const fmtIntC = (v) => v.toLocaleString("en-US");
+const malHtml = sectionSlice("malformed", "heatmap");
+if (!malHtml) {
+  fail("malformed section missing from rendered page");
+} else {
+  const malText = visibleText(malHtml);
+  const sortedMal = [...allRows].sort((a, b) => {
+    const d = (b.malformed_rate ?? 0) - (a.malformed_rate ?? 0);
+    if (d !== 0) return d;
+    return a.display_name < b.display_name ? -1 : 1;
+  });
+  const printedMal = sortedMal.filter(
+    (r) => r.malformed_rate !== null && fmtPct(r.malformed_rate) !== "0.0%",
+  );
+  const foldedMal = sortedMal.length - printedMal.length;
+  const malTags = [
+    ...malHtml.matchAll(/data-run-id="([^"]+)" data-malformed="([^"]*)"/g),
+  ];
+  if (malTags.length !== printedMal.length) {
+    fail(
+      `malformed chart holds ${malTags.length} bar rows, payload implies ${printedMal.length} printed rows`,
+    );
+  }
+  malTags.forEach((m, i) => {
+    const row = printedMal[i];
+    if (!row) return;
+    if (m[1] !== row.run_id) {
+      fail(
+        `malformed row ${i + 1} is ${m[1]}, worst-first order expects ${row.run_id}`,
+      );
+    }
+    if (Number(m[2]) !== row.malformed_rate) {
+      fail(`malformed row ${row.run_id}: data-malformed disagrees with the payload`);
+    }
+    const start = malHtml.indexOf(m[0]);
+    const next = malHtml.indexOf('data-run-id="', start + m[0].length);
+    const blockText = visibleText(
+      malHtml.slice(start, next < 0 ? undefined : next),
+    );
+    if (!blockText.includes(fmtPct(row.malformed_rate))) {
+      fail(
+        `malformed row ${row.run_id}: printed rate ${fmtPct(row.malformed_rate)} not in its block`,
+      );
+    }
+    const isFlagged = unranked.some((r) => r.run_id === row.run_id);
+    if (isFlagged && !blockText.includes("Flagged")) {
+      fail(`malformed row ${row.run_id}: flagged row carries no flagged tag`);
+    }
+    if (!isFlagged && blockText.includes("Flagged")) {
+      fail(`malformed row ${row.run_id}: ranked row carries a flagged tag`);
+    }
+  });
+  if (!malText.includes("admission limit")) {
+    fail("malformed section does not label its admission line");
+  }
+  if (
+    foldedMal > 0 &&
+    !malText.includes(`${foldedMal} results printed a malformed rate of 0.0`)
+  ) {
+    fail(
+      `malformed fold line does not state the folded count ${foldedMal}`,
+    );
+  }
+  if (!malHtml.includes("Peira decision robustness board")) {
+    fail("malformed section carries no identification line (SF-01)");
+  }
+}
+
+/* ---------- 10. cards and model pages (round 10) ---------- */
+
+const fmtEceC = (v) => quantHU(expandDec(v), 3);
+const fmtTaxC = (v) =>
+  (v < 0 ? "-" : "+") + quantHU(expandDec(Math.abs(v)), 3);
+const fmtUsdC = (v) => `$${quantHU(expandDec(v), 2)}`;
+const fmtMsC = (v) => `${quantHU(expandDec(v), 0)}ms`;
+const fmtCiFullC = (ci) => `${fmtPct(ci[0])} to ${fmtPct(ci[1])}`;
+const fmtCellC = (v) => {
+  const pct = v * 100;
+  if (pct > 0 && pct < 0.5) return "<1";
+  return String(Math.round(pct));
+};
+const famEntriesC = (r) =>
+  r.detail && typeof r.detail === "object" && r.detail.families
+    ? Object.entries(r.detail.families)
+    : [];
+const lowerBoundC = (row) => {
+  let costed = 0;
+  let timed = 0;
+  let seen = false;
+  for (const [, f] of famEntriesC(row)) {
+    if (f.n_costed_calls === null || f.n_costed_calls === undefined) return false;
+    if (f.n_latency_calls === null || f.n_latency_calls === undefined) return false;
+    costed += f.n_costed_calls;
+    timed += f.n_latency_calls;
+    seen = true;
+  }
+  return seen && costed < timed;
+};
+const slugOfC = (r, rows) => {
+  const base = shortName(r);
+  const shared = rows.some(
+    (o) => o.run_id !== r.run_id && shortName(o) === base,
+  );
+  const raw = shared ? `${base}-${r.wire}` : base;
+  return raw
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+};
+/* The heatmap column order rule, recomputed for the spark bars. */
+const famSumsC = new Map();
+for (const r of allRows) {
+  for (const [k, f] of famEntriesC(r)) {
+    if (f.asr === null || f.asr === undefined) continue;
+    const acc = famSumsC.get(k) ?? { total: 0, n: 0 };
+    acc.total += f.asr;
+    acc.n += 1;
+    famSumsC.set(k, acc);
+  }
+}
+const familyOrderC = [...famSumsC.entries()]
+  .map(([k, acc]) => ({ k, mean: acc.total / acc.n }))
+  .sort((a, b) => b.mean - a.mean || (a.k < b.k ? -1 : 1))
+  .map((e) => e.k);
+
+/**
+ * The field-by-field card assertions, shared by the board's
+ * index cards and the per-model pages so the two surfaces are
+ * held to the same payload strings.
+ */
+function assertCardText(blockText, row, where) {
+  const need = (s, what) => {
+    if (s !== null && s !== undefined && s !== "" && !blockText.includes(s)) {
+      fail(`${where} ${row.run_id}: ${what} "${s}" not in the card text`);
+    }
+  };
+  need(shortName(row), "short name");
+  need(row.display_name, "full display name");
+  const dci = displayCiI(row);
+  if (row.asr_conditional !== null) need(fmtPct(row.asr_conditional), "attack success");
+  if (dci) need(fmtCiFullC(dci), "full interval");
+  if (row.benign_accuracy !== null) need(fmtPct(row.benign_accuracy), "benign accuracy");
+  if (row.malformed_rate !== null) need(fmtPct(row.malformed_rate), "malformed rate");
+  need(`${fmtIntC(row.n_eligible)} of ${fmtIntC(row.n_cases)}`, "eligible cases");
+  /* Cost state, in the words the card prints. */
+  if (row.total_cost_usd === null || row.total_cost_usd === undefined) {
+    need("no cost recorded", "unrecorded cost state");
+  } else if (row.total_cost_usd === 0) {
+    need("served locally", "local cost state");
+  } else if (lowerBoundC(row)) {
+    need(`≥ ${fmtUsdC(row.total_cost_usd)}`, "lower bound cost");
+    need("a lower bound", "lower bound words");
+  } else {
+    need(fmtUsdC(row.total_cost_usd), "cost");
+  }
+  if (row.latency_ms_p50_attacked !== null) {
+    need(fmtMsC(row.latency_ms_p50_attacked), "latency p50");
+  }
+  if (row.latency_ms_p95_attacked !== null) {
+    need(fmtMsC(row.latency_ms_p95_attacked), "latency p95");
+  }
+  const cal =
+    row.detail && typeof row.detail === "object" ? row.detail.calibration : null;
+  if (cal) {
+    if (cal.attacked?.ece !== null && cal.attacked?.ece !== undefined) {
+      need(fmtEceC(cal.attacked.ece), "attacked ECE");
+    }
+    if (cal.attacked?.brier !== null && cal.attacked?.brier !== undefined) {
+      need(fmtEceC(cal.attacked.brier), "attacked Brier");
+    }
+    if (cal.benign?.ece !== null && cal.benign?.ece !== undefined) {
+      need(fmtEceC(cal.benign.ece), "benign ECE");
+    }
+    if (cal.benign?.brier !== null && cal.benign?.brier !== undefined) {
+      need(fmtEceC(cal.benign.brier), "benign Brier");
+    }
+    if (cal.attacked?.n !== null && cal.attacked?.n !== undefined) {
+      need(fmtIntC(cal.attacked.n), "calibration base");
+    }
+    const cov = cal.confidence_coverage?.attacked;
+    if (cov !== null && cov !== undefined) need(fmtPct(cov), "confidence coverage");
+  }
+  const sevs =
+    row.detail && typeof row.detail === "object" ? row.detail.severities : null;
+  if (sevs) {
+    for (const level of ["critical", "high", "medium"]) {
+      const s = sevs[level];
+      if (!s) continue;
+      if (s.flip_rate_raw !== null && s.flip_rate_raw !== undefined) {
+        need(fmtPct(s.flip_rate_raw), `${level} flip rate`);
+      }
+      if (s.n_eligible !== null && s.n_eligible !== undefined) {
+        need(`of ${fmtIntC(s.n_eligible)} eligible`, `${level} base`);
+      }
+    }
+  }
+  /* Tax. A taxed card names both benchmark setters, from the
+   * same full cohort derivation as check 4; an untaxed card
+   * states that it carries none. */
+  if (row.robustness_tax !== null && row.robustness_tax !== undefined) {
+    need(fmtTaxC(row.robustness_tax), "robustness tax");
+    need(shortName(benignSetter), "benign benchmark setter");
+    need(shortName(eceSetter), "ECE benchmark setter");
+  } else {
+    need("No robustness tax", "untaxed statement");
+  }
+  /* Provenance, short form. */
+  need(row.run_id, "run id");
+  const prov = row.provenance ?? {};
+  if (prov.pricing_version) need(prov.pricing_version, "pricing version");
+  if (prov.manifest_sha256) {
+    need(prov.manifest_sha256.slice(0, 12), "manifest hash head");
+    if (blockText.includes(prov.manifest_sha256)) {
+      fail(`${where} ${row.run_id}: full manifest hash printed on the card`);
+    }
+  }
+}
+
+function assertCardAttrs(blockHtml, row, where) {
+  /* Spark bars: every family the row carries renders with its
+   * payload rate as a data attribute, in the heatmap's column
+   * order; every family it does not carry renders as the
+   * dotted not measured slot. */
+  const carried = new Map(famEntriesC(row));
+  const sparkTags = [
+    ...blockHtml.matchAll(/data-family="([^"]+)"(?: data-asr="([^"]*)")?(?: data-na="true")?/g),
+  ].map((m) => ({ fam: m[1], whole: m[0] }));
+  const seenFams = sparkTags.map((t) => t.fam);
+  if (JSON.stringify(seenFams) !== JSON.stringify(familyOrderC)) {
+    fail(
+      `${where} ${row.run_id}: spark families ${seenFams.join(",")} differ from the column order ${familyOrderC.join(",")}`,
+    );
+  }
+  for (const tag of sparkTags) {
+    const fam = carried.get(tag.fam);
+    if (!fam || fam.asr === null || fam.asr === undefined) {
+      if (!tag.whole.includes('data-na="true"')) {
+        fail(`${where} ${row.run_id}: family ${tag.fam} should render as not measured`);
+      }
+    } else if (!tag.whole.includes(`data-asr="${fam.asr}"`)) {
+      fail(`${where} ${row.run_id}: family ${tag.fam} data-asr disagrees with the payload`);
+    }
+  }
+  /* Severities as data attributes. */
+  for (const m of blockHtml.matchAll(
+    /data-severity="([^"]+)" data-flip="([^"]*)" data-base="([^"]*)"/g,
+  )) {
+    const s = row.detail?.severities?.[m[1]];
+    if (!s) {
+      fail(`${where} ${row.run_id}: severity ${m[1]} not in the payload`);
+      continue;
+    }
+    if (Number(m[2]) !== s.flip_rate_raw || Number(m[3]) !== s.n_eligible) {
+      fail(`${where} ${row.run_id}: severity ${m[1]} attributes disagree with the payload`);
+    }
+  }
+}
+
+const modelsHtml = sectionSlice("models", "method");
+if (!modelsHtml) {
+  fail("models section missing from rendered page");
+} else {
+  const cardChunks = modelsHtml.split('data-card-for="').slice(1);
+  if (cardChunks.length !== allRows.length) {
+    fail(
+      `models section holds ${cardChunks.length} cards, payload holds ${allRows.length} rows`,
+    );
+  }
+  const rankOf = new Map(ranked.map((r, i) => [r.run_id, i + 1]));
+  for (const chunk of cardChunks) {
+    const id = chunk.slice(0, chunk.indexOf('"'));
+    const row = rowById.get(id);
+    if (!row) {
+      fail(`card for unknown row ${id}`);
+      continue;
+    }
+    const blockText = visibleText(chunk);
+    assertCardText(blockText, row, "card");
+    assertCardAttrs(chunk, row, "card");
+    /* The rank statement and the index summary figures. */
+    const isFlagged = unranked.some((r) => r.run_id === id);
+    const isSlice = !isFlagged && row.n_cases < fullCases;
+    if (isFlagged) {
+      if (!blockText.includes("Flagged")) {
+        fail(`card ${id}: flagged card states no flagged statement`);
+      }
+    } else {
+      const stmt = `Rank ${rankOf.get(id)} of ${ranked.length} ranked`;
+      if (!blockText.includes(stmt)) {
+        fail(`card ${id}: rank statement "${stmt}" not in the card text`);
+      }
+      if (isSlice && !blockText.includes("guardrail slice")) {
+        fail(`card ${id}: slice card states no slice population`);
+      }
+    }
+    const dci = displayCiI(row);
+    if (dci && !blockText.includes(fmtCiCompact(dci))) {
+      fail(`card ${id}: index summary compact interval ${fmtCiCompact(dci)} missing`);
+    }
+    const slug = slugOfC(row, allRows);
+    if (!chunk.includes(`href="/models/${slug}/"`)) {
+      fail(`card ${id}: no link to its own page at /models/${slug}/`);
+    }
+  }
+  if (!modelsHtml.includes("Peira decision robustness board")) {
+    fail("models section carries no identification line (SF-01)");
+  }
+}
+
+/* Per-model pages. Same card, same payload strings, own head. */
+import { existsSync } from "node:fs";
+for (const row of allRows) {
+  const slug = slugOfC(row, allRows);
+  const pagePath = join(root, "out", "models", slug, "index.html");
+  if (!existsSync(pagePath)) {
+    fail(`model page missing at out/models/${slug}/index.html`);
+    continue;
+  }
+  const pageHtml = readFileSync(pagePath, "utf8");
+  const pageText = visibleText(pageHtml);
+  assertCardText(pageText, row, "model page");
+  assertCardAttrs(pageHtml, row, "model page");
+  const title = pageHtml.match(/<title>([^<]*)<\/title>/)?.[1] ?? "";
+  if (!title.includes(shortName(row))) {
+    fail(`model page ${slug}: title does not name the model`);
+  }
+  if (pageText.includes("—")) fail(`model page ${slug}: visible text contains an em dash`);
+  if (pageText.includes(";")) fail(`model page ${slug}: visible text contains a semicolon`);
+  if (pageText.includes(":")) fail(`model page ${slug}: visible text contains a colon`);
+  if (/[0-9a-f]{40,}/.test(pageText.replace(row.display_name, ""))) {
+    fail(`model page ${slug}: a long hex run appears outside the display name`);
   }
 }
 

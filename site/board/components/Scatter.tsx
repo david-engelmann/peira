@@ -505,22 +505,34 @@ function KeyedItem({
   dupes: Set<string>;
 }) {
   const rail = sets.rail.some((r) => r.run_id === row.run_id);
-  let cost: string;
+  /* The meta line is built from whole phrases, each rendered as
+   * an unbreakable span, so the line wraps only at phrase
+   * boundaries and never inside a phrase like a cost with its
+   * lower bound note (round 9 deviation carried here). */
+  const phrases: string[] = [fmtPct(row.asr_conditional!)];
   if (rail) {
-    cost =
+    phrases.push(
       railCostState(row) === "recorded-zero"
         ? "recorded cost $0.00"
-        : "no recorded cost";
+        : "no recorded cost",
+    );
   } else {
-    cost = `${fmtUsdExact(row.total_cost_usd!)} per run`;
-    if (costIsLowerBound(row)) cost += ", a lower bound";
+    phrases.push(`${fmtUsdExact(row.total_cost_usd!)} per run`);
+    if (costIsLowerBound(row)) phrases.push("a lower bound");
   }
   return (
     <li className="keyed-item">
       <span className="keyed-num num">{index}</span>
       <span className="keyed-name">{labelFor(row, dupes)}</span>
       <span className="keyed-meta num">
-        {fmtPct(row.asr_conditional!)} · {cost}
+        {phrases.map((p, i) => (
+          <span key={i} className="keyed-phrase">
+            {p}
+            {i < phrases.length - 1 && (
+              <span className="keyed-sep"> · </span>
+            )}
+          </span>
+        ))}
       </span>
     </li>
   );
