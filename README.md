@@ -4,13 +4,19 @@ peira is an open-source AI safety stress-test and intelligence hub for leading m
 
 [![ci](https://github.com/david-engelmann/peira/actions/workflows/ci.yml/badge.svg)](https://github.com/david-engelmann/peira/actions/workflows/ci.yml)
 [![license](https://img.shields.io/badge/license-MIT%20%2F%20CC--BY--4.0-blue.svg)](LICENSE)
+[![live board](https://img.shields.io/badge/live%20board-peiratrial.dev-2ea043.svg)](https://peiratrial.dev/)
 
-[Docs](docs/Overview.md) · [Methodology](docs/Methodology.md) · [Adapters](docs/Adapters.md) · [Contributing](docs/Contributing.md) · [Discussions](https://github.com/david-engelmann/peira/discussions)
+[Live board](https://peiratrial.dev/) · [Docs](docs/Overview.md) · [Methodology](docs/Methodology.md) · [Adapters](docs/Adapters.md) · [Contributing](docs/Contributing.md) · [Discussions](https://github.com/david-engelmann/peira/discussions)
 
 > Accuracy benchmarks tell you whether a model decides well on clean input. peira tells you whether an attacker can change the decision. Every attack ships with a benign twin, so a flipped decision is evidence about the attack, not noise.
 
+## Live results
+
+**[peiratrial.dev](https://peiratrial.dev/)**. The official leaderboard is live. The board publishes 39 sealed results covering 38 distinct models on the v2 dataset. Thirty-four distinct models are ranked and four are flagged under the published admission rules. The newest full-suite results are Mercury Decide at 0.1649 attack success and Clef omni at 0.2024, and Llama Prompt Guard 2 joins the guardrail slice rows at 0.1796 with benign accuracy 1.0 on its 373-case population. Every result is published with attack success rates and confidence intervals, benign accuracy, calibration, and per-family breakdowns. Cost is published where the run recorded it. The board is the source of truth for current standings.
+
 ## Contents
 
+- [Live results](#live-results)
 - [The trial in action](#the-trial-in-action)
 - [60-second quickstart](#60-second-quickstart)
 - [What peira measures](#what-peira-measures)
@@ -71,50 +77,58 @@ The full recipe (suite composition, eligibility rules, the analysis lock) is in 
 
 **v1** is the launch dataset: 2,000 cases across 10 attack families, 200 per family. **v2** is sealed at `dataset-v2-2.6.0`: 4,701 cases across 11 families, every case row-by-row audited, manifest SHA-256 verified. Both are CC-BY-4.0, so anyone can reproduce the numbers.
 
-Two more suites ship on the same harness, scored separately and never blended into the v1/v2 numbers: a **conversational suite** (multi-turn attacks, 840 cases) and a **safety-policy suite** (guardrail-native, pilot). A private blind holdout (500 cases, planned) will back the public numbers.
+Two more suites ship on the same harness, scored separately and never blended into the v1/v2 numbers: a **conversational suite** (multi-turn attacks, 840 cases) and a **safety-policy suite** (guardrail-native).
 
 The code is MIT-licensed. See `docs/Dataset.md` for the authoring pipeline and `docs/Taxonomy.md` for the 31 attack families.
 
 ## Leaderboard
 
-One row per (adapter, dataset version). The bar is mechanical, not editorial: malformed rate at most 5%, benign accuracy at least 0.5, at least 200 eligible cases overall, and at least 20 eligible cases in every family present. Miss any gate and the run is published but unranked. Omission never improves a rank.
+The official leaderboard lives at **[peiratrial.dev](https://peiratrial.dev/)**. It publishes every sealed official run on the v2 dataset (dataset-v2-2.6.0, 4,701 paired cases) with decision-change ASR and 95% confidence intervals, benign accuracy, calibration, malformed rate, and per-family breakdowns, and with cost where the run recorded it. The current board carries 39 published results covering 38 distinct models, 34 ranked models and 4 flagged models. A run appears only with its adapter name, pinned model version, and run date attached, and the sealed artifact behind every row can be reproduced from this repo.
 
-The adapters below are shipped and tested. Official measurement runs are in progress. Rows land as runs complete. Nothing ships a number here until it is measured with name, version, and run date.
+One row per (adapter, dataset version). The bar is mechanical, not editorial. Malformed rate at most 5%, benign accuracy at least 0.5, at least 200 eligible cases overall, and at least 20 eligible cases in every family present. Miss any gate and the run is published but unranked. Omission never improves a rank. The admission rules are in [docs/Admission-Rules.md](docs/Admission-Rules.md), and the ranking gates are stated in [docs/Methodology.md](docs/Methodology.md).
 
 ## Adapters
 
-29 adapters ship today: 9 Hugging Face guardrails, 10 structured-output LLM baselines, 5 guardrail APIs, and 5 Jev-family judges. The full table (install extras, API keys, pinned models) is in `docs/Adapters.md`.
+Adapters ship for Hugging Face guardrails, structured-output LLM baselines, guardrail APIs, and the Jev-family and decision-model systems on the live board. The full table (install extras, API keys, pinned models) is in `docs/Adapters.md`.
 
 | Adapter | Status |
 |---|---|
 | `mock` (reference mechanism exerciser) | measured |
-| Shieldstral (Mistral) | shipped, not yet measured |
-| ProtectAI prompt injection | shipped, not yet measured |
-| Llama Prompt Guard 2 86M (Meta) | shipped, not yet measured |
-| Qwen3Guard-Gen 4B (Qwen) | shipped, not yet measured |
-| Granite Guardian 4.1 8B (IBM) | shipped, not yet measured |
-| ShieldGemma 2B (Google) | shipped, not yet measured |
-| WildGuard (AllenAI) | shipped, not yet measured |
-| Structured-output LLM baselines (OpenAI, Anthropic `claude-sonnet-5-5`, Gemini, Moonshot, xAI, DeepSeek, Meta, Zhipu, Mistral, Qwen) | shipped, not yet measured |
-| TypeSafe Jev | shipped, gated on access |
-| Laya (ConvAI Innovations) | shipped, not yet measured |
-| Kev (Jared Palmer) | shipped, not yet measured |
-| SemIf (TheoLeeCJ) | shipped, not yet measured |
-| openjev-sglang (self-hosted) | shipped, not yet measured |
+| Shieldstral (Mistral) | measured, on the live board |
+| ProtectAI prompt injection | measured, on the live board |
+| Llama Prompt Guard 2 86M (Meta) | measured, on the live board |
+| Qwen3Guard-Gen 4B (Qwen) | measured, on the live board |
+| Granite Guardian 4.1 8B (IBM) | measured, on the live board |
+| ShieldGemma 2B (Google) | shipped |
+| WildGuard (AllenAI) | shipped |
+| Structured-output LLM baselines (OpenAI, Anthropic `claude-sonnet-5-5`, Gemini, Moonshot, xAI, DeepSeek, Zhipu) | measured, on the live board |
+| Structured-output LLM baselines (Meta, Mistral, Qwen) | shipped |
+| TypeSafe Jev | measured, on the live board |
+| Laya (ConvAI Innovations) | measured, on the live board |
+| Kev (Jared Palmer) | measured, on the live board |
+| SemIf (TheoLeeCJ) | measured, on the live board |
+| Celeris | measured, on the live board |
+| Clef (Cloudflare) | measured, on the live board |
+| Decider 0.8B (Mapika) | measured, on the live board |
+| Strands Decider 2B (Strands Agents) | measured, on the live board |
+| pplx-decider (Perplexity) | measured, on the live board |
+| Mercury Decide (Inception) | measured, on the live board |
+| Cerno 4B (Apertix) | shipped |
+| openjev-sglang (self-hosted) | shipped |
 | Lakera Guard (Check Point) | shipped, gated on access |
-| HarmBench classifier | shipped, not yet measured |
-| Granite Guardian HAP-125M (IBM) | shipped, not yet measured |
-| OpenAI omni-moderation | shipped, not yet measured |
-| Google Cloud Model Armor | shipped, not yet measured |
-| Azure Prompt Shields | shipped, not yet measured |
-| Cloudflare Workers AI (Llama Guard 3 8B) | shipped, not yet measured |
-| claude-fable-5-1 (Anthropic, frontier-ceiling candidate) | shipped, id unverified, not yet measured |
+| HarmBench classifier | shipped |
+| Granite Guardian HAP-125M (IBM) | measured, on the live board |
+| OpenAI omni-moderation | shipped |
+| Google Cloud Model Armor | shipped |
+| Azure Prompt Shields | shipped |
+| Cloudflare Workers AI (Llama Guard 3 8B) | shipped |
+| claude-fable-5-1 (Anthropic, frontier-ceiling candidate) | measured, on the live board |
 
-"Shipped" means the adapter exists and is tested. See `docs/Adapters.md` for install, keys, and pinned models.
+"Shipped" means the adapter exists and is tested. "Measured, on the live board" means a sealed official run for that adapter is published at [peiratrial.dev](https://peiratrial.dev/). See `docs/Adapters.md` for install, keys, and pinned models.
 
 ## Reports
 
-A monthly *State of Decision Robustness* starting at the v1 launch: the full leaderboard, the methodology it was scored under, and per-adapter receipts.
+The [live board](https://peiratrial.dev/) is the standing report. It carries the full leaderboard, the methodology the runs were scored under, and per-adapter receipts for every published run.
 
 ## How peira differs
 
@@ -141,7 +155,7 @@ git clone https://github.com/david-engelmann/peira.git && cd peira
 pip install -e .
 ```
 
-(PyPI release pending. `pip install peira` comes at the first release.)
+(peira is not published on PyPI. The source install above is the supported path.)
 
 For development, use a venv. The test suite does not support
 a bare `PYTHONPATH` install.
