@@ -179,6 +179,27 @@ def _single_token_id(
     )
 
 
+def _label_token_id(tokenizer: Any, label: str, model_id: str) -> int:
+    """Single-token id for a verdict label, else its first token.
+
+    Most labels are single tokens; a multi-token label (e.g.
+    "Controversial") is represented by the first token of its
+    spaced encoding, which is unique to it at the verdict
+    position the adapter scores.
+    """
+    try:
+        return _single_token_id(tokenizer, (f" {label}", label),
+                                label, model_id)
+    except ProviderError:
+        ids = tokenizer.encode(f" {label}", add_special_tokens=False)
+        if not ids:
+            raise ProviderError(
+                f"tokenizer for '{model_id}' cannot encode label "
+                f"{label!r}"
+            ) from None
+        return int(ids[0])
+
+
 class _HFAdapterBase:
     """Shared machinery for the Hugging Face guardrail adapters."""
 
@@ -387,9 +408,17 @@ class ShieldstralAdapter(_HFAdapterBase):
     the policy in ``<Instruct>``, and the case text in ``<Query>`` and
     ``<Document>``. The continuous score is the renormalized first-token
     probability ``P(yes) / (P(yes) + P(no))`` — token ids are resolved
-    as ``" yes"``/``" no"`` (leading space, as the tokenizer emits
-    them), falling back to ``"yes"``/``"no"`` when the spaced variants
-    are absent.
+    as ``"yes"``/``"no"`` first, falling back to ``" yes"``/``" no"``
+    when the bare spellings are not single tokens. (Measured on the
+    pinned checkpoint, 2026-10-15: after the ``Answer:`` prompt the
+    model emits the bare tokens — ``no`` carried 0.977 of the
+    next-token mass against 1.7e-08 for ``" yes"`` — so spaced-first
+    resolution renormalized numerical noise.)
+
+    The checkpoint ships a ``Mistral3Config``, which
+    ``AutoModelForCausalLM`` refuses on current transformers; it loads
+    through ``AutoModelForImageTextToText`` (the checkpoint's native
+    class is ``Mistral3ForConditionalGeneration``).
 
     HF repo ``mistralai/Shieldstral-1.0-3B`` (Apache-2.0) at the pinned
     revision below — never ``main`` or a floating tag.
@@ -410,7 +439,7 @@ class ShieldstralAdapter(_HFAdapterBase):
     )
 
     def _model_class(self, transformers: Any) -> Any:
-        return transformers.AutoModelForCausalLM
+        return transformers.AutoModelForImageTextToText
 
     def _build_prompt(self, text: str) -> str:
         return (
@@ -440,10 +469,10 @@ class ShieldstralAdapter(_HFAdapterBase):
             )
         logits = _to_list(generated.logits[0][0])
         yes_id = _single_token_id(
-            tokenizer, (" yes", "yes"), "yes", self.hf_model_id
+            tokenizer, ("yes", " yes"), "yes", self.hf_model_id
         )
         no_id = _single_token_id(
-            tokenizer, (" no", "no"), "no", self.hf_model_id
+            tokenizer, ("no", " no"), "no", self.hf_model_id
         )
         probs = _softmax([float(x) for x in logits])
         p_yes, p_no = probs[yes_id], probs[no_id]
@@ -591,6 +620,13 @@ class Qwen3GuardAdapter(_HFAdapterBase):
     cannot clear content as Safe has not cleared it. The model's own
     argmax label is reported in the transcript for diagnostics.
 
+    A label that is not a single token in the Qwen3 tokenizer
+    (``Controversial`` is not) is represented by the first token of
+    its spaced encoding — under the ``Safety:`` prefill the three
+    labels have distinct first tokens, so the first token carries
+    the label's verdict mass (the standard first-token scoring
+    convention; see ``_label_token_id``).
+
     Known limitation: an independent robustness study (Young/UNLV, Nov
     2025, cited by OWASP AISVS) found Qwen3Guard-8B accuracy dropping
     91.0% -> 33.8% on novel adversarial prompts. Expect below-leaderboard
@@ -658,8 +694,8 @@ class Qwen3GuardAdapter(_HFAdapterBase):
         # so the IDs never change. Avoids 3 encode calls per scored case.
         if self._label_ids is None:
             self._label_ids = {
-                label: _single_token_id(
-                    tokenizer, (f" {label}", label), label, self.hf_model_id
+                label: _label_token_id(
+                    tokenizer, label, self.hf_model_id
                 )
                 for label in self.LABELS
             }
