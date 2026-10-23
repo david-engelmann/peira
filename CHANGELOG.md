@@ -7,6 +7,27 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
 
 ## [Unreleased]
 
+### Added Cerno adapter
+
+- New `cerno` adapter for Apertix's Cerno System One decision
+  models, pinned to `apertixai/cerno-4b` at Hub revision
+  ed4b5c59b542ee96c227ee874776c973980c640b and served locally by
+  a sidecar that wraps the vendored Apertix Decider (the vendor
+  ships no server). The adapter reuses the local System One wire
+  plumbing, checks the server's `cerno-4b` model stamp and Hub
+  revision stamp on every call, and validates answers
+  fail-closed: a probability that is missing, non-numeric,
+  non-finite, or outside [0, 1], or a distribution that does
+  not sum to 1 within rounding, is a terminal provider error,
+  never a clamped or defaulted number. The `confidence` field
+  is optional on the wire, matching the vendor's published
+  answer format, because it duplicates the chosen option's
+  probability; the adapter normalizes it from the probability
+  map before parsing, so a recorded confidence is always a
+  number the model produced. Pricing: `apertixai/cerno-4b`
+  added at $0.0 (self-hosted convention), pricing version
+  2026-10-15.6.
+
 ### Announcement package finalized around the published v2 board
 
 - The announcement package now records the verified v2 board with 36 entries covering 35 distinct models, states the ranked and flagged split, and defines the robustness tax against the full-suite frontier set by Jev 1.14.0 and Claude Sonnet 5-5. It replaces the October draft scaffolding and its placeholders with final repository and LinkedIn copy, and it states the refresh rule for the freeze publish landing on 23 October 2026.
