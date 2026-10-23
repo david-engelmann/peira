@@ -26,6 +26,7 @@ import {
   severitiesOf,
   costStateOf,
   runDateWords,
+  shortHash,
   versionForProvenance,
 } from "@/lib/cards";
 
@@ -338,7 +339,7 @@ export default function ModelCard({
           contract {prov.contractVersion ?? "·"} · dataset{" "}
           {prov.datasetVersion ?? row.dataset_version ?? "·"} · seed{" "}
           {prov.seed ?? "·"} · manifest{" "}
-          {prov.manifestSha256 ? prov.manifestSha256.slice(0, 12) : "·"}
+          {prov.manifestSha256 ? shortHash(prov.manifestSha256) : "·"}
         </p>
       </div>
 

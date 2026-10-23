@@ -95,12 +95,30 @@
  *        under the not measured mark.
  *  Ranking links. Every row's name link points at the row's
  *        own model page under the slug rule. The links' own
- *        heights are measured and noted: an inline link in a
- *        line of text is the WCAG 2.5.8 inline case, so the
- *        gate records the size rather than failing on it.
+ *        heights are measured against the 24 px floor
+ *        (2.5.8) and gated: the round 11 build recorded them
+ *        at 17 px under the inline case, and the convergence
+ *        round measured the line and found the link standing
+ *        alone on it, so the exception does not apply and
+ *        the size is a gate, not a note (round 12).
  *  Controls. The compare pickers, the swap button, and the
  *        card controls measure at least 24 px in both
  *        dimensions.
+ *
+ * Convergence extensions (round 12):
+ *  Coincidence notes (C-07). A calibration panel whose bins
+ *        coincide carries the sentence on the panel. The
+ *        expected panels are derived here from the payload:
+ *        slice rows whose 15 attacked bins span at most a
+ *        tenth of stated confidence. The note must appear on
+ *        exactly those panels and on no other.
+ *  Text spacing (AX-04). After the width loop, the WCAG
+ *        1.4.12 overrides the adversarial lane applied
+ *        (line height 1.5, letter spacing 0.12 em, word
+ *        spacing 0.16 em, paragraph spacing 2 em) go onto the
+ *        1440 page, and no calibration rail name may clip:
+ *        the rail wraps its names at hyphens now, where it
+ *        once held them under nowrap and cut the longest.
  *
  * Screenshots land in the directory given as argv[3].
  */
@@ -202,6 +220,28 @@ const displayCountsA = {
   flagged: new Set(payload.unranked.map((r) => r.display_name)).size,
 };
 const nonSliceA = allRowsA.filter((r) => r.n_cases === fullCasesA);
+
+/* ---------- round 12 derivations ---------- */
+
+/* C-07: the slice panels whose bins coincide, derived from
+ * the payload alone: a slice row whose 15 attacked bins span
+ * at most a tenth of stated confidence. On this payload two
+ * qualify (forecast spreads 0.014 and 0.089); the other three
+ * slice panels spread past half the axis and carry no note. */
+const CAL_NOTE_TEXT =
+  "The bins coincide because the model states nearly the same confidence on almost every case.";
+const coincidentSliceIdsA = new Set(
+  allRowsA
+    .filter((r) => r.n_cases !== fullCasesA)
+    .filter((r) => {
+      const bins =
+        r.detail?.calibration?.reliability_bins?.attacked?.bins ?? [];
+      if (bins.length === 0) return false;
+      const fs = bins.map((b) => b.mean_forecast);
+      return Math.max(...fs) - Math.min(...fs) <= 0.1;
+    })
+    .map((r) => r.run_id),
+);
 const plottedIdsA = new Set(
   nonSliceA
     .filter((r) => r.total_cost_usd !== null && r.total_cost_usd > 0)
@@ -860,8 +900,12 @@ for (const width of [1440, 1280, 390]) {
           const metaEl = p.querySelector(".cal-meta");
           const bin = p.querySelector("circle.cal-dot");
           const diag = p.querySelector(".cal-diag");
+          const noteEl = p.querySelector(".cal-note");
           return {
             id: p.getAttribute("data-run-id"),
+            note: noteEl
+              ? noteEl.textContent.replace(/\s+/g, " ").trim()
+              : null,
             ece: m ? m[1] : null,
             nameClip: nameEl
               ? nameEl.scrollWidth > nameEl.clientWidth + 1
@@ -923,8 +967,13 @@ for (const width of [1440, 1280, 390]) {
   }
   if (minLinkH !== Infinity) {
     notes.push(
-      `width ${width}: ranking name links measured, smallest height ${minLinkH.toFixed(1)} px (inline links in a line of text, the WCAG 2.5.8 inline case; recorded, not gated)`,
+      `width ${width}: ranking name links measured, smallest height ${minLinkH.toFixed(1)} px (WCAG 2.5.8 floor is 24 px; gated since the convergence round found the inline case does not apply)`,
     );
+    if (minLinkH < 23.9) {
+      failures.push(
+        `width ${width}: ranking name link height ${minLinkH.toFixed(1)} px is under the 24 px target floor (2.5.8)`,
+      );
+    }
   }
   // F-01: rank column.
   for (const cell of report.rankCells) {    const row = byRunId.get(cell.runId);
@@ -1291,6 +1340,21 @@ for (const width of [1440, 1280, 390]) {
       }
       if (p.metaClip) {
         failures.push(`width ${width}: calibration panel meta clipped on ${p.id}`);
+      }
+    }
+    /* C-07 (round 12): the coincidence note stands on exactly
+     * the panels whose bins coincide, derived above. */
+    for (const p of chart.cal.panels) {
+      if (coincidentSliceIdsA.has(p.id)) {
+        if (p.note !== CAL_NOTE_TEXT) {
+          failures.push(
+            `width ${width}: calibration panel ${p.id} bins coincide but the panel note is "${p.note}"`,
+          );
+        }
+      } else if (p.note !== null) {
+        failures.push(
+          `width ${width}: calibration panel ${p.id} carries the coincidence note but its bins do not coincide`,
+        );
       }
     }
     for (const rn of chart.cal.railNames) {
@@ -1827,6 +1891,32 @@ for (const row of pageSamples) {
   }
   notes.push(`model page /models/${slug}/ height ${res.height}`);
 }
+
+/* ---------- round 12 text spacing (AX-04) ---------- */
+/* The WCAG 1.4.12 overrides, the adversarial lane's style tag
+ * verbatim, on the 1440 board. No calibration rail name may
+ * clip under them: the rail wraps its names at hyphens now.
+ * Before the fix exactly one name clipped here, the 35 char
+ * deberta-v3-base-prompt-injection-v2 at 241 against 210. */
+await page.setViewport({ width: 1440, height: 1200 });
+await page.goto(pageUrl, { waitUntil: "networkidle0" });
+await page.addStyleTag({
+  content: `* { line-height: 1.5 !important; letter-spacing: 0.12em !important; word-spacing: 0.16em !important; } p { margin-bottom: 2em !important; }`,
+});
+await new Promise((r) => setTimeout(r, 300));
+const spacingClip = await page.evaluate(() =>
+  [...document.querySelectorAll(".cal-rail-name")]
+    .filter((n) => n.scrollWidth > n.clientWidth + 1)
+    .map((n) => n.textContent.trim()),
+);
+if (spacingClip.length > 0) {
+  failures.push(
+    `text spacing: calibration rail names clip under the 1.4.12 overrides: ${spacingClip.join(", ")}`,
+  );
+}
+notes.push(
+  `text spacing (1440, 1.4.12 overrides): ${spacingClip.length} calibration rail names clipped`,
+);
 
 await browser.close();
 server.close();

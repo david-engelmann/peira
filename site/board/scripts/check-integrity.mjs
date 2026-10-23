@@ -59,7 +59,8 @@
  *     and coverage, severity rates and bases, spark bar data
  *     attributes in column order, the tax figure with both
  *     benchmark setters named or the untaxed statement, and
- *     the short provenance), plus the rank statement, the
+ *     the short provenance, with the ellipsis cut marker on
+ *     every shortened hash, F-05), plus the rank statement, the
  *     own-page link, and the copy rules on every model page.
  * 11. Nav, compare, and ranking links (round 11). The section
  *     bar carries the eight labels in page order and every
@@ -936,8 +937,20 @@ function assertCardText(blockText, row, where) {
   need(row.run_id, "run id");
   const prov = row.provenance ?? {};
   if (prov.pricing_version) need(prov.pricing_version, "pricing version");
+  /* F-05 (convergence round 12): a shortened hash carries the
+   * ellipsis cut marker, here and in the version line, whose
+   * long hex runs truncate under the same rule ported below.
+   * The full hash never prints (check 7 holds). */
+  const provVersion = row.adapter_version.replace(
+    /[0-9a-f]{13,}/g,
+    (m) => `${m.slice(0, 12)}…`,
+  );
+  need(provVersion, "provenance version, cut marker on any cut");
   if (prov.manifest_sha256) {
-    need(prov.manifest_sha256.slice(0, 12), "manifest hash head");
+    need(
+      `${prov.manifest_sha256.slice(0, 12)}…`,
+      "manifest hash head with cut marker",
+    );
     if (blockText.includes(prov.manifest_sha256)) {
       fail(`${where} ${row.run_id}: full manifest hash printed on the card`);
     }

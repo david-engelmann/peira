@@ -76,9 +76,25 @@ function Panel({
   }
   const px = (f: number) => PLOT.x0 + f * (PLOT.x1 - PLOT.x0);
   const py = (o: number) => PLOT.y1 - o * (PLOT.y1 - PLOT.y0);
+  /* Census C-07: a panel whose bins coincide says so on the
+   * panel. Two slice panels qualify on this payload, the ones
+   * whose 15 stated confidences span a tenth or less (the
+   * granite-hap panel's bins all sit between 0.986 and 1.000).
+   * The wider slice panels spread visibly and need no note. */
+  const forecasts = data.bins.map((b) => b.meanForecast);
+  const binsCoincide =
+    isSlice &&
+    forecasts.length > 0 &&
+    Math.max(...forecasts) - Math.min(...forecasts) <= 0.1;
   return (
     <article className={classes} id={`cal-${row.run_id}`} data-run-id={row.run_id}>
       {head}
+      {binsCoincide && (
+        <p className="cal-note">
+          The bins coincide because the model states nearly the
+          same confidence on almost every case.
+        </p>
+      )}
       <svg
         viewBox={`0 0 ${PW} ${PH}`}
         className="cal-svg"

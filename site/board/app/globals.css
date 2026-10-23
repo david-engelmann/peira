@@ -894,8 +894,14 @@ body {
 .cal-rail-name {
   font-size: 11.5px;
   font-weight: 550;
-  white-space: nowrap;
-  overflow: hidden;
+  /* Names wrap at hyphens here as everywhere else on the
+     page. The rail once held them on one line under nowrap
+     and overflow hidden, which fit at rest with no slack and
+     clipped the longest name outright under the WCAG text
+     spacing overrides (AX-04). Wrapping costs nothing at
+     rest, where every name fits its line, and loses nothing
+     under the overrides. */
+  overflow-wrap: break-word;
 }
 .cal-rail-ece {
   color: var(--ink-2);
@@ -956,6 +962,12 @@ body {
   font-size: 11.5px;
   color: var(--ink-2);
   margin: 3px 0 6px;
+}
+.cal-note {
+  font-size: 11.5px;
+  line-height: 1.45;
+  color: var(--ink-2);
+  margin: 0 0 6px;
 }
 .cal-svg {
   width: 100%;
@@ -1695,6 +1707,12 @@ body {
    global ink focus outline serves as the focus state. */
 
 .name-link {
+  /* The link stands alone on the name line as the row's
+     navigation target, so the WCAG 2.5.8 inline case does
+     not cover it (convergence record, round 12): the box
+     carries the full 24 px target height in layout. */
+  display: inline-block;
+  min-height: 24px;
   color: inherit;
   text-decoration: none;
 }
