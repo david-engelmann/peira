@@ -1615,7 +1615,10 @@ adapter refuses to map it to anything (guessing would corrupt the
 measurement). Terminal. Fix: report it.
 
 **`jev score answer has no numeric score: ...` / `jev abstain answer has no numeric abstain value: ...`**
-Cause: the score/abstain answer is missing its numeric field. Terminal:
+Cause: the score answer carried neither a numeric `score` nor a
+probability map the adapter could derive one from (a probability
+map only counts as a genuine distribution over the five levels),
+or the abstain answer is missing its numeric field. Terminal:
 same drift handling as above.
 
 **`jev returned non-numeric confidence: ...` / `jev returned non-numeric abstain: ...`**
