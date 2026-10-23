@@ -182,7 +182,7 @@ class TestPricingConfidence(unittest.TestCase):
     def test_pricing_version_present(self):
         import peira.pricing as p
         table = p.load_pricing_table()
-        self.assertEqual(table["pricing_version"], "2026-10-15.4")
+        self.assertEqual(table["pricing_version"], "2026-10-15.5")
 
     def test_pricing_version_required(self):
         import peira.pricing as p
@@ -555,7 +555,7 @@ class TestArtifactContract(unittest.TestCase):
 
     def test_pricing_version_sealed(self):
         a = run_suite(PricedAdapter(), _cases(1), "trial-demo", "0.1.0-demo")
-        self.assertEqual(a.pricing_version, "2026-10-15.4")
+        self.assertEqual(a.pricing_version, "2026-10-15.5")
 
     def test_pricing_version_lock_covered(self):
         a = run_suite(PricedAdapter(), _cases(1), "trial-demo", "0.1.0-demo")
