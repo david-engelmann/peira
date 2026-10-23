@@ -7,6 +7,10 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
 
 ## [Unreleased]
 
+### Announcement package finalized around the published v2 board
+
+- The announcement package now records the verified v2 board with 36 entries covering 35 distinct models, states the ranked and flagged split, and defines the robustness tax against the full-suite frontier set by Jev 1.14.0 and Claude Sonnet 5-5. It replaces the October draft scaffolding and its placeholders with final repository and LinkedIn copy, and it states the refresh rule for the freeze publish landing on 23 October 2026.
+
 ### README finalized around the live leaderboard
 
 - The README leads with the live board at peiratrial.dev (a badge,
