@@ -7,6 +7,10 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
 
 ## [Unreleased]
 
+### Board facts refreshed to the freeze publish
+
+- The README and the announcement package now state the freeze board with 39 entries covering 38 distinct models, 34 ranked and 4 flagged. The refresh adds Mercury Decide and Clef omni as published full-suite results, marks Llama Prompt Guard 2 as measured on the guardrail slice, records that the robustness tax frontier is unchanged, and adds adapter table rows for Mercury Decide and Cerno.
+
 ### Added Cerno adapter
 
 - New `cerno` adapter for Apertix's Cerno System One decision
