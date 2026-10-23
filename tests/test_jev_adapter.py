@@ -228,6 +228,60 @@ class TestJevScore(unittest.TestCase):
         with self.assertRaises(ProviderError):
             JevAdapter(api_key="k", transport=t).decide(_case_input(), "score", _ctx())
 
+    def _score_with_probs(self, probs, option="approve", conf=0.9):
+        t = _transport_for({
+            "score": {"probabilities": probs},
+            "decision": {"choice": option, "confidence": conf},
+        })
+        return JevAdapter(api_key="k", transport=t)
+
+    def test_score_fallback_unknown_level_key_is_terminal(self):
+        # The old fallback weighted values by their position in the
+        # map and never looked at the keys, so mass under a key that
+        # names no level was read as level-0 mass and produced a
+        # score of 0.0. "99" names no level; the fallback must void.
+        a = self._score_with_probs({"99": 1.0})
+        with self.assertRaises(ProviderError):
+            a.decide(_case_input(), "score", _ctx())
+
+    def test_score_fallback_out_of_range_key_cannot_fabricate_maximum(self):
+        # Positionally the "99" mass sits fifth, so the old fallback
+        # weighted it as level 4 and returned the maximum score 1.0
+        # for a distribution that names no such level.
+        a = self._score_with_probs(
+            {"0": 0.0, "1": 0.0, "2": 0.0, "3": 0.0, "99": 1.0})
+        with self.assertRaises(ProviderError):
+            a.decide(_case_input(), "score", _ctx())
+
+    def test_score_fallback_noncanonical_key_spellings_are_terminal(self):
+        # A probability key is admitted by matching the canonical
+        # level spellings, never by parsing or position: every
+        # spelling below silently produced a score under the old
+        # fallback.
+        for probs in ({"01": 1.0}, {"+1": 1.0}, {" 2": 1.0}):
+            a = self._score_with_probs(probs)
+            with self.assertRaises(ProviderError, msg=repr(probs)):
+                a.decide(_case_input(), "score", _ctx())
+
+    def test_score_fallback_huge_int_probability_is_terminal(self):
+        # A several-hundred-digit JSON integer parses to an int whose
+        # float() raises OverflowError; the old fallback let it escape
+        # decide() instead of failing closed with ProviderError.
+        a = self._score_with_probs({"2": 10 ** 400})
+        with self.assertRaises(ProviderError):
+            a.decide(_case_input(), "score", _ctx())
+
+    def test_score_fallback_fractional_distribution_unchanged(self):
+        # Positive control: a well-formed distribution computes the
+        # same weighted position before and after the key validation
+        # (0*.1 + 1*.2 + 2*.4 + 3*.2 + 4*.1 = 2.0, normalized 0.5).
+        a = self._score_with_probs(
+            {"0": 0.1, "1": 0.2, "2": 0.4, "3": 0.2, "4": 0.1})
+        out = a.decide(_case_input(), "score", _ctx())
+        self.assertEqual(validate_output(out, "score"), [])
+        self.assertAlmostEqual(out.score, 0.5)
+        self.assertEqual(out.decision, "approve")
+
     def test_score_sends_two_questions(self):
         a, t = self._score_adapter(3)
         a.decide(_case_input(), "score", _ctx())
