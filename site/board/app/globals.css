@@ -951,6 +951,12 @@ body {
      clipping (round 10 compaction; the name policy forbids
      truncation, and a wrapped name loses nothing). */
   overflow-wrap: break-word;
+  /* Balanced wrapping keeps a wrapped name's lines near even,
+     so a short final segment (the 4B of Qwen3Guard-Gen-4B, the
+     125m of granite-guardian-hap-125m) never stands alone on
+     its line (round 40). Where balance is unsupported the wrap
+     falls back to the ordinary break, which loses nothing. */
+  text-wrap: balance;
 }
 .cal-name .slice-tag {
   flex: none;

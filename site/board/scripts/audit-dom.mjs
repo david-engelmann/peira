@@ -139,6 +139,16 @@
  *        until the convergence re-audit found Models, Compare,
  *        and Method off-screen at 390.
  *
+ * Round 40 extensions (landing):
+ *  Panel name wrap. A calibration panel name that wraps may
+ *        not strand its final hyphen segment alone on the last
+ *        line (a last line of five characters or fewer, holding
+ *        no hyphen, under a line that ends with one). The
+ *        Qwen3Guard-Gen-4B and granite-guardian-hap-125m
+ *        headers did exactly this before the balanced wrap;
+ *        the check reads the name's own line boxes, so a
+ *        regression in the wrap rule fails here.
+ *
  * Screenshots land in the directory given as argv[3].
  */
 
@@ -956,8 +966,29 @@ for (const width of [1440, 1280, 390]) {
           const bin = p.querySelector("circle.cal-dot");
           const diag = p.querySelector(".cal-diag");
           const noteEl = p.querySelector(".cal-note");
+          /* Round 40: the panel name's own lines, read by
+           * bucketing its text node's characters by line top,
+           * so the wrap rule is measured rather than eyeballed. */
+          const nameTextEl = p.querySelector(".cal-name-text");
+          const nameNode = nameTextEl ? nameTextEl.firstChild : null;
+          const lineMap = new Map();
+          if (nameNode) {
+            for (let i = 0; i < nameNode.length; i++) {
+              const range = document.createRange();
+              range.setStart(nameNode, i);
+              range.setEnd(nameNode, i + 1);
+              const rect = range.getClientRects()[0];
+              if (!rect) continue;
+              const key = Math.round(rect.top);
+              lineMap.set(key, (lineMap.get(key) ?? "") + nameNode.textContent[i]);
+            }
+          }
+          const nameLines = [...lineMap.entries()]
+            .sort((a, b) => a[0] - b[0])
+            .map(([, t]) => t);
           return {
             id: p.getAttribute("data-run-id"),
+            nameLines,
             note: noteEl
               ? noteEl.textContent.replace(/\s+/g, " ").trim()
               : null,
@@ -1409,6 +1440,22 @@ for (const width of [1440, 1280, 390]) {
       } else if (p.note !== null) {
         failures.push(
           `width ${width}: calibration panel ${p.id} carries the coincidence note but its bins do not coincide`,
+        );
+      }
+    }
+    /* Round 40: a wrapped panel name may not strand its final
+     * hyphen segment alone on the last line. The defect form is
+     * precise: at least two lines, a last line of five
+     * characters or fewer holding no hyphen, under a line that
+     * ends with one. */
+    for (const p of chart.cal.panels) {
+      const lines = p.nameLines ?? [];
+      if (lines.length < 2) continue;
+      const last = lines[lines.length - 1].trim();
+      const prev = lines[lines.length - 2].trimEnd();
+      if (last.length <= 5 && !last.includes("-") && prev.endsWith("-")) {
+        failures.push(
+          `width ${width}: calibration panel ${p.id} name strands its final segment "${last}" alone on the last line`,
         );
       }
     }
