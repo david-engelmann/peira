@@ -561,7 +561,7 @@ export default function Scatter() {
   const keyedRows = byAsr.filter((r) => solution.keyedSet.has(r.run_id));
 
   return (
-    <section className="section" aria-labelledby="scatter-title" data-section="scatter">
+    <section className="section" aria-labelledby="scatter-title" data-section="scatter" id="cost">
       <p className="section-label">Cost</p>
       <h2 className="section-title" id="scatter-title">
         What robustness costs per run

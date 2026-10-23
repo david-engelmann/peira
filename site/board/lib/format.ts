@@ -125,6 +125,47 @@ export function fmtMs(value: number): string {
   return `${quantizeHalfUp(expandDecimalString(value), 0)}ms`;
 }
 
+/**
+ * Signed deltas for the compare table (design 4.6). A delta is
+ * a difference of two unrounded payload values, printed at the
+ * precision of its metric. The sign prints only when the
+ * rounded magnitude is not zero, so a difference too small to
+ * print never claims a direction. Percent deltas print as
+ * figures without the percent sign; the compare note states
+ * that the percent rows read in percentage points.
+ */
+function deltaSign(value: number, magnitude: string): string {
+  if (/^0(\.0+)?$/.test(magnitude)) return "";
+  return value < 0 ? "-" : "+";
+}
+
+/** A difference of two proportions, at one decimal, as in +3.2 or -0.4. */
+export function fmtDeltaPct(value: number): string {
+  const mag = quantizeHalfUp(
+    shiftPoint(expandDecimalString(Math.abs(value)), 2),
+    1,
+  );
+  return deltaSign(value, mag) + mag;
+}
+
+/** A difference at three decimals, for ECE, Brier, and tax deltas. */
+export function fmtDelta3(value: number): string {
+  const mag = quantizeHalfUp(expandDecimalString(Math.abs(value)), 3);
+  return deltaSign(value, mag) + mag;
+}
+
+/** A cost difference with the dollar sign, as in +$1.24. */
+export function fmtDeltaUsd(value: number): string {
+  const mag = quantizeHalfUp(expandDecimalString(Math.abs(value)), 2);
+  return `${deltaSign(value, mag)}$${mag}`;
+}
+
+/** A latency difference in whole milliseconds, as in -45ms. */
+export function fmtDeltaMs(value: number): string {
+  const mag = quantizeHalfUp(expandDecimalString(Math.abs(value)), 0);
+  return `${deltaSign(value, mag)}${mag}ms`;
+}
+
 export function fmtEce(value: number): string {
   return quantizeHalfUp(expandDecimalString(value), 3);
 }

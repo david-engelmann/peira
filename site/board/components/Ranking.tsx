@@ -5,6 +5,7 @@ import {
   boardVersions,
   tieBands,
   duplicateShortNames,
+  modelSlug,
   shortName,
 } from "@/lib/payload";
 import { fmtInt } from "@/lib/format";
@@ -78,6 +79,7 @@ function RankedGroup({
   variant,
   dupes,
   axisTitled,
+  allRows,
 }: {
   id: string;
   label: string;
@@ -86,6 +88,7 @@ function RankedGroup({
   variant: "full" | "slice";
   dupes: Set<string>;
   axisTitled: boolean;
+  allRows: BoardRow[];
 }) {
   const bands = tieBands(rows);
   const segs = segments(rows, bands);
@@ -110,6 +113,7 @@ function RankedGroup({
                   row={row}
                   variant={variant}
                   showWire={dupes.has(shortName(row))}
+                  href={`/models/${modelSlug(row, allRows)}/`}
                 />
               ))}
             </div>
@@ -122,6 +126,7 @@ function RankedGroup({
                 row={seg.row}
                 variant={variant}
                 showWire={dupes.has(shortName(seg.row))}
+                href={`/models/${modelSlug(seg.row, allRows)}/`}
               />
             </div>
           </div>
@@ -134,9 +139,11 @@ function RankedGroup({
 function FlaggedGroup({
   rows,
   dupes,
+  allRows,
 }: {
   rows: BoardRow[];
   dupes: Set<string>;
+  allRows: BoardRow[];
 }) {
   return (
     <div className="rank-group" data-group="flagged">
@@ -148,7 +155,11 @@ function FlaggedGroup({
         <div className="band-block" key={row.run_id}>
           <div className="rail" aria-hidden="true" />
           <div className="rows">
-            <FlaggedRowView row={row} showWire={dupes.has(shortName(row))} />
+            <FlaggedRowView
+              row={row}
+              showWire={dupes.has(shortName(row))}
+              href={`/models/${modelSlug(row, allRows)}/`}
+            />
           </div>
         </div>
       ))}
@@ -164,7 +175,7 @@ export default function Ranking() {
   const sliceCases = groups.slices[0]?.n_cases ?? 0;
 
   return (
-    <section className="section" aria-labelledby="ranking-title">
+    <section className="section" aria-labelledby="ranking-title" id="ranking">
       <p className="section-label">Ranking</p>
       <h2 className="section-title" id="ranking-title">
         Which models are hardest to attack
@@ -186,8 +197,9 @@ export default function Ranking() {
         variant="full"
         dupes={dupesByShort}
         axisTitled={true}
+        allRows={allRows}
       />
-      <FlaggedGroup rows={groups.flagged} dupes={dupesByShort} />
+      <FlaggedGroup rows={groups.flagged} dupes={dupesByShort} allRows={allRows} />
       <RankedGroup
         id="slices"
         label="Guardrail slices"
@@ -196,6 +208,7 @@ export default function Ranking() {
         variant="slice"
         dupes={dupesByShort}
         axisTitled={false}
+        allRows={allRows}
       />
       <p className="chart-id">
         Peira decision robustness board, ranking. Full suite base{" "}

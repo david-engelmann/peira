@@ -164,6 +164,7 @@ export default function Calibration() {
       className="section"
       aria-labelledby="calibration-title"
       data-section="calibration"
+      id="calibration"
     >
       <p className="section-label">Calibration</p>
       <h2 className="section-title" id="calibration-title">

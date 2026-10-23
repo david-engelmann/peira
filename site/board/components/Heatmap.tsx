@@ -144,6 +144,7 @@ export default function Heatmap() {
       className="section"
       aria-labelledby="heatmap-title"
       data-section="heatmap"
+      id="families"
     >
       <p className="section-label">Attack families</p>
       <h2 className="section-title" id="heatmap-title">

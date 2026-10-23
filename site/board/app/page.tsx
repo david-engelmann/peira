@@ -8,20 +8,22 @@ import {
 } from "@/lib/payload";
 import { fmtInt, fmtPct } from "@/lib/format";
 import Ranking from "@/components/Ranking";
+import SectionNav from "@/components/SectionNav";
 import Malformed from "@/components/Malformed";
 import Heatmap from "@/components/Heatmap";
 import Scatter from "@/components/Scatter";
 import Calibration from "@/components/Calibration";
 import ModelCards from "@/components/ModelCards";
+import CompareSection from "@/components/CompareSection";
 import Method from "@/components/Method";
 
 /**
  * The board page, in the design system's section order (2.1).
- * Masthead and findings, ranking, malformed and admission,
- * attack families, cost, calibration, model detail, and method
- * last. The footer carries the citation block, the what changed
- * note, and the doors to the code and the payload (TR-02,
- * TR-04, TR-05).
+ * Masthead and findings, the sticky section bar, ranking,
+ * malformed and admission, attack families, cost, calibration,
+ * model detail, compare, and method last. The footer carries
+ * the citation block, the what changed note, and the doors to
+ * the code and the payload (TR-02, TR-04, TR-05).
  */
 export default function Page() {
   const groups = boardGroups();
@@ -88,6 +90,8 @@ export default function Page() {
         </section>
       </header>
 
+      <SectionNav />
+
       <Ranking />
 
       <Malformed />
@@ -99,6 +103,8 @@ export default function Page() {
       <Calibration />
 
       <ModelCards />
+
+      <CompareSection />
 
       <Method />
 

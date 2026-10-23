@@ -140,17 +140,21 @@ function NameBlock({
   row,
   showWire,
   flagged,
+  href,
 }: {
   row: BoardRow;
   showWire: boolean;
   flagged: boolean;
+  href: string;
 }) {
   const name = shortName(row);
   return (
     <div className="cell-name">
       <div className="name-line">
         {flagged && <span className="flag-tag">FLAGGED</span>}
-        <BreakableName name={name} />
+        <a className="name-link" href={href}>
+          <BreakableName name={name} />
+        </a>
       </div>
       {showWire && <div className="wire-line">{wireWords(row.wire)}</div>}
       {flagged && <div className="meta-line flagged">{flaggedMeta(row)}</div>}
@@ -162,10 +166,12 @@ export function RankedRowView({
   row,
   variant,
   showWire,
+  href,
 }: {
   row: RankedRow;
   variant: "full" | "slice";
   showWire: boolean;
+  href: string;
 }) {
   const name = shortName(row);
   const wireLine = showWire ? wireWords(row.wire) : null;
@@ -179,7 +185,7 @@ export function RankedRowView({
       <div className="row-main">
         <div className="row-line1">
           <span className="cell-rank num">{row.rank}</span>
-          <NameBlock row={row} showWire={showWire} flagged={false} />
+          <NameBlock row={row} showWire={showWire} flagged={false} href={href} />
         </div>
         <DataLine row={row} />
       </div>
@@ -192,9 +198,11 @@ export function RankedRowView({
 export function FlaggedRowView({
   row,
   showWire,
+  href,
 }: {
   row: BoardRow;
   showWire: boolean;
+  href: string;
 }) {
   const name = shortName(row);
   const wireLine = showWire ? wireWords(row.wire) : null;
@@ -208,7 +216,7 @@ export function FlaggedRowView({
       <div className="row-main">
         <div className="row-line1">
           <span className="cell-rank" />
-          <NameBlock row={row} showWire={showWire} flagged={true} />
+          <NameBlock row={row} showWire={showWire} flagged={true} href={href} />
         </div>
         <DataLine row={row} />
       </div>
