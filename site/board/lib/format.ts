@@ -100,6 +100,18 @@ export function fmtPctFigure(value: number): string {
   return quantizeHalfUp(shiftPoint(expandDecimalString(value), 2), 1);
 }
 
+/**
+ * A proportion as a whole percent for chart cells, as in 15.
+ * Positive values below half a percent print "<1". The rounding
+ * runs on the shifted decimal string under the same half-up rule
+ * as fmtPct, so a cell and the percent beside it never disagree.
+ */
+export function fmtPctCell(value: number): string {
+  const shifted = shiftPoint(expandDecimalString(value), 2);
+  if (value > 0 && Number(shifted) < 0.5) return "<1";
+  return quantizeHalfUp(shifted, 0);
+}
+
 export function fmtCi(ci: [number, number]): string {
   return `${fmtPct(ci[0])} to ${fmtPct(ci[1])}`;
 }

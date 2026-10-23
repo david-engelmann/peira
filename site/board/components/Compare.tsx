@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import type { CompareData, CompareRow } from "@/lib/compare";
 import {
   fmtPct,
+  fmtPctCell,
   fmtEce,
   fmtUsd,
   fmtMs,
@@ -61,11 +62,9 @@ const METRICS: MetricDef[] = [
   { key: "latP95", label: "Latency p95 under attack", better: "low", raw: (r) => r.latP95, format: (r) => (r.latP95 === null ? "" : fmtMs(r.latP95)), delta: fmtDeltaMs },
 ];
 
-/** Whole percent, the heatmap's cell rule (lib/charts fmtCellPct). */
+/** Whole percent, the shared cell rule (lib/format fmtPctCell). */
 function fmtWholePct(value: number): string {
-  const pct = value * 100;
-  if (pct > 0 && pct < 0.5) return "<1";
-  return String(Math.round(pct));
+  return fmtPctCell(value);
 }
 
 const GROUPS: Array<{ key: CompareRow["group"]; label: string }> = [

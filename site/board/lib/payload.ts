@@ -250,20 +250,30 @@ export function wireWords(wire: string): string {
  * The stable address slug for a result's own page. The short
  * name, slugified, with the wire appended when another result
  * shares the short name, so gpt-6-luna's two wires get two
- * addresses that say which is which. Deterministic from the
- * payload alone; both gate scripts port this rule and fail if
- * a page address and the app disagree.
+ * addresses that say which is which. When two results share
+ * the short name and the wire, a slice of the run id is
+ * appended so each still gets its own address. Deterministic
+ * from the payload alone; both gate scripts port this rule
+ * and fail if a page address and the app disagree.
  */
 export function modelSlug(row: BoardRow, allRows: BoardRow[]): string {
   const base = shortName(row);
+  const slugify = (s: string): string =>
+    s
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "");
   const shared = allRows.some(
     (r) => r.run_id !== row.run_id && shortName(r) === base,
   );
-  const raw = shared ? `${base}-${row.wire}` : base;
-  return raw
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "");
+  const withWire = slugify(shared ? `${base}-${row.wire}` : base);
+  const clash = allRows.some(
+    (r) =>
+      r.run_id !== row.run_id &&
+      shortName(r) === base &&
+      r.wire === row.wire,
+  );
+  return clash ? `${withWire}-${slugify(row.run_id).slice(0, 8)}` : withWire;
 }
 
 /**

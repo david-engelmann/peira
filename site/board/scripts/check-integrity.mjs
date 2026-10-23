@@ -628,9 +628,9 @@ if (!heatHtml) {
     );
   }
   const fmtCell = (v) => {
-    const pct = v * 100;
-    if (pct > 0 && pct < 0.5) return "<1";
-    return String(Math.round(pct));
+    const shifted = shiftPt(expandDec(v), 2);
+    if (v > 0 && Number(shifted) < 0.5) return "<1";
+    return quantHU(shifted, 0);
   };
   const cellRe = /<div[^>]*class="heat-cell[^"]*"[^>]*>([^<]*)<\/div>/g;
   let cellCount = 0;
@@ -804,9 +804,9 @@ const fmtUsdC = (v) => `$${quantHU(expandDec(v), 2)}`;
 const fmtMsC = (v) => `${quantHU(expandDec(v), 0)}ms`;
 const fmtCiFullC = (ci) => `${fmtPct(ci[0])} to ${fmtPct(ci[1])}`;
 const fmtCellC = (v) => {
-  const pct = v * 100;
-  if (pct > 0 && pct < 0.5) return "<1";
-  return String(Math.round(pct));
+  const shifted = shiftPt(expandDec(v), 2);
+  if (v > 0 && Number(shifted) < 0.5) return "<1";
+  return quantHU(shifted, 0);
 };
 const famEntriesC = (r) =>
   r.detail && typeof r.detail === "object" && r.detail.families
@@ -827,14 +827,20 @@ const lowerBoundC = (row) => {
 };
 const slugOfC = (r, rows) => {
   const base = shortName(r);
+  const slugify = (s) =>
+    s
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "");
   const shared = rows.some(
     (o) => o.run_id !== r.run_id && shortName(o) === base,
   );
-  const raw = shared ? `${base}-${r.wire}` : base;
-  return raw
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "");
+  const withWire = slugify(shared ? `${base}-${r.wire}` : base);
+  const clash = rows.some(
+    (o) =>
+      o.run_id !== r.run_id && shortName(o) === base && o.wire === r.wire,
+  );
+  return clash ? `${withWire}-${slugify(r.run_id).slice(0, 8)}` : withWire;
 };
 /* The heatmap column order rule, recomputed for the spark bars. */
 const famSumsC = new Map();

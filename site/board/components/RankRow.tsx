@@ -179,7 +179,7 @@ export function RankedRowView({
     <div
       className="rank-row"
       data-run-id={row.run_id}
-      role="img"
+      role="group"
       aria-label={rowAriaLabel(row, name, wireLine, `rank ${row.rank}`)}
     >
       <div className="row-main">
@@ -210,7 +210,7 @@ export function FlaggedRowView({
     <div
       className="rank-row"
       data-run-id={row.run_id}
-      role="img"
+      role="group"
       aria-label={rowAriaLabel(row, name, wireLine, "flagged")}
     >
       <div className="row-main">

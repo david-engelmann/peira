@@ -173,18 +173,24 @@ writeFileSync(ogHtml, html);
  * scripts load is local. The launch runs single-process for
  * the same reason; the engine and its measurements are the
  * same. */
-const chromeHits = [
-  ...globSync(
-    ".cache/ms-playwright/chromium-*/chrome-linux64/chrome",
-    { cwd: homedir() },
-  ),
-  ...globSync(
-    ".cache/ms-playwright/chromium_headless_shell-*/chrome-headless-shell-linux64/chrome-headless-shell",
-    { cwd: homedir() },
-  ),
-];
+const chromeOverride =
+  process.env.PUPPETEER_EXECUTABLE_PATH ?? process.env.CHROME_PATH;
+const chromeHits = chromeOverride
+  ? [chromeOverride]
+  : [
+      ...globSync(
+        ".cache/ms-playwright/chromium-*/chrome-linux64/chrome",
+        { cwd: homedir() },
+      ).map((p) => path.join(homedir(), p)),
+      ...globSync(
+        ".cache/ms-playwright/chromium_headless_shell-*/chrome-headless-shell-linux64/chrome-headless-shell",
+        { cwd: homedir() },
+      ).map((p) => path.join(homedir(), p)),
+    ];
 if (chromeHits.length === 0) {
-  console.error("gen-og: no Chromium found in the Playwright cache");
+  console.error(
+    "gen-og: no Chromium found in the Playwright cache and no PUPPETEER_EXECUTABLE_PATH or CHROME_PATH set",
+  );
   process.exit(1);
 }
 const browserEnv = { ...process.env };
@@ -192,7 +198,7 @@ for (const k of Object.keys(browserEnv)) {
   if (/proxy/i.test(k)) delete browserEnv[k];
 }
 const browser = await puppeteer.launch({
-  executablePath: path.join(homedir(), chromeHits[0]),
+  executablePath: chromeHits[0],
   env: browserEnv,
   /* The launch timeout is load tolerance for the shared box
    * (round 10): under the trial lanes the browser can take

@@ -2,6 +2,9 @@
   "name": "peira-board",
   "version": "0.1.0",
   "private": true,
+  "engines": {
+    "node": ">=22"
+  },
   "description": "Peira decision model robustness board. Static Next.js front end over the pipeline payload.",
   "scripts": {
     "dev": "next dev",

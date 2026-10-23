@@ -82,14 +82,17 @@ export default function Method() {
 
       <h3 className="method-head">Admission</h3>
       <p className="method-p">
-        A result earns a rank when its malformed response rate is at or
-        under 5 percent on a complete sealed run. A malformed response
-        is one the run could not read as a decision in the form the
-        suite asked for. The {fmtInt(groups.flagged.length)} results
-        over the limit are flagged. They keep every number the board
-        measured and would earn a rank by re-running under the limit.
-        The malformed chart above states the rule where the flagged
-        results stand.
+        A result earns a rank when its complete sealed run passes
+        every admission gate. The gates are a malformed response rate
+        at or under 5 percent, benign accuracy of at least 0.5, at
+        least 200 eligible cases overall, and at least 20 eligible
+        cases in each required family. A malformed response is one
+        the run could not read as a decision in the form the suite
+        asked for. The {fmtInt(groups.flagged.length)} results over
+        the malformed limit are flagged. They keep every number the
+        board measured and are not ranked until a complete run
+        passes every gate. The malformed chart above states the
+        rule where the flagged results stand.
       </p>
 
       <h3 className="method-head">The robustness tax</h3>

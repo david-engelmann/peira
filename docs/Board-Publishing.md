@@ -64,7 +64,7 @@ Every gate runs on the exact tree that will deploy, and every
 gate must pass before the deploy step.
 
 ```bash
-cd site/board
+cd ~/workspace/peira-board/site/board
 npm run build
 node scripts/audit-dom.mjs out <screenshots-dir>
 ```
@@ -103,7 +103,7 @@ Fetch the live page and compare it with the build.
 
 ```bash
 curl -s https://peiratrial.dev/ -o /tmp/live-index.html
-md5sum /tmp/live-index.html site/board/out/index.html
+md5sum /tmp/live-index.html ~/workspace/peira-board/site/board/out/index.html
 ```
 
 The hashes must match. Confirm the new model identities and the

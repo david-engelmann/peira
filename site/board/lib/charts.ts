@@ -11,6 +11,7 @@
 
 import type { BoardRow } from "@/lib/payload";
 import { isSliceRow, fullCaseCount } from "@/lib/payload";
+import { fmtPctCell } from "@/lib/format";
 
 /* ---------------- typed detail access ---------------- */
 
@@ -653,9 +654,7 @@ export function rampTextIsGround(value: number): boolean {
  * values above zero and below half a percent printing as <1.
  */
 export function fmtCellPct(value: number): string {
-  const pct = value * 100;
-  if (pct > 0 && pct < 0.5) return "<1";
-  return String(Math.round(pct));
+  return fmtPctCell(value);
 }
 
 /* ---------------- calibration ---------------- */

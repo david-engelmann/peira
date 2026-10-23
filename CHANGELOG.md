@@ -13,9 +13,10 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
   peiratrial.dev since publish 27 (2026-10-23), landed with its
   gate scripts (the payload integrity check, the transfer budget
   check, and the DOM audit) and the share image generator. The
-  app renders the pipeline payload in `site/board/data/
-  payload.json` and formats its numbers without recomputing
-  them. Publishing the board is a runbook task, written down in
+  app renders the pipeline payload in
+  `site/board/data/payload.json` and formats its numbers
+  without recomputing them. Publishing the board is a runbook
+  task, written down in
   `docs/Board-Publishing.md`.
 
 ### Board facts refreshed to the freeze publish

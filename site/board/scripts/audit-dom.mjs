@@ -15,7 +15,7 @@
  *  F-01  the rank column holds exactly one number per ranked row
  *        (the payload rank) and none on flagged rows.
  *  Amber appears only inside the flagged strip.
- *  The slice group header states the 373 case base, the full
+ *  The slice group header states the slice case base, the full
  *  group caption states the suite size.
  *  Page height is reported for the F-12 scroll budget.
  *
@@ -319,9 +319,9 @@ const familyOrderA = [...famSumsA.entries()]
   .sort((a, b) => b.mean - a.mean || (a.k < b.k ? -1 : 1))
   .map((e) => e.k);
 const fmtCellA = (v) => {
-  const pct = v * 100;
-  if (pct > 0 && pct < 0.5) return "<1";
-  return String(Math.round(pct));
+  const shifted = shiftDecA(String(v), 2);
+  if (v > 0 && Number(shifted) < 0.5) return "<1";
+  return quantA(Number(shifted), 0).replace(/\.$/, "");
 };
 const cellExpectedA = new Map();
 for (const r of allRowsA) {
@@ -392,14 +392,20 @@ function shiftDecA(decStr, places) {
 const fmtPctA = (v) => `${quantA(Number(shiftDecA(String(v), 2)), 1)}%`;
 const slugOfA = (r) => {
   const base = shortName(r);
+  const slugify = (s) =>
+    s
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "");
   const shared = allRowsA.some(
     (o) => o.run_id !== r.run_id && shortName(o) === base,
   );
-  const raw = shared ? `${base}-${r.wire}` : base;
-  return raw
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "");
+  const withWire = slugify(shared ? `${base}-${r.wire}` : base);
+  const clash = allRowsA.some(
+    (o) =>
+      o.run_id !== r.run_id && shortName(o) === base && o.wire === r.wire,
+  );
+  return clash ? `${withWire}-${slugify(r.run_id).slice(0, 8)}` : withWire;
 };
 const sortedMalA = [...allRowsA].sort((a, b) => {
   const d = (b.malformed_rate ?? 0) - (a.malformed_rate ?? 0);
@@ -441,19 +447,25 @@ const parseRgbA = (s) => {
  * audit loads is served from 127.0.0.1. The launch runs
  * single-process for the same reason; the engine and its
  * measurements are the same. */
-const chromeHits = [
-  ...globSync(
-    join(homedir(), ".cache/ms-playwright/chromium-*/chrome-linux64/chrome"),
-  ),
-  ...globSync(
-    join(
-      homedir(),
-      ".cache/ms-playwright/chromium_headless_shell-*/chrome-headless-shell-linux64/chrome-headless-shell",
-    ),
-  ),
-];
+const chromeOverrideA =
+  process.env.PUPPETEER_EXECUTABLE_PATH ?? process.env.CHROME_PATH;
+const chromeHits = chromeOverrideA
+  ? [chromeOverrideA]
+  : [
+      ...globSync(
+        join(homedir(), ".cache/ms-playwright/chromium-*/chrome-linux64/chrome"),
+      ),
+      ...globSync(
+        join(
+          homedir(),
+          ".cache/ms-playwright/chromium_headless_shell-*/chrome-headless-shell-linux64/chrome-headless-shell",
+        ),
+      ),
+    ];
 if (chromeHits.length === 0) {
-  console.error("no Chromium found in the Playwright cache");
+  console.error(
+    "no Chromium found in the Playwright cache and no PUPPETEER_EXECUTABLE_PATH or CHROME_PATH set",
+  );
   process.exit(2);
 }
 const browserEnv = { ...process.env };
@@ -1146,13 +1158,24 @@ for (const width of [1440, 1280, 390]) {
       }
     }
   }
-  // Group head facts.
-  if (!report.groupHeads.slices?.includes("373")) {
+  // Group head facts. The expected bases derive from the payload,
+  // never from literals, so a suite-size change cannot false-fail.
+  const sliceBasesA = [
+    ...new Set(
+      ranked
+        .filter((r) => r.n_cases < fullCasesA)
+        .map((r) => r.n_cases.toLocaleString("en-US")),
+    ),
+  ];
+  if (
+    sliceBasesA.length > 0 &&
+    !sliceBasesA.every((b) => report.groupHeads.slices?.includes(b))
+  ) {
     failures.push(
-      `width ${width}: slice group header does not state the 373 case base (${report.groupHeads.slices})`,
+      `width ${width}: slice group header does not state the slice case base ${sliceBasesA.join(", ")} (${report.groupHeads.slices})`,
     );
   }
-  if (!report.groupHeads.full?.includes("4,701")) {
+  if (!report.groupHeads.full?.includes(fullCasesA.toLocaleString("en-US"))) {
     failures.push(
       `width ${width}: full group header does not state the suite size (${report.groupHeads.full})`,
     );
