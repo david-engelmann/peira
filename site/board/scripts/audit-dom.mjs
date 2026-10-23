@@ -120,6 +120,25 @@
  *        the rail wraps its names at hyphens now, where it
  *        once held them under nowrap and cut the longest.
  *
+ * Live-fix extensions (2026-10-23, post-freeze):
+ *  Malformed bar geometry. Each bar's right edge is measured
+ *        against the axis element's own span and must land
+ *        within 1.5 percent of the span of where its payload
+ *        value falls on the 0 to 15 axis. The round 10 check
+ *        compared each fill with its own track only, a ratio
+ *        that stays correct even if the track and the axis
+ *        ever disagree; this assertion reads the bar on the
+ *        scale the reader reads.
+ *  Phone nav reachability (R-1). At phone widths the document
+ *        scroll width must equal the viewport width (the nav
+ *        never widens the page), and every nav link must come
+ *        fully into the strip's own box when the strip is
+ *        scrolled to it, its text untruncated. The round 11
+ *        checks walked the links by keyboard, which reveals a
+ *        focused link; touch reachability was unmeasured
+ *        until the convergence re-audit found Models, Compare,
+ *        and Method off-screen at 390.
+ *
  * Screenshots land in the directory given as argv[3].
  */
 
@@ -685,6 +704,8 @@ for (const width of [1440, 1280, 390]) {
     out.tiedCount = (document.body.innerText.match(/tied/gi) ?? []).length;
     const msec = document.querySelector('[data-section="malformed"]');
     if (msec) {
+      const axis = msec.querySelector(".mal-axis");
+      const ar = axis ? axis.getBoundingClientRect() : null;
       const rows = [...msec.querySelectorAll(".mal-row")].map((r) => {
         const track = r.querySelector(".mal-track");
         const fill = r.querySelector(".mal-fill");
@@ -696,6 +717,7 @@ for (const width of [1440, 1280, 390]) {
           value: val ? val.textContent.trim() : "",
           valueColor: val ? getComputedStyle(val).color : "",
           fillPct: tr.width > 0 ? (fr.width / tr.width) * 100 : null,
+          fillRight: fr.right,
           trackLeft: tr.left,
           trackWidth: tr.width,
           flagged: !!r.querySelector(".flag-tag"),
@@ -706,6 +728,8 @@ for (const width of [1440, 1280, 390]) {
       const first = rows[0];
       out.mal = {
         rows,
+        axisLeft: ar ? ar.left : null,
+        axisWidth: ar ? ar.width : null,
         lineXPct:
           lr && first
             ? ((lr.left - first.trackLeft) / first.trackWidth) * 100
@@ -752,6 +776,37 @@ for (const width of [1440, 1280, 390]) {
           };
         }),
       };
+      /* Live-fix round (R-1). At phone widths the strip must be
+       * the only horizontal scroller: the document stays at the
+       * viewport width, and every link must come fully into the
+       * strip's own box when the strip is scrolled to it, with
+       * its text untruncated. Measured in-page by scrolling the
+       * strip link by link; the strip is left back at its start. */
+      if (window.innerWidth <= 760) {
+        const inner = navEl.querySelector(".section-nav-inner");
+        const reach = [];
+        if (inner) {
+          for (const a of inner.querySelectorAll(".section-nav-link")) {
+            const ir0 = inner.getBoundingClientRect();
+            const lr0 = a.getBoundingClientRect();
+            inner.scrollLeft += lr0.left - ir0.left;
+            const ir = inner.getBoundingClientRect();
+            const lr = a.getBoundingClientRect();
+            reach.push({
+              target: a.getAttribute("data-nav-target"),
+              inStrip:
+                lr.left >= ir.left - 0.5 && lr.right <= ir.right + 0.5,
+              untruncated: a.scrollWidth <= a.clientWidth + 1,
+            });
+          }
+          inner.scrollLeft = 0;
+        }
+        out.nav.phone = {
+          docScrollWidth: document.documentElement.scrollWidth,
+          viewportWidth: window.innerWidth,
+          reach,
+        };
+      }
     }
     const boxOf = (el) =>
       el
@@ -1416,6 +1471,23 @@ for (const width of [1440, 1280, 390]) {
           `width ${width}: malformed bar ${mr.id} fills ${mr.fillPct?.toFixed(1)} percent of its track, the 0 to 15 axis expects ${expPct.toFixed(1)}`,
         );
       }
+      /* Live-fix round (2026-10-23). The fill-versus-track check
+       * above cannot see a track that disagrees with the axis:
+       * both are percentages of the same track. This assertion
+       * measures the bar's right edge against the AXIS element's
+       * own span, the scale the ticks and the admission line are
+       * read on, so a bar that ends short of (or past) its value
+       * on the printed axis fails the audit. Tolerance is 1.5
+       * percent of the axis span. */
+      const endAxisPct =
+        mal.axisWidth && mal.axisWidth > 0
+          ? ((mr.fillRight - mal.axisLeft) / mal.axisWidth) * 100
+          : null;
+      if (endAxisPct === null || Math.abs(endAxisPct - expPct) > 1.5) {
+        failures.push(
+          `width ${width}: malformed bar ${mr.id} ends at ${endAxisPct?.toFixed(1)} percent of the axis span, its value on the 0 to 15 axis expects ${expPct.toFixed(1)}`,
+        );
+      }
       const isFlagged = flaggedIdsA.has(mr.id);
       if (mr.flagged !== isFlagged) {
         failures.push(
@@ -1521,6 +1593,32 @@ for (const width of [1440, 1280, 390]) {
         );
       }
     });
+    /* Live-fix round (R-1): phone reachability, measured in the
+     * page at widths the phone rules govern. */
+    if (width <= 760) {
+      const phone = report.nav.phone;
+      if (!phone) {
+        failures.push(`width ${width}: phone nav reachability not measured`);
+      } else {
+        if (phone.docScrollWidth !== phone.viewportWidth) {
+          failures.push(
+            `width ${width}: document scroll width is ${phone.docScrollWidth}, the viewport is ${phone.viewportWidth} (the nav must not widen the document)`,
+          );
+        }
+        for (const r of phone.reach) {
+          if (!r.inStrip) {
+            failures.push(
+              `width ${width}: nav link "${r.target}" cannot be scrolled fully into the nav strip`,
+            );
+          }
+          if (!r.untruncated) {
+            failures.push(
+              `width ${width}: nav link "${r.target}" text is truncated inside the strip`,
+            );
+          }
+        }
+      }
+    }
   }
   const ctl = report.controls ?? {};
   const ctlBoxes = [

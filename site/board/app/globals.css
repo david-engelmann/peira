@@ -936,10 +936,25 @@ body {
   font-size: 12.5px;
   font-weight: 600;
   margin: 0;
+  /* The header is a flex row: the name wraps inside its own
+     column and the slice tag holds the top right corner, so a
+     long name never strands its last word beside the tag on a
+     second line (live-fix round, 2026-10-23). */
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+.cal-name-text {
+  flex: 1 1 auto;
+  min-width: 0;
   /* Names wrap at the narrower column widths rather than
      clipping (round 10 compaction; the name policy forbids
      truncation, and a wrapped name loses nothing). */
   overflow-wrap: break-word;
+}
+.cal-name .slice-tag {
+  flex: none;
+  margin-left: 0;
 }
 .slice-tag {
   display: inline-block;
@@ -1700,6 +1715,21 @@ body {
 .section-nav-link.active {
   color: var(--ink-1);
   border-bottom-color: var(--ink-1);
+}
+
+/* Phone widths: the bar bleeds to the page edge with a
+   negative margin matched to the page padding, which is
+   16 px under the mobile rules, not the desktop 24. This
+   override sits after the base rule so it wins the cascade
+   at equal specificity; at the desktop margin the bar
+   measured 406 px in a 390 px viewport and pushed the
+   document 8 px wide (convergence re-audit R-1, live-fix
+   round 2026-10-23). */
+@media (max-width: 760px) {
+  .section-nav {
+    margin: 0 -16px;
+    padding: 0 16px;
+  }
 }
 
 /* Ranking names link to the model's own page. The name is

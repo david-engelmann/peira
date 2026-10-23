@@ -45,7 +45,7 @@ function Panel({
   const head = (
     <div className="cal-head">
       <p className="cal-name">
-        {label}
+        <span className="cal-name-text">{label}</span>
         {isSlice && <span className="slice-tag">Slice</span>}
       </p>
       {data && data.ece !== null ? (

@@ -110,6 +110,14 @@ const MONTHS = [
 const [dy, dm, dd] = dateIso.split("-").map(Number);
 const dateWords = `${dd} ${MONTHS[dm - 1]} ${dy}`;
 const results = payload.ranked.length + payload.unranked.length;
+/* Headline counts follow the masthead's rule (lib/payload.ts
+ * modelCounts): distinct served model names, so the share
+ * image never contradicts the page. Results stays the entry
+ * count the masthead leads with; ranked and flagged count
+ * models, which on a two-wire payload is one less than the
+ * ranked entry count (live-fix round, R-2, 2026-10-23). */
+const rankedModels = new Set(payload.ranked.map((r) => r.display_name)).size;
+const flaggedModels = new Set(payload.unranked.map((r) => r.display_name)).size;
 
 const rowsHtml = top
   .map((r) => {
@@ -143,7 +151,7 @@ h1 { font-size: 54px; font-weight: 700; margin-top: 10px; }
 </style></head><body>
 <div class="word">PEIRA</div>
 <h1>Decision robustness board</h1>
-<p class="sub">Attack success on ${fmtInt(fullCases)} paired cases. ${results} results, ${payload.ranked.length} ranked, ${payload.unranked.length} flagged.</p>
+<p class="sub">Attack success on ${fmtInt(fullCases)} paired cases. ${results} results, ${rankedModels} ranked, ${flaggedModels} flagged.</p>
 <div class="rows">${rowsHtml}</div>
 <p class="foot">Top of the full suite ranking, lower is harder to flip. Dataset ${versions.dataset}, suite ${versions.suite}, updated ${dateWords}. peiratrial.dev</p>
 </body></html>`;
