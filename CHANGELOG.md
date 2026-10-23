@@ -18,6 +18,51 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
   them. Publishing the board is a runbook task, written down in
   `docs/Board-Publishing.md`.
 
+### Board facts refreshed to the freeze publish
+
+- The README and the announcement package now state the freeze board with 39 entries covering 38 distinct models, 34 ranked models and 4 flagged models. The refresh adds Mercury Decide and Clef omni as published full-suite results, marks Llama Prompt Guard 2 as measured on the guardrail slice, records that the robustness tax frontier is unchanged, and adds adapter table rows for Mercury Decide and Cerno.
+
+### Added Cerno adapter
+
+- New `cerno` adapter for Apertix's Cerno System One decision
+  models, pinned to `apertixai/cerno-4b` at Hub revision
+  ed4b5c59b542ee96c227ee874776c973980c640b and served locally by
+  a sidecar that wraps the vendored Apertix Decider (the vendor
+  ships no server). The adapter reuses the local System One wire
+  plumbing, checks the server's `cerno-4b` model stamp and Hub
+  revision stamp on every call, and validates answers
+  fail-closed: a probability that is missing, non-numeric,
+  non-finite, or outside [0, 1], or a distribution that does
+  not sum to 1 within rounding, is a terminal provider error,
+  never a clamped or defaulted number. The `confidence` field
+  is optional on the wire, matching the vendor's published
+  answer format, because it duplicates the chosen option's
+  probability; the adapter normalizes it from the probability
+  map before parsing, so a recorded confidence is always a
+  number the model produced. Pricing: `apertixai/cerno-4b`
+  added at $0.0 (self-hosted convention), pricing version
+  2026-10-15.6.
+
+### Announcement package finalized around the published v2 board
+
+- The announcement package records the verified v2 board as published at the time, with 36 entries covering 35 distinct models, states the ranked and flagged split, and defines the robustness tax against the full-suite frontier set by Jev 1.14.0 and Claude Sonnet 5-5. It replaces the October draft scaffolding and its placeholders with final repository and LinkedIn copy, and it states the refresh rule for the freeze publish landing on 23 October 2026.
+
+### README finalized around the live leaderboard
+
+- The README leads with the live board at peiratrial.dev (a badge,
+  a link in the top link row, and a Live results section). The
+  Leaderboard section describes the published v2 board and links
+  the admission rules instead of describing official runs as in
+  progress. The adapter table reports measured status against the
+  published board and adds rows for the decision-model adapters
+  measured since the table was last updated (Celeris, Clef, Decider,
+  Strands Decider, pplx-decider). The Reports section names the
+  live board as the standing report.
+- The Adapters intro drops the stale adapter count, the Install
+  section states the PyPI status as a plain fact instead of a
+  pending release, and the Datasets section drops its
+  forward-looking holdout sentence.
+
 ### Fixed score probability keys accepted by spelling in the Clef adapter
 
 - Fix-forward for the entry below: the `clef` adapter carried the
