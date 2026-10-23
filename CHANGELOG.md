@@ -7,6 +7,26 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
 
 ## [Unreleased]
 
+### Fixed score probability keys ignored by position in the Jev adapter
+
+- The score fallback in the `jev` adapter, which derives a rubric
+  position from per-level probabilities when the server omits the
+  `score` field, weighted values by their position in the map and
+  never read the keys, so mass under a key naming no level was
+  scored as level-0 mass and mass under an out-of-range key in
+  fifth position fabricated the maximum score; a
+  several-hundred-digit integer probability escaped as an
+  OverflowError. Keys must now be exactly the canonical level
+  spellings `"0"` to `"4"` and the map must be a genuine
+  distribution totalling 1 within rounding; anything else voids
+  the fallback and the answer fails closed with the existing
+  ProviderError, the same contract the `celeris`, `pplx-decider`
+  and `clef` adapters already enforce. The `kev` and `strands`
+  adapters inherit the fallback through the local System One
+  adapter. A transcript audit of the published Jev runs found
+  zero fallback engagements, so no published measurement is
+  affected.
+
 ### The results board front end
 
 - `site/board/` now holds the Next.js front end that has served
