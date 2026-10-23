@@ -1,6 +1,6 @@
 """Hugging Face guardrail adapters (optional ``peira[hf]`` extra).
 
-Seven binary guardrail models, all loaded from pinned Hugging Face
+Eleven binary guardrail models, all loaded from pinned Hugging Face
 revisions (never ``main`` or a floating tag). ``torch`` and
 ``transformers`` are imported lazily — only when an adapter is
 constructed — and the weights only on the first ``decide()`` call, so
@@ -73,6 +73,8 @@ __all__ = [
     "WildGuardAdapter",
     "HarmBenchAdapter",
     "GraniteGuardianHapAdapter",
+    "LlamaGuard3_1BAdapter",
+    "LlamaGuard3_8BAdapter",
 ]
 
 _EXTRA_INSTALL = "peira[hf]"
@@ -1346,3 +1348,174 @@ class GraniteGuardianHapAdapter(_ClassifierBase):
             logits = _to_list(model(**encoded).logits[0])
         return self._proba_for_logits([float(x) for x in logits]), \
             input_tokens, {}
+
+
+class _LlamaGuard3Base(_HFAdapterBase):
+    """Shared machinery for Meta's Llama Guard 3 checkpoints (1B / 8B).
+
+    Llama Guard 3 is a Llama-3.1 fine-tune for content safety
+    classification, aligned to the MLCommons standardized hazards
+    taxonomy (the model card's table runs S1: Violent Crimes through
+    S14: Code Interpreter Abuse). The operative policy is the one
+    shipped inside each checkpoint's own chat template, which the
+    adapter uses unmodified; nothing about the policy is retyped
+    here or anywhere else in this module. The two shipped templates
+    are not identical: the 8B carries all 14 categories, while the
+    1B carries the 13-category variant (S1–S13, with shorter names —
+    its S3 reads "Sex Crimes", its S11 "Self-Harm"). Each checkpoint
+    is therefore judged against the policy Meta shipped with it,
+    and the difference is a property of the checkpoints, recorded
+    here rather than normalized away.
+
+    Prompting follows Meta's published usage: the case text as a
+    single user message through the model's own chat template
+    (prompt classification). The model's first output line reads
+    ``safe`` or ``unsafe`` (a second line lists violated categories
+    when unsafe). Classifier scores follow the model card's own
+    construction — "we look at the probability for the first token,
+    and use that as the 'unsafe' class probability" — renormalized
+    over the two first-token label probabilities,
+    ``P(unsafe) / (P(safe) + P(unsafe))``, the same two-label
+    renormalization the family's other generative guards use. The
+    model's argmax label is reported in the transcript.
+
+    Label spelling: the template ends with the assistant header, so
+    the trained first token is the bare ``safe`` / ``unsafe`` (the
+    model card's examples show no leading space); the lookup order is
+    bare first, spaced as fallback — the HarmBench order, not the
+    Qwen3Guard one.
+
+    Access: both checkpoints are **gated** under the Llama 3.1
+    Community License. Accept the license on each model's Hugging
+    Face page and authenticate locally before first use; the loader
+    maps the resulting 401/403 to a ProviderError that says so.
+    """
+
+    _doctor_skip = True  # abstract base: not a usable adapter
+
+    #: The two verdict labels, bare as the model emits them.
+    LABELS = ("safe", "unsafe")
+    OUTPUT_TOKENS = 1
+
+    def __init__(
+        self,
+        hf_model_id: str | None = None,
+        hf_revision: str | None = None,
+    ) -> None:
+        super().__init__(hf_model_id, hf_revision)
+        # Cached label token IDs, resolved on first _score_text call.
+        self._label_ids: dict[str, int] | None = None
+
+    def _model_class(self, transformers: Any) -> Any:
+        return transformers.AutoModelForCausalLM
+
+    def _message_content(self, text: str) -> Any:
+        """The message-content shape this checkpoint's template reads.
+
+        The 8B template renders string content directly. The 1B
+        template instead renders content parts
+        (``selectattr('type', 'equalto', 'text')``): a plain string
+        renders an EMPTY conversation there, verified against the
+        pinned tokenizer, so the 1B subclass wraps the text in a
+        text part, the shape its template is written for.
+        """
+        return text
+
+    def _build_prompt(self, text: str, tokenizer: Any) -> str:
+        templated = tokenizer.apply_chat_template(
+            [{"role": "user",
+              "content": self._message_content(text)}],
+            tokenize=False,
+        )
+        if not isinstance(templated, str):
+            raise ProviderError(
+                f"chat template for '{self.hf_model_id}' did not return "
+                "text; cannot build the moderation prompt"
+            )
+        return templated
+
+    def _score_text(self, text: str) -> tuple[float, int, dict[str, Any]]:
+        torch = self._torch
+        tokenizer, model = self._ensure_loaded()
+        encoded = tokenizer(self._build_prompt(text, tokenizer),
+                            return_tensors="pt")
+        input_ids = encoded["input_ids"]
+        input_tokens = _batch_seq_len(input_ids)
+        with torch.no_grad():
+            generated = model.generate(
+                input_ids,
+                max_new_tokens=1,
+                do_sample=False,
+                temperature=0.0,
+                output_logits=True,
+                return_dict_in_generate=True,
+            )
+        logits = _to_list(generated.logits[0][0])
+        # Cache label token IDs on first use: the tokenizer is pinned,
+        # so the IDs never change. Bare spelling first — the template
+        # ends with the assistant header and the trained first token
+        # carries no leading space (model card examples).
+        if self._label_ids is None:
+            self._label_ids = {
+                label: _single_token_id(
+                    tokenizer, (label, f" {label}"), label, self.hf_model_id
+                )
+                for label in self.LABELS
+            }
+        ids = self._label_ids
+        probs = _softmax([float(x) for x in logits])
+        p = {label: probs[idx] for label, idx in ids.items()}
+        total = p["safe"] + p["unsafe"]
+        if total > 0.0:
+            p = {label: v / total for label, v in p.items()}
+        else:  # degenerate: uniform over the label set, never NaN
+            p = {label: 1.0 / 2.0 for label in self.LABELS}
+        p_malicious = p["unsafe"]
+        label = max(self.LABELS, key=lambda l: p[l])
+        return p_malicious, input_tokens, {
+            "p_safe": p["safe"],
+            "p_unsafe": p["unsafe"],
+            "label": label,
+        }
+
+
+class LlamaGuard3_1BAdapter(_LlamaGuard3Base):
+    """Meta Llama Guard 3 1B: prompt/response safety classifier.
+
+    The small checkpoint of the Llama Guard 3 pair; see
+    ``_LlamaGuard3Base`` for the shared construction (MLCommons
+    taxonomy, Meta's chat template, first-token unsafe probability).
+
+    HF repo ``meta-llama/Llama-Guard-3-1B`` (Llama 3.1 Community
+    License, gated) at the pinned revision below — never ``main`` or
+    a floating tag.
+    """
+
+    name = "llama-guard-3-1b"
+    version = "1.0"
+    HF_MODEL_ID = "meta-llama/Llama-Guard-3-1B"
+    HF_REVISION = "acf7aafa60f0410f8f42b1fa35e077d705892029"
+
+    def _message_content(self, text: str) -> Any:
+        # The 1B template renders text parts, not string content
+        # (see _LlamaGuard3Base._message_content).
+        return [{"type": "text", "text": text}]
+
+
+class LlamaGuard3_8BAdapter(_LlamaGuard3Base):
+    """Meta Llama Guard 3 8B: prompt/response safety classifier.
+
+    The full-size checkpoint of the Llama Guard 3 pair (a Llama-3.1-8B
+    fine-tune); see ``_LlamaGuard3Base`` for the shared construction
+    (MLCommons taxonomy, Meta's chat template, first-token unsafe
+    probability).
+
+    HF repo ``meta-llama/Llama-Guard-3-8B`` (Llama 3.1 Community
+    License, gated) at the pinned revision below — never ``main`` or
+    a floating tag.
+    """
+
+    name = "llama-guard-3-8b"
+    version = "1.0"
+    HF_MODEL_ID = "meta-llama/Llama-Guard-3-8B"
+    HF_REVISION = "7327bd9f6efbbe6101dc6cc4736302b3cbb6e425"

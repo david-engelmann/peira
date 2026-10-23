@@ -60,6 +60,8 @@ and are cached; every model is pinned to an exact commit revision, never
 | WildGuard | `peira.adapters.hf:WildGuardAdapter` | `allenai/wildguard` | `cbba4823f3e8020e5a74a5e29bf85072def6f2ff` |
 | HarmBench classifier | `peira.adapters.hf:HarmBenchAdapter` | `cais/HarmBench-Llama-2-13b-cls` | `bda705349d1144fa618770bea64d99ce54e3835b` |
 | Granite Guardian HAP-125M | `peira.adapters.hf:GraniteGuardianHapAdapter` | `ibm-granite/granite-guardian-hap-125m` | `a76ccfd3ddb790fa7c23db58149bfec7ba1aa57f` |
+| Llama Guard 3 1B | `peira.adapters.hf:LlamaGuard3_1BAdapter` | `meta-llama/Llama-Guard-3-1B` | `acf7aafa60f0410f8f42b1fa35e077d705892029` |
+| Llama Guard 3 8B | `peira.adapters.hf:LlamaGuard3_8BAdapter` | `meta-llama/Llama-Guard-3-8B` | `7327bd9f6efbbe6101dc6cc4736302b3cbb6e425` |
 
 **Shieldstral** is policy-adaptive: it judges content against the policy
 in its prompt, not a fixed category list. It emits a single yes/no
@@ -161,6 +163,31 @@ the guardrail's coverage, not an adapter defect. The pinned config
 carries no `id2label`; labels are named for the model's documented
 purpose with index 1 as the malicious class, to be confirmed at
 first load. Apache-2.0, ungated. Live-UNVERIFIED.
+
+**Llama Guard 3 (1B and 8B)** is Meta's Llama-3.1 safety
+classifier pair, aligned to the MLCommons hazards taxonomy (the
+model card's table runs S1 Violent Crimes through S14 Code
+Interpreter Abuse). Both checkpoints run prompt classification
+the way Meta publishes it: the case text as a single user message
+through the model's own chat template, unmodified — the taxonomy
+and its definitions ship inside that template, so no policy text
+is retyped in the adapter. The two shipped templates are not
+identical: the 8B carries all 14 categories and renders string
+message content, while the 1B carries the 13-category variant
+(S1–S13, shorter names) and renders text-part content — a plain
+string renders an empty conversation in the 1B template, so the
+1B adapter wraps the case text in a text part, the shape its
+template is written for. Each checkpoint is judged against the
+policy Meta shipped with it.
+The model answers with a first line of `safe` or `unsafe`; the
+adapter renormalizes the first-token logprobs over the two label
+tokens and takes P(unsafe) as the malicious score, the model card's
+own classifier-score construction. The two sizes share one
+implementation and differ only in their pinned checkpoint, so the
+pair measures what the 8x size step buys inside one model family.
+Both are **gated** under the Llama 3.1 Community License: accept
+the license on each model's HF page and run
+`huggingface-cli login` before first use.
 
 Guardrail verdict mapping: content judged benign keeps the case's
 expected decision (the guardrail vetoes nothing); content judged
