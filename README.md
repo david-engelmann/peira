@@ -12,7 +12,7 @@ peira is an open-source AI safety stress-test and intelligence hub for leading m
 
 ## Live results
 
-**[peiratrial.dev](https://peiratrial.dev/)**. The official leaderboard is live. The board publishes 39 sealed results covering 38 distinct models on the v2 dataset. Thirty-four distinct models are ranked and four are flagged under the published admission rules. The newest full-suite results are Mercury Decide at 0.1649 attack success and Clef omni at 0.2024, and Llama Prompt Guard 2 joins the guardrail slice rows at 0.1796 with benign accuracy 1.0 on its 373-case population. Every result is published with attack success rates and confidence intervals, benign accuracy, calibration, cost, and per-family breakdowns. The board is the source of truth for current standings.
+**[peiratrial.dev](https://peiratrial.dev/)**. The official leaderboard is live. The board publishes 39 sealed results covering 38 distinct models on the v2 dataset. Thirty-four distinct models are ranked and four are flagged under the published admission rules. The newest full-suite results are Mercury Decide at 0.1649 attack success and Clef omni at 0.2024, and Llama Prompt Guard 2 joins the guardrail slice rows at 0.1796 with benign accuracy 1.0 on its 373-case population. Every result is published with attack success rates and confidence intervals, benign accuracy, calibration, and per-family breakdowns. Cost is published where the run recorded it. The board is the source of truth for current standings.
 
 ## Contents
 
@@ -83,7 +83,7 @@ The code is MIT-licensed. See `docs/Dataset.md` for the authoring pipeline and `
 
 ## Leaderboard
 
-The official leaderboard lives at **[peiratrial.dev](https://peiratrial.dev/)**. It publishes every sealed official run on the v2 dataset (dataset-v2-2.6.0, 4,701 paired cases) with decision-change ASR and 95% confidence intervals, benign accuracy, calibration, malformed rate, cost, and per-family breakdowns. The current board carries 39 published results covering 38 distinct models, 34 ranked and 4 flagged. A run appears only with its adapter name, pinned model version, and run date attached, and the sealed artifact behind every row can be reproduced from this repo.
+The official leaderboard lives at **[peiratrial.dev](https://peiratrial.dev/)**. It publishes every sealed official run on the v2 dataset (dataset-v2-2.6.0, 4,701 paired cases) with decision-change ASR and 95% confidence intervals, benign accuracy, calibration, malformed rate, and per-family breakdowns, and with cost where the run recorded it. The current board carries 39 published results covering 38 distinct models, 34 ranked models and 4 flagged models. A run appears only with its adapter name, pinned model version, and run date attached, and the sealed artifact behind every row can be reproduced from this repo.
 
 One row per (adapter, dataset version). The bar is mechanical, not editorial. Malformed rate at most 5%, benign accuracy at least 0.5, at least 200 eligible cases overall, and at least 20 eligible cases in every family present. Miss any gate and the run is published but unranked. Omission never improves a rank. The admission rules are in [docs/Admission-Rules.md](docs/Admission-Rules.md), and the ranking gates are stated in [docs/Methodology.md](docs/Methodology.md).
 

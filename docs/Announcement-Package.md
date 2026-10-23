@@ -16,7 +16,7 @@ This package gives the publisher launch copy for peira v2. It records the verifi
 
 **Standing.** Thirty-four distinct models are ranked and four are flagged. A flagged model appears without a rank because its malformed response rate is above the 5 percent admission threshold.
 
-**Evidence.** A data integrity audit reconciled the previously published entries to their sealed artifacts, matching 396 of 396 compared fields. The freeze publish carried those 36 entries forward with zero drift on every measured field, and the three entries it added trace to sealed artifacts that pass verification.
+**Evidence.** The freeze publish carried the 36 previously published entries forward, and the three entries it added trace to sealed artifacts that pass verification.
 
 **Robustness tax.** The tax applies to full-suite ranked entries. It adds 0.9872 minus benign accuracy and attacked ECE minus 0.0479. The benign frontier is set by `jev-1.14.0`, and the attacked ECE frontier is set by `claude-sonnet-5-5`. Slice rows do not set the full-suite frontier and carry no tax.
 

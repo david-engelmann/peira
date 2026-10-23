@@ -9,7 +9,7 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
 
 ### Board facts refreshed to the freeze publish
 
-- The README and the announcement package now state the freeze board with 39 entries covering 38 distinct models, 34 ranked and 4 flagged. The refresh adds Mercury Decide and Clef omni as published full-suite results, marks Llama Prompt Guard 2 as measured on the guardrail slice, records that the robustness tax frontier is unchanged, and adds adapter table rows for Mercury Decide and Cerno.
+- The README and the announcement package now state the freeze board with 39 entries covering 38 distinct models, 34 ranked models and 4 flagged models. The refresh adds Mercury Decide and Clef omni as published full-suite results, marks Llama Prompt Guard 2 as measured on the guardrail slice, records that the robustness tax frontier is unchanged, and adds adapter table rows for Mercury Decide and Cerno.
 
 ### Added Cerno adapter
 
@@ -34,7 +34,7 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
 
 ### Announcement package finalized around the published v2 board
 
-- The announcement package now records the verified v2 board with 36 entries covering 35 distinct models, states the ranked and flagged split, and defines the robustness tax against the full-suite frontier set by Jev 1.14.0 and Claude Sonnet 5-5. It replaces the October draft scaffolding and its placeholders with final repository and LinkedIn copy, and it states the refresh rule for the freeze publish landing on 23 October 2026.
+- The announcement package records the verified v2 board as published at the time, with 36 entries covering 35 distinct models, states the ranked and flagged split, and defines the robustness tax against the full-suite frontier set by Jev 1.14.0 and Claude Sonnet 5-5. It replaces the October draft scaffolding and its placeholders with final repository and LinkedIn copy, and it states the refresh rule for the freeze publish landing on 23 October 2026.
 
 ### README finalized around the live leaderboard
 
