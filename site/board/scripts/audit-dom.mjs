@@ -68,6 +68,40 @@
  *        malformed chart and the flagged cards of the model
  *        index, both keyed to the row's flagged status.
  *
+ * Round 11 extensions (section nav, compare, ranking links):
+ *  Nav. The sticky bar renders at every width with its eight
+ *        links in page order; every link measures at least
+ *        24 px in both dimensions (WCAG 2.2 target size,
+ *        2.5.8). At desktop a keyboard walk tabs to each nav
+ *        link in turn and proves the focused link sits inside
+ *        the viewport, uncovered, with its focus outline
+ *        showing; activating each link lands its section at or
+ *        below the bar's bottom edge and no more than 40 px
+ *        past it, the focus-not-obscured rule (2.4.11) the
+ *        64 px scroll margin builds in. The scrollspy marks
+ *        exactly the section in view and changes neither the
+ *        bar's height nor the document's.
+ *  Anchor rule, revised. The card and back link landings
+ *        follow the same bar rule: at or below the bar's
+ *        bottom, no more than 40 px past it. The round 10
+ *        rule (within 40 px of the viewport top) predates the
+ *        sticky bar; a landing there would sit under the bar.
+ *  Compare. The rendered default pair's deltas equal the
+ *        payload differences; driving picker B to a slice
+ *        raises the population banner naming both case bases
+ *        and moves the pair into the address; naming one
+ *        model on both sides raises the same-model banner,
+ *        clears the winner dots, and prints the deltas
+ *        under the not measured mark.
+ *  Ranking links. Every row's name link points at the row's
+ *        own model page under the slug rule. The links' own
+ *        heights are measured and noted: an inline link in a
+ *        line of text is the WCAG 2.5.8 inline case, so the
+ *        gate records the size rather than failing on it.
+ *  Controls. The compare pickers, the swap button, and the
+ *        card controls measure at least 24 px in both
+ *        dimensions.
+ *
  * Screenshots land in the directory given as argv[3].
  */
 
@@ -394,8 +428,17 @@ const browser = await puppeteer.launch({
   /* The launch timeout is load tolerance for the shared box
    * (round 10): under the trial lanes the browser can take
    * well over the 30 s default to come up. It changes no
-   * measurement. */
-  timeout: 180000,
+   * measurement. Round 11 raised it after launches stalled
+   * past 180 s with three lanes on the box, then settled it
+   * at 300 s with the gate runner retrying a launch failure
+   * rather than one attempt waiting out the whole load peak. */
+  timeout: 300000,
+  /* Round 11: the protocol timeout gets the same tolerance.
+   * A mouse dispatch on the loaded box stalled past the
+   * default in the first round 11 run and killed the audit
+   * mid-block; the round 11 probes also activate links from
+   * the keyboard rather than the mouse where they can. */
+  protocolTimeout: 600000,
   args: ["--no-sandbox", "--no-zygote", "--single-process", "--force-device-scale-factor=1"],
 });
 const page = await browser.newPage();
@@ -417,7 +460,7 @@ for (const width of [1440, 1280, 390]) {
       path: join(shotsDir, `page-${width}.png`),
       fullPage: true,
     });
-    for (const name of ["heatmap", "scatter", "calibration", "malformed", "models", "method"]) {
+    for (const name of ["heatmap", "scatter", "calibration", "malformed", "models", "compare", "method"]) {
       const el = await page.$(`[data-section="${name}"]`);
       if (el) {
         await el.screenshot({ path: join(shotsDir, `${name}-${width}.png`) });
@@ -466,6 +509,12 @@ for (const width of [1440, 1280, 390]) {
         text: nameText,
         clipped: nameEl ? nameEl.scrollWidth > nameEl.clientWidth + 1 : null,
         group: row.closest("[data-group]")?.getAttribute("data-group"),
+        linkHref: row.querySelector(".name-link")
+          ? row.querySelector(".name-link").getAttribute("href")
+          : null,
+        linkH: row.querySelector(".name-link")
+          ? row.querySelector(".name-link").getBoundingClientRect().height
+          : null,
       });
       const rankEl = row.querySelector(".cell-rank");
       out.rankCells.push({
@@ -645,6 +694,34 @@ for (const width of [1440, 1280, 390]) {
         ),
       };
     }
+    // Section bar and round 11 controls (sizes only; the
+    // behaviour probes run in the desktop interaction block).
+    const navEl = document.querySelector(".section-nav");
+    if (navEl) {
+      out.nav = {
+        position: getComputedStyle(navEl).position,
+        height: navEl.getBoundingClientRect().height,
+        links: [...navEl.querySelectorAll(".section-nav-link")].map((a) => {
+          const r = a.getBoundingClientRect();
+          return {
+            target: a.getAttribute("data-nav-target"),
+            label: a.textContent.trim(),
+            href: a.getAttribute("href"),
+            w: r.width,
+            h: r.height,
+          };
+        }),
+      };
+    }
+    const boxOf = (el) =>
+      el
+        ? { w: el.getBoundingClientRect().width, h: el.getBoundingClientRect().height }
+        : null;
+    out.controls = {
+      swap: boxOf(document.querySelector(".cmp-swap")),
+      pickers: [...document.querySelectorAll(".cmp-picker select")].map(boxOf),
+      cardButtons: [...document.querySelectorAll(".card-controls button")].map(boxOf),
+    };
     return out;
   });
 
@@ -831,9 +908,26 @@ for (const width of [1440, 1280, 390]) {
       failures.push(`width ${width}: name "${n.text}" is clipped horizontally`);
     }
   }
+  // Round 11: every ranking name links to its model page.
+  let minLinkH = Infinity;
+  for (const n of report.names) {
+    const row = byRunId.get(n.runId);
+    if (!row) continue;
+    const want = `/models/${slugOfA(row)}/`;
+    if (n.linkHref !== want) {
+      failures.push(
+        `width ${width}: row ${n.runId} name links to "${n.linkHref}", the slug rule gives "${want}"`,
+      );
+    }
+    if (n.linkH !== null) minLinkH = Math.min(minLinkH, n.linkH);
+  }
+  if (minLinkH !== Infinity) {
+    notes.push(
+      `width ${width}: ranking name links measured, smallest height ${minLinkH.toFixed(1)} px (inline links in a line of text, the WCAG 2.5.8 inline case; recorded, not gated)`,
+    );
+  }
   // F-01: rank column.
-  for (const cell of report.rankCells) {
-    const row = byRunId.get(cell.runId);
+  for (const cell of report.rankCells) {    const row = byRunId.get(cell.runId);
     if (cell.group === "flagged") {
       if (cell.text !== "") {
         failures.push(
@@ -1325,6 +1419,60 @@ for (const width of [1440, 1280, 390]) {
       }
     }
   }
+  // Round 11: section bar presence, order, and target sizes;
+  // control sizes (WCAG 2.5.8, 24 px floor for block controls).
+  const NAV_EXPECTED_A = [
+    ["ranking", "Ranking"],
+    ["malformed", "Malformed"],
+    ["families", "Families"],
+    ["cost", "Cost"],
+    ["calibration", "Calibration"],
+    ["models", "Models"],
+    ["compare", "Compare"],
+    ["method", "Method"],
+  ];
+  if (!report.nav) {
+    failures.push(`width ${width}: section nav not rendered`);
+  } else {
+    if (report.nav.position !== "sticky") {
+      failures.push(
+        `width ${width}: section nav computes position ${report.nav.position}, not sticky`,
+      );
+    }
+    if (report.nav.links.length !== NAV_EXPECTED_A.length) {
+      failures.push(
+        `width ${width}: section nav holds ${report.nav.links.length} links, expected ${NAV_EXPECTED_A.length}`,
+      );
+    }
+    report.nav.links.forEach((link, i) => {
+      const [id, label] = NAV_EXPECTED_A[i] ?? [];
+      if (link.target !== id || link.href !== `#${id}` || link.label !== label) {
+        failures.push(
+          `width ${width}: nav link ${i + 1} is "${link.label}" to ${link.href} (target ${link.target}), expected "${label}" to #${id}`,
+        );
+      }
+      if (link.w < 24 || link.h < 24) {
+        failures.push(
+          `width ${width}: nav link "${link.label}" measures ${link.w.toFixed(1)}x${link.h.toFixed(1)} px, under the 24 px target floor`,
+        );
+      }
+    });
+  }
+  const ctl = report.controls ?? {};
+  const ctlBoxes = [
+    ["compare swap button", ctl.swap],
+    ...((ctl.pickers ?? []).map((b, i) => [`compare picker ${i + 1}`, b])),
+    ...((ctl.cardButtons ?? []).map((b, i) => [`card control button ${i + 1}`, b])),
+  ];
+  for (const [what, box] of ctlBoxes) {
+    if (!box) {
+      failures.push(`width ${width}: ${what} not rendered`);
+    } else if (box.w < 24 || box.h < 24) {
+      failures.push(
+        `width ${width}: ${what} measures ${box.w.toFixed(1)}x${box.h.toFixed(1)} px, under the 24 px target floor`,
+      );
+    }
+  }
   // Anchor and expansion behaviour, once, at desktop width.
   if (width === 1440) {
     const groupsA = {
@@ -1345,35 +1493,284 @@ for (const width of [1440, 1280, 390]) {
     }
     const anchorRow = groupsA.full[0];
     const anchorSlug = slugOfA(anchorRow);
+    /* Round 11 landing rule. With the sticky bar in place, an
+     * anchor landing is correct when the target's top sits at
+     * or below the bar's bottom edge and no more than 40 px
+     * past it (the 64 px scroll margin against the bar's
+     * height). The round 10 rule, within 40 px of the viewport
+     * top, would put the heading under the bar. */
+    const checkLanding = (what, top, navBottom) => {
+      if (
+        top === undefined ||
+        navBottom === undefined ||
+        top < navBottom - 1 ||
+        top > navBottom + 40
+      ) {
+        failures.push(
+          `${what} lands with its top at ${top} px against a bar bottom of ${navBottom} px, outside the bar rule`,
+        );
+      }
+    };
     await page.evaluate((slug) => {
       location.hash = `model-${slug}`;
     }, anchorSlug);
     await new Promise((r) => setTimeout(r, 250));
-    const cardTop = await page.evaluate(
-      (slug) => document.getElementById(`model-${slug}`)?.getBoundingClientRect().top,
+    const cardLand = await page.evaluate(
+      (slug) => ({
+        top: document.getElementById(`model-${slug}`)?.getBoundingClientRect().top,
+        navBottom: document
+          .querySelector(".section-nav")
+          ?.getBoundingClientRect().bottom,
+      }),
       anchorSlug,
     );
-    if (cardTop === undefined || cardTop < -1 || cardTop > 40) {
-      failures.push(
-        `card anchor for ${anchorRow.run_id} lands with the card header at ${cardTop} px, outside its scroll margin`,
-      );
-    }
+    checkLanding(
+      `card anchor for ${anchorRow.run_id}`,
+      cardLand.top,
+      cardLand.navBottom,
+    );
     await page.click(
       `details[data-card-for="${anchorRow.run_id}"] a[href="#models"]`,
     );
     await new Promise((r) => setTimeout(r, 250));
-    const indexTop = await page.evaluate(
-      () => document.getElementById("models")?.getBoundingClientRect().top,
-    );
+    const indexLand = await page.evaluate(() => ({
+      top: document.getElementById("models")?.getBoundingClientRect().top,
+      navBottom: document
+        .querySelector(".section-nav")
+        ?.getBoundingClientRect().bottom,
+    }));
     const hash = await page.evaluate(() => location.hash);
     if (hash !== "#models") {
       failures.push(`back link inside a card sets the hash to ${hash}, not #models`);
     }
-    if (indexTop === undefined || indexTop < -1 || indexTop > 40) {
+    checkLanding("back link", indexLand.top, indexLand.navBottom);
+    /* ---------- round 11 probes: nav and compare ---------- */
+    const NAV_IDS_A = NAV_EXPECTED_A.map(([id]) => id);
+    /* Keyboard walk. Tab from the top of the page until every
+     * nav link has held focus; each focused link must sit
+     * inside the viewport, uncovered at its centre, with the
+     * focus outline showing (WCAG 2.4.11, focus not obscured,
+     * probed the way a keyboard reader meets it). The walk
+     * starts by focusing the skip link, the page's first tab
+     * stop: sequential navigation in Chrome starts from the
+     * last clicked point in the document, and the probes
+     * above clicked inside the model index, so a plain blur
+     * would start the walk there instead of at the top (the
+     * first instrumented run's trail proved exactly that,
+     * opening on the card controls). */
+    await page.evaluate(() => {
+      window.scrollTo(0, 0);
+      document.querySelector(".skip")?.focus();
+    });
+    await new Promise((r) => setTimeout(r, 250));
+    const seenNav = new Map();
+    const walkTrail = [];
+    let focusShot = false;
+    for (let i = 0; i < 48 && seenNav.size < NAV_IDS_A.length; i++) {
+      await page.keyboard.press("Tab");
+      await new Promise((r) => setTimeout(r, 70));
+      const info = await page.evaluate(() => {
+        const el = document.activeElement;
+        if (!el || el === document.body || !el.getAttribute) return null;
+        const desc = `${el.tagName}.${(el.getAttribute("class") ?? "").split(" ")[0]} ${el.getAttribute("href") ?? ""} ${(el.textContent ?? "").trim().slice(0, 24)}`;
+        const target = el.getAttribute("data-nav-target");
+        if (!target) return { desc };
+        const r = el.getBoundingClientRect();
+        const cs = getComputedStyle(el);
+        const topEl = document.elementFromPoint(
+          r.left + r.width / 2,
+          r.top + r.height / 2,
+        );
+        return {
+          desc,
+          target,
+          top: r.top,
+          bottom: r.bottom,
+          outlineStyle: cs.outlineStyle,
+          outlineWidth: cs.outlineWidth,
+          covered: !(topEl === el || el.contains(topEl)),
+        };
+      });
+      if (info && walkTrail.length < 16) walkTrail.push(info.desc);
+      if (info?.target && !seenNav.has(info.target)) {
+        seenNav.set(info.target, info);
+        if (!focusShot && shotsDir) {
+          await page.screenshot({
+            path: join(shotsDir, "nav-focus-1440.png"),
+          });
+          focusShot = true;
+        }
+      }
+    }
+    if (seenNav.size !== NAV_IDS_A.length) {
       failures.push(
-        `back link lands with the index top at ${indexTop} px, outside its scroll margin`,
+        `tab walk reached ${seenNav.size} of ${NAV_IDS_A.length} nav links (${[...seenNav.keys()].join(",")}); the walk saw: ${walkTrail.join(" | ")}`,
       );
     }
+    for (const [id, info] of seenNav) {
+      if (info.top < -1 || info.bottom > 901) {
+        failures.push(
+          `focused nav link ${id} sits at ${info.top.toFixed(1)} to ${info.bottom.toFixed(1)} px, outside the viewport`,
+        );
+      }
+      if (info.covered) {
+        failures.push(`focused nav link ${id} is covered at its centre`);
+      }
+      if (info.outlineStyle === "none" || info.outlineWidth === "0px") {
+        failures.push(
+          `focused nav link ${id} shows no focus outline (${info.outlineStyle} ${info.outlineWidth})`,
+        );
+      }
+    }
+    /* Anchor landings. Each nav link, focused and activated
+     * from the keyboard (the mouse path is the flaky one on
+     * this box), takes its section to the bar rule, and the
+     * address follows. */
+    for (const id of NAV_IDS_A) {
+      await page.evaluate((tid) => {
+        document
+          .querySelector(`.section-nav-link[data-nav-target="${tid}"]`)
+          ?.focus();
+      }, id);
+      await page.keyboard.press("Enter");
+      await new Promise((r) => setTimeout(r, 400));
+      const land = await page.evaluate((tid) => ({
+        top: document.getElementById(tid)?.getBoundingClientRect().top,
+        navBottom: document
+          .querySelector(".section-nav")
+          ?.getBoundingClientRect().bottom,
+        hash: location.hash,
+      }), id);
+      if (land.hash !== `#${id}`) {
+        failures.push(`nav activation ${id} leaves the address at ${land.hash}`);
+      }
+      checkLanding(`nav activation #${id}`, land.top, land.navBottom);
+    }
+    /* Scrollspy. Scroll the calibration section into view and
+     * prove the spy marks it, with the bar's height and the
+     * document's height unchanged by the marking. */
+    const spyBefore = await page.evaluate(() => ({
+      navH: document.querySelector(".section-nav")?.getBoundingClientRect().height,
+      docH: document.documentElement.scrollHeight,
+    }));
+    await page.evaluate(() => {
+      document.getElementById("calibration")?.scrollIntoView();
+    });
+    await new Promise((r) => setTimeout(r, 650));
+    const spy = await page.evaluate(() => {
+      const act = [...document.querySelectorAll(".section-nav-link.active")];
+      return {
+        count: act.length,
+        target: act[0]?.getAttribute("data-nav-target") ?? null,
+        aria: act[0]?.getAttribute("aria-current") ?? null,
+        navH: document.querySelector(".section-nav")?.getBoundingClientRect().height,
+        docH: document.documentElement.scrollHeight,
+      };
+    });
+    if (spy.count !== 1 || spy.target !== "calibration") {
+      failures.push(
+        `scrollspy marks ${spy.count} link(s), target ${spy.target}, with calibration in view`,
+      );
+    }
+    if (spy.aria !== "true") {
+      failures.push(`scrollspy's active link carries aria-current ${spy.aria}`);
+    }
+    if (spy.navH !== spyBefore.navH || spy.docH !== spyBefore.docH) {
+      failures.push(
+        `scrollspy shifted layout: bar ${spyBefore.navH} to ${spy.navH} px, document ${spyBefore.docH} to ${spy.docH} px`,
+      );
+    }
+    if (shotsDir) {
+      await page.screenshot({ path: join(shotsDir, "nav-scrolled-1440.png") });
+    }
+    /* Compare driving. The default pair's deltas come from
+     * the payload; a slice on side B raises the population
+     * banner naming both bases and moves the pair into the
+     * address; one model on both sides raises the same-model
+     * banner, clears the dots, and prints the deltas
+     * under the not measured mark. */
+    const cmpFull = ranked.find((r) => r.n_cases === fullCasesA);
+    const cmpJev = allRowsA.find((r) => shortName(r) === "jev-1.14.0");
+    const cmpSlice = ranked.find((r) => r.n_cases < fullCasesA);
+    const readCmp = () =>
+      page.evaluate(() => ({
+        bannerPop:
+          document
+            .querySelector('[data-cmp-banner="population"]')
+            ?.textContent.replace(/\s+/g, " ")
+            .trim() ?? null,
+        bannerSame: !!document.querySelector('[data-cmp-banner="same"]'),
+        asrDelta:
+          document
+            .querySelector('[data-cmp-delta="asr"]')
+            ?.getAttribute("data-cmp-raw") ?? null,
+        asrDeltaText:
+          document
+            .querySelector('[data-cmp-delta="asr"]')
+            ?.textContent.trim() ?? null,
+        wins: document.querySelectorAll("[data-cmp-win]").length,
+        hash: location.hash,
+      }));
+    const deltaClose = (got, want, what) => {
+      if (got === null || got === "" || Math.abs(Number(got) - want) > 1e-12) {
+        failures.push(`compare drive: ${what} delta raw is ${got}, payload difference is ${want}`);
+      }
+    };
+    let cmpNow = await readCmp();
+    deltaClose(
+      cmpNow.asrDelta,
+      cmpFull.asr_conditional - cmpJev.asr_conditional,
+      "default pair",
+    );
+    await page.select("#cmp-picker-b", slugOfA(cmpSlice));
+    await new Promise((r) => setTimeout(r, 450));
+    cmpNow = await readCmp();
+    if (
+      !cmpNow.bannerPop ||
+      !cmpNow.bannerPop.includes(fullCasesA.toLocaleString("en-US")) ||
+      !cmpNow.bannerPop.includes(cmpSlice.n_cases.toLocaleString("en-US"))
+    ) {
+      failures.push(
+        `compare drive: slice against full suite raises banner "${cmpNow.bannerPop}", which must name both case bases`,
+      );
+    }
+    deltaClose(
+      cmpNow.asrDelta,
+      cmpFull.asr_conditional - cmpSlice.asr_conditional,
+      "cross-base pair",
+    );
+    if (cmpNow.hash !== `#compare=${slugOfA(cmpFull)},${slugOfA(cmpSlice)}`) {
+      failures.push(
+        `compare drive: address is ${cmpNow.hash}, the pair should ride in it`,
+      );
+    }
+    if (shotsDir) {
+      const cmpEl = await page.$('[data-section="compare"]');
+      if (cmpEl) {
+        await cmpEl.screenshot({
+          path: join(shotsDir, "compare-crossbase-1440.png"),
+        });
+      }
+    }
+    await page.select("#cmp-picker-a", slugOfA(cmpSlice));
+    await new Promise((r) => setTimeout(r, 450));
+    cmpNow = await readCmp();
+    if (!cmpNow.bannerSame) {
+      failures.push("compare drive: one model on both sides raises no banner");
+    }
+    if (cmpNow.wins !== 0) {
+      failures.push(
+        `compare drive: same-model pair still renders ${cmpNow.wins} winner dots`,
+      );
+    }
+    if (cmpNow.asrDelta !== "0" || cmpNow.asrDeltaText !== "·") {
+      failures.push(
+        `compare drive: same-model delta prints raw "${cmpNow.asrDelta}" text "${cmpNow.asrDeltaText}", expected the zero difference under the not measured mark`,
+      );
+    }
+    await page.select("#cmp-picker-a", slugOfA(cmpFull));
+    await page.select("#cmp-picker-b", slugOfA(cmpJev));
+    await new Promise((r) => setTimeout(r, 350));
     /* Restore the pristine page: the widths measured after
      * this one must see the index as a reader first does, with
      * every card closed. */

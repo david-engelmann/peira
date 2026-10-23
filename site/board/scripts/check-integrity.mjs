@@ -61,6 +61,20 @@
  *     benchmark setters named or the untaxed statement, and
  *     the short provenance), plus the rank statement, the
  *     own-page link, and the copy rules on every model page.
+ * 11. Nav, compare, and ranking links (round 11). The section
+ *     bar carries the eight labels in page order and every
+ *     target id exists. The compare island's dataset, printed
+ *     beside its section as a JSON script element, equals the
+ *     payload on every row and every metric field, families
+ *     included. The server-rendered default pair is the
+ *     design's pair (the strongest full suite row against
+ *     jev-1.14.0); its printed values equal the payload, its
+ *     delta cells equal A minus B recomputed here and print
+ *     under the delta format rules ported below, its winner
+ *     dots sit on the stronger side, its family bars carry
+ *     the payload rates in the column order, and no guard
+ *     banner renders for it. Every ranking row carries the
+ *     name link to its own model page.
  */
 
 import { readFileSync } from "node:fs";
@@ -1046,6 +1060,394 @@ for (const row of allRows) {
   }
 }
 
+/* ---------- 11. nav, compare, ranking links (round 11) ---------- */
+
+/* Delta formats, ported independently from the same decimal
+ * primitives as the value formats. A delta's sign prints only
+ * when the rounded magnitude is not zero. */
+function deltaSignC(value, magnitude) {
+  if (/^0(\.0+)?$/.test(magnitude)) return "";
+  return value < 0 ? "-" : "+";
+}
+const fmtDeltaPctC = (v) => {
+  const mag = quantHU(shiftPt(expandDec(Math.abs(v)), 2), 1);
+  return deltaSignC(v, mag) + mag;
+};
+const fmtDelta3C = (v) => {
+  const mag = quantHU(expandDec(Math.abs(v)), 3);
+  return deltaSignC(v, mag) + mag;
+};
+const fmtDeltaUsdC = (v) => {
+  const mag = quantHU(expandDec(Math.abs(v)), 2);
+  return `${deltaSignC(v, mag)}$${mag}`;
+};
+const fmtDeltaMsC = (v) => {
+  const mag = quantHU(expandDec(Math.abs(v)), 0);
+  return `${deltaSignC(v, mag)}${mag}ms`;
+};
+const WIRE_WORDS_C = {
+  "openai-decisions": "Decisions API",
+  "openai-structured": "Chat completions",
+};
+const wireWordsC = (w) => WIRE_WORDS_C[w] ?? w;
+const nulC = (x) => (x === undefined || x === null ? null : x);
+
+/* The compare row the payload implies for one result, field
+ * by field, derived here so the island's shaped dataset and
+ * its rendered arithmetic are both held to the payload. */
+const CMP_METRIC_DEFS = [
+  { key: "asr", better: "low", val: (r) => nulC(r.asr_conditional), vfmt: fmtPct, dfmt: fmtDeltaPctC },
+  { key: "benign", better: "high", val: (r) => nulC(r.benign_accuracy), vfmt: fmtPct, dfmt: fmtDeltaPctC },
+  { key: "malformed", better: "low", val: (r) => nulC(r.malformed_rate), vfmt: fmtPct, dfmt: fmtDeltaPctC },
+  { key: "atkEce", better: "low", val: (r) => nulC(r.detail?.calibration?.attacked?.ece ?? r.ece_attacked), vfmt: fmtEceC, dfmt: fmtDelta3C },
+  { key: "atkBrier", better: "low", val: (r) => nulC(r.detail?.calibration?.attacked?.brier), vfmt: fmtEceC, dfmt: fmtDelta3C },
+  { key: "benEce", better: "low", val: (r) => nulC(r.detail?.calibration?.benign?.ece), vfmt: fmtEceC, dfmt: fmtDelta3C },
+  { key: "benBrier", better: "low", val: (r) => nulC(r.detail?.calibration?.benign?.brier), vfmt: fmtEceC, dfmt: fmtDelta3C },
+  { key: "tax", better: "low", val: (r) => nulC(r.robustness_tax), vfmt: fmtTaxC, dfmt: fmtDelta3C },
+  { key: "cost", better: "low", val: (r) => nulC(r.total_cost_usd), vfmt: null, dfmt: fmtDeltaUsdC },
+  { key: "latP50", better: "low", val: (r) => nulC(r.latency_ms_p50_attacked), vfmt: fmtMsC, dfmt: fmtDeltaMsC },
+  { key: "latP95", better: "low", val: (r) => nulC(r.latency_ms_p95_attacked), vfmt: fmtMsC, dfmt: fmtDeltaMsC },
+];
+function cmpExpectedC(row) {
+  const values = {};
+  for (const def of CMP_METRIC_DEFS) values[def.key] = def.val(row);
+  const carried = new Map(famEntriesC(row));
+  return {
+    slug: slugOfC(row, allRows),
+    runId: row.run_id,
+    name: shortName(row),
+    group: fullCohort.includes(row)
+      ? "full"
+      : unranked.includes(row)
+        ? "flagged"
+        : "slice",
+    nCases: row.n_cases,
+    values,
+    costLowerBound:
+      row.total_cost_usd !== null &&
+      row.total_cost_usd !== undefined &&
+      row.total_cost_usd > 0 &&
+      lowerBoundC(row),
+    families: familyOrderC.map((k) => {
+      const f = carried.get(k);
+      return f && f.asr !== null && f.asr !== undefined ? f.asr : null;
+    }),
+  };
+}
+const cmpExpectedById = new Map(allRows.map((r) => [r.run_id, cmpExpectedC(r)]));
+
+/* 11a. The section bar. */
+const NAV_EXPECTED = [
+  ["ranking", "Ranking"],
+  ["malformed", "Malformed"],
+  ["families", "Families"],
+  ["cost", "Cost"],
+  ["calibration", "Calibration"],
+  ["models", "Models"],
+  ["compare", "Compare"],
+  ["method", "Method"],
+];
+const navMatch = html.match(/<nav class="section-nav"[\s\S]*?<\/nav>/);
+if (!navMatch) {
+  fail("section nav missing from rendered page");
+} else {
+  const navLinks = [
+    ...navMatch[0].matchAll(
+      /<a class="section-nav-link" href="#([^"]+)" data-nav-target="([^"]+)">([^<]*)<\/a>/g,
+    ),
+  ].map((m) => ({ href: m[1], target: m[2], label: m[3] }));
+  if (navLinks.length !== NAV_EXPECTED.length) {
+    fail(`section nav holds ${navLinks.length} links, expected ${NAV_EXPECTED.length}`);
+  }
+  navLinks.forEach((link, i) => {
+    const [id, label] = NAV_EXPECTED[i] ?? [];
+    if (link.href !== id || link.target !== id || link.label !== label) {
+      fail(
+        `nav link ${i + 1} is "${link.label}" to #${link.href} (target ${link.target}), expected "${label}" to #${id}`,
+      );
+    }
+  });
+  for (const [id] of NAV_EXPECTED) {
+    if (!new RegExp(` id="${id}"`).test(html)) {
+      fail(`nav target #${id} has no element with that id on the page`);
+    }
+  }
+}
+
+/* 11b. The compare dataset printed beside the section. */
+const cmpDataMatch = html.match(
+  /<script type="application\/json" data-compare-rows="(\d+)">([\s\S]*?)<\/script>/,
+);
+let cmpDataset = null;
+if (!cmpDataMatch) {
+  fail("compare dataset script element missing from rendered page");
+} else {
+  if (Number(cmpDataMatch[1]) !== allRows.length) {
+    fail(
+      `compare dataset declares ${cmpDataMatch[1]} rows, payload holds ${allRows.length}`,
+    );
+  }
+  try {
+    cmpDataset = JSON.parse(cmpDataMatch[2]);
+  } catch {
+    fail("compare dataset script element does not parse as JSON");
+  }
+}
+if (Array.isArray(cmpDataset)) {
+  if (cmpDataset.length !== allRows.length) {
+    fail(`compare dataset holds ${cmpDataset.length} rows, payload holds ${allRows.length}`);
+  }
+  const dupNames = new Set(
+    allRows
+      .map((r) => shortName(r))
+      .filter((n, i, arr) => arr.indexOf(n) !== i),
+  );
+  for (const crow of cmpDataset) {
+    const row = rowById.get(crow.runId);
+    if (!row) {
+      fail(`compare dataset row for unknown run ${crow.runId}`);
+      continue;
+    }
+    const exp = cmpExpectedById.get(row.run_id);
+    const eq = (got, want, what) => {
+      if (nulC(got) !== want) {
+        fail(`compare dataset ${row.run_id}: ${what} is ${got}, payload gives ${want}`);
+      }
+    };
+    eq(crow.slug, exp.slug, "slug");
+    eq(crow.name, exp.name, "name");
+    eq(
+      crow.wire,
+      dupNames.has(shortName(row)) ? wireWordsC(row.wire) : null,
+      "wire",
+    );
+    eq(crow.group, exp.group, "group");
+    eq(crow.nCases, exp.nCases, "case base");
+    for (const def of CMP_METRIC_DEFS) {
+      eq(crow[def.key], exp.values[def.key], `metric ${def.key}`);
+    }
+    eq(crow.costLowerBound, exp.costLowerBound, "cost lower bound flag");
+    if (!Array.isArray(crow.families) || crow.families.length !== familyOrderC.length) {
+      fail(`compare dataset ${row.run_id}: family array does not match the column order`);
+    } else {
+      crow.families.forEach((v, i) => {
+        if (nulC(v) !== exp.families[i]) {
+          fail(
+            `compare dataset ${row.run_id}: family ${familyOrderC[i]} is ${v}, payload gives ${exp.families[i]}`,
+          );
+        }
+      });
+    }
+  }
+}
+
+/* 11c. The rendered default pair, its deltas, dots, and bars. */
+const cmpHtml = sectionSlice("compare", "method");
+let cmpPairsChecked = 0;
+if (!cmpHtml) {
+  fail("compare section missing from rendered page");
+} else {
+  if (cmpHtml.includes("data-cmp-banner")) {
+    fail("compare section renders a guard banner for its default pair");
+  }
+  const optionValues = [...cmpHtml.matchAll(/<option value="([^"]+)"/g)].map(
+    (m) => m[1],
+  );
+  const expectedSlugs = allRows.map((r) => slugOfC(r, allRows));
+  if (optionValues.length !== expectedSlugs.length * 2) {
+    fail(
+      `compare pickers hold ${optionValues.length} options, expected two per result (${expectedSlugs.length * 2})`,
+    );
+  }
+  for (const slug of expectedSlugs) {
+    if (optionValues.filter((v) => v === slug).length !== 2) {
+      fail(`compare pickers do not both offer ${slug}`);
+    }
+  }
+  /* The rendered pair, read from its value cells. */
+  const cellRaw = (chunk, side) => {
+    const tag = chunk.match(
+      new RegExp(`<td[^>]*data-cmp-side="${side}"[^>]*>`),
+    )?.[0];
+    return tag ? attr(tag, "data-cmp-raw") : null;
+  };
+  const rowChunks = cmpHtml.split('<tr data-cmp-row="').slice(1);
+  const rendered = new Map();
+  const cellTextAfter = (chunk, tagRe) => {
+    const tag = chunk.match(tagRe)?.[0];
+    if (!tag) return null;
+    const end = chunk.indexOf(tag) + tag.length;
+    return visibleText(chunk.slice(end, chunk.indexOf("</td>", end))).trim();
+  };
+  for (const chunk of rowChunks) {
+    const metricKey = chunk.slice(0, chunk.indexOf('"'));
+    const deltaTag = chunk.match(/<td[^>]*data-cmp-delta[^>]*>/)?.[0];
+    const deltaEnd = deltaTag
+      ? chunk.indexOf(deltaTag) + deltaTag.length
+      : -1;
+    rendered.set(metricKey, {
+      a: cellRaw(chunk, "a"),
+      b: cellRaw(chunk, "b"),
+      aText: cellTextAfter(chunk, /<td[^>]*data-cmp-side="a"[^>]*>/),
+      bText: cellTextAfter(chunk, /<td[^>]*data-cmp-side="b"[^>]*>/),
+      deltaRaw: deltaTag ? attr(deltaTag, "data-cmp-raw") : null,
+      deltaText:
+        deltaEnd >= 0
+          ? visibleText(chunk.slice(deltaEnd, chunk.indexOf("</td>", deltaEnd))).trim()
+          : null,
+      win: chunk.match(/data-cmp-win="([ab])"/)?.[1] ?? null,
+    });
+  }
+  /* Identify the pair. A rendered side matches a payload row
+   * when every metric raw equals the row's value (empty for
+   * null). The design's default pair must be the match. */
+  const matchSide = (side) => {
+    const hits = allRows.filter((row) => {
+      const exp = cmpExpectedById.get(row.run_id);
+      return CMP_METRIC_DEFS.every((def) => {
+        const cell = rendered.get(def.key)?.[side];
+        if (cell === undefined || cell === null) return false;
+        const want = exp.values[def.key];
+        return want === null ? cell === "" : Number(cell) === want;
+      });
+    });
+    return hits;
+  };
+  const aHits = rendered.size > 0 ? matchSide("a") : [];
+  const bHits = rendered.size > 0 ? matchSide("b") : [];
+  if (aHits.length !== 1 || bHits.length !== 1) {
+    fail(
+      `compare default pair does not resolve to one payload row per side (a ${aHits.length}, b ${bHits.length})`,
+    );
+  } else {
+    const [rowA, rowB] = [aHits[0], bHits[0]];
+    if (rowA !== fullCohort[0]) {
+      fail(
+        `compare default model A is ${rowA.run_id}, the design's default is the strongest full suite row ${fullCohort[0].run_id}`,
+      );
+    }
+    const jevRow = allRows.find((r) => shortName(r) === "jev-1.14.0");
+    if (jevRow && rowB !== jevRow) {
+      fail(
+        `compare default model B is ${rowB.run_id}, the design's default is jev-1.14.0 (${jevRow.run_id})`,
+      );
+    }
+    const expA = cmpExpectedById.get(rowA.run_id);
+    const expB = cmpExpectedById.get(rowB.run_id);
+    for (const def of CMP_METRIC_DEFS) {
+      const cell = rendered.get(def.key);
+      if (!cell) {
+        fail(`compare table has no row for metric ${def.key}`);
+        continue;
+      }
+      const va = expA.values[def.key];
+      const vb = expB.values[def.key];
+      /* The printed values beside the deltas. */
+      const wantValText = (v, exp) => {
+        if (v === null) return "·";
+        if (def.key === "cost") {
+          return `${exp.costLowerBound ? "≥ " : ""}${fmtUsdC(v)}`;
+        }
+        return def.vfmt(v);
+      };
+      if (cell.aText !== wantValText(va, expA)) {
+        fail(
+          `compare value ${def.key} side a: printed "${cell.aText}", the payload prints "${wantValText(va, expA)}"`,
+        );
+      }
+      if (cell.bText !== wantValText(vb, expB)) {
+        fail(
+          `compare value ${def.key} side b: printed "${cell.bText}", the payload prints "${wantValText(vb, expB)}"`,
+        );
+      }
+      if (va === null || vb === null) {
+        if (cell.deltaRaw !== "" || cell.deltaText !== "·") {
+          fail(
+            `compare delta ${def.key}: a side carries no value, so the delta must be the not measured mark, got raw "${cell.deltaRaw}" text "${cell.deltaText}"`,
+          );
+        }
+      } else {
+        const d = va - vb;
+        if (cell.deltaRaw === "" || Math.abs(Number(cell.deltaRaw) - d) > 1e-12) {
+          fail(
+            `compare delta ${def.key}: rendered raw ${cell.deltaRaw}, payload difference is ${d}`,
+          );
+        }
+        const wantText = def.dfmt(d);
+        if (cell.deltaText !== wantText) {
+          fail(
+            `compare delta ${def.key}: printed "${cell.deltaText}", the delta rule prints "${wantText}"`,
+          );
+        }
+        cmpPairsChecked += 1;
+      }
+      const wantWin =
+        va !== null && vb !== null && va !== vb
+          ? def.better === "low"
+            ? va < vb
+              ? "a"
+              : "b"
+            : va > vb
+              ? "a"
+              : "b"
+          : null;
+      if (cell.win !== wantWin) {
+        fail(
+          `compare winner dot ${def.key}: rendered on ${cell.win}, the stronger side is ${wantWin}`,
+        );
+      }
+    }
+    /* The paired family bars for the rendered pair. */
+    const famLines = [...cmpHtml.matchAll(/<div class="cmp-fam-line"[^>]*>/g)].map(
+      (m) => m[0],
+    );
+    if (famLines.length !== familyOrderC.length * 2) {
+      fail(
+        `compare family bars hold ${famLines.length} lines, expected ${familyOrderC.length * 2}`,
+      );
+    }
+    famLines.forEach((tag, i) => {
+      const famKey = familyOrderC[Math.floor(i / 2)];
+      const side = i % 2 === 0 ? "a" : "b";
+      if (attr(tag, "data-cmpfamily") !== famKey || attr(tag, "data-cmpside") !== side) {
+        fail(`compare family line ${i + 1} is out of order or side`);
+        return;
+      }
+      const want = (side === "a" ? expA : expB).families[Math.floor(i / 2)];
+      const got = attr(tag, "data-cmpasr");
+      if (want === null) {
+        if (!tag.includes('data-na="true"') || got !== null) {
+          fail(`compare family ${famKey} side ${side}: should render as not measured`);
+        }
+      } else if (got === null || Number(got) !== want) {
+        fail(
+          `compare family ${famKey} side ${side}: data-cmpasr ${got}, payload gives ${want}`,
+        );
+      }
+    });
+  }
+  if (!cmpHtml.includes("Peira decision robustness board")) {
+    fail("compare section carries no identification line (SF-01)");
+  }
+}
+
+/* 11d. Every ranking row names its model page. */
+for (const [id, rows] of Object.entries(expectedGroups)) {
+  const block = blocks[id];
+  if (!block) continue;
+  for (const row of rows) {
+    const marker = `data-run-id="${row.run_id}"`;
+    const start = block.indexOf(marker);
+    if (start < 0) continue;
+    const next = block.indexOf('data-run-id="', start + marker.length);
+    const slice = block.slice(start, next < 0 ? undefined : next);
+    const want = `href="/models/${slugOfC(row, allRows)}/"`;
+    if (!slice.includes(want) || !slice.includes('class="name-link"')) {
+      fail(`ranking row ${row.run_id}: name does not link to its model page (${want})`);
+    }
+  }
+}
+
 /* ---------- verdict ---------- */
 
 if (failures.length > 0) {
@@ -1054,5 +1456,5 @@ if (failures.length > 0) {
   process.exit(1);
 }
 console.log(
-  `integrity check passed: ${counts.results} rows, counts ${counts.tested}/${counts.ranked}/${counts.flagged}, ${taxChecked} taxes recomputed (max deviation ${taxMaxDev.toFixed(5)}), ${expectedBands} tie brackets`,
+  `integrity check passed: ${counts.results} rows, counts ${counts.tested}/${counts.ranked}/${counts.flagged}, ${taxChecked} taxes recomputed (max deviation ${taxMaxDev.toFixed(5)}), ${expectedBands} tie brackets, compare dataset and ${cmpPairsChecked} rendered deltas verified`,
 );
