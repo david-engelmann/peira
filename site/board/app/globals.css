@@ -1,0 +1,1984 @@
+/* Ledger design tokens, design system section 3. Provisional skin
+   for the round 8 prototype. The tokens and type rules are the
+   design system's; section composition lands at the round 10 gate. */
+
+@font-face {
+  font-family: "Archivo";
+  font-style: normal;
+  font-weight: 400 800;
+  font-display: swap;
+  src: url("/fonts/archivo.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "JetBrains Mono";
+  font-style: normal;
+  font-weight: 400 700;
+  font-display: swap;
+  src: url("/fonts/jetbrains-mono.woff2") format("woff2");
+}
+
+:root {
+  --ground: #0a0c0f;
+  --panel: #10141a;
+  --raised: #171d24;
+  --hairline: #232c35;
+  --ink-1: #e9eef3;
+  --ink-2: #aebcc7;
+  --ink-3: #71808f;
+  --accent: #2fbf71;
+  --amber: #e8a33d;
+  --red: #ff6a3d;
+
+  --font-data: "Archivo", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+
+  /* Ranking grid geometry, shared by rows, band blocks and the
+     axis strips so every chart cell aligns on one axis. */
+  --micro: 11.5px;
+  --rail-w: 68px;
+  --rank-w: 44px;
+  --name-w: minmax(180px, 290px);
+  --value-w: 96px;
+  --row-gap: 16px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  background: var(--ground);
+  color: var(--ink-1);
+  font-family: var(--font-data);
+  font-size: 14.5px;
+  line-height: 1.45;
+}
+
+.num {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
+}
+
+.mono {
+  font-family: var(--font-mono);
+}
+
+.page {
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 0 24px 96px;
+}
+
+/* Masthead, prototype placeholder. Round 11 builds the real one. */
+
+.masthead {
+  padding: 28px 0 20px;
+  border-bottom: 1px solid var(--hairline);
+}
+
+.masthead-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 24px;
+}
+
+/* The wordmark block is the only green on the page (owner
+   ruling, round 8 feedback). Every other accent usage in the
+   system resolves to ink tones. */
+
+.wordmark {
+  font-size: 20px;
+  font-weight: 650;
+  letter-spacing: 0.02em;
+  margin: 0;
+  color: var(--accent);
+}
+
+.claim {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--accent);
+  margin: 4px 0 0;
+}
+
+.stamp {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  color: var(--ink-3);
+  margin: 4px 0 0;
+  text-align: right;
+}
+
+/* Findings strip. A newspaper band across the page (owner
+   ruling, round 8 feedback), a heavy rule over a hairline, the
+   finding set as a headline and the counts as its deck. */
+
+.findings {
+  margin-top: 22px;
+  border-top: 2px solid var(--ink-1);
+  border-bottom: 1px solid var(--hairline);
+  padding: 18px 0 16px;
+}
+
+.finding {
+  font-size: 23px;
+  font-weight: 600;
+  line-height: 1.35;
+  max-width: 46ch;
+  margin: 0;
+}
+
+.counts-line {
+  color: var(--ink-2);
+  max-width: 68ch;
+  margin: 10px 0 0;
+}
+
+/* Section heading system */
+
+.section {
+  margin-top: 64px;
+}
+
+.section-label {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--ink-2);
+  margin: 0 0 8px;
+}
+
+.section-title {
+  font-size: 20px;
+  font-weight: 650;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  margin: 0 0 12px;
+}
+
+.section-lede {
+  color: var(--ink-2);
+  max-width: 68ch;
+  margin: 0;
+}
+
+/* Ranking groups */
+
+.rank-group {
+  margin-top: 40px;
+}
+
+.group-head {
+  display: flex;
+  align-items: baseline;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-bottom: 4px;
+}
+
+.group-label {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--ink-1);
+  margin: 0;
+}
+
+.group-caption {
+  color: var(--ink-2);
+  margin: 0;
+  max-width: 68ch;
+}
+
+/* Axis strip. A row of the shared grid whose chart cell carries
+   the tick labels, so the ticks sit exactly over the data axis. */
+
+.axis-row {
+  display: flex;
+}
+
+.axis-grid {
+  flex: 1;
+  min-width: 0;
+}
+
+.axis-cell {
+  position: relative;
+  height: 16px;
+}
+
+.axis-title {
+  font-size: 11.5px;
+  color: var(--ink-3);
+  margin-bottom: 2px;
+}
+
+.axis-tick {
+  position: absolute;
+  bottom: 0;
+  transform: translateX(-50%);
+  font-size: 11.5px;
+  color: var(--ink-3);
+  font-variant-numeric: tabular-nums;
+}
+
+.axis-tick.first {
+  transform: none;
+}
+
+.axis-tick.last {
+  transform: translateX(-100%);
+}
+
+/* Band blocks. A flex row of rail plus rows. The rail stretches
+   the height of its rows, so a bracket spans exactly its band at
+   any width, with no measured offsets. */
+
+.band-block {
+  display: flex;
+}
+
+.rail {
+  flex: 0 0 var(--rail-w);
+  position: relative;
+}
+
+.rail-rule {
+  position: absolute;
+  left: 8px;
+  top: 6px;
+  bottom: 6px;
+  width: 0;
+  border-left: 1px solid var(--ink-3);
+}
+
+.rail-rule::before,
+.rail-rule::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  width: 7px;
+  border-top: 1px solid var(--ink-3);
+}
+
+.rail-rule::before {
+  top: 0;
+}
+
+.rail-rule::after {
+  bottom: 0;
+}
+
+.rail-label {
+  position: absolute;
+  left: 22px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--ink-2);
+  white-space: nowrap;
+}
+
+.rows {
+  flex: 1;
+  position: relative;
+  min-width: 0;
+}
+
+/* One ranking row (owner layout, round 8 feedback). A main
+   block of two lines, name over a mono data line, a right
+   block with the headline rate over its precise figure and
+   interval, and an interval strip across the full row width
+   on the shared axis. */
+
+.rank-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  grid-template-areas:
+    "main value"
+    "chart chart";
+  column-gap: 28px;
+  align-items: center;
+  padding: 10px 0 12px;
+  border-bottom: 1px solid color-mix(in srgb, var(--hairline) 45%, transparent);
+  position: relative;
+}
+
+.rank-row:last-child {
+  border-bottom: none;
+}
+
+.row-main {
+  grid-area: main;
+  min-width: 0;
+}
+
+.row-line1 {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+}
+
+.cell-rank {
+  flex: 0 0 26px;
+  font-size: 13.5px;
+  font-weight: 500;
+  color: var(--ink-2);
+  font-variant-numeric: tabular-nums;
+}
+
+.flag-tag {
+  display: inline-block;
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.09em;
+  color: var(--amber);
+  border: 1px solid var(--amber);
+  border-radius: 3px;
+  padding: 0 4px;
+  line-height: 1.3;
+  margin-right: 8px;
+  vertical-align: 1px;
+}
+
+.cell-name {
+  min-width: 0;
+}
+
+.name-line {
+  font-size: 15.5px;
+  font-weight: 550;
+  color: var(--ink-1);
+  line-height: 1.25;
+  overflow-wrap: break-word;
+}
+
+.wire-line {
+  font-size: 11.5px;
+  color: var(--ink-3);
+  line-height: 1.25;
+}
+
+.meta-line {
+  font-size: 11.5px;
+  color: var(--ink-2);
+  line-height: 1.3;
+  margin-top: 2px;
+}
+
+.meta-line.flagged {
+  color: var(--amber);
+}
+
+.data-line {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 0;
+  margin-top: 6px;
+  margin-left: 38px;
+  font-size: 11.5px;
+  letter-spacing: 0.03em;
+  line-height: 1.5;
+}
+
+.dl-sep {
+  color: var(--ink-3);
+  padding: 0 9px;
+}
+
+.dl-k {
+  color: var(--ink-3);
+}
+
+.dl-v {
+  color: var(--ink-1);
+}
+
+/* The right block */
+
+.cell-value {
+  grid-area: value;
+  text-align: right;
+  align-self: center;
+}
+
+.value-main {
+  font-size: 27px;
+  font-weight: 600;
+  color: var(--ink-1);
+  font-variant-numeric: tabular-nums;
+  line-height: 1.1;
+}
+
+.value-sub {
+  font-size: 11px;
+  color: var(--ink-2);
+  font-variant-numeric: tabular-nums;
+  line-height: 1.3;
+  margin-top: 4px;
+  white-space: nowrap;
+}
+
+.cell-value.flagged .value-main,
+.cell-value.flagged .value-sub {
+  color: var(--amber);
+}
+
+/* The interval strip. Children are positioned by percent of
+   the shared 0 to 30 axis. The whisker line stops 2 px short
+   of each cap center, so the caps stand clear of the line and
+   nothing passes through them (owner ruling). */
+
+.cell-chart {
+  grid-area: chart;
+  position: relative;
+  height: 16px;
+  margin-top: 4px;
+}
+
+.whisker {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  height: 2px;
+  background: var(--ink-1);
+}
+
+.whisker-cap {
+  position: absolute;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: 2px;
+  height: 11px;
+  background: var(--ink-1);
+}
+
+.estimate-dot {
+  position: absolute;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--ink-1);
+}
+
+.estimate-dot.hollow {
+  background: var(--ground);
+  border: 1.5px solid var(--ink-1);
+  width: 6px;
+  height: 6px;
+}
+
+.cell-chart.slice .whisker,
+.cell-chart.slice .whisker-cap {
+  background: var(--ink-2);
+}
+
+.cell-chart.flagged .whisker,
+.cell-chart.flagged .whisker-cap,
+.cell-chart.flagged .estimate-dot {
+  background: var(--amber);
+}
+
+.not-measured {
+  color: var(--ink-3);
+  text-align: center;
+}
+
+.proto-note {
+  margin-top: 64px;
+  padding-top: 16px;
+  border-top: 1px solid var(--hairline);
+  font-size: 11.5px;
+  color: var(--ink-3);
+  max-width: 68ch;
+}
+
+/* Mobile. The row keeps its two blocks, the data line wraps
+   under the name, and the interval strip stays at full row
+   width. Brackets narrow to a 14 px rail and keep their rule;
+   the bracket word yields to the gutter width. */
+
+@media (max-width: 760px) {
+  :root {
+    --rail-w: 14px;
+  }
+
+  .page {
+    padding: 0 16px 64px;
+  }
+
+  .rail-label {
+    display: none;
+  }
+
+  .rail-rule {
+    left: 2px;
+  }
+
+  .rank-row {
+    grid-template-columns: minmax(0, 1fr) fit-content(150px);
+    column-gap: 14px;
+    padding: 8px 0 10px;
+  }
+
+  .cell-value {
+    min-width: 0;
+  }
+
+  .data-line {
+    margin-left: 0;
+  }
+
+  .value-main {
+    font-size: 21px;
+  }
+
+  .value-sub {
+    white-space: normal;
+  }
+
+  .finding {
+    font-size: 19px;
+  }
+}
+
+/* Trust furniture, identification, and access basics. */
+.skip {
+  position: absolute;
+  left: -9999px;
+  top: 0;
+  background: var(--raised);
+  color: var(--ink-1);
+  padding: 10px 16px;
+  z-index: 50;
+}
+.skip:focus {
+  left: 8px;
+  top: 8px;
+}
+:focus-visible {
+  outline: 2px solid var(--ink-1);
+  outline-offset: 2px;
+}
+.links-line {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 28px;
+  margin-top: 14px;
+}
+.links-line a {
+  color: var(--ink-1);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  padding: 6px 2px;
+}
+.chart-id {
+  margin-top: 18px;
+  font-size: var(--micro);
+  color: var(--ink-3);
+}
+.proto-note p {
+  margin: 0 0 10px;
+}
+.proto-note p:last-child {
+  margin-bottom: 0;
+}
+
+/* Round 9 chart suite. Scatter, heatmap, calibration, on the
+   Ledger tokens. */
+
+:root {
+  --heat-name-w: 240px;
+}
+
+/* Scatter */
+
+.scatter-svg {
+  width: 100%;
+  height: auto;
+  display: block;
+  margin-top: 20px;
+}
+.rail-strip {
+  fill: var(--panel);
+}
+.grid-line {
+  stroke: var(--hairline);
+  stroke-opacity: 0.55;
+}
+.grid-label {
+  fill: var(--ink-3);
+  font-size: 11.5px;
+}
+.rail-divider,
+.axis-line {
+  stroke: var(--hairline);
+}
+.tick-label {
+  fill: var(--ink-3);
+  font-size: 11.5px;
+}
+.rail-head {
+  fill: var(--ink-2);
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+}
+.axis-caption {
+  fill: var(--ink-3);
+  font-size: 11.5px;
+}
+.pt-ranked {
+  fill: var(--ink-1);
+}
+.pt-flagged {
+  fill: var(--ground);
+  stroke: var(--amber);
+  stroke-width: 1.5;
+}
+.pt-badge .pt-ranked,
+.pt-badge .pt-flagged {
+  fill: var(--panel);
+  stroke-width: 1.25;
+}
+.pt-badge .pt-ranked {
+  stroke: var(--ink-1);
+}
+.pt-badge .pt-flagged {
+  stroke: var(--amber);
+}
+.pt-badge-num {
+  fill: var(--ink-1);
+  font-size: 9.5px;
+  font-weight: 650;
+  text-anchor: middle;
+  dominant-baseline: central;
+}
+.lb-tick line {
+  stroke: var(--ink-2);
+  stroke-width: 1.5;
+}
+.lb-tick polygon {
+  fill: var(--ink-2);
+}
+.scatter-label {
+  fill: var(--ink-2);
+  font-size: 11.5px;
+  font-weight: 550;
+}
+.leader {
+  stroke: var(--ink-3);
+  stroke-width: 1;
+  stroke-opacity: 0.7;
+}
+.chart-captions {
+  color: var(--ink-2);
+  max-width: 68ch;
+  margin-top: 16px;
+}
+.chart-captions p {
+  margin: 0 0 10px;
+}
+.chart-captions p:last-child {
+  margin-bottom: 0;
+}
+.keyed-box {
+  margin-top: 14px;
+  border: 1px solid var(--hairline);
+  padding: 12px 16px;
+}
+.keyed-head {
+  font-size: var(--micro);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-2);
+  margin: 0 0 8px;
+}
+.keyed-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 4px 24px;
+}
+.keyed-item {
+  display: flex;
+  gap: 10px;
+  align-items: baseline;
+  font-size: 12.5px;
+  padding: 3px 0;
+  min-width: 0;
+}
+.keyed-num {
+  flex: 0 0 22px;
+  color: var(--ink-3);
+}
+.keyed-name {
+  font-weight: 550;
+  white-space: nowrap;
+}
+.keyed-meta {
+  color: var(--ink-2);
+}
+.scatter-phone {
+  display: none;
+}
+
+/* Heatmap */
+
+.scroll-hint {
+  display: none;
+}
+.heat-scroll {
+  overflow-x: auto;
+  margin-top: 20px;
+  padding-bottom: 6px;
+}
+.heat-grid {
+  display: grid;
+  gap: 2px;
+  min-width: 1128px;
+}
+.heat-corner {
+  position: sticky;
+  left: 0;
+  z-index: 3;
+  background: var(--ground);
+  color: var(--ink-3);
+  font-size: var(--micro);
+  display: flex;
+  align-items: flex-end;
+  padding: 0 10px 6px 2px;
+}
+.heat-head {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--ink-2);
+  white-space: nowrap;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding-bottom: 6px;
+}
+.heat-group {
+  grid-column: 1 / -1;
+  margin-top: 16px;
+}
+.heat-group-inner {
+  position: sticky;
+  left: 2px;
+  display: inline-flex;
+  gap: 14px;
+  align-items: baseline;
+}
+.heat-group-caption {
+  color: var(--ink-2);
+  font-size: 12.5px;
+}
+.heat-name {
+  position: sticky;
+  left: 0;
+  z-index: 2;
+  background: var(--ground);
+  border-right: 1px solid var(--hairline);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 10px 0 2px;
+  min-height: 26px;
+  font-size: 12.5px;
+  font-weight: 550;
+  white-space: nowrap;
+}
+.heat-cell {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 26px;
+  font-size: 12.5px;
+  font-weight: 600;
+  border-radius: 2px;
+}
+.heat-cell.na {
+  background: #12151a;
+  color: var(--ink-3);
+  font-weight: 400;
+  font-size: 15px;
+}
+.heat-legend {
+  display: flex;
+  gap: 20px;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  margin-top: 16px;
+}
+.heat-scale {
+  display: flex;
+  gap: 10px;
+  padding-top: 2px;
+}
+.heat-swatch-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+}
+.heat-swatch {
+  width: 30px;
+  height: 14px;
+  border-radius: 2px;
+  display: block;
+}
+.heat-swatch-label {
+  font-size: 11px;
+  color: var(--ink-3);
+}
+.heat-legend-note {
+  color: var(--ink-2);
+  max-width: 64ch;
+  margin: 0;
+  font-size: 12.5px;
+}
+
+/* Calibration */
+
+.cal-layout {
+  display: grid;
+  grid-template-columns: 256px 1fr;
+  gap: 24px;
+  margin-top: 24px;
+  align-items: start;
+}
+.cal-rail {
+  position: sticky;
+  top: 60px;
+}
+.cal-rail-head {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--ink-1);
+  margin: 0 0 6px;
+}
+.cal-rail-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.cal-rail-link {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 2px 10px;
+  padding: 5px 0;
+  border-bottom: 1px solid
+    color-mix(in srgb, var(--hairline) 45%, transparent);
+  text-decoration: none;
+  color: inherit;
+}
+.cal-rail-name {
+  font-size: 11.5px;
+  font-weight: 550;
+  /* Names wrap at hyphens here as everywhere else on the
+     page. The rail once held them on one line under nowrap
+     and overflow hidden, which fit at rest with no slack and
+     clipped the longest name outright under the WCAG text
+     spacing overrides (AX-04). Wrapping costs nothing at
+     rest, where every name fits its line, and loses nothing
+     under the overrides. */
+  overflow-wrap: break-word;
+}
+.cal-rail-ece {
+  color: var(--ink-2);
+  font-size: 11.5px;
+}
+.cal-rail-bar {
+  grid-column: 1 / -1;
+  height: 3px;
+  background: color-mix(in srgb, var(--hairline) 60%, transparent);
+}
+.cal-rail-bar span {
+  display: block;
+  height: 100%;
+  background: var(--ink-3);
+}
+.cal-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 16px;
+}
+.cal-panel {
+  background: var(--panel);
+  border: 1px solid var(--hairline);
+  border-radius: 4px;
+  padding: 12px 10px 8px;
+  min-width: 0;
+}
+.cal-head {
+  min-height: 40px;
+}
+.cal-name {
+  font-size: 12.5px;
+  font-weight: 600;
+  margin: 0;
+  /* The header is a flex row: the name wraps inside its own
+     column and the slice tag holds the top right corner, so a
+     long name never strands its last word beside the tag on a
+     second line (live-fix round, 2026-10-23). */
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+.cal-name-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  /* Names wrap at the narrower column widths rather than
+     clipping (round 10 compaction; the name policy forbids
+     truncation, and a wrapped name loses nothing). */
+  overflow-wrap: break-word;
+  /* Balanced wrapping keeps a wrapped name's lines near even,
+     so a short final segment (the 4B of Qwen3Guard-Gen-4B, the
+     125m of granite-guardian-hap-125m) never stands alone on
+     its line (round 40). Where balance is unsupported the wrap
+     falls back to the ordinary break, which loses nothing. */
+  text-wrap: balance;
+}
+.cal-name .slice-tag {
+  flex: none;
+  margin-left: 0;
+}
+.slice-tag {
+  display: inline-block;
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.09em;
+  color: var(--ink-3);
+  border: 1px solid var(--ink-3);
+  border-radius: 3px;
+  padding: 0 4px;
+  line-height: 1.3;
+  margin-left: 8px;
+  vertical-align: 1px;
+  text-transform: uppercase;
+}
+.cal-panel.long .cal-name {
+  font-size: 11px;
+}
+.cal-meta {
+  font-size: 11.5px;
+  color: var(--ink-2);
+  margin: 3px 0 6px;
+}
+.cal-note {
+  font-size: 11.5px;
+  line-height: 1.45;
+  color: var(--ink-2);
+  margin: 0 0 6px;
+}
+.cal-svg {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+.cal-svg text {
+  fill: var(--ink-3);
+  font-size: 10.5px;
+}
+.cal-diag {
+  stroke: var(--ink-3);
+  stroke-width: 1;
+  stroke-dasharray: 3 3;
+  opacity: 0.65;
+}
+.cal-axis {
+  stroke: var(--hairline);
+}
+.cal-dot {
+  fill: var(--ink-1);
+}
+/* Axis ticks belong to the grid's edge panels. CSS owns the
+ * edges because the column count is a CSS decision (four
+ * across on desktop, two on phone, round 10 compaction); the
+ * component renders the tick groups on every panel and these
+ * rules choose which ones show. */
+.cal-panel .tk-y,
+.cal-panel .tk-x {
+  display: none;
+}
+.cal-panel:nth-child(4n + 1) .tk-y {
+  display: block;
+}
+.cal-panel:nth-last-child(-n + 4) .tk-x {
+  display: block;
+}
+.cal-empty {
+  border: 1px dashed var(--hairline);
+  padding: 14px;
+  color: var(--ink-2);
+  font-size: 12.5px;
+  min-height: 120px;
+}
+.cal-empty p {
+  margin: 0;
+}
+
+@media (max-width: 760px) {
+  .scatter-wide {
+    display: none;
+  }
+  .scatter-phone {
+    display: block;
+  }
+  .keyed-list.phone-key {
+    grid-template-columns: 1fr 1fr;
+    gap: 2px 14px;
+    margin-top: 10px;
+  }
+  .keyed-item {
+    font-size: 11.5px;
+    flex-wrap: wrap;
+    gap: 2px 8px;
+  }
+  .scatter-phone .keyed-head {
+    text-transform: none;
+    letter-spacing: 0;
+    font-size: 12.5px;
+    font-weight: 400;
+    color: var(--ink-2);
+    margin-bottom: 4px;
+  }
+  .phone-key .keyed-item {
+    display: block;
+    padding: 4px 0;
+  }
+  .phone-key .keyed-num {
+    display: inline-block;
+    width: 22px;
+  }
+  .phone-key .keyed-meta {
+    display: flex;
+    flex-wrap: wrap;
+    margin: 2px 0 0 32px;
+  }
+  .heat-group-inner {
+    display: block;
+    max-width: calc(100vw - 52px);
+  }
+  .heat-group-caption {
+    display: block;
+    margin-top: 2px;
+  }
+  .scroll-hint {
+    display: block;
+    color: var(--ink-3);
+    font-size: var(--micro);
+    margin: 14px 0 0;
+  }
+  .cal-layout {
+    grid-template-columns: 1fr;
+  }
+  .cal-rail {
+    position: static;
+  }
+  .cal-rail-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 16px;
+  }
+  .cal-rail-link {
+    border-bottom: none;
+    padding: 3px 0;
+    display: flex;
+    gap: 8px;
+    align-items: baseline;
+  }
+  .cal-rail-bar {
+    display: none;
+  }
+  .cal-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  /* Phone edges for the two-across grid: the desktop rules
+   * would leave x ticks on the third and fourth panels from
+   * the end, so the axis is restated in full here. */
+  .cal-panel .tk-y,
+  .cal-panel .tk-x {
+    display: none;
+  }
+  .cal-panel:nth-child(2n + 1) .tk-y {
+    display: block;
+  }
+  .cal-panel:nth-last-child(-n + 2) .tk-x {
+    display: block;
+  }
+}
+
+/* Round 10. Malformed, model detail, method, footer, and the
+   per-model pages, on the Ledger tokens. */
+
+.lede-pointer {
+  margin-top: 8px;
+}
+.lede-pointer a,
+.board-footer a,
+.back-line a,
+.card-nav a {
+  color: var(--ink-1);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+/* Keyed phrases wrap only at phrase boundaries (round 9
+   deviation fix). */
+.keyed-meta {
+  display: inline-flex;
+  flex-wrap: wrap;
+}
+.keyed-phrase {
+  white-space: nowrap;
+}
+
+/* Malformed. Rows follow the ranking's rhythm: a name line with
+   the value at the right, then a full width bar strip. The
+   admission line is one continuous overlay across the strips. */
+
+.mal-axis {
+  position: relative;
+  height: 34px;
+  margin-top: 18px;
+}
+.mal-limit-label {
+  position: absolute;
+  top: 0;
+  transform: translateX(8px);
+  font-size: var(--micro);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-2);
+  white-space: nowrap;
+}
+.mal-tick {
+  position: absolute;
+  bottom: 0;
+  transform: translateX(-50%);
+  font-size: 11.5px;
+  color: var(--ink-3);
+}
+.mal-tick.first {
+  transform: none;
+}
+.mal-tick.last {
+  transform: translateX(-100%);
+}
+.mal-rows {
+  position: relative;
+}
+.mal-line {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 0;
+  border-left: 1px solid var(--ink-2);
+  opacity: 0.55;
+  z-index: 2;
+  pointer-events: none;
+}
+.mal-row {
+  padding: 5px 0 6px;
+  border-bottom: 1px solid
+    color-mix(in srgb, var(--hairline) 45%, transparent);
+  position: relative;
+}
+.mal-row:last-child {
+  border-bottom: none;
+}
+.mal-line1 {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+}
+.mal-value {
+  font-size: 15.5px;
+  font-weight: 600;
+  color: var(--ink-1);
+}
+.mal-value.flagged {
+  color: var(--amber);
+}
+.mal-track {
+  position: relative;
+  height: 10px;
+  margin-top: 3px;
+  background: var(--panel);
+  border-radius: 2px;
+}
+.mal-fill {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  background: var(--ink-2);
+  border-right: 2px solid var(--ink-1);
+  border-radius: 2px 0 0 2px;
+}
+.mal-fill.flagged {
+  background: transparent;
+  border: 1px solid var(--amber);
+  border-radius: 2px;
+}
+.mal-fill.over {
+  background: var(--red);
+  border-right-color: var(--red);
+}
+.mal-fold {
+  color: var(--ink-2);
+  max-width: 68ch;
+  margin: 14px 0 0;
+}
+
+/* Model detail. The index row is a details summary; the card
+   opens in place under it. Anchors land on the summary, which
+   is the card header, with scroll margin (foundation items 8
+   and 9). */
+
+.card-controls {
+  display: flex;
+  gap: 10px;
+  margin-top: 18px;
+}
+.card-controls button {
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--ink-1);
+  background: var(--panel);
+  border: 1px solid var(--hairline);
+  border-radius: 6px;
+  padding: 8px 14px;
+  min-height: 44px;
+  cursor: pointer;
+}
+.card-controls button:hover {
+  background: var(--raised);
+}
+.model-group {
+  margin-top: 32px;
+}
+.model-item {
+  border-bottom: 1px solid
+    color-mix(in srgb, var(--hairline) 45%, transparent);
+  scroll-margin-top: 64px;
+}
+#models {
+  scroll-margin-top: 64px;
+}
+.index-row {
+  display: block;
+  cursor: pointer;
+  list-style: none;
+  padding: 9px 0 10px;
+  min-height: 44px;
+}
+.index-row::-webkit-details-marker {
+  display: none;
+}
+.index-row:hover {
+  background: color-mix(in srgb, var(--raised) 55%, transparent);
+}
+.idx-line1 {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+}
+.idx-name {
+  font-size: 15.5px;
+  font-weight: 550;
+  color: var(--ink-1);
+  line-height: 1.25;
+  min-width: 0;
+  overflow-wrap: break-word;
+}
+.idx-name .wire-line {
+  font-size: 11.5px;
+  font-weight: 400;
+}
+.idx-toggle {
+  margin-left: auto;
+  flex: 0 0 auto;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--ink-2);
+}
+.idx-toggle::after {
+  content: "›";
+  display: inline-block;
+  margin-left: 6px;
+  transition: transform 0.15s ease;
+}
+.model-item[open ] .idx-toggle::after {
+  transform: rotate(90deg);
+}
+.idx-line2 {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 0;
+  margin-top: 5px;
+  margin-left: 38px;
+  font-size: 11.5px;
+  letter-spacing: 0.03em;
+  line-height: 1.5;
+  color: var(--ink-1);
+}
+
+/* The expanded card. A panel, per the surface rules (it holds
+   a coordinate system of spark bars and a fixed anatomy). */
+
+.card-body {
+  background: var(--panel);
+  border: 1px solid var(--hairline);
+  border-radius: 6px;
+  padding: 18px 20px 16px;
+  margin: 4px 0 14px;
+}
+.model-item[open ] {
+  border-bottom: none;
+}
+.card-statement {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--ink-1);
+  margin: 0;
+}
+.card-model-id {
+  font-size: 13.5px;
+  color: var(--ink-1);
+  margin: 8px 0 0;
+  overflow-wrap: anywhere;
+}
+.card-wire {
+  color: var(--ink-2);
+  margin: 3px 0 0;
+}
+.card-reason {
+  color: var(--ink-2);
+  max-width: 68ch;
+  margin: 8px 0 0;
+}
+.card-reason.flagged {
+  color: var(--amber);
+}
+.card-headline {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 18px 40px;
+  margin-top: 18px;
+  padding-top: 14px;
+  border-top: 1px solid var(--hairline);
+}
+.hl-fig {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.hl-label,
+.stat-label,
+.sev-label {
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+.hl-value {
+  font-size: 23px;
+  font-weight: 600;
+  line-height: 1.15;
+}
+.hl-sub,
+.stat-sub,
+.sev-base {
+  font-size: 11.5px;
+  color: var(--ink-2);
+}
+.stat-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px 28px;
+  margin-top: 18px;
+  padding-top: 14px;
+  border-top: 1px solid var(--hairline);
+}
+.stat {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+.stat-value {
+  font-size: 15.5px;
+  font-weight: 600;
+}
+.not-measured-inline {
+  color: var(--ink-3);
+}
+.card-subhead {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--ink-1);
+  margin: 20px 0 8px;
+  padding-top: 14px;
+  border-top: 1px solid var(--hairline);
+}
+.spark-list {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.spark-row {
+  display: grid;
+  grid-template-columns: 190px 1fr 34px;
+  gap: 12px;
+  align-items: center;
+}
+.spark-name {
+  font-size: 12.5px;
+  color: var(--ink-2);
+  white-space: nowrap;
+}
+.spark-track {
+  position: relative;
+  height: 9px;
+  background: color-mix(in srgb, var(--hairline) 55%, transparent);
+  border-radius: 2px;
+}
+.spark-fill {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  background: var(--ink-1);
+  border-radius: 2px 0 0 2px;
+}
+.spark-fill.worst {
+  background: var(--red);
+}
+.spark-slot {
+  display: block;
+  text-align: center;
+  color: var(--ink-3);
+  line-height: 9px;
+}
+.spark-value {
+  font-size: 12.5px;
+  font-weight: 600;
+  text-align: right;
+}
+.spark-value.worst {
+  color: var(--red);
+}
+.sev-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px 28px;
+}
+.sev-item {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.sev-value {
+  font-size: 19px;
+  font-weight: 600;
+  line-height: 1.2;
+}
+.tax-line {
+  color: var(--ink-2);
+  max-width: 68ch;
+  margin: 18px 0 0;
+  padding-top: 14px;
+  border-top: 1px solid var(--hairline);
+}
+.prov {
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid var(--hairline);
+  font-size: 11.5px;
+  line-height: 1.55;
+  color: var(--ink-3);
+  overflow-wrap: anywhere;
+}
+.prov p {
+  margin: 0;
+}
+.card-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 28px;
+  margin: 16px 0 0;
+}
+.card-nav a {
+  padding: 6px 2px;
+}
+
+/* Method */
+
+.method-head {
+  font-size: 15.5px;
+  font-weight: 650;
+  color: var(--ink-1);
+  margin: 18px 0 6px;
+}
+.method-p {
+  color: var(--ink-2);
+  max-width: 68ch;
+  margin: 0;
+}
+
+/* Footer */
+
+.board-footer {
+  margin-top: 72px;
+  padding-top: 18px;
+  border-top: 1px solid var(--hairline);
+  color: var(--ink-2);
+  max-width: 68ch;
+}
+.board-footer p {
+  margin: 0 0 12px;
+}
+.board-footer p:last-child {
+  margin-bottom: 0;
+}
+
+/* Per-model pages */
+
+.back-line {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 28px;
+  margin: 18px 0 0;
+}
+.back-line a {
+  padding: 6px 2px;
+}
+.model-page-title {
+  font-size: 26px;
+  font-weight: 650;
+  margin: 14px 0 4px;
+  overflow-wrap: break-word;
+}
+.model-page-wire {
+  font-size: 15.5px;
+  font-weight: 400;
+  color: var(--ink-2);
+}
+.model-card.standalone {
+  margin-top: 18px;
+}
+
+@media (min-width: 761px) {
+  /* One-line index rows on desktop (round 10 compaction). The
+     summary becomes a single flex row: rank, name, the figure
+     line, and the toggle pinned right. No type shrinks; the
+     stacked second line was the whole cost, and the 44 px
+     minimum height keeps the tap target. */
+  .index-row {
+    display: flex;
+    align-items: baseline;
+    gap: 12px;
+    padding: 10px 0 11px;
+  }
+  .idx-line1 {
+    display: contents;
+  }
+  .idx-line2 {
+    order: 2;
+    margin: 0;
+  }
+  .idx-toggle {
+    order: 3;
+  }
+}
+
+@media (max-width: 760px) {
+  .idx-line2 {
+    margin-left: 0;
+  }
+  .card-body {
+    padding: 14px 14px 12px;
+  }
+  .stat-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .sev-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .spark-row {
+    grid-template-columns: 128px 1fr 30px;
+    gap: 8px;
+  }
+  .mal-limit-label {
+    transform: translateX(6px);
+  }
+}
+
+@media (max-width: 340px) {
+  .stat-grid,
+  .sev-grid {
+    grid-template-columns: 1fr;
+  }
+  .spark-row {
+    grid-template-columns: 108px 1fr 30px;
+  }
+}
+
+/* Round 11. The sticky section bar, the ranking name links,
+   and compare. Anchored targets take a 64 px scroll margin,
+   the bar's height plus air, so a jump never lands a heading
+   under the bar (WCAG 2.2 focus not obscured, by
+   construction). */
+
+.section[id] {
+  scroll-margin-top: 64px;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+/* Section bar. Sticky under the masthead, a hairline and
+   eight short labels, nothing more. On phones the same bar
+   scrolls sideways in its sticky position (design 2.1). The
+   active link carries an ink rule drawn by a bottom border
+   present in both states, so the scrollspy never shifts the
+   bar's layout. */
+
+.section-nav {
+  position: sticky;
+  top: 0;
+  z-index: 40;
+  background: var(--ground);
+  border-bottom: 1px solid var(--hairline);
+  margin: 0 -24px;
+  padding: 0 24px;
+}
+
+.section-nav-inner {
+  display: flex;
+  gap: 2px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.section-nav-inner::-webkit-scrollbar {
+  display: none;
+}
+
+.section-nav-link {
+  flex: 0 0 auto;
+  font-size: 12.5px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--ink-2);
+  text-decoration: none;
+  padding: 12px 10px 10px;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+}
+
+.section-nav-link:hover {
+  color: var(--ink-1);
+}
+
+.section-nav-link.active {
+  color: var(--ink-1);
+  border-bottom-color: var(--ink-1);
+}
+
+/* Phone widths: the bar bleeds to the page edge with a
+   negative margin matched to the page padding, which is
+   16 px under the mobile rules, not the desktop 24. This
+   override sits after the base rule so it wins the cascade
+   at equal specificity; at the desktop margin the bar
+   measured 406 px in a 390 px viewport and pushed the
+   document 8 px wide (convergence re-audit R-1, live-fix
+   round 2026-10-23). */
+@media (max-width: 760px) {
+  .section-nav {
+    margin: 0 -16px;
+    padding: 0 16px;
+  }
+}
+
+/* Ranking names link to the model's own page. The name is
+   the link, so the row's text stays selectable and the
+   global ink focus outline serves as the focus state. */
+
+.name-link {
+  /* The link stands alone on the name line as the row's
+     navigation target, so the WCAG 2.5.8 inline case does
+     not cover it (convergence record, round 12): the box
+     carries the full 24 px target height in layout. */
+  display: inline-block;
+  min-height: 24px;
+  color: inherit;
+  text-decoration: none;
+}
+
+.name-link:hover {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+/* Compare (design 4.6). Pickers, a metric table with a
+   centre delta column, and paired family bars on the shared
+   0 to 100 percent scale. */
+
+.cmp {
+  margin-top: 26px;
+}
+
+.cmp-pickers {
+  display: flex;
+  align-items: flex-end;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.cmp-picker label {
+  display: block;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--ink-2);
+  margin-bottom: 6px;
+}
+
+.cmp-picker select {
+  font: inherit;
+  font-size: 14px;
+  color: var(--ink-1);
+  background: var(--panel);
+  border: 1px solid var(--hairline);
+  border-radius: 6px;
+  padding: 9px 10px;
+  min-height: 44px;
+  max-width: 320px;
+}
+
+.cmp-swap {
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--ink-1);
+  background: var(--panel);
+  border: 1px solid var(--hairline);
+  border-radius: 6px;
+  padding: 8px 14px;
+  min-height: 44px;
+  cursor: pointer;
+}
+
+.cmp-swap:hover {
+  background: var(--raised);
+}
+
+.cmp-banner {
+  border-left: 2px solid var(--ink-2);
+  padding-left: 12px;
+  color: var(--ink-1);
+  max-width: 68ch;
+  margin: 20px 0 0;
+}
+
+.cmp-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 22px;
+}
+
+.cmp-table th,
+.cmp-table td {
+  padding: 8px 10px;
+  border-bottom: 1px solid
+    color-mix(in srgb, var(--hairline) 45%, transparent);
+  vertical-align: baseline;
+}
+
+.cmp-table thead th {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--ink-2);
+  text-align: right;
+}
+
+.cmp-table thead th.cmp-th-metric {
+  text-align: left;
+}
+
+.cmp-th-wire {
+  display: block;
+  font-size: 11.5px;
+  font-weight: 400;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--ink-3);
+}
+
+.cmp-metric {
+  font-weight: 500;
+  color: var(--ink-2);
+  text-align: left;
+}
+
+.cmp-val,
+.cmp-delta {
+  text-align: right;
+  font-size: 13.5px;
+}
+
+.cmp-delta {
+  color: var(--ink-2);
+}
+
+.win-dot {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--ink-1);
+  margin-right: 8px;
+  vertical-align: 1px;
+}
+
+.cmp-families {
+  margin-top: 30px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px 44px;
+}
+
+.cmp-fam {
+  display: grid;
+  grid-template-columns: 148px 1fr;
+  gap: 12px;
+  align-items: start;
+  padding: 6px 0;
+  border-bottom: 1px solid
+    color-mix(in srgb, var(--hairline) 45%, transparent);
+}
+
+.cmp-fam-name {
+  font-size: 12.5px;
+  color: var(--ink-2);
+  line-height: 1.3;
+  padding-top: 1px;
+}
+
+.cmp-fam-lines {
+  display: grid;
+  gap: 3px;
+}
+
+.cmp-fam-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 14px;
+}
+
+.cmp-fam-side {
+  width: 10px;
+  font-size: 11px;
+  color: var(--ink-3);
+}
+
+.cmp-fam-track {
+  flex: 1;
+  height: 8px;
+  background: var(--panel);
+}
+
+.cmp-fam-fill {
+  display: block;
+  height: 100%;
+  background: var(--ink-1);
+}
+
+.cmp-fam-line[data-cmpside="b"] .cmp-fam-fill {
+  background: var(--ink-3);
+}
+
+.cmp-fam-val {
+  width: 26px;
+  text-align: right;
+  font-size: 12.5px;
+}
+
+.cmp-note {
+  color: var(--ink-2);
+  max-width: 68ch;
+  margin: 14px 0 0;
+}
+
+@media (max-width: 760px) {
+  .cmp-pickers {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .cmp-picker select {
+    width: 100%;
+    max-width: none;
+  }
+
+  .cmp-swap {
+    align-self: flex-start;
+  }
+
+  .cmp-table th,
+  .cmp-table td {
+    padding: 8px 6px;
+  }
+
+  .cmp-families {
+    grid-template-columns: 1fr;
+  }
+
+  .cmp-fam {
+    grid-template-columns: 118px 1fr;
+    gap: 8px;
+  }
+}
