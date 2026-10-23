@@ -7,6 +7,17 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
 
 ## [Unreleased]
 
+### The results board front end
+
+- `site/board/` now holds the Next.js front end that has served
+  peiratrial.dev since publish 27 (2026-10-23), landed with its
+  gate scripts (the payload integrity check, the transfer budget
+  check, and the DOM audit) and the share image generator. The
+  app renders the pipeline payload in `site/board/data/
+  payload.json` and formats its numbers without recomputing
+  them. Publishing the board is a runbook task, written down in
+  `docs/Board-Publishing.md`.
+
 ### Fixed score probability keys accepted by spelling in the Clef adapter
 
 - Fix-forward for the entry below: the `clef` adapter carried the
