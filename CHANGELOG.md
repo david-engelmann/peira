@@ -63,6 +63,33 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
   carrying the adapter's exact question text returned HTTP 200 on a
   combined call and on each per-primitive call shape.
 
+### Added Inception Mercury Decide adapter (Decisions API)
+
+- New `MercuryDecideAdapter` (entry point `mercury-decide`) for
+  Inception's Mercury Decide decision model on the hosted Decisions
+  API, the model the account's models list serves on the decisions
+  endpoint only. The adapter sends the Jev adapter's question text
+  unchanged and reads the unenveloped response body (`answers`,
+  `model`, `usage`), so the two wires are measured on identical
+  decision spaces.
+- One pinned model is supported. It is named by its full served id,
+  with per-instance version and cache namespace following the pin.
+  It is `mercury-decide`, the typed-decision preview model. The
+  account's chat models and every other id are rejected at
+  construction. The adapter also refuses a response whose echoed
+  `model` differs from the pin, so a measurement can never seal
+  under the wrong model's name.
+- Pricing gains an entry for the model at $0.02 per 1M input tokens
+  with output free, verified against the models list served by
+  Inception's API on 2026-10-16. The pricing table moves to version
+  2026-10-15.5.
+- Live state at landing. The wire shape was verified against the
+  live API on 2026-10-16, before the adapter was written, with a
+  probe call carrying one question of each type. The probe returned
+  HTTP 200 for `mercury-decide` with all three primitives answered.
+  The abstain probability arrived under the `noul` key only. The
+  adapter's first measured exercise is the standard driver canary.
+
 ### Added Strands Decider adapter
 
 - New `strands-decider` adapter for Strands Decider 2B (AWS
