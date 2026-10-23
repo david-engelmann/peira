@@ -760,18 +760,21 @@ score cases are measured by the LLM and Jev adapters.
 
 **`tokenizer for '...' has no single-token id for yes (tried ...) ...`**
 Cause: Shieldstral reads its verdict from the first-token logprobs of
-` yes`/` no`. The loaded tokenizer has no single-token id for either
-spelling, so the probability can't be read honestly. This is a
+`yes`/`no` (the bare spellings first, then ` yes`/` no`). The loaded
+tokenizer has no single-token id for any spelling, so the probability
+can't be read honestly. This is a
 tokenizer/model mismatch, not a retryable failure. Fix: check the
 pinned revision actually matches `mistralai/Shieldstral-1.0-3B`;
 don't substitute tokenizers.
 
-**`tokenizer for 'Qwen/Qwen3Guard-Gen-4B' has no single-token id for Safe (tried ...) ...`**
+**`tokenizer for 'Qwen/Qwen3Guard-Gen-4B' cannot encode label '...'`**
 Cause: Qwen3Guard reads its verdict from the first-token logprobs of
-` Safe`/` Unsafe`/` Controversial`. The loaded tokenizer has no
-single-token id for one of the three label spellings (tried with and
-without the leading space), so the probability can't be read honestly.
-This is a tokenizer/model mismatch, not a retryable failure. Fix:
+its three labels (` Safe`/` Unsafe`/` Controversial`). A label that
+is not a single token in the Qwen3 tokenizer (Controversial is not)
+is represented by the first token of its spaced encoding; this error
+means the loaded tokenizer cannot encode the label at all, so no
+token exists whose probability could stand for it. This is a
+tokenizer/model mismatch, not a retryable failure. Fix:
 check the pinned revision actually matches
 `Qwen/Qwen3Guard-Gen-4B`; don't substitute tokenizers.
 

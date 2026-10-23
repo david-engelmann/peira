@@ -54,6 +54,25 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
   primitive only, like the rest of the HF guardrail family. Both
   checkpoints are gated under the Llama 3.1 Community License.
 
+### HF guardrail adapter repairs landed from the sweep pod
+
+- Shieldstral now loads through `AutoModelForImageTextToText`: the
+  pinned checkpoint ships a `Mistral3Config`, which
+  `AutoModelForCausalLM` refuses on current transformers. The adapter
+  also resolves its yes/no verdict tokens bare-first (`"yes"`/`"no"`,
+  falling back to the spaced spellings): measured on the checkpoint,
+  the bare tokens carry the verdict mass after the adapter's prompt
+  while the spaced variants are effectively never emitted, so the
+  old spaced-first order renormalized numerical noise.
+- Qwen3Guard label resolution now falls back to a label's first
+  token when the label is not a single token in the Qwen3 tokenizer
+  (`Controversial`), instead of raising before it can score; Safe
+  and Unsafe keep the exact single-token path, and a label the
+  tokenizer cannot encode at all still fails closed. All three
+  repairs were proven on the October 2026 sweep pod and produced the
+  sealed Shieldstral and Qwen3Guard-Gen-4B slices; they now land on
+  main with tests.
+
 ### Board facts refreshed to the freeze publish
 
 - The README and the announcement package now state the freeze board with 39 entries covering 38 distinct models, 34 ranked models and 4 flagged models. The refresh adds Mercury Decide and Clef omni as published full-suite results, marks Llama Prompt Guard 2 as measured on the guardrail slice, records that the robustness tax frontier is unchanged, and adds adapter table rows for Mercury Decide and Cerno.

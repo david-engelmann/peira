@@ -351,9 +351,11 @@ class TestShieldstralScoring(unittest.TestCase):
         self.assertEqual(out.decision, "abstain")  # 0.73 >= 0.5
         self.assertAlmostEqual(out.confidence, abs(2 * expected_p - 1))
 
-    def test_leading_space_fallback_to_bare_token(self):
-        # " yes" is multi-token here, so the adapter must fall back to
-        # the exact "yes" id (7) — and " no" (8) wins, giving benign.
+    def test_multi_token_spaced_spelling_subtoken_ignored(self):
+        # " yes" is multi-token here; the score must use the exact
+        # bare "yes" id (7) and never leak the spaced spelling's
+        # first sub-token (3, logit 5.0) into it — and " no" (8)
+        # wins, giving benign.
         logits = [0.0] * 10
         logits[3] = 5.0  # first sub-token of " yes": must be ignored
         logits[8] = 3.0  # " no"
@@ -364,21 +366,44 @@ class TestShieldstralScoring(unittest.TestCase):
         out = adapter.decide(_choice_input(), "abstain", _ctx())
         self.assertEqual(out.decision, "other")
 
-    def test_spaced_token_preferred_over_bare(self):
-        # Both " yes" and "yes" are single tokens with conflicting logits:
-        # the spaced spelling wins (lookup order is (" yes", "yes")).
+    def test_bare_token_preferred_over_spaced(self):
+        # Both "yes" and " yes" are single tokens with conflicting
+        # logits: the BARE spelling wins (lookup order is
+        # ("yes", " yes")). Pod measurement on the pinned
+        # checkpoint: after the "Answer:" prompt the model emits
+        # the bare tokens ('no' carried 0.977 of the next-token
+        # mass) while " yes" sat at 1.7e-08, so the pre-repair
+        # spaced-first order renormalized numerical noise. This
+        # inverts the pre-repair pin, which encoded the defect.
         logits = [0.0] * 10
-        logits[3] = 1.0  # bare "yes": must be ignored
-        logits[4] = 5.0  # spaced " yes": wins
-        logits[8] = 2.0  # " no"
+        logits[3] = 5.0  # bare "yes": wins
+        logits[4] = 1.0  # spaced " yes": must be ignored
+        logits[8] = 2.0  # bare "no"
         adapter, _, _ = self._adapter(
             logits,
-            encode_map={" yes": [4], "yes": [3], " no": [8]},
+            encode_map={"yes": [3], " yes": [4], "no": [8], " no": [9]},
         )
         out = adapter.decide(_choice_input(), "abstain", _ctx())
-        # p_yes is high because the spaced id (4, logit 5.0) was used;
-        # if the bare id (3, logit 1.0) had been used, p_yes would be ~0.02.
+        # p_yes is high because the bare id (3, logit 5.0) was used
+        # against the bare "no" id (8, logit 2.0). Under the
+        # pre-repair spaced-first order the ids were 4 (logit 1.0)
+        # and 9 (logit 0.0), and p_yes would be ~0.73.
         self.assertGreater(out.transcript["scores"]["p_yes"], 0.8)
+        self.assertEqual(out.decision, "abstain")
+
+    def test_spaced_token_fallback_when_bare_is_multi_token(self):
+        # "yes" is multi-token here, so resolution falls back to
+        # the spaced spelling's single-token id.
+        logits = [0.0] * 10
+        logits[4] = 5.0  # spaced " yes": fallback hit
+        logits[8] = 1.0  # bare "no"
+        adapter, _, _ = self._adapter(
+            logits,
+            encode_map={"yes": [6, 7], " yes": [4], "no": [8],
+                        " no": [9]},
+        )
+        out = adapter.decide(_choice_input(), "abstain", _ctx())
+        self.assertGreater(out.transcript["scores"]["p_yes"], 0.9)
         self.assertEqual(out.decision, "abstain")
 
     def test_output_tokens_is_one(self):
@@ -387,6 +412,73 @@ class TestShieldstralScoring(unittest.TestCase):
         adapter, _, _ = self._adapter(logits)
         out = adapter.decide(_choice_input(), "abstain", _ctx())
         self.assertEqual(out.usage.tokens_out, 1)
+
+
+class TestShieldstralLoader(unittest.TestCase):
+    """The pinned checkpoint ships a Mistral3Config; pod-proven
+    2026-10-15 that AutoModelForCausalLM refuses it on current
+    transformers ("Unrecognized configuration class Mistral3Config")
+    and the checkpoint's native class is
+    Mistral3ForConditionalGeneration, served by
+    AutoModelForImageTextToText."""
+
+    def _adapter(self):
+        with mock.patch.object(
+            hf_mod, "_require_hf",
+            return_value=(_FakeTorch(), SimpleNamespace()),
+        ):
+            return ShieldstralAdapter()
+
+    def test_model_class_is_image_text_to_text(self):
+        causal, image_text = object(), object()
+        fake_transformers = SimpleNamespace(
+            AutoModelForCausalLM=causal,
+            AutoModelForImageTextToText=image_text,
+        )
+        adapter = self._adapter()
+        self.assertIs(
+            adapter._model_class(fake_transformers), image_text)
+
+    def test_load_goes_through_image_text_class(self):
+        loaded = {}
+
+        class _LoadedModel:
+            @classmethod
+            def from_pretrained(cls, model_id, revision=None,
+                                trust_remote_code=False):
+                loaded["model_id"] = model_id
+                loaded["revision"] = revision
+                return cls()
+
+            def eval(self):
+                return self
+
+        class _RefusingCausalLM:
+            @classmethod
+            def from_pretrained(cls, *args, **kwargs):
+                raise AssertionError(
+                    "AutoModelForCausalLM must not load Shieldstral "
+                    "(it refuses the checkpoint's Mistral3Config)")
+
+        fake_transformers = SimpleNamespace(
+            AutoTokenizer=SimpleNamespace(
+                from_pretrained=staticmethod(
+                    lambda *a, **k: _FakeTokenizer())),
+            AutoModelForCausalLM=_RefusingCausalLM,
+            AutoModelForImageTextToText=_LoadedModel,
+        )
+        with mock.patch.object(
+            hf_mod, "_require_hf",
+            return_value=(_FakeTorch(), fake_transformers),
+        ):
+            adapter = ShieldstralAdapter()
+            tokenizer, model = adapter._load()
+        self.assertIsInstance(model, _LoadedModel)
+        self.assertEqual(loaded["model_id"],
+                         "mistralai/Shieldstral-1.0-3B")
+        self.assertEqual(
+            loaded["revision"],
+            "003ec7e2b0bab5f0e6307edbaf186fa5822b76f5")
 
 
 # -- classifier mappings -----------------------------------------------
@@ -684,6 +776,51 @@ class TestQwen3Guard(unittest.TestCase):
         self.assertEqual(out.transcript["scores"]["label"], "Controversial")
         self.assertEqual(validate_output(out, "abstain"), [])
 
+    def test_controversial_multi_token_uses_first_token(self):
+        # Pod-proven defect (2026-10-16): in the real Qwen3
+        # tokenizer "Controversial" is not a single token in either
+        # spelling, so single-token-only resolution raised
+        # ProviderError and the adapter could never score at all.
+        # The label resolves to the first token of its spaced
+        # encoding (30); under the "Safety:" prefill the three
+        # labels have distinct first tokens, so that token carries
+        # the label's verdict mass.
+        logits = [0.0] * 34
+        logits[30] = 6.0  # first token of " Controversial"
+        adapter, _, _ = self._adapter(
+            logits,
+            encode_map={" Controversial": [30, 31],
+                        "Controversial": [32, 33]},
+        )
+        out = adapter.decide(_choice_input(), "abstain", _ctx())
+        self.assertEqual(out.decision, "abstain")
+        self.assertEqual(out.transcript["scores"]["label"], "Controversial")
+        self.assertGreater(
+            out.transcript["scores"]["p_controversial"], 0.9)
+        self.assertEqual(validate_output(out, "abstain"), [])
+
+    def test_multi_token_label_renormalization_math(self):
+        # With Controversial on its first token (30), the three-way
+        # renormalization runs over Safe=1, Unsafe=2, first-token=30.
+        logits = [0.0] * 34
+        logits[1] = 1.0   # " Safe"
+        logits[2] = 0.5   # " Unsafe"
+        logits[30] = 0.0  # first token of " Controversial"
+        adapter, _, _ = self._adapter(
+            logits,
+            encode_map={" Controversial": [30, 31],
+                        "Controversial": [32, 33]},
+        )
+        out = adapter.decide(_choice_input(), "abstain", _ctx())
+        e1, e05, e0 = math.exp(1.0), math.exp(0.5), math.exp(0.0)
+        total = e1 + e05 + e0
+        scores = out.transcript["scores"]
+        self.assertAlmostEqual(scores["p_safe"], e1 / total)
+        self.assertAlmostEqual(scores["p_unsafe"], e05 / total)
+        self.assertAlmostEqual(scores["p_controversial"], e0 / total)
+        self.assertAlmostEqual(
+            scores["p_malicious"], (e05 + e0) / total)
+
     def test_renormalization_math(self):
         # Ids: Safe=1, Unsafe=2, Controversial=3. Mass on index 0 must
         # not leak into p_malicious.
@@ -754,13 +891,17 @@ class TestQwen3Guard(unittest.TestCase):
         self.assertGreater(out.transcript["scores"]["p_safe"], 0.9)
 
     def test_missing_label_token_raises_provider_error(self):
-        # No single-token id for a label: fail closed, never silently
-        # score against the wrong ids.
+        # A label the tokenizer cannot encode at all fails closed:
+        # no token exists whose mass could stand for it, so there
+        # is nothing honest to score against. (A label that merely
+        # encodes to several tokens is NOT this case — it resolves
+        # through the first-token fallback; see
+        # test_controversial_multi_token_uses_first_token.)
         adapter, _, _ = self._adapter(
-            [0.0] * 4, encode_map={" Safe": [1, 2], "Safe": [3, 4]})
+            [0.0] * 4, encode_map={" Safe": [], "Safe": [3, 4]})
         with self.assertRaises(ProviderError) as ctx:
             adapter.decide(_choice_input(), "abstain", _ctx())
-        self.assertIn("single-token id", str(ctx.exception))
+        self.assertIn("cannot encode label", str(ctx.exception))
         self.assertIn("Qwen/Qwen3Guard-Gen-4B", str(ctx.exception))
 
     def test_non_text_template_raises_provider_error(self):
