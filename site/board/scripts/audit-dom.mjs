@@ -19,6 +19,35 @@
  *  group caption states the suite size.
  *  Page height is reported for the F-12 scroll budget.
  *
+ * Round 9 extensions (chart suite):
+ *  Tiles. The counts line equals the display_name rule counts
+ *        computed here, at every width.
+ *  Scatter. The visible variant's point set equals the payload
+ *        population (26 plotted, 5 railed); every point centre
+ *        sits on the payload position recomputed from the SVG's
+ *        own geometry attributes (nudged points get the spec's
+ *        one marker width of slack in y); at desktop every label
+ *        rect is pairwise clear of every other label and of
+ *        every point centre; at phone every point carries a
+ *        badge and the keyed list names all 31 in ASR order.
+ *  Heatmap. Headers measure one line; every cell's text equals
+ *        the payload rate under the cell format; the 20 not
+ *        measured cells carry the middot; every cell's text to
+ *        background contrast is at least 4.5; no cell background
+ *        is accent green; with the panel scrolled fully right
+ *        the sticky name column stays at the container's left
+ *        on an opaque ground background and its text never
+ *        meets a visible cell's text (F-06).
+ *  Calibration. Panel order and rail order equal the attacked
+ *        ECE order computed here; panel headers state the
+ *        payload ECE; sampled bin circles sit on the payload
+ *        coordinates inside the panel's own plot bounds, read
+ *        from its diagonal; rail names are not clipped (F-16).
+ *  Amber. The confinement rule is the round 9 rule: amber is
+ *        allowed in the ranking's flagged strip, on scatter
+ *        marks whose row is flagged, and on heatmap flag tags
+ *        of flagged rows, and nowhere else.
+ *
  * Screenshots land in the directory given as argv[3].
  */
 
@@ -108,6 +137,133 @@ function displayCiA(row) {
 }
 const axisPctA = (v) => Math.min(100, Math.max(0, (v / 0.3) * 100));
 
+/* ---------- round 9 derivations ---------- */
+
+const allRowsA = [...ranked, ...payload.unranked];
+const fullCasesA = Math.max(...ranked.map((r) => r.n_cases));
+const displayCountsA = {
+  results: allRowsA.length,
+  tested: new Set(allRowsA.map((r) => r.display_name)).size,
+  ranked: new Set(ranked.map((r) => r.display_name)).size,
+  flagged: new Set(payload.unranked.map((r) => r.display_name)).size,
+};
+const nonSliceA = allRowsA.filter((r) => r.n_cases === fullCasesA);
+const plottedIdsA = new Set(
+  nonSliceA
+    .filter((r) => r.total_cost_usd !== null && r.total_cost_usd > 0)
+    .map((r) => r.run_id),
+);
+const railIdsA = new Set(
+  nonSliceA.filter((r) => !plottedIdsA.has(r.run_id)).map((r) => r.run_id),
+);
+const byAsrA = [...nonSliceA].sort(
+  (a, b) => (a.asr_conditional ?? 0) - (b.asr_conditional ?? 0),
+);
+const indexByIdA = new Map(byAsrA.map((r, i) => [r.run_id, i + 1]));
+const WIRE_WORDS_A = {
+  "openai-decisions": "Decisions API",
+  "openai-structured": "Chat completions",
+};
+const shortCountsA = new Map();
+for (const r of allRowsA) {
+  const s = shortName(r);
+  shortCountsA.set(s, (shortCountsA.get(s) ?? 0) + 1);
+}
+const labelA = (r) => {
+  const s = shortName(r);
+  return shortCountsA.get(s) > 1
+    ? `${s} (${WIRE_WORDS_A[r.wire] ?? r.wire})`
+    : s;
+};
+const flaggedIdsA = new Set(payload.unranked.map((r) => r.run_id));
+
+const famEntriesA = (r) =>
+  r.detail && typeof r.detail === "object" && r.detail.families
+    ? Object.entries(r.detail.families)
+    : [];
+const famSumsA = new Map();
+for (const r of allRowsA) {
+  for (const [k, f] of famEntriesA(r)) {
+    if (f.asr === null || f.asr === undefined) continue;
+    const acc = famSumsA.get(k) ?? { total: 0, n: 0 };
+    acc.total += f.asr;
+    acc.n += 1;
+    famSumsA.set(k, acc);
+  }
+}
+const familyOrderA = [...famSumsA.entries()]
+  .map(([k, acc]) => ({ k, mean: acc.total / acc.n }))
+  .sort((a, b) => b.mean - a.mean || (a.k < b.k ? -1 : 1))
+  .map((e) => e.k);
+const fmtCellA = (v) => {
+  const pct = v * 100;
+  if (pct > 0 && pct < 0.5) return "<1";
+  return String(Math.round(pct));
+};
+const cellExpectedA = new Map();
+for (const r of allRowsA) {
+  const carried = new Map(famEntriesA(r));
+  for (const k of familyOrderA) {
+    const f = carried.get(k);
+    cellExpectedA.set(
+      `${r.run_id}|${k}`,
+      !f || f.asr === null || f.asr === undefined ? "·" : fmtCellA(f.asr),
+    );
+  }
+}
+
+function quantA(v, dec) {
+  const s = String(v);
+  const neg = s.startsWith("-");
+  const body = neg ? s.slice(1) : s;
+  const [ip, fp = ""] = body.split(".");
+  const kept = fp.slice(0, dec).padEnd(dec, "0");
+  const dropped = fp.slice(dec);
+  const digits = (ip.replace(/^0+(?=\d)/, "") + kept).split("").map(Number);
+  if (dropped.length > 0 && dropped[0] >= "5") {
+    let i = digits.length - 1;
+    while (i >= 0 && digits[i] === 9) {
+      digits[i] = 0;
+      i -= 1;
+    }
+    if (i < 0) digits.unshift(1);
+    else digits[i] += 1;
+  }
+  const joined = digits.join("");
+  return `${neg ? "-" : ""}${joined.slice(0, joined.length - dec) || "0"}.${joined.slice(joined.length - dec)}`;
+}
+const eceOfA = (r) => {
+  const cal = r.detail && typeof r.detail === "object" ? r.detail.calibration : null;
+  const ece = cal && cal.attacked ? cal.attacked.ece : null;
+  return ece ?? r.ece_attacked ?? Infinity;
+};
+const calOrderA = [...allRowsA]
+  .sort((a, b) => {
+    const ea = eceOfA(a);
+    const eb = eceOfA(b);
+    if (ea !== eb) return ea - eb;
+    return a.display_name < b.display_name ? -1 : 1;
+  })
+  .map((r) => r.run_id);
+
+function lumA([r, g, b]) {
+  const f = (c) => {
+    const s = c / 255;
+    return s <= 0.04045 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4;
+  };
+  return 0.2126 * f(r) + 0.7152 * f(g) + 0.0722 * f(b);
+}
+function contrastA(fg, bg) {
+  const la = lumA(fg);
+  const lb = lumA(bg);
+  const [hi, lo] = la >= lb ? [la, lb] : [lb, la];
+  return (hi + 0.05) / (lo + 0.05);
+}
+const parseRgbA = (s) => {
+  const m = s.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/);
+  return m ? [Number(m[1]), Number(m[2]), Number(m[3])] : null;
+};
+
 const chromeHits = globSync(
   join(
     homedir(),
@@ -168,6 +324,16 @@ for (const width of [1440, 1280, 390]) {
       path: join(shotsDir, `ranking-${width}.png`),
       fullPage: true,
     });
+    await page.screenshot({
+      path: join(shotsDir, `page-${width}.png`),
+      fullPage: true,
+    });
+    for (const name of ["heatmap", "scatter", "calibration"]) {
+      const el = await page.$(`[data-section="${name}"]`);
+      if (el) {
+        await el.screenshot({ path: join(shotsDir, `${name}-${width}.png`) });
+      }
+    }
   }
 
   const report = await page.evaluate(() => {
@@ -178,6 +344,8 @@ for (const width of [1440, 1280, 390]) {
       geometry: [],
       textBoxes: [],
       amberOutside: [],
+      amberUses: [],
+      sectionBoxes: {},
       groupHeads: {},
       tiedCount: 0,
     };
@@ -263,16 +431,51 @@ for (const width of [1440, 1280, 390]) {
         }
       }
     }
-    // Amber confinement.
+    // Text boxes per chart section (the F-03 test extended).
+    document.querySelectorAll("[data-section]").forEach((sec) => {
+      const boxes = [];
+      const walker = document.createTreeWalker(sec, NodeFilter.SHOW_TEXT, {
+        acceptNode: (n) =>
+          n.textContent.trim().length > 0 && vis(n.parentElement)
+            ? NodeFilter.FILTER_ACCEPT
+            : NodeFilter.FILTER_REJECT,
+      });
+      let node;
+      while ((node = walker.nextNode())) {
+        const range = document.createRange();
+        range.selectNodeContents(node);
+        for (const rect of range.getClientRects()) {
+          if (rect.width > 0 && rect.height > 0) {
+            boxes.push({
+              text: node.textContent.trim().slice(0, 28),
+              x0: rect.x,
+              y0: rect.y,
+              x1: rect.x + rect.width,
+              y1: rect.y + rect.height,
+            });
+          }
+        }
+      }
+      out.sectionBoxes[sec.getAttribute("data-section")] = boxes;
+    });
+    // Amber confinement (round 9 rule). Record every amber use
+    // with its context; the Node side decides which contexts
+    // are allowed.
     const AMBER = "rgb(232, 163, 61)";
     document.querySelectorAll("body *").forEach((el) => {
       if (!vis(el)) return;
       const s = getComputedStyle(el);
       const uses = [s.color, s.borderTopColor, s.backgroundColor].includes(AMBER);
-      if (uses && !el.closest('[data-group="flagged"]')) {
-        out.amberOutside.push(
-          `${el.tagName}.${el.className} "${el.textContent.trim().slice(0, 24)}"`,
-        );
+      if (uses) {
+        out.amberUses.push({
+          desc: `${el.tagName}.${el.className} "${el.textContent.trim().slice(0, 24)}"`,
+          inFlaggedStrip: !!el.closest('[data-group="flagged"]'),
+          heatNameId:
+            el.closest('[data-section="heatmap"]') &&
+            el.closest(".heat-name")
+              ? el.closest(".heat-name").getAttribute("data-run-id")
+              : null,
+        });
       }
     });
     // Group heads.
@@ -283,6 +486,176 @@ for (const width of [1440, 1280, 390]) {
         : "";
     });
     out.tiedCount = (document.body.innerText.match(/tied/gi) ?? []).length;
+    return out;
+  });
+
+  /* ---------- round 9 chart measurements ---------- */
+  const chart = await page.evaluate(() => {
+    const out = { countsLine: null, scatter: null, heat: null, cal: null };
+    const countsEl = document.querySelector(".counts-line");
+    out.countsLine = countsEl
+      ? countsEl.textContent.replace(/\s+/g, " ").trim()
+      : null;
+    const sec = document.querySelector('[data-section="scatter"]');
+    if (sec) {
+      const svg = [...sec.querySelectorAll("svg")].find(
+        (s) => s.getClientRects().length > 0,
+      );
+      if (svg) {
+        const sr = svg.getBoundingClientRect();
+        const pts = [];
+        svg.querySelectorAll(".scatter-point").forEach((g) => {
+          const c = g.querySelector("circle");
+          if (!c) return;
+          const cr = c.getBoundingClientRect();
+          pts.push({
+            id: g.getAttribute("data-run-id"),
+            kind: g.getAttribute("data-scatter"),
+            nudged: g.getAttribute("data-nudged") === "true",
+            cx: cr.left + cr.width / 2,
+            cy: cr.top + cr.height / 2,
+          });
+        });
+        out.scatter = {
+          svgRect: { left: sr.left, top: sr.top, width: sr.width },
+          vbW: svg.viewBox.baseVal.width,
+          domainLo: Number(svg.getAttribute("data-domain-lo")),
+          domainHi: Number(svg.getAttribute("data-domain-hi")),
+          plot: svg.getAttribute("data-plot").split(",").map(Number),
+          railCx: Number(svg.getAttribute("data-rail-cx")),
+          points: pts,
+          labels: [...svg.querySelectorAll("[data-label-for]")].map((t) => {
+            const r = t.getBoundingClientRect();
+            return {
+              id: t.getAttribute("data-label-for"),
+              x0: r.left,
+              y0: r.top,
+              x1: r.right,
+              y1: r.bottom,
+            };
+          }),
+          badges: [...svg.querySelectorAll(".pt-badge")].map((b) => ({
+            id: b.closest(".scatter-point")?.getAttribute("data-run-id"),
+            num: Number(b.querySelector("text")?.textContent),
+          })),
+          strokes: [...svg.querySelectorAll(".scatter-point")].map((g) => {
+            const c = g.querySelector("circle");
+            return {
+              id: g.getAttribute("data-run-id"),
+              stroke: c ? getComputedStyle(c).stroke : null,
+            };
+          }),
+        };
+      }
+      const listSel =
+        window.innerWidth > 760
+          ? ".scatter-wide .keyed-item"
+          : ".phone-key .keyed-item";
+      out.scatterList = [...sec.querySelectorAll(listSel)]
+        .filter((el) => el.getClientRects().length > 0)
+        .map((li) => ({
+          num: Number(li.querySelector(".keyed-num")?.textContent),
+          name: li.querySelector(".keyed-name")?.textContent.trim(),
+        }));
+    }
+    const hsec = document.querySelector('[data-section="heatmap"]');
+    if (hsec) {
+      out.heat = {
+        heads: [...hsec.querySelectorAll(".heat-head")].map((h) => ({
+          fam: h.getAttribute("data-family"),
+          h: h.getBoundingClientRect().height,
+          sw: h.scrollWidth,
+          cw: h.clientWidth,
+        })),
+        cells: [...hsec.querySelectorAll(".heat-cell")].map((c) => {
+          const s = getComputedStyle(c);
+          return {
+            id: c.getAttribute("data-run-id"),
+            fam: c.getAttribute("data-family"),
+            text: c.textContent.trim(),
+            bg: s.backgroundColor,
+            color: s.color,
+          };
+        }),
+        names: [...hsec.querySelectorAll(".heat-name")].map((n) => ({
+          id: n.getAttribute("data-run-id"),
+          sw: n.scrollWidth,
+          cw: n.clientWidth,
+        })),
+      };
+      const scroller = hsec.querySelector(".heat-scroll");
+      const firstName = hsec.querySelector(".heat-name");
+      if (scroller && firstName) {
+        scroller.scrollLeft = scroller.scrollWidth;
+        const cRect = scroller.getBoundingClientRect();
+        const nRect = firstName.getBoundingClientRect();
+        const nt = firstName
+          .querySelector(".heat-name-text")
+          .getBoundingClientRect();
+        const rowId = firstName.getAttribute("data-run-id");
+        const rowCells = [
+          ...hsec.querySelectorAll(`.heat-cell[data-run-id="${rowId}"]`),
+        ].map((c) => {
+          const range = document.createRange();
+          range.selectNodeContents(c);
+          const tr = range.getClientRects()[0];
+          return {
+            fam: c.getAttribute("data-family"),
+            textRect: tr ? { x0: tr.left, x1: tr.right } : null,
+          };
+        });
+        out.heatProbe = {
+          nameLeft: nRect.left - cRect.left,
+          nameRight: nRect.right,
+          nameBg: getComputedStyle(firstName).backgroundColor,
+          nameTextRect: { x0: nt.left, x1: nt.right },
+          rowCells,
+        };
+        scroller.scrollLeft = 0;
+      }
+    }
+    const csec = document.querySelector('[data-section="calibration"]');
+    if (csec) {
+      out.cal = {
+        panels: [...csec.querySelectorAll(".cal-panel")].map((p) => {
+          const meta = p.querySelector(".cal-meta")?.textContent ?? "";
+          const m = meta.match(/ECE ([\d.]+)/);
+          const nameEl = p.querySelector(".cal-name");
+          const metaEl = p.querySelector(".cal-meta");
+          const bin = p.querySelector("circle.cal-dot");
+          const diag = p.querySelector(".cal-diag");
+          return {
+            id: p.getAttribute("data-run-id"),
+            ece: m ? m[1] : null,
+            nameClip: nameEl
+              ? nameEl.scrollWidth > nameEl.clientWidth + 1
+              : null,
+            metaClip: metaEl
+              ? metaEl.scrollWidth > metaEl.clientWidth + 1
+              : null,
+            bin: bin
+              ? {
+                  cx: Number(bin.getAttribute("cx")),
+                  cy: Number(bin.getAttribute("cy")),
+                  f: Number(bin.getAttribute("data-f")),
+                  o: Number(bin.getAttribute("data-o")),
+                }
+              : null,
+            diag: diag
+              ? [diag.x1.baseVal.value, diag.y1.baseVal.value, diag.x2.baseVal.value, diag.y2.baseVal.value]
+              : null,
+          };
+        }),
+        rail: [...csec.querySelectorAll("[data-rail-for]")].map((a) =>
+          a.getAttribute("data-rail-for"),
+        ),
+        railNames: [...csec.querySelectorAll(".cal-rail-name")].map((n) => ({
+          sw: n.scrollWidth,
+          cw: n.clientWidth,
+          text: n.textContent.trim(),
+        })),
+      };
+    }
     return out;
   });
 
@@ -329,9 +702,15 @@ for (const width of [1440, 1280, 390]) {
       }
     }
   }
-  // Amber confinement.
-  for (const el of report.amberOutside) {
-    failures.push(`width ${width}: amber outside the flagged strip on ${el}`);
+  // Amber confinement (round 9 rule: the flagged strip, scatter
+  // marks of flagged rows, and heatmap flag tags of flagged rows).
+  for (const use of report.amberUses) {
+    const allowed =
+      use.inFlaggedStrip ||
+      (use.heatNameId !== null && flaggedIdsA.has(use.heatNameId));
+    if (!allowed) {
+      failures.push(`width ${width}: amber outside its allowed contexts on ${use.desc}`);
+    }
   }
   // Geometry, measured from rendered rects (owner items 1 and
   // 3). Caps sit on the display interval endpoints and the
@@ -387,6 +766,306 @@ for (const width of [1440, 1280, 390]) {
     failures.push(
       `width ${width}: full group header does not state the suite size (${report.groupHeads.full})`,
     );
+  }
+  /* ---------- round 9 assertions ---------- */
+  // Tiles per width.
+  const cm = chart.countsLine?.match(
+    /board holds ([\d,]+) results from ([\d,]+) models\. ([\d,]+) models are ranked and ([\d,]+) are flagged\./,
+  );
+  if (!cm) {
+    failures.push(`width ${width}: counts line not found for the tile check`);
+  } else {
+    const printed = cm.slice(1).map((s) => Number(s.replace(/,/g, "")));
+    const expected = [
+      displayCountsA.results,
+      displayCountsA.tested,
+      displayCountsA.ranked,
+      displayCountsA.flagged,
+    ];
+    if (JSON.stringify(printed) !== JSON.stringify(expected)) {
+      failures.push(
+        `width ${width}: tiles print ${printed.join("/")}, display rule gives ${expected.join("/")}`,
+      );
+    }
+  }
+  // Per-section text overlap (F-03 extended).
+  for (const [secName, secBoxes] of Object.entries(report.sectionBoxes)) {
+    for (let i = 0; i < secBoxes.length; i++) {
+      for (let j = i + 1; j < secBoxes.length; j++) {
+        const a = secBoxes[i];
+        const b = secBoxes[j];
+        const ox = Math.min(a.x1, b.x1) - Math.max(a.x0, b.x0);
+        const oy = Math.min(a.y1, b.y1) - Math.max(a.y0, b.y0);
+        if (ox > 0.5 && oy > 0.5) {
+          failures.push(
+            `width ${width}: text overlap in ${secName}: "${a.text}" x "${b.text}" by ${ox.toFixed(1)}x${oy.toFixed(1)} px`,
+          );
+        }
+      }
+    }
+  }
+  // Scatter.
+  if (!chart.scatter) {
+    failures.push(`width ${width}: no visible scatter SVG`);
+  } else {
+    const sc = chart.scatter;
+    const scale = sc.svgRect.width / sc.vbW;
+    const [px0, py0, px1, py1] = sc.plot;
+    const logLo = Math.log10(sc.domainLo);
+    const logSpan = Math.log10(sc.domainHi) - logLo;
+    const seenPlot = new Set();
+    const seenRail = new Set();
+    for (const p of sc.points) {
+      const row = byRunId.get(p.id);
+      if (!row) {
+        failures.push(`width ${width}: scatter point for unknown row ${p.id}`);
+        continue;
+      }
+      (p.kind === "plot" ? seenPlot : seenRail).add(p.id);
+      const vx =
+        p.kind === "plot"
+          ? px0 + ((Math.log10(row.total_cost_usd) - logLo) / logSpan) * (px1 - px0)
+          : sc.railCx;
+      const vy = py0 + (1 - row.asr_conditional / 0.3) * (py1 - py0);
+      const expCx = sc.svgRect.left + vx * scale;
+      const expCy = sc.svgRect.top + vy * scale;
+      if (Math.abs(p.cx - expCx) > 2) {
+        failures.push(
+          `width ${width}: scatter point ${p.id} centre x off by ${(p.cx - expCx).toFixed(1)} px`,
+        );
+      }
+      const yTol = p.nudged ? (width > 760 ? 13.5 : 19.5) : 2;
+      if (Math.abs(p.cy - expCy) > yTol) {
+        failures.push(
+          `width ${width}: scatter point ${p.id} centre y off by ${(p.cy - expCy).toFixed(1)} px (nudged ${p.nudged})`,
+        );
+      }
+    }
+    if (JSON.stringify([...seenPlot].sort()) !== JSON.stringify([...plottedIdsA].sort())) {
+      failures.push(`width ${width}: plotted point set differs from the payload population`);
+    }
+    if (JSON.stringify([...seenRail].sort()) !== JSON.stringify([...railIdsA].sort())) {
+      failures.push(`width ${width}: rail point set differs from the payload population`);
+    }
+    for (const s of sc.strokes) {
+      const isAmber = s.stroke === "rgb(232, 163, 61)";
+      if (flaggedIdsA.has(s.id) && !isAmber) {
+        failures.push(`width ${width}: flagged scatter point ${s.id} lacks its amber ring`);
+      }
+      if (!flaggedIdsA.has(s.id) && isAmber) {
+        failures.push(`width ${width}: ranked scatter point ${s.id} carries amber`);
+      }
+    }
+    if (width > 760) {
+      const labels = sc.labels;
+      for (let i = 0; i < labels.length; i++) {
+        for (let j = i + 1; j < labels.length; j++) {
+          const a = labels[i];
+          const b = labels[j];
+          const ox = Math.min(a.x1, b.x1) - Math.max(a.x0, b.x0);
+          const oy = Math.min(a.y1, b.y1) - Math.max(a.y0, b.y0);
+          if (ox > 0.5 && oy > 0.5) {
+            failures.push(
+              `width ${width}: scatter labels overlap: ${a.id} x ${b.id} by ${ox.toFixed(1)}x${oy.toFixed(1)} px`,
+            );
+          }
+        }
+        for (const p of sc.points) {
+          if (
+            p.cx > labels[i].x0 - 1 &&
+            p.cx < labels[i].x1 + 1 &&
+            p.cy > labels[i].y0 - 1 &&
+            p.cy < labels[i].y1 + 1
+          ) {
+            failures.push(
+              `width ${width}: scatter label ${labels[i].id} covers point ${p.id}`,
+            );
+          }
+        }
+      }
+      const badgeIds = new Set(sc.badges.map((b) => b.id));
+      const listIds = new Set(
+        (chart.scatterList ?? []).map(
+          (item) => byAsrA[item.num - 1]?.run_id,
+        ),
+      );
+      if (JSON.stringify([...badgeIds].sort()) !== JSON.stringify([...listIds].sort())) {
+        failures.push(
+          `width ${width}: keyed badges and keyed list disagree (${[...badgeIds].join(",")} vs ${[...listIds].join(",")})`,
+        );
+      }
+      for (const b of sc.badges) {
+        if (indexByIdA.get(b.id) !== b.num) {
+          failures.push(
+            `width ${width}: badge on ${b.id} reads ${b.num}, ASR order gives ${indexByIdA.get(b.id)}`,
+          );
+        }
+      }
+      for (const item of chart.scatterList ?? []) {
+        const row = byAsrA[item.num - 1];
+        if (!row || item.name !== labelA(row)) {
+          failures.push(
+            `width ${width}: keyed list item ${item.num} names "${item.name}", expected "${row ? labelA(row) : "?"}"`,
+          );
+        }
+      }
+    } else {
+      if (sc.badges.length !== byAsrA.length) {
+        failures.push(
+          `width ${width}: phone scatter carries ${sc.badges.length} badges, population is ${byAsrA.length}`,
+        );
+      }
+      for (const b of sc.badges) {
+        if (indexByIdA.get(b.id) !== b.num) {
+          failures.push(
+            `width ${width}: phone badge on ${b.id} reads ${b.num}, ASR order gives ${indexByIdA.get(b.id)}`,
+          );
+        }
+      }
+      if ((chart.scatterList ?? []).length !== byAsrA.length) {
+        failures.push(
+          `width ${width}: phone keyed list holds ${chart.scatterList?.length} items, population is ${byAsrA.length}`,
+        );
+      }
+      for (const item of chart.scatterList ?? []) {
+        const row = byAsrA[item.num - 1];
+        if (!row || item.name !== labelA(row)) {
+          failures.push(
+            `width ${width}: phone key item ${item.num} names "${item.name}", expected "${row ? labelA(row) : "?"}"`,
+          );
+        }
+      }
+    }
+  }
+  // Heatmap.
+  if (!chart.heat) {
+    failures.push(`width ${width}: heatmap not measured`);
+  } else {
+    for (const h of chart.heat.heads) {
+      if (h.h > 30 || h.sw > h.cw + 1) {
+        failures.push(
+          `width ${width}: heatmap header ${h.fam} wraps or clips (height ${h.h.toFixed(0)}, scroll ${h.sw} vs client ${h.cw})`,
+        );
+      }
+    }
+    if (chart.heat.heads.map((h) => h.fam).join() !== familyOrderA.join()) {
+      failures.push(`width ${width}: heatmap column order differs from the payload rule`);
+    }
+    if (chart.heat.cells.length !== cellExpectedA.size) {
+      failures.push(
+        `width ${width}: heatmap holds ${chart.heat.cells.length} cells, expected ${cellExpectedA.size}`,
+      );
+    }
+    for (const c of chart.heat.cells) {
+      const expected = cellExpectedA.get(`${c.id}|${c.fam}`);
+      if (c.text !== expected) {
+        failures.push(
+          `width ${width}: heatmap cell ${c.id}/${c.fam} prints "${c.text}", payload gives "${expected}"`,
+        );
+      }
+      const bg = parseRgbA(c.bg);
+      const fg = parseRgbA(c.color);
+      if (bg && fg) {
+        const ratio = contrastA(fg, bg);
+        if (ratio < 4.49) {
+          failures.push(
+            `width ${width}: heatmap cell ${c.id}/${c.fam} text contrast ${ratio.toFixed(2)} is under 4.5`,
+          );
+        }
+        if (bg[1] > bg[0] + 40 && bg[1] > bg[2] + 40) {
+          failures.push(
+            `width ${width}: heatmap cell ${c.id}/${c.fam} background is green dominant (${c.bg})`,
+          );
+        }
+      }
+    }
+    for (const n of chart.heat.names) {
+      if (n.sw > n.cw + 1) {
+        failures.push(`width ${width}: heatmap name for ${n.id} is clipped`);
+      }
+    }
+    if (chart.heatProbe) {
+      const probe = chart.heatProbe;
+      if (Math.abs(probe.nameLeft) > 1.5) {
+        failures.push(
+          `width ${width}: sticky name column drifted ${probe.nameLeft.toFixed(1)} px from the container left at full scroll`,
+        );
+      }
+      if (probe.nameBg !== "rgb(10, 12, 15)") {
+        failures.push(
+          `width ${width}: sticky name column background is ${probe.nameBg}, not opaque ground`,
+        );
+      }
+      for (const cell of probe.rowCells) {
+        if (!cell.textRect) continue;
+        if (cell.textRect.x0 >= probe.nameRight - 1) {
+          const ox =
+            Math.min(cell.textRect.x1, probe.nameTextRect.x1) -
+            Math.max(cell.textRect.x0, probe.nameTextRect.x0);
+          if (ox > 0.5) {
+            failures.push(
+              `width ${width}: name text overlaps visible cell text in family ${cell.fam} by ${ox.toFixed(1)} px (F-06)`,
+            );
+          }
+        }
+      }
+    }
+  }
+  // Calibration.
+  if (!chart.cal) {
+    failures.push(`width ${width}: calibration not measured`);
+  } else {
+    const panelIds = chart.cal.panels.map((p) => p.id);
+    if (JSON.stringify(panelIds) !== JSON.stringify(calOrderA)) {
+      failures.push(`width ${width}: calibration panel order is not attacked ECE order`);
+    }
+    if (JSON.stringify(chart.cal.rail) !== JSON.stringify(calOrderA)) {
+      failures.push(`width ${width}: calibration rail order differs from panel order`);
+    }
+    for (const p of chart.cal.panels) {
+      const row = byRunId.get(p.id);
+      if (!row) continue;
+      const expectedEce = quantA(eceOfA(row), 3);
+      if (p.ece !== expectedEce) {
+        failures.push(
+          `width ${width}: calibration panel ${p.id} header ECE ${p.ece}, payload gives ${expectedEce}`,
+        );
+      }
+      if (p.nameClip) {
+        failures.push(`width ${width}: calibration panel name clipped on ${p.id}`);
+      }
+      if (p.metaClip) {
+        failures.push(`width ${width}: calibration panel meta clipped on ${p.id}`);
+      }
+    }
+    for (const rn of chart.cal.railNames) {
+      if (rn.sw > rn.cw + 1) {
+        failures.push(
+          `width ${width}: calibration rail name "${rn.text}" is clipped (F-16)`,
+        );
+      }
+    }
+    const sampleIdx = [0, Math.floor(chart.cal.panels.length / 2), chart.cal.panels.length - 1];
+    for (const idx of sampleIdx) {
+      const p = chart.cal.panels[idx];
+      if (!p || !p.bin || !p.diag) continue;
+      const row = byRunId.get(p.id);
+      const bins = row?.detail?.calibration?.reliability_bins?.attacked?.bins;
+      if (!bins || bins.length === 0) continue;
+      const b0 = bins[0];
+      if (p.bin.f !== b0.mean_forecast || p.bin.o !== b0.mean_outcome) {
+        failures.push(`width ${width}: panel ${p.id} first bin data attrs disagree with the payload`);
+        continue;
+      }
+      const [dx1, dy1, dx2, dy2] = p.diag;
+      const expCx = dx1 + b0.mean_forecast * (dx2 - dx1);
+      const expCy = dy1 + b0.mean_outcome * (dy2 - dy1);
+      if (Math.abs(p.bin.cx - expCx) > 0.6 || Math.abs(p.bin.cy - expCy) > 0.6) {
+        failures.push(
+          `width ${width}: panel ${p.id} first bin at ${p.bin.cx},${p.bin.cy}, payload position is ${expCx.toFixed(1)},${expCy.toFixed(1)}`,
+        );
+      }
+    }
   }
   notes.push(
     `width ${width}: ${report.names.length} names checked, ${boxes.length} text boxes, tied count (innerText) ${report.tiedCount}`,

@@ -4,10 +4,14 @@ import {
   boardDateWords,
   boardVersions,
   modelCounts,
+  multiResultModels,
   taxBenchmarks,
 } from "@/lib/payload";
 import { fmtInt, fmtPct, fmtEce } from "@/lib/format";
 import Ranking from "@/components/Ranking";
+import Heatmap from "@/components/Heatmap";
+import Scatter from "@/components/Scatter";
+import Calibration from "@/components/Calibration";
 
 /**
  * Round 8 prototype page. A compact masthead carrying the
@@ -19,6 +23,7 @@ import Ranking from "@/components/Ranking";
 export default function Page() {
   const groups = boardGroups();
   const counts = modelCounts();
+  const multi = multiResultModels();
   const benchmarks = taxBenchmarks(groups);
   const versions = boardVersions();
   const updated = boardDateWords();
@@ -55,9 +60,22 @@ export default function Page() {
           </p>
           <p className="counts-line">
             The board holds {fmtInt(resultCount)} results from{" "}
-            {fmtInt(counts.tested)} models, counted by adapter and
-            version. {fmtInt(counts.ranked)} are ranked and{" "}
-            {fmtInt(counts.flagged)} are flagged.
+            {fmtInt(counts.tested)} models. {fmtInt(counts.ranked)} models
+            are ranked and {fmtInt(counts.flagged)} are flagged.
+            {multi.length === 1 && (
+              <>
+                {" "}
+                One model was measured on two wires, so it appears as two
+                results.
+              </>
+            )}
+            {multi.length > 1 && (
+              <>
+                {" "}
+                Some models were measured on two wires, so they appear as
+                more than one result.
+              </>
+            )}
           </p>
           <p className="links-line">
             <a href="https://github.com/david-engelmann/peira">
@@ -69,6 +87,12 @@ export default function Page() {
       </header>
 
       <Ranking />
+
+      <Heatmap />
+
+      <Scatter />
+
+      <Calibration />
 
       <footer className="proto-note">
         <p>
@@ -85,10 +109,12 @@ export default function Page() {
           updated {updated}. peiratrial.dev
         </p>
         <p>
-          What changed since the previous board. Model counts now key on
-          adapter and version together, so the three guard models that
-          share version 1.0 count as three models. Tie bands are drawn as
-          brackets rather than listed in prose, and flagged results sit
+          What changed since the previous board. Model counts now count
+          the distinct models the board displays. The previous board
+          keyed its counts on version alone and merged three unrelated
+          guard models that share version 1.0 into one counted model.
+          Tie bands are drawn as brackets rather than listed in prose,
+          and flagged results sit
           in their own strip. Corrections are made by republishing the
           payload and recording the change here.
         </p>

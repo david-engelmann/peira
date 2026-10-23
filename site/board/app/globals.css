@@ -596,3 +596,484 @@ body {
 .proto-note p:last-child {
   margin-bottom: 0;
 }
+
+/* Round 9 chart suite. Scatter, heatmap, calibration, on the
+   Ledger tokens. */
+
+:root {
+  --heat-name-w: 240px;
+}
+
+/* Scatter */
+
+.scatter-svg {
+  width: 100%;
+  height: auto;
+  display: block;
+  margin-top: 20px;
+}
+.rail-strip {
+  fill: var(--panel);
+}
+.grid-line {
+  stroke: var(--hairline);
+  stroke-opacity: 0.55;
+}
+.grid-label {
+  fill: var(--ink-3);
+  font-size: 11.5px;
+}
+.rail-divider,
+.axis-line {
+  stroke: var(--hairline);
+}
+.tick-label {
+  fill: var(--ink-3);
+  font-size: 11.5px;
+}
+.rail-head {
+  fill: var(--ink-2);
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+}
+.axis-caption {
+  fill: var(--ink-3);
+  font-size: 11.5px;
+}
+.pt-ranked {
+  fill: var(--ink-1);
+}
+.pt-flagged {
+  fill: var(--ground);
+  stroke: var(--amber);
+  stroke-width: 1.5;
+}
+.pt-badge .pt-ranked,
+.pt-badge .pt-flagged {
+  fill: var(--panel);
+  stroke-width: 1.25;
+}
+.pt-badge .pt-ranked {
+  stroke: var(--ink-1);
+}
+.pt-badge .pt-flagged {
+  stroke: var(--amber);
+}
+.pt-badge-num {
+  fill: var(--ink-1);
+  font-size: 9.5px;
+  font-weight: 650;
+  text-anchor: middle;
+  dominant-baseline: central;
+}
+.lb-tick line {
+  stroke: var(--ink-2);
+  stroke-width: 1.5;
+}
+.lb-tick polygon {
+  fill: var(--ink-2);
+}
+.scatter-label {
+  fill: var(--ink-2);
+  font-size: 11.5px;
+  font-weight: 550;
+}
+.leader {
+  stroke: var(--ink-3);
+  stroke-width: 1;
+  stroke-opacity: 0.7;
+}
+.chart-captions {
+  color: var(--ink-2);
+  max-width: 68ch;
+  margin-top: 16px;
+}
+.chart-captions p {
+  margin: 0 0 10px;
+}
+.chart-captions p:last-child {
+  margin-bottom: 0;
+}
+.keyed-box {
+  margin-top: 14px;
+  border: 1px solid var(--hairline);
+  padding: 12px 16px;
+}
+.keyed-head {
+  font-size: var(--micro);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-2);
+  margin: 0 0 8px;
+}
+.keyed-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 4px 24px;
+}
+.keyed-item {
+  display: flex;
+  gap: 10px;
+  align-items: baseline;
+  font-size: 12.5px;
+  padding: 3px 0;
+  min-width: 0;
+}
+.keyed-num {
+  flex: 0 0 22px;
+  color: var(--ink-3);
+}
+.keyed-name {
+  font-weight: 550;
+  white-space: nowrap;
+}
+.keyed-meta {
+  color: var(--ink-2);
+}
+.scatter-phone {
+  display: none;
+}
+
+/* Heatmap */
+
+.scroll-hint {
+  display: none;
+}
+.heat-scroll {
+  overflow-x: auto;
+  margin-top: 20px;
+  padding-bottom: 6px;
+}
+.heat-grid {
+  display: grid;
+  gap: 2px;
+  min-width: 1128px;
+}
+.heat-corner {
+  position: sticky;
+  left: 0;
+  z-index: 3;
+  background: var(--ground);
+  color: var(--ink-3);
+  font-size: var(--micro);
+  display: flex;
+  align-items: flex-end;
+  padding: 0 10px 6px 2px;
+}
+.heat-head {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--ink-2);
+  white-space: nowrap;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding-bottom: 6px;
+}
+.heat-group {
+  grid-column: 1 / -1;
+  margin-top: 16px;
+}
+.heat-group-inner {
+  position: sticky;
+  left: 2px;
+  display: inline-flex;
+  gap: 14px;
+  align-items: baseline;
+}
+.heat-group-caption {
+  color: var(--ink-2);
+  font-size: 12.5px;
+}
+.heat-name {
+  position: sticky;
+  left: 0;
+  z-index: 2;
+  background: var(--ground);
+  border-right: 1px solid var(--hairline);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 10px 0 2px;
+  min-height: 26px;
+  font-size: 12.5px;
+  font-weight: 550;
+  white-space: nowrap;
+}
+.heat-cell {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 26px;
+  font-size: 12.5px;
+  font-weight: 600;
+  border-radius: 2px;
+}
+.heat-cell.na {
+  background: #12151a;
+  color: var(--ink-3);
+  font-weight: 400;
+  font-size: 15px;
+}
+.heat-legend {
+  display: flex;
+  gap: 20px;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  margin-top: 16px;
+}
+.heat-scale {
+  display: flex;
+  gap: 10px;
+  padding-top: 2px;
+}
+.heat-swatch-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+}
+.heat-swatch {
+  width: 30px;
+  height: 14px;
+  border-radius: 2px;
+  display: block;
+}
+.heat-swatch-label {
+  font-size: 11px;
+  color: var(--ink-3);
+}
+.heat-legend-note {
+  color: var(--ink-2);
+  max-width: 64ch;
+  margin: 0;
+  font-size: 12.5px;
+}
+
+/* Calibration */
+
+.cal-layout {
+  display: grid;
+  grid-template-columns: 256px 1fr;
+  gap: 24px;
+  margin-top: 24px;
+  align-items: start;
+}
+.cal-rail {
+  position: sticky;
+  top: 16px;
+}
+.cal-rail-head {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--ink-1);
+  margin: 0 0 6px;
+}
+.cal-rail-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.cal-rail-link {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 2px 10px;
+  padding: 5px 0;
+  border-bottom: 1px solid
+    color-mix(in srgb, var(--hairline) 45%, transparent);
+  text-decoration: none;
+  color: inherit;
+}
+.cal-rail-name {
+  font-size: 11.5px;
+  font-weight: 550;
+  white-space: nowrap;
+  overflow: hidden;
+}
+.cal-rail-ece {
+  color: var(--ink-2);
+  font-size: 11.5px;
+}
+.cal-rail-bar {
+  grid-column: 1 / -1;
+  height: 3px;
+  background: color-mix(in srgb, var(--hairline) 60%, transparent);
+}
+.cal-rail-bar span {
+  display: block;
+  height: 100%;
+  background: var(--ink-3);
+}
+.cal-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+}
+.cal-panel {
+  background: var(--panel);
+  border: 1px solid var(--hairline);
+  border-radius: 4px;
+  padding: 12px 10px 8px;
+  min-width: 0;
+}
+.cal-head {
+  min-height: 46px;
+}
+.cal-name {
+  font-size: 12.5px;
+  font-weight: 600;
+  margin: 0;
+  white-space: nowrap;
+}
+.slice-tag {
+  display: inline-block;
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.09em;
+  color: var(--ink-3);
+  border: 1px solid var(--ink-3);
+  border-radius: 3px;
+  padding: 0 4px;
+  line-height: 1.3;
+  margin-left: 8px;
+  vertical-align: 1px;
+  text-transform: uppercase;
+}
+.cal-panel.long .cal-name {
+  font-size: 11px;
+}
+.cal-meta {
+  font-size: 11.5px;
+  color: var(--ink-2);
+  margin: 3px 0 6px;
+  white-space: nowrap;
+}
+.cal-svg {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+.cal-svg text {
+  fill: var(--ink-3);
+  font-size: 10.5px;
+}
+.cal-diag {
+  stroke: var(--ink-3);
+  stroke-width: 1;
+  stroke-dasharray: 3 3;
+  opacity: 0.65;
+}
+.cal-axis {
+  stroke: var(--hairline);
+}
+.cal-dot {
+  fill: var(--ink-1);
+}
+.cal-panel .tk-y,
+.cal-panel .tk-x {
+  display: none;
+}
+.cal-panel.edge-l .tk-y {
+  display: block;
+}
+.cal-panel.edge-b .tk-x {
+  display: block;
+}
+.cal-empty {
+  border: 1px dashed var(--hairline);
+  padding: 14px;
+  color: var(--ink-2);
+  font-size: 12.5px;
+  min-height: 120px;
+}
+.cal-empty p {
+  margin: 0;
+}
+
+@media (max-width: 760px) {
+  .scatter-wide {
+    display: none;
+  }
+  .scatter-phone {
+    display: block;
+  }
+  .keyed-list.phone-key {
+    grid-template-columns: 1fr 1fr;
+    gap: 2px 14px;
+    margin-top: 10px;
+  }
+  .keyed-item {
+    font-size: 11.5px;
+    flex-wrap: wrap;
+    gap: 2px 8px;
+  }
+  .scatter-phone .keyed-head {
+    text-transform: none;
+    letter-spacing: 0;
+    font-size: 12.5px;
+    font-weight: 400;
+    color: var(--ink-2);
+    margin-bottom: 4px;
+  }
+  .phone-key .keyed-item {
+    display: block;
+    padding: 4px 0;
+  }
+  .phone-key .keyed-num {
+    display: inline-block;
+    width: 22px;
+  }
+  .phone-key .keyed-meta {
+    display: block;
+    margin: 2px 0 0 32px;
+  }
+  .heat-group-inner {
+    display: block;
+    max-width: calc(100vw - 52px);
+  }
+  .heat-group-caption {
+    display: block;
+    margin-top: 2px;
+  }
+  .scroll-hint {
+    display: block;
+    color: var(--ink-3);
+    font-size: var(--micro);
+    margin: 14px 0 0;
+  }
+  .cal-layout {
+    grid-template-columns: 1fr;
+  }
+  .cal-rail {
+    position: static;
+  }
+  .cal-rail-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 16px;
+  }
+  .cal-rail-link {
+    border-bottom: none;
+    padding: 3px 0;
+    display: flex;
+    gap: 8px;
+    align-items: baseline;
+  }
+  .cal-rail-bar {
+    display: none;
+  }
+  .cal-grid {
+    grid-template-columns: 1fr;
+  }
+  .cal-panel .tk-y,
+  .cal-panel .tk-x {
+    display: block;
+  }
+}

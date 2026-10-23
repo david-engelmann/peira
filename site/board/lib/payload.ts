@@ -272,12 +272,12 @@ export function fullCaseCount(rows: BoardRow[]): number {
 }
 
 /**
- * Model identity. A model is the pair (adapter_name,
+ * Row identity. A result is the pair (adapter_name,
  * adapter_version), never either field alone, per the admission
  * rules. Three unrelated models in this payload carry the
  * adapter_version "1.0", and keying on the version alone
- * collapses them into one counted model, the defect the data
- * audit found in the previous renderer's tiles.
+ * collapses them into one, the defect the data audit found in
+ * the previous renderer's tiles.
  */
 export function modelKey(row: BoardRow): string {
   return `${row.adapter_name}${row.adapter_version}`;
@@ -289,12 +289,40 @@ export interface ModelCounts {
   flagged: number;
 }
 
-/** Distinct model counts under the pair identity rule. */
+/**
+ * Model identity for the headline counts. The tiles count the
+ * distinct models the board displays, keyed by the served
+ * model name the page prints (display_name). That is the rule
+ * the data audit and the forensic census converged on, and the
+ * owner ratified it for the rebuild. It differs from both
+ * neighbouring rules on this payload. The version alone gives
+ * 33, because the three "1.0" models collapse. The pair gives
+ * 36, because gpt-6-luna was measured on two wires and the pair
+ * counts it twice, while the board displays one model measured
+ * two ways. The served name gives 35 tested, 31 ranked, 4
+ * flagged, the numbers the tiles print.
+ */
 export function modelCounts(): ModelCounts {
-  const all = new Set([...payload.ranked, ...payload.unranked].map(modelKey));
-  const ranked = new Set(payload.ranked.map(modelKey));
-  const flagged = new Set(payload.unranked.map(modelKey));
+  const name = (r: BoardRow) => r.display_name;
+  const all = new Set([...payload.ranked, ...payload.unranked].map(name));
+  const ranked = new Set(payload.ranked.map(name));
+  const flagged = new Set(payload.unranked.map(name));
   return { tested: all.size, ranked: ranked.size, flagged: flagged.size };
+}
+
+/**
+ * Display names carried by more than one result. On this
+ * payload exactly one model qualifies, gpt-6-luna on the
+ * Decisions and Chat completions wires, and the masthead
+ * explains the duplication in one line rather than letting the
+ * counts and the row total disagree in silence.
+ */
+export function multiResultModels(): string[] {
+  const seen = new Map<string, number>();
+  for (const row of [...payload.ranked, ...payload.unranked]) {
+    seen.set(row.display_name, (seen.get(row.display_name) ?? 0) + 1);
+  }
+  return [...seen.entries()].filter(([, n]) => n > 1).map(([name]) => name);
 }
 
 export interface TaxBenchmarks {

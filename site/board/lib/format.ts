@@ -132,3 +132,16 @@ export function fmtEce(value: number): string {
 export function fmtUsd(value: number): string {
   return `$${quantizeHalfUp(expandDecimalString(value), 2)}`;
 }
+
+/**
+ * Cost with up to four decimals, trailing zeros trimmed but
+ * never below two. Chart tooltips and the keyed list use it so
+ * a $0.0582 run does not print as $0.06.
+ */
+export function fmtUsdExact(value: number): string {
+  const q = quantizeHalfUp(expandDecimalString(value), 4);
+  const [whole, fracRaw = ""] = q.split(".");
+  let frac = fracRaw.replace(/0+$/, "");
+  if (frac.length < 2) frac = frac.padEnd(2, "0");
+  return `$${whole}.${frac}`;
+}

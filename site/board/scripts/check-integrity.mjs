@@ -9,8 +9,17 @@
  * benchmark derivation cannot rubber-stamp itself.
  *
  * Checks
- *  1. Counts. The masthead counts equal the pair-rule count of
- *     the payload, identity (adapter_name, adapter_version).
+ *  1. Counts. The masthead counts equal the count of distinct
+ *     models the board displays, keyed by display_name, the rule
+ *     the data audit and the census converged on. The checker
+ *     also computes the two neighbouring rules (adapter_version
+ *     alone, and the (adapter_name, adapter_version) pair) and
+ *     proves the printed numbers are neither: this payload
+ *     carries both collisions (three models share version
+ *     "1.0"; one model was measured on two wires), so the three
+ *     rules give three different triples and only the display
+ *     rule may match the page. All 36 pair-rows must still
+ *     render (check 2).
  *  2. Rows. Each payload row renders exactly once, inside the
  *     group the payload's case base assigns it to, with its
  *     short name, its attack success value, and its compact
@@ -27,6 +36,17 @@
  *     colon, and never calls the flagged status by another name.
  *  7. The suite size appears on the page. No revision hash
  *     appears anywhere in the rendered text.
+ *  8. Charts (round 9). The scatter section accounts for the
+ *     whole board: plotted points equal the non-slice rows with
+ *     a cost above zero, rail points equal the non-slice rows
+ *     without one, no slice row appears, and every point's data
+ *     attributes equal its payload cost and rate. The heatmap
+ *     holds one cell per row and family, the not measured cells
+ *     equal the payload's missing family pairs, the column
+ *     order equals the descending mean rule computed here, and
+ *     every printed cell value equals the payload rate under
+ *     the cell format rule. The calibration panels render in
+ *     attacked ECE order, rail and grid in the same order.
  */
 
 import { readFileSync } from "node:fs";
@@ -181,6 +201,18 @@ const sliceCohort = ranked.filter((r) => r.n_cases < fullCases);
 
 const counts = {
   results: ranked.length + unranked.length,
+  tested: new Set([...ranked, ...unranked].map((r) => r.display_name)).size,
+  ranked: new Set(ranked.map((r) => r.display_name)).size,
+  flagged: new Set(unranked.map((r) => r.display_name)).size,
+};
+/* The two neighbouring identity rules, computed only to prove
+ * the printed counts follow neither of them. */
+const versionCounts = {
+  tested: new Set([...ranked, ...unranked].map((r) => r.adapter_version)).size,
+  ranked: new Set(ranked.map((r) => r.adapter_version)).size,
+  flagged: new Set(unranked.map((r) => r.adapter_version)).size,
+};
+const pairCounts = {
   tested: new Set([...ranked, ...unranked].map(key)).size,
   ranked: new Set(ranked.map(key)).size,
   flagged: new Set(unranked.map(key)).size,
@@ -237,7 +269,7 @@ const text = visibleText(html);
 /* ---------- 1. counts ---------- */
 
 const countsMatch = text.match(
-  /board holds ([\d,]+) results from ([\d,]+) models, counted by adapter and version\. ([\d,]+) are ranked and ([\d,]+) are flagged\./,
+  /board holds ([\d,]+) results from ([\d,]+) models\. ([\d,]+) models are ranked and ([\d,]+) are flagged\./,
 );
 if (!countsMatch) {
   fail("masthead counts sentence not found in rendered text");
@@ -246,8 +278,45 @@ if (!countsMatch) {
   const expected = [counts.results, counts.tested, counts.ranked, counts.flagged];
   if (JSON.stringify(printed) !== JSON.stringify(expected)) {
     fail(
-      `counts mismatch: page prints ${printed.join("/")}, pair-rule count of payload is ${expected.join("/")}`,
+      `counts mismatch: page prints ${printed.join("/")}, display-name count of payload is ${expected.join("/")}`,
     );
+  }
+  /* Discrimination proof. The printed triple must not be the
+   * version-only triple (the old renderer's collapse) nor the
+   * pair triple (which counts the two-wire model twice). This
+   * payload carries both collisions, so all three triples
+   * differ; if a future payload removes a collision, this gate
+   * fails loudly rather than letting the proof go silent. */
+  const triple = (c) => [c.tested, c.ranked, c.flagged].join("/");
+  const printedTriple = printed.slice(1).join("/");
+  if (printedTriple === triple(versionCounts)) {
+    fail(
+      `counts follow the version-only rule (${printedTriple}); the three "1.0" models have collapsed into one`,
+    );
+  }
+  if (printedTriple === triple(pairCounts)) {
+    fail(
+      `counts follow the pair rule (${printedTriple}); the two-wire model is counted twice`,
+    );
+  }
+  if (triple(versionCounts) === triple(counts) || triple(pairCounts) === triple(counts)) {
+    fail(
+      "the payload no longer carries both identity collisions, so this gate cannot prove the counting rule from the numbers alone",
+    );
+  }
+  /* The two-wire explainer must appear exactly when a model
+   * carries more than one result. */
+  const multi = new Map();
+  for (const r of [...ranked, ...unranked]) {
+    multi.set(r.display_name, (multi.get(r.display_name) ?? 0) + 1);
+  }
+  const multiCount = [...multi.values()].filter((n) => n > 1).length;
+  const explains = /measured on two wires/.test(text);
+  if (multiCount > 0 && !explains) {
+    fail("a model carries two results but the two-wire explainer is missing");
+  }
+  if (multiCount === 0 && explains) {
+    fail("the two-wire explainer prints but no model carries two results");
   }
 }
 
@@ -265,7 +334,12 @@ function groupBlocks(source) {
   });
   return blocks;
 }
-const blocks = groupBlocks(html);
+/* The ranking checks scope to the ranking section only. The
+ * chart sections below it carry their own data-run-id carriers
+ * (cells, points, panels) and are checked as check 8. */
+const heatmapStart = html.indexOf('data-section="heatmap"');
+const rankingHtml = heatmapStart >= 0 ? html.slice(0, heatmapStart) : html;
+const blocks = groupBlocks(rankingHtml);
 const expectedGroups = {
   full: fullCohort,
   flagged: unranked,
@@ -312,7 +386,7 @@ for (const [id, rows] of Object.entries(expectedGroups)) {
     }
   }
 }
-const totalRendered = [...html.matchAll(/data-run-id="/g)].length;
+const totalRendered = [...rankingHtml.matchAll(/data-run-id="/g)].length;
 if (totalRendered !== counts.results) {
   fail(`rendered rows ${totalRendered}, payload rows ${counts.results}`);
 }
@@ -383,6 +457,218 @@ if (!text.includes(suiteStr)) {
 }
 if (/[0-9a-f]{40}/.test(text)) {
   fail("a 40 character revision hash appears in rendered text");
+}
+
+/* ---------- 8. charts ---------- */
+
+function sectionSlice(name, nextName) {
+  const start = html.indexOf(`data-section="${name}"`);
+  if (start < 0) return null;
+  const end = nextName
+    ? html.indexOf(`data-section="${nextName}"`, start)
+    : html.length;
+  return html.slice(start, end < 0 ? html.length : end);
+}
+function attr(tag, name) {
+  const m = tag.match(new RegExp(`${name}="([^"]*)"`));
+  return m ? m[1] : null;
+}
+const allRows = [...ranked, ...unranked];
+const rowById = new Map(allRows.map((r) => [r.run_id, r]));
+
+/* Scatter accounting. */
+const scatterHtml = sectionSlice("scatter", "calibration");
+if (!scatterHtml) {
+  fail("scatter section missing from rendered page");
+} else {
+  const nonSlice = allRows.filter((r) => r.n_cases === fullCases);
+  const plottedRows = nonSlice.filter(
+    (r) => r.total_cost_usd !== null && r.total_cost_usd > 0,
+  );
+  const plottedIds = new Set(plottedRows.map((r) => r.run_id));
+  const railIds = new Set(
+    nonSlice.filter((r) => !plottedIds.has(r.run_id)).map((r) => r.run_id),
+  );
+  const pointTags = [...scatterHtml.matchAll(/<g[^>]*>/g)]
+    .map((m) => m[0])
+    .filter((t) => t.includes('class="scatter-point"'));
+  const seen = { plot: new Map(), rail: new Map() };
+  for (const tag of pointTags) {
+    const kind = attr(tag, "data-scatter");
+    const id = attr(tag, "data-run-id");
+    if (!kind || !id || !seen[kind]) {
+      fail(`scatter point with missing data attributes: ${tag.slice(0, 80)}`);
+      continue;
+    }
+    seen[kind].set(id, (seen[kind].get(id) ?? 0) + 1);
+    const row = rowById.get(id);
+    if (!row) {
+      fail(`scatter point for unknown row ${id}`);
+      continue;
+    }
+    if (Number(attr(tag, "data-asr")) !== row.asr_conditional) {
+      fail(`scatter point ${id}: data-asr disagrees with the payload`);
+    }
+    const costAttr = attr(tag, "data-cost");
+    const expectedCost = row.total_cost_usd === null ? "" : String(row.total_cost_usd);
+    if (costAttr !== expectedCost) {
+      fail(`scatter point ${id}: data-cost ${costAttr}, payload ${expectedCost}`);
+    }
+  }
+  for (const [kind, ids] of [
+    ["plot", plottedIds],
+    ["rail", railIds],
+  ]) {
+    for (const id of ids) {
+      /* Both the wide and the phone variant render the point. */
+      if (seen[kind].get(id) !== 2) {
+        fail(
+          `scatter ${kind} point ${id} rendered ${seen[kind].get(id) ?? 0} times, expected 2 (wide and phone)`,
+        );
+      }
+    }
+    for (const id of seen[kind].keys()) {
+      if (!ids.has(id)) fail(`scatter ${kind} holds unexpected row ${id}`);
+    }
+  }
+  for (const row of sliceCohort) {
+    if (scatterHtml.includes(`data-run-id="${row.run_id}"`)) {
+      fail(`slice row ${row.run_id} appears in the scatter section`);
+    }
+  }
+  if (!scatterHtml.includes("Peira decision robustness board")) {
+    fail("scatter section carries no identification line (SF-01)");
+  }
+}
+
+/* Heatmap accounting. */
+const heatHtml = sectionSlice("heatmap", "scatter");
+if (!heatHtml) {
+  fail("heatmap section missing from rendered page");
+} else {
+  const famEntries = (r) =>
+    r.detail && typeof r.detail === "object" && r.detail.families
+      ? Object.entries(r.detail.families)
+      : [];
+  const sums = new Map();
+  for (const r of allRows) {
+    for (const [k, f] of famEntries(r)) {
+      if (f.asr === null || f.asr === undefined) continue;
+      const acc = sums.get(k) ?? { total: 0, n: 0 };
+      acc.total += f.asr;
+      acc.n += 1;
+      sums.set(k, acc);
+    }
+  }
+  const expectedOrder = [...sums.entries()]
+    .map(([k, acc]) => ({ k, mean: acc.total / acc.n }))
+    .sort((a, b) => b.mean - a.mean || (a.k < b.k ? -1 : 1))
+    .map((e) => e.k);
+  const headTags = [...heatHtml.matchAll(/<div[^>]*>/g)]
+    .map((m) => m[0])
+    .filter((t) => t.includes('class="heat-head"'));
+  const renderedOrder = headTags.map((t) => attr(t, "data-family"));
+  if (JSON.stringify(renderedOrder) !== JSON.stringify(expectedOrder)) {
+    fail(
+      `heatmap column order ${renderedOrder.join(",")} differs from the descending mean rule ${expectedOrder.join(",")}`,
+    );
+  }
+  const fmtCell = (v) => {
+    const pct = v * 100;
+    if (pct > 0 && pct < 0.5) return "<1";
+    return String(Math.round(pct));
+  };
+  const cellRe = /<div[^>]*class="heat-cell[^"]*"[^>]*>([^<]*)<\/div>/g;
+  let cellCount = 0;
+  let naCount = 0;
+  for (const m of heatHtml.matchAll(cellRe)) {
+    cellCount += 1;
+    const tag = m[0].slice(0, m[0].indexOf(">") + 1);
+    const id = attr(tag, "data-run-id");
+    const famKey = attr(tag, "data-family");
+    const row = rowById.get(id);
+    if (!row) {
+      fail(`heatmap cell for unknown row ${id}`);
+      continue;
+    }
+    const fam = famEntries(row).find(([k]) => k === famKey)?.[1];
+    const printed = m[1]
+      .trim()
+      .replace(/&lt;/g, "<")
+      .replace(/&gt;/g, ">")
+      .replace(/&amp;/g, "&");
+    if (!fam || fam.asr === null || fam.asr === undefined) {
+      naCount += 1;
+      if (attr(tag, "data-na") !== "true" || printed !== "·") {
+        fail(`heatmap cell ${id}/${famKey} should be a dotted not measured cell`);
+      }
+    } else {
+      if (Number(attr(tag, "data-asr")) !== fam.asr) {
+        fail(`heatmap cell ${id}/${famKey}: data-asr disagrees with the payload`);
+      }
+      if (printed !== fmtCell(fam.asr)) {
+        fail(
+          `heatmap cell ${id}/${famKey} prints ${printed}, the payload rate formats to ${fmtCell(fam.asr)}`,
+        );
+      }
+    }
+  }
+  const expectedCells = allRows.length * expectedOrder.length;
+  if (cellCount !== expectedCells) {
+    fail(`heatmap holds ${cellCount} cells, expected ${expectedCells}`);
+  }
+  let expectedNa = 0;
+  for (const r of allRows) {
+    const carried = new Set(famEntries(r).map(([k]) => k));
+    for (const k of expectedOrder) if (!carried.has(k)) expectedNa += 1;
+  }
+  if (naCount !== expectedNa) {
+    fail(`heatmap holds ${naCount} not measured cells, payload implies ${expectedNa}`);
+  }
+  const nameCount = [...heatHtml.matchAll(/class="heat-name"/g)].length;
+  if (nameCount !== allRows.length) {
+    fail(`heatmap holds ${nameCount} row names, expected ${allRows.length}`);
+  }
+  if (!heatHtml.includes("Peira decision robustness board")) {
+    fail("heatmap section carries no identification line (SF-01)");
+  }
+}
+
+/* Calibration accounting. */
+const calHtml = sectionSlice("calibration", null);
+if (!calHtml) {
+  fail("calibration section missing from rendered page");
+} else {
+  const eceOf = (r) => {
+    const cal =
+      r.detail && typeof r.detail === "object" ? r.detail.calibration : null;
+    const ece = cal && cal.attacked ? cal.attacked.ece : null;
+    return ece ?? r.ece_attacked ?? Infinity;
+  };
+  const expectedCalOrder = [...allRows]
+    .sort((a, b) => {
+      const ea = eceOf(a);
+      const eb = eceOf(b);
+      if (ea !== eb) return ea - eb;
+      return a.display_name < b.display_name ? -1 : 1;
+    })
+    .map((r) => r.run_id);
+  const panelTags = [...calHtml.matchAll(/<article[^>]*>/g)]
+    .map((m) => m[0])
+    .filter((t) => t.includes('class="cal-panel'));
+  const panelOrder = panelTags.map((t) => attr(t, "data-run-id"));
+  if (JSON.stringify(panelOrder) !== JSON.stringify(expectedCalOrder)) {
+    fail("calibration panels are not in attacked ECE order");
+  }
+  const railOrder = [...calHtml.matchAll(/data-rail-for="([^"]+)"/g)].map(
+    (m) => m[1],
+  );
+  if (JSON.stringify(railOrder) !== JSON.stringify(expectedCalOrder)) {
+    fail("calibration rail order differs from the panel order");
+  }
+  if (!calHtml.includes("Peira decision robustness board")) {
+    fail("calibration section carries no identification line (SF-01)");
+  }
 }
 
 /* ---------- verdict ---------- */
