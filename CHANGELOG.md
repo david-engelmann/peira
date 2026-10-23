@@ -7,6 +7,22 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
 
 ## [Unreleased]
 
+### README finalized around the live leaderboard
+
+- The README leads with the live board at peiratrial.dev (a badge,
+  a link in the top link row, and a Live results section). The
+  Leaderboard section describes the published v2 board and links
+  the admission rules instead of describing official runs as in
+  progress. The adapter table reports measured status against the
+  published board and adds rows for the decision-model adapters
+  measured since the table was last updated (Celeris, Clef, Decider,
+  Strands Decider, pplx-decider). The Reports section names the
+  live board as the standing report.
+- The Adapters intro drops the stale adapter count, the Install
+  section states the PyPI status as a plain fact instead of a
+  pending release, and the Datasets section drops its
+  forward-looking holdout sentence.
+
 ### Fixed score probability keys accepted by spelling in the Clef adapter
 
 - Fix-forward for the entry below: the `clef` adapter carried the
