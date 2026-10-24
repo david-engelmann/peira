@@ -374,6 +374,22 @@ measured this as a ~10-22% malformed rate before the halt. The budget
 is recorded in the transcript's `request_shape` as `thinking_budget`
 set to 0.
 
+### Gemini 4 Argon (Google)
+
+`gemini-4-argon` is Google's Gemini 4 flagship, listed Stable on the
+official models page (page updated 2026-10-22), the new version of
+the charted `gemini-3.8-flash` line. It runs through the same
+`GoogleAdapter`: `response_schema` structured outputs and
+`thinking_budget=0` on every call. Verified live 2026-10-23 by the
+standard driver canary: 10 cases, all calls parsed, zero auth or
+wire-shape errors, sealed under pricing version 2026-10-23.1. The
+run also served on the free tier in trickle mode without quota
+blockage, so no paid-credits gate was observed for this model.
+Pricing carried is the introductory $2/$10 per 1M through
+2026-11-30 (Google lists a step to $4/$20 from 2026-12-01, which
+the pinned table does not model; secondary confidence pending
+direct confirmation of the rate attribution).
+
 ### Anthropic workspace id
 
 `AnthropicAdapter` accepts an optional `workspace_id`. Anthropic
@@ -664,6 +680,27 @@ handling from PR #355 held up. Whether `json_schema` `response_format`
 beyond successful parsing. Mismatches surface as terminal provider
 errors, not silent mismeasurement.
 
+### Grok 4.7 (xAI)
+
+`grok-4.7` is xAI's current flagship (released 2026-09-21, 500K
+context), the newest version of the charted `grok-4` line, at the
+same $2/$6 per 1M rates (verified 2026-10-23 against xAI's official
+models page, docs.x.ai/docs/models). It runs through the same
+`XAIAdapter` and the same wire shape; `seed=1` is still sent because
+xAI 400s on non-positive seeds. One wire note from the same xAI
+docs page: models `grok-4.20` and newer silently ignore `logprobs`
+and `top_logprobs`, so this model's confidence rides the verbalized
+track (D-23) rather than the decision-token logprob track.
+
+Access status (2026-10-23): the standard driver canary halted with
+10 consecutive benign-arm errors, all HTTP 403 permission-denied:
+the xAI team's credits are exhausted or its monthly spending limit
+is reached. The wire itself was reached and authenticated (the 403
+is a billing refusal, not an auth or wire-shape failure), so
+`grok-4.7` is ready to measure the moment the account is funded.
+Priced in `python/peira/data/pricing.json` under the 2026-10-23.1
+refresh.
+
 ### DeepSeek V4.1 Flash (DeepSeek)
 
 ```bash
@@ -701,6 +738,20 @@ are still rejected.
 Honest caveat: the `json_object` shape has NOT yet been exercised
 against the live API. Verify before any measured run. Mismatches
 surface as terminal provider errors, not silent mismeasurement.
+
+### DeepSeek V4 Pro (DeepSeek)
+
+`deepseek-v4-pro` is DeepSeek's flagship V4 model (snapshot 0813),
+alongside the `deepseek-flash` alias on DeepSeek's API, which lists
+exactly these two models. It runs through the same `DeepSeekAdapter`
+and the same wire shape as the flash alias, with thinking disabled
+by the adapter per the evaluation design (reasoning traces must not
+leak into the decision channel). Verified live 2026-10-23 by the
+standard driver canary: 10 cases, all calls parsed, zero auth or
+wire-shape errors, sealed under pricing version 2026-10-23.1.
+Pricing is peak $1.32/$3.96 per 1M in the pinned table, the
+deepseek-flash convention of planning on peak rates. Wire quirks
+observed live: none beyond the flash line's.
 
 ### Llama 4 Maverick (Meta Llama API)
 
@@ -766,6 +817,22 @@ parsed against `glm-4-plus` with zero auth or wire-shape errors, and the
 Whether `seed` and `logprobs` are honored for `glm-4-plus` remains
 unverified beyond successful parsing. Mismatches surface as terminal
 provider errors, not silent mismeasurement.
+
+### GLM-5.3 (Zhipu)
+
+`glm-5.3` is Zhipu's current flagship (live on the API since
+2026-08-14), the newest version of the charted `glm-4-plus` line. It
+runs through the same `ZaiAdapter` against the same
+`https://open.bigmodel.cn/api/paas/v4` endpoint, with `json_object`
+response format and the prompt-inlined schema. GLM-5.3 reasoning is
+always on and cannot be disabled; the adapter sends no thinking
+parameter and the config-only wire held. Verified live 2026-10-23
+by the standard driver canary: 10 cases, all calls parsed, zero
+auth or wire-shape errors, sealed under pricing version
+2026-10-23.1. The canary measured ~302 output tokens per call
+against the sibling's ~91, the always-on reasoning showing as
+expected, with no truncation. Pricing is $1.40/$4.40 per 1M in the
+pinned table (secondary-sourced, the `glm-4-plus` convention).
 
 ### Mistral Large 3 (Mistral)
 
@@ -885,6 +952,17 @@ the model emitted no JSON object even after the repair retry, and no
 provider-side content-filter refusal was observed. Other model ids
 through the gateway remain unverified until smoke-tested.
 
+Two newer gateway versions were added by the 2026-10-23 API version
+refresh, verified 2026-10-23 against the live OpenRouter model
+catalog and priced in `python/peira/data/pricing.json`:
+`inception/mercury-3` ($0.10/$0.35 per 1M; Inception's successor
+chat model to the charted `inception/mercury-2.5` row, whose access
+for existing users ends 2026-11-15) and
+`inclusionai/ling-3.1-flash` ($0.075/$0.225 per 1M; the successor to
+the charted `inclusionai/ling-3.0-flash` row, released 2026-10-02).
+Both ride the same `OpenRouterAdapter` wire; the standard driver
+canary is each one's first measured exercise.
+
 ### OpenRouter gateway, tool-calling variant
 
 ```bash
@@ -975,6 +1053,21 @@ Verified live on 2026-10-08 and 2026-10-09 by the full v2 trial run
 (4,701 cases sealed). The forced tool-call path, the
 `thinking: disabled` flag, and `seed` passthrough were all exercised
 end-to-end against the real endpoint.
+
+### MiniMax M3.1 Flash (MiniMax)
+
+`MiniMax-M3.1-Flash` (launched 2026-10-19; the id is case-sensitive)
+is MiniMax's newest model, the new version of the charted M3 line.
+It runs through the same `MiniMaxAdapter` and the same forced
+tool-call wire, with one per-model difference observed live
+2026-10-23: M3.1-Flash requires adaptive thinking and rejects
+`thinking.type="disabled"` with a 400, so the adapter omits the
+thinking flag for this id and reasoning runs in the vendor's
+default adaptive mode. Verified live 2026-10-23 by the standard
+driver canary: 10 cases sealed with zero errors (18 of 20 calls
+parsed; the two parse failures are recorded as measurement data,
+not errors). Pricing is $0.15/$0.60 per 1M in the pinned table
+(secondary-sourced, corroborated by OpenRouter's live catalog).
 
 #### Cheap-model pilot set
 
@@ -1095,6 +1188,48 @@ applies. OpenAI publishes no SLA or schema freeze for this endpoint,
 so the adapter
 pins the wire-shape version into its cache namespace (`v1`) and a
 field rename lands in this one module.
+
+General availability (2026-10-22): OpenAI took the Decisions API to
+GA for all customers, adding voice and image modalities, up to 400
+questions per request, prompt caching, and geographic routing. GA
+pricing is $0.10 per 1M input tokens with no output charge. The
+charted `gpt-6-luna` row on this wire was measured on the beta
+surface; a re-canary against the GA surface is the standard
+verification that the wire still behaves as measured.
+
+## OpenRouter Decisions
+
+No extra needed (stdlib transport). Set `OPENROUTER_API_KEY` first.
+
+```bash
+export OPENROUTER_API_KEY=<redacted>
+peira run --adapter peira.adapters.openrouter_decisions:OpenRouterDecisionsAdapter --suite trial-demo
+```
+
+OpenRouter serves hosted decision models behind a System One API
+(`POST https://openrouter.ai/api/v1/systemone`) that takes the Jev
+request shape: a `model`, a `state`, and named typed questions.
+`OpenRouterDecisionsAdapter` is the Jev adapter's shape on this
+surface: the question text (instructions, rubric, label
+construction) is the Jev adapter's unchanged, so every wire in the
+decision family sees identical decision spaces. Answers parse the
+same way: `choice` (choice), `score` (score), `noul` (abstain).
+
+The pinned model is `microsoft/microsoft-decision-1`, Microsoft's
+hosted decision model (a Qwen3.5-9B post-train, weights not
+distributed), served by Azure through OpenRouter since 2026-10-09 at
+$0.042 per 1M input tokens with output free, the same rate as its
+Foundry list price. Pinning caveat: the served id carries no version
+suffix and Microsoft has stated it will rebase the model under the
+same product name, so a run under this id names the route and the
+run date, not immutable weights; the sealed artifact's run date is
+part of this row's identity. Any other model string is rejected at
+construction.
+
+The adapter is live-UNVERIFIED at authoring time (2026-10-23). Its
+first measured exercise is the standard driver canary. 408/429/
+529/5xx and transport timeouts surface as retryable provider errors
+for the runner; 400/401/403/404/422 are terminal.
 
 ## Laya
 
@@ -1904,6 +2039,34 @@ text. The probe returned HTTP 200 for `pplx-decider-v1.1-27b` with
 all three primitives answered. The abstain probability arrived under
 the `noul` key only. The `usage` object carried integer counters. The
 adapter's first measured exercise is the standard driver canary.
+
+### pplx-decider-v1.2 and pplx-decider-flash-v1.2 (Perplexity)
+
+Perplexity released `pplx-decider-v1.2` (27B) and
+`pplx-decider-flash-v1.2` (4B) on 2026-10-16, after the freeze
+closed. The adapter's pinned-id table accepts all four ids; the
+default flipped to `pplx-decider-v1.2` on 2026-10-24, because the
+v1.1 and v1 ids no longer serve their named weights (see the
+re-pointing hazard below), so a default run must name the weights
+it actually measures. Pricing: $0.02 per 1M input
+tokens with output free for v1.2, $0.01 per 1M input with output free
+for the flash, both verified 2026-10-23 against Perplexity's official
+Decisions API documentation (page updated 2026-10-20). Both run the
+same wire shape and question text as the older pins.
+
+Re-pointing hazard, documented in the same Perplexity docs:
+requests naming `pplx-decider-v1.1-27b` or `pplx-decider-v1-27b` now
+select v1.2 server-side. A measurement under either old pin taken
+after 2026-10-16 may therefore not measure the weights it names.
+The adapter's echo check refuses a response whose echoed model
+differs from the requested pin, which guards against the
+echo-the-served-model behavior; if the API echoes the requested id
+instead, the transcript cannot distinguish the weights, so treat
+any post-2026-10-16 run under the v1.1 or v1 ids as suspect until
+the echo behavior is confirmed live. The owner's options are
+re-pinning the driver row to `pplx-decider-v1.2` explicitly or
+flipping the adapter default; neither is decided in this change set.
+
 ## Celeris
 
 No extra needed (stdlib transport). Set `CELERIS_API_KEY`, then run

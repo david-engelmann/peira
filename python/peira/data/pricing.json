@@ -2,7 +2,10 @@
   "_comment": "Pinned list-price table for cost accounting. Prices are USD per 1M tokens at the providers' standard (non-cached, non-batch) tier. This table is a measurement input: its source and pin date are sealed into every run artifact (pricing_source / pricing_date), so a cost figure is always traceable to the table that produced it. Update by bumping 'date' and 'source' together, never silently. 2026-09-27: pinned API model IDs (gpt-5.6-luna, claude-sonnet-5, gemini-3.8-flash, kimi-k3) per each vendor's actual versioning scheme (peira.api_pins); rate entries for these IDs were already in this table and are unchanged, so the API adapters' pinned defaults stay cost-accounted. 2026-09-28: added pricing_version (date + intra-day revision; sealed into run artifacts so a cost figure is traceable to the exact table version) and per-entry confidence (\"official\" = verified against the vendor pricing page or a first-party $0.0 assertion for self-hosted checkpoints; \"secondary\" = carried over unverified or gateway-reported). 2026-10-02: Anthropic default pin moved to claude-sonnet-5-5 per D3 latest-only decision (entry marked official); stale default-pin note in claude-opus-5-5 entry corrected. Changelog: 2026-10-03 added 10 OpenRouter gateway rates (OPENROUTER_CHEAP_MODELS pilot set), verified live via openrouter.ai/api/v1/models; version 2026-10-03.1. 2026-10-03 added 5 discounted OpenRouter gateway rates (Mercury 2.5, Qwen3 235B, Ling 3.0 Flash VL, Solar Pro 4, Ling 3.0 Flash), verified live via openrouter.ai/api/v1/models; version 2026-10-03.2. 2026-10-13: added gpt-6.1-sol ($2/$10 per 1M, standard short-context tier), verified against OpenAI's official pricing page (developers.openai.com/api/docs/pricing) on 2026-10-13; version 2026-10-13.1. 2026-10-13: added gpt-6-luna ($0.10/$0.50 per 1M) and gpt-6-astra ($10/$50 per 1M), verified against OpenAI's official pricing page (platform.openai.com/docs/pricing) on 2026-10-13; the gpt-5.6-terra entry ($2/$12 per 1M) already stood at the official rate and was re-verified against its official model page (developers.openai.com/api/docs/models/gpt-5.6-terra) on 2026-10-13; version 2026-10-13.2. 2026-10-14: added claude-haiku-5-5 ($0.10/$0.50 per 1M for prompts up to 100,000 tokens; the $0.50/$2.50 tier above 100,000 tokens is not modeled, because trial prompts run a few hundred tokens), verified against Anthropic's official pricing page (docs.claude.com/en/docs/about-claude/pricing) on 2026-10-14; version 2026-10-14.1. 2026-10-14: added jev-1.14.0 ($0.042/$0 per 1M, output free), verified against TypeSafe's official models page (docs.typesafe.ai/models) on 2026-10-14; version 2026-10-14.2. 2026-10-15: added the three Cloudflare Clef decision models on Workers AI (@cf/cloudflare/clef-flash $0.038/$0 per 1M, @cf/cloudflare/clef $0.240/$0 per 1M, @cf/cloudflare/clef-omni $0.150/$0 per 1M; input tokens only, output free), verified against Cloudflare's official Workers AI pricing page and per-model pages (developers.cloudflare.com/workers-ai/platform/pricing) on 2026-10-15; the clef-flash rate is the 2026-10-09 price cut from $0.090, which also cut its hosted context to 24,576 tokens; version 2026-10-15.1. 2026-10-15: added fastino/GLiNER2.5-Decide ($0.0 per 1M; self-hosted checkpoint whose local inference cost is explicitly unaccounted, never silently estimated, the Laya and Kev convention for self-hosted checkpoints); version 2026-10-15.2. 2026-10-15: added the two Perplexity pplx-decider versions on the hosted Decisions API (pplx-decider-v1.1-27b and pplx-decider-v1-27b, both $0.02/$0 per 1M, input tokens only, output free), verified against Perplexity's official Decisions API documentation (docs.perplexity.ai/docs/decisions/quickstart) on 2026-10-15; the live docs rate of $0.02 supersedes the $0.04 figure carried in pre-launch secondary reporting; version 2026-10-15.3. 2026-10-15: added celeris-1-decision ($0.04/$0 per 1M; input tokens only, output free), the vendor-stated price for Celeris's diffusion decision model on its hosted System One wire, with the wire shape and integer usage counters verified against the live API on 2026-10-15; version 2026-10-15.4. 2026-10-16: added Inception Mercury Decide (mercury-decide, $0.02/$0 per 1M, input tokens only, output free), verified against the models list served by Inception's API (api.inceptionlabs.ai/v1/models) on 2026-10-16; version 2026-10-15.5. 2026-10-22: added apertixai/cerno-4b ($0.0 per 1M; self-hosted checkpoint whose local inference cost is explicitly unaccounted, never silently estimated, the Laya and Kev convention for self-hosted checkpoints); version 2026-10-15.6. 2026-10-23: added apertixai/cerno-9b and apertixai/cerno-27b ($0.0 per 1M; same self-hosted convention, the sibling Cerno pins resolved live from the Hub on 2026-10-23); version 2026-10-15.7.",
   "basis": "USD per 1M tokens, list price, standard tier (no prompt caching, no batch discount, no long-context surcharge)",
   "date": "2026-10-15",
-  "pricing_version": "2026-10-15.7",
+  "pricing_version": "2026-10-15.7 2026-10-23: added the API version-refresh set (grok-4.7, deepseek-v4-pro, glm-5.3, MiniMax-M3.1-flash, gemini-4-argon, pplx-decider-v1.2, pplx-decider-flash-v1.2, inception/mercury-3, inclusionai/ling-3.1-flash, microsoft/microsoft-decision-1), each verified 2026-10-23 against the source named in its entry; version 2026-10-23.1.",
+  "basis": "USD per 1M tokens, list price, standard tier (no prompt caching, no batch discount, no long-context surcharge)",
+  "date": "2026-10-23",
+  "pricing_version": "2026-10-23.1",
   "models": {
     "claude-fable-5-1": {
       "_note": "Frontier-ceiling candidate (2026-09-25, adapter request path landed 2026-09-30). Priced at $10/$50 per 1M, corroborated by multiple Sept-2026 sources (Anthropic pricing page, 9to5Mac 2026-09-01 launch coverage). The model id was confirmed against the live API on 2026-10-14, when owner-run canaries drove this adapter on real v2 trial cases. Those canaries surfaced the temperature deprecation fixed alongside this note, and the full trial run follows that fix. Fable 5.1 rejects forced tool_choice with HTTP 400, so AnthropicAdapter auto-routes this model to native output_config.format structured outputs with no tools and no tool_choice, and numeric schema constraints are stripped per Anthropic's published subset. Responses are parsed through the same typed decision contract as every other model.",
@@ -96,6 +99,12 @@
       "usd_per_1m_in": 0.75,
       "usd_per_1m_out": 3.75,
       "confidence": "official"
+    },
+    "gemini-4-argon": {
+      "_note": "Gemini 4 Argon (Google's Gemini 4 flagship; endpoint id 'gemini-4-argon', listed Stable): id and status verified 2026-10-23 against Google's official models page (ai.google.dev/gemini-api/docs/models, page updated 2026-10-22). Rate carried is the introductory $2/$10 per 1M shown on Google's pricing page through 2026-11-30; Google lists a step to $4/$20 per 1M from 2026-12-01, which this entry does not model - re-pin the rate when the step lands. Added by the 2026-10-23 API version refresh.",
+      "usd_per_1m_in": 2.0,
+      "usd_per_1m_out": 10.0,
+      "confidence": "secondary"
     },
     "google/gemini-3.8-flash": {
       "_note": "OpenRouter gateway route to gemini-3.8-flash (OpenRouterAdapter default). Rate carried over from the direct Google list price ($0.75/$3.75 per 1M, 2026-09-23); OpenRouter may add a gateway markup, so this is 'secondary' until verified against the gateway's live pricing.",
@@ -208,6 +217,18 @@
       "usd_per_1m_out": 0.0,
       "confidence": "official"
     },
+    "pplx-decider-v1.2": {
+      "_note": "Perplexity pplx-decider decision model (v1.2, 27B) on the hosted Decisions API, released 2026-10-16. $0.02 per 1M input tokens with output free, verified 2026-10-23 against Perplexity's official Decisions API documentation (docs.perplexity.ai/docs/decisions/quickstart, page updated 2026-10-20). The same documentation states requests naming pplx-decider-v1.1-27b or pplx-decider-v1-27b now select v1.2, so the older pins no longer measure the versions they name. Added by the 2026-10-23 API version refresh.",
+      "usd_per_1m_in": 0.02,
+      "usd_per_1m_out": 0.0,
+      "confidence": "official"
+    },
+    "pplx-decider-flash-v1.2": {
+      "_note": "Perplexity pplx-decider-flash decision model (v1.2, 4B) on the hosted Decisions API, released 2026-10-16 alongside pplx-decider-v1.2. $0.01 per 1M input tokens with output free, verified 2026-10-23 against Perplexity's official Decisions API documentation (docs.perplexity.ai/docs/decisions/quickstart, page updated 2026-10-20). Added by the 2026-10-23 API version refresh.",
+      "usd_per_1m_in": 0.01,
+      "usd_per_1m_out": 0.0,
+      "confidence": "official"
+    },
     "lakera:v2": {
       "_note": "Secondary-sourced Lakera Guard pricing: free Community tier 10k calls/month; paid entry ~$99/month for 50k calls (~$0.002/call) - reported via third-party integration guides (Sept 2026), not confirmed on an official Lakera pricing page as of 2026-09-28. Per-call billing, not per-token: usd_per_1m_in/out are N/A. Re-verify before launch.",
       "usd_per_call": 0.002,
@@ -292,16 +313,34 @@
       "usd_per_1m_out": 6.0,
       "confidence": "official"
     },
+    "grok-4.7": {
+      "_note": "Grok 4.7 (xAI flagship, released 2026-09-21): $2/$6 per 1M, the same rates as grok-4, verified 2026-10-23 against xAI's official models page (docs.x.ai/docs/models). New version of the charted grok-4 line; added by the 2026-10-23 API version refresh. Note the same page states logprobs are not supported by grok-4.20 and newer and are silently ignored when sent, so this model's decision confidence rides the verbalized track (D-23).",
+      "usd_per_1m_in": 2.0,
+      "usd_per_1m_out": 6.0,
+      "confidence": "official"
+    },
     "deepseek-flash": {
       "_note": "DeepSeek V4.1 Flash (pin 'deepseek-flash' vendor alias): $0.30/$1.20 peak, $0.15/$0.60 off-peak (official pricing, verified 2026-10-02). Using peak rates for conservative cost planning.",
       "usd_per_1m_in": 0.3,
       "usd_per_1m_out": 1.2,
       "confidence": "official"
     },
+    "deepseek-v4-pro": {
+      "_note": "DeepSeek V4 Pro (snapshot 0813): $1.32/$3.96 peak, $0.66/$1.98 off-peak per DeepSeek's API documentation as reported by October 2026 secondary sources and corroborated by OpenRouter's catalog (deepseek/deepseek-v4-pro-0813); peak rates carried for conservative cost planning, the deepseek-flash convention. Added by the 2026-10-23 API version refresh; the DeepSeek API lists exactly two served models, this and the deepseek-flash alias.",
+      "usd_per_1m_in": 1.32,
+      "usd_per_1m_out": 3.96,
+      "confidence": "secondary"
+    },
     "glm-4-plus": {
       "_note": "GLM-4-plus (Zhipu, pin 'glm-4-plus'): ~$0.70/$2.80 per 1M estimated from CNY 5/1M input published rate and 4x output ratio (secondary, 2026-10-02). A6 smoke: 40 calls = $0.0028.",
       "usd_per_1m_in": 0.7,
       "usd_per_1m_out": 2.8,
+      "confidence": "secondary"
+    },
+    "glm-5.3": {
+      "_note": "GLM-5.3 (Zhipu flagship, live on the API 2026-08-14): model id 'glm-5.3' verified 2026-10-23 against Z.ai's own developer documentation (docs.z.ai quickstart and thinking guide use glm-5.3 against https://api.z.ai/api/paas/v4); $1.40/$4.40 per 1M corroborated by OpenRouter's z-ai/glm-5.3 listing and October 2026 launch coverage. The adapter wire is the domestic open.bigmodel.cn endpoint, the same host as the glm-4-plus pin. GLM-5.3 reasoning is always on and cannot be disabled; the adapter sends no thinking parameter. Added by the 2026-10-23 API version refresh.",
+      "usd_per_1m_in": 1.4,
+      "usd_per_1m_out": 4.4,
       "confidence": "secondary"
     },
     "Llama-4-Maverick-17B-128E-Instruct-FP8": {
@@ -376,6 +415,18 @@
       "usd_per_1m_out": 0.15,
       "confidence": "official"
     },
+    "inception/mercury-3": {
+      "_note": "OpenRouter gateway rate, verified live 2026-10-23 via openrouter.ai/api/v1/models ($0.10/$0.35 per 1M). Mercury 3 is Inception's successor chat model to the charted mercury-2.5 gateway row (Mercury 2/2.5 access for existing users ends 2026-11-15 per Inception). Added by the 2026-10-23 API version refresh.",
+      "usd_per_1m_in": 0.1,
+      "usd_per_1m_out": 0.35,
+      "confidence": "official"
+    },
+    "microsoft/microsoft-decision-1": {
+      "_note": "Microsoft-Decision-1 (9B decision model, Qwen3.5-9B post-train, hosted only) served by OpenRouter's Decisions surface at $0.042 per 1M input tokens with output free, the same rate as its Foundry list price. Route and rate documented 2026-10-23 via systemonemodels.org's model page (updated 2026-10-22) and the 2026-10-23 decision-model landscape pass; OpenRouter's own per-model page was not separately fetched, so this entry stays secondary until the first live call confirms the billed rate. Added by the 2026-10-23 API version refresh.",
+      "usd_per_1m_in": 0.042,
+      "usd_per_1m_out": 0.0,
+      "confidence": "secondary"
+    },
     "qwen/qwen3-235b-a22b-2507": {
       "_note": "OpenRouter gateway rate, verified live 2026-10-03 via openrouter.ai/api/v1/models ($0.0875/$0.35 per 1M, 75% off). Part of the cheap-model pilot set (OPENROUTER_CHEAP_MODELS).",
       "usd_per_1m_in": 0.0875,
@@ -400,6 +451,18 @@
       "usd_per_1m_out": 0.063,
       "confidence": "official"
     },
+    "inclusionai/ling-3.1-flash": {
+      "_note": "OpenRouter gateway rate, verified live 2026-10-23 via openrouter.ai/api/v1/models ($0.075/$0.225 per 1M). Ling 3.1 Flash (released 2026-10-02) is inclusionAI's successor to the charted ling-3.0-flash gateway row. Added by the 2026-10-23 API version refresh.",
+      "usd_per_1m_in": 0.075,
+      "usd_per_1m_out": 0.225,
+      "confidence": "official"
+    },
+    "MiniMax-M3.1-Flash": {
+      "_note": "MiniMax-M3.1-Flash (launched 2026-10-19) via api.minimax.io/v1, the same wire as MiniMax-M3. $0.15/$0.60 per 1M from MiniMax launch coverage, corroborated 2026-10-23 by OpenRouter's live catalog (minimax/minimax-m3.1-flash at the same rates). Reasoning is always on for this model and cannot be disabled: the API rejects thinking.type=disabled with a 400 (observed live 2026-10-23), so the adapter omits the thinking flag for this id. Added by the 2026-10-23 API version refresh.",
+      "usd_per_1m_in": 0.15,
+      "usd_per_1m_out": 0.6,
+      "confidence": "secondary"
+    },
     "MiniMax-M3": {
       "_note": "MiniMaxAdapter pinned default (2026-10-08). MiniMax-M3 via api.minimax.io/v1 (OpenAI-compatible). ~$0.30/$1.20 per 1M from third-party sources after a 50%-off promotion, so verify against platform.minimax.io before committing budget. The adapter ran the full v2 trial against the live API, so the wire shape is verified.",
       "usd_per_1m_in": 0.3,
@@ -413,7 +476,7 @@
       "confidence": "secondary"
     }
   },
-  "source": "Pre-launch provisional prices (2026-09-23) plus OpenRouter gateway rates verified live 2026-10-03 via openrouter.ai/api/v1/models; gpt-6.1-sol rate verified 2026-10-13 against OpenAI's official pricing page (developers.openai.com/api/docs/pricing); gpt-6-luna and gpt-6-astra rates verified 2026-10-13 against OpenAI's official pricing page (platform.openai.com/docs/pricing), gpt-5.6-terra rate re-verified 2026-10-13 against its official model page (developers.openai.com/api/docs/models/gpt-5.6-terra); claude-haiku-5-5 rate verified 2026-10-14 against Anthropic's official pricing page (docs.claude.com/en/docs/about-claude/pricing); Cloudflare Clef rates verified 2026-10-15 against Cloudflare's official Workers AI pricing page (developers.cloudflare.com/workers-ai/platform/pricing); Perplexity pplx-decider rates verified 2026-10-15 against Perplexity's official Decisions API documentation (docs.perplexity.ai/docs/decisions/quickstart); Celeris celeris-1-decision rate verified 2026-10-16 against Celeris's official model page (celeris.ai/decisions); Inception Mercury Decide rate verified 2026-10-16 against the models list served by Inception's API (api.inceptionlabs.ai/v1/models). Re-verify every rate before launch.",
+  "source": "Pre-launch provisional prices (2026-09-23) plus OpenRouter gateway rates verified live 2026-10-03 via openrouter.ai/api/v1/models; gpt-6.1-sol rate verified 2026-10-13 against OpenAI's official pricing page (developers.openai.com/api/docs/pricing); gpt-6-luna and gpt-6-astra rates verified 2026-10-13 against OpenAI's official pricing page (platform.openai.com/docs/pricing), gpt-5.6-terra rate re-verified 2026-10-13 against its official model page (developers.openai.com/api/docs/models/gpt-5.6-terra); claude-haiku-5-5 rate verified 2026-10-14 against Anthropic's official pricing page (docs.claude.com/en/docs/about-claude/pricing); Cloudflare Clef rates verified 2026-10-15 against Cloudflare's official Workers AI pricing page (developers.cloudflare.com/workers-ai/platform/pricing); Perplexity pplx-decider rates verified 2026-10-15 against Perplexity's official Decisions API documentation (docs.perplexity.ai/docs/decisions/quickstart); Celeris celeris-1-decision rate verified 2026-10-16 against Celeris's official model page (celeris.ai/decisions); Inception Mercury Decide rate verified 2026-10-16 against the models list served by Inception's API (api.inceptionlabs.ai/v1/models); API version-refresh rates verified 2026-10-23 against the xAI models page (docs.x.ai/docs/models), Perplexity's Decisions API quickstart (docs.perplexity.ai/docs/decisions/quickstart, updated 2026-10-20), the OpenRouter live model catalog (openrouter.ai/api/v1/models), Z.ai developer documentation (docs.z.ai), and Google's Gemini models page (ai.google.dev/gemini-api/docs/models, updated 2026-10-22). Re-verify every rate before launch.",
   "source_urls": [
     "https://openai.com/api/pricing/",
     "https://developers.openai.com/api/docs/pricing",
@@ -429,6 +492,10 @@
     "https://developers.cloudflare.com/workers-ai/models/clef/",
     "https://developers.cloudflare.com/workers-ai/models/clef-omni/",
     "https://docs.perplexity.ai/docs/decisions/quickstart",
-    "https://celeris.ai/decisions"
+    "https://celeris.ai/decisions",
+    "https://docs.x.ai/docs/models",
+    "https://docs.z.ai/guides/overview/quick-start",
+    "https://ai.google.dev/gemini-api/docs/models",
+    "https://openrouter.ai/api/v1/models"
   ]
 }

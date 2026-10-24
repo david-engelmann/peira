@@ -81,8 +81,8 @@ class TestPplxConstruction(unittest.TestCase):
 
     def test_default_model_is_v11(self):
         a = _adapter()
-        self.assertEqual(a.model, "pplx-decider-v1.1-27b")
-        self.assertEqual(MODEL_ID, "pplx-decider-v1.1-27b")
+        self.assertEqual(a.model, "pplx-decider-v1.2")
+        self.assertEqual(MODEL_ID, "pplx-decider-v1.2")
 
     def test_all_supported_models_construct(self):
         for model in SUPPORTED_MODEL_IDS:
@@ -110,8 +110,9 @@ class TestPplxConstruction(unittest.TestCase):
             _adapter(model="pplx-decider")
         self.assertEqual(
             str(cm.exception),
-            "pplx-decider adapter pins model 'pplx-decider-v1-27b' "
-            "or 'pplx-decider-v1.1-27b'; got 'pplx-decider'. Floating "
+            "pplx-decider adapter pins model 'pplx-decider-flash-v1.2' "
+            "or 'pplx-decider-v1-27b' or 'pplx-decider-v1.1-27b' or "
+            "'pplx-decider-v1.2'; got 'pplx-decider'. Floating "
             "tags and unversioned names are never allowed; a "
             "measurement must name the exact model.")
 
@@ -215,7 +216,7 @@ class TestPplxChoice(unittest.TestCase):
                                          "confidence": 0.9}})
         _adapter(transport=t).decide(_case_input(), "choice", _ctx())
         payload = t.seen["payload"]
-        self.assertEqual(payload["model"], "pplx-decider-v1.1-27b")
+        self.assertEqual(payload["model"], "pplx-decider-v1.2")
         self.assertEqual(payload["state"], "Decision: approve or deny?")
         q = payload["questions"]["decision"]
         self.assertEqual(set(q), {"type", "instructions", "criteria"})
@@ -495,7 +496,7 @@ class TestPplxResponseValidation(unittest.TestCase):
         with self.assertRaises(ProviderError) as cm:
             _adapter(transport=t).decide(_case_input(), "choice", _ctx())
         self.assertIn("pplx-decider-v1-27b", str(cm.exception))
-        self.assertIn("pplx-decider-v1.1-27b", str(cm.exception))
+        self.assertIn("pplx-decider-v1.2", str(cm.exception))
 
     def test_model_echo_missing_is_terminal(self):
         t = _transport_for({"decision": {"type": "choice",

@@ -10,17 +10,33 @@ the Jev wire). Perplexity positions pplx-decider directly against
 TypeSafe's Jev, so peira measures it on the same wire shape with the
 same question text the Jev adapter sends.
 
-Two pinned models are supported, each named by its full served id so
+Four pinned models are supported, each named by its full served id so
 a measurement always names the exact weights that produced it:
 
-- ``pplx-decider-v1.1-27b`` (the default): the current version,
-  served since 2026-10-06. $0.02 per 1M input tokens, output free.
+- ``pplx-decider-v1.2`` (the default, 27B): released 2026-10-16.
+  $0.02 per 1M input tokens, output free.
+- ``pplx-decider-v1.1-27b``: served 2026-10-06 to 2026-10-16, then
+  silently re-pointed to v1.2 server-side (see the hazard note).
+  $0.02 per 1M input tokens, output free.
 - ``pplx-decider-v1-27b``: the launch version, served since
-  2026-10-01. $0.02 per 1M input tokens, output free.
+  2026-10-01, likewise re-pointed. $0.02 per 1M input tokens,
+  output free.
+- ``pplx-decider-flash-v1.2`` (4B): released 2026-10-16 alongside
+  v1.2. $0.01 per 1M input tokens, output free.
 
-Both are fine-tunes of Qwen3.8-27B with Apache-2.0 weights. The
-hosted context limit is 262,144 input tokens per request, far above
-anything a peira case sends.
+The 27B models are fine-tunes of Qwen3.8-27B; the flash is a 4B
+checkpoint. All carry Apache-2.0 weights. The hosted context limit
+is 262,144 input tokens per request, far above anything a peira
+case sends.
+
+RE-POINTING HAZARD (observed in Perplexity's documentation, updated
+2026-10-20): requests naming ``pplx-decider-v1.1-27b`` or
+``pplx-decider-v1-27b`` now select v1.2 server-side. The adapter's
+echo check below is the guard: if the API echoes the served model
+rather than the requested one, a run under an old pin refuses to
+seal; if it echoes the requested id, the transcript cannot
+distinguish the weights. Treat any post-2026-10-16 measurement under
+the v1.1 or v1 ids as suspect until the echo behavior is confirmed.
 
 Endpoint: ``POST https://api.perplexity.ai/v1/decisions``
 Auth: ``Authorization: Bearer <API key>``; a key sent in an
@@ -94,12 +110,18 @@ from peira.adapters.base import (
 SUPPORTED_MODEL_IDS = frozenset({
     "pplx-decider-v1.1-27b",
     "pplx-decider-v1-27b",
+    "pplx-decider-v1.2",
+    "pplx-decider-flash-v1.2",
 })
 """Pinned served model ids. Ids outside this table are rejected at
 construction; a measurement must name the exact model."""
 
-MODEL_ID = "pplx-decider-v1.1-27b"
-"""Default pinned pplx-decider model: the current served version."""
+MODEL_ID = "pplx-decider-v1.2"
+"""Default pinned pplx-decider model: the version actually served.
+
+Flipped from v1.1 on 2026-10-24: Perplexity re-pointed the v1.1
+and v1 ids to v1.2 weights server-side, so a run under the old
+default would have recorded v1.2 measurements under a v1.1 name."""
 
 API_KEY_ENV = "PERPLEXITY_API_KEY"
 """Environment variable carrying the Perplexity API key."""
