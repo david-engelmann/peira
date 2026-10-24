@@ -60,6 +60,11 @@ and are cached; every model is pinned to an exact commit revision, never
 | WildGuard | `peira.adapters.hf:WildGuardAdapter` | `allenai/wildguard` | `cbba4823f3e8020e5a74a5e29bf85072def6f2ff` |
 | HarmBench classifier | `peira.adapters.hf:HarmBenchAdapter` | `cais/HarmBench-Llama-2-13b-cls` | `bda705349d1144fa618770bea64d99ce54e3835b` |
 | Granite Guardian HAP-125M | `peira.adapters.hf:GraniteGuardianHapAdapter` | `ibm-granite/granite-guardian-hap-125m` | `a76ccfd3ddb790fa7c23db58149bfec7ba1aa57f` |
+| Qwen3Guard-Gen 8B | `peira.adapters.hf:Qwen3Guard8BAdapter` | `Qwen/Qwen3Guard-Gen-8B` | `4505cb1a6f1864f21f8b27f7daf1b9a1aab6edbb` |
+| ShieldGemma 9B | `peira.adapters.hf:ShieldGemma9BAdapter` | `google/shieldgemma-9b` | `b8b636016df4540721a098c7aab91c97ec6ee508` |
+| Nemotron Safety Guard 8B v3 | `peira.adapters.hf:NemotronSafetyGuardAdapter` | `nvidia/llama-3.1-nemotron-safety-guard-8b-v3` | `8fdc246ba3d56db9c469d534233b9f582d3afafa` |
+| Llama Guard 4 12B | `peira.adapters.hf:LlamaGuard4Adapter` | `meta-llama/Llama-Guard-4-12B` | `87acb4b94e930c3d679e6e7ee9d57e2feab9ea71` |
+| gpt-oss-safeguard 20B | `peira.adapters.hf:GptOssSafeguardAdapter` | `openai/gpt-oss-safeguard-20b` | `8a11e17b25c973a24099d4016bf2e17dd7ec1574` |
 | Llama Guard 3 1B | `peira.adapters.hf:LlamaGuard3_1BAdapter` | `meta-llama/Llama-Guard-3-1B` | `acf7aafa60f0410f8f42b1fa35e077d705892029` |
 | Llama Guard 3 8B | `peira.adapters.hf:LlamaGuard3_8BAdapter` | `meta-llama/Llama-Guard-3-8B` | `7327bd9f6efbbe6101dc6cc4736302b3cbb6e425` |
 
@@ -164,6 +169,55 @@ carries no `id2label`; labels are named for the model's documented
 purpose with index 1 as the malicious class, to be confirmed at
 first load. Apache-2.0, ungated. Live-UNVERIFIED.
 
+**Qwen3Guard-Gen 8B** is the 4B's sibling pin: same chat-template
+contract, same `Safety:` prefill, same Strict-mode renormalization
+over Safe / Unsafe / Controversial. It was probed and canaried
+against the real weights during the October 2026 sweep. One known
+dependency: if the Controversial label's mass splits across more
+than one token, the first-token read can miss part of it; the
+multi-token repair is tracked separately and, when it lands on the
+4B adapter, this subclass inherits it. Apache-2.0, ungated.
+
+**ShieldGemma 9B** is the 2B's sibling pin: same frozen combined
+guideline, same single-forward-pass Yes/No scoring at the larger
+checkpoint. Gated model (requires accepting the Gemma Terms of
+Use on HuggingFace; accepted on the trial account).
+
+**Nemotron Safety Guard 8B v3** is NVIDIA's Llama-3.1-based
+moderation guard. It is prompted with NVIDIA's published taxonomy
+template (23 categories, reproduced verbatim from the checkpoint's
+own `inference_script.py`) rendered with the case text as the user
+message and no agent response, through the model's chat template.
+The adapter prefills `{"User Safety": "` so the next token is the
+rating, and renormalizes the first-token logprobs over safe/unsafe.
+NVIDIA Open Model License, ungated. Live-UNVERIFIED in this repo:
+the adapter was staged during the sweep but its run window never
+opened, so the first load must confirm the label-token resolution
+on the real tokenizer before measured use.
+
+**Llama Guard 4 12B** is Meta's multimodal guard, wired for the
+text path only (peira's cases are text). It is prompted through
+the checkpoint's own guard chat template and scored from the
+first-token safe/unsafe logprobs, renormalized. The card documents
+no probability; the score is peira's standard generative-guard
+construction from the label logits. Gated (Llama 4 Community
+License; the gate passes on the trial account). Live-UNVERIFIED
+in this repo, on the same terms as Nemotron above.
+
+**gpt-oss-safeguard 20B** is OpenAI's bring-your-own-policy
+reasoner, served exactly as shipped (its MXFP4 weights are the
+checkpoint's native format, not an applied quantization). Unlike
+the rest of this family it generates: the model reasons in the
+harmony analysis channel under a frozen policy (structured as
+OpenAI's safeguard guide prescribes, with the verdict alphabet
+fixed to one character, 0 or 1), and the adapter reads the
+renormalized 0/1 logprobs at the verdict position in the final
+channel. A generation with no final channel or no verdict in it
+is an error, never a repaired score. The GPU load path passes
+`device_map="cuda"` and so requires `accelerate` in the serving
+environment. Apache-2.0, ungated. Probe-only at landing: the
+sweep's pod probe failed on the missing `accelerate`, and the
+probe is re-run before any measured use.
 **Llama Guard 3 (1B and 8B)** is Meta's Llama-3.1 safety
 classifier pair, aligned to the MLCommons hazards taxonomy (the
 model card's table runs S1 Violent Crimes through S14 Code
@@ -2004,6 +2058,22 @@ different, so an endpoint serving other weights, or the same
 repo at another revision, cannot be measured under the pin
 by mistake.
 
+The other two family members carry sibling pins of their own:
+`peira.adapters.cerno:Cerno9BAdapter` measures
+`apertixai/cerno-9b` at Hub revision
+80010f97eaa989b41c908ecba7d7b7fadaa99239 (sidecar on
+127.0.0.1:8018, response stamp `cerno-9b`), and
+`peira.adapters.cerno:Cerno27BAdapter` measures
+`apertixai/cerno-27b` at Hub revision
+c2f7efe54fe4d3dfd7136bb2e9daf2c0c0633e3d (sidecar on
+127.0.0.1:8019, response stamp `cerno-27b`). Both revisions
+were resolved live from the Hub on 2026-10-23. The wire,
+the stamp check, the fail-closed answer validation, and the
+confidence normalization are identical across the three
+classes; each class rejects the other members' ids at
+construction, so a sibling's deployment cannot be measured
+under the wrong pin.
+
 The weights are FP8 W8A8 as shipped. That is the checkpoint's
 native format, served as published and never re-quantized or
 converted. The sidecar's CPU serving keeps the weights FP8 in
@@ -2033,7 +2103,7 @@ for a pinned local deployment those shapes are server drift
 against a fixed answer schema, not measurement.
 
 The model is local and self-hosted, so cost is $0 (pricing
-version 2026-10-15.6). A forward pass is a full prefill of the
+version 2026-10-15.7). A forward pass is a full prefill of the
 case state on CPU. Measured at build time on the 2 vCPU trial
 VM under its usual load, a short case state took about 318
 seconds for a single choice call, so the adapter's default

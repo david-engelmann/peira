@@ -7,6 +7,35 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
 
 ## [Unreleased]
 
+### Fleet pins and adapter landings for the full-run windows
+
+- Cerno gains its two sibling pins: `Cerno9BAdapter` measures
+  `apertixai/cerno-9b` at Hub revision
+  80010f97eaa989b41c908ecba7d7b7fadaa99239 and `Cerno27BAdapter`
+  measures `apertixai/cerno-27b` at Hub revision
+  c2f7efe54fe4d3dfd7136bb2e9daf2c0c0633e3d, both resolved live
+  from the Hub on 2026-10-23. The stamp check is parametrized
+  over the pin; the 4B adapter's behavior and error text are
+  unchanged. Pricing: both checkpoints added at $0.0
+  (self-hosted convention), pricing version 2026-10-15.7.
+- Five guardrail adapters land from the October sweep's
+  pod-only code, at the same pins the sweep recorded:
+  `Qwen3Guard8BAdapter` (`Qwen/Qwen3Guard-Gen-8B`, the 4B
+  adapter's sibling subclass; the multi-token Controversial
+  repair remains a separate change and will be inherited when
+  it lands), `ShieldGemma9BAdapter` (`google/shieldgemma-9b`,
+  the 2B adapter's sibling subclass, gated),
+  `NemotronSafetyGuardAdapter`
+  (`nvidia/llama-3.1-nemotron-safety-guard-8b-v3`, prompted
+  with NVIDIA's published taxonomy template, verified
+  byte-identical against the pinned checkpoint's
+  `inference_script.py`), `LlamaGuard4Adapter`
+  (`meta-llama/Llama-Guard-4-12B`, text path, gated), and
+  `GptOssSafeguardAdapter` (`openai/gpt-oss-safeguard-20b`,
+  bring-your-own-policy generative scoring over the harmony
+  final channel). Nemotron and Llama Guard 4 are landed
+  live-unverified against their weights; the gpt-oss adapter
+  is probe-only at landing.
 ### Fixed score probability keys ignored by position in the Jev adapter
 
 - The score fallback in the `jev` adapter, which derives a rubric

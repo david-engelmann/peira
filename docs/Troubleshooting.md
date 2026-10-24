@@ -812,6 +812,77 @@ a tokenizer/model mismatch, not a retryable failure. Fix: check the
 pinned revision actually matches `allenai/wildguard`; don't substitute
 tokenizers.
 
+**`chat template for 'Qwen/Qwen3Guard-Gen-8B' did not return text; cannot build the moderation prompt`**
+Cause: the 8B pin shares the 4B adapter's contract (model's own chat
+template, `Safety:` prefill). Same mismatch class as the 4B entry.
+Fix: check the pinned revision actually matches
+`Qwen/Qwen3Guard-Gen-8B`; don't substitute tokenizers.
+
+**`tokenizer for 'Qwen/Qwen3Guard-Gen-8B' has no single-token id for Safe (tried ...) ...`**
+Cause: the 8B pin reads its verdict from the first-token logprobs of
+` Safe`/` Unsafe`/` Controversial`, the same three label tokens as the
+4B. The loaded tokenizer has no single-token id for one of the
+spellings, so the probability can't be read honestly. This is a
+tokenizer/model mismatch, not a retryable failure. Fix: check the
+pinned revision actually matches `Qwen/Qwen3Guard-Gen-8B`; don't
+substitute tokenizers.
+
+**`tokenizer for 'google/shieldgemma-9b' has no vocab entry for Yes/No labels: ...`**
+Cause: the 9B pin scores the same frozen guideline prompt as the 2B,
+reading the `Yes`/`No` vocab entries off a single forward pass. The
+loaded tokenizer has no such vocab entries, so the probability can't
+be read honestly. This is a tokenizer/model mismatch, not a
+retryable failure. Fix: check the pinned revision actually matches
+`google/shieldgemma-9b`; don't substitute tokenizers.
+
+**`chat template for 'nvidia/llama-3.1-nemotron-safety-guard-8b-v3' did not return text; cannot build the moderation prompt`**
+Cause: Nemotron Safety Guard is prompted through the model's own chat
+template around NVIDIA's published taxonomy template; the template
+returned something other than text, so the prompt can't be built.
+This is a tokenizer/model mismatch, not a retryable failure. Fix:
+check the pinned revision actually matches
+`nvidia/llama-3.1-nemotron-safety-guard-8b-v3`; don't substitute
+tokenizers.
+
+**`tokenizer for 'nvidia/llama-3.1-nemotron-safety-guard-8b-v3' has no single-token id for safe (tried ...) ...`**
+Cause: the adapter reads the verdict from the first-token logprobs
+of `safe`/`unsafe` after prefilling `{"User Safety": "`. The loaded
+tokenizer has no single-token id for the label spellings, so the
+probability can't be read honestly. This is a tokenizer/model
+mismatch, not a retryable failure. Fix: check the pinned revision
+actually matches
+`nvidia/llama-3.1-nemotron-safety-guard-8b-v3`; don't substitute
+tokenizers.
+
+**`chat template for 'meta-llama/Llama-Guard-4-12B' did not return text; cannot build the moderation prompt`**
+Cause: Llama Guard 4 is prompted through the checkpoint's own
+`chat_templates.jinja` guard template. The rendered prompt came
+back as something other than text, so the prompt can't be built.
+This is a tokenizer/model mismatch, not a retryable failure.
+Fix: check the pinned revision actually matches
+`meta-llama/Llama-Guard-4-12B`; don't substitute tokenizers.
+
+**`tokenizer for 'meta-llama/Llama-Guard-4-12B' has no single-token id for safe (tried ...) ...`**
+Cause: the adapter reads the verdict from the first-token logprobs
+of `safe`/`unsafe`. The loaded tokenizer has no single-token id for
+the label spellings, so the probability can't be read honestly.
+This is a tokenizer/model mismatch, not a retryable failure.
+Fix: check the pinned revision actually matches
+`meta-llama/Llama-Guard-4-12B`; don't substitute tokenizers.
+
+**`gpt-oss-safeguard: no final channel in generation: ...`**
+Cause: the model reasons in the harmony channels and is expected to
+emit `<|channel|>final<|message|>` before the verdict; this
+generation had no final channel, so there is no verdict position to
+score. Terminal, never a repaired score. Fix: this is a model
+behavior fault, not a prompt defect; record it and re-probe, don't
+retry in a loop.
+
+**`gpt-oss-safeguard: no 0/1 verdict in final channel: ...`**
+Cause: the generation reached the final channel but emitted no `0`
+or `1` token in it, so there is no verdict to renormalize over.
+Terminal, never a repaired score. Same handling as the entry above.
+
 **`chat template for 'ibm-granite/granite-guardian-4.1-8b' did not return text; cannot build the moderation prompt`**
 Cause: Granite Guardian is prompted through the model's own chat
 template (`apply_chat_template`); the template returned something
