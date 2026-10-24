@@ -1013,7 +1013,12 @@ if (!modelsHtml) {
       `models section holds ${cardChunks.length} cards, payload holds ${allRows.length} rows`,
     );
   }
-  const rankOf = new Map(ranked.map((r, i) => [r.run_id, i + 1]));
+  /* Ranks are dense within each group (admission rules, section
+   * 4.1): the full suite group runs 1..N over fullCohort and the
+   * slice group 1..M over sliceCohort, mirroring boardGroups(). */
+  const rankOf = new Map();
+  fullCohort.forEach((r, i) => rankOf.set(r.run_id, i + 1));
+  sliceCohort.forEach((r, i) => rankOf.set(r.run_id, i + 1));
   for (const chunk of cardChunks) {
     const id = chunk.slice(0, chunk.indexOf('"'));
     const row = rowById.get(id);
@@ -1032,7 +1037,9 @@ if (!modelsHtml) {
         fail(`card ${id}: flagged card states no flagged statement`);
       }
     } else {
-      const stmt = `Rank ${rankOf.get(id)} of ${ranked.length} ranked`;
+      const stmt = isSlice
+        ? `Rank ${rankOf.get(id)} of ${sliceCohort.length} on the guardrail slice of ${row.n_cases.toLocaleString("en-US")} cases`
+        : `Rank ${rankOf.get(id)} of ${fullCohort.length} in the full suite`;
       if (!blockText.includes(stmt)) {
         fail(`card ${id}: rank statement "${stmt}" not in the card text`);
       }

@@ -19,14 +19,17 @@
 }
 
 :root {
-  --ground: #0a0c0f;
-  --panel: #10141a;
-  --raised: #171d24;
+  --ground: #05070a;
+  --panel: #0c1015;
+  --raised: #141a21;
   --hairline: #232c35;
-  --ink-1: #e9eef3;
+  --edge: rgba(255, 255, 255, 0.08);
+  --edge-soft: rgba(255, 255, 255, 0.05);
+  --ink-1: #eef2f6;
   --ink-2: #aebcc7;
   --ink-3: #71808f;
   --accent: #2fbf71;
+  --accent-bright: #4ade80;
   --amber: #e8a33d;
   --red: #ff6a3d;
 
@@ -56,6 +59,24 @@ body {
   font-family: var(--font-data);
   font-size: 14.5px;
   line-height: 1.45;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* Ambient depth. A fixed wash of faint green and blue light over
+   the ground, so the page reads as a lit surface rather than a
+   flat black. Pointer-transparent and behind everything. */
+
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(900px 480px at 50% -140px, rgba(47, 191, 113, 0.08), transparent 70%),
+    radial-gradient(1100px 700px at 88% 12%, rgba(90, 130, 220, 0.05), transparent 70%),
+    radial-gradient(1400px 1000px at 50% 115%, rgba(47, 191, 113, 0.03), transparent 70%);
 }
 
 .num {
@@ -71,13 +92,16 @@ body {
   max-width: 1180px;
   margin: 0 auto;
   padding: 0 24px 96px;
+  position: relative;
+  z-index: 1;
 }
 
-/* Masthead, prototype placeholder. Round 11 builds the real one. */
+/* Masthead. A quiet bar: wordmark, claim, and the dataset
+   stamp, on a hairline. */
 
 .masthead {
-  padding: 28px 0 20px;
-  border-bottom: 1px solid var(--hairline);
+  padding: 26px 0 18px;
+  border-bottom: 1px solid var(--edge-soft);
 }
 
 .masthead-top {
@@ -92,9 +116,9 @@ body {
    system resolves to ink tones. */
 
 .wordmark {
-  font-size: 20px;
-  font-weight: 650;
-  letter-spacing: 0.02em;
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
   margin: 0;
   color: var(--accent);
 }
@@ -116,29 +140,40 @@ body {
   text-align: right;
 }
 
-/* Findings strip. A newspaper band across the page (owner
-   ruling, round 8 feedback), a heavy rule over a hairline, the
-   finding set as a headline and the counts as its deck. */
+/* Hero. The finding set as display type: large, tight, and
+   quiet, with the headline range lit in green. The counts sit
+   under it as a deck. No rules; the type carries it. */
 
 .findings {
-  margin-top: 22px;
-  border-top: 2px solid var(--ink-1);
-  border-bottom: 1px solid var(--hairline);
-  padding: 18px 0 16px;
+  margin-top: 56px;
+  padding: 0;
 }
 
 .finding {
-  font-size: 23px;
-  font-weight: 600;
-  line-height: 1.35;
-  max-width: 46ch;
+  font-size: clamp(32px, 4.6vw, 52px);
+  font-weight: 650;
+  letter-spacing: -0.022em;
+  line-height: 1.07;
+  max-width: 21ch;
   margin: 0;
+  text-wrap: balance;
+}
+
+.range-hl {
+  background: linear-gradient(115deg, var(--accent-bright), var(--accent));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  font-weight: 700;
+  white-space: nowrap;
 }
 
 .counts-line {
   color: var(--ink-2);
   max-width: 68ch;
-  margin: 10px 0 0;
+  margin: 18px 0 0;
+  font-size: 15.5px;
+  line-height: 1.55;
 }
 
 /* Section heading system */
@@ -157,11 +192,12 @@ body {
 }
 
 .section-title {
-  font-size: 20px;
+  font-size: clamp(26px, 3vw, 34px);
   font-weight: 650;
-  letter-spacing: 0.09em;
-  text-transform: uppercase;
+  letter-spacing: -0.018em;
+  line-height: 1.12;
   margin: 0 0 12px;
+  text-wrap: balance;
 }
 
 .section-lede {
@@ -311,9 +347,16 @@ body {
     "chart chart";
   column-gap: 28px;
   align-items: center;
-  padding: 10px 0 12px;
+  padding: 12px 14px 14px;
+  margin: 0 -14px;
   border-bottom: 1px solid color-mix(in srgb, var(--hairline) 45%, transparent);
+  border-radius: 14px;
   position: relative;
+  transition: background 160ms ease;
+}
+
+.rank-row:hover {
+  background: rgba(255, 255, 255, 0.028);
 }
 
 .rank-row:last-child {
@@ -415,11 +458,12 @@ body {
 }
 
 .value-main {
-  font-size: 27px;
-  font-weight: 600;
+  font-size: 30px;
+  font-weight: 650;
+  letter-spacing: -0.01em;
   color: var(--ink-1);
   font-variant-numeric: tabular-nums;
-  line-height: 1.1;
+  line-height: 1.05;
 }
 
 .value-sub {
@@ -577,14 +621,24 @@ body {
 .links-line {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px 28px;
-  margin-top: 14px;
+  gap: 10px;
+  margin-top: 22px;
 }
 .links-line a {
   color: var(--ink-1);
-  text-decoration: underline;
-  text-underline-offset: 3px;
-  padding: 6px 2px;
+  text-decoration: none;
+  font-size: 13.5px;
+  font-weight: 600;
+  padding: 10px 18px;
+  border: 1px solid var(--edge);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.03);
+  transition: background 160ms ease, border-color 160ms ease, transform 160ms ease;
+}
+.links-line a:hover {
+  background: rgba(255, 255, 255, 0.07);
+  border-color: rgba(255, 255, 255, 0.16);
+  transform: translateY(-1px);
 }
 .chart-id {
   margin-top: 18px;
@@ -1354,11 +1408,12 @@ body {
    a coordinate system of spark bars and a fixed anatomy). */
 
 .card-body {
-  background: var(--panel);
-  border: 1px solid var(--hairline);
-  border-radius: 6px;
-  padding: 18px 20px 16px;
-  margin: 4px 0 14px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.035), rgba(255, 255, 255, 0.008)), var(--panel);
+  border: 1px solid var(--edge);
+  border-radius: 16px;
+  padding: 22px 24px 20px;
+  margin: 6px 0 16px;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.05);
 }
 .model-item[open ] {
   border-bottom: none;
@@ -1675,21 +1730,22 @@ body {
   white-space: nowrap;
 }
 
-/* Section bar. Sticky under the masthead, a hairline and
-   eight short labels, nothing more. On phones the same bar
-   scrolls sideways in its sticky position (design 2.1). The
-   active link carries an ink rule drawn by a bottom border
-   present in both states, so the scrollspy never shifts the
-   bar's layout. */
+/* Section bar. A floating glass pill, sticky, carrying the
+   eight section links. The active link fills its pill; the
+   scrollspy never shifts layout because only backgrounds move. */
 
 .section-nav {
   position: sticky;
-  top: 0;
+  top: 12px;
   z-index: 40;
-  background: var(--ground);
-  border-bottom: 1px solid var(--hairline);
-  margin: 0 -24px;
-  padding: 0 24px;
+  background: rgba(10, 13, 17, 0.72);
+  -webkit-backdrop-filter: blur(16px);
+  backdrop-filter: blur(16px);
+  border: 1px solid var(--edge);
+  border-radius: 18px;
+  margin: 28px 0 0;
+  padding: 5px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.45);
 }
 
 .section-nav-inner {
@@ -1705,23 +1761,25 @@ body {
 
 .section-nav-link {
   flex: 0 0 auto;
-  font-size: 12.5px;
+  font-size: 13px;
   font-weight: 600;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.01em;
   color: var(--ink-2);
   text-decoration: none;
-  padding: 12px 10px 10px;
-  border-bottom: 2px solid transparent;
-  margin-bottom: -1px;
+  padding: 9px 15px;
+  border-radius: 999px;
+  transition: background 160ms ease, color 160ms ease;
+  white-space: nowrap;
 }
 
 .section-nav-link:hover {
   color: var(--ink-1);
+  background: rgba(255, 255, 255, 0.05);
 }
 
 .section-nav-link.active {
   color: var(--ink-1);
-  border-bottom-color: var(--ink-1);
+  background: rgba(255, 255, 255, 0.1);
 }
 
 /* Phone widths: the bar bleeds to the page edge with a
@@ -1734,8 +1792,9 @@ body {
    round 2026-10-23). */
 @media (max-width: 760px) {
   .section-nav {
-    margin: 0 -16px;
-    padding: 0 16px;
+    margin: 16px 0 0;
+    border-radius: 16px;
+    top: 8px;
   }
 }
 

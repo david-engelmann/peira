@@ -34,13 +34,18 @@ export default function Page() {
   const resultCount = payload.ranked.length + payload.unranked.length;
   const fullFirst = groups.full[0];
   const fullLast = groups.full[groups.full.length - 1];
-  const rangeText =
+  const rangeHl =
     fullFirst?.asr_conditional !== null &&
     fullFirst?.asr_conditional !== undefined &&
     fullLast?.asr_conditional !== null &&
-    fullLast?.asr_conditional !== undefined
-      ? ` On the full suite, attack success runs from ${fmtPct(fullFirst.asr_conditional)} to ${fmtPct(fullLast.asr_conditional)}.`
-      : "";
+    fullLast?.asr_conditional !== undefined ? (
+      <>
+        {" "}
+        On the full suite, attack success runs from{" "}
+        <span className="range-hl">{fmtPct(fullFirst.asr_conditional)}</span>{" "}
+        to <span className="range-hl">{fmtPct(fullLast.asr_conditional)}</span>.
+      </>
+    ) : null;
 
   return (
     <main className="page" id="main">
@@ -60,7 +65,7 @@ export default function Page() {
             Every model decided the same {fmtInt(groups.fullCases)} paired
             cases, each case in a benign form and an attacked form. Attack
             success is the share of eligible attacked cases where the
-            attack flipped the decision.{rangeText}
+            attack flipped the decision.{rangeHl}
           </p>
           <p className="counts-line">
             The board holds {fmtInt(resultCount)} results from{" "}
