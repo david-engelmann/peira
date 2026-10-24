@@ -15,8 +15,9 @@ Auth: ``Authorization: Bearer $OPENAI_API_KEY``
 
 The adapter pins ``gpt-6-luna``, the only model the endpoint
 supports, so a measurement always names the exact model that
-produced it. Access is a public beta (opened 2026-10-06); the
-account behind the key needs beta access to the endpoint.
+produced it. Access went from public beta (opened 2026-10-06) to
+general availability on 2026-10-22; the account behind the key needs
+Decisions API access to the endpoint.
 
 Wire shape (from OpenAI's Decisions guide and API reference, and
 exercised live on 2026-10-14 with three probe calls on real v2
@@ -127,8 +128,9 @@ def _require_api_key(explicit: str | None) -> str:
         raise ValueError(
             f"openai-decisions adapter needs an OpenAI API key: set the "
             f"{API_KEY_ENV} environment variable (or pass api_key=...). "
-            f"The Decisions API is in public beta. The key's account "
-            f"needs beta access to POST /v1/decisions."
+            f"The Decisions API is generally available since "
+            f"2026-10-22. The key's account needs access to "
+            f"POST /v1/decisions."
         )
     return key
 
@@ -350,7 +352,7 @@ class OpenAIDecisionsAdapter:
         if status == 401:
             raise ProviderError(
                 msg + f"; check that {API_KEY_ENV} is valid and the "
-                "account has Decisions beta access.",
+                "account has Decisions API access.",
                 status_code=status,
             )
         if status == 422:

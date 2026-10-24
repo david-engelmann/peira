@@ -507,7 +507,7 @@ class TestErrors(unittest.TestCase):
             str(cm.exception),
             "openai-decisions API error 401: detail; check that "
             "OPENAI_API_KEY is valid and the account has Decisions "
-            "beta access.")
+            "API access.")
         with self.assertRaises(ProviderError) as cm:
             a._raise_for_status(422, None, "detail")
         self.assertEqual(

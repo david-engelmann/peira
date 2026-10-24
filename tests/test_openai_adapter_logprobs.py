@@ -350,5 +350,48 @@ class TestOpenAIAstraLogprobsOmission(unittest.TestCase):
         self.assertIn("gpt-6-astra", OpenAIAdapter._NO_LOGPROBS_MODELS)
 
 
+class TestOpenAI56SolLogprobsOmission(unittest.TestCase):
+    """gpt-5.6-sol 400s on logprobs.
+
+    Observed live 2026-10-23 (the config-only canary 400s on
+    max_tokens for this model; the 5.6-family reasoning model, same
+    wire quirks as luna): logprobs is expected to fail the same way
+    as on its 5.6 siblings. The adapter must omit the field for
+    ``gpt-5.6-sol``, the transcript must honestly record the
+    omission, and the decision-token logprob track is ``None``.
+    """
+
+    def setUp(self):
+        self.mod, self.calls, self.created = _make_openai(
+            [_openai_completion(GOOD_JSON, with_logprobs=False)])
+        self._m = _fake_modules({"openai": self.mod})
+        self._m.__enter__()
+        self._e = _env(OPENAI_API_KEY="<redacted>")
+        self._e.__enter__()
+        self.addCleanup(self._e.__exit__, None, None, None)
+        self.addCleanup(self._m.__exit__, None, None, None)
+
+    def test_sol56_omits_logprobs_on_wire(self):
+        OpenAIAdapter(model="gpt-5.6-sol").decide(CASE, "choice", _ctx())
+        self.assertNotIn("logprobs", self.calls[0])
+
+    def test_sol56_transcript_records_omission(self):
+        out = OpenAIAdapter(model="gpt-5.6-sol").decide(
+            CASE, "choice", _ctx())
+        self.assertFalse(out.transcript["request"]["logprobs"])
+
+    def test_sol56_decide_returns_valid_decision(self):
+        out = OpenAIAdapter(model="gpt-5.6-sol").decide(
+            CASE, "choice", _ctx())
+        self.assertEqual(out.decision, "approve")
+        self.assertEqual(out.confidence, 0.73)
+        tracks = out.transcript["confidence_tracks"]
+        self.assertIsNone(tracks["decision_token_logprob"])
+        self.assertEqual(tracks["verbalized"], 0.73)
+
+    def test_no_logprobs_set_covers_sol56(self):
+        self.assertIn("gpt-5.6-sol", OpenAIAdapter._NO_LOGPROBS_MODELS)
+
+
 if __name__ == "__main__":
     unittest.main()

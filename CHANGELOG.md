@@ -102,6 +102,11 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
   sealed Shieldstral and Qwen3Guard-Gen-4B slices; they now land on
   main with tests.
 
+### API version refresh and the Perplexity default pin flip
+
+- Added pinned support and pricing for the current API model versions: grok-4.7, deepseek-v4-pro, glm-5.3, MiniMax-M3.1-Flash, gemini-4-argon, pplx-decider-v1.2, pplx-decider-flash-v1.2, inception/mercury-3 (via the new openrouter-decisions adapter), inclusionai/ling-3.1-flash, microsoft/microsoft-decision-1, and gpt-5.6-sol. Each was proven with a 10-case canary before landing. Pricing table version 2026-10-23.1.
+- The Perplexity adapter default pin flipped from pplx-decider-v1.1-27b to pplx-decider-v1.2. Perplexity silently re-pointed the v1.1 and v1 ids to v1.2 weights server-side, so the old default would have recorded v1.2 measurements under a v1.1 name. The older ids remain accepted pins for reproducibility of pre-re-pointing runs.
+
 ### Board facts refreshed to the freeze publish
 
 - The README and the announcement package now state the freeze board with 39 entries covering 38 distinct models, 34 ranked models and 4 flagged models. The refresh adds Mercury Decide and Clef omni as published full-suite results, marks Llama Prompt Guard 2 as measured on the guardrail slice, records that the robustness tax frontier is unchanged, and adds adapter table rows for Mercury Decide and Cerno.

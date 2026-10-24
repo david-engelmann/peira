@@ -841,6 +841,29 @@ class TestMiniMaxAdapter(unittest.TestCase):
                 MiniMaxAdapter()
         self.assertIn("MINIMAX_API_KEY", str(ctx.exception))
 
+    def test_m3_1_flash_omits_thinking_flag_on_wire(self):
+        # MiniMax-M3.1-Flash 400s when thinking.type=disabled is sent
+        # ("requires adaptive thinking", error 2013, observed live
+        # 2026-10-23). For always-on-reasoning models the adapter must
+        # OMIT the thinking flag rather than disable it.
+        body = _minimax_tool_body(json.dumps(
+            {"decision": "approve", "confidence": 0.9, "reason": "clear"}))
+        _, captured = self._decide(body, model="MiniMax-M3.1-Flash")
+        self.assertNotIn("thinking", captured["payload"])
+
+    def test_m3_still_disables_thinking_on_wire(self):
+        # The omission is per-model, not global: M3 keeps the
+        # thinking-disabled kill switch.
+        body = _minimax_tool_body(json.dumps(
+            {"decision": "approve", "confidence": 0.9, "reason": "clear"}))
+        _, captured = self._decide(body)
+        self.assertEqual(captured["payload"]["thinking"],
+                         {"type": "disabled"})
+
+    def test_thinking_always_on_set_covers_flash(self):
+        self.assertIn("MiniMax-M3.1-Flash",
+                      MiniMaxAdapter._THINKING_ALWAYS_ON_MODELS)
+
 
 class TestStripThink(unittest.TestCase):
     def test_strips_blocks(self):
@@ -995,6 +1018,27 @@ class TestOpenAIMaxCompletionTokens(unittest.TestCase):
     def test_max_completion_tokens_set_covers_terra(self):
         self.assertIn(
             "gpt-5.6-terra", OpenAIAdapter._MAX_COMPLETION_TOKENS_MODELS)
+
+    def test_gpt_5_6_sol_sends_max_completion_tokens(self):
+        # gpt-5.6-sol rejects max_tokens with the same 400 family
+        # ("Unsupported parameter: 'max_tokens' is not supported with
+        # this model. Use 'max_completion_tokens' instead.",
+        # observed live 2026-10-23 for this model specifically), so
+        # it belongs in _MAX_COMPLETION_TOKENS_MODELS too.
+        calls, _ = self._setup(model="gpt-5.6-sol")
+        self.assertEqual(calls[0]["model"], "gpt-5.6-sol")
+        self.assertEqual(calls[0]["max_completion_tokens"], 512)
+        self.assertNotIn("max_tokens", calls[0])
+
+    def test_gpt_5_6_sol_transcript_records_which_field_was_sent(self):
+        _, out = self._setup(model="gpt-5.6-sol")
+        req = out.transcript["request"]
+        self.assertEqual(req["max_completion_tokens"], 512)
+        self.assertIsNone(req["max_tokens"])
+
+    def test_max_completion_tokens_set_covers_sol56(self):
+        self.assertIn(
+            "gpt-5.6-sol", OpenAIAdapter._MAX_COMPLETION_TOKENS_MODELS)
 
     def test_gpt_6_astra_sends_max_completion_tokens(self):
         # gpt-6-astra rejects max_tokens with the same 400 family

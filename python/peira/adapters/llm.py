@@ -999,9 +999,13 @@ class OpenAIAdapter(_StructuredLLMBase):
     #: gpt-5.6-terra, and gpt-6-astra reject it with the same 400
     #: (observed live 2026-10-13). The transcript records which
     #: field was actually sent, read back from the kwargs.
+    #: gpt-5.6-sol rejects it with the same 400 (observed live
+    #: 2026-10-23); temperature 0.0 and logprobs are expected to fail
+    #: the same way on it as on its 5.6 siblings, so it carries all
+    #: three per-model quirks.
     _MAX_COMPLETION_TOKENS_MODELS = frozenset(
         {"gpt-5.6-luna", "gpt-5.6-terra", "gpt-6-astra", "gpt-6-luna",
-         "gpt-6.1-sol"})
+         "gpt-6.1-sol", "gpt-5.6-sol"})
 
     # Per-model temperature overrides. gpt-5.6-luna is a reasoning
     # model that only accepts temperature=1 (any other value 400s
@@ -1020,6 +1024,9 @@ class OpenAIAdapter(_StructuredLLMBase):
         "gpt-6-astra": 1.0,
         "gpt-6-luna": 1.0,
         "gpt-6.1-sol": 1.0,
+        # gpt-5.6-sol: observed live 2026-10-23 (400 on max_tokens;
+        # the 5.6-family reasoning model, same wire quirks as luna).
+        "gpt-5.6-sol": 1.0,
     }
 
     #: Models whose chat-completions endpoint rejects ``logprobs``
@@ -1035,7 +1042,7 @@ class OpenAIAdapter(_StructuredLLMBase):
     #: confidence stays on the verbalized track (D-23).
     _NO_LOGPROBS_MODELS = frozenset(
         {"gpt-5.6-luna", "gpt-5.6-terra", "gpt-6-astra", "gpt-6-luna",
-         "gpt-6.1-sol"})
+         "gpt-6.1-sol", "gpt-5.6-sol"})
 
     def __init__(
         self,
@@ -2425,12 +2432,14 @@ class MiniMaxAdapter(_StructuredLLMBase):
 
     Reasoning: M3 is a reasoning model whose thinking cannot be
     reliably disabled. The adapter sends ``thinking: {"type":
-    "disabled"}`` in the JSON payload (honored on M3.
-    M3.1-Flash-Preview would 400, but it is not the pin) AND strips
+    "disabled"}`` in the JSON payload (honored on M3) AND strips
     ``<think>...</think>`` blocks from every text surface defensively,
     so a reasoning leak can never corrupt decision parsing. Any
     ``reasoning_content`` field is recorded in the transcript but never
-    parsed.
+    parsed. M3.1-Flash requires adaptive thinking and rejects
+    ``thinking.type="disabled"`` with a 400 (observed live
+    2026-10-23), so the flag is omitted for that id and reasoning runs
+    in the vendor's default adaptive mode.
 
     No decision-token logprob track: MiniMax exposes no token logprobs
     on this endpoint, so ``logprobs`` is omitted and the transcript
@@ -2457,6 +2466,12 @@ class MiniMaxAdapter(_StructuredLLMBase):
     _supports_seed = True
 
     _base_url = "https://api.minimax.io/v1"
+    # Models whose reasoning is always on and for which the
+    # ``thinking: disabled`` flag is rejected (MiniMax-M3.1-Flash 400s
+    # with "requires adaptive thinking", observed live 2026-10-23).
+    # The flag is omitted for these ids; reasoning then runs in the
+    # vendor's default adaptive mode.
+    _THINKING_ALWAYS_ON_MODELS = frozenset({"MiniMax-M3.1-Flash"})
     # Vault credential name in the Hatch runtime. Plain installs never
     # touch this (their key is not a surrogate).
     _credential_name = "custom.minimax"
@@ -2517,11 +2532,15 @@ class MiniMaxAdapter(_StructuredLLMBase):
             "max_tokens": self._max_tokens,
             # MiniMax-specific flag. Thinking is disabled on M3 to
             # reduce reasoning overhead. M3 honors this.
-            # M3.1-Flash-Preview would 400 (it is not the pin).
+            # M3.1-Flash requires adaptive thinking and rejects
+            # thinking.type=disabled with a 400 (observed live
+            # 2026-10-23), so the flag is omitted for it — reasoning
+            # then runs in the vendor's default adaptive mode.
             # Think-tag stripping in _request covers a model that
             # ignores the flag.
-            "thinking": {"type": "disabled"},
         }
+        if self._model not in self._THINKING_ALWAYS_ON_MODELS:
+            payload["thinking"] = {"type": "disabled"}
         if self._supports_seed:
             payload["seed"] = self._seed
         # No logprobs: MiniMax exposes no token logprobs on this
@@ -2765,7 +2784,13 @@ class MiniMaxAdapter(_StructuredLLMBase):
                 "max_tokens": self._max_tokens,
                 "seed": sent.get("seed"),
                 "logprobs": False,
-                "thinking": "disabled",
+                # Read back from the payload actually sent, not the
+                # default: M3.1-Flash omits the flag (adaptive thinking
+                # by vendor default), M3 sends disabled.
+                "thinking": (
+                    sent["thinking"]["type"]
+                    if isinstance(sent.get("thinking"), dict)
+                    else "adaptive (flag omitted)"),
                 "base_url": self._base_url,
                 "transport": "urllib",
             },

@@ -385,5 +385,47 @@ class TestOpenAIAstraTemperatureOverride(unittest.TestCase):
             OpenAIAdapter._MODEL_TEMPERATURE_OVERRIDES["gpt-6-astra"], 1.0)
 
 
+class TestOpenAI56SolTemperatureOverride(unittest.TestCase):
+    """gpt-5.6-sol only accepts temperature=1.
+
+    Observed live 2026-10-23 (the config-only canary 400s on
+    max_tokens; the 5.6-family reasoning model, same wire quirks as
+    luna): temperature 0.0 and logprobs are expected to fail the same
+    way as on its 5.6 siblings, so it carries all three per-model
+    quirks. The adapter must force temperature=1 for ``gpt-5.6-sol``
+    even though the constructor default is 0.0.
+    """
+
+    def setUp(self):
+        self.mod, self.calls, self.created = _make_openai(
+            [_openai_completion(GOOD_JSON)])
+        self._m = _fake_modules({"openai": self.mod})
+        self._m.__enter__()
+        self._e = _env(OPENAI_API_KEY="<redacted>")
+        self._e.__enter__()
+        self.addCleanup(self._e.__exit__, None, None, None)
+        self.addCleanup(self._m.__exit__, None, None, None)
+
+    def test_sol56_effective_temperature_is_one(self):
+        adapter = OpenAIAdapter(model="gpt-5.6-sol")
+        self.assertEqual(adapter._temperature, 1.0)
+        self.assertIn(":t1.0:", adapter.cache_namespace)
+        self.assertEqual(adapter.decode_params["temperature"], 1.0)
+
+    def test_sol56_explicit_temperature_still_overridden(self):
+        # Even an explicit constructor temperature cannot beat the
+        # provider's constraint — the override wins.
+        OpenAIAdapter(
+            model="gpt-5.6-sol", temperature=0.5).decide(
+                CASE, "choice", _ctx())
+        self.assertEqual(self.calls[0]["temperature"], 1.0)
+
+    def test_override_map_covers_sol56(self):
+        self.assertIn("gpt-5.6-sol",
+                      OpenAIAdapter._MODEL_TEMPERATURE_OVERRIDES)
+        self.assertEqual(
+            OpenAIAdapter._MODEL_TEMPERATURE_OVERRIDES["gpt-5.6-sol"], 1.0)
+
+
 if __name__ == "__main__":
     unittest.main()

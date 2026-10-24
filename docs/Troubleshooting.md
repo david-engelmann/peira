@@ -1291,7 +1291,7 @@ the Trial (they cover all three). Fix: check the primitive name.
 Cause: no Perplexity API key. Fix: create a key in the API Console,
 load API credit, then `export PERPLEXITY_API_KEY=<your key>`.
 
-**`pplx-decider adapter pins model 'pplx-decider-v1-27b' or 'pplx-decider-v1.1-27b'; got '...'. Floating tags and unversioned names are never allowed; a measurement must name the exact model.`**
+**`pplx-decider adapter pins model 'pplx-decider-flash-v1.2' or 'pplx-decider-v1-27b' or 'pplx-decider-v1.1-27b' or 'pplx-decider-v1.2'; got '...'. Floating tags and unversioned names are never allowed; a measurement must name the exact model.`**
 Cause: an unversioned name or unsupported model id was passed.
 pplx-decider measurements must name the exact served weights. The
 family name (`pplx-decider`) is not a pin. Fix: don't pass `model=` at
