@@ -25,9 +25,15 @@ locally only, and run peira against it at concurrency 1.
 
 The checkpoint is pinned to ``apertixai/cerno-4b`` at Hub
 revision ed4b5c59b542ee96c227ee874776c973980c640b, the only
-family member small enough to serve on the trial VM. The other
-family members are rejected at construction, and the pinned id
-namespaces the runner cache. The weights are FP8 W8A8 as
+family member small enough to serve on the trial VM. The
+other family members carry pins of their own in the sibling
+classes below (``Cerno9BAdapter`` for ``apertixai/cerno-9b``
+at 80010f97eaa989b41c908ecba7d7b7fadaa99239, and
+``Cerno27BAdapter`` for ``apertixai/cerno-27b`` at
+c2f7efe54fe4d3dfd7136bb2e9daf2c0c0633e3d; both revisions
+resolved live from the Hub on 2026-10-23), each rejecting
+every other family member's id at construction, and each
+pin namespacing the runner cache. The weights are FP8 W8A8 as
 shipped; that is the checkpoint's native format, served as
 published, never re-quantized or converted by the serving stack.
 The sidecar loads exactly the pinned snapshot and stamps every
@@ -120,6 +126,26 @@ PINNED_REVISION = "ed4b5c59b542ee96c227ee874776c973980c640b"
 The sidecar stamps this on every response next to the model
 name, and the adapter checks it, so a sealed run names the
 exact weights that produced it, not just the repo."""
+
+MODEL_ID_9B = "apertixai/cerno-9b"
+"""The 9B family member, pinned by ``Cerno9BAdapter``."""
+
+EXPECTED_MODEL_STAMP_9B = "cerno-9b"
+"""The checkpoint name the 9B sidecar stamps on every response."""
+
+PINNED_REVISION_9B = "80010f97eaa989b41c908ecba7d7b7fadaa99239"
+"""The Hub revision of the pinned 9B checkpoint, resolved live
+from the Hub on 2026-10-23."""
+
+MODEL_ID_27B = "apertixai/cerno-27b"
+"""The 27B family member, pinned by ``Cerno27BAdapter``."""
+
+EXPECTED_MODEL_STAMP_27B = "cerno-27b"
+"""The checkpoint name the 27B sidecar stamps on every response."""
+
+PINNED_REVISION_27B = "c2f7efe54fe4d3dfd7136bb2e9daf2c0c0633e3d"
+"""The Hub revision of the pinned 27B checkpoint, resolved live
+from the Hub on 2026-10-23."""
 
 _SUM_TOLERANCE = 0.01
 """How far a rounded distribution's mass may sit from 1.
@@ -289,7 +315,12 @@ def _validate_answer(qid: str, answer: Any) -> Any:
     return answer
 
 
-def _with_model_stamp_check(transport: Any) -> Any:
+def _with_model_stamp_check(
+    transport: Any,
+    model_id: str = MODEL_ID,
+    stamp: str = EXPECTED_MODEL_STAMP,
+    revision: str = PINNED_REVISION,
+) -> Any:
     """Wrap a transport so every response must report the pinned
     checkpoint's model name and Hub revision.
 
@@ -298,28 +329,30 @@ def _with_model_stamp_check(transport: Any) -> Any:
     stamps every response with the checkpoint name and revision
     it loaded. Anything else, or either stamp missing, means
     api_url points at the wrong deployment and the call is
-    terminal, never a measurement recorded under the pin.
+    terminal, never a measurement recorded under the pin. The
+    pin arguments default to the 4B pin; the sibling classes
+    pass their own.
     """
 
     def checked(payload: dict[str, Any]) -> dict[str, Any]:
         response = transport(payload)
         if isinstance(response, dict):
-            stamp = response.get("model")
-            if stamp != EXPECTED_MODEL_STAMP:
+            reported = response.get("model")
+            if reported != stamp:
                 raise ProviderError(
-                    f"cerno server reported model {stamp!r}; this "
+                    f"cerno server reported model {reported!r}; this "
                     f"adapter measures only the pinned deployment "
-                    f"of {MODEL_ID}, which reports "
-                    f"{EXPECTED_MODEL_STAMP!r}; point api_url= at "
+                    f"of {model_id}, which reports "
+                    f"{stamp!r}; point api_url= at "
                     "that deployment."
                 )
-            revision = response.get("revision")
-            if revision != PINNED_REVISION:
+            reported_revision = response.get("revision")
+            if reported_revision != revision:
                 raise ProviderError(
                     f"cerno server reported revision "
-                    f"{revision!r}; this adapter measures only "
-                    f"the pinned deployment of {MODEL_ID} at Hub "
-                    f"revision {PINNED_REVISION}; point api_url= "
+                    f"{reported_revision!r}; this adapter measures only "
+                    f"the pinned deployment of {model_id} at Hub "
+                    f"revision {revision}; point api_url= "
                     "at that deployment."
                 )
         return response
@@ -402,6 +435,13 @@ class CernoAdapter(LocalSystemOneAdapter):
     KNOWN_MODELS = {MODEL_ID: MODEL_ID}
     """The checkpoint is baked into the server deployment: only the
     pinned id is accepted, no short names, no floating tags."""
+    PIN_MODEL_ID = MODEL_ID
+    """The Hub id this class pins; the sibling classes override it
+    together with the stamp and revision pins below."""
+    PIN_STAMP = EXPECTED_MODEL_STAMP
+    """The checkpoint name this class's sidecar stamps."""
+    PIN_REVISION = PINNED_REVISION
+    """The Hub revision this class's sidecar stamps."""
     DEFAULT_API_URL = "http://127.0.0.1:8017/v1/systemone"
     """The Cerno sidecar's bind and port."""
     SETUP_HINT = (
@@ -422,9 +462,9 @@ class CernoAdapter(LocalSystemOneAdapter):
         timeout_s: float = 1200.0,
         transport: Any = None,
     ) -> None:
-        if model is not None and model != MODEL_ID:
+        if model is not None and model != self.PIN_MODEL_ID:
             raise ValueError(
-                f"cerno adapter pins model {MODEL_ID!r}; got "
+                f"cerno adapter pins model {self.PIN_MODEL_ID!r}; got "
                 f"{model!r}. The checkpoint is baked into the "
                 "server deployment; point at a different "
                 "deployment instead of passing a different "
@@ -435,7 +475,12 @@ class CernoAdapter(LocalSystemOneAdapter):
             transport=transport,
         )
         self._transport = _with_answer_validation(
-            _with_model_stamp_check(self._transport)
+            _with_model_stamp_check(
+                self._transport,
+                model_id=self.PIN_MODEL_ID,
+                stamp=self.PIN_STAMP,
+                revision=self.PIN_REVISION,
+            )
         )
 
     # -- per-primitive mapping --------------------------------------------
@@ -458,3 +503,60 @@ class CernoAdapter(LocalSystemOneAdapter):
             _with_probability_confidence(answers, "decision"),
             labels, usage, transcript,
         )
+
+
+class Cerno9BAdapter(CernoAdapter):
+    """Decision adapter for the pinned Cerno 9B checkpoint.
+
+    Identical wire, validation, and confidence contract to the
+    4B adapter; only the pin differs (checkpoint id, sidecar
+    stamp, Hub revision), plus the sidecar's bind: the 9B
+    deployment serves on 127.0.0.1:8018, one port up from the
+    4B's 8017, so both deployments can run side by side. The
+    weights are FP8 W8A8 as shipped, the checkpoint's native
+    format, never re-quantized by the serving stack.
+    """
+
+    name = "cerno-9b"
+    PINNED_MODEL = MODEL_ID_9B
+    KNOWN_MODELS = {MODEL_ID_9B: MODEL_ID_9B}
+    PIN_MODEL_ID = MODEL_ID_9B
+    PIN_STAMP = EXPECTED_MODEL_STAMP_9B
+    PIN_REVISION = PINNED_REVISION_9B
+    DEFAULT_API_URL = "http://127.0.0.1:8018/v1/systemone"
+    """The Cerno 9B sidecar's bind and port."""
+    SETUP_HINT = (
+        "start the Cerno 9B sidecar first (it wraps the vendored "
+        "Apertix Decider loaded from the pinned apertixai/cerno-9b "
+        "snapshot, serves POST /v1/systemone on 127.0.0.1:8018, "
+        "and stamps every response with the checkpoint name "
+        "cerno-9b and its Hub revision), then retry."
+    )
+
+
+class Cerno27BAdapter(CernoAdapter):
+    """Decision adapter for the pinned Cerno 27B checkpoint.
+
+    Identical wire, validation, and confidence contract to the
+    4B adapter; only the pin differs (checkpoint id, sidecar
+    stamp, Hub revision), plus the sidecar's bind: the 27B
+    deployment serves on 127.0.0.1:8019. The weights are FP8
+    W8A8 as shipped (about 27 GB resident), the checkpoint's
+    native format, never re-quantized by the serving stack.
+    """
+
+    name = "cerno-27b"
+    PINNED_MODEL = MODEL_ID_27B
+    KNOWN_MODELS = {MODEL_ID_27B: MODEL_ID_27B}
+    PIN_MODEL_ID = MODEL_ID_27B
+    PIN_STAMP = EXPECTED_MODEL_STAMP_27B
+    PIN_REVISION = PINNED_REVISION_27B
+    DEFAULT_API_URL = "http://127.0.0.1:8019/v1/systemone"
+    """The Cerno 27B sidecar's bind and port."""
+    SETUP_HINT = (
+        "start the Cerno 27B sidecar first (it wraps the vendored "
+        "Apertix Decider loaded from the pinned apertixai/cerno-27b "
+        "snapshot, serves POST /v1/systemone on 127.0.0.1:8019, "
+        "and stamps every response with the checkpoint name "
+        "cerno-27b and its Hub revision), then retry."
+    )

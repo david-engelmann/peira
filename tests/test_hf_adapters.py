@@ -19,15 +19,20 @@ from unittest import mock
 from peira.adapters import hf as hf_mod
 from peira.adapters.base import ProviderError, validate_output
 from peira.adapters.hf import (
+    GptOssSafeguardAdapter,
     GraniteGuardianAdapter,
     GraniteGuardianHapAdapter,
     HarmBenchAdapter,
+    LlamaGuard4Adapter,
+    NemotronSafetyGuardAdapter,
     ShieldGemmaAdapter,
+    ShieldGemma9BAdapter,
     LlamaGuard3_1BAdapter,
     LlamaGuard3_8BAdapter,
     LlamaPromptGuard2Adapter,
     ProtectAIAdapter,
     Qwen3GuardAdapter,
+    Qwen3Guard8BAdapter,
     ShieldstralAdapter,
     WildGuardAdapter,
 )
@@ -50,6 +55,9 @@ class _FakeTensor:
 
     def to(self, device):
         return self
+
+    def tolist(self):
+        return self._data
 
     def __getitem__(self, index):
         return self._data[index]
@@ -232,6 +240,17 @@ class TestPinnedRevisions(unittest.TestCase):
              "bda705349d1144fa618770bea64d99ce54e3835b"),
             (GraniteGuardianHapAdapter, "ibm-granite/granite-guardian-hap-125m",
              "a76ccfd3ddb790fa7c23db58149bfec7ba1aa57f"),
+            (Qwen3Guard8BAdapter, "Qwen/Qwen3Guard-Gen-8B",
+             "4505cb1a6f1864f21f8b27f7daf1b9a1aab6edbb"),
+            (ShieldGemma9BAdapter, "google/shieldgemma-9b",
+             "b8b636016df4540721a098c7aab91c97ec6ee508"),
+            (NemotronSafetyGuardAdapter,
+             "nvidia/llama-3.1-nemotron-safety-guard-8b-v3",
+             "8fdc246ba3d56db9c469d534233b9f582d3afafa"),
+            (LlamaGuard4Adapter, "meta-llama/Llama-Guard-4-12B",
+             "87acb4b94e930c3d679e6e7ee9d57e2feab9ea71"),
+            (GptOssSafeguardAdapter, "openai/gpt-oss-safeguard-20b",
+             "8a11e17b25c973a24099d4016bf2e17dd7ec1574"),
             (LlamaGuard3_1BAdapter, "meta-llama/Llama-Guard-3-1B",
              "acf7aafa60f0410f8f42b1fa35e077d705892029"),
             (LlamaGuard3_8BAdapter, "meta-llama/Llama-Guard-3-8B",
@@ -263,6 +282,11 @@ class TestPinnedRevisions(unittest.TestCase):
             (Qwen3GuardAdapter, "qwen3guard-gen", "1.0"),
             (HarmBenchAdapter, "harmbench", "1.0"),
             (GraniteGuardianHapAdapter, "granite-guardian-hap", "125m"),
+            (Qwen3Guard8BAdapter, "qwen3guard-gen-8b", "1.0"),
+            (ShieldGemma9BAdapter, "shieldgemma-9b", "1.0"),
+            (NemotronSafetyGuardAdapter, "nemotron-safety-guard", "1.0"),
+            (LlamaGuard4Adapter, "llama-guard-4", "1.0"),
+            (GptOssSafeguardAdapter, "gpt-oss-safeguard", "1.0"),
             (LlamaGuard3_1BAdapter, "llama-guard-3-1b", "1.0"),
             (LlamaGuard3_8BAdapter, "llama-guard-3-8b", "1.0"),
         ]:
@@ -1948,6 +1972,330 @@ from peira.adapters.hf import _single_token_id
     _HAS_TRANSFORMERS,
     "transformers not installed (pip install -e .[hf])",
 )
+class _GuardTemplateTokenizer(_FakeTokenizer):
+    """Chat-template fake for the generation-prompt guard adapters.
+
+    Records the exact templating call (messages, generation-prompt
+    flag) and the scored text (with the add_special_tokens flag the
+    caller passed) for assertions.
+    """
+
+    def __init__(self, encode=None, call_ids=(1, 2, 3), template="TEMPLATE:"):
+        super().__init__(encode=encode, call_ids=call_ids)
+        self._template = template
+        self.seen_messages = None
+        self.seen_add_generation_prompt = None
+        self.seen_text = None
+        self.seen_add_special_tokens = None
+
+    def apply_chat_template(self, messages, tokenize=False,
+                            add_generation_prompt=False):
+        self.seen_messages = messages
+        self.seen_add_generation_prompt = add_generation_prompt
+        return self._template
+
+    def __call__(self, text, return_tensors=None, truncation=False,
+                 max_length=None, add_special_tokens=True):
+        self.seen_text = text
+        self.seen_add_special_tokens = add_special_tokens
+        return {"input_ids": _FakeTensor([list(self._call_ids)])}
+
+
+class TestQwen3Guard8B(unittest.TestCase):
+    def _adapter(self, logits):
+        base = {" Safe": [1], " Unsafe": [2], " Controversial": [3]}
+        tok = _Qwen3GuardTokenizer(encode=base)
+        model = _FakeCausalModel(logits)
+        return _make(Qwen3Guard8BAdapter, tok, model), tok, model
+
+    def test_unsafe_wins_gives_abstain_under_the_8b_pin(self):
+        logits = [0.0] * 4
+        logits[2] = 6.0  # " Unsafe"
+        adapter, tok, _ = self._adapter(logits)
+        out = adapter.decide(_choice_input(), "abstain", _ctx())
+        self.assertEqual(out.decision, "abstain")
+        self.assertEqual(out.transcript["scores"]["label"], "Unsafe")
+        # The measurement is recorded under the 8B pin, never the 4B's.
+        self.assertEqual(
+            out.usage.model,
+            "hf:Qwen/Qwen3Guard-Gen-8B@4505cb1a6f1864f21f8b27f7daf1b9a1aab6edbb")
+        self.assertEqual(out.transcript["model"], "Qwen/Qwen3Guard-Gen-8B")
+        # Inherited prompt contract: template + "Safety:" prefill.
+        self.assertTrue(tok.seen_text.endswith("Safety:"))
+        self.assertEqual(validate_output(out, "abstain"), [])
+
+    def test_safe_wins_gives_other_placeholder(self):
+        logits = [0.0] * 4
+        logits[1] = 6.0  # " Safe"
+        adapter, _, _ = self._adapter(logits)
+        out = adapter.decide(_choice_input(), "abstain", _ctx())
+        self.assertEqual(out.decision, "other")
+        self.assertEqual(validate_output(out, "abstain"), [])
+
+
+class TestShieldGemma9B(unittest.TestCase):
+    def test_yes_wins_gives_abstain_under_the_9b_pin(self):
+        base = {"Yes": [1], "No": [2]}
+        tok = _ShieldGemmaTokenizer(encode=base)
+        logits = [0.0] * 3
+        logits[1] = 6.0  # "Yes"
+        model = _FakeForwardModel(logits)
+        adapter = _make(ShieldGemma9BAdapter, tok, model)
+        out = adapter.decide(_choice_input(), "abstain", _ctx())
+        self.assertEqual(out.decision, "abstain")
+        self.assertEqual(
+            out.usage.model,
+            "hf:google/shieldgemma-9b@b8b636016df4540721a098c7aab91c97ec6ee508")
+        # Same frozen combined guideline as the 2B adapter.
+        self.assertIn("No Dangerous Content", tok.seen_guideline)
+        self.assertEqual(validate_output(out, "abstain"), [])
+
+
+class _MiniJinja:
+    """Tiny jinja2 stand-in for the Nemotron template render.
+
+    Models exactly the two constructs NVIDIA's template uses:
+    ``{{ query }}`` / ``{{ response }}`` substitution and the
+    ``{% if response %}...{% endif %}`` block (dropped when
+    response is None). Byte-exactness of the template constant
+    itself against the pinned inference_script.py is a separate
+    verification recorded in the landing's gate report.
+    """
+
+    class Template:
+        def __init__(self, src):
+            self._src = src
+
+        def render(self, query=None, response=None):
+            import re
+            out = self._src
+            if response is None:
+                out = re.sub(
+                    r"\{% if response %\}.*?\{% endif %\}", "", out,
+                    flags=re.S)
+            out = out.replace("{{ query }}", query or "")
+            out = out.replace("{{ response }}", response or "")
+            return out
+
+
+class TestNemotronSafetyGuard(unittest.TestCase):
+    def _adapter(self, logits):
+        base = {"safe": [10], "unsafe": [11]}
+        tok = _GuardTemplateTokenizer(encode=base, template="GUARD>>")
+        model = _FakeCausalModel(logits)
+        with mock.patch.dict("sys.modules", {"jinja2": _MiniJinja()}):
+            adapter = _make(NemotronSafetyGuardAdapter, tok, model)
+        return adapter, tok, model
+
+    def _decide(self, adapter, prompt="some content"):
+        with mock.patch.dict("sys.modules", {"jinja2": _MiniJinja()}):
+            return adapter.decide(_choice_input(prompt), "abstain", _ctx())
+
+    def test_unsafe_wins_gives_abstain(self):
+        logits = [0.0] * 12
+        logits[11] = 6.0  # "unsafe"
+        adapter, tok, _ = self._adapter(logits)
+        out = self._decide(adapter)
+        self.assertEqual(out.decision, "abstain")
+        self.assertEqual(out.transcript["scores"]["label"], "unsafe")
+        self.assertEqual(
+            out.usage.model,
+            "hf:nvidia/llama-3.1-nemotron-safety-guard-8b-v3@"
+            "8fdc246ba3d56db9c469d534233b9f582d3afafa")
+        self.assertEqual(validate_output(out, "abstain"), [])
+
+    def test_prompt_is_the_published_template_with_prefill(self):
+        logits = [0.0] * 12
+        logits[10] = 6.0  # "safe"
+        adapter, tok, _ = self._adapter(logits)
+        out = self._decide(adapter, prompt="hello world")
+        self.assertEqual(out.decision, "other")
+        # The scored text is the chat-templated rendered template
+        # plus the JSON-value prefill; the template carries the
+        # taxonomy and the case text in the user slot.
+        self.assertTrue(tok.seen_text.startswith("GUARD>>"))
+        self.assertTrue(tok.seen_text.endswith('{"User Safety": "'))
+        content = tok.seen_messages[0]["content"]
+        self.assertIn("S23: Immoral/Unethical", content)
+        self.assertIn("user: hello world", content)
+        self.assertNotIn("response: agent:", content)
+        # The chat template's generation prompt is part of the
+        # published format; encoding adds no second BOS.
+        self.assertTrue(tok.seen_add_generation_prompt)
+        self.assertFalse(tok.seen_add_special_tokens)
+
+    def test_renormalization_math(self):
+        logits = [0.0] * 12
+        logits[10] = 1.0  # safe
+        logits[11] = 0.5  # unsafe
+        adapter, _, _ = self._adapter(logits)
+        out = self._decide(adapter)
+        # The adapter renormalizes p_malicious over the label pair,
+        # while p_safe/p_unsafe are the full-vocab softmax entries:
+        # the pair renormalization cancels the shared denominator.
+        e1, e05 = math.exp(1.0), math.exp(0.5)
+        total = e1 + e05 + 10.0
+        scores = out.transcript["scores"]
+        self.assertAlmostEqual(scores["p_malicious"], e05 / (e1 + e05))
+        self.assertAlmostEqual(scores["p_safe"], e1 / total)
+        self.assertAlmostEqual(scores["p_unsafe"], e05 / total)
+        self.assertEqual(scores["label"], "safe")
+        self.assertEqual(out.decision, "other")
+
+    def test_template_constant_carries_all_23_categories(self):
+        template = hf_mod._NEMOTRON_TEMPLATE
+        for n in range(1, 24):
+            self.assertIn(f"S{n}: ", template)
+        self.assertIn("{{ query }}", template)
+        self.assertTrue(template.endswith("Output JSON: "))
+
+
+class TestLlamaGuard4(unittest.TestCase):
+    def _adapter(self, logits):
+        base = {"safe": [10], "unsafe": [11]}
+        tok = _GuardTemplateTokenizer(encode=base, template="GUARD>>")
+        model = _FakeCausalModel(logits)
+        return _make(LlamaGuard4Adapter, tok, model), tok, model
+
+    def test_unsafe_wins_gives_abstain(self):
+        logits = [0.0] * 12
+        logits[11] = 6.0
+        adapter, tok, _ = self._adapter(logits)
+        out = adapter.decide(_choice_input(), "abstain", _ctx())
+        self.assertEqual(out.decision, "abstain")
+        self.assertEqual(out.transcript["scores"]["label"], "unsafe")
+        self.assertEqual(
+            out.usage.model,
+            "hf:meta-llama/Llama-Guard-4-12B@"
+            "87acb4b94e930c3d679e6e7ee9d57e2feab9ea71")
+        self.assertTrue(tok.seen_add_generation_prompt)
+        self.assertEqual(validate_output(out, "abstain"), [])
+
+    def test_safe_wins_gives_other_placeholder(self):
+        logits = [0.0] * 12
+        logits[10] = 6.0
+        adapter, _, _ = self._adapter(logits)
+        out = adapter.decide(_choice_input(), "abstain", _ctx())
+        self.assertEqual(out.decision, "other")
+        self.assertEqual(out.transcript["scores"]["label"], "safe")
+        self.assertEqual(validate_output(out, "abstain"), [])
+
+
+class _GptOssTokenizer(_FakeTokenizer):
+    """Harmony fake: marker pieces, single-char verdict tokens."""
+
+    _PIECES = {
+        900: "<|channel|>", 901: "final", 902: "<|message|>",
+        910: "thinking ", 911: "more ", 950: "1", 951: "0",
+    }
+    _ENCODE = {
+        "<|channel|>final<|message|>": [900, 901, 902],
+        "0": [300], "1": [301],
+    }
+
+    def __init__(self):
+        super().__init__(encode=dict(self._ENCODE))
+        self.seen_messages = None
+
+    def apply_chat_template(self, messages, tokenize=False,
+                            add_generation_prompt=False):
+        self.seen_messages = messages
+        return "PROMPT:"
+
+    def __call__(self, text, return_tensors=None, truncation=False,
+                 max_length=None, add_special_tokens=True):
+        return {"input_ids": _FakeTensor([[7, 8]])}
+
+    def encode(self, text, add_special_tokens=False):
+        if text in self._ENCODE:
+            return list(self._ENCODE[text])
+        return [ord(c) % 997 for c in text][:64] or [1]
+
+    def decode(self, ids, skip_special_tokens=True):
+        if isinstance(ids, int):
+            ids = [ids]
+        return "".join(self._PIECES.get(int(i), "x") for i in ids)
+
+
+class _GptOssModel:
+    """generate() fake emitting harmony-shaped sequences/logits."""
+
+    def __init__(self, gen_ids, verdict_logits):
+        self._gen_ids = list(gen_ids)
+        self._verdict_logits = list(verdict_logits)
+        self.generate_kwargs = None
+
+    def parameters(self):
+        return iter([SimpleNamespace(is_cuda=False)])
+
+    def eval(self):
+        return self
+
+    def generate(self, input_ids, **kwargs):
+        self.generate_kwargs = dict(kwargs)
+        steps = []
+        for i in range(len(self._gen_ids)):
+            if i == len(self._gen_ids) - 1:
+                steps.append([list(self._verdict_logits)])
+            else:
+                steps.append([[0.0] * 1000])
+        return SimpleNamespace(
+            sequences=_FakeTensor([_FakeTensor([7, 8] + self._gen_ids)]),
+            logits=steps,
+        )
+
+
+class TestGptOssSafeguard(unittest.TestCase):
+    _MARKER = [900, 901, 902]
+
+    def _adapter(self, gen_ids, verdict_one_logit, verdict_zero_logit):
+        vocab = [0.0] * 1000
+        vocab[300] = verdict_zero_logit
+        vocab[301] = verdict_one_logit
+        tok = _GptOssTokenizer()
+        model = _GptOssModel(gen_ids, vocab)
+        return _make(GptOssSafeguardAdapter, tok, model), tok, model
+
+    def test_violates_verdict_gives_abstain(self):
+        gen = [910] + self._MARKER + [950]  # analysis, final, "1"
+        adapter, tok, model = self._adapter(gen, 6.0, 0.0)
+        out = adapter.decide(_choice_input(), "abstain", _ctx())
+        self.assertEqual(out.decision, "abstain")
+        scores = out.transcript["scores"]
+        self.assertEqual(scores["verdict"], "1")
+        self.assertGreater(scores["p_malicious"], 0.99)
+        # The policy is the system message; the case text is the user.
+        self.assertEqual(tok.seen_messages[0]["role"], "system")
+        self.assertIn("prompt injection", tok.seen_messages[0]["content"])
+        self.assertEqual(tok.seen_messages[1],
+                         {"role": "user", "content": "some content"})
+        # Reasoning is generated, so output tokens are not the
+        # single-token family contract.
+        self.assertEqual(model.generate_kwargs["max_new_tokens"], 320)
+        self.assertEqual(validate_output(out, "abstain"), [])
+
+    def test_safe_verdict_gives_other_placeholder(self):
+        gen = [910] + self._MARKER + [951]  # analysis, final, "0"
+        adapter, _, _ = self._adapter(gen, 0.0, 6.0)
+        out = adapter.decide(_choice_input(), "abstain", _ctx())
+        self.assertEqual(out.decision, "other")
+        self.assertEqual(out.transcript["scores"]["verdict"], "0")
+        self.assertLess(out.transcript["scores"]["p_malicious"], 0.01)
+        self.assertEqual(validate_output(out, "abstain"), [])
+
+    def test_missing_final_channel_is_provider_error(self):
+        gen = [910, 911]  # analysis only, no final channel ever opens
+        adapter, _, _ = self._adapter(gen, 6.0, 0.0)
+        with self.assertRaises(ProviderError):
+            adapter.decide(_choice_input(), "abstain", _ctx())
+
+    def test_final_channel_without_verdict_is_provider_error(self):
+        gen = [910] + self._MARKER + [911]  # final channel, no 0/1 token
+        adapter, _, _ = self._adapter(gen, 6.0, 0.0)
+        with self.assertRaises(ProviderError):
+            adapter.decide(_choice_input(), "abstain", _ctx())
+
+
 class TestRealTokenizerContract(unittest.TestCase):
     def _load_tokenizer(self, model_id, revision):
         try:

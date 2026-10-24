@@ -20,9 +20,17 @@ from unittest import mock
 from peira.adapters.base import CallContext, ProviderError, validate_output
 from peira.adapters.cerno import (
     EXPECTED_MODEL_STAMP,
+    EXPECTED_MODEL_STAMP_9B,
+    EXPECTED_MODEL_STAMP_27B,
     MODEL_ID,
+    MODEL_ID_9B,
+    MODEL_ID_27B,
     PINNED_REVISION,
+    PINNED_REVISION_9B,
+    PINNED_REVISION_27B,
     CernoAdapter,
+    Cerno9BAdapter,
+    Cerno27BAdapter,
 )
 from peira.adapters.jev import JevAdapter
 from peira.adapters.kev import LocalSystemOneAdapter
@@ -490,6 +498,94 @@ class TestCernoWire(unittest.TestCase):
             _case_input(), "abstain", _ctx())
         self.assertEqual(validate_output(out, "abstain"), [])
         self.assertEqual(out.decision, "other")
+
+
+class TestCernoSiblingPins(unittest.TestCase):
+    """The 9B and 27B pins: same adapter contract, own checkpoint.
+
+    Each sibling class pins exactly its own checkpoint (id,
+    sidecar stamp, Hub revision), rejects the other family
+    members at construction, and fails closed when the sidecar
+    reports a sibling's stamp or a wrong revision — a 4B
+    deployment answering on the 9B port must not be measured
+    under the 9B pin.
+    """
+
+    def test_9b_pin(self):
+        self.assertEqual(MODEL_ID_9B, "apertixai/cerno-9b")
+        self.assertEqual(EXPECTED_MODEL_STAMP_9B, "cerno-9b")
+        self.assertEqual(
+            PINNED_REVISION_9B,
+            "80010f97eaa989b41c908ecba7d7b7fadaa99239")
+        a = Cerno9BAdapter()
+        self.assertEqual(a.model, MODEL_ID_9B)
+        self.assertEqual(a.version, MODEL_ID_9B)
+        self.assertEqual(a.cache_namespace, f"cerno-9b:{MODEL_ID_9B}")
+        self.assertEqual(
+            a.api_url, "http://127.0.0.1:8018/v1/systemone")
+        self.assertEqual(a.timeout_s, 1200.0)
+        self.assertEqual(Cerno9BAdapter.supported_primitives,
+                         frozenset({"choice", "score", "abstain"}))
+
+    def test_27b_pin(self):
+        self.assertEqual(MODEL_ID_27B, "apertixai/cerno-27b")
+        self.assertEqual(EXPECTED_MODEL_STAMP_27B, "cerno-27b")
+        self.assertEqual(
+            PINNED_REVISION_27B,
+            "c2f7efe54fe4d3dfd7136bb2e9daf2c0c0633e3d")
+        a = Cerno27BAdapter()
+        self.assertEqual(a.model, MODEL_ID_27B)
+        self.assertEqual(a.version, MODEL_ID_27B)
+        self.assertEqual(a.cache_namespace, f"cerno-27b:{MODEL_ID_27B}")
+        self.assertEqual(
+            a.api_url, "http://127.0.0.1:8019/v1/systemone")
+
+    def test_siblings_reject_each_other_and_the_4b(self):
+        for cls, own in ((Cerno9BAdapter, MODEL_ID_9B),
+                         (Cerno27BAdapter, MODEL_ID_27B)):
+            for bad in (MODEL_ID, MODEL_ID_9B, MODEL_ID_27B):
+                if bad == own:
+                    continue
+                with self.assertRaises(ValueError, msg=(cls, bad)):
+                    cls(model=bad)
+            self.assertEqual(cls(model=own).model, own)
+
+    def test_9b_choice_happy_path(self):
+        t = _transport_for({"decision": _choice_answer()},
+                           model="cerno-9b",
+                           revision=PINNED_REVISION_9B)
+        out = Cerno9BAdapter(transport=t).decide(
+            _case_input(), "choice", _ctx())
+        self.assertEqual(validate_output(out, "choice"), [])
+        self.assertEqual(out.decision, "deny")
+        self.assertAlmostEqual(out.confidence, 0.9)
+        self.assertEqual(out.usage.model, MODEL_ID_9B)
+        self.assertEqual(t.seen["payload"]["model"], MODEL_ID_9B)
+
+    def test_9b_rejects_the_4b_stamp(self):
+        # The 4B deployment answering on the 9B port: right family,
+        # wrong checkpoint — terminal, never a 9B measurement.
+        t = _transport_for({"decision": _choice_answer()},
+                           model=_STAMP, revision=_REVISION)
+        with self.assertRaises(ProviderError):
+            Cerno9BAdapter(transport=t).decide(
+                _case_input(), "choice", _ctx())
+
+    def test_27b_rejects_a_wrong_revision(self):
+        t = _transport_for({"decision": _choice_answer()},
+                           model="cerno-27b", revision="0" * 40)
+        with self.assertRaises(ProviderError):
+            Cerno27BAdapter(transport=t).decide(
+                _case_input(), "choice", _ctx())
+
+    def test_27b_abstain_happy_path(self):
+        t = _transport_for({"abstain": {"type": "noul", "noul": 0.75}},
+                           model="cerno-27b",
+                           revision=PINNED_REVISION_27B)
+        out = Cerno27BAdapter(transport=t).decide(
+            _case_input(), "abstain", _ctx())
+        self.assertEqual(validate_output(out, "abstain"), [])
+        self.assertEqual(out.decision, "abstain")
 
 
 class TestCernoErrors(unittest.TestCase):
