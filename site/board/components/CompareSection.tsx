@@ -37,10 +37,8 @@ export default function CompareSection() {
         </p>
         <Compare data={data} />
         <p className="chart-id">
-          Peira decision robustness board, compare. Full suite base{" "}
-          {fmtInt(data.fullCases)} cases, abstain slices{" "}
-          {fmtInt(data.sliceCases)} cases. Dataset {versions.dataset},
-          updated {boardDateWords()}.
+          Peira decision robustness board, compare. Dataset{" "}
+          {versions.dataset}, updated {boardDateWords()}.
         </p>
       </section>
       <script

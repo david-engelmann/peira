@@ -6,12 +6,12 @@ import {
   fmtCi,
   fmtCiCompact,
   fmtEce,
-  fmtInt,
   fmtMs,
   fmtTax,
   fmtUsd,
 } from "@/lib/format";
 import WhiskerStrip from "./BarWhisker";
+import VendorLogo from "./VendorLogo";
 
 /**
  * Break opportunities after hyphens, so a long short name wraps
@@ -68,13 +68,14 @@ function rowAriaLabel(
  * The data line (owner layout, round 8 feedback). Mono micro
  * segments in a fixed order, each a label and a payload value.
  * A segment whose payload value is null is omitted, never
- * filled in. Base states the row's own case count, so slices
- * read n=373 where the full suite reads n=4,701.
+ * filled in. The row's case count is not one of the segments:
+ * the suite's size is stated once, in the method section, and
+ * repeating it on every row is noise (owner, 2026-10-25).
  */
 function DataLine({ row }: { row: BoardRow }) {
   /* Loose null checks throughout: flagged rows omit some keys
    * entirely rather than carrying them as null. */
-  const segs: Array<[string, string]> = [["BASE", `n=${fmtInt(row.n_cases)}`]];
+  const segs: Array<[string, string]> = [];
   if (row.benign_accuracy != null) {
     segs.push(["BENIGN", fmtPct(row.benign_accuracy)]);
   }
@@ -185,6 +186,7 @@ export function RankedRowView({
       <div className="row-main">
         <div className="row-line1">
           <span className="cell-rank num">{row.rank}</span>
+          <VendorLogo row={row} />
           <NameBlock row={row} showWire={showWire} flagged={false} href={href} />
         </div>
         <DataLine row={row} />
@@ -208,7 +210,7 @@ export function FlaggedRowView({
   const wireLine = showWire ? wireWords(row.wire) : null;
   return (
     <div
-      className="rank-row"
+      className="rank-row flagged"
       data-run-id={row.run_id}
       role="group"
       aria-label={rowAriaLabel(row, name, wireLine, "flagged")}
@@ -216,6 +218,7 @@ export function FlaggedRowView({
       <div className="row-main">
         <div className="row-line1">
           <span className="cell-rank" />
+          <VendorLogo row={row} />
           <NameBlock row={row} showWire={showWire} flagged={true} href={href} />
         </div>
         <DataLine row={row} />

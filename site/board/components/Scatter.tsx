@@ -639,16 +639,15 @@ export default function Scatter() {
           {fmtInt(payload.ranked.length + payload.unranked.length)}{" "}
           results, with {fmtInt(sets.rail.length)} more on the rail. The{" "}
           {fmtInt(sets.slices.length)} guardrail slices are not plotted,
-          since they ran on the {fmtInt(sets.slices[0]?.n_cases ?? 0)} case
-          abstain base and record no serving cost.
+          since they ran on the abstain base and record no serving cost.
         </p>
       </div>
       <p className="chart-id">
         Peira decision robustness board, cost against attack success.{" "}
-        {fmtInt(sets.population.length)} full suite results on{" "}
-        {fmtInt(groups.fullCases)} cases each, {fmtInt(sets.plotted.length)}{" "}
-        plotted and {fmtInt(sets.rail.length)} on the rail. Dataset{" "}
-        {versions.dataset}, updated {boardDateWords()}.
+        {fmtInt(sets.population.length)} full suite results,{" "}
+        {fmtInt(sets.plotted.length)} plotted and{" "}
+        {fmtInt(sets.rail.length)} on the rail. Dataset {versions.dataset},
+        updated {boardDateWords()}.
       </p>
     </section>
   );

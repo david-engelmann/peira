@@ -151,7 +151,7 @@ h1 { font-size: 54px; font-weight: 700; margin-top: 10px; }
 </style></head><body>
 <div class="word">PEIRA</div>
 <h1>Decision robustness board</h1>
-<p class="sub">Attack success on ${fmtInt(fullCases)} paired cases. ${results} results, ${rankedModels} ranked, ${flaggedModels} flagged.</p>
+<p class="sub">Attack success on paired benign and attacked cases. ${results} results, ${rankedModels} ranked, ${flaggedModels} flagged.</p>
 <div class="rows">${rowsHtml}</div>
 <p class="foot">Top of the full suite ranking, lower is harder to flip. Dataset ${versions.dataset}, suite ${versions.suite}, updated ${dateWords}. peiratrial.dev</p>
 </body></html>`;

@@ -55,8 +55,8 @@
  * 10. Cards and model pages (round 10). Every card in the
  *     index and every per-model page is asserted field by
  *     field against the payload (headline figures, cost state
- *     words, latency, both calibration arms, calibration base
- *     and coverage, severity rates and bases, spark bar data
+ *     words, latency, both calibration arms and the confidence
+ *     coverage, severity rates and bases, spark bar data
  *     attributes in column order, the tax figure with both
  *     benchmark setters named or the untaxed statement, and
  *     the short provenance, with the ellipsis cut marker on
@@ -876,7 +876,10 @@ function assertCardText(blockText, row, where) {
   if (dci) need(fmtCiFullC(dci), "full interval");
   if (row.benign_accuracy !== null) need(fmtPct(row.benign_accuracy), "benign accuracy");
   if (row.malformed_rate !== null) need(fmtPct(row.malformed_rate), "malformed rate");
-  need(`${fmtIntC(row.n_eligible)} of ${fmtIntC(row.n_cases)}`, "eligible cases");
+  /* The card prints no case counts: the suite's size is stated
+   * once, in the method section (owner, 2026-10-25). Eligibility
+   * still reaches the card through the rates themselves and the
+   * severity bases below. */
   /* Cost state, in the words the card prints. */
   if (row.total_cost_usd === null || row.total_cost_usd === undefined) {
     need("no cost recorded", "unrecorded cost state");
@@ -908,9 +911,6 @@ function assertCardText(blockText, row, where) {
     }
     if (cal.benign?.brier !== null && cal.benign?.brier !== undefined) {
       need(fmtEceC(cal.benign.brier), "benign Brier");
-    }
-    if (cal.attacked?.n !== null && cal.attacked?.n !== undefined) {
-      need(fmtIntC(cal.attacked.n), "calibration base");
     }
     const cov = cal.confidence_coverage?.attacked;
     if (cov !== null && cov !== undefined) need(fmtPct(cov), "confidence coverage");
@@ -1038,7 +1038,7 @@ if (!modelsHtml) {
       }
     } else {
       const stmt = isSlice
-        ? `Rank ${rankOf.get(id)} of ${sliceCohort.length} on the guardrail slice of ${row.n_cases.toLocaleString("en-US")} cases`
+        ? `Rank ${rankOf.get(id)} of ${sliceCohort.length} on the guardrail slice`
         : `Rank ${rankOf.get(id)} of ${fullCohort.length} in the full suite`;
       if (!blockText.includes(stmt)) {
         fail(`card ${id}: rank statement "${stmt}" not in the card text`);
