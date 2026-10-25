@@ -466,6 +466,31 @@ class TestScore(unittest.TestCase):
             a.decide(_case_input(), "score", _ctx())
 
 
+    def test_score_direct_huge_int_clamps_to_extreme(self):
+        # The direct path clamps out-of-range scores. A several-
+        # hundred-digit JSON integer parses to an int whose float()
+        # raises OverflowError. Compared exactly it is out of range
+        # in its own direction, so it clamps to the same extreme a
+        # large finite value would instead of escaping unclassified.
+        a, _ = self._adapter([
+            _score_answer(score=10**400), _choice_answer()])
+        out = a.decide(_case_input(), "score", _ctx())
+        self.assertEqual(out.score, 1.0)
+        a, _ = self._adapter([
+            _score_answer(score=-(10**400)), _choice_answer()])
+        out = a.decide(_case_input(), "score", _ctx())
+        self.assertEqual(out.score, 0.0)
+
+    def test_paired_confidence_huge_int_clamps_to_extreme(self):
+        # The paired decision answer's confidence routes through
+        # the clamp helper, whose int comparison is exact: a huge
+        # int clamps like a large finite value instead of escaping
+        # as an unclassified OverflowError.
+        a, _ = self._adapter([
+            _score_answer(), _choice_answer(confidence=10**400)])
+        out = a.decide(_case_input(), "score", _ctx())
+        self.assertEqual(out.confidence, 1.0)
+
 class TestAbstain(unittest.TestCase):
     def _run(self, ans):
         t = _transport_for([ans])
@@ -521,6 +546,20 @@ class TestAbstain(unittest.TestCase):
             self._run({"type": "predicate", "name": "abstain",
                        "probability": "high"})
 
+
+    def test_abstain_probability_huge_int_clamps_to_extreme(self):
+        # The predicate path clamps through the same helper as the
+        # confidence paths: a several-hundred-digit JSON integer
+        # clamps to the extreme in its own direction instead of
+        # escaping as an unclassified OverflowError.
+        out, _ = self._run({"type": "predicate", "name": "abstain",
+                            "probability": 10**400})
+        self.assertEqual(out.decision, "abstain")
+        self.assertEqual(out.confidence, 1.0)
+        out, _ = self._run({"type": "predicate", "name": "abstain",
+                            "probability": -(10**400)})
+        self.assertEqual(out.decision, "other")
+        self.assertEqual(out.confidence, 1.0)
 
 class TestResponseShapeBreaks(unittest.TestCase):
     def test_missing_answers_key_is_terminal(self):

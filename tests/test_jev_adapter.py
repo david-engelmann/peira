@@ -191,6 +191,18 @@ class TestJevChoice(unittest.TestCase):
             JevAdapter(api_key="k").decide(_case_input(), "bogus", _ctx())
 
 
+    def test_choice_confidence_huge_int_clamps_to_extreme(self):
+        # Confidence routes through the clamp helper, whose int
+        # comparison is exact: a several-hundred-digit JSON integer
+        # clamps to the same extreme a large finite value would
+        # instead of escaping as an unclassified OverflowError.
+        t = _transport_for({
+            "decision": {"choice": "approve", "confidence": 10**400},
+        })
+        out = JevAdapter(api_key="test-key", transport=t).decide(
+            _case_input(), "choice", _ctx())
+        self.assertEqual(out.confidence, 1.0)
+
 class TestJevScore(unittest.TestCase):
     def _score_adapter(self, value, option="deny", conf=0.8):
         t = _transport_for({
@@ -295,6 +307,19 @@ class TestJevScore(unittest.TestCase):
         self.assertTrue(all(isinstance(c, str) and c for c in sq["criteria"]))
 
 
+    def test_score_direct_huge_int_clamps_to_extreme(self):
+        # The direct path clamps out-of-range scores. A several-
+        # hundred-digit JSON integer parses to an int whose float()
+        # raises OverflowError. Compared exactly it is out of range
+        # in its own direction, so it clamps to the same extreme a
+        # large finite value would instead of escaping unclassified.
+        a, _ = self._score_adapter(10**400)
+        out = a.decide(_case_input(), "score", _ctx())
+        self.assertEqual(out.score, 1.0)
+        a, _ = self._score_adapter(-(10**400))
+        out = a.decide(_case_input(), "score", _ctx())
+        self.assertEqual(out.score, 0.0)
+
 class TestJevNoul(unittest.TestCase):
     def test_noul_yes_means_abstain(self):
         t = _transport_for({"abstain": {"abstain": 0.8}})
@@ -347,6 +372,22 @@ class TestJevNoul(unittest.TestCase):
         with self.assertRaises(ProviderError):
             JevAdapter(api_key="k", transport=t).decide(_case_input(), "abstain", _ctx())
 
+
+    def test_noul_huge_int_clamps_to_extreme(self):
+        # The abstain path clamps through the same helper as the
+        # confidence paths: a several-hundred-digit JSON integer
+        # clamps to the extreme in its own direction instead of
+        # escaping as an unclassified OverflowError.
+        t = _transport_for({"abstain": {"abstain": 10**400}})
+        out = JevAdapter(api_key="test-key", transport=t).decide(
+            _case_input(), "abstain", _ctx())
+        self.assertEqual(out.decision, "abstain")
+        self.assertEqual(out.confidence, 1.0)
+        t = _transport_for({"abstain": {"abstain": -(10**400)}})
+        out = JevAdapter(api_key="test-key", transport=t).decide(
+            _case_input(), "abstain", _ctx())
+        self.assertEqual(out.decision, "other")
+        self.assertEqual(out.confidence, 1.0)
 
 class TestJevQuestionValidation(unittest.TestCase):
     def test_malformed_question_is_terminal_before_send(self):

@@ -407,7 +407,16 @@ class JevAdapter:
         if not isinstance(value, (int, float)) or isinstance(value, bool):
             raise ProviderError(
                 f"jev score answer has no numeric score: {ans!r}")
-        score = _clamp01(float(value) / (len(_SCORE_LEVELS) - 1), "score")
+        if isinstance(value, int) and not 0 <= value <= len(_SCORE_LEVELS) - 1:
+            # A several-hundred-digit JSON integer parses to an int
+            # whose float() raises OverflowError, which would escape
+            # as an unclassified error. Compared exactly, a huge int
+            # is out of range in its own direction, so it clamps to
+            # the same extreme a large finite value would.
+            score = 1.0 if value > 0 else 0.0
+        else:
+            score = _clamp01(
+                float(value) / (len(_SCORE_LEVELS) - 1), "score")
         # The paired decision question carries the label; the score is the
         # measurement signal. An out-of-vocabulary label is API drift —
         # fail loudly like the choice path does.
@@ -446,7 +455,7 @@ class JevAdapter:
         if not isinstance(p_yes, (int, float)) or isinstance(p_yes, bool):
             raise ProviderError(
                 f"jev abstain answer has no numeric abstain value: {ans!r}")
-        p_yes = _clamp01(float(p_yes), "abstain")
+        p_yes = _clamp01(p_yes, "abstain")
         confidence = _clamp01(abs(2 * p_yes - 1), "confidence")
         if p_yes >= 0.5:
             decision = "abstain"
@@ -515,6 +524,17 @@ def _score_from_probabilities(probs: dict[str, Any]) -> float | None:
 
 
 def _clamp01(value: Any, name: str) -> float:
+    if isinstance(value, int) and not isinstance(value, bool):
+        # A several-hundred-digit JSON integer parses to an int
+        # whose float() raises OverflowError, which the conversion
+        # below does not catch. Compared exactly, a huge int is out
+        # of range in its own direction, so it clamps to the same
+        # extreme a large finite value would.
+        if value < 0:
+            return 0.0
+        if value > 1:
+            return 1.0
+        return float(value)
     try:
         f = float(value)
     except (TypeError, ValueError):

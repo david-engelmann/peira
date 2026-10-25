@@ -19,14 +19,17 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
   a measurement. Choice-answer probabilities carry the same
   per-value validation, since they feed the confidence fallback.
 - Huge-integer wire values can no longer escape as an
-  unclassified OverflowError on any adapter's direct paths. The
-  Mercury adapter's four float() conversion sites (direct score,
-  abstain probability, confidence, and the probability-map
-  fallback) and the direct score paths of Celeris, Perplexity
-  Decider and Clef now bound or compare an int before converting
-  it, so a several-hundred-digit score or probability fails
-  closed (or clamps, on the two adapters whose direct path
-  clamps) instead of raising OverflowError.
+  unclassified OverflowError on any adapter's direct paths.
+  Every adapter's score, abstain and confidence conversions now
+  bound or compare an int before converting it, and the clamp
+  helper each adapter shares compares an int exactly before
+  converting it, so a several-hundred-digit score, probability
+  or confidence fails closed on the adapters whose paths raise,
+  or clamps to the extreme in its own direction on the adapters
+  whose paths clamp, instead of raising OverflowError. The
+  Mercury adapter's transport latency reader treats the same
+  class of junk as unknown latency rather than letting it
+  escape.
 - Jev passes a 408 or 409 response's Retry-After to the runner,
   and Mercury passes a 409's, like every other transient. Both
   statuses were already in the runner's transient set, so the

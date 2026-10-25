@@ -703,6 +703,17 @@ def _clamp01(value: Any, name: str) -> float:
     if isinstance(value, bool):
         raise ProviderError(
             f"mercury-decide returned non-numeric {name}: {value!r}")
+    if isinstance(value, int) and not isinstance(value, bool):
+        # A several-hundred-digit JSON integer parses to an int
+        # whose float() raises OverflowError, which the conversion
+        # below does not catch. Compared exactly, a huge int is out
+        # of range in its own direction, so it clamps to the same
+        # extreme a large finite value would.
+        if value < 0:
+            return 0.0
+        if value > 1:
+            return 1.0
+        return float(value)
     try:
         f = float(value)
     except (TypeError, ValueError):
@@ -746,7 +757,13 @@ def _latency_ms(response: dict[str, Any]) -> float:
     raw = response.get("_latency_ms", 0.0)
     if isinstance(raw, bool) or not isinstance(raw, (int, float)):
         return 0.0
-    value = float(raw)
+    try:
+        value = float(raw)
+    except OverflowError:
+        # A several-hundred-digit int is junk latency, not a
+        # measurement input: it reads as unknown like any other
+        # junk instead of escaping as an unclassified error.
+        return 0.0
     if not math.isfinite(value) or value < 0.0:
         return 0.0
     return value

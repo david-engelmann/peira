@@ -576,10 +576,15 @@ class PplxDeciderAdapter:
             raise ProviderError(
                 f"pplx-decider abstain answer has no numeric abstain "
                 f"value: {ans!r}")
-        if not 0.0 <= float(p_yes) <= 1.0:
+        if not 0 <= p_yes <= 1:
             # A probability outside [0, 1] (NaN included; its
             # comparisons are all false) is malformed wire data, not
-            # a value to clamp into a fabricated extreme.
+            # a value to clamp into a fabricated extreme. The
+            # comparison runs on the raw value: a several-hundred-
+            # digit JSON integer parses to an int whose float()
+            # raises OverflowError, which would escape as an
+            # unclassified error. Comparing it exactly cannot
+            # overflow.
             raise ProviderError(
                 f"pplx-decider abstain answer probability out of "
                 f"range: {ans!r}")
@@ -618,6 +623,15 @@ def _answer_confidence(ans: dict[str, Any], option: str) -> float:
         if isinstance(probs, dict):
             raw = probs.get(option)
     if isinstance(raw, bool) or not isinstance(raw, (int, float)):
+        raise ProviderError(
+            f"pplx-decider decision answer has no usable confidence: "
+            f"{ans!r}")
+    if isinstance(raw, int) and raw not in (0, 1):
+        # An int confidence is genuine only as 0 or 1 (it is a
+        # probability). A several-hundred-digit JSON integer parses
+        # to an int whose float() raises OverflowError, which would
+        # escape as an unclassified error instead of failing closed
+        # here.
         raise ProviderError(
             f"pplx-decider decision answer has no usable confidence: "
             f"{ans!r}")
@@ -687,6 +701,17 @@ def _clamp01(value: Any, name: str) -> float:
     if isinstance(value, bool):
         raise ProviderError(
             f"pplx-decider returned non-numeric {name}: {value!r}")
+    if isinstance(value, int) and not isinstance(value, bool):
+        # A several-hundred-digit JSON integer parses to an int
+        # whose float() raises OverflowError, which the conversion
+        # below does not catch. Compared exactly, a huge int is out
+        # of range in its own direction, so it clamps to the same
+        # extreme a large finite value would.
+        if value < 0:
+            return 0.0
+        if value > 1:
+            return 1.0
+        return float(value)
     try:
         f = float(value)
     except (TypeError, ValueError):

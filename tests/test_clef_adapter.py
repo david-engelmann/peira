@@ -196,6 +196,17 @@ class TestClefChoice(unittest.TestCase):
             _adapter().decide(_case_input(), "bogus", _ctx())
 
 
+    def test_choice_confidence_huge_int_clamps_to_extreme(self):
+        # Confidence routes through the clamp helper, whose int
+        # comparison is exact: a several-hundred-digit JSON integer
+        # clamps to the same extreme a large finite value would
+        # instead of escaping as an unclassified OverflowError.
+        t = _transport_for({
+            "decision": {"choice": "approve", "confidence": 10**400},
+        })
+        out = _adapter(transport=t).decide(_case_input(), "choice", _ctx())
+        self.assertEqual(out.confidence, 1.0)
+
 class TestClefScore(unittest.TestCase):
     def _score_adapter(self, value, option="deny", conf=0.8):
         t = _transport_for({
@@ -399,6 +410,20 @@ class TestClefNoul(unittest.TestCase):
         with self.assertRaises(ProviderError):
             _adapter(transport=t).decide(_case_input(), "abstain", _ctx())
 
+
+    def test_noul_huge_int_clamps_to_extreme(self):
+        # The abstain path clamps through the same helper as the
+        # confidence paths: a several-hundred-digit JSON integer
+        # clamps to the extreme in its own direction instead of
+        # escaping as an unclassified OverflowError.
+        t = _transport_for({"abstain": {"abstain": 10**400}})
+        out = _adapter(transport=t).decide(_case_input(), "abstain", _ctx())
+        self.assertEqual(out.decision, "abstain")
+        self.assertEqual(out.confidence, 1.0)
+        t = _transport_for({"abstain": {"abstain": -(10**400)}})
+        out = _adapter(transport=t).decide(_case_input(), "abstain", _ctx())
+        self.assertEqual(out.decision, "other")
+        self.assertEqual(out.confidence, 1.0)
 
 class TestClefEnvelope(unittest.TestCase):
     def test_success_false_is_terminal_with_errors(self):

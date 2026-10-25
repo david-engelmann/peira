@@ -745,6 +745,15 @@ class TestMercuryErrors(unittest.TestCase):
             API_URL, 500, "Internal Server Error", {}, DroppedBody())
         self.assertEqual(mercury_mod._read_error_detail(err), "")
 
+
+    def test_latency_ms_huge_int_reads_as_unknown(self):
+        # Latency is run metadata, not a measurement input: a
+        # several-hundred-digit int reported by an injected
+        # transport reads as 0.0 (unknown) instead of escaping
+        # decide() as an unclassified OverflowError.
+        self.assertEqual(
+            mercury_mod._latency_ms({"_latency_ms": 10**400}), 0.0)
+
     def test_http_error_message_includes_api_detail(self):
         import io
         import json as _json
