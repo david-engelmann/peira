@@ -138,6 +138,16 @@ export default function Compare({ data }: { data: CompareData }) {
   const b = bySlug.get(bSlug) ?? data.rows[1];
   const same = a.slug === b.slug;
   const crossBase = !same && a.nCases !== b.nCases;
+  /* The population each row was measured on. Flagged rows ran
+   * the full suite and are unranked for other reasons, so they
+   * share the full population; only the slice cohort ran a
+   * different base. The cross-base banner names the populations
+   * from the groups, not from the case counts, so a future pair
+   * whose counts differ inside one population gets the generic
+   * wording instead of a wrong full-versus-slice claim. */
+  const population = (r: CompareRow) =>
+    r.group === "slice" ? "the abstain subset" : "the full suite";
+  const crossPopulation = population(a) !== population(b);
 
   return (
     <div className="cmp">
@@ -155,11 +165,17 @@ export default function Compare({ data }: { data: CompareData }) {
           compare. Pick a second model to see the differences.
         </p>
       )}
-      {crossBase && (
+      {crossBase && crossPopulation && (
         <p className="cmp-banner" data-cmp-banner="population">
-          The two results ran different case bases (the full suite
-          against the abstain subset), so their rates are not measured
+          The two results ran different case bases ({population(a)}{" "}
+          against {population(b)}), so their rates are not measured
           on the same base.
+        </p>
+      )}
+      {crossBase && !crossPopulation && (
+        <p className="cmp-banner" data-cmp-banner="population">
+          The two results ran different case bases, so their rates
+          are not measured on the same base.
         </p>
       )}
 
