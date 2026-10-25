@@ -58,6 +58,12 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
   [0, 1] previously passed through unclamped. All of these now
   fail closed or clamp by the same rules as the rest of the
   family.
+- Cerno's probability predicates no longer convert their
+  argument through math.isfinite before range-checking it. A
+  several-hundred-digit integer probability or confidence
+  raised OverflowError inside the predicate instead of failing
+  closed as server drift. Ints are now compared exactly, as in
+  every other adapter in the family.
 - The local System One transport shared by Kev, Strands,
   Decider, Cerno, Von and OpenJev now passes a 408 or 409
   response's Retry-After to the runner, matching the Jev

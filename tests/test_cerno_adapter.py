@@ -18,6 +18,7 @@ import urllib.error
 from unittest import mock
 
 from peira.adapters.base import CallContext, ProviderError, validate_output
+from peira.adapters import cerno as cerno_mod
 from peira.adapters.cerno import (
     EXPECTED_MODEL_STAMP,
     EXPECTED_MODEL_STAMP_9B,
@@ -622,6 +623,34 @@ class TestCernoErrors(unittest.TestCase):
         with self.assertRaises(ValueError):
             CernoAdapter().decide(_case_input(), "bogus", _ctx())
 
+
+
+class TestCernoHugeIntValidation(unittest.TestCase):
+    def test_huge_int_probability_is_terminal(self):
+        # math.isfinite converted its argument to float, so a
+        # several-hundred-digit probability escaped the validator
+        # as an OverflowError instead of failing closed.
+        t = _transport_for({
+            "decision": _choice_answer(
+                probabilities={"approve": 0.1, "deny": 10**400}),
+        })
+        with self.assertRaises(ProviderError):
+            CernoAdapter(transport=t).decide(
+                _case_input(), "choice", _ctx())
+
+    def test_huge_int_confidence_is_terminal(self):
+        t = _transport_for({
+            "decision": _choice_answer(confidence=10**400),
+        })
+        with self.assertRaises(ProviderError):
+            CernoAdapter(transport=t).decide(
+                _case_input(), "choice", _ctx())
+
+    def test_probability_predicates_handle_huge_ints(self):
+        self.assertFalse(cerno_mod._is_probability(10**400))
+        self.assertTrue(cerno_mod._is_probability(1))
+        self.assertTrue(cerno_mod._is_finite_number(10**400))
+        self.assertFalse(cerno_mod._is_finite_number(float("nan")))
 
 if __name__ == "__main__":
     unittest.main()
