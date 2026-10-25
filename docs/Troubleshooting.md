@@ -911,6 +911,18 @@ Cause: no API key found in the environment (or the explicit `api_key=`
 argument) for the OpenRouter gateway baseline. Fix: export
 `OPENROUTER_API_KEY`; keys never appear in transcripts or artifacts.
 
+**`INCEPTION_API_KEY is not set; MercuryAdapter needs it (and the peira[openai] extra)`**
+Cause: no Inception API key found in the environment (or the explicit
+`api_key=` argument) for the Mercury chat baseline. Fix: export
+`INCEPTION_API_KEY`; keys never appear in transcripts or artifacts.
+
+**`mercury-structured: reasoning_effort must be one of 'low', 'medium', 'high', got '...'. The wire default when the parameter is omitted is low, which is not the benchmark configuration.`**
+Cause: a `reasoning_effort` outside the three supported levels was
+passed to `MercuryAdapter`. The adapter always sends the parameter
+explicitly because the wire default (low) is not the benchmark
+configuration. Fix: pass `low`, `medium` (the pinned default) or
+`high`.
+
 **`<name> does not support primitive 'x'`** (LLM baselines)
 Cause: the adapter was asked for a primitive outside `choice`, `score`,
 `abstain`. You can't hit this through the bundled adapters on the Trial

@@ -112,6 +112,7 @@ __all__ = [
     "GoogleAdapter",
     "MoonshotAdapter",
     "XAIAdapter",
+    "MercuryAdapter",
     "DeepSeekAdapter",
     "MetaLlamaAdapter",
     "ZaiAdapter",
@@ -2080,6 +2081,132 @@ class OpenRouterAdapter(OpenAIAdapter):
                 "X-Title": "peira",
             },
         )
+
+    def _request(
+        self, user_text: str, schema: dict[str, Any], repair: bool,
+        prior_text: str | None = None,
+    ) -> _RawResult:
+        raw = super()._request(user_text, schema, repair)
+        # The inherited request shape names the endpoint and model but
+        # not the host it was sent to — record it for traceability.
+        raw.request_shape["base_url"] = self._base_url
+        return raw
+
+
+# ---------------------------------------------------------------------------
+# Inception — Mercury chat models through Inception's own API.
+# ---------------------------------------------------------------------------
+
+class MercuryAdapter(OpenAIAdapter):
+    """Baseline: Inception Mercury chat models through Inception's API.
+
+    Reuses the OpenAI request shape verbatim (strict JSON schema via
+    ``response_format``) against ``https://api.inceptionlabs.ai/v1``
+    with an ``INCEPTION_API_KEY`` Bearer — the ``openai`` SDK package
+    drives the compat endpoint, so the extra stays ``peira[openai]``.
+    The request's ``base_url`` is recorded in the transcript's request
+    shape; the key itself never is.
+
+    This is the DIRECT route to Mercury chat models. Mercury 3 was
+    first measured through the OpenRouter gateway (the gateway
+    precedent set by Mercury 2.5), but Inception serves ``mercury-3``
+    on its own API (verified from the live ``/v1/models`` listing
+    2026-10-24) and peira holds a direct Inception credential (the
+    Mercury Decide adapter uses the same key), so the gateway is not
+    needed: one less intermediary between the measurement and the
+    model. The gateway run and a direct run are different wires and
+    are never mixed in one artifact.
+
+    Not to be confused with ``MercuryDecideAdapter``
+    (adapters/mercury_decide.py), which measures Mercury Decide, a
+    separate Jev-shaped decisions endpoint. This adapter measures the
+    Mercury chat models through the structured-output pipeline.
+
+    Default model is ``mercury-3``, Inception's current Mercury chat
+    model. Direct wire verified 2026-10-24 before this adapter
+    landed: one probe call with a strict ``json_schema``
+    ``response_format`` returned schema-valid JSON with the model id
+    echoed as ``mercury-3``.
+
+    Request shape: the inherited OpenAI shape is sent, including
+    ``seed`` and ``logprobs``, plus one pinned parameter of its own:
+    ``reasoning_effort`` (default ``"medium"``). The wire defaults
+    to low when the parameter is omitted, and Inception's own
+    benchmarks run at medium, so the effort is pinned explicitly on
+    every call, recorded in the transcript and ``decode_params``,
+    and carried in the cache namespace. An unpinned Mercury run
+    would seal numbers nothing can be compared against. Whether
+    Inception honors the seed is unverified; a provider that ignores
+    it surfaces in the transcript, never as silent mismeasurement.
+    """
+
+    name = "mercury-structured"
+    _extra = "peira[openai]"
+    _env_vars = ("INCEPTION_API_KEY",)
+    _provider_label = "Inception"
+    _supports_seed = True
+
+    _base_url = "https://api.inceptionlabs.ai/v1"
+
+    def __init__(
+        self,
+        model: str = PINNED_API_MODELS["mercury-structured"],
+        temperature: float = 0.0,
+        seed: int | None = 0,
+        max_tokens: int = 512,
+        reasoning_effort: str = "medium",
+        api_key: str | None = None,
+    ) -> None:
+        # Not OpenAIAdapter.__init__: that constructor pins the client
+        # to api.openai.com. Rebuild the identical client against
+        # Inception's OpenAI-compatible endpoint — retries still
+        # DISABLED, the runner owns the retry policy.
+        if reasoning_effort not in ("low", "medium", "high"):
+            raise ValueError(
+                f"mercury-structured: reasoning_effort must be one of "
+                f"'low', 'medium', 'high', got {reasoning_effort!r}. "
+                "The wire default when the parameter is omitted is "
+                "low, which is not the benchmark configuration."
+            )
+        # Set before the base __init__: the cache namespace suffix
+        # hook reads it during base construction.
+        self._reasoning_effort = reasoning_effort
+        _StructuredLLMBase.__init__(
+            self, model, temperature, seed, max_tokens, api_key
+        )
+        self._sdk = _require_openai()
+        self._client = self._sdk.OpenAI(
+            api_key=self._api_key,
+            base_url=self._base_url,
+            max_retries=0,
+        )
+
+    def _cache_namespace_suffix(self) -> str:
+        # Two runs at different reasoning efforts are different
+        # measurements and must never share cache entries.
+        return f":re{getattr(self, '_reasoning_effort', 'medium')}"
+
+    @property
+    def decode_params(self) -> dict[str, Any]:
+        params = super().decode_params
+        params["reasoning_effort"] = self._reasoning_effort
+        return params
+
+    def _request_kwargs(
+        self, messages: list[dict[str, str]], schema: dict[str, Any]
+    ) -> dict[str, Any]:
+        kwargs = super()._request_kwargs(messages, schema)
+        # Pin the effort explicitly on every call. Omitted, the wire
+        # defaults to low; Inception's own benchmarks run at medium.
+        # An unpinned run would seal numbers nothing can be compared
+        # against, so the parameter is part of the instrument.
+        kwargs["reasoning_effort"] = self._reasoning_effort
+        return kwargs
+
+    def _request_shape_overrides(
+        self, sent: dict[str, Any]
+    ) -> dict[str, Any]:
+        return {"reasoning_effort": self._reasoning_effort}
 
     def _request(
         self, user_text: str, schema: dict[str, Any], repair: bool,
