@@ -2137,6 +2137,44 @@ succeeded. An unknown model and an unknown question type each
 returned HTTP 422. The adapter's first measured exercise is the
 standard driver canary.
 
+## Inception Mercury (chat models, direct)
+
+Install the `peira[openai]` extra and set `INCEPTION_API_KEY`, then run
+
+```bash
+export INCEPTION_API_KEY=<redacted>
+peira run --adapter peira.adapters.llm:MercuryAdapter --suite trial-demo
+```
+
+`MercuryAdapter` measures Inception's Mercury chat models through
+Inception's own OpenAI-compatible API at
+`https://api.inceptionlabs.ai/v1`, reusing the structured-output
+request shape (strict JSON schema via `response_format`) and the
+same `INCEPTION_API_KEY` as the Mercury Decide adapter below. This
+is the direct route: Mercury 3 was first measured through the
+OpenRouter gateway, but Inception serves `mercury-3` on its own API
+and peira holds a direct credential, so the gateway is not needed.
+A gateway run and a direct run are different wires and are never
+mixed in one artifact.
+
+One pinned model: `mercury-3` at $0.10/$0.35 per 1M tokens, the
+same published rate as the gateway row, pinned in
+`python/peira/data/pricing.json`. The direct wire was verified
+2026-10-24 before the adapter landed: the live `/v1/models`
+listing serves `mercury-3`, and one probe call with a strict
+`json_schema` `response_format` returned schema-valid JSON with
+the model id echoed as `mercury-3`. Whether Inception honors the
+request `seed` is unverified; the transcript records what was sent.
+
+Reasoning effort is pinned explicitly on every call
+(`reasoning_effort="medium"` by default). Omitted, the wire
+defaults to low, and Inception's own benchmarks run at medium, so
+an unpinned run would not be comparable to anything. The pin is
+recorded in the transcript and in `decode_params`, and the effort
+is part of the cache namespace. Effort probes on 2026-10-24:
+medium returned 39 reasoning tokens and high 54 on the same
+prompt, both HTTP 200.
+
 ## Inception Mercury Decide
 
 No extra needed (stdlib transport). Set `INCEPTION_API_KEY`, then run

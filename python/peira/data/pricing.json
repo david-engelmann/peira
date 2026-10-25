@@ -415,6 +415,12 @@
       "usd_per_1m_out": 0.15,
       "confidence": "official"
     },
+    "mercury-3": {
+      "_note": "Direct Inception API rate ($0.10/$0.35 per 1M), Inception's published rate, the same rate carried by the OpenRouter gateway row below (the gateway listing was read 2026-10-23). Mercury 3 is served on Inception's own API: the live /v1/models listing and a strict json_schema probe were verified against api.inceptionlabs.ai on 2026-10-24, so it is measured direct rather than through the gateway. Added 2026-10-24 with the MercuryAdapter direct wire.",
+      "usd_per_1m_in": 0.1,
+      "usd_per_1m_out": 0.35,
+      "confidence": "official"
+    },
     "inception/mercury-3": {
       "_note": "OpenRouter gateway rate, verified live 2026-10-23 via openrouter.ai/api/v1/models ($0.10/$0.35 per 1M). Mercury 3 is Inception's successor chat model to the charted mercury-2.5 gateway row (Mercury 2/2.5 access for existing users ends 2026-11-15 per Inception). Added by the 2026-10-23 API version refresh.",
       "usd_per_1m_in": 0.1,

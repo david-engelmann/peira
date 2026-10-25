@@ -7,6 +7,31 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
 
 ## [Unreleased]
 
+### Mercury chat models gain a direct Inception wire, effort pinned
+
+- `MercuryAdapter` (`mercury-structured`) measures Inception's
+  Mercury chat models through Inception's own OpenAI-compatible API
+  at `https://api.inceptionlabs.ai/v1` with the existing
+  `INCEPTION_API_KEY`, reusing the structured-output request shape.
+  Default pin `mercury-3` (api_pins `mercury-structured`), priced
+  $0.10/$0.35 per 1M in `pricing.json` under the direct id
+  `mercury-3`. Mercury 3 was first measured through the OpenRouter
+  gateway; the direct wire was verified 2026-10-24 (live
+  `/v1/models` listing plus a strict `json_schema` probe returning
+  schema-valid JSON with the model id echoed). Gateway and direct
+  runs are different wires and are never mixed in one artifact.
+- `MercuryAdapter` sends `reasoning_effort` explicitly on every
+  call (default `"medium"`, constructor-validated against
+  low/medium/high). The wire defaults to low when the parameter
+  is omitted and Inception's own benchmarks run at medium, so the
+  pin is part of the instrument: it is recorded in the transcript
+  request shape and in `decode_params`, and the effort is carried
+  in the cache namespace so runs at different efforts never share
+  entries. Verified live 2026-10-24 (medium 39 reasoning tokens,
+  high 54, same prompt, both HTTP 200). The first direct full run
+  was stopped at 1,500 cases when the omission was caught; its
+  partial was discarded and the run restarted pinned.
+
 ### Score validation and transient follow-ups across the decision adapters
 
 - The OpenRouter Decisions adapter's score fallback now

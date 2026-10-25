@@ -122,6 +122,7 @@ PINNED_API_MODELS: dict[str, str] = {
     "qwen-structured": "qwen3.8-max",
     "minimax-structured": "MiniMax-M3",
     "openrouter-structured": "google/gemini-3.8-flash",
+    "mercury-structured": "mercury-3",
 }
 
 # Old pins the vendors have retired: old ID -> replacement ID.
@@ -293,6 +294,7 @@ _VENDOR_ID_PATTERNS: dict[str, re.Pattern[str]] = {
     "mistral": re.compile(r"^mistral-[a-z]+(-\d+|-latest)?$"),
     "qwen": re.compile(r"^qwen\d*(\.\d+)?(-[a-z0-9]+)+$"),
     "minimax": re.compile(r"^MiniMax-M\d+(\.\d+)?(-[A-Za-z0-9]+)*$"),
+    "mercury": re.compile(r"^mercury-\d+(\.\d+)?(-[a-z]+)?$"),
     "openrouter": re.compile(r"^[a-z0-9][a-z0-9_.-]*/[A-Za-z0-9][A-Za-z0-9._-]*$"),
 }
 
