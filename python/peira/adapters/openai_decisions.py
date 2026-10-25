@@ -705,9 +705,20 @@ def _clamp01(value: Any, name: str) -> float:
         if value > 1:
             return 1.0
         return float(value)
-    try:
-        f = float(value)
-    except (TypeError, ValueError):
+    if isinstance(value, bool) or not isinstance(value, float):
+        # Only genuine numbers reach the conversion. A bool is never
+        # a legitimate probability, and a string the wire sent is
+        # drift, never something to coerce into a measurement. The
+        # same holds for every other non-float type.
+        raise ProviderError(
+            f"openai-decisions returned non-numeric {name}: "
+            f"{value!r}") from None
+    f = float(value)
+    if not math.isfinite(f):
+        # A non-finite float (NaN, +/-inf; Python's json accepts all
+        # three as literals) must fail closed: clamping NaN would
+        # silently fabricate a maximal measurement, since min/max
+        # comparisons with NaN are always false.
         raise ProviderError(
             f"openai-decisions returned non-numeric {name}: "
             f"{value!r}") from None
@@ -723,9 +734,16 @@ def _parse_retry_after(value: str | None) -> float | None:
     if not value:
         return None
     try:
-        return max(0.0, float(value))
+        parsed = float(value)
     except ValueError:
         return None
+    # "inf" and "nan" parse as floats; neither is a usable delay.
+    # Finite values pass through: the runner caps the delay at
+    # MAX_RETRY_AFTER_S when it consumes the value. An HTTP-date
+    # value does not parse and falls back to the runner's backoff.
+    if not math.isfinite(parsed):
+        return None
+    return max(0.0, parsed)
 
 
 def _read_error_body(e: urllib.error.HTTPError) -> str:

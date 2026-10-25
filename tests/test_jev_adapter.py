@@ -495,5 +495,46 @@ class TestJevErrors(unittest.TestCase):
         self.assertEqual(out.decision, "deny")
 
 
+
+class TestRetryAfterNonfinite(unittest.TestCase):
+    def test_retry_after_nonfinite_is_dropped(self):
+        # "inf" and "nan" parse as floats; neither is a usable
+        # delay. Finite values pass through (the runner caps the
+        # delay at MAX_RETRY_AFTER_S when it consumes the value).
+        self.assertIsNone(jev_mod._parse_retry_after("inf"))
+        self.assertIsNone(jev_mod._parse_retry_after("nan"))
+        self.assertIsNone(jev_mod._parse_retry_after("1e400"))
+        self.assertEqual(jev_mod._parse_retry_after("7"), 7.0)
+
+
+class TestJevClampContract(unittest.TestCase):
+    def test_choice_confidence_nan_is_terminal(self):
+        # NaN clamped through the old helper fabricated a maximal
+        # confidence (min/max comparisons with NaN are all false).
+        t = _transport_for({
+            "decision": {"choice": "approve", "confidence": float("nan")},
+        })
+        with self.assertRaises(ProviderError):
+            JevAdapter(api_key="<redacted>", transport=t).decide(
+                _case_input(), "choice", _ctx())
+
+    def test_choice_confidence_string_is_terminal(self):
+        # A number the wire sent as text is drift, never something
+        # to coerce into a measured confidence.
+        t = _transport_for({
+            "decision": {"choice": "approve", "confidence": "0.9"},
+        })
+        with self.assertRaises(ProviderError):
+            JevAdapter(api_key="<redacted>", transport=t).decide(
+                _case_input(), "choice", _ctx())
+
+    def test_choice_confidence_bool_is_terminal(self):
+        t = _transport_for({
+            "decision": {"choice": "approve", "confidence": True},
+        })
+        with self.assertRaises(ProviderError):
+            JevAdapter(api_key="<redacted>", transport=t).decide(
+                _case_input(), "choice", _ctx())
+
 if __name__ == "__main__":
     unittest.main()

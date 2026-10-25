@@ -1172,9 +1172,9 @@ primitive maps to an abstained output. Score arms send two questions
 in one request, the rubric score and the paired decision, and the
 reported decision and confidence come from the paired choice answer.
 A score answer's per-level probabilities are validated as a genuine
-distribution whenever the wire sends them: level indices in range
-and named at most once, every probability a genuine number in
-[0, 1], and a total within 0.01 of 1. Anything else is terminal,
+distribution whenever the wire sends them. Level indices must be
+in range and named at most once, every probability must be a
+genuine number in [0, 1], and the total must be within 0.01 of 1. Anything else is terminal,
 so the probability-weighted fallback can only ever compute from a
 real distribution. Choice-answer probabilities carry the same
 per-value validation, since they feed the confidence fallback.

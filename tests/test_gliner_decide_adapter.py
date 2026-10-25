@@ -276,5 +276,15 @@ class TestGlinerDecideErrors(unittest.TestCase):
         self.assertIn("gliner-decide classify_text failed", str(cm.exception))
 
 
+
+class TestGlinerHugeIntConfidence(unittest.TestCase):
+    def test_huge_int_confidence_is_terminal(self):
+        # A several-hundred-digit confidence raised OverflowError
+        # on float() conversion instead of failing closed on the
+        # adapter's own outside-0..1 ProviderError.
+        a, _ = _adapter({"decision": ("deny", 10**400)})
+        with self.assertRaises(ProviderError):
+            a.decide(_case_input(), "choice", _ctx())
+
 if __name__ == "__main__":
     unittest.main()

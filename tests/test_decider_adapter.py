@@ -195,5 +195,39 @@ class TestDeciderErrors(unittest.TestCase):
         self.assertIn("decider system_one failed", str(cm.exception))
 
 
+
+class TestDeciderClampContract(unittest.TestCase):
+    def test_score_huge_int_clamps_to_extreme(self):
+        a, _ = _adapter({
+            "score": {"score": 10**400},
+            "decision": {"choice": "approve", "confidence": 0.5,
+                         "probabilities": {"approve": 0.75, "deny": 0.25}},
+        })
+        out = a.decide(_case_input(), "score", _ctx())
+        self.assertEqual(out.score, 1.0)
+
+    def test_abstain_huge_int_clamps_to_extreme(self):
+        a, _ = _adapter({"abstain": {"noul": 10**400}})
+        out = a.decide(_case_input(), "abstain", _ctx())
+        self.assertEqual(out.decision, "abstain")
+        self.assertEqual(out.confidence, 1.0)
+
+    def test_choice_probability_string_is_terminal(self):
+        a, _ = _adapter({
+            "decision": {"choice": "deny", "confidence": 0.8,
+                         "probabilities": {"approve": 0.1, "deny": "0.9"}},
+        })
+        with self.assertRaises(ProviderError):
+            a.decide(_case_input(), "choice", _ctx())
+
+    def test_choice_probability_nan_is_terminal(self):
+        a, _ = _adapter({
+            "decision": {"choice": "deny", "confidence": 0.8,
+                         "probabilities": {"approve": 0.1,
+                                           "deny": float("nan")}},
+        })
+        with self.assertRaises(ProviderError):
+            a.decide(_case_input(), "choice", _ctx())
+
 if __name__ == "__main__":
     unittest.main()

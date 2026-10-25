@@ -68,6 +68,7 @@ itself never retries.
 
 from __future__ import annotations
 
+import math
 import time
 from typing import Any
 
@@ -373,7 +374,7 @@ class LayaAdapter:
             raise ProviderError(
                 f"laya score answer has no numeric score: {ans!r}"
             )
-        score = _clamp01(float(value), "score")
+        score = _clamp01(value, "score")
         # The paired decision question carries the label; the score is
         # the measurement signal. An out-of-vocabulary label is API
         # drift — fail loudly like the choice path does.
@@ -410,7 +411,7 @@ class LayaAdapter:
             raise ProviderError(
                 f"laya abstain answer has no numeric noul value: {ans!r}"
             )
-        p_yes = _clamp01(float(p_yes), "noul")
+        p_yes = _clamp01(p_yes, "noul")
         confidence = _clamp01(abs(2 * p_yes - 1), "confidence")
         if p_yes >= 0.5:
             decision = "abstain"
@@ -434,12 +435,35 @@ def _need_answer(answers: dict[str, Any], name: str) -> dict[str, Any]:
 
 
 def _clamp01(value: Any, name: str) -> float:
-    try:
-        f = float(value)
-    except (TypeError, ValueError):
+    # A bool is never a legitimate probability, and a non-finite float
+    # (NaN, +/-inf; Python's json accepts all three as literals) must
+    # fail closed: clamping NaN would silently fabricate a maximal
+    # measurement, since min/max comparisons with NaN are always
+    # false.
+    if isinstance(value, bool):
         raise ProviderError(
-            f"laya returned non-numeric {name}: {value!r}"
-        ) from None
+            f"laya returned non-numeric {name}: {value!r}")
+    if isinstance(value, int):
+        # A several-hundred-digit JSON integer parses to an int
+        # whose float() raises OverflowError, which the conversion
+        # below does not catch. Compared exactly, a huge int is out
+        # of range in its own direction, so it clamps to the same
+        # extreme a large finite value would.
+        if value < 0:
+            return 0.0
+        if value > 1:
+            return 1.0
+        return float(value)
+    if not isinstance(value, float):
+        # Only genuine numbers reach the conversion: a string the
+        # wire sent is drift, never something to coerce into a
+        # measurement, and the same holds for every other type.
+        raise ProviderError(
+            f"laya returned non-numeric {name}: {value!r}")
+    f = float(value)
+    if not math.isfinite(f):
+        raise ProviderError(
+            f"laya returned non-numeric {name}: {value!r}")
     return max(0.0, min(1.0, f))
 
 

@@ -714,6 +714,12 @@ def _clamp01(value: Any, name: str) -> float:
         if value > 1:
             return 1.0
         return float(value)
+    if not isinstance(value, float):
+        # Only genuine numbers reach the conversion: a string the
+        # wire sent is drift, never something to coerce into a
+        # measurement, and the same holds for every other type.
+        raise ProviderError(
+            f"mercury-decide returned non-numeric {name}: {value!r}")
     try:
         f = float(value)
     except (TypeError, ValueError):

@@ -360,5 +360,37 @@ class TestLayaMalformedResponses(unittest.TestCase):
         self.assertIsNone(cm.exception.retry_after)
 
 
+
+class TestLayaClampContract(unittest.TestCase):
+    def test_score_huge_int_clamps_to_extreme(self):
+        agent = FakeAgent({
+            "score": {"score": 10**400},
+            "decision": {"choice": "deny", "confidence": 0.8},
+        })
+        out = _adapter(agent).decide(_case_input(), "score", _ctx())
+        self.assertEqual(out.score, 1.0)
+
+    def test_score_confidence_nan_is_terminal(self):
+        agent = FakeAgent({
+            "score": {"score": 0.8},
+            "decision": {"choice": "deny", "confidence": float("nan")},
+        })
+        with self.assertRaises(ProviderError):
+            _adapter(agent).decide(_case_input(), "score", _ctx())
+
+    def test_score_confidence_string_is_terminal(self):
+        agent = FakeAgent({
+            "score": {"score": 0.8},
+            "decision": {"choice": "deny", "confidence": "0.8"},
+        })
+        with self.assertRaises(ProviderError):
+            _adapter(agent).decide(_case_input(), "score", _ctx())
+
+    def test_abstain_huge_int_clamps_to_extreme(self):
+        agent = FakeAgent({"abstain": {"noul": 10**400}})
+        out = _adapter(agent).decide(_case_input(), "abstain", _ctx())
+        self.assertEqual(out.decision, "abstain")
+        self.assertEqual(out.confidence, 1.0)
+
 if __name__ == "__main__":
     unittest.main()

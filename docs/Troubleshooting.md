@@ -1010,8 +1010,8 @@ drift.
 
 **`openai-decisions returned probability outside [0, 1]: ...`**
 Cause: an answer's probability was numeric but not a genuine
-probability: above 1, negative, non-finite, or a several-hundred-
-digit integer. Terminal: the adapter raises rather than clamping
+probability. It was above 1, negative, non-finite, or a
+several-hundred-digit integer. Terminal: the adapter raises rather than clamping
 a drifted value into a measured score or confidence. Fix: report
 it as API drift.
 

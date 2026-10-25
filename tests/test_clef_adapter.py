@@ -648,5 +648,25 @@ class TestClefMalformedValues(unittest.TestCase):
         self.assertEqual(cm.exception.retry_after, 7.0)
 
 
+
+class TestRetryAfterNonfinite(unittest.TestCase):
+    def test_retry_after_nonfinite_is_dropped(self):
+        # "inf" and "nan" parse as floats; neither is a usable
+        # delay. Finite values pass through (the runner caps the
+        # delay at MAX_RETRY_AFTER_S when it consumes the value).
+        self.assertIsNone(clef_mod._parse_retry_after("inf"))
+        self.assertIsNone(clef_mod._parse_retry_after("nan"))
+        self.assertIsNone(clef_mod._parse_retry_after("1e400"))
+        self.assertEqual(clef_mod._parse_retry_after("7"), 7.0)
+
+
+class TestClefClampStringGate(unittest.TestCase):
+    def test_clamp_rejects_string_values(self):
+        # Only genuine numbers reach the clamp conversion: a string
+        # the wire sent is drift, never something to coerce into a
+        # measurement.
+        with self.assertRaises(ProviderError):
+            clef_mod._clamp01("0.9", "confidence")
+
 if __name__ == "__main__":
     unittest.main()

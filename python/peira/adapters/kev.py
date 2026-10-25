@@ -286,9 +286,11 @@ class LocalSystemOneAdapter(JevAdapter):
                 "bug, not a retryable failure.",
                 status_code=status,
             )
-        if status == 429 or 500 <= status < 600:
+        if status in (408, 409, 429) or 500 <= status < 600:
             # Transient: the runner retries with backoff and adapts
-            # concurrency. The adapter itself never retries.
+            # concurrency. The adapter itself never retries. 408 and
+            # 409 are in the runner's transient set, so their
+            # Retry-After must reach it like every other transient's.
             raise ProviderError(msg, status_code=status, retry_after=wait)
         raise ProviderError(msg, status_code=status)
 

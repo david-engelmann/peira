@@ -75,6 +75,7 @@ that as permanent and records the variant malformed.
 from __future__ import annotations
 
 import json
+import math
 import os
 import shutil
 import subprocess
@@ -353,6 +354,13 @@ def _option_probabilities(
                 if not isinstance(oid, str) or isinstance(p, bool) \
                         or not isinstance(p, (int, float)):
                     raise ValueError("bad option probability entry")
+                if isinstance(p, int) and p not in (0, 1):
+                    # An int probability is genuine only as 0 or 1.
+                    # A several-hundred-digit int raises OverflowError
+                    # on float(), which the except below does not
+                    # catch, and any other int is outside [0, 1] in
+                    # its own right.
+                    raise ValueError("bad option probability entry")
                 probs[oid] = float(p)
         except (ValueError, TypeError):
             continue
@@ -622,9 +630,33 @@ class SemifAdapter:
 
 
 def _clamp01(value: Any, name: str) -> float:
-    try:
-        f = float(value)
-    except (TypeError, ValueError):
+    # A bool is never a legitimate probability, and a non-finite float
+    # (NaN, +/-inf; Python's json accepts all three as literals) must
+    # fail closed: clamping NaN would silently fabricate a maximal
+    # measurement, since min/max comparisons with NaN are always
+    # false.
+    if isinstance(value, bool):
         raise ProviderError(
-            f"semif returned non-numeric {name}: {value!r}") from None
+            f"semif returned non-numeric {name}: {value!r}")
+    if isinstance(value, int):
+        # A several-hundred-digit JSON integer parses to an int
+        # whose float() raises OverflowError, which the conversion
+        # below does not catch. Compared exactly, a huge int is out
+        # of range in its own direction, so it clamps to the same
+        # extreme a large finite value would.
+        if value < 0:
+            return 0.0
+        if value > 1:
+            return 1.0
+        return float(value)
+    if not isinstance(value, float):
+        # Only genuine numbers reach the conversion: a string the
+        # wire sent is drift, never something to coerce into a
+        # measurement, and the same holds for every other type.
+        raise ProviderError(
+            f"semif returned non-numeric {name}: {value!r}")
+    f = float(value)
+    if not math.isfinite(f):
+        raise ProviderError(
+            f"semif returned non-numeric {name}: {value!r}")
     return max(0.0, min(1.0, f))

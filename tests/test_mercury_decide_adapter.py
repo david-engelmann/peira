@@ -1034,5 +1034,11 @@ class TestMercuryMalformedValues(unittest.TestCase):
         self.assertEqual(cm.exception.retry_after, 7.0)
 
 
+
+class TestMercuryClampStringGate(unittest.TestCase):
+    def test_clamp_rejects_string_values(self):
+        with self.assertRaises(ProviderError):
+            mercury_mod._clamp01("0.9", "confidence")
+
 if __name__ == "__main__":
     unittest.main()

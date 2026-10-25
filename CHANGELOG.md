@@ -19,9 +19,9 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
 - The OpenAI Decisions adapter now validates a score answer's
   per-level probabilities as a genuine distribution, the contract
   the System One and Mercury adapters already hold their
-  probability maps to: level indices in range and named at most
-  once, probabilities genuine numbers in [0, 1], and a total
-  within 0.01 of 1. A partial, duplicated or inflated map is
+  probability maps to. Level indices are in range and named at
+  most once, probabilities are genuine numbers in [0, 1], and
+  the total is within 0.01 of 1. A partial, duplicated or inflated map is
   terminal instead of computing a weighted position that is not
   a measurement. Choice-answer probabilities carry the same
   per-value validation, since they feed the confidence fallback.
@@ -44,6 +44,25 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
 - Mercury's error-detail reader now treats a connection dropped
   mid-body (IncompleteRead) as no detail instead of letting the
   exception escape.
+
+- The clamp helper every decision adapter shares now holds one
+  strict contract across the family. A bool, a string or a
+  non-finite value fails closed instead of being coerced or
+  clamped into a fabricated measurement, and an int is compared
+  exactly before conversion. The Jev, OpenAI Decisions and
+  OpenRouter Decisions helpers previously clamped NaN to a
+  maximal confidence, and the Decider, Laya and SemIf helpers
+  shared the same hole plus the huge-integer escape. GLiNER
+  Decide and Strands Decider carried the huge-integer escape on
+  their own confidence paths, and a Strands probability outside
+  [0, 1] previously passed through unclamped. All of these now
+  fail closed or clamp by the same rules as the rest of the
+  family.
+- The local System One transport shared by Kev, Strands,
+  Decider, Cerno, Von and OpenJev now passes a 408 or 409
+  response's Retry-After to the runner, matching the Jev
+  adapter. A non-finite Retry-After value now reads as no stated
+  wait in every decision adapter instead of an infinite delay.
 
 ### Fleet pins and adapter landings for the full-run windows
 

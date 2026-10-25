@@ -140,6 +140,21 @@ def _with_probability_confidence(
             "chosen option in the map, so this is server drift "
             "and the call is not measurable."
         )
+    if not 0 <= p <= 1:
+        # The comparison runs on the raw value: a several-hundred-
+        # digit JSON integer parses to an int whose float() below
+        # raises OverflowError, and any value outside [0, 1] is not
+        # a probability at all. Either is server drift, never a
+        # confidence to record (NaN included; its comparisons are
+        # all false, so it lands here too).
+        raise ProviderError(
+            f"strands-decider decision answer for chosen option "
+            f"{option!r} carries a probability outside [0, 1] in "
+            f"its probabilities map; the server contract puts a "
+            f"genuine probability for the chosen option in that "
+            f"map, so this is server drift and the call is not "
+            f"measurable."
+        )
     patched = dict(answers)
     patched_ans = dict(ans)
     patched_ans["confidence"] = float(p)
