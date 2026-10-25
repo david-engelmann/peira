@@ -223,12 +223,12 @@ classifier pair, aligned to the MLCommons hazards taxonomy (the
 model card's table runs S1 Violent Crimes through S14 Code
 Interpreter Abuse). Both checkpoints run prompt classification
 the way Meta publishes it: the case text as a single user message
-through the model's own chat template, unmodified — the taxonomy
+through the model's own chat template, unmodified. The taxonomy
 and its definitions ship inside that template, so no policy text
 is retyped in the adapter. The two shipped templates are not
 identical: the 8B carries all 14 categories and renders string
 message content, while the 1B carries the 13-category variant
-(S1–S13, shorter names) and renders text-part content — a plain
+(S1–S13, shorter names) and renders text-part content. A plain
 string renders an empty conversation in the 1B template, so the
 1B adapter wraps the case text in a text part, the shape its
 template is written for. Each checkpoint is judged against the
