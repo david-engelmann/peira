@@ -407,5 +407,24 @@ class TestSemifDefaultRunner(unittest.TestCase):
             self._run([{"id": "x"}], effect)
 
 
+
+class TestSemifHugeIntProbabilities(unittest.TestCase):
+    def test_list_form_huge_int_probability_is_terminal(self):
+        # A several-hundred-digit probability in the list-of-objects
+        # shape raised OverflowError on float() conversion, which
+        # the parser's ValueError/TypeError guard does not catch.
+        r = _runner_for({"decision": {"id": "decision", "probabilities": [
+            {"id": "deny", "probability": 0.1},
+            {"id": "approve", "probability": 10**400},
+        ]}})
+        with self.assertRaises(ProviderError):
+            SemifAdapter(runner=r).decide(_case_input(), "choice", _ctx())
+
+    def test_dict_form_huge_int_probability_is_terminal(self):
+        r = _runner_for({"decision": _decision_row(
+            {"deny": 0.2, "approve": 10**400})})
+        with self.assertRaises(ProviderError):
+            SemifAdapter(runner=r).decide(_case_input(), "choice", _ctx())
+
 if __name__ == "__main__":
     unittest.main()

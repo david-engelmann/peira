@@ -28,7 +28,7 @@ one place to update.
 
 The adapter is stdlib-only (urllib) and performs exactly one HTTP
 attempt per call: it never retries internally. Transient failures
-(408, 429, 529, 5xx, timeouts, connection errors) are raised as
+(408, 409, 429, 529, 5xx, timeouts, connection errors) are raised as
 ``ProviderError`` with ``status_code``/``retry_after`` so the A1 runner
 — which owns the retry policy — can classify and retry them. 401/422
 are terminal.
@@ -317,9 +317,11 @@ class JevAdapter:
                 "not a retryable failure.",
                 status_code=status,
             )
-        if status in (429, 529) or 500 <= status < 600:
+        if status in (408, 409, 429, 529) or 500 <= status < 600:
             # Transient: the runner retries with backoff and adapts
-            # concurrency. The adapter itself never retries.
+            # concurrency. The adapter itself never retries. 408 and
+            # 409 are in the runner's transient set, so their
+            # Retry-After must reach it like every other transient's.
             raise ProviderError(msg, status_code=status, retry_after=wait)
         raise ProviderError(msg, status_code=status)
 
@@ -405,7 +407,16 @@ class JevAdapter:
         if not isinstance(value, (int, float)) or isinstance(value, bool):
             raise ProviderError(
                 f"jev score answer has no numeric score: {ans!r}")
-        score = _clamp01(float(value) / (len(_SCORE_LEVELS) - 1), "score")
+        if isinstance(value, int) and not 0 <= value <= len(_SCORE_LEVELS) - 1:
+            # A several-hundred-digit JSON integer parses to an int
+            # whose float() raises OverflowError, which would escape
+            # as an unclassified error. Compared exactly, a huge int
+            # is out of range in its own direction, so it clamps to
+            # the same extreme a large finite value would.
+            score = 1.0 if value > 0 else 0.0
+        else:
+            score = _clamp01(
+                float(value) / (len(_SCORE_LEVELS) - 1), "score")
         # The paired decision question carries the label; the score is the
         # measurement signal. An out-of-vocabulary label is API drift —
         # fail loudly like the choice path does.
@@ -444,7 +455,7 @@ class JevAdapter:
         if not isinstance(p_yes, (int, float)) or isinstance(p_yes, bool):
             raise ProviderError(
                 f"jev abstain answer has no numeric abstain value: {ans!r}")
-        p_yes = _clamp01(float(p_yes), "abstain")
+        p_yes = _clamp01(p_yes, "abstain")
         confidence = _clamp01(abs(2 * p_yes - 1), "confidence")
         if p_yes >= 0.5:
             decision = "abstain"
@@ -513,9 +524,30 @@ def _score_from_probabilities(probs: dict[str, Any]) -> float | None:
 
 
 def _clamp01(value: Any, name: str) -> float:
-    try:
-        f = float(value)
-    except (TypeError, ValueError):
+    if isinstance(value, int) and not isinstance(value, bool):
+        # A several-hundred-digit JSON integer parses to an int
+        # whose float() raises OverflowError, which the conversion
+        # below does not catch. Compared exactly, a huge int is out
+        # of range in its own direction, so it clamps to the same
+        # extreme a large finite value would.
+        if value < 0:
+            return 0.0
+        if value > 1:
+            return 1.0
+        return float(value)
+    if isinstance(value, bool) or not isinstance(value, float):
+        # Only genuine numbers reach the conversion. A bool is never
+        # a legitimate probability, and a string the wire sent is
+        # drift, never something to coerce into a measurement. The
+        # same holds for every other non-float type.
+        raise ProviderError(
+            f"jev returned non-numeric {name}: {value!r}") from None
+    f = float(value)
+    if not math.isfinite(f):
+        # A non-finite float (NaN, +/-inf; Python's json accepts all
+        # three as literals) must fail closed: clamping NaN would
+        # silently fabricate a maximal measurement, since min/max
+        # comparisons with NaN are always false.
         raise ProviderError(
             f"jev returned non-numeric {name}: {value!r}") from None
     return max(0.0, min(1.0, f))
@@ -530,9 +562,16 @@ def _parse_retry_after(value: str | None) -> float | None:
     if not value:
         return None
     try:
-        return max(0.0, float(value))
+        parsed = float(value)
     except ValueError:
         return None
+    # "inf" and "nan" parse as floats; neither is a usable delay.
+    # Finite values pass through: the runner caps the delay at
+    # MAX_RETRY_AFTER_S when it consumes the value. An HTTP-date
+    # value does not parse and falls back to the runner's backoff.
+    if not math.isfinite(parsed):
+        return None
+    return max(0.0, parsed)
 
 
 def _read_error_body(e: urllib.error.HTTPError) -> str:

@@ -191,6 +191,18 @@ class TestJevChoice(unittest.TestCase):
             JevAdapter(api_key="k").decide(_case_input(), "bogus", _ctx())
 
 
+    def test_choice_confidence_huge_int_clamps_to_extreme(self):
+        # Confidence routes through the clamp helper, whose int
+        # comparison is exact: a several-hundred-digit JSON integer
+        # clamps to the same extreme a large finite value would
+        # instead of escaping as an unclassified OverflowError.
+        t = _transport_for({
+            "decision": {"choice": "approve", "confidence": 10**400},
+        })
+        out = JevAdapter(api_key="test-key", transport=t).decide(
+            _case_input(), "choice", _ctx())
+        self.assertEqual(out.confidence, 1.0)
+
 class TestJevScore(unittest.TestCase):
     def _score_adapter(self, value, option="deny", conf=0.8):
         t = _transport_for({
@@ -295,6 +307,19 @@ class TestJevScore(unittest.TestCase):
         self.assertTrue(all(isinstance(c, str) and c for c in sq["criteria"]))
 
 
+    def test_score_direct_huge_int_clamps_to_extreme(self):
+        # The direct path clamps out-of-range scores. A several-
+        # hundred-digit JSON integer parses to an int whose float()
+        # raises OverflowError. Compared exactly it is out of range
+        # in its own direction, so it clamps to the same extreme a
+        # large finite value would instead of escaping unclassified.
+        a, _ = self._score_adapter(10**400)
+        out = a.decide(_case_input(), "score", _ctx())
+        self.assertEqual(out.score, 1.0)
+        a, _ = self._score_adapter(-(10**400))
+        out = a.decide(_case_input(), "score", _ctx())
+        self.assertEqual(out.score, 0.0)
+
 class TestJevNoul(unittest.TestCase):
     def test_noul_yes_means_abstain(self):
         t = _transport_for({"abstain": {"abstain": 0.8}})
@@ -347,6 +372,22 @@ class TestJevNoul(unittest.TestCase):
         with self.assertRaises(ProviderError):
             JevAdapter(api_key="k", transport=t).decide(_case_input(), "abstain", _ctx())
 
+
+    def test_noul_huge_int_clamps_to_extreme(self):
+        # The abstain path clamps through the same helper as the
+        # confidence paths: a several-hundred-digit JSON integer
+        # clamps to the extreme in its own direction instead of
+        # escaping as an unclassified OverflowError.
+        t = _transport_for({"abstain": {"abstain": 10**400}})
+        out = JevAdapter(api_key="test-key", transport=t).decide(
+            _case_input(), "abstain", _ctx())
+        self.assertEqual(out.decision, "abstain")
+        self.assertEqual(out.confidence, 1.0)
+        t = _transport_for({"abstain": {"abstain": -(10**400)}})
+        out = JevAdapter(api_key="test-key", transport=t).decide(
+            _case_input(), "abstain", _ctx())
+        self.assertEqual(out.decision, "other")
+        self.assertEqual(out.confidence, 1.0)
 
 class TestJevQuestionValidation(unittest.TestCase):
     def test_malformed_question_is_terminal_before_send(self):
@@ -416,6 +457,18 @@ class TestJevErrors(unittest.TestCase):
             with self.assertRaises(ProviderError):
                 JevAdapter(api_key="k", transport=tr).decide(_case_input(), "choice", _ctx())
 
+    def test_408_and_409_carry_retry_after(self):
+        # 408 and 409 are in the runner's transient set, so the
+        # server's Retry-After must reach the runner like any other
+        # transient's. Dropping it loses the server's stated wait
+        # and the congestion cut it feeds.
+        a = JevAdapter.__new__(JevAdapter)  # no network, no key needed
+        for status in (408, 409):
+            with self.assertRaises(ProviderError) as cm:
+                a._raise_for_status(status, "3", "")
+            self.assertEqual(cm.exception.status_code, status)
+            self.assertEqual(cm.exception.retry_after, 3.0)
+
     def test_raise_for_status_mapping(self):
         a = JevAdapter.__new__(JevAdapter)  # no network, no key needed
         for status, transient in [(401, False), (422, False), (429, True),
@@ -441,6 +494,47 @@ class TestJevErrors(unittest.TestCase):
         out = JevAdapter(api_key="k", transport=t).decide(ci, "choice", _ctx())
         self.assertEqual(out.decision, "deny")
 
+
+
+class TestRetryAfterNonfinite(unittest.TestCase):
+    def test_retry_after_nonfinite_is_dropped(self):
+        # "inf" and "nan" parse as floats; neither is a usable
+        # delay. Finite values pass through (the runner caps the
+        # delay at MAX_RETRY_AFTER_S when it consumes the value).
+        self.assertIsNone(jev_mod._parse_retry_after("inf"))
+        self.assertIsNone(jev_mod._parse_retry_after("nan"))
+        self.assertIsNone(jev_mod._parse_retry_after("1e400"))
+        self.assertEqual(jev_mod._parse_retry_after("7"), 7.0)
+
+
+class TestJevClampContract(unittest.TestCase):
+    def test_choice_confidence_nan_is_terminal(self):
+        # NaN clamped through the old helper fabricated a maximal
+        # confidence (min/max comparisons with NaN are all false).
+        t = _transport_for({
+            "decision": {"choice": "approve", "confidence": float("nan")},
+        })
+        with self.assertRaises(ProviderError):
+            JevAdapter(api_key="<redacted>", transport=t).decide(
+                _case_input(), "choice", _ctx())
+
+    def test_choice_confidence_string_is_terminal(self):
+        # A number the wire sent as text is drift, never something
+        # to coerce into a measured confidence.
+        t = _transport_for({
+            "decision": {"choice": "approve", "confidence": "0.9"},
+        })
+        with self.assertRaises(ProviderError):
+            JevAdapter(api_key="<redacted>", transport=t).decide(
+                _case_input(), "choice", _ctx())
+
+    def test_choice_confidence_bool_is_terminal(self):
+        t = _transport_for({
+            "decision": {"choice": "approve", "confidence": True},
+        })
+        with self.assertRaises(ProviderError):
+            JevAdapter(api_key="<redacted>", transport=t).decide(
+                _case_input(), "choice", _ctx())
 
 if __name__ == "__main__":
     unittest.main()

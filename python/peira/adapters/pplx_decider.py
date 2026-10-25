@@ -517,7 +517,16 @@ class PplxDeciderAdapter:
         if not isinstance(value, (int, float)) or isinstance(value, bool):
             raise ProviderError(
                 f"pplx-decider score answer has no numeric score: {ans!r}")
-        score = _clamp01(float(value) / (len(_SCORE_LEVELS) - 1), "score")
+        if isinstance(value, int) and not 0 <= value <= len(_SCORE_LEVELS) - 1:
+            # A several-hundred-digit JSON integer parses to an int
+            # whose float() raises OverflowError, which would escape
+            # as an unclassified error. Compared exactly, a huge int
+            # is out of range in its own direction, so it clamps to
+            # the same extreme a large finite value would.
+            score = 1.0 if value > 0 else 0.0
+        else:
+            score = _clamp01(
+                float(value) / (len(_SCORE_LEVELS) - 1), "score")
         # The paired decision question carries the label; the score is
         # the measurement signal. An out-of-vocabulary label is API
         # drift; fail loudly like the choice path does.
@@ -567,10 +576,15 @@ class PplxDeciderAdapter:
             raise ProviderError(
                 f"pplx-decider abstain answer has no numeric abstain "
                 f"value: {ans!r}")
-        if not 0.0 <= float(p_yes) <= 1.0:
+        if not 0 <= p_yes <= 1:
             # A probability outside [0, 1] (NaN included; its
             # comparisons are all false) is malformed wire data, not
-            # a value to clamp into a fabricated extreme.
+            # a value to clamp into a fabricated extreme. The
+            # comparison runs on the raw value: a several-hundred-
+            # digit JSON integer parses to an int whose float()
+            # raises OverflowError, which would escape as an
+            # unclassified error. Comparing it exactly cannot
+            # overflow.
             raise ProviderError(
                 f"pplx-decider abstain answer probability out of "
                 f"range: {ans!r}")
@@ -609,6 +623,15 @@ def _answer_confidence(ans: dict[str, Any], option: str) -> float:
         if isinstance(probs, dict):
             raw = probs.get(option)
     if isinstance(raw, bool) or not isinstance(raw, (int, float)):
+        raise ProviderError(
+            f"pplx-decider decision answer has no usable confidence: "
+            f"{ans!r}")
+    if isinstance(raw, int) and raw not in (0, 1):
+        # An int confidence is genuine only as 0 or 1 (it is a
+        # probability). A several-hundred-digit JSON integer parses
+        # to an int whose float() raises OverflowError, which would
+        # escape as an unclassified error instead of failing closed
+        # here.
         raise ProviderError(
             f"pplx-decider decision answer has no usable confidence: "
             f"{ans!r}")
@@ -678,6 +701,23 @@ def _clamp01(value: Any, name: str) -> float:
     if isinstance(value, bool):
         raise ProviderError(
             f"pplx-decider returned non-numeric {name}: {value!r}")
+    if isinstance(value, int) and not isinstance(value, bool):
+        # A several-hundred-digit JSON integer parses to an int
+        # whose float() raises OverflowError, which the conversion
+        # below does not catch. Compared exactly, a huge int is out
+        # of range in its own direction, so it clamps to the same
+        # extreme a large finite value would.
+        if value < 0:
+            return 0.0
+        if value > 1:
+            return 1.0
+        return float(value)
+    if not isinstance(value, float):
+        # Only genuine numbers reach the conversion: a string the
+        # wire sent is drift, never something to coerce into a
+        # measurement, and the same holds for every other type.
+        raise ProviderError(
+            f"pplx-decider returned non-numeric {name}: {value!r}")
     try:
         f = float(value)
     except (TypeError, ValueError):
@@ -698,9 +738,16 @@ def _parse_retry_after(value: str | None) -> float | None:
     if not value:
         return None
     try:
-        return max(0.0, float(value))
+        parsed = float(value)
     except ValueError:
         return None
+    # "inf" and "nan" parse as floats; neither is a usable delay.
+    # Finite values pass through: the runner caps the delay at
+    # MAX_RETRY_AFTER_S when it consumes the value. An HTTP-date
+    # value does not parse and falls back to the runner's backoff.
+    if not math.isfinite(parsed):
+        return None
+    return max(0.0, parsed)
 
 
 def _read_error_detail(e: urllib.error.HTTPError) -> str:

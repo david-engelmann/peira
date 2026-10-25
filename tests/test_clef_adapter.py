@@ -196,6 +196,17 @@ class TestClefChoice(unittest.TestCase):
             _adapter().decide(_case_input(), "bogus", _ctx())
 
 
+    def test_choice_confidence_huge_int_clamps_to_extreme(self):
+        # Confidence routes through the clamp helper, whose int
+        # comparison is exact: a several-hundred-digit JSON integer
+        # clamps to the same extreme a large finite value would
+        # instead of escaping as an unclassified OverflowError.
+        t = _transport_for({
+            "decision": {"choice": "approve", "confidence": 10**400},
+        })
+        out = _adapter(transport=t).decide(_case_input(), "choice", _ctx())
+        self.assertEqual(out.confidence, 1.0)
+
 class TestClefScore(unittest.TestCase):
     def _score_adapter(self, value, option="deny", conf=0.8):
         t = _transport_for({
@@ -215,6 +226,19 @@ class TestClefScore(unittest.TestCase):
         a, _ = self._score_adapter(99)
         out = a.decide(_case_input(), "score", _ctx())
         self.assertEqual(out.score, 1.0)
+
+    def test_score_direct_huge_int_clamps_to_extreme(self):
+        # The direct path clamps out-of-range scores. A several-
+        # hundred-digit JSON integer parses to an int whose float()
+        # raises OverflowError. Compared exactly it is out of range
+        # in its own direction, so it clamps to the same extreme a
+        # large finite value would instead of escaping unclassified.
+        a, _ = self._score_adapter(10**400)
+        out = a.decide(_case_input(), "score", _ctx())
+        self.assertEqual(out.score, 1.0)
+        a, _ = self._score_adapter(-(10**400))
+        out = a.decide(_case_input(), "score", _ctx())
+        self.assertEqual(out.score, 0.0)
 
     def test_score_missing_value_computed_from_probabilities(self):
         t = _transport_for({
@@ -386,6 +410,20 @@ class TestClefNoul(unittest.TestCase):
         with self.assertRaises(ProviderError):
             _adapter(transport=t).decide(_case_input(), "abstain", _ctx())
 
+
+    def test_noul_huge_int_clamps_to_extreme(self):
+        # The abstain path clamps through the same helper as the
+        # confidence paths: a several-hundred-digit JSON integer
+        # clamps to the extreme in its own direction instead of
+        # escaping as an unclassified OverflowError.
+        t = _transport_for({"abstain": {"abstain": 10**400}})
+        out = _adapter(transport=t).decide(_case_input(), "abstain", _ctx())
+        self.assertEqual(out.decision, "abstain")
+        self.assertEqual(out.confidence, 1.0)
+        t = _transport_for({"abstain": {"abstain": -(10**400)}})
+        out = _adapter(transport=t).decide(_case_input(), "abstain", _ctx())
+        self.assertEqual(out.decision, "other")
+        self.assertEqual(out.confidence, 1.0)
 
 class TestClefEnvelope(unittest.TestCase):
     def test_success_false_is_terminal_with_errors(self):
@@ -609,6 +647,26 @@ class TestClefMalformedValues(unittest.TestCase):
         self.assertEqual(cm.exception.status_code, 408)
         self.assertEqual(cm.exception.retry_after, 7.0)
 
+
+
+class TestRetryAfterNonfinite(unittest.TestCase):
+    def test_retry_after_nonfinite_is_dropped(self):
+        # "inf" and "nan" parse as floats; neither is a usable
+        # delay. Finite values pass through (the runner caps the
+        # delay at MAX_RETRY_AFTER_S when it consumes the value).
+        self.assertIsNone(clef_mod._parse_retry_after("inf"))
+        self.assertIsNone(clef_mod._parse_retry_after("nan"))
+        self.assertIsNone(clef_mod._parse_retry_after("1e400"))
+        self.assertEqual(clef_mod._parse_retry_after("7"), 7.0)
+
+
+class TestClefClampStringGate(unittest.TestCase):
+    def test_clamp_rejects_string_values(self):
+        # Only genuine numbers reach the clamp conversion: a string
+        # the wire sent is drift, never something to coerce into a
+        # measurement.
+        with self.assertRaises(ProviderError):
+            clef_mod._clamp01("0.9", "confidence")
 
 if __name__ == "__main__":
     unittest.main()

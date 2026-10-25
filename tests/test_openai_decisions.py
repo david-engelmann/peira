@@ -345,6 +345,99 @@ class TestScore(unittest.TestCase):
         with self.assertRaises(ProviderError):
             a.decide(_case_input(), "score", _ctx())
 
+    def test_score_probability_level_outside_rubric_is_terminal(self):
+        # A level index outside 0..4 names no rubric level. Left
+        # in the fallback it would weight the position by a level
+        # that does not exist (index 99 at full mass computes 99
+        # and clamps into a fabricated maximal score). The answer
+        # is built by hand because the _score_answer fixture labels
+        # each entry from the rubric and cannot spell one.
+        for bad_idx in (5, 99, -1):
+            ans = {
+                "type": "score",
+                "name": "score",
+                "probabilities": [
+                    {"value": i, "probability": p}
+                    for i, p in [(0, 0.0), (1, 0.0), (2, 0.0),
+                                 (3, 0.0), (bad_idx, 1.0)]
+                ],
+                "confidence": 0.22,
+            }
+            a, _ = self._adapter([ans, _choice_answer()])
+            with self.assertRaises(ProviderError, msg=repr(bad_idx)):
+                a.decide(_case_input(), "score", _ctx())
+
+    def test_score_probability_duplicate_level_is_terminal(self):
+        # Two entries for one level: keeping only the last would
+        # silently discard stated mass, and summing both would
+        # double-count the level. Either way the map is drift.
+        probs = [(0, 0.14), (1, 0.05), (2, 0.12), (2, 0.30),
+                 (3, 0.39), (4, 0.0)]
+        a, _ = self._adapter([
+            _score_answer(probs=probs), _choice_answer()])
+        with self.assertRaises(ProviderError):
+            a.decide(_case_input(), "score", _ctx())
+
+    def test_score_probability_outside_unit_interval_is_terminal(self):
+        # Probabilities are validated as genuine probabilities, not
+        # just numbers: 1.5 inflates the fallback past the top of
+        # the rubric, a negative value deflates it, and NaN carries
+        # through the weighted sum into a clamped fabrication.
+        for bad in (1.5, -0.2, float("nan"), float("inf")):
+            probs = [(0, 0.14), (1, 0.05), (2, bad), (3, 0.39),
+                     (4, 0.30)]
+            a, _ = self._adapter([
+                _score_answer(probs=probs), _choice_answer()])
+            with self.assertRaises(ProviderError, msg=repr(bad)):
+                a.decide(_case_input(), "score", _ctx())
+
+    def test_score_probability_huge_int_is_terminal(self):
+        # An int probability is genuine only as 0 or 1. A several-
+        # hundred-digit JSON integer parses to an int whose float()
+        # raises OverflowError. It must fail closed here instead of
+        # escaping as an unclassified error.
+        probs = [(0, 0.14), (1, 0.05), (2, 10**400), (3, 0.39),
+                 (4, 0.30)]
+        a, _ = self._adapter([
+            _score_answer(probs=probs), _choice_answer()])
+        with self.assertRaises(ProviderError):
+            a.decide(_case_input(), "score", _ctx())
+
+    def test_score_probabilities_partial_mass_is_terminal(self):
+        # The fallback divides by nothing: it weights level indices
+        # by the stated probabilities, so a map totalling 0.5 would
+        # halve the position toward zero and report it as a
+        # measurement. A genuine distribution totals 1.
+        probs = [(0, 0.07), (1, 0.02), (2, 0.06), (3, 0.20), (4, 0.15)]
+        a, _ = self._adapter([
+            _score_answer(score=None, probs=probs), _choice_answer()])
+        with self.assertRaises(ProviderError):
+            a.decide(_case_input(), "score", _ctx())
+
+    def test_score_probabilities_total_within_tolerance_accepted(self):
+        # Rounding distance of 1 is accepted, matching the sibling
+        # adapters' 0.01 total-mass tolerance: the fallback computes
+        # from the stated mass as sent.
+        probs = [(0, 0.0), (1, 0.0), (2, 0.0), (3, 0.5), (4, 0.495)]
+        a, _ = self._adapter([
+            _score_answer(score=None, probs=probs), _choice_answer()])
+        out = a.decide(_case_input(), "score", _ctx())
+        self.assertAlmostEqual(out.score, (3 * 0.5 + 4 * 0.495) / 4)
+
+    def test_choice_probability_outside_unit_interval_is_terminal(self):
+        # Choice probabilities feed the confidence fallback, so the
+        # same genuineness rule applies: a value of -5 must not
+        # reach _clamp01 and come out as a measured 0.0, and a NaN
+        # must not come out as a measured 1.0.
+        for bad in (-5, 1.5, float("nan")):
+            a, _ = self._adapter([
+                _score_answer(),
+                _choice_answer(confidence=None,
+                               probs=[("approve", bad), ("deny", 0.2),
+                                      ("other", 0.1)])])
+            with self.assertRaises(ProviderError, msg=repr(bad)):
+                a.decide(_case_input(), "score", _ctx())
+
     def test_score_refusal_on_score_question_abstains(self):
         a, _ = self._adapter([
             {"type": "refusal", "name": "score"}, _choice_answer()])
@@ -372,6 +465,31 @@ class TestScore(unittest.TestCase):
         with self.assertRaises(ProviderError):
             a.decide(_case_input(), "score", _ctx())
 
+
+    def test_score_direct_huge_int_clamps_to_extreme(self):
+        # The direct path clamps out-of-range scores. A several-
+        # hundred-digit JSON integer parses to an int whose float()
+        # raises OverflowError. Compared exactly it is out of range
+        # in its own direction, so it clamps to the same extreme a
+        # large finite value would instead of escaping unclassified.
+        a, _ = self._adapter([
+            _score_answer(score=10**400), _choice_answer()])
+        out = a.decide(_case_input(), "score", _ctx())
+        self.assertEqual(out.score, 1.0)
+        a, _ = self._adapter([
+            _score_answer(score=-(10**400)), _choice_answer()])
+        out = a.decide(_case_input(), "score", _ctx())
+        self.assertEqual(out.score, 0.0)
+
+    def test_paired_confidence_huge_int_clamps_to_extreme(self):
+        # The paired decision answer's confidence routes through
+        # the clamp helper, whose int comparison is exact: a huge
+        # int clamps like a large finite value instead of escaping
+        # as an unclassified OverflowError.
+        a, _ = self._adapter([
+            _score_answer(), _choice_answer(confidence=10**400)])
+        out = a.decide(_case_input(), "score", _ctx())
+        self.assertEqual(out.confidence, 1.0)
 
 class TestAbstain(unittest.TestCase):
     def _run(self, ans):
@@ -428,6 +546,20 @@ class TestAbstain(unittest.TestCase):
             self._run({"type": "predicate", "name": "abstain",
                        "probability": "high"})
 
+
+    def test_abstain_probability_huge_int_clamps_to_extreme(self):
+        # The predicate path clamps through the same helper as the
+        # confidence paths: a several-hundred-digit JSON integer
+        # clamps to the extreme in its own direction instead of
+        # escaping as an unclassified OverflowError.
+        out, _ = self._run({"type": "predicate", "name": "abstain",
+                            "probability": 10**400})
+        self.assertEqual(out.decision, "abstain")
+        self.assertEqual(out.confidence, 1.0)
+        out, _ = self._run({"type": "predicate", "name": "abstain",
+                            "probability": -(10**400)})
+        self.assertEqual(out.decision, "other")
+        self.assertEqual(out.confidence, 1.0)
 
 class TestResponseShapeBreaks(unittest.TestCase):
     def test_missing_answers_key_is_terminal(self):
@@ -624,6 +756,31 @@ class TestPricing(unittest.TestCase):
                                1000, table)
         self.assertGreater(with_output, got)
 
+
+
+class TestRetryAfterNonfinite(unittest.TestCase):
+    def test_retry_after_nonfinite_is_dropped(self):
+        # "inf" and "nan" parse as floats; neither is a usable
+        # delay. Finite values pass through (the runner caps the
+        # delay at MAX_RETRY_AFTER_S when it consumes the value).
+        self.assertIsNone(od_mod._parse_retry_after("inf"))
+        self.assertIsNone(od_mod._parse_retry_after("nan"))
+        self.assertIsNone(od_mod._parse_retry_after("1e400"))
+        self.assertEqual(od_mod._parse_retry_after("7"), 7.0)
+
+
+class TestOpenAIClampContract(unittest.TestCase):
+    def test_choice_confidence_nan_is_terminal(self):
+        t = _transport_for([_choice_answer(confidence=float("nan"))])
+        with self.assertRaises(ProviderError):
+            OpenAIDecisionsAdapter(api_key="<redacted>", transport=t).decide(
+                _case_input(), "choice", _ctx())
+
+    def test_choice_confidence_string_is_terminal(self):
+        t = _transport_for([_choice_answer(confidence="0.9")])
+        with self.assertRaises(ProviderError):
+            OpenAIDecisionsAdapter(api_key="<redacted>", transport=t).decide(
+                _case_input(), "choice", _ctx())
 
 if __name__ == "__main__":
     unittest.main()

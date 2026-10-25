@@ -265,5 +265,27 @@ class TestKevErrors(unittest.TestCase):
             self.assertEqual(cm.exception.status_code, status)
 
 
+
+class TestKevTransientPassthrough(unittest.TestCase):
+    def test_408_and_409_carry_retry_after(self):
+        # The local System One transport shares the runner's
+        # transient set with the Jev adapter: a 408 or 409
+        # response's Retry-After must reach the runner like every
+        # other transient's.
+        a = KevAdapter.__new__(KevAdapter)
+        a.name = "kev"
+        for status in (408, 409):
+            with self.assertRaises(ProviderError) as cm:
+                a._raise_for_status(status, "7", "detail")
+            self.assertEqual(cm.exception.status_code, status)
+            self.assertEqual(cm.exception.retry_after, 7.0)
+
+    def test_400_stays_terminal_without_retry_after(self):
+        a = KevAdapter.__new__(KevAdapter)
+        a.name = "kev"
+        with self.assertRaises(ProviderError) as cm:
+            a._raise_for_status(400, "7", "detail")
+        self.assertIsNone(cm.exception.retry_after)
+
 if __name__ == "__main__":
     unittest.main()

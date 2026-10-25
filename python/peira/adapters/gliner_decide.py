@@ -351,6 +351,16 @@ def _task_winner(result: dict[str, Any], task: str) -> tuple[str, float]:
             f"gliner-decide task {task!r} returned no numeric confidence: "
             f"{entry!r}"
         )
+    if isinstance(confidence, int) and confidence not in (0, 1):
+        # An int confidence is genuine only as 0 or 1 (it is a
+        # probability). A several-hundred-digit JSON integer parses
+        # to an int whose float() raises OverflowError, which would
+        # escape as an unclassified error instead of failing closed
+        # on the range check below.
+        raise ProviderError(
+            f"gliner-decide task {task!r} returned confidence "
+            f"{confidence!r} outside 0..1: {entry!r}"
+        )
     value = float(confidence)
     if not math.isfinite(value) or not 0.0 <= value <= 1.0:
         # A probability outside 0..1 (or NaN, or infinite) is drift,

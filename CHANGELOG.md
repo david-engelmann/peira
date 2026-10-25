@@ -7,6 +7,69 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
 
 ## [Unreleased]
 
+### Score validation and transient follow-ups across the decision adapters
+
+- The OpenRouter Decisions adapter's score fallback now
+  validates its per-level probability map to the same contract
+  as the Jev fallback it mirrors, reading each level by its
+  canonical key instead of weighting values by their position
+  in the map, so mass under a key naming no level can no longer
+  fabricate a score and a huge-integer probability voids the
+  fallback instead of escaping as an OverflowError.
+- The OpenAI Decisions adapter now validates a score answer's
+  per-level probabilities as a genuine distribution, the contract
+  the System One and Mercury adapters already hold their
+  probability maps to. Level indices are in range and named at
+  most once, probabilities are genuine numbers in [0, 1], and
+  the total is within 0.01 of 1. A partial, duplicated or inflated map is
+  terminal instead of computing a weighted position that is not
+  a measurement. Choice-answer probabilities carry the same
+  per-value validation, since they feed the confidence fallback.
+- Huge-integer wire values can no longer escape as an
+  unclassified OverflowError on any adapter's direct paths.
+  Every adapter's score, abstain and confidence conversions now
+  bound or compare an int before converting it, and the clamp
+  helper each adapter shares compares an int exactly before
+  converting it, so a several-hundred-digit score, probability
+  or confidence fails closed on the adapters whose paths raise,
+  or clamps to the extreme in its own direction on the adapters
+  whose paths clamp, instead of raising OverflowError. The
+  Mercury adapter's transport latency reader treats the same
+  class of junk as unknown latency rather than letting it
+  escape.
+- Jev passes a 408 or 409 response's Retry-After to the runner,
+  and Mercury passes a 409's, like every other transient. Both
+  statuses were already in the runner's transient set, so the
+  server's stated wait was being dropped.
+- Mercury's error-detail reader now treats a connection dropped
+  mid-body (IncompleteRead) as no detail instead of letting the
+  exception escape.
+
+- The clamp helper every decision adapter shares now holds one
+  strict contract across the family. A bool, a string or a
+  non-finite value fails closed instead of being coerced or
+  clamped into a fabricated measurement, and an int is compared
+  exactly before conversion. The Jev, OpenAI Decisions and
+  OpenRouter Decisions helpers previously clamped NaN to a
+  maximal confidence, and the Decider, Laya and SemIf helpers
+  shared the same hole plus the huge-integer escape. GLiNER
+  Decide and Strands Decider carried the huge-integer escape on
+  their own confidence paths, and a Strands probability outside
+  [0, 1] previously passed through unclamped. All of these now
+  fail closed or clamp by the same rules as the rest of the
+  family.
+- Cerno's probability predicates no longer convert their
+  argument through math.isfinite before range-checking it. A
+  several-hundred-digit integer probability or confidence
+  raised OverflowError inside the predicate instead of failing
+  closed as server drift. Ints are now compared exactly, as in
+  every other adapter in the family.
+- The local System One transport shared by Kev, Strands,
+  Decider, Cerno, Von and OpenJev now passes a 408 or 409
+  response's Retry-After to the runner, matching the Jev
+  adapter. A non-finite Retry-After value now reads as no stated
+  wait in every decision adapter instead of an infinite delay.
+
 ### Fleet pins and adapter landings for the full-run windows
 
 - Cerno gains its two sibling pins: `Cerno9BAdapter` measures

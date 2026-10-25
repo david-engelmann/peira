@@ -306,5 +306,35 @@ class TestStrandsDeciderErrors(unittest.TestCase):
             StrandsDeciderAdapter().decide(_case_input(), "bogus", _ctx())
 
 
+
+class TestStrandsProbabilityContract(unittest.TestCase):
+    def test_huge_int_probability_is_terminal(self):
+        # A several-hundred-digit probability raised OverflowError
+        # on float() conversion instead of failing closed.
+        t = _transport_for({
+            "decision": {
+                "choice": "deny",
+                "confidence": 0.9,
+                "probabilities": {"approve": 0.1, "deny": 10**400},
+            },
+        })
+        with self.assertRaises(ProviderError):
+            StrandsDeciderAdapter(transport=t).decide(
+                _case_input(), "choice", _ctx())
+
+    def test_probability_outside_unit_range_is_terminal(self):
+        # A probability of 5 previously passed through unclamped
+        # as the recorded confidence.
+        t = _transport_for({
+            "decision": {
+                "choice": "deny",
+                "confidence": 0.9,
+                "probabilities": {"approve": 0.1, "deny": 5},
+            },
+        })
+        with self.assertRaises(ProviderError):
+            StrandsDeciderAdapter(transport=t).decide(
+                _case_input(), "choice", _ctx())
+
 if __name__ == "__main__":
     unittest.main()

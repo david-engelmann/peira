@@ -73,6 +73,7 @@ does not abstain), for the reasons stated in ``peira.adapters.jev``.
 
 from __future__ import annotations
 
+import math
 import time
 from typing import Any
 
@@ -281,7 +282,16 @@ class DeciderAdapter:
             )
         # The score arrives on the 0..levels-1 index scale; normalize
         # to 0..1 with the same divisor the Jev adapter uses.
-        score = _clamp01(float(value) / (len(_SCORE_LEVELS) - 1), "score")
+        if isinstance(value, int) and not 0 <= value <= len(_SCORE_LEVELS) - 1:
+            # A several-hundred-digit JSON integer parses to an int
+            # whose float() raises OverflowError, which would escape
+            # as an unclassified error. Compared exactly, a huge int
+            # is out of range in its own direction, so it clamps to
+            # the same extreme a large finite value would.
+            score = 1.0 if value > 0 else 0.0
+        else:
+            score = _clamp01(
+                float(value) / (len(_SCORE_LEVELS) - 1), "score")
         dec_ans = _need_answer(answers, "decision")
         option = str(dec_ans.get("choice", ""))
         if option not in labels:
@@ -305,7 +315,7 @@ class DeciderAdapter:
             raise ProviderError(
                 f"decider abstain answer has no numeric noul value: {ans!r}"
             )
-        p_yes = _clamp01(float(p_yes), "noul")
+        p_yes = _clamp01(p_yes, "noul")
         confidence = _clamp01(abs(2 * p_yes - 1), "confidence")
         decision = "abstain" if p_yes >= 0.5 else non_abstain_placeholder()
         return AbstainOutput(
@@ -342,12 +352,35 @@ def _need_answer(answers: dict[str, Any], name: str) -> dict[str, Any]:
 
 
 def _clamp01(value: Any, name: str) -> float:
-    try:
-        f = float(value)
-    except (TypeError, ValueError):
+    # A bool is never a legitimate probability, and a non-finite float
+    # (NaN, +/-inf; Python's json accepts all three as literals) must
+    # fail closed: clamping NaN would silently fabricate a maximal
+    # measurement, since min/max comparisons with NaN are always
+    # false.
+    if isinstance(value, bool):
         raise ProviderError(
-            f"decider returned non-numeric {name}: {value!r}"
-        ) from None
+            f"decider returned non-numeric {name}: {value!r}")
+    if isinstance(value, int):
+        # A several-hundred-digit JSON integer parses to an int
+        # whose float() raises OverflowError, which the conversion
+        # below does not catch. Compared exactly, a huge int is out
+        # of range in its own direction, so it clamps to the same
+        # extreme a large finite value would.
+        if value < 0:
+            return 0.0
+        if value > 1:
+            return 1.0
+        return float(value)
+    if not isinstance(value, float):
+        # Only genuine numbers reach the conversion: a string the
+        # wire sent is drift, never something to coerce into a
+        # measurement, and the same holds for every other type.
+        raise ProviderError(
+            f"decider returned non-numeric {name}: {value!r}")
+    f = float(value)
+    if not math.isfinite(f):
+        raise ProviderError(
+            f"decider returned non-numeric {name}: {value!r}")
     return max(0.0, min(1.0, f))
 
 

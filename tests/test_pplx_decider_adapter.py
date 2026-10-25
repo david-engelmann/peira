@@ -247,6 +247,18 @@ class TestPplxChoice(unittest.TestCase):
             _adapter().decide(_case_input(), "bogus", _ctx())
 
 
+    def test_choice_confidence_huge_int_is_terminal(self):
+        # An int confidence is genuine only as 0 or 1. A several-
+        # hundred-digit JSON integer parses to an int whose float()
+        # raises OverflowError. It must fail closed here instead of
+        # escaping as an unclassified error.
+        t = _transport_for({
+            "decision": {"type": "choice", "choice": "approve",
+                         "confidence": 10**400},
+        })
+        with self.assertRaises(ProviderError):
+            _adapter(transport=t).decide(_case_input(), "choice", _ctx())
+
 class TestPplxScore(unittest.TestCase):
     def _score_adapter(self, value, option="deny", conf=0.8):
         t = _transport_for({
@@ -262,6 +274,19 @@ class TestPplxScore(unittest.TestCase):
         self.assertEqual(validate_output(out, "score"), [])
         self.assertAlmostEqual(out.score, 3.2 / 4)  # 5 levels, 0-based
         self.assertEqual(out.decision, "deny")
+
+    def test_score_direct_huge_int_clamps_to_extreme(self):
+        # The direct path clamps out-of-range scores. A several-
+        # hundred-digit JSON integer parses to an int whose float()
+        # raises OverflowError. Compared exactly it is out of range
+        # in its own direction, so it clamps to the same extreme a
+        # large finite value would instead of escaping unclassified.
+        a, _ = self._score_adapter(10**400)
+        out = a.decide(_case_input(), "score", _ctx())
+        self.assertEqual(out.score, 1.0)
+        a, _ = self._score_adapter(-(10**400))
+        out = a.decide(_case_input(), "score", _ctx())
+        self.assertEqual(out.score, 0.0)
 
     def test_score_clamped(self):
         a, _ = self._score_adapter(99)
@@ -475,6 +500,17 @@ class TestPplxNoul(unittest.TestCase):
         with self.assertRaises(ProviderError):
             _adapter(transport=t).decide(_case_input(), "abstain", _ctx())
 
+
+    def test_abstain_probability_huge_int_is_terminal(self):
+        # A several-hundred-digit JSON integer parses to an int
+        # whose float() raises OverflowError. The range check
+        # compares before converting, so a huge int takes the
+        # out-of-range path instead of escaping unclassified.
+        t = _transport_for({"abstain": {"type": "noul",
+                                        "noul": 10**400}})
+        with self.assertRaises(ProviderError):
+            _adapter(transport=t).decide(_case_input(), "abstain",
+                                         _ctx())
 
 class TestPplxResponseValidation(unittest.TestCase):
     def test_missing_answers_is_terminal(self):
@@ -831,6 +867,26 @@ class TestPplxMalformedValues(unittest.TestCase):
         self.assertEqual(cm.exception.status_code, 408)
         self.assertEqual(cm.exception.retry_after, 7.0)
 
+
+
+class TestRetryAfterNonfinite(unittest.TestCase):
+    def test_retry_after_nonfinite_is_dropped(self):
+        # "inf" and "nan" parse as floats; neither is a usable
+        # delay. Finite values pass through (the runner caps the
+        # delay at MAX_RETRY_AFTER_S when it consumes the value).
+        self.assertIsNone(pplx_mod._parse_retry_after("inf"))
+        self.assertIsNone(pplx_mod._parse_retry_after("nan"))
+        self.assertIsNone(pplx_mod._parse_retry_after("1e400"))
+        self.assertEqual(pplx_mod._parse_retry_after("7"), 7.0)
+
+
+class TestPplxClampStringGate(unittest.TestCase):
+    def test_clamp_rejects_string_values(self):
+        # Only genuine numbers reach the clamp conversion: a string
+        # the wire sent is drift, never something to coerce into a
+        # measurement.
+        with self.assertRaises(ProviderError):
+            pplx_mod._clamp01("0.9", "confidence")
 
 if __name__ == "__main__":
     unittest.main()

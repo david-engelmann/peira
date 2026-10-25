@@ -1008,6 +1008,24 @@ score or confidence, and a malformed usage field. The adapter
 raises rather than guessing a default. Fix: report it as API
 drift.
 
+**`openai-decisions returned probability outside [0, 1]: ...`**
+Cause: an answer's probability was numeric but not a genuine
+probability. It was above 1, negative, non-finite, or a
+several-hundred-digit integer. Terminal: the adapter raises rather than clamping
+a drifted value into a measured score or confidence. Fix: report
+it as API drift.
+
+**`openai-decisions score probabilities do not sum to 1: ...`**
+Cause: a score answer's per-level probabilities did not form a
+genuine distribution. The same family covers
+`openai-decisions score probability entry names a level outside
+the rubric: ...` and `openai-decisions score probabilities name
+level ... more than once: ...`. The probability-weighted
+fallback divides by nothing, so a partial or double-counted map
+would distort the score toward zero or past the rubric top and
+report it as a measurement. Terminal. Fix: report it as API
+drift.
+
 **`openai-moderation adapter needs an OpenAI API key: set the OPENAI_API_KEY environment variable (or pass api_key=...)`**
 Cause: no OpenAI API key. The moderation endpoint is free and does
 not count toward usage quotas, but it still needs a key. Fix:

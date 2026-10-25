@@ -244,6 +244,18 @@ class TestCelerisChoice(unittest.TestCase):
             _adapter().decide(_case_input(), "bogus", _ctx())
 
 
+    def test_choice_confidence_huge_int_is_terminal(self):
+        # An int confidence is genuine only as 0 or 1. A several-
+        # hundred-digit JSON integer parses to an int whose float()
+        # raises OverflowError. It must fail closed here instead of
+        # escaping as an unclassified error.
+        t = _transport_for({
+            "decision": {"type": "choice", "choice": "approve",
+                         "confidence": 10**400},
+        })
+        with self.assertRaises(ProviderError):
+            _adapter(transport=t).decide(_case_input(), "choice", _ctx())
+
 class TestCelerisScore(unittest.TestCase):
     def _score_adapter(self, value, option="deny", conf=0.8):
         t = _transport_for({
@@ -271,6 +283,17 @@ class TestCelerisScore(unittest.TestCase):
         # outside it is malformed wire data; clamping it would
         # fabricate an extreme measurement.
         for bad in (99, 4.5, -1, -0.5):
+            a, _ = self._score_adapter(bad)
+            with self.assertRaises(ProviderError, msg=repr(bad)):
+                a.decide(_case_input(), "score", _ctx())
+
+    def test_score_direct_huge_int_is_terminal(self):
+        # A several-hundred-digit JSON integer parses to an int
+        # whose float() raises OverflowError. The direct score path
+        # compares before converting, so a huge int takes the
+        # out-of-range path instead of escaping as an unclassified
+        # OverflowError.
+        for bad in (10**400, -(10**400)):
             a, _ = self._score_adapter(bad)
             with self.assertRaises(ProviderError, msg=repr(bad)):
                 a.decide(_case_input(), "score", _ctx())
@@ -507,6 +530,17 @@ class TestCelerisNoul(unittest.TestCase):
         with self.assertRaises(ProviderError):
             _adapter(transport=t).decide(_case_input(), "abstain", _ctx())
 
+
+    def test_abstain_probability_huge_int_is_terminal(self):
+        # A several-hundred-digit JSON integer parses to an int
+        # whose float() raises OverflowError. The range check
+        # compares before converting, so a huge int takes the
+        # out-of-range path instead of escaping unclassified.
+        t = _transport_for({"abstain": {"type": "noul",
+                                        "noul": 10**400}})
+        with self.assertRaises(ProviderError):
+            _adapter(transport=t).decide(_case_input(), "abstain",
+                                         _ctx())
 
 class TestCelerisResponseValidation(unittest.TestCase):
     def test_missing_answers_is_terminal(self):
@@ -931,6 +965,26 @@ class TestCelerisMalformedValues(unittest.TestCase):
         self.assertEqual(cm.exception.status_code, 408)
         self.assertEqual(cm.exception.retry_after, 7.0)
 
+
+
+class TestRetryAfterNonfinite(unittest.TestCase):
+    def test_retry_after_nonfinite_is_dropped(self):
+        # "inf" and "nan" parse as floats; neither is a usable
+        # delay. Finite values pass through (the runner caps the
+        # delay at MAX_RETRY_AFTER_S when it consumes the value).
+        self.assertIsNone(celeris_mod._parse_retry_after("inf"))
+        self.assertIsNone(celeris_mod._parse_retry_after("nan"))
+        self.assertIsNone(celeris_mod._parse_retry_after("1e400"))
+        self.assertEqual(celeris_mod._parse_retry_after("7"), 7.0)
+
+
+class TestCelerisClampStringGate(unittest.TestCase):
+    def test_clamp_rejects_string_values(self):
+        # Only genuine numbers reach the clamp conversion: a string
+        # the wire sent is drift, never something to coerce into a
+        # measurement.
+        with self.assertRaises(ProviderError):
+            celeris_mod._clamp01("0.9", "confidence")
 
 if __name__ == "__main__":
     unittest.main()

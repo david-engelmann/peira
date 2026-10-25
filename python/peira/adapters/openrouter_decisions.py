@@ -74,6 +74,7 @@ decision placeholder keeps the output schema uniform.
 from __future__ import annotations
 
 import json
+import math
 import os
 import time
 import urllib.error
@@ -116,6 +117,14 @@ _SCORE_LEVELS = [
     "probably the right decision",
     "clearly the right decision",
 ]
+
+# The only spellings a score probability key may carry: the canonical
+# decimal form of each rubric level index. A key is admitted only
+# by matching this set. It is never parsed to decide whether it
+# names a level, so spellings like "01", "+1" or " 2" are wire
+# drift and void the score fallback outright.
+_SCORE_LEVEL_KEYS = frozenset(
+    str(level) for level in range(len(_SCORE_LEVELS)))
 """Ordered score rubric, worst to best. The API takes 2-10 ordered levels
 described in words and returns ``score`` as the 0-based rubric position
 (fractional positions allowed); the adapter normalizes to 0..1."""
@@ -413,18 +422,25 @@ class OpenRouterDecisionsAdapter:
         if value is None and isinstance(ans.get("probabilities"), dict):
             # Fall back to computing the weighted rubric position from
             # per-level probabilities when the API omits the score.
-            # Probabilities arrive in level order (level 0 first).
-            try:
-                value = sum(
-                    i * float(p)
-                    for i, p in enumerate(ans["probabilities"].values())
-                )
-            except (TypeError, ValueError):
-                value = None
+            # The map's keys are the level indices; use them, never
+            # the map's iteration order, which the wire does not
+            # guarantee. The fallback accepts only a genuine
+            # distribution (see _score_from_probabilities). Anything
+            # else voids it and the answer fails closed below.
+            value = _score_from_probabilities(ans["probabilities"])
         if not isinstance(value, (int, float)) or isinstance(value, bool):
             raise ProviderError(
                 f"openrouter-decisions score answer has no numeric score: {ans!r}")
-        score = _clamp01(float(value) / (len(_SCORE_LEVELS) - 1), "score")
+        if isinstance(value, int) and not 0 <= value <= len(_SCORE_LEVELS) - 1:
+            # A several-hundred-digit JSON integer parses to an int
+            # whose float() raises OverflowError, which would escape
+            # as an unclassified error. Compared exactly, a huge int
+            # is out of range in its own direction, so it clamps to
+            # the same extreme a large finite value would.
+            score = 1.0 if value > 0 else 0.0
+        else:
+            score = _clamp01(
+                float(value) / (len(_SCORE_LEVELS) - 1), "score")
         # The paired decision question carries the label; the score is the
         # measurement signal. An out-of-vocabulary label is API drift —
         # fail loudly like the choice path does.
@@ -463,7 +479,7 @@ class OpenRouterDecisionsAdapter:
         if not isinstance(p_yes, (int, float)) or isinstance(p_yes, bool):
             raise ProviderError(
                 f"openrouter-decisions abstain answer has no numeric abstain value: {ans!r}")
-        p_yes = _clamp01(float(p_yes), "abstain")
+        p_yes = _clamp01(p_yes, "abstain")
         confidence = _clamp01(abs(2 * p_yes - 1), "confidence")
         if p_yes >= 0.5:
             decision = "abstain"
@@ -482,10 +498,80 @@ def _need_answer(answers: dict[str, Any], name: str) -> dict[str, Any]:
     return ans
 
 
+def _score_from_probabilities(probs: dict[str, Any]) -> float | None:
+    """Weighted rubric position from a per-level probability map.
+
+    The fallback for a score answer whose ``score`` field is absent.
+    The map must be a genuine distribution over the rubric levels:
+    non-empty, keys exactly the canonical level spellings "0".."4"
+    (a key is admitted by matching, never by parsing, so "01",
+    "+1" or " 2" is drift, not a level, and two spellings of one
+    level cannot double-count
+    it), values genuine numbers in [0, 1] (never coerced, so a
+    string or a bool voids the fallback), and a total within
+    rounding distance of 1. Anything else returns None, which the
+    caller turns into a terminal error rather than a fabricated
+    score.
+    """
+    if not probs:
+        return None
+    total = 0.0
+    weighted = 0.0
+    # With keys matched canonically the duplicate check below
+    # cannot fire today. It pins the one-entry-per-level rule in
+    # the code itself, so loosening key matching later cannot
+    # silently reintroduce double-counting.
+    seen: set[int] = set()
+    for key, prob in probs.items():
+        if isinstance(prob, bool) or not isinstance(prob, (int, float)):
+            return None
+        if isinstance(prob, int) and prob not in (0, 1):
+            # An int probability is genuine only as 0 or 1. A
+            # several-hundred-digit JSON integer parses to an int
+            # whose float() raises OverflowError, which would escape
+            # the fallback instead of voiding it.
+            return None
+        value = float(prob)
+        if not math.isfinite(value) or not 0.0 <= value <= 1.0:
+            return None
+        if key not in _SCORE_LEVEL_KEYS:
+            return None
+        level = int(key)
+        if level in seen:
+            return None
+        seen.add(level)
+        total += value
+        weighted += level * value
+    if abs(total - 1.0) > 0.01:
+        return None
+    return weighted
+
+
 def _clamp01(value: Any, name: str) -> float:
-    try:
-        f = float(value)
-    except (TypeError, ValueError):
+    if isinstance(value, int) and not isinstance(value, bool):
+        # A several-hundred-digit JSON integer parses to an int
+        # whose float() raises OverflowError, which the conversion
+        # below does not catch. Compared exactly, a huge int is out
+        # of range in its own direction, so it clamps to the same
+        # extreme a large finite value would.
+        if value < 0:
+            return 0.0
+        if value > 1:
+            return 1.0
+        return float(value)
+    if isinstance(value, bool) or not isinstance(value, float):
+        # Only genuine numbers reach the conversion. A bool is never
+        # a legitimate probability, and a string the wire sent is
+        # drift, never something to coerce into a measurement. The
+        # same holds for every other non-float type.
+        raise ProviderError(
+            f"openrouter-decisions returned non-numeric {name}: {value!r}") from None
+    f = float(value)
+    if not math.isfinite(f):
+        # A non-finite float (NaN, +/-inf; Python's json accepts all
+        # three as literals) must fail closed: clamping NaN would
+        # silently fabricate a maximal measurement, since min/max
+        # comparisons with NaN are always false.
         raise ProviderError(
             f"openrouter-decisions returned non-numeric {name}: {value!r}") from None
     return max(0.0, min(1.0, f))
@@ -500,9 +586,16 @@ def _parse_retry_after(value: str | None) -> float | None:
     if not value:
         return None
     try:
-        return max(0.0, float(value))
+        parsed = float(value)
     except ValueError:
         return None
+    # "inf" and "nan" parse as floats; neither is a usable delay.
+    # Finite values pass through: the runner caps the delay at
+    # MAX_RETRY_AFTER_S when it consumes the value. An HTTP-date
+    # value does not parse and falls back to the runner's backoff.
+    if not math.isfinite(parsed):
+        return None
+    return max(0.0, parsed)
 
 
 def _read_error_body(e: urllib.error.HTTPError) -> str:

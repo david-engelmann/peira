@@ -157,20 +157,25 @@ worth recording."""
 
 
 def _is_probability(value: Any) -> bool:
-    return (
-        isinstance(value, (int, float))
-        and not isinstance(value, bool)
-        and math.isfinite(value)
-        and 0.0 <= value <= 1.0
-    )
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return False
+    if isinstance(value, int):
+        # Compared exactly: math.isfinite converts its argument to
+        # float, which raises OverflowError on a several-hundred-
+        # digit int instead of returning False.
+        return 0 <= value <= 1
+    return math.isfinite(value) and 0.0 <= value <= 1.0
 
 
 def _is_finite_number(value: Any) -> bool:
-    return (
-        isinstance(value, (int, float))
-        and not isinstance(value, bool)
-        and math.isfinite(value)
-    )
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return False
+    if isinstance(value, int):
+        # Every int is finite. Asking math.isfinite would convert
+        # it to float, which raises OverflowError on a several-
+        # hundred-digit int instead of returning True.
+        return True
+    return math.isfinite(value)
 
 
 def _require_probability(qid: str, field: str, value: Any) -> None:

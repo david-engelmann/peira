@@ -75,6 +75,7 @@ answer sets ``abstained`` True.
 from __future__ import annotations
 
 import json
+import math
 import os
 import time
 import urllib.error
@@ -470,7 +471,16 @@ class OpenAIDecisionsAdapter:
             raise ProviderError(
                 f"openai-decisions score answer has no numeric score: "
                 f"{score_ans!r}")
-        score = _clamp01(float(value) / (len(_SCORE_LEVELS) - 1), "score")
+        if isinstance(value, int) and not 0 <= value <= len(_SCORE_LEVELS) - 1:
+            # A several-hundred-digit JSON integer parses to an int
+            # whose float() raises OverflowError, which would escape
+            # as an unclassified error. Compared exactly, a huge int
+            # is out of range in its own direction, so it clamps to
+            # the same extreme a large finite value would.
+            score = 1.0 if value > 0 else 0.0
+        else:
+            score = _clamp01(
+                float(value) / (len(_SCORE_LEVELS) - 1), "score")
         # The paired decision question carries the label; the score is
         # the measurement signal. An out-of-vocabulary label is API
         # drift. Fail loudly like the choice path does.
@@ -502,7 +512,7 @@ class OpenAIDecisionsAdapter:
             raise ProviderError(
                 f"openai-decisions predicate answer has no numeric "
                 f"probability: {ans!r}")
-        p_yes = _clamp01(float(p_yes), "probability")
+        p_yes = _clamp01(p_yes, "probability")
         confidence = _clamp01(abs(2 * p_yes - 1), "confidence")
         if p_yes >= 0.5:
             # A deliberate abstention is a decision, not a refusal:
@@ -543,8 +553,9 @@ def _is_refusal(ans: dict[str, Any]) -> bool:
 def _probabilities_by_value(ans: dict[str, Any]) -> dict[Any, float]:
     """A choice answer's probability distribution as {value: prob}.
 
-    Every probability the wire sends is validated numeric: a
-    non-numeric probability is a contract break, never a silent
+    Every probability the wire sends is validated as a genuine
+    probability (see _probability_value): a non-numeric or
+    out-of-range probability is a contract break, never a silent
     default.
     """
     raw = ans.get("probabilities")
@@ -560,22 +571,28 @@ def _probabilities_by_value(ans: dict[str, Any]) -> dict[Any, float]:
             raise ProviderError(
                 f"openai-decisions probability entry has no value: "
                 f"{entry!r}")
-        p = entry.get("probability")
-        if not isinstance(p, (int, float)) or isinstance(p, bool):
-            raise ProviderError(
-                f"openai-decisions returned non-numeric probability: "
-                f"{p!r}")
+        p = _probability_value(entry.get("probability"))
         value = entry["value"]
         if not isinstance(value, (str, int, float, bool)):
             raise ProviderError(
                 f"openai-decisions probability entry has an unusable "
                 f"value: {value!r}")
-        probs[value] = float(p)
+        probs[value] = p
     return probs
 
 
 def _score_probabilities(ans: dict[str, Any]) -> dict[int, float]:
-    """A score answer's per-level probabilities as {level_index: prob}."""
+    """A score answer's per-level probabilities as {level_index: prob}.
+
+    The entries must form a genuine distribution over the rubric
+    levels, held to the same contract as the sibling adapters'
+    probability-map fallback: every level index in range and named
+    at most once, every probability a genuine number in [0, 1], and
+    a total within rounding distance of 1. Anything else is wire
+    drift and raises like the type breaks: a partial, duplicated or
+    inflated map would otherwise compute a weighted position that
+    is not a measurement, or clamp one into a fabricated extreme.
+    """
     raw = ans.get("probabilities")
     if raw is None:
         return {}
@@ -595,12 +612,45 @@ def _score_probabilities(ans: dict[str, Any]) -> dict[int, float]:
             raise ProviderError(
                 f"openai-decisions score probability entry has no "
                 f"integer level index: {entry!r}")
-        if not isinstance(p, (int, float)) or isinstance(p, bool):
+        if not 0 <= idx < len(_SCORE_LEVELS):
             raise ProviderError(
-                f"openai-decisions returned non-numeric probability: "
-                f"{p!r}")
-        probs[idx] = float(p)
+                f"openai-decisions score probability entry names a "
+                f"level outside the rubric: {entry!r}")
+        if idx in probs:
+            raise ProviderError(
+                f"openai-decisions score probabilities name level "
+                f"{idx} more than once: {ans!r}")
+        probs[idx] = _probability_value(p)
+    if probs and abs(sum(probs.values()) - 1.0) > 0.01:
+        raise ProviderError(
+            f"openai-decisions score probabilities do not sum to 1: "
+            f"{ans!r}")
     return probs
+
+
+def _probability_value(p: Any) -> float:
+    """One wire probability, strictly validated.
+
+    A genuine probability is a number in [0, 1], never coerced: a
+    string or a bool is a contract break, an int is genuine only as
+    0 or 1 (a several-hundred-digit JSON integer parses to an int
+    whose float() raises OverflowError, which would escape as an
+    unclassified error), and a float must be finite.
+    """
+    if not isinstance(p, (int, float)) or isinstance(p, bool):
+        raise ProviderError(
+            f"openai-decisions returned non-numeric probability: "
+            f"{p!r}")
+    if isinstance(p, int) and p not in (0, 1):
+        raise ProviderError(
+            f"openai-decisions returned probability outside [0, 1]: "
+            f"{p!r}")
+    value = float(p)
+    if not math.isfinite(value) or not 0.0 <= value <= 1.0:
+        raise ProviderError(
+            f"openai-decisions returned probability outside [0, 1]: "
+            f"{p!r}")
+    return value
 
 
 def _answer_confidence(
@@ -644,9 +694,31 @@ def _cached_tokens_in(usage: dict[str, Any]) -> int | None:
 
 
 def _clamp01(value: Any, name: str) -> float:
-    try:
-        f = float(value)
-    except (TypeError, ValueError):
+    if isinstance(value, int) and not isinstance(value, bool):
+        # A several-hundred-digit JSON integer parses to an int
+        # whose float() raises OverflowError, which the conversion
+        # below does not catch. Compared exactly, a huge int is out
+        # of range in its own direction, so it clamps to the same
+        # extreme a large finite value would.
+        if value < 0:
+            return 0.0
+        if value > 1:
+            return 1.0
+        return float(value)
+    if isinstance(value, bool) or not isinstance(value, float):
+        # Only genuine numbers reach the conversion. A bool is never
+        # a legitimate probability, and a string the wire sent is
+        # drift, never something to coerce into a measurement. The
+        # same holds for every other non-float type.
+        raise ProviderError(
+            f"openai-decisions returned non-numeric {name}: "
+            f"{value!r}") from None
+    f = float(value)
+    if not math.isfinite(f):
+        # A non-finite float (NaN, +/-inf; Python's json accepts all
+        # three as literals) must fail closed: clamping NaN would
+        # silently fabricate a maximal measurement, since min/max
+        # comparisons with NaN are always false.
         raise ProviderError(
             f"openai-decisions returned non-numeric {name}: "
             f"{value!r}") from None
@@ -662,9 +734,16 @@ def _parse_retry_after(value: str | None) -> float | None:
     if not value:
         return None
     try:
-        return max(0.0, float(value))
+        parsed = float(value)
     except ValueError:
         return None
+    # "inf" and "nan" parse as floats; neither is a usable delay.
+    # Finite values pass through: the runner caps the delay at
+    # MAX_RETRY_AFTER_S when it consumes the value. An HTTP-date
+    # value does not parse and falls back to the runner's backoff.
+    if not math.isfinite(parsed):
+        return None
+    return max(0.0, parsed)
 
 
 def _read_error_body(e: urllib.error.HTTPError) -> str:
