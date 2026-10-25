@@ -1222,6 +1222,10 @@ surface: the question text (instructions, rubric, label
 construction) is the Jev adapter's unchanged, so every wire in the
 decision family sees identical decision spaces. Answers parse the
 same way: `choice` (choice), `score` (score), `noul` (abstain).
+A score answer that omits the score itself falls back to its
+per-level probabilities only when they form a genuine
+distribution over the rubric levels, read by canonical level
+key, and fails closed otherwise.
 
 The pinned model is `microsoft/microsoft-decision-1`, Microsoft's
 hosted decision model (a Qwen3.5-9B post-train, weights not

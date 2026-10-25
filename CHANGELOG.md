@@ -9,6 +9,13 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
 
 ### Score validation and transient follow-ups across the decision adapters
 
+- The OpenRouter Decisions adapter's score fallback now
+  validates its per-level probability map to the same contract
+  as the Jev fallback it mirrors, reading each level by its
+  canonical key instead of weighting values by their position
+  in the map, so mass under a key naming no level can no longer
+  fabricate a score and a huge-integer probability voids the
+  fallback instead of escaping as an OverflowError.
 - The OpenAI Decisions adapter now validates a score answer's
   per-level probabilities as a genuine distribution, the contract
   the System One and Mercury adapters already hold their

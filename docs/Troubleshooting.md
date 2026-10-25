@@ -1017,13 +1017,14 @@ it as API drift.
 
 **`openai-decisions score probabilities do not sum to 1: ...`**
 Cause: a score answer's per-level probabilities did not form a
-genuine distribution. The same family covers an entry naming a
-level outside the rubric (`names a level outside the rubric`) and
-two entries naming the same level (`name level ... more than
-once`). The probability-weighted fallback divides by nothing, so
-a partial or double-counted map would distort the score toward
-zero or past the rubric top and report it as a measurement.
-Terminal. Fix: report it as API drift.
+genuine distribution. The same family covers
+`openai-decisions score probability entry names a level outside
+the rubric: ...` and `openai-decisions score probabilities name
+level ... more than once: ...`. The probability-weighted
+fallback divides by nothing, so a partial or double-counted map
+would distort the score toward zero or past the rubric top and
+report it as a measurement. Terminal. Fix: report it as API
+drift.
 
 **`openai-moderation adapter needs an OpenAI API key: set the OPENAI_API_KEY environment variable (or pass api_key=...)`**
 Cause: no OpenAI API key. The moderation endpoint is free and does

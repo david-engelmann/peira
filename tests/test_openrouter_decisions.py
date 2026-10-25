@@ -137,6 +137,107 @@ class TestDecide(unittest.TestCase):
             api_key="k", transport=t).decide(_case_input(), "abstain", _ctx())
         self.assertEqual(out.decision, "abstain")
 
+    def test_score_fallback_reads_levels_by_key(self):
+        # The fallback weights each probability by the level its
+        # key names, never by the value's position in the map: the
+        # map below arrives out of order and still computes the
+        # position its keys state.
+        t = _transport_for({
+            "score": {"probabilities": {"4": 0.5, "0": 0.0, "3": 0.5,
+                                        "1": 0.0, "2": 0.0}},
+            "decision": {"choice": "deny", "confidence": 0.8},
+        })
+        out = OpenRouterDecisionsAdapter(
+            api_key="test-key", transport=t).decide(
+                _case_input(), "score", _ctx())
+        self.assertAlmostEqual(out.score, (3 * 0.5 + 4 * 0.5) / 4)
+
+    def test_score_fallback_key_naming_no_level_is_terminal(self):
+        # Mass under a key naming no level was previously weighted
+        # by its position in the map, so a fifth entry at full mass
+        # fabricated the maximum score. It now voids the fallback.
+        t = _transport_for({
+            "score": {"probabilities": {"0": 0.0, "1": 0.0, "2": 0.0,
+                                        "3": 0.0, "99": 1.0}},
+            "decision": {"choice": "deny", "confidence": 0.8},
+        })
+        with self.assertRaises(ProviderError):
+            OpenRouterDecisionsAdapter(
+                api_key="test-key", transport=t).decide(
+                    _case_input(), "score", _ctx())
+
+    def test_score_fallback_partial_mass_is_terminal(self):
+        # A map totalling 0.5 is not a distribution: weighting by
+        # it would halve the position toward zero and report the
+        # result as a measurement.
+        t = _transport_for({
+            "score": {"probabilities": {"0": 0.07, "1": 0.02,
+                                        "2": 0.06, "3": 0.20,
+                                        "4": 0.15}},
+            "decision": {"choice": "deny", "confidence": 0.8},
+        })
+        with self.assertRaises(ProviderError):
+            OpenRouterDecisionsAdapter(
+                api_key="test-key", transport=t).decide(
+                    _case_input(), "score", _ctx())
+
+    def test_score_fallback_huge_int_probability_is_terminal(self):
+        # An int probability is genuine only as 0 or 1. A several-
+        # hundred-digit JSON integer parses to an int whose float()
+        # raises OverflowError. The fallback must void it (and fail
+        # closed) instead of letting the exception escape.
+        t = _transport_for({
+            "score": {"probabilities": {"0": 0.0, "1": 0.0,
+                                        "2": 10**400, "3": 0.0,
+                                        "4": 0.0}},
+            "decision": {"choice": "deny", "confidence": 0.8},
+        })
+        with self.assertRaises(ProviderError):
+            OpenRouterDecisionsAdapter(
+                api_key="test-key", transport=t).decide(
+                    _case_input(), "score", _ctx())
+
+    def test_score_direct_huge_int_clamps_to_extreme(self):
+        # The direct path clamps out-of-range scores. A several-
+        # hundred-digit JSON integer parses to an int whose float()
+        # raises OverflowError. Compared exactly it is out of range
+        # in its own direction, so it clamps to the same extreme a
+        # large finite value would instead of escaping unclassified.
+        for bad, want in ((10**400, 1.0), (-(10**400), 0.0)):
+            t = _transport_for({
+                "score": {"score": bad},
+                "decision": {"choice": "deny", "confidence": 0.8},
+            })
+            out = OpenRouterDecisionsAdapter(
+                api_key="test-key", transport=t).decide(
+                    _case_input(), "score", _ctx())
+            self.assertEqual(out.score, want)
+
+    def test_noul_huge_int_clamps_to_extreme(self):
+        # The abstain path clamps through the same helper as the
+        # confidence paths: a several-hundred-digit JSON integer
+        # clamps to the extreme in its own direction instead of
+        # escaping as an unclassified OverflowError.
+        t = _transport_for({"abstain": {"abstain": 10**400}})
+        out = OpenRouterDecisionsAdapter(
+            api_key="test-key", transport=t).decide(
+                _case_input(), "abstain", _ctx())
+        self.assertEqual(out.decision, "abstain")
+        self.assertEqual(out.confidence, 1.0)
+
+    def test_choice_confidence_huge_int_clamps_to_extreme(self):
+        # Confidence routes through the clamp helper, whose int
+        # comparison is exact: a several-hundred-digit JSON integer
+        # clamps to the same extreme a large finite value would
+        # instead of escaping as an unclassified OverflowError.
+        t = _transport_for({
+            "decision": {"choice": "approve", "confidence": 10**400},
+        })
+        out = OpenRouterDecisionsAdapter(
+            api_key="test-key", transport=t).decide(
+                _case_input(), "choice", _ctx())
+        self.assertEqual(out.confidence, 1.0)
+
     def test_missing_answers_is_terminal(self):
         t = _transport_for({})
         with self.assertRaises(ProviderError):
