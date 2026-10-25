@@ -275,6 +275,17 @@ class TestCelerisScore(unittest.TestCase):
             with self.assertRaises(ProviderError, msg=repr(bad)):
                 a.decide(_case_input(), "score", _ctx())
 
+    def test_score_direct_huge_int_is_terminal(self):
+        # A several-hundred-digit JSON integer parses to an int
+        # whose float() raises OverflowError. The direct score path
+        # compares before converting, so a huge int takes the
+        # out-of-range path instead of escaping as an unclassified
+        # OverflowError.
+        for bad in (10**400, -(10**400)):
+            a, _ = self._score_adapter(bad)
+            with self.assertRaises(ProviderError, msg=repr(bad)):
+                a.decide(_case_input(), "score", _ctx())
+
     def test_score_missing_value_computed_from_probabilities(self):
         t = _transport_for({
             "score": {"type": "score",

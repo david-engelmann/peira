@@ -216,6 +216,18 @@ class TestMercuryChoice(unittest.TestCase):
         with self.assertRaises(ProviderError):
             _adapter(transport=t).decide(_case_input(), "choice", _ctx())
 
+    def test_choice_confidence_huge_int_is_terminal(self):
+        # An int confidence is genuine only as 0 or 1. A several-
+        # hundred-digit JSON integer parses to an int whose float()
+        # raises OverflowError. It must fail closed here instead of
+        # escaping as an unclassified error.
+        t = _transport_for({
+            "decision": {"type": "choice", "choice": "approve",
+                         "confidence": 10**400},
+        })
+        with self.assertRaises(ProviderError):
+            _adapter(transport=t).decide(_case_input(), "choice", _ctx())
+
     def test_choice_probability_fallback_value_is_validated(self):
         # The fallback reads probabilities[choice]; a value of -5
         # must not clamp into a measured 0.0.
@@ -293,6 +305,16 @@ class TestMercuryScore(unittest.TestCase):
         # [0, 4] is malformed wire data. Clamping it would fabricate
         # an extreme measurement (red team, 2026-10-16).
         for bad in (99, -5, 5):
+            a, _ = self._score_adapter(bad)
+            with self.assertRaises(ProviderError, msg=repr(bad)):
+                a.decide(_case_input(), "score", _ctx())
+
+    def test_score_direct_huge_int_is_terminal(self):
+        # A several-hundred-digit JSON integer parses to an int
+        # whose float() raises OverflowError. The direct path
+        # compares before converting, so a huge int takes the
+        # out-of-range path instead of escaping unclassified.
+        for bad in (10**400, -(10**400)):
             a, _ = self._score_adapter(bad)
             with self.assertRaises(ProviderError, msg=repr(bad)):
                 a.decide(_case_input(), "score", _ctx())
@@ -390,6 +412,15 @@ class TestMercuryScore(unittest.TestCase):
                 _adapter(transport=t).decide(_case_input(), "score",
                                               _ctx())
 
+    def test_score_fallback_huge_int_probability_is_terminal(self):
+        # An int probability is genuine only as 0 or 1. A several-
+        # hundred-digit JSON integer parses to an int whose float()
+        # raises OverflowError. The fallback must void it (and fail
+        # closed) instead of letting the exception escape.
+        t = self._score_with_probs({"2": 10**400})
+        with self.assertRaises(ProviderError):
+            _adapter(transport=t).decide(_case_input(), "score", _ctx())
+
     def test_score_fallback_sparse_full_mass_accepted(self):
         # Levels carrying no probability may be omitted; the stated
         # mass still totals 1 and the weighted position is exact.
@@ -477,6 +508,17 @@ class TestMercuryNoul(unittest.TestCase):
         # 1.7 is not a probability; clamping it would fabricate a
         # maximal measurement.
         t = _transport_for({"abstain": {"type": "noul", "noul": 1.7}})
+        with self.assertRaises(ProviderError):
+            _adapter(transport=t).decide(_case_input(), "abstain",
+                                         _ctx())
+
+    def test_abstain_probability_huge_int_is_terminal(self):
+        # A several-hundred-digit JSON integer parses to an int
+        # whose float() raises OverflowError. The range check
+        # compares before converting, so a huge int takes the
+        # out-of-range path instead of escaping unclassified.
+        t = _transport_for({"abstain": {"type": "noul",
+                                        "noul": 10**400}})
         with self.assertRaises(ProviderError):
             _adapter(transport=t).decide(_case_input(), "abstain",
                                          _ctx())
@@ -648,6 +690,16 @@ class TestMercuryErrors(unittest.TestCase):
             a._raise_for_status(429, "5", "")
         self.assertEqual(cm.exception.retry_after, 5.0)
 
+    def test_409_carries_retry_after(self):
+        # 409 is in the runner's transient set, so the server's
+        # Retry-After must reach the runner like any other
+        # transient's. Dropping it loses the server's stated wait.
+        a = _adapter()
+        with self.assertRaises(ProviderError) as cm:
+            a._raise_for_status(409, "3", "")
+        self.assertEqual(cm.exception.status_code, 409)
+        self.assertEqual(cm.exception.retry_after, 3.0)
+
     def test_error_detail_reads_api_error_message(self):
         # The Decisions API error body carries an ``error`` object;
         # the adapter surfaces its message as detail and never
@@ -673,6 +725,25 @@ class TestMercuryErrors(unittest.TestCase):
             io.BytesIO(b"<html>gateway timeout</html>"))
         self.assertEqual(mercury_mod._read_error_detail(err),
                          "<html>gateway timeout</html>")
+
+    def test_error_detail_survives_incomplete_read(self):
+        # A connection dropped mid-body makes read() raise
+        # IncompleteRead, an http.client.HTTPException, which is
+        # not an OSError. The detail is best-effort, so it reads as
+        # empty instead of escaping as an unclassified exception.
+        import http.client
+        import urllib.error
+
+        class DroppedBody:
+            def read(self, *args):
+                raise http.client.IncompleteRead(b"partial body")
+
+            def close(self):
+                pass
+
+        err = urllib.error.HTTPError(
+            API_URL, 500, "Internal Server Error", {}, DroppedBody())
+        self.assertEqual(mercury_mod._read_error_detail(err), "")
 
     def test_http_error_message_includes_api_detail(self):
         import io

@@ -499,10 +499,16 @@ class CelerisAdapter:
         if not isinstance(value, (int, float)) or isinstance(value, bool):
             raise ProviderError(
                 f"celeris score answer has no numeric score: {ans!r}")
-        if not 0.0 <= float(value) <= len(_SCORE_LEVELS) - 1:
+        if not 0 <= value <= len(_SCORE_LEVELS) - 1:
             # The score is a position on the 0-based rubric. A value
             # outside it is malformed wire data; normalizing would
-            # clamp it into a fabricated extreme measurement.
+            # clamp it into a fabricated extreme measurement. The
+            # comparison runs on the raw value, never on a float()
+            # conversion of it: a several-hundred-digit JSON integer
+            # parses to an int whose float() raises OverflowError,
+            # which would escape as an unclassified error. Comparing
+            # an int against the range is exact and cannot overflow,
+            # so a huge int takes this same out-of-range path.
             raise ProviderError(
                 f"celeris score answer score out of range: {ans!r}")
         score = float(value) / (len(_SCORE_LEVELS) - 1)

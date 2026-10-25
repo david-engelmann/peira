@@ -75,6 +75,7 @@ answer sets ``abstained`` True.
 from __future__ import annotations
 
 import json
+import math
 import os
 import time
 import urllib.error
@@ -543,8 +544,9 @@ def _is_refusal(ans: dict[str, Any]) -> bool:
 def _probabilities_by_value(ans: dict[str, Any]) -> dict[Any, float]:
     """A choice answer's probability distribution as {value: prob}.
 
-    Every probability the wire sends is validated numeric: a
-    non-numeric probability is a contract break, never a silent
+    Every probability the wire sends is validated as a genuine
+    probability (see _probability_value): a non-numeric or
+    out-of-range probability is a contract break, never a silent
     default.
     """
     raw = ans.get("probabilities")
@@ -560,22 +562,28 @@ def _probabilities_by_value(ans: dict[str, Any]) -> dict[Any, float]:
             raise ProviderError(
                 f"openai-decisions probability entry has no value: "
                 f"{entry!r}")
-        p = entry.get("probability")
-        if not isinstance(p, (int, float)) or isinstance(p, bool):
-            raise ProviderError(
-                f"openai-decisions returned non-numeric probability: "
-                f"{p!r}")
+        p = _probability_value(entry.get("probability"))
         value = entry["value"]
         if not isinstance(value, (str, int, float, bool)):
             raise ProviderError(
                 f"openai-decisions probability entry has an unusable "
                 f"value: {value!r}")
-        probs[value] = float(p)
+        probs[value] = p
     return probs
 
 
 def _score_probabilities(ans: dict[str, Any]) -> dict[int, float]:
-    """A score answer's per-level probabilities as {level_index: prob}."""
+    """A score answer's per-level probabilities as {level_index: prob}.
+
+    The entries must form a genuine distribution over the rubric
+    levels, held to the same contract as the sibling adapters'
+    probability-map fallback: every level index in range and named
+    at most once, every probability a genuine number in [0, 1], and
+    a total within rounding distance of 1. Anything else is wire
+    drift and raises like the type breaks: a partial, duplicated or
+    inflated map would otherwise compute a weighted position that
+    is not a measurement, or clamp one into a fabricated extreme.
+    """
     raw = ans.get("probabilities")
     if raw is None:
         return {}
@@ -595,12 +603,45 @@ def _score_probabilities(ans: dict[str, Any]) -> dict[int, float]:
             raise ProviderError(
                 f"openai-decisions score probability entry has no "
                 f"integer level index: {entry!r}")
-        if not isinstance(p, (int, float)) or isinstance(p, bool):
+        if not 0 <= idx < len(_SCORE_LEVELS):
             raise ProviderError(
-                f"openai-decisions returned non-numeric probability: "
-                f"{p!r}")
-        probs[idx] = float(p)
+                f"openai-decisions score probability entry names a "
+                f"level outside the rubric: {entry!r}")
+        if idx in probs:
+            raise ProviderError(
+                f"openai-decisions score probabilities name level "
+                f"{idx} more than once: {ans!r}")
+        probs[idx] = _probability_value(p)
+    if probs and abs(sum(probs.values()) - 1.0) > 0.01:
+        raise ProviderError(
+            f"openai-decisions score probabilities do not sum to 1: "
+            f"{ans!r}")
     return probs
+
+
+def _probability_value(p: Any) -> float:
+    """One wire probability, strictly validated.
+
+    A genuine probability is a number in [0, 1], never coerced: a
+    string or a bool is a contract break, an int is genuine only as
+    0 or 1 (a several-hundred-digit JSON integer parses to an int
+    whose float() raises OverflowError, which would escape as an
+    unclassified error), and a float must be finite.
+    """
+    if not isinstance(p, (int, float)) or isinstance(p, bool):
+        raise ProviderError(
+            f"openai-decisions returned non-numeric probability: "
+            f"{p!r}")
+    if isinstance(p, int) and p not in (0, 1):
+        raise ProviderError(
+            f"openai-decisions returned probability outside [0, 1]: "
+            f"{p!r}")
+    value = float(p)
+    if not math.isfinite(value) or not 0.0 <= value <= 1.0:
+        raise ProviderError(
+            f"openai-decisions returned probability outside [0, 1]: "
+            f"{p!r}")
+    return value
 
 
 def _answer_confidence(

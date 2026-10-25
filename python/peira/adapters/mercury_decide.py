@@ -44,7 +44,7 @@ measured exercise is the standard driver canary.
 
 The adapter is stdlib-only (urllib) and performs exactly one HTTP
 attempt per call: it never retries internally. Transient failures
-(408, 429, 5xx, timeouts, connection errors) are raised as
+(408, 409, 429, 5xx, timeouts, connection errors) are raised as
 ``ProviderError`` with ``status_code``/``retry_after`` so the runner,
 which owns the retry policy, can classify and retry them. 401/403,
 402, 404, 413 and 400/422 are terminal. The runner owns concurrency.
@@ -374,10 +374,12 @@ class MercuryDecideAdapter:
                 "bug, not a retryable failure.",
                 status_code=status,
             )
-        if status in (408, 429) or 500 <= status < 600:
+        if status in (408, 409, 429, 529) or 500 <= status < 600:
             # Transient: the runner retries with backoff and adapts
-            # concurrency. The adapter itself never retries. A 504 is
-            # the gateway's own timeout and lands here as a 5xx.
+            # concurrency. The adapter itself never retries. 409 is
+            # in the runner's transient set, so its Retry-After must
+            # reach it like every other transient's. A 504 is the
+            # gateway's own timeout and lands here as a 5xx.
             raise ProviderError(msg, status_code=status, retry_after=wait)
         raise ProviderError(msg, status_code=status)
 
@@ -503,6 +505,14 @@ class MercuryDecideAdapter:
         if not isinstance(value, (int, float)) or isinstance(value, bool):
             raise ProviderError(
                 f"mercury-decide score answer has no numeric score: {ans!r}")
+        if isinstance(value, int) and not 0 <= value <= len(_SCORE_LEVELS) - 1:
+            # A several-hundred-digit JSON integer parses to an int
+            # whose float() raises OverflowError, which would escape
+            # as an unclassified error. Compared exactly, a huge int
+            # is outside the rubric, so it takes the same out-of-range
+            # path as a huge float below.
+            raise ProviderError(
+                f"mercury-decide score answer score out of range: {ans!r}")
         value = float(value)
         top = float(len(_SCORE_LEVELS) - 1)
         if not math.isfinite(value) or value < -0.01 or value > top + 0.01:
@@ -572,10 +582,15 @@ class MercuryDecideAdapter:
             raise ProviderError(
                 f"mercury-decide abstain answer has no numeric abstain "
                 f"value: {ans!r}")
-        if not 0.0 <= float(p_yes) <= 1.0:
+        if not 0 <= p_yes <= 1:
             # A probability outside [0, 1] (NaN included; its
             # comparisons are all false) is malformed wire data, not
-            # a value to clamp into a fabricated extreme.
+            # a value to clamp into a fabricated extreme. The
+            # comparison runs on the raw value: a several-hundred-
+            # digit JSON integer parses to an int whose float()
+            # raises OverflowError, which would escape as an
+            # unclassified error. Comparing it exactly cannot
+            # overflow.
             raise ProviderError(
                 f"mercury-decide abstain answer probability out of "
                 f"range: {ans!r}")
@@ -617,6 +632,15 @@ def _answer_confidence(ans: dict[str, Any], option: str) -> float:
         raise ProviderError(
             f"mercury-decide decision answer has no usable confidence: "
             f"{ans!r}")
+    if isinstance(raw, int) and raw not in (0, 1):
+        # An int confidence is genuine only as 0 or 1 (it is a
+        # probability). A several-hundred-digit JSON integer parses
+        # to an int whose float() raises OverflowError, which would
+        # escape as an unclassified error instead of failing closed
+        # here.
+        raise ProviderError(
+            f"mercury-decide decision answer has no usable confidence: "
+            f"{ans!r}")
     value = float(raw)
     if not math.isfinite(value) or not 0.0 <= value <= 1.0:
         raise ProviderError(
@@ -642,6 +666,12 @@ def _score_from_probabilities(probs: dict[str, Any]) -> float | None:
     weighted = 0.0
     for key, prob in probs.items():
         if isinstance(prob, bool) or not isinstance(prob, (int, float)):
+            return None
+        if isinstance(prob, int) and prob not in (0, 1):
+            # An int probability is genuine only as 0 or 1. A
+            # several-hundred-digit JSON integer parses to an int
+            # whose float() raises OverflowError, which would escape
+            # the fallback instead of voiding it.
             return None
         value = float(prob)
         if not math.isfinite(value) or not 0.0 <= value <= 1.0:
@@ -733,7 +763,10 @@ def _read_error_detail(e: urllib.error.HTTPError) -> str:
     """
     try:
         raw = e.read().decode("utf-8", errors="replace")
-    except OSError:
+    except (OSError, http.client.HTTPException):
+        # A connection dropped mid-body raises IncompleteRead,
+        # an HTTPException, not an OSError. The detail is
+        # best-effort, so either failure reads as no detail.
         return ""
     try:
         parsed = json.loads(raw)

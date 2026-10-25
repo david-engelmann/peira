@@ -1136,8 +1136,9 @@ against the TypeSafe models page on 2026-10-14, and an owner probe
 that same day called the live API with model `jev-1.14.0` and received
 HTTP 200 with the response model field naming `jev-1.14.0`. Access is
 gated; without a key the error tells you exactly where to get one.
-429/529/5xx and transport timeouts surface as retryable provider
-errors for the runner. 401/422 are terminal. One live-API quirk,
+408, 409, 429, 529 and 5xx statuses and transport timeouts surface
+as retryable provider errors for the runner, with any server
+`Retry-After` passed through. 401/422 are terminal. One live-API quirk,
 observed 2026-10-07 in the v2 trial, where the abstain answer returns its
 probability under TypeSafe's own field name (`noul`) rather than the
 documented key, so the adapter reads the documented key first and
@@ -1170,6 +1171,13 @@ are still answered, and a refusal on the question that carries the
 primitive maps to an abstained output. Score arms send two questions
 in one request, the rubric score and the paired decision, and the
 reported decision and confidence come from the paired choice answer.
+A score answer's per-level probabilities are validated as a genuine
+distribution whenever the wire sends them: level indices in range
+and named at most once, every probability a genuine number in
+[0, 1], and a total within 0.01 of 1. Anything else is terminal,
+so the probability-weighted fallback can only ever compute from a
+real distribution. Choice-answer probabilities carry the same
+per-value validation, since they feed the confidence fallback.
 The question text (instructions, rubric, label construction) is the
 Jev adapter's unchanged, so the two wires see identical decision
 spaces. The model is pinned to `gpt-6-luna`, the only model the
@@ -2163,9 +2171,10 @@ against the models list served by Inception's API on 2026-10-16 and
 is pinned in `python/peira/data/pricing.json`. The account's chat
 models (`mercury-2`, `mercury-2.5`) are not the decision model and
 are rejected at construction. Unversioned names and every other id
-are rejected too, so a run always names the exact model. 408, 429
-and 5xx responses and transport failures surface as retryable
-provider errors for the runner. 401 and 403 (key rejected), 402 (billing
+are rejected too, so a run always names the exact model. 408, 409,
+429, 529 and 5xx responses and transport failures surface as
+retryable provider errors for the runner, with any server
+`Retry-After` passed through. 401 and 403 (key rejected), 402 (billing
 inactive or quota exhausted), 404, 413 and 400/422 are terminal.
 The runner owns concurrency.
 

@@ -216,6 +216,19 @@ class TestClefScore(unittest.TestCase):
         out = a.decide(_case_input(), "score", _ctx())
         self.assertEqual(out.score, 1.0)
 
+    def test_score_direct_huge_int_clamps_to_extreme(self):
+        # The direct path clamps out-of-range scores. A several-
+        # hundred-digit JSON integer parses to an int whose float()
+        # raises OverflowError. Compared exactly it is out of range
+        # in its own direction, so it clamps to the same extreme a
+        # large finite value would instead of escaping unclassified.
+        a, _ = self._score_adapter(10**400)
+        out = a.decide(_case_input(), "score", _ctx())
+        self.assertEqual(out.score, 1.0)
+        a, _ = self._score_adapter(-(10**400))
+        out = a.decide(_case_input(), "score", _ctx())
+        self.assertEqual(out.score, 0.0)
+
     def test_score_missing_value_computed_from_probabilities(self):
         t = _transport_for({
             "score": {"probabilities": {str(i): (1.0 if i == 4 else 0.0)

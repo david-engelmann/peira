@@ -28,7 +28,7 @@ one place to update.
 
 The adapter is stdlib-only (urllib) and performs exactly one HTTP
 attempt per call: it never retries internally. Transient failures
-(408, 429, 529, 5xx, timeouts, connection errors) are raised as
+(408, 409, 429, 529, 5xx, timeouts, connection errors) are raised as
 ``ProviderError`` with ``status_code``/``retry_after`` so the A1 runner
 — which owns the retry policy — can classify and retry them. 401/422
 are terminal.
@@ -317,9 +317,11 @@ class JevAdapter:
                 "not a retryable failure.",
                 status_code=status,
             )
-        if status in (429, 529) or 500 <= status < 600:
+        if status in (408, 409, 429, 529) or 500 <= status < 600:
             # Transient: the runner retries with backoff and adapts
-            # concurrency. The adapter itself never retries.
+            # concurrency. The adapter itself never retries. 408 and
+            # 409 are in the runner's transient set, so their
+            # Retry-After must reach it like every other transient's.
             raise ProviderError(msg, status_code=status, retry_after=wait)
         raise ProviderError(msg, status_code=status)
 

@@ -7,6 +7,34 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
 
 ## [Unreleased]
 
+### Score validation and transient follow-ups across the decision adapters
+
+- The OpenAI Decisions adapter now validates a score answer's
+  per-level probabilities as a genuine distribution, the contract
+  the System One and Mercury adapters already hold their
+  probability maps to: level indices in range and named at most
+  once, probabilities genuine numbers in [0, 1], and a total
+  within 0.01 of 1. A partial, duplicated or inflated map is
+  terminal instead of computing a weighted position that is not
+  a measurement. Choice-answer probabilities carry the same
+  per-value validation, since they feed the confidence fallback.
+- Huge-integer wire values can no longer escape as an
+  unclassified OverflowError on any adapter's direct paths. The
+  Mercury adapter's four float() conversion sites (direct score,
+  abstain probability, confidence, and the probability-map
+  fallback) and the direct score paths of Celeris, Perplexity
+  Decider and Clef now bound or compare an int before converting
+  it, so a several-hundred-digit score or probability fails
+  closed (or clamps, on the two adapters whose direct path
+  clamps) instead of raising OverflowError.
+- Jev passes a 408 or 409 response's Retry-After to the runner,
+  and Mercury passes a 409's, like every other transient. Both
+  statuses were already in the runner's transient set, so the
+  server's stated wait was being dropped.
+- Mercury's error-detail reader now treats a connection dropped
+  mid-body (IncompleteRead) as no detail instead of letting the
+  exception escape.
+
 ### Fleet pins and adapter landings for the full-run windows
 
 - Cerno gains its two sibling pins: `Cerno9BAdapter` measures

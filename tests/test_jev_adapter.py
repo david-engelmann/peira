@@ -416,6 +416,18 @@ class TestJevErrors(unittest.TestCase):
             with self.assertRaises(ProviderError):
                 JevAdapter(api_key="k", transport=tr).decide(_case_input(), "choice", _ctx())
 
+    def test_408_and_409_carry_retry_after(self):
+        # 408 and 409 are in the runner's transient set, so the
+        # server's Retry-After must reach the runner like any other
+        # transient's. Dropping it loses the server's stated wait
+        # and the congestion cut it feeds.
+        a = JevAdapter.__new__(JevAdapter)  # no network, no key needed
+        for status in (408, 409):
+            with self.assertRaises(ProviderError) as cm:
+                a._raise_for_status(status, "3", "")
+            self.assertEqual(cm.exception.status_code, status)
+            self.assertEqual(cm.exception.retry_after, 3.0)
+
     def test_raise_for_status_mapping(self):
         a = JevAdapter.__new__(JevAdapter)  # no network, no key needed
         for status, transient in [(401, False), (422, False), (429, True),
