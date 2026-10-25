@@ -172,8 +172,6 @@ export default function Ranking() {
   const allRows = [...groups.full, ...groups.slices, ...groups.flagged];
   const dupesByShort = duplicateShortNames(allRows);
   // duplicateShortNames keys by short name already.
-  const sliceCases = groups.slices[0]?.n_cases ?? 0;
-
   return (
     <section className="section" aria-labelledby="ranking-title" id="ranking">
       <p className="section-label">Ranking</p>
