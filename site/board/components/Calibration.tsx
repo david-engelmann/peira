@@ -51,9 +51,7 @@ function Panel({
       {data && data.ece !== null ? (
         <p className="cal-meta num">
           ECE {fmtEce(data.ece)} · Brier{" "}
-          {data.brier !== null ? fmtEce(data.brier) : "—"} · n{" "}
-          {data.n !== null ? fmtInt(data.n) : "—"}
-          {isSlice && <> · base {fmtInt(row.n_cases)}</>}
+          {data.brier !== null ? fmtEce(data.brier) : "—"}
         </p>
       ) : (
         <p className="cal-meta">Not measured</p>

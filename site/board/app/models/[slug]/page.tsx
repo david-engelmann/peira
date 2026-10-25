@@ -60,7 +60,7 @@ export async function generateMetadata({
   const name = shortName(row);
   const description =
     row.asr_conditional !== null
-      ? `${name} on the Peira decision robustness board. Attack success ${fmtPct(row.asr_conditional)} on ${fmtInt(row.n_cases)} paired cases, benign accuracy ${row.benign_accuracy !== null ? fmtPct(row.benign_accuracy) : "not measured"}, malformed rate ${row.malformed_rate !== null ? fmtPct(row.malformed_rate) : "not measured"}.`
+      ? `${name} on the Peira decision robustness board. Attack success ${fmtPct(row.asr_conditional)} on paired cases, benign accuracy ${row.benign_accuracy !== null ? fmtPct(row.benign_accuracy) : "not measured"}, malformed rate ${row.malformed_rate !== null ? fmtPct(row.malformed_rate) : "not measured"}.`
       : `${name} on the Peira decision robustness board.`;
   const title = `${name} on the Peira board`;
   return {
@@ -142,7 +142,6 @@ export default async function ModelPage({
                 ? groups.slices.length
                 : 0
           }
-          sliceCases={groups.slices[0]?.n_cases ?? 0}
           benchmarks={taxBenchmarks(groups)}
           familyKeys={familyOrder(rows)}
           allRows={rows}

@@ -153,7 +153,10 @@ body::before {
   font-size: clamp(32px, 4.6vw, 52px);
   font-weight: 650;
   letter-spacing: -0.022em;
-  line-height: 1.07;
+  /* 1.16, not tighter: at 1.07 the font's own line box overflows
+     the CSS line box and successive lines overlap by ~1.4px,
+     which the DOM audit flags and the eye reads as crowding. */
+  line-height: 1.16;
   max-width: 21ch;
   margin: 0;
   text-wrap: balance;
@@ -359,6 +362,12 @@ body::before {
   background: rgba(255, 255, 255, 0.028);
 }
 
+/* Flagged rows carry an amber edge so the strip reads as a
+   warning at a glance, not only by its text label. */
+.rank-row.flagged {
+  box-shadow: inset 3px 0 0 color-mix(in srgb, var(--amber) 60%, transparent);
+}
+
 .rank-row:last-child {
   border-bottom: none;
 }
@@ -370,8 +379,55 @@ body::before {
 
 .row-line1 {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   gap: 12px;
+}
+
+/* The vendor chip: the maker's mark in the board's ink tone, or
+   a monogram letter for systems that publish no mark. One box
+   geometry in rows and cards so identity reads at a glance. */
+.vendor-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid color-mix(in srgb, var(--hairline) 70%, transparent);
+  color: var(--ink-1);
+}
+
+.vendor-chip.row {
+  width: 30px;
+  height: 30px;
+}
+
+.vendor-chip.card {
+  width: 44px;
+  height: 44px;
+  border-radius: 11px;
+}
+
+.vendor-chip svg {
+  width: 62%;
+  height: 62%;
+  display: block;
+}
+
+.vendor-chip .vendor-letter {
+  font-size: 13px;
+  font-weight: 650;
+  letter-spacing: 0.02em;
+}
+
+.vendor-chip.card .vendor-letter {
+  font-size: 19px;
+}
+
+.card-head-top {
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
 }
 
 .cell-rank {

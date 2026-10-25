@@ -172,8 +172,6 @@ export default function Ranking() {
   const allRows = [...groups.full, ...groups.slices, ...groups.flagged];
   const dupesByShort = duplicateShortNames(allRows);
   // duplicateShortNames keys by short name already.
-  const sliceCases = groups.slices[0]?.n_cases ?? 0;
-
   return (
     <section className="section" aria-labelledby="ranking-title" id="ranking">
       <p className="section-label">Ranking</p>
@@ -192,7 +190,7 @@ export default function Ranking() {
       <RankedGroup
         id="full"
         label="Full suite"
-        caption={`Every result in this group ran the full ${fmtInt(groups.fullCases)} case suite.`}
+        caption="Every result in this group ran the full suite."
         rows={groups.full}
         variant="full"
         dupes={dupesByShort}
@@ -203,7 +201,7 @@ export default function Ranking() {
       <RankedGroup
         id="slices"
         label="Guardrail slices"
-        caption={`Guardrail slices, measured on the ${fmtInt(sliceCases)} case abstain subset. Their rates sit apart from the full suite and the two groups are never interleaved.`}
+        caption="Guardrail slices, measured on the abstain subset. Their rates sit apart from the full suite and the two groups are never interleaved."
         rows={groups.slices}
         variant="slice"
         dupes={dupesByShort}
@@ -211,10 +209,8 @@ export default function Ranking() {
         allRows={allRows}
       />
       <p className="chart-id">
-        Peira decision robustness board, ranking. Full suite base{" "}
-        {fmtInt(groups.fullCases)} cases, abstain slices{" "}
-        {fmtInt(sliceCases)} cases. Dataset {boardVersions().dataset},
-        updated {boardDateWords()}.
+        Peira decision robustness board, ranking. Dataset{" "}
+        {boardVersions().dataset}, updated {boardDateWords()}.
       </p>
     </section>
   );

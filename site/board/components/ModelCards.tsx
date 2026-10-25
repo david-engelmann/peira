@@ -21,6 +21,7 @@ import { familyOrder } from "@/lib/charts";
 import { costStateOf } from "@/lib/cards";
 import ModelCard, { type CardKind } from "./ModelCard";
 import CardControls from "./CardControls";
+import VendorLogo from "./VendorLogo";
 
 /**
  * Model detail, design system sections 2.2 and 4.5. The 36
@@ -77,6 +78,7 @@ function IndexSummary({
         ) : (
           <span className="cell-rank num">{rank}</span>
         )}
+        <VendorLogo row={row} />
         <span className="idx-name">
           {name}
           {dupes.has(name) && (
@@ -135,7 +137,6 @@ export default function ModelCards() {
   ];
   const dupes = duplicateShortNames(allRows);
   const familyKeys = familyOrder(allRows);
-  const sliceCases = groups.slices[0]?.n_cases ?? 0;
   const versions = boardVersions();
 
   const renderItem = (row: BoardRow, rank: number | null, kind: CardKind) => (
@@ -157,7 +158,6 @@ export default function ModelCards() {
               ? groups.slices.length
               : 0
         }
-        sliceCases={sliceCases}
         benchmarks={benchmarks}
         familyKeys={familyKeys}
         allRows={allRows}
@@ -190,8 +190,7 @@ export default function ModelCards() {
         <div className="group-head">
           <h3 className="group-label">Full suite</h3>
           <p className="group-caption">
-            Every result in this group ran the full{" "}
-            {fmtInt(groups.fullCases)} case suite.
+            Every result in this group ran the full suite.
           </p>
         </div>
         {groups.full.map((row: RankedRow) => renderItem(row, row.rank, "full"))}
@@ -208,8 +207,7 @@ export default function ModelCards() {
         <div className="group-head">
           <h3 className="group-label">Guardrail slices</h3>
           <p className="group-caption">
-            Guardrail slices, measured on the {fmtInt(sliceCases)} case
-            abstain subset.
+            Guardrail slices, measured on the abstain subset.
           </p>
         </div>
         {groups.slices.map((row: RankedRow) =>

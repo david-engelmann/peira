@@ -157,9 +157,9 @@ export default function Compare({ data }: { data: CompareData }) {
       )}
       {crossBase && (
         <p className="cmp-banner" data-cmp-banner="population">
-          The two results ran different case bases, {fmtInt(a.nCases)}{" "}
-          cases for model A and {fmtInt(b.nCases)} cases for model B,
-          so their rates are not measured on the same base.
+          The two results ran different case bases (the full suite
+          against the abstain subset), so their rates are not measured
+          on the same base.
         </p>
       )}
 

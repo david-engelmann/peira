@@ -29,6 +29,7 @@ import {
   shortHash,
   versionForProvenance,
 } from "@/lib/cards";
+import VendorLogo from "./VendorLogo";
 
 /**
  * The full detail card for one result, design system section
@@ -55,11 +56,10 @@ function rankStatement(
   kind: CardKind,
   rank: number | null,
   groupSize: number,
-  sliceCases: number,
 ): string {
   if (kind === "flagged") return "Flagged";
   if (kind === "slice") {
-    return `Rank ${rank} of ${groupSize} on the guardrail slice of ${fmtInt(sliceCases)} cases`;
+    return `Rank ${rank} of ${groupSize} on the guardrail slice`;
   }
   return `Rank ${rank} of ${groupSize} in the full suite`;
 }
@@ -69,7 +69,6 @@ export default function ModelCard({
   rank,
   kind,
   groupSize,
-  sliceCases,
   benchmarks,
   familyKeys,
   allRows,
@@ -79,7 +78,6 @@ export default function ModelCard({
   rank: number | null;
   kind: CardKind;
   groupSize: number;
-  sliceCases: number;
   benchmarks: TaxBenchmarks;
   familyKeys: string[];
   allRows: BoardRow[];
@@ -102,17 +100,21 @@ export default function ModelCard({
   const atkBrier = arms?.attacked.brier ?? null;
   const benEce = arms?.benign.ece ?? null;
   const benBrier = arms?.benign.brier ?? null;
-  const calN = arms?.attacked.n ?? null;
   const coverage = arms?.coverageAttacked ?? null;
 
   return (
     <div className="card-body">
       <div className="card-head">
-        <p className="card-statement">
-          {rankStatement(kind, rank, groupSize, sliceCases)}
-        </p>
-        <p className="card-model-id mono">{row.display_name}</p>
-        <p className="card-wire">Wire {wireWords(row.wire)}</p>
+        <div className="card-head-top">
+          <VendorLogo row={row} size="card" />
+          <div>
+            <p className="card-statement">
+              {rankStatement(kind, rank, groupSize)}
+            </p>
+            <p className="card-model-id mono">{row.display_name}</p>
+            <p className="card-wire">Wire {wireWords(row.wire)}</p>
+          </div>
+        </div>
         {kind === "flagged" && row.malformed_rate !== null && (
           <p className="card-reason flagged">
             Its malformed response rate of {fmtPct(row.malformed_rate)} is
@@ -122,9 +124,9 @@ export default function ModelCard({
         )}
         {kind === "slice" && (
           <p className="card-reason">
-            A guardrail slice result, measured on the {fmtInt(sliceCases)}{" "}
-            case abstain subset rather than the full suite. Its rates are
-            not measured on the full suite base.
+            A guardrail slice result, measured on the abstain subset
+            rather than the full suite, so its rates are not comparable
+            to full suite results.
           </p>
         )}
       </div>
@@ -150,13 +152,6 @@ export default function ModelCard({
           <span className="hl-value num">
             {row.malformed_rate !== null ? fmtPct(row.malformed_rate) : <NotMeasured />}
           </span>
-        </div>
-        <div className="hl-fig">
-          <span className="hl-label">Eligible cases</span>
-          <span className="hl-value num">
-            {fmtInt(row.n_eligible)} of {fmtInt(row.n_cases)}
-          </span>
-          <span className="hl-sub">cases in this run</span>
         </div>
       </div>
 
@@ -221,14 +216,12 @@ export default function ModelCard({
           </span>
         </div>
         <div className="stat">
-          <span className="stat-label">Calibration base</span>
+          <span className="stat-label">Confidence coverage</span>
           <span className="stat-value num">
-            {calN !== null ? fmtInt(calN) : <NotMeasured />}
+            {coverage !== null ? fmtPct(coverage) : <NotMeasured />}
           </span>
           <span className="stat-sub">
-            {coverage !== null
-              ? `attacked cases, confidence reported on ${fmtPct(coverage)} of them`
-              : "attacked cases"}
+            of attacked cases reported a confidence
           </span>
         </div>
         <div className="stat">

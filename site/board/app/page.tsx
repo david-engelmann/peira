@@ -62,10 +62,10 @@ export default function Page() {
         </div>
         <section className="findings">
           <p className="finding">
-            Every model decided the same {fmtInt(groups.fullCases)} paired
-            cases, each case in a benign form and an attacked form. Attack
-            success is the share of eligible attacked cases where the
-            attack flipped the decision.{rangeHl}
+            Every model decided the same paired cases, each case in a
+            benign form and an attacked form. Attack success is the
+            share of eligible attacked cases where the attack flipped
+            the decision.{rangeHl}
           </p>
           <p className="counts-line">
             The board holds {fmtInt(resultCount)} results from{" "}

@@ -88,7 +88,7 @@
  *        sticky bar; a landing there would sit under the bar.
  *  Compare. The rendered default pair's deltas equal the
  *        payload differences; driving picker B to a slice
- *        raises the population banner naming both case bases
+ *        raises the population banner naming both populations
  *        and moves the pair into the address; naming one
  *        model on both sides raises the same-model banner,
  *        clears the winner dots, and prints the deltas
@@ -970,6 +970,7 @@ for (const width of [1440, 1280, 390]) {
           nameLeft: nRect.left - cRect.left,
           nameRight: nRect.right,
           nameBg: getComputedStyle(firstName).backgroundColor,
+          groundBg: getComputedStyle(document.body).backgroundColor,
           nameTextRect: { x0: nt.left, x1: nt.right },
           rowCells,
         };
@@ -1167,26 +1168,18 @@ for (const width of [1440, 1280, 390]) {
       }
     }
   }
-  // Group head facts. The expected bases derive from the payload,
-  // never from literals, so a suite-size change cannot false-fail.
-  const sliceBasesA = [
-    ...new Set(
-      ranked
-        .filter((r) => r.n_cases < fullCasesA)
-        .map((r) => r.n_cases.toLocaleString("en-US")),
-    ),
-  ];
-  if (
-    sliceBasesA.length > 0 &&
-    !sliceBasesA.every((b) => report.groupHeads.slices?.includes(b))
-  ) {
+  // Group head facts. The headers name their populations in
+  // words; the suite's size is stated once, in the method
+  // section, and is not repeated in group headers (owner,
+  // 2026-10-25). The assertions check the population words.
+  if (!report.groupHeads.slices?.toLowerCase().includes("abstain subset")) {
     failures.push(
-      `width ${width}: slice group header does not state the slice case base ${sliceBasesA.join(", ")} (${report.groupHeads.slices})`,
+      `width ${width}: slice group header does not name the abstain subset (${report.groupHeads.slices})`,
     );
   }
-  if (!report.groupHeads.full?.includes(fullCasesA.toLocaleString("en-US"))) {
+  if (!report.groupHeads.full?.toLowerCase().includes("full suite")) {
     failures.push(
-      `width ${width}: full group header does not state the suite size (${report.groupHeads.full})`,
+      `width ${width}: full group header does not name the full suite (${report.groupHeads.full})`,
     );
   }
   /* ---------- round 9 assertions ---------- */
@@ -1413,9 +1406,14 @@ for (const width of [1440, 1280, 390]) {
           `width ${width}: sticky name column drifted ${probe.nameLeft.toFixed(1)} px from the container left at full scroll`,
         );
       }
-      if (probe.nameBg !== "rgb(10, 12, 15)") {
+      /* The sticky column must sit on the page ground itself,
+       * read from the rendered body rather than a literal, so
+       * the check follows the --ground token when it moves
+       * (the redesign retokened the ground and a stale literal
+       * failed every width until 2026-10-25). */
+      if (probe.nameBg !== probe.groundBg) {
         failures.push(
-          `width ${width}: sticky name column background is ${probe.nameBg}, not opaque ground`,
+          `width ${width}: sticky name column background is ${probe.nameBg}, not opaque ground (${probe.groundBg})`,
         );
       }
       for (const cell of probe.rowCells) {
@@ -1926,8 +1924,8 @@ for (const width of [1440, 1280, 390]) {
     }
     /* Compare driving. The default pair's deltas come from
      * the payload; a slice on side B raises the population
-     * banner naming both bases and moves the pair into the
-     * address; one model on both sides raises the same-model
+     * banner naming both populations and moves the pair into
+     * the address; one model on both sides raises the same-model
      * banner, clears the dots, and prints the deltas
      * under the not measured mark. */
     const cmpFull = ranked.find((r) => r.n_cases === fullCasesA);
@@ -1968,11 +1966,11 @@ for (const width of [1440, 1280, 390]) {
     cmpNow = await readCmp();
     if (
       !cmpNow.bannerPop ||
-      !cmpNow.bannerPop.includes(fullCasesA.toLocaleString("en-US")) ||
-      !cmpNow.bannerPop.includes(cmpSlice.n_cases.toLocaleString("en-US"))
+      !cmpNow.bannerPop.includes("full suite") ||
+      !cmpNow.bannerPop.includes("abstain subset")
     ) {
       failures.push(
-        `compare drive: slice against full suite raises banner "${cmpNow.bannerPop}", which must name both case bases`,
+        `compare drive: slice against full suite raises banner "${cmpNow.bannerPop}", which must name both populations`,
       );
     }
     deltaClose(

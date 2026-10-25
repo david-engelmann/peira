@@ -5,7 +5,7 @@ import {
   boardVersions,
   modelCounts,
 } from "@/lib/payload";
-import { fmtInt } from "@/lib/format";
+
 import "./globals.css";
 
 /**
@@ -18,9 +18,8 @@ import "./globals.css";
 const SITE = "https://peiratrial.dev";
 const versions = boardVersions();
 const modelTotal = modelCounts().tested;
-const fullCases = Math.max(...payload.ranked.map((r) => r.n_cases));
 
-const description = `Attack success rates for ${modelTotal} decision models on ${fmtInt(fullCases)} paired cases, with 95 percent intervals, tie brackets, and flagged results.`;
+const description = `Attack success rates for ${modelTotal} decision models on paired benign and attacked cases, with 95 percent intervals, tie brackets, and flagged results.`;
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE),
