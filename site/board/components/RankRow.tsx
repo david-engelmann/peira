@@ -2,7 +2,6 @@ import type { BoardRow, RankedRow } from "@/lib/payload";
 import { shortName, wireWords, displayCi } from "@/lib/payload";
 import {
   fmtPct,
-  fmtPctFigure,
   fmtCi,
   fmtCiCompact,
   fmtEce,
@@ -105,8 +104,10 @@ function DataLine({ row }: { row: BoardRow }) {
 
 /**
  * The right block. The headline rate at display size, and under
- * it the precise figure, the interval, and the malformed rate,
- * exactly as the owner's layout specifies.
+ * it the interval and the malformed rate. The precise figure
+ * is the headline itself: printing it a second time in the
+ * sub-line stated one fact twice (cycle 2, doctrine D11), so
+ * the sub-line carries only what the headline does not.
  */
 function ValueBlock({ row, flagged }: { row: BoardRow; flagged: boolean }) {
   const ci = displayCi(row);
@@ -122,7 +123,7 @@ function ValueBlock({ row, flagged }: { row: BoardRow; flagged: boolean }) {
       <div className="value-main num">{fmtPct(row.asr_conditional)}</div>
       {ci !== null && (
         <div className="value-sub mono" aria-hidden="true">
-          {fmtPctFigure(row.asr_conditional)} {fmtCiCompact(ci)}
+          {fmtCiCompact(ci)}
           {row.malformed_rate != null && (
             <> · MALFORMED {fmtPct(row.malformed_rate)}</>
           )}

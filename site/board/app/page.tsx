@@ -68,31 +68,33 @@ export default function Page() {
             attacked side answered wrong, abstained, or produced
             malformed output.{rangeHl}
           </p>
-          <p className="counts-line">
-            The board holds {fmtInt(resultCount)} results from{" "}
-            {fmtInt(counts.tested)} models. {fmtInt(counts.ranked)} models
-            are ranked and {fmtInt(counts.flagged)} are flagged.
-            {multi.length === 1 && (
-              <>
-                {" "}
-                One model was measured on two wires, so it appears as two
-                results.
-              </>
-            )}
-            {multi.length > 1 && (
-              <>
-                {" "}
-                Some models were measured on two wires, so they appear as
-                more than one result.
-              </>
-            )}
-          </p>
-          <p className="links-line">
-            <a href="https://github.com/david-engelmann/peira">
-              Code and method on GitHub
-            </a>
-            <a href="/payload.json">The payload behind this page, JSON</a>
-          </p>
+          <div className="hero-meta">
+            <p className="counts-line">
+              The board holds {fmtInt(resultCount)} results from{" "}
+              {fmtInt(counts.tested)} models. {fmtInt(counts.ranked)} models
+              are ranked and {fmtInt(counts.flagged)} are flagged.
+              {multi.length === 1 && (
+                <>
+                  {" "}
+                  One model was measured on two wires, so it appears as two
+                  results.
+                </>
+              )}
+              {multi.length > 1 && (
+                <>
+                  {" "}
+                  Some models were measured on two wires, so they appear as
+                  more than one result.
+                </>
+              )}
+            </p>
+            <p className="links-line">
+              <a href="https://github.com/david-engelmann/peira">
+                Code and method on GitHub
+              </a>
+              <a href="/payload.json">The payload behind this page, JSON</a>
+            </p>
+          </div>
         </section>
       </header>
 

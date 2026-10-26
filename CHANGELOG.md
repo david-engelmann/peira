@@ -18,6 +18,24 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
   documentation only; the removed files are preserved in the project
   records.
 
+### Board hero and ranking: design perfection cycle 2
+
+- The board's hero finding now runs the full content width
+  instead of a narrow capped column, and the counts line and
+  links share one meta row under a hairline. No wording
+  changed.
+- Ranking rows re-flow at phone widths into a single column
+  inside the section box: the name takes its own full-width
+  line when it cannot sit beside its vendor mark, the value
+  sits on its own line with its interval, and nothing is
+  clipped at either edge. Tie brackets keep their word at
+  phone widths, turned vertical in the rail; the interval
+  strip gains a track; the guardrail slices' axis title now
+  states the abstain subset. The DOM audit gains a containment
+  check (F-08) pinning this at every width.
+- Each ranking row's sub-line no longer repeats the headline
+  rate; it carries the interval and the malformed rate only.
+
 ### Mercury chat models gain a direct Inception wire, effort pinned
 
 - `MercuryAdapter` (`mercury-structured`) measures Inception's
