@@ -1,6 +1,6 @@
 # peira docs
 
-Everything in `docs/`, organized by what you are trying to do. Pick a path, or browse the full map below.
+peira is an open-source AI safety benchmark that measures whether hostile input can flip a decision model's typed output. Everything in `docs/`, organized by what you are trying to do. Pick a path, or browse the full map below.
 
 ## Run the benchmark
 

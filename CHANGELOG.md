@@ -7,6 +7,21 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
 
 ## [Unreleased]
 
+### GitHub face: social preview, one description, README first screen
+
+- Added `.github/social-preview.png` (1280 by 640), the repo's social
+  preview image, generated from the live board payload by
+  `site/board/scripts/gen-social-preview.mjs` with the same geometry,
+  vendor table, and label placement as the board share image. Applying
+  it to the repo is a Settings step (Social preview).
+- One canonical project description now stands in the repo description,
+  the README's first line, `pyproject.toml`, and `docs/Overview.md`.
+- The README's first screen carries the board visual and the headline
+  finding with its definition; board counts are stated once, the
+  adapter inventory points at `docs/Adapters.md` instead of repeating
+  its status table, and repeated board links in the first screen are
+  removed.
+
 ### Internal work documents removed from the public docs tree
 
 - Removed 11 internal work documents from `docs/`: a lane work queue,
