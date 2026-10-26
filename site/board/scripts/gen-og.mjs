@@ -271,6 +271,20 @@ const scatterSvg = `<svg width="1200" height="630" viewBox="0 0 1200 630" class=
   <text x="${PLOT.x0}" y="572" class="tick">Recorded cost per run, US dollars, log scale</text>
 </svg>`;
 
+/* The share image draws no lower-bound tick. A floating arrow
+ * beside a disc reads as a stray mark at feed size, and the
+ * image has no caption to explain one, so the lower-bound fact
+ * stays on the board page and out of the image. Tripwire: the
+ * only lines in the scatter are the four grid lines, the rail
+ * divider and the axis, and nothing draws a polygon. */
+const ogLineCount = (scatterSvg.match(/<line/g) ?? []).length;
+if (scatterSvg.includes("<polygon") || ogLineCount !== 6) {
+  console.error(
+    `gen-og: unexpected glyph in the share image scatter (lines ${ogLineCount}, polygon present ${scatterSvg.includes("<polygon")}): the image draws no lower-bound tick or other floating mark`,
+  );
+  process.exit(1);
+}
+
 const html = `<!doctype html>
 <html><head><meta charset="utf-8"><style>
 @font-face { font-family: "Archivo"; src: url("../public/fonts/archivo.woff2") format("woff2"); }

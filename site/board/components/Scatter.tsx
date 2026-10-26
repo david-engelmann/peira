@@ -56,9 +56,9 @@ export default function Scatter() {
       <div className="chart-captions">
         <p>
           Cost is the recorded total for one full run, plotted on a log
-          scale. A short tick pointing left from a point marks a lower
-          bound, where some calls went unpriced and the true cost sits
-          higher than the point.
+          scale. Where some calls went unpriced, the recorded cost is a
+          lower bound and the true cost sits higher than the point. The
+          point's own card says when it is a lower bound.
         </p>
         <p>
           {fmtInt(data.railCount)} ranked models ran locally and hold

@@ -292,14 +292,11 @@ function Marker({
         <MarkerGlyph d={d} />
         <circle className="pt-focus-ring" r={13.5} aria-hidden="true" />
       </g>
-      {d.lowerBound && (
-        <g className="lb-tick" aria-hidden="true">
-          <line x1={r2(p.x - 24)} y1={r2(p.y)} x2={r2(p.x - 12.5)} y2={r2(p.y)} />
-          <polygon
-            points={`${r2(p.x - 24)},${r2(p.y)} ${r2(p.x - 19.5)},${r2(p.y - 2.6)} ${r2(p.x - 19.5)},${r2(p.y + 2.6)}`}
-          />
-        </g>
-      )}
+      {/* No lower-bound glyph beside the disc: the short arrow
+        * that used to sit here floated in empty space and read
+        * as a stray mark pointing at nothing. The lower-bound
+        * fact rides in the point's title, its detail card, and
+        * the caption under the chart. */}
     </g>
   );
 }
