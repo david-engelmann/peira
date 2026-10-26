@@ -33,13 +33,16 @@ Wire facts, verified live 2026-10-24 against the account's key:
   and cannot edit files or run tools against the workspace. The
   workspace is an empty directory created for the purpose.
 
-The prompt sent is the structured pipeline's own composed prompt
-(case text plus the decision schema instructions), byte-identical to
-what the bare-wire structured adapters send. The agent's reply text
-goes through the same strict JSON parse and schema validation as
-every structured adapter: prose around the JSON, a refusal, or an
-agent error surface exactly as they do on other wires (parse
-failure, refusal, provider error), never as silent reinterpretation.
+The prompt sent is the structured pipeline's own composed prompt,
+the same case text the bare-wire structured adapters send, with one
+transport difference: a text harness has no response_format channel,
+so the decision schema the other wires carry out-of-band is rendered
+into the prompt text itself (see ``_request``). The case text is
+untouched. The agent's reply text goes through the same strict JSON
+parse and schema validation as every structured adapter: prose
+around the JSON, a refusal, or an agent error surface exactly as
+they do on other wires (parse failure, refusal, provider error),
+never as silent reinterpretation.
 
 Sampling: ``_supports_temperature`` and ``_supports_seed`` are False.
 The harness accepts neither parameter, so the sealed record says
@@ -85,16 +88,41 @@ def _default_agent_bin() -> str:
     return str(Path.home() / ".local" / "bin" / "agent")
 
 
-def _require_api_key(explicit: str | None) -> str:
-    key = explicit or os.environ.get(API_KEY_ENV, "")
-    if not key:
-        raise ValueError(
-            "cursor-harness needs a Cursor User API key: pass "
-            "api_key= or set "
-            f"{API_KEY_ENV}=<your key>. Keys are created in the "
-            "Cursor dashboard under User API Keys."
-        )
-    return key
+def _usage_tokens(usage: dict[str, Any], field: str) -> int:
+    """One envelope usage field as a non-negative int.
+
+    The envelope is raw subprocess JSON, unvalidated by any SDK, so
+    a field can arrive as the wrong type or a negative number. Both
+    are provider-side corruption: fail the call here with a
+    ProviderError instead of letting a bad figure reach the sealed
+    record, where the artifact contract would reject the whole run.
+    """
+    value = usage.get(field)
+    if value is None:
+        return 0
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise ProviderError(
+            f"cursor-agent usage field {field} is not a number: "
+            f"{value!r}")
+    if isinstance(value, float):
+        if not value.is_integer():
+            raise ProviderError(
+                f"cursor-agent usage field {field} is not a whole "
+                f"number: {value!r}")
+        value = int(value)
+    if value < 0:
+        raise ProviderError(
+            f"cursor-agent usage field {field} is negative: {value}")
+    return value
+
+
+# Error text from the harness that means throttling. Phrase-matched:
+# a bare "rate" or "limit" substring also fires on "generated",
+# "accurate" and "separate", misclassifying ordinary agent errors
+# as 429s the runner would retry as throttling.
+_RATE_LIMIT_PHRASES = (
+    "rate limit", "rate_limit", "too many requests", "quota",
+)
 
 
 class CursorHarnessAdapter(_StructuredLLMBase):
@@ -107,7 +135,7 @@ class CursorHarnessAdapter(_StructuredLLMBase):
     """
 
     name = "cursor-harness"
-    _extra = "cursor-agent CLI (no pip extra)"
+    _extra = "Cursor agent CLI"
     _env_vars = (API_KEY_ENV,)
     _provider_label = "Cursor"
     _supports_seed = False
@@ -137,17 +165,21 @@ class CursorHarnessAdapter(_StructuredLLMBase):
         # sent anywhere: the class flags declare the harness
         # incapable of both, so the sealed sampling record reports
         # them as meaningfully absent (provider-incapable).
+        # The base resolves the API key (explicit argument, else the
+        # CURSOR_API_KEY environment variable), stores it on
+        # self._api_key, and raises when none is available. There is
+        # deliberately no second resolution here.
         _StructuredLLMBase.__init__(
             self, model, temperature, seed, max_tokens, api_key
         )
-        self._api_key = _require_api_key(api_key)
         self.timeout_s = timeout_s
         self._agent_bin = agent_bin or _default_agent_bin()
         if workspace is None:
-            workspace = str(
-                Path(tempfile.gettempdir()) / "peira-cursor-harness-ws"
-            )
-            Path(workspace).mkdir(parents=True, exist_ok=True)
+            # A fresh, private directory per adapter instance: ask
+            # mode only needs an empty workspace to run against, and
+            # a shared predictable path would couple instances.
+            workspace = tempfile.mkdtemp(
+                prefix="peira-cursor-harness-ws-")
         self._workspace = workspace
         # Injectable transport for tests: fn(prompt) -> parsed envelope.
         self._runner_fn = runner_fn or self._subprocess_runner
@@ -221,7 +253,9 @@ class CursorHarnessAdapter(_StructuredLLMBase):
         if envelope.get("is_error"):
             result_text = str(envelope.get("result") or "")
             lowered = result_text.lower()
-            status = 429 if ("rate" in lowered or "limit" in lowered) else 502
+            status = 429 if any(
+                phrase in lowered for phrase in _RATE_LIMIT_PHRASES
+            ) else 502
             raise ProviderError(
                 f"cursor-agent reported an error: {result_text[:300]}",
                 status_code=status,
@@ -231,6 +265,9 @@ class CursorHarnessAdapter(_StructuredLLMBase):
         if not isinstance(text, str):
             raise ProviderError(
                 "cursor-agent envelope carries no text result")
+        fresh_in = _usage_tokens(usage, "inputTokens")
+        cache_read = _usage_tokens(usage, "cacheReadTokens")
+        cache_write = _usage_tokens(usage, "cacheWriteTokens")
         return _RawResult(
             text=text,
             stop_reason=str(envelope.get("subtype") or "success"),
@@ -242,12 +279,11 @@ class CursorHarnessAdapter(_StructuredLLMBase):
             # processed (fresh + cache read + cache write), the same
             # convention as the OpenAI wire, with the cache-read part
             # kept in cached_tokens_in where it is a true subset.
-            tokens_in=(
-                int(usage.get("inputTokens") or 0)
-                + int(usage.get("cacheReadTokens") or 0)
-                + int(usage.get("cacheWriteTokens") or 0)
-            ),
-            tokens_out=int(usage.get("outputTokens") or 0),
+            # Every component is validated non-negative by
+            # _usage_tokens, so the subset relation holds by
+            # construction.
+            tokens_in=fresh_in + cache_read + cache_write,
+            tokens_out=_usage_tokens(usage, "outputTokens"),
             logprob_tokens=None,
             request_shape={
                 "endpoint": "cursor-agent-cli",
@@ -260,5 +296,5 @@ class CursorHarnessAdapter(_StructuredLLMBase):
                 "request_id": envelope.get("request_id"),
                 "duration_api_ms": envelope.get("duration_api_ms"),
             },
-            cached_tokens_in=int(usage.get("cacheReadTokens") or 0) or None,
+            cached_tokens_in=cache_read or None,
         )

@@ -110,6 +110,7 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
   response's Retry-After to the runner, matching the Jev
   adapter. A non-finite Retry-After value now reads as no stated
   wait in every decision adapter instead of an infinite delay.
+
 ### Fleet pins and adapter landings for the full-run windows
 
 - Cerno gains its two sibling pins: `Cerno9BAdapter` measures

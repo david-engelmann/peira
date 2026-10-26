@@ -2174,6 +2174,7 @@ recorded in the transcript and in `decode_params`, and the effort
 is part of the cache namespace. Effort probes on 2026-10-24:
 medium returned 39 reasoning tokens and high 54 on the same
 prompt, both HTTP 200.
+
 ## Cursor harness (agent CLI)
 
 No pip extra. Install the Cursor CLI from cursor.com, set
@@ -2202,9 +2203,10 @@ pricing is $0.0 by the self-hosted convention in
 per call from the CLI envelope (input, output, and cache-read
 tokens). The overhead is large: one probe call used 13,366 input
 tokens for a one-word answer. The prompt sent is the structured
-pipeline's composed prompt, byte-identical to the bare-wire
-adapters, and replies go through the same strict JSON parse and
-schema validation.
+pipeline's composed prompt with the decision schema rendered into
+the prompt text (a text harness has no response_format channel, so
+the contract travels in words), and replies go through the same
+strict JSON parse and schema validation.
 
 ## Inception Mercury Decide
 

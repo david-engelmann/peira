@@ -298,16 +298,17 @@ _VENDOR_ID_PATTERNS: dict[str, re.Pattern[str]] = {
     "qwen": re.compile(r"^qwen\d*(\.\d+)?(-[a-z0-9]+)+$"),
     "minimax": re.compile(r"^MiniMax-M\d+(\.\d+)?(-[A-Za-z0-9]+)*$"),
     "mercury": re.compile(r"^mercury-\d+(\.\d+)?(-[a-z]+)?$"),
-    # Cursor variant labels: hyphenated segments ending in a serving
-    # or reasoning variant suffix (grok-4.7-high-fast,
-    # claude-opus-5-thinking-high, cursor-grok-4.5-high,
-    # gpt-5.6-sol-low, kimi-k3-max, auto-smart). The suffix anchor is
-    # what makes it a Cursor label rather than a vendor id: bare or
-    # date-suffixed vendor ids never end in one. The live CLI
-    # verification recorded at each entry is the fabrication check
+    # Cursor variant labels: a vendor model base carrying a version
+    # number, plus a serving or reasoning variant suffix (the pinned
+    # label is grok-4.7-high-fast). The version anchor is what makes
+    # the shape check worth anything: a bare word pair matches
+    # nothing here. Which labels are enabled is gated separately by
+    # the pin table and the adapter's SUPPORTED_MODEL_IDS; the live
+    # CLI verification recorded at each pin is the fabrication check
     # for the rest.
     "cursor": re.compile(
-        r"^[a-z0-9]+(-[a-z0-9.]+)*-(high|low|max|fast|smart)$"),
+        r"^[a-z]+(-[a-z0-9]+)*-([a-z]\d+|\d+)(\.\d+)?(-[a-z0-9]+)*"
+        r"-(high|low|max|fast|smart)$"),
     "openrouter": re.compile(r"^[a-z0-9][a-z0-9_.-]*/[A-Za-z0-9][A-Za-z0-9._-]*$"),
 }
 

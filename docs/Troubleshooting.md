@@ -1697,6 +1697,55 @@ from the `Retry-After` response header when the API sends one;
 otherwise the runner backs off on its own schedule. Fix: none, but if
 every attempt 429s, lower `--max-concurrency`.
 
+**`CURSOR_API_KEY is not set; CursorHarnessAdapter needs it (and the Cursor agent CLI extra)`**
+Cause: no Cursor User API key. The adapter reads the key from the
+`CURSOR_API_KEY` environment variable (or an explicit `api_key=`).
+Fix: create a User API key in the Cursor dashboard under User API
+Keys, then `export CURSOR_API_KEY=<your key>`. The key is passed to
+the agent CLI only through its environment; it never appears in
+argv, transcripts, or artifacts.
+
+**`cursor-harness adapter pins model 'grok-4.7-high-fast'; got '...'. A measurement must name the exact Cursor variant label that answered.`**
+Cause: a model id other than the pinned Cursor variant label was
+passed. Bare vendor ids (for example `grok-4.7`) name a different
+surface and are refused. Fix: don't pass `model=` at all (the
+default is the pin).
+
+**`cursor-agent binary not found at ...: install the Cursor CLI from cursor.com`**
+Cause: the Cursor `agent` CLI is not installed at the expected path
+(`~/.local/bin/agent`, or `CURSOR_AGENT_PATH` when set). Fix: install
+the Cursor CLI from cursor.com, or set `CURSOR_AGENT_PATH` to the
+binary's location.
+
+**`cursor-agent call timed out after ...s`** (status 408)
+Cause: the agent CLI did not answer within the call timeout. The
+runner treats it as transient and retries under `--max-attempts`.
+Fix: re-run. Sustained timeouts mean the harness or the network is
+degraded.
+
+**`cursor-agent exited ...: ...`** (status 502)
+Cause: the agent CLI exited nonzero. The text after the status is
+the CLI's own stderr. Fix: read the detail; an authentication
+failure means the key was rejected, so check it in the Cursor
+dashboard.
+
+**`cursor-agent returned non-JSON output on stdout`** / **`cursor-agent envelope is not an object`** / **`cursor-agent envelope carries no text result`**
+Cause: the CLI answered with something other than the documented
+JSON envelope, or an envelope without a text result. This means CLI
+drift. Fix: report it with the CLI version.
+
+**`cursor-agent reported an error: ...`**
+Cause: the CLI returned an error envelope. The adapter maps it to
+status 429 when the text names throttling (a rate limit, too many
+requests, a quota), and 502 otherwise. Fix: for 429, wait and
+re-run; for 502, read the detail.
+
+**`cursor-agent usage field ... is not a number: ...`** / **`cursor-agent usage field ... is not a whole number: ...`** / **`cursor-agent usage field ... is negative: ...`**
+Cause: the envelope's usage counters arrived malformed. A call
+without trustworthy counters cannot be recorded, so the adapter
+fails the call instead of sealing a bad figure. This means CLI
+drift. Fix: report it with the CLI version.
+
 **`jev built ... question ...` (e.g. `jev built a malformed question 'x': not an object`)**
 Cause: a question failed the adapter's client-side shape check
 (`type` + `instructions`, plus `criteria` for choice/score) before it

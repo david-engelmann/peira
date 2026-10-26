@@ -8,8 +8,11 @@ usage mapping, the sampling incapability flags, and error mapping.
 
 import json
 import os
+import sys
+import tempfile
 import unittest
 from contextlib import contextmanager
+from pathlib import Path
 
 from peira.adapters.cursor_harness import CursorHarnessAdapter
 from peira.adapters.base import CallContext, ProviderError
@@ -101,11 +104,14 @@ class TestCursorHarnessConstruction(unittest.TestCase):
         self.assertIsNone(adapter._sent_seed())
 
     def test_missing_key_names_cursor_env_var(self):
+        # The base class resolves the key and its message is the one
+        # that surfaces; assert the surfaced text, not just the
+        # variable name appearing anywhere.
         with _env(CURSOR_API_KEY=None):
             with self.assertRaises(ValueError) as ctx:
                 CursorHarnessAdapter(
                     runner_fn=lambda prompt: _envelope())
-        self.assertIn("CURSOR_API_KEY", str(ctx.exception))
+        self.assertIn("CURSOR_API_KEY is not set", str(ctx.exception))
 
 
 class TestCursorHarnessCalls(unittest.TestCase):
@@ -151,6 +157,170 @@ class TestCursorHarnessCalls(unittest.TestCase):
             text=f"Here is my decision.\n{GOOD_JSON}\nDone."))
         out = adapter.decide(CASE, "choice", _ctx())
         self.assertEqual(out.decision, "approve")
+
+    def test_schema_is_rendered_into_the_prompt(self):
+        # A text harness has no response_format channel: the schema
+        # must travel inside the prompt text, and the repair attempt
+        # must add the JSON-only instruction. If the schema render
+        # were dropped, every real call would break while a fake
+        # returning canned JSON would notice nothing.
+        prompts = []
+
+        def runner(prompt):
+            prompts.append(prompt)
+            if len(prompts) == 1:
+                return _envelope(text="no structured answer here")
+            return _envelope()
+
+        adapter = _adapter(runner_fn=runner)
+        out = adapter.decide(CASE, "choice", _ctx())
+        self.assertEqual(out.decision, "approve")
+        self.assertEqual(len(prompts), 2)
+        for prompt in prompts:
+            self.assertIn(
+                "Respond with a single JSON object matching this "
+                "schema", prompt)
+            self.assertIn('"decision"', prompt)
+        self.assertNotIn("Return ONLY the JSON object.", prompts[0])
+        self.assertIn("Return ONLY the JSON object.", prompts[1])
+
+    def test_cache_write_tokens_count_toward_total_input(self):
+        env = _envelope()
+        env["usage"]["cacheWriteTokens"] = 250
+        adapter = _adapter(runner_fn=lambda prompt: env)
+        out = adapter.decide(CASE, "choice", _ctx())
+        self.assertEqual(out.usage.tokens_in, 13366 + 6016 + 250)
+        self.assertEqual(out.usage.cached_tokens_in, 6016)
+
+    def test_negative_usage_is_a_provider_error(self):
+        env = _envelope()
+        env["usage"]["cacheWriteTokens"] = -5
+        adapter = _adapter(runner_fn=lambda prompt: env)
+        with self.assertRaises(ProviderError):
+            adapter.decide(CASE, "choice", _ctx())
+
+    def test_non_numeric_usage_is_a_provider_error(self):
+        env = _envelope()
+        env["usage"]["inputTokens"] = "lots"
+        adapter = _adapter(runner_fn=lambda prompt: env)
+        with self.assertRaises(ProviderError):
+            adapter.decide(CASE, "choice", _ctx())
+
+    def test_error_text_with_rate_substring_is_not_a_429(self):
+        # "generated" and "accurate" contain "rate"; a phrase match
+        # must not misclassify an ordinary agent error as throttling.
+        adapter = _adapter(
+            runner_fn=lambda prompt: _envelope(
+                text="the model generated an accurate summary, "
+                     "then the session failed",
+                is_error=True))
+        with self.assertRaises(ProviderError) as ctx:
+            adapter.decide(CASE, "choice", _ctx())
+        self.assertEqual(ctx.exception.status_code, 502)
+
+
+_STUB_SOURCE = '''\
+import json
+import os
+import sys
+import time
+
+mode = os.environ.get("STUB_MODE", "ok")
+if mode == "sleep":
+    time.sleep(5)
+    sys.exit(0)
+if mode == "exit3":
+    print("stub boom", file=sys.stderr)
+    sys.exit(3)
+capture = os.environ.get("STUB_CAPTURE")
+if capture:
+    with open(capture, "w") as fh:
+        json.dump({
+            "argv": sys.argv[1:],
+            "key_in_argv": "crsr-test" in " ".join(sys.argv[1:]),
+            "key_in_env": os.environ.get("CURSOR_API_KEY"),
+        }, fh)
+if mode == "nonjson":
+    print("this is not json")
+    sys.exit(0)
+print(json.dumps({
+    "type": "result", "subtype": "success", "is_error": False,
+    "duration_ms": 10, "duration_api_ms": 9,
+    "result": __GOOD_JSON__,
+    "session_id": "sess-stub", "request_id": "req-stub",
+    "usage": {"inputTokens": 100, "outputTokens": 5,
+              "cacheReadTokens": 40, "cacheWriteTokens": 2},
+}))
+'''
+
+
+class TestCursorHarnessSubprocess(unittest.TestCase):
+    """The real transport, exercised through a stub agent binary.
+
+    The runner_fn tests above never touch _subprocess_runner, so
+    argv shape, env-only key delivery, and the exit/timeout/JSON
+    error mappings are asserted here against a fake CLI.
+    """
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        stub = Path(self._tmp.name) / "agent"
+        stub.write_text(
+            f"#!{sys.executable}\n" + _STUB_SOURCE.replace(
+                "__GOOD_JSON__", repr(GOOD_JSON)))
+        stub.chmod(0o755)
+        self.stub = str(stub)
+        self.capture = str(Path(self._tmp.name) / "capture.json")
+
+    def _real_adapter(self, **over):
+        kwargs = {
+            "api_key": "crsr-test",
+            "agent_bin": self.stub,
+            "workspace": self._tmp.name,
+        }
+        kwargs.update(over)
+        return CursorHarnessAdapter(**kwargs)
+
+    def test_argv_shape_and_env_only_key(self):
+        with _env(STUB_MODE="ok", STUB_CAPTURE=self.capture):
+            out = self._real_adapter().decide(CASE, "choice", _ctx())
+        self.assertEqual(out.decision, "approve")
+        self.assertEqual(out.usage.tokens_in, 100 + 40 + 2)
+        capture = json.loads(Path(self.capture).read_text())
+        argv = capture["argv"]
+        self.assertEqual(argv[argv.index("--model") + 1],
+                         "grok-4.7-high-fast")
+        self.assertEqual(argv[argv.index("--mode") + 1], "ask")
+        self.assertEqual(argv[argv.index("--output-format") + 1],
+                         "json")
+        self.assertFalse(capture["key_in_argv"])
+        self.assertEqual(capture["key_in_env"], "crsr-test")
+
+    def test_missing_binary_is_a_provider_error(self):
+        adapter = self._real_adapter(
+            agent_bin=str(Path(self._tmp.name) / "no-such-agent"))
+        with self.assertRaises(ProviderError) as ctx:
+            adapter.decide(CASE, "choice", _ctx())
+        self.assertIn("binary not found", str(ctx.exception))
+
+    def test_nonzero_exit_maps_to_502(self):
+        with _env(STUB_MODE="exit3"):
+            with self.assertRaises(ProviderError) as ctx:
+                self._real_adapter().decide(CASE, "choice", _ctx())
+        self.assertEqual(ctx.exception.status_code, 502)
+
+    def test_non_json_stdout_is_a_provider_error(self):
+        with _env(STUB_MODE="nonjson"):
+            with self.assertRaises(ProviderError):
+                self._real_adapter().decide(CASE, "choice", _ctx())
+
+    def test_timeout_maps_to_408(self):
+        with _env(STUB_MODE="sleep"):
+            with self.assertRaises(ProviderError) as ctx:
+                self._real_adapter(timeout_s=0.5).decide(
+                    CASE, "choice", _ctx())
+        self.assertEqual(ctx.exception.status_code, 408)
 
 
 if __name__ == "__main__":
