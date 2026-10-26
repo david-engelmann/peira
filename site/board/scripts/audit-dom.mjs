@@ -23,14 +23,14 @@
  *  Tiles. The counts line equals the display_name rule counts
  *        computed here, at every width.
  *  Scatter. The visible variant's point set equals the payload
- *        population (26 plotted, 5 railed); every point centre
+ *        population (28 plotted, 5 railed); every point centre
  *        sits on the payload position recomputed from the SVG's
  *        own geometry attributes (nudged points get the spec's
  *        one marker width of slack in y); at every width every
  *        point carries its name in place, every label rect is
  *        pairwise clear of every other label and of every
- *        point centre, and no numbered badge or keyed list
- *        exists (redesign rule). No leader line exists either:
+ *        point centre, and no numbered badge exists (redesign
+ *        rule). No leader line exists either:
  *        the scatter carries no line element outside its grid
  *        lines, rail divider, axis lines and the points' own
  *        lower-bound ticks, at any width (correction rule:
@@ -923,16 +923,6 @@ for (const width of [1440, 1280, 390]) {
           ).length,
         };
       }
-      const listSel =
-        window.innerWidth > 760
-          ? ".scatter-wide .keyed-item"
-          : ".phone-key .keyed-item";
-      out.scatterList = [...sec.querySelectorAll(listSel)]
-        .filter((el) => el.getClientRects().length > 0)
-        .map((li) => ({
-          num: Number(li.querySelector(".keyed-num")?.textContent),
-          name: li.querySelector(".keyed-name")?.textContent.trim(),
-        }));
     }
     const hsec = document.querySelector('[data-section="heatmap"]');
     if (hsec) {
@@ -1287,8 +1277,9 @@ for (const width of [1440, 1280, 390]) {
     }
     // Every point carries its name at every width (redesign
     // rule). Labels never overlap each other and never cover a
-    // point centre, and the numbered badge and keyed list of
-    // the old design are gone entirely.
+    // point centre, and the numbered badges of the old design
+    // are gone entirely. The label population equality above
+    // is the live guard that every point is named.
     {
       const labels = sc.labels;
       for (let i = 0; i < labels.length; i++) {
@@ -1326,11 +1317,6 @@ for (const width of [1440, 1280, 390]) {
       if (sc.badges.length > 0) {
         failures.push(
           `width ${width}: scatter still carries ${sc.badges.length} numbered badges`,
-        );
-      }
-      if ((chart.scatterList ?? []).length > 0) {
-        failures.push(
-          `width ${width}: scatter still carries a keyed list of ${(chart.scatterList ?? []).length} items`,
         );
       }
       if (sc.leaders > 0) {

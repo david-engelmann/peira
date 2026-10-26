@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { fmtPct, fmtCi, fmtUsdExact } from "@/lib/format";
 import { ASR_AXIS_MAX, ASR_TICKS } from "@/lib/chart";
 import {
@@ -74,12 +74,23 @@ const PHONE_LIST_TOP = 488;
 const PHONE_ENTRY_PITCH = 34;
 const PHONE_COL_X = [6, 180];
 
+/* The two corner readings, single-sourced: the wide and
+ * phone renders set the same words. The top-right reading is
+ * the payload's own extremes: the priciest run is also the
+ * easiest to flip. The bottom-left names jev-1.14.0 at its
+ * recorded twenty cents a run. */
+const CORNER_TR = {
+  title: "Expensive and fragile",
+  sub: "The priciest run flipped most of all",
+};
+const CORNER_BL = {
+  title: "Near-free and tough",
+  sub: "Jev 1.14 held at twenty cents a run",
+};
+
 /* Corner annotation furniture. The solver keeps labels out
  * of these boxes, and the audit keeps the annotation text
- * clear of every other text node in the section. The
- * top-right reading is the payload's own extremes: the
- * priciest run is also the easiest to flip. The bottom-left
- * names jev-1.14.0 at its recorded twenty cents a run. */
+ * clear of every other text node in the section. */
 const WIDE_ANNOT_TR: Rect = { x: 580, y: 38, w: 258, h: 62 };
 const WIDE_ANNOT_BL: Rect = { x: 298, y: 458, w: 300, h: 72 };
 const PHONE_ANNOT_TR: Rect = { x: 138, y: 2, w: 216, h: 40 };
@@ -100,6 +111,9 @@ interface StackEntry {
   y: number;
 }
 
+/* The island's own copy is the only one: lib/charts carries
+ * the same helper's history but importing it here would pull
+ * the payload module into the client bundle. */
 function decadeTicks(domain: [number, number]): number[] {
   const out: number[] = [];
   const start = Math.ceil(Math.log10(domain[0]));
@@ -221,6 +235,28 @@ function MarkerGlyph({ d }: { d: ScatterDatum }) {
   );
 }
 
+/**
+ * The point's accessible name: the same figures the hover
+ * card shows sighted users (name, attack success, 95% CI,
+ * recorded cost, benign accuracy), so the focusable group
+ * says in words everything the card says on screen.
+ */
+function pointAccessibleName(d: ScatterDatum): string {
+  const parts = [`${d.label}, attack success ${fmtPct(d.asr)}`];
+  if (d.ci !== null) parts.push(`95% CI ${fmtCi(d.ci)}`);
+  parts.push(
+    d.rail
+      ? d.cost !== null
+        ? "recorded cost $0.00"
+        : "no recorded cost"
+      : `recorded cost ${fmtUsdExact(d.cost!)} per run${
+          d.lowerBound ? ", a lower bound" : ""
+        }`,
+  );
+  if (d.benign !== null) parts.push(`benign accuracy ${fmtPct(d.benign)}`);
+  return parts.join(", ");
+}
+
 function Marker({
   p,
   active,
@@ -243,8 +279,8 @@ function Marker({
       data-nudged={p.nudged ? "true" : undefined}
       data-active={active ? "true" : undefined}
       tabIndex={0}
-      role="button"
-      aria-label={d.title}
+      role="group"
+      aria-label={pointAccessibleName(d)}
       onMouseEnter={() => onActivate(d.runId)}
       onMouseLeave={onDeactivate}
       onFocus={() => onActivate(d.runId)}
@@ -254,6 +290,7 @@ function Marker({
       <title>{d.title}</title>
       <g className="pt-mark" transform={`translate(${r2(p.x)} ${r2(p.y)})`}>
         <MarkerGlyph d={d} />
+        <circle className="pt-focus-ring" r={13.5} aria-hidden="true" />
       </g>
       {d.lowerBound && (
         <g className="lb-tick" aria-hidden="true">
@@ -419,24 +456,47 @@ function solveWide(points: Pt[]): Solution {
           r.y < b.y + b.h + 2 &&
           b.y < r.y + r.h + 2,
       );
+    /* The scan geometry derives from the Geom, so the stack
+     * follows the chart when the chart moves: rows are one
+     * entry tall on a fixed pitch, the right edge is the
+     * label bounds' right edge, the primary band is the
+     * plot's empty lower stretch, and the fallback band is
+     * the rest of the label bounds above it. Within a row
+     * the scan sweeps right from the label bounds' left edge
+     * and takes the first seat that hits nothing. A point
+     * that finds no seat in either band fails the render
+     * loudly rather than shipping unnamed. */
+    const STACK_H = 26;
+    const STACK_PITCH = 32;
+    const lb = g.labelBounds;
+    const rightEdge = lb.x + lb.w;
+    const bands: Array<{ top: number; bottom: number }> = [
+      { top: g.plot.y1 - 164, bottom: g.plot.y1 - STACK_H },
+      { top: lb.y, bottom: g.plot.y1 - 164 - STACK_PITCH },
+    ];
     for (const p of unplaced) {
       const w =
         26 + estimateLabelWidth(p.d.label) + 10 +
         estimateLabelWidth(entryValues(p.d));
       let slot: Rect | null = null;
-      outer: for (let y = 440; y <= 578; y += 32) {
-        for (const x of [648, 316]) {
-          const r: Rect = { x, y, w, h: 26 };
-          if (x + w <= 1128 && !hits(r)) {
-            slot = r;
-            break outer;
+      outer: for (const band of bands) {
+        for (let y = band.top; y <= band.bottom; y += STACK_PITCH) {
+          for (let x = lb.x + 16; x + w <= rightEdge; x += 8) {
+            const r: Rect = { x, y, w, h: STACK_H };
+            if (!hits(r)) {
+              slot = r;
+              break outer;
+            }
           }
         }
       }
-      if (slot) {
-        taken.push(slot);
-        stack.push({ runId: p.d.runId, x: slot.x, y: slot.y });
+      if (!slot) {
+        throw new Error(
+          `scatter: no label seat for ${p.d.runId} (${p.d.label}) in either stack band; every point must be named`,
+        );
       }
+      taken.push(slot);
+      stack.push({ runId: p.d.runId, x: slot.x, y: slot.y });
     }
   }
   return { placed, stack };
@@ -629,8 +689,13 @@ export default function ScatterIsland({
   phone?: boolean;
 }) {
   const g = phone ? PHONE : WIDE;
-  const points = buildPoints(plotted, rail, domain, g);
-  const solution = phone ? solvePhone(points) : solveWide(points);
+  /* Geometry and label placement are pure in the props:
+   * memoize them so hover and focus state changes re-render
+   * without re-running the point builder or the solver. */
+  const { points, solution } = useMemo(() => {
+    const pts = buildPoints(plotted, rail, domain, g);
+    return { points: pts, solution: phone ? solvePhone(pts) : solveWide(pts) };
+  }, [plotted, rail, domain, g, phone]);
   const height = phone
     ? PHONE_LIST_TOP +
       (solution as { stackRows?: number }).stackRows! * PHONE_ENTRY_PITCH +
@@ -643,7 +708,7 @@ export default function ScatterIsland({
       <svg
         viewBox={`0 0 ${g.w} ${height}`}
         className="scatter-svg"
-        role="img"
+        role="group"
         aria-label="Scatter of recorded cost per run against attack success, every point named, with a rail for results that carry no cost"
         data-domain-lo={domain[0]}
         data-domain-hi={domain[1]}
@@ -667,28 +732,28 @@ export default function ScatterIsland({
         {phone ? (
           <g className="corner-note">
             <text x={354} y={22} textAnchor="end" className="corner-title phone">
-              Expensive and fragile
+              {CORNER_TR.title}
             </text>
             <text x={354} y={38} textAnchor="end" className="corner-sub phone">
-              The priciest run flipped most of all
+              {CORNER_TR.sub}
             </text>
           </g>
         ) : (
           <>
             <g className="corner-note">
               <text x={838} y={66} textAnchor="end" className="corner-title">
-                Expensive and fragile
+                {CORNER_TR.title}
               </text>
               <text x={838} y={90} textAnchor="end" className="corner-sub">
-                The priciest run flipped most of all
+                {CORNER_TR.sub}
               </text>
             </g>
             <g className="corner-note">
               <text x={304} y={500} className="corner-title">
-                Near-free and tough
+                {CORNER_BL.title}
               </text>
               <text x={304} y={524} className="corner-sub">
-                Jev 1.14 held at twenty cents a run
+                {CORNER_BL.sub}
               </text>
             </g>
           </>
@@ -722,10 +787,10 @@ export default function ScatterIsland({
         {phone && (
           <g className="corner-note">
             <text x={8} y={height - 26} className="corner-title phone">
-              Near-free and tough
+              {CORNER_BL.title}
             </text>
             <text x={8} y={height - 10} className="corner-sub phone">
-              Jev 1.14 held at twenty cents a run
+              {CORNER_BL.sub}
             </text>
           </g>
         )}

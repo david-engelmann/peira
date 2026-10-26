@@ -1,6 +1,7 @@
-/* Ledger design tokens, design system section 3. Provisional skin
-   for the round 8 prototype. The tokens and type rules are the
-   design system's; section composition lands at the round 10 gate. */
+/* The board's design tokens and component styles. The token
+   system is the redesign's: a four level surface ladder with
+   its shadows, a named type scale, and the ink, accent and
+   vendor family colors every component reads from :root. */
 
 @font-face {
   font-family: "Archivo";
@@ -789,24 +790,6 @@ body::before {
   stroke: var(--amber);
   stroke-width: 1.5;
 }
-.pt-badge .pt-ranked,
-.pt-badge .pt-flagged {
-  fill: var(--panel);
-  stroke-width: 1.25;
-}
-.pt-badge .pt-ranked {
-  stroke: var(--ink-1);
-}
-.pt-badge .pt-flagged {
-  stroke: var(--amber);
-}
-.pt-badge-num {
-  fill: var(--ink-1);
-  font-size: 9.5px;
-  font-weight: 650;
-  text-anchor: middle;
-  dominant-baseline: central;
-}
 .lb-tick line {
   stroke: var(--ink-2);
   stroke-width: 1.5;
@@ -829,46 +812,6 @@ body::before {
 }
 .chart-captions p:last-child {
   margin-bottom: 0;
-}
-.keyed-box {
-  margin-top: 14px;
-  border: 1px solid var(--hairline);
-  padding: 12px 16px;
-}
-.keyed-head {
-  font-size: var(--micro);
-  font-weight: 600;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--ink-2);
-  margin: 0 0 8px;
-}
-.keyed-list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-  gap: 4px 24px;
-}
-.keyed-item {
-  display: flex;
-  gap: 10px;
-  align-items: baseline;
-  font-size: 12.5px;
-  padding: 3px 0;
-  min-width: 0;
-}
-.keyed-num {
-  flex: 0 0 22px;
-  color: var(--ink-3);
-}
-.keyed-name {
-  font-weight: 550;
-  white-space: nowrap;
-}
-.keyed-meta {
-  color: var(--ink-2);
 }
 .scatter-phone {
   display: none;
@@ -1179,37 +1122,6 @@ body::before {
   .scatter-phone {
     display: block;
   }
-  .keyed-list.phone-key {
-    grid-template-columns: 1fr 1fr;
-    gap: 2px 14px;
-    margin-top: 10px;
-  }
-  .keyed-item {
-    font-size: 11.5px;
-    flex-wrap: wrap;
-    gap: 2px 8px;
-  }
-  .scatter-phone .keyed-head {
-    text-transform: none;
-    letter-spacing: 0;
-    font-size: 12.5px;
-    font-weight: 400;
-    color: var(--ink-2);
-    margin-bottom: 4px;
-  }
-  .phone-key .keyed-item {
-    display: block;
-    padding: 4px 0;
-  }
-  .phone-key .keyed-num {
-    display: inline-block;
-    width: 22px;
-  }
-  .phone-key .keyed-meta {
-    display: flex;
-    flex-wrap: wrap;
-    margin: 2px 0 0 32px;
-  }
   .heat-group-inner {
     display: block;
     max-width: calc(100vw - 52px);
@@ -1279,16 +1191,6 @@ body::before {
   color: var(--ink-1);
   text-decoration: underline;
   text-underline-offset: 3px;
-}
-
-/* Keyed phrases wrap only at phrase boundaries (round 9
-   deviation fix). */
-.keyed-meta {
-  display: inline-flex;
-  flex-wrap: wrap;
-}
-.keyed-phrase {
-  white-space: nowrap;
 }
 
 /* Malformed. Rows follow the ranking's rhythm: a name line with
@@ -2151,6 +2053,21 @@ body::before {
 .scatter-point {
   cursor: pointer;
   outline: none;
+}
+
+/* The point's focus indicator is a ring drawn on the disc
+ * itself: the group takes no rectangular outline (the global
+ * :focus-visible rule is overridden above), so the ring
+ * circle carries the state, in ink, around the mark. */
+.pt-focus-ring {
+  fill: none;
+  stroke: transparent;
+  stroke-width: 2;
+  pointer-events: none;
+}
+
+.scatter-point:focus-visible .pt-focus-ring {
+  stroke: var(--ink-1);
 }
 
 .scatter-point[data-active="true"] .pt-mark,

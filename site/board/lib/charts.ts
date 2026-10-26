@@ -236,15 +236,6 @@ export function costDomain(costs: number[]): [number, number] {
   return [10 ** loD, 10 ** hiD];
 }
 
-/** Decade ticks inside a log domain, as dollar values. */
-export function decadeTicks(domain: [number, number]): number[] {
-  const out: number[] = [];
-  const start = Math.ceil(Math.log10(domain[0]));
-  const end = Math.floor(Math.log10(domain[1]));
-  for (let d = start; d <= end; d++) out.push(10 ** d);
-  return out;
-}
-
 /* The label layout solvers live in lib/layout (pure, no
  * payload access) and are re-exported here for the server
  * components that have always imported them from this module. */

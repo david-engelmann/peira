@@ -65,6 +65,15 @@ export default function Scatter() {
           no place on the cost axis, so they sit on the rail at the left
           at their attack success. {joinNames(data.zeroNames)} recorded a cost
           of $0.00, while {joinNames(data.noneNames)} recorded no cost at all.
+          A recorded zero and no recorded cost are different facts, and
+          the rail keeps them apart in words.
+        </p>
+        <p>
+          The chart plots {fmtInt(data.plottedCount)} of the board's{" "}
+          {fmtInt(data.populationCount + data.sliceCount)} results, with{" "}
+          {fmtInt(data.railCount)} more on the rail. The{" "}
+          {fmtInt(data.sliceCount)} guardrail slices are not plotted,
+          since they ran on the abstain base and record no serving cost.
         </p>
       </div>
       <p className="chart-id">
