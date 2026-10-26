@@ -1702,7 +1702,7 @@ Cause: no Cursor User API key. The adapter reads the key from the
 `CURSOR_API_KEY` environment variable (or an explicit `api_key=`).
 Fix: create a User API key in the Cursor dashboard under User API
 Keys, then `export CURSOR_API_KEY=<your key>`. The key is passed to
-the agent CLI only through its environment; it never appears in
+the agent CLI only through its environment. It never appears in
 argv, transcripts, or artifacts.
 
 **`cursor-harness adapter pins model 'grok-4.7-high-fast'; got '...'. A measurement must name the exact Cursor variant label that answered.`**
@@ -1725,26 +1725,26 @@ degraded.
 
 **`cursor-agent exited ...: ...`** (status 502)
 Cause: the agent CLI exited nonzero. The text after the status is
-the CLI's own stderr. Fix: read the detail; an authentication
+the CLI's own stderr. Fix: read the detail. An authentication
 failure means the key was rejected, so check it in the Cursor
 dashboard.
 
-**`cursor-agent returned non-JSON output on stdout`** / **`cursor-agent envelope is not an object`** / **`cursor-agent envelope carries no text result`**
+**`cursor-agent returned non-JSON output on stdout`** / **`cursor-agent envelope is not an object`** / **`cursor-agent envelope carries no text result`** / **`cursor-agent envelope carries no usage object`**
 Cause: the CLI answered with something other than the documented
-JSON envelope, or an envelope without a text result. This means CLI
-drift. Fix: report it with the CLI version.
+JSON envelope, or an envelope without a text result or a usage
+object. This means CLI drift. Fix: report it with the CLI version.
 
 **`cursor-agent reported an error: ...`**
 Cause: the CLI returned an error envelope. The adapter maps it to
 status 429 when the text names throttling (a rate limit, too many
 requests, a quota), and 502 otherwise. Fix: for 429, wait and
-re-run; for 502, read the detail.
+re-run. For 502, read the detail.
 
-**`cursor-agent usage field ... is not a number: ...`** / **`cursor-agent usage field ... is not a whole number: ...`** / **`cursor-agent usage field ... is negative: ...`**
-Cause: the envelope's usage counters arrived malformed. A call
-without trustworthy counters cannot be recorded, so the adapter
-fails the call instead of sealing a bad figure. This means CLI
-drift. Fix: report it with the CLI version.
+**`cursor-agent usage field ... is not a number: ...`** / **`cursor-agent usage field ... is not a whole number: ...`** / **`cursor-agent usage field ... is negative: ...`** / **`cursor-agent usage field ... is missing`** / **`cursor-agent usage field ... is implausibly large: ...`**
+Cause: the envelope's usage counters arrived malformed, missing,
+or implausible. A call without trustworthy counters cannot be
+recorded, so the adapter fails the call instead of sealing a bad
+figure. This means CLI drift. Fix: report it with the CLI version.
 
 **`jev built ... question ...` (e.g. `jev built a malformed question 'x': not an object`)**
 Cause: a question failed the adapter's client-side shape check

@@ -97,6 +97,7 @@ cerno = "peira.adapters.cerno:CernoAdapter"
 von = "peira.adapters.von:VonAdapter"
 gliner-decide = "peira.adapters.gliner_decide:GlinerDecideAdapter"
 decider = "peira.adapters.decider:DeciderAdapter"
+cursor-harness = "peira.adapters.cursor_harness:CursorHarnessAdapter"
 
 [project.urls]
 Homepage = "https://github.com/david-engelmann/peira"

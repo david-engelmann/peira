@@ -28,7 +28,9 @@ Wire facts, verified live 2026-10-24 against the account's key:
   ``request_id``.
 - One trivial prompt ("Reply with exactly one word: ready") used
   13,366 input tokens: the harness overhead is large, real, and
-  recorded per call from the envelope, never estimated.
+  recorded per call from the envelope, never estimated. A call
+  whose usage object or primary counters cannot be read fails
+  closed as a provider error rather than recording zeros.
 - ``--mode ask`` keeps the agent read-only: it answers the prompt
   and cannot edit files or run tools against the workspace. The
   workspace is an empty directory created for the purpose.
@@ -88,7 +90,17 @@ def _default_agent_bin() -> str:
     return str(Path.home() / ".local" / "bin" / "agent")
 
 
-def _usage_tokens(usage: dict[str, Any], field: str) -> int:
+# No real call processes anywhere near a trillion tokens. The bound
+# exists so a corrupt counter is refused here, by exact integer
+# comparison, instead of reaching a downstream float conversion,
+# where a several-hundred-digit int raises OverflowError and escapes
+# as an unclassified error (the sibling adapters' #494 lesson).
+_MAX_USAGE_TOKENS = 10**12
+
+
+def _usage_tokens(
+    usage: dict[str, Any], field: str, *, required: bool = False,
+) -> int:
     """One envelope usage field as a non-negative int.
 
     The envelope is raw subprocess JSON, unvalidated by any SDK, so
@@ -96,9 +108,18 @@ def _usage_tokens(usage: dict[str, Any], field: str) -> int:
     are provider-side corruption: fail the call here with a
     ProviderError instead of letting a bad figure reach the sealed
     record, where the artifact contract would reject the whole run.
+
+    A required field that is absent fails the same way: a missing
+    counter is unknown usage, and recording an unknown as zero
+    would fabricate a free call (the repo's unavailable-rather-
+    than-zero rule). Optional fields are the ones the live-verified
+    envelope does not always carry.
     """
     value = usage.get(field)
     if value is None:
+        if required:
+            raise ProviderError(
+                f"cursor-agent usage field {field} is missing")
         return 0
     if isinstance(value, bool) or not isinstance(value, (int, float)):
         raise ProviderError(
@@ -113,6 +134,10 @@ def _usage_tokens(usage: dict[str, Any], field: str) -> int:
     if value < 0:
         raise ProviderError(
             f"cursor-agent usage field {field} is negative: {value}")
+    if value > _MAX_USAGE_TOKENS:
+        raise ProviderError(
+            f"cursor-agent usage field {field} is implausibly "
+            f"large: {value}")
     return value
 
 
@@ -250,6 +275,8 @@ class CursorHarnessAdapter(_StructuredLLMBase):
         if repair:
             prompt += "\nReturn ONLY the JSON object."
         envelope = self._runner_fn(prompt)
+        if not isinstance(envelope, dict):
+            raise ProviderError("cursor-agent envelope is not an object")
         if envelope.get("is_error"):
             result_text = str(envelope.get("result") or "")
             lowered = result_text.lower()
@@ -260,13 +287,24 @@ class CursorHarnessAdapter(_StructuredLLMBase):
                 f"cursor-agent reported an error: {result_text[:300]}",
                 status_code=status,
             )
-        usage = envelope.get("usage") or {}
+        usage = envelope.get("usage")
+        if not isinstance(usage, dict):
+            # Usage accounting fails closed, as on the sibling
+            # decision wires: a call whose counters cannot be read
+            # cannot be recorded, and defaulting them to zero would
+            # seal fabricated usage into the run.
+            raise ProviderError(
+                "cursor-agent envelope carries no usage object")
         text = envelope.get("result")
         if not isinstance(text, str):
             raise ProviderError(
                 "cursor-agent envelope carries no text result")
-        fresh_in = _usage_tokens(usage, "inputTokens")
-        cache_read = _usage_tokens(usage, "cacheReadTokens")
+        # The live-verified envelope always carries these three;
+        # cacheWriteTokens is the one field it does not promise, so
+        # that one alone may be absent and read as zero.
+        fresh_in = _usage_tokens(usage, "inputTokens", required=True)
+        cache_read = _usage_tokens(
+            usage, "cacheReadTokens", required=True)
         cache_write = _usage_tokens(usage, "cacheWriteTokens")
         return _RawResult(
             text=text,
@@ -283,7 +321,8 @@ class CursorHarnessAdapter(_StructuredLLMBase):
             # _usage_tokens, so the subset relation holds by
             # construction.
             tokens_in=fresh_in + cache_read + cache_write,
-            tokens_out=_usage_tokens(usage, "outputTokens"),
+            tokens_out=_usage_tokens(
+                usage, "outputTokens", required=True),
             logprob_tokens=None,
             request_shape={
                 "endpoint": "cursor-agent-cli",

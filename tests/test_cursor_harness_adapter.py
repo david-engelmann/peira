@@ -206,6 +206,65 @@ class TestCursorHarnessCalls(unittest.TestCase):
         with self.assertRaises(ProviderError):
             adapter.decide(CASE, "choice", _ctx())
 
+    def test_usage_not_an_object_is_a_provider_error(self):
+        # A list or string usage must fail as a ProviderError, not
+        # escape as an AttributeError from .get on the wrong type.
+        for bad in ([1, 2], "lots", 7):
+            env = _envelope()
+            env["usage"] = bad
+            adapter = _adapter(runner_fn=lambda prompt, e=env: e)
+            with self.assertRaises(ProviderError):
+                adapter.decide(CASE, "choice", _ctx())
+
+    def test_missing_usage_object_is_a_provider_error(self):
+        # No usage object at all: the call cannot be accounted, so
+        # it must fail rather than seal zero usage.
+        env = _envelope()
+        del env["usage"]
+        adapter = _adapter(runner_fn=lambda prompt: env)
+        with self.assertRaises(ProviderError):
+            adapter.decide(CASE, "choice", _ctx())
+
+    def test_missing_primary_counter_is_a_provider_error(self):
+        for field in ("inputTokens", "outputTokens", "cacheReadTokens"):
+            env = _envelope()
+            del env["usage"][field]
+            adapter = _adapter(runner_fn=lambda prompt, e=env: e)
+            with self.assertRaises(ProviderError):
+                adapter.decide(CASE, "choice", _ctx())
+
+    def test_missing_cache_write_counter_reads_as_zero(self):
+        # The live-verified envelope does not promise this field.
+        env = _envelope()
+        del env["usage"]["cacheWriteTokens"]
+        adapter = _adapter(runner_fn=lambda prompt: env)
+        out = adapter.decide(CASE, "choice", _ctx())
+        self.assertEqual(out.usage.tokens_in, 13366 + 6016)
+
+    def test_huge_usage_counter_is_a_provider_error(self):
+        # A several-hundred-digit counter must fail closed here,
+        # not overflow a downstream float conversion.
+        env = _envelope()
+        env["usage"]["inputTokens"] = 10**400
+        adapter = _adapter(runner_fn=lambda prompt: env)
+        with self.assertRaises(ProviderError):
+            adapter.decide(CASE, "choice", _ctx())
+
+    def test_non_object_envelope_is_a_provider_error(self):
+        adapter = _adapter(runner_fn=lambda prompt: ["not", "a", "dict"])
+        with self.assertRaises(ProviderError):
+            adapter.decide(CASE, "choice", _ctx())
+
+    def test_entry_point_is_registered(self):
+        # The registry id must equal the adapter name, or
+        # `peira run --adapter cursor-harness` cannot resolve it.
+        pyproject = (
+            Path(__file__).resolve().parent.parent / "pyproject.toml")
+        self.assertIn(
+            'cursor-harness = '
+            '"peira.adapters.cursor_harness:CursorHarnessAdapter"',
+            pyproject.read_text())
+
     def test_error_text_with_rate_substring_is_not_a_429(self):
         # "generated" and "accurate" contain "rate"; a phrase match
         # must not misclassify an ordinary agent error as throttling.

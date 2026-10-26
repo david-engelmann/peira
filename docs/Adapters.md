@@ -2199,7 +2199,7 @@ One pinned model: `grok-4.7-high-fast`, Cursor's high-reasoning
 fast-serving variant of xAI's grok-4.7, verified live 2026-10-24.
 The run draws on the account's Cursor plan (included usage), so
 pricing is $0.0 by the self-hosted convention in
-`python/peira/data/pricing.json`; the real consumption is recorded
+`python/peira/data/pricing.json`. The real consumption is recorded
 per call from the CLI envelope (input, output, and cache-read
 tokens). The overhead is large: one probe call used 13,366 input
 tokens for a one-word answer. The prompt sent is the structured
