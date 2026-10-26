@@ -397,6 +397,12 @@
       "usd_per_1m_out": 2.25,
       "confidence": "official"
     },
+    "grok-4.7-high-fast": {
+      "_note": "Cursor harness variant label, not a vendor API id. Measured through the account's Cursor plan (included usage) via the Cursor agent CLI, so the per-token USD rate is 0 by the self-hosted convention; the real consumption is recorded per call in the run's usage (input, output and cache-read tokens from the CLI envelope). One probe call on 2026-10-24 used 13,366 input tokens for a one-word answer, the harness overhead. Added 2026-10-24 with the CursorHarnessAdapter.",
+      "usd_per_1m_in": 0.0,
+      "usd_per_1m_out": 0.0,
+      "confidence": "official"
+    },
     "x-ai/grok-4.3": {
       "_note": "OpenRouter gateway rate, verified live 2026-10-03 via openrouter.ai/api/v1/models ($1.25/$2.5 per 1M). Part of the cheap-model pilot set (OPENROUTER_CHEAP_MODELS).",
       "usd_per_1m_in": 1.25,

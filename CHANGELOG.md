@@ -7,6 +7,22 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
 
 ## [Unreleased]
 
+### Cursor harness adapter measures grok-4.7 through Cursor's agent
+
+- `CursorHarnessAdapter` (`cursor-harness`) measures a model
+  through Cursor's agent CLI (headless print mode, `--mode ask`),
+  with the account's Cursor User API key passed to the subprocess
+  only through its environment. It is a harness measurement, not a
+  bare-wire one, and is labeled as such everywhere: the pinned
+  model id is Cursor's variant label `grok-4.7-high-fast` (never
+  xAI's `grok-4.7`), sampling is declared provider-incapable (the
+  harness exposes no temperature or seed), and per-call token
+  usage is recorded from the CLI envelope. Verified live
+  2026-10-24 (CLI 2026.10.22-27dcf5f): a probe call returned its
+  JSON envelope with usage in 7.3 s. Pricing $0.0 by the
+  self-hosted convention (the run draws on Cursor plan included
+  usage).
+
 ### Mercury chat models gain a direct Inception wire, effort pinned
 
 - `MercuryAdapter` (`mercury-structured`) measures Inception's
@@ -94,7 +110,6 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
   response's Retry-After to the runner, matching the Jev
   adapter. A non-finite Retry-After value now reads as no stated
   wait in every decision adapter instead of an infinite delay.
-
 ### Fleet pins and adapter landings for the full-run windows
 
 - Cerno gains its two sibling pins: `Cerno9BAdapter` measures

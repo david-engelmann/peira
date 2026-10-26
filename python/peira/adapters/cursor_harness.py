@@ -1,0 +1,264 @@
+"""Cursor harness adapter: models measured through Cursor's agent CLI.
+
+This adapter measures a model the way a Cursor user actually reaches
+it: through Cursor's own agent (the ``agent`` CLI in headless print
+mode, ``--mode ask``), with Cursor's system prompt, Cursor's model
+configuration, and Cursor's serving choices in the loop. It is NOT a
+bare-wire measurement of the underlying model, and it does not claim
+to be one: the run's provenance names the harness, the model id is
+Cursor's own variant label (``grok-4.7-high-fast``, not xAI's
+``grok-4.7``), and the sampling record is ``provider-incapable``
+because the harness exposes no temperature or seed control.
+
+Why it exists: some models are reachable through a Cursor plan when
+no direct provider route is available (no credits on the vendor
+account, no direct API). A harness measurement, honestly labeled,
+says something true and useful about the product surface users
+actually touch. It must never be pooled silently with bare-wire
+measurements of the same underlying model: the cache namespace, the
+adapter name, and the model id all carry the harness identity.
+
+Wire facts, verified live 2026-10-24 against the account's key:
+
+- The CLI is Cursor's official ``agent`` binary (version
+  2026.10.22-27dcf5f), installed from cursor.com. Print mode with
+  ``--output-format json`` returns one JSON envelope: ``result``
+  (the agent's final text), ``usage`` with ``inputTokens``,
+  ``outputTokens`` and ``cacheReadTokens``, plus ``session_id`` and
+  ``request_id``.
+- One trivial prompt ("Reply with exactly one word: ready") used
+  13,366 input tokens: the harness overhead is large, real, and
+  recorded per call from the envelope, never estimated.
+- ``--mode ask`` keeps the agent read-only: it answers the prompt
+  and cannot edit files or run tools against the workspace. The
+  workspace is an empty directory created for the purpose.
+
+The prompt sent is the structured pipeline's own composed prompt
+(case text plus the decision schema instructions), byte-identical to
+what the bare-wire structured adapters send. The agent's reply text
+goes through the same strict JSON parse and schema validation as
+every structured adapter: prose around the JSON, a refusal, or an
+agent error surface exactly as they do on other wires (parse
+failure, refusal, provider error), never as silent reinterpretation.
+
+Sampling: ``_supports_temperature`` and ``_supports_seed`` are False.
+The harness accepts neither parameter, so the sealed record says
+``provider-incapable`` with temperature and seed meaningfully absent,
+per the sampling contract (R-04). ``max_tokens`` is declared at the
+structured pipeline's 512 for comparability; the harness cannot
+enforce it, and the runner's per-call token accounting flags any
+call whose reported output exceeds it, as on any wire.
+
+Auth: the key is a Cursor User API key (cursor.com dashboard),
+passed to the CLI only through the ``CURSOR_API_KEY`` environment
+variable of the subprocess. It never appears in argv, in the
+transcript, or in any file this adapter writes.
+"""
+
+from __future__ import annotations
+
+import json
+import os
+import subprocess
+import tempfile
+from pathlib import Path
+from typing import Any, Callable
+
+from ..api_pins import PINNED_API_MODELS
+from .base import ProviderError
+from .llm import _RawResult, _StructuredLLMBase
+
+API_KEY_ENV = "CURSOR_API_KEY"
+
+# The one pinned model this adapter was built and verified for. The
+# label is Cursor's variant id, recorded verbatim: a measurement must
+# name the exact surface that answered.
+SUPPORTED_MODEL_IDS = frozenset({"grok-4.7-high-fast"})
+
+_DEFAULT_TIMEOUT_S = 300.0
+
+
+def _default_agent_bin() -> str:
+    override = os.environ.get("CURSOR_AGENT_PATH", "")
+    if override:
+        return override
+    return str(Path.home() / ".local" / "bin" / "agent")
+
+
+def _require_api_key(explicit: str | None) -> str:
+    key = explicit or os.environ.get(API_KEY_ENV, "")
+    if not key:
+        raise ValueError(
+            "cursor-harness needs a Cursor User API key: pass "
+            "api_key= or set "
+            f"{API_KEY_ENV}=<your key>. Keys are created in the "
+            "Cursor dashboard under User API Keys."
+        )
+    return key
+
+
+class CursorHarnessAdapter(_StructuredLLMBase):
+    """A model measured through Cursor's agent harness (CLI ask mode).
+
+    See the module docstring for what this measurement is and is not.
+    The structured pipeline (prompt composition, JSON parse, schema
+    validation, outputs) is inherited unchanged; only the transport
+    differs: one ``agent`` subprocess per call.
+    """
+
+    name = "cursor-harness"
+    _extra = "cursor-agent CLI (no pip extra)"
+    _env_vars = (API_KEY_ENV,)
+    _provider_label = "Cursor"
+    _supports_seed = False
+    _supports_temperature = False
+
+    def __init__(
+        self,
+        model: str = PINNED_API_MODELS["cursor-harness"],
+        temperature: float = 0.0,
+        seed: int | None = 0,
+        max_tokens: int = 512,
+        api_key: str | None = None,
+        timeout_s: float = _DEFAULT_TIMEOUT_S,
+        agent_bin: str | None = None,
+        workspace: str | None = None,
+        runner_fn: Callable[..., dict[str, Any]] | None = None,
+    ) -> None:
+        if model not in SUPPORTED_MODEL_IDS:
+            pins = " or ".join(repr(m) for m in sorted(SUPPORTED_MODEL_IDS))
+            raise ValueError(
+                f"cursor-harness adapter pins model {pins}; "
+                f"got {model!r}. A measurement must name the exact "
+                "Cursor variant label that answered."
+            )
+        # Temperature and seed are accepted for constructor-shape
+        # compatibility with the structured pipeline and are NOT
+        # sent anywhere: the class flags declare the harness
+        # incapable of both, so the sealed sampling record reports
+        # them as meaningfully absent (provider-incapable).
+        _StructuredLLMBase.__init__(
+            self, model, temperature, seed, max_tokens, api_key
+        )
+        self._api_key = _require_api_key(api_key)
+        self.timeout_s = timeout_s
+        self._agent_bin = agent_bin or _default_agent_bin()
+        if workspace is None:
+            workspace = str(
+                Path(tempfile.gettempdir()) / "peira-cursor-harness-ws"
+            )
+            Path(workspace).mkdir(parents=True, exist_ok=True)
+        self._workspace = workspace
+        # Injectable transport for tests: fn(prompt) -> parsed envelope.
+        self._runner_fn = runner_fn or self._subprocess_runner
+
+    # -- transport ------------------------------------------------------
+
+    def _subprocess_runner(self, prompt: str) -> dict[str, Any]:
+        env = dict(os.environ)
+        env[API_KEY_ENV] = self._api_key
+        cmd = [
+            self._agent_bin,
+            "-p", prompt,
+            "--model", self._model,
+            "--mode", "ask",
+            "--output-format", "json",
+            "--trust",
+            "--workspace", self._workspace,
+        ]
+        try:
+            proc = subprocess.run(
+                cmd, capture_output=True, text=True,
+                timeout=self.timeout_s, env=env,
+            )
+        except FileNotFoundError as exc:
+            raise ProviderError(
+                f"cursor-agent binary not found at {self._agent_bin}: "
+                "install the Cursor CLI from cursor.com"
+            ) from exc
+        except subprocess.TimeoutExpired as exc:
+            raise ProviderError(
+                f"cursor-agent call timed out after {self.timeout_s}s",
+                status_code=408,
+            ) from exc
+        if proc.returncode != 0:
+            detail = (proc.stderr or proc.stdout or "").strip()[:300]
+            raise ProviderError(
+                f"cursor-agent exited {proc.returncode}: {detail}",
+                status_code=502,
+            )
+        try:
+            envelope = json.loads(proc.stdout)
+        except json.JSONDecodeError as exc:
+            raise ProviderError(
+                "cursor-agent returned non-JSON output on stdout"
+            ) from exc
+        if not isinstance(envelope, dict):
+            raise ProviderError("cursor-agent envelope is not an object")
+        return envelope
+
+    # -- structured pipeline hook ----------------------------------------
+
+    def _request(
+        self, user_text: str, schema: dict[str, Any], repair: bool,
+        prior_text: str | None = None,
+    ) -> _RawResult:
+        # The CLI has no schema channel: on the bare wires the output
+        # contract travels in response_format or a tool definition,
+        # so here it is rendered into the prompt text itself, from
+        # the same per-call schema the pipeline built. The case text
+        # is untouched; only the contract every wire conveys is made
+        # explicit in words.
+        prompt = (
+            user_text
+            + "\n\nRespond with a single JSON object matching this "
+              "schema, and nothing else:\n"
+            + json.dumps(schema)
+        )
+        if repair:
+            prompt += "\nReturn ONLY the JSON object."
+        envelope = self._runner_fn(prompt)
+        if envelope.get("is_error"):
+            result_text = str(envelope.get("result") or "")
+            lowered = result_text.lower()
+            status = 429 if ("rate" in lowered or "limit" in lowered) else 502
+            raise ProviderError(
+                f"cursor-agent reported an error: {result_text[:300]}",
+                status_code=status,
+            )
+        usage = envelope.get("usage") or {}
+        text = envelope.get("result")
+        if not isinstance(text, str):
+            raise ProviderError(
+                "cursor-agent envelope carries no text result")
+        return _RawResult(
+            text=text,
+            stop_reason=str(envelope.get("subtype") or "success"),
+            parsed=None,
+            # Cursor reports its input components disjointly: one
+            # canary call came back with 35,072 cache-read tokens
+            # against 5,167 input tokens, which no subset reading
+            # survives. tokens_in therefore records the TOTAL input
+            # processed (fresh + cache read + cache write), the same
+            # convention as the OpenAI wire, with the cache-read part
+            # kept in cached_tokens_in where it is a true subset.
+            tokens_in=(
+                int(usage.get("inputTokens") or 0)
+                + int(usage.get("cacheReadTokens") or 0)
+                + int(usage.get("cacheWriteTokens") or 0)
+            ),
+            tokens_out=int(usage.get("outputTokens") or 0),
+            logprob_tokens=None,
+            request_shape={
+                "endpoint": "cursor-agent-cli",
+                "mode": "ask",
+                "model": self._model,
+                "harness": "Cursor agent CLI, headless print mode",
+            },
+            response_shape={
+                "session_id": envelope.get("session_id"),
+                "request_id": envelope.get("request_id"),
+                "duration_api_ms": envelope.get("duration_api_ms"),
+            },
+            cached_tokens_in=int(usage.get("cacheReadTokens") or 0) or None,
+        )
