@@ -30,6 +30,7 @@ import {
   versionForProvenance,
 } from "@/lib/cards";
 import VendorLogo from "./VendorLogo";
+import { vendorColorOf } from "@/lib/vendorColors";
 
 /**
  * The full detail card for one result, design system section
@@ -266,7 +267,10 @@ export default function ModelCard({
               <span className="spark-track">
                 <span
                   className={`spark-fill${isWorst ? " worst" : ""}`}
-                  style={{ width: `${Math.min(100, fam.asr * 100)}%` }}
+                  style={{
+                    width: `${Math.min(100, fam.asr * 100)}%`,
+                    background: isWorst ? undefined : vendorColorOf(row),
+                  }}
                 />
               </span>
               <span className={`spark-value num${isWorst ? " worst" : ""}`}>
@@ -276,6 +280,10 @@ export default function ModelCard({
           );
         })}
       </div>
+
+      <p className="spark-legend">
+        Bars carry the model's color. The weakest family is red.
+      </p>
 
       <p className="card-subhead">Flip rate by severity</p>
       <div className="sev-grid">

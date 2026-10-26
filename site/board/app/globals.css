@@ -33,6 +33,24 @@
   --amber: #e8a33d;
   --red: #ff6a3d;
 
+  /* Redesign surface ladder. Four levels of elevation, each
+     with its own shadow, so panels read as stacked material
+     rather than flat black. Ground is the page, panel the
+     resting card, raised the chart well, lift the floating
+     card and the nav. */
+  --lift: #1a222c;
+  --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.35), 0 4px 14px rgba(0, 0, 0, 0.22);
+  --shadow-2: 0 2px 6px rgba(0, 0, 0, 0.4), 0 14px 34px rgba(0, 0, 0, 0.3);
+  --shadow-3: 0 8px 18px rgba(0, 0, 0, 0.5), 0 28px 64px rgba(0, 0, 0, 0.42);
+
+  /* Type scale. Display for the finding and the scatter's
+     corner readings, heading for section titles, body for
+     prose, caption for furniture and microcopy. */
+  --t-display: clamp(32px, 4.6vw, 52px);
+  --t-heading: clamp(26px, 3vw, 34px);
+  --t-body: 14.5px;
+  --t-caption: 12px;
+
   --font-data: "Archivo", system-ui, sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, monospace;
 
@@ -297,7 +315,7 @@ body::before {
   top: 6px;
   bottom: 6px;
   width: 0;
-  border-left: 1px solid var(--ink-3);
+  border-left: 2px solid var(--ink-1);
 }
 
 .rail-rule::before,
@@ -305,8 +323,8 @@ body::before {
   content: "";
   position: absolute;
   left: 0;
-  width: 7px;
-  border-top: 1px solid var(--ink-3);
+  width: 9px;
+  border-top: 2px solid var(--ink-1);
 }
 
 .rail-rule::before {
@@ -326,7 +344,8 @@ body::before {
   font-weight: 600;
   letter-spacing: 0.09em;
   text-transform: uppercase;
-  color: var(--ink-2);
+  color: var(--ink-1);
+  font-weight: 700;
   white-space: nowrap;
 }
 
@@ -350,7 +369,7 @@ body::before {
     "chart chart";
   column-gap: 28px;
   align-items: center;
-  padding: 12px 14px 14px;
+  padding: 9px 14px 10px;
   margin: 0 -14px;
   border-bottom: 1px solid color-mix(in srgb, var(--hairline) 45%, transparent);
   border-radius: 14px;
@@ -392,9 +411,9 @@ body::before {
   justify-content: center;
   flex: 0 0 auto;
   border-radius: 8px;
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid color-mix(in srgb, var(--hairline) 70%, transparent);
-  color: var(--ink-1);
+  background: color-mix(in srgb, var(--vc, #8b98a5) 16%, transparent);
+  border: 1px solid color-mix(in srgb, var(--vc, #8b98a5) 42%, transparent);
+  color: var(--vc, var(--ink-1));
 }
 
 .vendor-chip.row {
@@ -406,6 +425,16 @@ body::before {
   width: 44px;
   height: 44px;
   border-radius: 11px;
+}
+
+.vendor-chip.mini {
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+}
+
+.vendor-chip.mini .vendor-letter {
+  font-size: 10px;
 }
 
 .vendor-chip svg {
@@ -712,7 +741,7 @@ body::before {
    Ledger tokens. */
 
 :root {
-  --heat-name-w: 240px;
+  --heat-name-w: 268px;
 }
 
 /* Scatter */
@@ -863,7 +892,7 @@ body::before {
 .heat-grid {
   display: grid;
   gap: 2px;
-  min-width: 1128px;
+  min-width: 1160px;
 }
 .heat-corner {
   position: sticky;
@@ -1223,6 +1252,9 @@ body::before {
   }
   .cal-grid {
     grid-template-columns: repeat(2, 1fr);
+  }
+  .cal-name {
+    font-size: 12px;
   }
   /* Phone edges for the two-across grid: the desktop rules
    * would leave x ticks on the third and fourth panels from
@@ -1792,16 +1824,16 @@ body::before {
 
 .section-nav {
   position: sticky;
-  top: 12px;
+  top: 0;
   z-index: 40;
-  background: rgba(10, 13, 17, 0.72);
+  background: rgba(10, 13, 17, 0.86);
   -webkit-backdrop-filter: blur(16px);
   backdrop-filter: blur(16px);
-  border: 1px solid var(--edge);
-  border-radius: 18px;
-  margin: 28px 0 0;
-  padding: 5px;
-  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.45);
+  border-top: 1px solid var(--edge);
+  border-bottom: 1px solid var(--edge);
+  margin: 28px -24px 0;
+  padding: 6px 24px;
+  box-shadow: var(--shadow-2);
 }
 
 .section-nav-inner {
@@ -1848,9 +1880,9 @@ body::before {
    round 2026-10-23). */
 @media (max-width: 760px) {
   .section-nav {
-    margin: 16px 0 0;
-    border-radius: 16px;
-    top: 8px;
+    margin: 16px -16px 0;
+    padding: 6px 16px;
+    top: 0;
   }
 }
 
@@ -2096,4 +2128,170 @@ body::before {
     grid-template-columns: 118px 1fr;
     gap: 8px;
   }
+}
+
+/* Redesign layer. The scatter well, its corner readings, the
+   hover and focus card, and the motion rules. */
+
+.scatter-wrap {
+  position: relative;
+  margin-top: 20px;
+  background: linear-gradient(180deg, var(--raised), var(--panel));
+  border: 1px solid var(--edge);
+  border-radius: 18px;
+  box-shadow: var(--shadow-1);
+  padding: 10px 14px 4px;
+}
+
+.scatter-wrap .scatter-svg {
+  margin-top: 0;
+}
+
+.pt-mark {
+  transform-box: fill-box;
+  transform-origin: center;
+  transition: transform 160ms ease;
+}
+
+.scatter-point {
+  cursor: pointer;
+  outline: none;
+}
+
+.scatter-point[data-active="true"] .pt-mark,
+.scatter-point:focus-visible .pt-mark {
+  transform: scale(1.32);
+}
+
+.pt-mono {
+  font-size: 10px;
+  font-weight: 700;
+  text-anchor: middle;
+  dominant-baseline: central;
+}
+
+.scatter-label.phone {
+  font-size: 10px;
+}
+
+.scatter-label[data-active="true"] {
+  fill: var(--ink-1);
+  font-weight: 700;
+}
+
+.corner-title {
+  fill: var(--ink-1);
+  font-size: 21px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.corner-title.phone {
+  font-size: 13px;
+}
+
+.corner-sub {
+  fill: var(--ink-2);
+  font-size: 13px;
+  font-weight: 550;
+}
+
+.corner-sub.phone {
+  font-size: 9.5px;
+}
+
+.scatter-card {
+  position: absolute;
+  z-index: 5;
+  width: 228px;
+  transform: translate(-50%, calc(-100% - 16px));
+  background: var(--lift);
+  border: 1px solid var(--edge);
+  border-radius: 12px;
+  box-shadow: var(--shadow-3);
+  padding: 12px 14px;
+  pointer-events: none;
+}
+
+.scatter-card.below {
+  transform: translate(-50%, 18px);
+}
+
+.scatter-card.align-l {
+  transform: translate(-10%, calc(-100% - 16px));
+}
+
+.scatter-card.align-l.below {
+  transform: translate(-10%, 18px);
+}
+
+.scatter-card.align-r {
+  transform: translate(-90%, calc(-100% - 16px));
+}
+
+.scatter-card.align-r.below {
+  transform: translate(-90%, 18px);
+}
+
+.sc-name {
+  font-size: 14.5px;
+  font-weight: 650;
+  margin: 0 0 8px;
+}
+
+.sc-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.sc-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 12.5px;
+}
+
+.sc-k {
+  color: var(--ink-2);
+}
+
+.sc-v {
+  color: var(--ink-1);
+  font-weight: 600;
+  text-align: right;
+}
+
+.cal-panel {
+  background: linear-gradient(180deg, var(--raised), var(--panel));
+  box-shadow: var(--shadow-1);
+  border-radius: 10px;
+}
+
+.spark-legend {
+  font-size: 12px;
+  color: var(--ink-2);
+  margin: 8px 0 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+.cal-head {
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr);
+  column-gap: 8px;
+  align-items: start;
+}
+
+.cal-head .cal-meta {
+  grid-column: 2;
 }

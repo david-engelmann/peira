@@ -279,6 +279,7 @@ export default function Compare({ data }: { data: CompareData }) {
                             className="cmp-fam-fill"
                             style={{
                               width: `${Math.max(v * 100, v > 0 ? 0.8 : 0)}%`,
+                              background: row.vendorColor,
                             }}
                           />
                         </span>

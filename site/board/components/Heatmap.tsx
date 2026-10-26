@@ -10,6 +10,7 @@ import {
   type RankedRow,
 } from "@/lib/payload";
 import { fmtInt, fmtPct, fmtCi } from "@/lib/format";
+import VendorLogo from "./VendorLogo";
 import {
   familiesOf,
   familyOrder,
@@ -62,6 +63,7 @@ function HeatRow({
     <>
       <div className="heat-name" data-run-id={row.run_id}>
         {flagged && <span className="flag-tag">Flagged</span>}
+        <VendorLogo row={row} size="mini" />
         <span className="heat-name-text">{label}</span>
       </div>
       {order.map((key) => {

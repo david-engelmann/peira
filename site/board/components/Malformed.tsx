@@ -8,6 +8,7 @@ import {
   type BoardRow,
 } from "@/lib/payload";
 import { fmtInt, fmtPct } from "@/lib/format";
+import { vendorColorOf } from "@/lib/vendorColors";
 
 /**
  * Malformed rates and the admission rule, design system
@@ -129,7 +130,11 @@ export default function Malformed() {
               <div className="mal-track">
                 <div
                   className={`mal-fill${flagged ? " flagged" : ""}${over ? " over" : ""}`}
-                  style={{ width: `${malPct(rate)}%` }}
+                  style={{
+                    width: `${malPct(rate)}%`,
+                    background:
+                      flagged || over ? undefined : vendorColorOf(row),
+                  }}
                 />
               </div>
             </div>

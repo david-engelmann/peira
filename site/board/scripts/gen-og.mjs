@@ -119,41 +119,190 @@ const results = payload.ranked.length + payload.unranked.length;
 const rankedModels = new Set(payload.ranked.map((r) => r.display_name)).size;
 const flaggedModels = new Set(payload.unranked.map((r) => r.display_name)).size;
 
-const rowsHtml = top
-  .map((r) => {
-    const pct = (r.asr_conditional / 0.3) * 100;
-    return `<div class="row">
-      <span class="name">${shortName(r)}</span>
-      <span class="track"><span class="bar" style="width:${pct.toFixed(2)}%"></span></span>
-      <span class="val">${fmtPct(r.asr_conditional)}</span>
-    </div>`;
-  })
+/* The share image is the board's money shot: the annotated
+ * cost scatter itself, at a size where it still reads in a
+ * feed thumbnail. Every full suite point is a disc in its
+ * maker's family color carrying the maker's mark, flagged
+ * results keep the amber ring, the rail holds the results
+ * with no recorded API cost, and the two corner readings are
+ * set in display type. The family table below mirrors
+ * lib/vendorColors.ts and the mark paths are read out of
+ * lib/logoPaths.ts, so the image cannot drift from the board.
+ * The headline is a fact of this payload: the priciest run
+ * (claude-fable-5-1, $130.31) also carries the highest attack
+ * success on the board. */
+const FAMILIES = [
+  [/gpt-|openai/, "#d7e0e8", "#0b0e12", "openai"],
+  [/claude|anthropic/, "#d97757", "#f4f7fa", "anthropic"],
+  [/gemini|google/, "#8ab8ff", "#0b0e12", "googlegemini"],
+  [/llama|prompt-guard|meta/, "#4a7dff", "#f4f7fa", "meta"],
+  [/granite|ibm/, "#4fb3e3", "#0b0e12", "ibm"],
+  [/mistral|shieldstral/, "#ff8a3d", "#0b0e12", "mistralai"],
+  [/clef|cloudflare/, "#f0b429", "#0b0e12", "cloudflare"],
+  [/deepseek/, "#6e7bff", "#f4f7fa", "deepseek"],
+  [/qwen/, "#a78bfa", "#0b0e12", "qwen"],
+  [/pplx|perplexity/, "#2ec4b6", "#0b0e12", "perplexity"],
+  [/minimax/, "#f24e7e", "#f4f7fa", "minimax"],
+  [/kimi|moonshot/, "#9fb4c7", "#0b0e12", "moonshotai"],
+  [/microsoft/, "#7bc950", "#0b0e12", "microsoft"],
+  [/cursor/, "#b8bdc7", "#0b0e12", "cursor"],
+  [/grok|xai/, "#ffffff", "#0b0e12", null],
+  [/glm|zai/, "#6e8cff", "#0b0e12", null],
+  [/jev/, "#a3d635", "#0b0e12", null],
+  [/kev/, "#e879f9", "#0b0e12", null],
+  [/laya/, "#5eead4", "#0b0e12", null],
+  [/decider-0|mapika/, "#e5c15c", "#0b0e12", null],
+  [/strands/, "#2aa198", "#0b0e12", null],
+  [/celeris/, "#7dd3fc", "#0b0e12", null],
+  [/mercury|inception/, "#fca5a5", "#0b0e12", null],
+  [/solar|upstage/, "#ffe066", "#0b0e12", null],
+  [/ling|inclusionai/, "#c4b5fd", "#0b0e12", null],
+  [/protectai|deberta/, "#f0abfc", "#0b0e12", null],
+];
+const familyOf = (r) => {
+  const hay = `${r.display_name} ${r.adapter_name} ${r.wire}`.toLowerCase();
+  for (const f of FAMILIES) if (f[0].test(hay)) return f;
+  return [null, "#8b98a5", "#0b0e12", null];
+};
+const logoSrc = readFileSync(path.join(root, "lib", "logoPaths.ts"), "utf8");
+const LOGO_PATHS = {};
+for (const m of logoSrc.matchAll(/(\w+):\s*\n?\s*"([^"]+)"/g)) {
+  LOGO_PATHS[m[1]] = m[2];
+}
+const nonSlice = [...payload.ranked, ...payload.unranked].filter(
+  (r) => r.n_cases === fullCases,
+);
+const plotted = nonSlice.filter(
+  (r) => r.total_cost_usd !== null && r.total_cost_usd > 0,
+);
+const railRows = nonSlice.filter(
+  (r) => !(r.total_cost_usd !== null && r.total_cost_usd > 0),
+);
+const costs = plotted.map((r) => r.total_cost_usd);
+const domLo = 10 ** (Math.floor(Math.log10(Math.min(...costs)) * 2) / 2);
+const domHi = 10 ** (Math.ceil(Math.log10(Math.max(...costs)) * 2) / 2);
+const PLOT = { x0: 168, x1: 1152, y0: 218, y1: 516 };
+const RAIL_CX = 92;
+const xOf = (c) =>
+  PLOT.x0 +
+  ((Math.log10(c) - Math.log10(domLo)) /
+    (Math.log10(domHi) - Math.log10(domLo))) *
+    (PLOT.x1 - PLOT.x0);
+const yOf = (a) => PLOT.y0 + (1 - a / 0.3) * (PLOT.y1 - PLOT.y0);
+const esc = (t) =>
+  t.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+function disc(r, x, y) {
+  const fam = familyOf(r);
+  const flagged = !r.ranking_eligible;
+  const glyph = fam[3]
+    ? `<path d="${LOGO_PATHS[fam[3]]}" transform="translate(-6 -6) scale(0.5)" fill="${fam[2]}"/>`
+    : `<text y="1" class="mono" fill="${fam[2]}">${esc(shortName(r).match(/[a-z0-9]/i)?.[0]?.toUpperCase() ?? "·")}</text>`;
+  return `<g transform="translate(${x.toFixed(1)} ${y.toFixed(1)})">
+    <circle r="11" fill="${fam[1]}" stroke="${flagged ? "#e8a33d" : "rgba(255,255,255,0.28)"}" stroke-width="${flagged ? 2.5 : 1}"/>
+    ${glyph}
+  </g>`;
+}
+/* Label placements for the named points, as offsets from the
+ * point. Chosen against the payload positions so no two
+ * labels meet; every other point still carries its disc and
+ * mark, and the rail names all five of its points. */
+const LABELS = {
+  "anthropic-fable-v2-trial": { dx: -18, dy: 5, anchor: "end" },
+  "anthropic-opus-v2-trial": { dx: -18, dy: -16, anchor: "end" },
+  "or-qwen-v2-trial": { dx: 14, dy: 27, anchor: "start" },
+  "or-ling-v2-trial": { dx: 18, dy: 24, anchor: "start" },
+  "anthropic-v2-trial": { dx: 0, dy: 31, anchor: "middle" },
+  "minimax-v2-trial": { dx: -18, dy: 5, anchor: "end" },
+  "xai-v2-trial": { dx: 18, dy: 5, anchor: "start" },
+  "moonshot-v2-trial": { dx: 18, dy: 5, anchor: "start" },
+  "jev-114-v2-trial": { dx: 0, dy: 30, anchor: "middle" },
+  "mercury-decide-v2-trial": { dx: 20, dy: 40, anchor: "start" },
+  "pplx-decider-v2-trial": { dx: -16, dy: 8, anchor: "end" },
+  "openai-terra56-v2-trial": { dx: 0, dy: -20, anchor: "middle" },
+};
+const gridSvg = [0, 0.1, 0.2, 0.3]
+  .map(
+    (t) => `<line x1="48" y1="${yOf(t)}" x2="${PLOT.x1}" y2="${yOf(t)}" stroke="#232c35" stroke-opacity="0.55"/>
+    <text x="${PLOT.x0 + 6}" y="${yOf(t) - 6}" class="tick">${Math.round(t * 100)}</text>`,
+  )
   .join("\n");
+const decadeSvg = [];
+for (let d = Math.ceil(Math.log10(domLo)); d <= Math.floor(Math.log10(domHi)); d++) {
+  const v = 10 ** d;
+  decadeSvg.push(
+    `<text x="${xOf(v)}" y="${PLOT.y1 + 24}" class="tick" text-anchor="middle">${v < 1 ? `$${v.toFixed(2)}` : `$${v}`}</text>`,
+  );
+}
+const railSpread = [...railRows]
+  .map((r) => ({ r, y: yOf(r.asr_conditional) }))
+  .sort((a, b) => a.y - b.y);
+for (let pass = 0; pass < 4; pass++) {
+  for (let i = 1; i < railSpread.length; i++) {
+    railSpread[i].y = Math.max(railSpread[i].y, railSpread[i - 1].y + 21);
+  }
+  for (let i = railSpread.length - 2; i >= 0; i--) {
+    railSpread[i].y = Math.min(railSpread[i].y, railSpread[i + 1].y - 21);
+  }
+}
+const railY = new Map(railSpread.map((e) => [e.r.run_id, e.y]));
+const pointsSvg = [
+  ...railRows.map((r) => disc(r, RAIL_CX, railY.get(r.run_id))),
+  ...plotted.map((r) => disc(r, xOf(r.total_cost_usd), yOf(r.asr_conditional))),
+].join("\n");
+const labelsSvg = [
+  ...railRows.map(
+    (r) =>
+      `<text x="${RAIL_CX + 22}" y="${railY.get(r.run_id) + 5}" class="lab">${esc(shortName(r))}</text>`,
+  ),
+  ...plotted
+    .filter((r) => LABELS[r.run_id])
+    .map((r) => {
+      const l = LABELS[r.run_id];
+      return `<text x="${xOf(r.total_cost_usd) + l.dx}" y="${yOf(r.asr_conditional) + l.dy}" class="lab" text-anchor="${l.anchor}">${esc(shortName(r))}</text>`;
+    }),
+].join("\n");
+const scatterSvg = `<svg width="1200" height="630" viewBox="0 0 1200 630" class="chart">
+  <rect x="48" y="${PLOT.y0}" width="88" height="${PLOT.y1 - PLOT.y0}" fill="#0c1015"/>
+  ${gridSvg}
+  <line x1="148" y1="${PLOT.y0 - 6}" x2="148" y2="${PLOT.y1}" stroke="#232c35"/>
+  <line x1="${PLOT.x0}" y1="${PLOT.y1}" x2="${PLOT.x1}" y2="${PLOT.y1}" stroke="#232c35"/>
+  ${decadeSvg.join("\n")}
+  <text x="48" y="${PLOT.y0 - 10}" class="tick">No API cost</text>
+  <text x="${PLOT.x0}" y="${PLOT.y0 - 10}" class="tick">Attack success, percent</text>
+  <text x="520" y="252" class="corner">Expensive and fragile</text>
+  <text x="520" y="278" class="corner-sub">The priciest run flipped most of all</text>
+  <text x="${PLOT.x0}" y="468" class="corner">Near-free and tough</text>
+  <text x="${PLOT.x0}" y="494" class="corner-sub">Jev 1.14 held at twenty cents a run</text>
+  ${pointsSvg}
+  ${labelsSvg}
+  <text x="${PLOT.x0}" y="572" class="tick">Recorded cost per run, US dollars, log scale</text>
+</svg>`;
 
 const html = `<!doctype html>
 <html><head><meta charset="utf-8"><style>
 @font-face { font-family: "Archivo"; src: url("../public/fonts/archivo.woff2") format("woff2"); }
 * { margin: 0; box-sizing: border-box; }
-body { width: 1200px; height: 630px; background: #0A0C0F; color: #E9EEF3;
-  font-family: "Archivo", system-ui, sans-serif; padding: 56px 64px; }
-.word { font-size: 30px; font-weight: 700; letter-spacing: 0.04em; color: #2FBF71; }
-h1 { font-size: 54px; font-weight: 700; margin-top: 10px; }
-.sub { font-size: 25px; color: #AEBCC7; margin-top: 14px; }
-.rows { margin-top: 40px; display: flex; flex-direction: column; gap: 17px; }
-.row { display: flex; align-items: center; gap: 20px; }
-.name { width: 330px; font-size: 23px; color: #E9EEF3; text-align: right;
-  white-space: nowrap; overflow: hidden; }
-.track { flex: 1; height: 20px; background: #10141A; position: relative; }
-.bar { position: absolute; inset: 0 auto 0 0; background: #171D24;
-  border-right: 3px solid #E9EEF3; }
-.val { width: 90px; font-size: 23px; font-variant-numeric: tabular-nums; }
-.foot { margin-top: 40px; font-size: 21px; color: #71808F; }
+body { width: 1200px; height: 630px; background: #05070a; color: #eef2f6;
+  font-family: "Archivo", system-ui, sans-serif; overflow: hidden; }
+.head { position: absolute; left: 48px; top: 40px; right: 48px; }
+.word { font-size: 24px; font-weight: 700; letter-spacing: 0.05em; color: #2fbf71; }
+h1 { font-size: 47px; font-weight: 700; letter-spacing: -0.02em; margin-top: 8px; }
+.sub { font-size: 20px; color: #aebcc7; margin-top: 10px; }
+.chart { position: absolute; left: 0; top: 0; }
+.tick { fill: #71808f; font-size: 13px; }
+.lab { fill: #d5dde4; font-size: 15px; font-weight: 600; }
+.mono { font-size: 11px; font-weight: 700; text-anchor: middle; dominant-baseline: central; }
+.corner { fill: #eef2f6; font-size: 26px; font-weight: 700; letter-spacing: -0.01em; }
+.corner-sub { fill: #aebcc7; font-size: 16px; font-weight: 550; }
+.foot { position: absolute; left: 48px; bottom: 22px; font-size: 17px; color: #71808f; }
 </style></head><body>
-<div class="word">PEIRA</div>
-<h1>Decision robustness board</h1>
-<p class="sub">Attack success on paired benign and attacked cases. ${results} results, ${rankedModels} ranked, ${flaggedModels} flagged.</p>
-<div class="rows">${rowsHtml}</div>
-<p class="foot">Top of the full suite ranking, lower is harder to flip. Dataset ${versions.dataset}, suite ${versions.suite}, updated ${dateWords}. peiratrial.dev</p>
+${scatterSvg}
+<div class="head">
+  <div class="word">PEIRA</div>
+  <h1>The priciest model was the easiest to flip</h1>
+  <p class="sub">Attack success against recorded cost per run, every model deciding the same paired cases.</p>
+</div>
+<p class="foot">Peira decision robustness board. Dataset ${versions.dataset}, suite ${versions.suite}, updated ${dateWords}. peiratrial.dev</p>
 </body></html>`;
 
 mkdirSync(path.join(root, "public"), { recursive: true });

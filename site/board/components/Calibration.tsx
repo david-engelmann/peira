@@ -9,6 +9,7 @@ import {
 } from "@/lib/payload";
 import { fmtInt, fmtEce } from "@/lib/format";
 import { calibrationRows, type CalibRow } from "@/lib/charts";
+import VendorLogo from "./VendorLogo";
 
 /**
  * Calibration panels, design system section 4.4. One small
@@ -44,6 +45,7 @@ function Panel({
   const maxN = data ? Math.max(1, ...data.bins.map((b) => b.n)) : 1;
   const head = (
     <div className="cal-head">
+      <VendorLogo row={row} size="mini" />
       <p className="cal-name">
         <span className="cal-name-text">{label}</span>
         {isSlice && <span className="slice-tag">Slice</span>}
