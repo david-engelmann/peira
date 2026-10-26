@@ -26,5 +26,4 @@ interactions against the payload.
 The only data file is `data/payload.json`. The pipeline
 generates it from sealed run artifacts, and a publish replaces
 it wholesale. Generating, verifying, deploying, and evidencing
-a publish is a runbook task with its own gates, written down in
-[Board publishing](../../docs/Board-Publishing.md).
+a publish is a runbook task with its own gates.

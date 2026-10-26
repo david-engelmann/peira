@@ -97,7 +97,7 @@ sign-off identity, and PyPI credentials in `~/.pypirc` or the environment.
    Type the tag to confirm the upload, then watch the smoke test install
    from the real PyPI into a clean venv.
 5. Announce only after the smoke test passes. The announcement package
-   stays under its own sequencing rules; see `docs/Announcement-Package.md`.
+   stays under its own sequencing rules.
 
 `--skip-smoke` exists for one situation: the smoke already passed for this
 exact version and these exact artifacts (for example a re-run after a

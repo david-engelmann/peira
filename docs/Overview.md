@@ -68,7 +68,6 @@ Everything in `docs/`, organized by what you are trying to do. Pick a path, or b
 - [Foreseeable-Misuse-Coverage](Foreseeable-Misuse-Coverage.md). Intended use, the foreseeable misuses of decision models, which attack families cover each one, and the stated gaps.
 - [Art55-Report-Design](Art55-Report-Design.md). Design and data contract for the per-run evaluation report. Design only. The generator waits on run-artifact v3.
 - [Landing-Page-Readiness](Landing-Page-Readiness.md). What "ready" means for the public leaderboard page.
-- [Announcement-Package](Announcement-Package.md). Prepared launch copy. Draft, not published.
 
 **Project**:
 
