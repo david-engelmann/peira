@@ -23,13 +23,19 @@
  *  Tiles. The counts line equals the display_name rule counts
  *        computed here, at every width.
  *  Scatter. The visible variant's point set equals the payload
- *        population (26 plotted, 5 railed); every point centre
+ *        population (28 plotted, 5 railed); every point centre
  *        sits on the payload position recomputed from the SVG's
  *        own geometry attributes (nudged points get the spec's
- *        one marker width of slack in y); at desktop every label
- *        rect is pairwise clear of every other label and of
- *        every point centre; at phone every point carries a
- *        badge and the keyed list names all 31 in ASR order.
+ *        one marker width of slack in y); at every width every
+ *        point carries its name in place, every label rect is
+ *        pairwise clear of every other label and of every
+ *        point centre, and no numbered badge exists (redesign
+ *        rule). No leader line exists either:
+ *        the scatter carries no line element outside its grid
+ *        lines, rail divider, axis lines and the points' own
+ *        lower-bound ticks, at any width (correction rule:
+ *        labels sit beside their points or in a disc-carrying
+ *        stack row, never tied by a drawn line).
  *  Heatmap. Headers measure one line; every cell's text equals
  *        the payload rate under the cell format; the 20 not
  *        measured cells carry the middot; every cell's text to
@@ -907,18 +913,16 @@ for (const width of [1440, 1280, 390]) {
               stroke: c ? getComputedStyle(c).stroke : null,
             };
           }),
+          leaders: svg.querySelectorAll(".leader").length,
+          strayLines: [...svg.querySelectorAll("line")].filter(
+            (ln) =>
+              !ln.classList.contains("grid-line") &&
+              !ln.classList.contains("rail-divider") &&
+              !ln.classList.contains("axis-line") &&
+              !ln.closest(".lb-tick"),
+          ).length,
         };
       }
-      const listSel =
-        window.innerWidth > 760
-          ? ".scatter-wide .keyed-item"
-          : ".phone-key .keyed-item";
-      out.scatterList = [...sec.querySelectorAll(listSel)]
-        .filter((el) => el.getClientRects().length > 0)
-        .map((li) => ({
-          num: Number(li.querySelector(".keyed-num")?.textContent),
-          name: li.querySelector(".keyed-name")?.textContent.trim(),
-        }));
     }
     const hsec = document.querySelector('[data-section="heatmap"]');
     if (hsec) {
@@ -1271,7 +1275,12 @@ for (const width of [1440, 1280, 390]) {
         failures.push(`width ${width}: ranked scatter point ${s.id} carries amber`);
       }
     }
-    if (width > 760) {
+    // Every point carries its name at every width (redesign
+    // rule). Labels never overlap each other and never cover a
+    // point centre, and the numbered badges of the old design
+    // are gone entirely. The label population equality above
+    // is the live guard that every point is named.
+    {
       const labels = sc.labels;
       for (let i = 0; i < labels.length; i++) {
         for (let j = i + 1; j < labels.length; j++) {
@@ -1298,57 +1307,27 @@ for (const width of [1440, 1280, 390]) {
           }
         }
       }
-      const badgeIds = new Set(sc.badges.map((b) => b.id));
-      const listIds = new Set(
-        (chart.scatterList ?? []).map(
-          (item) => byAsrA[item.num - 1]?.run_id,
-        ),
-      );
-      if (JSON.stringify([...badgeIds].sort()) !== JSON.stringify([...listIds].sort())) {
+      const labelledIds = labels.map((l) => l.id).sort();
+      const populationIds = [...plottedIdsA, ...railIdsA].sort();
+      if (JSON.stringify(labelledIds) !== JSON.stringify(populationIds)) {
         failures.push(
-          `width ${width}: keyed badges and keyed list disagree (${[...badgeIds].join(",")} vs ${[...listIds].join(",")})`,
+          `width ${width}: scatter labels cover ${labelledIds.length} points, population is ${populationIds.length} (missing ${populationIds.filter((id) => !labelledIds.includes(id)).join(",")})`,
         );
       }
-      for (const b of sc.badges) {
-        if (indexByIdA.get(b.id) !== b.num) {
-          failures.push(
-            `width ${width}: badge on ${b.id} reads ${b.num}, ASR order gives ${indexByIdA.get(b.id)}`,
-          );
-        }
-      }
-      for (const item of chart.scatterList ?? []) {
-        const row = byAsrA[item.num - 1];
-        if (!row || item.name !== labelA(row)) {
-          failures.push(
-            `width ${width}: keyed list item ${item.num} names "${item.name}", expected "${row ? labelA(row) : "?"}"`,
-          );
-        }
-      }
-    } else {
-      if (sc.badges.length !== byAsrA.length) {
+      if (sc.badges.length > 0) {
         failures.push(
-          `width ${width}: phone scatter carries ${sc.badges.length} badges, population is ${byAsrA.length}`,
+          `width ${width}: scatter still carries ${sc.badges.length} numbered badges`,
         );
       }
-      for (const b of sc.badges) {
-        if (indexByIdA.get(b.id) !== b.num) {
-          failures.push(
-            `width ${width}: phone badge on ${b.id} reads ${b.num}, ASR order gives ${indexByIdA.get(b.id)}`,
-          );
-        }
-      }
-      if ((chart.scatterList ?? []).length !== byAsrA.length) {
+      if (sc.leaders > 0) {
         failures.push(
-          `width ${width}: phone keyed list holds ${chart.scatterList?.length} items, population is ${byAsrA.length}`,
+          `width ${width}: scatter carries ${sc.leaders} leader lines (the no-leader-line rule)`,
         );
       }
-      for (const item of chart.scatterList ?? []) {
-        const row = byAsrA[item.num - 1];
-        if (!row || item.name !== labelA(row)) {
-          failures.push(
-            `width ${width}: phone key item ${item.num} names "${item.name}", expected "${row ? labelA(row) : "?"}"`,
-          );
-        }
+      if (sc.strayLines > 0) {
+        failures.push(
+          `width ${width}: scatter carries ${sc.strayLines} lines outside its grid, divider, axes and lower-bound ticks (the no-leader-line rule)`,
+        );
       }
     }
   }

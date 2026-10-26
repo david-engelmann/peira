@@ -1,11 +1,13 @@
 /**
  * Build-time social preview and data staging (SO-01, TR-02,
- * SF-04). Renders public/og.png, 1200 by 630, from the same
- * payload the page renders, carrying the board name, the
- * headline counts, the top of the full suite ranking, and the
- * board date. Also stages public/payload.json so the page can
- * link the exact data behind it in one click. Numbers format
- * with the same decimal half-up rule as the page.
+ * SF-04). Renders public/og.png, 1200 by 630: the board's
+ * annotated cost scatter itself, drawn from the same payload
+ * the page renders, every plotted point a disc in its maker's
+ * family color carrying the maker's mark and every point
+ * named, with the two corner readings in display type. Also
+ * stages public/payload.json so the page can link the exact
+ * data behind it in one click. Numbers format with the same
+ * decimal half-up rule as the page.
  */
 import { readFileSync, writeFileSync, copyFileSync, mkdirSync } from "node:fs";
 import { globSync } from "node:fs";
@@ -79,7 +81,6 @@ function quantHU(decStr, decimals) {
   return (neg ? "-" : "") + intOut + (decimals > 0 ? `.${fracOut}` : "");
 }
 const fmtPct = (v) => `${quantHU(shiftPt(expandDec(v), 2), 1)}%`;
-const fmtInt = (n) => String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
 
 const shortName = (r) => {
   let name = r.display_name;
@@ -91,9 +92,28 @@ const shortName = (r) => {
   return slash >= 0 ? name.slice(slash + 1) : name;
 };
 
+/* Point names follow the page's rule (lib/scatterData's
+ * labelFor over lib/payload): the short name, with the wire
+ * words appended when another result on the board shares
+ * it, so the two gpt-6-luna wires are told apart in the
+ * image just as they are on the board. */
+const WIRE_WORDS = {
+  "openai-decisions": "Decisions API",
+  "openai-structured": "Chat completions",
+};
+const nameCounts = new Map();
+for (const r of [...payload.ranked, ...payload.unranked]) {
+  const n = shortName(r);
+  nameCounts.set(n, (nameCounts.get(n) ?? 0) + 1);
+}
+const pointName = (r) => {
+  const n = shortName(r);
+  return nameCounts.get(n) > 1
+    ? `${n} (${WIRE_WORDS[r.wire] ?? r.wire})`
+    : n;
+};
+
 const fullCases = Math.max(...payload.ranked.map((r) => r.n_cases));
-const full = payload.ranked.filter((r) => r.n_cases === fullCases);
-const top = full.slice(0, 7);
 const versions = {
   dataset: payload.ranked[0].dataset_version,
   suite: payload.ranked[0].suite,
@@ -110,51 +130,457 @@ const MONTHS = [
 const [dy, dm, dd] = dateIso.split("-").map(Number);
 const dateWords = `${dd} ${MONTHS[dm - 1]} ${dy}`;
 const results = payload.ranked.length + payload.unranked.length;
-/* Headline counts follow the masthead's rule (lib/payload.ts
- * modelCounts): distinct served model names, so the share
- * image never contradicts the page. Results stays the entry
- * count the masthead leads with; ranked and flagged count
- * models, which on a two-wire payload is one less than the
- * ranked entry count (live-fix round, R-2, 2026-10-23). */
-const rankedModels = new Set(payload.ranked.map((r) => r.display_name)).size;
-const flaggedModels = new Set(payload.unranked.map((r) => r.display_name)).size;
 
-const rowsHtml = top
-  .map((r) => {
-    const pct = (r.asr_conditional / 0.3) * 100;
-    return `<div class="row">
-      <span class="name">${shortName(r)}</span>
-      <span class="track"><span class="bar" style="width:${pct.toFixed(2)}%"></span></span>
-      <span class="val">${fmtPct(r.asr_conditional)}</span>
-    </div>`;
-  })
+/* The share image is the board's money shot: the annotated
+ * cost scatter itself, at a size where it still reads in a
+ * feed thumbnail. Every full suite point is a disc in its
+ * maker's family color carrying the maker's mark, flagged
+ * results keep the amber ring, the rail holds the results
+ * with no recorded API cost, and the two corner readings are
+ * set in display type. Vendor identity resolves through
+ * lib/vendor-data.json, the one vendor table for the whole
+ * board, shared with lib/vendor and lib/vendorColors, and
+ * the mark paths are read out of lib/logoPaths.ts, so the
+ * image cannot drift from the board. The headline is a fact
+ * of this payload: the priciest run (claude-fable-5-1,
+ * $130.31) also carries the highest attack success on the
+ * board. */
+const vendorData = JSON.parse(
+  readFileSync(path.join(root, "lib", "vendor-data.json"), "utf8"),
+);
+const VENDOR_BY_KEY = new Map(vendorData.families.map((f) => [f.key, f]));
+const VENDOR_RULES = vendorData.rules.map((r) => ({
+  test: new RegExp(r.pattern),
+  key: r.family,
+}));
+const familyOf = (r) => {
+  const hay = `${r.display_name} ${r.adapter_name} ${r.wire}`.toLowerCase();
+  for (const rule of VENDOR_RULES) {
+    if (rule.test.test(hay)) return VENDOR_BY_KEY.get(rule.key);
+  }
+  return vendorData.fallback;
+};
+const logoSrc = readFileSync(path.join(root, "lib", "logoPaths.ts"), "utf8");
+const LOGO_PATHS = {};
+for (const m of logoSrc.matchAll(/(\w+):\s*\n?\s*"([^"]+)"/g)) {
+  LOGO_PATHS[m[1]] = m[2];
+}
+const nonSlice = [...payload.ranked, ...payload.unranked].filter(
+  (r) => r.n_cases === fullCases,
+);
+const plotted = nonSlice.filter(
+  (r) => r.total_cost_usd !== null && r.total_cost_usd > 0,
+);
+const railRows = nonSlice.filter(
+  (r) => !(r.total_cost_usd !== null && r.total_cost_usd > 0),
+);
+const costs = plotted.map((r) => r.total_cost_usd);
+const domLo = 10 ** (Math.floor(Math.log10(Math.min(...costs)) * 2) / 2);
+const domHi = 10 ** (Math.ceil(Math.log10(Math.max(...costs)) * 2) / 2);
+const PLOT = { x0: 168, x1: 1152, y0: 218, y1: 516 };
+const RAIL_CX = 92;
+const xOf = (c) =>
+  PLOT.x0 +
+  ((Math.log10(c) - Math.log10(domLo)) /
+    (Math.log10(domHi) - Math.log10(domLo))) *
+    (PLOT.x1 - PLOT.x0);
+const yOf = (a) => PLOT.y0 + (1 - a / 0.3) * (PLOT.y1 - PLOT.y0);
+const esc = (t) =>
+  t.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+function disc(r, x, y) {
+  const fam = familyOf(r);
+  const flagged = !r.ranking_eligible;
+  const monoLetter =
+    fam.mono ??
+    (shortName(r).match(/[a-z0-9]/i)?.[0]?.toUpperCase() ?? "·");
+  const glyph = fam.logo
+    ? `<path d="${LOGO_PATHS[fam.logo]}" transform="translate(-6 -6) scale(0.5)" fill="${fam.glyph}"/>`
+    : `<text y="1" class="mono" fill="${fam.glyph}">${esc(monoLetter)}</text>`;
+  return `<g transform="translate(${x.toFixed(1)} ${y.toFixed(1)})">
+    <circle r="11" fill="${fam.color}" stroke="${flagged ? "#e8a33d" : "rgba(255,255,255,0.28)"}" stroke-width="${flagged ? 2.5 : 1}"/>
+    ${glyph}
+  </g>`;
+}
+const gridSvg = [0, 0.1, 0.2, 0.3]
+  .map(
+    (t) => `<line x1="48" y1="${yOf(t)}" x2="${PLOT.x1}" y2="${yOf(t)}" stroke="#232c35" stroke-opacity="0.55"/>
+    <text x="${PLOT.x0 + 6}" y="${yOf(t) - 6}" class="tick">${Math.round(t * 100)}</text>`,
+  )
   .join("\n");
+const decadeSvg = [];
+for (let d = Math.ceil(Math.log10(domLo)); d <= Math.floor(Math.log10(domHi)); d++) {
+  const v = 10 ** d;
+  decadeSvg.push(
+    `<text x="${xOf(v)}" y="${PLOT.y1 + 24}" class="tick" text-anchor="middle">${v < 1 ? `$${v.toFixed(2)}` : `$${v}`}</text>`,
+  );
+}
+const railSpread = [...railRows]
+  .map((r) => ({ r, y: yOf(r.asr_conditional) }))
+  .sort((a, b) => a.y - b.y);
+for (let pass = 0; pass < 4; pass++) {
+  for (let i = 1; i < railSpread.length; i++) {
+    railSpread[i].y = Math.max(railSpread[i].y, railSpread[i - 1].y + 21);
+  }
+  for (let i = railSpread.length - 2; i >= 0; i--) {
+    railSpread[i].y = Math.min(railSpread[i].y, railSpread[i + 1].y - 21);
+  }
+}
+const railY = new Map(railSpread.map((e) => [e.r.run_id, e.y]));
+/* Rail points are named by construction: each name sits
+ * beside its disc in the rail column, so those labels are
+ * static markup and become furniture for the plotted labels.
+ * The plotted points are named by the placement pass that
+ * runs in the browser below (placeOgLabels), which derives
+ * the labeled set from the plotted population itself: every
+ * plotted point gets a label seated beside its disc by
+ * deterministic candidate placement against real font
+ * measurement, with no leader lines and no per-run table.
+ * A point the pass cannot seat fails the build, so a name
+ * can never drop silently. */
+const railLabelsSvg = railRows
+  .map(
+    (r) =>
+      `<text x="${RAIL_CX + 22}" y="${railY.get(r.run_id) + 5}" class="lab">${esc(pointName(r))}</text>`,
+  )
+  .join("\n");
+const plottedPts = plotted.map((r) => ({
+  runId: r.run_id,
+  name: pointName(r),
+  x: xOf(r.total_cost_usd),
+  y: yOf(r.asr_conditional),
+}));
+const pointsSvg = [
+  ...railRows.map((r) => disc(r, RAIL_CX, railY.get(r.run_id))),
+  ...plotted.map((r) => disc(r, xOf(r.total_cost_usd), yOf(r.asr_conditional))),
+].join("\n");
+const scatterSvg = `<svg width="1200" height="630" viewBox="0 0 1200 630" class="chart">
+  <rect x="48" y="${PLOT.y0}" width="88" height="${PLOT.y1 - PLOT.y0}" fill="#0c1015"/>
+  ${gridSvg}
+  <line x1="148" y1="${PLOT.y0 - 6}" x2="148" y2="${PLOT.y1}" stroke="#232c35"/>
+  <line x1="${PLOT.x0}" y1="${PLOT.y1}" x2="${PLOT.x1}" y2="${PLOT.y1}" stroke="#232c35"/>
+  ${decadeSvg.join("\n")}
+  <text x="48" y="${PLOT.y0 - 10}" class="tick">No API cost</text>
+  <text x="${PLOT.x0 + 32}" y="${PLOT.y0 - 10}" class="tick">Attack success, percent</text>
+  <text x="520" y="252" class="corner">Expensive and fragile</text>
+  <text x="520" y="278" class="corner-sub">The priciest run flipped most of all</text>
+  <text x="${PLOT.x0}" y="468" class="corner">Near-free and tough</text>
+  <text x="${PLOT.x0}" y="494" class="corner-sub">Jev 1.14 held at twenty cents a run</text>
+  ${pointsSvg}
+  ${railLabelsSvg}
+  <g id="og-labels"></g>
+  <text x="${PLOT.x0}" y="572" class="tick">Recorded cost per run, US dollars, log scale</text>
+</svg>`;
 
 const html = `<!doctype html>
 <html><head><meta charset="utf-8"><style>
 @font-face { font-family: "Archivo"; src: url("../public/fonts/archivo.woff2") format("woff2"); }
 * { margin: 0; box-sizing: border-box; }
-body { width: 1200px; height: 630px; background: #0A0C0F; color: #E9EEF3;
-  font-family: "Archivo", system-ui, sans-serif; padding: 56px 64px; }
-.word { font-size: 30px; font-weight: 700; letter-spacing: 0.04em; color: #2FBF71; }
-h1 { font-size: 54px; font-weight: 700; margin-top: 10px; }
-.sub { font-size: 25px; color: #AEBCC7; margin-top: 14px; }
-.rows { margin-top: 40px; display: flex; flex-direction: column; gap: 17px; }
-.row { display: flex; align-items: center; gap: 20px; }
-.name { width: 330px; font-size: 23px; color: #E9EEF3; text-align: right;
-  white-space: nowrap; overflow: hidden; }
-.track { flex: 1; height: 20px; background: #10141A; position: relative; }
-.bar { position: absolute; inset: 0 auto 0 0; background: #171D24;
-  border-right: 3px solid #E9EEF3; }
-.val { width: 90px; font-size: 23px; font-variant-numeric: tabular-nums; }
-.foot { margin-top: 40px; font-size: 21px; color: #71808F; }
+body { width: 1200px; height: 630px; background: #05070a; color: #eef2f6;
+  font-family: "Archivo", system-ui, sans-serif; overflow: hidden; }
+.head { position: absolute; left: 48px; top: 40px; right: 48px; }
+.word { font-size: 24px; font-weight: 700; letter-spacing: 0.05em; color: #2fbf71; }
+h1 { font-size: 47px; font-weight: 700; letter-spacing: -0.02em; margin-top: 8px; }
+.sub { font-size: 20px; color: #aebcc7; margin-top: 10px; }
+.chart { position: absolute; left: 0; top: 0; }
+.tick { fill: #71808f; font-size: 13px; }
+.lab { fill: #d5dde4; font-size: 15px; font-weight: 600; }
+.mono { font-size: 11px; font-weight: 700; text-anchor: middle; dominant-baseline: central; }
+.corner { fill: #eef2f6; font-size: 26px; font-weight: 700; letter-spacing: -0.01em; }
+.corner-sub { fill: #aebcc7; font-size: 16px; font-weight: 550; }
+.foot { position: absolute; left: 48px; bottom: 22px; font-size: 17px; color: #71808f; }
 </style></head><body>
-<div class="word">PEIRA</div>
-<h1>Decision robustness board</h1>
-<p class="sub">Attack success on paired benign and attacked cases. ${results} results, ${rankedModels} ranked, ${flaggedModels} flagged.</p>
-<div class="rows">${rowsHtml}</div>
-<p class="foot">Top of the full suite ranking, lower is harder to flip. Dataset ${versions.dataset}, suite ${versions.suite}, updated ${dateWords}. peiratrial.dev</p>
+${scatterSvg}
+<div class="head">
+  <div class="word">PEIRA</div>
+  <h1>The priciest model was the easiest to flip</h1>
+  <p class="sub">Attack success against recorded cost per run, every model deciding the same paired cases.</p>
+</div>
+<p class="foot">Peira decision robustness board. Dataset ${versions.dataset}, suite ${versions.suite}, updated ${dateWords}. peiratrial.dev</p>
 </body></html>`;
+
+/* Plotted label placement, run in the page so text is
+ * measured with the real Archivo face (getBBox on a probe
+ * element), never estimated. The labeled set is the plotted
+ * population itself; every point is seated beside its own
+ * disc from a fixed candidate list (no leader lines, no
+ * per-run table). Costs are overlap areas against the
+ * furniture (all text already on the canvas, including the
+ * rail names, plus the headline and footer blocks) and the
+ * labels seated so far, and against discs measured as the
+ * circles they render as, not their bounding squares: a
+ * label may pass a disc's empty corner, it may never touch
+ * the circle. Seating runs most constrained first, then
+ * relaxation passes move any label to a strictly cheaper
+ * candidate while overlaps remain, and a repair phase can
+ * reseat a no-cost blocker out of a stuck label's seat; if
+ * an attempt still collides, the next deterministic seating
+ * order tries, and the first attempt that verifies clean
+ * wins. Verification
+ * is strict at zero tolerance: any label touching a disc,
+ * the furniture, another label or the canvas edge comes
+ * back in `failures` and the generator exits non-zero
+ * rather than ship an image with a name missing or struck. */
+function placeOgLabels(pts) {
+  const NS = "http://www.w3.org/2000/svg";
+  const svg = document.querySelector("svg.chart");
+  const group = document.getElementById("og-labels");
+  const boxOf = (el) => {
+    const b = el.getBBox();
+    return { x: b.x, y: b.y, w: b.width, h: b.height };
+  };
+  const furniture = [...svg.querySelectorAll("text")].map(boxOf);
+  for (const sel of [".head", ".foot"]) {
+    const r = document.querySelector(sel).getBoundingClientRect();
+    furniture.push({ x: r.x, y: r.y, w: r.width, h: r.height });
+  }
+  /* Discs sit inside translated groups, where getBBox reads
+   * the local box and would put every disc at the origin;
+   * the client rect gives the true centre and radius (the
+   * svg is at the viewport origin at 1:1 scale). */
+  const discs = [...svg.querySelectorAll("circle")].map((c) => {
+    const r = c.getBoundingClientRect();
+    return { cx: r.x + r.width / 2, cy: r.y + r.height / 2, r: r.width / 2 };
+  });
+  const overlap = (a, b) =>
+    a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
+  const area = (a, b) => {
+    const ox = Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x);
+    const oy = Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y);
+    return ox > 0 && oy > 0 ? ox * oy : 0;
+  };
+  /* Distance from a box to a disc's centre: zero when the
+   * centre is inside the box. The label touches the disc
+   * when the distance is under the radius. */
+  const distToDisc = (box, d) => {
+    const dx = Math.max(box.x - d.cx, 0, d.cx - (box.x + box.w));
+    const dy = Math.max(box.y - d.cy, 0, d.cy - (box.y + box.h));
+    return Math.hypot(dx, dy);
+  };
+  const CANDS = [
+    { dx: 18, dy: 5, anchor: "start" },
+    { dx: -18, dy: 5, anchor: "end" },
+    { dx: 0, dy: -20, anchor: "middle" },
+    { dx: 0, dy: 31, anchor: "middle" },
+    { dx: 18, dy: -16, anchor: "start" },
+    { dx: -18, dy: -16, anchor: "end" },
+    { dx: 18, dy: 28, anchor: "start" },
+    { dx: -18, dy: 28, anchor: "end" },
+    { dx: 20, dy: 42, anchor: "start" },
+    { dx: -20, dy: 42, anchor: "end" },
+    { dx: 14, dy: 5, anchor: "start" },
+    { dx: -14, dy: 5, anchor: "end" },
+    { dx: 18, dy: -10, anchor: "start" },
+    { dx: -18, dy: -10, anchor: "end" },
+    { dx: 18, dy: 22, anchor: "start" },
+    { dx: -18, dy: 22, anchor: "end" },
+    { dx: 0, dy: -30, anchor: "middle" },
+    { dx: 0, dy: 44, anchor: "middle" },
+    { dx: 26, dy: 5, anchor: "start" },
+    { dx: -26, dy: 5, anchor: "end" },
+  ];
+  const inCanvas = (box) =>
+    box.x >= 4 && box.y >= 4 && box.x + box.w <= 1196 && box.y + box.h <= 626;
+  const probe = document.createElementNS(NS, "text");
+  probe.setAttribute("class", "lab");
+  group.appendChild(probe);
+  const boxFor = (p, cand) => {
+    probe.setAttribute("x", String(p.x + cand.dx));
+    probe.setAttribute("y", String(p.y + cand.dy));
+    probe.setAttribute("text-anchor", cand.anchor);
+    probe.textContent = p.name;
+    return boxOf(probe);
+  };
+  const verify = (placed) => {
+    const bad = [];
+    for (const q of placed) {
+      const box = boxOf(q.el);
+      if (!inCanvas(box)) bad.push(`${q.runId} (canvas)`);
+      if (discs.some((d) => distToDisc(box, d) < d.r - 0.01))
+        bad.push(`${q.runId} (disc)`);
+      if (furniture.some((f) => overlap(box, f)))
+        bad.push(`${q.runId} (furniture)`);
+      for (const o of placed) {
+        if (o !== q && overlap(box, boxOf(o.el))) {
+          bad.push(`${q.runId} (label)`);
+          break;
+        }
+      }
+    }
+    if (placed.length !== pts.length) bad.push("count");
+    return bad;
+  };
+  const attempt = (order) => {
+    for (const el of [...group.querySelectorAll("text[data-run-id]")])
+      el.remove();
+    const placed = [];
+    const costOf = (box, self, candIndex) => {
+      let cost = candIndex * 2;
+      if (!inCanvas(box)) cost += 100000;
+      for (const d of discs) {
+        if (distToDisc(box, d) < d.r + 1) {
+          cost +=
+            400 +
+            area(box, {
+              x: d.cx - d.r,
+              y: d.cy - d.r,
+              w: d.r * 2,
+              h: d.r * 2,
+            });
+        }
+      }
+      for (const f of furniture) cost += area(box, f) * 40;
+      for (const q of placed) {
+        if (q !== self) cost += area(box, q.box) * 40;
+      }
+      return cost;
+    };
+    const applySeat = (rec, cand) => {
+      rec.el.setAttribute("x", String(rec.p.x + cand.dx));
+      rec.el.setAttribute("y", String(rec.p.y + cand.dy));
+      rec.el.setAttribute("text-anchor", cand.anchor);
+      rec.box = boxOf(rec.el);
+      rec.cand = cand;
+    };
+    for (const p of order) {
+      const el = document.createElementNS(NS, "text");
+      el.setAttribute("class", "lab");
+      el.setAttribute("data-run-id", p.runId);
+      el.textContent = p.name;
+      group.appendChild(el);
+      const rec = { el, box: null, runId: p.runId, p, cand: null };
+      placed.push(rec);
+      let best = CANDS[0];
+      let bestCost = Infinity;
+      CANDS.forEach((c, i) => {
+        const cost = costOf(boxFor(p, c), rec, i);
+        if (cost < bestCost) {
+          bestCost = cost;
+          best = c;
+        }
+      });
+      applySeat(rec, best);
+    }
+    for (let pass = 0; pass < 400; pass++) {
+      let moved = false;
+      const seq = pass % 2 === 0 ? placed : [...placed].reverse();
+      for (const rec of seq) {
+        const curIdx = CANDS.indexOf(rec.cand);
+        let bestCost = costOf(rec.box, rec, Math.max(0, curIdx));
+        let best = rec.cand;
+        CANDS.forEach((c, i) => {
+          if (c === rec.cand) return;
+          const cost = costOf(boxFor(rec.p, c), rec, i);
+          if (cost < bestCost - 0.5) {
+            bestCost = cost;
+            best = c;
+          }
+        });
+        if (best !== rec.cand) {
+          applySeat(rec, best);
+          moved = true;
+        }
+      }
+      if (!moved) break;
+    }
+    /* Repair: a label still in violation may need a seat
+     * another label occupies at no cost to itself. For each
+     * violating label, try its candidates in cost order; a
+     * candidate blocked only by labels is admitted when
+     * every blocker can reseat, one at a time against live
+     * positions, to a seat clean against every disc, the
+     * furniture and every other label. */
+    const recBad = (rec) => {
+      const box = boxOf(rec.el);
+      return (
+        !inCanvas(box) ||
+        discs.some((d) => distToDisc(box, d) < d.r - 0.01) ||
+        furniture.some((f) => overlap(box, f)) ||
+        placed.some((o) => o !== rec && overlap(box, o.box))
+      );
+    };
+    for (let round = 0; round < 4; round++) {
+      const bad = placed.filter(recBad);
+      if (bad.length === 0) break;
+      let progressed = false;
+      for (const rec of bad) {
+        const cands = CANDS.map((c, i) => ({
+          c,
+          i,
+          box: boxFor(rec.p, c),
+        })).sort((a, b) => costOf(a.box, rec, a.i) - costOf(b.box, rec, b.i));
+        for (const { c, box } of cands) {
+          if (!inCanvas(box)) continue;
+          if (discs.some((d) => distToDisc(box, d) < d.r + 0.5)) continue;
+          if (furniture.some((f) => overlap(box, f))) continue;
+          const blockers = placed.filter(
+            (o) => o !== rec && overlap(box, o.box),
+          );
+          let ok = true;
+          for (const b of blockers) {
+            const alt = CANDS.find((cc) => {
+              if (cc === b.cand) return false;
+              const bb = boxFor(b.p, cc);
+              if (!inCanvas(bb)) return false;
+              if (discs.some((d) => distToDisc(bb, d) < d.r + 0.5))
+                return false;
+              if (furniture.some((f) => overlap(bb, f))) return false;
+              if (overlap(bb, box)) return false;
+              return placed.every(
+                (o) => o === b || o === rec || !overlap(bb, o.box),
+              );
+            });
+            if (!alt) {
+              ok = false;
+              break;
+            }
+            applySeat(b, alt);
+          }
+          if (!ok) continue;
+          applySeat(rec, c);
+          progressed = true;
+          break;
+        }
+      }
+      if (!progressed) break;
+    }
+    return { placed, bad: verify(placed) };
+  };
+  const byRunId = (a, b) => (a.runId < b.runId ? -1 : 1);
+  const freeCounts = new Map(
+    pts.map((p) => [
+      p.runId,
+      CANDS.filter((c) => {
+        const box = boxFor(p, c);
+        return (
+          inCanvas(box) &&
+          discs.every((d) => distToDisc(box, d) >= d.r + 1) &&
+          furniture.every((f) => !overlap(box, f))
+        );
+      }).length,
+    ]),
+  );
+  const orders = [
+    [...pts].sort(
+      (a, b) => freeCounts.get(a.runId) - freeCounts.get(b.runId) || byRunId(a, b),
+    ),
+    [...pts].sort(
+      (a, b) => freeCounts.get(a.runId) - freeCounts.get(b.runId) || byRunId(b, a),
+    ),
+    [...pts].sort((a, b) => a.y - b.y || a.x - b.x),
+    [...pts].sort((a, b) => a.x - b.x || a.y - b.y),
+  ];
+  let bestBad = null;
+  for (const order of orders) {
+    const { placed, bad } = attempt(order);
+    if (bad.length === 0) {
+      probe.remove();
+      return { ok: true, placed: placed.length };
+    }
+    if (bestBad === null || bad.length < bestBad.length) bestBad = bad;
+  }
+  probe.remove();
+  return { ok: false, failures: bestBad };
+}
 
 mkdirSync(path.join(root, "public"), { recursive: true });
 mkdirSync(path.join(root, ".og"), { recursive: true });
@@ -210,6 +636,14 @@ const page = await browser.newPage();
 await page.setViewport({ width: 1200, height: 630 });
 await page.goto(`file://${ogHtml}`, { waitUntil: "networkidle0" });
 await page.evaluate(() => document.fonts.ready);
+const placement = await page.evaluate(placeOgLabels, plottedPts);
+if (!placement.ok) {
+  console.error(
+    `gen-og: label placement failed for ${placement.failures.join(", ")}: every plotted point must be named in the share image`,
+  );
+  await browser.close();
+  process.exit(1);
+}
 await page.screenshot({ path: path.join(root, "public", "og.png") });
 await browser.close();
 
@@ -218,5 +652,5 @@ copyFileSync(
   path.join(root, "public", "payload.json"),
 );
 console.log(
-  `gen-og: wrote public/og.png (1200x630) and public/payload.json from ${results} results, board date ${dateWords}`,
+  `gen-og: wrote public/og.png (1200x630) and public/payload.json from ${results} results, board date ${dateWords}; labelled ${placement.placed} of ${plottedPts.length} plotted points and all ${railRows.length} rail points`,
 );

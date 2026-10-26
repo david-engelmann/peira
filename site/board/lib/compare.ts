@@ -20,6 +20,7 @@ import {
 } from "@/lib/payload";
 import { calibrationArmsOf, familiesOf, familyFullName, familyOrder } from "@/lib/charts";
 import { costStateOf } from "@/lib/cards";
+import { vendorColorOf } from "@/lib/vendorColors";
 
 export type CompareGroup = "full" | "flagged" | "slice";
 
@@ -47,6 +48,8 @@ export interface CompareRow {
   latP95: number | null;
   /** Family attack success in the heatmap's fixed order, null where a family was not faced. */
   families: Array<number | null>;
+  /** The model's vendor family color, for the paired family bars. */
+  vendorColor: string;
 }
 
 export interface CompareData {
@@ -90,6 +93,7 @@ function shapeRow(
     latP50: row.latency_ms_p50_attacked ?? null,
     latP95: row.latency_ms_p95_attacked ?? null,
     families: famKeys.map((k) => fams.get(k)?.asr ?? null),
+    vendorColor: vendorColorOf(row),
   };
 }
 

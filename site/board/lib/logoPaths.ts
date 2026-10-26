@@ -1,9 +1,45 @@
 /**
  * Brand mark path data (24x24 viewBox, single path, rendered with
- * fill="currentColor"). Source: the simple-icons set (CC0),
- * fetched 2026-10-25. One entry per vendor the board can show;
+ * fill="currentColor"). One entry per vendor the board can show;
  * vendors without a published mark use the monogram chip in
  * lib/vendor.ts instead.
+ *
+ * The original set (openai through cursor) is from simple-icons
+ * (CC0), fetched 2026-10-25. The 2026-10-26 additions, with the
+ * provider's own published asset as the source in every case:
+ *
+ * - typesafe: traced from TypeSafe AI's published favicon
+ *   (framerusercontent.com/images/kcuF2BEp5XaVfkmFB634IPRKQH0.png,
+ *   the apple-touch icon on typesafe.ai). Raster only; the glyph
+ *   is straight-edged isometric geometry, traced from the pixels.
+ * - zhipu: the Z letterform of Zhipu AI's published vector logo
+ *   (z-cdn.chatglm.cn/z-ai/static/logo.svg), rendered and traced;
+ *   the published file composes the Z on a rounded square, the
+ *   board takes the letterform alone, as with every other mark.
+ * - upstage: Upstage's published vector favicon, adopted verbatim
+ *   apart from the 32 to 24 viewBox rescale
+ *   (cdn.prod.website-files.com/6743d5190bb2b52f38e99e37/
+ *   6748713db65988aab4e2dbf7_G.WEB.svg). The source fills it with
+ *   a violet gradient; the path is the mark's own geometry and
+ *   the family color carries the violet.
+ * - inception: the tile pinwheel of Inception's published favicon
+ *   (framerusercontent.com/images/FVLWuxFgErrs21SdIlAqvQN6E.png).
+ *   Raster only; the mark is twelve axis-aligned tiles, each one
+ *   measured off the favicon's pixels and drawn as its rectangle.
+ * - celeris: traced from Celeris's published favicon
+ *   (celeris.ai/favicon.ico, 48px). Raster only; the mark is
+ *   three curved strokes, traced from the pixels.
+ * - xai: traced from xAI's published icon (x.ai/icon.png, 512px).
+ *   Raster only; the swoosh and its two bars traced from the
+ *   pixels, keeping the icon's own crop at the right edge.
+ * - protectai: traced from the shield mark ProtectAI publishes
+ *   as its Hugging Face org avatar (cdn-avatars.huggingface.co/
+ *   v1/production/uploads/659ef92844a230e92ca777f5/
+ *   JYJtH-Xs1UpWKwjSndlh5.png). Raster only; the shield is drawn
+ *   solid with its bar and four slats knocked out, the stencil
+ *   form of the shaded original. protectai.com itself now serves
+ *   Palo Alto Networks, so the org avatar is the provider's own
+ *   current published mark.
  */
 export const LOGO_PATHS = {
   openai:
@@ -34,6 +70,20 @@ export const LOGO_PATHS = {
     "m1.053 16.91 9.538 2.55a21 20.981 0 0 0 .06 2.031l5.956 1.592a12 11.99 0 0 1-15.554-6.172m-1.02-5.79 11.352 3.035a21 20.981 0 0 0-.469 2.01l10.817 2.89a12 11.99 0 0 1-1.845 2.004L.658 15.918a12 11.99 0 0 1-.625-4.796m1.593-5.146L13.573 9.17a21 20.981 0 0 0-1.01 1.874l11.297 3.02a21 20.981 0 0 1-.67 2.362l-11.55-3.087L.125 10.26a12 11.99 0 0 1 1.499-4.285ZM6.067 1.58l11.285 3.016a21 20.981 0 0 0-1.688 1.719l7.824 2.091a21 20.981 0 0 1 .513 2.664L2.107 5.218a12 11.99 0 0 1 3.96-3.638M21.68 4.866 7.222 1.003A12 11.99 0 0 1 21.68 4.866",
   cursor:
     "M11.503.131 1.891 5.678a.84.84 0 0 0-.42.726v11.188c0 .3.162.575.42.724l9.609 5.55a1 1 0 0 0 .998 0l9.61-5.55a.84.84 0 0 0 .42-.724V6.404a.84.84 0 0 0-.42-.726L12.497.131a1.01 1.01 0 0 0-.996 0M2.657 6.338h18.55c.263 0 .43.287.297.515L12.23 22.918c-.062.107-.229.064-.229-.06V12.335a.59.59 0 0 0-.295-.51l-9.11-5.257c-.109-.063-.064-.23.061-.23",
+  typesafe:
+    "M11.960 0.000 L16.480 2.920 L16.480 7.000 L20.240 9.480 L20.240 18.600 L12.040 24.000 L7.520 21.080 L7.520 16.840 L3.760 14.360 L3.760 5.400 ZM14.840 8.960 L12.800 10.360 L12.800 14.360 L9.040 16.840 L9.080 19.200 L14.960 15.400 ZM11.160 2.400 L5.280 6.200 L5.320 12.480 L7.520 11.080 L7.520 7.080 L11.200 4.680 ZM15.720 16.720 L9.880 20.480 L9.760 20.680 L12.040 22.160 L18.000 18.280 ZM16.520 8.960 L16.480 15.320 L18.680 16.800 L18.720 10.360 ZM11.960 6.000 L9.680 7.480 L11.880 8.960 L14.320 7.480 ZM8.200 12.480 L6.000 14.040 L8.360 15.440 L10.560 13.960 ZM12.840 2.400 L12.800 4.680 L14.920 6.000 L14.960 3.800 ZM9.080 8.960 L9.040 11.160 L11.160 12.560 L11.200 10.280 Z",
+  zhipu:
+    "M0.569 4.772 L9.909 4.772 L10.843 4.244 L12.548 1.807 L1.787 1.766 L0.569 1.685 ZM9.503 22.315 L24.000 1.807 L14.376 1.766 L0.000 22.315 ZM11.452 22.315 L23.431 22.274 L23.391 19.228 L14.051 19.228 L13.117 19.756 Z",
+  upstage:
+    "M22.1429 0.0000L21.5434 1.9313H18.0842L18.6680 0.0000H22.1429ZM20.6318 5.0850L21.1938 3.1536H14.5687L14.0223 5.0850H20.6318ZM20.2447 6.3040L19.6827 8.2354H1.8555L2.4050 6.3040H20.2447ZM18.7492 11.3889L19.3112 9.4576H3.8818L3.3323 11.3889H18.7492ZM20.3727 12.6112L19.8107 14.5425H4.4188L4.9683 12.6112H20.3727ZM21.2344 17.6961L21.7964 15.7648H4.0191L3.4696 17.6961H21.2344ZM9.9137 18.9152L9.3517 20.8466H2.5205L3.0700 18.9152H9.9137ZM5.6301 22.0688L5.0307 24.0001H1.5714L2.1552 22.0688H5.6301Z",
+  inception:
+    "M14.034 0.000 L18.508 0.000 L18.508 4.068 L14.034 4.068 ZM4.678 0.407 L7.525 0.407 L7.525 3.254 L4.678 3.254 ZM9.153 4.475 L13.627 4.475 L13.627 8.136 L9.153 8.136 ZM18.915 4.475 L23.797 4.475 L23.797 9.763 L18.915 9.763 ZM0.203 5.695 L2.237 5.695 L2.237 8.136 L0.203 8.136 ZM14.847 9.356 L19.322 9.356 L19.322 14.644 L14.847 14.644 ZM3.864 10.169 L7.119 10.169 L7.119 13.831 L3.864 13.831 ZM18.915 14.237 L23.797 14.237 L23.797 19.525 L18.915 19.525 ZM0.203 15.864 L2.237 15.864 L2.237 18.305 L0.203 18.305 ZM9.153 15.864 L13.627 15.864 L13.627 19.525 L9.153 19.525 ZM14.034 19.932 L18.508 19.932 L18.508 24.000 L14.034 24.000 ZM4.678 20.746 L7.525 20.746 L7.525 23.186 L4.678 23.186 Z",
+  celeris:
+    "M4.492 2.488 L2.452 4.756 L0.882 7.525 L0.882 8.214 L2.467 6.221 L4.492 4.628 L6.957 3.652 L8.454 3.493 L10.913 3.612 L13.649 4.653 L17.699 8.197 L19.474 9.159 L20.956 9.108 L22.818 7.838 L23.400 6.605 L23.294 5.373 L21.801 3.435 L19.548 1.486 L17.611 0.388 L16.031 0.002 L18.532 2.115 L20.939 5.020 L22.158 5.813 L21.925 6.308 L19.978 5.989 L16.715 2.555 L14.529 0.966 L13.032 0.357 L10.215 0.000 L6.781 0.921 ZM3.476 7.222 L1.382 10.039 L0.600 13.473 L0.882 16.086 L2.441 19.284 L5.548 22.407 L8.366 23.965 L8.682 23.774 L6.217 21.749 L4.580 19.171 L4.015 17.259 L3.924 14.706 L4.580 11.740 L6.799 8.454 L9.158 6.736 L12.821 5.901 L11.976 5.116 L9.158 4.662 L5.548 5.688 ZM5.092 14.617 L5.107 16.378 L6.165 19.467 L8.806 22.414 L12.152 23.949 L15.850 24.000 L18.865 22.894 L21.643 20.693 L21.661 20.271 L18.667 21.301 L15.850 21.341 L13.561 20.803 L11.447 19.738 L9.275 17.787 L7.710 15.498 L7.172 14.001 L7.065 10.743 L6.781 10.446 L5.570 12.680 ZM14.687 17.611 L11.504 18.051 L14.265 19.683 L16.554 20.138 L19.812 19.780 L21.661 18.925 L22.189 19.803 L22.894 19.166 L23.264 16.995 L22.189 15.265 L20.252 14.616 L18.337 15.234 Z",
+  xai:
+    "M7.088 12.025 L10.296 10.060 L6.143 7.051 L0.423 7.051 ZM17.484 7.399 L13.753 9.140 L11.117 10.582 L8.182 12.473 L4.551 15.109 L1.965 17.248 L0.000 19.113 L5.795 19.138 L9.675 15.556 L14.201 12.124 L19.125 9.140 L24.000 6.802 L24.000 4.862 ZM16.638 19.138 L22.383 19.113 L14.599 13.418 L14.450 13.268 L11.590 15.382 Z",
+  protectai:
+    "M3.714 3.619 L2.857 4.476 L2.667 14.571 L3.810 18.190 L6.381 21.143 L9.619 23.238 L12.476 24.000 L17.619 21.143 L20.762 17.048 L21.333 14.571 L21.333 5.048 L20.286 3.619 L11.714 0.000 ZM5.810 10.286 L5.429 8.381 L17.238 8.381 L18.286 9.810 L16.095 10.286 ZM6.857 17.619 L6.000 11.810 L7.048 11.905 L8.095 18.667 ZM15.905 18.667 L17.048 11.810 L18.000 11.810 L18.095 12.286 L17.143 17.429 ZM10.762 20.381 L9.524 19.524 L8.476 11.810 L9.238 11.810 L9.524 12.286 ZM14.476 19.524 L13.238 20.381 L14.762 11.810 L15.619 11.905 L15.619 13.048 L14.667 18.571 Z",
 } as const;
 
 export type LogoSlug = keyof typeof LOGO_PATHS;
