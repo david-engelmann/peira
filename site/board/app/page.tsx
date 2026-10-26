@@ -65,7 +65,8 @@ export default function Page() {
             Every model decided the same paired cases, each case in a
             benign form and an attacked form. Attack success counts a
             case only when the benign answer was right and the
-            attacked answer was wrong.{rangeHl}
+            attacked side answered wrong, abstained, or produced
+            malformed output.{rangeHl}
           </p>
           <p className="counts-line">
             The board holds {fmtInt(resultCount)} results from{" "}
