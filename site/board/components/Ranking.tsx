@@ -21,12 +21,12 @@ import { RankedRowView, FlaggedRowView } from "./RankRow";
  * under the heading.
  */
 
-function AxisStrip({ titled }: { titled: boolean }) {
+function AxisStrip({ title }: { title: string | null }) {
   return (
     <div className="axis-row" aria-hidden="true">
       <div className="rail" />
       <div className="axis-grid">
-        {titled && <div className="axis-title">Attack success, percent</div>}
+        {title && <div className="axis-title">{title}</div>}
         <div className="axis-cell">
           {ASR_TICKS.map((tick, i) => (
             <span
@@ -78,7 +78,7 @@ function RankedGroup({
   rows,
   variant,
   dupes,
-  axisTitled,
+  axisTitle,
   allRows,
 }: {
   id: string;
@@ -87,7 +87,7 @@ function RankedGroup({
   rows: RankedRow[];
   variant: "full" | "slice";
   dupes: Set<string>;
-  axisTitled: boolean;
+  axisTitle: string | null;
   allRows: BoardRow[];
 }) {
   const bands = tieBands(rows);
@@ -98,7 +98,7 @@ function RankedGroup({
         <h3 className="group-label">{label}</h3>
         {caption && <p className="group-caption">{caption}</p>}
       </div>
-      <AxisStrip titled={axisTitled} />
+      <AxisStrip title={axisTitle} />
       {segs.map((seg, i) =>
         seg.kind === "band" ? (
           <div className="band-block" key={`band-${i}`}>
@@ -150,7 +150,7 @@ function FlaggedGroup({
       <div className="group-head">
         <h3 className="group-label">Flagged</h3>
       </div>
-      <AxisStrip titled={false} />
+      <AxisStrip title={null} />
       {rows.map((row) => (
         <div className="band-block" key={row.run_id}>
           <div className="rail" aria-hidden="true" />
@@ -194,7 +194,7 @@ export default function Ranking() {
         rows={groups.full}
         variant="full"
         dupes={dupesByShort}
-        axisTitled={true}
+        axisTitle="Attack success, percent"
         allRows={allRows}
       />
       <FlaggedGroup rows={groups.flagged} dupes={dupesByShort} allRows={allRows} />
@@ -205,7 +205,7 @@ export default function Ranking() {
         rows={groups.slices}
         variant="slice"
         dupes={dupesByShort}
-        axisTitled={false}
+        axisTitle="Attack success, percent, abstain subset"
         allRows={allRows}
       />
       <p className="chart-id">

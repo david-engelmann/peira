@@ -160,8 +160,12 @@ body::before {
 }
 
 /* Hero. The finding set as display type: large, tight, and
-   quiet, with the headline range lit in green. The counts sit
-   under it as a deck. No rules; the type carries it. */
+   quiet, with the headline range lit in green. The finding
+   runs the full content width (cycle 2: the earlier 21ch cap
+   left the right two-fifths of the hero empty and stacked the
+   text into a narrow tower; size is spent on the claim, per
+   doctrine D16). Under it, one meta row on a hairline: the
+   counts as a deck on the left, the links on the right. */
 
 .findings {
   margin-top: 56px;
@@ -176,9 +180,28 @@ body::before {
      the CSS line box and successive lines overlap by ~1.4px,
      which the DOM audit flags and the eye reads as crowding. */
   line-height: 1.16;
-  max-width: 21ch;
   margin: 0;
   text-wrap: balance;
+}
+
+.hero-meta {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 32px;
+  margin-top: 30px;
+  padding-top: 22px;
+  border-top: 1px solid var(--hairline);
+}
+
+.hero-meta .counts-line {
+  margin-top: 0;
+}
+
+.hero-meta .links-line {
+  margin-top: 0;
+  flex: none;
+  padding-top: 2px;
 }
 
 .range-hl {
@@ -358,9 +381,9 @@ body::before {
 
 /* One ranking row (owner layout, round 8 feedback). A main
    block of two lines, name over a mono data line, a right
-   block with the headline rate over its precise figure and
-   interval, and an interval strip across the full row width
-   on the shared axis. */
+   block with the headline rate over its interval, and an
+   interval strip across the full row width on the shared
+   axis. */
 
 .rank-row {
   display: grid;
@@ -541,6 +564,13 @@ body::before {
   grid-area: value;
   text-align: right;
   align-self: center;
+  /* The row bleeds 14 px into the page padding and its own
+     right padding is 14 px, which put the value text exactly
+     on the section's right edge. The extra inset ends the
+     text 14 px inside the edge (cycle 2, census L-09). The
+     chart cell keeps the full row width, so the axis strip
+     above stays aligned with the whiskers. */
+  padding-right: 14px;
 }
 
 .value-main {
@@ -637,40 +667,117 @@ body::before {
   max-width: 68ch;
 }
 
-/* Mobile. The row keeps its two blocks, the data line wraps
-   under the name, and the interval strip stays at full row
-   width. Brackets narrow to a 14 px rail and keep their rule;
-   the bracket word yields to the gutter width. */
+/* Mobile. The hero stacks, and ranking rows re-flow into a
+   single column inside the section box (cycle 2). Brackets
+   narrow to a 26 px rail, keep their rule, and carry their
+   word vertically. */
 
 @media (max-width: 760px) {
   :root {
-    --rail-w: 14px;
+    --rail-w: 26px;
   }
 
   .page {
     padding: 0 16px 64px;
   }
 
+  /* The tie word turns vertical in the widened rail (cycle 2
+     red team, RT-2). A bracket with no word on it reads as an
+     unexplained edge line, and the phone ranking would present
+     strict ranks where the desktop ranking states ties. */
   .rail-label {
-    display: none;
+    display: block;
+    left: 13px;
+    font-size: 10.5px;
+    writing-mode: vertical-rl;
+    transform: translateY(-50%) rotate(180deg);
   }
 
   .rail-rule {
     left: 2px;
   }
 
-  .rank-row {
-    grid-template-columns: minmax(0, 1fr) fit-content(150px);
-    column-gap: 14px;
-    padding: 8px 0 10px;
+  /* Hero at phone. The masthead stacks and the dateline sits
+     left-aligned under the claim instead of wrapping into two
+     right-aligned lines against the wordmark (census L-04);
+     the findings and the meta row tighten with it (R-04). */
+  .masthead {
+    padding-bottom: 10px;
   }
 
-  .cell-value {
-    min-width: 0;
+  .masthead-top {
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .stamp {
+    text-align: left;
+  }
+
+  .findings {
+    margin-top: 30px;
+  }
+
+  .hero-meta {
+    flex-direction: column;
+    gap: 18px;
+    margin-top: 24px;
+    padding-top: 18px;
+  }
+
+  /* Ranking rows at phone re-flow into a stack (cycle 2,
+     doctrine D27): identity, the data line, the value line,
+     the strip. The desktop bleed is removed, so nothing
+     crosses the section edge (blocker L-05/R-05, audit F-08).
+     The name block stays beside the rank and tile when it
+     fits, and wraps as one unit to its own full-width line
+     when it does not, so a name never breaks at a hyphen
+     (L-07) and the flagged note gets the full measure (L-08).
+     The data line's separators yield at this width: the
+     segments are keyed, and a separator at a wrapped line's
+     start reads as a stray mark (R-07). The value line runs
+     in reverse so the headline rate holds the right edge on
+     every row, as it does at desktop (RT-4). The strip gains
+     a track at this width, so the interval reads as a segment
+     on a scale rather than a lone glyph (RT-1, census L-06);
+     its geometry is unchanged and still audit-asserted. */
+  .rank-row {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    margin: 0;
+    padding: 10px 6px 12px;
+  }
+
+  .row-line1 {
+    flex-wrap: wrap;
+    row-gap: 4px;
+  }
+
+  .cell-name {
+    flex: 1 0 auto;
   }
 
   .data-line {
     margin-left: 0;
+    margin-top: 7px;
+    gap: 3px 10px;
+  }
+
+  .dl-sep {
+    display: none;
+  }
+
+  .cell-value {
+    display: flex;
+    flex-direction: row-reverse;
+    align-items: baseline;
+    justify-content: flex-start;
+    gap: 12px;
+    align-self: stretch;
+    margin-top: 8px;
+    padding-right: 0;
+    text-align: right;
   }
 
   .value-main {
@@ -679,6 +786,21 @@ body::before {
 
   .value-sub {
     white-space: normal;
+    margin-top: 0;
+  }
+
+  .cell-chart {
+    margin-top: 6px;
+  }
+
+  .cell-chart::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 50%;
+    height: 1px;
+    background: var(--hairline);
   }
 
   .finding {

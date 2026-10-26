@@ -12,6 +12,12 @@
  *  F-05  no name is clipped (every name element's scroll width
  *        fits its client width) and every rendered short name
  *        equals the payload-derived short name.
+ *  F-08  ranking containment (cycle 2, doctrine D8): at phone
+ *        widths nothing inside the ranking extends past the
+ *        section's own box; at desktop widths the rows' designed
+ *        14 px bleed into the page padding is pinned at 15 px,
+ *        and at each audited width (1440, 1280 and 390)
+ *        nothing crosses the viewport.
  *  F-01  the rank column holds exactly one number per ranked row
  *        (the group-local rank) and none on flagged rows.
  *  Amber appears only inside the flagged strip.
@@ -570,6 +576,7 @@ for (const width of [1440, 1280, 390]) {
       names: [],
       rankCells: [],
       geometry: [],
+      sectionOverflow: null,
       textBoxes: [],
       amberOutside: [],
       amberUses: [],
@@ -648,6 +655,30 @@ for (const width of [1440, 1280, 390]) {
             : null,
       });
     });
+    // Ranking containment (F-08). How far the ranking's rendered
+    // content extends past the section's own box on each side,
+    // and whether anything crosses the viewport edge.
+    {
+      const sec = document.querySelector("#ranking");
+      if (sec) {
+        const sr = sec.getBoundingClientRect();
+        let overR = 0;
+        let overL = 0;
+        let pastViewport = 0;
+        sec.querySelectorAll("*").forEach((el) => {
+          const r = el.getBoundingClientRect();
+          if (r.width === 0 || r.height === 0) return;
+          overR = Math.max(overR, r.right - sr.right);
+          overL = Math.max(overL, sr.left - r.left);
+          if (r.right > innerWidth + 0.5 || r.left < -0.5) pastViewport++;
+        });
+        out.sectionOverflow = {
+          overR: Math.round(overR * 10) / 10,
+          overL: Math.round(overL * 10) / 10,
+          pastViewport,
+        };
+      }
+    }
     // Text node boxes in the ranking section (F-03).
     const section = document.querySelector("section");
     if (section) {
@@ -1169,6 +1200,25 @@ for (const width of [1440, 1280, 390]) {
           `width ${width}: row ${g.runId} whisker ends at ${g.lineR.toFixed(2)}, cap at ${expR.toFixed(2)} (overshoot or excess gap)`,
         );
       }
+    }
+  }
+  // Ranking containment (F-08, cycle 2, doctrine D8). Phone rows
+  // re-flow inside the section box, so the limit there is the
+  // box itself. At desktop widths the rows bleed a designed
+  // 14 px into the page padding; the limit pins that bleed so
+  // it cannot grow silently toward the viewport.
+  if (report.sectionOverflow) {
+    const o = report.sectionOverflow;
+    const limit = width <= 760 ? 1 : 15;
+    if (o.overR > limit || o.overL > limit) {
+      failures.push(
+        `width ${width}: ranking content extends ${Math.max(o.overR, o.overL)}px past the section edge (F-08 limit ${limit}px)`,
+      );
+    }
+    if (o.pastViewport > 0) {
+      failures.push(
+        `width ${width}: ${o.pastViewport} ranking elements extend past the viewport (F-08)`,
+      );
     }
   }
   // Group head facts. The headers name their populations in
