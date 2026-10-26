@@ -219,13 +219,17 @@ function disc(r, x, y) {
 }
 /* Label placements for the named points, as offsets from the
  * point. Chosen against the payload positions so no two
- * labels meet; every other point still carries its disc and
- * mark, and the rail names all five of its points. */
+ * labels meet and no disc strikes a label; every other point
+ * still carries its disc and mark, and the rail names all
+ * five of its points. The ling label sits right of both ling
+ * discs (the vl disc struck its old below-right seat), and
+ * the qwen label sits above-left of its disc, clear of the
+ * corner readings and the MiniMax label. */
 const LABELS = {
   "anthropic-fable-v2-trial": { dx: -18, dy: 5, anchor: "end" },
   "anthropic-opus-v2-trial": { dx: -18, dy: -16, anchor: "end" },
-  "or-qwen-v2-trial": { dx: 14, dy: 27, anchor: "start" },
-  "or-ling-v2-trial": { dx: 18, dy: 24, anchor: "start" },
+  "or-qwen-v2-trial": { dx: -18, dy: -16, anchor: "end" },
+  "or-ling-v2-trial": { dx: 24, dy: 2, anchor: "start" },
   "anthropic-v2-trial": { dx: 0, dy: 31, anchor: "middle" },
   "minimax-v2-trial": { dx: -18, dy: 5, anchor: "end" },
   "xai-v2-trial": { dx: 18, dy: 5, anchor: "start" },
