@@ -19,7 +19,9 @@
  * #805cfb is the deep stop of Upstage's published gradient;
  * Inception #6f9aa5 is a lightened take on the slate of
  * Inception's published favicon, lifted so the color still
- * reads on the board's dark ground.
+ * reads on the board's dark ground. ProtectAI #5f31cd is
+ * the rim purple of the shield in ProtectAI's published
+ * org avatar.
  */
 export interface VendorFamily {
   key: string;
@@ -57,7 +59,7 @@ export const VENDOR_FAMILIES: VendorFamily[] = [
   { key: "inception", label: "Inception", color: "#6f9aa5", glyph: DARK },
   { key: "upstage", label: "Upstage", color: "#805cfb", glyph: LIGHT },
   { key: "inclusionai", label: "InclusionAI", color: "#c4b5fd", glyph: DARK },
-  { key: "protectai", label: "ProtectAI", color: "#f0abfc", glyph: DARK },
+  { key: "protectai", label: "ProtectAI", color: "#5f31cd", glyph: LIGHT },
 ];
 
 const RULES: Array<{ test: RegExp; key: string }> = [

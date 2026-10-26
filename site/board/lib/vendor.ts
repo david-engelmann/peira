@@ -40,6 +40,7 @@ const RULES: Array<{
   { test: /solar|upstage/, slug: "upstage", label: "Upstage" },
   { test: /mercury|inception/, slug: "inception", label: "Inception" },
   { test: /celeris/, slug: "celeris", label: "Celeris" },
+  { test: /protectai/, slug: "protectai", label: "ProtectAI" },
 ];
 
 /**
@@ -53,7 +54,6 @@ const MONO_RULES: Array<{
   letter: string;
   label: string;
 }> = [
-  { test: /protectai/, letter: "P", label: "ProtectAI" },
   { test: /mapika/, letter: "M", label: "Mapika" },
   { test: /kev/, letter: "K", label: "Jared Palmer" },
   { test: /laya/, letter: "L", label: "Convai Innovations" },

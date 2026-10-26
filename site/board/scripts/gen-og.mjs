@@ -157,12 +157,11 @@ const FAMILIES = [
   [/mercury|inception/, "#6f9aa5", "#0b0e12", "inception"],
   [/solar|upstage/, "#805cfb", "#f4f7fa", "upstage"],
   [/ling|inclusionai/, "#c4b5fd", "#0b0e12", null],
-  [/protectai|deberta/, "#f0abfc", "#0b0e12", null],
+  [/protectai|deberta/, "#5f31cd", "#f4f7fa", "protectai"],
 ];
 /* Monogram letters for the providers that publish no usable
  * mark, mirroring lib/vendor.ts so the image cannot drift. */
 const MONO_LETTERS = [
-  [/protectai/, "P"],
   [/mapika/, "M"],
   [/kev/, "K"],
   [/laya/, "L"],
