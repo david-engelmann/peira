@@ -287,7 +287,7 @@ const scatterSvg = `<svg width="1200" height="630" viewBox="0 0 1200 630" class=
   <line x1="${PLOT.x0}" y1="${PLOT.y1}" x2="${PLOT.x1}" y2="${PLOT.y1}" stroke="#232c35"/>
   ${decadeSvg.join("\n")}
   <text x="48" y="${PLOT.y0 - 10}" class="tick">No API cost</text>
-  <text x="${PLOT.x0}" y="${PLOT.y0 - 10}" class="tick">Attack success, percent</text>
+  <text x="${PLOT.x0 + 32}" y="${PLOT.y0 - 10}" class="tick">Attack success, percent</text>
   <text x="520" y="252" class="corner">Expensive and fragile</text>
   <text x="520" y="278" class="corner-sub">The priciest run flipped most of all</text>
   <text x="${PLOT.x0}" y="468" class="corner">Near-free and tough</text>
