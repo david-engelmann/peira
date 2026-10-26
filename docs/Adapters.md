@@ -2187,7 +2187,10 @@ peira run --adapter peira.adapters.cursor_harness:CursorHarnessAdapter --suite t
 
 `CursorHarnessAdapter` measures a model the way a Cursor user
 actually reaches it: through Cursor's own agent (the `agent` CLI in
-headless print mode, `--mode ask`, read-only), with Cursor's system
+headless print mode, `--mode ask`, read-only; `--trust` is passed
+so the CLI runs non-interactively against the adapter's fresh
+empty workspace directory instead of stopping on its trust
+prompt), with Cursor's system
 prompt, model configuration, and serving choices in the loop. It is
 not a bare-wire measurement of the underlying model and never
 claims to be: the model id is Cursor's variant label, the harness

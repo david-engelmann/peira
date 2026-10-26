@@ -34,6 +34,11 @@ Wire facts, verified live 2026-10-24 against the account's key:
 - ``--mode ask`` keeps the agent read-only: it answers the prompt
   and cannot edit files or run tools against the workspace. The
   workspace is an empty directory created for the purpose.
+  ``--trust`` is passed so the CLI runs non-interactively against
+  that fresh directory instead of stopping on its workspace-trust
+  prompt (which a headless subprocess cannot answer, so the call
+  would hang until the timeout). It trusts the adapter's own
+  empty directory only, and ask mode still bars edits and tools.
 
 The prompt sent is the structured pipeline's own composed prompt,
 the same case text the bare-wire structured adapters send, with one
@@ -237,6 +242,15 @@ class CursorHarnessAdapter(_StructuredLLMBase):
             raise ProviderError(
                 f"cursor-agent call timed out after {self.timeout_s}s",
                 status_code=408,
+            ) from exc
+        except OSError as exc:
+            # Any other launch failure (a non-executable binary, an
+            # argument list the OS rejects) is a harness failure like
+            # the ones above, not a bare OSError escaping the
+            # adapter's error contract. FileNotFoundError is an
+            # OSError subclass and keeps its own message above.
+            raise ProviderError(
+                f"cursor-agent could not be started: {exc}"
             ) from exc
         if proc.returncode != 0:
             detail = (proc.stderr or proc.stdout or "").strip()[:300]

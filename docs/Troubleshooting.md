@@ -1717,6 +1717,12 @@ Cause: the Cursor `agent` CLI is not installed at the expected path
 the Cursor CLI from cursor.com, or set `CURSOR_AGENT_PATH` to the
 binary's location.
 
+**`cursor-agent could not be started: ...`**
+Cause: the operating system refused to launch the agent CLI, for
+example because the binary is not executable or an argument was
+rejected. Fix: check the binary at the expected path is the
+installed Cursor CLI and is executable.
+
 **`cursor-agent call timed out after ...s`** (status 408)
 Cause: the agent CLI did not answer within the call timeout. The
 runner treats it as transient and retries under `--max-attempts`.

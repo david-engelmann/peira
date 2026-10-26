@@ -363,6 +363,18 @@ class TestCursorHarnessSubprocess(unittest.TestCase):
             adapter.decide(CASE, "choice", _ctx())
         self.assertIn("binary not found", str(ctx.exception))
 
+    def test_non_executable_binary_is_a_provider_error(self):
+        # A binary that exists but cannot be exec'd raises
+        # PermissionError (an OSError, not FileNotFoundError); it
+        # must surface as a ProviderError, not escape bare.
+        not_exec = Path(self._tmp.name) / "agent-noexec"
+        not_exec.write_text("not a program")
+        not_exec.chmod(0o644)
+        adapter = self._real_adapter(agent_bin=str(not_exec))
+        with self.assertRaises(ProviderError) as ctx:
+            adapter.decide(CASE, "choice", _ctx())
+        self.assertIn("could not be started", str(ctx.exception))
+
     def test_nonzero_exit_maps_to_502(self):
         with _env(STUB_MODE="exit3"):
             with self.assertRaises(ProviderError) as ctx:
