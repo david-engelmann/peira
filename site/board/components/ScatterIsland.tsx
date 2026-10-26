@@ -19,14 +19,16 @@ import type { ScatterDatum } from "@/lib/scatterData";
  * point set from lib/scatterData, so no payload module enters
  * the client bundle. Every point is a disc in its maker's
  * family color carrying the maker's mark, and every point is
- * named in place by the deterministic label solver. Nothing
- * is keyed out to numbers: labels the solver cannot place
- * beside their point move to a labelled overflow stack
- * inside the plot, tied back with a leader line. Hover, tap
- * and keyboard focus enlarge the point, bold its label, and
- * open a small card with the model's figures. Flagged
- * results keep the amber ring. The corners carry the two
- * readings the data supports, in display type.
+ * named: beside its disc where the deterministic label solver
+ * finds a collision-free side, on the rail as a list row
+ * beside its disc, or in the overflow stack, where each row
+ * carries the point's own disc glyph beside its name and
+ * figures. No label is ever tied to its point by a drawn
+ * line: there are no leader lines anywhere in the chart.
+ * Hover, tap and keyboard focus enlarge the point, bold its
+ * label, and open a small card with the model's figures.
+ * Flagged results keep the amber ring. The corners carry the
+ * two readings the data supports, in display type.
  */
 
 interface Geom {
@@ -39,14 +41,20 @@ interface Geom {
   labelBounds: Rect;
 }
 
+/* The wide rail is a list column in its own right: each rail
+ * disc sits at the column's left with its name directly
+ * beside it in the same row, and the plot begins after the
+ * divider. Label bounds for plotted points start past the
+ * divider, so a plotted label can never stray into the rail
+ * list or across the divider line. */
 const WIDE: Geom = {
   w: 1132,
-  h: 612,
-  railW: 94,
+  h: 676,
+  railW: 260,
   railCx: 46,
-  dividerX: 106,
-  plot: { x0: 128, x1: 1124, y0: 36, y1: 540 },
-  labelBounds: { x: 2, y: 30, w: 1128, h: 512 },
+  dividerX: 268,
+  plot: { x0: 292, x1: 1124, y0: 36, y1: 604 },
+  labelBounds: { x: 276, y: 30, w: 854, h: 574 },
 };
 
 const PHONE: Geom = {
@@ -56,8 +64,15 @@ const PHONE: Geom = {
   railCx: 25,
   dividerX: 58,
   plot: { x0: 66, x1: 354, y0: 34, y1: 420 },
-  labelBounds: { x: 0, y: 26, w: 358, h: 392 },
+  labelBounds: { x: 58, y: 26, w: 300, h: 392 },
 };
+
+/* Phone overflow list geometry: entries begin below the
+ * cost axis caption, two columns of two-line rows (disc and
+ * name, then the figures under the name). */
+const PHONE_LIST_TOP = 488;
+const PHONE_ENTRY_PITCH = 34;
+const PHONE_COL_X = [6, 180];
 
 /* Corner annotation furniture. The solver keeps labels out
  * of these boxes, and the audit keeps the annotation text
@@ -66,7 +81,7 @@ const PHONE: Geom = {
  * priciest run is also the easiest to flip. The bottom-left
  * names jev-1.14.0 at its recorded twenty cents a run. */
 const WIDE_ANNOT_TR: Rect = { x: 580, y: 38, w: 258, h: 62 };
-const WIDE_ANNOT_BL: Rect = { x: 134, y: 428, w: 300, h: 72 };
+const WIDE_ANNOT_BL: Rect = { x: 298, y: 458, w: 300, h: 72 };
 const PHONE_ANNOT_TR: Rect = { x: 138, y: 2, w: 216, h: 40 };
 
 const r2 = (v: number) => Math.round(v * 100) / 100;
@@ -78,12 +93,25 @@ interface Pt {
   nudged: boolean;
 }
 
+/** One overflow stack row: the point's disc, name and figures. */
+interface StackEntry {
+  runId: string;
+  x: number;
+  y: number;
+}
+
 function decadeTicks(domain: [number, number]): number[] {
   const out: number[] = [];
   const start = Math.ceil(Math.log10(domain[0]));
   const end = Math.floor(Math.log10(domain[1]));
   for (let d = start; d <= end; d++) out.push(10 ** d);
   return out;
+}
+
+function entryValues(d: ScatterDatum): string {
+  const asr = fmtPct(d.asr);
+  if (d.rail) return d.cost !== null ? `${asr} · $0.00` : `${asr} · no cost`;
+  return `${asr} · ${fmtUsdExact(d.cost!)} per run`;
 }
 
 function buildPoints(
@@ -125,15 +153,16 @@ function buildPoints(
   /* The rail chain sits inside a few pixels on the true axis,
    * tighter than one disc diameter, so it spreads as a stack:
    * sorted passes hold the separation while every point stays
-   * within the audit's nudged slack of its true position. The
-   * separation target is what the monogram letters need to
-   * stay clear of each other. */
+   * within the audit's nudged slack of its true position. On
+   * the wide chart the separation is the name row pitch: each
+   * rail name sits beside its disc in the same row, so the
+   * rows need a full label height between centres. */
   {
     const sorted = [...railPts].sort((a, b) => a.y - b.y);
     const orig = new Map(sorted.map((p) => [p.d.runId, p.y]));
-    const minSep = wide ? 15 : 17;
-    const maxShift = wide ? 12 : 18;
-    for (let pass = 0; pass < 8; pass++) {
+    const minSep = wide ? 15.5 : 17;
+    const maxShift = wide ? 13 : 18;
+    for (let pass = 0; pass < 60; pass++) {
       for (let i = 1; i < sorted.length; i++) {
         const lo = Math.max(
           sorted[i - 1].y + minSep,
@@ -162,6 +191,36 @@ function buildPoints(
   return [...plottedPts, ...railPts];
 }
 
+function MarkerGlyph({ d }: { d: ScatterDatum }) {
+  const cls = d.flagged ? "pt-flagged" : "pt-ranked";
+  return (
+    <>
+      <circle
+        cx={0}
+        cy={0}
+        r={10}
+        className={cls}
+        style={{
+          fill: d.color,
+          stroke: d.flagged ? undefined : "rgba(255, 255, 255, 0.28)",
+        }}
+      />
+      {d.logoSlug ? (
+        <path
+          d={LOGO_PATHS[d.logoSlug as LogoSlug]}
+          transform="translate(-6 -6) scale(0.5)"
+          fill={d.glyph}
+          aria-hidden="true"
+        />
+      ) : (
+        <text x={0} y={0} className="pt-mono" fill={d.glyph} aria-hidden="true">
+          {d.monoLetter}
+        </text>
+      )}
+    </>
+  );
+}
+
 function Marker({
   p,
   active,
@@ -174,7 +233,6 @@ function Marker({
   onDeactivate: () => void;
 }) {
   const d = p.d;
-  const cls = d.flagged ? "pt-flagged" : "pt-ranked";
   return (
     <g
       className="scatter-point"
@@ -194,35 +252,8 @@ function Marker({
       onClick={() => onActivate(d.runId)}
     >
       <title>{d.title}</title>
-      <g className="pt-mark">
-        <circle
-          cx={r2(p.x)}
-          cy={r2(p.y)}
-          r={10}
-          className={cls}
-          style={{
-            fill: d.color,
-            stroke: d.flagged ? undefined : "rgba(255, 255, 255, 0.28)",
-          }}
-        />
-        {d.logoSlug ? (
-          <path
-            d={LOGO_PATHS[d.logoSlug as LogoSlug]}
-            transform={`translate(${r2(p.x - 6)} ${r2(p.y - 6)}) scale(0.5)`}
-            fill={d.glyph}
-            aria-hidden="true"
-          />
-        ) : (
-          <text
-            x={r2(p.x)}
-            y={r2(p.y)}
-            className="pt-mono"
-            fill={d.glyph}
-            aria-hidden="true"
-          >
-            {d.monoLetter}
-          </text>
-        )}
+      <g className="pt-mark" transform={`translate(${r2(p.x)} ${r2(p.y)})`}>
+        <MarkerGlyph d={d} />
       </g>
       {d.lowerBound && (
         <g className="lb-tick" aria-hidden="true">
@@ -306,15 +337,13 @@ function Grid({ g, domain }: { g: Geom; domain: [number, number] }) {
 
 interface Solution {
   placed: PlacedLabel[];
+  stack: StackEntry[];
 }
 
-function solveWide(points: Pt[]): Solution {
-  const g = WIDE;
-  const furniture: Rect[] = [
+function baseFurniture(g: Geom): Rect[] {
+  return [
     { x: 0, y: 0, w: 104, h: 30 },
     { x: g.plot.x0, y: 4, w: 210, h: 16 },
-    WIDE_ANNOT_TR,
-    WIDE_ANNOT_BL,
     ...ASR_TICKS.map((t) => ({
       x: g.plot.x0 + 2,
       y: g.plot.y0 + (1 - t / ASR_AXIS_MAX) * (g.plot.y1 - g.plot.y0) - 17,
@@ -322,33 +351,28 @@ function solveWide(points: Pt[]): Solution {
       h: 13,
     })),
   ];
-  /* Rail labels take a stacked column just inside the plot's
-   * left edge, in attack success order, with leader lines back
-   * to their discs, as before the redesign. The plotted labels
-   * are then solved against the column as furniture. */
+}
+
+function solveWide(points: Pt[]): Solution {
+  const g = WIDE;
+  const furniture: Rect[] = [
+    ...baseFurniture(g),
+    WIDE_ANNOT_TR,
+    WIDE_ANNOT_BL,
+  ];
+  /* Rail names sit directly beside their discs, one row per
+   * point, as a list inside the rail column: disc, then name,
+   * on the point's own row. The placed rects join the
+   * furniture, so plotted labels solve around the list. */
   const railPts = points.filter((p) => p.d.rail).sort((a, b) => a.y - b.y);
-  const railPlaced: PlacedLabel[] = [];
-  if (railPts.length > 0) {
-    const pitch = 19;
-    const stackH = (railPts.length - 1) * pitch + 15;
-    const meanY = railPts.reduce((s, p) => s + p.y, 0) / railPts.length;
-    const colX = g.plot.x0 + 34;
-    let top = meanY - stackH / 2;
-    const loBound = g.labelBounds.y;
-    const hiBound = g.labelBounds.y + g.labelBounds.h - stackH;
-    top = Math.min(Math.max(top, loBound), hiBound);
-    railPts.forEach((p, i) => {
-      railPlaced.push({
-        runId: p.d.runId,
-        x: colX,
-        y: top + i * pitch,
-        w: estimateLabelWidth(p.d.label),
-        h: 15,
-        leader: true,
-      });
-    });
-    furniture.push(...railPlaced);
-  }
+  const railPlaced: PlacedLabel[] = railPts.map((p) => ({
+    runId: p.d.runId,
+    x: g.railCx + 18,
+    y: p.y - 7.5,
+    w: estimateLabelWidth(p.d.label),
+    h: 15,
+  }));
+  furniture.push(...railPlaced);
   const railObstacles: LayoutPoint[] = railPts.map((p) => ({
     runId: p.d.runId,
     x: p.x,
@@ -370,11 +394,14 @@ function solveWide(points: Pt[]): Solution {
   ];
   const first = placeLabels(layoutPts, furniture, g.labelBounds);
   const placed: PlacedLabel[] = [...railPlaced, ...first.placed];
+  const stack: StackEntry[] = [];
   if (first.keyed.length > 0) {
-    /* No keyed list. Unplaced labels take slots in the plot's
-     * empty lower band in attack success order, each slot
-     * checked against everything already placed, each with a
-     * leader line back to its point. */
+    /* No keyed list and no drawn lines. A label the solver
+     * cannot seat beside its point takes a row in the plot's
+     * empty lower band, in attack success order, each row
+     * carrying the point's own disc glyph beside its name and
+     * figures. Rows are scanned against everything already
+     * placed, so the stack never covers a point or a label. */
     const byId = new Map(points.map((p) => [p.d.runId, p]));
     const unplaced = first.keyed
       .map((id) => byId.get(id)!)
@@ -393,11 +420,13 @@ function solveWide(points: Pt[]): Solution {
           b.y < r.y + r.h + 2,
       );
     for (const p of unplaced) {
-      const w = estimateLabelWidth(p.d.label);
+      const w =
+        26 + estimateLabelWidth(p.d.label) + 10 +
+        estimateLabelWidth(entryValues(p.d));
       let slot: Rect | null = null;
-      outer: for (let y = 402; y < 528; y += 19) {
-        for (const x of [468, 640, 806]) {
-          const r: Rect = { x, y, w, h: 15 };
+      outer: for (let y = 440; y <= 578; y += 32) {
+        for (const x of [648, 316]) {
+          const r: Rect = { x, y, w, h: 26 };
           if (x + w <= 1128 && !hits(r)) {
             slot = r;
             break outer;
@@ -406,58 +435,47 @@ function solveWide(points: Pt[]): Solution {
       }
       if (slot) {
         taken.push(slot);
-        placed.push({ ...slot, runId: p.d.runId, leader: true });
+        stack.push({ runId: p.d.runId, x: slot.x, y: slot.y });
       }
     }
   }
-  return { placed };
+  return { placed, stack };
 }
 
-function solvePhone(points: Pt[]): Solution {
+function solvePhone(points: Pt[]): Solution & { stackRows: number } {
   const g = PHONE;
-  const furniture: Rect[] = [
-    { x: g.plot.x0, y: 0, w: 170, h: 20 },
-    PHONE_ANNOT_TR,
-    ...ASR_TICKS.map((t) => ({
-      x: g.plot.x0 + 2,
-      y: g.plot.y0 + (1 - t / ASR_AXIS_MAX) * (g.plot.y1 - g.plot.y0) - 17,
-      w: 26,
-      h: 13,
-    })),
-  ];
+  const furniture: Rect[] = [...baseFurniture(g), PHONE_ANNOT_TR];
+  /* Rail points are not labelled in the phone plot: the rail
+   * is fifty pixels wide, so their names join the list under
+   * the plot with the plotted points the solver cannot seat.
+   * They still stand in the layout as obstacles, so plotted
+   * labels solve around their discs. */
   const layoutPts: LayoutPoint[] = points.map((p) => ({
     runId: p.d.runId,
     x: p.x,
     y: p.y,
     marker: 11,
-    label: p.d.label,
+    label: p.d.rail ? null : p.d.label,
   }));
   const first = placeLabels(layoutPts, furniture, g.labelBounds, 0.84);
-  const placed: PlacedLabel[] = [...first.placed];
-  if (first.keyed.length > 0) {
-    /* Phone overflow: a labelled stack under the plot, in
-     * attack success order across two columns, each label
-     * tied to its point with a leader line. The chart grows
-     * to fit the stack, so the count is never capped. */
-    const byId = new Map(points.map((p) => [p.d.runId, p]));
-    const unplaced = first.keyed
-      .map((id) => byId.get(id)!)
-      .sort((a, b) => b.d.asr - a.d.asr);
-    const perCol = Math.ceil(unplaced.length / 2);
-    unplaced.forEach((p, i) => {
-      const col = i < perCol ? 0 : 1;
-      const rowI = i - col * perCol;
-      placed.push({
-        runId: p.d.runId,
-        x: 8 + col * 178,
-        y: 480 + rowI * 19,
-        w: estimateLabelWidth(p.d.label) * 0.84,
-        h: 15,
-        leader: true,
-      });
-    });
-  }
-  return { placed };
+  const byId = new Map(points.map((p) => [p.d.runId, p]));
+  const listed = [
+    ...points.filter((p) => p.d.rail).map((p) => p.d.runId),
+    ...first.keyed,
+  ]
+    .map((id) => byId.get(id)!)
+    .sort((a, b) => b.d.asr - a.d.asr);
+  const rows = Math.ceil(listed.length / 2);
+  const stack: StackEntry[] = listed.map((p, i) => {
+    const col = i < rows ? 0 : 1;
+    const rowI = i - col * rows;
+    return {
+      runId: p.d.runId,
+      x: PHONE_COL_X[col],
+      y: PHONE_LIST_TOP + rowI * PHONE_ENTRY_PITCH,
+    };
+  });
+  return { placed: first.placed, stack, stackRows: rows };
 }
 
 function Labels({
@@ -476,28 +494,76 @@ function Labels({
     <>
       {placed.map((l) => {
         const p = ptById.get(l.runId)!;
-        const nearX = Math.min(Math.max(p.x, l.x), l.x + l.w);
-        const nearY = Math.min(Math.max(p.y, l.y), l.y + l.h);
         return (
-          <g key={l.runId}>
-            {l.leader && (
-              <line
-                x1={r2(p.x)}
-                y1={r2(p.y)}
-                x2={r2(nearX)}
-                y2={r2(nearY)}
-                className="leader"
-                aria-hidden="true"
-              />
-            )}
-            <text
-              x={r2(l.x)}
-              y={r2(l.y + 11)}
-              className={`scatter-label${phone ? " phone" : ""}`}
-              data-label-for={l.runId}
-              data-active={activeId === l.runId ? "true" : undefined}
+          <text
+            key={l.runId}
+            x={r2(l.x)}
+            y={r2(l.y + 11)}
+            className={`scatter-label${phone ? " phone" : ""}`}
+            data-label-for={l.runId}
+            data-active={activeId === l.runId ? "true" : undefined}
+          >
+            {p.d.label}
+          </text>
+        );
+      })}
+    </>
+  );
+}
+
+/**
+ * Overflow rows: the point's disc at a reduced scale, its
+ * name, and its figures. The disc carries the association;
+ * nothing is drawn between the row and the point. On the
+ * wide chart the figures follow the name on the same line;
+ * on the phone they sit under the name.
+ */
+function StackEntries({
+  stack,
+  points,
+  activeId,
+  phone,
+}: {
+  stack: StackEntry[];
+  points: Pt[];
+  activeId: string | null;
+  phone?: boolean;
+}) {
+  const ptById = new Map(points.map((p) => [p.d.runId, p]));
+  return (
+    <>
+      {stack.map((s) => {
+        const p = ptById.get(s.runId)!;
+        const d = p.d;
+        const nameW = estimateLabelWidth(d.label) * (phone ? 0.84 : 1);
+        return (
+          <g key={s.runId} className="scatter-entry">
+            <g
+              transform={`translate(${r2(s.x + 10)} ${r2(s.y + 13)}) scale(${phone ? 0.72 : 0.85})`}
+              aria-hidden="true"
             >
-              {p.d.label}
+              <MarkerGlyph d={d} />
+            </g>
+            <text
+              x={r2(s.x + (phone ? 24 : 26))}
+              y={r2(s.y + (phone ? 13 : 17))}
+              className={`scatter-label${phone ? " phone" : ""}`}
+              data-label-for={s.runId}
+              data-active={activeId === s.runId ? "true" : undefined}
+            >
+              {d.label}
+            </text>
+            <text
+              x={r2(
+                phone
+                  ? s.x + 24
+                  : s.x + 26 + nameW + 10,
+              )}
+              y={r2(phone ? s.y + 27 : s.y + 17)}
+              className={`scatter-entry-values${phone ? " phone" : ""} num`}
+              aria-hidden="true"
+            >
+              {entryValues(d)}
             </text>
           </g>
         );
@@ -565,11 +631,10 @@ export default function ScatterIsland({
   const g = phone ? PHONE : WIDE;
   const points = buildPoints(plotted, rail, domain, g);
   const solution = phone ? solvePhone(points) : solveWide(points);
-  const overflow = phone
-    ? solution.placed.filter((l) => l.y >= 480).length
-    : 0;
   const height = phone
-    ? 480 + Math.ceil(overflow / 2) * 19 + 52
+    ? PHONE_LIST_TOP +
+      (solution as { stackRows?: number }).stackRows! * PHONE_ENTRY_PITCH +
+      58
     : WIDE.h;
   const [activeId, setActiveId] = useState<string | null>(null);
   const active = points.find((p) => p.d.runId === activeId) ?? null;
@@ -619,10 +684,10 @@ export default function ScatterIsland({
               </text>
             </g>
             <g className="corner-note">
-              <text x={140} y={470} className="corner-title">
+              <text x={304} y={500} className="corner-title">
                 Near-free and tough
               </text>
-              <text x={140} y={494} className="corner-sub">
+              <text x={304} y={524} className="corner-sub">
                 Jev 1.14 held at twenty cents a run
               </text>
             </g>
@@ -639,6 +704,12 @@ export default function ScatterIsland({
         ))}
         <Labels
           placed={solution.placed}
+          points={points}
+          activeId={activeId}
+          phone={phone}
+        />
+        <StackEntries
+          stack={solution.stack}
           points={points}
           activeId={activeId}
           phone={phone}

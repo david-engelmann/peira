@@ -30,7 +30,12 @@
  *        point carries its name in place, every label rect is
  *        pairwise clear of every other label and of every
  *        point centre, and no numbered badge or keyed list
- *        exists (redesign rule).
+ *        exists (redesign rule). No leader line exists either:
+ *        the scatter carries no line element outside its grid
+ *        lines, rail divider, axis lines and the points' own
+ *        lower-bound ticks, at any width (correction rule:
+ *        labels sit beside their points or in a disc-carrying
+ *        stack row, never tied by a drawn line).
  *  Heatmap. Headers measure one line; every cell's text equals
  *        the payload rate under the cell format; the 20 not
  *        measured cells carry the middot; every cell's text to
@@ -908,6 +913,14 @@ for (const width of [1440, 1280, 390]) {
               stroke: c ? getComputedStyle(c).stroke : null,
             };
           }),
+          leaders: svg.querySelectorAll(".leader").length,
+          strayLines: [...svg.querySelectorAll("line")].filter(
+            (ln) =>
+              !ln.classList.contains("grid-line") &&
+              !ln.classList.contains("rail-divider") &&
+              !ln.classList.contains("axis-line") &&
+              !ln.closest(".lb-tick"),
+          ).length,
         };
       }
       const listSel =
@@ -1318,6 +1331,16 @@ for (const width of [1440, 1280, 390]) {
       if ((chart.scatterList ?? []).length > 0) {
         failures.push(
           `width ${width}: scatter still carries a keyed list of ${(chart.scatterList ?? []).length} items`,
+        );
+      }
+      if (sc.leaders > 0) {
+        failures.push(
+          `width ${width}: scatter carries ${sc.leaders} leader lines (the no-leader-line rule)`,
+        );
+      }
+      if (sc.strayLines > 0) {
+        failures.push(
+          `width ${width}: scatter carries ${sc.strayLines} lines outside its grid, divider, axes and lower-bound ticks (the no-leader-line rule)`,
         );
       }
     }

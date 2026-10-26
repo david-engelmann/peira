@@ -53,17 +53,25 @@ export interface LayoutPoint {
 
 export interface PlacedLabel extends Rect {
   runId: string;
-  leader: boolean;
 }
 
 const LABEL_H = 15;
 const GAP = 9;
+/* Second candidate ring, one disc further out. A label only
+ * reaches it when every near candidate collides, and the
+ * association guard in placeLabels then applies: a far label
+ * must sit closer to its own point than to any other, so it
+ * can never read as a neighbour's name. */
+const GAP_FAR = 26;
+/* Edge gap beyond which a candidate counts as far. Near
+ * candidates sit at most GAP from their point's marker box. */
+const FAR_GAP = 12;
 
 function candidates(p: LayoutPoint, w: number, plotRight: number): Rect[] {
   const cx = p.x;
   const cy = p.y;
   const mk = (x: number, y: number): Rect => ({ x, y, w, h: LABEL_H });
-  const east = [
+  const near = [
     mk(cx + p.marker + GAP, cy - LABEL_H / 2),
     mk(cx + p.marker + GAP - 2, cy - LABEL_H - GAP + 2),
     mk(cx + p.marker + GAP - 2, cy + GAP - 2),
@@ -73,7 +81,26 @@ function candidates(p: LayoutPoint, w: number, plotRight: number): Rect[] {
     mk(cx - p.marker - GAP - w + 2, cy - LABEL_H - GAP + 2),
     mk(cx - p.marker - GAP - w + 2, cy + GAP - 2),
   ];
-  const west = [...east.slice(5), ...east.slice(0, 5)];
+  const g = GAP_FAR;
+  const far = [
+    mk(cx + p.marker + g, cy - LABEL_H / 2),
+    mk(cx + p.marker + g, cy - LABEL_H - g),
+    mk(cx + p.marker + g, cy + g),
+    mk(cx - w / 2, cy - p.marker - g - LABEL_H),
+    mk(cx - w / 2, cy + p.marker + g),
+    mk(cx - p.marker - g - w, cy - LABEL_H / 2),
+    mk(cx - p.marker - g - w, cy - LABEL_H - g),
+    mk(cx - p.marker - g - w, cy + g),
+  ];
+  const east = [...near, ...far];
+  const west = [
+    ...near.slice(5),
+    ...near.slice(3, 5),
+    ...near.slice(0, 3),
+    ...far.slice(5),
+    ...far.slice(3, 5),
+    ...far.slice(0, 3),
+  ];
   return cx > plotRight * 0.72 ? west : east;
 }
 
@@ -95,10 +122,19 @@ function gapBetween(rect: Rect, p: LayoutPoint): number {
  * Deterministic label placement. Every label starts at its
  * cheapest candidate against points and furniture, then passes
  * move labels to cheaper candidates while any overlap remains.
- * Labels that still overlap are returned in `keyed` so the
- * caller can replace them with index badges and a keyed list,
- * per the design spec's cluster rule. Runs identically at
- * build time on every build.
+ * Candidates come in two rings, near and far; a far candidate
+ * is valid only while the label stays closer to its own point
+ * than to any other. Labels the joint solve leaves overlapped
+ * get a retry against the seated set, including displacing a
+ * single seated label to another clean candidate. Labels that
+ * still overlap are returned in `keyed` so the
+ * caller can place them in its overflow stack beside their
+ * point's disc glyph. There are no index badges, no keyed
+ * lists, and no leader lines anywhere in the design: a label
+ * is either adjacent to its point or in the stack, and the
+ * stack entry carries the point's own disc so the association
+ * needs no drawn line. Runs identically at build time on
+ * every build.
  */
 export function placeLabels(
   points: LayoutPoint[],
@@ -118,6 +154,16 @@ export function placeLabels(
     });
   }
   const chosen = new Map<string, Rect>();
+  /* A far label must stay closer to its own point than to
+   * any other point, or it would read as the neighbour's
+   * name. Purely geometric, so it holds in every pass. */
+  const associationOk = (self: string, rect: Rect, ownGap: number): boolean => {
+    for (const q of points) {
+      if (q.runId === self) continue;
+      if (gapBetween(rect, q) < ownGap) return false;
+    }
+    return true;
+  };
   const costOf = (self: string, rect: Rect, candIndex: number): number => {
     let cost = candIndex * 3;
     for (const f of furniture) cost += rectOverlap(rect, f) * 40;
@@ -135,7 +181,9 @@ export function placeLabels(
     ) {
       cost += 100000;
     }
-    cost += gapBetween(rect, byId.get(self)!) * 0.4;
+    const gap = gapBetween(rect, byId.get(self)!);
+    cost += gap * 0.4;
+    if (gap > FAR_GAP && !associationOk(self, rect, gap)) cost += 100000;
     return cost;
   };
   for (const p of labelled) {
@@ -200,10 +248,114 @@ export function placeLabels(
     if (bad) {
       keyed.push(p.runId);
     } else {
-      placed.push({ ...rect, runId: p.runId, leader: gapBetween(rect, p) > 12 });
+      placed.push({ ...rect, runId: p.runId });
     }
   }
-  return { placed, keyed };
+  /* Retry pass for the labels the joint solve could not
+   * seat. A keyed label's own tentative rect no longer blocks
+   * the field, so first each keyed label retries against the
+   * seated set alone, highest on the chart first. If a
+   * candidate is blocked by exactly one seated label, that
+   * label is displaced to another clean candidate of its own
+   * and the keyed label takes the freed spot. Far candidates
+   * must pass the association guard in both moves. Whatever
+   * still cannot seat stays keyed for the caller's stack. */
+  const seated = new Map<string, Rect>(
+    placed.map((l) => [l.runId, { x: l.x, y: l.y, w: l.w, h: l.h }]),
+  );
+  const inBounds = (rect: Rect): boolean =>
+    rect.x >= bounds.x - 0.5 &&
+    rect.y >= bounds.y - 0.5 &&
+    rect.x + rect.w <= bounds.x + bounds.w + 0.5 &&
+    rect.y + rect.h <= bounds.y + bounds.h + 0.5;
+  const usable = (p: LayoutPoint, rect: Rect): boolean => {
+    const gap = gapBetween(rect, p);
+    return gap <= FAR_GAP || associationOk(p.runId, rect, gap);
+  };
+  const cleanAgainst = (
+    p: LayoutPoint,
+    rect: Rect,
+    others: Map<string, Rect>,
+    skipId?: string,
+  ): boolean => {
+    for (const f of furniture) if (rectOverlap(rect, f) > 0.5) return false;
+    for (const [id, pr] of pointRects) {
+      if (id !== p.runId && rectOverlap(rect, pr) > 0.5) return false;
+    }
+    for (const [id, other] of others) {
+      if (id !== skipId && rectOverlap(rect, other) > 0.5) return false;
+    }
+    return inBounds(rect);
+  };
+  const retryOrder = [...keyed].sort(
+    (a, b) => byId.get(a)!.y - byId.get(b)!.y,
+  );
+  const stillKeyed: string[] = [];
+  for (const id of retryOrder) {
+    const p = byId.get(id)!;
+    const w = estimateLabelWidth(p.label!) * widthScale;
+    const cands = candidates(p, w, bounds.x + bounds.w);
+    let seat: Rect | null = null;
+    for (const c of cands) {
+      if (usable(p, c) && cleanAgainst(p, c, seated)) {
+        seat = c;
+        break;
+      }
+    }
+    if (!seat) {
+      outer: for (const c of cands) {
+        if (!usable(p, c) || !inBounds(c)) continue;
+        let blockedBy: string | null = null;
+        let dead = false;
+        for (const f of furniture) {
+          if (rectOverlap(c, f) > 0.5) {
+            dead = true;
+            break;
+          }
+        }
+        if (dead) continue;
+        for (const [pid, pr] of pointRects) {
+          if (pid !== id && rectOverlap(c, pr) > 0.5) {
+            dead = true;
+            break;
+          }
+        }
+        if (dead) continue;
+        for (const [oid, other] of seated) {
+          if (rectOverlap(c, other) > 0.5) {
+            if (blockedBy !== null) {
+              dead = true;
+              break;
+            }
+            blockedBy = oid;
+          }
+        }
+        if (dead || blockedBy === null) continue;
+        const q = byId.get(blockedBy)!;
+        const qw = estimateLabelWidth(q.label!) * widthScale;
+        for (const qc of candidates(q, qw, bounds.x + bounds.w)) {
+          if (!usable(q, qc)) continue;
+          if (rectOverlap(qc, c) > 0.5) continue;
+          if (cleanAgainst(q, qc, seated, blockedBy)) {
+            seated.set(blockedBy, qc);
+            seat = c;
+            break outer;
+          }
+        }
+      }
+    }
+    if (seat) {
+      seated.set(id, seat);
+    } else {
+      stillKeyed.push(id);
+    }
+  }
+  const finalPlaced: PlacedLabel[] = [];
+  for (const p of labelled) {
+    const rect = seated.get(p.runId);
+    if (rect) finalPlaced.push({ ...rect, runId: p.runId });
+  }
+  return { placed: finalPlaced, keyed: stillKeyed };
 }
 
 /**
