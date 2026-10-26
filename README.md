@@ -90,7 +90,7 @@ One row per (adapter, dataset version). The bar is mechanical, not editorial. Ma
 
 ## Adapters
 
-Adapters ship in four groups, plus the `mock` reference mechanism exerciser.
+Adapters ship in three groups, plus the `mock` reference mechanism exerciser.
 
 **Guardrails and classifiers.** Shieldstral (Mistral), ProtectAI prompt injection, Llama Prompt Guard 2 86M (Meta), Qwen3Guard-Gen 4B (Qwen), Granite Guardian 4.1 8B and Granite Guardian HAP-125M (IBM), ShieldGemma 2B (Google), WildGuard (AllenAI), Lakera Guard (Check Point), the HarmBench classifier, OpenAI omni-moderation, Google Cloud Model Armor, Azure Prompt Shields, and Cloudflare Workers AI (Llama Guard 3 8B).
 
