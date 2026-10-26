@@ -16,7 +16,8 @@
  *        widths nothing inside the ranking extends past the
  *        section's own box; at desktop widths the rows' designed
  *        14 px bleed into the page padding is pinned at 15 px,
- *        and at every width nothing crosses the viewport.
+ *        and at each audited width (1440, 1280 and 390)
+ *        nothing crosses the viewport.
  *  F-01  the rank column holds exactly one number per ranked row
  *        (the group-local rank) and none on flagged rows.
  *  Amber appears only inside the flagged strip.

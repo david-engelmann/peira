@@ -32,7 +32,8 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
   phone widths, turned vertical in the rail; the interval
   strip gains a track; the guardrail slices' axis title now
   states the abstain subset. The DOM audit gains a containment
-  check (F-08) pinning this at every width.
+  check (F-08) pinning this at the audited widths
+  (1440, 1280 and 390).
 - Each ranking row's sub-line no longer repeats the headline
   rate; it carries the interval and the malformed rate only.
 
