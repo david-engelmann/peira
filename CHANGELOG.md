@@ -7,6 +7,17 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
 
 ## [Unreleased]
 
+### Internal work documents removed from the public docs tree
+
+- Removed 11 internal work documents from `docs/`: a lane work queue,
+  a draft cut-criteria memo, the audit disposition records, checkpoint
+  evidence adjudications, a data-capture gap matrix, two dated internal
+  reviews, the announcement package, and the board publishing runbook.
+  The audit-dispositions generator script and its CI drift check are
+  removed with them. The public docs tree now carries reader-facing
+  documentation only; the removed files are preserved in the project
+  records.
+
 ### Mercury chat models gain a direct Inception wire, effort pinned
 
 - `MercuryAdapter` (`mercury-structured`) measures Inception's

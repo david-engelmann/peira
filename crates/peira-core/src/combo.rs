@@ -4,7 +4,7 @@
 //! `python/peira/combo_schema.py` (`combo_pair_id`, `combo_case_id`,
 //! `parse_combo_case_id`, `validate_combo_dict`). File IO
 //! (`load_combo_cases`) and the `ComboCase` dataclass stay Python by
-//! design (see `docs/rust-max-queue.md`).
+//! design.
 //!
 //! Parity notes:
 //! - Case IDs are `combo-<a>-<b>-NNNN-<arm>`; parsing splits on the

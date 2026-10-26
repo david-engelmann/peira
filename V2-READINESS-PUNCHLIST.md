@@ -13,7 +13,6 @@
 - **9 HF guardrails:** code-complete, run local
 - **5 Jev-family:** code-complete, run local
 - **Pricing:** all 11 paid adapters now cost-accounted (v2026-10-02.2)
-- **V2 cut criteria:** defined in docs/V2-Cut-Criteria.md
 
 ## Blocked on David
 

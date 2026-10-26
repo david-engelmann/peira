@@ -6,7 +6,7 @@
 //!   (string parsing and file I/O stay Python),
 //! - `cppf` and `break_even_attack_rate` (their paired bootstraps use
 //!   `random.Random(seed)` and stay Python per the paired_bootstrap_ci
-//!   PRNG precedent, documented in `docs/rust-max-queue.md`),
+//!   PRNG precedent),
 //! - `value_view` and `threshold_defense_report` (report-shaped dict
 //!   assembly; they call the numeric functions below, which dispatch
 //!   to this core),

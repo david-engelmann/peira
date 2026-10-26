@@ -63,6 +63,5 @@ surface. Each item can be checked off by whoever does the final pass.
 
 The landing page goes live with real data only. Official runs sealed,
 artifacts published, ingest run without the mock flag, and the mock
-banner verified absent. The announcement package
-([Announcement-Package](Announcement-Package.md)) publishes after the
+banner verified absent. The launch announcement publishes after the
 page is live, not before.

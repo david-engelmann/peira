@@ -7,7 +7,7 @@
 //! the mean Kendall's tau rank correlation between the full ranking and
 //! each leave-one-out ranking.
 //!
-//! Parity-critical details (see `docs/rust-max-queue.md`):
+//! Parity-critical details:
 //! - `_round4` banker's rounding is replicated as
 //!   `format!("{:.4}", v).parse::<f64>()` — Rust has no
 //!   round-to-N-decimals. The `{:.4}` formatter rounds the exact binary
