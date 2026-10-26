@@ -790,13 +790,6 @@ body::before {
   stroke: var(--amber);
   stroke-width: 1.5;
 }
-.lb-tick line {
-  stroke: var(--ink-2);
-  stroke-width: 1.5;
-}
-.lb-tick polygon {
-  fill: var(--ink-2);
-}
 .scatter-label {
   fill: var(--ink-2);
   font-size: 11.5px;

@@ -918,8 +918,7 @@ for (const width of [1440, 1280, 390]) {
             (ln) =>
               !ln.classList.contains("grid-line") &&
               !ln.classList.contains("rail-divider") &&
-              !ln.classList.contains("axis-line") &&
-              !ln.closest(".lb-tick"),
+              !ln.classList.contains("axis-line"),
           ).length,
         };
       }
