@@ -34,6 +34,31 @@ const RULES: Array<{
   { test: /kimi|moonshot/, slug: "moonshotai", label: "Moonshot AI" },
   { test: /microsoft/, slug: "microsoft", label: "Microsoft" },
   { test: /cursor/, slug: "cursor", label: "Cursor" },
+  { test: /grok|xai/, slug: "xai", label: "xAI" },
+  { test: /jev|typesafe/, slug: "typesafe", label: "TypeSafe AI" },
+  { test: /glm|zhipu/, slug: "zhipu", label: "Zhipu AI" },
+  { test: /solar|upstage/, slug: "upstage", label: "Upstage" },
+  { test: /mercury|inception/, slug: "inception", label: "Inception" },
+  { test: /celeris/, slug: "celeris", label: "Celeris" },
+];
+
+/**
+ * Providers that publish no usable mark: the chip carries a
+ * monogram lettered from the provider's name, and the label
+ * names the provider, never the model's short name, so a row
+ * is credited to its maker everywhere the board shows one.
+ */
+const MONO_RULES: Array<{
+  test: RegExp;
+  letter: string;
+  label: string;
+}> = [
+  { test: /protectai/, letter: "P", label: "ProtectAI" },
+  { test: /mapika/, letter: "M", label: "Mapika" },
+  { test: /kev/, letter: "K", label: "Jared Palmer" },
+  { test: /laya/, letter: "L", label: "Convai Innovations" },
+  { test: /strands/, letter: "S", label: "Strands Agents" },
+  { test: /ling|inclusionai/, letter: "L", label: "InclusionAI" },
 ];
 
 export function vendorOf(row: BoardRow): VendorMark {
@@ -43,10 +68,10 @@ export function vendorOf(row: BoardRow): VendorMark {
       return { kind: "logo", slug: rule.slug, label: rule.label };
     }
   }
-  if (/grok|xai/.test(hay)) {
-    /* xAI publishes no mark in the icon set; its own wordmark is
-     * an X, so the monogram carries that letter. */
-    return { kind: "mono", letter: "X", label: "xAI" };
+  for (const rule of MONO_RULES) {
+    if (rule.test.test(hay)) {
+      return { kind: "mono", letter: rule.letter, label: rule.label };
+    }
   }
   const name = shortName(row);
   const letter = (name.match(/[a-z0-9]/i)?.[0] ?? "·").toUpperCase();

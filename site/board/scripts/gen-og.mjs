@@ -146,18 +146,28 @@ const FAMILIES = [
   [/kimi|moonshot/, "#9fb4c7", "#0b0e12", "moonshotai"],
   [/microsoft/, "#7bc950", "#0b0e12", "microsoft"],
   [/cursor/, "#b8bdc7", "#0b0e12", "cursor"],
-  [/grok|xai/, "#ffffff", "#0b0e12", null],
-  [/glm|zai/, "#6e8cff", "#0b0e12", null],
-  [/jev/, "#a3d635", "#0b0e12", null],
+  [/grok|xai/, "#ffffff", "#0b0e12", "xai"],
+  [/glm|zai/, "#126ef6", "#f4f7fa", "zhipu"],
+  [/jev/, "#e551ba", "#0b0e12", "typesafe"],
   [/kev/, "#e879f9", "#0b0e12", null],
   [/laya/, "#5eead4", "#0b0e12", null],
   [/decider-0|mapika/, "#e5c15c", "#0b0e12", null],
   [/strands/, "#2aa198", "#0b0e12", null],
-  [/celeris/, "#7dd3fc", "#0b0e12", null],
-  [/mercury|inception/, "#fca5a5", "#0b0e12", null],
-  [/solar|upstage/, "#ffe066", "#0b0e12", null],
+  [/celeris/, "#7dd3fc", "#0b0e12", "celeris"],
+  [/mercury|inception/, "#6f9aa5", "#0b0e12", "inception"],
+  [/solar|upstage/, "#805cfb", "#f4f7fa", "upstage"],
   [/ling|inclusionai/, "#c4b5fd", "#0b0e12", null],
   [/protectai|deberta/, "#f0abfc", "#0b0e12", null],
+];
+/* Monogram letters for the providers that publish no usable
+ * mark, mirroring lib/vendor.ts so the image cannot drift. */
+const MONO_LETTERS = [
+  [/protectai/, "P"],
+  [/mapika/, "M"],
+  [/kev/, "K"],
+  [/laya/, "L"],
+  [/strands/, "S"],
+  [/ling|inclusionai/, "L"],
 ];
 const familyOf = (r) => {
   const hay = `${r.display_name} ${r.adapter_name} ${r.wire}`.toLowerCase();
@@ -194,9 +204,15 @@ const esc = (t) =>
 function disc(r, x, y) {
   const fam = familyOf(r);
   const flagged = !r.ranking_eligible;
+  const monoRule = MONO_LETTERS.find(([re]) =>
+    re.test(`${r.display_name} ${r.adapter_name} ${r.wire}`.toLowerCase()),
+  );
+  const monoLetter =
+    monoRule?.[1] ??
+    (shortName(r).match(/[a-z0-9]/i)?.[0]?.toUpperCase() ?? "·");
   const glyph = fam[3]
     ? `<path d="${LOGO_PATHS[fam[3]]}" transform="translate(-6 -6) scale(0.5)" fill="${fam[2]}"/>`
-    : `<text y="1" class="mono" fill="${fam[2]}">${esc(shortName(r).match(/[a-z0-9]/i)?.[0]?.toUpperCase() ?? "·")}</text>`;
+    : `<text y="1" class="mono" fill="${fam[2]}">${esc(monoLetter)}</text>`;
   return `<g transform="translate(${x.toFixed(1)} ${y.toFixed(1)})">
     <circle r="11" fill="${fam[1]}" stroke="${flagged ? "#e8a33d" : "rgba(255,255,255,0.28)"}" stroke-width="${flagged ? 2.5 : 1}"/>
     ${glyph}

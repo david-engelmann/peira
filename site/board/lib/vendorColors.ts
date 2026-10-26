@@ -12,6 +12,14 @@
  * stays reserved for the flagged encoding everywhere.
  * `glyph` is the ink that stays legible on the family color
  * when the color fills a disc or a chip.
+ *
+ * Brand-sampled colors (2026-10-26): Zhipu #126ef6 is the
+ * blue of Zhipu's published logo vector; TypeSafe #e551ba is
+ * the magenta of TypeSafe's published favicon; Upstage
+ * #805cfb is the deep stop of Upstage's published gradient;
+ * Inception #6f9aa5 is a lightened take on the slate of
+ * Inception's published favicon, lifted so the color still
+ * reads on the board's dark ground.
  */
 export interface VendorFamily {
   key: string;
@@ -39,17 +47,17 @@ export const VENDOR_FAMILIES: VendorFamily[] = [
   { key: "moonshot", label: "Moonshot AI", color: "#9fb4c7", glyph: DARK },
   { key: "cursor", label: "Cursor", color: "#b8bdc7", glyph: DARK },
   { key: "xai", label: "xAI", color: "#ffffff", glyph: DARK },
-  { key: "zhipu", label: "Zhipu AI", color: "#6e8cff", glyph: DARK },
-  { key: "jev", label: "Jev", color: "#a3d635", glyph: DARK },
-  { key: "kev", label: "Kev", color: "#e879f9", glyph: DARK },
-  { key: "laya", label: "Laya", color: "#5eead4", glyph: DARK },
-  { key: "decider", label: "Decider", color: "#e5c15c", glyph: DARK },
-  { key: "strands", label: "Strands", color: "#2aa198", glyph: DARK },
+  { key: "zhipu", label: "Zhipu AI", color: "#126ef6", glyph: LIGHT },
+  { key: "typesafe", label: "TypeSafe AI", color: "#e551ba", glyph: DARK },
+  { key: "kev", label: "Jared Palmer", color: "#e879f9", glyph: DARK },
+  { key: "laya", label: "Convai Innovations", color: "#5eead4", glyph: DARK },
+  { key: "decider", label: "Mapika", color: "#e5c15c", glyph: DARK },
+  { key: "strands", label: "Strands Agents", color: "#2aa198", glyph: DARK },
   { key: "celeris", label: "Celeris", color: "#7dd3fc", glyph: DARK },
-  { key: "inception", label: "Inception", color: "#fca5a5", glyph: DARK },
-  { key: "upstage", label: "Upstage", color: "#ffe066", glyph: DARK },
+  { key: "inception", label: "Inception", color: "#6f9aa5", glyph: DARK },
+  { key: "upstage", label: "Upstage", color: "#805cfb", glyph: LIGHT },
   { key: "inclusionai", label: "InclusionAI", color: "#c4b5fd", glyph: DARK },
-  { key: "protectai", label: "Protect AI", color: "#f0abfc", glyph: DARK },
+  { key: "protectai", label: "ProtectAI", color: "#f0abfc", glyph: DARK },
 ];
 
 const RULES: Array<{ test: RegExp; key: string }> = [
@@ -69,7 +77,7 @@ const RULES: Array<{ test: RegExp; key: string }> = [
   { test: /cursor/, key: "cursor" },
   { test: /grok|xai/, key: "xai" },
   { test: /glm|zai/, key: "zhipu" },
-  { test: /jev/, key: "jev" },
+  { test: /jev|typesafe/, key: "typesafe" },
   { test: /kev/, key: "kev" },
   { test: /laya/, key: "laya" },
   { test: /decider-0|mapika/, key: "decider" },
