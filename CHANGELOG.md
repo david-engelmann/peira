@@ -41,8 +41,9 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
   grow now nest, and the disc grows around its own centre
   where it was plotted, at every width.
 - The rail caption under the scatter now says where the
-  rail stands on a phone (it leads the list under the
-  plot), not only where it stands on the wide chart.
+  rail stands on a phone (it joins the list under the
+  plot, in attack success order), not only where it stands
+  on the wide chart.
 - The DOM audit gains disc-clearance and corner
   containment checks on the scatter, entry-form rail
   coverage, and a phone interaction block at 390x844 that

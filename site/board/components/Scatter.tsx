@@ -64,7 +64,8 @@ export default function Scatter() {
           {fmtInt(data.railCount)} ranked models ran locally and hold
           no place on the cost axis, so they sit on the rail at the
           left of the wide chart at their attack success, and on a
-          phone the rail leads the list under the plot.{" "}
+          phone they join the list under the plot, in attack success
+          order.{" "}
           {joinNames(data.zeroNames)} recorded a cost
           of $0.00, while {joinNames(data.noneNames)} recorded no cost at all.
           A recorded zero and no recorded cost are different facts, and

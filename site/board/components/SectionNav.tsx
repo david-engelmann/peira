@@ -68,7 +68,13 @@ export default function SectionNav() {
         if (a && inner) {
           const target = Math.max(0, a.offsetLeft - inner.offsetLeft - 8);
           if (Math.abs(inner.scrollLeft - target) > 4) {
-            inner.scrollTo({ left: target, behavior: "smooth" });
+            const reduce = window.matchMedia(
+              "(prefers-reduced-motion: reduce)",
+            ).matches;
+            inner.scrollTo({
+              left: target,
+              behavior: reduce ? "auto" : "smooth",
+            });
           }
         }
       }
@@ -102,21 +108,28 @@ export default function SectionNav() {
     const nav = navRef.current;
     if (!nav) return;
     const mq = window.matchMedia("(max-width: 760px)");
-    let lastY = window.scrollY;
+    let refY = window.scrollY;
     let anchorAt = 0;
     let focusInside = false;
     const show = () => nav.classList.remove("nav-hidden");
     const onScroll = () => {
       const y = window.scrollY;
-      const dy = y - lastY;
-      lastY = y;
+      /* Displacement is measured from the last point where a
+       * threshold tripped, so a slow scroll in small steps
+       * still accumulates toward the reveal and hide points
+       * instead of resetting on every event. */
+      const dy = y - refY;
       if (!mq.matches || focusInside) {
+        refY = y;
         show();
         return;
       }
-      if (y < 120 || dy < -4) show();
-      else if (dy > 6 && y > 240 && Date.now() - anchorAt > 450) {
+      if (y < 120 || dy < -4) {
+        show();
+        refY = y;
+      } else if (dy > 6 && y > 240 && Date.now() - anchorAt > 450) {
         nav.classList.add("nav-hidden");
+        refY = y;
       }
     };
     const onClick = (e: Event) => {
