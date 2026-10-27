@@ -225,12 +225,16 @@ for (let d = Math.ceil(Math.log10(domLo)); d <= Math.floor(Math.log10(domHi)); d
 const railSpread = [...railRows]
   .map((r) => ({ r, y: yOf(r.asr_conditional) }))
   .sort((a, b) => a.y - b.y);
+/* The pitch leaves visible air between rail discs: a disc's
+ * rendered outer radius is 11 plus half its stroke (12.25
+ * for a flagged disc), so centres 23 apart left the outlines
+ * tangent or overlapping. 26 clears the widest pair. */
 for (let pass = 0; pass < 4; pass++) {
   for (let i = 1; i < railSpread.length; i++) {
-    railSpread[i].y = Math.max(railSpread[i].y, railSpread[i - 1].y + 23);
+    railSpread[i].y = Math.max(railSpread[i].y, railSpread[i - 1].y + 26);
   }
   for (let i = railSpread.length - 2; i >= 0; i--) {
-    railSpread[i].y = Math.min(railSpread[i].y, railSpread[i + 1].y - 23);
+    railSpread[i].y = Math.min(railSpread[i].y, railSpread[i + 1].y - 26);
   }
 }
 const railY = new Map(railSpread.map((e) => [e.r.run_id, e.y]));

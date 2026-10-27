@@ -29,8 +29,9 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
   every result it names.
 - The gridlines no longer run behind the rail column. The
   rail is a list, as on the board; its discs are spaced for
-  legibility, and a gridline behind them claimed an axis
-  position the spacing had moved them off.
+  legibility at a pitch that leaves visible air between
+  their outlines, and a gridline behind them claimed an
+  axis position the spacing had moved them off.
 
 ### Board scatter: the wide chart fits its band, the card moves as one object
 
