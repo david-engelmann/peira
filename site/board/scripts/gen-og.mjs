@@ -137,7 +137,9 @@ const results = payload.ranked.length + payload.unranked.length;
  * maker's family color carrying the maker's mark, flagged
  * results keep the amber ring, the rail holds the results
  * with no recorded API cost, and the two corner readings are
- * set in display type. Vendor identity resolves through
+ * set in display type. The foot decodes the amber ring
+ * inside the image, since the image travels without the
+ * board's prose. Vendor identity resolves through
  * lib/vendor-data.json, the one vendor table for the whole
  * board, shared with lib/vendor and lib/vendorColors, and
  * the mark paths are read out of lib/logoPaths.ts, so the
@@ -201,9 +203,15 @@ function disc(r, x, y) {
     ${glyph}
   </g>`;
 }
+/* The gridlines begin at the rail divider, not at the
+ * canvas edge. The rail is a list column, as on the board:
+ * its discs are spaced for legibility and their order
+ * carries the ranking, but a gridline running behind the
+ * column would claim an axis position for discs the spread
+ * has moved off their true height. */
 const gridSvg = [0, 0.1, 0.2, 0.3]
   .map(
-    (t) => `<line x1="48" y1="${yOf(t)}" x2="${PLOT.x1}" y2="${yOf(t)}" stroke="#232c35" stroke-opacity="0.55"/>
+    (t) => `<line x1="148" y1="${yOf(t)}" x2="${PLOT.x1}" y2="${yOf(t)}" stroke="#232c35" stroke-opacity="0.55"/>
     <text x="${PLOT.x0 + 6}" y="${yOf(t) - 6}" class="tick">${Math.round(t * 100)}</text>`,
   )
   .join("\n");
@@ -217,12 +225,16 @@ for (let d = Math.ceil(Math.log10(domLo)); d <= Math.floor(Math.log10(domHi)); d
 const railSpread = [...railRows]
   .map((r) => ({ r, y: yOf(r.asr_conditional) }))
   .sort((a, b) => a.y - b.y);
+/* The pitch leaves visible air between rail discs: a disc's
+ * rendered outer radius is 11 plus half its stroke (12.25
+ * for a flagged disc), so centres 23 apart left the outlines
+ * tangent or overlapping. 26 clears the widest pair. */
 for (let pass = 0; pass < 4; pass++) {
   for (let i = 1; i < railSpread.length; i++) {
-    railSpread[i].y = Math.max(railSpread[i].y, railSpread[i - 1].y + 21);
+    railSpread[i].y = Math.max(railSpread[i].y, railSpread[i - 1].y + 26);
   }
   for (let i = railSpread.length - 2; i >= 0; i--) {
-    railSpread[i].y = Math.min(railSpread[i].y, railSpread[i + 1].y - 21);
+    railSpread[i].y = Math.min(railSpread[i].y, railSpread[i + 1].y - 26);
   }
 }
 const railY = new Map(railSpread.map((e) => [e.r.run_id, e.y]));
@@ -243,15 +255,74 @@ const railLabelsSvg = railRows
       `<text x="${RAIL_CX + 22}" y="${railY.get(r.run_id) + 5}" class="lab">${esc(pointName(r))}</text>`,
   )
   .join("\n");
-const plottedPts = plotted.map((r) => ({
+/* Points whose discs would render as one disc are
+ * separated along y before anything is drawn: two results
+ * whose centres fall inside a single disc's span merge
+ * into one visible disc, and the image would show fewer
+ * results than it names (the board's two best results sat
+ * 4.7px apart). The spread follows the board's rule
+ * (lib/layout.ts nudgePoints) but is scoped to that
+ * merged-disc case: the board's full spread, applied to
+ * every near pair, moves enough discs in this denser plot
+ * that the current population no longer seats its labels
+ * (design cycle 4 attempted it; the cycle record carries
+ * the failure). No point moves by more than the shift
+ * cap, and the labels seat against the drawn discs, so a
+ * moved point keeps its name beside it. */
+function nudgePoints(points, minSep, maxShift) {
+  const orig = new Map(points.map((p) => [p.runId, { x: p.x, y: p.y }]));
+  for (let cycle = 0; cycle < 2; cycle++) {
+    const parent = points.map((_, i) => i);
+    const find = (i) => (parent[i] === i ? i : (parent[i] = find(parent[i])));
+    for (let i = 0; i < points.length; i++) {
+      for (let j = i + 1; j < points.length; j++) {
+        const dx = points[i].x - points[j].x;
+        const dy = points[i].y - points[j].y;
+        if (Math.hypot(dx, dy) < 12) {
+          parent[find(i)] = find(j);
+        }
+      }
+    }
+    const groups = new Map();
+    points.forEach((p, i) => {
+      const root = find(i);
+      const group = groups.get(root) ?? [];
+      group.push(p);
+      groups.set(root, group);
+    });
+    for (const group of groups.values()) {
+      if (group.length < 2) continue;
+      const cluster = [...group].sort((a, b) => a.y - b.y || a.x - b.x);
+      const ys = cluster.map((p) => orig.get(p.runId).y);
+      for (let round = 0; round < 3; round++) {
+        for (let i = 1; i < cluster.length; i++) {
+          const want = cluster[i - 1].y + minSep;
+          cluster[i].y = Math.min(Math.max(cluster[i].y, want), ys[i] + maxShift);
+        }
+        for (let i = cluster.length - 2; i >= 0; i--) {
+          const want = cluster[i + 1].y - minSep;
+          cluster[i].y = Math.max(Math.min(cluster[i].y, want), ys[i] - maxShift);
+        }
+      }
+    }
+  }
+}
+const plottedXY = plotted.map((r) => ({
   runId: r.run_id,
-  name: pointName(r),
+  r,
   x: xOf(r.total_cost_usd),
   y: yOf(r.asr_conditional),
 }));
+nudgePoints(plottedXY, 24, 12);
+const plottedPts = plottedXY.map((p) => ({
+  runId: p.runId,
+  name: pointName(p.r),
+  x: p.x,
+  y: p.y,
+}));
 const pointsSvg = [
   ...railRows.map((r) => disc(r, RAIL_CX, railY.get(r.run_id))),
-  ...plotted.map((r) => disc(r, xOf(r.total_cost_usd), yOf(r.asr_conditional))),
+  ...plottedXY.map((p) => disc(p.r, p.x, p.y)),
 ].join("\n");
 const scatterSvg = `<svg width="1200" height="630" viewBox="0 0 1200 630" class="chart">
   <rect x="48" y="${PLOT.y0}" width="88" height="${PLOT.y1 - PLOT.y0}" fill="#0c1015"/>
@@ -307,9 +378,9 @@ ${scatterSvg}
 <div class="head">
   <div class="word">PEIRA</div>
   <h1>The priciest model was the easiest to flip</h1>
-  <p class="sub">Attack success against recorded cost per run, every model deciding the same paired cases.</p>
+  <p class="sub">Attack success against recorded cost per run (log scale), every full-suite model deciding the same paired cases.</p>
 </div>
-<p class="foot">Peira decision robustness board. Dataset ${versions.dataset}, suite ${versions.suite}, updated ${dateWords}. peiratrial.dev</p>
+<p class="foot">Peira decision robustness board. Dataset ${versions.dataset}, suite ${versions.suite}, updated ${dateWords}. Amber ring: a flagged result. peiratrial.dev</p>
 </body></html>`;
 
 /* Plotted label placement, run in the page so text is
@@ -347,6 +418,12 @@ function placeOgLabels(pts) {
     const r = document.querySelector(sel).getBoundingClientRect();
     furniture.push({ x: r.x, y: r.y, w: r.width, h: r.height });
   }
+  /* The rail column, left of the divider at x=148 in the
+   * plot's vertical band, is reserved for the rail's own
+   * names. A plotted label seated there reads as a rail
+   * entry, a result with no API cost, whatever its own
+   * disc's recorded cost says. */
+  furniture.push({ x: 40, y: 200, w: 108, h: 332 });
   /* Discs sit inside translated groups, where getBBox reads
    * the local box and would put every disc at the origin;
    * the client rect gives the true centre and radius (the
@@ -404,6 +481,13 @@ function placeOgLabels(pts) {
     probe.textContent = p.name;
     return boxOf(probe);
   };
+  /* Verification is zero-tolerance: no intersection, with
+   * no minimum air. Visible-air floors (a pixel to a disc,
+   * two between labels, the board audit's F-03 separation)
+   * were attempted in design cycle 4 and the current
+   * population does not seat under any of them; the cycle
+   * record carries the failure list as evidence for the
+   * share image's naming decision. */
   const verify = (placed) => {
     const bad = [];
     for (const q of placed) {
@@ -431,7 +515,7 @@ function placeOgLabels(pts) {
       let cost = candIndex * 2;
       if (!inCanvas(box)) cost += 100000;
       for (const d of discs) {
-        if (distToDisc(box, d) < d.r + 1) {
+        if (distToDisc(box, d) < d.r - 0.01) {
           cost +=
             400 +
             area(box, {
@@ -582,6 +666,14 @@ function placeOgLabels(pts) {
     ),
     [...pts].sort((a, b) => a.y - b.y || a.x - b.x),
     [...pts].sort((a, b) => a.x - b.x || a.y - b.y),
+    [...pts].sort((a, b) => b.y - a.y || b.x - a.x),
+    [...pts].sort((a, b) => b.x - a.x || b.y - a.y),
+    [...pts].sort(
+      (a, b) => freeCounts.get(b.runId) - freeCounts.get(a.runId) || a.y - b.y,
+    ),
+    [...pts].sort(
+      (a, b) => freeCounts.get(a.runId) - freeCounts.get(b.runId) || b.y - a.y,
+    ),
   ];
   let bestBad = null;
   for (const order of orders) {
