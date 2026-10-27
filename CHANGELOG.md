@@ -50,6 +50,30 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
   taps through the card contract and the nav landing, each
   proven against the build before this change, where they
   fail.
+### Main CI repair: pricing pins, replay error_code, test env leak
+
+- The pinned pricing table's header carried duplicate `basis`, `date`,
+  and `pricing_version` keys left by the 2026-10-23 API version
+  refresh: the refresh's changelog sentence had been written into the
+  first `pricing_version` value instead of `_comment`, where it now
+  lives. The parsed table is unchanged (version 2026-10-23.1, date
+  2026-10-23, all 80 model entries identical); the Phase 0 pricing
+  pins assert the current version.
+- Replay under the Rust backend dropped each error entry's recorded
+  `error_code` (for example "api_error", "timeout") from the rebuilt
+  record, so a replayed artifact differed from the Python reference
+  and from the sealed original. The replay dispatcher now recovers
+  `error_code` from the transcript entry with the other v3 sidecars,
+  and the blank-record dispatcher overlays the "timeout" stamp the
+  reference sets on timed-out records (the item-timeout path relies
+  on it). Regression tests pin both behaviors against the reference.
+- `tests/test_run_safety.py` set `PEIRA_NO_RUST=1` in the worker
+  process at import time, which leaked into every later test in the
+  same xdist worker and failed the Rust-parity backend assertions
+  non-deterministically by scheduling order. The suite no longer
+  mutates the process environment; the run-safety tests run under
+  whichever backend the suite runs, so both CI legs cover them.
+
 ### GitHub face: social preview, one description, README first screen
 
 - Added `.github/social-preview.png` (1280 by 640), the repo's social

@@ -443,6 +443,17 @@ class BlankRecordParity(unittest.TestCase):
                 _blank_record(seed, idx, lim), _blank_record_py(seed, idx, lim)
             )
 
+    def test_timed_out_error_code_parity(self):
+        # v3: the reference stamps error_code="timeout" on timed-out
+        # blanks; the dispatcher overlays it on the Rust path too
+        # (the item-timeout record builder relies on the stamp).
+        got = _blank_record(7, 3, 4, latency_ms_total=12.5,
+                            timed_out=True, timeout_kind="item")
+        want = _blank_record_py(7, 3, 4, latency_ms_total=12.5,
+                                timed_out=True, timeout_kind="item")
+        self.assertEqual(got, want)
+        self.assertEqual(got.error_code, "timeout")
+
     def test_wrong_typed_seed_falls_back(self):
         # The i64 binding raises TypeError for a float seed; the
         # reference stores it as-is. No try/except meant no fallback.

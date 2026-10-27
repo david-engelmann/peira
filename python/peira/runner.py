@@ -194,10 +194,11 @@ def _blank_record(
     :func:`_blank_record_py` is the reference and the fallback.
     ``TypeError``/``ValueError``/``OverflowError`` fall back, so
     wrong-typed or out-of-range seeds behave exactly as in Python.
-    ``latency_ms_total``, ``timed_out``, and ``timeout_kind`` are
-    measurement sidecars the Rust core does not model: they are
-    overlaid in Python via ``dataclasses.replace`` after the base
-    record is built.
+    ``latency_ms_total``, ``timed_out``, ``timeout_kind``, and the
+    v3 ``error_code`` derived from ``timed_out`` are measurement
+    sidecars the Rust core does not model: they are overlaid in
+    Python via ``dataclasses.replace`` after the base record is
+    built.
     """
     if _rust is not None:
         try:
@@ -223,6 +224,11 @@ def _blank_record(
                 rec = dataclasses.replace(
                     rec, latency_ms_total=latency_ms_total,
                     timed_out=timed_out, timeout_kind=timeout_kind,
+                    # v3: error_code rides the same overlay as the other
+                    # measurement sidecars; the reference stamps
+                    # "timeout" on timed-out blanks, the Rust core
+                    # leaves it empty.
+                    error_code="timeout" if timed_out else "",
                 )
             return rec
     return _blank_record_py(
@@ -3989,6 +3995,11 @@ def _record_from_transcript_entry(entry: dict[str, Any]) -> CallRecord:
             retry_count=retry_count,
             prompt_hash=prompt_hash,
             completion_hash=completion_hash,
+            # v3: error_code is a Python-owned sidecar recovered from
+            # the transcript entry, like the hashes above; the Rust
+            # core leaves it empty, which dropped the recorded code
+            # (e.g. "api_error", "timeout") from replayed records.
+            error_code=entry.get("error_code", ""),
         )
     return _record_from_transcript_entry_py(entry)
 
