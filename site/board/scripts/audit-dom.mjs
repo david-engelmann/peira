@@ -161,6 +161,31 @@
  *        the check reads the name's own line boxes, so a
  *        regression in the wrap rule fails here.
  *
+ * Mobile-fix extensions (2026-10-26, phone pass):
+ *  Rail coverage. The phone scatter carries no rail column;
+ *        its rail population stands in the list under the
+ *        plot, each entry with the point's own disc. The
+ *        population assertion accepts either form and fails
+ *        a rail point missing from both; entry discs carry
+ *        the same amber rule as point discs.
+ *  Disc clearance. A scatter label rect may not intersect
+ *        any point's disc rect at any width. The centre test
+ *        it extends could not see a label resting on a disc.
+ *  Type floor. Scatter label, entry-value and corner-sub
+ *        text, at its computed size times the chart's own
+ *        scale, may not render under 10 px (doctrine D17).
+ *        The pre-fix phone chart rendered them at 9.2 and
+ *        8.7 px; this check fails there and passes now.
+ *  Corner containment. Every corner reading's rect must sit
+ *        inside the chart's own box.
+ *  Phone interaction block. A touch session at 390x844
+ *        after the width loop: the Cost landing by tap read
+ *        against the bar's layout height, an occlusion probe
+ *        with the chart scrolled to the screen top, and the
+ *        scatter card's tap contract end to end. Each new
+ *        check was proven against the pre-fix build, where
+ *        the tap contract and the occlusion probe fail.
+ *
  * Screenshots land in the directory given as argv[3].
  */
 
@@ -913,10 +938,45 @@ for (const width of [1440, 1280, 390]) {
             nudged: g.getAttribute("data-nudged") === "true",
             cx: cr.left + cr.width / 2,
             cy: cr.top + cr.height / 2,
+            r: cr.width / 2,
           });
         });
+        const fsOf = (sel) => {
+          const el = svg.querySelector(sel);
+          return el ? parseFloat(getComputedStyle(el).fontSize) : null;
+        };
         out.scatter = {
-          svgRect: { left: sr.left, top: sr.top, width: sr.width },
+          typeScale: {
+            scale: sr.width / svg.viewBox.baseVal.width,
+            label: fsOf(".scatter-label"),
+            entry: fsOf(".scatter-entry-values"),
+            cornerSub: fsOf(".corner-sub"),
+          },
+          entries: [...svg.querySelectorAll(".scatter-entry")].map((e) => {
+            const c = e.querySelector("circle");
+            return {
+              id: e.getAttribute("data-entry-for"),
+              stroke: c ? getComputedStyle(c).stroke : null,
+            };
+          }),
+          corners: [...svg.querySelectorAll(".corner-note text")].map(
+            (t) => {
+              const r = t.getBoundingClientRect();
+              return {
+                text: t.textContent.trim().slice(0, 24),
+                x0: r.left,
+                y0: r.top,
+                x1: r.right,
+                y1: r.bottom,
+              };
+            },
+          ),
+          svgRect: {
+            left: sr.left,
+            top: sr.top,
+            width: sr.width,
+            height: sr.height,
+          },
           vbW: svg.viewBox.baseVal.width,
           domainLo: Number(svg.getAttribute("data-domain-lo")),
           domainHi: Number(svg.getAttribute("data-domain-hi")),
@@ -1312,7 +1372,17 @@ for (const width of [1440, 1280, 390]) {
     if (JSON.stringify([...seenPlot].sort()) !== JSON.stringify([...plottedIdsA].sort())) {
       failures.push(`width ${width}: plotted point set differs from the payload population`);
     }
-    if (JSON.stringify([...seenRail].sort()) !== JSON.stringify([...railIdsA].sort())) {
+    /* Rail coverage (mobile-fix amendment). The wide variant
+     * stands its rail points in the plot as markers; the
+     * phone variant carries no rail column, and its rail
+     * population stands in the list under the plot, each
+     * entry carrying the point's own disc. Either form covers
+     * the population; a rail point missing from both fails. */
+    const railCovered = new Set([
+      ...seenRail,
+      ...sc.entries.map((e) => e.id).filter((id) => railIdsA.has(id)),
+    ]);
+    if (JSON.stringify([...railCovered].sort()) !== JSON.stringify([...railIdsA].sort())) {
       failures.push(`width ${width}: rail point set differs from the payload population`);
     }
     for (const s of sc.strokes) {
@@ -1322,6 +1392,66 @@ for (const width of [1440, 1280, 390]) {
       }
       if (!flaggedIdsA.has(s.id) && isAmber) {
         failures.push(`width ${width}: ranked scatter point ${s.id} carries amber`);
+      }
+    }
+    for (const e of sc.entries) {
+      if (!e.id) continue;
+      const isAmber = e.stroke === "rgb(232, 163, 61)";
+      if (flaggedIdsA.has(e.id) && !isAmber) {
+        failures.push(`width ${width}: flagged scatter entry ${e.id} lacks its amber ring`);
+      }
+      if (!flaggedIdsA.has(e.id) && isAmber) {
+        failures.push(`width ${width}: ranked scatter entry ${e.id} carries amber`);
+      }
+    }
+    /* Disc clearance (mobile-fix). The centre test below
+     * cannot see a label resting on a disc's body, which is
+     * what the phone cluster shipped: a label rect may not
+     * intersect any point's disc rect, its own point's
+     * included, at any width. */
+    for (const l of sc.labels) {
+      for (const p of sc.points) {
+        const ox =
+          Math.min(l.x1, p.cx + p.r) - Math.max(l.x0, p.cx - p.r);
+        const oy =
+          Math.min(l.y1, p.cy + p.r) - Math.max(l.y0, p.cy - p.r);
+        if (ox > 1 && oy > 1) {
+          failures.push(
+            `width ${width}: scatter label ${l.id} rests on disc ${p.id} by ${ox.toFixed(1)}x${oy.toFixed(1)} px`,
+          );
+        }
+      }
+    }
+    /* Type floor (mobile-fix). Scatter data text renders at
+     * its computed size times the chart's own scale (the
+     * ratio of the SVG's rendered width to its viewBox
+     * width); nothing may render under the doctrine's 10 px
+     * floor. The pre-fix phone chart set labels at 10 units
+     * in a 358-unit viewBox squeezed into 328 px, with entry
+     * values and corner subs at 9.5: 9.2 and 8.7 px rendered. */
+    for (const [kind, fs] of Object.entries(sc.typeScale)) {
+      if (kind === "scale" || fs === null) continue;
+      const rendered = fs * sc.typeScale.scale;
+      if (rendered < 9.95) {
+        failures.push(
+          `width ${width}: scatter ${kind} text renders at ${rendered.toFixed(1)} px, under the 10 px floor`,
+        );
+      }
+    }
+    /* Corner containment (mobile-fix). The corner readings
+     * sit inside the panel by construction; a reading whose
+     * rect escapes the SVG's box is the clipped reading the
+     * phone render shipped. */
+    for (const c of sc.corners) {
+      if (
+        c.x0 < sc.svgRect.left - 1 ||
+        c.y0 < sc.svgRect.top - 1 ||
+        c.x1 > sc.svgRect.left + sc.svgRect.width + 1 ||
+        c.y1 > sc.svgRect.top + sc.svgRect.height + 1
+      ) {
+        failures.push(
+          `width ${width}: corner reading "${c.text}" escapes the chart panel`,
+        );
       }
     }
     // Every point carries its name at every width (redesign
@@ -2052,6 +2182,234 @@ for (const width of [1440, 1280, 390]) {
     `width ${width}: ${report.names.length} names checked, ${boxes.length} text boxes, tied count (innerText) ${report.tiedCount}`,
   );
 }
+
+/* ---------- mobile-fix phone interaction block ----------
+ * A touch session at 390x844 against the index page. The
+ * width loop measures the phone statically and the desktop
+ * block drives the mouse and keyboard; neither exercises
+ * what a phone reader does, which is how the hover-driven
+ * card and the nav-over-chart state shipped. These probes
+ * tap (page.tap dispatches touch), and they pin three
+ * behaviours: the nav landing at phone width, the bar never
+ * sitting on the chart's top band once the reader has
+ * scrolled to it, and the scatter card's full tap contract
+ * (open on the tapped point, switch, close control,
+ * tap-again toggle, empty-area dismiss). */
+await page.setViewport({
+  width: 390,
+  height: 844,
+  hasTouch: true,
+  isMobile: true,
+  deviceScaleFactor: 1,
+});
+await page.goto(pageUrl, { waitUntil: "networkidle0" });
+await new Promise((r) => setTimeout(r, 400));
+/* Nav landing by tap. The bar may legitimately be hidden
+ * after its own tap (it steps aside), so the rule is read
+ * against the bar's layout height: the heading must clear
+ * the full band the bar can occupy, and land within the
+ * scroll margin's reach of it. */
+await page.tap('.section-nav-link[data-nav-target="cost"]');
+await new Promise((r) => setTimeout(r, 700));
+{
+  const land = await page.evaluate(() => {
+    const nav = document.querySelector(".section-nav");
+    const head = document.querySelector("#cost .section-title");
+    return {
+      hash: location.hash,
+      navH: nav ? nav.offsetHeight : null,
+      headTop: head ? head.getBoundingClientRect().top : null,
+    };
+  });
+  if (
+    land.hash !== "#cost" ||
+    land.navH === null ||
+    land.headTop === null ||
+    land.headTop < land.navH - 1 ||
+    land.headTop > 124
+  ) {
+    failures.push(
+      `phone tap: Cost landing puts the heading at ${land.headTop} px against a bar of ${land.navH} px (hash ${land.hash})`,
+    );
+  }
+}
+/* Occlusion probe. Scroll the chart well to the very top
+ * of the screen in one jump, the state a reader creates to
+ * read the chart's top band, and let the bar's scroll logic
+ * settle. The bar's rect may not then cover the corner
+ * reading or the axis caption. */
+await page.evaluate(() => {
+  const wrap = [...document.querySelectorAll(".scatter-wrap")].find(
+    (w) => w.getClientRects().length > 0,
+  );
+  if (wrap) {
+    const top =
+      wrap.getBoundingClientRect().top + window.scrollY;
+    window.scrollTo(0, top);
+  }
+});
+await new Promise((r) => setTimeout(r, 650));
+{
+  const occ = await page.evaluate(() => {
+    const nav = document.querySelector(".section-nav");
+    const sec = document.querySelector('[data-section="scatter"]');
+    const svg = [...sec.querySelectorAll("svg")].find(
+      (s) => s.getClientRects().length > 0,
+    );
+    const corner = svg.querySelector(".corner-note text");
+    const caption = svg.querySelector(".axis-caption");
+    const nr = nav ? nav.getBoundingClientRect() : null;
+    const cover = (el) => {
+      if (!el || !nr) return null;
+      const r = el.getBoundingClientRect();
+      const ox =
+        Math.min(r.right, nr.right) - Math.max(r.left, nr.left);
+      const oy =
+        Math.min(r.bottom, nr.bottom) - Math.max(r.top, nr.top);
+      return ox > 0 && oy > 0 ? ox * oy : 0;
+    };
+    return { corner: cover(corner), caption: cover(caption) };
+  });
+  if (occ.corner === null || occ.corner > 0) {
+    failures.push(
+      `phone scroll: the bar covers the scatter corner reading (${occ.corner} px2)`,
+    );
+  }
+  if (occ.caption === null || occ.caption > 0) {
+    failures.push(
+      `phone scroll: the bar covers the scatter axis caption (${occ.caption} px2)`,
+    );
+  }
+}
+/* The tap contract. */
+{
+  const readPts = () =>
+    page.evaluate(() => {
+      const sec = document.querySelector('[data-section="scatter"]');
+      const svg = [...sec.querySelectorAll("svg")].find(
+        (s) => s.getClientRects().length > 0,
+      );
+      return [...svg.querySelectorAll(".scatter-point")].map((g) => {
+        const c = g.querySelector("circle");
+        const r = c.getBoundingClientRect();
+        const label = svg.querySelector(
+          `[data-label-for="${g.getAttribute("data-run-id")}"]`,
+        );
+        return {
+          id: g.getAttribute("data-run-id"),
+          cost: Number(g.getAttribute("data-cost") || "0"),
+          name: label ? label.textContent.trim() : null,
+          cx: r.left + r.width / 2,
+          cy: r.top + r.height / 2,
+        };
+      });
+    });
+  const readCard = () =>
+    page.evaluate(() => {
+      const card = document.querySelector(".scatter-card");
+      if (!card || card.getClientRects().length === 0) return null;
+      const close = card.querySelector(".sc-close");
+      const cr = close ? close.getBoundingClientRect() : null;
+      return {
+        name: card.querySelector(".sc-name")?.textContent.trim() ?? null,
+        close: cr
+          ? { cx: cr.left + cr.width / 2, cy: cr.top + cr.height / 2 }
+          : null,
+      };
+    });
+  const pts = await readPts();
+  const cheap = [...pts]
+    .filter((p) => p.cost > 0 && p.cost < 1)
+    .sort((a, b) => a.cost - b.cost)[0];
+  const pricey = [...pts].sort((a, b) => b.cost - a.cost)[0];
+  if (!cheap || !pricey) {
+    failures.push("phone tap: scatter points not found for the tap contract");
+  } else {
+    const tapPoint = async (p) => {
+      await page.touchscreen.tap(p.cx, p.cy);
+      await new Promise((r) => setTimeout(r, 400));
+    };
+    await tapPoint(cheap);
+    let card = await readCard();
+    if (!card || card.name !== cheap.name) {
+      failures.push(
+        `phone tap: tapping ${cheap.id} opens ${card ? `the card for "${card.name}"` : "no card"}, expected "${cheap.name}"`,
+      );
+    }
+    if (card && !card.close) {
+      failures.push("phone tap: the opened card carries no close control");
+    }
+    await tapPoint(pricey);
+    card = await readCard();
+    if (!card || card.name !== pricey.name) {
+      failures.push(
+        `phone tap: tapping ${pricey.id} does not switch the card (now "${card?.name ?? "none"}")`,
+      );
+    }
+    if (card?.close) {
+      await page.touchscreen.tap(card.close.cx, card.close.cy);
+      await new Promise((r) => setTimeout(r, 400));
+      card = await readCard();
+      if (card !== null) {
+        failures.push("phone tap: the close control does not dismiss the card");
+      }
+    }
+    await tapPoint(cheap);
+    card = await readCard();
+    if (!card) {
+      failures.push("phone tap: the card does not reopen after closing");
+    } else {
+      await tapPoint(cheap);
+      card = await readCard();
+      if (card !== null) {
+        failures.push(
+          "phone tap: tapping the open point again does not toggle it shut",
+        );
+      }
+      /* Empty-area dismiss: reopen, then tap a spot inside
+       * the plot that clears every point by more than the
+       * touch radius and lands on no list entry and not on
+       * the open card itself, both of which legitimately
+       * take a tap of their own. */
+      await tapPoint(cheap);
+      const spot = await page.evaluate((ids) => {
+        const sec = document.querySelector('[data-section="scatter"]');
+        const svg = [...sec.querySelectorAll("svg")].find(
+          (s) => s.getClientRects().length > 0,
+        );
+        const sr = svg.getBoundingClientRect();
+        const centres = ids.map(({ cx, cy }) => ({ cx, cy }));
+        const blocked = [...sec.querySelectorAll(".scatter-entry, .scatter-card")]
+          .map((e) => e.getBoundingClientRect())
+          .filter((r) => r.width > 0);
+        const inRect = (x, y, r, m) =>
+          x > r.left - m && x < r.right + m && y > r.top - m && y < r.bottom + m;
+        for (let y = sr.top + 20; y < Math.min(sr.bottom - 16, 832); y += 10) {
+          for (let x = sr.left + 16; x < sr.right - 16; x += 10) {
+            if (
+              centres.every((p) => Math.hypot(p.cx - x, p.cy - y) > 48) &&
+              !blocked.some((r) => inRect(x, y, r, 6))
+            ) {
+              return { x, y };
+            }
+          }
+        }
+        return null;
+      }, pts);
+      if (!spot) {
+        failures.push("phone tap: no empty chart area found for the dismiss probe");
+      } else {
+        await page.touchscreen.tap(spot.x, spot.y);
+        await new Promise((r) => setTimeout(r, 400));
+        card = await readCard();
+        if (card !== null) {
+          failures.push("phone tap: tapping empty chart does not dismiss the card");
+        }
+      }
+    }
+  }
+}
+notes.push("phone interaction block: nav landing, occlusion probe, tap contract run at 390x844");
 
 /* ---------- round 10 model page samples ---------- */
 const pageSamples = [

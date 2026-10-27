@@ -40,7 +40,10 @@
  *     whole board: plotted points equal the non-slice rows with
  *     a cost above zero, rail points equal the non-slice rows
  *     without one, no slice row appears, and every point's data
- *     attributes equal its payload cost and rate. The heatmap
+ *     attributes equal its payload cost and rate. A rail point
+ *     is covered once per variant, as a marker on the wide
+ *     chart and as a list entry on the phone, which carries no
+ *     rail column (mobile fix, 2026-10-26). The heatmap
  *     holds one cell per row and family, the not measured cells
  *     equal the payload's missing family pairs, the column
  *     order equals the descending mean rule computed here, and
@@ -569,16 +572,46 @@ if (!scatterHtml) {
       fail(`scatter point ${id}: data-cost ${costAttr}, payload ${expectedCost}`);
     }
   }
+  const entryTags = [...scatterHtml.matchAll(/<g[^>]*>/g)]
+    .map((m) => m[0])
+    .filter((t) => t.includes('class="scatter-entry"'));
+  const entrySeen = new Map();
+  for (const tag of entryTags) {
+    const id = attr(tag, "data-entry-for");
+    if (!id) {
+      fail(`scatter entry with missing data attributes: ${tag.slice(0, 80)}`);
+      continue;
+    }
+    entrySeen.set(id, (entrySeen.get(id) ?? 0) + 1);
+    if (!plottedIds.has(id) && !railIds.has(id)) {
+      fail(`scatter entry holds unexpected row ${id}`);
+    }
+  }
   for (const [kind, ids] of [
     ["plot", plottedIds],
     ["rail", railIds],
   ]) {
     for (const id of ids) {
-      /* Both the wide and the phone variant render the point. */
-      if (seen[kind].get(id) !== 2) {
-        fail(
-          `scatter ${kind} point ${id} rendered ${seen[kind].get(id) ?? 0} times, expected 2 (wide and phone)`,
-        );
+      /* Both the wide and the phone variant render the point.
+       * A plotted point stands as a marker in both variants.
+       * A rail point stands as a marker on the wide chart and
+       * as a list entry on the phone, which carries no rail
+       * column (mobile fix, 2026-10-26): coverage is markers
+       * plus entries, with at least the wide marker present. */
+      const markers = seen[kind].get(id) ?? 0;
+      if (kind === "plot") {
+        if (markers !== 2) {
+          fail(
+            `scatter plot point ${id} rendered ${markers} times, expected 2 (wide and phone)`,
+          );
+        }
+      } else {
+        const covered = markers + (entrySeen.get(id) ?? 0);
+        if (covered !== 2 || markers < 1) {
+          fail(
+            `scatter rail point ${id} covered ${covered} times (markers ${markers}, entries ${entrySeen.get(id) ?? 0}), expected 2 (wide marker and phone entry)`,
+          );
+        }
       }
     }
     for (const id of seen[kind].keys()) {
@@ -586,7 +619,10 @@ if (!scatterHtml) {
     }
   }
   for (const row of sliceCohort) {
-    if (scatterHtml.includes(`data-run-id="${row.run_id}"`)) {
+    if (
+      scatterHtml.includes(`data-run-id="${row.run_id}"`) ||
+      scatterHtml.includes(`data-entry-for="${row.run_id}"`)
+    ) {
       fail(`slice row ${row.run_id} appears in the scatter section`);
     }
   }

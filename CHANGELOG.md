@@ -7,6 +7,48 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
 
 ## [Unreleased]
 
+### Board on phones: the scatter rebuilt for touch, the bar steps aside
+
+- The cost scatter's detail card is now one state machine
+  for every pointer. A tap or click pins a point's card
+  open; the pinned card carries a close control, tapping
+  the point again or tapping anywhere else in the chart
+  dismisses it, and Escape dismisses it too. Hover and
+  keyboard focus still preview. Tap targets are touch-sized
+  (a 46 px hit circle at phone scale) over the same drawn
+  discs, and a tap resolves to the nearest point, so the
+  packed low-cost cluster opens the point the finger
+  actually landed on.
+- The phone scatter changes shape instead of shrinking:
+  drawn at true CSS pixels for a 390 px phone, its plot
+  takes the well's full width at more than double the old
+  height, carries no rail column (the rail points stand in
+  the list under the plot, each beside its own disc), and
+  sets every label at the wide chart's size. Names that
+  cannot sit beside their point sit in that list, as
+  before. Several labels that rested on discs and names
+  that rendered under the 10 px floor are fixed by the
+  shape, not by smaller type.
+- At phone widths the section bar translates out of view
+  while the reader scrolls down and returns on scroll up,
+  so its band never sits on the top of a chart the reader
+  has scrolled to; the scrollspy also keeps the active
+  link inside the bar's scrolling strip.
+- Fixed the scatter's active point throwing its disc to
+  the chart's origin, scaled, whenever it was hovered,
+  focused or pinned: the CSS grow replaced the mark's
+  transform attribute outright. The translate and the
+  grow now nest, and the disc grows around its own centre
+  where it was plotted, at every width.
+- The rail caption under the scatter now says where the
+  rail stands on a phone (it leads the list under the
+  plot), not only where it stands on the wide chart.
+- The DOM audit gains disc-clearance and corner
+  containment checks on the scatter, entry-form rail
+  coverage, and a phone interaction block at 390x844 that
+  taps through the card contract and the nav landing, each
+  proven against the build before this change, where they
+  fail.
 ### GitHub face: social preview, one description, README first screen
 
 - Added `.github/social-preview.png` (1280 by 640), the repo's social

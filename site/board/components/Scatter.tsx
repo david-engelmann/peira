@@ -62,8 +62,10 @@ export default function Scatter() {
         </p>
         <p>
           {fmtInt(data.railCount)} ranked models ran locally and hold
-          no place on the cost axis, so they sit on the rail at the left
-          at their attack success. {joinNames(data.zeroNames)} recorded a cost
+          no place on the cost axis, so they sit on the rail at the
+          left of the wide chart at their attack success, and on a
+          phone the rail leads the list under the plot.{" "}
+          {joinNames(data.zeroNames)} recorded a cost
           of $0.00, while {joinNames(data.noneNames)} recorded no cost at all.
           A recorded zero and no recorded cost are different facts, and
           the rail keeps them apart in words.

@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState, type MouseEvent } from "react";
 import { fmtPct, fmtCi, fmtUsdExact } from "@/lib/format";
 import { ASR_AXIS_MAX, ASR_TICKS } from "@/lib/chart";
 import {
@@ -25,10 +25,29 @@ import type { ScatterDatum } from "@/lib/scatterData";
  * carries the point's own disc glyph beside its name and
  * figures. No label is ever tied to its point by a drawn
  * line: there are no leader lines anywhere in the chart.
- * Hover, tap and keyboard focus enlarge the point, bold its
- * label, and open a small card with the model's figures.
  * Flagged results keep the amber ring. The corners carry the
  * two readings the data supports, in display type.
+ *
+ * The detail card is one state machine for every pointer.
+ * Hover and keyboard focus preview a point; a click or tap
+ * pins its card open, and the pinned card carries a close
+ * control, because touch has no pointer-leave to dismiss by.
+ * Tapping the pinned point again, tapping anywhere in the
+ * chart that is not a point, or pressing Escape closes it.
+ * A tap resolves to the nearest point within the touch
+ * radius, so a fingertip in the packed cluster opens the
+ * point it actually landed on, not whichever disc's box
+ * happens to paint on top.
+ *
+ * The phone variant changes the chart's shape rather than
+ * shrinking it (doctrine D7). Its plot is drawn at true CSS
+ * pixels for a 390 px phone, runs the full width of the well
+ * at more than twice the old plot height, and carries no
+ * rail column: the rail points' names already live in the
+ * list under the plot, each beside its own disc, so the
+ * plot spends its whole width on the cost axis. Type stays
+ * at the wide chart's sizes; nothing renders under the
+ * doctrine's 10 px floor.
  */
 
 interface Geom {
@@ -57,22 +76,33 @@ const WIDE: Geom = {
   labelBounds: { x: 276, y: 30, w: 854, h: 574 },
 };
 
+/* The phone geometry is drawn at true CSS pixels for the
+ * audited 390 px width: the page padding leaves 358 px and
+ * the well's own padding and border leave 328, so one SVG
+ * unit is one CSS pixel and the solver's label estimates
+ * (calibrated at the wide chart's 11.5 px label size) hold
+ * exactly. There is no rail column: railW is 0 and the rail
+ * points render only as list entries under the plot. The
+ * divider sits off-canvas and the grid skips it. */
 const PHONE: Geom = {
-  w: 358,
+  w: 328,
   h: 700,
-  railW: 50,
-  railCx: 25,
-  dividerX: 58,
-  plot: { x0: 66, x1: 354, y0: 34, y1: 420 },
-  labelBounds: { x: 58, y: 26, w: 300, h: 392 },
+  railW: 0,
+  railCx: 0,
+  dividerX: -10,
+  plot: { x0: 10, x1: 320, y0: 52, y1: 566 },
+  labelBounds: { x: 4, y: 44, w: 320, h: 526 },
 };
 
 /* Phone overflow list geometry: entries begin below the
- * cost axis caption, two columns of two-line rows (disc and
- * name, then the figures under the name). */
-const PHONE_LIST_TOP = 488;
+ * cost axis caption, one column of two-line rows (disc and
+ * name, then the figures under the name). One column, never
+ * two: at full label size the longest names on the board
+ * need the whole width, and a name is never truncated to
+ * fit a column. */
+const PHONE_LIST_TOP = 640;
 const PHONE_ENTRY_PITCH = 34;
-const PHONE_COL_X = [6, 180];
+const PHONE_ENTRY_X = 6;
 
 /* The two corner readings, single-sourced: the wide and
  * phone renders set the same words. The top-right reading is
@@ -93,7 +123,18 @@ const CORNER_BL = {
  * clear of every other text node in the section. */
 const WIDE_ANNOT_TR: Rect = { x: 580, y: 38, w: 258, h: 62 };
 const WIDE_ANNOT_BL: Rect = { x: 298, y: 458, w: 300, h: 72 };
-const PHONE_ANNOT_TR: Rect = { x: 138, y: 2, w: 216, h: 40 };
+/* Phone furniture: the axis caption's box at the top left,
+ * the top-right corner reading's box, and the bottom-left
+ * corner reading's box. The label bounds begin below the
+ * top pair; the boxes exist so the solver also keeps clear
+ * of them in the bands it can reach. The bottom-left
+ * reading sits inside the plot's empty lower band, where
+ * the wide chart puts its own: the shared 0 to 30 scale
+ * leaves that band empty of points, and a reading is the
+ * honest thing to fill it with. */
+const PHONE_ANNOT_CAPTION: Rect = { x: 8, y: 0, w: 158, h: 18 };
+const PHONE_ANNOT_TR: Rect = { x: 104, y: 0, w: 220, h: 42 };
+const PHONE_ANNOT_BL: Rect = { x: 4, y: 494, w: 240, h: 48 };
 
 const r2 = (v: number) => Math.round(v * 100) / 100;
 
@@ -147,12 +188,19 @@ function buildPoints(
     y: yOf(d.asr),
     nudged: false,
   }));
-  const railPts: Pt[] = rail.map((d) => ({
-    d,
-    x: g.railCx,
-    y: yOf(d.asr),
-    nudged: false,
-  }));
+  /* On the phone there are no rail markers: the rail points
+   * stand only in the list under the plot, beside their own
+   * discs, so nothing unnamed crowds the plot's left edge
+   * and the cost axis takes the full width. */
+  const railPts: Pt[] =
+    g === PHONE
+      ? []
+      : rail.map((d) => ({
+          d,
+          x: g.railCx,
+          y: yOf(d.asr),
+          nudged: false,
+        }));
   const wide = g === WIDE;
   const spread = (pts: Pt[], minSep: number, maxShift: number) => {
     const wrappers = pts.map((p) => ({ runId: p.d.runId, x: p.x, y: p.y, p }));
@@ -262,11 +310,13 @@ function Marker({
   active,
   onActivate,
   onDeactivate,
+  onToggle,
 }: {
   p: Pt;
   active: boolean;
   onActivate: (id: string) => void;
   onDeactivate: () => void;
+  onToggle: (id: string) => void;
 }) {
   const d = p.d;
   return (
@@ -285,13 +335,43 @@ function Marker({
       onMouseLeave={onDeactivate}
       onFocus={() => onActivate(d.runId)}
       onBlur={onDeactivate}
-      onClick={() => onActivate(d.runId)}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onToggle(d.runId);
+        }
+      }}
     >
       <title>{d.title}</title>
-      <g className="pt-mark" transform={`translate(${r2(p.x)} ${r2(p.y)})`}>
-        <MarkerGlyph d={d} />
-        <circle className="pt-focus-ring" r={13.5} aria-hidden="true" />
+      {/* The translate lives on the outer group and the CSS
+        * grow on the inner one: a CSS transform replaces a
+        * transform attribute outright, so carrying both on
+        * one element threw the active disc to the chart's
+        * origin, scaled, the moment it was hovered or pinned.
+        * Nested, the grow scales the mark around its own
+        * centre (transform-box fill-box) and the point stays
+        * where it was plotted. */}
+      <g transform={`translate(${r2(p.x)} ${r2(p.y)})`}>
+        <g className="pt-mark">
+          <MarkerGlyph d={d} />
+          <circle className="pt-focus-ring" r={13.5} aria-hidden="true" />
+        </g>
       </g>
+      {/* The touch target: a transparent circle well past the
+        * disc (r 23 against the disc's 10, a 46 px target at
+        * the phone's true-pixel scale), painted last in the
+        * group so it takes the tap. Clicks are not handled
+        * here: the island's SVG handler resolves any tap in
+        * the chart to the nearest point within this radius,
+        * so overlapping targets in the packed cluster cannot
+        * open the wrong card. */}
+      <circle
+        className="pt-hit"
+        cx={r2(p.x)}
+        cy={r2(p.y)}
+        r={23}
+        aria-hidden="true"
+      />
       {/* No lower-bound glyph beside the disc: the short arrow
         * that used to sit here floated in empty space and read
         * as a stray mark pointing at nothing. The lower-bound
@@ -311,13 +391,15 @@ function Grid({ g, domain }: { g: Geom; domain: [number, number] }) {
       (g.plot.x1 - g.plot.x0);
   return (
     <g aria-hidden="true">
-      <rect
-        x={0}
-        y={g.plot.y0}
-        width={g.railW}
-        height={g.plot.y1 - g.plot.y0}
-        className="rail-strip"
-      />
+      {g.railW > 0 && (
+        <rect
+          x={0}
+          y={g.plot.y0}
+          width={g.railW}
+          height={g.plot.y1 - g.plot.y0}
+          className="rail-strip"
+        />
+      )}
       {ASR_TICKS.map((t) => (
         <g key={t}>
           <line
@@ -332,13 +414,15 @@ function Grid({ g, domain }: { g: Geom; domain: [number, number] }) {
           </text>
         </g>
       ))}
-      <line
-        x1={g.dividerX}
-        y1={g.plot.y0 - 6}
-        x2={g.dividerX}
-        y2={g.plot.y1}
-        className="rail-divider"
-      />
+      {g.railW > 0 && (
+        <line
+          x1={g.dividerX}
+          y1={g.plot.y0 - 6}
+          x2={g.dividerX}
+          y2={g.plot.y1}
+          className="rail-divider"
+        />
+      )}
       <line
         x1={g.plot.x0}
         y1={g.plot.y1}
@@ -499,58 +583,66 @@ function solveWide(points: Pt[]): Solution {
   return { placed, stack };
 }
 
-function solvePhone(points: Pt[]): Solution & { stackRows: number } {
+function solvePhone(
+  points: Pt[],
+  railData: ScatterDatum[],
+): Solution & { stackRows: number } {
   const g = PHONE;
-  const furniture: Rect[] = [...baseFurniture(g), PHONE_ANNOT_TR];
-  /* Rail points are not labelled in the phone plot: the rail
-   * is fifty pixels wide, so their names join the list under
-   * the plot with the plotted points the solver cannot seat.
-   * They still stand in the layout as obstacles, so plotted
-   * labels solve around their discs. */
+  const furniture: Rect[] = [
+    PHONE_ANNOT_CAPTION,
+    PHONE_ANNOT_TR,
+    PHONE_ANNOT_BL,
+    ...ASR_TICKS.map((t) => ({
+      x: g.plot.x0 + 2,
+      y: g.plot.y0 + (1 - t / ASR_AXIS_MAX) * (g.plot.y1 - g.plot.y0) - 17,
+      w: 26,
+      h: 13,
+    })),
+  ];
+  /* Only plotted points stand in the phone plot (buildPoints
+   * returns no rail markers at this geometry), and labels
+   * render at the wide chart's size, so the solver plans at
+   * full width scale. The rail points and any plotted point
+   * the solver cannot seat go to the list under the plot,
+   * each entry carrying its own disc beside its name. */
   const layoutPts: LayoutPoint[] = points.map((p) => ({
     runId: p.d.runId,
     x: p.x,
     y: p.y,
     marker: 11,
-    label: p.d.rail ? null : p.d.label,
+    label: p.d.label,
   }));
-  const first = placeLabels(layoutPts, furniture, g.labelBounds, 0.84);
-  const byId = new Map(points.map((p) => [p.d.runId, p]));
-  const listed = [
-    ...points.filter((p) => p.d.rail).map((p) => p.d.runId),
-    ...first.keyed,
-  ]
+  const first = placeLabels(layoutPts, furniture, g.labelBounds, 1);
+  const byId = new Map<string, ScatterDatum>([
+    ...points.map((p) => [p.d.runId, p.d] as const),
+    ...railData.map((d) => [d.runId, d] as const),
+  ]);
+  const listed = [...railData.map((d) => d.runId), ...first.keyed]
     .map((id) => byId.get(id)!)
-    .sort((a, b) => b.d.asr - a.d.asr);
-  const rows = Math.ceil(listed.length / 2);
-  const stack: StackEntry[] = listed.map((p, i) => {
-    const col = i < rows ? 0 : 1;
-    const rowI = i - col * rows;
-    return {
-      runId: p.d.runId,
-      x: PHONE_COL_X[col],
-      y: PHONE_LIST_TOP + rowI * PHONE_ENTRY_PITCH,
-    };
-  });
-  return { placed: first.placed, stack, stackRows: rows };
+    .sort((a, b) => b.asr - a.asr);
+  const stack: StackEntry[] = listed.map((d, i) => ({
+    runId: d.runId,
+    x: PHONE_ENTRY_X,
+    y: PHONE_LIST_TOP + i * PHONE_ENTRY_PITCH,
+  }));
+  return { placed: first.placed, stack, stackRows: listed.length };
 }
 
 function Labels({
   placed,
-  points,
+  dataById,
   activeId,
   phone,
 }: {
   placed: PlacedLabel[];
-  points: Pt[];
+  dataById: Map<string, ScatterDatum>;
   activeId: string | null;
   phone?: boolean;
 }) {
-  const ptById = new Map(points.map((p) => [p.d.runId, p]));
   return (
     <>
       {placed.map((l) => {
-        const p = ptById.get(l.runId)!;
+        const d = dataById.get(l.runId)!;
         return (
           <text
             key={l.runId}
@@ -560,7 +652,7 @@ function Labels({
             data-label-for={l.runId}
             data-active={activeId === l.runId ? "true" : undefined}
           >
-            {p.d.label}
+            {d.label}
           </text>
         );
       })}
@@ -573,28 +665,78 @@ function Labels({
  * name, and its figures. The disc carries the association;
  * nothing is drawn between the row and the point. On the
  * wide chart the figures follow the name on the same line;
- * on the phone they sit under the name.
+ * on the phone they sit under the name. A row is itself a
+ * target: tapping or clicking it pins the point's card,
+ * anchored at the row's disc, and on the phone a rail
+ * point's row is its only marker, so there the row also
+ * carries the keyboard stop and the accessible name.
  */
 function StackEntries({
   stack,
-  points,
+  dataById,
   activeId,
   phone,
+  onActivate,
+  onDeactivate,
+  onToggle,
 }: {
   stack: StackEntry[];
-  points: Pt[];
+  dataById: Map<string, ScatterDatum>;
   activeId: string | null;
   phone?: boolean;
+  onActivate: (id: string) => void;
+  onDeactivate: () => void;
+  onToggle: (id: string) => void;
 }) {
-  const ptById = new Map(points.map((p) => [p.d.runId, p]));
   return (
     <>
       {stack.map((s) => {
-        const p = ptById.get(s.runId)!;
-        const d = p.d;
-        const nameW = estimateLabelWidth(d.label) * (phone ? 0.84 : 1);
+        const d = dataById.get(s.runId)!;
+        const nameW = estimateLabelWidth(d.label);
+        const focusable = phone && d.rail;
         return (
-          <g key={s.runId} className="scatter-entry">
+          <g
+            key={s.runId}
+            className="scatter-entry"
+            data-entry-for={s.runId}
+            {...(focusable
+              ? {
+                  tabIndex: 0,
+                  role: "group",
+                  "aria-label": pointAccessibleName(d),
+                }
+              : {})}
+            onMouseEnter={() => onActivate(s.runId)}
+            onMouseLeave={onDeactivate}
+            onFocus={focusable ? () => onActivate(s.runId) : undefined}
+            onBlur={focusable ? onDeactivate : undefined}
+            onClick={(e) => {
+              e.stopPropagation();
+              onToggle(s.runId);
+            }}
+            onKeyDown={
+              focusable
+                ? (e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      onToggle(s.runId);
+                    }
+                  }
+                : undefined
+            }
+          >
+            <rect
+              className="entry-hit"
+              x={r2(s.x - 4)}
+              y={r2(s.y - 2)}
+              width={
+                phone
+                  ? 324
+                  : 26 + nameW + 10 + estimateLabelWidth(entryValues(d)) + 8
+              }
+              height={phone ? 36 : 30}
+              aria-hidden="true"
+            />
             <g
               transform={`translate(${r2(s.x + 10)} ${r2(s.y + 13)}) scale(${phone ? 0.72 : 0.85})`}
               aria-hidden="true"
@@ -611,11 +753,7 @@ function StackEntries({
               {d.label}
             </text>
             <text
-              x={r2(
-                phone
-                  ? s.x + 24
-                  : s.x + 26 + nameW + 10,
-              )}
+              x={r2(phone ? s.x + 24 : s.x + 26 + nameW + 10)}
               y={r2(phone ? s.y + 27 : s.y + 17)}
               className={`scatter-entry-values${phone ? " phone" : ""} num`}
               aria-hidden="true"
@@ -629,19 +767,53 @@ function StackEntries({
   );
 }
 
-function HoverCard({ p, g }: { p: Pt; g: Geom }) {
+function HoverCard({
+  p,
+  g,
+  phone,
+  pinned,
+  onClose,
+}: {
+  p: Pt;
+  g: Geom;
+  phone?: boolean;
+  pinned: boolean;
+  onClose: () => void;
+}) {
   const d = p.d;
-  const leftPct = (p.x / g.w) * 100;
+  const rawLeftPct = (p.x / g.w) * 100;
+  /* On the phone the well is nearly viewport-wide, so a card
+   * centred on an edge point would bleed out of the panel;
+   * the anchor clamps into the middle band and the align
+   * classes do the rest. The association survives the clamp:
+   * the point itself stays enlarged and bold beneath. */
+  const leftPct = phone
+    ? Math.min(64, Math.max(36, rawLeftPct))
+    : rawLeftPct;
   const topPct = (p.y / g.h) * 100;
   const cls = leftPct > 74 ? " align-r" : leftPct < 20 ? " align-l" : "";
-  const below = p.y < g.plot.y0 + 92;
+  /* The card stands below the point through the whole top
+   * band; on the phone's taller plot the band is deeper, so
+   * a card opening upward there would leave the panel. */
+  const below = p.y < g.plot.y0 + (phone ? 178 : 92);
   return (
     <div
-      className={`scatter-card${cls}${below ? " below" : ""}`}
+      className={`scatter-card${cls}${below ? " below" : ""}${pinned ? " pinned" : ""}`}
       style={{ left: `${leftPct}%`, top: `${topPct}%` }}
-      aria-hidden="true"
+      aria-hidden={pinned ? undefined : true}
+      onClick={pinned ? (e) => e.stopPropagation() : undefined}
     >
       <p className="sc-name">{d.label}</p>
+      {pinned && (
+        <button
+          type="button"
+          className="sc-close"
+          aria-label={`Close details for ${d.label}`}
+          onClick={onClose}
+        >
+          ×
+        </button>
+      )}
       <div className="sc-rows">
         <div className="sc-row">
           <span className="sc-k">Attack success</span>
@@ -691,18 +863,101 @@ export default function ScatterIsland({
    * without re-running the point builder or the solver. */
   const { points, solution } = useMemo(() => {
     const pts = buildPoints(plotted, rail, domain, g);
-    return { points: pts, solution: phone ? solvePhone(pts) : solveWide(pts) };
+    return {
+      points: pts,
+      solution: phone ? solvePhone(pts, rail) : solveWide(pts),
+    };
   }, [plotted, rail, domain, g, phone]);
+  const dataById = useMemo(
+    () =>
+      new Map<string, ScatterDatum>(
+        [...plotted, ...rail].map((d) => [d.runId, d]),
+      ),
+    [plotted, rail],
+  );
   const height = phone
     ? PHONE_LIST_TOP +
       (solution as { stackRows?: number }).stackRows! * PHONE_ENTRY_PITCH +
-      58
+      28
     : WIDE.h;
-  const [activeId, setActiveId] = useState<string | null>(null);
-  const active = points.find((p) => p.d.runId === activeId) ?? null;
+  /* The card's state machine. Hover and focus preview;
+   * a click or tap pins. The pinned card is the touch
+   * user's card: it stays until the same point is tapped
+   * again, a tap lands anywhere else in the chart, the
+   * close control is used, or Escape is pressed, because
+   * touch has no pointer-leave to dismiss by. */
+  const [hoverId, setHoverId] = useState<string | null>(null);
+  const [pinnedId, setPinnedId] = useState<string | null>(null);
+  const activeId = pinnedId ?? hoverId;
+  const togglePin = (id: string) => {
+    if (pinnedId === id) {
+      setPinnedId(null);
+      setHoverId(null);
+    } else {
+      setPinnedId(id);
+      setHoverId(id);
+    }
+  };
+  const dismiss = () => {
+    setPinnedId(null);
+    setHoverId(null);
+  };
+  const svgRef = useRef<SVGSVGElement | null>(null);
+  /* A tap or click anywhere in the chart resolves to the
+   * nearest point inside the touch radius and toggles its
+   * pin; landing outside every point dismisses. Resolving
+   * by distance, not by which element painted on top, is
+   * what makes the packed cluster honest under a fingertip.
+   * Taps on the well's own padding land outside the SVG and
+   * reach the wrap's handler, which dismisses the same way. */
+  const handleChartClick = (e: MouseEvent) => {
+    const svg = svgRef.current;
+    if (!svg) return;
+    const ctm = svg.getScreenCTM();
+    if (!ctm) return;
+    const pt = new DOMPoint(e.clientX, e.clientY).matrixTransform(
+      ctm.inverse(),
+    );
+    let best: Pt | null = null;
+    let bestD = 24;
+    for (const p of points) {
+      const dist = Math.hypot(p.x - pt.x, p.y - pt.y);
+      if (dist < bestD) {
+        bestD = dist;
+        best = p;
+      }
+    }
+    if (best) togglePin(best.d.runId);
+    else dismiss();
+  };
+  /* The active point's card anchor: its marker position, or
+   * for a list entry the position of the entry's own disc. */
+  const active: Pt | null = (() => {
+    if (!activeId) return null;
+    const mp = points.find((p) => p.d.runId === activeId);
+    if (mp) return mp;
+    const entry = solution.stack.find((s) => s.runId === activeId);
+    const d = dataById.get(activeId);
+    if (entry && d) {
+      return { d, x: entry.x + 10, y: entry.y + 13, nudged: false };
+    }
+    return null;
+  })();
   return (
-    <div className="scatter-wrap">
+    <div
+      className="scatter-wrap"
+      onKeyDown={(e) => {
+        if (e.key === "Escape") dismiss();
+      }}
+      onClick={(e) => {
+        if (!(e.target as HTMLElement).closest("svg, .scatter-card")) {
+          dismiss();
+        }
+      }}
+    >
       <svg
+        ref={svgRef}
+        onClick={handleChartClick}
         viewBox={`0 0 ${g.w} ${height}`}
         className="scatter-svg"
         role="group"
@@ -728,10 +983,10 @@ export default function ScatterIsland({
         </text>
         {phone ? (
           <g className="corner-note">
-            <text x={354} y={22} textAnchor="end" className="corner-title phone">
+            <text x={324} y={22} textAnchor="end" className="corner-title phone">
               {CORNER_TR.title}
             </text>
-            <text x={354} y={38} textAnchor="end" className="corner-sub phone">
+            <text x={324} y={38} textAnchor="end" className="corner-sub phone">
               {CORNER_TR.sub}
             </text>
           </g>
@@ -760,21 +1015,25 @@ export default function ScatterIsland({
             key={p.d.runId}
             p={p}
             active={activeId === p.d.runId}
-            onActivate={setActiveId}
-            onDeactivate={() => setActiveId(null)}
+            onActivate={setHoverId}
+            onDeactivate={() => setHoverId(null)}
+            onToggle={togglePin}
           />
         ))}
         <Labels
           placed={solution.placed}
-          points={points}
+          dataById={dataById}
           activeId={activeId}
           phone={phone}
         />
         <StackEntries
           stack={solution.stack}
-          points={points}
+          dataById={dataById}
           activeId={activeId}
           phone={phone}
+          onActivate={setHoverId}
+          onDeactivate={() => setHoverId(null)}
+          onToggle={togglePin}
         />
         <text x={g.plot.x0} y={g.plot.y1 + 40} className="axis-caption">
           {phone
@@ -783,16 +1042,24 @@ export default function ScatterIsland({
         </text>
         {phone && (
           <g className="corner-note">
-            <text x={8} y={height - 26} className="corner-title phone">
+            <text x={8} y={520} className="corner-title phone">
               {CORNER_BL.title}
             </text>
-            <text x={8} y={height - 10} className="corner-sub phone">
+            <text x={8} y={538} className="corner-sub phone">
               {CORNER_BL.sub}
             </text>
           </g>
         )}
       </svg>
-      {active && <HoverCard p={active} g={{ ...g, h: height }} />}
+      {active && (
+        <HoverCard
+          p={active}
+          g={{ ...g, h: height }}
+          phone={phone}
+          pinned={pinnedId !== null && pinnedId === activeId}
+          onClose={dismiss}
+        />
+      )}
     </div>
   );
 }

@@ -11,6 +11,19 @@ import { useEffect, useRef } from "react";
  * active styling never changes a box size (the rule is drawn
  * by a bottom border carried in both states), so the spy
  * cannot shift the layout it measures.
+ *
+ * At phone widths the bar also gets out of the reader's
+ * way: it translates up out of view while the reader
+ * scrolls down through content, and returns on any scroll
+ * up, near the top of the page, while focus is inside it,
+ * and for a beat after one of its own links is used, so an
+ * anchor landing is never measured against a moving bar.
+ * A sticky bar the reader cannot dismiss otherwise sits on
+ * the top band of every chart they scroll to. The transform
+ * changes no layout, so the spy, the landings, and the
+ * desktop bar are untouched. On the phone the spy also
+ * scrolls the strip itself, so the active link is never
+ * the one cut off at the strip's edge.
  */
 export const NAV_ITEMS: Array<{ id: string; label: string }> = [
   { id: "ranking", label: "Ranking" },
@@ -46,6 +59,19 @@ export default function SectionNav() {
           a.removeAttribute("aria-current");
         }
       });
+      /* Phone: keep the active link inside the strip. The
+       * strip is the only horizontal scroller, so following
+       * the spy horizontally costs the page nothing. */
+      if (id && window.matchMedia("(max-width: 760px)").matches) {
+        const a = links.get(id);
+        const inner = nav.querySelector<HTMLElement>(".section-nav-inner");
+        if (a && inner) {
+          const target = Math.max(0, a.offsetLeft - inner.offsetLeft - 8);
+          if (Math.abs(inner.scrollLeft - target) > 4) {
+            inner.scrollTo({ left: target, behavior: "smooth" });
+          }
+        }
+      }
     };
     const visible = new Set<string>();
     const observer = new IntersectionObserver(
@@ -66,6 +92,56 @@ export default function SectionNav() {
       if (el) observer.observe(el);
     }
     return () => observer.disconnect();
+  }, []);
+
+  /* Phone only: the bar steps aside while the reader
+   * scrolls down, per the note at the top of this file.
+   * Class toggles on the nav element itself, so no React
+   * render rides the scroll events. */
+  useEffect(() => {
+    const nav = navRef.current;
+    if (!nav) return;
+    const mq = window.matchMedia("(max-width: 760px)");
+    let lastY = window.scrollY;
+    let anchorAt = 0;
+    let focusInside = false;
+    const show = () => nav.classList.remove("nav-hidden");
+    const onScroll = () => {
+      const y = window.scrollY;
+      const dy = y - lastY;
+      lastY = y;
+      if (!mq.matches || focusInside) {
+        show();
+        return;
+      }
+      if (y < 120 || dy < -4) show();
+      else if (dy > 6 && y > 240 && Date.now() - anchorAt > 450) {
+        nav.classList.add("nav-hidden");
+      }
+    };
+    const onClick = (e: Event) => {
+      if ((e.target as HTMLElement).closest("a")) {
+        anchorAt = Date.now();
+        show();
+      }
+    };
+    const onFocusIn = () => {
+      focusInside = true;
+      show();
+    };
+    const onFocusOut = () => {
+      focusInside = false;
+    };
+    window.addEventListener("scroll", onScroll, { passive: true });
+    nav.addEventListener("click", onClick);
+    nav.addEventListener("focusin", onFocusIn);
+    nav.addEventListener("focusout", onFocusOut);
+    return () => {
+      window.removeEventListener("scroll", onScroll);
+      nav.removeEventListener("click", onClick);
+      nav.removeEventListener("focusin", onFocusIn);
+      nav.removeEventListener("focusout", onFocusOut);
+    };
   }, []);
 
   return (
