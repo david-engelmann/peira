@@ -187,11 +187,19 @@ export function fmtUsd(value: number): string {
 }
 
 /**
- * Cost with up to four decimals, trailing zeros trimmed but
- * never below two. Chart tooltips and the keyed list use it so
- * a $0.0582 run does not print as $0.06.
+ * Cost at the precision the magnitude carries (doctrine D12).
+ * At a dollar and above a cost prints at two decimals, like
+ * every other cost on the board: the third and fourth
+ * decimals of a $130.3128 run are digits no reader can act
+ * on. Under a dollar the extra decimals are the fact itself
+ * (a $0.0513 run and a $0.0582 run are different recorded
+ * costs, and both stand on the scatter), so there the format
+ * keeps up to four decimals, trailing zeros trimmed but
+ * never below two. Used only by the scatter's surfaces: the
+ * detail card, the point titles, and the stack entries.
  */
 export function fmtUsdExact(value: number): string {
+  if (value >= 1) return fmtUsd(value);
   const q = quantizeHalfUp(expandDecimalString(value), 4);
   const [whole, fracRaw = ""] = q.split(".");
   let frac = fracRaw.replace(/0+$/, "");

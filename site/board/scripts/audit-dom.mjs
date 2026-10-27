@@ -3,7 +3,7 @@
  * DOM acceptance audit for the ranking prototype. Drives a
  * Chromium from the Playwright cache through puppeteer-core
  * against the static out/ directory, measures the built page at
- * 1440, 1280, and 390, and checks the census and spec tests that
+ * 1440, 1280, 900, and 390, and checks the census and spec tests that
  * need a live layout:
  *
  *  F-03  no two visible text boxes in the ranking come within
@@ -201,6 +201,48 @@
  *        scatter card's tap contract end to end. Each new
  *        check was proven against the pre-fix build, where
  *        the tap contract and the occlusion probe fail.
+ *
+ * Design cycle 3 extensions (scatter, wide form):
+ *  Gated widths. The width loop gains 900 (parent decision
+ *        after cycle 5's red team found the band between the
+ *        phone breakpoint and the page cap unmeasured). Every
+ *        check that ran at 1440/1280/390 runs at 900 too.
+ *  Scatter type floor, extended. The mobile-fix floor check
+ *        sampled the label, entry-value and corner-sub sizes;
+ *        every scatter text class is drawn at the same 11.5
+ *        units, so the sample now covers the grid numerals,
+ *        tick labels, rail head and axis captions as well.
+ *        On the pre-fix build the wide chart scales to 0.726
+ *        at 900 and every class renders at 8.4 px.
+ *  Card motion (S-01, S-02). A post-loop block at 1440 reads
+ *        the disc grow's computed transition (it must equal
+ *        the motion tokens: 120 ms on the entrance curve) and,
+ *        with a point focused so its card stands open, the
+ *        card motion layer's computed transition (opacity and
+ *        transform on token durations). On the pre-fix build
+ *        the grow reads 160 ms on the default curve and the
+ *        card has no motion layer at all.
+ *  Reduced motion (S-03). The same block under an emulated
+ *        prefers-reduced-motion: the active disc's computed
+ *        transform must carry no scale (M19 disables it) and
+ *        the card's motion layer must transition opacity
+ *        only. On the pre-fix build the disc still scales,
+ *        snapped on by the global kill block.
+ *  Heatmap at the new gate. H-01 and the header check, run
+ *        at 900 for the first time, caught the band heatmap
+ *        as cycle 5 left it: the last family sat off canvas
+ *        in the band scroller (39 cells and one header past
+ *        the section edge) and two headers clipped mid-word
+ *        at scroll 61 against client 56. The fix refits the
+ *        grid (content-floored columns, a stepped-down name
+ *        column) so it fits the section at 900. The header
+ *        check is calibrated to its contract in the same
+ *        cycle: clipping on either axis fails at every
+ *        width, and the 30 px ceiling applies only where
+ *        the heads are nowrap, since the band design wraps
+ *        multi-word headers between words by design. On the
+ *        pre-fix build the calibrated check still fails at
+ *        900 on the two clipped heads.
  *
  * Screenshots land in the directory given as argv[3].
  */
@@ -598,7 +640,7 @@ await page.goto(pageUrl, { waitUntil: "networkidle0" });
 const failures = [];
 const notes = [];
 
-for (const width of [1440, 1280, 390]) {
+for (const width of [1440, 1280, 900, 390]) {
   await page.setViewport({ width, height: 900 });
   await new Promise((r) => setTimeout(r, 350));
 
@@ -975,6 +1017,10 @@ for (const width of [1440, 1280, 390]) {
             label: fsOf(".scatter-label"),
             entry: fsOf(".scatter-entry-values"),
             cornerSub: fsOf(".corner-sub"),
+            grid: fsOf(".grid-label"),
+            tick: fsOf(".tick-label"),
+            railHead: fsOf(".rail-head"),
+            caption: fsOf(".axis-caption"),
           },
           entries: [...svg.querySelectorAll(".scatter-entry")].map((e) => {
             const c = e.querySelector("circle");
@@ -1055,6 +1101,9 @@ for (const width of [1440, 1280, 390]) {
             h: r.height,
             sw: h.scrollWidth,
             cw: h.clientWidth,
+            sh: h.scrollHeight,
+            ch: h.clientHeight,
+            ws: getComputedStyle(h).whiteSpace,
             x0: r.left,
             x1: r.right,
           };
@@ -1520,8 +1569,26 @@ for (const width of [1440, 1280, 390]) {
      * floor. The pre-fix phone chart set labels at 10 units
      * in a 358-unit viewBox squeezed into 328 px, with entry
      * values and corner subs at 9.5: 9.2 and 8.7 px rendered. */
+    /* Presence is part of the floor (cycle 3 red team,
+     * RT-6): a class the design guarantees may not vanish
+     * and take its measurement with it. Labels, grid
+     * numerals, tick labels, captions and the corner sub
+     * stand at every width; the rail head stands wherever
+     * the wide island does. Entry values ride the overflow
+     * stack, whose population is the solver's choice, so
+     * they are measured when present, not required. */
+    const floorRequired = ["label", "grid", "tick", "caption", "cornerSub"];
+    if (width > 760) floorRequired.push("railHead");
     for (const [kind, fs] of Object.entries(sc.typeScale)) {
-      if (kind === "scale" || fs === null) continue;
+      if (kind === "scale") continue;
+      if (fs === null) {
+        if (floorRequired.includes(kind)) {
+          failures.push(
+            `width ${width}: scatter ${kind} text is absent, so the type floor has nothing to measure`,
+          );
+        }
+        continue;
+      }
       const rendered = fs * sc.typeScale.scale;
       if (rendered < 9.95) {
         failures.push(
@@ -1605,10 +1672,26 @@ for (const width of [1440, 1280, 390]) {
   if (!chart.heat) {
     failures.push(`width ${width}: heatmap not measured`);
   } else {
+    /* The header contract is clipping, on both axes, at
+     * every width (design cycle 3 calibration): a header
+     * fails when its content overflows its box horizontally
+     * or vertically. The 30 px height ceiling is the
+     * one-line contract and applies only where the heads
+     * are nowrap; in the 761-953 band the design wraps
+     * multi-word headers between words, where two lines at
+     * the board's sizes measure 32 px and nothing is
+     * clipped. The pre-fix build at the new 900 gate failed
+     * both forms: two heads read scroll 61 against client
+     * 56, and the whole row stood 32 tall under nowrap
+     * assumptions the band never had. */
     for (const h of chart.heat.heads) {
-      if (h.h > 30 || h.sw > h.cw + 1) {
+      if (
+        h.sw > h.cw + 1 ||
+        h.sh > h.ch + 1 ||
+        (h.ws === "nowrap" && h.h > 30)
+      ) {
         failures.push(
-          `width ${width}: heatmap header ${h.fam} wraps or clips (height ${h.h.toFixed(0)}, scroll ${h.sw} vs client ${h.cw})`,
+          `width ${width}: heatmap header ${h.fam} wraps or clips (height ${h.h.toFixed(0)}, scroll ${h.sw}x${h.sh} vs client ${h.cw}x${h.ch})`,
         );
       }
     }
@@ -2709,6 +2792,136 @@ for (const row of pageSamples) {
   }
   notes.push(`model page /models/${slug}/ height ${res.height}`);
 }
+
+/* ---------- design cycle 3: scatter card motion ---------- */
+/* S-01 (the disc grow runs on the motion tokens), S-02 (the
+ * card's motion layer transitions opacity and transform on
+ * token durations), S-03 (under reduced motion the disc does
+ * not scale and the card's layer transitions opacity only).
+ * The page reloads pristine: the phone block left a pinned
+ * card and a scrolled strip behind. Focus, not hover, opens
+ * the measured card, so the block is keyboard-true as well. */
+await page.setViewport({ width: 1440, height: 1200 });
+await page.goto(pageUrl, { waitUntil: "networkidle0" });
+await new Promise((r) => setTimeout(r, 350));
+const motionBase = await page.evaluate(() => {
+  const wide = document.querySelector(".scatter-wide");
+  const mark = wide ? wide.querySelector(".pt-mark") : null;
+  const pt = wide
+    ? wide.querySelector('.scatter-point[data-scatter="plot"]')
+    : null;
+  if (pt) pt.focus();
+  const ms = mark ? getComputedStyle(mark) : null;
+  return {
+    markTransition: ms
+      ? {
+          property: ms.transitionProperty,
+          duration: ms.transitionDuration,
+          timing: ms.transitionTimingFunction,
+        }
+      : null,
+  };
+});
+await new Promise((r) => setTimeout(r, 300));
+const motionCard = await page.evaluate(() => {
+  const inner = document.querySelector(".scatter-wide .scatter-card-inner");
+  if (!inner) return null;
+  const cs = getComputedStyle(inner);
+  return {
+    property: cs.transitionProperty,
+    duration: cs.transitionDuration,
+    timing: cs.transitionTimingFunction,
+  };
+});
+if (
+  !motionBase.markTransition ||
+  motionBase.markTransition.duration !== "0.12s" ||
+  motionBase.markTransition.timing !== "cubic-bezier(0.23, 1, 0.32, 1)"
+) {
+  failures.push(
+    `S-01: scatter disc grow transition is ${motionBase.markTransition ? `${motionBase.markTransition.duration} ${motionBase.markTransition.timing}` : "missing"}, expected the token values 0.12s cubic-bezier(0.23, 1, 0.32, 1)`,
+  );
+}
+/* S-02 is an exact contract, not a set membership (cycle
+ * 3 red team, RT-3): the layer must transition opacity on
+ * the micro token with the fade curve and transform on
+ * the state token with the move curve, in that pairing.
+ * The looser predicate passed a layer with the durations
+ * swapped and both curves replaced by M3-banned ones. */
+if (
+  !motionCard ||
+  motionCard.property !== "opacity, transform" ||
+  motionCard.duration !== "0.12s, 0.2s" ||
+  motionCard.timing !== "ease, cubic-bezier(0.77, 0, 0.175, 1)"
+) {
+  failures.push(
+    `S-02: scatter card motion layer is ${motionCard ? `${motionCard.property} / ${motionCard.duration} / ${motionCard.timing}` : "absent"}, expected "opacity, transform / 0.12s, 0.2s / ease, cubic-bezier(0.77, 0, 0.175, 1)" (opacity on the micro token and fade curve, transform on the state token and move curve)`,
+  );
+}
+await page.emulateMediaFeatures([
+  { name: "prefers-reduced-motion", value: "reduce" },
+]);
+await page.goto(pageUrl, { waitUntil: "networkidle0" });
+await new Promise((r) => setTimeout(r, 350));
+const reduced = await page.evaluate(() => {
+  const wide = document.querySelector(".scatter-wide");
+  const pt = wide
+    ? wide.querySelector('.scatter-point[data-scatter="plot"]')
+    : null;
+  if (pt) pt.focus();
+  return pt ? pt.getAttribute("data-run-id") : null;
+});
+await new Promise((r) => setTimeout(r, 300));
+const reducedStyles = await page.evaluate(() => {
+  const active = document.querySelector(
+    '.scatter-wide .scatter-point[data-active="true"] .pt-mark',
+  );
+  const inner = document.querySelector(".scatter-wide .scatter-card-inner");
+  const as = active ? getComputedStyle(active) : null;
+  const is = inner ? getComputedStyle(inner) : null;
+  return {
+    transform: as ? as.transform : null,
+    innerProperty: is ? is.transitionProperty : null,
+    innerDuration: is ? is.transitionDuration : null,
+  };
+});
+await page.emulateMediaFeatures([]);
+{
+  const t = reducedStyles.transform;
+  const m = t ? t.match(/matrix\(([^)]+)\)/) : null;
+  /* The whole matrix is the contract (cycle 3 red team,
+   * RT-7): no scale on the diagonal, and no shear,
+   * rotation or drift in the other four components
+   * either. Reading only the diagonal passed a sheared
+   * disc. */
+  const scaled = m
+    ? (() => {
+        const p = m[1].split(",").map((v) => parseFloat(v));
+        return (
+          Math.abs(p[0] - 1) > 0.01 ||
+          Math.abs(p[3] - 1) > 0.01 ||
+          Math.abs(p[1]) > 0.01 ||
+          Math.abs(p[2]) > 0.01 ||
+          Math.abs(p[4]) > 0.5 ||
+          Math.abs(p[5]) > 0.5
+        );
+      })()
+    : false;
+  if (!reduced || t === null || scaled) {
+    failures.push(
+      `S-03: under reduced motion the active scatter disc transform is ${t}, expected no scale (M19 disables the grow)`,
+    );
+  }
+  if (
+    reducedStyles.innerProperty !== "opacity" ||
+    reducedStyles.innerDuration !== "0.12s"
+  ) {
+    failures.push(
+      `S-03: under reduced motion the scatter card motion layer transitions ${reducedStyles.innerProperty} / ${reducedStyles.innerDuration}, expected opacity only at 0.12s (M19 cross-fade)`,
+    );
+  }
+}
+notes.push("cycle 3 card motion block: S-01 disc tokens, S-02 card layer, S-03 reduced-motion branch");
 
 /* ---------- round 12 text spacing (AX-04) ---------- */
 /* The WCAG 1.4.12 overrides, the adversarial lane's style tag

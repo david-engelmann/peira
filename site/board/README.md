@@ -18,7 +18,7 @@ set. The build regenerates the share image, produces the
 static export in `out/`, and runs the integrity check and the
 budget check against the payload. `node scripts/audit-dom.mjs
 out <screenshots-dir>` drives the built page in Chromium at
-three widths and checks layout, geometry, names, and
+four widths and checks layout, geometry, names, and
 interactions against the payload.
 
 ## Where the data comes from

@@ -52,6 +52,24 @@
   --t-body: 14.5px;
   --t-caption: 12px;
 
+  /* Motion tokens (motion spec M1 to M4). Every duration,
+     curve, and travel distance on the board comes from
+     here; a transition written with a raw value fails
+     review. Exits run at 0.7 times their entrances (M2),
+     ease-in and overshoot curves are banned (M3), and
+     nothing travels more than the enter rise (M4). */
+  --dur-micro: 120ms;
+  --dur-state: 200ms;
+  --dur-enter: 280ms;
+  --dur-exit-card: 140ms;
+  --dur-exit-enter: 200ms;
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-move: cubic-bezier(0.77, 0, 0.175, 1);
+  --ease-fade: ease;
+  --rise-micro: 4px;
+  --rise-enter: 12px;
+  --stagger: 40ms;
+
   --font-data: "Archivo", system-ui, sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, monospace;
 
@@ -1358,22 +1376,38 @@ body::before {
 }
 
 /* The band between the phone restack and the desktop fit
- * (design cycle 5, red team F1). The heat grid's minimum
- * content is 906 px (the 268 px name column, eleven 56 px
- * columns, and gaps), so under a 954 px viewport the grid
- * scrolls with its sticky name column, and this band alone
- * shows the scroll cue; at the desktop widths the grid fits
- * and the cue would be a false string, and on the phone
- * nothing scrolls. Headers wrap to two lines here rather
- * than overflowing their slots into each other. Calibration
- * steps its array down in this band (the two blocks below). */
+ * (design cycle 5, red team F1; refit in design cycle 3).
+ * The heat grid's columns floor at their headers' longest
+ * words and its name column steps down to 248 px here, so
+ * the grid's minimum content measures 821 px and it fits
+ * the section outright from a viewport of 869 px up
+ * (measured across the band in design cycle 3): no family
+ * sits off canvas at the gated 900 width (audit H-01).
+ * Under that the section cannot hold the minima and
+ * the grid scrolls with its sticky name column, and only
+ * that sub-band shows the scroll cue; at the desktop widths
+ * the grid fits and the cue would be a false string, and on
+ * the phone nothing scrolls. Headers wrap to two lines here
+ * rather than overflowing their slots into each other.
+ * Calibration steps its array down in this band (the two
+ * blocks below). */
 @media (min-width: 761px) and (max-width: 953px) {
-  .scroll-hint {
-    display: block;
+  :root {
+    --heat-name-w: 248px;
   }
   .heat-head {
     white-space: normal;
     line-height: 1.15;
+  }
+}
+
+/* The scroll cue prints only while the grid can overflow
+ * its section (design cycle 3): the refit above moves the
+ * fit boundary to a viewport of 869 px, so the cue's band
+ * ends there. Above it the string would be false. */
+@media (min-width: 761px) and (max-width: 868px) {
+  .scroll-hint {
+    display: block;
   }
 }
 
@@ -2304,7 +2338,7 @@ body::before {
 .pt-mark {
   transform-box: fill-box;
   transform-origin: center;
-  transition: transform 160ms ease;
+  transition: transform var(--dur-micro) var(--ease-out);
 }
 
 .scatter-point {
@@ -2413,6 +2447,36 @@ body::before {
   box-shadow: var(--shadow-3);
   padding: 12px 14px;
   pointer-events: none;
+}
+
+/* The card's motion layer (motion spec M9). The outer
+ * element only positions the card at its point; everything
+ * that moves lives on this inner layer, so the anchor
+ * transforms above never take part in a transition. Enter
+ * runs once per mount: a fade and the micro rise on the
+ * state duration and the entrance curve. A point switch is
+ * driven by the island through inline styles on this layer:
+ * the box glides on the move curve while the contents
+ * cross-fade on the micro duration, and an exit fades on
+ * the exit token. The layer never unmounts between points:
+ * the card is one object with changing contents, not a new
+ * card per point. */
+.scatter-card-inner {
+  transition:
+    opacity var(--dur-micro) var(--ease-fade),
+    transform var(--dur-state) var(--ease-move);
+  animation: scatter-card-in var(--dur-state) var(--ease-out);
+}
+
+@keyframes scatter-card-in {
+  from {
+    opacity: 0;
+    transform: translateY(var(--rise-micro));
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .scatter-card.below {
@@ -2532,4 +2596,28 @@ body::before {
 
 .cal-head .cal-meta {
   grid-column: 2;
+}
+
+/* Reduced motion, the scatter's designed branch (motion
+ * spec M19). The global kill block above zeroes every
+ * duration, which leaves two behaviours wrong for this
+ * slice: the active disc's grow is a transform state, not
+ * a duration, so it would still snap on at full scale; and
+ * the card would lose the one movement reduced motion
+ * keeps, its opacity cross-fade. These rules carry class
+ * specificity above the kill block's universal selector:
+ * the disc does not scale, the card's layer transitions
+ * opacity only on the micro token, and the enter animation
+ * does not run. Resting states are identical in both
+ * branches; nothing is left hidden or mid-state. */
+@media (prefers-reduced-motion: reduce) {
+  .scatter-point[data-active="true"] .pt-mark,
+  .scatter-point:focus-visible .pt-mark {
+    transform: none !important;
+  }
+
+  .scatter-card-inner {
+    transition: opacity var(--dur-micro) var(--ease-fade) !important;
+    animation: none !important;
+  }
 }
