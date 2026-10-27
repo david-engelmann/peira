@@ -17,9 +17,6 @@ from unittest import mock
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent / "python"))
 
-import os
-os.environ.setdefault("PEIRA_NO_RUST", "1")
-
 from peira import cli as cli_mod
 from peira.cli import EXIT_USER_ERROR
 from peira.runner import per_seed_budget

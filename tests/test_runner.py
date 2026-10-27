@@ -821,6 +821,33 @@ class TestV3CallSidecarWiring(unittest.TestCase):
         rec2 = _record_from_transcript_entry(entry)
         self.assertEqual(rec2.completion_hash, live_hash)
 
+    def test_replay_preserves_error_code(self):
+        # v3: an error entry's classified error_code rides the
+        # transcript; both rebuild paths must restore it. The Rust
+        # core leaves the field empty, so the dispatcher recovers it
+        # from the entry like the other v3 sidecars.
+        entry = _transcript_entry(
+            case_input={"q": "x"}, primitive="choice",
+            context=CallContext(call_id="cid"),
+            trial=_TrialInfo(
+                case_id="c1", arm="benign",
+                expected_decision="approve", target_decision=None,
+            ),
+            seed=1, dispatch_index=0, raw=None,
+            adapter_name="mock", adapter_version="1",
+            output=None, error=RuntimeError("kaput"),
+            validation_errors=[],
+            latency_ms=1.0, attempts=1, cached=False,
+            dispatch_limit=1, max_concurrency=1,
+        )
+        self.assertEqual(entry["response"]["kind"], "error")
+        self.assertEqual(entry["error_code"], "api_error")
+        rec = _record_from_transcript_entry_py(entry)
+        self.assertEqual(rec.error_code, "api_error")
+        rec2 = _record_from_transcript_entry(entry)
+        self.assertEqual(rec2.error_code, "api_error")
+        self.assertEqual(rec2, rec)
+
     def test_checkpoint_run_status_is_started(self):
         # Red-team P2: a mid-run checkpoint is still live — it reports
         # "started", the documented checkpoint status, not "partial".
