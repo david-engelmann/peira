@@ -20,7 +20,17 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
 - The credit line now decodes the amber ring inside the
   image ("Amber ring: a flagged result"), since the image
   travels without the board's prose, and the sub line
-  states the population it shows (the full-suite results).
+  states the population it shows (the full-suite results)
+  and the cost axis's log scale.
+- Two results whose discs fell inside a single disc's span
+  rendered as one disc (the board's two best results, 4.7px
+  apart). Merged discs are now separated along y under the
+  board's shift cap before labels seat, so the image shows
+  every result it names.
+- The gridlines no longer run behind the rail column. The
+  rail is a list, as on the board; its discs are spaced for
+  legibility, and a gridline behind them claimed an axis
+  position the spacing had moved them off.
 
 ### Board scatter: the wide chart fits its band, the card moves as one object
 
