@@ -9,7 +9,7 @@ peira is an open-source AI safety benchmark that measures whether hostile input 
 
 > Accuracy benchmarks tell you whether a model decides well on clean input. peira tells you whether an attacker can change the decision. Every attack ships with a benign twin, so a flipped decision is evidence about the attack, not noise.
 
-[![The Peira board, attack success against recorded cost per run, every point named](.github/social-preview.png)](https://peiratrial.dev/)
+[![The Peira board: the two ends of the cost story, a near-free run that held and the priciest run, each with its attack success and cost per run](.github/social-preview.png)](https://peiratrial.dev/)
 
 ## Live results
 
