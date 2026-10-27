@@ -76,25 +76,15 @@ function Panel({
   }
   const px = (f: number) => PLOT.x0 + f * (PLOT.x1 - PLOT.x0);
   const py = (o: number) => PLOT.y1 - o * (PLOT.y1 - PLOT.y0);
-  /* Census C-07: a panel whose bins coincide says so on the
-   * panel. Two slice panels qualify on this payload, the ones
-   * whose 15 stated confidences span a tenth or less (the
-   * granite-hap panel's bins all sit between 0.986 and 1.000).
-   * The wider slice panels spread visibly and need no note. */
-  const forecasts = data.bins.map((b) => b.meanForecast);
-  const binsCoincide =
-    isSlice &&
-    forecasts.length > 0 &&
-    Math.max(...forecasts) - Math.min(...forecasts) <= 0.1;
+  /* Census C-07, as revised by design cycle 5 (doctrine D9): a
+   * panel whose bins coincide is not annotated on the panel.
+   * A note standing on some panels and not others breaks the
+   * array's uniform apparatus and pushes those plots down
+   * their panels; the fact is stated once in the section lede
+   * instead, with its count derived there. */
   return (
     <article className={classes} id={`cal-${row.run_id}`} data-run-id={row.run_id}>
       {head}
-      {binsCoincide && (
-        <p className="cal-note">
-          The bins coincide because the model states nearly the
-          same confidence on almost every case.
-        </p>
-      )}
       <svg
         viewBox={`0 0 ${PW} ${PH}`}
         className="cal-svg"
@@ -132,9 +122,17 @@ function Panel({
             </text>
           ))}
         </g>
+        {/* The last x tick is end anchored: centered at the
+            plot's right edge, its "100" would run past the
+            viewBox at the cycle 5 numeral size (audit C-06). */}
         <g className="tk-x num" aria-hidden="true">
           {[0, 0.5, 1].map((v) => (
-            <text key={v} x={r2(px(v))} y={PLOT.y1 + 16} textAnchor="middle">
+            <text
+              key={v}
+              x={r2(px(v))}
+              y={PLOT.y1 + 16}
+              textAnchor={v === 1 ? "end" : "middle"}
+            >
               {Math.round(v * 100)}
             </text>
           ))}
@@ -173,6 +171,35 @@ export default function Calibration() {
     0.0001,
     ...entries.map((e) => e.data?.ece ?? e.row.ece_attacked ?? 0),
   );
+  /* The coincidence fact for the lede sentence: slice results
+   * whose 15 stated confidences span a tenth or less from bin
+   * to bin (the granite-hap panel's bins all sit between 0.986
+   * and 1.000), named in the sentence so the reader can attach
+   * the fact to its panels (design cycle 5, red team F3). The
+   * claim is about the bins' mean confidences, not about
+   * individual cases, and says only that the bins pile up at
+   * the right edge, which is what both panels show. Derived
+   * from the same bins the panels plot; the DOM audit derives
+   * the set independently and compares the sentence. */
+  const coincidentNames = entries
+    .filter((e) => {
+      if (!e.isSlice || !e.data || e.data.bins.length === 0) return false;
+      const forecasts = e.data.bins.map((b) => b.meanForecast);
+      /* The sentence claims the right edge, so the set is
+       * slices clustered there: a span of at most a tenth
+       * with every bin mean in the axis's top tenth. A tight
+       * cluster elsewhere on the axis does not qualify. */
+      return (
+        Math.max(...forecasts) - Math.min(...forecasts) <= 0.1 &&
+        Math.min(...forecasts) >= 0.9
+      );
+    })
+    .map((e) => shortName(e.row));
+  const coincidentCount = coincidentNames.length;
+  const coincidentList =
+    coincidentNames.length > 1
+      ? `${coincidentNames.slice(0, -1).join(", ")} and ${coincidentNames[coincidentNames.length - 1]}`
+      : (coincidentNames[0] ?? "");
   const versions = boardVersions();
 
   return (
@@ -193,6 +220,8 @@ export default function Calibration() {
         diagonal means the model claimed more confidence than it
         earned. Panels run from the lowest calibration error to the
         highest.
+        {coincidentCount > 0 &&
+          ` ${coincidentCount} slice result${coincidentCount === 1 ? "" : "s"}, ${coincidentList}, state${coincidentCount === 1 ? "s" : ""} nearly the same confidence from bin to bin, so their bins pile up at the right edge of their panels.`}
       </p>
       <div className="cal-layout">
         <nav className="cal-rail" aria-label="Results by calibration error">

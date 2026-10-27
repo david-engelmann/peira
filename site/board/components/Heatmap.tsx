@@ -15,6 +15,7 @@ import {
   familiesOf,
   familyOrder,
   familyFullName,
+  FAMILY_CHIP,
   FAMILY_SHORT,
   rampCss,
   rampTextIsGround,
@@ -27,8 +28,14 @@ import {
  * every family is a column ordered by its mean attack success
  * across the field, highest first. Cells print their exact
  * whole percent value on the power 0.65 heat ramp; a family a
- * row never faced prints a middot on a ground tone cell, with
- * the reason stated in its group header and at the legend.
+ * row never faced prints the not measured mark (--) on a
+ * ground tone cell, with the reason stated in its group header
+ * and at the legend (doctrine D13). Under the phone
+ * breakpoint the matrix restacks: each row's cells wrap under
+ * its name as chips labeled with the family short name (held
+ * in data-fam-short for the stylesheet's generated label), so
+ * every family stays present and named with nothing off
+ * canvas (D7, D8).
  */
 
 function cellTitle(row: BoardRow, key: string): string {
@@ -68,6 +75,8 @@ function HeatRow({
       </div>
       {order.map((key) => {
         const fam = fams.get(key);
+        const famShort =
+          FAMILY_CHIP[key] ?? FAMILY_SHORT[key] ?? familyFullName(key);
         if (!fam || fam.asr === null) {
           return (
             <div
@@ -75,10 +84,11 @@ function HeatRow({
               className="heat-cell na"
               data-run-id={row.run_id}
               data-family={key}
+              data-fam-short={famShort}
               data-na="true"
               title={cellTitle(row, key)}
             >
-              ·
+              --
             </div>
           );
         }
@@ -95,6 +105,7 @@ function HeatRow({
             style={style}
             data-run-id={row.run_id}
             data-family={key}
+            data-fam-short={famShort}
             data-asr={fam.asr}
             title={cellTitle(row, key)}
           >
@@ -154,10 +165,10 @@ export default function Heatmap() {
       </h2>
       <p className="section-lede">
         Attack success by family for every result. Rows follow the
-        ranking's groups and order. Columns run from the family that
-        lands most often across the field to the one that lands least,
-        and every cell prints its rate, so the shading never carries a
-        number alone.
+        ranking's groups and order, with {fmtInt(groups.full.length)} full suite results, {fmtInt(groups.flagged.length)} flagged results, and {fmtInt(groups.slices.length)} guardrail slices.
+        Columns run from the family that lands most often across the
+        field to the one that lands least, and every cell prints its
+        rate, so the shading never carries a number alone.
       </p>
       <p className="scroll-hint" aria-hidden="true">
         The families continue to the right
@@ -180,7 +191,7 @@ export default function Heatmap() {
           ))}
           <GroupHead
             label="Guardrail slices"
-            caption={`The slices ran ${sliceFamilies} of the ${order.length} families. A dotted cell marks a family a slice never faced.`}
+            caption={`The slices ran ${sliceFamilies} of the ${order.length} families. A cell marked "--" is a family a slice never faced.`}
           />
           {groups.slices.map((row: RankedRow) => (
             <HeatRow key={row.run_id} row={row} order={order} flagged={false} dupes={dupes} />
@@ -204,9 +215,9 @@ export default function Heatmap() {
         <p className="heat-legend-note">
           Attack success, percent. Shading rises faster than the value,
           so low rates separate. Judge cells by their printed numbers. A
-          dotted cell on a ground tone marks a family that result never
-          faced, {fmtInt(missing)} of the {fmtInt(order.length)} families
-          for the guardrail slices.
+          cell marked "--" on a ground tone is a family that result
+          never faced, {fmtInt(missing)} of the {fmtInt(order.length)}
+          families for the guardrail slices.
         </p>
       </div>
       <p className="chart-id">

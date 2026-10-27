@@ -251,9 +251,18 @@ export {
 /* ---------------- heatmap ---------------- */
 
 /** Short column names, one line each (design spec 4.3). */
+/* The phone heat chips carry their own label form (design
+ * cycle 5, red team F5): a chip is wide enough for the fuller
+ * "Crypto payload", so the noun the desktop header had to drop
+ * is restored where space allows. Every other family uses its
+ * header form. */
+export const FAMILY_CHIP: Record<string, string> = {
+  cryptographic_payload: "Crypto payload",
+};
+
 export const FAMILY_SHORT: Record<string, string> = {
   crosslingual_shift: "Crosslingual",
-  cryptographic_payload: "Crypto payload",
+  cryptographic_payload: "Crypto",
   evidence_positioning: "Evidence",
   frequency_salience: "Frequency",
   question_pair_incoherence: "Question pair",

@@ -74,6 +74,44 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
   mutates the process environment; the run-safety tests run under
   whichever backend the suite runs, so both CI legs cover them.
 
+### Board families heatmap and calibration: design perfection cycle 5
+
+- The families heatmap now fits its section at desktop widths. The
+  grid's 1160 px minimum width ran 28 px past the section and cut
+  the last family's header mid-word with no scroll cue on screen;
+  the floor is gone, and the cryptographic family's short header
+  reads "Crypto" (its full name stays in every cell's title). On
+  phones the matrix restacks into a list: each result's cells wrap
+  under its name as chips labeled with their family, so all eleven
+  families stay present and named with nothing off canvas and no
+  sideways scrolling.
+- A family a result never faced now prints the mark "--" at full
+  ink strength on its ground tone cell instead of a faint middot,
+  and the legend and the slice group caption name the mark in
+  quotes. The heatmap lede names its three groups with their
+  counts, so a phone reader knows the flagged results and the
+  slices stand further down the list. Between the phone restack
+  and the desktop fit (761 to 953 px) the grid scrolls with its
+  sticky name column and shows the scroll cue in that band only.
+- Calibration panels no longer carry the bins-coincide note on the
+  two panels it applied to; the section lede states the fact once,
+  naming the two results and the payload rule behind it, so every
+  panel carries the same apparatus. Axis tick numerals render at
+  10 px or more at every audited width (17 viewBox units on
+  desktop, 9 in the capped one-column phone panel) in a lighter
+  ink, and the last panel of the second-to-last desktop row no
+  longer shows x ticks that belong to the last row alone.
+- On phones the calibration index returns to one result per row
+  with its bar (the wrapped-paragraph packing is gone) and the
+  reliability panels run one across carrying both axes, so names
+  no longer break mid-word, the ECE and Brier figures stay on one
+  line, and every panel keeps its whole key.
+- `scripts/audit-dom.mjs` gains the checks that pin these repairs
+  (H-01 heatmap containment, H-02 lede group counts, C-01 tick
+  size, C-02 rail lines, C-04 name breaks, C-05 rail containment,
+  C-06 tick boxes, C-08 axis edge panels, and C-07 restated for
+  the lede), each verified failing on the pre-fix build.
+
 ### GitHub face: social preview, one description, README first screen
 
 - Added `.github/social-preview.png` (1280 by 640), the repo's social

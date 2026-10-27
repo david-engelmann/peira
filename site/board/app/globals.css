@@ -934,8 +934,14 @@ body::before {
 
 /* Heatmap */
 
+/* Shown only in the 761 to 953 px band, where the grid
+ * scrolls again (see the band block below). Everywhere else
+ * the string would be false, so it is hidden. */
 .scroll-hint {
   display: none;
+  color: var(--ink-3);
+  font-size: var(--micro);
+  margin: 14px 0 0;
 }
 .heat-scroll {
   overflow-x: auto;
@@ -945,7 +951,14 @@ body::before {
 .heat-grid {
   display: grid;
   gap: 2px;
-  min-width: 1160px;
+  /* No min-width (design cycle 5, doctrine D8): the grid fits
+   * the section at the desktop widths. The earlier 1160 px
+   * floor pushed the grid 28 px past the section's right edge
+   * and cut the last column's header mid-word, with the scroll
+   * cue hidden at desktop. Between the phone breakpoint and
+   * the page cap the name column keeps its sticky scroll; at
+   * the audited desktop widths nothing scrolls. */
+  min-width: 0;
 }
 .heat-corner {
   position: sticky;
@@ -1009,7 +1022,12 @@ body::before {
 }
 .heat-cell.na {
   background: #12151a;
-  color: var(--ink-3);
+  /* The mark prints at full strength (design cycle 5, red
+   * team F4): the ground tone carries the not-measured state,
+   * the ink stays a value's ink, so at share distance the
+   * mark cannot fade toward the tested 0 it must not be read
+   * as. */
+  color: var(--ink-1);
   font-weight: 400;
   font-size: 15px;
 }
@@ -1038,7 +1056,7 @@ body::before {
   display: block;
 }
 .heat-swatch-label {
-  font-size: 11px;
+  font-size: 12px;
   color: var(--ink-3);
 }
 .heat-legend-note {
@@ -1177,20 +1195,19 @@ body::before {
   color: var(--ink-2);
   margin: 3px 0 6px;
 }
-.cal-note {
-  font-size: 11.5px;
-  line-height: 1.45;
-  color: var(--ink-2);
-  margin: 0 0 6px;
-}
 .cal-svg {
   width: 100%;
   height: auto;
   display: block;
 }
 .cal-svg text {
-  fill: var(--ink-3);
-  font-size: 10.5px;
+  fill: var(--ink-2);
+  /* 17 viewBox units render at 10.1 px in the 179 px wide
+   * desktop panel (design cycle 5, doctrine D17). The earlier
+   * 10.5 units rendered at 6.3 px in --ink-3 (census L-35).
+   * The phone block sets its own unit size for its wider
+   * one-column panel. Plot geometry is unchanged. */
+  font-size: 17px;
 }
 .cal-diag {
   stroke: var(--ink-3);
@@ -1206,7 +1223,7 @@ body::before {
 }
 /* Axis ticks belong to the grid's edge panels. CSS owns the
  * edges because the column count is a CSS decision (four
- * across on desktop, two on phone, round 10 compaction); the
+ * across on desktop, one on phone since design cycle 5); the
  * component renders the tick groups on every panel and these
  * rules choose which ones show. */
 .cal-panel .tk-y,
@@ -1216,7 +1233,11 @@ body::before {
 .cal-panel:nth-child(4n + 1) .tk-y {
   display: block;
 }
-.cal-panel:nth-last-child(-n + 4) .tk-x {
+/* 39 panels: the last row holds 3, so the last three children
+ * carry the x ticks (audit C-08 guards this arithmetic
+ * against the panel count; the earlier -n + 4 also lit the
+ * last panel of the row above, kev-4b). */
+.cal-panel:nth-last-child(-n + 3) .tk-x {
   display: block;
 }
 .cal-empty {
@@ -1245,11 +1266,55 @@ body::before {
     display: block;
     margin-top: 2px;
   }
-  .scroll-hint {
-    display: block;
-    color: var(--ink-3);
-    font-size: var(--micro);
-    margin: 14px 0 0;
+  /* The heatmap restacks on the phone (design cycle 5,
+   * doctrine D7): the matrix becomes a list. Each result's
+   * name takes a full-width row and its eleven cells wrap
+   * under it as chips labeled with the family short name, so
+   * every family is present and named on canvas and nothing
+   * scrolls sideways. The chart's shape changes; no family
+   * is amputated and no type shrinks. The label is generated
+   * content from data-fam-short, so the cells' text (and the
+   * audit's counts over it) is unchanged. */
+  .heat-scroll {
+    overflow-x: visible;
+    padding-bottom: 0;
+  }
+  .heat-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .heat-corner,
+  .heat-head {
+    display: none;
+  }
+  .heat-group {
+    flex: 0 0 100%;
+    margin-top: 22px;
+  }
+  .heat-name {
+    position: static;
+    flex: 0 0 100%;
+    border-right: none;
+    margin-top: 12px;
+    min-height: 24px;
+  }
+  .heat-cell {
+    flex: 0 0 calc((100% - 12px) / 3);
+    flex-direction: column;
+    gap: 1px;
+    min-height: 46px;
+    padding: 5px 2px 6px;
+  }
+  .heat-cell::before {
+    content: attr(data-fam-short);
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+  }
+  .heat-cell.na {
+    font-size: 12.5px;
   }
   .cal-layout {
     grid-template-columns: 1fr;
@@ -1257,38 +1322,103 @@ body::before {
   .cal-rail {
     position: static;
   }
-  .cal-rail-list {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 4px 16px;
-  }
-  .cal-rail-link {
-    border-bottom: none;
-    padding: 3px 0;
-    display: flex;
-    gap: 8px;
-    align-items: baseline;
-  }
-  .cal-rail-bar {
-    display: none;
-  }
+  /* The rail keeps its desktop form on the phone, one result
+   * per row with name, value, and bar (design cycle 5). The
+   * earlier flex-wrap packing ran names and values together
+   * into a single wrapped paragraph (census L-32). */
   .cal-grid {
-    grid-template-columns: repeat(2, 1fr);
+    grid-template-columns: 1fr;
   }
   .cal-name {
     font-size: 12px;
   }
-  /* Phone edges for the two-across grid: the desktop rules
-   * would leave x ticks on the third and fourth panels from
-   * the end, so the axis is restated in full here. */
-  .cal-panel .tk-y,
-  .cal-panel .tk-x {
-    display: none;
+  /* Panels are capped at 440 px so the one-across panel does
+   * not stretch to the full measure on large phones, and the
+   * tick units are sized for the capped panel: 9 units render
+   * at 10.1 px on a 390 px phone and at the panel name's size
+   * at the cap, never above it (design cycle 5, red team F1;
+   * doctrine D15, D16, D17). */
+  .cal-panel {
+    max-width: 440px;
   }
-  .cal-panel:nth-child(2n + 1) .tk-y {
+  .cal-svg text {
+    font-size: 9px;
+  }
+  /* Phone edges for the one-across grid: the desktop rules
+   * name the wrong panels, so the axis is restated in full
+   * here. Every panel carries both axes: on the phone a panel
+   * is a complete figure that travels alone in screenshots,
+   * so it keeps its whole key (doctrine D23; red team F6). */
+  .cal-grid .cal-panel .tk-y {
     display: block;
   }
-  .cal-panel:nth-last-child(-n + 2) .tk-x {
+  .cal-grid .cal-panel .tk-x {
+    display: block;
+  }
+}
+
+/* The band between the phone restack and the desktop fit
+ * (design cycle 5, red team F1). The heat grid's minimum
+ * content is 906 px (the 268 px name column, eleven 56 px
+ * columns, and gaps), so under a 954 px viewport the grid
+ * scrolls with its sticky name column, and this band alone
+ * shows the scroll cue; at the desktop widths the grid fits
+ * and the cue would be a false string, and on the phone
+ * nothing scrolls. Headers wrap to two lines here rather
+ * than overflowing their slots into each other. Calibration
+ * steps its array down in this band (the two blocks below). */
+@media (min-width: 761px) and (max-width: 953px) {
+  .scroll-hint {
+    display: block;
+  }
+  .heat-head {
+    white-space: normal;
+    line-height: 1.15;
+  }
+}
+
+/* Calibration in the same band (design cycle 5, red team
+ * F1): the desktop four-across array squeezes its panels to
+ * 96-131 px here, small enough that slice names stack into
+ * vertical letter columns and the 17-unit ticks render under
+ * the legibility floor. The array steps down instead: two
+ * across to 1000 px, three across above it, ticks at the
+ * desktop unit size (10.5 to 14.5 px rendered across the band), and the
+ * edge ticks restated for each column count, since the
+ * desktop selectors name the wrong panels here. */
+@media (min-width: 761px) and (max-width: 1000px) {
+  .cal-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .cal-svg text {
+    font-size: 17px;
+  }
+  .cal-grid .cal-panel .tk-y,
+  .cal-grid .cal-panel .tk-x {
+    display: none;
+  }
+  .cal-grid .cal-panel:nth-child(2n + 1) .tk-y {
+    display: block;
+  }
+  .cal-grid .cal-panel:last-child .tk-x {
+    display: block;
+  }
+}
+@media (min-width: 1001px) and (max-width: 1180px) {
+  .cal-grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+  .cal-svg text {
+    font-size: 17px;
+  }
+  .cal-grid .cal-panel .tk-y,
+  .cal-grid .cal-panel .tk-x {
+    display: none;
+  }
+  .cal-grid .cal-panel:nth-child(3n + 1) .tk-y {
+    display: block;
+  }
+  .cal-grid .cal-panel:nth-last-child(-n + 3) .tk-x {
     display: block;
   }
 }
@@ -1861,7 +1991,7 @@ body::before {
 
 .section-nav-link {
   flex: 0 0 auto;
-  font-size: 13px;
+  font-size: 17px;
   font-weight: 600;
   letter-spacing: 0.01em;
   color: var(--ink-2);
@@ -2259,12 +2389,12 @@ body::before {
 }
 
 .corner-title.phone {
-  font-size: 13px;
+  font-size: 17px;
 }
 
 .corner-sub {
   fill: var(--ink-2);
-  font-size: 13px;
+  font-size: 17px;
   font-weight: 550;
 }
 
