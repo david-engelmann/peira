@@ -11,9 +11,14 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
 
 - Added `.github/social-preview.png` (1280 by 640), the repo's social
   preview image, generated from the live board payload by
-  `site/board/scripts/gen-social-preview.mjs` with the same geometry,
-  vendor table, and label placement as the board share image. Applying
-  it to the repo is a Settings step (Social preview).
+  `site/board/scripts/gen-social-preview.mjs`. The image draws the
+  two ends of the board's cost story at large size on the board's
+  own scales, jev-1.14.0 at $0.20 per run and claude-fable-5-1 at
+  $130.31 per run, each with its maker's mark and its figures. It
+  replaces a first design that drew the full cost scatter, whose
+  names collapsed into illegible texture at feed sizes; the owner
+  picked the two-extremes design on 2026-10-26. Applying the image
+  to the repo is a Settings step (Social preview).
 - One canonical project description now stands in the repo description,
   the README's first line, `pyproject.toml`, and `docs/Overview.md`.
 - The README's first screen carries the board visual and the headline
