@@ -137,7 +137,9 @@ const results = payload.ranked.length + payload.unranked.length;
  * maker's family color carrying the maker's mark, flagged
  * results keep the amber ring, the rail holds the results
  * with no recorded API cost, and the two corner readings are
- * set in display type. Vendor identity resolves through
+ * set in display type. The foot decodes the amber ring
+ * inside the image, since the image travels without the
+ * board's prose. Vendor identity resolves through
  * lib/vendor-data.json, the one vendor table for the whole
  * board, shared with lib/vendor and lib/vendorColors, and
  * the mark paths are read out of lib/logoPaths.ts, so the
@@ -307,9 +309,9 @@ ${scatterSvg}
 <div class="head">
   <div class="word">PEIRA</div>
   <h1>The priciest model was the easiest to flip</h1>
-  <p class="sub">Attack success against recorded cost per run, every model deciding the same paired cases.</p>
+  <p class="sub">Attack success against recorded cost per run, every full-suite model deciding the same paired cases.</p>
 </div>
-<p class="foot">Peira decision robustness board. Dataset ${versions.dataset}, suite ${versions.suite}, updated ${dateWords}. peiratrial.dev</p>
+<p class="foot">Peira decision robustness board. Dataset ${versions.dataset}, suite ${versions.suite}, updated ${dateWords}. Amber ring: a flagged result. peiratrial.dev</p>
 </body></html>`;
 
 /* Plotted label placement, run in the page so text is
@@ -347,6 +349,12 @@ function placeOgLabels(pts) {
     const r = document.querySelector(sel).getBoundingClientRect();
     furniture.push({ x: r.x, y: r.y, w: r.width, h: r.height });
   }
+  /* The rail column, left of the divider at x=148 in the
+   * plot's vertical band, is reserved for the rail's own
+   * names. A plotted label seated there reads as a rail
+   * entry, a result with no API cost, whatever its own
+   * disc's recorded cost says. */
+  furniture.push({ x: 40, y: 200, w: 108, h: 332 });
   /* Discs sit inside translated groups, where getBBox reads
    * the local box and would put every disc at the origin;
    * the client rect gives the true centre and radius (the

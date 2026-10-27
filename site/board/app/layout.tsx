@@ -37,7 +37,7 @@ export const metadata: Metadata = {
         url: "/og.png",
         width: 1200,
         height: 630,
-        alt: "The top of the Peira ranking, attack success rates with 95 percent intervals",
+        alt: "The Peira cost scatter: attack success against recorded cost per run, every full-suite model named beside its point, the priciest model the easiest to flip",
       },
     ],
   },

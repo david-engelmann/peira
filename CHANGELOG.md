@@ -7,6 +7,21 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
 
 ## [Unreleased]
 
+### Board share image: honest alt text, the rail keeps its meaning, the amber ring decoded
+
+- The og image's alt text described the ranking and claimed
+  95 percent intervals the image does not contain. It now
+  describes the image that exists: the cost scatter, every
+  full-suite model named, the headline finding.
+- The label placement pass treated the rail column as open
+  space and seated a plotted point's label there, where it
+  read as a sixth no-cost rail entry. The rail column is now
+  reserved furniture; the label sits beside its own disc.
+- The credit line now decodes the amber ring inside the
+  image ("Amber ring: a flagged result"), since the image
+  travels without the board's prose, and the sub line
+  states the population it shows (the full-suite results).
+
 ### Board scatter: the wide chart fits its band, the card moves as one object
 
 - Between the phone breakpoint and the page cap the wide
