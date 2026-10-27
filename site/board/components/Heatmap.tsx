@@ -148,8 +148,17 @@ export default function Heatmap() {
     : 0;
   const missing = order.length - sliceFamilies;
   const versions = boardVersions();
+  /* Column floors are the content's own (design cycle 3):
+   * a column never narrows below its header's longest word,
+   * so a header can wrap between words but never clips
+   * mid-word, and any space above the floors divides
+   * equally. The old flat 56 px floor let the two longest
+   * headers (Crosslingual, Sycophancy) overflow their slots
+   * wherever the equal share fell under their word width,
+   * and priced the grid's minimum content above what the
+   * tablet band's section can hold. */
   const gridStyle: CSSProperties = {
-    gridTemplateColumns: `var(--heat-name-w) repeat(${order.length}, minmax(56px, 1fr))`,
+    gridTemplateColumns: `var(--heat-name-w) repeat(${order.length}, minmax(min-content, 1fr))`,
   };
 
   return (

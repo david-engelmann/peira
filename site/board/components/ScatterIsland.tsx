@@ -1,6 +1,13 @@
 "use client";
 
-import { useMemo, useRef, useState, type MouseEvent } from "react";
+import {
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type MouseEvent,
+} from "react";
 import { fmtPct, fmtCi, fmtUsdExact } from "@/lib/format";
 import { ASR_AXIS_MAX, ASR_TICKS } from "@/lib/chart";
 import {
@@ -48,6 +55,17 @@ import type { ScatterDatum } from "@/lib/scatterData";
  * plot spends its whole width on the cost axis. Type stays
  * at the wide chart's sizes; nothing renders under the
  * doctrine's 10 px floor.
+ *
+ * The wide variant fits itself the same way (design cycle
+ * 3): between the phone breakpoint and the page cap, the
+ * full-width chart would scale its text under the floor,
+ * so below a measured width the island re-solves at a
+ * fitted geometry drawn at true CSS pixels (see
+ * fittedGeom). The card moves on the motion spec's
+ * contract (M9): it enters once, switches points by
+ * cross-fading its contents while the box glides, and
+ * exits faster and plainer than it entered; under reduced
+ * motion only the cross-fade survives (M19).
  */
 
 interface Geom {
@@ -58,6 +76,20 @@ interface Geom {
   dividerX: number;
   plot: { x0: number; x1: number; y0: number; y1: number };
   labelBounds: Rect;
+  /* The corner readings' furniture boxes and text anchors.
+   * The solver keeps labels out of the boxes; the text sits
+   * at the anchors. */
+  annotTR: Rect;
+  annotBL: Rect;
+  extraFurniture: Rect[];
+  cornerTR: { x: number; titleY: number; subY: number };
+  cornerBL: { x: number; titleY: number; subY: number };
+  /* Point spreading: the nudge pass's separation and shift
+   * cap for plotted points, and the rail chain's. */
+  spread: { minSep: number; maxShift: number };
+  railSpread: { minSep: number; maxShift: number };
+  /* Marker obstacle half-size handed to the label solver. */
+  markerObst: number;
 }
 
 /* The wide rail is a list column in its own right: each rail
@@ -74,6 +106,14 @@ const WIDE: Geom = {
   dividerX: 268,
   plot: { x0: 292, x1: 1124, y0: 36, y1: 604 },
   labelBounds: { x: 276, y: 30, w: 854, h: 574 },
+  annotTR: { x: 580, y: 38, w: 258, h: 62 },
+  annotBL: { x: 298, y: 458, w: 300, h: 72 },
+  extraFurniture: [],
+  cornerTR: { x: 838, titleY: 66, subY: 90 },
+  cornerBL: { x: 304, titleY: 500, subY: 524 },
+  spread: { minSep: 24, maxShift: 12 },
+  railSpread: { minSep: 15.5, maxShift: 13 },
+  markerObst: 12,
 };
 
 /* The phone geometry is drawn at true CSS pixels for the
@@ -92,7 +132,81 @@ const PHONE: Geom = {
   dividerX: -10,
   plot: { x0: 10, x1: 320, y0: 52, y1: 566 },
   labelBounds: { x: 4, y: 44, w: 320, h: 526 },
+  annotTR: { x: 104, y: 0, w: 220, h: 42 },
+  annotBL: { x: 4, y: 494, w: 240, h: 48 },
+  extraFurniture: [{ x: 8, y: 0, w: 158, h: 18 }],
+  cornerTR: { x: 324, titleY: 22, subY: 38 },
+  cornerBL: { x: 8, titleY: 520, subY: 538 },
+  spread: { minSep: 22, maxShift: 18.5 },
+  railSpread: { minSep: 17, maxShift: 18 },
+  markerObst: 11,
 };
+
+/* The fitted geometry (design cycle 3). Between the phone
+ * breakpoint and the page cap, the 1132-unit chart scales
+ * down with the viewport and its 11.5-unit text falls under
+ * the doctrine's 10 px floor (at a 900 px viewport it
+ * renders at 8.4 px). Shrinking the type is banned and
+ * squeezing the wide chart is what caused it, so the chart
+ * changes shape instead (D7), the phone variant's own
+ * precedent applied upward: when the island's measured
+ * width would pull the wide chart under a 0.90 scale, the
+ * island re-solves at a geometry whose viewBox width is
+ * its measured CSS width, so every text renders at its
+ * drawn size. The rail narrows to the width its names
+ * need, the plot takes what remains, and the corner
+ * readings anchor at the same data positions they hold on
+ * the wide chart (the top-right title ends 65.6 percent
+ * across the plot; the bottom-left starts 12 units in), so
+ * the readings describe the same regions of the data at
+ * every width. Points the compressed plot cannot seat go
+ * to the overflow stack, as on the wide chart. */
+const FIT_BELOW = 1020;
+
+function fittedGeom(w: number): Geom {
+  const railW = 236;
+  const dividerX = railW + 8;
+  /* Narrower means taller (the phone variant's doctrine,
+   * D7: change the shape, never shrink the type). The plot
+   * gives up horizontal room as the well narrows, so it
+   * takes vertical room instead: the cluster spreads over
+   * more attack-success range, more labels seat beside
+   * their discs, and the overflow stack's fallback band,
+   * which spans the label bounds above the primary band,
+   * grows with the chart. At the top of the band the chart
+   * is the wide chart's height; at the phone breakpoint it
+   * stands about half as tall again. */
+  const h = 676 + Math.round((FIT_BELOW - w) * 0.9);
+  const plot = { x0: dividerX + 24, x1: w - 8, y0: 36, y1: h - 72 };
+  const trEnd = plot.x0 + 0.65625 * (plot.x1 - plot.x0);
+  /* The lower-left reading keeps its data-relative place:
+   * the same fraction down the plot as on the wide chart. */
+  const blTitleY = Math.round(
+    plot.y0 + (464 / 568) * (plot.y1 - plot.y0),
+  );
+  return {
+    w,
+    h,
+    railW,
+    railCx: 46,
+    dividerX,
+    plot,
+    labelBounds: {
+      x: dividerX + 8,
+      y: 30,
+      w: w - dividerX - 10,
+      h: plot.y1 - 30,
+    },
+    annotTR: { x: trEnd - 264, y: 38, w: 264, h: 62 },
+    annotBL: { x: plot.x0 + 6, y: blTitleY - 42, w: 300, h: 72 },
+    extraFurniture: [],
+    cornerTR: { x: trEnd, titleY: 66, subY: 90 },
+    cornerBL: { x: plot.x0 + 12, titleY: blTitleY, subY: blTitleY + 24 },
+    spread: { minSep: 22, maxShift: 12 },
+    railSpread: { minSep: 15.5, maxShift: 13 },
+    markerObst: 12,
+  };
+}
 
 /* Phone overflow list geometry: entries begin below the
  * cost axis caption, one column of two-line rows (disc and
@@ -118,23 +232,14 @@ const CORNER_BL = {
   sub: "Jev 1.14 held at twenty cents a run",
 };
 
-/* Corner annotation furniture. The solver keeps labels out
- * of these boxes, and the audit keeps the annotation text
- * clear of every other text node in the section. */
-const WIDE_ANNOT_TR: Rect = { x: 580, y: 38, w: 258, h: 62 };
-const WIDE_ANNOT_BL: Rect = { x: 298, y: 458, w: 300, h: 72 };
-/* Phone furniture: the axis caption's box at the top left,
- * the top-right corner reading's box, and the bottom-left
- * corner reading's box. The label bounds begin below the
- * top pair; the boxes exist so the solver also keeps clear
- * of them in the bands it can reach. The bottom-left
- * reading sits inside the plot's empty lower band, where
- * the wide chart puts its own: the shared 0 to 30 scale
- * leaves that band empty of points, and a reading is the
- * honest thing to fill it with. */
-const PHONE_ANNOT_CAPTION: Rect = { x: 8, y: 0, w: 158, h: 18 };
-const PHONE_ANNOT_TR: Rect = { x: 104, y: 0, w: 220, h: 42 };
-const PHONE_ANNOT_BL: Rect = { x: 4, y: 494, w: 240, h: 48 };
+/* Corner annotation furniture lives on each Geom (annotTR,
+ * annotBL, extraFurniture): the solver keeps labels out of
+ * those boxes, and the audit keeps the annotation text
+ * clear of every other text node in the section. On the
+ * phone the bottom-left reading sits inside the plot's
+ * empty lower band, where the wide chart puts its own: the
+ * shared 0 to 30 scale leaves that band empty of points,
+ * and a reading is the honest thing to fill it with. */
 
 const r2 = (v: number) => Math.round(v * 100) / 100;
 
@@ -193,7 +298,7 @@ function buildPoints(
    * discs, so nothing unnamed crowds the plot's left edge
    * and the cost axis takes the full width. */
   const railPts: Pt[] =
-    g === PHONE
+    g.railW === 0
       ? []
       : rail.map((d) => ({
           d,
@@ -201,7 +306,6 @@ function buildPoints(
           y: yOf(d.asr),
           nudged: false,
         }));
-  const wide = g === WIDE;
   const spread = (pts: Pt[], minSep: number, maxShift: number) => {
     const wrappers = pts.map((p) => ({ runId: p.d.runId, x: p.x, y: p.y, p }));
     const moved = nudgePoints(wrappers, minSep, maxShift);
@@ -211,7 +315,7 @@ function buildPoints(
       wpt.p.nudged = moved.has(wpt.runId);
     }
   };
-  spread(plottedPts, wide ? 24 : 22, wide ? 12 : 18.5);
+  spread(plottedPts, g.spread.minSep, g.spread.maxShift);
   /* The rail chain sits inside a few pixels on the true axis,
    * tighter than one disc diameter, so it spreads as a stack:
    * sorted passes hold the separation while every point stays
@@ -222,8 +326,8 @@ function buildPoints(
   {
     const sorted = [...railPts].sort((a, b) => a.y - b.y);
     const orig = new Map(sorted.map((p) => [p.d.runId, p.y]));
-    const minSep = wide ? 15.5 : 17;
-    const maxShift = wide ? 13 : 18;
+    const minSep = g.railSpread.minSep;
+    const maxShift = g.railSpread.maxShift;
     for (let pass = 0; pass < 60; pass++) {
       for (let i = 1; i < sorted.length; i++) {
         const lo = Math.max(
@@ -471,12 +575,11 @@ function baseFurniture(g: Geom): Rect[] {
   ];
 }
 
-function solveWide(points: Pt[]): Solution {
-  const g = WIDE;
+function solveWide(points: Pt[], g: Geom): Solution {
   const furniture: Rect[] = [
     ...baseFurniture(g),
-    WIDE_ANNOT_TR,
-    WIDE_ANNOT_BL,
+    g.annotTR,
+    g.annotBL,
   ];
   /* Rail names sit directly beside their discs, one row per
    * point, as a list inside the rail column: disc, then name,
@@ -495,7 +598,7 @@ function solveWide(points: Pt[]): Solution {
     runId: p.d.runId,
     x: p.x,
     y: p.y,
-    marker: 12,
+    marker: g.markerObst,
     label: null,
   }));
   const layoutPts: LayoutPoint[] = [
@@ -505,7 +608,7 @@ function solveWide(points: Pt[]): Solution {
         runId: p.d.runId,
         x: p.x,
         y: p.y,
-        marker: 12,
+        marker: g.markerObst,
         label: p.d.label,
       })),
     ...railObstacles,
@@ -551,9 +654,15 @@ function solveWide(points: Pt[]): Solution {
     const STACK_PITCH = 32;
     const lb = g.labelBounds;
     const rightEdge = lb.x + lb.w;
-    const bands: Array<{ top: number; bottom: number }> = [
+    /* The fallback band fills from its bottom up, so
+     * overflow entries gather directly above the primary
+     * stack and read as one list. Filling it from the top
+     * down could strand a lone entry at the plot's top,
+     * where its row height reads as data (cycle 3 red
+     * team, RT-9). */
+    const bands: Array<{ top: number; bottom: number; up?: boolean }> = [
       { top: g.plot.y1 - 164, bottom: g.plot.y1 - STACK_H },
-      { top: lb.y, bottom: g.plot.y1 - 164 - STACK_PITCH },
+      { top: lb.y, bottom: g.plot.y1 - 164 - STACK_PITCH, up: true },
     ];
     for (const p of unplaced) {
       const w =
@@ -561,7 +670,11 @@ function solveWide(points: Pt[]): Solution {
         estimateLabelWidth(entryValues(p.d));
       let slot: Rect | null = null;
       outer: for (const band of bands) {
-        for (let y = band.top; y <= band.bottom; y += STACK_PITCH) {
+        for (
+          let y = band.up ? band.bottom : band.top;
+          band.up ? y >= band.top : y <= band.bottom;
+          y += band.up ? -STACK_PITCH : STACK_PITCH
+        ) {
           for (let x = lb.x + 16; x + w <= rightEdge; x += 8) {
             const r: Rect = { x, y, w, h: STACK_H };
             if (!hits(r)) {
@@ -589,9 +702,9 @@ function solvePhone(
 ): Solution & { stackRows: number } {
   const g = PHONE;
   const furniture: Rect[] = [
-    PHONE_ANNOT_CAPTION,
-    PHONE_ANNOT_TR,
-    PHONE_ANNOT_BL,
+    ...g.extraFurniture,
+    g.annotTR,
+    g.annotBL,
     ...ASR_TICKS.map((t) => ({
       x: g.plot.x0 + 2,
       y: g.plot.y0 + (1 - t / ASR_AXIS_MAX) * (g.plot.y1 - g.plot.y0) - 17,
@@ -609,7 +722,7 @@ function solvePhone(
     runId: p.d.runId,
     x: p.x,
     y: p.y,
-    marker: 11,
+    marker: g.markerObst,
     label: p.d.label,
   }));
   const first = placeLabels(layoutPts, furniture, g.labelBounds, 1);
@@ -773,12 +886,16 @@ function HoverCard({
   phone,
   pinned,
   onClose,
+  cardRef,
+  innerRef,
 }: {
   p: Pt;
   g: Geom;
   phone?: boolean;
   pinned: boolean;
   onClose: () => void;
+  cardRef: React.RefObject<HTMLDivElement | null>;
+  innerRef: React.RefObject<HTMLDivElement | null>;
 }) {
   const d = p.d;
   const rawLeftPct = (p.x / g.w) * 100;
@@ -798,49 +915,55 @@ function HoverCard({
   const below = p.y < g.plot.y0 + (phone ? 178 : 92);
   return (
     <div
+      ref={cardRef}
       className={`scatter-card${cls}${below ? " below" : ""}${pinned ? " pinned" : ""}`}
       style={{ left: `${leftPct}%`, top: `${topPct}%` }}
       aria-hidden={pinned ? undefined : true}
       onClick={pinned ? (e) => e.stopPropagation() : undefined}
     >
-      <p className="sc-name">{d.label}</p>
-      {pinned && (
-        <button
-          type="button"
-          className="sc-close"
-          aria-label={`Close details for ${d.label}`}
-          onClick={onClose}
-        >
-          ×
-        </button>
-      )}
-      <div className="sc-rows">
-        <div className="sc-row">
-          <span className="sc-k">Attack success</span>
-          <span className="sc-v num">{fmtPct(d.asr)}</span>
-        </div>
-        {d.ci !== null && (
-          <div className="sc-row">
-            <span className="sc-k">95% CI</span>
-            <span className="sc-v num">{fmtCi(d.ci)}</span>
-          </div>
+      {/* The motion layer (M9): the outer element positions
+        * the card and never transitions; the island animates
+        * this inner layer on enter, switch and exit. */}
+      <div className="scatter-card-inner" ref={innerRef}>
+        <p className="sc-name">{d.label}</p>
+        {pinned && (
+          <button
+            type="button"
+            className="sc-close"
+            aria-label={`Close details for ${d.label}`}
+            onClick={onClose}
+          >
+            ×
+          </button>
         )}
-        <div className="sc-row">
-          <span className="sc-k">Recorded cost</span>
-          <span className="sc-v num">
-            {d.rail
-              ? d.cost !== null
-                ? "$0.00"
-                : "none recorded"
-              : `${fmtUsdExact(d.cost!)} per run${d.lowerBound ? ", a lower bound" : ""}`}
-          </span>
-        </div>
-        {d.benign !== null && (
+        <div className="sc-rows">
           <div className="sc-row">
-            <span className="sc-k">Benign accuracy</span>
-            <span className="sc-v num">{fmtPct(d.benign)}</span>
+            <span className="sc-k">Attack success</span>
+            <span className="sc-v num">{fmtPct(d.asr)}</span>
           </div>
-        )}
+          {d.ci !== null && (
+            <div className="sc-row">
+              <span className="sc-k">95% CI</span>
+              <span className="sc-v num">{fmtCi(d.ci)}</span>
+            </div>
+          )}
+          <div className="sc-row">
+            <span className="sc-k">Recorded cost</span>
+            <span className="sc-v num">
+              {d.rail
+                ? d.cost !== null
+                  ? "$0.00"
+                  : "none recorded"
+                : `${fmtUsdExact(d.cost!)} per run${d.lowerBound ? ", a lower bound" : ""}`}
+            </span>
+          </div>
+          {d.benign !== null && (
+            <div className="sc-row">
+              <span className="sc-k">Benign accuracy</span>
+              <span className="sc-v num">{fmtPct(d.benign)}</span>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
@@ -857,7 +980,41 @@ export default function ScatterIsland({
   domain: [number, number];
   phone?: boolean;
 }) {
-  const g = phone ? PHONE : WIDE;
+  /* The wide island measures its own well and fits its
+   * geometry to it (design cycle 3): at the full page width
+   * the 1132-unit chart stands; below the FIT_BELOW width
+   * the island re-solves at a fitted geometry drawn at true
+   * CSS pixels, so the chart's text never renders under the
+   * doctrine floor. The server render is the full-width
+   * chart; the fit applies on mount in the band, before
+   * anything is read. The phone island never measures: its
+   * geometry is fixed by the phone breakpoint. */
+  const wrapRef = useRef<HTMLDivElement | null>(null);
+  const [fitW, setFitW] = useState<number | null>(null);
+  useEffect(() => {
+    if (phone) return;
+    const wrap = wrapRef.current;
+    if (!wrap) return;
+    const measure = () => {
+      /* The wrap's content box is the SVG's rendered width:
+       * client width less its 14 px side padding and 1 px
+       * borders. A hidden island (the phone band) measures
+       * zero and keeps its geometry. */
+      const w = Math.round(wrap.clientWidth - 30);
+      if (w > 0) {
+        setFitW((prev) => (prev !== null && Math.abs(prev - w) <= 1 ? prev : w));
+      }
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(wrap);
+    return () => ro.disconnect();
+  }, [phone]);
+  const g = useMemo<Geom>(() => {
+    if (phone) return PHONE;
+    if (fitW !== null && fitW < FIT_BELOW) return fittedGeom(fitW);
+    return WIDE;
+  }, [phone, fitW]);
   /* Geometry and label placement are pure in the props:
    * memoize them so hover and focus state changes re-render
    * without re-running the point builder or the solver. */
@@ -865,7 +1022,7 @@ export default function ScatterIsland({
     const pts = buildPoints(plotted, rail, domain, g);
     return {
       points: pts,
-      solution: phone ? solvePhone(pts, rail) : solveWide(pts),
+      solution: phone ? solvePhone(pts, rail) : solveWide(pts, g),
     };
   }, [plotted, rail, domain, g, phone]);
   const dataById = useMemo(
@@ -879,7 +1036,7 @@ export default function ScatterIsland({
     ? PHONE_LIST_TOP +
       (solution as { stackRows?: number }).stackRows! * PHONE_ENTRY_PITCH +
       28
-    : WIDE.h;
+    : g.h;
   /* The card's state machine. Hover and focus preview;
    * a click or tap pins. The pinned card is the touch
    * user's card: it stays until the same point is tapped
@@ -902,6 +1059,139 @@ export default function ScatterIsland({
     setPinnedId(null);
     setHoverId(null);
   };
+  /* The card's motion state (motion spec M9). activeId is
+   * the point the reader is on; shownId is the point the
+   * card displays, and the two part company exactly where
+   * motion needs them to: on a switch the card keeps
+   * standing while its contents change, and on dismissal
+   * it fades before it unmounts. The exit runs on the exit
+   * token (140 ms), or on the micro token under reduced
+   * motion, where M19 keeps the cross-fade and nothing
+   * else. A switch captures the card's standing rect so
+   * the layout pass below can glide the box from where it
+   * stood to its new anchor with a transform only. */
+  const [shownId, setShownId] = useState<string | null>(null);
+  const cardRef = useRef<HTMLDivElement | null>(null);
+  const innerRef = useRef<HTMLDivElement | null>(null);
+  const exitTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const switchRect = useRef<{ left: number; top: number } | null>(null);
+  const reducedMotion = () =>
+    typeof window !== "undefined" &&
+    window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  useEffect(() => {
+    if (exitTimer.current) {
+      clearTimeout(exitTimer.current);
+      exitTimer.current = null;
+    }
+    if (activeId === shownId) {
+      /* A re-entry during the exit fade lands here: the
+       * timer is already cleared above, and the layer's
+       * inline exit styles come off with it. Without this
+       * the card would stand correctly named but
+       * transparent for as long as it stayed shown, an
+       * invisible click-blocker in the pin path (cycle 3
+       * red team, RT-1). */
+      const inner = innerRef.current;
+      if (inner && shownId !== null) {
+        inner.style.opacity = "";
+        inner.style.transitionDuration = "";
+      }
+      return;
+    }
+    if (activeId === null) {
+      if (shownId !== null) {
+        switchRect.current = null;
+        const inner = innerRef.current;
+        const exitMs = reducedMotion() ? 120 : 140;
+        if (inner) {
+          inner.style.transitionDuration = `${exitMs}ms`;
+          inner.style.opacity = "0";
+        }
+        exitTimer.current = setTimeout(() => setShownId(null), exitMs);
+      }
+      return;
+    }
+    if (shownId === null) {
+      setShownId(activeId);
+      return;
+    }
+    if (cardRef.current) {
+      /* Capture where the card is SEEN, not where its box
+       * rests: the outer rect plus the motion layer's
+       * in-flight offset, so interrupting a glide mid-flight
+       * redirects from the visual position instead of
+       * snapping from the resting one (RT-4). */
+      const r = cardRef.current.getBoundingClientRect();
+      let vx = 0;
+      let vy = 0;
+      const inner = innerRef.current;
+      if (inner) {
+        const m = getComputedStyle(inner).transform.match(
+          /matrix\(([^)]+)\)/,
+        );
+        if (m) {
+          const parts = m[1].split(",");
+          vx = parseFloat(parts[4]) || 0;
+          vy = parseFloat(parts[5]) || 0;
+        }
+      }
+      switchRect.current = { left: r.left + vx, top: r.top + vy };
+    }
+    setShownId(activeId);
+  }, [activeId, shownId]);
+  /* The switch glide. After a switch renders the card at
+   * its new anchor, invert the move onto the motion layer
+   * and play it back: the box starts where it stood,
+   * transparent, and glides to the anchor while the new
+   * contents fade in. Only transforms and opacity move
+   * (M6). Under reduced motion nothing is inverted: the
+   * contents cross-fade and the box is simply at its new
+   * anchor (M19). */
+  useLayoutEffect(() => {
+    const inner = innerRef.current;
+    if (!inner) return;
+    inner.style.transitionDuration = "";
+    const prev = switchRect.current;
+    switchRect.current = null;
+    if (shownId !== null && reducedMotion()) {
+      /* Under reduced motion the entrance keyframes are
+       * off and nothing is inverted, so without this the
+       * new contents would swap in at full opacity: no
+       * cross-fade at all (RT-5). M19 keeps the cross-fade
+       * and nothing else, so the fade is played directly
+       * on the layer at the micro token. It runs through
+       * the Web Animations API, leaving the layer's
+       * computed transition (opacity only, 120 ms, the
+       * S-03 contract) exactly as the stylesheet states
+       * it. */
+      if (typeof inner.animate === "function") {
+        inner.animate(
+          [{ opacity: "0" }, { opacity: "1" }],
+          { duration: 120, easing: "ease" },
+        );
+      }
+      inner.style.transform = "";
+      inner.style.opacity = "";
+      return;
+    }
+    if (prev && cardRef.current && shownId !== null && !reducedMotion()) {
+      const now = cardRef.current.getBoundingClientRect();
+      const dx = prev.left - now.left;
+      const dy = prev.top - now.top;
+      if (dx !== 0 || dy !== 0) {
+        inner.style.transition = "none";
+        inner.style.transform = `translate(${dx}px, ${dy}px)`;
+        inner.style.opacity = "0";
+        void inner.offsetWidth;
+        inner.style.transition = "";
+        inner.style.transform = "";
+        inner.style.opacity = "";
+        return;
+      }
+    }
+    inner.style.transform = "";
+    inner.style.opacity = "";
+  }, [shownId]);
   const svgRef = useRef<SVGSVGElement | null>(null);
   /* A tap or click anywhere in the chart resolves to the
    * nearest point inside the touch radius and toggles its
@@ -930,14 +1220,14 @@ export default function ScatterIsland({
     if (best) togglePin(best.d.runId);
     else dismiss();
   };
-  /* The active point's card anchor: its marker position, or
+  /* The shown point's card anchor: its marker position, or
    * for a list entry the position of the entry's own disc. */
-  const active: Pt | null = (() => {
-    if (!activeId) return null;
-    const mp = points.find((p) => p.d.runId === activeId);
+  const shown: Pt | null = (() => {
+    if (!shownId) return null;
+    const mp = points.find((p) => p.d.runId === shownId);
     if (mp) return mp;
-    const entry = solution.stack.find((s) => s.runId === activeId);
-    const d = dataById.get(activeId);
+    const entry = solution.stack.find((s) => s.runId === shownId);
+    const d = dataById.get(shownId);
     if (entry && d) {
       return { d, x: entry.x + 10, y: entry.y + 13, nudged: false };
     }
@@ -945,6 +1235,7 @@ export default function ScatterIsland({
   })();
   return (
     <div
+      ref={wrapRef}
       className="scatter-wrap"
       onKeyDown={(e) => {
         if (e.key === "Escape") dismiss();
@@ -993,18 +1284,18 @@ export default function ScatterIsland({
         ) : (
           <>
             <g className="corner-note">
-              <text x={838} y={66} textAnchor="end" className="corner-title">
+              <text x={g.cornerTR.x} y={g.cornerTR.titleY} textAnchor="end" className="corner-title">
                 {CORNER_TR.title}
               </text>
-              <text x={838} y={90} textAnchor="end" className="corner-sub">
+              <text x={g.cornerTR.x} y={g.cornerTR.subY} textAnchor="end" className="corner-sub">
                 {CORNER_TR.sub}
               </text>
             </g>
             <g className="corner-note">
-              <text x={304} y={500} className="corner-title">
+              <text x={g.cornerBL.x} y={g.cornerBL.titleY} className="corner-title">
                 {CORNER_BL.title}
               </text>
-              <text x={304} y={524} className="corner-sub">
+              <text x={g.cornerBL.x} y={g.cornerBL.subY} className="corner-sub">
                 {CORNER_BL.sub}
               </text>
             </g>
@@ -1051,13 +1342,15 @@ export default function ScatterIsland({
           </g>
         )}
       </svg>
-      {active && (
+      {shown && (
         <HoverCard
-          p={active}
+          p={shown}
           g={{ ...g, h: height }}
           phone={phone}
-          pinned={pinnedId !== null && pinnedId === activeId}
+          pinned={pinnedId !== null && pinnedId === shownId}
           onClose={dismiss}
+          cardRef={cardRef}
+          innerRef={innerRef}
         />
       )}
     </div>

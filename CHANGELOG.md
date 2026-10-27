@@ -7,6 +7,20 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
 
 ## [Unreleased]
 
+### Board scatter: the wide chart fits its band, the card moves as one object
+
+- Between the phone breakpoint and the page cap the wide
+  scatter now re-solves its geometry at true CSS pixels
+  instead of scaling down, so every label and figure stays
+  at or above the 10 px floor at tablet widths; the DOM
+  audit gates 900 px for all sections, which also refit
+  the band heatmap's columns to their headers.
+- The detail card's visible shell (background, border,
+  shadow, padding) now sits on its motion layer, so on a
+  point switch the whole card glides to the new point and
+  on dismissal the shell fades with its contents instead
+  of standing empty until unmount.
+
 ### Board on phones: the scatter rebuilt for touch, the bar steps aside
 
 - The cost scatter's detail card is now one state machine
