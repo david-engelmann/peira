@@ -20,8 +20,6 @@
  * Run from site/board with:
  *   node scripts/gen-social-preview.mjs
  * The upload itself is manual: repo Settings, Social preview.
- * The redo evidence lives in the design program records
- * (cycle-09/redo/INDEX.md).
  */
 import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { globSync } from "node:fs";
@@ -152,10 +150,12 @@ const results = payload.ranked.length + payload.unranked.length;
 
 /* The two drawn points, picked out of the full suite
  * population by name. They are the board's two corner
- * readings made literal: jev-1.14.0 is the cheapest plotted
- * run that held, and claude-fable-5-1 is the priciest run
- * and the highest attack success on the board, so the
- * headline over the chart is a fact of these two points. */
+ * readings made literal: jev-1.14.0, near-free and tough
+ * at twenty cents a run, and claude-fable-5-1, the
+ * priciest run on the board and its highest attack
+ * success, so the headline over the chart is a fact of
+ * these two points. The validation further down keeps
+ * that headline honest on future payloads. */
 const vendorData = JSON.parse(
   readFileSync(path.join(root, "lib", "vendor-data.json"), "utf8"),
 );
@@ -211,6 +211,33 @@ const bxOf = (c) =>
   BX.x0 +
   ((Math.log10(c) - BX.lo) / (BX.hi - BX.lo)) * (BX.x1 - BX.x0);
 const byOf = (a) => BX.yBot - (a / 0.3) * (BX.yBot - BX.yTop);
+/* The headline is a claim about the payload, and this
+ * generator is what keeps it true: both drawn points must
+ * sit inside the plot domains, and claude-fable-5-1 must
+ * still be the priciest run and the highest attack
+ * success among the full suite rows the plot could draw.
+ * A payload refresh that breaks any of this fails the
+ * build instead of producing a misleading card. */
+const plottedRows = nonSlice.filter(
+  (r) => r.total_cost_usd !== null && r.total_cost_usd > 0 && r.asr_conditional !== null,
+);
+const inPlot = (r) =>
+  r.total_cost_usd >= 10 ** BX.lo &&
+  r.total_cost_usd <= 10 ** BX.hi &&
+  r.asr_conditional >= 0 &&
+  r.asr_conditional <= 0.3;
+const maxCost = Math.max(...plottedRows.map((r) => r.total_cost_usd));
+const maxAsr = Math.max(...plottedRows.map((r) => r.asr_conditional));
+if (
+  ![jev, fable].every((r) => plottedRows.includes(r) && inPlot(r)) ||
+  fable.total_cost_usd !== maxCost ||
+  fable.asr_conditional !== maxAsr
+) {
+  console.error(
+    "gen-social-preview: a drawn point sits outside the plot domains, or the headline (priciest run, highest attack success) no longer holds for claude-fable-5-1 on this payload",
+  );
+  process.exit(1);
+}
 const gridB = [0, 0.1, 0.2, 0.3]
   .map(
     (t) => `<line x1="${BX.x0}" y1="${byOf(t)}" x2="${BX.x1}" y2="${byOf(t)}" stroke="#232c35" stroke-opacity="0.55"/>
