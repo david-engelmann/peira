@@ -1895,6 +1895,18 @@ body::before {
     margin: 16px -16px 0;
     padding: 6px 16px;
     top: 0;
+    transition: transform 220ms ease;
+  }
+
+  /* The phone bar steps aside under its own component's
+   * scroll logic (SectionNav): translated fully above the
+   * viewport while the reader scrolls down through
+   * content, so the sticky band never sits on the top of
+   * a chart the reader has scrolled to. Transform only:
+   * the bar's layout height, the landings, and the spy are
+   * all measured on the untransformed box. */
+  .section-nav.nav-hidden {
+    transform: translateY(-103%);
   }
 }
 
@@ -2190,6 +2202,32 @@ body::before {
   transform: scale(1.32);
 }
 
+/* Touch targets ride the marks invisibly: the point's hit
+ * circle and each list row's hit rect are transparent and
+ * take the tap, so the target is touch-sized (46 px at the
+ * phone's true-pixel scale) while the disc keeps its drawn
+ * size. Manipulation touch action removes the double-tap
+ * zoom delay without taking away scroll or pinch. */
+.pt-hit {
+  fill: transparent;
+  stroke: none;
+  pointer-events: all;
+}
+
+.entry-hit {
+  fill: transparent;
+  pointer-events: all;
+}
+
+.scatter-entry {
+  cursor: pointer;
+}
+
+.scatter-point,
+.scatter-entry {
+  touch-action: manipulation;
+}
+
 .pt-mono {
   font-size: 10px;
   font-weight: 700;
@@ -2197,17 +2235,15 @@ body::before {
   dominant-baseline: central;
 }
 
-.scatter-label.phone {
-  font-size: 10px;
-}
+/* The phone chart draws at true CSS pixels, so its labels
+ * keep the wide chart's size: the redesign's phone shrink
+ * (10px labels, 9.5px entry values and corner subs) put
+ * data text under the doctrine's 10px rendered floor, and
+ * the shape change pays for the room instead (D7, D17). */
 
 .scatter-entry-values {
   fill: var(--ink-3);
   font-size: 11.5px;
-}
-
-.scatter-entry-values.phone {
-  font-size: 9.5px;
 }
 
 .scatter-label[data-active="true"] {
@@ -2233,7 +2269,7 @@ body::before {
 }
 
 .corner-sub.phone {
-  font-size: 9.5px;
+  font-size: 11px;
 }
 
 .scatter-card {
@@ -2273,6 +2309,42 @@ body::before {
   font-size: 14.5px;
   font-weight: 650;
   margin: 0 0 8px;
+}
+
+/* The pinned card is a working surface, not a hover
+ * shadow: it takes pointer events so its close control can
+ * be used, and the name makes room for the control. The
+ * control is a 28 px target, clear of the 24 px floor. */
+.scatter-card.pinned {
+  pointer-events: auto;
+}
+
+.scatter-card.pinned .sc-name {
+  padding-right: 28px;
+}
+
+.sc-close {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font: inherit;
+  font-size: 16px;
+  line-height: 1;
+  color: var(--ink-2);
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--edge);
+  border-radius: 999px;
+  cursor: pointer;
+  padding: 0;
+}
+
+.sc-close:hover {
+  color: var(--ink-1);
 }
 
 .sc-rows {
