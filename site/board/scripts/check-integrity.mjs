@@ -689,8 +689,10 @@ if (!heatHtml) {
       .replace(/&amp;/g, "&");
     if (!fam || fam.asr === null || fam.asr === undefined) {
       naCount += 1;
-      if (attr(tag, "data-na") !== "true" || printed !== "·") {
-        fail(`heatmap cell ${id}/${famKey} should be a dotted not measured cell`);
+      /* The not measured mark is "--" (design cycle 5, doctrine
+       * D13: a bare glyph speck at cell size vanishes). */
+      if (attr(tag, "data-na") !== "true" || printed !== "--") {
+        fail(`heatmap cell ${id}/${famKey} should be a not measured cell printing --`);
       }
     } else {
       if (Number(attr(tag, "data-asr")) !== fam.asr) {

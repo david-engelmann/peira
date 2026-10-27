@@ -43,18 +43,34 @@
  *        labels sit beside their points or in a disc-carrying
  *        stack row, never tied by a drawn line).
  *  Heatmap. Headers measure one line; every cell's text equals
- *        the payload rate under the cell format; the 20 not
- *        measured cells carry the middot; every cell's text to
- *        background contrast is at least 4.5; no cell background
- *        is accent green; with the panel scrolled fully right
- *        the sticky name column stays at the container's left
- *        on an opaque ground background and its text never
- *        meets a visible cell's text (F-06).
+ *        the payload rate under the cell format; the not
+ *        measured cells carry the -- mark (doctrine D13); every
+ *        cell's text to background contrast is at least 4.5; no
+ *        cell background is accent green; with the panel
+ *        scrolled fully right the sticky name column stays at
+ *        the container's left on an opaque ground background
+ *        and its text never meets a visible cell's text (F-06).
+ *        Design cycle 5 adds H-01: every header and every cell
+ *        sits inside the section's horizontal bounds at every
+ *        width (no column off the section's edge at desktop,
+ *        no family off canvas on the phone, where the matrix
+ *        restacks into labeled chips).
  *  Calibration. Panel order and rail order equal the attacked
  *        ECE order computed here; panel headers state the
  *        payload ECE; sampled bin circles sit on the payload
  *        coordinates inside the panel's own plot bounds, read
  *        from its diagonal; rail names are not clipped (F-16).
+ *        Design cycle 5 adds: no panel carries the coincidence
+ *        note and the lede states it with the derived count
+ *        (C-07 revised); tick numerals render at 10 px or
+ *        larger at every width (C-01) and inside the viewBox
+ *        (C-06); the panels showing each axis are exactly the
+ *        array's edge panels for the layout in force (C-08);
+ *        the heatmap lede names its groups with their counts
+ *        (H-02); on the phone no two
+ *        rail entries share a line (C-02) and a wrapped panel
+ *        name breaks only after a hyphen or a space (C-04);
+ *        rail names stay inside the section's bounds (C-05).
  *  Amber. The confinement rule is the round 9 rule: amber is
  *        allowed in the ranking's flagged strip, on scatter
  *        marks whose row is flagged, and on heatmap flag tags
@@ -298,13 +314,15 @@ const nonSliceA = allRowsA.filter((r) => r.n_cases === fullCasesA);
 
 /* ---------- round 12 derivations ---------- */
 
-/* C-07: the slice panels whose bins coincide, derived from
- * the payload alone: a slice row whose 15 attacked bins span
- * at most a tenth of stated confidence. On this payload two
- * qualify (forecast spreads 0.014 and 0.089); the other three
- * slice panels spread past half the axis and carry no note. */
-const CAL_NOTE_TEXT =
-  "The bins coincide because the model states nearly the same confidence on almost every case.";
+/* C-07 (round 12, revised in design cycle 5): the slice
+ * panels whose bins coincide, derived from the payload alone:
+ * a slice row whose 15 attacked bins span at most a tenth of
+ * stated confidence. On this payload two qualify (forecast
+ * spreads 0.014 and 0.089); the other slice panels spread
+ * past half the axis. Round 12 stated the fact on the panels
+ * themselves; cycle 5 (doctrine D9) moves it to the section
+ * lede, stated once with this set's size, so no panel carries
+ * a note and the array's apparatus stays uniform. */
 const coincidentSliceIdsA = new Set(
   allRowsA
     .filter((r) => r.n_cases !== fullCasesA)
@@ -376,7 +394,7 @@ for (const r of allRowsA) {
     const f = carried.get(k);
     cellExpectedA.set(
       `${r.run_id}|${k}`,
-      !f || f.asr === null || f.asr === undefined ? "·" : fmtCellA(f.asr),
+      !f || f.asr === null || f.asr === undefined ? "--" : fmtCellA(f.asr),
     );
   }
 }
@@ -1016,21 +1034,36 @@ for (const width of [1440, 1280, 390]) {
     }
     const hsec = document.querySelector('[data-section="heatmap"]');
     if (hsec) {
+      const hSecRect = hsec.getBoundingClientRect();
       out.heat = {
-        heads: [...hsec.querySelectorAll(".heat-head")].map((h) => ({
-          fam: h.getAttribute("data-family"),
-          h: h.getBoundingClientRect().height,
-          sw: h.scrollWidth,
-          cw: h.clientWidth,
-        })),
+        secL: hSecRect.left,
+        secR: hSecRect.right,
+        lede: (hsec.querySelector(".section-lede")?.textContent ?? "")
+          .replace(/\s+/g, " ")
+          .trim(),
+        flagTags: hsec.querySelectorAll(".heat-name .flag-tag").length,
+        heads: [...hsec.querySelectorAll(".heat-head")].map((h) => {
+          const r = h.getBoundingClientRect();
+          return {
+            fam: h.getAttribute("data-family"),
+            h: r.height,
+            sw: h.scrollWidth,
+            cw: h.clientWidth,
+            x0: r.left,
+            x1: r.right,
+          };
+        }),
         cells: [...hsec.querySelectorAll(".heat-cell")].map((c) => {
           const s = getComputedStyle(c);
+          const r = c.getBoundingClientRect();
           return {
             id: c.getAttribute("data-run-id"),
             fam: c.getAttribute("data-family"),
             text: c.textContent.trim(),
             bg: s.backgroundColor,
             color: s.color,
+            x0: r.left,
+            x1: r.right,
           };
         }),
         names: [...hsec.querySelectorAll(".heat-name")].map((n) => ({
@@ -1073,7 +1106,16 @@ for (const width of [1440, 1280, 390]) {
     }
     const csec = document.querySelector('[data-section="calibration"]');
     if (csec) {
+      const cSecRect = csec.getBoundingClientRect();
       out.cal = {
+        lede: (csec.querySelector(".section-lede")?.textContent ?? "")
+          .replace(/\s+/g, " ")
+          .trim(),
+        secL: cSecRect.left,
+        secR: cSecRect.right,
+        gridCols: getComputedStyle(
+          csec.querySelector(".cal-grid"),
+        ).gridTemplateColumns.split(" ").filter(Boolean).length,
         panels: [...csec.querySelectorAll(".cal-panel")].map((p) => {
           const meta = p.querySelector(".cal-meta")?.textContent ?? "";
           const m = meta.match(/ECE ([\d.]+)/);
@@ -1082,6 +1124,35 @@ for (const width of [1440, 1280, 390]) {
           const bin = p.querySelector("circle.cal-dot");
           const diag = p.querySelector(".cal-diag");
           const noteEl = p.querySelector(".cal-note");
+          /* Cycle 5 (C-01): the tick numeral's size as the
+           * reader meets it, the viewBox font size scaled by
+           * the rendered SVG width over the 300-unit viewBox. */
+          const svgEl = p.querySelector(".cal-svg");
+          const tickEl = p.querySelector(".tk-y text, .tk-x text");
+          const tick =
+            svgEl && tickEl
+              ? {
+                  font: parseFloat(getComputedStyle(tickEl).fontSize),
+                  svgW: svgEl.getBoundingClientRect().width,
+                }
+              : null;
+          /* C-06: every tick numeral's own box, in viewBox
+           * units (getBBox is geometry, so hidden groups
+           * measure the same as shown ones). */
+          const tickBoxes = [...p.querySelectorAll(".tk-y text, .tk-x text")].map(
+            (t) => {
+              const b = t.getBBox();
+              return { x0: b.x, y0: b.y, x1: b.x + b.width, y1: b.y + b.height };
+            },
+          );
+          /* C-08: which tick groups this panel actually
+           * shows, from the rendered style. */
+          const tkY = p.querySelector(".tk-y");
+          const tkX = p.querySelector(".tk-x");
+          const tkShown = {
+            y: tkY ? getComputedStyle(tkY).display !== "none" : false,
+            x: tkX ? getComputedStyle(tkX).display !== "none" : false,
+          };
           /* Round 40: the panel name's own lines, read by
            * bucketing its text node's characters by line top,
            * so the wrap rule is measured rather than eyeballed. */
@@ -1105,6 +1176,9 @@ for (const width of [1440, 1280, 390]) {
           return {
             id: p.getAttribute("data-run-id"),
             nameLines,
+            tick,
+            tickBoxes,
+            tkShown,
             note: noteEl
               ? noteEl.textContent.replace(/\s+/g, " ").trim()
               : null,
@@ -1131,11 +1205,22 @@ for (const width of [1440, 1280, 390]) {
         rail: [...csec.querySelectorAll("[data-rail-for]")].map((a) =>
           a.getAttribute("data-rail-for"),
         ),
-        railNames: [...csec.querySelectorAll(".cal-rail-name")].map((n) => ({
-          sw: n.scrollWidth,
-          cw: n.clientWidth,
-          text: n.textContent.trim(),
-        })),
+        railLinks: [...csec.querySelectorAll(".cal-rail-link")].map(
+          (a) => {
+            const r = a.getBoundingClientRect();
+            return { t: r.top, b: r.bottom };
+          },
+        ),
+        railNames: [...csec.querySelectorAll(".cal-rail-name")].map((n) => {
+          const r = n.getBoundingClientRect();
+          return {
+            sw: n.scrollWidth,
+            cw: n.clientWidth,
+            text: n.textContent.trim(),
+            l: r.left,
+            r: r.right,
+          };
+        }),
       };
     }
     return out;
@@ -1557,6 +1642,52 @@ for (const width of [1440, 1280, 390]) {
         failures.push(`width ${width}: heatmap name for ${n.id} is clipped`);
       }
     }
+    /* H-01 (design cycle 5, doctrine D8): every header and
+     * every cell sits inside the section's horizontal bounds.
+     * The pre-fix grid ran 28 px past the section at desktop
+     * (its last column's header cut mid-word) and 802 px past
+     * it on the phone, where ten families sat off canvas in a
+     * horizontal scroller cued only by a prose line. On the
+     * phone the hidden headers measure zero width at the
+     * section's left and pass trivially; the cells are the
+     * substance there. */
+    for (const h of chart.heat.heads) {
+      if (h.x1 - h.x0 < 1) continue; // display:none (phone restack)
+      if (h.x0 < chart.heat.secL - 1 || h.x1 > chart.heat.secR + 1) {
+        failures.push(
+          `width ${width}: heatmap header ${h.fam} sits outside the section bounds (${h.x0.toFixed(0)}..${h.x1.toFixed(0)} vs ${chart.heat.secL.toFixed(0)}..${chart.heat.secR.toFixed(0)}) (H-01)`,
+        );
+      }
+    }
+    let cellsOut = 0;
+    for (const c of chart.heat.cells) {
+      if (c.x0 < chart.heat.secL - 1 || c.x1 > chart.heat.secR + 1) cellsOut++;
+    }
+    if (cellsOut > 0) {
+      failures.push(
+        `width ${width}: ${cellsOut} heatmap cells sit outside the section's horizontal bounds (H-01)`,
+      );
+    }
+    /* H-02 (design cycle 5, red team F2): the lede names the
+     * three groups with their counts, so a phone reader who
+     * meets the section's head knows the flagged results and
+     * the slices stand further down the list. Counts derive
+     * from the payload: slices are the partial-case rows, the
+     * flagged count is read off the rendered flag tags, and
+     * the full suite is the remainder. */
+    {
+      const sliceCount = allRowsA.filter(
+        (r) => r.n_cases !== fullCasesA,
+      ).length;
+      const fullCount =
+        allRowsA.length - sliceCount - chart.heat.flagTags;
+      const want = `${fullCount} full suite results, ${chart.heat.flagTags} flagged results, and ${sliceCount} guardrail slices`;
+      if (!chart.heat.lede.includes(want)) {
+        failures.push(
+          `width ${width}: heatmap lede does not name the groups with their counts ("${want}") (H-02)`,
+        );
+      }
+    }
     if (chart.heatProbe) {
       const probe = chart.heatProbe;
       if (Math.abs(probe.nameLeft) > 1.5) {
@@ -1616,18 +1747,138 @@ for (const width of [1440, 1280, 390]) {
         failures.push(`width ${width}: calibration panel meta clipped on ${p.id}`);
       }
     }
-    /* C-07 (round 12): the coincidence note stands on exactly
-     * the panels whose bins coincide, derived above. */
+    /* C-07 (round 12, revised in design cycle 5): no panel
+     * carries the coincidence note; the lede states the fact
+     * once, with the count of the derived coincident set. */
     for (const p of chart.cal.panels) {
-      if (coincidentSliceIdsA.has(p.id)) {
-        if (p.note !== CAL_NOTE_TEXT) {
+      if (p.note !== null) {
+        failures.push(
+          `width ${width}: calibration panel ${p.id} carries a coincidence note ("${p.note}"); the fact belongs in the lede (C-07)`,
+        );
+      }
+    }
+    const nCoincident = coincidentSliceIdsA.size;
+    if (nCoincident > 0) {
+      const coincidentNames = calOrderA
+        .filter((id) => coincidentSliceIdsA.has(id))
+        .map((id) => shortName(byRunId.get(id)));
+      const list =
+        coincidentNames.length > 1
+          ? `${coincidentNames.slice(0, -1).join(", ")} and ${coincidentNames[coincidentNames.length - 1]}`
+          : (coincidentNames[0] ?? "");
+      const want = `${nCoincident} slice result${nCoincident === 1 ? "" : "s"}, ${list}, state${nCoincident === 1 ? "s" : ""} nearly the same confidence from bin to bin, so their bins pile up at the right edge of their panels`;
+      if (!chart.cal.lede.includes(want)) {
+        failures.push(
+          `width ${width}: calibration lede does not state the coincidence ("${want}") (C-07)`,
+        );
+      }
+    } else if (chart.cal.lede.includes("pile up at the right edge")) {
+      failures.push(
+        `width ${width}: calibration lede states a coincidence the payload does not hold (C-07)`,
+      );
+    }
+    /* C-01 (design cycle 5, doctrine D17): tick numerals
+     * render at the legibility floor. The pre-fix size
+     * rendered at 6.3 px on desktop and 5.2 px on the phone. */
+    let worstTick = Infinity;
+    for (const p of chart.cal.panels) {
+      if (!p.tick || !(p.tick.svgW > 0)) continue;
+      worstTick = Math.min(worstTick, (p.tick.font * p.tick.svgW) / 300);
+    }
+    if (worstTick !== Infinity) {
+      notes.push(
+        `width ${width}: calibration tick numerals render at ${worstTick.toFixed(1)} px at their smallest (floor 10 px, C-01)`,
+      );
+      if (worstTick < 9.9) {
+        failures.push(
+          `width ${width}: calibration tick numerals render at ${worstTick.toFixed(1)} px, under the 10 px legibility floor (C-01)`,
+        );
+      }
+    }
+    /* C-06 (design cycle 5): every tick numeral's box stays
+     * inside the viewBox. Enlarging the numerals for C-01
+     * pushed the centered "100" x tick past the right edge
+     * (278..306 in a 300-wide viewBox) until the last tick
+     * was end-anchored; this check is the pin. Tolerance 2
+     * units for font bearing slack. */
+    for (const p of chart.cal.panels) {
+      for (const b of p.tickBoxes ?? []) {
+        if (b.x0 < -2 || b.x1 > 302 || b.y0 < -2 || b.y1 > 168) {
           failures.push(
-            `width ${width}: calibration panel ${p.id} bins coincide but the panel note is "${p.note}"`,
+            `width ${width}: calibration panel ${p.id} tick numeral box ${b.x0.toFixed(0)}..${b.x1.toFixed(0)} x ${b.y0.toFixed(0)}..${b.y1.toFixed(0)} escapes the 300 x 166 viewBox (C-06)`,
           );
         }
-      } else if (p.note !== null) {
+      }
+    }
+    /* C-08 (design cycle 5): the panels showing each axis are
+     * exactly the array's edge panels for the layout in
+     * force. Desktop: the first column shows y ticks and the
+     * last row shows x ticks. Phone (one across): every panel
+     * shows both, since a phone panel travels alone (D23).
+     * The pre-fix desktop rule lit x ticks on the last four
+     * children, one panel too many (kev-4b, mid-array). */
+    {
+      const panels = chart.cal.panels;
+      const cols = chart.cal.gridCols || 4;
+      const n = panels.length;
+      const lastRow = n % cols === 0 ? cols : n % cols;
+      panels.forEach((p, i) => {
+        if (!p.tick || !p.tkShown) return;
+        const wantY = width <= 760 ? true : i % cols === 0;
+        const wantX = width <= 760 ? true : i >= n - lastRow;
+        if (p.tkShown.y !== wantY || p.tkShown.x !== wantX) {
+          failures.push(
+            `width ${width}: calibration panel ${p.id} tick visibility (y ${p.tkShown.y}, x ${p.tkShown.x}) breaks the array's edge rule (want y ${wantY}, x ${wantX}) (C-08)`,
+          );
+        }
+      });
+    }
+    /* C-02 (design cycle 5): on the phone the rail is a list,
+     * one entry per line. The pre-fix flex-wrap packing put
+     * 24 pairs of entries on shared lines (census L-32). */
+    if (width <= 760 && chart.cal.railLinks) {
+      let shared = 0;
+      const links = chart.cal.railLinks;
+      for (let i = 0; i < links.length; i++) {
+        for (let j = i + 1; j < links.length; j++) {
+          if (links[i].t < links[j].b - 2 && links[j].t < links[i].b - 2) {
+            shared++;
+          }
+        }
+      }
+      if (shared > 0) {
         failures.push(
-          `width ${width}: calibration panel ${p.id} carries the coincidence note but its bins do not coincide`,
+          `width ${width}: ${shared} calibration rail entry pairs share a line (C-02)`,
+        );
+      }
+    }
+    /* C-04 (design cycle 5, doctrine D18): a wrapped panel
+     * name breaks only after a hyphen or a space, never
+     * mid-token and never stranding a hyphen at a line's
+     * head. The pre-fix phone build broke Qwen3Guard-Gen-4B
+     * as "Qwen3Gua / rd-Gen-4B" and Shieldstral-1.0-3B as
+     * "Shieldstral / -1.0-3B". */
+    for (const p of chart.cal.panels) {
+      const lines = p.nameLines ?? [];
+      for (let i = 0; i < lines.length - 1; i++) {
+        const legal =
+          /[-\s]$/.test(lines[i]) || /^\s/.test(lines[i + 1]);
+        if (!legal) {
+          failures.push(
+            `width ${width}: calibration panel ${p.id} name breaks mid-token ("${lines[i]} | ${lines[i + 1]}") (C-04)`,
+          );
+        }
+      }
+    }
+    /* C-05 (design cycle 5): rail names stay inside the
+     * section's horizontal bounds. Census R-23 reported the
+     * rail past the section's left edge; on the cycle 5
+     * baseline build the names measure inside at rest, and
+     * this check pins that so a real regression fails. */
+    for (const rn of chart.cal.railNames) {
+      if (rn.l < chart.cal.secL - 1 || rn.r > chart.cal.secR + 1) {
+        failures.push(
+          `width ${width}: calibration rail name "${rn.text}" sits outside the section bounds (C-05)`,
         );
       }
     }
