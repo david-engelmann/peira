@@ -317,9 +317,11 @@ const nonSliceA = allRowsA.filter((r) => r.n_cases === fullCasesA);
 /* C-07 (round 12, revised in design cycle 5): the slice
  * panels whose bins coincide, derived from the payload alone:
  * a slice row whose 15 attacked bins span at most a tenth of
- * stated confidence. On this payload two qualify (forecast
- * spreads 0.014 and 0.089); the other slice panels spread
- * past half the axis. Round 12 stated the fact on the panels
+ * stated confidence with every bin mean in the top tenth (the
+ * lede claims the right edge, so the set requires the
+ * position as well as the span). On this payload two qualify
+ * (forecast spreads 0.014 and 0.089); the other slice panels
+ * spread past half the axis. Round 12 stated the fact on the panels
  * themselves; cycle 5 (doctrine D9) moves it to the section
  * lede, stated once with this set's size, so no panel carries
  * a note and the array's apparatus stays uniform. */
@@ -331,7 +333,11 @@ const coincidentSliceIdsA = new Set(
         r.detail?.calibration?.reliability_bins?.attacked?.bins ?? [];
       if (bins.length === 0) return false;
       const fs = bins.map((b) => b.mean_forecast);
-      return Math.max(...fs) - Math.min(...fs) <= 0.1;
+      /* The lede claims the right edge, so the set requires
+       * the position too: span at most a tenth and every bin
+       * mean in the top tenth. Mirrors the component's rule;
+       * derived here from the payload alone. */
+      return Math.max(...fs) - Math.min(...fs) <= 0.1 && Math.min(...fs) >= 0.9;
     })
     .map((r) => r.run_id),
 );

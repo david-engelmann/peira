@@ -185,7 +185,14 @@ export default function Calibration() {
     .filter((e) => {
       if (!e.isSlice || !e.data || e.data.bins.length === 0) return false;
       const forecasts = e.data.bins.map((b) => b.meanForecast);
-      return Math.max(...forecasts) - Math.min(...forecasts) <= 0.1;
+      /* The sentence claims the right edge, so the set is
+       * slices clustered there: a span of at most a tenth
+       * with every bin mean in the axis's top tenth. A tight
+       * cluster elsewhere on the axis does not qualify. */
+      return (
+        Math.max(...forecasts) - Math.min(...forecasts) <= 0.1 &&
+        Math.min(...forecasts) >= 0.9
+      );
     })
     .map((e) => shortName(e.row));
   const coincidentCount = coincidentNames.length;
