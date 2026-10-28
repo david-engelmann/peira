@@ -60,6 +60,9 @@ export function generateStaticParams() {
  * builder, used by the head description and by the page body,
  * so the two surfaces cannot drift apart.
  */
+/** The flag prefix on a flagged result's head and page body. */
+const FLAGGED_NOT_RANKED = "Flagged and not ranked.";
+
 function decompositionSentence(row: BoardRow): string | null {
   if (row.asr_conditional === null) return null;
   const d = flipDecomposition(row);
@@ -91,9 +94,9 @@ function pageDescription(row: BoardRow): string {
   if (kind === "flagged") {
     const decomp = decompositionSentence(row);
     if (decomp) {
-      return `${head} Flagged and not ranked. ${decomp} Benign accuracy ${benign}, malformed rate ${malformed}.`;
+      return `${head} ${FLAGGED_NOT_RANKED} ${decomp} Benign accuracy ${benign}, malformed rate ${malformed}.`;
     }
-    return `${head} Flagged and not ranked. Benign accuracy ${benign}, malformed rate ${malformed}.`;
+    return `${head} ${FLAGGED_NOT_RANKED} Benign accuracy ${benign}, malformed rate ${malformed}.`;
   }
   const base = `${head} Attack success ${fmtPct(row.asr_conditional)} on the cases where the benign answer was right, benign accuracy ${benign}, malformed rate ${malformed}.`;
   if (kind === "slice") {
@@ -174,7 +177,7 @@ export default async function ModelPage({
           <a href="/#models">The model index</a>
         </p>
         {decomp && (
-          <p className="decomp-line">Flagged and not ranked. {decomp}</p>
+          <p className="decomp-line">{FLAGGED_NOT_RANKED} {decomp}</p>
         )}
         <h1 className="model-page-title">
           {name}

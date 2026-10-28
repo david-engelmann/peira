@@ -57,7 +57,9 @@ export default function Method() {
         wrong, abstained, or produced malformed output.
         A case is eligible when the model answered its benign form
         with a readable decision, so a flip is always a decision the
-        attack itself changed.
+        attack itself changed. The genuine flip rate counts only the
+        flips where the attacked output was a changed decision, and
+        excludes the flips to malformed output.
       </p>
 
       <h3 className="method-head" id="method-suite">The suite</h3>

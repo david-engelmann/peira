@@ -54,6 +54,30 @@ function wilson(hits: number, n: number): [number, number] {
 }
 
 /**
+ * The sealed per-family records a row carries, normalised to a
+ * list of record objects. The families may arrive as an array
+ * or as a keyed object, and a non-object entry is not a record.
+ * Shared by displayCi and flipDecomposition; each caller keeps
+ * its own failure semantics for an empty or unusable list.
+ */
+function familyRecords(row: BoardRow): Record<string, unknown>[] {
+  const detail =
+    row.detail !== null && typeof row.detail === "object"
+      ? (row.detail as Record<string, unknown>)
+      : {};
+  const famsRaw = detail.families;
+  let entries: unknown[] = [];
+  if (Array.isArray(famsRaw)) entries = famsRaw;
+  else if (famsRaw !== null && typeof famsRaw === "object") {
+    entries = Object.values(famsRaw);
+  }
+  return entries.filter(
+    (f): f is Record<string, unknown> =>
+      f !== null && typeof f === "object" && !Array.isArray(f),
+  );
+}
+
+/**
  * The interval a row displays, ported from the previous
  * renderer's _row_ci. The stored asr_ci95 pair is the pipeline's
  * Wilson interval over the run's counts, rounded to four
@@ -69,20 +93,7 @@ function wilson(hits: number, n: number): [number, number] {
 export function displayCi(row: BoardRow): [number, number] | null {
   const pair = row.asr_ci95;
   if (pair === null) return null;
-  const detail =
-    row.detail !== null && typeof row.detail === "object"
-      ? (row.detail as Record<string, unknown>)
-      : {};
-  const famsRaw = detail.families;
-  let entries: unknown[] = [];
-  if (Array.isArray(famsRaw)) entries = famsRaw;
-  else if (famsRaw !== null && typeof famsRaw === "object") {
-    entries = Object.values(famsRaw);
-  }
-  const fams = entries.filter(
-    (f): f is Record<string, unknown> =>
-      f !== null && typeof f === "object" && !Array.isArray(f),
-  );
+  const fams = familyRecords(row);
   if (fams.length === 0) return pair;
   let total = 0;
   for (const fam of fams) {
@@ -118,20 +129,9 @@ export interface FlipDecomposition {
  * callers must not state a decomposition at all.
  */
 export function flipDecomposition(row: BoardRow): FlipDecomposition | null {
-  const detail =
-    row.detail !== null && typeof row.detail === "object"
-      ? (row.detail as Record<string, unknown>)
-      : {};
-  const famsRaw = detail.families;
-  let entries: unknown[] = [];
-  if (Array.isArray(famsRaw)) entries = famsRaw;
-  else if (famsRaw !== null && typeof famsRaw === "object") {
-    entries = Object.values(famsRaw);
-  }
-  const fams = entries.filter(
-    (f): f is Record<string, unknown> =>
-      f !== null && typeof f === "object" && !Array.isArray(f),
-  );
+  const printed = row.asr_conditional;
+  if (printed === null) return null;
+  const fams = familyRecords(row);
   if (fams.length === 0) return null;
   let flips = 0;
   let malformed = 0;
@@ -151,10 +151,7 @@ export function flipDecomposition(row: BoardRow): FlipDecomposition | null {
   }
   const n = countOf(row.n_eligible);
   if (n === null || n === 0 || flips === 0) return null;
-  if (
-    row.asr_conditional !== null &&
-    Math.abs(flips / n - row.asr_conditional) > 0.001
-  ) {
+  if (Math.abs(flips / n - printed) > 0.001) {
     return null;
   }
   return {

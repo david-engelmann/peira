@@ -7,6 +7,41 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
 
 ## [Unreleased]
 
+### Board Method and chrome: design perfection cycle 7
+
+- A flagged result's own page now leads its head description
+  with its flagged standing. Where most of its counted flips
+  were malformed output rather than changed decisions, the
+  head states the decomposition and the genuine flip rate
+  beside the headline figure, and the same sentence stands
+  on the page itself. Where no such majority can be derived
+  from the sealed family records, the head carries no attack
+  success figure at all.
+- The footer no longer prints the dateline a third time in a
+  colophon line. The date stands in the masthead stamp and
+  the footer citation only.
+- The Method section corrects what it claims. The intervals
+  sentence is scoped to the headline rates in the ranking
+  and on the model cards, the admission section states how
+  slice runs are judged, the tax sentence names every input
+  a recompute needs, and the re-run paragraph names the two
+  results as the board prints them. Each Method subsection
+  now carries its own anchor.
+- The section bar behaves on touch. Activating a link by
+  pointer no longer leaves the bar holding focus, a landing
+  after a tap is guarded so the bar does not hide over the
+  section just jumped to, and at phone widths an overflow
+  cue stands at the strip's right edge and clears when the
+  strip reaches its end. The nav links take the board's
+  15.5 px prose step.
+- The board's dataset and suite stamps now come from an
+  agreement check over every row. A payload whose rows
+  disagree fails the build, naming the disagreement, instead
+  of stamping one row's versions as the board's. The
+  integrity check pins the Method anchors, the flagged and
+  slice head descriptions, and the two chrome rules in the
+  built CSS.
+
 ### Board share image: honest alt text, the rail keeps its meaning, the amber ring decoded
 
 - The og image's alt text described the ranking and claimed
