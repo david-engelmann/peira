@@ -79,9 +79,19 @@
  *     the payload rates in the column order, and no guard
  *     banner renders for it. Every ranking row carries the
  *     name link to its own model page.
+ * 12. Cycle 7 surfaces. The eight Method subsection anchors
+ *     exist on the rendered page. Every flagged model page's
+ *     head description carries its flagged standing, and
+ *     prints no attack success figure unless the payload's
+ *     own family records derive a malformed majority for it,
+ *     in which case the printed figure must be the payload's.
+ *     Every slice page's head description names the abstain
+ *     subset it was measured on. The built CSS carries the
+ *     nav overflow cue's end-clearing rule and the Method
+ *     subsection scroll-margin rule.
  */
 
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -1509,6 +1519,158 @@ for (const [id, rows] of Object.entries(expectedGroups)) {
     if (!slice.includes(want) || !slice.includes('class="name-link"')) {
       fail(`ranking row ${row.run_id}: name does not link to its model page (${want})`);
     }
+  }
+}
+
+/* ---------- 12. cycle 7 surfaces ---------- */
+
+/* The malformed share of a row's counted flips, derived here
+ * from the payload's family records under the rules the app
+ * states for its own derivation: null when the row prints no
+ * attack success figure, when the records are missing or
+ * unusable (a family whose malformed flips exceed its flips
+ * included), or when the derived flips disagree with the
+ * printed figure. */
+function malformedShareI(row) {
+  if (row.asr_conditional === null || row.asr_conditional === undefined) {
+    return null;
+  }
+  const detail =
+    row.detail && typeof row.detail === "object" ? row.detail : {};
+  const famsRaw = detail.families;
+  let entries = [];
+  if (Array.isArray(famsRaw)) entries = famsRaw;
+  else if (famsRaw && typeof famsRaw === "object") {
+    entries = Object.values(famsRaw);
+  }
+  const fams = entries.filter(
+    (f) => f !== null && typeof f === "object" && !Array.isArray(f),
+  );
+  if (fams.length === 0) return null;
+  let flips = 0;
+  let malformed = 0;
+  for (const fam of fams) {
+    const nf = countI(fam.n_flipped);
+    const fd =
+      fam.flip_direction !== null &&
+      typeof fam.flip_direction === "object" &&
+      !Array.isArray(fam.flip_direction)
+        ? fam.flip_direction
+        : null;
+    const tm = fd ? countI(fd["to-malformed"]) : null;
+    if (nf === null || tm === null) return null;
+    if (tm > nf) return null;
+    flips += nf;
+    malformed += tm;
+  }
+  const n = countI(row.n_eligible);
+  if (n === null || n === 0 || flips === 0) return null;
+  if (Math.abs(flips / n - row.asr_conditional) > 0.001) return null;
+  return malformed / flips;
+}
+
+function metaDescription(pageHtml) {
+  const m = pageHtml.match(/<meta name="description" content="([^"]*)"/);
+  if (!m) return null;
+  return m[1]
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&#x27;|&apos;/g, "'")
+    .replace(/&quot;/g, '"');
+}
+
+function modelPageDescription(row, where) {
+  const slug = slugOfC(row, allRows);
+  const pagePath = join(root, "out", "models", slug, "index.html");
+  /* A missing page already failed in check 10. */
+  if (!existsSync(pagePath)) return null;
+  const desc = metaDescription(readFileSync(pagePath, "utf8"));
+  if (desc === null) {
+    fail(`${where} ${slug}: no meta description in the built page`);
+  }
+  return desc;
+}
+
+/* 12a. The Method subsection anchors. */
+const METHOD_ANCHORS = [
+  "method-case",
+  "method-suite",
+  "method-intervals",
+  "method-admission",
+  "method-tax",
+  "method-costs",
+  "method-reruns",
+  "method-standing",
+];
+for (const id of METHOD_ANCHORS) {
+  if (!html.includes(`id="${id}"`)) {
+    fail(`Method subsection anchor #${id} missing from the rendered page`);
+  }
+}
+
+/* 12b. Flagged heads: the standing always, a figure only on a
+ * payload-derived malformed majority. */
+for (const row of unranked) {
+  const desc = modelPageDescription(row, "flagged model page");
+  if (desc === null) continue;
+  const slug = slugOfC(row, allRows);
+  if (!desc.includes("Flagged and not ranked.")) {
+    fail(
+      `flagged model page ${slug}: head description does not carry its flagged standing (reads: ${desc.slice(0, 120)})`,
+    );
+  }
+  const share = malformedShareI(row);
+  const figure =
+    row.asr_conditional !== null
+      ? `Attack success ${fmtPct(row.asr_conditional)}`
+      : null;
+  if (share === null || share <= 0.5) {
+    if (/Attack success [0-9]/.test(desc) || (figure && desc.includes(figure))) {
+      fail(
+        `flagged model page ${slug}: head description prints an attack success figure although the payload's malformed share is ${share === null ? "not derivable" : share.toFixed(3)}, not a majority`,
+      );
+    }
+  } else if (figure && !desc.includes(figure)) {
+    fail(
+      `flagged model page ${slug}: the payload's malformed share ${share.toFixed(3)} is a majority but the head description does not print ${figure} inside its decomposition`,
+    );
+  }
+}
+
+/* 12c. Slice heads name the sub-population they rest on. */
+for (const row of sliceCohort) {
+  const desc = modelPageDescription(row, "slice model page");
+  if (desc === null) continue;
+  if (
+    !desc.includes(
+      "Measured on the guardrail abstain subset, not the full suite.",
+    )
+  ) {
+    fail(
+      `slice model page ${slugOfC(row, allRows)}: head description does not name the guardrail abstain subset (reads: ${desc.slice(0, 120)})`,
+    );
+  }
+}
+
+/* 12d. The two chrome rules in the built CSS asset. */
+const cssDir = join(root, "out", "_next", "static", "css");
+if (!existsSync(cssDir)) {
+  fail("built CSS directory missing at out/_next/static/css");
+} else {
+  let builtCss = "";
+  for (const name of readdirSync(cssDir)
+    .filter((f) => f.endsWith(".css"))
+    .sort()) {
+    builtCss += readFileSync(join(cssDir, name), "utf8");
+  }
+  if (!/\.nav-at-end[^{]*\{[^}]*display:\s*none/.test(builtCss)) {
+    fail(
+      "built CSS carries no .nav-at-end rule clearing the nav overflow cue at the strip's end",
+    );
+  }
+  if (!/#method h3\[id\][^{]*\{[^}]*scroll-margin-top:\s*64px/.test(builtCss)) {
+    fail("built CSS carries no #method h3[id] scroll-margin rule");
   }
 }
 

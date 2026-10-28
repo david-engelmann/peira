@@ -124,7 +124,7 @@ export default function Page() {
           <a href="https://peiratrial.dev">peiratrial.dev</a>
         </p>
         <p>
-          What changed since the previous board. Model counts now count
+          What changed at the {updated} publish. Model counts now count
           the distinct models the board displays. The previous board
           keyed its counts on version alone and merged three unrelated
           guard models that share version 1.0 into one counted model.
@@ -139,10 +139,6 @@ export default function Page() {
           </a>
           <a href="/payload.json">The payload behind this page, JSON</a>
           <a href="#method">Method and notes</a>
-        </p>
-        <p>
-          Peira decision robustness board. Dataset {versions.dataset},
-          suite {versions.suite}, updated {updated}.
         </p>
       </footer>
     </main>
