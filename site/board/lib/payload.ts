@@ -98,6 +98,72 @@ export function displayCi(row: BoardRow): [number, number] | null {
   return pair;
 }
 
+export interface FlipDecomposition {
+  flips: number;
+  malformedFlips: number;
+  /** Share of counted flips whose attacked side was malformed. */
+  malformedShare: number;
+  /** Attack success with the malformed flips removed, over eligible cases. */
+  genuineRate: number;
+}
+
+/**
+ * The flip decomposition a flagged headline needs before it may
+ * travel (cycle 7, RT-01): how many of a result's counted flips
+ * were malformed output rather than a changed decision, and the
+ * flip rate with those removed. Derived from the sealed per-family
+ * records the payload already carries, and cross-checked against
+ * the row's printed attack success; where the records are missing
+ * or disagree with the printed figure, the derivation is null and
+ * callers must not state a decomposition at all.
+ */
+export function flipDecomposition(row: BoardRow): FlipDecomposition | null {
+  const detail =
+    row.detail !== null && typeof row.detail === "object"
+      ? (row.detail as Record<string, unknown>)
+      : {};
+  const famsRaw = detail.families;
+  let entries: unknown[] = [];
+  if (Array.isArray(famsRaw)) entries = famsRaw;
+  else if (famsRaw !== null && typeof famsRaw === "object") {
+    entries = Object.values(famsRaw);
+  }
+  const fams = entries.filter(
+    (f): f is Record<string, unknown> =>
+      f !== null && typeof f === "object" && !Array.isArray(f),
+  );
+  if (fams.length === 0) return null;
+  let flips = 0;
+  let malformed = 0;
+  for (const fam of fams) {
+    const nf = countOf(fam.n_flipped);
+    const fd =
+      fam.flip_direction !== null &&
+      typeof fam.flip_direction === "object" &&
+      !Array.isArray(fam.flip_direction)
+        ? (fam.flip_direction as Record<string, unknown>)
+        : null;
+    const tm = fd ? countOf(fd["to-malformed"]) : null;
+    if (nf === null || tm === null) return null;
+    flips += nf;
+    malformed += tm;
+  }
+  const n = countOf(row.n_eligible);
+  if (n === null || n === 0 || flips === 0) return null;
+  if (
+    row.asr_conditional !== null &&
+    Math.abs(flips / n - row.asr_conditional) > 0.001
+  ) {
+    return null;
+  }
+  return {
+    flips,
+    malformedFlips: malformed,
+    malformedShare: malformed / flips,
+    genuineRate: (flips - malformed) / n,
+  };
+}
+
 export interface BoardRow {
   adapter_name: string;
   adapter_version: string;
@@ -479,11 +545,26 @@ export function boardDateWords(): string {
   return `${d} ${MONTHS[m - 1]} ${y}`;
 }
 
-/** Dataset and suite versions, read from the rows that carry them. */
+/**
+ * Dataset and suite versions for the board's stamps. Every stamp
+ * on every page reads this one derivation, and the derivation
+ * asserts what the stamps claim: that the rows agree. A payload
+ * whose rows carry differing dataset or suite values fails the
+ * build loudly here rather than stamping one row's versions as
+ * the board's (cycle 7, RT-11).
+ */
 export function boardVersions(): { dataset: string; suite: string } {
-  const row = payload.ranked[0];
-  return {
-    dataset: row.dataset_version ?? "unknown",
-    suite: row.suite ?? "unknown",
-  };
+  const pairs = new Set(
+    [...payload.ranked, ...payload.unranked].map(
+      (r) => `${r.dataset_version ?? "unknown"}|${r.suite ?? "unknown"}`,
+    ),
+  );
+  if (pairs.size === 0) return { dataset: "unknown", suite: "unknown" };
+  if (pairs.size > 1) {
+    throw new Error(
+      `payload rows disagree on dataset or suite versions: ${[...pairs].join(", ")}`,
+    );
+  }
+  const [dataset, suite] = [...pairs][0].split("|");
+  return { dataset, suite };
 }

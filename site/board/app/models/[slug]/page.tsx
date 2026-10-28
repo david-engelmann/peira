@@ -4,6 +4,7 @@ import {
   boardGroups,
   boardDateWords,
   boardVersions,
+  flipDecomposition,
   taxBenchmarks,
   shortName,
   wireWords,
@@ -49,6 +50,58 @@ export function generateStaticParams() {
   return rows.map((row) => ({ slug: modelSlug(row, rows) }));
 }
 
+/**
+ * The guarded sentence a malformed-majority flagged result
+ * carries wherever its headline travels (cycle 7, RT-01 and
+ * RT-02): the attack success figure with its base stated
+ * correctly and its decomposition attached, in one breath.
+ * Null unless the sealed family records derive a decomposition
+ * in which most counted flips were malformed output. One
+ * builder, used by the head description and by the page body,
+ * so the two surfaces cannot drift apart.
+ */
+function decompositionSentence(row: BoardRow): string | null {
+  if (row.asr_conditional === null) return null;
+  const d = flipDecomposition(row);
+  if (!d || d.malformedShare <= 0.5) return null;
+  return `Attack success ${fmtPct(row.asr_conditional)} on the cases where the benign answer was right, most of it malformed output rather than changed decisions. Genuine flip rate ${fmtPct(d.genuineRate)}.`;
+}
+
+/**
+ * The head description for a result's own page, the text a
+ * shared link shows in search results and chat unfurls. A
+ * flagged result's attack success never prints here bare
+ * (cycle 7, C7-05): with a derivable malformed majority it
+ * prints inside its decomposition sentence, and without one
+ * it does not print at all. A slice result names the
+ * sub-population its figures rest on (cycle 7, C7-R03). The
+ * attack success base is stated as what it is, the cases
+ * where the benign answer was right, not all paired cases
+ * (cycle 7, RT-01).
+ */
+function pageDescription(row: BoardRow): string {
+  const name = shortName(row);
+  const head = `${name} on the Peira decision robustness board.`;
+  if (row.asr_conditional === null) return head;
+  const benign =
+    row.benign_accuracy !== null ? fmtPct(row.benign_accuracy) : "not measured";
+  const malformed =
+    row.malformed_rate !== null ? fmtPct(row.malformed_rate) : "not measured";
+  const { kind } = kindAndRank(row);
+  if (kind === "flagged") {
+    const decomp = decompositionSentence(row);
+    if (decomp) {
+      return `${head} Flagged and not ranked. ${decomp} Benign accuracy ${benign}, malformed rate ${malformed}.`;
+    }
+    return `${head} Flagged and not ranked. Benign accuracy ${benign}, malformed rate ${malformed}.`;
+  }
+  const base = `${head} Attack success ${fmtPct(row.asr_conditional)} on the cases where the benign answer was right, benign accuracy ${benign}, malformed rate ${malformed}.`;
+  if (kind === "slice") {
+    return `${base} Measured on the guardrail abstain subset, not the full suite.`;
+  }
+  return base;
+}
+
 export async function generateMetadata({
   params,
 }: {
@@ -58,10 +111,7 @@ export async function generateMetadata({
   const row = rowForSlug(slug);
   if (!row) return {};
   const name = shortName(row);
-  const description =
-    row.asr_conditional !== null
-      ? `${name} on the Peira decision robustness board. Attack success ${fmtPct(row.asr_conditional)} on paired cases, benign accuracy ${row.benign_accuracy !== null ? fmtPct(row.benign_accuracy) : "not measured"}, malformed rate ${row.malformed_rate !== null ? fmtPct(row.malformed_rate) : "not measured"}.`
-      : `${name} on the Peira decision robustness board.`;
+  const description = pageDescription(row);
   const title = `${name} on the Peira board`;
   return {
     title,
@@ -78,7 +128,7 @@ export async function generateMetadata({
           url: "/og.png",
           width: 1200,
           height: 630,
-          alt: "The Peira decision robustness board",
+          alt: "The Peira cost scatter: attack success against recorded cost per run, every full-suite model named beside its point",
         },
       ],
     },
@@ -104,6 +154,7 @@ export default async function ModelPage({
   const { kind, rank } = kindAndRank(row);
   const versions = boardVersions();
   const name = shortName(row);
+  const decomp = kind === "flagged" ? decompositionSentence(row) : null;
 
   return (
     <main className="page model-page" id="main">
@@ -122,6 +173,9 @@ export default async function ModelPage({
           <a href="/">The full board</a>
           <a href="/#models">The model index</a>
         </p>
+        {decomp && (
+          <p className="decomp-line">Flagged and not ranked. {decomp}</p>
+        )}
         <h1 className="model-page-title">
           {name}
           {duplicateShortNames(rows).has(name) && (
@@ -151,8 +205,8 @@ export default async function ModelPage({
 
       <p className="chart-id">
         Peira decision robustness board, model detail for {name}. One of{" "}
-        {fmtInt(rows.length)} results. Dataset {versions.dataset}, updated{" "}
-        {boardDateWords()}.
+        {fmtInt(rows.length)} results. Dataset {versions.dataset}, suite{" "}
+        {versions.suite}, updated {boardDateWords()}.
       </p>
     </main>
   );

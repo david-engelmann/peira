@@ -47,7 +47,7 @@ export default function Method() {
         stated once, in the order a reader meets them.
       </p>
 
-      <h3 className="method-head">What a case is</h3>
+      <h3 className="method-head" id="method-case">What a case is</h3>
       <p className="method-p">
         A case is one decision, presented to the model twice. The benign
         form asks for the decision plainly, and the attacked form wraps
@@ -60,7 +60,7 @@ export default function Method() {
         attack itself changed.
       </p>
 
-      <h3 className="method-head">The suite</h3>
+      <h3 className="method-head" id="method-suite">The suite</h3>
       <p className="method-p">
         The full suite holds {fmtInt(groups.fullCases)} paired cases on
         dataset {versions.dataset}, suite {versions.suite}. The{" "}
@@ -71,17 +71,18 @@ export default function Method() {
         appear.
       </p>
 
-      <h3 className="method-head">Intervals and rounding</h3>
+      <h3 className="method-head" id="method-intervals">Intervals and rounding</h3>
       <p className="method-p">
-        Every rate carries a 95 percent interval, computed by the
-        Wilson method over the run's own eligible count. Printed
+        Every attack success rate in the ranking and the model cards
+        carries a 95 percent interval, computed by the Wilson method
+        over the run's own eligible count. Printed
         figures are computed from the unrounded values the pipeline
         sealed and rounded once, at the precisions the board prints.
         Ties in the ranking mean the intervals overlap, and nothing
         more.
       </p>
 
-      <h3 className="method-head">Admission</h3>
+      <h3 className="method-head" id="method-admission">Admission</h3>
       <p className="method-p">
         A result earns a rank when its complete sealed run passes
         every admission gate. The gates are a malformed response rate
@@ -93,10 +94,12 @@ export default function Method() {
         the malformed limit are flagged. They keep every number the
         board measured and are not ranked until a complete run
         passes every gate. The malformed chart above states the
-        rule where the flagged results stand.
+        rule where the flagged results stand. Slice runs are judged
+        by the same gates on the sub-population they measured, and
+        the slices are ranked in their own division on that base.
       </p>
 
-      <h3 className="method-head">The robustness tax</h3>
+      <h3 className="method-head" id="method-tax">The robustness tax</h3>
       <p className="method-p">
         The tax prices what a result gives up against the strongest
         full suite results. It adds two shortfalls. The first is the
@@ -107,13 +110,15 @@ export default function Method() {
         full suite attacked ECE, set by {benchmarks.eceSetter} at{" "}
         {fmtEce(benchmarks.eceValue)}. Both gaps are shares, so a tax
         of 0.058 is 5.8 points of combined shortfall, and any tax on
-        the page can be recomputed from the two benchmarks named here.
+        the page can be recomputed from the two benchmarks named
+        here and the result's printed benign accuracy and attacked
+        ECE, up to the rounding described above.
         The frontier is taken over the {fmtInt(benchmarks.cohortSize)}{" "}
         full suite ranked results only. Slices and flagged results
         carry no tax.
       </p>
 
-      <h3 className="method-head">Costs</h3>
+      <h3 className="method-head" id="method-costs">Costs</h3>
       <p className="method-p">
         Cost is the recorded total for one full run, priced at the
         rates in the run's own provenance. Where some of a run's calls
@@ -124,15 +129,15 @@ export default function Method() {
         facts apart in words.
       </p>
 
-      <h3 className="method-head">Re-run segments</h3>
+      <h3 className="method-head" id="method-reruns">Re-run segments</h3>
       <p className="method-p">
-        Two results rest on re-run segments. The Gemini and Kimi
-        segments were re-run under fixed adapters on 12 October 2026,
-        after faults were found in the first pass. The sealed figures
-        on this board are the re-run figures.
+        Two results rest on re-run segments. The gemini-3.8-flash
+        and kimi-k3 results were re-run under fixed adapters on
+        12 October 2026, after faults were found in the first pass.
+        The sealed figures on this board are the re-run figures.
       </p>
 
-      <h3 className="method-head">Standing of the figures</h3>
+      <h3 className="method-head" id="method-standing">Standing of the figures</h3>
       <p className="method-p">
         The figures are the current best measurement of these results
         on this suite, not settled fact. When a result is re-measured,

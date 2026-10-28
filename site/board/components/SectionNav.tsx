@@ -79,6 +79,22 @@ export default function SectionNav() {
         }
       }
     };
+    /* The strip's end state, for the overflow cue in the
+     * stylesheet: the cue shows while more strip is off the
+     * right edge and clears once the reader has scrolled the
+     * strip itself to its end (cycle 7, C7-R01). */
+    const inner = nav.querySelector<HTMLElement>(".section-nav-inner");
+    const markEnd = () => {
+      if (!inner) return;
+      nav.classList.toggle(
+        "nav-at-end",
+        inner.scrollLeft + inner.clientWidth >= inner.scrollWidth - 2,
+      );
+    };
+    if (inner) {
+      inner.addEventListener("scroll", markEnd, { passive: true });
+      markEnd();
+    }
     const visible = new Set<string>();
     const observer = new IntersectionObserver(
       (entries) => {
@@ -97,7 +113,10 @@ export default function SectionNav() {
       const el = document.getElementById(item.id);
       if (el) observer.observe(el);
     }
-    return () => observer.disconnect();
+    return () => {
+      observer.disconnect();
+      if (inner) inner.removeEventListener("scroll", markEnd);
+    };
   }, []);
 
   /* Phone only: the bar steps aside while the reader
@@ -124,26 +143,49 @@ export default function SectionNav() {
         show();
         return;
       }
+      if (Date.now() - anchorAt < 1200) {
+        /* An anchor jump is still landing: never measure its
+         * displacement against the pre-tap position, and take
+         * the landing position as the reference for what
+         * follows (cycle 7, RT-08). */
+        show();
+        refY = y;
+        return;
+      }
       if (y < 120 || dy < -4) {
         show();
         refY = y;
-      } else if (dy > 6 && y > 240 && Date.now() - anchorAt > 450) {
+      } else if (dy > 6 && y > 240) {
         nav.classList.add("nav-hidden");
         refY = y;
       }
     };
     const onClick = (e: Event) => {
-      if ((e.target as HTMLElement).closest("a")) {
+      const a = (e.target as HTMLElement).closest("a");
+      if (a) {
         anchorAt = Date.now();
         show();
+        /* A pointer or touch activation leaves the link focused
+         * on Android Chrome for the rest of the session, and the
+         * focus guard would then pin the bar open over every
+         * section the reader scrolls to. Drop the focus for
+         * pointer activations (detail above 0); a keyboard
+         * activation reports detail 0 and keeps its focus, which
+         * is the case the guard exists for (cycle 7, RT-06). */
+        if ((e as MouseEvent).detail > 0) a.blur();
       }
     };
     const onFocusIn = () => {
       focusInside = true;
       show();
     };
-    const onFocusOut = () => {
-      focusInside = false;
+    const onFocusOut = (e: FocusEvent) => {
+      /* The guard clears only when focus actually leaves the
+       * bar, so moving between its links cannot drop it
+       * (cycle 7, RT-06). */
+      if (!nav.contains(e.relatedTarget as Node | null)) {
+        focusInside = false;
+      }
     };
     window.addEventListener("scroll", onScroll, { passive: true });
     nav.addEventListener("click", onClick);
