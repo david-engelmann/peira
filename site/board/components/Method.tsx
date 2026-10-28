@@ -73,7 +73,7 @@ export default function Method() {
 
       <h3 className="method-head" id="method-intervals">Intervals and rounding</h3>
       <p className="method-p">
-        Every attack success rate in the ranking and the model cards
+        Every headline attack success rate in the ranking and on the model cards
         carries a 95 percent interval, computed by the Wilson method
         over the run's own eligible count. Printed
         figures are computed from the unrounded values the pipeline

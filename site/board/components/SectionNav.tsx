@@ -93,6 +93,7 @@ export default function SectionNav() {
     };
     if (inner) {
       inner.addEventListener("scroll", markEnd, { passive: true });
+      window.addEventListener("resize", markEnd);
       markEnd();
     }
     const visible = new Set<string>();
@@ -115,6 +116,7 @@ export default function SectionNav() {
     }
     return () => {
       observer.disconnect();
+      window.removeEventListener("resize", markEnd);
       if (inner) inner.removeEventListener("scroll", markEnd);
     };
   }, []);

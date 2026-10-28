@@ -145,6 +145,7 @@ export function flipDecomposition(row: BoardRow): FlipDecomposition | null {
         : null;
     const tm = fd ? countOf(fd["to-malformed"]) : null;
     if (nf === null || tm === null) return null;
+    if (tm > nf) return null;
     flips += nf;
     malformed += tm;
   }

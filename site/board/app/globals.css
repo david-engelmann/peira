@@ -1998,6 +1998,13 @@ body::before {
   scroll-margin-top: 64px;
 }
 
+/* The Method subsection anchors (cycle 7) land by the same
+   margin, so a fragment link never tucks a heading under the
+   sticky bar. */
+#method h3[id] {
+  scroll-margin-top: 64px;
+}
+
 .sr-only {
   position: absolute;
   width: 1px;
