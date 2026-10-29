@@ -302,6 +302,10 @@ if capture:
 if mode == "nonjson":
     print("this is not json")
     sys.exit(0)
+if mode == "hugeint":
+    print('{"type": "result", "usage": {"inputTokens": '
+          + "1" * 5000 + "}}")
+    sys.exit(0)
 print(json.dumps({
     "type": "result", "subtype": "success", "is_error": False,
     "duration_ms": 10, "duration_api_ms": 9,
@@ -383,6 +387,15 @@ class TestCursorHarnessSubprocess(unittest.TestCase):
 
     def test_non_json_stdout_is_a_provider_error(self):
         with _env(STUB_MODE="nonjson"):
+            with self.assertRaises(ProviderError):
+                self._real_adapter().decide(CASE, "choice", _ctx())
+
+    def test_oversized_integer_literal_is_a_provider_error(self):
+        # An integer literal past the interpreter's conversion limit
+        # makes json.loads raise a plain ValueError, not a
+        # JSONDecodeError. It must still fail closed as a
+        # ProviderError, like every other malformed envelope.
+        with _env(STUB_MODE="hugeint"):
             with self.assertRaises(ProviderError):
                 self._real_adapter().decide(CASE, "choice", _ctx())
 

@@ -260,7 +260,13 @@ class CursorHarnessAdapter(_StructuredLLMBase):
             )
         try:
             envelope = json.loads(proc.stdout)
-        except json.JSONDecodeError as exc:
+        except ValueError as exc:
+            # JSONDecodeError is the ordinary malformed-output case.
+            # The wider ValueError catch also covers the plain
+            # ValueError json raises for an integer literal past the
+            # interpreter's conversion limit: an oversized counter in
+            # the envelope is malformed output too, and must fail
+            # closed here rather than escape as a bare ValueError.
             raise ProviderError(
                 "cursor-agent returned non-JSON output on stdout"
             ) from exc
