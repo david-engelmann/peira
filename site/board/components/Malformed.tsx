@@ -9,6 +9,7 @@ import {
 } from "@/lib/payload";
 import { fmtInt, fmtPct } from "@/lib/format";
 import { vendorColorOf } from "@/lib/vendorColors";
+import VendorLogo from "./VendorLogo";
 
 /**
  * Malformed rates and the admission rule, design system
@@ -16,25 +17,41 @@ import { vendorColorOf } from "@/lib/vendorColors";
  * because the ranking raises the question this section answers).
  *
  * One list, worst first, the order the previous board's strip
- * was verified in. The axis runs 0 to 15 percent on round ticks
+ * was verified in. The axis is data-driven (cycle 6, C6-02):
+ * while the worst printed rate fits the 0 to 15 percent scale
  * (census F-15, which also bans the old per-row admission
- * ticks): the 5 percent admission line is a single continuous
- * rule drawn once across every bar. Flagged results draw an
- * amber outline bar with an amber value and a flagged tag, the
- * same encoding as the ranking's flagged strip, and amber
- * appears on no other row. A ranked bar past the line would
- * draw in red, the design's over-threshold mark; none exists
- * on this payload. Results whose printed rate is 0.0 percent
- * fold into one summary line (the standing Round 21 S6 rule,
- * confirmed by the census).
+ * ticks) the axis is that scale on round ticks; past it, the
+ * axis extends to the smallest 10 percent step at or above
+ * the worst rate, ticked every 10, so a bar's fill always
+ * matches the axis it is read on and no bar can saturate its
+ * track under a smaller scale maximum. The 5 percent
+ * admission line is a single continuous rule drawn once
+ * across every bar. Flagged results draw an amber outline
+ * bar with an amber value and a flagged tag, the same
+ * encoding as the ranking's flagged strip, and amber appears
+ * on no other row. A ranked bar past the line would draw in
+ * red, the design's over-threshold mark; none exists on this
+ * payload. Results whose printed rate is 0.0 percent fold
+ * into one summary line (the standing Round 21 S6 rule,
+ * confirmed by the census). Every row also carries the
+ * maker's vendor chip beside its name, the heatmap's
+ * pattern, so maker identity never rides on bar color
+ * alone (cycle 6, C6-11).
  */
 
-const MALFORMED_AXIS_MAX = 0.15;
-const MAL_TICKS = [0, 0.05, 0.1, 0.15];
-
-/** Position on the malformed axis as a percent of the strip. */
-function malPct(value: number): number {
-  return Math.min(100, Math.max(0, (value / MALFORMED_AXIS_MAX) * 100));
+/**
+ * The axis maximum and its ticks for the rates being drawn.
+ * The low branch is the historical 0 to 15 scale; the wide
+ * branch rounds the worst rate up to a 10 percent step.
+ */
+function malformedAxis(maxRate: number): { max: number; ticks: number[] } {
+  if (!(maxRate > 0.15)) {
+    return { max: 0.15, ticks: [0, 0.05, 0.1, 0.15] };
+  }
+  const max = Math.ceil(maxRate / 0.1) * 0.1;
+  const ticks: number[] = [];
+  for (let t = 0; t <= max + 1e-9; t += 0.1) ticks.push(t);
+  return { max, ticks };
 }
 
 export default function Malformed() {
@@ -56,6 +73,12 @@ export default function Malformed() {
   );
   const folded = sorted.length - printed.length;
   const versions = boardVersions();
+  const axis = malformedAxis(
+    printed.reduce((m, r) => Math.max(m, r.malformed_rate ?? 0), 0),
+  );
+  /** Position on the malformed axis as a percent of the strip. */
+  const malPct = (value: number): number =>
+    Math.max(0, (value / axis.max) * 100);
 
   return (
     <section
@@ -80,11 +103,11 @@ export default function Malformed() {
         <div className="mal-limit-label" style={{ left: `${malPct(0.05)}%` }}>
           5% admission limit
         </div>
-        {MAL_TICKS.map((tick, i) => (
+        {axis.ticks.map((tick, i) => (
           <span
             key={tick}
             className={`mal-tick num${
-              i === 0 ? " first" : i === MAL_TICKS.length - 1 ? " last" : ""
+              i === 0 ? " first" : i === axis.ticks.length - 1 ? " last" : ""
             }`}
             style={{ left: `${malPct(tick)}%` }}
           >
@@ -115,6 +138,7 @@ export default function Malformed() {
                 <div className="cell-name">
                   <div className="name-line">
                     {flagged && <span className="flag-tag">Flagged</span>}
+                    <VendorLogo row={row} size="mini" />
                     {name}
                   </div>
                   {dupes.has(name) && (

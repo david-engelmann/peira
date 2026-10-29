@@ -26,7 +26,6 @@ import {
   severitiesOf,
   costStateOf,
   runDateWords,
-  shortHash,
   versionForProvenance,
 } from "@/lib/cards";
 import VendorLogo from "./VendorLogo";
@@ -141,6 +140,13 @@ export default function ModelCard({
           {ci !== null && (
             <span className="hl-sub num">95% CI {fmtCi(ci)}</span>
           )}
+          {row.asr_conditional !== null && (
+            <span className="hl-sub">
+              Counted on eligible cases only. Under attack, a wrong
+              answer, an abstention, or malformed output counts as
+              attack success.
+            </span>
+          )}
         </div>
         <div className="hl-fig">
           <span className="hl-label">Benign accuracy</span>
@@ -248,10 +254,8 @@ export default function ModelCard({
                 <span className="spark-name">
                   {familyFullName(key)}
                 </span>
-                <span className="spark-track">
-                  <span className="spark-slot">·</span>
-                </span>
-                <span className="spark-value">·</span>
+                <span className="spark-track" />
+                <span className="spark-value">--</span>
               </div>
             );
           }
@@ -281,9 +285,27 @@ export default function ModelCard({
         })}
       </div>
 
-      <p className="spark-legend">
-        Bars carry the model's color. The weakest family is red.
-      </p>
+      {(() => {
+        /* The caption states only what this card's own bars do
+           (cycle 6, C6-13): the color sentence when a bar draws,
+           the red sentence when a weakest family is drawn red,
+           and the dash clause when a family was not measured. */
+        const hasNa = familyKeys.some((key) => {
+          const fam = fams.get(key);
+          return !fam || fam.asr === null;
+        });
+        const parts: string[] = [];
+        if (worst !== null && worst > 0) {
+          parts.push("Bars carry the model's color.");
+          parts.push("The weakest family is red.");
+        }
+        if (hasNa) {
+          parts.push("A dash marks a family the run did not measure.");
+        }
+        return parts.length > 0 ? (
+          <p className="spark-legend">{parts.join(" ")}</p>
+        ) : null;
+      })()}
 
       <p className="card-subhead">Flip rate by severity</p>
       <div className="sev-grid">
@@ -310,7 +332,7 @@ export default function ModelCard({
 
       {taxed ? (
         <p className="tax-line">
-          Robustness tax {fmtTax(row.robustness_tax as number)}. The tax
+          The tax
           is measured against the best full suite benign accuracy (
           {benchmarks.benignSetter}, {fmtPct(benchmarks.benignValue)}) and
           the best full suite attacked ECE ({benchmarks.eceSetter},{" "}
@@ -339,8 +361,7 @@ export default function ModelCard({
         <p>
           contract {prov.contractVersion ?? "·"} · dataset{" "}
           {prov.datasetVersion ?? row.dataset_version ?? "·"} · seed{" "}
-          {prov.seed ?? "·"} · manifest{" "}
-          {prov.manifestSha256 ? shortHash(prov.manifestSha256) : "·"}
+          {prov.seed ?? "·"}
         </p>
       </div>
 

@@ -1546,6 +1546,16 @@ body::before {
   justify-content: space-between;
   gap: 16px;
 }
+
+/* The malformed row's name line carries the maker's vendor
+   chip beside the name (cycle 6, C6-11), the heatmap's flex
+   pattern, scoped to malformed rows so the ranking's own
+   name line is untouched. */
+.mal-row .name-line {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
 .mal-value {
   font-size: 15.5px;
   font-weight: 600;
@@ -1567,7 +1577,6 @@ body::before {
   top: 0;
   bottom: 0;
   background: var(--ink-2);
-  border-right: 2px solid var(--ink-1);
   border-radius: 2px 0 0 2px;
 }
 .mal-fill.flagged {
@@ -1577,7 +1586,12 @@ body::before {
 }
 .mal-fill.over {
   background: var(--red);
-  border-right-color: var(--red);
+}
+/* Cycle 6 (C6-08): a row carrying a wire sub-line gives the
+   sub-line the same air above its track that a plain row's
+   name has, so the two-line entry keeps the section rhythm. */
+.mal-row .wire-line {
+  margin-bottom: 3px;
 }
 .mal-fold {
   color: var(--ink-2);
@@ -1679,6 +1693,20 @@ body::before {
   letter-spacing: 0.03em;
   line-height: 1.5;
   color: var(--ink-1);
+}
+
+/* Cycle 6 (C6-07): each stats segment is one nowrap unit and
+   its separator travels inside it, after the value, so lines
+   wrap only between segments and a separator can end a line
+   but never lead one. */
+.idx-line2 .dl-seg {
+  white-space: nowrap;
+}
+
+/* The phone stats-line toggle (cycle 6, C6-15) exists in the
+   markup at all widths and is shown only at phone width. */
+.idx-toggle-row {
+  display: none;
 }
 
 /* The expanded card. A panel, per the surface rules (it holds
@@ -1818,12 +1846,6 @@ body::before {
 .spark-fill.worst {
   background: var(--red);
 }
-.spark-slot {
-  display: block;
-  text-align: center;
-  color: var(--ink-3);
-  line-height: 9px;
-}
 .spark-value {
   font-size: 12.5px;
   font-weight: 600;
@@ -1960,6 +1982,26 @@ body::before {
   .idx-line2 {
     margin-left: 0;
   }
+  /* Cycle 6 (C6-07): the ranking's phone rule hides bare
+     .dl-sep elements; the index keeps its separators, inside
+     their segments, at this width too. */
+  .idx-line2 .dl-sep {
+    display: inline;
+  }
+  /* Cycle 6 (C6-15): the index head restacks at phone width.
+     The name flexes to the full first line beside the rank and
+     the mark, so no name wraps mid-token, and DETAILS moves to
+     the end of the stats line. */
+  .idx-line1 .idx-toggle {
+    display: none;
+  }
+  .idx-name {
+    flex: 1 1 auto;
+  }
+  .idx-toggle-row {
+    display: block;
+    margin-left: auto;
+  }
   .card-body {
     padding: 14px 14px 12px;
   }
@@ -1969,9 +2011,26 @@ body::before {
   .sev-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
+  /* Cycle 6 (C6-04): the card family block restacks at phone
+     width, the cycle-5 heatmap pattern. The family name takes
+     its own full-width line, so it can never clip mid-token;
+     the bar and its value run on the line below. */
   .spark-row {
-    grid-template-columns: 128px 1fr 30px;
-    gap: 8px;
+    grid-template-columns: 1fr 30px;
+    grid-template-areas:
+      "name name"
+      "track value";
+    gap: 4px 8px;
+  }
+  .spark-name {
+    grid-area: name;
+    white-space: normal;
+  }
+  .spark-track {
+    grid-area: track;
+  }
+  .spark-value {
+    grid-area: value;
   }
   .mal-limit-label {
     transform: translateX(6px);
@@ -1984,7 +2043,7 @@ body::before {
     grid-template-columns: 1fr;
   }
   .spark-row {
-    grid-template-columns: 108px 1fr 30px;
+    grid-template-columns: 1fr 30px;
   }
 }
 
@@ -2338,6 +2397,37 @@ body::before {
   font-size: 12.5px;
 }
 
+/* Cycle 6 (C6-03): flagged status inside Compare uses the
+   board's existing flagged vocabulary only. The pill sits
+   inline after the header name; the flagged side's malformed
+   value and its family-bar letter carry the amber. Fills stay
+   in vendor color. */
+.cmp-th-model .flag-tag {
+  margin-left: 8px;
+}
+
+/* The compare header's name unit: the maker's vendor chip
+   rides with the name (cycle 6, C6-11) as one inline-flex
+   item, so the phone restack moves them together. */
+.cmp-th-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.cmp-table td.flagged-val {
+  color: var(--amber);
+}
+.cmp-fam-side.flagged {
+  color: var(--amber);
+}
+
+/* Cycle 6 (C6-05): a value cell never splits across lines at
+   any width, so an operator can never strand from its figure. */
+.cmp-table td {
+  white-space: nowrap;
+}
+
 .cmp-note {
   color: var(--ink-2);
   max-width: 68ch;
@@ -2362,6 +2452,86 @@ body::before {
   .cmp-table th,
   .cmp-table td {
     padding: 8px 6px;
+  }
+
+  /* Cycle 6 (C6-05): the table head restacks at phone width.
+     Each model name takes its own full-width line, so no name
+     can wrap mid-token; the delta label follows as a complete
+     phrase; METRIC keeps the left edge as the body's row-label
+     header. The body grid below is unchanged. */
+  .cmp-table thead {
+    display: block;
+    width: 100%;
+  }
+  .cmp-table thead tr {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    width: 100%;
+  }
+  .cmp-table thead th {
+    text-align: right;
+  }
+  .cmp-table thead th.cmp-th-metric {
+    order: 0;
+    align-self: flex-start;
+    text-align: left;
+  }
+  .cmp-table thead th[data-cmp-side="a"] {
+    order: 1;
+  }
+  .cmp-table thead th[data-cmp-side="b"] {
+    order: 2;
+  }
+  .cmp-table thead th.cmp-th-delta {
+    order: 3;
+  }
+  .cmp-th-model {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    align-self: stretch;
+    gap: 4px;
+    white-space: nowrap;
+  }
+  .cmp-th-model .flag-tag {
+    margin-left: 0;
+  }
+
+  /* Cycle 6 repair (post-review verification): the restacked
+     head's nowrap name line still sets the table's intrinsic
+     minimum width, and auto layout hands the excess to the
+     first body column, pushing model B off the right edge
+     (worst with a long name in a header: the table measured
+     431 px in a 358 px section, and the page scrolled
+     sideways). Fixed layout with explicit body column
+     widths ends that: the columns sum to the table's width
+     whatever the headers contain. The split gives the metric
+     column the most room because its row labels are the
+     longest strings in the body, the two model columns the
+     value widths, and the delta column, which holds the
+     shortest strings, the least. The head's overflow rule
+     can only clip a name line wider than the section itself;
+     the widest name line the width probe measured on this
+     payload is 209 px against a 358 px section, so no
+     current name reaches it. */
+  .cmp-table {
+    table-layout: fixed;
+  }
+  .cmp-table thead {
+    overflow: hidden;
+  }
+  .cmp-table tbody th {
+    width: 36%;
+  }
+  .cmp-table tbody td:nth-of-type(1) {
+    width: 22%;
+  }
+  .cmp-table tbody td:nth-of-type(2) {
+    width: 20%;
+  }
+  .cmp-table tbody td:nth-of-type(3) {
+    width: 22%;
   }
 
   .cmp-families {

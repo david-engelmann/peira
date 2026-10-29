@@ -1001,12 +1001,15 @@ function assertCardText(blockText, row, where) {
   );
   need(provVersion, "provenance version, cut marker on any cut");
   if (prov.manifest_sha256) {
-    need(
-      `${prov.manifest_sha256.slice(0, 12)}…`,
-      "manifest hash head with cut marker",
-    );
-    if (blockText.includes(prov.manifest_sha256)) {
-      fail(`${where} ${row.run_id}: full manifest hash printed on the card`);
+    /* Cycle 6 (C6-14): the card provenance no longer prints the
+     * manifest hash in any form. A truncated hash serves no
+     * reader; the full hash never prints either. The check keys
+     * on the hash's first eight hex digits, so the full value
+     * and every truncation of eight or more digits fail on the
+     * one test (red team RT-06: the earlier pair of exact-string
+     * checks let variant truncations through). */
+    if (blockText.includes(prov.manifest_sha256.slice(0, 8))) {
+      fail(`${where} ${row.run_id}: manifest hash printed on the card`);
     }
   }
 }

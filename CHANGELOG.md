@@ -7,6 +7,31 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
 
 ## [Unreleased]
 
+### Board malformed, compare, and model cards: design perfection cycle 6
+
+- The malformed section's axis now follows the data. While the
+  worst printed rate fits the historical 0 to 15 percent scale
+  the axis is that scale; past it, the axis extends to the
+  smallest 10 percent step at or above the worst rate, so a
+  bar's fill always matches the axis it is read on. Every row
+  carries its maker's vendor mark beside its name.
+- Compare marks a flagged result everywhere it names it: a
+  flagged suffix in both pickers, the flagged pill in its
+  side's table header, its malformed rate in amber, its
+  family-bar letter in amber, and a caption stating it is not
+  ranked. At phone widths the table head restacks so no model
+  name wraps mid-token, and the table fits its section in
+  every pairing.
+- Model cards state the base of the attack success figure,
+  counted on eligible cases only, where a wrong answer, an
+  abstention, or malformed output counts as attack success.
+  The card provenance no longer prints the manifest hash in
+  any form, and a family a run did not measure prints an
+  empty track and a dash instead of a speck.
+- Each maker's mark is defined once per page and referenced
+  by every chip, which brings the board's initial transfer
+  back under its 500 KB budget at 436.3 KB.
+
 ### Board Method and chrome: design perfection cycle 7
 
 - A flagged result's own page now leads its head description

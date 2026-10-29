@@ -6,6 +6,8 @@ import {
   modelCounts,
 } from "@/lib/payload";
 
+import VendorSprite from "@/components/VendorSprite";
+
 import "./globals.css";
 
 /**
@@ -79,6 +81,7 @@ export default function RootLayout({
         <a className="skip" href="#main">
           Skip to content
         </a>
+        <VendorSprite />
         {children}
         <script
           type="application/ld+json"

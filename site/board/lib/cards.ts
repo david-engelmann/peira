@@ -56,23 +56,12 @@ export function provenanceOf(row: BoardRow): ProvenanceData {
 }
 
 /**
- * A hash as the provenance block prints it. A long hash is cut
- * to its first 12 characters and the cut carries the ellipsis
- * marker, the design's truncation sign (the name policy prints
- * a pinned revision the same way), so a shortened identifier
- * never passes for a complete one (census F-05).
- */
-export function shortHash(hash: string): string {
-  return hash.length > 12 ? `${hash.slice(0, 12)}…` : hash;
-}
-
-/**
  * The version as the provenance block prints it. A pinned
  * Hugging Face revision rides inside some versions as a full
  * 40 character hash. The provenance block truncates a long hex
  * run to its first 12 characters and marks the cut with the
- * ellipsis, the same treatment the manifest hash gets, so a
- * hash is never a headline fact and never reads as complete.
+ * ellipsis, so a hash is never a headline fact and never
+ * reads as complete.
  * The full display name, hash included, still stands
  * untruncated in the card head under the name policy.
  */
