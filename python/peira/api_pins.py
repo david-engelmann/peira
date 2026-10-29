@@ -123,6 +123,9 @@ PINNED_API_MODELS: dict[str, str] = {
     "minimax-structured": "MiniMax-M3",
     "openrouter-structured": "google/gemini-3.8-flash",
     "mercury-structured": "mercury-3",
+    # A Cursor harness variant label, not a vendor API id: the
+    # measurement surface is Cursor's agent (adapters/cursor_harness.py).
+    "cursor-harness": "grok-4.7-high-fast",
 }
 
 # Old pins the vendors have retired: old ID -> replacement ID.
@@ -295,6 +298,17 @@ _VENDOR_ID_PATTERNS: dict[str, re.Pattern[str]] = {
     "qwen": re.compile(r"^qwen\d*(\.\d+)?(-[a-z0-9]+)+$"),
     "minimax": re.compile(r"^MiniMax-M\d+(\.\d+)?(-[A-Za-z0-9]+)*$"),
     "mercury": re.compile(r"^mercury-\d+(\.\d+)?(-[a-z]+)?$"),
+    # Cursor variant labels: a vendor model base carrying a version
+    # number, plus a serving or reasoning variant suffix (the pinned
+    # label is grok-4.7-high-fast). The version anchor is what makes
+    # the shape check worth anything: a bare word pair matches
+    # nothing here. Which labels are enabled is gated separately by
+    # the pin table and the adapter's SUPPORTED_MODEL_IDS; the live
+    # CLI verification recorded at each pin is the fabrication check
+    # for the rest.
+    "cursor": re.compile(
+        r"^[a-z]+(-[a-z0-9]+)*-([a-z]\d+|\d+)(\.\d+)?(-[a-z0-9]+)*"
+        r"-(high|low|max|fast|smart)$"),
     "openrouter": re.compile(r"^[a-z0-9][a-z0-9_.-]*/[A-Za-z0-9][A-Za-z0-9._-]*$"),
 }
 

@@ -2175,6 +2175,42 @@ is part of the cache namespace. Effort probes on 2026-10-24:
 medium returned 39 reasoning tokens and high 54 on the same
 prompt, both HTTP 200.
 
+## Cursor harness (agent CLI)
+
+No pip extra. Install the Cursor CLI from cursor.com, set
+`CURSOR_API_KEY` to a Cursor User API key, then run
+
+```bash
+export CURSOR_API_KEY=<redacted>
+peira run --adapter peira.adapters.cursor_harness:CursorHarnessAdapter --suite trial-demo
+```
+
+`CursorHarnessAdapter` measures a model the way a Cursor user
+actually reaches it: through Cursor's own agent (the `agent` CLI in
+headless print mode, `--mode ask`, read-only; `--trust` is passed
+so the CLI runs non-interactively against the adapter's fresh
+empty workspace directory instead of stopping on its trust
+prompt), with Cursor's system
+prompt, model configuration, and serving choices in the loop. It is
+not a bare-wire measurement of the underlying model and never
+claims to be: the model id is Cursor's variant label, the harness
+is named in the adapter, the cache namespace, and the transcript,
+and the sampling record is `provider-incapable` because the harness
+exposes no temperature or seed control.
+
+One pinned model: `grok-4.7-high-fast`, Cursor's high-reasoning
+fast-serving variant of xAI's grok-4.7, verified live 2026-10-24.
+The run draws on the account's Cursor plan (included usage), so
+pricing is $0.0 by the self-hosted convention in
+`python/peira/data/pricing.json`. The real consumption is recorded
+per call from the CLI envelope (input, output, and cache-read
+tokens). The overhead is large: one probe call used 13,366 input
+tokens for a one-word answer. The prompt sent is the structured
+pipeline's composed prompt with the decision schema rendered into
+the prompt text (a text harness has no response_format channel, so
+the contract travels in words), and replies go through the same
+strict JSON parse and schema validation.
+
 ## Inception Mercury Decide
 
 No extra needed (stdlib transport). Set `INCEPTION_API_KEY`, then run
