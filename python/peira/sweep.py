@@ -706,6 +706,7 @@ def run_sweep_suite(
     item_timeout: float | None = None,
     run_timeout: float | None = None,
     max_tokens_per_call: int | None = None,
+    seal_checkpoint_dir: Path | str | None = None,
 ) -> Any:
     """Run an attack-strength sweep through the shared suite machinery.
 
@@ -715,10 +716,25 @@ def run_sweep_suite(
     records carry budget_to_first_flip. Everything else (concurrency,
     retries, checkpoints, resume, artifact sealing) is the shared
     :func:`peira.runner.run_suite` machinery.
+
+    ``seal_checkpoint_dir`` is accepted for signature parity with
+    :func:`peira.runner.run_suite` (``cmd_run`` forwards its whole
+    kwargs dict here) but a non-None value is refused when seal
+    checkpointing is active: the sweep substitutes its own
+    summarizer, whose summary carries no bootstrap for seal
+    checkpointing to resume. With the ``PEIRA_SEAL_MONOLITHIC``
+    kill switch set the parameter is inert, as everywhere else.
     """
     from functools import partial
 
+    from peira import seal_checkpoint
     from peira.runner import run_suite
+
+    if seal_checkpoint.seal_checkpointing_active(seal_checkpoint_dir):
+        raise ValueError(
+            "seal_checkpoint_dir does not apply to sweep runs: the "
+            "sweep summarizer has no bootstrap to checkpoint"
+        )
 
     grid = validate_budget_grid(budget_grid)
     _require_sweepable(strength_dimension, cases)
