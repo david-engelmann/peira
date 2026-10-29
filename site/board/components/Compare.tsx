@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, type CSSProperties } from "react";
 import type { CompareData, CompareRow } from "@/lib/compare";
+
 import {
   fmtPct,
   fmtPctCell,
@@ -28,6 +29,39 @@ import {
  * comparison is a shareable link, the behaviour the previous
  * board promised.
  */
+
+/**
+ * The vendor chip for a shaped compare row, the same box the
+ * board's VendorLogo draws, fed from the row's carried mark
+ * fields and family color: maker identity rides beside the
+ * name in the table header, so the header does not ask bar
+ * color alone to say whose result it is (cycle 6, C6-11).
+ * The family lines carry no chip, by the addendum's explicit
+ * non-change: the header chip ties each side's letter and
+ * color to its mark and name within the same section.
+ */
+function MarkChip({ row }: { row: CompareRow }) {
+  const style = { "--vc": row.vendorColor } as CSSProperties;
+  return (
+    <span
+      className={`vendor-chip mini${row.logoSlug === null ? " mono" : ""}`}
+      style={style}
+      role="img"
+      aria-label={row.markLabel}
+      title={row.markLabel}
+    >
+      {row.logoSlug !== null ? (
+        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+          <use href={`#vlogo-${row.logoSlug}`} />
+        </svg>
+      ) : (
+        <span className="vendor-letter" aria-hidden="true">
+          {row.monoLetter}
+        </span>
+      )}
+    </span>
+  );
+}
 
 type MetricKey =
   | "asr" | "benign" | "malformed"
@@ -101,6 +135,7 @@ function Picker({
               .map((r) => (
                 <option key={r.slug} value={r.slug}>
                   {r.name}
+                  {r.group === "flagged" ? " (flagged)" : ""}
                   {r.wire ? ` (${r.wire})` : ""}
                 </option>
               ))}
@@ -183,14 +218,26 @@ export default function Compare({ data }: { data: CompareData }) {
         <thead>
           <tr>
             <th scope="col" className="cmp-th-metric">Metric</th>
-            <th scope="col" className="cmp-th-model">
-              {a.name}
+            <th scope="col" className="cmp-th-model" data-cmp-side="a">
+              <span className="cmp-th-name">
+                <MarkChip row={a} />
+                {a.name}
+              </span>
               {a.wire && <span className="cmp-th-wire">{a.wire}</span>}
+              {a.group === "flagged" && (
+                <span className="flag-tag">Flagged</span>
+              )}
             </th>
             <th scope="col" className="cmp-th-delta">A minus B</th>
-            <th scope="col" className="cmp-th-model">
-              {b.name}
+            <th scope="col" className="cmp-th-model" data-cmp-side="b">
+              <span className="cmp-th-name">
+                <MarkChip row={b} />
+                {b.name}
+              </span>
               {b.wire && <span className="cmp-th-wire">{b.wire}</span>}
+              {b.group === "flagged" && (
+                <span className="flag-tag">Flagged</span>
+              )}
             </th>
           </tr>
         </thead>
@@ -214,7 +261,11 @@ export default function Compare({ data }: { data: CompareData }) {
               <tr key={m.key} data-cmp-row={m.key}>
                 <th scope="row" className="cmp-metric">{m.label}</th>
                 <td
-                  className="cmp-val num"
+                  className={`cmp-val num${
+                    m.key === "malformed" && a.group === "flagged"
+                      ? " flagged-val"
+                      : ""
+                  }`}
                   data-cmp-value={m.key}
                   data-cmp-side="a"
                   data-cmp-raw={av === null ? "" : av}
@@ -236,7 +287,11 @@ export default function Compare({ data }: { data: CompareData }) {
                   )}
                 </td>
                 <td
-                  className="cmp-val num"
+                  className={`cmp-val num${
+                    m.key === "malformed" && b.group === "flagged"
+                      ? " flagged-val"
+                      : ""
+                  }`}
                   data-cmp-value={m.key}
                   data-cmp-side="b"
                   data-cmp-raw={bv === null ? "" : bv}
@@ -251,6 +306,16 @@ export default function Compare({ data }: { data: CompareData }) {
           })}
         </tbody>
       </table>
+
+      {(a.group === "flagged" || b.group === "flagged") && (
+        <p className="cmp-note cmp-flagged-note">
+          {a.group === "flagged" && b.group === "flagged"
+            ? "Both models are flagged and neither is ranked."
+            : a.group === "flagged"
+              ? "Model A is flagged and is not ranked."
+              : "Model B is flagged and is not ranked."}
+        </p>
+      )}
 
       <div className="cmp-families">
         {data.familyNames.map((fname, i) => (
@@ -269,22 +334,28 @@ export default function Compare({ data }: { data: CompareData }) {
                     data-cmpasr={v === null ? "" : v}
                     {...(v === null ? { "data-na": "true" } : {})}
                   >
-                    <span className="cmp-fam-side mono">{side.toUpperCase()}</span>
+                    <span
+                      className={`cmp-fam-side mono${
+                        row.group === "flagged" ? " flagged" : ""
+                      }`}
+                    >
+                      {side.toUpperCase()}
+                    </span>
+                    <span className="cmp-fam-track">
+                      {v !== null && (
+                        <span
+                          className="cmp-fam-fill"
+                          style={{
+                            width: `${Math.max(v * 100, v > 0 ? 0.8 : 0)}%`,
+                            background: row.vendorColor,
+                          }}
+                        />
+                      )}
+                    </span>
                     {v === null ? (
-                      <span className="not-measured">·</span>
+                      <span className="cmp-fam-val">--</span>
                     ) : (
-                      <>
-                        <span className="cmp-fam-track">
-                          <span
-                            className="cmp-fam-fill"
-                            style={{
-                              width: `${Math.max(v * 100, v > 0 ? 0.8 : 0)}%`,
-                              background: row.vendorColor,
-                            }}
-                          />
-                        </span>
-                        <span className="cmp-fam-val num">{fmtWholePct(v)}</span>
-                      </>
+                      <span className="cmp-fam-val num">{fmtWholePct(v)}</span>
                     )}
                   </div>
                 );
@@ -294,6 +365,11 @@ export default function Compare({ data }: { data: CompareData }) {
         ))}
       </div>
 
+      <p className="cmp-note">
+        Attack success is counted on eligible cases only, and
+        under attack a wrong answer, an abstention, or malformed
+        output counts as attack success.
+      </p>
       <p className="cmp-note">
         Deltas are model A minus model B, computed from the unrounded
         payload values and printed at the precision of their row. The

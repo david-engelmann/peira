@@ -640,6 +640,38 @@ await page.goto(pageUrl, { waitUntil: "networkidle0" });
 const failures = [];
 const notes = [];
 
+/* Cycle 6 (C6-02): the malformed axis rule, stated once for
+ * this audit. The fill, axis-span, saturation and
+ * admission-line expectations in the per-width pass all
+ * derive from axisMaxFor, and the vectors below pin both of
+ * its branches today: the shipped payload's worst printed
+ * rate is under 15 percent, so without them the wide branch
+ * (the branch this cycle exists to add) would first be
+ * exercised by the live data that needs it. The vectors pin
+ * this audit's rule; the component's wide branch is exercised
+ * end to end when a payload whose worst printed rate passes
+ * 15 percent is audited (the staged publish payload, worst
+ * 60.8 percent). */
+function axisMaxFor(worstRate) {
+  return worstRate > 0.15 ? Math.ceil(worstRate / 0.1) * 0.1 : 0.15;
+}
+for (const [rate, expected] of [
+  [0.0, 0.15],
+  [0.1191, 0.15],
+  [0.15, 0.15],
+  [0.1501, 0.2],
+  [0.1999, 0.2],
+  [0.3, 0.3],
+  [0.608, 0.7],
+]) {
+  const got = axisMaxFor(rate);
+  if (Math.abs(got - expected) > 1e-9) {
+    failures.push(
+      `malformed axis rule: worst rate ${rate} gives axis maximum ${got}, the rule expects ${expected}`,
+    );
+  }
+}
+
 for (const width of [1440, 1280, 900, 390]) {
   await page.setViewport({ width, height: 900 });
   await new Promise((r) => setTimeout(r, 350));
@@ -827,6 +859,20 @@ for (const width of [1440, 1280, 900, 390]) {
     // with its context; the Node side decides which contexts
     // are allowed.
     const AMBER = "rgb(232, 163, 61)";
+    /* The compare dataset's run id per slug, for the C6-03
+     * flagged context below (red team RT-07). Only the identity
+     * mapping is read from the shaped dataset; the group verdict
+     * itself is the Node side's, keyed to the payload's flagged
+     * set by run id (flaggedIdsA), so a group regression in the
+     * shaping cannot certify itself (standards review, cycle 6
+     * merge gate). */
+    const cmpRunIdBySlug = {};
+    try {
+      const cmpScript = document.querySelector("script[data-compare-rows]");
+      for (const r of JSON.parse(cmpScript?.textContent ?? "[]")) {
+        cmpRunIdBySlug[r.slug] = r.runId;
+      }
+    } catch {}
     document.querySelectorAll("body *").forEach((el) => {
       if (!vis(el)) return;
       const s = getComputedStyle(el);
@@ -850,6 +896,34 @@ for (const width of [1440, 1280, 900, 390]) {
             el.closest("[data-card-for]")
               ? el.closest("[data-card-for]").getAttribute("data-card-for")
               : null,
+          /* Cycle 6 (C6-03): Compare marks a flagged side with
+           * the flag pill in its header, the amber malformed
+           * value, and the amber family-bar letter. The collector
+           * records the marked side's selected run id, read from
+           * the pickers' current selection; the Node side allows
+           * the amber only when that run id is in the payload's
+           * flagged set, so a regression that rendered any of
+           * the three for a side that is not flagged fails
+           * (red team RT-07). */
+          cmpRunId: (() => {
+            if (!el.closest('[data-section="compare"]')) return null;
+            const cls = el.classList;
+            const marked =
+              cls.contains("flag-tag") ||
+              cls.contains("flagged-val") ||
+              (cls.contains("cmp-fam-side") && cls.contains("flagged"));
+            if (!marked) return null;
+            const holder =
+              el.closest("[data-cmp-side]") ?? el.closest("[data-cmpside]");
+            const side =
+              holder?.getAttribute("data-cmp-side") ??
+              holder?.getAttribute("data-cmpside");
+            if (side !== "a" && side !== "b") return null;
+            const sel = document.querySelector(
+              side === "a" ? "#cmp-picker-a" : "#cmp-picker-b",
+            )?.value;
+            return cmpRunIdBySlug[sel] ?? null;
+          })(),
         });
       }
     });
@@ -1351,6 +1425,7 @@ for (const width of [1440, 1280, 900, 390]) {
   for (const use of report.amberUses) {
     const allowed =
       use.inFlaggedStrip ||
+      (use.cmpRunId != null && flaggedIdsA.has(use.cmpRunId)) ||
       (use.heatNameId !== null && flaggedIdsA.has(use.heatNameId)) ||
       (use.malId !== null && flaggedIdsA.has(use.malId)) ||
       (use.modelId !== null && flaggedIdsA.has(use.modelId));
@@ -2027,6 +2102,17 @@ for (const width of [1440, 1280, 900, 390]) {
         `width ${width}: malformed holds ${mal.rows.length} bar rows, payload implies ${printedMalA.length}`,
       );
     }
+    /* Cycle 6 (C6-02): the axis is data-driven. It is the 0 to
+     * 15 scale while the worst printed rate fits it, and the
+     * smallest 10 percent step at or above the worst rate past
+     * that. Computed once per width from axisMaxFor; the fill,
+     * saturation, axis-span and admission-line assertions below
+     * all derive from it. */
+    const worstPrinted = printedMalA.reduce(
+      (m, r) => Math.max(m, r.malformed_rate ?? 0),
+      0,
+    );
+    const axisMax = axisMaxFor(worstPrinted);
     mal.rows.forEach((mr, i) => {
       const row = printedMalA[i];
       if (!row) return;
@@ -2040,10 +2126,29 @@ for (const width of [1440, 1280, 900, 390]) {
           `width ${width}: malformed row ${mr.id} prints "${mr.value}", payload gives "${fmtPctA(row.malformed_rate)}"`,
         );
       }
-      const expPct = (row.malformed_rate / 0.15) * 100;
+      /* The expected fill derives from the axis rule above,
+       * and a bar that saturates its track below the axis
+       * maximum fails: saturation is the silent-lie shape
+       * this rule exists to prevent. */
+      const expPct = (row.malformed_rate / axisMax) * 100;
       if (mr.fillPct === null || Math.abs(mr.fillPct - expPct) > 1.6) {
         failures.push(
-          `width ${width}: malformed bar ${mr.id} fills ${mr.fillPct?.toFixed(1)} percent of its track, the 0 to 15 axis expects ${expPct.toFixed(1)}`,
+          `width ${width}: malformed bar ${mr.id} fills ${mr.fillPct?.toFixed(1)} percent of its track, the 0 to ${Math.round(axisMax * 100)} axis expects ${expPct.toFixed(1)}`,
+        );
+      }
+      /* Saturation is judged on the displayed rate (the value
+       * rounded to a tenth of a percent, as printed): a rate
+       * of 0.1999 on a 0.20 axis prints as 20.0 percent, so
+       * its near-full bar agrees with its label and must not
+       * fail; the raw-rate comparison false-fired there. */
+      const dispRate = Math.round(row.malformed_rate * 1000) / 1000;
+      if (
+        mr.fillPct !== null &&
+        mr.fillPct >= 99.9 &&
+        dispRate < axisMax - 1e-9
+      ) {
+        failures.push(
+          `width ${width}: malformed bar ${mr.id} saturates its track at ${mr.fillPct.toFixed(1)} percent while its displayed value ${dispRate} is below the axis maximum ${axisMax}`,
         );
       }
       /* Live-fix round (2026-10-23). The fill-versus-track check
@@ -2060,7 +2165,7 @@ for (const width of [1440, 1280, 900, 390]) {
           : null;
       if (endAxisPct === null || Math.abs(endAxisPct - expPct) > 1.5) {
         failures.push(
-          `width ${width}: malformed bar ${mr.id} ends at ${endAxisPct?.toFixed(1)} percent of the axis span, its value on the 0 to 15 axis expects ${expPct.toFixed(1)}`,
+          `width ${width}: malformed bar ${mr.id} ends at ${endAxisPct?.toFixed(1)} percent of the axis span, its value on the 0 to ${Math.round(axisMax * 100)} axis expects ${expPct.toFixed(1)}`,
         );
       }
       const isFlagged = flaggedIdsA.has(mr.id);
@@ -2077,9 +2182,10 @@ for (const width of [1440, 1280, 900, 390]) {
         failures.push(`width ${width}: ranked malformed value ${mr.id} carries amber`);
       }
     });
-    if (mal.lineXPct === null || Math.abs(mal.lineXPct - 100 / 3) > 0.6) {
+    const expLinePct = (0.05 / axisMax) * 100;
+    if (mal.lineXPct === null || Math.abs(mal.lineXPct - expLinePct) > 0.6) {
       failures.push(
-        `width ${width}: admission line stands at ${mal.lineXPct?.toFixed(2)} percent of the track, the 5 percent mark on a 0 to 15 axis is 33.33`,
+        `width ${width}: admission line stands at ${mal.lineXPct?.toFixed(2)} percent of the track, the 5 percent mark on a 0 to ${Math.round(axisMax * 100)} axis is ${expLinePct.toFixed(2)}`,
       );
     }
     if (

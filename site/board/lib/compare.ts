@@ -21,6 +21,7 @@ import {
 import { calibrationArmsOf, familiesOf, familyFullName, familyOrder } from "@/lib/charts";
 import { costStateOf } from "@/lib/cards";
 import { vendorColorOf } from "@/lib/vendorColors";
+import { vendorOf } from "@/lib/vendor";
 
 export type CompareGroup = "full" | "flagged" | "slice";
 
@@ -50,6 +51,11 @@ export interface CompareRow {
   families: Array<number | null>;
   /** The model's vendor family color, for the paired family bars. */
   vendorColor: string;
+  /** The model's vendor mark, shaped flat like the scatter's:
+   * the logo path key or the monogram letter, plus the label. */
+  logoSlug: string | null;
+  monoLetter: string | null;
+  markLabel: string;
 }
 
 export interface CompareData {
@@ -73,6 +79,7 @@ function shapeRow(
   const arms = calibrationArmsOf(row);
   const cost = costStateOf(row);
   const fams = familiesOf(row);
+  const vendor = vendorOf(row);
   return {
     slug: modelSlug(row, allRows),
     runId: row.run_id,
@@ -94,6 +101,9 @@ function shapeRow(
     latP95: row.latency_ms_p95_attacked ?? null,
     families: famKeys.map((k) => fams.get(k)?.asr ?? null),
     vendorColor: vendorColorOf(row),
+    logoSlug: vendor.kind === "logo" ? vendor.slug : null,
+    monoLetter: vendor.kind === "mono" ? vendor.letter : null,
+    markLabel: vendor.label,
   };
 }
 

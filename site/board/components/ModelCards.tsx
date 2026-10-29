@@ -97,23 +97,23 @@ function IndexSummary({
               ? `${fmtPct(row.asr_conditional)}${ci ? ` ${fmtCiCompact(ci)}` : ""}`
               : "·"}
           </span>
+          <span className="dl-sep">|</span>
         </span>
         <span className="dl-seg">
-          <span className="dl-sep">|</span>
           <span className="dl-k">BENIGN</span>{" "}
           <span className="dl-v num">
             {row.benign_accuracy !== null ? fmtPct(row.benign_accuracy) : "·"}
           </span>
+          <span className="dl-sep">|</span>
         </span>
         <span className="dl-seg">
-          <span className="dl-sep">|</span>
           <span className="dl-k">MALFORMED</span>{" "}
           <span className="dl-v num">
             {row.malformed_rate !== null ? fmtPct(row.malformed_rate) : "·"}
           </span>
+          <span className="dl-sep">|</span>
         </span>
         <span className="dl-seg">
-          <span className="dl-sep">|</span>
           <span className="dl-k">COST</span>{" "}
           <span className="dl-v num">
             {cost.kind === "amount" && fmtUsd(cost.value)}
@@ -121,6 +121,9 @@ function IndexSummary({
             {cost.kind === "local" && "served locally"}
             {cost.kind === "unrecorded" && "no cost recorded"}
           </span>
+        </span>
+        <span className="idx-toggle idx-toggle-row" aria-hidden="true">
+          Details
         </span>
       </span>
     </summary>
@@ -182,7 +185,10 @@ export default function ModelCards() {
         index row carries the headline figures. Open a row for the
         full card, its family bars, its severity flips, and the
         provenance of its run. Every result also stands on its own
-        page, linked from its card.
+        page, linked from its card. ASR is attack success counted
+        on eligible cases only, where under attack a wrong answer,
+        an abstention, or malformed output counts as attack
+        success.
       </p>
       <CardControls />
 

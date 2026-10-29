@@ -1,6 +1,6 @@
 import type { CSSProperties } from "react";
 import type { BoardRow } from "@/lib/payload";
-import { vendorOf, LOGO_PATHS } from "@/lib/vendor";
+import { vendorOf } from "@/lib/vendor";
 import { vendorFamilyOf } from "@/lib/vendorColors";
 
 /**
@@ -32,7 +32,7 @@ export default function VendorLogo({
     >
       {vendor.kind === "logo" ? (
         <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-          <path d={LOGO_PATHS[vendor.slug]} fill="currentColor" />
+          <use href={`#vlogo-${vendor.slug}`} />
         </svg>
       ) : (
         <span className="vendor-letter" aria-hidden="true">
