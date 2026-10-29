@@ -1,4 +1,5 @@
 import { fmtInt } from "@/lib/format";
+import { ASR_AXIS_MAX, ASR_TICKS } from "@/lib/chart";
 import { scatterData } from "@/lib/scatterData";
 import ScatterIsland from "./ScatterIsland";
 
@@ -31,7 +32,8 @@ export default function Scatter() {
       </h2>
       <p className="section-lede">
         Recorded cost for one full run against attack success, on the
-        ranking's shared 0 to 30 percent scale. Every point is named and
+        ranking's shared 0 to {Math.round(ASR_AXIS_MAX * 100)} percent
+        scale. Every point is named and
         carries its maker's mark in its maker's color, and flagged
         results carry an amber ring.
       </p>
@@ -41,6 +43,8 @@ export default function Scatter() {
           plotted={data.plotted}
           rail={data.rail}
           domain={data.domain}
+          axisMax={ASR_AXIS_MAX}
+          ticks={ASR_TICKS}
         />
       </div>
 
@@ -49,6 +53,8 @@ export default function Scatter() {
           plotted={data.plotted}
           rail={data.rail}
           domain={data.domain}
+          axisMax={ASR_AXIS_MAX}
+          ticks={ASR_TICKS}
           phone
         />
       </div>
@@ -61,7 +67,7 @@ export default function Scatter() {
           point's own card says when it is a lower bound.
         </p>
         <p>
-          {fmtInt(data.railCount)} ranked models ran locally and hold
+          {fmtInt(data.railCount)} ranked models hold
           no place on the cost axis, so they sit on the rail at the
           left of the wide chart at their attack success, and on a
           phone they join the list under the plot, in attack success

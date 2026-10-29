@@ -9,7 +9,6 @@ import {
   type MouseEvent,
 } from "react";
 import { fmtPct, fmtCi, fmtUsdExact } from "@/lib/format";
-import { ASR_AXIS_MAX, ASR_TICKS } from "@/lib/chart";
 import {
   placeLabels,
   nudgePoints,
@@ -24,7 +23,10 @@ import type { ScatterDatum } from "@/lib/scatterData";
 /**
  * The cost scatter island (redesign). Receives the shaped
  * point set from lib/scatterData, so no payload module enters
- * the client bundle. Every point is a disc in its maker's
+ * the client bundle. The shared attack success axis arrives
+ * the same way, as props from the server shell: lib/chart
+ * derives it from the payload, and importing that module here
+ * would pull the whole payload into the bundle with it. Every point is a disc in its maker's
  * family color carrying the maker's mark, and every point is
  * named: beside its disc where the deterministic label solver
  * finds a collision-free side, on the rail as a list row
@@ -287,12 +289,13 @@ function buildPoints(
   rail: ScatterDatum[],
   domain: [number, number],
   g: Geom,
+  axisMax: number,
 ): Pt[] {
   const [lo, hi] = domain;
   const logLo = Math.log10(lo);
   const logSpan = Math.log10(hi) - logLo;
   const yOf = (asr: number) =>
-    g.plot.y0 + (1 - asr / ASR_AXIS_MAX) * (g.plot.y1 - g.plot.y0);
+    g.plot.y0 + (1 - asr / axisMax) * (g.plot.y1 - g.plot.y0);
   const xOf = (cost: number) =>
     g.plot.x0 + ((Math.log10(cost) - logLo) / logSpan) * (g.plot.x1 - g.plot.x0);
   const plottedPts: Pt[] = plotted.map((d) => ({
@@ -506,9 +509,19 @@ function Marker({
   );
 }
 
-function Grid({ g, domain }: { g: Geom; domain: [number, number] }) {
+function Grid({
+  g,
+  domain,
+  axisMax,
+  ticks,
+}: {
+  g: Geom;
+  domain: [number, number];
+  axisMax: number;
+  ticks: number[];
+}) {
   const yOf = (asr: number) =>
-    g.plot.y0 + (1 - asr / ASR_AXIS_MAX) * (g.plot.y1 - g.plot.y0);
+    g.plot.y0 + (1 - asr / axisMax) * (g.plot.y1 - g.plot.y0);
   const xOf = (cost: number) =>
     g.plot.x0 +
     ((Math.log10(cost) - Math.log10(domain[0])) /
@@ -525,7 +538,7 @@ function Grid({ g, domain }: { g: Geom; domain: [number, number] }) {
           className="rail-strip"
         />
       )}
-      {ASR_TICKS.map((t) => (
+      {ticks.map((t) => (
         <g key={t}>
           <line
             x1={0}
@@ -583,22 +596,27 @@ interface Solution {
   stack: StackEntry[];
 }
 
-function baseFurniture(g: Geom): Rect[] {
+function baseFurniture(g: Geom, axisMax: number, ticks: number[]): Rect[] {
   return [
     { x: 0, y: 0, w: 104, h: 30 },
     { x: g.plot.x0, y: 4, w: 210, h: 16 },
-    ...ASR_TICKS.map((t) => ({
+    ...ticks.map((t) => ({
       x: g.plot.x0 + 2,
-      y: g.plot.y0 + (1 - t / ASR_AXIS_MAX) * (g.plot.y1 - g.plot.y0) - 17,
+      y: g.plot.y0 + (1 - t / axisMax) * (g.plot.y1 - g.plot.y0) - 17,
       w: 26,
       h: 13,
     })),
   ];
 }
 
-function solveWide(points: Pt[], g: Geom): Solution {
+function solveWide(
+  points: Pt[],
+  g: Geom,
+  axisMax: number,
+  ticks: number[],
+): Solution {
   const furniture: Rect[] = [
-    ...baseFurniture(g),
+    ...baseFurniture(g, axisMax, ticks),
     g.annotTR,
     g.annotBL,
   ];
@@ -720,15 +738,17 @@ function solveWide(points: Pt[], g: Geom): Solution {
 function solvePhone(
   points: Pt[],
   railData: ScatterDatum[],
+  axisMax: number,
+  ticks: number[],
 ): Solution & { stackRows: number } {
   const g = PHONE;
   const furniture: Rect[] = [
     ...g.extraFurniture,
     g.annotTR,
     g.annotBL,
-    ...ASR_TICKS.map((t) => ({
+    ...ticks.map((t) => ({
       x: g.plot.x0 + 2,
-      y: g.plot.y0 + (1 - t / ASR_AXIS_MAX) * (g.plot.y1 - g.plot.y0) - 17,
+      y: g.plot.y0 + (1 - t / axisMax) * (g.plot.y1 - g.plot.y0) - 17,
       w: 26,
       h: 13,
     })),
@@ -1031,11 +1051,15 @@ export default function ScatterIsland({
   plotted,
   rail,
   domain,
+  axisMax,
+  ticks,
   phone,
 }: {
   plotted: ScatterDatum[];
   rail: ScatterDatum[];
   domain: [number, number];
+  axisMax: number;
+  ticks: number[];
   phone?: boolean;
 }) {
   /* The wide island measures its own well and fits its
@@ -1077,12 +1101,14 @@ export default function ScatterIsland({
    * memoize them so hover and focus state changes re-render
    * without re-running the point builder or the solver. */
   const { points, solution } = useMemo(() => {
-    const pts = buildPoints(plotted, rail, domain, g);
+    const pts = buildPoints(plotted, rail, domain, g, axisMax);
     return {
       points: pts,
-      solution: phone ? solvePhone(pts, rail) : solveWide(pts, g),
+      solution: phone
+        ? solvePhone(pts, rail, axisMax, ticks)
+        : solveWide(pts, g, axisMax, ticks),
     };
-  }, [plotted, rail, domain, g, phone]);
+  }, [plotted, rail, domain, g, phone, axisMax, ticks]);
   const dataById = useMemo(
     () =>
       new Map<string, ScatterDatum>(
@@ -1316,7 +1342,7 @@ export default function ScatterIsland({
         data-plot={`${g.plot.x0},${g.plot.y0},${g.plot.x1},${g.plot.y1}`}
         data-rail-cx={g.railCx}
       >
-        <Grid g={g} domain={domain} />
+        <Grid g={g} domain={domain} axisMax={axisMax} ticks={ticks} />
         {!phone && (
           <>
             <text x={2} y={13} className="rail-head">

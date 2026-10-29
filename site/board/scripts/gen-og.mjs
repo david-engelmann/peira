@@ -81,6 +81,30 @@ function quantHU(decStr, decimals) {
   return (neg ? "-" : "") + intOut + (decimals > 0 ? `.${fracOut}` : "");
 }
 const fmtPct = (v) => `${quantHU(shiftPt(expandDec(v), 2), 1)}%`;
+const fmtUsd = (v) => `$${quantHU(expandDec(v), 2)}`;
+
+/* The board's lower-bound rule (lib/charts costIsLowerBound),
+ * replicated on the payload rows: a recorded cost whose priced
+ * calls fall short of its timed calls is a floor, and the model
+ * cards print it with the qualifier. The top corner follows
+ * the same rule. */
+const costIsLowerBound = (r) => {
+  const fams = r.detail?.families;
+  if (!fams || typeof fams !== "object" || Array.isArray(fams)) return false;
+  let costed = 0;
+  let timed = 0;
+  let seen = false;
+  for (const v of Object.values(fams)) {
+    if (!v || typeof v !== "object" || Array.isArray(v)) continue;
+    const nc = v.n_costed_calls;
+    const nl = v.n_latency_calls;
+    if (typeof nc !== "number" || typeof nl !== "number") return false;
+    costed += nc;
+    timed += nl;
+    seen = true;
+  }
+  return seen && costed < timed;
+};
 
 const shortName = (r) => {
   let name = r.display_name;
@@ -114,10 +138,24 @@ const pointName = (r) => {
 };
 
 const fullCases = Math.max(...payload.ranked.map((r) => r.n_cases));
-const versions = {
-  dataset: payload.ranked[0].dataset_version,
-  suite: payload.ranked[0].suite,
-};
+/* Version stamps follow the page's rule (lib/payload's
+ * boardVersions): one dataset and one suite across every
+ * row, or the stamp is not made at all. Reading ranked[0]
+ * stamped whatever the first row happened to carry without
+ * checking the rest (F9 of the 2026-10-29 hardcode audit). */
+const versionPairs = new Set(
+  [...payload.ranked, ...payload.unranked].map(
+    (r) => `${r.dataset_version ?? "unknown"}|${r.suite ?? "unknown"}`,
+  ),
+);
+if (versionPairs.size !== 1) {
+  console.error(
+    `gen-og: payload rows disagree on dataset or suite (${[...versionPairs].join(", ")}): no single version stamp holds for the whole board`,
+  );
+  process.exit(1);
+}
+const [stampDataset, stampSuite] = [...versionPairs][0].split("|");
+const versions = { dataset: stampDataset, suite: stampSuite };
 const dateIso = [...payload.ranked, ...payload.unranked]
   .map((r) => r.created_utc)
   .sort()
@@ -143,10 +181,11 @@ const results = payload.ranked.length + payload.unranked.length;
  * lib/vendor-data.json, the one vendor table for the whole
  * board, shared with lib/vendor and lib/vendorColors, and
  * the mark paths are read out of lib/logoPaths.ts, so the
- * image cannot drift from the board. The headline is a fact
- * of this payload: the priciest run (claude-fable-5-1,
- * $130.31) also carries the highest attack success on the
- * board. */
+ * image cannot drift from the board. The headline and the
+ * corner readings are computed from the payload further down
+ * and guarded there: the generator fails when the payload
+ * does not support them, rather than print a claim the data
+ * has outgrown. */
 const vendorData = JSON.parse(
   readFileSync(path.join(root, "lib", "vendor-data.json"), "utf8"),
 );
@@ -179,6 +218,25 @@ const railRows = nonSlice.filter(
 const costs = plotted.map((r) => r.total_cost_usd);
 const domLo = 10 ** (Math.floor(Math.log10(Math.min(...costs)) * 2) / 2);
 const domHi = 10 ** (Math.ceil(Math.log10(Math.max(...costs)) * 2) / 2);
+/* The attack success axis ceiling, a port of lib/chart.ts's
+ * asrAxisCeiling (F5 of the 2026-10-29 hardcode audit): the
+ * worst ranked rate rounded up to the next 10 percent step,
+ * one further step when it sits exactly on a step, floored
+ * at 0.3. This generator reads the payload JSON directly and
+ * cannot import the board module, so the rule is ported; the
+ * two must move together. */
+function asrAxisCeiling(maxRate) {
+  const stepped = Math.ceil((maxRate - 1e-9) / 0.1) * 0.1;
+  const ceiling = stepped > maxRate + 1e-9 ? stepped : stepped + 0.1;
+  return Math.round(Math.max(0.3, ceiling) * 10) / 10;
+}
+const axisMax = asrAxisCeiling(
+  Math.max(0, ...payload.ranked.map((r) => r.asr_conditional ?? 0)),
+);
+const axisTicks = Array.from(
+  { length: Math.round(axisMax / 0.1) + 1 },
+  (_, i) => i / 10,
+);
 const PLOT = { x0: 168, x1: 1152, y0: 218, y1: 516 };
 const RAIL_CX = 92;
 const xOf = (c) =>
@@ -186,7 +244,7 @@ const xOf = (c) =>
   ((Math.log10(c) - Math.log10(domLo)) /
     (Math.log10(domHi) - Math.log10(domLo))) *
     (PLOT.x1 - PLOT.x0);
-const yOf = (a) => PLOT.y0 + (1 - a / 0.3) * (PLOT.y1 - PLOT.y0);
+const yOf = (a) => PLOT.y0 + (1 - a / axisMax) * (PLOT.y1 - PLOT.y0);
 const esc = (t) =>
   t.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 function disc(r, x, y) {
@@ -209,7 +267,7 @@ function disc(r, x, y) {
  * carries the ranking, but a gridline running behind the
  * column would claim an axis position for discs the spread
  * has moved off their true height. */
-const gridSvg = [0, 0.1, 0.2, 0.3]
+const gridSvg = axisTicks
   .map(
     (t) => `<line x1="148" y1="${yOf(t)}" x2="${PLOT.x1}" y2="${yOf(t)}" stroke="#232c35" stroke-opacity="0.55"/>
     <text x="${PLOT.x0 + 6}" y="${yOf(t) - 6}" class="tick">${Math.round(t * 100)}</text>`,
@@ -320,6 +378,38 @@ const plottedPts = plottedXY.map((p) => ({
   x: p.x,
   y: p.y,
 }));
+/* The corner readings and the headline claim, computed from
+ * this payload and validated before they are drawn (F1 and
+ * F2 of the 2026-10-29 hardcode audit; the pattern is the
+ * verified candidate generator's). The claims stand on the
+ * ranked plotted population, the population the board's own
+ * claims stand on. The headline (the priciest model was the
+ * easiest to flip) and the top corner hold only while the
+ * priciest ranked plotted run is also the most flipped
+ * ranked plotted run, so that is asserted here: a payload
+ * that breaks it fails the build rather than print a false
+ * corner. The bottom corner states the chart's actual
+ * toughness extreme, the lowest attack success among the
+ * ranked plotted runs, and the top corner's cost figure
+ * carries the lower-bound qualifier when the payload marks
+ * that cost a floor, exactly as the model cards print it. */
+const rankedPlotted = plotted.filter((r) => r.ranking_eligible);
+const byAsrAsc = [...rankedPlotted].sort(
+  (a, b) => a.asr_conditional - b.asr_conditional,
+);
+const byCostAsc = [...rankedPlotted].sort(
+  (a, b) => a.total_cost_usd - b.total_cost_usd,
+);
+const priciest = byCostAsc.at(-1);
+const toughest = byAsrAsc[0];
+if (!priciest || !toughest || priciest.run_id !== byAsrAsc.at(-1).run_id) {
+  console.error(
+    "gen-og: headline claim broken on this payload: the priciest ranked plotted run is not the highest attack success ranked plotted run, so the headline and the top corner would be false",
+  );
+  process.exit(1);
+}
+const topSub = `${costIsLowerBound(priciest) ? "At least " : ""}${fmtUsd(priciest.total_cost_usd)} a run, and it flipped most of all`;
+const bottomSub = `${pointName(toughest)} flipped least of all at ${fmtPct(toughest.asr_conditional)}`;
 const pointsSvg = [
   ...railRows.map((r) => disc(r, RAIL_CX, railY.get(r.run_id))),
   ...plottedXY.map((p) => disc(p.r, p.x, p.y)),
@@ -333,9 +423,9 @@ const scatterSvg = `<svg width="1200" height="630" viewBox="0 0 1200 630" class=
   <text x="48" y="${PLOT.y0 - 10}" class="tick">No API cost</text>
   <text x="${PLOT.x0 + 32}" y="${PLOT.y0 - 10}" class="tick">Attack success, percent</text>
   <text x="520" y="252" class="corner">Expensive and fragile</text>
-  <text x="520" y="278" class="corner-sub">The priciest run flipped most of all</text>
-  <text x="${PLOT.x0}" y="468" class="corner">Near-free and tough</text>
-  <text x="${PLOT.x0}" y="494" class="corner-sub">Jev 1.14 held at twenty cents a run</text>
+  <text x="520" y="278" class="corner-sub">${esc(topSub)}</text>
+  <text x="${PLOT.x0}" y="468" class="corner">Toughest on the chart</text>
+  <text x="${PLOT.x0}" y="494" class="corner-sub">${esc(bottomSub)}</text>
   ${pointsSvg}
   ${railLabelsSvg}
   <g id="og-labels"></g>
@@ -346,10 +436,11 @@ const scatterSvg = `<svg width="1200" height="630" viewBox="0 0 1200 630" class=
  * beside a disc reads as a stray mark at feed size, and the
  * image has no caption to explain one, so the lower-bound fact
  * stays on the board page and out of the image. Tripwire: the
- * only lines in the scatter are the four grid lines, the rail
- * divider and the axis, and nothing draws a polygon. */
+ * only lines in the scatter are the grid lines (one per axis
+ * tick), the rail divider and the axis, and nothing draws a
+ * polygon. */
 const ogLineCount = (scatterSvg.match(/<line/g) ?? []).length;
-if (scatterSvg.includes("<polygon") || ogLineCount !== 6) {
+if (scatterSvg.includes("<polygon") || ogLineCount !== axisTicks.length + 2) {
   console.error(
     `gen-og: unexpected glyph in the share image scatter (lines ${ogLineCount}, polygon present ${scatterSvg.includes("<polygon")}): the image draws no lower-bound tick or other floating mark`,
   );

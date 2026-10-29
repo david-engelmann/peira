@@ -1,6 +1,8 @@
 import {
   boardGroups,
   boardVersions,
+  dateWords,
+  shortName,
   taxBenchmarks,
 } from "@/lib/payload";
 import { fmtInt, fmtPct, fmtEce } from "@/lib/format";
@@ -30,6 +32,26 @@ export default function Method() {
     .join(", ")
     .replace(/, ([^,]*)$/, ", and $1");
   const sliceCases = groups.slices[0]?.n_cases ?? 0;
+  /**
+   * Re-run provenance (F3 of the 2026-10-29 hardcode audit). The
+   * pipeline builds each row's rerun record from the standing
+   * artifact's own metadata (its parent_run_id chain and its own
+   * creation day), and this section prints only what those
+   * records attest: which results chain to an earlier run, and
+   * when the standing run was made. The section renders only
+   * when at least one record exists; a payload whose runs chain
+   * to nothing carries no re-run claim at all.
+   */
+  const rerunRows = allRows.filter((r) => r.rerun);
+  const rerunEntries = rerunRows.map(
+    (r) => `the ${shortName(r)} result on ${dateWords(r.rerun!.date)}`,
+  );
+  const rerunList =
+    rerunEntries.length <= 1
+      ? rerunEntries.join("")
+      : rerunEntries.length === 2
+        ? `${rerunEntries[0]} and ${rerunEntries[1]}`
+        : `${rerunEntries.slice(0, -1).join(", ")}, and ${rerunEntries.at(-1)}`;
 
   return (
     <section
@@ -131,20 +153,25 @@ export default function Method() {
         facts apart in words.
       </p>
 
-      <h3 className="method-head" id="method-reruns">Re-run segments</h3>
-      <p className="method-p">
-        Two results rest on re-run segments. The gemini-3.8-flash
-        and kimi-k3 results were re-run under fixed adapters on
-        12 October 2026, after faults were found in the first pass.
-        The sealed figures on this board are the re-run figures.
-      </p>
+      {rerunRows.length > 0 && (
+        <>
+          <h3 className="method-head" id="method-reruns">Re-run segments</h3>
+          <p className="method-p">
+            {fmtInt(rerunRows.length)}{" "}
+            {rerunRows.length === 1 ? "result rests" : "results rest"} on
+            re-run segments. {rerunList.charAt(0).toUpperCase() + rerunList.slice(1)}{" "}
+            {rerunRows.length === 1 ? "was" : "were"} re-run, each chained
+            to the earlier run it supersedes. The sealed figures on this
+            board are the re-run figures.
+          </p>
+        </>
+      )}
 
       <h3 className="method-head" id="method-standing">Standing of the figures</h3>
       <p className="method-p">
         The figures are the current best measurement of these results
         on this suite, not settled fact. When a result is re-measured,
-        a later publish replaces its figures, and the change is
-        recorded in the note at the foot of the page.
+        a later publish replaces its figures.
       </p>
     </section>
   );

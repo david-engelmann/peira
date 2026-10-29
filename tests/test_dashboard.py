@@ -661,6 +661,51 @@ class TestLeaderboard(unittest.TestCase):
                              "bad-model-2.0")
 
 
+class TestLeaderboardRerunProvenance(unittest.TestCase):
+    """The board's re-run note is built from artifact metadata.
+
+    A standing artifact that chains to a parent run
+    (RunArtifact.parent_run_id) yields a row whose rerun record
+    carries that chain and the artifact's own creation day, so
+    the board can state the re-run from data. An artifact that
+    chains to nothing yields no record. (F3 of the 2026-10-29
+    hardcode audit: the Method note named two runs and a date
+    as source literals, and no payload field carried the fact.)
+    """
+
+    def test_row_carries_rerun_record_from_artifact_metadata(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            art = _make_artifact(
+                adapter_name="rerun-adapter",
+                adapter_version="rerun-adapter-1.0",
+                parent_run_id="run-parent-123",
+            )
+            (tmp_path / "rerun.json").write_text(art.to_json())
+            scan_runs(tmp)
+            lb = leaderboard(tmp)
+            self.assertEqual(lb["n_ranked"], 1)
+            self.assertEqual(
+                lb["ranked"][0]["rerun"],
+                {"parent_run_id": "run-parent-123",
+                 "date": art.created_utc[:10]},
+            )
+
+    def test_row_without_parent_run_carries_no_rerun(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            art = _make_artifact(
+                adapter_name="plain-adapter",
+                adapter_version="plain-adapter-1.0",
+            )
+            (tmp_path / "plain.json").write_text(art.to_json())
+            scan_runs(tmp)
+            lb = leaderboard(tmp)
+            self.assertEqual(lb["n_ranked"], 1)
+            self.assertIn("rerun", lb["ranked"][0])
+            self.assertIsNone(lb["ranked"][0]["rerun"])
+
+
 class TestLeaderboardProbeExclusion(unittest.TestCase):
     """An entry whose standing run is a canary prints nothing.
 

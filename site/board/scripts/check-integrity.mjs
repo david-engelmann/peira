@@ -1688,7 +1688,12 @@ function modelPageDescription(row, where) {
   return desc;
 }
 
-/* 12a. The Method subsection anchors. */
+/* 12a. The Method subsection anchors. The re-run anchor is
+ * the one conditional subsection: the section renders only
+ * when a payload row carries re-run provenance (the rerun
+ * record the pipeline builds from the standing artifact's
+ * parent_run_id chain), so its expectation is keyed to the
+ * payload the same way the section is, in both directions. */
 const METHOD_ANCHORS = [
   "method-case",
   "method-suite",
@@ -1696,13 +1701,18 @@ const METHOD_ANCHORS = [
   "method-admission",
   "method-tax",
   "method-costs",
-  "method-reruns",
   "method-standing",
 ];
 for (const id of METHOD_ANCHORS) {
   if (!html.includes(`id="${id}"`)) {
     fail(`Method subsection anchor #${id} missing from the rendered page`);
   }
+}
+const payloadHasRerun = allRows.some((r) => r.rerun);
+if (payloadHasRerun !== html.includes(`id="method-reruns"`)) {
+  fail(
+    `Method re-run anchor: the payload ${payloadHasRerun ? "carries" : "carries no"} re-run records but the rendered page ${payloadHasRerun ? "omits" : "prints"} the re-run section`,
+  );
 }
 
 /* 12b. Flagged heads: the standing always, a figure only on a

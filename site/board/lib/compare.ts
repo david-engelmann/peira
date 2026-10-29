@@ -122,12 +122,22 @@ export function compareData(): CompareData {
     ...groups.slices.map((r) => shapeRow(r, "slice", allRows, dupes, famKeys)),
   ];
   /* Default pair (design 4.6): the strongest full suite row
-   * against jev-1.14.0, the reference model of the programme.
-   * The full group is in rank order, so its head is the
-   * strongest full suite result. */
+   * against the reference model of the programme. The full
+   * group is in rank order, so its head is the strongest full
+   * suite result. The reference is keyed on the wire that
+   * measured it, not on its display name: the name is
+   * versioned (jev-1.14.0 today) and changes as the model is
+   * re-measured, while the measuring wire is a property of
+   * the run itself and does not (F7 of the 2026-10-29
+   * hardcode audit). The fallbacks stand when no row carries
+   * that wire. */
+  const REFERENCE_WIRE = "jev";
+  const referenceRow = groups.full.find((r) => r.wire === REFERENCE_WIRE);
   const defaultA = rows.find((r) => r.group === "full") ?? rows[0];
   const defaultB =
-    rows.find((r) => r.name === "jev-1.14.0") ??
+    (referenceRow
+      ? rows.find((r) => r.runId === referenceRow.run_id)
+      : undefined) ??
     rows.find((r) => r.group === "full" && r.slug !== defaultA.slug) ??
     rows[1];
   return {

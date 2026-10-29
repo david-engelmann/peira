@@ -7,6 +7,36 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
 
 ## [Unreleased]
 
+### Board claims derived from the payload, not written into the source
+
+- The share image generators (`gen-og.mjs`,
+  `gen-social-preview.mjs`) compute their headline and corner
+  claims from the payload on every build and fail the build
+  when the payload does not support them. The priciest ranked
+  run is asserted to be the most flipped ranked run before
+  the headline prints; the bottom corner states the payload's
+  actual toughness extreme; the social preview card draws the
+  cheapest and priciest costed runs of the ranked full suite
+  population, picked by cost rather than by name. Both
+  generators also stamp dataset and suite versions only when
+  every payload row agrees on them.
+- The shared attack success axis ceiling is derived from the
+  ranked population (the worst ranked rate rounded up to the
+  next 10 percent step, floored at the standing 0 to 30
+  percent scale) in `lib/chart.ts` and in both generators,
+  where it was a literal in three places.
+- Leaderboard rows carry a `rerun` record built from the
+  standing artifact's own metadata (its `parent_run_id`
+  chain and creation day), null when the run chains to
+  nothing. The board's Method note prints its re-run
+  paragraph from those records and renders no paragraph when
+  no row carries one; the note previously named two runs and
+  a date as source literals. The footer's "What changed"
+  note, which no payload data could derive, is removed, and
+  the compare view's default pair keys its reference row on
+  the wire that measured it rather than a versioned display
+  name.
+
 ### Restart-surviving seal checkpointing (opt-in)
 
 - `peira.metrics.summarize` accepts `checkpoint_dir` and

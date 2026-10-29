@@ -8,11 +8,14 @@
  * that card's 33 in-place names collapsed into illegible
  * texture. This design draws exactly two points, the two ends
  * of the board's cost story, large on the board's own scales:
- * jev-1.14.0, near-free and tough, and claude-fable-5-1,
- * expensive and fragile. Every number on the card is a drawn
+ * the cheapest and the priciest costed runs of the ranked
+ * full suite population, picked by the derivation further
+ * down, never by name. Every number on the card is a drawn
  * point, so the card claims nothing it does not show; the
  * headline is a fact of the drawn points, since the priciest
- * run on the board also carries the highest attack success.
+ * run on the card also carries the highest attack success in
+ * that population, which the validation below asserts on
+ * every build.
  * Vendor identity resolves through lib/vendor-data.json and
  * the mark paths are read out of lib/logoPaths.ts, the same
  * sources the board itself uses, and the figures come from
@@ -130,10 +133,24 @@ const pointName = (r) => {
 };
 
 const fullCases = Math.max(...payload.ranked.map((r) => r.n_cases));
-const versions = {
-  dataset: payload.ranked[0].dataset_version,
-  suite: payload.ranked[0].suite,
-};
+/* Version stamps follow the page's rule (lib/payload's
+ * boardVersions): one dataset and one suite across every
+ * row, or the stamp is not made at all. Reading ranked[0]
+ * stamped whatever the first row happened to carry without
+ * checking the rest (F9 of the 2026-10-29 hardcode audit). */
+const versionPairs = new Set(
+  [...payload.ranked, ...payload.unranked].map(
+    (r) => `${r.dataset_version ?? "unknown"}|${r.suite ?? "unknown"}`,
+  ),
+);
+if (versionPairs.size !== 1) {
+  console.error(
+    `gen-social-preview: payload rows disagree on dataset or suite (${[...versionPairs].join(", ")}): no single version stamp holds for the whole board`,
+  );
+  process.exit(1);
+}
+const [stampDataset, stampSuite] = [...versionPairs][0].split("|");
+const versions = { dataset: stampDataset, suite: stampSuite };
 const dateIso = [...payload.ranked, ...payload.unranked]
   .map((r) => r.created_utc)
   .sort()
@@ -148,14 +165,16 @@ const dateWords = `${dd} ${MONTHS[dm - 1]} ${dy}`;
 const credit = `Peira decision robustness board. Dataset ${versions.dataset}, suite ${versions.suite}, updated ${dateWords}. peiratrial.dev`;
 const results = payload.ranked.length + payload.unranked.length;
 
-/* The two drawn points, picked out of the full suite
- * population by name. They are the board's two corner
- * readings made literal: jev-1.14.0, near-free and tough
- * at twenty cents a run, and claude-fable-5-1, the
- * priciest run on the board and its highest attack
- * success, so the headline over the chart is a fact of
- * these two points. The validation further down keeps
- * that headline honest on future payloads. */
+/* The two drawn points, derived from the validator
+ * population: the ranked full suite rows, the population
+ * the board's claims stand on. They are the board's two
+ * corner readings made literal: the cheapest costed run of
+ * that population and its priciest, picked by cost, never
+ * by name (F6 of the 2026-10-29 hardcode audit; the picks
+ * were display-name literals, and the old validation
+ * population let a flagged run take the max attack success
+ * slot and fail the build). The validation further down
+ * keeps the headline honest on future payloads. */
 const vendorData = JSON.parse(
   readFileSync(path.join(root, "lib", "vendor-data.json"), "utf8"),
 );
@@ -176,14 +195,18 @@ const LOGO_PATHS = {};
 for (const m of logoSrc.matchAll(/(\w+):\s*\n?\s*"([^"]+)"/g)) {
   LOGO_PATHS[m[1]] = m[2];
 }
-const nonSlice = [...payload.ranked, ...payload.unranked].filter(
-  (r) => r.n_cases === fullCases,
+const validator = payload.ranked.filter((r) => r.n_cases === fullCases);
+const costed = validator.filter(
+  (r) => r.total_cost_usd !== null && r.total_cost_usd > 0 && r.asr_conditional !== null,
 );
-const jev = nonSlice.find((r) => r.display_name === "jev-1.14.0");
-const fable = nonSlice.find((r) => r.display_name === "claude-fable-5-1");
-if (!jev || !fable) {
+const byCostAsc = [...costed].sort(
+  (a, b) => a.total_cost_usd - b.total_cost_usd,
+);
+const cheap = byCostAsc[0];
+const priciest = byCostAsc.at(-1);
+if (!cheap || !priciest || cheap.run_id === priciest.run_id) {
   console.error(
-    "gen-social-preview: a drawn point is missing from the full suite population (jev-1.14.0 or claude-fable-5-1): the card draws the board's two cost extremes and cannot be built without both",
+    "gen-social-preview: the ranked full suite population does not hold two distinct costed runs: the card draws the two ends of its cost story and cannot be built without both",
   );
   process.exit(1);
 }
@@ -202,43 +225,61 @@ function bigDisc(r, x, y, R) {
 }
 
 /* The plot: one panel on the board's own scales, the attack
- * success axis at 0 to 30 percent and the cost axis on the
+ * success axis on the board's shared scale (the derived
+ * ceiling below) and the cost axis on the
  * log scale, with the keys inside the figure. The middle of
  * the plot is visibly empty; that emptiness is the selection
  * showing, and the sub-line states the selection in words. */
+/* The attack success axis ceiling, a port of lib/chart.ts's
+ * asrAxisCeiling (F5 of the 2026-10-29 hardcode audit): the
+ * worst ranked rate rounded up to the next 10 percent step,
+ * one further step when it sits exactly on a step, floored
+ * at 0.3. This generator reads the payload JSON directly and
+ * cannot import the board module, so the rule is ported; the
+ * two must move together. */
+function asrAxisCeiling(maxRate) {
+  const stepped = Math.ceil((maxRate - 1e-9) / 0.1) * 0.1;
+  const ceiling = stepped > maxRate + 1e-9 ? stepped : stepped + 0.1;
+  return Math.round(Math.max(0.3, ceiling) * 10) / 10;
+}
+const axisMax = asrAxisCeiling(
+  Math.max(0, ...payload.ranked.map((r) => r.asr_conditional ?? 0)),
+);
+const axisTicks = Array.from(
+  { length: Math.round(axisMax / 0.1) + 1 },
+  (_, i) => i / 10,
+);
 const BX = { x0: 150, x1: 1200, yTop: 236, yBot: 500, lo: -1.6, hi: 2.55 };
 const bxOf = (c) =>
   BX.x0 +
   ((Math.log10(c) - BX.lo) / (BX.hi - BX.lo)) * (BX.x1 - BX.x0);
-const byOf = (a) => BX.yBot - (a / 0.3) * (BX.yBot - BX.yTop);
+const byOf = (a) => BX.yBot - (a / axisMax) * (BX.yBot - BX.yTop);
 /* The headline is a claim about the payload, and this
  * generator is what keeps it true: both drawn points must
- * sit inside the plot domains, and claude-fable-5-1 must
- * still be the priciest run and the highest attack
- * success among the full suite rows the plot could draw.
- * A payload refresh that breaks any of this fails the
- * build instead of producing a misleading card. */
-const plottedRows = nonSlice.filter(
-  (r) => r.total_cost_usd !== null && r.total_cost_usd > 0 && r.asr_conditional !== null,
-);
+ * sit inside the plot domains, the priciest drawn point
+ * must still be the highest attack success among the
+ * validator population's costed rows, and the cheap drawn
+ * point must have flipped less than the priciest, which is
+ * all the two micro labels claim of the pair. A payload
+ * refresh that breaks any of this fails the build instead
+ * of producing a misleading card. */
 const inPlot = (r) =>
   r.total_cost_usd >= 10 ** BX.lo &&
   r.total_cost_usd <= 10 ** BX.hi &&
   r.asr_conditional >= 0 &&
-  r.asr_conditional <= 0.3;
-const maxCost = Math.max(...plottedRows.map((r) => r.total_cost_usd));
-const maxAsr = Math.max(...plottedRows.map((r) => r.asr_conditional));
+  r.asr_conditional <= axisMax;
+const maxAsr = Math.max(...costed.map((r) => r.asr_conditional));
 if (
-  ![jev, fable].every((r) => plottedRows.includes(r) && inPlot(r)) ||
-  fable.total_cost_usd !== maxCost ||
-  fable.asr_conditional !== maxAsr
+  ![cheap, priciest].every((r) => inPlot(r)) ||
+  priciest.asr_conditional !== maxAsr ||
+  cheap.asr_conditional >= priciest.asr_conditional
 ) {
   console.error(
-    "gen-social-preview: a drawn point sits outside the plot domains, or the headline (priciest run, highest attack success) no longer holds for claude-fable-5-1 on this payload",
+    "gen-social-preview: a drawn point sits outside the plot domains, or the headline (the priciest run carries the highest attack success, and the cheapest flipped less) no longer holds on this payload",
   );
   process.exit(1);
 }
-const gridB = [0, 0.1, 0.2, 0.3]
+const gridB = axisTicks
   .map(
     (t) => `<line x1="${BX.x0}" y1="${byOf(t)}" x2="${BX.x1}" y2="${byOf(t)}" stroke="#232c35" stroke-opacity="0.55"/>
     <text x="${BX.x0 - 14}" y="${byOf(t) + 5}" class="tick" text-anchor="end">${Math.round(t * 100)}</text>`,
@@ -250,10 +291,10 @@ const decadesB = [-1, 0, 1, 2]
     return `<text x="${bxOf(v)}" y="${BX.yBot + 30}" class="tick" text-anchor="middle">${v < 1 ? `$${v.toFixed(2)}` : `$${v}`}</text>`;
   })
   .join("\n");
-const jx = bxOf(jev.total_cost_usd);
-const jy = byOf(jev.asr_conditional);
-const fx = bxOf(fable.total_cost_usd);
-const fy = byOf(fable.asr_conditional);
+const jx = bxOf(cheap.total_cost_usd);
+const jy = byOf(cheap.asr_conditional);
+const fx = bxOf(priciest.total_cost_usd);
+const fy = byOf(priciest.asr_conditional);
 const R = 36;
 const bSvg = `<svg width="1280" height="640" viewBox="0 0 1280 640" class="chart">
   <rect x="48" y="196" width="1184" height="376" fill="#0c1015" stroke="#232c35"/>
@@ -263,26 +304,27 @@ const bSvg = `<svg width="1280" height="640" viewBox="0 0 1280 640" class="chart
   <text x="${BX.x0 + 6}" y="226" class="tick">Attack success, percent</text>
   <text x="${BX.x0}" y="560" class="tick">Recorded cost per run, US dollars, log scale</text>
   <text x="${jx + R + 20}" y="${jy - 38}" class="micro2">NEAR-FREE AND TOUGH</text>
-  <text x="${jx + R + 20}" y="${jy}" class="pname">${esc(pointName(jev))}</text>
-  <text x="${jx + R + 20}" y="${jy + 36}" class="pfig">Attack success ${fmtPct(jev.asr_conditional)}</text>
-  <text x="${jx + R + 20}" y="${jy + 68}" class="pfig">Cost ${fmtMoney(jev.total_cost_usd)} per run</text>
+  <text x="${jx + R + 20}" y="${jy}" class="pname">${esc(pointName(cheap))}</text>
+  <text x="${jx + R + 20}" y="${jy + 36}" class="pfig">Attack success ${fmtPct(cheap.asr_conditional)}</text>
+  <text x="${jx + R + 20}" y="${jy + 68}" class="pfig">Cost ${fmtMoney(cheap.total_cost_usd)} per run</text>
   <text x="${fx - R - 20}" y="${fy - 30}" class="micro2" text-anchor="end">EXPENSIVE AND FRAGILE</text>
-  <text x="${fx - R - 20}" y="${fy + 10}" class="pname" text-anchor="end">${esc(pointName(fable))}</text>
-  <text x="${fx - R - 20}" y="${fy + 46}" class="pfig" text-anchor="end">Attack success ${fmtPct(fable.asr_conditional)}</text>
-  <text x="${fx - R - 20}" y="${fy + 78}" class="pfig" text-anchor="end">Cost ${fmtMoney(fable.total_cost_usd)} per run</text>
-  ${bigDisc(jev, jx, jy, R)}
-  ${bigDisc(fable, fx, fy, R)}
+  <text x="${fx - R - 20}" y="${fy + 10}" class="pname" text-anchor="end">${esc(pointName(priciest))}</text>
+  <text x="${fx - R - 20}" y="${fy + 46}" class="pfig" text-anchor="end">Attack success ${fmtPct(priciest.asr_conditional)}</text>
+  <text x="${fx - R - 20}" y="${fy + 78}" class="pfig" text-anchor="end">Cost ${fmtMoney(priciest.total_cost_usd)} per run</text>
+  ${bigDisc(cheap, jx, jy, R)}
+  ${bigDisc(priciest, fx, fy, R)}
 </svg>`;
 
 /* Tripwire: the card draws exactly two points and nothing
- * else in the plot. The five lines are the four grid lines
- * and the cost axis; a third disc or any extra line means
+ * else in the plot. The lines are the grid lines, one per
+ * axis tick, and the cost axis; a third disc or any extra
+ * line means
  * the selection has silently grown, and the build fails
  * rather than let the card drift back toward the full
  * scatter the owner rejected. */
 const bCircleCount = (bSvg.match(/<circle/g) ?? []).length;
 const bLineCount = (bSvg.match(/<line/g) ?? []).length;
-if (bCircleCount !== 2 || bLineCount !== 5) {
+if (bCircleCount !== 2 || bLineCount !== axisTicks.length + 1) {
   console.error(
     `gen-social-preview: unexpected plot contents (circles ${bCircleCount}, lines ${bLineCount}): the card draws exactly the two cost extremes`,
   );
@@ -376,5 +418,5 @@ await page.screenshot({ path: outPng });
 await browser.close();
 
 console.log(
-  `gen-social-preview: wrote .github/social-preview.png (1280x640), the two ends of the cost story (${pointName(jev)} and ${pointName(fable)}) drawn from ${results} results, board date ${dateWords}`,
+  `gen-social-preview: wrote .github/social-preview.png (1280x640), the two ends of the cost story (${pointName(cheap)} and ${pointName(priciest)}) drawn from ${results} results, board date ${dateWords}`,
 );
