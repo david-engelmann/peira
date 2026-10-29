@@ -1278,6 +1278,35 @@ score, never a rank.
   Withheld (`None`) values display as "insufficient data", never 0.
   The Rust core does not seal metrics. The Python summary is the
   reference.
+- **Seal checkpointing (opt-in).** The summary's bootstrap
+  loops are the expensive part of sealing a large run and the
+  monolithic computation dies with the process. Passing
+  `checkpoint_dir` to `summarize` or `seal_checkpoint_dir` to
+  `run_suite` makes the seal restart-surviving. The bootstrap
+  primitives persist their replicate state to a sidecar in
+  that directory as they run. The replicate state is the
+  PRNG state plus the accumulated replicate values. A later
+  invocation with the same inputs resumes from the sidecar
+  instead of restarting.
+  Checkpointing does not change the arithmetic. It saves and
+  restores the exact PRNG state between replicates of the
+  original loops. The draw sequence, the per-replicate
+  arithmetic, and the final reductions are the same as in the
+  monolithic computation. The checkpointed summary is
+  bit-identical to the monolithic one. The tests in
+  `tests/test_seal_checkpointing.py` check this. A fingerprint
+  binds each sidecar to one exact input set and code version.
+  On a mismatch the sidecar is discarded and the summary is
+  recomputed. A stale sidecar can never change a number.
+  The `PEIRA_SEAL_MONOLITHIC` environment variable forces the
+  monolithic path. With `run_suite` the finished artifact is
+  also frozen as a snapshot in the directory before the seal
+  summarize. A resumed seal summarizes byte-identical results
+  and never re-runs a case. The snapshot and the sidecar
+  persist in the checkpoint directory after a successful
+  seal. The directory is caller-owned and the caller removes
+  them. Identity binding makes a later invocation of the
+  same run resumable. Any different run fails loudly.
 
 ## Ranking eligibility
 

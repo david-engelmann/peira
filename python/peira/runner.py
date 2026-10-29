@@ -68,6 +68,7 @@ from peira.metrics import (
     PerCaseResult,
     summarize as _metrics_summarize,
 )
+from peira import seal_checkpoint
 from peira.sampling import (
     check_sampling_config,
     effective_sampling_config,
@@ -2266,6 +2267,7 @@ def _summarize_artifact(
     cases: list[Case] | None = None,
     seed: int = 0,
     termination: str = "complete",
+    checkpoint_dir: Path | None = None,
 ) -> dict[str, Any]:
     """Thin per-run metric summary sealed into run artifacts.
 
@@ -2287,6 +2289,11 @@ def _summarize_artifact(
     ``termination`` marks how the run ended: anything but "complete"
     forces ``ranking_eligible`` False in the sealed metrics (a partial
     or budget-stopped run is analyzable, never rankable).
+    ``checkpoint_dir`` is forwarded to
+    :func:`peira.metrics.summarize`: the seal bootstrap checkpoints
+    into that directory so a process death mid-summary resumes
+    instead of restarting (see :mod:`peira.seal_checkpoint`). The
+    checkpointed summary is bit-identical to the monolithic one.
     """
     expected_scores = (
         None
@@ -2314,6 +2321,126 @@ def _summarize_artifact(
         target_decisions=target_decisions,
         seed=seed,
         termination=termination,
+        checkpoint_dir=checkpoint_dir,
+    )
+
+
+#: Sentinel for _run_suite_async's preloaded-snapshot parameter:
+#: distinguishes "run_suite already loaded the snapshot" (the value
+#: is a result list or None) from "not preloaded, load it here".
+_SEAL_SNAPSHOT_NOT_LOADED: Any = object()
+
+
+def _load_seal_snapshot(
+    ckpt_dir: Path,
+    *,
+    adapter_name: str,
+    adapter_version: str,
+    suite: str,
+    dataset_version: str,
+    manifest_sha256: str,
+    seed: int,
+    cases: list[Case],
+    run_nonce: str | None = None,
+) -> list[PerCaseResult] | None:
+    """Return the frozen pre-seal results from a previous attempt.
+
+    A snapshot in ``ckpt_dir`` belongs to exactly one run identity
+    (adapter name and version, suite, dataset, manifest, seed,
+    the exact case-id set, and, when the caller supplied a run
+    nonce explicitly, that nonce): an identity mismatch means
+    the directory is being reused across runs, an operator
+    error that fails loudly rather than sealing one run's metrics
+    over another run's results. A snapshot that matches the
+    identity but does not verify (or is unreadable, or holds the
+    wrong number of results) is corrupt: it is deleted together
+    with the checkpoint sidecar and the seal restarts cleanly.
+    Worst case is a recompute, never a wrong seal.
+    """
+    snap_path = ckpt_dir / seal_checkpoint.SNAPSHOT_FILENAME
+    if not snap_path.exists():
+        return None
+    snap: RunArtifact | None
+    try:
+        snap = RunArtifact.from_json(
+            snap_path.read_text(encoding="utf-8")
+        )
+    except Exception:
+        snap = None
+    if snap is not None:
+        identity = (
+            snap.adapter_name, snap.adapter_version, snap.suite,
+            snap.dataset_version, snap.manifest_sha256, snap.seed,
+        )
+        expected = (
+            adapter_name, adapter_version, suite, dataset_version,
+            manifest_sha256, seed,
+        )
+        snap_ids = [
+            r.get("case_id", "") if isinstance(r, dict)
+            else getattr(r, "case_id", "")
+            for r in snap.results
+        ]
+        expected_ids = [c.case_id for c in cases]
+        cases_match = (
+            len(snap_ids) == len(expected_ids)
+            and len(set(snap_ids)) == len(snap_ids)
+            and set(snap_ids) == set(expected_ids)
+        )
+        snap_nonce = (
+            snap.config.get("run_nonce")
+            if isinstance(snap.config, dict) else None
+        )
+        nonce_match = run_nonce is None or snap_nonce == run_nonce
+        if identity != expected or not cases_match or not nonce_match:
+            raise ValueError(
+                f"seal snapshot at {snap_path} belongs to a "
+                f"different run (adapter/version/suite/dataset/"
+                f"manifest/seed {identity!r} != {expected!r}, "
+                f"case ids match: {cases_match}, run nonce "
+                f"match: {nonce_match}); a seal checkpoint "
+                "directory must not be reused across runs"
+            )
+        if (
+            snap.verify()
+            and snap.termination == "complete"
+            and len(snap.results) == len(cases)
+        ):
+            return [
+                PerCaseResult.from_dict(r) if isinstance(r, dict)
+                else r
+                for r in snap.results
+            ]
+    snap_path.unlink(missing_ok=True)
+    (ckpt_dir / seal_checkpoint.SIDECAR_FILENAME).unlink(
+        missing_ok=True
+    )
+    return None
+
+
+def _persist_seal_snapshot(
+    ckpt_dir: Path, artifact: RunArtifact
+) -> RunArtifact:
+    """Freeze the finished artifact before its seal summarize.
+
+    Writes the artifact (results complete, metrics not yet the
+    full summary) into the checkpoint directory and returns the
+    round-tripped artifact, so every seal attempt summarizes
+    byte-identical results and the checkpoint sidecar's run
+    fingerprint stays stable across restarts.
+    """
+    ckpt_dir.mkdir(parents=True, exist_ok=True)
+    snap_path = ckpt_dir / seal_checkpoint.SNAPSHOT_FILENAME
+    artifact.seal()
+    payload = artifact.to_json()
+    # Same bounded EPERM retry policy as the sidecar flush (the
+    # shared helper in peira.seal_checkpoint): a write burst must
+    # not kill a seal attempt whose sidecar writes rode it out.
+    seal_checkpoint._with_write_retry(
+        lambda attempt: atomic_write_text(snap_path, payload)
+    )
+    return RunArtifact.from_json(
+        snap_path.read_text(encoding="utf-8")
     )
 
 
@@ -2995,6 +3122,8 @@ async def _run_suite_async(
     result_to_dict: Callable[[PerCaseResult], dict[str, Any]] | None = None,
     summarize_artifact: Callable[..., dict[str, Any]] | None = None,
     sampling_config: dict[str, Any] | None = None,
+    seal_checkpoint_dir: Path | None = None,
+    seal_snapshot_results: Any = _SEAL_SNAPSHOT_NOT_LOADED,
 ) -> RunArtifact:
     """Shared suite driver: dispatch, budget, checkpoints, artifacts.
 
@@ -3010,12 +3139,54 @@ async def _run_suite_async(
     (defaults to :func:`_summarize_artifact`); suites with their own
     metric schema pass their own. The conversational suite passes its
     own five; every other caller gets the single-shot behavior.
+    ``seal_checkpoint_dir`` opts the completion seal into
+    restart-surviving checkpointing (see
+    :mod:`peira.seal_checkpoint`): the finished artifact is frozen
+    as a snapshot in that directory before the seal summarize, and
+    the summarize checkpoints its bootstrap there. It cannot be
+    combined with a ``summarize_artifact`` override, whose schema
+    the checkpointed path does not know.
     """
     summarize = (
         summarize_artifact if summarize_artifact is not None
         else _summarize_artifact
     )
     cost_of = case_cost if case_cost is not None else _default_case_cost_usd
+    # Restart-surviving seal (opt-in): resolve activity and load any
+    # frozen snapshot BEFORE the subprocess adapter opens, so an
+    # operator error here (override conflict, snapshot identity
+    # mismatch) cannot leak a shim child. The snapshot is consumed
+    # only when its identity matches this run exactly (see
+    # _load_seal_snapshot); its results are applied below, where
+    # prior_results/already_done take effect.
+    _seal_active = seal_checkpoint.seal_checkpointing_active(
+        seal_checkpoint_dir
+    )
+    _snap_results: list[PerCaseResult] | None = None
+    if _seal_active:
+        if summarize_artifact is not None:
+            raise ValueError(
+                "seal_checkpoint_dir cannot be combined with a "
+                "summarize_artifact override: the checkpointed seal "
+                "path runs the default _summarize_artifact"
+            )
+        if seal_snapshot_results is not _SEAL_SNAPSHOT_NOT_LOADED:
+            # run_suite already loaded the snapshot (before it
+            # constructed the transcript sink, whose append mode
+            # depends on the outcome); do not load it twice.
+            _snap_results = seal_snapshot_results
+        else:
+            _snap_results = _load_seal_snapshot(
+                Path(seal_checkpoint_dir),
+                adapter_name=adapter.name,
+                adapter_version=getattr(adapter, "version", ""),
+                suite=suite,
+                dataset_version=dataset_version,
+                manifest_sha256=manifest_sha256,
+                seed=seed,
+                cases=cases,
+                run_nonce=run_nonce,
+            )
     adapter_version = getattr(adapter, "version", "")
     controller = AdaptiveConcurrency(max_concurrency)
     # P-4: third-party adapters run in the shim child. Open it here so
@@ -3037,6 +3208,13 @@ async def _run_suite_async(
     # the same indices as uninterrupted ones.
     indexed = {c.case_id: i for i, c in enumerate(cases)}
     total = len(cases)
+    # A consumed snapshot supplies the complete result set: no case
+    # dispatches, and the completion seal below summarizes the
+    # frozen results.
+    _seal_snapshot_consumed = _snap_results is not None
+    if _snap_results is not None:
+        prior_results = _snap_results
+        already_done = set(indexed)
     results: list[PerCaseResult] = list(prior_results)
     # completed counts scored cases, not the loop index: with resumed runs
     # the count starts above zero, and with concurrency completions land
@@ -3346,9 +3524,31 @@ async def _run_suite_async(
             result_dicts=result_dicts,
         ),
     )
-    artifact.metrics = summarize(
-        ordered, required_families, cases, seed, termination=termination
-    )
+    if _seal_active and termination == "complete":
+        # Pre-seal snapshot: freeze the finished artifact before
+        # the seal summarize, so a death mid-summarize leaves a
+        # byte-identical input for the next attempt and the
+        # checkpoint sidecar's fingerprint stays stable. A snapshot
+        # consumed at start already froze these results; the
+        # artifact built from them needs no second freeze.
+        if not _seal_snapshot_consumed:
+            artifact = _persist_seal_snapshot(
+                Path(seal_checkpoint_dir), artifact
+            )
+        seal_results = [
+            PerCaseResult.from_dict(r) if isinstance(r, dict) else r
+            for r in artifact.results
+        ]
+        artifact.metrics = _summarize_artifact(
+            seal_results, required_families, cases, seed,
+            termination=termination,
+            checkpoint_dir=Path(seal_checkpoint_dir),
+        )
+    else:
+        artifact.metrics = summarize(
+            ordered, required_families, cases, seed,
+            termination=termination,
+        )
     artifact.per_family_stats = _per_family_stats(artifact.metrics)
     return artifact.seal()
 
@@ -3388,6 +3588,7 @@ def run_suite(
     case_cost: Callable[[PerCaseResult], float] | None = None,
     result_to_dict: Callable[[PerCaseResult], dict[str, Any]] | None = None,
     summarize_artifact: Callable[..., dict[str, Any]] | None = None,
+    seal_checkpoint_dir: Path | None = None,
 ) -> RunArtifact:
     """Run a suite through an adapter, concurrently.
 
@@ -3443,6 +3644,26 @@ def run_suite(
     ``summarize_artifact`` is the fifth suite-shape hook: the
     conversational suite seals its own metric schema instead of the
     single-shot one.
+
+    ``seal_checkpoint_dir`` opts the completion seal into
+    restart-surviving checkpointing (see
+    :mod:`peira.seal_checkpoint`): when a run completes, the
+    finished artifact is frozen as a snapshot in that directory
+    before the seal summarize, and the summarize checkpoints its
+    bootstrap into a sidecar there, so a process death
+    mid-summarize (VM restart, OOM kill) resumes on the next
+    invocation of the same run instead of restarting the
+    computation or re-running cases. The checkpointed summary is
+    bit-identical to the monolithic one. The directory belongs to
+    one run: reusing it for a different run raises ValueError.
+    The snapshot and the sidecar persist in the checkpoint
+    directory after a successful seal. The directory is
+    caller-owned and the caller removes them. Identity binding
+    makes a later invocation of the same run resumable while
+    any different run fails loudly.
+    The ``PEIRA_SEAL_MONOLITHIC`` environment variable disables
+    the machinery even when a directory is given. It cannot be
+    combined with a ``summarize_artifact`` override.
 
     Raises ValueError for invalid ``max_concurrency``/``max_attempts``/
     ``call_timeout``/``budget_usd``/``max_tokens_per_call``/
@@ -3551,10 +3772,36 @@ def run_suite(
     if required_families is None:
         required_families = sorted({c.family for c in cases})
     cache = ResponseCache(Path(cache_dir)) if cache_dir is not None else None
+    # Seal checkpointing: load any pre-seal snapshot BEFORE the
+    # transcript sink is constructed. An accepted snapshot means
+    # this invocation dispatches nothing, so the sink must open
+    # in append mode and keep the first attempt's entries. An
+    # identity mismatch raises here, before the sink exists, so
+    # the pre-existing transcript stays untouched. An absent or
+    # corrupt snapshot (the load deletes a corrupt one together
+    # with its sidecar) leaves the transcript on today's path.
+    # The loaded results are passed into _run_suite_async so the
+    # snapshot is not loaded twice.
+    _seal_snapshot_preloaded: Any = _SEAL_SNAPSHOT_NOT_LOADED
+    if seal_checkpoint.seal_checkpointing_active(seal_checkpoint_dir):
+        _seal_snapshot_preloaded = _load_seal_snapshot(
+            Path(seal_checkpoint_dir),
+            adapter_name=adapter.name,
+            adapter_version=getattr(adapter, "version", ""),
+            suite=suite,
+            dataset_version=dataset_version,
+            manifest_sha256=manifest_sha256,
+            seed=seed,
+            cases=cases,
+            run_nonce=run_nonce,
+        )
     transcript = None
     if transcript_path is not None:
         tpath = Path(transcript_path)
-        resuming = bool(already_done)
+        resuming = bool(already_done) or (
+            _seal_snapshot_preloaded is not _SEAL_SNAPSHOT_NOT_LOADED
+            and _seal_snapshot_preloaded is not None
+        )
         skip: frozenset[int] = frozenset()
         if resuming and tpath.exists():
             # Preserve the entries recorded before the interruption, and
@@ -3598,6 +3845,8 @@ def run_suite(
                 result_to_dict=result_to_dict,
                 summarize_artifact=summarize_artifact,
                 sampling_config=sampling_config,
+                seal_checkpoint_dir=seal_checkpoint_dir,
+                seal_snapshot_results=_seal_snapshot_preloaded,
             )
         )
     except asyncio.CancelledError:

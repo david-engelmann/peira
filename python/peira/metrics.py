@@ -51,6 +51,7 @@ import random
 import statistics
 import threading
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any, Callable, Iterator, Mapping, NamedTuple
 
 from peira._rust import _impl as _rust
@@ -6565,6 +6566,7 @@ def summarize(
     seed: int = 0,
     pricing_table: Mapping[str, Any] | None = None,
     termination: str = "complete",
+    checkpoint_dir: Path | None = None,
 ) -> dict[str, Any]:
     """The canonical per-run metric summary over slices S1–S6.
 
@@ -6636,6 +6638,82 @@ def summarize(
     producing a look-alike summary, and so does a non-positive or
     non-integer ``n_boot`` (zero/negative values would otherwise die
     in an ``IndexError`` deep inside the bootstrap).
+
+    ``checkpoint_dir`` opts into restart-surviving seal
+    checkpointing (see :mod:`peira.seal_checkpoint`): the
+    bootstrap primitives checkpoint their replicate loops into
+    a sidecar in that directory, so a process death mid-summary
+    resumes instead of restarting the computation. The
+    checkpointed path is bit-identical to the monolithic one;
+    the ``PEIRA_SEAL_MONOLITHIC`` environment variable forces
+    the monolithic path even when a directory is given. The
+    default (None) writes no files and changes no behaviour.
+    """
+    def _call() -> dict[str, Any]:
+        return _summarize_monolithic(
+            results,
+            required_families=required_families,
+            expected_scores=expected_scores,
+            positive_decisions=positive_decisions,
+            target_decisions=target_decisions,
+            fairness_tags=fairness_tags,
+            n_boot=n_boot,
+            seed=seed,
+            pricing_table=pricing_table,
+            termination=termination,
+        )
+
+    if checkpoint_dir is None:
+        return _call()
+    # Deferred import: peira.seal_checkpoint imports this module
+    # (and eb_analysis, which imports this module), so a
+    # top-level import here would be circular. The import is
+    # paid only on the opt-in path.
+    from peira import seal_checkpoint
+
+    if not seal_checkpoint.seal_checkpointing_active(checkpoint_dir):
+        return _call()
+    ckpt_dir = Path(checkpoint_dir)
+    ckpt_dir.mkdir(parents=True, exist_ok=True)
+    run_fp = seal_checkpoint.seal_run_fingerprint(
+        results,
+        {
+            "required_families": required_families,
+            "expected_scores": expected_scores,
+            "positive_decisions": positive_decisions,
+            "target_decisions": target_decisions,
+            "fairness_tags": fairness_tags,
+            "n_boot": n_boot,
+            "seed": seed,
+            "pricing_table": pricing_table,
+            "termination": termination,
+        },
+    )
+    store = seal_checkpoint.SealCheckpointStore(
+        ckpt_dir / seal_checkpoint.SIDECAR_FILENAME, run_fp
+    )
+    with seal_checkpoint.seal_checkpoints(store):
+        return _call()
+
+
+def _summarize_monolithic(
+    results: list[PerCaseResult],
+    required_families: list[str] | None = None,
+    expected_scores: Mapping[str, float | None] | None = None,
+    positive_decisions: Mapping[str, str | None] | None = None,
+    target_decisions: Mapping[str, str | None] | None = None,
+    fairness_tags: Mapping[str, Any] | None = None,
+    n_boot: int = 10000,
+    seed: int = 0,
+    pricing_table: Mapping[str, Any] | None = None,
+    termination: str = "complete",
+) -> dict[str, Any]:
+    """The monolithic summarize body; see :func:`summarize`.
+
+    Kept as one function so the checkpointed path in
+    :func:`summarize` installs the checkpoint wrappers around
+    exactly the computation the monolithic path has always run,
+    with no second implementation to drift.
     """
     _check_n_boot(n_boot)
 

@@ -7,6 +7,26 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
 
 ## [Unreleased]
 
+### Restart-surviving seal checkpointing (opt-in)
+
+- `peira.metrics.summarize` accepts `checkpoint_dir` and
+  `peira.runner.run_suite` accepts `seal_checkpoint_dir`: the
+  seal bootstrap checkpoints its replicate loops into a JSON
+  sidecar, so a process death mid-seal (VM restart, OOM kill)
+  resumes instead of restarting the computation. The runner
+  also freezes the finished artifact as a pre-seal snapshot in
+  the same directory, so a resumed seal summarizes
+  byte-identical results and never re-runs a case.
+- Checkpointing is arithmetic-neutral: chunk boundaries only
+  insert save/restore of the exact PRNG state between
+  replicates of the original loops, and the checkpointed
+  summary is bit-identical to the monolithic one
+  (`tests/test_seal_checkpointing.py`). The sidecar is bound
+  by a fingerprint to one input set and code version; a
+  mismatch recomputes. `PEIRA_SEAL_MONOLITHIC=1` forces the
+  monolithic path. Default behaviour is unchanged: no
+  directory, no files, no checkpointing.
+
 ### Board scatter and heatmap: flagged figures carry their decomposition
 
 - On the cost scatter, a flagged point's attack success
