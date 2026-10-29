@@ -162,6 +162,51 @@ export function flipDecomposition(row: BoardRow): FlipDecomposition | null {
   };
 }
 
+/**
+ * The same decomposition one family at a time, for the surfaces
+ * that print a flagged result's per-family attack success (the
+ * heatmap, C-5 companion fix): each family's malformed share of
+ * its own counted flips and its genuine flip rate over its own
+ * eligible cases, keyed by family id. A family whose records
+ * are missing or unusable maps to null, as does a family whose
+ * derived flips disagree with its printed attack success; a
+ * family with no counted flips decomposes to zeros, there
+ * being no flips to decompose.
+ */
+export function familyFlipDecomposition(
+  row: BoardRow,
+): Map<string, FlipDecomposition | null> {
+  const out = new Map<string, FlipDecomposition | null>();
+  for (const fam of familyRecords(row)) {
+    const key = typeof fam.family === "string" ? fam.family : null;
+    if (key === null) continue;
+    const nf = countOf(fam.n_flipped);
+    const fd =
+      fam.flip_direction !== null &&
+      typeof fam.flip_direction === "object" &&
+      !Array.isArray(fam.flip_direction)
+        ? (fam.flip_direction as Record<string, unknown>)
+        : null;
+    const tm = fd ? countOf(fd["to-malformed"]) : null;
+    const n = countOf(fam.n_eligible);
+    if (nf === null || tm === null || n === null || n === 0 || tm > nf) {
+      out.set(key, null);
+      continue;
+    }
+    if (typeof fam.asr === "number" && Math.abs(nf / n - fam.asr) > 0.001) {
+      out.set(key, null);
+      continue;
+    }
+    out.set(key, {
+      flips: nf,
+      malformedFlips: tm,
+      malformedShare: nf === 0 ? 0 : tm / nf,
+      genuineRate: (nf - tm) / n,
+    });
+  }
+  return out;
+}
+
 export interface BoardRow {
   adapter_name: string;
   adapter_version: string;

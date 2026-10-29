@@ -89,6 +89,17 @@
  *     subset it was measured on. The built CSS carries the
  *     nav overflow cue's end-clearing rule and the Method
  *     subsection scroll-margin rule.
+ * 13. C-5 companion surfaces. On the cost scatter, every
+ *     flagged point's title and accessible name carry the
+ *     figure's malformed decomposition beside the figure, or,
+ *     where the payload's records do not derive one, state
+ *     the flagged standing and no figure; a flagged entry row
+ *     prints no figure. On the heatmap, every flagged cell
+ *     title carries its family's decomposition, a flagged
+ *     family without a derivable decomposition prints
+ *     suppressed, and the notes under the grid state each
+ *     flagged result's whole-row decomposition or that its
+ *     figures are not stated.
  */
 
 import { readFileSync, readdirSync } from "node:fs";
@@ -211,6 +222,85 @@ function displayCiI(row) {
   const q = (v) => quantHU(expandDec(v), 4);
   if (q(lo) === q(pair[0]) && q(hi) === q(pair[1])) return [lo, hi];
   return pair;
+}
+
+/* The flip decomposition derivation, ported independently
+ * under the rules the app states for its own: null when the
+ * row prints no attack success figure, when the records are
+ * missing or unusable (a family whose malformed flips exceed
+ * its flips included), or when the derived flips disagree
+ * with the printed figure. Otherwise the malformed share of
+ * the counted flips and the genuine flip rate over the row's
+ * eligible cases. */
+function familyRecordsI(row) {
+  const detail = row.detail && typeof row.detail === "object" ? row.detail : {};
+  const famsRaw = detail.families;
+  let entries = [];
+  if (Array.isArray(famsRaw)) entries = famsRaw;
+  else if (famsRaw && typeof famsRaw === "object") entries = Object.values(famsRaw);
+  return entries.filter(
+    (f) => f !== null && typeof f === "object" && !Array.isArray(f),
+  );
+}
+function decompI(row) {
+  if (row.asr_conditional === null || row.asr_conditional === undefined) {
+    return null;
+  }
+  const fams = familyRecordsI(row);
+  if (fams.length === 0) return null;
+  let flips = 0;
+  let malformed = 0;
+  for (const fam of fams) {
+    const nf = countI(fam.n_flipped);
+    const fd =
+      fam.flip_direction !== null &&
+      typeof fam.flip_direction === "object" &&
+      !Array.isArray(fam.flip_direction)
+        ? fam.flip_direction
+        : null;
+    const tm = fd ? countI(fd["to-malformed"]) : null;
+    if (nf === null || tm === null) return null;
+    if (tm > nf) return null;
+    flips += nf;
+    malformed += tm;
+  }
+  const n = countI(row.n_eligible);
+  if (n === null || n === 0 || flips === 0) return null;
+  if (Math.abs(flips / n - row.asr_conditional) > 0.001) return null;
+  return { share: malformed / flips, genuine: (flips - malformed) / n };
+}
+/* The same derivation one family at a time, keyed by family
+ * id: null for a family whose records are missing or unusable
+ * or whose derived flips disagree with its printed attack
+ * success, and zeros for a family with no counted flips. */
+function famDecompI(row) {
+  const out = new Map();
+  for (const fam of familyRecordsI(row)) {
+    if (typeof fam.family !== "string") continue;
+    const nf = countI(fam.n_flipped);
+    const fd =
+      fam.flip_direction !== null &&
+      typeof fam.flip_direction === "object" &&
+      !Array.isArray(fam.flip_direction)
+        ? fam.flip_direction
+        : null;
+    const tm = fd ? countI(fd["to-malformed"]) : null;
+    const n = countI(fam.n_eligible);
+    if (nf === null || tm === null || n === null || n === 0 || tm > nf) {
+      out.set(fam.family, null);
+      continue;
+    }
+    if (typeof fam.asr === "number" && Math.abs(nf / n - fam.asr) > 0.001) {
+      out.set(fam.family, null);
+      continue;
+    }
+    out.set(fam.family, {
+      flips: nf,
+      share: nf === 0 ? 0 : tm / nf,
+      genuine: (nf - tm) / n,
+    });
+  }
+  return out;
 }
 
 /* Formatter fixtures from the published board. These pin the
@@ -542,6 +632,7 @@ function attr(tag, name) {
 }
 const allRows = [...ranked, ...unranked];
 const rowById = new Map(allRows.map((r) => [r.run_id, r]));
+const unrankedIds = new Set(unranked.map((r) => r.run_id));
 
 /* Scatter accounting. */
 const scatterHtml = sectionSlice("scatter", "calibration");
@@ -704,6 +795,25 @@ if (!heatHtml) {
       if (attr(tag, "data-na") !== "true" || printed !== "--") {
         fail(`heatmap cell ${id}/${famKey} should be a not measured cell printing --`);
       }
+    } else if (unrankedIds.has(id) && (famDecompI(row).get(famKey) ?? null) === null) {
+      /* A flagged family whose records do not derive its
+       * decomposition prints no figure (C-5): the cell stands
+       * suppressed, and its title says so. */
+      if (
+        attr(tag, "data-suppressed") !== "true" ||
+        printed !== "--" ||
+        attr(tag, "data-asr") !== null ||
+        attr(tag, "data-na") !== null
+      ) {
+        fail(
+          `heatmap cell ${id}/${famKey}: flagged family without a derivable decomposition must print suppressed (--) with no figure`,
+        );
+      }
+      if (!(attr(tag, "title") ?? "").includes("attack success not stated")) {
+        fail(
+          `heatmap cell ${id}/${famKey}: suppressed cell title does not state that its figure is not stated`,
+        );
+      }
     } else {
       if (Number(attr(tag, "data-asr")) !== fam.asr) {
         fail(`heatmap cell ${id}/${famKey}: data-asr disagrees with the payload`);
@@ -712,6 +822,26 @@ if (!heatHtml) {
         fail(
           `heatmap cell ${id}/${famKey} prints ${printed}, the payload rate formats to ${fmtCell(fam.asr)}`,
         );
+      }
+      if (unrankedIds.has(id)) {
+        /* A flagged cell that does print carries its family's
+         * decomposition in its title (C-5). */
+        const fd = famDecompI(row).get(famKey);
+        const title = attr(tag, "title") ?? "";
+        if (fd.flips === 0) {
+          if (!title.includes("no counted flips")) {
+            fail(
+              `heatmap cell ${id}/${famKey}: flagged cell title does not state that the family counted no flips`,
+            );
+          }
+        } else if (
+          !title.includes(`genuine flip rate ${fmtPct(fd.genuine)}`) ||
+          !title.includes(`${fmtPct(fd.share)} of counted flips to malformed output`)
+        ) {
+          fail(
+            `heatmap cell ${id}/${famKey}: flagged cell title does not carry the family's decomposition (genuine ${fmtPct(fd.genuine)}, malformed share ${fmtPct(fd.share)})`,
+          );
+        }
       }
     }
   }
@@ -1527,49 +1657,12 @@ for (const [id, rows] of Object.entries(expectedGroups)) {
 
 /* ---------- 12. cycle 7 surfaces ---------- */
 
-/* The malformed share of a row's counted flips, derived here
- * from the payload's family records under the rules the app
- * states for its own derivation: null when the row prints no
- * attack success figure, when the records are missing or
- * unusable (a family whose malformed flips exceed its flips
- * included), or when the derived flips disagree with the
- * printed figure. */
+/* The malformed share of a row's counted flips, under the
+ * derivation ported with the other independent derivations
+ * above (decompI); check 12b reads the share from it. */
 function malformedShareI(row) {
-  if (row.asr_conditional === null || row.asr_conditional === undefined) {
-    return null;
-  }
-  const detail =
-    row.detail && typeof row.detail === "object" ? row.detail : {};
-  const famsRaw = detail.families;
-  let entries = [];
-  if (Array.isArray(famsRaw)) entries = famsRaw;
-  else if (famsRaw && typeof famsRaw === "object") {
-    entries = Object.values(famsRaw);
-  }
-  const fams = entries.filter(
-    (f) => f !== null && typeof f === "object" && !Array.isArray(f),
-  );
-  if (fams.length === 0) return null;
-  let flips = 0;
-  let malformed = 0;
-  for (const fam of fams) {
-    const nf = countI(fam.n_flipped);
-    const fd =
-      fam.flip_direction !== null &&
-      typeof fam.flip_direction === "object" &&
-      !Array.isArray(fam.flip_direction)
-        ? fam.flip_direction
-        : null;
-    const tm = fd ? countI(fd["to-malformed"]) : null;
-    if (nf === null || tm === null) return null;
-    if (tm > nf) return null;
-    flips += nf;
-    malformed += tm;
-  }
-  const n = countI(row.n_eligible);
-  if (n === null || n === 0 || flips === 0) return null;
-  if (Math.abs(flips / n - row.asr_conditional) > 0.001) return null;
-  return malformed / flips;
+  const d = decompI(row);
+  return d === null ? null : d.share;
 }
 
 function metaDescription(pageHtml) {
@@ -1674,6 +1767,134 @@ if (!existsSync(cssDir)) {
   }
   if (!/#method h3\[id\][^{]*\{[^}]*scroll-margin-top:\s*64px/.test(builtCss)) {
     fail("built CSS carries no #method h3[id] scroll-margin rule");
+  }
+}
+
+/* ---------- 13. C-5 companion surfaces ---------- */
+
+/* Attribute text in the built HTML is entity-escaped; the
+ * figure strings asserted here carry none of the escaped
+ * characters, but names may, so unescape before comparing. */
+const unesc = (s) =>
+  s === null
+    ? null
+    : s
+        .replace(/&amp;/g, "&")
+        .replace(/&lt;/g, "<")
+        .replace(/&gt;/g, ">")
+        .replace(/&#x27;|&apos;/g, "'")
+        .replace(/&quot;/g, '"');
+
+/* A flagged figure's carrier text (a point title or an
+ * accessible name) holds the figure only with its
+ * decomposition beside it. Where the payload's records do
+ * not derive one, the carrier states the flagged standing
+ * and no figure: the words attack success never appear. */
+function assertFlaggedCarrier(carrier, row, where) {
+  if (carrier === null) {
+    fail(`${where} ${row.run_id}: carrier text missing`);
+    return;
+  }
+  const d = decompI(row);
+  if (d !== null) {
+    for (const clause of [
+      `attack success ${fmtPct(row.asr_conditional)}`,
+      `genuine flip rate ${fmtPct(d.genuine)}`,
+      `${fmtPct(d.share)} of counted flips to malformed output`,
+    ]) {
+      if (!carrier.includes(clause)) {
+        fail(
+          `${where} ${row.run_id}: flagged figure carrier does not state "${clause}"`,
+        );
+      }
+    }
+  } else {
+    if (!carrier.includes("flagged and not ranked")) {
+      fail(
+        `${where} ${row.run_id}: carrier states neither a decomposition nor the flagged standing`,
+      );
+    }
+    if (carrier.includes("attack success")) {
+      fail(
+        `${where} ${row.run_id}: carrier prints an attack success figure although the payload derives no decomposition for it`,
+      );
+    }
+  }
+}
+
+const scatter13 = sectionSlice("scatter", "calibration");
+if (scatter13) {
+  const pointMatches = [...scatter13.matchAll(/<g[^>]*>/g)].filter((m) =>
+    m[0].includes('class="scatter-point"'),
+  );
+  for (const m of pointMatches) {
+    const tag = m[0];
+    const id = attr(tag, "data-run-id");
+    const row = rowById.get(id);
+    if (!row) continue;
+    const close = scatter13.indexOf("</title>", m.index);
+    const open = close >= 0 ? scatter13.lastIndexOf("<title>", close) : -1;
+    const title =
+      open >= 0 ? unesc(scatter13.slice(open + "<title>".length, close)) : null;
+    const aria = unesc(attr(tag, "aria-label"));
+    if (unrankedIds.has(id)) {
+      assertFlaggedCarrier(title, row, "scatter point title");
+      assertFlaggedCarrier(aria, row, "scatter point name");
+    } else if (
+      title === null ||
+      !title.includes(`attack success ${fmtPct(row.asr_conditional)}`)
+    ) {
+      fail(`scatter point title ${id}: ranked title does not state its figure`);
+    }
+  }
+  const entryMatches = [...scatter13.matchAll(/<g[^>]*>/g)].filter((m) =>
+    m[0].includes('class="scatter-entry"'),
+  );
+  for (const m of entryMatches) {
+    const id = attr(m[0], "data-entry-for");
+    const row = rowById.get(id);
+    if (!row || !unrankedIds.has(id)) continue;
+    const vAt = scatter13.indexOf("scatter-entry-values", m.index);
+    const vOpen = vAt >= 0 ? scatter13.indexOf(">", vAt) : -1;
+    const vClose = vOpen >= 0 ? scatter13.indexOf("</text>", vOpen) : -1;
+    const values =
+      vClose >= 0 ? unesc(scatter13.slice(vOpen + 1, vClose)) : null;
+    if (values === null || !values.startsWith("flagged")) {
+      fail(`scatter entry ${id}: flagged entry does not state its standing`);
+    } else if (values.includes(fmtPct(row.asr_conditional))) {
+      fail(
+        `scatter entry ${id}: flagged entry prints its attack success figure`,
+      );
+    }
+    const aria = attr(m[0], "aria-label");
+    if (aria !== null) {
+      assertFlaggedCarrier(unesc(aria), row, "scatter entry name");
+    }
+  }
+}
+
+const heat13 = sectionSlice("heatmap", "scatter");
+if (heat13) {
+  const heatText13 = visibleText(heat13);
+  const dupNames13 = new Set(
+    allRows
+      .map((r) => shortName(r))
+      .filter((n, i, arr) => arr.indexOf(n) !== i),
+  );
+  for (const row of unranked) {
+    const label = dupNames13.has(shortName(row))
+      ? `${shortName(row)} (${wireWordsC(row.wire)})`
+      : shortName(row);
+    const d = decompI(row);
+    const note =
+      d !== null
+        ? `${label}, flagged and not ranked, attack success ${fmtPct(row.asr_conditional)}, genuine flip rate ${fmtPct(d.genuine)}, with ${fmtPct(d.share)} of counted flips to malformed output.`
+        : `${label}, flagged and not ranked. Its attack success figures are not stated, because the sealed records do not derive their malformed decomposition.`;
+    if (!heatText13.includes(note)) {
+      fail(
+        `heatmap notes: the flagged decomposition line for ${row.run_id} is missing or misstated (expected "${note.slice(0, 110)}")`,
+      );
+    }
   }
 }
 

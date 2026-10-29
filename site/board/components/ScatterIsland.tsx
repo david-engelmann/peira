@@ -269,6 +269,14 @@ function decadeTicks(domain: [number, number]): number[] {
 }
 
 function entryValues(d: ScatterDatum): string {
+  if (d.flagged) {
+    /* A flagged point's figure never stands in an entry row
+     * (C-5): the row states the standing and the cost, and the
+     * figure travels with its decomposition in the point's
+     * title, accessible name and detail card. */
+    if (d.rail) return d.cost !== null ? `flagged · $0.00` : `flagged · no cost`;
+    return `flagged · ${fmtUsdExact(d.cost!)} per run`;
+  }
   const asr = fmtPct(d.asr);
   if (d.rail) return d.cost !== null ? `${asr} · $0.00` : `${asr} · no cost`;
   return `${asr} · ${fmtUsdExact(d.cost!)} per run`;
@@ -391,11 +399,24 @@ function MarkerGlyph({ d }: { d: ScatterDatum }) {
  * The point's accessible name: the same figures the hover
  * card shows sighted users (name, attack success, 95% CI,
  * recorded cost, benign accuracy), so the focusable group
- * says in words everything the card says on screen.
+ * says in words everything the card says on screen. A
+ * flagged point's name carries its figure's decomposition
+ * with it, or, where the sealed records do not derive one,
+ * states the standing and no figure at all (C-5).
  */
 function pointAccessibleName(d: ScatterDatum): string {
-  const parts = [`${d.label}, attack success ${fmtPct(d.asr)}`];
-  if (d.ci !== null) parts.push(`95% CI ${fmtCi(d.ci)}`);
+  const parts: string[] = [];
+  if (d.flagged && !d.decomp) {
+    parts.push(`${d.label}, flagged and not ranked`);
+  } else if (d.flagged && d.decomp) {
+    parts.push(
+      `${d.label}, attack success ${fmtPct(d.asr)}, genuine flip rate ${fmtPct(d.decomp.genuineRate)}, with ${fmtPct(d.decomp.malformedShare)} of counted flips to malformed output`,
+    );
+    if (d.ci !== null) parts.push(`95% CI ${fmtCi(d.ci)}`);
+  } else {
+    parts.push(`${d.label}, attack success ${fmtPct(d.asr)}`);
+    if (d.ci !== null) parts.push(`95% CI ${fmtCi(d.ci)}`);
+  }
   parts.push(
     d.rail
       ? d.cost !== null
@@ -937,15 +958,52 @@ function HoverCard({
           </button>
         )}
         <div className="sc-rows">
-          <div className="sc-row">
-            <span className="sc-k">Attack success</span>
-            <span className="sc-v num">{fmtPct(d.asr)}</span>
-          </div>
-          {d.ci !== null && (
+          {d.flagged && (
             <div className="sc-row">
-              <span className="sc-k">95% CI</span>
-              <span className="sc-v num">{fmtCi(d.ci)}</span>
+              <span className="sc-k">Standing</span>
+              <span className="sc-v">Flagged, not ranked</span>
             </div>
+          )}
+          {d.flagged && !d.decomp ? (
+            /* No attack success row and no interval: both
+             * belong to a figure this card does not state,
+             * because the sealed records do not derive its
+             * malformed decomposition (C-5). The card states
+             * the standing and the malformed response rate
+             * the payload does carry. */
+            <>
+              {d.malformedRate !== null && (
+                <div className="sc-row">
+                  <span className="sc-k">Malformed rate</span>
+                  <span className="sc-v num">{fmtPct(d.malformedRate)}</span>
+                </div>
+              )}
+            </>
+          ) : (
+            <>
+              <div className="sc-row">
+                <span className="sc-k">Attack success</span>
+                <span className="sc-v num">{fmtPct(d.asr)}</span>
+              </div>
+              {d.flagged && d.decomp && (
+                <>
+                  <div className="sc-row">
+                    <span className="sc-k">Genuine flip rate</span>
+                    <span className="sc-v num">{fmtPct(d.decomp.genuineRate)}</span>
+                  </div>
+                  <div className="sc-row">
+                    <span className="sc-k">Flips to malformed</span>
+                    <span className="sc-v num">{fmtPct(d.decomp.malformedShare)}</span>
+                  </div>
+                </>
+              )}
+              {d.ci !== null && (
+                <div className="sc-row">
+                  <span className="sc-k">95% CI</span>
+                  <span className="sc-v num">{fmtCi(d.ci)}</span>
+                </div>
+              )}
+            </>
           )}
           <div className="sc-row">
             <span className="sc-k">Recorded cost</span>
