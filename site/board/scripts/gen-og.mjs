@@ -179,8 +179,44 @@ const railRows = nonSlice.filter(
 const costs = plotted.map((r) => r.total_cost_usd);
 const domLo = 10 ** (Math.floor(Math.log10(Math.min(...costs)) * 2) / 2);
 const domHi = 10 ** (Math.ceil(Math.log10(Math.max(...costs)) * 2) / 2);
-const PLOT = { x0: 168, x1: 1152, y0: 218, y1: 516 };
 const RAIL_CX = 92;
+/* The rail column is sized by the names it must hold. A
+ * rail name sits beside its disc at the label size and
+ * runs as far as the name runs, so the column derives
+ * from the widest rail name in this payload, measured
+ * with the page's own estimator (lib/layout.ts), whose
+ * per character advances are calibrated at the page's
+ * 11.5 px label size and scale linearly to this image's
+ * label size. The divider stands a fixed air gap clear
+ * of the longest name and the plot begins clear of the
+ * divider, so a rail name can never cross into the plot
+ * or under a plotted disc, whatever names the payload
+ * carries. The fixed column this replaces ended at
+ * x=148: strands-decider-2B-hobson-v21 ran across the
+ * divider into the discs, and a plotted disc printed
+ * over the tail of decider-0.8b. */
+const RAIL_NAME_X = RAIL_CX + 22;
+const estimateOgLabelWidth = (text) => {
+  let w = 0;
+  for (const ch of text) {
+    if ("ilj.,'-/ ".includes(ch)) w += 3.6;
+    else if ("mwMW".includes(ch)) w += 9.6;
+    else if (ch >= "A" && ch <= "Z") w += 7.4;
+    else if (ch >= "0" && ch <= "9") w += 6.6;
+    else if ("()".includes(ch)) w += 4.2;
+    else w += 6.3;
+  }
+  return w * (15 / 11.5) * 1.05 + 8;
+};
+const railNameW = Math.max(
+  ...railRows.map((r) => estimateOgLabelWidth(pointName(r))),
+);
+const DIVIDER_X = Math.ceil(RAIL_NAME_X + railNameW + 14);
+const PLOT = { x0: DIVIDER_X + 20, x1: 1152, y0: 218, y1: 516 };
+/* The top right reading keeps its data relative place
+ * when the plot moves: 36 percent across the plot, the
+ * share the fixed x=520 held at the old geometry. */
+const CORNER_TR_X = Math.round(PLOT.x0 + 0.36 * (PLOT.x1 - PLOT.x0));
 const xOf = (c) =>
   PLOT.x0 +
   ((Math.log10(c) - Math.log10(domLo)) /
@@ -211,7 +247,7 @@ function disc(r, x, y) {
  * has moved off their true height. */
 const gridSvg = [0, 0.1, 0.2, 0.3]
   .map(
-    (t) => `<line x1="148" y1="${yOf(t)}" x2="${PLOT.x1}" y2="${yOf(t)}" stroke="#232c35" stroke-opacity="0.55"/>
+    (t) => `<line x1="${DIVIDER_X}" y1="${yOf(t)}" x2="${PLOT.x1}" y2="${yOf(t)}" stroke="#232c35" stroke-opacity="0.55"/>
     <text x="${PLOT.x0 + 6}" y="${yOf(t) - 6}" class="tick">${Math.round(t * 100)}</text>`,
   )
   .join("\n");
@@ -252,7 +288,7 @@ const railY = new Map(railSpread.map((e) => [e.r.run_id, e.y]));
 const railLabelsSvg = railRows
   .map(
     (r) =>
-      `<text x="${RAIL_CX + 22}" y="${railY.get(r.run_id) + 5}" class="lab">${esc(pointName(r))}</text>`,
+      `<text x="${RAIL_NAME_X}" y="${railY.get(r.run_id) + 5}" class="lab">${esc(pointName(r))}</text>`,
   )
   .join("\n");
 /* Points whose discs would render as one disc are
@@ -325,15 +361,15 @@ const pointsSvg = [
   ...plottedXY.map((p) => disc(p.r, p.x, p.y)),
 ].join("\n");
 const scatterSvg = `<svg width="1200" height="630" viewBox="0 0 1200 630" class="chart">
-  <rect x="48" y="${PLOT.y0}" width="88" height="${PLOT.y1 - PLOT.y0}" fill="#0c1015"/>
+  <rect x="48" y="${PLOT.y0}" width="${DIVIDER_X - 60}" height="${PLOT.y1 - PLOT.y0}" fill="#0c1015"/>
   ${gridSvg}
-  <line x1="148" y1="${PLOT.y0 - 6}" x2="148" y2="${PLOT.y1}" stroke="#232c35"/>
+  <line x1="${DIVIDER_X}" y1="${PLOT.y0 - 6}" x2="${DIVIDER_X}" y2="${PLOT.y1}" stroke="#232c35"/>
   <line x1="${PLOT.x0}" y1="${PLOT.y1}" x2="${PLOT.x1}" y2="${PLOT.y1}" stroke="#232c35"/>
   ${decadeSvg.join("\n")}
   <text x="48" y="${PLOT.y0 - 10}" class="tick">No API cost</text>
   <text x="${PLOT.x0 + 32}" y="${PLOT.y0 - 10}" class="tick">Attack success, percent</text>
-  <text x="520" y="252" class="corner">Expensive and fragile</text>
-  <text x="520" y="278" class="corner-sub">The priciest run flipped most of all</text>
+  <text x="${CORNER_TR_X}" y="252" class="corner">Expensive and fragile</text>
+  <text x="${CORNER_TR_X}" y="278" class="corner-sub">The priciest run flipped most of all</text>
   <text x="${PLOT.x0}" y="468" class="corner">Near-free and tough</text>
   <text x="${PLOT.x0}" y="494" class="corner-sub">Jev 1.14 held at twenty cents a run</text>
   ${pointsSvg}
@@ -405,7 +441,7 @@ ${scatterSvg}
  * the furniture, another label or the canvas edge comes
  * back in `failures` and the generator exits non-zero
  * rather than ship an image with a name missing or struck. */
-function placeOgLabels(pts) {
+function placeOgLabels(pts, dividerX) {
   const NS = "http://www.w3.org/2000/svg";
   const svg = document.querySelector("svg.chart");
   const group = document.getElementById("og-labels");
@@ -418,12 +454,18 @@ function placeOgLabels(pts) {
     const r = document.querySelector(sel).getBoundingClientRect();
     furniture.push({ x: r.x, y: r.y, w: r.width, h: r.height });
   }
-  /* The rail column, left of the divider at x=148 in the
-   * plot's vertical band, is reserved for the rail's own
-   * names. A plotted label seated there reads as a rail
-   * entry, a result with no API cost, whatever its own
-   * disc's recorded cost says. */
-  furniture.push({ x: 40, y: 200, w: 108, h: 332 });
+  /* The rail column, left of the divider in the plot's
+   * vertical band, is reserved for the rail's own names.
+   * A plotted label seated there reads as a rail entry,
+   * a result with no API cost, whatever its own disc's
+   * recorded cost says. The reservation spans the whole
+   * derived column (dividerX, passed in because this
+   * function is serialized into the page), so it covers
+   * every rail name in full: at the fixed column a
+   * plotted label could seat flush under a rail name
+   * whose text ran past x=148, and the two read as one
+   * run-on line. */
+  furniture.push({ x: 40, y: 200, w: dividerX - 40, h: 332 });
   /* Discs sit inside translated groups, where getBBox reads
    * the local box and would put every disc at the origin;
    * the client rect gives the true centre and radius (the
@@ -742,7 +784,7 @@ const page = await browser.newPage();
 await page.setViewport({ width: 1200, height: 630 });
 await page.goto(`file://${ogHtml}`, { waitUntil: "networkidle0" });
 await page.evaluate(() => document.fonts.ready);
-const placement = await page.evaluate(placeOgLabels, plottedPts);
+const placement = await page.evaluate(placeOgLabels, plottedPts, DIVIDER_X);
 if (!placement.ok) {
   console.error(
     `gen-og: label placement failed for ${placement.failures.join(", ")}: every plotted point must be named in the share image`,
