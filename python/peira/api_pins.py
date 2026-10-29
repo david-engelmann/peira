@@ -398,13 +398,21 @@ def _looks_like_any_vendor_id(model_id: Any) -> bool:
     shipped, under both format and versioning-scheme rules. A fabricated
     ID (a dated Luna snapshot, a numbered 3.x Gemini build) cannot be
     smuggled in through the deprecation path.
+
+    The cursor pattern is excluded. Cursor variant labels are harness
+    serving labels, not vendor IDs, and their legitimacy is gated by
+    the pin table, the adapter's SUPPORTED_MODEL_IDS, and the live CLI
+    verification recorded at each pin. The shape is also too permissive
+    to carry anti-fabrication weight here. It matches fabricated IDs
+    built on other vendors' bases (gpt-5.6-luna-fast) whose own
+    vendor's scheme rules already rejected them.
     """
     if not isinstance(model_id, str) or not model_id:
         return False
     return any(
         _passes_vendor_semantics(vendor, model_id)
         for vendor, pattern in _VENDOR_ID_PATTERNS.items()
-        if pattern.match(model_id) is not None
+        if vendor != "cursor" and pattern.match(model_id) is not None
     )
 
 

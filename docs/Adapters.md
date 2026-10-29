@@ -2177,8 +2177,9 @@ prompt, both HTTP 200.
 
 ## Cursor harness (agent CLI)
 
-No pip extra. Install the Cursor CLI from cursor.com, set
-`CURSOR_API_KEY` to a Cursor User API key, then run
+No pip extra. Install the Cursor CLI from cursor.com. Create a
+User API key in the Cursor dashboard under User API Keys and set
+`CURSOR_API_KEY` to it, then run
 
 ```bash
 export CURSOR_API_KEY=<redacted>
@@ -2186,30 +2187,45 @@ peira run --adapter peira.adapters.cursor_harness:CursorHarnessAdapter --suite t
 ```
 
 `CursorHarnessAdapter` measures a model the way a Cursor user
-actually reaches it: through Cursor's own agent (the `agent` CLI in
-headless print mode, `--mode ask`, read-only; `--trust` is passed
-so the CLI runs non-interactively against the adapter's fresh
-empty workspace directory instead of stopping on its trust
-prompt), with Cursor's system
-prompt, model configuration, and serving choices in the loop. It is
-not a bare-wire measurement of the underlying model and never
-claims to be: the model id is Cursor's variant label, the harness
-is named in the adapter, the cache namespace, and the transcript,
-and the sampling record is `provider-incapable` because the harness
-exposes no temperature or seed control.
+actually reaches it. The measurement runs through Cursor's own
+agent, the `agent` CLI in headless print mode with `--mode ask`.
+The CLI is read-only. The adapter passes `--trust` so the CLI
+runs non-interactively against the adapter's fresh empty
+workspace directory instead of stopping on its trust prompt.
+Cursor's system prompt, model configuration, and serving choices
+stay in the loop. This is not a bare-wire measurement of the
+underlying model and never claims to be. The model id is
+Cursor's variant label. The harness is named in the adapter, the
+cache namespace, and the transcript. The sampling record is
+`provider-incapable` because the harness exposes no temperature
+or seed control.
 
-One pinned model: `grok-4.7-high-fast`, Cursor's high-reasoning
-fast-serving variant of xAI's grok-4.7, verified live 2026-10-24.
-The run draws on the account's Cursor plan (included usage), so
-pricing is $0.0 by the self-hosted convention in
-`python/peira/data/pricing.json`. The real consumption is recorded
-per call from the CLI envelope (input, output, and cache-read
-tokens). The overhead is large: one probe call used 13,366 input
-tokens for a one-word answer. The prompt sent is the structured
-pipeline's composed prompt with the decision schema rendered into
-the prompt text (a text harness has no response_format channel, so
-the contract travels in words), and replies go through the same
-strict JSON parse and schema validation.
+One pinned model. `grok-4.7-high-fast` is Cursor's
+high-reasoning fast-serving variant of xAI's grok-4.7, verified
+live 2026-10-24. The run draws on the account's Cursor plan
+included usage, so pricing is $0.0 by the self-hosted convention
+in `python/peira/data/pricing.json`. The real consumption is
+recorded per call from the CLI envelope. The envelope reports
+input, output, and cache-read tokens. The overhead is large.
+One probe call used 13,366 input tokens for a one-word answer.
+The prompt sent is the structured pipeline's composed prompt
+with the decision schema rendered into the prompt text. A text
+harness has no response_format channel, so the contract travels
+in words. Replies go through the same strict JSON parse and
+schema validation.
+
+Verdict mapping. The model natively returns free text. The
+adapter renders the decision schema into the prompt text, and a
+reply counts only when it parses as that schema. A parsed reply
+carries the shared structured primitives unchanged. The choice
+becomes the decision, the score is the model's self-reported
+0..1 confidence, and an abstain stays an abstain. Agent
+refusals and other prose fail the strict parse and surface
+through the same refusal and malformed paths as every
+structured adapter. The mapping is lossy in two named places.
+The score is self-reported and the harness offers no
+calibration channel. Sampling is declared `provider-incapable`
+because the harness exposes no temperature or seed control.
 
 ## Inception Mercury Decide
 
