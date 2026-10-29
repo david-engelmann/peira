@@ -203,6 +203,29 @@ class TestValidateRegistry(unittest.TestCase):
             with self.assertRaises(ValueError):
                 validate_registry()
 
+    def test_rejects_fabricated_id_matching_cursor_shape(self):
+        # The cursor variant-label shape also matches fabricated IDs
+        # built on other vendors' bases (a Luna variant was never
+        # shipped). The any-vendor check excludes the cursor pattern,
+        # so the deprecation path stays closed to them.
+        self.assertFalse(_looks_like_any_vendor_id("gpt-5.6-luna-fast"))
+        with patch.dict(
+            DEPRECATED_PINS, {"gpt-5.6-luna-fast": "gpt-5.6-luna"}
+        ):
+            with self.assertRaises(ValueError):
+                validate_registry()
+
+    def test_cursor_pin_still_validates(self):
+        # Excluding cursor from the any-vendor check must not break
+        # the pin path itself, which validates against the cursor
+        # pattern directly.
+        self.assertTrue(
+            _looks_like_pinned_id("cursor-harness", "grok-4.7-high-fast")
+        )
+        self.assertEqual(
+            get_pinned_model("cursor-harness"), "grok-4.7-high-fast"
+        )
+
     def test_accepts_legacy_deprecated_entry(self):
         # Genuine retired IDs (legacy formats the scheme rules keep
         # accepting) still validate as deprecation entries.
