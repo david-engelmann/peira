@@ -1785,11 +1785,24 @@ const unesc = (s) =>
         .replace(/&#x27;|&apos;/g, "'")
         .replace(/&quot;/g, '"');
 
+/* Does the text print the row's attack success figure in any
+ * rendering: the exact printed form, or its whole-percent
+ * rounding at a token boundary (so a benign 100.0% in the
+ * same carrier cannot trip the whole-percent form of a 0%
+ * figure)? */
+function printsFigure(text, row) {
+  if (typeof row.asr_conditional !== "number") return false;
+  if (text.includes(fmtPct(row.asr_conditional))) return true;
+  const whole = Math.round(row.asr_conditional * 100);
+  return new RegExp(`(^|[^0-9.])${whole}%`).test(text);
+}
+
 /* A flagged figure's carrier text (a point title or an
  * accessible name) holds the figure only with its
  * decomposition beside it. Where the payload's records do
  * not derive one, the carrier states the flagged standing
- * and no figure: the words attack success never appear. */
+ * and no figure: the words attack success never appear, and
+ * the figure itself appears in no rendering. */
 function assertFlaggedCarrier(carrier, row, where) {
   if (carrier === null) {
     fail(`${where} ${row.run_id}: carrier text missing`);
@@ -1817,6 +1830,11 @@ function assertFlaggedCarrier(carrier, row, where) {
     if (carrier.includes("attack success")) {
       fail(
         `${where} ${row.run_id}: carrier prints an attack success figure although the payload derives no decomposition for it`,
+      );
+    }
+    if (printsFigure(carrier, row)) {
+      fail(
+        `${where} ${row.run_id}: carrier prints the attack success figure in some rendering although the payload derives no decomposition for it`,
       );
     }
   }
@@ -1861,7 +1879,7 @@ if (scatter13) {
       vClose >= 0 ? unesc(scatter13.slice(vOpen + 1, vClose)) : null;
     if (values === null || !values.startsWith("flagged")) {
       fail(`scatter entry ${id}: flagged entry does not state its standing`);
-    } else if (values.includes(fmtPct(row.asr_conditional))) {
+    } else if (printsFigure(values, row)) {
       fail(
         `scatter entry ${id}: flagged entry prints its attack success figure`,
       );
@@ -1889,7 +1907,7 @@ if (heat13) {
     const note =
       d !== null
         ? `${label}, flagged and not ranked, attack success ${fmtPct(row.asr_conditional)}, genuine flip rate ${fmtPct(d.genuine)}, with ${fmtPct(d.share)} of counted flips to malformed output.`
-        : `${label}, flagged and not ranked. Its attack success figures are not stated, because the sealed records do not derive their malformed decomposition.`;
+        : `${label}, flagged and not ranked. No whole-row figure is stated, because the sealed records do not derive its malformed decomposition. Any family figure in the grid carries its own decomposition in its title.`;
     if (!heatText13.includes(note)) {
       fail(
         `heatmap notes: the flagged decomposition line for ${row.run_id} is missing or misstated (expected "${note.slice(0, 110)}")`,

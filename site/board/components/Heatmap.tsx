@@ -264,7 +264,7 @@ export default function Heatmap() {
               <p key={row.run_id}>
                 {d
                   ? `${name}, flagged and not ranked, attack success ${fmtPct(row.asr_conditional!)}, genuine flip rate ${fmtPct(d.genuineRate)}, with ${fmtPct(d.malformedShare)} of counted flips to malformed output.`
-                  : `${name}, flagged and not ranked. Its attack success figures are not stated, because the sealed records do not derive their malformed decomposition.`}
+                  : `${name}, flagged and not ranked. No whole-row figure is stated, because the sealed records do not derive its malformed decomposition. Any family figure in the grid carries its own decomposition in its title.`}
               </p>
             );
           })}
@@ -289,7 +289,10 @@ export default function Heatmap() {
           so low rates separate. Judge cells by their printed numbers. A
           cell marked "--" on a ground tone is a family that result
           never faced, {fmtInt(missing)} of the {fmtInt(order.length)}
-          families for the guardrail slices.
+          families for the guardrail slices. On a flagged result it
+          can also mark a family whose figure is not stated, because
+          its malformed decomposition does not derive from the
+          sealed records.
         </p>
       </div>
       <p className="chart-id">
