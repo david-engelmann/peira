@@ -7,6 +7,37 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
 
 ## [Unreleased]
 
+### Board scatter and heatmap: flagged figures carry their decomposition
+
+- On the cost scatter, a flagged point's attack success
+  figure now travels with its malformed decomposition
+  wherever it prints. The point title and the accessible
+  name state the genuine flip rate and the malformed share
+  of the counted flips beside the figure, the detail card
+  carries the two as rows of their own under a flagged
+  standing row, and the entry rows in the overflow stack
+  and the phone list state the standing and the cost with
+  no figure. Where the sealed family records do not derive
+  a decomposition, the title, the name and the card state
+  the standing and no figure at all.
+- On the attack family heatmap, every flagged cell title
+  now states its family's genuine flip rate and the
+  malformed share of its counted flips beside the family's
+  figure, the flagged group header points at the notes
+  under the grid, and the notes state each flagged
+  result's whole-row decomposition. A flagged family
+  whose records do not derive a decomposition prints no
+  figure. Its cell stands suppressed on the not measured
+  mark, and its title states that the figure is not
+  stated and why.
+- The decompositions derive from the sealed per-family
+  records in the payload data layer, under the same rules
+  the model pages' derivation already states. The
+  integrity check gains a thirteenth check pinning the
+  scatter titles, names and entries, and the heatmap
+  titles, suppressed cells and notes, against the
+  payload.
+
 ### Board malformed, compare, and model cards: design perfection cycle 6
 
 - The malformed section's axis now follows the data. While the

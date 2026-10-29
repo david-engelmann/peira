@@ -13,8 +13,10 @@ import {
   shortName,
   wireWords,
   displayCi,
+  flipDecomposition,
   duplicateShortNames,
   type BoardRow,
+  type FlipDecomposition,
 } from "@/lib/payload";
 import { fmtPct, fmtUsdExact } from "@/lib/format";
 import {
@@ -40,6 +42,16 @@ export interface ScatterDatum {
   lowerBound: boolean;
   rail: boolean;
   flagged: boolean;
+  /**
+   * The C-5 decomposition of a flagged point's figure, derived
+   * by lib/payload's flipDecomposition; null for ranked points
+   * and for flagged points whose sealed records do not derive
+   * one, whose figures then print nowhere on the scatter.
+   */
+  decomp: FlipDecomposition | null;
+  /** The row's malformed response rate, for the detail card of
+   *  a flagged point whose figure is not stated. */
+  malformedRate: number | null;
   /** Vendor family color and the ink that reads on it. */
   color: string;
   glyph: string;
@@ -68,27 +80,45 @@ function labelFor(row: BoardRow, dupes: Set<string>): string {
   return dupes.has(name) ? `${name} (${wireWords(row.wire)})` : name;
 }
 
-function pointTitle(row: BoardRow, rail: boolean): string {
-  const name = shortName(row);
-  const asr = fmtPct(row.asr_conditional!);
+function costClause(row: BoardRow, rail: boolean): string {
   if (rail) {
     return railCostState(row) === "recorded-zero"
-      ? `${name}, attack success ${asr}, recorded cost $0.00`
-      : `${name}, attack success ${asr}, no cost recorded`;
+      ? "recorded cost $0.00"
+      : "no cost recorded";
   }
   const cost = fmtUsdExact(row.total_cost_usd!);
   return costIsLowerBound(row)
-    ? `${name}, attack success ${asr}, recorded cost ${cost} per run, a lower bound`
-    : `${name}, attack success ${asr}, recorded cost ${cost} per run`;
+    ? `recorded cost ${cost} per run, a lower bound`
+    : `recorded cost ${cost} per run`;
+}
+
+function pointTitle(
+  row: BoardRow,
+  rail: boolean,
+  decomp: FlipDecomposition | null,
+): string {
+  const name = shortName(row);
+  const cost = costClause(row, rail);
+  if (!row.ranking_eligible) {
+    /* A flagged point's figure travels only with its
+     * decomposition (C-5); where the sealed records do not
+     * derive one, the title states the standing and no figure. */
+    if (decomp) {
+      return `${name}, attack success ${fmtPct(row.asr_conditional!)}, genuine flip rate ${fmtPct(decomp.genuineRate)}, with ${fmtPct(decomp.malformedShare)} of counted flips to malformed output, ${cost}`;
+    }
+    return `${name}, flagged and not ranked, ${cost}`;
+  }
+  return `${name}, attack success ${fmtPct(row.asr_conditional!)}, ${cost}`;
 }
 
 function shape(row: BoardRow, rail: boolean, dupes: Set<string>): ScatterDatum {
   const family = vendorFamilyOf(row);
   const vendor: VendorMark = vendorOf(row);
+  const decomp = row.ranking_eligible ? null : flipDecomposition(row);
   return {
     runId: row.run_id,
     label: labelFor(row, dupes),
-    title: pointTitle(row, rail),
+    title: pointTitle(row, rail, decomp),
     asr: row.asr_conditional!,
     ci: displayCi(row),
     benign: row.benign_accuracy ?? null,
@@ -96,6 +126,8 @@ function shape(row: BoardRow, rail: boolean, dupes: Set<string>): ScatterDatum {
     lowerBound: rail ? false : costIsLowerBound(row),
     rail,
     flagged: !row.ranking_eligible,
+    decomp,
+    malformedRate: row.malformed_rate ?? null,
     color: family.color,
     glyph: family.glyph,
     logoSlug: vendor.kind === "logo" ? vendor.slug : null,

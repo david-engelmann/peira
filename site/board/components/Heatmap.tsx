@@ -6,8 +6,11 @@ import {
   shortName,
   wireWords,
   duplicateShortNames,
+  flipDecomposition,
+  familyFlipDecomposition,
   type BoardRow,
   type RankedRow,
+  type FlipDecomposition,
 } from "@/lib/payload";
 import { fmtInt, fmtPct, fmtCi } from "@/lib/format";
 import VendorLogo from "./VendorLogo";
@@ -36,9 +39,24 @@ import {
  * in data-fam-short for the stylesheet's generated label), so
  * every family stays present and named with nothing off
  * canvas (D7, D8).
+ *
+ * A flagged row's figures carry their malformed decomposition
+ * on this surface (C-5): every flagged cell title states the
+ * family's genuine flip rate and the malformed share of its
+ * counted flips, the flagged group header points at the notes
+ * under the grid, and the notes state each flagged result's
+ * whole-row decomposition. A flagged family whose records do
+ * not derive a decomposition prints no figure here at all:
+ * its cell is suppressed to the not measured mark, and its
+ * title says the figure is not stated and why.
  */
 
-function cellTitle(row: BoardRow, key: string): string {
+function cellTitle(
+  row: BoardRow,
+  key: string,
+  flagged: boolean,
+  famDecomp: Map<string, FlipDecomposition | null>,
+): string {
   const fam = familiesOf(row).get(key);
   const name = familyFullName(key);
   if (!fam || fam.asr === null) {
@@ -47,7 +65,14 @@ function cellTitle(row: BoardRow, key: string): string {
   const ci = fam.asrCi95 ? `, 95 percent interval ${fmtCi(fam.asrCi95)}` : "";
   const base =
     fam.nEligible !== null ? `, ${fmtInt(fam.nEligible)} eligible cases` : "";
-  return `${name} attack success ${fmtPct(fam.asr)}${ci}${base}`;
+  const figure = `${name} attack success ${fmtPct(fam.asr)}${ci}${base}`;
+  if (!flagged) return figure;
+  const d = famDecomp.get(key);
+  if (d === undefined || d === null) {
+    return `${name} attack success not stated for ${shortName(row)}, because the figure's malformed decomposition does not derive from the sealed records`;
+  }
+  if (d.flips === 0) return `${figure}, no counted flips`;
+  return `${figure}, genuine flip rate ${fmtPct(d.genuineRate)}, with ${fmtPct(d.malformedShare)} of counted flips to malformed output`;
 }
 
 function HeatRow({
@@ -62,6 +87,9 @@ function HeatRow({
   dupes: Set<string>;
 }) {
   const fams = familiesOf(row);
+  const famDecomp = flagged
+    ? familyFlipDecomposition(row)
+    : new Map<string, FlipDecomposition | null>();
   const name = shortName(row);
   const label = dupes.has(name)
     ? `${name} (${wireWords(row.wire)})`
@@ -86,7 +114,22 @@ function HeatRow({
               data-family={key}
               data-fam-short={famShort}
               data-na="true"
-              title={cellTitle(row, key)}
+              title={cellTitle(row, key, flagged, famDecomp)}
+            >
+              --
+            </div>
+          );
+        }
+        if (flagged && (famDecomp.get(key) ?? null) === null) {
+          return (
+            <div
+              key={key}
+              className="heat-cell na"
+              data-run-id={row.run_id}
+              data-family={key}
+              data-fam-short={famShort}
+              data-suppressed="true"
+              title={cellTitle(row, key, flagged, famDecomp)}
             >
               --
             </div>
@@ -107,7 +150,7 @@ function HeatRow({
             data-family={key}
             data-fam-short={famShort}
             data-asr={fam.asr}
-            title={cellTitle(row, key)}
+            title={cellTitle(row, key, flagged, famDecomp)}
           >
             {fmtCellPct(fam.asr)}
           </div>
@@ -194,7 +237,10 @@ export default function Heatmap() {
           {groups.full.map((row: RankedRow) => (
             <HeatRow key={row.run_id} row={row} order={order} flagged={false} dupes={dupes} />
           ))}
-          <GroupHead label="Flagged" />
+          <GroupHead
+            label="Flagged"
+            caption="Not ranked. Each flagged result's decomposition is stated under the grid."
+          />
           {groups.flagged.map((row) => (
             <HeatRow key={row.run_id} row={row} order={order} flagged dupes={dupes} />
           ))}
@@ -207,6 +253,23 @@ export default function Heatmap() {
           ))}
         </div>
       </div>
+      {groups.flagged.length > 0 && (
+        <div className="chart-captions">
+          {groups.flagged.map((row) => {
+            const d = flipDecomposition(row);
+            const name = dupes.has(shortName(row))
+              ? `${shortName(row)} (${wireWords(row.wire)})`
+              : shortName(row);
+            return (
+              <p key={row.run_id}>
+                {d
+                  ? `${name}, flagged and not ranked, attack success ${fmtPct(row.asr_conditional!)}, genuine flip rate ${fmtPct(d.genuineRate)}, with ${fmtPct(d.malformedShare)} of counted flips to malformed output.`
+                  : `${name}, flagged and not ranked. No whole-row figure is stated, because the sealed records do not derive its malformed decomposition. Any family figure in the grid carries its own decomposition in its title.`}
+              </p>
+            );
+          })}
+        </div>
+      )}
       <div className="heat-legend">
         <div className="heat-scale" aria-hidden="true">
           {[0, 0.1, 0.25, 0.5, 1].map((v) => (
@@ -226,7 +289,10 @@ export default function Heatmap() {
           so low rates separate. Judge cells by their printed numbers. A
           cell marked "--" on a ground tone is a family that result
           never faced, {fmtInt(missing)} of the {fmtInt(order.length)}
-          families for the guardrail slices.
+          families for the guardrail slices. On a flagged result it
+          can also mark a family whose figure is not stated, because
+          its malformed decomposition does not derive from the
+          sealed records.
         </p>
       </div>
       <p className="chart-id">
