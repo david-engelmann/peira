@@ -293,6 +293,22 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
 - Each ranking row's sub-line no longer repeats the headline
   rate; it carries the interval and the malformed rate only.
 
+### Cursor harness adapter measures grok-4.7-high-fast through Cursor's agent
+
+- `CursorHarnessAdapter` (`cursor-harness`) measures a model
+  through Cursor's agent CLI (headless print mode, `--mode ask`),
+  with the account's Cursor User API key passed to the subprocess
+  only through its environment. It is a harness measurement, not a
+  bare-wire one, and is labeled as such everywhere. The pinned
+  model id is Cursor's variant label `grok-4.7-high-fast`, never
+  xAI's `grok-4.7`. Sampling is declared provider-incapable
+  because the harness exposes no temperature or seed. Per-call
+  token usage is recorded from the CLI envelope. Verified live
+  2026-10-24 on CLI 2026.10.22-27dcf5f. A probe call returned its
+  JSON envelope with usage in 7.3 s. Pricing is $0.0 by the
+  self-hosted convention. The run draws on Cursor plan included
+  usage.
+
 ### Mercury chat models gain a direct Inception wire, effort pinned
 
 - `MercuryAdapter` (`mercury-structured`) measures Inception's

@@ -123,6 +123,9 @@ PINNED_API_MODELS: dict[str, str] = {
     "minimax-structured": "MiniMax-M3",
     "openrouter-structured": "google/gemini-3.8-flash",
     "mercury-structured": "mercury-3",
+    # A Cursor harness variant label, not a vendor API id: the
+    # measurement surface is Cursor's agent (adapters/cursor_harness.py).
+    "cursor-harness": "grok-4.7-high-fast",
 }
 
 # Old pins the vendors have retired: old ID -> replacement ID.
@@ -295,6 +298,17 @@ _VENDOR_ID_PATTERNS: dict[str, re.Pattern[str]] = {
     "qwen": re.compile(r"^qwen\d*(\.\d+)?(-[a-z0-9]+)+$"),
     "minimax": re.compile(r"^MiniMax-M\d+(\.\d+)?(-[A-Za-z0-9]+)*$"),
     "mercury": re.compile(r"^mercury-\d+(\.\d+)?(-[a-z]+)?$"),
+    # Cursor variant labels: a vendor model base carrying a version
+    # number, plus a serving or reasoning variant suffix (the pinned
+    # label is grok-4.7-high-fast). The version anchor is what makes
+    # the shape check worth anything: a bare word pair matches
+    # nothing here. Which labels are enabled is gated separately by
+    # the pin table and the adapter's SUPPORTED_MODEL_IDS; the live
+    # CLI verification recorded at each pin is the fabrication check
+    # for the rest.
+    "cursor": re.compile(
+        r"^[a-z]+(-[a-z0-9]+)*-([a-z]\d+|\d+)(\.\d+)?(-[a-z0-9]+)*"
+        r"-(high|low|max|fast|smart)$"),
     "openrouter": re.compile(r"^[a-z0-9][a-z0-9_.-]*/[A-Za-z0-9][A-Za-z0-9._-]*$"),
 }
 
@@ -384,13 +398,21 @@ def _looks_like_any_vendor_id(model_id: Any) -> bool:
     shipped, under both format and versioning-scheme rules. A fabricated
     ID (a dated Luna snapshot, a numbered 3.x Gemini build) cannot be
     smuggled in through the deprecation path.
+
+    The cursor pattern is excluded. Cursor variant labels are harness
+    serving labels, not vendor IDs, and their legitimacy is gated by
+    the pin table, the adapter's SUPPORTED_MODEL_IDS, and the live CLI
+    verification recorded at each pin. The shape is also too permissive
+    to carry anti-fabrication weight here. It matches fabricated IDs
+    built on other vendors' bases (gpt-5.6-luna-fast) whose own
+    vendor's scheme rules already rejected them.
     """
     if not isinstance(model_id, str) or not model_id:
         return False
     return any(
         _passes_vendor_semantics(vendor, model_id)
         for vendor, pattern in _VENDOR_ID_PATTERNS.items()
-        if pattern.match(model_id) is not None
+        if vendor != "cursor" and pattern.match(model_id) is not None
     )
 
 
