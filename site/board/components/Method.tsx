@@ -33,14 +33,17 @@ export default function Method() {
     .replace(/, ([^,]*)$/, ", and $1");
   const sliceCases = groups.slices[0]?.n_cases ?? 0;
   /**
-   * Re-run provenance (F3 of the 2026-10-29 hardcode audit). The
-   * pipeline builds each row's rerun record from the standing
-   * artifact's own metadata (its parent_run_id chain and its own
-   * creation day), and this section prints only what those
-   * records attest: which results chain to an earlier run, and
-   * when the standing run was made. The section renders only
-   * when at least one record exists; a payload whose runs chain
-   * to nothing carries no re-run claim at all.
+   * Chained-run provenance (F3 of the 2026-10-29 hardcode
+   * audit). The pipeline builds each row's rerun record from
+   * the standing artifact's own metadata (its parent_run_id
+   * chain and its own creation day), and this section prints
+   * only what those records attest: which results chain to an
+   * earlier run, and when the standing run was made. The
+   * chain covers re-runs and resumed runs alike (the schema
+   * chains both through parent_run_id), so the wording
+   * claims the chain and nothing narrower. The section
+   * renders only when at least one record exists; a payload
+   * whose runs chain to nothing carries no such claim at all.
    */
   const rerunRows = allRows.filter((r) => r.rerun);
   const rerunEntries = rerunRows.map(
@@ -155,14 +158,17 @@ export default function Method() {
 
       {rerunRows.length > 0 && (
         <>
-          <h3 className="method-head" id="method-reruns">Re-run segments</h3>
+          <h3 className="method-head" id="method-reruns">Chained runs</h3>
           <p className="method-p">
             {fmtInt(rerunRows.length)}{" "}
-            {rerunRows.length === 1 ? "result rests" : "results rest"} on
-            re-run segments. {rerunList.charAt(0).toUpperCase() + rerunList.slice(1)}{" "}
-            {rerunRows.length === 1 ? "was" : "were"} re-run, each chained
-            to the earlier run it supersedes. The sealed figures on this
-            board are the re-run figures.
+            {rerunRows.length === 1
+              ? "result rests on a run chained"
+              : "results rest on runs chained"}{" "}
+            to an earlier run. {rerunList.charAt(0).toUpperCase() + rerunList.slice(1)}{" "}
+            {rerunRows.length === 1 ? "was" : "were"} chained to the
+            earlier {rerunRows.length === 1 ? "run it follows" : "runs they follow"}.
+            The sealed figures on this board are the chained runs'
+            figures.
           </p>
         </>
       )}

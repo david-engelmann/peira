@@ -241,12 +241,14 @@ export interface BoardRow {
   latency_ms_p50_attacked: number | null;
   latency_ms_p95_attacked: number | null;
   /**
-   * Re-run provenance the pipeline built from the standing
+   * Chained-run provenance the pipeline built from the standing
    * artifact's own metadata: present when the artifact chains
-   * to a parent run (RunArtifact.parent_run_id), with date the
-   * artifact's own creation day in ISO form. Null when the run
-   * chains to nothing, absent on payloads built before the
-   * pipeline emitted it (F3 of the 2026-10-29 hardcode audit).
+   * to a parent run (RunArtifact.parent_run_id, which chains
+   * re-runs and resumes alike), with date the artifact's own
+   * creation day in ISO form. Null when the run chains to
+   * nothing or its creation day is not recorded, absent on
+   * payloads built before the pipeline emitted it (F3 of the
+   * 2026-10-29 hardcode audit).
    */
   rerun?: { parent_run_id: string; date: string } | null;
   provenance: unknown;

@@ -72,7 +72,8 @@
  *     payload on every row and every metric field, families
  *     included. The server-rendered default pair is the
  *     design's pair (the strongest full suite row against
- *     jev-1.14.0); its printed values equal the payload, its
+ *     the first full suite row on the jev wire, the same
+ *     reference rule lib/compare uses); its printed values equal the payload, its
  *     delta cells equal A minus B recomputed here and print
  *     under the delta format rules ported below, its winner
  *     dots sit on the stronger side, its family bars carry
@@ -1533,10 +1534,10 @@ if (!cmpHtml) {
         `compare default model A is ${rowA.run_id}, the design's default is the strongest full suite row ${fullCohort[0].run_id}`,
       );
     }
-    const jevRow = allRows.find((r) => shortName(r) === "jev-1.14.0");
+    const jevRow = fullCohort.find((r) => r.wire === "jev");
     if (jevRow && rowB !== jevRow) {
       fail(
-        `compare default model B is ${rowB.run_id}, the design's default is jev-1.14.0 (${jevRow.run_id})`,
+        `compare default model B is ${rowB.run_id}, the design's default is the first full suite row on the jev wire (${jevRow.run_id})`,
       );
     }
     const expA = cmpExpectedById.get(rowA.run_id);
@@ -1688,12 +1689,13 @@ function modelPageDescription(row, where) {
   return desc;
 }
 
-/* 12a. The Method subsection anchors. The re-run anchor is
- * the one conditional subsection: the section renders only
- * when a payload row carries re-run provenance (the rerun
- * record the pipeline builds from the standing artifact's
- * parent_run_id chain), so its expectation is keyed to the
- * payload the same way the section is, in both directions. */
+/* 12a. The Method subsection anchors. The chained-run anchor
+ * is the one conditional subsection: the section renders only
+ * when a payload row carries chained-run provenance (the
+ * rerun record the pipeline builds from the standing
+ * artifact's parent_run_id chain), so its expectation is
+ * keyed to the payload the same way the section is, in both
+ * directions. */
 const METHOD_ANCHORS = [
   "method-case",
   "method-suite",
@@ -1711,7 +1713,7 @@ for (const id of METHOD_ANCHORS) {
 const payloadHasRerun = allRows.some((r) => r.rerun);
 if (payloadHasRerun !== html.includes(`id="method-reruns"`)) {
   fail(
-    `Method re-run anchor: the payload ${payloadHasRerun ? "carries" : "carries no"} re-run records but the rendered page ${payloadHasRerun ? "omits" : "prints"} the re-run section`,
+    `Method chained-run anchor: the payload ${payloadHasRerun ? "carries" : "carries no"} chained-run records but the rendered page ${payloadHasRerun ? "omits" : "prints"} the chained-run section`,
   );
 }
 

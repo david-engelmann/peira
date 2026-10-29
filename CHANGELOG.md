@@ -27,9 +27,11 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
   where it was a literal in three places.
 - Leaderboard rows carry a `rerun` record built from the
   standing artifact's own metadata (its `parent_run_id`
-  chain and creation day), null when the run chains to
-  nothing. The board's Method note prints its re-run
-  paragraph from those records and renders no paragraph when
+  chain, which chains re-runs and resumes alike, and its
+  creation day), null when the run chains to nothing or its
+  creation day is not recorded. The board's Method note
+  prints its chained-run paragraph from those records and
+  renders no paragraph when
   no row carries one; the note previously named two runs and
   a date as source literals. The footer's "What changed"
   note, which no payload data could derive, is removed, and

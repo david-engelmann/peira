@@ -624,20 +624,31 @@ def _leaderboard_stat_row(
     # qualifies_for_leaderboard, so consumers should treat empty
     # values as "not recorded", not as verified facts.
     cfg = artifact.config if isinstance(artifact.config, dict) else {}
-    # Re-run provenance, from the artifact's own metadata: the
-    # schema's parent_run_id chains a re-run or resume to the run
-    # it supersedes. When the standing artifact carries a parent,
-    # the row records the chain and the artifact's own creation
-    # day, so the board's Method note can state the re-run from
-    # data instead of naming runs and dates in source (F3 of the
-    # 2026-10-29 hardcode audit). The key is always present, null
-    # when the run chains to nothing.
+    # Chained-run provenance, from the artifact's own metadata:
+    # the schema's parent_run_id chains a re-run or a resume to
+    # the run it follows. When the standing artifact carries a
+    # parent, the row records the chain and the artifact's own
+    # creation day, so the board's Method note can state the
+    # chain from data instead of naming runs and dates in
+    # source (F3 of the 2026-10-29 hardcode audit). The key is
+    # always present, null when the run chains to nothing. A
+    # chained artifact whose creation day is missing or
+    # malformed attests no date (a sealed artifact can carry
+    # an empty created_utc), so it emits no record rather than
+    # a date the board would print as garbage.
     parent_run_id = artifact.parent_run_id or ""
     created = artifact.created_utc if isinstance(
         artifact.created_utc, str) else ""
+    created_day = created[:10]
+    day_ok = (
+        len(created_day) == 10
+        and created_day[4] == "-"
+        and created_day[7] == "-"
+        and created_day.replace("-", "").isdigit()
+    )
     rerun = (
-        {"parent_run_id": parent_run_id, "date": created[:10]}
-        if parent_run_id
+        {"parent_run_id": parent_run_id, "date": created_day}
+        if parent_run_id and day_ok
         else None
     )
     return {

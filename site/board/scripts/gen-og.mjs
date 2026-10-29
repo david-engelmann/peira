@@ -385,8 +385,10 @@ const plottedPts = plottedXY.map((p) => ({
  * ranked plotted population, the population the board's own
  * claims stand on. The headline (the priciest model was the
  * easiest to flip) and the top corner hold only while the
- * priciest ranked plotted run is also the most flipped
- * ranked plotted run, so that is asserted here: a payload
+ * priciest ranked plotted run's attack success equals that
+ * population's highest (a tie at the top still carries the
+ * claim, the same value comparison gen-social-preview
+ * makes), so that is asserted here: a payload
  * that breaks it fails the build rather than print a false
  * corner. The bottom corner states the chart's actual
  * toughness extreme, the lowest attack success among the
@@ -402,9 +404,13 @@ const byCostAsc = [...rankedPlotted].sort(
 );
 const priciest = byCostAsc.at(-1);
 const toughest = byAsrAsc[0];
-if (!priciest || !toughest || priciest.run_id !== byAsrAsc.at(-1).run_id) {
+if (
+  !priciest ||
+  !toughest ||
+  priciest.asr_conditional !== byAsrAsc.at(-1).asr_conditional
+) {
   console.error(
-    "gen-og: headline claim broken on this payload: the priciest ranked plotted run is not the highest attack success ranked plotted run, so the headline and the top corner would be false",
+    "gen-og: headline claim broken on this payload: the priciest ranked plotted run does not carry the highest attack success among the ranked plotted runs, so the headline and the top corner would be false",
   );
   process.exit(1);
 }
