@@ -254,6 +254,25 @@ medium 1) and target-hit rate.
   paid dispatch the CLI prints an estimate from the adapter+suite's
   cost history ("covers the run" or "short by ~$X"), or an honest
   no-history note when there is none.
+- **Provider failures and completeness**: a call that fails at the
+  provider or transport (HTTP 429 rate limit, another API error, or
+  a timeout against the run's declared time budgets) seals as a
+  blank record with `error_code` `rate_limit`, `api_error`, or
+  `timeout`. The record's shape matches a malformed model output,
+  but it is not one: the model produced no completion, so the case
+  is not completed work. Two rules enforce that. On `--resume`, a
+  stored result containing a provider-error record is validated
+  but not counted as done; the case is re-attempted and the fresh
+  records replace it. At seal time, a run whose stored results
+  contain any provider-error record seals with
+  `termination: "partial"`, never `"complete"`, however many cases
+  were dispatched. The records themselves stay in the artifact and
+  in the error log: they are the audit trail of what the provider
+  did. Genuine malformed output is unaffected: a completion that
+  failed validation (`parse_failure`), a refusal to emit the schema
+  (`refused_to_format`), and an over-cap completion
+  (`token_limit_exceeded`) all remain scored data under the
+  adjudication policy above, and they count as completed work.
 - **Calibration** (score primitive): self-reported-confidence calibration: ECE with
 - **Attacker/defender cost accounting** (M-9): the asymmetric economics.
   Every call's usage record carries the pricing table version that priced

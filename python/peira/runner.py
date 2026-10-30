@@ -639,6 +639,68 @@ def _error_code_for_entry(
     return "parse_failure"
 
 
+#: v3 error_codes that mean the provider or transport failed before
+#: the model produced a completion: the call measured the provider,
+#: not the model. Records carrying one of these codes are serialized
+#: through the same blank-record path as malformed output (decision
+#: "<error>", malformed=True, completion_hash "", usage None), but
+#: they are not model output and must not certify work: a result
+#: containing one is not completed work (see
+#: :func:`_result_has_provider_error`). The discrimination is by
+#: error_code alone, matching the sealed record: "parse_failure",
+#: "refused_to_format", and "token_limit_exceeded" stay out, because
+#: the model did produce a completion for those and the frozen
+#: adjudication policy scores them as malformed data. "timeout" is
+#: in: a call (or a whole case, for an item timeout) that exhausted
+#: the run's declared time budget produced no completion to score,
+#: whatever the latency sidecars record about the attempt.
+PROVIDER_ERROR_CODES = frozenset({"rate_limit", "api_error", "timeout"})
+
+
+def _record_is_provider_error(record: Any) -> bool:
+    """True when one call record is a provider/transport failure.
+
+    Accepts a :class:`CallRecord` or its sealed dict form. Only the
+    ``error_code`` discriminates (see :data:`PROVIDER_ERROR_CODES`):
+    the blank-record fields (decision, malformed, completion_hash,
+    usage) are shared with genuine malformed output by construction,
+    so they cannot separate the two.
+    """
+    if record is None:
+        return False
+    if isinstance(record, dict):
+        code = record.get("error_code", "")
+    else:
+        code = getattr(record, "error_code", "")
+    return code in PROVIDER_ERROR_CODES
+
+
+def _result_has_provider_error(result: Any) -> bool:
+    """True when any call record of a per-case result is a provider error.
+
+    Covers every result shape the runner seals: single-shot and
+    conversational results carry ``benign``/``attacked`` records;
+    sweep results carry a ``benign`` record plus the ``attempts``
+    list. Accepts the result object or its sealed dict form. A case
+    is only measured when every arm actually reached the model, so
+    one provider-error record anywhere in the result poisons the
+    whole case for completion purposes: resume re-attempts it and
+    the seal refuses "complete" while one is stored.
+    """
+    def _arm(name: str) -> Any:
+        if isinstance(result, dict):
+            return result.get(name)
+        return getattr(result, name, None)
+
+    for name in ("benign", "attacked"):
+        if _record_is_provider_error(_arm(name)):
+            return True
+    attempts = _arm("attempts")
+    if isinstance(attempts, (list, tuple)):
+        return any(_record_is_provider_error(a) for a in attempts)
+    return False
+
+
 def _round4(value: Any) -> float | None:
     """Round to 4 decimals for artifact display fields; None stays None."""
     if value is None:
@@ -2673,6 +2735,15 @@ def validate_partial(
     subclass for the conversational suite (its turn history must
     survive the resume round-trip).
 
+    Provider-error results are validated like any other entry but
+    are NOT returned as done: a result whose records carry a
+    provider/transport error_code (see
+    :func:`_result_has_provider_error`) never measured the model,
+    so the case stays pending and resume re-attempts it. The entry
+    itself stays in the partial on disk (auditable, and counted by
+    the duplicate/unknown-id checks above); only its completion
+    claim is refused.
+
     Budget exception: a partial whose cap was raised through
     :func:`amend_partial_budget` carries an amendment chain in
     ``config["budget_amendments"]``. Such a partial validates only
@@ -2824,7 +2895,13 @@ def validate_partial(
             raise ValueError(
                 f"partial run has malformed result entry at index {i}: {e}"
             ) from e
-    return seen, results
+    # Provider-error results are not completed work: they leave the
+    # done set and the prior results, so the resumed run re-attempts
+    # exactly those cases and the fresh records replace them.
+    done_results = [
+        r for r in results if not _result_has_provider_error(r)
+    ]
+    return {r.case_id for r in done_results}, done_results
 
 
 def amend_partial_budget(
@@ -3051,6 +3128,12 @@ def _item_timeout_record(
     blank with ``timed_out=True``. Per the D-11 conservative rule the
     case counts in the timeout rate, and an attacked item timeout
     counts as flipped; eligibility still keys off the benign baseline.
+    Those are within-artifact scoring rules for the records as sealed.
+    Completion is a separate question: the record carries
+    error_code "timeout", a provider-error code, so the result does
+    not certify the case as done (see
+    :func:`_result_has_provider_error`): resume re-attempts the case
+    and the record blocks a "complete" seal while it is stored.
     """
     if state is None:
         timing = CallTiming()
@@ -3445,12 +3528,31 @@ async def _run_suite_async(
         if partial_path is not None and len(results) < total:
             checkpoint()
 
+    # Provider-error results block "complete": every case was
+    # dispatched, but a stored result whose records carry a
+    # provider/transport error_code never measured the model, so
+    # the run is not complete while one is sealed in it. The
+    # artifact seals as "partial" (analyzable, never rankable, and
+    # resumable: validate_partial refuses those results as done,
+    # so a resume re-attempts exactly those cases). The records
+    # themselves stay in the artifact: they are the audit trail of
+    # what the provider did, and the error log carries them.
+    provider_error_pending = any(
+        _result_has_provider_error(r) for r in results
+    )
     if run_timed_out:
         termination = "timeout"
     elif budget_exhausted:
         termination = "budget"
+    elif provider_error_pending:
+        termination = "partial"
     else:
         termination = "complete"
+    if provider_error_pending and partial_path is not None:
+        # Refresh the on-disk partial with the final result set, so
+        # the resumable record a later --resume reads is current
+        # (the periodic checkpoints can lag the last completions).
+        checkpoint()
     ordered = _sort_results(results, indexed)
     cache_stats = (
         {"dir": str(cache.dir), "hits": cache.hits, "misses": cache.misses}
@@ -4389,6 +4491,12 @@ def replay_suite(
         pricing_version=str(table.get("pricing_version", "")),
         contract_version=CONTRACT_VERSION,
         # Replay re-scores a full transcript: complete by construction.
+        # Replay is not a measurement run and takes no completion
+        # position on the records it rebuilds (provider-error entries
+        # included): it reproduces the original run's scoring exactly,
+        # and completeness is the original run's seal to claim. The
+        # provider-error completion block in _run_suite_async governs
+        # live runs, whose seals are the ones that certify work.
         termination="complete",
         budget_usd=None,
         spent_usd=spent_usd,

@@ -404,7 +404,13 @@ class TestItemTimeout(unittest.TestCase):
         finally:
             event.set()
         self.assertEqual(len(art.results), 1)
-        self.assertEqual(art.termination, "complete")
+        # The case's records are item timeouts (error_code
+        # "timeout"): scored data inside the artifact, but not
+        # completed work, so the run seals "partial", never
+        # "complete", while one is stored. (Completion semantics
+        # for provider-error records: see
+        # tests/test_runner_provider_errors.py.)
+        self.assertEqual(art.termination, "partial")
         # The budget fired during the benign arm: benign is an
         # explicitly typed item timeout with honest partial timing
         # (only elapsed adapter execution attributed, never the whole
