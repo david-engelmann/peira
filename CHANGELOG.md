@@ -7,6 +7,28 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
 
 ## [Unreleased]
 
+### Provider-error records no longer count as completed work
+
+- A call record carrying a provider/transport `error_code`
+  (`rate_limit`, `api_error`, `timeout`) and an empty
+  `completion_hash` shares the blank-record shape of a malformed
+  model output, but the model produced no completion. The runner
+  now discriminates on that pair of fields, over every record a
+  result carries (conversational turn records included).
+  `validate_partial` validates such results but does not return
+  them as done, so `--resume` re-attempts exactly those cases,
+  and a run whose stored results contain one seals with
+  `termination: "partial"` instead of `"complete"` (refreshing
+  its on-disk partial so the resumable record is current). On
+  resume, transcript entries for re-attempted cases are replaced
+  by the fresh calls, and replay derives its termination from
+  the rebuilt records the same way. Genuine malformed output
+  (`parse_failure`, `refused_to_format`,
+  `token_limit_exceeded`) is unchanged. It still counts as
+  completed work and scores under the frozen adjudication
+  policy. Regression coverage in
+  `tests/test_runner_provider_errors.py`.
+
 ### Restart-surviving seal checkpointing (opt-in)
 
 - `peira.metrics.summarize` accepts `checkpoint_dir` and

@@ -543,8 +543,15 @@ class TestResumeBudgetMismatch(unittest.TestCase):
     def _sealed_artifact(self, **budgets):
         cases = _load_fixture_cases()
         adapter, nonce = _mock(cases)
+        # The nonce must ride along: without it the runner mints a
+        # fresh one, the scripted mock matches nothing, and every
+        # turn seals as an api_error blank record. Those records are
+        # provider errors, not completed work, so a resume
+        # validation over them rightly returns nothing as done.
+        # This fixture exists to exercise budget matching over
+        # genuine results.
         artifact = run_conversation_suite(
-            adapter, cases, seed=0, **budgets
+            adapter, cases, seed=0, run_nonce=nonce, **budgets
         )
         return artifact, adapter, cases
 

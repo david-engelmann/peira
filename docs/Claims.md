@@ -11,6 +11,14 @@ indexes the load-bearing claims; detail lives in the linked docs.
 - Every public score will link to per-case drill-down receipts.
 - Run artifacts are sealed with an analysis lock; `peira report` warns on
   lock mismatch.
+- A case counts as completed work only when every call record it carries
+  actually reached the model. A stored result containing a
+  provider-error record (`error_code` `rate_limit`, `api_error`, or
+  `timeout` on a record with no completion, conversational turn records
+  included) is not done. `--resume` re-attempts exactly those cases, a
+  run still storing one seals with `termination: "partial"` rather than
+  `"complete"`, and replay derives the same termination from the records
+  it rebuilds (see `Methodology.md`).
 - The attacked-arm decision curve carries an isotonic-recalibration
   upper-bound envelope (C-3). It is display-only, never a ranker, and
   slightly optimistic because the fit is in-sample.

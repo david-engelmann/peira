@@ -408,6 +408,30 @@ trips the gate.
 Do not rank a budget-terminated run. It stopped early by design,
 and its partial numbers are for diagnosis, not comparison.
 
+### Provider failures and completeness
+
+Definition. A call that fails at the provider or transport (rate
+limit, API error, or timeout) seals as a blank record whose
+`error_code` is `rate_limit`, `api_error`, or `timeout`. Such a
+record is not a model output. The case it belongs to is not
+completed work. A resumed run re-attempts exactly the cases whose
+stored results contain one, and a run sealing with any still
+stored terminates as "partial", never "complete".
+
+Scope. The discrimination is by `error_code` on a record that
+carries no completion. A provider failure seals with an empty
+`completion_hash`, and a record holding a real completion hash is
+genuine data whatever its `error_code` says. Every record a
+result carries counts, conversational turn records included.
+Genuine malformed output (`parse_failure`, `refused_to_format`,
+`token_limit_exceeded`) carries a real completion and still
+counts as completed work, scored under the adjudication policy.
+
+Do not read a provider-error record as a model result. Its flip
+and malformed flags describe a call that never reached the model,
+and the completion rules above keep it out of any run that claims
+to be complete.
+
 ### Timing
 
 Definition. Per-call timing decomposition (admission wait, adapter
