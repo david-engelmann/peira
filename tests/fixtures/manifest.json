@@ -9,7 +9,8 @@
         "tests/test_conversation_budgets.py",
         "tests/test_conversation_metrics.py",
         "tests/test_conversation_separation.py",
-        "tests/test_conversational.py"
+        "tests/test_conversational.py",
+        "tests/test_runner_provider_errors.py"
       ]
     },
     "g9_paraphrase_pairs.jsonl": {

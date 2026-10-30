@@ -647,45 +647,60 @@ def _error_code_for_entry(
 #: they are not model output and must not certify work: a result
 #: containing one is not completed work (see
 #: :func:`_result_has_provider_error`). The discrimination is by
-#: error_code alone, matching the sealed record: "parse_failure",
-#: "refused_to_format", and "token_limit_exceeded" stay out, because
-#: the model did produce a completion for those and the frozen
-#: adjudication policy scores them as malformed data. "timeout" is
-#: in: a call (or a whole case, for an item timeout) that exhausted
-#: the run's declared time budget produced no completion to score,
-#: whatever the latency sidecars record about the attempt.
+#: error_code on a record carrying no completion, matching the
+#: sealed record: "parse_failure", "refused_to_format", and
+#: "token_limit_exceeded" stay out, because the model did produce a
+#: completion for those and the frozen adjudication policy scores
+#: them as malformed data. "timeout" is in: a call (or a whole case,
+#: for an item timeout) that exhausted the run's declared time
+#: budget produced no completion to score, whatever the latency
+#: sidecars record about the attempt.
 PROVIDER_ERROR_CODES = frozenset({"rate_limit", "api_error", "timeout"})
 
 
 def _record_is_provider_error(record: Any) -> bool:
     """True when one call record is a provider/transport failure.
 
-    Accepts a :class:`CallRecord` or its sealed dict form. Only the
-    ``error_code`` discriminates (see :data:`PROVIDER_ERROR_CODES`):
-    the blank-record fields (decision, malformed, completion_hash,
-    usage) are shared with genuine malformed output by construction,
-    so they cannot separate the two.
+    Accepts a :class:`CallRecord` or its sealed dict form. The
+    ``error_code`` carries the classification (see
+    :data:`PROVIDER_ERROR_CODES`), and the record must carry no
+    completion: a provider failure produced none, so every path
+    that seals one leaves ``completion_hash`` empty (the blank
+    record default, and the sync path passes an empty hash
+    whenever there is no output). A record holding a non-empty
+    ``completion_hash`` measured a real completion, whatever its
+    error_code says, so it is genuine data, not a provider
+    failure. The other blank-record fields (decision, malformed,
+    usage) are shared with genuine malformed output by
+    construction, so they cannot separate the two. The hash field
+    may be absent on a hand-built dict: absent counts as empty.
     """
     if record is None:
         return False
     if isinstance(record, dict):
         code = record.get("error_code", "")
+        completion_hash = record.get("completion_hash", "") or ""
     else:
         code = getattr(record, "error_code", "")
-    return code in PROVIDER_ERROR_CODES
+        completion_hash = getattr(record, "completion_hash", "") or ""
+    return code in PROVIDER_ERROR_CODES and not completion_hash
 
 
 def _result_has_provider_error(result: Any) -> bool:
     """True when any call record of a per-case result is a provider error.
 
     Covers every result shape the runner seals: single-shot and
-    conversational results carry ``benign``/``attacked`` records;
-    sweep results carry a ``benign`` record plus the ``attempts``
-    list. Accepts the result object or its sealed dict form. A case
-    is only measured when every arm actually reached the model, so
-    one provider-error record anywhere in the result poisons the
-    whole case for completion purposes: resume re-attempts it and
-    the seal refuses "complete" while one is stored.
+    conversational results carry ``benign``/``attacked`` records,
+    conversational results also carry the ``benign_turns`` and
+    ``attacked_turns`` record lists (sealed under the
+    ``conversational_turns`` entry field), and sweep results carry
+    a ``benign`` record plus the ``attempts`` list. Accepts the
+    result object or its sealed dict form. A case is only measured
+    when every call actually reached the model, so one
+    provider-error record anywhere in the result (a non-final
+    conversational turn included) poisons the whole case for
+    completion purposes: resume re-attempts it and the seal
+    refuses "complete" while one is stored.
     """
     def _arm(name: str) -> Any:
         if isinstance(result, dict):
@@ -697,8 +712,33 @@ def _result_has_provider_error(result: Any) -> bool:
             return True
     attempts = _arm("attempts")
     if isinstance(attempts, (list, tuple)):
-        return any(_record_is_provider_error(a) for a in attempts)
-    return False
+        if any(_record_is_provider_error(a) for a in attempts):
+            return True
+    # Conversational turn lists. The sealed dict form nests them
+    # under "conversational_turns" (the flat dict keys are accepted
+    # too, matching ConversationResult.from_dict), and the object
+    # form carries them as attributes. Only the final-turn pair is
+    # scored, so a provider failure on an earlier turn is invisible
+    # to the benign/attacked check above: the turn driver records
+    # it, carries it into the history as malformed output, and
+    # continues. It still means the case was never fully measured.
+    turn_lists: list[Any] = []
+    if isinstance(result, dict):
+        nested = result.get("conversational_turns")
+        if isinstance(nested, dict):
+            turn_lists.append(nested.get("benign_turns"))
+            turn_lists.append(nested.get("attacked_turns"))
+        turn_lists.append(result.get("benign_turns"))
+        turn_lists.append(result.get("attacked_turns"))
+    else:
+        turn_lists.append(getattr(result, "benign_turns", None))
+        turn_lists.append(getattr(result, "attacked_turns", None))
+    return any(
+        _record_is_provider_error(record)
+        for turns in turn_lists
+        if isinstance(turns, (list, tuple))
+        for record in turns
+    )
 
 
 def _round4(value: Any) -> float | None:
@@ -2741,7 +2781,7 @@ def validate_partial(
     :func:`_result_has_provider_error`) never measured the model,
     so the case stays pending and resume re-attempts it. The entry
     itself stays in the partial on disk (auditable, and counted by
-    the duplicate/unknown-id checks above); only its completion
+    the duplicate/unknown-id checks above). Only its completion
     claim is refused.
 
     Budget exception: a partial whose cap was raised through
@@ -3906,12 +3946,40 @@ def run_suite(
         )
         skip: frozenset[int] = frozenset()
         if resuming and tpath.exists():
-            # Preserve the entries recorded before the interruption, and
-            # skip re-writing entries already on record: a crash landing
+            entries = load_transcript(tpath)
+            # A consumed seal snapshot dispatches nothing, so no
+            # entry is superseded even when a done set was passed.
+            snapshot_consumed = (
+                _seal_snapshot_preloaded is not _SEAL_SNAPSHOT_NOT_LOADED
+                and _seal_snapshot_preloaded is not None
+            )
+            if already_done and not snapshot_consumed:
+                # A resumed run re-dispatches every case the partial
+                # validation did not return as done (provider-error
+                # cases among them, and cases a crash kept out of the
+                # checkpoint). The re-attempt replaces those cases'
+                # results in the sealed artifact, so their recorded
+                # entries are superseded: keeping them would leave the
+                # transcript describing calls the artifact replaced,
+                # and replay would rebuild the old records. Drop them
+                # here and let the re-attempt write fresh entries.
+                # Entries for done cases stay on record.
+                kept = [
+                    e for e in entries
+                    if str(e["case_id"]) in already_done
+                ]
+                if len(kept) != len(entries):
+                    with open(tpath, "w", encoding="utf-8") as f:
+                        for e in kept:
+                            f.write(
+                                json.dumps(e, sort_keys=True) + "\n"
+                            )
+                entries = kept
+            # Skip re-writing entries already on record: a crash landing
             # between a transcript write and its checkpoint re-runs that
             # case, and the second entry would be a duplicate.
             skip = frozenset(
-                int(e["dispatch_index"]) for e in load_transcript(tpath)
+                int(e["dispatch_index"]) for e in entries
             )
         transcript = _TranscriptSink(
             tpath, append=resuming, skip_indices=skip
@@ -4480,6 +4548,20 @@ def replay_suite(
         for r in ordered
     )
     result_dicts = results_to_dicts(ordered, to_dict=result_to_dict)
+    # Replay takes the completion position its rebuilt records earn.
+    # A transcript whose records include provider-error entries
+    # re-scores calls that never reached the model, so the replayed
+    # artifact seals "partial", exactly as the live run did. Only a
+    # transcript with no provider-error record replays as
+    # "complete". (A run that sealed "partial" for a budget or
+    # timeout termination lacks full transcript coverage, so replay
+    # refuses it above: the provider-error shape is the only
+    # partial shape a complete transcript can carry.)
+    replay_termination = (
+        "partial"
+        if any(_result_has_provider_error(r) for r in ordered)
+        else "complete"
+    )
     artifact = RunArtifact(
         adapter_name=name,
         adapter_version=version,
@@ -4490,14 +4572,7 @@ def replay_suite(
         pricing_date=str(table.get("date", "")),
         pricing_version=str(table.get("pricing_version", "")),
         contract_version=CONTRACT_VERSION,
-        # Replay re-scores a full transcript: complete by construction.
-        # Replay is not a measurement run and takes no completion
-        # position on the records it rebuilds (provider-error entries
-        # included): it reproduces the original run's scoring exactly,
-        # and completeness is the original run's seal to claim. The
-        # provider-error completion block in _run_suite_async governs
-        # live runs, whose seals are the ones that certify work.
-        termination="complete",
+        termination=replay_termination,
         budget_usd=None,
         spent_usd=spent_usd,
         cases_completed=len(ordered),
@@ -4513,12 +4588,13 @@ def replay_suite(
         # ("" when undeclared). max_attempts is the default; the
         # transcript records the original dispatch limits per call.
         **_v3_artifact_blocks(
-            None, DEFAULT_MAX_ATTEMPTS, "complete",
+            None, DEFAULT_MAX_ATTEMPTS, replay_termination,
             result_dicts=result_dicts,
         ),
     )
     artifact.metrics = _summarize_artifact(
-        ordered, required_families, cases, seed, termination="complete"
+        ordered, required_families, cases, seed,
+        termination=replay_termination,
     )
     artifact.per_family_stats = _per_family_stats(artifact.metrics)
     return artifact.seal()

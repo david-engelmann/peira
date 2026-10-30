@@ -547,8 +547,8 @@ class TestResumeBudgetMismatch(unittest.TestCase):
         # fresh one, the scripted mock matches nothing, and every
         # turn seals as an api_error blank record. Those records are
         # provider errors, not completed work, so a resume
-        # validation over them rightly returns nothing as done;
-        # this fixture exists to exercise budget matching over
+        # validation over them rightly returns nothing as done.
+        # This fixture exists to exercise budget matching over
         # genuine results.
         artifact = run_conversation_suite(
             adapter, cases, seed=0, run_nonce=nonce, **budgets
