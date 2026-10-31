@@ -9,7 +9,6 @@ import {
   type MouseEvent,
 } from "react";
 import { fmtPct, fmtCi, fmtUsdExact } from "@/lib/format";
-import { ASR_AXIS_MAX, ASR_TICKS } from "@/lib/chart";
 import {
   placeLabels,
   nudgePoints,
@@ -28,12 +27,19 @@ import type { ScatterDatum } from "@/lib/scatterData";
  * family color carrying the maker's mark, and every point is
  * named: beside its disc where the deterministic label solver
  * finds a collision-free side, on the rail as a list row
- * beside its disc, or in the overflow stack, where each row
+ * beside its disc, in the overflow stack, where each row
  * carries the point's own disc glyph beside its name and
- * figures. No label is ever tied to its point by a drawn
+ * figures, or, at widths where the plot's bands fill, in the
+ * fitted list under the chart, inside the same panel. The
+ * tiers degrade in that order and the last one cannot fill:
+ * it is an HTML list, so it grows with the population and
+ * no point is ever dropped and no render ever throws over
+ * a name. No label is ever tied to its point by a drawn
  * line: there are no leader lines anywhere in the chart.
- * Flagged results keep the amber ring. The corners carry the
- * two readings the data supports, in display type.
+ * Flagged results keep the amber ring. The section's two
+ * readings stand in the shell above the chart, computed
+ * from the payload; the plot itself carries no prose claims
+ * (hardcode audit F1, F2).
  *
  * The detail card is one state machine for every pointer.
  * Hover and keyboard focus preview a point; a click or tap
@@ -76,14 +82,7 @@ interface Geom {
   dividerX: number;
   plot: { x0: number; x1: number; y0: number; y1: number };
   labelBounds: Rect;
-  /* The corner readings' furniture boxes and text anchors.
-   * The solver keeps labels out of the boxes; the text sits
-   * at the anchors. */
-  annotTR: Rect;
-  annotBL: Rect;
   extraFurniture: Rect[];
-  cornerTR: { x: number; titleY: number; subY: number };
-  cornerBL: { x: number; titleY: number; subY: number };
   /* Point spreading: the nudge pass's separation and shift
    * cap for plotted points, and the rail chain's. */
   spread: { minSep: number; maxShift: number };
@@ -106,11 +105,7 @@ const WIDE: Geom = {
   dividerX: 268,
   plot: { x0: 292, x1: 1124, y0: 36, y1: 604 },
   labelBounds: { x: 276, y: 30, w: 854, h: 574 },
-  annotTR: { x: 580, y: 38, w: 258, h: 62 },
-  annotBL: { x: 298, y: 458, w: 300, h: 72 },
   extraFurniture: [],
-  cornerTR: { x: 838, titleY: 66, subY: 90 },
-  cornerBL: { x: 304, titleY: 500, subY: 524 },
   spread: { minSep: 24, maxShift: 12 },
   railSpread: { minSep: 15.5, maxShift: 13 },
   markerObst: 12,
@@ -132,11 +127,7 @@ const PHONE: Geom = {
   dividerX: -10,
   plot: { x0: 10, x1: 320, y0: 52, y1: 566 },
   labelBounds: { x: 4, y: 44, w: 320, h: 526 },
-  annotTR: { x: 104, y: 0, w: 220, h: 42 },
-  annotBL: { x: 4, y: 494, w: 240, h: 48 },
   extraFurniture: [{ x: 8, y: 0, w: 158, h: 18 }],
-  cornerTR: { x: 324, titleY: 22, subY: 38 },
-  cornerBL: { x: 8, titleY: 520, subY: 538 },
   spread: { minSep: 22, maxShift: 18.5 },
   railSpread: { minSep: 17, maxShift: 18 },
   markerObst: 11,
@@ -154,13 +145,10 @@ const PHONE: Geom = {
  * island re-solves at a geometry whose viewBox width is
  * its measured CSS width, so every text renders at its
  * drawn size. The rail narrows to the width its names
- * need, the plot takes what remains, and the corner
- * readings anchor at the same data positions they hold on
- * the wide chart (the top-right title ends 65.6 percent
- * across the plot; the bottom-left starts 12 units in), so
- * the readings describe the same regions of the data at
- * every width. Points the compressed plot cannot seat go
- * to the overflow stack, as on the wide chart. */
+ * need and the plot takes what remains. Points the
+ * compressed plot cannot seat go to the overflow stack,
+ * as on the wide chart, and points the stack cannot seat
+ * go to the fitted list under the chart. */
 const FIT_BELOW = 1020;
 
 function fittedGeom(w: number): Geom {
@@ -178,12 +166,6 @@ function fittedGeom(w: number): Geom {
    * stands about half as tall again. */
   const h = 676 + Math.round((FIT_BELOW - w) * 0.9);
   const plot = { x0: dividerX + 24, x1: w - 8, y0: 36, y1: h - 72 };
-  const trEnd = plot.x0 + 0.65625 * (plot.x1 - plot.x0);
-  /* The lower-left reading keeps its data-relative place:
-   * the same fraction down the plot as on the wide chart. */
-  const blTitleY = Math.round(
-    plot.y0 + (464 / 568) * (plot.y1 - plot.y0),
-  );
   return {
     w,
     h,
@@ -197,11 +179,7 @@ function fittedGeom(w: number): Geom {
       w: w - dividerX - 10,
       h: plot.y1 - 30,
     },
-    annotTR: { x: trEnd - 264, y: 38, w: 264, h: 62 },
-    annotBL: { x: plot.x0 + 6, y: blTitleY - 42, w: 300, h: 72 },
     extraFurniture: [],
-    cornerTR: { x: trEnd, titleY: 66, subY: 90 },
-    cornerBL: { x: plot.x0 + 12, titleY: blTitleY, subY: blTitleY + 24 },
     spread: { minSep: 22, maxShift: 12 },
     railSpread: { minSep: 15.5, maxShift: 13 },
     markerObst: 12,
@@ -215,31 +193,19 @@ function fittedGeom(w: number): Geom {
  * need the whole width, and a name is never truncated to
  * fit a column. */
 const PHONE_LIST_TOP = 640;
-const PHONE_ENTRY_PITCH = 34;
+/* The phone entries are the chart's tap targets for the
+ * results they name: the rows stand at a 46px pitch and
+ * each hit rect stands a full touch height (44px). */
+const PHONE_ENTRY_PITCH = 46;
 const PHONE_ENTRY_X = 6;
 
-/* The two corner readings, single-sourced: the wide and
- * phone renders set the same words. The top-right reading is
- * the payload's own extremes: the priciest run is also the
- * easiest to flip. The bottom-left names jev-1.14.0 at its
- * recorded twenty cents a run. */
-const CORNER_TR = {
-  title: "Expensive and fragile",
-  sub: "The priciest run flipped most of all",
-};
-const CORNER_BL = {
-  title: "Near-free and tough",
-  sub: "Jev 1.14 held at twenty cents a run",
-};
-
-/* Corner annotation furniture lives on each Geom (annotTR,
- * annotBL, extraFurniture): the solver keeps labels out of
- * those boxes, and the audit keeps the annotation text
- * clear of every other text node in the section. On the
- * phone the bottom-left reading sits inside the plot's
- * empty lower band, where the wide chart puts its own: the
- * shared 0 to 30 scale leaves that band empty of points,
- * and a reading is the honest thing to fill it with. */
+/* There are no corner readings in the plot. The readings
+ * the old chart printed in its corners named a model and a
+ * price as literals (hardcode audit F1, F2); they now stand
+ * in the section shell above the chart, computed from the
+ * payload by lib/scatterData, where the text wraps like
+ * prose and reserves no furniture inside the plot, so the
+ * space the corners held is label space again. */
 
 const r2 = (v: number) => Math.round(v * 100) / 100;
 
@@ -287,12 +253,13 @@ function buildPoints(
   rail: ScatterDatum[],
   domain: [number, number],
   g: Geom,
+  axisMax: number,
 ): Pt[] {
   const [lo, hi] = domain;
   const logLo = Math.log10(lo);
   const logSpan = Math.log10(hi) - logLo;
   const yOf = (asr: number) =>
-    g.plot.y0 + (1 - asr / ASR_AXIS_MAX) * (g.plot.y1 - g.plot.y0);
+    g.plot.y0 + (1 - asr / axisMax) * (g.plot.y1 - g.plot.y0);
   const xOf = (cost: number) =>
     g.plot.x0 + ((Math.log10(cost) - logLo) / logSpan) * (g.plot.x1 - g.plot.x0);
   const plottedPts: Pt[] = plotted.map((d) => ({
@@ -365,6 +332,11 @@ function buildPoints(
   return [...plottedPts, ...railPts];
 }
 
+/* The marker stroke: the board's light tone at low strength,
+ * so a disc of any maker colour separates from the ground.
+ * One shared constant, never a literal at a call site. */
+const MARKER_STROKE = "rgba(255, 255, 255, 0.28)";
+
 function MarkerGlyph({ d }: { d: ScatterDatum }) {
   const cls = d.flagged ? "pt-flagged" : "pt-ranked";
   return (
@@ -376,7 +348,7 @@ function MarkerGlyph({ d }: { d: ScatterDatum }) {
         className={cls}
         style={{
           fill: d.color,
-          stroke: d.flagged ? undefined : "rgba(255, 255, 255, 0.28)",
+          stroke: d.flagged ? undefined : MARKER_STROKE,
         }}
       />
       {d.logoSlug ? (
@@ -506,9 +478,19 @@ function Marker({
   );
 }
 
-function Grid({ g, domain }: { g: Geom; domain: [number, number] }) {
+function Grid({
+  g,
+  domain,
+  axisMax,
+  ticks,
+}: {
+  g: Geom;
+  domain: [number, number];
+  axisMax: number;
+  ticks: number[];
+}) {
   const yOf = (asr: number) =>
-    g.plot.y0 + (1 - asr / ASR_AXIS_MAX) * (g.plot.y1 - g.plot.y0);
+    g.plot.y0 + (1 - asr / axisMax) * (g.plot.y1 - g.plot.y0);
   const xOf = (cost: number) =>
     g.plot.x0 +
     ((Math.log10(cost) - Math.log10(domain[0])) /
@@ -525,7 +507,7 @@ function Grid({ g, domain }: { g: Geom; domain: [number, number] }) {
           className="rail-strip"
         />
       )}
-      {ASR_TICKS.map((t) => (
+      {ticks.map((t) => (
         <g key={t}>
           <line
             x1={0}
@@ -581,27 +563,35 @@ function Grid({ g, domain }: { g: Geom; domain: [number, number] }) {
 interface Solution {
   placed: PlacedLabel[];
   stack: StackEntry[];
+  /**
+   * Run ids the plot could not seat at this geometry. They
+   * are named in the fitted HTML list under the chart, in
+   * attack success order. The list is the tier that cannot
+   * fill, so a solution always names every point.
+   */
+  list: string[];
 }
 
-function baseFurniture(g: Geom): Rect[] {
+function baseFurniture(g: Geom, ticks: number[], axisMax: number): Rect[] {
   return [
     { x: 0, y: 0, w: 104, h: 30 },
     { x: g.plot.x0, y: 4, w: 210, h: 16 },
-    ...ASR_TICKS.map((t) => ({
+    ...ticks.map((t) => ({
       x: g.plot.x0 + 2,
-      y: g.plot.y0 + (1 - t / ASR_AXIS_MAX) * (g.plot.y1 - g.plot.y0) - 17,
+      y: g.plot.y0 + (1 - t / axisMax) * (g.plot.y1 - g.plot.y0) - 17,
       w: 26,
       h: 13,
     })),
   ];
 }
 
-function solveWide(points: Pt[], g: Geom): Solution {
-  const furniture: Rect[] = [
-    ...baseFurniture(g),
-    g.annotTR,
-    g.annotBL,
-  ];
+function solveWide(
+  points: Pt[],
+  g: Geom,
+  ticks: number[],
+  axisMax: number,
+): Solution {
+  const furniture: Rect[] = [...baseFurniture(g, ticks, axisMax)];
   /* Rail names sit directly beside their discs, one row per
    * point, as a list inside the rail column: disc, then name,
    * on the point's own row. The placed rects join the
@@ -637,6 +627,7 @@ function solveWide(points: Pt[], g: Geom): Solution {
   const first = placeLabels(layoutPts, furniture, g.labelBounds);
   const placed: PlacedLabel[] = [...railPlaced, ...first.placed];
   const stack: StackEntry[] = [];
+  const list: string[] = [];
   if (first.keyed.length > 0) {
     /* No keyed list and no drawn lines. A label the solver
      * cannot seat beside its point takes a row in the plot's
@@ -669,8 +660,12 @@ function solveWide(points: Pt[], g: Geom): Solution {
      * the rest of the label bounds above it. Within a row
      * the scan sweeps right from the label bounds' left edge
      * and takes the first seat that hits nothing. A point
-     * that finds no seat in either band fails the render
-     * loudly rather than shipping unnamed. */
+     * that finds no seat in either band does not fail the
+     * render: it is named in the fitted list under the
+     * chart, the tier that cannot fill. The old solver threw
+     * here, and at fitted widths the throw unmounted the
+     * whole page on the 43 result payload; naming is a
+     * design tier now, never an exception. */
     const STACK_H = 26;
     const STACK_PITCH = 32;
     const lb = g.labelBounds;
@@ -706,29 +701,28 @@ function solveWide(points: Pt[], g: Geom): Solution {
         }
       }
       if (!slot) {
-        throw new Error(
-          `scatter: no label seat for ${p.d.runId} (${p.d.label}) in either stack band; every point must be named`,
-        );
+        list.push(p.d.runId);
+        continue;
       }
       taken.push(slot);
       stack.push({ runId: p.d.runId, x: slot.x, y: slot.y });
     }
   }
-  return { placed, stack };
+  return { placed, stack, list };
 }
 
 function solvePhone(
   points: Pt[],
   railData: ScatterDatum[],
+  ticks: number[],
+  axisMax: number,
 ): Solution & { stackRows: number } {
   const g = PHONE;
   const furniture: Rect[] = [
     ...g.extraFurniture,
-    g.annotTR,
-    g.annotBL,
-    ...ASR_TICKS.map((t) => ({
+    ...ticks.map((t) => ({
       x: g.plot.x0 + 2,
-      y: g.plot.y0 + (1 - t / ASR_AXIS_MAX) * (g.plot.y1 - g.plot.y0) - 17,
+      y: g.plot.y0 + (1 - t / axisMax) * (g.plot.y1 - g.plot.y0) - 17,
       w: 26,
       h: 13,
     })),
@@ -759,7 +753,7 @@ function solvePhone(
     x: PHONE_ENTRY_X,
     y: PHONE_LIST_TOP + i * PHONE_ENTRY_PITCH,
   }));
-  return { placed: first.placed, stack, stackRows: listed.length };
+  return { placed: first.placed, stack, list: [], stackRows: listed.length };
 }
 
 function Labels({
@@ -868,7 +862,7 @@ function StackEntries({
                   ? 324
                   : 26 + nameW + 10 + estimateLabelWidth(entryValues(d)) + 8
               }
-              height={phone ? 36 : 30}
+              height={phone ? 44 : 30}
               aria-hidden="true"
             />
             <g
@@ -898,6 +892,111 @@ function StackEntries({
         );
       })}
     </>
+  );
+}
+
+/**
+ * A fitted list row's figures, in words. A flagged row
+ * states its standing and, where the sealed records derive
+ * one, its figure with its decomposition (C-5); a ranked
+ * row states its rate and interval; every row states its
+ * cost state in the same words the chart's caption uses.
+ */
+function listValues(d: ScatterDatum): string {
+  /* The cost state stands as its own sentence, capitalized
+   * like the sentences around it. */
+  const cost = d.rail
+    ? d.cost !== null
+      ? "Recorded cost $0.00."
+      : "No cost recorded."
+    : `Recorded cost ${fmtUsdExact(d.cost!)} per run${
+        d.lowerBound ? ", a lower bound" : ""
+      }.`;
+  if (d.flagged) {
+    if (d.decomp) {
+      return `Flagged, not ranked. Attack success ${fmtPct(d.asr)}, genuine flip rate ${fmtPct(d.decomp.genuineRate)}, with ${fmtPct(d.decomp.malformedShare)} of counted flips to malformed output. ${cost}`;
+    }
+    return `Flagged, not ranked${
+      d.malformedRate !== null
+        ? `. Malformed rate ${fmtPct(d.malformedRate)}`
+        : ""
+    }. ${cost}`;
+  }
+  const ci = d.ci !== null ? `, 95% CI ${fmtCi(d.ci)}` : "";
+  return `Attack success ${fmtPct(d.asr)}${ci}. ${cost}`;
+}
+
+/**
+ * The fitted list: the naming tier that cannot fill. When
+ * the plot and its overflow bands have no seat left at the
+ * rendered width, the remaining points are named here, in
+ * an HTML list directly under the chart inside the same
+ * panel, each row carrying the point's own disc beside its
+ * full name and its figures in words. A name wraps here,
+ * it is never cut. A row is a button: it previews on hover
+ * and focus and pins the point's card on the chart, like
+ * every other naming surface.
+ */
+function ListRows({
+  list,
+  dataById,
+  activeId,
+  onActivate,
+  onDeactivate,
+  onToggle,
+}: {
+  list: string[];
+  dataById: Map<string, ScatterDatum>;
+  activeId: string | null;
+  onActivate: (id: string) => void;
+  onDeactivate: () => void;
+  onToggle: (id: string) => void;
+}) {
+  if (list.length === 0) return null;
+  return (
+    <div className="scatter-list">
+      <p className="scatter-list-head">
+        Named here, in attack success order, because their labels
+        found no seat beside their discs at this width. Their
+        discs stand on the chart, and a row opens its point's
+        card.
+      </p>
+      {list.map((id) => {
+        const d = dataById.get(id)!;
+        return (
+          <button
+            key={id}
+            type="button"
+            className="scatter-list-row"
+            data-entry-for={id}
+            data-active={activeId === id ? "true" : undefined}
+            aria-label={pointAccessibleName(d)}
+            onMouseEnter={() => onActivate(id)}
+            onMouseLeave={onDeactivate}
+            onFocus={() => onActivate(id)}
+            onBlur={onDeactivate}
+            onClick={(e) => {
+              e.stopPropagation();
+              onToggle(id);
+            }}
+          >
+            <svg
+              className="scatter-list-disc"
+              viewBox="0 0 20 20"
+              aria-hidden="true"
+            >
+              <g transform="translate(10 10) scale(0.8)">
+                <MarkerGlyph d={d} />
+              </g>
+            </svg>
+            <span className="scatter-list-name">{d.label}</span>
+            <span className="scatter-list-values num">
+              {listValues(d)}
+            </span>
+          </button>
+        );
+      })}
+    </div>
   );
 }
 
@@ -1031,11 +1130,16 @@ export default function ScatterIsland({
   plotted,
   rail,
   domain,
+  axisMax,
+  ticks,
   phone,
 }: {
   plotted: ScatterDatum[];
   rail: ScatterDatum[];
   domain: [number, number];
+  /** The shared axis, derived from the ranked population. */
+  axisMax: number;
+  ticks: number[];
   phone?: boolean;
 }) {
   /* The wide island measures its own well and fits its
@@ -1077,12 +1181,14 @@ export default function ScatterIsland({
    * memoize them so hover and focus state changes re-render
    * without re-running the point builder or the solver. */
   const { points, solution } = useMemo(() => {
-    const pts = buildPoints(plotted, rail, domain, g);
+    const pts = buildPoints(plotted, rail, domain, g, axisMax);
     return {
       points: pts,
-      solution: phone ? solvePhone(pts, rail) : solveWide(pts, g),
+      solution: phone
+        ? solvePhone(pts, rail, ticks, axisMax)
+        : solveWide(pts, g, ticks, axisMax),
     };
-  }, [plotted, rail, domain, g, phone]);
+  }, [plotted, rail, domain, g, phone, axisMax, ticks]);
   const dataById = useMemo(
     () =>
       new Map<string, ScatterDatum>(
@@ -1316,7 +1422,7 @@ export default function ScatterIsland({
         data-plot={`${g.plot.x0},${g.plot.y0},${g.plot.x1},${g.plot.y1}`}
         data-rail-cx={g.railCx}
       >
-        <Grid g={g} domain={domain} />
+        <Grid g={g} domain={domain} axisMax={axisMax} ticks={ticks} />
         {!phone && (
           <>
             <text x={2} y={13} className="rail-head">
@@ -1330,35 +1436,6 @@ export default function ScatterIsland({
         <text x={g.plot.x0} y={phone ? 14 : 16} className="axis-caption">
           Attack success, percent
         </text>
-        {phone ? (
-          <g className="corner-note">
-            <text x={324} y={22} textAnchor="end" className="corner-title phone">
-              {CORNER_TR.title}
-            </text>
-            <text x={324} y={38} textAnchor="end" className="corner-sub phone">
-              {CORNER_TR.sub}
-            </text>
-          </g>
-        ) : (
-          <>
-            <g className="corner-note">
-              <text x={g.cornerTR.x} y={g.cornerTR.titleY} textAnchor="end" className="corner-title">
-                {CORNER_TR.title}
-              </text>
-              <text x={g.cornerTR.x} y={g.cornerTR.subY} textAnchor="end" className="corner-sub">
-                {CORNER_TR.sub}
-              </text>
-            </g>
-            <g className="corner-note">
-              <text x={g.cornerBL.x} y={g.cornerBL.titleY} className="corner-title">
-                {CORNER_BL.title}
-              </text>
-              <text x={g.cornerBL.x} y={g.cornerBL.subY} className="corner-sub">
-                {CORNER_BL.sub}
-              </text>
-            </g>
-          </>
-        )}
         {points.map((p) => (
           <Marker
             key={p.d.runId}
@@ -1389,17 +1466,15 @@ export default function ScatterIsland({
             ? "Cost per run, dollars, log scale"
             : "Recorded cost per run, US dollars, log scale"}
         </text>
-        {phone && (
-          <g className="corner-note">
-            <text x={8} y={520} className="corner-title phone">
-              {CORNER_BL.title}
-            </text>
-            <text x={8} y={538} className="corner-sub phone">
-              {CORNER_BL.sub}
-            </text>
-          </g>
-        )}
       </svg>
+      <ListRows
+        list={solution.list}
+        dataById={dataById}
+        activeId={activeId}
+        onActivate={setHoverId}
+        onDeactivate={() => setHoverId(null)}
+        onToggle={togglePin}
+      />
       {shown && (
         <HoverCard
           p={shown}

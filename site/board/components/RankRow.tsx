@@ -1,5 +1,10 @@
 import type { BoardRow, RankedRow } from "@/lib/payload";
-import { shortName, wireWords, displayCi } from "@/lib/payload";
+import {
+  shortName,
+  wireWords,
+  displayCi,
+  flipDecomposition,
+} from "@/lib/payload";
 import {
   fmtPct,
   fmtCi,
@@ -41,11 +46,21 @@ function rowAriaLabel(
   const parts = [name];
   if (wireLine) parts.push(wireLine);
   parts.push(status);
-  if (row.asr_conditional !== null) {
+  /* A flagged figure travels with its decomposition in the
+   * accessible name too, as it does in the scatter titles:
+   * the genuine flip rate and the malformed share of
+   * counted flips, when the payload derives them. Where it
+   * derives none, the label states no figure at all, the
+   * suppression the compare section follows, so the name
+   * cannot carry a bare flagged figure even if the printed
+   * cell regresses. */
+  const decomp = status === "flagged" ? flipDecomposition(row) : null;
+  const bareFigure = status === "flagged" && decomp === null;
+  if (row.asr_conditional !== null && !bareFigure) {
     parts.push(`attack success ${fmtPct(row.asr_conditional)}`);
   }
   const ci = displayCi(row);
-  if (ci !== null) {
+  if (ci !== null && !bareFigure) {
     parts.push(`95% CI ${fmtCi(ci)}`);
   }
   if (row.benign_accuracy != null) {
@@ -59,6 +74,11 @@ function rowAriaLabel(
   }
   if (row.malformed_rate != null) {
     parts.push(`malformed ${fmtPct(row.malformed_rate)}`);
+  }
+  if (decomp !== null) {
+    parts.push(
+      `genuine flip rate ${fmtPct(decomp.genuineRate)}, with ${fmtPct(decomp.malformedShare)} of counted flips to malformed output`,
+    );
   }
   return parts.join(", ");
 }
@@ -111,7 +131,15 @@ function DataLine({ row }: { row: BoardRow }) {
  */
 function ValueBlock({ row, flagged }: { row: BoardRow; flagged: boolean }) {
   const ci = displayCi(row);
-  if (row.asr_conditional === null) {
+  /* A flagged figure whose sealed records derive no
+   * decomposition is not printed (C-5), the suppression the
+   * compare section and the scatter follow. The cell reads
+   * as not measured and the row's meta line states the
+   * flagged standing, so no component on this row can print
+   * the figure bare even if the render law regresses. */
+  const suppressed =
+    flagged && flipDecomposition(row) === null;
+  if (row.asr_conditional === null || suppressed) {
     return (
       <div className={`cell-value${flagged ? " flagged" : ""}`}>
         <div className="not-measured">·</div>
@@ -135,7 +163,15 @@ function ValueBlock({ row, flagged }: { row: BoardRow; flagged: boolean }) {
 
 /** The flagged reason line. Ranked rows carry no meta line. */
 function flaggedMeta(row: BoardRow): string {
-  return `malformed ${row.malformed_rate !== null ? fmtPct(row.malformed_rate) : ""}, over the 5% admission limit`;
+  const base = `malformed ${row.malformed_rate !== null ? fmtPct(row.malformed_rate) : ""}, over the 5% admission limit`;
+  /* The figure in the value cell is a flagged headline, so
+   * its decomposition stands in the row with it (C-5): the
+   * genuine flip rate and the malformed share of counted
+   * flips, when the payload derives them. Where it does
+   * not, no decomposition is stated at all. */
+  const decomp = flipDecomposition(row);
+  if (decomp === null) return base;
+  return `${base}. Genuine flip rate ${fmtPct(decomp.genuineRate)}, with ${fmtPct(decomp.malformedShare)} of counted flips to malformed output`;
 }
 
 function NameBlock({
@@ -143,11 +179,14 @@ function NameBlock({
   showWire,
   flagged,
   href,
+  aboveScale,
 }: {
   row: BoardRow;
   showWire: boolean;
   flagged: boolean;
   href: string;
+  /** A flagged rate past the shared axis end, stated in words. */
+  aboveScale?: boolean;
 }) {
   const name = shortName(row);
   return (
@@ -159,7 +198,13 @@ function NameBlock({
         </a>
       </div>
       {showWire && <div className="wire-line">{wireWords(row.wire)}</div>}
-      {flagged && <div className="meta-line flagged">{flaggedMeta(row)}</div>}
+      {flagged && (
+        <div className="meta-line flagged">
+          {flaggedMeta(row)}
+          {aboveScale &&
+            ". Its rate sits above the chart's scale, so its whisker stops at the edge"}
+        </div>
+      )}
     </div>
   );
 }
@@ -169,11 +214,13 @@ export function RankedRowView({
   variant,
   showWire,
   href,
+  axisMax,
 }: {
   row: RankedRow;
   variant: "full" | "slice";
   showWire: boolean;
   href: string;
+  axisMax: number;
 }) {
   const name = shortName(row);
   const wireLine = showWire ? wireWords(row.wire) : null;
@@ -193,7 +240,7 @@ export function RankedRowView({
         <DataLine row={row} />
       </div>
       <ValueBlock row={row} flagged={false} />
-      <WhiskerStrip row={row} variant={variant} />
+      <WhiskerStrip row={row} variant={variant} axisMax={axisMax} />
     </div>
   );
 }
@@ -202,13 +249,17 @@ export function FlaggedRowView({
   row,
   showWire,
   href,
+  axisMax,
 }: {
   row: BoardRow;
   showWire: boolean;
   href: string;
+  axisMax: number;
 }) {
   const name = shortName(row);
   const wireLine = showWire ? wireWords(row.wire) : null;
+  const aboveScale =
+    row.asr_conditional !== null && row.asr_conditional > axisMax;
   return (
     <div
       className="rank-row flagged"
@@ -220,12 +271,18 @@ export function FlaggedRowView({
         <div className="row-line1">
           <span className="cell-rank" />
           <VendorLogo row={row} />
-          <NameBlock row={row} showWire={showWire} flagged={true} href={href} />
+          <NameBlock
+            row={row}
+            showWire={showWire}
+            flagged={true}
+            href={href}
+            aboveScale={aboveScale}
+          />
         </div>
         <DataLine row={row} />
       </div>
       <ValueBlock row={row} flagged={true} />
-      <WhiskerStrip row={row} variant="flagged" />
+      <WhiskerStrip row={row} variant="flagged" axisMax={axisMax} />
     </div>
   );
 }

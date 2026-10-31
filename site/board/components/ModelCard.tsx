@@ -3,6 +3,8 @@ import {
   wireWords,
   displayCi,
   modelSlug,
+  flipDecomposition,
+  familyFlipDecomposition,
   type BoardRow,
   type TaxBenchmarks,
 } from "@/lib/payload";
@@ -89,9 +91,20 @@ export default function ModelCard({
   const sevs = severitiesOf(row);
   const prov = provenanceOf(row);
   const fams = familiesOf(row);
+  /* A flagged card's per-family figures travel with their
+   * own decompositions (C-5), the discipline the heatmap's
+   * cell titles and the compare family lines already keep.
+   * A family whose sealed records derive no decomposition
+   * prints no figure in the spark list below, and it cannot
+   * be the weakest family drawn red, since no bar draws
+   * for it. */
+  const famDecomp =
+    kind === "flagged" ? familyFlipDecomposition(row) : null;
+  const familyPrints = (key: string): boolean =>
+    famDecomp === null || (famDecomp.get(key) ?? null) !== null;
   const carried = familyKeys
     .map((key) => ({ key, fam: fams.get(key) }))
-    .filter((e) => e.fam && e.fam.asr !== null);
+    .filter((e) => e.fam && e.fam.asr !== null && familyPrints(e.key));
   const worst = carried.length
     ? Math.max(...carried.map((e) => e.fam!.asr as number))
     : null;
@@ -101,6 +114,15 @@ export default function ModelCard({
   const benEce = arms?.benign.ece ?? null;
   const benBrier = arms?.benign.brier ?? null;
   const coverage = arms?.coverageAttacked ?? null;
+  /* A flagged card's headline figure travels with its flip
+   * decomposition (C-5), stated in the reason paragraph
+   * above. Where the sealed records derive no decomposition,
+   * the headline states no figure at all, the suppression
+   * the compare section follows, so the card body cannot
+   * print the figure bare even if the render law regresses. */
+  const decomp = kind === "flagged" ? flipDecomposition(row) : null;
+  const showFigure =
+    row.asr_conditional !== null && (kind !== "flagged" || decomp !== null);
 
   return (
     <div className="card-body">
@@ -120,6 +142,14 @@ export default function ModelCard({
             Its malformed response rate of {fmtPct(row.malformed_rate)} is
             over the 5 percent admission limit, so it keeps every number
             and is not ranked.
+            {decomp !== null && (
+              <>
+                {" "}
+                Genuine flip rate {fmtPct(decomp.genuineRate)}, with{" "}
+                {fmtPct(decomp.malformedShare)} of counted flips to
+                malformed output.
+              </>
+            )}
           </p>
         )}
         {kind === "slice" && (
@@ -135,12 +165,12 @@ export default function ModelCard({
         <div className="hl-fig">
           <span className="hl-label">Attack success</span>
           <span className="hl-value num">
-            {row.asr_conditional !== null ? fmtPct(row.asr_conditional) : <NotMeasured />}
+            {showFigure ? fmtPct(row.asr_conditional!) : <NotMeasured />}
           </span>
-          {ci !== null && (
+          {ci !== null && showFigure && (
             <span className="hl-sub num">95% CI {fmtCi(ci)}</span>
           )}
-          {row.asr_conditional !== null && (
+          {showFigure && (
             <span className="hl-sub">
               Counted on eligible cases only. Under attack, a wrong
               answer, an abstention, or malformed output counts as
@@ -240,7 +270,7 @@ export default function ModelCard({
       </div>
 
       <p className="card-subhead">Attack success by family</p>
-      <div className="spark-list">
+      <div className="spark-list" data-spark-for={row.run_id}>
         {familyKeys.map((key) => {
           const fam = fams.get(key);
           if (!fam || fam.asr === null) {
@@ -259,6 +289,36 @@ export default function ModelCard({
               </div>
             );
           }
+          /* On a flagged card the row's title states the
+           * family's own decomposition, the clauses the heat
+           * cell titles carry, and a family that derives none
+           * renders suppressed, the not stated row the
+           * heatmap prints for the same state. */
+          const fd =
+            famDecomp === null ? undefined : (famDecomp.get(key) ?? null);
+          if (fd === null) {
+            return (
+              <div
+                className="spark-row na"
+                key={key}
+                data-family={key}
+                data-suppressed="true"
+                title={`${familyFullName(key)} attack success not stated for ${shortName(row)}, because the figure's malformed decomposition does not derive from the sealed records`}
+              >
+                <span className="spark-name">
+                  {familyFullName(key)}
+                </span>
+                <span className="spark-track" />
+                <span className="spark-value">--</span>
+              </div>
+            );
+          }
+          const famTitle =
+            fd === undefined
+              ? undefined
+              : fd.flips === 0
+                ? `${familyFullName(key)} attack success ${fmtPct(fam.asr)}, no counted flips`
+                : `${familyFullName(key)} attack success ${fmtPct(fam.asr)}, genuine flip rate ${fmtPct(fd.genuineRate)}, with ${fmtPct(fd.malformedShare)} of counted flips to malformed output`;
           const isWorst = worst !== null && fam.asr === worst && worst > 0;
           return (
             <div
@@ -266,6 +326,7 @@ export default function ModelCard({
               key={key}
               data-family={key}
               data-asr={fam.asr}
+              {...(famTitle !== undefined ? { title: famTitle } : {})}
             >
               <span className="spark-name">{familyFullName(key)}</span>
               <span className="spark-track">
@@ -289,10 +350,21 @@ export default function ModelCard({
         /* The caption states only what this card's own bars do
            (cycle 6, C6-13): the color sentence when a bar draws,
            the red sentence when a weakest family is drawn red,
-           and the dash clause when a family was not measured. */
+           the dash clause when a family was not measured, and
+           the not stated clause when a flagged family prints
+           no figure because its decomposition does not derive. */
         const hasNa = familyKeys.some((key) => {
           const fam = fams.get(key);
           return !fam || fam.asr === null;
+        });
+        const hasSuppressed = familyKeys.some((key) => {
+          const fam = fams.get(key);
+          return (
+            fam !== undefined &&
+            fam.asr !== null &&
+            famDecomp !== null &&
+            (famDecomp.get(key) ?? null) === null
+          );
         });
         const parts: string[] = [];
         if (worst !== null && worst > 0) {
@@ -301,6 +373,11 @@ export default function ModelCard({
         }
         if (hasNa) {
           parts.push("A dash marks a family the run did not measure.");
+        }
+        if (hasSuppressed) {
+          parts.push(
+            `A dash ${hasNa ? "also " : ""}marks a family whose figure is not stated, because its malformed decomposition does not derive from the sealed records.`,
+          );
         }
         return parts.length > 0 ? (
           <p className="spark-legend">{parts.join(" ")}</p>

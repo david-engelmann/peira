@@ -45,7 +45,7 @@
   --shadow-3: 0 8px 18px rgba(0, 0, 0, 0.5), 0 28px 64px rgba(0, 0, 0, 0.42);
 
   /* Type scale. Display for the finding and the scatter's
-     corner readings, heading for section titles, body for
+     readings strip, heading for section titles, body for
      prose, caption for furniture and microcopy. */
   --t-display: clamp(32px, 4.6vw, 52px);
   --t-heading: clamp(26px, 3vw, 34px);
@@ -786,7 +786,13 @@ body::before {
   }
 
   .cell-name {
-    flex: 1 0 auto;
+    /* Shrink allowed (RT-F1): at flex 1 0 auto the name
+       cell took its max-content width, set by the flagged
+       meta line's unwrapped length, and overflowed every
+       row narrower than that, a band the fresh-load widths
+       never sampled. The name and the meta wrap, so the
+       cell may shrink to the line like any other. */
+    flex: 1 1 auto;
   }
 
   .data-line {
@@ -1703,6 +1709,13 @@ body::before {
   white-space: nowrap;
 }
 
+/* The flagged decomposition segment in the index summary is a
+   sentence, not a stat unit, so it wraps like prose instead of
+   holding the line to its full width (repair round 3). */
+.idx-line2 .idx-decomp-seg {
+  white-space: normal;
+}
+
 /* The phone stats-line toggle (cycle 6, C6-15) exists in the
    markup at all widths and is shown only at phone width. */
 .idx-toggle-row {
@@ -2492,7 +2505,15 @@ body::before {
     align-items: flex-end;
     align-self: stretch;
     gap: 4px;
-    white-space: nowrap;
+  }
+  /* The name wraps inside its header cell rather than
+     running past it. A name longer than even the full
+     width line breaks anywhere, the board's truncation
+     ethic for evidence names, instead of clipping. */
+  .cmp-th-name {
+    max-width: 100%;
+    flex-wrap: wrap;
+    overflow-wrap: anywhere;
   }
   .cmp-th-model .flag-tag {
     margin-left: 0;
@@ -2510,16 +2531,29 @@ body::before {
      column the most room because its row labels are the
      longest strings in the body, the two model columns the
      value widths, and the delta column, which holds the
-     shortest strings, the least. The head's overflow rule
-     can only clip a name line wider than the section itself;
-     the widest name line the width probe measured on this
-     payload is 209 px against a 358 px section, so no
-     current name reaches it. */
+     shortest strings, the least.
+     Repair round 2 narrowed that fix to the body alone.
+     A block head inside a fixed layout table is sized by
+     the column grid at one column's width, so the head's
+     cells never took the full width the restack promises.
+     The right anchored nowrap name lines ran left past the
+     narrow cell and the head's hidden overflow clipped
+     them at the section edge, cutting names at every phone
+     width while no document overflow ever grew for a law
+     to see. The table is now a block at phone width and
+     the body carries the fixed layout as a table of its
+     own, so the head's stacked cells span the whole
+     section and the names sit inside them. The head's
+     overflow rule is gone with the clipping it caused.
+     The render law measures the header name spans against
+     their cells at phone widths from this round on. */
   .cmp-table {
-    table-layout: fixed;
+    display: block;
   }
-  .cmp-table thead {
-    overflow: hidden;
+  .cmp-table tbody {
+    display: table;
+    width: 100%;
+    table-layout: fixed;
   }
   .cmp-table tbody th {
     width: 36%;
@@ -2544,8 +2578,9 @@ body::before {
   }
 }
 
-/* Redesign layer. The scatter well, its corner readings, the
-   hover and focus card, and the motion rules. */
+/* Redesign layer. The scatter well, the hover and focus
+   card, and the motion rules. The plot carries no corner
+   readings: they stand as a derived strip above the chart. */
 
 .scatter-wrap {
   position: relative;
@@ -2627,7 +2662,7 @@ body::before {
 
 /* The phone chart draws at true CSS pixels, so its labels
  * keep the wide chart's size: the redesign's phone shrink
- * (10px labels, 9.5px entry values and corner subs) put
+ * (10px labels and 9.5px entry values) put
  * data text under the doctrine's 10px rendered floor, and
  * the shape change pays for the room instead (D7, D17). */
 
@@ -2639,27 +2674,6 @@ body::before {
 .scatter-label[data-active="true"] {
   fill: var(--ink-1);
   font-weight: 700;
-}
-
-.corner-title {
-  fill: var(--ink-1);
-  font-size: 21px;
-  font-weight: 700;
-  letter-spacing: -0.01em;
-}
-
-.corner-title.phone {
-  font-size: 17px;
-}
-
-.corner-sub {
-  fill: var(--ink-2);
-  font-size: 17px;
-  font-weight: 550;
-}
-
-.corner-sub.phone {
-  font-size: 11px;
 }
 
 .scatter-card {
@@ -2851,5 +2865,170 @@ body::before {
   .scatter-card-inner {
     transition: opacity var(--dur-micro) var(--ease-fade) !important;
     animation: none !important;
+  }
+}
+
+/* The redesign's own rules. Everything above this block is
+   the inherited component styling on the board's standing
+   palette; everything in this block is the structural law
+   the redesign adds: numbered scenes, the derived readings
+   strip, the scatter's fitted list, and measured touch
+   targets. */
+
+/* Numbered scenes. The page is a scroll of numbered
+   sections, the way Maidan's landing numbers its scenes:
+   the count is the section's position in the document,
+   counted by CSS, so a section added, removed or reordered
+   renumbers itself and no number is ever written by hand. */
+.page {
+  counter-reset: section;
+}
+
+.section {
+  counter-increment: section;
+}
+
+.section-label::before {
+  content: counter(section, decimal-leading-zero) " · ";
+  color: var(--accent);
+}
+
+/* The scatter's readings strip: the two derived readings
+   that used to sit in the plot's corners as prose claims,
+   standing as text above the chart, where they wrap like
+   prose and reserve no furniture inside the plot. */
+.scatter-readings {
+  display: grid;
+  gap: 4px;
+  margin: 16px 0 18px;
+  padding: 14px 18px;
+  background: var(--panel);
+  border: 1px solid var(--hairline);
+  border-radius: 12px;
+}
+
+.scatter-readings p {
+  margin: 0;
+  font-size: 14.5px;
+  line-height: 1.5;
+  color: var(--ink-2);
+}
+
+.scatter-readings p:first-child {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--ink-1);
+}
+
+/* The scatter's fitted list: the naming tier that cannot
+   fill. Rows are full width however narrow the panel gets,
+   names wrap anywhere and are never cut, and figures stand
+   as words, so the list is legible at every width the plot
+   above it is not. */
+.scatter-list {
+  display: grid;
+  gap: 6px;
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--hairline);
+}
+
+.scatter-list-head {
+  margin: 0 0 4px;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--ink-2);
+}
+
+.scatter-list-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 12px;
+  width: 100%;
+  padding: 9px 14px;
+  font: inherit;
+  text-align: left;
+  color: var(--ink-1);
+  background: var(--panel);
+  border: 1px solid var(--hairline);
+  border-radius: 10px;
+  cursor: pointer;
+  transition: background var(--dur-state) var(--ease-fade), border-color var(--dur-state) var(--ease-fade);
+}
+
+.scatter-list-row:hover,
+.scatter-list-row[data-active="true"] {
+  background: var(--raised);
+  border-color: var(--edge);
+}
+
+.scatter-list-disc {
+  flex: 0 0 auto;
+  width: 20px;
+  height: 20px;
+}
+
+.scatter-list-name {
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.scatter-list-values {
+  font-size: 13px;
+  color: var(--ink-2);
+}
+
+/* Measured touch targets (Maidan's touch law, WCAG 2.5.5):
+   on a coarse pointer every interactive element stands at
+   least 44px tall. The render tests measure this on the
+   real page; a target that shrinks below the floor fails
+   the build, the way Maidan's touch spec fails theirs. */
+@media (pointer: coarse) {
+  button,
+  select {
+    min-height: 44px;
+  }
+
+  .section-nav-link {
+    min-height: 44px;
+    display: inline-flex;
+    align-items: center;
+  }
+
+  .links-line a {
+    min-height: 44px;
+    display: inline-flex;
+    align-items: center;
+  }
+
+  .name-link {
+    min-height: 44px;
+    display: inline-flex;
+    align-items: center;
+  }
+
+  .scatter-list-row {
+    min-height: 44px;
+  }
+
+  .sc-close {
+    width: 44px;
+    height: 44px;
+  }
+
+  /* The calibration rail's links and the model cards' nav
+     links are controls too: the derived touch measurement
+     (render-law law 6) caught both standing at 33px, a
+     class the old hand-kept selector list never measured. */
+  .cal-rail-link {
+    min-height: 44px;
+    align-content: center;
+  }
+
+  .card-nav a {
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
   }
 }

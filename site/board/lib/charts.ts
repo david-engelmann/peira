@@ -319,7 +319,9 @@ export function familyOrder(rows: BoardRow[]): string[] {
  * 4.6 to 1) and the second stop at the same parameter resumes
  * at 0.203 (ground text clears 4.7 to 1). Hue and ordering are
  * untouched, the step is a small brightness edge at mid scale,
- * and no cell colour lands in the band between. */
+ * and no cell colour lands in the band between. The render
+ * tests measure the contrast of every printed cell on the
+ * real payload, so a stop that drifts fails the build. */
 const RAMP_STOPS: [number, [number, number, number]][] = [
   [0.0, [0x16, 0x12, 0x0e]],
   [0.3, [0x57, 0x2a, 0x0e]],

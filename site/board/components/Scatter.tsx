@@ -1,4 +1,4 @@
-import { fmtInt } from "@/lib/format";
+import { fmtInt, fmtPct } from "@/lib/format";
 import { scatterData } from "@/lib/scatterData";
 import ScatterIsland from "./ScatterIsland";
 
@@ -7,11 +7,22 @@ import ScatterIsland from "./ScatterIsland";
  * renders on the server; the chart itself is a client island
  * fed by lib/scatterData's shaped point set, the same pattern
  * as the compare island, so the payload stays out of the
- * browser bundle. Every point is named in place and carries
- * its maker's mark in its maker's color; flagged results
- * keep the amber ring; the rail holds the results with no
- * chartable cost, with the recorded zero versus no cost
- * distinction stated in words in the caption.
+ * browser bundle. Every point is named: beside its disc
+ * where the label solver seats it, in the plot's overflow
+ * rows, or in the fitted list under the chart at widths
+ * where the plot has no room left. Naming degrades in
+ * tiers and never fails: no width renders a point unnamed
+ * and no width throws. Every point carries its maker's mark
+ * in its maker's color; flagged results keep the amber ring;
+ * the rail holds the results with no chartable cost, with
+ * the recorded zero versus no cost distinction stated in
+ * words in the caption.
+ *
+ * The two readings under the lede are computed from the
+ * payload by lib/scatterData (hardcode audit F1, F2). No
+ * name, price or corner claim is written into this file:
+ * when the population changes, the readings change with it
+ * or the strip prints the two facts separately.
  */
 
 function joinNames(names: string[]): string {
@@ -31,16 +42,49 @@ export default function Scatter() {
       </h2>
       <p className="section-lede">
         Recorded cost for one full run against attack success, on the
-        ranking's shared 0 to 30 percent scale. Every point is named and
-        carries its maker's mark in its maker's color, and flagged
-        results carry an amber ring.
+        ranking's shared scale, 0 to {Math.round(data.axis.max * 100)}{" "}
+        percent. Every point is named and carries its maker's mark in
+        its maker's color, and flagged results carry an amber ring.
       </p>
+
+      <div className="scatter-readings">
+        <p>
+          {data.readings.priciestIsMostFlipped ? (
+            <>
+              The priciest run, {data.readings.priciest.label}{" "}
+              {data.readings.priciest.costPhrase}, also
+              flipped most of any ranked result{" "}
+              {data.readings.rankedScope}, at{" "}
+              {fmtPct(data.readings.mostFlippedRanked.asr!)}.
+            </>
+          ) : (
+            <>
+              The priciest run is {data.readings.priciest.label}{" "}
+              {data.readings.priciest.costPhrase}. The
+              ranked result that flipped most{" "}
+              {data.readings.rankedScope} is{" "}
+              {data.readings.mostFlippedRanked.label} at{" "}
+              {fmtPct(data.readings.mostFlippedRanked.asr!)}.
+            </>
+          )}
+        </p>
+        <p>
+          The toughest ranked result {data.readings.rankedScope},{" "}
+          {data.readings.toughestRanked.label},
+          flipped {fmtPct(data.readings.toughestRanked.asr!)}{" "}
+          {data.readings.toughestRanked.costPhrase}. The
+          cheapest run on the chart is {data.readings.cheapest.label}{" "}
+          {data.readings.cheapest.costPhrase}.
+        </p>
+      </div>
 
       <div className="scatter-wide">
         <ScatterIsland
           plotted={data.plotted}
           rail={data.rail}
           domain={data.domain}
+          axisMax={data.axis.max}
+          ticks={data.axis.ticks}
         />
       </div>
 
@@ -49,6 +93,8 @@ export default function Scatter() {
           plotted={data.plotted}
           rail={data.rail}
           domain={data.domain}
+          axisMax={data.axis.max}
+          ticks={data.axis.ticks}
           phone
         />
       </div>
@@ -61,16 +107,28 @@ export default function Scatter() {
           point's own card says when it is a lower bound.
         </p>
         <p>
-          {fmtInt(data.railCount)} ranked models ran locally and hold
-          no place on the cost axis, so they sit on the rail at the
-          left of the wide chart at their attack success, and on a
-          phone they join the list under the plot, in attack success
-          order.{" "}
+          {fmtInt(data.railCount)} results hold no place on the cost
+          axis, because their recorded cost is $0.00 or no cost was
+          recorded at all, so they sit on the rail at the left of the
+          wide chart at their attack success, and on a phone they
+          join the list under the plot, in attack success order.{" "}
           {joinNames(data.zeroNames)} recorded a cost
           of $0.00, while {joinNames(data.noneNames)} recorded no cost at all.
           A recorded zero and no recorded cost are different facts, and
           the rail keeps them apart in words.
         </p>
+        {data.aboveScaleNames.length > 0 && (
+          <p>
+            {joinNames(data.aboveScaleNames)}{" "}
+            {data.aboveScaleNames.length === 1 ? "sits" : "sit"} above
+            the chart's 0 to {Math.round(data.axis.max * 100)} percent
+            scale, so{" "}
+            {data.aboveScaleNames.length === 1
+              ? "its disc stands off the top of the plot rather than at a false position, and it is"
+              : "their discs stand off the top of the plot rather than at false positions, and they are"}{" "}
+            named with the chart's overflow entries instead.
+          </p>
+        )}
         <p>
           The chart plots {fmtInt(data.plottedCount)} of the board's{" "}
           {fmtInt(data.populationCount + data.sliceCount)} results, with{" "}

@@ -9,7 +9,7 @@ import {
   shortName,
 } from "@/lib/payload";
 import { fmtInt } from "@/lib/format";
-import { ASR_TICKS, axisPct } from "@/lib/chart";
+import { asrAxisFor, axisPct, type AsrAxis } from "@/lib/chart";
 import { RankedRowView, FlaggedRowView } from "./RankRow";
 
 /**
@@ -21,20 +21,26 @@ import { RankedRowView, FlaggedRowView } from "./RankRow";
  * under the heading.
  */
 
-function AxisStrip({ title }: { title: string | null }) {
+function AxisStrip({
+  title,
+  axis,
+}: {
+  title: string | null;
+  axis: AsrAxis;
+}) {
   return (
     <div className="axis-row" aria-hidden="true">
       <div className="rail" />
       <div className="axis-grid">
         {title && <div className="axis-title">{title}</div>}
         <div className="axis-cell">
-          {ASR_TICKS.map((tick, i) => (
+          {axis.ticks.map((tick, i) => (
             <span
               key={tick}
               className={`axis-tick num${
-                i === 0 ? " first" : i === ASR_TICKS.length - 1 ? " last" : ""
+                i === 0 ? " first" : i === axis.ticks.length - 1 ? " last" : ""
               }`}
-              style={{ left: `${axisPct(tick)}%` }}
+              style={{ left: `${axisPct(tick, axis.max)}%` }}
             >
               {Math.round(tick * 100)}
             </span>
@@ -80,6 +86,7 @@ function RankedGroup({
   dupes,
   axisTitle,
   allRows,
+  axis,
 }: {
   id: string;
   label: string;
@@ -89,6 +96,7 @@ function RankedGroup({
   dupes: Set<string>;
   axisTitle: string | null;
   allRows: BoardRow[];
+  axis: AsrAxis;
 }) {
   const bands = tieBands(rows);
   const segs = segments(rows, bands);
@@ -98,7 +106,7 @@ function RankedGroup({
         <h3 className="group-label">{label}</h3>
         {caption && <p className="group-caption">{caption}</p>}
       </div>
-      <AxisStrip title={axisTitle} />
+      <AxisStrip title={axisTitle} axis={axis} />
       {segs.map((seg, i) =>
         seg.kind === "band" ? (
           <div className="band-block" key={`band-${i}`}>
@@ -114,6 +122,7 @@ function RankedGroup({
                   variant={variant}
                   showWire={dupes.has(shortName(row))}
                   href={`/models/${modelSlug(row, allRows)}/`}
+                  axisMax={axis.max}
                 />
               ))}
             </div>
@@ -127,6 +136,7 @@ function RankedGroup({
                 variant={variant}
                 showWire={dupes.has(shortName(seg.row))}
                 href={`/models/${modelSlug(seg.row, allRows)}/`}
+                axisMax={axis.max}
               />
             </div>
           </div>
@@ -140,17 +150,19 @@ function FlaggedGroup({
   rows,
   dupes,
   allRows,
+  axis,
 }: {
   rows: BoardRow[];
   dupes: Set<string>;
   allRows: BoardRow[];
+  axis: AsrAxis;
 }) {
   return (
     <div className="rank-group" data-group="flagged">
       <div className="group-head">
         <h3 className="group-label">Flagged</h3>
       </div>
-      <AxisStrip title={null} />
+      <AxisStrip title={null} axis={axis} />
       {rows.map((row) => (
         <div className="band-block" key={row.run_id}>
           <div className="rail" aria-hidden="true" />
@@ -159,6 +171,7 @@ function FlaggedGroup({
               row={row}
               showWire={dupes.has(shortName(row))}
               href={`/models/${modelSlug(row, allRows)}/`}
+              axisMax={axis.max}
             />
           </div>
         </div>
@@ -172,6 +185,15 @@ export default function Ranking() {
   const allRows = [...groups.full, ...groups.slices, ...groups.flagged];
   const dupesByShort = duplicateShortNames(allRows);
   // duplicateShortNames keys by short name already.
+  /* One axis for the whole page, derived from the ranked
+   * population (lib/chart): the worst ranked rate across
+   * the full suite and the slices, rounded up a step. The
+   * cost scatter reads the same derivation from
+   * lib/scatterData, so the two surfaces cannot drift. */
+  const rankedRates = [...groups.full, ...groups.slices]
+    .map((r) => r.asr_conditional)
+    .filter((v): v is number => v !== null && v !== undefined);
+  const axis = asrAxisFor(rankedRates.length ? Math.max(...rankedRates) : 0);
   return (
     <section className="section" aria-labelledby="ranking-title" id="ranking">
       <p className="section-label">Ranking</p>
@@ -196,8 +218,14 @@ export default function Ranking() {
         dupes={dupesByShort}
         axisTitle="Attack success, percent"
         allRows={allRows}
+        axis={axis}
       />
-      <FlaggedGroup rows={groups.flagged} dupes={dupesByShort} allRows={allRows} />
+      <FlaggedGroup
+        rows={groups.flagged}
+        dupes={dupesByShort}
+        allRows={allRows}
+        axis={axis}
+      />
       <RankedGroup
         id="slices"
         label="Guardrail slices"
@@ -207,6 +235,7 @@ export default function Ranking() {
         dupes={dupesByShort}
         axisTitle="Attack success, percent, abstain subset"
         allRows={allRows}
+        axis={axis}
       />
       <p className="chart-id">
         Peira decision robustness board, ranking. Dataset{" "}

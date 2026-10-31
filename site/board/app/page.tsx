@@ -124,14 +124,9 @@ export default function Page() {
           <a href="https://peiratrial.dev">peiratrial.dev</a>
         </p>
         <p>
-          What changed at the {updated} publish. Model counts now count
-          the distinct models the board displays. The previous board
-          keyed its counts on version alone and merged three unrelated
-          guard models that share version 1.0 into one counted model.
-          Tie bands are drawn as brackets rather than listed in prose,
-          and flagged results sit in their own strip. Corrections are
-          made by republishing the payload and recording the change
-          here.
+          Corrections are made by republishing the payload and
+          recording the change in this note, under the publish date
+          above.
         </p>
         <p className="links-line">
           <a href="https://github.com/david-engelmann/peira">
