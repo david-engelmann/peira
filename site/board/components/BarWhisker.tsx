@@ -4,7 +4,8 @@ import { axisPct } from "@/lib/chart";
 
 /**
  * One row's interval strip, drawn with positioned elements on
- * the shared 0 to 30 axis. The whisker line runs from cap to
+ * the shared axis, whose maximum the parent derives from the
+ * ranked population (lib/chart). The whisker line runs from cap to
  * cap and stops 2 px short of each cap center, so a visible gap
  * separates the line from the caps and nothing passes through
  * them (owner ruling, round 8 feedback). Positions are percents
@@ -20,9 +21,11 @@ import { axisPct } from "@/lib/chart";
 export default function WhiskerStrip({
   row,
   variant,
+  axisMax,
 }: {
   row: BoardRow;
   variant: "full" | "slice" | "flagged";
+  axisMax: number;
 }) {
   const ci = displayCi(row);
   if (row.asr_conditional === null || ci === null) {
@@ -36,9 +39,9 @@ export default function WhiskerStrip({
   }
   const asr = row.asr_conditional;
   const [lo, hi] = ci;
-  const x0 = axisPct(lo);
-  const x1 = axisPct(hi);
-  const xa = axisPct(asr);
+  const x0 = axisPct(lo, axisMax);
+  const x1 = axisPct(hi, axisMax);
+  const xa = axisPct(asr, axisMax);
   return (
     <div className={`cell-chart ${variant}`} aria-hidden="true">
       <div

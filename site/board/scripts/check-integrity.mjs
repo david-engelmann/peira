@@ -72,7 +72,8 @@
  *     payload on every row and every metric field, families
  *     included. The server-rendered default pair is the
  *     design's pair (the strongest full suite row against
- *     jev-1.14.0); its printed values equal the payload, its
+ *     the highest-ranked unflagged result other than it);
+ *     its printed values equal the payload, its
  *     delta cells equal A minus B recomputed here and print
  *     under the delta format rules ported below, its winner
  *     dots sit on the stronger side, its family bars carry
@@ -99,7 +100,10 @@
  *     family without a derivable decomposition prints
  *     suppressed, and the notes under the grid state each
  *     flagged result's whole-row decomposition or that its
- *     figures are not stated.
+ *     figures are not stated. In a flagged card's spark
+ *     list the same pairing holds family by family, the
+ *     clauses in the row titles and suppression where no
+ *     decomposition derives.
  */
 
 import { readFileSync, readdirSync } from "node:fs";
@@ -511,14 +515,31 @@ for (const [id, rows] of Object.entries(expectedGroups)) {
     if (!slice.includes(shortName(row))) {
       fail(`row ${row.run_id}: short name ${shortName(row)} not in its block`);
     }
-    if (row.asr_conditional !== null && !slice.includes(fmtPct(row.asr_conditional))) {
-      fail(
-        `row ${row.run_id}: value ${fmtPct(row.asr_conditional)} not in its block (block reads: ${slice.slice(0, 120)})`,
-      );
+    /* A flagged row whose sealed records derive no
+     * decomposition prints no figure in its row (C-5), so
+     * the expectation inverts for it: the figure and its
+     * interval must be absent, not present. */
+    const flaggedNoDecomp = id === "flagged" && decompI(row) === null;
+    if (row.asr_conditional !== null) {
+      if (flaggedNoDecomp && slice.includes(fmtPct(row.asr_conditional))) {
+        fail(
+          `row ${row.run_id}: value ${fmtPct(row.asr_conditional)} prints in its block although the sealed records derive no decomposition for it`,
+        );
+      } else if (!flaggedNoDecomp && !slice.includes(fmtPct(row.asr_conditional))) {
+        fail(
+          `row ${row.run_id}: value ${fmtPct(row.asr_conditional)} not in its block (block reads: ${slice.slice(0, 120)})`,
+        );
+      }
     }
     const dci = displayCiI(row);
-    if (dci && !slice.includes(fmtCiCompact(dci))) {
-      fail(`row ${row.run_id}: display interval ${fmtCiCompact(dci)} not in its block`);
+    if (dci) {
+      if (flaggedNoDecomp && slice.includes(fmtCiCompact(dci))) {
+        fail(
+          `row ${row.run_id}: display interval ${fmtCiCompact(dci)} prints in its block although the sealed records derive no decomposition for it`,
+        );
+      } else if (!flaggedNoDecomp && !slice.includes(fmtCiCompact(dci))) {
+        fail(`row ${row.run_id}: display interval ${fmtCiCompact(dci)} not in its block`);
+      }
     }
   }
 }
@@ -1050,8 +1071,30 @@ function assertCardText(blockText, row, where) {
   need(shortName(row), "short name");
   need(row.display_name, "full display name");
   const dci = displayCiI(row);
-  if (row.asr_conditional !== null) need(fmtPct(row.asr_conditional), "attack success");
-  if (dci) need(fmtCiFullC(dci), "full interval");
+  /* A flagged card whose sealed records derive no
+   * decomposition prints no figure in its headline (C-5),
+   * so the expectation inverts for it, as in the ranking
+   * row check above. */
+  const flaggedNoDecomp =
+    row.ranking_eligible === false && decompI(row) === null;
+  if (row.asr_conditional !== null) {
+    if (flaggedNoDecomp) {
+      if (blockText.includes(fmtPct(row.asr_conditional))) {
+        fail(`${where} ${row.run_id}: attack success "${fmtPct(row.asr_conditional)}" prints although the sealed records derive no decomposition for it`);
+      }
+    } else {
+      need(fmtPct(row.asr_conditional), "attack success");
+    }
+  }
+  if (dci) {
+    if (flaggedNoDecomp) {
+      if (blockText.includes(fmtCiFullC(dci))) {
+        fail(`${where} ${row.run_id}: full interval "${fmtCiFullC(dci)}" prints although the sealed records derive no decomposition for it`);
+      }
+    } else {
+      need(fmtCiFullC(dci), "full interval");
+    }
+  }
   if (row.benign_accuracy !== null) need(fmtPct(row.benign_accuracy), "benign accuracy");
   if (row.malformed_rate !== null) need(fmtPct(row.malformed_rate), "malformed rate");
   /* The card prints no case counts: the suite's size is stated
@@ -1151,7 +1194,7 @@ function assertCardAttrs(blockHtml, row, where) {
    * dotted not measured slot. */
   const carried = new Map(famEntriesC(row));
   const sparkTags = [
-    ...blockHtml.matchAll(/data-family="([^"]+)"(?: data-asr="([^"]*)")?(?: data-na="true")?/g),
+    ...blockHtml.matchAll(/<[^>]*?data-family="([^"]+)"[^>]*>/g),
   ].map((m) => ({ fam: m[1], whole: m[0] }));
   const seenFams = sparkTags.map((t) => t.fam);
   if (JSON.stringify(seenFams) !== JSON.stringify(familyOrderC)) {
@@ -1159,14 +1202,79 @@ function assertCardAttrs(blockHtml, row, where) {
       `${where} ${row.run_id}: spark families ${seenFams.join(",")} differ from the column order ${familyOrderC.join(",")}`,
     );
   }
+  /* A flagged card's per-family decompositions, derived
+   * here once for both spark passes below. */
+  const sparkDecomps =
+    row.ranking_eligible === false ? famDecompI(row) : null;
   for (const tag of sparkTags) {
     const fam = carried.get(tag.fam);
     if (!fam || fam.asr === null || fam.asr === undefined) {
       if (!tag.whole.includes('data-na="true"')) {
         fail(`${where} ${row.run_id}: family ${tag.fam} should render as not measured`);
       }
+    } else if (
+      sparkDecomps !== null &&
+      (sparkDecomps.get(tag.fam) ?? null) === null
+    ) {
+      /* A flagged family whose records derive no
+       * decomposition prints suppressed and carries no
+       * figure attribute, so the data attribute expectation
+       * inverts for it, as the expectation inverts for the
+       * headline above. The pairing assertions below hold
+       * the suppressed state itself. */
     } else if (!tag.whole.includes(`data-asr="${fam.asr}"`)) {
       fail(`${where} ${row.run_id}: family ${tag.fam} data-asr disagrees with the payload`);
+    }
+  }
+  /* The spark pairing on a flagged card (C-5), family by
+   * family. A family whose records derive a decomposition
+   * carries both clauses in its row title, or states that
+   * it counted no flips. A family that derives none prints
+   * suppressed, and its title states that its figure is
+   * not stated. */
+  if (sparkDecomps !== null) {
+    for (const tag of sparkTags) {
+      const fam = carried.get(tag.fam);
+      if (!fam || fam.asr === null || fam.asr === undefined) continue;
+      const fd = sparkDecomps.get(tag.fam) ?? null;
+      const title = attr(tag.whole, "title") ?? "";
+      if (fd === null) {
+        if (
+          attr(tag.whole, "data-suppressed") !== "true" ||
+          attr(tag.whole, "data-asr") !== null
+        ) {
+          fail(
+            `${where} ${row.run_id}: spark family ${tag.fam} without a derivable decomposition must print suppressed with no figure`,
+          );
+        }
+        if (!title.includes("attack success not stated")) {
+          fail(
+            `${where} ${row.run_id}: suppressed spark family ${tag.fam} title does not state that its figure is not stated`,
+          );
+        }
+      } else {
+        if (attr(tag.whole, "data-suppressed") !== null) {
+          fail(
+            `${where} ${row.run_id}: spark family ${tag.fam} prints suppressed although its decomposition derives`,
+          );
+        }
+        if (fd.flips === 0) {
+          if (!title.includes("no counted flips")) {
+            fail(
+              `${where} ${row.run_id}: spark family ${tag.fam} title does not state that the family counted no flips`,
+            );
+          }
+        } else if (
+          !title.includes(`genuine flip rate ${fmtPct(fd.genuine)}`) ||
+          !title.includes(
+            `${fmtPct(fd.share)} of counted flips to malformed output`,
+          )
+        ) {
+          fail(
+            `${where} ${row.run_id}: spark family ${tag.fam} title does not carry the family's decomposition (genuine ${fmtPct(fd.genuine)}, malformed share ${fmtPct(fd.share)})`,
+          );
+        }
+      }
     }
   }
   /* Severities as data attributes. */
@@ -1229,7 +1337,10 @@ if (!modelsHtml) {
       }
     }
     const dci = displayCiI(row);
-    if (dci && !blockText.includes(fmtCiCompact(dci))) {
+    const flaggedNoDecompCard = isFlagged && decompI(row) === null;
+    if (dci && flaggedNoDecompCard && blockText.includes(fmtCiCompact(dci))) {
+      fail(`card ${id}: index summary compact interval ${fmtCiCompact(dci)} prints although the sealed records derive no decomposition for it`);
+    } else if (dci && !flaggedNoDecompCard && !blockText.includes(fmtCiCompact(dci))) {
       fail(`card ${id}: index summary compact interval ${fmtCiCompact(dci)} missing`);
     }
     const slug = slugOfC(row, allRows);
@@ -1533,10 +1644,16 @@ if (!cmpHtml) {
         `compare default model A is ${rowA.run_id}, the design's default is the strongest full suite row ${fullCohort[0].run_id}`,
       );
     }
-    const jevRow = allRows.find((r) => shortName(r) === "jev-1.14.0");
-    if (jevRow && rowB !== jevRow) {
+    /* The design's default B is the highest-ranked
+     * unflagged result other than A, derived here from the
+     * payload the same way lib/compare derives it: the
+     * ranked cohorts in rank order, full suite first, with
+     * flagged results (the unranked set) never eligible. */
+    const expectedB =
+      [...fullCohort, ...sliceCohort].find((r) => r !== rowA) ?? null;
+    if (expectedB && rowB !== expectedB) {
       fail(
-        `compare default model B is ${rowB.run_id}, the design's default is jev-1.14.0 (${jevRow.run_id})`,
+        `compare default model B is ${rowB.run_id}, the design's default is the highest-ranked unflagged result other than A (${expectedB.run_id})`,
       );
     }
     const expA = cmpExpectedById.get(rowA.run_id);
@@ -1688,7 +1805,11 @@ function modelPageDescription(row, where) {
   return desc;
 }
 
-/* 12a. The Method subsection anchors. */
+/* 12a. The Method subsection anchors. The set is the
+ * redesigned Method's: the re-run segments subsection is
+ * gone by design (its paragraph hardcoded a count, two
+ * names and a date into standing prose, hardcode audit
+ * F3), so its anchor is no longer asserted. */
 const METHOD_ANCHORS = [
   "method-case",
   "method-suite",
@@ -1696,7 +1817,6 @@ const METHOD_ANCHORS = [
   "method-admission",
   "method-tax",
   "method-costs",
-  "method-reruns",
   "method-standing",
 ];
 for (const id of METHOD_ANCHORS) {

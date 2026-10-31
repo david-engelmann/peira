@@ -243,8 +243,20 @@ export default function Compare({ data }: { data: CompareData }) {
         </thead>
         <tbody>
           {METRICS.map((m) => {
-            const av = m.raw(a);
-            const bv = m.raw(b);
+            /* A flagged side whose sealed records derive no
+             * decomposition states no whole figure (C-5), the
+             * standing rule the scatter follows. Its attack
+             * success reads as not measured in this table, and
+             * no delta or winner is computed from a figure the
+             * section does not state. */
+            const av =
+              m.key === "asr" && a.group === "flagged" && a.decomp === null
+                ? null
+                : m.raw(a);
+            const bv =
+              m.key === "asr" && b.group === "flagged" && b.decomp === null
+                ? null
+                : m.raw(b);
             const both = av !== null && bv !== null;
             const d = both ? av - bv : null;
             const win =
@@ -307,15 +319,40 @@ export default function Compare({ data }: { data: CompareData }) {
         </tbody>
       </table>
 
-      {(a.group === "flagged" || b.group === "flagged") && (
-        <p className="cmp-note cmp-flagged-note">
-          {a.group === "flagged" && b.group === "flagged"
-            ? "Both models are flagged and neither is ranked."
-            : a.group === "flagged"
-              ? "Model A is flagged and is not ranked."
-              : "Model B is flagged and is not ranked."}
-        </p>
-      )}
+      {(
+        [
+          ["a", a],
+          ["b", b],
+        ] as const
+      )
+        .filter(([, row]) => row.group === "flagged")
+        .map(([side, row]) => {
+          const label = row.wire ? `${row.name} (${row.wire})` : row.name;
+          return (
+            <p
+              key={side}
+              className="cmp-note cmp-flagged-note"
+              data-cmp-flagged-note={side}
+            >
+              {row.decomp !== null && row.asr !== null ? (
+                <>
+                  {label}, flagged and not ranked, attack success{" "}
+                  {fmtPct(row.asr)}, genuine flip rate{" "}
+                  {fmtPct(row.decomp.genuine)}, with{" "}
+                  {fmtPct(row.decomp.malformedShare)} of counted flips to
+                  malformed output.
+                </>
+              ) : (
+                <>
+                  {label}, flagged and not ranked. No whole figure is
+                  stated, because the sealed records do not derive its
+                  malformed decomposition. Any family figure below
+                  carries its own decomposition in its title.
+                </>
+              )}
+            </p>
+          );
+        })}
 
       <div className="cmp-families">
         {data.familyNames.map((fname, i) => (
@@ -325,14 +362,34 @@ export default function Compare({ data }: { data: CompareData }) {
               {(["a", "b"] as const).map((side) => {
                 const row = side === "a" ? a : b;
                 const v = row.families[i];
+                /* A flagged side's family figures travel with
+                 * their own decompositions (C-5). The line's
+                 * title states the family's decomposition, the
+                 * way the heatmap's cell titles do. A family
+                 * whose sealed records derive none prints no
+                 * figure on this line. */
+                const famDecomp =
+                  row.group === "flagged" ? row.familyDecomp[i] : null;
+                const famSuppressed =
+                  row.group === "flagged" && v !== null && famDecomp === null;
+                const famTitle =
+                  row.group !== "flagged" || v === null
+                    ? undefined
+                    : famDecomp === null
+                      ? `${data.familyNames[i]} attack success not stated for ${row.name}, because the figure's malformed decomposition does not derive from the sealed records`
+                      : famDecomp.flips === 0
+                        ? `${data.familyNames[i]} attack success ${fmtPct(v)}, no counted flips`
+                        : `${data.familyNames[i]} attack success ${fmtPct(v)}, genuine flip rate ${fmtPct(famDecomp.genuine)}, with ${fmtPct(famDecomp.malformedShare)} of counted flips to malformed output`;
                 return (
                   <div
                     className="cmp-fam-line"
                     key={side}
                     data-cmpfamily={data.familyKeys[i]}
                     data-cmpside={side}
-                    data-cmpasr={v === null ? "" : v}
+                    data-cmpasr={v === null || famSuppressed ? "" : v}
                     {...(v === null ? { "data-na": "true" } : {})}
+                    {...(famSuppressed ? { "data-suppressed": "true" } : {})}
+                    {...(famTitle !== undefined ? { title: famTitle } : {})}
                   >
                     <span
                       className={`cmp-fam-side mono${
@@ -342,7 +399,7 @@ export default function Compare({ data }: { data: CompareData }) {
                       {side.toUpperCase()}
                     </span>
                     <span className="cmp-fam-track">
-                      {v !== null && (
+                      {v !== null && !famSuppressed && (
                         <span
                           className="cmp-fam-fill"
                           style={{
@@ -352,7 +409,7 @@ export default function Compare({ data }: { data: CompareData }) {
                         />
                       )}
                     </span>
-                    {v === null ? (
+                    {v === null || famSuppressed ? (
                       <span className="cmp-fam-val">--</span>
                     ) : (
                       <span className="cmp-fam-val num">{fmtWholePct(v)}</span>

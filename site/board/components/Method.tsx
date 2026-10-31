@@ -131,13 +131,12 @@ export default function Method() {
         facts apart in words.
       </p>
 
-      <h3 className="method-head" id="method-reruns">Re-run segments</h3>
-      <p className="method-p">
-        Two results rest on re-run segments. The gemini-3.8-flash
-        and kimi-k3 results were re-run under fixed adapters on
-        12 October 2026, after faults were found in the first pass.
-        The sealed figures on this board are the re-run figures.
-      </p>
+      {/* No re-run history stands here (hardcode audit F3).
+       * Standing Method prose carries definitions and rules,
+       * never a count, names and a date keyed to nothing in
+       * the payload. Per-result provenance lives on the model
+       * pages, and publish history lives in the note at the
+       * foot of the page, rewritten at each publish. */}
 
       <h3 className="method-head" id="method-standing">Standing of the figures</h3>
       <p className="method-p">

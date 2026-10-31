@@ -7,6 +7,7 @@ import {
   wireWords,
   displayCi,
   duplicateShortNames,
+  flipDecomposition,
   modelSlug,
   type BoardRow,
   type RankedRow,
@@ -50,12 +51,25 @@ function IndexSummary({
   const name = shortName(row);
   const ci = displayCi(row);
   const cost = costStateOf(row);
+  /* The summary line is a carrier of the result's figures in
+   * its own right (C-5): a flagged figure prints here only
+   * with its decomposition on the same line, in the visible
+   * text and in the accessible label alike. Where the sealed
+   * records derive no decomposition, the summary states no
+   * figure, the standing the compare section follows. The
+   * rule keys to the flagged kind and the derivation, never
+   * to a result's name, so any flagged row that lands in
+   * this index is held to it. */
+  const decomp = kind === "flagged" ? flipDecomposition(row) : null;
+  const showFigure =
+    row.asr_conditional !== null && (kind !== "flagged" || decomp !== null);
   const label = [
     name,
     dupes.has(name) ? wireWords(row.wire) : null,
     kind === "flagged" ? "flagged" : `rank ${rank}`,
-    row.asr_conditional !== null
-      ? `attack success ${fmtPct(row.asr_conditional)}`
+    showFigure ? `attack success ${fmtPct(row.asr_conditional!)}` : null,
+    decomp !== null
+      ? `genuine flip rate ${fmtPct(decomp.genuineRate)}, with ${fmtPct(decomp.malformedShare)} of counted flips to malformed output`
       : null,
     row.benign_accuracy !== null
       ? `benign accuracy ${fmtPct(row.benign_accuracy)}`
@@ -93,8 +107,8 @@ function IndexSummary({
         <span className="dl-seg">
           <span className="dl-k">ASR</span>{" "}
           <span className="dl-v num">
-            {row.asr_conditional !== null
-              ? `${fmtPct(row.asr_conditional)}${ci ? ` ${fmtCiCompact(ci)}` : ""}`
+            {showFigure
+              ? `${fmtPct(row.asr_conditional!)}${ci ? ` ${fmtCiCompact(ci)}` : ""}`
               : "·"}
           </span>
           <span className="dl-sep">|</span>
@@ -121,7 +135,17 @@ function IndexSummary({
             {cost.kind === "local" && "served locally"}
             {cost.kind === "unrecorded" && "no cost recorded"}
           </span>
+          {decomp !== null && <span className="dl-sep">|</span>}
         </span>
+        {decomp !== null && (
+          <span className="dl-seg idx-decomp-seg">
+            <span className="dl-v num">
+              Genuine flip rate {fmtPct(decomp.genuineRate)}, with{" "}
+              {fmtPct(decomp.malformedShare)} of counted flips to
+              malformed output
+            </span>
+          </span>
+        )}
         <span className="idx-toggle idx-toggle-row" aria-hidden="true">
           Details
         </span>
