@@ -661,6 +661,71 @@ class TestLeaderboard(unittest.TestCase):
                              "bad-model-2.0")
 
 
+class TestLeaderboardRerunProvenance(unittest.TestCase):
+    """Chained-run provenance is built from artifact metadata.
+
+    A standing artifact that chains to a parent run
+    (RunArtifact.parent_run_id, which chains re-runs and
+    resumes alike) yields a row whose rerun record carries
+    that chain and the artifact's own creation day. The
+    record ships as emitted provenance that no board surface
+    consumes yet, and its removal is scheduled as a
+    follow-up. An artifact that
+    chains to nothing, or whose creation day is missing,
+    yields no record.
+    """
+
+    def test_row_carries_rerun_record_from_artifact_metadata(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            art = _make_artifact(
+                adapter_name="rerun-adapter",
+                adapter_version="rerun-adapter-1.0",
+                parent_run_id="run-parent-123",
+            )
+            (tmp_path / "rerun.json").write_text(art.to_json())
+            scan_runs(tmp)
+            lb = leaderboard(tmp)
+            self.assertEqual(lb["n_ranked"], 1)
+            self.assertEqual(
+                lb["ranked"][0]["rerun"],
+                {"parent_run_id": "run-parent-123",
+                 "date": art.created_utc[:10]},
+            )
+
+    def test_row_without_parent_run_carries_no_rerun(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            art = _make_artifact(
+                adapter_name="plain-adapter",
+                adapter_version="plain-adapter-1.0",
+            )
+            (tmp_path / "plain.json").write_text(art.to_json())
+            scan_runs(tmp)
+            lb = leaderboard(tmp)
+            self.assertEqual(lb["n_ranked"], 1)
+            self.assertIn("rerun", lb["ranked"][0])
+            self.assertIsNone(lb["ranked"][0]["rerun"])
+
+    def test_row_with_parent_but_no_creation_date_carries_no_rerun(self):
+        # A sealed artifact can carry an empty created_utc. Its
+        # chain then attests no date, and the row must emit no
+        # record rather than a date the board cannot print.
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            art = _make_artifact(
+                adapter_name="dateless-adapter",
+                adapter_version="dateless-adapter-1.0",
+                parent_run_id="run-parent-456",
+                created_utc="",
+            )
+            (tmp_path / "dateless.json").write_text(art.to_json())
+            scan_runs(tmp)
+            lb = leaderboard(tmp)
+            self.assertEqual(lb["n_ranked"], 1)
+            self.assertIsNone(lb["ranked"][0]["rerun"])
+
+
 class TestLeaderboardProbeExclusion(unittest.TestCase):
     """An entry whose standing run is a canary prints nothing.
 

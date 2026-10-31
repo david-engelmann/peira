@@ -240,6 +240,17 @@ export interface BoardRow {
   total_cost_usd: number | null;
   latency_ms_p50_attacked: number | null;
   latency_ms_p95_attacked: number | null;
+  /**
+   * Chained-run provenance the pipeline built from the standing
+   * artifact's own metadata: present when the artifact chains
+   * to a parent run (RunArtifact.parent_run_id, which chains
+   * re-runs and resumes alike), with date the artifact's own
+   * creation day in ISO form. Null when the run chains to
+   * nothing or its creation day is not recorded, absent on
+   * payloads built before the pipeline emitted it (F3 of the
+   * 2026-10-29 hardcode audit).
+   */
+  rerun?: { parent_run_id: string; date: string } | null;
   provenance: unknown;
   detail: unknown;
 }
@@ -589,10 +600,15 @@ const MONTHS = [
   "July", "August", "September", "October", "November", "December",
 ];
 
+/** One ISO day in words, for example 22 October 2026. */
+export function dateWords(isoDay: string): string {
+  const [y, m, d] = isoDay.split("-").map(Number);
+  return `${d} ${MONTHS[m - 1]} ${y}`;
+}
+
 /** The board date in words, for example 22 October 2026. */
 export function boardDateWords(): string {
-  const [y, m, d] = boardDateIso().split("-").map(Number);
-  return `${d} ${MONTHS[m - 1]} ${y}`;
+  return dateWords(boardDateIso());
 }
 
 /**

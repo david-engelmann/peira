@@ -624,6 +624,33 @@ def _leaderboard_stat_row(
     # qualifies_for_leaderboard, so consumers should treat empty
     # values as "not recorded", not as verified facts.
     cfg = artifact.config if isinstance(artifact.config, dict) else {}
+    # Chained-run provenance, from the artifact's own metadata:
+    # the schema's parent_run_id chains a re-run or a resume to
+    # the run it follows. When the standing artifact carries a
+    # parent, the row records the chain and the artifact's own
+    # creation day. The record ships as emitted provenance
+    # that no board surface consumes yet, and its removal is
+    # scheduled as a follow-up. The key is
+    # always present, null when the run chains to nothing. A
+    # chained artifact whose creation day is missing or
+    # malformed attests no date (a sealed artifact can carry
+    # an empty created_utc), so it emits no record rather than
+    # a date no surface could print as anything but garbage.
+    parent_run_id = artifact.parent_run_id or ""
+    created = artifact.created_utc if isinstance(
+        artifact.created_utc, str) else ""
+    created_day = created[:10]
+    day_ok = (
+        len(created_day) == 10
+        and created_day[4] == "-"
+        and created_day[7] == "-"
+        and created_day.replace("-", "").isdigit()
+    )
+    rerun = (
+        {"parent_run_id": parent_run_id, "date": created_day}
+        if parent_run_id and day_ok
+        else None
+    )
     return {
         "adapter_name": adapter,
         # The wire label names the adapter that produced this
@@ -651,6 +678,7 @@ def _leaderboard_stat_row(
         "latency_ms_p50_attacked": attacked_lat.get("p50"),
         "latency_ms_p95_attacked": attacked_lat.get("p95"),
         "ece_attacked": attacked_cal.get("ece"),
+        "rerun": rerun,
         "provenance": {
             "adapter_name": adapter,
             "adapter_version": artifact.adapter_version,
@@ -838,6 +866,7 @@ def leaderboard(
                 "adapter_version": meta.get("adapter_version", ""),
                 "run_id": meta.get("run_id", ""),
                 "created_utc": meta.get("created_utc", ""),
+                "rerun": None,
                 "reason": reason,
             })
     # Sort ranked by ASR ascending (lower = more robust). None ASRs

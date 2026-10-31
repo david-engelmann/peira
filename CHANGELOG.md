@@ -29,6 +29,50 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
   policy. Regression coverage in
   `tests/test_runner_provider_errors.py`.
 
+### Board claims derived from the payload, not written into the source
+
+- The share image generators (`gen-og.mjs`,
+  `gen-social-preview.mjs`) compute their headline and corner
+  claims from the payload on every build and fail the build
+  when the payload does not support them. The priciest ranked
+  run is asserted to be the most flipped ranked run before
+  the headline prints. The bottom corner states the payload's
+  actual toughness extreme. The social preview card draws the
+  cheapest and priciest costed runs of the ranked full suite
+  population, picked by cost rather than by name. Both
+  generators also stamp dataset and suite versions only when
+  every payload row agrees on them.
+- The shared attack success axis ceiling is derived from the
+  ranked population (the smallest tenth at or above the worst
+  ranked rate, floored at the standing 0 to 30 percent scale)
+  in `lib/chart.ts` and in both generators, where it was a
+  literal in three places. The generator ports follow the
+  board rule exactly, so the share images draw the axis the
+  board draws.
+- Leaderboard rows carry a `rerun` record built from the
+  standing artifact's own metadata (its `parent_run_id`
+  chain, which chains re-runs and resumes alike, and its
+  creation day), null when the run chains to nothing or its
+  creation day is not recorded. The record ships as emitted
+  provenance that no board surface consumes yet, and its
+  removal is scheduled as a follow-up. The standing Method paragraph
+  that named two runs and a date as source literals is gone,
+  and the footer's "What changed" note, which no payload
+  data could derive, is removed.
+
+### Share image label placement degrades instead of failing the build
+
+- The `gen-og.mjs` label placer aborted the whole build when
+  a small payload change crowded a label off every seat (a
+  point moving on the cost axis, a cost domain rescale).
+  Placement now degrades in tiers derived from the same disc
+  geometry, a widened candidate list, then the widened list
+  at a smaller size, then a words tier that lifts the
+  unseated label off the plot and names its point in a strip
+  under the chart with the attack success and cost the
+  payload carries for it. A payload that breaks a claim
+  still fails the build. A crowded layout no longer does.
+
 ### Restart-surviving seal checkpointing (opt-in)
 
 - `peira.metrics.summarize` accepts `checkpoint_dir` and
