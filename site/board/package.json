@@ -9,8 +9,10 @@
   "scripts": {
     "dev": "next dev",
     "prebuild": "node scripts/gen-og.mjs",
-    "build": "next build && node scripts/check-integrity.mjs && node scripts/check-budget.mjs",
-    "check:integrity": "node scripts/check-integrity.mjs"
+    "build": "next build && node scripts/check-integrity.mjs && node scripts/check-budget.mjs && node tests/render-law.mjs",
+    "test": "node --test tests/gen-generators.test.mjs",
+    "check:integrity": "node scripts/check-integrity.mjs",
+    "check:render": "node tests/render-law.mjs"
   },
   "dependencies": {
     "@visx/axis": "^3.12.0",

@@ -219,16 +219,18 @@ const costs = plotted.map((r) => r.total_cost_usd);
 const domLo = 10 ** (Math.floor(Math.log10(Math.min(...costs)) * 2) / 2);
 const domHi = 10 ** (Math.ceil(Math.log10(Math.max(...costs)) * 2) / 2);
 /* The attack success axis ceiling, a port of lib/chart.ts's
- * asrAxisCeiling (F5 of the 2026-10-29 hardcode audit): the
- * worst ranked rate rounded up to the next 10 percent step,
- * one further step when it sits exactly on a step, floored
- * at 0.3. This generator reads the payload JSON directly and
- * cannot import the board module, so the rule is ported; the
- * two must move together. */
+ * asrAxisFor (F5 of the 2026-10-29 hardcode audit, board rule
+ * as restated by the redesign record): the smallest tenth at
+ * or above the worst ranked rate, floored at 0.3. This
+ * generator reads the payload JSON directly and cannot import
+ * the board module, so the rule is ported. The two must move
+ * together, and the share image must draw the axis the board
+ * draws. An earlier port added a further step when the worst
+ * rate sat exactly on a step, which put the image on a
+ * different axis from the board for such a payload. */
 function asrAxisCeiling(maxRate) {
   const stepped = Math.ceil((maxRate - 1e-9) / 0.1) * 0.1;
-  const ceiling = stepped > maxRate + 1e-9 ? stepped : stepped + 0.1;
-  return Math.round(Math.max(0.3, ceiling) * 10) / 10;
+  return Math.round(Math.max(0.3, stepped) * 10) / 10;
 }
 const axisMax = asrAxisCeiling(
   Math.max(0, ...payload.ranked.map((r) => r.asr_conditional ?? 0)),
@@ -305,8 +307,10 @@ const railY = new Map(railSpread.map((e) => [e.r.run_id, e.y]));
  * plotted point gets a label seated beside its disc by
  * deterministic candidate placement against real font
  * measurement, with no leader lines and no per-run table.
- * A point the pass cannot seat fails the build, so a name
- * can never drop silently. */
+ * A point no tier of the pass can seat is named in words in
+ * the strip under the chart instead, so a name can never
+ * drop silently and a crowded payload never fails the
+ * build. */
 const railLabelsSvg = railRows
   .map(
     (r) =>
@@ -375,6 +379,11 @@ nudgePoints(plottedXY, 24, 12);
 const plottedPts = plottedXY.map((p) => ({
   runId: p.runId,
   name: pointName(p.r),
+  /* The point stated in words, for the strip that names a
+   * point whose label no tier of the placement pass could
+   * seat beside its disc. Derived here from the same row, so
+   * the strip can never disagree with the plotted point. */
+  words: `${pointName(p.r)} (${fmtPct(p.r.asr_conditional)} at ${fmtUsd(p.r.total_cost_usd)})`,
   x: p.x,
   y: p.y,
 }));
@@ -466,6 +475,8 @@ h1 { font-size: 47px; font-weight: 700; letter-spacing: -0.02em; margin-top: 8px
 .chart { position: absolute; left: 0; top: 0; }
 .tick { fill: #71808f; font-size: 13px; }
 .lab { fill: #d5dde4; font-size: 15px; font-weight: 600; }
+.lab-sm { fill: #d5dde4; font-size: 12.5px; font-weight: 600; }
+.fallback { position: absolute; left: 540px; top: 546px; width: 612px; font-size: 12.5px; line-height: 16px; color: #aebcc7; }
 .mono { font-size: 11px; font-weight: 700; text-anchor: middle; dominant-baseline: central; }
 .corner { fill: #eef2f6; font-size: 26px; font-weight: 700; letter-spacing: -0.01em; }
 .corner-sub { fill: #aebcc7; font-size: 16px; font-weight: 550; }
@@ -477,6 +488,7 @@ ${scatterSvg}
   <h1>The priciest model was the easiest to flip</h1>
   <p class="sub">Attack success against recorded cost per run (log scale), every full-suite model deciding the same paired cases.</p>
 </div>
+<div class="fallback" id="og-fallback" hidden></div>
 <p class="foot">Peira decision robustness board. Dataset ${versions.dataset}, suite ${versions.suite}, updated ${dateWords}. Amber ring: a flagged result. peiratrial.dev</p>
 </body></html>`;
 
@@ -497,11 +509,22 @@ ${scatterSvg}
  * reseat a no-cost blocker out of a stuck label's seat; if
  * an attempt still collides, the next deterministic seating
  * order tries, and the first attempt that verifies clean
- * wins. Verification
- * is strict at zero tolerance: any label touching a disc,
- * the furniture, another label or the canvas edge comes
- * back in `failures` and the generator exits non-zero
- * rather than ship an image with a name missing or struck. */
+ * wins. Verification is strict at zero tolerance: any label
+ * touching a disc, the furniture, another label or the
+ * canvas edge comes back in `failures`.
+ *
+ * Placement degrades in tiers and never fails the build.
+ * The first tier is the candidate list above. The second
+ * widens the reach, further seats around each disc derived
+ * from the same geometry. The third seats the same widened
+ * list at a smaller size. A label no tier can seat leaves
+ * the plot and its point is named in words, with its attack
+ * success and its cost, in the strip under the chart, the
+ * same degradation the board scatter uses when a width
+ * cannot name a point beside its disc. A claim the payload
+ * breaks still fails the build in the guards above. A
+ * crowded label layout is not a broken claim, so it
+ * degrades instead. */
 function placeOgLabels(pts) {
   const NS = "http://www.w3.org/2000/svg";
   const svg = document.querySelector("svg.chart");
@@ -566,12 +589,34 @@ function placeOgLabels(pts) {
     { dx: 26, dy: 5, anchor: "start" },
     { dx: -26, dy: 5, anchor: "end" },
   ];
+  /* The widened tier: further seats on the same eight
+   * bearings, for payloads whose points crowd the first
+   * tier's reach. The bearings and the disc geometry are
+   * the derivation. No seat is keyed to a run. */
+  const CANDS_WIDE = [
+    ...CANDS,
+    { dx: 34, dy: 5, anchor: "start" },
+    { dx: -34, dy: 5, anchor: "end" },
+    { dx: 34, dy: -24, anchor: "start" },
+    { dx: -34, dy: -24, anchor: "end" },
+    { dx: 34, dy: 36, anchor: "start" },
+    { dx: -34, dy: 36, anchor: "end" },
+    { dx: 0, dy: -42, anchor: "middle" },
+    { dx: 0, dy: 56, anchor: "middle" },
+    { dx: 44, dy: 18, anchor: "start" },
+    { dx: -44, dy: 18, anchor: "end" },
+    { dx: 16, dy: -34, anchor: "start" },
+    { dx: -16, dy: -34, anchor: "end" },
+    { dx: 16, dy: 48, anchor: "start" },
+    { dx: -16, dy: 48, anchor: "end" },
+  ];
   const inCanvas = (box) =>
     box.x >= 4 && box.y >= 4 && box.x + box.w <= 1196 && box.y + box.h <= 626;
   const probe = document.createElementNS(NS, "text");
-  probe.setAttribute("class", "lab");
   group.appendChild(probe);
+  let probeCls = "lab";
   const boxFor = (p, cand) => {
+    probe.setAttribute("class", probeCls);
     probe.setAttribute("x", String(p.x + cand.dx));
     probe.setAttribute("y", String(p.y + cand.dy));
     probe.setAttribute("text-anchor", cand.anchor);
@@ -604,7 +649,8 @@ function placeOgLabels(pts) {
     if (placed.length !== pts.length) bad.push("count");
     return bad;
   };
-  const attempt = (order) => {
+  const attempt = (order, CANDS, cls) => {
+    probeCls = cls;
     for (const el of [...group.querySelectorAll("text[data-run-id]")])
       el.remove();
     const placed = [];
@@ -638,7 +684,7 @@ function placeOgLabels(pts) {
     };
     for (const p of order) {
       const el = document.createElementNS(NS, "text");
-      el.setAttribute("class", "lab");
+      el.setAttribute("class", cls);
       el.setAttribute("data-run-id", p.runId);
       el.textContent = p.name;
       group.appendChild(el);
@@ -741,48 +787,105 @@ function placeOgLabels(pts) {
     return { placed, bad: verify(placed) };
   };
   const byRunId = (a, b) => (a.runId < b.runId ? -1 : 1);
-  const freeCounts = new Map(
-    pts.map((p) => [
-      p.runId,
-      CANDS.filter((c) => {
-        const box = boxFor(p, c);
-        return (
-          inCanvas(box) &&
-          discs.every((d) => distToDisc(box, d) >= d.r + 1) &&
-          furniture.every((f) => !overlap(box, f))
-        );
-      }).length,
-    ]),
-  );
-  const orders = [
-    [...pts].sort(
-      (a, b) => freeCounts.get(a.runId) - freeCounts.get(b.runId) || byRunId(a, b),
-    ),
-    [...pts].sort(
-      (a, b) => freeCounts.get(a.runId) - freeCounts.get(b.runId) || byRunId(b, a),
-    ),
-    [...pts].sort((a, b) => a.y - b.y || a.x - b.x),
-    [...pts].sort((a, b) => a.x - b.x || a.y - b.y),
-    [...pts].sort((a, b) => b.y - a.y || b.x - a.x),
-    [...pts].sort((a, b) => b.x - a.x || b.y - a.y),
-    [...pts].sort(
-      (a, b) => freeCounts.get(b.runId) - freeCounts.get(a.runId) || a.y - b.y,
-    ),
-    [...pts].sort(
-      (a, b) => freeCounts.get(a.runId) - freeCounts.get(b.runId) || b.y - a.y,
-    ),
-  ];
-  let bestBad = null;
-  for (const order of orders) {
-    const { placed, bad } = attempt(order);
-    if (bad.length === 0) {
-      probe.remove();
-      return { ok: true, placed: placed.length };
+  /* One tier: every seating order over one candidate list at
+   * one size. Returns the clean attempt, or records the
+   * attempt with the fewest violations as the degradation
+   * base. */
+  let best = null;
+  const runTier = (CANDS, cls) => {
+    probeCls = cls;
+    const freeCounts = new Map(
+      pts.map((p) => [
+        p.runId,
+        CANDS.filter((c) => {
+          const box = boxFor(p, c);
+          return (
+            inCanvas(box) &&
+            discs.every((d) => distToDisc(box, d) >= d.r + 1) &&
+            furniture.every((f) => !overlap(box, f))
+          );
+        }).length,
+      ]),
+    );
+    const orders = [
+      [...pts].sort(
+        (a, b) => freeCounts.get(a.runId) - freeCounts.get(b.runId) || byRunId(a, b),
+      ),
+      [...pts].sort(
+        (a, b) => freeCounts.get(a.runId) - freeCounts.get(b.runId) || byRunId(b, a),
+      ),
+      [...pts].sort((a, b) => a.y - b.y || a.x - b.x),
+      [...pts].sort((a, b) => a.x - b.x || a.y - b.y),
+      [...pts].sort((a, b) => b.y - a.y || b.x - a.x),
+      [...pts].sort((a, b) => b.x - a.x || b.y - a.y),
+      [...pts].sort(
+        (a, b) => freeCounts.get(b.runId) - freeCounts.get(a.runId) || a.y - b.y,
+      ),
+      [...pts].sort(
+        (a, b) => freeCounts.get(a.runId) - freeCounts.get(b.runId) || b.y - a.y,
+      ),
+    ];
+    for (const order of orders) {
+      const { placed, bad } = attempt(order, CANDS, cls);
+      if (bad.length === 0) return { clean: true, placed };
+      if (best === null || bad.length < best.bad.length) {
+        best = { bad, order, CANDS, cls };
+      }
     }
-    if (bestBad === null || bad.length < bestBad.length) bestBad = bad;
+    return { clean: false };
+  };
+  for (const [cands, cls] of [
+    [CANDS, "lab"],
+    [CANDS_WIDE, "lab"],
+    [CANDS_WIDE, "lab-sm"],
+  ]) {
+    const r = runTier(cands, cls);
+    if (r.clean) {
+      probe.remove();
+      return { ok: true, placed: r.placed.length, degraded: [] };
+    }
+  }
+  /* The words tier. Rebuild the least violating attempt,
+   * lift the labels it could not seat off the plot, and name
+   * those points in the strip under the chart with the
+   * figures the payload carries for them. The strip steps
+   * its size down until it clears the footer, measured
+   * against the real footer block, so the words themselves
+   * never strike another element. Removing labels cannot
+   * create a violation, so the seated labels stand verified
+   * as they were. */
+  const { placed } = attempt(best.order, best.CANDS, best.cls);
+  const badIds = new Set(
+    best.bad.map((s) => s.split(" ")[0]).filter((s) => s !== "count"),
+  );
+  const degraded = [];
+  for (const rec of placed) {
+    if (badIds.has(rec.runId)) {
+      rec.el.remove();
+      degraded.push(rec.p);
+    }
+  }
+  const strip = document.getElementById("og-fallback");
+  strip.hidden = false;
+  strip.textContent =
+    "Too crowded at their discs, so named here. " +
+    degraded.map((p) => p.words).join(", ");
+  const footRect = document.querySelector(".foot").getBoundingClientRect();
+  let size = 12.5;
+  while (size > 9) {
+    const r = strip.getBoundingClientRect();
+    if (r.bottom <= footRect.top - 2) break;
+    size -= 0.5;
+    strip.style.fontSize = `${size}px`;
+    strip.style.lineHeight = `${Math.round(size * 1.28)}px`;
   }
   probe.remove();
-  return { ok: false, failures: bestBad };
+  return {
+    ok: true,
+    placed: placed.length - degraded.length,
+    degraded: degraded.map((p) => p.name),
+    degradedWords: degraded.map((p) => p.words),
+  };
 }
 
 mkdirSync(path.join(root, "public"), { recursive: true });
@@ -840,12 +943,10 @@ await page.setViewport({ width: 1200, height: 630 });
 await page.goto(`file://${ogHtml}`, { waitUntil: "networkidle0" });
 await page.evaluate(() => document.fonts.ready);
 const placement = await page.evaluate(placeOgLabels, plottedPts);
-if (!placement.ok) {
-  console.error(
-    `gen-og: label placement failed for ${placement.failures.join(", ")}: every plotted point must be named in the share image`,
+if (placement.degraded.length > 0) {
+  console.log(
+    `gen-og: ${placement.degraded.length} plotted label${placement.degraded.length === 1 ? "" : "s"} could not seat beside the disc on this payload and ${placement.degraded.length === 1 ? "is" : "are"} named in words in the strip under the chart instead: ${(placement.degradedWords ?? placement.degraded).join(", ")}`,
   );
-  await browser.close();
-  process.exit(1);
 }
 await page.screenshot({ path: path.join(root, "public", "og.png") });
 await browser.close();

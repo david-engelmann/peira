@@ -662,17 +662,17 @@ class TestLeaderboard(unittest.TestCase):
 
 
 class TestLeaderboardRerunProvenance(unittest.TestCase):
-    """The board's chained-run note is built from artifact metadata.
+    """Chained-run provenance is built from artifact metadata.
 
     A standing artifact that chains to a parent run
     (RunArtifact.parent_run_id, which chains re-runs and
     resumes alike) yields a row whose rerun record carries
-    that chain and the artifact's own creation day, so the
-    board can state the chain from data. An artifact that
+    that chain and the artifact's own creation day. The
+    record ships as emitted provenance that no board surface
+    consumes yet, and its removal is scheduled as a
+    follow-up. An artifact that
     chains to nothing, or whose creation day is missing,
-    yields no record. (F3 of the 2026-10-29
-    hardcode audit: the Method note named two runs and a date
-    as source literals, and no payload field carried the fact.)
+    yields no record.
     """
 
     def test_row_carries_rerun_record_from_artifact_metadata(self):

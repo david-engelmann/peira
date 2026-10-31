@@ -628,14 +628,14 @@ def _leaderboard_stat_row(
     # the schema's parent_run_id chains a re-run or a resume to
     # the run it follows. When the standing artifact carries a
     # parent, the row records the chain and the artifact's own
-    # creation day, so the board's Method note can state the
-    # chain from data instead of naming runs and dates in
-    # source (F3 of the 2026-10-29 hardcode audit). The key is
+    # creation day. The record ships as emitted provenance
+    # that no board surface consumes yet, and its removal is
+    # scheduled as a follow-up. The key is
     # always present, null when the run chains to nothing. A
     # chained artifact whose creation day is missing or
     # malformed attests no date (a sealed artifact can carry
     # an empty created_utc), so it emits no record rather than
-    # a date the board would print as garbage.
+    # a date no surface could print as anything but garbage.
     parent_run_id = artifact.parent_run_id or ""
     created = artifact.created_utc if isinstance(
         artifact.created_utc, str) else ""

@@ -101,6 +101,29 @@ function quantHU(decStr, decimals) {
 const fmtPct = (v) => `${quantHU(shiftPt(expandDec(v), 2), 1)}%`;
 const fmtMoney = (v) => `$${quantHU(expandDec(v), 2)}`;
 
+/* The board's lower-bound rule (lib/charts costIsLowerBound),
+ * replicated on the payload rows: a recorded cost whose priced
+ * calls fall short of its timed calls is a floor, and the model
+ * cards print it with the qualifier. The social card follows
+ * the same rule, as gen-og's top corner does. */
+const costIsLowerBound = (r) => {
+  const fams = r.detail?.families;
+  if (!fams || typeof fams !== "object" || Array.isArray(fams)) return false;
+  let costed = 0;
+  let timed = 0;
+  let seen = false;
+  for (const v of Object.values(fams)) {
+    if (!v || typeof v !== "object" || Array.isArray(v)) continue;
+    const nc = v.n_costed_calls;
+    const nl = v.n_latency_calls;
+    if (typeof nc !== "number" || typeof nl !== "number") return false;
+    costed += nc;
+    timed += nl;
+    seen = true;
+  }
+  return seen && costed < timed;
+};
+
 const shortName = (r) => {
   let name = r.display_name;
   const at = name.lastIndexOf("@");
@@ -231,16 +254,18 @@ function bigDisc(r, x, y, R) {
  * the plot is visibly empty; that emptiness is the selection
  * showing, and the sub-line states the selection in words. */
 /* The attack success axis ceiling, a port of lib/chart.ts's
- * asrAxisCeiling (F5 of the 2026-10-29 hardcode audit): the
- * worst ranked rate rounded up to the next 10 percent step,
- * one further step when it sits exactly on a step, floored
- * at 0.3. This generator reads the payload JSON directly and
- * cannot import the board module, so the rule is ported; the
- * two must move together. */
+ * asrAxisFor (F5 of the 2026-10-29 hardcode audit, board rule
+ * as restated by the redesign record): the smallest tenth at
+ * or above the worst ranked rate, floored at 0.3. This
+ * generator reads the payload JSON directly and cannot import
+ * the board module, so the rule is ported. The two must move
+ * together, and the share image must draw the axis the board
+ * draws. An earlier port added a further step when the worst
+ * rate sat exactly on a step, which put the image on a
+ * different axis from the board for such a payload. */
 function asrAxisCeiling(maxRate) {
   const stepped = Math.ceil((maxRate - 1e-9) / 0.1) * 0.1;
-  const ceiling = stepped > maxRate + 1e-9 ? stepped : stepped + 0.1;
-  return Math.round(Math.max(0.3, ceiling) * 10) / 10;
+  return Math.round(Math.max(0.3, stepped) * 10) / 10;
 }
 const axisMax = asrAxisCeiling(
   Math.max(0, ...payload.ranked.map((r) => r.asr_conditional ?? 0)),
@@ -249,7 +274,16 @@ const axisTicks = Array.from(
   { length: Math.round(axisMax / 0.1) + 1 },
   (_, i) => i / 10,
 );
-const BX = { x0: 150, x1: 1200, yTop: 236, yBot: 500, lo: -1.6, hi: 2.55 };
+/* The cost domain, derived from the costed population under
+ * the same rule family as gen-og's domain: the half-decade
+ * steps that bracket the plotted costs, so a legitimate cost
+ * outside the old literal domain rescales the card instead
+ * of aborting it. BX.lo and BX.hi are log10 bounds. */
+const costedCosts = costed.map((r) => r.total_cost_usd);
+const domLogLo = Math.floor(Math.log10(Math.min(...costedCosts)) * 2) / 2;
+let domLogHi = Math.ceil(Math.log10(Math.max(...costedCosts)) * 2) / 2;
+if (domLogHi <= domLogLo) domLogHi = domLogLo + 1;
+const BX = { x0: 150, x1: 1200, yTop: 236, yBot: 500, lo: domLogLo, hi: domLogHi };
 const bxOf = (c) =>
   BX.x0 +
   ((Math.log10(c) - BX.lo) / (BX.hi - BX.lo)) * (BX.x1 - BX.x0);
@@ -285,7 +319,9 @@ const gridB = axisTicks
     <text x="${BX.x0 - 14}" y="${byOf(t) + 5}" class="tick" text-anchor="end">${Math.round(t * 100)}</text>`,
   )
   .join("\n");
-const decadesB = [-1, 0, 1, 2]
+const decadeSteps = [];
+for (let dgt = Math.ceil(BX.lo); dgt <= Math.floor(BX.hi); dgt++) decadeSteps.push(dgt);
+const decadesB = decadeSteps
   .map((dgt) => {
     const v = 10 ** dgt;
     return `<text x="${bxOf(v)}" y="${BX.yBot + 30}" class="tick" text-anchor="middle">${v < 1 ? `$${v.toFixed(2)}` : `$${v}`}</text>`;
@@ -296,6 +332,69 @@ const jy = byOf(cheap.asr_conditional);
 const fx = bxOf(priciest.total_cost_usd);
 const fy = byOf(priciest.asr_conditional);
 const R = 36;
+/* The micro labels, derived. Each word a label may print is
+ * chosen by a stated rule over derived quantities, never
+ * written as a literal. The cost words read the point's
+ * position in the derived log cost domain above: NEAR-FREE
+ * holds when the cheap point's cost sits in the lowest
+ * quarter of that domain, EXPENSIVE when the priciest point's
+ * cost sits in the highest quarter. The toughness words read
+ * the point's attack success against the costed population:
+ * TOUGH holds when the cheap point's rate is at or below the
+ * population's first quartile rate (the sorted rate at index
+ * floor((n - 1) / 4)), FRAGILE when the priciest point's rate
+ * is the population maximum. A word whose rule fails does not
+ * print. When no word holds for a point the micro label is
+ * empty and the block stands on its factual form alone, the
+ * derived name and figures. The guard under the composition
+ * recomputes the expected label from the same predicates and
+ * fails the build on any disagreement, so a printed
+ * characterization cannot contradict its rule inputs. */
+const costPos = (r) =>
+  (Math.log10(r.total_cost_usd) - BX.lo) / (BX.hi - BX.lo);
+const sortedCostedAsr = [...costed]
+  .map((r) => r.asr_conditional)
+  .sort((a, b) => a - b);
+const q1Asr = sortedCostedAsr[Math.floor((sortedCostedAsr.length - 1) / 4)];
+const microParts = (r, side) =>
+  side === "cheap"
+    ? [
+        ["NEAR-FREE", costPos(r) <= 0.25],
+        ["TOUGH", r.asr_conditional <= q1Asr],
+      ]
+    : [
+        ["EXPENSIVE", costPos(r) >= 0.75],
+        ["FRAGILE", r.asr_conditional === maxAsr],
+      ];
+const microLabel = (r, side) =>
+  microParts(r, side)
+    .filter(([, holds]) => holds)
+    .map(([word]) => word)
+    .join(" AND ");
+const cheapMicro = microLabel(cheap, "cheap");
+const priciestMicro = microLabel(priciest, "priciest");
+for (const [label, r, side] of [
+  [cheapMicro, cheap, "cheap"],
+  [priciestMicro, priciest, "priciest"],
+]) {
+  const expected = microParts(r, side)
+    .filter(([, holds]) => holds)
+    .map(([word]) => word)
+    .join(" AND ");
+  const contradicted = microParts(r, side).some(
+    ([word, holds]) => label.includes(word) && !holds,
+  );
+  if (label !== expected || contradicted) {
+    console.error(
+      `gen-social-preview: the ${side} micro label "${label}" contradicts its derivation rule on this payload (cost position ${costPos(r).toFixed(3)}, attack success ${r.asr_conditional}, first quartile ${q1Asr}, population maximum ${maxAsr})`,
+    );
+    process.exit(1);
+  }
+}
+const costLine = (r) =>
+  `Cost ${costIsLowerBound(r) ? "at least " : ""}${fmtMoney(r.total_cost_usd)} per run`;
+const pointWords = (r) =>
+  `${pointName(r)} (${fmtPct(r.asr_conditional)}, ${costIsLowerBound(r) ? "at least " : ""}${fmtMoney(r.total_cost_usd)} per run)`;
 const bSvg = `<svg width="1280" height="640" viewBox="0 0 1280 640" class="chart">
   <rect x="48" y="196" width="1184" height="376" fill="#0c1015" stroke="#232c35"/>
   ${gridB}
@@ -303,14 +402,18 @@ const bSvg = `<svg width="1280" height="640" viewBox="0 0 1280 640" class="chart
   ${decadesB}
   <text x="${BX.x0 + 6}" y="226" class="tick">Attack success, percent</text>
   <text x="${BX.x0}" y="560" class="tick">Recorded cost per run, US dollars, log scale</text>
-  <text x="${jx + R + 20}" y="${jy - 38}" class="micro2">NEAR-FREE AND TOUGH</text>
+  <g id="social-cheap" class="label-block">
+  ${cheapMicro ? `<text x="${jx + R + 20}" y="${jy - 38}" class="micro2">${cheapMicro}</text>` : ""}
   <text x="${jx + R + 20}" y="${jy}" class="pname">${esc(pointName(cheap))}</text>
   <text x="${jx + R + 20}" y="${jy + 36}" class="pfig">Attack success ${fmtPct(cheap.asr_conditional)}</text>
-  <text x="${jx + R + 20}" y="${jy + 68}" class="pfig">Cost ${fmtMoney(cheap.total_cost_usd)} per run</text>
-  <text x="${fx - R - 20}" y="${fy - 30}" class="micro2" text-anchor="end">EXPENSIVE AND FRAGILE</text>
+  <text x="${jx + R + 20}" y="${jy + 68}" class="pfig">${costLine(cheap)}</text>
+  </g>
+  <g id="social-priciest" class="label-block">
+  ${priciestMicro ? `<text x="${fx - R - 20}" y="${fy - 30}" class="micro2" text-anchor="end">${priciestMicro}</text>` : ""}
   <text x="${fx - R - 20}" y="${fy + 10}" class="pname" text-anchor="end">${esc(pointName(priciest))}</text>
   <text x="${fx - R - 20}" y="${fy + 46}" class="pfig" text-anchor="end">Attack success ${fmtPct(priciest.asr_conditional)}</text>
-  <text x="${fx - R - 20}" y="${fy + 78}" class="pfig" text-anchor="end">Cost ${fmtMoney(priciest.total_cost_usd)} per run</text>
+  <text x="${fx - R - 20}" y="${fy + 78}" class="pfig" text-anchor="end">${costLine(priciest)}</text>
+  </g>
   ${bigDisc(cheap, jx, jy, R)}
   ${bigDisc(priciest, fx, fy, R)}
 </svg>`;
@@ -349,8 +452,13 @@ h1 { font-size: 52px; font-weight: 700; letter-spacing: -0.02em; margin-top: 10p
 .micro2 { fill: #71808f; font-size: 16px; font-weight: 600; letter-spacing: 0.14em; }
 .pname { fill: #eef2f6; font-size: 34px; font-weight: 700; }
 .pfig { fill: #aebcc7; font-size: 24px; font-weight: 550; }
+.sm .micro2 { font-size: 13px; }
+.sm .pname { font-size: 26px; }
+.sm .pfig { font-size: 19px; }
+.fallback { position: absolute; left: 150px; top: 578px; width: 1082px; font-size: 16px; line-height: 20px; color: #aebcc7; }
 </style></head><body>
 ${bSvg}
+<div class="fallback" id="social-fallback" hidden></div>
 <div class="head">
   <div><span class="word">PEIRA</span><span class="eyebrow">DECISION MODELS UNDER ATTACK</span></div>
   <h1>The priciest model was the easiest to flip</h1>
@@ -364,6 +472,293 @@ const outPng = path.join(root, "..", "..", ".github", "social-preview.png");
 mkdirSync(path.dirname(outPng), { recursive: true });
 const ogHtml = path.join(root, ".og", "social.html");
 writeFileSync(ogHtml, html);
+
+const labelBlocks = [
+  {
+    id: "social-cheap",
+    name: pointName(cheap),
+    words: pointWords(cheap),
+    discX: jx,
+    discY: jy,
+    defDx: R + 20,
+    defAnchor: "start",
+    radius: R,
+  },
+  {
+    id: "social-priciest",
+    name: pointName(priciest),
+    words: pointWords(priciest),
+    discX: fx,
+    discY: fy,
+    defDx: -(R + 20),
+    defAnchor: "end",
+    radius: R,
+  },
+];
+
+/* Label placement for the two drawn blocks, run in the page
+ * so text is measured with the real Archivo face, in the
+ * same spirit as gen-og's placer. Each block tries seats
+ * around its own disc (its standing side first, then the
+ * other side, then above and below the disc), then wider
+ * seats on the same bearings, then the wider seats at a
+ * smaller size. Verification is zero tolerance against the
+ * discs, every other text on the card, the headline and
+ * footer blocks, the other label block and the canvas edge.
+ * A block no tier can seat leaves the plot and its point is
+ * named in words, with its figures, in the strip under the
+ * plot. A collision no tier and no words strip can resolve
+ * returns not ok and the generator fails loudly rather than
+ * print a struck-through card. */
+function placeSocialLabels(blocks) {
+  const svg = document.querySelector("svg.chart");
+  const boxOf = (el) => {
+    const b = el.getBBox();
+    return { x: b.x, y: b.y, w: b.width, h: b.height };
+  };
+  const groups = new Map(
+    blocks.map((b) => [b.id, document.getElementById(b.id)]),
+  );
+  const inBlock = (el) => blocks.some((b) => groups.get(b.id).contains(el));
+  const furniture = [...svg.querySelectorAll("text")]
+    .filter((el) => !inBlock(el))
+    .map(boxOf);
+  for (const sel of [".head", ".foot"]) {
+    const r = document.querySelector(sel).getBoundingClientRect();
+    furniture.push({ x: r.x, y: r.y, w: r.width, h: r.height });
+  }
+  const discs = [...svg.querySelectorAll("circle")].map((c) => {
+    const r = c.getBoundingClientRect();
+    return { cx: r.x + r.width / 2, cy: r.y + r.height / 2, r: r.width / 2 };
+  });
+  const overlap = (a, b) =>
+    a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
+  const area = (a, b) => {
+    const ox = Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x);
+    const oy = Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y);
+    return ox > 0 && oy > 0 ? ox * oy : 0;
+  };
+  const distToDisc = (box, d) => {
+    const dx = Math.max(box.x - d.cx, 0, d.cx - (box.x + box.w));
+    const dy = Math.max(box.y - d.cy, 0, d.cy - (box.y + box.h));
+    return Math.hypot(dx, dy);
+  };
+  const inCanvas = (box) =>
+    box.x >= 4 && box.y >= 4 && box.x + box.w <= 1276 && box.y + box.h <= 636;
+  const orig = new Map(
+    blocks.map((b) => [
+      b.id,
+      [...groups.get(b.id).querySelectorAll("text")].map((el) => ({
+        el,
+        dy: Number(el.getAttribute("y")) - b.discY,
+      })),
+    ]),
+  );
+  const setBlock = (b, cand) => {
+    const items = orig.get(b.id);
+    const apply = (shift) => {
+      for (const { el, dy } of items) {
+        el.setAttribute("x", String(b.discX + cand.dx));
+        el.setAttribute("y", String(b.discY + shift + dy));
+        el.setAttribute("text-anchor", cand.anchor);
+      }
+    };
+    apply(cand.dy ?? 0);
+    if (cand.kind === "above" || cand.kind === "below") {
+      const box = boxOf(groups.get(b.id));
+      const target =
+        cand.kind === "above"
+          ? b.discY - b.radius - 14 - (box.y + box.h)
+          : b.discY + b.radius + 14 - box.y;
+      apply(target);
+    }
+    return boxOf(groups.get(b.id));
+  };
+  const side = (dx, dy, anchor) => ({ kind: "side", dx, dy, anchor });
+  const candsFor = (b, wide) => {
+    const opp = b.defAnchor === "start" ? "end" : "start";
+    const list = [
+      side(b.defDx, 0, b.defAnchor),
+      side(-b.defDx, 0, opp),
+      side(b.defDx, -52, b.defAnchor),
+      side(-b.defDx, -52, opp),
+      side(b.defDx, 52, b.defAnchor),
+      side(-b.defDx, 52, opp),
+      { kind: "above", dx: 0, anchor: "middle" },
+      { kind: "below", dx: 0, anchor: "middle" },
+    ];
+    if (wide) {
+      const far = b.radius + 58;
+      const farther = b.radius + 96;
+      list.push(
+        side(far, 0, "start"),
+        side(-far, 0, "end"),
+        side(far, -52, "start"),
+        side(-far, -52, "end"),
+        side(far, 52, "start"),
+        side(-far, 52, "end"),
+        side(farther, 0, "start"),
+        side(-farther, 0, "end"),
+      );
+    }
+    return list;
+  };
+  const blockBad = (b, box, placedBoxes) =>
+    !inCanvas(box) ||
+    discs.some((d) => distToDisc(box, d) < d.r - 0.01) ||
+    furniture.some((f) => overlap(box, f)) ||
+    placedBoxes.some((o) => o.id !== b.id && overlap(box, o.box));
+  const attempt = (order, wide) => {
+    const placedBoxes = [];
+    const recs = [];
+    const costOf = (box, selfId, idx) => {
+      let cost = idx * 2;
+      if (!inCanvas(box)) cost += 100000;
+      for (const d of discs) {
+        if (distToDisc(box, d) < d.r - 0.01) {
+          cost +=
+            400 +
+            area(box, {
+              x: d.cx - d.r,
+              y: d.cy - d.r,
+              w: d.r * 2,
+              h: d.r * 2,
+            });
+        }
+      }
+      for (const f of furniture) cost += area(box, f) * 40;
+      for (const o of placedBoxes) {
+        if (o.id !== selfId) cost += area(box, o.box) * 40;
+      }
+      return cost;
+    };
+    for (const b of order) {
+      const cands = candsFor(b, wide);
+      let best = cands[0];
+      let bestCost = Infinity;
+      let bestBox = null;
+      cands.forEach((c, i) => {
+        const box = setBlock(b, c);
+        const cost = costOf(box, b.id, i);
+        if (cost < bestCost) {
+          bestCost = cost;
+          best = c;
+          bestBox = box;
+        }
+      });
+      setBlock(b, best);
+      const rec = { b, cand: best, box: bestBox };
+      recs.push(rec);
+      placedBoxes.push({ id: b.id, box: bestBox });
+    }
+    for (let pass = 0; pass < 60; pass++) {
+      let moved = false;
+      for (const rec of recs) {
+        const cands = candsFor(rec.b, wide);
+        let best = rec.cand;
+        let bestCost = costOf(rec.box, rec.b.id, Math.max(0, cands.indexOf(rec.cand)));
+        let bestBox = rec.box;
+        cands.forEach((c, i) => {
+          if (c === rec.cand) return;
+          const box = setBlock(rec.b, c);
+          const cost = costOf(box, rec.b.id, i);
+          if (cost < bestCost - 0.5) {
+            bestCost = cost;
+            best = c;
+            bestBox = box;
+          }
+        });
+        if (best !== rec.cand) moved = true;
+        setBlock(rec.b, best);
+        rec.cand = best;
+        rec.box = bestBox;
+        const slot = placedBoxes.find((o) => o.id === rec.b.id);
+        if (slot) slot.box = bestBox;
+      }
+      if (!moved) break;
+    }
+    const bad = recs
+      .filter((rec) => blockBad(rec.b, boxOf(groups.get(rec.b.id)), placedBoxes))
+      .map((rec) => rec.b.id);
+    return { recs, bad };
+  };
+  let best = null;
+  const runTier = (wide, sm) => {
+    for (const b of blocks) {
+      groups.get(b.id).classList.toggle("sm", sm);
+    }
+    for (const order of [blocks, [...blocks].reverse()]) {
+      const r = attempt(order, wide);
+      if (r.bad.length === 0) return { clean: true };
+      if (best === null || r.bad.length < best.bad.length) {
+        best = { bad: r.bad, order, wide, sm };
+      }
+    }
+    return { clean: false };
+  };
+  for (const [wide, sm] of [
+    [false, false],
+    [true, false],
+    [true, true],
+  ]) {
+    if (runTier(wide, sm).clean) {
+      return { ok: true, placed: blocks.length, degraded: [] };
+    }
+  }
+  /* The words tier. Rebuild the least violating attempt,
+   * lift the blocks it could not seat off the plot, and name
+   * those points in the strip under the plot with the
+   * figures the payload carries for them. The strip steps
+   * its size down until it clears the footer. If a seated
+   * block still violates after the lift, or the strip itself
+   * cannot clear the footer, the collision is unresolvable
+   * and the caller fails the build. */
+  for (const b of blocks) groups.get(b.id).classList.toggle("sm", best.sm);
+  const { recs } = attempt(best.order, best.wide);
+  const badIds = new Set(best.bad);
+  const degraded = [];
+  for (const rec of recs) {
+    if (badIds.has(rec.b.id)) {
+      groups.get(rec.b.id).remove();
+      degraded.push(rec.b);
+    }
+  }
+  const remaining = recs.filter((rec) => !badIds.has(rec.b.id));
+  const remainingBoxes = remaining.map((rec) => ({
+    id: rec.b.id,
+    box: boxOf(groups.get(rec.b.id)),
+  }));
+  if (
+    remaining.some((rec) =>
+      blockBad(rec.b, boxOf(groups.get(rec.b.id)), remainingBoxes),
+    )
+  ) {
+    return { ok: false, failures: remaining.map((r) => r.b.name) };
+  }
+  const strip = document.getElementById("social-fallback");
+  strip.hidden = false;
+  strip.textContent =
+    "Too crowded at their discs, so named here. " +
+    degraded.map((b) => b.words).join(", ");
+  const footRect = document.querySelector(".foot").getBoundingClientRect();
+  let size = 16;
+  while (size > 10) {
+    const r = strip.getBoundingClientRect();
+    if (r.bottom <= footRect.top - 2) break;
+    size -= 1;
+    strip.style.fontSize = `${size}px`;
+    strip.style.lineHeight = `${Math.round(size * 1.25)}px`;
+  }
+  const stripRect = strip.getBoundingClientRect();
+  if (stripRect.bottom > footRect.top - 2) {
+    return { ok: false, failures: degraded.map((b) => b.name) };
+  }
+  return {
+    ok: true,
+    placed: blocks.length - degraded.length,
+    degraded: degraded.map((b) => b.name),
+  };
+}
 
 /* Browser discovery and environment (round 10, 2026-10-23).
  * After the overnight runtime restarts, the headless shell in
@@ -414,6 +809,19 @@ const page = await browser.newPage();
 await page.setViewport({ width: 1280, height: 640 });
 await page.goto(`file://${ogHtml}`, { waitUntil: "networkidle0" });
 await page.evaluate(() => document.fonts.ready);
+const placement = await page.evaluate(placeSocialLabels, labelBlocks);
+if (!placement.ok) {
+  await browser.close();
+  console.error(
+    `gen-social-preview: label placement failed for ${placement.failures.join(", ")}: no tier and no words strip could seat the drawn labels without a collision, so no card is printed`,
+  );
+  process.exit(1);
+}
+if (placement.degraded.length > 0) {
+  console.log(
+    `gen-social-preview: ${placement.degraded.length} drawn label block${placement.degraded.length === 1 ? "" : "s"} could not seat beside the disc on this payload and ${placement.degraded.length === 1 ? "is" : "are"} named in words in the strip under the plot instead: ${placement.degraded.join(", ")}`,
+  );
+}
 await page.screenshot({ path: outPng });
 await browser.close();
 
