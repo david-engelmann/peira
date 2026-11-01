@@ -80,8 +80,11 @@
  *     the payload rates in the column order, and no guard
  *     banner renders for it. Every ranking row carries the
  *     name link to its own model page.
- * 12. Cycle 7 surfaces. The eight Method subsection anchors
- *     exist on the rendered page. Every flagged model page's
+ * 12. Cycle 7 surfaces. The standing Method subsection
+ *     anchors exist on the rendered page, and the re-run
+ *     disclosure renders exactly when the payload carries
+ *     rerun records, stating the count, the names and the
+ *     dates those records carry. Every flagged model page's
  *     head description carries its flagged standing, and
  *     prints no attack success figure unless the payload's
  *     own family records derive a malformed majority for it,
@@ -1806,10 +1809,12 @@ function modelPageDescription(row, where) {
 }
 
 /* 12a. The Method subsection anchors. The set is the
- * redesigned Method's: the re-run segments subsection is
- * gone by design (its paragraph hardcoded a count, two
- * names and a date into standing prose, hardcode audit
- * F3), so its anchor is no longer asserted. */
+ * redesigned Method's standing subsections. The re-run
+ * segments subsection is not among them because it renders
+ * only when the payload carries rerun records (its old
+ * paragraph hardcoded a count, two names and a date into
+ * standing prose, hardcode audit F3), and check 12e holds
+ * that conditional disclosure to the payload instead. */
 const METHOD_ANCHORS = [
   "method-case",
   "method-suite",
@@ -1887,6 +1892,64 @@ if (!existsSync(cssDir)) {
   }
   if (!/#method h3\[id\][^{]*\{[^}]*scroll-margin-top:\s*64px/.test(builtCss)) {
     fail("built CSS carries no #method h3[id] scroll-margin rule");
+  }
+}
+
+/* 12e. The Method re-run disclosure. Derived here from the
+ * payload's rerun records, independently of the component.
+ * The disclosure is present exactly when at least one row
+ * carries a record, and when present its paragraph states
+ * the count, each re-run result's short name grouped under
+ * the date its record carries, and the chain class. */
+const MONTHS_I = [
+  "January", "February", "March", "April", "May", "June",
+  "July", "August", "September", "October", "November", "December",
+];
+const dateWordsI = (iso) => {
+  const [y, m, d] = iso.split("-").map(Number);
+  return `${d} ${MONTHS_I[m - 1]} ${y}`;
+};
+const joinNamesI = (names) => {
+  if (names.length <= 1) return names.join("");
+  if (names.length === 2) return `${names[0]} and ${names[1]}`;
+  return `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
+};
+const rerunRowsI = allRows.filter((r) => r.rerun);
+const disclosurePrinted = html.includes("data-rerun-disclosure");
+if (rerunRowsI.length === 0 && disclosurePrinted) {
+  fail(
+    "the page renders a re-run disclosure but no payload row carries a rerun record",
+  );
+}
+if (rerunRowsI.length > 0 && !disclosurePrinted) {
+  fail(
+    `the payload carries ${rerunRowsI.length} rerun record(s) but the page renders no re-run disclosure`,
+  );
+}
+if (rerunRowsI.length > 0 && disclosurePrinted) {
+  const byDate = new Map();
+  for (const r of rerunRowsI) {
+    const names = byDate.get(r.rerun.date) ?? [];
+    names.push(shortName(r));
+    byDate.set(r.rerun.date, names);
+  }
+  const dates = [...byDate.keys()].sort();
+  const expected = [
+    rerunRowsI.length === 1
+      ? "One result on this board rests on a re-run segment."
+      : `${rerunRowsI.length.toLocaleString("en-US")} results on this board rest on re-run segments.`,
+    ...dates.map((date) => {
+      const names = byDate.get(date);
+      return names.length === 1
+        ? `The ${names[0]} result was re-run on ${dateWordsI(date)}.`
+        : `The ${joinNamesI(names)} results were re-run on ${dateWordsI(date)}.`;
+    }),
+    "A re-run segment chains to an earlier run of the same measurement, and the figures on this board are the segment's own.",
+  ].join(" ");
+  if (!text.includes(expected)) {
+    fail(
+      `the re-run disclosure does not read as the payload derives it (expected: ${expected})`,
+    );
   }
 }
 

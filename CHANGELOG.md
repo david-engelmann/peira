@@ -7,6 +7,59 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
 
 ## [Unreleased]
 
+### Fix-forward for the post-hoc review of the payload-derived board claims
+
+- The share image generator no longer draws a point whose
+  rate sits above the derived axis ceiling. Such a point is
+  named in words inside the image with its figure, and a
+  flagged point's disclosure carries its malformed
+  decomposition clauses on the same surface, derived from
+  the payload like every other claim. The run log counts
+  only the labels actually placed, and the generator fails
+  when a disclosure it owes cannot be placed or does not
+  derive. Discs and point labels are placed clear of the
+  corner claim text, and a test renders the 46 result
+  publish candidate payload and asserts zero intersections
+  between discs, labels and the claim text.
+- A cost lower bound under a cent no longer prints as zero
+  dollars. In both share image generators a lower bound
+  prints at the smallest precision, up to four decimals and
+  trimmed, whose truncated value stays positive and never
+  rises above the recorded bound.
+- The headline guards in both share image generators now
+  carry tests. A payload with the terra result repriced to
+  4200 dollars and its attack success unchanged fails both
+  generators, each naming the broken claim, and the social
+  preview also fails when the ranked full suite holds fewer
+  than two distinct costed runs. The generator suite runs
+  under the board's npm test.
+- The board's Method section now consumes the payload's
+  `rerun` records. When at least one row carries a record,
+  Method renders a re-run disclosure stating how many
+  results rest on a re-run segment, which results they are,
+  and the day each record carries, and the build's
+  integrity check re-derives the disclosure from the
+  payload in both shapes. The dashboard comment and the
+  test note that scheduled the record's removal are
+  corrected to name the consumption.
+- Record corrections to the payload-derived claims entry
+  below. The board side of the axis ceiling derivation and
+  the removals of the standing Method paragraph and the
+  footer note landed with the redesign in #520, and that
+  entry now attributes them to #520, keeping only the
+  generator ports and the `rerun` record emission for the
+  change that carried them.
+- Follow-up corrections from the confirmation reviews of
+  this fix-forward. The Method re-run disclosure no longer
+  claims the earlier run a segment chains to did not
+  complete, since the records attest only the chain. The
+  share image words strip prints a plain cost at the same
+  truthful precision as a stated bound, so a sub-cent cost
+  there never reads as zero dollars. The generator suite
+  now pins the social card's micro labels for the frozen
+  46-row fixture as literal expectations and labels that
+  fixture's provenance in the repo.
+
 ### Provider-error records no longer count as completed work
 
 - A call record carrying a provider/transport `error_code`
@@ -44,21 +97,19 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
   every payload row agrees on them.
 - The shared attack success axis ceiling is derived from the
   ranked population (the smallest tenth at or above the worst
-  ranked rate, floored at the standing 0 to 30 percent scale)
-  in `lib/chart.ts` and in both generators, where it was a
-  literal in three places. The generator ports follow the
-  board rule exactly, so the share images draw the axis the
-  board draws.
+  ranked rate, floored at the standing 0 to 30 percent scale).
+  The board side of that derivation, in `lib/chart.ts`, landed
+  with the redesign in #520. This change ports the same rule
+  into both generators, where the ceiling was still a literal,
+  so the share images draw the axis the board draws.
 - Leaderboard rows carry a `rerun` record built from the
   standing artifact's own metadata (its `parent_run_id`
   chain, which chains re-runs and resumes alike, and its
   creation day), null when the run chains to nothing or its
-  creation day is not recorded. The record ships as emitted
-  provenance that no board surface consumes yet, and its
-  removal is scheduled as a follow-up. The standing Method paragraph
-  that named two runs and a date as source literals is gone,
-  and the footer's "What changed" note, which no payload
-  data could derive, is removed.
+  creation day is not recorded. The redesign in #520 removed
+  the standing Method paragraph that named two runs and a
+  date as source literals, along with the footer's
+  "What changed" note, which no payload data could derive.
 
 ### Share image label placement degrades instead of failing the build
 
