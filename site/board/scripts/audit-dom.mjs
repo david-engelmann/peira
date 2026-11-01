@@ -244,6 +244,34 @@
  *        pre-fix build the calibrated check still fails at
  *        900 on the two clipped heads.
  *
+ * Publish dress rehearsal fix (2026-11-01):
+ *  Derived axis. The geometry ports divided by a literal
+ *        0.3 while the board derives its axis ceiling from
+ *        the ranked population. On a population whose worst
+ *        ranked rate steps the axis to 0.4 the whisker and
+ *        scatter centre expectations all scaled by the
+ *        stale denominator. The audit now derives the
+ *        ceiling with the board's rule and every geometry
+ *        port divides by the derived value.
+ *  Corner readings. The type floor required the scatter
+ *        corner sub and the phone occlusion probe required
+ *        a corner reading, both deleted from the chart by
+ *        design in the redesign (hardcode audit F1 and F2).
+ *        The requirements are dropped; the corner sample
+ *        and the containment pass stay, so a corner reading
+ *        that ever returns is measured again.
+ *  Compare default pair. The drive named side B by a
+ *        literal short name. It now derives the pair with
+ *        the board's rule from lib/compare, so a population
+ *        that reorders the full suite group moves the
+ *        expectation with it.
+ *  Occlusion probe timing. The probe jumped to the chart
+ *        inside the bar's 1200 ms anchor guard, which its
+ *        own landing tap arms, and measured the landing
+ *        state instead of the settled state it certifies.
+ *        It now waits the guard out before jumping. The
+ *        assertion is unchanged.
+ *
  * Screenshots land in the directory given as argv[3].
  */
 
@@ -340,7 +368,23 @@ function displayCiA(row) {
   if (q(lo) === q(pair[0]) && q(hi) === q(pair[1])) return [lo, hi];
   return pair;
 }
-const axisPctA = (v) => Math.min(100, Math.max(0, (v / 0.3) * 100));
+/* The shared attack success axis, derived from the ranked
+ * population with the board's own rule (lib/chart.ts
+ * asrAxisFor): the smallest tenth at or above the worst
+ * ranked rate, floored at 0.3. This port divided by a
+ * literal 0.3 until the publish dress rehearsal put a
+ * population on the board whose worst ranked rate steps
+ * the axis to 0.4, and every geometry expectation in the
+ * audit inherited the stale denominator. */
+const axisMaxA = (() => {
+  const worst = Math.max(
+    0,
+    ...payload.ranked.map((r) => r.asr_conditional ?? 0),
+  );
+  const stepped = Math.ceil((worst - 1e-9) / 0.1) * 0.1;
+  return Math.round(Math.max(0.3, stepped) * 10) / 10;
+})();
+const axisPctA = (v) => Math.min(100, Math.max(0, (v / axisMaxA) * 100));
 
 /* ---------- round 9 derivations ---------- */
 
@@ -1435,8 +1479,8 @@ for (const width of [1440, 1280, 900, 390]) {
   }
   // Geometry, measured from rendered rects (owner items 1 and
   // 3). Caps sit on the display interval endpoints and the
-  // estimate mark on the payload rate, all on the shared 0 to
-  // 30 axis. The whisker line must end at its caps: it may stop
+  // estimate mark on the payload rate, all on the shared
+  // derived axis. The whisker line must end at its caps: it may stop
   // short by the small built-in gap, and it must never pass a
   // cap center by more than a pixel of rounding.
   for (const g of report.geometry) {
@@ -1569,7 +1613,7 @@ for (const width of [1440, 1280, 900, 390]) {
         p.kind === "plot"
           ? px0 + ((Math.log10(row.total_cost_usd) - logLo) / logSpan) * (px1 - px0)
           : sc.railCx;
-      const vy = py0 + (1 - row.asr_conditional / 0.3) * (py1 - py0);
+      const vy = py0 + (1 - row.asr_conditional / axisMaxA) * (py1 - py0);
       const expCx = sc.svgRect.left + vx * scale;
       const expCy = sc.svgRect.top + vy * scale;
       if (Math.abs(p.cx - expCx) > 2) {
@@ -1647,12 +1691,19 @@ for (const width of [1440, 1280, 900, 390]) {
     /* Presence is part of the floor (cycle 3 red team,
      * RT-6): a class the design guarantees may not vanish
      * and take its measurement with it. Labels, grid
-     * numerals, tick labels, captions and the corner sub
-     * stand at every width; the rail head stands wherever
-     * the wide island does. Entry values ride the overflow
-     * stack, whose population is the solver's choice, so
-     * they are measured when present, not required. */
-    const floorRequired = ["label", "grid", "tick", "caption", "cornerSub"];
+     * numerals, tick labels and captions stand at every
+     * width; the rail head stands wherever the wide island
+     * does. Entry values ride the overflow stack, whose
+     * population is the solver's choice, so they are
+     * measured when present, not required. The corner sub
+     * stood in this list until the publish dress rehearsal:
+     * the redesign deleted the chart's corner readings by
+     * design (hardcode audit F1 and F2, the readings now
+     * stand in the section shell above the chart), so the
+     * class the floor once guaranteed no longer exists to
+     * measure, and the sample below keeps recording it
+     * only so a return would be measured again. */
+    const floorRequired = ["label", "grid", "tick", "caption"];
     if (width > 760) floorRequired.push("railHead");
     for (const [kind, fs] of Object.entries(sc.typeScale)) {
       if (kind === "scale") continue;
@@ -2531,9 +2582,41 @@ for (const width of [1440, 1280, 900, 390]) {
      * banner naming both populations and moves the pair into
      * the address; one model on both sides raises the same-model
      * banner, clears the dots, and prints the deltas
-     * under the not measured mark. */
-    const cmpFull = ranked.find((r) => r.n_cases === fullCasesA);
-    const cmpJev = allRowsA.find((r) => shortName(r) === "jev-1.14.0");
+     * under the not measured mark. The pair itself is
+     * derived here with the board's own rule (lib/compare
+     * compareData): the compare rows stand full suite first
+     * in rank order, then flagged in attack success order,
+     * then slices in rank order; side A is the first full
+     * suite row and side B the first unflagged row past A
+     * in that order. This port once named side B by a
+     * literal short name, which silently stopped being the
+     * default when the repaired population reordered the
+     * full suite group, and the publish dress rehearsal
+     * caught the delta disagreeing with the payload. */
+    const cmpFullGroupA = ranked.filter((r) => r.n_cases === fullCasesA);
+    const cmpSliceGroupA = ranked.filter((r) => r.n_cases < fullCasesA);
+    const cmpFlaggedGroupA = [...payload.unranked].sort(
+      (a, b) => (a.asr_conditional ?? 0) - (b.asr_conditional ?? 0),
+    );
+    const cmpRowsA = [
+      ...cmpFullGroupA,
+      ...cmpFlaggedGroupA,
+      ...cmpSliceGroupA,
+    ];
+    const cmpFullIdsA = new Set(cmpFullGroupA.map((r) => r.run_id));
+    const cmpFlaggedIdsA = new Set(cmpFlaggedGroupA.map((r) => r.run_id));
+    const cmpFull =
+      cmpRowsA.find((r) => cmpFullIdsA.has(r.run_id)) ?? cmpRowsA[0];
+    const cmpDefaultB =
+      cmpRowsA.find(
+        (r) =>
+          !cmpFlaggedIdsA.has(r.run_id) &&
+          slugOfA(r) !== slugOfA(cmpFull),
+      ) ??
+      cmpRowsA.find(
+        (r) => cmpFullIdsA.has(r.run_id) && slugOfA(r) !== slugOfA(cmpFull),
+      ) ??
+      cmpRowsA[1];
     const cmpSlice = ranked.find((r) => r.n_cases < fullCasesA);
     const readCmp = () =>
       page.evaluate(() => ({
@@ -2562,7 +2645,7 @@ for (const width of [1440, 1280, 900, 390]) {
     let cmpNow = await readCmp();
     deltaClose(
       cmpNow.asrDelta,
-      cmpFull.asr_conditional - cmpJev.asr_conditional,
+      cmpFull.asr_conditional - cmpDefaultB.asr_conditional,
       "default pair",
     );
     await page.select("#cmp-picker-b", slugOfA(cmpSlice));
@@ -2612,7 +2695,7 @@ for (const width of [1440, 1280, 900, 390]) {
       );
     }
     await page.select("#cmp-picker-a", slugOfA(cmpFull));
-    await page.select("#cmp-picker-b", slugOfA(cmpJev));
+    await page.select("#cmp-picker-b", slugOfA(cmpDefaultB));
     await new Promise((r) => setTimeout(r, 350));
     /* Restore the pristine page: the widths measured after
      * this one must see the index as a reader first does, with
@@ -2682,8 +2765,24 @@ await new Promise((r) => setTimeout(r, 700));
 /* Occlusion probe. Scroll the chart well to the very top
  * of the screen in one jump, the state a reader creates to
  * read the chart's top band, and let the bar's scroll logic
- * settle. The bar's rect may not then cover the corner
- * reading or the axis caption. */
+ * settle. The bar's rect may not then cover the axis
+ * caption. The probe also guarded a corner reading until
+ * the publish dress rehearsal: the redesign deleted the
+ * chart's corner readings by design (hardcode audit F1
+ * and F2), so that half of the probe measured an element
+ * that no longer exists and failed on its absence.
+ * The jump waits out the bar's anchor guard first: a tap
+ * on a nav link holds the bar open for 1200 ms while the
+ * jump lands (SectionNav, cycle 7 RT-08), and this block's
+ * own landing tap arms that guard. Jumping inside the
+ * window measures the landing state instead of the settled
+ * reading state the probe exists to certify, and leaves
+ * the bar standing over the chart for the tap contract
+ * below, whose empty area spots in the top band then land
+ * on the bar instead of the chart. The census run passed
+ * this probe only because a loaded box delayed its scroll
+ * handling past the window. */
+await new Promise((r) => setTimeout(r, 1400));
 await page.evaluate(() => {
   const wrap = [...document.querySelectorAll(".scatter-wrap")].find(
     (w) => w.getClientRects().length > 0,
@@ -2702,7 +2801,6 @@ await new Promise((r) => setTimeout(r, 650));
     const svg = [...sec.querySelectorAll("svg")].find(
       (s) => s.getClientRects().length > 0,
     );
-    const corner = svg.querySelector(".corner-note text");
     const caption = svg.querySelector(".axis-caption");
     const nr = nav ? nav.getBoundingClientRect() : null;
     const cover = (el) => {
@@ -2714,13 +2812,8 @@ await new Promise((r) => setTimeout(r, 650));
         Math.min(r.bottom, nr.bottom) - Math.max(r.top, nr.top);
       return ox > 0 && oy > 0 ? ox * oy : 0;
     };
-    return { corner: cover(corner), caption: cover(caption) };
+    return { caption: cover(caption) };
   });
-  if (occ.corner === null || occ.corner > 0) {
-    failures.push(
-      `phone scroll: the bar covers the scatter corner reading (${occ.corner} px2)`,
-    );
-  }
   if (occ.caption === null || occ.caption > 0) {
     failures.push(
       `phone scroll: the bar covers the scatter axis caption (${occ.caption} px2)`,

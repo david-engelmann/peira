@@ -17,6 +17,14 @@ import { axisPct } from "@/lib/chart";
  * the population difference survives a greyscale screenshot.
  * Flagged rows draw in amber. A measured zero still draws its
  * whisker; a missing interval draws the not measured mark.
+ *
+ * An interval the axis clamps to a single edge, its whole span
+ * above the scale or at zero, has no span left to draw between
+ * its caps. Its line is a zero length box on the shared cap
+ * position, so nothing extends past the edge the row's own
+ * words promise. The publish dress rehearsal caught the
+ * general form drawing that box 2 px past the edge, because
+ * the line's left inset is added before its width is taken.
  */
 export default function WhiskerStrip({
   row,
@@ -44,13 +52,20 @@ export default function WhiskerStrip({
   const xa = axisPct(asr, axisMax);
   return (
     <div className={`cell-chart ${variant}`} aria-hidden="true">
-      <div
-        className="whisker"
-        style={{
-          left: `calc(${x0}% + 2px)`,
-          width: `calc(${Math.max(0, x1 - x0)}% - 4px)`,
-        }}
-      />
+      {x1 > x0 ? (
+        <div
+          className="whisker"
+          style={{
+            left: `calc(${x0}% + 2px)`,
+            width: `calc(${Math.max(0, x1 - x0)}% - 4px)`,
+          }}
+        />
+      ) : (
+        <div
+          className="whisker"
+          style={{ left: `${x1}%`, width: 0 }}
+        />
+      )}
       <div className="whisker-cap" style={{ left: `${x0}%` }} />
       <div className="whisker-cap" style={{ left: `${x1}%` }} />
       <div

@@ -132,15 +132,33 @@ for (const row of rows) {
 
 /* The share image's drawn discs, when a generated og.html
  * is present: rail points first, then plotted points, each
- * in payload order, exactly as gen-og emits them. */
+ * in payload order, exactly as gen-og emits them. The drawn
+ * set is derived from the payload here, independently of the
+ * generator. A row above the derived axis ceiling is not
+ * drawn at all; the generator discloses it in words instead
+ * (the drawn-set contract the #522 fix set), so such a row
+ * stands in neither drawn set. The ceiling is the board's
+ * own rule, the smallest tenth at or above the worst ranked
+ * rate, floored at 0.3, ported from lib/chart.ts. */
 const ogHtmlPath = path.join(root, ".og", "og.html");
 if (existsSync(ogHtmlPath)) {
   const html = readFileSync(ogHtmlPath, "utf8");
   const fullCases = Math.max(...rows.map((r) => r.n_cases));
   const nonSlice = rows.filter((r) => r.n_cases === fullCases);
+  const worstRanked = Math.max(
+    0,
+    ...payload.ranked.map((r) => r.asr_conditional ?? 0),
+  );
+  const stepped = Math.ceil((worstRanked - 1e-9) / 0.1) * 0.1;
+  const axisMax = Math.round(Math.max(0.3, stepped) * 10) / 10;
+  const drawn = (r) => (r.asr_conditional ?? 0) <= axisMax;
   const expected = [
-    ...nonSlice.filter((r) => !(r.total_cost_usd !== null && r.total_cost_usd > 0)),
-    ...nonSlice.filter((r) => r.total_cost_usd !== null && r.total_cost_usd > 0),
+    ...nonSlice.filter(
+      (r) => !(r.total_cost_usd !== null && r.total_cost_usd > 0) && drawn(r),
+    ),
+    ...nonSlice.filter(
+      (r) => r.total_cost_usd !== null && r.total_cost_usd > 0 && drawn(r),
+    ),
   ];
   const discs = [
     ...html.matchAll(

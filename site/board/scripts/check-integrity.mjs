@@ -719,10 +719,20 @@ if (!scatterHtml) {
     for (const id of ids) {
       /* Both the wide and the phone variant render the point.
        * A plotted point stands as a marker in both variants.
-       * A rail point stands as a marker on the wide chart and
-       * as a list entry on the phone, which carries no rail
-       * column (mobile fix, 2026-10-26): coverage is markers
-       * plus entries, with at least the wide marker present. */
+       * A rail point stands once per variant: on the phone as
+       * a list entry, which carries no rail column (mobile
+       * fix, 2026-10-26), and on the wide chart as its rail
+       * marker, or as an overflow row for a point the rail
+       * chain could not separate from its neighbours (publish
+       * dress rehearsal fix, 2026-11-01). Coverage is markers
+       * plus entries summed across both variants, so the count
+       * expects two standings in total without certifying
+       * which variant each came from, and the marker cap keeps
+       * the phone variant marker free, since a second marker
+       * could only be a doubled wide marker or a phone rail
+       * column. The amendment changed only the wide standing's
+       * permitted form. The rendered audit accepts the same
+       * two forms, so the gates state one contract. */
       const markers = seen[kind].get(id) ?? 0;
       if (kind === "plot") {
         if (markers !== 2) {
@@ -732,9 +742,9 @@ if (!scatterHtml) {
         }
       } else {
         const covered = markers + (entrySeen.get(id) ?? 0);
-        if (covered !== 2 || markers < 1) {
+        if (covered !== 2 || markers > 1) {
           fail(
-            `scatter rail point ${id} covered ${covered} times (markers ${markers}, entries ${entrySeen.get(id) ?? 0}), expected 2 (wide marker and phone entry)`,
+            `scatter rail point ${id} covered ${covered} times (markers ${markers}, entries ${entrySeen.get(id) ?? 0}), expected 2 (one standing per variant, as a marker or an overflow row, and a phone entry)`,
           );
         }
       }
@@ -1927,8 +1937,26 @@ if (rerunRowsI.length > 0 && !disclosurePrinted) {
   );
 }
 if (rerunRowsI.length > 0 && disclosurePrinted) {
+  /* The name order inside one date is the order the Method
+   * section prints, and the component walks the board groups
+   * in the order lib/payload boardGroups builds them. Ranked
+   * full suite rows first in payload rank order, then ranked
+   * slice rows in payload rank order, then the flagged rows
+   * in attack success order. A port that walks the raw
+   * payload order instead derives a different sentence
+   * whenever a flagged pair inside one date group stands in
+   * the opposite order in the payload, a shape the repaired
+   * population was the first to carry. */
+  const boardOrderI = [
+    ...fullCohort,
+    ...sliceCohort,
+    ...[...unranked].sort(
+      (a, b) => (a.asr_conditional ?? 0) - (b.asr_conditional ?? 0),
+    ),
+  ];
   const byDate = new Map();
-  for (const r of rerunRowsI) {
+  for (const r of boardOrderI) {
+    if (!r.rerun) continue;
     const names = byDate.get(r.rerun.date) ?? [];
     names.push(shortName(r));
     byDate.set(r.rerun.date, names);
