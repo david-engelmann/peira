@@ -332,8 +332,12 @@ tiers, and the last tier cannot fill up.
 
 - **Wide geometry (container 1020px and up).** Points are named
   beside their discs in the plot. Results with no recorded cost sit
-  in the rail at the right and are named in place. Points that seat
-  in neither go to the in-SVG overflow rows beneath the plot.
+  in the rail at the right and are named in place, where the rail
+  chain can stand their rows a full label height apart. A rail
+  result in a denser cluster than the chain can separate routes
+  to the overflow rows instead, and its disc stands in its row
+  there. Points that seat in neither go to the in-SVG overflow
+  rows beneath the plot.
 - **Fitted geometry (761 to 1019px).** The same tiers, plus the new
   last tier. A fitted HTML list sits directly under the chart,
   inside the same panel. Each row is the point's own disc glyph,

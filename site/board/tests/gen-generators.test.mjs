@@ -163,14 +163,33 @@ test(
   { timeout: 300000 },
   () => {
     const { scratch, board } = scratchBoard((payload) => {
-      const rows = new Map(
-        [...payload.ranked, ...payload.unranked].map((r) => [r.run_id, r]),
+      /* The worst ranked rate is derived from the payload
+       * under test, the way the generator derives it, and
+       * the population is then moved so that rate sits
+       * exactly on the tenth. Ranked rows above the step
+       * come down onto it, and when every ranked row sits
+       * below it the row carrying the maximum goes up onto
+       * it. Either way the maximum the generator derives
+       * is exactly 0.30, whatever row carried it into the
+       * test. The earlier shape named the carrier outright
+       * and assumed it already held the maximum, which held
+       * only until a tougher uncosted result took the
+       * maximum off the named row and the generator's
+       * correct 0.4 axis failed the test on a population
+       * the publish is about to install. */
+      const ranked = payload.ranked;
+      const worst = Math.max(
+        ...ranked.map((r) => r.asr_conditional ?? 0),
       );
-      /* The priciest run already carries the population maximum,
-       * so raising it to the exact tenth keeps the headline
-       * guard true while it moves the worst ranked rate onto
-       * the step the old port mishandled. */
-      rows.get("anthropic-fable-v2-trial").asr_conditional = 0.3;
+      for (const r of ranked) {
+        if ((r.asr_conditional ?? 0) > 0.3) r.asr_conditional = 0.3;
+      }
+      if (worst < 0.3) {
+        const carrier = ranked.find(
+          (r) => (r.asr_conditional ?? 0) === worst,
+        );
+        carrier.asr_conditional = 0.3;
+      }
     });
     try {
       const run = runGenOg(board);

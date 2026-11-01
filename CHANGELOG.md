@@ -7,6 +7,42 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
 
 ## [Unreleased]
 
+### Fix-forward for the publish dress rehearsal
+
+- The integrity check's re-run disclosure port now derives
+  the disclosure in the board's own order. Board groups
+  stand first, and flagged results stand in attack success
+  order within their day, matching what Method renders. A
+  new suite test builds the whole board on a payload whose
+  same-day flagged pair reverses between payload order and
+  attack success order, and holds the build green and the
+  rendered sentence in board order.
+- The generator suite's axis test derives the population
+  maximum from the payload under test, the way the
+  generator does, instead of naming the row that used to
+  carry it. A tougher uncosted result at the top of the
+  ranked population no longer fails the test against the
+  correct derived axis.
+- The vendor agreement check derives the share image's
+  expected disc set from the payload. Rows above the
+  derived axis ceiling are disclosed in words and not
+  drawn, and the expected count now follows that rule
+  instead of a fixed number written before the generator
+  learned the exclusion.
+- The DOM audit derives the shared axis ceiling with the
+  board's rule instead of dividing by a literal 0.3, and
+  derives the compare default pair with the board's rule
+  instead of naming a row. It no longer requires the
+  scatter corner readings the redesign removed.
+- A rail result whose name row the rail chain cannot stand
+  a full label height clear of its neighbours now routes
+  to the overflow rows with its disc, instead of printing
+  over the rows beside it. The integrity check's rail
+  coverage rule counts one standing per variant, as a
+  marker or an overflow row, matching the audit.
+- An interval the axis clamps to a single edge no longer
+  draws its whisker line 2 px past that edge.
+
 ### Fix-forward for the post-hoc review of the payload-derived board claims
 
 - The share image generator no longer draws a point whose

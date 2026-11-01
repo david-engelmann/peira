@@ -570,6 +570,16 @@ interface Solution {
    * fill, so a solution always names every point.
    */
   list: string[];
+  /**
+   * Rail run ids routed out of the rail column at this
+   * geometry because their name rows could not stand clear
+   * of their neighbours there. They are named by their
+   * overflow rows or list rows instead, each carrying the
+   * point's own disc, and no marker is drawn for them in
+   * the rail. Always empty on the phone, whose rail points
+   * stand in the list by construction.
+   */
+  railRouted: string[];
 }
 
 function baseFurniture(g: Geom, ticks: number[], axisMax: number): Rect[] {
@@ -595,9 +605,26 @@ function solveWide(
   /* Rail names sit directly beside their discs, one row per
    * point, as a list inside the rail column: disc, then name,
    * on the point's own row. The placed rects join the
-   * furniture, so plotted labels solve around the list. */
+   * furniture, so plotted labels solve around the list. A
+   * rail name stands only where its row clears the previous
+   * standing row by a full label height. The rail chain
+   * holds every point within its shift cap of its true
+   * height, so a dense cluster of rail results sharing a
+   * few points of the axis cannot always give every row
+   * that height, and rows left closer would print over
+   * each other and over their neighbours' disc letters.
+   * Those points route to the overflow tiers below like
+   * any other point whose name does not seat, and their
+   * discs stand in their rows there. */
   const railPts = points.filter((p) => p.d.rail).sort((a, b) => a.y - b.y);
-  const railPlaced: PlacedLabel[] = railPts.map((p) => ({
+  const railKept: Pt[] = [];
+  const railRoutedPts: Pt[] = [];
+  for (const p of railPts) {
+    const prev = railKept[railKept.length - 1];
+    if (prev && p.y - prev.y < 15) railRoutedPts.push(p);
+    else railKept.push(p);
+  }
+  const railPlaced: PlacedLabel[] = railKept.map((p) => ({
     runId: p.d.runId,
     x: g.railCx + 18,
     y: p.y - 7.5,
@@ -605,7 +632,7 @@ function solveWide(
     h: 15,
   }));
   furniture.push(...railPlaced);
-  const railObstacles: LayoutPoint[] = railPts.map((p) => ({
+  const railObstacles: LayoutPoint[] = railKept.map((p) => ({
     runId: p.d.runId,
     x: p.x,
     y: p.y,
@@ -628,7 +655,7 @@ function solveWide(
   const placed: PlacedLabel[] = [...railPlaced, ...first.placed];
   const stack: StackEntry[] = [];
   const list: string[] = [];
-  if (first.keyed.length > 0) {
+  if (first.keyed.length > 0 || railRoutedPts.length > 0) {
     /* No keyed list and no drawn lines. A label the solver
      * cannot seat beside its point takes a row in the plot's
      * empty lower band, in attack success order, each row
@@ -636,9 +663,10 @@ function solveWide(
      * figures. Rows are scanned against everything already
      * placed, so the stack never covers a point or a label. */
     const byId = new Map(points.map((p) => [p.d.runId, p]));
-    const unplaced = first.keyed
-      .map((id) => byId.get(id)!)
-      .sort((a, b) => b.d.asr - a.d.asr);
+    const unplaced = [
+      ...first.keyed.map((id) => byId.get(id)!),
+      ...railRoutedPts,
+    ].sort((a, b) => b.d.asr - a.d.asr);
     const taken: Rect[] = [
       ...placed,
       ...furniture,
@@ -708,7 +736,12 @@ function solveWide(
       stack.push({ runId: p.d.runId, x: slot.x, y: slot.y });
     }
   }
-  return { placed, stack, list };
+  return {
+    placed,
+    stack,
+    list,
+    railRouted: railRoutedPts.map((p) => p.d.runId),
+  };
 }
 
 function solvePhone(
@@ -753,7 +786,13 @@ function solvePhone(
     x: PHONE_ENTRY_X,
     y: PHONE_LIST_TOP + i * PHONE_ENTRY_PITCH,
   }));
-  return { placed: first.placed, stack, list: [], stackRows: listed.length };
+  return {
+    placed: first.placed,
+    stack,
+    list: [],
+    railRouted: [],
+    stackRows: listed.length,
+  };
 }
 
 function Labels({
@@ -1182,11 +1221,17 @@ export default function ScatterIsland({
    * without re-running the point builder or the solver. */
   const { points, solution } = useMemo(() => {
     const pts = buildPoints(plotted, rail, domain, g, axisMax);
+    const solution = phone
+      ? solvePhone(pts, rail, ticks, axisMax)
+      : solveWide(pts, g, ticks, axisMax);
+    /* A rail point routed to the overflow tiers draws no
+     * marker in the rail: its disc stands in its row there,
+     * and the card lookup falls through to that row's disc. */
+    const routed = new Set(solution.railRouted);
     return {
-      points: pts,
-      solution: phone
-        ? solvePhone(pts, rail, ticks, axisMax)
-        : solveWide(pts, g, ticks, axisMax),
+      points:
+        routed.size > 0 ? pts.filter((p) => !routed.has(p.d.runId)) : pts,
+      solution,
     };
   }, [plotted, rail, domain, g, phone, axisMax, ticks]);
   const dataById = useMemo(
