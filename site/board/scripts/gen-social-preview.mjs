@@ -101,6 +101,39 @@ function quantHU(decStr, decimals) {
 const fmtPct = (v) => `${quantHU(shiftPt(expandDec(v), 2), 1)}%`;
 const fmtMoney = (v) => `$${quantHU(expandDec(v), 2)}`;
 
+/* Truncation at a fixed precision, toward zero, on the
+ * decimal string: quantHU without the half-up bump. */
+function truncDec(decStr, decimals) {
+  const neg = decStr.startsWith("-");
+  const body = neg ? decStr.slice(1) : decStr;
+  const [ip, fp = ""] = body.split(".");
+  const kept = fp.slice(0, decimals).padEnd(decimals, "0");
+  const intOut = (ip || "0").replace(/^0+(?=\d)/, "");
+  return (neg ? "-" : "") + intOut + (decimals > 0 ? `.${kept}` : "");
+}
+function trimDec(s) {
+  if (!s.includes(".")) return s;
+  return s.replace(/0+$/, "").replace(/\.$/, "");
+}
+/* A cost lower bound prints truthfully (red team finding
+ * RT-3 on the #521 review: a sub-cent bound printed as at
+ * least $0.00). The printed bound never exceeds the
+ * recorded value, and rounding never takes a positive
+ * bound to zero. Precision extends from two decimals to
+ * four, truncated at each step, until the truncated bound
+ * is non-zero, and trailing zeros trim. A plain recorded
+ * cost keeps the half-up two-decimal fmtMoney above; only
+ * a figure the card states as a floor takes this form. */
+function fmtMoneyBound(v) {
+  for (const p of [2, 3, 4]) {
+    const t = truncDec(expandDec(v), p);
+    if (Number(t) > 0) return `$${trimDec(t)}`;
+  }
+  return `$${trimDec(truncDec(expandDec(v), 4))}`;
+}
+const costFigure = (r) =>
+  costIsLowerBound(r) ? fmtMoneyBound(r.total_cost_usd) : fmtMoney(r.total_cost_usd);
+
 /* The board's lower-bound rule (lib/charts costIsLowerBound),
  * replicated on the payload rows: a recorded cost whose priced
  * calls fall short of its timed calls is a floor, and the model
@@ -392,9 +425,9 @@ for (const [label, r, side] of [
   }
 }
 const costLine = (r) =>
-  `Cost ${costIsLowerBound(r) ? "at least " : ""}${fmtMoney(r.total_cost_usd)} per run`;
+  `Cost ${costIsLowerBound(r) ? "at least " : ""}${costFigure(r)} per run`;
 const pointWords = (r) =>
-  `${pointName(r)} (${fmtPct(r.asr_conditional)}, ${costIsLowerBound(r) ? "at least " : ""}${fmtMoney(r.total_cost_usd)} per run)`;
+  `${pointName(r)} (${fmtPct(r.asr_conditional)}, ${costIsLowerBound(r) ? "at least " : ""}${costFigure(r)} per run)`;
 const bSvg = `<svg width="1280" height="640" viewBox="0 0 1280 640" class="chart">
   <rect x="48" y="196" width="1184" height="376" fill="#0c1015" stroke="#232c35"/>
   ${gridB}

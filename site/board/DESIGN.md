@@ -53,7 +53,9 @@ scatter naming and the fitted naming list, the derived
 readings strip, the derived axis ceiling with off-scale
 disclosure in words, the truncation ethic, the 44px coarse
 floor, tabular numerals throughout, the hardcode removals
-F1 to F5 and F8, and the Method re-run deletion.
+F1 to F5 and F8, and the Method re-run deletion, which the
+#521 fix-forward completes with a re-run disclosure derived
+from the payload's rerun records.
 
 The Standards review of the first build failed with two
 Majors and minors, and the Spec review passed with two
@@ -369,7 +371,16 @@ to the next tier by construction.
 - **F3, the Method re-run paragraph.** Deleted. It hardcoded a
   count, two model names and a date into standing prose.
   `check-integrity.mjs` no longer asserts its anchor, with the
-  reason recorded at the edit.
+  reason recorded at the edit. The fix-forward for the #521
+  review closes F3 by consumption rather than deletion alone.
+  Method now renders a re-run disclosure derived from the
+  payload's own rerun records, present exactly when at least
+  one row carries a record, stating how many results rest on
+  a re-run segment, which results they are, the day each
+  record carries, and the chain class the records attest.
+  `check-integrity.mjs` re-derives the disclosure from the
+  payload and fails the build when the rendered words
+  disagree, in either direction.
 - **F4, the footer change claim.** The "What changed" paragraph
   that asserted specific reruns and results is replaced with a
   process line that claims nothing about any population.
@@ -429,9 +440,11 @@ tones unchanged from main.
    pitch, with a 44px hit height.
 5. The attack-success axis ceiling is derived, not fixed (F5), and
    off-scale results disclose themselves in words.
-6. Method loses the re-run subsection (F3). The footer loses its
-   change claims (F4). The scatter caption loses "ran locally"
-   (F8).
+6. Method loses the hardcoded re-run paragraph (F3) and gains
+   a re-run disclosure derived from the payload's rerun
+   records, rendered only when such records exist. The footer
+   loses its change claims (F4). The scatter caption loses
+   "ran locally" (F8).
 7. Section numbers are counted by CSS from DOM order rather than
    written into each label.
 8. Marker discs carry a translucent stroke, one shared constant,

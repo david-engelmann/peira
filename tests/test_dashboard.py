@@ -668,9 +668,9 @@ class TestLeaderboardRerunProvenance(unittest.TestCase):
     (RunArtifact.parent_run_id, which chains re-runs and
     resumes alike) yields a row whose rerun record carries
     that chain and the artifact's own creation day. The
-    record ships as emitted provenance that no board surface
-    consumes yet, and its removal is scheduled as a
-    follow-up. An artifact that
+    board's Method section consumes the record, rendering a
+    re-run disclosure derived from the payload whenever at
+    least one row carries one. An artifact that
     chains to nothing, or whose creation day is missing,
     yields no record.
     """

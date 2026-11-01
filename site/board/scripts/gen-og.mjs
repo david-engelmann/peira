@@ -83,6 +83,38 @@ function quantHU(decStr, decimals) {
 const fmtPct = (v) => `${quantHU(shiftPt(expandDec(v), 2), 1)}%`;
 const fmtUsd = (v) => `$${quantHU(expandDec(v), 2)}`;
 
+/* Truncation at a fixed precision, toward zero, on the
+ * decimal string: quantHU without the half-up bump. */
+function truncDec(decStr, decimals) {
+  const neg = decStr.startsWith("-");
+  const body = neg ? decStr.slice(1) : decStr;
+  const [ip, fp = ""] = body.split(".");
+  const kept = fp.slice(0, decimals).padEnd(decimals, "0");
+  const intOut = (ip || "0").replace(/^0+(?=\d)/, "");
+  return (neg ? "-" : "") + intOut + (decimals > 0 ? `.${kept}` : "");
+}
+function trimDec(s) {
+  if (!s.includes(".")) return s;
+  return s.replace(/0+$/, "").replace(/\.$/, "");
+}
+/* A cost lower bound prints truthfully (red team finding
+ * RT-3 on the #521 review): the printed bound never exceeds
+ * the recorded value, and rounding never takes a positive
+ * bound to zero. Precision extends from two decimals to
+ * four, truncated at each step, until the truncated bound
+ * is non-zero, and trailing zeros trim. A plain recorded
+ * cost keeps the half-up two-decimal fmtUsd above. The
+ * words strip under the chart takes this form too, so a
+ * plain sub-cent cost named there never prints as zero
+ * dollars either. */
+function fmtUsdBound(v) {
+  for (const p of [2, 3, 4]) {
+    const t = truncDec(expandDec(v), p);
+    if (Number(t) > 0) return `$${trimDec(t)}`;
+  }
+  return `$${trimDec(truncDec(expandDec(v), 4))}`;
+}
+
 /* The board's lower-bound rule (lib/charts costIsLowerBound),
  * replicated on the payload rows: a recorded cost whose priced
  * calls fall short of its timed calls is a floor, and the model
@@ -105,6 +137,68 @@ const costIsLowerBound = (r) => {
   }
   return seen && costed < timed;
 };
+
+/* The flip decomposition, a port of lib/payload's
+ * flipDecomposition (familyRecords, flipCounts and countOf
+ * included): how many of a flagged result's counted flips
+ * were malformed output rather than a changed decision, and
+ * the flip rate with those removed, cross-checked against
+ * the row's printed attack success. Where the sealed family
+ * records are missing or disagree with the printed figure
+ * the port returns null and no decomposition may be stated,
+ * the same failure semantics the board applies. The
+ * off-scale disclosure below states a flagged figure only
+ * with this decomposition beside it. */
+const countOf = (x) =>
+  typeof x === "number" && Number.isInteger(x) && x >= 0 ? x : null;
+function familyRecords(r) {
+  const detail =
+    r.detail !== null && typeof r.detail === "object" ? r.detail : {};
+  const famsRaw = detail.families;
+  let entries = [];
+  if (Array.isArray(famsRaw)) entries = famsRaw;
+  else if (famsRaw !== null && typeof famsRaw === "object") {
+    entries = Object.values(famsRaw);
+  }
+  return entries.filter(
+    (f) => f !== null && typeof f === "object" && !Array.isArray(f),
+  );
+}
+function flipCounts(fam) {
+  const nf = countOf(fam.n_flipped);
+  const fd =
+    fam.flip_direction !== null &&
+    typeof fam.flip_direction === "object" &&
+    !Array.isArray(fam.flip_direction)
+      ? fam.flip_direction
+      : null;
+  const tm = fd ? countOf(fd["to-malformed"]) : null;
+  if (nf === null || tm === null || tm > nf) return null;
+  return { nf, tm };
+}
+function flipDecomposition(r) {
+  const printed = r.asr_conditional;
+  if (printed === null || printed === undefined) return null;
+  const fams = familyRecords(r);
+  if (fams.length === 0) return null;
+  let flips = 0;
+  let malformed = 0;
+  for (const fam of fams) {
+    const c = flipCounts(fam);
+    if (c === null) return null;
+    flips += c.nf;
+    malformed += c.tm;
+  }
+  const n = countOf(r.n_eligible);
+  if (n === null || n === 0 || flips === 0) return null;
+  if (Math.abs(flips / n - printed) > 0.001) return null;
+  return {
+    flips,
+    malformedFlips: malformed,
+    malformedShare: malformed / flips,
+    genuineRate: (flips - malformed) / n,
+  };
+}
 
 const shortName = (r) => {
   let name = r.display_name;
@@ -239,6 +333,24 @@ const axisTicks = Array.from(
   { length: Math.round(axisMax / 0.1) + 1 },
   (_, i) => i / 10,
 );
+/* A point above the derived ceiling is not drawn (red team
+ * finding RT-1 on the #521 review). The axis ceiling derives
+ * from the ranked population, so a flagged result can sit
+ * above it; extrapolating its position put its disc off the
+ * canvas with its label floating free, and the board's own
+ * discipline is the opposite: the disc stands off the top
+ * of the plot rather than at a false position, and the
+ * result is disclosed in words. The drawn sets below exclude
+ * every such point, and the disclosure sentences composed
+ * further down carry each one into the image, named, with
+ * its figure and, for a flagged result, its malformed
+ * decomposition. No position is ever clamped to the axis. */
+const offScaleRows = [...plotted, ...railRows].filter(
+  (r) => (r.asr_conditional ?? 0) > axisMax,
+);
+const offScaleIds = new Set(offScaleRows.map((r) => r.run_id));
+const plottedDrawn = plotted.filter((r) => !offScaleIds.has(r.run_id));
+const railDrawn = railRows.filter((r) => !offScaleIds.has(r.run_id));
 const PLOT = { x0: 168, x1: 1152, y0: 218, y1: 516 };
 const RAIL_CX = 92;
 const xOf = (c) =>
@@ -282,7 +394,7 @@ for (let d = Math.ceil(Math.log10(domLo)); d <= Math.floor(Math.log10(domHi)); d
     `<text x="${xOf(v)}" y="${PLOT.y1 + 24}" class="tick" text-anchor="middle">${v < 1 ? `$${v.toFixed(2)}` : `$${v}`}</text>`,
   );
 }
-const railSpread = [...railRows]
+const railSpread = [...railDrawn]
   .map((r) => ({ r, y: yOf(r.asr_conditional) }))
   .sort((a, b) => a.y - b.y);
 /* The pitch leaves visible air between rail discs: a disc's
@@ -311,7 +423,7 @@ const railY = new Map(railSpread.map((e) => [e.r.run_id, e.y]));
  * the strip under the chart instead, so a name can never
  * drop silently and a crowded payload never fails the
  * build. */
-const railLabelsSvg = railRows
+const railLabelsSvg = railDrawn
   .map(
     (r) =>
       `<text x="${RAIL_CX + 22}" y="${railY.get(r.run_id) + 5}" class="lab">${esc(pointName(r))}</text>`,
@@ -369,7 +481,7 @@ function nudgePoints(points, minSep, maxShift) {
     }
   }
 }
-const plottedXY = plotted.map((r) => ({
+const plottedXY = plottedDrawn.map((r) => ({
   runId: r.run_id,
   r,
   x: xOf(r.total_cost_usd),
@@ -383,7 +495,7 @@ const plottedPts = plottedXY.map((p) => ({
    * point whose label no tier of the placement pass could
    * seat beside its disc. Derived here from the same row, so
    * the strip can never disagree with the plotted point. */
-  words: `${pointName(p.r)} (${fmtPct(p.r.asr_conditional)} at ${fmtUsd(p.r.total_cost_usd)})`,
+  words: `${pointName(p.r)} (${fmtPct(p.r.asr_conditional)} at ${fmtUsdBound(p.r.total_cost_usd)})`,
   x: p.x,
   y: p.y,
 }));
@@ -423,10 +535,32 @@ if (
   );
   process.exit(1);
 }
-const topSub = `${costIsLowerBound(priciest) ? "At least " : ""}${fmtUsd(priciest.total_cost_usd)} a run, and it flipped most of all`;
+const topSub = `${costIsLowerBound(priciest) ? `At least ${fmtUsdBound(priciest.total_cost_usd)}` : fmtUsd(priciest.total_cost_usd)} a run, and it flipped most of all`;
 const bottomSub = `${pointName(toughest)} flipped least of all at ${fmtPct(toughest.asr_conditional)}`;
+/* The off-scale disclosure, one sentence per excluded
+ * point, composed here from the same rows the scatter
+ * draws (RT-1). A flagged point's figure travels only with
+ * its malformed decomposition clauses on the same surface,
+ * the board's standing rule for flagged figures; where the
+ * sealed family records do not derive the decomposition,
+ * the disclosure the image owes cannot be composed at all,
+ * and the build fails rather than state the figure bare or
+ * drop the point in silence. */
+const offScaleSentences = offScaleRows.map((r) => {
+  const base = `${pointName(r)} sits above the chart's 0 to ${Math.round(axisMax * 100)} percent scale at ${fmtPct(r.asr_conditional)} attack success`;
+  const tail = ", so its disc stands off the top of the plot rather than at a false position.";
+  if (r.ranking_eligible) return base + tail;
+  const d = flipDecomposition(r);
+  if (d === null) {
+    console.error(
+      `gen-og: ${pointName(r)} sits above the chart's axis ceiling and is flagged, but its sealed family records do not derive the malformed decomposition its disclosure must carry, so the image cannot state its figure and the build fails rather than print it bare or drop it in silence`,
+    );
+    process.exit(1);
+  }
+  return `${base}, genuine flip rate ${fmtPct(d.genuineRate)}, with ${fmtPct(d.malformedShare)} of counted flips to malformed output${tail}`;
+});
 const pointsSvg = [
-  ...railRows.map((r) => disc(r, RAIL_CX, railY.get(r.run_id))),
+  ...railDrawn.map((r) => disc(r, RAIL_CX, railY.get(r.run_id))),
   ...plottedXY.map((p) => disc(p.r, p.x, p.y)),
 ].join("\n");
 const scatterSvg = `<svg width="1200" height="630" viewBox="0 0 1200 630" class="chart">
@@ -477,6 +611,7 @@ h1 { font-size: 47px; font-weight: 700; letter-spacing: -0.02em; margin-top: 8px
 .lab { fill: #d5dde4; font-size: 15px; font-weight: 600; }
 .lab-sm { fill: #d5dde4; font-size: 12.5px; font-weight: 600; }
 .fallback { position: absolute; left: 540px; top: 546px; width: 612px; font-size: 12.5px; line-height: 16px; color: #aebcc7; }
+.offscale { position: absolute; left: 168px; top: 546px; width: 984px; font-size: 12.5px; line-height: 16px; color: #aebcc7; }
 .mono { font-size: 11px; font-weight: 700; text-anchor: middle; dominant-baseline: central; }
 .corner { fill: #eef2f6; font-size: 26px; font-weight: 700; letter-spacing: -0.01em; }
 .corner-sub { fill: #aebcc7; font-size: 16px; font-weight: 550; }
@@ -489,6 +624,7 @@ ${scatterSvg}
   <p class="sub">Attack success against recorded cost per run (log scale), every full-suite model deciding the same paired cases.</p>
 </div>
 <div class="fallback" id="og-fallback" hidden></div>
+${offScaleSentences.length > 0 ? `<div class="offscale" id="og-offscale">${esc(offScaleSentences.join(" "))}</div>` : ""}
 <p class="foot">Peira decision robustness board. Dataset ${versions.dataset}, suite ${versions.suite}, updated ${dateWords}. Amber ring: a flagged result. peiratrial.dev</p>
 </body></html>`;
 
@@ -538,6 +674,14 @@ function placeOgLabels(pts) {
     const r = document.querySelector(sel).getBoundingClientRect();
     furniture.push({ x: r.x, y: r.y, w: r.width, h: r.height });
   }
+  /* The off-scale disclosure block under the chart is
+   * furniture too: a label seated over it would strike the
+   * words the image owes the points it does not draw. */
+  const offEl = document.getElementById("og-offscale");
+  if (offEl) {
+    const r = offEl.getBoundingClientRect();
+    furniture.push({ x: r.x, y: r.y, w: r.width, h: r.height });
+  }
   /* The rail column, left of the divider at x=148 in the
    * plot's vertical band, is reserved for the rail's own
    * names. A plotted label seated there reads as a rail
@@ -548,7 +692,7 @@ function placeOgLabels(pts) {
    * the local box and would put every disc at the origin;
    * the client rect gives the true centre and radius (the
    * svg is at the viewport origin at 1:1 scale). */
-  const discs = [...svg.querySelectorAll("circle")].map((c) => {
+  let discs = [...svg.querySelectorAll("circle")].map((c) => {
     const r = c.getBoundingClientRect();
     return { cx: r.x + r.width / 2, cy: r.y + r.height / 2, r: r.width / 2 };
   });
@@ -567,6 +711,73 @@ function placeOgLabels(pts) {
     const dy = Math.max(box.y - d.cy, 0, d.cy - (box.y + box.h));
     return Math.hypot(dx, dy);
   };
+  /* The corner claim blocks are obstacles for the discs
+   * themselves, not only for the labels (red team finding
+   * RT-2 on the #521 review: two plotted discs sat on the
+   * top corner sub-line and covered part of its price
+   * figure). A disc whose circle intersects a claim box
+   * moves along its own cost column by the smallest shift
+   * that clears every claim box, no more than 56px, without
+   * landing on another disc, and its label then seats
+   * against the moved disc, the same legibility discipline
+   * the nudge pass applies between discs. A disc no shift
+   * can clear leaves the plot, and its point is named in
+   * words in the strip with its figures, like a label no
+   * tier could seat. The rail discs stand left of every
+   * claim box; the pass runs over the plotted discs only,
+   * which are the discs it can move. */
+  const claimBoxes = [
+    ...svg.querySelectorAll("text.corner, text.corner-sub"),
+  ].map(boxOf);
+  const discGroups = [...svg.querySelectorAll("g")].filter((g) =>
+    g.querySelector("circle"),
+  );
+  const railCount = discs.length - pts.length;
+  const preDegraded = [];
+  const seatPts = [];
+  pts.forEach((p, i) => {
+    const di = railCount + i;
+    const d = discs[di];
+    if (!claimBoxes.some((b) => distToDisc(b, d) < d.r - 0.01)) {
+      seatPts.push(p);
+      return;
+    }
+    let moved = false;
+    for (let step = 1; step <= 56 && !moved; step++) {
+      for (const dy of [step, -step]) {
+        const nd = { cx: d.cx, cy: d.cy + dy, r: d.r };
+        if (nd.cy - nd.r < 0 || nd.cy + nd.r > 630) continue;
+        if (claimBoxes.some((b) => distToDisc(b, nd) < nd.r - 0.01))
+          continue;
+        if (
+          discs.some(
+            (o, j) =>
+              j !== di && Math.hypot(o.cx - nd.cx, o.cy - nd.cy) < 20,
+          )
+        )
+          continue;
+        discGroups[di].setAttribute(
+          "transform",
+          `translate(${nd.cx} ${nd.cy})`,
+        );
+        p.y = nd.cy;
+        discs[di] = nd;
+        moved = true;
+        break;
+      }
+    }
+    if (moved) seatPts.push(p);
+    else {
+      discGroups[di].remove();
+      preDegraded.push(p);
+    }
+  });
+  if (preDegraded.length > 0) {
+    const held = new Set(preDegraded.map((p) => p.runId));
+    discs = discs.filter(
+      (d, j) => j < railCount || !held.has(pts[j - railCount].runId),
+    );
+  }
   const CANDS = [
     { dx: 18, dy: 5, anchor: "start" },
     { dx: -18, dy: 5, anchor: "end" },
@@ -646,7 +857,7 @@ function placeOgLabels(pts) {
         }
       }
     }
-    if (placed.length !== pts.length) bad.push("count");
+    if (placed.length !== seatPts.length) bad.push("count");
     return bad;
   };
   const attempt = (order, CANDS, cls) => {
@@ -795,7 +1006,7 @@ function placeOgLabels(pts) {
   const runTier = (CANDS, cls) => {
     probeCls = cls;
     const freeCounts = new Map(
-      pts.map((p) => [
+      seatPts.map((p) => [
         p.runId,
         CANDS.filter((c) => {
           const box = boxFor(p, c);
@@ -808,20 +1019,20 @@ function placeOgLabels(pts) {
       ]),
     );
     const orders = [
-      [...pts].sort(
+      [...seatPts].sort(
         (a, b) => freeCounts.get(a.runId) - freeCounts.get(b.runId) || byRunId(a, b),
       ),
-      [...pts].sort(
+      [...seatPts].sort(
         (a, b) => freeCounts.get(a.runId) - freeCounts.get(b.runId) || byRunId(b, a),
       ),
-      [...pts].sort((a, b) => a.y - b.y || a.x - b.x),
-      [...pts].sort((a, b) => a.x - b.x || a.y - b.y),
-      [...pts].sort((a, b) => b.y - a.y || b.x - a.x),
-      [...pts].sort((a, b) => b.x - a.x || b.y - a.y),
-      [...pts].sort(
+      [...seatPts].sort((a, b) => a.y - b.y || a.x - b.x),
+      [...seatPts].sort((a, b) => a.x - b.x || a.y - b.y),
+      [...seatPts].sort((a, b) => b.y - a.y || b.x - a.x),
+      [...seatPts].sort((a, b) => b.x - a.x || b.y - a.y),
+      [...seatPts].sort(
         (a, b) => freeCounts.get(b.runId) - freeCounts.get(a.runId) || a.y - b.y,
       ),
-      [...pts].sort(
+      [...seatPts].sort(
         (a, b) => freeCounts.get(a.runId) - freeCounts.get(b.runId) || b.y - a.y,
       ),
     ];
@@ -834,6 +1045,50 @@ function placeOgLabels(pts) {
     }
     return { clean: false };
   };
+  /* The words strip, shared by the degradation paths: the
+   * points a tier could not seat (too crowded at their
+   * discs) and the points the claim pass held off the plot
+   * (their discs could not be drawn clear of the corner
+   * readings) are each named with their figures, under a
+   * lead-in that states their own reason. The strip steps
+   * its size down until it clears the footer, measured
+   * against the real footer block, and it starts below the
+   * off-scale disclosure when the image carries one, so
+   * the words themselves never strike another element. */
+  const showStrip = (crowded, heldOff) => {
+    const strip = document.getElementById("og-fallback");
+    strip.hidden = false;
+    const parts = [];
+    if (crowded.length > 0) {
+      parts.push(
+        "Too crowded at their discs, so named here. " +
+          crowded.map((p) => p.words).join(", "),
+      );
+    }
+    if (heldOff.length > 0) {
+      parts.push(
+        (heldOff.length === 1
+          ? "Its disc could not be drawn clear of the corner readings, so it is named here. "
+          : "Their discs could not be drawn clear of the corner readings, so they are named here. ") +
+          heldOff.map((p) => p.words).join(", "),
+      );
+    }
+    strip.textContent = parts.join(" ");
+    if (offEl) {
+      const or = offEl.getBoundingClientRect();
+      const sr = strip.getBoundingClientRect();
+      if (sr.top < or.bottom + 6) strip.style.top = `${or.bottom + 6}px`;
+    }
+    const footRect = document.querySelector(".foot").getBoundingClientRect();
+    let size = 12.5;
+    while (size > 9) {
+      const r = strip.getBoundingClientRect();
+      if (r.bottom <= footRect.top - 2) break;
+      size -= 0.5;
+      strip.style.fontSize = `${size}px`;
+      strip.style.lineHeight = `${Math.round(size * 1.28)}px`;
+    }
+  };
   for (const [cands, cls] of [
     [CANDS, "lab"],
     [CANDS_WIDE, "lab"],
@@ -841,6 +1096,16 @@ function placeOgLabels(pts) {
   ]) {
     const r = runTier(cands, cls);
     if (r.clean) {
+      if (preDegraded.length > 0) {
+        showStrip([], preDegraded);
+        probe.remove();
+        return {
+          ok: true,
+          placed: r.placed.length,
+          degraded: preDegraded.map((p) => p.name),
+          degradedWords: preDegraded.map((p) => p.words),
+        };
+      }
       probe.remove();
       return { ok: true, placed: r.placed.length, degraded: [] };
     }
@@ -865,26 +1130,13 @@ function placeOgLabels(pts) {
       degraded.push(rec.p);
     }
   }
-  const strip = document.getElementById("og-fallback");
-  strip.hidden = false;
-  strip.textContent =
-    "Too crowded at their discs, so named here. " +
-    degraded.map((p) => p.words).join(", ");
-  const footRect = document.querySelector(".foot").getBoundingClientRect();
-  let size = 12.5;
-  while (size > 9) {
-    const r = strip.getBoundingClientRect();
-    if (r.bottom <= footRect.top - 2) break;
-    size -= 0.5;
-    strip.style.fontSize = `${size}px`;
-    strip.style.lineHeight = `${Math.round(size * 1.28)}px`;
-  }
+  showStrip(degraded, preDegraded);
   probe.remove();
   return {
     ok: true,
     placed: placed.length - degraded.length,
-    degraded: degraded.map((p) => p.name),
-    degradedWords: degraded.map((p) => p.words),
+    degraded: [...degraded, ...preDegraded].map((p) => p.name),
+    degradedWords: [...degraded, ...preDegraded].map((p) => p.words),
   };
 }
 
@@ -948,6 +1200,108 @@ if (placement.degraded.length > 0) {
     `gen-og: ${placement.degraded.length} plotted label${placement.degraded.length === 1 ? "" : "s"} could not seat beside the disc on this payload and ${placement.degraded.length === 1 ? "is" : "are"} named in words in the strip under the chart instead: ${(placement.degradedWords ?? placement.degraded).join(", ")}`,
   );
 }
+if (offScaleRows.length > 0) {
+  console.log(
+    `gen-og: ${offScaleRows.length} full suite point${offScaleRows.length === 1 ? "" : "s"} sit${offScaleRows.length === 1 ? "s" : ""} above the chart's 0 to ${Math.round(axisMax * 100)} percent scale and ${offScaleRows.length === 1 ? "is" : "are"} disclosed in words in the image instead of drawn: ${offScaleRows.map((r) => pointName(r)).join(", ")}`,
+  );
+}
+/* The disclosure the image owes is verified where it is
+ * drawn: its block must sit inside the canvas and strike
+ * nothing, no text in the scatter, neither the headline nor
+ * the footer block, and not the words strip when that is
+ * shown. The block steps its size down until it clears, and
+ * a disclosure that cannot be placed fails the build
+ * (RT-1): an image that cannot carry the words does not
+ * print without them. */
+function measureDisclosure() {
+  const el = document.getElementById("og-offscale");
+  if (!el) return { present: false, ok: true };
+  const svg = document.querySelector("svg.chart");
+  const boxOf = (e) => {
+    const b = e.getBBox();
+    return { x: b.x, y: b.y, w: b.width, h: b.height };
+  };
+  const rectOf = (e) => {
+    const r = e.getBoundingClientRect();
+    return { x: r.x, y: r.y, w: r.width, h: r.height };
+  };
+  const overlap = (a, b) =>
+    a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
+  const mine = rectOf(el);
+  const obstacles = [
+    rectOf(document.querySelector(".head")),
+    rectOf(document.querySelector(".foot")),
+  ];
+  const strip = document.getElementById("og-fallback");
+  if (strip && !strip.hidden) obstacles.push(rectOf(strip));
+  for (const t of svg.querySelectorAll("text")) obstacles.push(boxOf(t));
+  const inCanvas =
+    mine.x >= 0 && mine.y >= 0 && mine.x + mine.w <= 1200 && mine.y + mine.h <= 630;
+  return {
+    present: true,
+    ok: inCanvas && !obstacles.some((o) => overlap(mine, o)),
+    box: mine,
+  };
+}
+if (offScaleRows.length > 0) {
+  let dSize = 12.5;
+  let dCheck = await page.evaluate(measureDisclosure);
+  while (!dCheck.ok && dSize > 9.5) {
+    dSize -= 1;
+    await page.evaluate((s) => {
+      const el = document.getElementById("og-offscale");
+      el.style.fontSize = `${s}px`;
+      el.style.lineHeight = `${Math.round(s * 1.28)}px`;
+    }, dSize);
+    dCheck = await page.evaluate(measureDisclosure);
+  }
+  if (!dCheck.ok) {
+    await browser.close();
+    console.error(
+      "gen-og: the off-scale disclosure block cannot be placed inside the image without striking another element, so the image does not print without the words it owes",
+    );
+    process.exit(1);
+  }
+}
+/* Test instrumentation, off unless PEIRA_OG_PROBE is set:
+ * the placed geometry (claim blocks, discs, labels, the
+ * disclosure block, the strip) written as JSON beside the
+ * page, so the generator tests can assert on the rendered
+ * image's intersections instead of trusting the log. */
+if (process.env.PEIRA_OG_PROBE) {
+  const probe = await page.evaluate(() => {
+    const svg = document.querySelector("svg.chart");
+    const boxOf = (e) => {
+      const b = e.getBBox();
+      return { x: b.x, y: b.y, w: b.width, h: b.height };
+    };
+    const rectOf = (e) => {
+      const r = e.getBoundingClientRect();
+      return { x: r.x, y: r.y, w: r.width, h: r.height };
+    };
+    const off = document.getElementById("og-offscale");
+    const strip = document.getElementById("og-fallback");
+    return {
+      claims: [...svg.querySelectorAll("text.corner, text.corner-sub")].map(
+        (el) => ({ text: el.textContent, box: boxOf(el) }),
+      ),
+      discs: [...svg.querySelectorAll("circle")].map((c) => {
+        const r = c.getBoundingClientRect();
+        return { cx: r.x + r.width / 2, cy: r.y + r.height / 2, r: r.width / 2 };
+      }),
+      labels: [...svg.querySelectorAll("#og-labels text")].map((el) => ({
+        name: el.textContent,
+        runId: el.getAttribute("data-run-id"),
+        box: boxOf(el),
+      })),
+      disclosure: off
+        ? { text: off.textContent, box: rectOf(off) }
+        : null,
+      strip: { hidden: strip.hidden, text: strip.textContent },
+    };
+  });
+  writeFileSync(path.join(root, ".og", "probe.json"), JSON.stringify(probe));
+}
 await page.screenshot({ path: path.join(root, "public", "og.png") });
 await browser.close();
 
@@ -956,5 +1310,5 @@ copyFileSync(
   path.join(root, "public", "payload.json"),
 );
 console.log(
-  `gen-og: wrote public/og.png (1200x630) and public/payload.json from ${results} results, board date ${dateWords}; labelled ${placement.placed} of ${plottedPts.length} plotted points and all ${railRows.length} rail points`,
+  `gen-og: wrote public/og.png (1200x630) and public/payload.json from ${results} results, board date ${dateWords}; labelled ${placement.placed} of ${plottedPts.length} plotted points and all ${railDrawn.length} rail points`,
 );

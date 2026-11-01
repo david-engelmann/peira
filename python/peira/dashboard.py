@@ -628,9 +628,9 @@ def _leaderboard_stat_row(
     # the schema's parent_run_id chains a re-run or a resume to
     # the run it follows. When the standing artifact carries a
     # parent, the row records the chain and the artifact's own
-    # creation day. The record ships as emitted provenance
-    # that no board surface consumes yet, and its removal is
-    # scheduled as a follow-up. The key is
+    # creation day. The board's Method section consumes the
+    # record, rendering a re-run disclosure derived from the
+    # payload whenever at least one row carries one. The key is
     # always present, null when the run chains to nothing. A
     # chained artifact whose creation day is missing or
     # malformed attests no date (a sealed artifact can carry

@@ -1,6 +1,8 @@
 import {
   boardGroups,
   boardVersions,
+  dateWords,
+  shortName,
   taxBenchmarks,
 } from "@/lib/payload";
 import { fmtInt, fmtPct, fmtEce } from "@/lib/format";
@@ -19,6 +21,14 @@ import { familyOrder, familyFullName } from "@/lib/charts";
  * robustness tax defined so a reader can recompute any tax on
  * the page from the benchmarks named here (C-04).
  */
+/* The name list rule the scatter readings use, mirrored
+ * here for the re-run disclosure's date sentences. */
+function joinNames(names: string[]): string {
+  if (names.length <= 1) return names.join("");
+  if (names.length === 2) return `${names[0]} and ${names[1]}`;
+  return `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
+}
+
 export default function Method() {
   const groups = boardGroups();
   const versions = boardVersions();
@@ -30,6 +40,42 @@ export default function Method() {
     .join(", ")
     .replace(/, ([^,]*)$/, ", and $1");
   const sliceCases = groups.slices[0]?.n_cases ?? 0;
+
+  /* The re-run disclosure (hardcode audit F3, closed by
+   * consuming the payload's rerun records rather than
+   * writing history into standing prose). Each record
+   * carries the run it chains to and the day the segment
+   * was recorded, so the disclosure states which results
+   * rest on a re-run segment and when, grouped by that
+   * day, and the class the records attest. It renders
+   * exactly when at least one row carries a record. */
+  const rerunByDate = new Map<string, string[]>();
+  for (const row of allRows) {
+    if (!row.rerun) continue;
+    const names = rerunByDate.get(row.rerun.date) ?? [];
+    names.push(shortName(row));
+    rerunByDate.set(row.rerun.date, names);
+  }
+  const rerunDates = [...rerunByDate.keys()].sort();
+  const rerunCount = rerunDates.reduce(
+    (n, d) => n + (rerunByDate.get(d)?.length ?? 0),
+    0,
+  );
+  const rerunParagraph =
+    rerunCount === 0
+      ? null
+      : [
+          rerunCount === 1
+            ? "One result on this board rests on a re-run segment."
+            : `${fmtInt(rerunCount)} results on this board rest on re-run segments.`,
+          ...rerunDates.map((date) => {
+            const names = rerunByDate.get(date) ?? [];
+            return names.length === 1
+              ? `The ${names[0]} result was re-run on ${dateWords(date)}.`
+              : `The ${joinNames(names)} results were re-run on ${dateWords(date)}.`;
+          }),
+          "A re-run segment chains to an earlier run of the same measurement, and the figures on this board are the segment's own.",
+        ].join(" ");
 
   return (
     <section
@@ -131,12 +177,14 @@ export default function Method() {
         facts apart in words.
       </p>
 
-      {/* No re-run history stands here (hardcode audit F3).
-       * Standing Method prose carries definitions and rules,
-       * never a count, names and a date keyed to nothing in
-       * the payload. Per-result provenance lives on the model
-       * pages, and publish history lives in the note at the
-       * foot of the page, rewritten at each publish. */}
+      {rerunParagraph !== null && (
+        <>
+          <h3 className="method-head" id="method-reruns">Re-run segments</h3>
+          <p className="method-p" data-rerun-disclosure>
+            {rerunParagraph}
+          </p>
+        </>
+      )}
 
       <h3 className="method-head" id="method-standing">Standing of the figures</h3>
       <p className="method-p">
