@@ -409,6 +409,32 @@ for (let pass = 0; pass < 4; pass++) {
     railSpread[i].y = Math.min(railSpread[i].y, railSpread[i + 1].y - 26);
   }
 }
+/* The passes hold the pitch and the order but anchor
+ * nothing, so a rail that grows a row pushes its lowest
+ * names past the axis into the cost decades. Clamp the
+ * finished ladder into the plot band with a rigid shift,
+ * which preserves both the pitch and the order, and fail
+ * rather than spill when the ladder is taller than the
+ * band itself. The band insets by 13, the flagged disc's
+ * outer radius of 12.25 rounded up, so a clamped disc
+ * stays inside the plot; the span comparison carries 1px
+ * of float tolerance. */
+if (railSpread.length > 0) {
+  const lo = PLOT.y0 + 13;
+  const hi = PLOT.y1 - 13;
+  const first = railSpread[0].y;
+  const last = railSpread.at(-1).y;
+  if (last - first > hi - lo + 1) {
+    console.error(
+      `gen-og: the no-cost rail carries ${railSpread.length} rows and its ladder no longer fits the plot band at the 26px pitch, so the image does not print with rail names over the cost decades`,
+    );
+    process.exit(1);
+  }
+  const shift = last > hi ? hi - last : first < lo ? lo - first : 0;
+  if (shift !== 0) {
+    for (const e of railSpread) e.y += shift;
+  }
+}
 const railY = new Map(railSpread.map((e) => [e.r.run_id, e.y]));
 /* Rail points are named by construction: each name sits
  * beside its disc in the rail column, so those labels are
@@ -512,10 +538,16 @@ const plottedPts = plottedXY.map((p) => ({
  * makes), so that is asserted here: a payload
  * that breaks it fails the build rather than print a false
  * corner. The bottom corner states the chart's actual
- * toughness extreme, the lowest attack success among the
- * ranked plotted runs, and the top corner's cost figure
- * carries the lower-bound qualifier when the payload marks
- * that cost a floor, exactly as the model cards print it. */
+ * toughness extreme, the lowest attack success among every
+ * ranked run the chart carries, costed runs on the plot and
+ * no-cost runs on the rail alike, because its words say
+ * least of all and the rail is on the chart. A ranked rail
+ * run that flips more than the priciest costed run is named
+ * in the disclosure block under the chart, so the headline's
+ * cost story never reads as the whole story. The top
+ * corner's cost figure carries the lower-bound qualifier
+ * when the payload marks that cost a floor, exactly as the
+ * model cards print it. */
 const rankedPlotted = plotted.filter((r) => r.ranking_eligible);
 const byAsrAsc = [...rankedPlotted].sort(
   (a, b) => a.asr_conditional - b.asr_conditional,
@@ -524,7 +556,11 @@ const byCostAsc = [...rankedPlotted].sort(
   (a, b) => a.total_cost_usd - b.total_cost_usd,
 );
 const priciest = byCostAsc.at(-1);
-const toughest = byAsrAsc[0];
+const toughestPool = [
+  ...rankedPlotted,
+  ...railRows.filter((r) => r.ranking_eligible),
+].sort((a, b) => a.asr_conditional - b.asr_conditional);
+const toughest = toughestPool[0];
 if (
   !priciest ||
   !toughest ||
@@ -559,10 +595,45 @@ const offScaleSentences = offScaleRows.map((r) => {
   }
   return `${base}, genuine flip rate ${fmtPct(d.genuineRate)}, with ${fmtPct(d.malformedShare)} of counted flips to malformed output${tail}`;
 });
+/* The rail extreme disclosure. A ranked run with no recorded
+ * cost stands on the rail, outside the cost story the
+ * headline tells, and nothing on the chart prints its figure.
+ * When such a run flips more than the priciest costed run,
+ * the headline could read as the whole story, so the run is
+ * named here with its figure and the reason it stands apart,
+ * the same treatment the off-scale sentences give the points
+ * the plot does not draw. A run above the axis ceiling is
+ * left to its off-scale sentence, so no run is disclosed
+ * twice. The words say ranked costed runs because the
+ * derivation stands on that population, the headline guard's
+ * own, and a flagged costed run above them all is carried by
+ * its off-scale sentence instead. */
+const railExtremeRows = railRows.filter(
+  (r) =>
+    r.ranking_eligible &&
+    priciest &&
+    r.asr_conditional > priciest.asr_conditional &&
+    !offScaleIds.has(r.run_id),
+);
+const railExtremeSentences = railExtremeRows.map(
+  (r) =>
+    `${pointName(r)} flipped more than any ranked costed run at ${fmtPct(r.asr_conditional)} attack success. It carries no recorded cost, so it stands on the no-cost rail, outside the cost story the headline tells.`,
+);
+const disclosureSentences = [
+  ...offScaleSentences,
+  ...railExtremeSentences,
+];
 const pointsSvg = [
   ...railDrawn.map((r) => disc(r, RAIL_CX, railY.get(r.run_id))),
   ...plottedXY.map((p) => disc(p.r, p.x, p.y)),
 ].join("\n");
+/* The cost axis carries no title text of its own. The head's
+ * sub-line already states the axis (attack success against
+ * recorded cost per run, log scale) and the decade labels
+ * carry their dollar signs, and the band under the decades
+ * belongs to the disclosure block: a title there left the
+ * disclosure's second line nowhere clear to sit once the
+ * block carried more than one sentence. */
 const scatterSvg = `<svg width="1200" height="630" viewBox="0 0 1200 630" class="chart">
   <rect x="48" y="${PLOT.y0}" width="88" height="${PLOT.y1 - PLOT.y0}" fill="#0c1015"/>
   ${gridSvg}
@@ -573,12 +644,11 @@ const scatterSvg = `<svg width="1200" height="630" viewBox="0 0 1200 630" class=
   <text x="${PLOT.x0 + 32}" y="${PLOT.y0 - 10}" class="tick">Attack success, percent</text>
   <text x="520" y="252" class="corner">Expensive and fragile</text>
   <text x="520" y="278" class="corner-sub">${esc(topSub)}</text>
-  <text x="${PLOT.x0}" y="468" class="corner">Toughest on the chart</text>
-  <text x="${PLOT.x0}" y="494" class="corner-sub">${esc(bottomSub)}</text>
+  <text x="${PLOT.x0}" y="468" class="corner" id="og-corner-bottom">Toughest on the chart</text>
+  <text x="${PLOT.x0}" y="494" class="corner-sub" id="og-corner-bottom-sub">${esc(bottomSub)}</text>
   ${pointsSvg}
   ${railLabelsSvg}
   <g id="og-labels"></g>
-  <text x="${PLOT.x0}" y="572" class="tick">Recorded cost per run, US dollars, log scale</text>
 </svg>`;
 
 /* The share image draws no lower-bound tick. A floating arrow
@@ -624,7 +694,7 @@ ${scatterSvg}
   <p class="sub">Attack success against recorded cost per run (log scale), every full-suite model deciding the same paired cases.</p>
 </div>
 <div class="fallback" id="og-fallback" hidden></div>
-${offScaleSentences.length > 0 ? `<div class="offscale" id="og-offscale">${esc(offScaleSentences.join(" "))}</div>` : ""}
+${disclosureSentences.length > 0 ? `<div class="offscale" id="og-offscale">${esc(disclosureSentences.join(" "))}</div>` : ""}
 <p class="foot">Peira decision robustness board. Dataset ${versions.dataset}, suite ${versions.suite}, updated ${dateWords}. Amber ring: a flagged result. peiratrial.dev</p>
 </body></html>`;
 
@@ -674,9 +744,10 @@ function placeOgLabels(pts) {
     const r = document.querySelector(sel).getBoundingClientRect();
     furniture.push({ x: r.x, y: r.y, w: r.width, h: r.height });
   }
-  /* The off-scale disclosure block under the chart is
-   * furniture too: a label seated over it would strike the
-   * words the image owes the points it does not draw. */
+  /* The disclosure block under the chart is furniture
+   * too: a label seated over it would strike the words the
+   * image owes the points it does not draw and the runs it
+   * names there. */
   const offEl = document.getElementById("og-offscale");
   if (offEl) {
     const r = offEl.getBoundingClientRect();
@@ -711,6 +782,57 @@ function placeOgLabels(pts) {
     const dy = Math.max(box.y - d.cy, 0, d.cy - (box.y + box.h));
     return Math.hypot(dx, dy);
   };
+  /* The bottom corner pair starts at the plot's left edge,
+   * where the rail names also live. The rail names are static
+   * markup the placement pass cannot move, and a rail name
+   * long enough or a rail row landing at the corner's height
+   * strikes the corner's words. So the pair shifts right by
+   * derivation before anything else measures the canvas: the
+   * smallest x at which its block, both lines together,
+   * clears every rail name whose band it shares, measured
+   * from the rendered boxes. Discs are not the corner's
+   * problem here: the RT-2 pass below already moves a disc
+   * that strikes a claim box, or names its point in words.
+   * The furniture list above already holds the corner's
+   * starting boxes, so the text boxes are remeasured after
+   * the shift. A pair that cannot clear within the plot
+   * keeps its last position and the corner check after
+   * placement fails the build, the same discipline as the
+   * disclosure check. The block carries 2px of breathing
+   * room on its vertical edges, each shift step stops 16px
+   * past the name it clears, and the loop is bounded at 64
+   * steps, far beyond the rail's row count, since every
+   * step clears at least one more name. */
+  {
+    const title = document.getElementById("og-corner-bottom");
+    const sub = document.getElementById("og-corner-bottom-sub");
+    if (title && sub) {
+      const railLabelBoxes = [...svg.querySelectorAll("text.lab")]
+        .filter((el) => el.parentNode === svg)
+        .map(boxOf);
+      const t0 = boxOf(title);
+      const s0 = boxOf(sub);
+      const blockW = Math.max(t0.w, s0.w);
+      const blockY = t0.y - 2;
+      const blockH = s0.y + s0.h + 2 - blockY;
+      let cx = t0.x;
+      for (let guard = 0; guard < 64; guard++) {
+        const block = { x: cx, y: blockY, w: blockW, h: blockH };
+        let next = cx;
+        for (const b of railLabelBoxes) {
+          if (overlap(block, b)) next = Math.max(next, b.x + b.w + 16);
+        }
+        if (next === cx) break;
+        cx = next;
+      }
+      if (cx !== t0.x) {
+        title.setAttribute("x", cx);
+        sub.setAttribute("x", cx);
+        const fresh = [...svg.querySelectorAll("text")].map(boxOf);
+        furniture.splice(0, fresh.length, ...fresh);
+      }
+    }
+  }
   /* The corner claim blocks are obstacles for the discs
    * themselves, not only for the labels (red team finding
    * RT-2 on the #521 review: two plotted discs sat on the
@@ -1050,14 +1172,15 @@ function placeOgLabels(pts) {
    * discs) and the points the claim pass held off the plot
    * (their discs could not be drawn clear of the corner
    * readings) are each named with their figures, under a
-   * lead-in that states their own reason. The strip steps
+   * lead-in that states their own reason. Where the words
+   * land depends on the image: inside the disclosure block
+   * when the image carries one, sized and cleared by the
+   * disclosure check after placement, and in the strip
+   * under the chart when it does not, where the strip steps
    * its size down until it clears the footer, measured
-   * against the real footer block, and it starts below the
-   * off-scale disclosure when the image carries one, so
-   * the words themselves never strike another element. */
+   * against the real footer block. Either way the words
+   * themselves never strike another element. */
   const showStrip = (crowded, heldOff) => {
-    const strip = document.getElementById("og-fallback");
-    strip.hidden = false;
     const parts = [];
     if (crowded.length > 0) {
       parts.push(
@@ -1073,12 +1196,23 @@ function placeOgLabels(pts) {
           heldOff.map((p) => p.words).join(", "),
       );
     }
-    strip.textContent = parts.join(" ");
+    if (parts.length === 0) return;
+    const words = parts.join(" ");
+    /* The words ride in the disclosure block when the image
+     * carries one. The band under the chart holds one text
+     * block, not two: a separate strip under a two-line
+     * disclosure has no clear line left above the footer, so
+     * its words strike the footer text. The disclosure check
+     * after placement steps the merged block down until the
+     * whole of it clears. With no disclosure to carry them,
+     * the words take the strip under the chart as before. */
     if (offEl) {
-      const or = offEl.getBoundingClientRect();
-      const sr = strip.getBoundingClientRect();
-      if (sr.top < or.bottom + 6) strip.style.top = `${or.bottom + 6}px`;
+      offEl.textContent = `${offEl.textContent} ${words}`;
+      return;
     }
+    const strip = document.getElementById("og-fallback");
+    strip.hidden = false;
+    strip.textContent = words;
     const footRect = document.querySelector(".foot").getBoundingClientRect();
     let size = 12.5;
     while (size > 9) {
@@ -1243,7 +1377,12 @@ function measureDisclosure() {
     box: mine,
   };
 }
-if (offScaleRows.length > 0) {
+if (railExtremeSentences.length > 0) {
+  console.log(
+    `gen-og: ${railExtremeSentences.length} ranked no-cost run${railExtremeSentences.length === 1 ? "" : "s"} flipped more than the priciest costed run and ${railExtremeSentences.length === 1 ? "is" : "are"} disclosed in words in the image: ${railExtremeRows.map((r) => pointName(r)).join(", ")}`,
+  );
+}
+if (disclosureSentences.length > 0) {
   let dSize = 12.5;
   let dCheck = await page.evaluate(measureDisclosure);
   while (!dCheck.ok && dSize > 9.5) {
@@ -1258,10 +1397,48 @@ if (offScaleRows.length > 0) {
   if (!dCheck.ok) {
     await browser.close();
     console.error(
-      "gen-og: the off-scale disclosure block cannot be placed inside the image without striking another element, so the image does not print without the words it owes",
+      "gen-og: the disclosure block cannot be placed inside the image without striking another element, so the image does not print without the words it owes",
     );
     process.exit(1);
   }
+}
+/* The bottom corner readings are verified where they are
+ * drawn: after the placement pass shifted them clear of the
+ * rail names, neither line may strike a rail name or leave
+ * the plot. A corner that cannot sit clear fails the build
+ * rather than print words over a name. The plot bounds are
+ * PLOT.x0 and PLOT.x1 with half a pixel of tolerance,
+ * restated as literals because this check runs in the page,
+ * where the scaffold's constants are out of scope. */
+function measureCorner() {
+  const svg = document.querySelector("svg.chart");
+  const boxOf = (e) => {
+    const b = e.getBBox();
+    return { x: b.x, y: b.y, w: b.width, h: b.height };
+  };
+  const overlap = (a, b) =>
+    a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
+  const title = document.getElementById("og-corner-bottom");
+  const sub = document.getElementById("og-corner-bottom-sub");
+  if (!title || !sub) return { present: false, ok: true };
+  const mine = [boxOf(title), boxOf(sub)];
+  const rail = [...svg.querySelectorAll("text.lab")]
+    .filter((el) => el.parentNode === svg)
+    .map(boxOf);
+  const inPlot = mine.every((b) => b.x >= 167.5 && b.x + b.w <= 1152.5);
+  return {
+    present: true,
+    ok: inPlot && !mine.some((b) => rail.some((o) => overlap(b, o))),
+    boxes: mine,
+  };
+}
+const cornerCheck = await page.evaluate(measureCorner);
+if (!cornerCheck.ok) {
+  await browser.close();
+  console.error(
+    "gen-og: the bottom corner readings strike a rail name or leave the plot on this payload, so the image does not print with its words over a name",
+  );
+  process.exit(1);
 }
 /* Test instrumentation, off unless PEIRA_OG_PROBE is set:
  * the placed geometry (claim blocks, discs, labels, the
@@ -1294,6 +1471,9 @@ if (process.env.PEIRA_OG_PROBE) {
         runId: el.getAttribute("data-run-id"),
         box: boxOf(el),
       })),
+      railLabels: [...svg.querySelectorAll("text.lab")]
+        .filter((el) => el.parentNode === svg)
+        .map((el) => ({ name: el.textContent, box: boxOf(el) })),
       disclosure: off
         ? { text: off.textContent, box: rectOf(off) }
         : null,

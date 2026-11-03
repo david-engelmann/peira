@@ -414,6 +414,77 @@ test(
 );
 
 test(
+  "the 46-row payload with a tougher and a wilder rail: the bottom corner names the toughest run on the chart and sits clear of the rail names, and the wilder rail run is disclosed in words",
+  { timeout: 300000 },
+  () => {
+    const fixture = path.join(
+      boardRoot,
+      "tests",
+      "fixtures",
+      "payload-46.json",
+    );
+    const { scratch, board } = scratchBoard((payload) => {
+      const rows = new Map(
+        [...payload.ranked, ...payload.unranked].map((r) => [r.run_id, r]),
+      );
+      /* The long-named rail run becomes the toughest run on
+       * the chart, and at its new height its rail name lands
+       * in the bottom corner's band. The corner must name it
+       * as the toughest and sit clear of its rail name. */
+      rows.get("strands-v2-trial").asr_conditional = 0.05;
+      /* A second rail run flips more than the priciest costed
+       * run while staying under the axis ceiling, so the cost
+       * story the headline tells owes it a sentence. */
+      rows.get("kev-4b-v2-trial").asr_conditional = 0.29;
+    }, fixture);
+    try {
+      const run = runGenOg(board, { PEIRA_OG_PROBE: "1" });
+      assert.equal(run.status, 0, run.out);
+      assert.match(
+        run.out,
+        /no-cost run flipped more than the priciest costed run/,
+      );
+      assert.ok(run.probe, "the probe geometry was not written");
+      const bottomSub = run.probe.claims.find((c) =>
+        c.text.includes("flipped least of all"),
+      );
+      assert.ok(bottomSub, "no bottom corner reading in the image");
+      assert.equal(
+        bottomSub.text,
+        "strands-decider-2B-hobson-v21 flipped least of all at 5.0%",
+      );
+      /* Neither bottom corner line strikes a rail name. */
+      const title = run.probe.claims.find(
+        (c) => c.text === "Toughest on the chart",
+      );
+      assert.ok(title, "no bottom corner heading in the image");
+      for (const cornerBox of [title.box, bottomSub.box]) {
+        for (const rail of run.probe.railLabels) {
+          assert.ok(
+            !boxesOverlap(cornerBox, rail.box),
+            `the bottom corner strikes the rail name "${rail.name}"`,
+          );
+        }
+      }
+      /* The wilder rail run is named with its figure and the
+       * no-cost reason in the disclosure block. */
+      assert.ok(run.probe.disclosure, "no disclosure block in the image");
+      for (const needle of [
+        "kev-4b flipped more than any ranked costed run at 29.0% attack success",
+        "It carries no recorded cost, so it stands on the no-cost rail",
+      ]) {
+        assert.ok(
+          run.probe.disclosure.text.includes(needle),
+          `the disclosure does not state "${needle}": ${run.probe.disclosure.text}`,
+        );
+      }
+    } finally {
+      rmSync(scratch, { recursive: true, force: true });
+    }
+  },
+);
+
+test(
   "gen-og fails rather than state an off-scale flagged figure whose decomposition does not derive",
   { timeout: 300000 },
   () => {
