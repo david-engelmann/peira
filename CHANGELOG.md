@@ -7,6 +7,20 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
 
 ## [Unreleased]
 
+### Share image corner readings and under-chart words
+
+- The share image's toughest reading now stands on every
+  ranked run the chart carries, the no-cost rail included,
+  and the reading shifts clear of the rail names instead of
+  printing over them. A ranked no-cost run that flips more
+  than the priciest costed run is named in the disclosure
+  block under the chart with its figure and the reason it
+  stands apart. The rail ladder is clamped inside the plot
+  so its lowest names no longer spill over the cost decades,
+  the cost axis title text is gone (the head's sub-line
+  already states the axis), and the crowded-names words ride
+  in the disclosure block so they cannot strike the footer.
+
 ### Calibration edge ticks derived from the panel count
 
 - The calibration grid now derives which panels carry the
