@@ -7,6 +7,17 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
 
 ## [Unreleased]
 
+### Calibration edge ticks derived from the panel count
+
+- The calibration grid now derives which panels carry the
+  x-axis ticks from the panel count at render time, one edge
+  class per column layout, instead of stylesheet rules naming
+  a fixed number of trailing panels. The fixed count silently
+  broke when the population moved from 39 panels to 40, leaving
+  last-row panels without their axis ticks at desktop and
+  narrow widths and lighting extra panels in the middle band.
+  No figure or ranking changed.
+
 ### No-answer case disclosure on the leaderboard
 
 - Leaderboard rows now carry three counts of cases whose calls
