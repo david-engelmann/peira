@@ -1266,11 +1266,12 @@ body::before {
 .cal-dot {
   fill: var(--ink-1);
 }
-/* Axis ticks belong to the grid's edge panels. CSS owns the
- * edges because the column count is a CSS decision (four
- * across on desktop, one on phone since design cycle 5); the
- * component renders the tick groups on every panel and these
- * rules choose which ones show. */
+/* Axis ticks belong to the grid's edge panels. The column
+ * count is a CSS decision (four across on desktop, one on
+ * phone since design cycle 5), and the component derives
+ * which panels sit in the last row for each count and marks
+ * them with edge classes. The component renders the tick
+ * groups on every panel and these rules choose which show. */
 .cal-panel .tk-y,
 .cal-panel .tk-x {
   display: none;
@@ -1278,11 +1279,13 @@ body::before {
 .cal-panel:nth-child(4n + 1) .tk-y {
   display: block;
 }
-/* 39 panels: the last row holds 3, so the last three children
- * carry the x ticks (audit C-08 guards this arithmetic
- * against the panel count; the earlier -n + 4 also lit the
- * last panel of the row above, kev-4b). */
-.cal-panel:nth-last-child(-n + 3) .tk-x {
+/* The component marks the panels in the last row of the
+ * four-across grid with edge-x4, derived from the panel count
+ * at render time, and those panels carry the x ticks. A fixed
+ * count of trailing children broke whenever the population
+ * moved, first by lighting one panel too many and then, at 40
+ * panels, one too few. Audit C-08 guards the arithmetic. */
+.cal-panel.edge-x4 .tk-x {
   display: block;
 }
 .cal-empty {
@@ -1461,7 +1464,7 @@ body::before {
   .cal-grid .cal-panel:nth-child(2n + 1) .tk-y {
     display: block;
   }
-  .cal-grid .cal-panel:last-child .tk-x {
+  .cal-grid .cal-panel.edge-x2 .tk-x {
     display: block;
   }
 }
@@ -1479,7 +1482,7 @@ body::before {
   .cal-grid .cal-panel:nth-child(3n + 1) .tk-y {
     display: block;
   }
-  .cal-grid .cal-panel:nth-last-child(-n + 3) .tk-x {
+  .cal-grid .cal-panel.edge-x3 .tk-x {
     display: block;
   }
 }

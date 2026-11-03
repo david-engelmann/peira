@@ -2,9 +2,11 @@
 /**
  * DOM acceptance audit for the ranking prototype. Drives a
  * Chromium from the Playwright cache through puppeteer-core
- * against the static out/ directory, measures the built page at
- * 1440, 1280, 900, and 390, and checks the census and spec tests that
- * need a live layout:
+ * against the static out/ directory. The 1100 pass exercises the
+ * three-across calibration band, which no other audited width
+ * reaches. The audit measures the built page at 1440, 1280, 1100,
+ * 900, and 390, and checks the census and spec tests that need a
+ * live layout:
  *
  *  F-03  no two visible text boxes in the ranking come within
  *        2 px of each other (bounding-box intersection test over
@@ -716,7 +718,7 @@ for (const [rate, expected] of [
   }
 }
 
-for (const width of [1440, 1280, 900, 390]) {
+for (const width of [1440, 1280, 1100, 900, 390]) {
   await page.setViewport({ width, height: 900 });
   await new Promise((r) => setTimeout(r, 350));
 

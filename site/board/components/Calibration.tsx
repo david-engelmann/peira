@@ -28,17 +28,33 @@ const PH = 166;
 const PLOT = { x0: 34, x1: 292, y0: 12, y1: 130 };
 const r2 = (v: number) => Math.round(v * 100) / 100;
 
+/* The index at which the last row of a grid with the given
+ * column count starts, derived from the panel count. The grid
+ * runs four across on desktop, three in the middle band, and
+ * two in the narrow band, and the last row holds the remainder
+ * or a full row when the count divides evenly. The stylesheet
+ * shows the x ticks on exactly the panels carrying the edge
+ * class for its band, so the rule follows the population
+ * instead of naming a fixed number of trailing children. */
+function lastRowStart(count: number, cols: number): number {
+  const rem = count % cols;
+  return count - (rem === 0 ? cols : rem);
+}
+
 function Panel({
   entry,
   label,
+  edge,
 }: {
   entry: CalibRow;
   label: string;
+  edge: string;
 }) {
   const { row, data, isSlice } = entry;
   const classes = [
     "cal-panel",
     label.length + (isSlice ? 6 : 0) > 27 ? "long" : "",
+    edge,
   ]
     .filter(Boolean)
     .join(" ");
@@ -201,6 +217,9 @@ export default function Calibration() {
       ? `${coincidentNames.slice(0, -1).join(", ")} and ${coincidentNames[coincidentNames.length - 1]}`
       : (coincidentNames[0] ?? "");
   const versions = boardVersions();
+  const rowStart4 = lastRowStart(entries.length, 4);
+  const rowStart3 = lastRowStart(entries.length, 3);
+  const rowStart2 = lastRowStart(entries.length, 2);
 
   return (
     <section
@@ -260,16 +279,24 @@ export default function Calibration() {
           </ul>
         </nav>
         <div className="cal-grid">
-          {entries.map((e) => {
+          {entries.map((e, i) => {
             const name = shortName(e.row);
             const label = dupes.has(name)
               ? `${name} (${wireWords(e.row.wire)})`
               : name;
+            const edge = [
+              i >= rowStart4 ? "edge-x4" : "",
+              i >= rowStart3 ? "edge-x3" : "",
+              i >= rowStart2 ? "edge-x2" : "",
+            ]
+              .filter(Boolean)
+              .join(" ");
             return (
               <Panel
                 key={e.row.run_id}
                 entry={e}
                 label={label}
+                edge={edge}
               />
             );
           })}
