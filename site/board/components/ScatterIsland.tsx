@@ -399,6 +399,12 @@ function pointAccessibleName(d: ScatterDatum): string {
         }`,
   );
   if (d.benign !== null) parts.push(`benign accuracy ${fmtPct(d.benign)}`);
+  if (d.noAnswerNote !== null) {
+    parts.push(d.noAnswerNote.replace(/\.$/, ""));
+  }
+  if (d.singleCallNote !== null) {
+    parts.push(d.singleCallNote.replace(/\.$/, ""));
+  }
   return parts.join(", ");
 }
 
@@ -951,18 +957,22 @@ function listValues(d: ScatterDatum): string {
     : `Recorded cost ${fmtUsdExact(d.cost!)} per run${
         d.lowerBound ? ", a lower bound" : ""
       }.`;
+  const note =
+    [d.noAnswerNote, d.singleCallNote].filter(Boolean).join(" ") !== ""
+      ? ` ${[d.noAnswerNote, d.singleCallNote].filter(Boolean).join(" ")}`
+      : "";
   if (d.flagged) {
     if (d.decomp) {
-      return `Flagged, not ranked. Attack success ${fmtPct(d.asr)}, genuine flip rate ${fmtPct(d.decomp.genuineRate)}, with ${fmtPct(d.decomp.malformedShare)} of counted flips to malformed output. ${cost}`;
+      return `Flagged, not ranked. Attack success ${fmtPct(d.asr)}, genuine flip rate ${fmtPct(d.decomp.genuineRate)}, with ${fmtPct(d.decomp.malformedShare)} of counted flips to malformed output. ${cost}${note}`;
     }
     return `Flagged, not ranked${
       d.malformedRate !== null
         ? `. Malformed rate ${fmtPct(d.malformedRate)}`
         : ""
-    }. ${cost}`;
+    }. ${cost}${note}`;
   }
   const ci = d.ci !== null ? `, 95% CI ${fmtCi(d.ci)}` : "";
-  return `Attack success ${fmtPct(d.asr)}${ci}. ${cost}`;
+  return `Attack success ${fmtPct(d.asr)}${ci}. ${cost}${note}`;
 }
 
 /**
@@ -1157,6 +1167,18 @@ function HoverCard({
             <div className="sc-row">
               <span className="sc-k">Benign accuracy</span>
               <span className="sc-v num">{fmtPct(d.benign)}</span>
+            </div>
+          )}
+          {d.noAnswerNote !== null && (
+            <div className="sc-row">
+              <span className="sc-k">No answer</span>
+              <span className="sc-v">{d.noAnswerNote}</span>
+            </div>
+          )}
+          {d.singleCallNote !== null && (
+            <div className="sc-row">
+              <span className="sc-k">Failed call</span>
+              <span className="sc-v">{d.singleCallNote}</span>
             </div>
           )}
         </div>

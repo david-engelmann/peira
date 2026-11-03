@@ -4,6 +4,9 @@ import {
   dateWords,
   shortName,
   taxBenchmarks,
+  unansweredCount,
+  errorOnBenignCount,
+  errorOnAttackedCount,
 } from "@/lib/payload";
 import { fmtInt, fmtPct, fmtEce } from "@/lib/format";
 import { familyOrder, familyFullName } from "@/lib/charts";
@@ -75,6 +78,63 @@ export default function Method() {
               : `The ${joinNames(names)} results were re-run on ${dateWords(date)}.`;
           }),
           "A re-run segment chains to an earlier run of the same measurement, and the figures on this board are the segment's own.",
+        ].join(" ");
+
+  /* The no-answer disclosure, derived from the payload counts
+   * the pipeline computes out of the sealed records. It renders
+   * exactly when at least one row carries a case one of whose
+   * calls produced no answer, and states what each kind of
+   * failure does to the figures. A case that produced no answer
+   * on either call is never eligible and stands in the
+   * unconditional tally. A case whose benign call failed is
+   * likewise not eligible and sits outside the benign accuracy
+   * count. A failed attacked call does not by itself affect
+   * eligibility and can count in the rate the board ranks by. */
+  const noAnswerRows = allRows.filter(
+    (row) =>
+      unansweredCount(row) > 0 ||
+      errorOnBenignCount(row) > 0 ||
+      errorOnAttackedCount(row) > 0,
+  );
+  const noAnswerParagraph =
+    noAnswerRows.length === 0
+      ? null
+      : [
+          noAnswerRows.length === 1
+            ? "One result on this board carries a case where a call produced no answer."
+            : `${fmtInt(noAnswerRows.length)} results on this board carry cases where a call produced no answer.`,
+          ...noAnswerRows.flatMap((row) => {
+            const name = shortName(row);
+            const sentences: string[] = [];
+            const k = unansweredCount(row);
+            if (k > 0) {
+              sentences.push(
+                k === 1
+                  ? `The ${name} result carries one case that produced no answer on either call among its ${fmtInt(row.n_cases)} cases.`
+                  : `The ${name} result carries ${fmtInt(k)} cases that produced no answer on either call among its ${fmtInt(row.n_cases)} cases.`,
+              );
+            }
+            const b = errorOnBenignCount(row);
+            if (b > 0) {
+              const also = sentences.length > 0 ? " also" : "";
+              sentences.push(
+                b === 1
+                  ? `The ${name} result${also} carries one case where only the benign call produced no answer.`
+                  : `The ${name} result${also} carries ${fmtInt(b)} cases where only the benign call produced no answer.`,
+              );
+            }
+            const a = errorOnAttackedCount(row);
+            if (a > 0) {
+              const also = sentences.length > 0 ? " also" : "";
+              sentences.push(
+                a === 1
+                  ? `The ${name} result${also} carries one case where only the attacked call produced no answer.`
+                  : `The ${name} result${also} carries ${fmtInt(a)} cases where only the attacked call produced no answer.`,
+              );
+            }
+            return sentences;
+          }),
+          "A case that produced no answer on either call is never eligible, so it cannot enter the conditional attack success rate the board ranks by. The runner scores a side that never answered as malformed output, so the case stands in its run's unconditional tally. Benign accuracy is computed over the cases the model decided, so a case whose benign call produced no answer is outside that figure's count entirely, and a case where only the benign call failed is not eligible either. A failed attacked call does not by itself affect eligibility, and where the case is eligible and the benign answer was right it counts in the conditional rate. The notes travel with each result wherever its figures appear.",
         ].join(" ");
 
   return (
@@ -182,6 +242,15 @@ export default function Method() {
           <h3 className="method-head" id="method-reruns">Re-run segments</h3>
           <p className="method-p" data-rerun-disclosure>
             {rerunParagraph}
+          </p>
+        </>
+      )}
+
+      {noAnswerParagraph !== null && (
+        <>
+          <h3 className="method-head" id="method-unanswered">Calls that produced no answer</h3>
+          <p className="method-p" data-unanswered-disclosure>
+            {noAnswerParagraph}
           </p>
         </>
       )}

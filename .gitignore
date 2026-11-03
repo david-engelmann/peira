@@ -15,3 +15,7 @@ target/
 _core*.so
 _core*.pyd
 hidden_audit/
+# Board test harness scratch trees, created under site/ and
+# site/board/ by the integrity and generator test suites.
+site/.test-tmp-*/
+site/board/.test-tmp-*/

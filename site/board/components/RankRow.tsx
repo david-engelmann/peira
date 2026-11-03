@@ -4,6 +4,8 @@ import {
   wireWords,
   displayCi,
   flipDecomposition,
+  unansweredNote,
+  singleCallErrorNote,
 } from "@/lib/payload";
 import {
   fmtPct,
@@ -79,6 +81,14 @@ function rowAriaLabel(
     parts.push(
       `genuine flip rate ${fmtPct(decomp.genuineRate)}, with ${fmtPct(decomp.malformedShare)} of counted flips to malformed output`,
     );
+  }
+  const blockedNote = unansweredNote(row);
+  if (blockedNote !== null) {
+    parts.push(blockedNote.replace(/\.$/, ""));
+  }
+  const singleCall = singleCallErrorNote(row);
+  if (singleCall !== null) {
+    parts.push(singleCall.replace(/\.$/, ""));
   }
   return parts.join(", ");
 }
@@ -189,6 +199,8 @@ function NameBlock({
   aboveScale?: boolean;
 }) {
   const name = shortName(row);
+  const blockedNote = unansweredNote(row);
+  const singleCall = singleCallErrorNote(row);
   return (
     <div className="cell-name">
       <div className="name-line">
@@ -204,6 +216,12 @@ function NameBlock({
           {aboveScale &&
             ". Its rate sits above the chart's scale, so its whisker stops at the edge"}
         </div>
+      )}
+      {blockedNote !== null && (
+        <div className="meta-line">{blockedNote}</div>
+      )}
+      {singleCall !== null && (
+        <div className="meta-line">{singleCall}</div>
       )}
     </div>
   );

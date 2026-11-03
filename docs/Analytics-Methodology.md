@@ -248,6 +248,17 @@ with 40% ineligibility and 10% conditional ASR was attacked
 successfully on a much smaller and possibly easier slice than an
 adapter with 5% ineligibility and 15% conditional ASR.
 
+Reading the no-answer counts. Every leaderboard row carries three
+counts of cases whose calls produced no answer, split by which
+calls failed. A both-calls failure and a benign-only failure sit
+inside the benign malformed reason above, because the benign side
+never produced a readable answer. An attacked-only failure adds
+nothing to this breakdown by itself, because the breakdown keys
+on the benign side, and the failure does not by itself change a
+case's eligibility. Its attacked side reads as malformed output,
+so it can raise the conditional ASR of a run whose attacked calls
+failed. Read the counts before comparing the rates.
+
 ### Malformed rate
 
 Definition. The fraction of cases with any malformed call record,

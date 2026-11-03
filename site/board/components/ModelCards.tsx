@@ -8,6 +8,8 @@ import {
   displayCi,
   duplicateShortNames,
   flipDecomposition,
+  unansweredNote,
+  singleCallErrorNote,
   modelSlug,
   type BoardRow,
   type RankedRow,
@@ -63,6 +65,11 @@ function IndexSummary({
   const decomp = kind === "flagged" ? flipDecomposition(row) : null;
   const showFigure =
     row.asr_conditional !== null && (kind !== "flagged" || decomp !== null);
+  /* The no-answer disclosure travels with this summary too, in
+   * the visible text and in the accessible label alike, under
+   * the same carrier rule as the decomposition above. */
+  const noAnswer = unansweredNote(row);
+  const singleCall = singleCallErrorNote(row);
   const label = [
     name,
     dupes.has(name) ? wireWords(row.wire) : null,
@@ -77,6 +84,8 @@ function IndexSummary({
     row.malformed_rate !== null
       ? `malformed ${fmtPct(row.malformed_rate)}`
       : null,
+    noAnswer !== null ? noAnswer.replace(/\.$/, "") : null,
+    singleCall !== null ? singleCall.replace(/\.$/, "") : null,
   ]
     .filter(Boolean)
     .join(", ");
@@ -150,6 +159,12 @@ function IndexSummary({
           Details
         </span>
       </span>
+      {noAnswer !== null && (
+        <span className="idx-note">{noAnswer}</span>
+      )}
+      {singleCall !== null && (
+        <span className="idx-note">{singleCall}</span>
+      )}
     </summary>
   );
 }

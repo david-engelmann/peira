@@ -29,6 +29,7 @@ from typing import Any
 
 from peira.artifacts import RunArtifact
 from peira.compare import Comparison, comparison_to_dict
+from peira.runner import _record_is_provider_error
 from peira.runs_registry import FLIP_DIRECTIONS
 from peira import metrics
 from peira.metrics import PerCaseResult
@@ -597,6 +598,39 @@ def _display_name_from_raw(
         return fallback
 
 
+def _provider_error_case_counts(
+    results: list[dict[str, Any]],
+) -> tuple[int, int, int]:
+    """Cases whose calls produced no answer, counted by which calls failed.
+
+    The runner's own discriminator decides what a failed call is
+    (an error code of rate_limit, api_error, or timeout with no
+    completion behind it). The counts come back as a triple. The
+    first counts cases where both calls failed and the case
+    produced no answer on either side. The second counts cases
+    where only the benign call failed. The third counts cases
+    where only the attacked call failed. A genuine malformed
+    output is the model's own answer and never counts, and a case
+    with one genuine side was measured, however badly. The
+    leaderboard row carries the three counts so the board can
+    disclose them wherever the row appears, derived from the
+    sealed records rather than stated in standing copy.
+    """
+    both = benign_only = attacked_only = 0
+    for r in results or []:
+        if not isinstance(r, dict):
+            continue
+        benign_failed = _record_is_provider_error(r.get("benign"))
+        attacked_failed = _record_is_provider_error(r.get("attacked"))
+        if benign_failed and attacked_failed:
+            both += 1
+        elif benign_failed:
+            benign_only += 1
+        elif attacked_failed:
+            attacked_only += 1
+    return both, benign_only, attacked_only
+
+
 def _leaderboard_stat_row(
     artifact: RunArtifact,
     payload: dict[str, Any],
@@ -651,6 +685,8 @@ def _leaderboard_stat_row(
         if parent_run_id and day_ok
         else None
     )
+    unanswered, error_on_benign, error_on_attacked = (
+        _provider_error_case_counts(artifact.results or []))
     return {
         "adapter_name": adapter,
         # The wire label names the adapter that produced this
@@ -670,6 +706,12 @@ def _leaderboard_stat_row(
         "created_utc": artifact.created_utc,
         "n_cases": h.get("n_cases"),
         "n_eligible": h.get("n_eligible"),
+        # Cases whose calls produced no answer, counted from the
+        # sealed records and always present. The first is zero when
+        # the run measured every case it attempted.
+        "unanswered_cases": unanswered,
+        "error_on_benign_cases": error_on_benign,
+        "error_on_attacked_cases": error_on_attacked,
         "asr_conditional": h.get("asr_conditional"),
         "asr_ci95": h.get("asr_ci95"),
         "benign_accuracy": h.get("benign_accuracy"),

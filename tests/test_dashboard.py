@@ -369,6 +369,69 @@ class TestLeaderboard(unittest.TestCase):
             self.assertEqual(lb["ranked"][0]["adapter_name"], "adapter-a")
             self.assertEqual(lb["ranked"][1]["adapter_name"], "adapter-b")
 
+    def test_unanswered_cases_fields(self):
+        # A case whose calls both failed is counted as unanswered
+        # on the row, a case with one failed call is counted on
+        # that call's field, and every other row carries the three
+        # fields at zero.
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            self._write(tmp_path, "a.json", "adapter-a", 0.2)
+            blocked = _result_entry(
+                case_id="blocked-c000",
+                benign=_call_record(
+                    decision="<error>", error_code="api_error",
+                    usage=None, completion_hash=""),
+                attacked=_call_record(
+                    decision="<error>", error_code="api_error",
+                    usage=None, completion_hash="", dispatch_index=1),
+                flipped=True, eligible=False,
+                ineligibility_reason="benign_malformed",
+            )
+            attacked_only = _result_entry(
+                case_id="attacked-only-c201",
+                benign=_call_record(decision="deny"),
+                attacked=_call_record(
+                    decision="<error>", error_code="api_error",
+                    usage=None, completion_hash="", dispatch_index=1),
+                flipped=True, eligible=True,
+            )
+            results = [
+                _result_entry(
+                    case_id=f"adapter-b-c{i:03d}",
+                    family="indirection",
+                    flipped=(i % 2 == 0),
+                    attacked=_call_record(
+                        decision="deny" if i % 2 == 0 else "approve"),
+                )
+                for i in range(200)
+            ]
+            results.append(blocked)
+            results.append(attacked_only)
+            art = _make_artifact(
+                adapter_name="adapter-b",
+                adapter_version="adapter-b-1.0",
+                results=results,
+                metrics=_metrics(
+                    n_cases=202, n_eligible=201, asr_conditional=0.5,
+                    ranking_eligible=True,
+                    required_families=["indirection"]),
+            )
+            (tmp_path / "b.json").write_text(art.to_json())
+            scan_runs(tmp)
+            lb = leaderboard(tmp)
+            by_adapter = {r["adapter_name"]: r for r in lb["ranked"]}
+            self.assertEqual(
+                by_adapter["adapter-b"]["unanswered_cases"], 1)
+            self.assertEqual(
+                by_adapter["adapter-b"]["error_on_benign_cases"], 0)
+            self.assertEqual(
+                by_adapter["adapter-b"]["error_on_attacked_cases"], 1)
+            self.assertEqual(
+                by_adapter["adapter-a"]["unanswered_cases"], 0)
+            self.assertEqual(
+                by_adapter["adapter-a"]["error_on_attacked_cases"], 0)
+
     def test_shared_adapter_name_keeps_distinct_models(self):
         # P1.1: models sharing an adapter_name (e.g. all OpenRouter
         # models use "openrouter-structured") must each appear, deduped
@@ -659,6 +722,82 @@ class TestLeaderboard(unittest.TestCase):
                              "qwen/qwen3-235b-a22b-2507")
             self.assertEqual(lb["unranked"][0]["display_name"],
                              "bad-model-2.0")
+
+
+class TestProviderErrorCaseCounts(unittest.TestCase):
+    def _error_record(self, **over):
+        record = {
+            "decision": "<error>",
+            "error_code": "api_error",
+            "usage": None,
+            "completion_hash": "",
+        }
+        record.update(over)
+        return record
+
+    def test_both_arms_provider_error_counts_as_unanswered(self):
+        from peira.dashboard import _provider_error_case_counts
+
+        results = [{
+            "case_id": "c1",
+            "benign": self._error_record(),
+            "attacked": self._error_record(),
+        }]
+        self.assertEqual(_provider_error_case_counts(results), (1, 0, 0))
+
+    def test_single_arm_errors_count_on_their_own_fields(self):
+        from peira.dashboard import _provider_error_case_counts
+
+        results = [
+            {"case_id": "c1",
+             "benign": self._error_record(),
+             "attacked": _call_record(decision="deny")},
+            {"case_id": "c2",
+             "benign": _call_record(decision="deny"),
+             "attacked": self._error_record()},
+        ]
+        self.assertEqual(_provider_error_case_counts(results), (0, 1, 1))
+
+    def test_genuine_malformed_does_not_count(self):
+        # A parse failure is the model's own output and never
+        # counts, even beside a provider-error arm.
+        from peira.dashboard import _provider_error_case_counts
+
+        malformed = self._error_record(
+            error_code="parse_failure", completion_hash="abc123",
+            usage={"tokens_in": 10})
+        results = [{
+            "case_id": "c1",
+            "benign": self._error_record(),
+            "attacked": malformed,
+        }]
+        self.assertEqual(_provider_error_case_counts(results), (0, 1, 0))
+
+    def test_completion_hash_disqualifies_a_provider_code(self):
+        # The discriminator's hash guard in isolation. A record
+        # carrying a provider error code and a completion hash has
+        # a completion behind it, so it is not a failed call.
+        from peira.dashboard import _provider_error_case_counts
+
+        hashed = self._error_record(completion_hash="abc123")
+        results = [{
+            "case_id": "c1",
+            "benign": hashed,
+            "attacked": hashed,
+        }]
+        self.assertEqual(_provider_error_case_counts(results), (0, 0, 0))
+
+    def test_timeout_counts_and_missing_arms_are_safe(self):
+        from peira.dashboard import _provider_error_case_counts
+
+        results = [
+            {"case_id": "c1",
+             "benign": self._error_record(error_code="timeout"),
+             "attacked": self._error_record(error_code="rate_limit")},
+            {"case_id": "c2", "benign": self._error_record()},
+            {"case_id": "c3"},
+        ]
+        self.assertEqual(_provider_error_case_counts(results), (1, 1, 0))
 
 
 class TestLeaderboardRerunProvenance(unittest.TestCase):
