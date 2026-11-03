@@ -354,6 +354,30 @@ export default function Compare({ data }: { data: CompareData }) {
           );
         })}
 
+      {(
+        [
+          ["a", a],
+          ["b", b],
+        ] as const
+      )
+        .filter(
+          ([, row]) => row.unanswered !== null || row.singleCall !== null,
+        )
+        .map(([side, row]) => {
+          const label = row.wire ? `${row.name} (${row.wire})` : row.name;
+          return (
+            <p
+              key={side}
+              className="cmp-note"
+              data-cmp-unanswered-note={side}
+            >
+              {label}
+              {row.unanswered !== null ? `. ${row.unanswered}` : ""}
+              {row.singleCall !== null ? ` ${row.singleCall}` : ""}
+            </p>
+          );
+        })}
+
       <div className="cmp-families">
         {data.familyNames.map((fname, i) => (
           <div className="cmp-fam" key={data.familyKeys[i]}>

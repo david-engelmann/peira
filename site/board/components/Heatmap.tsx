@@ -8,6 +8,8 @@ import {
   duplicateShortNames,
   flipDecomposition,
   familyFlipDecomposition,
+  unansweredNote,
+  singleCallErrorNote,
   type BoardRow,
   type RankedRow,
   type FlipDecomposition,
@@ -260,11 +262,17 @@ export default function Heatmap() {
             const name = dupes.has(shortName(row))
               ? `${shortName(row)} (${wireWords(row.wire)})`
               : shortName(row);
+            /* The caption states the whole-row figure, so the
+             * no-answer disclosures travel with it as they do on
+             * every other whole-row surface. */
+            const tail = [unansweredNote(row), singleCallErrorNote(row)]
+              .filter(Boolean)
+              .join(" ");
             return (
               <p key={row.run_id}>
                 {d
-                  ? `${name}, flagged and not ranked, attack success ${fmtPct(row.asr_conditional!)}, genuine flip rate ${fmtPct(d.genuineRate)}, with ${fmtPct(d.malformedShare)} of counted flips to malformed output.`
-                  : `${name}, flagged and not ranked. No whole-row figure is stated, because the sealed records do not derive its malformed decomposition. Any family figure in the grid carries its own decomposition in its title.`}
+                  ? `${name}, flagged and not ranked, attack success ${fmtPct(row.asr_conditional!)}, genuine flip rate ${fmtPct(d.genuineRate)}, with ${fmtPct(d.malformedShare)} of counted flips to malformed output.${tail ? ` ${tail}` : ""}`
+                  : `${name}, flagged and not ranked. No whole-row figure is stated, because the sealed records do not derive its malformed decomposition. Any family figure in the grid carries its own decomposition in its title.${tail ? ` ${tail}` : ""}`}
               </p>
             );
           })}

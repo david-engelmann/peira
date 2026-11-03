@@ -14,7 +14,7 @@
  */
 
 import payloadData from "@/data/payload.json";
-import { quantizeHalfUp } from "@/lib/format";
+import { fmtInt, quantizeHalfUp } from "@/lib/format";
 
 /** Expand a number to a plain decimal string (no exponent). */
 function decimalString(value: number): string {
@@ -234,6 +234,21 @@ export interface BoardRow {
   malformed_rate: number | null;
   n_cases: number;
   n_eligible: number;
+  /**
+   * Cases that produced no answer on either call, counted by
+   * the pipeline from the sealed records. Both calls failed,
+   * whether the provider refused them, the call failed, or the
+   * call ran past its time budget. Absent on payloads built
+   * before the pipeline emitted it.
+   */
+  unanswered_cases?: number;
+  /**
+   * Cases where only the benign call produced no answer, and
+   * cases where only the attacked call produced no answer,
+   * counted the same way. Absent on older payloads.
+   */
+  error_on_benign_cases?: number;
+  error_on_attacked_cases?: number;
   /** Null on slice rows and absent on unranked rows. */
   robustness_tax: number | null;
   /** Null for runs with no recorded serving cost. */
@@ -253,6 +268,66 @@ export interface BoardRow {
   rerun?: { parent_run_id: string; date: string } | null;
   provenance: unknown;
   detail: unknown;
+}
+
+/** The count of cases that produced no answer on either call. */
+export function unansweredCount(row: BoardRow): number {
+  return countOf(row.unanswered_cases) ?? 0;
+}
+
+/** The count of cases where only the benign call failed. */
+export function errorOnBenignCount(row: BoardRow): number {
+  return countOf(row.error_on_benign_cases) ?? 0;
+}
+
+/** The count of cases where only the attacked call failed. */
+export function errorOnAttackedCount(row: BoardRow): number {
+  return countOf(row.error_on_attacked_cases) ?? 0;
+}
+
+/**
+ * The no-answer disclosure for a row, or null when the run
+ * measured every case it attempted. The count comes from the
+ * payload and the sentence is stated once here, so the rank
+ * table, the model card, the index summary, and the accessible
+ * names all carry the same words wherever the row appears.
+ */
+export function unansweredNote(row: BoardRow): string | null {
+  const unanswered = unansweredCount(row);
+  if (unanswered === 0) return null;
+  /* The suite's size is stated once, in the method section, so
+   * the row's note carries the unanswered count alone. */
+  return unanswered === 1
+    ? `One case produced no answer on either call and is carried as a disclosed error. It never enters the attack success rate.`
+    : `${fmtInt(unanswered)} cases produced no answer on either call and are carried as disclosed errors. They never enter the attack success rate.`;
+}
+
+/**
+ * The single-call failure disclosure for a row, or null when
+ * every case in the run produced an answer on at least one
+ * call. Stated once here for the surfaces that state a result's
+ * figures beside its peers.
+ */
+export function singleCallErrorNote(row: BoardRow): string | null {
+  const benign = errorOnBenignCount(row);
+  const attacked = errorOnAttackedCount(row);
+  if (benign === 0 && attacked === 0) return null;
+  const parts: string[] = [];
+  if (benign > 0) {
+    parts.push(
+      benign === 1
+        ? `one case where the benign call produced no answer`
+        : `${fmtInt(benign)} cases where the benign call produced no answer`,
+    );
+  }
+  if (attacked > 0) {
+    parts.push(
+      attacked === 1
+        ? `one case where the attacked call produced no answer`
+        : `${fmtInt(attacked)} cases where the attacked call produced no answer`,
+    );
+  }
+  return `The run carries ${parts.join(" and ")}.`;
 }
 
 export interface BoardPayload {

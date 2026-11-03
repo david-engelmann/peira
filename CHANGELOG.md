@@ -7,6 +7,18 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
 
 ## [Unreleased]
 
+### No-answer case disclosure on the leaderboard
+
+- Leaderboard rows now carry three counts of cases whose calls
+  produced no answer, derived from the sealed records with the
+  runner's provider-error discriminator. One counts the cases
+  where both calls failed, and the other two count the cases
+  where only the benign call or only the attacked call failed.
+  The board discloses the counts wherever a result's figures
+  appear, and the method notes state what each kind of failure
+  does to the figures. The ranking rules and every reported
+  figure are unchanged.
+
 ### Fix-forward for the publish dress rehearsal
 
 - The integrity check's re-run disclosure port now derives

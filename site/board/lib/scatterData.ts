@@ -14,6 +14,8 @@ import {
   wireWords,
   displayCi,
   flipDecomposition,
+  unansweredNote,
+  singleCallErrorNote,
   duplicateShortNames,
   type BoardRow,
   type FlipDecomposition,
@@ -50,6 +52,12 @@ export interface ScatterDatum {
    * one, whose figures then print nowhere on the scatter.
    */
   decomp: FlipDecomposition | null;
+  /** The row's no-answer disclosures, stated by lib/payload, or
+   *  null when the run answered every call. The point's title,
+   *  its accessible name, its list values, and its detail card
+   *  all carry them, the same travel rule as the decomposition. */
+  noAnswerNote: string | null;
+  singleCallNote: string | null;
   /** The row's malformed response rate, for the detail card of
    *  a flagged point whose figure is not stated. */
   malformedRate: number | null;
@@ -143,16 +151,21 @@ function pointTitle(
 ): string {
   const name = shortName(row);
   const cost = costClause(row, rail);
+  const notes = [unansweredNote(row), singleCallErrorNote(row)]
+    .filter(Boolean)
+    .join(" ");
+  const withNote = (title: string) =>
+    notes !== "" ? `${title}. ${notes}` : title;
   if (!row.ranking_eligible) {
     /* A flagged point's figure travels only with its
      * decomposition (C-5); where the sealed records do not
      * derive one, the title states the standing and no figure. */
     if (decomp) {
-      return `${name}, attack success ${fmtPct(row.asr_conditional!)}, genuine flip rate ${fmtPct(decomp.genuineRate)}, with ${fmtPct(decomp.malformedShare)} of counted flips to malformed output, ${cost}`;
+      return withNote(`${name}, attack success ${fmtPct(row.asr_conditional!)}, genuine flip rate ${fmtPct(decomp.genuineRate)}, with ${fmtPct(decomp.malformedShare)} of counted flips to malformed output, ${cost}`);
     }
-    return `${name}, flagged and not ranked, ${cost}`;
+    return withNote(`${name}, flagged and not ranked, ${cost}`);
   }
-  return `${name}, attack success ${fmtPct(row.asr_conditional!)}, ${cost}`;
+  return withNote(`${name}, attack success ${fmtPct(row.asr_conditional!)}, ${cost}`);
 }
 
 function shape(row: BoardRow, rail: boolean, dupes: Set<string>): ScatterDatum {
@@ -171,6 +184,8 @@ function shape(row: BoardRow, rail: boolean, dupes: Set<string>): ScatterDatum {
     rail,
     flagged: !row.ranking_eligible,
     decomp,
+    noAnswerNote: unansweredNote(row),
+    singleCallNote: singleCallErrorNote(row),
     malformedRate: row.malformed_rate ?? null,
     color: family.color,
     glyph: family.glyph,

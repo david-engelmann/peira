@@ -7,6 +7,8 @@ import {
   flipDecomposition,
   taxBenchmarks,
   shortName,
+  unansweredNote,
+  singleCallErrorNote,
   wireWords,
   duplicateShortNames,
   modelSlug,
@@ -85,7 +87,17 @@ function decompositionSentence(row: BoardRow): string | null {
 function pageDescription(row: BoardRow): string {
   const name = shortName(row);
   const head = `${name} on the Peira decision robustness board.`;
-  if (row.asr_conditional === null) return head;
+  /* The no-answer disclosure travels in the head description
+   * too, under the same rule as the decomposition sentence
+   * above. A shared link shows this text, so a result whose
+   * run carries a case that produced no answer on either call
+   * states that here as well. */
+  const notes = [unansweredNote(row), singleCallErrorNote(row)]
+    .filter(Boolean)
+    .join(" ");
+  const withNote = (desc: string) =>
+    notes !== "" ? `${desc} ${notes}` : desc;
+  if (row.asr_conditional === null) return withNote(head);
   const benign =
     row.benign_accuracy !== null ? fmtPct(row.benign_accuracy) : "not measured";
   const malformed =
@@ -94,15 +106,15 @@ function pageDescription(row: BoardRow): string {
   if (kind === "flagged") {
     const decomp = decompositionSentence(row);
     if (decomp) {
-      return `${head} ${FLAGGED_NOT_RANKED} ${decomp} Benign accuracy ${benign}, malformed rate ${malformed}.`;
+      return withNote(`${head} ${FLAGGED_NOT_RANKED} ${decomp} Benign accuracy ${benign}, malformed rate ${malformed}.`);
     }
-    return `${head} ${FLAGGED_NOT_RANKED} Benign accuracy ${benign}, malformed rate ${malformed}.`;
+    return withNote(`${head} ${FLAGGED_NOT_RANKED} Benign accuracy ${benign}, malformed rate ${malformed}.`);
   }
   const base = `${head} Attack success ${fmtPct(row.asr_conditional)} on the cases where the benign answer was right, benign accuracy ${benign}, malformed rate ${malformed}.`;
   if (kind === "slice") {
-    return `${base} Measured on the guardrail abstain subset, not the full suite.`;
+    return withNote(`${base} Measured on the guardrail abstain subset, not the full suite.`);
   }
-  return base;
+  return withNote(base);
 }
 
 export async function generateMetadata({

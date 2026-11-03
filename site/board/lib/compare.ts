@@ -21,6 +21,8 @@ import {
   flipDecomposition,
   modelSlug,
   shortName,
+  singleCallErrorNote,
+  unansweredNote,
   wireWords,
 } from "@/lib/payload";
 import { calibrationArmsOf, familiesOf, familyFullName, familyOrder } from "@/lib/charts";
@@ -61,6 +63,11 @@ export interface CompareRow {
    * headline figure may travel only with this stated beside
    * it (C-5). */
   decomp: { genuine: number; malformedShare: number } | null;
+  /** The no-answer disclosures lib/payload states for the row,
+   * carried so a compared result's figures never travel without
+   * them either. Null when the run answered every call. */
+  unanswered: string | null;
+  singleCall: string | null;
   /** Per-family flip decompositions aligned with families,
    * for flagged rows. A null entry is a family whose records
    * do not derive a decomposition, and its figure is not
@@ -124,6 +131,8 @@ function shapeRow(
     latP50: row.latency_ms_p50_attacked ?? null,
     latP95: row.latency_ms_p95_attacked ?? null,
     families: famKeys.map((k) => fams.get(k)?.asr ?? null),
+    unanswered: unansweredNote(row),
+    singleCall: singleCallErrorNote(row),
     decomp:
       decomp === null
         ? null

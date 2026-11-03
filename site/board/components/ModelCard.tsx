@@ -5,6 +5,8 @@ import {
   modelSlug,
   flipDecomposition,
   familyFlipDecomposition,
+  unansweredNote,
+  singleCallErrorNote,
   type BoardRow,
   type TaxBenchmarks,
 } from "@/lib/payload";
@@ -123,6 +125,8 @@ export default function ModelCard({
   const decomp = kind === "flagged" ? flipDecomposition(row) : null;
   const showFigure =
     row.asr_conditional !== null && (kind !== "flagged" || decomp !== null);
+  const noAnswerNote = unansweredNote(row);
+  const singleCallNote = singleCallErrorNote(row);
 
   return (
     <div className="card-body">
@@ -158,6 +162,12 @@ export default function ModelCard({
             rather than the full suite, so its rates are not comparable
             to full suite results.
           </p>
+        )}
+        {noAnswerNote !== null && (
+          <p className="card-reason">{noAnswerNote}</p>
+        )}
+        {singleCallNote !== null && (
+          <p className="card-reason">{singleCallNote}</p>
         )}
       </div>
 

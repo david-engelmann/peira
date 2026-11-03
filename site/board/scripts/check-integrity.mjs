@@ -1110,6 +1110,53 @@ function assertCardText(blockText, row, where) {
   }
   if (row.benign_accuracy !== null) need(fmtPct(row.benign_accuracy), "benign accuracy");
   if (row.malformed_rate !== null) need(fmtPct(row.malformed_rate), "malformed rate");
+  /* The no-answer disclosure. A row whose sealed records carry
+   * a case that produced no answer on either call states the
+   * disclosure on its card, in the words lib/payload states
+   * once. The expectation derives from the payload count the
+   * same way the component derives the note, so a card that
+   * stops printing the note fails here. */
+  const unanswered =
+    Number.isInteger(row.unanswered_cases) && row.unanswered_cases >= 0
+      ? row.unanswered_cases
+      : 0;
+  if (unanswered === 1) {
+    need("One case produced no answer on either call", "no-answer disclosure");
+    need("It never enters the attack success rate", "no-answer consequence");
+  } else if (unanswered > 1) {
+    need(
+      `${fmtIntC(unanswered)} cases produced no answer on either call`,
+      "no-answer disclosure",
+    );
+    need("They never enter the attack success rate", "no-answer consequence");
+  }
+  /* The single-call failures travel on the card too, in the
+   * clause lib/payload states once. */
+  const errBenign =
+    Number.isInteger(row.error_on_benign_cases) && row.error_on_benign_cases >= 0
+      ? row.error_on_benign_cases
+      : 0;
+  if (errBenign === 1) {
+    need("one case where the benign call produced no answer", "benign-call failure disclosure");
+  } else if (errBenign > 1) {
+    need(
+      `${fmtIntC(errBenign)} cases where the benign call produced no answer`,
+      "benign-call failure disclosure",
+    );
+  }
+  const errAttacked =
+    Number.isInteger(row.error_on_attacked_cases) &&
+    row.error_on_attacked_cases >= 0
+      ? row.error_on_attacked_cases
+      : 0;
+  if (errAttacked === 1) {
+    need("one case where the attacked call produced no answer", "attacked-call failure disclosure");
+  } else if (errAttacked > 1) {
+    need(
+      `${fmtIntC(errAttacked)} cases where the attacked call produced no answer`,
+      "attacked-call failure disclosure",
+    );
+  }
   /* The card prints no case counts: the suite's size is stated
    * once, in the method section (owner, 2026-10-25). Eligibility
    * still reaches the card through the rates themselves and the
@@ -2123,6 +2170,27 @@ if (heat13) {
       fail(
         `heatmap notes: the flagged decomposition line for ${row.run_id} is missing or misstated (expected "${note.slice(0, 110)}")`,
       );
+    }
+    /* The caption states the whole-row figure, so a flagged row
+     * with a no-answer count carries the disclosure in the same
+     * caption. The expectation derives from the payload count
+     * the same way the component derives the note. */
+    const unanswered13 =
+      Number.isInteger(row.unanswered_cases) && row.unanswered_cases >= 0
+        ? row.unanswered_cases
+        : 0;
+    if (unanswered13 === 1) {
+      if (!heatText13.includes("One case produced no answer on either call")) {
+        fail(`heatmap notes: the no-answer disclosure for ${row.run_id} is missing from its caption`);
+      }
+    } else if (unanswered13 > 1) {
+      if (
+        !heatText13.includes(
+          `${fmtIntC(unanswered13)} cases produced no answer on either call`,
+        )
+      ) {
+        fail(`heatmap notes: the no-answer disclosure for ${row.run_id} is missing from its caption`);
+      }
     }
   }
 }
