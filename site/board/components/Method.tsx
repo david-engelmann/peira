@@ -144,14 +144,14 @@ export default function Method() {
       data-section="method"
       id="method"
     >
-      <p className="section-label">Method and notes</p>
-      <h2 className="section-title" id="method-title">
-        How the board was measured
-      </h2>
-      <p className="section-lede">
-        The definitions and rules every figure on this page rests on,
-        stated once, in the order a reader meets them.
-      </p>
+      <div className="sechead">
+        <div className="micro">09 · Method and notes</div>
+        <h2 id="method-title">How the board was measured</h2>
+        <p className="cap">
+          The definitions and rules every figure on this page rests on,
+          stated once, in the order a reader meets them.
+        </p>
+      </div>
 
       <h3 className="method-head" id="method-case">What a case is</h3>
       <p className="method-p">

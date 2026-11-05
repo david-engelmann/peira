@@ -213,17 +213,17 @@ export default function Heatmap() {
       data-section="heatmap"
       id="families"
     >
-      <p className="section-label">Attack families</p>
-      <h2 className="section-title" id="heatmap-title">
-        Where the attacks land
-      </h2>
-      <p className="section-lede">
+      <div className="sechead">
+        <div className="micro">05 · Families</div>
+        <h2 id="heatmap-title">Where the attacks land</h2>
+        <p className="cap">
         Attack success by family for every result. Rows follow the
         ranking's groups and order, with {fmtInt(groups.full.length)} full suite results, {fmtInt(groups.flagged.length)} flagged results, and {fmtInt(groups.slices.length)} guardrail slices.
         Columns run from the family that lands most often across the
         field to the one that lands least, and every cell prints its
         rate, so the shading never carries a number alone.
-      </p>
+        </p>
+      </div>
       <p className="scroll-hint" aria-hidden="true">
         The families continue to the right
       </p>

@@ -16,6 +16,7 @@ import {
   fmtDeltaUsd,
   fmtDeltaMs,
 } from "@/lib/format";
+import { axisPct } from "@/lib/chart";
 
 /**
  * Compare (design system section 4.6). Two pickers, a metric
@@ -213,6 +214,62 @@ export default function Compare({ data }: { data: CompareData }) {
           are not measured on the same base.
         </p>
       )}
+
+      <div className="cmp-heads">
+        {(
+          [
+            ["a", a],
+            ["b", b],
+          ] as const
+        ).map(([side, row]) => {
+          const suppressed =
+            row.group === "flagged" && row.decomp === null;
+          const showAsr = row.asr !== null && !suppressed;
+          return (
+            <div className="cmp-insp" key={side} data-cmp-head={side}>
+              <div className="cmp-insp-top">
+                <MarkChip row={row} />
+                <div>
+                  <p className="cmp-insp-name">
+                    {row.name}
+                    {row.wire && (
+                      <span className="cmp-insp-wire"> {row.wire}</span>
+                    )}
+                  </p>
+                  <p className="cmp-insp-standing">
+                    {row.group === "flagged"
+                      ? "Flagged, not ranked"
+                      : row.group === "slice"
+                        ? "Guardrail slice, abstain subset"
+                        : "Full suite"}
+                  </p>
+                </div>
+              </div>
+              <p className="cmp-insp-fig">
+                <span className="fl">Attack success</span>
+                <span className="v num">
+                  {showAsr ? fmtPct(row.asr!) : "·"}
+                </span>
+              </p>
+              {showAsr && row.ci !== null && (
+                <span className="wtrack cmp-wtrack" aria-hidden="true">
+                  <span
+                    className="wci"
+                    style={{
+                      left: `${axisPct(row.ci[0], data.axisMax)}%`,
+                      width: `${Math.max(0, axisPct(row.ci[1], data.axisMax) - axisPct(row.ci[0], data.axisMax))}%`,
+                    }}
+                  />
+                  <span
+                    className="wpt"
+                    style={{ left: `${axisPct(row.asr!, data.axisMax)}%` }}
+                  />
+                </span>
+              )}
+            </div>
+          );
+        })}
+      </div>
 
       <table className="cmp-table">
         <thead>
