@@ -18,7 +18,8 @@ import VendorLogo from "./VendorLogo";
  * output passes 5 percent of its attacked responses; flagged
  * results keep every number and are not ranked. The band
  * leads with the flagged result whose counted rate sits
- * highest, its flips split into malformed output and genuine
+ * highest, named at the panel head with its vendor mark,
+ * its flips split into malformed output and genuine
  * flips at display size, then lists the rest with their
  * counted figures. Every flagged figure travels with its
  * flip decomposition on the same surface (C-5): where the
@@ -75,6 +76,7 @@ export default function FlaggedBand() {
   );
   if (flagged.length === 0) return null;
   const lead = flagged[0];
+  const leadName = shortName(lead);
   const rest = flagged.slice(1);
   const leadDecomp = flipDecomposition(lead);
   const leadCi = displayCi(lead);
@@ -100,6 +102,15 @@ export default function FlaggedBand() {
       {leadDecomp !== null && lead.asr_conditional !== null ? (
         <div className="flaglead" data-run-id={lead.run_id}>
           <div>
+            <div className="idrow">
+              <VendorLogo row={lead} size="card" />
+              <div className="nm">
+                {leadName}
+                {dupes.has(leadName) && (
+                  <span className="sub">{wireWords(lead.wire)}</span>
+                )}
+              </div>
+            </div>
             <div className="micro amber">Flagged · over the malformed limit</div>
             <div className="big num-display">{fmtPct(lead.asr_conditional)}</div>
             <p className="facts">

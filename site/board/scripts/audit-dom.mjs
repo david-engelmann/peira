@@ -14,7 +14,9 @@
  *        in its accessible name; the fold line states the
  *        count it hides and hides exactly that many; tie
  *        brackets ride the rows the independent band
- *        derivation brackets.
+ *        derivation brackets. A rail row carrying a
+ *        both-arms no-answer case shows the note builder's
+ *        note in view and in its accessible name.
  *  Inspector. The default reading is a ranked result whose
  *        figures recompute from the payload. Selecting a
  *        rail row, a scatter disc, or a phone mini-row loads
@@ -256,6 +258,17 @@ const axisMaxA = (() => {
 /* The flip decomposition, derived the board's way. */
 const countOfA = (x) =>
   typeof x === "number" && Number.isInteger(x) && x >= 0 ? x : null;
+/* The no-answer note the payload's note builder states for
+ * a row, rebuilt here from the row's own both-arms count so
+ * the rail's printed note and accessible name can be tied
+ * to the builder without importing the code under audit. */
+const unansweredNoteA = (r) => {
+  const k = countOfA(r.unanswered_cases) ?? 0;
+  if (k === 0) return null;
+  return k === 1
+    ? "One case produced no answer on either call and is carried as a disclosed error. It never enters the attack success rate."
+    : `${fmtIntA(k)} cases produced no answer on either call and are carried as disclosed errors. They never enter the attack success rate.`;
+};
 function flipDecompositionA(r) {
   const printed = r.asr_conditional;
   if (printed === null || printed === undefined) return null;
@@ -538,6 +551,9 @@ async function desktopChecks(page) {
         id: el.getAttribute("data-run-id"),
         aria: el.getAttribute("aria-label") ?? "",
         atk: el.querySelector(".atk")?.textContent ?? "",
+        notes: [...el.querySelectorAll(".nm .note")].map((n) =>
+          n.textContent.replace(/\s+/g, " ").trim(),
+        ),
         hidden: el.hidden,
         /* Rows after the guard group head are the slice
          * group; the fold lines are per group, so the fold
@@ -566,6 +582,30 @@ async function desktopChecks(page) {
     if (ci && !row.aria.includes(`${fmtPctA(ci[0])}`)) {
       fail(`ranking row ${labelA(src)} accessible name lacks its interval`);
     }
+  }
+  /* Rail notes tied to the payload note builders. A row
+   * whose run carries a case that produced no answer on
+   * either call shows the note the builder states for its
+   * count, in view and in its accessible name. The current
+   * payload's carrier on the rail is the grok run. The tie
+   * fails closed when no rail row carries such a case, so
+   * it can never pass by holding nothing. */
+  let noteCarriers = 0;
+  for (const row of railRows) {
+    const src = byRunIdA.get(row.id);
+    if (!src) continue;
+    const expected = unansweredNoteA(src);
+    if (expected === null) continue;
+    noteCarriers += 1;
+    if (!row.notes.includes(expected)) {
+      fail(`ranking row ${labelA(src)} does not show its no-answer note in view`);
+    }
+    if (!row.aria.includes(expected.replace(/\.$/, ""))) {
+      fail(`ranking row ${labelA(src)} accessible name lacks its no-answer note`);
+    }
+  }
+  if (noteCarriers === 0) {
+    fail("no ranking rail row carries a both-arms no-answer case, so the rail note tie binds nothing");
   }
   const foldTexts = await page.evaluate(() =>
     [...document.querySelectorAll('[data-section="ranking"] .foldline')].map(

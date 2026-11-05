@@ -100,19 +100,18 @@ export interface ScatterData {
   /** Labels of charted results whose rate sits above the axis. */
   aboveScaleNames: string[];
   /**
-   * The section's two readings, computed from the payload at
-   * build time (hardcode audit F1, F2): the priciest run and
-   * whether it is also the ranked result that flipped most,
-   * the toughest ranked result, and the cheapest charted run.
-   * No name, price or claim is written into the section's
-   * source; the strip prints only what these carry.
+   * The section's readings, computed from the payload at
+   * build time (hardcode audit F1, F2). The ranked result
+   * that flipped most, the toughest ranked result, and the
+   * cheapest charted run, with the headline claim's own
+   * readings below. No name, price or claim is written into
+   * the section's source. The strip prints only what these
+   * carry.
    */
   readings: {
-    priciest: ScatterReading;
     mostFlippedRanked: ScatterReading;
     toughestRanked: ScatterReading;
     cheapest: ScatterReading;
-    priciestIsMostFlipped: boolean;
     /**
      * The headline claim's own population, the ranked
      * costed runs (plotted and ranking eligible). The
@@ -263,9 +262,6 @@ export function scatterData(): ScatterData {
     return `on ${words.join(" and ")}`;
   };
   const rankedScope = scopePhraseFor(rankedSegments.map((s) => s.group));
-  const priciestRow = sets.plotted.reduce((a, b) =>
-    (b.total_cost_usd ?? 0) > (a.total_cost_usd ?? 0) ? b : a,
-  );
   const cheapestRow = sets.plotted.reduce((a, b) =>
     (b.total_cost_usd ?? Infinity) < (a.total_cost_usd ?? Infinity) ? b : a,
   );
@@ -283,11 +279,9 @@ export function scatterData(): ScatterData {
     (b.asr_conditional ?? 0) > (a.asr_conditional ?? 0) ? b : a,
   );
   const readings = {
-    priciest: reading(priciestRow),
     mostFlippedRanked: reading(mostFlippedRankedRow),
     toughestRanked: reading(fullRanked[0]),
     cheapest: reading(cheapestRow),
-    priciestIsMostFlipped: priciestRow.run_id === mostFlippedRankedRow.run_id,
     priciestCosted: reading(priciestCostedRow),
     mostFlippedCosted: reading(mostFlippedCostedRow),
     priciestIsMostFlippedCosted:

@@ -454,6 +454,13 @@ button {
   border-radius: 14px; padding: 24px 26px; align-items: start;
 }
 .micro.amber { color: var(--amber); }
+.flaglead .idrow {
+  display: flex; gap: 12px; align-items: center; margin-bottom: 14px;
+}
+.flaglead .idrow .nm {
+  font-size: 20px; font-weight: 700; letter-spacing: -0.01em;
+  line-height: 1.15; color: var(--ink-1);
+}
 .flaglead .big {
   font-size: clamp(54px, 7vw, 84px); font-weight: 750;
   letter-spacing: -0.03em; line-height: 1.02; color: var(--amber);

@@ -37,7 +37,7 @@ function NotMeasured() {
 
 /**
  * A result's own page, re-set as a full-page inspector
- * reading in the instrument grammar: the inspector itself
+ * reading in the instrument grammar, the inspector itself
  * (identity head with the vendor mark, the figure grid,
  * the disclosure blocks verbatim from the payload's note
  * builders), then the readings the panel inspector does
@@ -45,8 +45,8 @@ function NotMeasured() {
  * the second latency figure, the calibration arms, the
  * family spark list, the severity flips, the tax line
  * naming its benchmarks, and the run's provenance. Every
- * figure and disclosure the detail card carried survives;
- * only the presentation grammar changed.
+ * figure and disclosure the detail card carried survives.
+ * Only the presentation grammar changed.
  */
 export default function ModelReading({
   row,

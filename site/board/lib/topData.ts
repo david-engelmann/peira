@@ -665,8 +665,8 @@ export function topData(): TopData {
   for (const [id, d] of byRunId) inspectors[id] = d;
 
   /* The scatter title claim, consumed from the one
-   * derivation in the scatter readings (lib/scatterData):
-   * over the ranked costed runs, the priciest run's attack
+   * derivation in the scatter readings (lib/scatterData).
+   * Over the ranked costed runs, the priciest run's attack
    * success equals that population's highest. The title is
    * the share card's headline sentence itself, so the page
    * and the card make the one claim in the one wording.
