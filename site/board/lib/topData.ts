@@ -17,7 +17,9 @@ import {
   duplicateShortNames,
   flipDecomposition,
   shortName,
+  singleCallErrorNote,
   tieBands,
+  unansweredNote,
   wireWords,
   type BoardRow,
   type RankedRow,
@@ -95,10 +97,30 @@ export interface PlotLabel {
 
 export interface RailBandRow {
   runId: string;
+  /** The full label, the row's accessible name. */
   name: string;
+  /**
+   * The name as printed in the rail band. Rail names are
+   * never truncated. The one sanctioned exception is the
+   * short form the design record allows for a name that
+   * cannot fit the band's cell at the spec geometry, and
+   * only the printed form shortens, never the accessible
+   * name.
+   */
+  printName: string;
   asrText: string;
   cy: number;
 }
+
+/* The design record's sanctioned short forms for the rail
+ * band (redesign NOTES). A name that cannot fit between
+ * the band's name origin and its rate figure prints in
+ * this form. strands-decider-2B-hobson-v21 at full length
+ * runs under its own rate figure. laya-typed-decisions
+ * fits whole and is not listed. */
+const RAIL_BAND_SHORT: Record<string, string> = {
+  "strands-v2-trial": "strands-decider-2B",
+};
 
 export interface WordsClause {
   lead: string;
@@ -115,14 +137,20 @@ export interface ScatterView {
   labels: PlotLabel[];
   railRows: RailBandRow[];
   railDividerX: number | null;
-  /** The off-scale annotation for a plotted point above the axis. */
+  /**
+   * The off-scale annotation. Every plotted point above
+   * the axis, each with its caret at its true cost and its
+   * two lines of words, under one shared head line.
+   */
   offScale: {
-    runId: string;
-    name: string;
     line1: string;
-    line2: string;
-    line3: string;
-    caretX: number;
+    entries: Array<{
+      runId: string;
+      name: string;
+      line2: string;
+      line3: string;
+      caretX: number;
+    }>;
     textX: number;
     textY: number;
   } | null;
@@ -207,16 +235,18 @@ function buildView(
   /* Labels seat for the unflagged points only. A flagged
    * point is named in words under the panel, on the page as
    * on the share card, so its figure always travels with
-   * the clause that names it. */
-  const labelPts = pts
-    .filter((p) => !p.flagged)
-    .map((p) => ({
-      runId: p.runId,
-      x: p.x,
-      y: p.y,
-      marker: spec.marker,
-      label: p.label,
-    }));
+   * the clause that names it. Flagged points still go to
+   * the solver as obstacles with no label of their own. A
+   * label that seats over a flagged disc reads as that
+   * point's name, and the rendered audit caught two labels
+   * doing exactly that before this pass included them. */
+  const labelPts = pts.map((p) => ({
+    runId: p.runId,
+    x: p.x,
+    y: p.y,
+    marker: spec.marker,
+    label: p.flagged ? null : p.label,
+  }));
   const furniture: Rect[] = [];
   /* Gridline labels and the axis decade labels are furniture. */
   for (const t of [0, axisMax / 2, axisMax]) {
@@ -234,27 +264,36 @@ function buildView(
    * instead, with its decomposition when it is flagged. */
   let offScale: ScatterView["offScale"] = null;
   if (offScalePlotted.length > 0 && annotate) {
-    const d = offScalePlotted.reduce((a, b) => (b.asr > a.asr ? b : a));
-    const row = d;
-    const decomp = row.flagged ? flipDecompositionById(row.runId) : null;
-    const line2 = !row.flagged
-      ? `${row.label} at ${fmtPct(row.asr)}, above the top of this scale,`
-      : decomp !== null
-        ? `${row.label} counted ${fmtPct(row.asr)}, ${
-            decomp.malformedShare > 0.5
-              ? "mostly malformed output,"
-              : "mostly changed decisions,"
-          }`
-        : `${row.label}, flagged and not ranked,`;
+    /* Every off-scale point is named, not only the
+     * highest. Each gets its caret at its true cost and
+     * its own two lines, in rate order under the shared
+     * head line. */
+    const entries = [...offScalePlotted]
+      .sort((a, b) => b.asr - a.asr)
+      .map((row) => {
+        const decomp = row.flagged ? flipDecompositionById(row.runId) : null;
+        const line2 = !row.flagged
+          ? `${row.label} at ${fmtPct(row.asr)}, above the top of this scale,`
+          : decomp !== null
+            ? `${row.label} counted ${fmtPct(row.asr)}, ${
+                decomp.malformedShare > 0.5
+                  ? "mostly malformed output,"
+                  : "mostly changed decisions,"
+              }`
+            : `${row.label}, flagged and not ranked,`;
+        return {
+          runId: row.runId,
+          name: row.label,
+          line2,
+          line3: row.flagged
+            ? "and reads in the flagged band below."
+            : "and reads in the ranking below.",
+          caretX: xOf(row.cost!),
+        };
+      });
     offScale = {
-      runId: row.runId,
-      name: row.label,
       line1: "Off this scale",
-      line2,
-      line3: row.flagged
-        ? "and reads in the flagged band below."
-        : "and reads in the ranking below.",
-      caretX: xOf(row.cost!),
+      entries,
       textX: spec.plotX0 + 24,
       textY: spec.plotY0 + 88,
     };
@@ -262,7 +301,7 @@ function buildView(
       x: offScale.textX - 6,
       y: offScale.textY - 16,
       w: Math.min(430, spec.plotX1 - offScale.textX),
-      h: 76,
+      h: 28 + entries.length * 48,
     });
   }
   const bounds: Rect = {
@@ -308,6 +347,7 @@ function buildView(
       railRows.push({
         runId: d.runId,
         name: d.label,
+        printName: RAIL_BAND_SHORT[d.runId] ?? d.label,
         asrText: fmtPct(d.asr),
         cy: Math.round(ys[i] * 10) / 10,
       });
@@ -433,6 +473,12 @@ export interface RailRow {
   rank: number;
   name: string;
   wire: string | null;
+  /** The no-answer disclosures, verbatim from lib/payload's
+   *  note builders, carried in the row's name cell and its
+   *  accessible name, as the ranking's rows have always
+   *  carried them. Null when the run answered every call. */
+  note: string | null;
+  singleNote: string | null;
   mark: InspectorDatum["mark"];
   ariaLabel: string;
   asrText: string;
@@ -468,6 +514,14 @@ function railAriaLabel(row: RankedRow, name: string, wire: string | null): strin
   if (row.malformed_rate != null) {
     parts.push(`malformed ${fmtPct(row.malformed_rate)}`);
   }
+  const blockedNote = unansweredNote(row);
+  if (blockedNote !== null) {
+    parts.push(blockedNote.replace(/\.$/, ""));
+  }
+  const singleCall = singleCallErrorNote(row);
+  if (singleCall !== null) {
+    parts.push(singleCall.replace(/\.$/, ""));
+  }
   return parts.join(", ");
 }
 
@@ -487,6 +541,8 @@ function railRow(
     rank: row.rank,
     name,
     wire,
+    note: unansweredNote(row),
+    singleNote: singleCallErrorNote(row),
     mark,
     ariaLabel: railAriaLabel(row, name, wire),
     asrText: row.asr_conditional != null ? fmtPct(row.asr_conditional) : "·",
@@ -498,9 +554,17 @@ function railRow(
             pt: axisPctOf(row.asr_conditional, axisMax),
           }
         : null,
-    benignText: row.benign_accuracy != null ? fmtPct(row.benign_accuracy) : null,
-    eceText: row.ece_attacked != null ? fmtEce(row.ece_attacked) : null,
-    taxText: row.robustness_tax != null ? fmtTax(row.robustness_tax) : null,
+    /* Absence is named in place, per the spec rule. A null
+     * benign or ECE prints a dash, and a guard row's absent
+     * tax prints a dash, never a blank cell. */
+    benignText: row.benign_accuracy != null ? fmtPct(row.benign_accuracy) : "-",
+    eceText: row.ece_attacked != null ? fmtEce(row.ece_attacked) : "-",
+    taxText:
+      row.robustness_tax != null
+        ? fmtTax(row.robustness_tax)
+        : kind === "slice"
+          ? "-"
+          : null,
     costText:
       cost.kind === "amount"
         ? fmtUsd(cost.value)
@@ -508,7 +572,7 @@ function railRow(
           ? `≥ ${fmtUsd(cost.value)}`
           : cost.kind === "local"
             ? fmtUsd(0)
-            : "·",
+            : "no cost",
   };
 }
 
@@ -600,31 +664,34 @@ export function topData(): TopData {
   const inspectors: Record<string, InspectorDatum> = {};
   for (const [id, d] of byRunId) inspectors[id] = d;
 
-  /* The scatter title claim, the same derivation the share
-   * card's headline guard computes: over the ranked plotted
-   * population, the priciest run's attack success equals
-   * that population's highest. When it does not hold, the
-   * title falls back to the section's neutral name and the
-   * readings below the panel state the two facts apart. */
-  const plottedRows = sd.plotted;
-  const rankedPlotted = plottedRows.filter((d) => !d.flagged);
-  const priciest = rankedPlotted.reduce((a, b) =>
-    (b.cost ?? 0) > (a.cost ?? 0) ? b : a,
-  );
-  const maxRankedAsr = Math.max(...rankedPlotted.map((d) => d.asr));
-  const titleClaim = priciest.asr === maxRankedAsr;
+  /* The scatter title claim, consumed from the one
+   * derivation in the scatter readings (lib/scatterData):
+   * over the ranked costed runs, the priciest run's attack
+   * success equals that population's highest. The title is
+   * the share card's headline sentence itself, so the page
+   * and the card make the one claim in the one wording.
+   * When it does not hold, the title falls back to the
+   * section's neutral name and the readings below the
+   * panel state the facts apart. */
+  const titleClaim = sd.readings.priciestIsMostFlippedCosted;
   const titleText = titleClaim
-    ? "The priciest run flipped most"
+    ? "The priciest model was the easiest to flip"
     : "What robustness costs per run";
   const caption = `Cost per run against attack success. Discs are every full suite result with a recorded cost, on the shared 0 to ${Math.round(axisMax * 100)} scale the ranking uses.`;
 
   const readings: string[] = [];
   const r = sd.readings;
+  const pctOr = (v: number | null) => (v !== null ? fmtPct(v) : "·");
   readings.push(
-    r.priciestIsMostFlipped
-      ? `The priciest run, ${r.priciest.label} ${r.priciest.costPhrase}, also flipped most of any ranked result ${r.rankedScope}, at ${r.mostFlippedRanked.asr !== null ? fmtPct(r.mostFlippedRanked.asr) : "·"}.`
-      : `The priciest run is ${r.priciest.label} ${r.priciest.costPhrase}. The ranked result that flipped most ${r.rankedScope} is ${r.mostFlippedRanked.label} at ${r.mostFlippedRanked.asr !== null ? fmtPct(r.mostFlippedRanked.asr) : "·"}.`,
+    r.priciestIsMostFlippedCosted
+      ? `The priciest run, ${r.priciestCosted.label} ${r.priciestCosted.costPhrase}, also flipped most of any ranked costed run, at ${pctOr(r.priciestCosted.asr)}.`
+      : `The priciest run is ${r.priciestCosted.label} ${r.priciestCosted.costPhrase}. The ranked costed run that flipped most is ${r.mostFlippedCosted.label} at ${pctOr(r.mostFlippedCosted.asr)}.`,
   );
+  if (r.mostFlippedRanked.label !== r.mostFlippedCosted.label) {
+    readings.push(
+      `The ranked result that flipped most ${r.rankedScope} is ${r.mostFlippedRanked.label} at ${pctOr(r.mostFlippedRanked.asr)} ${r.mostFlippedRanked.costPhrase}.`,
+    );
+  }
   readings.push(
     `The toughest ranked result ${r.rankedScope}, ${r.toughestRanked.label}, flipped ${r.toughestRanked.asr !== null ? fmtPct(r.toughestRanked.asr) : "·"} ${r.toughestRanked.costPhrase}. The cheapest run on the chart is ${r.cheapest.label} ${r.cheapest.costPhrase}.`,
   );
@@ -660,6 +727,11 @@ export function topData(): TopData {
     railRow(row, "slice", dupes, axisMax, markFor(row)),
   );
   const sliceCases = groups.slices[0]?.n_cases ?? 0;
+  /* The fold positions. The full rail shows its first
+   * eight rows before the fold line and the guard segment
+   * its first three, the reading depth the mock's rail
+   * established. Rows past a fold stay in the page. The
+   * fold is a reading device, never a data cut. */
   const foldAfter = 8;
   const sliceFoldAfter = 3;
   const fullSegments = segments(
@@ -698,4 +770,3 @@ export function topData(): TopData {
     defaultRunId: groups.full[0].run_id,
   };
 }
-

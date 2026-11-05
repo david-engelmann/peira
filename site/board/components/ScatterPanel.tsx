@@ -29,6 +29,7 @@ export default function ScatterPanel({
       onSelect(runId);
     }
   };
+  const offScale = view.offScale;
   return (
     <svg
       viewBox={view.viewBox}
@@ -87,7 +88,7 @@ export default function ScatterPanel({
             }
           />
           <text x={34} y={r.cy + 4} className="svg-rail-name">
-            {r.name}
+            {r.printName}
           </text>
           <text x={212} y={r.cy + 4} textAnchor="end" className="svg-rail-rate">
             {r.asrText}
@@ -134,23 +135,27 @@ export default function ScatterPanel({
           {l.text}
         </text>
       ))}
-      {view.offScale !== null && (
-        <g className="svg-offscale" data-offscale-for={view.offScale.runId}>
-          <text x={view.offScale.textX} y={view.offScale.textY} className="svg-off-title">
-            {view.offScale.line1}
+      {offScale !== null && (
+        <g className="svg-offscale">
+          <text x={offScale.textX} y={offScale.textY} className="svg-off-title">
+            {offScale.line1}
           </text>
-          <text x={view.offScale.textX} y={view.offScale.textY + 24} className="svg-off-line">
-            {view.offScale.line2}
-          </text>
-          <text x={view.offScale.textX} y={view.offScale.textY + 48} className="svg-off-line">
-            {view.offScale.line3}
-          </text>
-          <path
-            d={`M ${view.offScale.caretX - 7} 26 L ${view.offScale.caretX} 12 L ${view.offScale.caretX + 7} 26`}
-            fill="none"
-            stroke="#e8a33d"
-            strokeWidth="2.5"
-          />
+          {offScale.entries.map((e, i) => (
+            <g key={e.runId} data-offscale-for={e.runId}>
+              <text x={offScale.textX} y={offScale.textY + 24 + i * 48} className="svg-off-line">
+                {e.line2}
+              </text>
+              <text x={offScale.textX} y={offScale.textY + 48 + i * 48} className="svg-off-line">
+                {e.line3}
+              </text>
+              <path
+                d={`M ${e.caretX - 7} 26 L ${e.caretX} 12 L ${e.caretX + 7} 26`}
+                fill="none"
+                stroke="#e8a33d"
+                strokeWidth="2.5"
+              />
+            </g>
+          ))}
         </g>
       )}
       {view.decades.map((d) => (

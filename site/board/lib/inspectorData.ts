@@ -27,7 +27,7 @@ import {
   type BoardRow,
   type RankedRow,
 } from "@/lib/payload";
-import { fmtCi, fmtEce, fmtPct, fmtTax, fmtUsd } from "@/lib/format";
+import { fmtCi, fmtEce, fmtMs, fmtPct, fmtTax, fmtUsd } from "@/lib/format";
 import { familiesOf, familyFullName, familyOrder } from "@/lib/charts";
 import { axisPct } from "@/lib/chart";
 import { costStateOf } from "@/lib/cards";
@@ -87,6 +87,9 @@ export interface InspectorDatum {
   eceText: string | null;
   tax: number | null;
   taxText: string | null;
+  /** Median latency under attack, the payload's p50 figure. */
+  latency: number | null;
+  latencyText: string | null;
   /** The cost figure and its state words, from lib/cards' cost state. */
   costText: string;
   costSub: string | null;
@@ -119,7 +122,7 @@ const WIRE_CLAUSE: Record<string, string> = {
   "cursor-harness": "measured through the Cursor agent harness",
 };
 
-function markOf(row: BoardRow): InspectorMark {
+export function markOf(row: BoardRow): InspectorMark {
   const vendor = vendorOf(row);
   const family = vendorFamilyOf(row);
   return {
@@ -169,11 +172,18 @@ export function inspectorDatum(
         : cost.kind === "local"
           ? fmtUsd(0)
           : "·";
+  /* A recorded zero is a run with no per-call API charge.
+   * Its gloss follows the wire. A run measured through an
+   * agent harness records zero because the harness's seat
+   * carries no per-run charge, not because anything was
+   * served locally, and the gloss must not claim it was. */
   const costSub =
     cost.kind === "lower-bound"
       ? "a lower bound, some calls went unpriced"
       : cost.kind === "local"
-        ? "served locally, no API cost"
+        ? clause
+          ? `no per-run API charge, ${clause}`
+          : "served locally, no API cost"
         : cost.kind === "unrecorded"
           ? "no cost recorded"
           : null;
@@ -246,6 +256,11 @@ export function inspectorDatum(
     eceText: row.ece_attacked != null ? fmtEce(row.ece_attacked) : null,
     tax: row.robustness_tax ?? null,
     taxText: row.robustness_tax != null ? fmtTax(row.robustness_tax) : null,
+    latency: row.latency_ms_p50_attacked ?? null,
+    latencyText:
+      row.latency_ms_p50_attacked != null
+        ? fmtMs(row.latency_ms_p50_attacked)
+        : null,
     costText,
     costSub,
     flaggedReason:

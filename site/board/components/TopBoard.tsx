@@ -44,6 +44,10 @@ function RowButton({
       <span className="nm">
         {row.name}
         {row.wire !== null && <span className="sub">{row.wire}</span>}
+        {row.note !== null && <span className="note">{row.note}</span>}
+        {row.singleNote !== null && (
+          <span className="note">{row.singleNote}</span>
+        )}
       </span>
       <span className="atk num">{row.asrText}</span>
       <span className="wtrack" aria-hidden="true">

@@ -391,6 +391,35 @@ for (const r of offScalePlotted) {
   );
   process.exit(1);
 }
+/* A flagged plotted point sitting exactly at the axis
+ * ceiling escapes the off-scale discipline above. It is
+ * drawn, but its disc rides the plot's top edge where no
+ * label seats reliably, so the words under the plot are its
+ * naming surface, and there its figure must travel with its
+ * decomposition (C-5), the way the stack's flagged reading
+ * carries the lead's. A ceiling point that is not the lead
+ * and whose decomposition does not derive has no honest
+ * surface on this card, so the build fails closed. */
+const atCeilingFlagged = plotted.filter(
+  (r) =>
+    !r.ranking_eligible &&
+    (r.asr_conditional ?? 0) >= axisMax &&
+    !(flaggedLead && r.run_id === flaggedLead.row.run_id),
+);
+for (const r of atCeilingFlagged) {
+  if (flipDecomposition(r) === null) {
+    console.error(
+      `gen-og: ${pointName(r)} is flagged and sits exactly at the chart's axis ceiling, but its sealed family records do not derive the malformed decomposition its figure must travel with, so the card cannot state it and the build fails`,
+    );
+    process.exit(1);
+  }
+}
+const ceilingDecompClause = (r) => {
+  if (r.ranking_eligible || (r.asr_conditional ?? 0) < axisMax) return "";
+  const d = flipDecomposition(r);
+  if (d === null) return "";
+  return `, genuine flip rate ${fmtPct(d.genuineRate)}, with ${fmtPct(d.malformedShare)} of counted flips to malformed output`;
+};
 /* The rail reading: the ranked no-cost run with the highest
  * rate, named with the reason it stands apart from the cost
  * story the headline tells. */
@@ -417,7 +446,7 @@ const ladderRows = [...railRows].sort(
     (a.run_id < b.run_id ? -1 : 1),
 );
 const LADDER = {
-  land: { allot: 170, pitch: 22, slack: 66, columns: 2 },
+  land: { allot: 170, pitch: 22, slack: 40, columns: 2 },
   port: { allot: 286, pitch: 26, slack: 160, columns: 1 },
 };
 function ladderBudget(kind) {
@@ -562,7 +591,7 @@ function namelineHtml(crowded) {
     clauses.push({
       lead: "Amber-ringed in the plot",
       items: flaggedDrawn.map(
-        (r) => `<b>${esc(pointName(r))}</b> at ${fmtPct(r.asr_conditional)} and ${esc(costWords(r))}`,
+        (r) => `<b>${esc(pointName(r))}</b> at ${fmtPct(r.asr_conditional)} and ${esc(costWords(r))}${esc(ceilingDecompClause(r))}`,
       ),
     });
   }
@@ -573,7 +602,7 @@ function namelineHtml(crowded) {
           ? "Too crowded at its disc"
           : "Too crowded at their discs",
       items: crowded.map(
-        (p) => `<b>${esc(p.name)}</b> at ${fmtPct(p.row.asr_conditional)} and ${esc(costWords(p.row))}`,
+        (p) => `<b>${esc(p.name)}</b> at ${fmtPct(p.row.asr_conditional)} and ${esc(costWords(p.row))}${esc(ceilingDecompClause(p.row))}`,
       ),
     });
   }

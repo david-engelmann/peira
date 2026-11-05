@@ -15,17 +15,27 @@ import Mark from "./Mark";
 export default function Inspector({
   datum,
   axisMax,
+  variant = "panel",
 }: {
   datum: InspectorDatum;
   axisMax: number;
+  /**
+   * The panel variant is a selection reading inside the
+   * board page. The page variant heads a result's own page,
+   * where nothing is selected and the own page link would
+   * point at the page itself.
+   */
+  variant?: "panel" | "page";
 }) {
   const d = datum;
   return (
     <aside className="insp" aria-label={`Selected result, ${d.name}`} data-inspector-for={d.runId}>
-      <div className="micro sel">
-        <span className="tick" aria-hidden="true" />
-        Selected result
-      </div>
+      {variant === "panel" && (
+        <div className="micro sel">
+          <span className="tick" aria-hidden="true" />
+          Selected result
+        </div>
+      )}
       <div className="ihead">
         <Mark mark={d.mark} size="card" />
         <div>
@@ -112,6 +122,10 @@ export default function Inspector({
           )}
         </div>
         <div className="fig">
+          <span className="fl">Median latency, attacked</span>
+          <span className="v">{d.latencyText ?? "·"}</span>
+        </div>
+        <div className="fig">
           <span className="fl">Cost per run</span>
           <span className="v">{d.costText}</span>
           {d.costSub !== null && <span className="iv">{d.costSub}</span>}
@@ -128,11 +142,13 @@ export default function Inspector({
           Weakest family, {d.weakestFamily.name}, at {d.weakestFamily.text}.
         </p>
       )}
-      <p className="ownpage-line">
-        <a className="ownpage" href={d.href}>
-          This result on its own page
-        </a>
-      </p>
+      {variant === "panel" && (
+        <p className="ownpage-line">
+          <a className="ownpage" href={d.href}>
+            This result on its own page
+          </a>
+        </p>
+      )}
     </aside>
   );
 }

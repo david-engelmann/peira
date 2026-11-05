@@ -16,7 +16,7 @@ import {
   fmtDeltaUsd,
   fmtDeltaMs,
 } from "@/lib/format";
-import { axisPct } from "@/lib/chart";
+import Inspector from "./Inspector";
 
 /**
  * Compare (design system section 4.6). Two pickers, a metric
@@ -221,54 +221,14 @@ export default function Compare({ data }: { data: CompareData }) {
             ["a", a],
             ["b", b],
           ] as const
-        ).map(([side, row]) => {
-          const suppressed =
-            row.group === "flagged" && row.decomp === null;
-          const showAsr = row.asr !== null && !suppressed;
-          return (
-            <div className="cmp-insp" key={side} data-cmp-head={side}>
-              <div className="cmp-insp-top">
-                <MarkChip row={row} />
-                <div>
-                  <p className="cmp-insp-name">
-                    {row.name}
-                    {row.wire && (
-                      <span className="cmp-insp-wire"> {row.wire}</span>
-                    )}
-                  </p>
-                  <p className="cmp-insp-standing">
-                    {row.group === "flagged"
-                      ? "Flagged, not ranked"
-                      : row.group === "slice"
-                        ? "Guardrail slice, abstain subset"
-                        : "Full suite"}
-                  </p>
-                </div>
-              </div>
-              <p className="cmp-insp-fig">
-                <span className="fl">Attack success</span>
-                <span className="v num">
-                  {showAsr ? fmtPct(row.asr!) : "·"}
-                </span>
-              </p>
-              {showAsr && row.ci !== null && (
-                <span className="wtrack cmp-wtrack" aria-hidden="true">
-                  <span
-                    className="wci"
-                    style={{
-                      left: `${axisPct(row.ci[0], data.axisMax)}%`,
-                      width: `${Math.max(0, axisPct(row.ci[1], data.axisMax) - axisPct(row.ci[0], data.axisMax))}%`,
-                    }}
-                  />
-                  <span
-                    className="wpt"
-                    style={{ left: `${axisPct(row.asr!, data.axisMax)}%` }}
-                  />
-                </span>
-              )}
-            </div>
-          );
-        })}
+        ).map(([side, row]) => (
+          <div className="cmp-insp" key={side} data-cmp-head={side}>
+            <Inspector
+              datum={data.inspectors[row.runId]}
+              axisMax={data.axisMax}
+            />
+          </div>
+        ))}
       </div>
 
       <table className="cmp-table">
@@ -517,9 +477,11 @@ export default function Compare({ data }: { data: CompareData }) {
       <p className="cmp-note">
         A middot marks a figure a result does not carry. Slices and
         flagged results carry no robustness tax. A cost with ≥ is a
-        lower bound, a cost of $0.00 is a locally served run, and a
-        run with no recorded cost shows the middot. Where a cost is
-        a lower bound, its delta is a difference of recorded totals.
+        lower bound, a cost of $0.00 is a run with no per-call API
+        charge, served locally or measured through an agent harness,
+        and a run with no recorded cost shows the middot. Where a
+        cost is a lower bound, its delta is a difference of recorded
+        totals.
       </p>
     </div>
   );

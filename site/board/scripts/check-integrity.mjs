@@ -1276,11 +1276,31 @@ function assertCardText(blockText, row, where) {
    * once, in the method section (owner, 2026-10-25). Eligibility
    * still reaches the card through the rates themselves and the
    * severity bases below. */
-  /* Cost state, in the words the card prints. */
+  /* Cost state, in the words the card prints. A recorded
+   * zero is a run with no per-call API charge, and the gloss
+   * follows the wire. A locally served run says so, while a
+   * run measured through an agent harness names the harness
+   * (a harness wire this check does not know fails closed
+   * rather than letting a local gloss stand for it). */
   if (row.total_cost_usd === null || row.total_cost_usd === undefined) {
     need("no cost recorded", "unrecorded cost state");
   } else if (row.total_cost_usd === 0) {
-    need("served locally", "local cost state");
+    const HARNESS_GLOSS = {
+      "cursor-harness":
+        "no per-run API charge, measured through the Cursor agent harness",
+    };
+    if (typeof row.wire === "string" && row.wire.endsWith("-harness")) {
+      const gloss = HARNESS_GLOSS[row.wire];
+      if (gloss === undefined) {
+        fail(
+          `${where} ${row.run_id}: harness wire "${row.wire}" has no cost gloss in this check`,
+        );
+      } else {
+        need(gloss, "harness cost state");
+      }
+    } else {
+      need("served locally", "local cost state");
+    }
   } else if (lowerBoundC(row)) {
     need(`≥ ${fmtUsdC(row.total_cost_usd)}`, "lower bound cost");
     need("a lower bound", "lower bound words");

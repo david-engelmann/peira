@@ -692,8 +692,9 @@ test(
  * rail carries the target count. At 14 rows the landscape
  * ladder spends 154px of its 170px rows area and takes no
  * slack; at 15 it spends 176px and takes 6px of slack from
- * the plot; at 21 it outgrows the allotment and the slack
- * together and the build fails rather than cut the ladder. */
+ * the plot. At 19 it outgrows the allotment and the 40px of
+ * slack together and the build fails rather than cut the
+ * ladder. */
 function railCountOf(payload) {
   return nonSliceOf(payload).filter(
     (r) => !(r.total_cost_usd !== null && r.total_cost_usd > 0),
@@ -791,12 +792,95 @@ test(
   { timeout: 300000 },
   () => {
     const { scratch, board } = scratchBoard((payload) =>
-      moveToRail(payload, 21),
+      moveToRail(payload, 19),
     );
     try {
       const run = runGenOg(board);
       assert.equal(run.status, 1, run.out);
-      assert.match(run.out, /past the 170px allotted and the 66px of slack/);
+      assert.match(run.out, /past the 170px allotted and the 40px of slack/);
+    } finally {
+      rmSync(scratch, { recursive: true, force: true });
+    }
+  },
+);
+
+/* The ceiling case (red team, PR 527). A flagged plotted
+ * result sitting exactly at the axis ceiling escapes the
+ * off-scale discipline. It is drawn, riding the plot's top
+ * edge, and the words under the plot are its naming surface.
+ * There its figure must travel with its decomposition, and
+ * a ceiling point whose decomposition does not derive fails
+ * the build closed. The mutation seats ling-3.1-flash at
+ * exactly the frozen fixture's 30 percent ceiling, its
+ * family records re-seated so the counted flips sum to the
+ * printed rate. */
+function seatFlips(row, flips, malformed) {
+  Object.values(row.detail.families).forEach((f, i) => {
+    f.n_flipped = i === 0 ? flips : 0;
+    f.flip_direction["to-malformed"] = i === 0 ? malformed : 0;
+  });
+}
+
+test(
+  "a flagged point exactly at the axis ceiling is named in words with its decomposition",
+  { timeout: 300000 },
+  () => {
+    const fixture = path.join(
+      boardRoot,
+      "tests",
+      "fixtures",
+      "payload-46.json",
+    );
+    const { scratch, board } = scratchBoard((payload) => {
+      const row = payload.unranked.find(
+        (r) => r.run_id === "or-ling31-v2-trial",
+      );
+      row.asr_conditional = 0.3;
+      seatFlips(row, 1339, 800);
+    }, fixture);
+    try {
+      const run = runGenOg(board, { PEIRA_OG_PROBE: "1" });
+      assert.equal(run.status, 0, run.out);
+      const nameline = run.probe.land.nameline;
+      assert.ok(nameline, "no words line under the plot");
+      assert.ok(
+        nameline.includes("ling-3.1-flash") &&
+          nameline.includes("at 30.0%"),
+        `the ceiling point is not named with its rate: ${nameline}`,
+      );
+      assert.ok(
+        nameline.includes("genuine flip rate") &&
+          nameline.includes("of counted flips to malformed output"),
+        `the ceiling point's figure travels without its decomposition: ${nameline}`,
+      );
+    } finally {
+      rmSync(scratch, { recursive: true, force: true });
+    }
+  },
+);
+
+test(
+  "a flagged point exactly at the axis ceiling whose decomposition does not derive fails the build",
+  { timeout: 300000 },
+  () => {
+    const fixture = path.join(
+      boardRoot,
+      "tests",
+      "fixtures",
+      "payload-46.json",
+    );
+    const { scratch, board } = scratchBoard((payload) => {
+      const row = payload.unranked.find(
+        (r) => r.run_id === "or-ling31-v2-trial",
+      );
+      row.asr_conditional = 0.3;
+      seatFlips(row, 0, 0);
+    }, fixture);
+    try {
+      const run = runGenOg(board);
+      assert.equal(run.status, 1, run.out);
+      assert.match(run.out, /exactly at the chart's axis ceiling/);
+      assert.match(run.out, /do not derive the malformed decomposition/);
     } finally {
       rmSync(scratch, { recursive: true, force: true });
     }

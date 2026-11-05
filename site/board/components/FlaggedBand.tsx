@@ -179,18 +179,44 @@ export default function FlaggedBand() {
             <div className="figs2">
               {decomp !== null && row.asr_conditional !== null ? (
                 <>
-                  <b>{fmtPct(row.asr_conditional)}</b> counted attack
-                  success · genuine flip rate {fmtPct(decomp.genuineRate)},
-                  with {fmtPct(decomp.malformedShare)} of counted flips to
-                  malformed output · <b>{row.malformed_rate != null ? fmtPct(row.malformed_rate) : "·"}</b>{" "}
-                  malformed
+                  <span className="u">
+                    <b>{fmtPct(row.asr_conditional)}</b> counted attack
+                    success
+                  </span>{" "}
+                  ·{" "}
+                  <span className="u">
+                    genuine flip rate {fmtPct(decomp.genuineRate)}
+                  </span>
+                  ,{" "}
+                  <span className="u">
+                    with {fmtPct(decomp.malformedShare)} of counted flips
+                    to malformed output
+                  </span>{" "}
+                  ·{" "}
+                  <span className="u">
+                    <b>
+                      {row.malformed_rate != null
+                        ? fmtPct(row.malformed_rate)
+                        : "·"}
+                    </b>{" "}
+                    malformed
+                  </span>
                 </>
               ) : (
                 <>
-                  counted attack success not stated, its decomposition does
-                  not derive ·{" "}
-                  <b>{row.malformed_rate != null ? fmtPct(row.malformed_rate) : "·"}</b>{" "}
-                  malformed
+                  <span className="u">
+                    counted attack success not stated, its decomposition
+                    does not derive
+                  </span>{" "}
+                  ·{" "}
+                  <span className="u">
+                    <b>
+                      {row.malformed_rate != null
+                        ? fmtPct(row.malformed_rate)
+                        : "·"}
+                    </b>{" "}
+                    malformed
+                  </span>
                 </>
               )}
             </div>

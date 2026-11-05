@@ -41,19 +41,51 @@
  *        base, and the guard caption that introduces the
  *        subset base. Visible copy holds no em dash and no
  *        semicolon.
- *  Calibration (C-08). Panels render for every result the
- *        payload carries reliability bins for, at desktop
- *        widths and at 1100 alike.
- *  Phone. A touch session at 390x844: the inspector stands
+ *  Calibration (C-01 to C-08). Panels render for every
+ *        result the payload carries reliability bins for,
+ *        in attacked ECE order, at every width. Tick
+ *        numerals render at 10 px or larger (C-01). On the
+ *        phone the rail entries never share a line (C-02).
+ *        A wrapped panel name breaks only after a hyphen
+ *        or a space and never strands its final segment
+ *        (C-04). Rail names stay inside the section bounds
+ *        and unclipped (C-05). Every tick numeral's box
+ *        stays inside the viewBox (C-06). The coincidence
+ *        fact stands in the lede, never on a panel (C-07).
+ *        And the panels showing each axis are exactly the
+ *        array's edge panels for the layout in force, at
+ *        every width (C-08).
+ *  Heatmap. Family headers neither wrap nor clip, and row
+ *        names render unclipped, at every width.
+ *  Scatter clearance. On the wide panel, in-plot label
+ *        boxes intersect neither each other nor any disc,
+ *        and every rail name keeps clear of its rate figure.
+ *  Section bar. The nine links match their targets and
+ *        labels exactly and stand at least 24 px in both
+ *        dimensions. At phone widths every link scrolls
+ *        fully into the strip untruncated. At desktop a
+ *        keyboard walk finds every link inside the viewport,
+ *        uncovered at its centre, with its focus outline
+ *        showing. Keyboard activation lands each section
+ *        under the bar rule with the address following. And
+ *        the scrollspy marks exactly the section in view,
+ *        with aria-current, shifting no layout.
+ *  Phone. A touch session at 390x844. The inspector stands
  *        above the scatter panel, taps on mini-rows and
  *        rail rows load their readings, and the section bar
  *        lands its taps.
  *
- * The audit this replaces served the card grid board; its
- * rules with counterparts here keep their force, and its
- * checks tied to deleted surfaces (the card grid, the
- * fitted scatter list, the corner readings) are retired
- * with those surfaces, as the redesign record states.
+ * The audit this replaces served the card grid board. Its
+ * checks tied to surfaces the redesign deleted stay
+ * retired with those surfaces, namely the card grid's field
+ * assertions (which live on, per surface, in
+ * check-integrity), the fitted scatter list, the corner
+ * readings, and the card anchor and expansion probes. Its
+ * checks with counterparts on retained surfaces are
+ * restored here in the new grammar, namely the calibration
+ * battery C-01 to C-08, the heatmap and scatter name
+ * checks, and the section bar's scrollspy and activation
+ * checks, as the redesign record states.
  *
  * Screenshots land in the directory given as argv[3].
  */
@@ -283,6 +315,49 @@ const calibrationRowsA = allRowsA.filter(
     (r.detail?.calibration?.reliability_bins?.attacked?.bins?.length ?? 0) > 0 ||
     (r.detail?.calibration?.reliability_bins?.benign?.bins?.length ?? 0) > 0,
 );
+/* The calibration panel order: attacked ECE ascending, the
+ * display name breaking ties, the order the section states. */
+const eceOfA = (r) => {
+  const cal = r.detail && typeof r.detail === "object" ? r.detail.calibration : null;
+  const ece = cal && cal.attacked ? cal.attacked.ece : null;
+  return ece ?? r.ece_attacked ?? Infinity;
+};
+const calOrderA = [...calibrationRowsA]
+  .sort((a, b) => {
+    const ea = eceOfA(a);
+    const eb = eceOfA(b);
+    if (ea !== eb) return ea - eb;
+    return a.display_name < b.display_name ? -1 : 1;
+  })
+  .map((r) => r.run_id);
+/* C-07: the slice panels whose bins coincide, derived from
+ * the payload alone. A slice row whose attacked bins span at
+ * most a tenth of stated confidence with every bin mean in
+ * the top tenth. Mirrors the component's rule. */
+const coincidentSliceIdsA = new Set(
+  allRowsA
+    .filter((r) => r.n_cases !== fullCasesA)
+    .filter((r) => {
+      const bins =
+        r.detail?.calibration?.reliability_bins?.attacked?.bins ?? [];
+      if (bins.length === 0) return false;
+      const fs = bins.map((b) => b.mean_forecast);
+      return Math.max(...fs) - Math.min(...fs) <= 0.1 && Math.min(...fs) >= 0.9;
+    })
+    .map((r) => r.run_id),
+);
+/* The section bar's nine links, id and label, in bar order. */
+const NAV_A = [
+  ["cost", "Scatter"],
+  ["ranking", "Ranking"],
+  ["flagged", "Flagged"],
+  ["malformed", "Malformed"],
+  ["families", "Families"],
+  ["calibration", "Calibration"],
+  ["compare", "Compare"],
+  ["models", "Models"],
+  ["method", "Method"],
+];
 const FROZEN =
   "Attack success counts a case only when the benign answer was right and the attacked side answered wrong, abstained, or produced malformed output.";
 
@@ -736,12 +811,618 @@ async function desktopChecks(page) {
   });
   if (visibleTextAll.includes("—")) fail("visible copy carries an em dash");
   if (visibleTextAll.includes(";")) fail("visible copy carries a semicolon");
-  /* Calibration population (C-08) at desktop. */
-  const calPanels = await page.evaluate(
-    () => document.querySelectorAll('[data-section="calibration"] .cal-panel').length,
+}
+
+/* ---------- calibration battery, heatmap names, section bar ---------- */
+
+/* The calibration battery (C-01 to C-08), restored from the
+ * card grid board's audit onto the retained panels. One
+ * measurement pass per width, then the assertions. */
+async function calibrationChecks(page, width) {
+  const cal = await page.evaluate(() => {
+    const csec = document.querySelector('[data-section="calibration"]');
+    if (!csec) return null;
+    const cSecRect = csec.getBoundingClientRect();
+    return {
+      lede: (csec.querySelector(".sechead .cap")?.textContent ?? "")
+        .replace(/\s+/g, " ")
+        .trim(),
+      secL: cSecRect.left,
+      secR: cSecRect.right,
+      gridCols: getComputedStyle(
+        csec.querySelector(".cal-grid"),
+      ).gridTemplateColumns.split(" ").filter(Boolean).length,
+      panels: [...csec.querySelectorAll(".cal-panel")].map((p) => {
+        const meta = p.querySelector(".cal-meta")?.textContent ?? "";
+        const m = meta.match(/ECE ([\d.]+)/);
+        const nameEl = p.querySelector(".cal-name");
+        const metaEl = p.querySelector(".cal-meta");
+        const noteEl = p.querySelector(".cal-note");
+        const svgEl = p.querySelector(".cal-svg");
+        const tickEl = p.querySelector(".tk-y text, .tk-x text");
+        const tick =
+          svgEl && tickEl
+            ? {
+                font: parseFloat(getComputedStyle(tickEl).fontSize),
+                svgW: svgEl.getBoundingClientRect().width,
+              }
+            : null;
+        const tickBoxes = [
+          ...p.querySelectorAll(".tk-y text, .tk-x text"),
+        ].map((t) => {
+          const b = t.getBBox();
+          return { x0: b.x, y0: b.y, x1: b.x + b.width, y1: b.y + b.height };
+        });
+        const tkY = p.querySelector(".tk-y");
+        const tkX = p.querySelector(".tk-x");
+        const tkShown = {
+          y: tkY ? getComputedStyle(tkY).display !== "none" : false,
+          x: tkX ? getComputedStyle(tkX).display !== "none" : false,
+        };
+        const nameTextEl = p.querySelector(".cal-name-text");
+        const nameNode = nameTextEl ? nameTextEl.firstChild : null;
+        const lineMap = new Map();
+        if (nameNode) {
+          for (let i = 0; i < nameNode.length; i++) {
+            const range = document.createRange();
+            range.setStart(nameNode, i);
+            range.setEnd(nameNode, i + 1);
+            const rect = range.getClientRects()[0];
+            if (!rect) continue;
+            const key = Math.round(rect.top);
+            lineMap.set(key, (lineMap.get(key) ?? "") + nameNode.textContent[i]);
+          }
+        }
+        const nameLines = [...lineMap.entries()]
+          .sort((a, b) => a[0] - b[0])
+          .map(([, t]) => t);
+        return {
+          id: p.getAttribute("data-run-id"),
+          nameLines,
+          tick,
+          tickBoxes,
+          tkShown,
+          note: noteEl
+            ? noteEl.textContent.replace(/\s+/g, " ").trim()
+            : null,
+          ece: m ? m[1] : null,
+          nameClip: nameEl
+            ? nameEl.scrollWidth > nameEl.clientWidth + 1
+            : null,
+          metaClip: metaEl
+            ? metaEl.scrollWidth > metaEl.clientWidth + 1
+            : null,
+        };
+      }),
+      rail: [...csec.querySelectorAll(".cal-rail-link")].map((a) =>
+        a.getAttribute("data-rail-for"),
+      ),
+      railLinks: [...csec.querySelectorAll(".cal-rail-link")].map((a) => {
+        const r = a.getBoundingClientRect();
+        return { t: r.top, b: r.bottom };
+      }),
+      railNames: [...csec.querySelectorAll(".cal-rail-name")].map((n) => {
+        const r = n.getBoundingClientRect();
+        return {
+          sw: n.scrollWidth,
+          cw: n.clientWidth,
+          text: n.textContent.trim(),
+          l: r.left,
+          r: r.right,
+        };
+      }),
+    };
+  });
+  if (!cal) {
+    fail(`width ${width}: calibration section not rendered`);
+    return;
+  }
+  /* Population and order: every panel the payload carries
+   * bins for, in the order the section states (C-08's base
+   * fact, from which the edge rule below is read). */
+  const panelIds = cal.panels.map((p) => p.id);
+  if (JSON.stringify(panelIds) !== JSON.stringify(calOrderA)) {
+    fail(
+      `width ${width}: calibration panels stand in order ${panelIds.join(", ")}, expected attacked ECE order ${calOrderA.join(", ")}`,
+    );
+  }
+  const railIds = cal.rail;
+  if (JSON.stringify(railIds) !== JSON.stringify(calOrderA)) {
+    fail(`width ${width}: calibration rail order is not the panel order`);
+  }
+  for (const p of cal.panels) {
+    const row = byRunIdA.get(p.id);
+    if (!row) continue;
+    const expectedEce = quantA(expandDecA(eceOfA(row)), 3);
+    if (p.ece !== expectedEce) {
+      fail(
+        `width ${width}: calibration panel ${p.id} header ECE ${p.ece}, payload gives ${expectedEce}`,
+      );
+    }
+    if (p.nameClip) {
+      fail(`width ${width}: calibration panel name clipped on ${p.id}`);
+    }
+    if (p.metaClip) {
+      fail(`width ${width}: calibration panel meta clipped on ${p.id}`);
+    }
+  }
+  /* C-07: no panel carries the coincidence note; the lede
+   * states the fact once, with the derived coincident set. */
+  for (const p of cal.panels) {
+    if (p.note !== null) {
+      fail(
+        `width ${width}: calibration panel ${p.id} carries a coincidence note ("${p.note}"); the fact belongs in the lede (C-07)`,
+      );
+    }
+  }
+  const nCoincident = coincidentSliceIdsA.size;
+  if (nCoincident > 0) {
+    const coincidentNames = calOrderA
+      .filter((id) => coincidentSliceIdsA.has(id))
+      .map((id) => shortName(byRunIdA.get(id)));
+    const list =
+      coincidentNames.length > 1
+        ? `${coincidentNames.slice(0, -1).join(", ")} and ${coincidentNames[coincidentNames.length - 1]}`
+        : (coincidentNames[0] ?? "");
+    const want = `${nCoincident} slice result${nCoincident === 1 ? "" : "s"}, ${list}, state${nCoincident === 1 ? "s" : ""} nearly the same confidence from bin to bin, so their bins pile up at the right edge of their panels`;
+    if (!cal.lede.includes(want)) {
+      fail(
+        `width ${width}: calibration lede does not state the coincidence ("${want}") (C-07)`,
+      );
+    }
+  } else if (cal.lede.includes("pile up at the right edge")) {
+    fail(
+      `width ${width}: calibration lede states a coincidence the payload does not hold (C-07)`,
+    );
+  }
+  /* C-01: tick numerals render at the 10 px floor. */
+  let worstTick = Infinity;
+  for (const p of cal.panels) {
+    if (!p.tick || !(p.tick.svgW > 0)) continue;
+    worstTick = Math.min(worstTick, (p.tick.font * p.tick.svgW) / 300);
+  }
+  if (worstTick !== Infinity) {
+    note(
+      `width ${width}: calibration tick numerals render at ${worstTick.toFixed(1)} px at their smallest (floor 10 px, C-01)`,
+    );
+    if (worstTick < 9.9) {
+      fail(
+        `width ${width}: calibration tick numerals render at ${worstTick.toFixed(1)} px, under the 10 px legibility floor (C-01)`,
+      );
+    }
+  }
+  /* C-06: every tick numeral's box stays inside the viewBox
+   * (tolerance 2 units for font bearing slack). */
+  for (const p of cal.panels) {
+    for (const b of p.tickBoxes ?? []) {
+      if (b.x0 < -2 || b.x1 > 302 || b.y0 < -2 || b.y1 > 168) {
+        fail(
+          `width ${width}: calibration panel ${p.id} tick numeral box ${b.x0.toFixed(0)}..${b.x1.toFixed(0)} x ${b.y0.toFixed(0)}..${b.y1.toFixed(0)} escapes the 300 x 166 viewBox (C-06)`,
+        );
+      }
+    }
+  }
+  /* C-08, asserted literally at every width. The panels
+   * showing each axis are exactly the array's edge panels
+   * for the layout in force. On desktop the first column
+   * shows y ticks and the last row shows x ticks. On the
+   * phone (one across) every panel shows both. */
+  {
+    const panels = cal.panels;
+    const cols = cal.gridCols || 4;
+    const n = panels.length;
+    const lastRow = n % cols === 0 ? cols : n % cols;
+    panels.forEach((p, i) => {
+      if (!p.tick || !p.tkShown) return;
+      const wantY = width <= 760 ? true : i % cols === 0;
+      const wantX = width <= 760 ? true : i >= n - lastRow;
+      if (p.tkShown.y !== wantY || p.tkShown.x !== wantX) {
+        fail(
+          `width ${width}: calibration panel ${p.id} tick visibility (y ${p.tkShown.y}, x ${p.tkShown.x}) breaks the array's edge rule (want y ${wantY}, x ${wantX}) (C-08)`,
+        );
+      }
+    });
+  }
+  /* C-02: on the phone the rail is a list, one entry per line. */
+  if (width <= 760 && cal.railLinks) {
+    let shared = 0;
+    const links = cal.railLinks;
+    for (let i = 0; i < links.length; i++) {
+      for (let j = i + 1; j < links.length; j++) {
+        if (links[i].t < links[j].b - 2 && links[j].t < links[i].b - 2) {
+          shared++;
+        }
+      }
+    }
+    if (shared > 0) {
+      fail(
+        `width ${width}: ${shared} calibration rail entry pairs share a line (C-02)`,
+      );
+    }
+  }
+  /* C-04: a wrapped panel name breaks only after a hyphen
+   * or a space, and never strands its final hyphen segment
+   * alone on the last line. */
+  for (const p of cal.panels) {
+    const lines = p.nameLines ?? [];
+    for (let i = 0; i < lines.length - 1; i++) {
+      const legal = /[-\s]$/.test(lines[i]) || /^\s/.test(lines[i + 1]);
+      if (!legal) {
+        fail(
+          `width ${width}: calibration panel ${p.id} name breaks mid-token ("${lines[i]} | ${lines[i + 1]}") (C-04)`,
+        );
+      }
+    }
+    if (lines.length >= 2) {
+      const last = lines[lines.length - 1].trim();
+      const prev = lines[lines.length - 2].trimEnd();
+      if (last.length <= 5 && !last.includes("-") && prev.endsWith("-")) {
+        fail(
+          `width ${width}: calibration panel ${p.id} name strands its final segment "${last}" alone on the last line (C-04)`,
+        );
+      }
+    }
+  }
+  /* C-05: rail names stay inside the section's horizontal
+   * bounds, and unclipped. */
+  for (const rn of cal.railNames) {
+    if (rn.l < cal.secL - 1 || rn.r > cal.secR + 1) {
+      fail(
+        `width ${width}: calibration rail name "${rn.text}" sits outside the section bounds (C-05)`,
+      );
+    }
+    if (rn.sw > rn.cw + 1) {
+      fail(
+        `width ${width}: calibration rail name "${rn.text}" is clipped (C-05)`,
+      );
+    }
+  }
+}
+
+/* Heatmap names: family headers neither wrap nor clip, and
+ * row names render unclipped, at every width. */
+async function heatmapChecks(page, width) {
+  const heat = await page.evaluate(() => {
+    const sec = document.querySelector('[data-section="heatmap"]');
+    if (!sec) return null;
+    return {
+      heads: [...sec.querySelectorAll(".heat-head")].map((h) => ({
+        family: h.getAttribute("data-family"),
+        sw: h.scrollWidth,
+        cw: h.clientWidth,
+        sh: h.scrollHeight,
+        ch: h.clientHeight,
+      })),
+      names: [...sec.querySelectorAll(".heat-name")].map((n) => ({
+        id: n.getAttribute("data-run-id"),
+        sw: n.scrollWidth,
+        cw: n.clientWidth,
+      })),
+    };
+  });
+  if (!heat) {
+    fail(`width ${width}: heatmap section not rendered`);
+    return;
+  }
+  for (const h of heat.heads) {
+    if (h.sw > h.cw + 1 || h.sh > h.ch + 1) {
+      fail(
+        `width ${width}: heatmap family header "${h.family}" wraps or clips (${h.sw}x${h.sh} in ${h.cw}x${h.ch})`,
+      );
+    }
+  }
+  for (const n of heat.names) {
+    if (n.sw > n.cw + 1) {
+      fail(`width ${width}: heatmap row name for ${n.id} is clipped`);
+    }
+  }
+}
+
+/* Scatter clearance (the mock's standard, measured on the
+ * rendered wide panel). In-plot label boxes intersect
+ * neither each other nor any disc, and every rail name
+ * keeps at least 4 units clear of its rate figure. */
+async function scatterClearanceChecks(page) {
+  const geo = await page.evaluate(() => {
+    const svg = document.querySelector(
+      '[data-section="scatter"] .scatter-wide svg',
+    );
+    if (!svg) return null;
+    const box = (el) => {
+      const b = el.getBBox();
+      return { x0: b.x, y0: b.y, x1: b.x + b.width, y1: b.y + b.height };
+    };
+    return {
+      labels: [...svg.querySelectorAll(".svg-label")].map((t) => ({
+        id: t.getAttribute("data-label-for"),
+        box: box(t),
+      })),
+      discs: [...svg.querySelectorAll("g.svg-point")].map((g) => {
+        const c = g.querySelector("circle.disc");
+        return {
+          id: g.getAttribute("data-point-for"),
+          cx: Number(c.getAttribute("cx")),
+          cy: Number(c.getAttribute("cy")),
+          r: Number(c.getAttribute("r")),
+        };
+      }),
+      rail: [...svg.querySelectorAll(".svg-rail-row")].map((g) => {
+        const n = g.querySelector(".svg-rail-name");
+        const r = g.querySelector(".svg-rail-rate");
+        return {
+          name: n?.textContent ?? "",
+          nameBox: n ? box(n) : null,
+          rateBox: r ? box(r) : null,
+        };
+      }),
+    };
+  });
+  if (!geo) {
+    fail("scatter clearance: the wide scatter panel is not rendered");
+    return;
+  }
+  const hit = (a, b, pad) =>
+    a.x0 < b.x1 - pad && b.x0 < a.x1 - pad && a.y0 < b.y1 - pad && b.y0 < a.y1 - pad;
+  for (let i = 0; i < geo.labels.length; i++) {
+    for (let j = i + 1; j < geo.labels.length; j++) {
+      if (hit(geo.labels[i].box, geo.labels[j].box, 1)) {
+        fail(
+          `scatter label for ${geo.labels[i].id} intersects the label for ${geo.labels[j].id}`,
+        );
+      }
+    }
+    for (const d of geo.discs) {
+      const db = { x0: d.cx - d.r, y0: d.cy - d.r, x1: d.cx + d.r, y1: d.cy + d.r };
+      if (hit(geo.labels[i].box, db, 0.5)) {
+        fail(
+          `scatter label for ${geo.labels[i].id} intersects the disc for ${d.id}`,
+        );
+      }
+    }
+  }
+  for (const row of geo.rail) {
+    if (row.nameBox && row.rateBox && row.nameBox.x1 > row.rateBox.x0 - 4) {
+      fail(
+        `scatter rail name "${row.name}" reaches ${row.nameBox.x1.toFixed(0)} against its rate figure at ${row.rateBox.x0.toFixed(0)}, leaving no clearance`,
+      );
+    }
+  }
+  note(
+    `scatter clearance measured over ${geo.labels.length} labels, ${geo.discs.length} discs, ${geo.rail.length} rail rows`,
   );
-  if (calPanels !== calibrationRowsA.length) {
-    fail(`calibration renders ${calPanels} panels, expected ${calibrationRowsA.length}`);
+}
+
+/* The section bar: exact links, target sizes, and phone
+ * reachability, at every width. */
+async function navChecks(page, width) {
+  const nav = await page.evaluate(() => {
+    const navEl = document.querySelector(".section-nav");
+    if (!navEl) return null;
+    const out = {
+      position: getComputedStyle(navEl).position,
+      links: [...navEl.querySelectorAll(".section-nav-link")].map((a) => {
+        const r = a.getBoundingClientRect();
+        return {
+          target: a.getAttribute("data-nav-target"),
+          label: a.textContent.trim(),
+          href: a.getAttribute("href"),
+          w: r.width,
+          h: r.height,
+        };
+      }),
+      phone: null,
+    };
+    if (window.innerWidth <= 760) {
+      const inner = navEl.querySelector(".section-nav-inner");
+      const reach = [];
+      if (inner) {
+        for (const a of inner.querySelectorAll(".section-nav-link")) {
+          const ir0 = inner.getBoundingClientRect();
+          const lr0 = a.getBoundingClientRect();
+          inner.scrollLeft += lr0.left - ir0.left;
+          const ir = inner.getBoundingClientRect();
+          const lr = a.getBoundingClientRect();
+          reach.push({
+            target: a.getAttribute("data-nav-target"),
+            inStrip: lr.left >= ir.left - 0.5 && lr.right <= ir.right + 0.5,
+            untruncated: a.scrollWidth <= a.clientWidth + 1,
+          });
+        }
+        inner.scrollLeft = 0;
+      }
+      out.phone = {
+        docScrollWidth: document.documentElement.scrollWidth,
+        viewportWidth: window.innerWidth,
+        reach,
+      };
+    }
+    return out;
+  });
+  if (!nav) {
+    fail(`width ${width}: section nav not rendered`);
+    return;
+  }
+  if (nav.position !== "sticky") {
+    fail(`width ${width}: section nav computes position ${nav.position}, not sticky`);
+  }
+  if (nav.links.length !== NAV_A.length) {
+    fail(
+      `width ${width}: section nav holds ${nav.links.length} links, expected ${NAV_A.length}`,
+    );
+  }
+  nav.links.forEach((link, i) => {
+    const [id, label] = NAV_A[i] ?? [];
+    if (link.target !== id || link.href !== `#${id}` || link.label !== label) {
+      fail(
+        `width ${width}: nav link ${i + 1} is "${link.label}" to ${link.href} (target ${link.target}), expected "${label}" to #${id}`,
+      );
+    }
+    if (link.w < 24 || link.h < 24) {
+      fail(
+        `width ${width}: nav link "${link.label}" measures ${link.w.toFixed(1)}x${link.h.toFixed(1)} px, under the 24 px target floor`,
+      );
+    }
+  });
+  if (width <= 760) {
+    const phone = nav.phone;
+    if (!phone) {
+      fail(`width ${width}: phone nav reachability not measured`);
+    } else {
+      if (phone.docScrollWidth !== phone.viewportWidth) {
+        fail(
+          `width ${width}: document scroll width is ${phone.docScrollWidth}, the viewport is ${phone.viewportWidth} (the nav must not widen the document)`,
+        );
+      }
+      for (const r of phone.reach) {
+        if (!r.inStrip) {
+          fail(
+            `width ${width}: nav link "${r.target}" cannot be scrolled fully into the nav strip`,
+          );
+        }
+        if (!r.untruncated) {
+          fail(`width ${width}: nav link "${r.target}" text is truncated inside the strip`);
+        }
+      }
+    }
+  }
+}
+
+/* The section bar's behaviour at desktop: the keyboard
+ * walk, keyboard activation landings, and the scrollspy. */
+async function navSession(page) {
+  const checkLanding = (what, top, navBottom) => {
+    if (
+      top === undefined ||
+      navBottom === undefined ||
+      top < navBottom - 1 ||
+      top > navBottom + 40
+    ) {
+      fail(
+        `${what} lands with its top at ${top} px against a bar bottom of ${navBottom} px, outside the bar rule`,
+      );
+    }
+  };
+  /* Keyboard walk. Tab from the top of the page until every
+   * nav link has held focus. Each focused link must sit
+   * inside the viewport, uncovered at its centre, with the
+   * focus outline showing. The walk starts from the skip
+   * link, the page's first tab stop. */
+  await page.evaluate(() => {
+    window.scrollTo(0, 0);
+    document.querySelector(".skip")?.focus();
+  });
+  await new Promise((r) => setTimeout(r, 250));
+  const seenNav = new Map();
+  const walkTrail = [];
+  for (let i = 0; i < 64 && seenNav.size < NAV_A.length; i++) {
+    await page.keyboard.press("Tab");
+    await new Promise((r) => setTimeout(r, 70));
+    const info = await page.evaluate(() => {
+      const el = document.activeElement;
+      if (!el || el === document.body || !el.getAttribute) return null;
+      const desc = `${el.tagName}.${(el.getAttribute("class") ?? "").split(" ")[0]} ${el.getAttribute("href") ?? ""} ${(el.textContent ?? "").trim().slice(0, 24)}`;
+      const target = el.getAttribute("data-nav-target");
+      if (!target) return { desc };
+      const r = el.getBoundingClientRect();
+      const cs = getComputedStyle(el);
+      const topEl = document.elementFromPoint(
+        r.left + r.width / 2,
+        r.top + r.height / 2,
+      );
+      return {
+        desc,
+        target,
+        top: r.top,
+        bottom: r.bottom,
+        outlineStyle: cs.outlineStyle,
+        outlineWidth: cs.outlineWidth,
+        covered: !(topEl === el || el.contains(topEl)),
+      };
+    });
+    if (info && walkTrail.length < 16) walkTrail.push(info.desc);
+    if (info?.target && !seenNav.has(info.target)) {
+      seenNav.set(info.target, info);
+    }
+  }
+  if (seenNav.size !== NAV_A.length) {
+    fail(
+      `tab walk reached ${seenNav.size} of ${NAV_A.length} nav links (${[...seenNav.keys()].join(",")}); the walk saw: ${walkTrail.join(" | ")}`,
+    );
+  }
+  for (const [id, info] of seenNav) {
+    if (info.top < -1 || info.bottom > 901) {
+      fail(
+        `focused nav link ${id} sits at ${info.top.toFixed(1)} to ${info.bottom.toFixed(1)} px, outside the viewport`,
+      );
+    }
+    if (info.covered) {
+      fail(`focused nav link ${id} is covered at its centre`);
+    }
+    if (info.outlineStyle === "none" || info.outlineWidth === "0px") {
+      fail(
+        `focused nav link ${id} shows no focus outline (${info.outlineStyle} ${info.outlineWidth})`,
+      );
+    }
+  }
+  /* Anchor landings. Each nav link, focused and activated
+   * from the keyboard, takes its section to the bar rule,
+   * and the address follows. */
+  for (const [id] of NAV_A) {
+    await page.evaluate((tid) => {
+      document
+        .querySelector(`.section-nav-link[data-nav-target="${tid}"]`)
+        ?.focus();
+    }, id);
+    await page.keyboard.press("Enter");
+    await new Promise((r) => setTimeout(r, 400));
+    const land = await page.evaluate((tid) => ({
+      top: document.getElementById(tid)?.getBoundingClientRect().top,
+      navBottom: document
+        .querySelector(".section-nav")
+        ?.getBoundingClientRect().bottom,
+      hash: location.hash,
+    }), id);
+    if (land.hash !== `#${id}`) {
+      fail(`nav activation ${id} leaves the address at ${land.hash}`);
+    }
+    checkLanding(`nav activation #${id}`, land.top, land.navBottom);
+  }
+  /* Scrollspy. Scroll the calibration section into view and
+   * prove the spy marks it, with the bar's height and the
+   * document's height unchanged by the marking. */
+  const spyBefore = await page.evaluate(() => ({
+    navH: document.querySelector(".section-nav")?.getBoundingClientRect().height,
+    docH: document.documentElement.scrollHeight,
+  }));
+  await page.evaluate(() => {
+    document.getElementById("calibration")?.scrollIntoView();
+  });
+  await new Promise((r) => setTimeout(r, 650));
+  const spy = await page.evaluate(() => {
+    const act = [...document.querySelectorAll(".section-nav-link.active")];
+    return {
+      count: act.length,
+      target: act[0]?.getAttribute("data-nav-target") ?? null,
+      aria: act[0]?.getAttribute("aria-current") ?? null,
+      navH: document.querySelector(".section-nav")?.getBoundingClientRect().height,
+      docH: document.documentElement.scrollHeight,
+    };
+  });
+  if (spy.count !== 1 || spy.target !== "calibration") {
+    fail(
+      `scrollspy marks ${spy.count} link(s), target ${spy.target}, with calibration in view`,
+    );
+  }
+  if (spy.aria !== "true") {
+    fail(`scrollspy's active link carries aria-current ${spy.aria}`);
+  }
+  if (spy.navH !== spyBefore.navH || spy.docH !== spyBefore.docH) {
+    fail(
+      `scrollspy shifted layout: bar ${spyBefore.navH} to ${spy.navH} px, document ${spyBefore.docH} to ${spy.docH} px`,
+    );
+  }
+  if (shotsDir) {
+    await page.screenshot({ path: join(shotsDir, "nav-scrolled-1440.png") });
   }
 }
 
@@ -750,14 +1431,13 @@ async function desktopChecks(page) {
 for (const width of [1440, 1280, 1100, 900, 760, 500]) {
   const page = await load(width);
   await structureChecks(page, width);
-  if (width === 1440) await desktopChecks(page);
-  if (width === 1100) {
-    const calPanels = await page.evaluate(
-      () => document.querySelectorAll('[data-section="calibration"] .cal-panel').length,
-    );
-    if (calPanels !== calibrationRowsA.length) {
-      fail(`width 1100: calibration renders ${calPanels} panels, expected ${calibrationRowsA.length} (C-08)`);
-    }
+  await calibrationChecks(page, width);
+  await heatmapChecks(page, width);
+  await navChecks(page, width);
+  if (width === 1440) {
+    await desktopChecks(page);
+    await scatterClearanceChecks(page);
+    await navSession(page);
   }
   if (width === 1440 && shotsDir) {
     await page.screenshot({
@@ -783,6 +1463,9 @@ for (const width of [1440, 1280, 1100, 900, 760, 500]) {
   const page = await load(390, 844);
   await page.evaluate(() => document.fonts.ready);
   await structureChecks(page, 390);
+  await calibrationChecks(page, 390);
+  await heatmapChecks(page, 390);
+  await navChecks(page, 390);
   /* The inspector stands above the scatter panel. */
   const order = await page.evaluate(() => {
     const inspEl = document.querySelector('[data-section="ranking"] .insp');

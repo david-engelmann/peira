@@ -232,9 +232,10 @@ export default function Method() {
         rates in the run's own provenance. Where some of a run's calls
         went unpriced, the recorded total understates the true cost and
         the figure is a lower bound, marked with a greater than or
-        equal sign wherever it prints. Results served locally record a
-        cost of 0.00 or no cost at all, and the page keeps those two
-        facts apart in words.
+        equal sign wherever it prints. Results with no per-call API
+        charge, served locally or measured through an agent harness,
+        record a cost of 0.00 or no cost at all, and the page keeps
+        those two facts apart in words.
       </p>
 
       {rerunParagraph !== null && (

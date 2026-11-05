@@ -29,6 +29,7 @@ import {
 import { asrAxisFor } from "@/lib/chart";
 import { calibrationArmsOf, familiesOf, familyFullName, familyOrder } from "@/lib/charts";
 import { costStateOf } from "@/lib/cards";
+import { inspectorDataAll, type InspectorDatum } from "@/lib/inspectorData";
 import { vendorColorOf } from "@/lib/vendorColors";
 import { vendorOf } from "@/lib/vendor";
 
@@ -94,6 +95,15 @@ export interface CompareRow {
 
 export interface CompareData {
   rows: CompareRow[];
+  /**
+   * Every result's inspector datum, keyed by run id, so
+   * the two compare columns are full inspector readings
+   * (figure grid and disclosure blocks), not heads over
+   * the table. It stays out of the row set, so the dataset the
+   * section prints for integrity check 11 is the rows
+   * alone, as it has always been.
+   */
+  inspectors: Record<string, InspectorDatum>;
   /** Family full names in the same fixed order as each row's family array. */
   familyNames: string[];
   familyKeys: string[];
@@ -200,14 +210,21 @@ export function compareData(): CompareData {
   const rankedRates = [...groups.full, ...groups.slices]
     .map((r) => r.asr_conditional)
     .filter((v): v is number => v !== null && v !== undefined);
+  const axisMax = asrAxisFor(
+    rankedRates.length ? Math.max(...rankedRates) : 0,
+  ).max;
+  const { byRunId } = inspectorDataAll(axisMax);
+  const inspectors: Record<string, InspectorDatum> = {};
+  for (const [id, d] of byRunId) inspectors[id] = d;
   return {
     rows,
+    inspectors,
     familyNames: famKeys.map((k) => familyFullName(k)),
     familyKeys: famKeys,
     defaultA: defaultA.slug,
     defaultB: defaultB.slug,
     fullCases: groups.fullCases,
     sliceCases: groups.slices[0]?.n_cases ?? 0,
-    axisMax: asrAxisFor(rankedRates.length ? Math.max(...rankedRates) : 0).max,
+    axisMax,
   };
 }

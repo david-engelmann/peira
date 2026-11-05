@@ -8,6 +8,8 @@ import {
   type BoardRow,
 } from "@/lib/payload";
 import { fmtInt, fmtPct } from "@/lib/format";
+import { markOf } from "@/lib/inspectorData";
+import Mark from "./Mark";
 
 /**
  * The malformed rail (04). Every result's malformed share
@@ -24,8 +26,8 @@ import { fmtInt, fmtPct } from "@/lib/format";
  * fold into one summary line rather than draw as empty bars.
  */
 
-function malformedAxis(maxRate: number): { max: number } {
-  return { max: Math.max(0.15, Math.ceil(maxRate / 0.05) * 0.05) };
+function malformedAxis(maxRate: number): number {
+  return Math.max(0.15, Math.ceil(maxRate / 0.05) * 0.05);
 }
 
 export default function Malformed() {
@@ -51,8 +53,8 @@ export default function Malformed() {
     printed.reduce((m, r) => Math.max(m, r.malformed_rate ?? 0), 0),
   );
   const pct = (value: number): number =>
-    Math.max(0, (value / axis.max) * 100);
-  const flagFrac = 0.05 / axis.max;
+    Math.max(0, (value / axis) * 100);
+  const flagFrac = 0.05 / axis;
 
   return (
     <section
@@ -67,7 +69,7 @@ export default function Malformed() {
         <p className="cap">
           Attacked responses that stopped parsing as function calls,
           ranked by share. Bars run on one scale to{" "}
-          {Math.round(axis.max * 100)} percent. Results past the flag
+          {Math.round(axis * 100)} percent. Results past the flag
           line stand in the flagged band above with their split.
         </p>
       </div>
@@ -95,10 +97,13 @@ export default function Malformed() {
               data-malformed={row.malformed_rate ?? ""}
             >
               <div className="nm">
-                {name}
-                {dupes.has(name) && (
-                  <span className="sub">{wireWords(row.wire)}</span>
-                )}
+                <Mark mark={markOf(row)} size="row" />
+                <span>
+                  {name}
+                  {dupes.has(name) && (
+                    <span className="sub">{wireWords(row.wire)}</span>
+                  )}
+                </span>
               </div>
               <div className="mtrack">
                 <div

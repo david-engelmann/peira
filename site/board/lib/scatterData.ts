@@ -114,6 +114,20 @@ export interface ScatterData {
     cheapest: ScatterReading;
     priciestIsMostFlipped: boolean;
     /**
+     * The headline claim's own population, the ranked
+     * costed runs (plotted and ranking eligible). The
+     * priciest of them, the one that flipped most, and
+     * whether the two are the same run at the same rate.
+     * This is the one derivation of the claim. The scatter
+     * section's title and its readings paragraph consume
+     * it, and the share card's generator keeps its own
+     * independent guard over the same population, because
+     * a gate must not import the code it checks.
+     */
+    priciestCosted: ScatterReading;
+    mostFlippedCosted: ScatterReading;
+    priciestIsMostFlippedCosted: boolean;
+    /**
      * The scope phrase for the ranked superlatives ("on the
      * full suite"), assembled at the derivation site from
      * the groups the ranked derivation consumed. The strip
@@ -256,12 +270,29 @@ export function scatterData(): ScatterData {
     (b.total_cost_usd ?? Infinity) < (a.total_cost_usd ?? Infinity) ? b : a,
   );
   const mostFlippedRankedRow = fullRanked[fullRanked.length - 1];
+  /* The headline claim's population, named once. The
+   * ranked costed runs. The claim holds when the priciest
+   * of them carries that population's highest attack
+   * success, ties included, the equality the share card's
+   * own guard checks independently. */
+  const costedRanked = sets.plotted.filter((r) => r.ranking_eligible);
+  const priciestCostedRow = costedRanked.reduce((a, b) =>
+    (b.total_cost_usd ?? 0) > (a.total_cost_usd ?? 0) ? b : a,
+  );
+  const mostFlippedCostedRow = costedRanked.reduce((a, b) =>
+    (b.asr_conditional ?? 0) > (a.asr_conditional ?? 0) ? b : a,
+  );
   const readings = {
     priciest: reading(priciestRow),
     mostFlippedRanked: reading(mostFlippedRankedRow),
     toughestRanked: reading(fullRanked[0]),
     cheapest: reading(cheapestRow),
     priciestIsMostFlipped: priciestRow.run_id === mostFlippedRankedRow.run_id,
+    priciestCosted: reading(priciestCostedRow),
+    mostFlippedCosted: reading(mostFlippedCostedRow),
+    priciestIsMostFlippedCosted:
+      priciestCostedRow.asr_conditional ===
+      mostFlippedCostedRow.asr_conditional,
     rankedScope,
   };
   const aboveScaleNames = sets.population
