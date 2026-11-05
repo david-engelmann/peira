@@ -190,7 +190,7 @@ for (const row of rows) {
  * .og/og.html died unnoticed once the generator stopped
  * writing that file. The headline result is derived from
  * the payload by the generator's own rule, ported here.
- * The full suite size is the largest case count among
+ * The full suite size is the greatest case count among
  * ranked rows, the plotted population is the full suite
  * rows with a recorded cost above zero, and the headline
  * is the priciest ranking eligible run among them. */
