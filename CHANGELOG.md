@@ -17,8 +17,8 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
   do not chart the slices, and a failed run's numbers print
   in the flagged band and on its own page, beside the ranking
   rather than in it.
-- Methodology's ranking protocol speaks in the present
-  tense. The protocol is frozen and it governs the
+- Methodology no longer describes the leaderboard as yet
+  to exist. The protocol is frozen and it governs the
   leaderboard.
 - The board README names the Instrument panel design and
   states the gates the chain runs and the widths and touch
