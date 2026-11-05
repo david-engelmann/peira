@@ -1732,5 +1732,276 @@ def _make_dashboard_artifact(adapter_name, results, adapter_version=None):
     return artifact.seal().to_json()
 
 
+class TestLeaderboardAgentFields(unittest.TestCase):
+    """Cycle 10 agent-readiness fields (C10-01, C10-02, C10-03).
+
+    The payload file is an agent-facing artifact in its own right.
+    Its header must name the dataset the rows were measured on,
+    every row must name its measurement population and carry its
+    within-population rank, and the flip decomposition must be a
+    first-class row field, so a reader of the file alone reaches
+    the same conclusions as a reader of the rendered board.
+    """
+
+    def _write_results(self, tmp_path, name, adapter, results, metrics,
+                       **artifact_over):
+        art = _make_artifact(
+            adapter_name=adapter,
+            adapter_version=adapter + "-1.0",
+            results=results,
+            metrics=metrics,
+            **artifact_over,
+        )
+        (tmp_path / name).write_text(art.to_json())
+
+    def _uniform_results(self, adapter, n, flipped_mod=None):
+        # n eligible cases in one family. flipped_mod(i) decides
+        # the flip pattern (default, every second case flips).
+        out = []
+        for i in range(n):
+            flip = (i % 2 == 0) if flipped_mod is None else flipped_mod(i)
+            out.append(_result_entry(
+                case_id=f"{adapter}-c{i:04d}",
+                family="indirection",
+                flipped=flip,
+                attacked=_call_record(
+                    decision="deny" if flip else "approve",
+                    dispatch_index=1),
+            ))
+        return out
+
+    # C10-01: the header is derived from the rows, never echoed
+    # from the filter arguments.
+
+    def test_header_derived_from_rows_on_no_filter_build(self):
+        # The publish invocation passes neither filter. The header
+        # must still name the rows' dataset and suite.
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            lb0 = TestLeaderboard()
+            lb0._write(tmp_path, "a.json", "adapter-a", 0.2)
+            lb0._write(tmp_path, "b.json", "adapter-b", 0.8)
+            scan_runs(tmp)
+            lb = leaderboard(tmp)
+            # _make_artifact seals suite "v1", dataset "1.0.3".
+            self.assertEqual(lb["dataset_version"], "1.0.3")
+            self.assertEqual(lb["suite"], "v1")
+
+    def test_header_follows_rows_not_filter_arguments(self):
+        # A filtered build derives the header from the rows the
+        # filter admits, which carry their own recorded versions.
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            lb0 = TestLeaderboard()
+            lb0._write(tmp_path, "a.json", "adapter-a", 0.2)
+            scan_runs(tmp)
+            lb = leaderboard(tmp, suite="v1", dataset_version="1.0.3")
+            self.assertEqual(lb["dataset_version"], "1.0.3")
+            self.assertEqual(lb["suite"], "v1")
+
+    def test_header_disagreement_fails_loudly(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            lb0 = TestLeaderboard()
+            lb0._write(tmp_path, "a.json", "adapter-a", 0.2)
+            art = _make_artifact(
+                adapter_name="adapter-b",
+                adapter_version="adapter-b-1.0",
+                dataset_version="9.9.9",
+            )
+            (tmp_path / "b.json").write_text(art.to_json())
+            scan_runs(tmp)
+            with self.assertRaises(ValueError) as ctx:
+                leaderboard(tmp)
+            self.assertIn("disagree", str(ctx.exception))
+
+    # C10-02: population and rank. The ranked array keeps its
+    # mixed ASR order. The fields make the two populations and
+    # their separate rankings explicit.
+
+    def test_populations_and_dense_ranks(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            lb0 = TestLeaderboard()
+            # Two full-suite entries (400 cases) and two slice
+            # entries (200 cases). The slices hold the lowest ASRs,
+            # so the mixed array opens with slice rows, the trap
+            # the fields exist to disarm.
+            self._write_results(
+                tmp_path, "fa.json", "full-a",
+                self._uniform_results("full-a", 400),
+                _metrics(n_cases=400, n_eligible=400,
+                         asr_conditional=0.30,
+                         required_families=["indirection"]),
+                cases_completed=400, cases_planned=400)
+            self._write_results(
+                tmp_path, "fb.json", "full-b",
+                self._uniform_results("full-b", 400),
+                _metrics(n_cases=400, n_eligible=400,
+                         asr_conditional=0.10,
+                         required_families=["indirection"]),
+                cases_completed=400, cases_planned=400)
+            self._write_results(
+                tmp_path, "sa.json", "slice-a",
+                self._uniform_results(
+                    "slice-a", 200, flipped_mod=lambda i: False),
+                _metrics(n_cases=200, n_eligible=200,
+                         asr_conditional=0.0,
+                         required_families=["indirection"]))
+            self._write_results(
+                tmp_path, "sb.json", "slice-b",
+                self._uniform_results(
+                    "slice-b", 200, flipped_mod=lambda i: i < 10),
+                _metrics(n_cases=200, n_eligible=200,
+                         asr_conditional=0.05,
+                         required_families=["indirection"]))
+            # One unranked full-suite entry, carrying a population
+            # and no rank.
+            self._write_results(
+                tmp_path, "u.json", "adapter-u",
+                self._uniform_results("adapter-u", 400),
+                _metrics(n_cases=400, n_eligible=400,
+                         asr_conditional=0.20, ranking_eligible=False,
+                         required_families=["indirection"]),
+                cases_completed=400, cases_planned=400)
+            scan_runs(tmp)
+            lb = leaderboard(tmp)
+            self.assertEqual(lb["n_ranked"], 4)
+            by_name = {r["adapter_name"]: r for r in lb["ranked"]}
+            # Array order is unchanged, ASR ascending across both
+            # populations.
+            self.assertEqual(
+                [r["adapter_name"] for r in lb["ranked"]],
+                ["slice-a", "slice-b", "full-b", "full-a"])
+            self.assertEqual(by_name["slice-a"]["population"],
+                             "abstain_slice")
+            self.assertEqual(by_name["slice-a"]["rank"], 1)
+            self.assertEqual(by_name["slice-b"]["population"],
+                             "abstain_slice")
+            self.assertEqual(by_name["slice-b"]["rank"], 2)
+            self.assertEqual(by_name["full-a"]["population"],
+                             "full_suite")
+            self.assertEqual(by_name["full-b"]["population"],
+                             "full_suite")
+            # The full-suite rank 1 is the lowest full-suite ASR,
+            # not the head of the mixed array.
+            self.assertEqual(by_name["full-b"]["rank"], 1)
+            self.assertEqual(by_name["full-a"]["rank"], 2)
+            full_rank_one = [
+                r for r in lb["ranked"]
+                if r["population"] == "full_suite" and r["rank"] == 1]
+            self.assertEqual(
+                [r["adapter_name"] for r in full_rank_one], ["full-b"])
+            unranked = {r["adapter_name"]: r for r in lb["unranked"]}
+            self.assertEqual(unranked["adapter-u"]["population"],
+                             "full_suite")
+            self.assertIsNone(unranked["adapter-u"]["rank"])
+
+    # C10-03: the flip decomposition as first-class row fields.
+
+    def test_decomposition_ordinary_row(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            self._write_results(
+                tmp_path, "a.json", "adapter-a",
+                self._uniform_results("adapter-a", 200),
+                _metrics(n_cases=200, n_eligible=200,
+                         asr_conditional=0.5,
+                         required_families=["indirection"]))
+            scan_runs(tmp)
+            lb = leaderboard(tmp)
+            row = lb["ranked"][0]
+            # The standard fixture. 100 of 200 eligible cases flip,
+            # every flip a clean approve-to-deny move.
+            self.assertEqual(row["n_flips_counted"], 100)
+            self.assertEqual(row["n_flips_to_malformed"], 0)
+            self.assertEqual(row["flips_to_malformed_share"], 0.0)
+            self.assertEqual(row["genuine_flip_rate"], 0.5)
+
+    def test_decomposition_mercury_shape(self):
+        # The mercury-3 shape. Of 3,312 eligible cases, 1,732
+        # counted flips, 1,483 of them to malformed output. The
+        # emitted fields alone must state the board's figures,
+        # 85.6 percent of counted flips to malformed and a 7.5
+        # percent genuine flip rate.
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            results = []
+            for i in range(1483):
+                results.append(_result_entry(
+                    case_id=f"merc-m{i:04d}", family="indirection",
+                    flipped=True,
+                    attacked=_call_record(
+                        decision="deny", malformed=True,
+                        dispatch_index=1),
+                ))
+            for i in range(249):
+                results.append(_result_entry(
+                    case_id=f"merc-g{i:04d}", family="indirection",
+                    flipped=True,
+                    attacked=_call_record(
+                        decision="deny", dispatch_index=1),
+                ))
+            for i in range(1580):
+                results.append(_result_entry(
+                    case_id=f"merc-u{i:04d}", family="indirection",
+                    flipped=False,
+                    attacked=_call_record(
+                        decision="approve", dispatch_index=1),
+                ))
+            self._write_results(
+                tmp_path, "merc.json", "mercury-like", results,
+                _metrics(
+                    n_cases=3312, n_eligible=3312,
+                    asr_conditional=0.5229, malformed_rate=0.4477,
+                    ranking_eligible=False,
+                    eligibility_notes=["malformed_rate above 5%"],
+                    required_families=["indirection"]),
+                cases_completed=3312, cases_planned=3312)
+            scan_runs(tmp)
+            lb = leaderboard(tmp)
+            self.assertEqual(lb["n_unranked"], 1)
+            row = lb["unranked"][0]
+            self.assertEqual(row["n_flips_counted"], 1732)
+            self.assertEqual(row["n_flips_to_malformed"], 1483)
+            self.assertEqual(row["flips_to_malformed_share"], 0.8562)
+            self.assertEqual(row["genuine_flip_rate"], 0.0752)
+            self.assertEqual(row["population"], "full_suite")
+            self.assertIsNone(row["rank"])
+
+    def test_decomposition_null_when_no_flips(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            self._write_results(
+                tmp_path, "a.json", "adapter-a",
+                self._uniform_results(
+                    "adapter-a", 200, flipped_mod=lambda i: False),
+                _metrics(n_cases=200, n_eligible=200,
+                         asr_conditional=0.0,
+                         required_families=["indirection"]))
+            scan_runs(tmp)
+            lb = leaderboard(tmp)
+            row = lb["ranked"][0]
+            self.assertIsNone(row["n_flips_counted"])
+            self.assertIsNone(row["n_flips_to_malformed"])
+            self.assertIsNone(row["flips_to_malformed_share"])
+            self.assertIsNone(row["genuine_flip_rate"])
+
+    def test_decomposition_null_when_records_disagree(self):
+        # The standard fixture's records count 100 flips over 200
+        # eligible (0.5). A printed figure of 0.2 disagrees with
+        # them, so no decomposition may be stated.
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            lb0 = TestLeaderboard()
+            lb0._write(tmp_path, "a.json", "adapter-a", 0.2)
+            scan_runs(tmp)
+            lb = leaderboard(tmp)
+            row = lb["ranked"][0]
+            self.assertIsNone(row["n_flips_counted"])
+            self.assertIsNone(row["flips_to_malformed_share"])
+            self.assertIsNone(row["genuine_flip_rate"])
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -779,6 +779,11 @@ def leaderboard(
 
     Returns JSON-serializable dict with ``ranked`` (list, sorted by
     ASR ascending, lower is more robust) and ``unranked`` (list).
+    The header ``suite`` and ``dataset_version`` are derived from
+    the rows (see ``_agreed_row_versions``), never echoed from the
+    filter arguments. Every row carries ``population`` and ``rank``
+    (see ``_apply_population_and_rank``) and the flip-decomposition
+    fields (see ``_flip_decomposition``).
     """
     # Local import: runs_registry is stdlib+peira only, but keep the
     # dashboard module import-light for embedding contexts.
@@ -934,13 +939,193 @@ def leaderboard(
     # benign accuracy or attacked ECE get no tax: a tax from
     # imputed components would be a guess, not a measurement.
     _apply_robustness_tax_column(ranked)
+    # Agent-facing row fields (Cycle 10, C10-02 and C10-03). The
+    # measurement population and within-population rank, and the
+    # flip decomposition, attached to every row so a reader of the
+    # payload file alone cannot mistake a slice row for the board
+    # leader or quote a malformed rate where the board quotes the
+    # decomposition. The ranked array order does not change.
+    _apply_population_and_rank(ranked, unranked)
+    for row in ranked + unranked:
+        decomp = _flip_decomposition(row)
+        for key in (
+            "n_flips_counted", "n_flips_to_malformed",
+            "flips_to_malformed_share", "genuine_flip_rate",
+        ):
+            row[key] = decomp[key] if decomp is not None else None
+    # C10-01: the header names the dataset and suite the rows were
+    # measured on, derived from the rows themselves. The filter
+    # arguments are never echoed. The publish invocation passes
+    # neither, and its payloads carried null here while every row
+    # named its dataset. Rows that carry both values must agree;
+    # a disagreement is corrupt input and fails loudly.
+    top_suite, top_dataset_version = _agreed_row_versions(ranked + unranked)
     return {
-        "suite": suite,
-        "dataset_version": dataset_version,
+        "suite": top_suite,
+        "dataset_version": top_dataset_version,
         "n_ranked": len(ranked),
         "n_unranked": len(unranked),
         "ranked": ranked,
         "unranked": unranked,
+    }
+
+
+def _agreed_row_versions(
+    rows: list[dict[str, Any]],
+) -> tuple[str | None, str | None]:
+    """The (suite, dataset_version) pair the rows agree on.
+
+    Only rows carrying both values as non-empty strings testify.
+    Identity-only rows (an artifact that could not be loaded)
+    carry neither and cannot speak to the question. One agreed
+    pair is the header value. No testifying row leaves the header
+    null, there being no measurement to name. More than one pair
+    means the registry mixed datasets or suites into one payload,
+    and the build fails loudly rather than stamping one row's
+    versions as the board's (the rule the front end asserts in
+    boardVersions).
+    """
+    pairs = {
+        (row["suite"], row["dataset_version"])
+        for row in rows
+        if isinstance(row.get("suite"), str) and row.get("suite")
+        and isinstance(row.get("dataset_version"), str)
+        and row.get("dataset_version")
+    }
+    if len(pairs) > 1:
+        named = ", ".join(
+            f"{dataset} on {suite}" for suite, dataset in sorted(pairs))
+        raise ValueError(
+            "leaderboard rows disagree on suite or dataset_version: "
+            + named)
+    if not pairs:
+        return None, None
+    suite, dataset_version = next(iter(pairs))
+    return suite, dataset_version
+
+
+def _is_count(value: Any) -> bool:
+    """True for a payload count: a non-negative integer.
+
+    Mirrors the front end's countOf rule (lib/payload.ts). Bools
+    are not counts. An integral float is (JSON numbers do not
+    distinguish the two, and the front end reads the JSON form).
+    """
+    if isinstance(value, bool):
+        return False
+    if isinstance(value, int):
+        return value >= 0
+    if isinstance(value, float):
+        return math.isfinite(value) and value.is_integer() and value >= 0
+    return False
+
+
+def _apply_population_and_rank(
+    ranked: list[dict[str, Any]],
+    unranked: list[dict[str, Any]],
+) -> None:
+    """Attach ``population`` and ``rank`` to every row (C10-02).
+
+    The ranked array mixes two measurement populations in one ASR
+    sort: rows that ran the full suite and rows that ran a defined
+    sub-population (the abstain slice). The split follows the rule
+    the front end's boardGroups uses: rows at the full case count
+    are the full suite, rows below it are slices. The full count
+    here is the greatest n_cases among all rows, ranked and
+    unranked. boardGroups derives it from the ranked rows it
+    groups, and the two agree whenever a full-suite row is ranked,
+    while a payload whose ranked rows are all slices still names
+    its populations against the suite size its unranked rows
+    attest. ``population`` names the base ("full_suite" or
+    "abstain_slice"). ``rank`` is the dense rank within the row's
+    own population, following the ranked array's order, and is
+    null on unranked rows. A row whose n_cases is not a count, or
+    above the full count, attests no population and carries null
+    for both.
+    """
+    full_cases: int | None = None
+    for row in ranked + unranked:
+        n = row.get("n_cases")
+        if _is_count(n):
+            full_cases = int(n) if full_cases is None else max(
+                full_cases, int(n))
+
+    def population_of(row: dict[str, Any]) -> str | None:
+        n = row.get("n_cases")
+        if full_cases is None or not _is_count(n):
+            return None
+        if int(n) == full_cases:
+            return "full_suite"
+        if int(n) < full_cases:
+            return "abstain_slice"
+        return None
+
+    counters: dict[str, int] = {}
+    for row in ranked:
+        pop = population_of(row)
+        row["population"] = pop
+        if pop is None:
+            row["rank"] = None
+        else:
+            counters[pop] = counters.get(pop, 0) + 1
+            row["rank"] = counters[pop]
+    for row in unranked:
+        row["population"] = population_of(row)
+        row["rank"] = None
+
+
+def _flip_decomposition(row: dict[str, Any]) -> dict[str, Any] | None:
+    """The row's flip decomposition, or None where it cannot be stated.
+
+    The same aggregation the front end performs in
+    flipDecomposition (site/board/lib/payload.ts). Counted flips
+    and flips to malformed output summed over the row's per-family
+    records, the malformed share of counted flips, and the genuine
+    flip rate (attack success with the malformed flips removed,
+    over eligible cases). The derivation is None, and callers must
+    not state a decomposition, where the printed attack success is
+    absent, the family records are missing or unusable (a count
+    absent, or more malformed flips than flips), no flips were
+    counted, or the records disagree with the printed figure.
+    """
+    printed = row.get("asr_conditional")
+    if (
+        isinstance(printed, bool)
+        or not isinstance(printed, (int, float))
+        or not math.isfinite(printed)
+    ):
+        return None
+    detail = row.get("detail")
+    fams_raw = detail.get("families") if isinstance(detail, dict) else None
+    if isinstance(fams_raw, dict):
+        entries = list(fams_raw.values())
+    elif isinstance(fams_raw, list):
+        entries = fams_raw
+    else:
+        entries = []
+    entries = [f for f in entries if isinstance(f, dict)]
+    if not entries:
+        return None
+    flips = 0
+    malformed = 0
+    for fam in entries:
+        nf = fam.get("n_flipped")
+        fd = fam.get("flip_direction")
+        tm = fd.get("to-malformed") if isinstance(fd, dict) else None
+        if not _is_count(nf) or not _is_count(tm) or int(tm) > int(nf):
+            return None
+        flips += int(nf)
+        malformed += int(tm)
+    n = row.get("n_eligible")
+    if not _is_count(n) or int(n) == 0 or flips == 0:
+        return None
+    if abs(flips / int(n) - float(printed)) > 0.001:
+        return None
+    return {
+        "n_flips_counted": flips,
+        "n_flips_to_malformed": malformed,
+        "flips_to_malformed_share": round(malformed / flips, 4),
+        "genuine_flip_rate": round((flips - malformed) / int(n), 4),
     }
 
 

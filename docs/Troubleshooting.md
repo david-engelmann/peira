@@ -2591,6 +2591,14 @@ Cause: `--out` points somewhere unwritable: a missing parent
 directory, or a permissions problem. Fix: create the directory first,
 or pick a writable path.
 
+**`leaderboard rows disagree on suite or dataset_version: ...`**
+Cause: the runs in the registry were measured on more than one
+suite or dataset version, and a single payload cannot name two
+headers. The export fails rather than stamping one run's versions
+as the board's. Fix: point `--runs-dir` at one measurement set, or
+export each suite and dataset version separately with `--suite` and
+`--dataset-version`.
+
 **`error: cannot write comparison JSON to <out> (...)` (from `peira dashboard compare`)**
 Cause: `--out` points somewhere unwritable: a missing parent
 directory, or a permissions problem. Fix: create the directory first,
