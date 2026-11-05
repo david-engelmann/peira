@@ -236,17 +236,10 @@ export function costDomain(costs: number[]): [number, number] {
   return [10 ** loD, 10 ** hiD];
 }
 
-/* The label layout solvers live in lib/layout (pure, no
- * payload access) and are re-exported here for the server
- * components that have always imported them from this module. */
-export {
-  estimateLabelWidth,
-  placeLabels,
-  nudgePoints,
-  type Rect,
-  type LayoutPoint,
-  type PlacedLabel,
-} from "./layout";
+/* Prototype note. The label layout solvers in lib/layout are
+ * not carried into this tree. Nothing in the prototype imports
+ * them, because chart labels are placed by the browser at
+ * interaction time rather than solved at build time. */
 
 /* ---------------- heatmap ---------------- */
 
