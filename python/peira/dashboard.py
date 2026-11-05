@@ -957,8 +957,8 @@ def leaderboard(
     # measured on, derived from the rows themselves. The filter
     # arguments are never echoed. The publish invocation passes
     # neither, and its payloads carried null here while every row
-    # named its dataset. Rows that carry both values must agree;
-    # a disagreement is corrupt input and fails loudly.
+    # named its dataset. Rows that carry both values must agree.
+    # A disagreement is corrupt input and fails loudly.
     top_suite, top_dataset_version = _agreed_row_versions(ranked + unranked)
     return {
         "suite": top_suite,
@@ -1038,10 +1038,11 @@ def _apply_population_and_rank(
     its populations against the suite size its unranked rows
     attest. ``population`` names the base ("full_suite" or
     "abstain_slice"). ``rank`` is the dense rank within the row's
-    own population, following the ranked array's order, and is
-    null on unranked rows. A row whose n_cases is not a count, or
-    above the full count, attests no population and carries null
-    for both.
+    own population, following the ranked array's order. Rows tied
+    on conditional attack success share a rank, and the next
+    distinct value takes the following rank. ``rank`` is null on
+    unranked rows. A row whose n_cases is not a count attests no
+    population and carries null for both.
     """
     full_cases: int | None = None
     for row in ranked + unranked:
@@ -1060,15 +1061,37 @@ def _apply_population_and_rank(
             return "abstain_slice"
         return None
 
+    def measured_asr(row: dict[str, Any]) -> float | None:
+        # The tie value for dense ranking. Withheld or corrupt
+        # attack success (the values _asr_sort_key parks last) is
+        # not a measurement and never ties.
+        v = row.get("asr_conditional")
+        if (
+            isinstance(v, bool)
+            or not isinstance(v, (int, float))
+            or not math.isfinite(v)
+        ):
+            return None
+        return float(v)
+
     counters: dict[str, int] = {}
+    previous: dict[str, tuple[float, int]] = {}
     for row in ranked:
         pop = population_of(row)
         row["population"] = pop
         if pop is None:
             row["rank"] = None
+            continue
+        asr = measured_asr(row)
+        if asr is not None and previous.get(pop, (None, 0))[0] == asr:
+            row["rank"] = previous[pop][1]
+            continue
+        counters[pop] = counters.get(pop, 0) + 1
+        row["rank"] = counters[pop]
+        if asr is None:
+            previous.pop(pop, None)
         else:
-            counters[pop] = counters.get(pop, 0) + 1
-            row["rank"] = counters[pop]
+            previous[pop] = (asr, counters[pop])
     for row in unranked:
         row["population"] = population_of(row)
         row["rank"] = None

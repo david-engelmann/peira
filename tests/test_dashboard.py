@@ -1790,6 +1790,12 @@ class TestLeaderboardAgentFields(unittest.TestCase):
     def test_header_follows_rows_not_filter_arguments(self):
         # A filtered build derives the header from the rows the
         # filter admits, which carry their own recorded versions.
+        # This test cannot discriminate against the old echo
+        # implementation, because the filter arguments here equal
+        # the rows' own versions, and a filter that differed would
+        # admit no rows at all through this entry point. The
+        # discriminating coverage is the no-filter test above,
+        # where the echo returned null for both fields.
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
             lb0 = TestLeaderboard()
@@ -1896,6 +1902,38 @@ class TestLeaderboardAgentFields(unittest.TestCase):
             self.assertEqual(unranked["adapter-u"]["population"],
                              "full_suite")
             self.assertIsNone(unranked["adapter-u"]["rank"])
+
+    def test_dense_ranks_share_on_tied_attack_success(self):
+        # Two full-suite rows tied on conditional attack success
+        # share one dense rank, and the next distinct value takes
+        # the immediately following rank, not the rank after next.
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            for name, adapter, asr in (
+                ("ta.json", "tied-a", 0.10),
+                ("tb.json", "tied-b", 0.10),
+                ("tc.json", "after-tie", 0.20),
+            ):
+                self._write_results(
+                    tmp_path, name, adapter,
+                    self._uniform_results(adapter, 400),
+                    _metrics(n_cases=400, n_eligible=400,
+                             asr_conditional=asr,
+                             required_families=["indirection"]),
+                    cases_completed=400, cases_planned=400)
+            scan_runs(tmp)
+            lb = leaderboard(tmp)
+            self.assertEqual(lb["n_ranked"], 3)
+            by_name = {r["adapter_name"]: r for r in lb["ranked"]}
+            self.assertEqual(by_name["tied-a"]["population"],
+                             "full_suite")
+            self.assertEqual(by_name["tied-b"]["population"],
+                             "full_suite")
+            self.assertEqual(by_name["after-tie"]["population"],
+                             "full_suite")
+            self.assertEqual(by_name["tied-a"]["rank"], 1)
+            self.assertEqual(by_name["tied-b"]["rank"], 1)
+            self.assertEqual(by_name["after-tie"]["rank"], 2)
 
     # C10-03: the flip decomposition as first-class row fields.
 
