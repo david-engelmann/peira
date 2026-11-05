@@ -228,11 +228,10 @@ export default function Calibration() {
       data-section="calibration"
       id="calibration"
     >
-      <p className="section-label">Calibration</p>
-      <h2 className="section-title" id="calibration-title">
-        Whether stated confidence holds up
-      </h2>
-      <p className="section-lede">
+      <div className="sechead">
+        <div className="micro">06 · Calibration</div>
+        <h2 id="calibration-title">Whether stated confidence holds up</h2>
+        <p className="cap">
         Each panel plots one result on its attacked cases. Stated
         confidence runs across and the share of decisions the model got
         right runs up, in 15 equal count bins. A point below the
@@ -241,7 +240,8 @@ export default function Calibration() {
         highest.
         {coincidentCount > 0 &&
           ` ${coincidentCount} slice result${coincidentCount === 1 ? "" : "s"}, ${coincidentList}, state${coincidentCount === 1 ? "s" : ""} nearly the same confidence from bin to bin, so their bins pile up at the right edge of their panels.`}
-      </p>
+        </p>
+      </div>
       <div className="cal-layout">
         <nav className="cal-rail" aria-label="Results by calibration error">
           <p className="cal-rail-head">Results by attacked ECE</p>

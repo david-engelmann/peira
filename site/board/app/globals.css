@@ -116,6 +116,22 @@ body::before {
     radial-gradient(1400px 1000px at 50% 115%, rgba(47, 191, 113, 0.03), transparent 70%);
 }
 
+/* The skip link. Visually hidden until keyboard focus, then
+   an ink-styled control pinned at the top of the page. */
+.skip {
+  position: absolute; width: 1px; height: 1px; margin: -1px;
+  padding: 0; overflow: hidden; clip: rect(0 0 0 0);
+  clip-path: inset(50%); white-space: nowrap; border: 0;
+}
+.skip:focus {
+  position: absolute; top: 10px; left: 10px; z-index: 80;
+  width: auto; height: auto; margin: 0; padding: 9px 14px;
+  overflow: visible; clip: auto; clip-path: none; white-space: normal;
+  background: var(--panel); color: var(--ink-1);
+  border: 1px solid var(--hairline); border-radius: 8px;
+  font-size: 13.5px;
+}
+
 .num {
   font-variant-numeric: tabular-nums;
   font-feature-settings: "tnum" 1;
@@ -133,328 +149,502 @@ body::before {
   z-index: 1;
 }
 
-/* Masthead. A quiet bar: wordmark, claim, and the dataset
-   stamp, on a hairline. */
-
-.masthead {
-  padding: 26px 0 18px;
-  border-bottom: 1px solid var(--edge-soft);
+/* Masthead. Wordmark, claim, and the dataset stamp on one
+   hairline. The hero under it states the frozen definition
+   as display type; the range that follows it and the counts
+   under it derive from the payload at build time. */
+button {
+  font: inherit; color: inherit; background: none; border: 0;
+  padding: 0; cursor: pointer;
 }
-
+.masthead { padding: 26px 0 8px; }
 .masthead-top {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 24px;
+  display: flex; align-items: flex-start; gap: 24px;
+  padding-bottom: 18px; border-bottom: 1px solid var(--hairline);
 }
-
-/* The wordmark block is the only green on the page (owner
-   ruling, round 8 feedback). Every other accent usage in the
-   system resolves to ink tones. */
-
 .wordmark {
-  font-size: 22px;
-  font-weight: 700;
-  letter-spacing: -0.01em;
-  margin: 0;
-  color: var(--accent);
+  font-size: 27px; font-weight: 800; letter-spacing: 0.16em;
+  text-transform: uppercase; line-height: 1; color: var(--ink-1);
 }
-
-.claim {
-  font-size: 12px;
-  font-weight: 600;
-  letter-spacing: 0.09em;
-  text-transform: uppercase;
-  color: var(--accent);
-  margin: 4px 0 0;
+.claim { margin-top: 7px; font-size: 13.5px; color: var(--ink-2); }
+.mastnav { margin-left: auto; display: flex; gap: 20px; padding-top: 4px; }
+.mastnav a {
+  font-family: var(--font-mono); font-size: 11.5px; letter-spacing: 0.06em;
+  text-transform: uppercase; color: var(--ink-2); text-decoration: none;
 }
-
+.mastnav a:hover { color: var(--ink-1); }
 .stamp {
-  font-family: var(--font-mono);
-  font-size: 11.5px;
-  color: var(--ink-3);
-  margin: 4px 0 0;
-  text-align: right;
+  font-family: var(--font-mono); font-size: 11.5px; color: var(--ink-3);
+  padding-top: 5px; white-space: nowrap;
 }
-
-/* Hero. The finding set as display type: large, tight, and
-   quiet, with the headline range lit in green. The finding
-   runs the full content width (cycle 2: the earlier 21ch cap
-   left the right two-fifths of the hero empty and stacked the
-   text into a narrow tower; size is spent on the claim, per
-   doctrine D16). Under it, one meta row on a hairline: the
-   counts as a deck on the left, the links on the right. */
-
-.findings {
-  margin-top: 56px;
-  padding: 0;
+.hero { padding: 44px 0 30px; }
+.micro {
+  font-family: var(--font-mono); font-size: 10.5px; letter-spacing: 0.14em;
+  text-transform: uppercase; color: var(--ink-2);
 }
-
-.finding {
-  font-size: clamp(32px, 4.6vw, 52px);
-  font-weight: 650;
-  letter-spacing: -0.022em;
-  /* 1.16, not tighter: at 1.07 the font's own line box overflows
-     the CSS line box and successive lines overlap by ~1.4px,
-     which the DOM audit flags and the eye reads as crowding. */
-  line-height: 1.16;
-  margin: 0;
-  text-wrap: balance;
+.hero-title {
+  margin-top: 16px; max-width: 21em;
+  font-size: clamp(29px, 4.6vw, 47px); font-weight: 650;
+  line-height: 1.14; letter-spacing: -0.018em; color: var(--ink-1);
 }
-
-.hero-meta {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 32px;
-  margin-top: 30px;
-  padding-top: 22px;
-  border-top: 1px solid var(--hairline);
-}
-
-.hero-meta .counts-line {
-  margin-top: 0;
-}
-
-.hero-meta .links-line {
-  margin-top: 0;
-  flex: none;
-  padding-top: 2px;
-}
-
-.range-hl {
-  background: linear-gradient(115deg, var(--accent-bright), var(--accent));
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-  font-weight: 700;
-  white-space: nowrap;
-}
-
-.counts-line,
-.decomp-line {
-  color: var(--ink-2);
-  max-width: 68ch;
-  font-size: 15.5px;
-  line-height: 1.55;
-}
-
+.hero-title .hl { display: block; }
+.hero-title .rn { font-variant-numeric: tabular-nums; white-space: nowrap; }
 .counts-line {
-  margin: 18px 0 0;
+  margin-top: 22px; max-width: 74ch;
+  font-size: 15.5px; line-height: 1.55; color: var(--ink-2);
 }
+.counts-line b { color: var(--ink-1); font-weight: 650; }
+.links-line { margin-top: 14px; display: flex; gap: 22px; flex-wrap: wrap; }
+.links-line a { color: var(--ink-2); font-size: 13.5px; }
+.links-line a:hover { color: var(--ink-1); }
 
-/* The decomposition line on a flagged result's own page
-   (cycle 7, RT-02): the one visible sentence that keeps the
-   headline figure and its malformed decomposition together
-   on a page that carries no Method section. */
-
-.decomp-line {
-  margin: 14px 0 0;
+/* Sections. One grammar for every numbered head in the
+   panel: a mono micro with the green tick, the title, and
+   the caption set against it. */
+.section { padding: 36px 0 34px; border-top: 1px solid var(--hairline); }
+.sechead {
+  display: grid; grid-template-columns: 1fr minmax(260px, 430px);
+  align-items: end; gap: 8px 30px; margin-bottom: 20px;
 }
-
-/* Section heading system */
-
-.section {
-  margin-top: 64px;
+.sechead .micro { grid-column: 1 / -1; }
+.sechead .micro::before {
+  content: ""; display: inline-block; width: 7px; height: 7px;
+  border-radius: 2px; background: var(--accent);
+  margin-right: 8px; vertical-align: 1px;
 }
-
-.section-label {
-  font-size: 12px;
-  font-weight: 600;
-  letter-spacing: 0.09em;
-  text-transform: uppercase;
-  color: var(--ink-2);
-  margin: 0 0 8px;
+.sechead h2 {
+  font-size: clamp(23px, 3vw, 31px); font-weight: 680;
+  letter-spacing: -0.015em; line-height: 1.12; color: var(--ink-1);
 }
-
-.section-title {
-  font-size: clamp(26px, 3vw, 34px);
-  font-weight: 650;
-  letter-spacing: -0.018em;
-  line-height: 1.12;
-  margin: 0 0 12px;
-  text-wrap: balance;
+.sechead .cap { font-size: 13.5px; line-height: 1.55; color: var(--ink-2); }
+.chart-id {
+  margin-top: 14px; font-family: var(--font-mono); font-size: 11px;
+  color: var(--ink-3);
 }
-
-.section-lede {
-  color: var(--ink-2);
-  max-width: 68ch;
-  margin: 0;
+.readings { margin-top: 16px; display: grid; gap: 7px; max-width: 92ch; }
+.readings p, .chart-captions p {
+  font-size: 13.5px; line-height: 1.6; color: var(--ink-2);
 }
+.chart-captions { margin-top: 14px; display: grid; gap: 7px; max-width: 92ch; }
 
-/* Ranking groups */
-
-.rank-group {
-  margin-top: 40px;
+/* The scatter panel. A lit well holding the wide plot or
+   the phone plot; the no-cost rail ladders inside the wide
+   plot, and the phone plot names its rows beneath it. */
+.spanel {
+  background: var(--panel); border: 1px solid var(--hairline);
+  border-radius: 14px; padding: 18px 20px 12px;
 }
-
-.group-head {
-  display: flex;
-  align-items: baseline;
-  gap: 16px;
-  flex-wrap: wrap;
-  margin-bottom: 4px;
+.scatter-svg { width: 100%; height: auto; display: block; }
+.scatter-svg .hit-disc { fill: #ffffff; fill-opacity: 0; }
+.scatter-phone { display: none; }
+.svg-tick { font-family: var(--font-mono); font-size: 10.5px; fill: var(--ink-3); }
+.svg-rail-name { font-size: 12.5px; fill: var(--ink-2); }
+.svg-rail-rate {
+  font-family: var(--font-mono); font-size: 12px; fill: var(--ink-2);
 }
+.svg-label {
+  font-size: 12.5px; font-weight: 600; fill: #c7d0da;
+  paint-order: stroke; stroke: rgba(5, 7, 10, 0.85); stroke-width: 3px;
+}
+.svg-off-title { font-size: 15px; font-weight: 650; fill: var(--ink-1); }
+.svg-off-line { font-size: 12.5px; fill: var(--ink-2); }
+.disc { fill: #8fa3b8; }
+.disc.flagged { fill: var(--panel); stroke: var(--amber); stroke-width: 2; }
+.disc.sel { fill: var(--panel); stroke: var(--accent); stroke-width: 2.5; }
+.svg-point, .svg-rail-row { cursor: pointer; }
+.svg-point:focus, .svg-rail-row:focus { outline: none; }
+.svg-point:focus-visible .disc, .svg-rail-row:focus-visible .disc {
+  stroke: var(--accent-bright); stroke-width: 2.5;
+}
+.nameline {
+  margin-top: 10px; padding-top: 10px;
+  border-top: 1px dashed var(--hairline);
+  font-size: 13px; line-height: 1.6; color: var(--ink-2);
+}
+.nameline b { color: var(--ink-1); font-weight: 620; }
+.srail {
+  margin-top: 12px; padding-top: 10px;
+  border-top: 1px solid var(--hairline); display: grid; gap: 2px;
+}
+.srow {
+  display: grid; grid-template-columns: 14px 1fr auto; gap: 10px;
+  align-items: center; width: 100%; text-align: left;
+  padding: 8px 6px; border-radius: 8px;
+}
+.srow .sd {
+  width: 9px; height: 9px; border-radius: 50%; background: #8fa3b8;
+}
+.srow .sn { font-size: 14px; font-weight: 600; color: var(--ink-1); }
+.srow .sr {
+  font-family: var(--font-mono); font-size: 12.5px; color: var(--ink-2);
+}
+.srow.sel {
+  background: rgba(47, 191, 113, 0.07);
+  box-shadow: inset 0 0 0 1px rgba(47, 191, 113, 0.55);
+}
+.srow.sel .sd { background: var(--accent); }
 
-.group-label {
-  font-size: 12px;
-  font-weight: 600;
-  letter-spacing: 0.09em;
-  text-transform: uppercase;
+/* The ranking zone. A rail of rows on one grid beside the
+   inspector; rows bracketed by the tie gutter read as tied. */
+.zgrid {
+  display: grid; grid-template-columns: minmax(0, 1fr) 400px; gap: 36px;
+  align-items: start;
+}
+.railwrap { min-width: 0; }
+.colhead {
+  display: grid;
+  grid-template-columns: 30px 30px minmax(110px, 1.3fr) 60px minmax(84px, 1fr) 48px 48px 48px 84px;
+  gap: 10px; padding: 0 10px 8px;
+  font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.12em;
+  text-transform: uppercase; color: var(--ink-3);
+}
+.colhead .r { text-align: right; }
+.band-block { display: flex; gap: 10px; }
+.rail-gutter { width: 16px; flex: none; position: relative; }
+.rail-rule {
+  position: absolute; left: 7px; top: 8px; bottom: 8px; width: 2px;
+  background: #3a4656;
+}
+.rail-rule::before, .rail-rule::after {
+  content: ""; position: absolute; left: 0; width: 9px; height: 2px;
+  background: #3a4656;
+}
+.rail-rule::before { top: 0; }
+.rail-rule::after { bottom: 0; }
+.rail-label {
+  position: absolute; top: 50%; left: 50%;
+  writing-mode: vertical-rl;
+  transform: translate(-50%, -50%) rotate(180deg);
+  font-family: var(--font-mono); font-size: 9.5px; letter-spacing: 0.12em;
+  text-transform: uppercase; color: var(--ink-3);
+  background: var(--ground); padding: 5px 0;
+}
+.band-block .rows { flex: 1; min-width: 0; }
+.rrow {
+  display: grid; width: 100%; text-align: left;
+  grid-template-columns: 30px 30px minmax(110px, 1.3fr) 60px minmax(84px, 1fr) 48px 48px 48px 84px;
+  gap: 10px; align-items: center;
+  padding: 9px 10px; border-bottom: 1px solid var(--edge-soft);
   color: var(--ink-1);
-  margin: 0;
 }
-
-.group-caption {
-  color: var(--ink-2);
-  margin: 0;
-  max-width: 68ch;
+.rrow[hidden] { display: none; }
+.rrow:hover { background: rgba(255, 255, 255, 0.03); }
+.rrow.sel {
+  background: rgba(47, 191, 113, 0.07);
+  box-shadow: inset 0 0 0 1px rgba(47, 191, 113, 0.55);
+  border-radius: 8px;
 }
-
-/* Axis strip. A row of the shared grid whose chart cell carries
-   the tick labels, so the ticks sit exactly over the data axis. */
-
-.axis-row {
-  display: flex;
+.rrow .rk {
+  font-family: var(--font-mono); font-size: 12px; color: var(--ink-3);
 }
-
-.axis-grid {
-  flex: 1;
-  min-width: 0;
+.rrow .nm { font-size: 14.5px; font-weight: 600; line-height: 1.25; }
+.nm .sub {
+  display: block; font-size: 11.5px; font-weight: 400; color: var(--ink-3);
 }
-
-.axis-cell {
-  position: relative;
-  height: 16px;
+.nm .note {
+  display: block; font-size: 12px; font-weight: 400; color: var(--ink-2);
+  line-height: 1.45; margin-top: 3px; max-width: 52ch;
 }
-
-.axis-title {
-  font-size: 11.5px;
-  color: var(--ink-3);
-  margin-bottom: 2px;
+.rrow .atk {
+  font-family: var(--font-mono); font-size: 13px; font-weight: 700;
+  text-align: right; white-space: nowrap;
 }
-
-.axis-tick {
-  position: absolute;
-  bottom: 0;
+.rrow .c {
+  font-family: var(--font-mono); font-size: 12.5px; color: var(--ink-2);
+  text-align: right; white-space: nowrap;
+}
+.wtrack { position: relative; display: block; height: 18px; }
+.wtrack .wci {
+  position: absolute; top: 8px; height: 3px; border-radius: 99px;
+  background: #5b6b7d;
+}
+.wtrack .wpt {
+  position: absolute; top: 5px; width: 9px; height: 9px;
+  border-radius: 50%; background: var(--ink-1);
   transform: translateX(-50%);
-  font-size: 11.5px;
-  color: var(--ink-3);
+}
+.rrow .rstats { display: none; }
+.foldline {
+  margin-top: 12px; padding: 10px 2px; width: 100%; text-align: left;
+  border-top: 1px dashed var(--hairline);
+  color: var(--ink-2); font-size: 13.5px;
+}
+.foldline:hover { color: var(--ink-1); }
+.ghead { padding: 18px 2px 6px; }
+.ghead .micro { color: var(--ink-3); }
+.ghead p {
+  font-size: 13px; color: var(--ink-2); margin-top: 6px;
+  line-height: 1.55; max-width: 70ch;
+}
+
+/* The inspector. One reading, stated once, replaced in
+   place when another row is chosen. Display figures in the
+   sans face; the small stats in mono at reading size. */
+.insp { position: sticky; top: 84px; }
+.micro.sel { color: var(--ink-2); }
+.micro.sel .tick {
+  display: inline-block; width: 7px; height: 7px; border-radius: 2px;
+  background: var(--accent); margin-right: 8px; vertical-align: 1px;
+}
+.ihead { display: flex; gap: 12px; align-items: center; margin-top: 14px; }
+.iname { font-size: 21px; font-weight: 700; letter-spacing: -0.01em; line-height: 1.15; }
+.isub { font-size: 12.5px; color: var(--ink-3); margin-top: 3px; }
+.rankline {
+  font-family: var(--font-mono); font-size: 12px; color: var(--accent);
+  margin-top: 10px;
+}
+.rankline.amber { color: var(--amber); }
+.figs {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 18px 22px;
+  margin-top: 18px;
+}
+.fig .fl {
+  display: block;
+  font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.12em;
+  text-transform: uppercase; color: var(--ink-3);
+}
+.fig .track { position: relative; display: block; height: 22px; margin-top: 4px; }
+.fig .track .ci {
+  position: absolute; top: 9px; height: 4px; border-radius: 99px;
+  background: #5b6b7d;
+}
+.fig .track .pt {
+  position: absolute; top: 6px; width: 10px; height: 10px;
+  border-radius: 50%; background: var(--ink-1);
+  transform: translateX(-50%);
+}
+.fig .track .bar {
+  position: absolute; left: 0; top: 8px; height: 6px;
+  border-radius: 99px; background: #7d8ea1;
+}
+.fig .track .best {
+  position: absolute; top: 5px; width: 2px; height: 12px;
+  background: var(--ink-1); border-radius: 2px;
+}
+.fig .vrow { display: flex; align-items: baseline; gap: 10px; margin-top: 2px; }
+.fig .v {
+  font-size: 22px; font-weight: 700; letter-spacing: -0.01em;
   font-variant-numeric: tabular-nums;
 }
+.fig .v.not-measured { color: var(--ink-3); }
+.figs .fig:not(.wide) .v {
+  font-family: var(--font-mono); font-size: 19px; font-weight: 600;
+}
+.fig .iv { font-size: 11.5px; color: var(--ink-3); line-height: 1.45; }
+.fig .axmax {
+  margin-left: auto; font-family: var(--font-mono); font-size: 10px;
+  color: var(--ink-3);
+}
+.disc {
+  margin-top: 14px; font-size: 13px; line-height: 1.55; color: var(--ink-2);
+  border-left: 2px solid var(--hairline); padding-left: 12px;
+}
+.disc.flagged { border-left-color: var(--amber); }
+.weakest { margin-top: 14px; font-size: 13px; line-height: 1.55; color: var(--ink-2); }
+.ownpage-line { margin-top: 16px; }
+.ownpage { color: var(--accent); font-size: 13.5px; text-decoration: none; }
+.ownpage:hover { text-decoration: underline; }
 
-.axis-tick.first {
-  transform: none;
+/* The flagged band. The lead flagged result reads at
+   display size with its split bar; the rest follow as
+   rows, every one with its decomposition. */
+.flaglead {
+  display: grid; grid-template-columns: 1.1fr 0.9fr; gap: 40px;
+  background: var(--panel); border: 1px solid var(--hairline);
+  border-radius: 14px; padding: 24px 26px; align-items: start;
+}
+.micro.amber { color: var(--amber); }
+.flaglead .idrow {
+  display: flex; gap: 12px; align-items: center; margin-bottom: 14px;
+}
+.flaglead .idrow .nm {
+  font-size: 20px; font-weight: 700; letter-spacing: -0.01em;
+  line-height: 1.15; color: var(--ink-1);
+}
+.flaglead .big {
+  font-size: clamp(54px, 7vw, 84px); font-weight: 750;
+  letter-spacing: -0.03em; line-height: 1.02; color: var(--amber);
+  font-variant-numeric: tabular-nums; margin-top: 12px;
+}
+.flaglead .facts {
+  margin-top: 12px; font-size: 14px; line-height: 1.6; color: var(--ink-2);
+}
+.splitbar {
+  position: relative; display: flex; height: 34px; border-radius: 8px;
+  overflow: hidden; border: 1px solid var(--hairline); margin-top: 12px;
+}
+.splitbar .malf { background: var(--amber); }
+.splitbar .gen { background: #5b6b7d; }
+.splitnum {
+  position: absolute; left: 12px; top: 50%; transform: translateY(-50%);
+  font-weight: 700; font-size: 28px; color: #171106;
+  font-variant-numeric: tabular-nums;
+}
+.splitlabels {
+  display: flex; justify-content: space-between; gap: 16px;
+  margin-top: 8px; font-size: 12.5px; color: var(--ink-2);
+}
+.splitlabels .a { color: var(--amber); }
+.flag-explain {
+  font-size: 13.5px; line-height: 1.6; color: var(--ink-2);
+  margin-top: 16px; max-width: 92ch;
+}
+.flagrow {
+  display: grid; grid-template-columns: 30px minmax(150px, 0.55fr) 1fr;
+  gap: 14px; align-items: center; padding: 13px 4px;
+  border-bottom: 1px solid var(--edge-soft);
+}
+.flagrow .nm { font-size: 16px; font-weight: 650; line-height: 1.25; }
+.figs2 {
+  font-size: 13.5px; line-height: 1.55; color: var(--ink-2);
+  text-align: right;
+}
+.figs2 b { color: var(--ink-1); font-weight: 650; }
+/* Each figure and its label form one unbreakable unit, so a
+   wrap can only fall between units, never inside one. */
+.figs2 .u { white-space: nowrap; }
+
+/* The malformed rail. One derived scale, the flag line
+   drawn at 5 percent and labelled in the header row. */
+.malfrows { position: relative; }
+.malfhead { display: flex; justify-content: flex-end; padding-bottom: 8px; }
+.micro.faint { color: var(--ink-3); }
+.flagline {
+  position: absolute; top: 0; bottom: 0; width: 0;
+  border-left: 1px dashed rgba(232, 163, 61, 0.55);
+  pointer-events: none;
+}
+.mrow {
+  display: grid; grid-template-columns: 190px 1fr 64px; gap: 16px;
+  align-items: center; padding: 3px 0;
+}
+.mrow .nm {
+  font-size: 14px; font-weight: 550; line-height: 1.3;
+  display: flex; align-items: center; gap: 9px;
+}
+.mtrack { height: 8px; border-radius: 99px; background: #12161d; }
+.mbar { height: 100%; border-radius: 99px; background: #5b6b7d; }
+.mbar.amber { background: var(--amber); }
+.mrate {
+  font-family: var(--font-mono); font-size: 13px; text-align: right;
+}
+.mrate.amber { color: var(--amber); }
+.mal-fold {
+  margin-top: 12px; font-size: 13px; color: var(--ink-3);
+  line-height: 1.55; max-width: 92ch;
 }
 
-.axis-tick.last {
-  transform: translateX(-100%);
-}
-
-/* Band blocks. A flex row of rail plus rows. The rail stretches
-   the height of its rows, so a bracket spans exactly its band at
-   any width, with no measured offsets. */
-
-.band-block {
-  display: flex;
-}
-
-.rail {
-  flex: 0 0 var(--rail-w);
-  position: relative;
-}
-
-.rail-rule {
-  position: absolute;
-  left: 8px;
-  top: 6px;
-  bottom: 6px;
-  width: 0;
-  border-left: 2px solid var(--ink-1);
-}
-
-.rail-rule::before,
-.rail-rule::after {
-  content: "";
-  position: absolute;
-  left: 0;
-  width: 9px;
-  border-top: 2px solid var(--ink-1);
-}
-
-.rail-rule::before {
-  top: 0;
-}
-
-.rail-rule::after {
-  bottom: 0;
-}
-
-.rail-label {
-  position: absolute;
-  left: 22px;
-  top: 50%;
-  transform: translateY(-50%);
-  font-size: 12px;
-  font-weight: 600;
-  letter-spacing: 0.09em;
-  text-transform: uppercase;
+/* The models index. A name rail that selects into the
+   same inspector the ranking uses. */
+.irow {
+  display: grid; grid-template-columns: 36px 30px 1fr auto; gap: 10px;
+  align-items: center; width: 100%; text-align: left;
+  padding: 8px 8px; border-bottom: 1px solid var(--edge-soft);
   color: var(--ink-1);
-  font-weight: 700;
+}
+.irow:hover { background: rgba(255, 255, 255, 0.03); }
+.irow.sel {
+  background: rgba(47, 191, 113, 0.07);
+  box-shadow: inset 0 0 0 1px rgba(47, 191, 113, 0.55);
+  border-radius: 8px;
+}
+.irow .rk {
+  font-family: var(--font-mono); font-size: 11.5px; color: var(--ink-3);
+}
+.irow .flag-tag {
+  font-family: var(--font-mono); font-size: 9.5px; letter-spacing: 0.08em;
+  text-transform: uppercase; color: var(--amber);
+}
+.irow .nm { font-size: 14px; font-weight: 600; line-height: 1.25; }
+.irow .atk {
+  font-family: var(--font-mono); font-size: 12.5px; color: var(--ink-2);
   white-space: nowrap;
 }
 
-.rows {
-  flex: 1;
-  position: relative;
-  min-width: 0;
+/* Compare columns. Two full inspector readings over the
+   table, in the same grammar as the board's inspector. */
+.cmp-heads {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 18px;
+  margin-bottom: 20px;
+}
+.cmp-insp {
+  border: 1px solid var(--hairline); border-radius: 12px;
+  padding: 14px 16px; background: var(--panel);
+}
+.cmp-insp .insp { position: static; }
+
+/* Footer. */
+.board-footer {
+  border-top: 1px solid var(--hairline); padding: 26px 0 40px;
+  display: grid; gap: 8px; font-size: 13px; color: var(--ink-2);
+  line-height: 1.6;
+}
+.board-footer a { color: var(--ink-2); }
+.board-footer a:hover { color: var(--ink-1); }
+.board-footer .links-line { margin-top: 6px; }
+
+/* Focus states for the panel's own controls. */
+.rrow:focus-visible, .irow:focus-visible, .srow:focus-visible,
+.foldline:focus-visible {
+  outline: 2px solid var(--accent); outline-offset: 2px;
 }
 
-/* One ranking row (owner layout, round 8 feedback). A main
-   block of two lines, name over a mono data line, a right
-   block with the headline rate over its interval, and an
-   interval strip across the full row width on the shared
-   axis. */
-
-.rank-row {
-  display: grid;
-  grid-template-columns: 1fr auto;
-  grid-template-areas:
-    "main value"
-    "chart chart";
-  column-gap: 28px;
-  align-items: center;
-  padding: 9px 14px 10px;
-  margin: 0 -14px;
-  border-bottom: 1px solid color-mix(in srgb, var(--hairline) 45%, transparent);
-  border-radius: 14px;
-  position: relative;
-  transition: background 160ms ease;
+/* Tablet. The inspector drops under the rail it reads,
+   the index follows its inspector, the flagged lead
+   stacks, and section captions take the full width. */
+@media (max-width: 1150px) {
+  .zgrid { grid-template-columns: 1fr; }
+  .insp { position: static; }
+  .flaglead { grid-template-columns: 1fr; }
+  .sechead { grid-template-columns: 1fr; }
+  .sechead .cap { max-width: 78ch; }
+  .mastnav { display: none; }
 }
 
-.rank-row:hover {
-  background: rgba(255, 255, 255, 0.028);
-}
-
-/* Flagged rows carry an amber edge so the strip reads as a
-   warning at a glance, not only by its text label. */
-.rank-row.flagged {
-  box-shadow: inset 3px 0 0 color-mix(in srgb, var(--amber) 60%, transparent);
-}
-
-.rank-row:last-child {
-  border-bottom: none;
-}
-
-.row-main {
-  grid-area: main;
-  min-width: 0;
-}
-
-.row-line1 {
-  display: flex;
-  align-items: center;
-  gap: 12px;
+/* Phone. One column throughout. The ranking section's
+   inspector lifts above the scatter panel, the phone plot
+   replaces the wide plot with its named rows under it, and
+   the rail rows collapse to their stats line. */
+@media (max-width: 760px) {
+  .hero { padding: 30px 0 22px; }
+  .hero-title { font-size: 29px; }
+  .stamp { display: none; }
+  .topboard { display: flex; flex-direction: column; }
+  .topboard > section, .topboard .zgrid, .topboard .railwrap {
+    display: contents;
+  }
+  .topboard .sec-zone .insp { order: 1; margin-bottom: 26px; }
+  .topboard .sec-scatter .sechead { order: 2; }
+  .topboard .sec-scatter .spanel { order: 3; }
+  .topboard .sec-scatter .readings { order: 4; }
+  .topboard .sec-scatter .chart-captions { order: 5; }
+  .topboard .sec-scatter .chart-id { order: 6; }
+  .topboard .sec-zone .sechead { order: 7; padding-top: 30px; }
+  .topboard .sec-zone .railwrap > * { order: 8; }
+  .scatter-wide { display: none; }
+  .scatter-phone { display: block; }
+  .colhead { display: none; }
+  .rrow {
+    grid-template-columns: 26px 26px 1fr 56px;
+    grid-template-areas: "rk chip nm atk" "stats stats stats stats";
+    row-gap: 3px;
+  }
+  .rrow .rk { grid-area: rk; }
+  .rrow > .vendor-chip { grid-area: chip; }
+  .rrow .nm { grid-area: nm; }
+  .rrow .atk { grid-area: atk; }
+  .rrow .wtrack, .rrow .c { display: none; }
+  .rrow .rstats {
+    display: block; grid-area: stats;
+    font-family: var(--font-mono); font-size: 11px; color: var(--ink-3);
+    white-space: nowrap; overflow: hidden;
+  }
+  .mrow { grid-template-columns: 118px 1fr 52px; gap: 10px; }
+  .cmp-heads { grid-template-columns: 1fr; }
+  .flaglead { padding: 18px; }
+  .flagrow { grid-template-columns: 30px 1fr; }
+  .figs2 { grid-column: 1 / -1; text-align: left; }
+  .irow { grid-template-columns: 32px 26px 1fr auto; }
 }
 
 /* The vendor chip: the maker's mark in the board's ink tone, or
@@ -508,20 +698,6 @@ body::before {
   font-size: 19px;
 }
 
-.card-head-top {
-  display: flex;
-  gap: 14px;
-  align-items: flex-start;
-}
-
-.cell-rank {
-  flex: 0 0 26px;
-  font-size: 13.5px;
-  font-weight: 500;
-  color: var(--ink-2);
-  font-variant-numeric: tabular-nums;
-}
-
 .flag-tag {
   display: inline-block;
   font-size: 11.5px;
@@ -536,373 +712,10 @@ body::before {
   vertical-align: 1px;
 }
 
-.cell-name {
-  min-width: 0;
-}
-
-.name-line {
-  font-size: 15.5px;
-  font-weight: 550;
-  color: var(--ink-1);
-  line-height: 1.25;
-  overflow-wrap: break-word;
-}
-
 .wire-line {
   font-size: 11.5px;
   color: var(--ink-3);
   line-height: 1.25;
-}
-
-.meta-line {
-  font-size: 11.5px;
-  color: var(--ink-2);
-  line-height: 1.3;
-  margin-top: 2px;
-}
-
-.idx-note {
-  display: block;
-  font-size: 11.5px;
-  color: var(--ink-2);
-  line-height: 1.3;
-  margin-top: 2px;
-}
-
-.meta-line.flagged {
-  color: var(--amber);
-}
-
-.data-line {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px 0;
-  margin-top: 6px;
-  margin-left: 38px;
-  font-size: 11.5px;
-  letter-spacing: 0.03em;
-  line-height: 1.5;
-}
-
-.dl-sep {
-  color: var(--ink-3);
-  padding: 0 9px;
-}
-
-.dl-k {
-  color: var(--ink-3);
-}
-
-.dl-v {
-  color: var(--ink-1);
-}
-
-/* The right block */
-
-.cell-value {
-  grid-area: value;
-  text-align: right;
-  align-self: center;
-  /* The row bleeds 14 px into the page padding and its own
-     right padding is 14 px, which put the value text exactly
-     on the section's right edge. The extra inset ends the
-     text 14 px inside the edge (cycle 2, census L-09). The
-     chart cell keeps the full row width, so the axis strip
-     above stays aligned with the whiskers. */
-  padding-right: 14px;
-}
-
-.value-main {
-  font-size: 30px;
-  font-weight: 650;
-  letter-spacing: -0.01em;
-  color: var(--ink-1);
-  font-variant-numeric: tabular-nums;
-  line-height: 1.05;
-}
-
-.value-sub {
-  font-size: 11px;
-  color: var(--ink-2);
-  font-variant-numeric: tabular-nums;
-  line-height: 1.3;
-  margin-top: 4px;
-  white-space: nowrap;
-}
-
-.cell-value.flagged .value-main,
-.cell-value.flagged .value-sub {
-  color: var(--amber);
-}
-
-/* The interval strip. Children are positioned by percent of
-   the shared 0 to 30 axis. The whisker line stops 2 px short
-   of each cap center, so the caps stand clear of the line and
-   nothing passes through them (owner ruling). */
-
-.cell-chart {
-  grid-area: chart;
-  position: relative;
-  height: 16px;
-  margin-top: 4px;
-}
-
-.whisker {
-  position: absolute;
-  top: 50%;
-  transform: translateY(-50%);
-  height: 2px;
-  background: var(--ink-1);
-}
-
-.whisker-cap {
-  position: absolute;
-  top: 50%;
-  transform: translate(-50%, -50%);
-  width: 2px;
-  height: 11px;
-  background: var(--ink-1);
-}
-
-.estimate-dot {
-  position: absolute;
-  top: 50%;
-  transform: translate(-50%, -50%);
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: var(--ink-1);
-}
-
-.estimate-dot.hollow {
-  background: var(--ground);
-  border: 1.5px solid var(--ink-1);
-  width: 6px;
-  height: 6px;
-}
-
-.cell-chart.slice .whisker,
-.cell-chart.slice .whisker-cap {
-  background: var(--ink-2);
-}
-
-.cell-chart.flagged .whisker,
-.cell-chart.flagged .whisker-cap,
-.cell-chart.flagged .estimate-dot {
-  background: var(--amber);
-}
-
-.not-measured {
-  color: var(--ink-3);
-  text-align: center;
-}
-
-.proto-note {
-  margin-top: 64px;
-  padding-top: 16px;
-  border-top: 1px solid var(--hairline);
-  font-size: 11.5px;
-  color: var(--ink-3);
-  max-width: 68ch;
-}
-
-/* Mobile. The hero stacks, and ranking rows re-flow into a
-   single column inside the section box (cycle 2). Brackets
-   narrow to a 26 px rail, keep their rule, and carry their
-   word vertically. */
-
-@media (max-width: 760px) {
-  :root {
-    --rail-w: 26px;
-  }
-
-  .page {
-    padding: 0 16px 64px;
-  }
-
-  /* The tie word turns vertical in the widened rail (cycle 2
-     red team, RT-2). A bracket with no word on it reads as an
-     unexplained edge line, and the phone ranking would present
-     strict ranks where the desktop ranking states ties. */
-  .rail-label {
-    display: block;
-    left: 13px;
-    font-size: 10.5px;
-    writing-mode: vertical-rl;
-    transform: translateY(-50%) rotate(180deg);
-  }
-
-  .rail-rule {
-    left: 2px;
-  }
-
-  /* Hero at phone. The masthead stacks and the dateline sits
-     left-aligned under the claim instead of wrapping into two
-     right-aligned lines against the wordmark (census L-04);
-     the findings and the meta row tighten with it (R-04). */
-  .masthead {
-    padding-bottom: 10px;
-  }
-
-  .masthead-top {
-    flex-direction: column;
-    gap: 2px;
-  }
-
-  .stamp {
-    text-align: left;
-  }
-
-  .findings {
-    margin-top: 30px;
-  }
-
-  .hero-meta {
-    flex-direction: column;
-    gap: 18px;
-    margin-top: 24px;
-    padding-top: 18px;
-  }
-
-  /* Ranking rows at phone re-flow into a stack (cycle 2,
-     doctrine D27): identity, the data line, the value line,
-     the strip. The desktop bleed is removed, so nothing
-     crosses the section edge (blocker L-05/R-05, audit F-08).
-     The name block stays beside the rank and tile when it
-     fits, and wraps as one unit to its own full-width line
-     when it does not, so a name never breaks at a hyphen
-     (L-07) and the flagged note gets the full measure (L-08).
-     The data line's separators yield at this width: the
-     segments are keyed, and a separator at a wrapped line's
-     start reads as a stray mark (R-07). The value line runs
-     in reverse so the headline rate holds the right edge on
-     every row, as it does at desktop (RT-4). The strip gains
-     a track at this width, so the interval reads as a segment
-     on a scale rather than a lone glyph (RT-1, census L-06);
-     its geometry is unchanged and still audit-asserted. */
-  .rank-row {
-    display: flex;
-    flex-direction: column;
-    align-items: stretch;
-    margin: 0;
-    padding: 10px 6px 12px;
-  }
-
-  .row-line1 {
-    flex-wrap: wrap;
-    row-gap: 4px;
-  }
-
-  .cell-name {
-    /* Shrink allowed (RT-F1): at flex 1 0 auto the name
-       cell took its max-content width, set by the flagged
-       meta line's unwrapped length, and overflowed every
-       row narrower than that, a band the fresh-load widths
-       never sampled. The name and the meta wrap, so the
-       cell may shrink to the line like any other. */
-    flex: 1 1 auto;
-  }
-
-  .data-line {
-    margin-left: 0;
-    margin-top: 7px;
-    gap: 3px 10px;
-  }
-
-  .dl-sep {
-    display: none;
-  }
-
-  .cell-value {
-    display: flex;
-    flex-direction: row-reverse;
-    align-items: baseline;
-    justify-content: flex-start;
-    gap: 12px;
-    align-self: stretch;
-    margin-top: 8px;
-    padding-right: 0;
-    text-align: right;
-  }
-
-  .value-main {
-    font-size: 21px;
-  }
-
-  .value-sub {
-    white-space: normal;
-    margin-top: 0;
-  }
-
-  .cell-chart {
-    margin-top: 6px;
-  }
-
-  .cell-chart::before {
-    content: "";
-    position: absolute;
-    left: 0;
-    right: 0;
-    top: 50%;
-    height: 1px;
-    background: var(--hairline);
-  }
-
-  .finding {
-    font-size: 19px;
-  }
-}
-
-/* Trust furniture, identification, and access basics. */
-.skip {
-  position: absolute;
-  left: -9999px;
-  top: 0;
-  background: var(--raised);
-  color: var(--ink-1);
-  padding: 10px 16px;
-  z-index: 50;
-}
-.skip:focus {
-  left: 8px;
-  top: 8px;
-}
-:focus-visible {
-  outline: 2px solid var(--ink-1);
-  outline-offset: 2px;
-}
-.links-line {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-  margin-top: 22px;
-}
-.links-line a {
-  color: var(--ink-1);
-  text-decoration: none;
-  font-size: 13.5px;
-  font-weight: 600;
-  padding: 10px 18px;
-  border: 1px solid var(--edge);
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.03);
-  transition: background var(--dur-state) var(--ease-fade), border-color var(--dur-state) var(--ease-fade), transform var(--dur-state) var(--ease-fade);
-}
-.links-line a:hover {
-  background: rgba(255, 255, 255, 0.07);
-  border-color: rgba(255, 255, 255, 0.16);
-  transform: translateY(-1px);
-}
-.chart-id {
-  margin-top: 18px;
-  font-size: var(--micro);
-  color: var(--ink-3);
-}
-.proto-note p {
-  margin: 0 0 10px;
-}
-.proto-note p:last-child {
-  margin-bottom: 0;
 }
 
 /* Round 9 chart suite. Scatter, heatmap, calibration, on the
@@ -919,48 +732,6 @@ body::before {
   height: auto;
   display: block;
   margin-top: 20px;
-}
-.rail-strip {
-  fill: var(--panel);
-}
-.grid-line {
-  stroke: var(--hairline);
-  stroke-opacity: 0.55;
-}
-.grid-label {
-  fill: var(--ink-3);
-  font-size: 11.5px;
-}
-.rail-divider,
-.axis-line {
-  stroke: var(--hairline);
-}
-.tick-label {
-  fill: var(--ink-3);
-  font-size: 11.5px;
-}
-.rail-head {
-  fill: var(--ink-2);
-  font-size: 11.5px;
-  font-weight: 600;
-  letter-spacing: 0.06em;
-}
-.axis-caption {
-  fill: var(--ink-3);
-  font-size: 11.5px;
-}
-.pt-ranked {
-  fill: var(--ink-1);
-}
-.pt-flagged {
-  fill: var(--ground);
-  stroke: var(--amber);
-  stroke-width: 1.5;
-}
-.scatter-label {
-  fill: var(--ink-2);
-  font-size: 11.5px;
-  font-weight: 550;
 }
 .chart-captions {
   color: var(--ink-2);
@@ -1382,15 +1153,16 @@ body::before {
   }
   /* Panels are capped at 440 px so the one-across panel does
    * not stretch to the full measure on large phones, and the
-   * tick units are sized for the capped panel: 9 units render
-   * at 10.1 px on a 390 px phone and at the panel name's size
-   * at the cap, never above it (design cycle 5, red team F1;
-   * doctrine D15, D16, D17). */
+   * tick units are sized against the panel the phone actually
+   * renders. 10 units render at 10.7 px in the 320 px panel
+   * a 390 px phone lays out, over the 10 px legibility floor
+   * the audit holds (C-01, doctrine D17). The earlier 9 units
+   * rendered at 9.6 px there once the panel narrowed. */
   .cal-panel {
     max-width: 440px;
   }
   .cal-svg text {
-    font-size: 9px;
+    font-size: 10px;
   }
   /* Phone edges for the one-across grid: the desktop rules
    * name the wrong panels, so the axis is restated in full
@@ -1490,10 +1262,6 @@ body::before {
 /* Round 10. Malformed, model detail, method, footer, and the
    per-model pages, on the Ledger tokens. */
 
-.lede-pointer {
-  margin-top: 8px;
-}
-.lede-pointer a,
 .board-footer a,
 .back-line a,
 .card-nav a {
@@ -1502,292 +1270,13 @@ body::before {
   text-underline-offset: 3px;
 }
 
-/* Malformed. Rows follow the ranking's rhythm: a name line with
-   the value at the right, then a full width bar strip. The
-   admission line is one continuous overlay across the strips. */
+/* Model detail. Each result's own page is a full-page
+   inspector reading (see the reading block below); the
+   models section anchor lands with scroll margin. */
 
-.mal-axis {
-  position: relative;
-  height: 34px;
-  margin-top: 18px;
-}
-.mal-limit-label {
-  position: absolute;
-  top: 0;
-  transform: translateX(8px);
-  font-size: var(--micro);
-  font-weight: 600;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--ink-2);
-  white-space: nowrap;
-}
-.mal-tick {
-  position: absolute;
-  bottom: 0;
-  transform: translateX(-50%);
-  font-size: 11.5px;
-  color: var(--ink-3);
-}
-.mal-tick.first {
-  transform: none;
-}
-.mal-tick.last {
-  transform: translateX(-100%);
-}
-.mal-rows {
-  position: relative;
-}
-.mal-line {
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  width: 0;
-  border-left: 1px solid var(--ink-2);
-  opacity: 0.55;
-  z-index: 2;
-  pointer-events: none;
-}
-.mal-row {
-  padding: 5px 0 6px;
-  border-bottom: 1px solid
-    color-mix(in srgb, var(--hairline) 45%, transparent);
-  position: relative;
-}
-.mal-row:last-child {
-  border-bottom: none;
-}
-.mal-line1 {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 16px;
-}
-
-/* The malformed row's name line carries the maker's vendor
-   chip beside the name (cycle 6, C6-11), the heatmap's flex
-   pattern, scoped to malformed rows so the ranking's own
-   name line is untouched. */
-.mal-row .name-line {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-.mal-value {
-  font-size: 15.5px;
-  font-weight: 600;
-  color: var(--ink-1);
-}
-.mal-value.flagged {
-  color: var(--amber);
-}
-.mal-track {
-  position: relative;
-  height: 10px;
-  margin-top: 3px;
-  background: var(--panel);
-  border-radius: 2px;
-}
-.mal-fill {
-  position: absolute;
-  left: 0;
-  top: 0;
-  bottom: 0;
-  background: var(--ink-2);
-  border-radius: 2px 0 0 2px;
-}
-.mal-fill.flagged {
-  background: transparent;
-  border: 1px solid var(--amber);
-  border-radius: 2px;
-}
-.mal-fill.over {
-  background: var(--red);
-}
-/* Cycle 6 (C6-08): a row carrying a wire sub-line gives the
-   sub-line the same air above its track that a plain row's
-   name has, so the two-line entry keeps the section rhythm. */
-.mal-row .wire-line {
-  margin-bottom: 3px;
-}
-.mal-fold {
-  color: var(--ink-2);
-  max-width: 68ch;
-  margin: 14px 0 0;
-}
-
-/* Model detail. The index row is a details summary; the card
-   opens in place under it. Anchors land on the summary, which
-   is the card header, with scroll margin (foundation items 8
-   and 9). */
-
-.card-controls {
-  display: flex;
-  gap: 10px;
-  margin-top: 18px;
-}
-.card-controls button {
-  font: inherit;
-  font-size: 12.5px;
-  font-weight: 600;
-  color: var(--ink-1);
-  background: var(--panel);
-  border: 1px solid var(--hairline);
-  border-radius: 6px;
-  padding: 8px 14px;
-  min-height: 44px;
-  cursor: pointer;
-}
-.card-controls button:hover {
-  background: var(--raised);
-}
-.model-group {
-  margin-top: 32px;
-}
-.model-item {
-  border-bottom: 1px solid
-    color-mix(in srgb, var(--hairline) 45%, transparent);
-  scroll-margin-top: 64px;
-}
 #models {
   scroll-margin-top: 64px;
 }
-.index-row {
-  display: block;
-  cursor: pointer;
-  list-style: none;
-  padding: 9px 0 10px;
-  min-height: 44px;
-}
-.index-row::-webkit-details-marker {
-  display: none;
-}
-.index-row:hover {
-  background: color-mix(in srgb, var(--raised) 55%, transparent);
-}
-.idx-line1 {
-  display: flex;
-  align-items: baseline;
-  gap: 12px;
-}
-.idx-name {
-  font-size: 15.5px;
-  font-weight: 550;
-  color: var(--ink-1);
-  line-height: 1.25;
-  min-width: 0;
-  overflow-wrap: break-word;
-}
-.idx-name .wire-line {
-  font-size: 11.5px;
-  font-weight: 400;
-}
-.idx-toggle {
-  margin-left: auto;
-  flex: 0 0 auto;
-  font-size: 12px;
-  font-weight: 600;
-  letter-spacing: 0.09em;
-  text-transform: uppercase;
-  color: var(--ink-2);
-}
-.idx-toggle::after {
-  content: "›";
-  display: inline-block;
-  margin-left: 6px;
-  transition: transform 0.15s ease;
-}
-.model-item[open ] .idx-toggle::after {
-  transform: rotate(90deg);
-}
-.idx-line2 {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px 0;
-  margin-top: 5px;
-  margin-left: 38px;
-  font-size: 11.5px;
-  letter-spacing: 0.03em;
-  line-height: 1.5;
-  color: var(--ink-1);
-}
-
-/* Cycle 6 (C6-07): each stats segment is one nowrap unit and
-   its separator travels inside it, after the value, so lines
-   wrap only between segments and a separator can end a line
-   but never lead one. */
-.idx-line2 .dl-seg {
-  white-space: nowrap;
-}
-
-/* The flagged decomposition segment in the index summary is a
-   sentence, not a stat unit, so it wraps like prose instead of
-   holding the line to its full width (repair round 3). */
-.idx-line2 .idx-decomp-seg {
-  white-space: normal;
-}
-
-/* The phone stats-line toggle (cycle 6, C6-15) exists in the
-   markup at all widths and is shown only at phone width. */
-.idx-toggle-row {
-  display: none;
-}
-
-/* The expanded card. A panel, per the surface rules (it holds
-   a coordinate system of spark bars and a fixed anatomy). */
-
-.card-body {
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.035), rgba(255, 255, 255, 0.008)), var(--panel);
-  border: 1px solid var(--edge);
-  border-radius: 16px;
-  padding: 22px 24px 20px;
-  margin: 6px 0 16px;
-  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.05);
-}
-.model-item[open ] {
-  border-bottom: none;
-}
-.card-statement {
-  font-size: 12px;
-  font-weight: 600;
-  letter-spacing: 0.09em;
-  text-transform: uppercase;
-  color: var(--ink-1);
-  margin: 0;
-}
-.card-model-id {
-  font-size: 13.5px;
-  color: var(--ink-1);
-  margin: 8px 0 0;
-  overflow-wrap: anywhere;
-}
-.card-wire {
-  color: var(--ink-2);
-  margin: 3px 0 0;
-}
-.card-reason {
-  color: var(--ink-2);
-  max-width: 68ch;
-  margin: 8px 0 0;
-}
-.card-reason.flagged {
-  color: var(--amber);
-}
-.card-headline {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 18px 40px;
-  margin-top: 18px;
-  padding-top: 14px;
-  border-top: 1px solid var(--hairline);
-}
-.hl-fig {
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-}
-.hl-label,
-.stat-label,
 .sev-label {
   font-size: 11.5px;
   font-weight: 600;
@@ -1795,47 +1284,12 @@ body::before {
   text-transform: uppercase;
   color: var(--ink-3);
 }
-.hl-value {
-  font-size: 23px;
-  font-weight: 600;
-  line-height: 1.15;
-}
-.hl-sub,
-.stat-sub,
 .sev-base {
   font-size: 11.5px;
   color: var(--ink-2);
 }
-.stat-grid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 14px 28px;
-  margin-top: 18px;
-  padding-top: 14px;
-  border-top: 1px solid var(--hairline);
-}
-.stat {
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-  min-width: 0;
-}
-.stat-value {
-  font-size: 15.5px;
-  font-weight: 600;
-}
 .not-measured-inline {
   color: var(--ink-3);
-}
-.card-subhead {
-  font-size: 12px;
-  font-weight: 600;
-  letter-spacing: 0.09em;
-  text-transform: uppercase;
-  color: var(--ink-1);
-  margin: 20px 0 8px;
-  padding-top: 14px;
-  border-top: 1px solid var(--hairline);
 }
 .spark-list {
   display: flex;
@@ -1978,60 +1432,31 @@ body::before {
   margin-top: 18px;
 }
 
-@media (min-width: 761px) {
-  /* One-line index rows on desktop (round 10 compaction). The
-     summary becomes a single flex row: rank, name, the figure
-     line, and the toggle pinned right. No type shrinks; the
-     stacked second line was the whole cost, and the 44 px
-     minimum height keeps the tap target. */
-  .index-row {
-    display: flex;
-    align-items: baseline;
-    gap: 12px;
-    padding: 10px 0 11px;
-  }
-  .idx-line1 {
-    display: contents;
-  }
-  .idx-line2 {
-    order: 2;
-    margin: 0;
-  }
-  .idx-toggle {
-    order: 3;
-  }
+/* The per-model reading, re-set in the inspector grammar.
+   The inspector block leads; the readings it does not carry
+   follow in the same figure grammar and hairline blocks. */
+.reading-body { padding: 4px 2px 6px; }
+.model-id {
+  margin-top: 22px; font-size: 12px; color: var(--ink-3);
+  overflow-wrap: anywhere;
+}
+.reading-body .wire-line { font-size: 13px; color: var(--ink-2); margin-top: 4px; }
+.figs-extra { border-top: 1px solid var(--edge-soft); padding-top: 18px; }
+.counted-note {
+  color: var(--ink-2); max-width: 68ch; font-size: 15.5px;
+  line-height: 1.55; margin: 16px 0 0;
+}
+.reading-subhead {
+  font-family: var(--font-mono); font-size: 10.5px; font-weight: 600;
+  letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink-3);
+  margin: 26px 0 10px;
+}
+.decomp-line {
+  color: var(--ink-2); max-width: 68ch; font-size: 15.5px;
+  line-height: 1.55; margin: 14px 0 0;
 }
 
 @media (max-width: 760px) {
-  .idx-line2 {
-    margin-left: 0;
-  }
-  /* Cycle 6 (C6-07): the ranking's phone rule hides bare
-     .dl-sep elements; the index keeps its separators, inside
-     their segments, at this width too. */
-  .idx-line2 .dl-sep {
-    display: inline;
-  }
-  /* Cycle 6 (C6-15): the index head restacks at phone width.
-     The name flexes to the full first line beside the rank and
-     the mark, so no name wraps mid-token, and DETAILS moves to
-     the end of the stats line. */
-  .idx-line1 .idx-toggle {
-    display: none;
-  }
-  .idx-name {
-    flex: 1 1 auto;
-  }
-  .idx-toggle-row {
-    display: block;
-    margin-left: auto;
-  }
-  .card-body {
-    padding: 14px 14px 12px;
-  }
-  .stat-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
   .sev-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -2056,13 +1481,9 @@ body::before {
   .spark-value {
     grid-area: value;
   }
-  .mal-limit-label {
-    transform: translateX(6px);
-  }
 }
 
 @media (max-width: 340px) {
-  .stat-grid,
   .sev-grid {
     grid-template-columns: 1fr;
   }
@@ -2086,15 +1507,6 @@ body::before {
    sticky bar. */
 #method h3[id] {
   scroll-margin-top: 64px;
-}
-
-.sr-only {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  overflow: hidden;
-  clip: rect(0 0 0 0);
-  white-space: nowrap;
 }
 
 /* Section bar. A floating glass pill, sticky, carrying the
@@ -2216,22 +1628,6 @@ body::before {
 /* Ranking names link to the model's own page. The name is
    the link, so the row's text stays selectable and the
    global ink focus outline serves as the focus state. */
-
-.name-link {
-  /* The link stands alone on the name line as the row's
-     navigation target, so the WCAG 2.5.8 inline case does
-     not cover it (convergence record, round 12): the box
-     carries the full 24 px target height in layout. */
-  display: inline-block;
-  min-height: 24px;
-  color: inherit;
-  text-decoration: none;
-}
-
-.name-link:hover {
-  text-decoration: underline;
-  text-underline-offset: 3px;
-}
 
 /* Compare (design 4.6). Pickers, a metric table with a
    centre delta column, and paired family bars on the shared
@@ -2589,238 +1985,6 @@ body::before {
   }
 }
 
-/* Redesign layer. The scatter well, the hover and focus
-   card, and the motion rules. The plot carries no corner
-   readings: they stand as a derived strip above the chart. */
-
-.scatter-wrap {
-  position: relative;
-  margin-top: 20px;
-  background: linear-gradient(180deg, var(--raised), var(--panel));
-  border: 1px solid var(--edge);
-  border-radius: 18px;
-  box-shadow: var(--shadow-1);
-  padding: 10px 14px 4px;
-}
-
-.scatter-wrap .scatter-svg {
-  margin-top: 0;
-}
-
-.pt-mark {
-  transform-box: fill-box;
-  transform-origin: center;
-  transition: transform var(--dur-micro) var(--ease-out);
-}
-
-.scatter-point {
-  cursor: pointer;
-  outline: none;
-}
-
-/* The point's focus indicator is a ring drawn on the disc
- * itself: the group takes no rectangular outline (the global
- * :focus-visible rule is overridden above), so the ring
- * circle carries the state, in ink, around the mark. */
-.pt-focus-ring {
-  fill: none;
-  stroke: transparent;
-  stroke-width: 2;
-  pointer-events: none;
-}
-
-.scatter-point:focus-visible .pt-focus-ring {
-  stroke: var(--ink-1);
-}
-
-.scatter-point[data-active="true"] .pt-mark,
-.scatter-point:focus-visible .pt-mark {
-  transform: scale(1.32);
-}
-
-/* Touch targets ride the marks invisibly: the point's hit
- * circle and each list row's hit rect are transparent and
- * take the tap, so the target is touch-sized (46 px at the
- * phone's true-pixel scale) while the disc keeps its drawn
- * size. Manipulation touch action removes the double-tap
- * zoom delay without taking away scroll or pinch. */
-.pt-hit {
-  fill: transparent;
-  stroke: none;
-  pointer-events: all;
-}
-
-.entry-hit {
-  fill: transparent;
-  pointer-events: all;
-}
-
-.scatter-entry {
-  cursor: pointer;
-}
-
-.scatter-point,
-.scatter-entry {
-  touch-action: manipulation;
-}
-
-.pt-mono {
-  font-size: 10px;
-  font-weight: 700;
-  text-anchor: middle;
-  dominant-baseline: central;
-}
-
-/* The phone chart draws at true CSS pixels, so its labels
- * keep the wide chart's size: the redesign's phone shrink
- * (10px labels and 9.5px entry values) put
- * data text under the doctrine's 10px rendered floor, and
- * the shape change pays for the room instead (D7, D17). */
-
-.scatter-entry-values {
-  fill: var(--ink-3);
-  font-size: 11.5px;
-}
-
-.scatter-label[data-active="true"] {
-  fill: var(--ink-1);
-  font-weight: 700;
-}
-
-.scatter-card {
-  position: absolute;
-  z-index: 5;
-  width: 228px;
-  transform: translate(-50%, calc(-100% - 16px));
-  pointer-events: none;
-}
-
-/* The card's motion layer (motion spec M9). The outer
- * element only positions the card at its point; everything
- * that moves lives on this inner layer, so the anchor
- * transforms above never take part in a transition. The
- * visible shell (background, border, radius, shadow,
- * padding) lives on this layer too, so the whole card the
- * reader sees glides and fades as one object: on a switch
- * the shell travels with the contents instead of jumping
- * to the new anchor ahead of them, and on exit the shell
- * fades with the contents instead of standing empty until
- * unmount. Enter runs once per mount: a fade and the micro
- * rise on the state duration and the entrance curve. A
- * point switch is driven by the island through inline
- * styles on this layer: the box glides on the move curve
- * while the contents cross-fade on the micro duration, and
- * an exit fades on the exit token. The layer never
- * unmounts between points: the card is one object with
- * changing contents, not a new card per point. */
-.scatter-card-inner {
-  background: var(--lift);
-  border: 1px solid var(--edge);
-  border-radius: 12px;
-  box-shadow: var(--shadow-3);
-  padding: 12px 14px;
-  transition:
-    opacity var(--dur-micro) var(--ease-fade),
-    transform var(--dur-state) var(--ease-move);
-  animation: scatter-card-in var(--dur-state) var(--ease-out);
-}
-
-@keyframes scatter-card-in {
-  from {
-    opacity: 0;
-    transform: translateY(var(--rise-micro));
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-.scatter-card.below {
-  transform: translate(-50%, 18px);
-}
-
-.scatter-card.align-l {
-  transform: translate(-10%, calc(-100% - 16px));
-}
-
-.scatter-card.align-l.below {
-  transform: translate(-10%, 18px);
-}
-
-.scatter-card.align-r {
-  transform: translate(-90%, calc(-100% - 16px));
-}
-
-.scatter-card.align-r.below {
-  transform: translate(-90%, 18px);
-}
-
-.sc-name {
-  font-size: 14.5px;
-  font-weight: 650;
-  margin: 0 0 8px;
-}
-
-/* The pinned card is a working surface, not a hover
- * shadow: it takes pointer events so its close control can
- * be used, and the name makes room for the control. The
- * control is a 28 px target, clear of the 24 px floor. */
-.scatter-card.pinned {
-  pointer-events: auto;
-}
-
-.scatter-card.pinned .sc-name {
-  padding-right: 28px;
-}
-
-.sc-close {
-  position: absolute;
-  top: 6px;
-  right: 6px;
-  width: 28px;
-  height: 28px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font: inherit;
-  font-size: 16px;
-  line-height: 1;
-  color: var(--ink-2);
-  background: rgba(255, 255, 255, 0.06);
-  border: 1px solid var(--edge);
-  border-radius: 999px;
-  cursor: pointer;
-  padding: 0;
-}
-
-.sc-close:hover {
-  color: var(--ink-1);
-}
-
-.sc-rows {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.sc-row {
-  display: flex;
-  justify-content: space-between;
-  gap: 12px;
-  font-size: 12.5px;
-}
-
-.sc-k {
-  color: var(--ink-2);
-}
-
-.sc-v {
-  color: var(--ink-1);
-  font-weight: 600;
-  text-align: right;
-}
-
 .cal-panel {
   background: linear-gradient(180deg, var(--raised), var(--panel));
   box-shadow: var(--shadow-1);
@@ -2855,30 +2019,6 @@ body::before {
   grid-column: 2;
 }
 
-/* Reduced motion, the scatter's designed branch (motion
- * spec M19). The global kill block above zeroes every
- * duration, which leaves two behaviours wrong for this
- * slice: the active disc's grow is a transform state, not
- * a duration, so it would still snap on at full scale; and
- * the card would lose the one movement reduced motion
- * keeps, its opacity cross-fade. These rules carry class
- * specificity above the kill block's universal selector:
- * the disc does not scale, the card's layer transitions
- * opacity only on the micro token, and the enter animation
- * does not run. Resting states are identical in both
- * branches; nothing is left hidden or mid-state. */
-@media (prefers-reduced-motion: reduce) {
-  .scatter-point[data-active="true"] .pt-mark,
-  .scatter-point:focus-visible .pt-mark {
-    transform: none !important;
-  }
-
-  .scatter-card-inner {
-    transition: opacity var(--dur-micro) var(--ease-fade) !important;
-    animation: none !important;
-  }
-}
-
 /* The redesign's own rules. Everything above this block is
    the inherited component styling on the board's standing
    palette; everything in this block is the structural law
@@ -2899,96 +2039,6 @@ body::before {
   counter-increment: section;
 }
 
-.section-label::before {
-  content: counter(section, decimal-leading-zero) " · ";
-  color: var(--accent);
-}
-
-/* The scatter's readings strip: the two derived readings
-   that used to sit in the plot's corners as prose claims,
-   standing as text above the chart, where they wrap like
-   prose and reserve no furniture inside the plot. */
-.scatter-readings {
-  display: grid;
-  gap: 4px;
-  margin: 16px 0 18px;
-  padding: 14px 18px;
-  background: var(--panel);
-  border: 1px solid var(--hairline);
-  border-radius: 12px;
-}
-
-.scatter-readings p {
-  margin: 0;
-  font-size: 14.5px;
-  line-height: 1.5;
-  color: var(--ink-2);
-}
-
-.scatter-readings p:first-child {
-  font-size: 16px;
-  font-weight: 600;
-  color: var(--ink-1);
-}
-
-/* The scatter's fitted list: the naming tier that cannot
-   fill. Rows are full width however narrow the panel gets,
-   names wrap anywhere and are never cut, and figures stand
-   as words, so the list is legible at every width the plot
-   above it is not. */
-.scatter-list {
-  display: grid;
-  gap: 6px;
-  margin-top: 14px;
-  padding-top: 12px;
-  border-top: 1px solid var(--hairline);
-}
-
-.scatter-list-head {
-  margin: 0 0 4px;
-  font-size: 12.5px;
-  line-height: 1.5;
-  color: var(--ink-2);
-}
-
-.scatter-list-row {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 6px 12px;
-  width: 100%;
-  padding: 9px 14px;
-  font: inherit;
-  text-align: left;
-  color: var(--ink-1);
-  background: var(--panel);
-  border: 1px solid var(--hairline);
-  border-radius: 10px;
-  cursor: pointer;
-  transition: background var(--dur-state) var(--ease-fade), border-color var(--dur-state) var(--ease-fade);
-}
-
-.scatter-list-row:hover,
-.scatter-list-row[data-active="true"] {
-  background: var(--raised);
-  border-color: var(--edge);
-}
-
-.scatter-list-disc {
-  flex: 0 0 auto;
-  width: 20px;
-  height: 20px;
-}
-
-.scatter-list-name {
-  font-weight: 600;
-  overflow-wrap: anywhere;
-}
-
-.scatter-list-values {
-  font-size: 13px;
-  color: var(--ink-2);
-}
 
 /* Measured touch targets (Maidan's touch law, WCAG 2.5.5):
    on a coarse pointer every interactive element stands at
@@ -3011,21 +2061,6 @@ body::before {
     min-height: 44px;
     display: inline-flex;
     align-items: center;
-  }
-
-  .name-link {
-    min-height: 44px;
-    display: inline-flex;
-    align-items: center;
-  }
-
-  .scatter-list-row {
-    min-height: 44px;
-  }
-
-  .sc-close {
-    width: 44px;
-    height: 44px;
   }
 
   /* The calibration rail's links and the model cards' nav

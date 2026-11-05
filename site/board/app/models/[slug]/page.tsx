@@ -16,16 +16,18 @@ import {
 } from "@/lib/payload";
 import { fmtPct, fmtInt } from "@/lib/format";
 import { familyOrder } from "@/lib/charts";
-import ModelCard, { type CardKind } from "@/components/ModelCard";
+import { asrAxisFor } from "@/lib/chart";
+import { inspectorDataAll } from "@/lib/inspectorData";
+import ModelReading, { type ReadingKind } from "@/components/ModelReading";
 
 /**
  * One page per result, generated from the payload at build
- * time (the stack decision's per-model pages). The page renders
- * the same card body the board's index expands, behind the
- * same data derivations, so a shared link to a single result
- * shows exactly the figures the board shows. Each page carries
- * its own head, with the result's headline figures in its
- * description, and points its canonical address at itself.
+ * time (the stack decision's per-model pages). The page is a
+ * full-page inspector reading in the board's grammar, behind
+ * the same data derivations, so a shared link to a single
+ * result shows exactly the figures the board shows. Each page
+ * carries its own head, with the result's headline figures in
+ * its description, and points its canonical address at itself.
  */
 
 function allRows(): BoardRow[] {
@@ -38,7 +40,7 @@ function rowForSlug(slug: string): BoardRow | undefined {
   return rows.find((r) => modelSlug(r, rows) === slug);
 }
 
-function kindAndRank(row: BoardRow): { kind: CardKind; rank: number | null } {
+function kindAndRank(row: BoardRow): { kind: ReadingKind; rank: number | null } {
   const groups = boardGroups();
   const full = groups.full.find((r) => r.run_id === row.run_id);
   if (full) return { kind: "full", rank: full.rank };
@@ -166,10 +168,18 @@ export default async function ModelPage({
   if (!row) notFound();
   const groups = boardGroups();
   const rows = allRows();
-  const { kind, rank } = kindAndRank(row);
+  const { kind } = kindAndRank(row);
   const versions = boardVersions();
   const name = shortName(row);
   const decomp = kind === "flagged" ? decompositionSentence(row) : null;
+  const rankedRates = [...groups.full, ...groups.slices]
+    .map((r) => r.asr_conditional)
+    .filter((v): v is number => v !== null && v !== undefined);
+  const axisMax = asrAxisFor(
+    rankedRates.length ? Math.max(...rankedRates) : 0,
+  ).max;
+  const { byRunId } = inspectorDataAll(axisMax);
+  const datum = byRunId.get(row.run_id)!;
 
   return (
     <main className="page model-page" id="main">
@@ -200,21 +210,13 @@ export default async function ModelPage({
       </header>
 
       <article className="model-card standalone" data-card-for={row.run_id}>
-        <ModelCard
+        <ModelReading
           row={row}
-          rank={rank}
           kind={kind}
-          groupSize={
-            kind === "full"
-              ? groups.full.length
-              : kind === "slice"
-                ? groups.slices.length
-                : 0
-          }
+          datum={datum}
+          axisMax={axisMax}
           benchmarks={taxBenchmarks(groups)}
           familyKeys={familyOrder(rows)}
-          allRows={rows}
-          standalone
         />
       </article>
 

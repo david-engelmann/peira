@@ -1,14 +1,17 @@
-/**
- * Build-time social preview and data staging (SO-01, TR-02,
- * SF-04). Renders public/og.png, 1200 by 630: the board's
- * annotated cost scatter itself, drawn from the same payload
- * the page renders, every plotted point a disc in its maker's
- * family color carrying the maker's mark and every point
- * named, with the two corner readings in display type. Also
- * stages public/payload.json so the page can link the exact
- * data behind it in one click. Numbers format with the same
- * decimal half-up rule as the page.
- */
+/* The share images, generated from data/payload.json: the
+ * landscape card (public/og.png, 1200x630) and the portrait
+ * card (public/og-portrait.png, 1080x1350), one derivation
+ * feeding both. The design is the instrument panel's share
+ * grammar: the headline claim the payload must support or
+ * the build fails, the cost scatter with its headline
+ * subject singled out in white, a numeral stack of three
+ * readings beside it, the points the plot cannot name
+ * carried in words under it, and the no-cost rail as a
+ * ladder that lives inside a stated pixel budget. Every
+ * figure derives from the payload at generation time; a
+ * flagged figure never prints without its malformed
+ * decomposition on the same card. */
+
 import { readFileSync, writeFileSync, copyFileSync, mkdirSync } from "node:fs";
 import { globSync } from "node:fs";
 import { homedir } from "node:os";
@@ -25,17 +28,17 @@ const payload = JSON.parse(
 function expandDec(v) {
   const s = String(v);
   if (!/[eE]/.test(s)) return s;
-  const [mantissa, expS] = s.split(/[eE]/);
-  const exp = Number(expS);
-  const neg = mantissa.startsWith("-");
-  const body = neg ? mantissa.slice(1) : mantissa;
+  const [mant, expS] = s.split(/[eE]/);
+  const exp = parseInt(expS, 10);
+  const neg = mant.startsWith("-");
+  const body = neg ? mant.slice(1) : mant;
   const [ip, fp = ""] = body.split(".");
   const digits = ip + fp;
   const point = ip.length + exp;
   let out;
   if (point <= 0) out = "0." + "0".repeat(-point) + digits;
   else if (point >= digits.length) out = digits + "0".repeat(point - digits.length);
-  else out = `${digits.slice(0, point)}.${digits.slice(point)}`;
+  else out = digits.slice(0, point) + "." + digits.slice(point);
   return (neg ? "-" : "") + out;
 }
 function shiftPt(decStr, places) {
@@ -104,9 +107,9 @@ function trimDec(s) {
  * four, truncated at each step, until the truncated bound
  * is non-zero, and trailing zeros trim. A plain recorded
  * cost keeps the half-up two-decimal fmtUsd above. The
- * words strip under the chart takes this form too, so a
- * plain sub-cent cost named there never prints as zero
- * dollars either. */
+ * words under the plot take this form too, so a plain
+ * sub-cent cost named there never prints as zero dollars
+ * either. */
 function fmtUsdBound(v) {
   for (const p of [2, 3, 4]) {
     const t = truncDec(expandDec(v), p);
@@ -118,7 +121,7 @@ function fmtUsdBound(v) {
 /* The board's lower-bound rule (lib/charts costIsLowerBound),
  * replicated on the payload rows: a recorded cost whose priced
  * calls fall short of its timed calls is a floor, and the model
- * cards print it with the qualifier. The top corner follows
+ * cards print it with the qualifier. The subject line follows
  * the same rule. */
 const costIsLowerBound = (r) => {
   const fams = r.detail?.families;
@@ -137,6 +140,17 @@ const costIsLowerBound = (r) => {
   }
   return seen && costed < timed;
 };
+/* The cost as the card's words carry it, the page's rule
+ * (lib/topData's costWords): no recorded cost, a lower bound
+ * with its qualifier, or the rounded figure. */
+const costWords = (r) => {
+  if (r.total_cost_usd === null || r.total_cost_usd === undefined) {
+    return "no recorded cost";
+  }
+  return costIsLowerBound(r)
+    ? `at least ${fmtUsdBound(r.total_cost_usd)}`
+    : fmtUsd(r.total_cost_usd);
+};
 
 /* The flip decomposition, a port of lib/payload's
  * flipDecomposition (familyRecords, flipCounts and countOf
@@ -146,9 +160,9 @@ const costIsLowerBound = (r) => {
  * the row's printed attack success. Where the sealed family
  * records are missing or disagree with the printed figure
  * the port returns null and no decomposition may be stated,
- * the same failure semantics the board applies. The
- * off-scale disclosure below states a flagged figure only
- * with this decomposition beside it. */
+ * the same failure semantics the board applies. The flagged
+ * reading below states a flagged figure only with this
+ * decomposition beside it. */
 const countOf = (x) =>
   typeof x === "number" && Number.isInteger(x) && x >= 0 ? x : null;
 function familyRecords(r) {
@@ -262,44 +276,16 @@ const MONTHS = [
 const [dy, dm, dd] = dateIso.split("-").map(Number);
 const dateWords = `${dd} ${MONTHS[dm - 1]} ${dy}`;
 const results = payload.ranked.length + payload.unranked.length;
+const esc = (t) =>
+  String(t)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
 
-/* The share image is the board's money shot: the annotated
- * cost scatter itself, at a size where it still reads in a
- * feed thumbnail. Every full suite point is a disc in its
- * maker's family color carrying the maker's mark, flagged
- * results keep the amber ring, the rail holds the results
- * with no recorded API cost, and the two corner readings are
- * set in display type. The foot decodes the amber ring
- * inside the image, since the image travels without the
- * board's prose. Vendor identity resolves through
- * lib/vendor-data.json, the one vendor table for the whole
- * board, shared with lib/vendor and lib/vendorColors, and
- * the mark paths are read out of lib/logoPaths.ts, so the
- * image cannot drift from the board. The headline and the
- * corner readings are computed from the payload further down
- * and guarded there: the generator fails when the payload
- * does not support them, rather than print a claim the data
- * has outgrown. */
-const vendorData = JSON.parse(
-  readFileSync(path.join(root, "lib", "vendor-data.json"), "utf8"),
-);
-const VENDOR_BY_KEY = new Map(vendorData.families.map((f) => [f.key, f]));
-const VENDOR_RULES = vendorData.rules.map((r) => ({
-  test: new RegExp(r.pattern),
-  key: r.family,
-}));
-const familyOf = (r) => {
-  const hay = `${r.display_name} ${r.adapter_name} ${r.wire}`.toLowerCase();
-  for (const rule of VENDOR_RULES) {
-    if (rule.test.test(hay)) return VENDOR_BY_KEY.get(rule.key);
-  }
-  return vendorData.fallback;
-};
-const logoSrc = readFileSync(path.join(root, "lib", "logoPaths.ts"), "utf8");
-const LOGO_PATHS = {};
-for (const m of logoSrc.matchAll(/(\w+):\s*\n?\s*"([^"]+)"/g)) {
-  LOGO_PATHS[m[1]] = m[2];
-}
+/* Populations. The plot carries every full suite result
+ * with a recorded cost above zero; the ladder carries the
+ * rest of the full suite, the results with no recorded API
+ * cost. Slices stand apart from both, as on the board. */
 const nonSlice = [...payload.ranked, ...payload.unranked].filter(
   (r) => r.n_cases === fullCases,
 );
@@ -313,15 +299,8 @@ const costs = plotted.map((r) => r.total_cost_usd);
 const domLo = 10 ** (Math.floor(Math.log10(Math.min(...costs)) * 2) / 2);
 const domHi = 10 ** (Math.ceil(Math.log10(Math.max(...costs)) * 2) / 2);
 /* The attack success axis ceiling, a port of lib/chart.ts's
- * asrAxisFor (F5 of the 2026-10-29 hardcode audit, board rule
- * as restated by the redesign record): the smallest tenth at
- * or above the worst ranked rate, floored at 0.3. This
- * generator reads the payload JSON directly and cannot import
- * the board module, so the rule is ported. The two must move
- * together, and the share image must draw the axis the board
- * draws. An earlier port added a further step when the worst
- * rate sat exactly on a step, which put the image on a
- * different axis from the board for such a payload. */
+ * asrAxisFor: the smallest tenth at or above the worst
+ * ranked rate, floored at 0.3. */
 function asrAxisCeiling(maxRate) {
   const stepped = Math.ceil((maxRate - 1e-9) / 0.1) * 0.1;
   return Math.round(Math.max(0.3, stepped) * 10) / 10;
@@ -329,225 +308,21 @@ function asrAxisCeiling(maxRate) {
 const axisMax = asrAxisCeiling(
   Math.max(0, ...payload.ranked.map((r) => r.asr_conditional ?? 0)),
 );
-const axisTicks = Array.from(
-  { length: Math.round(axisMax / 0.1) + 1 },
-  (_, i) => i / 10,
-);
-/* A point above the derived ceiling is not drawn (red team
- * finding RT-1 on the #521 review). The axis ceiling derives
- * from the ranked population, so a flagged result can sit
- * above it; extrapolating its position put its disc off the
- * canvas with its label floating free, and the board's own
- * discipline is the opposite: the disc stands off the top
- * of the plot rather than at a false position, and the
- * result is disclosed in words. The drawn sets below exclude
- * every such point, and the disclosure sentences composed
- * further down carry each one into the image, named, with
- * its figure and, for a flagged result, its malformed
- * decomposition. No position is ever clamped to the axis. */
-const offScaleRows = [...plotted, ...railRows].filter(
+/* A plotted point above the derived ceiling is not drawn:
+ * no position is ever clamped to the axis. What the card
+ * does with each such point is decided in the claims below,
+ * and a point no surface of the card can carry honestly
+ * fails the build rather than drop in silence. */
+const offScalePlotted = plotted.filter(
   (r) => (r.asr_conditional ?? 0) > axisMax,
 );
-const offScaleIds = new Set(offScaleRows.map((r) => r.run_id));
+const offScaleIds = new Set(offScalePlotted.map((r) => r.run_id));
 const plottedDrawn = plotted.filter((r) => !offScaleIds.has(r.run_id));
-const railDrawn = railRows.filter((r) => !offScaleIds.has(r.run_id));
-const PLOT = { x0: 168, x1: 1152, y0: 218, y1: 516 };
-const RAIL_CX = 92;
-const xOf = (c) =>
-  PLOT.x0 +
-  ((Math.log10(c) - Math.log10(domLo)) /
-    (Math.log10(domHi) - Math.log10(domLo))) *
-    (PLOT.x1 - PLOT.x0);
-const yOf = (a) => PLOT.y0 + (1 - a / axisMax) * (PLOT.y1 - PLOT.y0);
-const esc = (t) =>
-  t.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-function disc(r, x, y) {
-  const fam = familyOf(r);
-  const flagged = !r.ranking_eligible;
-  const monoLetter =
-    fam.mono ??
-    (shortName(r).match(/[a-z0-9]/i)?.[0]?.toUpperCase() ?? "·");
-  const glyph = fam.logo
-    ? `<path d="${LOGO_PATHS[fam.logo]}" transform="translate(-6 -6) scale(0.5)" fill="${fam.glyph}"/>`
-    : `<text y="1" class="mono" fill="${fam.glyph}">${esc(monoLetter)}</text>`;
-  return `<g transform="translate(${x.toFixed(1)} ${y.toFixed(1)})">
-    <circle r="11" fill="${fam.color}" stroke="${flagged ? "#e8a33d" : "rgba(255,255,255,0.28)"}" stroke-width="${flagged ? 2.5 : 1}"/>
-    ${glyph}
-  </g>`;
-}
-/* The gridlines begin at the rail divider, not at the
- * canvas edge. The rail is a list column, as on the board:
- * its discs are spaced for legibility and their order
- * carries the ranking, but a gridline running behind the
- * column would claim an axis position for discs the spread
- * has moved off their true height. */
-const gridSvg = axisTicks
-  .map(
-    (t) => `<line x1="148" y1="${yOf(t)}" x2="${PLOT.x1}" y2="${yOf(t)}" stroke="#232c35" stroke-opacity="0.55"/>
-    <text x="${PLOT.x0 + 6}" y="${yOf(t) - 6}" class="tick">${Math.round(t * 100)}</text>`,
-  )
-  .join("\n");
-const decadeSvg = [];
-for (let d = Math.ceil(Math.log10(domLo)); d <= Math.floor(Math.log10(domHi)); d++) {
-  const v = 10 ** d;
-  decadeSvg.push(
-    `<text x="${xOf(v)}" y="${PLOT.y1 + 24}" class="tick" text-anchor="middle">${v < 1 ? `$${v.toFixed(2)}` : `$${v}`}</text>`,
-  );
-}
-const railSpread = [...railDrawn]
-  .map((r) => ({ r, y: yOf(r.asr_conditional) }))
-  .sort((a, b) => a.y - b.y);
-/* The pitch leaves visible air between rail discs: a disc's
- * rendered outer radius is 11 plus half its stroke (12.25
- * for a flagged disc), so centres 23 apart left the outlines
- * tangent or overlapping. 26 clears the widest pair. */
-for (let pass = 0; pass < 4; pass++) {
-  for (let i = 1; i < railSpread.length; i++) {
-    railSpread[i].y = Math.max(railSpread[i].y, railSpread[i - 1].y + 26);
-  }
-  for (let i = railSpread.length - 2; i >= 0; i--) {
-    railSpread[i].y = Math.min(railSpread[i].y, railSpread[i + 1].y - 26);
-  }
-}
-/* The passes hold the pitch and the order but anchor
- * nothing, so a rail that grows a row pushes its lowest
- * names past the axis into the cost decades. Clamp the
- * finished ladder into the plot band with a rigid shift,
- * which preserves both the pitch and the order, and fail
- * rather than spill when the ladder is taller than the
- * band itself. The band insets by 13, the flagged disc's
- * outer radius of 12.25 rounded up, so a clamped disc
- * stays inside the plot; the span comparison carries 1px
- * of float tolerance. */
-if (railSpread.length > 0) {
-  const lo = PLOT.y0 + 13;
-  const hi = PLOT.y1 - 13;
-  const first = railSpread[0].y;
-  const last = railSpread.at(-1).y;
-  if (last - first > hi - lo + 1) {
-    console.error(
-      `gen-og: the no-cost rail carries ${railSpread.length} rows and its ladder no longer fits the plot band at the 26px pitch, so the image does not print with rail names over the cost decades`,
-    );
-    process.exit(1);
-  }
-  const shift = last > hi ? hi - last : first < lo ? lo - first : 0;
-  if (shift !== 0) {
-    for (const e of railSpread) e.y += shift;
-  }
-}
-const railY = new Map(railSpread.map((e) => [e.r.run_id, e.y]));
-/* Rail points are named by construction: each name sits
- * beside its disc in the rail column, so those labels are
- * static markup and become furniture for the plotted labels.
- * The plotted points are named by the placement pass that
- * runs in the browser below (placeOgLabels), which derives
- * the labeled set from the plotted population itself: every
- * plotted point gets a label seated beside its disc by
- * deterministic candidate placement against real font
- * measurement, with no leader lines and no per-run table.
- * A point no tier of the pass can seat is named in words in
- * the strip under the chart instead, so a name can never
- * drop silently and a crowded payload never fails the
- * build. */
-const railLabelsSvg = railDrawn
-  .map(
-    (r) =>
-      `<text x="${RAIL_CX + 22}" y="${railY.get(r.run_id) + 5}" class="lab">${esc(pointName(r))}</text>`,
-  )
-  .join("\n");
-/* Points whose discs would render as one disc are
- * separated along y before anything is drawn: two results
- * whose centres fall inside a single disc's span merge
- * into one visible disc, and the image would show fewer
- * results than it names (the board's two best results sat
- * 4.7px apart). The spread follows the board's rule
- * (lib/layout.ts nudgePoints) but is scoped to that
- * merged-disc case: the board's full spread, applied to
- * every near pair, moves enough discs in this denser plot
- * that the current population no longer seats its labels
- * (design cycle 4 attempted it; the cycle record carries
- * the failure). No point moves by more than the shift
- * cap, and the labels seat against the drawn discs, so a
- * moved point keeps its name beside it. */
-function nudgePoints(points, minSep, maxShift) {
-  const orig = new Map(points.map((p) => [p.runId, { x: p.x, y: p.y }]));
-  for (let cycle = 0; cycle < 2; cycle++) {
-    const parent = points.map((_, i) => i);
-    const find = (i) => (parent[i] === i ? i : (parent[i] = find(parent[i])));
-    for (let i = 0; i < points.length; i++) {
-      for (let j = i + 1; j < points.length; j++) {
-        const dx = points[i].x - points[j].x;
-        const dy = points[i].y - points[j].y;
-        if (Math.hypot(dx, dy) < 12) {
-          parent[find(i)] = find(j);
-        }
-      }
-    }
-    const groups = new Map();
-    points.forEach((p, i) => {
-      const root = find(i);
-      const group = groups.get(root) ?? [];
-      group.push(p);
-      groups.set(root, group);
-    });
-    for (const group of groups.values()) {
-      if (group.length < 2) continue;
-      const cluster = [...group].sort((a, b) => a.y - b.y || a.x - b.x);
-      const ys = cluster.map((p) => orig.get(p.runId).y);
-      for (let round = 0; round < 3; round++) {
-        for (let i = 1; i < cluster.length; i++) {
-          const want = cluster[i - 1].y + minSep;
-          cluster[i].y = Math.min(Math.max(cluster[i].y, want), ys[i] + maxShift);
-        }
-        for (let i = cluster.length - 2; i >= 0; i--) {
-          const want = cluster[i + 1].y - minSep;
-          cluster[i].y = Math.max(Math.min(cluster[i].y, want), ys[i] - maxShift);
-        }
-      }
-    }
-  }
-}
-const plottedXY = plottedDrawn.map((r) => ({
-  runId: r.run_id,
-  r,
-  x: xOf(r.total_cost_usd),
-  y: yOf(r.asr_conditional),
-}));
-nudgePoints(plottedXY, 24, 12);
-const plottedPts = plottedXY.map((p) => ({
-  runId: p.runId,
-  name: pointName(p.r),
-  /* The point stated in words, for the strip that names a
-   * point whose label no tier of the placement pass could
-   * seat beside its disc. Derived here from the same row, so
-   * the strip can never disagree with the plotted point. */
-  words: `${pointName(p.r)} (${fmtPct(p.r.asr_conditional)} at ${fmtUsdBound(p.r.total_cost_usd)})`,
-  x: p.x,
-  y: p.y,
-}));
-/* The corner readings and the headline claim, computed from
- * this payload and validated before they are drawn (F1 and
- * F2 of the 2026-10-29 hardcode audit; the pattern is the
- * verified candidate generator's). The claims stand on the
- * ranked plotted population, the population the board's own
- * claims stand on. The headline (the priciest model was the
- * easiest to flip) and the top corner hold only while the
- * priciest ranked plotted run's attack success equals that
- * population's highest (a tie at the top still carries the
- * claim, the same value comparison gen-social-preview
- * makes), so that is asserted here: a payload
- * that breaks it fails the build rather than print a false
- * corner. The bottom corner states the chart's actual
- * toughness extreme, the lowest attack success among every
- * ranked run the chart carries, costed runs on the plot and
- * no-cost runs on the rail alike, because its words say
- * least of all and the rail is on the chart. A ranked rail
- * run that flips more than the priciest costed run is named
- * in the disclosure block under the chart, so the headline's
- * cost story never reads as the whole story. The top
- * corner's cost figure carries the lower-bound qualifier
- * when the payload marks that cost a floor, exactly as the
- * model cards print it. */
+
+/* The claims. The headline stands on the ranked plotted
+ * population: the priciest ranked plotted run must carry
+ * that population's highest attack success, or the card's
+ * first sentence would be false and the build fails. */
 const rankedPlotted = plotted.filter((r) => r.ranking_eligible);
 const byAsrAsc = [...rankedPlotted].sort(
   (a, b) => a.asr_conditional - b.asr_conditional,
@@ -567,171 +342,608 @@ if (
   priciest.asr_conditional !== byAsrAsc.at(-1).asr_conditional
 ) {
   console.error(
-    "gen-og: headline claim broken on this payload: the priciest ranked plotted run does not carry the highest attack success among the ranked plotted runs, so the headline and the top corner would be false",
+    "gen-og: headline claim broken on this payload: the priciest ranked plotted run does not carry the highest attack success among the ranked plotted runs, so the headline would be false",
   );
   process.exit(1);
 }
-const topSub = `${costIsLowerBound(priciest) ? `At least ${fmtUsdBound(priciest.total_cost_usd)}` : fmtUsd(priciest.total_cost_usd)} a run, and it flipped most of all`;
-const bottomSub = `${pointName(toughest)} flipped least of all at ${fmtPct(toughest.asr_conditional)}`;
-/* The off-scale disclosure, one sentence per excluded
- * point, composed here from the same rows the scatter
- * draws (RT-1). A flagged point's figure travels only with
- * its malformed decomposition clauses on the same surface,
- * the board's standing rule for flagged figures; where the
- * sealed family records do not derive the decomposition,
- * the disclosure the image owes cannot be composed at all,
- * and the build fails rather than state the figure bare or
- * drop the point in silence. */
-const offScaleSentences = offScaleRows.map((r) => {
-  const base = `${pointName(r)} sits above the chart's 0 to ${Math.round(axisMax * 100)} percent scale at ${fmtPct(r.asr_conditional)} attack success`;
-  const tail = ", so its disc stands off the top of the plot rather than at a false position.";
-  if (r.ranking_eligible) return base + tail;
-  const d = flipDecomposition(r);
-  if (d === null) {
+const subject = priciest;
+const subjectSub = `${costIsLowerBound(subject) ? `At least ${fmtUsdBound(subject.total_cost_usd)}` : fmtUsd(subject.total_cost_usd)} a run, ${fmtPct(subject.asr_conditional)}`;
+
+/* The flagged reading. Its subject is the flagged result
+ * the card must answer for: an off-scale flagged result
+ * first (the plot cannot draw it), else the flagged result
+ * with the highest counted rate. Its figure prints only
+ * with its decomposition; a flagged result above the axis
+ * ceiling whose decomposition does not derive fails the
+ * build, because no surface of the card could state its
+ * figure honestly. */
+const flaggedRows = nonSlice.filter((r) => !r.ranking_eligible);
+const flaggedLead = (() => {
+  const off = flaggedRows
+    .filter((r) => (r.asr_conditional ?? 0) > axisMax)
+    .sort((a, b) => (b.asr_conditional ?? 0) - (a.asr_conditional ?? 0));
+  for (const r of off) {
+    if (flipDecomposition(r) === null) {
+      console.error(
+        `gen-og: ${pointName(r)} is flagged and sits above the chart's axis ceiling, but its sealed family records do not derive the malformed decomposition its figure must travel with, so the card cannot state it and the build fails`,
+      );
+      process.exit(1);
+    }
+  }
+  if (off.length > 0) return { row: off[0], offScale: true };
+  const rest = [...flaggedRows].sort(
+    (a, b) => (b.asr_conditional ?? 0) - (a.asr_conditional ?? 0),
+  );
+  for (const r of rest) {
+    if (flipDecomposition(r) !== null) return { row: r, offScale: false };
+  }
+  return null;
+})();
+/* Any other off-scale plotted point has no surface on this
+ * card: the plot cannot draw it, the readings carry the
+ * toughest, the flagged lead, and the rail's top, and the
+ * words under the plot name points the plot drew. Rather
+ * than drop it in silence, the build fails. */
+for (const r of offScalePlotted) {
+  if (flaggedLead && r.run_id === flaggedLead.row.run_id) continue;
+  console.error(
+    `gen-og: ${pointName(r)} sits above the chart's 0 to ${Math.round(axisMax * 100)} percent scale and no surface of the share card carries it, so the build fails rather than drop it in silence`,
+  );
+  process.exit(1);
+}
+/* A flagged plotted point sitting exactly at the axis
+ * ceiling escapes the off-scale discipline above. It is
+ * drawn, but its disc rides the plot's top edge where no
+ * label seats reliably, so the words under the plot are its
+ * naming surface, and there its figure must travel with its
+ * decomposition (C-5), the way the stack's flagged reading
+ * carries the lead's. A ceiling point that is not the lead
+ * and whose decomposition does not derive has no honest
+ * surface on this card, so the build fails closed. */
+const atCeilingFlagged = plotted.filter(
+  (r) =>
+    !r.ranking_eligible &&
+    (r.asr_conditional ?? 0) >= axisMax &&
+    !(flaggedLead && r.run_id === flaggedLead.row.run_id),
+);
+for (const r of atCeilingFlagged) {
+  if (flipDecomposition(r) === null) {
     console.error(
-      `gen-og: ${pointName(r)} sits above the chart's axis ceiling and is flagged, but its sealed family records do not derive the malformed decomposition its disclosure must carry, so the image cannot state its figure and the build fails rather than print it bare or drop it in silence`,
+      `gen-og: ${pointName(r)} is flagged and sits exactly at the chart's axis ceiling, but its sealed family records do not derive the malformed decomposition its figure must travel with, so the card cannot state it and the build fails`,
     );
     process.exit(1);
   }
-  return `${base}, genuine flip rate ${fmtPct(d.genuineRate)}, with ${fmtPct(d.malformedShare)} of counted flips to malformed output${tail}`;
-});
-/* The rail extreme disclosure. A ranked run with no recorded
- * cost stands on the rail, outside the cost story the
- * headline tells, and nothing on the chart prints its figure.
- * When such a run flips more than the priciest costed run,
- * the headline could read as the whole story, so the run is
- * named here with its figure and the reason it stands apart,
- * the same treatment the off-scale sentences give the points
- * the plot does not draw. A run above the axis ceiling is
- * left to its off-scale sentence, so no run is disclosed
- * twice. The words say ranked costed runs because the
- * derivation stands on that population, the headline guard's
- * own, and a flagged costed run above them all is carried by
- * its off-scale sentence instead. */
-const railExtremeRows = railRows.filter(
-  (r) =>
-    r.ranking_eligible &&
-    priciest &&
-    r.asr_conditional > priciest.asr_conditional &&
-    !offScaleIds.has(r.run_id),
-);
-const railExtremeSentences = railExtremeRows.map(
-  (r) =>
-    `${pointName(r)} flipped more than any ranked costed run at ${fmtPct(r.asr_conditional)} attack success. It carries no recorded cost, so it stands on the no-cost rail, outside the cost story the headline tells.`,
-);
-const disclosureSentences = [
-  ...offScaleSentences,
-  ...railExtremeSentences,
-];
-const pointsSvg = [
-  ...railDrawn.map((r) => disc(r, RAIL_CX, railY.get(r.run_id))),
-  ...plottedXY.map((p) => disc(p.r, p.x, p.y)),
-].join("\n");
-/* The cost axis carries no title text of its own. The head's
- * sub-line already states the axis (attack success against
- * recorded cost per run, log scale) and the decade labels
- * carry their dollar signs, and the band under the decades
- * belongs to the disclosure block: a title there left the
- * disclosure's second line nowhere clear to sit once the
- * block carried more than one sentence. */
-const scatterSvg = `<svg width="1200" height="630" viewBox="0 0 1200 630" class="chart">
-  <rect x="48" y="${PLOT.y0}" width="88" height="${PLOT.y1 - PLOT.y0}" fill="#0c1015"/>
-  ${gridSvg}
-  <line x1="148" y1="${PLOT.y0 - 6}" x2="148" y2="${PLOT.y1}" stroke="#232c35"/>
-  <line x1="${PLOT.x0}" y1="${PLOT.y1}" x2="${PLOT.x1}" y2="${PLOT.y1}" stroke="#232c35"/>
-  ${decadeSvg.join("\n")}
-  <text x="48" y="${PLOT.y0 - 10}" class="tick">No API cost</text>
-  <text x="${PLOT.x0 + 32}" y="${PLOT.y0 - 10}" class="tick">Attack success, percent</text>
-  <text x="520" y="252" class="corner">Expensive and fragile</text>
-  <text x="520" y="278" class="corner-sub">${esc(topSub)}</text>
-  <text x="${PLOT.x0}" y="468" class="corner" id="og-corner-bottom">Toughest on the chart</text>
-  <text x="${PLOT.x0}" y="494" class="corner-sub" id="og-corner-bottom-sub">${esc(bottomSub)}</text>
-  ${pointsSvg}
-  ${railLabelsSvg}
-  <g id="og-labels"></g>
-</svg>`;
+}
+const ceilingDecompClause = (r) => {
+  if (r.ranking_eligible || (r.asr_conditional ?? 0) < axisMax) return "";
+  const d = flipDecomposition(r);
+  if (d === null) return "";
+  return `, genuine flip rate ${fmtPct(d.genuineRate)}, with ${fmtPct(d.malformedShare)} of counted flips to malformed output`;
+};
+/* The rail reading: the ranked no-cost run with the highest
+ * rate, named with the reason it stands apart from the cost
+ * story the headline tells. */
+const railRanked = railRows
+  .filter((r) => r.ranking_eligible)
+  .sort((a, b) => (b.asr_conditional ?? 0) - (a.asr_conditional ?? 0));
+const railTop = railRanked[0] ?? null;
+const railTopWho = railTop
+  ? railTop.asr_conditional > subject.asr_conditional
+    ? `${pointName(railTop)}, no recorded cost. It flipped past every ranked costed run.`
+    : `${pointName(railTop)}, no recorded cost, the highest rate on the rail.`
+  : null;
 
-/* The share image draws no lower-bound tick. A floating arrow
- * beside a disc reads as a stray mark at feed size, and the
- * image has no caption to explain one, so the lower-bound fact
- * stays on the board page and out of the image. Tripwire: the
- * only lines in the scatter are the grid lines (one per axis
- * tick), the rail divider and the axis, and nothing draws a
- * polygon. */
-const ogLineCount = (scatterSvg.match(/<line/g) ?? []).length;
-if (scatterSvg.includes("<polygon") || ogLineCount !== axisTicks.length + 2) {
-  console.error(
-    `gen-og: unexpected glyph in the share image scatter (lines ${ogLineCount}, polygon present ${scatterSvg.includes("<polygon")}): the image draws no lower-bound tick or other floating mark`,
-  );
-  process.exit(1);
+/* The ladder: every rail result in rate order, worst first.
+ * The landscape card sets it in two columns inside a rows
+ * area allotted 170px at 22px a row; past 14 rows the area
+ * takes slack from the middle of the card, and the build
+ * fails when the rows outgrow the allotment and the slack
+ * together. The portrait sets one column at 26px a row
+ * inside 286px on the same rule. */
+const ladderRows = [...railRows].sort(
+  (a, b) =>
+    (b.asr_conditional ?? 0) - (a.asr_conditional ?? 0) ||
+    (a.run_id < b.run_id ? -1 : 1),
+);
+const LADDER = {
+  land: { allot: 170, pitch: 22, slack: 40, columns: 2 },
+  port: { allot: 286, pitch: 26, slack: 160, columns: 1 },
+};
+function ladderBudget(kind) {
+  const spec = LADDER[kind];
+  const perColumn = Math.ceil(ladderRows.length / spec.columns);
+  const spent = perColumn * spec.pitch;
+  const slackUsed = Math.max(0, spent - spec.allot);
+  if (slackUsed > spec.slack) {
+    console.error(
+      `gen-og: the no-cost rail carries ${ladderRows.length} rows and its ladder needs ${spent}px of rows area on the ${kind === "land" ? "landscape" : "portrait"} card, past the ${spec.allot}px allotted and the ${spec.slack}px of slack the middle can give, so the card does not print with its ladder cut`,
+    );
+    process.exit(1);
+  }
+  return { rows: ladderRows.length, perColumn, spent, allot: spec.allot, slackUsed };
+}
+const ladderLand = ladderBudget("land");
+const ladderPort = ladderBudget("port");
+/* Extra plot narrowing the render pass asks for when a
+   card's fixed furniture (its readings stack, its words)
+   runs taller than the mock's static copy did: the plot
+   funds the overflow the same way it funds ladder slack,
+   by rendered width at the plot's own aspect, so the
+   card's total height holds without moving a single
+   internal coordinate. Set by the fit retry below. */
+const plotShrink = { land: 0, port: 0 };
+const fitTight = { land: false, port: false };
+
+/* Plot geometry for the two cards. The x scale is a fixed
+ * number of pixels per cost decade from the derived domain
+ * floor, so the whole decades inside the domain carry the
+ * labels; the y scale runs from the derived ceiling at the
+ * top gridline to zero at the bottom one, with the middle
+ * gridline at half the ceiling. Positions are the mock's,
+ * restated as derivations over the payload's own domain. */
+const GEOMS = {
+  land: {
+    viewBox: "0 6 700 272",
+    width: 620,
+    x0: 56,
+    decadePx: 144.15,
+    yTop: 16,
+    yBot: 252,
+    discR: 5,
+    flagR: 5.5,
+    subjR: 7,
+    tickX: 46,
+    decadeY: 270,
+    canvas: { x: 0, y: 6, w: 700, h: 272 },
+  },
+  port: {
+    viewBox: "0 0 976 568",
+    width: 976,
+    x0: 64,
+    decadePx: 174.4,
+    yTop: 44,
+    yBot: 520,
+    discR: 6,
+    flagR: 6.5,
+    subjR: 8.4,
+    tickX: 54,
+    decadeY: 552,
+    canvas: { x: 0, y: 0, w: 976, h: 568 },
+  },
+};
+function geomFor(kind) {
+  const g = GEOMS[kind];
+  const xOf = (c) =>
+    g.x0 + (Math.log10(c) - Math.log10(domLo)) * g.decadePx;
+  const yOf = (a) => g.yBot - (a / axisMax) * (g.yBot - g.yTop);
+  return { ...g, xOf, yOf };
+}
+function decadesFor(g) {
+  const out = [];
+  for (
+    let e = Math.ceil(Math.log10(domLo));
+    e <= Math.floor(Math.log10(domHi));
+    e++
+  ) {
+    const v = 10 ** e;
+    out.push({ x: g.xOf(v), label: v < 1 ? `$${v.toFixed(2)}` : `$${v}` });
+  }
+  return out;
+}
+function plotSvg(kind, placedLabels, subjectSeat, widthOverride) {
+  const g = geomFor(kind);
+  const svgWidth = widthOverride ?? g.width;
+  const ticks = [axisMax, axisMax / 2, 0];
+  const grid = ticks
+    .map(
+      (t) =>
+        `<line x1="${g.x0}" y1="${g.yOf(t)}" x2="${g.canvas.w}" y2="${g.yOf(t)}" stroke="#161d25" stroke-width="1"/>\n<text x="${g.tickX}" y="${g.yOf(t) + 4}" text-anchor="end" class="gtick">${Math.round(t * 100)}</text>`,
+    )
+    .join("\n");
+  const decades = decadesFor(g)
+    .map(
+      (d) =>
+        `<text x="${d.x}" y="${g.decadeY}" text-anchor="middle" class="gtick decade">${d.label}</text>`,
+    )
+    .join("\n");
+  const disc = (r) => {
+    const x = g.xOf(r.total_cost_usd);
+    const y = g.yOf(r.asr_conditional);
+    if (r.run_id === subject.run_id) return "";
+    if (!r.ranking_eligible) {
+      return `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${g.flagR}" fill="#0c1015" stroke="#e8a33d" stroke-width="2"/>`;
+    }
+    return `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${g.discR}" fill="#aeb7c2" fill-opacity="0.45"/>`;
+  };
+  const discs = plottedDrawn.map(disc).join("\n");
+  const sx = g.xOf(subject.total_cost_usd);
+  const sy = g.yOf(subject.asr_conditional);
+  const subj = `<circle cx="${sx.toFixed(1)}" cy="${sy.toFixed(1)}" r="${g.subjR}" fill="#ffffff" data-subject="${subject.run_id}"/>`;
+  const labels = placedLabels
+    .map(
+      (l) =>
+        `<text x="${l.x}" y="${l.y}" text-anchor="${l.anchor}" class="plab" data-run-id="${l.runId}">${esc(l.name)}</text>`,
+    )
+    .join("\n");
+  const seat = subjectSeat ?? { x: sx - 15, y: sy - 24, anchor: "end" };
+  return `<svg viewBox="${g.viewBox}" width="${svgWidth}" class="chart" role="img" aria-label="Scatter of attack success against recorded cost">
+<g>${grid}</g>
+<g>${discs}
+${subj}</g>
+<text x="${seat.x}" y="${seat.y}" text-anchor="${seat.anchor}" class="subj-name" id="subj-name">${esc(pointName(subject))}</text>
+<text x="${seat.x}" y="${seat.y + 19}" text-anchor="${seat.anchor}" class="subj-sub" id="subj-sub">${esc(subjectSub)}</text>
+<g id="og-labels">${labels}</g>
+<g>${decades}</g>
+</svg>`;
 }
 
-const html = `<!doctype html>
-<html><head><meta charset="utf-8"><style>
-@font-face { font-family: "Archivo"; src: url("../public/fonts/archivo.woff2") format("woff2"); }
-* { margin: 0; box-sizing: border-box; }
-body { width: 1200px; height: 630px; background: #05070a; color: #eef2f6;
-  font-family: "Archivo", system-ui, sans-serif; overflow: hidden; }
-.head { position: absolute; left: 48px; top: 40px; right: 48px; }
-.word { font-size: 24px; font-weight: 700; letter-spacing: 0.05em; color: #2fbf71; }
-h1 { font-size: 47px; font-weight: 700; letter-spacing: -0.02em; margin-top: 8px; }
-.sub { font-size: 20px; color: #aebcc7; margin-top: 10px; }
-.chart { position: absolute; left: 0; top: 0; }
-.tick { fill: #71808f; font-size: 13px; }
-.lab { fill: #d5dde4; font-size: 15px; font-weight: 600; }
-.lab-sm { fill: #d5dde4; font-size: 12.5px; font-weight: 600; }
-.fallback { position: absolute; left: 540px; top: 546px; width: 612px; font-size: 12.5px; line-height: 16px; color: #aebcc7; }
-.offscale { position: absolute; left: 168px; top: 546px; width: 984px; font-size: 12.5px; line-height: 16px; color: #aebcc7; }
-.mono { font-size: 11px; font-weight: 700; text-anchor: middle; dominant-baseline: central; }
-.corner { fill: #eef2f6; font-size: 26px; font-weight: 700; letter-spacing: -0.01em; }
-.corner-sub { fill: #aebcc7; font-size: 16px; font-weight: 550; }
-.foot { position: absolute; left: 48px; bottom: 22px; font-size: 17px; color: #71808f; }
-</style></head><body>
-${scatterSvg}
-<div class="head">
-  <div class="word">PEIRA</div>
-  <h1>The priciest model was the easiest to flip</h1>
-  <p class="sub">Attack success against recorded cost per run (log scale), every full-suite model deciding the same paired cases.</p>
+/* The words under the plot. The clauses follow the board's
+ * own composition (lib/topData's named-in-words line): the
+ * flagged points the plot drew, in rate order, then the
+ * points no label could seat. A clause item states the
+ * point's rate and its cost in the page's words. */
+function namelineHtml(crowded) {
+  const clauses = [];
+  const flaggedDrawn = plottedDrawn
+    .filter((r) => !r.ranking_eligible)
+    .sort((a, b) => a.asr_conditional - b.asr_conditional);
+  if (flaggedDrawn.length > 0) {
+    clauses.push({
+      lead: "Amber-ringed in the plot",
+      items: flaggedDrawn.map(
+        (r) => `<b>${esc(pointName(r))}</b> at ${fmtPct(r.asr_conditional)} and ${esc(costWords(r))}${esc(ceilingDecompClause(r))}`,
+      ),
+    });
+  }
+  if (crowded.length > 0) {
+    clauses.push({
+      lead:
+        crowded.length === 1
+          ? "Too crowded at its disc"
+          : "Too crowded at their discs",
+      items: crowded.map(
+        (p) => `<b>${esc(p.name)}</b> at ${fmtPct(p.row.asr_conditional)} and ${esc(costWords(p.row))}${esc(ceilingDecompClause(p.row))}`,
+      ),
+    });
+  }
+  if (clauses.length === 0) return "";
+  const body = clauses
+    .map((c) => `${c.lead}, ${c.items.join(", ")}`)
+    .join(". ");
+  return `<b>Named in words</b> &middot; ${body}.`;
+}
+
+/* The ladder markup. The landscape card splits the rows
+ * into two columns at the midpoint; the portrait keeps one
+ * column. The toughest result, when it stands on the rail,
+ * carries the selection ring, the one green the ladder
+ * holds. A flagged rail row rings its disc in amber. */
+function ladderRowHtml(r) {
+  const sel = toughest && r.run_id === toughest.run_id;
+  const cls = `lrow${sel ? " sel" : ""}${r.ranking_eligible ? "" : " flag"}`;
+  return `<div class="${cls}"><span class="ld"></span><span class="ln">${esc(pointName(r))}</span><span class="lr">${fmtPct(r.asr_conditional)}</span></div>`;
+}
+function ladderHtml(kind) {
+  const head = `<div class="micro lhead">No API cost &middot; the rail, in rate order</div>`;
+  if (kind === "port") {
+    return `<div class="ladder">${head}${ladderRows.map(ladderRowHtml).join("\n")}</div>`;
+  }
+  const mid = Math.ceil(ladderRows.length / 2);
+  const col1 = ladderRows.slice(0, mid).map(ladderRowHtml).join("\n");
+  const col2 = ladderRows.slice(mid).map(ladderRowHtml).join("\n");
+  const cols =
+    ladderRows.length > 1
+      ? `<div class="cols"><div>${col1}</div><div class="col2">${col2}</div></div>`
+      : `<div class="cols"><div>${col1}</div></div>`;
+  return `<div class="ladder">${head}${cols}</div>`;
+}
+
+/* The readings. Three blocks at most: the toughest on the
+ * chart, the flagged lead with its decomposition in its
+ * words, and the rail's top. A block the payload cannot
+ * fill is omitted, never padded. */
+function readouts() {
+  const blocks = [];
+  if (toughest) {
+    blocks.push({
+      micro: `<span class="tick g"></span>Toughest on the chart`,
+      num: fmtPct(toughest.asr_conditional),
+      who: `${pointName(toughest)}, flipped least of all`,
+    });
+  }
+  if (flaggedLead) {
+    const d = flipDecomposition(flaggedLead.row);
+    blocks.push({
+      micro: `<span class="tick a"></span>${flaggedLead.offScale ? "Flagged, off the scale" : "Flagged, on the plot"}`,
+      num: fmtPct(flaggedLead.row.asr_conditional),
+      who: `${pointName(flaggedLead.row)}, counted attack success. ${fmtPct(d.malformedShare)} of counted flips to malformed output, genuine flip rate ${fmtPct(d.genuineRate)}.`,
+    });
+  }
+  if (railTop) {
+    blocks.push({
+      micro: `On the rail`,
+      num: fmtPct(railTop.asr_conditional),
+      who: railTopWho,
+      faint: true,
+    });
+  }
+  return blocks;
+}
+const FOOT_L = () =>
+  `Peira decision robustness board. Dataset ${versions.dataset}, suite ${versions.suite}, updated ${dateWords}.`;
+const FOOT_R = "Amber marks a flagged result &middot; peiratrial.dev";
+const MAST_R = `Decision models under attack &middot; ${results} results`;
+
+/* The label candidates beside the subject: the two priciest
+ * unflagged plotted results after the subject itself, by
+ * cost, ties by run. Their labels are the plot's small gray
+ * names; a candidate no seat can hold joins the words under
+ * the plot as a crowded point. */
+const labelCandidates = plottedDrawn
+  .filter((r) => r.ranking_eligible && r.run_id !== subject.run_id)
+  .sort(
+    (a, b) =>
+      b.total_cost_usd - a.total_cost_usd ||
+      (a.run_id < b.run_id ? -1 : 1),
+  )
+  .slice(0, 2);
+
+/* The card documents. The landscape card sets the readings
+ * as a numeral stack beside the plot; the portrait stacks
+ * them across the top and gives the plot the full width.
+ * Type is the system sans and mono of the render host, the
+ * stacks the design's mocks carry. */
+const CARD_CSS_BASE = `
+  :root{
+    --ground:#05070a; --panel:#0c1015; --ink:#ffffff; --body:#c3cad3;
+    --gray:#8d97a3; --faint:#5d6773; --hair:#1d242e; --hair2:#262f3a;
+    --accent:#2fbf71; --amber:#e8a33d; --disc:#aeb7c2;
+    --sans:"Liberation Sans","DejaVu Sans",Arial,sans-serif;
+    --mono:"Liberation Mono","DejaVu Sans Mono",monospace;
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{background:var(--ground);color:var(--body);font-family:var(--sans);
+    font-variant-numeric:tabular-nums;-webkit-font-smoothing:antialiased}
+  .micro{font-family:var(--mono);font-size:11px;font-weight:600;letter-spacing:.055em;color:var(--gray);text-transform:uppercase}
+  .micro.faint{color:var(--faint)}
+  .mast{display:flex;align-items:baseline;justify-content:space-between;padding-bottom:9px;border-bottom:1px solid var(--hair)}
+  .wordmark{font-size:15px;font-weight:700;letter-spacing:.34em;color:var(--ink)}
+  h1{font-weight:700;letter-spacing:-.01em;color:var(--ink)}
+  .ro .tick{display:inline-block;width:8px;height:8px;margin-right:8px}
+  .ro .tick.g{background:var(--accent)} .ro .tick.a{background:var(--amber)}
+  .ro .num{font-family:var(--sans);font-weight:700;color:var(--ink);line-height:1.15}
+  .ladder{margin-top:auto;border-top:1px solid var(--hair);padding-top:8px}
+  .ladder .lhead{padding-bottom:6px;border-bottom:1px solid var(--hair)}
+  .lrow{display:flex;align-items:center;gap:10px}
+  .lrow .ld{border-radius:50%;background:var(--disc);flex:none}
+  .lrow .ln{color:var(--body)}
+  .lrow .lr{margin-left:auto;font-family:var(--mono);color:var(--gray)}
+  .lrow.sel{box-shadow:inset 3px 0 0 var(--accent)}
+  .lrow.sel .ld{background:var(--panel);border:2.5px solid var(--accent)}
+  .lrow.sel .ln{color:#fff;font-weight:600}
+  .lrow.sel .lr{color:#fff}
+  .lrow.flag .ld{background:var(--panel);border:2px solid var(--amber)}
+  .nameline{color:var(--gray);line-height:1.55}
+  .nameline b{color:#e9edf2;font-weight:600}
+  footer{display:flex;justify-content:space-between;color:var(--faint)}
+  .gtick{font-family:var(--mono);font-size:10px;fill:#5d6773}
+  .gtick.decade{font-size:10.5px;fill:#8d97a3}
+  .subj-name{font-family:var(--sans);font-size:15px;font-weight:700;fill:#ffffff}
+  .subj-sub{font-family:var(--sans);font-size:12.5px;fill:#c3cad3}
+  .plab{font-family:var(--sans);font-size:11px;fill:#8d97a3}
+`;
+const CARD_CSS_LAND = `
+  .card{width:1200px;height:630px;padding:18px 44px 14px;display:flex;flex-direction:column;overflow:hidden}
+  h1{font-size:34px;line-height:1.12;margin-top:11px}
+  .middle{display:flex;gap:28px;margin-top:8px}
+  .scattercol{flex:none}
+  .plotmicro{margin-bottom:6px}
+  .readouts{flex:1;display:flex;flex-direction:column}
+  .ro{padding:9px 0 10px}
+  .ro + .ro{border-top:1px solid var(--hair)}
+  .ro .num{font-size:30px;margin-top:5px}
+  .card.tight .ro{padding:3px 0 4px}
+  .card.tight .ro .num{margin-top:2px}
+  .ro .who{font-size:13px;color:var(--body);line-height:1.45;margin-top:4px}
+  .nameline{font-size:12px;margin-top:6px}
+  .ladder .cols{display:grid;grid-template-columns:1fr 1fr;column-gap:0}
+  .ladder .col2{border-left:1px solid var(--hair);padding-left:24px;margin-left:24px}
+  .lrow{height:22px}
+  .lrow .ld{width:11px;height:11px}
+  .lrow .ln{font-size:13.5px}
+  .lrow .lr{font-size:12.5px}
+  .lrow.sel{padding-left:9px;margin-left:-9px}
+  footer{margin-top:7px;padding-top:7px;border-top:1px solid var(--hair);font-size:12px}
+`;
+const CARD_CSS_PORT = `
+  .card{width:1080px;height:1350px;padding:34px 52px 34px;display:flex;flex-direction:column;overflow:hidden}
+  .mast{padding-bottom:12px}
+  .wordmark{font-size:19px}
+  .micro{font-size:12px}
+  h1{font-size:52px;line-height:1.1;margin-top:16px}
+  .nums{display:grid;grid-template-columns:1fr 1fr 1fr;gap:30px;margin-top:20px}
+  .ro{border-top:1px solid var(--hair);padding-top:13px}
+  .card.tight .ro{padding-top:6px}
+  .ro .tick{width:9px;height:9px;margin-right:9px}
+  .ro .num{font-size:40px;margin-top:7px}
+  .ro .who{font-size:13.5px;color:var(--body);line-height:1.5;margin-top:6px}
+  .plotblock{margin-top:12px}
+  .plotblock .micro{display:block;margin-bottom:8px}
+  .nameline{font-size:13.5px;margin-top:10px}
+  .ladder .lhead{padding-bottom:7px}
+  .lrow{height:26px;gap:13px;border-bottom:1px solid var(--hair)}
+  .lrow:last-child{border-bottom:none}
+  .lrow .ld{width:13px;height:13px}
+  .lrow .ln{font-size:16px}
+  .lrow .lr{font-size:14.5px}
+  .lrow.sel{padding-left:11px;margin-left:-11px}
+  .lrow.sel .ld{border-width:3px}
+  footer{margin-top:8px;padding-top:8px;border-top:1px solid var(--hair);font-size:13px}
+  .gtick{font-size:12px}
+  .gtick.decade{font-size:12.5px}
+  .subj-name{font-size:20px}
+  .subj-sub{font-size:15px}
+  .plab{font-size:13px}
+`;
+function cardHtml(kind) {
+  /* When the ladder takes slack, the middle of the card
+   * funds it. The svg narrows by the width whose height, at
+   * the plot's own aspect, equals the slack the rows area
+   * took (the plot's internal geometry is untouched, the
+   * placement passes work in its units, only its rendered
+   * size changes); on the landscape card the narrower plot
+   * also widens the readings column beside it, whose lines
+   * unwrap as it widens. What narrowing cannot recover the
+   * tight class trims from the readings stack's own
+   * padding, the roughly 40px of slack the middle carries;
+   * the fit pass below can also engage it when a card whose
+   * ladder takes no slack still measures tall, as a long
+   * rail inside the allotment can. A card that fits as
+   * drawn renders exactly as the mock does. */
+  const budget = kind === "land" ? ladderLand : ladderPort;
+  const tight = budget.slackUsed > 0 || fitTight[kind];
+  const g0 = GEOMS[kind];
+  const svgW = Math.round(
+    g0.width -
+      budget.slackUsed * (g0.canvas.w / g0.canvas.h) -
+      (plotShrink[kind] ?? 0),
+  );
+  const ros = readouts();
+  const roHtml = (b) =>
+    `<div class="ro"><div class="micro${b.faint ? " faint" : ""}">${b.micro}</div><div class="num">${esc(b.num)}</div><div class="who">${esc(b.who)}</div></div>`;
+  const mast = `<div class="mast"><div class="wordmark">PEIRA</div><div class="micro faint">${MAST_R}</div></div>`;
+  const foot = `<footer><span>${esc(FOOT_L())}</span><span>${FOOT_R}</span></footer>`;
+  const nameline = `<p class="nameline" id="nameline"></p>`;
+  if (kind === "port") {
+    return `<!doctype html>
+<html><head><meta charset="utf-8"><style>${CARD_CSS_BASE}${CARD_CSS_PORT}</style></head><body>
+<div class="card${tight ? " tight" : ""}">
+${mast}
+<h1>The priciest model was the easiest to flip</h1>
+<div class="nums">
+${ros.map(roHtml).join("\n")}
 </div>
-<div class="fallback" id="og-fallback" hidden></div>
-${disclosureSentences.length > 0 ? `<div class="offscale" id="og-offscale">${esc(disclosureSentences.join(" "))}</div>` : ""}
-<p class="foot">Peira decision robustness board. Dataset ${versions.dataset}, suite ${versions.suite}, updated ${dateWords}. Amber ring: a flagged result. peiratrial.dev</p>
+<div class="plotblock">
+<span class="micro">Attack success, percent, against cost per run in dollars, log scale</span>
+${plotSvg("port", [], null, svgW)}
+</div>
+${nameline}
+${ladderHtml("port")}
+${foot}
+</div>
 </body></html>`;
+  }
+  return `<!doctype html>
+<html><head><meta charset="utf-8"><style>${CARD_CSS_BASE}${CARD_CSS_LAND}</style></head><body>
+<div class="card${tight ? " tight" : ""}">
+${mast}
+<h1>The priciest model was the easiest to flip</h1>
+<div class="middle">
+<div class="scattercol">
+<div class="micro plotmicro">Attack success, percent, against cost per run in dollars, log scale</div>
+${plotSvg("land", [], null, svgW)}
+</div>
+<div class="readouts">
+${ros.map(roHtml).join("\n")}
+</div>
+</div>
+${nameline}
+${ladderHtml("land")}
+${foot}
+</div>
+</body></html>`;
+}
+
+/* Subject seating, run in the page so the label is measured
+ * with the real face: the subject's name and its figure line
+ * try their seats in a fixed order (left of the disc, right,
+ * then below) and take the first that sits inside the canvas
+ * clear of every disc and every other text. A subject no
+ * seat can hold fails the build, since the card's subject
+ * cannot print unnamed. */
+function seatSubject(cfg) {
+  const svg = document.querySelector("svg.chart");
+  const name = document.getElementById("subj-name");
+  const sub = document.getElementById("subj-sub");
+  const boxOf = (el) => {
+    const b = el.getBBox();
+    return { x: b.x, y: b.y, w: b.width, h: b.height };
+  };
+  const overlap = (a, b) =>
+    a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
+  const distToDisc = (box, d) => {
+    const dx = Math.max(box.x - d.cx, 0, d.cx - (box.x + box.w));
+    const dy = Math.max(box.y - d.cy, 0, d.cy - (box.y + box.h));
+    return Math.hypot(dx, dy);
+  };
+  const discs = [...svg.querySelectorAll("circle")].map((c) => ({
+    cx: Number(c.getAttribute("cx")),
+    cy: Number(c.getAttribute("cy")),
+    r: Number(c.getAttribute("r")),
+  }));
+  const subjDisc = discs.find(
+    (d) => Math.abs(d.cx - cfg.sx) < 0.2 && Math.abs(d.cy - cfg.sy) < 0.2,
+  );
+  const furniture = [...svg.querySelectorAll("text")]
+    .filter((el) => el !== name && el !== sub)
+    .map(boxOf);
+  const inCanvas = (box) =>
+    box.x >= cfg.canvas.x + 2 &&
+    box.y >= cfg.canvas.y + 2 &&
+    box.x + box.w <= cfg.canvas.x + cfg.canvas.w - 2 &&
+    box.y + box.h <= cfg.canvas.y + cfg.canvas.h - 2;
+  const seats = [
+    { anchor: "end", x: cfg.sx - 15, y: cfg.sy - 24 },
+    { anchor: "start", x: cfg.sx + 15, y: cfg.sy - 24 },
+    /* Beside the disc, the mock's own seat: the name at the
+       disc's height with its figure line under it. A subject
+       near the top of the scale has no room above, and the
+       row below can be crowded; beside is its seat then. */
+    { anchor: "end", x: cfg.sx - 15, y: cfg.sy + 4 },
+    { anchor: "start", x: cfg.sx + 15, y: cfg.sy + 4 },
+    { anchor: "end", x: cfg.sx - 15, y: cfg.sy + 40 },
+    { anchor: "start", x: cfg.sx + 15, y: cfg.sy + 40 },
+    { anchor: "end", x: cfg.sx - 15, y: cfg.sy + 66 },
+    { anchor: "start", x: cfg.sx + 15, y: cfg.sy + 66 },
+    { anchor: "middle", x: cfg.sx, y: cfg.sy - 30 },
+  ];
+  for (const s of seats) {
+    name.setAttribute("x", String(s.x));
+    name.setAttribute("y", String(s.y));
+    name.setAttribute("text-anchor", s.anchor);
+    sub.setAttribute("x", String(s.x));
+    sub.setAttribute("y", String(s.y + 19));
+    sub.setAttribute("text-anchor", s.anchor);
+    const nb = boxOf(name);
+    const sb = boxOf(sub);
+    const clear = (box) =>
+      inCanvas(box) &&
+      discs.every(
+        (d) => d === subjDisc || distToDisc(box, d) >= d.r - 0.01,
+      ) &&
+      furniture.every((f) => !overlap(box, f));
+    if (clear(nb) && clear(sb)) {
+      return { ok: true, seat: s, nameBox: nb, subBox: sb };
+    }
+  }
+  return { ok: false };
+}
 
 /* Plotted label placement, run in the page so text is
- * measured with the real Archivo face (getBBox on a probe
- * element), never estimated. The labeled set is the plotted
- * population itself; every point is seated beside its own
- * disc from a fixed candidate list (no leader lines, no
- * per-run table). Costs are overlap areas against the
- * furniture (all text already on the canvas, including the
- * rail names, plus the headline and footer blocks) and the
- * labels seated so far, and against discs measured as the
- * circles they render as, not their bounding squares: a
- * label may pass a disc's empty corner, it may never touch
- * the circle. Seating runs most constrained first, then
- * relaxation passes move any label to a strictly cheaper
- * candidate while overlaps remain, and a repair phase can
- * reseat a no-cost blocker out of a stuck label's seat; if
- * an attempt still collides, the next deterministic seating
- * order tries, and the first attempt that verifies clean
- * wins. Verification is strict at zero tolerance: any label
- * touching a disc, the furniture, another label or the
- * canvas edge comes back in `failures`.
- *
- * Placement degrades in tiers and never fails the build.
- * The first tier is the candidate list above. The second
- * widens the reach, further seats around each disc derived
- * from the same geometry. The third seats the same widened
- * list at a smaller size. A label no tier can seat leaves
- * the plot and its point is named in words, with its attack
- * success and its cost, in the strip under the chart, the
- * same degradation the board scatter uses when a width
- * cannot name a point beside its disc. A claim the payload
- * breaks still fails the build in the guards above. A
- * crowded label layout is not a broken claim, so it
- * degrades instead. */
-function placeOgLabels(pts) {
+ * measured with the real face. The labeled set derives from
+ * the payload (the priciest unflagged points after the
+ * subject); every candidate is seated beside its own disc
+ * from a fixed candidate list against the furniture (every
+ * other text on the plot, the subject's two lines included)
+ * and the discs measured as the circles they render as.
+ * Placement degrades in tiers and never fails the build: a
+ * candidate no tier can seat leaves the plot and is named
+ * in words under it. Verification is strict at zero
+ * tolerance. The machinery is the board generator's,
+ * restated for a plot whose discs carry their own centres
+ * as attributes, so every measurement lives in the plot's
+ * own units at any render scale. */
+function placeLabels(pts, cfg) {
   const NS = "http://www.w3.org/2000/svg";
   const svg = document.querySelector("svg.chart");
   const group = document.getElementById("og-labels");
@@ -739,34 +951,14 @@ function placeOgLabels(pts) {
     const b = el.getBBox();
     return { x: b.x, y: b.y, w: b.width, h: b.height };
   };
-  const furniture = [...svg.querySelectorAll("text")].map(boxOf);
-  for (const sel of [".head", ".foot"]) {
-    const r = document.querySelector(sel).getBoundingClientRect();
-    furniture.push({ x: r.x, y: r.y, w: r.width, h: r.height });
-  }
-  /* The disclosure block under the chart is furniture
-   * too: a label seated over it would strike the words the
-   * image owes the points it does not draw and the runs it
-   * names there. */
-  const offEl = document.getElementById("og-offscale");
-  if (offEl) {
-    const r = offEl.getBoundingClientRect();
-    furniture.push({ x: r.x, y: r.y, w: r.width, h: r.height });
-  }
-  /* The rail column, left of the divider at x=148 in the
-   * plot's vertical band, is reserved for the rail's own
-   * names. A plotted label seated there reads as a rail
-   * entry, a result with no API cost, whatever its own
-   * disc's recorded cost says. */
-  furniture.push({ x: 40, y: 200, w: 108, h: 332 });
-  /* Discs sit inside translated groups, where getBBox reads
-   * the local box and would put every disc at the origin;
-   * the client rect gives the true centre and radius (the
-   * svg is at the viewport origin at 1:1 scale). */
-  let discs = [...svg.querySelectorAll("circle")].map((c) => {
-    const r = c.getBoundingClientRect();
-    return { cx: r.x + r.width / 2, cy: r.y + r.height / 2, r: r.width / 2 };
-  });
+  const furniture = [...svg.querySelectorAll("text")]
+    .filter((el) => !group.contains(el))
+    .map(boxOf);
+  const discs = [...svg.querySelectorAll("circle")].map((c) => ({
+    cx: Number(c.getAttribute("cx")),
+    cy: Number(c.getAttribute("cy")),
+    r: Number(c.getAttribute("r")),
+  }));
   const overlap = (a, b) =>
     a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
   const area = (a, b) => {
@@ -774,195 +966,59 @@ function placeOgLabels(pts) {
     const oy = Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y);
     return ox > 0 && oy > 0 ? ox * oy : 0;
   };
-  /* Distance from a box to a disc's centre: zero when the
-   * centre is inside the box. The label touches the disc
-   * when the distance is under the radius. */
   const distToDisc = (box, d) => {
     const dx = Math.max(box.x - d.cx, 0, d.cx - (box.x + box.w));
     const dy = Math.max(box.y - d.cy, 0, d.cy - (box.y + box.h));
     return Math.hypot(dx, dy);
   };
-  /* The bottom corner pair starts at the plot's left edge,
-   * where the rail names also live. The rail names are static
-   * markup the placement pass cannot move, and a rail name
-   * long enough or a rail row landing at the corner's height
-   * strikes the corner's words. So the pair shifts right by
-   * derivation before anything else measures the canvas: the
-   * smallest x at which its block, both lines together,
-   * clears every rail name whose band it shares, measured
-   * from the rendered boxes. Discs are not the corner's
-   * problem here: the RT-2 pass below already moves a disc
-   * that strikes a claim box, or names its point in words.
-   * The furniture list above already holds the corner's
-   * starting boxes, so the text boxes are remeasured after
-   * the shift. A pair that cannot clear within the plot
-   * keeps its last position and the corner check after
-   * placement fails the build, the same discipline as the
-   * disclosure check. The block carries 2px of breathing
-   * room on its vertical edges, each shift step stops 16px
-   * past the name it clears, and the loop is bounded at 64
-   * steps, far beyond the rail's row count, since every
-   * step clears at least one more name. */
-  {
-    const title = document.getElementById("og-corner-bottom");
-    const sub = document.getElementById("og-corner-bottom-sub");
-    if (title && sub) {
-      const railLabelBoxes = [...svg.querySelectorAll("text.lab")]
-        .filter((el) => el.parentNode === svg)
-        .map(boxOf);
-      const t0 = boxOf(title);
-      const s0 = boxOf(sub);
-      const blockW = Math.max(t0.w, s0.w);
-      const blockY = t0.y - 2;
-      const blockH = s0.y + s0.h + 2 - blockY;
-      let cx = t0.x;
-      for (let guard = 0; guard < 64; guard++) {
-        const block = { x: cx, y: blockY, w: blockW, h: blockH };
-        let next = cx;
-        for (const b of railLabelBoxes) {
-          if (overlap(block, b)) next = Math.max(next, b.x + b.w + 16);
-        }
-        if (next === cx) break;
-        cx = next;
-      }
-      if (cx !== t0.x) {
-        title.setAttribute("x", cx);
-        sub.setAttribute("x", cx);
-        const fresh = [...svg.querySelectorAll("text")].map(boxOf);
-        furniture.splice(0, fresh.length, ...fresh);
-      }
-    }
-  }
-  /* The corner claim blocks are obstacles for the discs
-   * themselves, not only for the labels (red team finding
-   * RT-2 on the #521 review: two plotted discs sat on the
-   * top corner sub-line and covered part of its price
-   * figure). A disc whose circle intersects a claim box
-   * moves along its own cost column by the smallest shift
-   * that clears every claim box, no more than 56px, without
-   * landing on another disc, and its label then seats
-   * against the moved disc, the same legibility discipline
-   * the nudge pass applies between discs. A disc no shift
-   * can clear leaves the plot, and its point is named in
-   * words in the strip with its figures, like a label no
-   * tier could seat. The rail discs stand left of every
-   * claim box; the pass runs over the plotted discs only,
-   * which are the discs it can move. */
-  const claimBoxes = [
-    ...svg.querySelectorAll("text.corner, text.corner-sub"),
-  ].map(boxOf);
-  const discGroups = [...svg.querySelectorAll("g")].filter((g) =>
-    g.querySelector("circle"),
-  );
-  const railCount = discs.length - pts.length;
-  const preDegraded = [];
-  const seatPts = [];
-  pts.forEach((p, i) => {
-    const di = railCount + i;
-    const d = discs[di];
-    if (!claimBoxes.some((b) => distToDisc(b, d) < d.r - 0.01)) {
-      seatPts.push(p);
-      return;
-    }
-    let moved = false;
-    for (let step = 1; step <= 56 && !moved; step++) {
-      for (const dy of [step, -step]) {
-        const nd = { cx: d.cx, cy: d.cy + dy, r: d.r };
-        if (nd.cy - nd.r < 0 || nd.cy + nd.r > 630) continue;
-        if (claimBoxes.some((b) => distToDisc(b, nd) < nd.r - 0.01))
-          continue;
-        if (
-          discs.some(
-            (o, j) =>
-              j !== di && Math.hypot(o.cx - nd.cx, o.cy - nd.cy) < 20,
-          )
-        )
-          continue;
-        discGroups[di].setAttribute(
-          "transform",
-          `translate(${nd.cx} ${nd.cy})`,
-        );
-        p.y = nd.cy;
-        discs[di] = nd;
-        moved = true;
-        break;
-      }
-    }
-    if (moved) seatPts.push(p);
-    else {
-      discGroups[di].remove();
-      preDegraded.push(p);
-    }
-  });
-  if (preDegraded.length > 0) {
-    const held = new Set(preDegraded.map((p) => p.runId));
-    discs = discs.filter(
-      (d, j) => j < railCount || !held.has(pts[j - railCount].runId),
-    );
-  }
+  const inCanvas = (box) =>
+    box.x >= cfg.canvas.x + 4 &&
+    box.y >= cfg.canvas.y + 4 &&
+    box.x + box.w <= cfg.canvas.x + cfg.canvas.w - 4 &&
+    box.y + box.h <= cfg.canvas.y + cfg.canvas.h - 4;
   const CANDS = [
-    { dx: 18, dy: 5, anchor: "start" },
-    { dx: -18, dy: 5, anchor: "end" },
-    { dx: 0, dy: -20, anchor: "middle" },
-    { dx: 0, dy: 31, anchor: "middle" },
-    { dx: 18, dy: -16, anchor: "start" },
-    { dx: -18, dy: -16, anchor: "end" },
-    { dx: 18, dy: 28, anchor: "start" },
-    { dx: -18, dy: 28, anchor: "end" },
-    { dx: 20, dy: 42, anchor: "start" },
-    { dx: -20, dy: 42, anchor: "end" },
-    { dx: 14, dy: 5, anchor: "start" },
-    { dx: -14, dy: 5, anchor: "end" },
-    { dx: 18, dy: -10, anchor: "start" },
-    { dx: -18, dy: -10, anchor: "end" },
-    { dx: 18, dy: 22, anchor: "start" },
-    { dx: -18, dy: 22, anchor: "end" },
-    { dx: 0, dy: -30, anchor: "middle" },
-    { dx: 0, dy: 44, anchor: "middle" },
-    { dx: 26, dy: 5, anchor: "start" },
-    { dx: -26, dy: 5, anchor: "end" },
+    { dx: 14, dy: 4, anchor: "start" },
+    { dx: -14, dy: 4, anchor: "end" },
+    { dx: 0, dy: -14, anchor: "middle" },
+    { dx: 0, dy: 22, anchor: "middle" },
+    { dx: 14, dy: -11, anchor: "start" },
+    { dx: -14, dy: -11, anchor: "end" },
+    { dx: 14, dy: 19, anchor: "start" },
+    { dx: -14, dy: 19, anchor: "end" },
+    { dx: 16, dy: 30, anchor: "start" },
+    { dx: -16, dy: 30, anchor: "end" },
+    { dx: 11, dy: 4, anchor: "start" },
+    { dx: -11, dy: 4, anchor: "end" },
+    { dx: 20, dy: 4, anchor: "start" },
+    { dx: -20, dy: 4, anchor: "end" },
+    { dx: 0, dy: -22, anchor: "middle" },
+    { dx: 0, dy: 32, anchor: "middle" },
   ];
-  /* The widened tier: further seats on the same eight
-   * bearings, for payloads whose points crowd the first
-   * tier's reach. The bearings and the disc geometry are
-   * the derivation. No seat is keyed to a run. */
   const CANDS_WIDE = [
     ...CANDS,
-    { dx: 34, dy: 5, anchor: "start" },
-    { dx: -34, dy: 5, anchor: "end" },
-    { dx: 34, dy: -24, anchor: "start" },
-    { dx: -34, dy: -24, anchor: "end" },
-    { dx: 34, dy: 36, anchor: "start" },
-    { dx: -34, dy: 36, anchor: "end" },
-    { dx: 0, dy: -42, anchor: "middle" },
-    { dx: 0, dy: 56, anchor: "middle" },
-    { dx: 44, dy: 18, anchor: "start" },
-    { dx: -44, dy: 18, anchor: "end" },
-    { dx: 16, dy: -34, anchor: "start" },
-    { dx: -16, dy: -34, anchor: "end" },
-    { dx: 16, dy: 48, anchor: "start" },
-    { dx: -16, dy: 48, anchor: "end" },
+    { dx: 26, dy: 4, anchor: "start" },
+    { dx: -26, dy: 4, anchor: "end" },
+    { dx: 26, dy: -18, anchor: "start" },
+    { dx: -26, dy: -18, anchor: "end" },
+    { dx: 26, dy: 26, anchor: "start" },
+    { dx: -26, dy: 26, anchor: "end" },
+    { dx: 0, dy: -32, anchor: "middle" },
+    { dx: 0, dy: 42, anchor: "middle" },
+    { dx: 12, dy: -24, anchor: "start" },
+    { dx: -12, dy: -24, anchor: "end" },
+    { dx: 12, dy: 36, anchor: "start" },
+    { dx: -12, dy: 36, anchor: "end" },
   ];
-  const inCanvas = (box) =>
-    box.x >= 4 && box.y >= 4 && box.x + box.w <= 1196 && box.y + box.h <= 626;
   const probe = document.createElementNS(NS, "text");
+  probe.setAttribute("class", "plab");
   group.appendChild(probe);
-  let probeCls = "lab";
   const boxFor = (p, cand) => {
-    probe.setAttribute("class", probeCls);
     probe.setAttribute("x", String(p.x + cand.dx));
     probe.setAttribute("y", String(p.y + cand.dy));
     probe.setAttribute("text-anchor", cand.anchor);
     probe.textContent = p.name;
     return boxOf(probe);
   };
-  /* Verification is zero-tolerance: no intersection, with
-   * no minimum air. Visible-air floors (a pixel to a disc,
-   * two between labels, the board audit's F-03 separation)
-   * were attempted in design cycle 4 and the current
-   * population does not seat under any of them; the cycle
-   * record carries the failure list as evidence for the
-   * share image's naming decision. */
   const verify = (placed) => {
     const bad = [];
     for (const q of placed) {
@@ -979,11 +1035,10 @@ function placeOgLabels(pts) {
         }
       }
     }
-    if (placed.length !== seatPts.length) bad.push("count");
+    if (placed.length !== pts.length) bad.push("count");
     return bad;
   };
-  const attempt = (order, CANDS, cls) => {
-    probeCls = cls;
+  const attempt = (order, CANDS) => {
     for (const el of [...group.querySelectorAll("text[data-run-id]")])
       el.remove();
     const placed = [];
@@ -1017,7 +1072,7 @@ function placeOgLabels(pts) {
     };
     for (const p of order) {
       const el = document.createElementNS(NS, "text");
-      el.setAttribute("class", cls);
+      el.setAttribute("class", "plab");
       el.setAttribute("data-run-id", p.runId);
       el.textContent = p.name;
       group.appendChild(el);
@@ -1056,13 +1111,6 @@ function placeOgLabels(pts) {
       }
       if (!moved) break;
     }
-    /* Repair: a label still in violation may need a seat
-     * another label occupies at no cost to itself. For each
-     * violating label, try its candidates in cost order; a
-     * candidate blocked only by labels is admitted when
-     * every blocker can reseat, one at a time against live
-     * positions, to a seat clean against every disc, the
-     * furniture and every other label. */
     const recBad = (rec) => {
       const box = boxOf(rec.el);
       return (
@@ -1120,15 +1168,10 @@ function placeOgLabels(pts) {
     return { placed, bad: verify(placed) };
   };
   const byRunId = (a, b) => (a.runId < b.runId ? -1 : 1);
-  /* One tier: every seating order over one candidate list at
-   * one size. Returns the clean attempt, or records the
-   * attempt with the fewest violations as the degradation
-   * base. */
   let best = null;
-  const runTier = (CANDS, cls) => {
-    probeCls = cls;
+  const runTier = (CANDS) => {
     const freeCounts = new Map(
-      seatPts.map((p) => [
+      pts.map((p) => [
         p.runId,
         CANDS.filter((c) => {
           const box = boxFor(p, c);
@@ -1141,119 +1184,41 @@ function placeOgLabels(pts) {
       ]),
     );
     const orders = [
-      [...seatPts].sort(
+      [...pts].sort(
         (a, b) => freeCounts.get(a.runId) - freeCounts.get(b.runId) || byRunId(a, b),
       ),
-      [...seatPts].sort(
+      [...pts].sort(
         (a, b) => freeCounts.get(a.runId) - freeCounts.get(b.runId) || byRunId(b, a),
       ),
-      [...seatPts].sort((a, b) => a.y - b.y || a.x - b.x),
-      [...seatPts].sort((a, b) => a.x - b.x || a.y - b.y),
-      [...seatPts].sort((a, b) => b.y - a.y || b.x - a.x),
-      [...seatPts].sort((a, b) => b.x - a.x || b.y - a.y),
-      [...seatPts].sort(
-        (a, b) => freeCounts.get(b.runId) - freeCounts.get(a.runId) || a.y - b.y,
-      ),
-      [...seatPts].sort(
-        (a, b) => freeCounts.get(a.runId) - freeCounts.get(b.runId) || b.y - a.y,
-      ),
+      [...pts].sort((a, b) => a.y - b.y || a.x - b.x),
+      [...pts].sort((a, b) => a.x - b.x || a.y - b.y),
+      [...pts].sort((a, b) => b.y - a.y || b.x - a.x),
+      [...pts].sort((a, b) => b.x - a.x || b.y - a.y),
     ];
     for (const order of orders) {
-      const { placed, bad } = attempt(order, CANDS, cls);
+      const { placed, bad } = attempt(order, CANDS);
       if (bad.length === 0) return { clean: true, placed };
       if (best === null || bad.length < best.bad.length) {
-        best = { bad, order, CANDS, cls };
+        best = { bad, order, CANDS };
       }
     }
     return { clean: false };
   };
-  /* The words strip, shared by the degradation paths: the
-   * points a tier could not seat (too crowded at their
-   * discs) and the points the claim pass held off the plot
-   * (their discs could not be drawn clear of the corner
-   * readings) are each named with their figures, under a
-   * lead-in that states their own reason. Where the words
-   * land depends on the image: inside the disclosure block
-   * when the image carries one, sized and cleared by the
-   * disclosure check after placement, and in the strip
-   * under the chart when it does not, where the strip steps
-   * its size down until it clears the footer, measured
-   * against the real footer block. Either way the words
-   * themselves never strike another element. */
-  const showStrip = (crowded, heldOff) => {
-    const parts = [];
-    if (crowded.length > 0) {
-      parts.push(
-        "Too crowded at their discs, so named here. " +
-          crowded.map((p) => p.words).join(", "),
-      );
-    }
-    if (heldOff.length > 0) {
-      parts.push(
-        (heldOff.length === 1
-          ? "Its disc could not be drawn clear of the corner readings, so it is named here. "
-          : "Their discs could not be drawn clear of the corner readings, so they are named here. ") +
-          heldOff.map((p) => p.words).join(", "),
-      );
-    }
-    if (parts.length === 0) return;
-    const words = parts.join(" ");
-    /* The words ride in the disclosure block when the image
-     * carries one. The band under the chart holds one text
-     * block, not two: a separate strip under a two-line
-     * disclosure has no clear line left above the footer, so
-     * its words strike the footer text. The disclosure check
-     * after placement steps the merged block down until the
-     * whole of it clears. With no disclosure to carry them,
-     * the words take the strip under the chart as before. */
-    if (offEl) {
-      offEl.textContent = `${offEl.textContent} ${words}`;
-      return;
-    }
-    const strip = document.getElementById("og-fallback");
-    strip.hidden = false;
-    strip.textContent = words;
-    const footRect = document.querySelector(".foot").getBoundingClientRect();
-    let size = 12.5;
-    while (size > 9) {
-      const r = strip.getBoundingClientRect();
-      if (r.bottom <= footRect.top - 2) break;
-      size -= 0.5;
-      strip.style.fontSize = `${size}px`;
-      strip.style.lineHeight = `${Math.round(size * 1.28)}px`;
-    }
-  };
-  for (const [cands, cls] of [
-    [CANDS, "lab"],
-    [CANDS_WIDE, "lab"],
-    [CANDS_WIDE, "lab-sm"],
-  ]) {
-    const r = runTier(cands, cls);
+  for (const tier of [CANDS, CANDS_WIDE]) {
+    const r = runTier(tier);
     if (r.clean) {
-      if (preDegraded.length > 0) {
-        showStrip([], preDegraded);
-        probe.remove();
-        return {
-          ok: true,
-          placed: r.placed.length,
-          degraded: preDegraded.map((p) => p.name),
-          degradedWords: preDegraded.map((p) => p.words),
-        };
-      }
       probe.remove();
-      return { ok: true, placed: r.placed.length, degraded: [] };
+      return {
+        ok: true,
+        placed: r.placed.map((rec) => ({
+          runId: rec.runId,
+          box: boxOf(rec.el),
+        })),
+        degraded: [],
+      };
     }
   }
-  /* The words tier. Rebuild the least violating attempt,
-   * lift the labels it could not seat off the plot, and name
-   * those points in the strip under the chart with the
-   * figures the payload carries for them. The strip steps
-   * its size down until it clears the footer, measured
-   * against the real footer block, so the words themselves
-   * never strike another element. Removing labels cannot
-   * create a violation, so the seated labels stand verified
-   * as they were. */
-  const { placed } = attempt(best.order, best.CANDS, best.cls);
+  const { placed } = attempt(best.order, best.CANDS);
   const badIds = new Set(
     best.bad.map((s) => s.split(" ")[0]).filter((s) => s !== "count"),
   );
@@ -1261,23 +1226,18 @@ function placeOgLabels(pts) {
   for (const rec of placed) {
     if (badIds.has(rec.runId)) {
       rec.el.remove();
-      degraded.push(rec.p);
+      degraded.push(rec.runId);
     }
   }
-  showStrip(degraded, preDegraded);
   probe.remove();
   return {
     ok: true,
-    placed: placed.length - degraded.length,
-    degraded: [...degraded, ...preDegraded].map((p) => p.name),
-    degradedWords: [...degraded, ...preDegraded].map((p) => p.words),
+    placed: placed
+      .filter((rec) => !badIds.has(rec.runId))
+      .map((rec) => ({ runId: rec.runId, box: boxOf(rec.el) })),
+    degraded,
   };
 }
-
-mkdirSync(path.join(root, "public"), { recursive: true });
-mkdirSync(path.join(root, ".og"), { recursive: true });
-const ogHtml = path.join(root, ".og", "og.html");
-writeFileSync(ogHtml, html);
 
 /* Browser discovery and environment (round 10, 2026-10-23).
  * After the overnight runtime restarts, the headless shell in
@@ -1291,6 +1251,8 @@ writeFileSync(ogHtml, html);
  * scripts load is local. The launch runs single-process for
  * the same reason; the engine and its measurements are the
  * same. */
+mkdirSync(path.join(root, "public"), { recursive: true });
+mkdirSync(path.join(root, ".og"), { recursive: true });
 const chromeOverride =
   process.env.PUPPETEER_EXECUTABLE_PATH ?? process.env.CHROME_PATH;
 const chromeHits = chromeOverride
@@ -1325,170 +1287,193 @@ const browser = await puppeteer.launch({
   args: ["--no-sandbox", "--no-zygote", "--single-process", "--force-color-profile=srgb"],
 });
 const page = await browser.newPage();
-await page.setViewport({ width: 1200, height: 630 });
-await page.goto(`file://${ogHtml}`, { waitUntil: "networkidle0" });
-await page.evaluate(() => document.fonts.ready);
-const placement = await page.evaluate(placeOgLabels, plottedPts);
-if (placement.degraded.length > 0) {
-  console.log(
-    `gen-og: ${placement.degraded.length} plotted label${placement.degraded.length === 1 ? "" : "s"} could not seat beside the disc on this payload and ${placement.degraded.length === 1 ? "is" : "are"} named in words in the strip under the chart instead: ${(placement.degradedWords ?? placement.degraded).join(", ")}`,
-  );
-}
-if (offScaleRows.length > 0) {
-  console.log(
-    `gen-og: ${offScaleRows.length} full suite point${offScaleRows.length === 1 ? "" : "s"} sit${offScaleRows.length === 1 ? "s" : ""} above the chart's 0 to ${Math.round(axisMax * 100)} percent scale and ${offScaleRows.length === 1 ? "is" : "are"} disclosed in words in the image instead of drawn: ${offScaleRows.map((r) => pointName(r)).join(", ")}`,
-  );
-}
-/* The disclosure the image owes is verified where it is
- * drawn: its block must sit inside the canvas and strike
- * nothing, no text in the scatter, neither the headline nor
- * the footer block, and not the words strip when that is
- * shown. The block steps its size down until it clears, and
- * a disclosure that cannot be placed fails the build
- * (RT-1): an image that cannot carry the words does not
- * print without them. */
-function measureDisclosure() {
-  const el = document.getElementById("og-offscale");
-  if (!el) return { present: false, ok: true };
-  const svg = document.querySelector("svg.chart");
-  const boxOf = (e) => {
-    const b = e.getBBox();
-    return { x: b.x, y: b.y, w: b.width, h: b.height };
-  };
-  const rectOf = (e) => {
-    const r = e.getBoundingClientRect();
-    return { x: r.x, y: r.y, w: r.width, h: r.height };
-  };
-  const overlap = (a, b) =>
-    a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
-  const mine = rectOf(el);
-  const obstacles = [
-    rectOf(document.querySelector(".head")),
-    rectOf(document.querySelector(".foot")),
-  ];
-  const strip = document.getElementById("og-fallback");
-  if (strip && !strip.hidden) obstacles.push(rectOf(strip));
-  for (const t of svg.querySelectorAll("text")) obstacles.push(boxOf(t));
-  const inCanvas =
-    mine.x >= 0 && mine.y >= 0 && mine.x + mine.w <= 1200 && mine.y + mine.h <= 630;
-  return {
-    present: true,
-    ok: inCanvas && !obstacles.some((o) => overlap(mine, o)),
-    box: mine,
-  };
-}
-if (railExtremeSentences.length > 0) {
-  console.log(
-    `gen-og: ${railExtremeSentences.length} ranked no-cost run${railExtremeSentences.length === 1 ? "" : "s"} flipped more than the priciest costed run and ${railExtremeSentences.length === 1 ? "is" : "are"} disclosed in words in the image: ${railExtremeRows.map((r) => pointName(r)).join(", ")}`,
-  );
-}
-if (disclosureSentences.length > 0) {
-  let dSize = 12.5;
-  let dCheck = await page.evaluate(measureDisclosure);
-  while (!dCheck.ok && dSize > 9.5) {
-    dSize -= 1;
-    await page.evaluate((s) => {
-      const el = document.getElementById("og-offscale");
-      el.style.fontSize = `${s}px`;
-      el.style.lineHeight = `${Math.round(s * 1.28)}px`;
-    }, dSize);
-    dCheck = await page.evaluate(measureDisclosure);
-  }
-  if (!dCheck.ok) {
-    await browser.close();
-    console.error(
-      "gen-og: the disclosure block cannot be placed inside the image without striking another element, so the image does not print without the words it owes",
-    );
-    process.exit(1);
-  }
-}
-/* The bottom corner readings are verified where they are
- * drawn: after the placement pass shifted them clear of the
- * rail names, neither line may strike a rail name or leave
- * the plot. A corner that cannot sit clear fails the build
- * rather than print words over a name. The plot bounds are
- * PLOT.x0 and PLOT.x1 with half a pixel of tolerance,
- * restated as literals because this check runs in the page,
- * where the scaffold's constants are out of scope. */
-function measureCorner() {
-  const svg = document.querySelector("svg.chart");
-  const boxOf = (e) => {
-    const b = e.getBBox();
-    return { x: b.x, y: b.y, w: b.width, h: b.height };
-  };
-  const overlap = (a, b) =>
-    a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
-  const title = document.getElementById("og-corner-bottom");
-  const sub = document.getElementById("og-corner-bottom-sub");
-  if (!title || !sub) return { present: false, ok: true };
-  const mine = [boxOf(title), boxOf(sub)];
-  const rail = [...svg.querySelectorAll("text.lab")]
-    .filter((el) => el.parentNode === svg)
-    .map(boxOf);
-  const inPlot = mine.every((b) => b.x >= 167.5 && b.x + b.w <= 1152.5);
-  return {
-    present: true,
-    ok: inPlot && !mine.some((b) => rail.some((o) => overlap(b, o))),
-    boxes: mine,
-  };
-}
-const cornerCheck = await page.evaluate(measureCorner);
-if (!cornerCheck.ok) {
-  await browser.close();
-  console.error(
-    "gen-og: the bottom corner readings strike a rail name or leave the plot on this payload, so the image does not print with its words over a name",
-  );
-  process.exit(1);
-}
-/* Test instrumentation, off unless PEIRA_OG_PROBE is set:
- * the placed geometry (claim blocks, discs, labels, the
- * disclosure block, the strip) written as JSON beside the
- * page, so the generator tests can assert on the rendered
- * image's intersections instead of trusting the log. */
-if (process.env.PEIRA_OG_PROBE) {
-  const probe = await page.evaluate(() => {
-    const svg = document.querySelector("svg.chart");
-    const boxOf = (e) => {
-      const b = e.getBBox();
-      return { x: b.x, y: b.y, w: b.width, h: b.height };
-    };
-    const rectOf = (e) => {
-      const r = e.getBoundingClientRect();
-      return { x: r.x, y: r.y, w: r.width, h: r.height };
-    };
-    const off = document.getElementById("og-offscale");
-    const strip = document.getElementById("og-fallback");
-    return {
-      claims: [...svg.querySelectorAll("text.corner, text.corner-sub")].map(
-        (el) => ({ text: el.textContent, box: boxOf(el) }),
-      ),
-      discs: [...svg.querySelectorAll("circle")].map((c) => {
-        const r = c.getBoundingClientRect();
-        return { cx: r.x + r.width / 2, cy: r.y + r.height / 2, r: r.width / 2 };
-      }),
-      labels: [...svg.querySelectorAll("#og-labels text")].map((el) => ({
-        name: el.textContent,
-        runId: el.getAttribute("data-run-id"),
-        box: boxOf(el),
-      })),
-      railLabels: [...svg.querySelectorAll("text.lab")]
-        .filter((el) => el.parentNode === svg)
-        .map((el) => ({ name: el.textContent, box: boxOf(el) })),
-      disclosure: off
-        ? { text: off.textContent, box: rectOf(off) }
-        : null,
-      strip: { hidden: strip.hidden, text: strip.textContent },
-    };
-  });
-  writeFileSync(path.join(root, ".og", "probe.json"), JSON.stringify(probe));
-}
-await page.screenshot({ path: path.join(root, "public", "og.png") });
-await browser.close();
 
+const probes = {};
+for (const kind of ["land", "port"]) {
+  const g = geomFor(kind);
+  const size =
+    kind === "land" ? { width: 1200, height: 630 } : { width: 1080, height: 1350 };
+  const htmlPath = path.join(root, ".og", `og-${kind}.html`);
+  const candidatePts = labelCandidates.map((r) => ({
+    runId: r.run_id,
+    name: pointName(r),
+    x: g.xOf(r.total_cost_usd),
+    y: g.yOf(r.asr_conditional),
+  }));
+  let placement = null;
+  let degradedRows = [];
+  /* The card must fit its own height: measured where it is
+   * drawn, the content may not run past the card, and the
+   * footer must sit inside it. When the fixed furniture
+   * runs tall on a live payload, the plot funds the
+   * overflow by narrowing (its internal geometry is in its
+   * own units and does not move), and the card renders
+   * again; a card that still overflows after the retries
+   * does not print. */
+  for (let attemptN = 0; attemptN < 4; attemptN++) {
+    writeFileSync(htmlPath, cardHtml(kind));
+    await page.setViewport(size);
+    await page.goto(`file://${htmlPath}`, { waitUntil: "networkidle0" });
+    await page.evaluate(() => document.fonts.ready);
+    const seat = await page.evaluate(seatSubject, {
+      canvas: g.canvas,
+      sx: g.xOf(subject.total_cost_usd),
+      sy: g.yOf(subject.asr_conditional),
+    });
+    if (!seat.ok) {
+      await browser.close();
+      console.error(
+        `gen-og: the subject's name and figure line cannot sit clear of the plot on the ${kind === "land" ? "landscape" : "portrait"} card, so the card does not print with its subject unnamed or struck`,
+      );
+      process.exit(1);
+    }
+    placement = await page.evaluate(placeLabels, candidatePts, {
+      canvas: g.canvas,
+    });
+    degradedRows = labelCandidates.filter((r) =>
+      placement.degraded.includes(r.run_id),
+    );
+    const nameline = namelineHtml(
+      degradedRows.map((r) => ({ name: pointName(r), row: r })),
+    );
+    await page.evaluate((html) => {
+      const el = document.getElementById("nameline");
+      if (html === "") {
+        el.remove();
+        return;
+      }
+      el.innerHTML = html;
+    }, nameline);
+    const fit = await page.evaluate(() => {
+      const card = document.querySelector(".card");
+      const foot = document.querySelector("footer");
+      const ladder = document.querySelector(".ladder");
+      const cr = card.getBoundingClientRect();
+      const fr = foot.getBoundingClientRect();
+      const lr = ladder.getBoundingClientRect();
+      return {
+        cardH: cr.height,
+        footBottom: fr.bottom - cr.top,
+        ladderBottom: lr.bottom - cr.top,
+        scrollOverflow: card.scrollHeight - card.clientHeight,
+      };
+    });
+    if (process.env.GENOG_DEBUG_FIT) {
+      console.error(
+        `fit attempt ${attemptN} kind ${kind}: shrink ${plotShrink[kind]}, footBottom ${Math.round(fit.footBottom)}, ladderBottom ${Math.round(fit.ladderBottom)}, scrollOverflow ${Math.round(fit.scrollOverflow)}, cardH ${Math.round(fit.cardH)}`,
+      );
+    }
+    /* The fit rule reads the footer and the ladder, the
+     * furniture a tall card would cut. The card's
+     * scrollHeight is not part of the rule: the plot's text
+     * sits in the svg's own units, where the seating passes
+     * already verify every label against the canvas at zero
+     * tolerance, and the scroll measure conflates that
+     * certified overflow with layout overflow (it read 32px
+     * on a portrait whose footer stood 2px inside the card). */
+    if (fit.footBottom <= fit.cardH + 0.5 && fit.ladderBottom <= fit.cardH + 0.5) {
+      break;
+    }
+    if (attemptN === 3) {
+      await browser.close();
+      console.error(
+        `gen-og: the ${kind === "land" ? "landscape" : "portrait"} card's content overflows its height (ladder bottom ${Math.round(fit.ladderBottom)} of ${Math.round(fit.cardH)}), so the card does not print with its ladder or footer cut`,
+      );
+      process.exit(1);
+    }
+    if (attemptN >= 1) {
+      fitTight[kind] = true;
+    }
+    plotShrink[kind] += Math.ceil(
+      (Math.max(fit.footBottom, fit.ladderBottom) - fit.cardH + 10) *
+        (g.canvas.w / g.canvas.h),
+    );
+  }
+  const budget = kind === "land" ? ladderLand : ladderPort;
+  console.log(
+    `gen-og: ladder budget (${kind === "land" ? "landscape" : "portrait"}): spent ${budget.spent}px of the ${budget.allot}px rows area on ${budget.rows} rail rows in ${LADDER[kind].columns} column${LADDER[kind].columns === 1 ? "" : "s"}, slack used ${budget.slackUsed}px`,
+  );
+  if (placement.degraded.length > 0) {
+    console.log(
+      `gen-og: ${placement.degraded.length} plotted label${placement.degraded.length === 1 ? "" : "s"} could not seat beside the disc on the ${kind === "land" ? "landscape" : "portrait"} card and ${placement.degraded.length === 1 ? "is" : "are"} named in words under the plot instead: ${degradedRows.map((r) => pointName(r)).join(", ")}`,
+    );
+  }
+  /* Test instrumentation, off unless PEIRA_OG_PROBE is set:
+   * the rendered card's claims, discs, labels, readings,
+   * ladder and words, written as JSON beside the pages, so
+   * the generator tests can assert on the rendered image's
+   * contents instead of trusting the log. */
+  if (process.env.PEIRA_OG_PROBE) {
+    probes[kind] = await page.evaluate(() => {
+      const svg = document.querySelector("svg.chart");
+      const boxOf = (e) => {
+        const b = e.getBBox();
+        return { x: b.x, y: b.y, w: b.width, h: b.height };
+      };
+      const txt = (sel) => document.querySelector(sel)?.textContent ?? null;
+      return {
+        headline: txt("h1"),
+        mastRight: txt(".mast .micro"),
+        readouts: [...document.querySelectorAll(".ro")].map((el) => ({
+          micro: el.querySelector(".micro")?.textContent ?? "",
+          num: el.querySelector(".num")?.textContent ?? "",
+          who: el.querySelector(".who")?.textContent ?? "",
+        })),
+        subject: {
+          name: txt("#subj-name"),
+          sub: txt("#subj-sub"),
+          nameBox: boxOf(document.getElementById("subj-name")),
+          subBox: boxOf(document.getElementById("subj-sub")),
+        },
+        discs: [...svg.querySelectorAll("circle")].map((c) => ({
+          cx: Number(c.getAttribute("cx")),
+          cy: Number(c.getAttribute("cy")),
+          r: Number(c.getAttribute("r")),
+          subject: c.hasAttribute("data-subject"),
+        })),
+        labels: [...svg.querySelectorAll("#og-labels text")].map((el) => ({
+          name: el.textContent,
+          runId: el.getAttribute("data-run-id"),
+          box: boxOf(el),
+        })),
+        gridLines: svg.querySelectorAll("line").length,
+        decades: [...svg.querySelectorAll(".gtick.decade")].map(
+          (el) => el.textContent,
+        ),
+        nameline: document.getElementById("nameline")?.textContent ?? null,
+        ladder: [...document.querySelectorAll(".lrow")].map((el) => ({
+          name: el.querySelector(".ln")?.textContent ?? "",
+          rate: el.querySelector(".lr")?.textContent ?? "",
+          sel: el.classList.contains("sel"),
+          flag: el.classList.contains("flag"),
+        })),
+        footer: [...document.querySelectorAll("footer span")].map(
+          (el) => el.textContent,
+        ),
+      };
+    });
+    probes[kind].ladderBudget = budget;
+  }
+  await page.screenshot({
+    path: path.join(
+      root,
+      "public",
+      kind === "land" ? "og.png" : "og-portrait.png",
+    ),
+  });
+  console.log(
+    `gen-og: wrote public/${kind === "land" ? "og.png" : "og-portrait.png"} (${size.width}x${size.height}) from ${results} results, board date ${dateWords}; labelled ${placement.placed.length} of ${candidatePts.length} label candidates beside their discs and all ${ladderRows.length} rail rows in the ladder`,
+  );
+}
+await browser.close();
+if (process.env.PEIRA_OG_PROBE) {
+  writeFileSync(
+    path.join(root, ".og", "probe.json"),
+    JSON.stringify(probes, null, 2),
+  );
+}
 copyFileSync(
   path.join(root, "data", "payload.json"),
   path.join(root, "public", "payload.json"),
 );
-console.log(
-  `gen-og: wrote public/og.png (1200x630) and public/payload.json from ${results} results, board date ${dateWords}; labelled ${placement.placed} of ${plottedPts.length} plotted points and all ${railDrawn.length} rail points`,
-);
+console.log("gen-og: copied data/payload.json to public/payload.json");

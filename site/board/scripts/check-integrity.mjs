@@ -9,21 +9,24 @@
  * benchmark derivation cannot rubber-stamp itself.
  *
  * Checks
- *  1. Counts. The masthead counts equal the count of distinct
- *     models the board displays, keyed by display_name, the rule
- *     the data audit and the census converged on. The checker
- *     also computes the two neighbouring rules (adapter_version
- *     alone, and the (adapter_name, adapter_version) pair) and
- *     proves the printed numbers are neither: this payload
- *     carries both collisions (three models share version
- *     "1.0"; one model was measured on two wires), so the three
- *     rules give three different triples and only the display
- *     rule may match the page. All 36 pair-rows must still
- *     render (check 2).
- *  2. Rows. Each payload row renders exactly once, inside the
- *     group the payload's case base assigns it to, with its
- *     short name, its attack success value, and its compact
- *     interval as printed from the payload.
+ *  1. Counts. The masthead counts sentence (results held,
+ *     then distinct models, ranked models, flagged) equals
+ *     the count of distinct models the board displays, keyed
+ *     by display_name, the rule the data audit and the census
+ *     converged on. The checker also computes the two
+ *     neighbouring rules (adapter_version alone, and the
+ *     (adapter_name, adapter_version) pair) and proves the
+ *     printed numbers are neither: this payload carries both
+ *     collisions (three models share version "1.0"; one
+ *     model was measured on two wires), so the three rules
+ *     give three different triples and only the display rule
+ *     may match the page.
+ *  2. Rows. The ranking rail carries the ranked cohort in
+ *     the payload's ranked order (full suite, then slices),
+ *     each row with its short name, its attack success
+ *     value, and its display interval carried in the row's
+ *     accessible name. The flagged band carries the flagged
+ *     cohort under the C-5 rules of check 13's family.
  *  3. Group sizes match the payload split (full, flagged,
  *     slices), all derived, none hard-coded here.
  *  4. Tax. Benchmarks derived from the full suite ranked cohort
@@ -36,14 +39,15 @@
  *     colon, and never calls the flagged status by another name.
  *  7. The suite size appears on the page. No revision hash
  *     appears anywhere in the rendered text.
- *  8. Charts (round 9). The scatter section accounts for the
- *     whole board: plotted points equal the non-slice rows with
- *     a cost above zero, rail points equal the non-slice rows
- *     without one, no slice row appears, and every point's data
- *     attributes equal its payload cost and rate. A rail point
- *     is covered once per variant, as a marker on the wide
- *     chart and as a list entry on the phone, which carries no
- *     rail column (mobile fix, 2026-10-26). The heatmap
+ *  8. Charts (round 9, re-based for the instrument panel).
+ *     The scatter section accounts for the whole board in
+ *     each variant: plotted points equal the non-slice rows
+ *     with a cost above zero whose rate stands under the
+ *     derived axis ceiling, the wide variant's rail band
+ *     carries the no-cost rows under the ceiling, the phone
+ *     variant's named rows carry every rail row, no slice
+ *     row appears, and a ranked point's title states its
+ *     figure. The heatmap
  *     holds one cell per row and family, the not measured cells
  *     equal the payload's missing family pairs, the column
  *     order equals the descending mean rule computed here, and
@@ -52,21 +56,27 @@
  *     attacked ECE order, rail and grid in the same order.
  *  9. Malformed (round 10). Bar rows equal the payload rows
  *     whose printed rate is not 0.0 percent, in worst first
- *     order, each printing its payload rate; the folded count
- *     in the summary line equals the payload's zero group; the
- *     admission line is labelled.
- * 10. Cards and model pages (round 10). Every card in the
- *     index and every per-model page is asserted field by
- *     field against the payload (headline figures, cost state
- *     words, latency, both calibration arms and the confidence
- *     coverage, severity rates and bases, spark bar data
- *     attributes in column order, the tax figure with both
- *     benchmark setters named or the untaxed statement, and
- *     the short provenance, with the ellipsis cut marker on
- *     every shortened hash, F-05), plus the rank statement, the
- *     own-page link, and the copy rules on every model page.
+ *     order, each printing its payload rate, the flagged
+ *     rows in amber; the folded count in the summary line
+ *     equals the payload's zero group; the 5 percent flag
+ *     line is drawn and labelled.
+ * 10. Models index and model pages (round 10, re-based).
+ *     The models index carries every result once, with its
+ *     name, its figure or its suppression, and its flagged
+ *     tag; the ranking section's inspector opens on the
+ *     strongest full suite result and links its own page.
+ *     Every per-model page keeps the field by field card
+ *     assertion against the payload (headline figures, cost
+ *     state words, latency, both calibration arms and the
+ *     confidence coverage, severity rates and bases, spark
+ *     bar data attributes in column order, the tax figure
+ *     with both benchmark setters named or the untaxed
+ *     statement, and the short provenance, with the ellipsis
+ *     cut marker on every shortened hash, F-05), plus the
+ *     rank statement, the own-page link, and the copy rules
+ *     on every model page.
  * 11. Nav, compare, and ranking links (round 11). The section
- *     bar carries the eight labels in page order and every
+ *     bar carries the nine labels in page order and every
  *     target id exists. The compare island's dataset, printed
  *     beside its section as a JSON script element, equals the
  *     payload on every row and every metric field, families
@@ -78,8 +88,9 @@
  *     under the delta format rules ported below, its winner
  *     dots sit on the stronger side, its family bars carry
  *     the payload rates in the column order, and no guard
- *     banner renders for it. Every ranking row carries the
- *     name link to its own model page.
+ *     banner renders for it. The ranking inspector's
+ *     own-page link names the strongest full suite result's
+ *     page (check 10 holds the opening reading).
  * 12. Cycle 7 surfaces. The standing Method subsection
  *     anchors exist on the rendered page, and the re-run
  *     disclosure renders exactly when the payload carries
@@ -97,8 +108,10 @@
  *     flagged point's title and accessible name carry the
  *     figure's malformed decomposition beside the figure, or,
  *     where the payload's records do not derive one, state
- *     the flagged standing and no figure; a flagged entry row
- *     prints no figure. On the heatmap, every flagged cell
+ *     the flagged standing and no figure, and the section's
+ *     words line states both clauses for every flagged
+ *     plotted result whose decomposition derives. On the
+ *     heatmap, every flagged cell
  *     title carries its family's decomposition, a flagged
  *     family without a derivable decomposition prints
  *     suppressed, and the notes under the grid state each
@@ -408,7 +421,7 @@ const text = visibleText(html);
 /* ---------- 1. counts ---------- */
 
 const countsMatch = text.match(
-  /board holds ([\d,]+) results from ([\d,]+) models\. ([\d,]+) models are ranked and ([\d,]+) are flagged\./,
+  /The board holds ([\d,]+) results from ([\d,]+) models\. ([\d,]+) models are ranked and ([\d,]+) are flagged\./,
 );
 if (!countsMatch) {
   fail("masthead counts sentence not found in rendered text");
@@ -427,7 +440,7 @@ if (!countsMatch) {
    * differ; if a future payload removes a collision, this gate
    * fails loudly rather than letting the proof go silent. */
   const triple = (c) => [c.tested, c.ranked, c.flagged].join("/");
-  const printedTriple = printed.slice(1).join("/");
+  const printedTriple = printed.slice(0, 3).join("/");
   if (printedTriple === triple(versionCounts)) {
     fail(
       `counts follow the version-only rule (${printedTriple}); the three "1.0" models have collapsed into one`,
@@ -461,18 +474,6 @@ if (!countsMatch) {
 
 /* ---------- 2 and 3. rows and groups ---------- */
 
-function groupBlocks(source) {
-  const blocks = {};
-  const re = /data-group="(full|flagged|slices)"/g;
-  const marks = [];
-  let m;
-  while ((m = re.exec(source)) !== null) marks.push([m[1], m.index]);
-  marks.forEach(([id, start], i) => {
-    const end = i + 1 < marks.length ? marks[i + 1][1] : source.length;
-    blocks[id] = source.slice(start, end);
-  });
-  return blocks;
-}
 /* The ranking checks scope to the top of the page only. The
  * sections below it carry their own data-run-id carriers
  * (malformed rows, cells, points, panels, cards) and are
@@ -482,73 +483,160 @@ const heatmapStart = html.indexOf('data-section="heatmap"');
 const rankingEnd =
   malformedStart >= 0 ? malformedStart : heatmapStart;
 const rankingHtml = rankingEnd >= 0 ? html.slice(0, rankingEnd) : html;
-const blocks = groupBlocks(rankingHtml);
-const expectedGroups = {
-  full: fullCohort,
-  flagged: unranked,
-  slices: sliceCohort,
-};
-for (const [id, rows] of Object.entries(expectedGroups)) {
-  const block = blocks[id];
-  if (!block) {
-    fail(`group ${id} missing from rendered page`);
-    continue;
-  }
-  const renderedIds = [...block.matchAll(/data-run-id="([^"]+)"/g)].map(
-    (m) => m[1],
-  );
-  if (renderedIds.length !== rows.length) {
+
+/* The instrument panel's groups stand in their sections:
+   the ranking rail (the full suite rows, then the guard
+   slices) and the flagged band (its lead, then its rows).
+   A row's chunk runs from its own carrier to the next. */
+function sectionBlock(source, name, nextName) {
+  const start = source.indexOf(`data-section="${name}"`);
+  if (start < 0) return null;
+  const end = nextName
+    ? source.indexOf(`data-section="${nextName}"`, start)
+    : source.length;
+  return source.slice(start, end < 0 ? source.length : end);
+}
+function rowChunks(block) {
+  const chunks = new Map();
+  if (!block) return chunks;
+  const re = /data-run-id="([^"]+)"/g;
+  const marks = [];
+  let m;
+  while ((m = re.exec(block)) !== null) marks.push([m[1], m.index]);
+  marks.forEach(([id, start], i) => {
+    const end = i + 1 < marks.length ? marks[i + 1][1] : block.length;
+    chunks.set(id, block.slice(start, end));
+  });
+  return chunks;
+}
+const rankingBlock = sectionBlock(html, "ranking", "flagged");
+const flaggedBlock = sectionBlock(html, "flagged", "malformed");
+if (!rankingBlock) {
+  fail("ranking section missing from rendered page");
+} else {
+  const railChunks = rowChunks(rankingBlock);
+  const expectedRail = [...fullCohort, ...sliceCohort].map((r) => r.run_id);
+  if (
+    JSON.stringify([...railChunks.keys()]) !== JSON.stringify(expectedRail)
+  ) {
     fail(
-      `group ${id}: rendered ${renderedIds.length} rows, payload assigns ${rows.length}`,
+      `ranking rail carries ${railChunks.size} rows in an order that is not the payload's ranked order`,
     );
   }
-  for (const row of rows) {
-    if (!renderedIds.includes(row.run_id)) {
-      fail(`group ${id}: payload row ${row.run_id} not rendered in its group`);
-    }
-  }
-  // Per-row printed numbers, checked inside the group block with
-  // a per-row slice of the text.
-  for (const row of rows) {
-    const marker = `data-run-id="${row.run_id}"`;
-    const start = block.indexOf(marker);
-    if (start < 0) continue;
-    const next = block.indexOf('data-run-id="', start + marker.length);
-    const slice = visibleText(block.slice(start, next < 0 ? undefined : next));
+  for (const row of [...fullCohort, ...sliceCohort]) {
+    const chunk = railChunks.get(row.run_id);
+    if (!chunk) continue;
+    const slice = visibleText(chunk);
     if (!slice.includes(shortName(row))) {
       fail(`row ${row.run_id}: short name ${shortName(row)} not in its block`);
     }
-    /* A flagged row whose sealed records derive no
-     * decomposition prints no figure in its row (C-5), so
-     * the expectation inverts for it: the figure and its
-     * interval must be absent, not present. */
-    const flaggedNoDecomp = id === "flagged" && decompI(row) === null;
-    if (row.asr_conditional !== null) {
-      if (flaggedNoDecomp && slice.includes(fmtPct(row.asr_conditional))) {
+    if (
+      row.asr_conditional !== null &&
+      !slice.includes(fmtPct(row.asr_conditional))
+    ) {
+      fail(
+        `row ${row.run_id}: value ${fmtPct(row.asr_conditional)} not in its block (block reads: ${slice.slice(0, 120)})`,
+      );
+    }
+    /* The row's interval rides its accessible name, the
+       carrier the redesign gives it. */
+    const dci = displayCiI(row);
+    if (dci) {
+      /* The chunk opens mid-tag at the row's data-run-id,
+       * and the row button's own aria-label is the first in
+       * the chunk, the rest of its tag following the id. */
+      const aria = chunk.match(/aria-label="([^"]*)"/)?.[1] ?? "";
+      if (!aria.includes(`${fmtPct(dci[0])} to ${fmtPct(dci[1])}`)) {
         fail(
-          `row ${row.run_id}: value ${fmtPct(row.asr_conditional)} prints in its block although the sealed records derive no decomposition for it`,
-        );
-      } else if (!flaggedNoDecomp && !slice.includes(fmtPct(row.asr_conditional))) {
-        fail(
-          `row ${row.run_id}: value ${fmtPct(row.asr_conditional)} not in its block (block reads: ${slice.slice(0, 120)})`,
+          `row ${row.run_id}: display interval ${fmtPct(dci[0])} to ${fmtPct(dci[1])} not in its accessible name`,
         );
       }
     }
-    const dci = displayCiI(row);
-    if (dci) {
-      if (flaggedNoDecomp && slice.includes(fmtCiCompact(dci))) {
+  }
+}
+if (!flaggedBlock) {
+  fail("flagged section missing from rendered page");
+} else {
+  const flagChunks = rowChunks(flaggedBlock);
+  /* The band's lead renders as its own block only when its
+     decomposition derives; a lead without one stands in the
+     explainer sentence instead and carries no row. */
+  const leadRow = [...unranked].sort(
+    (a, b) => (b.asr_conditional ?? 0) - (a.asr_conditional ?? 0),
+  )[0];
+  const leadRendered =
+    leadRow !== undefined &&
+    decompI(leadRow) !== null &&
+    leadRow.asr_conditional !== null;
+  const expectedFlagRendered = unranked.length - (leadRendered ? 0 : 1);
+  if (flagChunks.size !== expectedFlagRendered) {
+    fail(
+      `flagged band: rendered ${flagChunks.size} rows, payload assigns ${unranked.length} (lead rendered ${leadRendered})`,
+    );
+  }
+  if (!leadRendered && leadRow) {
+    if (!visibleText(flaggedBlock).includes(shortName(leadRow))) {
+      fail("flagged band: the figureless lead is not named in its explainer");
+    }
+  }
+  for (const row of unranked) {
+    const chunk = flagChunks.get(row.run_id);
+    if (!chunk) {
+      if (row === leadRow && !leadRendered) continue;
+      fail(`flagged band: payload row ${row.run_id} not rendered in the band`);
+      continue;
+    }
+    const slice = visibleText(chunk);
+    if (!slice.includes(shortName(row))) {
+      fail(`flagged row ${row.run_id}: short name ${shortName(row)} not in its block`);
+    }
+    /* C-5 in the band: a flagged figure stands only with
+     * its decomposition beside it (the lead states both
+     * shares in its split bar and its words; the rows state
+     * them in their figure line). Where the sealed records
+     * derive no decomposition, the row states the
+     * suppression and prints no figure. */
+    const d = decompI(row);
+    if (d !== null && row.asr_conditional !== null) {
+      if (!slice.includes(fmtPct(row.asr_conditional))) {
+        fail(`flagged row ${row.run_id}: figure not in its block`);
+      }
+      if (
+        !slice.includes(fmtPct(d.genuine)) ||
+        !slice.includes(fmtPct(d.share))
+      ) {
         fail(
-          `row ${row.run_id}: display interval ${fmtCiCompact(dci)} prints in its block although the sealed records derive no decomposition for it`,
+          `flagged row ${row.run_id}: figure stands in the band without its decomposition`,
         );
-      } else if (!flaggedNoDecomp && !slice.includes(fmtCiCompact(dci))) {
-        fail(`row ${row.run_id}: display interval ${fmtCiCompact(dci)} not in its block`);
+      }
+    } else {
+      if (!slice.includes("not stated")) {
+        fail(
+          `flagged row ${row.run_id}: no decomposition derives and the row states no suppression`,
+        );
+      }
+      if (
+        row.asr_conditional !== null &&
+        slice.includes(fmtPct(row.asr_conditional))
+      ) {
+        fail(
+          `flagged row ${row.run_id}: value ${fmtPct(row.asr_conditional)} prints although the sealed records derive no decomposition for it`,
+        );
       }
     }
   }
 }
 const totalRendered = [...rankingHtml.matchAll(/data-run-id="/g)].length;
-if (totalRendered !== counts.results) {
-  fail(`rendered rows ${totalRendered}, payload rows ${counts.results}`);
+const leadRowT = [...unranked].sort(
+  (a, b) => (b.asr_conditional ?? 0) - (a.asr_conditional ?? 0),
+)[0];
+const leadRenderedT =
+  leadRowT !== undefined &&
+  decompI(leadRowT) !== null &&
+  leadRowT.asr_conditional !== null;
+const expectedRendered = counts.results - (leadRenderedT ? 0 : 1);
+if (totalRendered !== expectedRendered) {
+  fail(`rendered rows ${totalRendered}, payload rows ${counts.results} (flagged lead rendered ${leadRenderedT})`);
 }
 
 /* ---------- 4. tax benchmarks ---------- */
@@ -579,9 +667,42 @@ for (const row of fullCohort) {
 if (taxChecked < 3) {
   fail(`only ${taxChecked} taxed rows recomputed; the gate requires at least 3`);
 }
+/* The setters are named where the tax is read: the benign
+ * setter in the inspector's best line on the board page,
+ * both setters in the tax lines of the per-model pages. The
+ * corpus is the board page plus every model page that
+ * exists; a missing page fails check 10 on its own. */
+import { existsSync as existsSync4 } from "node:fs";
+const slugify4 = (s) =>
+  s
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+const slugOf4 = (r) => {
+  const rows = [...ranked, ...unranked];
+  const base = shortName(r);
+  const shared = rows.some(
+    (o) => o.run_id !== r.run_id && shortName(o) === base,
+  );
+  const withWire = slugify4(shared ? `${base}-${r.wire}` : base);
+  const clash = rows.some(
+    (o) =>
+      o.run_id !== r.run_id && shortName(o) === base && o.wire === r.wire,
+  );
+  return clash ? `${withWire}-${slugify4(r.run_id).slice(0, 8)}` : withWire;
+};
+const setterCorpus = [text];
+for (const row of [...ranked, ...unranked]) {
+  const slug = slugOf4(row);
+  const pagePath = join(root, "out", "models", slug, "index.html");
+  if (existsSync4(pagePath)) {
+    setterCorpus.push(visibleText(readFileSync(pagePath, "utf8")));
+  }
+}
+const setterText = setterCorpus.join(" ");
 for (const setter of [benignSetter, eceSetter]) {
-  if (!text.includes(shortName(setter))) {
-    fail(`tax benchmark setter ${shortName(setter)} not stated on the page`);
+  if (!setterText.includes(shortName(setter))) {
+    fail(`tax benchmark setter ${shortName(setter)} not stated on the board or its model pages`);
   }
 }
 
@@ -658,8 +779,12 @@ const allRows = [...ranked, ...unranked];
 const rowById = new Map(allRows.map((r) => [r.run_id, r]));
 const unrankedIds = new Set(unranked.map((r) => r.run_id));
 
-/* Scatter accounting. */
-const scatterHtml = sectionSlice("scatter", "calibration");
+/* Scatter accounting. The panel draws two variants of one
+   derivation: every costed full suite row under the shared
+   ceiling stands as a point in both, the no-cost rail
+   ladders inside the wide plot, and the phone names the
+   whole rail as rows under its plot. */
+const scatterHtml = sectionSlice("scatter", "ranking");
 if (!scatterHtml) {
   fail("scatter section missing from rendered page");
 } else {
@@ -667,96 +792,79 @@ if (!scatterHtml) {
   const plottedRows = nonSlice.filter(
     (r) => r.total_cost_usd !== null && r.total_cost_usd > 0,
   );
-  const plottedIds = new Set(plottedRows.map((r) => r.run_id));
-  const railIds = new Set(
-    nonSlice.filter((r) => !plottedIds.has(r.run_id)).map((r) => r.run_id),
+  const railRowsAll = nonSlice.filter(
+    (r) => !(r.total_cost_usd !== null && r.total_cost_usd > 0),
   );
-  const pointTags = [...scatterHtml.matchAll(/<g[^>]*>/g)]
-    .map((m) => m[0])
-    .filter((t) => t.includes('class="scatter-point"'));
-  const seen = { plot: new Map(), rail: new Map() };
-  for (const tag of pointTags) {
-    const kind = attr(tag, "data-scatter");
-    const id = attr(tag, "data-run-id");
-    if (!kind || !id || !seen[kind]) {
-      fail(`scatter point with missing data attributes: ${tag.slice(0, 80)}`);
+  const worstRanked = Math.max(
+    0,
+    ...ranked.map((r) => r.asr_conditional ?? 0),
+  );
+  const axisCeil = Math.max(
+    0.3,
+    Math.ceil((worstRanked - 1e-9) / 0.1) / 10,
+  );
+  const drawnIds = new Set(
+    plottedRows
+      .filter((r) => (r.asr_conditional ?? 0) <= axisCeil + 1e-12)
+      .map((r) => r.run_id),
+  );
+  const railDrawnIds = new Set(
+    railRowsAll
+      .filter((r) => (r.asr_conditional ?? 0) <= axisCeil + 1e-12)
+      .map((r) => r.run_id),
+  );
+  const railAllIds = new Set(railRowsAll.map((r) => r.run_id));
+  const sameSet = (a, b) =>
+    JSON.stringify([...a].sort()) === JSON.stringify([...b].sort());
+  for (const variant of ["scatter-wide", "scatter-phone"]) {
+    const vStart = scatterHtml.indexOf(variant);
+    const vEnd =
+      variant === "scatter-wide"
+        ? scatterHtml.indexOf("scatter-phone")
+        : scatterHtml.length;
+    const vHtml =
+      vStart >= 0
+        ? scatterHtml.slice(vStart, vEnd < 0 ? scatterHtml.length : vEnd)
+        : "";
+    if (!vHtml) {
+      fail(`scatter variant ${variant} missing`);
       continue;
     }
-    seen[kind].set(id, (seen[kind].get(id) ?? 0) + 1);
-    const row = rowById.get(id);
-    if (!row) {
-      fail(`scatter point for unknown row ${id}`);
-      continue;
+    const points = [...vHtml.matchAll(/data-point-for="([^"]+)"/g)].map(
+      (m) => m[1],
+    );
+    if (!sameSet(points, drawnIds)) {
+      fail(
+        `scatter ${variant} draws ${points.length} points, expected the ${drawnIds.size} costed rows under the ceiling`,
+      );
     }
-    if (Number(attr(tag, "data-asr")) !== row.asr_conditional) {
-      fail(`scatter point ${id}: data-asr disagrees with the payload`);
+    const rails = [...vHtml.matchAll(/data-rail-for="([^"]+)"/g)].map(
+      (m) => m[1],
+    );
+    const expectedRails = variant === "scatter-wide" ? railDrawnIds : railAllIds;
+    if (!sameSet(rails, expectedRails)) {
+      fail(
+        `scatter ${variant} carries ${rails.length} rail standings, expected ${expectedRails.size}`,
+      );
     }
-    const costAttr = attr(tag, "data-cost");
-    const expectedCost = row.total_cost_usd === null ? "" : String(row.total_cost_usd);
-    if (costAttr !== expectedCost) {
-      fail(`scatter point ${id}: data-cost ${costAttr}, payload ${expectedCost}`);
-    }
-  }
-  const entryTags = [...scatterHtml.matchAll(/<g[^>]*>/g)]
-    .map((m) => m[0])
-    .filter((t) => t.includes('class="scatter-entry"'));
-  const entrySeen = new Map();
-  for (const tag of entryTags) {
-    const id = attr(tag, "data-entry-for");
-    if (!id) {
-      fail(`scatter entry with missing data attributes: ${tag.slice(0, 80)}`);
-      continue;
-    }
-    entrySeen.set(id, (entrySeen.get(id) ?? 0) + 1);
-    if (!plottedIds.has(id) && !railIds.has(id)) {
-      fail(`scatter entry holds unexpected row ${id}`);
-    }
-  }
-  for (const [kind, ids] of [
-    ["plot", plottedIds],
-    ["rail", railIds],
-  ]) {
-    for (const id of ids) {
-      /* Both the wide and the phone variant render the point.
-       * A plotted point stands as a marker in both variants.
-       * A rail point stands once per variant: on the phone as
-       * a list entry, which carries no rail column (mobile
-       * fix, 2026-10-26), and on the wide chart as its rail
-       * marker, or as an overflow row for a point the rail
-       * chain could not separate from its neighbours (publish
-       * dress rehearsal fix, 2026-11-01). Coverage is markers
-       * plus entries summed across both variants, so the count
-       * expects two standings in total without certifying
-       * which variant each came from, and the marker cap keeps
-       * the phone variant marker free, since a second marker
-       * could only be a doubled wide marker or a phone rail
-       * column. The amendment changed only the wide standing's
-       * permitted form. The rendered audit accepts the same
-       * two forms, so the gates state one contract. */
-      const markers = seen[kind].get(id) ?? 0;
-      if (kind === "plot") {
-        if (markers !== 2) {
-          fail(
-            `scatter plot point ${id} rendered ${markers} times, expected 2 (wide and phone)`,
-          );
-        }
-      } else {
-        const covered = markers + (entrySeen.get(id) ?? 0);
-        if (covered !== 2 || markers > 1) {
-          fail(
-            `scatter rail point ${id} covered ${covered} times (markers ${markers}, entries ${entrySeen.get(id) ?? 0}), expected 2 (one standing per variant, as a marker or an overflow row, and a phone entry)`,
-          );
-        }
+    /* A ranked point's title states its figure. Flagged
+       titles are held to the full C-5 rule in check 13. */
+    for (const m of vHtml.matchAll(
+      /<g[^>]*data-point-for="([^"]+)"[^>]*>[\s\S]*?<title>([^<]*)<\/title>/g,
+    )) {
+      const row = rowById.get(m[1]);
+      if (!row || unrankedIds.has(m[1])) continue;
+      if (!m[2].includes(`attack success ${fmtPct(row.asr_conditional)}`)) {
+        fail(
+          `scatter ${variant} point ${m[1]}: title does not state its figure`,
+        );
       }
-    }
-    for (const id of seen[kind].keys()) {
-      if (!ids.has(id)) fail(`scatter ${kind} holds unexpected row ${id}`);
     }
   }
   for (const row of sliceCohort) {
     if (
-      scatterHtml.includes(`data-run-id="${row.run_id}"`) ||
-      scatterHtml.includes(`data-entry-for="${row.run_id}"`)
+      scatterHtml.includes(`data-point-for="${row.run_id}"`) ||
+      scatterHtml.includes(`data-rail-for="${row.run_id}"`)
     ) {
       fail(`slice row ${row.run_id} appears in the scatter section`);
     }
@@ -767,7 +875,7 @@ if (!scatterHtml) {
 }
 
 /* Heatmap accounting. */
-const heatHtml = sectionSlice("heatmap", "scatter");
+const heatHtml = sectionSlice("heatmap", "calibration");
 if (!heatHtml) {
   fail("heatmap section missing from rendered page");
 } else {
@@ -901,7 +1009,7 @@ if (!heatHtml) {
 }
 
 /* Calibration accounting. */
-const calHtml = sectionSlice("calibration", "models");
+const calHtml = sectionSlice("calibration", "compare");
 if (!calHtml) {
   fail("calibration section missing from rendered page");
 } else {
@@ -983,16 +1091,23 @@ if (!malHtml) {
         `malformed row ${row.run_id}: printed rate ${fmtPct(row.malformed_rate)} not in its block`,
       );
     }
+    /* Flagged standing on a malformed row is the amber bar
+       itself, the section's one flagged signal. */
     const isFlagged = unranked.some((r) => r.run_id === row.run_id);
-    if (isFlagged && !blockText.includes("Flagged")) {
-      fail(`malformed row ${row.run_id}: flagged row carries no flagged tag`);
+    const blockHtml = malHtml.slice(
+      start,
+      next < 0 ? undefined : next,
+    );
+    const amberBar = /class="mbar amber"/.test(blockHtml);
+    if (isFlagged && !amberBar) {
+      fail(`malformed row ${row.run_id}: flagged row's bar is not amber`);
     }
-    if (!isFlagged && blockText.includes("Flagged")) {
-      fail(`malformed row ${row.run_id}: ranked row carries a flagged tag`);
+    if (!isFlagged && amberBar) {
+      fail(`malformed row ${row.run_id}: ranked row's bar is amber`);
     }
   });
-  if (!malText.includes("admission limit")) {
-    fail("malformed section does not label its admission line");
+  if (!malText.includes("flag line") || !malText.includes("5 percent")) {
+    fail("malformed section does not label its flag line at 5 percent");
   }
   if (
     foldedMal > 0 &&
@@ -1161,11 +1276,31 @@ function assertCardText(blockText, row, where) {
    * once, in the method section (owner, 2026-10-25). Eligibility
    * still reaches the card through the rates themselves and the
    * severity bases below. */
-  /* Cost state, in the words the card prints. */
+  /* Cost state, in the words the card prints. A recorded
+   * zero is a run with no per-call API charge, and the gloss
+   * follows the wire. A locally served run says so, while a
+   * run measured through an agent harness names the harness
+   * (a harness wire this check does not know fails closed
+   * rather than letting a local gloss stand for it). */
   if (row.total_cost_usd === null || row.total_cost_usd === undefined) {
     need("no cost recorded", "unrecorded cost state");
   } else if (row.total_cost_usd === 0) {
-    need("served locally", "local cost state");
+    const HARNESS_GLOSS = {
+      "cursor-harness":
+        "no per-run API charge, measured through the Cursor agent harness",
+    };
+    if (typeof row.wire === "string" && row.wire.endsWith("-harness")) {
+      const gloss = HARNESS_GLOSS[row.wire];
+      if (gloss === undefined) {
+        fail(
+          `${where} ${row.run_id}: harness wire "${row.wire}" has no cost gloss in this check`,
+        );
+      } else {
+        need(gloss, "harness cost state");
+      }
+    } else {
+      need("served locally", "local cost state");
+    }
   } else if (lowerBoundC(row)) {
     need(`≥ ${fmtUsdC(row.total_cost_usd)}`, "lower bound cost");
     need("a lower bound", "lower bound words");
@@ -1356,60 +1491,63 @@ const modelsHtml = sectionSlice("models", "method");
 if (!modelsHtml) {
   fail("models section missing from rendered page");
 } else {
-  const cardChunks = modelsHtml.split('data-card-for="').slice(1);
+  const cardChunks = modelsHtml.split('data-index-for="').slice(1);
   if (cardChunks.length !== allRows.length) {
     fail(
-      `models section holds ${cardChunks.length} cards, payload holds ${allRows.length} rows`,
+      `models index holds ${cardChunks.length} rows, payload holds ${allRows.length} rows`,
     );
   }
-  /* Ranks are dense within each group (admission rules, section
-   * 4.1): the full suite group runs 1..N over fullCohort and the
-   * slice group 1..M over sliceCohort, mirroring boardGroups(). */
-  const rankOf = new Map();
-  fullCohort.forEach((r, i) => rankOf.set(r.run_id, i + 1));
-  sliceCohort.forEach((r, i) => rankOf.set(r.run_id, i + 1));
   for (const chunk of cardChunks) {
     const id = chunk.slice(0, chunk.indexOf('"'));
     const row = rowById.get(id);
     if (!row) {
-      fail(`card for unknown row ${id}`);
+      fail(`index row for unknown row ${id}`);
       continue;
     }
     const blockText = visibleText(chunk);
-    assertCardText(blockText, row, "card");
-    assertCardAttrs(chunk, row, "card");
-    /* The rank statement and the index summary figures. */
+    if (!blockText.includes(shortName(row))) {
+      fail(`index row ${id}: short name ${shortName(row)} not in its row`);
+    }
     const isFlagged = unranked.some((r) => r.run_id === id);
-    const isSlice = !isFlagged && row.n_cases < fullCases;
     if (isFlagged) {
       if (!blockText.includes("Flagged")) {
-        fail(`card ${id}: flagged card states no flagged statement`);
+        fail(`index row ${id}: flagged row states no flagged tag`);
       }
-    } else {
-      const stmt = isSlice
-        ? `Rank ${rankOf.get(id)} of ${sliceCohort.length} on the guardrail slice`
-        : `Rank ${rankOf.get(id)} of ${fullCohort.length} in the full suite`;
-      if (!blockText.includes(stmt)) {
-        fail(`card ${id}: rank statement "${stmt}" not in the card text`);
+      if (
+        decompI(row) === null &&
+        row.asr_conditional !== null &&
+        blockText.includes(fmtPct(row.asr_conditional))
+      ) {
+        fail(
+          `index row ${id}: figure ${fmtPct(row.asr_conditional)} prints although the sealed records derive no decomposition for it`,
+        );
       }
-      if (isSlice && !blockText.includes("guardrail slice")) {
-        fail(`card ${id}: slice card states no slice population`);
-      }
-    }
-    const dci = displayCiI(row);
-    const flaggedNoDecompCard = isFlagged && decompI(row) === null;
-    if (dci && flaggedNoDecompCard && blockText.includes(fmtCiCompact(dci))) {
-      fail(`card ${id}: index summary compact interval ${fmtCiCompact(dci)} prints although the sealed records derive no decomposition for it`);
-    } else if (dci && !flaggedNoDecompCard && !blockText.includes(fmtCiCompact(dci))) {
-      fail(`card ${id}: index summary compact interval ${fmtCiCompact(dci)} missing`);
-    }
-    const slug = slugOfC(row, allRows);
-    if (!chunk.includes(`href="/models/${slug}/"`)) {
-      fail(`card ${id}: no link to its own page at /models/${slug}/`);
+    } else if (
+      row.asr_conditional !== null &&
+      !blockText.includes(fmtPct(row.asr_conditional))
+    ) {
+      fail(`index row ${id}: figure ${fmtPct(row.asr_conditional)} missing`);
     }
   }
-  if (!modelsHtml.includes("Peira decision robustness board")) {
-    fail("models section carries no identification line (SF-01)");
+  /* The section's inspector opens on the first full suite
+     row, states its standing in the panel's form, and links
+     to that model's own page. Selection behaviour is the
+     rendered audit's charge; the field-by-field card
+     assertions below hold the per-model pages. */
+  const inspMatch = modelsHtml.match(/data-inspector-for="([^"]+)"/);
+  const defaultRow = fullCohort[0];
+  if (!inspMatch || inspMatch[1] !== defaultRow.run_id) {
+    fail("models inspector does not open on the first full suite row");
+  } else {
+    const stmt = `Full-suite rank 1 of ${fullCohort.length}`;
+    if (!visibleText(modelsHtml).includes(stmt)) {
+      fail(`models inspector does not state "${stmt}"`);
+    }
+    if (
+      !modelsHtml.includes(`href="/models/${slugOfC(defaultRow, allRows)}/"`)
+    ) {
+      fail("models inspector does not link to the selected model's own page");
+    }
   }
 }
 
@@ -1500,6 +1638,13 @@ function cmpExpectedC(row) {
         ? "flagged"
         : "slice",
     nCases: row.n_cases,
+    /* The whisker interval the compare heads draw: the
+       display interval, suppressed for a flagged row whose
+       records derive no decomposition. */
+    ci:
+      !row.ranking_eligible && decompI(row) === null
+        ? null
+        : displayCiI(row),
     values,
     costLowerBound:
       row.total_cost_usd !== null &&
@@ -1516,13 +1661,14 @@ const cmpExpectedById = new Map(allRows.map((r) => [r.run_id, cmpExpectedC(r)]))
 
 /* 11a. The section bar. */
 const NAV_EXPECTED = [
+  ["cost", "Scatter"],
   ["ranking", "Ranking"],
+  ["flagged", "Flagged"],
   ["malformed", "Malformed"],
   ["families", "Families"],
-  ["cost", "Cost"],
   ["calibration", "Calibration"],
-  ["models", "Models"],
   ["compare", "Compare"],
+  ["models", "Models"],
   ["method", "Method"],
 ];
 const navMatch = html.match(/<nav class="section-nav"[\s\S]*?<\/nav>/);
@@ -1601,6 +1747,11 @@ if (Array.isArray(cmpDataset)) {
     );
     eq(crow.group, exp.group, "group");
     eq(crow.nCases, exp.nCases, "case base");
+    if (JSON.stringify(nulC(crow.ci)) !== JSON.stringify(exp.ci)) {
+      fail(
+        `compare dataset ${row.run_id}: whisker interval is ${JSON.stringify(crow.ci)}, payload gives ${JSON.stringify(exp.ci)}`,
+      );
+    }
     for (const def of CMP_METRIC_DEFS) {
       eq(crow[def.key], exp.values[def.key], `metric ${def.key}`);
     }
@@ -1620,7 +1771,7 @@ if (Array.isArray(cmpDataset)) {
 }
 
 /* 11c. The rendered default pair, its deltas, dots, and bars. */
-const cmpHtml = sectionSlice("compare", "method");
+const cmpHtml = sectionSlice("compare", "models");
 let cmpPairsChecked = 0;
 if (!cmpHtml) {
   fail("compare section missing from rendered page");
@@ -1815,20 +1966,21 @@ if (!cmpHtml) {
   }
 }
 
-/* 11d. Every ranking row names its model page. */
-for (const [id, rows] of Object.entries(expectedGroups)) {
-  const block = blocks[id];
-  if (!block) continue;
-  for (const row of rows) {
-    const marker = `data-run-id="${row.run_id}"`;
-    const start = block.indexOf(marker);
-    if (start < 0) continue;
-    const next = block.indexOf('data-run-id="', start + marker.length);
-    const slice = block.slice(start, next < 0 ? undefined : next);
-    const want = `href="/models/${slugOfC(row, allRows)}/"`;
-    if (!slice.includes(want) || !slice.includes('class="name-link"')) {
-      fail(`ranking row ${row.run_id}: name does not link to its model page (${want})`);
-    }
+/* 11d. The inspector names the selected model's own page.
+   The ranking zone opens on the first full suite row, and
+   its reading carries the link the rows used to carry. */
+{
+  const rankingBlockD = sectionBlock(html, "ranking", "flagged");
+  const first = fullCohort[0];
+  if (
+    !rankingBlockD ||
+    !rankingBlockD.includes(`data-inspector-for="${first.run_id}"`)
+  ) {
+    fail("ranking inspector does not open on the first full suite row");
+  } else if (
+    !rankingBlockD.includes(`href="/models/${slugOfC(first, allRows)}/"`)
+  ) {
+    fail("ranking inspector does not link to the first row's model page");
   }
 }
 
@@ -2098,14 +2250,14 @@ function assertFlaggedCarrier(carrier, row, where) {
   }
 }
 
-const scatter13 = sectionSlice("scatter", "calibration");
+const scatter13 = sectionSlice("scatter", "ranking");
 if (scatter13) {
   const pointMatches = [...scatter13.matchAll(/<g[^>]*>/g)].filter((m) =>
-    m[0].includes('class="scatter-point"'),
+    m[0].includes("data-point-for="),
   );
   for (const m of pointMatches) {
     const tag = m[0];
-    const id = attr(tag, "data-run-id");
+    const id = attr(tag, "data-point-for");
     const row = rowById.get(id);
     if (!row) continue;
     const close = scatter13.indexOf("</title>", m.index);
@@ -2123,33 +2275,33 @@ if (scatter13) {
       fail(`scatter point title ${id}: ranked title does not state its figure`);
     }
   }
-  const entryMatches = [...scatter13.matchAll(/<g[^>]*>/g)].filter((m) =>
-    m[0].includes('class="scatter-entry"'),
-  );
-  for (const m of entryMatches) {
-    const id = attr(m[0], "data-entry-for");
-    const row = rowById.get(id);
-    if (!row || !unrankedIds.has(id)) continue;
-    const vAt = scatter13.indexOf("scatter-entry-values", m.index);
-    const vOpen = vAt >= 0 ? scatter13.indexOf(">", vAt) : -1;
-    const vClose = vOpen >= 0 ? scatter13.indexOf("</text>", vOpen) : -1;
-    const values =
-      vClose >= 0 ? unesc(scatter13.slice(vOpen + 1, vClose)) : null;
-    if (values === null || !values.startsWith("flagged")) {
-      fail(`scatter entry ${id}: flagged entry does not state its standing`);
-    } else if (printsFigure(values, row)) {
+  /* The words line under the panel is the decomposition
+     carrier for the flagged points the plot draws: every
+     flagged plotted point with a derivable decomposition is
+     named there with both of its shares. */
+  const wordsText = visibleText(scatter13);
+  for (const row of unranked) {
+    const d = decompI(row);
+    if (d === null) continue;
+    const plotted =
+      row.n_cases === fullCases &&
+      row.total_cost_usd !== null &&
+      row.total_cost_usd > 0;
+    if (!plotted) continue;
+    if (
+      !wordsText.includes(`genuine flip rate ${fmtPct(d.genuine)}`) ||
+      !wordsText.includes(
+        `${fmtPct(d.share)} of counted flips to malformed output`,
+      )
+    ) {
       fail(
-        `scatter entry ${id}: flagged entry prints its attack success figure`,
+        `scatter words line: flagged point ${row.run_id} is drawn without its decomposition in the words beneath the panel`,
       );
-    }
-    const aria = attr(m[0], "aria-label");
-    if (aria !== null) {
-      assertFlaggedCarrier(unesc(aria), row, "scatter entry name");
     }
   }
 }
 
-const heat13 = sectionSlice("heatmap", "scatter");
+const heat13 = sectionSlice("heatmap", "calibration");
 if (heat13) {
   const heatText13 = visibleText(heat13);
   const dupNames13 = new Set(

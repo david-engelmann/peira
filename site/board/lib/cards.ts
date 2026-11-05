@@ -145,9 +145,13 @@ export type CostState =
 /**
  * The cost state of one result, in the four states the page
  * distinguishes (design 4.5, census V-02). A recorded cost with
- * unpriced calls is a lower bound. A recorded zero is a locally
- * served run, which is a different fact from no cost recorded,
- * and the two never share words.
+ * unpriced calls is a lower bound. A recorded zero is a run
+ * whose calls carried no per-call API charge, whether it was
+ * served locally or measured through an agent harness on a
+ * subscription seat, which is a different fact from no cost
+ * recorded, and the two never share words. The state's name
+ * is the older word. Its glosses at the render sites follow
+ * the run's wire, so a harness run is never glossed as local.
  */
 export function costStateOf(row: BoardRow): CostState {
   if (row.total_cost_usd === null || row.total_cost_usd === undefined) {

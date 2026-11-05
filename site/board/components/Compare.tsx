@@ -16,6 +16,7 @@ import {
   fmtDeltaUsd,
   fmtDeltaMs,
 } from "@/lib/format";
+import Inspector from "./Inspector";
 
 /**
  * Compare (design system section 4.6). Two pickers, a metric
@@ -213,6 +214,22 @@ export default function Compare({ data }: { data: CompareData }) {
           are not measured on the same base.
         </p>
       )}
+
+      <div className="cmp-heads">
+        {(
+          [
+            ["a", a],
+            ["b", b],
+          ] as const
+        ).map(([side, row]) => (
+          <div className="cmp-insp" key={side} data-cmp-head={side}>
+            <Inspector
+              datum={data.inspectors[row.runId]}
+              axisMax={data.axisMax}
+            />
+          </div>
+        ))}
+      </div>
 
       <table className="cmp-table">
         <thead>
@@ -460,9 +477,11 @@ export default function Compare({ data }: { data: CompareData }) {
       <p className="cmp-note">
         A middot marks a figure a result does not carry. Slices and
         flagged results carry no robustness tax. A cost with ≥ is a
-        lower bound, a cost of $0.00 is a locally served run, and a
-        run with no recorded cost shows the middot. Where a cost is
-        a lower bound, its delta is a difference of recorded totals.
+        lower bound, a cost of $0.00 is a run with no per-call API
+        charge, served locally or measured through an agent harness,
+        and a run with no recorded cost shows the middot. Where a
+        cost is a lower bound, its delta is a difference of recorded
+        totals.
       </p>
     </div>
   );

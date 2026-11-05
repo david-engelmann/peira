@@ -16,6 +16,7 @@
 import type { BoardRow } from "@/lib/payload";
 import {
   boardGroups,
+  displayCi,
   duplicateShortNames,
   familyFlipDecomposition,
   flipDecomposition,
@@ -25,8 +26,10 @@ import {
   unansweredNote,
   wireWords,
 } from "@/lib/payload";
+import { asrAxisFor } from "@/lib/chart";
 import { calibrationArmsOf, familiesOf, familyFullName, familyOrder } from "@/lib/charts";
 import { costStateOf } from "@/lib/cards";
+import { inspectorDataAll, type InspectorDatum } from "@/lib/inspectorData";
 import { vendorColorOf } from "@/lib/vendorColors";
 import { vendorOf } from "@/lib/vendor";
 
@@ -42,6 +45,10 @@ export interface CompareRow {
   group: CompareGroup;
   nCases: number;
   asr: number | null;
+  /** The display interval for the attack success figure, or
+   *  null where the figure itself is not stated (a flagged
+   *  row whose decomposition does not derive). */
+  ci: [number, number] | null;
   benign: number | null;
   malformed: number | null;
   atkEce: number | null;
@@ -88,6 +95,15 @@ export interface CompareRow {
 
 export interface CompareData {
   rows: CompareRow[];
+  /**
+   * Every result's inspector datum, keyed by run id, so
+   * the two compare columns are full inspector readings
+   * (figure grid and disclosure blocks), not heads over
+   * the table. It stays out of the row set, so the dataset the
+   * section prints for integrity check 11 is the rows
+   * alone, as it has always been.
+   */
+  inspectors: Record<string, InspectorDatum>;
   /** Family full names in the same fixed order as each row's family array. */
   familyNames: string[];
   familyKeys: string[];
@@ -95,6 +111,10 @@ export interface CompareData {
   defaultB: string;
   fullCases: number;
   sliceCases: number;
+  /** The shared attack success axis maximum, derived from
+   *  the ranked population the way the ranking derives it,
+   *  so the two inspector heads read on the board's scale. */
+  axisMax: number;
 }
 
 function shapeRow(
@@ -119,6 +139,8 @@ function shapeRow(
     group,
     nCases: row.n_cases,
     asr: row.asr_conditional ?? null,
+    ci:
+      group === "flagged" && decomp === null ? null : displayCi(row),
     benign: row.benign_accuracy ?? null,
     malformed: row.malformed_rate ?? null,
     atkEce: arms?.attacked.ece ?? row.ece_attacked ?? null,
@@ -185,13 +207,24 @@ export function compareData(): CompareData {
     rows.find((r) => r.group !== "flagged" && r.slug !== defaultA.slug) ??
     rows.find((r) => r.group === "full" && r.slug !== defaultA.slug) ??
     rows[1];
+  const rankedRates = [...groups.full, ...groups.slices]
+    .map((r) => r.asr_conditional)
+    .filter((v): v is number => v !== null && v !== undefined);
+  const axisMax = asrAxisFor(
+    rankedRates.length ? Math.max(...rankedRates) : 0,
+  ).max;
+  const { byRunId } = inspectorDataAll(axisMax);
+  const inspectors: Record<string, InspectorDatum> = {};
+  for (const [id, d] of byRunId) inspectors[id] = d;
   return {
     rows,
+    inspectors,
     familyNames: famKeys.map((k) => familyFullName(k)),
     familyKeys: famKeys,
     defaultA: defaultA.slug,
     defaultB: defaultB.slug,
     fullCases: groups.fullCases,
     sliceCases: groups.slices[0]?.n_cases ?? 0,
+    axisMax,
   };
 }

@@ -24,17 +24,17 @@ export default function CompareSection() {
         data-section="compare"
         id="compare"
       >
-        <p className="section-label">Compare</p>
-        <h2 className="section-title" id="compare-title">
-          Two models head to head
-        </h2>
-        <p className="section-lede">
-          Pick any two of the {fmtInt(data.rows.length)} results and
-          read them side by side. The middle column gives the
-          difference of the unrounded values, and the bars below set
-          the two against each other family by family on the shared
-          0 to 100 percent scale.
-        </p>
+        <div className="sechead">
+          <div className="micro">07 · Compare</div>
+          <h2 id="compare-title">Two models head to head</h2>
+          <p className="cap">
+            Pick any two of the {fmtInt(data.rows.length)} results and
+            read them side by side. The middle column gives the
+            difference of the unrounded values, and the bars below set
+            the two against each other family by family on the shared
+            0 to 100 percent scale.
+          </p>
+        </div>
         <Compare data={data} />
         <p className="chart-id">
           Peira decision robustness board, compare. Dataset{" "}

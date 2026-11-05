@@ -144,14 +144,14 @@ export default function Method() {
       data-section="method"
       id="method"
     >
-      <p className="section-label">Method and notes</p>
-      <h2 className="section-title" id="method-title">
-        How the board was measured
-      </h2>
-      <p className="section-lede">
-        The definitions and rules every figure on this page rests on,
-        stated once, in the order a reader meets them.
-      </p>
+      <div className="sechead">
+        <div className="micro">09 · Method and notes</div>
+        <h2 id="method-title">How the board was measured</h2>
+        <p className="cap">
+          The definitions and rules every figure on this page rests on,
+          stated once, in the order a reader meets them.
+        </p>
+      </div>
 
       <h3 className="method-head" id="method-case">What a case is</h3>
       <p className="method-p">
@@ -232,9 +232,10 @@ export default function Method() {
         rates in the run's own provenance. Where some of a run's calls
         went unpriced, the recorded total understates the true cost and
         the figure is a lower bound, marked with a greater than or
-        equal sign wherever it prints. Results served locally record a
-        cost of 0.00 or no cost at all, and the page keeps those two
-        facts apart in words.
+        equal sign wherever it prints. Results with no per-call API
+        charge, served locally or measured through an agent harness,
+        record a cost of 0.00 or no cost at all, and the page keeps
+        those two facts apart in words.
       </p>
 
       {rerunParagraph !== null && (

@@ -8,50 +8,26 @@ import {
   type BoardRow,
 } from "@/lib/payload";
 import { fmtInt, fmtPct } from "@/lib/format";
-import { vendorColorOf } from "@/lib/vendorColors";
-import VendorLogo from "./VendorLogo";
+import { markOf } from "@/lib/inspectorData";
+import Mark from "./Mark";
 
 /**
- * Malformed rates and the admission rule, design system
- * sections 1.9 and 2.1 (position 4, directly after the ranking,
- * because the ranking raises the question this section answers).
- *
- * One list, worst first, the order the previous board's strip
- * was verified in. The axis is data-driven (cycle 6, C6-02):
- * while the worst printed rate fits the 0 to 15 percent scale
- * (census F-15, which also bans the old per-row admission
- * ticks) the axis is that scale on round ticks; past it, the
- * axis extends to the smallest 10 percent step at or above
- * the worst rate, ticked every 10, so a bar's fill always
- * matches the axis it is read on and no bar can saturate its
- * track under a smaller scale maximum. The 5 percent
- * admission line is a single continuous rule drawn once
- * across every bar. Flagged results draw an amber outline
- * bar with an amber value and a flagged tag, the same
- * encoding as the ranking's flagged strip, and amber appears
- * on no other row. A ranked bar past the line would draw in
- * red, the design's over-threshold mark; none exists on this
- * payload. Results whose printed rate is 0.0 percent fold
- * into one summary line (the standing Round 21 S6 rule,
- * confirmed by the census). Every row also carries the
- * maker's vendor chip beside its name, the heatmap's
- * pattern, so maker identity never rides on bar color
- * alone (cycle 6, C6-11).
+ * The malformed rail (04). Every result's malformed share
+ * as a bar on one scale, worst first, with the 5 percent
+ * flag line drawn through the bars and labelled. The scale
+ * derives from the field: the worst printed rate rounded up
+ * to the next 5 percent step, with a floor of 15 percent so
+ * a quiet field still reads against a frame that leaves the
+ * flag line inside the track. Results past the line stand
+ * in the flagged band above with their split; their bars
+ * here draw in the flagged amber, and every other bar draws
+ * in the neutral track ink, so maker identity never rides
+ * on bar color. Results whose printed rate is 0.0 percent
+ * fold into one summary line rather than draw as empty bars.
  */
 
-/**
- * The axis maximum and its ticks for the rates being drawn.
- * The low branch is the historical 0 to 15 scale; the wide
- * branch rounds the worst rate up to a 10 percent step.
- */
-function malformedAxis(maxRate: number): { max: number; ticks: number[] } {
-  if (!(maxRate > 0.15)) {
-    return { max: 0.15, ticks: [0, 0.05, 0.1, 0.15] };
-  }
-  const max = Math.ceil(maxRate / 0.1) * 0.1;
-  const ticks: number[] = [];
-  for (let t = 0; t <= max + 1e-9; t += 0.1) ticks.push(t);
-  return { max, ticks };
+function malformedAxis(maxRate: number): number {
+  return Math.max(0.15, Math.ceil(maxRate / 0.05) * 0.05);
 }
 
 export default function Malformed() {
@@ -76,90 +52,67 @@ export default function Malformed() {
   const axis = malformedAxis(
     printed.reduce((m, r) => Math.max(m, r.malformed_rate ?? 0), 0),
   );
-  /** Position on the malformed axis as a percent of the strip. */
-  const malPct = (value: number): number =>
-    Math.max(0, (value / axis.max) * 100);
+  const pct = (value: number): number =>
+    Math.max(0, (value / axis) * 100);
+  const flagFrac = 0.05 / axis;
 
   return (
     <section
-      className="section"
+      className="section sec-malformed"
       aria-labelledby="malformed-title"
       data-section="malformed"
       id="malformed"
     >
-      <p className="section-label">Malformed and admission</p>
-      <h2 className="section-title" id="malformed-title">
-        Why flagged results are not ranked
-      </h2>
-      <p className="section-lede">
-        A result earns a rank only when its malformed response rate is
-        at or under 5 percent on its complete sealed run.{" "}
-        {fmtInt(groups.flagged.length)} results sit over that line.
-        They keep every number the board measured, are not ranked, and
-        their bars below draw in the flagged outline.
-      </p>
-
-      <div className="mal-axis" aria-hidden="true">
-        <div className="mal-limit-label" style={{ left: `${malPct(0.05)}%` }}>
-          5% admission limit
-        </div>
-        {axis.ticks.map((tick, i) => (
-          <span
-            key={tick}
-            className={`mal-tick num${
-              i === 0 ? " first" : i === axis.ticks.length - 1 ? " last" : ""
-            }`}
-            style={{ left: `${malPct(tick)}%` }}
-          >
-            {Math.round(tick * 100)}
-          </span>
-        ))}
+      <div className="sechead">
+        <div className="micro">04 · Malformed</div>
+        <h2 id="malformed-title">Malformed output across the field</h2>
+        <p className="cap">
+          Attacked responses that stopped parsing as function calls,
+          ranked by share. Bars run on one scale to{" "}
+          {Math.round(axis * 100)} percent. Results past the flag
+          line stand in the flagged band above with their split.
+        </p>
       </div>
 
-      <div className="mal-rows">
+      <div className="malfrows">
+        <div className="malfhead">
+          <span className="micro faint">flag line, 5 percent malformed</span>
+        </div>
         <div
-          className="mal-line"
-          style={{ left: `${malPct(0.05)}%` }}
+          className="flagline"
+          style={{
+            left: `calc(190px + (100% - 254px) * ${flagFrac})`,
+          }}
           aria-hidden="true"
         />
         {printed.map((row) => {
           const flagged = flaggedIds.has(row.run_id);
           const rate = row.malformed_rate ?? 0;
-          const over = !flagged && rate > 0.05;
           const name = shortName(row);
           return (
             <div
-              className="mal-row"
+              className="mrow"
               key={row.run_id}
               data-run-id={row.run_id}
               data-malformed={row.malformed_rate ?? ""}
             >
-              <div className="mal-line1">
-                <div className="cell-name">
-                  <div className="name-line">
-                    {flagged && <span className="flag-tag">Flagged</span>}
-                    <VendorLogo row={row} size="mini" />
-                    {name}
-                  </div>
+              <div className="nm">
+                <Mark mark={markOf(row)} size="row" />
+                <span>
+                  {name}
                   {dupes.has(name) && (
-                    <div className="wire-line">{wireWords(row.wire)}</div>
+                    <span className="sub">{wireWords(row.wire)}</span>
                   )}
-                </div>
-                <div
-                  className={`mal-value num${flagged ? " flagged" : ""}`}
-                >
-                  {fmtPct(rate)}
-                </div>
+                </span>
               </div>
-              <div className="mal-track">
+              <div className="mtrack">
                 <div
-                  className={`mal-fill${flagged ? " flagged" : ""}${over ? " over" : ""}`}
-                  style={{
-                    width: `${malPct(rate)}%`,
-                    background:
-                      flagged || over ? undefined : vendorColorOf(row),
-                  }}
+                  className={`mbar${flagged ? " amber" : ""}`}
+                  style={{ width: `${pct(rate)}%` }}
                 />
+              </div>
+              <div className={`mrate num${flagged ? " amber" : ""}`}>
+                {fmtPct(rate)}
               </div>
             </div>
           );
@@ -168,15 +121,15 @@ export default function Malformed() {
 
       {folded > 0 && (
         <p className="mal-fold">
-          {fmtInt(folded)} results printed a malformed rate of 0.0
-          percent and are folded here rather than drawn as empty bars.
+          {fmtInt(folded)} results printed a malformed rate of 0.0 percent
+          and are folded here rather than drawn as empty bars.
         </p>
       )}
 
       <p className="chart-id">
         Peira decision robustness board, malformed response rates. All{" "}
-        {fmtInt(allRows.length)} results, worst first, admission limit 5
-        percent. Dataset {versions.dataset}, updated {boardDateWords()}.
+        {fmtInt(allRows.length)} results, worst first, flag line 5 percent.
+        Dataset {versions.dataset}, updated {boardDateWords()}.
       </p>
     </section>
   );

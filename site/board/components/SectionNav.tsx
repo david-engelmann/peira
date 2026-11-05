@@ -3,9 +3,9 @@
 import { useEffect, useRef } from "react";
 
 /**
- * The sticky section bar (design system section 2.1). Eight
- * short labels, the design's ceiling, in the order the page
- * runs. Plain anchors, so every link works with JavaScript
+ * The sticky section bar. Nine short labels in the order
+ * the page runs, one per numbered section of the instrument
+ * panel. Plain anchors, so every link works with JavaScript
  * off; the scrollspy is a progressive enhancement that marks
  * the section in view with an ink rule and aria-current. The
  * active styling never changes a box size (the rule is drawn
@@ -26,13 +26,14 @@ import { useEffect, useRef } from "react";
  * the one cut off at the strip's edge.
  */
 export const NAV_ITEMS: Array<{ id: string; label: string }> = [
+  { id: "cost", label: "Scatter" },
   { id: "ranking", label: "Ranking" },
+  { id: "flagged", label: "Flagged" },
   { id: "malformed", label: "Malformed" },
   { id: "families", label: "Families" },
-  { id: "cost", label: "Cost" },
   { id: "calibration", label: "Calibration" },
-  { id: "models", label: "Models" },
   { id: "compare", label: "Compare" },
+  { id: "models", label: "Models" },
   { id: "method", label: "Method" },
 ];
 

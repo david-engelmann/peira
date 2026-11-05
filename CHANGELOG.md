@@ -7,6 +7,57 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
 
 ## [Unreleased]
 
+### The board rebuilt as an instrument panel
+
+- The leaderboard page is rebuilt around one selection. A
+  cost scatter with the no-cost rail laddered inside its
+  panel opens the page, a ranking rail with a reading
+  inspector follows, and the flagged band, the malformed
+  rail with its drawn flag line, the family heatmap, the
+  calibration grid, the compare view, the models index and
+  the method section keep their order behind it. Selecting
+  a result anywhere loads its reading into the inspector,
+  and the card grid the page used to carry is gone. Section
+  titles state derived claims, display numerals stand in
+  the sans face, and every figure still derives from the
+  payload at build time. The share image generators draw
+  the same grammar, the landscape card gains a portrait
+  variant from the same derivations, and the ladder budget
+  is spent and logged on every publish. No figure, ranking
+  rule or metric changed.
+
+### Instrument panel review fixes
+
+- Three reviews and a rendered inspection of the rebuilt
+  board landed as one fix pass. The ranking rail carries
+  the no-answer note again where a result carries one, the
+  inspector states median latency in the figure order the
+  design record sets, and the compare columns and the
+  per-model pages read as full inspector readings in the
+  panel grammar with every figure and disclosure the card
+  carried. The priciest and flipped-most claim derives
+  once in the data layer for the page title, the section
+  title and the readings paragraph. A flagged result
+  sitting exactly at the share card's axis ceiling is
+  named in words with its decomposition or the build
+  fails, the landscape ladder slack returns to the design
+  record's budget, and a run measured through an agent
+  harness is no longer glossed as served locally on any
+  surface. The DOM audit regains the calibration battery,
+  the heatmap name checks, the scatter label clearance
+  check and the section bar's scrollspy and activation
+  checks, and its first run caught the scatter labels
+  seating over flagged discs, the longest rail name
+  running under its rate figure, and phone calibration
+  ticks under the legibility floor. The label solver now
+  treats flagged discs as obstacles, the rail band prints
+  the one sanctioned short name, the flagged split bar is
+  solid amber with its figure at display size, each
+  flagged figure keeps its label as one unbreakable unit,
+  figure labels stand over their values, and the skip
+  link stays hidden until keyboard focus. No figure,
+  ranking rule or metric changed.
+
 ### Share image corner readings and under-chart words
 
 - The share image's toughest reading now stands on every
