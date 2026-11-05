@@ -16,6 +16,7 @@
 import type { BoardRow } from "@/lib/payload";
 import {
   boardGroups,
+  displayCi,
   duplicateShortNames,
   familyFlipDecomposition,
   flipDecomposition,
@@ -25,6 +26,7 @@ import {
   unansweredNote,
   wireWords,
 } from "@/lib/payload";
+import { asrAxisFor } from "@/lib/chart";
 import { calibrationArmsOf, familiesOf, familyFullName, familyOrder } from "@/lib/charts";
 import { costStateOf } from "@/lib/cards";
 import { vendorColorOf } from "@/lib/vendorColors";
@@ -42,6 +44,10 @@ export interface CompareRow {
   group: CompareGroup;
   nCases: number;
   asr: number | null;
+  /** The display interval for the attack success figure, or
+   *  null where the figure itself is not stated (a flagged
+   *  row whose decomposition does not derive). */
+  ci: [number, number] | null;
   benign: number | null;
   malformed: number | null;
   atkEce: number | null;
@@ -95,6 +101,10 @@ export interface CompareData {
   defaultB: string;
   fullCases: number;
   sliceCases: number;
+  /** The shared attack success axis maximum, derived from
+   *  the ranked population the way the ranking derives it,
+   *  so the two inspector heads read on the board's scale. */
+  axisMax: number;
 }
 
 function shapeRow(
@@ -119,6 +129,8 @@ function shapeRow(
     group,
     nCases: row.n_cases,
     asr: row.asr_conditional ?? null,
+    ci:
+      group === "flagged" && decomp === null ? null : displayCi(row),
     benign: row.benign_accuracy ?? null,
     malformed: row.malformed_rate ?? null,
     atkEce: arms?.attacked.ece ?? row.ece_attacked ?? null,
@@ -185,6 +197,9 @@ export function compareData(): CompareData {
     rows.find((r) => r.group !== "flagged" && r.slug !== defaultA.slug) ??
     rows.find((r) => r.group === "full" && r.slug !== defaultA.slug) ??
     rows[1];
+  const rankedRates = [...groups.full, ...groups.slices]
+    .map((r) => r.asr_conditional)
+    .filter((v): v is number => v !== null && v !== undefined);
   return {
     rows,
     familyNames: famKeys.map((k) => familyFullName(k)),
@@ -193,5 +208,6 @@ export function compareData(): CompareData {
     defaultB: defaultB.slug,
     fullCases: groups.fullCases,
     sliceCases: groups.slices[0]?.n_cases ?? 0,
+    axisMax: asrAxisFor(rankedRates.length ? Math.max(...rankedRates) : 0).max,
   };
 }

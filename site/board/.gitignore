@@ -2,5 +2,6 @@ node_modules/
 .next/
 out/
 public/og.png
+public/og-portrait.png
 public/payload.json
 .og/
