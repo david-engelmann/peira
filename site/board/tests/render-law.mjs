@@ -12,39 +12,59 @@
  *     died here: the scatter's label solver threw at fitted
  *     widths and the exception unmounted the whole page.)
  *  2. No horizontal overflow at any width (doctrine D8).
- *  3. Every charted result is named exactly once in the
- *     visible scatter variant: beside its disc, in an
- *     overflow row, or in the fitted list (doctrine D1, D3,
- *     D5). Named nowhere fails; named twice fails.
- *  4. The suite case count appears only inside Method.
+ *  3. Every charted result is named at least once across
+ *     the top of the board (sections 01 to 03): beside its
+ *     disc in the visible scatter variant, in the words
+ *     line under the panel, in the scatter's rail band or
+ *     the phone rail rows, in the ranking rail, or in the
+ *     flagged band. Named nowhere fails. A result is
+ *     legitimately named more than once now (its disc
+ *     label, its rail row, and its band are separate
+ *     readings of one result), so the old exactly-once
+ *     rule (doctrine D5) no longer holds and is not what
+ *     this law measures; the tension is recorded in the
+ *     redesign notes.
+ *  4. The suite case count appears only inside Method,
+ *     apart from the sanctioned carriers the integrity
+ *     check also names (the flagged band's lead and
+ *     disclosure blocks, the guard group head, the
+ *     malformed fold line), where a result's own case
+ *     base is part of its disclosure.
  *  5. A flagged result's figure never prints alone (C-5).
  *     The figures and the decompositions are both derived
  *     from the payload at run time, the decompositions by
  *     the same operation lib/payload derives them with,
  *     never written into this file. Inside every carrier
- *     attributed to a flagged result (its ranking row, its
- *     heat cells, its scatter entry or label group, its
- *     model card, its model index summary, a heatmap
- *     caption paragraph), a printed
+ *     attributed to a flagged result (the flagged band's
+ *     lead block and rows, its scatter point, whose title
+ *     and accessible name carry the clauses, its heat
+ *     cells, a heatmap caption paragraph), a printed
  *     conditional or unconditional figure must stand with
  *     both decomposition clauses, the genuine flip rate
  *     and the malformed share of counted flips, in the
  *     carrier's text or its titles. Where the sealed
  *     records derive no decomposition for a result, its
  *     figure must not print in those carriers at all. The
- *     card's per-family spark list is judged as its own
- *     carrier (data-spark-for), family by family. A family
- *     figure must carry its own decomposition in the spark
- *     row's title, and a family whose records derive no
- *     decomposition must print suppressed there, dashes
- *     for its value and no figure attribute. A separate
- *     interaction pass then drives both compare
- *     pickers, a flagged result on side A and a second
- *     flagged result on side B, and holds the compare
- *     section to the same pairing on each side, the
- *     headline figure and the family figures alike.
- *     check-integrity enforces the pairing on the
- *     server-rendered page and remains the gate of
+ *     scatter rail band's and the models index's bare
+ *     rates are chart furniture, not carriers: a flagged
+ *     result's decomposition stands in its band and in
+ *     the inspector on the same page, and an interaction
+ *     pass below selects every flagged result in the
+ *     models index and holds the inspector it loads to
+ *     the same pairing. The model card on the result's
+ *     own page and its per-family spark list are judged
+ *     as carriers by a dedicated pass over those pages:
+ *     a family figure must carry its own decomposition
+ *     in the spark row's title, and a family whose
+ *     records derive no decomposition must print
+ *     suppressed there, dashes for its value and no
+ *     figure attribute. A separate interaction pass then
+ *     drives both compare pickers, a flagged result on
+ *     side A and a second flagged result on side B, and
+ *     holds the compare section to the same pairing on
+ *     each side, the headline figure and the family
+ *     figures alike. check-integrity enforces the pairing
+ *     on the server-rendered page and remains the gate of
  *     record. This law is its rendered companion.
  *  6. At phone width under a coarse pointer, every control
  *     stands at least 44px tall (WCAG 2.5.5, Maidan's touch
@@ -514,22 +534,37 @@ const MEASURE = `(chartedIds, caseCountText, flaggedFigures) => {
   const variant = vis(wide) ? wide : phone;
   out.variant = vis(wide) ? "wide" : "phone";
   const named = new Map();
-  if (variant) {
-    /* A point's naming carrier is its label text: a placed
-     * label, a rail label, or an overflow row's name text
-     * (the row group also carries data-entry-for, which is
-     * the container, not a second naming). The fitted
-     * list's rows are the one carrier keyed by data-entry-for
-     * alone. Count those two, never the SVG row groups. */
-    variant.querySelectorAll("[data-label-for]").forEach((el) => {
-      const id = el.getAttribute("data-label-for");
-      named.set(id, (named.get(id) ?? 0) + 1);
+  const nameFrom = (root, selector, attr) => {
+    if (!root) return;
+    root.querySelectorAll(selector).forEach((el) => {
+      const id = el.getAttribute(attr);
+      if (id) named.set(id, (named.get(id) ?? 0) + 1);
     });
-    variant.querySelectorAll(".scatter-list-row[data-entry-for]").forEach((el) => {
-      const id = el.getAttribute("data-entry-for");
-      named.set(id, (named.get(id) ?? 0) + 1);
-    });
-  }
+  };
+  /* Law 3's carriers, sections 01 to 03. In the visible
+   * scatter variant: a placed label beside its disc, a
+   * rail band row (wide) or a phone rail row, a result
+   * named in the words line under the panel, and the
+   * off-scale annotation. In the ranking: every rail row,
+   * folded rows included, since the fold is a reading
+   * device and never a data cut. In the flagged band: the
+   * lead block and every band row. An id named by any one
+   * carrier is named; the count is kept only for the
+   * report line. */
+  nameFrom(variant, "[data-label-for]", "data-label-for");
+  nameFrom(variant, "[data-rail-for]", "data-rail-for");
+  nameFrom(variant, "[data-words-for]", "data-words-for");
+  nameFrom(variant, "[data-offscale-for]", "data-offscale-for");
+  nameFrom(
+    document.querySelector('[data-section="ranking"]'),
+    ".rrow[data-run-id]",
+    "data-run-id",
+  );
+  nameFrom(
+    document.querySelector('[data-section="flagged"]'),
+    "[data-run-id]",
+    "data-run-id",
+  );
   out.unnamed = chartedIds.filter((id) => !named.has(id));
   out.duplicated = [...named.entries()].filter(([, n]) => n > 1).map(([id]) => id);
   out.namedCount = named.size;
@@ -543,7 +578,13 @@ const MEASURE = `(chartedIds, caseCountText, flaggedFigures) => {
     if (node.parentElement && node.parentElement.closest("script, style")) continue;
     if (node.textContent.includes(caseCountText)) {
       const inMethod = node.parentElement && node.parentElement.closest("#method");
-      if (!inMethod) {
+      /* The sanctioned carriers, the same set the integrity
+       * check names: a result's own case base inside its
+       * disclosure is not the suite count leaking. */
+      const sanctioned =
+        node.parentElement &&
+        node.parentElement.closest(".flaglead, .disc, .ghead, .mal-fold");
+      if (!inMethod && !sanctioned) {
         const sec = node.parentElement ? node.parentElement.closest("[data-section], section, footer, header") : null;
         out.caseCountOutsideMethod.push(
           ((sec && (sec.getAttribute("data-section") || sec.id || sec.tagName)) || "?") +
@@ -553,14 +594,10 @@ const MEASURE = `(chartedIds, caseCountText, flaggedFigures) => {
     }
   }
   /* C-5 pairing. The carrier is the result's own block,
-   * attributed to the result: its ranking row or heat cell
-   * (data-run-id), its scatter entry or label group
-   * (data-entry-for, data-label-for), the model card that
-   * names it, its model index summary (data-index-for,
-   * judged as its own carrier, because the summary is the
-   * line a scanning reader sees while the card body sits
-   * collapsed beneath it), or a heatmap caption paragraph.
-   * Attribution
+   * attributed to the result: the flagged band's lead
+   * block or band row (data-run-id), its scatter point
+   * (data-point-for), its heat cells, or a heatmap caption
+   * paragraph. Attribution
    * matters. A per-family figure inside another result's
    * card can equal a flagged figure as a bare string, and
    * it is not the flagged result's figure. Method prints
@@ -589,30 +626,47 @@ const MEASURE = `(chartedIds, caseCountText, flaggedFigures) => {
     block.querySelectorAll("[title]").forEach((t) =>
       texts.push(t.getAttribute("title") || ""),
     );
-    return texts.some((t) => {
+    const full = texts.some((t) => {
       const low = t.toLowerCase();
       return (
         low.includes("genuine flip rate " + decomp.genuine) &&
         low.includes(decomp.share + " of counted flips to malformed output")
       );
     });
+    if (full) return true;
+    /* The flagged band's lead states the same decomposition
+     * in its split form, the form the approved design
+     * carries: the split bar's labels give the malformed
+     * share of counted flips, and the sentence under it
+     * gives the genuine rate for the named result. Held to
+     * both halves, in the lead block's own text. */
+    if (block.classList && block.classList.contains("flaglead")) {
+      const low = (block.textContent || "").toLowerCase();
+      return (
+        low.includes(decomp.share + " of counted flips") &&
+        low.includes("that rate is " + decomp.genuine + " for")
+      );
+    }
+    return false;
   };
   for (const { runId, figures, name, decomp } of flaggedFigures) {
     const blocks = new Set();
+    /* The carriers on this page: the flagged band's lead
+     * block and rows (data-run-id inside the band; the same
+     * attribute in the ranking belongs to ranked rows and
+     * never to a flagged id), and the result's scatter
+     * point, whose title element and accessible name carry
+     * the figure with its clauses. The rail band's and the
+     * models index's bare rates are furniture, not
+     * carriers, and the model card lives on the result's
+     * own page, where the dedicated pass below judges it. */
     document
       .querySelectorAll(
-        '[data-run-id="' + runId + '"], [data-entry-for="' + runId +
-          '"], [data-label-for="' + runId + '"], [data-index-for="' + runId + '"]',
+        '[data-run-id="' + runId + '"], [data-point-for="' + runId + '"]',
       )
       .forEach((b) => {
         if (inScope(b)) blocks.add(b);
       });
-    document.querySelectorAll("details.model-item").forEach((card) => {
-      const idEl = card.querySelector(".card-model-id");
-      if (idEl && idEl.textContent.trim() === name && inScope(card)) {
-        blocks.add(card);
-      }
-    });
     const heat = document.querySelector('[data-section="heatmap"]');
     if (heat) {
       heat.querySelectorAll("p").forEach((p) => {
@@ -665,10 +719,11 @@ const MEASURE = `(chartedIds, caseCountText, flaggedFigures) => {
     const list = document.querySelector(
       '[data-spark-for="' + fig.runId + '"]',
     );
-    if (!list) {
-      out.sparkOrphans.push(fig.runId + " has no spark list carrier");
-      continue;
-    }
+    /* The spark list lives on the result's own page now,
+     * not on the board page; the dedicated per-model pass
+     * below judges it there. A list that does render here
+     * is still judged in place. */
+    if (!list) continue;
     list.querySelectorAll("[data-family]").forEach((rowEl) => {
       const famKey = rowEl.getAttribute("data-family");
       const famAsr = fig.familyAsr[famKey];
@@ -774,9 +829,6 @@ for (const width of WIDTHS) {
   }
   if (m.unnamed.length) {
     fail(`width ${width} (${m.variant}): ${m.unnamed.length} charted results unnamed, e.g. ${m.unnamed.slice(0, 3).join(", ")}`);
-  }
-  if (m.duplicated.length) {
-    fail(`width ${width} (${m.variant}): named more than once: ${m.duplicated.slice(0, 3).join(", ")}`);
   }
   if (m.caseCountOutsideMethod.length) {
     fail(`width ${width}: case count outside Method: ${m.caseCountOutsideMethod.slice(0, 2).join("; ")}`);
@@ -1094,6 +1146,260 @@ for (const width of WIDTHS) {
     await driveFlaggedSide("a", target, targetSlug);
     await driveFlaggedSide("b", targetB, targetBSlug);
   }
+}
+
+/* Law 5, the inspector a reader loads from the models
+ * index. The index's bare rate for a flagged result is
+ * furniture; the reading it loads is the carrier. This
+ * pass selects every flagged result in the index, at
+ * desktop and at phone width, and holds the inspector
+ * that stands in the models section to the pairing: the
+ * headline figure with both decomposition clauses in the
+ * inspector's own text, and no headline figure at all
+ * where the sealed records derive no decomposition. */
+for (const inspWidth of [1440, 390]) {
+  await loadBoard(inspWidth);
+  for (const fig of flaggedFigures) {
+    const took = await evaluate(`(() => {
+      const el = document.querySelector(
+        '[data-section="models"] [data-index-for="${fig.runId}"]',
+      );
+      if (!el) return false;
+      el.click();
+      return true;
+    })()`);
+    await sleep(350);
+    const view = await evaluate(`(() => {
+      const sec = document.querySelector('[data-section="models"]');
+      const insp = sec
+        ? sec.querySelector('[data-inspector-for="${fig.runId}"]')
+        : null;
+      if (!insp) return null;
+      const v = insp.querySelector(".fig.wide .v");
+      return {
+        text: insp.textContent || "",
+        asrValue: v ? v.textContent.trim() : null,
+      };
+    })()`);
+    if (!took || !view) {
+      fail(
+        `inspector pass at ${inspWidth}: flagged result ${fig.runId} could not be selected in the models index or loaded no inspector`,
+      );
+      continue;
+    }
+    const figRow = charted.find((r) => r.run_id === fig.runId);
+    const figText = pctText(figRow.asr_conditional);
+    const low = view.text.toLowerCase();
+    if (fig.decomp !== null) {
+      if (view.asrValue !== figText) {
+        fail(
+          `inspector pass at ${inspWidth}: ${fig.runId} inspector figure reads ${view.asrValue}, expected ${figText}`,
+        );
+      }
+      if (
+        !low.includes(`genuine flip rate ${fig.decomp.genuine}`) ||
+        !low.includes(
+          `${fig.decomp.share} of counted flips to malformed output`,
+        )
+      ) {
+        fail(
+          `inspector pass at ${inspWidth}: ${fig.runId} inspector prints its figure without its decomposition`,
+        );
+      }
+    } else if (view.asrValue === figText) {
+      fail(
+        `inspector pass at ${inspWidth}: ${fig.runId} inspector prints its figure ${figText} although the sealed records derive no decomposition for it`,
+      );
+    }
+  }
+  notes.push(
+    `inspector pass at ${inspWidth}: every flagged result's index selection held to the C-5 pairing in its inspector`,
+  );
+}
+
+/* Law 5, the model card and spark list on the result's
+ * own page. The board page no longer carries the cards;
+ * the carriers moved to /models/<slug>/, and this pass
+ * visits each flagged result's page and judges the card
+ * block (data-card-for) and the spark list
+ * (data-spark-for) there, family by family, with the
+ * same derivations the width loop uses. The session's
+ * fetch interception aborts /models/* requests (it keeps
+ * the board page's prefetches from polluting the width
+ * measurements), so the pass disables it for its own
+ * navigations and restores it after. */
+const MODEL_PAGE_MEASURE = `(fig) => {
+  const out = { cardOrphans: [], sparkOrphans: [], missing: [] };
+  const decompTravels = (block, decomp) => {
+    const texts = [block.textContent || "", block.getAttribute("title") || ""];
+    block.querySelectorAll("[title]").forEach((t) =>
+      texts.push(t.getAttribute("title") || ""),
+    );
+    return texts.some((t) => {
+      const low = t.toLowerCase();
+      return (
+        low.includes("genuine flip rate " + decomp.genuine) &&
+        low.includes(decomp.share + " of counted flips to malformed output")
+      );
+    });
+  };
+  const card = document.querySelector('[data-card-for="' + fig.runId + '"]');
+  if (!card) {
+    out.missing.push("card");
+  } else {
+    for (const f of fig.figures) {
+      let found = false;
+      const candidates = [card, ...card.querySelectorAll("*")];
+      for (const el of candidates) {
+        if (!el.textContent || !el.textContent.includes(f)) continue;
+        let deepest = true;
+        for (const child of el.children) {
+          if (child.textContent && child.textContent.includes(f)) {
+            deepest = false;
+            break;
+          }
+        }
+        if (deepest) {
+          found = true;
+          break;
+        }
+      }
+      if (found && fig.decomp === null) {
+        out.cardOrphans.push(
+          fig.runId + " figure " + f +
+            " in its model card although the sealed records derive no decomposition for it",
+        );
+      } else if (found && !decompTravels(card, fig.decomp)) {
+        out.cardOrphans.push(
+          fig.runId + " figure " + f + " in its model card without its decomposition",
+        );
+      }
+    }
+  }
+  const list = document.querySelector('[data-spark-for="' + fig.runId + '"]');
+  if (!list) {
+    out.missing.push("spark list");
+  } else {
+    list.querySelectorAll("[data-family]").forEach((rowEl) => {
+      const famKey = rowEl.getAttribute("data-family");
+      const famAsr = fig.familyAsr[famKey];
+      if (famAsr === null || famAsr === undefined) return;
+      const fd = fig.families[famKey] ?? null;
+      const valEl = rowEl.querySelector(".spark-value");
+      const valText = valEl ? (valEl.textContent || "").trim() : null;
+      const title = (rowEl.getAttribute("title") || "").toLowerCase();
+      if (fd === null) {
+        if (
+          !rowEl.hasAttribute("data-suppressed") ||
+          rowEl.hasAttribute("data-asr") ||
+          valText !== "--"
+        ) {
+          out.sparkOrphans.push(
+            fig.runId + " prints its " + famKey +
+              " figure in its spark carrier although that family's decomposition does not derive",
+          );
+        } else if (
+          !title.includes("attack success not stated") ||
+          !title.includes("does not derive from the sealed records")
+        ) {
+          out.sparkOrphans.push(
+            fig.runId + " suppresses its " + famKey +
+              " figure in its spark carrier without stating in the row title that the figure is not stated",
+          );
+        }
+      } else if (
+        rowEl.hasAttribute("data-suppressed") ||
+        valText === "--" ||
+        valText === null
+      ) {
+        out.sparkOrphans.push(
+          fig.runId + " withholds its " + famKey +
+            " figure in its spark carrier although its decomposition derives",
+        );
+      } else {
+        const travels =
+          fd.flips === 0
+            ? title.includes("no counted flips")
+            : title.includes("genuine flip rate " + fd.genuine) &&
+              title.includes(fd.share + " of counted flips to malformed output");
+        if (!travels) {
+          out.sparkOrphans.push(
+            fig.runId + " figure for " + famKey +
+              " in its spark carrier without that family's decomposition",
+          );
+        }
+      }
+    });
+  }
+  return out;
+}`;
+{
+  await loadBoard(1440);
+  const binding = await evaluate(`(() => {
+    const script = document.querySelector("script[data-compare-rows]");
+    if (!script) return null;
+    return JSON.parse(script.textContent).map((r) => ({
+      slug: r.slug,
+      runId: r.runId,
+      group: r.group,
+    }));
+  })()`);
+  const slugOf = (runId) =>
+    binding ? (binding.find((b) => b.runId === runId)?.slug ?? null) : null;
+  await send("Fetch.disable", {}, sessionId).catch(() => {});
+  for (const fig of flaggedFigures) {
+    const slug = slugOf(fig.runId);
+    if (!slug) {
+      fail(`model page pass: no slug bound for flagged result ${fig.runId}`);
+      continue;
+    }
+    pageErrors.length = 0;
+    const loaded = waitEvent("Page.loadEventFired", sessionId, 240000).catch(
+      () => "timeout",
+    );
+    await send(
+      "Page.navigate",
+      { url: `${base}models/${slug}/` },
+      sessionId,
+    );
+    const polled = (async () => {
+      for (let i = 0; i < 60; i++) {
+        await sleep(1500);
+        try {
+          const ready = await evaluate(
+            `document.readyState === "complete" && !!document.querySelector('[data-card-for="${fig.runId}"]')`,
+          );
+          if (ready) return "polled";
+        } catch {}
+      }
+      return "timeout";
+    })();
+    await Promise.race([loaded, polled]);
+    await sleep(500);
+    if (pageErrors.length) {
+      fail(
+        `model page pass: page errors on ${fig.runId}'s page: ${pageErrors[0]}`,
+      );
+    }
+    const m = await evaluate(
+      `(${MODEL_PAGE_MEASURE})(${JSON.stringify(fig)})`,
+    );
+    if (m.missing.length) {
+      fail(
+        `model page pass: ${fig.runId}'s page is missing its ${m.missing.join(" and ")} carrier`,
+      );
+    }
+    for (const o of m.cardOrphans) fail(`model page pass: ${o}`);
+    for (const o of m.sparkOrphans) fail(`model page pass: ${o}`);
+  }
+  await send(
+    "Fetch.enable",
+    { patterns: [{ urlPattern: "*/models/*", requestStage: "Request" }] },
+    sessionId,
+  ).catch(() => {});
+  notes.push(
+    "model page pass: every flagged result's card and spark list held to the C-5 pairing on its own page",
+  );
 }
 
 /* Law 10, the compare header at phone widths. The width

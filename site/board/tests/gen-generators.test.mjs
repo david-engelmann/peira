@@ -3,13 +3,13 @@
  *
  * These run gen-og.mjs and gen-social-preview.mjs against
  * mutated copies of the standing payload in a scratch board
- * tree, so the placer tiers, the axis port, the claim guards
- * and the off-scale disclosure are held by an automated gate
- * instead of only by the manual mutation runs recorded in
- * the lane reports. Each test asserts on the generator's
- * exit code, its log line, and the HTML or probe geometry
- * it wrote, all of which a regression in the tier logic,
- * the axis rule or a guard would change.
+ * tree, so the claim guards, the label placement tiers, the
+ * ladder budget and the flagged decomposition discipline
+ * are held by an automated gate instead of only by the
+ * manual mutation runs recorded in the lane reports. Each
+ * test asserts on the generator's exit code, its log lines,
+ * and the probe geometry it writes, all of which a
+ * regression in the derivations would change.
  *
  * One fixture stands apart from the standing payload.
  * tests/fixtures/payload-46.json is the 46-row dry-run
@@ -91,12 +91,15 @@ function runGenOg(board, env) {
     timeout: 240000,
     env: { ...process.env, ...env },
   });
+  const read = (name) =>
+    existsSync(path.join(board, ".og", name))
+      ? readFileSync(path.join(board, ".og", name), "utf8")
+      : "";
   return {
     status: res.status,
     out: `${res.stdout ?? ""}\n${res.stderr ?? ""}`,
-    html: existsSync(path.join(board, ".og", "og.html"))
-      ? readFileSync(path.join(board, ".og", "og.html"), "utf8")
-      : "",
+    htmlLand: read("og-land.html"),
+    htmlPort: read("og-port.html"),
     probe: existsSync(path.join(board, ".og", "probe.json"))
       ? JSON.parse(readFileSync(path.join(board, ".og", "probe.json"), "utf8"))
       : null,
@@ -118,95 +121,43 @@ function runGenSocial(board) {
   };
 }
 
-/* The cluster fixture: six cheap runs moved onto one identical
- * cost and rate, the crowd that drove the words tier in the
- * manual proofs. One of the six cannot seat beside its disc,
- * and the strip must name it with its own figures. */
-const CLUSTER_IDS = [
-  "mercury-decide-v2-trial",
-  "pplx-decider-v2-trial",
-  "celeris-v2-trial",
-  "clef-flash-v2-trial",
-  "jev-v2-trial",
-  "jev-114-v2-trial",
-];
+/* The generators' own name rule, restated for expectations:
+ * the short name, with the wire words appended when another
+ * result shares it. */
+const WIRE_WORDS = {
+  "openai-decisions": "Decisions API",
+  "openai-structured": "Chat completions",
+};
+function shortNameOf(r) {
+  let name = r.display_name;
+  const at = name.lastIndexOf("@");
+  if (at > 0 && /^[0-9a-f]{32,}$/i.test(name.slice(at + 1))) {
+    name = name.slice(0, at);
+  }
+  const slash = name.lastIndexOf("/");
+  return slash >= 0 ? name.slice(slash + 1) : name;
+}
+function pointNameOf(payload, r) {
+  const n = shortNameOf(r);
+  const count = [...payload.ranked, ...payload.unranked].filter(
+    (x) => shortNameOf(x) === n,
+  ).length;
+  return count > 1 ? `${n} (${WIRE_WORDS[r.wire] ?? r.wire})` : n;
+}
+const fmtPctOf = (v) => `${(v * 100).toFixed(1)}%`;
+const allRows = (payload) => [...payload.ranked, ...payload.unranked];
+const fullCasesOf = (payload) =>
+  Math.max(...payload.ranked.map((r) => r.n_cases));
+const nonSliceOf = (payload) =>
+  allRows(payload).filter((r) => r.n_cases === fullCasesOf(payload));
 
-test(
-  "the OG placer completes on a clustered payload and names the unseated point in words with its figures",
-  { timeout: 300000 },
-  () => {
-    const { scratch, board } = scratchBoard((payload) => {
-      const rows = new Map(
-        [...payload.ranked, ...payload.unranked].map((r) => [r.run_id, r]),
-      );
-      for (const id of CLUSTER_IDS) {
-        rows.get(id).total_cost_usd = 0.2;
-        rows.get(id).asr_conditional = 0.1263;
-      }
-    });
-    try {
-      const run = runGenOg(board);
-      assert.equal(run.status, 0, run.out);
-      assert.match(run.out, /named in words in the strip under the chart/);
-      assert.ok(
-        run.out.includes("mercury-decide (12.6% at $0.2)"),
-        `the words tier does not name mercury-decide with its mutated figures: ${run.out}`,
-      );
-    } finally {
-      rmSync(scratch, { recursive: true, force: true });
-    }
-  },
-);
-
-test(
-  "a worst ranked rate of exactly 0.30 draws the axis to 0.3 and not 0.4",
-  { timeout: 300000 },
-  () => {
-    const { scratch, board } = scratchBoard((payload) => {
-      /* The worst ranked rate is derived from the payload
-       * under test, the way the generator derives it, and
-       * the population is then moved so that rate sits
-       * exactly on the tenth. Ranked rows above the step
-       * come down onto it, and when every ranked row sits
-       * below it the row carrying the maximum goes up onto
-       * it. Either way the maximum the generator derives
-       * is exactly 0.30, whatever row carried it into the
-       * test. The earlier shape named the carrier outright
-       * and assumed it already held the maximum, which held
-       * only until a tougher uncosted result took the
-       * maximum off the named row and the generator's
-       * correct 0.4 axis failed the test on a population
-       * the publish is about to install. */
-      const ranked = payload.ranked;
-      const worst = Math.max(
-        ...ranked.map((r) => r.asr_conditional ?? 0),
-      );
-      for (const r of ranked) {
-        if ((r.asr_conditional ?? 0) > 0.3) r.asr_conditional = 0.3;
-      }
-      if (worst < 0.3) {
-        const carrier = ranked.find(
-          (r) => (r.asr_conditional ?? 0) === worst,
-        );
-        carrier.asr_conditional = 0.3;
-      }
-    });
-    try {
-      const run = runGenOg(board);
-      assert.equal(run.status, 0, run.out);
-      assert.ok(
-        /class="tick">30</.test(run.html),
-        "the axis does not draw a tick at 30",
-      );
-      assert.ok(
-        !/class="tick">40</.test(run.html),
-        "the axis draws a tick at 40 for a worst rate of exactly 0.30, so the port added a step on an exact tenth",
-      );
-    } finally {
-      rmSync(scratch, { recursive: true, force: true });
-    }
-  },
-);
+const distToDisc = (box, d) => {
+  const dx = Math.max(box.x - d.cx, 0, d.cx - (box.x + box.w));
+  const dy = Math.max(box.y - d.cy, 0, d.cy - (box.y + box.h));
+  return Math.hypot(dx, dy);
+};
+const boxesOverlap = (a, b) =>
+  a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
 
 /* The guard-breaking shape from the #521 post-hoc audit:
  * gpt-5.6-terra repriced to $4,200 with its attack success
@@ -218,9 +169,7 @@ test(
  * the review found missing: neutralising either guard must
  * turn the matching test red. */
 function repriceTerra(payload) {
-  const rows = new Map(
-    [...payload.ranked, ...payload.unranked].map((r) => [r.run_id, r]),
-  );
+  const rows = new Map(allRows(payload).map((r) => [r.run_id, r]));
   rows.get("openai-terra56-v2-trial").total_cost_usd = 4200;
 }
 
@@ -309,9 +258,7 @@ test(
       "payload-46.json",
     );
     const { scratch, board } = scratchBoard((payload) => {
-      const rows = new Map(
-        [...payload.ranked, ...payload.unranked].map((r) => [r.run_id, r]),
-      );
+      const rows = new Map(allRows(payload).map((r) => [r.run_id, r]));
       /* The red team's stress shape: the toughest ranked run
        * repriced under a cent becomes the card's cheap end,
        * and its recorded cost is a lower bound. */
@@ -331,181 +278,6 @@ test(
         !run.html.includes("at least $0.00 per run"),
         "the sub-cent bound prints as zero dollars",
       );
-    } finally {
-      rmSync(scratch, { recursive: true, force: true });
-    }
-  },
-);
-
-const distToDisc = (box, d) => {
-  const dx = Math.max(box.x - d.cx, 0, d.cx - (box.x + box.w));
-  const dy = Math.max(box.y - d.cy, 0, d.cy - (box.y + box.h));
-  return Math.hypot(dx, dy);
-};
-const boxesOverlap = (a, b) =>
-  a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
-
-test(
-  "the 46-row payload: the off-scale flagged point is disclosed in words, never drawn, and no disc or label strikes a corner claim",
-  { timeout: 300000 },
-  () => {
-    const fixture = path.join(
-      boardRoot,
-      "tests",
-      "fixtures",
-      "payload-46.json",
-    );
-    const { scratch, board } = scratchBoard(() => {}, fixture);
-    try {
-      const run = runGenOg(board, { PEIRA_OG_PROBE: "1" });
-      assert.equal(run.status, 0, run.out);
-      assert.match(
-        run.out,
-        /disclosed in words in the image instead of drawn: mercury-3/,
-      );
-      assert.match(run.out, /labelled 33 of 33 plotted points/);
-      assert.ok(run.probe, "the probe geometry was not written");
-      /* Every drawn disc sits on the canvas. */
-      for (const d of run.probe.discs) {
-        assert.ok(
-          d.cy - d.r >= 0 && d.cy + d.r <= 630,
-          `a disc sits off the canvas at cy ${d.cy}`,
-        );
-      }
-      /* No disc and no label intersects a corner claim box. */
-      for (const d of run.probe.discs) {
-        for (const c of run.probe.claims) {
-          assert.ok(
-            distToDisc(c.box, d) >= d.r - 0.01,
-            `a disc at ${d.cx}, ${d.cy} intersects the claim "${c.text}"`,
-          );
-        }
-      }
-      for (const l of run.probe.labels) {
-        for (const c of run.probe.claims) {
-          assert.ok(
-            !boxesOverlap(l.box, c.box),
-            `the label "${l.name}" intersects the claim "${c.text}"`,
-          );
-        }
-      }
-      /* The disclosure names the point and carries its
-       * figure with the decomposition clauses. */
-      assert.ok(run.probe.disclosure, "no disclosure block in the image");
-      for (const needle of [
-        "mercury-3",
-        "52.3%",
-        "genuine flip rate 7.5%",
-        "85.6% of counted flips to malformed output",
-      ]) {
-        assert.ok(
-          run.probe.disclosure.text.includes(needle),
-          `the disclosure does not state "${needle}": ${run.probe.disclosure.text}`,
-        );
-      }
-      assert.ok(
-        !run.probe.labels.some((l) => l.name === "mercury-3"),
-        "the off-scale point carries a plotted label",
-      );
-    } finally {
-      rmSync(scratch, { recursive: true, force: true });
-    }
-  },
-);
-
-test(
-  "the 46-row payload with a tougher and a wilder rail: the bottom corner names the toughest run on the chart and sits clear of the rail names, and the wilder rail run is disclosed in words",
-  { timeout: 300000 },
-  () => {
-    const fixture = path.join(
-      boardRoot,
-      "tests",
-      "fixtures",
-      "payload-46.json",
-    );
-    const { scratch, board } = scratchBoard((payload) => {
-      const rows = new Map(
-        [...payload.ranked, ...payload.unranked].map((r) => [r.run_id, r]),
-      );
-      /* The long-named rail run becomes the toughest run on
-       * the chart, and at its new height its rail name lands
-       * in the bottom corner's band. The corner must name it
-       * as the toughest and sit clear of its rail name. */
-      rows.get("strands-v2-trial").asr_conditional = 0.05;
-      /* A second rail run flips more than the priciest costed
-       * run while staying under the axis ceiling, so the cost
-       * story the headline tells owes it a sentence. */
-      rows.get("kev-4b-v2-trial").asr_conditional = 0.29;
-    }, fixture);
-    try {
-      const run = runGenOg(board, { PEIRA_OG_PROBE: "1" });
-      assert.equal(run.status, 0, run.out);
-      assert.match(
-        run.out,
-        /no-cost run flipped more than the priciest costed run/,
-      );
-      assert.ok(run.probe, "the probe geometry was not written");
-      const bottomSub = run.probe.claims.find((c) =>
-        c.text.includes("flipped least of all"),
-      );
-      assert.ok(bottomSub, "no bottom corner reading in the image");
-      assert.equal(
-        bottomSub.text,
-        "strands-decider-2B-hobson-v21 flipped least of all at 5.0%",
-      );
-      /* Neither bottom corner line strikes a rail name. */
-      const title = run.probe.claims.find(
-        (c) => c.text === "Toughest on the chart",
-      );
-      assert.ok(title, "no bottom corner heading in the image");
-      for (const cornerBox of [title.box, bottomSub.box]) {
-        for (const rail of run.probe.railLabels) {
-          assert.ok(
-            !boxesOverlap(cornerBox, rail.box),
-            `the bottom corner strikes the rail name "${rail.name}"`,
-          );
-        }
-      }
-      /* The wilder rail run is named with its figure and the
-       * no-cost reason in the disclosure block. */
-      assert.ok(run.probe.disclosure, "no disclosure block in the image");
-      for (const needle of [
-        "kev-4b flipped more than any ranked costed run at 29.0% attack success",
-        "It carries no recorded cost, so it stands on the no-cost rail",
-      ]) {
-        assert.ok(
-          run.probe.disclosure.text.includes(needle),
-          `the disclosure does not state "${needle}": ${run.probe.disclosure.text}`,
-        );
-      }
-    } finally {
-      rmSync(scratch, { recursive: true, force: true });
-    }
-  },
-);
-
-test(
-  "gen-og fails rather than state an off-scale flagged figure whose decomposition does not derive",
-  { timeout: 300000 },
-  () => {
-    const fixture = path.join(
-      boardRoot,
-      "tests",
-      "fixtures",
-      "payload-46.json",
-    );
-    const { scratch, board } = scratchBoard((payload) => {
-      const mercury = [...payload.ranked, ...payload.unranked].find(
-        (r) => r.display_name === "mercury-3",
-      );
-      const fams = mercury.detail.families;
-      const first = Array.isArray(fams) ? fams[0] : Object.values(fams)[0];
-      delete first.flip_direction;
-    }, fixture);
-    try {
-      const run = runGenOg(board);
-      assert.equal(run.status, 1, run.out);
-      assert.match(run.out, /do not derive the malformed decomposition/);
     } finally {
       rmSync(scratch, { recursive: true, force: true });
     }
@@ -551,6 +323,510 @@ test(
         micros,
         ["NEAR-FREE", "EXPENSIVE AND FRAGILE"],
         `the printed micro labels are not the pinned words: ${micros.join(" | ")}`,
+      );
+    } finally {
+      rmSync(scratch, { recursive: true, force: true });
+    }
+  },
+);
+
+test(
+  "a worst ranked rate of exactly 0.30 draws the axis to 0.3 and not 0.4",
+  { timeout: 300000 },
+  () => {
+    const { scratch, board } = scratchBoard((payload) => {
+      /* The worst ranked rate is derived from the payload
+       * under test, the way the generator derives it, and
+       * the population is then moved so that rate sits
+       * exactly on the tenth. */
+      const ranked = payload.ranked;
+      const worst = Math.max(...ranked.map((r) => r.asr_conditional ?? 0));
+      for (const r of ranked) {
+        if ((r.asr_conditional ?? 0) > 0.3) r.asr_conditional = 0.3;
+      }
+      if (worst < 0.3) {
+        const carrier = ranked.find(
+          (r) => (r.asr_conditional ?? 0) === worst,
+        );
+        carrier.asr_conditional = 0.3;
+      }
+    });
+    try {
+      const run = runGenOg(board);
+      assert.equal(run.status, 0, run.out);
+      assert.ok(
+        /class="gtick">30</.test(run.htmlLand),
+        "the axis does not draw its ceiling tick at 30",
+      );
+      assert.ok(
+        /class="gtick">15</.test(run.htmlLand),
+        "the axis does not draw its middle tick at 15",
+      );
+      assert.ok(
+        !/class="gtick">40</.test(run.htmlLand),
+        "the axis draws a tick at 40 for a worst rate of exactly 0.30, so the port added a step on an exact tenth",
+      );
+    } finally {
+      rmSync(scratch, { recursive: true, force: true });
+    }
+  },
+);
+
+test(
+  "the 46-row payload: the off-scale flagged result reads in the numeral stack with its decomposition, is never drawn, and no label strikes a disc or the subject",
+  { timeout: 300000 },
+  () => {
+    const fixture = path.join(
+      boardRoot,
+      "tests",
+      "fixtures",
+      "payload-46.json",
+    );
+    const fixturePayload = JSON.parse(readFileSync(fixture, "utf8"));
+    const { scratch, board } = scratchBoard(() => {}, fixture);
+    try {
+      const run = runGenOg(board, { PEIRA_OG_PROBE: "1" });
+      assert.equal(run.status, 0, run.out);
+      assert.ok(run.probe, "the probe geometry was not written");
+      const land = run.probe.land;
+      assert.equal(
+        land.headline,
+        "The priciest model was the easiest to flip",
+      );
+      /* The subject is the priciest ranked costed run of the
+       * fixture, singled out with its figure line. */
+      const rankedCosted = nonSliceOf(fixturePayload)
+        .filter((r) => r.ranking_eligible && (r.total_cost_usd ?? 0) > 0)
+        .sort((a, b) => a.total_cost_usd - b.total_cost_usd);
+      const subjectRow = rankedCosted.at(-1);
+      assert.equal(land.subject.name, pointNameOf(fixturePayload, subjectRow));
+      /* The figure line states a lower bound when the
+       * subject's own family records show uncosted calls,
+       * the generator's RT-3 rule, derived here from the
+       * fixture's families. */
+      const subjectBound = (() => {
+        const fams = Object.values(subjectRow.detail?.families ?? {});
+        let costed = 0;
+        let timed = 0;
+        let seen = false;
+        for (const f of fams) {
+          if (f.n_costed_calls == null || f.n_latency_calls == null) {
+            return false;
+          }
+          costed += f.n_costed_calls;
+          timed += f.n_latency_calls;
+          seen = true;
+        }
+        return seen && costed < timed;
+      })();
+      assert.equal(
+        land.subject.sub,
+        `${subjectBound ? "At least " : ""}$${subjectRow.total_cost_usd.toFixed(2)} a run, ${fmtPctOf(subjectRow.asr_conditional)}`,
+      );
+      /* The flagged reading carries mercury's figure only
+       * with its decomposition. The figures are the frozen
+       * fixture's, pinned as literals. */
+      const flagged = land.readouts.find((b) =>
+        b.micro.includes("Flagged"),
+      );
+      assert.ok(flagged, "no flagged reading in the numeral stack");
+      assert.equal(flagged.micro, "Flagged, off the scale");
+      assert.equal(flagged.num, "52.3%");
+      for (const needle of [
+        "mercury-3",
+        "counted attack success",
+        "85.6% of counted flips to malformed output",
+        "genuine flip rate 7.5%",
+      ]) {
+        assert.ok(
+          flagged.who.includes(needle),
+          `the flagged reading does not state "${needle}": ${flagged.who}`,
+        );
+      }
+      /* The drawn discs are exactly the costed full suite
+       * at or under the derived ceiling: mercury is not
+       * among them. */
+      const axisMax = Math.max(
+        0.3,
+        Math.ceil(
+          (Math.max(
+            ...fixturePayload.ranked.map((r) => r.asr_conditional ?? 0),
+          ) -
+            1e-9) /
+            0.1,
+        ) * 0.1,
+      );
+      const drawn = nonSliceOf(fixturePayload).filter(
+        (r) =>
+          (r.total_cost_usd ?? 0) > 0 && (r.asr_conditional ?? 0) <= axisMax,
+      );
+      assert.equal(land.discs.length, drawn.length);
+      assert.equal(land.discs.filter((d) => d.subject).length, 1);
+      /* No seated label strikes a disc, the subject's lines,
+       * or the canvas edge of the plot. */
+      for (const l of land.labels) {
+        for (const d of land.discs) {
+          assert.ok(
+            distToDisc(l.box, d) >= d.r - 0.01,
+            `the label "${l.name}" strikes a disc`,
+          );
+        }
+        assert.ok(
+          !boxesOverlap(l.box, land.subject.nameBox),
+          `the label "${l.name}" strikes the subject's name`,
+        );
+        assert.ok(
+          !boxesOverlap(l.box, land.subject.subBox),
+          `the label "${l.name}" strikes the subject's figure line`,
+        );
+      }
+      /* The footer stands in the share grammar's two parts,
+       * stamped from the fixture's own versions and date. */
+      const maxDate = allRows(fixturePayload)
+        .map((r) => r.created_utc)
+        .sort()
+        .at(-1)
+        .slice(0, 10);
+      const [yy, mm, dd] = maxDate.split("-").map(Number);
+      const MONTHS = [
+        "January", "February", "March", "April", "May", "June",
+        "July", "August", "September", "October", "November", "December",
+      ];
+      assert.deepEqual(land.footer, [
+        `Peira decision robustness board. Dataset ${fixturePayload.ranked[0].dataset_version}, suite ${fixturePayload.ranked[0].suite}, updated ${dd} ${MONTHS[mm - 1]} ${yy}.`,
+        "Amber marks a flagged result · peiratrial.dev",
+      ]);
+      /* The portrait card carries the same readings. */
+      assert.deepEqual(run.probe.port.readouts, land.readouts);
+      assert.deepEqual(run.probe.port.ladder, land.ladder);
+    } finally {
+      rmSync(scratch, { recursive: true, force: true });
+    }
+  },
+);
+
+test(
+  "the 46-row payload with a tougher and a wilder rail: the stack names the toughest run on the chart, the ladder selects it, and the rail reading names the run that flipped past every costed run",
+  { timeout: 300000 },
+  () => {
+    const fixture = path.join(
+      boardRoot,
+      "tests",
+      "fixtures",
+      "payload-46.json",
+    );
+    const { scratch, board } = scratchBoard((payload) => {
+      const rows = new Map(allRows(payload).map((r) => [r.run_id, r]));
+      /* The long-named rail run becomes the toughest run on
+       * the chart. */
+      rows.get("strands-v2-trial").asr_conditional = 0.05;
+      /* A second rail run flips more than the priciest costed
+       * run while staying under the axis ceiling. */
+      rows.get("kev-4b-v2-trial").asr_conditional = 0.29;
+    }, fixture);
+    try {
+      const run = runGenOg(board, { PEIRA_OG_PROBE: "1" });
+      assert.equal(run.status, 0, run.out);
+      assert.ok(run.probe, "the probe geometry was not written");
+      const land = run.probe.land;
+      const toughest = land.readouts.find((b) =>
+        b.micro.includes("Toughest"),
+      );
+      assert.ok(toughest, "no toughest reading in the stack");
+      assert.equal(toughest.num, "5.0%");
+      assert.equal(
+        toughest.who,
+        "strands-decider-2B-hobson-v21, flipped least of all",
+      );
+      const rail = land.readouts.find((b) => b.micro === "On the rail");
+      assert.ok(rail, "no rail reading in the stack");
+      assert.equal(rail.num, "29.0%");
+      assert.equal(
+        rail.who,
+        "kev-4b, no recorded cost. It flipped past every ranked costed run.",
+      );
+      const sel = land.ladder.filter((r) => r.sel);
+      assert.equal(sel.length, 1);
+      assert.equal(sel[0].name, "strands-decider-2B-hobson-v21");
+    } finally {
+      rmSync(scratch, { recursive: true, force: true });
+    }
+  },
+);
+
+test(
+  "gen-og fails rather than state an off-scale flagged figure whose decomposition does not derive",
+  { timeout: 300000 },
+  () => {
+    const fixture = path.join(
+      boardRoot,
+      "tests",
+      "fixtures",
+      "payload-46.json",
+    );
+    const { scratch, board } = scratchBoard((payload) => {
+      const mercury = allRows(payload).find(
+        (r) => r.display_name === "mercury-3",
+      );
+      const fams = mercury.detail.families;
+      const first = Array.isArray(fams) ? fams[0] : Object.values(fams)[0];
+      delete first.flip_direction;
+    }, fixture);
+    try {
+      const run = runGenOg(board);
+      assert.equal(run.status, 1, run.out);
+      assert.match(run.out, /do not derive the malformed decomposition/);
+    } finally {
+      rmSync(scratch, { recursive: true, force: true });
+    }
+  },
+);
+
+/* The crowded-candidates shape: the two label candidates
+ * are repriced onto the plot's left side and a grid of
+ * synthetic discs is packed around them at disc spacing, so
+ * no seat beside either disc is clear. Both candidates must
+ * leave the plot's labels and be named in words under it,
+ * with their figures, while the build still succeeds. */
+test(
+  "label candidates no seat can hold are named in words under the plot with their figures",
+  { timeout: 300000 },
+  () => {
+    let candA;
+    let candB;
+    const { scratch, board } = scratchBoard((payload) => {
+      const full = fullCasesOf(payload);
+      const rankedCosted = nonSliceOf(payload)
+        .filter((r) => r.ranking_eligible && (r.total_cost_usd ?? 0) > 0)
+        .sort((a, b) => b.total_cost_usd - a.total_cost_usd);
+      const subjectRow = rankedCosted[0];
+      const others = rankedCosted.slice(1);
+      candA = others[0];
+      candB = others[1];
+      /* The candidates stay the two priciest unflagged
+       * plotted runs after the subject, seated beside it at
+       * the top right, their rates under the subject's so
+       * the headline guard holds. Every other ranked costed
+       * run drops below them. */
+      candA.total_cost_usd = 120;
+      candA.asr_conditional = 0.28;
+      candA.detail = {};
+      candB.total_cost_usd = 110;
+      candB.asr_conditional = 0.26;
+      candB.detail = {};
+      for (const r of others.slice(2)) r.total_cost_usd = 0.03;
+      /* The blocker grid, in the plot's own landscape units
+       * (domain floor 0.01, axis 0.4 from the payload's worst
+       * ranked rate): discs at 11.9 unit spacing over the
+       * whole seat reach of both candidates. A label box is
+       * taller than the spacing, so every seat a candidate
+       * tries holds a disc. Blocker costs stay under the
+       * candidates' (never candidates themselves) and at or
+       * over the domain floor (the domain does not move),
+       * and their rates stay at or under the subject's (the
+       * headline guard holds). */
+      const template = payload.ranked.find((r) => r.n_cases === full);
+      const costAtX = (x) => 10 ** ((x - 56) / 144.15 - 2);
+      const asrAtY = (y) => (0.4 * (252 - y)) / 236;
+      const xOf = (c) => 56 + (Math.log10(c) + 2) * 144.15;
+      const yOf = (a) => 252 - (a / 0.4) * 236;
+      const centers = [
+        { x: xOf(subjectRow.total_cost_usd), y: yOf(subjectRow.asr_conditional) },
+        { x: xOf(120), y: yOf(0.28) },
+        { x: xOf(110), y: yOf(0.26) },
+      ];
+      let n = 0;
+      for (let gx = 56; gx <= 632; gx += 11.9) {
+        for (let gy = 90; gy <= 260; gy += 11.9) {
+          if (
+            centers.some(
+              (c) => Math.hypot(c.x - gx, c.y - gy) < 9,
+            )
+          ) {
+            continue;
+          }
+          n += 1;
+          const row = JSON.parse(JSON.stringify(template));
+          row.run_id = `blocker-${n}-v2-trial`;
+          row.display_name = `blocker-${n}`;
+          row.total_cost_usd = costAtX(gx);
+          row.asr_conditional = asrAtY(gy);
+          row.detail = {};
+          payload.ranked.push(row);
+        }
+      }
+      assert.ok(subjectRow, "the standing payload has a subject");
+    });
+    try {
+      const run = runGenOg(board, { PEIRA_OG_PROBE: "1" });
+      assert.equal(run.status, 0, run.out);
+      assert.ok(run.probe, "the probe geometry was not written");
+      const land = run.probe.land;
+      assert.equal(
+        land.labels.length,
+        0,
+        `labels seated in the blocker grid: ${JSON.stringify(land.labels)}`,
+      );
+      assert.ok(land.nameline, "no words line under the plot");
+      assert.ok(
+        land.nameline.includes("Too crowded at their discs"),
+        `the words line does not carry the crowded clause: ${land.nameline}`,
+      );
+      assert.ok(
+        land.nameline.includes("at 28.0% and $120.00"),
+        `candidate A is not named with its figures: ${land.nameline}`,
+      );
+      assert.ok(
+        land.nameline.includes("at 26.0% and $110.00"),
+        `candidate B is not named with its figures: ${land.nameline}`,
+      );
+    } finally {
+      rmSync(scratch, { recursive: true, force: true });
+    }
+  },
+);
+
+/* The ladder budget. The rail rows of the mutated payload
+ * are counted in the test the way the generator counts
+ * them, then costed runs are moved onto the rail until the
+ * rail carries the target count. At 14 rows the landscape
+ * ladder spends 154px of its 170px rows area and takes no
+ * slack; at 15 it spends 176px and takes 6px of slack from
+ * the plot; at 21 it outgrows the allotment and the slack
+ * together and the build fails rather than cut the ladder. */
+function railCountOf(payload) {
+  return nonSliceOf(payload).filter(
+    (r) => !(r.total_cost_usd !== null && r.total_cost_usd > 0),
+  ).length;
+}
+function moveToRail(payload, target) {
+  let count = railCountOf(payload);
+  const rankedCosted = nonSliceOf(payload)
+    .filter((r) => r.ranking_eligible && (r.total_cost_usd ?? 0) > 0)
+    .sort((a, b) => a.total_cost_usd - b.total_cost_usd);
+  /* Cheapest first, and never the priciest (the headline's
+   * subject must stay on the plot). */
+  for (const r of rankedCosted.slice(0, -1)) {
+    if (count >= target) break;
+    r.total_cost_usd = null;
+    count += 1;
+  }
+  assert.equal(count, target, "the mutation could not seat the rail count");
+}
+
+test(
+  "the ladder at 14 rail rows spends inside its rows area and takes no slack",
+  { timeout: 300000 },
+  () => {
+    const { scratch, board } = scratchBoard((payload) =>
+      moveToRail(payload, 14),
+    );
+    try {
+      const run = runGenOg(board, { PEIRA_OG_PROBE: "1" });
+      assert.equal(run.status, 0, run.out);
+      assert.match(
+        run.out,
+        /ladder budget \(landscape\): spent 154px of the 170px rows area on 14 rail rows in 2 columns, slack used 0px/,
+      );
+      assert.ok(run.probe, "the probe geometry was not written");
+      assert.equal(run.probe.land.ladder.length, 14);
+      assert.deepEqual(run.probe.land.ladderBudget, {
+        rows: 14,
+        perColumn: 7,
+        spent: 154,
+        allot: 170,
+        slackUsed: 0,
+      });
+      assert.deepEqual(run.probe.port.ladderBudget, {
+        rows: 14,
+        perColumn: 14,
+        spent: 364,
+        allot: 286,
+        slackUsed: 78,
+      });
+    } finally {
+      rmSync(scratch, { recursive: true, force: true });
+    }
+  },
+);
+
+test(
+  "the ladder at 15 rail rows takes slack from the plot and still prints",
+  { timeout: 300000 },
+  () => {
+    const { scratch, board } = scratchBoard((payload) =>
+      moveToRail(payload, 15),
+    );
+    try {
+      const run = runGenOg(board, { PEIRA_OG_PROBE: "1" });
+      assert.equal(run.status, 0, run.out);
+      assert.match(
+        run.out,
+        /ladder budget \(landscape\): spent 176px of the 170px rows area on 15 rail rows in 2 columns, slack used 6px/,
+      );
+      assert.ok(run.probe, "the probe geometry was not written");
+      assert.equal(run.probe.land.ladder.length, 15);
+      assert.deepEqual(run.probe.land.ladderBudget, {
+        rows: 15,
+        perColumn: 8,
+        spent: 176,
+        allot: 170,
+        slackUsed: 6,
+      });
+      assert.deepEqual(run.probe.port.ladderBudget, {
+        rows: 15,
+        perColumn: 15,
+        spent: 390,
+        allot: 286,
+        slackUsed: 104,
+      });
+    } finally {
+      rmSync(scratch, { recursive: true, force: true });
+    }
+  },
+);
+
+test(
+  "the ladder past its allotment and slack fails the build rather than print cut",
+  { timeout: 300000 },
+  () => {
+    const { scratch, board } = scratchBoard((payload) =>
+      moveToRail(payload, 21),
+    );
+    try {
+      const run = runGenOg(board);
+      assert.equal(run.status, 1, run.out);
+      assert.match(run.out, /past the 170px allotted and the 66px of slack/);
+    } finally {
+      rmSync(scratch, { recursive: true, force: true });
+    }
+  },
+);
+
+test(
+  "gen-og builds both standing cards",
+  { timeout: 300000 },
+  () => {
+    const { scratch, board } = scratchBoard(() => {});
+    try {
+      const run = runGenOg(board, { PEIRA_OG_PROBE: "1" });
+      assert.equal(run.status, 0, run.out);
+      assert.ok(
+        existsSync(path.join(board, "public", "og.png")),
+        "the landscape card was not written",
+      );
+      assert.ok(
+        existsSync(path.join(board, "public", "og-portrait.png")),
+        "the portrait card was not written",
+      );
+      assert.ok(run.probe, "the probe geometry was not written");
+      assert.equal(
+        run.probe.land.headline,
+        "The priciest model was the easiest to flip",
+      );
+      assert.equal(
+        run.probe.land.mastRight,
+        `Decision models under attack · ${allRows(JSON.parse(readFileSync(path.join(boardRoot, "data", "payload.json"), "utf8"))).length} results`,
       );
     } finally {
       rmSync(scratch, { recursive: true, force: true });

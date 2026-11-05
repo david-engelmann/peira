@@ -346,7 +346,12 @@ if (
   );
   process.exit(1);
 }
-const gridB = axisTicks
+/* The drawn gridlines follow the share grammar of the
+ * instrument panel: the ceiling, its half, and zero, so the
+ * plot reads against three stated heights rather than a
+ * ladder of ticks. */
+const gridTicks = [axisMax, axisMax / 2, 0];
+const gridB = gridTicks
   .map(
     (t) => `<line x1="${BX.x0}" y1="${byOf(t)}" x2="${BX.x1}" y2="${byOf(t)}" stroke="#232c35" stroke-opacity="0.55"/>
     <text x="${BX.x0 - 14}" y="${byOf(t) + 5}" class="tick" text-anchor="end">${Math.round(t * 100)}</text>`,
@@ -460,7 +465,7 @@ const bSvg = `<svg width="1280" height="640" viewBox="0 0 1280 640" class="chart
  * scatter the owner rejected. */
 const bCircleCount = (bSvg.match(/<circle/g) ?? []).length;
 const bLineCount = (bSvg.match(/<line/g) ?? []).length;
-if (bCircleCount !== 2 || bLineCount !== axisTicks.length + 1) {
+if (bCircleCount !== 2 || bLineCount !== gridTicks.length + 1) {
   console.error(
     `gen-social-preview: unexpected plot contents (circles ${bCircleCount}, lines ${bLineCount}): the card draws exactly the two cost extremes`,
   );
@@ -473,9 +478,10 @@ const html = `<!doctype html>
 * { margin: 0; box-sizing: border-box; }
 body { width: 1280px; height: 640px; background: #05070a; color: #eef2f6;
   font-family: "Archivo", system-ui, sans-serif; overflow: hidden; }
-.word { font-size: 26px; font-weight: 700; letter-spacing: 0.05em; color: #2fbf71; }
-.eyebrow { font-size: 15px; font-weight: 600; letter-spacing: 0.14em; color: #71808f; margin-left: 16px; }
-.foot { position: absolute; left: 48px; bottom: 22px; font-size: 17px; color: #71808f; }
+.word { font-size: 26px; font-weight: 700; letter-spacing: 0.34em; color: #ffffff; }
+.mast { display: flex; align-items: baseline; justify-content: space-between; }
+.mastr { font-family: "Liberation Mono", "DejaVu Sans Mono", monospace; font-size: 13px; font-weight: 600; letter-spacing: 0.055em; color: #5d6773; text-transform: uppercase; }
+.foot { position: absolute; left: 48px; right: 48px; bottom: 22px; font-size: 17px; color: #71808f; display: flex; justify-content: space-between; }
 .mono { font-weight: 700; text-anchor: middle; dominant-baseline: central; }
 .head { position: absolute; left: 48px; top: 36px; right: 48px; }
 h1 { font-size: 52px; font-weight: 700; letter-spacing: -0.02em; margin-top: 10px; }
@@ -493,11 +499,11 @@ h1 { font-size: 52px; font-weight: 700; letter-spacing: -0.02em; margin-top: 10p
 ${bSvg}
 <div class="fallback" id="social-fallback" hidden></div>
 <div class="head">
-  <div><span class="word">PEIRA</span><span class="eyebrow">DECISION MODELS UNDER ATTACK</span></div>
+  <div class="mast"><span class="word">PEIRA</span><span class="mastr">Decision models under attack &middot; ${results} results</span></div>
   <h1>The priciest model was the easiest to flip</h1>
   <p class="sub">The two ends of the cost story, each a full run of the suite.</p>
 </div>
-<p class="foot">${credit}</p>
+<p class="foot"><span>${credit.replace(/ peiratrial\.dev$/, "")}</span><span>peiratrial.dev</span></p>
 </body></html>`;
 
 mkdirSync(path.join(root, ".og"), { recursive: true });
