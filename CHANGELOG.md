@@ -9,18 +9,32 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
 
 ### Board vendor agreement and clearance repairs
 
-- The share image generator reads the board's vendor table
-  again. The subject fill and the card ink are design tokens
-  in lib/vendor-data.json, so no family color lives in a
-  generator's source and the vendor agreement check passes
-  on the table alone. The social preview generator takes its
-  wordmark ink from the same tokens.
+- The share image generator never stopped reading the
+  board's vendor table, but its card ink and the fill of
+  the subject it singles out stood as literals in its
+  source. Both now resolve through design tokens in
+  lib/vendor-data.json, and the social preview generator
+  takes its wordmark ink from the same tokens, so no color
+  the table names lives in a generator's source.
+- The vendor agreement check carries its share image leg
+  again. The leg reads the cards the generators actually
+  write and cross-checks the subject disc's fill, the
+  headline result the disc names and the social card's
+  wordmark ink against the table, and a missing generated
+  card fails the check instead of passing in silence. The
+  check also scans the social preview generator's source
+  for colors the table names and requires the table's
+  design tokens to be present and well formed. It passes
+  because no resolver or generator source carries a color
+  the table names and the generated cards agree with the
+  table they were drawn from.
 - On phone widths the ranking inspector lifted to the top
   of its zone now clears the sticky section bar with the
   same spacing it keeps below itself.
-- A plain figure's note in the inspector now stands under
-  its figure as a sub-line. A recorded zero cost with its
-  no-charge gloss no longer wraps against the figure.
+- A plain figure's note in the inspector and on the
+  per-model pages now stands under its figure as a
+  sub-line. A recorded zero cost with its no-charge gloss
+  no longer wraps against the figure.
 
 ### The board rebuilt as an instrument panel
 
