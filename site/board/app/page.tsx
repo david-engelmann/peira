@@ -2,7 +2,9 @@ import {
   boardGroups,
   boardVersions,
   modelCounts,
+  multiResultModels,
 } from "@/lib/payload";
+import { fmtInt } from "@/lib/format";
 import { explorerData } from "@/lib/explorerData";
 
 /** The hero range prints at one decimal, as the published board's does. */
@@ -25,6 +27,17 @@ export default function Home() {
   const groups = boardGroups();
   const versions = boardVersions();
   const counts = modelCounts();
+  const multi = multiResultModels();
+  const total =
+    groups.full.length + groups.slices.length + groups.flagged.length;
+  const countsLine =
+    `The board holds ${fmtInt(total)} results from ${fmtInt(counts.tested)} models. ` +
+    `${fmtInt(counts.ranked)} models are ranked and ${fmtInt(counts.flagged)} are flagged.` +
+    (multi.length === 1
+      ? " One model was measured on two wires, so it appears as two results."
+      : multi.length > 1
+        ? ` ${fmtInt(multi.length)} models were measured on two wires, so each appears as two results.`
+        : "");
   const full = groups.full;
   const best = full[0]?.asr_conditional ?? null;
   const worst = full[full.length - 1]?.asr_conditional ?? null;
@@ -72,7 +85,7 @@ export default function Home() {
             </>
           )}
         </p>
-        <p className="hero-counts">{counts.sentence}</p>
+        <p className="hero-counts">{countsLine}</p>
       </section>
 
       <Findings />
@@ -82,8 +95,8 @@ export default function Home() {
       <footer className="colophon">
         <p>
           Dataset {versions.dataset} · Suite {versions.suite} ·{" "}
-          {counts.sentence} The figures derive from the sealed runs in
-          the payload this page links.
+          {countsLine} The figures derive from the sealed runs in the
+          payload this page links.
         </p>
         <p>
           Prototype build of the board redesign. The published board

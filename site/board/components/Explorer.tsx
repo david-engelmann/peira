@@ -312,6 +312,7 @@ export default function Explorer({ data }: { data: ExplorerData }) {
   const [hoverId, setHoverId] = useState<string | null>(null);
   const [chipId, setChipId] = useState<string | null>(null);
   const [brush, setBrush] = useState<Brush | null>(null);
+  const touched = useRef(false);
   const listRef = useRef<HTMLDivElement>(null);
   const flipSnapshot = useRef<Map<string, number> | null>(null);
   const sectionRef = useRef<HTMLElement>(null);
@@ -385,6 +386,7 @@ export default function Explorer({ data }: { data: ExplorerData }) {
   }, [parseHash]);
 
   useEffect(() => {
+    if (!touched.current) return;
     const params = new URLSearchParams();
     if (state.pop !== DEFAULTS.pop) params.set("pop", state.pop);
     if (state.mode !== DEFAULTS.mode) params.set("mode", state.mode);
@@ -438,6 +440,7 @@ export default function Explorer({ data }: { data: ExplorerData }) {
 
   const update = useCallback(
     (patch: Partial<XState>, flip = false) => {
+      touched.current = true;
       if (flip) snapshotFlip();
       setState((s) => ({ ...s, ...patch }));
     },

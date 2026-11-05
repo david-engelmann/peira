@@ -121,7 +121,7 @@ export default function Findings() {
         </p>
         <a
           className="f-action"
-          href={`#explorer?pop=all&sort=asr&sel=${mercurySlug}`}
+          href={`#explorer?pop=all&mode=rank&sort=asr&sel=${mercurySlug}&open=1`}
         >
           Read this in the explorer
         </a>
@@ -171,7 +171,7 @@ export default function Findings() {
         </p>
         <a
           className="f-action"
-          href={`#explorer?pop=full&q=${encodeURIComponent(f.wire.name)}`}
+          href={`#explorer?pop=full&mode=rank&q=${encodeURIComponent(f.wire.name)}`}
         >
           Read this in the explorer
         </a>
@@ -280,7 +280,7 @@ export default function Findings() {
           {fmtInt(f.guards.flips)} counted flips is a decision reversal,
           and none of the six carries a recorded serving cost.
         </p>
-        <a className="f-action" href="#explorer?pop=guards">
+        <a className="f-action" href="#explorer?pop=guards&mode=rank">
           Read this in the explorer
         </a>
       </article>
@@ -312,7 +312,7 @@ export default function Findings() {
         </p>
         <a
           className="f-action"
-          href={`#explorer?pop=full&sel=${leaderSlug}&open=1`}
+          href={`#explorer?pop=full&mode=rank&sel=${leaderSlug}&open=1`}
         >
           Read this in the explorer
         </a>

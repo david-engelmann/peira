@@ -15,7 +15,7 @@ const here = dirname(fileURLToPath(import.meta.url));
 const payload = JSON.parse(
   readFileSync(join(here, "..", "data", "payload.json"), "utf8"),
 );
-const rows = payload.results;
+const rows = [...payload.ranked, ...payload.unranked];
 
 function detailOf(row) {
   return row.detail && typeof row.detail === "object" ? row.detail : {};
@@ -31,29 +31,27 @@ function isCount(x) {
 }
 function decomp(row) {
   const fams = familyRecords(row);
-  if (fams.length === 0) {
-    const d = detailOf(row);
-    if (!isCount(d.n_flipped) || !isCount(d.flip_to_malformed)) return null;
-    return { flips: d.n_flipped, malformed: d.flip_to_malformed };
-  }
+  if (fams.length === 0) return null;
   let flips = 0;
   let malformed = 0;
   for (const fam of fams) {
-    if (!isCount(fam.n_flipped) || !isCount(fam.flip_to_malformed)) return null;
+    const fd =
+      fam.flip_direction && typeof fam.flip_direction === "object"
+        ? fam.flip_direction
+        : {};
+    const tm = fd["to-malformed"];
+    if (!isCount(fam.n_flipped) || !isCount(tm)) return null;
     flips += fam.n_flipped;
-    malformed += fam.flip_to_malformed;
+    malformed += tm;
   }
   return { flips, malformed };
 }
-const full = rows
-  .filter((r) => r.eligible_for_ranking && r.asr_conditional !== null)
-  .sort((a, b) => a.rank - b.rank);
-const flagged = rows.filter(
-  (r) => !r.eligible_for_ranking && r.asr_conditional !== null && r.n_cases > 1000,
-);
-const slices = rows.filter(
-  (r) => !r.eligible_for_ranking && r.n_cases <= 1000,
-);
+const fullCases = Math.max(...payload.ranked.map((r) => r.n_cases));
+const full = payload.ranked
+  .filter((r) => r.n_cases === fullCases)
+  .sort((a, b) => a.asr_conditional - b.asr_conditional);
+const slices = payload.ranked.filter((r) => r.n_cases < fullCases);
+const flagged = payload.unranked;
 
 test("the payload holds the published board's shape", () => {
   assert.equal(rows.length, 52);
