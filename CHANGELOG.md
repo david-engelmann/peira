@@ -7,6 +7,21 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
 
 ## [Unreleased]
 
+### Board vendor agreement and clearance repairs
+
+- The share image generator reads the board's vendor table
+  again. The subject fill and the card ink are design tokens
+  in lib/vendor-data.json, so no family color lives in a
+  generator's source and the vendor agreement check passes
+  on the table alone. The social preview generator takes its
+  wordmark ink from the same tokens.
+- On phone widths the ranking inspector lifted to the top
+  of its zone now clears the sticky section bar with the
+  same spacing it keeps below itself.
+- A plain figure's note in the inspector now stands under
+  its figure as a sub-line. A recorded zero cost with its
+  no-charge gloss no longer wraps against the figure.
+
 ### The board rebuilt as an instrument panel
 
 - The leaderboard page is rebuilt around one selection. A

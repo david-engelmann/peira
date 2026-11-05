@@ -431,6 +431,13 @@ button {
   font-family: var(--font-mono); font-size: 19px; font-weight: 600;
 }
 .fig .iv { font-size: 11.5px; color: var(--ink-3); line-height: 1.45; }
+/* A plain figure's note stands under the figure as a
+   sub-line, never wrapped against it. The cost gloss and
+   the coverage note read as continuations, and a long one
+   wrapped beside a short figure crowds the cell. The wide
+   figures carry their notes inside the value row by design
+   and are untouched. */
+.fig:not(.wide) .iv { display: block; margin-top: 3px; }
 .fig .axmax {
   margin-left: auto; font-family: var(--font-mono); font-size: 10px;
   color: var(--ink-3);
@@ -613,7 +620,7 @@ button {
   .topboard > section, .topboard .zgrid, .topboard .railwrap {
     display: contents;
   }
-  .topboard .sec-zone .insp { order: 1; margin-bottom: 26px; }
+  .topboard .sec-zone .insp { order: 1; margin-top: 26px; margin-bottom: 26px; }
   .topboard .sec-scatter .sechead { order: 2; }
   .topboard .sec-scatter .spanel { order: 3; }
   .topboard .sec-scatter .readings { order: 4; }
