@@ -7,6 +7,25 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
 
 ## [Unreleased]
 
+### The board rebuilt as an instrument panel
+
+- The leaderboard page is rebuilt around one selection. A
+  cost scatter with the no-cost rail laddered inside its
+  panel opens the page, a ranking rail with a reading
+  inspector follows, and the flagged band, the malformed
+  rail with its drawn flag line, the family heatmap, the
+  calibration grid, the compare view, the models index and
+  the method section keep their order behind it. Selecting
+  a result anywhere loads its reading into the inspector,
+  and the card grid the page used to carry is gone. Section
+  titles state derived claims, display numerals stand in
+  the sans face, and every figure still derives from the
+  payload at build time. The share image generators draw
+  the same grammar, the landscape card gains a portrait
+  variant from the same derivations, and the ladder budget
+  is spent and logged on every publish. No figure, ranking
+  rule or metric changed.
+
 ### Share image corner readings and under-chart words
 
 - The share image's toughest reading now stands on every
