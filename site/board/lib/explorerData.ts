@@ -42,7 +42,7 @@ export interface XRow {
   kind: "full" | "slice" | "flagged";
   /** Rank within the row's own population, null on flagged rows. */
   popRank: number | null;
-  mark: InspectorDatum["mark"];
+  mark: InspectorDatum["mark"] & { glyph: string };
   subLine: string;
   rankLine: string;
   asr: number | null;
@@ -125,7 +125,7 @@ function shapeRow(
     wireRaw: row.wire,
     kind: datum.kind,
     popRank: datum.rank,
-    mark: datum.mark,
+    mark: { ...datum.mark, glyph: vendorFamilyOf(row).glyph },
     subLine: datum.subLine,
     rankLine: datum.rankLine,
     asr: datum.asr,

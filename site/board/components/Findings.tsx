@@ -160,8 +160,10 @@ export default function Findings() {
             </div>
           ))}
           <p className="wiretrack-gap">
-            <span className="rn">{fmtPct(f.wire.gap)}</span> apart, with
-            the intervals overlapping
+            <span className="rn">
+              {(f.wire.gap * 100).toFixed(1)} points
+            </span>{" "}
+            apart, with the intervals overlapping
           </p>
         </div>
         <p className="f-copy">
