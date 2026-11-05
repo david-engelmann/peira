@@ -19,7 +19,7 @@ which seals the declaration into the run artifact config where the analysis lock
 covers it. The site ingest rejects any artifact without a declared division. A
 submission missing any part does not go on the board.
 
-The leaderboard must show both divisions side by side, but the headline ranking does not mix them. A guardrail and a raw LLM baseline are not the same kind of thing, and the board does not pretend they are. Ranks are dense within each division. Shared social images chart one division at a time and say which.
+The leaderboard must show both divisions side by side, but the headline ranking does not mix them. A guardrail and a raw LLM baseline are not the same kind of thing, and the board does not pretend they are. Ranks are dense within each division. Shared social images chart the full-suite ranking population and do not chart the slices.
 
 ## Diagnostic tools are not submissions
 
@@ -70,9 +70,9 @@ suite marker (the v2 canary suite), and the marker, not its size, is
 what makes it a probe. A probe is a wiring check, not a measurement,
 and it never prints as a result, ranked or not ranked. A full run that
 fails a quality gate stands as the entry's result and is shown as not
-ranked, with the reason. Its numbers are printed in the same table as
-the ranked models, malformed response rate included, so a result is
-visible even when it carries no rank.
+ranked, with the reason. Its numbers are printed in the flagged band and
+on its own page, malformed response rate included, beside the ranking
+rather than in it, so a result is visible even when it carries no rank.
 
 Every row also carries three counts of the cases whose calls
 produced no answer, derived from the sealed records with the

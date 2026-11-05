@@ -69,7 +69,7 @@ function Panel({
       {data && data.ece !== null ? (
         <p className="cal-meta num">
           ECE {fmtEce(data.ece)} · Brier{" "}
-          {data.brier !== null ? fmtEce(data.brier) : "—"}
+          {data.brier !== null ? fmtEce(data.brier) : "·"}
         </p>
       ) : (
         <p className="cal-meta">Not measured</p>
@@ -263,7 +263,7 @@ export default function Calibration() {
                     <span className="cal-rail-ece num">
                       {ece !== null && ece !== undefined
                         ? fmtEce(ece)
-                        : "—"}
+                        : "·"}
                     </span>
                     <span className="cal-rail-bar" aria-hidden="true">
                       <span
