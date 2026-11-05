@@ -234,6 +234,9 @@ const results = payload.ranked.length + payload.unranked.length;
 const vendorData = JSON.parse(
   readFileSync(path.join(root, "lib", "vendor-data.json"), "utf8"),
 );
+/* The wordmark ink is a design token in the same table, so
+ * this source carries no color the table names either. */
+const CARD_INK = vendorData.design.ink;
 const VENDOR_BY_KEY = new Map(vendorData.families.map((f) => [f.key, f]));
 const VENDOR_RULES = vendorData.rules.map((r) => ({
   test: new RegExp(r.pattern),
@@ -478,7 +481,7 @@ const html = `<!doctype html>
 * { margin: 0; box-sizing: border-box; }
 body { width: 1280px; height: 640px; background: #05070a; color: #eef2f6;
   font-family: "Archivo", system-ui, sans-serif; overflow: hidden; }
-.word { font-size: 26px; font-weight: 700; letter-spacing: 0.34em; color: #ffffff; }
+.word { font-size: 26px; font-weight: 700; letter-spacing: 0.34em; color: ${CARD_INK}; }
 .mast { display: flex; align-items: baseline; justify-content: space-between; }
 .mastr { font-family: "Liberation Mono", "DejaVu Sans Mono", monospace; font-size: 13px; font-weight: 600; letter-spacing: 0.055em; color: #5d6773; text-transform: uppercase; }
 .foot { position: absolute; left: 48px; right: 48px; bottom: 22px; font-size: 17px; color: #71808f; display: flex; justify-content: space-between; }

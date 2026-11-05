@@ -10,7 +10,11 @@
  * ladder that lives inside a stated pixel budget. Every
  * figure derives from the payload at generation time; a
  * flagged figure never prints without its malformed
- * decomposition on the same card. */
+ * decomposition on the same card. The card's white, its
+ * ink and the fill of the subject it singles out, is a
+ * design token in lib/vendor-data.json, the board's one
+ * vendor table, read below, so no color the table names
+ * appears in this source. */
 
 import { readFileSync, writeFileSync, copyFileSync, mkdirSync } from "node:fs";
 import { globSync } from "node:fs";
@@ -23,6 +27,17 @@ const root = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const payload = JSON.parse(
   readFileSync(path.join(root, "data", "payload.json"), "utf8"),
 );
+
+/* The share images' design tokens, from the one vendor
+ * table. The card ink and the fill of the subject the card
+ * singles out live in lib/vendor-data.json, so this source
+ * carries no color the table names.
+ * scripts/check-vendor-agreement.mjs proves that claim. */
+const vendorData = JSON.parse(
+  readFileSync(path.join(root, "lib", "vendor-data.json"), "utf8"),
+);
+const CARD_INK = vendorData.design.ink;
+const SUBJECT_FILL = vendorData.design.subjectFill;
 
 /* Decimal formatting, same rule as lib/format.ts. */
 function expandDec(v) {
@@ -558,7 +573,7 @@ function plotSvg(kind, placedLabels, subjectSeat, widthOverride) {
   const discs = plottedDrawn.map(disc).join("\n");
   const sx = g.xOf(subject.total_cost_usd);
   const sy = g.yOf(subject.asr_conditional);
-  const subj = `<circle cx="${sx.toFixed(1)}" cy="${sy.toFixed(1)}" r="${g.subjR}" fill="#ffffff" data-subject="${subject.run_id}"/>`;
+  const subj = `<circle cx="${sx.toFixed(1)}" cy="${sy.toFixed(1)}" r="${g.subjR}" fill="${SUBJECT_FILL}" data-subject="${subject.run_id}"/>`;
   const labels = placedLabels
     .map(
       (l) =>
@@ -695,7 +710,7 @@ const labelCandidates = plottedDrawn
  * stacks the design's mocks carry. */
 const CARD_CSS_BASE = `
   :root{
-    --ground:#05070a; --panel:#0c1015; --ink:#ffffff; --body:#c3cad3;
+    --ground:#05070a; --panel:#0c1015; --ink:${CARD_INK}; --body:#c3cad3;
     --gray:#8d97a3; --faint:#5d6773; --hair:#1d242e; --hair2:#262f3a;
     --accent:#2fbf71; --amber:#e8a33d; --disc:#aeb7c2;
     --sans:"Liberation Sans","DejaVu Sans",Arial,sans-serif;
@@ -720,15 +735,15 @@ const CARD_CSS_BASE = `
   .lrow .lr{margin-left:auto;font-family:var(--mono);color:var(--gray)}
   .lrow.sel{box-shadow:inset 3px 0 0 var(--accent)}
   .lrow.sel .ld{background:var(--panel);border:2.5px solid var(--accent)}
-  .lrow.sel .ln{color:#fff;font-weight:600}
-  .lrow.sel .lr{color:#fff}
+  .lrow.sel .ln{color:${CARD_INK};font-weight:600}
+  .lrow.sel .lr{color:${CARD_INK}}
   .lrow.flag .ld{background:var(--panel);border:2px solid var(--amber)}
   .nameline{color:var(--gray);line-height:1.55}
   .nameline b{color:#e9edf2;font-weight:600}
   footer{display:flex;justify-content:space-between;color:var(--faint)}
   .gtick{font-family:var(--mono);font-size:10px;fill:#5d6773}
   .gtick.decade{font-size:10.5px;fill:#8d97a3}
-  .subj-name{font-family:var(--sans);font-size:15px;font-weight:700;fill:#ffffff}
+  .subj-name{font-family:var(--sans);font-size:15px;font-weight:700;fill:${CARD_INK}}
   .subj-sub{font-family:var(--sans);font-size:12.5px;fill:#c3cad3}
   .plab{font-family:var(--sans);font-size:11px;fill:#8d97a3}
 `;

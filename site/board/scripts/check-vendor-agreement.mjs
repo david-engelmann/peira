@@ -2,22 +2,38 @@
 /**
  * Vendor agreement check. lib/vendor-data.json is the one
  * vendor table for the whole board; this script proves the
- * three resolvers that read it agree on every payload row:
+ * resolvers that read it agree on every payload row.
  *
  *   page marks    lib/vendor.ts vendorOf (executed for real,
  *                 through scripts/vendor-check-hooks.mjs)
  *   page colors   lib/vendorColors.ts vendorFamilyOf (same)
  *   share image   scripts/gen-og.mjs familyOf, resolved here
- *                 through the shared table, and cross-checked
- *                 against the discs actually drawn in the
- *                 generated .og/og.html when one is present
+ *                 through the shared table
  *
- * It also proves the table is the only one: no family color
- * may appear in any resolver's source, gen-og may carry no
- * FAMILIES or MONO_LETTERS table of its own, and every logo
- * slug the table names must exist in lib/logoPaths.ts.
- * Exit code is non-zero on any disagreement. Run after a
- * build (npm run build) so .og/og.html is current.
+ * It also proves the table is the only one. No family color
+ * and no design token value may appear in any resolver's or
+ * generator's source, gen-og may carry no FAMILIES or
+ * MONO_LETTERS table of its own,
+ * every logo slug the table names must exist in
+ * lib/logoPaths.ts, and the table's design tokens, the ink
+ * and the subject fill the share images resolve through it,
+ * must be present and well formed.
+ *
+ * The last leg reads the share images as drawn. gen-og
+ * writes .og/og-land.html and .og/og-port.html and
+ * gen-social-preview writes .og/social.html. On each og
+ * card the subject disc must carry the table's subject fill
+ * and name the payload's headline result, the priciest
+ * ranked plotted run, derived here by the generator's own
+ * rule, and the social card's wordmark must carry the
+ * table's ink. A generated file that is missing, or a mark
+ * that is absent from one, fails this check. Nothing here
+ * skips.
+ *
+ * Exit code is non-zero on any disagreement. Run after
+ * node scripts/gen-og.mjs and node
+ * scripts/gen-social-preview.mjs so the .og files are
+ * current.
  */
 import { existsSync, readFileSync } from "node:fs";
 import { register } from "node:module";
@@ -41,16 +57,37 @@ for (const m of read("lib/logoPaths.ts").matchAll(/(\w+):\s*\n?\s*"([^"]+)"/g)) 
   LOGO_PATHS[m[1]] = m[2];
 }
 
-/* One table only: resolvers hold no palette of their own. */
-const palette = [
-  ...data.families.map((f) => f.color),
-  data.fallback.color,
-];
-for (const rel of ["lib/vendor.ts", "lib/vendorColors.ts", "scripts/gen-og.mjs"]) {
-  const src = read(rel);
-  for (const hex of palette) {
+/* One table only. Resolvers hold no palette of their own.
+ * The scan covers the family colors, the fallback color and
+ * the design token values, and it matches in any letter
+ * case, because the drawn card leg below compares case
+ * insensitively and a value spelled in another case is the
+ * same color. A value the table names in two roles is
+ * reported once, under its design token role when it has
+ * one, since that is the role a generator source would be
+ * spelling out. */
+const HEX_COLOR = /^#[0-9a-fA-F]{6}$/;
+const palette = new Map();
+for (const f of [...data.families, data.fallback]) {
+  const hex = f.color.toLowerCase();
+  if (!palette.has(hex)) palette.set(hex, `family color ${f.color}`);
+}
+for (const key of ["ink", "subjectFill"]) {
+  const value = data.design?.[key];
+  if (typeof value === "string" && HEX_COLOR.test(value)) {
+    palette.set(value.toLowerCase(), `the table's design token ${value}`);
+  }
+}
+for (const rel of [
+  "lib/vendor.ts",
+  "lib/vendorColors.ts",
+  "scripts/gen-og.mjs",
+  "scripts/gen-social-preview.mjs",
+]) {
+  const src = read(rel).toLowerCase();
+  for (const [hex, role] of palette) {
     if (src.includes(hex)) {
-      fail(`${rel} hardcodes family color ${hex}; the table is not the only source`);
+      fail(`${rel} hardcodes ${role}; the table is not the only source`);
     }
   }
 }
@@ -70,6 +107,19 @@ if (/\bFAMILIES\b|\bMONO_LETTERS\b/.test(ogSrc)) {
 for (const fam of [...data.families, data.fallback]) {
   if (fam.logo !== null && !(fam.logo in LOGO_PATHS)) {
     fail(`family ${fam.key} names logo ${fam.logo}, absent from lib/logoPaths.ts`);
+  }
+}
+
+/* The table's design tokens. Both generators resolve the
+ * share images' ink and subject fill through them, so a
+ * missing or malformed token fails here under its own name
+ * rather than as a bare TypeError in a generator. */
+for (const key of ["ink", "subjectFill"]) {
+  const value = data.design?.[key];
+  if (typeof value !== "string" || !HEX_COLOR.test(value)) {
+    fail(
+      `lib/vendor-data.json design.${key} is missing or not a hex color, and the generators resolve the share image through it`,
+    );
   }
 }
 
@@ -130,69 +180,101 @@ for (const row of rows) {
   }
 }
 
-/* The share image's drawn discs, when a generated og.html
- * is present: rail points first, then plotted points, each
- * in payload order, exactly as gen-og emits them. The drawn
- * set is derived from the payload here, independently of the
- * generator. A row above the derived axis ceiling is not
- * drawn at all; the generator discloses it in words instead
- * (the drawn-set contract the #522 fix set), so such a row
- * stands in neither drawn set. The ceiling is the board's
- * own rule, the smallest tenth at or above the worst ranked
- * rate, floored at 0.3, ported from lib/chart.ts. */
-const ogHtmlPath = path.join(root, ".og", "og.html");
-if (existsSync(ogHtmlPath)) {
-  const html = readFileSync(ogHtmlPath, "utf8");
-  const fullCases = Math.max(...rows.map((r) => r.n_cases));
-  const nonSlice = rows.filter((r) => r.n_cases === fullCases);
-  const worstRanked = Math.max(
-    0,
-    ...payload.ranked.map((r) => r.asr_conditional ?? 0),
-  );
-  const stepped = Math.ceil((worstRanked - 1e-9) / 0.1) * 0.1;
-  const axisMax = Math.round(Math.max(0.3, stepped) * 10) / 10;
-  const drawn = (r) => (r.asr_conditional ?? 0) <= axisMax;
-  const expected = [
-    ...nonSlice.filter(
-      (r) => !(r.total_cost_usd !== null && r.total_cost_usd > 0) && drawn(r),
-    ),
-    ...nonSlice.filter(
-      (r) => r.total_cost_usd !== null && r.total_cost_usd > 0 && drawn(r),
-    ),
-  ];
-  const discs = [
-    ...html.matchAll(
-      /<g transform="translate\([-\d.]+ [-\d.]+\)">\s*<circle r="11" fill="([^"]+)"[^/]*\/>\s*(<path d="([^"]+)"|<text[^>]*>([^<])<\/text>)/g,
-    ),
-  ];
-  if (discs.length !== expected.length) {
-    fail(`og.html holds ${discs.length} discs, expected ${expected.length}`);
+/* The share images as drawn. gen-og writes the two og
+ * cards and gen-social-preview writes the social card into
+ * .og/ before rasterizing them, and this leg reads those
+ * generated files, never the generators' sources. It must
+ * run. A missing file or an absent mark is a failure with
+ * a name, never a skip, because a leg that can pass in
+ * silence is how the pre-redesign cross-check against
+ * .og/og.html died unnoticed once the generator stopped
+ * writing that file. The headline result is derived from
+ * the payload by the generator's own rule, ported here.
+ * The full suite size is the greatest case count among
+ * ranked rows, the plotted population is the full suite
+ * rows with a recorded cost above zero, and the headline
+ * is the priciest ranking eligible run among them. */
+const fullCases = Math.max(...payload.ranked.map((r) => r.n_cases));
+const headline = [...payload.ranked, ...payload.unranked]
+  .filter((r) => r.n_cases === fullCases)
+  .filter((r) => r.total_cost_usd !== null && r.total_cost_usd > 0)
+  .filter((r) => r.ranking_eligible)
+  .sort((a, b) => a.total_cost_usd - b.total_cost_usd)
+  .at(-1);
+const subjectFill = data.design?.subjectFill;
+const cardInk = data.design?.ink;
+if (!headline) {
+  fail("the payload names no headline result, so the share image leg cannot run");
+}
+let shareFilesChecked = 0;
+for (const kind of ["land", "port"]) {
+  const rel = `.og/og-${kind}.html`;
+  const file = path.join(root, ".og", `og-${kind}.html`);
+  if (!existsSync(file)) {
+    fail(
+      `${rel} is missing, so the share image leg cannot run. Run node scripts/gen-og.mjs first`,
+    );
+    continue;
   }
-  expected.forEach((row, i) => {
-    const m = discs[i];
-    if (!m) return;
-    const og = ogFamily(row);
-    const [, fill, , pathD, letter] = m;
-    if (fill !== og.color) {
-      fail(`${row.run_id}: og disc fill ${fill} != family color ${og.color}`);
-    }
-    if (og.logo !== null && pathD !== LOGO_PATHS[og.logo]) {
-      fail(`${row.run_id}: og disc glyph is not the ${og.logo} mark`);
-    }
-    if (og.logo === null) {
-      const want =
-        og.mono ??
-        (shortName(row).match(/[a-z0-9]/i)?.[0]?.toUpperCase() ?? "·");
-      if (letter !== want) {
-        fail(`${row.run_id}: og disc mono ${letter} != ${want}`);
-      }
-    }
-  });
-  console.log(
-    `og.html discs cross-checked: ${discs.length} discs against the table`,
+  const html = readFileSync(file, "utf8");
+  const disc = html.match(/<circle\b[^>]*\bdata-subject="[^"]+"[^>]*>/);
+  if (!disc) {
+    fail(`${rel} draws no subject disc, so the share image leg cannot run`);
+    continue;
+  }
+  const fill = disc[0].match(/\bfill="([^"]+)"/)?.[1];
+  const named = disc[0].match(/\bdata-subject="([^"]+)"/)[1];
+  if (fill === undefined) {
+    fail(
+      `${rel} draws its subject disc with no fill, so the share image leg cannot run`,
+    );
+    continue;
+  }
+  if (
+    typeof subjectFill === "string" &&
+    fill.toLowerCase() !== subjectFill.toLowerCase()
+  ) {
+    fail(
+      `${rel} draws the subject disc in ${fill}, not the table's subjectFill ${subjectFill}`,
+    );
+  }
+  if (headline && named !== headline.run_id) {
+    fail(
+      `${rel} names ${named} as its subject, not the payload's headline result ${headline.run_id}`,
+    );
+  }
+  shareFilesChecked += 1;
+}
+const socialRel = ".og/social.html";
+const socialFile = path.join(root, ".og", "social.html");
+if (!existsSync(socialFile)) {
+  fail(
+    `${socialRel} is missing, so the share image leg cannot run. Run node scripts/gen-social-preview.mjs first`,
   );
 } else {
-  console.log("og.html discs cross-checked: skipped (no .og/og.html; run a build first)");
+  const html = readFileSync(socialFile, "utf8");
+  const wordRule = html.match(/\.word\s*\{[^}]*\}/);
+  const ink = wordRule?.[0].match(/\bcolor:\s*(#[0-9a-fA-F]{3,8})/)?.[1];
+  if (ink === undefined) {
+    fail(
+      `${socialRel} carries no wordmark color, so the share image leg cannot run`,
+    );
+  } else {
+    if (
+      typeof cardInk === "string" &&
+      ink.toLowerCase() !== cardInk.toLowerCase()
+    ) {
+      fail(
+        `${socialRel} prints its wordmark in ${ink}, not the table's ink ${cardInk}`,
+      );
+    }
+    shareFilesChecked += 1;
+  }
+}
+if (shareFilesChecked > 0) {
+  console.log(
+    `share image cross-checked on ${shareFilesChecked} generated cards against the table`,
+  );
 }
 
 if (failures.length > 0) {
