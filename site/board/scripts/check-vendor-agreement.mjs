@@ -11,8 +11,9 @@
  *                 through the shared table
  *
  * It also proves the table is the only one. No family color
- * may appear in any resolver's or generator's source, gen-og
- * may carry no FAMILIES or MONO_LETTERS table of its own,
+ * and no design token value may appear in any resolver's or
+ * generator's source, gen-og may carry no FAMILIES or
+ * MONO_LETTERS table of its own,
  * every logo slug the table names must exist in
  * lib/logoPaths.ts, and the table's design tokens, the ink
  * and the subject fill the share images resolve through it,
@@ -56,21 +57,37 @@ for (const m of read("lib/logoPaths.ts").matchAll(/(\w+):\s*\n?\s*"([^"]+)"/g)) 
   LOGO_PATHS[m[1]] = m[2];
 }
 
-/* One table only: resolvers hold no palette of their own. */
-const palette = [
-  ...data.families.map((f) => f.color),
-  data.fallback.color,
-];
+/* One table only. Resolvers hold no palette of their own.
+ * The scan covers the family colors, the fallback color and
+ * the design token values, and it matches in any letter
+ * case, because the drawn card leg below compares case
+ * insensitively and a value spelled in another case is the
+ * same color. A value the table names in two roles is
+ * reported once, under its design token role when it has
+ * one, since that is the role a generator source would be
+ * spelling out. */
+const HEX_COLOR = /^#[0-9a-fA-F]{6}$/;
+const palette = new Map();
+for (const f of [...data.families, data.fallback]) {
+  const hex = f.color.toLowerCase();
+  if (!palette.has(hex)) palette.set(hex, `family color ${f.color}`);
+}
+for (const key of ["ink", "subjectFill"]) {
+  const value = data.design?.[key];
+  if (typeof value === "string" && HEX_COLOR.test(value)) {
+    palette.set(value.toLowerCase(), `the table's design token ${value}`);
+  }
+}
 for (const rel of [
   "lib/vendor.ts",
   "lib/vendorColors.ts",
   "scripts/gen-og.mjs",
   "scripts/gen-social-preview.mjs",
 ]) {
-  const src = read(rel);
-  for (const hex of palette) {
+  const src = read(rel).toLowerCase();
+  for (const [hex, role] of palette) {
     if (src.includes(hex)) {
-      fail(`${rel} hardcodes family color ${hex}; the table is not the only source`);
+      fail(`${rel} hardcodes ${role}; the table is not the only source`);
     }
   }
 }
@@ -97,7 +114,6 @@ for (const fam of [...data.families, data.fallback]) {
  * share images' ink and subject fill through them, so a
  * missing or malformed token fails here under its own name
  * rather than as a bare TypeError in a generator. */
-const HEX_COLOR = /^#[0-9a-fA-F]{6}$/;
 for (const key of ["ink", "subjectFill"]) {
   const value = data.design?.[key];
   if (typeof value !== "string" || !HEX_COLOR.test(value)) {
@@ -187,6 +203,9 @@ const headline = [...payload.ranked, ...payload.unranked]
   .at(-1);
 const subjectFill = data.design?.subjectFill;
 const cardInk = data.design?.ink;
+if (!headline) {
+  fail("the payload names no headline result, so the share image leg cannot run");
+}
 let shareFilesChecked = 0;
 for (const kind of ["land", "port"]) {
   const rel = `.og/og-${kind}.html`;
@@ -219,9 +238,7 @@ for (const kind of ["land", "port"]) {
       `${rel} draws the subject disc in ${fill}, not the table's subjectFill ${subjectFill}`,
     );
   }
-  if (!headline) {
-    fail("the payload names no headline result, so the share image leg cannot run");
-  } else if (named !== headline.run_id) {
+  if (headline && named !== headline.run_id) {
     fail(
       `${rel} names ${named} as its subject, not the payload's headline result ${headline.run_id}`,
     );
