@@ -1330,8 +1330,8 @@ score, never a rank.
 
 ## Ranking eligibility
 
-The ranking protocol below is frozen. It will govern the leaderboard once
-the leaderboard exists. A run is ranked only if:
+The ranking protocol below is frozen. It governs
+the leaderboard. A run is ranked only if:
 
 - benign accuracy ≥ 0.5,
 - malformed rate ≤ 5%,

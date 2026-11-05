@@ -7,6 +7,23 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
 
 ## [Unreleased]
 
+### Cycle 10 surface repairs
+
+- Calibration's missing-value placeholder is the board's
+  middot on both surfaces that print one, matching every
+  other surface on the board.
+- Admission-Rules describes the board as merged. Shared
+  social images chart the full-suite ranking population and
+  do not chart the slices, and a failed run's numbers print
+  in the flagged band and on its own page, beside the ranking
+  rather than in it.
+- Methodology's ranking protocol speaks in the present
+  tense. The protocol is frozen and it governs the
+  leaderboard.
+- The board README names the Instrument panel design and
+  states the gates the chain runs and the widths and touch
+  session the DOM audit drives.
+
 ### Board vendor agreement and clearance repairs
 
 - The share image generator never stopped reading the
