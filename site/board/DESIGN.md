@@ -32,13 +32,13 @@ colors:
 typography:
   display:
     fontFamily: "Archivo, system-ui, sans-serif"
-    fontSize: "clamp(32px, 4.6vw, 52px)"
+    fontSize: "44px"
     fontWeight: 650
     lineHeight: 1.16
     letterSpacing: "-0.022em"
   heading:
     fontFamily: "Archivo, system-ui, sans-serif"
-    fontSize: "clamp(26px, 3vw, 34px)"
+    fontSize: "30px"
   body:
     fontFamily: "Archivo, system-ui, sans-serif"
     fontSize: "14.5px"
@@ -206,7 +206,7 @@ Two families do all the work. Archivo carries data, prose, and display. JetBrain
 
 Inside any chart there are exactly three text sizes, the axis and label size, the caption size, and the chart's title or finding size. No type in a section is larger than its finding or title. Data text is one uniform body size throughout a chart, and table headers are the smallest text in the table, kept readable by being short.
 
-Floors are absolute. No rendered text under 10px at desktop widths or at 390. Low contrast small text fails at any size it cannot be read at a glance. Contrast meets 4.5 to 1, including placeholder text. Display letter spacing never goes below -0.04em and display size never exceeds the display token's clamp.
+Floors are absolute. No rendered text under 10px at desktop widths or at 390. Low contrast small text fails at any size it cannot be read at a glance. Contrast meets 4.5 to 1, including placeholder text. Display letter spacing never goes below -0.04em and display size never exceeds the display token. Display renders at 44px and steps to 33px at phone widths, headings at 30px stepping to 25px, each step a media rule rather than a fluid scale.
 
 Numbers render in tabular figures in their final form in the first frame they are visible. Names never break mid token. If a name does not fit, the layout changes, by a wider slot, a shorter sanctioned name form, or list form.
 
