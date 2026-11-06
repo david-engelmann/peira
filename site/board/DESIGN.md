@@ -1,5 +1,12 @@
 # Peira board redesign, Maidan-led. The design record
 
+Superseded in part. The opening paragraphs below describe
+the earlier Maidan-branch tree, its branch name, its base,
+and its 39-row payload, and they stand as history. The
+dated sections govern, in particular the findings-first
+redesign section of 2026-11-05, which records the tree this
+branch actually carries.
+
 This branch carries the board redesign that ships. The
 branch is `redesign/maidan-led-board`, based on main
 `16928211`, and the change is code only. `data/payload.json`
@@ -733,3 +740,99 @@ consumed, not from a literal written at the call
 site, so the printed scope follows the derivation
 population by construction. The printed words on the
 standing payload are unchanged.
+
+## The findings-first redesign, 2026-11-05
+
+The owner rejected the Instrument panel on the live page
+the day it shipped. It presented the same figures three
+ways across nine sections, its charts were static, prose
+blocks stood where charts should speak, and no insight
+layer was visible. This redesign answers that verdict.
+The build spec and the six decisions behind it stand in
+the design perfection program's redesign record of the
+same date. The owner picked option A on all six. Model
+addresses are deep links into one explorer. The split
+finding leads. Motion runs only where data changes state
+and figures never animate. Method states each rule once
+in general terms and per-result facts live on the
+readings. Guards are a population filter in the explorer
+with their basis stated on the surface. Findings open
+the page with the explorer as their evidence.
+
+**The structure.** A masthead with a payload-derived
+dataset stamp. A hero carrying the frozen counting
+sentence verbatim and a derived full-suite range. Five
+findings, each with one dominant visual, at most 45 words
+beyond its numerals, and one action that reads the claim
+in the explorer by setting its state. One explorer with
+expandable readings, population and vendor and cost
+filters, text search, sort, a pin that holds two readings
+side by side, and rank, chart, and families views of the
+same rows, with all state in the URL hash. A diet Method
+under a word budget. One colophon line. The nine sections
+of the Instrument panel are gone, and with them the
+duplication the owner rejected. A model page carries no
+figures of its own. It hands off to the result's reading
+in the explorer.
+
+**The corners the prototype left open are closed.** Guard
+results stand in chart mode on the no-cost rail as
+selectable marks, with the rail's basis stated, instead of
+an explanatory note. Each reading renders its calibration
+reliability plot from the payload's bins. The robustness
+tax stands in each reading with its benchmark line, and
+Method states the tax definition again in general terms.
+Families mode stays per-row bars on one shared scale at
+every width, with the family as a sort key and one hover
+lighting the same family across rows. The desktop matrix
+the spec allows as an option is not built. The record
+names that a considered decline, not a gap.
+
+**The prose budget is a gate.** A census script joins the
+build chain and measures the built page against the
+spec's numbers. The main page outside Method carries at
+most 650 words. Method carries at most 550, no paragraph
+over 80. Each reading carries at most 90 words of prose
+beyond its figures and disclosures. One exception stands
+named rather than hidden. Finding 5 carries the leader's
+sanctioned no-answer disclosure, and that disclosure
+alone runs the finding past the 45-word cap. The
+disclosure duty wins and the census pins the exception
+at its measured count.
+
+**The share images.** The og cards take the findings
+grammar. Their headline is the split, and the generator
+fails closed unless both pooled splits derive and point
+the way the headline reads. Their readings stack is the
+two pooled splits with their bars and the flagged lead
+with its decomposition. The social preview keeps the
+owner's two-extremes design of 2026-10-26 and its own
+guarded claim, unchanged. The audit suite is rewritten
+for the new structure, and the generator tests follow the
+claims they pin. On the frozen 46-row fixture the flagged
+pool sits just under its malformed majority, so the
+fixture tests that exercise machinery behind the og
+guard seat that population into the claim's domain first
+and say so in their comments.
+
+**What did not change.** The palette stands as the
+iteration restored it. The frozen counting sentence
+stands verbatim. Every figure derives from the payload,
+and a flagged figure still never travels without its
+malformed decomposition, at whole-row scope and at
+per-family scope alike. The suite case count stands only
+where the derivation law allows it.
+
+**Record notes from the micro-fix round, 2026-11-05.** The
+suppressed marker began as a per-family rule, standing where
+a family's decomposition does not derive. It now stands at
+row scope as a fail-closed rule across the whole board, on
+the ranking rows, the families heads, the readings, the foot
+strip, the chart rail and list, the compare table, and the
+reading chip, so no surface prints a rate whose decomposition
+does not derive. The full-suite case count derives two ways
+that agree on this payload. The payload builder takes the
+maximum over ranked and unranked rows, while the board takes
+the maximum over ranked rows only. The two agree here, and
+they would diverge only on a payload shape this dataset does
+not produce.

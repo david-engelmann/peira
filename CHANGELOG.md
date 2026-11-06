@@ -7,6 +7,59 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
 
 ## [Unreleased]
 
+### Board rebuilt findings first
+
+- The board opens with five findings and one explorer
+  instead of nine sections. Each finding carries one
+  dominant visual and one action that reads the claim in
+  the explorer with its state set. The explorer holds
+  every result with expandable readings, population and
+  vendor and cost filters, text search, sort, pin to
+  compare, and rank, chart, and families views, with all
+  state in the URL hash.
+- Readings carry the calibration reliability plot and
+  the robustness tax with its benchmark line, both
+  restored from the Instrument panel. Guard results
+  stand in chart view on the no-cost rail as selectable
+  marks with their basis stated.
+- Method is cut to a diet under a word budget, and a
+  prose census joins the build chain to hold the budget.
+  The audit suite is rewritten for the new structure.
+- The og share cards take the findings grammar. Their
+  headline is the split between the ranked board and the
+  flagged band, guarded by the generator against the
+  payload.
+- The board's staged payload is the currently published
+  payload, so the board builds from a clean checkout
+  with the findings' figures derivable.
+- Finding 5's sanctioned no-answer disclosure runs past
+  the findings word cap. The census pins the exception
+  at its measured count and the redesign record names it.
+- The fix round closes the review findings on the
+  redesign. All five explorer state changes now animate
+  at 200ms under the motion rule, with reduced motion
+  reaching the end states. The chart gains a malformed
+  output measure with the flag line drawn at the ranked
+  board's highest malformed rate. The census measures
+  the prose that renders only under non-default states
+  at its source and counts every prose field a reading
+  renders. Population ranks share on exact ties, the
+  findings derive their vendor and harness wording from
+  the rows, a flagged row whose decomposition does not
+  derive stands suppressed instead of printing its rate
+  bare, and a copied explorer link restores the open
+  reading.
+- The micro-fix round clears the state a finding's action
+  does not name, so actions followed in sequence land
+  where each promises, carries the expanded reading once
+  in families view, and stands the rank header's labels
+  over their columns. The census counts the cost sub-line
+  in each reading and the chart's own strings at their
+  source, the findings fail closed on an unpriced anchor,
+  separated wire intervals, and a leader whose disclosed
+  cases are not exactly one, and a model address scrolls
+  its reading into view on landing.
+
 ### Leaderboard payload names its dataset, populations, and decompositions
 
 - The leaderboard payload's header suite and dataset version

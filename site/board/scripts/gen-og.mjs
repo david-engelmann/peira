@@ -1,20 +1,24 @@
 /* The share images, generated from data/payload.json: the
  * landscape card (public/og.png, 1200x630) and the portrait
  * card (public/og-portrait.png, 1080x1350), one derivation
- * feeding both. The design is the instrument panel's share
- * grammar: the headline claim the payload must support or
- * the build fails, the cost scatter with its headline
- * subject singled out in white, a numeral stack of three
- * readings beside it, the points the plot cannot name
- * carried in words under it, and the no-cost rail as a
- * ladder that lives inside a stated pixel budget. Every
- * figure derives from the payload at generation time; a
- * flagged figure never prints without its malformed
- * decomposition on the same card. The card's white, its
- * ink and the fill of the subject it singles out, is a
- * design token in lib/vendor-data.json, the board's one
- * vendor table, read below, so no color the table names
- * appears in this source. */
+ * feeding both. The design is the findings layer's share
+ * grammar: the headline is the board's lead finding, the
+ * split between the ranked board and the flagged band, and
+ * the build fails unless the payload supports it; the cost
+ * scatter stands under it with the priciest ranked plotted
+ * run singled out in white as the plot's anchor; a split
+ * stack of three readings beside the plot states the two
+ * pooled splits and the flagged lead's decomposition; the
+ * points the plot cannot name are carried in words under
+ * it, and the no-cost rail as a ladder that lives inside a
+ * stated pixel budget. Every figure derives from the
+ * payload at generation time; a flagged figure never
+ * prints without its malformed decomposition on the same
+ * card. The card's white, its ink and the fill of the
+ * subject it singles out, is a design token in
+ * lib/vendor-data.json, the board's one vendor table, read
+ * below, so no color the table names appears in this
+ * source. */
 
 import { readFileSync, writeFileSync, copyFileSync, mkdirSync } from "node:fs";
 import { globSync } from "node:fs";
@@ -100,6 +104,8 @@ function quantHU(decStr, decimals) {
 }
 const fmtPct = (v) => `${quantHU(shiftPt(expandDec(v), 2), 1)}%`;
 const fmtUsd = (v) => `$${quantHU(expandDec(v), 2)}`;
+const fmtInt = (n) =>
+  Math.round(n).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",");
 
 /* Truncation at a fixed precision, toward zero, on the
  * decimal string: quantHU without the half-up bump. */
@@ -228,6 +234,21 @@ function flipDecomposition(r) {
     genuineRate: (flips - malformed) / n,
   };
 }
+/* The pooled split over a population, the board's own
+ * pooling rule: one row whose decomposition does not
+ * derive takes the pool down with it. */
+function pooledSplit(rs) {
+  let flips = 0;
+  let malformed = 0;
+  for (const r of rs) {
+    const d = flipDecomposition(r);
+    if (d === null) return null;
+    flips += d.flips;
+    malformed += d.malformedFlips;
+  }
+  if (flips === 0) return null;
+  return { flips, malformed, share: malformed / flips };
+}
 
 const shortName = (r) => {
   let name = r.display_name;
@@ -334,14 +355,37 @@ const offScalePlotted = plotted.filter(
 const offScaleIds = new Set(offScalePlotted.map((r) => r.run_id));
 const plottedDrawn = plotted.filter((r) => !offScaleIds.has(r.run_id));
 
-/* The claims. The headline stands on the ranked plotted
- * population: the priciest ranked plotted run must carry
- * that population's highest attack success, or the card's
- * first sentence would be false and the build fails. */
-const rankedPlotted = plotted.filter((r) => r.ranking_eligible);
-const byAsrAsc = [...rankedPlotted].sort(
-  (a, b) => a.asr_conditional - b.asr_conditional,
+/* The claims. The headline is the board's lead finding,
+ * the split, and it stands on the two pooled populations:
+ * the ranked full suite must flip mostly on decisions and
+ * the flagged band mostly on malformed output, or the
+ * card's first sentence would be false and the build
+ * fails. The pools are the board's own (the ranked rows on
+ * the full case base, the flagged rows), and a row whose
+ * decomposition does not derive fails the build the same
+ * way, because the split could not be stated honestly. */
+const rankedPool = pooledSplit(
+  payload.ranked.filter((r) => r.n_cases === fullCases),
 );
+const flaggedPool = pooledSplit(payload.unranked);
+if (!rankedPool || !flaggedPool) {
+  console.error(
+    "gen-og: a pooled decomposition does not derive on this payload, so the split the card draws cannot be stated and the build fails",
+  );
+  process.exit(1);
+}
+if (rankedPool.share >= 0.5 || flaggedPool.share <= 0.5) {
+  console.error(
+    `gen-og: headline claim broken on this payload: the ranked pool's malformed share is ${rankedPool.share} and the flagged pool's is ${flaggedPool.share}, so the split headline would be false`,
+  );
+  process.exit(1);
+}
+/* The subject the plot singles out in white is the
+ * priciest ranked plotted run, the anchor the vendor
+ * agreement check derives by the same rule. It carries no
+ * headline claim under the split grammar; it is named with
+ * its own cost and rate, which are facts of its row. */
+const rankedPlotted = plotted.filter((r) => r.ranking_eligible);
 const byCostAsc = [...rankedPlotted].sort(
   (a, b) => a.total_cost_usd - b.total_cost_usd,
 );
@@ -351,13 +395,9 @@ const toughestPool = [
   ...railRows.filter((r) => r.ranking_eligible),
 ].sort((a, b) => a.asr_conditional - b.asr_conditional);
 const toughest = toughestPool[0];
-if (
-  !priciest ||
-  !toughest ||
-  priciest.asr_conditional !== byAsrAsc.at(-1).asr_conditional
-) {
+if (!priciest) {
   console.error(
-    "gen-og: headline claim broken on this payload: the priciest ranked plotted run does not carry the highest attack success among the ranked plotted runs, so the headline would be false",
+    "gen-og: the ranked plotted population is empty, so the plot has no subject and the build fails",
   );
   process.exit(1);
 }
@@ -396,8 +436,8 @@ const flaggedLead = (() => {
 })();
 /* Any other off-scale plotted point has no surface on this
  * card: the plot cannot draw it, the readings carry the
- * toughest, the flagged lead, and the rail's top, and the
- * words under the plot name points the plot drew. Rather
+ * two pooled splits and the flagged lead, and the words
+ * under the plot name points the plot drew. Rather
  * than drop it in silence, the build fails. */
 for (const r of offScalePlotted) {
   if (flaggedLead && r.run_id === flaggedLead.row.run_id) continue;
@@ -435,18 +475,6 @@ const ceilingDecompClause = (r) => {
   if (d === null) return "";
   return `, genuine flip rate ${fmtPct(d.genuineRate)}, with ${fmtPct(d.malformedShare)} of counted flips to malformed output`;
 };
-/* The rail reading: the ranked no-cost run with the highest
- * rate, named with the reason it stands apart from the cost
- * story the headline tells. */
-const railRanked = railRows
-  .filter((r) => r.ranking_eligible)
-  .sort((a, b) => (b.asr_conditional ?? 0) - (a.asr_conditional ?? 0));
-const railTop = railRanked[0] ?? null;
-const railTopWho = railTop
-  ? railTop.asr_conditional > subject.asr_conditional
-    ? `${pointName(railTop)}, no recorded cost. It flipped past every ranked costed run.`
-    : `${pointName(railTop)}, no recorded cost, the highest rate on the rail.`
-  : null;
 
 /* The ladder: every rail result in rate order, worst first.
  * The landscape card sets it in two columns inside a rows
@@ -489,13 +517,14 @@ const ladderPort = ladderBudget("port");
 const plotShrink = { land: 0, port: 0 };
 const fitTight = { land: false, port: false };
 
-/* Plot geometry for the two cards. The x scale is a fixed
- * number of pixels per cost decade from the derived domain
- * floor, so the whole decades inside the domain carry the
- * labels; the y scale runs from the derived ceiling at the
- * top gridline to zero at the bottom one, with the middle
- * gridline at half the ceiling. Positions are the mock's,
- * restated as derivations over the payload's own domain. */
+/* Plot geometry for the two cards. The x scale gives the
+ * derived domain's decades the mock's fixed number of
+ * pixels per decade while the domain is no wider than the
+ * mock's own; the y scale runs from the derived ceiling at
+ * the top gridline to zero at the bottom one, with the
+ * middle gridline at half the ceiling. Positions are the
+ * mock's, restated as derivations over the payload's own
+ * domain. */
 const GEOMS = {
   land: {
     viewBox: "0 6 700 272",
@@ -526,12 +555,29 @@ const GEOMS = {
     canvas: { x: 0, y: 0, w: 976, h: 568 },
   },
 };
+/* The domain's width in decades, against the width the
+ * mock's density serves: the standing domain spans four
+ * and a half decades, half-decade floor to half-decade
+ * ceiling, and that span at the mock's pixels per decade
+ * is what the plot's geometry was drawn against. A payload
+ * whose domain runs wider (a costlier field, by an order
+ * of magnitude at the top) shares the same pixel span at a
+ * compressed density, the way the attack success axis
+ * derives its ceiling from the payload: the scale follows
+ * the domain, so a plotted point never falls off the
+ * canvas's right edge in silence and the subject the plot
+ * singles out always stands on the plot where it can be
+ * named. A narrower domain keeps the mock's density. */
+const domainDecades = Math.log10(domHi) - Math.log10(domLo);
+const MOCK_DOMAIN_DECADES = 4.5;
 function geomFor(kind) {
   const g = GEOMS[kind];
+  const decadePx =
+    g.decadePx * Math.min(1, MOCK_DOMAIN_DECADES / domainDecades);
   const xOf = (c) =>
-    g.x0 + (Math.log10(c) - Math.log10(domLo)) * g.decadePx;
+    g.x0 + (Math.log10(c) - Math.log10(domLo)) * decadePx;
   const yOf = (a) => g.yBot - (a / axisMax) * (g.yBot - g.yTop);
-  return { ...g, xOf, yOf };
+  return { ...g, decadePx, xOf, yOf };
 }
 function decadesFor(g) {
   const out = [];
@@ -541,7 +587,15 @@ function decadesFor(g) {
     e++
   ) {
     const v = 10 ** e;
-    out.push({ x: g.xOf(v), label: v < 1 ? `$${v.toFixed(2)}` : `$${v}` });
+    const x = g.xOf(v);
+    /* A decade whose tick itself stands outside the canvas
+     * carries no label: under a compressed scale the domain
+     * ceiling can be a whole decade seated at the span's
+     * edge, past the canvas, and a label centered there
+     * would print cut. Points past the last labeled decade
+     * still read against it. */
+    if (x < g.canvas.x + 2 || x > g.canvas.x + g.canvas.w - 2) continue;
+    out.push({ x, label: v < 1 ? `$${v.toFixed(2)}` : `$${v}` });
   }
   return out;
 }
@@ -653,19 +707,33 @@ function ladderHtml(kind) {
   return `<div class="ladder">${head}${cols}</div>`;
 }
 
-/* The readings. Three blocks at most: the toughest on the
- * chart, the flagged lead with its decomposition in its
- * words, and the rail's top. A block the payload cannot
- * fill is omitted, never padded. */
+/* The readings. Three blocks: the ranked pool's split, the
+ * flagged pool's split, and the flagged lead with its
+ * decomposition in its words. Each split block carries its
+ * bar, genuine slate against malformed amber at the pooled
+ * shares, the same drawing the board's first finding makes.
+ * A block the payload cannot fill is omitted, never padded;
+ * the two pools cannot be empty here, because the headline
+ * guard above has already failed the build without them. */
+function splitBar(pool) {
+  const malformedPct = (pool.share * 100).toFixed(2);
+  const genuinePct = (100 - pool.share * 100).toFixed(2);
+  return `<div class="robar"><span class="seg genuine" style="width:${genuinePct}%"></span><span class="seg malformed" style="width:${malformedPct}%"></span></div>`;
+}
 function readouts() {
   const blocks = [];
-  if (toughest) {
-    blocks.push({
-      micro: `<span class="tick g"></span>Toughest on the chart`,
-      num: fmtPct(toughest.asr_conditional),
-      who: `${pointName(toughest)}, flipped least of all`,
-    });
-  }
+  blocks.push({
+    micro: `<span class="tick g"></span>Ranked, the full suite`,
+    num: fmtPct(1 - rankedPool.share),
+    bar: splitBar(rankedPool),
+    who: `genuine changes of mind in ${fmtInt(rankedPool.flips)} counted flips. ${fmtInt(rankedPool.malformed)} (${fmtPct(rankedPool.share)}) were malformed output.`,
+  });
+  blocks.push({
+    micro: `<span class="tick a"></span>Flagged, over the gate`,
+    num: fmtPct(flaggedPool.share),
+    bar: splitBar(flaggedPool),
+    who: `of ${fmtInt(flaggedPool.flips)} counted flips in the flagged band were malformed output. ${fmtInt(flaggedPool.flips - flaggedPool.malformed)} were genuine changes of mind.`,
+  });
   if (flaggedLead) {
     const d = flipDecomposition(flaggedLead.row);
     blocks.push({
@@ -674,20 +742,14 @@ function readouts() {
       who: `${pointName(flaggedLead.row)}, counted attack success. ${fmtPct(d.malformedShare)} of counted flips to malformed output, genuine flip rate ${fmtPct(d.genuineRate)}.`,
     });
   }
-  if (railTop) {
-    blocks.push({
-      micro: `On the rail`,
-      num: fmtPct(railTop.asr_conditional),
-      who: railTopWho,
-      faint: true,
-    });
-  }
   return blocks;
 }
 const FOOT_L = () =>
   `Peira decision robustness board. Dataset ${versions.dataset}, suite ${versions.suite}, updated ${dateWords}.`;
 const FOOT_R = "Amber marks a flagged result &middot; peiratrial.dev";
 const MAST_R = `Decision models under attack &middot; ${results} results`;
+const HEADLINE =
+  "The ranked board flips on decisions. The flagged band flips on broken output.";
 
 /* The label candidates beside the subject: the two priciest
  * unflagged plotted results after the subject itself, by
@@ -727,6 +789,9 @@ const CARD_CSS_BASE = `
   .ro .tick{display:inline-block;width:8px;height:8px;margin-right:8px}
   .ro .tick.g{background:var(--accent)} .ro .tick.a{background:var(--amber)}
   .ro .num{font-family:var(--sans);font-weight:700;color:var(--ink);line-height:1.15}
+  .robar{display:flex;height:9px;border-radius:3px;overflow:hidden;background:var(--panel);margin-top:7px}
+  .robar .seg.genuine{background:#31404f}
+  .robar .seg.malformed{background:var(--amber)}
   .ladder{margin-top:auto;border-top:1px solid var(--hair);padding-top:8px}
   .ladder .lhead{padding-bottom:6px;border-bottom:1px solid var(--hair)}
   .lrow{display:flex;align-items:center;gap:10px}
@@ -825,7 +890,7 @@ function cardHtml(kind) {
   );
   const ros = readouts();
   const roHtml = (b) =>
-    `<div class="ro"><div class="micro${b.faint ? " faint" : ""}">${b.micro}</div><div class="num">${esc(b.num)}</div><div class="who">${esc(b.who)}</div></div>`;
+    `<div class="ro"><div class="micro${b.faint ? " faint" : ""}">${b.micro}</div><div class="num">${esc(b.num)}</div>${b.bar ?? ""}<div class="who">${esc(b.who)}</div></div>`;
   const mast = `<div class="mast"><div class="wordmark">PEIRA</div><div class="micro faint">${MAST_R}</div></div>`;
   const foot = `<footer><span>${esc(FOOT_L())}</span><span>${FOOT_R}</span></footer>`;
   const nameline = `<p class="nameline" id="nameline"></p>`;
@@ -834,7 +899,7 @@ function cardHtml(kind) {
 <html><head><meta charset="utf-8"><style>${CARD_CSS_BASE}${CARD_CSS_PORT}</style></head><body>
 <div class="card${tight ? " tight" : ""}">
 ${mast}
-<h1>The priciest model was the easiest to flip</h1>
+<h1>${HEADLINE}</h1>
 <div class="nums">
 ${ros.map(roHtml).join("\n")}
 </div>
@@ -852,7 +917,7 @@ ${foot}
 <html><head><meta charset="utf-8"><style>${CARD_CSS_BASE}${CARD_CSS_LAND}</style></head><body>
 <div class="card${tight ? " tight" : ""}">
 ${mast}
-<h1>The priciest model was the easiest to flip</h1>
+<h1>${HEADLINE}</h1>
 <div class="middle">
 <div class="scattercol">
 <div class="micro plotmicro">Attack success, percent, against cost per run in dollars, log scale</div>
@@ -1433,6 +1498,12 @@ for (const kind of ["land", "port"]) {
           micro: el.querySelector(".micro")?.textContent ?? "",
           num: el.querySelector(".num")?.textContent ?? "",
           who: el.querySelector(".who")?.textContent ?? "",
+          bar: el.querySelector(".robar")
+            ? [...el.querySelectorAll(".robar .seg")].map((s) => ({
+                cls: s.getAttribute("class"),
+                width: s.getAttribute("style"),
+              }))
+            : null,
         })),
         subject: {
           name: txt("#subj-name"),
@@ -1468,6 +1539,20 @@ for (const kind of ["land", "port"]) {
       };
     });
     probes[kind].ladderBudget = budget;
+    probes[kind].pools = {
+      ranked: {
+        flips: rankedPool.flips,
+        malformed: rankedPool.malformed,
+        share: rankedPool.share,
+      },
+      flagged: {
+        flips: flaggedPool.flips,
+        malformed: flaggedPool.malformed,
+        share: flaggedPool.share,
+      },
+    };
+    probes[kind].subjectRunId = subject.run_id;
+    probes[kind].flaggedLeadRunId = flaggedLead ? flaggedLead.row.run_id : null;
   }
   await page.screenshot({
     path: path.join(

@@ -21,7 +21,7 @@ const SITE = "https://peiratrial.dev";
 const versions = boardVersions();
 const modelTotal = modelCounts().tested;
 
-const description = `Attack success rates for ${modelTotal} decision models on paired benign and attacked cases, with 95 percent intervals, tie brackets, and flagged results.`;
+const description = `Attack success rates for ${modelTotal} decision models on paired benign and attacked cases, with 95 percent intervals and flagged results.`;
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE),
@@ -39,7 +39,7 @@ export const metadata: Metadata = {
         url: "/og.png",
         width: 1200,
         height: 630,
-        alt: "The Peira cost scatter: attack success against recorded cost per run, every full-suite model named beside its point",
+        alt: "The Peira share card, the split finding over the cost scatter, the ranked board flipping on decisions and the flagged band on malformed output",
       },
     ],
   },

@@ -70,9 +70,10 @@ suite marker (the v2 canary suite), and the marker, not its size, is
 what makes it a probe. A probe is a wiring check, not a measurement,
 and it never prints as a result, ranked or not ranked. A full run that
 fails a quality gate stands as the entry's result and is shown as not
-ranked, with the reason. Its numbers are printed in the flagged band and
-on its own page, malformed response rate included, beside the ranking
-rather than in it, so a result is visible even when it carries no rank.
+ranked, with the reason. Its numbers are printed in the flagged
+population of the board's explorer, malformed response rate included,
+beside the ranking rather than in it, so a result is visible even when
+it carries no rank.
 
 Every row also carries three counts of the cases whose calls
 produced no answer, derived from the sealed records with the
@@ -83,7 +84,7 @@ the cases where only the benign call failed and the cases where
 only the attacked call failed. The counts are zero for a run that
 measured every case it attempted. Where a count is not zero the
 board discloses it with the result wherever its figures appear,
-and the method notes state the counting consequences in full. A
+and the method notes state the counting rule and its consequences. A
 case that produced no answer on either call is never eligible, so
 it cannot enter the conditional attack success rate the board
 ranks by, and a case whose benign call failed is not eligible
@@ -117,8 +118,8 @@ ranked and flagged, or how many models stand tied at the top
 counts each model ID once, however many wires measured it, and
 a model counts as ranked when at least one of its
 measurements holds a rank. Ranks themselves are per measurement. A
-card rank states the standing of its own measurement among the
-ranked entries, so one model can carry two ranked cards with two
+row's rank states the standing of its own measurement among the
+ranked entries, so one model can carry two ranked rows with two
 different ranks.
 
 ## Tie bands

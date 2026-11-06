@@ -68,6 +68,13 @@ export interface InspectorDatum {
    * sealed records derive no decomposition (C-5 suppression).
    */
   asr: number | null;
+  /**
+   * True when this row is a flagged result whose counted rate
+   * stands suppressed because its records derive no
+   * decomposition. Carriers print the suppression marker where
+   * the rate would stand, never a bare figure or a blank.
+   */
+  suppressed: boolean;
   asrText: string | null;
   /** The figure's label: counted, for a flagged result. */
   asrLabel: string;
@@ -223,6 +230,7 @@ export function inspectorDatum(
     mark,
     subLine,
     asr,
+    suppressed,
     asrText: asr !== null ? fmtPct(asr) : null,
     asrLabel:
       kind === "flagged" ? "Counted attack success" : "Attack success",
