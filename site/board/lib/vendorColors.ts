@@ -25,6 +25,13 @@ export interface VendorFamily {
   /** The ink that stays legible on the family color when the
    * color fills a disc or a chip. */
   glyph: string;
+  /** The vendor chip's ground where the family color itself
+   * carries neither glyph ink over the contrast floor, the
+   * color adjusted by the smallest five percent step that
+   * clears the floor. Absent on every family whose color
+   * carries its glyph unaided. Only the chip reads this
+   * field. Discs and every other surface keep the color. */
+  chipColor?: string;
   /** Brand mark key into lib/logoPaths, or null when the
    * vendor publishes no usable mark. */
   logo: string | null;

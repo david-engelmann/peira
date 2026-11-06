@@ -19,7 +19,11 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
   and meta glyph inks take the dark glyph ink.
 - The vendor chip renders solid in the family color
   with the family glyph ink, as the adopted design
-  file describes.
+  file describes, and where neither glyph ink
+  reaches the contrast floor on a family color the
+  chip ground alone adjusts by the smallest five
+  percent step that clears it, as the zhipu and
+  upstage chips do.
 
 ### Board design home
 

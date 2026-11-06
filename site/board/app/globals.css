@@ -204,9 +204,12 @@ h3 { font-size: 21px; font-weight: 700; }
 .vlogo { display: inline-block; border-radius: 6px; flex: 0 0 auto; }
 
 /* The vendor chip carries the maker's mark in the maker's
-   glyph ink on the maker's family color, or a monogram
-   letter for systems that publish no mark. One box
-   geometry in rows and cards so identity reads at a glance. */
+   glyph ink on the maker's chip ground, its family color
+   or the adjusted ground the vendor table records where
+   the color itself carries neither ink over the floor,
+   or a monogram letter for systems that publish no mark.
+   One box geometry in rows and cards so identity reads
+   at a glance. */
 .vendor-chip {
   display: inline-flex;
   align-items: center;
