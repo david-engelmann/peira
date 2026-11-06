@@ -204,7 +204,7 @@ Chart furniture has named tokens so the linter can hold it. Gridlines and axis l
 
 Two families do all the work. Archivo carries data, prose, and display. JetBrains Mono carries labels, eyebrows, and stamps only. Mono never carries a data line.
 
-Inside any chart there are exactly three text sizes, the axis and label size, the caption size, and the chart's title or finding size. The largest type in a section is its finding or title. Data text is one uniform body size throughout a chart, and table headers are the smallest text in the table, kept readable by being short.
+Inside any chart there are exactly three text sizes, the axis and label size, the caption size, and the chart's title or finding size. No type in a section is larger than its finding or title. Data text is one uniform body size throughout a chart, and table headers are the smallest text in the table, kept readable by being short.
 
 Floors are absolute. No rendered text under 10px at desktop widths or at 390. Low contrast small text fails at any size it cannot be read at a glance. Contrast meets 4.5 to 1, including placeholder text. Display letter spacing never goes below -0.04em and display size never exceeds the display token's clamp.
 
