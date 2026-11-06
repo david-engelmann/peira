@@ -1,5 +1,12 @@
 # Peira board redesign, Maidan-led. The design record
 
+Superseded in part. The opening paragraphs below describe
+the earlier Maidan-branch tree, its branch name, its base,
+and its 39-row payload, and they stand as history. The
+dated sections govern, in particular the findings-first
+redesign section of 2026-11-05, which records the tree this
+branch actually carries.
+
 This branch carries the board redesign that ships. The
 branch is `redesign/maidan-led-board`, based on main
 `16928211`, and the change is code only. `data/payload.json`

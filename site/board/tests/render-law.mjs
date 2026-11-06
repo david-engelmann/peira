@@ -226,6 +226,17 @@ const notes = await page.evaluate(() => {
   }
   return out;
 });
+/* The malformed measure's flag note is an annotation of the
+ * same chart and stands under the same cap. */
+await page.evaluate(() => {
+  const btns = [...document.querySelectorAll("button")];
+  btns.find((b) => b.textContent.trim() === "Malformed")?.click();
+});
+await page.waitForSelector(".flag-note", { timeout: 10000 }).catch(() => null);
+const flagNote = await page.evaluate(() => {
+  return document.querySelector(".flag-note")?.textContent ?? "";
+});
+if (flagNote) notes.push(flagNote);
 const wordCount = (t) => t.split(/\s+/).filter((x) => /[A-Za-z]/.test(x)).length;
 for (const n of notes) {
   if (wordCount(n) > 25) {

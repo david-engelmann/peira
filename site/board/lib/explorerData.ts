@@ -14,7 +14,7 @@ import {
   taxBenchmarks,
   type BoardRow,
 } from "@/lib/payload";
-import { fmtEce, fmtPct } from "@/lib/format";
+import { fmtEce, fmtInt, fmtPct } from "@/lib/format";
 import { vendorFamilyOf } from "@/lib/vendorColors";
 import { asrAxisFor } from "@/lib/chart";
 import {
@@ -52,6 +52,15 @@ export interface XRow {
   kind: "full" | "slice" | "flagged";
   /** Rank within the row's own population, null on flagged rows. */
   popRank: number | null;
+  /** A flagged row whose counted rate stands suppressed (C-5). */
+  suppressed: boolean;
+  /** The counted flips line, composed here so every surface
+   *  and the prose census read the same words. */
+  decompLine: string | null;
+  /** The weakest family sentence, composed here on the same rule. */
+  weakestLine: string | null;
+  /** The benign benchmark sub-line, composed here on the same rule. */
+  benignBestLine: string | null;
   mark: InspectorDatum["mark"] & { glyph: string };
   subLine: string;
   rankLine: string;
@@ -117,8 +126,89 @@ export interface ExplorerData {
   guardCases: number;
   /** The full suite's case count, the guard subset's base. */
   fullCases: number;
+  /** The guard basis statement, composed once here. */
+  guardBasis: string;
+  /**
+   * The flag line for the chart's malformed measure. The
+   * highest malformed rate among the ranked rows, full suite
+   * and slices alike. Every flagged result stands past it.
+   */
+  flagLine: number;
   /** Vendor filter options, in payload order of first appearance. */
   vendors: Array<{ key: string; label: string }>;
+}
+
+/** The guard basis statement (BUILD-SPEC part 4), composed
+ *  once here so the surface and the prose census read the
+ *  same words. */
+export function guardBasisLine(guardCases: number, fullCases: number): string {
+  return (
+    `Guard results ran the ${fmtInt(guardCases)} case abstain subset ` +
+    `of the suite's ${fmtInt(fullCases)} cases. They are ranked among ` +
+    `themselves on that basis, and their rates do not compare with ` +
+    `full suite rates.`
+  );
+}
+
+/** The filter count line, composed once here on the same rule. */
+export function countLineText(
+  showing: number,
+  total: number,
+  hidden: number,
+  brushOn: boolean,
+): string {
+  return (
+    `Showing ${fmtInt(showing)} of ${fmtInt(total)} results` +
+    (hidden > 0 ? ` · ${fmtInt(hidden)} hidden by filters` : "") +
+    (brushOn ? " · brush filter on" : "")
+  );
+}
+
+/** The group dividers inside the all results view. */
+export const GUARD_DIVIDER =
+  "Guard results · ranked among themselves on the abstain subset basis";
+export const FLAGGED_DIVIDER = "Flagged results · held off the ranking";
+
+/** The empty states of the rank and chart views. */
+export const EMPTY_RANK_TEXT =
+  "No result matches these filters. Loosen one and the board comes back.";
+export const EMPTY_CHART_TEXT =
+  "No result matches these filters, so the chart has nothing to show.";
+
+/** The chart's rail note, in its two forms. */
+export function railNoteText(hasGuards: boolean): string {
+  return hasGuards
+    ? "Guard results stand here on their abstain subset basis. The rest carry no recorded cost and stand off the axis, not at zero."
+    : "These results carry no recorded serving cost, so they stand off the axis rather than at zero.";
+}
+
+/** The off scale note for one result past the shared axis,
+ *  with its decomposition in the same unit where one derives. */
+export function offScaleNoteText(row: XRow): string {
+  return (
+    `▲ ${row.name} plots above the shared axis at ${row.asrText} counted.` +
+    (row.decomp
+      ? ` Malformed output is ${fmtPct(row.decomp.malformedShare)} of its counted flips, and its genuine flip rate is ${fmtPct(row.decomp.genuineRate)}.`
+      : "")
+  );
+}
+
+/** The flag line's label on the chart's malformed measure. */
+export function flagLineLabelText(value: number): string {
+  return `Flag line · the ranked board's highest malformed rate ${fmtPct(value)}`;
+}
+
+/** The note standing under the malformed measure for the
+ *  extreme flagged result, its decomposition in the same unit.
+ *  Null where the result derives no decomposition, in which
+ *  case no note may stand for it. */
+export function flagNoteText(row: XRow): string | null {
+  if (row.decomp === null) return null;
+  return (
+    `▲ ${row.name} stands past the flag line at ${row.malformedText} ` +
+    `malformed output. Malformed output is ${fmtPct(row.decomp.malformedShare)} ` +
+    `of its counted flips, and its genuine flip rate is ${fmtPct(row.decomp.genuineRate)}.`
+  );
 }
 
 function shapeRow(
@@ -146,6 +236,19 @@ function shapeRow(
     wireRaw: row.wire,
     kind: datum.kind,
     popRank: datum.rank,
+    suppressed: datum.suppressed,
+    decompLine:
+      decomp === null
+        ? null
+        : `${fmtInt(decomp.flips)} counted flips · ${fmtInt(decomp.malformedFlips)} to malformed output · genuine flip rate ${fmtPct(decomp.genuineRate)}`,
+    weakestLine:
+      datum.weakestFamily === null
+        ? null
+        : `Weakest family ${datum.weakestFamily.name} at ${datum.weakestFamily.text}.`,
+    benignBestLine:
+      datum.benignBest === null
+        ? null
+        : `${datum.benignBest.name} marks the best at ${datum.benignBest.text}`,
     mark: { ...datum.mark, glyph: vendorFamilyOf(row).glyph },
     subLine: datum.subLine,
     rankLine: datum.rankLine,
@@ -277,6 +380,16 @@ export function explorerData(): ExplorerData {
     flaggedCount: groups.flagged.length,
     guardCases: groups.slices[0]?.n_cases ?? 0,
     fullCases: groups.fullCases,
+    guardBasis: guardBasisLine(
+      groups.slices[0]?.n_cases ?? 0,
+      groups.fullCases,
+    ),
+    flagLine: Math.max(
+      0,
+      ...rows
+        .filter((r) => r.kind !== "flagged")
+        .map((r) => r.malformed ?? 0),
+    ),
     vendors,
   };
 }

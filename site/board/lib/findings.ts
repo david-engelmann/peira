@@ -4,7 +4,7 @@
  * Every figure the findings state derives here from the payload,
  * through the same decomposition core the board trusts
  * (lib/payload flipDecomposition). The design-time proof of these
- * derivations is the findings layer derivation record; this module
+ * derivations is the findings layer derivation record. This module
  * is the build-time form of the same arithmetic. Failure semantics
  * are fail closed, as the findings spec requires. Where a
  * decomposition a finding needs comes back empty, or a population
@@ -15,33 +15,43 @@
 
 import {
   boardGroups,
+  countOf,
+  familyRecords,
   flipDecomposition,
+  measuredAsr,
   shortName,
   unansweredCount,
   wireWords,
   type BoardRow,
 } from "@/lib/payload";
+import { vendorOf } from "@/lib/vendor";
 
-function familyRecordsOf(row: BoardRow): Record<string, unknown>[] {
-  const detail =
-    row.detail !== null && typeof row.detail === "object"
-      ? (row.detail as Record<string, unknown>)
-      : {};
-  const raw = detail.families;
-  let entries: unknown[] = [];
-  if (Array.isArray(raw)) entries = raw;
-  else if (raw !== null && typeof raw === "object") {
-    entries = Object.values(raw);
+/**
+ * The harness wording for a leader measured through an agent
+ * harness, keyed by the recorded wire. The finding states the
+ * harness because the harness is part of the measurement, and
+ * the words come from the leader row's own wire, so a leader
+ * measured another way fails the build here rather than
+ * borrowing this wording.
+ */
+const HARNESS_WORDS: Record<string, string> = {
+  "cursor-harness": "Cursor agent harness",
+};
+
+/** The dense rank of one row among a population, by measured
+ *  attack success. Computed from the values themselves, so
+ *  the payload's row order cannot misstate it. */
+function denseRankOf(rows: BoardRow[], target: BoardRow): number {
+  const targetAsr = measuredAsr(target);
+  if (targetAsr === null) {
+    throw new Error("findings: a rank was asked of a row with no measured rate");
   }
-  return entries.filter(
-    (f): f is Record<string, unknown> =>
-      f !== null && typeof f === "object" && !Array.isArray(f),
-  );
-}
-
-function countOf(x: unknown): number | null {
-  if (typeof x !== "number" || !Number.isInteger(x) || x < 0) return null;
-  return x;
+  const below = new Set<number>();
+  for (const row of rows) {
+    const v = measuredAsr(row);
+    if (v !== null && v < targetAsr) below.add(v);
+  }
+  return below.size + 1;
 }
 
 export interface PooledDecomp {
@@ -130,6 +140,8 @@ export interface SplitFinding {
 
 export interface WireFinding {
   name: string;
+  /** The vendor both wires belong to, read off the rows. */
+  vendor: string;
   tracks: Array<{
     row: BoardRow;
     wire: string;
@@ -167,6 +179,8 @@ export interface GuardFinding {
 
 export interface LeaderFinding {
   row: BoardRow;
+  /** The harness the leader was measured through, in words. */
+  harness: string;
   rank: number;
   population: number;
   ci: [number, number];
@@ -246,6 +260,10 @@ export function findingsData(): FindingsData {
   const wireRows = [...pairs[0]].sort(
     (a, b) => (a.asr_conditional ?? 0) - (b.asr_conditional ?? 0),
   );
+  const wireVendor = vendorOf(wireRows[0]).label;
+  if (vendorOf(wireRows[1]).label !== wireVendor) {
+    throw new Error("findings: the two wire rows carry different vendors");
+  }
   const wireTracks = wireRows.map((row) => {
     if (
       row.asr_conditional === null ||
@@ -279,11 +297,10 @@ export function findingsData(): FindingsData {
   const cheapest = priced.reduce((a, b) =>
     (b.total_cost_usd as number) < (a.total_cost_usd as number) ? b : a,
   );
-  const jevIndex = full.findIndex((r) => shortName(r).startsWith("jev"));
-  if (jevIndex < 0) {
+  const jev = full.find((r) => shortName(r).startsWith("jev"));
+  if (jev === undefined) {
     throw new Error("findings: the price anchor row is not on the full suite");
   }
-  const jev = full[jevIndex];
   const jevCost = jev.total_cost_usd as number;
   const hundred = priced.filter(
     (r) => (r.total_cost_usd as number) >= 100 * jevCost,
@@ -303,7 +320,7 @@ export function findingsData(): FindingsData {
   const dirTotals = new Map<string, number>();
   let guardFlips = 0;
   for (const row of slices) {
-    for (const fam of familyRecordsOf(row)) {
+    for (const fam of familyRecords(row)) {
       const nf = countOf(fam.n_flipped);
       if (nf !== null) guardFlips += nf;
       const fd =
@@ -328,10 +345,25 @@ export function findingsData(): FindingsData {
     );
   }
 
-  /* Finding 5, the leader. The finding is the leader's disclosed
-   * case, so a leader carrying none leaves the finding without
-   * its evidence and the build fails. */
-  const leader = full[0];
+  /* Finding 5, the leader, chosen by the lowest measured rate
+   * among the ranked full suite rows rather than by position,
+   * so the payload's row order cannot misstate it. The finding
+   * is the leader's disclosed case, so a leader carrying none
+   * leaves the finding without its evidence and the build
+   * fails. */
+  const measured = full.filter((r) => measuredAsr(r) !== null);
+  if (measured.length === 0) {
+    throw new Error("findings: no full suite row carries a measured rate");
+  }
+  const leader = measured.reduce((a, b) =>
+    (measuredAsr(b) as number) < (measuredAsr(a) as number) ? b : a,
+  );
+  const harness = HARNESS_WORDS[leader.wire];
+  if (harness === undefined) {
+    throw new Error(
+      "findings: the leader's wire carries no harness wording the finding may state",
+    );
+  }
   const leaderDecomp = flipDecomposition(leader);
   if (leaderDecomp === null || leader.asr_ci95 === null || leader.benign_accuracy === null) {
     throw new Error("findings: the leader derives no decomposition");
@@ -358,13 +390,13 @@ export function findingsData(): FindingsData {
         genuineRate: mercuryDecomp.genuineRate,
       },
     },
-    wire: { name: shortName(wireRows[0]), tracks: wireTracks, gap },
+    wire: { name: shortName(wireRows[0]), vendor: wireVendor, tracks: wireTracks, gap },
     price: {
       pricedCount: priced.length,
       correlation,
       jev: {
         row: jev,
-        rank: jevIndex + 1,
+        rank: denseRankOf(full, jev),
         cost: jevCost,
         asr: jev.asr_conditional as number,
       },
@@ -400,7 +432,8 @@ export function findingsData(): FindingsData {
     },
     leader: {
       row: leader,
-      rank: 1,
+      harness,
+      rank: denseRankOf(full, leader),
       population: full.length,
       ci: leader.asr_ci95,
       flips: leaderDecomp.flips,

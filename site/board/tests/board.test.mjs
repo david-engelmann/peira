@@ -5,7 +5,7 @@
  * agree. The derivations under test are lib/findings.ts (the
  * five findings) and lib/explorerData.ts (the explorer's
  * rows), including the corners the production build had to
- * close: the calibration panel data, the robustness tax and
+ * close. The calibration panel data, the robustness tax and
  * its benchmarks, the shared family axis, and the per-family
  * decompositions for flagged rows.
  *
@@ -27,7 +27,7 @@ const payload = JSON.parse(readFileSync(path.join(root, "data", "payload.json"),
 
 const { findingsData } = await import(path.join(root, "lib", "findings.ts"));
 const { explorerData } = await import(path.join(root, "lib", "explorerData.ts"));
-const { modelSlug } = await import(path.join(root, "lib", "payload.ts"));
+const { modelSlug, denseRanks } = await import(path.join(root, "lib", "payload.ts"));
 
 /* ---------- independent derivations ---------- */
 
@@ -146,6 +146,22 @@ test("finding 2 is the one duplicated model, with the derived gap", () => {
   const asrs = pair.map((r) => r.asr_conditional).sort((a, b) => a - b);
   assert.ok(Math.abs(findings.wire.gap - (asrs[1] - asrs[0])) < 1e-12);
   for (const r of pair) assert.equal(r.total_cost_usd === null, false);
+  /* Each track carries its own row's figures, not the pair's
+   * shared ones. */
+  for (const track of findings.wire.tracks) {
+    const src = pair.find((r) => r.run_id === track.row.run_id);
+    assert.ok(src, "the track names a row of the pair");
+    assert.deepEqual(track.row.asr_ci95, src.asr_ci95);
+    assert.equal(track.row.malformed_rate, src.malformed_rate);
+    assert.equal(track.row.total_cost_usd, src.total_cost_usd);
+    assert.equal(track.row.asr_conditional, src.asr_conditional);
+  }
+  /* The vendor the prose names is the stem the two wires
+   * share, read off the rows themselves. */
+  const stems = pair.map((r) => r.wire.split("-")[0]);
+  assert.equal(stems[0], stems[1], "the pair's wires share a vendor stem");
+  const alnum = (s) => s.toLowerCase().replace(/[^a-z0-9]/g, "");
+  assert.equal(alnum(findings.wire.vendor), alnum(stems[0]));
 });
 
 /* ---------- Finding 3, price ---------- */
@@ -166,8 +182,12 @@ test("finding 3's anchor is the jev row at its derived rank, and its cheapest is
   const jev = full.find((r) => short(r).startsWith("jev"));
   assert.ok(jev, "the anchor row stands on the full suite");
   assert.equal(findings.price.jev.row.run_id, jev.run_id);
-  const ordered = [...full].sort((a, b) => a.asr_conditional - b.asr_conditional);
-  assert.equal(findings.price.jev.rank, ordered.findIndex((r) => r.run_id === jev.run_id) + 1);
+  /* The rank is dense. It counts the distinct measured rates
+   * below the anchor's, so an exact tie shares the rank. */
+  const below = new Set(
+    full.map((r) => r.asr_conditional).filter((a) => a < jev.asr_conditional),
+  );
+  assert.equal(findings.price.jev.rank, below.size + 1);
   const cheapest = [...priced].sort((a, b) => a.total_cost_usd - b.total_cost_usd)[0];
   assert.equal(findings.price.cheapest.row.run_id, cheapest.run_id);
   assert.equal(findings.price.cheapest.asr, cheapest.asr_conditional);
@@ -208,9 +228,20 @@ test("finding 4's anatomy sums to the guards' counted flips, with no reversals",
 
 /* ---------- Finding 5, the leader ---------- */
 
-test("finding 5's leader is the first full suite row and carries its disclosure", () => {
-  const leader = full[0];
+test("finding 5's leader is the lowest measured full suite row and carries its disclosure", () => {
+  const leader = full.reduce((a, b) =>
+    b.asr_conditional < a.asr_conditional ? b : a,
+  );
   assert.equal(findings.leader.row.run_id, leader.run_id);
+  const below = new Set(
+    full.map((r) => r.asr_conditional).filter((a) => a < leader.asr_conditional),
+  );
+  assert.equal(findings.leader.rank, below.size + 1);
+  assert.ok(
+    typeof findings.leader.harness === "string" &&
+      findings.leader.harness.length > 0,
+    "the leader carries the harness wording its sentence states",
+  );
   assert.ok((leader.unanswered_cases ?? 0) >= 1);
   const d = decomp(leader);
   assert.equal(findings.leader.flips, d.flips);
@@ -235,12 +266,33 @@ test("every model slug is unique across the payload", () => {
 
 test("population ranks are dense within each population", () => {
   for (const kind of ["full", "slice"]) {
-    const rs = explorer.rows
-      .filter((r) => r.kind === kind)
-      .map((r) => r.popRank)
-      .sort((a, b) => a - b);
-    assert.deepEqual(rs, rs.map((_, i) => i + 1));
+    const rs = explorer.rows.filter((r) => r.kind === kind);
+    const distinct = [
+      ...new Set(rs.map((r) => r.asr).filter((a) => a !== null)),
+    ].sort((a, b) => a - b);
+    for (const row of rs) {
+      if (row.asr === null) continue;
+      assert.equal(
+        row.popRank,
+        distinct.indexOf(row.asr) + 1,
+        `${row.name} stands at the dense rank of its rate`,
+      );
+    }
+    const ranks = rs.map((r) => r.popRank).filter((x) => x !== null);
+    assert.equal(Math.min(...ranks), 1);
+    assert.equal(new Set(ranks).size, distinct.length);
   }
+});
+
+test("dense ranks share on exact ties, and a withheld rate breaks the chain", () => {
+  const row = (asr) => ({ asr_conditional: asr });
+  assert.deepEqual(denseRanks([row(0.1), row(0.1), row(0.2)]), [1, 1, 2]);
+  assert.deepEqual(denseRanks([row(0.1), row(null), row(0.1)]), [1, 2, 3]);
+  assert.deepEqual(
+    denseRanks([row(0.1), row(Number.NaN), row(0.1)]),
+    [1, 2, 3],
+  );
+  assert.deepEqual(denseRanks([row(0.2), row(0.1), row(0.1)]), [1, 2, 2]);
 });
 
 /* ---------- the corners the production build closed ---------- */
@@ -268,17 +320,34 @@ test("the robustness tax on every full row recomputes from its benchmarks", () =
     const slash = n.lastIndexOf("/");
     return slash >= 0 ? n.slice(slash + 1) : n;
   };
-  const anyRow = explorer.rows.find((r) => r.kind === "full");
-  assert.ok(anyRow.taxBenchLine !== null && anyRow.taxBenchLine.length > 0);
-  assert.ok(
-    anyRow.taxBenchLine.includes(short(benignSetter)),
-    "the benchmark line names the benign setter",
-  );
-  assert.ok(
-    anyRow.taxBenchLine.includes(short(eceSetter)),
-    "the benchmark line names the calibration setter",
-  );
-  assert.ok(anyRow.benignBest !== null, "readings name the benign benchmark");
+  /* Every full row's benchmark line names both setters, not
+   * just the first row's. */
+  for (const row of explorer.rows) {
+    if (row.kind !== "full") continue;
+    assert.ok(
+      row.taxBenchLine !== null && row.taxBenchLine.length > 0,
+      `${row.name} carries the benchmark line`,
+    );
+    assert.ok(
+      row.taxBenchLine.includes(short(benignSetter)),
+      `${row.name} names the benign setter`,
+    );
+    assert.ok(
+      row.taxBenchLine.includes(short(eceSetter)),
+      `${row.name} names the calibration setter`,
+    );
+    /* The benign benchmark names the setter on every row
+     * except the setter's own, which carries none. */
+    if (row.runId === benignSetter.run_id) {
+      assert.equal(row.benignBest, null, "the setter's own row carries no benchmark");
+    } else {
+      assert.equal(
+        row.benignBest?.name,
+        short(benignSetter),
+        `${row.name} names the benign benchmark`,
+      );
+    }
+  }
 });
 
 test("calibration data stands behind the readings that print it", () => {

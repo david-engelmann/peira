@@ -8,7 +8,20 @@ import {
   useRef,
   useState,
 } from "react";
-import type { ExplorerData, XRow } from "@/lib/explorerData";
+import {
+  countLineText,
+  EMPTY_CHART_TEXT,
+  EMPTY_RANK_TEXT,
+  FLAGGED_DIVIDER,
+  flagLineLabelText,
+  flagNoteText,
+  GUARD_DIVIDER,
+  offScaleNoteText,
+  railNoteText,
+  type ExplorerData,
+  type XRow,
+} from "@/lib/explorerData";
+import { asrAxisFor } from "@/lib/chart";
 import {
   fmtDeltaPct,
   fmtDeltaUsd,
@@ -28,6 +41,7 @@ import {
 
 type Pop = "all" | "full" | "guards" | "flagged";
 type Mode = "rank" | "chart" | "families";
+type Measure = "asr" | "malformed";
 
 interface XState {
   pop: Pop;
@@ -40,13 +54,15 @@ interface XState {
   pin: string | null;
   frontier: boolean;
   grey: "vendor" | "wire" | "band" | "none";
+  measure: Measure;
 }
 
 interface Brush {
   costLo: number;
   costHi: number;
-  asrLo: number;
-  asrHi: number;
+  vLo: number;
+  vHi: number;
+  field: Measure;
 }
 
 const DEFAULTS: XState = {
@@ -60,6 +76,7 @@ const DEFAULTS: XState = {
   pin: null,
   frontier: false,
   grey: "vendor",
+  measure: "asr",
 };
 
 function Mark({ row, size = 26 }: { row: XRow; size?: number }) {
@@ -81,12 +98,6 @@ function Mark({ row, size = 26 }: { row: XRow; size?: number }) {
       )}
     </span>
   );
-}
-
-function decompLine(row: XRow): string | null {
-  if (row.decomp === null) return null;
-  const d = row.decomp;
-  return `${fmtInt(d.flips)} counted flips · ${fmtInt(d.malformedFlips)} to malformed output · genuine flip rate ${fmtPct(d.genuineRate)}`;
 }
 
 /**
@@ -202,23 +213,21 @@ function ReadingBody({
   famHover: string | null;
   setFamHover: (key: string | null) => void;
 }) {
-  const d = decompLine(row);
+  const d = row.decompLine;
   return (
     <div className="reading-body">
       <p className="reading-rank micro">{row.rankLine}</p>
       <div className="reading-figs">
         <div>
           <span className="micro">{row.asrLabel}</span>
-          <strong>{row.asrText ?? "·"}</strong>
+          <strong>{row.suppressed ? "suppressed" : (row.asrText ?? "·")}</strong>
           {row.ciText && <span className="rsub">{row.ciText}</span>}
         </div>
         <div>
           <span className="micro">Benign accuracy</span>
           <strong>{row.benignText ?? "·"}</strong>
-          {row.benignBest && (
-            <span className="rsub">
-              {row.benignBest.name} marks the best at {row.benignBest.text}
-            </span>
+          {row.benignBestLine && (
+            <span className="rsub">{row.benignBestLine}</span>
           )}
         </div>
         <div>
@@ -252,11 +261,8 @@ function ReadingBody({
         </div>
         <CalibrationPanel row={row} />
       </div>
-      {row.weakestFamily && (
-        <p className="reading-line">
-          Weakest family {row.weakestFamily.name} at{" "}
-          {row.weakestFamily.text}.
-        </p>
+      {row.weakestLine && (
+        <p className="reading-line">{row.weakestLine}</p>
       )}
       {row.severities.length > 0 && (
         <p className="reading-line">
@@ -472,6 +478,8 @@ export default function Explorer({ data }: { data: ExplorerData }) {
   const [brush, setBrush] = useState<Brush | null>(null);
   const [famHover, setFamHover] = useState<string | null>(null);
   const touched = useRef(false);
+  const prevVisibleRef = useRef<Set<string> | null>(null);
+  const prevModeRef = useRef<Mode>(DEFAULTS.mode);
   const listRef = useRef<HTMLDivElement>(null);
   const flipSnapshot = useRef<Map<string, number> | null>(null);
   const sectionRef = useRef<HTMLElement>(null);
@@ -520,6 +528,10 @@ export default function Explorer({ data }: { data: ExplorerData }) {
       if (row) patch.pin = row.runId;
     }
     if (params.get("frontier") === "1") patch.frontier = true;
+    const measure = params.get("measure");
+    if (measure === "malformed" || measure === "asr") {
+      patch.measure = measure;
+    }
     const grey = params.get("grey");
     if (grey === "vendor" || grey === "wire" || grey === "band" || grey === "none") {
       patch.grey = grey;
@@ -558,13 +570,19 @@ export default function Explorer({ data }: { data: ExplorerData }) {
     const pinRow = state.pin ? byId.get(state.pin) : null;
     if (pinRow) params.set("pin", pinRow.slug);
     if (state.frontier) params.set("frontier", "1");
+    if (state.measure !== DEFAULTS.measure) {
+      params.set("measure", state.measure);
+    }
     if (state.grey !== DEFAULTS.grey) params.set("grey", state.grey);
+    if (expanded !== null && expanded === state.sel) {
+      params.set("open", "1");
+    }
     const qs = params.toString();
     const target = qs ? `#explorer?${qs}` : "#explorer";
     if (window.location.hash !== target) {
       window.history.replaceState(null, "", target);
     }
-  }, [state, byId]);
+  }, [state, byId, expanded]);
 
   const snapshotFlip = useCallback(() => {
     const root = listRef.current;
@@ -625,9 +643,10 @@ export default function Explorer({ data }: { data: ExplorerData }) {
         return false;
       }
       if (brush) {
-        if (row.asr === null || row.costValue === null) return false;
+        const v = brush.field === "malformed" ? row.malformed : row.asr;
+        if (v === null || row.costValue === null) return false;
         if (row.costValue < brush.costLo || row.costValue > brush.costHi) return false;
-        if (row.asr < brush.asrLo || row.asr > brush.asrHi) return false;
+        if (v < brush.vLo || v > brush.vHi) return false;
       }
       return true;
     });
@@ -645,6 +664,26 @@ export default function Explorer({ data }: { data: ExplorerData }) {
   const selRow = state.sel ? byId.get(state.sel) ?? null : null;
   const pinRow = state.pin ? byId.get(state.pin) ?? null : null;
   const hiddenCount = data.rows.length - visible.length;
+
+  /* Motion bookkeeping (BUILD-SPEC part 6). Rows entering the
+   * view carry the enter class for the commit that admits
+   * them, and the mode wrapper animates only on the commit
+   * that changes the mode, so first render stands still. */
+  if (prevVisibleRef.current === null) {
+    prevVisibleRef.current = new Set(data.rows.map((r) => r.runId));
+  }
+  const freshIds = new Set(
+    visible
+      .filter((r) => !prevVisibleRef.current!.has(r.runId))
+      .map((r) => r.runId),
+  );
+  useEffect(() => {
+    prevVisibleRef.current = new Set(visible.map((r) => r.runId));
+  });
+  const modeChanged = prevModeRef.current !== state.mode;
+  useEffect(() => {
+    prevModeRef.current = state.mode;
+  }, [state.mode]);
 
   const toggleExpand = (row: XRow) => {
     update({ sel: row.runId });
@@ -756,6 +795,23 @@ export default function Explorer({ data }: { data: ExplorerData }) {
         </label>
         {state.mode === "chart" && (
           <>
+            <div className="segrow" role="group" aria-label="Measure">
+              {(
+                [
+                  ["asr", "Attack success"],
+                  ["malformed", "Malformed"],
+                ] as Array<[Measure, string]>
+              ).map(([key, label]) => (
+                <button
+                  key={key}
+                  type="button"
+                  className={state.measure === key ? "segbtn on" : "segbtn"}
+                  onClick={() => update({ measure: key })}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
             <label className="xcheck">
               <input
                 type="checkbox"
@@ -783,18 +839,10 @@ export default function Explorer({ data }: { data: ExplorerData }) {
       </div>
 
       {state.pop === "guards" && (
-        <p className="basisline">
-          Guard results ran the {fmtInt(data.guardCases)} case abstain
-          subset of the suite's {fmtInt(data.fullCases)} cases. They are
-          ranked among themselves on that basis, and their rates do not
-          compare with full suite rates.
-        </p>
+        <p className="basisline">{data.guardBasis}</p>
       )}
       <p className="xcount">
-        Showing {fmtInt(visible.length)} of {fmtInt(data.rows.length)}{" "}
-        results
-        {hiddenCount > 0 ? ` · ${fmtInt(hiddenCount)} hidden by filters` : ""}
-        {brush ? " · brush filter on" : ""}
+        {countLineText(visible.length, data.rows.length, hiddenCount, brush !== null)}
       </p>
       {brush && (
         <button
@@ -806,6 +854,7 @@ export default function Explorer({ data }: { data: ExplorerData }) {
         </button>
       )}
 
+      <div className={modeChanged ? "xview anim" : "xview"} key={state.mode}>
       {state.mode === "rank" && (
         <RankView
           groups={groups}
@@ -817,6 +866,7 @@ export default function Explorer({ data }: { data: ExplorerData }) {
           famAxis={data.familiesAxis}
           famHover={famHover}
           setFamHover={setFamHover}
+          freshIds={freshIds}
           onToggle={toggleExpand}
           onSort={(sort) => update({ sort }, true)}
           onPin={(id) => update({ pin: state.pin === id ? null : id })}
@@ -847,10 +897,12 @@ export default function Explorer({ data }: { data: ExplorerData }) {
           expanded={expanded}
           famHover={famHover}
           setFamHover={setFamHover}
+          freshIds={freshIds}
           onToggle={toggleExpand}
           onSort={(sort) => update({ sort }, true)}
         />
       )}
+      </div>
       {state.mode !== "rank" && expanded && byId.get(expanded) && (
         <div className="belowreading">
           {pinRow && selRow && expanded === selRow.runId ? (
@@ -919,7 +971,9 @@ export default function Explorer({ data }: { data: ExplorerData }) {
               {selRow.name}
               {selRow.wire ? ` · ${selRow.wire}` : ""}
             </span>
-            <span className="rn">{selRow.asrText ?? "·"}</span>
+            <span className="rn">
+              {selRow.suppressed ? "suppressed" : (selRow.asrText ?? "·")}
+            </span>
             <button
               type="button"
               className="ghostbtn"
@@ -944,6 +998,7 @@ interface RankViewProps {
   famAxis: number;
   famHover: string | null;
   setFamHover: (key: string | null) => void;
+  freshIds: Set<string>;
   onToggle: (row: XRow) => void;
   onSort: (sort: string) => void;
   onPin: (id: string) => void;
@@ -960,6 +1015,7 @@ function RankView({
   famAxis,
   famHover,
   setFamHover,
+  freshIds,
   onToggle,
   onSort,
   onPin,
@@ -969,7 +1025,7 @@ function RankView({
     ["asr", "Attack success"],
     ["benign", "Benign"],
     ["malformed", "Malformed"],
-    ["ece", "Calib. error"],
+    ["ece", "Calibration error"],
     ["cost", "Cost"],
   ];
   return (
@@ -995,15 +1051,10 @@ function RankView({
       {groups.map((group) => (
         <div key={group.kind} className="xgroup">
           {state.pop === "all" && group.kind === "slice" && (
-            <p className="xdivider">
-              Guard results · ranked among themselves on the abstain
-              subset basis
-            </p>
+            <p className="xdivider">{GUARD_DIVIDER}</p>
           )}
           {state.pop === "all" && group.kind === "flagged" && (
-            <p className="xdivider flagged">
-              Flagged results · held off the ranking
-            </p>
+            <p className="xdivider flagged">{FLAGGED_DIVIDER}</p>
           )}
           {group.rows.map((row) => {
             const isOpen = expanded === row.runId;
@@ -1011,7 +1062,7 @@ function RankView({
               <div
                 key={row.runId}
                 data-rid={row.runId}
-                className={`xrow ${row.kind}${isOpen ? " open" : ""}${state.sel === row.runId ? " selected" : ""}`}
+                className={`xrow ${row.kind}${isOpen ? " open" : ""}${state.sel === row.runId ? " selected" : ""}${freshIds.has(row.runId) ? " enter" : ""}`}
               >
                 <div
                   className="xrow-head"
@@ -1059,7 +1110,13 @@ function RankView({
                       </>
                     )}
                   </span>
-                  <span className="xfig asr rn">{row.asrText ?? "·"}</span>
+                  <span className="xfig asr rn">
+                    {row.suppressed ? (
+                      <span className="supp">suppressed</span>
+                    ) : (
+                      (row.asrText ?? "·")
+                    )}
+                  </span>
                   <span className="xfig benign rn">{row.benignText ?? "·"}</span>
                   <span className="xfig malformed rn">
                     {row.malformedText ?? "·"}
@@ -1109,10 +1166,7 @@ function RankView({
         </div>
       ))}
       {groups.every((g) => g.rows.length === 0) && (
-        <p className="xempty">
-          No result matches these filters. Loosen one and the board
-          comes back.
-        </p>
+        <p className="xempty">{EMPTY_RANK_TEXT}</p>
       )}
     </div>
   );
@@ -1170,13 +1224,40 @@ function ChartView({
   const charted = visible.filter((r) => r.kind !== "slice");
   const railHasGuards = rail.some((r) => r.kind === "slice");
 
+  /* The vertical measure. Attack success stands on the shared
+   * axis the board derives from the ranked field. Malformed
+   * output takes its own axis, derived the same way from every
+   * charted result, with the flag line drawn at the ranked
+   * board's highest malformed rate (BUILD-SPEC part 5). */
+  const measure = state.measure;
+  const vOf = (r: XRow): number | null =>
+    measure === "malformed" ? r.malformed : r.asr;
+  const malformedAxis = asrAxisFor(
+    Math.max(0, ...charted.map((r) => r.malformed ?? 0)),
+  ).max;
+  const yMax = measure === "malformed" ? malformedAxis : data.axisMax;
+  const figOf = (r: XRow): string =>
+    measure === "malformed"
+      ? (r.malformedText ?? "·")
+      : r.suppressed
+        ? "suppressed"
+        : (r.asrText ?? "·");
+  const flagExtreme =
+    measure === "malformed"
+      ? (charted
+          .filter((r) => r.kind === "flagged" && r.malformed !== null)
+          .sort((a, b) => (b.malformed as number) - (a.malformed as number))[0] ??
+        null)
+      : null;
+  const flagNote =
+    flagExtreme !== null &&
+    flagExtreme.malformed !== null &&
+    flagExtreme.malformed > data.flagLine
+      ? flagNoteText(flagExtreme)
+      : null;
+
   if (points.length === 0 && rail.length === 0) {
-    return (
-      <p className="xempty">
-        No result matches these filters, so the chart has nothing to
-        show.
-      </p>
-    );
+    return <p className="xempty">{EMPTY_CHART_TEXT}</p>;
   }
 
   const H = 430;
@@ -1185,7 +1266,7 @@ function ChartView({
   const padR = 16;
   const padT = 18;
   const padB = 40;
-  const axisMax = data.axisMax;
+  const axisMax = yMax;
   const costs = points.map((r) => r.costValue as number);
   const lo = costs.length
     ? Math.pow(10, Math.floor(Math.log10(Math.min(...costs)) * 2) / 2)
@@ -1217,7 +1298,7 @@ function ChartView({
     return row.kind === selRow.kind;
   };
 
-  const frontierPts = state.frontier
+  const frontierPts = state.frontier && measure === "asr"
     ? (() => {
         const sorted = [...points]
           .filter((r) => r.asr !== null)
@@ -1234,7 +1315,10 @@ function ChartView({
       })()
     : [];
 
-  const offScale = charted.filter((r) => r.asr !== null && r.asr > axisMax);
+  const offScale = charted.filter((r) => {
+    const v = vOf(r);
+    return v !== null && v > axisMax;
+  });
   const chipRow = chipId
     ? points.find((r) => r.runId === chipId) ?? null
     : hoverId
@@ -1259,7 +1343,11 @@ function ChartView({
           className="chart"
           viewBox={`0 0 ${W} ${H}`}
           role="img"
-          aria-label="Attack success against the cost of one run"
+          aria-label={
+            measure === "malformed"
+              ? "Malformed output against the cost of one run, with the flag line"
+              : "Attack success against the cost of one run"
+          }
           onPointerLeave={() => setHoverId(null)}
         >
           <rect
@@ -1285,8 +1373,9 @@ function ChartView({
                 onBrush({
                   costLo: invX(Math.min(drag.x0, drag.x1)),
                   costHi: invX(Math.max(drag.x0, drag.x1)),
-                  asrLo: Math.max(0, invY(Math.max(drag.y0, drag.y1))),
-                  asrHi: invY(Math.min(drag.y0, drag.y1)),
+                  vLo: Math.max(0, invY(Math.max(drag.y0, drag.y1))),
+                  vHi: invY(Math.min(drag.y0, drag.y1)),
+                  field: measure,
                 });
               } else {
                 setChipId(null);
@@ -1317,8 +1406,29 @@ function ChartView({
             Cost of one run, log scale
           </text>
           <text className="axis-title" x={padL} y={padT - 6}>
-            Attack success, lower is better
+            {measure === "malformed"
+              ? "Malformed output, lower is better"
+              : "Attack success, lower is better"}
           </text>
+          {measure === "malformed" && (
+            <g>
+              <line
+                className="flag-line"
+                x1={padL}
+                x2={W - padR}
+                y1={y(data.flagLine)}
+                y2={y(data.flagLine)}
+              />
+              <text
+                className="axis-title flag-label"
+                x={W - padR}
+                y={y(data.flagLine) - 5}
+                textAnchor="end"
+              >
+                {flagLineLabelText(data.flagLine)}
+              </text>
+            </g>
+          )}
           {frontierPts.length > 1 && (
             <polyline
               className="frontier-line"
@@ -1328,9 +1438,10 @@ function ChartView({
             />
           )}
           {points.map((row) => {
-            if (row.asr === null || row.asr > axisMax) return null;
+            const v = vOf(row);
+            if (v === null || v > axisMax) return null;
             const cx = x(row.costValue as number);
-            const cy = y(row.asr);
+            const cy = y(v);
             const on = matches(row);
             const active = hoverId === row.runId || chipId === row.runId || state.sel === row.runId;
             return (
@@ -1385,34 +1496,46 @@ function ChartView({
         </svg>
         {offScale.length > 0 && (
           <div className="offscale-note">
-            {offScale.map((row) => (
-              <p key={row.runId}>
-                <span className="amber-text">▲ {row.name}</span> plots
-                above the shared axis at {row.asrText} counted.
-                {row.decomp
-                  ? ` Malformed output is ${fmtPct(row.decomp.malformedShare)} of its counted flips, and its genuine flip rate is ${fmtPct(row.decomp.genuineRate)}.`
-                  : ""}
-              </p>
-            ))}
+            {offScale.map((row) => {
+              const note = offScaleNoteText(row);
+              return (
+                <p key={row.runId}>
+                  <span className="amber-text">▲ {row.name}</span>
+                  {note.slice(note.indexOf(" plots"))}
+                </p>
+              );
+            })}
           </div>
         )}
-        {chipRow && chipRow.asr !== null && (
+        {flagNote && (
+          <div className="flag-note">
+            <p>{flagNote}</p>
+          </div>
+        )}
+        {chipRow && vOf(chipRow) !== null && (
           <div
             className="chip"
             style={{
               left: `${Math.min(86, Math.max(2, (x(chipRow.costValue as number) / W) * 100))}%`,
-              top: `${Math.max(4, (y(chipRow.asr) / H) * 100 - 16)}%`,
+              top: `${Math.max(4, (y(vOf(chipRow) as number) / H) * 100 - 16)}%`,
             }}
           >
             <p className="chip-name">
               <Mark row={chipRow} size={18} /> {chipRow.name}
               {chipRow.wire ? ` · ${chipRow.wire}` : ""}
             </p>
-            <p className="chip-figs">
-              {chipRow.asrText}
-              {chipRow.ciText ? ` · ${chipRow.ciText}` : ""} ·{" "}
-              {chipRow.costText}
-            </p>
+            {measure === "malformed" ? (
+              <p className="chip-figs">
+                {chipRow.malformedText} malformed · {chipRow.asrText}{" "}
+                counted · {chipRow.costText}
+              </p>
+            ) : (
+              <p className="chip-figs">
+                {chipRow.suppressed ? "suppressed" : chipRow.asrText}
+                {chipRow.ciText ? ` · ${chipRow.ciText}` : ""} ·{" "}
+                {chipRow.costText}
+              </p>
+            )}
             {chipRow.kind === "flagged" && chipRow.decomp && (
               <p className="chip-figs">
                 Malformed {fmtPct(chipRow.decomp.malformedShare)} of
@@ -1454,22 +1577,18 @@ function ChartView({
                 >
                   <Mark row={row} size={18} />
                   <span>{row.name}</span>
-                  <span className="rn">{row.asrText ?? "·"}</span>
+                  <span className="rn">{figOf(row)}</span>
                 </button>
               ))}
             </div>
-            <p className="rail-note">
-              {railHasGuards
-                ? "Guard results stand here on their abstain subset basis. The rest carry no recorded cost and stand off the axis, not at zero."
-                : "These results carry no recorded serving cost, so they stand off the axis rather than at zero."}
-            </p>
+            <p className="rail-note">{railNoteText(railHasGuards)}</p>
           </div>
         )}
       </div>
       <div className="chartsync">
         <p className="micro">On the chart</p>
         <ul>
-          {sortRows(charted, "asr").map((row) => (
+          {sortRows(charted, measure === "malformed" ? "malformed" : "asr").map((row) => (
             <li key={row.runId}>
               <button
                 type="button"
@@ -1483,7 +1602,7 @@ function ChartView({
                   {row.name}
                   {row.wire ? ` · ${row.wire}` : ""}
                 </span>
-                <span className="rn">{row.asrText ?? "·"}</span>
+                <span className="rn">{figOf(row)}</span>
               </button>
             </li>
           ))}
@@ -1499,6 +1618,7 @@ interface FamiliesViewProps {
   expanded: string | null;
   famHover: string | null;
   setFamHover: (key: string | null) => void;
+  freshIds: Set<string>;
   onToggle: (row: XRow) => void;
   onSort: (sort: string) => void;
 }
@@ -1509,6 +1629,7 @@ function FamiliesView({
   expanded,
   famHover,
   setFamHover,
+  freshIds,
   onToggle,
   onSort,
 }: FamiliesViewProps) {
@@ -1522,7 +1643,10 @@ function FamiliesView({
       {groups.map((group) => (
         <div key={group.kind} className="xgroup">
           {group.rows.map((row) => (
-            <div key={row.runId} className={`xfamrow ${row.kind}`}>
+            <div
+              key={row.runId}
+              className={`xfamrow ${row.kind}${freshIds.has(row.runId) ? " enter" : ""}`}
+            >
               <div
                 className="xfam-head"
                 role="button"
@@ -1551,7 +1675,13 @@ function FamiliesView({
                     </span>
                   )}
                 </span>
-                <span className="rn">{row.asrText ?? "·"}</span>
+                <span className="rn">
+                  {row.suppressed ? (
+                    <span className="supp">suppressed</span>
+                  ) : (
+                    (row.asrText ?? "·")
+                  )}
+                </span>
               </div>
               <div className="xfam-bars">
                 {row.families.map((fam) => (

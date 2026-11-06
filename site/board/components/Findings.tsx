@@ -114,11 +114,11 @@ export default function Findings() {
           figured={`counted ${fmtPct(f.split.mercury.counted)}`}
           malformedShare={f.split.mercury.malformedShare}
           malformedLabel={`Malformed output, ${fmtPct(f.split.mercury.malformedShare)} of counted flips`}
-          genuineLabel={`Genuine rate ${fmtPct(f.split.mercury.genuineRate)}`}
+          genuineLabel={`Genuine flips, ${fmtPct(f.split.mercury.genuineShare)}, genuine rate ${fmtPct(f.split.mercury.genuineRate)}`}
         />
         <p className="f-copy">
-          No ranked result is majority malformed. The highest
-          malformed rate is {fmtPct(f.split.rankedMaxMalformedRate)}.
+          No ranked result is majority malformed. Highest malformed
+          rate {fmtPct(f.split.rankedMaxMalformedRate)}.
         </p>
         <a
           className="f-action"
@@ -182,9 +182,9 @@ export default function Findings() {
           </div>
         </div>
         <p className="f-copy">
-          The same model ran the same suite through two OpenAI wires.
-          The intervals overlap, so the gap is the size of the harness
-          effect.
+          The same model ran the same suite through two {f.wire.vendor}{" "}
+          wires. The intervals overlap, so the gap is the size of the
+          harness effect.
         </p>
         <a
           className="f-action"
@@ -196,7 +196,7 @@ export default function Findings() {
 
       <article className="finding" data-finding="price">
         <p className="micro">Finding · Cost</p>
-        <h3>Money does not buy robustness</h3>
+        <h3>Price shows no useful relationship</h3>
         <div className="costpair">
           {[
             {
@@ -303,13 +303,13 @@ export default function Findings() {
       </article>
 
       <article className="finding disclosure" data-finding="leader">
-        <p className="micro">Disclosed error</p>
-        <h3>One case was never decided</h3>
+        <p className="micro">Disclosed error · One case</p>
+        <h3>One case on this board was never decided</h3>
         <p className="f-copy">
           <VendorLogo row={f.leader.row} size="mini" />{" "}
           {shortName(f.leader.row)} stands first of{" "}
-          {fmtInt(f.leader.population)} on the full suite, through the
-          Cursor harness.
+          {fmtInt(f.leader.population)} on the full suite, measured
+          through the {f.leader.harness}.
         </p>
         <div className="leaderfigs">
           <div>

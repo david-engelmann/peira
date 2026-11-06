@@ -39,7 +39,7 @@ export const metadata: Metadata = {
         url: "/og.png",
         width: 1200,
         height: 630,
-        alt: "The Peira share card: the split finding over the cost scatter, the ranked board flipping on decisions and the flagged band on malformed output",
+        alt: "The Peira share card, the split finding over the cost scatter, the ranked board flipping on decisions and the flagged band on malformed output",
       },
     ],
   },

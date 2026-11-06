@@ -35,6 +35,20 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
 - Finding 5's sanctioned no-answer disclosure runs past
   the findings word cap. The census pins the exception
   at its measured count and the redesign record names it.
+- The fix round closes the review findings on the
+  redesign. All five explorer state changes now animate
+  at 200ms under the motion rule, with reduced motion
+  reaching the end states. The chart gains a malformed
+  output measure with the flag line drawn at the ranked
+  board's highest malformed rate. The census measures
+  the prose that renders only under non-default states
+  at its source and counts every prose field a reading
+  renders. Population ranks share on exact ties, the
+  findings derive their vendor and harness wording from
+  the rows, a flagged row whose decomposition does not
+  derive stands suppressed instead of printing its rate
+  bare, and a copied explorer link restores the open
+  reading.
 
 ### Leaderboard payload names its dataset, populations, and decompositions
 

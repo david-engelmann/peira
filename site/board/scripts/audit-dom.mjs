@@ -4,7 +4,7 @@
  * the static document, this audit drives the explorer the way
  * a reader does, at six widths and in a touch session at 390
  * by 844, and asserts the interaction contract of BUILD-SPEC
- * sections 4 to 7:
+ * sections 4 to 7.
  *
  *   a row expands in place into its reading, with the
  *     calibration plot rendered for a result that carries one
@@ -19,11 +19,13 @@
  *   a model address (/#result=<slug>) opens that reading
  *   a finding's action sets the explorer state it promises
  *   families mode sorts by a family from its label
+ *   the five state changes of BUILD-SPEC part 6 animate at
+ *     200ms, and reduced motion suppresses every one of them
  *   at phone size the reading opens as a sheet over a sticky
  *     strip that names the selection, the tray pins above
  *     the strip, and a tap outside dismisses the sheet
  *
- * Run after next build, standalone:
+ * Run after next build, standalone.
  *   node scripts/audit-dom.mjs
  * Exit code is non-zero on any failure.
  */
@@ -299,26 +301,175 @@ if (hover) {
   if (!lit.hot) fail("chart hover does not light the same result in the list");
   if (lit.chip && lit.hot) pass("chart hover cross-highlights the list row");
 }
+/* The brush proof asserts numbers, not a text change. The
+ * expected count is recomputed from the payload through the
+ * chart's own geometry (the half decade cost domain, the
+ * shared axis rule, the plot pads), read off the built svg's
+ * viewBox, and the count line must land on it within a small
+ * boundary tolerance for rows sitting on the drag's edge. */
+const parseShowing = (t) => {
+  const m = /Showing ([\d,]+) of ([\d,]+)/.exec(t ?? "");
+  return m ? Number(m[1].replace(/,/g, "")) : null;
+};
 const countBefore = await page.evaluate(() => {
   return document.querySelector(".xcount")?.textContent ?? "";
 });
+const showingBefore = parseShowing(countBefore);
+if (showingBefore === null) {
+  fail("the count line is missing or unparseable before the brush");
+}
 const plotBox = await page.evaluate(() => {
   const svg = document.querySelector("svg.chart");
   const r = svg?.getBoundingClientRect();
-  return r ? { x: r.x, y: r.y, w: r.width, h: r.height } : null;
+  const vb = svg?.viewBox?.baseVal;
+  return r && vb ? { x: r.x, y: r.y, w: r.width, h: r.height, W: vb.width, H: vb.height } : null;
 });
-if (plotBox) {
+if (!plotBox) {
+  fail("the brush proof has no chart to drag on");
+} else if (showingBefore !== null) {
+  const { W, H } = plotBox;
+  const padL = 44, padR = 16, padT = 18, padB = 40;
+  const chartedRows = rows.filter((r) => !slices.includes(r));
+  const costs = chartedRows
+    .map((r) => r.total_cost_usd)
+    .filter((c) => typeof c === "number" && c > 0);
+  const lo = Math.pow(10, Math.floor(Math.log10(Math.min(...costs)) * 2) / 2);
+  const hi = Math.pow(10, Math.ceil(Math.log10(Math.max(...costs)) * 2) / 2);
+  const worstRanked = Math.max(...payload.ranked.map((r) => r.asr_conditional ?? 0));
+  const axisMax = Math.max(0.3, Math.round(Math.ceil((worstRanked - 1e-9) / 0.1) * 0.1 * 10) / 10);
+  const invX = (px) =>
+    Math.pow(10, Math.log10(lo) + ((px - padL) / (W - padL - padR)) * (Math.log10(hi) - Math.log10(lo)));
+  const invY = (px) => ((padT + (H - padT - padB) - px) / (H - padT - padB)) * axisMax;
+  const rectFor = (fx0, fy0, fx1, fy1) => ({
+    costLo: invX(fx0 * W),
+    costHi: invX(fx1 * W),
+    vLo: Math.max(0, invY(fy1 * H)),
+    vHi: invY(fy0 * H),
+  });
+  const countIn = (rect) =>
+    rows.filter((r) => {
+      const c = r.total_cost_usd;
+      const v = r.asr_conditional;
+      if (typeof c !== "number" || !(c > 0) || typeof v !== "number") return false;
+      return c >= rect.costLo && c <= rect.costHi && v >= rect.vLo && v <= rect.vHi;
+    }).length;
+  const rect = rectFor(0.3, 0.3, 0.55, 0.6);
+  const expected = countIn(rect);
+  const expectedLo = countIn(rectFor(0.31, 0.31, 0.54, 0.59));
+  const expectedHi = countIn(rectFor(0.29, 0.29, 0.56, 0.61));
+  const extreme = chartedRows
+    .filter((r) => typeof r.asr_conditional === "number")
+    .sort((a, b) => b.asr_conditional - a.asr_conditional)[0];
   await page.mouse.move(plotBox.x + plotBox.w * 0.3, plotBox.y + plotBox.h * 0.3);
   await page.mouse.down();
   await page.mouse.move(plotBox.x + plotBox.w * 0.55, plotBox.y + plotBox.h * 0.6, { steps: 12 });
   await page.mouse.up();
   await new Promise((r) => setTimeout(r, 400));
-  const countAfter = await page.evaluate(() => {
-    return document.querySelector(".xcount")?.textContent ?? "";
+  const after = await page.evaluate(() => {
+    return {
+      count: document.querySelector(".xcount")?.textContent ?? "",
+      sync: document.querySelectorAll(".sync-row").length,
+      syncNames: [...document.querySelectorAll(".sync-row .sync-name")].map((el) =>
+        el.textContent.trim(),
+      ),
+    };
   });
-  if (countBefore && countAfter && countBefore === countAfter) {
-    fail("a brush drag does not restate the filter count line");
-  } else pass("a brush drag filters and the count line says so");
+  const showingAfter = parseShowing(after.count);
+  if (showingAfter === null) {
+    fail("the count line is missing or unparseable after the brush");
+  } else if (showingAfter >= showingBefore) {
+    fail(`a brush drag does not drop the filtered count (${showingBefore} to ${showingAfter})`);
+  } else if (showingAfter !== after.sync) {
+    fail(`the count line says ${showingAfter} but the chart list carries ${after.sync} rows`);
+  } else if (showingAfter < expectedLo || showingAfter > expectedHi) {
+    fail(
+      `the brush keeps ${showingAfter} results, the payload puts ${expected} in the dragged region (tolerance ${expectedLo} to ${expectedHi})`,
+    );
+  } else if (extreme && extreme.asr_conditional > rect.vHi &&
+    after.syncNames.some((n) => n.startsWith(shortName(extreme)))) {
+    fail("the brush leaves the highest rate result in the list though it sits above the dragged region");
+  } else pass("a brush drag filters to the dragged region and the count line states it");
+}
+
+/* Families mode sorts by a family from its label. The
+ * expected order is recomputed from the payload's own family
+ * records for the full suite group, rates descending with
+ * unmeasured families last, and the rendered group must land
+ * on it after the family's label is clicked. */
+await clickText(page, "Clear the brush filter").catch(() => null);
+await waitFor(page, (total) => {
+  const t = document.querySelector(".xcount")?.textContent ?? "";
+  const m = /Showing ([\d,]+) of/.exec(t);
+  return m !== null && Number(m[1].replace(/,/g, "")) === total;
+}, rows.length);
+await clickText(page, "Families").catch(() => null);
+await page.waitForSelector(".xfamrow", { timeout: 10000 }).catch(() => null);
+const famGroupNames = async () => {
+  return page.evaluate(() => {
+    const group = document.querySelector(".xfamilies .xgroup");
+    if (!group) return [];
+    return [...group.querySelectorAll(".xfamrow .xname")].map((el) =>
+      (el.childNodes[0]?.textContent ?? "").trim(),
+    );
+  });
+};
+const famKeys = [
+  ...new Set(full.flatMap((r) => Object.keys(r.detail?.families ?? {}))),
+];
+const famRate = (r, key) => {
+  const rec = r.detail?.families?.[key];
+  return rec && typeof rec.asr === "number" ? rec.asr : null;
+};
+const famExpected = (key) =>
+  [...full]
+    .sort((a, b) => {
+      const ra = famRate(a, key);
+      const rb = famRate(b, key);
+      if (ra === null && rb === null) return 0;
+      if (ra === null) return 1;
+      if (rb === null) return -1;
+      return rb - ra;
+    })
+    .map((r) => shortName(r));
+const famBeforeNames = await famGroupNames();
+const famPick = famKeys
+  .map((key) => ({ key, expected: famExpected(key) }))
+  .find(
+    ({ expected }) =>
+      expected.length === famBeforeNames.length &&
+      expected[0] !== famBeforeNames[0],
+  );
+if (!famPick) {
+  fail("no family in the payload reorders the full suite group, so the families proof cannot run");
+} else {
+  const famFullName =
+    famPick.key.replace(/_/g, " ").replace(/^./, (c) => c.toUpperCase());
+  const clicked = await page.evaluate((label) => {
+    const btn = [...document.querySelectorAll(".xfam-labelbtn")].find(
+      (b) => b.getAttribute("aria-label") === label,
+    );
+    if (!btn) return false;
+    btn.click();
+    return true;
+  }, `Sort by ${famFullName}`);
+  if (!clicked) {
+    fail(`no family label button offers ${famFullName}`);
+  } else {
+    await waitFor(page, (want) => {
+      const group = document.querySelector(".xfamilies .xgroup");
+      const first = group?.querySelector(".xfamrow .xname")?.childNodes[0]?.textContent?.trim();
+      return first === want;
+    }, famPick.expected[0]);
+    const famAfterNames = await famGroupNames();
+    const famHash = await page.evaluate(() => location.hash);
+    if (famAfterNames.join("|") !== famPick.expected.join("|")) {
+      fail(
+        `families mode sorted by ${famFullName} lands on ${famAfterNames.slice(0, 3).join(", ")}, the payload order is ${famPick.expected.slice(0, 3).join(", ")}`,
+      );
+    } else if (!famHash.includes("sort=fam")) {
+      fail("the family sort does not write itself into the hash");
+    } else pass("families mode sorts by a family from its label");
+  }
 }
 
 /* A finding's action sets the explorer state. */
@@ -350,6 +501,129 @@ const deep = await page.evaluate((rid) => {
 if (!deep) fail("a model address does not open its reading in the explorer");
 else pass("a model address opens its reading in the explorer");
 await page.close();
+
+/* ---------- motion, BUILD-SPEC part 6 ---------- */
+
+/* All five state changes animate at the same 200ms character.
+ * Expansion and selection are read off computed styles,
+ * filtering off the entering rows and the re-sort's inline
+ * FLIP transition, and mode switching off the view wrapper.
+ * A reduced motion page must reach every end state with no
+ * travel at all. */
+const motionPage = await browser.newPage();
+await motionPage.setViewport({ width: 1440, height: 1000 });
+await motionPage.goto(`${base}/`, { waitUntil: "networkidle0" });
+await motionPage.evaluate(() => {
+  document.querySelector(".xrow-head")?.click();
+});
+await waitFor(motionPage, () => document.querySelector(".reading.open") !== null);
+const motionStyles = await motionPage.evaluate(() => {
+  const reading = document.querySelector(".reading.open");
+  const row = document.querySelector(".xrow");
+  const rs = reading ? getComputedStyle(reading) : null;
+  const ws = row ? getComputedStyle(row) : null;
+  return {
+    readingName: rs?.animationName ?? "",
+    readingDur: rs?.animationDuration ?? "",
+    rowTransition: ws?.transitionProperty ?? "",
+    rowDur: ws?.transitionDuration ?? "",
+  };
+});
+if (
+  !motionStyles.readingName.includes("xreading-in") ||
+  motionStyles.readingDur !== "0.2s"
+) {
+  fail(
+    `expansion does not animate at 200ms (name ${motionStyles.readingName}, duration ${motionStyles.readingDur})`,
+  );
+} else if (
+  !motionStyles.rowTransition.includes("border-color") ||
+  !motionStyles.rowDur.includes("0.2s")
+) {
+  fail("selection does not transition the row at 200ms");
+} else pass("expansion and selection animate at 200ms");
+
+/* Filtering. Rows entering the widened set fade in, and a
+ * survivor of the re-sort travels on the FLIP transition. */
+await clickText(motionPage, "Full suite").catch(() => null);
+await waitFor(motionPage, (n) => document.querySelectorAll(".xrow").length === n, full.length);
+await clickText(motionPage, "All results").catch(() => null);
+await waitFor(motionPage, () => document.querySelector(".xrow.enter") !== null);
+const entered = await motionPage.evaluate(() => {
+  const el = document.querySelector(".xrow.enter");
+  if (!el) return null;
+  const s = getComputedStyle(el);
+  return { name: s.animationName, dur: s.animationDuration };
+});
+if (!entered || !entered.name.includes("xrow-in") || entered.dur !== "0.2s") {
+  fail("filtering admits new rows with no 200ms fade");
+} else pass("filtering fades entering rows at 200ms");
+await clickText(motionPage, "Cost", "button.xh").catch(() => null);
+let flipSeen = false;
+for (let i = 0; i < 10 && !flipSeen; i += 1) {
+  flipSeen = await motionPage.evaluate(() => {
+    return [...document.querySelectorAll("[data-rid]")].some((el) =>
+      (el.getAttribute("style") ?? "").includes("transform 200ms"),
+    );
+  });
+  if (!flipSeen) await new Promise((r) => setTimeout(r, 25));
+}
+if (!flipSeen) fail("re-sorting travels no row on the 200ms FLIP transition");
+else pass("re-sorting travels rows at 200ms");
+
+/* Mode switching crossfades the view wrapper. */
+await clickText(motionPage, "Chart").catch(() => null);
+await motionPage.waitForSelector(".xview svg.chart", { timeout: 10000 }).catch(() => null);
+const viewAnim = await motionPage.evaluate(() => {
+  const v = document.querySelector(".xview");
+  const s = v ? getComputedStyle(v) : null;
+  return { name: s?.animationName ?? "", dur: s?.animationDuration ?? "" };
+});
+if (!viewAnim.name.includes("xview-in") || viewAnim.dur !== "0.2s") {
+  fail("mode switching does not animate the view at 200ms");
+} else pass("mode switching animates the view at 200ms");
+await motionPage.close();
+
+/* Reduced motion reaches the end states with no travel. */
+const rmPage = await browser.newPage();
+await rmPage.emulateMediaFeatures([
+  { name: "prefers-reduced-motion", value: "reduce" },
+]);
+await rmPage.setViewport({ width: 1440, height: 1000 });
+await rmPage.goto(`${base}/`, { waitUntil: "networkidle0" });
+await rmPage.evaluate(() => {
+  document.querySelector(".xrow-head")?.click();
+});
+await waitFor(rmPage, () => document.querySelector(".reading.open") !== null);
+const rmStyles = await rmPage.evaluate(() => {
+  const reading = document.querySelector(".reading.open");
+  const row = document.querySelector(".xrow");
+  const rs = reading ? getComputedStyle(reading) : null;
+  const ws = row ? getComputedStyle(row) : null;
+  return {
+    readingName: rs?.animationName ?? "",
+    readingDur: rs?.animationDuration ?? "",
+    rowDur: ws?.transitionDuration ?? "",
+  };
+});
+await clickText(rmPage, "Cost", "button.xh").catch(() => null);
+await new Promise((r) => setTimeout(r, 350));
+const rmTransforms = await rmPage.evaluate(() => {
+  return [...document.querySelectorAll("[data-rid]")].filter((el) =>
+    (el.getAttribute("style") ?? "").includes("transform"),
+  ).length;
+});
+if (
+  rmStyles.readingName !== "none" ||
+  rmStyles.readingDur !== "0s" ||
+  rmStyles.rowDur !== "0s" ||
+  rmTransforms > 0
+) {
+  fail(
+    `reduced motion still travels (reading ${rmStyles.readingName} ${rmStyles.readingDur}, row transition ${rmStyles.rowDur}, ${rmTransforms} transformed rows)`,
+  );
+} else pass("reduced motion suppresses every transition");
+await rmPage.close();
 
 /* ---------- the phone touch session ---------- */
 

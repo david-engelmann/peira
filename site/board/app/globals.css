@@ -245,7 +245,7 @@ h3 { font-size: 21px; font-weight: 700; }
 .xlist { margin-top: 8px; }
 .xhead, .xrow-head {
   display: grid;
-  grid-template-columns: 36px 30px minmax(150px, 1.25fr) minmax(90px, 1fr) 62px 62px 74px 66px 86px;
+  grid-template-columns: 36px 30px minmax(150px, 1.25fr) minmax(90px, 1fr) 62px 62px 74px 96px 86px;
   gap: 10px; align-items: center;
 }
 .xhead { padding: 6px 44px 6px 12px; }
@@ -289,7 +289,30 @@ button.xh.on { color: var(--accent); }
 }
 .pinbtn.on { color: #04150b; background: var(--accent); border-color: var(--accent); font-weight: 700; }
 
+/* The suppressed marker stands where a flagged rate would
+   print when its records derive no decomposition (C-5). */
+.supp { font-size: 11px; color: var(--amber); letter-spacing: 0.02em; }
+
+/* Motion (BUILD-SPEC part 6). One character, 200ms, on state
+   changes only. Figures always print at their final values.
+   Nothing here moves a number, and nothing runs ambiently.
+   The re-sort travels by the FLIP inline transform in the
+   explorer. These rules carry filtering, mode switching,
+   selection, and expansion. Reduced motion reaches the end
+   state with no travel through the kill switch below. */
+@keyframes xrow-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes xview-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes xreading-in { from { opacity: 0; clip-path: inset(0 0 100% 0); } to { opacity: 1; clip-path: inset(0 0 0 0); } }
+.xrow.enter, .xfamrow.enter { animation: xrow-in 0.2s ease; }
+.xview.anim { animation: xview-in 0.2s ease; }
+.xrow, .xfamrow, .xrow-head { transition: border-color 0.2s ease, background-color 0.2s ease, opacity 0.2s ease; }
+.segbtn, .pinbtn { transition: background-color 0.2s ease, color 0.2s ease; }
+.rail-row, .sync-row { transition: border-color 0.2s ease, background-color 0.2s ease, outline-color 0.2s ease; }
+.disc { transition: opacity 0.2s ease; }
+
 .reading { border-top: 1px solid var(--line-soft); padding: 16px 18px 18px; }
+.reading.open { animation: xreading-in 0.2s ease; }
+.tray { animation: xview-in 0.2s ease; }
 .reading-close { display: none; }
 .reading-rank { margin-bottom: 10px; }
 .reading-figs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px 22px; }
@@ -335,6 +358,13 @@ button.xh.on { color: var(--accent); }
   padding: 10px 12px; margin-top: 10px; color: var(--ink-2); font-size: 14px;
 }
 .offscale-note p { margin: 0; }
+.flag-note {
+  border: 1px solid rgba(232, 163, 61, 0.45); border-radius: 8px;
+  padding: 10px 12px; margin-top: 10px; color: var(--ink-2); font-size: 14px;
+}
+.flag-note p { margin: 0; }
+.flag-line { stroke: var(--amber); stroke-width: 1; stroke-dasharray: 5 4; opacity: 0.85; }
+.flag-label { fill: var(--amber); }
 .chip {
   position: absolute; transform: translate(-8px, -100%);
   background: var(--panel-2); border: 1px solid var(--ink-3); border-radius: 9px;
