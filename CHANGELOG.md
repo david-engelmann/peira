@@ -7,6 +7,29 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
 
 ## [Unreleased]
 
+### Leaderboard payload names its dataset, populations, and decompositions
+
+- The leaderboard payload's header suite and dataset version
+  are derived from its rows, never echoed from the export's
+  filter arguments. A no-filter export, the publish form,
+  previously carried null in both fields while every row
+  named its dataset. Rows that carry both values must agree.
+  A disagreement fails the export loudly.
+- Every row now carries its measurement population
+  (full_suite or abstain_slice, from its case count against
+  the suite's full count) and its dense rank within that
+  population, null on unranked rows. The ranked array's order
+  is unchanged. The fields keep a reader of the file from
+  mistaking a slice row at the head of the mixed sort for the
+  board leader.
+- Every row now carries its flip decomposition as first-class
+  fields, namely counted flips, flips to malformed output,
+  their share of counted flips, and the genuine flip rate
+  with the malformed flips removed. The fields are null where the
+  per-family records are missing, unusable, or disagree with
+  the printed attack success, the same rule the board's own
+  derivation follows.
+
 ### Cycle 10 surface repairs
 
 - Calibration's missing-value placeholder is the board's
