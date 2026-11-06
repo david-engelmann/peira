@@ -28,7 +28,6 @@ export default function VendorLogo({
       style={style}
       role="img"
       aria-label={vendor.label}
-      title={vendor.label}
     >
       {vendor.kind === "logo" ? (
         <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">

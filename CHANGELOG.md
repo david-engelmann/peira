@@ -7,6 +7,35 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
 
 ## [Unreleased]
 
+### Board rebuilt findings first
+
+- The board opens with five findings and one explorer
+  instead of nine sections. Each finding carries one
+  dominant visual and one action that reads the claim in
+  the explorer with its state set. The explorer holds
+  every result with expandable readings, population and
+  vendor and cost filters, text search, sort, pin to
+  compare, and rank, chart, and families views, with all
+  state in the URL hash.
+- Readings carry the calibration reliability plot and
+  the robustness tax with its benchmark line, both
+  restored from the Instrument panel. Guard results
+  stand in chart view on the no-cost rail as selectable
+  marks with their basis stated.
+- Method is cut to a diet under a word budget, and a
+  prose census joins the build chain to hold the budget.
+  The audit suite is rewritten for the new structure.
+- The og share cards take the findings grammar. Their
+  headline is the split between the ranked board and the
+  flagged band, guarded by the generator against the
+  payload.
+- The board's staged payload is the currently published
+  payload, so the board builds from a clean checkout
+  with the findings' figures derivable.
+- Finding 5's sanctioned no-answer disclosure runs past
+  the findings word cap. The census pins the exception
+  at its measured count and the redesign record names it.
+
 ### Leaderboard payload names its dataset, populations, and decompositions
 
 - The leaderboard payload's header suite and dataset version
