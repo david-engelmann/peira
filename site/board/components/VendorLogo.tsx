@@ -5,12 +5,13 @@ import { vendorFamilyOf } from "@/lib/vendorColors";
 
 /**
  * The vendor chip for a row or a card: the maker's brand mark
- * on a tint of the maker's family color, or a monogram letter
- * for the systems that publish no mark. The family color is
- * the same hue the charts use for the model, so identity
- * reads consistently across the board. The chip is decorative
- * beside the model name, which already names the result; the
- * vendor rides along as the accessible label.
+ * in the maker's glyph ink on the maker's family color, or a
+ * monogram letter for the systems that publish no mark. The
+ * family color and its glyph ink are the same pair the charts
+ * use for the model, so identity reads consistently across
+ * the board. The chip is decorative beside the model name,
+ * which already names the result. The vendor rides along as
+ * the accessible label.
  */
 export default function VendorLogo({
   row,
@@ -21,7 +22,7 @@ export default function VendorLogo({
 }) {
   const vendor = vendorOf(row);
   const family = vendorFamilyOf(row);
-  const style = { "--vc": family.color } as CSSProperties;
+  const style = { "--vc": family.color, "--vg": family.glyph } as CSSProperties;
   return (
     <span
       className={`vendor-chip ${size}${vendor.kind === "mono" ? " mono" : ""}`}

@@ -101,7 +101,7 @@ components:
     rounded: "{rounded.pill}"
   vendor-chip-anthropic:
     backgroundColor: "{colors.chart-series-anthropic}"
-    textColor: "{colors.chart-glyph-light}"
+    textColor: "{colors.chart-glyph-dark}"
     rounded: "{rounded.ctl}"
   scatter-disc-openai:
     backgroundColor: "{colors.chart-series-openai}"
@@ -122,7 +122,7 @@ components:
     rounded: "{rounded.pill}"
   vendor-chip-meta:
     backgroundColor: "{colors.chart-series-meta}"
-    textColor: "{colors.chart-glyph-light}"
+    textColor: "{colors.chart-glyph-dark}"
     rounded: "{rounded.ctl}"
   scatter-disc-mistral:
     backgroundColor: "{colors.chart-series-mistral}"
@@ -136,7 +136,7 @@ components:
     rounded: "{rounded.pill}"
   vendor-chip-deepseek:
     backgroundColor: "{colors.chart-series-deepseek}"
-    textColor: "{colors.chart-glyph-light}"
+    textColor: "{colors.chart-glyph-dark}"
     rounded: "{rounded.ctl}"
   scatter-disc-fallback:
     backgroundColor: "{colors.chart-series-fallback}"
@@ -154,7 +154,7 @@ components:
     rounded: "{rounded.ctl}"
   primary-control:
     backgroundColor: "{colors.accent}"
-    textColor: "{colors.ink-1}"
+    textColor: "{colors.chart-glyph-dark}"
     rounded: "{rounded.ctl}"
   finding-link:
     textColor: "{colors.accent-bright}"

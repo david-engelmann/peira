@@ -26,7 +26,8 @@
  *   filtering in chart mode fades entering discs, rail rows,
  *     and sync rows at 200ms
  *   the five state changes of BUILD-SPEC part 6 animate at
- *     200ms, and reduced motion suppresses every one of them
+ *     200ms, and reduced motion takes the designed M19
+ *     branch, travel gone, height instant, and color kept
  *   at phone size the reading opens as a sheet over a sticky
  *     strip that names the selection, the tray pins above
  *     the strip, and a tap outside dismisses the sheet
@@ -645,7 +646,8 @@ await page.close();
  * filtering off the entering rows and the re-sort's inline
  * FLIP transition, and mode switching off the view wrapper.
  * A reduced motion page must reach every end state with no
- * travel at all. */
+ * travel, its disclosures at full height from the first
+ * frame, and its color changes intact. */
 const motionPage = await browser.newPage();
 await motionPage.setViewport({ width: 1440, height: 1000 });
 await motionPage.goto(`${base}/`, { waitUntil: "networkidle0" });
@@ -698,9 +700,13 @@ await clickText(motionPage, "Cost", "button.xh").catch(() => null);
 let flipSeen = false;
 for (let i = 0; i < 10 && !flipSeen; i += 1) {
   flipSeen = await motionPage.evaluate(() => {
-    return [...document.querySelectorAll("[data-rid]")].some((el) =>
-      (el.getAttribute("style") ?? "").includes("transform 200ms"),
-    );
+    return [...document.querySelectorAll("[data-rid]")].some((el) => {
+      const s = getComputedStyle(el);
+      return (
+        s.transitionProperty.includes("transform") &&
+        s.transitionDuration === "0.2s"
+      );
+    });
   });
   if (!flipSeen) await new Promise((r) => setTimeout(r, 25));
 }
@@ -799,7 +805,10 @@ if (vendorOptions.length < 2) {
 }
 await motionPage.close();
 
-/* Reduced motion reaches the end states with no travel. */
+/* Reduced motion takes the designed M19 branch. The
+ * disclosure cross fades with its height final at once,
+ * anchor jumps are instant, nothing travels, and the color
+ * transitions that carry state survive. */
 const rmPage = await browser.newPage();
 await rmPage.emulateMediaFeatures([
   { name: "prefers-reduced-motion", value: "reduce" },
@@ -817,8 +826,9 @@ const rmStyles = await rmPage.evaluate(() => {
   const ws = row ? getComputedStyle(row) : null;
   return {
     readingName: rs?.animationName ?? "",
-    readingDur: rs?.animationDuration ?? "",
+    readingClip: rs?.clipPath ?? "",
     rowDur: ws?.transitionDuration ?? "",
+    scrollBehavior: getComputedStyle(document.documentElement).scrollBehavior,
   };
 });
 await clickText(rmPage, "Cost", "button.xh").catch(() => null);
@@ -829,15 +839,16 @@ const rmTransforms = await rmPage.evaluate(() => {
   ).length;
 });
 if (
-  rmStyles.readingName !== "none" ||
-  rmStyles.readingDur !== "0s" ||
-  rmStyles.rowDur !== "0s" ||
+  !rmStyles.readingName.includes("xreading-rm") ||
+  rmStyles.readingClip !== "none" ||
+  rmStyles.scrollBehavior !== "auto" ||
+  !rmStyles.rowDur.includes("0.2s") ||
   rmTransforms > 0
 ) {
   fail(
-    `reduced motion still travels (reading ${rmStyles.readingName} ${rmStyles.readingDur}, row transition ${rmStyles.rowDur}, ${rmTransforms} transformed rows)`,
+    `reduced motion breaks the M19 branch (reading ${rmStyles.readingName}, clip ${rmStyles.readingClip}, scroll ${rmStyles.scrollBehavior}, row transition ${rmStyles.rowDur}, ${rmTransforms} transformed rows)`,
   );
-} else pass("reduced motion suppresses every transition");
+} else pass("reduced motion cross fades the disclosure, keeps color changes, and never travels");
 await rmPage.close();
 
 /* ---------- the phone touch session ---------- */
