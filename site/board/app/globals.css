@@ -38,9 +38,10 @@
 }
 
 * { box-sizing: border-box; }
-html { scroll-behavior: smooth; }
+html { scroll-behavior: smooth; overflow-x: clip; }
 body {
   margin: 0;
+  overflow-x: clip;
   background: var(--ground);
   color: var(--ink);
   font-family: "Archivo", system-ui, sans-serif;
@@ -50,6 +51,14 @@ body {
 }
 a { color: var(--accent); text-decoration: none; }
 a:hover { text-decoration: underline; }
+/* Keyboard focus shows on every interactive element as
+   an accent ring, offset so the ring clears the element
+   and reads against panel and ground alike. The ring
+   keys on focus-visible, so pointer focus stays quiet. */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
 .rn, .axis-label, .xfam-val, .costrow-fig, .wiretrack-sub {
   font-family: "JetBrains Mono", ui-monospace, monospace;
   font-variant-numeric: tabular-nums;
@@ -194,10 +203,10 @@ h3 { font-size: 21px; font-weight: 700; }
 
 .vlogo { display: inline-block; border-radius: 6px; flex: 0 0 auto; }
 
-/* The vendor chip: the maker's mark in the maker's glyph
-   ink on the maker's family color, or a monogram letter for
-   systems that publish no mark. One box geometry in rows
-   and cards so identity reads at a glance. */
+/* The vendor chip carries the maker's mark in the maker's
+   glyph ink on the maker's family color, or a monogram
+   letter for systems that publish no mark. One box
+   geometry in rows and cards so identity reads at a glance. */
 .vendor-chip {
   display: inline-flex;
   align-items: center;
@@ -326,8 +335,8 @@ button.xh.on { color: var(--accent); }
 .rail-row, .sync-row { transition: border-color var(--dur-state) ease, background-color var(--dur-state) ease, outline-color var(--dur-state) ease; }
 .disc { transition: opacity var(--dur-state) ease; }
 
-.reading { display: grid; grid-template-rows: 1fr; border-top: 1px solid var(--line-soft); padding: 16px 18px 18px; }
-.reading-clip { min-height: 0; overflow: hidden; }
+.reading { display: grid; grid-template-rows: 1fr; border-top: 1px solid var(--line-soft); }
+.reading-clip { min-height: 0; overflow: hidden; padding: 16px 18px 18px; }
 .reading.open { animation: xreading-in var(--dur-state) ease; }
 .tray { animation: xview-in var(--dur-state) var(--ease-out); }
 .reading-close { display: none; }
@@ -511,8 +520,8 @@ button.xh.on { color: var(--accent); }
     position: fixed; left: 0; right: 0; bottom: 0; top: auto; z-index: 60;
     max-height: 84vh; overflow: auto; background: var(--panel);
     border-top: 2px solid var(--accent); border-radius: 10px 10px 0 0;
-    padding: 16px 16px 30px;
   }
+  .reading.open .reading-clip { padding: 16px 16px 30px; }
   .belowreading .reading.open { position: static; max-height: none; border-top: 1px solid var(--line-soft); border-radius: 0; }
   .reading-close {
     display: inline-block; float: right; min-height: 44px;

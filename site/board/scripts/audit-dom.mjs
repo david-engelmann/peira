@@ -805,18 +805,62 @@ if (vendorOptions.length < 2) {
 }
 await motionPage.close();
 
+/* Resting state sampling shared by the reduced motion
+ * proof and its full motion comparison page. Only the
+ * properties the M19 branch must leave identical are
+ * read, so the animation names that differ by design
+ * never enter the comparison. */
+const restingSample = () => {
+  const read = (sel, props) => {
+    const el = document.querySelector(sel);
+    if (!el) return null;
+    const s = getComputedStyle(el);
+    const out = {};
+    for (const p of props) out[p] = s[p];
+    return out;
+  };
+  const reading = document.querySelector(".reading.open");
+  return {
+    reading: reading
+      ? { height: reading.offsetHeight, opacity: getComputedStyle(reading).opacity }
+      : null,
+    row: read(".xrow", ["backgroundColor", "color", "opacity", "transform"]),
+    segOn: read(".segbtn.on", ["backgroundColor", "color"]),
+    pin: read(".pinbtn", ["backgroundColor", "color"]),
+  };
+};
+
 /* Reduced motion takes the designed M19 branch. The
  * disclosure cross fades with its height final at once,
- * anchor jumps are instant, nothing travels, and the color
- * transitions that carry state survive. */
+ * measured on the frames of the open itself. Entrances
+ * fade and never travel, sampled on a view switch.
+ * Anchor jumps are instant, the color transitions that
+ * carry state survive, and resting states are compared
+ * against a full motion page property by property. */
 const rmPage = await browser.newPage();
 await rmPage.emulateMediaFeatures([
   { name: "prefers-reduced-motion", value: "reduce" },
 ]);
 await rmPage.setViewport({ width: 1440, height: 1000 });
 await rmPage.goto(`${base}/`, { waitUntil: "networkidle0" });
-await rmPage.evaluate(() => {
+/* The open runs inside one page side sampling run, so
+ * the disclosure height is read on the frames of the
+ * open itself. A frame below the final height means the
+ * grid rows moved, whatever the keyframe names claim. */
+const rmOpen = await rmPage.evaluate(async () => {
   document.querySelector(".xrow-head")?.click();
+  const heights = [];
+  const t0 = performance.now();
+  await new Promise((resolve) => {
+    const tick = () => {
+      const el = document.querySelector(".reading.open");
+      if (el) heights.push(el.offsetHeight);
+      if (performance.now() - t0 < 320) requestAnimationFrame(tick);
+      else resolve();
+    };
+    requestAnimationFrame(tick);
+  });
+  return heights;
 });
 await waitFor(rmPage, () => document.querySelector(".reading.open") !== null);
 const rmStyles = await rmPage.evaluate(() => {
@@ -831,6 +875,19 @@ const rmStyles = await rmPage.evaluate(() => {
     scrollBehavior: getComputedStyle(document.documentElement).scrollBehavior,
   };
 });
+await new Promise((r) => setTimeout(r, 450));
+const rmRest = await rmPage.evaluate(restingSample);
+const normPage = await browser.newPage();
+await normPage.setViewport({ width: 1440, height: 1000 });
+await normPage.goto(`${base}/`, { waitUntil: "networkidle0" });
+await normPage.evaluate(() => {
+  document.querySelector(".xrow-head")?.click();
+});
+await waitFor(normPage, () => document.querySelector(".reading.open") !== null);
+await new Promise((r) => setTimeout(r, 450));
+const normRest = await normPage.evaluate(restingSample);
+await normPage.close();
+const restingMatch = JSON.stringify(rmRest) === JSON.stringify(normRest);
 await clickText(rmPage, "Cost", "button.xh").catch(() => null);
 await new Promise((r) => setTimeout(r, 350));
 const rmTransforms = await rmPage.evaluate(() => {
@@ -838,17 +895,63 @@ const rmTransforms = await rmPage.evaluate(() => {
     (el.getAttribute("style") ?? "").includes("transform"),
   ).length;
 });
+/* The view switch carries the one travel bearing
+ * entrance in the sheet. Every frame of the switch is
+ * read for the view wrapper, and a single frame with
+ * vertical travel in its computed transform fails the
+ * branch. */
+const rmEntrance = await rmPage.evaluate(async () => {
+  const btn = [...document.querySelectorAll("button")].find(
+    (b) => b.textContent.trim() === "Chart",
+  );
+  btn?.click();
+  const samples = [];
+  const t0 = performance.now();
+  await new Promise((resolve) => {
+    const tick = () => {
+      const el = document.querySelector(".xview");
+      if (el) {
+        const s = getComputedStyle(el);
+        samples.push({ name: s.animationName, transform: s.transform });
+      }
+      if (performance.now() - t0 < 320) requestAnimationFrame(tick);
+      else resolve();
+    };
+    requestAnimationFrame(tick);
+  });
+  return { clicked: Boolean(btn), samples };
+});
+const travelOf = (t) => {
+  if (t === "none") return 0;
+  const m = /matrix\(([^)]+)\)/.exec(t);
+  if (!m) return Number.NaN;
+  return Math.abs(parseFloat(m[1].split(",")[5].trim()));
+};
+const entranceRan =
+  rmEntrance.clicked &&
+  rmEntrance.samples.some((s) => s.name.includes("xview-in"));
+const entranceTravels = rmEntrance.samples.some(
+  (s) => travelOf(s.transform) !== 0,
+);
+const finalHeight = rmOpen.length > 0 ? rmOpen[rmOpen.length - 1] : null;
+const heightInstant =
+  finalHeight !== null &&
+  rmOpen.every((h) => Math.abs(h - finalHeight) <= 1);
 if (
   !rmStyles.readingName.includes("xreading-rm") ||
   rmStyles.readingClip !== "none" ||
   rmStyles.scrollBehavior !== "auto" ||
   !rmStyles.rowDur.includes("0.2s") ||
-  rmTransforms > 0
+  rmTransforms > 0 ||
+  !heightInstant ||
+  !entranceRan ||
+  entranceTravels ||
+  !restingMatch
 ) {
   fail(
-    `reduced motion breaks the M19 branch (reading ${rmStyles.readingName}, clip ${rmStyles.readingClip}, scroll ${rmStyles.scrollBehavior}, row transition ${rmStyles.rowDur}, ${rmTransforms} transformed rows)`,
+    `reduced motion breaks the M19 branch (reading ${rmStyles.readingName}, clip ${rmStyles.readingClip}, scroll ${rmStyles.scrollBehavior}, row transition ${rmStyles.rowDur}, ${rmTransforms} transformed rows, disclosure heights ${JSON.stringify(rmOpen)}, entrance ran ${entranceRan} and travelled ${entranceTravels}, resting match ${restingMatch})`,
   );
-} else pass("reduced motion cross fades the disclosure, keeps color changes, and never travels");
+} else pass("reduced motion cross fades the disclosure at its final height, fades entrances with no travel, lands anchor jumps at once, keeps color changes, and rests identical to the full motion branch");
 await rmPage.close();
 
 /* ---------- the phone touch session ---------- */
