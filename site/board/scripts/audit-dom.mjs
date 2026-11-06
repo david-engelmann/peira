@@ -18,7 +18,12 @@
  *     so in the count line
  *   a model address (/#result=<slug>) opens that reading
  *   a finding's action sets the explorer state it promises
- *   families mode sorts by a family from its label
+ *   finding actions followed in sequence each land where
+ *     they promise, with unnamed state back at its default
+ *   the rank header's labels stand over their columns
+ *   families mode sorts by a family from its label, and
+ *     carries exactly one reading for an expanded row
+ *   filtering in chart mode fades entering discs at 200ms
  *   the five state changes of BUILD-SPEC part 6 animate at
  *     200ms, and reduced motion suppresses every one of them
  *   at phone size the reading opens as a sheet over a sticky
@@ -176,6 +181,28 @@ const page = await browser.newPage();
 await page.setViewport({ width: 1280, height: 950 });
 await page.goto(`${base}/`, { waitUntil: "networkidle0" });
 await page.evaluate(() => document.querySelector(".explorer")?.scrollIntoView());
+
+/* The rank header's labels stand over their columns. Each
+ * figure label's center is compared with the center of the
+ * same figure cell in the first row, so a header missing a
+ * track throws every label one column off and fails here. */
+{
+  const aligned = await page.evaluate(() => {
+    const heads = [...document.querySelectorAll(".xhead .xh.fig")];
+    const cells = [...document.querySelectorAll(".xrow .xfig")];
+    if (heads.length === 0 || cells.length < heads.length) return null;
+    return heads.map((h, i) => {
+      const hr = h.getBoundingClientRect();
+      const cr = cells[i].getBoundingClientRect();
+      return Math.abs(hr.x + hr.width / 2 - (cr.x + cr.width / 2));
+    });
+  });
+  if (aligned === null) {
+    fail("the rank header or the first row is missing, so header alignment has no evidence");
+  } else if (aligned.some((d) => d > 2)) {
+    fail(`the rank header's labels sit off their columns by ${aligned.map((d) => Math.round(d)).join(", ")}px`);
+  } else pass("the rank header's labels stand over their columns");
+}
 
 /* Expansion in place, with the calibration plot. */
 await page.evaluate((rid) => {
@@ -472,6 +499,25 @@ if (!famPick) {
   }
 }
 
+/* Families mode carries exactly one reading for an expanded
+ * row, the copy inside its own row and no second copy in the
+ * block below the view. */
+await page.evaluate(() => {
+  document.querySelector(".xfamrow .xfam-head")?.click();
+});
+await waitFor(page, () => document.querySelector(".xfamilies .reading.open") !== null);
+{
+  const copies = await page.evaluate(() => ({
+    inline: document.querySelectorAll(".xfamilies .reading").length,
+    below: document.querySelectorAll(".belowreading").length,
+  }));
+  if (copies.inline !== 1) {
+    fail(`families mode carries ${copies.inline} readings for the expanded row, not 1`);
+  } else if (copies.below !== 0) {
+    fail("families mode renders the expanded reading again below the view");
+  } else pass("families mode carries exactly one reading for an expanded row");
+}
+
 /* A finding's action sets the explorer state. */
 await page.evaluate(() => window.scrollTo(0, 0));
 const findingsActions = await page.$$(".finding .f-action");
@@ -486,6 +532,65 @@ else {
   if (dupName && !q.hash.includes("q=") && !q.value.includes(shortName({ display_name: dupName }))) {
     fail("Finding 2's action does not set the explorer search to the duplicated model");
   } else pass("a finding's action sets the explorer state it promises");
+}
+
+/* Finding actions followed in sequence land where each one
+ * promises. The price action promises the priced chart, the
+ * guards action promises the guards in rank mode, and the
+ * price action again promises the chart. State an action
+ * does not name returns to its default on each landing, so
+ * the guards step carries no priced band and the return step
+ * carries discs. On the old merge semantics the guards step
+ * inherits the priced band over a population whose costs are
+ * unrecorded and lands on the empty state. */
+{
+  const costBand = () =>
+    page.evaluate(() => {
+      const sel = [...document.querySelectorAll(".explorer select")].find((s) =>
+        [...s.options].some((o) => o.value === "priced"),
+      );
+      return sel?.value ?? null;
+    });
+  await findingsActions[2].click();
+  await page.waitForSelector("svg.chart", { timeout: 10000 }).catch(() => null);
+  const pricedDiscs = await page.evaluate(
+    () => document.querySelectorAll("svg.chart circle").length,
+  );
+  const pricedBand = await costBand();
+  if (pricedDiscs === 0) fail("the price action lands on a chart with no discs");
+  else if (pricedBand !== "priced") {
+    fail(`the price action leaves the cost band at ${pricedBand}, not priced`);
+  } else pass("the price action lands on the priced chart");
+
+  await findingsActions[3].click();
+  await waitFor(page, () => document.querySelector(".basisline") !== null);
+  const guardsStep = await page.evaluate(() => {
+    const seg = [...document.querySelectorAll(".segbtn")].find(
+      (b) => b.textContent.trim() === "Guards",
+    );
+    return {
+      guardsOn: seg?.classList.contains("on") ?? false,
+      empty: document.querySelector(".xempty") !== null,
+      rows: document.querySelectorAll(".xrow").length,
+    };
+  });
+  const guardsBand = await costBand();
+  if (!guardsStep.guardsOn) {
+    fail("the guards action does not land on the guards population");
+  } else if (guardsStep.empty || guardsStep.rows === 0) {
+    fail("the guards action lands on the empty state instead of the guards");
+  } else if (guardsBand !== "all") {
+    fail(`the guards action inherits the cost band ${guardsBand} from the price action`);
+  } else pass("the guards action lands on the guards with rows visible");
+
+  await findingsActions[2].click();
+  await page.waitForSelector("svg.chart", { timeout: 10000 }).catch(() => null);
+  const returnDiscs = await page.evaluate(
+    () => document.querySelectorAll("svg.chart circle").length,
+  );
+  if (returnDiscs === 0) {
+    fail("returning to the price action lands on a chart with no discs");
+  } else pass("the price action after the guards lands on the priced chart again");
 }
 
 /* Deep link opens the reading. */
@@ -582,6 +687,49 @@ const viewAnim = await motionPage.evaluate(() => {
 if (!viewAnim.name.includes("xview-in") || viewAnim.dur !== "0.2s") {
   fail("mode switching does not animate the view at 200ms");
 } else pass("mode switching animates the view at 200ms");
+
+/* Filtering in chart mode. Discs admitted to the visible set
+ * on a filter change carry the same 200ms enter fade as
+ * rows. The vendor filter narrows the chart, and clearing it
+ * admits the discs back. */
+const vendorOptions = await motionPage.evaluate(() => {
+  const field = [...document.querySelectorAll(".xfield")].find(
+    (f) => f.querySelector(".micro")?.textContent.trim() === "Vendor",
+  );
+  const sel = field?.querySelector("select");
+  return sel ? [...sel.options].map((o) => o.value) : [];
+});
+if (vendorOptions.length < 2) {
+  fail("the vendor filter offers no second value, so the chart filtering proof cannot run");
+} else {
+  const setVendor = (value) =>
+    motionPage.evaluate((v) => {
+      const field = [...document.querySelectorAll(".xfield")].find(
+        (f) => f.querySelector(".micro")?.textContent.trim() === "Vendor",
+      );
+      const sel = field?.querySelector("select");
+      if (!sel) return;
+      const setter = Object.getOwnPropertyDescriptor(
+        window.HTMLSelectElement.prototype,
+        "value",
+      ).set;
+      setter.call(sel, v);
+      sel.dispatchEvent(new Event("change", { bubbles: true }));
+    }, value);
+  await setVendor(vendorOptions[1]);
+  await new Promise((r) => setTimeout(r, 350));
+  await setVendor("all");
+  await waitFor(motionPage, () => document.querySelector(".disc.enter") !== null);
+  const discAnim = await motionPage.evaluate(() => {
+    const el = document.querySelector(".disc.enter");
+    if (!el) return null;
+    const s = getComputedStyle(el);
+    return { name: s.animationName, dur: s.animationDuration };
+  });
+  if (!discAnim || !discAnim.name.includes("xrow-in") || discAnim.dur !== "0.2s") {
+    fail("filtering in chart mode admits discs with no 200ms fade");
+  } else pass("filtering fades entering discs at 200ms");
+}
 await motionPage.close();
 
 /* Reduced motion reaches the end states with no travel. */

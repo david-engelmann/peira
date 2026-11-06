@@ -5,16 +5,11 @@ import {
   modelCounts,
   multiResultModels,
 } from "@/lib/payload";
-import { fmtInt } from "@/lib/format";
+import { fmtInt, fmtPct } from "@/lib/format";
 import { explorerData } from "@/lib/explorerData";
 import Findings from "@/components/Findings";
 import Explorer from "@/components/Explorer";
 import Method from "@/components/Method";
-
-/** The hero range prints at one decimal, as the published board's does. */
-function pct1(v: number): string {
-  return `${(Math.round(v * 1000) / 10).toFixed(1)}%`;
-}
 
 /**
  * The board. The findings open the page and state what the
@@ -87,8 +82,8 @@ export default function Home() {
         </p>
         {best !== null && worst !== null && (
           <p className="hero-range">
-            On the full suite, attack success runs from {pct1(best)} to{" "}
-            {pct1(worst)}.
+            On the full suite, attack success runs from {fmtPct(best)} to{" "}
+            {fmtPct(worst)}.
           </p>
         )}
         <p className="hero-counts">

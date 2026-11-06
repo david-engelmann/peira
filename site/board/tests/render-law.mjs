@@ -217,7 +217,7 @@ await page.evaluate(() => {
   const chartBtn = btns.find((b) => b.textContent.trim() === "Chart");
   chartBtn?.click();
 });
-await page.waitForSelector(".chart svg", { timeout: 10000 }).catch(() => null);
+await page.waitForSelector("svg.chart", { timeout: 10000 }).catch(() => null);
 const notes = await page.evaluate(() => {
   const out = [];
   for (const sel of [".offscale-note", ".rail-note"]) {
@@ -243,7 +243,14 @@ for (const n of notes) {
     fail(`a chart annotation runs ${wordCount(n)} words, cap 25: ${n.slice(0, 60)}`);
   }
 }
-law("chart annotations beyond axis labels run at most 25 words");
+/* The leg fails closed. A chart that printed no annotation
+ * at all leaves nothing measured, and a law recorded over an
+ * empty set would certify a chart nobody read. */
+if (notes.length === 0) {
+  fail("the chart printed no annotation to measure, so the annotation law has no evidence");
+} else {
+  law("chart annotations beyond axis labels run at most 25 words");
+}
 await page.close();
 
 /* ---------- phone touch targets ---------- */

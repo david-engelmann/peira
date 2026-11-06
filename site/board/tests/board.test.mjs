@@ -242,7 +242,9 @@ test("finding 5's leader is the lowest measured full suite row and carries its d
       findings.leader.harness.length > 0,
     "the leader carries the harness wording its sentence states",
   );
-  assert.ok((leader.unanswered_cases ?? 0) >= 1);
+  /* The disclosure account describes exactly one case, so the
+   * leader's count is pinned at one, not merely nonzero. */
+  assert.equal(leader.unanswered_cases ?? 0, 1);
   const d = decomp(leader);
   assert.equal(findings.leader.flips, d.flips);
   assert.equal(findings.leader.malformedFlips, d.malformed);

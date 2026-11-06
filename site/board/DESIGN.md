@@ -822,3 +822,17 @@ and a flagged figure still never travels without its
 malformed decomposition, at whole-row scope and at
 per-family scope alike. The suite case count stands only
 where the derivation law allows it.
+
+**Record notes from the micro-fix round, 2026-11-05.** The
+suppressed marker began as a per-family rule, standing where
+a family's decomposition does not derive. It now stands at
+row scope as a fail-closed rule across the whole board, on
+the ranking rows, the families heads, the readings, the foot
+strip, the chart rail and list, the compare table, and the
+reading chip, so no surface prints a rate whose decomposition
+does not derive. The full-suite case count derives two ways
+that agree on this payload. The payload builder takes the
+maximum over ranked and unranked rows, while the board takes
+the maximum over ranked rows only. The two agree here, and
+they would diverge only on a payload shape this dataset does
+not produce.

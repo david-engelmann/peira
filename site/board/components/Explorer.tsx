@@ -9,7 +9,11 @@ import {
   useState,
 } from "react";
 import {
+  CHART_X_AXIS_TITLE,
+  chartAriaLabelText,
+  chartYAxisTitleText,
   countLineText,
+  deltaWord,
   EMPTY_CHART_TEXT,
   EMPTY_RANK_TEXT,
   FLAGGED_DIVIDER,
@@ -18,6 +22,7 @@ import {
   GUARD_DIVIDER,
   offScaleNoteText,
   railNoteText,
+  trayDeltaText,
   type ExplorerData,
   type XRow,
 } from "@/lib/explorerData";
@@ -292,14 +297,6 @@ function ReadingBody({
   );
 }
 
-/** The direction of a printed delta, in words. A difference too
- *  small to print a sign claims no direction. */
-function deltaWord(formatted: string): string {
-  if (formatted.startsWith("+")) return "higher";
-  if (formatted.startsWith("-")) return "lower";
-  return "the same";
-}
-
 function deltaText(
   a: number | null,
   b: number | null,
@@ -328,8 +325,8 @@ function CompareReading({
   const rows: Array<[string, string, string, string]> = [
     [
       sel.asrLabel,
-      sel.asrText ?? "·",
-      pin.asrText ?? "·",
+      sel.suppressed ? "suppressed" : (sel.asrText ?? "·"),
+      pin.suppressed ? "suppressed" : (pin.asrText ?? "·"),
       deltaText(sel.asr, pin.asr, (v) => fmtDeltaPct(v)),
     ],
     [
@@ -479,7 +476,7 @@ export default function Explorer({ data }: { data: ExplorerData }) {
   const [famHover, setFamHover] = useState<string | null>(null);
   const touched = useRef(false);
   const prevVisibleRef = useRef<Set<string> | null>(null);
-  const prevModeRef = useRef<Mode>(DEFAULTS.mode);
+  const prevModeRef = useRef<Mode | null>(null);
   const listRef = useRef<HTMLDivElement>(null);
   const flipSnapshot = useRef<Map<string, number> | null>(null);
   const sectionRef = useRef<HTMLElement>(null);
@@ -541,20 +538,29 @@ export default function Explorer({ data }: { data: ExplorerData }) {
   }, [bySlug]);
 
   useEffect(() => {
-    const apply = (scroll: boolean) => {
+    /* A hash application is a landing, not an edit. A finding
+     * action and a model address each promise a whole state,
+     * so the state they do not name returns to its default,
+     * the brush and the chart chip clear, and an expansion
+     * stands only where the link itself opens one. The
+     * reader's own control changes go through update() and
+     * keep their merge behavior. */
+    const apply = (scroll: boolean, mount = false) => {
       const { patch, open } = parseHash();
       if (Object.keys(patch).length === 0) return;
-      setState((s) => ({ ...s, ...patch }));
-      if (open && patch.sel) setExpanded(patch.sel);
-      if (scroll) {
+      setState({ ...DEFAULTS, sel: leader?.runId ?? null, ...patch });
+      setBrush(null);
+      setChipId(null);
+      setExpanded(open && patch.sel ? patch.sel : null);
+      if (scroll || (mount && patch.sel)) {
         sectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
       }
     };
-    apply(false);
+    apply(false, true);
     const onHash = () => apply(true);
     window.addEventListener("hashchange", onHash);
     return () => window.removeEventListener("hashchange", onHash);
-  }, [parseHash]);
+  }, [parseHash, leader]);
 
   useEffect(() => {
     if (!touched.current) return;
@@ -680,6 +686,19 @@ export default function Explorer({ data }: { data: ExplorerData }) {
   useEffect(() => {
     prevVisibleRef.current = new Set(visible.map((r) => r.runId));
   });
+  /* The mode tracker adopts the mode the address already
+   * names on first render, the same rule the row tracker
+   * follows with the full row set above, so a shared link's
+   * first paint stands still and only a reader's own switch
+   * animates. */
+  if (prevModeRef.current === null) {
+    let initial: Mode = DEFAULTS.mode;
+    if (typeof window !== "undefined") {
+      const m = /[?&]mode=(rank|chart|families)/.exec(window.location.hash);
+      if (m) initial = m[1] as Mode;
+    }
+    prevModeRef.current = initial;
+  }
   const modeChanged = prevModeRef.current !== state.mode;
   useEffect(() => {
     prevModeRef.current = state.mode;
@@ -812,14 +831,16 @@ export default function Explorer({ data }: { data: ExplorerData }) {
                 </button>
               ))}
             </div>
-            <label className="xcheck">
-              <input
-                type="checkbox"
-                checked={state.frontier}
-                onChange={(e) => update({ frontier: e.target.checked })}
-              />
-              <span>Frontier</span>
-            </label>
+            {state.measure === "asr" && (
+              <label className="xcheck">
+                <input
+                  type="checkbox"
+                  checked={state.frontier}
+                  onChange={(e) => update({ frontier: e.target.checked })}
+                />
+                <span>Frontier</span>
+              </label>
+            )}
             <label className="xfield">
               <span className="micro">Highlight</span>
               <select
@@ -883,6 +904,7 @@ export default function Explorer({ data }: { data: ExplorerData }) {
           setHoverId={setHoverId}
           chipId={chipId}
           setChipId={setChipId}
+          freshIds={freshIds}
           onSelect={(row) => {
             update({ sel: row.runId });
             setExpanded(row.runId);
@@ -903,7 +925,7 @@ export default function Explorer({ data }: { data: ExplorerData }) {
         />
       )}
       </div>
-      {state.mode !== "rank" && expanded && byId.get(expanded) && (
+      {state.mode === "chart" && expanded && byId.get(expanded) && (
         <div className="belowreading">
           {pinRow && selRow && expanded === selRow.runId ? (
             <CompareReading
@@ -933,9 +955,7 @@ export default function Explorer({ data }: { data: ExplorerData }) {
             {selRow.name} against {pinRow.name}
           </span>
           <span className="tray-delta">
-            {selRow.asr !== null && pinRow.asr !== null
-              ? `${fmtDeltaPct(pinRow.asr - selRow.asr)} attack success · ${deltaWord(fmtDeltaPct(pinRow.asr - selRow.asr))}`
-              : "Rates not comparable"}
+            {trayDeltaText(selRow.asr, pinRow.asr)}
           </span>
           <button
             type="button"
@@ -1032,6 +1052,7 @@ function RankView({
     <div className="xlist" ref={listRef}>
       <div className="xhead">
         <span className="xh rank">Rank</span>
+        <span className="xh mark" aria-hidden="true" />
         <span className="xh name">Result</span>
         <span className="xh track">Interval on the shared axis</span>
         {sortHeads.map(([key, label]) => (
@@ -1046,7 +1067,6 @@ function RankView({
             {state.sort === key ? " ↓" : ""}
           </button>
         ))}
-        <span className="xh pin" />
       </div>
       {groups.map((group) => (
         <div key={group.kind} className="xgroup">
@@ -1181,6 +1201,7 @@ interface ChartViewProps {
   setHoverId: (id: string | null) => void;
   chipId: string | null;
   setChipId: (id: string | null) => void;
+  freshIds: Set<string>;
   onSelect: (row: XRow) => void;
   onBrush: (b: Brush) => void;
 }
@@ -1194,6 +1215,7 @@ function ChartView({
   setHoverId,
   chipId,
   setChipId,
+  freshIds,
   onSelect,
   onBrush,
 }: ChartViewProps) {
@@ -1343,11 +1365,7 @@ function ChartView({
           className="chart"
           viewBox={`0 0 ${W} ${H}`}
           role="img"
-          aria-label={
-            measure === "malformed"
-              ? "Malformed output against the cost of one run, with the flag line"
-              : "Attack success against the cost of one run"
-          }
+          aria-label={chartAriaLabelText(measure)}
           onPointerLeave={() => setHoverId(null)}
         >
           <rect
@@ -1403,12 +1421,10 @@ function ChartView({
             </text>
           ))}
           <text className="axis-title" x={padL} y={H - 6}>
-            Cost of one run, log scale
+            {CHART_X_AXIS_TITLE}
           </text>
           <text className="axis-title" x={padL} y={padT - 6}>
-            {measure === "malformed"
-              ? "Malformed output, lower is better"
-              : "Attack success, lower is better"}
+            {chartYAxisTitleText(measure)}
           </text>
           {measure === "malformed" && (
             <g>
@@ -1447,7 +1463,7 @@ function ChartView({
             return (
               <g
                 key={row.runId}
-                className={`disc${on ? "" : " greyed"}${active ? " active" : ""}`}
+                className={`disc${on ? "" : " greyed"}${active ? " active" : ""}${freshIds.has(row.runId) ? " enter" : ""}`}
                 onPointerEnter={() => setHoverId(row.runId)}
                 onPointerDown={(e) => e.stopPropagation()}
                 onClick={() => {
@@ -1526,8 +1542,11 @@ function ChartView({
             </p>
             {measure === "malformed" ? (
               <p className="chip-figs">
-                {chipRow.malformedText} malformed · {chipRow.asrText}{" "}
-                counted · {chipRow.costText}
+                {chipRow.malformedText} malformed ·{" "}
+                {chipRow.suppressed
+                  ? "suppressed"
+                  : `${chipRow.asrText} counted`}{" "}
+                · {chipRow.costText}
               </p>
             ) : (
               <p className="chip-figs">

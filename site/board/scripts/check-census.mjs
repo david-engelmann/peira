@@ -29,14 +29,17 @@
  *     The leg covers the guard basis line, the filter count
  *     line in its fullest form, the two group dividers, the
  *     two empty states, the chart's rail note in both forms,
- *     the off scale note, the flag note, and the flag line's
- *     label.
+ *     the off scale note, the flag note, the flag line's
+ *     label, the chart's spoken labels and axis titles under
+ *     both measures, and the compare tray's delta line in
+ *     both its forms.
  *   Each detail reading is measured on the explorer data the
  *     page renders from, counting every prose field the
  *     reading renders. The fields are the flagged reason, the
  *     slice note, the robustness tax line, the counted flips
  *     line, the weakest family line, the rank line, the benign
- *     benchmark sub-line, and the re-run note. Figures and the
+ *     benchmark sub-line, the cost sub-line, and the re-run
+ *     note. Figures and the
  *     payload disclosures (the provenance line and the
  *     no-answer and single-call sentences) stay excluded by
  *     the budget's own terms.
@@ -103,8 +106,37 @@ const sentences = (text) =>
   text
     .replace(/\s+/g, " ")
     .trim()
+    /* A decimal point inside a figure is not a sentence
+     * break, so figures are shielded before the split. */
+    .replace(/(\d)\.(\d)/g, "$1#$2")
     .split(/[.!?]+/)
     .filter((s) => /[A-Za-z]/.test(s)).length;
+
+/* The ruler checks itself before it measures anything. A
+ * caption carrying a decimal is one sentence, and figures
+ * alone are no words at all. If a counter drifts, the census
+ * fails here rather than certifying with a bent ruler. */
+{
+  const ruler = [
+    [
+      sentences("The ranked board's highest malformed rate 2.4%"),
+      1,
+      "a caption carrying a decimal counts as one sentence",
+    ],
+    [
+      sentences("One case. Two sentences stand here."),
+      2,
+      "two sentences count as two",
+    ],
+    [words("8.9% · 4,700 · $0.29"), 0, "figures alone count as no words"],
+    [words("two wires"), 2, "spelled words count as words"],
+  ];
+  for (const [got, want, label] of ruler) {
+    if (got !== want) {
+      fail(`the census ruler is bent, ${label} (got ${got}, want ${want})`);
+    }
+  }
+}
 
 /* ---------- tiny region extraction over the built HTML ---------- */
 
@@ -276,8 +308,13 @@ report.push("every caption one sentence, at most 20 words");
 
 /* Paragraphs outside Method and the findings. Every static
  * paragraph in the main element is measured, wherever it
- * stands, the explorer's data rows aside (their text is
- * names and figures, removed with the rows above). */
+ * stands. The only skip beyond the findings spans tests the
+ * paragraph's own markup for a row class, not the
+ * paragraph's ancestry, so a paragraph standing inside a
+ * result row is measured here as well as in the readings
+ * leg. That double measure is deliberate. It is the stricter
+ * reading, and it keeps this leg honest about every
+ * paragraph the page ships. */
 const proseParas = [];
 {
   /* Method is already cut out of mainOutsideRaw whole, so
@@ -315,6 +352,10 @@ const {
   offScaleNoteText,
   flagNoteText,
   flagLineLabelText,
+  chartAriaLabelText,
+  CHART_X_AXIS_TITLE,
+  chartYAxisTitleText,
+  trayDeltaText,
 } = await import(path.join(root, "lib", "explorerData.ts"));
 const data = explorerData();
 
@@ -351,6 +392,16 @@ const data = explorerData();
   check("rail note with guards", railNoteText(true), 25);
   check("rail note without guards", railNoteText(false), 25);
   check("flag line label", flagLineLabelText(data.flagLine), 25);
+
+  /* The chart's own strings, composed in lib/explorerData.ts
+   * and rendered by the chart, under the annotation cap. */
+  check("chart spoken label, attack success", chartAriaLabelText("asr"), 25);
+  check("chart spoken label, malformed", chartAriaLabelText("malformed"), 25);
+  check("chart x axis title", CHART_X_AXIS_TITLE, 25);
+  check("chart y axis title, attack success", chartYAxisTitleText("asr"), 25);
+  check("chart y axis title, malformed", chartYAxisTitleText("malformed"), 25);
+  check("compare tray delta line", trayDeltaText(0.1, 0.2), 25);
+  check("compare tray fallback line", trayDeltaText(null, 0.2), 25);
 
   /* The off scale note for every charted result past the
    * shared axis, composed exactly as the chart renders it. */
@@ -390,6 +441,7 @@ for (const row of data.rows) {
     row.weakestLine ?? "",
     row.rankLine,
     row.benignBestLine ?? "",
+    row.costSub ?? "",
     row.rerunText ?? "",
   ].join(" ");
   const w = words(prose);

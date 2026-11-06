@@ -79,8 +79,8 @@ export default function Findings() {
   const wireHi = Math.max(...f.wire.tracks.map((t) => t.asr));
 
   return (
-    <section className="findings" aria-label="Findings" id="findings">
-      <div className="sechead">
+    <section className="findings" aria-label="Findings">
+      <div className="sechead" id="findings">
         <div className="micro">Findings</div>
         <h2>What the numbers mean</h2>
         <p className="cap">

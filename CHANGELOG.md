@@ -49,6 +49,16 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
   derive stands suppressed instead of printing its rate
   bare, and a copied explorer link restores the open
   reading.
+- The micro-fix round clears the state a finding's action
+  does not name, so actions followed in sequence land
+  where each promises, carries the expanded reading once
+  in families view, and stands the rank header's labels
+  over their columns. The census counts the cost sub-line
+  in each reading and the chart's own strings at their
+  source, the findings fail closed on an unpriced anchor,
+  separated wire intervals, and a leader whose disclosed
+  cases are not exactly one, and a model address scrolls
+  its reading into view on landing.
 
 ### Leaderboard payload names its dataset, populations, and decompositions
 

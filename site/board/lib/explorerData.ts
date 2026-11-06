@@ -14,7 +14,7 @@ import {
   taxBenchmarks,
   type BoardRow,
 } from "@/lib/payload";
-import { fmtEce, fmtInt, fmtPct } from "@/lib/format";
+import { fmtDeltaPct, fmtEce, fmtInt, fmtPct } from "@/lib/format";
 import { vendorFamilyOf } from "@/lib/vendorColors";
 import { asrAxisFor } from "@/lib/chart";
 import {
@@ -130,8 +130,9 @@ export interface ExplorerData {
   guardBasis: string;
   /**
    * The flag line for the chart's malformed measure. The
-   * highest malformed rate among the ranked rows, full suite
-   * and slices alike. Every flagged result stands past it.
+   * highest malformed rate among the ranked full suite rows,
+   * the population its label names. Every flagged result
+   * stands past it.
    */
   flagLine: number;
   /** Vendor filter options, in payload order of first appearance. */
@@ -209,6 +210,42 @@ export function flagNoteText(row: XRow): string | null {
     `malformed output. Malformed output is ${fmtPct(row.decomp.malformedShare)} ` +
     `of its counted flips, and its genuine flip rate is ${fmtPct(row.decomp.genuineRate)}.`
   );
+}
+
+/** The chart's spoken label, one per measure, composed here
+ *  so the surface and the prose census read the same words. */
+export function chartAriaLabelText(measure: "asr" | "malformed"): string {
+  return measure === "malformed"
+    ? "Malformed output against the cost of one run, with the flag line"
+    : "Attack success against the cost of one run";
+}
+
+/** The chart's axis titles, composed here on the same rule. */
+export const CHART_X_AXIS_TITLE = "Cost of one run, log scale";
+
+export function chartYAxisTitleText(measure: "asr" | "malformed"): string {
+  return measure === "malformed"
+    ? "Malformed output, lower is better"
+    : "Attack success, lower is better";
+}
+
+/** The direction of a printed delta, in words. A difference
+ *  too small to print a sign claims no direction. */
+export function deltaWord(formatted: string): string {
+  if (formatted.startsWith("+")) return "higher";
+  if (formatted.startsWith("-")) return "lower";
+  return "the same";
+}
+
+/** The compare tray's delta line, composed here on the same
+ *  rule, in its comparable form and its fallback. */
+export function trayDeltaText(
+  selAsr: number | null,
+  pinAsr: number | null,
+): string {
+  if (selAsr === null || pinAsr === null) return "Rates not comparable";
+  const formatted = fmtDeltaPct(pinAsr - selAsr);
+  return `${formatted} attack success · ${deltaWord(formatted)}`;
 }
 
 function shapeRow(
@@ -387,7 +424,7 @@ export function explorerData(): ExplorerData {
     flagLine: Math.max(
       0,
       ...rows
-        .filter((r) => r.kind !== "flagged")
+        .filter((r) => r.kind === "full")
         .map((r) => r.malformed ?? 0),
     ),
     vendors,

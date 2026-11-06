@@ -667,12 +667,14 @@ export function denseRanks(rows: BoardRow[]): number[] {
  * The ranking groups of the design system, section 4.1. The
  * ranked array splits on its case base into the full suite group
  * and the abstain slice group, each keeping payload rank order.
- * Ranks are dense within each group: the full suite group runs
- * 1..N and the slice group 1..M (admission rules: ranks are dense
- * within each division). Flagged rows carry no rank and order
- * by attack success. Tie bands are computed inside each ranked
- * group, because a band cannot be drawn across the flagged strip
- * that separates the groups.
+ * Ranks are dense within each group (admission rules: ranks are
+ * dense within each division). A dense rank counts distinct
+ * measured values, so rows tied on a value share one rank and a
+ * group's highest rank is its number of distinct measured
+ * values, not its number of rows. Flagged rows carry no rank and
+ * order by attack success. Tie bands are computed inside each
+ * ranked group, because a band cannot be drawn across the flagged
+ * strip that separates the groups.
  */
 export function boardGroups(): BoardGroups {
   const ranked = rankedRows();

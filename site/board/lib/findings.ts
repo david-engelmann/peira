@@ -282,6 +282,14 @@ export function findingsData(): FindingsData {
     };
   });
   const gap = Math.abs(wireTracks[1].asr - wireTracks[0].asr);
+  /* The finding's prose states the intervals overlap, so the
+   * build asserts it rather than letting a separated pair
+   * print the sentence. */
+  if (wireTracks[0].ci[1] < wireTracks[1].ci[0]) {
+    throw new Error(
+      "findings: the two wire intervals do not overlap, so the harness wording does not hold on this payload",
+    );
+  }
 
   /* Finding 3, price. */
   const priced = full.filter(
@@ -301,7 +309,15 @@ export function findingsData(): FindingsData {
   if (jev === undefined) {
     throw new Error("findings: the price anchor row is not on the full suite");
   }
-  const jevCost = jev.total_cost_usd as number;
+  /* The hundred fold set and the multiple are ratios against
+   * the anchor's cost, so the anchor must carry a recorded
+   * positive cost before either is computed. */
+  if (jev.total_cost_usd === null || jev.total_cost_usd <= 0) {
+    throw new Error(
+      "findings: the price anchor carries no recorded cost, so the price finding does not hold on this payload",
+    );
+  }
+  const jevCost = jev.total_cost_usd;
   const hundred = priced.filter(
     (r) => (r.total_cost_usd as number) >= 100 * jevCost,
   );
@@ -348,9 +364,10 @@ export function findingsData(): FindingsData {
   /* Finding 5, the leader, chosen by the lowest measured rate
    * among the ranked full suite rows rather than by position,
    * so the payload's row order cannot misstate it. The finding
-   * is the leader's disclosed case, so a leader carrying none
-   * leaves the finding without its evidence and the build
-   * fails. */
+   * is the leader's disclosed case, and its sanctioned account
+   * describes exactly one case, so a leader carrying any
+   * other count leaves the finding printing an account that
+   * is not its own and the build fails. */
   const measured = full.filter((r) => measuredAsr(r) !== null);
   if (measured.length === 0) {
     throw new Error("findings: no full suite row carries a measured rate");
@@ -369,9 +386,9 @@ export function findingsData(): FindingsData {
     throw new Error("findings: the leader derives no decomposition");
   }
   const leaderUnanswered = unansweredCount(leader);
-  if (leaderUnanswered === 0) {
+  if (leaderUnanswered !== 1) {
     throw new Error(
-      "findings: the leader carries no case that produced no answer, so the disclosure finding does not hold on this payload",
+      `findings: the leader carries ${leaderUnanswered} cases that produced no answer, and the disclosure account describes exactly one, so the disclosure finding does not hold on this payload`,
     );
   }
 
