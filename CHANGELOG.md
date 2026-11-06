@@ -7,6 +7,17 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
 
 ## [Unreleased]
 
+### Board design home
+
+- The house UI kit's board files land verbatim at
+  `site/board/DESIGN.md` and `site/board/PRODUCT.md`.
+  They are the board's governing design law and its
+  product context from this change on.
+- The dated redesign record moves to
+  `site/board/DESIGN-RECORD.md`, its content intact
+  apart from a header note naming the move, and it
+  stands as history beside the law it produced.
+
 ### Board rebuilt findings first
 
 - The board opens with five findings and one explorer
