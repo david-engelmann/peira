@@ -158,10 +158,11 @@ const waitFor = async (page, fn, arg, timeout = 8000) => {
  * so a target measured before a click or a tap can sit one row
  * off by dispatch time; looped evidence runs showed the app
  * state never wrong, only the harness input landing mid-glide.
- * Poll the target's box until it holds still across two
- * samples, then let the caller dispatch. No assertion changes;
+ * Poll the target's full bounding box until it holds still
+ * across two samples, then let the caller dispatch. This is
+ * the audit's one settle mechanism. No assertion changes;
  * only the timing of the input does. */
-const settleOn = async (handle, tries = 40) => {
+const settleOn = async (handle, tries = 80) => {
   let prev = null;
   for (let i = 0; i < tries; i += 1) {
     const box = await handle.boundingBox().catch(() => null);
@@ -169,7 +170,9 @@ const settleOn = async (handle, tries = 40) => {
       box &&
       prev &&
       Math.abs(box.x - prev.x) < 1 &&
-      Math.abs(box.y - prev.y) < 1
+      Math.abs(box.y - prev.y) < 1 &&
+      Math.abs(box.width - prev.width) < 1 &&
+      Math.abs(box.height - prev.height) < 1
     ) {
       return;
     }
@@ -177,47 +180,6 @@ const settleOn = async (handle, tries = 40) => {
     await new Promise((r) => setTimeout(r, 75));
   }
 };
-/* The page scrolls smoothly (globals.css sets scroll-behavior
- * to smooth on the root), so a landing's scroll and this
- * audit's own scrolls set the page gliding, and a point
- * measured before a click or a tap can be stale by the time
- * the input lands. A reader taps what is under their finger
- * at tap time, so the harness waits until the target's
- * bounding rect stands still across two samples before it
- * dispatches. The wait changes when inputs fire, never what
- * any proof asserts. */
-const waitRectStable = async (page, selector, index = 0, timeout = 10000) => {
-  const sample = () =>
-    page.evaluate(
-      (s, i) => {
-        const el = document.querySelectorAll(s)[i];
-        if (!el) return null;
-        const r = el.getBoundingClientRect();
-        return { x: r.x, y: r.y, w: r.width, h: r.height };
-      },
-      selector,
-      index,
-    );
-  const start = Date.now();
-  let prev = await sample();
-  for (;;) {
-    await new Promise((r) => setTimeout(r, 120));
-    const cur = await sample();
-    if (
-      prev !== null &&
-      cur !== null &&
-      prev.x === cur.x &&
-      prev.y === cur.y &&
-      prev.w === cur.w &&
-      prev.h === cur.h
-    ) {
-      return;
-    }
-    prev = cur;
-    if (Date.now() - start > timeout) return;
-  }
-};
-
 /* ---------- six widths, static ---------- */
 
 for (const width of [360, 480, 768, 1024, 1280, 1600]) {
@@ -617,7 +579,6 @@ else {
       );
       return sel?.value ?? null;
     });
-  await waitRectStable(page, ".finding .f-action", 2);
   await settleOn(findingsActions[2]);
   await findingsActions[2].click();
   await page.waitForSelector("svg.chart", { timeout: 10000 }).catch(() => null);
@@ -630,7 +591,6 @@ else {
     fail(`the price action leaves the cost band at ${pricedBand}, not priced`);
   } else pass("the price action lands on the priced chart");
 
-  await waitRectStable(page, ".finding .f-action", 3);
   await settleOn(findingsActions[3]);
   await findingsActions[3].click();
   await waitFor(page, () => document.querySelector(".basisline") !== null);
@@ -653,7 +613,6 @@ else {
     fail(`the guards action inherits the cost band ${guardsBand} from the price action`);
   } else pass("the guards action lands on the guards with rows visible");
 
-  await waitRectStable(page, ".finding .f-action", 2);
   await settleOn(findingsActions[2]);
   await findingsActions[2].click();
   await page.waitForSelector("svg.chart", { timeout: 10000 }).catch(() => null);
@@ -909,7 +868,6 @@ if (
 } else pass("the phone order runs Finding 1, the explorer, Findings 2 to 5, Method");
 await phone.evaluate(() => document.querySelector(".explorer")?.scrollIntoView());
 const head = await phone.$(`[data-rid="${leader.run_id}"] .xrow-head`);
-await waitRectStable(phone, `[data-rid="${leader.run_id}"] .xrow-head`);
 if (head) {
   await settleOn(head);
   await head.tap();
