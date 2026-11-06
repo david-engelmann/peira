@@ -153,6 +153,46 @@ const clickText = async (page, text, sel = "button") => {
 const waitFor = async (page, fn, arg, timeout = 8000) => {
   await page.waitForFunction(fn, { timeout }, arg).catch(() => null);
 };
+/* The page scrolls smoothly (globals.css sets scroll-behavior
+ * to smooth on the root), so a landing's scroll and this
+ * audit's own scrolls set the page gliding, and a point
+ * measured before a click or a tap can be stale by the time
+ * the input lands. A reader taps what is under their finger
+ * at tap time, so the harness waits until the target's
+ * bounding rect stands still across two samples before it
+ * dispatches. The wait changes when inputs fire, never what
+ * any proof asserts. */
+const waitRectStable = async (page, selector, index = 0, timeout = 10000) => {
+  const sample = () =>
+    page.evaluate(
+      (s, i) => {
+        const el = document.querySelectorAll(s)[i];
+        if (!el) return null;
+        const r = el.getBoundingClientRect();
+        return { x: r.x, y: r.y, w: r.width, h: r.height };
+      },
+      selector,
+      index,
+    );
+  const start = Date.now();
+  let prev = await sample();
+  for (;;) {
+    await new Promise((r) => setTimeout(r, 120));
+    const cur = await sample();
+    if (
+      prev !== null &&
+      cur !== null &&
+      prev.x === cur.x &&
+      prev.y === cur.y &&
+      prev.w === cur.w &&
+      prev.h === cur.h
+    ) {
+      return;
+    }
+    prev = cur;
+    if (Date.now() - start > timeout) return;
+  }
+};
 
 /* ---------- six widths, static ---------- */
 
@@ -552,6 +592,7 @@ else {
       );
       return sel?.value ?? null;
     });
+  await waitRectStable(page, ".finding .f-action", 2);
   await findingsActions[2].click();
   await page.waitForSelector("svg.chart", { timeout: 10000 }).catch(() => null);
   const pricedDiscs = await page.evaluate(
@@ -563,6 +604,7 @@ else {
     fail(`the price action leaves the cost band at ${pricedBand}, not priced`);
   } else pass("the price action lands on the priced chart");
 
+  await waitRectStable(page, ".finding .f-action", 3);
   await findingsActions[3].click();
   await waitFor(page, () => document.querySelector(".basisline") !== null);
   const guardsStep = await page.evaluate(() => {
@@ -584,6 +626,7 @@ else {
     fail(`the guards action inherits the cost band ${guardsBand} from the price action`);
   } else pass("the guards action lands on the guards with rows visible");
 
+  await waitRectStable(page, ".finding .f-action", 2);
   await findingsActions[2].click();
   await page.waitForSelector("svg.chart", { timeout: 10000 }).catch(() => null);
   const returnDiscs = await page.evaluate(
@@ -838,6 +881,7 @@ if (
 } else pass("the phone order runs Finding 1, the explorer, Findings 2 to 5, Method");
 await phone.evaluate(() => document.querySelector(".explorer")?.scrollIntoView());
 const head = await phone.$(`[data-rid="${leader.run_id}"] .xrow-head`);
+await waitRectStable(phone, `[data-rid="${leader.run_id}"] .xrow-head`);
 if (head) await head.tap();
 await waitFor(phone, (rid) => {
   const row = document.querySelector(`[data-rid="${rid}"]`);

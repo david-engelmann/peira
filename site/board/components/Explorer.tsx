@@ -441,7 +441,12 @@ const SORT_DIR: Record<string, 1 | -1> = {
 };
 
 function sortRows(rows: XRow[], sort: string): XRow[] {
-  const dir = sort.startsWith("fam:") ? 1 : (SORT_DIR[sort] ?? 1);
+  /* A family key orders by that family's rate with the highest
+   * first, the malformed rate's direction, so picking a family
+   * surfaces the results that family hits hardest. Unmeasured
+   * families stand last in either direction (the comparator
+   * below returns before the direction applies). */
+  const dir = sort.startsWith("fam:") ? -1 : (SORT_DIR[sort] ?? 1);
   return [...rows].sort((a, b) => {
     const va = sortValue(a, sort);
     const vb = sortValue(b, sort);
@@ -1375,6 +1380,13 @@ function ChartView({
             width={W - padL - padR}
             height={H - padT - padB}
             onPointerDown={(e) => {
+              /* The drag keeps the pointer's capture, so its
+               * moves and its release reach this rect wherever
+               * the pointer travels, over discs or off the plot.
+               * The selection rectangle itself never takes
+               * events (globals.css sets its pointer-events to
+               * none), so it cannot steal the drag it draws. */
+              e.currentTarget.setPointerCapture(e.pointerId);
               const { px, py } = localPoint(e);
               setDrag({ x0: px, y0: py, x1: px, y1: py });
             }}
