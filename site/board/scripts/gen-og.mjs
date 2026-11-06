@@ -517,13 +517,14 @@ const ladderPort = ladderBudget("port");
 const plotShrink = { land: 0, port: 0 };
 const fitTight = { land: false, port: false };
 
-/* Plot geometry for the two cards. The x scale is a fixed
- * number of pixels per cost decade from the derived domain
- * floor, so the whole decades inside the domain carry the
- * labels; the y scale runs from the derived ceiling at the
- * top gridline to zero at the bottom one, with the middle
- * gridline at half the ceiling. Positions are the mock's,
- * restated as derivations over the payload's own domain. */
+/* Plot geometry for the two cards. The x scale gives the
+ * derived domain's decades the mock's fixed number of
+ * pixels per decade while the domain is no wider than the
+ * mock's own; the y scale runs from the derived ceiling at
+ * the top gridline to zero at the bottom one, with the
+ * middle gridline at half the ceiling. Positions are the
+ * mock's, restated as derivations over the payload's own
+ * domain. */
 const GEOMS = {
   land: {
     viewBox: "0 6 700 272",
@@ -554,12 +555,29 @@ const GEOMS = {
     canvas: { x: 0, y: 0, w: 976, h: 568 },
   },
 };
+/* The domain's width in decades, against the width the
+ * mock's density serves: the standing domain spans four
+ * and a half decades, half-decade floor to half-decade
+ * ceiling, and that span at the mock's pixels per decade
+ * is what the plot's geometry was drawn against. A payload
+ * whose domain runs wider (a costlier field, by an order
+ * of magnitude at the top) shares the same pixel span at a
+ * compressed density, the way the attack success axis
+ * derives its ceiling from the payload: the scale follows
+ * the domain, so a plotted point never falls off the
+ * canvas's right edge in silence and the subject the plot
+ * singles out always stands on the plot where it can be
+ * named. A narrower domain keeps the mock's density. */
+const domainDecades = Math.log10(domHi) - Math.log10(domLo);
+const MOCK_DOMAIN_DECADES = 4.5;
 function geomFor(kind) {
   const g = GEOMS[kind];
+  const decadePx =
+    g.decadePx * Math.min(1, MOCK_DOMAIN_DECADES / domainDecades);
   const xOf = (c) =>
-    g.x0 + (Math.log10(c) - Math.log10(domLo)) * g.decadePx;
+    g.x0 + (Math.log10(c) - Math.log10(domLo)) * decadePx;
   const yOf = (a) => g.yBot - (a / axisMax) * (g.yBot - g.yTop);
-  return { ...g, xOf, yOf };
+  return { ...g, decadePx, xOf, yOf };
 }
 function decadesFor(g) {
   const out = [];
@@ -569,7 +587,15 @@ function decadesFor(g) {
     e++
   ) {
     const v = 10 ** e;
-    out.push({ x: g.xOf(v), label: v < 1 ? `$${v.toFixed(2)}` : `$${v}` });
+    const x = g.xOf(v);
+    /* A decade whose tick itself stands outside the canvas
+     * carries no label: under a compressed scale the domain
+     * ceiling can be a whole decade seated at the span's
+     * edge, past the canvas, and a label centered there
+     * would print cut. Points past the last labeled decade
+     * still read against it. */
+    if (x < g.canvas.x + 2 || x > g.canvas.x + g.canvas.w - 2) continue;
+    out.push({ x, label: v < 1 ? `$${v.toFixed(2)}` : `$${v}` });
   }
   return out;
 }
