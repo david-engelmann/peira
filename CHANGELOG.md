@@ -24,6 +24,10 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
   chip ground alone adjusts by the smallest five
   percent step that clears it, as the zhipu and
   upstage chips do.
+- The adopted design file's display and heading
+  type tokens take the shipped fixed sizes, 44px
+  and 30px, in place of the prototype's fluid
+  clamp values.
 
 ### Board design home
 
