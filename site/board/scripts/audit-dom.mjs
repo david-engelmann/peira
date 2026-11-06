@@ -153,6 +153,30 @@ const clickText = async (page, text, sel = "button") => {
 const waitFor = async (page, fn, arg, timeout = 8000) => {
   await page.waitForFunction(fn, { timeout }, arg).catch(() => null);
 };
+/* Settle wait for input dispatch (owner-authorized harness fix,
+ * 2026-11-06). The page glides under the global smooth scroll,
+ * so a target measured before a click or a tap can sit one row
+ * off by dispatch time; looped evidence runs showed the app
+ * state never wrong, only the harness input landing mid-glide.
+ * Poll the target's box until it holds still across two
+ * samples, then let the caller dispatch. No assertion changes;
+ * only the timing of the input does. */
+const settleOn = async (handle, tries = 40) => {
+  let prev = null;
+  for (let i = 0; i < tries; i += 1) {
+    const box = await handle.boundingBox().catch(() => null);
+    if (
+      box &&
+      prev &&
+      Math.abs(box.x - prev.x) < 1 &&
+      Math.abs(box.y - prev.y) < 1
+    ) {
+      return;
+    }
+    prev = box;
+    await new Promise((r) => setTimeout(r, 75));
+  }
+};
 /* The page scrolls smoothly (globals.css sets scroll-behavior
  * to smooth on the root), so a landing's scroll and this
  * audit's own scrolls set the page gliding, and a point
@@ -564,6 +588,7 @@ await page.evaluate(() => window.scrollTo(0, 0));
 const findingsActions = await page.$$(".finding .f-action");
 if (findingsActions.length !== 5) fail(`the findings carry ${findingsActions.length} actions, not 5`);
 else {
+  await settleOn(findingsActions[1]);
   await findingsActions[1].click();
   await new Promise((r) => setTimeout(r, 400));
   const q = await page.evaluate(() => {
@@ -593,6 +618,7 @@ else {
       return sel?.value ?? null;
     });
   await waitRectStable(page, ".finding .f-action", 2);
+  await settleOn(findingsActions[2]);
   await findingsActions[2].click();
   await page.waitForSelector("svg.chart", { timeout: 10000 }).catch(() => null);
   const pricedDiscs = await page.evaluate(
@@ -605,6 +631,7 @@ else {
   } else pass("the price action lands on the priced chart");
 
   await waitRectStable(page, ".finding .f-action", 3);
+  await settleOn(findingsActions[3]);
   await findingsActions[3].click();
   await waitFor(page, () => document.querySelector(".basisline") !== null);
   const guardsStep = await page.evaluate(() => {
@@ -627,6 +654,7 @@ else {
   } else pass("the guards action lands on the guards with rows visible");
 
   await waitRectStable(page, ".finding .f-action", 2);
+  await settleOn(findingsActions[2]);
   await findingsActions[2].click();
   await page.waitForSelector("svg.chart", { timeout: 10000 }).catch(() => null);
   const returnDiscs = await page.evaluate(
@@ -882,7 +910,10 @@ if (
 await phone.evaluate(() => document.querySelector(".explorer")?.scrollIntoView());
 const head = await phone.$(`[data-rid="${leader.run_id}"] .xrow-head`);
 await waitRectStable(phone, `[data-rid="${leader.run_id}"] .xrow-head`);
-if (head) await head.tap();
+if (head) {
+  await settleOn(head);
+  await head.tap();
+}
 await waitFor(phone, (rid) => {
   const row = document.querySelector(`[data-rid="${rid}"]`);
   return row && row.querySelector(".reading.open") !== null;
