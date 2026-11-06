@@ -23,7 +23,8 @@
  *   the rank header's labels stand over their columns
  *   families mode sorts by a family from its label, and
  *     carries exactly one reading for an expanded row
- *   filtering in chart mode fades entering discs at 200ms
+ *   filtering in chart mode fades entering discs, rail rows,
+ *     and sync rows at 200ms
  *   the five state changes of BUILD-SPEC part 6 animate at
  *     200ms, and reduced motion suppresses every one of them
  *   at phone size the reading opens as a sheet over a sticky
@@ -729,6 +730,42 @@ if (vendorOptions.length < 2) {
   if (!discAnim || !discAnim.name.includes("xrow-in") || discAnim.dur !== "0.2s") {
     fail("filtering in chart mode admits discs with no 200ms fade");
   } else pass("filtering fades entering discs at 200ms");
+
+  /* The rail and the sync list are chart surfaces too, and
+   * part 6 names no list carve-out. Landing on the guards
+   * trades the plotted field for the rail alone. Widening
+   * back to all results admits the costless rows to the rail
+   * and every charted row to the sync list on one commit, so
+   * both lists stand or fall on that landing. */
+  await clickText(motionPage, "Guards").catch(() => null);
+  await waitFor(
+    motionPage,
+    (n) =>
+      document.querySelectorAll(".rail-row").length === n &&
+      document.querySelectorAll(".disc").length === 0,
+    slices.length,
+  );
+  await clickText(motionPage, "All results").catch(() => null);
+  await waitFor(
+    motionPage,
+    () =>
+      document.querySelector(".rail-row.enter") !== null &&
+      document.querySelector(".sync-row.enter") !== null,
+  );
+  const listAnim = await motionPage.evaluate(() => {
+    const read = (sel) => {
+      const el = document.querySelector(sel);
+      if (!el) return null;
+      const s = getComputedStyle(el);
+      return { name: s.animationName, dur: s.animationDuration };
+    };
+    return { rail: read(".rail-row.enter"), sync: read(".sync-row.enter") };
+  });
+  const listFades = (a) =>
+    a !== null && a.name.includes("xrow-in") && a.dur === "0.2s";
+  if (!listFades(listAnim.rail) || !listFades(listAnim.sync)) {
+    fail("filtering in chart mode admits rail or sync rows with no 200ms fade");
+  } else pass("filtering fades entering rail and sync rows at 200ms");
 }
 await motionPage.close();
 

@@ -305,6 +305,7 @@ button.xh.on { color: var(--accent); }
 @keyframes xreading-in { from { opacity: 0; clip-path: inset(0 0 100% 0); } to { opacity: 1; clip-path: inset(0 0 0 0); } }
 .xrow.enter, .xfamrow.enter { animation: xrow-in 0.2s ease; }
 .disc.enter { animation: xrow-in 0.2s ease; }
+.rail-row.enter, .sync-row.enter { animation: xrow-in 0.2s ease; }
 .xview.anim { animation: xview-in 0.2s ease; }
 .xrow, .xfamrow, .xrow-head { transition: border-color 0.2s ease, background-color 0.2s ease, opacity 0.2s ease; }
 .segbtn, .pinbtn { transition: background-color 0.2s ease, color 0.2s ease; }

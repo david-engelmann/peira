@@ -1589,7 +1589,7 @@ function ChartView({
                 <button
                   key={row.runId}
                   type="button"
-                  className={`rail-row${hoverId === row.runId ? " hot" : ""}${state.sel === row.runId ? " sel" : ""}`}
+                  className={`rail-row${hoverId === row.runId ? " hot" : ""}${state.sel === row.runId ? " sel" : ""}${freshIds.has(row.runId) ? " enter" : ""}`}
                   onPointerEnter={() => setHoverId(row.runId)}
                   onPointerLeave={() => setHoverId(null)}
                   onClick={() => onSelect(row)}
@@ -1611,7 +1611,7 @@ function ChartView({
             <li key={row.runId}>
               <button
                 type="button"
-                className={`sync-row${hoverId === row.runId ? " hot" : ""}${state.sel === row.runId ? " sel" : ""}`}
+                className={`sync-row${hoverId === row.runId ? " hot" : ""}${state.sel === row.runId ? " sel" : ""}${freshIds.has(row.runId) ? " enter" : ""}`}
                 onPointerEnter={() => setHoverId(row.runId)}
                 onPointerLeave={() => setHoverId(null)}
                 onClick={() => onSelect(row)}
