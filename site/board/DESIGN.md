@@ -101,7 +101,7 @@ components:
     rounded: "{rounded.pill}"
   vendor-chip-anthropic:
     backgroundColor: "{colors.chart-series-anthropic}"
-    textColor: "{colors.chart-glyph-light}"
+    textColor: "{colors.chart-glyph-dark}"
     rounded: "{rounded.ctl}"
   scatter-disc-openai:
     backgroundColor: "{colors.chart-series-openai}"
@@ -122,7 +122,7 @@ components:
     rounded: "{rounded.pill}"
   vendor-chip-meta:
     backgroundColor: "{colors.chart-series-meta}"
-    textColor: "{colors.chart-glyph-light}"
+    textColor: "{colors.chart-glyph-dark}"
     rounded: "{rounded.ctl}"
   scatter-disc-mistral:
     backgroundColor: "{colors.chart-series-mistral}"
@@ -136,7 +136,7 @@ components:
     rounded: "{rounded.pill}"
   vendor-chip-deepseek:
     backgroundColor: "{colors.chart-series-deepseek}"
-    textColor: "{colors.chart-glyph-light}"
+    textColor: "{colors.chart-glyph-dark}"
     rounded: "{rounded.ctl}"
   scatter-disc-fallback:
     backgroundColor: "{colors.chart-series-fallback}"
@@ -154,7 +154,7 @@ components:
     rounded: "{rounded.ctl}"
   primary-control:
     backgroundColor: "{colors.accent}"
-    textColor: "{colors.ink-1}"
+    textColor: "{colors.chart-glyph-dark}"
     rounded: "{rounded.ctl}"
   finding-link:
     textColor: "{colors.accent-bright}"
@@ -198,7 +198,7 @@ Accent marks the primary reading path. Amber means flagged and nothing else, eve
 
 Maker identity rides every figure. One hue per vendor family, used by the ranking, the scatter, the heatmap, the calibration panels, the detail cards, and the compare bars alike, resolved from the one vendor table. The chart series tokens above carry the lead families and the fallback. The full family list lives in `lib/vendor-data.json` and this file names the pattern, one token per family, keyed by family name. A figure whose points are all one color with identity hidden in a corner tile diverges from this file.
 
-Chart furniture has named tokens so the linter can hold it. Gridlines and axis lines draw in chart-grid and chart-axis at reduced opacity where the stylesheet does so. Tick labels read in chart-tick. Discs and chips filled with a family color take their glyph ink from chart-glyph-dark or chart-glyph-light, whichever the family table assigns.
+Chart furniture has named tokens so the linter can hold it. Gridlines and axis lines draw in chart-grid and chart-axis at reduced opacity where the stylesheet does so. Tick labels read in chart-tick. Discs and chips filled with a family color take their glyph ink from chart-glyph-dark or chart-glyph-light, whichever the family table assigns. Where neither glyph ink reaches the contrast floor on a family color, the chip ground and only the chip ground adjusts by the smallest five percent step that clears the floor, and the family keeps the ink with the larger margin. The adjusted ground is recorded in the vendor table as the family's chipColor, and the series color itself never changes. Discs and every other filled surface keep the family color as it stands. Two families carry an adjusted chip ground today, zhipu darkened one step to #1168ea with the light ink kept, and upstage lightened one step to #8664fb with the dark ink taken.
 
 ## Typography
 

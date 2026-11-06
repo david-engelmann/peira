@@ -621,7 +621,7 @@ export default function Explorer({ data }: { data: ExplorerData }) {
         el.style.transition = "none";
         el.style.transform = `translateY(${delta}px)`;
         requestAnimationFrame(() => {
-          el.style.transition = "transform 200ms ease";
+          el.style.transition = "transform var(--dur-state) var(--ease-move)";
           el.style.transform = "";
         });
       });
@@ -943,12 +943,14 @@ export default function Explorer({ data }: { data: ExplorerData }) {
             />
           ) : (
             <div className="reading open">
-              <ReadingBody
-                row={byId.get(expanded) as XRow}
-                famAxis={data.familiesAxis}
-                famHover={famHover}
-                setFamHover={setFamHover}
-              />
+              <div className="reading-clip">
+                <ReadingBody
+                  row={byId.get(expanded) as XRow}
+                  famAxis={data.familiesAxis}
+                  famHover={famHover}
+                  setFamHover={setFamHover}
+                />
+              </div>
             </div>
           )}
         </div>
@@ -1159,30 +1161,32 @@ function RankView({
                 </button>
                 {isOpen && (
                   <div className="reading open">
-                    <button
-                      type="button"
-                      className="reading-close"
-                      onClick={() => onToggle(row)}
-                    >
-                      Close
-                    </button>
-                    {pinRow && selRow && row.runId === selRow.runId ? (
-                      <CompareReading
-                        sel={selRow}
-                        pin={pinRow}
-                        famAxis={famAxis}
-                        famHover={famHover}
-                        setFamHover={setFamHover}
-                        onClose={onUnpin}
-                      />
-                    ) : (
-                      <ReadingBody
-                        row={row}
-                        famAxis={famAxis}
-                        famHover={famHover}
-                        setFamHover={setFamHover}
-                      />
-                    )}
+                    <div className="reading-clip">
+                      <button
+                        type="button"
+                        className="reading-close"
+                        onClick={() => onToggle(row)}
+                      >
+                        Close
+                      </button>
+                      {pinRow && selRow && row.runId === selRow.runId ? (
+                        <CompareReading
+                          sel={selRow}
+                          pin={pinRow}
+                          famAxis={famAxis}
+                          famHover={famHover}
+                          setFamHover={setFamHover}
+                          onClose={onUnpin}
+                        />
+                      ) : (
+                        <ReadingBody
+                          row={row}
+                          famAxis={famAxis}
+                          famHover={famHover}
+                          setFamHover={setFamHover}
+                        />
+                      )}
+                    </div>
                   </div>
                 )}
               </div>
@@ -1760,12 +1764,14 @@ function FamiliesView({
               </div>
               {expanded === row.runId && (
                 <div className="reading open">
-                  <ReadingBody
-                    row={row}
-                    famAxis={axis}
-                    famHover={famHover}
-                    setFamHover={setFamHover}
-                  />
+                  <div className="reading-clip">
+                    <ReadingBody
+                      row={row}
+                      famAxis={axis}
+                      famHover={famHover}
+                      setFamHover={setFamHover}
+                    />
+                  </div>
                 </div>
               )}
             </div>

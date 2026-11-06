@@ -7,6 +7,24 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
 
 ## [Unreleased]
 
+### Board converged to its design law
+
+- The stylesheet takes the motion token layer from the
+  adopted design file, with tokenized durations and
+  curves on every transition and animation, and the
+  reduced motion kill block gives way to the designed
+  M19 branch.
+- Every radius in the stylesheet sits on the ladder,
+  and the primary control and the anthropic, deepseek,
+  and meta glyph inks take the dark glyph ink.
+- The vendor chip renders solid in the family color
+  with the family glyph ink, as the adopted design
+  file describes, and where neither glyph ink
+  reaches the contrast floor on a family color the
+  chip ground alone adjusts by the smallest five
+  percent step that clears it, as the zhipu and
+  upstage chips do.
+
 ### Board design home
 
 - The house UI kit's board files land verbatim at
