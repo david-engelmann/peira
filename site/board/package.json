@@ -10,7 +10,7 @@
     "dev": "next dev",
     "prebuild": "node scripts/gen-og.mjs",
     "build": "next build",
-    "test": "node --test tests/prototype.test.mjs"
+    "test": "node --test tests/prototype.test.mjs tests/gen-generators.test.mjs"
   },
   "dependencies": {
     "@visx/axis": "^3.12.0",

@@ -863,8 +863,11 @@ function RankView({
                     }
                   }}
                 >
-                  <span className="xrank rn">
-                    {row.kind === "flagged" ? "—" : i + 1}
+                  <span
+                    className="xrank rn"
+                    aria-label={row.kind === "flagged" ? "Not ranked" : undefined}
+                  >
+                    {row.kind === "flagged" ? "" : i + 1}
                   </span>
                   <Mark row={row} />
                   <span className="xname">
@@ -1432,8 +1435,11 @@ function FamiliesView({ groups, data, expanded, onToggle }: FamiliesViewProps) {
                   }
                 }}
               >
-                <span className="xrank rn">
-                  {row.kind === "flagged" ? "—" : i + 1}
+                <span
+                  className="xrank rn"
+                  aria-label={row.kind === "flagged" ? "Not ranked" : undefined}
+                >
+                  {row.kind === "flagged" ? "" : i + 1}
                 </span>
                 <Mark row={row} size={22} />
                 <span className="xname">
