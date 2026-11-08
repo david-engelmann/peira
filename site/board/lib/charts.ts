@@ -10,7 +10,7 @@
  */
 
 import type { BoardRow } from "@/lib/payload";
-import { isSliceRow, fullCaseCount } from "@/lib/payload";
+import { isHarnessRow, isSliceRow, fullCaseCount } from "@/lib/payload";
 import { fmtPctCell } from "@/lib/format";
 
 /* ---------------- typed detail access ---------------- */
@@ -219,8 +219,11 @@ export function costIsLowerBound(row: BoardRow): boolean {
 }
 
 /** The cost state of a rail row, in the words the chart uses. */
-export function railCostState(row: BoardRow): "recorded-zero" | "unrecorded" {
-  return row.total_cost_usd !== null ? "recorded-zero" : "unrecorded";
+export function railCostState(
+  row: BoardRow,
+): "harness" | "recorded-zero" | "unrecorded" {
+  if (row.total_cost_usd === null) return "unrecorded";
+  return isHarnessRow(row) ? "harness" : "recorded-zero";
 }
 
 /**
@@ -236,9 +239,9 @@ export function costDomain(costs: number[]): [number, number] {
   return [10 ** loD, 10 ** hiD];
 }
 
-/* The label layout solvers the old board kept in lib/layout
- * are not carried into this tree. Nothing here imports them,
- * because chart labels are placed by the browser at
+/* Prototype note. The label layout solvers in lib/layout are
+ * not carried into this tree. Nothing in the prototype imports
+ * them, because chart labels are placed by the browser at
  * interaction time rather than solved at build time. */
 
 /* ---------------- heatmap ---------------- */

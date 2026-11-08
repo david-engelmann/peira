@@ -8,25 +8,7 @@ import {
   useRef,
   useState,
 } from "react";
-import {
-  CHART_X_AXIS_TITLE,
-  chartAriaLabelText,
-  chartYAxisTitleText,
-  countLineText,
-  deltaWord,
-  EMPTY_CHART_TEXT,
-  EMPTY_RANK_TEXT,
-  FLAGGED_DIVIDER,
-  flagLineLabelText,
-  flagNoteText,
-  GUARD_DIVIDER,
-  offScaleNoteText,
-  railNoteText,
-  trayDeltaText,
-  type ExplorerData,
-  type XRow,
-} from "@/lib/explorerData";
-import { asrAxisFor } from "@/lib/chart";
+import type { ExplorerData, XRow } from "@/lib/explorerData";
 import {
   fmtDeltaPct,
   fmtDeltaUsd,
@@ -46,7 +28,6 @@ import {
 
 type Pop = "all" | "full" | "guards" | "flagged";
 type Mode = "rank" | "chart" | "families";
-type Measure = "asr" | "malformed";
 
 interface XState {
   pop: Pop;
@@ -59,20 +40,23 @@ interface XState {
   pin: string | null;
   frontier: boolean;
   grey: "vendor" | "wire" | "band" | "none";
-  measure: Measure;
 }
 
 interface Brush {
   costLo: number;
   costHi: number;
-  vLo: number;
-  vHi: number;
-  field: Measure;
+  asrLo: number;
+  asrHi: number;
 }
 
 const DEFAULTS: XState = {
   pop: "all",
-  mode: "rank",
+  /* The chart is the default mode so the plot's subject
+   * composition, the selected result as the one white disc in
+   * a dimmed field, stands on first view rather than behind a
+   * mode switch. The ladder stands one switch away in Rank
+   * mode, and its full names ride the chart's sync list. */
+  mode: "chart",
   sort: "asr",
   vendor: "all",
   cost: "all",
@@ -81,7 +65,6 @@ const DEFAULTS: XState = {
   pin: null,
   frontier: false,
   grey: "vendor",
-  measure: "asr",
 };
 
 function Mark({ row, size = 26 }: { row: XRow; size?: number }) {
@@ -105,135 +88,25 @@ function Mark({ row, size = 26 }: { row: XRow; size?: number }) {
   );
 }
 
-/**
- * One result's family bars on the board's shared family axis.
- * A flagged result's family figures carry their own
- * decompositions beside them, and a flagged family whose
- * records derive none prints suppressed and no figure (C-5).
- * Hovering or focusing a bar lights the same family in every
- * reading on the surface.
- */
-function FamilyBars({
-  row,
-  axis,
-  famHover,
-  setFamHover,
-}: {
-  row: XRow;
-  axis: number;
-  famHover: string | null;
-  setFamHover: (key: string | null) => void;
-}) {
-  return (
-    <div className="xfam-bars">
-      {row.families.map((fam) => (
-        <div
-          className={`xfam-bar${famHover === fam.key ? " hot" : ""}${
-            famHover !== null && famHover !== fam.key ? " dim" : ""
-          }`}
-          key={fam.key}
-          onPointerEnter={() => setFamHover(fam.key)}
-          onPointerLeave={() => setFamHover(null)}
-        >
-          <span className="xfam-label">{fam.short}</span>
-          <span className="xfam-track">
-            {fam.asr !== null && !fam.suppressed && (
-              <span
-                className="xfam-fill"
-                style={{ width: `${Math.min(100, (fam.asr / axis) * 100)}%` }}
-              />
-            )}
-          </span>
-          <span className="xfam-val rn">
-            {fam.suppressed
-              ? "suppressed"
-              : fam.asr !== null
-                ? fmtPct(fam.asr)
-                : "·"}
-          </span>
-          {fam.decomp !== null && (
-            <span className="xfam-decomp">
-              genuine {fam.decomp.genuineText} · malformed {fam.decomp.shareText}{" "}
-              of counted flips
-            </span>
-          )}
-        </div>
-      ))}
-    </div>
-  );
+function decompLine(row: XRow): string | null {
+  if (row.decomp === null) return null;
+  const d = row.decomp;
+  return `${fmtInt(d.flips)} counted flips · ${fmtInt(d.malformedFlips)} to malformed output · genuine flips ${fmtPct(d.genuineRate)} of eligible cases`;
 }
 
-/**
- * The reliability plot for one result, drawn from its sealed
- * calibration bins. The diagonal is perfect calibration, and
- * each point is one bin, sized by the bin's case count.
- */
-function CalibrationPanel({ row }: { row: XRow }) {
-  if (row.calibration === null) return null;
-  const cal = row.calibration;
-  const S = 148;
-  const px = (v: number) => 10 + v * (S - 20);
-  const py = (v: number) => S - 10 - v * (S - 20);
-  return (
-    <div className="calib">
-      <p className="micro">Calibration, attacked calls</p>
-      <svg
-        viewBox={`0 0 ${S} ${S}`}
-        className="calib-svg"
-        role="img"
-        aria-label={`Reliability plot for ${row.name}, forecast against outcome over ${cal.bins.length} bins`}
-      >
-        <line
-          x1={px(0)}
-          y1={py(0)}
-          x2={px(1)}
-          y2={py(1)}
-          className="calib-diag"
-        />
-        {cal.bins.map((b, i) => (
-          <circle
-            key={i}
-            cx={px(Math.min(1, Math.max(0, b.x)))}
-            cy={py(Math.min(1, Math.max(0, b.y)))}
-            r={2 + Math.min(5, Math.sqrt(Math.max(0, b.n)) / 2)}
-            className="calib-dot"
-          />
-        ))}
-      </svg>
-      <p className="rsub">
-        Error {cal.eceText} · Brier {cal.brierText}
-      </p>
-    </div>
-  );
-}
-
-function ReadingBody({
-  row,
-  famAxis,
-  famHover,
-  setFamHover,
-}: {
-  row: XRow;
-  famAxis: number;
-  famHover: string | null;
-  setFamHover: (key: string | null) => void;
-}) {
-  const d = row.decompLine;
+function ReadingBody({ row }: { row: XRow }) {
+  const d = decompLine(row);
   return (
     <div className="reading-body">
-      <p className="reading-rank micro">{row.rankLine}</p>
       <div className="reading-figs">
         <div>
           <span className="micro">{row.asrLabel}</span>
-          <strong>{row.suppressed ? "suppressed" : (row.asrText ?? "·")}</strong>
+          <strong>{row.asrText ?? "·"}</strong>
           {row.ciText && <span className="rsub">{row.ciText}</span>}
         </div>
         <div>
           <span className="micro">Benign accuracy</span>
           <strong>{row.benignText ?? "·"}</strong>
-          {row.benignBestLine && (
-            <span className="rsub">{row.benignBestLine}</span>
-          )}
         </div>
         <div>
           <span className="micro">Malformed output</span>
@@ -254,20 +127,11 @@ function ReadingBody({
         </div>
       </div>
       {d && <p className="reading-line">{d}</p>}
-      <div className="reading-cols">
-        <div className="reading-fams">
-          <p className="micro">Attack success by family</p>
-          <FamilyBars
-            row={row}
-            axis={famAxis}
-            famHover={famHover}
-            setFamHover={setFamHover}
-          />
-        </div>
-        <CalibrationPanel row={row} />
-      </div>
-      {row.weakestLine && (
-        <p className="reading-line">{row.weakestLine}</p>
+      {row.weakestFamily && (
+        <p className="reading-line">
+          Weakest family {row.weakestFamily.name} at{" "}
+          {row.weakestFamily.text}.
+        </p>
       )}
       {row.severities.length > 0 && (
         <p className="reading-line">
@@ -277,12 +141,6 @@ function ReadingBody({
                 `${s.label} ${s.flipText ?? "no rate"}${s.baseText ? ` over ${s.baseText}` : ""}`,
             )
             .join(" · ")}
-        </p>
-      )}
-      {row.taxText && (
-        <p className="reading-line">
-          Robustness tax <span className="rn">{row.taxText}</span>.{" "}
-          {row.taxBenchLine}
         </p>
       )}
       {row.flaggedReason && (
@@ -303,30 +161,23 @@ function deltaText(
   fmt: (v: number) => string,
 ): string {
   if (a === null || b === null) return "Not comparable";
-  const formatted = fmt(b - a);
-  return `${formatted} · ${deltaWord(formatted)}`;
+  return fmt(b - a);
 }
 
 function CompareReading({
   sel,
   pin,
-  famAxis,
-  famHover,
-  setFamHover,
   onClose,
 }: {
   sel: XRow;
   pin: XRow;
-  famAxis: number;
-  famHover: string | null;
-  setFamHover: (key: string | null) => void;
   onClose: () => void;
 }) {
   const rows: Array<[string, string, string, string]> = [
     [
       sel.asrLabel,
-      sel.suppressed ? "suppressed" : (sel.asrText ?? "·"),
-      pin.suppressed ? "suppressed" : (pin.asrText ?? "·"),
+      sel.asrText ?? "·",
+      pin.asrText ?? "·",
       deltaText(sel.asr, pin.asr, (v) => fmtDeltaPct(v)),
     ],
     [
@@ -342,14 +193,24 @@ function CompareReading({
       deltaText(sel.malformed, pin.malformed, (v) => fmtDeltaPct(v)),
     ],
     [
+      "Calibration error",
+      sel.eceText ?? "·",
+      pin.eceText ?? "·",
+      deltaText(sel.ece, pin.ece, (v) => fmtDeltaPct(v)),
+    ],
+    [
       "Cost of one run",
       sel.costText,
       pin.costText,
-      sel.costValue !== null && pin.costValue !== null
-        ? (() => {
-            const formatted = fmtDeltaUsd(pin.costValue - sel.costValue);
-            return `${formatted} · ${deltaWord(formatted)}`;
-          })()
+      /* A dollar difference exists only between two prices. A
+       * run billed through a plan and a run with no recorded
+       * cost are not zero priced, so neither side may enter a
+       * subtraction that would print one. */
+      sel.costValue !== null &&
+        pin.costValue !== null &&
+        sel.costValue > 0 &&
+        pin.costValue > 0
+        ? fmtDeltaUsd(pin.costValue - sel.costValue)
         : "Not comparable",
     ],
   ];
@@ -367,14 +228,9 @@ function CompareReading({
             <Mark row={sel} size={20} /> {sel.name}
             {sel.wire ? ` · ${sel.wire}` : ""}
           </p>
-          <ReadingBody
-            row={sel}
-            famAxis={famAxis}
-            famHover={famHover}
-            setFamHover={setFamHover}
-          />
+          <ReadingBody row={sel} />
         </div>
-        <div className="compare-deltas" aria-label="Differences, pinned result against selected result">
+        <div className="compare-deltas" aria-label="Differences">
           {rows.map(([label, a, b, delta]) => (
             <div className="delta-row" key={label}>
               <span className="micro">{label}</span>
@@ -390,12 +246,7 @@ function CompareReading({
             <Mark row={pin} size={20} /> {pin.name}
             {pin.wire ? ` · ${pin.wire}` : ""}
           </p>
-          <ReadingBody
-            row={pin}
-            famAxis={famAxis}
-            famHover={famHover}
-            setFamHover={setFamHover}
-          />
+          <ReadingBody row={pin} />
         </div>
       </div>
     </div>
@@ -408,7 +259,8 @@ const COST_BANDS: Array<{ key: string; label: string; test: (c: number | null) =
   { key: "under1", label: "Under $1", test: (c) => c !== null && c > 0 && c < 1 },
   { key: "mid", label: "$1 to $10", test: (c) => c !== null && c >= 1 && c < 10 },
   { key: "over10", label: "$10 and up", test: (c) => c !== null && c >= 10 },
-  { key: "nocost", label: "No recorded cost", test: (c) => c === null || c === 0 },
+  { key: "nocharge", label: "No recorded price", test: (c) => c === 0 },
+  { key: "nocost", label: "No cost recorded", test: (c) => c === null },
 ];
 
 function sortValue(row: XRow, sort: string): number | null {
@@ -441,12 +293,7 @@ const SORT_DIR: Record<string, 1 | -1> = {
 };
 
 function sortRows(rows: XRow[], sort: string): XRow[] {
-  /* A family key orders by that family's rate with the highest
-   * first, the malformed rate's direction, so picking a family
-   * surfaces the results that family hits hardest. Unmeasured
-   * families stand last in either direction (the comparator
-   * below returns before the direction applies). */
-  const dir = sort.startsWith("fam:") ? -1 : (SORT_DIR[sort] ?? 1);
+  const dir = sort.startsWith("fam:") ? 1 : (SORT_DIR[sort] ?? 1);
   return [...rows].sort((a, b) => {
     const va = sortValue(a, sort);
     const vb = sortValue(b, sort);
@@ -466,22 +313,29 @@ export default function Explorer({ data }: { data: ExplorerData }) {
     () => new Map(data.rows.map((r) => [r.slug, r])),
     [data],
   );
-  const leader = useMemo(
-    () => data.rows.find((r) => r.kind === "full"),
+  /* The opening selection is the chart's subject, the best
+   * ranked result the plot can seat. The board leader ran
+   * through the Cursor harness, whose cost is billed through
+   * a paid plan and not metered per run, so it stands in the
+   * chart's rail rather than on the plot, and the best priced
+   * result takes the white disc until the reader selects
+   * another. */
+  const opener = useMemo(
+    () =>
+      data.rows.find(
+        (r) => r.kind === "full" && r.costValue !== null && r.costValue > 0,
+      ) ?? data.rows.find((r) => r.kind === "full"),
     [data],
   );
   const [state, setState] = useState<XState>({
     ...DEFAULTS,
-    sel: leader?.runId ?? null,
+    sel: opener?.runId ?? null,
   });
   const [expanded, setExpanded] = useState<string | null>(null);
   const [hoverId, setHoverId] = useState<string | null>(null);
   const [chipId, setChipId] = useState<string | null>(null);
   const [brush, setBrush] = useState<Brush | null>(null);
-  const [famHover, setFamHover] = useState<string | null>(null);
   const touched = useRef(false);
-  const prevVisibleRef = useRef<Set<string> | null>(null);
-  const prevModeRef = useRef<Mode | null>(null);
   const listRef = useRef<HTMLDivElement>(null);
   const flipSnapshot = useRef<Map<string, number> | null>(null);
   const sectionRef = useRef<HTMLElement>(null);
@@ -530,10 +384,6 @@ export default function Explorer({ data }: { data: ExplorerData }) {
       if (row) patch.pin = row.runId;
     }
     if (params.get("frontier") === "1") patch.frontier = true;
-    const measure = params.get("measure");
-    if (measure === "malformed" || measure === "asr") {
-      patch.measure = measure;
-    }
     const grey = params.get("grey");
     if (grey === "vendor" || grey === "wire" || grey === "band" || grey === "none") {
       patch.grey = grey;
@@ -543,29 +393,20 @@ export default function Explorer({ data }: { data: ExplorerData }) {
   }, [bySlug]);
 
   useEffect(() => {
-    /* A hash application is a landing, not an edit. A finding
-     * action and a model address each promise a whole state,
-     * so the state they do not name returns to its default,
-     * the brush and the chart chip clear, and an expansion
-     * stands only where the link itself opens one. The
-     * reader's own control changes go through update() and
-     * keep their merge behavior. */
-    const apply = (scroll: boolean, mount = false) => {
+    const apply = (scroll: boolean) => {
       const { patch, open } = parseHash();
       if (Object.keys(patch).length === 0) return;
-      setState({ ...DEFAULTS, sel: leader?.runId ?? null, ...patch });
-      setBrush(null);
-      setChipId(null);
-      setExpanded(open && patch.sel ? patch.sel : null);
-      if (scroll || (mount && patch.sel)) {
+      setState((s) => ({ ...s, ...patch }));
+      if (open && patch.sel) setExpanded(patch.sel);
+      if (scroll) {
         sectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
       }
     };
-    apply(false, true);
+    apply(false);
     const onHash = () => apply(true);
     window.addEventListener("hashchange", onHash);
     return () => window.removeEventListener("hashchange", onHash);
-  }, [parseHash, leader]);
+  }, [parseHash]);
 
   useEffect(() => {
     if (!touched.current) return;
@@ -581,19 +422,12 @@ export default function Explorer({ data }: { data: ExplorerData }) {
     const pinRow = state.pin ? byId.get(state.pin) : null;
     if (pinRow) params.set("pin", pinRow.slug);
     if (state.frontier) params.set("frontier", "1");
-    if (state.measure !== DEFAULTS.measure) {
-      params.set("measure", state.measure);
-    }
-    if (state.grey !== DEFAULTS.grey) params.set("grey", state.grey);
-    if (expanded !== null && expanded === state.sel) {
-      params.set("open", "1");
-    }
     const qs = params.toString();
     const target = qs ? `#explorer?${qs}` : "#explorer";
     if (window.location.hash !== target) {
       window.history.replaceState(null, "", target);
     }
-  }, [state, byId, expanded]);
+  }, [state, byId]);
 
   const snapshotFlip = useCallback(() => {
     const root = listRef.current;
@@ -621,7 +455,8 @@ export default function Explorer({ data }: { data: ExplorerData }) {
         el.style.transition = "none";
         el.style.transform = `translateY(${delta}px)`;
         requestAnimationFrame(() => {
-          el.style.transition = "transform var(--dur-state) var(--ease-move)";
+          el.style.transition =
+            "transform 200ms cubic-bezier(0.23, 1, 0.32, 1)";
           el.style.transform = "";
         });
       });
@@ -647,17 +482,16 @@ export default function Explorer({ data }: { data: ExplorerData }) {
       if (!band.test(row.costValue)) return false;
       if (
         query &&
-        !`${row.name} ${row.wire ?? ""} ${row.vendorLabel}`
+        !`${row.name} ${row.fullName} ${row.wire ?? ""} ${row.vendorLabel}`
           .toLowerCase()
           .includes(query)
       ) {
         return false;
       }
       if (brush) {
-        const v = brush.field === "malformed" ? row.malformed : row.asr;
-        if (v === null || row.costValue === null) return false;
+        if (row.asr === null || row.costValue === null) return false;
         if (row.costValue < brush.costLo || row.costValue > brush.costHi) return false;
-        if (v < brush.vLo || v > brush.vHi) return false;
+        if (row.asr < brush.asrLo || row.asr > brush.asrHi) return false;
       }
       return true;
     });
@@ -676,52 +510,21 @@ export default function Explorer({ data }: { data: ExplorerData }) {
   const pinRow = state.pin ? byId.get(state.pin) ?? null : null;
   const hiddenCount = data.rows.length - visible.length;
 
-  /* Motion bookkeeping (BUILD-SPEC part 6). Rows entering the
-   * view carry the enter class for the commit that admits
-   * them, and the mode wrapper animates only on the commit
-   * that changes the mode, so first render stands still. */
-  if (prevVisibleRef.current === null) {
-    prevVisibleRef.current = new Set(data.rows.map((r) => r.runId));
-  }
-  const freshIds = new Set(
-    visible
-      .filter((r) => !prevVisibleRef.current!.has(r.runId))
-      .map((r) => r.runId),
-  );
-  useEffect(() => {
-    prevVisibleRef.current = new Set(visible.map((r) => r.runId));
-  });
-  /* The mode tracker adopts the mode the address already
-   * names on first render, the same rule the row tracker
-   * follows with the full row set above, so a shared link's
-   * first paint stands still and only a reader's own switch
-   * animates. */
-  if (prevModeRef.current === null) {
-    let initial: Mode = DEFAULTS.mode;
-    if (typeof window !== "undefined") {
-      const m = /[?&]mode=(rank|chart|families)/.exec(window.location.hash);
-      if (m) initial = m[1] as Mode;
-    }
-    prevModeRef.current = initial;
-  }
-  const modeChanged = prevModeRef.current !== state.mode;
-  useEffect(() => {
-    prevModeRef.current = state.mode;
-  }, [state.mode]);
-
   const toggleExpand = (row: XRow) => {
     update({ sel: row.runId });
     setExpanded((e) => (e === row.runId ? null : row.runId));
   };
 
   return (
-    <section className="explorer" id="explorer" ref={sectionRef} aria-label="Explorer">
+    <section className="explorer scene" id="explorer" ref={sectionRef} aria-label="Explorer">
       <div className="sechead">
-        <div className="micro">Explorer</div>
-        <h2>Every result, one surface</h2>
+        <div className="micro eyebrow">
+          <span className="eno">02</span> Explorer
+        </div>
+        <h2>Every result in full</h2>
         <p className="cap">
-          Ranking, readings, and comparison live here, and a row
-          opens its reading in place.
+          Ranking, readings, and comparison live here. Select a row to
+          open its reading in place.
         </p>
       </div>
 
@@ -802,7 +605,7 @@ export default function Explorer({ data }: { data: ExplorerData }) {
         <label className="xfield">
           <span className="micro">Sort</span>
           <select
-            value={state.sort}
+            value={state.sort.startsWith("fam:") ? state.sort : state.sort}
             onChange={(e) => update({ sort: e.target.value }, true)}
           >
             <option value="asr">Attack success</option>
@@ -819,33 +622,14 @@ export default function Explorer({ data }: { data: ExplorerData }) {
         </label>
         {state.mode === "chart" && (
           <>
-            <div className="segrow" role="group" aria-label="Measure">
-              {(
-                [
-                  ["asr", "Attack success"],
-                  ["malformed", "Malformed"],
-                ] as Array<[Measure, string]>
-              ).map(([key, label]) => (
-                <button
-                  key={key}
-                  type="button"
-                  className={state.measure === key ? "segbtn on" : "segbtn"}
-                  onClick={() => update({ measure: key })}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
-            {state.measure === "asr" && (
-              <label className="xcheck">
-                <input
-                  type="checkbox"
-                  checked={state.frontier}
-                  onChange={(e) => update({ frontier: e.target.checked })}
-                />
-                <span>Frontier</span>
-              </label>
-            )}
+            <label className="xcheck">
+              <input
+                type="checkbox"
+                checked={state.frontier}
+                onChange={(e) => update({ frontier: e.target.checked })}
+              />
+              <span>Frontier</span>
+            </label>
             <label className="xfield">
               <span className="micro">Highlight</span>
               <select
@@ -865,10 +649,17 @@ export default function Explorer({ data }: { data: ExplorerData }) {
       </div>
 
       {state.pop === "guards" && (
-        <p className="basisline">{data.guardBasis}</p>
+        <p className="basisline">
+          Guard results ran the {fmtInt(data.guardCases)} case abstain
+          subset of the suite. They are ranked among themselves on that
+          basis, and their rates do not compare with full suite rates.
+        </p>
       )}
       <p className="xcount">
-        {countLineText(visible.length, data.rows.length, hiddenCount, brush !== null)}
+        Showing {fmtInt(visible.length)} of {fmtInt(data.rows.length)}{" "}
+        results
+        {hiddenCount > 0 ? ` · ${fmtInt(hiddenCount)} hidden by filters` : ""}
+        {brush ? " · brush filter on" : ""}
       </p>
       {brush && (
         <button
@@ -880,7 +671,6 @@ export default function Explorer({ data }: { data: ExplorerData }) {
         </button>
       )}
 
-      <div className={modeChanged ? "xview anim" : "xview"} key={state.mode}>
       {state.mode === "rank" && (
         <RankView
           groups={groups}
@@ -889,10 +679,6 @@ export default function Explorer({ data }: { data: ExplorerData }) {
           selRow={selRow}
           pinRow={pinRow}
           listRef={listRef}
-          famAxis={data.familiesAxis}
-          famHover={famHover}
-          setFamHover={setFamHover}
-          freshIds={freshIds}
           onToggle={toggleExpand}
           onSort={(sort) => update({ sort }, true)}
           onPin={(id) => update({ pin: state.pin === id ? null : id })}
@@ -909,7 +695,6 @@ export default function Explorer({ data }: { data: ExplorerData }) {
           setHoverId={setHoverId}
           chipId={chipId}
           setChipId={setChipId}
-          freshIds={freshIds}
           onSelect={(row) => {
             update({ sel: row.runId });
             setExpanded(row.runId);
@@ -922,35 +707,20 @@ export default function Explorer({ data }: { data: ExplorerData }) {
           groups={groups}
           data={data}
           expanded={expanded}
-          famHover={famHover}
-          setFamHover={setFamHover}
-          freshIds={freshIds}
           onToggle={toggleExpand}
-          onSort={(sort) => update({ sort }, true)}
         />
       )}
-      </div>
-      {state.mode === "chart" && expanded && byId.get(expanded) && (
+      {state.mode !== "rank" && expanded && byId.get(expanded) && (
         <div className="belowreading">
           {pinRow && selRow && expanded === selRow.runId ? (
             <CompareReading
               sel={selRow}
               pin={pinRow}
-              famAxis={data.familiesAxis}
-              famHover={famHover}
-              setFamHover={setFamHover}
               onClose={() => update({ pin: null })}
             />
           ) : (
             <div className="reading open">
-              <div className="reading-clip">
-                <ReadingBody
-                  row={byId.get(expanded) as XRow}
-                  famAxis={data.familiesAxis}
-                  famHover={famHover}
-                  setFamHover={setFamHover}
-                />
-              </div>
+              <ReadingBody row={byId.get(expanded) as XRow} />
             </div>
           )}
         </div>
@@ -962,7 +732,9 @@ export default function Explorer({ data }: { data: ExplorerData }) {
             {selRow.name} against {pinRow.name}
           </span>
           <span className="tray-delta">
-            {trayDeltaText(selRow.asr, pinRow.asr)}
+            {selRow.asr !== null && pinRow.asr !== null
+              ? `${fmtDeltaPct(pinRow.asr - selRow.asr)} attack success`
+              : "Rates not comparable"}
           </span>
           <button
             type="button"
@@ -981,15 +753,6 @@ export default function Explorer({ data }: { data: ExplorerData }) {
         </div>
       )}
 
-      {expanded !== null && state.mode !== "chart" && (
-        <button
-          type="button"
-          className="sheetback"
-          aria-label="Close reading"
-          onClick={() => setExpanded(null)}
-        />
-      )}
-
       <div className="footstrip" aria-hidden={selRow === null}>
         {selRow && (
           <>
@@ -998,9 +761,7 @@ export default function Explorer({ data }: { data: ExplorerData }) {
               {selRow.name}
               {selRow.wire ? ` · ${selRow.wire}` : ""}
             </span>
-            <span className="rn">
-              {selRow.suppressed ? "suppressed" : (selRow.asrText ?? "·")}
-            </span>
+            <span className="rn">{selRow.asrText ?? "·"}</span>
             <button
               type="button"
               className="ghostbtn"
@@ -1022,10 +783,6 @@ interface RankViewProps {
   selRow: XRow | null;
   pinRow: XRow | null;
   listRef: React.RefObject<HTMLDivElement | null>;
-  famAxis: number;
-  famHover: string | null;
-  setFamHover: (key: string | null) => void;
-  freshIds: Set<string>;
   onToggle: (row: XRow) => void;
   onSort: (sort: string) => void;
   onPin: (id: string) => void;
@@ -1039,10 +796,6 @@ function RankView({
   selRow,
   pinRow,
   listRef,
-  famAxis,
-  famHover,
-  setFamHover,
-  freshIds,
   onToggle,
   onSort,
   onPin,
@@ -1052,7 +805,7 @@ function RankView({
     ["asr", "Attack success"],
     ["benign", "Benign"],
     ["malformed", "Malformed"],
-    ["ece", "Calibration error"],
+    ["ece", "Calib. error"],
     ["cost", "Cost"],
   ];
   return (
@@ -1074,22 +827,28 @@ function RankView({
             {state.sort === key ? " ↓" : ""}
           </button>
         ))}
+        <span className="xh pin" />
       </div>
       {groups.map((group) => (
         <div key={group.kind} className="xgroup">
           {state.pop === "all" && group.kind === "slice" && (
-            <p className="xdivider">{GUARD_DIVIDER}</p>
+            <p className="xdivider">
+              Guard results · ranked among themselves on the abstain
+              subset basis
+            </p>
           )}
           {state.pop === "all" && group.kind === "flagged" && (
-            <p className="xdivider flagged">{FLAGGED_DIVIDER}</p>
+            <p className="xdivider flagged">
+              Flagged results · held off the ranking
+            </p>
           )}
-          {group.rows.map((row) => {
+          {group.rows.map((row, i) => {
             const isOpen = expanded === row.runId;
             return (
               <div
                 key={row.runId}
                 data-rid={row.runId}
-                className={`xrow ${row.kind}${isOpen ? " open" : ""}${state.sel === row.runId ? " selected" : ""}${freshIds.has(row.runId) ? " enter" : ""}`}
+                className={`xrow ${row.kind}${isOpen ? " open" : ""}${state.sel === row.runId ? " selected" : ""}`}
               >
                 <div
                   className="xrow-head"
@@ -1105,19 +864,15 @@ function RankView({
                   }}
                 >
                   <span className="xrank rn">
-                    {row.popRank !== null ? row.popRank : "·"}
+                    {row.kind === "flagged" ? "—" : i + 1}
                   </span>
                   <Mark row={row} />
                   <span className="xname">
-                    {row.name}
+                    {row.fullName}
                     {row.wire && <span className="xwire">{row.wire}</span>}
                     <span className="xsub">{row.subLine}</span>
-                    {row.kind === "flagged" && row.decomp !== null && (
-                      <span className="xsub xdecomp">
-                        Malformed output, {fmtPct(row.decomp.malformedShare)}{" "}
-                        of counted flips · genuine flip rate{" "}
-                        {fmtPct(row.decomp.genuineRate)}
-                      </span>
+                    {row.kind === "flagged" && (
+                      <span className="xstate">Flagged · not ranked</span>
                     )}
                   </span>
                   <span className="xtrack">
@@ -1137,56 +892,44 @@ function RankView({
                       </>
                     )}
                   </span>
-                  <span className="xfig asr rn">
-                    {row.suppressed ? (
-                      <span className="supp">suppressed</span>
-                    ) : (
-                      (row.asrText ?? "·")
-                    )}
-                  </span>
+                  <span className="xfig asr rn">{row.asrText ?? "·"}</span>
                   <span className="xfig benign rn">{row.benignText ?? "·"}</span>
                   <span className="xfig malformed rn">
                     {row.malformedText ?? "·"}
                   </span>
                   <span className="xfig ece rn">{row.eceText ?? "·"}</span>
                   <span className="xfig cost rn">{row.costText}</span>
+                  <button
+                    type="button"
+                    className={`pinbtn${state.pin === row.runId ? " on" : ""}`}
+                    aria-pressed={state.pin === row.runId}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onPin(row.runId);
+                    }}
+                    onKeyDown={(e) => e.stopPropagation()}
+                  >
+                    {state.pin === row.runId ? "Pinned" : "Pin"}
+                  </button>
                 </div>
-                <button
-                  type="button"
-                  className={`pinbtn${state.pin === row.runId ? " on" : ""}`}
-                  aria-pressed={state.pin === row.runId}
-                  onClick={() => onPin(row.runId)}
-                >
-                  {state.pin === row.runId ? "Pinned" : "Pin"}
-                </button>
                 {isOpen && (
                   <div className="reading open">
-                    <div className="reading-clip">
-                      <button
-                        type="button"
-                        className="reading-close"
-                        onClick={() => onToggle(row)}
-                      >
-                        Close
-                      </button>
-                      {pinRow && selRow && row.runId === selRow.runId ? (
-                        <CompareReading
-                          sel={selRow}
-                          pin={pinRow}
-                          famAxis={famAxis}
-                          famHover={famHover}
-                          setFamHover={setFamHover}
-                          onClose={onUnpin}
-                        />
-                      ) : (
-                        <ReadingBody
-                          row={row}
-                          famAxis={famAxis}
-                          famHover={famHover}
-                          setFamHover={setFamHover}
-                        />
-                      )}
-                    </div>
+                    <button
+                      type="button"
+                      className="reading-close"
+                      onClick={() => onToggle(row)}
+                    >
+                      Close
+                    </button>
+                    {pinRow && selRow && row.runId === selRow.runId ? (
+                      <CompareReading
+                        sel={selRow}
+                        pin={pinRow}
+                        onClose={onUnpin}
+                      />
+                    ) : (
+                      <ReadingBody row={row} />
+                    )}
                   </div>
                 )}
               </div>
@@ -1195,7 +938,10 @@ function RankView({
         </div>
       ))}
       {groups.every((g) => g.rows.length === 0) && (
-        <p className="xempty">{EMPTY_RANK_TEXT}</p>
+        <p className="xempty">
+          No result matches these filters. Loosen one and the board
+          comes back.
+        </p>
       )}
     </div>
   );
@@ -1210,7 +956,6 @@ interface ChartViewProps {
   setHoverId: (id: string | null) => void;
   chipId: string | null;
   setChipId: (id: string | null) => void;
-  freshIds: Set<string>;
   onSelect: (row: XRow) => void;
   onBrush: (b: Brush) => void;
 }
@@ -1224,7 +969,6 @@ function ChartView({
   setHoverId,
   chipId,
   setChipId,
-  freshIds,
   onSelect,
   onBrush,
 }: ChartViewProps) {
@@ -1242,53 +986,38 @@ function ChartView({
     return () => ro.disconnect();
   }, []);
 
-  /* Guard results rest on the abstain subset, so they never plot
-   * on the full suite axes. Like every result with no recorded
-   * cost they stand on the rail as selectable marks, with their
-   * basis stated in the rail note. */
-  const points = visible.filter(
-    (r) => r.kind !== "slice" && r.costValue !== null && r.costValue > 0,
-  );
-  const rail = visible.filter(
-    (r) => r.kind === "slice" || r.costValue === null || r.costValue === 0,
-  );
-  const charted = visible.filter((r) => r.kind !== "slice");
-  const railHasGuards = rail.some((r) => r.kind === "slice");
+  const plotted = visible.filter((r) => r.kind !== "slice");
+  const points = plotted.filter((r) => r.costValue !== null && r.costValue > 0);
+  const rail = plotted.filter((r) => r.costValue === null || r.costValue === 0);
+  /* The plot's subject. The selected result takes the white
+   * disc when it stands on the plot; a selection in the
+   * no-cost rail or off the axis leaves the disc to the best
+   * plotted result, so the composition never sits empty. */
+  const subjectId = (() => {
+    const renderable = points.filter(
+      (r) => r.asr !== null && r.asr <= data.axisMax,
+    );
+    if (selRow && renderable.some((r) => r.runId === selRow.runId)) {
+      return selRow.runId;
+    }
+    return sortRows(renderable, "asr")[0]?.runId ?? null;
+  })();
 
-  /* The vertical measure. Attack success stands on the shared
-   * axis the board derives from the ranked field. Malformed
-   * output takes its own axis, derived the same way from every
-   * charted result, with the flag line drawn at the ranked
-   * board's highest malformed rate (BUILD-SPEC part 5). */
-  const measure = state.measure;
-  const vOf = (r: XRow): number | null =>
-    measure === "malformed" ? r.malformed : r.asr;
-  const malformedAxis = asrAxisFor(
-    Math.max(0, ...charted.map((r) => r.malformed ?? 0)),
-  ).max;
-  const yMax = measure === "malformed" ? malformedAxis : data.axisMax;
-  const figOf = (r: XRow): string =>
-    measure === "malformed"
-      ? (r.malformedText ?? "·")
-      : r.suppressed
-        ? "suppressed"
-        : (r.asrText ?? "·");
-  const flagExtreme =
-    measure === "malformed"
-      ? (charted
-          .filter((r) => r.kind === "flagged" && r.malformed !== null)
-          .sort((a, b) => (b.malformed as number) - (a.malformed as number))[0] ??
-        null)
-      : null;
-  const flagNote =
-    flagExtreme !== null &&
-    flagExtreme.malformed !== null &&
-    flagExtreme.malformed > data.flagLine
-      ? flagNoteText(flagExtreme)
-      : null;
-
+  if (visible.length > 0 && plotted.length === 0) {
+    return (
+      <p className="xempty">
+        The chart plots full suite and flagged results. Guard results
+        read in the rank and families modes, on their own basis.
+      </p>
+    );
+  }
   if (points.length === 0 && rail.length === 0) {
-    return <p className="xempty">{EMPTY_CHART_TEXT}</p>;
+    return (
+      <p className="xempty">
+        No priced result matches these filters, so the chart has
+        nothing to plot.
+      </p>
+    );
   }
 
   const H = 430;
@@ -1297,14 +1026,10 @@ function ChartView({
   const padR = 16;
   const padT = 18;
   const padB = 40;
-  const axisMax = yMax;
+  const axisMax = data.axisMax;
   const costs = points.map((r) => r.costValue as number);
-  const lo = costs.length
-    ? Math.pow(10, Math.floor(Math.log10(Math.min(...costs)) * 2) / 2)
-    : 0.1;
-  const hi = costs.length
-    ? Math.pow(10, Math.ceil(Math.log10(Math.max(...costs)) * 2) / 2)
-    : 100;
+  const lo = Math.pow(10, Math.floor(Math.log10(Math.min(...costs)) * 2) / 2);
+  const hi = Math.pow(10, Math.ceil(Math.log10(Math.max(...costs)) * 2) / 2);
   const x = (c: number) =>
     padL + ((Math.log10(c) - Math.log10(lo)) / (Math.log10(hi) - Math.log10(lo))) * (W - padL - padR);
   const y = (a: number) => padT + (1 - a / axisMax) * (H - padT - padB);
@@ -1329,7 +1054,7 @@ function ChartView({
     return row.kind === selRow.kind;
   };
 
-  const frontierPts = state.frontier && measure === "asr"
+  const frontierPts = state.frontier
     ? (() => {
         const sorted = [...points]
           .filter((r) => r.asr !== null)
@@ -1346,10 +1071,7 @@ function ChartView({
       })()
     : [];
 
-  const offScale = charted.filter((r) => {
-    const v = vOf(r);
-    return v !== null && v > axisMax;
-  });
+  const offScale = plotted.filter((r) => r.asr !== null && r.asr > axisMax);
   const chipRow = chipId
     ? points.find((r) => r.runId === chipId) ?? null
     : hoverId
@@ -1374,7 +1096,7 @@ function ChartView({
           className="chart"
           viewBox={`0 0 ${W} ${H}`}
           role="img"
-          aria-label={chartAriaLabelText(measure)}
+          aria-label="Attack success against the cost of one run"
           onPointerLeave={() => setHoverId(null)}
         >
           <rect
@@ -1384,13 +1106,6 @@ function ChartView({
             width={W - padL - padR}
             height={H - padT - padB}
             onPointerDown={(e) => {
-              /* The drag keeps the pointer's capture, so its
-               * moves and its release reach this rect wherever
-               * the pointer travels, over discs or off the plot.
-               * The selection rectangle itself never takes
-               * events (globals.css sets its pointer-events to
-               * none), so it cannot steal the drag it draws. */
-              e.currentTarget.setPointerCapture(e.pointerId);
               const { px, py } = localPoint(e);
               setDrag({ x0: px, y0: py, x1: px, y1: py });
             }}
@@ -1407,9 +1122,8 @@ function ChartView({
                 onBrush({
                   costLo: invX(Math.min(drag.x0, drag.x1)),
                   costHi: invX(Math.max(drag.x0, drag.x1)),
-                  vLo: Math.max(0, invY(Math.max(drag.y0, drag.y1))),
-                  vHi: invY(Math.min(drag.y0, drag.y1)),
-                  field: measure,
+                  asrLo: Math.max(0, invY(Math.max(drag.y0, drag.y1))),
+                  asrHi: invY(Math.min(drag.y0, drag.y1)),
                 });
               } else {
                 setChipId(null);
@@ -1437,30 +1151,11 @@ function ChartView({
             </text>
           ))}
           <text className="axis-title" x={padL} y={H - 6}>
-            {CHART_X_AXIS_TITLE}
+            Cost of one run, log scale
           </text>
           <text className="axis-title" x={padL} y={padT - 6}>
-            {chartYAxisTitleText(measure)}
+            Attack success, lower is better
           </text>
-          {measure === "malformed" && (
-            <g>
-              <line
-                className="flag-line"
-                x1={padL}
-                x2={W - padR}
-                y1={y(data.flagLine)}
-                y2={y(data.flagLine)}
-              />
-              <text
-                className="axis-title flag-label"
-                x={W - padR}
-                y={y(data.flagLine) - 5}
-                textAnchor="end"
-              >
-                {flagLineLabelText(data.flagLine)}
-              </text>
-            </g>
-          )}
           {frontierPts.length > 1 && (
             <polyline
               className="frontier-line"
@@ -1470,16 +1165,26 @@ function ChartView({
             />
           )}
           {points.map((row) => {
-            const v = vOf(row);
-            if (v === null || v > axisMax) return null;
+            if (row.asr === null || row.asr > axisMax) return null;
             const cx = x(row.costValue as number);
-            const cy = y(v);
+            const cy = y(row.asr);
             const on = matches(row);
+            const subject = subjectId === row.runId;
             const active = hoverId === row.runId || chipId === row.runId || state.sel === row.runId;
+            const labelBelow = cy < 72;
+            /* Every disc carries its maker's mark where the
+             * vendor table records one, riding the field's
+             * dimmed opacity the group already carries. The
+             * highlight filter dims a disc outside the group.
+             * It no longer strips the disc's mark and leaves a
+             * bare circle or a stray letter behind. Families
+             * the table records with no usable mark keep
+             * their monogram letter, the same identity their
+             * rows and cards carry. */
             return (
               <g
                 key={row.runId}
-                className={`disc${on ? "" : " greyed"}${active ? " active" : ""}${freshIds.has(row.runId) ? " enter" : ""}`}
+                className={`disc${on ? "" : " greyed"}${subject ? " subject" : " field"}${active && !subject ? " active" : ""}`}
                 onPointerEnter={() => setHoverId(row.runId)}
                 onPointerDown={(e) => e.stopPropagation()}
                 onClick={() => {
@@ -1487,32 +1192,53 @@ function ChartView({
                   onSelect(row);
                 }}
               >
-                <circle cx={cx} cy={cy} r={13} fill={on ? row.mark.color : "#39434e"} />
-                {on && row.mark.kind === "logo" && row.mark.slug ? (
+                <circle
+                  cx={cx}
+                  cy={cy}
+                  r={subject ? 15 : 13}
+                  fill={subject ? "#ffffff" : "#39434e"}
+                  stroke={row.kind === "flagged" ? "#e8a33d" : "none"}
+                  strokeWidth={row.kind === "flagged" ? (subject ? 2 : 1.5) : 0}
+                />
+                {row.mark.kind === "logo" && row.mark.slug ? (
                   <use
                     href={`#vlogo-${row.mark.slug}`}
                     x={cx - 7.5}
                     y={cy - 7.5}
                     width={15}
                     height={15}
-                    style={{ color: row.mark.glyph }}
+                    style={{ color: subject ? "var(--glyph-dark)" : "#aebcc7" }}
                   />
                 ) : (
-                  <text x={cx} y={cy + 3.5} textAnchor="middle" className="disc-letter">
+                  <text
+                    x={cx}
+                    y={cy + 3.5}
+                    textAnchor="middle"
+                    className={`disc-letter${subject ? " subject-letter" : ""}`}
+                  >
                     {row.mark.letter}
                   </text>
                 )}
-              </g>
-            );
-          })}
-          {offScale.map((row) => {
-            const cx = row.costValue ? x(row.costValue) : padL + 10;
-            return (
-              <g key={row.runId} className="offscale-mark">
-                <path
-                  d={`M ${cx} ${padT + 2} l 6 10 l -12 0 z`}
-                  className="offscale-tri"
-                />
+                {subject && !drag && (
+                  <>
+                    <text
+                      className="subject-name"
+                      x={cx}
+                      y={labelBelow ? cy + 32 : cy - 30}
+                      textAnchor="middle"
+                    >
+                      {row.fullName}
+                    </text>
+                    <text
+                      className="subject-sub"
+                      x={cx}
+                      y={labelBelow ? cy + 46 : cy - 17}
+                      textAnchor="middle"
+                    >
+                      {row.asrText} · {row.costText}
+                    </text>
+                  </>
+                )}
               </g>
             );
           })}
@@ -1526,55 +1252,47 @@ function ChartView({
             />
           )}
         </svg>
+        {state.frontier && frontierPts.length > 1 && (
+          <p className="chart-legend">
+            <span className="legend-swatch" aria-hidden="true" />
+            Frontier, the lowest attack success at each cost
+          </p>
+        )}
         {offScale.length > 0 && (
           <div className="offscale-note">
-            {offScale.map((row) => {
-              const note = offScaleNoteText(row);
-              return (
-                <p key={row.runId}>
-                  <span className="amber-text">▲ {row.name}</span>
-                  {note.slice(note.indexOf(" plots"))}
-                </p>
-              );
-            })}
+            {offScale.map((row) => (
+              <p key={row.runId}>
+                <span className="amber-text">{row.fullName}</span> plots
+                above the shared axis at {row.asrText} counted.
+                {row.decomp
+                  ? ` Malformed output is ${fmtPct(row.decomp.malformedShare)} of its counted flips, and its genuine flips are ${fmtPct(row.decomp.genuineRate)} of its eligible cases.`
+                  : ""}
+              </p>
+            ))}
           </div>
         )}
-        {flagNote && (
-          <div className="flag-note">
-            <p>{flagNote}</p>
-          </div>
-        )}
-        {chipRow && vOf(chipRow) !== null && (
+        {chipRow && chipRow.asr !== null && (
           <div
             className="chip"
             style={{
               left: `${Math.min(86, Math.max(2, (x(chipRow.costValue as number) / W) * 100))}%`,
-              top: `${Math.max(4, (y(vOf(chipRow) as number) / H) * 100 - 16)}%`,
+              top: `${Math.max(4, (y(chipRow.asr) / H) * 100 - 16)}%`,
             }}
           >
             <p className="chip-name">
               <Mark row={chipRow} size={18} /> {chipRow.name}
               {chipRow.wire ? ` · ${chipRow.wire}` : ""}
             </p>
-            {measure === "malformed" ? (
-              <p className="chip-figs">
-                {chipRow.malformedText} malformed ·{" "}
-                {chipRow.suppressed
-                  ? "suppressed"
-                  : `${chipRow.asrText} counted`}{" "}
-                · {chipRow.costText}
-              </p>
-            ) : (
-              <p className="chip-figs">
-                {chipRow.suppressed ? "suppressed" : chipRow.asrText}
-                {chipRow.ciText ? ` · ${chipRow.ciText}` : ""} ·{" "}
-                {chipRow.costText}
-              </p>
-            )}
+            <p className="chip-figs">
+              {chipRow.asrText}
+              {chipRow.ciText ? ` · ${chipRow.ciText}` : ""} ·{" "}
+              {chipRow.costText}
+            </p>
             {chipRow.kind === "flagged" && chipRow.decomp && (
               <p className="chip-figs">
                 Malformed {fmtPct(chipRow.decomp.malformedShare)} of
-                counted flips · genuine {fmtPct(chipRow.decomp.genuineRate)}
+                counted flips · genuine flips{" "}
+                {fmtPct(chipRow.decomp.genuineRate)} of eligible cases
               </p>
             )}
             <div className="chip-actions">
@@ -1599,45 +1317,74 @@ function ChartView({
         )}
         {rail.length > 0 && (
           <div className="rail">
-            <span className="micro">No recorded cost</span>
-            <div className="rail-rows">
-              {rail.map((row) => (
-                <button
-                  key={row.runId}
-                  type="button"
-                  className={`rail-row${hoverId === row.runId ? " hot" : ""}${state.sel === row.runId ? " sel" : ""}${freshIds.has(row.runId) ? " enter" : ""}`}
-                  onPointerEnter={() => setHoverId(row.runId)}
-                  onPointerLeave={() => setHoverId(null)}
-                  onClick={() => onSelect(row)}
-                >
-                  <Mark row={row} size={18} />
-                  <span>{row.name}</span>
-                  <span className="rn">{figOf(row)}</span>
-                </button>
+            {/* The rail keeps its facts apart. A harness run is
+             * billed through its plan, a local run carries no
+             * API cost, and a null is a run whose cost went
+             * unrecorded. Each stands off the axis under its own
+             * heading, and none of them stands at zero. */}
+            {[
+              {
+                key: "harness",
+                head: "Measured through a harness",
+                note: "This result was measured through the Cursor agent harness on a paid plan. Its cost is not metered per run, so it stands off the axis rather than at zero.",
+                rows: rail.filter((r) => r.costKind === "harness"),
+              },
+              {
+                key: "local",
+                head: "No API cost",
+                note: "These results were served locally and carry no API cost, so they stand off the axis rather than at zero.",
+                rows: rail.filter((r) => r.costKind === "local"),
+              },
+              {
+                key: "nocost",
+                head: "No recorded cost",
+                note: "These results carry no recorded serving cost, so they stand off the axis rather than at zero.",
+                rows: rail.filter((r) => r.costValue === null),
+              },
+            ]
+              .filter((g) => g.rows.length > 0)
+              .map((g) => (
+                <div className="rail-group" key={g.key}>
+                  <span className="micro">{g.head}</span>
+                  <div className="rail-rows">
+                    {g.rows.map((row) => (
+                      <button
+                        key={row.runId}
+                        type="button"
+                        className="rail-row"
+                        onPointerEnter={() => setHoverId(row.runId)}
+                        onClick={() => onSelect(row)}
+                      >
+                        <Mark row={row} size={18} />
+                        <span>{row.fullName}</span>
+                        <span className="rn">{row.asrText ?? "·"}</span>
+                      </button>
+                    ))}
+                  </div>
+                  <p className="rail-note">{g.note}</p>
+                </div>
               ))}
-            </div>
-            <p className="rail-note">{railNoteText(railHasGuards)}</p>
           </div>
         )}
       </div>
       <div className="chartsync">
         <p className="micro">On the chart</p>
         <ul>
-          {sortRows(charted, measure === "malformed" ? "malformed" : "asr").map((row) => (
+          {sortRows(plotted, "asr").map((row) => (
             <li key={row.runId}>
               <button
                 type="button"
-                className={`sync-row${hoverId === row.runId ? " hot" : ""}${state.sel === row.runId ? " sel" : ""}${freshIds.has(row.runId) ? " enter" : ""}`}
+                className={`sync-row${hoverId === row.runId ? " hot" : ""}${state.sel === row.runId ? " sel" : ""}`}
                 onPointerEnter={() => setHoverId(row.runId)}
                 onPointerLeave={() => setHoverId(null)}
                 onClick={() => onSelect(row)}
               >
                 <Mark row={row} size={18} />
                 <span className="sync-name">
-                  {row.name}
+                  {row.fullName}
                   {row.wire ? ` · ${row.wire}` : ""}
                 </span>
-                <span className="rn">{figOf(row)}</span>
+                <span className="rn">{row.asrText ?? "·"}</span>
               </button>
             </li>
           ))}
@@ -1651,24 +1398,17 @@ interface FamiliesViewProps {
   groups: Array<{ kind: string; rows: XRow[] }>;
   data: ExplorerData;
   expanded: string | null;
-  famHover: string | null;
-  setFamHover: (key: string | null) => void;
-  freshIds: Set<string>;
   onToggle: (row: XRow) => void;
-  onSort: (sort: string) => void;
 }
 
-function FamiliesView({
-  groups,
-  data,
-  expanded,
-  famHover,
-  setFamHover,
-  freshIds,
-  onToggle,
-  onSort,
-}: FamiliesViewProps) {
-  const axis = data.familiesAxis;
+function FamiliesView({ groups, data, expanded, onToggle }: FamiliesViewProps) {
+  const maxFam = Math.max(
+    0.05,
+    ...data.rows.flatMap((r) =>
+      r.families.map((f) => f.asr ?? 0),
+    ),
+  );
+  const axis = Math.ceil(maxFam * 10) / 10;
   return (
     <div className="xfamilies">
       <p className="cap">
@@ -1677,11 +1417,8 @@ function FamiliesView({
       </p>
       {groups.map((group) => (
         <div key={group.kind} className="xgroup">
-          {group.rows.map((row) => (
-            <div
-              key={row.runId}
-              className={`xfamrow ${row.kind}${freshIds.has(row.runId) ? " enter" : ""}`}
-            >
+          {group.rows.map((row, i) => (
+            <div key={row.runId} className={`xfamrow ${row.kind}`}>
               <div
                 className="xfam-head"
                 role="button"
@@ -1696,82 +1433,39 @@ function FamiliesView({
                 }}
               >
                 <span className="xrank rn">
-                  {row.popRank !== null ? row.popRank : "·"}
+                  {row.kind === "flagged" ? "—" : i + 1}
                 </span>
                 <Mark row={row} size={22} />
                 <span className="xname">
-                  {row.name}
+                  {row.fullName}
                   {row.wire && <span className="xwire">{row.wire}</span>}
-                  {row.kind === "flagged" && row.decomp !== null && (
-                    <span className="xsub xdecomp">
-                      Malformed output, {fmtPct(row.decomp.malformedShare)}{" "}
-                      of counted flips · genuine flip rate{" "}
-                      {fmtPct(row.decomp.genuineRate)}
-                    </span>
+                  {row.kind === "flagged" && (
+                    <span className="xstate">Flagged · not ranked</span>
                   )}
                 </span>
-                <span className="rn">
-                  {row.suppressed ? (
-                    <span className="supp">suppressed</span>
-                  ) : (
-                    (row.asrText ?? "·")
-                  )}
-                </span>
+                <span className="rn">{row.asrText ?? "·"}</span>
               </div>
               <div className="xfam-bars">
                 {row.families.map((fam) => (
-                  <div
-                    className={`xfam-bar${famHover === fam.key ? " hot" : ""}${
-                      famHover !== null && famHover !== fam.key ? " dim" : ""
-                    }`}
-                    key={fam.key}
-                    onPointerEnter={() => setFamHover(fam.key)}
-                    onPointerLeave={() => setFamHover(null)}
-                  >
-                    <button
-                      type="button"
-                      className="xfam-labelbtn"
-                      onClick={() => onSort(`fam:${fam.key}`)}
-                      aria-label={`Sort by ${fam.full}`}
-                    >
-                      {fam.short}
-                    </button>
+                  <div className="xfam-bar" key={fam.key} title={`${fam.full} ${fam.asr !== null ? fmtPct(fam.asr) : "no rate"}`}>
+                    <span className="xfam-label">{fam.short}</span>
                     <span className="xfam-track">
-                      {fam.asr !== null && !fam.suppressed && (
+                      {fam.asr !== null && (
                         <span
                           className="xfam-fill"
-                          style={{
-                            width: `${Math.min(100, (fam.asr / axis) * 100)}%`,
-                          }}
+                          style={{ width: `${Math.min(100, (fam.asr / axis) * 100)}%` }}
                         />
                       )}
                     </span>
                     <span className="xfam-val rn">
-                      {fam.suppressed
-                        ? "suppressed"
-                        : fam.asr !== null
-                          ? fmtPct(fam.asr)
-                          : "·"}
+                      {fam.asr !== null ? fmtPct(fam.asr) : "·"}
                     </span>
-                    {fam.decomp !== null && (
-                      <span className="xfam-decomp">
-                        genuine {fam.decomp.genuineText} · malformed{" "}
-                        {fam.decomp.shareText} of counted flips
-                      </span>
-                    )}
                   </div>
                 ))}
               </div>
               {expanded === row.runId && (
                 <div className="reading open">
-                  <div className="reading-clip">
-                    <ReadingBody
-                      row={row}
-                      famAxis={axis}
-                      famHover={famHover}
-                      setFamHover={setFamHover}
-                    />
-                  </div>
+                  <ReadingBody row={row} />
                 </div>
               )}
             </div>

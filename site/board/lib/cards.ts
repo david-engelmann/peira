@@ -8,7 +8,7 @@
  * lib/format; nothing here recomputes a metric.
  */
 
-import type { BoardRow } from "@/lib/payload";
+import { isHarnessRow, type BoardRow } from "@/lib/payload";
 import { costIsLowerBound } from "@/lib/charts";
 
 /* ---------------- provenance ---------------- */
@@ -139,25 +139,33 @@ export function severitiesOf(row: BoardRow): SeverityStat[] {
 export type CostState =
   | { kind: "amount"; value: number }
   | { kind: "lower-bound"; value: number }
+  | { kind: "harness"; value: 0 }
   | { kind: "local"; value: 0 }
   | { kind: "unrecorded" };
 
 /**
- * The cost state of one result, in the four states the page
+ * The cost state of one result, in the five states the page
  * distinguishes (design 4.5, census V-02). A recorded cost with
- * unpriced calls is a lower bound. A recorded zero is a run
- * whose calls carried no per-call API charge, whether it was
- * served locally or measured through an agent harness on a
- * subscription seat, which is a different fact from no cost
- * recorded, and the two never share words. The state's name
- * is the older word. Its glosses at the render sites follow
- * the run's wire, so a harness run is never glossed as local.
+ * unpriced calls is a lower bound. A recorded zero splits by
+ * how the run was measured. A run through an agent harness is
+ * billed through the plan that carries the harness, so its
+ * cost is real and not metered per run, and the state names
+ * the plan basis rather than a figure. A run served locally
+ * carries no API cost. Neither state is a price, so neither
+ * ever renders as a dollar figure, and neither shares words
+ * with no cost recorded. Only a zero a provider recorded as
+ * its price would stand as a measured price, and no adapter
+ * on this board records one.
  */
 export function costStateOf(row: BoardRow): CostState {
   if (row.total_cost_usd === null || row.total_cost_usd === undefined) {
     return { kind: "unrecorded" };
   }
-  if (row.total_cost_usd === 0) return { kind: "local", value: 0 };
+  if (row.total_cost_usd === 0) {
+    return isHarnessRow(row)
+      ? { kind: "harness", value: 0 }
+      : { kind: "local", value: 0 };
+  }
   if (costIsLowerBound(row)) {
     return { kind: "lower-bound", value: row.total_cost_usd };
   }
