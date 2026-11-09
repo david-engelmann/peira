@@ -426,7 +426,9 @@ test("a harness run never renders as a dollar figure", () => {
 test("no source claims a run was chargeless", () => {
   // The chargeless wording is banned from every user-visible
   // source, comments included, so it cannot creep back in as
-  // a label, a note, or a gloss.
+  // a label, a note, or a gloss. The same scan bans the em
+  // dash from those sources outright, the copy bar rule the
+  // flagged rank glyph broke until the fix pass on PR 536.
   const files = [];
   const walk = (dir) => {
     for (const entry of readdirSync(join(here, "..", dir), {
@@ -446,6 +448,7 @@ test("no source claims a run was chargeless", () => {
       !/no per-run API charge/i.test(src),
       `${rel} claims no per-run API charge`,
     );
+    assert.ok(!src.includes("\u2014"), `${rel} carries an em dash`);
   }
 });
 
