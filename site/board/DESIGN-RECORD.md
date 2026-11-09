@@ -399,6 +399,14 @@ to the next tier by construction.
   `check-integrity.mjs` re-derives the disclosure from the
   payload and fails the build when the rendered words
   disagree, in either direction.
+  Annotation, 2026-11-09. The phrase "a re-run segment" in
+  this entry described the earlier disclosure's own wording.
+  The current board claims only the chain. Its footer, its
+  explorer text and its Method passage state that a result
+  is chained in its record to an earlier run and that the
+  figures printed are the result's own standing figures,
+  and they say nothing about segments, supersession or the
+  kind of the earlier run.
 - **F4, the footer change claim.** The "What changed" paragraph
   that asserted specific reruns and results is replaced with a
   process line that claims nothing about any population.
