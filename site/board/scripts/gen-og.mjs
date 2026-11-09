@@ -473,7 +473,7 @@ const ceilingDecompClause = (r) => {
   if (r.ranking_eligible || (r.asr_conditional ?? 0) < axisMax) return "";
   const d = flipDecomposition(r);
   if (d === null) return "";
-  return `, genuine flip rate ${fmtPct(d.genuineRate)}, with ${fmtPct(d.malformedShare)} of counted flips to malformed output`;
+  return `, genuine flips ${fmtPct(d.genuineRate)} of its eligible cases, with ${fmtPct(d.malformedShare)} of counted flips to malformed output`;
 };
 
 /* The ladder: every rail result in rate order, worst first.
@@ -739,7 +739,7 @@ function readouts() {
     blocks.push({
       micro: `<span class="tick a"></span>${flaggedLead.offScale ? "Flagged, off the scale" : "Flagged, on the plot"}`,
       num: fmtPct(flaggedLead.row.asr_conditional),
-      who: `${pointName(flaggedLead.row)}, counted attack success. ${fmtPct(d.malformedShare)} of counted flips to malformed output, genuine flip rate ${fmtPct(d.genuineRate)}.`,
+      who: `${pointName(flaggedLead.row)}, counted attack success. ${fmtPct(d.malformedShare)} of counted flips to malformed output, genuine flips ${fmtPct(d.genuineRate)} of its eligible cases.`,
     });
   }
   return blocks;
@@ -789,7 +789,7 @@ const CARD_CSS_BASE = `
   .ro .tick{display:inline-block;width:8px;height:8px;margin-right:8px}
   .ro .tick.g{background:var(--accent)} .ro .tick.a{background:var(--amber)}
   .ro .num{font-family:var(--sans);font-weight:700;color:var(--ink);line-height:1.15}
-  .robar{display:flex;height:9px;border-radius:3px;overflow:hidden;background:var(--panel);margin-top:7px}
+  .robar{display:flex;height:9px;border-radius:999px;overflow:hidden;background:var(--panel);margin-top:7px}
   .robar .seg.genuine{background:#31404f}
   .robar .seg.malformed{background:var(--amber)}
   .ladder{margin-top:auto;border-top:1px solid var(--hair);padding-top:8px}
@@ -879,7 +879,16 @@ function cardHtml(kind) {
    * the fit pass below can also engage it when a card whose
    * ladder takes no slack still measures tall, as a long
    * rail inside the allotment can. A card that fits as
-   * drawn renders exactly as the mock does. */
+   * drawn renders exactly as the mock does. The scatter
+   * column takes the plot's own width as its width, so its
+   * caption wraps inside the plot's column when the fit
+   * pass narrows the plot; a column sized by its widest
+   * child would floor at the caption's one-line width and
+   * cap the width the narrowing can hand the readings,
+   * which is the wall the fit pass once measured against:
+   * the flagged lead's reading held its second line at
+   * every shrink value and the footer stood 8px past the
+   * card with the plot already shrunk to a stamp. */
   const budget = kind === "land" ? ladderLand : ladderPort;
   const tight = budget.slackUsed > 0 || fitTight[kind];
   const g0 = GEOMS[kind];
@@ -919,7 +928,7 @@ ${foot}
 ${mast}
 <h1>${HEADLINE}</h1>
 <div class="middle">
-<div class="scattercol">
+<div class="scattercol" style="width:${svgW}px">
 <div class="micro plotmicro">Attack success, percent, against cost per run in dollars, log scale</div>
 ${plotSvg("land", [], null, svgW)}
 </div>

@@ -853,7 +853,6 @@ function RankView({
             type="button"
             className={`xh fig ${state.sort === key ? "on" : ""}`}
             onClick={() => onSort(key)}
-            tabIndex={-1}
           >
             {label}
             {state.sort === key ? " ↓" : ""}
@@ -1017,6 +1016,65 @@ function ChartView({
   const svgRef = useRef<SVGSVGElement>(null);
   const [width, setWidth] = useState(900);
   const [drag, setDrag] = useState<{ x0: number; y0: number; x1: number; y1: number } | null>(null);
+  /* Set when a dismissal hands focus back to a disc, so the
+   * focus that lands there is not read as a new raising of
+   * the card. The disc's focus handler consumes the flag on
+   * the first focus it explains. The flag is armed only for
+   * the return that will actually move focus; see the
+   * arming guard in dismissChip. */
+  const focusReturnRef = useRef<string | null>(null);
+
+  /* The detail card's dismissal, one path for every route
+   * its contract names. The close control and Escape both
+   * land here. A keyboard dismissal hands focus back to the
+   * disc that raised the card, the element that stands for
+   * the point once the card is gone. A pointer dismissal
+   * leaves focus where it is. */
+  const dismissChip = useCallback(
+    (returnFocus: boolean) => {
+      const id = chipId ?? hoverId;
+      setChipId(null);
+      setHoverId(null);
+      if (returnFocus && id) {
+        const disc = wrapRef.current?.querySelector<HTMLElement>(
+          `[data-disc="${id}"]`,
+        );
+        /* The suppression is armed only when the return will
+         * move focus, which is the one focus event it exists
+         * to explain. When the disc already holds focus (the
+         * reader pressed Escape from the disc itself) no
+         * focus event follows, so nothing is armed and a
+         * later deliberate refocus of the disc raises the
+         * card again. */
+        if (disc && document.activeElement !== disc) {
+          focusReturnRef.current = id;
+          disc.focus();
+        }
+      }
+    },
+    [chipId, hoverId, setChipId, setHoverId],
+  );
+
+  /* Escape dismisses the card while it stands, from
+   * wherever focus sits. Focus returns to the raising disc
+   * only when the key was pressed from the card itself or
+   * from a disc, so a reader working the filter controls is
+   * never carried across the page for dismissing a card
+   * they were not inside. */
+  const cardUp = chipId !== null || hoverId !== null;
+  useEffect(() => {
+    if (!cardUp) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      const active = document.activeElement;
+      const chipEl = wrapRef.current?.querySelector(".chip");
+      const fromCard = chipEl?.contains(active) ?? false;
+      const fromDisc = active?.hasAttribute("data-disc") ?? false;
+      dismissChip(fromCard || fromDisc);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [cardUp, dismissChip]);
 
   useEffect(() => {
     const el = wrapRef.current;
@@ -1143,8 +1201,6 @@ function ChartView({
     : hoverId
       ? points.find((r) => r.runId === hoverId) ?? null
       : null;
-  const chipPinned = chipId !== null;
-
   /* When the reader's selection cannot take the white disc,
    * the chart says so in words, naming the selection and
    * where it stands, rather than silently singling out a
@@ -1198,7 +1254,7 @@ function ChartView({
           ref={svgRef}
           className="chart"
           viewBox={`0 0 ${W} ${H}`}
-          role="img"
+          role="group"
           aria-label="Attack success against the cost of one run"
           onPointerLeave={() => setHoverId(null)}
         >
@@ -1288,14 +1344,48 @@ function ChartView({
               <g
                 key={row.runId}
                 className={`disc${on ? "" : " greyed"}${subject ? " subject" : " field"}${active && !subject ? " active" : ""}`}
+                data-disc={row.runId}
+                tabIndex={0}
+                role="button"
+                aria-label={`Details for ${row.fullName}, attack success ${row.asrText ?? "not measured"}, cost ${row.costText}`}
                 onPointerEnter={() => setHoverId(row.runId)}
                 onPointerDown={(e) => e.stopPropagation()}
                 onClick={() => {
                   setChipId(row.runId);
                   onSelect(row);
                 }}
+                onFocus={() => {
+                  /* Focus raises the identical card the pointer
+                   * raises. A focus the dismissal handed back
+                   * to this disc is not a new raising, so the
+                   * flag is consumed and the card stays down. */
+                  if (focusReturnRef.current === row.runId) {
+                    focusReturnRef.current = null;
+                    return;
+                  }
+                  setHoverId(row.runId);
+                }}
+                onBlur={(e) => {
+                  /* An unpinned card follows focus the way it
+                   * follows the pointer. Leaving the disc for
+                   * anywhere but the card itself puts it down.
+                   * A pinned card stands until it is dismissed. */
+                  if (chipId === row.runId) return;
+                  const next = e.relatedTarget as Node | null;
+                  const chipEl = wrapRef.current?.querySelector(".chip");
+                  if (next && chipEl?.contains(next)) return;
+                  if (hoverId === row.runId) setHoverId(null);
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    setChipId(row.runId);
+                    onSelect(row);
+                  }
+                }}
               >
                 <circle
+                  className="disc-face"
                   cx={cx}
                   cy={cy}
                   r={subject ? 17 : 15}
@@ -1415,15 +1505,19 @@ function ChartView({
               >
                 Open reading
               </button>
-              {chipPinned && (
-                <button
-                  type="button"
-                  className="ghostbtn"
-                  onClick={() => setChipId(null)}
-                >
-                  Dismiss
-                </button>
-              )}
+              {/* The close control stands in the hover state
+               * and the pinned state alike, as the card's
+               * contract states. A keyboard activation of it
+               * (a click with no pointer detail) returns
+               * focus to the raising disc, and a pointer
+               * activation leaves focus alone. */}
+              <button
+                type="button"
+                className="ghostbtn"
+                onClick={(e) => dismissChip(e.detail === 0)}
+              >
+                Dismiss
+              </button>
             </div>
           </div>
         )}
@@ -1463,7 +1557,7 @@ function ChartView({
                       <button
                         key={row.runId}
                         type="button"
-                        className="rail-row"
+                        className={`rail-row${state.sel === row.runId ? " sel" : ""}`}
                         onPointerEnter={() => setHoverId(row.runId)}
                         onClick={() => onSelect(row)}
                       >

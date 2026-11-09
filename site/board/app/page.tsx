@@ -54,11 +54,15 @@ export default function Home() {
   const multi = multiResultModels();
   /* The re-measurement note the Method scene promises at the
    * foot of the page, derived from the payload's own re-run
-   * records. Where a segment of a result was re-measured, the
-   * publish prints the segment's figures in place of the
-   * earlier run's, and the result's reading in the explorer
-   * says it rests on one. The note exists only while the
-   * payload carries re-run records to stand on. */
+   * records. A re-run record proves only that a result stands
+   * chained to an earlier run in its record, on a stated date,
+   * and nothing more, so the note claims exactly that. The
+   * record cannot say whether the chain was a fresh run or a
+   * resume, and the note does not try. The figures printed
+   * are each result's own standing figures, and the result's
+   * reading in the explorer states its chain. The note exists
+   * only while the payload carries re-run records to stand
+   * on. */
   const rerunDates = [
     ...groups.full,
     ...groups.slices,
@@ -71,8 +75,8 @@ export default function Home() {
     rerunDates.length === 0
       ? null
       : rerunDates[0] === rerunDates[rerunDates.length - 1]
-        ? `Re-measurement note. ${fmtInt(rerunDates.length)} results on this board rest on re-run segments recorded on ${dateWords(rerunDates[0])}. This publish prints each segment's figures in place of the earlier run's, and each result's reading says it rests on one.`
-        : `Re-measurement note. ${fmtInt(rerunDates.length)} results on this board rest on re-run segments recorded between ${dateWords(rerunDates[0])} and ${dateWords(rerunDates[rerunDates.length - 1])}. This publish prints each segment's figures in place of the earlier run's, and each result's reading says it rests on one.`;
+        ? `Re-measurement note. ${fmtInt(rerunDates.length)} results on this board are chained to an earlier run in their records, on ${dateWords(rerunDates[0])}. The figures printed are each result's own standing figures, and each result's reading states its chain.`
+        : `Re-measurement note. ${fmtInt(rerunDates.length)} results on this board are chained to an earlier run in their records, between ${dateWords(rerunDates[0])} and ${dateWords(rerunDates[rerunDates.length - 1])}. The figures printed are each result's own standing figures, and each result's reading states its chain.`;
   const total =
     groups.full.length + groups.slices.length + groups.flagged.length;
   const countsLine =
