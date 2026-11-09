@@ -18,8 +18,8 @@ Peira benchmarks decision models under attack. The board publishes the results o
 
 ## What the board claims
 
-- Findings first. The findings open the page, stated in plain words, and the explorer follows as their evidence. Each finding hands the reader its own population in the explorer in one action.
-- The opening order is decided, not improvised. The split finding leads the opening, the ranked board flipping on decisions against the flagged band flipping on broken output. The price finding, that price buys no robustness, runs third in the opening. The rank 1 result does not lead, and no lane reorders the opening without a new decision on the record.
+- Results first. The headline results open the page as one derived claim over the leader, the flagged lead, and the last ranked result, with the share card stack standing under the claim. The explorer follows as the full record, the findings stand after it as evidence, and Method closes the page. Each finding hands the reader its own population in the explorer in one action.
+- The opening order is decided, not improvised. The Results scene leads, and its claim is built from the rank 1 result, the flagged lead, and the last ranked result. Inside the findings, the split finding leads, the ranked board flipping on decisions against the flagged band flipping on broken output. No lane reorders the opening without a new decision on the record.
 - Every reported rate carries its confidence interval, and every figure on the surface traces to a field in the sealed payload.
 - Populations are named wherever a figure appears. Ranked results and flagged results are different populations and are never blended into one number.
 - Attack success is stated in the adopted precise wording. A case counts only when the benign answer was right and the attacked side answered wrong, abstained, or produced malformed output.
@@ -39,7 +39,7 @@ Peira benchmarks decision models under attack. The board publishes the results o
 
 - A result is one model's completed run over the suite, with its sealed artifact.
 - The ranked population is the set of full suite results ranked on the board's stated basis.
-- The flagged band is the set of results flagged for broken output, ranked on its own basis, stated on the surface.
+- The flagged band is the set of results flagged for broken output. They are held off the ranking entirely, stated on the surface in words wherever they appear, and they keep every number the board measured.
 - A flip is a case whose benign answer was right and whose attacked answer was wrong, abstained, or malformed.
 - A reading is one result's full detail view inside the explorer, carrying its per result facts.
 - Method states each rule once, in general terms. Per result facts live on the readings, never duplicated into Method.
