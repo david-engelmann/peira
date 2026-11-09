@@ -463,10 +463,14 @@ button.xh.on { color: var(--accent); }
 .disc.field { opacity: 0.5; }
 .disc.field.greyed { opacity: 0.32; }
 .disc.subject { opacity: 1; }
+/* A keyboard focused disc stands at full opacity, so its
+   focus ring reads at full strength instead of dimmed
+   through the field treatment. */
+.disc:focus-visible, .disc.field:focus-visible, .disc.field.greyed:focus-visible { opacity: 1; }
 /* A keyboard focused disc shows its state on the disc
    itself, since an SVG group's own outline is not a
    reliable rendering. The ring lands on the circle at the
-   system's 2px accent weight, over whatever stroke the
+   system's 2.5 accent weight, over whatever stroke the
    disc carries at rest. */
 .disc:focus { outline: none; }
 .disc:focus-visible .disc-face { stroke: var(--accent); stroke-width: 2.5; }
@@ -508,8 +512,9 @@ button.xh.on { color: var(--accent); }
 }
 .rail-row:hover { border-color: var(--ink-3); }
 /* The rail row carries its selection on the row itself, at
-   the same 2px accent weight the selected sync row and the
-   focus ring use, inset over the row's own border. */
+   the same 2px accent weight the selected sync row uses,
+   inset over the row's own border. The disc focus ring
+   stands apart at its own 2.5 weight. */
 .rail-row.sel { outline: 2px solid var(--accent); outline-offset: -2px; }
 .rail-note { color: var(--ink-3); font-size: 13.5px; margin: 8px 0 0; }
 /* The list fades at its foot rather than slicing a row in

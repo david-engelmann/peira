@@ -1254,7 +1254,7 @@ function ChartView({
           ref={svgRef}
           className="chart"
           viewBox={`0 0 ${W} ${H}`}
-          role="img"
+          role="group"
           aria-label="Attack success against the cost of one run"
           onPointerLeave={() => setHoverId(null)}
         >

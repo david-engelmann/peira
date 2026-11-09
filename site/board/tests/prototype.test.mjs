@@ -809,7 +809,16 @@ test("the footer carries the re-measurement note the method promises", () => {
   const page = read("app/page.tsx");
   assert.ok(page.includes("Re-measurement note."));
   assert.ok(page.includes("r.rerun?.date"));
-  assert.ok(page.includes("in place of the earlier run's"));
+  assert.ok(
+    page.includes("are chained to an earlier run in their records"),
+  );
+  assert.ok(
+    page.includes(
+      "The figures printed are each result's own standing figures",
+    ),
+  );
+  assert.ok(page.includes("each result's reading states its chain"));
+  assert.ok(!page.includes("in place of the earlier run's"));
   const method = read("components/MethodStub.tsx");
   assert.ok(method.includes("recorded in the note at the foot of the page"));
 });
@@ -858,6 +867,13 @@ test("the detail card meets its keyboard contract", () => {
   assert.match(
     css,
     /\.disc:focus-visible \.disc-face \{ stroke: var\(--accent\); stroke-width: 2\.5; \}/,
+  );
+  // The focused disc itself stands at full opacity, so the
+  // ring is not dimmed through the field treatment on the
+  // discs a keyboard user tabs through.
+  assert.match(
+    css,
+    /\.disc:focus-visible, \.disc\.field:focus-visible, \.disc\.field\.greyed:focus-visible \{ opacity: 1; \}/,
   );
 });
 
@@ -966,6 +982,16 @@ test("the tint chip's mark clears its contrast floor for every family", () => {
   assert.match(colors, /export function chipMarkColor/);
   assert.match(colors, /CHIP_MARK_FLOOR = 4\.5/);
   assert.match(colors, /CHIP_MARK_STEP = 0\.05/);
+  // The derivation's panel literal restates the sheet's
+  // panel token, and this pin ties the two together so a
+  // token change cannot drift the derivation and its pin
+  // silently in step.
+  const panelToken = css.match(/--panel: (#[0-9a-f]{6});/);
+  assert.ok(panelToken, "the sheet carries a panel token");
+  assert.ok(
+    colors.includes(`const CHIP_PANEL = "${panelToken[1]}";`),
+    "the chip derivation's panel literal matches the sheet's panel token",
+  );
   const logo = read("components/VendorLogo.tsx");
   assert.ok(logo.includes('"--vm": chipMarkColor(family)'));
   assert.match(css, /\.vendor-chip \{[^}]*color: var\(--vm, var\(--vc/);
@@ -1054,7 +1080,7 @@ test("the share images state both rate bases and the pill track", () => {
   // The fit pass funds a tall card by narrowing the plot
   // and widening the readings column beside it, whose
   // lines unwrap as it widens. That conversion caps out
-  // if the scatter column is sized by its widest child:
+  // if the scatter column is sized by its widest child,
   // the plot's caption floors the column at its one-line
   // width, the flagged lead's reading holds its second
   // line at every shrink value, and the footer stands

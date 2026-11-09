@@ -30,9 +30,9 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
   outline on the sync list and the chart rail alike.
 - The footer note, each result's reading, and the
   Method passage now claim only what the re-run
-  record proves. A result was recorded again after
-  an earlier run, and the publish prints the later
-  recording's figures in place of the earlier run's.
+  record proves. A result stands chained to an
+  earlier run in its record, and the figures printed
+  are each result's own standing figures.
 - DESIGN.md records the cures. The three re-score
   divergences leave the record, and the two sync
   list divergences that still stand are named in
