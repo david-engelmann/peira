@@ -228,7 +228,7 @@ function shapeRow(
     provenanceLine: provParts.join(" · "),
     rerunText:
       row.rerun != null
-        ? `This result rests on a re-run segment recorded on ${row.rerun.date}. Its figures are the segment's own.`
+        ? `This result was recorded again after an earlier run, on ${row.rerun.date}. Its figures are the later recording's own.`
         : null,
     flaggedReason: datum.flaggedReason,
     sliceNote: datum.sliceNote,

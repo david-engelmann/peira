@@ -78,15 +78,6 @@ h3 { font-size: 20px; font-weight: 700; letter-spacing: -0.01em; }
 
 .page { max-width: 1180px; margin: 0 auto; padding: 0 24px 96px; }
 
-.proto-banner {
-  margin: 16px 0 0;
-  border: 1px solid var(--amber);
-  border-radius: var(--radius);
-  padding: 12px 16px;
-  color: var(--amber);
-  font-size: 14.5px;
-  background: rgba(232, 163, 61, 0.07);
-}
 /* The top bar, in the Maidan landing's pattern
    (web/landing/src/styles.css, .top and .top.scrolled).
    Transparent over the first screen, then frosted on scroll
@@ -100,7 +91,7 @@ h3 { font-size: 20px; font-weight: 700; letter-spacing: -0.01em; }
   margin: 0 -24px; padding: 8px 24px;
   background: rgba(5, 7, 10, 0);
   border-bottom: 1px solid transparent;
-  transition: background-color 300ms ease, border-color 300ms ease;
+  transition: background-color var(--dur-enter) ease, border-color var(--dur-enter) ease;
 }
 .masthead.scrolled {
   background: rgba(5, 7, 10, 0.82);
@@ -253,7 +244,7 @@ section[id] { scroll-margin-top: 84px; }
   border-radius: var(--radius-ctl);
   background: color-mix(in srgb, var(--vc, #8b98a5) 16%, transparent);
   border: 1px solid color-mix(in srgb, var(--vc, #8b98a5) 42%, transparent);
-  color: var(--vc, var(--ink));
+  color: var(--vm, var(--vc, var(--ink)));
 }
 .vendor-chip.row { width: 30px; height: 30px; }
 .vendor-chip.card { width: 44px; height: 44px; }
@@ -472,6 +463,13 @@ button.xh.on { color: var(--accent); }
 .disc.field { opacity: 0.5; }
 .disc.field.greyed { opacity: 0.32; }
 .disc.subject { opacity: 1; }
+/* A keyboard focused disc shows its state on the disc
+   itself, since an SVG group's own outline is not a
+   reliable rendering. The ring lands on the circle at the
+   system's 2px accent weight, over whatever stroke the
+   disc carries at rest. */
+.disc:focus { outline: none; }
+.disc:focus-visible .disc-face { stroke: var(--accent); stroke-width: 2.5; }
 .disc-letter.subject-letter { fill: var(--glyph-dark); }
 .subject-name {
   fill: var(--ink); font-family: "Archivo", sans-serif;
@@ -509,6 +507,10 @@ button.xh.on { color: var(--accent); }
   transition: background-color var(--dur-micro) ease, border-color var(--dur-micro) ease;
 }
 .rail-row:hover { border-color: var(--ink-3); }
+/* The rail row carries its selection on the row itself, at
+   the same 2px accent weight the selected sync row and the
+   focus ring use, inset over the row's own border. */
+.rail-row.sel { outline: 2px solid var(--accent); outline-offset: -2px; }
 .rail-note { color: var(--ink-3); font-size: 13.5px; margin: 8px 0 0; }
 /* The list fades at its foot rather than slicing a row in
    half, so the cut reads as more below, and the inner
@@ -527,7 +529,7 @@ button.xh.on { color: var(--accent); }
   transition: background-color var(--dur-micro) ease;
 }
 .sync-row:hover, .sync-row.hot { background: var(--panel-2); }
-.sync-row.sel { outline: 1px solid var(--accent); }
+.sync-row.sel { outline: 2px solid var(--accent); }
 .sync-name { flex: 1; min-width: 0; overflow-wrap: break-word; }
 
 .xfamilies .xfamrow { border: 1px solid var(--line-soft); border-radius: var(--radius); background: var(--panel); padding: 16px; margin: 0 0 8px; transition: border-color var(--dur-micro) ease; }

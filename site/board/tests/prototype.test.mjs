@@ -504,11 +504,55 @@ test("the method costs passage states the harness case", () => {
 });
 
 test("the motion budget holds and reduced motion snaps the bar", () => {
-  const durations = [...css.matchAll(/transition:[^;}]*?(\d+)ms/g)].map((m) =>
-    Number(m[1]),
+  // The repo form of the motion pin, settled at the port.
+  // The motion law in DESIGN.md names the three duration
+  // tokens and their values, and caps every duration on
+  // the board at 280ms. The pin reads the tokens from
+  // :root and resolves every transition declaration in
+  // the sheet against them, so a figure past the cap
+  // fails here wherever it stands, in a token's value or
+  // in a declaration. The literal extraction this pin
+  // replaces read its only figure from the masthead's
+  // hardcoded 300ms and went blind the day the F7 fix
+  // spent the entrance token there.
+  const root = css.slice(
+    css.indexOf(":root"),
+    css.indexOf("}", css.indexOf(":root")),
   );
-  assert.ok(durations.length > 0);
-  assert.ok(Math.max(...durations) <= 520, `longest transition ${Math.max(...durations)}ms`);
+  const tokens = {};
+  for (const m of root.matchAll(/--(dur-[a-z]+):\s*(\d+)ms/g)) {
+    tokens[m[1]] = Number(m[2]);
+  }
+  assert.deepEqual(tokens, {
+    "dur-micro": 120,
+    "dur-state": 200,
+    "dur-enter": 280,
+  });
+  const cap = 280;
+  const declarations = [
+    ...css.matchAll(/transition(?:-duration)?:\s*([^;}]+)/g),
+  ];
+  assert.ok(declarations.length > 0);
+  let resolved = 0;
+  for (const [, decl] of declarations) {
+    for (const m of decl.matchAll(
+      /var\(--(dur-[a-z]+)\)|(\d+(?:\.\d+)?)(ms|s)\b/g,
+    )) {
+      const value = m[1]
+        ? tokens[m[1]]
+        : Number(m[2]) * (m[3] === "s" ? 1000 : 1);
+      assert.ok(
+        value !== undefined,
+        `a transition spends the undefined duration token ${m[0]}`,
+      );
+      resolved += 1;
+      assert.ok(
+        value <= cap,
+        `a transition resolves to ${value}ms, over the ${cap}ms cap`,
+      );
+    }
+  }
+  assert.ok(resolved > 0);
   const reduce = css.slice(css.indexOf("@media (prefers-reduced-motion: reduce)"));
   assert.match(reduce, /\.masthead \{ transition: none; \}/);
   assert.match(reduce, /\.disc \{ transition: none; \}/);
@@ -778,4 +822,324 @@ test("the guards zero segment reads as measured, not missing", () => {
     css,
     /\.anat-slot\.empty \{ border: 1px solid var\(--ink-3\);[^}]*flex: 0 0 148px;/,
   );
+});
+
+test("the detail card meets its keyboard contract", () => {
+  const explorer = read("components/Explorer.tsx");
+  // One dismissal path serves the close control and the
+  // Escape key alike, so neither route can drift from the
+  // other.
+  assert.ok(explorer.includes("const dismissChip = useCallback("));
+  assert.ok(explorer.includes('e.key !== "Escape"'));
+  assert.ok(explorer.includes("dismissChip(fromCard || fromDisc)"));
+  // The close control stands in the hover state and the
+  // pinned state alike, never behind the pinned state
+  // alone.
+  assert.ok(!explorer.includes("{chipPinned && ("));
+  const actions = explorer.slice(
+    explorer.indexOf('className="chip-actions"'),
+    explorer.indexOf('className="rail"'),
+  );
+  assert.ok(actions.includes("Dismiss"));
+  assert.ok(actions.includes("dismissChip(e.detail === 0)"));
+  // Keyboard focus raises the identical card. Every disc is
+  // a focusable button standing in the tab order, focus
+  // raises its card the way the pointer does, and Enter or
+  // Space pins it the way a click does.
+  assert.ok(explorer.includes("data-disc={row.runId}"));
+  assert.ok(explorer.includes("tabIndex={0}"));
+  assert.ok(explorer.includes('role="button"'));
+  assert.ok(explorer.includes("focusReturnRef"));
+  assert.ok(explorer.includes('e.key === "Enter" || e.key === " "'));
+  // A keyboard dismissal hands focus back to the disc that
+  // raised the card, and the focus ring reads on the disc
+  // itself at the system's accent weight.
+  assert.ok(explorer.includes('[data-disc="${id}"]'));
+  assert.match(
+    css,
+    /\.disc:focus-visible \.disc-face \{ stroke: var\(--accent\); stroke-width: 2\.5; \}/,
+  );
+});
+
+test("the rank sort buttons stand in the tab order", () => {
+  const explorer = read("components/Explorer.tsx");
+  // No control on the board carries the negative tab index
+  // that once kept the sort heads out of the tab order. The
+  // native Sort select stands beside them, not instead of
+  // them, and the heads keep their sort wiring.
+  assert.ok(!explorer.includes("tabIndex={-1}"));
+  const head = explorer.slice(
+    explorer.indexOf("className={`xh fig"),
+    explorer.indexOf('className="xh pin"'),
+  );
+  assert.ok(head.includes("onClick={() => onSort(key)}"));
+});
+
+test("selected rows carry the outline at the system's weight", () => {
+  // The focus ring stands at 2px in the accent. A selected
+  // row reads at the same weight, on the sync list and on
+  // the chart rail alike, where the rail once carried no
+  // selected state of its own.
+  assert.match(css, /:focus-visible \{ outline: 2px solid var\(--accent\);/);
+  assert.match(css, /\.sync-row\.sel \{ outline: 2px solid var\(--accent\); \}/);
+  assert.match(
+    css,
+    /\.rail-row\.sel \{ outline: 2px solid var\(--accent\); outline-offset: -2px; \}/,
+  );
+  const explorer = read("components/Explorer.tsx");
+  assert.ok(
+    explorer.includes('rail-row${state.sel === row.runId ? " sel" : ""}'),
+  );
+});
+
+test("the tint chip's mark clears its contrast floor for every family", () => {
+  // Recomputed from lib/vendor-data.json with no shared
+  // code. The chip's ground is the family color at a 16
+  // percent color-mix over the panel. Its mark is the
+  // family color lightened toward white by the smallest
+  // five percent step that clears the Typography floor,
+  // 4.5 to 1, which DESIGN.md binds on the chip's mark
+  // without splitting by kind. A family color re-sampled
+  // in the table fails here until its derived mark clears
+  // again, and a step larger than the smallest clearing
+  // step fails the minimality check below.
+  const data = JSON.parse(read("lib/vendor-data.json"));
+  const panel = [0x0c, 0x10, 0x15];
+  const rgb = (hex) => {
+    const n = hex.replace("#", "");
+    return [0, 2, 4].map((i) => parseInt(n.slice(i, i + 2), 16));
+  };
+  const linear = (v) => {
+    const s = v / 255;
+    return s <= 0.04045 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4);
+  };
+  const lum = ([r, g, b]) =>
+    0.2126 * linear(r) + 0.7152 * linear(g) + 0.0722 * linear(b);
+  const ratio = (a, b) => {
+    const la = lum(a);
+    const lb = lum(b);
+    return (Math.max(la, lb) + 0.05) / (Math.min(la, lb) + 0.05);
+  };
+  const mix = (a, b, t) => a.map((v, i) => t * v + (1 - t) * b[i]);
+  const markAt = (base, step) =>
+    mix([255, 255, 255], base, step).map((v) => Math.round(v));
+  for (const fam of [...data.families, data.fallback]) {
+    const base = rgb(fam.color);
+    const ground = mix(base, panel, 0.16);
+    const floor = 4.5;
+    let step = 0;
+    let value = ratio(markAt(base, step), ground);
+    while (value < floor && step < 1) {
+      step += 0.05;
+      value = ratio(markAt(base, step), ground);
+    }
+    assert.ok(
+      value >= floor,
+      `${fam.key} chip mark computes ${value.toFixed(2)} to 1 on its tint, under its ${floor} floor`,
+    );
+    if (step > 0) {
+      const under = ratio(markAt(base, step - 0.05), ground);
+      assert.ok(
+        under < floor,
+        `${fam.key} chip mark step is not the smallest that clears its floor`,
+      );
+    }
+  }
+  // The recorded defect anchors the recomputation. In the
+  // family color itself protectai's mark computed 2.34 to
+  // 1 on its tint, the worst of the five families the
+  // record names under the floor, and the derivation
+  // moves it six steps and no more.
+  const protectai = data.families.find((f) => f.key === "protectai");
+  const pBase = rgb(protectai.color);
+  const pGround = mix(pBase, panel, 0.16);
+  const pBefore = ratio(pBase, pGround);
+  assert.ok(
+    Math.abs(pBefore - 2.34) < 0.01,
+    `protectai mark on its tint recomputes at ${pBefore.toFixed(2)}, not the recorded 2.34`,
+  );
+  assert.ok(ratio(markAt(pBase, 0.25), pGround) < 4.5);
+  assert.ok(ratio(markAt(pBase, 0.3), pGround) >= 4.5);
+  // The shipped code carries the same derivation, and the
+  // chip draws its mark in the derived color.
+  const colors = read("lib/vendorColors.ts");
+  assert.match(colors, /export function chipMarkColor/);
+  assert.match(colors, /CHIP_MARK_FLOOR = 4\.5/);
+  assert.match(colors, /CHIP_MARK_STEP = 0\.05/);
+  const logo = read("components/VendorLogo.tsx");
+  assert.ok(logo.includes('"--vm": chipMarkColor(family)'));
+  assert.match(css, /\.vendor-chip \{[^}]*color: var\(--vm, var\(--vc/);
+});
+
+test("the brand mark carries the system's radius and ink in both files", () => {
+  // The mark's field rect takes the panel radius from the
+  // ladder, and its bars take ink 1. The pre-convergence
+  // ink value and the off-ladder radius stand in neither
+  // the top bar nor the favicon file.
+  for (const rel of ["components/TopBar.tsx", "app/icon.svg"]) {
+    const src = read(rel);
+    assert.ok(src.includes('rx="10"'), `${rel} mark field is not at radius 10`);
+    assert.ok(!src.includes('rx="12"'), `${rel} still carries radius 12`);
+    assert.ok(src.includes("#EEF2F6"), `${rel} bars are not in ink 1`);
+    assert.ok(!src.includes("#E9EEF3"), `${rel} still carries the stale ink`);
+  }
+});
+
+test("the masthead frost runs at the entrance duration, inside the cap", () => {
+  // The motion law caps every duration at 280ms. The
+  // masthead transition spends the entrance token rather
+  // than a hardcoded figure past the cap, and the top
+  // bar's own comment states the same figure the sheet
+  // runs.
+  assert.ok(
+    css.includes(
+      "transition: background-color var(--dur-enter) ease, border-color var(--dur-enter) ease;",
+    ),
+  );
+  assert.ok(!css.includes("300ms"));
+  const topbar = read("components/TopBar.tsx");
+  assert.ok(!topbar.includes("300ms"));
+  assert.ok(topbar.includes("--dur-enter, 280ms"));
+});
+
+test("a dismissal arms its focus suppression only for the return it makes", () => {
+  // The owner's keyboard walk found the leak. Escape
+  // pressed from a disc itself dismisses the card while
+  // focus already sits on that disc, so no focus event
+  // follows to consume the suppression flag, and the flag
+  // then ate the next deliberate refocus of the same disc.
+  // The arming now stands behind the guard that the return
+  // will actually move focus.
+  const explorer = read("components/Explorer.tsx");
+  const dismiss = explorer.slice(
+    explorer.indexOf("const dismissChip = useCallback("),
+    explorer.indexOf("/* Escape dismisses"),
+  );
+  assert.ok(dismiss.includes("document.activeElement !== disc"));
+  assert.ok(
+    dismiss.indexOf("document.activeElement !== disc") <
+      dismiss.indexOf("focusReturnRef.current = id"),
+    "the suppression is armed before the guard that scopes it",
+  );
+  assert.ok(dismiss.includes("disc.focus()"));
+  // The focus handler still consumes an armed flag, which
+  // is what keeps the genuine return from re-raising.
+  assert.ok(explorer.includes("focusReturnRef.current = null"));
+});
+
+test("the share images state both rate bases and the pill track", () => {
+  // F6 of the coherence re-score. The generator composes
+  // the flagged lead's decomposition in two places, the
+  // ceiling clause in the words under the plot and the
+  // flagged reading in the stack. Both state the genuine
+  // share against its eligible cases and the malformed
+  // share against counted flips, the board's basis
+  // discipline, and neither composes the basis-less
+  // wording. The split bar track takes the pill radius
+  // the board's own plain track carries, so the share
+  // image reads as the same bar.
+  const gen = read("scripts/gen-og.mjs");
+  assert.ok(!gen.includes("genuine flip rate"));
+  assert.ok(
+    gen.includes(
+      "genuine flips ${fmtPct(d.genuineRate)} of its eligible cases, with ${fmtPct(d.malformedShare)} of counted flips to malformed output",
+    ),
+  );
+  assert.ok(
+    gen.includes(
+      "genuine flips ${fmtPct(d.genuineRate)} of its eligible cases.",
+    ),
+  );
+  assert.ok(gen.includes(".robar{display:flex;height:9px;border-radius:999px;"));
+  // The fit pass funds a tall card by narrowing the plot
+  // and widening the readings column beside it, whose
+  // lines unwrap as it widens. That conversion caps out
+  // if the scatter column is sized by its widest child:
+  // the plot's caption floors the column at its one-line
+  // width, the flagged lead's reading holds its second
+  // line at every shrink value, and the footer stands
+  // past the card. The column therefore takes the plot's
+  // own computed width, so the caption wraps inside the
+  // plot's column and the conversion runs its full range.
+  assert.ok(
+    gen.includes('<div class="scattercol" style="width:${svgW}px">'),
+  );
+});
+
+test("the token hygiene the re-score named stands as audited", () => {
+  // The repo form of the F9 pin, settled at the port. The
+  // census runs over this tree's own sources. Every
+  // custom property the sheet defines either carries a
+  // consumer in the board's code or stands on the record
+  // in DESIGN.md, and the two that stand on the record
+  // are named here, so a third token standing silent
+  // fails. The easing token's only consumer anywhere is
+  // the prototype tree's Flip swap rule, which this tree
+  // does not carry. It stands because Data & Motion
+  // legislates the curve it names. The middle shadow
+  // stands because Elevation legislates the ladder of
+  // three shadows. The banner rule the prototype keeps
+  // for its own page is dead in this tree, where no page
+  // renders the banner, and F9's scoping deletes it from
+  // this sheet outright.
+  const root = css.slice(
+    css.indexOf(":root"),
+    css.indexOf("}", css.indexOf(":root")),
+  );
+  const defined = [...root.matchAll(/(--[a-z0-9-]+)\s*:/g)].map(
+    (m) => m[1],
+  );
+  const audited = [
+    "--ground", "--panel", "--panel-2", "--lift", "--line",
+    "--line-soft", "--edge", "--ink", "--ink-2", "--ink-3",
+    "--accent", "--amber", "--glyph-dark", "--seg-genuine",
+    "--radius", "--radius-ctl", "--shadow-1", "--shadow-2",
+    "--shadow-3", "--dur-micro", "--dur-state", "--dur-enter",
+    "--ease-out",
+  ];
+  assert.deepEqual(
+    [...defined].sort(),
+    [...audited].sort(),
+    "the sheet's token set is not the audited census of 23",
+  );
+  const parts = [];
+  const walk = (dir) => {
+    for (const entry of readdirSync(join(here, "..", dir), {
+      withFileTypes: true,
+    })) {
+      const rel = `${dir}/${entry.name}`;
+      if (entry.isDirectory()) walk(rel);
+      else if (/\.(ts|tsx|css)$/.test(entry.name)) parts.push(read(rel));
+    }
+  };
+  for (const dir of ["app", "components", "lib"]) walk(dir);
+  const corpus = parts.join("\n");
+  const recordKept = new Set(["--shadow-2", "--ease-out"]);
+  for (const token of defined) {
+    const uses = corpus.split(`var(${token})`).length - 1;
+    if (recordKept.has(token)) continue;
+    assert.ok(
+      uses > 0,
+      `${token} is defined in :root and consumed nowhere in this tree`,
+    );
+  }
+  // The two record-kept tokens carry their law in
+  // DESIGN.md and their values in the sheet, and the pin
+  // fails if either side of that standing is removed.
+  const design = read("DESIGN.md");
+  assert.ok(design.includes("plus its three shadows"));
+  assert.ok(
+    css.includes(
+      "--shadow-2: 0 2px 6px rgba(0, 0, 0, 0.4), 0 14px 34px rgba(0, 0, 0, 0.3);",
+    ),
+  );
+  assert.ok(design.includes("cubic-bezier(0.23, 1, 0.32, 1)"));
+  assert.ok(css.includes("--ease-out: cubic-bezier(0.23, 1, 0.32, 1);"));
+  // The dead banner rule is gone from this sheet, and no
+  // page in this tree renders the banner it styled.
+  assert.ok(!css.includes(".proto-banner"));
+  assert.ok(!read("app/page.tsx").includes("proto-banner"));
+  // The struck tokens stay struck.
+  assert.ok(!css.includes("--accent-bright"));
+  assert.ok(!/--red\s*:/.test(css));
 });

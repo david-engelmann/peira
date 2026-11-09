@@ -7,6 +7,37 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
 
 ## [Unreleased]
 
+### Re-score fixes ported from production
+
+- The detail card meets its keyboard contract. Every
+  disc is a focusable button, focus raises the card,
+  one dismissal path serves every route, and a
+  keyboard dismissal returns focus to the disc that
+  raised the card.
+- The tint chip's mark is derived from the family
+  color, lightened toward white by the smallest five
+  percent step that clears the 4.5 to 1 floor on its
+  tint. Every family now clears the floor with no per
+  family exception.
+- The brand mark carries the panel radius and ink 1
+  in the top bar and the favicon alike, and the
+  masthead frost runs at the entrance duration,
+  inside the motion cap.
+- The share image generator states both rate bases
+  in its wording, takes the pill radius on its split
+  bar track, and fits its card by the plot's own
+  width. Selected rows carry the system's 2px
+  outline on the sync list and the chart rail alike.
+- The footer note, each result's reading, and the
+  Method passage now claim only what the re-run
+  record proves. A result was recorded again after
+  an earlier run, and the publish prints the later
+  recording's figures in place of the earlier run's.
+- DESIGN.md records the cures. The three re-score
+  divergences leave the record, and the two sync
+  list divergences that still stand are named in
+  their places.
+
 ### Board craft repairs ported from production
 
 - The explorer chart seats its subject on the selection

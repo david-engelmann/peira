@@ -4,10 +4,10 @@ import { familyOrder, familyFullName } from "@/lib/charts";
 
 /**
  * Method in its diet form. The general rules stand here once.
- * Facts about one result, which results rest on re-run segments
- * and which carry a case a call never answered, live on that
- * result's reading in the explorer rather than in board wide
- * lists here.
+ * Facts about one result, which results were recorded again
+ * after an earlier run and which carry a case a call never
+ * answered, live on that result's reading in the explorer
+ * rather than in board wide lists here.
  */
 
 export default function MethodStub() {
@@ -98,12 +98,12 @@ export default function MethodStub() {
         figure on this board is always a recorded price.
       </p>
 
-      <h3 className="method-head">Re-run segments</h3>
+      <h3 className="method-head">Recorded again</h3>
       <p className="method-p">
-        A re-run segment chains to an earlier run of the same
-        measurement, and the figures on this board are the segment's
-        own. Which results rest on one is stated on each result's
-        reading.
+        A result recorded again chains to its earlier run in its
+        record, and the figures on this board are the later
+        recording's own. Which results were recorded again is
+        stated on each result's reading.
       </p>
 
       <h3 className="method-head">Calls that produced no answer</h3>
