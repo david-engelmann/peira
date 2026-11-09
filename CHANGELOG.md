@@ -7,6 +7,25 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
 
 ## [Unreleased]
 
+### Board craft repairs ported from production
+
+- The explorer chart seats its subject on the selection
+  and names where an unplotted selection stands. Its
+  frame derives from the plotted population and its last
+  cost label renders whole.
+- Ranked rows print their interval figures beside the
+  whisker on a fitted axis. The rank header holds while
+  the table scrolls and readings state the bases behind
+  their figures.
+- Families print full names against a labeled scale and
+  name unmeasured families in words.
+- The findings draw both wire intervals on one fitted
+  window, share one split bar height, and stand the
+  undecided case as a figure against the suite total.
+- The footer carries the re-measurement note the Method
+  scene promises, derived from the payload's re-run
+  records.
+
 ### Board design record rewritten to the shipped board
 
 - DESIGN.md now states the board as shipped. The opening
