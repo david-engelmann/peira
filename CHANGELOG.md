@@ -7,6 +7,23 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
 
 ## [Unreleased]
 
+### Board source replaced with the shipped board
+
+- The board source at `site/board` is now the board that
+  ships at peiratrial.dev, the numbered scenes design in
+  the Maidan landing's language with the results first,
+  replacing the findings first design and its gate chain.
+- The committed payload is the corrected sealed payload,
+  52 results over 51 models with the grok reseal and the
+  mercury decomposition, replacing the earlier committed
+  payload through the standing publish mechanism.
+- The board suite is the shipped board's own suite. The
+  retired design's render law, census, integrity, and
+  budget checks leave with the design they policed.
+- A harness result's cost prints as its plan basis in
+  words, never as a dollar figure, and the Method costs
+  passage states the harness case.
+
 ### Board converged to its design law
 
 - The stylesheet takes the motion token layer from the

@@ -30,7 +30,7 @@ import {
 import { fmtCi, fmtEce, fmtMs, fmtPct, fmtTax, fmtUsd } from "@/lib/format";
 import { familiesOf, familyFullName, familyOrder } from "@/lib/charts";
 import { axisPct } from "@/lib/chart";
-import { costStateOf } from "@/lib/cards";
+import { costStateOf, type CostState } from "@/lib/cards";
 import { vendorOf } from "@/lib/vendor";
 import { vendorFamilyOf } from "@/lib/vendorColors";
 
@@ -68,13 +68,6 @@ export interface InspectorDatum {
    * sealed records derive no decomposition (C-5 suppression).
    */
   asr: number | null;
-  /**
-   * True when this row is a flagged result whose counted rate
-   * stands suppressed because its records derive no
-   * decomposition. Carriers print the suppression marker where
-   * the rate would stand, never a bare figure or a blank.
-   */
-  suppressed: boolean;
   asrText: string | null;
   /** The figure's label: counted, for a flagged result. */
   asrLabel: string;
@@ -100,6 +93,8 @@ export interface InspectorDatum {
   /** The cost figure and its state words, from lib/cards' cost state. */
   costText: string;
   costSub: string | null;
+  /** The cost state kind, so grouped surfaces keep the states apart. */
+  costKind: CostState["kind"];
   /** The flagged reason, with the decomposition clauses (C-5). */
   flaggedReason: string | null;
   /** The decomposition clauses alone, for carriers that state them apart. */
@@ -127,6 +122,22 @@ export interface InspectorDatum {
  * than at a render site. */
 const WIRE_CLAUSE: Record<string, string> = {
   "cursor-harness": "measured through the Cursor agent harness",
+};
+
+/* The short cost label for a harness run names the plan the
+ * run drew on, and the long gloss states the billing fact in
+ * full. A harness run is not chargeless. Its cost is billed
+ * through the plan that carries the harness, so the board
+ * prints the plan basis and never a figure for it. Keyed by
+ * the recorded wire, beside the clause, so a new harness
+ * wire earns both here rather than at a render site. */
+const HARNESS_PLAN_LABEL: Record<string, string> = {
+  "cursor-harness": "Cursor plan",
+};
+
+const HARNESS_COST_SUB: Record<string, string> = {
+  "cursor-harness":
+    "Measured through the Cursor agent harness. The run drew on a paid Cursor plan, so the cost is real and not metered per run.",
 };
 
 export function markOf(row: BoardRow): InspectorMark {
@@ -171,28 +182,35 @@ export function inspectorDatum(
     Math.abs(row.benign_accuracy - benchmarks.benignValue) < 1e-12 &&
     benchmarks.benignSetter === name;
   const cost = costStateOf(row);
+  /* A cost prints as a dollar figure only when it is a price.
+   * A recorded zero is never one on this board. A harness run
+   * prints the plan it drew on, a local run prints that it
+   * carries no API cost, and an unrecorded cost prints as
+   * unrecorded. No surface downstream of this derivation can
+   * turn any of the three back into $0.00. */
   const costText =
     cost.kind === "amount"
       ? fmtUsd(cost.value)
       : cost.kind === "lower-bound"
         ? `≥ ${fmtUsd(cost.value)}`
-        : cost.kind === "local"
-          ? fmtUsd(0)
-          : "·";
-  /* A recorded zero is a run with no per-call API charge.
-   * Its gloss follows the wire. A run measured through an
-   * agent harness records zero because the harness's seat
-   * carries no per-run charge, not because anything was
-   * served locally, and the gloss must not claim it was. */
+        : cost.kind === "harness"
+          ? (HARNESS_PLAN_LABEL[row.wire] ?? "Harness plan")
+          : cost.kind === "local"
+            ? "No API cost"
+            : "No cost recorded";
+  /* The harness gloss is the full sentence, stated once here
+   * so the reading and every detail surface carry the same
+   * words. It is keyed by the run's recorded wire, so the
+   * harness and the plan named are the ones the payload
+   * records for the run. */
   const costSub =
     cost.kind === "lower-bound"
       ? "a lower bound, some calls went unpriced"
-      : cost.kind === "local"
-        ? clause
-          ? `no per-run API charge, ${clause}`
-          : "served locally, no API cost"
-        : cost.kind === "unrecorded"
-          ? "no cost recorded"
+      : cost.kind === "harness"
+        ? (HARNESS_COST_SUB[row.wire] ??
+          "Measured through an agent harness on a paid plan. The cost is real and not metered per run.")
+        : cost.kind === "local"
+          ? "served locally, no API cost"
           : null;
   /* The weakest family, from the run's own family records.
    * A flagged result's family figures travel with their own
@@ -230,7 +248,6 @@ export function inspectorDatum(
     mark,
     subLine,
     asr,
-    suppressed,
     asrText: asr !== null ? fmtPct(asr) : null,
     asrLabel:
       kind === "flagged" ? "Counted attack success" : "Attack success",
@@ -271,17 +288,18 @@ export function inspectorDatum(
         : null,
     costText,
     costSub,
+    costKind: cost.kind,
     flaggedReason:
       kind === "flagged" && row.malformed_rate != null
         ? `Its malformed response rate of ${fmtPct(row.malformed_rate)} is over the 5 percent admission limit, so it keeps every number and is not ranked.${
             decomp !== null
-              ? ` Genuine flip rate ${fmtPct(decomp.genuineRate)}, with ${fmtPct(decomp.malformedShare)} of counted flips to malformed output.`
+              ? ` Its genuine flips are ${fmtPct(decomp.genuineRate)} of its eligible cases, and ${fmtPct(decomp.malformedShare)} of its counted flips are to malformed output.`
               : ""
           }`
         : null,
     decompText:
       kind === "flagged" && decomp !== null
-        ? `genuine flip rate ${fmtPct(decomp.genuineRate)}, with ${fmtPct(decomp.malformedShare)} of counted flips to malformed output`
+        ? `genuine flips ${fmtPct(decomp.genuineRate)} of eligible cases, with ${fmtPct(decomp.malformedShare)} of counted flips to malformed output`
         : null,
     sliceNote:
       kind === "slice"

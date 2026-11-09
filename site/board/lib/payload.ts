@@ -35,7 +35,7 @@ function decimalString(value: number): string {
 }
 
 /** A payload count as an exact integer, or null (the _count rule). */
-export function countOf(x: unknown): number | null {
+function countOf(x: unknown): number | null {
   if (typeof x !== "number" || !Number.isInteger(x) || x < 0) return null;
   return x;
 }
@@ -60,7 +60,7 @@ function wilson(hits: number, n: number): [number, number] {
  * Shared by displayCi and flipDecomposition; each caller keeps
  * its own failure semantics for an empty or unusable list.
  */
-export function familyRecords(row: BoardRow): Record<string, unknown>[] {
+function familyRecords(row: BoardRow): Record<string, unknown>[] {
   const detail =
     row.detail !== null && typeof row.detail === "object"
       ? (row.detail as Record<string, unknown>)
@@ -449,6 +449,26 @@ export function wireWords(wire: string): string {
 }
 
 /**
+ * Adapters that measure a model through an agent harness on a
+ * paid plan rather than through a priced API. A harness run's
+ * cost is real, billed through the plan that carries the
+ * harness, and not metered per run. That is a different fact
+ * from a run served locally at no API cost, and from a run a
+ * provider priced at zero, and the cost surfaces keep the
+ * three apart. Keyed by the payload's recorded adapter name,
+ * so a future harness adapter earns its place here rather
+ * than at a render site.
+ */
+export const HARNESS_ADAPTERS: ReadonlySet<string> = new Set([
+  "cursor-harness",
+]);
+
+/** Whether the run was measured through an agent harness. */
+export function isHarnessRow(row: BoardRow): boolean {
+  return HARNESS_ADAPTERS.has(row.adapter_name);
+}
+
+/**
  * The stable address slug for a result's own page. The short
  * name, slugified, with the wire appended when another result
  * shares the short name, so gpt-6-luna's two wires get two
@@ -631,60 +651,25 @@ export interface BoardGroups {
 }
 
 /**
- * The tie value for dense ranking. Withheld or corrupt attack
- * success is not a measurement and never ties, the same rule
- * the payload builder's rank follows.
- */
-export function measuredAsr(row: BoardRow): number | null {
-  const v = row.asr_conditional;
-  return typeof v === "number" && Number.isFinite(v) ? v : null;
-}
-
-/**
- * Dense ranks over rows standing in rank order. Rows tied on
- * measured attack success share a rank, and the next distinct
- * value takes the following rank. A row with no measured value
- * takes its own rank and breaks the tie chain behind it, so a
- * later row at an earlier value never reaches back across it.
- * This is the payload builder's rule, restated for the groups
- * the board prints.
- */
-export function denseRanks(rows: BoardRow[]): number[] {
-  let counter = 0;
-  let previous: { asr: number; rank: number } | null = null;
-  return rows.map((row) => {
-    const asr = measuredAsr(row);
-    if (asr !== null && previous !== null && previous.asr === asr) {
-      return previous.rank;
-    }
-    counter += 1;
-    previous = asr === null ? null : { asr, rank: counter };
-    return counter;
-  });
-}
-
-/**
  * The ranking groups of the design system, section 4.1. The
  * ranked array splits on its case base into the full suite group
  * and the abstain slice group, each keeping payload rank order.
- * Ranks are dense within each group (under the admission rules,
- * ranks are dense within each division). A dense rank counts distinct
- * measured values, so rows tied on a value share one rank and a
- * group's highest rank is its number of distinct measured
- * values, not its number of rows. Flagged rows carry no rank and
- * order by attack success. Tie bands are computed inside each
- * ranked group, because a band cannot be drawn across the flagged
- * strip that separates the groups.
+ * Ranks are dense within each group: the full suite group runs
+ * 1..N and the slice group 1..M (admission rules: ranks are dense
+ * within each division). Flagged rows carry no rank and order
+ * by attack success. Tie bands are computed inside each ranked
+ * group, because a band cannot be drawn across the flagged strip
+ * that separates the groups.
  */
 export function boardGroups(): BoardGroups {
   const ranked = rankedRows();
   const fullCases = fullCaseCount(ranked);
-  const fullRaw = ranked.filter((r) => r.n_cases === fullCases);
-  const sliceRaw = ranked.filter((r) => r.n_cases < fullCases);
-  const fullRanks = denseRanks(fullRaw);
-  const sliceRanks = denseRanks(sliceRaw);
-  const full = fullRaw.map((r, i) => ({ ...r, rank: fullRanks[i] }));
-  const slices = sliceRaw.map((r, i) => ({ ...r, rank: sliceRanks[i] }));
+  const full = ranked
+    .filter((r) => r.n_cases === fullCases)
+    .map((r, i) => ({ ...r, rank: i + 1 }));
+  const slices = ranked
+    .filter((r) => r.n_cases < fullCases)
+    .map((r, i) => ({ ...r, rank: i + 1 }));
   const flagged = [...payload.unranked].sort(
     (a, b) => (a.asr_conditional ?? 0) - (b.asr_conditional ?? 0),
   );
