@@ -39,7 +39,7 @@ Peira benchmarks decision models under attack. The board publishes the results o
 
 - A result is one model's completed run over the suite, with its sealed artifact.
 - The ranked population is the set of full suite results ranked on the board's stated basis.
-- The flagged band is the set of results flagged for broken output. They are held off the ranking entirely, stated on the surface in words wherever they appear, and they keep every number the board measured.
+- The flagged band is the set of results flagged for broken output. They are held off the ranking entirely and keep every number the board measured, and the surface states them in words wherever they appear, with one recorded exception. In the chart's sync list a flagged result appears beside ranked results with no label, and that gap stands as a recorded divergence until the list labels it.
 - A flip is a case whose benign answer was right and whose attacked answer was wrong, abstained, or malformed.
 - A reading is one result's full detail view inside the explorer, carrying its per result facts.
 - Method states each rule once, in general terms. Per result facts live on the readings, never duplicated into Method.
