@@ -269,7 +269,7 @@ test("the rank grid gives every header and the pin their own columns", () => {
   );
   assert.match(
     css,
-    /\.xhead, \.xrow-head \{\s*display: grid;\s*grid-template-columns: 40px 30px minmax\(132px, 1\.25fr\) minmax\(76px, 1fr\) 140px 74px 104px 116px 124px 68px;/,
+    /\.xhead, \.xrow-head \{\s*display: grid;\s*grid-template-columns: 40px 30px minmax\(132px, 1\.25fr\) minmax\(76px, 1fr\) 128px 70px 96px 116px 150px 68px;/,
   );
   // The sort buttons take the header size from the .xh rule.
   // A font shorthand on the button once reset them to body
@@ -337,7 +337,7 @@ test("the explorer mercury surfaces state the genuine basis", () => {
   );
   assert.ok(
     explorer.includes(
-      "genuine flips ${fmtPct(d.genuineRate)} of eligible cases",
+      "genuine flips ${fmtPct(d.genuineRate)} of ${fmtInt(row.nEligible)} eligible cases",
     ),
   );
   assert.ok(
@@ -512,4 +512,270 @@ test("the motion budget holds and reduced motion snaps the bar", () => {
   const reduce = css.slice(css.indexOf("@media (prefers-reduced-motion: reduce)"));
   assert.match(reduce, /\.masthead \{ transition: none; \}/);
   assert.match(reduce, /\.disc \{ transition: none; \}/);
+});
+
+test("the chart ceiling derives from the results that seat on the plot", () => {
+  // The frame is set by the highest rate among the ranked
+  // results that stand as points, a recorded cost above
+  // zero, rounded up to the next five percent step. The
+  // ranked range's own top (von, no recorded price) stands
+  // in the rail and never enters the derivation, the
+  // flagged range never enters it either, and mercury
+  // stands past the ceiling it derives.
+  const seated = full.filter(
+    (r) => r.total_cost_usd !== null && r.total_cost_usd > 0,
+  );
+  const plottedMax = Math.max(...seated.map((r) => r.asr_conditional));
+  const ceiling = Math.max(
+    0.1,
+    Math.round(Math.ceil((plottedMax - 1e-9) / 0.05) * 5) / 100,
+  );
+  assert.equal(ceiling, 0.3);
+  const rankedMax = Math.max(...full.map((r) => r.asr_conditional));
+  assert.ok(rankedMax > ceiling);
+  assert.ok(plottedMax < rankedMax);
+  const mercury = flagged.reduce((a, b) =>
+    a.asr_conditional > b.asr_conditional ? a : b,
+  );
+  assert.ok(mercury.asr_conditional > ceiling);
+  // Seating agreement. Every point the chart seats, of any
+  // population, sits inside the frame but for mercury,
+  // which the off-scale note carries.
+  const seatedAny = [...full, ...slices, ...flagged].filter(
+    (r) =>
+      r.total_cost_usd !== null &&
+      r.total_cost_usd > 0 &&
+      r.run_id !== mercury.run_id,
+  );
+  assert.ok(
+    Math.max(...seatedAny.map((r) => r.asr_conditional)) <= ceiling,
+  );
+  const explorer = read("components/Explorer.tsx");
+  assert.ok(explorer.includes("plottedCeiling"));
+  assert.ok(explorer.includes("r.costValue !== null && r.costValue > 0"));
+  assert.ok(explorer.includes("/ 0.05"));
+  assert.ok(!explorer.includes("data.axisMax"));
+});
+
+test("the chart names the selection when the disc is not theirs", () => {
+  const explorer = read("components/Explorer.tsx");
+  // A selection the plot cannot carry still gets named,
+  // with where it stands, beside the disc that stands in.
+  assert.ok(explorer.includes("chart-selstand"));
+  assert.ok(explorer.includes("The white disc singles out"));
+  assert.ok(
+    explorer.includes(
+      "was measured through a harness and stands in the rail below",
+    ),
+  );
+  assert.ok(
+    explorer.includes("has no recorded cost and stands in the rail below"),
+  );
+  assert.ok(
+    explorer.includes(
+      "is a guard result, and guard results read in the rank and families modes",
+    ),
+  );
+  assert.ok(explorer.includes("is hidden by the current filters"));
+  assert.match(css, /\.chart-selstand \{/);
+});
+
+test("the plot pads its right edge and the discs read at floor size", () => {
+  const explorer = read("components/Explorer.tsx");
+  assert.ok(explorer.includes("const padR = 30;"));
+  // The field disc floor and the ground separation stroke,
+  // with the subject still the one large white disc and the
+  // field dim untouched.
+  assert.ok(explorer.includes("r={subject ? 17 : 15}"));
+  assert.ok(explorer.includes('"#4a5763"'));
+  assert.ok(explorer.includes('"#05070a"'));
+  assert.match(css, /\.disc-letter \{ fill: #f4f7fa; font-size: 11\.5px;/);
+  assert.match(css, /\.disc\.field \{ opacity: 0\.5; \}/);
+  // The sync list fades at its foot instead of slicing a row.
+  assert.match(
+    css,
+    /\.chartsync \{[\s\S]*?mask-image: linear-gradient\(to bottom, #000 calc\(100% - 28px\), transparent\);/,
+  );
+  assert.match(css, /\.chartsync ul \{[^}]*padding: 0 0 12px;/);
+});
+
+test("the rank header sticks and the interval axis fits the ranked rows", () => {
+  assert.match(css, /\.xhead \{[^}]*position: sticky; top: 61px;/);
+  // The ranked interval tops set the frame, at the next two
+  // and a half percent step. The flagged range stands past
+  // it, which is why flagged rows keep the shared axis.
+  const rankedTop = Math.max(...payload.ranked.map((r) => r.asr_ci95[1]));
+  const axis = Math.max(
+    0.3,
+    Math.round(Math.ceil((rankedTop - 1e-9) / 0.025) * 25) / 1000,
+  );
+  assert.equal(axis, 0.375);
+  const flaggedTop = Math.max(...flagged.map((r) => r.asr_ci95[1]));
+  assert.ok(flaggedTop > axis);
+  const data = read("lib/explorerData.ts");
+  assert.ok(data.includes("rankedIntervalAxisMax"));
+  assert.ok(data.includes('d.kind === "flagged"'));
+  const explorer = read("components/Explorer.tsx");
+  assert.ok(explorer.includes("Interval on the ranked axis"));
+  assert.ok(explorer.includes("held off the ranking · their"));
+  assert.ok(explorer.includes("intervals stand on the shared axis"));
+  assert.match(css, /\.xwhisker \{[^}]*height: 6px; background: var\(--ink-2\);/);
+  assert.match(css, /\.xwhisker::before/);
+});
+
+test("the ranked interval cell prints its figures in full ink", () => {
+  // The figures are the payload's own interval pair for
+  // each ranked row, phrased as the readings phrase them.
+  // Recompute the leader's pair from the payload and pin
+  // the wording the cell must print.
+  const pct = (v) => `${(Math.round(v * 1000) / 10).toFixed(1)}%`;
+  const leader = full[0];
+  assert.equal(
+    `${pct(leader.asr_ci95[0])} to ${pct(leader.asr_ci95[1])}`,
+    "8.1% to 9.8%",
+  );
+  for (const r of payload.ranked) {
+    assert.ok(Array.isArray(r.asr_ci95) && r.asr_ci95.length === 2);
+    assert.match(
+      `${pct(r.asr_ci95[0])} to ${pct(r.asr_ci95[1])}`,
+      /^\d+\.\d% to \d+\.\d%$/,
+    );
+  }
+  const explorer = read("components/Explorer.tsx");
+  // The cell prints the pair for ranked rows only, and the
+  // fitted whisker for those rows is the one drawn bright.
+  assert.ok(explorer.includes('className="xci"'));
+  assert.ok(explorer.includes('row.kind !== "flagged" && row.ciText'));
+  assert.ok(explorer.includes('? "" : " fitted"'));
+  assert.match(css, /\.xwhisker\.fitted \{ background: var\(--ink\); \}/);
+  assert.match(css, /\.xtrackline \{[^}]*position: relative;/);
+});
+
+test("names break at the slash and severity segments never split", () => {
+  const explorer = read("components/Explorer.tsx");
+  assert.ok(explorer.includes("function BreakName"));
+  assert.ok(explorer.includes("<wbr />"));
+  assert.ok(explorer.includes('className="sevseg"'));
+  assert.match(css, /\.sevseg \{ white-space: nowrap; \}/);
+});
+
+test("the reading states the bases its figures rest on", () => {
+  const explorer = read("components/Explorer.tsx");
+  // The genuine-flips line carries its eligible total, the
+  // calibration error its scale, and the latency its median
+  // per attacked call, matching the payload's p50 field.
+  assert.ok(
+    explorer.includes("of ${fmtInt(row.nEligible)} eligible cases"),
+  );
+  assert.ok(explorer.includes("On a 0 to 1 scale"));
+  assert.ok(explorer.includes("Median latency"));
+  assert.ok(explorer.includes("Per attacked call"));
+  // Every family record in the payload carries its own
+  // eligible count, so the weakest-family denominator the
+  // reading states is derived, never invented.
+  let checked = 0;
+  for (const row of rows) {
+    for (const fam of familyRecords(row)) {
+      assert.ok(
+        isCount(fam.n_eligible),
+        `${row.run_id} carries a family record without n_eligible`,
+      );
+      checked += 1;
+    }
+  }
+  assert.ok(checked > 0);
+  const inspector = read("lib/inspectorData.ts");
+  assert.ok(inspector.includes("baseText"));
+  assert.ok(inspector.includes("fam.nEligible"));
+});
+
+test("the families mode prints full names against a labelled scale", () => {
+  const explorer = read("components/Explorer.tsx");
+  assert.ok(explorer.includes("{fam.full}"));
+  assert.ok(!explorer.includes("{fam.short}"));
+  assert.ok(explorer.includes("Not measured"));
+  assert.ok(explorer.includes("Overall attack success"));
+  assert.ok(explorer.includes("[0, 0.25, 0.5, 0.75, 1]"));
+  assert.match(
+    css,
+    /\.xfam-bar \{ display: grid; grid-template-columns: 172px 1fr 100px;/,
+  );
+  assert.match(css, /repeating-linear-gradient\(to right/);
+});
+
+test("the wire finding draws both intervals on one fitted window", () => {
+  const luna = rows.filter((r) => r.display_name === "gpt-6-luna");
+  assert.equal(luna.length, 2);
+  const lo = Math.min(...luna.map((r) => r.asr_ci95[0]));
+  const hi = Math.max(...luna.map((r) => r.asr_ci95[1]));
+  const pad = (hi - lo) * 0.5;
+  const winLo = Math.max(0, lo - pad);
+  const winHi = hi + pad;
+  // On the fitted window each interval spans a legible share
+  // of the track, where the board axis left it a grey tick.
+  for (const r of luna) {
+    const share = (r.asr_ci95[1] - r.asr_ci95[0]) / (winHi - winLo);
+    assert.ok(share > 0.2, `interval share ${share}`);
+  }
+  const findings = read("components/Findings.tsx");
+  assert.ok(findings.includes("wireWin"));
+  assert.ok(findings.includes("wiretrack-axis"));
+  assert.ok(!findings.includes("axis.max"));
+  assert.match(
+    css,
+    /\.wiretrack-line \.whisker \{[^}]*background: var\(--ink-2\);/,
+  );
+  assert.match(css, /\.wiretrack-line \.whisker::before/);
+});
+
+test("the findings split bars share one height and the card figure stands", () => {
+  // One height system inside the findings. The taller
+  // figured track stays the share card's own treatment.
+  assert.match(
+    css,
+    /\.finding \.splitbar \.splitbar-track, \.finding \.splitbar\.figured \.splitbar-track \{ height: 36px;/,
+  );
+  assert.match(css, /\.splitbar\.figured \.splitbar-track \{ height: 48px;/);
+});
+
+test("the undecided case stands as a figure against the suite total", () => {
+  const leader = full[0];
+  assert.equal(leader.unanswered_cases, 1);
+  assert.equal(leader.n_cases, 4701);
+  const findings = read("components/Findings.tsx");
+  assert.ok(findings.includes("leader-fig-num"));
+  assert.ok(
+    findings.includes(
+      "{fmtInt(f.leader.unanswered)} of {fmtInt(f.leader.row.n_cases)}",
+    ),
+  );
+  assert.ok(
+    findings.includes("suite cases produced no answer on either call"),
+  );
+});
+
+test("the footer carries the re-measurement note the method promises", () => {
+  const reruns = rows.filter(
+    (r) => r.rerun && typeof r.rerun.date === "string",
+  );
+  assert.equal(reruns.length, 16);
+  const dates = reruns.map((r) => r.rerun.date).sort();
+  assert.equal(dates[0], "2026-10-30");
+  assert.equal(dates[dates.length - 1], "2026-11-01");
+  const page = read("app/page.tsx");
+  assert.ok(page.includes("Re-measurement note."));
+  assert.ok(page.includes("r.rerun?.date"));
+  assert.ok(page.includes("in place of the earlier run's"));
+  const method = read("components/MethodStub.tsx");
+  assert.ok(method.includes("recorded in the note at the foot of the page"));
+});
+
+test("the guards zero segment reads as measured, not missing", () => {
+  const findings = read("components/Findings.tsx");
+  assert.ok(findings.includes("flexGrow: f.guards.toAbstain"));
+  assert.ok(findings.includes("flexGrow: f.guards.untyped"));
+  assert.match(
+    css,
+    /\.anat-slot\.empty \{ border: 1px solid var\(--ink-3\);[^}]*flex: 0 0 148px;/,
+  );
 });
