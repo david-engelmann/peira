@@ -88,10 +88,30 @@ function Mark({ row, size = 26 }: { row: XRow; size?: number }) {
   );
 }
 
+/* A display name breaks at its slash, never mid-token, so a
+ * long organisation and model pair wraps as two words rather
+ * than tearing one. The break opportunity rides after the
+ * slash, and the hyphen breaks inside a token stay available
+ * to the line breaker as they are. */
+function BreakName({ name }: { name: string }) {
+  const parts = name.split("/");
+  return (
+    <>
+      {parts.map((part, i) => (
+        <span key={i}>
+          {i > 0 && "/"}
+          {part}
+          {i < parts.length - 1 && <wbr />}
+        </span>
+      ))}
+    </>
+  );
+}
+
 function decompLine(row: XRow): string | null {
   if (row.decomp === null) return null;
   const d = row.decomp;
-  return `${fmtInt(d.flips)} counted flips · ${fmtInt(d.malformedFlips)} to malformed output · genuine flips ${fmtPct(d.genuineRate)} of eligible cases`;
+  return `${fmtInt(d.flips)} counted flips · ${fmtInt(d.malformedFlips)} to malformed output · genuine flips ${fmtPct(d.genuineRate)} of ${fmtInt(row.nEligible)} eligible cases`;
 }
 
 function ReadingBody({ row }: { row: XRow }) {
@@ -115,6 +135,9 @@ function ReadingBody({ row }: { row: XRow }) {
         <div>
           <span className="micro">Calibration error</span>
           <strong>{row.eceText ?? "·"}</strong>
+          {row.ece !== null && (
+            <span className="rsub">On a 0 to 1 scale</span>
+          )}
         </div>
         <div>
           <span className="micro">Cost of one run</span>
@@ -122,25 +145,34 @@ function ReadingBody({ row }: { row: XRow }) {
           {row.costSub && <span className="rsub">{row.costSub}</span>}
         </div>
         <div>
-          <span className="micro">Latency</span>
+          <span className="micro">Median latency</span>
           <strong>{row.latencyText ?? "·"}</strong>
+          {row.latencyText !== null && (
+            <span className="rsub">Per attacked call</span>
+          )}
         </div>
       </div>
       {d && <p className="reading-line">{d}</p>}
       {row.weakestFamily && (
         <p className="reading-line">
           Weakest family {row.weakestFamily.name} at{" "}
-          {row.weakestFamily.text}.
+          {row.weakestFamily.text}
+          {row.weakestFamily.baseText
+            ? ` over ${row.weakestFamily.baseText}`
+            : ""}
+          .
         </p>
       )}
       {row.severities.length > 0 && (
         <p className="reading-line">
-          {row.severities
-            .map(
-              (s) =>
-                `${s.label} ${s.flipText ?? "no rate"}${s.baseText ? ` over ${s.baseText}` : ""}`,
-            )
-            .join(" · ")}
+          {row.severities.map((s, i) => (
+            <span key={s.label}>
+              {i > 0 && " · "}
+              <span className="sevseg">
+                {`${s.label} ${s.flipText ?? "no rate"}${s.baseText ? ` over ${s.baseText}` : ""}`}
+              </span>
+            </span>
+          ))}
         </p>
       )}
       {row.flaggedReason && (
@@ -814,7 +846,7 @@ function RankView({
         <span className="xh rank">Rank</span>
         <span className="xh mark" aria-hidden="true" />
         <span className="xh name">Result</span>
-        <span className="xh track">Interval on the shared axis</span>
+        <span className="xh track">Interval on the ranked axis</span>
         {sortHeads.map(([key, label]) => (
           <button
             key={key}
@@ -837,9 +869,10 @@ function RankView({
               subset basis
             </p>
           )}
-          {state.pop === "all" && group.kind === "flagged" && (
+          {group.kind === "flagged" && (
             <p className="xdivider flagged">
-              Flagged results · held off the ranking
+              Flagged results · held off the ranking · their
+              intervals stand on the shared axis
             </p>
           )}
           {group.rows.map((row, i) => {
@@ -871,7 +904,7 @@ function RankView({
                   </span>
                   <Mark row={row} />
                   <span className="xname">
-                    {row.fullName}
+                    <BreakName name={row.fullName} />
                     {row.wire && <span className="xwire">{row.wire}</span>}
                     <span className="xsub">{row.subLine}</span>
                     {row.kind === "flagged" && (
@@ -879,20 +912,25 @@ function RankView({
                     )}
                   </span>
                   <span className="xtrack">
-                    {row.whisker && (
-                      <>
-                        <span
-                          className="xwhisker"
-                          style={{
-                            left: `${row.whisker.lo}%`,
-                            width: `${Math.max(1, row.whisker.hi - row.whisker.lo)}%`,
-                          }}
-                        />
-                        <span
-                          className="xpoint"
-                          style={{ left: `${row.whisker.pt}%` }}
-                        />
-                      </>
+                    <span className="xtrackline">
+                      {row.whisker && (
+                        <>
+                          <span
+                            className={`xwhisker${row.kind === "flagged" ? "" : " fitted"}`}
+                            style={{
+                              left: `${row.whisker.lo}%`,
+                              width: `${Math.max(1, row.whisker.hi - row.whisker.lo)}%`,
+                            }}
+                          />
+                          <span
+                            className="xpoint"
+                            style={{ left: `${row.whisker.pt}%` }}
+                          />
+                        </>
+                      )}
+                    </span>
+                    {row.kind !== "flagged" && row.ciText && (
+                      <span className="xci">{row.ciText}</span>
                     )}
                   </span>
                   <span className="xfig asr rn">{row.asrText ?? "·"}</span>
@@ -992,13 +1030,36 @@ function ChartView({
   const plotted = visible.filter((r) => r.kind !== "slice");
   const points = plotted.filter((r) => r.costValue !== null && r.costValue > 0);
   const rail = plotted.filter((r) => r.costValue === null || r.costValue === 0);
+  /* The plot's own ceiling, derived from the results that
+   * seat on it: the highest rate among the ranked results
+   * that stand as points, a recorded cost above zero,
+   * rounded up to the next five percent step. A ranked
+   * result with no recorded price stands in the rail and
+   * does not stretch a frame it never enters. Flagged
+   * results never stretch the frame either, though their
+   * seated points still draw inside it, and a point past
+   * the frame is carried by the off-scale note, mercury's
+   * standing case. */
+  const plottedCeiling = Math.max(
+    0,
+    ...data.rows
+      .filter(
+        (r) =>
+          r.kind === "full" && r.costValue !== null && r.costValue > 0,
+      )
+      .map((r) => r.asr ?? 0),
+  );
+  const axisMax = Math.max(
+    0.1,
+    Math.round(Math.ceil((plottedCeiling - 1e-9) / 0.05) * 5) / 100,
+  );
   /* The plot's subject. The selected result takes the white
    * disc when it stands on the plot; a selection in the
    * no-cost rail or off the axis leaves the disc to the best
    * plotted result, so the composition never sits empty. */
   const subjectId = (() => {
     const renderable = points.filter(
-      (r) => r.asr !== null && r.asr <= data.axisMax,
+      (r) => r.asr !== null && r.asr <= axisMax,
     );
     if (selRow && renderable.some((r) => r.runId === selRow.runId)) {
       return selRow.runId;
@@ -1026,10 +1087,12 @@ function ChartView({
   const H = 430;
   const W = Math.max(320, width);
   const padL = 44;
-  const padR = 16;
+  /* The right pad carries the widest axis label whole. At
+   * the old pad the final tick's label centred on the plot
+   * edge and lost its last glyph to the panel. */
+  const padR = 30;
   const padT = 18;
   const padB = 40;
-  const axisMax = data.axisMax;
   const costs = points.map((r) => r.costValue as number);
   const lo = Math.pow(10, Math.floor(Math.log10(Math.min(...costs)) * 2) / 2);
   const hi = Math.pow(10, Math.ceil(Math.log10(Math.max(...costs)) * 2) / 2);
@@ -1041,7 +1104,7 @@ function ChartView({
   const invY = (px: number) => ((padT + (H - padT - padB) - px) / (H - padT - padB)) * axisMax;
 
   const yTicks: number[] = [];
-  for (let t = 0; t <= axisMax + 1e-9; t += 0.1) yTicks.push(Math.round(t * 10) / 10);
+  for (let t = 0; t <= axisMax + 1e-9; t += 0.05) yTicks.push(Math.round(t * 100) / 100);
   const xTicks: Array<{ v: number; label: string }> = [];
   for (let k = Math.floor(Math.log10(lo)); k <= Math.ceil(Math.log10(hi)); k += 1) {
     for (const m of [1, 3]) {
@@ -1081,6 +1144,43 @@ function ChartView({
       ? points.find((r) => r.runId === hoverId) ?? null
       : null;
   const chipPinned = chipId !== null;
+
+  /* When the reader's selection cannot take the white disc,
+   * the chart says so in words, naming the selection and
+   * where it stands, rather than silently singling out a
+   * different result from the one being read. */
+  const subjectRow = subjectId
+    ? (points.find((r) => r.runId === subjectId) ?? null)
+    : null;
+  const selStanding = ((): string | null => {
+    if (!selRow || !subjectRow || selRow.runId === subjectRow.runId) {
+      return null;
+    }
+    const name = selRow.fullName;
+    const subj = subjectRow.fullName;
+    if (!visible.some((r) => r.runId === selRow.runId)) {
+      return `${name} is hidden by the current filters. The white disc singles out ${subj}, the best result standing on the plot.`;
+    }
+    if (selRow.kind === "slice") {
+      return `${name} is a guard result, and guard results read in the rank and families modes. The white disc singles out ${subj}.`;
+    }
+    if (selRow.asr !== null && selRow.asr > axisMax) {
+      return `${name} plots above the shared axis at ${selRow.asrText} counted, so it carries no disc. The white disc singles out ${subj}.`;
+    }
+    if (selRow.costKind === "harness") {
+      return `${name} was measured through a harness and stands in the rail below. The white disc singles out ${subj}.`;
+    }
+    if (selRow.costKind === "local") {
+      return `${name} was served locally and stands in the rail below. The white disc singles out ${subj}.`;
+    }
+    if (selRow.costValue === null) {
+      return `${name} has no recorded cost and stands in the rail below. The white disc singles out ${subj}.`;
+    }
+    if (selRow.asr === null) {
+      return `${name} carries no attack success rate to plot. The white disc singles out ${subj}.`;
+    }
+    return null;
+  })();
 
   const localPoint = (e: React.PointerEvent) => {
     const rect = svgRef.current?.getBoundingClientRect();
@@ -1198,19 +1298,27 @@ function ChartView({
                 <circle
                   cx={cx}
                   cy={cy}
-                  r={subject ? 15 : 13}
-                  fill={subject ? "#ffffff" : "#39434e"}
-                  stroke={row.kind === "flagged" ? "#e8a33d" : "none"}
-                  strokeWidth={row.kind === "flagged" ? (subject ? 2 : 1.5) : 0}
+                  r={subject ? 17 : 15}
+                  fill={subject ? "#ffffff" : "#4a5763"}
+                  stroke={
+                    row.kind === "flagged"
+                      ? "#e8a33d"
+                      : subject
+                        ? "none"
+                        : "#05070a"
+                  }
+                  strokeWidth={
+                    row.kind === "flagged" ? (subject ? 2 : 1.5) : 1.5
+                  }
                 />
                 {row.mark.kind === "logo" && row.mark.slug ? (
                   <use
                     href={`#vlogo-${row.mark.slug}`}
-                    x={cx - 7.5}
-                    y={cy - 7.5}
-                    width={15}
-                    height={15}
-                    style={{ color: subject ? "var(--glyph-dark)" : "#aebcc7" }}
+                    x={cx - 9.5}
+                    y={cy - 9.5}
+                    width={19}
+                    height={19}
+                    style={{ color: subject ? "var(--glyph-dark)" : "#eef2f6" }}
                   />
                 ) : (
                   <text
@@ -1227,7 +1335,7 @@ function ChartView({
                     <text
                       className="subject-name"
                       x={cx}
-                      y={labelBelow ? cy + 32 : cy - 30}
+                      y={labelBelow ? cy + 36 : cy - 34}
                       textAnchor="middle"
                     >
                       {row.fullName}
@@ -1235,7 +1343,7 @@ function ChartView({
                     <text
                       className="subject-sub"
                       x={cx}
-                      y={labelBelow ? cy + 46 : cy - 17}
+                      y={labelBelow ? cy + 50 : cy - 21}
                       textAnchor="middle"
                     >
                       {row.asrText} · {row.costText}
@@ -1255,6 +1363,7 @@ function ChartView({
             />
           )}
         </svg>
+        {selStanding && <p className="chart-selstand">{selStanding}</p>}
         {state.frontier && frontierPts.length > 1 && (
           <p className="chart-legend">
             <span className="legend-swatch" aria-hidden="true" />
@@ -1384,7 +1493,7 @@ function ChartView({
               >
                 <Mark row={row} size={18} />
                 <span className="sync-name">
-                  {row.fullName}
+                  <BreakName name={row.fullName} />
                   {row.wire ? ` · ${row.wire}` : ""}
                 </span>
                 <span className="rn">{row.asrText ?? "·"}</span>
@@ -1418,6 +1527,28 @@ function FamiliesView({ groups, data, expanded, onToggle }: FamiliesViewProps) {
         Attack success by case family, on a shared axis that tops out
         at {fmtPct(axis)}.
       </p>
+      <div className="xfam-colhead" aria-hidden="true">
+        <span className="micro">Result</span>
+        <span className="micro">Overall attack success</span>
+      </div>
+      <div className="xfam-bars axisrow" aria-hidden="true">
+        <div className="xfam-bar">
+          <span className="xfam-label micro">Axis</span>
+          <span className="xfam-track ghost">
+            {[0, 0.25, 0.5, 0.75, 1].map((f) => (
+              <span
+                key={f}
+                className={`xfam-tick${f === 0 ? " first" : ""}${f === 1 ? " last" : ""}`}
+                style={{ left: `${f * 100}%` }}
+              >
+                {fmtPct(axis * f)}
+              </span>
+            ))}
+          </span>
+          <span className="xfam-val micro">Of axis</span>
+        </div>
+        <div />
+      </div>
       {groups.map((group) => (
         <div key={group.kind} className="xgroup">
           {group.rows.map((row, i) => (
@@ -1443,7 +1574,7 @@ function FamiliesView({ groups, data, expanded, onToggle }: FamiliesViewProps) {
                 </span>
                 <Mark row={row} size={22} />
                 <span className="xname">
-                  {row.fullName}
+                  <BreakName name={row.fullName} />
                   {row.wire && <span className="xwire">{row.wire}</span>}
                   {row.kind === "flagged" && (
                     <span className="xstate">Flagged · not ranked</span>
@@ -1453,8 +1584,8 @@ function FamiliesView({ groups, data, expanded, onToggle }: FamiliesViewProps) {
               </div>
               <div className="xfam-bars">
                 {row.families.map((fam) => (
-                  <div className="xfam-bar" key={fam.key} title={`${fam.full} ${fam.asr !== null ? fmtPct(fam.asr) : "no rate"}`}>
-                    <span className="xfam-label">{fam.short}</span>
+                  <div className="xfam-bar" key={fam.key} title={`${fam.full} ${fam.asr !== null ? fmtPct(fam.asr) : "not measured"}`}>
+                    <span className="xfam-label">{fam.full}</span>
                     <span className="xfam-track">
                       {fam.asr !== null && (
                         <span
@@ -1464,7 +1595,7 @@ function FamiliesView({ groups, data, expanded, onToggle }: FamiliesViewProps) {
                       )}
                     </span>
                     <span className="xfam-val rn">
-                      {fam.asr !== null ? fmtPct(fam.asr) : "·"}
+                      {fam.asr !== null ? fmtPct(fam.asr) : "Not measured"}
                     </span>
                   </div>
                 ))}

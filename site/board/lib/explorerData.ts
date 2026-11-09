@@ -15,7 +15,7 @@ import {
 } from "@/lib/payload";
 import { fmtEce, fmtPct } from "@/lib/format";
 import { vendorFamilyOf } from "@/lib/vendorColors";
-import { asrAxisFor } from "@/lib/chart";
+import { asrAxisFor, axisPct } from "@/lib/chart";
 import {
   calibrationOf,
   familiesOf,
@@ -54,7 +54,12 @@ export interface XRow {
   asrLabel: string;
   ciText: string | null;
   ci: [number, number] | null;
-  /** Whisker geometry as percents of the shared axis track. */
+  /** Whisker geometry as percents of the row's axis track.
+   * Ranked rows (full suite and guards) stand on an axis
+   * fitted to the ranked population's interval tops, so
+   * their intervals read as bars rather than dots. Flagged
+   * rows keep the shared axis, the frame their off-scale
+   * figures are stated against. */
   whisker: { lo: number; hi: number; pt: number } | null;
   benign: number | null;
   benignText: string | null;
@@ -78,7 +83,7 @@ export interface XRow {
     genuineRate: number;
   } | null;
   families: XFamily[];
-  weakestFamily: { name: string; text: string } | null;
+  weakestFamily: { name: string; text: string; baseText: string | null } | null;
   severities: Array<{ label: string; flipText: string | null; baseText: string | null }>;
   calibration: {
     eceText: string;
@@ -108,10 +113,35 @@ export interface ExplorerData {
   vendors: Array<{ key: string; label: string }>;
 }
 
+/* The ranked interval axis. The ranked populations' own
+ * interval tops set the frame, rounded up to the next two
+ * and a half percent step, with the board's standing 0.3
+ * floor. It is derived from the payload on every build, so
+ * a tougher ranked population grows the frame a step and
+ * every interval still sits at its true position. Flagged
+ * intervals stay on the shared axis in lib/inspectorData,
+ * which is computed once over all three populations. */
+const RANKED_AXIS_STEP = 0.025;
+const RANKED_AXIS_FLOOR = 0.3;
+
+export function rankedIntervalAxisMax(
+  datums: Iterable<InspectorDatum>,
+): number {
+  let top = 0;
+  for (const d of datums) {
+    if (d.kind === "flagged" || d.ci === null) continue;
+    top = Math.max(top, d.ci[1]);
+  }
+  const stepped =
+    Math.ceil((top - 1e-9) / RANKED_AXIS_STEP) * RANKED_AXIS_STEP;
+  return Math.max(RANKED_AXIS_FLOOR, Math.round(stepped * 1000) / 1000);
+}
+
 function shapeRow(
   row: BoardRow,
   datum: InspectorDatum,
   famOrder: string[],
+  rankedAxisMax: number,
 ): XRow {
   const fams = familiesOf(row);
   const decomp = flipDecomposition(row);
@@ -139,7 +169,14 @@ function shapeRow(
     asrLabel: datum.asrLabel,
     ciText: datum.ciText,
     ci: datum.ci,
-    whisker: datum.whisker,
+    whisker:
+      datum.kind !== "flagged" && datum.ci !== null && datum.asr !== null
+        ? {
+            lo: axisPct(datum.ci[0], rankedAxisMax),
+            hi: axisPct(datum.ci[1], rankedAxisMax),
+            pt: axisPct(datum.asr, rankedAxisMax),
+          }
+        : datum.whisker,
     benign: datum.benign,
     benignText: datum.benignText,
     malformed: datum.malformed,
@@ -210,10 +247,16 @@ export function explorerData(): ExplorerData {
   );
   const axis = asrAxisFor(worst);
   const { allRows, byRunId } = inspectorDataAll(axis.max);
+  const rankedAxisMax = rankedIntervalAxisMax(byRunId.values());
   const famOrder = familyOrder(allRows);
   const byId = new Map(allRows.map((r) => [r.run_id, r]));
   const rows = allRows.map((row) =>
-    shapeRow(row, byRunId.get(row.run_id) as InspectorDatum, famOrder),
+    shapeRow(
+      row,
+      byRunId.get(row.run_id) as InspectorDatum,
+      famOrder,
+      rankedAxisMax,
+    ),
   );
   const vendors: Array<{ key: string; label: string }> = [];
   const seen = new Set<string>();

@@ -6,7 +6,6 @@ import {
   type BoardRow,
 } from "@/lib/payload";
 import { fmtInt, fmtPct, fmtUsdExact } from "@/lib/format";
-import { asrAxisFor } from "@/lib/chart";
 import { findingsData } from "@/lib/findings";
 import VendorLogo from "@/components/VendorLogo";
 import SplitBar from "@/components/SplitBar";
@@ -30,9 +29,21 @@ export default function Findings() {
   ];
   const mercurySlug = modelSlug(f.split.mercury.row, allRows);
   const leaderSlug = modelSlug(f.leader.row, allRows);
-  const worst = Math.max(...groups.full.map((r) => r.asr_conditional ?? 0));
-  const axis = asrAxisFor(worst);
-  const guardTotal = Math.max(1, f.guards.flips);
+  /* The wire finding's own scale. Both of its intervals stand
+   * inside a narrow band, so the finding draws them on a window
+   * fitted to the pair with half the span again as margin on
+   * each side, rather than the board axis, where they collapse
+   * into two grey ticks. Positions stay true to the fitted
+   * window, and the window's ends print under the tracks. */
+  const wireLo = Math.min(...f.wire.tracks.map((t) => t.ci[0]));
+  const wireHi = Math.max(...f.wire.tracks.map((t) => t.ci[1]));
+  const wirePad = (wireHi - wireLo) * 0.5;
+  const wireWin: [number, number] = [
+    Math.max(0, wireLo - wirePad),
+    wireHi + wirePad,
+  ];
+  const wirePct = (v: number) =>
+    ((v - wireWin[0]) / (wireWin[1] - wireWin[0])) * 100;
   const leaderNote = unansweredNote(f.leader.row);
 
   return (
@@ -111,13 +122,13 @@ export default function Findings() {
                 <span
                   className="whisker"
                   style={{
-                    left: `${(t.ci[0] / axis.max) * 100}%`,
-                    width: `${((t.ci[1] - t.ci[0]) / axis.max) * 100}%`,
+                    left: `${wirePct(t.ci[0])}%`,
+                    width: `${wirePct(t.ci[1]) - wirePct(t.ci[0])}%`,
                   }}
                 />
                 <span
                   className="point"
-                  style={{ left: `${(t.asr / axis.max) * 100}%` }}
+                  style={{ left: `${wirePct(t.asr)}%` }}
                 />
               </div>
               <p className="wiretrack-sub">
@@ -127,6 +138,10 @@ export default function Findings() {
               </p>
             </div>
           ))}
+          <div className="wiretrack-axis" aria-hidden="true">
+            <span>{fmtPct(wireWin[0])}</span>
+            <span>{fmtPct(wireWin[1])}</span>
+          </div>
           <p className="wiretrack-gap">
             <span className="rn">
               {(f.wire.gap * 100).toFixed(1)} points
@@ -160,13 +175,13 @@ export default function Findings() {
           </span>
           <span
             className="anat-slot abstain"
-            style={{ width: `${(f.guards.toAbstain / guardTotal) * 100}%` }}
+            style={{ flexGrow: f.guards.toAbstain }}
           >
             To abstain · {fmtInt(f.guards.toAbstain)}
           </span>
           <span
             className="anat-slot untyped"
-            style={{ width: `${(f.guards.untyped / guardTotal) * 100}%` }}
+            style={{ flexGrow: f.guards.untyped }}
           >
             Untyped · {fmtInt(f.guards.untyped)}
           </span>
@@ -197,6 +212,14 @@ export default function Findings() {
       <article className="finding disclosure" data-finding="leader">
         <p className="micro">Disclosed error · One case</p>
         <h3>One case on this board was never decided</h3>
+        <p className="leader-fig">
+          <span className="leader-fig-num">
+            {fmtInt(f.leader.unanswered)} of {fmtInt(f.leader.row.n_cases)}
+          </span>
+          <span className="leader-fig-cap">
+            suite cases produced no answer on either call
+          </span>
+        </p>
         <p className="f-copy">
           <VendorLogo row={f.leader.row} size="mini" />{" "}
           {shortName(f.leader.row)} stands first on the full suite at{" "}

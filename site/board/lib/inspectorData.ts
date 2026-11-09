@@ -27,7 +27,7 @@ import {
   type BoardRow,
   type RankedRow,
 } from "@/lib/payload";
-import { fmtCi, fmtEce, fmtMs, fmtPct, fmtTax, fmtUsd } from "@/lib/format";
+import { fmtCi, fmtEce, fmtInt, fmtMs, fmtPct, fmtTax, fmtUsd } from "@/lib/format";
 import { familiesOf, familyFullName, familyOrder } from "@/lib/charts";
 import { axisPct } from "@/lib/chart";
 import { costStateOf, type CostState } from "@/lib/cards";
@@ -109,7 +109,7 @@ export interface InspectorDatum {
    * when no family figure may print: no measured family, or
    * a flagged family whose decomposition does not derive.
    */
-  weakestFamily: { name: string; text: string } | null;
+  weakestFamily: { name: string; text: string; baseText: string | null } | null;
   /** The result's own page. */
   href: string;
 }
@@ -220,7 +220,8 @@ export function inspectorDatum(
   const fams = familiesOf(row);
   const famDecomp =
     kind === "flagged" ? familyFlipDecomposition(row) : null;
-  let weakest: { name: string; text: string } | null = null;
+  let weakest: { name: string; text: string; baseText: string | null } | null =
+    null;
   let worst = -1;
   for (const key of familyOrder(allRows)) {
     const fam = fams.get(key);
@@ -228,7 +229,15 @@ export function inspectorDatum(
     if (famDecomp !== null && (famDecomp.get(key) ?? null) === null) continue;
     if (fam.asr > worst) {
       worst = fam.asr;
-      weakest = { name: familyFullName(key), text: fmtPct(fam.asr) };
+      weakest = {
+        name: familyFullName(key),
+        text: fmtPct(fam.asr),
+        /* The family record carries its own eligible count,
+         * so the rate's denominator travels with it and the
+         * reading can state the base it rests on. */
+        baseText:
+          fam.nEligible !== null ? `${fmtInt(fam.nEligible)} eligible` : null,
+      };
     }
   }
   const rankLine =

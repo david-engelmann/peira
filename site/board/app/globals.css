@@ -180,6 +180,12 @@ section[id] { scroll-margin-top: 84px; }
    large inside the malformed segment itself, the share card's
    treatment, at a size the labels under a plain bar never reach. */
 .splitbar.figured .splitbar-track { height: 48px; border-radius: var(--radius); }
+/* Inside a finding, one height system serves every split
+   bar, so the three pools read against each other. The
+   figured bar's taller track belongs to the share card,
+   whose composition is its own. The in-bar figure keeps
+   its size inside the common track. */
+.finding .splitbar .splitbar-track, .finding .splitbar.figured .splitbar-track { height: 36px; border-radius: var(--radius); }
 .inbar-fig {
   position: absolute; right: 16px; top: 50%; transform: translateY(-50%);
   font-family: "Archivo", sans-serif; font-variant-numeric: tabular-nums;
@@ -193,8 +199,19 @@ section[id] { scroll-margin-top: 84px; }
 .wiretrack-head .rn { font-family: "Archivo", sans-serif; font-size: 20px; font-weight: 700; color: var(--ink); }
 .wiretrack-line { position: relative; height: 22px; margin-top: 4px; }
 .wiretrack-line::before { content: ""; position: absolute; left: 0; right: 0; top: 10px; height: 2px; background: var(--line); }
-.wiretrack-line .whisker { position: absolute; top: 9px; height: 4px; background: var(--ink-3); border-radius: 999px; }
-.wiretrack-line .point { position: absolute; top: 5px; width: 12px; height: 12px; margin-left: -6px; border-radius: 50%; background: var(--accent); }
+.wiretrack-line .whisker { position: absolute; top: 9px; height: 4px; background: var(--ink-2); border-radius: 999px; }
+.wiretrack-line .whisker::before, .wiretrack-line .whisker::after { content: ""; position: absolute; top: -3px; width: 2px; height: 10px; background: var(--ink-2); border-radius: 1px; }
+.wiretrack-line .whisker::before { left: 0; }
+.wiretrack-line .whisker::after { right: 0; }
+.wiretrack-line .point { position: absolute; top: 5px; width: 12px; height: 12px; margin-left: -6px; border-radius: 50%; background: var(--accent); border: 2px solid var(--panel); box-sizing: border-box; }
+.wiretrack-axis { display: flex; justify-content: space-between; font-family: "JetBrains Mono", monospace; font-size: 11.5px; color: var(--ink-3); margin: 2px 0 8px; }
+
+/* The undecided case as a typographic figure. The count
+   against the suite total sets large, its basis in words
+   beside it, no chart. */
+.leader-fig { display: flex; align-items: baseline; gap: 16px; flex-wrap: wrap; margin: 0 0 16px; }
+.leader-fig-num { font-family: "Archivo", sans-serif; font-size: clamp(40px, 7vw, 56px); font-weight: 750; letter-spacing: -0.01em; font-variant-numeric: tabular-nums; color: var(--ink); }
+.leader-fig-cap { color: var(--ink-2); font-size: 14.5px; max-width: 40ch; }
 .wiretrack-sub { font-size: 12.5px; color: var(--ink-3); margin: 4px 0 0; }
 .wiretrack-gap { margin: 4px 0 0; color: var(--ink-2); }
 .wiretrack-gap .rn { font-family: "Archivo", sans-serif; color: var(--ink); font-weight: 700; }
@@ -210,11 +227,14 @@ section[id] { scroll-margin-top: 84px; }
 
 .anatomy { display: flex; gap: 4px; min-height: 44px; margin: 0 0 16px; }
 .anat-slot {
-  display: flex; align-items: center; padding: 8px 12px;
+  display: flex; align-items: center; padding: 8px 12px; flex: 1 1 0;
   border-radius: var(--radius-ctl); font-size: 13.5px; font-weight: 600; min-width: 0;
   overflow: hidden; white-space: nowrap;
 }
-.anat-slot.empty { border: 1px dashed var(--ink-3); color: var(--ink-2); flex: 0 0 auto; }
+/* The zero segment is a measured value, drawn as a solid
+   outlined segment at a fixed reading width, never as an
+   absence the eye skips. */
+.anat-slot.empty { border: 1px solid var(--ink-3); color: var(--ink-2); flex: 0 0 148px; justify-content: center; background: transparent; }
 .anat-slot.abstain { background: var(--seg-genuine); color: var(--ink); }
 .anat-slot.untyped {
   background: repeating-linear-gradient(45deg, #232f3d 0 6px, #1a232f 6px 12px);
@@ -343,10 +363,19 @@ section[id] { scroll-margin-top: 84px; }
    and Calib. error labels over their neighbours. */
 .xhead, .xrow-head {
   display: grid;
-  grid-template-columns: 40px 30px minmax(132px, 1.25fr) minmax(76px, 1fr) 140px 74px 104px 116px 124px 68px;
+  grid-template-columns: 40px 30px minmax(132px, 1.25fr) minmax(76px, 1fr) 128px 70px 96px 116px 150px 68px;
   gap: 8px; align-items: center;
 }
-.xhead { padding: 0 16px 8px; border-bottom: 1px solid var(--line); margin-bottom: 8px; }
+/* The column header sticks under the masthead while the
+   table scrolls, so a 52-row record keeps its labels. The
+   cost column carries the widest state words whole, with a
+   real gutter between the calibration figure and the cost,
+   which the narrower track once let sit flush together. */
+.xhead {
+  position: sticky; top: 61px; z-index: 30;
+  background: var(--ground);
+  padding: 8px 16px; border-bottom: 1px solid var(--line); margin-bottom: 8px;
+}
 .xh { font-size: 11.5px; color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.08em; }
 .xh.fig { text-align: right; white-space: nowrap; }
 button.xh { appearance: none; background: none; border: 0; font-family: inherit; cursor: pointer; padding: 0; transition: color var(--dur-micro) ease; }
@@ -373,9 +402,16 @@ button.xh.on { color: var(--accent); }
 .xwire { color: var(--ink-3); font-weight: 500; font-size: 12.5px; }
 .xsub { color: var(--ink-3); font-weight: 400; font-size: 12.5px; }
 .xstate { color: var(--amber); font-weight: 600; font-size: 12.5px; }
-.xtrack { position: relative; height: 18px; }
-.xtrack::before { content: ""; position: absolute; left: 0; right: 0; top: 8px; height: 2px; background: var(--line); }
-.xwhisker { position: absolute; top: 7px; height: 4px; background: var(--ink-3); border-radius: 999px; }
+.xtrack { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.xtrackline { position: relative; flex: 1 1 auto; height: 18px; min-width: 20px; }
+.xtrackline::before { content: ""; position: absolute; left: 0; right: 0; top: 8px; height: 2px; background: var(--line); }
+.xci { font-size: 11.5px; color: var(--ink-2); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.xwhisker { position: absolute; top: 6px; height: 6px; background: var(--ink-2); border-radius: 999px; }
+.xwhisker.fitted { background: var(--ink); }
+.xwhisker.fitted::before, .xwhisker.fitted::after { background: var(--ink); }
+.xwhisker::before, .xwhisker::after { content: ""; position: absolute; top: -3px; width: 2px; height: 12px; background: var(--ink-2); border-radius: 1px; }
+.xwhisker::before { left: 0; }
+.xwhisker::after { right: 0; }
 .xpoint { position: absolute; top: 4px; width: 10px; height: 10px; margin-left: -5px; border-radius: 50%; background: var(--accent); }
 .xrow.flagged .xpoint { background: var(--amber); }
 .xfig { text-align: right; font-size: 14.5px; }
@@ -398,6 +434,9 @@ button.xh.on { color: var(--accent); }
 .reading-figs strong { font-size: 20px; font-weight: 750; font-variant-numeric: tabular-nums; }
 .rsub { color: var(--ink-3); font-size: 12.5px; }
 .reading-line { color: var(--ink-2); margin: 12px 0 0; max-width: 76ch; }
+/* Each severity segment sets as one unbreakable unit, so a
+   segment's base never orphans onto the next line alone. */
+.sevseg { white-space: nowrap; }
 .reading-line.flagged-line { color: var(--amber); }
 .reading-prov { color: var(--ink-3); font-size: 13.5px; margin: 12px 0 0; }
 .belowreading { margin-top: 12px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--panel); }
@@ -420,6 +459,9 @@ button.xh.on { color: var(--accent); }
 .axis-title { fill: var(--ink-2); font-size: 11.5px; font-weight: 600; }
 .frontier-line { fill: none; stroke: var(--accent); stroke-width: 2; stroke-dasharray: 5 4; }
 .chart-legend { display: flex; align-items: center; gap: 8px; color: var(--ink-2); font-size: 13.5px; margin: 12px 0 0; }
+/* The line that names the reader's selection when the white
+   disc cannot be theirs, and where that selection stands. */
+.chart-selstand { color: var(--ink-2); font-size: 14.5px; margin: 12px 0 0; max-width: 76ch; }
 .legend-swatch { display: inline-block; width: 26px; border-top: 2px dashed var(--accent); flex: 0 0 auto; }
 .disc { cursor: pointer; transition: opacity var(--dur-state) ease; }
 .disc.greyed { opacity: 0.55; }
@@ -428,7 +470,7 @@ button.xh.on { color: var(--accent); }
    card's composition. The dimming is an opacity state change,
    inside the motion doctrine's interface-state allowance. */
 .disc.field { opacity: 0.5; }
-.disc.field.greyed { opacity: 0.22; }
+.disc.field.greyed { opacity: 0.32; }
 .disc.subject { opacity: 1; }
 .disc-letter.subject-letter { fill: var(--glyph-dark); }
 .subject-name {
@@ -441,7 +483,7 @@ button.xh.on { color: var(--accent); }
   font-size: 11.5px;
   paint-order: stroke; stroke: var(--ground); stroke-width: 3px; stroke-linejoin: round;
 }
-.disc-letter { fill: #f4f7fa; font-size: 10px; font-weight: 700; }
+.disc-letter { fill: #f4f7fa; font-size: 11.5px; font-weight: 700; }
 .brush-rect { fill: rgba(47, 191, 113, 0.14); stroke: var(--accent); stroke-width: 1; }
 .offscale-note {
   border: 1px solid rgba(232, 163, 61, 0.45); border-radius: var(--radius-ctl);
@@ -468,8 +510,16 @@ button.xh.on { color: var(--accent); }
 }
 .rail-row:hover { border-color: var(--ink-3); }
 .rail-note { color: var(--ink-3); font-size: 13.5px; margin: 8px 0 0; }
-.chartsync { border: 1px solid var(--line); border-radius: var(--radius); background: var(--panel); padding: 16px; max-height: 640px; overflow: auto; }
-.chartsync ul { list-style: none; margin: 8px 0 0; padding: 0; }
+/* The list fades at its foot rather than slicing a row in
+   half, so the cut reads as more below, and the inner
+   padding lets the last row scroll clear of the fade. */
+.chartsync {
+  border: 1px solid var(--line); border-radius: var(--radius); background: var(--panel);
+  padding: 16px; max-height: 640px; overflow: auto;
+  -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 28px), transparent);
+  mask-image: linear-gradient(to bottom, #000 calc(100% - 28px), transparent);
+}
+.chartsync ul { list-style: none; margin: 8px 0 0; padding: 0 0 12px; }
 .sync-row {
   display: flex; align-items: center; gap: 8px; width: 100%;
   background: transparent; border: 0; border-radius: var(--radius-ctl); color: var(--ink);
@@ -478,16 +528,29 @@ button.xh.on { color: var(--accent); }
 }
 .sync-row:hover, .sync-row.hot { background: var(--panel-2); }
 .sync-row.sel { outline: 1px solid var(--accent); }
-.sync-name { flex: 1; min-width: 0; }
+.sync-name { flex: 1; min-width: 0; overflow-wrap: break-word; }
 
 .xfamilies .xfamrow { border: 1px solid var(--line-soft); border-radius: var(--radius); background: var(--panel); padding: 16px; margin: 0 0 8px; transition: border-color var(--dur-micro) ease; }
 .xfamilies .xfamrow:hover { border-color: var(--ink-3); }
 .xfam-head { display: flex; align-items: center; gap: 8px; cursor: pointer; }
 .xfam-head .xname { flex: 1; }
 .xfam-bars { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 24px; margin-top: 12px; }
-.xfam-bar { display: grid; grid-template-columns: 86px 1fr 48px; gap: 8px; align-items: center; }
+.xfam-bar { display: grid; grid-template-columns: 172px 1fr 100px; gap: 8px; align-items: center; }
 .xfam-label { font-size: 12.5px; color: var(--ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.xfam-track { height: 8px; background: var(--panel-2); border-radius: 999px; overflow: hidden; }
+/* The shared axis carries its quarter marks as gridlines
+   inside every track, so a short bar reads against the same
+   scale the axis row above the groups prints. */
+.xfam-track {
+  height: 8px; background-color: var(--panel-2); border-radius: 999px; overflow: hidden;
+  background-image: repeating-linear-gradient(to right, transparent 0, transparent calc(25% - 1px), var(--line) calc(25% - 1px), var(--line) 25%);
+}
+.xfam-colhead { display: flex; justify-content: space-between; align-items: baseline; padding: 0 16px; margin-top: 12px; }
+.xfam-bars.axisrow { margin-top: 4px; }
+.xfam-bars.axisrow > div:empty { display: none; }
+.xfam-track.ghost { background: transparent; overflow: visible; height: 14px; position: relative; }
+.xfam-tick { position: absolute; top: 0; transform: translateX(-50%); font-size: 11.5px; color: var(--ink-3); font-family: "JetBrains Mono", monospace; }
+.xfam-tick.first { transform: none; }
+.xfam-tick.last { transform: translateX(-100%); }
 .xfam-fill { display: block; height: 100%; background: var(--accent); }
 .xfamrow.flagged .xfam-fill { background: var(--amber); }
 .xfam-val { font-size: 12.5px; text-align: right; color: var(--ink-2); }
@@ -520,7 +583,7 @@ button.xh.on { color: var(--accent); }
    and figures measured. */
 @media (max-width: 1080px) {
   .xhead, .xrow-head {
-    grid-template-columns: 38px 30px minmax(96px, 1.2fr) minmax(40px, 1fr) 136px 100px 96px 64px;
+    grid-template-columns: 38px 30px minmax(96px, 1.2fr) minmax(40px, 1fr) 128px 96px 150px 64px;
   }
   .xfig.benign, .xfig.ece, .xh:nth-child(6), .xh:nth-child(8) { display: none; }
 }
