@@ -7,6 +7,27 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
 
 ## [Unreleased]
 
+### Board design record rewritten to the shipped board
+
+- DESIGN.md now states the board as shipped. The opening
+  order is Results, Explorer, Findings, Method, the
+  display tokens carry the shipped clamps, identity is
+  the grey field and the white subject, and the vendor
+  chip is legislated as the shipped color-mix tint.
+- The record documents shipped patterns it never named,
+  the numbered scenes with derived claim headings, the
+  rail groups and the five cost kinds, the basis wording
+  discipline, the frosted top bar, the share stack
+  grammar, the two collapse breakpoints, and the list
+  twin as the chart's data table alternative.
+- Three live divergences stand on the record with their
+  fix items, the masthead transition against the duration
+  cap, the detail card keyboard contract, and the
+  protectai tint chip contrast.
+- PRODUCT.md states the same opening order, and its
+  flagged band entry holds flagged results off the
+  ranking entirely, matching the shipped surface.
+
 ### Board source replaced with the shipped board
 
 - The board source at `site/board` is now the board that
