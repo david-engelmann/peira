@@ -7,6 +7,17 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
 
 ## [Unreleased]
 
+### Record sync with the live board
+
+- The upstage glyph in the board vendor data takes
+  the dark ink value already live on the production
+  board, restoring the analyzed 4.46 to 1 pairing on
+  its family violet.
+- The design record carries a dated annotation on
+  its earlier footer entry, stating that the current
+  board claims only the chain for a result chained
+  to an earlier run.
+
 ### Re-score fixes ported from production
 
 - The detail card meets its keyboard contract. Every
