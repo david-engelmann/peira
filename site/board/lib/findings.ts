@@ -17,7 +17,6 @@ import {
   boardGroups,
   flipDecomposition,
   shortName,
-  unansweredCount,
   wireWords,
   type BoardRow,
 } from "@/lib/payload";
@@ -167,24 +166,11 @@ export interface GuardFinding {
   maxAsr: number;
 }
 
-export interface LeaderFinding {
-  row: BoardRow;
-  rank: number;
-  population: number;
-  ci: [number, number];
-  flips: number;
-  malformedFlips: number;
-  unanswered: number;
-  decidedBenign: number;
-  benign: number;
-}
-
 export interface FindingsData {
   split: SplitFinding;
   wire: WireFinding;
   price: PriceFinding;
   guards: GuardFinding;
-  leader: LeaderFinding;
 }
 
 export function findingsData(): FindingsData {
@@ -320,14 +306,6 @@ export function findingsData(): FindingsData {
     (dirTotals.get("deny-to-approve") ?? 0);
   const subsetCases = slices[0]?.n_cases ?? 0;
 
-  /* Finding 5, the leader. */
-  const leader = full[0];
-  const leaderDecomp = flipDecomposition(leader);
-  if (leaderDecomp === null || leader.asr_ci95 === null || leader.benign_accuracy === null) {
-    throw new Error("findings: the leader derives no decomposition");
-  }
-  const leaderUnanswered = unansweredCount(leader);
-
   return {
     split: {
       ranked: rankedPool,
@@ -384,17 +362,6 @@ export function findingsData(): FindingsData {
       allBenignPerfect: slices.every((r) => r.benign_accuracy === 1),
       minAsr: Math.min(...slices.map((r) => r.asr_conditional ?? 0)),
       maxAsr: Math.max(...slices.map((r) => r.asr_conditional ?? 0)),
-    },
-    leader: {
-      row: leader,
-      rank: 1,
-      population: full.length,
-      ci: leader.asr_ci95,
-      flips: leaderDecomp.flips,
-      malformedFlips: leaderDecomp.malformedFlips,
-      unanswered: leaderUnanswered,
-      decidedBenign: leader.n_cases - leaderUnanswered,
-      benign: leader.benign_accuracy,
     },
   };
 }

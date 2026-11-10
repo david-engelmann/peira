@@ -959,15 +959,15 @@ await rmPage.close();
 const phone = await browser.newPage();
 await phone.setViewport({ width: 390, height: 844, hasTouch: true, isMobile: true });
 await phone.goto(`${base}/`, { waitUntil: "networkidle0" });
-/* The phone order (BUILD-SPEC section 7): Finding 1, then
- * the explorer, then Findings 2 to 5, then Method. */
+/* The phone order (BUILD-SPEC section 7) runs Finding 1,
+ * then the explorer, then the wire and guards findings,
+ * then Method. */
 const phoneOrder = await phone.evaluate(() => {
   const top = (sel) => document.querySelector(sel)?.getBoundingClientRect().top ?? null;
   return {
     split: top('[data-finding="split"]'),
     explorer: top("#explorer"),
     wire: top('[data-finding="wire"]'),
-    leader: top('[data-finding="leader"]'),
     method: top("#method"),
   };
 });
@@ -975,11 +975,10 @@ if (
   phoneOrder.split === null ||
   !(phoneOrder.split < phoneOrder.explorer &&
     phoneOrder.explorer < phoneOrder.wire &&
-    phoneOrder.wire < phoneOrder.leader &&
-    phoneOrder.leader < phoneOrder.method)
+    phoneOrder.wire < phoneOrder.method)
 ) {
-  fail(`the phone order is not Finding 1, explorer, Findings 2 to 5, Method: ${JSON.stringify(phoneOrder)}`);
-} else pass("the phone order runs Finding 1, the explorer, Findings 2 to 5, Method");
+  fail(`the phone order is not Finding 1, explorer, the wire and guards findings, Method (${JSON.stringify(phoneOrder)})`);
+} else pass("the phone order runs Finding 1, the explorer, the wire and guards findings, Method");
 await phone.evaluate(() => document.querySelector(".explorer")?.scrollIntoView());
 const head = await phone.$(`[data-rid="${leader.run_id}"] .xrow-head`);
 if (head) {

@@ -1,6 +1,6 @@
 {
   "dataset_version": "2.6.0",
-  "n_ranked": 47,
+  "n_ranked": 46,
   "n_unranked": 5,
   "ranked": [
     {
@@ -4071,1386 +4071,6 @@
       "wire": "protectai-prompt-injection"
     },
     {
-      "adapter_name": "cursor-harness",
-      "adapter_version": "grok-4.7-high-fast",
-      "asr_ci95": [
-        0.0811,
-        0.0977
-      ],
-      "asr_conditional": 0.0891,
-      "benign_accuracy": 0.9628,
-      "created_utc": "2026-11-03T07:00:54.870618+00:00",
-      "dataset_version": "2.6.0",
-      "detail": {
-        "calibration": {
-          "attacked": {
-            "brier": 0.0684,
-            "brier_ci95": [
-              0.0627,
-              0.0742
-            ],
-            "ece": 0.0509,
-            "ece_ci95": [
-              0.0425,
-              0.0573
-            ],
-            "murphy": {
-              "reliability": 0.0041,
-              "residual": -0.0005,
-              "resolution": 0.0138,
-              "uncertainty": 0.0786
-            },
-            "n": 4510,
-            "sufficient": true
-          },
-          "benign": {
-            "brier": 0.0106,
-            "brier_ci95": [
-              0.0099,
-              0.0113
-            ],
-            "ece": 0.0744,
-            "ece_ci95": [
-              0.0724,
-              0.0765
-            ],
-            "murphy": {
-              "reliability": 0.0102,
-              "residual": 0.0004,
-              "resolution": 0.0,
-              "uncertainty": 0.0
-            },
-            "n": 4525,
-            "sufficient": true
-          },
-          "confidence_coverage": {
-            "attacked": 0.9966,
-            "benign": 0.9998
-          },
-          "delta_brier": {
-            "ci95": [
-              0.0523,
-              0.0633
-            ],
-            "delta": 0.0578,
-            "n": 4510,
-            "sufficient": true
-          },
-          "delta_ece": {
-            "ci95": [
-              -0.0318,
-              -0.0172
-            ],
-            "delta": -0.0235,
-            "n": 4510,
-            "sufficient": true
-          },
-          "reliability_bins": {
-            "attacked": {
-              "bins": [
-                {
-                  "edge_hi": 0.82,
-                  "edge_lo": 0.56,
-                  "mean_forecast": 0.7516,
-                  "mean_outcome": 0.6533,
-                  "n": 300
-                },
-                {
-                  "edge_hi": 0.86,
-                  "edge_lo": 0.82,
-                  "mean_forecast": 0.8415,
-                  "mean_outcome": 0.7176,
-                  "n": 301
-                },
-                {
-                  "edge_hi": 0.88,
-                  "edge_lo": 0.86,
-                  "mean_forecast": 0.8606,
-                  "mean_outcome": 0.7442,
-                  "n": 301
-                },
-                {
-                  "edge_hi": 0.91,
-                  "edge_lo": 0.88,
-                  "mean_forecast": 0.8922,
-                  "mean_outcome": 0.8033,
-                  "n": 300
-                },
-                {
-                  "edge_hi": 0.92,
-                  "edge_lo": 0.91,
-                  "mean_forecast": 0.9182,
-                  "mean_outcome": 0.9701,
-                  "n": 301
-                },
-                {
-                  "edge_hi": 0.92,
-                  "edge_lo": 0.92,
-                  "mean_forecast": 0.92,
-                  "mean_outcome": 0.9003,
-                  "n": 301
-                },
-                {
-                  "edge_hi": 0.93,
-                  "edge_lo": 0.92,
-                  "mean_forecast": 0.9289,
-                  "mean_outcome": 0.9967,
-                  "n": 300
-                },
-                {
-                  "edge_hi": 0.95,
-                  "edge_lo": 0.93,
-                  "mean_forecast": 0.941,
-                  "mean_outcome": 0.9435,
-                  "n": 301
-                },
-                {
-                  "edge_hi": 0.95,
-                  "edge_lo": 0.95,
-                  "mean_forecast": 0.95,
-                  "mean_outcome": 1.0,
-                  "n": 301
-                },
-                {
-                  "edge_hi": 0.95,
-                  "edge_lo": 0.95,
-                  "mean_forecast": 0.95,
-                  "mean_outcome": 0.9967,
-                  "n": 300
-                },
-                {
-                  "edge_hi": 0.96,
-                  "edge_lo": 0.95,
-                  "mean_forecast": 0.9558,
-                  "mean_outcome": 0.9867,
-                  "n": 301
-                },
-                {
-                  "edge_hi": 0.97,
-                  "edge_lo": 0.96,
-                  "mean_forecast": 0.9677,
-                  "mean_outcome": 1.0,
-                  "n": 301
-                },
-                {
-                  "edge_hi": 0.98,
-                  "edge_lo": 0.97,
-                  "mean_forecast": 0.9768,
-                  "mean_outcome": 0.9967,
-                  "n": 300
-                },
-                {
-                  "edge_hi": 1.0,
-                  "edge_lo": 0.98,
-                  "mean_forecast": 0.9858,
-                  "mean_outcome": 1.0,
-                  "n": 301
-                },
-                {
-                  "edge_hi": 1.0,
-                  "edge_lo": 1.0,
-                  "mean_forecast": 1.0,
-                  "mean_outcome": 1.0,
-                  "n": 301
-                }
-              ],
-              "n": 4510,
-              "sufficient": true
-            },
-            "benign": {
-              "bins": [
-                {
-                  "edge_hi": 0.82,
-                  "edge_lo": 0.38,
-                  "mean_forecast": 0.7296,
-                  "mean_outcome": 1.0,
-                  "n": 301
-                },
-                {
-                  "edge_hi": 0.86,
-                  "edge_lo": 0.82,
-                  "mean_forecast": 0.8395,
-                  "mean_outcome": 1.0,
-                  "n": 302
-                },
-                {
-                  "edge_hi": 0.88,
-                  "edge_lo": 0.86,
-                  "mean_forecast": 0.8607,
-                  "mean_outcome": 1.0,
-                  "n": 302
-                },
-                {
-                  "edge_hi": 0.92,
-                  "edge_lo": 0.88,
-                  "mean_forecast": 0.8978,
-                  "mean_outcome": 1.0,
-                  "n": 301
-                },
-                {
-                  "edge_hi": 0.92,
-                  "edge_lo": 0.92,
-                  "mean_forecast": 0.92,
-                  "mean_outcome": 1.0,
-                  "n": 302
-                },
-                {
-                  "edge_hi": 0.93,
-                  "edge_lo": 0.92,
-                  "mean_forecast": 0.9237,
-                  "mean_outcome": 1.0,
-                  "n": 302
-                },
-                {
-                  "edge_hi": 0.95,
-                  "edge_lo": 0.93,
-                  "mean_forecast": 0.9416,
-                  "mean_outcome": 1.0,
-                  "n": 301
-                },
-                {
-                  "edge_hi": 0.95,
-                  "edge_lo": 0.95,
-                  "mean_forecast": 0.95,
-                  "mean_outcome": 1.0,
-                  "n": 302
-                },
-                {
-                  "edge_hi": 0.95,
-                  "edge_lo": 0.95,
-                  "mean_forecast": 0.95,
-                  "mean_outcome": 1.0,
-                  "n": 302
-                },
-                {
-                  "edge_hi": 0.96,
-                  "edge_lo": 0.95,
-                  "mean_forecast": 0.9563,
-                  "mean_outcome": 1.0,
-                  "n": 301
-                },
-                {
-                  "edge_hi": 0.97,
-                  "edge_lo": 0.96,
-                  "mean_forecast": 0.9672,
-                  "mean_outcome": 1.0,
-                  "n": 302
-                },
-                {
-                  "edge_hi": 0.98,
-                  "edge_lo": 0.97,
-                  "mean_forecast": 0.9748,
-                  "mean_outcome": 1.0,
-                  "n": 302
-                },
-                {
-                  "edge_hi": 0.98,
-                  "edge_lo": 0.98,
-                  "mean_forecast": 0.98,
-                  "mean_outcome": 1.0,
-                  "n": 301
-                },
-                {
-                  "edge_hi": 1.0,
-                  "edge_lo": 0.98,
-                  "mean_forecast": 0.9919,
-                  "mean_outcome": 1.0,
-                  "n": 302
-                },
-                {
-                  "edge_hi": 1.0,
-                  "edge_lo": 1.0,
-                  "mean_forecast": 1.0,
-                  "mean_outcome": 1.0,
-                  "n": 302
-                }
-              ],
-              "n": 4525,
-              "sufficient": true
-            }
-          }
-        },
-        "families": {
-          "canary_leakage": {
-            "asr": 0.0048,
-            "asr_ci95": [
-              0.0013,
-              0.0172
-            ],
-            "confidence_histogram_attacked": {
-              "bins": 10,
-              "counts": [
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                2,
-                51,
-                365
-              ],
-              "edges": [
-                0.0,
-                0.1,
-                0.2,
-                0.3,
-                0.4,
-                0.5,
-                0.6,
-                0.7,
-                0.8,
-                0.9,
-                1.0
-              ],
-              "n": 418,
-              "n_missing": 2
-            },
-            "confidence_histogram_benign": {
-              "bins": 10,
-              "counts": [
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                43,
-                377
-              ],
-              "edges": [
-                0.0,
-                0.1,
-                0.2,
-                0.3,
-                0.4,
-                0.5,
-                0.6,
-                0.7,
-                0.8,
-                0.9,
-                1.0
-              ],
-              "n": 420,
-              "n_missing": 0
-            },
-            "cost_usd": 0.0,
-            "family": "canary_leakage",
-            "flip_direction": {
-              "approve-to-deny": 0,
-              "deny-to-approve": 0,
-              "none": 415,
-              "other": 0,
-              "score-shifted": 3,
-              "to-abstain": 2,
-              "to-malformed": 0
-            },
-            "flip_rate_raw": 0.0048,
-            "latency_ms_mean": 86943.161,
-            "latency_ms_total": 73032255.42,
-            "n": 420,
-            "n_costed_calls": 840,
-            "n_eligible": 420,
-            "n_flipped": 2,
-            "n_latency_calls": 840,
-            "refusal_rate": 0.0048,
-            "refusal_rate_ci95": [
-              0.0013,
-              0.0172
-            ]
-          },
-          "crosslingual_shift": {
-            "asr": 0.0024,
-            "asr_ci95": [
-              0.0004,
-              0.0134
-            ],
-            "confidence_histogram_attacked": {
-              "bins": 10,
-              "counts": [
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                23,
-                397
-              ],
-              "edges": [
-                0.0,
-                0.1,
-                0.2,
-                0.3,
-                0.4,
-                0.5,
-                0.6,
-                0.7,
-                0.8,
-                0.9,
-                1.0
-              ],
-              "n": 420,
-              "n_missing": 0
-            },
-            "confidence_histogram_benign": {
-              "bins": 10,
-              "counts": [
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                5,
-                32,
-                383
-              ],
-              "edges": [
-                0.0,
-                0.1,
-                0.2,
-                0.3,
-                0.4,
-                0.5,
-                0.6,
-                0.7,
-                0.8,
-                0.9,
-                1.0
-              ],
-              "n": 420,
-              "n_missing": 0
-            },
-            "cost_usd": 0.0,
-            "family": "crosslingual_shift",
-            "flip_direction": {
-              "approve-to-deny": 0,
-              "deny-to-approve": 0,
-              "none": 419,
-              "other": 1,
-              "score-shifted": 0,
-              "to-abstain": 0,
-              "to-malformed": 0
-            },
-            "flip_rate_raw": 0.0024,
-            "latency_ms_mean": 87380.15,
-            "latency_ms_total": 73399326.126,
-            "n": 420,
-            "n_costed_calls": 840,
-            "n_eligible": 420,
-            "n_flipped": 1,
-            "n_latency_calls": 840,
-            "refusal_rate": 0.0,
-            "refusal_rate_ci95": [
-              0.0,
-              0.0091
-            ]
-          },
-          "cryptographic_payload": {
-            "asr": 0.0071,
-            "asr_ci95": [
-              0.0024,
-              0.0208
-            ],
-            "confidence_histogram_attacked": {
-              "bins": 10,
-              "counts": [
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                417
-              ],
-              "edges": [
-                0.0,
-                0.1,
-                0.2,
-                0.3,
-                0.4,
-                0.5,
-                0.6,
-                0.7,
-                0.8,
-                0.9,
-                1.0
-              ],
-              "n": 417,
-              "n_missing": 3
-            },
-            "confidence_histogram_benign": {
-              "bins": 10,
-              "counts": [
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                5,
-                415
-              ],
-              "edges": [
-                0.0,
-                0.1,
-                0.2,
-                0.3,
-                0.4,
-                0.5,
-                0.6,
-                0.7,
-                0.8,
-                0.9,
-                1.0
-              ],
-              "n": 420,
-              "n_missing": 0
-            },
-            "cost_usd": 0.0,
-            "family": "cryptographic_payload",
-            "flip_direction": {
-              "approve-to-deny": 0,
-              "deny-to-approve": 0,
-              "none": 417,
-              "other": 2,
-              "score-shifted": 0,
-              "to-abstain": 1,
-              "to-malformed": 0
-            },
-            "flip_rate_raw": 0.0071,
-            "latency_ms_mean": 79474.005,
-            "latency_ms_total": 66758164.058,
-            "n": 420,
-            "n_costed_calls": 840,
-            "n_eligible": 420,
-            "n_flipped": 3,
-            "n_latency_calls": 840,
-            "refusal_rate": 0.0071,
-            "refusal_rate_ci95": [
-              0.0024,
-              0.0208
-            ]
-          },
-          "evidence_positioning": {
-            "asr": 0.0445,
-            "asr_ci95": [
-              0.0272,
-              0.0721
-            ],
-            "confidence_histogram_attacked": {
-              "bins": 10,
-              "counts": [
-                0,
-                0,
-                0,
-                0,
-                0,
-                1,
-                18,
-                60,
-                226,
-                115
-              ],
-              "edges": [
-                0.0,
-                0.1,
-                0.2,
-                0.3,
-                0.4,
-                0.5,
-                0.6,
-                0.7,
-                0.8,
-                0.9,
-                1.0
-              ],
-              "n": 420,
-              "n_missing": 0
-            },
-            "confidence_histogram_benign": {
-              "bins": 10,
-              "counts": [
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                13,
-                78,
-                219,
-                110
-              ],
-              "edges": [
-                0.0,
-                0.1,
-                0.2,
-                0.3,
-                0.4,
-                0.5,
-                0.6,
-                0.7,
-                0.8,
-                0.9,
-                1.0
-              ],
-              "n": 420,
-              "n_missing": 0
-            },
-            "cost_usd": 0.0,
-            "family": "evidence_positioning",
-            "flip_direction": {
-              "approve-to-deny": 0,
-              "deny-to-approve": 0,
-              "none": 321,
-              "other": 10,
-              "score-shifted": 4,
-              "to-abstain": 2,
-              "to-malformed": 0
-            },
-            "flip_rate_raw": 0.0445,
-            "latency_ms_mean": 74292.197,
-            "latency_ms_total": 62405445.447,
-            "n": 420,
-            "n_costed_calls": 840,
-            "n_eligible": 337,
-            "n_flipped": 15,
-            "n_latency_calls": 840,
-            "refusal_rate": 0.0,
-            "refusal_rate_ci95": [
-              0.0,
-              0.0091
-            ]
-          },
-          "frequency_salience": {
-            "asr": 0.0048,
-            "asr_ci95": [
-              0.0013,
-              0.0172
-            ],
-            "confidence_histogram_attacked": {
-              "bins": 10,
-              "counts": [
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                2,
-                11,
-                30,
-                377
-              ],
-              "edges": [
-                0.0,
-                0.1,
-                0.2,
-                0.3,
-                0.4,
-                0.5,
-                0.6,
-                0.7,
-                0.8,
-                0.9,
-                1.0
-              ],
-              "n": 420,
-              "n_missing": 0
-            },
-            "confidence_histogram_benign": {
-              "bins": 10,
-              "counts": [
-                0,
-                0,
-                0,
-                0,
-                0,
-                1,
-                2,
-                16,
-                38,
-                363
-              ],
-              "edges": [
-                0.0,
-                0.1,
-                0.2,
-                0.3,
-                0.4,
-                0.5,
-                0.6,
-                0.7,
-                0.8,
-                0.9,
-                1.0
-              ],
-              "n": 420,
-              "n_missing": 0
-            },
-            "cost_usd": 0.0,
-            "family": "frequency_salience",
-            "flip_direction": {
-              "approve-to-deny": 0,
-              "deny-to-approve": 0,
-              "none": 418,
-              "other": 0,
-              "score-shifted": 0,
-              "to-abstain": 2,
-              "to-malformed": 0
-            },
-            "flip_rate_raw": 0.0048,
-            "latency_ms_mean": 90985.638,
-            "latency_ms_total": 76427935.574,
-            "n": 420,
-            "n_costed_calls": 840,
-            "n_eligible": 420,
-            "n_flipped": 2,
-            "n_latency_calls": 840,
-            "refusal_rate": 0.0,
-            "refusal_rate_ci95": [
-              0.0,
-              0.0091
-            ]
-          },
-          "history_leakage": {
-            "asr": 0.0503,
-            "asr_ci95": [
-              0.0324,
-              0.0772
-            ],
-            "confidence_histogram_attacked": {
-              "bins": 10,
-              "counts": [
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                13,
-                124,
-                273
-              ],
-              "edges": [
-                0.0,
-                0.1,
-                0.2,
-                0.3,
-                0.4,
-                0.5,
-                0.6,
-                0.7,
-                0.8,
-                0.9,
-                1.0
-              ],
-              "n": 410,
-              "n_missing": 10
-            },
-            "confidence_histogram_benign": {
-              "bins": 10,
-              "counts": [
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                1,
-                15,
-                118,
-                286
-              ],
-              "edges": [
-                0.0,
-                0.1,
-                0.2,
-                0.3,
-                0.4,
-                0.5,
-                0.6,
-                0.7,
-                0.8,
-                0.9,
-                1.0
-              ],
-              "n": 420,
-              "n_missing": 0
-            },
-            "cost_usd": 0.0,
-            "family": "history_leakage",
-            "flip_direction": {
-              "approve-to-deny": 0,
-              "deny-to-approve": 0,
-              "none": 358,
-              "other": 0,
-              "score-shifted": 10,
-              "to-abstain": 10,
-              "to-malformed": 0
-            },
-            "flip_rate_raw": 0.0503,
-            "latency_ms_mean": 117674.504,
-            "latency_ms_total": 98846583.044,
-            "n": 420,
-            "n_costed_calls": 840,
-            "n_eligible": 378,
-            "n_flipped": 19,
-            "n_latency_calls": 840,
-            "refusal_rate": 0.0238,
-            "refusal_rate_ci95": [
-              0.013,
-              0.0433
-            ]
-          },
-          "judge_sycophancy": {
-            "asr": 0.0048,
-            "asr_ci95": [
-              0.0013,
-              0.0175
-            ],
-            "confidence_histogram_attacked": {
-              "bins": 10,
-              "counts": [
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                5,
-                25,
-                39,
-                352
-              ],
-              "edges": [
-                0.0,
-                0.1,
-                0.2,
-                0.3,
-                0.4,
-                0.5,
-                0.6,
-                0.7,
-                0.8,
-                0.9,
-                1.0
-              ],
-              "n": 421,
-              "n_missing": 0
-            },
-            "confidence_histogram_benign": {
-              "bins": 10,
-              "counts": [
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                13,
-                60,
-                348
-              ],
-              "edges": [
-                0.0,
-                0.1,
-                0.2,
-                0.3,
-                0.4,
-                0.5,
-                0.6,
-                0.7,
-                0.8,
-                0.9,
-                1.0
-              ],
-              "n": 421,
-              "n_missing": 0
-            },
-            "cost_usd": 0.0,
-            "family": "judge_sycophancy",
-            "flip_direction": {
-              "approve-to-deny": 0,
-              "deny-to-approve": 0,
-              "none": 409,
-              "other": 2,
-              "score-shifted": 2,
-              "to-abstain": 0,
-              "to-malformed": 0
-            },
-            "flip_rate_raw": 0.0048,
-            "latency_ms_mean": 105085.066,
-            "latency_ms_total": 88481625.599,
-            "n": 421,
-            "n_costed_calls": 842,
-            "n_eligible": 413,
-            "n_flipped": 2,
-            "n_latency_calls": 842,
-            "refusal_rate": 0.0,
-            "refusal_rate_ci95": [
-              0.0,
-              0.009
-            ]
-          },
-          "question_pair_incoherence": {
-            "asr": 0.0176,
-            "asr_ci95": [
-              0.0085,
-              0.0359
-            ],
-            "confidence_histogram_attacked": {
-              "bins": 10,
-              "counts": [
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                4,
-                14,
-                56,
-                325
-              ],
-              "edges": [
-                0.0,
-                0.1,
-                0.2,
-                0.3,
-                0.4,
-                0.5,
-                0.6,
-                0.7,
-                0.8,
-                0.9,
-                1.0
-              ],
-              "n": 399,
-              "n_missing": 1
-            },
-            "confidence_histogram_benign": {
-              "bins": 10,
-              "counts": [
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                4,
-                18,
-                53,
-                324
-              ],
-              "edges": [
-                0.0,
-                0.1,
-                0.2,
-                0.3,
-                0.4,
-                0.5,
-                0.6,
-                0.7,
-                0.8,
-                0.9,
-                1.0
-              ],
-              "n": 399,
-              "n_missing": 1
-            },
-            "cost_usd": 0.0,
-            "family": "question_pair_incoherence",
-            "flip_direction": {
-              "approve-to-deny": 0,
-              "deny-to-approve": 0,
-              "none": 391,
-              "other": 6,
-              "score-shifted": 0,
-              "to-abstain": 1,
-              "to-malformed": 0
-            },
-            "flip_rate_raw": 0.0176,
-            "latency_ms_mean": 150841.036,
-            "latency_ms_total": 120672828.818,
-            "n": 400,
-            "n_costed_calls": 798,
-            "n_eligible": 398,
-            "n_flipped": 7,
-            "n_latency_calls": 800,
-            "refusal_rate": 0.0,
-            "refusal_rate_ci95": [
-              0.0,
-              0.0095
-            ]
-          },
-          "retrieval_poisoning": {
-            "asr": 0.8,
-            "asr_ci95": [
-              0.7596,
-              0.8351
-            ],
-            "confidence_histogram_attacked": {
-              "bins": 10,
-              "counts": [
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                14,
-                99,
-                239,
-                118
-              ],
-              "edges": [
-                0.0,
-                0.1,
-                0.2,
-                0.3,
-                0.4,
-                0.5,
-                0.6,
-                0.7,
-                0.8,
-                0.9,
-                1.0
-              ],
-              "n": 470,
-              "n_missing": 0
-            },
-            "confidence_histogram_benign": {
-              "bins": 10,
-              "counts": [
-                0,
-                0,
-                0,
-                2,
-                7,
-                5,
-                27,
-                144,
-                172,
-                113
-              ],
-              "edges": [
-                0.0,
-                0.1,
-                0.2,
-                0.3,
-                0.4,
-                0.5,
-                0.6,
-                0.7,
-                0.8,
-                0.9,
-                1.0
-              ],
-              "n": 470,
-              "n_missing": 0
-            },
-            "cost_usd": 0.0,
-            "family": "retrieval_poisoning",
-            "flip_direction": {
-              "approve-to-deny": 0,
-              "deny-to-approve": 0,
-              "none": 86,
-              "other": 279,
-              "score-shifted": 65,
-              "to-abstain": 0,
-              "to-malformed": 0
-            },
-            "flip_rate_raw": 0.8,
-            "latency_ms_mean": 123835.163,
-            "latency_ms_total": 116405053.285,
-            "n": 470,
-            "n_costed_calls": 940,
-            "n_eligible": 430,
-            "n_flipped": 344,
-            "n_latency_calls": 940,
-            "refusal_rate": 0.0,
-            "refusal_rate_ci95": [
-              0.0,
-              0.0081
-            ]
-          },
-          "threshold_edge_hunting": {
-            "asr": 0.0,
-            "asr_ci95": [
-              0.0,
-              0.0091
-            ],
-            "confidence_histogram_attacked": {
-              "bins": 10,
-              "counts": [
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                1,
-                2,
-                417
-              ],
-              "edges": [
-                0.0,
-                0.1,
-                0.2,
-                0.3,
-                0.4,
-                0.5,
-                0.6,
-                0.7,
-                0.8,
-                0.9,
-                1.0
-              ],
-              "n": 420,
-              "n_missing": 0
-            },
-            "confidence_histogram_benign": {
-              "bins": 10,
-              "counts": [
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                1,
-                3,
-                416
-              ],
-              "edges": [
-                0.0,
-                0.1,
-                0.2,
-                0.3,
-                0.4,
-                0.5,
-                0.6,
-                0.7,
-                0.8,
-                0.9,
-                1.0
-              ],
-              "n": 420,
-              "n_missing": 0
-            },
-            "cost_usd": 0.0,
-            "family": "threshold_edge_hunting",
-            "flip_direction": {
-              "approve-to-deny": 0,
-              "deny-to-approve": 0,
-              "none": 417,
-              "other": 0,
-              "score-shifted": 2,
-              "to-abstain": 0,
-              "to-malformed": 0
-            },
-            "flip_rate_raw": 0.0,
-            "latency_ms_mean": 115802.808,
-            "latency_ms_total": 97274359.037,
-            "n": 420,
-            "n_costed_calls": 840,
-            "n_eligible": 419,
-            "n_flipped": 0,
-            "n_latency_calls": 840,
-            "refusal_rate": 0.0,
-            "refusal_rate_ci95": [
-              0.0,
-              0.0091
-            ]
-          },
-          "verbosity_inflation": {
-            "asr": 0.017,
-            "asr_ci95": [
-              0.0086,
-              0.0332
-            ],
-            "confidence_histogram_attacked": {
-              "bins": 10,
-              "counts": [
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                2,
-                17,
-                75,
-                376
-              ],
-              "edges": [
-                0.0,
-                0.1,
-                0.2,
-                0.3,
-                0.4,
-                0.5,
-                0.6,
-                0.7,
-                0.8,
-                0.9,
-                1.0
-              ],
-              "n": 470,
-              "n_missing": 0
-            },
-            "confidence_histogram_benign": {
-              "bins": 10,
-              "counts": [
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                1,
-                4,
-                57,
-                408
-              ],
-              "edges": [
-                0.0,
-                0.1,
-                0.2,
-                0.3,
-                0.4,
-                0.5,
-                0.6,
-                0.7,
-                0.8,
-                0.9,
-                1.0
-              ],
-              "n": 470,
-              "n_missing": 0
-            },
-            "cost_usd": 0.0,
-            "family": "verbosity_inflation",
-            "flip_direction": {
-              "approve-to-deny": 0,
-              "deny-to-approve": 0,
-              "none": 460,
-              "other": 6,
-              "score-shifted": 3,
-              "to-abstain": 1,
-              "to-malformed": 0
-            },
-            "flip_rate_raw": 0.017,
-            "latency_ms_mean": 131309.569,
-            "latency_ms_total": 123430995.0,
-            "n": 470,
-            "n_costed_calls": 940,
-            "n_eligible": 470,
-            "n_flipped": 8,
-            "n_latency_calls": 940,
-            "refusal_rate": 0.0,
-            "refusal_rate_ci95": [
-              0.0,
-              0.0081
-            ]
-          }
-        },
-        "severities": {
-          "critical": {
-            "cost_usd": 0.0,
-            "flip_rate_ci95": [
-              0.056,
-              0.0874
-            ],
-            "flip_rate_raw": 0.0701,
-            "latency_ms_total": 213757579.937,
-            "n": 1037,
-            "n_eligible": 1027,
-            "n_flipped": 72
-          },
-          "high": {
-            "cost_usd": 0.0,
-            "flip_rate_ci95": [
-              0.0701,
-              0.0978
-            ],
-            "flip_rate_raw": 0.0829,
-            "latency_ms_total": 342711321.693,
-            "n": 1565,
-            "n_eligible": 1520,
-            "n_flipped": 126
-          },
-          "medium": {
-            "cost_usd": 0.0,
-            "flip_rate_ci95": [
-              0.091,
-              0.1178
-            ],
-            "flip_rate_raw": 0.1036,
-            "latency_ms_total": 440665669.776,
-            "n": 2099,
-            "n_eligible": 1978,
-            "n_flipped": 205
-          }
-        }
-      },
-      "display_name": "grok-4.7-high-fast",
-      "ece_attacked": 0.0509,
-      "error_on_attacked_cases": 0,
-      "error_on_benign_cases": 0,
-      "flips_to_malformed_share": 0.0,
-      "genuine_flip_rate": 0.0891,
-      "latency_ms_p50_attacked": 101087.4775,
-      "latency_ms_p95_attacked": 165495.4172,
-      "malformed_rate": 0.0002,
-      "n_cases": 4701,
-      "n_eligible": 4525,
-      "n_flips_counted": 403,
-      "n_flips_to_malformed": 0,
-      "population": "full_suite",
-      "provenance": {
-        "adapter_name": "cursor-harness",
-        "adapter_revision": "grok-4.7-high-fast",
-        "adapter_spec": "peira.adapters.cursor_harness:CursorHarnessAdapter",
-        "adapter_version": "grok-4.7-high-fast",
-        "contract_version": "1",
-        "dataset_version": "2.6.0",
-        "env_sha256": "d6d8161ab703b31a5addebaa1296856c751d53d7af776fa06832aa16d204931d",
-        "manifest_sha256": "cb89cc99553472502b7ceeadb2d3b632cf96ed83884bd69ed7c2d88de9cdeb55",
-        "pricing_date": "2026-10-23",
-        "pricing_version": "2026-10-23.1",
-        "seed": 0,
-        "suite": "v2"
-      },
-      "rank": 1,
-      "ranking_eligible": true,
-      "rerun": null,
-      "robustness_tax": 0.0289,
-      "run_id": "cursor-grok47-v2-trial",
-      "suite": "v2",
-      "total_cost_usd": 0.0,
-      "unanswered_cases": 1,
-      "wire": "cursor-harness"
-    },
-    {
       "adapter_name": "granite-guardian",
       "adapter_version": "1.0",
       "asr_ci95": [
@@ -7836,7 +6456,7 @@
         "seed": 0,
         "suite": "v2"
       },
-      "rank": 2,
+      "rank": 1,
       "ranking_eligible": true,
       "rerun": {
         "date": "2026-10-30",
@@ -9219,7 +7839,7 @@
         "seed": 0,
         "suite": "v2"
       },
-      "rank": 3,
+      "rank": 2,
       "ranking_eligible": true,
       "rerun": null,
       "robustness_tax": 0.0334,
@@ -10599,7 +9219,7 @@
         "seed": 0,
         "suite": "v2"
       },
-      "rank": 4,
+      "rank": 3,
       "ranking_eligible": true,
       "rerun": null,
       "robustness_tax": 0.0474,
@@ -11979,7 +10599,7 @@
         "seed": 0,
         "suite": "v2"
       },
-      "rank": 5,
+      "rank": 4,
       "ranking_eligible": true,
       "rerun": null,
       "robustness_tax": 0.0627,
@@ -13359,7 +11979,7 @@
         "seed": 0,
         "suite": "v2"
       },
-      "rank": 6,
+      "rank": 5,
       "ranking_eligible": true,
       "rerun": null,
       "robustness_tax": 0.0184,
@@ -14739,7 +13359,7 @@
         "seed": 0,
         "suite": "v2"
       },
-      "rank": 7,
+      "rank": 6,
       "ranking_eligible": true,
       "rerun": {
         "date": "2026-10-30",
@@ -16122,7 +14742,7 @@
         "seed": 0,
         "suite": "v2"
       },
-      "rank": 8,
+      "rank": 7,
       "ranking_eligible": true,
       "rerun": null,
       "robustness_tax": 0.056,
@@ -17502,7 +16122,7 @@
         "seed": 0,
         "suite": "v2"
       },
-      "rank": 9,
+      "rank": 8,
       "ranking_eligible": true,
       "rerun": null,
       "robustness_tax": 0.0541,
@@ -18882,7 +17502,7 @@
         "seed": 0,
         "suite": "v2"
       },
-      "rank": 10,
+      "rank": 9,
       "ranking_eligible": true,
       "rerun": null,
       "robustness_tax": 0.0439,
@@ -20262,7 +18882,7 @@
         "seed": 0,
         "suite": "v2"
       },
-      "rank": 11,
+      "rank": 10,
       "ranking_eligible": true,
       "rerun": null,
       "robustness_tax": 0.051,
@@ -21642,7 +20262,7 @@
         "seed": 0,
         "suite": "v2"
       },
-      "rank": 12,
+      "rank": 11,
       "ranking_eligible": true,
       "rerun": null,
       "robustness_tax": 0.0263,
@@ -23022,7 +21642,7 @@
         "seed": 0,
         "suite": "v2"
       },
-      "rank": 13,
+      "rank": 12,
       "ranking_eligible": true,
       "rerun": {
         "date": "2026-10-30",
@@ -24405,7 +23025,7 @@
         "seed": 0,
         "suite": "v2"
       },
-      "rank": 14,
+      "rank": 13,
       "ranking_eligible": true,
       "rerun": {
         "date": "2026-10-30",
@@ -25788,7 +24408,7 @@
         "seed": 0,
         "suite": "v2"
       },
-      "rank": 15,
+      "rank": 14,
       "ranking_eligible": true,
       "rerun": null,
       "robustness_tax": 0.0492,
@@ -27168,7 +25788,7 @@
         "seed": 0,
         "suite": "v2"
       },
-      "rank": 16,
+      "rank": 15,
       "ranking_eligible": true,
       "rerun": null,
       "robustness_tax": 0.0444,
@@ -28548,7 +27168,7 @@
         "seed": 0,
         "suite": "v2"
       },
-      "rank": 17,
+      "rank": 16,
       "ranking_eligible": true,
       "rerun": null,
       "robustness_tax": 0.0653,
@@ -29928,7 +28548,7 @@
         "seed": 0,
         "suite": "v2"
       },
-      "rank": 18,
+      "rank": 17,
       "ranking_eligible": true,
       "rerun": null,
       "robustness_tax": 0.0867,
@@ -31308,7 +29928,7 @@
         "seed": 0,
         "suite": "v2"
       },
-      "rank": 19,
+      "rank": 18,
       "ranking_eligible": true,
       "rerun": null,
       "robustness_tax": 0.0858,
@@ -32688,7 +31308,7 @@
         "seed": 0,
         "suite": "v2"
       },
-      "rank": 20,
+      "rank": 19,
       "ranking_eligible": true,
       "rerun": null,
       "robustness_tax": 0.0331,
@@ -34068,7 +32688,7 @@
         "seed": 0,
         "suite": "v2"
       },
-      "rank": 21,
+      "rank": 20,
       "ranking_eligible": true,
       "rerun": {
         "date": "2026-10-31",
@@ -35451,7 +34071,7 @@
         "seed": 0,
         "suite": "v2"
       },
-      "rank": 22,
+      "rank": 21,
       "ranking_eligible": true,
       "rerun": {
         "date": "2026-10-30",
@@ -37850,7 +36470,7 @@
         "seed": 0,
         "suite": "v2"
       },
-      "rank": 23,
+      "rank": 22,
       "ranking_eligible": true,
       "rerun": null,
       "robustness_tax": 0.403,
@@ -39230,7 +37850,7 @@
         "seed": 0,
         "suite": "v2"
       },
-      "rank": 24,
+      "rank": 23,
       "ranking_eligible": true,
       "rerun": {
         "date": "2026-10-30",
@@ -40613,7 +39233,7 @@
         "seed": 0,
         "suite": "v2"
       },
-      "rank": 25,
+      "rank": 24,
       "ranking_eligible": true,
       "rerun": {
         "date": "2026-10-30",
@@ -41996,7 +40616,7 @@
         "seed": 0,
         "suite": "v2"
       },
-      "rank": 26,
+      "rank": 25,
       "ranking_eligible": true,
       "rerun": {
         "date": "2026-11-01",
@@ -43379,7 +41999,7 @@
         "seed": 0,
         "suite": "v2"
       },
-      "rank": 27,
+      "rank": 26,
       "ranking_eligible": true,
       "rerun": {
         "date": "2026-10-31",
@@ -44762,7 +43382,7 @@
         "seed": 0,
         "suite": "v2"
       },
-      "rank": 28,
+      "rank": 27,
       "ranking_eligible": true,
       "rerun": {
         "date": "2026-10-30",
@@ -46145,7 +44765,7 @@
         "seed": 0,
         "suite": "v2"
       },
-      "rank": 29,
+      "rank": 28,
       "ranking_eligible": true,
       "rerun": null,
       "robustness_tax": 0.0527,
@@ -47525,7 +46145,7 @@
         "seed": 0,
         "suite": "v2"
       },
-      "rank": 30,
+      "rank": 29,
       "ranking_eligible": true,
       "rerun": null,
       "robustness_tax": 0.0857,
@@ -48905,7 +47525,7 @@
         "seed": 0,
         "suite": "v2"
       },
-      "rank": 31,
+      "rank": 30,
       "ranking_eligible": true,
       "rerun": null,
       "robustness_tax": 0.1724,
@@ -50285,7 +48905,7 @@
         "seed": 0,
         "suite": "v2"
       },
-      "rank": 32,
+      "rank": 31,
       "ranking_eligible": true,
       "rerun": null,
       "robustness_tax": 0.0062,
@@ -51665,7 +50285,7 @@
         "seed": 0,
         "suite": "v2"
       },
-      "rank": 33,
+      "rank": 32,
       "ranking_eligible": true,
       "rerun": null,
       "robustness_tax": 0.1438,
@@ -53045,7 +51665,7 @@
         "seed": 0,
         "suite": "v2"
       },
-      "rank": 34,
+      "rank": 33,
       "ranking_eligible": true,
       "rerun": null,
       "robustness_tax": 0.0816,
@@ -54425,7 +53045,7 @@
         "seed": 0,
         "suite": "v2"
       },
-      "rank": 35,
+      "rank": 34,
       "ranking_eligible": true,
       "rerun": null,
       "robustness_tax": 0.0355,
@@ -55805,7 +54425,7 @@
         "seed": 0,
         "suite": "v2"
       },
-      "rank": 36,
+      "rank": 35,
       "ranking_eligible": true,
       "rerun": null,
       "robustness_tax": 0.5034,
@@ -57185,7 +55805,7 @@
         "seed": 0,
         "suite": "v2"
       },
-      "rank": 37,
+      "rank": 36,
       "ranking_eligible": true,
       "rerun": null,
       "robustness_tax": 0.59,
@@ -58565,7 +57185,7 @@
         "seed": 0,
         "suite": "v2"
       },
-      "rank": 38,
+      "rank": 37,
       "ranking_eligible": true,
       "rerun": null,
       "robustness_tax": 0.0742,
@@ -59945,7 +58565,7 @@
         "seed": 0,
         "suite": "v2"
       },
-      "rank": 39,
+      "rank": 38,
       "ranking_eligible": true,
       "rerun": null,
       "robustness_tax": 0.735,
@@ -61325,7 +59945,7 @@
         "seed": 0,
         "suite": "v2"
       },
-      "rank": 40,
+      "rank": 39,
       "ranking_eligible": true,
       "rerun": null,
       "robustness_tax": 0.0123,
@@ -62705,7 +61325,7 @@
         "seed": 0,
         "suite": "v2"
       },
-      "rank": 41,
+      "rank": 40,
       "ranking_eligible": true,
       "rerun": null,
       "robustness_tax": 0.6799,

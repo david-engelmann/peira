@@ -54,21 +54,25 @@ const slices = payload.ranked.filter((r) => r.n_cases < fullCases);
 const flagged = payload.unranked;
 
 test("the payload holds the published board's shape", () => {
-  assert.equal(rows.length, 52);
-  assert.equal(full.length, 41);
+  assert.equal(rows.length, 51);
+  assert.equal(full.length, 40);
   assert.equal(slices.length, 6);
   assert.equal(flagged.length, 5);
   assert.equal(full[0].n_cases, 4701);
 });
 
-test("the leader is the cursor harness grok run", () => {
+test("the leader is the gemini 4 argon run and no harness row stands on the board", () => {
   const leader = full[0];
-  assert.match(leader.display_name, /grok/i);
-  assert.ok(Math.abs(leader.asr_conditional - 0.0891) < 0.0006);
+  assert.match(leader.display_name, /gemini-4-argon/i);
+  assert.ok(Math.abs(leader.asr_conditional - 0.0918) < 0.0006);
   const d = decomp(leader);
-  assert.equal(d.flips, 403);
+  assert.equal(d.flips, 423);
   assert.equal(d.malformed, 0);
-  assert.equal(leader.unanswered_cases, 1);
+  assert.equal(leader.unanswered_cases, 0);
+  // The Cursor harness grok run came off the board on the
+  // owner's ruling of 2026-11-10. No row in the payload is
+  // measured through a harness.
+  assert.ok(rows.every((r) => r.adapter_name !== "cursor-harness"));
 });
 
 test("mercury carries its malformed decomposition", () => {
@@ -95,7 +99,7 @@ test("the split pools as the derivation record states", () => {
     return { flips, malformed };
   };
   const ranked = pool(full);
-  assert.equal(ranked.flips, 31944);
+  assert.equal(ranked.flips, 31541);
   assert.equal(ranked.malformed, 400);
   const flaggedPool = pool(flagged);
   assert.equal(flaggedPool.flips, 5757);
@@ -173,7 +177,7 @@ test("the guards' counted flips hold no reversal", () => {
 
 test("the hero range derives from the ranked rows", () => {
   const asrs = full.map((r) => r.asr_conditional);
-  assert.ok(Math.abs(Math.min(...asrs) - 0.0891) < 0.0006);
+  assert.ok(Math.abs(Math.min(...asrs) - 0.0918) < 0.0006);
   assert.ok(Math.abs(Math.max(...asrs) - 0.3378) < 0.0006);
 });
 
@@ -232,12 +236,13 @@ test("the chart is the explorer default so the white disc stands first", () => {
   assert.match(defaults, /mode: "chart"/);
   assert.match(css, /\.disc\.subject \{ opacity: 1; \}/);
   assert.match(css, /\.disc\.field \{ opacity: 0\.5; \}/);
-  // The board leader records no per-call cost and stands in
-  // the chart's rail, so the opening selection prefers the
-  // best priced full suite result, and the chart falls back
-  // to its best plotted disc when the selection is not one.
+  // The board leader carries a recorded price and stands on
+  // the plot, so the opening selection is the leader itself,
+  // the best priced full suite result, and the chart falls
+  // back to its best plotted disc when the selection is not
+  // one.
   const leader = full[0];
-  assert.ok(leader.total_cost_usd === 0 || leader.total_cost_usd === null);
+  assert.ok(leader.total_cost_usd !== null && leader.total_cost_usd > 0);
   assert.match(explorer, /r\.costValue !== null && r\.costValue > 0/);
   assert.match(explorer, /const subjectId = /);
 });
@@ -375,15 +380,14 @@ test("the flagged reading states both decomposition bases", () => {
 
 test("recorded zero splits by how the run was measured", () => {
   const zeroes = rows.filter((r) => r.total_cost_usd === 0);
-  assert.equal(zeroes.length, 7);
-  // Exactly one recorded zero is a harness run, the leader.
-  const harness = zeroes.filter((r) => r.adapter_name === "cursor-harness");
-  assert.equal(harness.length, 1);
-  assert.match(harness[0].display_name, /grok/i);
-  // The other six are locally served adapters.
+  assert.equal(zeroes.length, 6);
+  // No recorded zero is a harness run. The one harness run
+  // the board used to carry came off it on the owner's
+  // ruling of 2026-11-10, and every recorded zero left is a
+  // locally served adapter.
+  assert.ok(zeroes.every((r) => r.adapter_name !== "cursor-harness"));
   assert.deepEqual(
     zeroes
-      .filter((r) => r.adapter_name !== "cursor-harness")
       .map((r) => r.adapter_name)
       .sort(),
     ["gliner-decide", "kev", "kev", "laya", "laya", "semif"],
@@ -676,7 +680,7 @@ test("the ranked interval cell prints its figures in full ink", () => {
   const leader = full[0];
   assert.equal(
     `${pct(leader.asr_ci95[0])} to ${pct(leader.asr_ci95[1])}`,
-    "8.1% to 9.8%",
+    "8.4% to 10.1%",
   );
   for (const r of payload.ranked) {
     assert.ok(Array.isArray(r.asr_ci95) && r.asr_ci95.length === 2);
@@ -782,20 +786,24 @@ test("the findings split bars share one height and the card figure stands", () =
   assert.match(css, /\.splitbar\.figured \.splitbar-track \{ height: 48px;/);
 });
 
-test("the undecided case stands as a figure against the suite total", () => {
+test("the findings carry no undecided case disclosure", () => {
+  // The disclosure stood on the board for the harness run
+  // that led it, and it retired with that run on the
+  // owner's ruling of 2026-11-10. The leader now carries
+  // no unanswered case, the findings derive no leader
+  // block, and the scene heads itself with the three
+  // findings that stand.
   const leader = full[0];
-  assert.equal(leader.unanswered_cases, 1);
-  assert.equal(leader.n_cases, 4701);
+  assert.equal(leader.unanswered_cases, 0);
   const findings = read("components/Findings.tsx");
-  assert.ok(findings.includes("leader-fig-num"));
-  assert.ok(
-    findings.includes(
-      "{fmtInt(f.leader.unanswered)} of {fmtInt(f.leader.row.n_cases)}",
-    ),
-  );
-  assert.ok(
-    findings.includes("suite cases produced no answer on either call"),
-  );
+  assert.ok(!findings.includes('data-finding="leader"'));
+  assert.ok(!findings.includes("never decided"));
+  assert.ok(!findings.includes("leader-fig"));
+  assert.ok(findings.includes("The split, the wire, and the guards"));
+  const findingsLib = read("lib/findings.ts");
+  assert.ok(!findingsLib.includes("LeaderFinding"));
+  const stylesheet = read("app/globals.css");
+  assert.ok(!stylesheet.includes("leader-fig"));
 });
 
 test("the footer carries the re-measurement note the method promises", () => {

@@ -2,7 +2,6 @@ import {
   boardGroups,
   modelSlug,
   shortName,
-  unansweredNote,
   type BoardRow,
 } from "@/lib/payload";
 import { fmtInt, fmtPct, fmtUsdExact } from "@/lib/format";
@@ -12,7 +11,7 @@ import SplitBar from "@/components/SplitBar";
 
 /**
  * The findings, standing as evidence after the headline
- * results and the explorer. Four blocks, each one dominant
+ * results and the explorer. Three blocks, each one dominant
  * visual, a short claim, and one action that hands the reader
  * the finding's own population inside the explorer. Every
  * figure derives from the payload through lib/findings, which
@@ -28,7 +27,6 @@ export default function Findings() {
     ...groups.flagged,
   ];
   const mercurySlug = modelSlug(f.split.mercury.row, allRows);
-  const leaderSlug = modelSlug(f.leader.row, allRows);
   /* The wire finding's own scale. Both of its intervals stand
    * inside a narrow band, so the finding draws them on a window
    * fitted to the pair with half the span again as margin on
@@ -44,15 +42,13 @@ export default function Findings() {
   ];
   const wirePct = (v: number) =>
     ((v - wireWin[0]) / (wireWin[1] - wireWin[0])) * 100;
-  const leaderNote = unansweredNote(f.leader.row);
-
   return (
     <section className="findings scene" aria-label="Findings" id="findings">
       <div className="sechead">
         <div className="micro eyebrow">
           <span className="eno">03</span> Findings
         </div>
-        <h2>The split, the wire, the guards, and the case never decided</h2>
+        <h2>The split, the wire, and the guards</h2>
         <p className="cap">
           The evidence behind the headline results. Each reading
           below derives from the same payload as every number on
@@ -209,46 +205,6 @@ export default function Findings() {
         </a>
       </article>
 
-      <article className="finding disclosure" data-finding="leader">
-        <p className="micro">Disclosed error · One case</p>
-        <h3>One case on this board was never decided</h3>
-        <p className="leader-fig">
-          <span className="leader-fig-num">
-            {fmtInt(f.leader.unanswered)} of {fmtInt(f.leader.row.n_cases)}
-          </span>
-          <span className="leader-fig-cap">
-            suite cases produced no answer on either call
-          </span>
-        </p>
-        <p className="f-copy">
-          <VendorLogo row={f.leader.row} size="mini" />{" "}
-          {shortName(f.leader.row)} stands first on the full suite at{" "}
-          {fmtPct(f.leader.row.asr_conditional as number)}, measured
-          through the Cursor agent harness.
-        </p>
-        {leaderNote !== null && <p className="f-copy">{leaderNote}</p>}
-        {/* Record sourced, per the derivation record's adjudication
-            on this finding. The refusal and the prompt class come
-            from the seal adjudication record, not from the payload. */}
-        <p className="f-copy">
-          The harness's provider layer refused that case on both calls.
-          It is a content moderation prompt the layer blocks outright,
-          so no run through this harness could have measured it.
-        </p>
-        <p className="f-copy">
-          Its benign accuracy of {fmtPct(f.leader.benign)} reads over
-          the {fmtInt(f.leader.decidedBenign)} cases that produced an
-          answer. The blocked case is in neither the hits nor the
-          misses, and none of its {fmtInt(f.leader.flips)} counted
-          flips went to malformed output.
-        </p>
-        <a
-          className="f-action"
-          href={`#explorer?pop=full&mode=rank&sel=${leaderSlug}&open=1`}
-        >
-          Read this in the explorer
-        </a>
-      </article>
     </section>
   );
 }
