@@ -977,8 +977,8 @@ if (
     phoneOrder.explorer < phoneOrder.wire &&
     phoneOrder.wire < phoneOrder.method)
 ) {
-  fail(`the phone order is not Finding 1, explorer, Findings 2 to 5, Method: ${JSON.stringify(phoneOrder)}`);
-} else pass("the phone order runs Finding 1, the explorer, Findings 2 to 5, Method");
+  fail(`the phone order is not Finding 1, explorer, the wire and guards findings, Method (${JSON.stringify(phoneOrder)})`);
+} else pass("the phone order runs Finding 1, the explorer, the wire and guards findings, Method");
 await phone.evaluate(() => document.querySelector(".explorer")?.scrollIntoView());
 const head = await phone.$(`[data-rid="${leader.run_id}"] .xrow-head`);
 if (head) {
