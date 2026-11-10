@@ -346,12 +346,10 @@ export default function Explorer({ data }: { data: ExplorerData }) {
     [data],
   );
   /* The opening selection is the chart's subject, the best
-   * ranked result the plot can seat. The board leader ran
-   * through the Cursor harness, whose cost is billed through
-   * a paid plan and not metered per run, so it stands in the
-   * chart's rail rather than on the plot, and the best priced
-   * result takes the white disc until the reader selects
-   * another. */
+   * ranked result the plot can seat. A result with no recorded
+   * price stands in the chart's rail rather than on the plot,
+   * so the best priced full suite result takes the white disc
+   * until the reader selects another. */
   const opener = useMemo(
     () =>
       data.rows.find(

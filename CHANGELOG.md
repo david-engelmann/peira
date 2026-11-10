@@ -7,6 +7,26 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
 
 ## [Unreleased]
 
+### The harness grok run comes off the board
+
+- The board payload drops the grok-4.7-high-fast result
+  measured through the Cursor agent harness, on the
+  owner's ruling of 2026-11-10. The board now carries
+  51 results, 46 ranked with 40 on the full suite, and
+  gemini-4-argon leads the full suite at 9.2 percent.
+  The grok-4 result measured directly through the xAI
+  wire stands untouched.
+- The findings scene retires the undecided case
+  disclosure that stood for the removed run. Its
+  derivation, its figure styles, and its pins go with
+  it, and the scene heads itself with the three
+  findings that stand.
+- The design record states the rail as it now renders,
+  with no harness group in the current payload, and
+  the cost kind law without its former instance. The
+  harness cost machinery stays in the board code and
+  renders nothing.
+
 ### Record sync with the live board
 
 - The upstage glyph in the board vendor data takes

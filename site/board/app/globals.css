@@ -197,12 +197,6 @@ section[id] { scroll-margin-top: 84px; }
 .wiretrack-line .point { position: absolute; top: 5px; width: 12px; height: 12px; margin-left: -6px; border-radius: 50%; background: var(--accent); border: 2px solid var(--panel); box-sizing: border-box; }
 .wiretrack-axis { display: flex; justify-content: space-between; font-family: "JetBrains Mono", monospace; font-size: 11.5px; color: var(--ink-3); margin: 2px 0 8px; }
 
-/* The undecided case as a typographic figure. The count
-   against the suite total sets large, its basis in words
-   beside it, no chart. */
-.leader-fig { display: flex; align-items: baseline; gap: 16px; flex-wrap: wrap; margin: 0 0 16px; }
-.leader-fig-num { font-family: "Archivo", sans-serif; font-size: clamp(40px, 7vw, 56px); font-weight: 750; letter-spacing: -0.01em; font-variant-numeric: tabular-nums; color: var(--ink); }
-.leader-fig-cap { color: var(--ink-2); font-size: 14.5px; max-width: 40ch; }
 .wiretrack-sub { font-size: 12.5px; color: var(--ink-3); margin: 4px 0 0; }
 .wiretrack-gap { margin: 4px 0 0; color: var(--ink-2); }
 .wiretrack-gap .rn { font-family: "Archivo", sans-serif; color: var(--ink); font-weight: 700; }
