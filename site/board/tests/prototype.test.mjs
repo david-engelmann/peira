@@ -802,6 +802,8 @@ test("the findings carry no undecided case disclosure", () => {
   assert.ok(findings.includes("The split, the wire, and the guards"));
   const findingsLib = read("lib/findings.ts");
   assert.ok(!findingsLib.includes("LeaderFinding"));
+  const stylesheet = read("app/globals.css");
+  assert.ok(!stylesheet.includes("leader-fig"));
 });
 
 test("the footer carries the re-measurement note the method promises", () => {
