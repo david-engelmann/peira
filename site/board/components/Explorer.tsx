@@ -1040,7 +1040,7 @@ function ChartView({
   const [fontsReady, setFontsReady] = useState(false);
   const [chipSeat, setChipSeat] = useState<{
     id: string;
-    plateKey: string;
+    seatKey: string;
     seat: "above" | "below" | "left" | "right";
     top: number;
     left: number | null;
@@ -1160,32 +1160,6 @@ function ChartView({
     return sortRows(renderable, "asr")[0]?.runId ?? null;
   })();
 
-  /* The subject label plate, measured at render time. The
-   * plate is the union of the two label texts' rendered
-   * boxes, widened by 8px at each side and 6px above and
-   * below, so no field disc can cross a label glyph. It is
-   * remeasured whenever the subject, the plot width, the
-   * drag state, or the font load changes. */
-  useLayoutEffect(() => {
-    const nameEl = nameRef.current;
-    const subEl = subRef.current;
-    if (!nameEl || !subEl) {
-      setPlate(null);
-      return;
-    }
-    const a = nameEl.getBBox();
-    const b = subEl.getBBox();
-    const x = Math.min(a.x, b.x) - 8;
-    const right = Math.max(a.x + a.width, b.x + b.width) + 8;
-    const y = Math.min(a.y, b.y) - 6;
-    setPlate({
-      x,
-      y,
-      w: right - x,
-      h: Math.max(a.y + a.height, b.y + b.height) + 6 - y,
-    });
-  }, [subjectId, width, fontsReady, drag]);
-
   const H = 430;
   const W = Math.max(320, width);
   const padL = 44;
@@ -1204,6 +1178,39 @@ function ChartView({
   const invX = (px: number) =>
     Math.pow(10, Math.log10(lo) + ((px - padL) / (W - padL - padR)) * (Math.log10(hi) - Math.log10(lo)));
   const invY = (px: number) => ((padT + (H - padT - padB) - px) / (H - padT - padB)) * axisMax;
+
+  /* The subject label plate, measured at render time. The
+   * plate is the union of the two label texts' rendered
+   * boxes, widened by 8px at each side and 6px above and
+   * below, so no field disc can cross a label glyph. It is
+   * remeasured whenever the subject, the plot width, the
+   * drag state, or the font load changes, and whenever the
+   * scales move. The scales derive from the visible set,
+   * so a filter change can carry the subject and its
+   * labels across the plot while the subject itself stands
+   * unchanged, and a plate measured against the old scale
+   * would back empty ground. The effect stands below the
+   * scale declarations it now names, and above every
+   * conditional return, as the hook order requires. */
+  useLayoutEffect(() => {
+    const nameEl = nameRef.current;
+    const subEl = subRef.current;
+    if (!nameEl || !subEl) {
+      setPlate(null);
+      return;
+    }
+    const a = nameEl.getBBox();
+    const b = subEl.getBBox();
+    const px = Math.min(a.x, b.x) - 8;
+    const right = Math.max(a.x + a.width, b.x + b.width) + 8;
+    const y = Math.min(a.y, b.y) - 6;
+    setPlate({
+      x: px,
+      y,
+      w: right - px,
+      h: Math.max(a.y + a.height, b.y + b.height) + 6 - y,
+    });
+  }, [subjectId, width, fontsReady, drag, lo, hi, axisMax]);
 
   const yTicks: number[] = [];
   for (let t = 0; t <= axisMax + 1e-9; t += 0.05) yTicks.push(Math.round(t * 100) / 100);
@@ -1322,22 +1329,32 @@ function ChartView({
     const discRect = discEl.getBoundingClientRect();
     const plateEl = svgRef.current?.querySelector(".label-plate");
     const plateRect = plateEl?.getBoundingClientRect() ?? null;
-    /* The seat stands down only while the plate it was
+    /* The seat stands down only while the key it was
      * measured against stands unchanged. The plate is
      * itself measured in a layout effect and can move to
      * a new subject one commit after the card first
-     * stands, so the seat keys on the plate's measured
+     * stands, so the key opens with the plate's measured
      * box and is measured again whenever that box moves. */
     const plateKey = plateRect
       ? `${Math.round(plateRect.left)},${Math.round(plateRect.top)},${Math.round(plateRect.width)},${Math.round(plateRect.height)}`
       : "none";
+    /* The seat is stored in percentages of the wrap, so
+     * the key names the wrap's height beside the plate's
+     * box. The wrap grows when the standing selection
+     * paragraph appears below the plot, and a percentage
+     * measured against the shorter wrap would seat the
+     * card that much farther from its disc against the
+     * taller one, so a seat measured under one height
+     * stands down when the height changes. */
+    const seatKey = `${plateKey}|${Math.round(wrapRect.height)}`;
     if (chipSeat?.id === chipRow.runId) {
-      if (chipSeat.plateKey === plateKey) return;
-      /* The plate moved after this seat was measured, and
-       * the standing card no longer shows the default seat
-       * the scoring reads. Clear the seat and let the next
-       * commit measure the card where it stands by
-       * default, against the plate where it stands now. */
+      if (chipSeat.seatKey === seatKey) return;
+      /* The plate moved, or the wrap changed height, after
+       * this seat was measured, and the standing card no
+       * longer shows the default seat the scoring reads.
+       * Clear the seat and let the next commit measure the
+       * card where it stands by default, against the plate
+       * and the wrap as they stand now. */
       setChipSeat(null);
       return;
     }
@@ -1511,7 +1528,7 @@ function ChartView({
     if (best.seat === "above") {
       setChipSeat({
         id: chipRow.runId,
-        plateKey,
+        seatKey,
         seat: "above",
         top: topPct(best.top + h),
         left: leftPct(best.left + 8),
@@ -1526,7 +1543,7 @@ function ChartView({
       best.seat === "below"
         ? leftPct(best.left + 8)
         : leftPct(best.left);
-    setChipSeat({ id: chipRow.runId, plateKey, seat: best.seat, top, left });
+    setChipSeat({ id: chipRow.runId, seatKey, seat: best.seat, top, left });
   });
 
   return visible.length > 0 && plotted.length === 0 ? (

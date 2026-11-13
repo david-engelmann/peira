@@ -1447,7 +1447,7 @@ test("the detail card seats by measured clearance on all four sides of its disc"
   assert.ok(explorer.includes('className="subject-label"'));
   assert.ok(explorer.includes('querySelector(".label-plate")'));
   assert.ok(explorer.includes('querySelectorAll(".disc-face")'));
-  assert.ok(explorer.includes("chipSeat.plateKey === plateKey"));
+  assert.ok(explorer.includes("chipSeat.seatKey === seatKey"));
   assert.ok(explorer.includes("discRect.bottom + 10"));
   assert.ok(explorer.includes("plateRect.bottom + 8"));
   assert.ok(explorer.includes("discRect.right + 12"));
@@ -1465,6 +1465,82 @@ test("the detail card seats by measured clearance on all four sides of its disc"
     css,
     /\.chip\.side-left, \.chip\.side-right \{ transform: translate\(0, -50%\); \}/,
   );
+});
+
+test("the subject label plate is remeasured whenever the scales move", () => {
+  // The plate backs the subject's two label texts, and
+  // the texts stand where the scales put the subject.
+  // The scales derive from the visible set, so a cost
+  // band change can carry the subject across the plot
+  // while the subject itself stands unchanged. On the
+  // standing payload the subject under any cost and
+  // under the ten dollar band is the same result, and
+  // its seat on the cost scale moves by more than a
+  // hundred plot units between the two bands, so a
+  // plate that is not remeasured on a scale change
+  // backs empty ground where the labels stood.
+  const explorer = read("components/Explorer.tsx");
+  const points = [...full, ...flagged].filter(
+    (r) => r.total_cost_usd !== null && r.total_cost_usd > 0,
+  );
+  const subject = points.reduce((a, b) =>
+    a.asr_conditional < b.asr_conditional ? a : b,
+  );
+  const seatOn = (band) => {
+    const costs = points
+      .filter((r) => band(r.total_cost_usd))
+      .map((r) => r.total_cost_usd);
+    const lo = Math.pow(10, Math.floor(Math.log10(Math.min(...costs)) * 2) / 2);
+    const hi = Math.pow(10, Math.ceil(Math.log10(Math.max(...costs)) * 2) / 2);
+    const W = 1032;
+    return (
+      44 +
+      ((Math.log10(subject.total_cost_usd) - Math.log10(lo)) /
+        (Math.log10(hi) - Math.log10(lo))) *
+        (W - 44 - 30)
+    );
+  };
+  const underAny = seatOn(() => true);
+  const underTenUp = seatOn((c) => c >= 10);
+  assert.ok(
+    Math.abs(underAny - underTenUp) > 100,
+    "the subject does not move between the two bands, so the plate hazard is not in the data",
+  );
+  // The measurement names the scales in its dependences
+  // and stands below their declarations, above every
+  // conditional return, in the hook order the seat
+  // effect behind it relies on.
+  assert.ok(
+    explorer.includes(
+      "}, [subjectId, width, fontsReady, drag, lo, hi, axisMax]);",
+    ),
+  );
+  const plateEffect = explorer.indexOf("The subject label plate, measured at render time");
+  assert.ok(plateEffect > explorer.indexOf("const invY"));
+  assert.ok(
+    plateEffect < explorer.indexOf("if (!chipRow || chipRow.asr === null)"),
+  );
+});
+
+test("the detail card's seat key names the wrap height it was measured against", () => {
+  // The seat is stored in percentages of the chart
+  // wrap, and the wrap grows when the standing
+  // selection paragraph appears below the plot. A seat
+  // keyed on the plate alone stands through that
+  // growth, and its percentages then seat the card
+  // against the taller wrap, away from its disc by
+  // the growth times the stored percentage. The key
+  // therefore carries the wrap height beside the
+  // plate's box, so the seat is measured again when
+  // either changes.
+  const explorer = read("components/Explorer.tsx");
+  assert.ok(
+    explorer.includes(
+      "const seatKey = `${plateKey}|${Math.round(wrapRect.height)}`;",
+    ),
+  );
+  assert.ok(explorer.includes("chipSeat.seatKey === seatKey"));
+  assert.ok(explorer.includes("seatKey,"));
 });
 
 test("the detail card prices axis labels above field discs in its seat score", () => {

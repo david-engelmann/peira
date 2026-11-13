@@ -598,6 +598,29 @@ function geomFor(kind) {
   const yOf = (a) => g.yBot - (a / axisMax) * (g.yBot - g.yTop);
   return { ...g, decadePx, xOf, yOf };
 }
+/* The floor binds the ladder's slack as it binds the fit
+ * walk's own narrowing. A ladder whose rows run long
+ * funds its overage by narrowing the plot in the card's
+ * first drawing, before the fit walk runs, and the fit
+ * walk's cap on its shrink cannot see width the ladder
+ * already took, so the width the slack leaves is checked
+ * against the floor here, where both budgets and both
+ * geometries stand. A card whose ladder alone carries
+ * its plot under the floor does not print, the same
+ * fail-closed rule the fit walk applies to itself. */
+for (const kind of ["land", "port"]) {
+  const g = GEOMS[kind];
+  const budget = kind === "land" ? ladderLand : ladderPort;
+  const effW = Math.round(
+    g.width - budget.slackUsed * (g.canvas.w / g.canvas.h),
+  );
+  if (effW < PLOT_FLOOR[kind]) {
+    console.error(
+      `gen-og: the no-cost rail carries ${budget.rows} rows and the ${kind === "land" ? "landscape" : "portrait"} ladder's slack narrows its plot to ${effW}px before the fit walk runs, under the ${PLOT_FLOOR[kind]}px floor the plot must hold, so the card does not print with its plot shrunk past the floor by the ladder`,
+    );
+    process.exit(1);
+  }
+}
 function decadesFor(g) {
   const out = [];
   for (
