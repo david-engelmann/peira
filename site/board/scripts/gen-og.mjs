@@ -477,19 +477,23 @@ const ceilingDecompClause = (r) => {
 };
 
 /* The ladder: every rail result in rate order, worst first.
- * The landscape card sets it in two columns inside a rows
- * area allotted 170px at 22px a row; past 14 rows the area
+ * The landscape card sets it in three columns inside a rows
+ * area allotted 170px at 22px a row; past 21 rows the area
  * takes slack from the middle of the card, and the build
  * fails when the rows outgrow the allotment and the slack
  * together. The portrait sets one column at 26px a row
- * inside 286px on the same rule. */
+ * inside 286px on the same rule. The column count is the
+ * ladder's honest variable: the canvas is wide and short,
+ * so the list takes more columns at the same row pitch and
+ * the same type size, and a row is never shrunk to fund
+ * the card. */
 const ladderRows = [...railRows].sort(
   (a, b) =>
     (b.asr_conditional ?? 0) - (a.asr_conditional ?? 0) ||
     (a.run_id < b.run_id ? -1 : 1),
 );
 const LADDER = {
-  land: { allot: 170, pitch: 22, slack: 40, columns: 2 },
+  land: { allot: 170, pitch: 22, slack: 40, columns: 3 },
   port: { allot: 286, pitch: 26, slack: 160, columns: 1 },
 };
 function ladderBudget(kind) {
@@ -516,6 +520,21 @@ const ladderPort = ladderBudget("port");
    internal coordinate. Set by the fit retry below. */
 const plotShrink = { land: 0, port: 0 };
 const fitTight = { land: false, port: false };
+/* The plot floor: the narrowest width, in rendered pixels,
+ * at which a card's plot still reads as evidence. The
+ * subject disc is the measure: on the landscape canvas the
+ * subject's 7 units across 700 at 500px wide render 10px
+ * across, 5px at the 600px width a feed shows the card at,
+ * the smallest size at which the one white disc still
+ * reads as a disc; on the portrait canvas the subject's
+ * 8.4 units across 976 at 800px wide render 13.8px across.
+ * Below the floor the field and its labels are texture,
+ * not evidence. The fit pass funds a tall card from its
+ * furniture first and narrows the plot only down to this
+ * floor; a card that cannot fit at the floor does not
+ * print, the same fail-closed rule that already refuses a
+ * card whose ladder or footer would cut. */
+const PLOT_FLOOR = { land: 500, port: 800 };
 
 /* Plot geometry for the two cards. The x scale gives the
  * derived domain's decades the mock's fixed number of
@@ -578,6 +597,29 @@ function geomFor(kind) {
     g.x0 + (Math.log10(c) - Math.log10(domLo)) * decadePx;
   const yOf = (a) => g.yBot - (a / axisMax) * (g.yBot - g.yTop);
   return { ...g, decadePx, xOf, yOf };
+}
+/* The floor binds the ladder's slack as it binds the fit
+ * walk's own narrowing. A ladder whose rows run long
+ * funds its overage by narrowing the plot in the card's
+ * first drawing, before the fit walk runs, and the fit
+ * walk's cap on its shrink cannot see width the ladder
+ * already took, so the width the slack leaves is checked
+ * against the floor here, where both budgets and both
+ * geometries stand. A card whose ladder alone carries
+ * its plot under the floor does not print, the same
+ * fail-closed rule the fit walk applies to itself. */
+for (const kind of ["land", "port"]) {
+  const g = GEOMS[kind];
+  const budget = kind === "land" ? ladderLand : ladderPort;
+  const effW = Math.round(
+    g.width - budget.slackUsed * (g.canvas.w / g.canvas.h),
+  );
+  if (effW < PLOT_FLOOR[kind]) {
+    console.error(
+      `gen-og: the no-cost rail carries ${budget.rows} rows and the ${kind === "land" ? "landscape" : "portrait"} ladder's slack narrows its plot to ${effW}px before the fit walk runs, under the ${PLOT_FLOOR[kind]}px floor the plot must hold, so the card does not print with its plot shrunk past the floor by the ladder`,
+    );
+    process.exit(1);
+  }
 }
 function decadesFor(g) {
   const out = [];
@@ -697,13 +739,16 @@ function ladderHtml(kind) {
   if (kind === "port") {
     return `<div class="ladder">${head}${ladderRows.map(ladderRowHtml).join("\n")}</div>`;
   }
-  const mid = Math.ceil(ladderRows.length / 2);
-  const col1 = ladderRows.slice(0, mid).map(ladderRowHtml).join("\n");
-  const col2 = ladderRows.slice(mid).map(ladderRowHtml).join("\n");
-  const cols =
-    ladderRows.length > 1
-      ? `<div class="cols"><div>${col1}</div><div class="col2">${col2}</div></div>`
-      : `<div class="cols"><div>${col1}</div></div>`;
+  const perColumn = Math.ceil(ladderRows.length / LADDER.land.columns);
+  const chunks = [];
+  for (let i = 0; i < ladderRows.length; i += perColumn) {
+    chunks.push(
+      ladderRows.slice(i, i + perColumn).map(ladderRowHtml).join("\n"),
+    );
+  }
+  const cols = `<div class="cols c${chunks.length}">${chunks
+    .map((c, i) => `<div${i > 0 ? ' class="col2"' : ""}>${c}</div>`)
+    .join("")}</div>`;
   return `<div class="ladder">${head}${cols}</div>`;
 }
 
@@ -826,7 +871,10 @@ const CARD_CSS_LAND = `
   .card.tight .ro .num{margin-top:2px}
   .ro .who{font-size:13px;color:var(--body);line-height:1.45;margin-top:4px}
   .nameline{font-size:12px;margin-top:6px}
-  .ladder .cols{display:grid;grid-template-columns:1fr 1fr;column-gap:0}
+  .ladder .cols{display:grid;column-gap:0}
+  .ladder .cols.c1{grid-template-columns:1fr}
+  .ladder .cols.c2{grid-template-columns:1fr 1fr}
+  .ladder .cols.c3{grid-template-columns:1fr 1fr 1fr}
   .ladder .col2{border-left:1px solid var(--hair);padding-left:24px;margin-left:24px}
   .lrow{height:22px}
   .lrow .ld{width:11px;height:11px}
@@ -1394,12 +1442,14 @@ for (const kind of ["land", "port"]) {
   /* The card must fit its own height: measured where it is
    * drawn, the content may not run past the card, and the
    * footer must sit inside it. When the fixed furniture
-   * runs tall on a live payload, the plot funds the
-   * overflow by narrowing (its internal geometry is in its
-   * own units and does not move), and the card renders
-   * again; a card that still overflows after the retries
+   * runs tall on a live payload, the furniture funds the
+   * overflow first: the first retry only tightens the
+   * readings stack's own padding. Plot narrowing comes
+   * after, in steps (the plot's internal geometry is in
+   * its own units and does not move), and never past
+   * PLOT_FLOOR; a card that still overflows at the floor
    * does not print. */
-  for (let attemptN = 0; attemptN < 4; attemptN++) {
+  for (let attemptN = 0; attemptN < 6; attemptN++) {
     writeFileSync(htmlPath, cardHtml(kind));
     await page.setViewport(size);
     await page.goto(`file://${htmlPath}`, { waitUntil: "networkidle0" });
@@ -1463,20 +1513,29 @@ for (const kind of ["land", "port"]) {
     if (fit.footBottom <= fit.cardH + 0.5 && fit.ladderBottom <= fit.cardH + 0.5) {
       break;
     }
-    if (attemptN === 3) {
+    if (attemptN === 5) {
       await browser.close();
       console.error(
-        `gen-og: the ${kind === "land" ? "landscape" : "portrait"} card's content overflows its height (ladder bottom ${Math.round(fit.ladderBottom)} of ${Math.round(fit.cardH)}), so the card does not print with its ladder or footer cut`,
+        `gen-og: the ${kind === "land" ? "landscape" : "portrait"} card's content overflows its height (ladder bottom ${Math.round(fit.ladderBottom)} of ${Math.round(fit.cardH)}) even with its readings tight and its plot at the ${PLOT_FLOOR[kind]}px floor, so the card does not print with its ladder or footer cut or its plot shrunk past the floor`,
       );
       process.exit(1);
     }
-    if (attemptN >= 1) {
+    if (attemptN === 0) {
       fitTight[kind] = true;
+    } else {
+      const step = Math.ceil(
+        (Math.max(fit.footBottom, fit.ladderBottom) - fit.cardH + 10) *
+          (g.canvas.w / g.canvas.h),
+      );
+      const maxShrink = Math.max(
+        0,
+        GEOMS[kind].width -
+          PLOT_FLOOR[kind] -
+          (kind === "land" ? ladderLand : ladderPort).slackUsed *
+            (GEOMS[kind].canvas.w / GEOMS[kind].canvas.h),
+      );
+      plotShrink[kind] = Math.min(plotShrink[kind] + step, maxShrink);
     }
-    plotShrink[kind] += Math.ceil(
-      (Math.max(fit.footBottom, fit.ladderBottom) - fit.cardH + 10) *
-        (g.canvas.w / g.canvas.h),
-    );
   }
   const budget = kind === "land" ? ladderLand : ladderPort;
   console.log(

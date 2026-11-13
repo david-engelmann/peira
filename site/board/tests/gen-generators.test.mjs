@@ -254,6 +254,37 @@ test(
 );
 
 test(
+  "gen-og fails closed when the ladder's slack alone narrows the portrait plot under its floor",
+  { timeout: 300000 },
+  () => {
+    const { scratch, board } = scratchBoard((payload) => {
+      /* Six more no-cost full suite rows take the rail
+       * to fifteen. The portrait ladder funds the rows
+       * past its allotment from the plot, and fifteen
+       * rows take enough slack to carry the plot under
+       * its floor before the fit walk runs, so the build
+       * must refuse on the floor guard and not on any
+       * later measure. */
+      const von = payload.ranked.find((r) => r.run_id === "von-v2-trial");
+      for (let i = 0; i < 6; i++) {
+        const clone = JSON.parse(JSON.stringify(von));
+        clone.run_id = `synthetic-rail-${i}-v2-trial`;
+        clone.display_name = `synthetic-rail-${i}`;
+        payload.ranked.push(clone);
+      }
+    });
+    try {
+      const run = runGenOg(board);
+      assert.equal(run.status, 1, run.out);
+      assert.match(run.out, /portrait ladder's slack narrows its plot/);
+      assert.match(run.out, /shrunk past the floor by the ladder/);
+    } finally {
+      rmSync(scratch, { recursive: true, force: true });
+    }
+  },
+);
+
+test(
   "gen-social-preview fails the build when its headline claim breaks on a repriced payload",
   { timeout: 300000 },
   () => {

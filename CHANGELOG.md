@@ -7,6 +7,28 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
 
 ## [Unreleased]
 
+### The design iterations land on the published board
+
+- The board takes the design language the prototype
+  iterations proved across eleven rounds. Scene rhythm,
+  explorer card seats, the findings anatomy, share image
+  geometry, and the phone composition all stand as the
+  prototype carries them, over the same sealed payload.
+- The Flip stands in the first scene, one paired case
+  the reader runs against any ranked result, on the
+  owner's verdict of 2026-11-13. Its case record re-
+  derives from the sealed artifacts in the board test
+  suite by a second path, so a drift fails the build
+  rather than printing.
+- Model addresses name their own result in their
+  heading and title, unknown addresses meet the board's
+  own not found page, and every doorway link meets the
+  44px coarse target rule.
+- DESIGN.md now states the scene gap and hero padding
+  the sheet already spends, and names the three phone
+  values in Responsive Behavior. Methodology closes an
+  unclosed parenthesis in the per-family gate bullet.
+
 ### The harness grok run comes off the board
 
 - The board payload drops the grok-4.7-high-fast result

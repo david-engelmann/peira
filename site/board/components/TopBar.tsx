@@ -38,9 +38,22 @@ export default function TopBar() {
         <a href="#results">Results</a>
         <a href="#explorer">Explorer</a>
         <a href="#findings">Findings</a>
-        <a href="#method">Method</a>
-        <a href="/payload.json">Payload</a>
+        <a className="mastnav-tail" href="#method">Method</a>
+        <a className="mastnav-tail" href="/payload.json">Payload</a>
       </nav>
+      <details className="mastmore">
+        <summary>More</summary>
+        <div
+          className="mastmore-panel"
+          onClick={(e) => {
+            const details = e.currentTarget.closest("details");
+            if (details) details.removeAttribute("open");
+          }}
+        >
+          <a href="#method">Method</a>
+          <a href="/payload.json">Payload</a>
+        </div>
+      </details>
     </header>
   );
 }

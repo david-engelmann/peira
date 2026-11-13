@@ -2,13 +2,13 @@
   font-family: "Archivo";
   src: url("/fonts/archivo.woff2") format("woff2");
   font-weight: 100 900;
-  font-display: swap;
+  font-display: optional;
 }
 @font-face {
   font-family: "JetBrains Mono";
   src: url("/fonts/jetbrains-mono.woff2") format("woff2");
   font-weight: 100 800;
-  font-display: swap;
+  font-display: optional;
 }
 
 :root {
@@ -22,6 +22,7 @@
   --ink: #eef2f6;
   --ink-2: #aebcc7;
   --ink-3: #71808f;
+  --white: #ffffff;
   --accent: #2fbf71;
   --amber: #e8a33d;
   --glyph-dark: #0b0e12;
@@ -105,8 +106,9 @@ h3 { font-size: 20px; font-weight: 700; letter-spacing: -0.01em; }
 .mastnav { display: flex; gap: 24px; font-size: 14.5px; }
 .mastnav a { color: var(--ink-2); min-height: 44px; display: inline-flex; align-items: center; }
 .mastnav a:hover { color: var(--ink); text-decoration: none; }
+.mastmore { display: none; }
 
-.hero { padding: 72px 0 0; }
+.hero { padding: 48px 0 0; }
 /* Display type at the Maidan landing's scale and cut
    (web/landing/src/styles.css, h1 and h2). Fluid clamp
    sizing, tight tracking, near-single line height, weight
@@ -114,10 +116,10 @@ h3 { font-size: 20px; font-weight: 700; letter-spacing: -0.01em; }
 .hero h1 {
   font-size: clamp(3rem, 7.5vw, 5.25rem); font-weight: 800;
   letter-spacing: -0.055em; line-height: 0.98;
-  max-width: 15ch; margin-top: 16px; text-wrap: balance;
+  max-width: 21ch; margin-top: 12px; text-wrap: balance;
 }
-.hero-lede { font-size: 17px; line-height: 1.5; color: var(--ink); max-width: 34rem; margin: 20px 0 0; text-wrap: pretty; }
-.hero-counts { color: var(--ink-2); margin: 12px 0 0; }
+.hero-lede { font-size: 17px; line-height: 1.5; color: var(--ink); max-width: 34rem; margin: 16px 0 0; text-wrap: pretty; }
+.hero-counts { color: var(--ink-2); margin: 8px 0 0; }
 
 /* Scenes. The page below the hero is numbered scenes in the
    Maidan landing's rhythm. A hairline separates each scene,
@@ -129,7 +131,7 @@ h3 { font-size: 20px; font-weight: 700; letter-spacing: -0.01em; }
    clear its fixed bar. */
 .scene {
   border-top: 1px solid var(--line);
-  margin-top: 64px; padding-top: 64px;
+  margin-top: 48px; padding-top: 48px;
   min-width: 0;
 }
 section[id] { scroll-margin-top: 84px; }
@@ -140,7 +142,7 @@ section[id] { scroll-margin-top: 84px; }
   letter-spacing: -0.055em; line-height: 0.98; text-wrap: balance;
 }
 .sechead .cap { font-size: 17px; max-width: 34rem; margin-top: 16px; text-wrap: pretty; }
-.eyebrow { letter-spacing: 0.08em; }
+.eyebrow { letter-spacing: 0.14em; }
 .eyebrow .eno { color: var(--accent); }
 
 .findings { display: block; }
@@ -285,6 +287,32 @@ section[id] { scroll-margin-top: 84px; }
 }
 .stack-cap { color: var(--ink-2); font-size: 14.5px; max-width: 68ch; margin: 8px 0 0; }
 .sharecard .splitbar { margin: 12px 0 0; }
+/* Wide viewports seat the three entries side by side as
+   three independent cards in a row, top aligned, each at
+   its own natural height. One shared card made its height
+   the tallest entry's height and left the shorter entries
+   standing over blank slab; separate cards let the unequal
+   heights read as a composition instead. The flagged entry
+   takes the wider middle column its bar and caption need.
+   Each card carries the board's hairline border on the
+   panel ground; the row's gap separates them. Every figure
+   keeps its full size. Only the seating changes. */
+@media (min-width: 981px) {
+  .sharecard {
+    display: grid;
+    grid-template-columns: 1fr 1.35fr 1fr;
+    align-items: start;
+    gap: 24px;
+    border: 0; background: transparent; box-shadow: none;
+    padding: 0;
+  }
+  .stack-entry {
+    border: 1px solid var(--line); border-radius: var(--radius);
+    background: var(--panel); box-shadow: var(--shadow-1);
+    padding: 20px 24px;
+  }
+  .stack-entry + .stack-entry { border-top: 1px solid var(--line); }
+}
 .xmark {
   display: inline-flex; align-items: center; justify-content: center;
   border-radius: var(--radius-ctl); flex: 0 0 auto;
@@ -293,8 +321,7 @@ section[id] { scroll-margin-top: 84px; }
 
 .xcontrols {
   display: flex; flex-wrap: wrap; gap: 12px 16px; align-items: end;
-  border: 1px solid var(--line); border-radius: var(--radius);
-  background: var(--panel); padding: 16px;
+  border-bottom: 1px solid var(--line-soft); padding: 0 0 16px;
 }
 .segrow { display: inline-flex; border: 1px solid var(--line); border-radius: var(--radius-ctl); overflow: hidden; }
 .segbtn {
@@ -469,15 +496,17 @@ button.xh.on { color: var(--accent); }
 .disc:focus { outline: none; }
 .disc:focus-visible .disc-face { stroke: var(--accent); stroke-width: 2.5; }
 .disc-letter.subject-letter { fill: var(--glyph-dark); }
+.subject-label { pointer-events: none; }
+.label-plate { fill: var(--ground); }
 .subject-name {
   fill: var(--ink); font-family: "Archivo", sans-serif;
   font-size: 13.5px; font-weight: 700;
-  paint-order: stroke; stroke: var(--ground); stroke-width: 3px; stroke-linejoin: round;
+  paint-order: stroke; stroke: var(--ground); stroke-width: 5px; stroke-linejoin: round;
 }
 .subject-sub {
   fill: var(--ink-2); font-family: "JetBrains Mono", monospace;
   font-size: 11.5px;
-  paint-order: stroke; stroke: var(--ground); stroke-width: 3px; stroke-linejoin: round;
+  paint-order: stroke; stroke: var(--ground); stroke-width: 6px; stroke-linejoin: round;
 }
 .disc-letter { fill: #f4f7fa; font-size: 11.5px; font-weight: 700; }
 .brush-rect { fill: rgba(47, 191, 113, 0.14); stroke: var(--accent); stroke-width: 1; }
@@ -492,6 +521,11 @@ button.xh.on { color: var(--accent); }
   padding: 12px 16px; min-width: 210px; max-width: 280px; z-index: 5;
   box-shadow: var(--shadow-3);
 }
+.chip.below { transform: translate(-8px); }
+/* A card seated beside its disc keeps the seat the
+   clearance pass measured, centred on the disc's height
+   with its edge on the measured left seat. */
+.chip.side-left, .chip.side-right { transform: translate(0, -50%); }
 .chip-name { display: flex; align-items: center; gap: 8px; font-weight: 700; margin: 0; }
 .chip-figs { color: var(--ink-2); font-size: 13.5px; margin: 4px 0 0; }
 .chip-actions { display: flex; gap: 8px; margin-top: 12px; }
@@ -570,10 +604,9 @@ button.xh.on { color: var(--accent); }
    minmax(0, 1fr) guard, styles.css). */
 .sharecard, .finding, .chartwrap, .xcontrols, .chartsync { min-width: 0; }
 
-.section { margin-top: 0; }
 .method-head { font-size: 17px; margin: 24px 0 8px; }
 .method-p { color: var(--ink-2); max-width: 74ch; margin: 0; }
-.colophon { border-top: 1px solid var(--line); margin-top: 64px; padding-top: 24px; color: var(--ink-3); font-size: 13.5px; }
+.colophon { border-top: 1px solid var(--line); margin-top: 48px; padding-top: 24px; color: var(--ink-3); font-size: 13.5px; }
 .colophon p { margin: 0 0 8px; }
 .model-redirect { padding-top: 64px; }
 
@@ -601,24 +634,57 @@ button.xh.on { color: var(--accent); }
   }
   .masthead { margin: 0 -16px; padding: 8px 16px; }
   .mastnav { gap: 16px; font-size: 13.5px; }
+  .mastnav a.mastnav-tail { display: none; }
+  .mastmore { display: block; position: relative; }
+  .mastmore summary {
+    list-style: none; cursor: pointer; color: var(--ink-2);
+    min-height: 44px; display: inline-flex; align-items: center; font-size: 13.5px;
+  }
+  .mastmore summary::-webkit-details-marker { display: none; }
+  .mastmore summary:hover { color: var(--ink); }
+  .mastmore-panel {
+    position: absolute; right: 0; top: calc(100% + 4px); z-index: 41;
+    display: flex; flex-direction: column; min-width: 168px; padding: 8px;
+    background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius);
+    box-shadow: var(--shadow-2);
+  }
+  .mastmore-panel a {
+    display: flex; align-items: center; min-height: 44px; padding: 0 12px;
+    color: var(--ink-2); border-radius: var(--radius-ctl);
+  }
+  .mastmore-panel a:hover { color: var(--ink); background: var(--panel-2); text-decoration: none; }
   /* Phone scene pacing tightens; the hairline rhythm and
      the display clamps carry the scenes at this width. The
      clamp floors hold the claims at 48px and 40px. */
   .scene { margin-top: 48px; padding-top: 48px; }
-  .hero { padding-top: 40px; }
+  .hero { padding-top: 24px; }
+  .headline.scene { margin-top: 24px; padding-top: 24px; }
   .segrow { flex-wrap: wrap; gap: 8px; border: 0; overflow: visible; }
   .segrow .segbtn { border: 1px solid var(--line); border-radius: var(--radius-ctl); }
   .segrow .segbtn.on { border-color: var(--accent); }
   .segrow .segbtn + .segbtn { border-left: 1px solid var(--line); }
-  .leaders { grid-template-columns: 1fr; }
-  .sharecard { padding: 4px 16px; }
-  .stack-entry { padding: 16px 0; }
+  .leaders { grid-template-columns: 1fr; gap: 12px; }
+  .sharecard { padding: 4px 16px; margin-bottom: 16px; }
+  .stack-entry { padding: 12px 0; }
+  .leader-card { padding: 16px 24px; }
+  .headline .sechead { margin-bottom: 24px; }
+  .headline-line { margin-top: 12px; }
   .inbar-fig { right: 12px; }
   h2 { font-size: 25px; }
   .finding { padding: 16px; }
   .costrow { grid-template-columns: 1fr; gap: 4px; }
   .guardlines { grid-template-columns: 1fr; }
-  .anatomy { flex-wrap: wrap; }
+  /* The guards anatomy stacks at phone width instead of
+     shrinking, the Maidan phone rule the ladder below also
+     follows. The zero slot keeps its fixed reading width
+     and the pair take the track at their shares of the
+     pair total, set from the payload counts as
+     --pairshare, so no label is ever cut mid figure. */
+  .anatomy { flex-direction: column; align-items: flex-start; }
+  .anat-slot { flex: 0 0 auto; min-width: max-content; }
+  .anat-slot.empty { flex: 0 0 auto; width: 148px; }
+  .anat-slot.abstain { width: calc(var(--pairshare) * 100%); }
+  .anat-slot.untyped { width: calc(var(--pairshare) * 100%); }
   .xhead { display: none; }
   /* The ladder reflows to cards at phone width, the policy
      pages' pattern in Maidan (deploy/cloudflare/site/site.css
@@ -642,7 +708,13 @@ button.xh.on { color: var(--accent); }
   }
   .reading-figs { grid-template-columns: 1fr 1fr; }
   .xfam-bars { grid-template-columns: 1fr; }
-  .tray { bottom: calc(64px + env(safe-area-inset-bottom)); flex-wrap: wrap; }
+  .tray {
+    left: 16px; right: 16px; transform: none;
+    bottom: calc(16px + env(safe-area-inset-bottom)); flex-wrap: wrap;
+  }
+  .tray-names { flex: 1 1 100%; }
+  .tray-delta { flex: 1 1 100%; }
+  .tray.over-strip { bottom: calc(64px + env(safe-area-inset-bottom)); }
   .footstrip {
     position: fixed; left: 0; right: 0; bottom: 0; z-index: 54;
     display: flex; align-items: center; gap: 8px;
@@ -661,6 +733,7 @@ button.xh.on { color: var(--accent); }
   .segbtn, .ghostbtn, .pinbtn, .rail-row, .sync-row, .reading-close { min-height: 44px; }
   .pinbtn { min-width: 44px; padding: 8px 10px; }
   .f-action { display: inline-flex; align-items: center; min-height: 44px; }
+  .model-redirect a { display: inline-flex; align-items: center; min-height: 44px; }
   .xfield select, .xfield input { min-height: 44px; }
   .xcheck { min-height: 44px; }
   .xfam-head { min-height: 44px; }
@@ -677,4 +750,125 @@ button.xh.on { color: var(--accent); }
   html { scroll-behavior: auto; }
   .disc { transition: none; }
   .masthead { transition: none; }
+}
+
+/* The Flip. One paired case as the first screen's object, in
+   scene 01 between the claim headline and the numeral stack.
+   The two forms stand as panels on the panel ground, the span
+   the attack added carries the amber the board reserves for
+   attack and flagged meaning, and the run control is the one
+   filled button on the screen, the Maidan pattern of a single
+   primary spent where the decision is. */
+.flip {
+  border: 1px solid var(--line); border-radius: var(--radius);
+  background: var(--panel); padding: 24px; margin: 0 0 24px;
+  box-shadow: var(--shadow-1); min-width: 0;
+}
+.flip-title { font-size: 26px; font-weight: 800; letter-spacing: -0.02em; margin: 10px 0 0; }
+.flip-lede { color: var(--ink-2); max-width: 68ch; margin: 8px 0 0; }
+.flip-stepper {
+  display: flex; gap: 8px; overflow-x: auto; margin: 20px 0 0;
+  padding: 2px 2px 12px;
+}
+.flip-chip {
+  display: inline-flex; align-items: center; gap: 8px; flex: 0 0 auto;
+  appearance: none; background: var(--panel-2); border: 1px solid var(--line);
+  border-radius: var(--radius-ctl); color: var(--ink-2);
+  font: inherit; font-size: 13.5px; padding: 6px 12px 6px 6px; cursor: pointer;
+  white-space: nowrap;
+  transition: background-color var(--dur-micro) ease, border-color var(--dur-micro) ease, color var(--dur-micro) ease;
+}
+.flip-chip:hover { color: var(--ink); border-color: var(--ink-3); }
+.flip-chip.on { background: var(--lift); border-color: var(--accent); color: var(--ink); }
+.flip-chip-rank { font-size: 11.5px; color: var(--ink-2); }
+.flip-chip.on .flip-chip-rank { color: var(--accent); }
+.flip-now {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  margin: 4px 0 12px; font-weight: 650;
+}
+.flip-now-name { font-size: 15.5px; }
+.flip-now-meta { margin-left: auto; color: var(--ink-2); font-weight: 500; font-size: 13.5px; }
+.flip-panels { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; align-items: start; }
+.flip-panel {
+  border: 1px solid var(--line-soft); border-radius: var(--radius);
+  background: var(--panel-2); padding: 20px; min-width: 0;
+}
+.flip-prompt { white-space: pre-wrap; font-size: 15px; line-height: 1.55; color: var(--ink); margin: 12px 0 0; overflow-wrap: break-word; }
+.flip-span {
+  background: rgba(232, 163, 61, 0.16); color: inherit;
+  border-bottom: 1px solid var(--amber); border-radius: 3px; padding: 0.05em 0.15em;
+}
+.flip-key { display: flex; gap: 8px; align-items: flex-start; color: var(--ink-2); font-size: 13.5px; margin: 12px 0 0; }
+.flip-key strong { color: var(--ink); }
+.flip-swatch {
+  flex: 0 0 auto; width: 12px; height: 12px; margin-top: 3px;
+  border-radius: 3px; background: rgba(232, 163, 61, 0.16);
+  border-bottom: 1px solid var(--amber);
+}
+.flip-decision { border-top: 1px solid var(--line-soft); margin-top: 16px; padding-top: 12px; }
+.flip-decision-text { font-size: 17px; font-weight: 700; margin: 6px 0 0; }
+.flip-decision-sub { color: var(--ink-2); font-size: 13.5px; margin: 4px 0 0; }
+.flip-pending { color: var(--ink-2); font-size: 15px; margin: 6px 0 0; }
+.flip-slot { transition: opacity 120ms ease; }
+.flip-slot.leaving { opacity: 0; }
+@keyframes flip-in {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.flip-swap { animation: flip-in 240ms var(--ease-out); }
+.flip-verdict-row { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; margin-top: 12px; }
+.flip-verdict { font-size: 30px; font-weight: 800; letter-spacing: -0.01em; line-height: 1; }
+.flip-verdict.held { color: var(--accent); }
+.flip-verdict.flipped, .flip-verdict.abstained, .flip-verdict.malformed { color: var(--amber); }
+.flip-verdict-note { color: var(--ink-2); }
+.flip-controls { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; margin-top: 20px; }
+.flip-run {
+  appearance: none; border: 1px solid var(--accent); background: var(--accent);
+  color: var(--glyph-dark); border-radius: var(--radius-ctl);
+  font: inherit; font-size: 15px; font-weight: 750;
+  padding: 12px 22px; min-height: 48px; cursor: pointer;
+  transition: background-color var(--dur-micro) ease, border-color var(--dur-micro) ease;
+}
+.flip-run:hover { background: color-mix(in srgb, var(--accent) 88%, var(--white)); border-color: color-mix(in srgb, var(--accent) 88%, var(--white)); }
+.flip-agg { flex: 1 1 320px; color: var(--ink-2); margin: 0; }
+@media (max-width: 760px) {
+  /* The phone object stacks the forms, benign over attacked,
+     and the stepper keeps its horizontal scroll inside the
+     panel padding, so the page itself never widens. The run
+     control goes full width under the panels. */
+  .flip { padding: 16px; }
+  .flip-panels { grid-template-columns: 1fr; }
+  .flip-panel { padding: 16px; }
+  .flip-title { font-size: 22px; }
+  .flip-now-meta { margin-left: 0; }
+  .flip-controls { flex-direction: column; align-items: stretch; }
+  .flip-run { width: 100%; }
+  .flip-agg { flex: none; }
+}
+@media (pointer: coarse) {
+  .flip-chip { min-height: 44px; }
+  .flip-run { min-height: 48px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  /* The flip swap snaps. The verdict word changes and nothing
+     moves, the same designed branch the rest of the sheet
+     carries. */
+  .flip-swap { animation: none; }
+  .flip-slot { transition: none; }
+}
+
+.delta-row .micro { color: var(--ink-2); }
+.flip-panel .micro { color: var(--ink-2); }
+.mastmore:not([open]) .mastmore-panel { display: none; }
+
+/* The not-found doorway (iteration 11). Spacing follows the
+   scene rhythm, the statement is set as words, and the route
+   home is a plain link, hairline grammar throughout. */
+.notfound { max-width: 760px; margin: 0 auto; padding: 96px 24px 120px; }
+.notfound-title { font-size: 40px; font-weight: 800; letter-spacing: -0.02em; line-height: 1.05; margin: 16px 0 0; }
+.notfound-lede { color: var(--ink-2); font-size: 17px; line-height: 1.55; margin: 20px 0 0; max-width: 52ch; }
+.notfound-action { margin: 28px 0 0; }
+.notfound-action a { color: var(--accent); font-weight: 650; text-underline-offset: 3px; }
+@media (pointer: coarse) {
+  .notfound-action a { display: inline-flex; align-items: center; min-height: 44px; }
 }

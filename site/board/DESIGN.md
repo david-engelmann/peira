@@ -227,7 +227,7 @@ Data lines speak one dialect wherever the figures appear as a set. Spaced, sente
 
 ## Layout
 
-The page column is 1180px at most, with 24px side padding. Section spacing comes from the 4px based scale in the front matter, tokens space-1 through space-9. The one section gap is 64px and stays. Every internal gap snaps to the scale. Where a section has a rail beside a grid, rail and grid share one top baseline. Two composition values stand outside the scale as named exceptions in the pattern source's grammar. The hero's top padding is 72px, and the scene anchor offset is 84px.
+The page column is 1180px at most, with 24px side padding. Section spacing comes from the 4px based scale in the front matter, tokens space-1 through space-9. The one section gap is 48px on both sides of the scene hairline and stays. Every internal gap snaps to the scale. Where a section has a rail beside a grid, rail and grid share one top baseline. Two composition values stand outside the scale as named exceptions in the pattern source's grammar. The hero's top padding is 48px, and the scene anchor offset is 84px.
 
 Nothing extends past the section edge at any audited width. Zero elements beyond either edge, measured in the DOM and confirmed on the render. If a chart's mandatory label set cannot clear at a width, the chart changes shape, by faceting, splitting the population, or demoting to a ranked list. Type, label, and point sizes never shrink to fit a population.
 
@@ -287,6 +287,8 @@ Chart form follows the reader's question. Lookup gets the list twin. Pattern get
 Three widths govern. Desktop at 1440, laptop at 1280, phone at 390. Phone is a re-flow, never a squeeze. Any component that cannot fit 390 without clipping either edge gets a phone specific layout.
 
 Sticky chrome may not hide content. The masthead sticks in flow rather than fixing, so at rest it hides nothing. While the page scrolls, the scenes pass under its frost, and scene anchors clear it by the 84px scroll margin, so a jumped-to scene head never lands beneath it. A nav that cannot show all its links at 390 shows the ones that fit plus one overflow affordance, and a link cut mid word is a defect. At phone widths the reading opens as a bottom sheet over the foot strip, and coarse pointers raise every target to 44px.
+
+At phone widths the hero's top padding is 24px. At phone widths the Results scene's gap is 24px on both sides of its hairline. At phone widths the leader cards' vertical padding is 16px, and their horizontal padding stays at 24px.
 
 The motion contract is identical at phone width. Distance does not shrink and duration does not grow. Board changes are verified by an interactive touch session at 390x844, card opens on tap, switches, dismisses by tap outside and by its close control, and Escape dismisses it under keyboard, plus rendered inspection at all three widths. Static renders and desktop mouse passes do not verify the phone experience.
 

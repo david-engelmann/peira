@@ -1341,7 +1341,7 @@ every gate below.
   the suite's case files. The gate is evaluated over the suite's full family
   set, not just the families that appear in a run's results: a family with
   zero cases in the run scores 0 eligible and fails the gate, so dropping a
-  weak family can never improve a rank.
+  weak family can never improve a rank).
 
 The per-family floor is a hard gate, not an exclusion rule: a run that is
 thin on any family is published but unranked, with the failed gate named.
