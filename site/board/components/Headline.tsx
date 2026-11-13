@@ -10,10 +10,14 @@ import { fmtCi, fmtInt, fmtPct } from "@/lib/format";
 import { findingsData } from "@/lib/findings";
 import VendorLogo from "@/components/VendorLogo";
 import SplitBar from "@/components/SplitBar";
+import Flip from "@/components/Flip";
+import { flipData } from "@/lib/flipData";
 
 /**
  * The headline results, standing immediately under the hero.
- * The share card's numeral stack is the section's visual core:
+ * The Flip stands first, one paired case the reader runs
+ * against any ranked result, seated with the claim headline
+ * ahead of the stack. The share card's numeral stack follows:
  * the leader, the flagged lead with its split stated, and the
  * last ranked result, each as one large tabular numeral in the
  * share card's grammar of label, name, figure, and caption,
@@ -58,6 +62,8 @@ export default function Headline() {
           grammar. Lower is better on the ranked board.
         </p>
       </div>
+
+      <Flip data={flipData()} />
 
       <div className="sharecard">
         <div className="stack-entry">

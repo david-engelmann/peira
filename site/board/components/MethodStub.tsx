@@ -22,7 +22,7 @@ export default function MethodStub() {
   const sliceCases = groups.slices[0]?.n_cases ?? 0;
 
   return (
-    <section className="section scene" aria-labelledby="method-title" id="method">
+    <section className="method scene" aria-labelledby="method-title" id="method">
       <div className="sechead">
         <div className="micro eyebrow">
           <span className="eno">04</span> Method

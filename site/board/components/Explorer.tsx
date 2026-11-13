@@ -346,10 +346,12 @@ export default function Explorer({ data }: { data: ExplorerData }) {
     [data],
   );
   /* The opening selection is the chart's subject, the best
-   * ranked result the plot can seat. A result with no recorded
-   * price stands in the chart's rail rather than on the plot,
-   * so the best priced full suite result takes the white disc
-   * until the reader selects another. */
+   * ranked result the plot can seat. The board leader ran
+   * through the Cursor harness, whose cost is billed through
+   * a paid plan and not metered per run, so it stands in the
+   * chart's rail rather than on the plot, and the best priced
+   * result takes the white disc until the reader selects
+   * another. */
   const opener = useMemo(
     () =>
       data.rows.find(
@@ -369,6 +371,26 @@ export default function Explorer({ data }: { data: ExplorerData }) {
   const listRef = useRef<HTMLDivElement>(null);
   const flipSnapshot = useRef<Map<string, number> | null>(null);
   const sectionRef = useRef<HTMLElement>(null);
+  const [explorerLive, setExplorerLive] = useState(false);
+
+  /* The phone footstrip and the comparison tray seat
+   * against the explorer only while its scene stands on
+   * screen. An IntersectionObserver on the section carries
+   * that state, and where the observer is absent the strip
+   * keeps its standing behaviour. */
+  useEffect(() => {
+    const el = sectionRef.current;
+    if (!el || typeof IntersectionObserver === "undefined") {
+      setExplorerLive(true);
+      return;
+    }
+    const observer = new IntersectionObserver(
+      (entries) => setExplorerLive(entries[0]?.isIntersecting ?? false),
+      { threshold: 0 },
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
 
   const parseHash = useCallback((): { patch: Partial<XState>; open: boolean } => {
     const hash = window.location.hash.replace(/^#/, "");
@@ -757,7 +779,11 @@ export default function Explorer({ data }: { data: ExplorerData }) {
       )}
 
       {pinRow && selRow && pinRow.runId !== selRow.runId && (
-        <div className="tray" role="region" aria-label="Comparison tray">
+        <div
+          className={`tray${explorerLive ? " over-strip" : ""}`}
+          role="region"
+          aria-label="Comparison tray"
+        >
           <span className="tray-names">
             {selRow.name} against {pinRow.name}
           </span>
@@ -783,8 +809,8 @@ export default function Explorer({ data }: { data: ExplorerData }) {
         </div>
       )}
 
-      <div className="footstrip" aria-hidden={selRow === null}>
-        {selRow && (
+      <div className="footstrip" aria-hidden={selRow === null || !explorerLive}>
+        {selRow && explorerLive && (
           <>
             <Mark row={selRow} size={20} />
             <span className="footstrip-name">
@@ -1021,6 +1047,35 @@ function ChartView({
    * the return that will actually move focus; see the
    * arming guard in dismissChip. */
   const focusReturnRef = useRef<string | null>(null);
+  const nameRef = useRef<SVGTextElement>(null);
+  const subRef = useRef<SVGTextElement>(null);
+  const [plate, setPlate] = useState<{
+    x: number;
+    y: number;
+    w: number;
+    h: number;
+  } | null>(null);
+  const [fontsReady, setFontsReady] = useState(false);
+  const [chipSeat, setChipSeat] = useState<{
+    id: string;
+    plateKey: string;
+    seat: "above" | "below" | "left" | "right";
+    top: number;
+    left: number | null;
+  } | null>(null);
+
+  /* The label plate is measured once the board's faces
+   * have loaded, so its box covers the rendered texts and
+   * not a fallback face's narrower measure. */
+  useEffect(() => {
+    let alive = true;
+    document.fonts?.ready.then(() => {
+      if (alive) setFontsReady(true);
+    });
+    return () => {
+      alive = false;
+    };
+  }, []);
 
   /* The detail card's dismissal, one path for every route
    * its contract names. The close control and Escape both
@@ -1123,22 +1178,31 @@ function ChartView({
     return sortRows(renderable, "asr")[0]?.runId ?? null;
   })();
 
-  if (visible.length > 0 && plotted.length === 0) {
-    return (
-      <p className="xempty">
-        The chart plots full suite and flagged results. Guard results
-        read in the rank and families modes, on their own basis.
-      </p>
-    );
-  }
-  if (points.length === 0 && rail.length === 0) {
-    return (
-      <p className="xempty">
-        No priced result matches these filters, so the chart has
-        nothing to plot.
-      </p>
-    );
-  }
+  /* The subject label plate, measured at render time. The
+   * plate is the union of the two label texts' rendered
+   * boxes, widened by 8px at each side and 6px above and
+   * below, so no field disc can cross a label glyph. It is
+   * remeasured whenever the subject, the plot width, the
+   * drag state, or the font load changes. */
+  useLayoutEffect(() => {
+    const nameEl = nameRef.current;
+    const subEl = subRef.current;
+    if (!nameEl || !subEl) {
+      setPlate(null);
+      return;
+    }
+    const a = nameEl.getBBox();
+    const b = subEl.getBBox();
+    const x = Math.min(a.x, b.x) - 8;
+    const right = Math.max(a.x + a.width, b.x + b.width) + 8;
+    const y = Math.min(a.y, b.y) - 6;
+    setPlate({
+      x,
+      y,
+      w: right - x,
+      h: Math.max(a.y + a.height, b.y + b.height) + 6 - y,
+    });
+  }, [subjectId, width, fontsReady, drag]);
 
   const H = 430;
   const W = Math.max(320, width);
@@ -1245,7 +1309,255 @@ function ChartView({
     };
   };
 
-  return (
+  const subjectCx = subjectRow ? x(subjectRow.costValue as number) : 0;
+  const subjectCy = subjectRow ? y(subjectRow.asr as number) : 0;
+  const subjectLabelBelow = subjectCy < 72;
+
+  /* The detail card seats by measured clearance on all
+   * four sides of its disc. The rendered card, the label
+   * plate, every other disc face, and the axis labels are
+   * the obstacles. The seat above the disc stands unless
+   * another seat, below, right, or left, measures strictly
+   * clearer, so a card that already stands clear never
+   * moves. The below seat keeps the plate law, pushed past
+   * whichever stands lower, the disc's bottom or the
+   * plate's bottom. Every candidate is shifted inside the
+   * chart wrap before it is scored, and clearance is
+   * measured on the rendered boxes, never intended from
+   * the disc's coordinates. */
+  useLayoutEffect(() => {
+    if (!chipRow || chipRow.asr === null) {
+      return;
+    }
+    const wrap = wrapRef.current;
+    const chipEl = wrap?.querySelector(".chip");
+    const discEl = wrap?.querySelector(
+      `[data-disc="${chipRow.runId}"] .disc-face`,
+    );
+    if (!wrap || !chipEl || !discEl) return;
+    const wrapRect = wrap.getBoundingClientRect();
+    const chipRect = chipEl.getBoundingClientRect();
+    const discRect = discEl.getBoundingClientRect();
+    const plateEl = svgRef.current?.querySelector(".label-plate");
+    const plateRect = plateEl?.getBoundingClientRect() ?? null;
+    /* The seat stands down only while the plate it was
+     * measured against stands unchanged. The plate is
+     * itself measured in a layout effect and can move to
+     * a new subject one commit after the card first
+     * stands, so the seat keys on the plate's measured
+     * box and is measured again whenever that box moves. */
+    const plateKey = plateRect
+      ? `${Math.round(plateRect.left)},${Math.round(plateRect.top)},${Math.round(plateRect.width)},${Math.round(plateRect.height)}`
+      : "none";
+    if (chipSeat?.id === chipRow.runId) {
+      if (chipSeat.plateKey === plateKey) return;
+      /* The plate moved after this seat was measured, and
+       * the standing card no longer shows the default seat
+       * the scoring reads. Clear the seat and let the next
+       * commit measure the card where it stands by
+       * default, against the plate where it stands now. */
+      setChipSeat(null);
+      return;
+    }
+    const obstacles: { left: number; top: number; right: number; bottom: number }[] =
+      [];
+    svgRef.current?.querySelectorAll(".disc-face").forEach((d) => {
+      if (d !== discEl) obstacles.push(d.getBoundingClientRect());
+    });
+    /* The axis texts stand apart from the field discs in
+     * the obstacles. A disc the card covers is still
+     * printed in the rows below the chart, but an axis
+     * label the card covers is the only printing of that
+     * scale value on the chart, so the seat score prices
+     * the two apart. */
+    const axisTexts: {
+      rect: { left: number; top: number; right: number; bottom: number };
+      label: boolean;
+      area: number;
+    }[] = [];
+    svgRef.current?.querySelectorAll("text").forEach((t) => {
+      if (!t.closest("[data-disc]") && !t.closest(".subject-label")) {
+        const rect = t.getBoundingClientRect();
+        axisTexts.push({
+          rect,
+          label: (t.getAttribute("class") || "").includes("axis-label"),
+          area: rect.width * rect.height,
+        });
+      }
+    });
+    const w = chipRect.width;
+    const h = chipRect.height;
+    const clampIn = (left: number, top: number) => ({
+      left: Math.min(Math.max(left, wrapRect.left + 4), wrapRect.right - w - 4),
+      top: Math.min(Math.max(top, wrapRect.top + 4), wrapRect.bottom - h - 4),
+    });
+    const overlapArea = (
+      pos: { left: number; top: number },
+      o: { left: number; top: number; right: number; bottom: number },
+    ) =>
+      Math.max(
+        0,
+        Math.min(pos.left + w, o.right) - Math.max(pos.left, o.left),
+      ) *
+      Math.max(
+        0,
+        Math.min(pos.top + h, o.bottom) - Math.max(pos.top, o.top),
+      );
+    /* The plate is a hard bound, not a trade. A seat that
+     * touches the plate loses to every seat that clears
+     * it, however much field the clearing seat covers, and
+     * only a card with no clearing seat at all takes the
+     * seat that touches the plate least. */
+    /* The scored plate carries a 2px clearance margin on
+     * every side. A seat the scoring clears by a hair can
+     * still land across the plate's edge once its stored
+     * percentages are laid out again, and the wrap's clamp
+     * floor can eat a slide's whole margin, so the hard
+     * bound is priced against the plate as it must stand
+     * clear of, not the plate as drawn. */
+    const plateBound = plateRect
+      ? {
+          left: plateRect.left - 2,
+          top: plateRect.top - 2,
+          right: plateRect.right + 2,
+          bottom: plateRect.bottom + 2,
+        }
+      : null;
+    const score = (pos: { left: number; top: number }) => {
+      const againstPlate = plateBound ? overlapArea(pos, plateBound) : 0;
+      let discArea = 0;
+      let centres = 0;
+      for (const o of obstacles) {
+        discArea += overlapArea(pos, o);
+        const cx = (o.left + o.right) / 2;
+        const cy = (o.top + o.bottom) / 2;
+        if (
+          cx > pos.left &&
+          cx < pos.left + w &&
+          cy > pos.top &&
+          cy < pos.top + h
+        ) {
+          centres++;
+        }
+      }
+      let textArea = 0;
+      let lostLabels = 0;
+      for (const t of axisTexts) {
+        const a = overlapArea(pos, t.rect);
+        textArea += a;
+        if (t.label && a >= t.area / 2) lostLabels++;
+      }
+      return (
+        againstPlate * 10000000 +
+        discArea +
+        centres * 400 +
+        textArea * 2.5 +
+        lostLabels * 1500
+      );
+    };
+    const belowTop = Math.max(
+      discRect.bottom + 10,
+      plateRect ? plateRect.bottom + 8 : Number.NEGATIVE_INFINITY,
+    );
+    const midY = discRect.top + discRect.height / 2 - h / 2;
+    /* A seat beside the disc may stand centred on the
+     * disc's height or slid along the disc's side to
+     * whichever edge of the plate stands nearer, so a
+     * side seat is not lost to the plate's band when a
+     * shift of the card's height clears it. */
+    const sideTops = plateRect
+      ? [midY, plateRect.top - h - 4, plateRect.bottom + 4]
+      : [midY];
+    /* A seat beside the disc may also slide to the far
+     * side of an axis label its centred span would stand
+     * across, clearing the label whole instead of covering
+     * it. The slide stays near the disc, its centre within
+     * half the card's height and the plate's reach of the
+     * disc's centre, so the card never wanders from the
+     * disc it describes. */
+    const discCy = discRect.top + discRect.height / 2;
+    for (const t of axisTexts) {
+      if (t.rect.bottom < midY - 8 || t.rect.top > midY + h + 8) continue;
+      for (const top of [t.rect.top - h - 2, t.rect.bottom + 2]) {
+        if (Math.abs(top + h / 2 - discCy) <= h / 2 + 48) {
+          sideTops.push(top);
+        }
+      }
+    }
+    const sideSeat = (seat: "right" | "left", left: number) => {
+      let bestPos = clampIn(left, sideTops[0]);
+      let bestScore = score(bestPos);
+      for (const top of sideTops.slice(1)) {
+        const pos = clampIn(left, top);
+        const s2 = score(pos);
+        if (s2 < bestScore - 0.5) {
+          bestPos = pos;
+          bestScore = s2;
+        }
+      }
+      return { seat, ...bestPos };
+    };
+    const candidates = [
+      { seat: "above" as const, ...clampIn(chipRect.left, chipRect.top) },
+      { seat: "below" as const, ...clampIn(chipRect.left, belowTop) },
+      sideSeat("right", discRect.right + 12),
+      sideSeat("left", discRect.left - 12 - w),
+    ];
+    let best = candidates[0];
+    let bestScore = score(best);
+    for (const c of candidates.slice(1)) {
+      const s2 = score(c);
+      if (s2 < bestScore - 0.5) {
+        best = c;
+        bestScore = s2;
+      }
+    }
+    /* Every seat stores the position the scoring measured,
+     * converted back through the seat's own transform, so the
+     * above and below cards ride an 8px leftward shift, the
+     * above card a full-height upward shift, the side cards
+     * a half-height upward shift. Until this pass the above
+     * and below seats stored no left at all, so the render
+     * fell back to the disc's raw cost percentage and the
+     * card stood there instead of at its measured seat,
+     * which at phone widths carried it past the chart wrap
+     * and off the screen for the field's right half. */
+    const leftPct = (px: number) =>
+      ((px - wrapRect.left) / wrapRect.width) * 100;
+    const topPct = (px: number) =>
+      ((px - wrapRect.top) / wrapRect.height) * 100;
+    if (best.seat === "above") {
+      setChipSeat({
+        id: chipRow.runId,
+        plateKey,
+        seat: "above",
+        top: topPct(best.top + h),
+        left: leftPct(best.left + 8),
+      });
+      return;
+    }
+    const top =
+      best.seat === "below"
+        ? topPct(best.top)
+        : topPct(best.top + h / 2);
+    const left =
+      best.seat === "below"
+        ? leftPct(best.left + 8)
+        : leftPct(best.left);
+    setChipSeat({ id: chipRow.runId, plateKey, seat: best.seat, top, left });
+  });
+
+  return visible.length > 0 && plotted.length === 0 ? (
+    <p className="xempty">
+      The chart plots full suite and flagged results. Guard results
+      read in the rank and families modes, on their own basis.
+    </p>
+  ) : points.length === 0 && rail.length === 0 ? (
+    <p className="xempty">
+      No priced result matches these filters, so the chart has
+      nothing to plot.
+    </p>
+  ) : (
     <div className="chartlayout">
       <div className="chartwrap" ref={wrapRef}>
         <svg
@@ -1328,7 +1640,6 @@ function ChartView({
             const on = matches(row);
             const subject = subjectId === row.runId;
             const active = hoverId === row.runId || chipId === row.runId || state.sel === row.runId;
-            const labelBelow = cy < 72;
             /* Every disc carries its maker's mark where the
              * vendor table records one, riding the field's
              * dimmed opacity the group already carries. The
@@ -1418,26 +1729,6 @@ function ChartView({
                     {row.mark.letter}
                   </text>
                 )}
-                {subject && !drag && (
-                  <>
-                    <text
-                      className="subject-name"
-                      x={cx}
-                      y={labelBelow ? cy + 36 : cy - 34}
-                      textAnchor="middle"
-                    >
-                      {row.fullName}
-                    </text>
-                    <text
-                      className="subject-sub"
-                      x={cx}
-                      y={labelBelow ? cy + 50 : cy - 21}
-                      textAnchor="middle"
-                    >
-                      {row.asrText} · {row.costText}
-                    </text>
-                  </>
-                )}
               </g>
             );
           })}
@@ -1449,6 +1740,38 @@ function ChartView({
               width={Math.abs(drag.x1 - drag.x0)}
               height={Math.abs(drag.y1 - drag.y0)}
             />
+          )}
+          {subjectRow && !drag && (
+            <g className="subject-label">
+              {plate && (
+                <rect
+                  className="label-plate"
+                  x={plate.x}
+                  y={plate.y}
+                  width={plate.w}
+                  height={plate.h}
+                  rx={5}
+                />
+              )}
+              <text
+                ref={nameRef}
+                className="subject-name"
+                x={subjectCx}
+                y={subjectLabelBelow ? subjectCy + 40 : subjectCy - 38}
+                textAnchor="middle"
+              >
+                {subjectRow.fullName}
+              </text>
+              <text
+                ref={subRef}
+                className="subject-sub"
+                x={subjectCx}
+                y={subjectLabelBelow ? subjectCy + 54 : subjectCy - 25}
+                textAnchor="middle"
+              >
+                {subjectRow.asrText} · {subjectRow.costText}
+              </text>
+            </g>
           )}
         </svg>
         {selStanding && <p className="chart-selstand">{selStanding}</p>}
@@ -1473,10 +1796,29 @@ function ChartView({
         )}
         {chipRow && chipRow.asr !== null && (
           <div
-            className="chip"
+            className={
+              chipSeat?.id === chipRow.runId
+                ? chipSeat.seat === "below"
+                  ? "chip below"
+                  : chipSeat.seat === "left"
+                    ? "chip side-left"
+                    : chipSeat.seat === "right"
+                      ? "chip side-right"
+                      : "chip"
+                : "chip"
+            }
             style={{
-              left: `${Math.min(86, Math.max(2, (x(chipRow.costValue as number) / W) * 100))}%`,
-              top: `${Math.max(4, (y(chipRow.asr) / H) * 100 - 16)}%`,
+              left: `${
+                chipSeat?.id === chipRow.runId &&
+                chipSeat.left !== null
+                  ? chipSeat.left
+                  : Math.min(86, Math.max(2, (x(chipRow.costValue as number) / W) * 100))
+              }%`,
+              top: `${
+                chipSeat?.id === chipRow.runId
+                  ? chipSeat.top
+                  : Math.max(4, (y(chipRow.asr) / H) * 100 - 16)
+              }%`,
             }}
           >
             <p className="chip-name">

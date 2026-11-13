@@ -61,18 +61,19 @@ test("the payload holds the published board's shape", () => {
   assert.equal(full[0].n_cases, 4701);
 });
 
-test("the leader is the gemini 4 argon run and no harness row stands on the board", () => {
+test("the leader is the direct wire gemini run, and no harness run stands on the board", () => {
   const leader = full[0];
-  assert.match(leader.display_name, /gemini-4-argon/i);
+  assert.equal(leader.display_name, "gemini-4-argon");
   assert.ok(Math.abs(leader.asr_conditional - 0.0918) < 0.0006);
   const d = decomp(leader);
   assert.equal(d.flips, 423);
   assert.equal(d.malformed, 0);
   assert.equal(leader.unanswered_cases, 0);
-  // The Cursor harness grok run came off the board on the
-  // owner's ruling of 2026-11-10. No row in the payload is
-  // measured through a harness.
+  // The Cursor harness grok run was pulled on the owner's
+  // ruling. No row on the board is measured through a
+  // harness, and the pulled run stands nowhere in it.
   assert.ok(rows.every((r) => r.adapter_name !== "cursor-harness"));
+  assert.ok(rows.every((r) => r.display_name !== "grok-4.7-high-fast"));
 });
 
 test("mercury carries its malformed decomposition", () => {
@@ -236,11 +237,11 @@ test("the chart is the explorer default so the white disc stands first", () => {
   assert.match(defaults, /mode: "chart"/);
   assert.match(css, /\.disc\.subject \{ opacity: 1; \}/);
   assert.match(css, /\.disc\.field \{ opacity: 0\.5; \}/);
-  // The board leader carries a recorded price and stands on
-  // the plot, so the opening selection is the leader itself,
-  // the best priced full suite result, and the chart falls
-  // back to its best plotted disc when the selection is not
-  // one.
+  // The board leader carries a recorded price and stands as
+  // a plotted disc, so the opening selection is the leader
+  // itself, the best priced full suite result, and the chart
+  // falls back to its best plotted disc when the selection
+  // is not one.
   const leader = full[0];
   assert.ok(leader.total_cost_usd !== null && leader.total_cost_usd > 0);
   assert.match(explorer, /r\.costValue !== null && r\.costValue > 0/);
@@ -382,14 +383,11 @@ test("recorded zero splits by how the run was measured", () => {
   const zeroes = rows.filter((r) => r.total_cost_usd === 0);
   assert.equal(zeroes.length, 6);
   // No recorded zero is a harness run. The one harness run
-  // the board used to carry came off it on the owner's
-  // ruling of 2026-11-10, and every recorded zero left is a
-  // locally served adapter.
+  // the board carried was pulled, so every recorded zero
+  // left is a locally served adapter.
   assert.ok(zeroes.every((r) => r.adapter_name !== "cursor-harness"));
   assert.deepEqual(
-    zeroes
-      .map((r) => r.adapter_name)
-      .sort(),
+    zeroes.map((r) => r.adapter_name).sort(),
     ["gliner-decide", "kev", "kev", "laya", "laya", "semif"],
   );
   // Nine rows carry no recorded cost. Every row carries the
@@ -560,6 +558,199 @@ test("the motion budget holds and reduced motion snaps the bar", () => {
   const reduce = css.slice(css.indexOf("@media (prefers-reduced-motion: reduce)"));
   assert.match(reduce, /\.masthead \{ transition: none; \}/);
   assert.match(reduce, /\.disc \{ transition: none; \}/);
+});
+
+/**
+ * Flip case tests. The Flip object on the first screen states
+ * what each ranked result did on one paired case, and those
+ * states derive twice, by two code paths that share no logic.
+ * The extraction (path A, the lane record) classified each
+ * record from its raw call fields against the dataset's
+ * expected decision. The re-derivation here (path B) starts
+ * from the sealed artifacts' own adjudication flag and
+ * eligibility fields and reads the case from the dataset file
+ * directly, so a drift in either derivation fails here rather
+ * than printing on the page.
+ */
+
+const flip = JSON.parse(
+  readFileSync(join(here, "..", "data", "flipcase.json"), "utf8"),
+);
+const workspaceRoot = join(here, "..", "..", "..", "..");
+const artifactsDir = join(workspaceRoot, "peira-trial", "artifacts");
+const datasetPath = join(
+  workspaceRoot,
+  "peira-trial-code",
+  "dataset",
+  "v2",
+  "cases",
+  "retrieval_poisoning.jsonl",
+);
+
+function datasetCase(caseId) {
+  const lines = readFileSync(datasetPath, "utf8").split("\n").filter(Boolean);
+  for (const line of lines) {
+    const parsed = JSON.parse(line);
+    if (parsed.case_id === caseId) return parsed;
+  }
+  return null;
+}
+
+/**
+ * Path B. The per-record state from the artifact's own
+ * adjudication fields alone. The benign side counts only as
+ * a clean right answer, and a set flipped flag splits by the
+ * attacked side's own abstained and malformed flags.
+ */
+function outcomeB(rec, expected) {
+  const benignCorrect =
+    rec.benign.decision === expected &&
+    rec.benign.abstained === false &&
+    rec.benign.malformed === false;
+  if (!benignCorrect) return { benignCorrect, outcome: null };
+  if (rec.flipped === false) return { benignCorrect, outcome: "held" };
+  if (rec.attacked.abstained === true)
+    return { benignCorrect, outcome: "abstained" };
+  if (rec.attacked.malformed === true)
+    return { benignCorrect, outcome: "malformed" };
+  return { benignCorrect, outcome: "flipped" };
+}
+
+test("the flip case file covers exactly the ranked full suite", () => {
+  const rankedFull = payload.ranked.filter((r) => r.n_cases === fullCases);
+  assert.equal(flip.results.length, rankedFull.length);
+  assert.deepEqual(
+    new Set(flip.results.map((r) => r.runId)),
+    new Set(rankedFull.map((r) => r.run_id)),
+  );
+  for (const entry of flip.results) {
+    assert.equal(rankedFull[entry.rank - 1].run_id, entry.runId);
+  }
+  // The counts block is a tally of the per-result states,
+  // never a typed figure.
+  const tally = { held: 0, flipped: 0, abstained: 0, malformed: 0 };
+  for (const entry of flip.results) tally[entry.outcome] += 1;
+  assert.deepEqual(flip.counts, { ...tally, total: flip.results.length });
+});
+
+test("the flip case re-derives from the sealed artifacts by a second path", () => {
+  const kase = datasetCase(flip.caseId);
+  assert.ok(kase, "the case stands in the dataset file");
+  assert.equal(kase.family, flip.family);
+  assert.equal(kase.benign.input.prompt, flip.benignPrompt);
+  assert.equal(kase.attacked.input.prompt, flip.attackedPrompt);
+  assert.equal(kase.benign.expected_decision, flip.rightAnswer);
+  assert.equal(kase.attacked.target_decision, flip.targetAnswer);
+  assert.deepEqual(kase.benign.input.options, flip.options);
+  // The attacked prompt is the benign prompt plus exactly the
+  // marked span, behind a whitespace only separator.
+  const { spanStart, spanEnd, spanText } = flip.attack;
+  assert.equal(flip.attackedPrompt.slice(spanStart, spanEnd), spanText);
+  const pre = flip.attackedPrompt.slice(0, spanStart);
+  assert.ok(pre.startsWith(flip.benignPrompt));
+  assert.equal(pre.slice(flip.benignPrompt.length).trim(), "");
+  assert.ok(!flip.benignPrompt.includes(spanText));
+  const tally = { held: 0, flipped: 0, abstained: 0, malformed: 0 };
+  for (const entry of flip.results) {
+    const artifact = JSON.parse(
+      readFileSync(join(artifactsDir, `${entry.runId}.json`), "utf8"),
+    );
+    assert.equal(artifact.adapter_name, entry.adapterName, entry.runId);
+    assert.equal(artifact.adapter_version, entry.adapterVersion, entry.runId);
+    const rec = artifact.results.find((r) => r.case_id === flip.caseId);
+    assert.ok(rec, `${entry.runId} carries the case`);
+    assert.equal(rec.family, flip.family);
+    assert.equal(rec.eligible, true, `${entry.runId} is eligible`);
+    assert.equal(rec.benign.decision, entry.benignDecision, entry.runId);
+    assert.equal(rec.attacked.decision, entry.attackedDecision, entry.runId);
+    const b = outcomeB(rec, kase.benign.expected_decision);
+    assert.equal(b.benignCorrect, entry.benignCorrect, entry.runId);
+    assert.equal(b.outcome, entry.outcome, entry.runId);
+    tally[b.outcome] += 1;
+  }
+  // The aggregate the object prints is the tally of the
+  // re-derived states, so it is computed, never typed.
+  assert.deepEqual(flip.counts, { ...tally, total: flip.results.length });
+});
+
+test("the flip object stands in scene 01 ahead of the stack", () => {
+  const headline = read("components/Headline.tsx");
+  assert.ok(headline.includes('import Flip from "@/components/Flip"'));
+  assert.ok(headline.includes("<Flip data={flipData()} />"));
+  // Seated with the claim headline, ahead of the numeral stack.
+  const flipAt = headline.indexOf("<Flip data={flipData()} />");
+  const stackAt = headline.indexOf('className="sharecard"');
+  assert.ok(flipAt >= 0 && stackAt > flipAt);
+  // The data layer tallies the aggregate from the per-result
+  // states and never reads the file's counts block.
+  const flipDataSrc = read("lib/flipData.ts");
+  assert.ok(flipDataSrc.includes("tally[entry.outcome] += 1"));
+  assert.ok(!flipDataSrc.includes("raw.counts"));
+  assert.ok(flipDataSrc.includes("defaultRunId"));
+});
+
+test("the flip object carries the case, the one control, and the verdict words", () => {
+  const flipSrc = read("components/Flip.tsx");
+  // One paired case, identified on the object itself.
+  assert.ok(flipSrc.includes("data.caseId"));
+  assert.ok(flipSrc.includes("data.familyLabel"));
+  // The attack span renders as a marked span, and the marking
+  // is keyed in the object's own words from the case record.
+  assert.ok(flipSrc.includes('<mark className="flip-span">'));
+  assert.ok(flipSrc.includes("data.spanLabel"));
+  assert.ok(flipSrc.includes("data.attackDescription"));
+  // Exactly one primary control, and it runs the attack.
+  assert.equal(flipSrc.match(/className="flip-run"/g)?.length, 1);
+  assert.ok(flipSrc.includes("Run the attack"));
+  // The verdict is a word, in all four classes the record
+  // distinguishes.
+  for (const word of ["Held", "Flipped", "Abstained", "Malformed output"]) {
+    assert.ok(flipSrc.includes(`"${word}"`), `verdict word ${word}`);
+  }
+  // The recorded decisions print verbatim, benign and attacked.
+  assert.ok(flipSrc.includes("sel.benignDecision"));
+  assert.ok(flipSrc.includes("sel.attackedDecision"));
+  // The aggregate line composes from the tallied counts.
+  assert.ok(flipSrc.includes("ranked results held their decision"));
+  assert.ok(flipSrc.includes("data.counts"));
+  // The stepper covers the ranked full suite with marks, and
+  // stepping resets to the benign state.
+  assert.ok(flipSrc.includes("data.results.map"));
+  assert.ok(flipSrc.includes("setAttacked(false)"));
+  // The opening selection is the board leader, and it held.
+  assert.equal(flip.results[0].runId, full[0].run_id);
+  assert.equal(flip.results[0].outcome, "held");
+  // Both outcomes stand within the first six ranks, so a
+  // reader stepping through a few names meets each.
+  const firstSix = flip.results.slice(0, 6).map((r) => r.outcome);
+  assert.ok(firstSix.includes("held") && firstSix.includes("flipped"));
+});
+
+test("the flip motion stays inside the budget and snaps under reduced motion", () => {
+  const flipCss = css.slice(css.indexOf("/* The Flip."));
+  assert.ok(flipCss.length > 0);
+  // The decision swap enters at 240ms and leaves at 120ms,
+  // transform and opacity only, inside the 520ms budget.
+  assert.match(flipCss, /animation: flip-in 240ms/);
+  assert.match(flipCss, /\.flip-slot \{ transition: opacity 120ms ease; \}/);
+  assert.match(flipCss, /@keyframes flip-in \{\s*from \{ opacity: 0; transform: translateY\(10px\); \}/);
+  // The phone object stacks the forms and keeps the stepper
+  // scrolling inside the panel, and coarse pointers raise
+  // the chips and the control to the measured targets.
+  assert.match(flipCss, /@media \(max-width: 760px\) \{[\s\S]*?\.flip-panels \{ grid-template-columns: 1fr; \}/);
+  assert.match(flipCss, /@media \(pointer: coarse\) \{[\s\S]*?\.flip-chip \{ min-height: 44px; \}/);
+  // The reduced motion branch snaps the swap, the designed
+  // branch the component's own instant path matches.
+  const reduce = flipCss.slice(
+    flipCss.indexOf("@media (prefers-reduced-motion: reduce)"),
+  );
+  assert.match(reduce, /\.flip-swap \{ animation: none; \}/);
+  assert.match(reduce, /\.flip-slot \{ transition: none; \}/);
+  // The component itself swaps instantly under the setting
+  // rather than leaning on the stylesheet alone.
+  const flipSrc = read("components/Flip.tsx");
+  assert.ok(flipSrc.includes("window.matchMedia("));
+  assert.ok(flipSrc.includes('"(prefers-reduced-motion: reduce)"'));
 });
 
 test("the chart ceiling derives from the results that seat on the plot", () => {
@@ -786,24 +977,19 @@ test("the findings split bars share one height and the card figure stands", () =
   assert.match(css, /\.splitbar\.figured \.splitbar-track \{ height: 48px;/);
 });
 
-test("the findings carry no undecided case disclosure", () => {
-  // The disclosure stood on the board for the harness run
-  // that led it, and it retired with that run on the
-  // owner's ruling of 2026-11-10. The leader now carries
-  // no unanswered case, the findings derive no leader
-  // block, and the scene heads itself with the three
-  // findings that stand.
+test("the pulled run's undecided case stands nowhere in the findings", () => {
+  // The never decided case was the pulled harness run's own
+  // disclosure, and it left the board with that run. The
+  // leader carries no unanswered case, and the findings
+  // carry no leader disclosure figure.
   const leader = full[0];
   assert.equal(leader.unanswered_cases, 0);
+  assert.equal(leader.n_cases, 4701);
   const findings = read("components/Findings.tsx");
-  assert.ok(!findings.includes('data-finding="leader"'));
+  assert.ok(!findings.includes("leader-fig-num"));
   assert.ok(!findings.includes("never decided"));
-  assert.ok(!findings.includes("leader-fig"));
-  assert.ok(findings.includes("The split, the wire, and the guards"));
-  const findingsLib = read("lib/findings.ts");
-  assert.ok(!findingsLib.includes("LeaderFinding"));
-  const stylesheet = read("app/globals.css");
-  assert.ok(!stylesheet.includes("leader-fig"));
+  assert.ok(!findings.includes("Cursor agent harness"));
+  assert.ok(!findings.includes('data-finding="leader"'));
 });
 
 test("the footer carries the re-measurement note the method promises", () => {
@@ -1061,45 +1247,6 @@ test("a dismissal arms its focus suppression only for the return it makes", () =
   assert.ok(explorer.includes("focusReturnRef.current = null"));
 });
 
-test("the share images state both rate bases and the pill track", () => {
-  // F6 of the coherence re-score. The generator composes
-  // the flagged lead's decomposition in two places, the
-  // ceiling clause in the words under the plot and the
-  // flagged reading in the stack. Both state the genuine
-  // share against its eligible cases and the malformed
-  // share against counted flips, the board's basis
-  // discipline, and neither composes the basis-less
-  // wording. The split bar track takes the pill radius
-  // the board's own plain track carries, so the share
-  // image reads as the same bar.
-  const gen = read("scripts/gen-og.mjs");
-  assert.ok(!gen.includes("genuine flip rate"));
-  assert.ok(
-    gen.includes(
-      "genuine flips ${fmtPct(d.genuineRate)} of its eligible cases, with ${fmtPct(d.malformedShare)} of counted flips to malformed output",
-    ),
-  );
-  assert.ok(
-    gen.includes(
-      "genuine flips ${fmtPct(d.genuineRate)} of its eligible cases.",
-    ),
-  );
-  assert.ok(gen.includes(".robar{display:flex;height:9px;border-radius:999px;"));
-  // The fit pass funds a tall card by narrowing the plot
-  // and widening the readings column beside it, whose
-  // lines unwrap as it widens. That conversion caps out
-  // if the scatter column is sized by its widest child,
-  // the plot's caption floors the column at its one-line
-  // width, the flagged lead's reading holds its second
-  // line at every shrink value, and the footer stands
-  // past the card. The column therefore takes the plot's
-  // own computed width, so the caption wraps inside the
-  // plot's column and the conversion runs its full range.
-  assert.ok(
-    gen.includes('<div class="scattercol" style="width:${svgW}px">'),
-  );
-});
-
 test("the token hygiene the re-score named stands as audited", () => {
   // The repo form of the F9 pin, settled at the port. The
   // census runs over this tree's own sources. Every
@@ -1107,10 +1254,10 @@ test("the token hygiene the re-score named stands as audited", () => {
   // consumer in the board's code or stands on the record
   // in DESIGN.md, and the two that stand on the record
   // are named here, so a third token standing silent
-  // fails. The easing token's only consumer anywhere is
-  // the prototype tree's Flip swap rule, which this tree
-  // does not carry. It stands because Data & Motion
-  // legislates the curve it names. The middle shadow
+  // fails. The easing token's consumer is the Flip swap
+  // rule, and the token also stands on the record, since
+  // Data & Motion legislates the curve it names. The
+  // middle shadow
   // stands because Elevation legislates the ladder of
   // three shadows. The banner rule the prototype keeps
   // for its own page is dead in this tree, where no page
@@ -1176,4 +1323,327 @@ test("the token hygiene the re-score named stands as audited", () => {
   // The struck tokens stay struck.
   assert.ok(!css.includes("--accent-bright"));
   assert.ok(!/--red\s*:/.test(css));
+});
+
+test("the share images state both rate bases and the pill track", () => {
+  // F6 of the coherence re-score. The generator composes
+  // the flagged lead's decomposition in two places, the
+  // ceiling clause in the words under the plot and the
+  // flagged reading in the stack. Both state the genuine
+  // share against its eligible cases and the malformed
+  // share against counted flips, the board's basis
+  // discipline, and neither composes the basis-less
+  // wording. The split bar track takes the pill radius
+  // the board's own plain track carries, so the share
+  // image reads as the same bar.
+  const gen = read("scripts/gen-og.mjs");
+  assert.ok(!gen.includes("genuine flip rate"));
+  assert.ok(
+    gen.includes(
+      "genuine flips ${fmtPct(d.genuineRate)} of its eligible cases, with ${fmtPct(d.malformedShare)} of counted flips to malformed output",
+    ),
+  );
+  assert.ok(
+    gen.includes(
+      "genuine flips ${fmtPct(d.genuineRate)} of its eligible cases.",
+    ),
+  );
+  assert.ok(gen.includes(".robar{display:flex;height:9px;border-radius:999px;"));
+  // The fit pass funds a tall card by narrowing the plot
+  // and widening the readings column beside it, whose
+  // lines unwrap as it widens. That conversion caps out
+  // if the scatter column is sized by its widest child,
+  // the plot's caption floors the column at its one-line
+  // width, the flagged lead's reading holds its second
+  // line at every shrink value, and the footer stands
+  // past the card. The column therefore takes the plot's
+  // own computed width, so the caption wraps inside the
+  // plot's column and the conversion runs its full range.
+  assert.ok(
+    gen.includes('<div class="scattercol" style="width:${svgW}px">'),
+  );
+});
+
+test("the share plot keeps its floor and the furniture funds the fit", () => {
+  // Iteration 7. Measured on the shipped payload, the
+  // landscape card's natural layout overflows its height
+  // by 91px, and the overflow sits in the readings stack
+  // and the ladder, not in the plot. The old fit pass
+  // funded all of it from the plot, narrowing it to 245px
+  // wide, where the subject disc rendered under 5px across
+  // and the axis text under 4px: the card's evidence stood
+  // as texture. The generator now funds the fit from its
+  // furniture first. The ladder takes three columns at the
+  // same row pitch and type size, the first retry only
+  // tightens the readings stack's own padding, and plot
+  // narrowing comes after, in steps, and never past the
+  // floor the subject disc's feed-scale reading sets; a
+  // card that cannot fit at the floor fails closed rather
+  // than print a stamp plot.
+  const gen = read("scripts/gen-og.mjs");
+  assert.ok(gen.includes("const PLOT_FLOOR = { land: 500, port: 800 };"));
+  assert.ok(
+    gen.includes("land: { allot: 170, pitch: 22, slack: 40, columns: 3 },"),
+  );
+  assert.ok(
+    gen.includes("Math.ceil(ladderRows.length / LADDER.land.columns)"),
+  );
+  const tightFirst = gen.indexOf("if (attemptN === 0) {");
+  const shrinkAfter = gen.indexOf(
+    "plotShrink[kind] = Math.min(plotShrink[kind] + step, maxShrink)",
+  );
+  assert.ok(tightFirst >= 0 && shrinkAfter > tightFirst);
+  assert.ok(gen.includes("GEOMS[kind].width -\n          PLOT_FLOOR[kind] -"));
+  assert.ok(gen.includes("attemptN < 6"));
+  assert.ok(
+    gen.includes("its plot at the ${PLOT_FLOOR[kind]}px floor"),
+  );
+  assert.ok(gen.includes("or its plot shrunk past the floor"));
+});
+
+test("the detail card seats by measured clearance on all four sides of its disc", () => {
+  // Iteration 4's law, widening iteration 3's. The
+  // subject's two label texts stand on a plate measured
+  // at render time from their rendered boxes, widened by
+  // 8px at each side and 6px above and below, painted
+  // after every disc. The detail card seats by measured
+  // clearance on all four sides of its disc, against the
+  // rendered plate, every other disc face, and the axis
+  // labels. The seat above the disc stands unless a seat
+  // below, right, or left measures strictly clearer, and
+  // the below seat keeps the plate law, pushed past
+  // whichever stands lower, the disc's bottom or the
+  // plate's bottom. A seat stands down once seated, and
+  // it is measured again when the subject moves.
+  const explorer = read("components/Explorer.tsx");
+  assert.ok(explorer.includes('className="label-plate"'));
+  assert.ok(explorer.includes("Math.min(a.x, b.x) - 8"));
+  assert.ok(explorer.includes("Math.max(a.x + a.width, b.x + b.width) + 8"));
+  assert.ok(explorer.includes("Math.min(a.y, b.y) - 6"));
+  assert.ok(explorer.includes('className="subject-label"'));
+  assert.ok(explorer.includes('querySelector(".label-plate")'));
+  assert.ok(explorer.includes('querySelectorAll(".disc-face")'));
+  assert.ok(explorer.includes("chipSeat.plateKey === plateKey"));
+  assert.ok(explorer.includes("discRect.bottom + 10"));
+  assert.ok(explorer.includes("plateRect.bottom + 8"));
+  assert.ok(explorer.includes("discRect.right + 12"));
+  assert.ok(explorer.includes("againstPlate * 10000000"));
+  assert.ok(explorer.includes("discRect.left - 12 - w"));
+  assert.ok(explorer.includes('"chip below"'));
+  assert.ok(explorer.includes('"chip side-left"'));
+  assert.ok(explorer.includes('"chip side-right"'));
+  // Below its disc the card drops the upward shift that
+  // seats a card above its disc, and keeps its left seat.
+  // Beside its disc the card centres on the disc's height
+  // with its edge on the measured left seat.
+  assert.match(css, /\.chip\.below \{ transform: translate\(-8px\); \}/);
+  assert.match(
+    css,
+    /\.chip\.side-left, \.chip\.side-right \{ transform: translate\(0, -50%\); \}/,
+  );
+});
+
+test("the detail card prices axis labels above field discs in its seat score", () => {
+  // Iteration 5's law, widening iteration 4's. The axis
+  // texts stand apart from the field discs in the seat
+  // score, because a disc the card covers is still
+  // printed in the rows below the chart while an axis
+  // label the card covers is the only printing of that
+  // scale value on the chart. Covered axis text costs
+  // two and a half times its area, a label covered past
+  // half its face costs a flat fifteen hundred on top, and a
+  // covered disc centre costs four hundred. A seat
+  // beside the disc may also slide to the far side of
+  // an axis label its centred span would stand across,
+  // and the slide stays near the disc, its centre
+  // within half the card's height and the plate's
+  // reach of the disc's centre.
+  const explorer = read("components/Explorer.tsx");
+  assert.ok(explorer.includes("const axisTexts"));
+  assert.ok(explorer.includes('includes("axis-label")'));
+  assert.ok(explorer.includes("centres * 400"));
+  assert.ok(explorer.includes("textArea * 2.5"));
+  assert.ok(explorer.includes("lostLabels * 1500"));
+  assert.ok(explorer.includes("a >= t.area / 2"));
+  assert.ok(explorer.includes("t.rect.top - h - 2"));
+  assert.ok(explorer.includes("t.rect.bottom + 2"));
+  assert.ok(explorer.includes("h / 2 + 48"));
+  assert.ok(explorer.includes("midY - 8"));
+  assert.ok(explorer.includes("midY + h + 8"));
+});
+
+test("the detail card renders at the seat its scoring measured, on every side", () => {
+  // Iteration 8's seat law, widening iteration 4's. The
+  // scoring clamps every candidate inside the chart wrap
+  // before it prices the field, and the card must stand
+  // where that pricing put it. The above and below seats
+  // once stored no left of their own, so the render fell
+  // back to the disc's raw cost percentage and stood the
+  // card there instead, which at phone width carried it
+  // past the wrap and off the screen for the field's
+  // right half while the scoring believed it clamped.
+  // Every seat now stores its measured position converted
+  // back through its own transform, the 8px leftward
+  // shift the above and below cards ride, the full
+  // height upward shift the above card rides, and the
+  // render takes the stored top for every seat alike.
+  const explorer = read("components/Explorer.tsx");
+  assert.ok(explorer.includes("const leftPct = (px: number) =>"));
+  assert.ok(explorer.includes("const topPct = (px: number) =>"));
+  assert.ok(explorer.includes("top: topPct(best.top + h)"));
+  assert.ok(explorer.includes("left: leftPct(best.left + 8)"));
+  assert.ok(explorer.includes("? leftPct(best.left + 8)"));
+  assert.ok(explorer.includes(": leftPct(best.left);"));
+  assert.ok(explorer.includes("? topPct(best.top)"));
+  assert.ok(!explorer.includes('chipSeat.seat !== "above"'));
+});
+
+test("the seat score prices the plate with a clearance margin", () => {
+  // Iteration 8's plate law, widening iteration 4's. The
+  // plate is a hard bound in the score, and a seat the
+  // scoring cleared by a hair could still land across
+  // the plate's edge once its stored percentages were
+  // laid out again, because the wrap's clamp floor can
+  // eat a clearing slide's whole margin and a fraction
+  // of a pixel of layout drift does the rest. One
+  // subject at phone width stood with its card's bottom
+  // edge across the plate's top edge by eight tenths of
+  // a pixel on a seat the scoring had cleared by four
+  // hundredths. The score now prices the plate widened
+  // by 2px on every side, so a seat only wins the plate's
+  // band when it stands clear of the margin as well.
+  const explorer = read("components/Explorer.tsx");
+  assert.ok(explorer.includes("const plateBound = plateRect"));
+  assert.ok(explorer.includes("left: plateRect.left - 2"));
+  assert.ok(explorer.includes("top: plateRect.top - 2"));
+  assert.ok(explorer.includes("right: plateRect.right + 2"));
+  assert.ok(explorer.includes("bottom: plateRect.bottom + 2"));
+  assert.ok(explorer.includes("overlapArea(pos, plateBound)"));
+});
+
+test("the comparison tray takes the phone sheet width with its actions on one row", () => {
+  // Iteration 4's tray law. At phone widths the tray
+  // leaves its centred fit-content seat, which wrapped
+  // each of its four children onto its own row at 195px
+  // wide and 210px tall, and takes the sheet width
+  // between the phone margins instead. The names and the
+  // delta each take a full row, and the two actions share
+  // the last row at their standing sizes.
+  assert.match(css, /\.tray \{\s*left: 16px; right: 16px; transform: none;/);
+  assert.ok(css.includes(".tray-names { flex: 1 1 100%; }"));
+  assert.ok(css.includes(".tray-delta { flex: 1 1 100%; }"));
+});
+
+test("the method scene stands in the scene rhythm at every width", () => {
+  // Iteration 6's rhythm law. The method section is a
+  // scene like the others and takes the one scene margin.
+  // A stray zeroing rule once classed it apart and ate
+  // its top margin on wide screens alone, so the findings
+  // scene crowded it at 24px against the 48px rhythm, and
+  // the colophon kept the pre-rhythm 64px at every width.
+  const method = read("components/MethodStub.tsx");
+  assert.ok(method.includes('className="method scene"'));
+  assert.ok(!css.includes(".section { margin-top: 0; }"));
+  assert.match(css, /\.colophon \{[^}]*margin-top: 48px;/);
+});
+
+test("the guards anatomy never cuts a figure at phone width", () => {
+  // Iteration 6's anatomy law. At phone width the anatomy
+  // stacks in column order instead of shrinking its slots
+  // until the labels clip mid figure. The zero slot keeps
+  // its fixed reading width, and the pair take the track
+  // at their shares of the pair total, derived in the
+  // component from the payload counts themselves.
+  const findings = read("components/Findings.tsx");
+  assert.ok(findings.includes('"--pairshare"'));
+  assert.ok(
+    findings.includes("f.guards.toAbstain + f.guards.untyped"),
+  );
+  assert.ok(css.includes(".anatomy { flex-direction: column;"));
+  assert.ok(
+    css.includes("width: calc(var(--pairshare) * 100%)"),
+  );
+  assert.match(
+    css,
+    /\.anat-slot\.empty \{ flex: 0 0 auto; width: 148px; \}/,
+  );
+});
+
+test("every model address names its own result", () => {
+  // Iteration 10. The model pages all render one text, so a
+  // reader who lands without JavaScript, or who meets the
+  // address as a tab title or a shared link, cannot tell one
+  // result's page from another's. The page now resolves its
+  // slug to its row and prints the name the explorer prints,
+  // with the wire in words when another result shares the
+  // short name, and the title carries the same name. The
+  // derivations below port the payload lib's rules with no
+  // shared code, per this suite's doctrine.
+  const splitName = (dn) => {
+    const at = dn.lastIndexOf("@");
+    return at > 0 && /^[0-9a-f]{32,}$/i.test(dn.slice(at + 1))
+      ? dn.slice(0, at)
+      : dn;
+  };
+  const shortOf = (row) => {
+    const name = splitName(row.display_name);
+    const slash = name.lastIndexOf("/");
+    return slash >= 0 ? name.slice(slash + 1) : name;
+  };
+  const slugify = (x) =>
+    x.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+  const slugOf = (row) => {
+    const base = shortOf(row);
+    const shared = rows.some(
+      (r) => r.run_id !== row.run_id && shortOf(r) === base,
+    );
+    const withWire = slugify(shared ? `${base}-${row.wire}` : base);
+    const clash = rows.some(
+      (r) =>
+        r.run_id !== row.run_id &&
+        shortOf(r) === base &&
+        r.wire === row.wire,
+    );
+    return clash ? `${withWire}-${slugify(row.run_id).slice(0, 8)}` : withWire;
+  };
+  const slugs = rows.map(slugOf);
+  assert.equal(new Set(slugs).size, rows.length);
+  for (const row of rows) {
+    assert.ok(splitName(row.display_name).length > 0);
+  }
+  const page = read("app/models/[slug]/page.tsx");
+  assert.ok(page.includes("splitDisplayName"));
+  assert.ok(page.includes("<h1>{name ??"));
+  assert.ok(page.includes("generateMetadata"));
+  assert.ok(page.includes("duplicateShortNames"));
+  assert.ok(page.includes("wireWords"));
+});
+
+test("the model address link meets the coarse target rule", () => {
+  // Iteration 10. The stub's only control measured 37px tall
+  // at phone width, under the 44px coarse minimum the board
+  // holds everywhere else. The link joins the sheet's coarse
+  // block at 44px, in the same inline-flex form the findings
+  // action link already uses there.
+  assert.match(
+    css,
+    /@media \(pointer: coarse\) \{[\s\S]*?\.model-redirect a \{ display: inline-flex; align-items: center; min-height: 44px; \}/,
+  );
+});
+
+test("the not-found doorway names itself and carries a route home", () => {
+  // Iteration 11. Every unknown route on the board fell to
+  // the framework default, a bare 404 with no name of its own
+  // and no link onward. The board's own doorway names itself in
+  // its title and its heading, states where the board stands,
+  // and links home, with the link at the coarse target height.
+  const page = read("app/not-found.tsx");
+  assert.ok(page.includes("Page not found · Peira decision robustness board"));
+  assert.ok(page.includes("Nothing at this address"));
+  assert.ok(page.includes('href="/"'));
+  assert.ok(page.includes("Back to the board"));
+  assert.match(
+    css,
+    /@media \(pointer: coarse\) \{\s*\.notfound-action a \{ display: inline-flex; align-items: center; min-height: 44px; \}/,
+  );
 });

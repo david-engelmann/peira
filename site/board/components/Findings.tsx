@@ -1,3 +1,4 @@
+import type { CSSProperties } from "react";
 import {
   boardGroups,
   modelSlug,
@@ -171,13 +172,25 @@ export default function Findings() {
           </span>
           <span
             className="anat-slot abstain"
-            style={{ flexGrow: f.guards.toAbstain }}
+            style={
+              {
+                flexGrow: f.guards.toAbstain,
+                "--pairshare":
+                  f.guards.toAbstain / (f.guards.toAbstain + f.guards.untyped),
+              } as CSSProperties
+            }
           >
             To abstain · {fmtInt(f.guards.toAbstain)}
           </span>
           <span
             className="anat-slot untyped"
-            style={{ flexGrow: f.guards.untyped }}
+            style={
+              {
+                flexGrow: f.guards.untyped,
+                "--pairshare":
+                  f.guards.untyped / (f.guards.toAbstain + f.guards.untyped),
+              } as CSSProperties
+            }
           >
             Untyped · {fmtInt(f.guards.untyped)}
           </span>
