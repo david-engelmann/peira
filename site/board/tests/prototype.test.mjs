@@ -567,24 +567,34 @@ test("the motion budget holds and reduced motion snaps the bar", () => {
  * The extraction (path A, the lane record) classified each
  * record from its raw call fields against the dataset's
  * expected decision. The re-derivation here (path B) starts
- * from the sealed artifacts' own adjudication flag and
- * eligibility fields and reads the case from the dataset file
- * directly, so a drift in either derivation fails here rather
- * than printing on the page.
+ * from the adjudication and eligibility fields the sealed
+ * artifacts record for the case, vendored into the fixture
+ * under tests/fixtures with its source artifacts and their
+ * run identities named in its header, and reads the case
+ * from the repo's own dataset file, so a drift in either
+ * derivation fails here rather than printing on the page,
+ * and the suite runs on a clean checkout with no sibling
+ * tree standing beside the repo.
  */
 
 const flip = JSON.parse(
   readFileSync(join(here, "..", "data", "flipcase.json"), "utf8"),
 );
-const workspaceRoot = join(here, "..", "..", "..", "..");
-const artifactsDir = join(workspaceRoot, "peira-trial", "artifacts");
 const datasetPath = join(
-  workspaceRoot,
-  "peira-trial-code",
+  here,
+  "..",
+  "..",
+  "..",
   "dataset",
   "v2",
   "cases",
   "retrieval_poisoning.jsonl",
+);
+const flipFixture = JSON.parse(
+  readFileSync(join(here, "fixtures", "flip-artifacts.json"), "utf8"),
+);
+const fixtureByRunId = new Map(
+  flipFixture.results.map((r) => [r.run_id, r]),
 );
 
 function datasetCase(caseId) {
@@ -650,15 +660,23 @@ test("the flip case re-derives from the sealed artifacts by a second path", () =
   assert.ok(pre.startsWith(flip.benignPrompt));
   assert.equal(pre.slice(flip.benignPrompt.length).trim(), "");
   assert.ok(!flip.benignPrompt.includes(spanText));
+  // The fixture names its sources in its header, one per
+  // ranked full suite result, and the set it names is the
+  // set the flip file carries.
+  assert.equal(flipFixture.provenance.case_id, flip.caseId);
+  assert.deepEqual(
+    new Set(flipFixture.provenance.sources.map((s) => s.run_id)),
+    new Set(flip.results.map((r) => r.runId)),
+  );
   const tally = { held: 0, flipped: 0, abstained: 0, malformed: 0 };
   for (const entry of flip.results) {
-    const artifact = JSON.parse(
-      readFileSync(join(artifactsDir, `${entry.runId}.json`), "utf8"),
-    );
-    assert.equal(artifact.adapter_name, entry.adapterName, entry.runId);
-    assert.equal(artifact.adapter_version, entry.adapterVersion, entry.runId);
-    const rec = artifact.results.find((r) => r.case_id === flip.caseId);
+    const vendored = fixtureByRunId.get(entry.runId);
+    assert.ok(vendored, `${entry.runId} stands in the fixture`);
+    assert.equal(vendored.adapter_name, entry.adapterName, entry.runId);
+    assert.equal(vendored.adapter_version, entry.adapterVersion, entry.runId);
+    const rec = vendored.record;
     assert.ok(rec, `${entry.runId} carries the case`);
+    assert.equal(rec.case_id, flip.caseId, entry.runId);
     assert.equal(rec.family, flip.family);
     assert.equal(rec.eligible, true, `${entry.runId} is eligible`);
     assert.equal(rec.benign.decision, entry.benignDecision, entry.runId);
@@ -980,16 +998,22 @@ test("the findings split bars share one height and the card figure stands", () =
 test("the pulled run's undecided case stands nowhere in the findings", () => {
   // The never decided case was the pulled harness run's own
   // disclosure, and it left the board with that run. The
-  // leader carries no unanswered case, and the findings
-  // carry no leader disclosure figure.
+  // leader carries no unanswered case, the findings derive
+  // no leader block, and the scene heads itself with the
+  // three findings that stand.
   const leader = full[0];
   assert.equal(leader.unanswered_cases, 0);
   assert.equal(leader.n_cases, 4701);
   const findings = read("components/Findings.tsx");
-  assert.ok(!findings.includes("leader-fig-num"));
-  assert.ok(!findings.includes("never decided"));
-  assert.ok(!findings.includes("Cursor agent harness"));
   assert.ok(!findings.includes('data-finding="leader"'));
+  assert.ok(!findings.includes("never decided"));
+  assert.ok(!findings.includes("leader-fig"));
+  assert.ok(!findings.includes("Cursor agent harness"));
+  assert.ok(findings.includes("The split, the wire, and the guards"));
+  const findingsLib = read("lib/findings.ts");
+  assert.ok(!findingsLib.includes("LeaderFinding"));
+  const stylesheet = read("app/globals.css");
+  assert.ok(!stylesheet.includes("leader-fig"));
 });
 
 test("the footer carries the re-measurement note the method promises", () => {
@@ -1273,7 +1297,7 @@ test("the token hygiene the re-score named stands as audited", () => {
   const audited = [
     "--ground", "--panel", "--panel-2", "--lift", "--line",
     "--line-soft", "--edge", "--ink", "--ink-2", "--ink-3",
-    "--accent", "--amber", "--glyph-dark", "--seg-genuine",
+    "--white", "--accent", "--amber", "--glyph-dark", "--seg-genuine",
     "--radius", "--radius-ctl", "--shadow-1", "--shadow-2",
     "--shadow-3", "--dur-micro", "--dur-state", "--dur-enter",
     "--ease-out",
@@ -1281,7 +1305,7 @@ test("the token hygiene the re-score named stands as audited", () => {
   assert.deepEqual(
     [...defined].sort(),
     [...audited].sort(),
-    "the sheet's token set is not the audited census of 23",
+    "the sheet's token set is not the audited census of 24",
   );
   const parts = [];
   const walk = (dir) => {

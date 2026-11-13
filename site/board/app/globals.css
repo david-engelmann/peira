@@ -22,6 +22,7 @@
   --ink: #eef2f6;
   --ink-2: #aebcc7;
   --ink-3: #71808f;
+  --white: #ffffff;
   --accent: #2fbf71;
   --amber: #e8a33d;
   --glyph-dark: #0b0e12;
@@ -828,7 +829,7 @@ button.xh.on { color: var(--accent); }
   padding: 12px 22px; min-height: 48px; cursor: pointer;
   transition: background-color var(--dur-micro) ease, border-color var(--dur-micro) ease;
 }
-.flip-run:hover { background: color-mix(in srgb, var(--accent) 88%, #ffffff); border-color: color-mix(in srgb, var(--accent) 88%, #ffffff); }
+.flip-run:hover { background: color-mix(in srgb, var(--accent) 88%, var(--white)); border-color: color-mix(in srgb, var(--accent) 88%, var(--white)); }
 .flip-agg { flex: 1 1 320px; color: var(--ink-2); margin: 0; }
 @media (max-width: 760px) {
   /* The phone object stacks the forms, benign over attacked,

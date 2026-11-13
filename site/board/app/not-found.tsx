@@ -1,13 +1,13 @@
 import type { Metadata } from "next";
 
 /**
- * The doorway for an address the board does not hold. Until
- * iteration 11 the framework default stood here, a bare 404 with
- * no name of its own and no way onward but the browser's back
- * control. This page names itself, states where the board stands,
- * and carries the reader there, in the board's own grammar. The
- * borrowed property is Maidan's error discipline, state stated as
- * words and a route onward on every surface.
+ * The doorway for an address the board does not hold. The
+ * framework default stood here once, a bare 404 with no name
+ * of its own and no way onward but the browser's back control.
+ * This page names itself, states where the board stands, and
+ * carries the reader there, in the board's own grammar. The
+ * borrowed property is Maidan's error discipline, state stated
+ * as words and a route onward on every surface.
  */
 
 export const metadata: Metadata = {

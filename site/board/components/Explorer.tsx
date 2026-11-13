@@ -9,6 +9,7 @@ import {
   useState,
 } from "react";
 import type { ExplorerData, XRow } from "@/lib/explorerData";
+import Mark from "@/components/Mark";
 import {
   fmtDeltaPct,
   fmtDeltaUsd,
@@ -66,27 +67,6 @@ const DEFAULTS: XState = {
   frontier: false,
   grey: "vendor",
 };
-
-function Mark({ row, size = 26 }: { row: XRow; size?: number }) {
-  const m = row.mark;
-  return (
-    <span
-      className="xmark"
-      style={{ width: size, height: size, background: m.color }}
-      aria-hidden="true"
-    >
-      {m.kind === "logo" && m.slug ? (
-        <svg width={size * 0.62} height={size * 0.62} viewBox="0 0 24 24">
-          <use href={`#vlogo-${m.slug}`} style={{ color: m.glyph }} />
-        </svg>
-      ) : (
-        <span className="xmark-letter" style={{ color: m.glyph }}>
-          {m.letter}
-        </span>
-      )}
-    </span>
-  );
-}
 
 /* A display name breaks at its slash, never mid-token, so a
  * long organisation and model pair wraps as two words rather
@@ -257,7 +237,7 @@ function CompareReading({
       <div className="compare-cols">
         <div className="compare-side">
           <p className="compare-name">
-            <Mark row={sel} size={20} /> {sel.name}
+            <Mark mark={sel.mark} size={20} /> {sel.name}
             {sel.wire ? ` · ${sel.wire}` : ""}
           </p>
           <ReadingBody row={sel} />
@@ -275,7 +255,7 @@ function CompareReading({
         </div>
         <div className="compare-side">
           <p className="compare-name">
-            <Mark row={pin} size={20} /> {pin.name}
+            <Mark mark={pin.mark} size={20} /> {pin.name}
             {pin.wire ? ` · ${pin.wire}` : ""}
           </p>
           <ReadingBody row={pin} />
@@ -346,12 +326,14 @@ export default function Explorer({ data }: { data: ExplorerData }) {
     [data],
   );
   /* The opening selection is the chart's subject, the best
-   * ranked result the plot can seat. The board leader ran
-   * through the Cursor harness, whose cost is billed through
-   * a paid plan and not metered per run, so it stands in the
-   * chart's rail rather than on the plot, and the best priced
-   * result takes the white disc until the reader selects
-   * another. */
+   * ranked result the plot can seat. The plot seats its
+   * subject on the cost axis, so the predicate asks for the
+   * first full result carrying a metered cost, and a result
+   * with no metered cost stands in the chart's rail rather
+   * than on the plot. On the current payload the first
+   * priced full result is the board leader itself, the
+   * rank 1 Gemini run, so the leader takes the white disc
+   * until the reader selects another. */
   const opener = useMemo(
     () =>
       data.rows.find(
@@ -812,7 +794,7 @@ export default function Explorer({ data }: { data: ExplorerData }) {
       <div className="footstrip" aria-hidden={selRow === null || !explorerLive}>
         {selRow && explorerLive && (
           <>
-            <Mark row={selRow} size={20} />
+            <Mark mark={selRow.mark} size={20} />
             <span className="footstrip-name">
               {selRow.name}
               {selRow.wire ? ` · ${selRow.wire}` : ""}
@@ -925,7 +907,7 @@ function RankView({
                   >
                     {row.kind === "flagged" ? "" : i + 1}
                   </span>
-                  <Mark row={row} />
+                  <Mark mark={row.mark} />
                   <span className="xname">
                     <BreakName name={row.fullName} />
                     {row.wire && <span className="xwire">{row.wire}</span>}
@@ -1822,7 +1804,7 @@ function ChartView({
             }}
           >
             <p className="chip-name">
-              <Mark row={chipRow} size={18} /> {chipRow.name}
+              <Mark mark={chipRow.mark} size={18} /> {chipRow.name}
               {chipRow.wire ? ` · ${chipRow.wire}` : ""}
             </p>
             <p className="chip-figs">
@@ -1901,7 +1883,7 @@ function ChartView({
                         onPointerEnter={() => setHoverId(row.runId)}
                         onClick={() => onSelect(row)}
                       >
-                        <Mark row={row} size={18} />
+                        <Mark mark={row.mark} size={18} />
                         <span>{row.fullName}</span>
                         <span className="rn">{row.asrText ?? "·"}</span>
                       </button>
@@ -1925,7 +1907,7 @@ function ChartView({
                 onPointerLeave={() => setHoverId(null)}
                 onClick={() => onSelect(row)}
               >
-                <Mark row={row} size={18} />
+                <Mark mark={row.mark} size={18} />
                 <span className="sync-name">
                   <BreakName name={row.fullName} />
                   {row.wire ? ` · ${row.wire}` : ""}
@@ -2006,7 +1988,7 @@ function FamiliesView({ groups, data, expanded, onToggle }: FamiliesViewProps) {
                 >
                   {row.kind === "flagged" ? "" : i + 1}
                 </span>
-                <Mark row={row} size={22} />
+                <Mark mark={row.mark} size={22} />
                 <span className="xname">
                   <BreakName name={row.fullName} />
                   {row.wire && <span className="xwire">{row.wire}</span>}

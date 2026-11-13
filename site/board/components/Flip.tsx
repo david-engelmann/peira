@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import type { FlipData, FlipResultDatum } from "@/lib/flipData";
+import Mark from "@/components/Mark";
 
 /**
  * The Flip. One paired case from the suite, standing on the
@@ -57,27 +58,6 @@ function aggregateLine(counts: FlipData["counts"]): string {
   return `On this case, ${joined}.`;
 }
 
-function FlipMark({ d, size = 22 }: { d: FlipResultDatum; size?: number }) {
-  const m = d.mark;
-  return (
-    <span
-      className="xmark"
-      style={{ width: size, height: size, background: m.color }}
-      aria-hidden="true"
-    >
-      {m.kind === "logo" && m.slug ? (
-        <svg width={size * 0.62} height={size * 0.62} viewBox="0 0 24 24">
-          <use href={`#vlogo-${m.slug}`} style={{ color: m.glyph }} />
-        </svg>
-      ) : (
-        <span className="xmark-letter" style={{ color: m.glyph }}>
-          {m.letter}
-        </span>
-      )}
-    </span>
-  );
-}
-
 export default function Flip({ data }: { data: FlipData }) {
   const [selId, setSelId] = useState(data.defaultRunId);
   const [attacked, setAttacked] = useState(false);
@@ -127,7 +107,7 @@ export default function Flip({ data }: { data: FlipData }) {
 
   return (
     <div className="flip">
-      <div className="flip-head">
+      <div>
         <p className="micro">
           {data.familyLabel} · {data.severityLabel} severity · Case{" "}
           {data.caseId}
@@ -152,9 +132,9 @@ export default function Flip({ data }: { data: FlipData }) {
             aria-pressed={d.runId === sel.runId}
             onClick={() => select(d.runId)}
           >
-            <FlipMark d={d} />
+            <Mark mark={d.mark} size={22} />
             <span className="flip-chip-rank rn">{d.rank}</span>
-            <span className="flip-chip-name">
+            <span>
               {d.name}
               {d.wire ? ` · ${d.wire}` : ""}
             </span>
@@ -163,7 +143,7 @@ export default function Flip({ data }: { data: FlipData }) {
       </div>
 
       <p className="flip-now">
-        <FlipMark d={sel} size={26} />
+        <Mark mark={sel.mark} size={26} />
         <span className="flip-now-name">
           {sel.fullName}
           {sel.wire ? ` · ${sel.wire}` : ""}
